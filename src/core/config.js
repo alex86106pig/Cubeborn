@@ -1,0 +1,66 @@
+// 全域可調參數：迴圈、世界、相機、玩家、敵人、生成與除錯開關
+
+export const FIXED_DT = 1 / 60;
+export const MAX_STEPS_PER_FRAME = 5;
+
+export const WORLD = {
+  arenaHalfSize: 16,
+};
+
+export const CAMERA = {
+  viewHalfHeight: 10,          // 正交相機可視範圍的一半高度（世界單位）
+  distance: 40,
+  azimuth: Math.PI / 4,        // 從 +X+Z 方向看向場地
+  elevation: 0.7,              // 約 40°，比標準等距角略高，戰鬥較好讀
+  followSharpness: 8,
+  aimPlaneHeight: 0.9,         // 滑鼠瞄準射線投射的平面高度（約胸口）
+};
+
+export const COMBAT = {
+  knockbackDamping: 9,
+  flashTime: 0.12,
+};
+
+export const PLAYER = {
+  maxHp: 100,
+  moveSpeed: 6.5,
+  turnSpeed: 25,
+  radius: 0.45,
+  mass: 2,
+  invulnTime: 0.6,
+  staggerTime: 0.15,
+  actionBufferTime: 0.25,
+  startWeapon: 'swordShield',
+  slots: ['heal', 'sprint', null, null, null],
+  colors: { skin: 0xf0c8a0, hair: 0x5a3a1e, shirt: 0x2f7de1, pants: 0x283a7a, shoes: 0x3a3a3a, eyes: 0x1a1a40 },
+};
+
+export const ZOMBIE = {
+  maxHp: 36,
+  hpPerWave: 0.08,             // 每波血量成長比例
+  moveSpeed: 2.6,
+  speedVariance: 0.2,
+  turnSpeed: 6,
+  radius: 0.45,
+  mass: 1,
+  contactDamage: 10,
+  contactInterval: 0.8,
+  hurtTime: 0.22,
+  spawnTime: 0.7,
+  corpseTime: 1.4,
+  colors: { skin: 0x5fa04e, hair: 0x3f7a35, shirt: 0x2aa0a8, pants: 0x4b3a8c, shoes: 0x333333, eyes: 0x111111 },
+};
+
+export const SPAWNER = {
+  firstDelay: 1.0,
+  firstWaveCount: 4,
+  countPerWave: 2,
+  maxWaveCount: 30,
+  waveDelay: 2.5,
+  spawnInterval: 0.35,
+  minDistanceFromPlayer: 8,
+};
+
+export const DEBUG = {
+  showHitboxes: false,
+};
