@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { PLAYER } from '../core/config.js';
 import { turnTowards } from '../core/math.js';
 import { StateMachine } from '../core/StateMachine.js';
-import { HumanoidModel } from '../render/HumanoidModel.js';
+import { getStyle } from '../render/styles/index.js';
 import { createWeaponModel } from '../render/WeaponModels.js';
 import { ActiveSlots, SLOT_COUNT } from '../skills/ActiveSlots.js';
 import { WEAPONS } from '../weapons/weaponDefs.js';
@@ -15,7 +15,7 @@ const SLOT_KEYS = Array.from({ length: SLOT_COUNT }, (_, i) => `Digit${i + 1}`);
 export class Player extends Entity {
   constructor(game) {
     super(game, { radius: PLAYER.radius, maxHp: PLAYER.maxHp, mass: PLAYER.mass, team: 'player' });
-    this.attachModel(new HumanoidModel(PLAYER.colors));
+    this.attachModel(this.createModel());
 
     this.moveInput = new THREE.Vector3();
     this.aimPoint = new THREE.Vector3(0, 0, 5);
@@ -38,21 +38,33 @@ export class Player extends Entity {
     this.equipWeapon(PLAYER.startWeapon);
   }
 
+  createModel() {
+    return getStyle().characters.knight();
+  }
+
+  rebuildModel() {
+    this.weaponModel?.dispose();
+    this.weaponModel = null;
+    super.rebuildModel();
+    this.#attachWeaponModel();
+  }
+
   equipWeapon(id) {
     const def = WEAPONS[id];
     if (!def) throw new Error(`Unknown weapon: ${id}`);
-    if (this.weaponModel) {
-      this.weaponModel.main.removeFromParent();
-      this.weaponModel.offhand?.removeFromParent();
-      this.weaponModel.dispose();
-    }
     this.weapon = def;
-    this.weaponModel = createWeaponModel(def.model);
-    this.model.handR.add(this.weaponModel.main);
-    if (this.weaponModel.offhand) this.model.armL.add(this.weaponModel.offhand);
+    this.#attachWeaponModel();
     this.comboStep = 0;
     this.comboTimer = 0;
     this.action.change('ready');
+  }
+
+  #attachWeaponModel() {
+    this.weaponModel?.dispose();
+    this.weaponModel = createWeaponModel(this.weapon.model);
+    this.model.handR.add(this.weaponModel.main);
+    if (this.weaponModel.offhand) this.model.armL.add(this.weaponModel.offhand);
+    this.model.accessories = [this.weaponModel.kit];
   }
 
   addBuff(id, duration, mods) {
@@ -153,7 +165,7 @@ export class Player extends Entity {
 
   syncModel() {
     super.syncModel();
-    this.weaponModel.sync(this);
+    this.weaponModel?.sync(this);
     // 無敵時間閃爍
     this.model.root.visible = this.isDead || this.invulnTimer <= 0 || Math.floor(this.invulnTimer * 20) % 2 === 0;
   }

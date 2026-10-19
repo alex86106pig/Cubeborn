@@ -97,6 +97,19 @@ export class Effects {
     });
   }
 
+  // 直線預警：從 start 沿 dir 延伸 length 的長方形
+  telegraphLine(start, dir, length, width, { color = 0xff3030, life = 0.6 } = {}) {
+    const geometry = new THREE.PlaneGeometry(width, length).rotateX(-Math.PI / 2).translate(0, 0, length / 2);
+    const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.4, depthWrite: false });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(start.x, 0.04, start.z);
+    mesh.rotation.y = Math.atan2(dir.x, dir.z);
+    mesh.userData.ownGeometry = true;
+    this.#addTransient(mesh, life, (k) => {
+      material.opacity = 0.2 + 0.3 * Math.sin(k * Math.PI * 5) ** 2;
+    });
+  }
+
   #addTransient(mesh, life, update) {
     this.scene.add(mesh);
     update(0);
@@ -137,6 +150,7 @@ export class Effects {
   #removeTransient(t) {
     this.scene.remove(t.mesh);
     t.mesh.material.dispose();
+    if (t.mesh.userData.ownGeometry) t.mesh.geometry.dispose();
   }
 
   clear() {

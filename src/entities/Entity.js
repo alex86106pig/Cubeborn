@@ -29,6 +29,26 @@ export class Entity {
     this.model = null;
   }
 
+  // 子類別覆寫：依目前造型風格建立模型（Rig）
+  createModel() {
+    throw new Error('createModel() not implemented');
+  }
+
+  // 切換造型風格時重建模型，保留位置與遊戲狀態
+  rebuildModel() {
+    if (!this.model || this.isRemoved) return;
+    const y = this.model.root.position.y;
+    this.game.renderer.scene.remove(this.model.root);
+    this.model.dispose();
+    this.attachModel(this.createModel());
+    this.model.root.position.y = y;
+    this.syncModel();
+  }
+
+  get height() {
+    return this.model?.height ?? 2;
+  }
+
   attachModel(model) {
     this.model = model;
     this.debugRing = new THREE.Mesh(DEBUG_RING_GEO, DEBUG_RING_MAT);

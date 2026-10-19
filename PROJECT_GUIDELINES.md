@@ -9,9 +9,9 @@
 | 項目 | 內容 |
 |---|---|
 | 類型 | 3D 等距俯視角 Roguelike 動作遊戲（網頁版原型） |
-| 美術風格 | Three.js 基礎幾何體組成的 Minecraft 風方塊人形，無外部模型與貼圖 |
-| 目前階段 | Phase 1：核心場景、操作、單武器戰鬥、殭屍敵人 |
-| 不在 Phase 1 範圍 | 房間/關卡生成、升級、掉落、武器切換、存檔、音效 |
+| 美術風格 | 程式生成的低多邊形奇幻角色（不使用外部模型與貼圖），目前有三種候選造型可用 F3 切換 |
+| 目前階段 | Phase 1：核心戰鬥、5 波制（含 Boss 戰）的一局流程、造型選定 |
+| 不在 Phase 1 範圍 | 職業選擇、房間/關卡生成、升級、掉落、武器切換、存檔、音效 |
 
 ---
 
@@ -40,31 +40,44 @@ Cubeborn/
 ├─ CLAUDE.md                  AI 開工入口（自動載入）
 ├─ PROJECT_GUIDELINES.md      本文件
 ├─ CHANGELOG.md               版本紀錄
-├─ index.html                 頁面、importmap、HUD 容器
+├─ index.html                 遊戲頁面、importmap、HUD 容器
+├─ preview.html               造型比較頁（三種風格並排）
 ├─ css/style.css              HUD 與頁面樣式
 ├─ tools/serve.ps1            本機靜態伺服器
 └─ src/
-   ├─ main.js                 進入點：建立 Game 並啟動
-   ├─ Game.js                 遊戲主體（組合根）：持有所有系統、固定步長主迴圈、命中停頓、重新開始
+   ├─ main.js                 遊戲進入點：建立 Game 並啟動
+   ├─ preview.js              造型比較頁進入點
+   ├─ Game.js                 遊戲主體（組合根）：持有所有系統、主迴圈、命中停頓、重新開始、造型切換、通關
    ├─ core/                   與遊戲內容無關的底層機制
-   │  ├─ config.js            全域可調參數（迴圈、世界、相機、玩家、殭屍、生成、除錯開關）
+   │  ├─ config.js            全域可調參數（迴圈、世界、相機、玩家、生成、除錯開關）
    │  ├─ version.js           VERSION 常數（與 CHANGELOG 同步）
    │  ├─ math.js              角度、插值、緩動等數學小工具
    │  ├─ EventBus.js          發布/訂閱事件匯流排
    │  ├─ StateMachine.js      通用有限狀態機
    │  ├─ CooldownManager.js   統一冷卻時間管理
-   │  └─ Input.js             鍵盤/滑鼠狀態，提供「本幀按下」查詢與地面瞄準點
+   │  └─ Input.js             鍵盤/滑鼠狀態，提供「本步按下」查詢
    ├─ render/
-   │  ├─ Renderer.js          WebGLRenderer、場景、燈光、正交相機與跟隨
-   │  ├─ HumanoidModel.js     方塊人形建構器（頭/身/雙手/雙腳群組，關節在頂端供程序化動畫）
-   │  ├─ WeaponModels.js      武器外觀（劍、盾、法杖）與每幀姿勢同步
-   │  └─ Effects.js           方塊粒子、揮砍弧光、衝擊環、預警圈
+   │  ├─ Renderer.js          WebGLRenderer、場景、燈光、正交相機與跟隨、套用環境
+   │  ├─ rig.js               角色骨架 Rig、零件組 PartKit、幾何體工廠 G、各風格材質工廠
+   │  ├─ environment.js       低多邊形地面、邊界點位、裝飾散佈工具
+   │  ├─ WeaponModels.js      依目前風格建立玩家武器外觀並同步姿勢
+   │  ├─ Effects.js           粒子、揮砍弧光、衝擊環、圓形/直線預警
+   │  └─ styles/              造型風格（介面見第 14 節）
+   │     ├─ index.js          風格登錄、目前風格、切換（記在 localStorage）
+   │     ├─ storybook.js      A 童話繪本
+   │     ├─ darkFantasy.js    B 暗黑幻想
+   │     └─ heroic.js         C 英雄卡通
    ├─ entities/
-   │  ├─ Entity.js            實體基底：位置、速度、半徑、血量、擊退、受傷/死亡
+   │  ├─ Entity.js            實體基底：位置、速度、半徑、血量、擊退、受傷/死亡、模型重建
    │  ├─ Player.js            玩家：雙層狀態機、武器、主動欄位
    │  ├─ playerStates.js      玩家的移動層與動作層狀態定義
-   │  ├─ Zombie.js            殭屍：追擊 AI、接觸傷害、受擊
-   │  └─ Projectile.js        投射物（法杖彈、爆裂彈）
+   │  ├─ Enemy.js             敵人基底：波次倍率、共用狀態（spawn/hurt/dead）、接觸傷害
+   │  ├─ enemyDefs.js         敵人資料定義（grunt / archer / boss）
+   │  ├─ enemies/
+   │  │  ├─ MeleeEnemy.js     近戰小怪：追擊、接觸傷害
+   │  │  ├─ RangedEnemy.js    遠程小怪：保持距離、瞄準預備、發射投射物
+   │  │  └─ Boss.js           Boss：重砸、衝鋒、召喚、狂暴
+   │  └─ Projectile.js        投射物（可自訂外觀；可設定範圍爆炸）
    ├─ combat/
    │  ├─ Combat.js            傷害結算、命中判定查詢（扇形、圓形）、擊退計算
    │  └─ Physics.js           圓形碰撞分離、場地邊界
@@ -76,10 +89,11 @@ Cubeborn/
    │  ├─ skillBehaviors.js    技能行為：canUse（選用條件）與 activate（效果）
    │  └─ ActiveSlots.js       數字鍵 1~5 主動欄位：裝備、觸發、CD 或次數
    ├─ world/
-   │  ├─ Arena.js             地面、邊界牆、裝飾方塊
-   │  └─ Spawner.js           殭屍分波生成
+   │  ├─ Arena.js             依風格建立場地；碰撞邊界固定
+   │  ├─ waveDefs.js          波次表與波次數值成長
+   │  └─ Spawner.js           分波生成、Boss 出場、召喚用 spawnAt
    └─ ui/
-      └─ HUD.js               血條、技能欄 CD 遮罩、武器名稱、死亡畫面
+      └─ HUD.js               血條、技能欄、波次/時間、Boss 血條、橫幅、死亡/勝利畫面
 ```
 
 規則：
@@ -111,9 +125,10 @@ Cubeborn/
 | 滑鼠左鍵 | 普通攻擊（按住可連續攻擊） |
 | 滑鼠右鍵 | 武器特殊技（受 CD 管理） |
 | 1 ~ 5 | 主動欄位（受 CD 或次數管理） |
-| R | 死亡後重新開始 |
+| R | 死亡或通關後重新開始 |
 | F1 | 除錯：切換劍盾 / 法杖（非正式武器切換系統） |
 | F2 | 除錯：顯示碰撞與命中範圍 |
+| F3 | 切換造型風格（A / B / C，記在瀏覽器） |
 
 右鍵選單在 canvas 上一律停用。
 
@@ -142,7 +157,16 @@ Cubeborn/
 - 動作狀態可在 `fsm.data.lockFacing = true` 時鎖定轉向。
 
 ### 6.3 敵人
-敵人使用同一個 `StateMachine`，Phase 1 的殭屍狀態：`spawn`（從地底爬出）/ `chase` / `hurt` / `dead`（倒地沉沒後移除）。
+敵人使用同一個 `StateMachine`。`Enemy.js` 提供共用狀態 `spawn`（從地底爬出）/ `hurt`（硬直）/ `dead`（倒地沉沒後移除），子類別以 `static STATES` 合併自己的狀態，並以 `mainState` 指定爬出與硬直結束後回到哪個狀態。
+
+| 類別 | 狀態 | 說明 |
+|---|---|---|
+| `MeleeEnemy` | `chase` | 追擊、接觸傷害（命中時播放揮擊動畫） |
+| `RangedEnemy` | `kite` / `aim` | 保持 `preferredRange` 距離並橫移；冷卻好時停下瞄準，前 75% 追蹤玩家、最後鎖定方向再發射 |
+| `Boss` | `chase` / `slam` / `charge` / `summon` | 霸體（不使用 `hurt`，擊退大幅減免）；招式都有地面預警；血量低於門檻進入狂暴（移速提升、冷卻縮短） |
+
+- 敵人的招式冷卻同樣使用 `CooldownManager`，key 為 `enemy<id>.<招式>`，敵人移除時需 `reset`。
+- 波次倍率（血量 / 傷害 / 移速）在建構時套用，Boss 不套用。
 
 ### 6.4 武器行為介面
 `weaponBehaviors.js` 的每個行為物件可實作以下選用函式，由 `attack` / `special` 狀態呼叫：
@@ -166,7 +190,7 @@ Cubeborn/
   - `remaining(key)` → 剩餘秒數
   - `progress(key)` → 0~1（1 = 冷卻完成，給 HUD 畫遮罩用）
   - `reset(key)` / `resetAll()`
-- **適用範圍**：右鍵特殊技、數字鍵 1~5。左鍵普攻不使用 CD Manager，攻擊頻率由動作狀態的前搖/後搖時間自然決定。
+- **適用範圍**：右鍵特殊技、數字鍵 1~5、敵人招式。左鍵普攻不使用 CD Manager，攻擊頻率由動作狀態的前搖/後搖時間自然決定。
 - 嘗試在冷卻中觸發時，發出 `skill:onCooldown` 事件（HUD 閃爍提示），不做其他事。
 
 ---
@@ -182,14 +206,16 @@ export const WEAPONS = {
     id: 'swordShield',
     name: '劍盾',
     type: 'melee',                 // 'melee' | 'ranged'
+    model: 'swordShield',          // 對應造型風格的 weapons 欄位
+    idle: { armR: -0.35, armL: -0.1, tilt: 0 }, // 待機姿勢
     attack: {                      // 左鍵
-      behavior: 'meleeSwing',      // 對應 weaponBehaviors.js 的函式名
-      damage: 12, range: 2.2, arc: Math.PI * 0.6,
-      windup: 0.08, active: 0.10, recovery: 0.22,
-      knockback: 6, moveSpeedMul: 0.3,
+      behavior: 'meleeSwing',      // 對應 weaponBehaviors.js 的行為名稱
+      damage: 12, range: 2.3, arc: Math.PI * 0.65,
+      windup: 0.07, active: 0.09, recovery: 0.2,
+      knockback: 7, moveSpeedMul: 0.35,
     },
     special: {                     // 右鍵
-      behavior: 'shieldBlock',
+      behavior: 'shieldBash',
       cooldown: 4, /* ...其他參數 */
     },
   },
@@ -208,6 +234,11 @@ export const SKILLS = {
 };
 ```
 
+### 8.3 敵人與波次（`enemyDefs.js`、`waveDefs.js`）
+- `ENEMIES` 每個類型有 `visual`（對應造型風格的 `characters.melee / ranged / boss`）與數值；行為類別由 `Spawner` 的 `ENEMY_CLASSES` 對應（`grunt → MeleeEnemy`、`archer → RangedEnemy`、`boss → Boss`）。
+- `WAVES` 是陣列，每波 `{ spawns: { 類型: 數量 }, isBoss? }`；最後一波打倒 Boss 即通關。
+- `WAVE_SCALING` 定義每多一波小怪的血量 / 傷害 / 移速成長比例。
+
 ---
 
 ## 9. 事件（EventBus）
@@ -225,7 +256,10 @@ export const SKILLS = {
 | `player:died` | `{ player }` | Player |
 | `skill:used` | `{ key, def }` | playerStates / ActiveSlots |
 | `skill:onCooldown` | `{ key }` | playerStates / ActiveSlots |
-| `wave:started` | `{ wave }` | Spawner |
+| `wave:started` | `{ wave, total, isBoss }` | Spawner |
+| `boss:enraged` | `{ boss }` | Boss |
+| `style:changed` | `{ style }` | Game |
+| `game:victory` | `{ stats }` | Game（Boss 死亡後延遲發出） |
 | `game:restart` | `{}` | Game |
 
 ---
@@ -286,3 +320,25 @@ export const SKILLS = {
 4. **記錄**：更新 CHANGELOG 與 `version.js`；架構有變就更新本文件。
 5. **提交**：`git commit -m "vX.Y.Z: 摘要"`，`git tag vX.Y.Z`。
 6. **回報**：告訴使用者新版號、變更內容、驗證結果與已知問題。
+
+---
+
+## 14. 造型風格與角色模型
+
+- 所有角色都是 `render/rig.js` 的 **`Rig`**：統一關節階層 `root → body → head / armR / armL / legR / legL`，手掌掛點 `handR / handL`。角色面向 +Z、右側為 -X、四肢往 -Y 延伸。**動畫程式只轉動關節，不依賴任何特定造型**，因此換造型不需改動畫。
+- 手臂、腿的關節旋轉順序為 `YXZ`：先用 `rotation.x` 前後抬起，再用 `rotation.y` 水平揮動。
+- 零件用 `PartKit.add()` 建立、材質用 `kit.mat(color, { glow, metal })` 取得，才能統一受擊閃白、淡出與釋放資源。自發光部位（眼睛、寶石）用 `glow: true`，不受閃白影響。
+- 每種風格是 `render/styles/` 下的一個模組，必須實作以下介面並在 `styles/index.js` 登錄：
+
+| 欄位 | 內容 |
+|---|---|
+| `id`, `name` | 識別碼與顯示名稱 |
+| `names` | `{ knight, melee, ranged, boss }` 角色顯示名稱（Boss 血條使用） |
+| `environment` | `{ background, hemiSky, hemiGround, hemiIntensity, sunColor, sunIntensity }` |
+| `colors` | `{ blood, bossBlood, enemyProjectile, hitSpark }` |
+| `characters` | `{ knight, melee, ranged, boss }`，各為 `() => Rig` |
+| `weapons` | `{ swordShield, staff }`，各為 `() => { kit, main, offhand, gem? }`；`main` 掛在右手，`offhand` 掛在左臂 |
+| `enemyProjectile()` | `→ { kit, mesh }`，沿 +Z 建模 |
+| `buildArena(halfSize)` | `→ { kit, group }`；只負責外觀，碰撞邊界固定 |
+
+- 新增職業或敵人時：先在每個風格補上對應的 `characters` 欄位，再新增資料定義。造型定案後，可以只保留選定的風格。

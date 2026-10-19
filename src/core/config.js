@@ -32,30 +32,10 @@ export const PLAYER = {
   actionBufferTime: 0.25,
   startWeapon: 'swordShield',
   slots: ['heal', 'sprint', null, null, null],
-  colors: { skin: 0xf0c8a0, hair: 0x5a3a1e, shirt: 0x2f7de1, pants: 0x283a7a, shoes: 0x3a3a3a, eyes: 0x1a1a40 },
-};
-
-export const ZOMBIE = {
-  maxHp: 36,
-  hpPerWave: 0.08,             // 每波血量成長比例
-  moveSpeed: 2.6,
-  speedVariance: 0.2,
-  turnSpeed: 6,
-  radius: 0.45,
-  mass: 1,
-  contactDamage: 10,
-  contactInterval: 0.8,
-  hurtTime: 0.22,
-  spawnTime: 0.7,
-  corpseTime: 1.4,
-  colors: { skin: 0x5fa04e, hair: 0x3f7a35, shirt: 0x2aa0a8, pants: 0x4b3a8c, shoes: 0x333333, eyes: 0x111111 },
 };
 
 export const SPAWNER = {
   firstDelay: 1.0,
-  firstWaveCount: 4,
-  countPerWave: 2,
-  maxWaveCount: 30,
   waveDelay: 2.5,
   spawnInterval: 0.35,
   minDistanceFromPlayer: 8,

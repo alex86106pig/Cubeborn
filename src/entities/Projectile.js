@@ -10,6 +10,7 @@ export class Projectile {
   constructor(game, {
     owner, position, direction, speed, range, radius = 0.25, height = 1.25,
     damage, knockback = 0, color = 0xffffff, hitStop = 0, shake = 0, explosion = null,
+    model = null, // 選用：{ kit, mesh } 自訂外觀（沿 +Z 建模），未提供時使用發光球體
   }) {
     this.game = game;
     this.owner = owner;
@@ -29,8 +30,17 @@ export class Projectile {
     this.isRemoved = false;
     this.age = 0;
 
-    this.mesh = new THREE.Mesh(SPHERE, new THREE.MeshBasicMaterial({ color }));
-    this.mesh.scale.setScalar(radius);
+    if (model) {
+      this.kit = model.kit;
+      this.mesh = model.mesh;
+      this.mesh.rotation.y = Math.atan2(this.direction.x, this.direction.z);
+      this.spins = false;
+    } else {
+      this.kit = null;
+      this.mesh = new THREE.Mesh(SPHERE, new THREE.MeshBasicMaterial({ color }));
+      this.mesh.scale.setScalar(radius);
+      this.spins = true;
+    }
     this.#syncMesh();
     game.renderer.scene.add(this.mesh);
   }
@@ -66,7 +76,7 @@ export class Projectile {
 
   #syncMesh() {
     this.mesh.position.set(this.position.x, this.height, this.position.z);
-    this.mesh.rotation.y += 0.3;
+    if (this.spins) this.mesh.rotation.y += 0.3;
   }
 
   #onHit(target) {
@@ -109,6 +119,7 @@ export class Projectile {
     if (this.isRemoved) return;
     this.isRemoved = true;
     this.game.renderer.scene.remove(this.mesh);
-    this.mesh.material.dispose();
+    if (this.kit) this.kit.dispose();
+    else this.mesh.material.dispose();
   }
 }

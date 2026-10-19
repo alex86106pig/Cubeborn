@@ -46,7 +46,8 @@ export class Renderer {
   }
 
   #setupLights() {
-    this.scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x4a3b28, 1.1));
+    this.hemi = new THREE.HemisphereLight(0xcfe3ff, 0x4a3b28, 1.1);
+    this.scene.add(this.hemi);
     const sun = new THREE.DirectionalLight(0xfff3dd, 1.8);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
@@ -56,6 +57,16 @@ export class Renderer {
     this.sunOffset = new THREE.Vector3(-10, 22, 8);
     this.sun = sun;
     this.scene.add(sun, sun.target);
+  }
+
+  // 套用造型風格的背景與燈光
+  applyEnvironment(env) {
+    this.scene.background.set(env.background);
+    this.hemi.color.set(env.hemiSky);
+    this.hemi.groundColor.set(env.hemiGround);
+    this.hemi.intensity = env.hemiIntensity;
+    this.sun.color.set(env.sunColor);
+    this.sun.intensity = env.sunIntensity;
   }
 
   resize() {

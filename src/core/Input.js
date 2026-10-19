@@ -1,6 +1,6 @@
 // 鍵盤/滑鼠狀態：提供「按住」與「本步按下」查詢，按下事件保留到下一個邏輯步才清除
 
-const PREVENT_DEFAULT = new Set(['F1', 'F2', 'Space', 'Tab']);
+const PREVENT_DEFAULT = new Set(['F1', 'F2', 'F3', 'Space', 'Tab']);
 
 export class Input {
   #down = new Set();

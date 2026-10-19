@@ -2,6 +2,13 @@
 import * as THREE from 'three';
 import { SLOT_COUNT } from '../skills/ActiveSlots.js';
 import { VERSION } from '../core/version.js';
+import { getStyle } from '../render/styles/index.js';
+
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
 
 const _world = new THREE.Vector3();
 const _screen = { x: 0, y: 0 };
@@ -38,7 +45,16 @@ export class HUD {
     const tr = el('div', 'hud-top-right', r);
     this.waveText = el('div', 'wave', tr);
     this.killText = el('div', 'kills', tr);
+    this.timeText = el('div', 'kills', tr);
+    this.styleText = el('div', 'style-name', tr);
     el('div', 'version', tr, `v${VERSION}`);
+
+    this.bossBar = el('div', 'boss-bar hidden', r);
+    this.bossName = el('div', 'boss-name', this.bossBar);
+    const bossTrack = el('div', 'boss-track', this.bossBar);
+    this.bossGhost = el('div', 'boss-ghost', bossTrack);
+    this.bossFill = el('div', 'boss-fill', bossTrack);
+    this.bossGhostValue = 1;
 
     this.skillbar = el('div', 'skillbar', r);
     this.banner = el('div', 'banner', r);
@@ -46,11 +62,11 @@ export class HUD {
     this.floaterLayer = el('div', 'floaters', r);
 
     this.gameOver = el('div', 'gameover hidden', r);
-    el('h1', '', this.gameOver, '你倒下了');
+    this.gameOverTitle = el('h1', '', this.gameOver);
     this.gameOverStats = el('p', '', this.gameOver);
     el('p', 'hint', this.gameOver, '按 R 重新開始');
 
-    el('div', 'help', r, 'WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 1~5 道具 · F1 切換武器 · F2 顯示判定');
+    el('div', 'help', r, 'WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 1~5 道具 · F1 切換武器 · F2 顯示判定 · F3 切換造型');
     this.hpGhostValue = 1;
   }
 
@@ -85,11 +101,11 @@ export class HUD {
     const ev = this.game.events;
     ev.on('entity:damaged', ({ target, amount, isCrit }) => {
       const isPlayer = target === this.game.player;
-      this.#spawnFloater(target.position, `${amount}`, isPlayer ? 'dmg-player' : isCrit ? 'dmg-crit' : 'dmg');
+      this.#spawnFloater(target, `${amount}`, isPlayer ? 'dmg-player' : isCrit ? 'dmg-crit' : 'dmg');
       if (isPlayer) this.#restartAnimation(this.vignette, 'flash');
     });
     ev.on('entity:healed', ({ target, amount }) => {
-      if (amount > 0) this.#spawnFloater(target.position, `+${amount}`, 'heal');
+      if (amount > 0) this.#spawnFloater(target, `+${amount}`, 'heal');
     });
     ev.on('skill:onCooldown', ({ key }) => {
       const slot = this.#slotEls.get(key);
@@ -99,24 +115,40 @@ export class HUD {
       const slot = this.#slotEls.get(key);
       if (slot) this.#restartAnimation(slot.node, 'used');
     });
-    ev.on('wave:started', ({ wave }) => {
-      this.banner.textContent = `第 ${wave} 波`;
-      this.#restartAnimation(this.banner, 'show');
+    ev.on('wave:started', ({ wave, total, isBoss }) => {
+      this.#showBanner(isBoss ? `BOSS 戰：${getStyle().names.boss}` : `第 ${wave} / ${total} 波`, isBoss);
     });
+    ev.on('boss:enraged', () => this.#showBanner('狂暴化！', true));
+    ev.on('style:changed', ({ style }) => this.#showBanner(`造型：${style.name}`));
     ev.on('player:died', () => {
       const s = this.game.stats;
-      this.gameOverStats.textContent = `撐到第 ${s.wave} 波，擊殺 ${s.kills} 隻殭屍`;
+      this.gameOverTitle.textContent = '你倒下了';
+      this.gameOverStats.textContent = `撐到第 ${s.wave} 波 · 擊殺 ${s.kills} · 時間 ${formatTime(s.time)}`;
+      this.gameOver.classList.remove('victory');
       setTimeout(() => {
         if (this.game.player.isDead) this.gameOver.classList.remove('hidden');
       }, 700);
     });
+    ev.on('game:victory', ({ stats }) => {
+      this.gameOverTitle.textContent = '勝利！';
+      this.gameOverStats.textContent = `擊敗 ${getStyle().names.boss} · 擊殺 ${stats.kills} · 通關時間 ${formatTime(stats.time)}`;
+      this.gameOver.classList.add('victory');
+      this.gameOver.classList.remove('hidden');
+    });
     ev.on('game:restart', () => {
       this.gameOver.classList.add('hidden');
+      this.bossGhostValue = 1;
       this.#weaponId = null;
       this.hpGhostValue = 1;
       for (const f of this.#floaters) f.node.remove();
       this.#floaters.length = 0;
     });
+  }
+
+  #showBanner(text, isAlert = false) {
+    this.banner.textContent = text;
+    this.banner.classList.toggle('alert', isAlert);
+    this.#restartAnimation(this.banner, 'show');
   }
 
   #restartAnimation(node, className) {
@@ -125,9 +157,10 @@ export class HUD {
     node.classList.add(className);
   }
 
-  #spawnFloater(position, text, className) {
+  #spawnFloater(target, text, className) {
+    const { position, height } = target;
     const node = el('div', `floater ${className}`, this.floaterLayer, text);
-    const world = new THREE.Vector3(position.x + (Math.random() - 0.5) * 0.6, 2.3, position.z);
+    const world = new THREE.Vector3(position.x + (Math.random() - 0.5) * 0.6, height + 0.3, position.z);
     this.#floaters.push({ node, world, life: 0.8, maxLife: 0.8 });
   }
 
@@ -142,8 +175,21 @@ export class HUD {
     this.hpGhost.style.width = `${this.hpGhostValue * 100}%`;
     this.hpText.textContent = `${player.hp} / ${player.maxHp}`;
     this.weaponName.textContent = `武器：${player.weapon.name}`;
-    this.waveText.textContent = g.stats.wave > 0 ? `第 ${g.stats.wave} 波` : '準備中';
+    this.waveText.textContent = g.stats.wave > 0 ? `第 ${g.stats.wave} / ${g.spawner.totalWaves} 波` : '準備中';
     this.killText.textContent = `擊殺 ${g.stats.kills}`;
+    this.timeText.textContent = formatTime(g.stats.time);
+    this.styleText.textContent = `造型 ${getStyle().name}（F3）`;
+
+    const boss = g.boss;
+    this.bossBar.classList.toggle('hidden', !boss || boss.isSpawning && boss.fsm.time < 0.3);
+    if (boss) {
+      const r = boss.hp / boss.maxHp;
+      this.bossGhostValue = Math.max(r, this.bossGhostValue - dt * 0.3);
+      this.bossName.textContent = `${boss.displayName}${boss.isEnraged ? '（狂暴）' : ''}`;
+      this.bossFill.style.width = `${r * 100}%`;
+      this.bossGhost.style.width = `${this.bossGhostValue * 100}%`;
+      this.bossBar.classList.toggle('enraged', boss.isEnraged);
+    }
 
     for (const [key, s] of this.#slotEls) {
       const progress = g.cooldowns.progress(key);
