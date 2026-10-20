@@ -37,9 +37,10 @@
 
 ```
 Cubeborn/
-├─ CLAUDE.md                  AI 開工入口（自動載入）
+├─ CLAUDE.md                  AI 最高指導原則（自動載入）、檔案地圖
 ├─ PROJECT_GUIDELINES.md      本文件
 ├─ CHANGELOG.md               版本紀錄
+├─ docs/                      進度.md（跨對話交接）、設計方向.md（設計目標）
 ├─ index.html                 遊戲頁面、importmap、HUD 容器
 ├─ preview.html               造型比較頁（三種風格並排）
 ├─ css/style.css              HUD 與頁面樣式
@@ -97,6 +98,7 @@ Cubeborn/
 ```
 
 規則：
+- 新增、刪除、搬移檔案時，同步更新本節與 `CLAUDE.md` 第 4 節的檔案地圖。
 - **一個檔案一個主要職責**，單檔超過約 300 行就該考慮拆分。
 - `core/` 不得 import 任何其他目錄（依賴只能由上往下：內容 → core）。`src/Game.js` 是唯一的組合根，負責建立並串接所有系統。
 - 模組之間優先透過 **建構時注入**（傳入 `game`）或 **EventBus** 溝通，禁止使用全域變數（除錯用的 `window.__game` 例外）。
@@ -314,11 +316,11 @@ export const SKILLS = {
 
 ## 13. 開發工作流程
 
-1. **開工**：讀 `CLAUDE.md` → 本文件 → CHANGELOG 最新版本 → 相關模組。
-2. **實作**：遵守本文件；若需要偏離規範，先更新本文件再寫程式。
-3. **驗證**：啟動本機伺服器，在瀏覽器實測新功能與既有功能，確認 Console 無錯誤。
+1. **開工**：讀 `CLAUDE.md` → `docs/進度.md` → 本文件 → CHANGELOG 最新版本 → 相關模組。
+2. **實作**：先列出預計修改的檔案並取得使用者同意；遵守本文件；若需要偏離規範，先更新本文件再寫程式。
+3. **驗證**：執行 `node check.js`（建立前改用瀏覽器實測，見 `CLAUDE.md` 1.4）；啟動本機伺服器，在瀏覽器實測新功能與既有功能，確認 Console 無錯誤。
 4. **記錄**：更新 CHANGELOG 與 `version.js`；架構有變就更新本文件。
-5. **提交**：`git commit -m "vX.Y.Z: 摘要"`，`git tag vX.Y.Z`。
+5. **提交**：`git commit -m "vX.Y.Z: 摘要"`，`git tag vX.Y.Z`。不執行 `git push`。
 6. **回報**：告訴使用者新版號、變更內容、驗證結果與已知問題。
 
 ---
