@@ -43,7 +43,7 @@ Cubeborn/
 ├─ CHANGELOG.md               版本紀錄
 ├─ check.js                   自動檢查（資料完整性與核心機制）
 ├─ package.json               Node 設定（只用於檢查）
-├─ docs/                      進度.md（跨對話交接）、設計方向.md（設計目標）
+├─ docs/                      進度.md（跨對話交接）、設計方向.md（設計目標）、新電腦設定.md
 ├─ index.html                 遊戲頁面、importmap、HUD 容器
 ├─ preview.html               模型檢視頁（並排展示四個角色，可拖曳旋轉）
 ├─ css/style.css              HUD 與頁面樣式
@@ -315,7 +315,7 @@ export const SKILLS = {
 
 ## 13. 開發工作流程
 
-1. **開工**：讀 `CLAUDE.md` → `docs/進度.md` → 本文件 → CHANGELOG 最新版本 → 相關模組。
+1. **開工**：`git pull --ff-only origin main`（失敗就停下來問使用者）→ 讀 `CLAUDE.md` → `docs/進度.md` → 本文件 → CHANGELOG 最新版本 → 相關模組。
 2. **實作**：先列出預計修改的檔案並取得使用者同意；遵守本文件；若需要偏離規範，先更新本文件再寫程式。
 3. **驗證**：執行 `node check.js`，全部通過；改到畫面或操作時，另外啟動本機伺服器在瀏覽器實測，確認 Console 無錯誤。
 4. **記錄**：更新 CHANGELOG 與 `version.js`；架構有變就更新本文件。

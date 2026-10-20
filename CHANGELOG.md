@@ -2,6 +2,18 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.3.4] - 2026-10-20
+
+多台電腦協作。
+
+### 新增
+- `docs/新電腦設定.md`：新電腦的安裝、GitHub 登入、下載專案、`npm install` 步驟。
+
+### 修改
+- `CLAUDE.md` 開工順序第一步改為 `git pull --ff-only origin main`，失敗就停下來告訴使用者，不自行合併。
+- `CLAUDE.md` 3.2 新增收工規則：更新交接檔、commit，並提醒使用者換電腦前要推送。
+- `PROJECT_GUIDELINES.md` 開發流程與目錄結構同步上述內容。
+
 ## [0.3.3] - 2026-10-20
 
 ### 新增
