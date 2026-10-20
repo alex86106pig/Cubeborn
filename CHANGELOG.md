@@ -2,6 +2,19 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.5.0] - 2026-10-21
+
+開始轉換到 Godot（目標：Steam 上架、多人連線）。網頁版改為只修 bug。
+
+### 新增
+- `godot/`：Godot 4.7.2 普通版（GDScript）專案。
+- `godot/stress_test/`：效能壓力測試。2000 敵人 + 3000 投射物在 RTX 3070 桌機平均 **102.7 FPS**（最差 1% 幀 10.4 ms），繪製只有 18 次；邏輯 9.32 ms/幀，最吃時間的是敵人互推 4.78 ms 與投射物碰撞 2.79 ms。結論：普通版 GDScript 可行，超過此規模或要支援較弱 CPU 時，這兩段改用 C++。
+- `CLAUDE.md` 1.8 轉換期規則、5.1「含反斜線的文字不用 perl / sed 寫入」（同一錯誤第二次發生）。
+
+### 修改
+- 背景音樂選定 **B 哥德輓歌**，延到 Godot 版製作（網頁版不加）。
+- `docs/新電腦設定.md` 新增 Godot 安裝步驟；`PROJECT_GUIDELINES.md` 註明轉換期。
+
 ## [0.4.0] - 2026-10-20
 
 效能、暫停與音效。

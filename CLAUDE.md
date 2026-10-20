@@ -64,6 +64,15 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 - 網址：https://alex86106pig.github.io/Cubeborn/ （repo：https://github.com/alex86106pig/Cubeborn ，公開）
 - 遊戲必須維持「純靜態檔案、相對路徑」，不能依賴 `node_modules/` 或本機伺服器才能執行，否則網站會壞掉。
 
+### 1.8 轉換期：網頁版 → Godot
+- 最終目標是 Steam 上架、多人連線，因此改用 **Godot 4.7.2 普通版（GDScript）** 開發，專案在 `godot/`。
+- **網頁版（根目錄）只修 bug、不加新功能**，作為「玩法已驗證的設計圖」：數值、手感、Boss 招式、波次照著搬到 Godot。網頁版的規則（1.4 驗收、1.7 網站）在轉換期間仍適用。
+- **Godot 執行檔**：這台電腦是 `E:\Godot\Godot_v4.7.2-stable_win64_console.exe`（指令列用 `_console` 版）。其他電腦路徑可能不同：先找常見位置，找不到就問使用者，不要自己下載安裝。
+- 常用指令（在 `godot/` 內）：匯入 `--headless --import --path .`；執行主場景 `--path . -- 參數`。
+- 驗證方式：邏輯用 `--headless` 執行並讀輸出；畫面用視窗模式執行並存截圖（目前由壓力測試的 `--screenshot=路徑` 參數提供），截圖存在暫存資料夾、不進版控。
+- **多人連線從第一天就設計進架構**（權威端、同步方式），正式規範寫進 `PROJECT_GUIDELINES.md` 後才開始寫遊戲本體。
+- 效能判斷依據見 `docs/進度.md` 的壓力測試數字；GDScript 不夠快的部分，才改用 C++（GDExtension）。
+
 ---
 
 ## 2. AI 效能與開發習慣
@@ -134,7 +143,9 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `docs/設計方向.md` | 設計目標與平衡品味（改核心玩法前必讀） |
 | `docs/新電腦設定.md` | 新電腦第一次使用本專案的設定步驟 |
 | `mockups/` | 給使用者挑選的對比頁（選定後刪除，見 2.5） |
-| `mockups/背景音樂.html` | 背景音樂三選一試聽頁（等使用者選定） |
+| `mockups/背景音樂.html` | 背景音樂試聽頁：已選定 B 哥德輓歌，做進 Godot 版時作為參考，完成後刪除 |
+| `godot/project.godot` | Godot 專案設定（4.7、Forward+、1920×1080） |
+| `godot/stress_test/` | 效能壓力測試：大量敵人與投射物（資料導向 + MultiMesh + 格子碰撞），印出 FPS 與各段邏輯耗時 |
 | `src/main.js` | 遊戲進入點：建立 Game 並啟動 |
 | `src/preview.js` | 模型檢視頁進入點 |
 | `src/Game.js` | 組合根：持有所有系統、主迴圈、命中停頓、暫停、靜音鍵、重新開始、通關 |
@@ -180,4 +191,8 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 
 依第 3.1 節的寫法新增；過時就刪除。
 
-（目前沒有）
+### 5.1 含反斜線的文字不用 perl / sed 寫入
+- 平常做法：文件或程式中要寫入含 `\` 的內容（Windows 路徑如 `E:\Godot\`、正規表示式），用 Edit / Write 工具直接寫，不要放進 perl 或 sed 的替換字串。
+- 判斷：替換內容出現 `\` 就算；寫完後用 Grep 搜尋該路徑確認反斜線還在。
+- 例外：不含反斜線的大量機械式替換，仍可用 perl / sed。
+- 為什麼：perl 與 sed 會把 `\G`、`\n` 等當成跳脫字元吃掉，已發生兩次（v0.3.1 的 Node 路徑、v0.5.0 的 Godot 路徑），而且不會報錯。
