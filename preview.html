@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Cubeborn 造型比較</title>
+  <title>Cubeborn 模型檢視</title>
   <style>
     html, body { margin: 0; height: 100%; overflow: hidden; background: #11141c; color: #fff;
       font-family: "Segoe UI", "Microsoft JhengHei", sans-serif; }
     #canvas-host canvas { display: block; }
-    #labels { position: fixed; inset: 0; pointer-events: none; display: grid; grid-template-rows: repeat(3, 1fr); }
+    #labels { position: fixed; inset: 0; pointer-events: none; display: grid; grid-auto-rows: 1fr; }
     .row { position: relative; border-bottom: 2px solid rgba(255,255,255,.12); }
     .row-title { position: absolute; left: 16px; top: 10px; font-size: 22px; font-weight: 900; text-shadow: 0 2px 0 #000; }
     .row-desc { position: absolute; left: 16px; top: 40px; font-size: 13px; opacity: .85; text-shadow: 0 1px 0 #000; max-width: 260px; }
@@ -21,7 +21,7 @@
 <body>
   <div id="canvas-host"></div>
   <div id="labels"></div>
-  <div class="hint">滑鼠拖曳可旋轉 · 遊戲中按 F3 即時切換造型</div>
+  <div class="hint">滑鼠拖曳可旋轉</div>
   <script type="importmap">
     { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }
   </script>

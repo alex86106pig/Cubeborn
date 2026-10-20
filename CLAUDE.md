@@ -74,6 +74,14 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 - 數值必須**實際執行量測後**才能定案，並在回報中附上修改前後的數字。
 - 可調數值放在 `src/core/config.js` 或 `*Defs.js`，不寫死在邏輯裡。
 
+### 2.5 給使用者挑選的候選方案
+- 使用者要「產出幾種不同風格/種類給我挑」時，**不要直接做進遊戲**。
+- 平常做法：做成**一頁獨立的對比網頁**（`mockups/<主題>.html`，單一 HTML 檔，用 SVG / CSS 畫示意，不 import 遊戲程式），各方案並排、標上編號與一句特色說明，給使用者看完選定後，才把選中的那一個做進遊戲。
+- 判斷：只要結果是「多選一」或「先看看長怎樣」，就走這條。使用者已經明確選定、只差實作時，直接做進遊戲。
+- 例外：SVG 示意畫不出重點時（例如 3D 模型的立體比例），先說明限制並問使用者要不要改做獨立 3D 預覽頁，不要自己決定直接做進遊戲。
+- 選定並做進遊戲後，刪除該對比頁（git 歷史仍保留），選擇結果記在 CHANGELOG。
+- 為什麼：把多個方案都做成遊戲能用的完整版本（角色、敵人、武器、場地、整合測試）會消耗大量 token，而沒選上的全部要再拆掉。
+
 ---
 
 ## 3. 記憶、交接與規則更新機制
@@ -104,14 +112,15 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | 檔案 | 職責 |
 |---|---|
 | `index.html` | 遊戲頁面、importmap、HUD 容器 |
-| `preview.html` | 造型比較頁（三種風格並排） |
+| `preview.html` | 模型檢視頁（並排展示四個角色，可拖曳旋轉） |
 | `css/style.css` | HUD 與頁面樣式 |
 | `tools/serve.ps1` | 本機靜態伺服器（`http://localhost:5173`） |
 | `docs/進度.md` | 跨對話交接檔 |
 | `docs/設計方向.md` | 設計目標與平衡品味（尚未建立） |
+| `mockups/` | 給使用者挑選的對比頁（選定後刪除，見 2.5） |
 | `src/main.js` | 遊戲進入點：建立 Game 並啟動 |
-| `src/preview.js` | 造型比較頁進入點 |
-| `src/Game.js` | 組合根：持有所有系統、主迴圈、命中停頓、重新開始、造型切換、通關 |
+| `src/preview.js` | 模型檢視頁進入點 |
+| `src/Game.js` | 組合根：持有所有系統、主迴圈、命中停頓、重新開始、通關 |
 | `src/core/config.js` | 全域可調參數（迴圈、世界、相機、玩家、生成、除錯開關） |
 | `src/core/version.js` | VERSION 常數（與 CHANGELOG、git tag 同步） |
 | `src/core/math.js` | 角度、插值、緩動等數學工具 |
@@ -124,10 +133,8 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `src/render/environment.js` | 低多邊形地面、邊界點位、裝飾散佈 |
 | `src/render/WeaponModels.js` | 玩家武器外觀與姿勢同步 |
 | `src/render/Effects.js` | 粒子、揮砍弧光、衝擊環、地面預警 |
-| `src/render/styles/index.js` | 風格登錄、目前風格、切換 |
-| `src/render/styles/storybook.js` | 造型 A 童話繪本 |
-| `src/render/styles/darkFantasy.js` | 造型 B 暗黑幻想 |
-| `src/render/styles/heroic.js` | 造型 C 英雄卡通 |
+| `src/render/styles/index.js` | 風格登錄、getStyle() |
+| `src/render/styles/darkFantasy.js` | 暗黑幻想造型（定案）：角色、武器、場地、環境光 |
 | `src/entities/Entity.js` | 實體基底：位置、速度、血量、擊退、受傷/死亡 |
 | `src/entities/Player.js` | 玩家：雙層狀態機、武器、主動欄位 |
 | `src/entities/playerStates.js` | 玩家移動層與動作層狀態 |

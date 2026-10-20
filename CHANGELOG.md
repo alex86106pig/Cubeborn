@@ -2,6 +2,19 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.3.0] - 2026-10-20
+
+美術風格定案為暗黑幻想。
+
+### 移除
+- 童話繪本、英雄卡通兩種造型（`storybook.js`、`heroic.js`）及其專用材質工廠。
+- `F3` 造型切換、HUD 的造型名稱、`style:changed` 事件、角色重建模型 `rebuildModel()`。
+
+### 修改
+- `preview.html` 由三種造型比較頁改為暗黑幻想的模型檢視頁。
+- 造型名稱由「B 暗黑幻想」改為「暗黑幻想」。
+- `CLAUDE.md` 新增 2.5 節：給使用者挑選的候選方案，先做成獨立對比網頁（`mockups/`），選定後才做進遊戲。
+
 ## [0.2.1] - 2026-10-20
 
 專案規則與 AI 記憶管理機制。

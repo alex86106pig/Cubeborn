@@ -35,7 +35,6 @@ html, body {
 .weapon-name { margin-top: 8px; font-weight: 700; text-shadow: 0 2px 0 #000; }
 
 .wave { font-size: 22px; font-weight: 800; }
-.style-name { font-size: 12px; margin-top: 6px; opacity: .8; }
 
 .boss-bar {
   position: absolute; top: 18px; left: 50%;

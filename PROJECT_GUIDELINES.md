@@ -9,8 +9,8 @@
 | 項目 | 內容 |
 |---|---|
 | 類型 | 3D 等距俯視角 Roguelike 動作遊戲（網頁版原型） |
-| 美術風格 | 程式生成的低多邊形奇幻角色（不使用外部模型與貼圖），目前有三種候選造型可用 F3 切換 |
-| 目前階段 | Phase 1：核心戰鬥、5 波制（含 Boss 戰）的一局流程、造型選定 |
+| 美術風格 | 程式生成的低多邊形奇幻角色（不使用外部模型與貼圖），造型已定案為**暗黑幻想**（寫實比例、硬朗多面體、月夜墓地） |
+| 目前階段 | Phase 1：核心戰鬥、5 波制（含 Boss 戰）的一局流程 |
 | 不在 Phase 1 範圍 | 職業選擇、房間/關卡生成、升級、掉落、武器切換、存檔、音效 |
 
 ---
@@ -42,13 +42,13 @@ Cubeborn/
 ├─ CHANGELOG.md               版本紀錄
 ├─ docs/                      進度.md（跨對話交接）、設計方向.md（設計目標）
 ├─ index.html                 遊戲頁面、importmap、HUD 容器
-├─ preview.html               造型比較頁（三種風格並排）
+├─ preview.html               模型檢視頁（並排展示四個角色，可拖曳旋轉）
 ├─ css/style.css              HUD 與頁面樣式
 ├─ tools/serve.ps1            本機靜態伺服器
 └─ src/
    ├─ main.js                 遊戲進入點：建立 Game 並啟動
-   ├─ preview.js              造型比較頁進入點
-   ├─ Game.js                 遊戲主體（組合根）：持有所有系統、主迴圈、命中停頓、重新開始、造型切換、通關
+   ├─ preview.js              模型檢視頁進入點
+   ├─ Game.js                 遊戲主體（組合根）：持有所有系統、主迴圈、命中停頓、重新開始、通關
    ├─ core/                   與遊戲內容無關的底層機制
    │  ├─ config.js            全域可調參數（迴圈、世界、相機、玩家、生成、除錯開關）
    │  ├─ version.js           VERSION 常數（與 CHANGELOG 同步）
@@ -59,15 +59,13 @@ Cubeborn/
    │  └─ Input.js             鍵盤/滑鼠狀態，提供「本步按下」查詢
    ├─ render/
    │  ├─ Renderer.js          WebGLRenderer、場景、燈光、正交相機與跟隨、套用環境
-   │  ├─ rig.js               角色骨架 Rig、零件組 PartKit、幾何體工廠 G、各風格材質工廠
+   │  ├─ rig.js               角色骨架 Rig、零件組 PartKit、幾何體工廠 G、材質工廠
    │  ├─ environment.js       低多邊形地面、邊界點位、裝飾散佈工具
    │  ├─ WeaponModels.js      依目前風格建立玩家武器外觀並同步姿勢
    │  ├─ Effects.js           粒子、揮砍弧光、衝擊環、圓形/直線預警
    │  └─ styles/              造型風格（介面見第 14 節）
-   │     ├─ index.js          風格登錄、目前風格、切換（記在 localStorage）
-   │     ├─ storybook.js      A 童話繪本
-   │     ├─ darkFantasy.js    B 暗黑幻想
-   │     └─ heroic.js         C 英雄卡通
+   │     ├─ index.js          風格登錄、getStyle()
+   │     └─ darkFantasy.js    暗黑幻想（定案）
    ├─ entities/
    │  ├─ Entity.js            實體基底：位置、速度、半徑、血量、擊退、受傷/死亡、模型重建
    │  ├─ Player.js            玩家：雙層狀態機、武器、主動欄位
@@ -130,7 +128,6 @@ Cubeborn/
 | R | 死亡或通關後重新開始 |
 | F1 | 除錯：切換劍盾 / 法杖（非正式武器切換系統） |
 | F2 | 除錯：顯示碰撞與命中範圍 |
-| F3 | 切換造型風格（A / B / C，記在瀏覽器） |
 
 右鍵選單在 canvas 上一律停用。
 
@@ -260,7 +257,6 @@ export const SKILLS = {
 | `skill:onCooldown` | `{ key }` | playerStates / ActiveSlots |
 | `wave:started` | `{ wave, total, isBoss }` | Spawner |
 | `boss:enraged` | `{ boss }` | Boss |
-| `style:changed` | `{ style }` | Game |
 | `game:victory` | `{ stats }` | Game（Boss 死亡後延遲發出） |
 | `game:restart` | `{}` | Game |
 
@@ -327,10 +323,10 @@ export const SKILLS = {
 
 ## 14. 造型風格與角色模型
 
-- 所有角色都是 `render/rig.js` 的 **`Rig`**：統一關節階層 `root → body → head / armR / armL / legR / legL`，手掌掛點 `handR / handL`。角色面向 +Z、右側為 -X、四肢往 -Y 延伸。**動畫程式只轉動關節，不依賴任何特定造型**，因此換造型不需改動畫。
+- 所有角色都是 `render/rig.js` 的 **`Rig`**：統一關節階層 `root → body → head / armR / armL / legR / legL`，手掌掛點 `handR / handL`。角色面向 +Z、右側為 -X、四肢往 -Y 延伸。**動畫程式只轉動關節，不依賴任何特定造型**，因此改造型不需改動畫。
 - 手臂、腿的關節旋轉順序為 `YXZ`：先用 `rotation.x` 前後抬起，再用 `rotation.y` 水平揮動。
 - 零件用 `PartKit.add()` 建立、材質用 `kit.mat(color, { glow, metal })` 取得，才能統一受擊閃白、淡出與釋放資源。自發光部位（眼睛、寶石）用 `glow: true`，不受閃白影響。
-- 每種風格是 `render/styles/` 下的一個模組，必須實作以下介面並在 `styles/index.js` 登錄：
+- 風格是 `render/styles/` 下的一個模組（目前只有 `darkFantasy`），必須實作以下介面並在 `styles/index.js` 登錄：
 
 | 欄位 | 內容 |
 |---|---|
@@ -343,4 +339,5 @@ export const SKILLS = {
 | `enemyProjectile()` | `→ { kit, mesh }`，沿 +Z 建模 |
 | `buildArena(halfSize)` | `→ { kit, group }`；只負責外觀，碰撞邊界固定 |
 
-- 新增職業或敵人時：先在每個風格補上對應的 `characters` 欄位，再新增資料定義。造型定案後，可以只保留選定的風格。
+- 新增職業或敵人時：先在 `darkFantasy.js` 補上對應的 `characters` 欄位，再新增資料定義。
+- 新造型或新外觀的候選方案，依 `CLAUDE.md` 第 2.5 節先做對比頁給使用者挑選，選定後才做進遊戲。

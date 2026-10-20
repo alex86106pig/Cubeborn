@@ -46,7 +46,6 @@ export class HUD {
     this.waveText = el('div', 'wave', tr);
     this.killText = el('div', 'kills', tr);
     this.timeText = el('div', 'kills', tr);
-    this.styleText = el('div', 'style-name', tr);
     el('div', 'version', tr, `v${VERSION}`);
 
     this.bossBar = el('div', 'boss-bar hidden', r);
@@ -66,7 +65,7 @@ export class HUD {
     this.gameOverStats = el('p', '', this.gameOver);
     el('p', 'hint', this.gameOver, '按 R 重新開始');
 
-    el('div', 'help', r, 'WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 1~5 道具 · F1 切換武器 · F2 顯示判定 · F3 切換造型');
+    el('div', 'help', r, 'WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 1~5 道具 · F1 切換武器 · F2 顯示判定');
     this.hpGhostValue = 1;
   }
 
@@ -119,7 +118,6 @@ export class HUD {
       this.#showBanner(isBoss ? `BOSS 戰：${getStyle().names.boss}` : `第 ${wave} / ${total} 波`, isBoss);
     });
     ev.on('boss:enraged', () => this.#showBanner('狂暴化！', true));
-    ev.on('style:changed', ({ style }) => this.#showBanner(`造型：${style.name}`));
     ev.on('player:died', () => {
       const s = this.game.stats;
       this.gameOverTitle.textContent = '你倒下了';
@@ -178,7 +176,6 @@ export class HUD {
     this.waveText.textContent = g.stats.wave > 0 ? `第 ${g.stats.wave} / ${g.spawner.totalWaves} 波` : '準備中';
     this.killText.textContent = `擊殺 ${g.stats.kills}`;
     this.timeText.textContent = formatTime(g.stats.time);
-    this.styleText.textContent = `造型 ${getStyle().name}（F3）`;
 
     const boss = g.boss;
     this.bossBar.classList.toggle('hidden', !boss || boss.isSpawning && boss.fsm.time < 0.3);

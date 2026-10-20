@@ -42,13 +42,6 @@ export class Player extends Entity {
     return getStyle().characters.knight();
   }
 
-  rebuildModel() {
-    this.weaponModel?.dispose();
-    this.weaponModel = null;
-    super.rebuildModel();
-    this.#attachWeaponModel();
-  }
-
   equipWeapon(id) {
     const def = WEAPONS[id];
     if (!def) throw new Error(`Unknown weapon: ${id}`);

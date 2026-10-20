@@ -1,11 +1,9 @@
-// 造型比較頁：三種風格各一列，並排展示騎士、近戰怪、遠程怪、Boss
+// 模型檢視頁：並排展示目前風格的騎士、近戰怪、遠程怪、Boss，不必進遊戲即可檢查模型
 import * as THREE from 'three';
 import { STYLES } from './render/styles/index.js';
 
 const DESCRIPTIONS = {
-  storybook: 'Q 版大頭、卡通著色、明亮草原。親和力高，適合全年齡。',
-  darkFantasy: '寫實比例、硬朗多面體、月夜墓地。氛圍沉重，偏核心玩家。',
-  heroic: '誇張壯碩、鮮豔金屬感、夕陽競技場。爽快熱血，辨識度強。',
+  darkFantasy: '寫實比例、硬朗多面體、月夜墓地。',
 };
 const KINDS = ['knight', 'melee', 'ranged', 'boss'];
 

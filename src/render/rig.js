@@ -127,21 +127,8 @@ export const G = {
   torus: (r, tube, radial = 6, tubular = 12, arc = Math.PI * 2) => new THREE.TorusGeometry(r, tube, radial, tubular, arc),
 };
 
-// ───────── 材質工廠（每種風格一個） ─────────
-
-export function toonMaterialFactory() {
-  const gradient = new THREE.DataTexture(new Uint8Array([110, 190, 255]), 3, 1, THREE.RedFormat);
-  gradient.minFilter = gradient.magFilter = THREE.NearestFilter;
-  gradient.needsUpdate = true;
-  return (color) => new THREE.MeshToonMaterial({ color, gradientMap: gradient });
-}
+// ───────── 材質工廠 ─────────
 
 export function flatLambertFactory() {
   return (color) => new THREE.MeshLambertMaterial({ color, flatShading: true });
-}
-
-export function flatStandardFactory() {
-  return (color, { metal = false } = {}) => new THREE.MeshStandardMaterial({
-    color, flatShading: true, roughness: metal ? 0.35 : 0.85, metalness: metal ? 0.55 : 0,
-  });
 }

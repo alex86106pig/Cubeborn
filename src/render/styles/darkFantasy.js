@@ -213,7 +213,7 @@ function buildArena(half) {
 
 export const darkFantasy = {
   id: 'darkFantasy',
-  name: 'B 暗黑幻想',
+  name: '暗黑幻想',
   names: { knight: '黑鋼騎士', melee: '骷髏戰士', ranged: '骷髏弓手', boss: '亡骸騎士' },
   environment: {
     background: 0x0e1220,

@@ -8,7 +8,7 @@ import { clampToArena, separateEntities } from './combat/Physics.js';
 import { Player } from './entities/Player.js';
 import { Effects } from './render/Effects.js';
 import { Renderer } from './render/Renderer.js';
-import { getStyle, nextStyle } from './render/styles/index.js';
+import { getStyle } from './render/styles/index.js';
 import { HUD } from './ui/HUD.js';
 import { Arena } from './world/Arena.js';
 import { Spawner } from './world/Spawner.js';
@@ -52,14 +52,6 @@ export class Game {
   #applyEnvironment(style) {
     this.renderer.applyEnvironment(style.environment);
     this.arena.applyStyle(style);
-  }
-
-  // 切換造型風格：重建場地與所有角色模型，遊戲狀態不變
-  applyStyle(style) {
-    this.#applyEnvironment(style);
-    this.player.rebuildModel();
-    for (const e of this.enemies) e.rebuildModel();
-    this.events.emit('style:changed', { style });
   }
 
   onBossDefeated(boss) {
@@ -162,7 +154,6 @@ export class Game {
   #handleSystemKeys() {
     const input = this.input;
     if (input.wasPressed('KeyR') && (this.player.isDead || this.isOver)) this.restart();
-    if (input.wasPressed('F3')) this.applyStyle(nextStyle());
     if (input.wasPressed('F1') && !this.player.isDead) {
       this.player.equipWeapon(this.player.weapon.id === 'swordShield' ? 'staff' : 'swordShield');
     }
