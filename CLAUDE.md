@@ -57,7 +57,7 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 
 ### 1.7 試玩網站（GitHub Pages）
 - 遊戲以 GitHub Pages 發布給朋友試玩，來源為 `main` 分支根目錄，推送後約 1 分鐘更新。
-- 網址：尚未建立（建立後填入）。
+- 網址：https://alex86106pig.github.io/Cubeborn/ （repo：https://github.com/alex86106pig/Cubeborn ，公開）
 - 遊戲必須維持「純靜態檔案、相對路徑」，不能依賴 `node_modules/` 或本機伺服器才能執行，否則網站會壞掉。
 
 ---

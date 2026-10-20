@@ -2,6 +2,11 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.3.3] - 2026-10-20
+
+### 新增
+- 試玩網站上線（GitHub Pages）：https://alex86106pig.github.io/Cubeborn/ ，網址記在 `CLAUDE.md` 1.7。
+
 ## [0.3.2] - 2026-10-20
 
 ### 修改
