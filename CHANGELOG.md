@@ -2,6 +2,19 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.3.1] - 2026-10-20
+
+自動檢查與設計方向。
+
+### 新增
+- `check.js` 自動檢查（`node check.js` 或 `npm run check`），共 17 項：武器/技能/敵人/波次資料完整性、造型介面、CD、狀態機、事件、受傷與死亡、傷害結算、扇形與圓形命中判定。
+- `package.json`（只為檢查安裝 `three@0.170.0`）。遊戲本身仍不需建置。
+- `docs/設計方向.md`：一局 30 分鐘內、新手很難、靠遊戲外成長＋技術＋熟悉機制才能穩定通關、以不同 build 與職業吸引重玩、戰鬥兼顧走位/打擊感/割草。
+
+### 修改
+- `CLAUDE.md` 驗收改為正式執行 `check.js`，畫面相關修改另加瀏覽器實測；檔案地圖新增 `check.js`、`package.json`。
+- `PROJECT_GUIDELINES.md` 技術棧與開發流程加入自動檢查。
+
 ## [0.3.0] - 2026-10-20
 
 美術風格定案為暗黑幻想。

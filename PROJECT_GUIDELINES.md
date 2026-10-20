@@ -22,7 +22,8 @@
 | 語言 | 原生 JavaScript（ES2022），ES6 Modules | 零建置、易讀 |
 | 3D 引擎 | Three.js `0.170.0`，透過 `importmap` 從 jsDelivr CDN 載入 | 不需 npm |
 | 建置工具 | 無。日後需要打包上線再導入 Vite | 降低初期複雜度 |
-| 本機伺服器 | `tools/serve.ps1`（PowerShell 內建 HttpListener） | ES Modules 不能用 `file://` 開啟；本機未安裝 Node/Python |
+| 本機伺服器 | `tools/serve.ps1`（PowerShell 內建 HttpListener） | ES Modules 不能用 `file://` 開啟；遊戲執行不依賴 Node |
+| 自動檢查 | Node 24 LTS + `check.js`（`node check.js`）；`package.json` 只為檢查安裝 `three@0.170.0`，`node_modules/` 不進版控 | 不開瀏覽器即可驗證資料與核心機制 |
 | 物理 | 不用物理引擎，自寫圓形碰撞 | 俯視角動作遊戲只需 2D 平面碰撞 |
 | UI | DOM + CSS 疊在 canvas 上 | 好排版、好除錯 |
 | 版控 | git，每個版本一個 commit + tag | 可回溯 |
@@ -40,6 +41,8 @@ Cubeborn/
 ├─ CLAUDE.md                  AI 最高指導原則（自動載入）、檔案地圖
 ├─ PROJECT_GUIDELINES.md      本文件
 ├─ CHANGELOG.md               版本紀錄
+├─ check.js                   自動檢查（資料完整性與核心機制）
+├─ package.json               Node 設定（只用於檢查）
 ├─ docs/                      進度.md（跨對話交接）、設計方向.md（設計目標）
 ├─ index.html                 遊戲頁面、importmap、HUD 容器
 ├─ preview.html               模型檢視頁（並排展示四個角色，可拖曳旋轉）
@@ -314,7 +317,7 @@ export const SKILLS = {
 
 1. **開工**：讀 `CLAUDE.md` → `docs/進度.md` → 本文件 → CHANGELOG 最新版本 → 相關模組。
 2. **實作**：先列出預計修改的檔案並取得使用者同意；遵守本文件；若需要偏離規範，先更新本文件再寫程式。
-3. **驗證**：執行 `node check.js`（建立前改用瀏覽器實測，見 `CLAUDE.md` 1.4）；啟動本機伺服器，在瀏覽器實測新功能與既有功能，確認 Console 無錯誤。
+3. **驗證**：執行 `node check.js`，全部通過；改到畫面或操作時，另外啟動本機伺服器在瀏覽器實測，確認 Console 無錯誤。
 4. **記錄**：更新 CHANGELOG 與 `version.js`；架構有變就更新本文件。
 5. **提交**：`git commit -m "vX.Y.Z: 摘要"`，`git tag vX.Y.Z`。不執行 `git push`。
 6. **回報**：告訴使用者新版號、變更內容、驗證結果與已知問題。

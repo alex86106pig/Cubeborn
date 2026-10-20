@@ -30,11 +30,10 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 - `git commit` 與 `git tag` 依第 1.5 節流程照常執行。
 
 ### 1.4 驗收
-- 驗收指令：`node check.js`。**全部通過才算完成**。
-- 目前狀態：`check.js` 尚未建立，本機也沒有安裝 Node（見 `docs/進度.md`）。在它存在之前，驗收改為：
-  1. 用 `.claude/launch.json` 的 `cubeborn` 啟動伺服器，在瀏覽器實測新功能與既有功能。
-  2. Console 無錯誤。
-  3. 需要驗證邏輯時，在 Console 用 `__game.update(1/60)` + `__game.input.endStep()` 手動推進並讀數值。
+- 驗收指令：`node check.js`（或 `npm run check`）。**全部通過才算完成**。
+- 改到畫面、操作、動畫等 `check.js` 測不到的部分時，另外要在瀏覽器實測（`.claude/launch.json` 的 `cubeborn`），並確認 Console 無錯誤。需要驗證邏輯時，在 Console 用 `__game.update(1/60)` + `__game.input.endStep()` 手動推進並讀數值。
+- 新增機制或修好 bug 時，能寫成檢查就補進 `check.js`，避免同樣問題再發生。
+- 若 PowerShell 找不到 `node`，用完整路徑 `C:\Program Files\nodejs\node.exe`（安裝後尚未重開的終端機不會有新的 PATH）。
 - 檢查沒過時的處理順序：
   1. 先查遊戲本體邏輯，拿程式碼與實測數值證明「遊戲機制是對的」。
   2. 證明之後，才可以修改測試腳本，並在回報中寫明「為什麼是測試錯、不是遊戲錯」。
@@ -115,8 +114,10 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `preview.html` | 模型檢視頁（並排展示四個角色，可拖曳旋轉） |
 | `css/style.css` | HUD 與頁面樣式 |
 | `tools/serve.ps1` | 本機靜態伺服器（`http://localhost:5173`） |
+| `check.js` | 自動檢查：資料完整性與核心機制（`node check.js`） |
+| `package.json` | Node 設定：檢查指令與檢查用的 three 套件（遊戲本身不需要） |
 | `docs/進度.md` | 跨對話交接檔 |
-| `docs/設計方向.md` | 設計目標與平衡品味（尚未建立） |
+| `docs/設計方向.md` | 設計目標與平衡品味（改核心玩法前必讀） |
 | `mockups/` | 給使用者挑選的對比頁（選定後刪除，見 2.5） |
 | `src/main.js` | 遊戲進入點：建立 Game 並啟動 |
 | `src/preview.js` | 模型檢視頁進入點 |
