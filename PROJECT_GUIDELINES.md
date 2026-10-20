@@ -11,7 +11,7 @@
 | 類型 | 3D 等距俯視角 Roguelike 動作遊戲（網頁版原型） |
 | 美術風格 | 程式生成的低多邊形奇幻角色（不使用外部模型與貼圖），造型已定案為**暗黑幻想**（寫實比例、硬朗多面體、月夜墓地） |
 | 目前階段 | Phase 1：核心戰鬥、5 波制（含 Boss 戰）的一局流程 |
-| 不在 Phase 1 範圍 | 職業選擇、房間/關卡生成、升級、掉落、武器切換、存檔、音效 |
+| 不在 Phase 1 範圍 | 職業選擇、房間/關卡生成、升級、掉落、武器切換、存檔、背景音樂（試聽中） |
 
 ---
 
@@ -20,7 +20,8 @@
 | 項目 | 選擇 | 理由 |
 |---|---|---|
 | 語言 | 原生 JavaScript（ES2022），ES6 Modules | 零建置、易讀 |
-| 3D 引擎 | Three.js `0.170.0`，透過 `importmap` 從 jsDelivr CDN 載入 | 不需 npm |
+| 音效 | Web Audio API 即時合成，不使用音檔 | 免授權、零下載；瀏覽器規定使用者操作後才能出聲 |
+| 3D 引擎 | Three.js `0.170.0`，透過 `importmap` 從 jsDelivr CDN 載入（含 `three/addons/` 內建工具） | 不需 npm |
 | 建置工具 | 無。日後需要打包上線再導入 Vite | 降低初期複雜度 |
 | 本機伺服器 | `tools/serve.ps1`（PowerShell 內建 HttpListener） | ES Modules 不能用 `file://` 開啟；遊戲執行不依賴 Node |
 | 自動檢查 | Node 24 LTS + `check.js`（`node check.js`）；`package.json` 只為檢查安裝 `three@0.170.0`，`node_modules/` 不進版控 | 不開瀏覽器即可驗證資料與核心機制 |
@@ -90,6 +91,8 @@ Cubeborn/
    │  ├─ skillDefs.js         主動技能/道具資料定義（治療藥水、疾跑）
    │  ├─ skillBehaviors.js    技能行為：canUse（選用條件）與 activate（效果）
    │  └─ ActiveSlots.js       數字鍵 1~5 主動欄位：裝備、觸發、CD 或次數
+   ├─ audio/
+   │  └─ Sound.js           Web Audio 即時合成音效；訂閱事件播放、M 鍵靜音
    ├─ world/
    │  ├─ Arena.js             依風格建立場地；碰撞邊界固定
    │  ├─ waveDefs.js          波次表與波次數值成長
@@ -131,6 +134,8 @@ Cubeborn/
 | R | 死亡或通關後重新開始 |
 | F1 | 除錯：切換劍盾 / 法杖（非正式武器切換系統） |
 | F2 | 除錯：顯示碰撞與命中範圍 |
+| Esc | 暫停 / 繼續（視窗失去焦點時自動暫停；死亡或通關畫面不能暫停） |
+| M | 靜音切換（記在瀏覽器） |
 
 右鍵選單在 canvas 上一律停用。
 
@@ -262,6 +267,9 @@ export const SKILLS = {
 | `boss:enraged` | `{ boss }` | Boss |
 | `game:victory` | `{ stats }` | Game（Boss 死亡後延遲發出） |
 | `game:restart` | `{}` | Game |
+| `game:paused` | `{ paused }` | Game（Esc、失去焦點） |
+| `audio:muted` | `{ muted }` | Game（M 鍵） |
+| `sfx:cue` | `{ name }` | 各遊戲物件；`name` 必須是 `audio/Sound.js` 的 `CUES` 之一（check.js 會檢查） |
 
 ---
 
@@ -329,6 +337,7 @@ export const SKILLS = {
 - 所有角色都是 `render/rig.js` 的 **`Rig`**：統一關節階層 `root → body → head / armR / armL / legR / legL`，手掌掛點 `handR / handL`。角色面向 +Z、右側為 -X、四肢往 -Y 延伸。**動畫程式只轉動關節，不依賴任何特定造型**，因此改造型不需改動畫。
 - 手臂、腿的關節旋轉順序為 `YXZ`：先用 `rotation.x` 前後抬起，再用 `rotation.y` 水平揮動。
 - 零件用 `PartKit.add()` 建立、材質用 `kit.mat(color, { glow, metal })` 取得，才能統一受擊閃白、淡出與釋放資源。自發光部位（眼睛、寶石）用 `glow: true`，不受閃白影響。
+- **零件數影響效能**：角色建好後呼叫 `rig.optimize()`，武器與場地呼叫 `kit.mergeStatic(根節點, [會動的節點], [不合併的零件])`，把一起動的零件合併成少數 mesh（使用 Three.js 內建 `mergeGeometries`）。會單獨動畫的零件（例如法杖寶石）要放進不合併清單。`check.js` 會檢查每個角色與場地的零件數上限。
 - 風格是 `render/styles/` 下的一個模組（目前只有 `darkFantasy`），必須實作以下介面並在 `styles/index.js` 登錄：
 
 | 欄位 | 內容 |

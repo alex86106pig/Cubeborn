@@ -21,6 +21,7 @@ export function poseWalk(e, amount, { armR = -0.4, armL = -0.2 } = {}) {
 export const BASE_ENEMY_STATES = {
   spawn: {
     enter(e) {
+      e.game.events.emit('sfx:cue', { name: 'enemySpawn' });
       e.model.root.position.y = -e.height;
     },
     update(e, dt, fsm) {

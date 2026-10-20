@@ -69,7 +69,7 @@ function bow(kit, parent, color) {
 function knight() {
   const rig = createHumanoidRig(makeMaterial, KNIGHT_JOINTS);
   armoredBody(rig, { armor: C.steel, trim: C.steelDark, cape: C.cape });
-  return rig;
+  return rig.optimize();
 }
 
 function skeletonBase(rig, { hood = false } = {}) {
@@ -114,21 +114,21 @@ function skeleton() {
   const rig = createHumanoidRig(makeMaterial, SKELETON_JOINTS);
   skeletonBase(rig);
   longSword(rig, rig.handR, { blade: C.rust, guard: C.iron, length: 0.8 });
-  return rig;
+  return rig.optimize();
 }
 
 function skeletonArcher() {
   const rig = createHumanoidRig(makeMaterial, SKELETON_JOINTS);
   skeletonBase(rig, { hood: true });
   bow(rig, rig.handL, C.wood);
-  return rig;
+  return rig.optimize();
 }
 
 function deathKnight() {
   const rig = createHumanoidRig(makeMaterial, { ...KNIGHT_JOINTS, scale: 1.85 });
   armoredBody(rig, { armor: C.deathArmor, trim: C.iron, cape: 0x1c1a22, eye: C.deathEye, horns: true });
   longSword(rig, rig.handR, { blade: 0x9aa4b4, guard: C.iron, length: 1.35, glow: 0x7fe8ff });
-  return rig;
+  return rig.optimize();
 }
 
 // ───────── 玩家武器 ─────────
@@ -144,6 +144,7 @@ function swordShield() {
   kit.add(shield, G.box(0.09, 0.44, 0.05), kit.mat(C.steel, { metal: true }), { y: 0.1 });
   kit.add(shield, G.ico(0.07), kit.mat(C.steel, { metal: true }), { x: 0.05, y: 0.1 });
   shield.position.set(0.18, -0.4, 0);
+  kit.mergeStatic(holder, [holder]).mergeStatic(shield, [shield]);
   return { kit, main: holder, offhand: shield };
 }
 
@@ -155,6 +156,7 @@ function staff() {
     kit.add(g, G.cone(0.03, 0.3, 4), kit.mat(C.wood), { x: s * 0.08, y: 1.28, rz: -s * 0.4 });
   }
   const gem = kit.add(g, G.ico(0.1), kit.mat(0xb48cff, { glow: true }), { y: 1.3 });
+  kit.mergeStatic(g, [g], [gem]);
   return { kit, main: g, offhand: null, gem };
 }
 
@@ -208,6 +210,7 @@ function buildArena(half) {
   for (const p of scatterInside(half, 18)) {
     kit.add(group, G.cyl(0.03, 0.03, 0.35, 4), boneMat, { x: p.x, y: 0.03, z: p.z, rz: Math.PI / 2, ry: p.ry, shadow: false });
   }
+  kit.mergeStatic(group, [group]);
   return { kit, group };
 }
 

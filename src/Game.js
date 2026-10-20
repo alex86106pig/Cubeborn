@@ -12,6 +12,7 @@ import { getStyle } from './render/styles/index.js';
 import { HUD } from './ui/HUD.js';
 import { Arena } from './world/Arena.js';
 import { Spawner } from './world/Spawner.js';
+import { Sound } from './audio/Sound.js';
 
 const HIT_STOP_TIME_SCALE = 0.05;
 const VICTORY_DELAY = 2.2;
@@ -22,6 +23,7 @@ export class Game {
   #hitStopTimer = 0;
   #victoryTimer = 0;
   #bodies = [];
+  isPaused = false;
 
   constructor(container, hudRoot) {
     this.events = new EventBus();
@@ -32,6 +34,7 @@ export class Game {
     this.combat = new Combat(this);
     this.arena = new Arena(this);
     this.spawner = new Spawner(this);
+    this.sound = new Sound(this);
 
     this.player = null;
     this.boss = null;
@@ -47,6 +50,10 @@ export class Game {
     this.#applyEnvironment(getStyle());
     this.restart();
     this.hud = new HUD(this, hudRoot);
+
+    // 切到其他視窗或分頁時自動暫停，避免回來時已經被打死
+    window.addEventListener('blur', () => this.setPaused(true));
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this.setPaused(true); });
   }
 
   #applyEnvironment(style) {
@@ -85,6 +92,7 @@ export class Game {
     this.stats.time = 0;
     this.#hitStopTimer = 0;
     this.#victoryTimer = 0;
+    this.setPaused(false);
     this.renderer.follow(this.player.position, 0, true);
     this.events.emit('game:restart', {});
   }
@@ -97,22 +105,28 @@ export class Game {
   #frame = (now) => {
     const realDt = Math.min((now - this.#lastTime) / 1000, 0.25);
     this.#lastTime = now;
+    this.#handleFrameKeys();
 
-    let scale = 1;
-    if (this.#hitStopTimer > 0) {
-      this.#hitStopTimer -= realDt;
-      scale = HIT_STOP_TIME_SCALE;
-    }
+    if (this.isPaused) {
+      this.#accumulator = 0;
+      this.input.endStep(); // 暫停中的點擊與按鍵不留到繼續之後
+    } else {
+      let scale = 1;
+      if (this.#hitStopTimer > 0) {
+        this.#hitStopTimer -= realDt;
+        scale = HIT_STOP_TIME_SCALE;
+      }
 
-    this.#accumulator += realDt * scale;
-    let steps = 0;
-    while (this.#accumulator >= FIXED_DT && steps < MAX_STEPS_PER_FRAME) {
-      this.update(FIXED_DT);
-      this.input.endStep();
-      this.#accumulator -= FIXED_DT;
-      steps++;
+      this.#accumulator += realDt * scale;
+      let steps = 0;
+      while (this.#accumulator >= FIXED_DT && steps < MAX_STEPS_PER_FRAME) {
+        this.update(FIXED_DT);
+        this.input.endStep();
+        this.#accumulator -= FIXED_DT;
+        steps++;
+      }
+      if (steps === MAX_STEPS_PER_FRAME) this.#accumulator = 0;
     }
-    if (steps === MAX_STEPS_PER_FRAME) this.#accumulator = 0;
 
     this.player.syncModel();
     for (const e of this.enemies) e.syncModel();
@@ -149,6 +163,21 @@ export class Game {
       this.#victoryTimer -= dt;
       if (this.#victoryTimer <= 0) this.events.emit('game:victory', { stats: this.stats });
     }
+  }
+
+  // 只在遊戲進行中可以暫停（死亡、通關畫面已經停在結算）
+  setPaused(paused) {
+    if (paused && (this.player.isDead || this.isOver)) return;
+    if (this.isPaused === paused) return;
+    this.isPaused = paused;
+    this.events.emit('game:paused', { paused });
+  }
+
+  // 每個渲染幀處理、暫停中也有效的系統鍵
+  #handleFrameKeys() {
+    const input = this.input;
+    if (input.consumePressed('Escape')) this.setPaused(!this.isPaused);
+    if (input.consumePressed('KeyM')) this.events.emit('audio:muted', { muted: this.sound.toggleMute() });
   }
 
   #handleSystemKeys() {

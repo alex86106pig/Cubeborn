@@ -42,6 +42,11 @@ export class Input {
     return this.#pressed.has(code);
   }
 
+  // 讀取並清除「本步按下」：給每個渲染幀處理的系統鍵用（Esc、M），避免一次按鍵被處理兩次
+  consumePressed(code) {
+    return this.#pressed.delete(code);
+  }
+
   // 每個固定邏輯步結束時呼叫
   endStep() {
     this.#pressed.clear();

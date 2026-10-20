@@ -101,6 +101,7 @@ export class Projectile {
 
   #explode() {
     const g = this.game;
+    g.events.emit('sfx:cue', { name: 'explosion' });
     const ex = this.explosion;
     const targets = g.combat.queryCircle(this.position, ex.radius, g.combat.hostilesOf(this.owner, _targets), []);
     for (const target of targets) {

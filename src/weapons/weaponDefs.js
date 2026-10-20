@@ -9,6 +9,7 @@ export const WEAPONS = {
     idle: { armR: -0.35, armL: -0.1, tilt: 0 },
     attack: {
       behavior: 'meleeSwing',
+      sfx: 'swing', sfxHeavy: 'swingHeavy',
       name: '斬擊',
       icon: '⚔',
       damage: 12,
@@ -27,6 +28,7 @@ export const WEAPONS = {
     },
     special: {
       behavior: 'shieldBash',
+      sfx: 'shieldBash',
       name: '盾擊衝鋒',
       icon: '🛡',
       cooldown: 4,
@@ -52,6 +54,7 @@ export const WEAPONS = {
     idle: { armR: -0.5, armL: 0, tilt: 0 },
     attack: {
       behavior: 'fireBolt',
+      sfx: 'fireBolt',
       name: '魔彈',
       icon: '✦',
       damage: 8,
@@ -69,6 +72,7 @@ export const WEAPONS = {
     },
     special: {
       behavior: 'arcaneBurst',
+      sfx: 'arcaneCast',
       name: '奧術爆裂',
       icon: '✺',
       cooldown: 5,

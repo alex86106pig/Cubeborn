@@ -1,6 +1,10 @@
 // 自動檢查：不開瀏覽器驗證資料完整性與核心機制。執行：node check.js（或 npm run check）
 // 規則：檢查失敗時先證明遊戲邏輯正確，才可以改這裡（見 CLAUDE.md 1.4）
 import assert from 'node:assert/strict';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import * as THREE from 'three';
+import { CUES, Sound } from './src/audio/Sound.js';
 import { Combat } from './src/combat/Combat.js';
 import { COMBAT } from './src/core/config.js';
 import { CooldownManager } from './src/core/CooldownManager.js';
@@ -9,6 +13,7 @@ import { StateMachine } from './src/core/StateMachine.js';
 import { ENEMIES } from './src/entities/enemyDefs.js';
 import { Entity } from './src/entities/Entity.js';
 import { getStyle } from './src/render/styles/index.js';
+import { G, PartKit } from './src/render/rig.js';
 import { SKILL_BEHAVIORS } from './src/skills/skillBehaviors.js';
 import { SKILLS } from './src/skills/skillDefs.js';
 import { WEAPON_BEHAVIORS } from './src/weapons/weaponBehaviors.js';
@@ -234,6 +239,125 @@ check('命中判定：圓形範圍考慮目標半徑', () => {
   const out = at(2.6, 0);
   const hits = combat.queryCircle({ x: 0, z: 0 }, 2, [edge, out]);
   assert.deepEqual(hits, [edge]);
+});
+
+// ───────── 渲染效能 ─────────
+
+function meshStats(root) {
+  let meshes = 0;
+  let vertices = 0;
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    meshes++;
+    vertices += o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count;
+  });
+  root.updateMatrixWorld(true);
+  return { meshes, vertices, box: new THREE.Box3().setFromObject(root) };
+}
+
+check('零件合併：頂點數與外框不變、材質保留、keep 的零件不被合併、會動的節點保留', () => {
+  const kit = new PartKit((color) => new THREE.MeshLambertMaterial({ color }));
+  const root = new THREE.Group();
+  const arm = new THREE.Group();
+  arm.position.set(0.5, 1, 0);
+  arm.rotation.z = 0.4;
+  root.add(arm);
+  const sub = new THREE.Group(); // 非 anchor 的子群組：應被併入 arm
+  sub.position.set(0, -0.3, 0.1);
+  sub.rotation.x = 0.7;
+  arm.add(sub);
+  const red = kit.mat(0xff0000);
+  const blue = kit.mat(0x0000ff);
+  kit.add(root, G.box(0.4, 0.6, 0.3), red, { y: 1 });
+  kit.add(root, G.cyl(0.1, 0.1, 0.5, 6), red, { x: 0.3, rz: 0.5 });
+  kit.add(arm, G.ico(0.1, 0), red, { y: -0.2 });
+  kit.add(sub, G.box(0.1, 0.1, 0.1), red, { s: 2 });
+  kit.add(sub, G.cone(0.1, 0.2, 4), blue);
+  const gem = kit.add(arm, G.ico(0.05), blue, { y: -0.5 });
+
+  const before = meshStats(root);
+  kit.mergeStatic(root, [root, arm], [gem]);
+  const after = meshStats(root);
+  assert.equal(after.vertices, before.vertices, '頂點數應不變');
+  assert.ok(after.box.min.distanceTo(before.box.min) < 1e-6 && after.box.max.distanceTo(before.box.max) < 1e-6, '外框應不變');
+  assert.equal(after.meshes, 4, 'root 紅、arm 紅、arm 藍、gem 共 4 個');
+  assert.equal(gem.parent, arm, 'keep 的零件應留在原位');
+  assert.equal(arm.parent, root, 'anchor 應保留');
+  assert.equal(sub.parent, null, '空的子群組應移除');
+  const mats = new Set();
+  root.traverse((o) => { if (o.isMesh) mats.add(o.material); });
+  assert.deepEqual([...mats].sort((a, b) => a.id - b.id), [red, blue].sort((a, b) => a.id - b.id));
+});
+
+check('零件合併：角色零件數在上限內（避免卡頓）', () => {
+  const style = getStyle();
+  const limits = { knight: 20, melee: 16, ranged: 16, boss: 22 };
+  for (const [k, limit] of Object.entries(limits)) {
+    const { meshes } = meshStats(style.characters[k]().root);
+    assert.ok(meshes <= limit, `${k} 有 ${meshes} 個零件，上限 ${limit}`);
+  }
+  const { meshes } = meshStats(style.buildArena(11).group);
+  assert.ok(meshes <= 12, `場地有 ${meshes} 個零件，上限 12`);
+});
+
+// ───────── 音效 ─────────
+
+function sourceFiles(dir, out = []) {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) sourceFiles(p, out);
+    else if (p.endsWith('.js')) out.push(p);
+  }
+  return out;
+}
+
+check('音效：程式中 sfx:cue 與武器 sfx 指定的音效名稱都存在', () => {
+  const names = new Set();
+  for (const file of sourceFiles('src')) {
+    const text = readFileSync(file, 'utf8');
+    for (const m of text.matchAll(/'sfx:cue', \{ name: '(\w+)' \}/g)) names.add(m[1]);
+  }
+  assert.ok(names.size >= 5, `程式中只比對到 ${names.size} 個 sfx:cue，比對規則可能失效`);
+  for (const w of Object.values(WEAPONS)) {
+    for (const a of [w.attack, w.special]) {
+      assert.ok(a.sfx, `${w.id} 的 ${a.name} 沒有指定音效`);
+      names.add(a.sfx);
+      if (a.sfxHeavy) names.add(a.sfxHeavy);
+    }
+  }
+  for (const n of names) assert.ok(CUES[n], `音效「${n}」不存在於 CUES`);
+});
+
+check('音效：每個遊戲事件都對應到存在的音效', () => {
+  const events = new EventBus();
+  const boss = { team: 'enemy' };
+  const sound = new Sound({ events, boss });
+  const played = [];
+  sound.play = (name) => played.push(name);
+  const emits = [
+    ['entity:damaged', { target: { team: 'player' } }],
+    ['entity:damaged', { target: { team: 'enemy' }, isCrit: false }],
+    ['entity:damaged', { target: { team: 'enemy' }, isCrit: true }],
+    ['entity:died', { entity: { team: 'enemy' } }],
+    ['entity:died', { entity: boss }],
+    ['skill:used', { def: SKILLS.heal }],
+    ['skill:used', { def: SKILLS.sprint }],
+    ['skill:onCooldown', {}],
+    ['wave:started', { isBoss: false }],
+    ['wave:started', { isBoss: true }],
+    ['boss:enraged', {}],
+    ['player:died', {}],
+    ['game:victory', {}],
+    ['game:restart', {}],
+    ['game:paused', { paused: true }],
+    ['game:paused', { paused: false }],
+  ];
+  for (const [name, payload] of emits) {
+    const n = played.length;
+    events.emit(name, payload);
+    assert.equal(played.length, n + 1, `事件 ${name} 沒有播放音效`);
+    assert.ok(CUES[played.at(-1)], `事件 ${name} 對應的音效「${played.at(-1)}」不存在`);
+  }
 });
 
 // ───────── 輸出 ─────────

@@ -3,6 +3,7 @@
 //   root（位置/朝向）→ body（整體姿勢，樞紐在腳底）→ head / armR / armL / legR / legL；手掌掛點 handR / handL
 // 角色面向 +Z，右側為 -X；四肢往 -Y 延伸
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // 追蹤自己建立的材質與幾何體，可統一閃白、淡出與釋放
 export class PartKit {
@@ -57,6 +58,58 @@ export class PartKit {
     for (const m of this.materials) m.dispose();
     for (const g of this.geometries) g.dispose();
   }
+
+  /**
+   * 合併靜態零件以減少繪製次數：anchors 是會各自移動的節點（關節、武器根節點），
+   * 每個零件依「最近的 anchor 祖先 + 材質 + 陰影設定」分組，合併成一個 mesh 掛回該 anchor。
+   * keep 內的 mesh（例如會自轉的寶石）不合併。anchor 以下的非 anchor 節點視為固定不動。
+   */
+  mergeStatic(root, anchors, keep = []) {
+    root.updateMatrixWorld(true);
+    const anchorSet = new Set(anchors);
+    const keepSet = new Set(keep);
+    const buckets = new Map();
+    const merged = [];
+    root.traverse((obj) => {
+      if (!obj.isMesh || keepSet.has(obj)) return;
+      let anchor = obj.parent;
+      while (anchor && !anchorSet.has(anchor)) anchor = anchor.parent;
+      if (!anchor) return;
+      const geo = obj.geometry.index ? obj.geometry.toNonIndexed() : obj.geometry.clone();
+      geo.applyMatrix4(_rel.copy(anchor.matrixWorld).invert().multiply(obj.matrixWorld));
+      const attrs = Object.keys(geo.attributes).sort().join(',');
+      const key = `${anchor.id}|${obj.material.uuid}|${obj.castShadow}|${obj.receiveShadow}|${attrs}`;
+      if (!buckets.has(key)) buckets.set(key, { anchor, source: obj, geos: [] });
+      buckets.get(key).geos.push(geo);
+      merged.push(obj);
+    });
+
+    const removed = new Set(merged.map((m) => m.geometry));
+    for (const obj of merged) obj.removeFromParent();
+    for (const { anchor, source, geos } of buckets.values()) {
+      const geometry = geos.length === 1 ? geos[0] : mergeGeometries(geos);
+      if (geos.length > 1) for (const g of geos) g.dispose();
+      const mesh = new THREE.Mesh(geometry, source.material);
+      mesh.castShadow = source.castShadow;
+      mesh.receiveShadow = source.receiveShadow;
+      anchor.add(mesh);
+      this.geometries.push(geometry);
+    }
+    for (const g of removed) g.dispose();
+    this.geometries = this.geometries.filter((g) => !removed.has(g));
+    pruneEmptyGroups(root, anchorSet);
+    return this;
+  }
+}
+
+const _rel = new THREE.Matrix4();
+
+// 移除合併後留下的空群組（anchor 除外）
+function pruneEmptyGroups(obj, anchorSet) {
+  for (const child of [...obj.children]) {
+    pruneEmptyGroups(child, anchorSet);
+    if (!child.isMesh && child.children.length === 0 && !anchorSet.has(child)) child.removeFromParent();
+  }
 }
 
 export class Rig extends PartKit {
@@ -83,6 +136,12 @@ export class Rig extends PartKit {
     const g = new THREE.Group();
     g.rotation.order = 'YXZ'; // 先前後抬起，再水平揮動
     return g;
+  }
+
+  // 角色建好後呼叫：每個關節的零件合併成少數幾個 mesh
+  optimize() {
+    const { root, body, head, armR, armL, legR, legL, handR, handL } = this;
+    return this.mergeStatic(root, [root, body, head, armR, armL, legR, legL, handR, handL]);
   }
 
   setFlash(k) {

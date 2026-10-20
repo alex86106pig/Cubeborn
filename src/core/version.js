@@ -1,2 +1,2 @@
 // ?桀???嚗??? CHANGELOG.md?it tag 銝?湛?
-export const VERSION = '0.3.4';
+export const VERSION = '0.4.0';

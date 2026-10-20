@@ -41,6 +41,13 @@ export const SPAWNER = {
   minDistanceFromPlayer: 8,
 };
 
+// 音量（0~1）：實際音量 = master × 分類音量
+export const AUDIO = {
+  master: 0.7,
+  sfx: 0.8,
+  music: 0.5,
+};
+
 export const DEBUG = {
   showHitboxes: false,
 };

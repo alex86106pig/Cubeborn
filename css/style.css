@@ -57,6 +57,7 @@ html, body {
 .boss-bar.enraged .boss-name { color: #ff7070; }
 .kills { font-size: 16px; margin-top: 2px; }
 .version { font-size: 12px; opacity: .6; margin-top: 6px; }
+.fps, .mute { font-size: 12px; opacity: .6; margin-top: 4px; }
 
 .skillbar {
   position: absolute; bottom: 20px; left: 50%;
@@ -156,6 +157,18 @@ html, body {
 .gameover.victory h1 { color: #ffd84a; }
 .gameover p { font-size: 20px; margin: 4px; }
 .gameover .hint { margin-top: 18px; font-weight: 800; animation: pulse 1.2s infinite; }
+
+.pause-overlay {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: rgba(5, 8, 16, .65);
+  text-shadow: 0 3px 0 #000;
+  transition: opacity .15s;
+}
+.pause-overlay.hidden { opacity: 0; pointer-events: none; }
+.pause-overlay h1 { font-size: 56px; margin: 0 0 8px; }
+.pause-overlay .hint { font-size: 20px; font-weight: 800; margin: 4px; }
+.pause-overlay .controls { font-size: 14px; opacity: .75; margin-top: 18px; max-width: 520px; text-align: center; line-height: 1.6; }
 @keyframes pulse { 50% { opacity: .4; } }
 
 .help {

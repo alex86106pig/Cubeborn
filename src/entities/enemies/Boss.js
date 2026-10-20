@@ -55,6 +55,7 @@ const STATES = {
   // 重砸：舉起雙手 → 落地造成圓形範圍傷害
   slam: {
     enter(e, data) {
+      e.game.events.emit('sfx:cue', { name: 'bossSlamWindup' });
       const s = e.def.slam;
       e.velocity.set(0, 0, 0);
       e.game.cooldowns.start(e.cd('slam'), s.cooldown * e.enrageMul('cooldownMul'));
@@ -87,6 +88,7 @@ const STATES = {
   // 衝鋒：鎖定方向蓄力 → 直線衝刺；撞牆會暈眩（玩家的輸出時機）
   charge: {
     enter(e, data) {
+      e.game.events.emit('sfx:cue', { name: 'bossChargeWindup' });
       const c = e.def.charge;
       e.velocity.set(0, 0, 0);
       e.game.cooldowns.start(e.cd('charge'), c.cooldown * e.enrageMul('cooldownMul'));
@@ -129,6 +131,7 @@ const STATES = {
         const limit = WORLD.arenaHalfSize - e.radius - 0.05;
         const hitWall = Math.abs(e.position.x) >= limit || Math.abs(e.position.z) >= limit;
         if (hitWall) {
+          e.game.events.emit('sfx:cue', { name: 'bossWallHit' });
           d.phase = 'stunned';
           d.phaseTime = 0;
           e.velocity.set(0, 0, 0);
@@ -169,6 +172,7 @@ const STATES = {
   // 召喚：高舉雙手後在身邊召喚小怪
   summon: {
     enter(e, data) {
+      e.game.events.emit('sfx:cue', { name: 'bossSummon' });
       e.velocity.set(0, 0, 0);
       e.game.cooldowns.start(e.cd('summon'), e.def.summon.cooldown * e.enrageMul('cooldownMul'));
       data.done = false;
@@ -219,6 +223,7 @@ export class Boss extends Enemy {
 
   slamImpact() {
     const g = this.game;
+    g.events.emit('sfx:cue', { name: 'bossSlam' });
     const s = this.def.slam;
     for (const target of g.combat.queryCircle(this.position, s.radius, g.combat.hostilesOf(this, _targets), [])) {
       g.combat.applyDamage(this, target, {

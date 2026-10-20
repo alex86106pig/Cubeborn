@@ -53,6 +53,7 @@ const STATES = {
 
   aim: {
     enter(e) {
+      e.game.events.emit('sfx:cue', { name: 'bowDraw' });
       e.velocity.set(0, 0, 0);
     },
     update(e, dt, fsm) {
@@ -99,6 +100,7 @@ export class RangedEnemy extends Enemy {
 
   fire() {
     const g = this.game;
+    g.events.emit('sfx:cue', { name: 'arrowShot' });
     const style = getStyle();
     _dir.set(Math.sin(this.facing), 0, Math.cos(this.facing));
     _pos.copy(this.position).addScaledVector(_dir, 0.7);

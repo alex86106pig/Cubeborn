@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>背景音樂試聽</title>
+<style>
+  :root { --bg: #0e1220; --card: #181e30; --line: #2a3350; --text: #e6e9f2; --dim: #9aa3b8; --accent: #7fe8ff; --boss: #ff6b6b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", "Microsoft JhengHei", sans-serif; padding: 24px 16px 48px; }
+  main { max-width: 980px; margin: 0 auto; }
+  h1 { margin: 0 0 6px; font-size: 26px; }
+  .lead { color: var(--dim); margin: 0 0 20px; line-height: 1.6; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 10px; }
+  .card.playing { border-color: var(--accent); }
+  .card.playing.boss { border-color: var(--boss); }
+  .tag { font-size: 13px; color: var(--accent); font-weight: 700; letter-spacing: .05em; }
+  h2 { margin: 0; font-size: 20px; }
+  .desc { color: var(--dim); font-size: 14px; line-height: 1.6; margin: 0; flex: 1; }
+  .buttons { display: flex; gap: 8px; }
+  button { flex: 1; padding: 10px 8px; border-radius: 8px; border: 1px solid var(--line); background: #222a42; color: var(--text); font-size: 15px; cursor: pointer; font-family: inherit; }
+  button:hover { background: #2b3554; }
+  button.on { background: var(--accent); color: #0e1220; border-color: var(--accent); font-weight: 700; }
+  button.on.boss { background: var(--boss); border-color: var(--boss); }
+  .bar { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; margin: 20px 0 0; padding: 14px 16px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+  .bar button { flex: 0 0 auto; padding: 8px 18px; }
+  .now { color: var(--dim); font-size: 14px; flex: 1; min-width: 200px; }
+  label { font-size: 14px; color: var(--dim); display: flex; align-items: center; gap: 8px; }
+  .note { color: var(--dim); font-size: 13px; margin-top: 16px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<main>
+  <h1>背景音樂試聽</h1>
+  <p class="lead">三首候選，每首都有「一般戰鬥」與「Boss 戰」兩個版本。全部用程式即時合成，不使用音檔。選定後才會放進遊戲。</p>
+  <div class="grid" id="grid"></div>
+  <div class="bar">
+    <button id="stop">■ 停止</button>
+    <span class="now" id="now">尚未播放</span>
+    <label>音量 <input type="range" id="vol" min="0" max="1" step="0.05" value="0.6"></label>
+  </div>
+  <p class="note">提示：瀏覽器規定要先點按鈕才能出聲。遊戲中音樂會比音效小聲，這裡的音量可以自行調整。</p>
+</main>
+<script>
+// ───────── 合成工具 ─────────
+let ctx = null, master = null, noiseBuf = null;
+function ensureCtx() {
+  if (ctx) return;
+  ctx = new AudioContext();
+  master = ctx.createGain();
+  master.gain.value = +document.getElementById('vol').value;
+  master.connect(ctx.destination);
+  const len = ctx.sampleRate * 2;
+  noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = noiseBuf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+}
+const hz = (midi) => 440 * Math.pow(2, (midi - 69) / 12);
+
+function note(out, t, { freq, dur, vol = 0.1, type = 'sine', attack = 0.01, release = null, cutoff = null }) {
+  const o = ctx.createOscillator(); o.type = type; o.frequency.value = freq;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + attack);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur + (release ?? 0));
+  let n = o;
+  if (cutoff) { const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff; n.connect(f); n = f; }
+  n.connect(g).connect(out);
+  o.start(t); o.stop(t + dur + (release ?? 0) + 0.05);
+}
+function drum(out, t, { from, to, dur, vol, noise = 0, noiseCut = 2000 }) {
+  const o = ctx.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(from, t); o.frequency.exponentialRampToValueAtTime(to, t + dur);
+  const g = ctx.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(out); o.start(t); o.stop(t + dur + 0.05);
+  if (noise > 0) {
+    const s = ctx.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = noiseCut;
+    const ng = ctx.createGain(); ng.gain.setValueAtTime(noise, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + dur * 0.7);
+    s.connect(f).connect(ng).connect(out); s.start(t, Math.random()); s.stop(t + dur);
+  }
+}
+// 持續低音：回傳停止函式
+function drone(out, freqs, { type = 'sawtooth', vol = 0.05, cutoff = 300, lfo = 0.08, lfoDepth = 150 }) {
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff; f.Q.value = 2;
+  const l = ctx.createOscillator(); l.frequency.value = lfo;
+  const lg = ctx.createGain(); lg.gain.value = lfoDepth; l.connect(lg).connect(f.frequency); l.start();
+  const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(vol, ctx.currentTime + 2);
+  f.connect(g).connect(out);
+  const oscs = freqs.map((fr, i) => { const o = ctx.createOscillator(); o.type = type; o.frequency.value = fr; o.detune.value = (i % 2 ? 6 : -6); o.connect(f); o.start(); return o; });
+  return () => { const t = ctx.currentTime; g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value, t); g.gain.linearRampToValueAtTime(0, t + 0.3); [...oscs, l].forEach((o) => o.stop(t + 0.35)); };
+}
+
+// ───────── 曲目（step 為 16 分音符） ─────────
+const D = 50; // D3
+const TRACKS = {
+  A: {
+    name: 'A 陰暗低鳴',
+    desc: '持續的低音嗡鳴加上零星遠方鐘聲，偏氛圍，不搶戰鬥音效。適合「孤身在墓地」的壓迫感。',
+    normal: {
+      bpm: 60,
+      start: (out) => [drone(out, [hz(D - 12), hz(D - 5)], { vol: 0.1, cutoff: 300 })],
+      step: (out, t, i) => {
+        if (i % 16 === 0 && Math.random() < 0.6) {
+          const n = [D + 12, D + 15, D + 19, D + 24][Math.floor(Math.random() * 4)];
+          note(out, t, { freq: hz(n), dur: 0.1, release: 3.5, vol: 0.1, attack: 0.005 });
+          note(out, t, { freq: hz(n) * 2.76, dur: 0.05, release: 1.5, vol: 0.015, attack: 0.005 });
+        }
+      },
+    },
+    boss: {
+      bpm: 72,
+      start: (out) => [drone(out, [hz(D - 12), hz(D - 11), hz(D - 5)], { vol: 0.07, cutoff: 380, lfo: 0.3, lfoDepth: 200 })],
+      step: (out, t, i) => {
+        if (i % 16 === 0 || i % 16 === 3) drum(out, t, { from: 70, to: 40, dur: 0.35, vol: i % 16 === 0 ? 0.5 : 0.3 });
+        if (i % 32 === 8) note(out, t, { freq: hz(D + 13), dur: 0.1, release: 2.5, vol: 0.05 });
+      },
+    },
+  },
+  B: {
+    name: 'B 哥德輓歌',
+    desc: '慢速小調和弦加上類似管風琴的旋律，有明確的曲調，比較有「奇幻遊戲配樂」的感覺。',
+    normal: {
+      bpm: 64,
+      start: () => [],
+      step: (out, t, i) => {
+        const chords = [[D - 12, D, D + 3, D + 7], [D - 16, D - 4, D + 2, D + 5], [D - 19, D - 7, D - 2, D + 3], [D - 17, D - 5, D + 1, D + 4]];
+        const melody = [D + 15, null, D + 14, D + 12, D + 10, null, D + 12, null, D + 9, null, D + 10, D + 12, D + 13, null, null, null];
+        const bar = Math.floor(i / 16) % 4;
+        if (i % 16 === 0) for (const n of chords[bar]) {
+          note(out, t, { freq: hz(n), dur: 3.6, vol: 0.025, type: 'square', attack: 0.4, cutoff: 900 });
+          note(out, t, { freq: hz(n), dur: 3.6, vol: 0.03, attack: 0.4 });
+        }
+        if (i % 4 === 0) {
+          const m = melody[(Math.floor(i / 4) + bar * 4) % 16];
+          if (m) note(out, t, { freq: hz(m), dur: 0.8, vol: 0.05, type: 'triangle', attack: 0.05, release: 0.4 });
+        }
+      },
+    },
+    boss: {
+      bpm: 92,
+      start: (out) => [drone(out, [hz(D - 24)], { vol: 0.05, cutoff: 200 })],
+      step: (out, t, i) => {
+        const roots = [D - 12, D - 16, D - 19, D - 13];
+        const bar = Math.floor(i / 16) % 4;
+        const r = roots[bar];
+        if (i % 2 === 0) note(out, t, { freq: hz(r + [0, 12, 7, 12][(i / 2) % 4]), dur: 0.14, vol: 0.05, type: 'sawtooth', cutoff: 1200 });
+        if (i % 16 === 0) for (const n of [r + 12, r + 15, r + 19]) note(out, t, { freq: hz(n), dur: 2.4, vol: 0.03, type: 'square', attack: 0.2, cutoff: 1400 });
+        if (i % 8 === 0) drum(out, t, { from: 90, to: 45, dur: 0.3, vol: 0.4 });
+      },
+    },
+  },
+  C: {
+    name: 'C 戰鼓',
+    desc: '低沉的鼓點節奏加上緊張的低音，節奏感最強，打擊感與割草的爽快感最明顯。',
+    normal: {
+      bpm: 96,
+      start: (out) => [drone(out, [hz(D - 12), hz(D - 5)], { vol: 0.035, cutoff: 220, lfo: 0.15 })],
+      step: (out, t, i) => {
+        const k = i % 16;
+        if (k === 0 || k === 6 || k === 10) drum(out, t, { from: 110, to: 45, dur: 0.4, vol: 0.5, noise: 0.06, noiseCut: 600 });
+        if (k === 4 || k === 12) drum(out, t, { from: 220, to: 120, dur: 0.18, vol: 0.18, noise: 0.12, noiseCut: 2500 });
+        if (i % 64 === 32) note(out, t, { freq: hz(D + 3), dur: 1.5, vol: 0.03, type: 'sawtooth', cutoff: 700, attack: 0.3 });
+      },
+    },
+    boss: {
+      bpm: 126,
+      start: (out) => [drone(out, [hz(D - 12), hz(D - 11)], { vol: 0.045, cutoff: 320, lfo: 0.5, lfoDepth: 180 })],
+      step: (out, t, i) => {
+        const k = i % 16;
+        if (k % 4 === 0 || k === 14) drum(out, t, { from: 120, to: 40, dur: 0.35, vol: 0.55, noise: 0.06, noiseCut: 600 });
+        if (k === 4 || k === 12) drum(out, t, { from: 240, to: 130, dur: 0.15, vol: 0.2, noise: 0.18, noiseCut: 3000 });
+        if (k >= 13) drum(out, t, { from: 180, to: 90, dur: 0.1, vol: 0.15 });
+        if (i % 32 === 0) note(out, t, { freq: hz(D + 1), dur: 1.2, vol: 0.035, type: 'sawtooth', cutoff: 900, attack: 0.2 });
+      },
+    },
+  },
+};
+
+// ───────── 播放控制（預先排程 0.3 秒） ─────────
+let current = null; // { id, mode, stoppers, out, timer, step, next }
+function stop() {
+  if (!current) return;
+  clearInterval(current.timer);
+  current.stoppers.forEach((s) => s());
+  const out = current.out, t = ctx.currentTime;
+  out.gain.setValueAtTime(out.gain.value, t); out.gain.linearRampToValueAtTime(0, t + 0.3);
+  setTimeout(() => out.disconnect(), 500);
+  current = null;
+  render();
+}
+function play(id, mode) {
+  ensureCtx(); ctx.resume();
+  const same = current && current.id === id && current.mode === mode;
+  stop();
+  if (same) return;
+  const track = TRACKS[id][mode];
+  const out = ctx.createGain(); out.gain.value = 1; out.connect(master);
+  const stepDur = 60 / track.bpm / 4;
+  current = { id, mode, out, stoppers: track.start(out), step: 0, next: ctx.currentTime + 0.1 };
+  current.timer = setInterval(() => {
+    while (current && current.next < ctx.currentTime + 0.3) {
+      track.step(out, current.next, current.step);
+      current.step++; current.next += stepDur;
+    }
+  }, 50);
+  render();
+}
+
+// ───────── 介面 ─────────
+const grid = document.getElementById('grid');
+function render() {
+  grid.replaceChildren();
+  for (const [id, tr] of Object.entries(TRACKS)) {
+    const card = document.createElement('div');
+    const playing = current && current.id === id;
+    card.className = 'card' + (playing ? ' playing' : '') + (playing && current.mode === 'boss' ? ' boss' : '');
+    card.innerHTML = `<div class="tag">候選 ${id}</div><h2>${tr.name}</h2><p class="desc">${tr.desc}</p>`;
+    const btns = document.createElement('div'); btns.className = 'buttons';
+    for (const [mode, label] of [['normal', '▶ 一般戰鬥'], ['boss', '▶ Boss 戰']]) {
+      const b = document.createElement('button');
+      const on = playing && current.mode === mode;
+      b.textContent = on ? '■ 播放中' : label;
+      b.className = on ? 'on' + (mode === 'boss' ? ' boss' : '') : '';
+      b.onclick = () => play(id, mode);
+      btns.appendChild(b);
+    }
+    card.appendChild(btns);
+    grid.appendChild(card);
+  }
+  document.getElementById('now').textContent = current
+    ? `正在播放：${TRACKS[current.id].name}（${current.mode === 'boss' ? 'Boss 戰' : '一般戰鬥'}）` : '尚未播放';
+}
+document.getElementById('stop').onclick = stop;
+document.getElementById('vol').oninput = (e) => { if (master) master.gain.value = +e.target.value; };
+render();
+</script>
+</body>
+</html>

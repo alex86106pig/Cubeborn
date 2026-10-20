@@ -128,16 +128,17 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `preview.html` | 模型檢視頁（並排展示四個角色，可拖曳旋轉） |
 | `css/style.css` | HUD 與頁面樣式 |
 | `tools/serve.ps1` | 本機靜態伺服器（`http://localhost:5173`） |
-| `check.js` | 自動檢查：資料完整性與核心機制（`node check.js`） |
+| `check.js` | 自動檢查：資料完整性、核心機制、零件合併、音效對應（`node check.js`） |
 | `package.json` | Node 設定：檢查指令與檢查用的 three 套件（遊戲本身不需要） |
 | `docs/進度.md` | 跨對話交接檔 |
 | `docs/設計方向.md` | 設計目標與平衡品味（改核心玩法前必讀） |
 | `docs/新電腦設定.md` | 新電腦第一次使用本專案的設定步驟 |
 | `mockups/` | 給使用者挑選的對比頁（選定後刪除，見 2.5） |
+| `mockups/背景音樂.html` | 背景音樂三選一試聽頁（等使用者選定） |
 | `src/main.js` | 遊戲進入點：建立 Game 並啟動 |
 | `src/preview.js` | 模型檢視頁進入點 |
-| `src/Game.js` | 組合根：持有所有系統、主迴圈、命中停頓、重新開始、通關 |
-| `src/core/config.js` | 全域可調參數（迴圈、世界、相機、玩家、生成、除錯開關） |
+| `src/Game.js` | 組合根：持有所有系統、主迴圈、命中停頓、暫停、靜音鍵、重新開始、通關 |
+| `src/core/config.js` | 全域可調參數（迴圈、世界、相機、玩家、生成、音量、除錯開關） |
 | `src/core/version.js` | VERSION 常數（與 CHANGELOG、git tag 同步） |
 | `src/core/math.js` | 角度、插值、緩動等數學工具 |
 | `src/core/EventBus.js` | 發布/訂閱事件匯流排 |
@@ -145,7 +146,7 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `src/core/CooldownManager.js` | 統一冷卻時間管理 |
 | `src/core/Input.js` | 鍵盤/滑鼠狀態，「本步按下」查詢 |
 | `src/render/Renderer.js` | WebGLRenderer、場景、燈光、正交相機與跟隨 |
-| `src/render/rig.js` | 角色骨架 Rig、零件組 PartKit、幾何體工廠、材質工廠 |
+| `src/render/rig.js` | 角色骨架 Rig、零件組 PartKit（含零件合併 mergeStatic / optimize）、幾何體工廠、材質工廠 |
 | `src/render/environment.js` | 低多邊形地面、邊界點位、裝飾散佈 |
 | `src/render/WeaponModels.js` | 玩家武器外觀與姿勢同步 |
 | `src/render/Effects.js` | 粒子、揮砍弧光、衝擊環、地面預警 |
@@ -170,7 +171,8 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `src/world/Arena.js` | 依風格建立場地 |
 | `src/world/waveDefs.js` | 波次表與數值成長 |
 | `src/world/Spawner.js` | 分波生成、Boss 出場、召喚 |
-| `src/ui/HUD.js` | 血條、技能欄、波次、Boss 血條、橫幅、結算畫面 |
+| `src/ui/HUD.js` | 血條、技能欄、波次、FPS、靜音提示、Boss 血條、橫幅、暫停與結算畫面 |
+| `src/audio/Sound.js` | 音效：Web Audio 即時合成，CUES 音效表，訂閱事件播放 |
 
 ---
 

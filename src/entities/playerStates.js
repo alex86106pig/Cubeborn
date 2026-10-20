@@ -65,6 +65,16 @@ function poseIdleUpperBody(p, dt) {
 }
 
 // 攻擊與特殊技共用的三段式動作狀態
+// 進入攻擊階段：呼叫武器行為；進入 active 時播放武器資料指定的音效（終結技優先用 sfxHeavy）
+function enterPhase(p, data, index) {
+  const name = PHASES[index];
+  data.behavior.phase?.(p, data.def, data, name);
+  if (name === 'active') {
+    const sfx = data.isFinisher ? data.def.sfxHeavy ?? data.def.sfx : data.def.sfx;
+    if (sfx) p.game.events.emit('sfx:cue', { name: sfx });
+  }
+}
+
 function createTimedActionState(kind) {
   return {
     enter(p, data) {
@@ -81,7 +91,7 @@ function createTimedActionState(kind) {
         p.game.events.emit('skill:used', { key: 'player.special', def });
       }
       data.behavior.enter?.(p, def, data);
-      data.behavior.phase?.(p, def, data, PHASES[0]);
+      enterPhase(p, data, 0);
     },
 
     update(p, dt, fsm) {
@@ -90,7 +100,7 @@ function createTimedActionState(kind) {
       while (d.phaseIndex < PHASES.length && d.phaseTime >= d.durations[d.phaseIndex]) {
         d.phaseTime -= d.durations[d.phaseIndex];
         d.phaseIndex++;
-        if (d.phaseIndex < PHASES.length) d.behavior.phase?.(p, d.def, d, PHASES[d.phaseIndex]);
+        if (d.phaseIndex < PHASES.length) enterPhase(p, d, d.phaseIndex);
       }
       if (d.phaseIndex >= PHASES.length) {
         fsm.change('ready');

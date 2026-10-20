@@ -1,8 +1,11 @@
-// HUD（DOM）：血條、技能欄 CD、波次/擊殺、版號、浮動傷害數字、受擊暗角、死亡畫面
+// HUD（DOM）：血條、技能欄 CD、波次/擊殺、FPS、版號、浮動傷害數字、受擊暗角、暫停與死亡畫面
 import * as THREE from 'three';
 import { SLOT_COUNT } from '../skills/ActiveSlots.js';
 import { VERSION } from '../core/version.js';
 import { getStyle } from '../render/styles/index.js';
+
+const CONTROLS_TEXT = 'WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 1~5 道具 · Esc 暫停 · M 靜音 · F1 切換武器 · F2 顯示判定';
+const FPS_REFRESH = 0.5; // FPS 顯示每幾秒更新一次
 
 function formatTime(seconds) {
   const m = Math.floor(seconds / 60);
@@ -25,12 +28,29 @@ export class HUD {
   #floaters = [];
   #slotEls = new Map(); // cdKey -> slot element bundle
   #weaponId = null;
+  #fpsFrames = 0;
+  #fpsTime = 0;
+
+  // 以真實時間統計幀率，玩家可直接回報數字
+  #updateFps(dt) {
+    this.#fpsFrames++;
+    this.#fpsTime += dt;
+    if (this.#fpsTime < FPS_REFRESH) return;
+    this.fpsText.textContent = `FPS ${Math.round(this.#fpsFrames / this.#fpsTime)}`;
+    this.#fpsFrames = 0;
+    this.#fpsTime = 0;
+  }
+
+  #showMute(muted) {
+    this.muteText.textContent = muted ? '🔇 靜音（M）' : '';
+  }
 
   constructor(game, root) {
     this.game = game;
     this.root = root;
     this.#build();
     this.#bindEvents();
+    this.#showMute(game.sound.muted);
   }
 
   #build() {
@@ -46,6 +66,8 @@ export class HUD {
     this.waveText = el('div', 'wave', tr);
     this.killText = el('div', 'kills', tr);
     this.timeText = el('div', 'kills', tr);
+    this.fpsText = el('div', 'fps', tr);
+    this.muteText = el('div', 'mute', tr);
     el('div', 'version', tr, `v${VERSION}`);
 
     this.bossBar = el('div', 'boss-bar hidden', r);
@@ -65,7 +87,12 @@ export class HUD {
     this.gameOverStats = el('p', '', this.gameOver);
     el('p', 'hint', this.gameOver, '按 R 重新開始');
 
-    el('div', 'help', r, 'WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 1~5 道具 · F1 切換武器 · F2 顯示判定');
+    this.pauseOverlay = el('div', 'pause-overlay hidden', r);
+    el('h1', '', this.pauseOverlay, '已暫停');
+    el('p', 'hint', this.pauseOverlay, '按 Esc 繼續');
+    el('p', 'controls', this.pauseOverlay, CONTROLS_TEXT);
+
+    el('div', 'help', r, CONTROLS_TEXT);
     this.hpGhostValue = 1;
   }
 
@@ -133,6 +160,8 @@ export class HUD {
       this.gameOver.classList.add('victory');
       this.gameOver.classList.remove('hidden');
     });
+    ev.on('game:paused', ({ paused }) => this.pauseOverlay.classList.toggle('hidden', !paused));
+    ev.on('audio:muted', ({ muted }) => this.#showMute(muted));
     ev.on('game:restart', () => {
       this.gameOver.classList.add('hidden');
       this.bossGhostValue = 1;
@@ -164,6 +193,7 @@ export class HUD {
 
   update(dt) {
     const g = this.game;
+    this.#updateFps(dt);
     const player = g.player;
     if (player.weapon.id !== this.#weaponId) this.#buildSkillbar();
 
