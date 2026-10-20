@@ -319,7 +319,7 @@ export const SKILLS = {
 2. **實作**：先列出預計修改的檔案並取得使用者同意；遵守本文件；若需要偏離規範，先更新本文件再寫程式。
 3. **驗證**：執行 `node check.js`，全部通過；改到畫面或操作時，另外啟動本機伺服器在瀏覽器實測，確認 Console 無錯誤。
 4. **記錄**：更新 CHANGELOG 與 `version.js`；架構有變就更新本文件。
-5. **提交**：`git commit -m "vX.Y.Z: 摘要"`，`git tag vX.Y.Z`。不執行 `git push`。
+5. **提交**：`git commit -m "vX.Y.Z: 摘要"`，`git tag vX.Y.Z`。只有使用者當次明確要求時才 `git push`（見 `CLAUDE.md` 1.3）。
 6. **回報**：告訴使用者新版號、變更內容、驗證結果與已知問題。
 
 ---

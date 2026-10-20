@@ -1,2 +1,2 @@
-// 目前版號（必須與 CHANGELOG.md、git tag 一致）
-export const VERSION = '0.3.1';
+// ?桀???嚗??? CHANGELOG.md?it tag 銝?湛?
+export const VERSION = '0.3.2';

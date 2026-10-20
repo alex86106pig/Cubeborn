@@ -2,6 +2,13 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.3.2] - 2026-10-20
+
+### 修改
+- `CLAUDE.md` 1.3 推送規則：平常不推送，只有使用者當次明確要求時才 `git push origin main --tags`，推送前 `check.js` 必須通過，禁止強制推送。
+- `CLAUDE.md` 新增 1.7 試玩網站（GitHub Pages）：遊戲必須維持純靜態檔案、相對路徑。
+- `package.json` 移除 version 欄位，版號只以 `version.js`、CHANGELOG、git tag 為準。
+
 ## [0.3.1] - 2026-10-20
 
 自動檢查與設計方向。

@@ -1,6 +1,5 @@
 {
   "name": "cubeborn",
-  "version": "0.3.1",
   "private": true,
   "description": "Cubeborn 遊戲原型。Node 只用於執行 check.js，遊戲本身不需建置。",
   "type": "module",
