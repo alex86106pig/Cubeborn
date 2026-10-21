@@ -161,14 +161,15 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `mockups/` | 給使用者挑選的對比頁（選定後刪除，見 2.5） |
 | `mockups/背景音樂.html` | 背景音樂試聽頁：已選定 B 哥德輓歌，做進 Godot 版時作為參考，完成後刪除 |
 | `godot/project.godot` | Godot 專案設定（4.7、Forward+、1920×1080） |
-| `godot/main.tscn` / `main.gd` | Godot 組合根：主迴圈（每秒 60 步）、命中停頓、暫停、重新開始、畫面震動事件、F1 切武器、自動驗證參數（`--seconds`、`--screenshot`、`--auto-move`、`--auto-attack`、`--weapon`、`--wave`） |
+| `godot/main.tscn` / `main.gd` | Godot 組合根：主迴圈（每秒 60 步）、命中停頓、暫停、重新開始、畫面震動事件、F1 切武器、自動驗證參數（`--seconds`、`--screenshot`、`--auto-move`、`--auto-attack`、`--weapon`、`--wave`、`--player-hp`） |
 | `godot/core/` | config、version、math_util、state_machine、cooldowns、game_events（autoload `GameEvents`） |
-| `godot/defs/` | 資料表：weapon_defs（劍盾、法杖）、enemy_defs（grunt / archer / boss）、wave_defs（5 波與成長倍率） |
-| `godot/sim/` | 模擬層（不碰場景樹）：world（含通關流程）、input_cmd、entity、player、player_states（雙層狀態機）、weapon_behaviors、combat、projectile、enemy（敵人基底與共用狀態）、spawner（分波生成）、physics（格子碰撞分離） |
+| `godot/defs/` | 資料表：weapon_defs（劍盾、法杖）、enemy_defs（grunt / archer / boss）、wave_defs（5 波與成長倍率）、skill_defs（治療藥水、疾跑） |
+| `godot/sim/` | 模擬層（不碰場景樹）：world（含通關流程）、input_cmd、entity、player、player_states（雙層狀態機）、weapon_behaviors、combat、projectile、enemy（敵人基底與共用狀態）、spawner（分波生成）、physics（格子碰撞分離）、active_slots（數字鍵欄位）、skill_behaviors |
 | `godot/sim/enemies/` | melee_enemy、ranged_enemy、boss |
 | `godot/input/input_collector.gd` | 按鍵註冊、InputMap → InputCmd（螢幕方向轉世界、滑鼠投射地面、鎖存按下） |
 | `godot/view/` | 畫面層：camera_rig（正交等距相機）、world_view（依 id 建模型、補間）、rig（關節階層與各角色外觀，零件暫用方塊）、animator（玩家姿勢）、enemy_animator（敵人姿勢、Boss 地面預警）、arena_view（暫時場地） |
-| `godot/ui/hud.tscn` / `hud.gd` | Godot HUD（目前：版號、FPS、暫停提示） |
+| `godot/ui/hud.tscn` / `hud.gd` | Godot HUD：血條、波次 / 擊殺 / 時間、Boss 血條、橫幅、受擊暗角、暫停與結算畫面 |
+| `godot/ui/skill_bar.gd` / `floaters.gd` / `ui_kit.gd` | 技能欄（CD 遮罩、次數）、浮動數字、HUD 共用的文字 / 色塊 / 顏色 |
 | `godot/tests/check.gd` | Godot 自動檢查（headless：`--headless --path . -s res://tests/check.gd`） |
 | `godot/tests/capture.tscn` / `capture.gd` | 畫面測試專用：離屏 1920×1080 繪製＋右下角 64×64 不搶焦點視窗，供截圖驗證（見 1.8） |
 | `godot/stress_test/` | 效能壓力測試：大量敵人與投射物（資料導向 + MultiMesh + 格子碰撞），印出 FPS 與各段邏輯耗時 |

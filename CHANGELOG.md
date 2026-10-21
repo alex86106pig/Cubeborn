@@ -2,6 +2,23 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.9.0] - 2026-10-21
+
+Godot 版里程碑 4：數字鍵技能欄、HUD、暫停與結算畫面（照網頁版 1:1 搬移）。現在可以完整玩一局。
+
+### 新增
+- `godot/defs/skill_defs.gd`、`sim/skill_behaviors.gd`、`sim/active_slots.gd`：治療藥水（3 次、回 35、間隔 1.5 秒、滿血不能用）、疾跑（3 秒移速 ×1.6、CD 8 秒）；CD key `player.slot1`~`slot5`。
+- 玩家：數字鍵緩衝（同右鍵，可取消攻擊後搖）、動作層 `useItem`（0.18 秒）、增益效果（疾跑殘影顏色記在 `anim.trail_color`，特效里程碑再畫）。
+- `godot/ui/hud.gd`（重寫）＋ `skill_bar.gd`、`floaters.gd`、`ui_kit.gd`：血條與殘影、武器名稱、波次 / 擊殺 / 時間 / FPS / 版號、Boss 血條（狂暴變紅）、技能欄（扇形 CD 遮罩、秒數、剩餘次數、不能用時閃紅）、波次與狂暴橫幅、受擊暗角、浮動傷害 / 治療數字、死亡與勝利結算、暫停畫面、操作說明。樣式照搬 `css/style.css`。
+- 指令列 `--player-hp=N`（開場血量，截圖驗證用）。
+- `tests/check.gd` 新增 4 項（共 41 項）：治療藥水、疾跑與道具動作時間、數字鍵緩衝、HUD 建立與事件處理。
+
+### 修改
+- `godot/project.godot`：Godot 編輯器存檔時刪掉了等於預設值的兩行（每秒 60 物理步、Forward+ 渲染器），行為不變；`PROJECT_GUIDELINES.md` 15.3 加註說明。
+
+### 修復
+- **`tests/check.gd` 抓不到執行期錯誤**：Godot 的 SCRIPT ERROR 只會印出、函式繼續往下跑，v0.8.0 加的「回傳 null 算失敗」實際上不會觸發。改為掛 `Logger` 計數，檢查期間只要有任何錯誤就算失敗（已確認會抓到）。
+
 ## [0.8.0] - 2026-10-21
 
 Godot 版里程碑 3：敵人、Boss、5 波流程（照網頁版 1:1 搬移）。網頁版正式凍結。

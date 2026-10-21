@@ -25,9 +25,4 @@ window/size/viewport_height=1080
 
 [physics]
 
-common/physics_ticks_per_second=60
 common/max_physics_steps_per_frame=5
-
-[rendering]
-
-renderer/rendering_method="forward_plus"

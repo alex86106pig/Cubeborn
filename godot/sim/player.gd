@@ -1,5 +1,4 @@
-# 玩家：讀取 InputCmd、雙層狀態機（移動層 / 動作層）、武器、輸入緩衝；照搬網頁版 Player.js
-# 主動欄位與增益效果在里程碑 4 加入
+# 玩家：讀取 InputCmd、雙層狀態機（移動層 / 動作層）、武器、輸入緩衝、主動欄位與增益效果；照搬網頁版 Player.js
 class_name Player
 extends Entity
 
@@ -11,7 +10,9 @@ var weapon: Dictionary = {}
 var weapon_id: StringName = &""
 var combo_step := 0
 var combo_timer := 0.0
-var buffered_action: Dictionary = {}   # { type: &"special", time }；空 = 沒有緩衝
+var buffered_action: Dictionary = {}   # { type: &"special" | &"slot", index?, time }；空 = 沒有緩衝
+var slots := ActiveSlots.new(Config.PLAYER.slots)
+var buffs: Dictionary = {}             # id -> { remaining, speed_mul?, trail_color? }
 var forced_velocity := Vector2.ZERO
 var has_forced_velocity := false
 var locomotion: StateMachine
@@ -48,6 +49,19 @@ func equip_weapon(id: StringName) -> void:
 	action.change(&"ready")
 
 
+func add_buff(id: StringName, duration: float, mods: Dictionary) -> void:
+	var buff := mods.duplicate()
+	buff["remaining"] = duration
+	buffs[id] = buff
+
+
+func speed_mul() -> float:
+	var mul := 1.0
+	for buff: Dictionary in buffs.values():
+		mul *= buff.get("speed_mul", 1.0)
+	return mul
+
+
 func update(dt: float) -> void:
 	_tick_timers(dt)
 	if is_dead:
@@ -62,7 +76,7 @@ func update(dt: float) -> void:
 	if has_forced_velocity:
 		velocity = forced_velocity
 	else:
-		velocity = move_input * (Config.PLAYER.move_speed * data.get("move_speed_mul", 1.0))
+		velocity = move_input * (Config.PLAYER.move_speed * data.get("move_speed_mul", 1.0) * speed_mul())
 
 	if not data.get("lock_facing", false):
 		var target := MathUtil.angle_to(pos, aim_point)
@@ -74,6 +88,10 @@ func update(dt: float) -> void:
 
 func _tick_timers(dt: float) -> void:
 	combo_timer = maxf(0.0, combo_timer - dt)
+	for id: StringName in buffs.keys():
+		buffs[id].remaining -= dt
+		if buffs[id].remaining <= 0.0:
+			buffs.erase(id)
 	if not buffered_action.is_empty():
 		buffered_action.time -= dt
 		if buffered_action.time <= 0.0:
@@ -81,9 +99,22 @@ func _tick_timers(dt: float) -> void:
 
 
 func _read_input() -> void:
+	var buffer_time: float = Config.PLAYER.action_buffer_time
 	if _pressed & InputCmd.BTN_SPECIAL:
-		buffered_action = {"type": &"special", "time": Config.PLAYER.action_buffer_time}
+		buffered_action = {"type": &"special", "time": buffer_time}
+	for i in ActiveSlots.SLOT_COUNT:
+		if _pressed & InputCmd.slot_bit(i):
+			buffered_action = {"type": &"slot", "index": i, "time": buffer_time}
 	_pressed = 0
+
+
+# 目前的殘影顏色（最後加上的增益優先）；沒有則為 null
+func trail_color() -> Variant:
+	var color: Variant = null
+	for buff: Dictionary in buffs.values():
+		if buff.has("trail_color"):
+			color = buff.trail_color
+	return color
 
 
 func _update_anim() -> void:
@@ -99,6 +130,7 @@ func _update_anim() -> void:
 		"k": d.get("k", 0.0),
 		"swing_dir": d.get("swing_dir", 1),
 		"is_finisher": d.get("is_finisher", false),
+		"trail_color": trail_color(),   # 疾跑殘影（特效里程碑再畫）
 	}
 
 

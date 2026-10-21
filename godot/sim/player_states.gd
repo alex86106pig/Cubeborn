@@ -14,6 +14,7 @@ static func action_states() -> Dictionary:
 		&"ready": Ready.new(),
 		&"attack": TimedAction.new(&"attack"),
 		&"special": TimedAction.new(&"special"),
+		&"useItem": UseItem.new(),
 		&"stagger": Stagger.new(),
 	}
 
@@ -52,6 +53,11 @@ class Ready:
 					fsm.change(&"special")
 					return
 				p.world.emit_event("skill:onCooldown", {"key": "player.special", "player_id": p.id})
+			elif buffered.type == &"slot":
+				if p.slots.can_use(p, buffered.index):
+					fsm.change(&"useItem", {"index": buffered.index})
+					return
+				p.slots.notify_blocked(p, buffered.index)
 		if p.is_attack_held:
 			fsm.change(&"attack")
 
@@ -109,6 +115,16 @@ class TimedAction:
 			var sfx: String = data.def.get("sfx_heavy", data.def.sfx) if data.get("is_finisher", false) else data.def.get("sfx", "")
 			if sfx != "":
 				p.world.emit_event("sfx:cue", {"cue": sfx})
+
+
+class UseItem:
+	func enter(p: Player, data: Dictionary, _fsm: StateMachine) -> void:
+		data.move_speed_mul = 1.0
+		p.slots.use(p, data.index)
+
+	func update(_p: Player, _dt: float, fsm: StateMachine) -> void:
+		if fsm.time >= Config.PLAYER.use_item_time:
+			fsm.change(&"ready")
 
 
 class Stagger:

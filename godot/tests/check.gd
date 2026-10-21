@@ -20,9 +20,28 @@ const SIM_FORBIDDEN := {
 var _passed := 0
 var _failed := 0
 var _worlds: Array[World] = []   # 結束前全部 clear()，避免循環參照造成洩漏警告
+var _errors := _ErrorCounter.new()
+
+
+# Godot 的執行期錯誤（SCRIPT ERROR）只會印出來、函式照樣往下跑，檢查本身看不出來；
+# 掛一個 Logger 計數，檢查期間有任何錯誤就算失敗
+class _ErrorCounter extends Logger:
+	var count := 0
+	var last := ""
+
+	func _log_error(_function: String, file: String, line: int, code: String, rationale: String,
+			_editor_notify: bool, error_type: int, _script_backtraces: Array[ScriptBacktrace]) -> void:
+		if error_type == Logger.ERROR_TYPE_WARNING:
+			return
+		count += 1
+		last = "%s（%s:%d）" % [rationale if rationale != "" else code, file, line]
+
+	func _log_message(_message: String, _error: bool) -> void:
+		pass
 
 
 func _initialize() -> void:
+	OS.add_logger(_errors)
 	print("Cubeborn Godot 自動檢查\n")
 	_check("編譯：專案內所有 .gd（含畫面層、main）都能編譯", _check_all_scripts_compile)
 	_check("模擬層：sim/ 沒有使用禁止的 API（Input、節點、全域隨機、時間、讀檔、畫面層）", _check_sim_forbidden)
@@ -61,17 +80,24 @@ func _initialize() -> void:
 	_check("碰撞分離：格子切分與兩兩比對結果一致（80 個實體）", _check_grid_matches_brute_force)
 	_check("決定性：有敵人與波次時，同種子、同輸入的兩個 World 結果相同", _check_determinism_with_enemies)
 	_check("記憶體：敵人移除後 CD 清除、實體會被釋放", _check_enemy_release)
+	_check("治療藥水：3 次、回 35 血不超過上限、滿血不能用、間隔 1.5 秒、用完不能再用", _check_heal_slot)
+	_check("疾跑：移速 6.5 × 1.6 = 10.4、持續 3 秒、CD 8 秒；使用道具動作 0.18 秒", _check_sprint_slot)
+	_check("數字鍵緩衝：攻擊中按 1 會在後搖取消並使用道具；空欄位不提示", _check_slot_buffer)
+	_check("HUD：能建立、處理各種事件、顯示波次 / 血量 / 結算文字", _check_hud)
 	for w in _worlds:
 		w.clear()
 	_worlds.clear()
 	print("\n%d / %d 通過" % [_passed, _passed + _failed])
+	OS.remove_logger(_errors)
 	quit(1 if _failed > 0 else 0)
 
 
 func _check(title: String, fn: Callable) -> void:
+	var errors_before := _errors.count
 	var result: Variant = fn.call()
-	# 檢查函式執行中出錯時會回傳 null；不能當成通過
-	var err: String = "執行時發生錯誤（見上方 SCRIPT ERROR）" if result == null else result
+	var err: String = result if result is String else "檢查函式沒有回傳結果"
+	if _errors.count > errors_before:
+		err = "執行期間發生 %d 個錯誤，最後一個：%s" % [_errors.count - errors_before, _errors.last]
 	if err == "":
 		_passed += 1
 		print("✔ ", title)
@@ -964,6 +990,145 @@ func _check_enemy_release() -> String:
 		return "移除後 CD %s 應被清除" % key
 	if ref.get_ref() != null or not w.enemies.is_empty():
 		return "移除後弓手仍存在"
+	return ""
+
+
+func _press_slot(w: World, index: int, events: Array[Dictionary], move: Vector2 = Vector2.ZERO) -> void:
+	_run_collect(w, _cmd(move, Vector2(0, 5), InputCmd.slot_bit(index)), 1, events)
+
+
+func _check_heal_slot() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var events: Array[Dictionary] = []
+	_press_slot(w, 0, events)
+	if _named(events, "skill:onCooldown").is_empty() or p.slots.slots[0].charges != 3:
+		return "滿血時使用應被擋下（skill:onCooldown）且不扣次數"
+	p.hp = 50.0
+	events.clear()
+	_press_slot(w, 0, events)
+	if p.hp != 85.0 or p.slots.slots[0].charges != 2 or not p.action.is_in(&"useItem"):
+		return "50 血喝藥後 hp=%.0f charges=%d 狀態=%s，預期 85 / 2 / useItem" % [p.hp, p.slots.slots[0].charges, p.action.current_name]
+	var healed := _named(events, "entity:healed")
+	if healed.is_empty() or healed[0].amount != 35:
+		return "entity:healed 應為 35"
+	_run(w, _cmd(Vector2.ZERO), 20)
+	events.clear()
+	_press_slot(w, 0, events)
+	if p.slots.slots[0].charges != 2 or _named(events, "skill:onCooldown").is_empty():
+		return "1.5 秒內再喝應被擋下"
+	_run(w, _cmd(Vector2.ZERO), ceili(1.5 / DT))
+	p.hp = 90.0
+	events.clear()
+	_press_slot(w, 0, events)
+	if p.hp != 100.0 or _named(events, "entity:healed")[0].amount != 10:
+		return "90 血喝藥應補到 100（回 10），實際 hp=%.0f" % p.hp
+	_run(w, _cmd(Vector2.ZERO), ceili(1.5 / DT) + 1)
+	p.hp = 10.0
+	_press_slot(w, 0, events)
+	_run(w, _cmd(Vector2.ZERO), ceili(1.5 / DT) + 1)
+	events.clear()
+	_press_slot(w, 0, events)
+	if p.slots.slots[0].charges != 0 or p.hp != 45.0 or _named(events, "skill:onCooldown").is_empty():
+		return "3 次用完後不能再喝：charges=%d hp=%.0f" % [p.slots.slots[0].charges, p.hp]
+	return ""
+
+
+func _check_sprint_slot() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var events: Array[Dictionary] = []
+	_press_slot(w, 1, events, Vector2(1, 0))
+	if not p.action.is_in(&"useItem"):
+		return "按 2 應進入 useItem，實際 %s" % p.action.current_name
+	var item_steps := 1
+	while p.action.is_in(&"useItem") and item_steps < 60:
+		_run(w, _cmd(Vector2(1, 0)), 1)
+		item_steps += 1
+	if item_steps - 1 != ceili(0.18 / DT):
+		return "使用道具動作 %d 步，預期 %d" % [item_steps - 1, ceili(0.18 / DT)]
+	if absf(p.velocity.length() - 6.5 * 1.6) > EPS:
+		return "疾跑移速 %.3f，預期 10.4" % p.velocity.length()
+	if p.anim.trail_color == null:
+		return "疾跑中 anim.trail_color 應有顏色（給畫面畫殘影）"
+	_run(w, _cmd(Vector2(1, 0)), ceili(3.0 / DT) - item_steps + 2)
+	if absf(p.velocity.length() - 6.5) > EPS:
+		return "3 秒後移速 %.3f，應回到 6.5" % p.velocity.length()
+	var cd := w.cooldowns.remaining(ActiveSlots.cd_key(1))
+	var elapsed := (w.tick - 1) * DT
+	if absf(cd - (8.0 - elapsed)) > DT * 1.5:
+		return "疾跑 CD 剩 %.3f，預期約 %.3f" % [cd, 8.0 - elapsed]
+	return ""
+
+
+func _check_slot_buffer() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	p.hp = 40.0
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1)
+	_run(w, _cmd(Vector2.ZERO), 1)
+	var events: Array[Dictionary] = []
+	_press_slot(w, 0, events)
+	var started := -1
+	for i in 30:
+		_run(w, _cmd(Vector2.ZERO), 1)
+		if p.action.is_in(&"useItem"):
+			started = w.tick
+			break
+	if started < 0 or started >= 23 or p.hp != 75.0:
+		return "攻擊中按 1：第 %d 步才使用、hp=%.0f（應在後搖取消並回到 75）" % [started, p.hp]
+	events.clear()
+	_press_slot(w, 3, events)
+	_run_collect(w, _cmd(Vector2.ZERO), 30, events)
+	if not _named(events, "skill:onCooldown").is_empty():
+		return "空欄位不應發出 skill:onCooldown"
+	return ""
+
+
+# -s 執行的檢查腳本在 autoload 註冊前就編譯，不能直接寫 HUD / GameEvents 型別（hud.gd 引用了 GameEvents），
+# 所以 HUD 用 load() 在執行時載入、變數不寫型別，事件直接交給 HUD
+func _feed_hud(hud: Node, events: Array[Dictionary]) -> void:
+	for e in events:
+		hud._on_event(e.name, e)
+
+
+func _check_hud() -> String:
+	var w := _new_world(5, true)
+	var cam := Camera3D.new()
+	root.add_child(cam)
+	var hud: Variant = load("res://ui/hud.tscn").instantiate()
+	hud.setup(w, cam)
+	root.add_child(hud)
+	var p := _player(w)
+	hud._process(DT)
+	if hud._wave.text != "準備中" or hud._hp.text.text != "100 / 100":
+		return "開場文字錯誤：%s / %s" % [hud._wave.text, hud._hp.text.text]
+	_run(w, _cmd(Vector2.ZERO), 70)
+	_feed_hud(hud, w.events)
+	hud._process(DT)
+	if hud._wave.text != "第 1 / 5 波":
+		return "波次文字 %s" % hud._wave.text
+	var b := _spawn(w, &"boss", Vector2(5, 5))
+	_run(w, _cmd(Vector2.ZERO), 30)
+	Combat.apply_damage(w, p, b, {"damage": 500.0, "is_crit": true})
+	p.hp = 50.0
+	Combat.apply_damage(w, b, p, {"damage": 10.0})
+	_feed_hud(hud, w.events)
+	hud._process(DT)
+	if not hud._boss_box.visible or not hud._boss_name.text.contains("狂暴"):
+		return "Boss 血條應顯示且標示狂暴：visible=%s name=%s" % [hud._boss_box.visible, hud._boss_name.text]
+	if hud._floaters.get_child_count() < 2:
+		return "應產生浮動數字，實際 %d 個" % hud._floaters.get_child_count()
+	for name in ["game:paused", "player:died", "game:victory", "game:restart"]:
+		var payload := {"paused": true, "stats": w.stats.duplicate()}
+		hud._on_event(name, payload)
+	if hud._game_over.visible or hud._pause.visible:
+		return "game:restart 後結算與暫停畫面應隱藏"
+	hud._on_event("game:victory", {"stats": w.stats.duplicate()})
+	if not hud._game_over.visible or hud._game_over_title.text != "勝利！":
+		return "game:victory 應顯示勝利畫面"
+	hud.queue_free()
+	cam.queue_free()
 	return ""
 
 

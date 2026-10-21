@@ -386,7 +386,7 @@ InputCollector ──► InputCmd ──► World.step(cmds, dt) ──► 快�
 - **單機 = 沒有連線的房主**：單機時本機同時當權威端與玩家，走的是跟連線房主完全相同的程式路徑，不另寫一套單機邏輯。
 
 ### 15.3 主迴圈與時間
-- 模擬固定每秒 60 步：使用 Godot 內建 `_physics_process`，`project.godot` 設 `physics/common/physics_ticks_per_second=60`、`max_physics_steps_per_frame=5`（對應網頁版 `FIXED_DT`、`MAX_STEPS_PER_FRAME`）。不使用 Godot 的物理引擎與物理節點，只借用它的固定步長。
+- 模擬固定每秒 60 步：使用 Godot 內建 `_physics_process`，`physics/common/physics_ticks_per_second=60`、`max_physics_steps_per_frame=5`（對應網頁版 `FIXED_DT`、`MAX_STEPS_PER_FRAME`）。每秒 60 步與 Forward+ 渲染器都是 Godot 預設值，Godot 編輯器存檔時會把等於預設值的設定從 `project.godot` 刪掉，看不到是正常的。不使用 Godot 的物理引擎與物理節點，只借用它的固定步長。
 - 組合根 `main.gd` 在 `_physics_process` 收集輸入 → `world.step()` → 分送事件；畫面在 `_process` 以 `Engine.get_physics_interpolation_fraction()` 在上一步與這一步的位置之間補間，高更新率螢幕也平順。
 - 更新順序與網頁版第 4 節相同（CD → 玩家 → 敵人 → 投射物 → 位移 → 碰撞分離 → 場地限制 → 生成器 → 清除）。
 - 「本步按下」由 `InputCollector` 鎖存：兩次 `step` 之間按過就算，送出後才清除，不漏按。
@@ -437,7 +437,7 @@ godot/
 ├─ net/                       連線（階段二）
 ├─ view/                      world_view.gd、arena_view.gd、camera_rig.gd、animator.gd、enemy_animator.gd、rig.gd、part_kit.gd、effects.gd、
 │  └─ styles/                 dark_fantasy.gd（第 14 節介面照搬）
-├─ ui/                        hud.tscn / hud.gd
+├─ ui/                        hud.tscn / hud.gd、skill_bar.gd、floaters.gd、ui_kit.gd
 ├─ audio/                     sound.gd、sfx/*.wav、music/
 ├─ tools/                     bake_sfx.gd（headless 產生音效 WAV）
 ├─ tests/                     check.gd（headless 自動檢查）、capture.tscn / capture.gd（離屏截圖）

@@ -1,6 +1,6 @@
 # 組合根：建立 World、輸入、畫面與 HUD；固定步長主迴圈、命中停頓、暫停、重新開始
 # 指令列參數（放在 -- 之後）：--seconds=S --screenshot=路徑 --auto-move=x,y（螢幕方向）
-#   --auto-attack（一直按住左鍵）--weapon=staff（開場武器）--wave=N（直接從第 N 波開始，除錯用）
+#   --auto-attack（一直按住左鍵）--weapon=staff（開場武器）--wave=N（直接從第 N 波開始）--player-hp=N（開場血量），後兩者除錯用
 extends Node3D
 
 const HUD_SCENE := preload("res://ui/hud.tscn")
@@ -20,6 +20,7 @@ var _screenshot_path := ""
 var _elapsed := 0.0
 var _start_weapon: StringName = &""
 var _start_wave := 0
+var _start_hp := 0.0
 
 
 func _ready() -> void:
@@ -31,7 +32,9 @@ func _ready() -> void:
 	arena_view.build(world.arena_half_size)
 	input_collector.camera_rig = camera_rig
 	add_child(input_collector)
-	add_child(HUD_SCENE.instantiate())
+	var hud: HUD = HUD_SCENE.instantiate()
+	hud.setup(world, camera_rig.camera)
+	add_child(hud)
 	GameEvents.event_emitted.connect(_on_event)
 	restart()
 
@@ -55,6 +58,8 @@ func _parse_args() -> void:
 			_start_weapon = StringName(arg.get_slice("=", 1))
 		elif arg.begins_with("--wave="):
 			_start_wave = arg.get_slice("=", 1).to_int()
+		elif arg.begins_with("--player-hp="):
+			_start_hp = arg.get_slice("=", 1).to_float()
 
 
 func local_player() -> Player:
@@ -67,6 +72,8 @@ func restart() -> void:
 		local_player().equip_weapon(_start_weapon)
 	if _start_wave > 1:
 		world.spawner.wave = _start_wave - 1
+	if _start_hp > 0.0:
+		local_player().hp = _start_hp
 	_sim_accumulator = 0.0
 	input_collector.consume_latched()
 	GameEvents.emit_all(world.events)

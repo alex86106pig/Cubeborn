@@ -87,6 +87,9 @@ func _pose_action(p: Player, a: Dictionary, dt: float) -> void:
 					_pose_fire_bolt(idle, a, e)
 				&"arcaneBurst":
 					_pose_arcane_burst(idle, a, e)
+		&"useItem":
+			var k := clampf(a.action_time / Config.PLAYER.use_item_time, 0.0, 1.0)
+			rig.arm_l.rotation.x = lerpf(0.0, -2.4, sin(k * PI))
 		&"stagger":
 			var k := clampf(a.action_time / Config.PLAYER.stagger_time, 0.0, 1.0)
 			rig.body.rotation.x = -0.3 * sin(k * PI)
