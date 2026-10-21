@@ -436,7 +436,7 @@ godot/
 ├─ ui/                        hud.tscn / hud.gd
 ├─ audio/                     sound.gd、sfx/*.wav、music/
 ├─ tools/                     bake_sfx.gd（headless 產生音效 WAV）
-├─ tests/                     check.gd（headless 自動檢查）
+├─ tests/                     check.gd（headless 自動檢查）、capture.tscn / capture.gd（離屏截圖）
 └─ stress_test/               效能壓力測試（保留作為效能基準）
 ```
 - 依賴方向：`core` ← `defs` ← `sim` ← `view` / `ui` / `audio` / `net` ← `main`。`sim` 不得引用 `view`、`ui`、`audio`、`input`、`net`。
@@ -466,5 +466,5 @@ godot/
 - `tests/check.gd`（作用等同 `check.js`），在 `godot/` 內執行：`<Godot console 執行檔> --headless --path . -s res://tests/check.gd`，全部通過才算完成。網頁版仍用 `node check.js`。
 - 因為模擬層不依賴場景樹，檢查可以直接建立 `World`、餵假的 `InputCmd`、推進 N 步讀數值（例如移動 1 秒的距離、三段攻擊總時間、CD 是否到期）。
 - 搬移時對照網頁版：同樣輸入下的移速、攻擊時間、傷害、CD、波次數量要與網頁版一致，數字寫進回報。
-- 畫面、操作、手感用視窗模式實測並存截圖（截圖存暫存資料夾，不進版控）。
+- 畫面用離屏截圖場景 `tests/capture.tscn` 驗證（用法與「開視窗前先問使用者」的規則見 `CLAUDE.md` 1.8），截圖存暫存資料夾，不進版控；手感與效能定案以使用者實際遊玩為準。
 - 版號：Godot 版建立 `core/version.gd` 後，版號必須四處一致（`CHANGELOG.md`、`src/core/version.js`、`godot/core/version.gd`、git tag）；遊戲畫面角落顯示版號。

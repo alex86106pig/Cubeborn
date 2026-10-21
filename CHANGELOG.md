@@ -2,6 +2,17 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.6.1] - 2026-10-21
+
+Godot 畫面測試不再蓋住使用者螢幕。
+
+### 新增
+- `godot/tests/capture.tscn`／`capture.gd`：離屏截圖場景。遊戲畫在看不見的 1920×1080 SubViewport，截圖仍是完整解析度；實際視窗只有右下角 64×64 且不搶焦點。遊戲本體不受影響。
+- `CLAUDE.md` 1.8：畫面驗證改用離屏截圖場景；**開 Godot 視窗前先問使用者**，截圖集中在最後一次跑完。
+
+### 修改
+- `PROJECT_GUIDELINES.md` 15.8、15.10 對應更新。
+
 ## [0.6.0] - 2026-10-21
 
 Godot 版里程碑 1：遊戲骨架（單機，照 `PROJECT_GUIDELINES.md` 第 15 節三層分離）。

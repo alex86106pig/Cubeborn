@@ -69,7 +69,14 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 - **網頁版（根目錄）只修 bug、不加新功能**，作為「玩法已驗證的設計圖」：數值、手感、Boss 招式、波次照著搬到 Godot。網頁版的規則（1.4 驗收、1.7 網站）在轉換期間仍適用。
 - **Godot 執行檔**：每台電腦路徑不同，寫在該電腦的 `CLAUDE.local.md`（見 3.3），指令列用 `_console` 版。不要自己下載安裝。
 - 常用指令（在 `godot/` 內）：匯入 `--headless --import --path .`；執行主場景 `--path . -- 參數`。
-- 驗證方式：邏輯用 `--headless` 執行並讀輸出；畫面用視窗模式執行並存截圖（目前由壓力測試的 `--screenshot=路徑` 參數提供），截圖存在暫存資料夾、不進版控。
+- 驗證方式：邏輯用 `--headless` 執行並讀輸出（不開視窗，隨時可跑）。畫面用離屏截圖場景 `tests/capture.tscn`：`--path . --resolution 64x64 res://tests/capture.tscn -- --seconds=S --screenshot=路徑`（可加 `--auto-move=x,y` 模擬移動）。遊戲畫在看不見的 1920×1080 畫布，截圖是完整解析度；實際視窗只有右下角 64×64、不搶焦點。截圖存在暫存資料夾、不進版控。
+- **開 Godot 視窗前先問使用者**（含離屏截圖、壓力測試、任何非 `--headless` 的執行）：
+  - 平常做法：先在對話說明要開視窗做什麼，等使用者回答可以才執行；同一次工作需要的截圖集中在最後一次跑完，不中途反覆開。
+  - 判斷：使用者在當次對話、針對這次工作已經說「可以開視窗」就不必再問；之前的同意不沿用。使用者沒回應就停在這一步等，改做其他不需要視窗的工作或先回報。
+  - 例外：`--headless` 的檢查與匯入不開視窗，不需要問。
+  - 禁止直接開一般視窗模式（1920×1080 會蓋滿整個螢幕）；`--position` 開到螢幕外無效，Windows 會拉回畫面內。
+  - 為什麼：使用者可能正在玩其他遊戲，突然跳出視窗會害他被打斷；直接開視窗曾經蓋住使用者整個螢幕。
+  - 離屏截圖的 FPS 只能參考，效能定案以使用者實際全螢幕遊玩為準。
 - **多人連線從第一天就設計進架構**（權威端、同步方式），正式規範寫進 `PROJECT_GUIDELINES.md` 後才開始寫遊戲本體。
 - 效能判斷依據見 `docs/進度.md` 的壓力測試數字；GDScript 不夠快的部分，才改用 C++（GDExtension）。
 
@@ -160,6 +167,7 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `godot/view/` | 畫面層：camera_rig（正交等距相機）、world_view（依 id 建模型、補間）、arena_view（暫時場地） |
 | `godot/ui/hud.tscn` / `hud.gd` | Godot HUD（目前：版號、FPS、暫停提示） |
 | `godot/tests/check.gd` | Godot 自動檢查（headless：`--headless --path . -s res://tests/check.gd`） |
+| `godot/tests/capture.tscn` / `capture.gd` | 畫面測試專用：離屏 1920×1080 繪製＋右下角 64×64 不搶焦點視窗，供截圖驗證（見 1.8） |
 | `godot/stress_test/` | 效能壓力測試：大量敵人與投射物（資料導向 + MultiMesh + 格子碰撞），印出 FPS 與各段邏輯耗時 |
 | `src/main.js` | 遊戲進入點：建立 Game 並啟動 |
 | `src/preview.js` | 模型檢視頁進入點 |
