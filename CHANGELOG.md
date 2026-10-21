@@ -2,6 +2,27 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.8.0] - 2026-10-21
+
+Godot 版里程碑 3：敵人、Boss、5 波流程（照網頁版 1:1 搬移）。網頁版正式凍結。
+
+### 新增
+- `godot/defs/enemy_defs.gd`、`wave_defs.gd`：grunt / archer / boss 數值、5 波內容與成長倍率；網頁版寫死在行為裡的數字（接觸判定寬容距離、Boss 招式的震動 / 停頓、召喚間距、射擊延遲範圍）改成欄位。
+- `godot/sim/enemy.gd`：敵人共用的爬出 / 受擊硬直 / 倒地沉沒、接觸傷害、波次倍率、移除時清除自己的 CD。
+- `godot/sim/enemies/`：近戰小怪（追擊）、遠程小怪（保持 6~10 單位、橫移、瞄準 0.75 秒）、Boss（重砸、衝鋒撞牆暈眩、召喚、狂暴、霸體）。
+- `godot/sim/spawner.gd`：分波生成，隨機一律用 `world.rng`（同種子結果相同）。
+- 通關流程：打倒 Boss 後其餘敵人倒下、敵方投射物消失、2.2 秒後 `game:victory`；擊殺數統計。
+- `godot/view/enemy_animator.gd`：敵人姿勢（照搬網頁版公式）與 Boss 地面預警（重砸圓圈、衝鋒直線）；`view/rig.gd` 加上骷髏戰士、骷髏弓手、亡骸騎士（暫用方塊）與敵人箭矢外觀。
+- 指令列 `--wave=N` 直接從第 N 波開始（截圖驗證用）。
+- `tests/check.gd` 新增 13 項（共 37 項）：所有腳本可編譯、模擬層音效名稱、波次資料、生成、一局流程、近戰 / 遠程小怪、Boss 三招與狂暴、格子碰撞與兩兩比對一致、有敵人時的決定性、敵人釋放。
+
+### 修改
+- 碰撞分離改用格子切分（2 單位一格，只比對相鄰 3×3 格），保留兩兩比對版本供檢查對照。
+- **網頁版凍結**（使用者決定）：不修 bug、不更新版號（`src/core/version.js` 停在 0.7.0），只當設計參考；驗收改以 `check.gd` 為主，版號改為三處一致（CHANGELOG、`version.gd`、git tag）。試玩網站維持網頁版，Godot 版能完整玩一局後改用 Godot 網頁匯出（網頁用 Compatibility 渲染器）。`CLAUDE.md`、`PROJECT_GUIDELINES.md`、`docs/新電腦設定.md` 同步更新。
+
+### 修復
+- `tests/check.gd` 的檢查函式執行中出錯時（回傳 null）會被算成通過；現在算失敗。另外加上「所有腳本可編譯」檢查：畫面層與 `main.gd` 不會被其他檢查載入，編譯錯誤以前只出現在匯入紀錄裡。
+
 ## [0.7.0] - 2026-10-21
 
 Godot 版里程碑 2：玩家雙層狀態機、劍盾與法杖（單機，照網頁版 1:1 搬移）。渲染器定案為 Forward+。

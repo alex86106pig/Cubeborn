@@ -9,13 +9,14 @@ var range_ := 0.0
 var damage := 0.0
 var knockback_force := 0.0
 var color := Color.WHITE        # 只給畫面用
+var visual: StringName = &"orb" # 只給畫面用：&"orb" 發光球體、&"arrow" 箭矢
 var hit_stop := 0.0
 var shake := 0.0
 var explosion: Dictionary = {}  # { radius, damage, knockback, hit_stop, shake }；空 = 一般投射物
 var traveled := 0.0
 
 
-# p：owner、pos、direction、speed、range、radius、damage、knockback、color、hit_stop、shake、explosion
+# p：owner、pos、direction、speed、range、radius、damage、knockback、color、visual、hit_stop、shake、explosion
 func _init(p_world: World, p: Dictionary) -> void:
 	var owner: Entity = p.owner
 	super(p_world, &"projectile", owner.team, p.get("radius", 0.25), 1.0)
@@ -28,6 +29,7 @@ func _init(p_world: World, p: Dictionary) -> void:
 	damage = p.get("damage", 0.0)
 	knockback_force = p.get("knockback", 0.0)
 	color = p.get("color", Color.WHITE)
+	visual = p.get("visual", &"orb")
 	hit_stop = p.get("hit_stop", 0.0)
 	shake = p.get("shake", 0.0)
 	explosion = p.get("explosion", {})

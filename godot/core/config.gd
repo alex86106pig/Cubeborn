@@ -7,6 +7,23 @@ const HIT_STOP_TIME_SCALE := 0.05
 
 const WORLD := {
 	"arena_half_size": 16.0,
+	"physics_cell": 2.0,          # 碰撞分離的格子邊長（≥ 任兩個實體半徑相加的最大值：Boss 1.0 + 1.0）
+	"victory_delay": 2.2,         # 打倒 Boss 後幾秒發出 game:victory
+	"victory_hit_stop": 0.25,
+	"victory_shake": 0.8,
+	"victory_shake_duration": 0.6,
+}
+
+const SPAWNER := {
+	"first_delay": 1.0,
+	"wave_delay": 2.5,
+	"spawn_interval": 0.35,
+	"first_spawn_delay": 0.6,     # 一波開始到第一隻出現的秒數
+	"boss_first_spawn_delay": 1.2,
+	"min_distance_from_player": 8.0,
+	"edge_margin": 2.0,           # 生成點離場地邊緣至少這麼遠
+	"spawn_attempts": 20,
+	"boss_distance": 8.0,         # Boss 出現在玩家對面、離中央這麼遠
 }
 
 const CAMERA := {

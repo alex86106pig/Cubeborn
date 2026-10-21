@@ -1,6 +1,6 @@
 # 組合根：建立 World、輸入、畫面與 HUD；固定步長主迴圈、命中停頓、暫停、重新開始
 # 指令列參數（放在 -- 之後）：--seconds=S --screenshot=路徑 --auto-move=x,y（螢幕方向）
-#   --auto-attack（一直按住左鍵）--weapon=staff（開場武器）
+#   --auto-attack（一直按住左鍵）--weapon=staff（開場武器）--wave=N（直接從第 N 波開始，除錯用）
 extends Node3D
 
 const HUD_SCENE := preload("res://ui/hud.tscn")
@@ -19,6 +19,7 @@ var _run_seconds := 0.0
 var _screenshot_path := ""
 var _elapsed := 0.0
 var _start_weapon: StringName = &""
+var _start_wave := 0
 
 
 func _ready() -> void:
@@ -52,6 +53,8 @@ func _parse_args() -> void:
 			input_collector.auto_attack = true
 		elif arg.begins_with("--weapon="):
 			_start_weapon = StringName(arg.get_slice("=", 1))
+		elif arg.begins_with("--wave="):
+			_start_wave = arg.get_slice("=", 1).to_int()
 
 
 func local_player() -> Player:
@@ -62,6 +65,8 @@ func restart() -> void:
 	world.reset(randi())
 	if _start_weapon != &"":
 		local_player().equip_weapon(_start_weapon)
+	if _start_wave > 1:
+		world.spawner.wave = _start_wave - 1
 	_sim_accumulator = 0.0
 	input_collector.consume_latched()
 	GameEvents.emit_all(world.events)
@@ -148,8 +153,12 @@ func _check_auto_quit(delta: float) -> void:
 		return
 	_run_seconds = 0.0
 	var player := local_player()
-	print("tick=%d player_pos=(%.2f, %.2f) facing=%.2f weapon=%s action=%s projectiles=%d" % [
-		world.tick, player.pos.x, player.pos.y, player.facing, player.weapon_id, player.action.current_name, world.projectiles.size()])
+	print("tick=%d player_pos=(%.2f, %.2f) hp=%.0f weapon=%s action=%s wave=%d enemies=%d projectiles=%d kills=%d" % [
+		world.tick, player.pos.x, player.pos.y, player.hp, player.weapon_id, player.action.current_name,
+		world.stats.wave, world.enemies.size(), world.projectiles.size(), world.stats.kills])
+	var boss: Enemy = world.entities.get(world.boss_id)
+	if boss != null:
+		print("boss state=%s hp=%.0f" % [boss.fsm.current_name if boss.fsm else &"", boss.hp])
 	if _screenshot_path != "":
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png(_screenshot_path)

@@ -24,8 +24,9 @@ var _worlds: Array[World] = []   # 結束前全部 clear()，避免循環參照�
 
 func _initialize() -> void:
 	print("Cubeborn Godot 自動檢查\n")
+	_check("編譯：專案內所有 .gd（含畫面層、main）都能編譯", _check_all_scripts_compile)
 	_check("模擬層：sim/ 沒有使用禁止的 API（Input、節點、全域隨機、時間、讀檔、畫面層）", _check_sim_forbidden)
-	_check("版號：version.gd、version.js、CHANGELOG 最新版一致", _check_versions)
+	_check("版號：version.gd 與 CHANGELOG 最新版一致", _check_versions)
 	_check("CD：計時、進度、到期、長度 0 視為立即可用", _check_cooldowns)
 	_check("狀態機：enter/exit 順序、can_exit 否決、time 累計、data 複製", _check_state_machine)
 	_check("InputCmd：按鈕位元不重疊、陣列序列化來回一致", _check_input_cmd)
@@ -48,6 +49,18 @@ func _initialize() -> void:
 	_check("奧術爆裂：落點限制在 2~12、爆炸半徑 3.2 造成 28 傷害、範圍外不受傷", _check_arcane_burst)
 	_check("死亡：發出 player:died、移動層進入 dead、不再接受輸入", _check_player_death)
 	_check("事件：戰鬥中的事件 payload 也只含可序列化的值", _check_combat_events_serializable)
+	_check("音效：模擬層 sfx:cue 的名稱都存在於網頁版 CUES", _check_sim_cues)
+	_check("波次資料：共 5 波、只有最後一波是 Boss、第 1~4 波小怪 5 / 7 / 9 / 12、成長倍率線性", _check_wave_defs)
+	_check("生成：1 秒後開第一波、離玩家 8 單位以上、第 3 波小怪血量 ×1.3 傷害 ×1.24", _check_spawning)
+	_check("一局流程：5 波依序開始、打倒 Boss 後 is_over、2.2 秒後 game:victory、擊殺數正確", _check_full_run)
+	_check("近戰小怪：爬出 0.7 秒後追擊、接觸傷害 10、間隔 0.8 秒；受擊硬直 0.22 秒", _check_melee_enemy)
+	_check("遠程小怪：瞄準 0.75 秒後射出 12 傷害的箭、保持 6~10 單位距離", _check_ranged_enemy)
+	_check("Boss 重砸：近身時前搖 0.85 秒後造成 26 傷害、CD 3.5 秒；霸體不硬直、擊退 ×0.12", _check_boss_slam)
+	_check("Boss 衝鋒：蓄力 0.75 秒、15 單位/秒、命中 22 傷害、撞牆暈眩 1.6 秒", _check_boss_charge)
+	_check("Boss 召喚與狂暴：血量 ≤ 75% 召喚 3 隻、≤ 50% 狂暴（移速 ×1.3、CD ×0.65）", _check_boss_summon_enrage)
+	_check("碰撞分離：格子切分與兩兩比對結果一致（80 個實體）", _check_grid_matches_brute_force)
+	_check("決定性：有敵人與波次時，同種子、同輸入的兩個 World 結果相同", _check_determinism_with_enemies)
+	_check("記憶體：敵人移除後 CD 清除、實體會被釋放", _check_enemy_release)
 	for w in _worlds:
 		w.clear()
 	_worlds.clear()
@@ -56,7 +69,9 @@ func _initialize() -> void:
 
 
 func _check(title: String, fn: Callable) -> void:
-	var err: String = fn.call()
+	var result: Variant = fn.call()
+	# 檢查函式執行中出錯時會回傳 null；不能當成通過
+	var err: String = "執行時發生錯誤（見上方 SCRIPT ERROR）" if result == null else result
 	if err == "":
 		_passed += 1
 		print("✔ ", title)
@@ -67,9 +82,11 @@ func _check(title: String, fn: Callable) -> void:
 
 # ---- 工具 ----
 
-func _new_world(seed_value: int = 12345) -> World:
+# 預設關掉生成器，只測玩家；要測波次時傳 with_spawner = true
+func _new_world(seed_value: int = 12345, with_spawner: bool = false) -> World:
 	var w := World.new()
 	w.reset(seed_value)
+	w.spawner.finished = not with_spawner
 	_worlds.append(w)
 	return w
 
@@ -149,6 +166,18 @@ func _list_gd(dir_path: String) -> Array[String]:
 
 # ---- 檢查 ----
 
+# 畫面層與 main.gd 不會被其他檢查載入；編譯錯誤只會出現在匯入紀錄裡，容易漏看
+func _check_all_scripts_compile() -> String:
+	var broken: Array[String] = []
+	for path in _list_gd("res://"):
+		if path.begins_with("res://.godot") or path.begins_with("res://tests/"):
+			continue
+		var script := load(path) as GDScript
+		if script == null or not script.can_instantiate():
+			broken.append(path)
+	return "無法編譯：" + ", ".join(broken) if not broken.is_empty() else ""
+
+
 func _check_sim_forbidden() -> String:
 	var files := _list_gd("res://sim")
 	if files.is_empty():
@@ -167,15 +196,12 @@ func _check_sim_forbidden() -> String:
 
 func _check_versions() -> String:
 	var root := ProjectSettings.globalize_path("res://").path_join("..")
-	var js := _read_text(root.path_join("src/core/version.js"))
 	var changelog := _read_text(root.path_join("CHANGELOG.md"))
-	var js_ver := RegEx.create_from_string("VERSION = '([^']+)'").search(js)
 	var cl_ver := RegEx.create_from_string("## \\[([^\\]]+)\\]").search(changelog)
-	if js_ver == null or cl_ver == null:
-		return "讀不到 version.js 或 CHANGELOG.md 的版號"
-	var v := GameVersion.VERSION
-	if js_ver.get_string(1) != v or cl_ver.get_string(1) != v:
-		return "version.gd=%s version.js=%s CHANGELOG=%s" % [v, js_ver.get_string(1), cl_ver.get_string(1)]
+	if cl_ver == null:
+		return "讀不到 CHANGELOG.md 的版號"
+	if cl_ver.get_string(1) != GameVersion.VERSION:
+		return "version.gd=%s CHANGELOG=%s" % [GameVersion.VERSION, cl_ver.get_string(1)]
 	return ""
 
 
@@ -611,6 +637,333 @@ func _check_combat_events_serializable() -> String:
 		for k: String in e:
 			if typeof(e[k]) == TYPE_OBJECT:
 				return "事件 %s 的欄位 %s 是物件" % [e.name, k]
+	return ""
+
+
+func _spawn(w: World, type: StringName, at: Vector2) -> Enemy:
+	return w.spawner.spawn_at(w, type, at)
+
+
+# 跑到 pred 成立為止（最多 max_steps 步），回傳跑了幾步；沒成立回傳 -1
+func _run_until(w: World, cmd: InputCmd, max_steps: int, events: Array[Dictionary], pred: Callable) -> int:
+	for i in max_steps:
+		w.step({World.HOST_PEER_ID: cmd}, DT)
+		events.append_array(w.events)
+		if pred.call():
+			return i + 1
+	return -1
+
+
+func _check_sim_cues() -> String:
+	var cues := _web_cue_names()
+	var re := RegEx.create_from_string("\"cue\": \"(\\w+)\"")
+	var count := 0
+	for path in _list_gd("res://sim"):
+		for m in re.search_all(_read_text(path)):
+			count += 1
+			if not cues.has(m.get_string(1)):
+				return "%s 的音效「%s」不在網頁版 CUES" % [path, m.get_string(1)]
+	if count < 8:   # 目前 sim/ 有 9 個字面音效名稱；玩家武器音效走變數，由「武器資料」檢查負責
+		return "只比對到 %d 個 sfx:cue，比對規則可能失效" % count
+	return ""
+
+
+func _check_wave_defs() -> String:
+	var waves := WaveDefs.WAVES
+	if waves.size() != 5:
+		return "共 %d 波，預期 5" % waves.size()
+	var minions := []
+	for i in waves.size():
+		var w: Dictionary = waves[i]
+		if w.get("is_boss", false) != (i == 4):
+			return "第 %d 波 is_boss 不正確" % (i + 1)
+		var n := 0
+		for type: StringName in w.spawns:
+			if not EnemyDefs.ENEMIES.has(type):
+				return "第 %d 波的敵人類型「%s」不存在" % [i + 1, type]
+			if type != &"boss":
+				n += w.spawns[type]
+		minions.append(n)
+	if minions.slice(0, 4) != [5, 7, 9, 12]:
+		return "第 1~4 波小怪數 %s" % [minions.slice(0, 4)]
+	var m1 := WaveDefs.wave_multipliers(1)
+	var m3 := WaveDefs.wave_multipliers(3)
+	if m1.hp != 1.0 or m1.damage != 1.0 or absf(m3.hp - 1.3) > EPS or absf(m3.damage - 1.24) > EPS or absf(m3.speed - 1.06) > EPS:
+		return "倍率錯誤：第 1 波 %s、第 3 波 %s" % [m1, m3]
+	return ""
+
+
+func _check_spawning() -> String:
+	var w := _new_world(4242, true)
+	var events: Array[Dictionary] = []
+	var steps := _run_until(w, _cmd(Vector2.ZERO), 300, events, func() -> bool: return not _named(events, "wave:started").is_empty())
+	if absi(steps - 60) > 1:
+		return "第一波在第 %d 步開始，預期約 60 步（1 秒）" % steps
+	# 逐步記錄每隻敵人剛出現時離玩家的距離（之後會追過來，不能等全部生完才量）
+	var p := _player(w)
+	var seen := {}
+	for i in ceili((0.6 + 4 * 0.35) / DT) + 8:   # 計時器以浮點遞減，每段可能多 1 步
+		w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO)}, DT)
+		for e in w.enemies:
+			if not seen.has(e.id):
+				seen[e.id] = e.pos.distance_to(p.pos)
+	if seen.size() != 5:
+		return "第一波生成 %d 隻，預期 5" % seen.size()
+	for id: int in seen:
+		if seen[id] < 8.0:
+			return "敵人生成在離玩家 %.2f 處，應 ≥ 8" % seen[id]
+	w.spawner.wave = 3
+	var g := _spawn(w, &"grunt", Vector2(10, 10))
+	if g.max_hp != 47.0 or absf(g.damage_mul - 1.24) > EPS:
+		return "第 3 波小怪 max_hp=%.1f damage_mul=%.3f，預期 47 / 1.24" % [g.max_hp, g.damage_mul]
+	return ""
+
+
+func _check_full_run() -> String:
+	var w := _new_world(99, true)
+	var p := _player(w)
+	var events: Array[Dictionary] = []
+	var enemy_deaths := 0
+	var boss_died_tick := -1
+	for i in 60 * 120:
+		p.invuln_timer = 1.0   # 這項只測流程，不讓玩家被打死
+		w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO)}, DT)
+		events.append_array(w.events)
+		for e in w.enemies:
+			if not e.is_dead:
+				e.die()
+				enemy_deaths += 1
+				if (e as Enemy).is_boss():
+					boss_died_tick = w.tick
+		if not _named(events, "game:victory").is_empty():
+			break
+	var started := _named(events, "wave:started")
+	if started.size() != 5 or not started[4].is_boss:
+		return "wave:started %d 次（預期 5，最後一波是 Boss）" % started.size()
+	var victory := _named(events, "game:victory")
+	if victory.is_empty() or not w.is_over:
+		return "打倒 Boss 後沒有通關"
+	var delay := (w.tick - boss_died_tick) * DT
+	if absf(delay - 2.2) > DT * 1.5:
+		return "Boss 倒下到 game:victory 經過 %.3f 秒，預期 2.2" % delay
+	if victory[0].stats.kills != enemy_deaths or w.stats.wave != 5:
+		return "擊殺數 %d（實際打倒 %d）、wave=%d" % [victory[0].stats.kills, enemy_deaths, w.stats.wave]
+	return ""
+
+
+func _check_melee_enemy() -> String:
+	var w := _new_world(7)
+	var p := _player(w)
+	var g := _spawn(w, &"grunt", Vector2(0, 4))
+	var events: Array[Dictionary] = []
+	_run_collect(w, _cmd(Vector2.ZERO), ceili(0.7 / DT) - 1, events)
+	if not g.fsm.is_in(&"spawn") or g.velocity != Vector2.ZERO:
+		return "爬出期間應停在 spawn 且不移動"
+	_run_collect(w, _cmd(Vector2.ZERO), 2, events)
+	if not g.fsm.is_in(&"chase"):
+		return "0.7 秒後應進入 chase，實際 %s" % g.fsm.current_name
+	var hit_ticks: Array[int] = []
+	for i in 60 * 5:
+		w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO)}, DT)
+		for e in _named(w.events, "entity:damaged"):
+			if e.target_id == p.id:
+				if e.amount != 10:
+					return "接觸傷害 %d，預期 10" % e.amount
+				hit_ticks.append(w.tick)
+	if hit_ticks.size() < 3:
+		return "5 秒內只命中 %d 次" % hit_ticks.size()
+	for i in range(1, hit_ticks.size()):
+		if (hit_ticks[i] - hit_ticks[i - 1]) * DT < 0.8 - EPS:
+			return "接觸傷害間隔 %.3f 秒，應 ≥ 0.8" % ((hit_ticks[i] - hit_ticks[i - 1]) * DT)
+	# 受擊硬直
+	var w2 := _new_world(7)
+	var g2 := _spawn(w2, &"grunt", Vector2(0, 6))
+	_run(w2, _cmd(Vector2.ZERO), ceili(0.7 / DT) + 2)
+	g2.take_damage(5.0, Vector2(0, 1), 0.0, 0)
+	if not g2.fsm.is_in(&"hurt"):
+		return "受擊應進入 hurt，實際 %s" % g2.fsm.current_name
+	_run(w2, _cmd(Vector2.ZERO), ceili(0.22 / DT) + 1)
+	if not g2.fsm.is_in(&"chase"):
+		return "0.22 秒後應回到 chase，實際 %s" % g2.fsm.current_name
+	return ""
+
+
+func _check_ranged_enemy() -> String:
+	var w := _new_world(11)
+	var p := _player(w)
+	var a := _spawn(w, &"archer", Vector2(0, 8))
+	var events: Array[Dictionary] = []
+	var aim_tick := -1
+	var shot_tick := -1
+	for i in 60 * 6:
+		p.hp = p.max_hp   # 只測弓手行為，不讓玩家死
+		w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO)}, DT)
+		events.append_array(w.events)
+		if aim_tick < 0 and a.fsm.is_in(&"aim"):
+			aim_tick = w.tick
+		if aim_tick >= 0 and shot_tick < 0 and not _named(w.events, "sfx:cue").filter(func(e: Dictionary) -> bool: return e.cue == "arrowShot").is_empty():
+			shot_tick = w.tick
+	if aim_tick < 0 or shot_tick < 0:
+		return "6 秒內沒有瞄準 / 射擊"
+	var aim_len := (shot_tick - aim_tick) * DT
+	if absf(aim_len - 0.75) > DT * 1.5:
+		return "瞄準到射擊 %.3f 秒，預期 0.75" % aim_len
+	var arrows := _named(events, "entity:damaged").filter(func(e: Dictionary) -> bool: return e.target_id == p.id and e.amount == 12)
+	if arrows.is_empty():
+		return "箭沒有造成 12 傷害（玩家受到 %s）" % [_damage_amounts(events, p.id)]
+	var dist := a.pos.distance_to(p.pos)
+	if dist < 5.5 or dist > 10.5:
+		return "6 秒後與玩家距離 %.2f，應保持在 6~10 附近" % dist
+	return ""
+
+
+func _check_boss_slam() -> String:
+	var w := _new_world(3)
+	var p := _player(w)
+	var b := _spawn(w, &"boss", Vector2(0, 3))
+	if w.boss_id != b.id:
+		return "world.boss_id 沒有記錄 Boss"
+	var events: Array[Dictionary] = []
+	var slam_start := _run_until(w, _cmd(Vector2.ZERO), 60 * 4, events, func() -> bool: return b.fsm.is_in(&"slam"))
+	if slam_start < 0:
+		return "4 秒內沒有重砸（狀態 %s）" % b.fsm.current_name
+	var start_tick := w.tick
+	var hit := _run_until(w, _cmd(Vector2.ZERO), 120, events, func() -> bool: return not _damage_amounts(w.events, p.id).is_empty())
+	if hit < 0 or _damage_amounts(w.events, p.id) != [26]:
+		return "重砸傷害 %s，預期 [26]" % [_damage_amounts(events, p.id)]
+	var windup := (w.tick - start_tick) * DT
+	if absf(windup - 0.85) > DT * 1.5:
+		return "前搖 %.3f 秒，預期 0.85" % windup
+	var cd := w.cooldowns.remaining(b.cd("slam"))
+	if absf(cd - (3.5 - windup)) > DT * 2:
+		return "重砸 CD 剩 %.3f，預期約 %.3f" % [cd, 3.5 - windup]
+	b.take_damage(10.0, Vector2(0, 1), 100.0, p.id)
+	if b.fsm.is_in(&"hurt") or absf(b.knockback.length() - 100.0 * 0.12 / 30.0) > EPS:
+		return "Boss 不應硬直，擊退應為 100 × 0.12 / 質量 30 = 0.4，實際 %.3f" % b.knockback.length()
+	return ""
+
+
+func _check_boss_charge() -> String:
+	var w := _new_world(5)
+	var p := _player(w)
+	p.pos = Vector2(0, 11)
+	var b := _spawn(w, &"boss", Vector2(0, 2))
+	var events: Array[Dictionary] = []
+	if _run_until(w, _cmd(Vector2.ZERO), 60 * 5, events, func() -> bool: return b.fsm.is_in(&"charge")) < 0:
+		return "5 秒內沒有衝鋒（狀態 %s）" % b.fsm.current_name
+	var windup_steps := _run_until(w, _cmd(Vector2.ZERO), 120, events, func() -> bool: return b.fsm.data.phase == &"dash")
+	if absf(windup_steps * DT - 0.75) > DT * 1.5:
+		return "蓄力 %.3f 秒，預期 0.75" % (windup_steps * DT)
+	_run_collect(w, _cmd(Vector2.ZERO), 1, events)
+	if absf(b.velocity.length() - 15.0) > EPS:
+		return "衝刺速度 %.3f，預期 15" % b.velocity.length()
+	# 命中後把玩家移出路線，否則玩家被擊退到牆邊會擋住 Boss，測不到撞牆
+	if _run_until(w, _cmd(Vector2.ZERO), 60, events, func() -> bool: return not _damage_amounts(w.events, p.id).is_empty()) < 0:
+		return "衝刺沒有撞到玩家"
+	p.pos = Vector2(-12, -12)
+	if _run_until(w, _cmd(Vector2.ZERO), 120, events, func() -> bool: return b.fsm.data.get("phase") == &"stunned") < 0:
+		return "沒有撞牆暈眩（階段 %s）" % b.fsm.data.get("phase")
+	if not _damage_amounts(events, p.id).has(22):
+		return "衝鋒命中傷害 %s，應含 22" % [_damage_amounts(events, p.id)]
+	if _named(events, "sfx:cue").filter(func(e: Dictionary) -> bool: return e.cue == "bossWallHit").is_empty():
+		return "撞牆應發出 bossWallHit"
+	var stun := _run_until(w, _cmd(Vector2.ZERO), 200, events, func() -> bool: return not b.fsm.is_in(&"charge"))
+	if absf(stun * DT - 1.6) > DT * 1.5:
+		return "暈眩 %.3f 秒，預期 1.6" % (stun * DT)
+	return ""
+
+
+func _check_boss_summon_enrage() -> String:
+	var w := _new_world(8)
+	var p := _player(w)
+	var b: Boss = _spawn(w, &"boss", Vector2(0, -10))
+	b.hp = 600.0   # ≤ 75%
+	var events: Array[Dictionary] = []
+	if _run_until(w, _cmd(Vector2.ZERO), 60 * 4, events, func() -> bool: return b.fsm.is_in(&"summon")) < 0:
+		return "血量 600/900 時 4 秒內沒有召喚（狀態 %s）" % b.fsm.current_name
+	_run_collect(w, _cmd(Vector2.ZERO), ceili(1.0 / DT) + 1, events)
+	var minions := w.enemies.filter(func(e: Entity) -> bool: return e.kind == &"grunt")
+	if minions.size() != 3:
+		return "召喚 %d 隻，預期 3" % minions.size()
+	for m in minions:
+		if absf(m.pos.distance_to(b.pos) - 2.5) > 0.3:
+			return "召喚的小怪離 Boss %.2f，預期 2.5" % m.pos.distance_to(b.pos)
+	Combat.apply_damage(w, p, b, {"damage": 160.0})
+	if not b.is_enraged or _named(w.events, "boss:enraged").is_empty():
+		return "血量 %.0f/900 應進入狂暴" % b.hp
+	if absf(b.enrage_mul("speed_mul") - 1.3) > EPS or absf(b.enrage_mul("cooldown_mul") - 0.65) > EPS:
+		return "狂暴倍率錯誤"
+	for m in minions:
+		m.die()
+	if _run_until(w, _cmd(Vector2.ZERO), 60 * 3, events, func() -> bool: return b.fsm.is_in(&"chase") and b.velocity != Vector2.ZERO) < 0:
+		return "狂暴後沒有回到追擊"
+	if absf(b.velocity.length() - 2.2 * 1.3) > EPS:
+		return "狂暴移速 %.3f，預期 %.3f" % [b.velocity.length(), 2.2 * 1.3]
+	return ""
+
+
+func _check_grid_matches_brute_force() -> String:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2024
+	var w := _new_world()
+	var a: Array[Entity] = []
+	var b: Array[Entity] = []
+	for i in 80:
+		var r := rng.randf_range(0.4, 1.0)
+		var m := rng.randf_range(1.0, 5.0)
+		var at := Vector2(rng.randf_range(-6, 6), rng.randf_range(-6, 6))
+		for list in [a, b]:
+			var e := Entity.new(w, &"test", &"enemy", r, 10.0, m)
+			e.pos = at
+			list.append(e)
+	var r1 := RandomNumberGenerator.new()
+	var r2 := RandomNumberGenerator.new()
+	r1.seed = 1
+	r2.seed = 1
+	SimPhysics.separate(a, r1)
+	SimPhysics.separate_brute_force(b, r2)
+	var max_diff := 0.0
+	for i in a.size():
+		max_diff = maxf(max_diff, a[i].pos.distance_to(b[i].pos))
+	for list in [a, b]:
+		for e in list:
+			e.world = null
+	if max_diff > 1e-5:
+		return "格子版與兩兩比對最大差異 %.6f" % max_diff
+	return ""
+
+
+func _check_determinism_with_enemies() -> String:
+	var w1 := _new_world(31337, true)
+	var w2 := _new_world(31337, true)
+	var cmd := _cmd(Vector2(0.3, -0.2), Vector2(4, 3), InputCmd.BTN_ATTACK)
+	for i in 60 * 12:
+		for w in [w1, w2]:
+			w.step({World.HOST_PEER_ID: cmd}, DT)
+	if w1.entities.size() != w2.entities.size() or w1.rng.state != w2.rng.state:
+		return "實體數或隨機數狀態不同（%d / %d）" % [w1.entities.size(), w2.entities.size()]
+	for id: int in w1.entities:
+		if not w2.entities.has(id) or w1.entities[id].pos != w2.entities[id].pos:
+			return "實體 %d 位置不同" % id
+	if w1.enemies.is_empty() and w1.stats.kills == 0:
+		return "12 秒內沒有任何敵人，情境無效"
+	return ""
+
+
+func _check_enemy_release() -> String:
+	var w := _new_world()
+	var a := _spawn(w, &"archer", Vector2(8, 8))
+	var key := a.cd("fire")
+	if w.cooldowns.is_ready(key):
+		return "弓手出生時應有第一次射擊的延遲"
+	var ref: WeakRef = weakref(a)
+	a.remove()
+	a = null
+	_run(w, _cmd(Vector2.ZERO), 1)
+	if not w.cooldowns.is_ready(key):
+		return "移除後 CD %s 應被清除" % key
+	if ref.get_ref() != null or not w.enemies.is_empty():
+		return "移除後弓手仍存在"
 	return ""
 
 

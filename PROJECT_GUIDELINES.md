@@ -2,7 +2,7 @@
 
 > 本文件是專案的**唯一事實來源**。任何與本文件衝突的程式碼都視為 bug；架構變更時必須同步更新本文件。
 
-> **轉換期說明**：第 1~14 節描述網頁版（根目錄，Three.js），網頁版只修 bug，作為玩法設計圖。正式開發改用 Godot 4.7.2（GDScript，專案在 `godot/`），架構與多人連線規範見**第 15 節**；第 15 節沒寫到的玩法規則（狀態機分段、CD key、事件名稱、資料格式）沿用第 4~9 節，只把語法換成 GDScript。
+> **轉換期說明**：第 1~14 節描述網頁版（根目錄，Three.js），網頁版已凍結（v0.8.0 起不修 bug、不更新版號），只當玩法設計圖。正式開發改用 Godot 4.7.2（GDScript，專案在 `godot/`），架構與多人連線規範見**第 15 節**；第 15 節沒寫到的玩法規則（狀態機分段、CD key、事件名稱、資料格式）沿用第 4~9 節，只把語法換成 GDScript。
 
 ---
 
@@ -272,7 +272,7 @@ export const SKILLS = {
 | `game:paused` | `{ paused }` | Game（Esc、失去焦點） |
 | `audio:muted` | `{ muted }` | Game（M 鍵） |
 | `sfx:cue` | `{ name }` | 各遊戲物件；`name` 必須是 `audio/Sound.js` 的 `CUES` 之一（check.js 會檢查）。Godot 版欄位為 `cue` |
-| `camera:shake` | `{ amount, duration }` | 僅 Godot 版：Combat、Player、Projectile（模擬層不能直接震相機） |
+| `camera:shake` | `{ amount, duration }` | 僅 Godot 版：Combat、Player、Projectile、Enemy、Boss、World（模擬層不能直接震相機） |
 
 ---
 
@@ -319,7 +319,7 @@ export const SKILLS = {
 
 - **一次使用者請求 = 一個版號**，同一請求內的多項修改合併在同一版記錄。
 - CHANGELOG 分類：`新增` / `修改` / `修復` / `移除`。
-- 版號必須三處一致：`CHANGELOG.md`、`src/core/version.js`、git tag。
+- 版號必須三處一致：`CHANGELOG.md`、`godot/core/version.gd`、git tag（網頁版的 `src/core/version.js` 已凍結在 0.7.0）。
 - HUD 角落顯示目前版號，方便確認瀏覽器載入的是最新版。
 
 ---
@@ -328,8 +328,8 @@ export const SKILLS = {
 
 1. **開工**：`git pull --ff-only origin main`（失敗就停下來問使用者）→ 讀 `CLAUDE.md` → `docs/進度.md` → 本文件 → CHANGELOG 最新版本 → 相關模組。
 2. **實作**：先列出預計修改的檔案並取得使用者同意；遵守本文件；若需要偏離規範，先更新本文件再寫程式。
-3. **驗證**：執行 `node check.js`，全部通過；改到畫面或操作時，另外啟動本機伺服器在瀏覽器實測，確認 Console 無錯誤。
-4. **記錄**：更新 CHANGELOG 與 `version.js`；架構有變就更新本文件。
+3. **驗證**：執行 Godot `tests/check.gd`，全部通過；改到畫面或操作時，另外用離屏截圖驗證（見 15.10）。
+4. **記錄**：更新 CHANGELOG 與 `godot/core/version.gd`；架構有變就更新本文件。
 5. **提交**：`git commit -m "vX.Y.Z: 摘要"`，`git tag vX.Y.Z`。只有使用者當次明確要求時才 `git push`（見 `CLAUDE.md` 1.3）。
 6. **回報**：告訴使用者新版號、變更內容、驗證結果與已知問題。
 
@@ -365,7 +365,7 @@ export const SKILLS = {
 | 項目 | 決定 |
 |---|---|
 | 引擎 | Godot 4.7.2 普通版，GDScript（一律寫型別）；效能不夠的熱點才改 C++（GDExtension），判斷依據見 `docs/進度.md` 壓力測試 |
-| 平台 | Windows 優先，目標 Steam 上架；不以網頁匯出為目標（試玩網站維持網頁版） |
+| 平台 | Windows 優先，目標 Steam 上架。能完整玩一局後加上**網頁匯出**取代試玩網站：網頁用 Compatibility 渲染器（`project.godot` 的 `.web` 覆寫），電腦版維持 Forward+；網頁版不支援 ENet / Steam 連線，只給朋友試玩單機 |
 | 多人 | **合作 1~4 人**，不做對戰 |
 | 連線架構 | **房主當伺服器**（listen server，房主即權威端）。開發期用 Godot 內建 ENet（本機 / 區網），上架前換成 Steam 連線（GodotSteam），只換傳輸層 |
 | 美術 | 照網頁版**程式生成**低多邊形暗黑幻想造型（第 14 節），用 GDScript 重寫，不用外部模型 |
@@ -397,7 +397,8 @@ InputCollector ──► InputCmd ──► World.step(cmds, dt) ──► 快�
 
 ### 15.4 實體與效能
 - 實體是 `sim/` 裡的 `RefCounted` 物件，由 `world` 以**整數 id**（`world.next_id` 遞增，不重複使用）管理；連線同步、畫面對應、CD key（`enemy<id>.<招式>`）都用這個 id。
-- 碰撞分離與投射物命中用格子切分（uniform grid，作法同 `godot/stress_test/`），集中在 `sim/physics.gd`。這兩段是之後改 C++ 的首選，介面要保持「輸入陣列 → 輸出陣列」，方便替換。
+- 碰撞分離與投射物命中用格子切分（uniform grid，作法同 `godot/stress_test/`），集中在 `sim/physics.gd`（v0.8.0 碰撞分離已改用格子；投射物命中目前仍逐一比對，數量變多時再改）。
+- 敵人與 Spawner 不持有 World 以外的循環參照：Spawner 不存 World（每次呼叫時傳入），敵人的 CD key 需要 id，所以在 `World.add_entity` 之後的 `on_added()` 才開始 CD。這兩段是之後改 C++ 的首選，介面要保持「輸入陣列 → 輸出陣列」，方便替換。
 - 大量相同外觀的物件（投射物、未來的大量小怪）用 `MultiMeshInstance3D`；角色用節點樹 Rig。
 
 ### 15.5 動畫與姿勢
@@ -434,7 +435,7 @@ godot/
 │  │                          physics.gd、spawner.gd、weapon_behaviors.gd、skill_behaviors.gd、active_slots.gd
 ├─ input/                     input_collector.gd（按鍵在程式中註冊，不寫在 project.godot）
 ├─ net/                       連線（階段二）
-├─ view/                      world_view.gd、arena_view.gd、camera_rig.gd、animator.gd、rig.gd、part_kit.gd、effects.gd、
+├─ view/                      world_view.gd、arena_view.gd、camera_rig.gd、animator.gd、enemy_animator.gd、rig.gd、part_kit.gd、effects.gd、
 │  └─ styles/                 dark_fantasy.gd（第 14 節介面照搬）
 ├─ ui/                        hud.tscn / hud.gd
 ├─ audio/                     sound.gd、sfx/*.wav、music/
@@ -466,8 +467,8 @@ godot/
 - 座標、單位、角度與第 4 節相同：Y 朝上、邏輯只用 XZ、`facing = atan2(dx, dz)`（0 = 面向 +Z），模型面向 +Z 建模，Godot 的 `rotation.y = facing` 可直接套用。
 
 ### 15.10 驗收
-- `tests/check.gd`（作用等同 `check.js`），在 `godot/` 內執行：`<Godot console 執行檔> --headless --path . -s res://tests/check.gd`，全部通過才算完成。網頁版仍用 `node check.js`。
+- `tests/check.gd`（作用等同 `check.js`），在 `godot/` 內執行：`<Godot console 執行檔> --headless --path . -s res://tests/check.gd`，全部通過才算完成。網頁版已凍結，只有動到網頁版時才跑 `node check.js`。
 - 因為模擬層不依賴場景樹，檢查可以直接建立 `World`、餵假的 `InputCmd`、推進 N 步讀數值（例如移動 1 秒的距離、三段攻擊總時間、CD 是否到期）。
 - 搬移時對照網頁版：同樣輸入下的移速、攻擊時間、傷害、CD、波次數量要與網頁版一致，數字寫進回報。
 - 畫面用離屏截圖場景 `tests/capture.tscn` 驗證（用法與「開視窗前先問使用者」的規則見 `CLAUDE.md` 1.8），截圖存暫存資料夾，不進版控；手感與效能定案以使用者實際遊玩為準。
-- 版號：Godot 版建立 `core/version.gd` 後，版號必須四處一致（`CHANGELOG.md`、`src/core/version.js`、`godot/core/version.gd`、git tag）；遊戲畫面角落顯示版號。
+- 版號必須三處一致（`CHANGELOG.md`、`godot/core/version.gd`、git tag）；遊戲畫面角落顯示版號。

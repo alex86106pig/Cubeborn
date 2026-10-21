@@ -60,8 +60,13 @@ func _create_view(e: Entity) -> Node3D:
 			var rig := Rig.knight_placeholder()
 			_animators[e.id] = Animator.new(rig)
 			root = rig
+		&"grunt", &"archer", &"boss":
+			var rig := Rig.boss_placeholder() if e.kind == &"boss" else Rig.skeleton_placeholder(e.kind == &"archer")
+			_animators[e.id] = EnemyAnimator.new(rig, e as Enemy)
+			root = rig
 		&"projectile":
-			root = _create_projectile(e as Projectile)
+			var proj := e as Projectile
+			root = _create_arrow(proj) if proj.visual == &"arrow" else _create_projectile(proj)
 		_:
 			root = _create_placeholder(e)
 	root.add_child(_create_hitbox_ring(e.radius))
@@ -86,6 +91,29 @@ func _create_projectile(e: Projectile) -> Node3D:
 	mat.albedo_color = e.color
 	ball.material_override = mat
 	root.add_child(ball)
+	return root
+
+
+# 敵人箭矢：細長箭身沿 +Z、發光箭頭（darkFantasy.js 的 enemyProjectile）
+func _create_arrow(e: Projectile) -> Node3D:
+	var root := Node3D.new()
+	var shaft := MeshInstance3D.new()
+	var shaft_box := BoxMesh.new()
+	shaft_box.size = Vector3(0.04, 0.04, 0.7)
+	shaft.mesh = shaft_box
+	shaft.position.y = Config.COMBAT.projectile_height
+	shaft.material_override = _mat(Color("2a2420"))
+	root.add_child(shaft)
+	var tip := MeshInstance3D.new()
+	var tip_box := BoxMesh.new()
+	tip_box.size = Vector3(0.1, 0.1, 0.16)
+	tip.mesh = tip_box
+	tip.position = Vector3(0.0, Config.COMBAT.projectile_height, 0.42)
+	var glow := StandardMaterial3D.new()
+	glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	glow.albedo_color = e.color
+	tip.material_override = glow
+	root.add_child(tip)
 	return root
 
 

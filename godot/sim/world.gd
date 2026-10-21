@@ -17,6 +17,9 @@ var stats := {"wave": 0, "kills": 0, "time": 0.0}
 var is_over := false                 # 通關後為 true
 var hit_stop_timer := 0.0            # 剩餘的命中停頓（真實秒數），由主迴圈換算成時間縮放
 var arena_half_size: float = Config.WORLD.arena_half_size
+var spawner := Spawner.new()
+var boss_id := 0                     # 目前的 Boss（0 = 沒有），HUD 的 Boss 血條用
+var victory_timer := 0.0
 
 var _next_id := 1
 var _bodies: Array[Entity] = []
@@ -30,6 +33,9 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 	stats = {"wave": 0, "kills": 0, "time": 0.0}
 	is_over = false
 	hit_stop_timer = 0.0
+	boss_id = 0
+	victory_timer = 0.0
+	spawner.reset()
 	_next_id = 1
 	for peer_id in peer_ids:
 		add_entity(Player.new(self, peer_id))
@@ -55,7 +61,42 @@ func add_entity(e: Entity) -> Entity:
 	entities[e.id] = e
 	if e is Player:
 		players[e.peer_id] = e
+	elif e is Enemy:
+		e.on_added()
 	return e
+
+
+func add_enemy(e: Enemy) -> Enemy:
+	add_entity(e)
+	enemies.append(e)
+	if e.is_boss():
+		boss_id = e.id
+	return e
+
+
+func first_alive_player() -> Player:
+	for p: Player in players.values():
+		if not p.is_dead:
+			return p
+	return null
+
+
+func on_enemy_died(_e: Enemy) -> void:
+	stats.kills += 1
+
+
+# 打倒 Boss：通關，其餘敵人一起倒下、敵方投射物消失，延遲後發出 game:victory
+func on_boss_defeated(boss: Enemy) -> void:
+	is_over = true
+	victory_timer = Config.WORLD.victory_delay
+	hit_stop(Config.WORLD.victory_hit_stop)
+	emit_event("camera:shake", {"amount": Config.WORLD.victory_shake, "duration": Config.WORLD.victory_shake_duration})
+	for e in enemies:
+		if e != boss and not e.is_dead:
+			e.die()
+	for p in projectiles:
+		if p.team == &"enemy":
+			p.remove()
 
 
 # 投射物在玩家 / 敵人更新途中產生，同一步就會接著被更新（同網頁版）
@@ -122,9 +163,16 @@ func step(cmds: Dictionary, dt: float) -> void:
 		SimPhysics.clamp_to_arena(b, arena_half_size)
 	_bodies.clear()   # 不留參照，已移除的實體才能立即釋放
 
+	spawner.update(self, dt)
 	_remove_dead_entities()
+	if boss_id != 0 and not entities.has(boss_id):
+		boss_id = 0
 	if not is_over and is_any_player_alive():
 		stats.time += dt
+	if victory_timer > 0.0:
+		victory_timer -= dt
+		if victory_timer <= 0.0:
+			emit_event("game:victory", {"stats": stats.duplicate()})
 
 
 func _remove_dead_entities() -> void:

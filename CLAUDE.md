@@ -32,16 +32,16 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 ### 1.3 權限
 - 平常**不執行 `git push`**。只有使用者在**當次對話明確說要推送**（例如「推上去」「上傳」「更新網站」）時，才可以推送到 `origin`。
 - 判斷：每次推送都要有當次的明確同意，不沿用之前對話或之前那次的同意。完成修改不等於可以推送。
-- 推送前必須：`node check.js` 全部通過、工作目錄已 commit 並打 tag。推送指令用 `git push origin main --tags`。
+- 推送前必須：Godot 檢查 `check.gd` 全部通過（動到網頁版時另外跑 `node check.js`）、工作目錄已 commit 並打 tag。推送指令用 `git push origin main --tags`。
 - **絕對不准** `git push --force`、刪除遠端分支或 tag。
 - 為什麼：推送後 GitHub Pages 會更新朋友試玩的網站（見 1.7），推送就是對外發布。
 - `git commit` 與 `git tag` 依第 1.5 節流程照常執行。
 
 ### 1.4 驗收
-- 驗收指令：`node check.js`（或 `npm run check`）。**全部通過才算完成**。
-- 改到畫面、操作、動畫等 `check.js` 測不到的部分時，另外要在瀏覽器實測（`.claude/launch.json` 的 `cubeborn`），並確認 Console 無錯誤。需要驗證邏輯時，在 Console 用 `__game.update(1/60)` + `__game.input.endStep()` 手動推進並讀數值。
-- 新增機制或修好 bug 時，能寫成檢查就補進 `check.js`，避免同樣問題再發生。
-- 若 PowerShell 找不到 `node`，用完整路徑 `C:\Program Files\nodejs\node.exe`（安裝後尚未重開的終端機不會有新的 PATH）。
+- 驗收指令：Godot 自動檢查（在 `godot/` 內）`<Godot console 執行檔> --headless --path . -s res://tests/check.gd`。**全部通過才算完成**。
+- 改到畫面、操作、動畫等 `check.gd` 測不到的部分時，另外用離屏截圖驗證（見 1.8，開視窗前先問使用者）。
+- 新增機制或修好 bug 時，能寫成檢查就補進 `check.gd`，避免同樣問題再發生。
+- 網頁版已凍結（見 1.8），平常不跑 `node check.js`；只有動到根目錄的網頁版檔案時才跑。若 PowerShell 找不到 `node`，用完整路徑 `C:\Program Files\nodejs\node.exe`。
 - 檢查沒過時的處理順序：
   1. 先查遊戲本體邏輯，拿程式碼與實測數值證明「遊戲機制是對的」。
   2. 證明之後，才可以修改測試腳本，並在回報中寫明「為什麼是測試錯、不是遊戲錯」。
@@ -49,7 +49,7 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 
 ### 1.5 每次修改完成後
 1. 完成第 1.4 節的驗收。
-2. 依 `PROJECT_GUIDELINES.md` 第 12 節升版號，同步更新 `CHANGELOG.md` 與 `src/core/version.js`。
+2. 依 `PROJECT_GUIDELINES.md` 第 12 節升版號，同步更新 `CHANGELOG.md` 與 `godot/core/version.gd`（網頁版的 `src/core/version.js` 已凍結，不再更新）。
 3. `git commit -m "vX.Y.Z: 摘要"`，並 `git tag vX.Y.Z`（不 push）。
 4. 新增、刪除、搬移檔案時更新第 4 節「檔案地圖」；架構或核心規則有變時更新 `PROJECT_GUIDELINES.md`。
 5. 回覆使用者：新版號、變更摘要、驗證證據、已知問題。
@@ -62,11 +62,12 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 ### 1.7 試玩網站（GitHub Pages）
 - 遊戲以 GitHub Pages 發布給朋友試玩，來源為 `main` 分支根目錄，推送後約 1 分鐘更新。
 - 網址：https://alex86106pig.github.io/Cubeborn/ （repo：https://github.com/alex86106pig/Cubeborn ，公開）
-- 遊戲必須維持「純靜態檔案、相對路徑」，不能依賴 `node_modules/` 或本機伺服器才能執行，否則網站會壞掉。
+- 目前網站放的是**已凍結的網頁版**（v0.7.0 起不再更新）。Godot 版做到能完整玩一局（`docs/進度.md` 第 4 步）後，加上 Godot 網頁匯出並把網站換成 Godot 版；換之前網站維持原樣。
+- 網站上的遊戲必須維持「純靜態檔案、相對路徑」，不能依賴 `node_modules/` 或本機伺服器才能執行，否則網站會壞掉。
 
 ### 1.8 轉換期：網頁版 → Godot
 - 最終目標是 Steam 上架、多人連線，因此改用 **Godot 4.7.2 普通版（GDScript）** 開發，專案在 `godot/`。
-- **網頁版（根目錄）只修 bug、不加新功能**，作為「玩法已驗證的設計圖」：數值、手感、Boss 招式、波次照著搬到 Godot。網頁版的規則（1.4 驗收、1.7 網站）在轉換期間仍適用。
+- **網頁版（根目錄）已凍結**（使用者決定，v0.8.0）：不修 bug、不加功能、不更新版號，只當「玩法已驗證的設計圖」，數值、手感、Boss 招式、波次照著搬到 Godot。網站換成 Godot 版之後，再決定網頁版程式碼搬到 `legacy/` 或刪除（git 歷史都還在）。
 - **Godot 執行檔**：每台電腦路徑不同，寫在該電腦的 `CLAUDE.local.md`（見 3.3），指令列用 `_console` 版。不要自己下載安裝。
 - 常用指令（在 `godot/` 內）：匯入 `--headless --import --path .`；執行主場景 `--path . -- 參數`。
 - 驗證方式：邏輯用 `--headless` 執行並讀輸出（不開視窗，隨時可跑）。畫面用離屏截圖場景 `tests/capture.tscn`：`--path . --resolution 64x64 res://tests/capture.tscn -- --seconds=S --screenshot=路徑`（可加 `--auto-move=x,y` 模擬移動）。遊戲畫在看不見的 1920×1080 畫布，截圖是完整解析度；實際視窗只有右下角 64×64、不搶焦點。截圖存在暫存資料夾、不進版控。
@@ -160,12 +161,13 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `mockups/` | 給使用者挑選的對比頁（選定後刪除，見 2.5） |
 | `mockups/背景音樂.html` | 背景音樂試聽頁：已選定 B 哥德輓歌，做進 Godot 版時作為參考，完成後刪除 |
 | `godot/project.godot` | Godot 專案設定（4.7、Forward+、1920×1080） |
-| `godot/main.tscn` / `main.gd` | Godot 組合根：主迴圈（每秒 60 步）、命中停頓、暫停、重新開始、畫面震動事件、F1 切武器、自動驗證參數 |
+| `godot/main.tscn` / `main.gd` | Godot 組合根：主迴圈（每秒 60 步）、命中停頓、暫停、重新開始、畫面震動事件、F1 切武器、自動驗證參數（`--seconds`、`--screenshot`、`--auto-move`、`--auto-attack`、`--weapon`、`--wave`） |
 | `godot/core/` | config、version、math_util、state_machine、cooldowns、game_events（autoload `GameEvents`） |
-| `godot/defs/weapon_defs.gd` | 武器資料（劍盾、法杖） |
-| `godot/sim/` | 模擬層（不碰場景樹）：world、input_cmd、entity、player、player_states（雙層狀態機）、weapon_behaviors、combat、projectile、physics |
+| `godot/defs/` | 資料表：weapon_defs（劍盾、法杖）、enemy_defs（grunt / archer / boss）、wave_defs（5 波與成長倍率） |
+| `godot/sim/` | 模擬層（不碰場景樹）：world（含通關流程）、input_cmd、entity、player、player_states（雙層狀態機）、weapon_behaviors、combat、projectile、enemy（敵人基底與共用狀態）、spawner（分波生成）、physics（格子碰撞分離） |
+| `godot/sim/enemies/` | melee_enemy、ranged_enemy、boss |
 | `godot/input/input_collector.gd` | 按鍵註冊、InputMap → InputCmd（螢幕方向轉世界、滑鼠投射地面、鎖存按下） |
-| `godot/view/` | 畫面層：camera_rig（正交等距相機）、world_view（依 id 建模型、補間）、rig（關節階層，零件暫用方塊）、animator（依 player.anim 擺姿勢）、arena_view（暫時場地） |
+| `godot/view/` | 畫面層：camera_rig（正交等距相機）、world_view（依 id 建模型、補間）、rig（關節階層與各角色外觀，零件暫用方塊）、animator（玩家姿勢）、enemy_animator（敵人姿勢、Boss 地面預警）、arena_view（暫時場地） |
 | `godot/ui/hud.tscn` / `hud.gd` | Godot HUD（目前：版號、FPS、暫停提示） |
 | `godot/tests/check.gd` | Godot 自動檢查（headless：`--headless --path . -s res://tests/check.gd`） |
 | `godot/tests/capture.tscn` / `capture.gd` | 畫面測試專用：離屏 1920×1080 繪製＋右下角 64×64 不搶焦點視窗，供截圖驗證（見 1.8） |
@@ -174,7 +176,7 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `src/preview.js` | 模型檢視頁進入點 |
 | `src/Game.js` | 組合根：持有所有系統、主迴圈、命中停頓、暫停、靜音鍵、重新開始、通關 |
 | `src/core/config.js` | 全域可調參數（迴圈、世界、相機、玩家、生成、音量、除錯開關） |
-| `src/core/version.js` | VERSION 常數（與 CHANGELOG、git tag 同步） |
+| `src/core/version.js` | VERSION 常數（網頁版已凍結於 0.7.0，不再更新） |
 | `src/core/math.js` | 角度、插值、緩動等數學工具 |
 | `src/core/EventBus.js` | 發布/訂閱事件匯流排 |
 | `src/core/StateMachine.js` | 通用有限狀態機 |

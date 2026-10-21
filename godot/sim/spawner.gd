@@ -1,0 +1,111 @@
+# 分波生成（照搬網頁版 Spawner.js）：依 wave_defs 逐隻從遠離玩家的位置生成；場上清空後倒數進入下一波
+# 不持有 World（避免循環參照），每次呼叫時傳入；隨機一律用 world.rng
+class_name Spawner
+extends RefCounted
+
+var wave := 0
+var queue: Array[StringName] = []
+var wave_timer := 0.0
+var spawn_timer := 0.0
+var finished := false
+
+
+func _init() -> void:
+	reset()
+
+
+func total_waves() -> int:
+	return WaveDefs.WAVES.size()
+
+
+func reset() -> void:
+	wave = 0
+	queue.clear()
+	wave_timer = Config.SPAWNER.first_delay
+	spawn_timer = 0.0
+	finished = false
+
+
+func update(world: World, dt: float) -> void:
+	if not world.is_any_player_alive() or world.is_over or finished:
+		return
+
+	if not queue.is_empty():
+		spawn_timer -= dt
+		if spawn_timer <= 0.0:
+			_spawn_from_queue(world, queue.pop_front())
+			spawn_timer = Config.SPAWNER.spawn_interval
+		return
+
+	for e in world.enemies:
+		if not e.is_dead:
+			return
+	if wave >= total_waves():
+		finished = true
+		return
+	wave_timer -= dt
+	if wave_timer > 0.0:
+		return
+	_start_wave(world, wave + 1)
+
+
+func _start_wave(world: World, p_wave: int) -> void:
+	var def: Dictionary = WaveDefs.WAVES[p_wave - 1]
+	var is_boss: bool = def.get("is_boss", false)
+	wave = p_wave
+	wave_timer = Config.SPAWNER.wave_delay
+	spawn_timer = Config.SPAWNER.boss_first_spawn_delay if is_boss else Config.SPAWNER.first_spawn_delay
+
+	var bosses: Array[StringName] = []
+	var others: Array[StringName] = []
+	for type: StringName in def.spawns:
+		for i in def.spawns[type]:
+			(bosses if type == &"boss" else others).append(type)
+	# Boss 先出場，其餘隨機排序（Fisher-Yates，用 world.rng 才有決定性）
+	for i in range(others.size() - 1, 0, -1):
+		var j := world.rng.randi_range(0, i)
+		var tmp := others[i]
+		others[i] = others[j]
+		others[j] = tmp
+	queue = bosses + others
+
+	world.stats.wave = wave
+	world.emit_event("wave:started", {"wave": wave, "total": total_waves(), "is_boss": is_boss})
+
+
+func _spawn_from_queue(world: World, type: StringName) -> void:
+	var player := world.first_alive_player()
+	var p := player.pos if player != null else Vector2.ZERO
+	var limit: float = world.arena_half_size - Config.SPAWNER.edge_margin
+	var at := Vector2.ZERO
+	if type == &"boss":
+		# 出現在玩家對面、靠近場地中央
+		var from_center := p.length()
+		var dist := minf(Config.SPAWNER.boss_distance, limit)
+		at = -p / from_center * dist if from_center > 1.0 else Vector2(0.0, -dist)
+	else:
+		for attempt in Config.SPAWNER.spawn_attempts:
+			at = Vector2(world.rng.randf_range(-limit, limit), world.rng.randf_range(-limit, limit))
+			if at.distance_to(p) >= Config.SPAWNER.min_distance_from_player:
+				break
+	spawn_at(world, type, at)
+
+
+func spawn_at(world: World, type: StringName, at: Vector2) -> Enemy:
+	var mul: Dictionary = WaveDefs.NO_SCALING if type == &"boss" else WaveDefs.wave_multipliers(wave)
+	var enemy := _create(world, type, at, mul)
+	world.add_enemy(enemy)
+	return enemy
+
+
+# 敵人類型 → 行為類別（網頁版 Spawner 的 ENEMY_CLASSES）
+static func _create(world: World, type: StringName, at: Vector2, mul: Dictionary) -> Enemy:
+	match type:
+		&"grunt":
+			return MeleeEnemy.new(world, type, at, mul)
+		&"archer":
+			return RangedEnemy.new(world, type, at, mul)
+		&"boss":
+			return Boss.new(world, type, at, mul)
+	assert(false, "Unknown enemy type: %s" % type)
+	return null
