@@ -2,6 +2,11 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.10.1] - 2026-10-21
+
+### 修改
+- `docs/進度.md`：記錄 v0.10.0 網站發布已驗證（Actions 建置 40 秒、發布 1 分鐘、CI 內檢查 42 / 42，首頁與 `/legacy/` 實測可玩）與 Actions 的兩個淘汰警告。
+
 ## [0.10.0] - 2026-10-21
 
 試玩網站改用 Godot 網頁匯出（推送後由 GitHub Actions 自動發布）；舊網頁版搬到 `legacy/`。
