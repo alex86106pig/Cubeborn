@@ -1,4 +1,4 @@
-# 主動欄位（數字鍵 1~5）技能 / 道具資料（照搬網頁版 src/skills/skillDefs.js）；邏輯在 sim/skill_behaviors.gd
+# 主動欄位（數字鍵 1~5）技能 / 道具資料（照搬網頁版 legacy/src/skills/skillDefs.js）；邏輯在 sim/skill_behaviors.gd
 # mode：&"cooldown" 只受 CD 限制；&"charges" 另有使用次數（CD 作為防連按間隔）
 class_name SkillDefs
 

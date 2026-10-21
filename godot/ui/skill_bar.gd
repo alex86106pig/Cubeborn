@@ -5,6 +5,8 @@ extends HBoxContainer
 const SLOT_SIZE := 58.0
 const FLASH_DENY_TIME := 0.3
 const FLASH_USED_TIME := 0.25
+# 打包的字型（Noto Sans TC）沒有這幾個符號，改用向量圖形畫；網頁版沒有系統字型可借
+const DRAWN_ICONS: Array[String] = ["⚔", "🛡", "✦", "✺"]
 
 var _slots: Dictionary = {}   # cd key -> Slot
 var _weapon_id: StringName = &""
@@ -69,6 +71,7 @@ func _add_slot(key: String, icon: String, key_label: String, index: int, empty: 
 class Slot extends Control:
 	var index := -1
 	var icon: Label
+	var drawn_icon := ""        # DRAWN_ICONS 之一時由 _draw 畫，icon 文字留空
 	var charges: Label
 	var cd_text: Label
 	var cd_left := 0.0
@@ -81,6 +84,9 @@ class Slot extends Control:
 		custom_minimum_size = Vector2(SLOT_SIZE, SLOT_SIZE)
 		pivot_offset = custom_minimum_size / 2.0
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if p_icon in DRAWN_ICONS:
+			drawn_icon = p_icon
+			p_icon = ""
 		icon = _centered(UiKit.label(p_icon, 28))
 		cd_text = _centered(UiKit.label("", 18))
 		charges = UiKit.label("", 13, UiKit.CHARGES, 1)
@@ -105,6 +111,8 @@ class Slot extends Control:
 		draw_rect(r.grow(2.0), _outline)
 		draw_rect(r, Color("0b0d14"))
 		draw_rect(r.grow(-3.0), UiKit.SLOT_BG)
+		if drawn_icon != "":
+			SkillIcons.draw(self, drawn_icon, size / 2.0, icon.modulate.a)
 		if cd_ratio > 0.0:
 			# 從 12 點鐘方向順時針的扇形遮罩（網頁版 conic-gradient）
 			var c := size / 2.0

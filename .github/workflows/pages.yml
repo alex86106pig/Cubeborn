@@ -1,0 +1,81 @@
+# 推送 main 後：下載 Godot 與匯出模板 → 跑自動檢查 → 匯出網頁版 → 加上舊網頁版（/legacy/）→ 發布到 GitHub Pages
+# repo 的 Settings → Pages → Source 必須設成「GitHub Actions」
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.7.2
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Godot and web export templates
+        id: cache-godot
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/godot
+            ~/.local/share/godot/export_templates
+          key: godot-${{ env.GODOT_VERSION }}-web
+
+      - name: Download Godot and export templates
+        if: steps.cache-godot.outputs.cache-hit != 'true'
+        run: |
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          templates="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p ~/godot "$templates" /tmp/templates
+          curl -fsSL -o /tmp/godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q /tmp/godot.zip -d ~/godot
+          curl -fsSL -o /tmp/templates.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q /tmp/templates.tpz -d /tmp/templates
+          # 只留網頁版模板，快取比較小
+          cp /tmp/templates/templates/version.txt /tmp/templates/templates/web_* "$templates/"
+
+      - name: Import project and run checks
+        run: |
+          GODOT="$HOME/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64"
+          cd godot
+          "$GODOT" --headless --import --path . || true
+          "$GODOT" --headless --path . -s res://tests/check.gd
+
+      - name: Export web build
+        run: |
+          mkdir -p build/web
+          cd godot
+          "$HOME/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" --headless --path . --export-release "Web" ../build/web/index.html
+          test -f ../build/web/index.html
+
+      - name: Add legacy web version at /legacy/
+        run: |
+          cp -r legacy build/web/legacy
+          rm -rf build/web/legacy/node_modules
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

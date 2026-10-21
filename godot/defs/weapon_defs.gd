@@ -1,4 +1,4 @@
-# 武器資料定義（照搬網頁版 src/weapons/weaponDefs.js，欄位改 snake_case）；邏輯在 sim/weapon_behaviors.gd
+# 武器資料定義（照搬網頁版 legacy/src/weapons/weaponDefs.js，欄位改 snake_case）；邏輯在 sim/weapon_behaviors.gd
 class_name WeaponDefs
 
 const WEAPONS := {

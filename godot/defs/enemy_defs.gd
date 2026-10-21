@@ -1,4 +1,4 @@
-# 敵人資料定義（照搬網頁版 src/entities/enemyDefs.js，欄位改 snake_case）；行為在 sim/enemies/
+# 敵人資料定義（照搬網頁版 legacy/src/entities/enemyDefs.js，欄位改 snake_case）；行為在 sim/enemies/
 # 網頁版寫死在行為程式裡的數字也搬到這裡（例如接觸判定的寬容距離、Boss 招式的震動與停頓）
 class_name EnemyDefs
 

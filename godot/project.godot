@@ -23,6 +23,10 @@ GameEvents="*res://core/game_events.gd"
 window/size/viewport_width=1920
 window/size/viewport_height=1080
 
+[gui]
+
+theme/custom_font="res://assets/fonts/hud_font.tres"
+
 [physics]
 
 common/max_physics_steps_per_frame=5

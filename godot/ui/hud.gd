@@ -1,4 +1,4 @@
-# HUD（照搬網頁版 src/ui/HUD.js 與 css/style.css）：血條、武器、波次 / 擊殺 / 時間、FPS、版號、Boss 血條、
+# HUD（照搬網頁版 legacy/src/ui/HUD.js 與 css/style.css）：血條、武器、波次 / 擊殺 / 時間、FPS、版號、Boss 血條、
 # 技能欄、橫幅、受擊暗角、浮動數字、暫停與結算畫面。只讀模擬狀態與事件，不修改模擬
 class_name HUD
 extends CanvasLayer

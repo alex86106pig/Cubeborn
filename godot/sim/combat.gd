@@ -1,4 +1,4 @@
-# 傷害結算與命中判定查詢（扇形、圓形）；照搬網頁版 src/combat/Combat.js
+# 傷害結算與命中判定查詢（扇形、圓形）；照搬網頁版 legacy/src/combat/Combat.js
 class_name Combat
 
 

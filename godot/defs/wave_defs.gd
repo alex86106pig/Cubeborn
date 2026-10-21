@@ -1,4 +1,4 @@
-# 波次資料（照搬網頁版 src/world/waveDefs.js）：每波生成的敵人數量；最後一波為 Boss 戰，打倒 Boss 即通關
+# 波次資料（照搬網頁版 legacy/src/world/waveDefs.js）：每波生成的敵人數量；最後一波為 Boss 戰，打倒 Boss 即通關
 class_name WaveDefs
 
 const WAVES: Array[Dictionary] = [

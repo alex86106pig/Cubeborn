@@ -2,6 +2,21 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.10.0] - 2026-10-21
+
+試玩網站改用 Godot 網頁匯出（推送後由 GitHub Actions 自動發布）；舊網頁版搬到 `legacy/`。
+
+### 新增
+- `godot/export_presets.cfg`：「Web」匯出設定（Compatibility 渲染器、單執行緒：GitHub Pages 不能設定多執行緒需要的 COOP / COEP 標頭）。本機實測：瀏覽器可正常遊玩、Console 無錯誤，`index.wasm` 39.5 MB、`index.pck` 9.0 MB。
+- `.github/workflows/pages.yml`：推送 main 後下載 Godot 4.7.2 與網頁模板（有快取）、跑 `check.gd`、匯出、把 `legacy/` 放在 `/legacy/`、發布 GitHub Pages。repo 不存匯出檔。
+- `godot/assets/fonts/`：打包 Noto Sans TC（SIL OFL 1.1，附授權全文）並設為專案預設字型（字重 700）；瀏覽器裡沒有系統字型可借。
+- `godot/ui/skill_icons.gd`：字型沒有的 ⚔ 🛡 ✦ ✺ 改用向量圖畫，桌面與網頁看起來一樣。
+- `tools/serve_web.ps1`：本機測試網頁匯出的靜態伺服器（`.claude/launch.json` 的 `cubeborn-web`）。
+- `tests/check.gd` 新增「介面文字都在打包字型裡」檢查（共 42 項）。
+
+### 修改
+- 舊網頁版（`index.html`、`preview.html`、`css/`、`src/`、`check.js`、`package*.json`、`tools/serve.ps1`）搬到 `legacy/`，在該資料夾內 `node check.js` 仍 21 / 21 通過。`CLAUDE.md`、`PROJECT_GUIDELINES.md`（第 1~14 節路徑改為相對 `legacy/`）、`docs/新電腦設定.md`、`.claude/launch.json` 同步更新。
+
 ## [0.9.0] - 2026-10-21
 
 Godot 版里程碑 4：數字鍵技能欄、HUD、暫停與結算畫面（照網頁版 1:1 搬移）。現在可以完整玩一局。

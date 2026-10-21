@@ -84,6 +84,7 @@ func _initialize() -> void:
 	_check("疾跑：移速 6.5 × 1.6 = 10.4、持續 3 秒、CD 8 秒；使用道具動作 0.18 秒", _check_sprint_slot)
 	_check("數字鍵緩衝：攻擊中按 1 會在後搖取消並使用道具；空欄位不提示", _check_slot_buffer)
 	_check("HUD：能建立、處理各種事件、顯示波次 / 血量 / 結算文字", _check_hud)
+	_check("字型：介面文字都在打包的 Noto Sans TC 裡（網頁版沒有系統字型），缺字的圖示改用向量圖", _check_font_coverage)
 	for w in _worlds:
 		w.clear()
 	_worlds.clear()
@@ -165,7 +166,7 @@ func _damage_amounts(events: Array[Dictionary], target_id: int) -> Array:
 # 網頁版 Sound.js 的 CUES 名稱（以「名稱: (a) =>」比對）
 func _web_cue_names() -> Dictionary:
 	var root := ProjectSettings.globalize_path("res://").path_join("..")
-	var text := _read_text(root.path_join("src/audio/Sound.js"))
+	var text := _read_text(root.path_join("legacy/src/audio/Sound.js"))
 	var names := {}
 	for m in RegEx.create_from_string("(?m)^\\s+(\\w+): \\(a\\) =>").search_all(text):
 		names[m.get_string(1)] = true
@@ -1129,6 +1130,38 @@ func _check_hud() -> String:
 		return "game:victory 應顯示勝利畫面"
 	hud.queue_free()
 	cam.queue_free()
+	return ""
+
+
+func _check_font_coverage() -> String:
+	if ProjectSettings.get_setting("gui/theme/custom_font", "") != "res://assets/fonts/hud_font.tres":
+		return "project.godot 的 gui/theme/custom_font 沒有設成打包字型"
+	var font := load("res://assets/fonts/NotoSansTC-VF.ttf") as FontFile
+	if font == null:
+		return "讀不到 assets/fonts/NotoSansTC-VF.ttf"
+	var drawn: Array = load("res://ui/skill_bar.gd").get_script_constant_map().DRAWN_ICONS
+	var texts: Array[String] = []
+	for w: Dictionary in WeaponDefs.WEAPONS.values():
+		texts.append_array([w.name, w.attack.name, w.attack.icon, w.special.name, w.special.icon])
+	for s: Dictionary in SkillDefs.SKILLS.values():
+		texts.append_array([s.name, s.icon])
+	var hud_consts: Dictionary = load("res://ui/hud.gd").get_script_constant_map()
+	texts.append_array([hud_consts.CONTROLS_TEXT, hud_consts.BOSS_NAME])
+	# HUD 程式裡的字串常值（標題、橫幅、結算、按鍵名稱）
+	var re := RegEx.create_from_string("\"([^\"\\\\]*)\"")
+	for path in ["res://ui/hud.gd", "res://ui/skill_bar.gd"]:
+		for m in re.search_all(_read_text(path)):
+			texts.append(m.get_string(1))
+	var missing := {}
+	for t in texts:
+		if t in drawn:
+			continue
+		for i in t.length():
+			var code := t.unicode_at(i)
+			if code > 32 and not font.has_char(code):
+				missing[t[i]] = true
+	if not missing.is_empty():
+		return "打包字型缺字：%s" % " ".join(missing.keys())
 	return ""
 
 

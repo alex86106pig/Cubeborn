@@ -2,7 +2,7 @@
 
 > 本文件是專案的**唯一事實來源**。任何與本文件衝突的程式碼都視為 bug；架構變更時必須同步更新本文件。
 
-> **轉換期說明**：第 1~14 節描述網頁版（根目錄，Three.js），網頁版已凍結（v0.8.0 起不修 bug、不更新版號），只當玩法設計圖。正式開發改用 Godot 4.7.2（GDScript，專案在 `godot/`），架構與多人連線規範見**第 15 節**；第 15 節沒寫到的玩法規則（狀態機分段、CD key、事件名稱、資料格式）沿用第 4~9 節，只把語法換成 GDScript。
+> **轉換期說明**：第 1~14 節描述網頁版（Three.js），網頁版已凍結（v0.8.0 起不修 bug、不更新版號）並於 v0.10.0 搬到 `legacy/`，只當玩法設計圖；**第 1~14 節的檔案路徑都相對於 `legacy/`**。正式開發改用 Godot 4.7.2（GDScript，專案在 `godot/`），架構與多人連線規範見**第 15 節**；第 15 節沒寫到的玩法規則（狀態機分段、CD key、事件名稱、資料格式）沿用第 4~9 節，只把語法換成 GDScript。
 
 ---
 
@@ -31,7 +31,7 @@
 | UI | DOM + CSS 疊在 canvas 上 | 好排版、好除錯 |
 | 版控 | git，每個版本一個 commit + tag | 可回溯 |
 
-**啟動方式**：在專案根目錄執行 `powershell -ExecutionPolicy Bypass -File tools/serve.ps1`，瀏覽器開 `http://localhost:5173`。`.claude/launch.json` 也有同樣設定（名稱 `cubeborn`），可供 Claude 的瀏覽器預覽使用。
+**啟動方式**：在專案根目錄執行 `powershell -ExecutionPolicy Bypass -File legacy/tools/serve.ps1`，瀏覽器開 `http://localhost:5173`。`.claude/launch.json` 也有同樣設定（名稱 `cubeborn-legacy`），可供 Claude 的瀏覽器預覽使用。
 
 **AI 測試技巧**：瀏覽器分頁在背景時 `requestAnimationFrame` 會暫停。測試邏輯時可在 Console 透過 `__game.update(1/60)` 加 `__game.input.endStep()` 手動推進邏輯步。
 
@@ -319,7 +319,7 @@ export const SKILLS = {
 
 - **一次使用者請求 = 一個版號**，同一請求內的多項修改合併在同一版記錄。
 - CHANGELOG 分類：`新增` / `修改` / `修復` / `移除`。
-- 版號必須三處一致：`CHANGELOG.md`、`godot/core/version.gd`、git tag（網頁版的 `src/core/version.js` 已凍結在 0.7.0）。
+- 版號必須三處一致：`CHANGELOG.md`、`godot/core/version.gd`、git tag（網頁版的 `legacy/src/core/version.js` 已凍結在 0.7.0）。
 - HUD 角落顯示目前版號，方便確認瀏覽器載入的是最新版。
 
 ---

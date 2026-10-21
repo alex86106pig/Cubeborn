@@ -1,4 +1,4 @@
-# 全域可調參數：迴圈、世界、相機、玩家、戰鬥（數值照搬網頁版 src/core/config.js）
+# 全域可調參數：迴圈、世界、相機、玩家、戰鬥（數值照搬網頁版 legacy/src/core/config.js）
 class_name Config
 
 const FIXED_DT := 1.0 / 60.0
