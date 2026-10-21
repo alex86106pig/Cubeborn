@@ -389,7 +389,9 @@ InputCollector ──► InputCmd ──► World.step(cmds, dt) ──► 快�
 - 組合根 `main.gd` 在 `_physics_process` 收集輸入 → `world.step()` → 分送事件；畫面在 `_process` 以 `Engine.get_physics_interpolation_fraction()` 在上一步與這一步的位置之間補間，高更新率螢幕也平順。
 - 更新順序與網頁版第 4 節相同（CD → 玩家 → 敵人 → 投射物 → 位移 → 碰撞分離 → 場地限制 → 生成器 → 清除）。
 - 「本步按下」由 `InputCollector` 鎖存：兩次 `step` 之間按過就算，送出後才清除，不漏按。
-- 命中停頓：階段一照網頁版，由 `world` 內的計時器把 `dt` 縮放到 5%。多人時怎麼處理（全員一起停或只做畫面定格）留到階段二決定。
+- 命中停頓：照網頁版，真實時間照走、邏輯時間放慢到 5%，**每步仍是 `FIXED_DT`**（只是少跑幾步）。模擬層用 `world.hit_stop(秒)` 記錄，`main.gd` 每個真實固定步呼叫 `world.consume_hit_stop()` 取得縮放並累加決定這次要跑幾步。多人時怎麼處理（全員一起停或只做畫面定格）留到階段二決定。
+- `InputCmd` 放在 `sim/`：它是模擬層的輸入格式（連線時原樣傳送），`input/` 只負責產生它。
+- 實體與 `World` 互相參照（RefCounted 循環），移除實體、`reset()` 與結束遊戲時必須經過 `world.clear()` / 移除流程切斷參照，否則記憶體洩漏（`tests/check.gd` 有檢查）。
 - 暫停：單機時 `Esc` 停止呼叫 `step()`，失去焦點自動暫停；連線時 `Esc` 只開選單，模擬不停。
 
 ### 15.4 實體與效能
@@ -421,14 +423,15 @@ InputCollector ──► InputCmd ──► World.step(cmds, dt) ──► 快�
 godot/
 ├─ project.godot
 ├─ main.tscn / main.gd        組合根：建立 world、輸入、畫面，主迴圈、重新開始
-├─ core/                      與遊戲內容無關：config.gd、version.gd、math_util.gd、state_machine.gd、cooldowns.gd
+├─ core/                      與遊戲內容無關：config.gd、version.gd、math_util.gd、state_machine.gd、cooldowns.gd、
+│                             game_events.gd（autoload GameEvents）
 ├─ defs/                      資料表：weapon_defs.gd、skill_defs.gd、enemy_defs.gd、wave_defs.gd
-├─ sim/                       模擬層：world.gd、entity.gd、player.gd、player_states.gd、enemy.gd、
+├─ sim/                       模擬層：world.gd、input_cmd.gd、entity.gd、player.gd、player_states.gd、enemy.gd、
 │  │                          enemies/（melee_enemy、ranged_enemy、boss）、projectile.gd、combat.gd、
 │  │                          physics.gd、spawner.gd、weapon_behaviors.gd、skill_behaviors.gd、active_slots.gd
-├─ input/                     input_cmd.gd、input_collector.gd
+├─ input/                     input_collector.gd（按鍵在程式中註冊，不寫在 project.godot）
 ├─ net/                       連線（階段二）
-├─ view/                      world_view.gd、camera_rig.gd、animator.gd、rig.gd、part_kit.gd、effects.gd、
+├─ view/                      world_view.gd、arena_view.gd、camera_rig.gd、animator.gd、rig.gd、part_kit.gd、effects.gd、
 │  └─ styles/                 dark_fantasy.gd（第 14 節介面照搬）
 ├─ ui/                        hud.tscn / hud.gd
 ├─ audio/                     sound.gd、sfx/*.wav、music/

@@ -2,6 +2,27 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.6.0] - 2026-10-21
+
+Godot 版里程碑 1：遊戲骨架（單機，照 `PROJECT_GUIDELINES.md` 第 15 節三層分離）。
+
+### 新增
+- `godot/main.tscn`／`main.gd`：組合根與主迴圈（Godot `_physics_process` 每秒 60 步、一幀最多補 5 步）、命中停頓（真實時間照走、邏輯放慢到 5%）、`Esc` 暫停（失去焦點自動暫停）、`R` 重新開始、`F2` 碰撞範圍；指令列參數 `--seconds`、`--screenshot`、`--auto-move` 供自動驗證。
+- `godot/core/`：config、version、math_util、state_machine、cooldowns（照搬網頁版介面與數值），autoload `GameEvents`。
+- `godot/sim/`：World（實體 id、種子隨機數、CD、可序列化事件、更新順序同網頁版）、Entity、Player（移動 6.5 單位/秒、轉向 25 弧度/秒）、SimPhysics（碰撞分離、場地邊界）、InputCmd（位元旗標、陣列序列化）。
+- `godot/input/input_collector.gd`：按鍵在程式中註冊；WASD 以螢幕方向轉世界方向，滑鼠投射到 0.9 高的瞄準平面，鎖存本步按下。
+- `godot/view/`：正交等距相機（角度、跟隨、震動同網頁版）、WorldView（依 id 建立模型、補間位置，暫用方塊）、ArenaView（暫時的平面場地）。
+- `godot/ui/hud`：版號、FPS、暫停提示。
+- `godot/tests/check.gd`：headless 自動檢查 14 項（模擬層禁用 API 掃描、版號一致、CD、狀態機、InputCmd、移動距離、斜向限制、轉向、場地邊界、碰撞分離、命中停頓、事件可序列化、決定性、實體釋放）。
+
+### 修改
+- `godot/project.godot`：主場景改為 `main.tscn`（壓力測試改開 `stress_test.tscn` 按 F6）。
+- `PROJECT_GUIDELINES.md` 15.3 命中停頓寫法更正為同網頁版；15.8 `input_cmd.gd` 改放 `sim/`（它是模擬層的輸入格式，放 `input/` 會違反 sim 不引用 input 的規則）、按鍵改在程式中註冊、加入 `arena_view.gd`。
+
+### 修復（開發中發現，未曾發布）
+- 命中停頓因浮點殘差（0.1 − 6/60 ≈ 1e-17）多停一步：剩餘時間 ≤ 1e-6 視為結束。
+- 實體與 World 互相參照造成重新開始時記憶體洩漏：移除實體與 `reset` 時切斷參照。
+
 ## [0.5.2] - 2026-10-21
 
 Godot 版架構規範定案（尚未寫遊戲程式）。

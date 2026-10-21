@@ -153,6 +153,13 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `mockups/` | 給使用者挑選的對比頁（選定後刪除，見 2.5） |
 | `mockups/背景音樂.html` | 背景音樂試聽頁：已選定 B 哥德輓歌，做進 Godot 版時作為參考，完成後刪除 |
 | `godot/project.godot` | Godot 專案設定（4.7、Forward+、1920×1080） |
+| `godot/main.tscn` / `main.gd` | Godot 組合根：主迴圈（每秒 60 步）、命中停頓、暫停、重新開始、自動驗證參數 |
+| `godot/core/` | config、version、math_util、state_machine、cooldowns、game_events（autoload `GameEvents`） |
+| `godot/sim/` | 模擬層（不碰場景樹）：world、input_cmd、entity、player、physics |
+| `godot/input/input_collector.gd` | 按鍵註冊、InputMap → InputCmd（螢幕方向轉世界、滑鼠投射地面、鎖存按下） |
+| `godot/view/` | 畫面層：camera_rig（正交等距相機）、world_view（依 id 建模型、補間）、arena_view（暫時場地） |
+| `godot/ui/hud.tscn` / `hud.gd` | Godot HUD（目前：版號、FPS、暫停提示） |
+| `godot/tests/check.gd` | Godot 自動檢查（headless：`--headless --path . -s res://tests/check.gd`） |
 | `godot/stress_test/` | 效能壓力測試：大量敵人與投射物（資料導向 + MultiMesh + 格子碰撞），印出 FPS 與各段邏輯耗時 |
 | `src/main.js` | 遊戲進入點：建立 Game 並啟動 |
 | `src/preview.js` | 模型檢視頁進入點 |
