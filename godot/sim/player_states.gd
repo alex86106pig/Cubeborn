@@ -1,0 +1,120 @@
+# 玩家雙層狀態機定義：移動層（位移）與動作層（攻擊、技能、硬直）；照搬網頁版 playerStates.js
+# 只處理規則與時間；腿部、上半身姿勢在畫面層 view/animator.gd 依 player.anim 計算
+class_name PlayerStates
+
+const PHASES: Array[StringName] = [&"windup", &"active", &"recovery"]
+
+
+static func locomotion_states() -> Dictionary:
+	return {&"idle": Idle.new(), &"move": Move.new(), &"dead": Dead.new()}
+
+
+static func action_states() -> Dictionary:
+	return {
+		&"ready": Ready.new(),
+		&"attack": TimedAction.new(&"attack"),
+		&"special": TimedAction.new(&"special"),
+		&"stagger": Stagger.new(),
+	}
+
+
+# ───────── 移動層 ─────────
+
+class Idle:
+	func update(p: Player, _dt: float, fsm: StateMachine) -> void:
+		if p.move_input.length_squared() > 0.01:
+			fsm.change(&"move")
+
+
+class Move:
+	func update(p: Player, _dt: float, fsm: StateMachine) -> void:
+		if p.move_input.length_squared() <= 0.01:
+			fsm.change(&"idle")
+
+
+# 終止狀態：倒地動畫由畫面層依 locomotion 時間播放
+class Dead:
+	pass
+
+
+# ───────── 動作層 ─────────
+
+class Ready:
+	func enter(_p: Player, data: Dictionary, _fsm: StateMachine) -> void:
+		data.move_speed_mul = 1.0
+
+	func update(p: Player, _dt: float, fsm: StateMachine) -> void:
+		var buffered := p.buffered_action
+		if not buffered.is_empty():
+			p.buffered_action = {}
+			if buffered.type == &"special":
+				if p.world.cooldowns.is_ready("player.special"):
+					fsm.change(&"special")
+					return
+				p.world.emit_event("skill:onCooldown", {"key": "player.special", "player_id": p.id})
+		if p.is_attack_held:
+			fsm.change(&"attack")
+
+
+# 攻擊與特殊技共用的三段式動作狀態
+class TimedAction:
+	var kind: StringName
+
+	func _init(p_kind: StringName) -> void:
+		kind = p_kind
+
+	func enter(p: Player, data: Dictionary, _fsm: StateMachine) -> void:
+		var def: Dictionary = p.weapon[kind]
+		data.def = def
+		data.behavior = WeaponBehaviors.BEHAVIORS[def.behavior]
+		data.durations = [def.windup, def.active, def.recovery]
+		data.phase_index = 0
+		data.phase_time = 0.0
+		data.k = 0.0
+		data.move_speed_mul = def.get("move_speed_mul", 1.0)
+		data.lock_facing = false
+		if kind == &"special":
+			p.world.cooldowns.start("player.special", def.cooldown)
+			p.world.emit_event("skill:used", {"key": "player.special", "player_id": p.id})
+		data.behavior.enter(p, def, data)
+		_enter_phase(p, data, 0)
+
+	func update(p: Player, dt: float, fsm: StateMachine) -> void:
+		var d := fsm.data
+		d.phase_time += dt
+		while d.phase_index < PHASES.size() and d.phase_time >= d.durations[d.phase_index]:
+			d.phase_time -= d.durations[d.phase_index]
+			d.phase_index += 1
+			if d.phase_index < PHASES.size():
+				_enter_phase(p, d, d.phase_index)
+		if d.phase_index >= PHASES.size():
+			fsm.change(&"ready")
+			return
+		var name := PHASES[d.phase_index]
+		var duration: float = d.durations[d.phase_index]
+		d.k = d.phase_time / duration if duration > 0.0 else 1.0
+		d.behavior.update(p, d.def, d, name, d.k, dt)
+		# 後搖可被緩衝中的技能取消，手感較跟手
+		if name == &"recovery" and not p.buffered_action.is_empty():
+			fsm.change(&"ready")
+
+	func exit(p: Player, fsm: StateMachine) -> void:
+		fsm.data.behavior.exit(p, fsm.data.def, fsm.data)
+
+	# 進入階段：呼叫武器行為；進入 active 時播放武器資料指定的音效（終結技優先用 sfx_heavy）
+	func _enter_phase(p: Player, data: Dictionary, index: int) -> void:
+		var name := PHASES[index]
+		data.behavior.phase(p, data.def, data, name)
+		if name == &"active":
+			var sfx: String = data.def.get("sfx_heavy", data.def.sfx) if data.get("is_finisher", false) else data.def.get("sfx", "")
+			if sfx != "":
+				p.world.emit_event("sfx:cue", {"cue": sfx})
+
+
+class Stagger:
+	func enter(_p: Player, data: Dictionary, _fsm: StateMachine) -> void:
+		data.move_speed_mul = Config.PLAYER.stagger_move_speed_mul
+
+	func update(_p: Player, _dt: float, fsm: StateMachine) -> void:
+		if fsm.time >= Config.PLAYER.stagger_time:
+			fsm.change(&"ready")

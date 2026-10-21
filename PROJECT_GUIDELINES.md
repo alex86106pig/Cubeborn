@@ -271,7 +271,8 @@ export const SKILLS = {
 | `game:restart` | `{}` | Game |
 | `game:paused` | `{ paused }` | Game（Esc、失去焦點） |
 | `audio:muted` | `{ muted }` | Game（M 鍵） |
-| `sfx:cue` | `{ name }` | 各遊戲物件；`name` 必須是 `audio/Sound.js` 的 `CUES` 之一（check.js 會檢查） |
+| `sfx:cue` | `{ name }` | 各遊戲物件；`name` 必須是 `audio/Sound.js` 的 `CUES` 之一（check.js 會檢查）。Godot 版欄位為 `cue` |
+| `camera:shake` | `{ amount, duration }` | 僅 Godot 版：Combat、Player、Projectile（模擬層不能直接震相機） |
 
 ---
 
@@ -406,6 +407,8 @@ InputCollector ──► InputCmd ──► World.step(cmds, dt) ──► 快�
 ### 15.6 事件
 - 模擬層每步把事件 append 到 `world.events`（`{ "name": String, ... }`，只放 id 與數值，不放物件參照，才能透過網路傳送），步驟結束後由組合根交給 `GameEvents`（autoload）以 Godot 訊號 `event_emitted(name, payload)` 發出。
 - 事件名稱、payload 欄位與第 9 節相同（`entity:damaged`、`sfx:cue`…），物件欄位改為 id（例如 `target` → `target_id`）。新增事件時同樣要列進第 9 節的表。
+- payload 的 `name` 欄位保留給事件名稱（`world.emit_event` 會寫入並擋下衝突），所以 `sfx:cue` 的音效名稱放在 `cue`。
+- 網頁版直接呼叫畫面的地方（`renderer.shake`、`effects.*`）改成事件；特效事件在搬 `view/effects.gd` 時再定名稱並列進第 9 節。
 - 只有畫面層訂閱事件；模擬層內部流程用直接呼叫。
 
 ### 15.7 多人連線（階段二實作，階段一就要遵守資料形狀）

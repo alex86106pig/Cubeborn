@@ -1,5 +1,6 @@
 # 組合根：建立 World、輸入、畫面與 HUD；固定步長主迴圈、命中停頓、暫停、重新開始
 # 指令列參數（放在 -- 之後）：--seconds=S --screenshot=路徑 --auto-move=x,y（螢幕方向）
+#   --auto-attack（一直按住左鍵）--weapon=staff（開場武器）
 extends Node3D
 
 const HUD_SCENE := preload("res://ui/hud.tscn")
@@ -17,6 +18,7 @@ var _stepped_this_tick := false
 var _run_seconds := 0.0
 var _screenshot_path := ""
 var _elapsed := 0.0
+var _start_weapon: StringName = &""
 
 
 func _ready() -> void:
@@ -29,6 +31,7 @@ func _ready() -> void:
 	input_collector.camera_rig = camera_rig
 	add_child(input_collector)
 	add_child(HUD_SCENE.instantiate())
+	GameEvents.event_emitted.connect(_on_event)
 	restart()
 
 
@@ -45,6 +48,10 @@ func _parse_args() -> void:
 		elif arg.begins_with("--auto-move="):
 			var xy := arg.get_slice("=", 1).split(",")
 			input_collector.auto_move = Vector2(xy[0].to_float(), xy[1].to_float())
+		elif arg == "--auto-attack":
+			input_collector.auto_attack = true
+		elif arg.begins_with("--weapon="):
+			_start_weapon = StringName(arg.get_slice("=", 1))
 
 
 func local_player() -> Player:
@@ -53,6 +60,8 @@ func local_player() -> Player:
 
 func restart() -> void:
 	world.reset(randi())
+	if _start_weapon != &"":
+		local_player().equip_weapon(_start_weapon)
 	_sim_accumulator = 0.0
 	input_collector.consume_latched()
 	GameEvents.emit_all(world.events)
@@ -89,7 +98,7 @@ func _physics_process(_delta: float) -> void:
 
 func _process(delta: float) -> void:
 	var alpha := Engine.get_physics_interpolation_fraction() if _stepped_this_tick else 1.0
-	world_view.sync(world, alpha)
+	world_view.sync(world, alpha, delta)
 	camera_rig.follow(_player_view_position(alpha), delta)
 	_check_auto_quit(delta)
 
@@ -113,6 +122,16 @@ func _unhandled_input(event: InputEvent) -> void:
 			restart()
 	elif event.is_action_pressed(&"debug_hitbox"):
 		world_view.show_hitboxes = not world_view.show_hitboxes
+	elif event.is_action_pressed(&"debug_weapon"):
+		# 除錯用武器切換（非正式系統，單機才有）；正式的切換在階段二要改成 InputCmd
+		var player := local_player()
+		if player != null and not player.is_dead:
+			player.equip_weapon(&"staff" if player.weapon_id == &"swordShield" else &"swordShield")
+
+
+func _on_event(name: String, payload: Dictionary) -> void:
+	if name == "camera:shake":
+		camera_rig.shake(payload.amount, payload.duration)
 
 
 # 切到其他視窗時自動暫停，避免回來時已經被打死
@@ -129,7 +148,8 @@ func _check_auto_quit(delta: float) -> void:
 		return
 	_run_seconds = 0.0
 	var player := local_player()
-	print("tick=%d player_pos=(%.2f, %.2f) facing=%.2f" % [world.tick, player.pos.x, player.pos.y, player.facing])
+	print("tick=%d player_pos=(%.2f, %.2f) facing=%.2f weapon=%s action=%s projectiles=%d" % [
+		world.tick, player.pos.x, player.pos.y, player.facing, player.weapon_id, player.action.current_name, world.projectiles.size()])
 	if _screenshot_path != "":
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png(_screenshot_path)

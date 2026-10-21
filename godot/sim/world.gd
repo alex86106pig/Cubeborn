@@ -36,10 +36,10 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 	emit_event("game:restart", {})
 
 
-# 實體與 World 互相參照（RefCounted 循環），移除時必須切斷 e.world 才會釋放
+# 實體與 World 互相參照（RefCounted 循環），移除時必須 detach() 才會釋放
 func clear() -> void:
 	for e: Entity in entities.values():
-		e.world = null
+		e.detach()
 	events.clear()
 	entities.clear()
 	players.clear()
@@ -58,7 +58,16 @@ func add_entity(e: Entity) -> Entity:
 	return e
 
 
+# 投射物在玩家 / 敵人更新途中產生，同一步就會接著被更新（同網頁版）
+func spawn_projectile(p: Projectile) -> Projectile:
+	add_entity(p)
+	projectiles.append(p)
+	return p
+
+
+# payload 的 "name" 欄位保留給事件名稱（例如 sfx:cue 的音效名稱放在 "cue"）
 func emit_event(name: String, payload: Dictionary) -> void:
+	assert(not payload.has("name"), "payload 的 name 欄位保留給事件名稱：%s" % name)
 	payload["name"] = name
 	events.append(payload)
 
@@ -122,7 +131,7 @@ func _remove_dead_entities() -> void:
 	for id: int in entities.keys():
 		var e: Entity = entities[id]
 		if e.is_removed:
-			e.world = null
+			e.detach()
 			entities.erase(id)
 			if e is Player:
 				players.erase(e.peer_id)

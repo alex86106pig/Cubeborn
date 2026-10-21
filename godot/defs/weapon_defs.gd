@@ -1,0 +1,104 @@
+# 武器資料定義（照搬網頁版 src/weapons/weaponDefs.js，欄位改 snake_case）；邏輯在 sim/weapon_behaviors.gd
+class_name WeaponDefs
+
+const WEAPONS := {
+	&"swordShield": {
+		"id": &"swordShield",
+		"name": "劍盾",
+		"type": &"melee",
+		"model": &"swordShield",
+		"idle": {"arm_r": -0.35, "arm_l": -0.1, "tilt": 0.0},
+		"attack": {
+			"behavior": &"meleeSwing",
+			"sfx": "swing", "sfx_heavy": "swingHeavy",
+			"name": "斬擊",
+			"icon": "⚔",
+			"damage": 12.0,
+			"range": 2.3,
+			"arc": PI * 0.65,
+			"windup": 0.07,
+			"active": 0.09,
+			"recovery": 0.2,
+			"knockback": 7.0,
+			"lunge": 3.5,
+			"move_speed_mul": 0.35,
+			"combo_window": 0.35,      # 收招後多久內再出手可接下一段
+			"finisher_mul": 1.8,       # 第三段傷害倍率
+			"finisher_impact_mul": 1.8,   # 第三段擊退與命中停頓倍率
+			"finisher_shake_mul": 2.5,
+			"finisher_scale": 1.25,    # 第三段範圍與角度倍率
+			"finisher_recovery_mul": 1.6,
+			"hit_stop": 0.04,
+			"shake": 0.08,
+		},
+		"special": {
+			"behavior": &"shieldBash",
+			"sfx": "shieldBash",
+			"name": "盾擊衝鋒",
+			"icon": "🛡",
+			"cooldown": 4.0,
+			"damage": 15.0,
+			"dash_speed": 17.0,
+			"dash_mass": 8.0,          # 衝鋒時把敵人推開
+			"radius": 1.1,
+			"hit_offset": 0.5,         # 判定圓心在玩家前方的距離
+			"knockback": 16.0,
+			"windup": 0.08,
+			"active": 0.22,
+			"recovery": 0.2,
+			"move_speed_mul": 0.0,
+			"damage_taken_mul": 0.2,   # 衝鋒期間受到的傷害倍率
+			"hit_stop": 0.07,
+			"shake": 0.25,
+		},
+	},
+
+	&"staff": {
+		"id": &"staff",
+		"name": "法杖",
+		"type": &"ranged",
+		"model": &"staff",
+		"idle": {"arm_r": -0.5, "arm_l": 0.0, "tilt": 0.0},
+		"attack": {
+			"behavior": &"fireBolt",
+			"sfx": "fireBolt",
+			"name": "魔彈",
+			"icon": "✦",
+			"damage": 8.0,
+			"projectile_speed": 20.0,
+			"projectile_radius": 0.22,
+			"spawn_offset": 0.6,       # 投射物出生點在玩家前方的距離
+			"range": 14.0,
+			"knockback": 3.5,
+			"windup": 0.06,
+			"active": 0.02,
+			"recovery": 0.2,
+			"move_speed_mul": 0.8,
+			"color": Color("7fd8ff"),
+			"hit_stop": 0.02,
+			"shake": 0.04,
+		},
+		"special": {
+			"behavior": &"arcaneBurst",
+			"sfx": "arcaneCast",
+			"name": "奧術爆裂",
+			"icon": "✺",
+			"cooldown": 5.0,
+			"projectile_speed": 16.0,
+			"projectile_radius": 0.45,
+			"spawn_offset": 0.6,
+			"min_range": 2.0,
+			"range": 12.0,
+			"explosion_radius": 3.2,
+			"damage": 28.0,
+			"knockback": 13.0,
+			"windup": 0.35,
+			"active": 0.02,
+			"recovery": 0.25,
+			"move_speed_mul": 0.4,
+			"color": Color("c77dff"),
+			"hit_stop": 0.08,
+			"shake": 0.4,
+		},
+	},
+}

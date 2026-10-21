@@ -2,6 +2,28 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.7.0] - 2026-10-21
+
+Godot 版里程碑 2：玩家雙層狀態機、劍盾與法杖（單機，照網頁版 1:1 搬移）。渲染器定案為 Forward+。
+
+### 新增
+- `godot/defs/weapon_defs.gd`：劍盾、法杖資料（數值照搬 `weaponDefs.js`）；原本寫死在行為裡的數字改成欄位（`dash_mass`、`hit_offset`、`spawn_offset`、終結技倍率）。
+- `godot/sim/player_states.gd`：移動層 `idle / move / dead`、動作層 `ready / attack / special / stagger`，攻擊三段式、後搖可被緩衝取消。
+- `godot/sim/weapon_behaviors.gd`：斬擊三連段（第三段 ×1.8、範圍 ×1.25、後搖 ×1.6）、盾擊衝鋒（受傷 ×0.2、霸體）、魔彈、奧術爆裂。
+- `godot/sim/combat.gd`（傷害結算、扇形 / 圓形判定）、`godot/sim/projectile.gd`（直線投射物、範圍爆炸）。
+- `godot/view/rig.gd`：與網頁版相同的關節階層，零件暫用方塊（里程碑 5 換造型）；武器掛點與角度照搬。
+- `godot/view/animator.gd`：依模擬層的 `player.anim` 算出腿、上半身、武器姿勢與倒地、硬直、受擊閃白、無敵閃爍。
+- 事件 `camera:shake`（模擬層不能直接震相機，改由事件通知畫面層）。
+- `F1` 除錯切換武器；指令列 `--auto-attack`、`--weapon=staff` 供截圖驗證。
+- `tests/check.gd` 新增 10 項（共 24 項）：武器資料與音效名稱對照網頁版 CUES、攻擊時間、連段傷害、盾擊、硬直、輸入緩衝、魔彈、奧術爆裂、死亡、戰鬥事件可序列化。
+
+### 修改
+- 實體移除改呼叫 `Entity.detach()`：玩家另外切斷狀態機對自己的參照，避免記憶體洩漏。
+- `sfx:cue` 的音效名稱欄位在 Godot 版改為 `cue`（`name` 保留給事件名稱，`emit_event` 會擋下）。
+
+### 效能（alex_donghu：Ryzen 7 9700X + RTX 5070，離屏截圖場景，僅供參考）
+- 骨架空場景 Forward+：開垂直同步 165 FPS（螢幕上限），關閉約 2500~2850 FPS；Mobile 關閉垂直同步約 4200~4370 FPS。
+
 ## [0.6.1] - 2026-10-21
 
 Godot 畫面測試不再蓋住使用者螢幕。

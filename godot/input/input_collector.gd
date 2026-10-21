@@ -14,6 +14,7 @@ const MOUSE_ACTIONS: Array[StringName] = [&"attack", &"special"]
 
 var camera_rig: CameraRig
 var auto_move := Vector2.ZERO   # 測試用：螢幕方向的固定移動輸入（--auto-move）
+var auto_attack := false        # 測試用：一直按住左鍵（--auto-attack）
 
 var _latched := 0               # 兩次模擬步之間按過的按鈕，步驟執行後才清除
 var _aim := Vector2(0.0, 5.0)
@@ -63,7 +64,7 @@ func build_cmd(tick: int) -> InputCmd:
 	cmd.aim = _aim
 
 	cmd.buttons = _latched
-	if Input.is_action_pressed(&"attack"):
+	if auto_attack or Input.is_action_pressed(&"attack"):
 		cmd.buttons |= InputCmd.BTN_ATTACK
 	return cmd
 

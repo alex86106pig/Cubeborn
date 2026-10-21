@@ -21,6 +21,9 @@ const CAMERA := {
 const COMBAT := {
 	"knockback_damping": 9.0,
 	"flash_time": 0.12,
+	"hit_shake_duration": 0.15,         # 命中震動秒數（網頁版 Combat.applyDamage）
+	"explosion_shake_duration": 0.3,    # 爆炸震動秒數（網頁版 Projectile.#explode）
+	"projectile_height": 1.25,          # 投射物飛行高度（只給畫面用）
 }
 
 const PLAYER := {
@@ -31,8 +34,11 @@ const PLAYER := {
 	"mass": 2.0,
 	"invuln_time": 0.6,
 	"stagger_time": 0.15,
+	"stagger_move_speed_mul": 0.4,
 	"action_buffer_time": 0.25,
 	"start_weapon": &"swordShield",
+	"hurt_shake": 0.25,                 # 受傷時畫面震動強度與秒數
+	"hurt_shake_duration": 0.2,
 }
 
 # 暗黑幻想的環境色（照搬 darkFantasy.js 的 environment；里程碑 5 移到 view/styles/）

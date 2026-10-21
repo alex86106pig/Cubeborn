@@ -90,3 +90,8 @@ func integrate(dt: float) -> void:
 
 func remove() -> void:
 	is_removed = true
+
+
+# 由 World 在移除實體或 clear() 時呼叫：切斷循環參照（RefCounted 才會釋放）
+func detach() -> void:
+	world = null
