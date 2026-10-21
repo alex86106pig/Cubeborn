@@ -2,6 +2,17 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.5.2] - 2026-10-21
+
+Godot 版架構規範定案（尚未寫遊戲程式）。
+
+### 新增
+- `PROJECT_GUIDELINES.md` 第 15 節「Godot 版架構」：輸入 / 模擬 / 畫面三層分離（模擬層不碰場景樹，單機 = 沒有連線的房主）、固定每秒 60 步、實體 id、動畫資料與姿勢拆開、事件可序列化、多人連線規範（房主權威、InputCmd、20 次/秒快照、遠端補間、自己移動預測）、目錄結構、GDScript 命名、headless 驗收 `tests/check.gd`。
+- 使用者決定：合作 1~4 人、房主當伺服器（先 ENet 後 Steam）、照網頁版程式生成模型、先單機搬完再接連線。
+
+### 修改
+- `docs/進度.md` 下一步改為 Godot 階段一的 7 個里程碑。
+
 ## [0.5.1] - 2026-10-21
 
 多台電腦的本機設定分開存放；公司電腦 alex_work 完成設定。

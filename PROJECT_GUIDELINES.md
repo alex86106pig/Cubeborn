@@ -2,7 +2,7 @@
 
 > 本文件是專案的**唯一事實來源**。任何與本文件衝突的程式碼都視為 bug；架構變更時必須同步更新本文件。
 
-> **轉換期說明**：本文件目前描述的是網頁版（根目錄，Three.js）。正式開發改用 Godot 4.7.2（GDScript，專案在 `godot/`），Godot 版的架構與多人連線規範會在下一步寫入本文件。
+> **轉換期說明**：第 1~14 節描述網頁版（根目錄，Three.js），網頁版只修 bug，作為玩法設計圖。正式開發改用 Godot 4.7.2（GDScript，專案在 `godot/`），架構與多人連線規範見**第 15 節**；第 15 節沒寫到的玩法規則（狀態機分段、CD key、事件名稱、資料格式）沿用第 4~9 節，只把語法換成 GDScript。
 
 ---
 
@@ -355,3 +355,113 @@ export const SKILLS = {
 
 - 新增職業或敵人時：先在 `darkFantasy.js` 補上對應的 `characters` 欄位，再新增資料定義。
 - 新造型或新外觀的候選方案，依 `CLAUDE.md` 第 2.5 節先做對比頁給使用者挑選，選定後才做進遊戲。
+
+---
+
+## 15. Godot 版架構（正式版）
+
+### 15.1 目標與已定案的方向
+| 項目 | 決定 |
+|---|---|
+| 引擎 | Godot 4.7.2 普通版，GDScript（一律寫型別）；效能不夠的熱點才改 C++（GDExtension），判斷依據見 `docs/進度.md` 壓力測試 |
+| 平台 | Windows 優先，目標 Steam 上架；不以網頁匯出為目標（試玩網站維持網頁版） |
+| 多人 | **合作 1~4 人**，不做對戰 |
+| 連線架構 | **房主當伺服器**（listen server，房主即權威端）。開發期用 Godot 內建 ENet（本機 / 區網），上架前換成 Steam 連線（GodotSteam），只換傳輸層 |
+| 美術 | 照網頁版**程式生成**低多邊形暗黑幻想造型（第 14 節），用 GDScript 重寫，不用外部模型 |
+| 音效 | 照網頁版合成公式，用工具腳本預先產生 WAV 檔放進專案（不在遊戲中即時合成）；背景音樂為已選定的「B 哥德輓歌」 |
+| 開發順序 | 階段一：單機 1:1 搬完網頁版並驗收手感；階段二：接上 1~4 人連線。**階段一就必須照本節分層**，階段二才不用重寫 |
+
+### 15.2 三層分離（最重要的規則）
+```
+輸入層（本機）        模擬層（只在權威端跑）              畫面層（每台都跑）
+InputCollector ──► InputCmd ──► World.step(cmds, dt) ──► 快照 + 事件 ──► WorldView / HUD / Sound
+```
+- **模擬層（`sim/`）**：遊戲的全部規則（移動、狀態機、命中、傷害、CD、生成、勝敗）。只用 `RefCounted` 類別與資料，**不繼承 Node、不碰場景樹**。
+  - 禁止使用：`Input`、`get_node` / `$`、任何 `Node` 型別、`Engine.time_scale`、全域 `randf()` / `randi()`、`Time.get_ticks_*`、讀檔。`tests/check.gd` 會掃描 `sim/` 擋住這些字。
+  - 時間只來自 `step()` 傳入的 `dt`；隨機只用 `world.rng`（`RandomNumberGenerator`，種子由權威端決定）。
+  - 輸出只有兩種：可讀取的狀態（實體列表、CD、波次）與本步的事件列表 `world.events`。
+- **輸入層（`input/`）**：把 Godot 的 `InputMap` 動作轉成一筆 `InputCmd`。螢幕方向的 WASD 在這裡轉成世界 XZ 向量、滑鼠在這裡投射到地面得到瞄準點，模擬層只看到世界座標。
+- **畫面層（`view/`、`ui/`、`audio/`）**：依實體 id 建立 / 移除模型，每個渲染幀讀模擬狀態擺位置與姿勢；消化事件來播特效、音效、更新 HUD。**畫面層不得修改模擬狀態**。
+- **單機 = 沒有連線的房主**：單機時本機同時當權威端與玩家，走的是跟連線房主完全相同的程式路徑，不另寫一套單機邏輯。
+
+### 15.3 主迴圈與時間
+- 模擬固定每秒 60 步：使用 Godot 內建 `_physics_process`，`project.godot` 設 `physics/common/physics_ticks_per_second=60`、`max_physics_steps_per_frame=5`（對應網頁版 `FIXED_DT`、`MAX_STEPS_PER_FRAME`）。不使用 Godot 的物理引擎與物理節點，只借用它的固定步長。
+- 組合根 `main.gd` 在 `_physics_process` 收集輸入 → `world.step()` → 分送事件；畫面在 `_process` 以 `Engine.get_physics_interpolation_fraction()` 在上一步與這一步的位置之間補間，高更新率螢幕也平順。
+- 更新順序與網頁版第 4 節相同（CD → 玩家 → 敵人 → 投射物 → 位移 → 碰撞分離 → 場地限制 → 生成器 → 清除）。
+- 「本步按下」由 `InputCollector` 鎖存：兩次 `step` 之間按過就算，送出後才清除，不漏按。
+- 命中停頓：階段一照網頁版，由 `world` 內的計時器把 `dt` 縮放到 5%。多人時怎麼處理（全員一起停或只做畫面定格）留到階段二決定。
+- 暫停：單機時 `Esc` 停止呼叫 `step()`，失去焦點自動暫停；連線時 `Esc` 只開選單，模擬不停。
+
+### 15.4 實體與效能
+- 實體是 `sim/` 裡的 `RefCounted` 物件，由 `world` 以**整數 id**（`world.next_id` 遞增，不重複使用）管理；連線同步、畫面對應、CD key（`enemy<id>.<招式>`）都用這個 id。
+- 碰撞分離與投射物命中用格子切分（uniform grid，作法同 `godot/stress_test/`），集中在 `sim/physics.gd`。這兩段是之後改 C++ 的首選，介面要保持「輸入陣列 → 輸出陣列」，方便替換。
+- 大量相同外觀的物件（投射物、未來的大量小怪）用 `MultiMeshInstance3D`；角色用節點樹 Rig。
+
+### 15.5 動畫與姿勢
+- 網頁版的武器行為在 `update` 裡同時做命中判定與擺姿勢；Godot 版**拆開**：模擬層只記錄動畫所需的資料 `anim`（動作名稱、階段 `windup` / `active` / `recovery`、階段進度 `k`、狀態經過秒數），畫面層的 `view/animator.gd` 依 `anim` 算出關節角度。
+- 規則：姿勢公式從網頁版照搬到畫面層，模擬層不出現關節名稱。這樣連線時只要同步 `anim`，每台都能畫出同樣動作。
+
+### 15.6 事件
+- 模擬層每步把事件 append 到 `world.events`（`{ "name": String, ... }`，只放 id 與數值，不放物件參照，才能透過網路傳送），步驟結束後由組合根交給 `GameEvents`（autoload）以 Godot 訊號 `event_emitted(name, payload)` 發出。
+- 事件名稱、payload 欄位與第 9 節相同（`entity:damaged`、`sfx:cue`…），物件欄位改為 id（例如 `target` → `target_id`）。新增事件時同樣要列進第 9 節的表。
+- 只有畫面層訂閱事件；模擬層內部流程用直接呼叫。
+
+### 15.7 多人連線（階段二實作，階段一就要遵守資料形狀）
+- **權威**：房主（peer id 1）跑唯一的 `world`。傷害、死亡、生成、掉落、隨機一律由房主決定；其他玩家不跑 `world.step()`。
+- **InputCmd**：`{ tick, move: Vector2, aim: Vector2, buttons: int }`，`buttons` 為位元旗標（攻擊按住、右鍵按下、1~5 按下）。玩家每步送出，用 unreliable 通道並夾帶最近幾筆未確認的輸入以防掉包。
+- **快照**：房主每 3 步（20 次/秒）送出所有實體的 `id、類型、x、z、facing、hp、anim`，加上該玩家自己的 CD 與欄位；unreliable 通道。事件走 reliable 通道。
+- **其他玩家的畫面**：遠端實體保留約 100 ms 的快照緩衝，在兩次快照之間補間。
+- **自己的角色**：移動先在本機預測（用同一份 `sim/` 移動程式），收到快照後以伺服器位置為準，重播尚未確認的輸入修正。攻擊與技能是否也預測，留到階段二量延遲後決定。
+- **玩家對應**：`world.players` 以 peer id 為 key；單機的唯一玩家也是 peer id 1。
+- **傳輸層**：`net/` 封裝建立房間 / 加入 / 斷線，對外只暴露 Godot 的 `MultiplayerPeer`；從 ENet 換 Steam 只改 `net/`。
+- 尚未決定（階段二再問使用者）：敵人數值依人數的調整方式、誤傷、倒地救援、中途加入。
+
+### 15.8 目錄結構（`godot/`）
+```
+godot/
+├─ project.godot
+├─ main.tscn / main.gd        組合根：建立 world、輸入、畫面，主迴圈、重新開始
+├─ core/                      與遊戲內容無關：config.gd、version.gd、math_util.gd、state_machine.gd、cooldowns.gd
+├─ defs/                      資料表：weapon_defs.gd、skill_defs.gd、enemy_defs.gd、wave_defs.gd
+├─ sim/                       模擬層：world.gd、entity.gd、player.gd、player_states.gd、enemy.gd、
+│  │                          enemies/（melee_enemy、ranged_enemy、boss）、projectile.gd、combat.gd、
+│  │                          physics.gd、spawner.gd、weapon_behaviors.gd、skill_behaviors.gd、active_slots.gd
+├─ input/                     input_cmd.gd、input_collector.gd
+├─ net/                       連線（階段二）
+├─ view/                      world_view.gd、camera_rig.gd、animator.gd、rig.gd、part_kit.gd、effects.gd、
+│  └─ styles/                 dark_fantasy.gd（第 14 節介面照搬）
+├─ ui/                        hud.tscn / hud.gd
+├─ audio/                     sound.gd、sfx/*.wav、music/
+├─ tools/                     bake_sfx.gd（headless 產生音效 WAV）
+├─ tests/                     check.gd（headless 自動檢查）
+└─ stress_test/               效能壓力測試（保留作為效能基準）
+```
+- 依賴方向：`core` ← `defs` ← `sim` ← `view` / `ui` / `audio` / `net` ← `main`。`sim` 不得引用 `view`、`ui`、`audio`、`input`、`net`。
+- 單檔約 300 行就考慮拆分；新增、刪除、搬移檔案時同步更新本節與 `CLAUDE.md` 檔案地圖。
+- 網頁版檔案對應：`Game.js → main.gd + sim/world.gd`、`Input.js → input/`、`Renderer.js → view/camera_rig.gd`、`render/rig.js → view/rig.gd + part_kit.gd`、`*Defs.js → defs/`、`EventBus.js → GameEvents autoload`、`HUD.js → ui/`、`Sound.js → audio/ + tools/bake_sfx.gd`，其餘同名改 snake_case。
+
+### 15.9 命名與程式風格（GDScript）
+| 對象 | 規則 | 範例 |
+|---|---|---|
+| 檔案 | snake_case | `cooldowns.gd`、`player_states.gd` |
+| 類別（`class_name`） | PascalCase | `class_name CooldownManager` |
+| 函式、變數 | snake_case | `apply_damage`、`move_speed_mul` |
+| 常數、資料表 | UPPER_SNAKE_CASE | `FIXED_DT`、`WEAPONS` |
+| 私有成員 | `_` 前綴 | `_accumulator` |
+| 布林值 | `is_` / `has_` / `can_` 開頭 | `is_dead` |
+| 訊號 | 過去式 | `event_emitted` |
+| 狀態名稱 | StringName | `&"idle"`、`&"attack"` |
+| 事件名稱、CD key、音效名稱 | 與網頁版相同字串 | `"entity:damaged"`、`"player.slot1"` |
+
+- 一律寫靜態型別（`var hp: float`、`func step(cmds: Dictionary, dt: float) -> void`），型別錯誤在匯入時就會報出，也比較快。
+- 資料表用 `const` Dictionary（不用 `.tres` Resource），欄位名稱照網頁版改 snake_case，方便逐欄對照網頁版數值。
+- 可調數值放 `core/config.gd` 或 `defs/`，邏輯內不寫魔術數字。
+- 每個檔案開頭一行註解說明職責；註解用繁體中文。
+- 座標、單位、角度與第 4 節相同：Y 朝上、邏輯只用 XZ、`facing = atan2(dx, dz)`（0 = 面向 +Z），模型面向 +Z 建模，Godot 的 `rotation.y = facing` 可直接套用。
+
+### 15.10 驗收
+- `tests/check.gd`（作用等同 `check.js`），在 `godot/` 內執行：`<Godot console 執行檔> --headless --path . -s res://tests/check.gd`，全部通過才算完成。網頁版仍用 `node check.js`。
+- 因為模擬層不依賴場景樹，檢查可以直接建立 `World`、餵假的 `InputCmd`、推進 N 步讀數值（例如移動 1 秒的距離、三段攻擊總時間、CD 是否到期）。
+- 搬移時對照網頁版：同樣輸入下的移速、攻擊時間、傷害、CD、波次數量要與網頁版一致，數字寫進回報。
+- 畫面、操作、手感用視窗模式實測並存截圖（截圖存暫存資料夾，不進版控）。
+- 版號：Godot 版建立 `core/version.gd` 後，版號必須四處一致（`CHANGELOG.md`、`src/core/version.js`、`godot/core/version.gd`、git tag）；遊戲畫面角落顯示版號。
