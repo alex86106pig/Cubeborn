@@ -2,6 +2,20 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.5.1] - 2026-10-21
+
+多台電腦的本機設定分開存放；公司電腦 alex_work 完成設定。
+
+### 新增
+- `CLAUDE.local.md`：每台電腦各一份的本機設定（電腦名稱、專案與 Godot 路徑、硬體、壓力測試數字），不進版控。規則見 `CLAUDE.md` 3.3。
+- `docs/進度.md` 補上 alex_work（i7-10700 + UHD 630 內顯）的壓力測試：2000 敵人 / 3000 投射物平均 **33.4 FPS**，邏輯 28.04 ms/幀（敵人互推 14.06、投射物碰撞 8.71）。
+
+### 修改
+- `CLAUDE.md` 1.8 拿掉寫死的 Godot 路徑，改看 `CLAUDE.local.md`；`docs/新電腦設定.md` 新增「建立本機設定」步驟，Godot 不再建議固定放 E 槽。
+
+### 修復
+- `src/core/version.js` 註解亂碼（編碼損壞）。
+
 ## [0.5.0] - 2026-10-21
 
 開始轉換到 Godot（目標：Steam 上架、多人連線）。網頁版改為只修 bug。
