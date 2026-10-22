@@ -8,7 +8,8 @@ const ACTIONS := {
 	&"attack": MOUSE_BUTTON_LEFT, &"special": MOUSE_BUTTON_RIGHT,
 	&"slot_1": KEY_1, &"slot_2": KEY_2, &"slot_3": KEY_3, &"slot_4": KEY_4, &"slot_5": KEY_5,
 	&"pause": KEY_ESCAPE, &"mute": KEY_M, &"restart": KEY_R,
-	&"debug_weapon": KEY_F1, &"debug_hitbox": KEY_F2,
+	&"stats_panel": KEY_TAB,
+	&"debug_weapon": KEY_F1, &"debug_hitbox": KEY_F2, &"debug_speed": KEY_F3,
 }
 const MOUSE_ACTIONS: Array[StringName] = [&"attack", &"special"]
 

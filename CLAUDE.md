@@ -172,16 +172,17 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `godot/project.godot` | Godot 專案設定（4.7、Forward+、1920×1080、預設字型 `hud_font.tres`） |
 | `godot/export_presets.cfg` | 匯出設定：「Web」（單執行緒、輸出到 `../build/web/index.html`，排除 tests / stress_test） |
 | `godot/assets/fonts/` | 打包字型 Noto Sans TC（OFL 授權，見該資料夾 README）與字重 700 的 `hud_font.tres` |
-| `godot/main.tscn` / `main.gd` | Godot 組合根：主迴圈（每秒 60 步）、命中停頓、暫停、重新開始、畫面震動事件、F1 切武器、自動驗證參數（`--seconds`、`--screenshot`、`--auto-move`、`--auto-attack`、`--weapon`、`--wave`、`--player-hp`） |
+| `godot/main.tscn` / `main.gd` | Godot 組合根：主迴圈（每秒 60 步）、命中停頓、暫停、重新開始、離開遊戲、畫面震動事件、Tab 屬性面板、F1 切武器、F3 除錯移速 +50%、自動驗證參數（`--seconds`、`--screenshot`、`--auto-move`、`--auto-attack`、`--weapon`、`--wave`、`--player-hp`） |
 | `godot/core/` | config、version、math_util、state_machine、cooldowns、game_events（autoload `GameEvents`） |
-| `godot/defs/` | 資料表：weapon_defs（劍盾、法杖）、enemy_defs（grunt / archer / boss）、wave_defs（5 波與成長倍率）、skill_defs（治療藥水、疾跑） |
-| `godot/sim/` | 模擬層（不碰場景樹）：world（含通關流程）、input_cmd、entity、player、player_states（雙層狀態機）、weapon_behaviors、combat、projectile、enemy（敵人基底與共用狀態）、spawner（分波生成）、physics（格子碰撞分離）、active_slots（數字鍵欄位）、skill_behaviors |
+| `godot/defs/` | 資料表：weapon_defs（劍盾、法杖）、enemy_defs（grunt / archer / boss）、wave_defs（5 波與成長倍率）、skill_defs（治療藥水、疾跑）、stat_defs（屬性名稱、基礎值、上下限、顯示格式、護甲公式） |
+| `godot/sim/` | 模擬層（不碰場景樹）：world（含通關流程）、input_cmd、stats（屬性計算：加值 / 百分比 / 相乘、依來源加入移除）、entity、player、player_states（雙層狀態機）、weapon_behaviors、combat、projectile、enemy（敵人基底與共用狀態）、spawner（分波生成）、physics（格子碰撞分離）、active_slots（數字鍵欄位）、skill_behaviors |
 | `godot/sim/enemies/` | melee_enemy、ranged_enemy、boss |
 | `godot/input/input_collector.gd` | 按鍵註冊、InputMap → InputCmd（螢幕方向轉世界、滑鼠投射地面、鎖存按下） |
 | `godot/view/` | 畫面層：camera_rig（正交等距相機）、world_view（依 id 建模型、補間）、rig（關節階層、換武器、閃白、同種角色共用合併好的零件）、part_kit（形狀工廠、材質、零件合併與平面法線）、animator（玩家姿勢）、enemy_animator（敵人姿勢、Boss 地面預警）、arena_view（場地與地面 / 散佈工具） |
 | `godot/view/styles/dark_fantasy.gd` | 暗黑幻想造型（照搬 `darkFantasy.js`）：騎士、骷髏戰士、骷髏弓手、亡骸騎士、劍盾、法杖、箭矢、墓地場地 |
-| `godot/ui/hud.tscn` / `hud.gd` | Godot HUD：血條、波次 / 擊殺 / 時間、Boss 血條、橫幅、受擊暗角、暫停與結算畫面 |
+| `godot/ui/hud.tscn` / `hud.gd` | Godot HUD：血條、波次 / 擊殺 / 時間、Boss 血條、屬性面板、橫幅、受擊暗角、暫停（含離開遊戲按鈕）與結算畫面 |
 | `godot/ui/skill_bar.gd` / `floaters.gd` / `ui_kit.gd` | 技能欄（CD 遮罩、次數）、浮動數字、HUD 共用的文字 / 色塊 / 顏色 |
+| `godot/ui/stats_panel.gd` | 屬性面板（Tab 開關），有加成的數值以金色標示 |
 | `godot/ui/skill_icons.gd` | 字型沒有的武器圖示（⚔ 🛡 ✦ ✺）改用向量圖畫 |
 | `godot/audio/sound.gd` | 音效與背景音樂：事件 → 音效（照網頁版）、多音播放、M 鍵靜音（存 `user://settings.cfg`）、一般 / Boss 曲切換與淡出 |
 | `godot/audio/sfx/`、`godot/audio/music/` | 預先產生的 WAV（30 個音效、B 哥德輓歌一般 / Boss 兩首循環曲）；由 `godot/tools/` 產生，不要手改 |

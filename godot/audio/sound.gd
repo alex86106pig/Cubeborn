@@ -100,7 +100,7 @@ static func cue_for_event(w: World, event_name: String, p: Dictionary) -> String
 		"entity:damaged":
 			if w != null and w.entities.get(p.target_id) is Player:
 				return "playerHurt"
-			return "hitHeavy" if p.is_crit else "hit"
+			return "hitHeavy" if p.get("is_heavy", false) or p.get("is_crit", false) else "hit"
 		"entity:died":
 			var e: Entity = w.entities.get(p.entity_id) if w != null else null
 			if e is Enemy:

@@ -1,4 +1,4 @@
-# 敵人基底（照搬網頁版 Enemy.js）：數值套用（含波次倍率）、共用狀態（爬出 / 受擊 / 死亡）、接觸傷害
+# 敵人基底（照搬網頁版 Enemy.js）：數值套用（屬性 + 波次倍率來源 &"wave"）、共用狀態（爬出 / 受擊 / 死亡）、接觸傷害
 # 子類別把自己的狀態合併進 base_states()，並指定 main_state（爬出與受擊結束後回到哪個狀態）
 # 姿勢由畫面層依 anim 計算；這裡只記錄狀態名稱、經過秒數與少量動畫參數
 class_name Enemy
@@ -6,8 +6,9 @@ extends Entity
 
 var def: Dictionary
 var type: StringName
-var damage_mul := 1.0
-var speed := 0.0
+var speed: float:   # 移速屬性的捷徑（基礎值含個體隨機差異，波次倍率是 &"wave" 來源）
+	get:
+		return stats.value(&"move_speed")
 var main_state: StringName = &"chase"
 var contact_timer := 0.0
 var fsm: StateMachine
@@ -18,13 +19,16 @@ var _cd_names: Array[String] = []   # 移除時要 reset 的 CD（enemy<id>.<名
 # mul：波次倍率 { hp, damage, speed }
 func _init(p_world: World, p_type: StringName, at: Vector2, mul: Dictionary, states: Dictionary) -> void:
 	var d: Dictionary = EnemyDefs.ENEMIES[p_type]
-	super(p_world, p_type, &"enemy", d.radius, roundf(d.max_hp * mul.hp), d.mass)
+	super(p_world, p_type, &"enemy", d.radius, d.max_hp, d.mass)
 	def = d
 	type = p_type
-	damage_mul = mul.damage
 	var variance: float = d.speed_variance
-	speed = d.move_speed * mul.speed * p_world.rng.randf_range(1.0 - variance, 1.0 + variance)
-	knockback_mul = d.get("knockback_mul", 1.0)
+	stats.set_base(&"move_speed", d.move_speed * p_world.rng.randf_range(1.0 - variance, 1.0 + variance))
+	stats.set_base(&"knockback_taken", d.get("knockback_mul", 1.0))
+	stats.set_source(&"wave", [
+		[&"max_hp", Stats.MUL, mul.hp], [&"damage", Stats.MUL, mul.damage], [&"move_speed", Stats.MUL, mul.speed],
+	])
+	hp = max_hp
 	pos = at
 	var target := nearest_player()
 	if target != null:

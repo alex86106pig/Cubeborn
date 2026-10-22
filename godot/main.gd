@@ -13,6 +13,7 @@ var world_view := WorldView.new()
 var arena_view := ArenaView.new()
 var input_collector := InputCollector.new()
 var sound := Sound.new()
+var hud: HUD
 
 var _sim_accumulator := 0.0
 var _stepped_this_tick := false
@@ -33,7 +34,7 @@ func _ready() -> void:
 	arena_view.build(world.arena_half_size)
 	input_collector.camera_rig = camera_rig
 	add_child(input_collector)
-	var hud: HUD = HUD_SCENE.instantiate()
+	hud = HUD_SCENE.instantiate()
 	hud.setup(world, camera_rig.camera)
 	hud.quit_requested.connect(get_tree().quit)
 	add_child(hud)
@@ -147,6 +148,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		var player := local_player()
 		if player != null and not player.is_dead:
 			player.equip_weapon(&"staff" if player.weapon_id == &"swordShield" else &"swordShield")
+	elif event.is_action_pressed(&"stats_panel"):
+		hud.toggle_stats_panel()
+	elif event.is_action_pressed(&"debug_speed"):
+		toggle_debug_speed()
+
+
+# 除錯用（非正式系統，單機才有）：切換玩家「移速 +50%」，驗證屬性系統用
+func toggle_debug_speed() -> void:
+	var player := local_player()
+	if player == null:
+		return
+	if player.stats.has_source(&"debug"):
+		player.remove_stat_source(&"debug")
+	else:
+		player.set_stat_source(&"debug", [[&"move_speed", Stats.PCT, Config.DEBUG.speed_bonus]])
 
 
 # 靜音狀態給 HUD 顯示（開場時也送一次：上次關遊戲前可能是靜音）

@@ -21,7 +21,7 @@ class Heal extends Behavior:
 
 class SpeedBuff extends Behavior:
 	func activate(owner: Player, def: Dictionary) -> void:
-		owner.add_buff(def.id, def.duration, {"speed_mul": def.speed_mul, "trail_color": def.color})
+		owner.add_buff(def.id, def.duration, {"stats": [[&"move_speed", Stats.MUL, def.speed_mul]], "trail_color": def.color})
 
 
 static var BEHAVIORS := {

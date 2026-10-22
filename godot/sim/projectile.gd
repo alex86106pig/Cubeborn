@@ -17,6 +17,7 @@ var traveled := 0.0
 
 
 # p：owner、pos、direction、speed、range、radius、damage、knockback、color、visual、hit_stop、shake、explosion
+# damage 與 explosion.damage 在發射時就乘好攻擊者的攻擊力，發射者死掉後命中也照樣算
 func _init(p_world: World, p: Dictionary) -> void:
 	var owner: Entity = p.owner
 	super(p_world, &"projectile", owner.team, p.get("radius", 0.25), 1.0)
@@ -83,6 +84,6 @@ func _explode() -> void:
 	for target in Combat.query_circle(pos, explosion.radius, Combat.hostiles_of(world, team)):
 		Combat.apply_damage(world, source, target, {
 			"damage": explosion.damage, "knockback": explosion.knockback, "origin": pos,
-			"hit_stop": explosion.hit_stop, "is_crit": true,
+			"hit_stop": explosion.hit_stop, "is_heavy": true,
 		})
 	world.emit_event("camera:shake", {"amount": explosion.shake, "duration": Config.COMBAT.explosion_shake_duration})

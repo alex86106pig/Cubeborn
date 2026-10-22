@@ -259,7 +259,7 @@ export const SKILLS = {
 
 | 事件 | payload | 發出者 |
 |---|---|---|
-| `entity:damaged` | `{ target, amount, source, knockback, isCrit }` | Combat |
+| `entity:damaged` | `{ target, amount, source, knockback, isCrit }`（Godot 版：`isCrit` 拆成 `is_heavy` 重擊顯示（第三段、盾擊、爆炸）與 `is_crit` 屬性擲出的爆擊，見 15.11） | Combat |
 | `entity:healed` | `{ target, amount }` | skillBehaviors |
 | `entity:died` | `{ entity, source }` | Entity |
 | `player:died` | `{ player }` | Player |
@@ -429,15 +429,15 @@ godot/
 ├─ main.tscn / main.gd        組合根：建立 world、輸入、畫面，主迴圈、重新開始
 ├─ core/                      與遊戲內容無關：config.gd、version.gd、math_util.gd、state_machine.gd、cooldowns.gd、
 │                             game_events.gd（autoload GameEvents）
-├─ defs/                      資料表：weapon_defs.gd、skill_defs.gd、enemy_defs.gd、wave_defs.gd
-├─ sim/                       模擬層：world.gd、input_cmd.gd、entity.gd、player.gd、player_states.gd、enemy.gd、
+├─ defs/                      資料表：weapon_defs.gd、skill_defs.gd、enemy_defs.gd、wave_defs.gd、stat_defs.gd
+├─ sim/                       模擬層：world.gd、input_cmd.gd、stats.gd、entity.gd、player.gd、player_states.gd、enemy.gd、
 │  │                          enemies/（melee_enemy、ranged_enemy、boss）、projectile.gd、combat.gd、
 │  │                          physics.gd、spawner.gd、weapon_behaviors.gd、skill_behaviors.gd、active_slots.gd
 ├─ input/                     input_collector.gd（按鍵在程式中註冊，不寫在 project.godot）
 ├─ net/                       連線（階段二）
 ├─ view/                      world_view.gd、arena_view.gd、camera_rig.gd、animator.gd、enemy_animator.gd、rig.gd、part_kit.gd、effects.gd、
 │  └─ styles/                 dark_fantasy.gd（第 14 節介面照搬）
-├─ ui/                        hud.tscn / hud.gd、skill_bar.gd、floaters.gd、ui_kit.gd
+├─ ui/                        hud.tscn / hud.gd、skill_bar.gd、stats_panel.gd、floaters.gd、ui_kit.gd
 ├─ audio/                     sound.gd、sfx/*.wav、music/
 ├─ tools/                     synth.gd（離線合成）、bake_sfx.gd / bake_music.gd（headless 產生音效 / 背景音樂 WAV）
 ├─ tests/                     check.gd（headless 自動檢查）、capture.tscn / capture.gd（離屏截圖）
@@ -472,3 +472,15 @@ godot/
 - 搬移時對照網頁版：同樣輸入下的移速、攻擊時間、傷害、CD、波次數量要與網頁版一致，數字寫進回報。資料表由 `check.gd` 對 `tests/web_defs.json`（`tools/dump_web_defs.mjs` 匯出）逐欄比對；對照結果整理在 `docs/手感對照.md`。
 - 畫面用離屏截圖場景 `tests/capture.tscn` 驗證（用法與「開視窗前先問使用者」的規則見 `CLAUDE.md` 1.8），截圖存暫存資料夾，不進版控；手感與效能定案以使用者實際遊玩為準。
 - 版號必須三處一致（`CHANGELOG.md`、`godot/core/version.gd`、git tag）；遊戲畫面角落顯示版號。
+
+### 15.11 屬性系統（v0.14.0）
+- 玩家與敵人共用一套屬性：名稱、基礎值、上下限、顯示方式在 `defs/stat_defs.gd`；計算在 `sim/stats.gd`，每個實體一個 `entity.stats`。
+- **公式**：結果 = (基礎值 + Σadd) × (1 + Σpct) × Πmul，再取整（有 `round` 的屬性）、限制上下限。使用者決定：
+  - 同類加成**相加**（兩個 +8% = +16%）。暫時效果（疾跑 ×1.6）、波次倍率、**冷卻縮減**用 `mul` **相乘**（−6% 與 −25% → ×0.94 × 0.75 = 0.705，疊再多也不會到 0）。
+  - **護甲**：受到傷害 × 100 ÷ (100 + 護甲)（`StatDefs.ARMOR_SCALE`），護甲 100 減傷 50%。
+  - **爆擊**：基礎爆擊率 0%、爆擊傷害 ×1.5；爆擊率 0 時不擲骰（不消耗 `world.rng`）。
+- 加成以「來源」為單位整批設定 / 移除：`entity.set_stat_source(來源, [[屬性, Stats.ADD|PCT|MUL, 數值], …])`、`remove_stat_source(來源)`。來源名稱：增益用增益 id（`sprint`）、盾擊 `shieldBash`、敵人波次 `wave`、除錯 `debug`；之後的道具用道具實例的 id。
+- 最大生命提高時目前生命增加同樣的量；降低時只截到上限。
+- 套用位置：攻擊力由出招方乘進 `hit.damage`（投射物在發射時就乘好）；爆擊與擊退在 `Combat.apply_damage`；護甲與受到傷害在 `Entity.take_damage`；攻速只除普攻三階段時間；冷卻縮減套在特殊技與數字鍵欄位；每秒回血在 `Entity.integrate`。
+- `Entity.max_hp`、`damage_mul`、`damage_taken_mul`、`knockback_mul`（受到擊退）與 `Enemy.speed` 是屬性的唯讀捷徑，不能直接賦值。
+- 新增屬性時先加進 `stat_defs.gd`；對應系統還沒做的屬性設 `in_use = false`（屬性面板不顯示）。

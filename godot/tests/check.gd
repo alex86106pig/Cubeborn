@@ -84,6 +84,9 @@ func _initialize() -> void:
 	_check("疾跑：移速 6.5 × 1.6 = 10.4、持續 3 秒、CD 8 秒；使用道具動作 0.18 秒", _check_sprint_slot)
 	_check("數字鍵緩衝：攻擊中按 1 會在後搖取消並使用道具；空欄位不提示", _check_slot_buffer)
 	_check("HUD：能建立、處理各種事件、顯示波次 / 血量 / 結算文字、暫停畫面有「離開遊戲」", _check_hud)
+	_check("屬性計算：同類相加（+8% ×2 = +16%）、暫時效果與冷卻縮減相乘（0.94 × 0.75 = 0.705）、取整、上下限、來源可移除", _check_stats_formula)
+	_check("護甲與爆擊：護甲 100 減傷 50%、護甲 8 減傷 7.4%；爆擊率 100% 時 ×1.5，爆擊率 0% 不消耗亂數", _check_stats_armor_crit)
+	_check("屬性接上遊戲：攻速 ×2 普攻時間減半、冷卻 ×0.5、最大生命 +20 時目前生命同步增加、每秒回血、除錯移速 +50% = 9.75", _check_stats_hooks)
 	_check("受擊閃白：只改自發光顏色、不切換 emission_enabled（切換會在第一次命中即時編譯著色器而卡頓）", _check_flash_no_shader_switch)
 	_check("字型：介面文字都在打包的 Noto Sans TC 裡（網頁版沒有系統字型），缺字的圖示改用向量圖", _check_font_coverage)
 	_check("零件合併：依 anchor + 材質合併、外框不變、keep 的零件留在原位、空群組移除、面法線朝外且為正面", _check_merge_static)
@@ -486,9 +489,13 @@ func _check_combo() -> String:
 		return "三段傷害 %s，預期 [12, 12, 22]" % [amounts]
 	if absf(finisher_recovery - 0.32) > EPS:
 		return "第三段後搖 %.3f 秒，預期 0.32" % finisher_recovery
+	# 重擊（顯示與音效）只有第三段；爆擊率預設 0%，不會有真正的爆擊
+	var heavies := _named(events, "entity:damaged").map(func(e: Dictionary) -> bool: return e.is_heavy)
+	if heavies != [false, false, true]:
+		return "is_heavy 應只有第三段為 true，實際 %s" % [heavies]
 	var crits := _named(events, "entity:damaged").map(func(e: Dictionary) -> bool: return e.is_crit)
-	if crits != [false, false, true]:
-		return "is_crit 應只有第三段為 true，實際 %s" % [crits]
+	if crits != [false, false, false]:
+		return "爆擊率 0%% 時 is_crit 應全為 false，實際 %s" % [crits]
 	var sfx := _named(events, "sfx:cue").map(func(e: Dictionary) -> String: return e.cue)
 	if sfx != ["swing", "swing", "swingHeavy"]:
 		return "音效 %s，預期 swing / swing / swingHeavy" % [sfx]
@@ -1125,7 +1132,7 @@ func _check_hud() -> String:
 		return "波次文字 %s" % hud._wave.text
 	var b := _spawn(w, &"boss", Vector2(5, 5))
 	_run(w, _cmd(Vector2.ZERO), 30)
-	Combat.apply_damage(w, p, b, {"damage": 500.0, "is_crit": true})
+	Combat.apply_damage(w, p, b, {"damage": 500.0, "is_heavy": true})
 	p.hp = 50.0
 	Combat.apply_damage(w, b, p, {"damage": 10.0})
 	_feed_hud(hud, w.events)
@@ -1151,6 +1158,125 @@ func _check_hud() -> String:
 		return "game:victory 應顯示勝利畫面"
 	hud.queue_free()
 	cam.queue_free()
+	return ""
+
+
+func _check_stats_formula() -> String:
+	var s := Stats.new({&"move_speed": 6.5})
+	if s.value(&"move_speed") != 6.5 or s.value(&"damage") != 1.0 or s.value(&"crit_damage") != 1.5:
+		return "預設值錯誤：移速 %.3f 攻擊力 %.3f 爆擊傷害 %.3f" % [s.value(&"move_speed"), s.value(&"damage"), s.value(&"crit_damage")]
+	s.set_source(&"boots_a", [[&"move_speed", Stats.PCT, 0.08]])
+	s.set_source(&"boots_b", [[&"move_speed", Stats.PCT, 0.08]])
+	if absf(s.value(&"move_speed") - 6.5 * 1.16) > EPS:
+		return "兩個 +8%% 應為 ×1.16 = %.3f，實際 %.3f" % [6.5 * 1.16, s.value(&"move_speed")]
+	s.set_source(&"sprint", [[&"move_speed", Stats.MUL, 1.6]])
+	if absf(s.value(&"move_speed") - 6.5 * 1.16 * 1.6) > EPS:
+		return "疾跑 ×1.6 應與百分比加成相乘，實際 %.3f" % s.value(&"move_speed")
+	s.remove_source(&"sprint")
+	s.remove_source(&"boots_a")
+	if absf(s.value(&"move_speed") - 6.5 * 1.08) > EPS:
+		return "移除來源後應剩 ×1.08，實際 %.3f" % s.value(&"move_speed")
+	s.set_source(&"wormwood", [[&"cooldown", Stats.MUL, 0.94]])
+	s.set_source(&"hourglass", [[&"cooldown", Stats.MUL, 0.75]])
+	if absf(s.value(&"cooldown") - 0.705) > EPS:
+		return "冷卻縮減應相乘為 0.705，實際 %.4f" % s.value(&"cooldown")
+	s.set_source(&"dice", [[&"crit_chance", Stats.ADD, 1.5]])
+	if s.value(&"crit_chance") != 1.0:
+		return "爆擊率上限應為 100%%，實際 %.3f" % s.value(&"crit_chance")
+	var hp := Stats.new({&"max_hp": 36.0})
+	hp.set_source(&"wave", [[&"max_hp", Stats.MUL, 1.3]])
+	if hp.value(&"max_hp") != 47.0:
+		return "最大生命 36 × 1.3 應取整為 47，實際 %.2f" % hp.value(&"max_hp")
+	if StatDefs.format_value(&"armor", 8.0) != "8（減傷 7.4%）" or StatDefs.format_value(&"cooldown", 0.705) != "70.5%":
+		return "顯示格式錯誤：%s / %s" % [StatDefs.format_value(&"armor", 8.0), StatDefs.format_value(&"cooldown", 0.705)]
+	return ""
+
+
+func _check_stats_armor_crit() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var g := _spawn(w, &"grunt", Vector2(0, 3))
+	g.stats.set_base(&"max_hp", 1000.0)
+	g.hp = 1000.0
+	var dealt := []
+	for armor in [100.0, 8.0]:
+		g.stats.set_base(&"armor", armor)
+		var before := g.hp
+		Combat.apply_damage(w, p, g, {"damage": 20.0})
+		dealt.append(before - g.hp)
+	if dealt != [10.0, 19.0]:
+		return "20 傷害打護甲 100 / 8 應為 10 / 19（20 × 100 ÷ 108 = 18.5），實際 %s" % [dealt]
+	g.stats.set_base(&"armor", 0.0)
+	var state := w.rng.state
+	w.events.clear()
+	Combat.apply_damage(w, p, g, {"damage": 10.0})
+	if w.rng.state != state:
+		return "爆擊率 0% 時不應消耗亂數"
+	if _named(w.events, "entity:damaged")[0].is_crit:
+		return "爆擊率 0% 時不應爆擊"
+	p.set_stat_source(&"test", [[&"crit_chance", Stats.ADD, 1.0]])
+	w.events.clear()
+	var hp_before := g.hp
+	Combat.apply_damage(w, p, g, {"damage": 10.0})
+	var ev: Dictionary = _named(w.events, "entity:damaged")[0]
+	if not ev.is_crit or hp_before - g.hp != 15.0:
+		return "爆擊率 100%% 應爆擊且 10 × 1.5 = 15，實際 is_crit=%s 傷害 %.1f" % [ev.is_crit, hp_before - g.hp]
+	return ""
+
+
+# 從按下攻擊到回到 ready 經過幾步
+func _attack_steps(w: World, p: Player) -> int:
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1)
+	var steps := 1
+	while not p.action.is_in(&"ready") and steps < 600:
+		_run(w, _cmd(Vector2.ZERO), 1)
+		steps += 1
+	return steps
+
+
+func _check_stats_hooks() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var normal := _attack_steps(w, p)
+	_run(w, _cmd(Vector2.ZERO), 120)   # 等連段視窗結束，下一刀回到第一段
+	p.set_stat_source(&"test", [[&"attack_speed", Stats.MUL, 2.0]])
+	var fast := _attack_steps(w, p)
+	if absi(fast * 2 - normal) > 2:
+		return "攻速 ×2 普攻應從 %d 步變約 %d 步，實際 %d 步" % [normal, normal / 2, fast]
+	p.remove_stat_source(&"test")
+
+	p.set_stat_source(&"test", [[&"cooldown", Stats.MUL, 0.5]])
+	_run(w, _cmd(Vector2.ZERO), 120)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 1)
+	var expected: float = p.weapon.special.cooldown * 0.5
+	var remaining := w.cooldowns.remaining("player.special")
+	if absf(remaining - expected) > DT * 2.0:
+		return "冷卻 ×0.5：特殊技冷卻應約 %.2f 秒，實際 %.2f" % [expected, remaining]
+	p.remove_stat_source(&"test")
+
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	p2.hp = 50.0
+	p2.set_stat_source(&"bread", [[&"max_hp", Stats.ADD, 20.0]])
+	if p2.max_hp != 120.0 or p2.hp != 70.0:
+		return "最大生命 +20：應為 70 / 120，實際 %.0f / %.0f" % [p2.hp, p2.max_hp]
+	p2.remove_stat_source(&"bread")
+	if p2.max_hp != 100.0 or p2.hp != 70.0:
+		return "移除後應為 70 / 100，實際 %.0f / %.0f" % [p2.hp, p2.max_hp]
+	p2.set_stat_source(&"bandage", [[&"hp_regen", Stats.ADD, 6.0]])
+	_run(w2, _cmd(Vector2.ZERO), 60)
+	if absf(p2.hp - 76.0) > 0.05:
+		return "每秒回 6 血，1 秒後應為 76，實際 %.2f" % p2.hp
+	p2.remove_stat_source(&"bandage")
+
+	p2.set_stat_source(&"debug", [[&"move_speed", Stats.PCT, Config.DEBUG.speed_bonus]])
+	if absf(p2.stats.value(&"move_speed") - 9.75) > EPS:
+		return "除錯移速 +50%% 應為 9.75，實際 %.3f" % p2.stats.value(&"move_speed")
+	var start := p2.pos
+	_run(w2, _cmd(Vector2(1, 0)), 60)
+	var moved := p2.pos.distance_to(start)
+	if absf(moved - 9.75) > 9.75 * DT * 2.0:
+		return "移速 9.75 跑 1 秒應約 9.75 單位，實際 %.3f" % moved
 	return ""
 
 
@@ -1656,6 +1782,7 @@ func _check_sound_mapping() -> String:
 		[cue.call("entity:damaged", {"target_id": p.id, "is_crit": false}), "playerHurt"],
 		[cue.call("entity:damaged", {"target_id": grunt.id, "is_crit": false}), "hit"],
 		[cue.call("entity:damaged", {"target_id": grunt.id, "is_crit": true}), "hitHeavy"],
+		[cue.call("entity:damaged", {"target_id": grunt.id, "is_heavy": true}), "hitHeavy"],
 		[cue.call("entity:died", {"entity_id": grunt.id}), "enemyDeath"],
 		[cue.call("entity:died", {"entity_id": boss.id}), "bossDeath"],
 		[cue.call("entity:died", {"entity_id": p.id}), ""],

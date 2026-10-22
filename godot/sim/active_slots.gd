@@ -40,7 +40,7 @@ func use(owner: Player, index: int) -> bool:
 	if slot.def.mode == &"charges":
 		slot.charges -= 1
 	var key := cd_key(index)
-	owner.world.cooldowns.start(key, slot.def.cooldown)
+	owner.world.cooldowns.start(key, slot.def.cooldown * owner.stats.value(&"cooldown"))
 	owner.world.emit_event("skill:used", {"key": key, "player_id": owner.id})
 	return true
 

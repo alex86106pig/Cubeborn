@@ -1,11 +1,11 @@
 # HUD（照搬網頁版 legacy/src/ui/HUD.js 與 css/style.css）：血條、武器、波次 / 擊殺 / 時間、FPS、版號、Boss 血條、
-# 技能欄、橫幅、受擊暗角、浮動數字、暫停與結算畫面。只讀模擬狀態與事件，不修改模擬
+# 技能欄、屬性面板、橫幅、受擊暗角、浮動數字、暫停與結算畫面。只讀模擬狀態與事件，不修改模擬
 class_name HUD
 extends CanvasLayer
 
 signal quit_requested   # 暫停畫面按下「離開遊戲」
 
-const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 1~5 道具 · Esc 暫停 · M 靜音 · F1 切換武器 · F2 顯示判定 · R 重新開始"
+const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 1~5 道具 · Tab 屬性 · Esc 暫停 · M 靜音 · F1 切換武器 · F2 顯示判定 · F3 除錯移速 +50% · R 重新開始"
 const FPS_INTERVAL := 0.5
 const HP_GHOST_SPEED := 0.5      # 殘影每秒縮短的比例
 const BOSS_GHOST_SPEED := 0.3
@@ -41,6 +41,7 @@ var _boss_name := UiKit.label("", 18)
 var _boss: Dictionary
 var _boss_ghost := 1.0
 var _skill_bar := SkillBar.new()
+var _stats_panel := StatsPanel.new()
 var _floaters := Floaters.new()
 var _banner := UiKit.label("", 48, Color.WHITE, 4)
 var _vignette := ColorRect.new()
@@ -119,6 +120,12 @@ func _init() -> void:
 	_skill_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	root.add_child(_skill_bar)
 
+	# 左側中央：屬性面板（Tab 開關）
+	_stats_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_MINSIZE, 16)
+	_stats_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_stats_panel.visible = false
+	root.add_child(_stats_panel)
+
 	# 橫幅（畫面 22% 高處）
 	_banner.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_banner.anchor_top = 0.22
@@ -147,6 +154,10 @@ func _init() -> void:
 
 func _ready() -> void:
 	GameEvents.event_emitted.connect(_on_event)
+
+
+func toggle_stats_panel() -> void:
+	_stats_panel.visible = not _stats_panel.visible
 
 
 func _build_overlay(panel: ColorRect, color: Color, children: Array) -> void:
@@ -184,6 +195,8 @@ func _process(delta: float) -> void:
 	if player == null:
 		return
 	_skill_bar.refresh(world, player)
+	if _stats_panel.visible:
+		_stats_panel.refresh(player)
 
 	var ratio := player.hp / player.max_hp
 	_hp_ghost = maxf(ratio, _hp_ghost - delta * HP_GHOST_SPEED)
@@ -231,7 +244,8 @@ func _on_event(name: String, p: Dictionary) -> void:
 			if target == null:
 				return
 			var is_player := target is Player
-			_floaters.spawn(target, str(p.amount), &"player" if is_player else (&"crit" if p.is_crit else &"dmg"))
+			var big: bool = p.get("is_heavy", false) or p.get("is_crit", false)
+			_floaters.spawn(target, str(p.amount), &"player" if is_player else (&"crit" if big else &"dmg"))
 			if is_player:
 				_flash_vignette()
 		"entity:healed":

@@ -12,7 +12,7 @@ var combo_step := 0
 var combo_timer := 0.0
 var buffered_action: Dictionary = {}   # { type: &"special" | &"slot", index?, time }；空 = 沒有緩衝
 var slots := ActiveSlots.new(Config.PLAYER.slots)
-var buffs: Dictionary = {}             # id -> { remaining, speed_mul?, trail_color? }
+var buffs: Dictionary = {}             # id -> { remaining, stats?（屬性加成，見 sim/stats.gd）, trail_color? }
 var forced_velocity := Vector2.ZERO
 var has_forced_velocity := false
 var locomotion: StateMachine
@@ -25,6 +25,7 @@ var _pressed := 0   # 本步按下的按鈕；讀過就清除，沒收到新輸�
 
 func _init(p_world: World, p_peer_id: int) -> void:
 	super(p_world, &"player", &"player", Config.PLAYER.radius, Config.PLAYER.max_hp, Config.PLAYER.mass)
+	stats.set_base(&"move_speed", Config.PLAYER.move_speed)
 	peer_id = p_peer_id
 	locomotion = StateMachine.new(self, PlayerStates.locomotion_states(), &"idle")
 	action = StateMachine.new(self, PlayerStates.action_states())
@@ -49,17 +50,13 @@ func equip_weapon(id: StringName) -> void:
 	action.change(&"ready")
 
 
+# 增益：同一個 id 再加一次會重新計時；mods.stats 以增益 id 為來源套上屬性加成，到期時移除
 func add_buff(id: StringName, duration: float, mods: Dictionary) -> void:
 	var buff := mods.duplicate()
 	buff["remaining"] = duration
 	buffs[id] = buff
-
-
-func speed_mul() -> float:
-	var mul := 1.0
-	for buff: Dictionary in buffs.values():
-		mul *= buff.get("speed_mul", 1.0)
-	return mul
+	if buff.has("stats"):
+		set_stat_source(id, buff.stats)
 
 
 func update(dt: float) -> void:
@@ -76,7 +73,7 @@ func update(dt: float) -> void:
 	if has_forced_velocity:
 		velocity = forced_velocity
 	else:
-		velocity = move_input * (Config.PLAYER.move_speed * data.get("move_speed_mul", 1.0) * speed_mul())
+		velocity = move_input * (stats.value(&"move_speed") * data.get("move_speed_mul", 1.0))
 
 	if not data.get("lock_facing", false):
 		var target := MathUtil.angle_to(pos, aim_point)
@@ -91,6 +88,8 @@ func _tick_timers(dt: float) -> void:
 	for id: StringName in buffs.keys():
 		buffs[id].remaining -= dt
 		if buffs[id].remaining <= 0.0:
+			if buffs[id].has("stats"):
+				remove_stat_source(id)
 			buffs.erase(id)
 	if not buffered_action.is_empty():
 		buffered_action.time -= dt

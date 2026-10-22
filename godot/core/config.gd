@@ -76,3 +76,8 @@ const AUDIO := {
 	"baked_gain": 1.0,       # tools/bake_*.gd 寫入 WAV 時乘上的倍數（防止峰值超過 1）；播放時再除回來
 	"music_fade": 1.0,       # 換曲、死亡、勝利時音樂淡出的秒數
 }
+
+# 除錯鍵（Godot 版才有，網頁版沒有）
+const DEBUG := {
+	"speed_bonus": 0.5,      # F3：玩家移速 +50%（驗證屬性系統用）
+}

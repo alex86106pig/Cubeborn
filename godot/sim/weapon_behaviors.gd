@@ -63,11 +63,11 @@ class MeleeSwing extends Behavior:
 				continue
 			data.hit[target.id] = true
 			Combat.apply_damage(p.world, p, target, {
-				"damage": def.damage * (def.finisher_mul if fin else 1.0),
+				"damage": def.damage * (def.finisher_mul if fin else 1.0) * p.damage_mul,
 				"knockback": def.knockback * (def.finisher_impact_mul if fin else 1.0),
 				"hit_stop": def.hit_stop * (def.finisher_impact_mul if fin else 1.0),
 				"shake": def.shake * (def.finisher_shake_mul if fin else 1.0),
-				"is_crit": fin,
+				"is_heavy": fin,
 			})
 
 	func exit(p: Player, def: Dictionary, _data: Dictionary) -> void:
@@ -80,8 +80,7 @@ class ShieldBash extends Behavior:
 		data.hit = {}
 		data.lock_facing = true
 		p.facing = atan2(data.dir.x, data.dir.y)
-		p.damage_taken_mul = def.damage_taken_mul
-		p.knockback_mul = 0.0
+		p.set_stat_source(&"shieldBash", [[&"damage_taken", Stats.MUL, def.damage_taken_mul], [&"knockback_taken", Stats.MUL, 0.0]])
 
 	func phase(p: Player, def: Dictionary, data: Dictionary, name: StringName) -> void:
 		if name == &"active":
@@ -101,15 +100,14 @@ class ShieldBash extends Behavior:
 				continue
 			data.hit[target.id] = true
 			Combat.apply_damage(p.world, p, target, {
-				"damage": def.damage, "knockback": def.knockback, "origin": p.pos,
-				"hit_stop": def.hit_stop, "shake": def.shake, "is_crit": true,
+				"damage": def.damage * p.damage_mul, "knockback": def.knockback, "origin": p.pos,
+				"hit_stop": def.hit_stop, "shake": def.shake, "is_heavy": true,
 			})
 
 	func exit(p: Player, _def: Dictionary, _data: Dictionary) -> void:
 		p.has_forced_velocity = false
 		p.mass = Config.PLAYER.mass
-		p.damage_taken_mul = 1.0
-		p.knockback_mul = 1.0
+		p.remove_stat_source(&"shieldBash")
 
 
 class FireBolt extends Behavior:
@@ -120,7 +118,7 @@ class FireBolt extends Behavior:
 		p.facing = atan2(dir.x, dir.y)
 		WeaponBehaviors.spawn_projectile(p, {
 			"pos": p.pos + dir * def.spawn_offset, "direction": dir, "speed": def.projectile_speed,
-			"range": def.range, "radius": def.projectile_radius, "damage": def.damage,
+			"range": def.range, "radius": def.projectile_radius, "damage": def.damage * p.damage_mul,
 			"knockback": def.knockback, "color": def.color, "hit_stop": def.hit_stop, "shake": def.shake,
 		})
 
@@ -143,7 +141,7 @@ class ArcaneBurst extends Behavior:
 			"range": data.dist - def.spawn_offset, "radius": def.projectile_radius, "damage": 0.0,
 			"color": def.color,
 			"explosion": {
-				"radius": def.explosion_radius, "damage": def.damage, "knockback": def.knockback,
+				"radius": def.explosion_radius, "damage": def.damage * p.damage_mul, "knockback": def.knockback,
 				"hit_stop": def.hit_stop, "shake": def.shake,
 			},
 		})

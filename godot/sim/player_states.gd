@@ -80,9 +80,14 @@ class TimedAction:
 		data.move_speed_mul = def.get("move_speed_mul", 1.0)
 		data.lock_facing = false
 		if kind == &"special":
-			p.world.cooldowns.start("player.special", def.cooldown)
+			p.world.cooldowns.start("player.special", def.cooldown * p.stats.value(&"cooldown"))
 			p.world.emit_event("skill:used", {"key": "player.special", "player_id": p.id})
 		data.behavior.enter(p, def, data)
+		# 攻速只影響普攻三個階段（在武器行為調整終結技後搖之後套用）；特殊技由冷卻限制
+		if kind == &"attack":
+			var attack_speed := p.stats.value(&"attack_speed")
+			for i in data.durations.size():
+				data.durations[i] /= attack_speed
 		_enter_phase(p, data, 0)
 
 	func update(p: Player, dt: float, fsm: StateMachine) -> void:

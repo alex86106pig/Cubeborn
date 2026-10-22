@@ -16,7 +16,9 @@ static func hostiles_of(world: World, team: StringName) -> Array[Entity]:
 	return out
 
 
-# hit：damage、knockback、origin（預設 source.pos，擊退方向為 origin → target）、hit_stop、shake、is_crit
+# hit：damage（已含攻擊者的攻擊力，由發動招式的一方計算）、knockback、origin（預設 source.pos，擊退方向為 origin → target）、
+#      hit_stop、shake、is_heavy（重擊：第三段、盾擊、爆炸，只影響顯示與音效）
+# 這裡套用攻擊者的爆擊與擊退屬性；護甲與受傷倍率在 Entity.take_damage
 # 回傳是否實際命中
 static func apply_damage(world: World, source: Entity, target: Entity, hit: Dictionary) -> bool:
 	if target == null or not target.can_be_hit():
@@ -27,14 +29,21 @@ static func apply_damage(world: World, source: Entity, target: Entity, hit: Dict
 		dir = MathUtil.dir_from_angle(source.facing)
 	dir = dir.normalized()
 
-	var knockback: float = hit.get("knockback", 0.0)
-	var dealt := target.take_damage(hit.damage, dir, knockback, source.id)
+	var damage: float = hit.damage
+	var is_crit := false
+	var crit_chance := source.stats.value(&"crit_chance")
+	# 爆擊率 0 時不擲骰，不消耗亂數（沒有爆擊道具時與網頁版的亂數序列相同）
+	if crit_chance > 0.0 and world.rng.randf() < crit_chance:
+		is_crit = true
+		damage *= source.stats.value(&"crit_damage")
+	var knockback: float = hit.get("knockback", 0.0) * source.stats.value(&"knockback")
+	var dealt := target.take_damage(damage, dir, knockback, source.id)
 	if dealt < 0:
 		return false
 
 	world.emit_event("entity:damaged", {
 		"target_id": target.id, "amount": dealt, "source_id": source.id,
-		"knockback": knockback, "is_crit": hit.get("is_crit", false),
+		"knockback": knockback, "is_heavy": hit.get("is_heavy", false), "is_crit": is_crit,
 	})
 	var hit_stop: float = hit.get("hit_stop", 0.0)
 	if hit_stop > 0.0:
