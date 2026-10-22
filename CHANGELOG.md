@@ -2,6 +2,26 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.12.0] - 2026-10-22
+
+Godot 版里程碑 6：音效與背景音樂。照網頁版合成公式預先產生 WAV，遊戲只負責播放。
+
+### 新增
+- `godot/tools/synth.gd`：離線合成。四種波形（方波、鋸齒波加 PolyBLEP 減少高頻雜音）、頻率與音量指數漸變、BiquadFilter（係數照 Web Audio 規格，低通 / 高通的 Q 以 dB 計）、白噪音（固定種子，重跑結果相同）、寫 16-bit 單聲道 WAV（循環曲加 smpl 區塊，Godot 匯入時自動偵測循環）。
+- `godot/tools/bake_sfx.gd`：照 `Sound.js` 的 CUES 產生 30 個音效到 `godot/audio/sfx/`，長度 0.08~1.71 秒，最大峰值 0.538（不失真）。產生一次約 6 秒。
+- `godot/tools/bake_music.gd`：使用者選定的 **B 哥德輓歌**，一般戰鬥（64 BPM、15.00 秒）與 Boss 戰（92 BPM、10.43 秒）兩首循環曲。尾音疊回開頭、持續低音的頻率與 LFO 對齊循環長度，接縫跳動 0.0001（曲中相鄰樣本最大 0.012）。產生一次約 27 秒。
+- `godot/audio/sound.gd`：事件 → 音效照網頁版 `#bindEvents`（同名最短間隔防爆音），用 Godot 內建 `AudioStreamPolyphonic` 同時播多個音效。背景音樂：開場與重新開始播一般曲、Boss 波換 Boss 曲（淡出 0.5 秒後淡入 1 秒）、死亡或勝利 1 秒淡出、暫停時跟著停。音量照網頁版（音效 0.7×0.8、音樂 0.7×0.5）。
+- M 鍵靜音，存在 `user://settings.cfg`（下次開遊戲仍記得）；HUD 右上顯示「靜音（M）」，操作說明加上「M 靜音」。
+- `tests/check.gd` 新增 3 項（共 47 項）：音效檔齊全且不失真（與網頁版 CUES、配方、`Sound.CUE_NAMES` 三方比對）、兩首音樂為循環且長度正確、事件 → 音效與換曲規則。
+
+### 修改
+- 網頁匯出增加約 0.7 MB（WAV 原檔 3.5 MB，Godot 匯入時以 QOA 壓縮）。
+- 刪除 `mockups/背景音樂.html`（已做進遊戲；git 歷史仍保留）。
+
+### 已知差異
+- 網頁版每次播放有少量隨機（噪音起點、骷髏死亡的碎裂間隔），預先產生的檔案每次都一樣。
+- 網頁版開場的 `game:restart` 因瀏覽器尚未允許出聲而聽不到，Godot 版開場也不播這一聲。
+
 ## [0.11.0] - 2026-10-22
 
 Godot 版里程碑 5：程式生成的暗黑幻想模型（照搬網頁版 `darkFantasy.js`），取代暫用方塊。

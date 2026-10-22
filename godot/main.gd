@@ -1,4 +1,4 @@
-# 組合根：建立 World、輸入、畫面與 HUD；固定步長主迴圈、命中停頓、暫停、重新開始
+# 組合根：建立 World、輸入、畫面、HUD 與音效；固定步長主迴圈、命中停頓、暫停、靜音、重新開始
 # 指令列參數（放在 -- 之後）：--seconds=S --screenshot=路徑 --auto-move=x,y（螢幕方向）
 #   --auto-attack（一直按住左鍵）--weapon=staff（開場武器）--wave=N（直接從第 N 波開始）--player-hp=N（開場血量），後兩者除錯用
 extends Node3D
@@ -12,6 +12,7 @@ var camera_rig := CameraRig.new()
 var world_view := WorldView.new()
 var arena_view := ArenaView.new()
 var input_collector := InputCollector.new()
+var sound := Sound.new()
 
 var _sim_accumulator := 0.0
 var _stepped_this_tick := false
@@ -35,6 +36,9 @@ func _ready() -> void:
 	var hud: HUD = HUD_SCENE.instantiate()
 	hud.setup(world, camera_rig.camera)
 	add_child(hud)
+	sound.setup(world)
+	add_child(sound)
+	_emit_muted()
 	GameEvents.event_emitted.connect(_on_event)
 	restart()
 
@@ -132,6 +136,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		var player := local_player()
 		if world.is_over or player == null or player.is_dead:
 			restart()
+	elif event.is_action_pressed(&"mute"):
+		sound.toggle_mute()
+		_emit_muted()
 	elif event.is_action_pressed(&"debug_hitbox"):
 		world_view.show_hitboxes = not world_view.show_hitboxes
 	elif event.is_action_pressed(&"debug_weapon"):
@@ -139,6 +146,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		var player := local_player()
 		if player != null and not player.is_dead:
 			player.equip_weapon(&"staff" if player.weapon_id == &"swordShield" else &"swordShield")
+
+
+# 靜音狀態給 HUD 顯示（開場時也送一次：上次關遊戲前可能是靜音）
+func _emit_muted() -> void:
+	GameEvents.event_emitted.emit("audio:muted", {"name": "audio:muted", "muted": sound.is_muted})
 
 
 func _on_event(name: String, payload: Dictionary) -> void:

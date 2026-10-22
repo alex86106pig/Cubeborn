@@ -67,3 +67,12 @@ const ENVIRONMENT := {
 	"hemi_ground": Color("2a2420"),
 	"sun_color": Color("b8ceff"),
 }
+
+# 音量（0~1，照網頁版 AUDIO）：實際音量 = master × 分類音量
+const AUDIO := {
+	"master": 0.7,
+	"sfx": 0.8,
+	"music": 0.5,
+	"baked_gain": 1.0,       # tools/bake_*.gd 寫入 WAV 時乘上的倍數（防止峰值超過 1）；播放時再除回來
+	"music_fade": 1.0,       # 換曲、死亡、勝利時音樂淡出的秒數
+}

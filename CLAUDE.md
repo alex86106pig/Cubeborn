@@ -164,7 +164,6 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `docs/設計方向.md` | 設計目標與平衡品味（改核心玩法前必讀） |
 | `docs/新電腦設定.md` | 新電腦第一次使用本專案的設定步驟 |
 | `mockups/` | 給使用者挑選的對比頁（選定後刪除，見 2.5） |
-| `mockups/背景音樂.html` | 背景音樂試聽頁：已選定 B 哥德輓歌，做進 Godot 版時作為參考，完成後刪除 |
 | `godot/project.godot` | Godot 專案設定（4.7、Forward+、1920×1080、預設字型 `hud_font.tres`） |
 | `godot/export_presets.cfg` | 匯出設定：「Web」（單執行緒、輸出到 `../build/web/index.html`，排除 tests / stress_test） |
 | `godot/assets/fonts/` | 打包字型 Noto Sans TC（OFL 授權，見該資料夾 README）與字重 700 的 `hud_font.tres` |
@@ -179,6 +178,10 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `godot/ui/hud.tscn` / `hud.gd` | Godot HUD：血條、波次 / 擊殺 / 時間、Boss 血條、橫幅、受擊暗角、暫停與結算畫面 |
 | `godot/ui/skill_bar.gd` / `floaters.gd` / `ui_kit.gd` | 技能欄（CD 遮罩、次數）、浮動數字、HUD 共用的文字 / 色塊 / 顏色 |
 | `godot/ui/skill_icons.gd` | 字型沒有的武器圖示（⚔ 🛡 ✦ ✺）改用向量圖畫 |
+| `godot/audio/sound.gd` | 音效與背景音樂：事件 → 音效（照網頁版）、多音播放、M 鍵靜音（存 `user://settings.cfg`）、一般 / Boss 曲切換與淡出 |
+| `godot/audio/sfx/`、`godot/audio/music/` | 預先產生的 WAV（30 個音效、B 哥德輓歌一般 / Boss 兩首循環曲）；由 `godot/tools/` 產生，不要手改 |
+| `godot/tools/synth.gd` | 離線合成：振盪器、指數漸變、Web Audio 公式的濾波器、白噪音、寫 WAV（含循環點） |
+| `godot/tools/bake_sfx.gd` / `bake_music.gd` | 產生音效 / 背景音樂 WAV（headless：`--headless --path . -s res://tools/bake_sfx.gd`），之後要 `--import` |
 | `godot/tests/check.gd` | Godot 自動檢查（headless：`--headless --path . -s res://tests/check.gd`） |
 | `godot/tests/capture.tscn` / `capture.gd` | 畫面測試專用：離屏 1920×1080 繪製＋右下角 64×64 不搶焦點視窗，供截圖驗證（見 1.8） |
 | `godot/stress_test/` | 效能壓力測試：大量敵人與投射物（資料導向 + MultiMesh + 格子碰撞），印出 FPS 與各段邏輯耗時 |
@@ -232,3 +235,9 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 - 判斷：替換內容出現 `\` 就算；寫完後用 Grep 搜尋該路徑確認反斜線還在。
 - 例外：不含反斜線的大量機械式替換，仍可用 perl / sed。
 - 為什麼：perl 與 sed 會把 `\G`、`\n` 等當成跳脫字元吃掉，已發生兩次（v0.3.1 的 Node 路徑、v0.5.0 的 Godot 路徑），而且不會報錯。
+
+### 5.2 headless 執行 Godot 腳本要設逾時，輸出不要接 `head`
+- 平常做法：`-s` 腳本、`--import` 用 PowerShell `Start-Process … -RedirectStandardOutput/-RedirectStandardError -PassThru`，再 `WaitForExit(毫秒)`，逾時就 `Kill()` 並讀錯誤檔。不要把 Godot 輸出接到 `head`、`Select-Object -First`。
+- 判斷：新寫或剛改過的 `-s` 腳本（`extends SceneTree`）一定照做；已經穩定跑過的 `check.gd` 也建議照做。
+- 例外：只有一行、確定不會卡住的指令（例如 `--version`）。
+- 為什麼：`-s` 腳本有編譯錯誤時 `_initialize` 不會呼叫 `quit()`，Godot 會閒置到天荒地老；輸出接 `head` 提早關閉管線也會讓 Godot 卡住。v0.12.0 兩種各發生一次，各浪費 5~10 分鐘。

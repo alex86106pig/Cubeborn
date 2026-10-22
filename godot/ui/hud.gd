@@ -3,7 +3,7 @@
 class_name HUD
 extends CanvasLayer
 
-const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 1~5 道具 · Esc 暫停 · F1 切換武器 · F2 顯示判定 · R 重新開始"
+const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 1~5 道具 · Esc 暫停 · M 靜音 · F1 切換武器 · F2 顯示判定 · R 重新開始"
 const FPS_INTERVAL := 0.5
 const HP_GHOST_SPEED := 0.5      # 殘影每秒縮短的比例
 const BOSS_GHOST_SPEED := 0.3
@@ -33,6 +33,7 @@ var _wave := UiKit.label("", 22)
 var _kills := UiKit.label("", 16)
 var _time := UiKit.label("", 16)
 var _fps := UiKit.label("", 12)
+var _mute := UiKit.label("", 12, Color(1, 1, 1, 0.75))
 var _boss_box := VBoxContainer.new()
 var _boss_name := UiKit.label("", 18)
 var _boss: Dictionary
@@ -93,7 +94,7 @@ func _init() -> void:
 	tr.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	tr.add_theme_constant_override(&"separation", 2)
 	var version := UiKit.label("v" + GameVersion.VERSION, 12, Color(1, 1, 1, 0.6), 1)
-	for l: Label in [_wave, _kills, _time, _fps, version]:
+	for l: Label in [_wave, _kills, _time, _fps, version, _mute]:
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		tr.add_child(l)
 	_fps.modulate.a = 0.6
@@ -243,6 +244,8 @@ func _on_event(name: String, p: Dictionary) -> void:
 			_game_over.visible = true
 		"game:paused":
 			_pause.visible = p.paused
+		"audio:muted":
+			_mute.text = "靜音（M）" if p.muted else ""
 		"game:restart":
 			_game_over_delay = -1.0
 			_game_over.visible = false

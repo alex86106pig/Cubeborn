@@ -87,6 +87,9 @@ func _initialize() -> void:
 	_check("字型：介面文字都在打包的 Noto Sans TC 裡（網頁版沒有系統字型），缺字的圖示改用向量圖", _check_font_coverage)
 	_check("零件合併：依 anchor + 材質合併、外框不變、keep 的零件留在原位、空群組移除、面法線朝外且為正面", _check_merge_static)
 	_check("零件數：騎士 ≤ 20、骷髏戰士 ≤ 16、骷髏弓手 ≤ 16、Boss ≤ 22、場地 ≤ 12（同網頁版上限，避免卡頓）", _check_mesh_counts)
+	_check("音效檔：網頁版 CUES 每個名稱都有配方與 audio/sfx/*.wav，檔案不是空的、峰值 ≤ 1", _check_sfx_files)
+	_check("背景音樂：一般 / Boss 兩首匯入後為往前循環，長度 15.00 / 10.43 秒（64 / 92 BPM × 4 小節）", _check_music_files)
+	_check("音效對應：事件 → 音效同網頁版（受傷 / 爆擊 / Boss 死亡 / 道具…），Boss 波換 Boss 曲、死亡停音樂", _check_sound_mapping)
 	for w in _worlds:
 		w.clear()
 	_worlds.clear()
@@ -1231,6 +1234,114 @@ func _check_merge_static() -> String:
 		err = "%d 個三角形的法線不是朝外的面法線" % after.bad_faces
 	root.free()
 	return err
+
+
+# audio/sound.gd 用到 GameEvents（autoload），在檢查腳本編譯時還不存在，所以執行時才載入（同 HUD）
+func _sound_script() -> GDScript:
+	return load("res://audio/sound.gd")
+
+
+# 讀 tools/synth.gd 寫出的 16-bit WAV（資料從第 44 位元組開始），回傳 { samples, peak }
+func _wav_stats(path: String) -> Dictionary:
+	var bytes := FileAccess.get_file_as_bytes(path)
+	if bytes.size() < 44 or bytes.slice(0, 4).get_string_from_ascii() != "RIFF":
+		return {"samples": 0, "peak": 0.0}
+	var n := bytes.decode_u32(40) / 2
+	var peak := 0
+	for i in n:
+		peak = maxi(peak, absi(bytes.decode_s16(44 + i * 2)))
+	return {"samples": n, "peak": peak / 32767.0}
+
+
+func _check_sfx_files() -> String:
+	var sound_script := _sound_script()
+	var web := _web_cue_names().keys()
+	var recipes: Array = load("res://tools/bake_sfx.gd").cues().keys()
+	web.sort()
+	recipes.sort()
+	var names: Array = sound_script.CUE_NAMES.duplicate()
+	names.sort()
+	if web.size() != 30 or web != recipes or web != names:
+		return "名稱不一致：網頁版 %d 個、配方 %d 個、Sound.CUE_NAMES %d 個" % [web.size(), recipes.size(), names.size()]
+	for cue_name: String in web:
+		var stats := _wav_stats(sound_script.SFX_DIR + cue_name + ".wav")
+		if stats.samples == 0:
+			return "%s.wav 不存在或是空的（執行 tools/bake_sfx.gd）" % cue_name
+		if stats.peak >= 1.0:
+			return "%s.wav 峰值 %.3f，會失真" % [cue_name, stats.peak]
+		if not ResourceLoader.exists(sound_script.SFX_DIR + cue_name + ".wav"):
+			return "%s.wav 還沒匯入（執行 --import）" % cue_name
+	return ""
+
+
+func _check_music_files() -> String:
+	var sound_script := _sound_script()
+	var expected := {&"normal": 60.0 / 64.0 * 16.0, &"boss": 60.0 / 92.0 * 16.0}
+	for track: StringName in expected:
+		var stream: AudioStreamWAV = sound_script.MUSIC[track]
+		if stream.loop_mode != AudioStreamWAV.LOOP_FORWARD:
+			return "%s 沒有設定循環（loop_mode = %d）" % [track, stream.loop_mode]
+		if absf(stream.get_length() - expected[track]) > 0.01:
+			return "%s 長度 %.3f 秒，應為 %.3f" % [track, stream.get_length(), expected[track]]
+		var stats := _wav_stats("res://audio/music/%s.wav" % track)
+		if stats.peak >= 1.0:
+			return "%s 峰值 %.3f，會失真" % [track, stats.peak]
+	return ""
+
+
+func _check_sound_mapping() -> String:
+	var sound_script := _sound_script()
+	var w := _new_world(7, true)
+	var p := _player(w)
+	var grunt := _spawn(w, &"grunt", Vector2(6, 0))
+	var boss := _spawn(w, &"boss", Vector2(-6, 0))
+	var cue := func(event_name: String, payload: Dictionary) -> String:
+		return sound_script.cue_for_event(w, event_name, payload)
+	var cases := [
+		[cue.call("entity:damaged", {"target_id": p.id, "is_crit": false}), "playerHurt"],
+		[cue.call("entity:damaged", {"target_id": grunt.id, "is_crit": false}), "hit"],
+		[cue.call("entity:damaged", {"target_id": grunt.id, "is_crit": true}), "hitHeavy"],
+		[cue.call("entity:died", {"entity_id": grunt.id}), "enemyDeath"],
+		[cue.call("entity:died", {"entity_id": boss.id}), "bossDeath"],
+		[cue.call("entity:died", {"entity_id": p.id}), ""],
+		[cue.call("skill:used", {"key": "player.special", "player_id": p.id}), ""],
+		[cue.call("skill:onCooldown", {"key": "player.slot1", "player_id": p.id}), "denied"],
+		[cue.call("wave:started", {"is_boss": false}), "waveStart"],
+		[cue.call("wave:started", {"is_boss": true}), "bossAppear"],
+		[cue.call("boss:enraged", {}), "enrage"],
+		[cue.call("player:died", {}), "defeat"],
+		[cue.call("game:victory", {}), "victory"],
+		[cue.call("game:paused", {"paused": true}), "pause"],
+		[cue.call("game:paused", {"paused": false}), "resume"],
+		[cue.call("sfx:cue", {"cue": "arrowShot"}), "arrowShot"],
+	]
+	for i in ActiveSlots.SLOT_COUNT:   # 道具欄依裝備的技能決定音效
+		var slot: Variant = p.slots.slots[i]
+		var expect: String = sound_script.SKILL_CUES.get(slot.def.id, "") if slot != null else ""
+		cases.append([cue.call("skill:used", {"key": ActiveSlots.cd_key(i), "player_id": p.id}), expect])
+	for c in cases:
+		if c[0] != c[1]:
+			return "預期 %s，實際 %s（第 %d 組）" % [c[1], c[0], cases.find(c) + 1]
+		if c[1] != "" and not c[1] in sound_script.CUE_NAMES:
+			return "%s 不在 CUE_NAMES" % c[1]
+	if not "potion" in cases.map(func(c: Array) -> String: return c[0]):
+		return "道具欄沒有治療藥水，無法驗證 potion"
+
+	var m := func(current: StringName, event_name: String, payload: Dictionary) -> StringName:
+		return sound_script.music_for_event(current, event_name, payload)
+	var music_cases := [
+		[m.call(&"", "game:restart", {}), &"normal"],
+		[m.call(&"boss", "game:restart", {}), &"normal"],
+		[m.call(&"normal", "wave:started", {"is_boss": false}), &"normal"],
+		[m.call(&"normal", "wave:started", {"is_boss": true}), &"boss"],
+		[m.call(&"boss", "player:died", {}), &""],
+		[m.call(&"normal", "game:victory", {}), &""],
+		[m.call(&"boss", "game:paused", {"paused": true}), &"boss"],
+	]
+	for c in music_cases:
+		if c[0] != c[1]:
+			return "音樂：預期 %s，實際 %s（第 %d 組）" % [c[1], c[0], music_cases.find(c) + 1]
+	return ""
 
 
 func _check_mesh_counts() -> String:

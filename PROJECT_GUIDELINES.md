@@ -439,7 +439,7 @@ godot/
 │  └─ styles/                 dark_fantasy.gd（第 14 節介面照搬）
 ├─ ui/                        hud.tscn / hud.gd、skill_bar.gd、floaters.gd、ui_kit.gd
 ├─ audio/                     sound.gd、sfx/*.wav、music/
-├─ tools/                     bake_sfx.gd（headless 產生音效 WAV）
+├─ tools/                     synth.gd（離線合成）、bake_sfx.gd / bake_music.gd（headless 產生音效 / 背景音樂 WAV）
 ├─ tests/                     check.gd（headless 自動檢查）、capture.tscn / capture.gd（離屏截圖）
 └─ stress_test/               效能壓力測試（保留作為效能基準）
 ```
