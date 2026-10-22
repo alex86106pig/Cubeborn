@@ -64,7 +64,7 @@ func update(dt: float) -> void:
 		return
 
 	var b := band()
-	for target in Combat.hostiles_of(world, team):
+	for target in Combat.hostiles_of(world, team, owner_id):
 		# 翻滾無敵或高度不重疊（從頭頂 / 腳下飛過）時直接穿過
 		if target.is_dodging() or not target.overlaps_height(b.x, b.y):
 			continue

@@ -27,7 +27,7 @@ func can_use(owner: Player, index: int) -> bool:
 	var slot: Variant = slots[index]
 	if slot == null or slot.charges == 0:
 		return false
-	if not owner.world.cooldowns.is_ready(cd_key(index)):
+	if not owner.world.cooldowns.is_ready(owner.cd(cd_key(index))):
 		return false
 	return SkillBehaviors.BEHAVIORS[slot.def.behavior].can_use(owner, slot.def)
 
@@ -40,7 +40,7 @@ func use(owner: Player, index: int) -> bool:
 	if slot.def.mode == &"charges":
 		slot.charges -= 1
 	var key := cd_key(index)
-	owner.world.cooldowns.start(key, slot.def.cooldown * owner.stats.value(&"cooldown"))
+	owner.world.cooldowns.start(owner.cd(key), slot.def.cooldown * owner.stats.value(&"cooldown"))
 	owner.world.emit_event("skill:used", {"key": key, "player_id": owner.id})
 	return true
 

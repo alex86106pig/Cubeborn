@@ -22,6 +22,12 @@ var terrain := Terrain.new(TerrainDefs.TEST_BLOCKS)
 var spawner := Spawner.new()
 var boss_id := 0                     # 目前的 Boss（0 = 沒有），HUD 的 Boss 血條用
 var victory_timer := 0.0
+var is_defeated := false             # 全員倒下（已發出 game:defeat）
+# 連線（15.18）：房主 / 單機為權威端；客戶端的 World 只是快照的鏡像，加上本機預測自己的角色（不扣血、不產生實體）
+var is_authority := true
+var run_id := 0                      # 每次 reset 加 1：客戶端靠它知道房主重新開始了
+# 正在更新哪位玩家（peer id；0 = 不是玩家的動作）：這段期間的事件標上 actor，客戶端丟掉自己已經預測播過的
+var event_actor := 0
 
 var _next_id := 1
 var _bodies: Array[Entity] = []
@@ -37,6 +43,9 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 	hit_stop_timer = 0.0
 	boss_id = 0
 	victory_timer = 0.0
+	is_defeated = false
+	event_actor = 0
+	run_id += 1
 	spawner.reset()
 	_next_id = 1
 	for peer_id in peer_ids:
@@ -57,8 +66,13 @@ func clear() -> void:
 
 
 func add_entity(e: Entity) -> Entity:
-	e.id = _next_id
-	_next_id += 1
+	return add_entity_with_id(e, _next_id)
+
+
+# 客戶端的鏡像實體沿用房主給的 id（_next_id 只在權威端遞增）
+func add_entity_with_id(e: Entity, p_id: int) -> Entity:
+	e.id = p_id
+	_next_id = maxi(_next_id, p_id + 1)
 	e.prev_pos = e.pos
 	e.prev_facing = e.facing
 	e.prev_height = e.height
@@ -70,12 +84,24 @@ func add_entity(e: Entity) -> Entity:
 	return e
 
 
-func add_enemy(e: Enemy) -> Enemy:
-	add_entity(e)
+func add_enemy(e: Enemy, p_id: int = 0) -> Enemy:
+	if p_id > 0:
+		add_entity_with_id(e, p_id)
+	else:
+		add_entity(e)
 	enemies.append(e)
 	if e.is_boss():
 		boss_id = e.id
 	return e
+
+
+# 客戶端：快照裡已經沒有的實體立刻移除（權威端照常走 is_removed → _remove_dead_entities）
+func remove_entity_now(p_id: int) -> void:
+	var e: Entity = entities.get(p_id)
+	if e == null:
+		return
+	e.is_removed = true
+	_remove_dead_entities()
 
 
 func first_alive_player() -> Player:
@@ -104,7 +130,10 @@ func on_boss_defeated(boss: Enemy) -> void:
 
 
 # 投射物在玩家 / 敵人更新途中產生，同一步就會接著被更新（同網頁版）
+# 客戶端本機預測時不產生（投射物由房主決定，等快照送來才出現）
 func spawn_projectile(p: Projectile) -> Projectile:
+	if not is_authority:
+		return p
 	add_entity(p)
 	projectiles.append(p)
 	return p
@@ -119,6 +148,8 @@ func record_hitbox(h: Dictionary) -> void:
 func emit_event(name: String, payload: Dictionary) -> void:
 	assert(not payload.has("name"), "payload 的 name 欄位保留給事件名稱：%s" % name)
 	payload["name"] = name
+	if event_actor != 0 and not payload.has("actor"):
+		payload["actor"] = event_actor
 	events.append(payload)
 
 
@@ -157,7 +188,9 @@ func step(cmds: Dictionary, dt: float) -> void:
 		var p: Player = players[peer_id]
 		if cmds.has(peer_id):
 			p.apply_cmd(cmds[peer_id])
+		event_actor = peer_id
 		p.update(dt)
+		event_actor = 0
 	for e in enemies:
 		e.update(dt)
 	for e in projectiles:
@@ -176,16 +209,69 @@ func step(cmds: Dictionary, dt: float) -> void:
 		b.integrate_vertical(dt, terrain)
 	_bodies.clear()   # 不留參照，已移除的實體才能立即釋放
 
+	_update_downed(dt)
 	spawner.update(self, dt)
 	_remove_dead_entities()
 	if boss_id != 0 and not entities.has(boss_id):
 		boss_id = 0
 	if not is_over and is_any_player_alive():
 		stats.time += dt
+	if not is_defeated and not is_over and not players.is_empty() and not is_any_player_alive():
+		is_defeated = true
+		emit_event("game:defeat", {"stats": stats.duplicate()})
 	if victory_timer > 0.0:
 		victory_timer -= dt
 		if victory_timer <= 0.0:
 			emit_event("game:victory", {"stats": stats.duplicate()})
+
+
+# 客戶端：只推進自己的角色（本機預測，C3）。順序同 step()，但不碰其他實體、不扣血、不產生投射物
+func step_predicted(peer_id: int, cmd: InputCmd, dt: float) -> void:
+	events.clear()
+	hitboxes.clear()
+	tick += 1
+	var p: Player = players.get(peer_id)
+	if p == null:
+		return
+	p.prev_pos = p.pos
+	p.prev_facing = p.facing
+	p.prev_height = p.height
+	cooldowns.tick(dt)
+	p.apply_cmd(cmd)
+	event_actor = peer_id
+	p.update(dt)
+	event_actor = 0
+	p.integrate(dt)
+	terrain.push_out(p)
+	SimPhysics.clamp_to_arena(p, arena_half_size)
+	p.integrate_vertical(dt, terrain)
+
+
+# 倒下與救援（C4）：有隊友按住互動鍵就累積救援時間、倒數暫停；放開時累積的時間慢慢減少
+# 沒有站著的玩家時，所有倒地的人直接死亡（全員倒下就輸；單機倒下就是死亡）
+func _update_downed(dt: float) -> void:
+	var standing := 0
+	var reviving := {}   # 倒地者 id -> true
+	for p: Player in players.values():
+		if not p.is_dead and not p.is_downed:
+			standing += 1
+			if p.revive_target_id != 0:
+				reviving[p.revive_target_id] = true
+	var r: Dictionary = Config.REVIVE
+	for p: Player in players.values():
+		if not p.is_downed:
+			continue
+		if standing == 0:
+			p.die()
+		elif reviving.has(p.id):
+			p.revive_progress += dt
+			if p.revive_progress >= r.revive_time - TIME_EPSILON:
+				p.revive()
+		else:
+			p.revive_progress = maxf(0.0, p.revive_progress - r.decay_rate * dt)
+			p.down_timer -= dt
+			if p.down_timer <= TIME_EPSILON:
+				p.die()
 
 
 func _remove_dead_entities() -> void:

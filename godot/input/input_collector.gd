@@ -7,6 +7,7 @@ const ACTIONS := {
 	&"move_up": KEY_W, &"move_down": KEY_S, &"move_left": KEY_A, &"move_right": KEY_D,
 	&"attack": MOUSE_BUTTON_LEFT, &"special": MOUSE_BUTTON_RIGHT, &"roll": KEY_SHIFT, &"jump": KEY_SPACE,
 	&"slot_1": KEY_1, &"slot_2": KEY_2, &"slot_3": KEY_3, &"slot_4": KEY_4, &"slot_5": KEY_5,
+	&"interact": KEY_F,
 	&"pause": KEY_ESCAPE, &"mute": KEY_M, &"restart": KEY_R,
 	&"stats_panel": KEY_TAB,
 	&"debug_weapon": KEY_F1, &"debug_hitbox": KEY_F2, &"debug_speed": KEY_F3,
@@ -18,6 +19,8 @@ var camera_rig: CameraRig
 var auto_move := Vector2.ZERO   # 測試用：螢幕方向的固定移動輸入（--auto-move）
 var auto_attack := false        # 測試用：一直按住左鍵（--auto-attack）
 var auto_special := false       # 測試用：每步都按右鍵，冷卻好就放特殊技（--auto-special）
+var auto_interact := false      # 測試用：一直按住 F（--auto-interact）
+var enabled := true             # 關掉時（大廳、輸入框打字中）送出空輸入
 
 var _latched := 0               # 兩次模擬步之間按過的按鈕，步驟執行後才清除
 var _aim := Vector2(0.0, 5.0)
@@ -51,6 +54,8 @@ func _input(event: InputEvent) -> void:
 		_latched |= InputCmd.BTN_ROLL
 	elif event.is_action_pressed(&"jump"):
 		_latched |= InputCmd.BTN_JUMP
+	elif event.is_action_pressed(&"debug_weapon"):
+		_latched |= InputCmd.BTN_SWAP_WEAPON
 	else:
 		for i in InputCmd.SLOT_COUNT:
 			if event.is_action_pressed(StringName("slot_%d" % (i + 1))):
@@ -60,6 +65,9 @@ func _input(event: InputEvent) -> void:
 func build_cmd(tick: int) -> InputCmd:
 	var cmd := InputCmd.new()
 	cmd.tick = tick
+	cmd.aim = _aim
+	if not enabled:
+		return cmd
 	var screen := Input.get_vector(&"move_left", &"move_right", &"move_down", &"move_up")
 	if auto_move != Vector2.ZERO:
 		screen = auto_move
@@ -75,6 +83,8 @@ func build_cmd(tick: int) -> InputCmd:
 		cmd.buttons |= InputCmd.BTN_ATTACK
 	if auto_special:
 		cmd.buttons |= InputCmd.BTN_SPECIAL
+	if auto_interact or Input.is_action_pressed(&"interact"):
+		cmd.buttons |= InputCmd.BTN_INTERACT
 	return cmd
 
 

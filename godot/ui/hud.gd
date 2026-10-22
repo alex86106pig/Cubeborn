@@ -6,7 +6,7 @@ extends CanvasLayer
 signal quit_requested   # 暫停畫面按下「離開遊戲」
 
 # 手動分行（中文自動折行會斷在詞中間）
-const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 空白鍵 跳躍 · Shift 翻滾\n1~5 道具 · Tab 屬性 · Esc 暫停 · M 靜音 · R 重新開始\nF1 切換武器 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具"
+const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 空白鍵 跳躍 · Shift 翻滾\n1~5 道具 · F 按住救援隊友 · Tab 屬性 · Esc 選單 · M 靜音 · R 重新開始\nF1 切換武器 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具（F3~F5 單機才有）"
 const FPS_INTERVAL := 0.5
 const HP_GHOST_SPEED := 0.5      # 殘影每秒縮短的比例
 const BOSS_GHOST_SPEED := 0.3
@@ -28,6 +28,8 @@ void fragment() {
 
 var world: World
 var camera: Camera3D
+var local_peer := World.HOST_PEER_ID   # 這台電腦的玩家（連線時由 main.gd 設定）
+var net_panel := NetPanel.new()
 
 var _hp: Dictionary
 var _hp_ghost := 1.0
@@ -50,7 +52,10 @@ var _game_over := ColorRect.new()
 var _game_over_title := UiKit.label("", 56, UiKit.ALERT, 3)
 var _game_over_stats := UiKit.label("", 20)
 var _pause := ColorRect.new()
+var _pause_title := UiKit.label("已暫停", 56, Color.WHITE, 3)
+var _pause_hint := UiKit.label("按 Esc 繼續", 20)
 var _quit_button := Button.new()
+var _tags := PlayerTags.new()
 var _fps_timer := 0.0
 var _fps_frames := 0
 var _game_over_delay := -1.0     # 死亡後倒數顯示結算；負數 = 沒有在倒數（重新開始時取消）
@@ -62,6 +67,24 @@ func setup(p_world: World, p_camera: Camera3D) -> void:
 	world = p_world
 	camera = p_camera
 	_floaters.camera = p_camera
+	_tags.world = p_world
+	_tags.camera = p_camera
+
+
+func set_local_peer(peer_id: int) -> void:
+	local_peer = peer_id
+	_tags.local_peer = peer_id
+
+
+func local_player() -> Player:
+	return world.players.get(local_peer) if world != null else null
+
+
+# 選單（Esc）：單機時是暫停畫面；連線時遊戲不會停，標題改成「選單」
+func show_menu(visible_: bool, title: String = "已暫停", hint: String = "按 Esc 繼續") -> void:
+	_pause_title.text = title
+	_pause_hint.text = hint
+	_pause.visible = visible_
 
 
 # 在建構時就建好介面（不等 _ready），HUD 一建立就能更新與接收事件
@@ -78,6 +101,7 @@ func _init() -> void:
 	mat.shader.code = VIGNETTE_SHADER
 	_vignette.material = mat
 	root.add_child(_vignette)
+	root.add_child(_tags)
 	root.add_child(_floaters)
 
 	# 左上：血條、武器、操作說明
@@ -145,7 +169,8 @@ func _init() -> void:
 	_quit_button.focus_mode = Control.FOCUS_NONE
 	_quit_button.visible = not OS.has_feature("web")
 	_quit_button.pressed.connect(quit_requested.emit)
-	_build_overlay(_pause, Color(5 / 255.0, 8 / 255.0, 16 / 255.0, 0.65), [UiKit.label("已暫停", 56, Color.WHITE, 3), UiKit.label("按 Esc 繼續", 20), pause_controls, _quit_button])
+	_build_overlay(_pause, Color(5 / 255.0, 8 / 255.0, 16 / 255.0, 0.65), [_pause_title, _pause_hint, pause_controls, net_panel, _quit_button])
+	_pause.mouse_filter = Control.MOUSE_FILTER_STOP   # 選單的按鈕與輸入框要能點
 	root.add_child(_pause)
 
 
@@ -188,7 +213,7 @@ func _process(delta: float) -> void:
 			_game_over.visible = true
 	if world == null:
 		return
-	var player: Player = world.players.get(World.HOST_PEER_ID)
+	var player := local_player()
 	if player == null:
 		return
 	_skill_bar.refresh(world, player)
@@ -243,7 +268,7 @@ func _on_event(name: String, p: Dictionary) -> void:
 			var is_player := target is Player
 			var big: bool = p.get("is_heavy", false) or p.get("is_crit", false)
 			_floaters.spawn(target, str(p.amount), &"player" if is_player else (&"crit" if big else &"dmg"))
-			if is_player:
+			if target == local_player():
 				_flash_vignette()
 		"player:blocked":
 			var player: Entity = world.entities.get(p.player_id) if world else null
@@ -254,9 +279,18 @@ func _on_event(name: String, p: Dictionary) -> void:
 			if target != null and p.amount > 0:
 				_floaters.spawn(target, "+%d" % p.amount, &"heal")
 		"skill:onCooldown":
-			_skill_bar.flash(p.key, true)
+			if _is_local(p.get("player_id", 0)):
+				_skill_bar.flash(p.key, true)
 		"skill:used":
-			_skill_bar.flash(p.key, false)
+			if _is_local(p.get("player_id", 0)):
+				_skill_bar.flash(p.key, false)
+		"player:downed":
+			if _is_local(p.player_id):
+				_show_banner("你倒下了！%d 秒內等隊友救援" % roundi(Config.REVIVE.down_time), true)
+			else:
+				_show_banner("%s 倒下了！靠近按住 F 救援" % _tag_of(p.player_id), true)
+		"player:revived":
+			_show_banner(("你被救起了" if _is_local(p.player_id) else "%s 被救起了" % _tag_of(p.player_id)), false, UiKit.GOLD)
 		"wave:started":
 			_show_banner("BOSS 戰：" + BOSS_NAME if p.is_boss else "第 %d / %d 波" % [p.wave, p.total], p.is_boss)
 		"boss:enraged":
@@ -265,15 +299,19 @@ func _on_event(name: String, p: Dictionary) -> void:
 			var item: Dictionary = ItemDefs.ITEMS[StringName(p.item)]
 			_show_banner("獲得 %s\n%s" % [item.name, item.desc], false, ItemDefs.RARITIES[item.rarity].color)
 		"player:died":
-			var s := world.stats
-			_set_game_over("你倒下了", "撐到第 %d 波 · 擊殺 %d · 時間 %s" % [s.wave, s.kills, UiKit.format_time(s.time)], false)
+			# 多人時有人真的死亡但隊友還在：只提示（全員倒下才是結算，見 game:defeat）
+			if world.players.size() > 1 and world.is_any_player_alive():
+				_show_banner(("你陣亡了，等隊友打完這局" if _is_local(p.player_id) else "%s 陣亡了" % _tag_of(p.player_id)), true)
+		"game:defeat":
+			var s: Dictionary = p.stats
+			_set_game_over("你倒下了" if world.players.size() <= 1 else "全員倒下", "撐到第 %d 波 · 擊殺 %d · 時間 %s" % [s.wave, s.kills, UiKit.format_time(s.time)], false)
 			_game_over_delay = GAME_OVER_DELAY
 		"game:victory":
 			var s: Dictionary = p.stats
 			_set_game_over("勝利！", "擊敗 %s · 擊殺 %d · 通關時間 %s" % [BOSS_NAME, s.kills, UiKit.format_time(s.time)], true)
 			_game_over.visible = true
 		"game:paused":
-			_pause.visible = p.paused
+			show_menu(p.paused)
 		"audio:muted":
 			_mute.text = "靜音（M）" if p.muted else ""
 		"game:restart":
@@ -284,6 +322,21 @@ func _on_event(name: String, p: Dictionary) -> void:
 			_boss_ghost = 1.0
 			_skill_bar.reset()
 			_floaters.clear()
+
+
+# 事件的 player_id 是實體 id
+func _is_local(player_id: int) -> bool:
+	var me := local_player()
+	return me != null and me.id == player_id
+
+
+func _tag_of(player_id: int) -> String:
+	var peers: Array = world.players.keys()
+	peers.sort()
+	for i in peers.size():
+		if world.players[peers[i]].id == player_id:
+			return "P%d" % (i + 1)
+	return "隊友"
 
 
 func _set_game_over(title: String, stats: String, victory: bool) -> void:

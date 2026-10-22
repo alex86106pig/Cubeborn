@@ -26,9 +26,10 @@ func update(p: Player, dt: float) -> void:
 	var a := p.anim
 	rig.body.position.z = 0.0   # 只有翻滾會移動 body 的前後位置
 	_pose_locomotion(p, a, dt)
-	if a.airborne and a.loco != &"dead":
+	var is_down: bool = a.loco == &"dead" or a.loco == &"downed"   # 倒地假死（C4）和死亡同一個躺地姿勢
+	if a.airborne and not is_down:
 		_pose_airborne(a)
-	if a.loco != &"dead":
+	if not is_down:
 		_pose_action(p, a, dt)
 		if a.parry > 0.0:
 			_pose_parry(1.0 - a.parry)
@@ -62,7 +63,7 @@ func _pose_locomotion(p: Player, a: Dictionary, dt: float) -> void:
 			walk_amount = MathUtil.damp(walk_amount, 1.0, WALK_SHARPNESS, dt)
 			walk_phase += dt * p.velocity.length() * 1.7
 			_pose_legs()
-		&"dead":
+		&"dead", &"downed":
 			walk_amount = 0.0
 			var k := _ease(a.loco_time / DEATH_FALL_TIME)
 			rig.body.rotation.x = lerpf(0.0, PI / 2.0, k)

@@ -118,8 +118,10 @@ static func cue_for_event(w: World, event_name: String, p: Dictionary) -> String
 			return "bossAppear" if p.is_boss else "waveStart"
 		"boss:enraged":
 			return "enrage"
-		"player:died":
+		"game:defeat":   # 全員倒下（單機倒下時和 player:died 同一步發出）
 			return "defeat"
+		"player:revived":
+			return "potion"
 		"game:victory":
 			return "victory"
 		"game:restart":
@@ -155,7 +157,7 @@ static func music_for_event(current: StringName, event_name: String, p: Dictiona
 			return &"normal"
 		"wave:started":
 			return &"boss" if p.is_boss else current
-		"player:died", "game:victory":
+		"game:defeat", "game:victory":
 			return &""
 	return current
 

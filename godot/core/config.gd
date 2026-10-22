@@ -113,6 +113,33 @@ const FEEL := {
 	"hit_freeze": false,            # 命中定格：打中時攻擊者與目標的模型停住 hit_stop 秒（v0.18.3 加入，v0.19.1 使用者試玩覺得怪而關掉）
 }
 
+# 多人連線（C1~C3，見 PROJECT_GUIDELINES.md 15.18）
+const NET := {
+	"port": 24680,
+	"max_players": 4,
+	"snapshot_interval": 3,          # 房主每幾步送一次快照（3 = 每秒 20 次）
+	"interp_delay_ticks": 6,         # 其他實體的畫面比最新快照晚幾步（6 = 100 ms），在兩次快照之間補間
+	"max_extrapolate_ticks": 6,      # 快照連續掉包、畫面時間追上最新快照時，最多沿速度往前推幾步（不然會停住再跳）
+	"input_redundancy": 4,           # 客戶端每步送出最近幾筆輸入（防掉包）
+	"input_queue_max": 3,            # 房主端某玩家累積的輸入超過這麼多筆就合併兩筆（避免延遲越積越多）
+	"snap_distance": 2.5,            # 本機預測與房主位置差超過這麼多就直接跳過去（不平滑）
+	"correction_epsilon": 0.001,     # 差距小於這個就不修正
+	"friendly_fire": true,           # 誤傷（使用者 2026-10-23 決定）：玩家的攻擊也會打到其他玩家（不會打到自己）
+	"enemy_hp_per_extra_player": 0.5,   # 每多 1 位玩家，敵人血量 +50%（2 人 ×1.5、4 人 ×2.5）
+	"debug_latency_ms": 0,           # 模擬延遲（單程，毫秒），--net-latency=100 設定
+	"debug_loss": 0.0,               # 模擬掉包比例（只對 unreliable），--net-loss=0.1 設定
+}
+
+# 倒下與救援（C4，使用者 2026-10-23 決定；decay_rate 是 Claude 暫定）
+const REVIVE := {
+	"down_time": 10.0,         # 假死秒數：倒數完沒被救起就真的死亡
+	"revive_time": 5.0,        # 隊友按住互動鍵累積幾秒救起
+	"decay_rate": 1.0,         # 放開後已累積的救援時間每秒減少幾秒（Claude 暫定：和累積同速）
+	"range": 1.6,              # 救援者與倒地者中心距離（超過就中斷）
+	"revive_hp_ratio": 0.3,    # 救起後的血量（最大生命的比例）
+	"revive_invuln": 1.0,      # 救起後的無敵秒數（Claude 暫定，避免一起來就被打倒）
+}
+
 # 除錯鍵（Godot 版才有，網頁版沒有）
 const DEBUG := {
 	"speed_bonus": 0.5,      # F3：玩家移速 +50%（驗證屬性系統用）

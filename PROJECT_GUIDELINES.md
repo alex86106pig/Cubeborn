@@ -135,12 +135,13 @@ Cubeborn/
 | 空白鍵 | 跳躍（Godot 版，見 15.13；只有一段跳） |
 | Shift | 翻滾（Godot 版，見 15.12；受次數與回充管理） |
 | 1 ~ 5 | 主動欄位（受 CD 或次數管理） |
+| F | 按住救援倒地的隊友（Godot 版 v0.21.0，見 15.18） |
 | Tab | 屬性面板（Godot 版） |
-| R | 死亡或通關後重新開始 |
-| F1 | 除錯：切換劍盾 / 法杖（非正式武器切換系統） |
+| R | 死亡或通關後重新開始（連線時只有房主能按） |
+| F1 | 除錯：切換劍盾 / 法杖（非正式武器切換系統；Godot 版 v0.21.0 起走 InputCmd，連線時也能用） |
 | F2 | 除錯：顯示碰撞與命中範圍 |
-| F3 | 除錯：移速 +50%（Godot 版） |
-| Esc | 暫停 / 繼續（視窗失去焦點時自動暫停；死亡或通關畫面不能暫停） |
+| F3 | 除錯：移速 +50%（Godot 版；F3~F5 只有單機） |
+| Esc | 暫停 / 繼續（視窗失去焦點時自動暫停；死亡或通關畫面不能暫停）；Godot 版選單裡有開房 / 加入，連線時 Esc 只開選單、遊戲不停 |
 | M | 靜音切換（記在瀏覽器） |
 
 右鍵選單在 canvas 上一律停用。
@@ -259,6 +260,7 @@ export const SKILLS = {
 - 事件名稱格式：`<領域>:<動作>`，全小寫駝峰，例如 `entity:damaged`、`entity:died`、`player:died`、`skill:used`、`skill:onCooldown`、`game:restart`。
 - payload 一律為單一物件，例如 `{ target, amount, source }`。
 - 事件用於**通知**（UI、特效、音效），不用於核心流程控制；核心流程用直接呼叫。
+- Godot 版 v0.21.0 起：玩家自己的動作途中發出的事件會被 World 加上 `actor`（peer id），客戶端用它丟掉自己已經本機預測播過的事件（15.18）；命中結果與盾反不加。
 - 所有事件名稱必須列在本節下方的清單中：
 
 | 事件 | payload | 發出者 |
@@ -267,7 +269,10 @@ export const SKILLS = {
 | `entity:healed` | `{ target, amount }` | skillBehaviors |
 | `player:blocked` | `{ player_id, perfect }`（Godot 版 v0.18.0：格擋擋下攻擊；perfect = 完美格擋，下一步盾反） | Player.try_block |
 | `entity:died` | `{ entity, source }` | Entity |
-| `player:died` | `{ player }` | Player |
+| `player:died` | `{ player }`（Godot 版 v0.21.0 起只代表這位玩家真的死亡；輸掉一局改看 `game:defeat`） | Player |
+| `player:downed` | `{ player_id }`（僅 Godot 版 v0.21.0：多人時生命歸零先倒地假死，見 15.18） | Player |
+| `player:revived` | `{ player_id }`（僅 Godot 版 v0.21.0：被隊友救起） | Player.revive |
+| `game:defeat` | `{ stats }`（僅 Godot 版 v0.21.0：全員倒下 = 輸；單機和 `player:died` 同一步發出） | World |
 | `item:added` | `{ player_id, item, uid }`（僅 Godot 版 v0.19.0：道具放進身上；item = 物品 id，uid = 實例 id，武器為空字串） | Player.add_item |
 | `skill:used` | `{ key, def }` | playerStates / ActiveSlots |
 | `skill:onCooldown` | `{ key }` | playerStates / ActiveSlots |
@@ -278,7 +283,7 @@ export const SKILLS = {
 | `game:paused` | `{ paused }` | Game（Esc、失去焦點） |
 | `audio:muted` | `{ muted }` | Game（M 鍵） |
 | `sfx:cue` | `{ name }` | 各遊戲物件；`name` 必須是 `audio/Sound.js` 的 `CUES` 之一（check.js 會檢查）。Godot 版欄位為 `cue` |
-| `camera:shake` | `{ amount, duration }` | 僅 Godot 版：Combat、Player、Projectile、Enemy、Boss、World（模擬層不能直接震相機） |
+| `camera:shake` | `{ amount, duration, player_id? }` | 僅 Godot 版：Combat、Player、Projectile、Enemy、Boss、World（模擬層不能直接震相機）；有 `player_id`（玩家被打）時只震那位玩家的畫面 |
 | `fx:slash` | `{ pos, height, facing, range, arc, color, swing_dir }` | 僅 Godot 版（v0.20.0 起的特效事件，見 15.17）：劍盾揮砍 |
 | `fx:muzzle` | `{ pos, height, color }` | 法杖魔彈發射 |
 | `fx:telegraph` | `{ pos, height, radius, color, life }` | 奧術爆裂落點預警 |
@@ -435,10 +440,10 @@ InputCollector ──► InputCmd ──► World.step(cmds, dt) ──► 快�
 - **InputCmd**：`{ tick, move: Vector2, aim: Vector2, buttons: int }`，`buttons` 為位元旗標（攻擊按住、右鍵按下、1~5 按下）。玩家每步送出，用 unreliable 通道並夾帶最近幾筆未確認的輸入以防掉包。
 - **快照**：房主每 3 步（20 次/秒）送出所有實體的 `id、類型、x、z、height（v0.16.0 起）、facing、hp、anim`，加上該玩家自己的 CD 與欄位；unreliable 通道。事件走 reliable 通道。
 - **其他玩家的畫面**：遠端實體保留約 100 ms 的快照緩衝，在兩次快照之間補間。
-- **自己的角色**：移動先在本機預測（用同一份 `sim/` 移動程式），收到快照後以伺服器位置為準，重播尚未確認的輸入修正。攻擊與技能是否也預測，留到階段二量延遲後決定。
+- **自己的角色**：移動先在本機預測（用同一份 `sim/` 移動程式），收到快照後以伺服器位置為準修正。實作方式見 15.18（v0.21.0 改成「誤差平移」，不倒帶重播）。
 - **玩家對應**：`world.players` 以 peer id 為 key；單機的唯一玩家也是 peer id 1。
 - **傳輸層**：`net/` 封裝建立房間 / 加入 / 斷線，對外只暴露 Godot 的 `MultiplayerPeer`；從 ENet 換 Steam 只改 `net/`。
-- 尚未決定（階段二再問使用者）：敵人數值依人數的調整方式、誤傷、倒地救援、中途加入。
+- v0.21.0 已實作（C1~C4），使用者的決定與實際做法見 15.18。
 
 ### 15.8 目錄結構（`godot/`）
 ```
@@ -452,13 +457,14 @@ godot/
 │  │                          enemies/（melee_enemy、ranged_enemy、boss）、projectile.gd、combat.gd、
 │  │                          physics.gd、spawner.gd、weapon_behaviors.gd、skill_behaviors.gd、active_slots.gd
 ├─ input/                     input_collector.gd（按鍵在程式中註冊，不寫在 project.godot）
-├─ net/                       連線（階段二）
+├─ net/                       連線：net_session.gd（ENet 傳輸、RPC、大廳）、net_host.gd（輸入排隊、快照）、
+│                             net_client.gd（鏡像 World、補間、預測修正）、net_codec.gd（快照編碼）
 ├─ view/                      world_view.gd、arena_view.gd、camera_rig.gd、animator.gd、enemy_animator.gd、rig.gd、part_kit.gd、effects.gd、
 │  └─ styles/                 dark_fantasy.gd（第 14 節介面照搬）
-├─ ui/                        hud.tscn / hud.gd、skill_bar.gd、stats_panel.gd、floaters.gd、ui_kit.gd
+├─ ui/                        hud.tscn / hud.gd、skill_bar.gd、stats_panel.gd、floaters.gd、ui_kit.gd、net_panel.gd、player_tags.gd
 ├─ audio/                     sound.gd、sfx/*.wav、music/
 ├─ tools/                     synth.gd（離線合成）、bake_sfx.gd / bake_music.gd（headless 產生音效 / 背景音樂 WAV）
-├─ tests/                     check.gd（headless 自動檢查）、capture.tscn / capture.gd（離屏截圖）
+├─ tests/                     check.gd（headless 自動檢查）、net_checks.gd（連線的檢查，check.gd 呼叫）、capture.tscn / capture.gd（離屏截圖）
 └─ stress_test/               效能壓力測試（保留作為效能基準）
 ```
 - 依賴方向：`core` ← `defs` ← `sim` ← `view` / `ui` / `audio` / `net` ← `main`。`sim` 不得引用 `view`、`ui`、`audio`、`input`、`net`。
@@ -556,3 +562,17 @@ godot/
 - **一次性特效走事件**：模擬層發 `fx:*`（第 9 節的表），payload 只放位置（`pos` Vector2、`height`）、顏色與尺寸，不放實體參照。命中、死亡、狂暴直接用既有事件。新增特效事件時：模擬層 emit → `Effects.HANDLERS` 加處理函式 → 列進第 9 節；`check.gd` 會檢查三者一致。
 - **持續性粒子由畫面層依狀態產生**（投射物拖尾、蓄力、爬出、拉弓、衝鋒、暈眩、召喚、疾跑殘影），不發事件，連線時不佔頻寬。網頁版「每步機率 p」換算成每秒 p × 60 顆，小數累積到下一幀（`_count`），和幀率無關。
 - 上限：粒子 `MAX_PARTICLES` 600（一個 MultiMesh），弧光與環 `MAX_TRANSIENTS` 64。開場先畫一次透明的粒子與環來預先編譯著色器。暫停時停住、`game:restart` 時清空。
+
+### 15.18 多人連線（v0.21.0，C1~C4）
+- **使用者決定**（2026-10-23）：區網 ENet、1~4 人合作、房主即權威；誤傷開啟；敵人數量不變、血量每多 1 人 +50%；只能開局前加入（中途加入先不開放）；移動 / 翻滾 / 跳躍本機預測，攻擊與技能的動作、音效本機立即播，傷害一律由房主判定；倒下假死 10 秒、隊友按住 F 累積 5 秒救起、救起 30% 血、全員倒下就輸。數值在 `Config.NET`、`Config.REVIVE`。
+- **三種模式**（`main.gd`）：單機 = 沒有連線的房主（同一條程式路徑）；房主跑唯一的 `World`，`NetHost` 收各玩家輸入排隊（每步取一筆，排超過 `input_queue_max` 筆就把最舊的併進下一筆，本步按下的按鈕保留）；客戶端不跑 `World.step()`，`NetClient` 用快照維護鏡像 `World`（`is_authority = false`）。
+- **傳輸**（`net/net_session.gd`）：輸入（客戶端每步送最近 `input_redundancy` 筆）與快照（房主每 3 步）走 unreliable；事件每步一包走 reliable（`[run_id, tick, events]`）。RPC 的節點路徑以 `main` 為根（`get_tree().set_multiplayer(…, main 的路徑)`），直接執行與在 `capture.tscn` 裡執行的程序能互連。`--net-latency` / `--net-loss` 模擬延遲與掉包。
+- **快照**（`net/net_codec.gd`）：`[run_id, tick, ack, 世界狀態, 實體…]`；實體網路格式 `[id, kind, 數值 PackedFloat32Array, is_dead, 動畫, extra]`，動畫欄位名稱換成 `ANIM_KEYS` 索引、玩家動畫和預設值相同的欄位不送。客戶端用同樣的類別建立鏡像實體（`Player`、`Spawner.create`、`Projectile`），畫面層不用分辨單機或連線。2 人 + 2 隻怪約 0.8~0.9 KB；4 人 + 十幾隻怪會超過 ENet 的 MTU（約 1.4 KB）而被分片，區網沒問題，換 Steam 前要做差量或量化（見 `docs/進度.md`）。
+- **其他實體**：畫面時間 = 估計的房主 tick（最新快照 + 收到後經過的步數）− `interp_delay_ticks`（6 步 = 100 ms），在前後兩筆快照之間補間（位置、高度、朝向；動畫的狀態相同時數值欄位也補間）；連續掉包追上最新快照時，沿速度最多往前推 `max_extrapolate_ticks` 步。事件也依 tick 延到畫面時間才播，和畫面對得上。
+- **自己的角色**：`World.step_predicted` 只推進自己（同 `step()` 的順序，但不扣血、不產生投射物，投射物等快照）。每筆快照帶 `ack`（房主最後套用的該玩家輸入編號），誤差 = 房主在 ack 時的位置 − 本機當時預測的位置，加到目前位置與之後的預測紀錄（不倒帶重播，狀態機與計時器不用存檔）；差超過 `snap_distance` 直接跳過去。血量、倒地 / 死亡、盾反、武器以房主最新快照為準；倒地 / 死亡時不預測，位置直接用房主的。被房主判定打中時本機立刻進入受擊硬直（`Player.net_hurt`）。
+- **事件去重**：World 更新某位玩家時，事件標上 `actor`（peer id）；`Combat.apply_damage` 與盾反期間清掉（不是預測得到的）。客戶端丟掉 `actor` 是自己的房主事件。
+- **CD**：每位玩家的 CD 實際存在 `Player.cd(key)`（`key@peer_id`）；事件與 HUD 仍用 `player.special` 這類名稱。
+- **誤傷**：`Combat.hostiles_of(world, team, source_id)` 在 `Config.NET.friendly_fire` 時把其他玩家也當目標，但不含出招者自己（投射物用發射者 id）。
+- **倒下與救援**（`Player.die` / `_go_down` / `revive`、`World._update_downed`、動作層 `revive` 狀態）：多人時生命歸零先倒地（`is_downed`，移動層 `downed`，不能被打、不被怪追、不接受輸入）；隊友按住 F（`InputCmd.BTN_INTERACT`）、中心距離 ≤ `REVIVE.range` 就進入 `revive` 動作（不能移動 / 攻擊 / 跳），倒地者救援進度 +1/秒、倒數暫停；放開時進度每秒 −`decay_rate`（Claude 暫定和累積同速）、倒數照走；沒有站著的玩家時所有倒地者直接死亡並發 `game:defeat`。單機倒下 = 死亡（和以前一樣）。
+- **只有單機才有**：F3~F5 除錯鍵（直接改模擬狀態）、暫停（連線時 Esc 只開選單）、失去焦點自動暫停。F1 切武器改走 `InputCmd.BTN_SWAP_WEAPON`，連線時也能用。
+- **斷線**：房主那邊有人斷線就移除他的角色；客戶端和房主斷線就回到單機。網頁版不支援 ENet，連線選單不顯示。

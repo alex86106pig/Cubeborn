@@ -115,10 +115,20 @@ func _initialize() -> void:
 	_check("手感：斬擊扇形範圍與網頁版 querySector 完全一致（距離 2.3、角度 117°、加目標半徑、貼身必中）", _check_feel_sector)
 	_check("手感：生成間隔 0.35 秒、開波 0.6 秒後出第一隻、清空 2.5 秒後開下一波，步數與網頁版計時器完全相同", _check_feel_wave_timing)
 	_check("手感：小怪移速 = 基礎 × 波次成長 × 隨機 ±變異、Boss 固定 2.2；弓手箭速 10、射程 18", _check_feel_enemy_speed)
+	_check("誤傷（C2）：玩家揮劍打得到前方的隊友（12 傷害）、打不到自己；魔彈打得到隊友、不打發射者；單機目標不含自己", NetChecks.check_friendly_fire)
+	_check("人數調整（C3 決定）：敵人數量不變、血量每多 1 人 +50%（1 / 2 / 4 人 ×1 / ×1.5 / ×2.5，Boss 也是）", NetChecks.check_player_count_scaling)
+	_check("倒下（C4）：多人時生命歸零先倒地假死（不能動、不被打、不被追），10 秒沒人救才死亡；最後一人倒下全員死亡並 game:defeat；單機倒下直接死亡", NetChecks.check_downed)
+	_check("救援（C4）：範圍內按住 F 累積 5 秒救起、期間不能移動 / 攻擊 / 跳、倒數暫停；放開時進度每秒 −1、倒數照走；救起後 30% 血；範圍外不能救", NetChecks.check_revive)
+	_check("快照（C1）：房主的實體經過序列化後，客戶端建立同樣類別、位置、血量、武器的鏡像；動畫狀態相同時數值補間", NetChecks.check_codec)
+	_check("戰鬥同步（C2）：延遲 3 步、30 秒對打，客戶端套用的每筆快照擊殺 / 波次 / 敵人血量都和房主當時一致，事件順序一致", NetChecks.check_sync.bind(_feel_lines))
+	_check("延遲下的手感（C3）：延遲 100 ms + 掉包 10%，按下就在本機移動、修正誤差 < 0.25、停下後與房主差 < 0.01；別人的角色每步位移平順（±0.02）", NetChecks.check_prediction.bind(_feel_lines))
+	_check("連線倒下與救援（C4）：客戶端跟著房主倒地、不能預測移動，被救起後站起來 30 血；客戶端按住 F 也能救起房主", NetChecks.check_net_downed)
+	_check("兩個程序連線（C1）：headless 開房 + 加入（ENet），各自移動 2 秒後停下，兩邊的玩家位置一致（< 0.01）", NetChecks.check_two_processes.bind(_feel_lines))
 	print("\n手感量測（給 docs/手感對照.md）：\n    " + "\n    ".join(_feel_lines))
 	for w in _worlds:
 		w.clear()
 	_worlds.clear()
+	NetChecks.cleanup()
 	print("\n%d / %d 通過" % [_passed, _passed + _failed])
 	OS.remove_logger(_errors)
 	quit(1 if _failed > 0 else 0)
@@ -537,7 +547,7 @@ func _check_shield_block() -> String:
 	_run_collect(w, _cmd(Vector2.ZERO, Vector2(5, 0), InputCmd.BTN_SPECIAL), 2, events)
 	if _named(events, "skill:onCooldown").is_empty() or p.block_time >= 0.0:
 		return "CD 中按右鍵應發出 skill:onCooldown 且不格擋"
-	var remaining := w.cooldowns.remaining("player.special")
+	var remaining := w.cooldowns.remaining(_player(w).cd("player.special"))
 	var elapsed := w.tick * DT
 	if absf(remaining - (4.0 - elapsed + DT)) > DT * 1.5:
 		return "CD 剩餘 %.3f 秒，預期約 %.3f" % [remaining, 4.0 - elapsed + DT]
@@ -1165,7 +1175,7 @@ func _check_sprint_slot() -> String:
 	_run(w, _cmd(Vector2(1, 0)), ceili(3.0 / DT) - item_steps + 2)
 	if absf(p.velocity.length() - 6.5) > EPS:
 		return "3 秒後移速 %.3f，應回到 6.5" % p.velocity.length()
-	var cd := w.cooldowns.remaining(ActiveSlots.cd_key(1))
+	var cd := w.cooldowns.remaining(_player(w).cd(ActiveSlots.cd_key(1)))
 	var elapsed := (w.tick - 1) * DT
 	if absf(cd - (8.0 - elapsed)) > DT * 1.5:
 		return "疾跑 CD 剩 %.3f，預期約 %.3f" % [cd, 8.0 - elapsed]
@@ -1235,7 +1245,7 @@ func _check_hud() -> String:
 	_feed_hud(hud, w.events)
 	if hud._banner.text != "獲得 灌鉛骰子\n爆擊率 +6%":
 		return "item:added 橫幅文字錯誤：%s" % hud._banner.text
-	for name in ["game:paused", "player:died", "game:victory", "game:restart"]:
+	for name in ["game:paused", "player:died", "game:defeat", "game:victory", "game:restart"]:
 		var payload := {"paused": true, "stats": w.stats.duplicate()}
 		hud._on_event(name, payload)
 	if hud._game_over.visible or hud._pause.visible:
@@ -1504,7 +1514,7 @@ func _check_stats_hooks() -> String:
 	_run(w, _cmd(Vector2.ZERO), 120)
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 1)
 	var expected: float = p.weapon.special.cooldown * 0.5
-	var remaining := w.cooldowns.remaining("player.special")
+	var remaining := w.cooldowns.remaining(_player(w).cd("player.special"))
 	if absf(remaining - expected) > DT * 2.0:
 		return "冷卻 ×0.5：特殊技冷卻應約 %.2f 秒，實際 %.2f" % [expected, remaining]
 	p.remove_stat_source(&"test")
@@ -1581,7 +1591,7 @@ func _check_roll_motion() -> String:
 	p3.set_stat_source(&"test", [[&"roll_charges", Stats.ADD, 1.0], [&"roll_cooldown", Stats.MUL, 0.9]])
 	p3.roll_charges = p3.roll_max()
 	_run(w3, _cmd(Vector2(1, 0), Vector2(0, 5), InputCmd.BTN_ROLL), 1)
-	var cd := w3.cooldowns.remaining(Player.ROLL_CD)
+	var cd := w3.cooldowns.remaining(_player(w3).cd(Player.ROLL_CD))
 	if absf(cd - 1.08) > DT * 1.5:
 		return "翻滾冷卻 −10%% 應為 1.08 秒，實際 %.3f" % cd
 	while p3.action.is_in(&"roll"):
@@ -2606,7 +2616,8 @@ func _check_sound_mapping() -> String:
 		[cue.call("wave:started", {"is_boss": false}), "waveStart"],
 		[cue.call("wave:started", {"is_boss": true}), "bossAppear"],
 		[cue.call("boss:enraged", {}), "enrage"],
-		[cue.call("player:died", {}), "defeat"],
+		[cue.call("game:defeat", {}), "defeat"],
+		[cue.call("player:died", {}), ""],   # v0.21.0：多人時一人陣亡不算輸，結算音效改由全員倒下的 game:defeat 播
 		[cue.call("game:victory", {}), "victory"],
 		[cue.call("game:paused", {"paused": true}), "pause"],
 		[cue.call("game:paused", {"paused": false}), "resume"],
@@ -2631,7 +2642,8 @@ func _check_sound_mapping() -> String:
 		[m.call(&"boss", "game:restart", {}), &"normal"],
 		[m.call(&"normal", "wave:started", {"is_boss": false}), &"normal"],
 		[m.call(&"normal", "wave:started", {"is_boss": true}), &"boss"],
-		[m.call(&"boss", "player:died", {}), &""],
+		[m.call(&"boss", "game:defeat", {}), &""],
+		[m.call(&"boss", "player:died", {}), &"boss"],
 		[m.call(&"normal", "game:victory", {}), &""],
 		[m.call(&"boss", "game:paused", {"paused": true}), &"boss"],
 	]

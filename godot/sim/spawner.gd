@@ -92,14 +92,20 @@ func _spawn_from_queue(world: World, type: StringName) -> void:
 
 
 func spawn_at(world: World, type: StringName, at: Vector2) -> Enemy:
-	var mul: Dictionary = WaveDefs.NO_SCALING if type == &"boss" else WaveDefs.wave_multipliers(wave)
-	var enemy := _create(world, type, at, mul)
+	var mul: Dictionary = (WaveDefs.NO_SCALING if type == &"boss" else WaveDefs.wave_multipliers(wave)).duplicate()
+	mul.hp *= player_count_hp_mul(world.players.size())
+	var enemy := create(world, type, at, mul)
 	world.add_enemy(enemy)
 	return enemy
 
 
-# 敵人類型 → 行為類別（網頁版 Spawner 的 ENEMY_CLASSES）
-static func _create(world: World, type: StringName, at: Vector2, mul: Dictionary) -> Enemy:
+# 依人數調整（C3，使用者決定）：數量不變，血量每多 1 位玩家 +50%；單機 ×1
+static func player_count_hp_mul(count: int) -> float:
+	return 1.0 + Config.NET.enemy_hp_per_extra_player * maxi(0, count - 1)
+
+
+# 敵人類型 → 行為類別（網頁版 Spawner 的 ENEMY_CLASSES）；客戶端建立鏡像實體也用這個
+static func create(world: World, type: StringName, at: Vector2, mul: Dictionary) -> Enemy:
 	match type:
 		&"grunt":
 			return MeleeEnemy.new(world, type, at, mul)

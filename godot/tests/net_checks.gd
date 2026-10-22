@@ -1,0 +1,518 @@
+# 多人連線（C1~C4）的自動檢查，由 tests/check.gd 呼叫；每個函式回傳 "" = 通過，否則是失敗原因
+# 房主與客戶端在同一個程序裡用 _Link 接起來（可設延遲步數與掉包），資料經過 var_to_bytes 來回模擬網路傳送
+class_name NetChecks
+
+const DT := 1.0 / 60.0
+
+static var _made: Array[World] = []   # 建立過的 World：檢查中途失敗也能在最後 cleanup() 切斷循環參照
+
+
+static func cleanup() -> void:
+	for w in _made:
+		w.clear()
+	_made.clear()
+
+
+# 假的網路：房主 World + NetHost ⇄ NetClient，單程延遲 latency 步、unreliable 掉包比例 loss（reliable 不掉）
+class _Link:
+	var host_world := World.new()
+	var host: NetHost
+	var client: NetClient
+	var latency := 0
+	var loss := 0.0
+	var rng := RandomNumberGenerator.new()
+	var t := 0
+	var host_events: Array[Dictionary] = []
+	var client_events: Array[Dictionary] = []
+	var host_states: Dictionary = {}   # 房主 tick -> { kills, wave, hp: { id: hp } }（record_states 時才記）
+	var record_states := false
+	var _to_host: Array = []     # [送達步, 輸入陣列]
+	var _to_client: Array = []   # [送達步, &"snap" | &"events", 資料]
+
+	func _init(seed_value: int, peers: Array[int], p_latency: int, p_loss: float, spawn: bool) -> void:
+		latency = p_latency
+		loss = p_loss
+		rng.seed = seed_value
+		host_world.reset(seed_value, peers)
+		host_world.spawner.finished = not spawn
+		host = NetHost.new(host_world)
+		client = NetClient.new(peers[1])
+		NetChecks._made.append_array([host_world, client.world])
+		host_events.append_array(host_world.events)   # reset 的 game:restart
+		_send_events()
+
+	func step(host_cmd: InputCmd, client_cmd: InputCmd) -> void:
+		t += 1
+		client_events.append_array(client.step(client_cmd, DT))
+		if not _lost():
+			_to_host.append([t + latency, _wire(client.outgoing_inputs())])
+		while not _to_host.is_empty() and _to_host[0][0] <= t:
+			host.receive_inputs(client.peer_id, _to_host.pop_front()[1])
+		var cmds := host.take_cmds()
+		cmds[World.HOST_PEER_ID] = host_cmd
+		host_world.step(cmds, DT)
+		host_events.append_array(host_world.events)
+		_send_events()
+		if host_world.tick % Config.NET.snapshot_interval == 0 and not _lost():
+			_to_client.append([t + latency, &"snap", _wire(host.snapshots()[client.peer_id])])
+		if record_states:
+			var hp := {}
+			for e: Entity in host_world.enemies:
+				hp[e.id] = e.hp
+			host_states[host_world.tick] = {"kills": host_world.stats.kills, "wave": host_world.stats.wave, "hp": hp}
+		while not _to_client.is_empty() and _to_client[0][0] <= t:
+			var m: Array = _to_client.pop_front()
+			if m[1] == &"snap":
+				client.receive_snapshot(m[2])
+			else:
+				client.receive_events(m[2][0], m[2][1], m[2][2])
+
+	func _send_events() -> void:
+		if not host_world.events.is_empty():
+			_to_client.append([t + latency, &"events", _wire([host_world.run_id, host_world.tick, host_world.events])])
+
+	func _lost() -> bool:
+		return loss > 0.0 and rng.randf() < loss
+
+	static func _wire(v: Variant) -> Variant:
+		return bytes_to_var(var_to_bytes(v))
+
+	func clear() -> void:
+		host_world.clear()
+		client.world.clear()
+
+
+static func _cmd(move: Vector2, buttons: int = 0, aim: Vector2 = Vector2(0, 5)) -> InputCmd:
+	var c := InputCmd.new()
+	c.move = move
+	c.aim = aim
+	c.buttons = buttons
+	return c
+
+
+static func _world(peers: Array[int]) -> World:
+	var w := World.new()
+	w.reset(7, peers)
+	w.spawner.finished = true
+	_made.append(w)
+	return w
+
+
+static func _named(events: Array[Dictionary], name: String) -> Array[Dictionary]:
+	return events.filter(func(e: Dictionary) -> bool: return e.name == name)
+
+
+# ───────── C2：誤傷、人數血量 ─────────
+
+static func check_friendly_fire() -> String:
+	var w := _world([1, 2])
+	var p1: Player = w.players[1]
+	var p2: Player = w.players[2]
+	p1.pos = Vector2(0, 0)
+	p2.pos = Vector2(0, 1.2)
+	var events: Array[Dictionary] = []
+	for i in 20:
+		w.step({1: _cmd(Vector2.ZERO, InputCmd.BTN_ATTACK, Vector2(0, 5)), 2: _cmd(Vector2.ZERO)}, DT)
+		events.append_array(w.events)
+	var hits := _named(events, "entity:damaged")
+	var err := ""
+	if hits.is_empty() or hits[0].target_id != p2.id or hits[0].amount != 12:
+		err = "P1 揮劍應打中前方的 P2 造成 12 傷害，實際 %s" % [hits]
+	elif hits.any(func(e: Dictionary) -> bool: return e.target_id == p1.id):
+		err = "出招者不應打到自己"
+	# 法杖魔彈：不會打到發射者，會打到前方的隊友
+	if err == "":
+		var w2 := _world([1, 2])
+		var a: Player = w2.players[1]
+		var b: Player = w2.players[2]
+		a.equip_weapon(&"staff")
+		a.pos = Vector2.ZERO
+		b.pos = Vector2(0, 4)
+		var ev2: Array[Dictionary] = []
+		for i in 60:
+			w2.step({1: _cmd(Vector2.ZERO, InputCmd.BTN_ATTACK, Vector2(0, 8)), 2: _cmd(Vector2.ZERO)}, DT)
+			ev2.append_array(w2.events)
+		var bolt_hits := _named(ev2, "entity:damaged")
+		if bolt_hits.is_empty() or bolt_hits[0].target_id != b.id:
+			err = "魔彈應打中前方的隊友"
+		elif bolt_hits.any(func(e: Dictionary) -> bool: return e.target_id == a.id):
+			err = "魔彈不應打到發射者"
+		w2.clear()
+	# 單機：玩家方的目標只有敵人（沒有其他玩家）
+	if err == "":
+		var w3 := _world([1])
+		if not Combat.hostiles_of(w3, &"player", w3.players[1].id).is_empty():
+			err = "單機時玩家方的攻擊目標不應包含自己"
+		w3.clear()
+	w.clear()
+	return err
+
+
+static func check_player_count_scaling() -> String:
+	var out: Array[String] = []
+	for n: int in [1, 2, 4]:
+		var peers: Array[int] = []
+		for i in n:
+			peers.append(i + 1)
+		var w := _world(peers)
+		var g := w.spawner.spawn_at(w, &"grunt", Vector2(5, 5))
+		var b := w.spawner.spawn_at(w, &"boss", Vector2(-5, -5))
+		var mul := 1.0 + 0.5 * (n - 1)
+		if absf(g.max_hp - EnemyDefs.ENEMIES[&"grunt"].max_hp * mul) > 0.01 or absf(b.max_hp - EnemyDefs.ENEMIES[&"boss"].max_hp * mul) > 0.01:
+			out.append("%d 人：骷髏 %.1f、Boss %.1f，預期 ×%.1f" % [n, g.max_hp, b.max_hp, mul])
+		w.clear()
+	return "；".join(out)
+
+
+# ───────── C4：倒下與救援 ─────────
+
+static func check_downed() -> String:
+	var w := _world([1, 2])
+	var p1: Player = w.players[1]
+	var p2: Player = w.players[2]
+	p1.pos = Vector2(-5, 0)
+	p2.pos = Vector2(5, 0)
+	p2.take_damage(1000.0, Vector2(1, 0), 0.0, 0)
+	if not p2.is_downed or p2.is_dead or _named(w.events, "player:downed").is_empty():
+		return "多人時生命歸零應倒地假死（is_downed、發出 player:downed），不是死亡"
+	if p2.can_be_hit() or p2.is_targetable():
+		return "倒地的玩家不能再被打、也不是怪物的目標"
+	var g := w.spawner.spawn_at(w, &"grunt", Vector2(4, 0))
+	if g.nearest_player() != p1:
+		return "怪物應追站著的 P1，不追倒地的 P2"
+	g.remove()   # 只檢查目標選擇；留著會一路推擠倒地的 P2、砍倒 P1
+	var events: Array[Dictionary] = []
+	var start := p2.pos
+	var steps := 0
+	while not p2.is_dead and steps < 700:
+		w.step({1: _cmd(Vector2.ZERO), 2: _cmd(Vector2(1, 0), InputCmd.BTN_ATTACK)}, DT)
+		events.append_array(w.events)
+		steps += 1
+	if p2.pos.distance_to(start) > 0.01:
+		return "倒地時不能移動（移動 %.3f）" % p2.pos.distance_to(start)
+	if not p2.is_dead or absf(steps * DT - Config.REVIVE.down_time) > 2.0 * DT:
+		return "沒人救應在 10 秒後死亡，實際 %d 步（%.2f 秒）" % [steps, steps * DT]
+	if _named(events, "player:died").is_empty() or not _named(events, "game:defeat").is_empty():
+		return "P2 死亡應發出 player:died；P1 還站著，不應 game:defeat"
+	# P1 也倒下：沒有站著的人 → 全員死亡、game:defeat
+	p1.take_damage(1000.0, Vector2(1, 0), 0.0, 0)
+	w.step({}, DT)
+	if not p1.is_dead or _named(w.events, "game:defeat").is_empty():
+		return "最後一位站著的玩家倒下時，應直接死亡並發出 game:defeat"
+	w.clear()
+	# 單機：倒下就是死亡（和以前一樣），下一步發出 game:defeat
+	var s := _world([1])
+	var sp: Player = s.players[1]
+	sp.take_damage(1000.0, Vector2(1, 0), 0.0, 0)
+	if not sp.is_dead or sp.is_downed:
+		return "單機生命歸零應直接死亡"
+	s.step({}, DT)
+	var defeat := _named(s.events, "game:defeat")
+	s.step({}, DT)
+	if defeat.size() != 1 or not _named(s.events, "game:defeat").is_empty():
+		return "單機死亡後應發出一次 game:defeat"
+	s.clear()
+	return ""
+
+
+static func check_revive() -> String:
+	var w := _world([1, 2])
+	var p1: Player = w.players[1]
+	var p2: Player = w.players[2]
+	p1.pos = Vector2(0, 0)
+	p2.pos = Vector2(0, 1.0)
+	p2.take_damage(1000.0, Vector2(1, 0), 0.0, 0)
+	var hold := _cmd(Vector2(1, 0), InputCmd.BTN_INTERACT | InputCmd.BTN_ATTACK | InputCmd.BTN_JUMP)
+	for i in 180:   # 按住 3 秒（同時按移動、攻擊、跳躍：救援中都不應生效）
+		w.step({1: hold, 2: _cmd(Vector2.ZERO)}, DT)
+	if p1.pos.distance_to(Vector2.ZERO) > 0.01 or not p1.action.is_in(&"revive") or p1.height > 0.0:
+		return "按住 F 救援時不能移動、攻擊、跳躍（位置 %s、動作 %s、高度 %.2f）" % [p1.pos, p1.action.current_name, p1.height]
+	if absf(p2.revive_progress - 3.0) > 0.02 or absf(p2.down_timer - Config.REVIVE.down_time) > 0.02:
+		return "救援 3 秒：進度應 3.0、倒數暫停在 10.0，實際 %.3f / %.3f" % [p2.revive_progress, p2.down_timer]
+	for i in 60:    # 放開 1 秒：進度每秒 −1、倒數照走
+		w.step({1: _cmd(Vector2.ZERO), 2: _cmd(Vector2.ZERO)}, DT)
+	if absf(p2.revive_progress - 2.0) > 0.02 or absf(p2.down_timer - 9.0) > 0.02:
+		return "放開 1 秒：進度應 2.0、倒數 9.0，實際 %.3f / %.3f" % [p2.revive_progress, p2.down_timer]
+	if not p1.action.is_in(&"ready"):
+		return "放開 F 應結束救援，實際 %s" % p1.action.current_name
+	var events: Array[Dictionary] = []
+	var steps := 0
+	while p2.is_downed and steps < 400:
+		w.step({1: _cmd(Vector2.ZERO, InputCmd.BTN_INTERACT), 2: _cmd(Vector2.ZERO)}, DT)
+		events.append_array(w.events)
+		steps += 1
+	if p2.is_downed or absf(steps * DT - 3.0) > 2.0 * DT:
+		return "再按住 3 秒（累積到 5 秒）應救起，實際 %d 步" % steps
+	if p2.hp != 30.0 or _named(events, "player:revived").is_empty() or not p2.locomotion.is_in(&"idle"):
+		return "救起後血量應為最大生命 30%%（30），實際 %.1f；應發出 player:revived 並站起來" % p2.hp
+	# 超出範圍：救援中斷
+	var w2 := _world([1, 2])
+	var a: Player = w2.players[1]
+	var b: Player = w2.players[2]
+	b.pos = Vector2(0, Config.REVIVE.range + 0.5)
+	b.take_damage(1000.0, Vector2(1, 0), 0.0, 0)
+	for i in 30:
+		w2.step({1: _cmd(Vector2.ZERO, InputCmd.BTN_INTERACT), 2: _cmd(Vector2.ZERO)}, DT)
+	var far_err := "" if a.action.is_in(&"ready") and b.revive_progress == 0.0 else "倒地者在範圍外時不應開始救援"
+	w.clear()
+	w2.clear()
+	return far_err
+
+
+# ───────── C2 / C3：快照、同步、預測 ─────────
+
+static func check_codec() -> String:
+	var w := _world([1, 2])
+	w.spawner.spawn_at(w, &"grunt", Vector2(5, 5))
+	w.spawner.spawn_at(w, &"boss", Vector2(-5, -5))
+	w.players[1].equip_weapon(&"staff")
+	for i in 40:
+		w.step({1: _cmd(Vector2(1, 0), InputCmd.BTN_ATTACK, Vector2(0, 8))}, DT)
+	var host := NetHost.new(w)
+	var snap: Array = _Link._wire(host.snapshots()[2])
+	var c := NetClient.new(2)
+	_made.append(c.world)
+	c.receive_snapshot(snap)
+	c.step(_cmd(Vector2.ZERO), DT)
+	var err := ""
+	for id: int in w.entities:
+		var e: Entity = w.entities[id]
+		var m: Entity = c.world.entities.get(id)
+		if m == null or m.get_script() != e.get_script():
+			err = "實體 %d（%s）沒有建立成同樣的類別" % [id, e.kind]
+			break
+		if m.pos.distance_to(e.pos) > 1e-4 or absf(m.hp - e.hp) > 1e-4 or absf(m.max_hp - e.max_hp) > 1e-4:
+			err = "實體 %d（%s）位置或血量不同：%s / %s、%.1f / %.1f、%.1f / %.1f" % [id, e.kind, m.pos, e.pos, m.hp, e.hp, m.max_hp, e.max_hp]
+			break
+		if (e is Player or e is Enemy) and m != c.local_player() and m.anim != e.anim:   # 自己的角色是本機預測的
+			err = "實體 %d（%s）動畫資料經過壓縮後不同：%s / %s" % [id, e.kind, m.anim, e.anim]
+			break
+	if err == "" and c.world.entities.size() != w.entities.size():
+		err = "鏡像實體數 %d，房主 %d" % [c.world.entities.size(), w.entities.size()]
+	if err == "" and (c.world.players[1] as Player).weapon_id != &"staff":
+		err = "其他玩家的武器沒有同步"
+	# 動畫補間：狀態相同時數值欄位線性補間，不同時用前一筆
+	var la := NetCodec.lerp_anim({"state": &"chase", "time": 1.0}, {"state": &"chase", "time": 2.0}, 0.25)
+	var lb := NetCodec.lerp_anim({"state": &"chase", "time": 1.0}, {"state": &"hurt", "time": 0.1}, 0.5)
+	if err == "" and (absf(la.time - 1.25) > 1e-6 or lb.state != &"chase" or lb.time != 1.0):
+		err = "動畫補間錯誤：%s / %s" % [la, lb]
+	w.clear()
+	c.world.clear()
+	return err
+
+
+# C2：同一串輸入下，客戶端畫面套用的每一筆快照都和房主當時的狀態一致；事件順序也一樣
+static func check_sync(feel: Array[String]) -> String:
+	var link := _Link.new(31, [1, 2], 3, 0.0, true)
+	link.record_states = true
+	var compared := 0
+	var err := ""
+	for i in 1800:
+		# 兩人都走向最近的怪、對著牠揮劍（房主看自己的 World，客戶端看鏡像）
+		link.step(_chase_cmd(link.host_world, 1), _chase_cmd(link.client.world, link.client.peer_id))
+		var tick := link.client.applied_tick
+		if tick < 0 or not link.host_states.has(tick):
+			continue
+		var s: Dictionary = link.host_states[tick]
+		var cw := link.client.world
+		if cw.stats.kills != s.kills or cw.stats.wave != s.wave:
+			err = "tick %d：客戶端擊殺 / 波次 %d / %d，房主 %d / %d" % [tick, cw.stats.kills, cw.stats.wave, s.kills, s.wave]
+			break
+		for id: int in s.hp:
+			var e: Entity = cw.entities.get(id)
+			if e == null or absf(e.hp - s.hp[id]) > 1e-3:
+				err = "tick %d：敵人 %d 血量 客戶端 %s，房主 %.1f" % [tick, id, e.hp if e else "（沒有）", s.hp[id]]
+				break
+		if err != "":
+			break
+		compared += 1
+	if err == "" and link.host_world.stats.kills < 5:
+		err = "這段時間應打倒一些怪（實際 %d），檢查才有意義" % link.host_world.stats.kills
+	if err == "":
+		# 事件：客戶端收到的（去掉自己預測的）應是房主事件（去掉客戶端玩家的動作）的前段，順序相同
+		var peer := link.client.peer_id
+		var host_names := link.host_events.filter(func(e: Dictionary) -> bool: return e.get("actor", 0) != peer).map(func(e: Dictionary) -> String: return e.name)
+		var client_names := link.client_events.filter(func(e: Dictionary) -> bool: return e.get("actor", 0) != peer).map(func(e: Dictionary) -> String: return e.name)
+		if client_names.size() < host_names.size() * 0.9 or host_names.slice(0, client_names.size()) != client_names:
+			err = "事件順序不同或缺少：客戶端 %d 筆、房主 %d 筆" % [client_names.size(), host_names.size()]
+		var snap_bytes := var_to_bytes(link.host.snapshots()[peer]).size()
+		feel.append("C2 同步：30 秒 2 人對打、延遲 3 步，比對 %d 筆快照的擊殺 / 波次 / 敵人血量全部一致；事件 %d 筆順序一致（房主擊殺 %d）；最後一筆快照 %d 個實體 %d bytes" % [compared, client_names.size(), link.host_world.stats.kills, link.host_world.entities.size(), snap_bytes])
+	link.clear()
+	return err
+
+
+static func _chase_cmd(w: World, peer_id: int) -> InputCmd:
+	var p: Player = w.players.get(peer_id)
+	if p == null:
+		return _cmd(Vector2.ZERO)
+	var best: Entity = null
+	for e: Entity in w.enemies:
+		if not e.is_dead and (best == null or e.pos.distance_squared_to(p.pos) < best.pos.distance_squared_to(p.pos)):
+			best = e
+	if best == null:
+		return _cmd(Vector2.ZERO)
+	var to := best.pos - p.pos
+	return _cmd(to.normalized() if to.length() > 1.5 else Vector2.ZERO, InputCmd.BTN_ATTACK, best.pos)
+
+
+# C3：單程延遲 6 步（100 ms）、掉包 10% 下，自己的角色按下就動、修正後誤差小；別人的角色每步位移平順
+static func check_prediction(feel: Array[String]) -> String:
+	var link := _Link.new(9, [1, 2], 6, 0.1, false)
+	var me := Vector2.ZERO
+	var err := ""
+	# 先等快照建立鏡像
+	for i in 30:
+		link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO))
+	var cp := link.client.local_player()
+	if cp == null:
+		link.clear()
+		return "客戶端沒有建立自己的角色"
+	me = cp.pos
+	link.step(_cmd(Vector2.ZERO), _cmd(Vector2(1, 0)))
+	var first_move := cp.pos.x - me.x
+	if absf(first_move - 6.5 * DT) > 1e-3:
+		err = "按下移動的第一步就該在本機移動 %.4f，實際 %.4f（沒有預測）" % [6.5 * DT, first_move]
+	# 移動、跳、翻滾、轉彎、停下；房主的角色從場地下緣一直往 +Z 走（看客戶端畫面上的平順度；離客戶端的角色遠，不會互推、不會撞牆）
+	(link.host_world.players[1] as Player).pos = Vector2(-8, -15)
+	for i in 20:
+		link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO))
+	var remote_steps: Array[float] = []
+	var hp: Player = link.client.world.players.get(1)
+	for i in 300:
+		var move := Vector2(1, 0) if i < 60 else (Vector2(0, 1) if i < 120 else (Vector2(-0.7, -0.7) if i < 180 else Vector2.ZERO))
+		var b := 0
+		if i == 70:
+			b = InputCmd.BTN_JUMP
+		elif i == 100 or i == 150:
+			b = InputCmd.BTN_ROLL
+		var before := hp.pos if hp != null else Vector2.ZERO
+		link.step(_cmd(Vector2(0, 1) if i < 200 else Vector2.ZERO), _cmd(move, b))
+		hp = link.client.world.players.get(1)
+		if i >= 30 and i < 190 and hp != null:
+			remote_steps.append(hp.pos.distance_to(before))
+	for i in 60:
+		link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO))
+	var server_pos: Vector2 = (link.host_world.players[2] as Player).pos
+	var final_err := cp.pos.distance_to(server_pos)
+	var c := link.client
+	var expected_step := 6.5 * DT
+	var worst := 0.0
+	var outliers := []
+	for i in remote_steps.size():
+		var d := remote_steps[i]
+		worst = maxf(worst, absf(d - expected_step))
+		if absf(d - expected_step) > 0.02:
+			outliers.append("%d:%.3f" % [i + 30, d])
+	if not outliers.is_empty():
+		feel.append("C3 除錯：位移異常的步 %s" % [outliers])
+	feel.append("C3 預測：延遲 100 ms + 掉包 10%%，移動 / 跳 / 翻滾 300 步，修正 %d 次、最大誤差 %.4f、停下後與房主差 %.5f；別人的角色每步位移 %.4f ± %.4f" % [c.corrections, c.max_error, final_err, expected_step, worst])
+	if err == "" and final_err > 0.01:
+		err = "停下後本機位置與房主差 %.4f（應 < 0.01）" % final_err
+	if err == "" and c.max_error > 0.25:
+		err = "預測誤差最大 %.4f（應 < 0.25，約兩步的移動量）" % c.max_error
+	if err == "" and worst > 0.02:
+		err = "別人的角色每步位移不平順：與 %.4f 最多差 %.4f（應 < 0.02）" % [expected_step, worst]
+	link.clear()
+	return err
+
+
+# C4 連線：客戶端的角色倒下 / 被救起 / 救人，兩邊狀態一致
+static func check_net_downed() -> String:
+	var link := _Link.new(5, [1, 2], 3, 0.0, false)
+	for i in 30:
+		link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO))
+	var hp1: Player = link.host_world.players[1]
+	var hp2: Player = link.host_world.players[2]
+	hp1.pos = Vector2(0, 0)
+	hp2.pos = Vector2(0, 1.0)
+	_hurt_between_steps(link, hp2)
+	for i in 30:
+		link.step(_cmd(Vector2.ZERO), _cmd(Vector2(1, 0)))
+	var me := link.client.local_player()
+	if not me.is_downed or me.locomotion.current_name != &"downed":
+		return "客戶端自己的角色應跟著房主倒地（is_downed=%s、%s）" % [me.is_downed, me.locomotion.current_name]
+	if me.pos.distance_to(hp2.pos) > 0.05:
+		return "倒地後不能靠預測移動：客戶端 %s，房主 %s" % [me.pos, hp2.pos]
+	if _named(link.client_events, "player:downed").is_empty():
+		return "客戶端應收到 player:downed"
+	var steps := 0
+	while hp2.is_downed and steps < 400:
+		link.step(_cmd(Vector2.ZERO, InputCmd.BTN_INTERACT), _cmd(Vector2.ZERO))
+		steps += 1
+	for i in 15:
+		link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO))
+	if hp2.is_downed or me.is_downed or me.hp != 30.0 or not me.locomotion.is_in(&"idle"):
+		return "房主救起 P2 後，客戶端應站起來、血量 30（實際 downed=%s hp=%.1f %s）" % [me.is_downed, me.hp, me.locomotion.current_name]
+	# 反過來：客戶端救倒地的房主
+	_hurt_between_steps(link, hp1)
+	steps = 0
+	while hp1.is_downed and steps < 500:
+		link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO, InputCmd.BTN_INTERACT))
+		steps += 1
+	link.clear()
+	if hp1.is_downed or hp1.hp != 30.0:
+		return "客戶端按住 F 應能救起倒地的房主（%d 步後 downed=%s）" % [steps, hp1.is_downed]
+	return ""
+
+
+# 在兩步之間直接打倒玩家（正式遊戲裡傷害都發生在 step 中）：只把這次產生的事件送出去
+static func _hurt_between_steps(link: _Link, p: Player) -> void:
+	link.host_world.events.clear()
+	p.take_damage(1000.0, Vector2(1, 0), 0.0, 0)
+	link._send_events()
+
+
+# C1：真的開兩個 Godot 程序（headless）用 ENet 連線：房主與客戶端各自移動 2 秒後停下，結束時兩邊印出的每位玩家位置一致
+static func check_two_processes(feel: Array[String]) -> String:
+	var exe := OS.get_executable_path()
+	var project := ProjectSettings.globalize_path("res://")
+	var dir := OS.get_user_data_dir()
+	var logs := [dir.path_join("net_host.log"), dir.path_join("net_client.log")]
+	for path: String in logs:
+		DirAccess.remove_absolute(path)
+	var port := "--net-port=%d" % (Config.NET.port + 7)
+	var common := ["--headless", "--path", project]
+	var host_args := common + ["--log-file", logs[0], "--", "--host", port, "--net-autostart=2", "--no-spawn", "--auto-move=1,0", "--auto-move-seconds=2", "--seconds=5"]
+	var client_args := common + ["--log-file", logs[1], "--", "--join=127.0.0.1", port, "--no-spawn", "--auto-move=0,1", "--auto-move-seconds=2", "--seconds=5"]
+	var host_pid := OS.create_process(exe, host_args)
+	OS.delay_msec(500)
+	var client_pid := OS.create_process(exe, client_args)
+	var waited := 0
+	while (OS.is_process_running(host_pid) or OS.is_process_running(client_pid)) and waited < 30000:
+		OS.delay_msec(100)
+		waited += 100
+	for pid: int in [host_pid, client_pid]:
+		if OS.is_process_running(pid):
+			OS.kill(pid)
+	var lines := []
+	for path: String in logs:
+		var f := FileAccess.open(path, FileAccess.READ)
+		var found := ""
+		if f != null:
+			for line in f.get_as_text().split("\n"):
+				if line.begins_with("players "):
+					found = line.strip_edges()
+		lines.append(found)
+	if lines[0] == "" or lines[1] == "":
+		return "沒有讀到兩邊的玩家位置（房主：%s；客戶端：%s）" % [lines[0], lines[1]]
+	var host_pos := _parse_players(lines[0])
+	var client_pos := _parse_players(lines[1])
+	if host_pos.size() != 2 or client_pos.size() != 2:
+		return "應有 2 位玩家：房主 %s；客戶端 %s" % [lines[0], lines[1]]
+	var worst := 0.0
+	for peer: int in host_pos:
+		if not client_pos.has(peer):
+			return "客戶端沒有玩家 %d" % peer
+		worst = maxf(worst, (host_pos[peer] as Vector2).distance_to(client_pos[peer]))
+	var moved := (host_pos.values()[0] as Vector2).length()
+	feel.append("C1 兩個程序：房主 %s；客戶端 %s；位置最大差 %.4f" % [lines[0], lines[1], worst])
+	if moved < 5.0:
+		return "房主的角色應移動了約 13 單位（實際 %.2f），檢查才有意義" % moved
+	return "" if worst < 0.01 else "兩邊的玩家位置差 %.4f（應 < 0.01）" % worst
+
+
+static func _parse_players(line: String) -> Dictionary:
+	var out := {}
+	for m in RegEx.create_from_string("(\\d+)=\\(([-\\d.]+),([-\\d.]+)\\)").search_all(line):
+		out[m.get_string(1).to_int()] = Vector2(m.get_string(2).to_float(), m.get_string(3).to_float())
+	return out

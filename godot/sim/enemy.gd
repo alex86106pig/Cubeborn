@@ -60,7 +60,7 @@ func nearest_player() -> Player:
 	var best: Player = null
 	var best_d := INF
 	for p: Player in world.players.values():
-		if p.is_dead:
+		if not p.is_targetable():   # 倒地的玩家不追
 			continue
 		var d := p.pos.distance_squared_to(pos)
 		if d < best_d:

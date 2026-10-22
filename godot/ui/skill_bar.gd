@@ -29,8 +29,8 @@ func refresh(world: World, player: Player) -> void:
 		_build(player)
 	for key: String in _slots:
 		var slot: Slot = _slots[key]
-		slot.cd_left = world.cooldowns.remaining(key)
-		slot.cd_ratio = 1.0 - world.cooldowns.progress(key)
+		slot.cd_left = world.cooldowns.remaining(player.cd(key))   # 每位玩家各自的 CD（Player.cd）
+		slot.cd_ratio = 1.0 - world.cooldowns.progress(player.cd(key))
 		if slot.index >= 0:
 			var data: Variant = player.slots.slots[slot.index]
 			if data != null and data.def.mode == &"charges":

@@ -6,7 +6,7 @@ const PHASES: Array[StringName] = [&"windup", &"active", &"recovery"]
 
 
 static func locomotion_states() -> Dictionary:
-	return {&"idle": Idle.new(), &"move": Move.new(), &"dead": Dead.new()}
+	return {&"idle": Idle.new(), &"move": Move.new(), &"downed": Dead.new(), &"dead": Dead.new()}
 
 
 static func action_states() -> Dictionary:
@@ -17,6 +17,7 @@ static func action_states() -> Dictionary:
 		&"useItem": UseItem.new(),
 		&"stagger": Stagger.new(),
 		&"roll": Roll.new(),
+		&"revive": Revive.new(),
 	}
 
 
@@ -46,7 +47,7 @@ class Move:
 			fsm.change(&"idle")
 
 
-# 終止狀態：倒地動畫由畫面層依 locomotion 時間播放
+# 終止狀態（dead）與倒地假死（downed，救起後回到 idle）：倒地動畫由畫面層依 locomotion 時間播放
 class Dead:
 	pass
 
@@ -60,11 +61,16 @@ class Ready:
 	func update(p: Player, _dt: float, fsm: StateMachine) -> void:
 		if PlayerStates.try_roll(p, fsm):
 			return
+		if p.is_interact_held:
+			var target := p.find_revive_target()
+			if target != null:
+				fsm.change(&"revive", {"target_id": target.id})
+				return
 		var buffered := p.buffered_action
 		if not buffered.is_empty():
 			p.buffered_action = {}
 			if buffered.type == &"special":
-				if p.world.cooldowns.is_ready("player.special"):
+				if p.world.cooldowns.is_ready(p.cd("player.special")):
 					fsm.change(&"special")
 					return
 				p.world.emit_event("skill:onCooldown", {"key": "player.special", "player_id": p.id})
@@ -95,7 +101,7 @@ class TimedAction:
 		data.move_speed_mul = def.get("move_speed_mul", 1.0)
 		data.lock_facing = false
 		if kind == &"special":
-			p.world.cooldowns.start("player.special", def.cooldown * p.stats.value(&"cooldown"))
+			p.world.cooldowns.start(p.cd("player.special"), def.cooldown * p.stats.value(&"cooldown"))
 			p.world.emit_event("skill:used", {"key": "player.special", "player_id": p.id})
 		data.behavior.enter(p, def, data)
 		# 攻速只影響普攻三個階段（在武器行為調整終結技後搖之後套用）；特殊技由冷卻限制
@@ -174,6 +180,31 @@ class Roll:
 
 	func exit(p: Player, _fsm: StateMachine) -> void:
 		p.has_forced_velocity = false
+
+
+# 救援（C4）：按住互動鍵、倒地隊友在範圍內就一直救；期間不能移動、攻擊、用技能（按鍵不留緩衝）
+# 救援進度由 World._update_downed 依 revive_target_id 累積
+class Revive:
+	func enter(p: Player, data: Dictionary, _fsm: StateMachine) -> void:
+		data.move_speed_mul = 0.0
+		data.lock_facing = true
+		p.revive_target_id = data.target_id
+		_face(p, data.target_id)
+
+	func update(p: Player, _dt: float, fsm: StateMachine) -> void:
+		p.buffered_action = {}
+		var target := p.world.entities.get(fsm.data.target_id) as Player
+		var in_range := target != null and target.is_downed and target.pos.distance_to(p.pos) <= Config.REVIVE.range
+		if not p.is_interact_held or not in_range:
+			fsm.change(&"ready")
+
+	func exit(p: Player, _fsm: StateMachine) -> void:
+		p.revive_target_id = 0
+
+	func _face(p: Player, target_id: int) -> void:
+		var t: Entity = p.world.entities.get(target_id)
+		if t != null:
+			p.facing = MathUtil.angle_to(p.pos, t.pos)
 
 
 class Stagger:

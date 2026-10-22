@@ -4,8 +4,8 @@
 class_name Hitbox
 
 
-static func query(world: World, team: StringName, origin: Vector2, facing: float, shape: Dictionary) -> Array[Entity]:
-	var candidates := Combat.hostiles_of(world, team)
+static func query(world: World, team: StringName, origin: Vector2, facing: float, shape: Dictionary, source_id: int = 0) -> Array[Entity]:
+	var candidates := Combat.hostiles_of(world, team, source_id)
 	match shape.shape:
 		&"sector":
 			return Combat.query_sector(origin, facing, shape.range, shape.arc, candidates)
@@ -21,7 +21,7 @@ static func strike(world: World, source: Entity, origin: Vector2, facing: float,
 	var band: Vector2 = hit.get("band", Combat.body_band(source))
 	world.record_hitbox({"shape": shape, "origin": origin, "facing": facing, "band": band, "team": source.team})
 	var hits: Array[Entity] = []
-	for target in query(world, source.team, origin, facing, shape):
+	for target in query(world, source.team, origin, facing, shape, source.id):
 		if already.has(target.id):
 			continue
 		already[target.id] = true

@@ -26,6 +26,16 @@ func _ready() -> void:
 	_setup_environment()
 
 
+# 換了一個 World（加入 / 離開連線）：id 會重複使用，舊模型全部拿掉
+func clear_views() -> void:
+	for node: Node3D in _nodes.values():
+		node.queue_free()
+	_nodes.clear()
+	_animators.clear()
+	_frozen.clear()
+	effects.clear()
+
+
 # 事件由 main.gd 轉過來：特效交給 Effects；重新開始時清掉場上的特效
 func on_event(name: String, p: Dictionary) -> void:
 	if name == "game:restart":
@@ -69,7 +79,9 @@ func _setup_environment() -> void:
 # alpha：上一步到這一步之間的補間比例（0~1）；dt：渲染幀秒數（動畫用）
 func sync(world: World, alpha: float, dt: float) -> void:
 	for id: int in _nodes.keys():
-		if not world.entities.has(id):
+		# 實體不在了，或同一個 id 已經是另一個實體（重新開始後 id 從 1 重來，客戶端可能在同一幀就換掉）
+		var e: Entity = world.entities.get(id)
+		if e == null or _nodes[id].get_meta(&"entity") != e.get_instance_id():
 			_nodes[id].queue_free()
 			_nodes.erase(id)
 			_animators.erase(id)
@@ -160,6 +172,7 @@ func _create_view(e: Entity) -> Node3D:
 		_:
 			root = _create_placeholder(e)
 	root.add_child(_create_hitbox_ring(e.radius))
+	root.set_meta(&"entity", e.get_instance_id())
 	add_child(root)
 	return root
 

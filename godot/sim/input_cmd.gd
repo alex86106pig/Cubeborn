@@ -8,6 +8,9 @@ const BTN_SLOT_FIRST := 1 << 2   # 數字鍵 1（本步按下），2~5 依序左
 const SLOT_COUNT := 5
 const BTN_ROLL := 1 << 7         # 左 Shift 翻滾（本步按下）；數字鍵占用 1 << 2 ~ 1 << 6
 const BTN_JUMP := 1 << 8         # 空白鍵跳躍（本步按下）
+const BTN_INTERACT := 1 << 9     # F 互動（按住）：救援倒地的隊友
+const BTN_SWAP_WEAPON := 1 << 10 # F1 切換武器（本步按下；除錯用，連線時也走輸入）
+const HELD_BUTTONS := BTN_ATTACK | BTN_INTERACT   # 按住類的按鈕：沿用上一筆輸入時保留，其餘「本步按下」的不重複觸發
 
 var tick := 0
 var move := Vector2.ZERO   # 世界 XZ 方向，長度 ≤ 1

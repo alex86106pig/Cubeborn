@@ -75,6 +75,11 @@ func can_be_hit() -> bool:
 	return not is_dead and invuln_timer <= 0.0 and not is_dodging()
 
 
+# 能不能被當成攻擊與追擊的目標（倒地的玩家不行，見 Player）
+func is_targetable() -> bool:
+	return not is_dead
+
+
 # 能格擋的攻擊打過來時由 Combat 呼叫；回傳 true = 擋下（不扣血）。只有玩家格擋時會擋（Player.try_block）
 func try_block(_from: Vector2, _hit: Dictionary) -> bool:
 	return false

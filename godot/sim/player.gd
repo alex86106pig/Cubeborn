@@ -23,6 +23,11 @@ var pending_parry := false             # 本步完美格擋，下一步開頭執
 var parry_timer := 0.0                 # 盾反動作剩餘秒數（畫面用）
 var items: Array[Dictionary] = []     # 身上的道具實例 { uid, id }；uid 同時是屬性加成的來源名稱
 var _next_item_uid := 1
+var is_interact_held := false          # F 按住（救援隊友）
+var is_downed := false                 # 倒地假死（C4）：倒數 down_timer 秒，隊友救起前不能動
+var down_timer := 0.0
+var revive_progress := 0.0             # 隊友已累積的救援秒數（到 REVIVE.revive_time 救起）
+var revive_target_id := 0              # 自己正在救的倒地隊友（實體 id；0 = 沒有在救）
 var forced_velocity := Vector2.ZERO
 var has_forced_velocity := false
 var locomotion: StateMachine
@@ -46,7 +51,7 @@ func _init(p_world: World, p_peer_id: int) -> void:
 
 # 跳躍：站在地面上隨時可以跳（攻擊、翻滾中也行），受擊硬直與倒地時不行；只有一段跳
 func try_jump() -> bool:
-	if is_dead or not is_grounded() or action.is_in(&"stagger"):
+	if is_dead or is_downed or not is_grounded() or action.is_in(&"stagger") or action.is_in(&"revive"):
 		return false
 	vz = 4.0 * Config.JUMP.height / Config.JUMP.air_time
 	return true
@@ -74,7 +79,15 @@ func try_block(from: Vector2, hit: Dictionary) -> bool:
 
 
 # 盾反：對前方扇形造成傷害（隨攻擊力），然後結束格擋
+# 盾反由房主的格擋判定觸發、客戶端沒辦法預測，事件不標行動者（客戶端照常播）
 func _parry() -> void:
+	var actor := world.event_actor
+	world.event_actor = 0
+	_do_parry()
+	world.event_actor = actor
+
+
+func _do_parry() -> void:
 	var pr: Dictionary = weapon.special.parry
 	Hitbox.strike(world, self, pos, facing, {"shape": &"sector", "range": pr.range, "arc": pr.arc}, {
 		"damage": pr.damage * damage_mul, "knockback": pr.knockback, "hit_stop": pr.hit_stop,
@@ -87,6 +100,103 @@ func _parry() -> void:
 
 func roll_max() -> int:
 	return int(stats.value(&"roll_charges"))
+
+
+# CD 的實際 key：每位玩家各自計時（多人時大家都有 player.special）；事件與 HUD 仍用 key 本身
+func cd(key: String) -> String:
+	return "%s@%d" % [key, peer_id]
+
+
+func can_be_hit() -> bool:
+	return super() and not is_downed
+
+
+func is_targetable() -> bool:
+	return not is_dead and not is_downed
+
+
+# 範圍內最近的倒地隊友（救援對象）；沒有回傳 null
+func find_revive_target() -> Player:
+	var best: Player = null
+	var best_d: float = Config.REVIVE.range
+	for p: Player in world.players.values():
+		if p == self or not p.is_downed:
+			continue
+		var d := p.pos.distance_to(pos)
+		if d <= best_d:
+			best_d = d
+			best = p
+	return best
+
+
+# 多人時生命歸零先倒地假死（C4）；單機、或已經倒地後倒數結束 / 全員倒下，才真的死亡
+func die(source_id: int = 0) -> void:
+	if is_dead:
+		return
+	if not is_downed and world.players.size() > 1:
+		_go_down()
+		return
+	super(source_id)
+
+
+func _go_down() -> void:
+	is_downed = true
+	hp = 0.0
+	down_timer = Config.REVIVE.down_time
+	revive_progress = 0.0
+	velocity = Vector2.ZERO
+	buffered_action = {}
+	action.change(&"ready")   # 讓進行中的動作執行 exit 清理
+	has_forced_velocity = false
+	locomotion.change(&"downed")
+	world.emit_event("player:downed", {"player_id": id})
+
+
+# 救起：回到最大生命的 REVIVE.revive_hp_ratio，短暫無敵
+func revive() -> void:
+	is_downed = false
+	down_timer = 0.0
+	revive_progress = 0.0
+	hp = maxf(1.0, roundf(max_hp * Config.REVIVE.revive_hp_ratio))
+	invuln_timer = Config.REVIVE.revive_invuln
+	locomotion.change(&"idle")
+	world.emit_event("player:revived", {"player_id": id})
+
+
+# 客戶端自己的角色（C3）：倒地 / 死亡以房主為準，本機狀態機跟著切換（不發事件，事件由房主送來）
+func net_sync_life(dead: bool, downed: bool, p_down_timer: float, p_revive: float) -> void:
+	down_timer = p_down_timer
+	revive_progress = p_revive
+	if dead and not is_dead:
+		is_dead = true
+		is_downed = false
+		action.change(&"ready")
+		has_forced_velocity = false
+		velocity = Vector2.ZERO
+		locomotion.change(&"dead")
+	elif downed and not is_downed and not is_dead:
+		is_downed = true
+		action.change(&"ready")
+		has_forced_velocity = false
+		velocity = Vector2.ZERO
+		locomotion.change(&"downed")
+	elif not downed and is_downed:
+		is_downed = false
+		locomotion.change(&"idle")
+
+
+# 客戶端自己的角色被房主判定打中：受擊硬直與無敵在本機立刻反應（同 _on_damaged，但不扣血、不發事件）
+func net_hurt() -> void:
+	if is_dead or is_downed:
+		return
+	flash_timer = Config.COMBAT.flash_time
+	invuln_timer = Config.PLAYER.invuln_time
+	if not action.is_in(&"special"):
+		action.change(&"stagger")
+
+
+func swap_weapon() -> void:
+	equip_weapon(&"staff" if weapon_id == &"swordShield" else &"swordShield")
 
 
 func is_dodging() -> bool:
@@ -102,10 +212,10 @@ func roll_speed() -> float:
 func _tick_roll_charges() -> void:
 	var max_charges := roll_max()
 	roll_charges = mini(roll_charges, max_charges)
-	if roll_charges < max_charges and world.cooldowns.is_ready(ROLL_CD):
+	if roll_charges < max_charges and world.cooldowns.is_ready(cd(ROLL_CD)):
 		roll_charges += 1
 		if roll_charges < max_charges:
-			world.cooldowns.start(ROLL_CD, roll_cooldown())
+			world.cooldowns.start(cd(ROLL_CD), roll_cooldown())
 
 
 func roll_cooldown() -> float:
@@ -115,8 +225,8 @@ func roll_cooldown() -> float:
 # 消耗 1 次充能；沒有在回充時開始回充
 func consume_roll_charge() -> void:
 	roll_charges -= 1
-	if world.cooldowns.is_ready(ROLL_CD):
-		world.cooldowns.start(ROLL_CD, roll_cooldown())
+	if world.cooldowns.is_ready(cd(ROLL_CD)):
+		world.cooldowns.start(cd(ROLL_CD), roll_cooldown())
 
 
 # 權威端不信任輸入：移動向量長度一律限制在 1 以內
@@ -124,6 +234,7 @@ func apply_cmd(cmd: InputCmd) -> void:
 	move_input = cmd.move.limit_length(1.0)
 	aim_point = cmd.aim
 	is_attack_held = cmd.has(InputCmd.BTN_ATTACK)
+	is_interact_held = cmd.has(InputCmd.BTN_INTERACT)
 	_pressed |= cmd.buttons
 
 
@@ -177,7 +288,9 @@ func clear_items() -> void:
 
 func update(dt: float) -> void:
 	_tick_timers(dt)
-	if is_dead:
+	if is_dead or is_downed:
+		_pressed = 0
+		velocity = Vector2.ZERO
 		locomotion.update(dt)
 		_update_anim()
 		return
@@ -228,6 +341,8 @@ func _read_input() -> void:
 		buffered_action = {"type": &"roll", "time": buffer_time}
 	if _pressed & InputCmd.BTN_JUMP:
 		try_jump()
+	if _pressed & InputCmd.BTN_SWAP_WEAPON:
+		swap_weapon()
 	for i in ActiveSlots.SLOT_COUNT:
 		if _pressed & InputCmd.slot_bit(i):
 			buffered_action = {"type": &"slot", "index": i, "time": buffer_time}
@@ -261,6 +376,7 @@ func _update_anim() -> void:
 		"blocking": block_time >= 0.0,
 		"parry": parry_timer / PARRY_ANIM_TIME,   # 1 → 0（盾反剛發動到結束）
 		"vz": vz,
+		"revive": revive_progress / Config.REVIVE.revive_time,   # 倒地時被救的進度 0~1（畫面顯示用）
 	}
 
 
@@ -268,7 +384,8 @@ func _on_damaged(amount: int, _source_id: int) -> void:
 	if is_dead or amount <= 0:
 		return
 	invuln_timer = Config.PLAYER.invuln_time
-	world.emit_event("camera:shake", {"amount": Config.PLAYER.hurt_shake, "duration": Config.PLAYER.hurt_shake_duration})
+	# player_id：多人時只有被打的那位玩家的畫面震動
+	world.emit_event("camera:shake", {"amount": Config.PLAYER.hurt_shake, "duration": Config.PLAYER.hurt_shake_duration, "player_id": id})
 	# 特殊技期間有霸體，不會被打斷
 	if not action.is_in(&"special"):
 		action.change(&"stagger")
@@ -282,7 +399,12 @@ func detach() -> void:
 
 
 func _on_died(_source_id: int) -> void:
+	var was_downed := is_downed
+	is_downed = false
+	hp = 0.0
 	action.change(&"ready")   # 讓進行中的動作執行 exit 清理
 	has_forced_velocity = false
 	locomotion.change(&"dead")
+	if was_downed:
+		locomotion.time = Config.REVIVE.down_time   # 已經躺在地上：倒地動畫直接播完，不會先站起來再倒一次
 	world.emit_event("player:died", {"player_id": id})

@@ -2,16 +2,21 @@
 class_name Combat
 
 
-# team 的敵對陣營中仍存活的實體
-static func hostiles_of(world: World, team: StringName) -> Array[Entity]:
+# team 的敵對陣營中仍存活的實體；倒地的玩家不會被當成目標
+# 誤傷（Config.NET.friendly_fire）：玩家方的攻擊也會打到其他玩家，但不會打到出招者自己（source_id）
+static func hostiles_of(world: World, team: StringName, source_id: int = 0) -> Array[Entity]:
 	var out: Array[Entity] = []
 	if team == &"player":
 		for e in world.enemies:
 			if not e.is_dead:
 				out.append(e)
+		if Config.NET.friendly_fire:
+			for p: Player in world.players.values():
+				if p.id != source_id and p.is_targetable():
+					out.append(p)
 	else:
 		for p: Player in world.players.values():
-			if not p.is_dead:
+			if p.is_targetable():
 				out.append(p)
 	return out
 
@@ -23,8 +28,18 @@ static func hostiles_of(world: World, team: StringName) -> Array[Entity]:
 # 這裡套用攻擊者的爆擊與擊退屬性；護甲與受傷倍率在 Entity.take_damage
 # 回傳是否實際命中（高度不重疊、被格擋也算沒命中）
 static func apply_damage(world: World, source: Entity, target: Entity, hit: Dictionary) -> bool:
-	if target == null or not target.can_be_hit():
+	# 傷害一律由房主判定：客戶端本機預測自己的出招時不扣任何血（C3）
+	if not world.is_authority or target == null or not target.can_be_hit():
 		return false
+	# 命中結果不是本機預測得到的，事件不標行動者（客戶端才不會當成自己已經播過而丟掉）
+	var actor := world.event_actor
+	world.event_actor = 0
+	var landed := _apply_damage(world, source, target, hit)
+	world.event_actor = actor
+	return landed
+
+
+static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dictionary) -> bool:
 	var band: Vector2 = hit.get("band", body_band(source))
 	if not target.overlaps_height(band.x, band.y):
 		return false
