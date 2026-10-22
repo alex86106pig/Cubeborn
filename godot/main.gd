@@ -1,6 +1,6 @@
 # 組合根：建立 World、輸入、畫面、HUD 與音效；固定步長主迴圈、通關慢動作、暫停、靜音、重新開始、離開遊戲
 # 指令列參數（放在 -- 之後）：--seconds=S --screenshot=路徑 --auto-move=x,y（螢幕方向）
-#   --auto-attack（一直按住左鍵）--weapon=staff（開場武器）--wave=N（直接從第 N 波開始）--player-hp=N（開場血量）
+#   --auto-attack（一直按住左鍵）--auto-special（冷卻好就放特殊技）--weapon=staff（開場武器）--wave=N（直接從第 N 波開始）--player-hp=N（開場血量）
 #   --items=id,id（開場放進身上的道具，見 defs/item_defs.gd），後三者除錯用
 extends Node3D
 
@@ -63,6 +63,8 @@ func _parse_args() -> void:
 			input_collector.auto_move = Vector2(xy[0].to_float(), xy[1].to_float())
 		elif arg == "--auto-attack":
 			input_collector.auto_attack = true
+		elif arg == "--auto-special":
+			input_collector.auto_special = true
 		elif arg.begins_with("--weapon="):
 			_start_weapon = StringName(arg.get_slice("=", 1))
 		elif arg.begins_with("--wave="):
