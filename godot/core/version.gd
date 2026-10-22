@@ -1,4 +1,4 @@
 # 目前版號（與 CHANGELOG.md、git tag 一致）
 class_name GameVersion
 
-const VERSION := "0.12.3"
+const VERSION := "0.12.4"
