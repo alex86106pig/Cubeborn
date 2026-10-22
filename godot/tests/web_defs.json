@@ -1,0 +1,299 @@
+{
+  "FIXED_DT": 0.016666666666666666,
+  "MAX_STEPS_PER_FRAME": 5,
+  "WORLD": {
+    "arenaHalfSize": 16
+  },
+  "CAMERA": {
+    "viewHalfHeight": 10,
+    "distance": 40,
+    "azimuth": 0.7853981633974483,
+    "elevation": 0.7,
+    "followSharpness": 8,
+    "aimPlaneHeight": 0.9
+  },
+  "COMBAT": {
+    "knockbackDamping": 9,
+    "flashTime": 0.12
+  },
+  "PLAYER": {
+    "maxHp": 100,
+    "moveSpeed": 6.5,
+    "turnSpeed": 25,
+    "radius": 0.45,
+    "mass": 2,
+    "invulnTime": 0.6,
+    "staggerTime": 0.15,
+    "actionBufferTime": 0.25,
+    "startWeapon": "swordShield",
+    "slots": [
+      "heal",
+      "sprint",
+      null,
+      null,
+      null
+    ]
+  },
+  "SPAWNER": {
+    "firstDelay": 1,
+    "waveDelay": 2.5,
+    "spawnInterval": 0.35,
+    "minDistanceFromPlayer": 8
+  },
+  "AUDIO": {
+    "master": 0.7,
+    "sfx": 0.8,
+    "music": 0.5
+  },
+  "WEAPONS": {
+    "swordShield": {
+      "id": "swordShield",
+      "name": "劍盾",
+      "type": "melee",
+      "model": "swordShield",
+      "idle": {
+        "armR": -0.35,
+        "armL": -0.1,
+        "tilt": 0
+      },
+      "attack": {
+        "behavior": "meleeSwing",
+        "sfx": "swing",
+        "sfxHeavy": "swingHeavy",
+        "name": "斬擊",
+        "icon": "⚔",
+        "damage": 12,
+        "range": 2.3,
+        "arc": 2.0420352248333655,
+        "windup": 0.07,
+        "active": 0.09,
+        "recovery": 0.2,
+        "knockback": 7,
+        "lunge": 3.5,
+        "moveSpeedMul": 0.35,
+        "comboWindow": 0.35,
+        "finisherMul": 1.8,
+        "hitStop": 0.04,
+        "shake": 0.08
+      },
+      "special": {
+        "behavior": "shieldBash",
+        "sfx": "shieldBash",
+        "name": "盾擊衝鋒",
+        "icon": "🛡",
+        "cooldown": 4,
+        "damage": 15,
+        "dashSpeed": 17,
+        "radius": 1.1,
+        "knockback": 16,
+        "windup": 0.08,
+        "active": 0.22,
+        "recovery": 0.2,
+        "moveSpeedMul": 0,
+        "damageTakenMul": 0.2,
+        "hitStop": 0.07,
+        "shake": 0.25
+      }
+    },
+    "staff": {
+      "id": "staff",
+      "name": "法杖",
+      "type": "ranged",
+      "model": "staff",
+      "idle": {
+        "armR": -0.5,
+        "armL": 0,
+        "tilt": 0
+      },
+      "attack": {
+        "behavior": "fireBolt",
+        "sfx": "fireBolt",
+        "name": "魔彈",
+        "icon": "✦",
+        "damage": 8,
+        "projectileSpeed": 20,
+        "projectileRadius": 0.22,
+        "range": 14,
+        "knockback": 3.5,
+        "windup": 0.06,
+        "active": 0.02,
+        "recovery": 0.2,
+        "moveSpeedMul": 0.8,
+        "color": 8378623,
+        "hitStop": 0.02,
+        "shake": 0.04
+      },
+      "special": {
+        "behavior": "arcaneBurst",
+        "sfx": "arcaneCast",
+        "name": "奧術爆裂",
+        "icon": "✺",
+        "cooldown": 5,
+        "projectileSpeed": 16,
+        "projectileRadius": 0.45,
+        "minRange": 2,
+        "range": 12,
+        "explosionRadius": 3.2,
+        "damage": 28,
+        "knockback": 13,
+        "windup": 0.35,
+        "active": 0.02,
+        "recovery": 0.25,
+        "moveSpeedMul": 0.4,
+        "color": 13073919,
+        "hitStop": 0.08,
+        "shake": 0.4
+      }
+    }
+  },
+  "ENEMIES": {
+    "grunt": {
+      "visual": "melee",
+      "maxHp": 36,
+      "moveSpeed": 2.6,
+      "speedVariance": 0.2,
+      "turnSpeed": 6,
+      "radius": 0.45,
+      "mass": 1,
+      "contactDamage": 10,
+      "contactInterval": 0.8,
+      "contactKnockback": 9,
+      "hurtTime": 0.22,
+      "spawnTime": 0.7,
+      "corpseTime": 1.4
+    },
+    "archer": {
+      "visual": "ranged",
+      "maxHp": 26,
+      "moveSpeed": 2.3,
+      "speedVariance": 0.15,
+      "turnSpeed": 8,
+      "radius": 0.42,
+      "mass": 1,
+      "contactDamage": 6,
+      "contactInterval": 1,
+      "contactKnockback": 6,
+      "hurtTime": 0.22,
+      "spawnTime": 0.7,
+      "corpseTime": 1.4,
+      "preferredRange": [
+        6,
+        10
+      ],
+      "aimTime": 0.75,
+      "fireInterval": 2.4,
+      "projectileSpeed": 10,
+      "projectileDamage": 12,
+      "projectileRadius": 0.25,
+      "projectileRange": 18
+    },
+    "boss": {
+      "visual": "boss",
+      "maxHp": 900,
+      "moveSpeed": 2.2,
+      "speedVariance": 0,
+      "turnSpeed": 3.5,
+      "radius": 1,
+      "mass": 30,
+      "knockbackMul": 0.12,
+      "contactDamage": 12,
+      "contactInterval": 1,
+      "contactKnockback": 12,
+      "spawnTime": 1.6,
+      "corpseTime": 3.5,
+      "slam": {
+        "triggerDistance": 3.2,
+        "radius": 3.4,
+        "windup": 0.85,
+        "recovery": 0.8,
+        "damage": 26,
+        "knockback": 16,
+        "cooldown": 3.5
+      },
+      "charge": {
+        "minDistance": 5,
+        "windup": 0.75,
+        "speed": 15,
+        "duration": 0.85,
+        "recovery": 1,
+        "wallStun": 1.6,
+        "damage": 22,
+        "knockback": 18,
+        "cooldown": 6
+      },
+      "summon": {
+        "hpThreshold": 0.75,
+        "count": 3,
+        "windup": 1,
+        "recovery": 0.4,
+        "cooldown": 14
+      },
+      "enrage": {
+        "hpThreshold": 0.5,
+        "speedMul": 1.3,
+        "cooldownMul": 0.65
+      }
+    }
+  },
+  "SKILLS": {
+    "heal": {
+      "id": "heal",
+      "name": "治療藥水",
+      "icon": "✚",
+      "mode": "charges",
+      "charges": 3,
+      "cooldown": 1.5,
+      "behavior": "heal",
+      "amount": 35,
+      "color": 6160250
+    },
+    "sprint": {
+      "id": "sprint",
+      "name": "疾跑",
+      "icon": "»",
+      "mode": "cooldown",
+      "cooldown": 8,
+      "behavior": "speedBuff",
+      "duration": 3,
+      "speedMul": 1.6,
+      "color": 7332863
+    }
+  },
+  "WAVES": [
+    {
+      "spawns": {
+        "grunt": 5
+      }
+    },
+    {
+      "spawns": {
+        "grunt": 6,
+        "archer": 1
+      }
+    },
+    {
+      "spawns": {
+        "grunt": 7,
+        "archer": 2
+      }
+    },
+    {
+      "spawns": {
+        "grunt": 9,
+        "archer": 3
+      }
+    },
+    {
+      "isBoss": true,
+      "spawns": {
+        "boss": 1,
+        "grunt": 2
+      }
+    }
+  ],
+  "WAVE_SCALING": {
+    "hp": 0.15,
+    "damage": 0.12,
+    "speed": 0.03
+  }
+}

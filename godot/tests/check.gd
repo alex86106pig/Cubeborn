@@ -90,6 +90,14 @@ func _initialize() -> void:
 	_check("音效檔：網頁版 CUES 每個名稱都有配方與 audio/sfx/*.wav，檔案不是空的、峰值 ≤ 1", _check_sfx_files)
 	_check("背景音樂：一般 / Boss 兩首匯入後為往前循環，長度 15.00 / 10.43 秒（64 / 92 BPM × 4 小節）", _check_music_files)
 	_check("音效對應：事件 → 音效同網頁版（受傷 / 爆擊 / Boss 死亡 / 道具…），Boss 波換 Boss 曲、死亡停音樂", _check_sound_mapping)
+	_check("網頁版資料逐欄比對：設定、武器、敵人、技能、波次的每個數值都與 tests/web_defs.json 相同", _check_web_defs)
+	_check("手感：擊退 7 推動質量 1 的目標，總位移同網頁版公式（阻尼 9、每步先移動再衰減）", _check_feel_knockback)
+	_check("手感：轉身 180° 需 8 步（0.133 秒，轉速 25 弧度/秒）", _check_feel_turn)
+	_check("手感：劍盾普攻前衝同網頁版公式（3.5、第三段 ×1.25），連段 0.35 秒內接下一段、超過就重來", _check_feel_lunge_combo)
+	_check("手感：斬擊扇形範圍與網頁版 querySector 完全一致（距離 2.3、角度 117°、加目標半徑、貼身必中）", _check_feel_sector)
+	_check("手感：生成間隔 0.35 秒、開波 0.6 秒後出第一隻、清空 2.5 秒後開下一波，步數與網頁版計時器完全相同", _check_feel_wave_timing)
+	_check("手感：小怪移速 = 基礎 × 波次成長 × 隨機 ±變異、Boss 固定 2.2；弓手箭速 10、射程 18", _check_feel_enemy_speed)
+	print("\n手感量測（給 docs/手感對照.md）：\n    " + "\n    ".join(_feel_lines))
 	for w in _worlds:
 		w.clear()
 	_worlds.clear()
@@ -1234,6 +1242,333 @@ func _check_merge_static() -> String:
 		err = "%d 個三角形的法線不是朝外的面法線" % after.bad_faces
 	root.free()
 	return err
+
+
+# ---- 手感量測：期望值都用網頁版的公式與更新順序算，再和 Godot 模擬的實測值比 ----
+
+var _feel_lines: Array[String] = []
+
+
+func _feel(line: String) -> void:
+	_feel_lines.append(line)
+
+
+# 網頁版 Entity.js：每步 position += knockback × dt，之後 knockback ×= exp(-阻尼 × dt)；k0 起速跑 n 步的總位移
+static func _web_knockback_distance(k0: float, n: int) -> float:
+	var r := exp(-Config.COMBAT.knockback_damping * DT)
+	return k0 * DT * (1.0 - pow(r, n)) / (1.0 - r)
+
+
+func _check_feel_knockback() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var d := _dummy(w, Vector2(0, 4), 1000.0, 1.0)
+	Combat.apply_damage(w, p, d, {"damage": 1.0, "knockback": 7.0})
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, -5)), 120)
+	var moved := d.pos.y - 4.0
+	var expect := _web_knockback_distance(7.0, 120)
+	_feel("擊退 7、質量 1：網頁版公式 %.4f，Godot 實測 %.4f 單位" % [expect, moved])
+	return "" if absf(moved - expect) < 1e-4 else "位移 %.4f，網頁版公式 %.4f" % [moved, expect]
+
+
+func _check_feel_turn() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 10)
+	var steps := 0
+	while steps < 60 and absf(angle_difference(p.facing, PI)) > 1e-4:
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, -5)), 1)
+		steps += 1
+	var expect := ceili(PI / (Config.PLAYER.turn_speed * DT))
+	_feel("轉身 180°：網頁版 %d 步，Godot 實測 %d 步（%.3f 秒）" % [expect, steps, steps * DT])
+	return "" if steps == expect else "轉身 %d 步，預期 %d" % [steps, expect]
+
+
+# 按一下攻擊（只按一步），之後放開跑 rest 步
+func _tap_attack(w: World, rest: int) -> void:
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), rest)
+
+
+func _check_feel_lunge_combo() -> String:
+	var def: Dictionary = WeaponDefs.WEAPONS.swordShield.attack
+	var w := _new_world()
+	var p := _player(w)
+	var start := p.pos
+	_tap_attack(w, 120)
+	var lunge := p.pos.distance_to(start)
+	# 前衝在 active 開始時加上，到量測時跑了 120 + 1 - windup 步
+	var steps_after := 121 - roundi(def.windup / DT)
+	var expect := _web_knockback_distance(def.lunge, steps_after)
+	_feel("普攻前衝：網頁版公式 %.4f，Godot 實測 %.4f 單位" % [expect, lunge])
+	if absf(lunge - expect) > 0.005:
+		return "前衝 %.4f，網頁版公式 %.4f" % [lunge, expect]
+
+	# 連段：收招後 0.30 秒內出手接下一段，0.40 秒後出手回到第一段
+	var total := roundi((def.windup + def.active + def.recovery) / DT)
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	_tap_attack(w2, total + roundi(0.30 / DT))
+	_tap_attack(w2, 0)
+	var within := p2.combo_step
+	var w3 := _new_world()
+	var p3 := _player(w3)
+	_tap_attack(w3, total + roundi(0.40 / DT))
+	_tap_attack(w3, 0)
+	var after := p3.combo_step
+	_feel("連段：收招後 0.30 秒出手 → 第 %d 段；0.40 秒出手 → 第 %d 段（窗口 %.2f 秒）" % [within + 1, after + 1, def.combo_window])
+	if within != 1 or after != 0:
+		return "0.30 秒後應接第 2 段（實際第 %d 段），0.40 秒後應回第 1 段（實際第 %d 段）" % [within + 1, after + 1]
+
+	# 第三段前衝 ×1.25
+	var w4 := _new_world()
+	var p4 := _player(w4)
+	for i in 2:
+		_tap_attack(w4, total + 3)
+	var before := p4.pos
+	var residual := p4.knockback.length()   # 第二段前衝還沒衰減完（收招後只隔 3 步），同方向，要一起算
+	_tap_attack(w4, 120)
+	var fin := p4.pos.distance_to(before)
+	var fin_expect := _web_knockback_distance(def.lunge * 1.25, steps_after) + _web_knockback_distance(residual, 121)
+	_feel("第三段前衝：網頁版公式 %.4f，Godot 實測 %.4f 單位" % [fin_expect, fin])
+	return "" if absf(fin - fin_expect) < 0.005 else "第三段前衝 %.4f，網頁版公式 %.4f" % [fin, fin_expect]
+
+
+# 網頁版 Combat.querySector 原樣照抄，用來和 Godot 的 Combat.query_sector 比對
+static func _web_in_sector(dx: float, dz: float, radius: float, facing: float, range_: float, arc: float) -> bool:
+	var dist := sqrt(dx * dx + dz * dz)
+	if dist > range_ + radius:
+		return false
+	if dist <= radius + 0.3:
+		return true
+	var diff := absf(wrapf(atan2(dx, dz) - facing, -PI, PI))
+	return diff <= arc / 2.0 + asin(minf(1.0, radius / dist))
+
+
+func _check_feel_sector() -> String:
+	var def: Dictionary = WeaponDefs.WEAPONS.swordShield.attack
+	var w := _new_world()
+	var mismatch := 0
+	var ties := 0      # 剛好落在邊界上（差距 < 1e-4）：Godot 的 Vector2 是 float32，和這裡的 double 計算捨入不同
+	var total := 0
+	var max_hit_angle := 0.0
+	for scale: float in [1.0, 1.25]:
+		for ri in 70:
+			var dist := 0.05 + ri * 0.05
+			for ai in 120:
+				var angle := ai * TAU / 120.0
+				var e := Entity.new(w, &"test", &"enemy", 0.45, 10.0, 1.0)
+				e.pos = Vector2(sin(angle), cos(angle)) * dist
+				var hit := not Combat.query_sector(Vector2.ZERO, 0.0, def.range * scale, def.arc * scale, [e] as Array[Entity]).is_empty()
+				var web := _web_in_sector(e.pos.x, e.pos.y, 0.45, 0.0, def.range * scale, def.arc * scale)
+				total += 1
+				if hit != web:
+					var d := e.pos.length()
+					var diff := absf(wrapf(atan2(e.pos.x, e.pos.y), -PI, PI))
+					var margin := minf(absf(d - (def.range * scale + 0.45)), absf(d - 0.75))
+					margin = minf(margin, absf(diff - (def.arc * scale / 2.0 + asin(minf(1.0, 0.45 / d)))))
+					if margin < 1e-4:
+						ties += 1
+					else:
+						mismatch += 1
+				if hit and scale == 1.0 and absf(dist - 2.0) < 1e-6:
+					max_hit_angle = maxf(max_hit_angle, absf(wrapf(angle, -PI, PI)))
+	_feel("斬擊範圍：%d 個位置（距離 0.05~3.5、每 3°、一般與第三段）與網頁版不同 %d 個（另有 %d 個剛好壓在邊界上，差距 < 0.0001，屬浮點捨入）；距離 2.0 的小怪最多偏 %.0f° 仍打得到" % [total, mismatch, ties, rad_to_deg(max_hit_angle)])
+	return "" if mismatch == 0 else "%d / %d 個位置命中結果與網頁版不同" % [mismatch, total]
+
+
+func _check_feel_wave_timing() -> String:
+	var w := _new_world(31, true)
+	var p := _player(w)
+	var start_tick := -1
+	var spawn_ticks: Array[int] = []
+	var seen := {}
+	var cleared_tick := -1
+	var next_wave_tick := -1
+	for i in 60 * 30:
+		w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO)}, DT)
+		for e in w.events:
+			if e.name == "wave:started":
+				if start_tick < 0:
+					start_tick = w.tick
+				else:
+					next_wave_tick = w.tick
+		if next_wave_tick > 0:
+			break
+		for e in w.enemies:   # 一出現就記錄並打死（只量第一波）
+			if not seen.has(e.id) and start_tick > 0:
+				seen[e.id] = true
+				spawn_ticks.append(w.tick)
+			if not e.is_dead:
+				Combat.apply_damage(w, p, e, {"damage": 9999.0})
+		if spawn_ticks.size() == WaveDefs.WAVES[0].spawns.grunt and cleared_tick < 0:
+			cleared_tick = w.tick
+	var first := spawn_ticks[0] - start_tick
+	var gaps: Array[int] = []
+	for i in range(1, spawn_ticks.size()):
+		gaps.append(spawn_ticks[i] - spawn_ticks[i - 1])
+	var wave_gap := next_wave_tick - cleared_tick
+	var e_first := _web_countdown(Config.SPAWNER.first_spawn_delay)
+	var e_gap := _web_countdown(Config.SPAWNER.spawn_interval)
+	var e_wave := _web_countdown(Config.SPAWNER.wave_delay)
+	_feel("生成節奏：開波後第 %d 步出第一隻（網頁版 %d 步），間隔 %s 步（網頁版 %d 步），清空後第 %d 步開下一波（網頁版 %d 步）。網頁版計時器每步減 1/60、≤ 0 才觸發，浮點誤差讓 0.35 秒變 22 步、2.5 秒變 151 步，兩版一致" % [first, e_first, gaps, e_gap, wave_gap, e_wave])
+	if first != e_first:
+		return "第一隻在開波後 %d 步出現，網頁版 %d 步" % [first, e_first]
+	for g in gaps:
+		if g != e_gap:
+			return "生成間隔 %s 步，網頁版 %d 步" % [gaps, e_gap]
+	if wave_gap != e_wave:
+		return "清空到下一波 %d 步，網頁版 %d 步" % [wave_gap, e_wave]
+	return ""
+
+
+# 網頁版 Spawner 的計時：t 每步減 dt，減到 ≤ 0 的那一步觸發（JS 與 GDScript 都是 64 位元浮點，結果相同）
+static func _web_countdown(seconds: float) -> int:
+	var t := seconds
+	var n := 0
+	while t > 0.0:
+		t -= DT
+		n += 1
+	return n
+
+
+func _check_feel_enemy_speed() -> String:
+	var w := _new_world(77, true)
+	w.spawner.finished = true
+	for type: StringName in [&"grunt", &"archer"]:
+		var def: Dictionary = EnemyDefs.ENEMIES[type]
+		for wave in [1, 3, 4]:
+			w.spawner.wave = wave
+			var mul: float = WaveDefs.wave_multipliers(wave).speed
+			var lo: float = def.move_speed * mul * (1.0 - def.speed_variance)
+			var hi: float = def.move_speed * mul * (1.0 + def.speed_variance)
+			var s_min := INF
+			var s_max := -INF
+			for i in 40:
+				var e := _spawn(w, type, Vector2(10, 10))
+				s_min = minf(s_min, e.speed)
+				s_max = maxf(s_max, e.speed)
+				e.remove()
+			if s_min < lo - EPS or s_max > hi + EPS:
+				return "%s 第 %d 波移速 %.3f~%.3f，網頁版範圍 %.3f~%.3f" % [type, wave, s_min, s_max, lo, hi]
+			if wave == 3:
+				_feel("%s 第 3 波移速：網頁版範圍 %.3f~%.3f，Godot 40 隻實測 %.3f~%.3f" % [type, lo, hi, s_min, s_max])
+	w.spawner.wave = 5
+	var boss := _spawn(w, &"boss", Vector2(-10, -10))
+	if boss.speed != 2.2:
+		return "Boss 移速 %.3f，預期固定 2.2" % boss.speed
+	boss.remove()
+
+	# 弓手箭：射出後把玩家移開讓箭落空，量速度與最遠距離
+	var p := _player(w)
+	var archer := _spawn(w, &"archer", Vector2(0, 8))
+	var proj: Projectile = null
+	for i in 600:
+		w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO)}, DT)
+		if not w.projectiles.is_empty():
+			proj = w.projectiles[0]
+			break
+	if proj == null:
+		return "弓手 10 秒內沒有射箭"
+	p.pos = Vector2(12, -12)
+	var origin := proj.pos
+	var last := proj.pos
+	var speed := 0.0
+	var farthest := 0.0
+	var ref: WeakRef = weakref(proj)
+	proj = null
+	for i in 240:
+		w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO)}, DT)
+		var pr: Projectile = ref.get_ref()
+		if pr == null or not w.projectiles.has(pr):
+			break
+		speed = pr.pos.distance_to(last) / DT
+		last = pr.pos
+		farthest = pr.pos.distance_to(origin)
+	_feel("弓手箭：網頁版 10 單位/秒、射程 18；Godot 實測 %.2f 單位/秒、最遠 %.2f" % [speed, farthest])
+	archer.remove()
+	if absf(speed - 10.0) > 0.01:
+		return "箭速 %.2f，預期 10" % speed
+	if farthest < 18.0 - 10.0 * DT - EPS or farthest > 18.0 + EPS:
+		return "箭最遠 %.2f，預期約 18" % farthest
+	return ""
+
+
+# ---- 網頁版資料比對（tests/web_defs.json 由 tools/dump_web_defs.mjs 匯出） ----
+
+var _web_compared := 0   # 比對過的欄位數（回報用）
+
+
+func _check_web_defs() -> String:
+	var web: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/web_defs.json"))
+	if web == null or web.is_empty():
+		return "讀不到 tests/web_defs.json（在專案根目錄執行 node tools/dump_web_defs.mjs）"
+	var godot := {
+		"FIXED_DT": Config.FIXED_DT, "MAX_STEPS_PER_FRAME": Config.MAX_STEPS_PER_FRAME,
+		"WORLD": Config.WORLD, "CAMERA": Config.CAMERA, "COMBAT": Config.COMBAT, "PLAYER": Config.PLAYER,
+		"SPAWNER": Config.SPAWNER, "AUDIO": Config.AUDIO,
+		"WEAPONS": WeaponDefs.WEAPONS, "ENEMIES": EnemyDefs.ENEMIES, "SKILLS": SkillDefs.SKILLS,
+		"WAVES": WaveDefs.WAVES, "WAVE_SCALING": WaveDefs.WAVE_SCALING,
+	}
+	var diffs: Array[String] = []
+	_web_compared = 0
+	for key: String in web:
+		if not godot.has(key):
+			diffs.append("%s：Godot 沒有對應的資料表" % key)
+			continue
+		_compare_web(key, web[key], godot[key], diffs)
+	if not diffs.is_empty():
+		return "%d 處不同：\n      %s" % [diffs.size(), "\n      ".join(diffs)]
+	print("    （比對 %d 個欄位）" % _web_compared)
+	return ""
+
+
+static func _snake(key: String) -> String:
+	return RegEx.create_from_string("([a-z0-9])([A-Z])").sub(key, "$1_$2", true).to_lower()
+
+
+# 網頁版欄位名稱 camelCase → Godot snake_case；Godot 的鍵可能是 String 或 StringName
+static func _godot_key(d: Dictionary, web_key: String) -> Variant:
+	for k: Variant in [_snake(web_key), StringName(_snake(web_key)), web_key, StringName(web_key)]:
+		if d.has(k):
+			return k
+	return null
+
+
+func _compare_web(path: String, w: Variant, g: Variant, diffs: Array[String]) -> void:
+	if w is Dictionary:
+		if not g is Dictionary:
+			diffs.append("%s：Godot 不是 Dictionary（%s）" % [path, type_string(typeof(g))])
+			return
+		for k: String in w:
+			var gk: Variant = _godot_key(g, k)
+			if gk == null:
+				diffs.append("%s.%s：Godot 缺少欄位 %s" % [path, k, _snake(k)])
+			else:
+				_compare_web("%s.%s" % [path, k], w[k], g[gk], diffs)
+		return
+	if w is Array:
+		if not (g is Array) or g.size() != w.size():
+			diffs.append("%s：陣列不同（網頁版 %s，Godot %s）" % [path, w, g])
+			return
+		for i in w.size():
+			_compare_web("%s[%d]" % [path, i], w[i], g[i], diffs)
+		return
+	_web_compared += 1
+	var same := false
+	if w == null:
+		same = g == null
+	elif w is float or w is int:
+		if g is Color:   # 網頁版顏色是 0xRRGGBB 整數
+			same = int(w) == (g as Color).to_rgba32() >> 8
+		elif g is float or g is int:
+			same = absf(float(w) - float(g)) <= 1e-9 * maxf(1.0, absf(float(w)))
+	elif w is bool:
+		same = g is bool and w == g
+	else:
+		same = (g is String or g is StringName) and String(g) == String(w)
+	if not same:
+		diffs.append("%s：網頁版 %s，Godot %s" % [path, w, g])
 
 
 # audio/sound.gd 用到 GameEvents（autoload），在檢查腳本編譯時還不存在，所以執行時才載入（同 HUD）

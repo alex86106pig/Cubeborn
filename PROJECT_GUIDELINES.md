@@ -469,6 +469,6 @@ godot/
 ### 15.10 驗收
 - `tests/check.gd`（作用等同 `check.js`），在 `godot/` 內執行：`<Godot console 執行檔> --headless --path . -s res://tests/check.gd`，全部通過才算完成。網頁版已凍結，只有動到網頁版時才跑 `node check.js`。
 - 因為模擬層不依賴場景樹，檢查可以直接建立 `World`、餵假的 `InputCmd`、推進 N 步讀數值（例如移動 1 秒的距離、三段攻擊總時間、CD 是否到期）。
-- 搬移時對照網頁版：同樣輸入下的移速、攻擊時間、傷害、CD、波次數量要與網頁版一致，數字寫進回報。
+- 搬移時對照網頁版：同樣輸入下的移速、攻擊時間、傷害、CD、波次數量要與網頁版一致，數字寫進回報。資料表由 `check.gd` 對 `tests/web_defs.json`（`tools/dump_web_defs.mjs` 匯出）逐欄比對；對照結果整理在 `docs/手感對照.md`。
 - 畫面用離屏截圖場景 `tests/capture.tscn` 驗證（用法與「開視窗前先問使用者」的規則見 `CLAUDE.md` 1.8），截圖存暫存資料夾，不進版控；手感與效能定案以使用者實際遊玩為準。
 - 版號必須三處一致（`CHANGELOG.md`、`godot/core/version.gd`、git tag）；遊戲畫面角落顯示版號。

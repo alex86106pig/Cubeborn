@@ -4,6 +4,7 @@ class_name WorldView
 extends Node3D
 
 const HITBOX_COLOR := Color(1.0, 0.93, 0.0, 0.8)
+const ARROW_HEIGHT_RATIO := 0.6   # 箭的飛行高度 = 弓手身高 × 0.6（網頁版 RangedEnemy.js，約 1.17）
 
 var show_hitboxes := false
 var _nodes: Dictionary = {}       # entity id -> Node3D
@@ -98,7 +99,7 @@ func _create_projectile(e: Projectile) -> Node3D:
 func _create_arrow(e: Projectile) -> Node3D:
 	var root := Node3D.new()
 	var arrow := DarkFantasy.enemy_projectile(e.color)
-	arrow.position.y = Config.COMBAT.projectile_height
+	arrow.position.y = DarkFantasy.SKELETON_JOINTS.height * ARROW_HEIGHT_RATIO
 	root.add_child(arrow)
 	return root
 

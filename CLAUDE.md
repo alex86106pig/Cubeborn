@@ -163,6 +163,8 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `docs/進度.md` | 跨對話交接檔 |
 | `docs/設計方向.md` | 設計目標與平衡品味（改核心玩法前必讀） |
 | `docs/新電腦設定.md` | 新電腦第一次使用本專案的設定步驟 |
+| `docs/手感對照.md` | 網頁版 vs Godot 版的數值與手感對照表（第 7 步的結果） |
+| `tools/dump_web_defs.mjs` | 把網頁版的設定與資料表匯出成 `godot/tests/web_defs.json`（`node tools/dump_web_defs.mjs`） |
 | `mockups/` | 給使用者挑選的對比頁（選定後刪除，見 2.5） |
 | `godot/project.godot` | Godot 專案設定（4.7、Forward+、1920×1080、預設字型 `hud_font.tres`） |
 | `godot/export_presets.cfg` | 匯出設定：「Web」（單執行緒、輸出到 `../build/web/index.html`，排除 tests / stress_test） |
@@ -182,6 +184,7 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `godot/audio/sfx/`、`godot/audio/music/` | 預先產生的 WAV（30 個音效、B 哥德輓歌一般 / Boss 兩首循環曲）；由 `godot/tools/` 產生，不要手改 |
 | `godot/tools/synth.gd` | 離線合成：振盪器、指數漸變、Web Audio 公式的濾波器、白噪音、寫 WAV（含循環點） |
 | `godot/tools/bake_sfx.gd` / `bake_music.gd` | 產生音效 / 背景音樂 WAV（headless：`--headless --path . -s res://tools/bake_sfx.gd`），之後要 `--import` |
+| `godot/tests/web_defs.json` | 網頁版數值的存檔，`check.gd` 逐欄比對用（由 `tools/dump_web_defs.mjs` 產生，不要手改） |
 | `godot/tests/check.gd` | Godot 自動檢查（headless：`--headless --path . -s res://tests/check.gd`） |
 | `godot/tests/capture.tscn` / `capture.gd` | 畫面測試專用：離屏 1920×1080 繪製＋右下角 64×64 不搶焦點視窗，供截圖驗證（見 1.8） |
 | `godot/stress_test/` | 效能壓力測試：大量敵人與投射物（資料導向 + MultiMesh + 格子碰撞），印出 FPS 與各段邏輯耗時 |
