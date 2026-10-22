@@ -72,7 +72,7 @@ func _initialize() -> void:
 	_check("波次資料：共 5 波、只有最後一波是 Boss、第 1~4 波小怪 5 / 7 / 9 / 12、成長倍率線性", _check_wave_defs)
 	_check("生成：1 秒後開第一波、離玩家 8 單位以上、第 3 波小怪血量 ×1.3 傷害 ×1.24", _check_spawning)
 	_check("一局流程：5 波依序開始、打倒 Boss 後 is_over、2.2 秒後 game:victory、擊殺數正確", _check_full_run)
-	_check("近戰小怪：爬出 0.7 秒後追擊、接觸傷害 10、間隔 0.8 秒；受擊硬直 0.22 秒", _check_melee_enemy)
+	_check("近戰小怪：爬出 0.7 秒後追擊、揮砍傷害 12、間隔 ≥ 1.2 秒（v0.17.0 取代接觸傷害 10 / 0.8 秒）；受擊硬直 0.22 秒", _check_melee_enemy)
 	_check("遠程小怪：瞄準 0.75 秒後射出 12 傷害的箭、保持 6~10 單位距離", _check_ranged_enemy)
 	_check("Boss 重砸：近身時前搖 0.85 秒後造成 26 傷害、CD 3.5 秒；霸體不硬直、擊退 ×0.12", _check_boss_slam)
 	_check("Boss 衝鋒：蓄力 0.75 秒、15 單位/秒、命中 22 傷害、撞牆暈眩 1.6 秒", _check_boss_charge)
@@ -93,6 +93,8 @@ func _initialize() -> void:
 	_check("跳躍：第 18 步最高 1.5、第 36 步落地；空中不能再跳；攻擊中可以跳、硬直中不行；空中翻滾照常下墜且一樣翻 4 單位", _check_jump_motion)
 	_check("地形：0.5 石台走不上去、跳得上去；從 0.5 跳上 1.0；走出邊緣會掉回地面；2.5 的牆跳不過去", _check_terrain)
 	_check("高度判定：最高點時箭從腳下飛過、地面會中箭；跳起來躲過 Boss 砸地；空中揮砍與空中魔彈打得到地上的怪", _check_height_hits)
+	_check("沒有碰撞傷害：骷髏戰士（揮砍冷卻中）、弓手（不射箭時）、Boss（不出招時）貼身 2 秒都不扣血", _check_no_contact_damage)
+	_check("骷髏揮砍：舉刀 0.5 秒後才命中、傷害 12；扇形 100° / 1.5 的邊界；舉刀後半鎖定方向，繞到側面就躲開；舉刀中被打會中斷", _check_grunt_swing)
 	_check("受擊閃白：只改自發光顏色、不切換 emission_enabled（切換會在第一次命中即時編譯著色器而卡頓）", _check_flash_no_shader_switch)
 	_check("字型：介面文字都在打包的 Noto Sans TC 裡（網頁版沒有系統字型），缺字的圖示改用向量圖", _check_font_coverage)
 	_check("零件合併：依 anchor + 材質合併、外框不變、keep 的零件留在原位、空群組移除、面法線朝外且為正面", _check_merge_static)
@@ -821,14 +823,14 @@ func _check_melee_enemy() -> String:
 		w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO)}, DT)
 		for e in _named(w.events, "entity:damaged"):
 			if e.target_id == p.id:
-				if e.amount != 10:
-					return "接觸傷害 %d，預期 10" % e.amount
+				if e.amount != 12:
+					return "揮砍傷害 %d，預期 12" % e.amount
 				hit_ticks.append(w.tick)
 	if hit_ticks.size() < 3:
 		return "5 秒內只命中 %d 次" % hit_ticks.size()
 	for i in range(1, hit_ticks.size()):
-		if (hit_ticks[i] - hit_ticks[i - 1]) * DT < 0.8 - EPS:
-			return "接觸傷害間隔 %.3f 秒，應 ≥ 0.8" % ((hit_ticks[i] - hit_ticks[i - 1]) * DT)
+		if (hit_ticks[i] - hit_ticks[i - 1]) * DT < 1.2 - EPS:
+			return "揮砍間隔 %.3f 秒，應 ≥ 1.2（冷卻）" % ((hit_ticks[i] - hit_ticks[i - 1]) * DT)
 	# 受擊硬直
 	var w2 := _new_world(7)
 	var g2 := _spawn(w2, &"grunt", Vector2(0, 6))
@@ -1575,6 +1577,97 @@ func _check_height_hits() -> String:
 	return ""
 
 
+func _check_no_contact_damage() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var g := _spawn(w, &"grunt", Vector2(0, 1.0))
+	var a := _spawn(w, &"archer", Vector2(1.0, 0))
+	var b := _spawn(w, &"boss", Vector2(-1.6, 0))
+	for name in ["swing", "fire", "slam", "charge", "summon"]:
+		for e: Enemy in [g, a, b]:
+			w.cooldowns.start(e.cd(name), 100.0)
+	_run(w, _cmd(Vector2.ZERO), 120)
+	if p.hp != p.max_hp:
+		return "貼身 2 秒不應扣血，實際血量 %.0f" % p.hp
+	return ""
+
+
+# 骷髏戰士爬出後馬上在玩家前方：回傳 grunt（已進入 swing 狀態）
+func _grunt_swinging(w: World, p: Player) -> MeleeEnemy:
+	var g: MeleeEnemy = _spawn(w, &"grunt", Vector2(0, 0))
+	p.pos = Vector2(0, 1.2)
+	g.facing = 0.0
+	var steps := 0
+	while not g.fsm.is_in(&"swing") and steps < 120:
+		p.pos = Vector2(0, 1.2)
+		_run(w, _cmd(Vector2.ZERO), 1)
+		steps += 1
+	return g
+
+
+func _check_grunt_swing() -> String:
+	var s: Dictionary = EnemyDefs.ENEMIES.grunt.swing
+	# 命中時機與傷害
+	var w := _new_world()
+	var p := _player(w)
+	var g := _grunt_swinging(w, p)
+	if not g.fsm.is_in(&"swing"):
+		return "玩家在 1.2 內時骷髏應開始舉刀"
+	var steps := 0
+	var dealt := 0
+	while steps < 60 and dealt == 0:
+		_run(w, _cmd(Vector2.ZERO), 1)
+		steps += 1
+		for e in _named(w.events, "entity:damaged"):
+			if e.target_id == p.id:
+				dealt = e.amount
+	var expected_steps := roundi(s.windup / DT)
+	if dealt != 12 or absi(steps - expected_steps) > 1:
+		return "舉刀約 %d 步後應命中 12，實際第 %d 步、傷害 %d" % [expected_steps, steps, dealt]
+	if w.hitboxes.is_empty() or w.hitboxes[0].shape.shape != &"sector":
+		return "命中當步應記錄扇形判定（F2 顯示用）"
+
+	# 扇形邊界：半角 50° + 目標半徑換算的角度（距離 1.4 時 +18.7°），距離 1.5 + 目標半徑
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	var shape := {"shape": &"sector", "range": s.range, "arc": s.arc}
+	var inside := func(at: Vector2) -> bool:
+		p2.pos = at
+		return not Hitbox.query(w2, &"enemy", Vector2.ZERO, 0.0, shape).is_empty()
+	var allow: float = s.arc / 2.0 + asin(p2.radius / 1.4)
+	if not inside.call(MathUtil.dir_from_angle(allow - 0.05) * 1.4) or inside.call(MathUtil.dir_from_angle(allow + 0.05) * 1.4):
+		return "扇形角度邊界應在 %.1f°" % rad_to_deg(allow)
+	var reach: float = s.range + p2.radius
+	if not inside.call(Vector2(0, reach - 0.02)) or inside.call(Vector2(0, reach + 0.05)):
+		return "扇形距離邊界應在 %.2f" % reach
+
+	# 舉刀後半鎖定方向：鎖定後玩家繞到側面就躲開
+	var w3 := _new_world()
+	var p3 := _player(w3)
+	var g3 := _grunt_swinging(w3, p3)
+	_run(w3, _cmd(Vector2.ZERO), roundi(s.windup * s.track / DT) + 2)
+	var locked := g3.facing
+	p3.pos = Vector2(1.5, -0.3)
+	var hp := p3.hp
+	_run(w3, _cmd(Vector2.ZERO), roundi((s.windup + s.active) / DT))
+	if p3.hp != hp:
+		return "鎖定方向後繞到側面應躲開，實際扣 %.0f" % (hp - p3.hp)
+	if absf(angle_difference(locked, g3.facing)) > 1e-4:
+		return "舉刀後半不應再轉向"
+
+	# 舉刀中被打會中斷，不會揮下
+	var w4 := _new_world()
+	var p4 := _player(w4)
+	var g4 := _grunt_swinging(w4, p4)
+	_run(w4, _cmd(Vector2.ZERO), 10)
+	g4.take_damage(5.0, Vector2(0, -1), 0.0, p4.id)
+	var hp4 := p4.hp
+	_run(w4, _cmd(Vector2.ZERO), roundi(s.windup / DT))
+	if p4.hp != hp4 or g4.fsm.is_in(&"swing"):
+		return "舉刀中被打應中斷：血量 %.0f → %.0f、狀態 %s" % [hp4, p4.hp, g4.fsm.current_name]
+	return ""
+
+
 func _check_flash_no_shader_switch() -> String:
 	var kit := PartKit.new()
 	var m := kit.mat(Color("8899aa"))
@@ -1979,12 +2072,22 @@ static func _godot_key(d: Dictionary, web_key: String) -> Variant:
 	return null
 
 
+# 照使用者的設計刻意和網頁版不同的欄位（路徑用網頁版欄位名稱）：不比對，但要寫明原因
+const WEB_DIVERGENCE := {
+	"contactDamage": "v0.17.0 B4：設計方向「怪物沒有碰撞傷害」，改用各自的招式（骷髏戰士揮砍）",
+	"contactInterval": "同上",
+	"contactKnockback": "同上",
+}
+
+
 func _compare_web(path: String, w: Variant, g: Variant, diffs: Array[String]) -> void:
 	if w is Dictionary:
 		if not g is Dictionary:
 			diffs.append("%s：Godot 不是 Dictionary（%s）" % [path, type_string(typeof(g))])
 			return
 		for k: String in w:
+			if path.begins_with("ENEMIES.") and WEB_DIVERGENCE.has(k):
+				continue
 			var gk: Variant = _godot_key(g, k)
 			if gk == null:
 				diffs.append("%s.%s：Godot 缺少欄位 %s" % [path, k, _snake(k)])

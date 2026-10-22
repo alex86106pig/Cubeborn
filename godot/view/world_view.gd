@@ -1,13 +1,19 @@
-# 畫面層：依實體 id 建立 / 移除模型並補間位置、驅動角色動畫；燈光與背景
+# 畫面層：依實體 id 建立 / 移除模型並補間位置、驅動角色動畫；燈光與背景；F2 判定顯示（碰撞圈與攻擊判定形狀）
 # 角色用 DarkFantasy 造型的 Rig + 動畫，法杖魔彈用發光球體、敵人箭矢用 DarkFantasy 造型，其他暫用方塊
 class_name WorldView
 extends Node3D
 
 const HITBOX_COLOR := Color(1.0, 0.93, 0.0, 0.8)
+const STRIKE_PLAYER_COLOR := Color(1.0, 0.93, 0.0)   # F2：玩家攻擊判定
+const STRIKE_ENEMY_COLOR := Color(1.0, 0.25, 0.2)    # F2：怪物攻擊判定
+const STRIKE_FADE := 0.3                             # 判定形狀顯示後淡出的秒數
+const STRIKE_ALPHA := 0.45
 
 var show_hitboxes := false
 var _nodes: Dictionary = {}       # entity id -> Node3D
 var _animators: Dictionary = {}   # entity id -> Animator（有骨架的實體）
+var _strikes: Array[Dictionary] = []   # F2 顯示中的攻擊判定 { node, life }
+var _last_strike_tick := -1
 
 
 func _ready() -> void:
@@ -51,6 +57,56 @@ func sync(world: World, alpha: float, dt: float) -> void:
 		node.get_node(^"Hitbox").visible = show_hitboxes
 		if _animators.has(id):
 			_animators[id].update(e, dt)
+	_sync_strikes(world, dt)
+
+
+# F2：模擬層記錄的攻擊判定（world.hitboxes）畫成地上的扇形 / 圓形，出現後淡出
+func _sync_strikes(world: World, dt: float) -> void:
+	if show_hitboxes and world.tick != _last_strike_tick:
+		_last_strike_tick = world.tick
+		for h in world.hitboxes:
+			var node := _create_strike(h, world.terrain.ground_at(h.origin))
+			add_child(node)
+			_strikes.append({"node": node, "life": STRIKE_FADE})
+	for i in range(_strikes.size() - 1, -1, -1):
+		var s := _strikes[i]
+		s.life -= dt
+		if s.life <= 0.0 or not show_hitboxes:
+			s.node.queue_free()
+			_strikes.remove_at(i)
+			continue
+		var m: StandardMaterial3D = s.node.material_override
+		m.albedo_color.a = STRIKE_ALPHA * s.life / STRIKE_FADE
+
+
+func _create_strike(h: Dictionary, ground: float) -> MeshInstance3D:
+	var shape: Dictionary = h.shape
+	var radius: float = shape.range if shape.shape == &"sector" else shape.radius
+	var arc: float = shape.arc if shape.shape == &"sector" else TAU
+	var segs := 24
+	var verts := PackedVector3Array()
+	var center := Vector3(h.origin.x, 0.0, h.origin.y)
+	for i in segs:
+		var a0: float = h.facing - arc / 2.0 + arc * i / segs
+		var a1: float = h.facing - arc / 2.0 + arc * (i + 1) / segs
+		verts.append_array([center, center + Vector3(sin(a0), 0.0, cos(a0)) * radius, center + Vector3(sin(a1), 0.0, cos(a1)) * radius])
+	var mesh := ArrayMesh.new()
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.position.y = ground + 0.06
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var color := STRIKE_PLAYER_COLOR if h.team == &"player" else STRIKE_ENEMY_COLOR
+	m.albedo_color = Color(color, STRIKE_ALPHA)
+	mi.material_override = m
+	return mi
 
 
 func _create_view(e: Entity) -> Node3D:

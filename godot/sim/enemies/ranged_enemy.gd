@@ -1,4 +1,4 @@
-# 遠程小怪（照搬網頁版 RangedEnemy.js）：與玩家保持距離並橫移，冷卻好時停下瞄準（有預備動作）後發射投射物
+# 遠程小怪（照搬網頁版 RangedEnemy.js）：與玩家保持距離並橫移，冷卻好時停下瞄準（有預備動作）後發射投射物；沒有近身攻擊
 class_name RangedEnemy
 extends Enemy
 
@@ -28,6 +28,7 @@ func fire() -> void:
 		"speed": def.projectile_speed, "range": def.projectile_range, "radius": def.projectile_radius,
 		"damage": def.projectile_damage * damage_mul, "knockback": def.projectile_knockback,
 		"color": def.projectile_color, "visual": &"arrow", "altitude": height + Config.HEIGHT.arrow_altitude,
+		"blockable": def.projectile_blockable,
 	}))
 
 
@@ -59,7 +60,6 @@ class Kite:
 			speed_mul = e.def.strafe_speed_mul
 		e.velocity = MathUtil.dir_from_angle(move_angle) * (e.speed * speed_mul)
 		e.facing = MathUtil.turn_towards(e.facing, to_target, e.def.turn_speed * dt)
-		e.try_contact_damage(target)
 
 		var key := e.cd("fire")
 		if dist <= range_[1] + e.def.fire_reach and e.world.cooldowns.is_ready(key):

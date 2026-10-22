@@ -434,7 +434,7 @@ godot/
 ├─ core/                      與遊戲內容無關：config.gd、version.gd、math_util.gd、state_machine.gd、cooldowns.gd、
 │                             game_events.gd（autoload GameEvents）
 ├─ defs/                      資料表：weapon_defs.gd、skill_defs.gd、enemy_defs.gd、wave_defs.gd、stat_defs.gd、terrain_defs.gd
-├─ sim/                       模擬層：world.gd、input_cmd.gd、stats.gd、terrain.gd、entity.gd、player.gd、player_states.gd、enemy.gd、
+├─ sim/                       模擬層：world.gd、input_cmd.gd、stats.gd、terrain.gd、hitbox.gd、entity.gd、player.gd、player_states.gd、enemy.gd、
 │  │                          enemies/（melee_enemy、ranged_enemy、boss）、projectile.gd、combat.gd、
 │  │                          physics.gd、spawner.gd、weapon_behaviors.gd、skill_behaviors.gd、active_slots.gd
 ├─ input/                     input_collector.gd（按鍵在程式中註冊，不寫在 project.godot）
@@ -505,3 +505,12 @@ godot/
 - 碰撞分離：高度不重疊的兩個實體不互推。
 - **地形**：`sim/terrain.gd`，石台資料在 `defs/terrain_defs.gd`（目前只有場地角落的測試石台 0.5 / 1.0 / 2.5，D1 換成正式地圖）。腳底 ≥ 頂面 − `HEIGHT.step` 才能站上去，否則石台當牆、把實體推出去；圓心在石台範圍內時地面高度就是頂面。怪物不會跳。
 - 連線：快照的實體欄位要加 `height`（15.7）。
+
+### 15.14 通用攻擊判定（v0.17.0）
+- 設計方向：怪物**沒有碰撞傷害**，每種怪物都靠自己的招式（預備 → 判定 → 收招）攻擊。貼著怪物不會扣血。
+- `sim/hitbox.gd`：玩家與怪物共用。`Hitbox.strike(world, 攻擊者, 原點, 朝向, 形狀, hit, already)` 查詢形狀內的敵對目標並套用 `Combat.apply_damage`；`already`（id 字典）讓同一招每個目標只打一次。形狀：`{shape: &"sector", range, arc}`、`{shape: &"circle", radius}`。
+- hit 欄位加上 `blockable`（能不能被格擋，B5 使用）：揮砍、箭 = true；Boss 砸地、衝鋒、爆炸、盾擊 = false。數值寫在資料表（`enemy_defs` 的 `swing.blockable`、`slam.blockable`、`charge.blockable`、`projectile_blockable`）。
+- 每次 `strike` 都記錄到 `world.hitboxes`（每步清空，只給畫面層 F2 畫形狀，不影響模擬）。
+- 骷髏戰士揮砍（使用者選「中等」）：中心距離 1.3 內且冷卻好時舉刀 0.5 秒（站定，前 50% 轉向、之後鎖定）→ 揮下 0.1 秒（前方 100°、距離 1.5 的扇形，傷害 12）→ 收招 0.5 秒；冷卻 1.2 秒從舉刀算。舉刀中被打進入受擊硬直，揮砍中斷。
+- 弓手與 Boss 拿掉碰撞傷害後不補新招（使用者決定）。
+- 網頁版對照：`check.gd` 的 `WEB_DIVERGENCE` 列出刻意不同的欄位與原因（`contactDamage` 等），其他欄位照常逐欄比對。

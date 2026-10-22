@@ -9,6 +9,7 @@ var tick := 0
 var rng := RandomNumberGenerator.new()
 var cooldowns := CooldownManager.new()
 var events: Array[Dictionary] = []   # 本步事件，只放 id 與數值，才能透過網路傳送
+var hitboxes: Array[Dictionary] = [] # 本步出現的攻擊判定（sim/hitbox.gd 記錄；畫面層 F2 顯示用，不影響模擬）
 var entities: Dictionary = {}        # id -> Entity
 var players: Dictionary = {}         # peer_id -> Player
 var enemies: Array[Entity] = []
@@ -48,6 +49,7 @@ func clear() -> void:
 	for e: Entity in entities.values():
 		e.detach()
 	events.clear()
+	hitboxes.clear()
 	entities.clear()
 	players.clear()
 	enemies.clear()
@@ -109,6 +111,11 @@ func spawn_projectile(p: Projectile) -> Projectile:
 
 
 # payload 的 "name" 欄位保留給事件名稱（例如 sfx:cue 的音效名稱放在 "cue"）
+func record_hitbox(h: Dictionary) -> void:
+	h["tick"] = tick
+	hitboxes.append(h)
+
+
 func emit_event(name: String, payload: Dictionary) -> void:
 	assert(not payload.has("name"), "payload 的 name 欄位保留給事件名稱：%s" % name)
 	payload["name"] = name
@@ -137,6 +144,7 @@ func is_any_player_alive() -> bool:
 # cmds：peer_id -> InputCmd；沒送輸入的玩家沿用上一步的輸入
 func step(cmds: Dictionary, dt: float) -> void:
 	events.clear()
+	hitboxes.clear()
 	tick += 1
 	for e: Entity in entities.values():
 		e.prev_pos = e.pos

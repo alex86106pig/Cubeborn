@@ -44,10 +44,10 @@ func slam_impact() -> void:
 	var s: Dictionary = def.slam
 	# 貼地的衝擊：腳底高於 HEIGHT.slam_height 的目標（跳起來）打不到
 	var band := Vector2(height - Config.HEIGHT.reach_below, height + Config.HEIGHT.slam_height)
-	for target in Combat.query_circle(pos, s.radius, Combat.hostiles_of(world, team)):
-		Combat.apply_damage(world, self, target, {
-			"damage": s.damage * damage_mul, "knockback": s.knockback, "hit_stop": s.hit_stop, "band": band,
-		})
+	Hitbox.strike(world, self, pos, facing, {"shape": &"circle", "radius": s.radius}, {
+		"damage": s.damage * damage_mul, "knockback": s.knockback, "hit_stop": s.hit_stop, "band": band,
+		"blockable": s.blockable,
+	})
 	world.emit_event("camera:shake", {"amount": s.shake, "duration": s.shake_duration})
 
 
@@ -96,7 +96,6 @@ class Chase:
 				return
 		e.facing = MathUtil.turn_towards(e.facing, MathUtil.angle_to(e.pos, target.pos), d.turn_speed * dt)
 		e.velocity = MathUtil.dir_from_angle(e.facing) * (e.speed * e.enrage_mul("speed_mul"))
-		e.try_contact_damage(target)
 
 
 # 重砸：舉起雙手 → 落地造成圓形範圍傷害
@@ -148,12 +147,13 @@ class Charge:
 
 		if d.phase == &"dash":
 			e.velocity = d.dir * c.speed
-			var target := e.nearest_player()
-			if not d.has_hit and target != null and e.pos.distance_to(target.pos) < e.radius + target.radius + c.hit_reach:
-				d.has_hit = Combat.apply_damage(e.world, e, target, {
+			# 衝鋒的判定：Boss 身體外擴 hit_reach 的圓，整段衝鋒只打中一次
+			if not d.has_hit:
+				var hits := Hitbox.strike(e.world, e, e.pos, e.facing, {"shape": &"circle", "radius": e.radius + c.hit_reach}, {
 					"damage": c.damage * e.damage_mul, "knockback": c.knockback,
-					"shake": c.shake, "hit_stop": c.hit_stop,
+					"shake": c.shake, "hit_stop": c.hit_stop, "blockable": c.blockable,
 				})
+				d.has_hit = not hits.is_empty()
 			var limit: float = e.world.arena_half_size - e.radius - c.wall_margin
 			if absf(e.pos.x) >= limit or absf(e.pos.y) >= limit:
 				e.world.emit_event("sfx:cue", {"cue": "bossWallHit"})

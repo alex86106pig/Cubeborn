@@ -61,18 +61,14 @@ class MeleeSwing extends Behavior:
 		if name != &"active":
 			return
 		var fin: bool = data.is_finisher
-		var candidates := Combat.hostiles_of(p.world, p.team)
-		for target in Combat.query_sector(p.pos, p.facing, def.range * data.scale, def.arc * data.scale, candidates):
-			if data.hit.has(target.id):
-				continue
-			data.hit[target.id] = true
-			Combat.apply_damage(p.world, p, target, {
-				"damage": def.damage * (def.finisher_mul if fin else 1.0) * p.damage_mul,
-				"knockback": def.knockback * (def.finisher_impact_mul if fin else 1.0),
-				"hit_stop": def.hit_stop * (def.finisher_impact_mul if fin else 1.0),
-				"shake": def.shake * (def.finisher_shake_mul if fin else 1.0),
-				"is_heavy": fin,
-			})
+		var shape := {"shape": &"sector", "range": def.range * data.scale, "arc": def.arc * data.scale}
+		Hitbox.strike(p.world, p, p.pos, p.facing, shape, {
+			"damage": def.damage * (def.finisher_mul if fin else 1.0) * p.damage_mul,
+			"knockback": def.knockback * (def.finisher_impact_mul if fin else 1.0),
+			"hit_stop": def.hit_stop * (def.finisher_impact_mul if fin else 1.0),
+			"shake": def.shake * (def.finisher_shake_mul if fin else 1.0),
+			"is_heavy": fin, "blockable": true,
+		}, data.hit)
 
 	func exit(p: Player, def: Dictionary, _data: Dictionary) -> void:
 		p.combo_timer = def.combo_window
@@ -99,14 +95,10 @@ class ShieldBash extends Behavior:
 		if name != &"active":
 			return
 		var center: Vector2 = p.pos + data.dir * def.hit_offset
-		for target in Combat.query_circle(center, def.radius, Combat.hostiles_of(p.world, p.team)):
-			if data.hit.has(target.id):
-				continue
-			data.hit[target.id] = true
-			Combat.apply_damage(p.world, p, target, {
-				"damage": def.damage * p.damage_mul, "knockback": def.knockback, "origin": p.pos,
-				"hit_stop": def.hit_stop, "shake": def.shake, "is_heavy": true,
-			})
+		Hitbox.strike(p.world, p, center, p.facing, {"shape": &"circle", "radius": def.radius}, {
+			"damage": def.damage * p.damage_mul, "knockback": def.knockback, "origin": p.pos,
+			"hit_stop": def.hit_stop, "shake": def.shake, "is_heavy": true, "blockable": false,
+		}, data.hit)
 
 	func exit(p: Player, _def: Dictionary, _data: Dictionary) -> void:
 		p.has_forced_velocity = false

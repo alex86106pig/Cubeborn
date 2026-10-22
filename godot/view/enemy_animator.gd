@@ -63,7 +63,9 @@ func update(e: Enemy, dt: float) -> void:
 			else:
 				walk_phase += dt * e.velocity.length() * 2.2
 				_pose_walk(1.0 if moving else 0.0, -0.6, -0.3)
-				_pose_melee_swing(a, def)
+		&"swing":
+			_pose_walk(0.0, -0.6, -0.3)
+			_pose_melee_swing(t, def.swing)
 		&"kite":
 			walk_phase += dt * e.velocity.length() * 2.2
 			_pose_walk(1.0 if moving else 0.0, -0.2, -0.5)
@@ -103,13 +105,23 @@ func _pose_arms(rx: float, ry: float = 0.0) -> void:
 	rig.arm_l.rotation = Vector3(rx, ry, 0.0)
 
 
-# 接觸命中時的揮擊：武器由上往下砸
-func _pose_melee_swing(a: Dictionary, def: Dictionary) -> void:
-	var swing: float = a.get("swing", 0.0)
-	if swing <= 0.0:
-		return
-	var k := 1.0 - clampf(swing / def.swing_time, 0.0, 1.0)
-	rig.arm_r.rotation.x = -2.6 if k < 0.3 else -2.6 + (k - 0.3) / 0.7 * 2.2
+# 骷髏戰士揮砍：舉刀（手臂高舉、身體後仰，看得出要出手）→ 揮下（由上往下砸、身體前傾）→ 收招回到持刀姿勢
+func _pose_melee_swing(t: float, s: Dictionary) -> void:
+	var arm := rig.arm_r
+	var windup: float = s.windup
+	var active: float = s.active
+	if t < windup:
+		var k := MathUtil.ease_out_cubic(t / windup)
+		arm.rotation.x = lerpf(-0.6, -2.9, k)
+		rig.body.rotation.x = lerpf(0.0, -0.18, k)
+	elif t < windup + active:
+		var k := (t - windup) / active
+		arm.rotation.x = lerpf(-2.9, -0.3, k)
+		rig.body.rotation.x = lerpf(-0.18, 0.25, k)
+	else:
+		var k := clampf((t - windup - active) / s.recovery, 0.0, 1.0)
+		arm.rotation.x = lerpf(-0.3, -0.6, k)
+		rig.body.rotation.x = lerpf(0.25, 0.0, k)
 
 
 func _pose_slam(t: float, s: Dictionary) -> void:

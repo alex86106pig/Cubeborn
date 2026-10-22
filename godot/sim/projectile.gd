@@ -12,6 +12,7 @@ var color := Color.WHITE        # 只給畫面用
 var visual: StringName = &"orb" # 只給畫面用：&"orb" 發光球體、&"arrow" 箭矢
 var hit_stop := 0.0
 var shake := 0.0
+var blockable := true           # 有方向的投射物預設能被格擋（B5）；爆炸一律不能
 var explosion: Dictionary = {}  # { radius, damage, knockback, hit_stop, shake }；空 = 一般投射物
 var traveled := 0.0
 var start_altitude := 0.0       # 發射時的飛行高度（height 是目前的飛行高度）
@@ -38,6 +39,7 @@ func _init(p_world: World, p: Dictionary) -> void:
 	hit_stop = p.get("hit_stop", 0.0)
 	shake = p.get("shake", 0.0)
 	explosion = p.get("explosion", {})
+	blockable = p.get("blockable", true)
 	start_altitude = p.get("altitude", owner.height + Config.HEIGHT.bolt_altitude)
 	settle_altitude = p.get("settle_altitude", 0.0)
 	settle_distance = p.get("settle_distance", 0.0)
@@ -89,7 +91,7 @@ func _on_hit(target: Entity) -> void:
 		# 擊退方向沿飛行方向
 		Combat.apply_damage(world, _source(), target, {
 			"damage": damage, "knockback": knockback_force, "origin": pos - direction,
-			"hit_stop": hit_stop, "shake": shake, "band": band(),
+			"hit_stop": hit_stop, "shake": shake, "band": band(), "blockable": blockable,
 		})
 	remove()
 
@@ -106,9 +108,8 @@ func _explode() -> void:
 	# 爆炸範圍從地面往上 HEIGHT.explosion_height（空中目標太高就炸不到）
 	var ground := world.terrain.ground_at(pos)
 	var blast := Vector2(ground - Config.HEIGHT.reach_below, ground + Config.HEIGHT.explosion_height)
-	for target in Combat.query_circle(pos, explosion.radius, Combat.hostiles_of(world, team)):
-		Combat.apply_damage(world, source, target, {
-			"damage": explosion.damage, "knockback": explosion.knockback, "origin": pos,
-			"hit_stop": explosion.hit_stop, "is_heavy": true, "band": blast,
-		})
+	Hitbox.strike(world, source, pos, facing, {"shape": &"circle", "radius": explosion.radius}, {
+		"damage": explosion.damage, "knockback": explosion.knockback, "origin": pos,
+		"hit_stop": explosion.hit_stop, "is_heavy": true, "band": blast, "blockable": false,
+	})
 	world.emit_event("camera:shake", {"amount": explosion.shake, "duration": Config.COMBAT.explosion_shake_duration})

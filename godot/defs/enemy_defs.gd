@@ -1,5 +1,6 @@
 # 敵人資料定義（照搬網頁版 legacy/src/entities/enemyDefs.js，欄位改 snake_case）；行為在 sim/enemies/
-# 網頁版寫死在行為程式裡的數字也搬到這裡（例如接觸判定的寬容距離、Boss 招式的震動與停頓）
+# 網頁版寫死在行為程式裡的數字也搬到這裡（例如 Boss 招式的震動與停頓）
+# v0.17.0 起和網頁版刻意不同：拿掉接觸傷害（contact_*），骷髏戰士改用 swing 揮砍；blockable 標示能否被格擋（B5）
 class_name EnemyDefs
 
 const ENEMIES := {
@@ -11,14 +12,23 @@ const ENEMIES := {
 		"turn_speed": 6.0,
 		"radius": 0.45,
 		"mass": 1.0,
-		"contact_damage": 10.0,
-		"contact_interval": 0.8,
-		"contact_knockback": 9.0,
-		"contact_reach": 0.15,       # 兩者半徑相加再多這麼遠就算貼到
 		"hurt_time": 0.22,
 		"spawn_time": 0.7,
 		"corpse_time": 1.4,
-		"swing_time": 0.3,           # 接觸命中時的揮擊動畫秒數（畫面用）
+		# 揮砍（v0.17.0，使用者選「中等」）：取代網頁版的接觸傷害
+		"swing": {
+			"trigger_distance": 1.3,    # 與玩家中心距離在這以內、冷卻好時開始舉刀
+			"windup": 0.5,              # 舉刀：站定，前 track 比例的時間轉向玩家，之後鎖定方向
+			"track": 0.5,
+			"active": 0.1,              # 揮下：判定出現的時間，每揮一次每個目標只打一次
+			"recovery": 0.5,
+			"range": 1.5,
+			"arc": PI * 100.0 / 180.0,  # 100°
+			"damage": 12.0,
+			"knockback": 9.0,
+			"cooldown": 1.2,            # 從舉刀開始算
+			"blockable": true,
+		},
 	},
 
 	&"archer": {
@@ -29,10 +39,6 @@ const ENEMIES := {
 		"turn_speed": 8.0,
 		"radius": 0.42,
 		"mass": 1.0,
-		"contact_damage": 6.0,
-		"contact_interval": 1.0,
-		"contact_knockback": 6.0,
-		"contact_reach": 0.15,
 		"hurt_time": 0.22,
 		"spawn_time": 0.7,
 		"corpse_time": 1.4,
@@ -53,6 +59,7 @@ const ENEMIES := {
 		"projectile_knockback": 6.0,
 		"projectile_offset": 0.7,
 		"projectile_color": Color("b48cff"),
+		"projectile_blockable": true,
 	},
 
 	&"boss": {
@@ -64,10 +71,6 @@ const ENEMIES := {
 		"radius": 1.0,
 		"mass": 30.0,
 		"knockback_mul": 0.12,
-		"contact_damage": 12.0,
-		"contact_interval": 1.0,
-		"contact_knockback": 12.0,
-		"contact_reach": 0.15,
 		"spawn_time": 1.6,
 		"spawn_shake": 0.4,
 		"corpse_time": 3.5,
@@ -76,13 +79,13 @@ const ENEMIES := {
 		"slam": {
 			"trigger_distance": 3.2, "radius": 3.4, "windup": 0.85, "recovery": 0.8,
 			"damage": 26.0, "knockback": 16.0, "cooldown": 3.5,
-			"hit_stop": 0.06, "shake": 0.7, "shake_duration": 0.35,
+			"hit_stop": 0.06, "shake": 0.7, "shake_duration": 0.35, "blockable": false,
 		},
 		"charge": {
 			"min_distance": 5.0, "windup": 0.75, "speed": 15.0, "duration": 0.85, "recovery": 1.0,
 			"wall_stun": 1.6, "damage": 22.0, "knockback": 18.0, "cooldown": 6.0,
 			"hit_reach": 0.3, "hit_stop": 0.06, "shake": 0.4, "wall_margin": 0.05,
-			"wall_shake": 0.6, "wall_shake_duration": 0.35,
+			"wall_shake": 0.6, "wall_shake_duration": 0.35, "blockable": false,
 		},
 		"summon": {
 			"hp_threshold": 0.75, "count": 3, "windup": 1.0, "recovery": 0.4, "cooldown": 14.0,
