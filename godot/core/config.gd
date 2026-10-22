@@ -110,6 +110,7 @@ const HEIGHT := {
 # 打擊感（v0.18.3 使用者決定）
 const FEEL := {
 	"player_attack_shake": false,   # 玩家方攻擊打中時的畫面震動（網頁版有；被打、Boss 招式的震動不受影響）
+	"hit_freeze": false,            # 命中定格：打中時攻擊者與目標的模型停住 hit_stop 秒（v0.18.3 加入，v0.19.1 使用者試玩覺得怪而關掉）
 }
 
 # 除錯鍵（Godot 版才有，網頁版沒有）

@@ -23,8 +23,9 @@ func _ready() -> void:
 
 # 命中定格（v0.18.3，取代模擬時間放慢）：打中時攻擊者與目標的模型停住 hit_stop 秒，期間不更新位置與姿勢，之後跟上實際狀態
 # 只是畫面效果，模擬照常進行；多人時其他玩家的遊戲不受影響。事件由 main.gd 轉過來
+# v0.19.1 起預設關閉（Config.FEEL.hit_freeze）
 func on_event(name: String, p: Dictionary) -> void:
-	if name != "entity:damaged":
+	if name != "entity:damaged" or not Config.FEEL.hit_freeze:
 		return
 	var duration: float = p.get("hit_stop", 0.0)
 	if duration <= 0.0:

@@ -2,6 +2,12 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.19.1] - 2026-10-23
+
+### 修改
+- 拿掉命中定格（使用者試玩後覺得近戰打怪時雙方停住很怪）：打中時攻擊者與目標的模型不再停住。開關是 `Config.FEEL.hit_freeze`（預設 false），`entity:damaged` 事件仍帶 `hit_stop`，要加回來只改開關。打倒 Boss 的 0.25 秒慢動作不變。
+- `check.gd` 打擊感檢查改成驗證「打中後模型照常跟上實際位置」。
+
 ## [0.19.0] - 2026-10-23
 
 物品資料格式（製作計畫 B6）。使用者決定資料放程式資料表（`defs/*.gd`）。

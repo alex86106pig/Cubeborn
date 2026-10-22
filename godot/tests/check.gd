@@ -98,7 +98,7 @@ func _initialize() -> void:
 	_check("高度判定：最高點時箭從腳下飛過、地面會中箭；跳起來躲過 Boss 砸地；空中揮砍與空中魔彈打得到地上的怪", _check_height_hits)
 	_check("沒有碰撞傷害：骷髏戰士（揮砍冷卻中）、弓手（不射箭時）、Boss（不出招時）貼身 2 秒都不扣血", _check_no_contact_damage)
 	_check("骷髏揮砍：舉刀 0.5 秒後才命中、傷害 12；扇形 100° / 1.5 的邊界；舉刀後半鎖定方向，繞到側面就躲開；舉刀中被打會中斷", _check_grunt_swing)
-	_check("打擊感：玩家打中不震動、模擬時間不放慢（hit_stop 只放進事件）；玩家被打與 Boss 砸地照常震動；命中定格期間攻擊者與目標的模型不動", _check_hit_feel)
+	_check("打擊感：玩家打中不震動、模擬時間不放慢（hit_stop 只放進事件）；玩家被打與 Boss 砸地照常震動；沒有命中定格（v0.19.1 拿掉），打中後模型照常移動", _check_hit_feel)
 	_check("受擊閃白：只改自發光顏色、不切換 emission_enabled（切換會在第一次命中即時編譯著色器而卡頓）", _check_flash_no_shader_switch)
 	_check("字型：介面文字都在打包的 Noto Sans TC 裡（網頁版沒有系統字型），缺字的圖示改用向量圖", _check_font_coverage)
 	_check("零件合併：依 anchor + 材質合併、外框不變、keep 的零件留在原位、空群組移除、面法線朝外且為正面", _check_merge_static)
@@ -1954,23 +1954,21 @@ func _check_hit_feel() -> String:
 	boss.slam_impact()
 	if _named(w3.events, "camera:shake").is_empty():
 		return "Boss 砸地應震動"
-	# 命中定格：攻擊者與目標的模型在 hit_stop 內不動，之後跟上
+	# 命中定格 v0.19.1 起關閉：打中後模型照常跟著實際位置
+	if Config.FEEL.hit_freeze:
+		return "Config.FEEL.hit_freeze 應為 false（v0.19.1 使用者決定拿掉命中定格）"
 	var w4 := _new_world()
 	var p4 := _player(w4)
 	var g4 := _spawn(w4, &"grunt", Vector2(0, 3))
 	var view := WorldView.new()
 	view.sync(w4, 1.0, DT)
 	var node: Node3D = view._nodes[g4.id]
-	var before := node.position
 	view.on_event("entity:damaged", {"source_id": p4.id, "target_id": g4.id, "hit_stop": 0.1})
 	g4.pos += Vector2(1, 0)
 	g4.prev_pos = g4.pos
 	view.sync(w4, 1.0, 0.05)
-	if node.position != before:
-		return "定格 0.1 秒內模型不應移動"
-	view.sync(w4, 1.0, 0.06)
 	if absf(node.position.x - g4.pos.x) > EPS:
-		return "定格結束後模型應跟上實際位置（%.2f vs %.2f）" % [node.position.x, g4.pos.x]
+		return "打中後模型不應定格，應立刻跟上實際位置（%.2f vs %.2f）" % [node.position.x, g4.pos.x]
 	view.free()
 	return ""
 
