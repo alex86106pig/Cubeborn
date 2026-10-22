@@ -107,6 +107,11 @@ const HEIGHT := {
 	"step": 0.05,                    # 走路可以直接跨上的高度差（超過就是牆）
 }
 
+# 打擊感（v0.18.3 使用者決定）
+const FEEL := {
+	"player_attack_shake": false,   # 玩家方攻擊打中時的畫面震動（網頁版有；被打、Boss 招式的震動不受影響）
+}
+
 # 除錯鍵（Godot 版才有，網頁版沒有）
 const DEBUG := {
 	"speed_bonus": 0.5,      # F3：玩家移速 +50%（驗證屬性系統用）

@@ -263,7 +263,7 @@ export const SKILLS = {
 
 | 事件 | payload | 發出者 |
 |---|---|---|
-| `entity:damaged` | `{ target, amount, source, knockback, isCrit }`（Godot 版：`isCrit` 拆成 `is_heavy` 重擊顯示（第三段、盾擊、爆炸）與 `is_crit` 屬性擲出的爆擊，見 15.11） | Combat |
+| `entity:damaged` | `{ target, amount, source, knockback, isCrit }`（Godot 版：`isCrit` 拆成 `is_heavy` 重擊顯示（第三段、盾反、爆炸）與 `is_crit` 屬性擲出的爆擊，見 15.11；另帶 `hit_stop` 命中定格秒數，見 15.3） | Combat |
 | `entity:healed` | `{ target, amount }` | skillBehaviors |
 | `player:blocked` | `{ player_id, perfect }`（Godot 版 v0.18.0：格擋擋下攻擊；perfect = 完美格擋，下一步盾反） | Player.try_block |
 | `entity:died` | `{ entity, source }` | Entity |
@@ -395,7 +395,9 @@ InputCollector ──► InputCmd ──► World.step(cmds, dt) ──► 快�
 - 組合根 `main.gd` 在 `_physics_process` 收集輸入 → `world.step()` → 分送事件；畫面在 `_process` 以 `Engine.get_physics_interpolation_fraction()` 在上一步與這一步的位置之間補間，高更新率螢幕也平順。
 - 更新順序與網頁版第 4 節相同（CD → 玩家 → 敵人 → 投射物 → 位移 → 碰撞分離 → 場地限制 → 生成器 → 清除）。
 - 「本步按下」由 `InputCollector` 鎖存：兩次 `step` 之間按過就算，送出後才清除，不漏按。
-- 命中停頓：照網頁版，真實時間照走、邏輯時間放慢到 5%，**每步仍是 `FIXED_DT`**（只是少跑幾步）。模擬層用 `world.hit_stop(秒)` 記錄，`main.gd` 每個真實固定步呼叫 `world.consume_hit_stop()` 取得縮放並累加決定這次要跑幾步。多人時怎麼處理（全員一起停或只做畫面定格）留到階段二決定。
+- **命中定格**（v0.18.3 使用者決定，取代網頁版的整體放慢）：打中時模擬時間照常走，`entity:damaged` 事件帶 `hit_stop` 秒數，畫面層（`world_view.gd`）讓攻擊者與目標的模型停住這麼久、之後跟上實際狀態。只是畫面效果，多人時不影響其他玩家。
+- 整體放慢只剩打倒 Boss 的 0.25 秒慢動作：真實時間照走、邏輯時間放慢到 5%，**每步仍是 `FIXED_DT`**（只是少跑幾步）。模擬層用 `world.hit_stop(秒)` 記錄，`main.gd` 每個真實固定步呼叫 `world.consume_hit_stop()` 取得縮放；通關時所有人一起放慢。
+- 畫面震動：玩家方的攻擊打中不震動（`Config.FEEL.player_attack_shake = false`，v0.18.3 使用者決定）；玩家被打、Boss 砸地 / 撞牆 / 狂暴 / 登場、通關照常震動。
 - `InputCmd` 放在 `sim/`：它是模擬層的輸入格式（連線時原樣傳送），`input/` 只負責產生它。
 - 實體與 `World` 互相參照（RefCounted 循環），移除實體、`reset()` 與結束遊戲時必須經過 `world.clear()` / 移除流程切斷參照，否則記憶體洩漏（`tests/check.gd` 有檢查）。
 - 暫停：單機時 `Esc` 停止呼叫 `step()`，失去焦點自動暫停；連線時 `Esc` 只開選單，模擬不停。

@@ -112,4 +112,5 @@ func _explode() -> void:
 		"damage": explosion.damage, "knockback": explosion.knockback, "origin": pos,
 		"hit_stop": explosion.hit_stop, "is_heavy": true, "band": blast, "blockable": false,
 	})
-	world.emit_event("camera:shake", {"amount": explosion.shake, "duration": Config.COMBAT.explosion_shake_duration})
+	if Combat.should_shake(self):
+		world.emit_event("camera:shake", {"amount": explosion.shake, "duration": Config.COMBAT.explosion_shake_duration})

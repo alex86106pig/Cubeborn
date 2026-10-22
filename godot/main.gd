@@ -1,4 +1,4 @@
-# 組合根：建立 World、輸入、畫面、HUD 與音效；固定步長主迴圈、命中停頓、暫停、靜音、重新開始、離開遊戲
+# 組合根：建立 World、輸入、畫面、HUD 與音效；固定步長主迴圈、通關慢動作、暫停、靜音、重新開始、離開遊戲
 # 指令列參數（放在 -- 之後）：--seconds=S --screenshot=路徑 --auto-move=x,y（螢幕方向）
 #   --auto-attack（一直按住左鍵）--weapon=staff（開場武器）--wave=N（直接從第 N 波開始）--player-hp=N（開場血量），後兩者除錯用
 extends Node3D
@@ -103,7 +103,7 @@ func _physics_process(_delta: float) -> void:
 	if is_paused:
 		input_collector.consume_latched()   # 暫停中的點擊與按鍵不留到繼續之後
 		return
-	# 命中停頓：真實時間照走，邏輯時間放慢到 5%，每步仍是 FIXED_DT（同網頁版）
+	# 通關慢動作：真實時間照走，邏輯時間放慢到 5%，每步仍是 FIXED_DT（v0.18.3 起只剩打倒 Boss 時用；一般命中改成畫面層的命中定格）
 	_sim_accumulator += Config.FIXED_DT * world.consume_hit_stop(Config.FIXED_DT)
 	while _sim_accumulator >= Config.FIXED_DT - 1e-9:
 		_sim_accumulator -= Config.FIXED_DT
@@ -173,6 +173,7 @@ func _emit_muted() -> void:
 func _on_event(name: String, payload: Dictionary) -> void:
 	if name == "camera:shake":
 		camera_rig.shake(payload.amount, payload.duration)
+	world_view.on_event(name, payload)
 
 
 # 切到其他視窗時自動暫停，避免回來時已經被打死

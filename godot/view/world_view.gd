@@ -1,4 +1,4 @@
-# 畫面層：依實體 id 建立 / 移除模型並補間位置、驅動角色動畫；燈光與背景；F2 判定顯示（碰撞圈與攻擊判定形狀）
+# 畫面層：依實體 id 建立 / 移除模型並補間位置、驅動角色動畫；燈光與背景；命中定格；F2 判定顯示（碰撞圈與攻擊判定形狀）
 # 角色用 DarkFantasy 造型的 Rig + 動畫，法杖魔彈用發光球體、敵人箭矢用 DarkFantasy 造型，其他暫用方塊
 class_name WorldView
 extends Node3D
@@ -12,12 +12,25 @@ const STRIKE_ALPHA := 0.45
 var show_hitboxes := false
 var _nodes: Dictionary = {}       # entity id -> Node3D
 var _animators: Dictionary = {}   # entity id -> Animator（有骨架的實體）
+var _frozen: Dictionary = {}           # entity id -> 剩餘定格秒數（命中定格）
 var _strikes: Array[Dictionary] = []   # F2 顯示中的攻擊判定 { node, life }
 var _last_strike_tick := -1
 
 
 func _ready() -> void:
 	_setup_environment()
+
+
+# 命中定格（v0.18.3，取代模擬時間放慢）：打中時攻擊者與目標的模型停住 hit_stop 秒，期間不更新位置與姿勢，之後跟上實際狀態
+# 只是畫面效果，模擬照常進行；多人時其他玩家的遊戲不受影響。事件由 main.gd 轉過來
+func on_event(name: String, p: Dictionary) -> void:
+	if name != "entity:damaged":
+		return
+	var duration: float = p.get("hit_stop", 0.0)
+	if duration <= 0.0:
+		return
+	for id: int in [p.source_id, p.target_id]:
+		_frozen[id] = maxf(_frozen.get(id, 0.0), duration)
 
 
 func _setup_environment() -> void:
@@ -46,11 +59,17 @@ func sync(world: World, alpha: float, dt: float) -> void:
 			_nodes[id].queue_free()
 			_nodes.erase(id)
 			_animators.erase(id)
+			_frozen.erase(id)
 	for id: int in world.entities:
 		var e: Entity = world.entities[id]
 		if not _nodes.has(id):
 			_nodes[id] = _create_view(e)
 		var node: Node3D = _nodes[id]
+		if _frozen.has(id):
+			_frozen[id] -= dt
+			if _frozen[id] > 0.0:
+				continue
+			_frozen.erase(id)
 		var p := e.prev_pos.lerp(e.pos, alpha)
 		node.position = Vector3(p.x, lerpf(e.prev_height, e.height, alpha), p.y)
 		node.rotation.y = lerp_angle(e.prev_facing, e.facing, alpha)

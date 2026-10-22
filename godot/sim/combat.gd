@@ -17,7 +17,7 @@ static func hostiles_of(world: World, team: StringName) -> Array[Entity]:
 
 
 # hit：damage（已含攻擊者的攻擊力，由發動招式的一方計算）、knockback、origin（預設 source.pos，擊退方向為 origin → target）、
-#      hit_stop、shake、is_heavy（重擊：第三段、盾反、爆炸，只影響顯示與音效）、blockable（能不能被格擋）、
+#      hit_stop（命中定格秒數，只給畫面層）、shake、is_heavy（重擊：第三段、盾反、爆炸，只影響顯示與音效）、blockable（能不能被格擋）、
 #      band（高度範圍 Vector2(下緣, 上緣)；預設是攻擊者的身體往腳底下延伸 HEIGHT.reach_below，見 body_band）
 # 這裡套用攻擊者的爆擊與擊退屬性；護甲與受傷倍率在 Entity.take_damage
 # 回傳是否實際命中（高度不重疊、被格擋也算沒命中）
@@ -48,17 +48,21 @@ static func apply_damage(world: World, source: Entity, target: Entity, hit: Dict
 	if dealt < 0:
 		return false
 
+	# hit_stop 只放進事件：畫面層讓攻擊者與目標的模型定格這麼久（v0.18.3 起模擬時間不再放慢，多人時不影響其他人）
 	world.emit_event("entity:damaged", {
 		"target_id": target.id, "amount": dealt, "source_id": source.id,
 		"knockback": knockback, "is_heavy": hit.get("is_heavy", false), "is_crit": is_crit,
+		"hit_stop": hit.get("hit_stop", 0.0),
 	})
-	var hit_stop: float = hit.get("hit_stop", 0.0)
-	if hit_stop > 0.0:
-		world.hit_stop(hit_stop)
 	var shake: float = hit.get("shake", 0.0)
-	if shake > 0.0:
+	if shake > 0.0 and should_shake(source):
 		world.emit_event("camera:shake", {"amount": shake, "duration": Config.COMBAT.hit_shake_duration})
 	return true
+
+
+# 畫面震動：玩家方的攻擊打中時不震動（v0.18.3 使用者決定，開關在 Config.FEEL）；怪物打中玩家照常震動
+static func should_shake(source: Entity) -> bool:
+	return source.team != &"player" or Config.FEEL.player_attack_shake
 
 
 # 近戰、碰撞、衝鋒的預設高度範圍：攻擊者的身體，往腳底下延伸一點（空中揮砍打得到地上的怪）
