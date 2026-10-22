@@ -5,7 +5,7 @@ extends Node
 # 動作名稱 -> 預設按鍵（Key 或 MouseButton）；在程式中註冊，headless 檢查也能用
 const ACTIONS := {
 	&"move_up": KEY_W, &"move_down": KEY_S, &"move_left": KEY_A, &"move_right": KEY_D,
-	&"attack": MOUSE_BUTTON_LEFT, &"special": MOUSE_BUTTON_RIGHT,
+	&"attack": MOUSE_BUTTON_LEFT, &"special": MOUSE_BUTTON_RIGHT, &"roll": KEY_SHIFT,
 	&"slot_1": KEY_1, &"slot_2": KEY_2, &"slot_3": KEY_3, &"slot_4": KEY_4, &"slot_5": KEY_5,
 	&"pause": KEY_ESCAPE, &"mute": KEY_M, &"restart": KEY_R,
 	&"stats_panel": KEY_TAB,
@@ -45,6 +45,8 @@ func _input(event: InputEvent) -> void:
 		_latched |= InputCmd.BTN_ATTACK
 	elif event.is_action_pressed(&"special"):
 		_latched |= InputCmd.BTN_SPECIAL
+	elif event.is_action_pressed(&"roll"):
+		_latched |= InputCmd.BTN_ROLL
 	else:
 		for i in InputCmd.SLOT_COUNT:
 			if event.is_action_pressed(StringName("slot_%d" % (i + 1))):

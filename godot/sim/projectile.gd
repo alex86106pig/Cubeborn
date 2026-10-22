@@ -44,6 +44,8 @@ func update(dt: float) -> void:
 	traveled += step_len
 
 	for target in Combat.hostiles_of(world, team):
+		if target.is_dodging():
+			continue
 		var r := radius + target.radius
 		if target.pos.distance_squared_to(pos) <= r * r:
 			_on_hit(target)

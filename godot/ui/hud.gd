@@ -5,7 +5,8 @@ extends CanvasLayer
 
 signal quit_requested   # 暫停畫面按下「離開遊戲」
 
-const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 1~5 道具 · Tab 屬性 · Esc 暫停 · M 靜音 · F1 切換武器 · F2 顯示判定 · F3 除錯移速 +50% · R 重新開始"
+# 手動分行（中文自動折行會斷在詞中間）
+const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · Shift 翻滾\n1~5 道具 · Tab 屬性 · Esc 暫停 · M 靜音 · R 重新開始\nF1 切換武器 · F2 顯示判定 · F3 除錯移速 +50%"
 const FPS_INTERVAL := 0.5
 const HP_GHOST_SPEED := 0.5      # 殘影每秒縮短的比例
 const BOSS_GHOST_SPEED := 0.3
@@ -86,10 +87,8 @@ func _init() -> void:
 	_hp = UiKit.bar(Vector2(280, 26), UiKit.HP_BG, UiKit.HP_FILL, 3)
 	tl.add_child(_hp.root)
 	tl.add_child(_weapon)
-	var help := UiKit.label(CONTROLS_TEXT, 12, Color(1, 1, 1, 0.55), 1)
-	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	help.custom_minimum_size.x = 300
-	tl.add_child(help)
+	_hp.root.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN   # 說明文字較寬時血條不跟著拉長
+	tl.add_child(UiKit.label(CONTROLS_TEXT, 12, Color(1, 1, 1, 0.55), 1))
 	root.add_child(tl)
 
 	# 右上：波次、擊殺、時間、FPS、版號
@@ -138,8 +137,6 @@ func _init() -> void:
 	_build_overlay(_game_over, Color(40 / 255.0, 0, 0, 0.55), [_game_over_title, _game_over_stats, _pulse(UiKit.label("按 R 重新開始", 20))])
 	root.add_child(_game_over)
 	var pause_controls := UiKit.label(CONTROLS_TEXT, 14, Color(1, 1, 1, 0.75))
-	pause_controls.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	pause_controls.custom_minimum_size.x = 520
 	# 離開遊戲按鈕：網頁版不顯示（瀏覽器不允許網頁自己關閉）
 	_quit_button.text = "離開遊戲"
 	_quit_button.add_theme_font_size_override(&"font_size", 20)

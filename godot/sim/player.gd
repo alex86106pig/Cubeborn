@@ -2,6 +2,8 @@
 class_name Player
 extends Entity
 
+const ROLL_CD := "player.roll"
+
 var peer_id := 0
 var move_input := Vector2.ZERO
 var aim_point := Vector2(0.0, 5.0)
@@ -10,9 +12,11 @@ var weapon: Dictionary = {}
 var weapon_id: StringName = &""
 var combo_step := 0
 var combo_timer := 0.0
-var buffered_action: Dictionary = {}   # { type: &"special" | &"slot", index?, time }；空 = 沒有緩衝
+var buffered_action: Dictionary = {}   # { type: &"special" | &"slot" | &"roll", index?, time }；空 = 沒有緩衝
 var slots := ActiveSlots.new(Config.PLAYER.slots)
 var buffs: Dictionary = {}             # id -> { remaining, stats?（屬性加成，見 sim/stats.gd）, trail_color? }
+var roll_charges := 0                  # 目前可用的翻滾次數（上限為 roll_charges 屬性）
+var dodge_timer := 0.0                 # 翻滾無敵剩餘秒數
 var forced_velocity := Vector2.ZERO
 var has_forced_velocity := false
 var locomotion: StateMachine
@@ -30,7 +34,42 @@ func _init(p_world: World, p_peer_id: int) -> void:
 	locomotion = StateMachine.new(self, PlayerStates.locomotion_states(), &"idle")
 	action = StateMachine.new(self, PlayerStates.action_states())
 	equip_weapon(Config.PLAYER.start_weapon)
+	roll_charges = roll_max()
 	_update_anim()
+
+
+func roll_max() -> int:
+	return int(stats.value(&"roll_charges"))
+
+
+func is_dodging() -> bool:
+	return dodge_timer > 1e-6
+
+
+# 翻滾的位移速度：基礎距離 ÷ 時間，再依移速屬性相對基礎移速等比放大（動作中的走路減速不算）
+func roll_speed() -> float:
+	return Config.ROLL.distance / Config.ROLL.duration * stats.value(&"move_speed") / Config.PLAYER.move_speed
+
+
+# 充能：回充中（ROLL_CD 計時）結束就加 1 次，還沒滿就接著回充下一次；上限提高時立刻補 1 次
+func _tick_roll_charges() -> void:
+	var max_charges := roll_max()
+	roll_charges = mini(roll_charges, max_charges)
+	if roll_charges < max_charges and world.cooldowns.is_ready(ROLL_CD):
+		roll_charges += 1
+		if roll_charges < max_charges:
+			world.cooldowns.start(ROLL_CD, roll_cooldown())
+
+
+func roll_cooldown() -> float:
+	return Config.ROLL.cooldown * stats.value(&"roll_cooldown")
+
+
+# 消耗 1 次充能；沒有在回充時開始回充
+func consume_roll_charge() -> void:
+	roll_charges -= 1
+	if world.cooldowns.is_ready(ROLL_CD):
+		world.cooldowns.start(ROLL_CD, roll_cooldown())
 
 
 # 權威端不信任輸入：移動向量長度一律限制在 1 以內
@@ -85,6 +124,8 @@ func update(dt: float) -> void:
 
 func _tick_timers(dt: float) -> void:
 	combo_timer = maxf(0.0, combo_timer - dt)
+	dodge_timer = maxf(0.0, dodge_timer - dt)
+	_tick_roll_charges()
 	for id: StringName in buffs.keys():
 		buffs[id].remaining -= dt
 		if buffs[id].remaining <= 0.0:
@@ -101,6 +142,8 @@ func _read_input() -> void:
 	var buffer_time: float = Config.PLAYER.action_buffer_time
 	if _pressed & InputCmd.BTN_SPECIAL:
 		buffered_action = {"type": &"special", "time": buffer_time}
+	if _pressed & InputCmd.BTN_ROLL:
+		buffered_action = {"type": &"roll", "time": buffer_time}
 	for i in ActiveSlots.SLOT_COUNT:
 		if _pressed & InputCmd.slot_bit(i):
 			buffered_action = {"type": &"slot", "index": i, "time": buffer_time}

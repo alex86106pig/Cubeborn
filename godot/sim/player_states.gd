@@ -16,7 +16,20 @@ static func action_states() -> Dictionary:
 		&"special": TimedAction.new(&"special"),
 		&"useItem": UseItem.new(),
 		&"stagger": Stagger.new(),
+		&"roll": Roll.new(),
 	}
+
+
+# 緩衝中的是翻滾：有充能就翻（回傳 true），沒有就提示冷卻並丟掉緩衝
+static func try_roll(p: Player, fsm: StateMachine) -> bool:
+	if p.buffered_action.get("type") != &"roll":
+		return false
+	p.buffered_action = {}
+	if p.roll_charges > 0:
+		fsm.change(&"roll")
+		return true
+	p.world.emit_event("skill:onCooldown", {"key": Player.ROLL_CD, "player_id": p.id})
+	return false
 
 
 # ───────── 移動層 ─────────
@@ -45,6 +58,8 @@ class Ready:
 		data.move_speed_mul = 1.0
 
 	func update(p: Player, _dt: float, fsm: StateMachine) -> void:
+		if PlayerStates.try_roll(p, fsm):
+			return
 		var buffered := p.buffered_action
 		if not buffered.is_empty():
 			p.buffered_action = {}
@@ -102,6 +117,10 @@ class TimedAction:
 			fsm.change(&"ready")
 			return
 		var name := PHASES[d.phase_index]
+		# 普攻的前搖與後搖可以用翻滾取消（揮下去的 active 不行，按鍵留在緩衝等 active 結束）
+		if kind == &"attack" and name != &"active" and p.buffered_action.get("type") == &"roll" and p.roll_charges > 0:
+			PlayerStates.try_roll(p, fsm)
+			return
 		var duration: float = d.durations[d.phase_index]
 		d.k = d.phase_time / duration if duration > 0.0 else 1.0
 		d.behavior.update(p, d.def, d, name, d.k, dt)
@@ -130,6 +149,29 @@ class UseItem:
 	func update(_p: Player, _dt: float, fsm: StateMachine) -> void:
 		if fsm.time >= Config.PLAYER.use_item_time:
 			fsm.change(&"ready")
+
+
+# 翻滾：往移動方向（沒按方向就往面對方向）固定時間位移，開始後一段時間無敵；速度隨移速屬性放大
+class Roll:
+	func enter(p: Player, data: Dictionary, _fsm: StateMachine) -> void:
+		var dir := p.move_input.normalized() if p.move_input.length_squared() > 0.01 else MathUtil.dir_from_angle(p.facing)
+		data.dir = dir
+		data.lock_facing = true
+		data.move_speed_mul = 1.0
+		p.facing = atan2(dir.x, dir.y)
+		p.forced_velocity = dir * p.roll_speed()
+		p.has_forced_velocity = true
+		p.dodge_timer = Config.ROLL.invuln_time
+		p.consume_roll_charge()
+		p.world.emit_event("skill:used", {"key": Player.ROLL_CD, "player_id": p.id})
+		p.world.emit_event("sfx:cue", {"cue": Config.ROLL.sfx})
+
+	func update(_p: Player, _dt: float, fsm: StateMachine) -> void:
+		if fsm.time >= Config.ROLL.duration - 1e-6:
+			fsm.change(&"ready")
+
+	func exit(p: Player, _fsm: StateMachine) -> void:
+		p.has_forced_velocity = false
 
 
 class Stagger:

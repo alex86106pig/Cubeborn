@@ -1,4 +1,4 @@
-# 技能欄（照搬網頁版 HUD 的 skillbar）：左鍵、右鍵、數字鍵 1~5；CD 扇形遮罩與秒數、剩餘次數、閃爍回饋
+# 技能欄（照搬網頁版 HUD 的 skillbar）：左鍵、右鍵、Shift 翻滾（Godot 版新增）、數字鍵 1~5；CD 扇形遮罩與秒數、剩餘次數、閃爍回饋
 class_name SkillBar
 extends HBoxContainer
 
@@ -6,7 +6,8 @@ const SLOT_SIZE := 58.0
 const FLASH_DENY_TIME := 0.3
 const FLASH_USED_TIME := 0.25
 # 打包的字型（Noto Sans TC）沒有這幾個符號，改用向量圖形畫；網頁版沒有系統字型可借
-const DRAWN_ICONS: Array[String] = ["⚔", "🛡", "✦", "✺"]
+const DRAWN_ICONS: Array[String] = ["⚔", "🛡", "✦", "✺", "⟳"]
+const ROLL_ICON := "⟳"
 
 var _slots: Dictionary = {}   # cd key -> Slot
 var _weapon_id: StringName = &""
@@ -35,6 +36,12 @@ func refresh(world: World, player: Player) -> void:
 			if data != null and data.def.mode == &"charges":
 				slot.charges.text = str(data.charges)
 				slot.icon.modulate.a = 0.3 if data.charges <= 0 else 1.0
+		elif key == Player.ROLL_CD:
+			# 翻滾：顯示剩餘次數；還有次數時不蓋遮罩（回充秒數照樣顯示）
+			slot.charges.text = str(player.roll_charges)
+			slot.icon.modulate.a = 0.3 if player.roll_charges <= 0 else 1.0
+			if player.roll_charges > 0:
+				slot.cd_ratio = 0.0
 		slot.queue_redraw()
 
 
@@ -50,6 +57,7 @@ func _build(player: Player) -> void:
 	var w := player.weapon
 	_add_slot("", w.attack.icon, "左鍵", -1, false)
 	_add_slot("player.special", w.special.icon, "右鍵", -1, false)
+	_add_slot(Player.ROLL_CD, ROLL_ICON, "Shift", -1, false)
 	var divider := UiKit.rect(Color(1, 1, 1, 0.25), Vector2(2, 48))
 	divider.size_flags_vertical = Control.SIZE_SHRINK_END
 	add_child(divider)

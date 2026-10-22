@@ -1,4 +1,4 @@
-# 技能欄的向量圖示：打包字型沒有 ⚔ 🛡 ✦ ✺，直接用線條與多邊形畫（約 28 像素見方）
+# 技能欄的向量圖示：打包字型沒有 ⚔ 🛡 ✦ ✺ ⟳（翻滾），直接用線條與多邊形畫（約 28 像素見方）
 class_name SkillIcons
 
 const STEEL := Color("dfe8ff")
@@ -7,6 +7,7 @@ const SHIELD := Color("6f86b8")
 const SHIELD_RIM := Color("dfe8ff")
 const BOLT := Color("7fd8ff")      # 魔彈顏色（weapon_defs 的 staff.attack.color）
 const BURST := Color("c77dff")     # 奧術爆裂顏色（staff.special.color）
+const ROLL := Color("e8eef8")
 const OUTLINE := Color(0, 0, 0, 0.9)
 
 
@@ -35,6 +36,12 @@ static func draw(ci: CanvasItem, icon: String, c: Vector2, alpha: float = 1.0) -
 		"✺":
 			ci.draw_colored_polygon(_star(c, 8, 13.0, 5.5), _a(BURST, alpha))
 			ci.draw_circle(c, 3.5, _a(Color.WHITE, alpha))
+		"⟳":
+			# 翻滾：順時針箭頭圓弧（缺口在右上），箭頭在弧的尾端
+			ci.draw_arc(c, 10.0, -PI / 3.0, PI * 1.5, 24, _a(OUTLINE, alpha), 6.0)
+			ci.draw_arc(c, 10.0, -PI / 3.0, PI * 1.5, 24, _a(ROLL, alpha), 3.0)
+			var end := c + Vector2(cos(-PI / 3.0), sin(-PI / 3.0)) * 10.0
+			ci.draw_colored_polygon(PackedVector2Array([end + Vector2(-6, -3), end + Vector2(5, -4), end + Vector2(1, 6)]), _a(ROLL, alpha))
 
 
 # points 個尖角的星形，從正上方開始

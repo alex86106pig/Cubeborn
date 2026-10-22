@@ -77,6 +77,15 @@ const AUDIO := {
 	"music_fade": 1.0,       # 換曲、死亡、勝利時音樂淡出的秒數
 }
 
+# 翻滾（Godot 版新增，使用者 2026-10-22 決定）：速度與距離隨移速屬性等比放大（÷ PLAYER.move_speed），時間與無敵不變
+const ROLL := {
+	"duration": 0.35,        # 翻滾秒數
+	"distance": 4.0,         # 基礎移速 6.5 時的翻滾距離
+	"invuln_time": 0.2,      # 開始後的無敵秒數（投射物穿過）
+	"cooldown": 1.2,         # 每次充能的回充秒數（乘上 roll_cooldown 屬性）
+	"sfx": "sprint",         # 先借用疾跑音效
+}
+
 # 除錯鍵（Godot 版才有，網頁版沒有）
 const DEBUG := {
 	"speed_bonus": 0.5,      # F3：玩家移速 +50%（驗證屬性系統用）

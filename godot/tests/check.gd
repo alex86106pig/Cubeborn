@@ -87,6 +87,9 @@ func _initialize() -> void:
 	_check("屬性計算：同類相加（+8% ×2 = +16%）、暫時效果與冷卻縮減相乘（0.94 × 0.75 = 0.705）、取整、上下限、來源可移除", _check_stats_formula)
 	_check("護甲與爆擊：護甲 100 減傷 50%、護甲 8 減傷 7.4%；爆擊率 100% 時 ×1.5，爆擊率 0% 不消耗亂數", _check_stats_armor_crit)
 	_check("屬性接上遊戲：攻速 ×2 普攻時間減半、冷卻 ×0.5、最大生命 +20 時目前生命同步增加、每秒回血、除錯移速 +50% = 9.75", _check_stats_hooks)
+	_check("翻滾：0.35 秒翻 4 單位；移速 +50% 時同樣 0.35 秒翻 6 單位；冷卻 1.2 秒（−10% 為 1.08）；次數 +1 可連翻兩次", _check_roll_motion)
+	_check("翻滾無敵：前 0.2 秒打不到、投射物穿過，之後會被打中", _check_roll_invuln)
+	_check("翻滾取消：普攻前搖與後搖可取消；揮下去、特殊技、硬直中先緩衝，結束後才翻", _check_roll_cancel)
 	_check("受擊閃白：只改自發光顏色、不切換 emission_enabled（切換會在第一次命中即時編譯著色器而卡頓）", _check_flash_no_shader_switch)
 	_check("字型：介面文字都在打包的 Noto Sans TC 裡（網頁版沒有系統字型），缺字的圖示改用向量圖", _check_font_coverage)
 	_check("零件合併：依 anchor + 材質合併、外框不變、keep 的零件留在原位、空群組移除、面法線朝外且為正面", _check_merge_static)
@@ -1280,6 +1283,137 @@ func _check_stats_hooks() -> String:
 	return ""
 
 
+# 按一次翻滾（往 +X）直到回到 ready；回傳 [位移, 步數]
+func _do_roll(w: World, p: Player) -> Array:
+	var start := p.pos
+	_run(w, _cmd(Vector2(1, 0), Vector2(0, 5), InputCmd.BTN_ROLL), 1)
+	var steps := 1
+	while p.action.is_in(&"roll") and steps < 300:
+		_run(w, _cmd(Vector2.ZERO), 1)
+		steps += 1
+	# 最後一步已回到 ready（沒有位移），不算在翻滾步數內
+	return [p.pos.distance_to(start), steps - 1]
+
+
+func _check_roll_motion() -> String:
+	var duration_steps := roundi(Config.ROLL.duration / DT)
+	var w := _new_world()
+	var p := _player(w)
+	var r := _do_roll(w, p)
+	if absf(r[0] - 4.0) > 0.02 or r[1] != duration_steps:
+		return "翻滾應 %d 步翻 4 單位，實際 %d 步 %.3f 單位" % [duration_steps, r[1], r[0]]
+	if p.roll_charges != 0:
+		return "翻滾後次數應為 0，實際 %d" % p.roll_charges
+	# 冷卻中再按：不會翻，提示冷卻
+	w.events.clear()
+	_run(w, _cmd(Vector2(1, 0), Vector2(0, 5), InputCmd.BTN_ROLL), 1)
+	if p.action.is_in(&"roll") or _named(w.events, "skill:onCooldown").is_empty():
+		return "沒有次數時按翻滾應提示冷卻、不翻"
+	# 從開始翻滾算起 1.2 秒回滿（已過 22 步）
+	_run(w, _cmd(Vector2.ZERO), roundi(Config.ROLL.cooldown / DT) - duration_steps - 3)
+	if p.roll_charges != 0:
+		return "1.2 秒前不應回充"
+	_run(w, _cmd(Vector2.ZERO), 3)
+	if p.roll_charges != 1:
+		return "1.2 秒後應回充 1 次，實際 %d" % p.roll_charges
+
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	p2.set_stat_source(&"test", [[&"move_speed", Stats.PCT, 0.5]])
+	var fast := _do_roll(w2, p2)
+	if absf(fast[0] - 6.0) > 0.03 or fast[1] != duration_steps:
+		return "移速 +50%% 應 %d 步翻 6 單位，實際 %d 步 %.3f 單位" % [duration_steps, fast[1], fast[0]]
+
+	var w3 := _new_world()
+	var p3 := _player(w3)
+	p3.set_stat_source(&"test", [[&"roll_charges", Stats.ADD, 1.0], [&"roll_cooldown", Stats.MUL, 0.9]])
+	p3.roll_charges = p3.roll_max()
+	_run(w3, _cmd(Vector2(1, 0), Vector2(0, 5), InputCmd.BTN_ROLL), 1)
+	var cd := w3.cooldowns.remaining(Player.ROLL_CD)
+	if absf(cd - 1.08) > DT * 1.5:
+		return "翻滾冷卻 −10%% 應為 1.08 秒，實際 %.3f" % cd
+	while p3.action.is_in(&"roll"):
+		_run(w3, _cmd(Vector2.ZERO), 1)
+	var second := _do_roll(w3, p3)
+	if second[1] != duration_steps or p3.roll_charges != 0:
+		return "次數 +1 應能連翻第二次，實際 %d 步、剩 %d 次" % [second[1], p3.roll_charges]
+	return ""
+
+
+func _check_roll_invuln() -> String:
+	var invuln_steps := roundi(Config.ROLL.invuln_time / DT)
+	var w := _new_world()
+	var p := _player(w)
+	var archer := _spawn(w, &"archer", Vector2(0, 15))
+	# 開始翻滾的那一步算第 1 步，無敵涵蓋第 1 ~ 12 步（0.2 秒）
+	_run(w, _cmd(Vector2(1, 0), Vector2(0, 5), InputCmd.BTN_ROLL), 1)
+	for i in invuln_steps - 2:
+		_run(w, _cmd(Vector2.ZERO), 1)
+	if p.can_be_hit():
+		return "翻滾開始後第 %d 步（0.2 秒內）應無敵" % (invuln_steps - 1)
+	# 第 12 步：投射物放在玩家身上，無敵中直接穿過，不會消失
+	var arrow := Projectile.new(w, {"owner": archer, "pos": p.pos, "direction": Vector2(0, -1), "speed": 0.01, "range": 5.0, "damage": 10.0})
+	w.spawn_projectile(arrow)
+	var hp := p.hp
+	_run(w, _cmd(Vector2.ZERO), 1)
+	if arrow.is_removed or p.hp != hp:
+		return "無敵中投射物應穿過：removed=%s 血量 %.0f → %.0f" % [arrow.is_removed, hp, p.hp]
+	# 第 13 步：無敵結束，投射物命中
+	var arrow2 := Projectile.new(w, {"owner": archer, "pos": p.pos, "direction": Vector2(0, -1), "speed": 0.01, "range": 5.0, "damage": 10.0})
+	w.spawn_projectile(arrow2)
+	_run(w, _cmd(Vector2.ZERO), 1)
+	if not arrow2.is_removed or p.hp >= hp:
+		return "0.2 秒後投射物應命中：removed=%s 血量 %.0f → %.0f" % [arrow2.is_removed, hp, p.hp]
+	return ""
+
+
+func _check_roll_cancel() -> String:
+	var roll := _cmd(Vector2(1, 0), Vector2(0, 5), InputCmd.BTN_ROLL)
+	# 前搖
+	var w := _new_world()
+	var p := _player(w)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1)
+	if not (p.action.is_in(&"attack") and p.action.data.phase_index == 0):
+		return "按攻擊後應在前搖"
+	_run(w, roll, 1)
+	if not p.action.is_in(&"roll"):
+		return "前搖應能用翻滾取消，實際狀態 %s" % p.action.current_name
+	# 揮下去（active）：先緩衝，active 結束後進入後搖就翻
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1)
+	while p2.action.is_in(&"attack") and p2.action.data.phase_index == 0:
+		_run(w2, _cmd(Vector2.ZERO), 1)
+	_run(w2, roll, 1)
+	if not (p2.action.is_in(&"attack") and p2.action.data.phase_index == 1):
+		return "揮下去時不應被翻滾取消，實際狀態 %s" % p2.action.current_name
+	var waited := 0
+	while not p2.action.is_in(&"roll") and waited < 30:
+		_run(w2, _cmd(Vector2.ZERO), 1)
+		waited += 1
+	if not p2.action.is_in(&"roll") or waited > roundi(0.09 / DT) + 1:
+		return "揮下去結束後應接著翻滾（%d 步）" % waited
+	# 特殊技與硬直：不取消，結束後在緩衝時間內翻
+	for state in [&"special", &"stagger"]:
+		var w3 := _new_world()
+		var p3 := _player(w3)
+		if state == &"special":
+			_run(w3, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 1)
+		else:
+			p3.action.change(&"stagger")
+		_run(w3, roll, 1)
+		if p3.action.is_in(&"roll"):
+			return "%s 中不應被翻滾取消" % state
+	var w4 := _new_world()
+	var p4 := _player(w4)
+	p4.action.change(&"stagger")
+	_run(w4, roll, 1)
+	_run(w4, _cmd(Vector2.ZERO), roundi(Config.PLAYER.stagger_time / DT) + 1)
+	if not p4.action.is_in(&"roll"):
+		return "硬直結束後應執行緩衝的翻滾，實際狀態 %s" % p4.action.current_name
+	return ""
+
+
 func _check_flash_no_shader_switch() -> String:
 	var kit := PartKit.new()
 	var m := kit.mat(Color("8899aa"))
@@ -1306,9 +1440,12 @@ func _check_font_coverage() -> String:
 		texts.append_array([s.name, s.icon])
 	var hud_consts: Dictionary = load("res://ui/hud.gd").get_script_constant_map()
 	texts.append_array([hud_consts.CONTROLS_TEXT, hud_consts.BOSS_NAME])
+	for s: Dictionary in StatDefs.STATS.values():
+		texts.append(s.name)
+	texts.append(StatDefs.format_value(&"armor", 8.0) + StatDefs.format_value(&"hp_regen", 1.0))
 	# HUD 程式裡的字串常值（標題、橫幅、結算、按鍵名稱）
 	var re := RegEx.create_from_string("\"([^\"\\\\]*)\"")
-	for path in ["res://ui/hud.gd", "res://ui/skill_bar.gd"]:
+	for path in ["res://ui/hud.gd", "res://ui/skill_bar.gd", "res://ui/stats_panel.gd"]:
 		for m in re.search_all(_read_text(path)):
 			texts.append(m.get_string(1))
 	var missing := {}

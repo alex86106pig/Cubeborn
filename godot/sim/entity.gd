@@ -66,7 +66,12 @@ func _on_max_hp_changed(before: float) -> void:
 
 
 func can_be_hit() -> bool:
-	return not is_dead and invuln_timer <= 0.0
+	return not is_dead and invuln_timer <= 0.0 and not is_dodging()
+
+
+# 閃避中（翻滾無敵）：不能被打中，投射物直接穿過；受傷後的無敵時間則仍會擋下投射物
+func is_dodging() -> bool:
+	return false
 
 
 # dir 為已正規化的 XZ 方向；回傳實際傷害（套用護甲與受傷倍率），未命中回傳 -1

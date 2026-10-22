@@ -22,9 +22,9 @@ const STATS := {
 	# 移動與冷卻（冷卻縮減的道具用 mul，疊再多也不會到 0）
 	&"move_speed": {"name": "移速", "base": 1.0, "min": 0.0, "max": INF, "format": &"float", "in_use": true},
 	&"cooldown": {"name": "技能冷卻", "base": 1.0, "min": 0.05, "max": INF, "format": &"pct", "in_use": true},
+	&"roll_cooldown": {"name": "翻滾冷卻", "base": 1.0, "min": 0.05, "max": INF, "format": &"pct", "in_use": true},
+	&"roll_charges": {"name": "翻滾次數", "base": 1.0, "min": 1.0, "max": INF, "round": true, "format": &"int", "in_use": true},
 	# 已定名、之後的里程碑才接上
-	&"roll_cooldown": {"name": "翻滾冷卻", "base": 1.0, "min": 0.05, "max": INF, "format": &"pct", "in_use": false},
-	&"roll_charges": {"name": "翻滾次數", "base": 1.0, "min": 1.0, "max": INF, "round": true, "format": &"int", "in_use": false},
 	&"projectile_damage_taken": {"name": "受到投射物傷害", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": false},
 	&"life_on_hit": {"name": "命中回復", "base": 0.0, "min": 0.0, "max": INF, "format": &"float", "in_use": false},
 	&"lifesteal": {"name": "吸血", "base": 0.0, "min": 0.0, "max": 1.0, "format": &"pct", "in_use": false},

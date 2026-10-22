@@ -6,6 +6,7 @@ const BTN_ATTACK := 1 << 0       # 左鍵（按住）
 const BTN_SPECIAL := 1 << 1      # 右鍵（本步按下）
 const BTN_SLOT_FIRST := 1 << 2   # 數字鍵 1（本步按下），2~5 依序左移
 const SLOT_COUNT := 5
+const BTN_ROLL := 1 << 7         # 左 Shift 翻滾（本步按下）；數字鍵占用 1 << 2 ~ 1 << 6
 
 var tick := 0
 var move := Vector2.ZERO   # 世界 XZ 方向，長度 ≤ 1

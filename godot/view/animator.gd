@@ -9,6 +9,7 @@ const IDLE_SHARPNESS := 18.0
 const DEATH_FALL_TIME := 0.45
 const BLINK_RATE := 20.0      # 無敵時間每秒閃爍次數
 const GEM_SPIN := 3.0         # 法杖寶石自轉（弧度/秒；網頁版每幀 0.05 × 60）
+const ROLL_CENTER := 0.4      # 翻滾的旋轉中心（角色高度的比例）
 
 var rig: Rig
 var walk_phase := 0.0
@@ -23,6 +24,7 @@ func _init(p_rig: Rig) -> void:
 func update(p: Player, dt: float) -> void:
 	rig.set_weapon(p.weapon.model)
 	var a := p.anim
+	rig.body.position.z = 0.0   # 只有翻滾會移動 body 的前後位置
 	_pose_locomotion(p, a, dt)
 	if a.loco != &"dead":
 		_pose_action(p, a, dt)
@@ -96,6 +98,23 @@ func _pose_action(p: Player, a: Dictionary, dt: float) -> void:
 		&"stagger":
 			var k := clampf(a.action_time / Config.PLAYER.stagger_time, 0.0, 1.0)
 			rig.body.rotation.x = -0.3 * sin(k * PI)
+		&"roll":
+			_pose_roll(clampf(a.action_time / Config.ROLL.duration, 0.0, 1.0))
+
+
+# 翻滾：繞身體中心往前翻一圈（body 樞紐在腳底，所以同時位移讓中心不動），四肢縮起
+func _pose_roll(k: float) -> void:
+	var angle := TAU * smoothstep(0.0, 1.0, k)
+	var center := rig.height * ROLL_CENTER
+	rig.body.rotation.x = wrapf(angle, -PI, PI)   # 結束時接近 0，回到待機姿勢不會倒轉一圈
+	rig.body.rotation.y = 0.0
+	rig.body.position.y = center - center * cos(angle)
+	rig.body.position.z = -center * sin(angle)
+	var tuck := sin(k * PI)
+	rig.leg_r.rotation.x = -1.4 * tuck
+	rig.leg_l.rotation.x = -1.4 * tuck
+	rig.arm_r.rotation.x = -1.0 * tuck
+	rig.arm_l.rotation.x = -1.0 * tuck
 
 
 # 上半身平滑回到武器待機姿勢；手臂隨走路擺動
