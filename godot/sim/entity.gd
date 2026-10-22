@@ -29,6 +29,11 @@ var velocity := Vector2.ZERO      # 本步主動移動速度，由各實體 upda
 var knockback := Vector2.ZERO     # 被動位移速度，指數衰減
 var facing := 0.0
 var prev_facing := 0.0
+var height := 0.0                 # 腳底離地高度（Y）
+var prev_height := 0.0
+var vz := 0.0                     # 垂直速度（向上為正）
+var ground_height := 0.0          # 腳下的地面高度（地形石台頂面或 0）
+var body_height := 2.0            # 身高：命中判定佔 [height, height + body_height]
 var invuln_timer := 0.0
 var flash_timer := 0.0
 var is_dead := false
@@ -40,6 +45,7 @@ func _init(p_world: World, p_kind: StringName, p_team: StringName, p_radius: flo
 	kind = p_kind
 	team = p_team
 	radius = p_radius
+	body_height = Config.HEIGHT.body.get(p_kind, Config.HEIGHT.default_body)
 	stats = Stats.new({&"max_hp": p_max_hp})
 	hp = max_hp
 	mass = p_mass
@@ -125,6 +131,35 @@ func integrate(dt: float) -> void:
 	var regen := stats.value(&"hp_regen")
 	if regen > 0.0:
 		heal(regen * dt)
+
+
+static func gravity() -> float:
+	return 8.0 * Config.JUMP.height / pow(Config.JUMP.air_time, 2.0)
+
+
+func is_grounded() -> bool:
+	return height <= ground_height + 1e-4 and vz <= 0.0
+
+
+# 高度範圍 [low, high] 是否與身體重疊
+func overlaps_height(low: float, high: float) -> bool:
+	return low < height + body_height and high > height
+
+
+# 垂直移動：在水平位置與地形碰撞都決定後呼叫；離開地面就受重力下墜，落到地面為止
+func integrate_vertical(dt: float, terrain: Terrain) -> void:
+	ground_height = terrain.ground_at(pos)
+	if vz > 0.0 or height > ground_height + 1e-4:
+		# 用前後速度的平均（等加速度的精確解）：60 步 / 秒時最高點正好 1.5、36 步落地
+		var v0 := vz
+		vz -= gravity() * dt
+		height += (v0 + vz) * 0.5 * dt
+		if height <= ground_height:
+			height = ground_height
+			vz = 0.0
+	else:
+		height = ground_height
+		vz = 0.0
 
 
 func remove() -> void:

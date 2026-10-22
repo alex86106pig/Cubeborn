@@ -17,11 +17,15 @@ static func hostiles_of(world: World, team: StringName) -> Array[Entity]:
 
 
 # hit：damage（已含攻擊者的攻擊力，由發動招式的一方計算）、knockback、origin（預設 source.pos，擊退方向為 origin → target）、
-#      hit_stop、shake、is_heavy（重擊：第三段、盾擊、爆炸，只影響顯示與音效）
+#      hit_stop、shake、is_heavy（重擊：第三段、盾擊、爆炸，只影響顯示與音效）、
+#      band（高度範圍 Vector2(下緣, 上緣)；預設是攻擊者的身體往腳底下延伸 HEIGHT.reach_below，見 body_band）
 # 這裡套用攻擊者的爆擊與擊退屬性；護甲與受傷倍率在 Entity.take_damage
-# 回傳是否實際命中
+# 回傳是否實際命中（高度不重疊也算沒命中）
 static func apply_damage(world: World, source: Entity, target: Entity, hit: Dictionary) -> bool:
 	if target == null or not target.can_be_hit():
+		return false
+	var band: Vector2 = hit.get("band", body_band(source))
+	if not target.overlaps_height(band.x, band.y):
 		return false
 	var origin: Vector2 = hit.get("origin", source.pos)
 	var dir := target.pos - origin
@@ -52,6 +56,16 @@ static func apply_damage(world: World, source: Entity, target: Entity, hit: Dict
 	if shake > 0.0:
 		world.emit_event("camera:shake", {"amount": shake, "duration": Config.COMBAT.hit_shake_duration})
 	return true
+
+
+# 近戰、碰撞、衝鋒的預設高度範圍：攻擊者的身體，往腳底下延伸一點（空中揮砍打得到地上的怪）
+static func body_band(e: Entity) -> Vector2:
+	return Vector2(e.height - Config.HEIGHT.reach_below, e.height + e.body_height)
+
+
+# 以 center 高度為中心、上下各 half 的範圍（投射物）
+static func band_around(center: float, half: float) -> Vector2:
+	return Vector2(center - half, center + half)
 
 
 # 扇形判定：考慮目標半徑，貼身目標一律命中

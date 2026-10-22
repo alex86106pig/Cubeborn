@@ -31,8 +31,12 @@ static func aim_direction(p: Player) -> Vector2:
 	return v.normalized()
 
 
+# 玩家投射物從胸口高度發射；在空中發射時，飛出 bolt_settle_distance 內降回離地 bolt_altitude（才打得到地上的怪）
 static func spawn_projectile(p: Player, params: Dictionary) -> void:
 	params["owner"] = p
+	params["altitude"] = p.height + Config.HEIGHT.bolt_altitude
+	params["settle_altitude"] = Config.HEIGHT.bolt_altitude
+	params["settle_distance"] = Config.HEIGHT.bolt_settle_distance
 	p.world.spawn_projectile(Projectile.new(p.world, params))
 
 

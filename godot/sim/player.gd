@@ -38,6 +38,14 @@ func _init(p_world: World, p_peer_id: int) -> void:
 	_update_anim()
 
 
+# 跳躍：站在地面上隨時可以跳（攻擊、翻滾中也行），受擊硬直與倒地時不行；只有一段跳
+func try_jump() -> bool:
+	if is_dead or not is_grounded() or action.is_in(&"stagger"):
+		return false
+	vz = 4.0 * Config.JUMP.height / Config.JUMP.air_time
+	return true
+
+
 func roll_max() -> int:
 	return int(stats.value(&"roll_charges"))
 
@@ -144,6 +152,8 @@ func _read_input() -> void:
 		buffered_action = {"type": &"special", "time": buffer_time}
 	if _pressed & InputCmd.BTN_ROLL:
 		buffered_action = {"type": &"roll", "time": buffer_time}
+	if _pressed & InputCmd.BTN_JUMP:
+		try_jump()
 	for i in ActiveSlots.SLOT_COUNT:
 		if _pressed & InputCmd.slot_bit(i):
 			buffered_action = {"type": &"slot", "index": i, "time": buffer_time}
@@ -173,6 +183,8 @@ func _update_anim() -> void:
 		"swing_dir": d.get("swing_dir", 1),
 		"is_finisher": d.get("is_finisher", false),
 		"trail_color": trail_color(),   # 疾跑殘影（特效里程碑再畫）
+		"airborne": not is_grounded(),
+		"vz": vz,
 	}
 
 

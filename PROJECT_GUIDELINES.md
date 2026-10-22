@@ -132,6 +132,7 @@ Cubeborn/
 | 滑鼠游標 | 射線投射到地面平面得到瞄準點，角色面朝該點 |
 | 滑鼠左鍵 | 普通攻擊（按住可連續攻擊） |
 | 滑鼠右鍵 | 武器特殊技（受 CD 管理） |
+| 空白鍵 | 跳躍（Godot 版，見 15.13；只有一段跳） |
 | Shift | 翻滾（Godot 版，見 15.12；受次數與回充管理） |
 | 1 ~ 5 | 主動欄位（受 CD 或次數管理） |
 | Tab | 屬性面板（Godot 版） |
@@ -418,7 +419,7 @@ InputCollector ──► InputCmd ──► World.step(cmds, dt) ──► 快�
 ### 15.7 多人連線（階段二實作，階段一就要遵守資料形狀）
 - **權威**：房主（peer id 1）跑唯一的 `world`。傷害、死亡、生成、掉落、隨機一律由房主決定；其他玩家不跑 `world.step()`。
 - **InputCmd**：`{ tick, move: Vector2, aim: Vector2, buttons: int }`，`buttons` 為位元旗標（攻擊按住、右鍵按下、1~5 按下）。玩家每步送出，用 unreliable 通道並夾帶最近幾筆未確認的輸入以防掉包。
-- **快照**：房主每 3 步（20 次/秒）送出所有實體的 `id、類型、x、z、facing、hp、anim`，加上該玩家自己的 CD 與欄位；unreliable 通道。事件走 reliable 通道。
+- **快照**：房主每 3 步（20 次/秒）送出所有實體的 `id、類型、x、z、height（v0.16.0 起）、facing、hp、anim`，加上該玩家自己的 CD 與欄位；unreliable 通道。事件走 reliable 通道。
 - **其他玩家的畫面**：遠端實體保留約 100 ms 的快照緩衝，在兩次快照之間補間。
 - **自己的角色**：移動先在本機預測（用同一份 `sim/` 移動程式），收到快照後以伺服器位置為準，重播尚未確認的輸入修正。攻擊與技能是否也預測，留到階段二量延遲後決定。
 - **玩家對應**：`world.players` 以 peer id 為 key；單機的唯一玩家也是 peer id 1。
@@ -432,8 +433,8 @@ godot/
 ├─ main.tscn / main.gd        組合根：建立 world、輸入、畫面，主迴圈、重新開始
 ├─ core/                      與遊戲內容無關：config.gd、version.gd、math_util.gd、state_machine.gd、cooldowns.gd、
 │                             game_events.gd（autoload GameEvents）
-├─ defs/                      資料表：weapon_defs.gd、skill_defs.gd、enemy_defs.gd、wave_defs.gd、stat_defs.gd
-├─ sim/                       模擬層：world.gd、input_cmd.gd、stats.gd、entity.gd、player.gd、player_states.gd、enemy.gd、
+├─ defs/                      資料表：weapon_defs.gd、skill_defs.gd、enemy_defs.gd、wave_defs.gd、stat_defs.gd、terrain_defs.gd
+├─ sim/                       模擬層：world.gd、input_cmd.gd、stats.gd、terrain.gd、entity.gd、player.gd、player_states.gd、enemy.gd、
 │  │                          enemies/（melee_enemy、ranged_enemy、boss）、projectile.gd、combat.gd、
 │  │                          physics.gd、spawner.gd、weapon_behaviors.gd、skill_behaviors.gd、active_slots.gd
 ├─ input/                     input_collector.gd（按鍵在程式中註冊，不寫在 project.godot）
@@ -494,3 +495,13 @@ godot/
 - 無敵用 `player.dodge_timer`（`Entity.is_dodging()`）：不能被打中，投射物直接穿過；受傷後的無敵時間（`invuln_timer`）則照舊擋下投射物。
 - 充能：`player.roll_charges`，上限是 `roll_charges` 屬性；回充計時用 CD key `player.roll`（乘 `roll_cooldown` 屬性），一次回 1 格，沒滿就接著回充。
 - 移速只算屬性（含疾跑等暫時加成），動作本身的走路減速（攻擊、硬直）不算。
+
+### 15.13 跳躍、高度與地形（v0.16.0）
+- 使用者決定：空白鍵、最高 1.5、起跳到落地 0.6 秒、只有一段跳；空中可以攻擊、用技能與道具、翻滾（空中翻滾照常下墜）；命中照實際高度計算。數值在 `core/config.gd` 的 `JUMP` 與 `HEIGHT`。
+- 高度是模擬層的資料：`entity.height`（腳底）、`vz`、`ground_height`、`body_height`（身高，依 kind 查 `HEIGHT.body`）。重力 = 8 × 高度 ÷ 時間²，所有實體共用；垂直移動在 `World.step` 的碰撞分離與地形推擠之後（`Entity.integrate_vertical`，用前後速度平均，60 步 / 秒時第 18 步最高 1.5、第 36 步落地）。
+- 起跳：`InputCmd.BTN_JUMP`，站在地面上隨時可跳（攻擊、翻滾中也行），硬直與倒地不行；落地沒有硬直。
+- **命中高度**：目標佔 [height, height + body_height]；攻擊用 `hit.band`（Vector2 下緣、上緣）。沒給 band 時用攻擊者身體往腳底下延伸 `reach_below`（近戰、碰撞、衝鋒）。投射物是飛行高度 ± `projectile_half`，高度不重疊就從頭頂 / 腳下穿過；爆炸是地面往上 `explosion_height`；Boss 砸地只到 `slam_height`。
+- 投射物的 `height` 就是飛行高度：敵人箭矢 = 發射者腳底 + `arrow_altitude`、高度不變；玩家投射物 = 腳底 + `bolt_altitude`，在空中發射時飛出 `bolt_settle_distance` 內降回離地 `bolt_altitude`。撞到比飛行高度高的石台就結束（會爆炸的照樣爆炸）。
+- 碰撞分離：高度不重疊的兩個實體不互推。
+- **地形**：`sim/terrain.gd`，石台資料在 `defs/terrain_defs.gd`（目前只有場地角落的測試石台 0.5 / 1.0 / 2.5，D1 換成正式地圖）。腳底 ≥ 頂面 − `HEIGHT.step` 才能站上去，否則石台當牆、把實體推出去；圓心在石台範圍內時地面高度就是頂面。怪物不會跳。
+- 連線：快照的實體欄位要加 `height`（15.7）。

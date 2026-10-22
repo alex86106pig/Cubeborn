@@ -4,7 +4,6 @@ class_name WorldView
 extends Node3D
 
 const HITBOX_COLOR := Color(1.0, 0.93, 0.0, 0.8)
-const ARROW_HEIGHT_RATIO := 0.6   # 箭的飛行高度 = 弓手身高 × 0.6（網頁版 RangedEnemy.js，約 1.17）
 
 var show_hitboxes := false
 var _nodes: Dictionary = {}       # entity id -> Node3D
@@ -47,7 +46,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 			_nodes[id] = _create_view(e)
 		var node: Node3D = _nodes[id]
 		var p := e.prev_pos.lerp(e.pos, alpha)
-		node.position = Vector3(p.x, 0.0, p.y)
+		node.position = Vector3(p.x, lerpf(e.prev_height, e.height, alpha), p.y)
 		node.rotation.y = lerp_angle(e.prev_facing, e.facing, alpha)
 		node.get_node(^"Hitbox").visible = show_hitboxes
 		if _animators.has(id):
@@ -75,7 +74,7 @@ func _create_view(e: Entity) -> Node3D:
 	return root
 
 
-# 發光球體，飛行高度固定（網頁版 Projectile 的預設外觀）
+# 發光球體（網頁版 Projectile 的預設外觀）；飛行高度由模擬層的 height 決定
 func _create_projectile(e: Projectile) -> Node3D:
 	var root := Node3D.new()
 	var ball := MeshInstance3D.new()
@@ -85,7 +84,6 @@ func _create_projectile(e: Projectile) -> Node3D:
 	sphere.radial_segments = 12
 	sphere.rings = 6
 	ball.mesh = sphere
-	ball.position.y = Config.COMBAT.projectile_height
 	ball.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -95,12 +93,10 @@ func _create_projectile(e: Projectile) -> Node3D:
 	return root
 
 
-# 敵人箭矢：細長箭身沿 +Z、發光箭頭（DarkFantasy.enemy_projectile）
+# 敵人箭矢：細長箭身沿 +Z、發光箭頭（DarkFantasy.enemy_projectile）；飛行高度由模擬層決定（HEIGHT.arrow_altitude）
 func _create_arrow(e: Projectile) -> Node3D:
 	var root := Node3D.new()
-	var arrow := DarkFantasy.enemy_projectile(e.color)
-	arrow.position.y = DarkFantasy.SKELETON_JOINTS.height * ARROW_HEIGHT_RATIO
-	root.add_child(arrow)
+	root.add_child(DarkFantasy.enemy_projectile(e.color))
 	return root
 
 

@@ -17,6 +17,7 @@ var stats := {"wave": 0, "kills": 0, "time": 0.0}
 var is_over := false                 # 通關後為 true
 var hit_stop_timer := 0.0            # 剩餘的命中停頓（真實秒數），由主迴圈換算成時間縮放
 var arena_half_size: float = Config.WORLD.arena_half_size
+var terrain := Terrain.new(TerrainDefs.TEST_BLOCKS)
 var spawner := Spawner.new()
 var boss_id := 0                     # 目前的 Boss（0 = 沒有），HUD 的 Boss 血條用
 var victory_timer := 0.0
@@ -58,6 +59,7 @@ func add_entity(e: Entity) -> Entity:
 	_next_id += 1
 	e.prev_pos = e.pos
 	e.prev_facing = e.facing
+	e.prev_height = e.height
 	entities[e.id] = e
 	if e is Player:
 		players[e.peer_id] = e
@@ -139,6 +141,7 @@ func step(cmds: Dictionary, dt: float) -> void:
 	for e: Entity in entities.values():
 		e.prev_pos = e.pos
 		e.prev_facing = e.facing
+		e.prev_height = e.height
 
 	cooldowns.tick(dt)
 
@@ -160,7 +163,9 @@ func step(cmds: Dictionary, dt: float) -> void:
 		b.integrate(dt)
 	SimPhysics.separate(_bodies, rng)
 	for b in _bodies:
+		terrain.push_out(b)
 		SimPhysics.clamp_to_arena(b, arena_half_size)
+		b.integrate_vertical(dt, terrain)
 	_bodies.clear()   # 不留參照，已移除的實體才能立即釋放
 
 	spawner.update(self, dt)

@@ -90,6 +90,9 @@ func _initialize() -> void:
 	_check("翻滾：0.35 秒翻 4 單位；移速 +50% 時同樣 0.35 秒翻 6 單位；冷卻 1.2 秒（−10% 為 1.08）；次數 +1 可連翻兩次", _check_roll_motion)
 	_check("翻滾無敵：前 0.2 秒打不到、投射物穿過，之後會被打中", _check_roll_invuln)
 	_check("翻滾取消：普攻前搖與後搖可取消；揮下去、特殊技、硬直中先緩衝，結束後才翻", _check_roll_cancel)
+	_check("跳躍：第 18 步最高 1.5、第 36 步落地；空中不能再跳；攻擊中可以跳、硬直中不行；空中翻滾照常下墜且一樣翻 4 單位", _check_jump_motion)
+	_check("地形：0.5 石台走不上去、跳得上去；從 0.5 跳上 1.0；走出邊緣會掉回地面；2.5 的牆跳不過去", _check_terrain)
+	_check("高度判定：最高點時箭從腳下飛過、地面會中箭；跳起來躲過 Boss 砸地；空中揮砍與空中魔彈打得到地上的怪", _check_height_hits)
 	_check("受擊閃白：只改自發光顏色、不切換 emission_enabled（切換會在第一次命中即時編譯著色器而卡頓）", _check_flash_no_shader_switch)
 	_check("字型：介面文字都在打包的 Noto Sans TC 裡（網頁版沒有系統字型），缺字的圖示改用向量圖", _check_font_coverage)
 	_check("零件合併：依 anchor + 材質合併、外框不變、keep 的零件留在原位、空群組移除、面法線朝外且為正面", _check_merge_static)
@@ -1411,6 +1414,164 @@ func _check_roll_cancel() -> String:
 	_run(w4, _cmd(Vector2.ZERO), roundi(Config.PLAYER.stagger_time / DT) + 1)
 	if not p4.action.is_in(&"roll"):
 		return "硬直結束後應執行緩衝的翻滾，實際狀態 %s" % p4.action.current_name
+	return ""
+
+
+func _jump_cmd(move: Vector2 = Vector2.ZERO, extra: int = 0) -> InputCmd:
+	return _cmd(move, Vector2(0, 5), InputCmd.BTN_JUMP | extra)
+
+
+func _check_jump_motion() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	_run(w, _jump_cmd(), 1)
+	var peak := p.height
+	var peak_step := 1
+	var steps := 1
+	while not p.is_grounded() and steps < 200:
+		_run(w, _cmd(Vector2.ZERO), 1)
+		steps += 1
+		if p.height > peak:
+			peak = p.height
+			peak_step = steps
+	if absf(peak - 1.5) > 0.005 or peak_step != 18 or steps != 36:
+		return "最高 %.3f（第 %d 步）、第 %d 步落地；預期 1.5、第 18 步、第 36 步" % [peak, peak_step, steps]
+	# 空中再按跳躍不會再往上
+	_run(w, _jump_cmd(), 10)
+	var vz_before := p.vz
+	_run(w, _jump_cmd(), 1)
+	if p.vz > vz_before:
+		return "空中再按跳躍不應再往上（二段跳）"
+	while not p.is_grounded():
+		_run(w, _cmd(Vector2.ZERO), 1)
+	# 攻擊中可以跳
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1)
+	_run(w, _jump_cmd(Vector2.ZERO, InputCmd.BTN_ATTACK), 1)
+	if not p.action.is_in(&"attack") or p.height <= 0.0:
+		return "攻擊中應能起跳（狀態 %s、高度 %.2f）" % [p.action.current_name, p.height]
+	while not p.is_grounded():
+		_run(w, _cmd(Vector2.ZERO), 1)
+	_run(w, _cmd(Vector2.ZERO), 30)
+	# 硬直中不能跳
+	p.action.change(&"stagger")
+	_run(w, _jump_cmd(), 1)
+	if p.height > 0.0:
+		return "硬直中不應能跳"
+	_run(w, _cmd(Vector2.ZERO), 30)
+	# 空中翻滾：高度持續下降、水平一樣 4 單位
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	_run(w2, _jump_cmd(), 18)
+	var h0 := p2.height
+	var r := _do_roll(w2, p2)
+	if absf(r[0] - 4.0) > 0.02:
+		return "空中翻滾水平應為 4 單位，實際 %.3f" % r[0]
+	if p2.height >= h0:
+		return "空中翻滾應照常下墜（%.2f → %.2f）" % [h0, p2.height]
+	return ""
+
+
+# 往 move 方向走 steps 步，可選擇第一步起跳
+func _walk(w: World, move: Vector2, steps: int, jump := false) -> void:
+	if jump:
+		_run(w, _jump_cmd(move), 1)
+		steps -= 1
+	_run(w, _cmd(move), steps)
+
+
+func _check_terrain() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	# 0.5 石台：x 7.75~10.25、z 10.75~13.25
+	p.pos = Vector2(9.0, 9.5)
+	_walk(w, Vector2(0, 1), 60)
+	if p.pos.y > 10.75 - p.radius + 0.01 or p.height != 0.0:
+		return "0.5 石台應走不上去：z %.2f、高度 %.2f" % [p.pos.y, p.height]
+	# 走 20 步（約 2.2 單位）再原地等落地：停在石台上，不會走過整塊掉下去
+	_walk(w, Vector2(0, 1), 20, true)
+	_run(w, _cmd(Vector2.ZERO), 30)
+	if absf(p.height - 0.5) > 1e-3 or p.pos.y < 10.75:
+		return "應跳上 0.5 石台：z %.2f、高度 %.3f" % [p.pos.y, p.height]
+	# 往 +X 走到 1.0 石台（x 10.25 起）：走不上去，跳得上去
+	p.pos = Vector2(9.0, 12.0)
+	_walk(w, Vector2(1, 0), 40)
+	if p.height > 0.5 + 1e-3 or p.pos.x > 10.25 - p.radius + 0.01:
+		return "從 0.5 應走不上 1.0：x %.2f、高度 %.2f" % [p.pos.x, p.height]
+	_walk(w, Vector2(1, 0), 20, true)
+	_run(w, _cmd(Vector2.ZERO), 30)
+	if absf(p.height - 1.0) > 1e-3:
+		return "應從 0.5 跳上 1.0 石台，實際高度 %.3f（x %.2f）" % [p.height, p.pos.x]
+	# 走出 1.0 石台的 +X 邊緣（13.75）會掉回地面
+	_walk(w, Vector2(1, 0), 60)
+	if p.height != 0.0 or p.pos.x < 13.75:
+		return "走出邊緣應掉回地面：x %.2f、高度 %.2f" % [p.pos.x, p.height]
+	# 2.5 的牆（z 7.5~8.5）：從南邊一直跳也過不去
+	p.pos = Vector2(11.0, 5.0)
+	for i in 4:
+		_walk(w, Vector2(0, 1), 40, true)
+	if p.pos.y > 7.5 - p.radius + 0.01:
+		return "2.5 的牆不應跳得過：z %.2f、高度 %.2f" % [p.pos.y, p.height]
+	return ""
+
+
+func _check_height_hits() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var archer := _spawn(w, &"archer", Vector2(0, 15))
+	var arrow_at := func() -> Projectile:
+		var a := Projectile.new(w, {"owner": archer, "pos": p.pos, "direction": Vector2(0, -1), "speed": 0.01,
+			"range": 5.0, "damage": 10.0, "altitude": Config.HEIGHT.arrow_altitude})
+		w.spawn_projectile(a)
+		return a
+	_run(w, _jump_cmd(), 18)
+	var hp := p.hp
+	var high: Projectile = arrow_at.call()
+	_run(w, _cmd(Vector2.ZERO), 1)
+	if high.is_removed or p.hp != hp:
+		return "最高點（%.2f）時箭應從腳下飛過" % p.height
+	high.remove()
+	while not p.is_grounded():
+		_run(w, _cmd(Vector2.ZERO), 1)
+	var low: Projectile = arrow_at.call()
+	_run(w, _cmd(Vector2.ZERO), 1)
+	if not low.is_removed or p.hp >= hp:
+		return "站在地面應中箭"
+
+	# Boss 砸地：腳底高於 0.5 打不到
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	var boss := _spawn(w2, &"boss", Vector2(0, 2.0))
+	p2.height = 0.8
+	var hp2 := p2.hp
+	boss.slam_impact()
+	if p2.hp != hp2:
+		return "腳底 0.8 時不應被砸地打到"
+	p2.height = 0.0
+	boss.slam_impact()
+	if p2.hp >= hp2:
+		return "站在地面應被砸地打到"
+
+	# 空中揮砍打得到地上的骷髏
+	var w3 := _new_world()
+	var p3 := _player(w3)
+	var g := _spawn(w3, &"grunt", Vector2(0, 1.3))
+	_run(w3, _jump_cmd(), 17)
+	var g_hp := g.hp
+	_run(w3, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 12)
+	if g.hp >= g_hp:
+		return "空中揮砍（高度 %.2f）應打得到地上的骷髏" % p3.height
+
+	# 空中魔彈：從 2.75 發射，3 單位內降到 1.25，打得到 4.5 單位外的骷髏
+	var w4 := _new_world()
+	var p4 := _player(w4)
+	p4.equip_weapon(&"staff")
+	var g4 := _spawn(w4, &"grunt", Vector2(0, 4.5))
+	_run(w4, _jump_cmd(Vector2.ZERO), 16)
+	var g4_hp := g4.hp
+	_run(w4, _cmd(Vector2.ZERO, Vector2(0, 4.5), InputCmd.BTN_ATTACK), 1)
+	_run(w4, _cmd(Vector2.ZERO, Vector2(0, 4.5)), 40)
+	if g4.hp >= g4_hp:
+		return "空中魔彈應降回胸口高度、打得到地上的骷髏"
 	return ""
 
 

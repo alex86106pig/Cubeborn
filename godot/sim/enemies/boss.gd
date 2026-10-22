@@ -42,9 +42,11 @@ func _anim_extra(a: Dictionary) -> void:
 func slam_impact() -> void:
 	world.emit_event("sfx:cue", {"cue": "bossSlam"})
 	var s: Dictionary = def.slam
+	# 貼地的衝擊：腳底高於 HEIGHT.slam_height 的目標（跳起來）打不到
+	var band := Vector2(height - Config.HEIGHT.reach_below, height + Config.HEIGHT.slam_height)
 	for target in Combat.query_circle(pos, s.radius, Combat.hostiles_of(world, team)):
 		Combat.apply_damage(world, self, target, {
-			"damage": s.damage * damage_mul, "knockback": s.knockback, "hit_stop": s.hit_stop,
+			"damage": s.damage * damage_mul, "knockback": s.knockback, "hit_stop": s.hit_stop, "band": band,
 		})
 	world.emit_event("camera:shake", {"amount": s.shake, "duration": s.shake_duration})
 

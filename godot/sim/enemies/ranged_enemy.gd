@@ -27,7 +27,7 @@ func fire() -> void:
 		"owner": self, "pos": pos + dir * def.projectile_offset, "direction": dir,
 		"speed": def.projectile_speed, "range": def.projectile_range, "radius": def.projectile_radius,
 		"damage": def.projectile_damage * damage_mul, "knockback": def.projectile_knockback,
-		"color": def.projectile_color, "visual": &"arrow",
+		"color": def.projectile_color, "visual": &"arrow", "altitude": height + Config.HEIGHT.arrow_altitude,
 	}))
 
 

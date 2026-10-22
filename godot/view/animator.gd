@@ -26,6 +26,8 @@ func update(p: Player, dt: float) -> void:
 	var a := p.anim
 	rig.body.position.z = 0.0   # 只有翻滾會移動 body 的前後位置
 	_pose_locomotion(p, a, dt)
+	if a.airborne and a.loco != &"dead":
+		_pose_airborne(a)
 	if a.loco != &"dead":
 		_pose_action(p, a, dt)
 	if rig.weapon_model == &"staff" and rig.weapon_main != null:
@@ -72,6 +74,15 @@ func _pose_legs() -> void:
 	rig.leg_r.rotation.x = swing
 	rig.leg_l.rotation.x = -swing
 	rig.body.position.y = absf(sin(walk_phase)) * 0.06 * walk_amount
+
+
+# 空中：前腳抬起、後腳往後，上升時縮得多、下墜時慢慢伸直準備落地（翻滾時由翻滾姿勢覆蓋）
+func _pose_airborne(a: Dictionary) -> void:
+	var v0 := 4.0 * Config.JUMP.height / Config.JUMP.air_time
+	var tuck := clampf(0.5 + 0.5 * a.vz / v0, 0.0, 1.0)
+	rig.leg_r.rotation.x = lerpf(-0.35, -1.1, tuck)
+	rig.leg_l.rotation.x = lerpf(0.15, 0.45, tuck)
+	rig.body.position.y = 0.0
 
 
 # ───────── 動作層 ─────────

@@ -31,7 +31,7 @@ func spawn(target: Entity, text: String, style: StringName) -> void:
 	var node := UiKit.label(text, s[0], s[1])
 	add_child(node)
 	var height: float = HEIGHTS.get(target.kind, 2.0)
-	var at := Vector3(target.pos.x + (randf() - 0.5) * JITTER, height + HEAD_OFFSET, target.pos.y)
+	var at := Vector3(target.pos.x + (randf() - 0.5) * JITTER, target.height + height + HEAD_OFFSET, target.pos.y)
 	_items.append({"node": node, "world": at, "life": LIFE})
 	_place(_items[-1])
 

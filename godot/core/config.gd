@@ -40,7 +40,7 @@ const COMBAT := {
 	"flash_time": 0.12,
 	"hit_shake_duration": 0.15,         # 命中震動秒數（網頁版 Combat.applyDamage）
 	"explosion_shake_duration": 0.3,    # 爆炸震動秒數（網頁版 Projectile.#explode）
-	"projectile_height": 1.25,          # 投射物飛行高度（只給畫面用）
+	"projectile_height": 1.25,          # 網頁版的投射物飛行高度（保留給網頁版比對；Godot 用 HEIGHT.bolt_altitude）
 }
 
 const PLAYER := {
@@ -84,6 +84,27 @@ const ROLL := {
 	"invuln_time": 0.2,      # 開始後的無敵秒數（投射物穿過）
 	"cooldown": 1.2,         # 每次充能的回充秒數（乘上 roll_cooldown 屬性）
 	"sfx": "sprint",         # 先借用疾跑音效
+}
+
+# 跳躍與高度（Godot 版新增，使用者 2026-10-22 決定）：最高 1.5、起跳到落地 0.6 秒、只有一段跳
+# 重力 = 8 × 高度 ÷ 時間² ≈ 33.3，起跳速度 = 4 × 高度 ÷ 時間 = 10（所有站在地上的實體共用重力）
+const JUMP := {
+	"height": 1.5,
+	"air_time": 0.6,
+}
+
+# 命中的高度判定：每個實體佔 [腳底高度, 腳底 + 身高]，攻擊有自己的高度範圍，兩者重疊才命中
+const HEIGHT := {
+	"body": {&"player": 2.1, &"grunt": 1.95, &"archer": 1.95, &"boss": 3.885},   # 身高（view/rig.gd 的關節高度 × 縮放）
+	"default_body": 2.0,
+	"reach_below": 0.3,              # 近戰與碰撞的判定往腳底下延伸多少（空中揮砍打得到地上的怪）
+	"projectile_half": 0.15,         # 投射物的上下厚度一半
+	"arrow_altitude": 1.17,          # 敵人箭矢離地高度（弓手身高 1.95 × 0.6，同網頁版畫面）
+	"bolt_altitude": 1.25,           # 玩家投射物離地高度（同 COMBAT.projectile_height）
+	"bolt_settle_distance": 3.0,     # 玩家在空中發射時，飛出幾單位內降到 bolt_altitude
+	"explosion_height": 2.5,         # 爆炸範圍從地面往上的高度
+	"slam_height": 0.5,              # Boss 砸地只打得到腳底在這個高度以下的目標
+	"step": 0.05,                    # 走路可以直接跨上的高度差（超過就是牆）
 }
 
 # 除錯鍵（Godot 版才有，網頁版沒有）

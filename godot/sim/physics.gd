@@ -1,4 +1,4 @@
-# 平面圓形碰撞：存活實體依質量比例互相推開，並限制在場地內
+# 平面圓形碰撞：存活實體依質量比例互相推開（高度不重疊的不推），並限制在場地內；地形石台在 sim/terrain.gd
 # 碰撞分離用格子切分（作法同 stress_test）：只比對相鄰 3×3 格內的實體，敵人多時不會變成 N² 次比對
 # 介面維持「輸入陣列 → 就地修改位置」，之後要改 C++ 只換這裡（15.4）
 class_name SimPhysics
@@ -42,6 +42,9 @@ static func separate(entities: Array[Entity], rng: RandomNumberGenerator) -> voi
 
 
 static func _resolve(a: Entity, b: Entity, rng: RandomNumberGenerator) -> void:
+	# 高度不重疊（例如跳過怪物頭頂）就不互推
+	if not a.overlaps_height(b.height, b.height + b.body_height):
+		return
 	var d := b.pos - a.pos
 	var min_dist := a.radius + b.radius
 	var dist_sq := d.length_squared()

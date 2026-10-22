@@ -1,13 +1,41 @@
 # 場地外觀：依造型建立場地，並提供場景建構工具（照搬網頁版 render/environment.js：低多邊形地面、邊界點位、外圍裝飾散佈）
-# 只負責外觀，碰撞邊界由 World 決定；裝飾位置用畫面層自己的隨機，與模擬無關
+# 只負責外觀，碰撞邊界與地形由 World 決定（這裡依 world.terrain 畫出石台）；裝飾位置用畫面層自己的隨機，與模擬無關
 class_name ArenaView
 extends Node3D
 
 
-func build(half_size: float) -> void:
+const BLOCK_SIDE := Color("3b4152")   # 石台側面
+const BLOCK_TOP := Color("596178")    # 石台頂面（較亮，看得出可以站）
+
+
+func build(half_size: float, terrain: Terrain) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
 	add_child(DarkFantasy.build_arena(half_size, rng))
+	for b in terrain.blocks:
+		add_child(_create_block(b))
+
+
+# 地形石台：側面方塊 + 較亮的頂面薄片
+func _create_block(b: Dictionary) -> Node3D:
+	var root := Node3D.new()
+	var size: Vector2 = b.max - b.min
+	var center: Vector2 = (b.min + b.max) / 2.0
+	var top: float = b.top
+	for part in [[Vector3(size.x, top, size.y), top / 2.0, BLOCK_SIDE], [Vector3(size.x + 0.04, 0.06, size.y + 0.04), top - 0.02, BLOCK_TOP]]:
+		var mi := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = part[0]
+		mi.mesh = box
+		mi.position = Vector3(center.x, part[1], center.y)
+		var m := StandardMaterial3D.new()
+		m.albedo_color = part[2]
+		m.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
+		m.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+		m.roughness = 1.0
+		mi.material_override = m
+		root.add_child(mi)
+	return root
 
 
 # 平滑的偽隨機雜訊（0~1）
