@@ -165,6 +165,7 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `docs/新電腦設定.md` | 新電腦第一次使用本專案的設定步驟 |
 | `docs/道具清單.md` | 道具草稿（白綠藍紫橘 45 個）、背包大小、強度與格數的平衡做法 |
 | `docs/想法清單.md` | 使用者隨時提出、還沒定案的點子與 Claude 的評估（定案後移到設計方向或進度） |
+| `docs/製作計畫.md` | 階段 A~E 的里程碑：每步做出什麼、使用者怎麼驗證、補什麼檢查、開工前要問什麼 |
 | `docs/手感對照.md` | 網頁版 vs Godot 版的數值與手感對照表（第 7 步的結果） |
 | `tools/dump_web_defs.mjs` | 把網頁版的設定與資料表匯出成 `godot/tests/web_defs.json`（`node tools/dump_web_defs.mjs`） |
 | `mockups/` | 給使用者挑選的對比頁（選定後刪除，見 2.5） |
