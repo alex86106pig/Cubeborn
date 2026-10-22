@@ -1,6 +1,7 @@
 # 組合根：建立 World、輸入、畫面、HUD 與音效；固定步長主迴圈、通關慢動作、暫停、靜音、重新開始、離開遊戲
 # 指令列參數（放在 -- 之後）：--seconds=S --screenshot=路徑 --auto-move=x,y（螢幕方向）
-#   --auto-attack（一直按住左鍵）--weapon=staff（開場武器）--wave=N（直接從第 N 波開始）--player-hp=N（開場血量），後兩者除錯用
+#   --auto-attack（一直按住左鍵）--weapon=staff（開場武器）--wave=N（直接從第 N 波開始）--player-hp=N（開場血量）
+#   --items=id,id（開場放進身上的道具，見 defs/item_defs.gd），後三者除錯用
 extends Node3D
 
 const HUD_SCENE := preload("res://ui/hud.tscn")
@@ -23,6 +24,8 @@ var _elapsed := 0.0
 var _start_weapon: StringName = &""
 var _start_wave := 0
 var _start_hp := 0.0
+var _start_items: Array[StringName] = []
+var _debug_item_index := 0
 
 
 func _ready() -> void:
@@ -66,6 +69,12 @@ func _parse_args() -> void:
 			_start_wave = arg.get_slice("=", 1).to_int()
 		elif arg.begins_with("--player-hp="):
 			_start_hp = arg.get_slice("=", 1).to_float()
+		elif arg.begins_with("--items="):
+			for item in arg.get_slice("=", 1).split(",", false):
+				if ItemDefs.ITEMS.has(StringName(item)):
+					_start_items.append(StringName(item))
+				else:
+					push_warning("--items: 沒有這個道具 %s" % item)
 
 
 func local_player() -> Player:
@@ -78,6 +87,8 @@ func restart() -> void:
 		local_player().equip_weapon(_start_weapon)
 	if _start_wave > 1:
 		world.spawner.wave = _start_wave - 1
+	for item in _start_items:
+		local_player().add_item(item)
 	if _start_hp > 0.0:
 		local_player().hp = _start_hp
 	_sim_accumulator = 0.0
@@ -152,6 +163,24 @@ func _unhandled_input(event: InputEvent) -> void:
 		hud.toggle_stats_panel()
 	elif event.is_action_pressed(&"debug_speed"):
 		toggle_debug_speed()
+	elif event.is_action_pressed(&"debug_item"):
+		debug_add_next_item()
+	elif event.is_action_pressed(&"debug_clear_items"):
+		var player := local_player()
+		if player != null:
+			player.clear_items()
+
+
+# 除錯用（非正式系統，單機才有）：依道具清單順序，每按一次 F4 放一個道具進身上（循環）
+func debug_add_next_item() -> void:
+	var player := local_player()
+	if player == null or player.is_dead:
+		return
+	var ids := ItemDefs.item_ids()
+	var before := world.events.size()   # 上一步的事件已經送過，只送這次新增的
+	player.add_item(ids[_debug_item_index % ids.size()])
+	_debug_item_index += 1
+	GameEvents.emit_all(world.events.slice(before))
 
 
 # 除錯用（非正式系統，單機才有）：切換玩家「移速 +50%」，驗證屬性系統用

@@ -88,6 +88,8 @@ func _initialize() -> void:
 	_check("屬性計算：同類相加（+8% ×2 = +16%）、暫時效果與冷卻縮減相乘（0.94 × 0.75 = 0.705）、取整、上下限、來源可移除", _check_stats_formula)
 	_check("護甲與爆擊：護甲 100 減傷 50%、護甲 8 減傷 7.4%；爆擊率 100% 時 ×1.5，爆擊率 0% 不消耗亂數", _check_stats_armor_crit)
 	_check("屬性接上遊戲：攻速 ×2 普攻時間減半、冷卻 ×0.5、最大生命 +20 時目前生命同步增加、每秒回血、除錯移速 +50% = 9.75", _check_stats_hooks)
+	_check("物品資料：45 個道具（白 15 / 綠 12 / 藍 9 / 紫 6 / 橘 3）＋武器，名稱不重複、欄位完整、形狀合法（相連、不重複、放得進 8×6）、格數 = ceil(強度 ÷ 稀有度效率)、效果都對應到存在的屬性 / 條件 / 觸發 / 能力", _check_item_defs)
+	_check("道具放進身上：磨刀石攻擊力 ×1.08、兩雙皮靴移速 ×1.16、麵包最大生命與目前生命 +20、疾風護符翻滾 2 次、移除與清空後回到原值、武器道具直接換武器、發出 item:added", _check_items_apply)
 	_check("翻滾：0.35 秒翻 4 單位；移速 +50% 時同樣 0.35 秒翻 6 單位；冷卻 1.2 秒（−10% 為 1.08）；次數 +1 可連翻兩次", _check_roll_motion)
 	_check("翻滾無敵：前 0.2 秒打不到、投射物穿過，之後會被打中", _check_roll_invuln)
 	_check("翻滾取消：普攻前搖與後搖可取消；揮下去、特殊技（奧術爆裂）、硬直中先緩衝，結束後才翻", _check_roll_cancel)
@@ -1226,6 +1228,11 @@ func _check_hud() -> String:
 		return "Boss 血條應顯示且標示狂暴：visible=%s name=%s" % [hud._boss_box.visible, hud._boss_name.text]
 	if hud._floaters.get_child_count() < 2:
 		return "應產生浮動數字，實際 %d 個" % hud._floaters.get_child_count()
+	w.events.clear()
+	p.add_item(&"loaded_dice")
+	_feed_hud(hud, w.events)
+	if hud._banner.text != "獲得 灌鉛骰子\n爆擊率 +6%":
+		return "item:added 橫幅文字錯誤：%s" % hud._banner.text
 	for name in ["game:paused", "player:died", "game:victory", "game:restart"]:
 		var payload := {"paused": true, "stats": w.stats.duplicate()}
 		hud._on_event(name, payload)
@@ -1274,6 +1281,167 @@ func _check_stats_formula() -> String:
 		return "最大生命 36 × 1.3 應取整為 47，實際 %.2f" % hp.value(&"max_hp")
 	if StatDefs.format_value(&"armor", 8.0) != "8（減傷 7.4%）" or StatDefs.format_value(&"cooldown", 0.705) != "70.5%":
 		return "顯示格式錯誤：%s / %s" % [StatDefs.format_value(&"armor", 8.0), StatDefs.format_value(&"cooldown", 0.705)]
+	return ""
+
+
+func _shape_error(cells: Array) -> String:
+	if cells.is_empty():
+		return "沒有格子"
+	var seen := {}
+	var max_cell := Vector2i.ZERO
+	var min_cell := Vector2i(999, 999)
+	for c: Vector2i in cells:
+		if seen.has(c):
+			return "格子重複 %s" % c
+		seen[c] = true
+		min_cell = min_cell.min(c)
+		max_cell = max_cell.max(c)
+	if min_cell != Vector2i.ZERO:
+		return "沒有從 (0, 0) 開始（最小 %s）" % min_cell
+	var size := max_cell + Vector2i.ONE
+	var bag := ItemDefs.BAG_SIZE
+	if not ((size.x <= bag.x and size.y <= bag.y) or (size.y <= bag.x and size.x <= bag.y)):
+		return "%d×%d 放不進背包" % [size.x, size.y]
+	# 上下左右相連
+	var stack: Array = [cells[0]]
+	var reached := {cells[0]: true}
+	while not stack.is_empty():
+		var c: Vector2i = stack.pop_back()
+		for d in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+			if seen.has(c + d) and not reached.has(c + d):
+				reached[c + d] = true
+				stack.append(c + d)
+	if reached.size() != cells.size():
+		return "格子沒有相連"
+	return ""
+
+
+func _params_error(e: Dictionary, table: Dictionary, key: String) -> String:
+	if not table.has(e[key]):
+		return "%s 不存在：%s" % [key, e[key]]
+	for p: String in table[e[key]].get("params", []):
+		if not e.has(p):
+			return "%s %s 缺少參數 %s" % [key, e[key], p]
+	return ""
+
+
+func _effect_error(e: Dictionary) -> String:
+	var kinds := 0
+	for k in ["when", "on", "ability"]:
+		if e.has(k):
+			kinds += 1
+	if kinds > 1:
+		return "一筆效果只能是一種：%s" % e
+	if e.has("stat") or e.has("when"):
+		if not (e.has("stat") and e.has("op") and e.has("value")):
+			return "屬性效果缺 stat / op / value：%s" % e
+		if not StatDefs.STATS.has(e.stat):
+			return "屬性不存在：%s" % e.stat
+		if not e.op in [Stats.ADD, Stats.PCT, Stats.MUL]:
+			return "運算不存在：%s" % e.op
+		if e.op == Stats.MUL and e.value <= 0.0:
+			return "相乘的數值必須大於 0：%s" % e
+		return _params_error(e, ItemDefs.CONDITIONS, "when") if e.has("when") else ""
+	if e.has("on"):
+		if not e.has("do"):
+			return "觸發效果缺 do：%s" % e
+		if e.has("chance") and not (e.chance > 0.0 and e.chance <= 1.0):
+			return "機率要在 (0, 1]：%s" % e
+		var err := _params_error(e, ItemDefs.TRIGGERS, "on")
+		return err if err != "" else _params_error(e, ItemDefs.ACTIONS, "do")
+	if e.has("ability"):
+		return _params_error(e, ItemDefs.ABILITIES, "ability")
+	return "看不出是哪一種效果：%s" % e
+
+
+func _check_item_defs() -> String:
+	for shape: StringName in ItemDefs.SHAPES:
+		var err := _shape_error(ItemDefs.SHAPES[shape])
+		if err != "":
+			return "形狀 %s：%s" % [shape, err]
+	var counts := {}
+	var names := {}
+	for id: StringName in ItemDefs.ITEMS:
+		var def: Dictionary = ItemDefs.ITEMS[id]
+		for field in ["kind", "name", "rarity", "shape", "desc", "effects"]:
+			if not def.has(field):
+				return "%s 缺少欄位 %s" % [id, field]
+		if names.has(def.name):
+			return "名稱重複：%s（%s 與 %s）" % [def.name, names[def.name], id]
+		names[def.name] = id
+		if not ItemDefs.RARITIES.has(def.rarity):
+			return "%s 的稀有度不存在：%s" % [id, def.rarity]
+		if not ItemDefs.SHAPES.has(def.shape):
+			return "%s 的形狀不存在：%s" % [id, def.shape]
+		match def.kind:
+			&"weapon":
+				if not WeaponDefs.WEAPONS.has(def.get("weapon", &"")):
+					return "%s 對應的武器不存在：%s" % [id, def.get("weapon")]
+			&"item":
+				if not (def.get("power", 0.0) > 0.0):
+					return "%s 缺少強度分數 power" % id
+				if def.effects.is_empty():
+					return "%s 沒有效果" % id
+				if ItemDefs.cell_count(id) != ItemDefs.expected_cells(id):
+					return "%s 占 %d 格，強度 %.1f ÷ 效率 %.2f 應占 %d 格" % [id, ItemDefs.cell_count(id), def.power,
+						ItemDefs.RARITIES[def.rarity].efficiency, ItemDefs.expected_cells(id)]
+				counts[def.rarity] = counts.get(def.rarity, 0) + 1
+			_:
+				return "%s 的 kind 不存在：%s" % [id, def.kind]
+		for e: Dictionary in def.effects:
+			var err := _effect_error(e)
+			if err != "":
+				return "%s：%s" % [id, err]
+	for id: StringName in WeaponDefs.WEAPONS:
+		if not ItemDefs.ITEMS.has(id) or ItemDefs.ITEMS[id].kind != &"weapon":
+			return "武器 %s 沒有物品資料" % id
+	var want := {&"white": 15, &"green": 12, &"blue": 9, &"purple": 6, &"orange": 3}
+	if counts != want:
+		return "各稀有度道具數 %s，應為 %s" % [counts, want]
+	if ItemDefs.item_ids().size() != 45:
+		return "道具共 %d 個，應為 45" % ItemDefs.item_ids().size()
+	return ""
+
+
+func _check_items_apply() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var base_speed := p.stats.value(&"move_speed")
+	var whet := p.add_item(&"whetstone")
+	if absf(p.stats.value(&"damage") - 1.08) > EPS:
+		return "磨刀石後攻擊力應為 1.08，實際 %.4f" % p.stats.value(&"damage")
+	var added := w.events.filter(func(e: Dictionary) -> bool: return e.name == "item:added")
+	if added.size() != 1 or added[0].item != "whetstone" or added[0].uid != String(whet):
+		return "應發出一次 item:added（whetstone），實際 %s" % [added]
+	p.add_item(&"worn_boots")
+	p.add_item(&"worn_boots")
+	if absf(p.stats.value(&"move_speed") - base_speed * 1.16) > EPS:
+		return "兩雙皮靴移速應為 %.3f，實際 %.3f" % [base_speed * 1.16, p.stats.value(&"move_speed")]
+	p.hp = 50.0
+	var bread := p.add_item(&"stale_bread")
+	if p.max_hp != Config.PLAYER.max_hp + 20.0 or p.hp != 70.0:
+		return "麵包後最大生命應 +20、目前生命 50 → 70，實際 %.0f / %.0f" % [p.hp, p.max_hp]
+	p.add_item(&"gale_charm")
+	if p.roll_max() != 2:
+		return "疾風護符後翻滾次數上限應為 2，實際 %d" % p.roll_max()
+	if p.items.size() != 5:
+		return "身上應有 5 個道具實例，實際 %d" % p.items.size()
+	p.remove_item(bread)
+	if p.max_hp != Config.PLAYER.max_hp or p.items.size() != 4:
+		return "移除麵包後最大生命應回到 %.0f、剩 4 個，實際 %.0f / %d" % [Config.PLAYER.max_hp, p.max_hp, p.items.size()]
+	p.clear_items()
+	if not p.items.is_empty() or p.stats.value(&"damage") != 1.0 or absf(p.stats.value(&"move_speed") - base_speed) > EPS or p.roll_max() != 1:
+		return "清空後屬性應回到原值：攻擊力 %.3f 移速 %.3f 翻滾 %d" % [p.stats.value(&"damage"), p.stats.value(&"move_speed"), p.roll_max()]
+	if p.stats.has_source(whet):
+		return "清空後不應留下道具的屬性來源"
+	if p.add_item(&"staff") != &"" or p.weapon_id != &"staff" or not p.items.is_empty():
+		return "武器道具應直接換上法杖、不放進道具列表"
+	# 每個道具都能放進身上、拿掉後不殘留
+	for id in ItemDefs.item_ids():
+		var uid := p.add_item(id)
+		p.remove_item(uid)
+	if p.stats.value(&"damage") != 1.0 or p.max_hp != Config.PLAYER.max_hp:
+		return "所有道具放進再拿掉後屬性應回到原值"
 	return ""
 
 
@@ -1835,6 +2003,8 @@ func _check_font_coverage() -> String:
 	texts.append_array([hud_consts.CONTROLS_TEXT, hud_consts.BOSS_NAME])
 	for s: Dictionary in StatDefs.STATS.values():
 		texts.append(s.name)
+	for item: Dictionary in ItemDefs.ITEMS.values():
+		texts.append_array([item.name, item.desc, "獲得 "])
 	texts.append(StatDefs.format_value(&"armor", 8.0) + StatDefs.format_value(&"hp_regen", 1.0))
 	# HUD 程式裡的字串常值（標題、橫幅、結算、按鍵名稱）
 	var re := RegEx.create_from_string("\"([^\"\\\\]*)\"")

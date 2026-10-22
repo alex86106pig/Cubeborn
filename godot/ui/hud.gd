@@ -6,7 +6,7 @@ extends CanvasLayer
 signal quit_requested   # 暫停畫面按下「離開遊戲」
 
 # 手動分行（中文自動折行會斷在詞中間）
-const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 空白鍵 跳躍 · Shift 翻滾\n1~5 道具 · Tab 屬性 · Esc 暫停 · M 靜音 · R 重新開始\nF1 切換武器 · F2 顯示判定 · F3 除錯移速 +50%"
+const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 空白鍵 跳躍 · Shift 翻滾\n1~5 道具 · Tab 屬性 · Esc 暫停 · M 靜音 · R 重新開始\nF1 切換武器 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具"
 const FPS_INTERVAL := 0.5
 const HP_GHOST_SPEED := 0.5      # 殘影每秒縮短的比例
 const BOSS_GHOST_SPEED := 0.3
@@ -261,6 +261,9 @@ func _on_event(name: String, p: Dictionary) -> void:
 			_show_banner("BOSS 戰：" + BOSS_NAME if p.is_boss else "第 %d / %d 波" % [p.wave, p.total], p.is_boss)
 		"boss:enraged":
 			_show_banner("狂暴化！", true)
+		"item:added":
+			var item: Dictionary = ItemDefs.ITEMS[StringName(p.item)]
+			_show_banner("獲得 %s\n%s" % [item.name, item.desc], false, ItemDefs.RARITIES[item.rarity].color)
 		"player:died":
 			var s := world.stats
 			_set_game_over("你倒下了", "撐到第 %d 波 · 擊殺 %d · 時間 %s" % [s.wave, s.kills, UiKit.format_time(s.time)], false)
@@ -291,9 +294,9 @@ func _set_game_over(title: String, stats: String, victory: bool) -> void:
 
 
 # 網頁版 @keyframes banner：0~15% 由 1.3 倍縮回並淡入，75% 後淡出
-func _show_banner(text: String, alert: bool) -> void:
+func _show_banner(text: String, alert: bool, color := Color.WHITE) -> void:
 	_banner.text = text
-	_banner.add_theme_color_override(&"font_color", UiKit.ALERT if alert else Color.WHITE)
+	_banner.add_theme_color_override(&"font_color", UiKit.ALERT if alert else color)
 	_banner.pivot_offset = _banner.size / 2.0
 	if _banner_tween:
 		_banner_tween.kill()

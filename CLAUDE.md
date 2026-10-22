@@ -172,9 +172,9 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `godot/project.godot` | Godot 專案設定（4.7、Forward+、1920×1080、預設字型 `hud_font.tres`） |
 | `godot/export_presets.cfg` | 匯出設定：「Web」（單執行緒、輸出到 `../build/web/index.html`，排除 tests / stress_test） |
 | `godot/assets/fonts/` | 打包字型 Noto Sans TC（OFL 授權，見該資料夾 README）與字重 700 的 `hud_font.tres` |
-| `godot/main.tscn` / `main.gd` | Godot 組合根：主迴圈（每秒 60 步）、通關慢動作、暫停、重新開始、離開遊戲、畫面震動與命中定格事件轉給畫面層、Tab 屬性面板、F1 切武器、F3 除錯移速 +50%、自動驗證參數（`--seconds`、`--screenshot`、`--auto-move`、`--auto-attack`、`--weapon`、`--wave`、`--player-hp`） |
+| `godot/main.tscn` / `main.gd` | Godot 組合根：主迴圈（每秒 60 步）、通關慢動作、暫停、重新開始、離開遊戲、畫面震動與命中定格事件轉給畫面層、Tab 屬性面板、F1 切武器、F3 除錯移速 +50%、F4 / F5 除錯放入 / 清空道具、自動驗證參數（`--seconds`、`--screenshot`、`--auto-move`、`--auto-attack`、`--weapon`、`--wave`、`--player-hp`、`--items`） |
 | `godot/core/` | config、version、math_util、state_machine、cooldowns、game_events（autoload `GameEvents`） |
-| `godot/defs/` | 資料表：weapon_defs（劍盾、法杖）、enemy_defs（grunt / archer / boss）、wave_defs（5 波與成長倍率）、skill_defs（治療藥水、疾跑）、stat_defs（屬性名稱、基礎值、上下限、顯示格式、護甲公式）、terrain_defs（地形石台，目前是角落的測試石台） |
+| `godot/defs/` | 資料表：weapon_defs（劍盾、法杖）、enemy_defs（grunt / archer / boss）、wave_defs（5 波與成長倍率）、skill_defs（治療藥水、疾跑）、stat_defs（屬性名稱、基礎值、上下限、顯示格式、護甲公式）、terrain_defs（地形石台，目前是角落的測試石台）、item_defs（武器與 45 個道具：稀有度、占格形狀、效果列表） |
 | `godot/sim/` | 模擬層（不碰場景樹）：world（含通關流程）、input_cmd、stats（屬性計算：加值 / 百分比 / 相乘、依來源加入移除）、terrain（地面高度、石台當牆、投射物撞牆）、hitbox（通用攻擊判定：扇形 / 圓形、只打一次、能否格擋、記錄給 F2）、entity（含高度、重力、落地）、player（含翻滾充能）、player_states（雙層狀態機，含翻滾）、weapon_behaviors、combat、projectile、enemy（敵人基底與共用狀態）、spawner（分波生成）、physics（格子碰撞分離）、active_slots（數字鍵欄位）、skill_behaviors |
 | `godot/sim/enemies/` | melee_enemy（追擊、舉刀揮砍）、ranged_enemy、boss；v0.17.0 起沒有碰撞傷害 |
 | `godot/input/input_collector.gd` | 按鍵註冊、InputMap → InputCmd（螢幕方向轉世界、滑鼠投射地面、鎖存按下） |

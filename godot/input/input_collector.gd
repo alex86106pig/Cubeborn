@@ -10,6 +10,7 @@ const ACTIONS := {
 	&"pause": KEY_ESCAPE, &"mute": KEY_M, &"restart": KEY_R,
 	&"stats_panel": KEY_TAB,
 	&"debug_weapon": KEY_F1, &"debug_hitbox": KEY_F2, &"debug_speed": KEY_F3,
+	&"debug_item": KEY_F4, &"debug_clear_items": KEY_F5,
 }
 const MOUSE_ACTIONS: Array[StringName] = [&"attack", &"special"]
 

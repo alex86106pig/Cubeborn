@@ -268,6 +268,7 @@ export const SKILLS = {
 | `player:blocked` | `{ player_id, perfect }`（Godot 版 v0.18.0：格擋擋下攻擊；perfect = 完美格擋，下一步盾反） | Player.try_block |
 | `entity:died` | `{ entity, source }` | Entity |
 | `player:died` | `{ player }` | Player |
+| `item:added` | `{ player_id, item, uid }`（僅 Godot 版 v0.19.0：道具放進身上；item = 物品 id，uid = 實例 id，武器為空字串） | Player.add_item |
 | `skill:used` | `{ key, def }` | playerStates / ActiveSlots |
 | `skill:onCooldown` | `{ key }` | playerStates / ActiveSlots |
 | `wave:started` | `{ wave, total, isBoss }` | Spawner |
@@ -526,3 +527,16 @@ godot/
   - 擋不住：砸地、爆炸（不是 blockable），或來自側面 / 背後。
   - 完美格擋：按下後 0.2 秒內擋下 → 下一步開頭盾反（前方 120°、距離 2.5，傷害 25 × 攻擊力，大擊退、重擊顯示），然後結束格擋。
 - 實作：`ShieldBlock` 行為記錄 `player.block_time`（格擋開始後秒數，< 0 = 沒在格擋）；`Combat.apply_damage` 對 blockable 的攻擊先呼叫 `target.try_block(來源位置, hit)`；盾反延到下一步執行（`pending_parry`），避免在怪物出招的途中改動怪物狀態。
+
+### 15.16 物品資料（v0.19.0）
+- 使用者決定：資料放程式資料表 `defs/item_defs.gd`（`ItemDefs.ITEMS`）。武器與道具共用一種格式：`kind`（`item` / `weapon`）、`name`、`rarity`、`shape`、`desc`、`effects`；道具另有強度分數 `power`，武器另有 `weapon`（對應 `WeaponDefs`，武器數值仍在那邊）。
+- 稀有度 `RARITIES`（名稱、顏色、效率）、占格形狀 `SHAPES`（格子座標，左上為 (0, 0)、上下左右相連）、背包 `BAG_SIZE` 8×6。**道具格數必須 = ceil(power ÷ 稀有度效率)**（`docs/道具清單.md`），新增道具時先估 power 再挑形狀。
+- 效果四種寫法：
+  - 屬性 `{stat, op, value}`：放進身上就生效。
+  - 條件屬性 `{when, stat, op, value, …}`：條件見 `CONDITIONS`。
+  - 觸發 `{on, do, chance?, …}`：時機見 `TRIGGERS`，動作見 `ACTIONS`。
+  - 能力 `{ability, …}`：見 `ABILITIES`。
+  - 各表的 `params` 是必填參數，`check.gd` 會檢查。新增條件、觸發、動作或能力時先加進表。
+- **目前只接上屬性效果**（`ItemDefs.stat_mods`）；條件、觸發、能力等之後的里程碑再實作。
+- 放進身上：`Player.add_item(id)` 建立實例 `{uid, id}`，以 `uid`（`item_N`）為屬性來源；`remove_item(uid)`、`clear_items()` 拿掉。武器道具直接 `equip_weapon`，不放進 `items`。還沒有背包介面，放進來就生效。
+- 除錯：F4 依清單順序放入下一個道具，F5 清空；`--items=id,id`。

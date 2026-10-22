@@ -21,6 +21,8 @@ var dodge_timer := 0.0                 # 翻滾無敵剩餘秒數
 var block_time := -1.0                 # 格擋開始後經過的秒數；< 0 = 沒有在格擋（weapon_behaviors 的 ShieldBlock）
 var pending_parry := false             # 本步完美格擋，下一步開頭執行盾反
 var parry_timer := 0.0                 # 盾反動作剩餘秒數（畫面用）
+var items: Array[Dictionary] = []     # 身上的道具實例 { uid, id }；uid 同時是屬性加成的來源名稱
+var _next_item_uid := 1
 var forced_velocity := Vector2.ZERO
 var has_forced_velocity := false
 var locomotion: StateMachine
@@ -140,6 +142,36 @@ func add_buff(id: StringName, duration: float, mods: Dictionary) -> void:
 	buffs[id] = buff
 	if buff.has("stats"):
 		set_stat_source(id, buff.stats)
+
+
+# 道具放進身上（B6 還沒有背包，放進來就生效）：屬性效果以實例 uid 為來源套上；武器則直接換上
+# 同一個道具拿兩個就是兩個實例、加成相加
+func add_item(item_id: StringName) -> StringName:
+	assert(ItemDefs.ITEMS.has(item_id), "Unknown item: %s" % item_id)
+	var def: Dictionary = ItemDefs.ITEMS[item_id]
+	var uid := &""
+	if def.kind == &"weapon":
+		equip_weapon(def.weapon)
+	else:
+		uid = StringName("item_%d" % _next_item_uid)
+		_next_item_uid += 1
+		items.append({"uid": uid, "id": item_id})
+		set_stat_source(uid, ItemDefs.stat_mods(item_id))
+	world.emit_event("item:added", {"player_id": id, "item": String(item_id), "uid": String(uid)})
+	return uid
+
+
+func remove_item(uid: StringName) -> void:
+	for i in items.size():
+		if items[i].uid == uid:
+			items.remove_at(i)
+			remove_stat_source(uid)
+			return
+
+
+func clear_items() -> void:
+	for it: Dictionary in items.duplicate():
+		remove_item(it.uid)
 
 
 func update(dt: float) -> void:
