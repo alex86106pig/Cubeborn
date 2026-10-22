@@ -8,6 +8,7 @@ const WALK_SHARPNESS := 12.0
 const IDLE_SHARPNESS := 18.0
 const DEATH_FALL_TIME := 0.45
 const BLINK_RATE := 20.0      # 無敵時間每秒閃爍次數
+const GEM_SPIN := 3.0         # 法杖寶石自轉（弧度/秒；網頁版每幀 0.05 × 60）
 
 var rig: Rig
 var walk_phase := 0.0
@@ -27,6 +28,8 @@ func update(p: Player, dt: float) -> void:
 		_pose_action(p, a, dt)
 	if rig.weapon_model == &"staff" and rig.weapon_main != null:
 		rig.weapon_main.rotation.x = weapon_tilt - rig.arm_r.rotation.x
+	if rig.weapon_gem != null:
+		rig.weapon_gem.rotation.y += GEM_SPIN * dt
 
 	var flash_time: float = Config.COMBAT.flash_time
 	rig.set_flash(0.9 * p.flash_timer / flash_time if p.flash_timer > 0.0 else 0.0)

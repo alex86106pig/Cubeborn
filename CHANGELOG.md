@@ -2,6 +2,21 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.11.0] - 2026-10-22
+
+Godot 版里程碑 5：程式生成的暗黑幻想模型（照搬網頁版 `darkFantasy.js`），取代暫用方塊。
+
+### 新增
+- `godot/view/part_kit.gd`：零件組，對應網頁版 `PartKit` 與 `G`。形狀用 Godot 內建 `BoxMesh` / `CylinderMesh` / `SphereMesh`，Godot 沒有的二十面體與可只畫一段的圓環（弓）自己產生；零件位置與角度照 Three.js 的 XYZ 旋轉順序填寫。`merge_static()` 依「anchor + 材質 + 陰影」合併零件，同時改成面法線（flat shading）。材質為 Lambert、無高光，自發光部位不受閃白影響。
+- `godot/view/styles/dark_fantasy.gd`：黑鋼騎士、骷髏戰士、骷髏弓手、亡骸騎士、劍盾、法杖（寶石自轉 3 弧度/秒）、敵人箭矢、墓地場地（雜訊漸層低多邊形地面、邊界碎石、墓碑、枯樹、場內碎骨）。
+- 零件數（合併後）：騎士 16、骷髏戰士 13、骷髏弓手 13、Boss 18、場地 7（網頁版上限 20 / 16 / 16 / 22 / 12）。
+- `tests/check.gd` 新增 2 項（共 44 項）：零件合併（外框不變、keep 零件留在原位、空群組移除、每個三角形的法線與 Godot 正面方向一致）、各角色與場地的零件數上限。
+
+### 修改
+- `godot/view/rig.gd`：刪掉暫用方塊造型，改用 PartKit。同種角色第一次合併後記下零件，之後直接共用 mesh（材質仍各自一份，閃白互不影響）。實測建立一隻骷髏：第一次 6.0 ms、之後 1.7 ms；小怪每 0.35 秒生成一隻，不會卡頓。
+- `godot/view/arena_view.gd`：從平面加石條改為墓地場景，並收納網頁版 `environment.js` 的地面與散佈工具。建立一次約 37 ms（只在開場時建立）。
+- `godot/view/world_view.gd`：角色與箭矢改用新造型；法杖魔彈維持發光球（同網頁版）。
+
 ## [0.10.1] - 2026-10-21
 
 ### 修改

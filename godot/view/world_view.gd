@@ -1,5 +1,5 @@
 # 畫面層：依實體 id 建立 / 移除模型並補間位置、驅動角色動畫；燈光與背景
-# 玩家用 Rig + Animator（零件暫用方塊，里程碑 5 換造型），投射物用發光球體，其他暫用方塊
+# 角色用 DarkFantasy 造型的 Rig + 動畫，法杖魔彈用發光球體、敵人箭矢用 DarkFantasy 造型，其他暫用方塊
 class_name WorldView
 extends Node3D
 
@@ -57,11 +57,11 @@ func _create_view(e: Entity) -> Node3D:
 	var root: Node3D
 	match e.kind:
 		&"player":
-			var rig := Rig.knight_placeholder()
+			var rig := DarkFantasy.character(e.kind)
 			_animators[e.id] = Animator.new(rig)
 			root = rig
 		&"grunt", &"archer", &"boss":
-			var rig := Rig.boss_placeholder() if e.kind == &"boss" else Rig.skeleton_placeholder(e.kind == &"archer")
+			var rig := DarkFantasy.character(e.kind)
 			_animators[e.id] = EnemyAnimator.new(rig, e as Enemy)
 			root = rig
 		&"projectile":
@@ -94,26 +94,12 @@ func _create_projectile(e: Projectile) -> Node3D:
 	return root
 
 
-# 敵人箭矢：細長箭身沿 +Z、發光箭頭（darkFantasy.js 的 enemyProjectile）
+# 敵人箭矢：細長箭身沿 +Z、發光箭頭（DarkFantasy.enemy_projectile）
 func _create_arrow(e: Projectile) -> Node3D:
 	var root := Node3D.new()
-	var shaft := MeshInstance3D.new()
-	var shaft_box := BoxMesh.new()
-	shaft_box.size = Vector3(0.04, 0.04, 0.7)
-	shaft.mesh = shaft_box
-	shaft.position.y = Config.COMBAT.projectile_height
-	shaft.material_override = _mat(Color("2a2420"))
-	root.add_child(shaft)
-	var tip := MeshInstance3D.new()
-	var tip_box := BoxMesh.new()
-	tip_box.size = Vector3(0.1, 0.1, 0.16)
-	tip.mesh = tip_box
-	tip.position = Vector3(0.0, Config.COMBAT.projectile_height, 0.42)
-	var glow := StandardMaterial3D.new()
-	glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	glow.albedo_color = e.color
-	tip.material_override = glow
-	root.add_child(tip)
+	var arrow := DarkFantasy.enemy_projectile(e.color)
+	arrow.position.y = Config.COMBAT.projectile_height
+	root.add_child(arrow)
 	return root
 
 

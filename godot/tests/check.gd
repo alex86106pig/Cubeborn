@@ -85,6 +85,8 @@ func _initialize() -> void:
 	_check("數字鍵緩衝：攻擊中按 1 會在後搖取消並使用道具；空欄位不提示", _check_slot_buffer)
 	_check("HUD：能建立、處理各種事件、顯示波次 / 血量 / 結算文字", _check_hud)
 	_check("字型：介面文字都在打包的 Noto Sans TC 裡（網頁版沒有系統字型），缺字的圖示改用向量圖", _check_font_coverage)
+	_check("零件合併：依 anchor + 材質合併、外框不變、keep 的零件留在原位、空群組移除、面法線朝外且為正面", _check_merge_static)
+	_check("零件數：騎士 ≤ 20、骷髏戰士 ≤ 16、骷髏弓手 ≤ 16、Boss ≤ 22、場地 ≤ 12（同網頁版上限，避免卡頓）", _check_mesh_counts)
 	for w in _worlds:
 		w.clear()
 	_worlds.clear()
@@ -1162,6 +1164,101 @@ func _check_font_coverage() -> String:
 				missing[t[i]] = true
 	if not missing.is_empty():
 		return "打包字型缺字：%s" % " ".join(missing.keys())
+	return ""
+
+
+# 以 root 為座標系統計零件：{ meshes, min, max, bad_faces（法線與正面方向不符的三角形數） }
+func _mesh_stats(root: Node3D) -> Dictionary:
+	var lo := Vector3.INF
+	var hi := -Vector3.INF
+	var bad := 0
+	var meshes := PartKit.mesh_instances(root)
+	for mi in meshes:
+		var xf := mi.transform
+		var n: Node = mi.get_parent()
+		while n != root:
+			xf = (n as Node3D).transform * xf
+			n = n.get_parent()
+		var arrays := mi.mesh.surface_get_arrays(0)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		for v in verts:
+			lo = lo.min(xf * v)
+			hi = hi.max(xf * v)
+		if mi.mesh is ArrayMesh and arrays[Mesh.ARRAY_INDEX] == null:
+			for i in range(0, verts.size(), 3):
+				var face := (verts[i + 1] - verts[i]).cross(verts[i + 2] - verts[i])
+				# Godot 正面為順時針：(b-a)×(c-a) 朝內，與法線相反（頂點是 float32，用 dot 容許誤差）
+				if face.normalized().dot(-normals[i]) < 0.999:
+					bad += 1
+	return {"meshes": meshes.size(), "min": lo, "max": hi, "bad_faces": bad}
+
+
+func _check_merge_static() -> String:
+	var kit := PartKit.new()
+	var root := Node3D.new()
+	var arm := Node3D.new()
+	arm.position = Vector3(0.5, 1, 0)
+	arm.rotation.z = 0.4
+	root.add_child(arm)
+	var sub := Node3D.new()   # 非 anchor 的子群組：應被併入 arm
+	sub.position = Vector3(0, -0.3, 0.1)
+	sub.rotation.x = 0.7
+	arm.add_child(sub)
+	var red := kit.mat(Color.RED)
+	var blue := kit.mat(Color.BLUE)
+	kit.add(root, PartKit.box(0.4, 0.6, 0.3), red, {"y": 1.0})
+	kit.add(root, PartKit.cyl(0.1, 0.1, 0.5, 6), red, {"x": 0.3, "rz": 0.5})
+	kit.add(arm, PartKit.ico(0.1, 0), red, {"y": -0.2})
+	kit.add(sub, PartKit.box(0.1, 0.1, 0.1), red, {"s": 2.0})
+	kit.add(sub, PartKit.cone(0.1, 0.2, 4), blue)
+	kit.add(sub, PartKit.torus(0.2, 0.03, 4, 8, PI), blue, {"rx": 0.3, "ry": 1.1})
+	var gem := kit.add(arm, PartKit.ico(0.05, 1), blue, {"y": -0.5})
+
+	var before := _mesh_stats(root)
+	kit.merge_static(root, [root, arm], [gem])
+	var after := _mesh_stats(root)
+	var err := ""
+	if not (after.min as Vector3).is_equal_approx(before.min) or not (after.max as Vector3).is_equal_approx(before.max):
+		err = "外框改變：%s~%s → %s~%s" % [before.min, before.max, after.min, after.max]
+	elif after.meshes != 4:
+		err = "應剩 root 紅、arm 紅、arm 藍、gem 共 4 個，實際 %d 個" % after.meshes
+	elif gem.get_parent() != arm or arm.get_parent() != root:
+		err = "keep 的零件與 anchor 應留在原位"
+	elif is_instance_valid(sub):
+		err = "空的子群組應移除"
+	elif after.bad_faces > 0:
+		err = "%d 個三角形的法線不是朝外的面法線" % after.bad_faces
+	root.free()
+	return err
+
+
+func _check_mesh_counts() -> String:
+	var limits := {&"player": 20, &"grunt": 16, &"archer": 16, &"boss": 22}
+	var err := ""
+	for kind: StringName in limits:
+		var rig := DarkFantasy.character(kind)
+		var stats := _mesh_stats(rig)
+		if stats.meshes > limits[kind]:
+			err = "%s 有 %d 個零件，上限 %d" % [kind, stats.meshes, limits[kind]]
+		elif stats.bad_faces > 0:
+			err = "%s 有 %d 個三角形法線方向錯誤" % [kind, stats.bad_faces]
+		rig.free()
+		if err != "":
+			return err
+	var rng := RandomNumberGenerator.new()
+	var arena := DarkFantasy.build_arena(Config.WORLD.arena_half_size, rng)
+	var n := PartKit.mesh_instances(arena).size()
+	arena.free()
+	if n > 12:
+		return "場地有 %d 個零件，上限 12" % n
+	for model: StringName in [&"swordShield", &"staff"]:
+		var w := DarkFantasy.weapon(model)
+		if w.is_empty() or w.main == null:
+			return "武器 %s 沒有建立外觀" % model
+		for node: Variant in [w.main, w.offhand]:
+			if node != null:
+				(node as Node3D).free()
 	return ""
 
 

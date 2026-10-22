@@ -174,7 +174,8 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `godot/sim/` | 模擬層（不碰場景樹）：world（含通關流程）、input_cmd、entity、player、player_states（雙層狀態機）、weapon_behaviors、combat、projectile、enemy（敵人基底與共用狀態）、spawner（分波生成）、physics（格子碰撞分離）、active_slots（數字鍵欄位）、skill_behaviors |
 | `godot/sim/enemies/` | melee_enemy、ranged_enemy、boss |
 | `godot/input/input_collector.gd` | 按鍵註冊、InputMap → InputCmd（螢幕方向轉世界、滑鼠投射地面、鎖存按下） |
-| `godot/view/` | 畫面層：camera_rig（正交等距相機）、world_view（依 id 建模型、補間）、rig（關節階層與各角色外觀，零件暫用方塊）、animator（玩家姿勢）、enemy_animator（敵人姿勢、Boss 地面預警）、arena_view（暫時場地） |
+| `godot/view/` | 畫面層：camera_rig（正交等距相機）、world_view（依 id 建模型、補間）、rig（關節階層、換武器、閃白、同種角色共用合併好的零件）、part_kit（形狀工廠、材質、零件合併與平面法線）、animator（玩家姿勢）、enemy_animator（敵人姿勢、Boss 地面預警）、arena_view（場地與地面 / 散佈工具） |
+| `godot/view/styles/dark_fantasy.gd` | 暗黑幻想造型（照搬 `darkFantasy.js`）：騎士、骷髏戰士、骷髏弓手、亡骸騎士、劍盾、法杖、箭矢、墓地場地 |
 | `godot/ui/hud.tscn` / `hud.gd` | Godot HUD：血條、波次 / 擊殺 / 時間、Boss 血條、橫幅、受擊暗角、暫停與結算畫面 |
 | `godot/ui/skill_bar.gd` / `floaters.gd` / `ui_kit.gd` | 技能欄（CD 遮罩、次數）、浮動數字、HUD 共用的文字 / 色塊 / 顏色 |
 | `godot/ui/skill_icons.gd` | 字型沒有的武器圖示（⚔ 🛡 ✦ ✺）改用向量圖畫 |
