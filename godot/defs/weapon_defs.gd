@@ -30,6 +30,8 @@ const WEAPONS := {
 			"finisher_recovery_mul": 1.6,
 			"hit_stop": 0.04,
 			"shake": 0.08,
+			"slash_color": Color.WHITE,                  # 揮砍弧光（網頁版 effects.slash）
+			"slash_finisher_color": Color("ffe27a"),     # 第三段弧光
 		},
 		# 格擋與盾反（v0.18.0，取代網頁版的盾擊衝鋒；使用者決定：按一下自動維持、可以移動、拿掉衝鋒，其餘數值 Claude 訂）
 		"special": {
@@ -54,6 +56,7 @@ const WEAPONS := {
 				"knockback": 14.0,
 				"hit_stop": 0.08,
 				"shake": 0.3,
+				"color": Color("ffd36b"),   # 衝擊環與命中粒子（沿用網頁版盾擊的金色）
 			},
 		},
 	},

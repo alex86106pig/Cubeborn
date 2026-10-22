@@ -18,6 +18,7 @@ static func hostiles_of(world: World, team: StringName) -> Array[Entity]:
 
 # hit：damage（已含攻擊者的攻擊力，由發動招式的一方計算）、knockback、origin（預設 source.pos，擊退方向為 origin → target）、
 #      hit_stop（命中定格秒數，只給畫面層）、shake、is_heavy（重擊：第三段、盾反、爆炸，只影響顯示與音效）、blockable（能不能被格擋）、
+#      color（命中粒子顏色，只給畫面層；預設白色）、
 #      band（高度範圍 Vector2(下緣, 上緣)；預設是攻擊者的身體往腳底下延伸 HEIGHT.reach_below，見 body_band）
 # 這裡套用攻擊者的爆擊與擊退屬性；護甲與受傷倍率在 Entity.take_damage
 # 回傳是否實際命中（高度不重疊、被格擋也算沒命中）
@@ -52,7 +53,7 @@ static func apply_damage(world: World, source: Entity, target: Entity, hit: Dict
 	world.emit_event("entity:damaged", {
 		"target_id": target.id, "amount": dealt, "source_id": source.id,
 		"knockback": knockback, "is_heavy": hit.get("is_heavy", false), "is_crit": is_crit,
-		"hit_stop": hit.get("hit_stop", 0.0),
+		"hit_stop": hit.get("hit_stop", 0.0), "color": hit.get("color", Color.WHITE),
 	})
 	var shake: float = hit.get("shake", 0.0)
 	if shake > 0.0 and should_shake(source):

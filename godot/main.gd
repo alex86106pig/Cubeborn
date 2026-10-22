@@ -106,6 +106,7 @@ func set_paused(paused: bool) -> void:
 	if is_paused == paused:
 		return
 	is_paused = paused
+	world_view.effects.paused = paused
 	GameEvents.event_emitted.emit("game:paused", {"name": "game:paused", "paused": paused})
 
 

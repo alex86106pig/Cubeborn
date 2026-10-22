@@ -78,8 +78,9 @@ func _parry() -> void:
 	var pr: Dictionary = weapon.special.parry
 	Hitbox.strike(world, self, pos, facing, {"shape": &"sector", "range": pr.range, "arc": pr.arc}, {
 		"damage": pr.damage * damage_mul, "knockback": pr.knockback, "hit_stop": pr.hit_stop,
-		"shake": pr.shake, "is_heavy": true, "blockable": false,
+		"shake": pr.shake, "is_heavy": true, "blockable": false, "color": pr.color,
 	})
+	world.emit_event("fx:parry", {"pos": pos, "height": height, "radius": pr.range, "color": pr.color})
 	parry_timer = PARRY_ANIM_TIME
 	action.change(&"ready")
 

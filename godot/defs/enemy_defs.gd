@@ -64,6 +64,7 @@ const ENEMIES := {
 
 	&"boss": {
 		"visual": &"boss",
+		"hit_color": Color("ff4040"),   # 砸地、衝鋒打中時的命中粒子（網頁版 0xff4040）
 		"max_hp": 900.0,
 		"move_speed": 2.2,
 		"speed_variance": 0.0,

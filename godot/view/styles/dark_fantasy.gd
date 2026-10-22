@@ -20,6 +20,9 @@ const SKELETON_JOINTS := {
 }
 const BOSS_SCALE := 1.85
 
+const BLOOD := Color("d8d2bf")        # 骷髏死亡碎骨（網頁版 colors.blood）
+const BOSS_BLOOD := Color("55e0ff")   # 亡骸騎士的死亡、狂暴、召喚（網頁版 colors.bossBlood）
+
 const GROUND_COLORS: Array[Color] = [Color("2b3528"), Color("3a4431"), Color("4a4a3a")]
 const ROCK_COLORS: Array[Color] = [Color("55585e"), Color("6a6d72"), Color("46484d")]
 

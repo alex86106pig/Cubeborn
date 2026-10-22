@@ -88,18 +88,27 @@ func _on_hit(target: Entity) -> void:
 	if not explosion.is_empty():
 		_explode()
 	else:
-		# 擊退方向沿飛行方向
-		Combat.apply_damage(world, _source(), target, {
+		# 擊退方向沿飛行方向；被格擋時沒有命中粒子，改成碎散
+		var hit := Combat.apply_damage(world, _source(), target, {
 			"damage": damage, "knockback": knockback_force, "origin": pos - direction,
-			"hit_stop": hit_stop, "shake": shake, "band": band(), "blockable": blockable,
+			"hit_stop": hit_stop, "shake": shake, "band": band(), "blockable": blockable, "color": color,
 		})
+		if not hit:
+			_fizzle()
 	remove()
 
 
 func _expire() -> void:
 	if not explosion.is_empty():
 		_explode()
+	else:
+		_fizzle()
 	remove()
+
+
+# 飛到盡頭、撞牆或被擋下：小碎散（網頁版 #expire 的 burst）
+func _fizzle() -> void:
+	world.emit_event("fx:fizzle", {"pos": pos, "height": height, "color": color})
 
 
 func _explode() -> void:
@@ -110,7 +119,8 @@ func _explode() -> void:
 	var blast := Vector2(ground - Config.HEIGHT.reach_below, ground + Config.HEIGHT.explosion_height)
 	Hitbox.strike(world, source, pos, facing, {"shape": &"circle", "radius": explosion.radius}, {
 		"damage": explosion.damage, "knockback": explosion.knockback, "origin": pos,
-		"hit_stop": explosion.hit_stop, "is_heavy": true, "band": blast, "blockable": false,
+		"hit_stop": explosion.hit_stop, "is_heavy": true, "band": blast, "blockable": false, "color": color,
 	})
+	world.emit_event("fx:explosion", {"pos": pos, "height": ground, "radius": explosion.radius, "color": color})
 	if Combat.should_shake(self):
 		world.emit_event("camera:shake", {"amount": explosion.shake, "duration": Config.COMBAT.explosion_shake_duration})

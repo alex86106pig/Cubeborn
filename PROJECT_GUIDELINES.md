@@ -279,6 +279,16 @@ export const SKILLS = {
 | `audio:muted` | `{ muted }` | Game（M 鍵） |
 | `sfx:cue` | `{ name }` | 各遊戲物件；`name` 必須是 `audio/Sound.js` 的 `CUES` 之一（check.js 會檢查）。Godot 版欄位為 `cue` |
 | `camera:shake` | `{ amount, duration }` | 僅 Godot 版：Combat、Player、Projectile、Enemy、Boss、World（模擬層不能直接震相機） |
+| `fx:slash` | `{ pos, height, facing, range, arc, color, swing_dir }` | 僅 Godot 版（v0.20.0 起的特效事件，見 15.17）：劍盾揮砍 |
+| `fx:muzzle` | `{ pos, height, color }` | 法杖魔彈發射 |
+| `fx:telegraph` | `{ pos, height, radius, color, life }` | 奧術爆裂落點預警 |
+| `fx:fizzle` | `{ pos, height, color }` | 投射物飛到盡頭、撞牆或被格擋 |
+| `fx:explosion` | `{ pos, height, radius, color }` | 投射物爆炸 |
+| `fx:parry` | `{ pos, height, radius, color }` | 盾反 |
+| `fx:heal` | `{ pos, height, color }` | 治療藥水 |
+| `fx:sprint` | `{ pos, height, color }` | 疾跑 |
+| `fx:boss_slam` | `{ pos, height, radius }` | Boss 砸地 |
+| `fx:boss_wall` | `{ pos, height }` | Boss 衝鋒撞牆 |
 
 ---
 
@@ -417,7 +427,7 @@ InputCollector ──► InputCmd ──► World.step(cmds, dt) ──► 快�
 - 模擬層每步把事件 append 到 `world.events`（`{ "name": String, ... }`，只放 id 與數值，不放物件參照，才能透過網路傳送），步驟結束後由組合根交給 `GameEvents`（autoload）以 Godot 訊號 `event_emitted(name, payload)` 發出。
 - 事件名稱、payload 欄位與第 9 節相同（`entity:damaged`、`sfx:cue`…），物件欄位改為 id（例如 `target` → `target_id`）。新增事件時同樣要列進第 9 節的表。
 - payload 的 `name` 欄位保留給事件名稱（`world.emit_event` 會寫入並擋下衝突），所以 `sfx:cue` 的音效名稱放在 `cue`。
-- 網頁版直接呼叫畫面的地方（`renderer.shake`、`effects.*`）改成事件；特效事件在搬 `view/effects.gd` 時再定名稱並列進第 9 節。
+- 網頁版直接呼叫畫面的地方（`renderer.shake`、`effects.*`）改成事件：震動是 `camera:shake`，特效是 `fx:*`（見 15.17）。
 - 只有畫面層訂閱事件；模擬層內部流程用直接呼叫。
 
 ### 15.7 多人連線（階段二實作，階段一就要遵守資料形狀）
@@ -540,3 +550,9 @@ godot/
 - **目前只接上屬性效果**（`ItemDefs.stat_mods`）；條件、觸發、能力等之後的里程碑再實作。
 - 放進身上：`Player.add_item(id)` 建立實例 `{uid, id}`，以 `uid`（`item_N`）為屬性來源；`remove_item(uid)`、`clear_items()` 拿掉。武器道具直接 `equip_weapon`，不放進 `items`。還沒有背包介面，放進來就生效。
 - 除錯：F4 依清單順序放入下一個道具，F5 清空；`--items=id,id`。
+
+### 15.17 特效（v0.20.0）
+- 畫面層 `view/effects.gd`（`WorldView.effects`）照搬網頁版 `Effects.js`：方塊粒子（`burst`、`mote`）、揮砍弧光（`slash`）、衝擊環（`ring`）、預警圈（`telegraph`）。Boss 招式的地面預警仍在 `enemy_animator.gd`。
+- **一次性特效走事件**：模擬層發 `fx:*`（第 9 節的表），payload 只放位置（`pos` Vector2、`height`）、顏色與尺寸，不放實體參照。命中、死亡、狂暴直接用既有事件。新增特效事件時：模擬層 emit → `Effects.HANDLERS` 加處理函式 → 列進第 9 節；`check.gd` 會檢查三者一致。
+- **持續性粒子由畫面層依狀態產生**（投射物拖尾、蓄力、爬出、拉弓、衝鋒、暈眩、召喚、疾跑殘影），不發事件，連線時不佔頻寬。網頁版「每步機率 p」換算成每秒 p × 60 顆，小數累積到下一幀（`_count`），和幀率無關。
+- 上限：粒子 `MAX_PARTICLES` 600（一個 MultiMesh），弧光與環 `MAX_TRANSIENTS` 64。開場先畫一次透明的粒子與環來預先編譯著色器。暫停時停住、`game:restart` 時清空。

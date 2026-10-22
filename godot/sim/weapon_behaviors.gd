@@ -54,6 +54,11 @@ class MeleeSwing extends Behavior:
 		if name == &"active":
 			data.lock_facing = true
 			p.knockback += WeaponBehaviors.forward(p) * (def.lunge * data.scale)
+			p.world.emit_event("fx:slash", {
+				"pos": p.pos, "height": p.height, "facing": p.facing, "range": def.range * data.scale,
+				"arc": def.arc * data.scale, "color": def.slash_finisher_color if data.is_finisher else def.slash_color,
+				"swing_dir": data.swing_dir,
+			})
 		elif name == &"recovery":
 			data.lock_facing = false
 
@@ -103,6 +108,7 @@ class FireBolt extends Behavior:
 			"range": def.range, "radius": def.projectile_radius, "damage": def.damage * p.damage_mul,
 			"knockback": def.knockback, "color": def.color, "hit_stop": def.hit_stop, "shake": def.shake,
 		})
+		p.world.emit_event("fx:muzzle", {"pos": p.pos + dir * def.spawn_offset, "height": p.height + Config.HEIGHT.bolt_altitude, "color": def.color})
 
 
 class ArcaneBurst extends Behavior:
@@ -114,6 +120,11 @@ class ArcaneBurst extends Behavior:
 		data.target = p.pos + data.dir * dist
 		data.lock_facing = true
 		p.facing = atan2(data.dir.x, data.dir.y)
+		# 落點預警圈：持續到魔彈飛到（蓄力 + 飛行時間）
+		p.world.emit_event("fx:telegraph", {
+			"pos": data.target, "height": p.world.terrain.ground_at(data.target), "radius": def.explosion_radius, "color": def.color,
+			"life": def.windup + dist / def.projectile_speed,
+		})
 
 	func phase(p: Player, def: Dictionary, data: Dictionary, name: StringName) -> void:
 		if name != &"active":

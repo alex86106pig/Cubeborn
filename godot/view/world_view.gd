@@ -1,4 +1,4 @@
-# 畫面層：依實體 id 建立 / 移除模型並補間位置、驅動角色動畫；燈光與背景；命中定格；F2 判定顯示（碰撞圈與攻擊判定形狀）
+# 畫面層：依實體 id 建立 / 移除模型並補間位置、驅動角色動畫；燈光與背景；特效（view/effects.gd）；命中定格；F2 判定顯示（碰撞圈與攻擊判定形狀）
 # 角色用 DarkFantasy 造型的 Rig + 動畫，法杖魔彈用發光球體、敵人箭矢用 DarkFantasy 造型，其他暫用方塊
 class_name WorldView
 extends Node3D
@@ -10,6 +10,7 @@ const STRIKE_FADE := 0.3                             # 判定形狀顯示後淡�
 const STRIKE_ALPHA := 0.45
 
 var show_hitboxes := false
+var effects := Effects.new()
 var _nodes: Dictionary = {}       # entity id -> Node3D
 var _animators: Dictionary = {}   # entity id -> Animator（有骨架的實體）
 var _frozen: Dictionary = {}           # entity id -> 剩餘定格秒數（命中定格）
@@ -17,14 +18,26 @@ var _strikes: Array[Dictionary] = []   # F2 顯示中的攻擊判定 { node, lif
 var _last_strike_tick := -1
 
 
+func _init() -> void:
+	add_child(effects)   # 建立時就掛上，WorldView 沒進場景樹就被釋放時也會一起釋放
+
+
 func _ready() -> void:
 	_setup_environment()
 
 
-# 命中定格（v0.18.3，取代模擬時間放慢）：打中時攻擊者與目標的模型停住 hit_stop 秒，期間不更新位置與姿勢，之後跟上實際狀態
-# 只是畫面效果，模擬照常進行；多人時其他玩家的遊戲不受影響。事件由 main.gd 轉過來
-# v0.19.1 起預設關閉（Config.FEEL.hit_freeze）
+# 事件由 main.gd 轉過來：特效交給 Effects；重新開始時清掉場上的特效
 func on_event(name: String, p: Dictionary) -> void:
+	if name == "game:restart":
+		effects.clear()
+	effects.on_event(name, p)
+	_freeze_on_hit(name, p)
+
+
+# 命中定格（v0.18.3，取代模擬時間放慢）：打中時攻擊者與目標的模型停住 hit_stop 秒，期間不更新位置與姿勢，之後跟上實際狀態
+# 只是畫面效果，模擬照常進行；多人時其他玩家的遊戲不受影響
+# v0.19.1 起預設關閉（Config.FEEL.hit_freeze）
+func _freeze_on_hit(name: String, p: Dictionary) -> void:
 	if name != "entity:damaged" or not Config.FEEL.hit_freeze:
 		return
 	var duration: float = p.get("hit_stop", 0.0)
@@ -78,6 +91,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 		if _animators.has(id):
 			_animators[id].update(e, dt)
 	_sync_strikes(world, dt)
+	effects.sync(world, dt)
 
 
 # F2：模擬層記錄的攻擊判定（world.hitboxes）畫成地上的扇形 / 圓形，出現後淡出

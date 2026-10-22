@@ -46,9 +46,10 @@ func slam_impact() -> void:
 	var band := Vector2(height - Config.HEIGHT.reach_below, height + Config.HEIGHT.slam_height)
 	Hitbox.strike(world, self, pos, facing, {"shape": &"circle", "radius": s.radius}, {
 		"damage": s.damage * damage_mul, "knockback": s.knockback, "hit_stop": s.hit_stop, "band": band,
-		"blockable": s.blockable,
+		"blockable": s.blockable, "color": def.hit_color,
 	})
 	world.emit_event("camera:shake", {"amount": s.shake, "duration": s.shake_duration})
+	world.emit_event("fx:boss_slam", {"pos": pos, "height": height, "radius": s.radius})
 
 
 func summon_minions() -> void:
@@ -155,7 +156,7 @@ class Charge:
 				var hits := Hitbox.strike(e.world, e, e.pos, e.facing, {"shape": &"circle", "radius": e.radius + c.hit_reach}, {
 					"damage": c.damage * e.damage_mul, "knockback": c.knockback,
 					"shake": c.shake, "hit_stop": c.hit_stop, "blockable": c.blockable,
-					"block_knockback_mul": c.block_knockback_mul,
+					"block_knockback_mul": c.block_knockback_mul, "color": e.def.hit_color,
 				}, d.blocked.duplicate())
 				d.has_hit = not hits.is_empty()
 				for i in range(events_before, e.world.events.size()):
@@ -165,6 +166,7 @@ class Charge:
 			if absf(e.pos.x) >= limit or absf(e.pos.y) >= limit:
 				e.world.emit_event("sfx:cue", {"cue": "bossWallHit"})
 				e.world.emit_event("camera:shake", {"amount": c.wall_shake, "duration": c.wall_shake_duration})
+				e.world.emit_event("fx:boss_wall", {"pos": e.pos, "height": e.height})
 				d.phase = &"stunned"
 				d.phase_time = 0.0
 				e.velocity = Vector2.ZERO

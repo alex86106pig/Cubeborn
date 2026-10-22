@@ -99,6 +99,8 @@ func _initialize() -> void:
 	_check("沒有碰撞傷害：骷髏戰士（揮砍冷卻中）、弓手（不射箭時）、Boss（不出招時）貼身 2 秒都不扣血", _check_no_contact_damage)
 	_check("骷髏揮砍：舉刀 0.5 秒後才命中、傷害 12；扇形 100° / 1.5 的邊界；舉刀後半鎖定方向，繞到側面就躲開；舉刀中被打會中斷", _check_grunt_swing)
 	_check("打擊感：玩家打中不震動、模擬時間不放慢（hit_stop 只放進事件）；玩家被打與 Boss 砸地照常震動；沒有命中定格（v0.19.1 拿掉），打中後模型照常移動", _check_hit_feel)
+	_check("特效事件：模擬層發出的每個 fx:* 都有畫面處理、也列在 PROJECT_GUIDELINES 第 9 節；揮砍 / 魔彈 / 奧術 / Boss 砸地的事件餵給 Effects 會產生粒子與弧光環", _check_effects_events)
+	_check("特效上限與幀率：粒子最多 600、弧光環最多 64；投射物拖尾 30 FPS 與 144 FPS 下每秒產生的粒子數相同（約 60 顆）；暫停時不產生", _check_effects_limits)
 	_check("受擊閃白：只改自發光顏色、不切換 emission_enabled（切換會在第一次命中即時編譯著色器而卡頓）", _check_flash_no_shader_switch)
 	_check("字型：介面文字都在打包的 Noto Sans TC 裡（網頁版沒有系統字型），缺字的圖示改用向量圖", _check_font_coverage)
 	_check("零件合併：依 anchor + 材質合併、外框不變、keep 的零件留在原位、空群組移除、面法線朝外且為正面", _check_merge_static)
@@ -1970,6 +1972,105 @@ func _check_hit_feel() -> String:
 	if absf(node.position.x - g4.pos.x) > EPS:
 		return "打中後模型不應定格，應立刻跟上實際位置（%.2f vs %.2f）" % [node.position.x, g4.pos.x]
 	view.free()
+	return ""
+
+
+func _check_effects_events() -> String:
+	var handlers: Dictionary = Effects.HANDLERS
+	var fx_view := Effects.new()
+	for name: String in handlers:
+		if not fx_view.has_method(handlers[name]):
+			fx_view.free()
+			return "Effects 沒有 %s 的處理函式 %s" % [name, handlers[name]]
+	fx_view.free()
+	# 靜態：sim/ 裡 emit_event("fx:…") 的名稱都要有處理、也要列進規範的事件表
+	var guidelines := _read_text(ProjectSettings.globalize_path("res://").path_join("../PROJECT_GUIDELINES.md"))
+	var re := RegEx.create_from_string("emit_event\\(\"(fx:\\w+)\"")
+	var found := {}
+	for path in _list_gd("res://sim"):
+		for m in re.search_all(_read_text(path)):
+			found[m.get_string(1)] = true
+	for name: String in found:
+		if not handlers.has(name):
+			return "模擬層發出 %s，但 Effects.HANDLERS 沒有處理" % name
+		if not guidelines.contains("`%s`" % name):
+			return "%s 沒有列進 PROJECT_GUIDELINES 第 9 節的事件表" % name
+	for name: String in handlers:
+		if name.begins_with("fx:") and not found.has(name):
+			return "Effects 處理 %s，但模擬層沒有發出這個事件" % name
+	if found.size() < 10:
+		return "只找到 %d 種 fx 事件，應有 10 種" % found.size()
+	# 動態：實際跑招式收集事件，餵給 Effects
+	var events: Array[Dictionary] = []
+	var w := _new_world()
+	_spawn(w, &"grunt", Vector2(0, 1.5))
+	for i in 3:
+		_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1, events)
+		_run_collect(w, _cmd(Vector2.ZERO), 30, events)
+	var slashes := _named(events, "fx:slash")
+	if slashes.size() != 3 or slashes[2].color != WeaponDefs.WEAPONS.swordShield.attack.slash_finisher_color or slashes[1].swing_dir != -1:
+		return "三段揮砍應發出 3 次 fx:slash（第二段反手、第三段金色），實際 %s" % [slashes]
+	var w2 := _new_world()
+	_player(w2).equip_weapon(&"staff")
+	_run_collect(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1, events)
+	_run_collect(w2, _cmd(Vector2.ZERO), 60, events)
+	_run_collect(w2, _cmd(Vector2.ZERO, Vector2(0, 6), InputCmd.BTN_SPECIAL), 1, events)
+	_run_collect(w2, _cmd(Vector2.ZERO), 90, events)
+	var boss := _spawn(w2, &"boss", Vector2(0, 8))
+	w2.events.clear()
+	boss.slam_impact()
+	events.append_array(w2.events)
+	for name in ["fx:slash", "fx:muzzle", "fx:fizzle", "fx:telegraph", "fx:explosion", "fx:boss_slam", "entity:damaged"]:
+		if _named(events, name).is_empty():
+			return "應發出 %s" % name
+	var view := Effects.new()
+	root.add_child(view)
+	view.world = w
+	for e in events:
+		view.on_event(e.name, e)
+	var particles := view.particle_count()
+	var transients := view.transient_count()
+	view.sync(w2, DT)
+	view.queue_free()
+	if particles < 40 or transients < 6:
+		return "餵完事件應有粒子與弧光環，實際粒子 %d、弧光環 %d" % [particles, transients]
+	return ""
+
+
+func _check_effects_limits() -> String:
+	var view := Effects.new()
+	root.add_child(view)
+	view.burst(Vector3.ZERO, {"count": 2000})
+	if view.particle_count() != Effects.MAX_PARTICLES:
+		return "粒子應限制在 %d，實際 %d" % [Effects.MAX_PARTICLES, view.particle_count()]
+	for i in 100:
+		view.ring(Vector3.ZERO, 2.0)
+	if view.transient_count() != Effects.MAX_TRANSIENTS:
+		return "弧光環應限制在 %d，實際 %d" % [Effects.MAX_TRANSIENTS, view.transient_count()]
+	view.clear()
+	# 投射物拖尾：網頁版每步一顆（每秒 60 顆），不同幀率下每秒顆數要一樣
+	var w := _new_world()
+	var p := _player(w)
+	w.spawn_projectile(Projectile.new(w, {"owner": p, "pos": Vector2(0, 2), "direction": Vector2(0, 1), "speed": 0.0, "range": 100.0}))
+	var counts := []
+	for fps in [30, 144]:
+		var before := view.spawned_total
+		for i in fps * 3:
+			view.sync(w, 1.0 / fps)
+		counts.append((view.spawned_total - before) / 3.0)
+	for c: float in counts:
+		if absf(c - 60.0) > 1.0:
+			view.queue_free()
+			return "拖尾每秒顆數應約 60（30 FPS / 144 FPS），實際 %.1f / %.1f" % counts
+	var before_pause := view.spawned_total
+	view.paused = true
+	for i in 30:
+		view.sync(w, 1.0 / 30.0)
+	var paused_count := view.spawned_total - before_pause
+	view.queue_free()
+	if paused_count != 0:
+		return "暫停時不應產生粒子，實際 %d 顆" % paused_count
+	_feel("特效拖尾：30 FPS 每秒 %.1f 顆、144 FPS 每秒 %.1f 顆（網頁版每步 1 顆 = 60 顆）" % counts)
 	return ""
 
 
