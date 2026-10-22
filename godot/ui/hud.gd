@@ -3,6 +3,8 @@
 class_name HUD
 extends CanvasLayer
 
+signal quit_requested   # 暫停畫面按下「離開遊戲」
+
 const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 1~5 道具 · Esc 暫停 · M 靜音 · F1 切換武器 · F2 顯示判定 · R 重新開始"
 const FPS_INTERVAL := 0.5
 const HP_GHOST_SPEED := 0.5      # 殘影每秒縮短的比例
@@ -46,6 +48,7 @@ var _game_over := ColorRect.new()
 var _game_over_title := UiKit.label("", 56, UiKit.ALERT, 3)
 var _game_over_stats := UiKit.label("", 20)
 var _pause := ColorRect.new()
+var _quit_button := Button.new()
 var _fps_timer := 0.0
 var _fps_frames := 0
 var _game_over_delay := -1.0     # 死亡後倒數顯示結算；負數 = 沒有在倒數（重新開始時取消）
@@ -130,7 +133,15 @@ func _init() -> void:
 	var pause_controls := UiKit.label(CONTROLS_TEXT, 14, Color(1, 1, 1, 0.75))
 	pause_controls.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	pause_controls.custom_minimum_size.x = 520
-	_build_overlay(_pause, Color(5 / 255.0, 8 / 255.0, 16 / 255.0, 0.65), [UiKit.label("已暫停", 56, Color.WHITE, 3), UiKit.label("按 Esc 繼續", 20), pause_controls])
+	# 離開遊戲按鈕：網頁版不顯示（瀏覽器不允許網頁自己關閉）
+	_quit_button.text = "離開遊戲"
+	_quit_button.add_theme_font_size_override(&"font_size", 20)
+	_quit_button.custom_minimum_size = Vector2(180, 44)
+	_quit_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_quit_button.focus_mode = Control.FOCUS_NONE
+	_quit_button.visible = not OS.has_feature("web")
+	_quit_button.pressed.connect(quit_requested.emit)
+	_build_overlay(_pause, Color(5 / 255.0, 8 / 255.0, 16 / 255.0, 0.65), [UiKit.label("已暫停", 56, Color.WHITE, 3), UiKit.label("按 Esc 繼續", 20), pause_controls, _quit_button])
 	root.add_child(_pause)
 
 
@@ -147,8 +158,9 @@ func _build_overlay(panel: ColorRect, color: Color, children: Array) -> void:
 	box.set_anchors_preset(Control.PRESET_FULL_RECT)
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override(&"separation", 8)
-	for c: Label in children:
-		c.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	for c: Control in children:
+		if c is Label:
+			c.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(c)
 	panel.add_child(box)
 

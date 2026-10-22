@@ -2,6 +2,16 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.13.0] - 2026-10-22
+
+### 新增
+- 暫停畫面（Esc）加上「離開遊戲」按鈕，點下去關閉遊戲；網頁版不顯示（瀏覽器不允許網頁自己關閉）。`ui/hud.gd` 發出 `quit_requested`，`main.gd` 接到後 `quit()`。
+- `check.gd`：暫停畫面有可見的離開按鈕、按下發出一次 `quit_requested`；受擊閃白不切換 `emission_enabled`（55 項）。
+
+### 修正
+- 第一次命中（打到怪或被打）時卡頓：受擊閃白原本切換材質的 `emission_enabled`，會換成另一份著色器，第一次命中時才即時編譯。改為材質一建立就開自發光（平常黑色），閃白只改顏色（`view/part_kit.gd`）。
+  - 實測（alex_sanchong，RTX 3070，平常一幀 6.9 ms）：修改前，著色器快取是空的時候，第一次命中連續兩幀 76.6 + 55.6 ms（約卡 0.13 秒），快取已有時 23.5 ms，管線編譯數 16 → 18；修改後，快取空或已有都是 6.9 ms，管線編譯數維持 16。
+
 ## [0.12.4] - 2026-10-22
 
 ### 修改

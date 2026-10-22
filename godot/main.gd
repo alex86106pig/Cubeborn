@@ -1,4 +1,4 @@
-# 組合根：建立 World、輸入、畫面、HUD 與音效；固定步長主迴圈、命中停頓、暫停、靜音、重新開始
+# 組合根：建立 World、輸入、畫面、HUD 與音效；固定步長主迴圈、命中停頓、暫停、靜音、重新開始、離開遊戲
 # 指令列參數（放在 -- 之後）：--seconds=S --screenshot=路徑 --auto-move=x,y（螢幕方向）
 #   --auto-attack（一直按住左鍵）--weapon=staff（開場武器）--wave=N（直接從第 N 波開始）--player-hp=N（開場血量），後兩者除錯用
 extends Node3D
@@ -35,6 +35,7 @@ func _ready() -> void:
 	add_child(input_collector)
 	var hud: HUD = HUD_SCENE.instantiate()
 	hud.setup(world, camera_rig.camera)
+	hud.quit_requested.connect(get_tree().quit)
 	add_child(hud)
 	sound.setup(world)
 	add_child(sound)

@@ -22,6 +22,9 @@ func mat(color: Color, glow := false) -> StandardMaterial3D:
 		m.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
 		m.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
 		m.roughness = 1.0
+		# 自發光一開始就打開（平常為黑色）：閃白時切換開關會換著色器，第一次命中會即時編譯而卡頓
+		m.emission_enabled = true
+		m.emission = Color.BLACK
 		_flash_materials.append(m)
 	_materials[key] = m
 	return m
@@ -43,10 +46,9 @@ func add(parent: Node3D, mesh: Mesh, material: Material, t := {}) -> MeshInstanc
 	return mi
 
 
-# 受擊閃白，k 為 0~1
+# 受擊閃白，k 為 0~1；只改自發光顏色，不切換 emission_enabled（見 mat()）
 func set_flash(k: float) -> void:
 	for m in _flash_materials:
-		m.emission_enabled = k > 0.0
 		m.emission = Color(k, k, k)
 
 

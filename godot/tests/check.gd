@@ -83,7 +83,8 @@ func _initialize() -> void:
 	_check("治療藥水：3 次、回 35 血不超過上限、滿血不能用、間隔 1.5 秒、用完不能再用", _check_heal_slot)
 	_check("疾跑：移速 6.5 × 1.6 = 10.4、持續 3 秒、CD 8 秒；使用道具動作 0.18 秒", _check_sprint_slot)
 	_check("數字鍵緩衝：攻擊中按 1 會在後搖取消並使用道具；空欄位不提示", _check_slot_buffer)
-	_check("HUD：能建立、處理各種事件、顯示波次 / 血量 / 結算文字", _check_hud)
+	_check("HUD：能建立、處理各種事件、顯示波次 / 血量 / 結算文字、暫停畫面有「離開遊戲」", _check_hud)
+	_check("受擊閃白：只改自發光顏色、不切換 emission_enabled（切換會在第一次命中即時編譯著色器而卡頓）", _check_flash_no_shader_switch)
 	_check("字型：介面文字都在打包的 Noto Sans TC 裡（網頁版沒有系統字型），缺字的圖示改用向量圖", _check_font_coverage)
 	_check("零件合併：依 anchor + 材質合併、外框不變、keep 的零件留在原位、空群組移除、面法線朝外且為正面", _check_merge_static)
 	_check("零件數：騎士 ≤ 20、骷髏戰士 ≤ 16、骷髏弓手 ≤ 16、Boss ≤ 22、場地 ≤ 12（同網頁版上限，避免卡頓）", _check_mesh_counts)
@@ -1138,11 +1139,30 @@ func _check_hud() -> String:
 		hud._on_event(name, payload)
 	if hud._game_over.visible or hud._pause.visible:
 		return "game:restart 後結算與暫停畫面應隱藏"
+	if hud._quit_button.get_parent() == null or not hud._pause.is_ancestor_of(hud._quit_button) or not hud._quit_button.visible:
+		return "暫停畫面應有可見的「離開遊戲」按鈕"
+	var quit_count := [0]
+	hud.quit_requested.connect(func() -> void: quit_count[0] += 1)
+	hud._quit_button.pressed.emit()
+	if quit_count[0] != 1:
+		return "按下「離開遊戲」應發出 quit_requested 一次，實際 %d 次" % quit_count[0]
 	hud._on_event("game:victory", {"stats": w.stats.duplicate()})
 	if not hud._game_over.visible or hud._game_over_title.text != "勝利！":
 		return "game:victory 應顯示勝利畫面"
 	hud.queue_free()
 	cam.queue_free()
+	return ""
+
+
+func _check_flash_no_shader_switch() -> String:
+	var kit := PartKit.new()
+	var m := kit.mat(Color("8899aa"))
+	for k in [0.0, 0.9, 0.0]:
+		kit.set_flash(k)
+		if not m.emission_enabled:
+			return "set_flash(%.1f) 後 emission_enabled 應保持 true" % k
+		if not m.emission.is_equal_approx(Color(k, k, k)):
+			return "set_flash(%.1f) 後自發光應為 (%.1f, %.1f, %.1f)，實際 %s" % [k, k, k, k, m.emission]
 	return ""
 
 
