@@ -17,10 +17,10 @@ static func hostiles_of(world: World, team: StringName) -> Array[Entity]:
 
 
 # hit：damage（已含攻擊者的攻擊力，由發動招式的一方計算）、knockback、origin（預設 source.pos，擊退方向為 origin → target）、
-#      hit_stop、shake、is_heavy（重擊：第三段、盾擊、爆炸，只影響顯示與音效）、
+#      hit_stop、shake、is_heavy（重擊：第三段、盾反、爆炸，只影響顯示與音效）、blockable（能不能被格擋）、
 #      band（高度範圍 Vector2(下緣, 上緣)；預設是攻擊者的身體往腳底下延伸 HEIGHT.reach_below，見 body_band）
 # 這裡套用攻擊者的爆擊與擊退屬性；護甲與受傷倍率在 Entity.take_damage
-# 回傳是否實際命中（高度不重疊也算沒命中）
+# 回傳是否實際命中（高度不重疊、被格擋也算沒命中）
 static func apply_damage(world: World, source: Entity, target: Entity, hit: Dictionary) -> bool:
 	if target == null or not target.can_be_hit():
 		return false
@@ -28,6 +28,9 @@ static func apply_damage(world: World, source: Entity, target: Entity, hit: Dict
 	if not target.overlaps_height(band.x, band.y):
 		return false
 	var origin: Vector2 = hit.get("origin", source.pos)
+	# 格擋：只對 blockable 的攻擊（揮砍、箭）；砸地、衝鋒、爆炸擋不住
+	if hit.get("blockable", false) and target.try_block(origin, hit):
+		return false
 	var dir := target.pos - origin
 	if dir.length_squared() < 1e-6:
 		dir = MathUtil.dir_from_angle(source.facing)

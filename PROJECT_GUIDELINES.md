@@ -265,6 +265,7 @@ export const SKILLS = {
 |---|---|---|
 | `entity:damaged` | `{ target, amount, source, knockback, isCrit }`（Godot 版：`isCrit` 拆成 `is_heavy` 重擊顯示（第三段、盾擊、爆炸）與 `is_crit` 屬性擲出的爆擊，見 15.11） | Combat |
 | `entity:healed` | `{ target, amount }` | skillBehaviors |
+| `player:blocked` | `{ player_id, perfect }`（Godot 版 v0.18.0：格擋擋下攻擊；perfect = 完美格擋，下一步盾反） | Player.try_block |
 | `entity:died` | `{ entity, source }` | Entity |
 | `player:died` | `{ player }` | Player |
 | `skill:used` | `{ key, def }` | playerStates / ActiveSlots |
@@ -513,4 +514,12 @@ godot/
 - 每次 `strike` 都記錄到 `world.hitboxes`（每步清空，只給畫面層 F2 畫形狀，不影響模擬）。
 - 骷髏戰士揮砍（使用者選「中等」）：中心距離 1.3 內且冷卻好時舉刀 0.5 秒（站定，前 50% 轉向、之後鎖定）→ 揮下 0.1 秒（前方 100°、距離 1.5 的扇形，傷害 12）→ 收招 0.5 秒；冷卻 1.2 秒從舉刀算。舉刀中被打進入受擊硬直，揮砍中斷。
 - 弓手與 Boss 拿掉碰撞傷害後不補新招（使用者決定）。
-- 網頁版對照：`check.gd` 的 `WEB_DIVERGENCE` 列出刻意不同的欄位與原因（`contactDamage` 等），其他欄位照常逐欄比對。
+- 網頁版對照：`check.gd` 的 `WEB_DIVERGENCE`（欄位）與 `WEB_DIVERGENCE_PATHS`（整段）列出刻意不同的地方與原因，其他欄位照常逐欄比對。
+
+### 15.15 劍盾格擋與盾反（v0.18.0）
+- 使用者決定：劍盾右鍵從盾擊衝鋒改成格擋；按一下自動維持 3 秒；格擋時可以移動。其餘由 Claude 訂（數值在 `weapon_defs.gd` 的 `swordShield.special`）：
+  - 移速 ×0.5、會轉向瞄準點；只能用翻滾提前結束；冷卻 4 秒從按下算。
+  - 擋得住：`blockable` 的攻擊（揮砍、箭），來向在正前方合計 75°（左右各 37.5°）內。擋下時不扣血、自己被推退 30% 擊退，發出 `player:blocked` 與音效；箭會消失。
+  - 擋不住：砸地、衝鋒、爆炸（不是 blockable），或來自側面 / 背後。
+  - 完美格擋：按下後 0.2 秒內擋下 → 下一步開頭盾反（前方 120°、距離 2.5，傷害 25 × 攻擊力，大擊退、重擊顯示），然後結束格擋。
+- 實作：`ShieldBlock` 行為記錄 `player.block_time`（格擋開始後秒數，< 0 = 沒在格擋）；`Combat.apply_damage` 對 blockable 的攻擊先呼叫 `target.try_block(來源位置, hit)`；盾反延到下一步執行（`pending_parry`），避免在怪物出招的途中改動怪物狀態。

@@ -31,25 +31,30 @@ const WEAPONS := {
 			"hit_stop": 0.04,
 			"shake": 0.08,
 		},
+		# 格擋與盾反（v0.18.0，取代網頁版的盾擊衝鋒；使用者決定：按一下自動維持、可以移動、拿掉衝鋒，其餘數值 Claude 訂）
 		"special": {
-			"behavior": &"shieldBash",
-			"sfx": "shieldBash",
-			"name": "盾擊衝鋒",
+			"behavior": &"shieldBlock",
+			"name": "格擋",
 			"icon": "🛡",
-			"cooldown": 4.0,
-			"damage": 15.0,
-			"dash_speed": 17.0,
-			"dash_mass": 8.0,          # 衝鋒時把敵人推開
-			"radius": 1.1,
-			"hit_offset": 0.5,         # 判定圓心在玩家前方的距離
-			"knockback": 16.0,
-			"windup": 0.08,
-			"active": 0.22,
-			"recovery": 0.2,
-			"move_speed_mul": 0.0,
-			"damage_taken_mul": 0.2,   # 衝鋒期間受到的傷害倍率
-			"hit_stop": 0.07,
-			"shake": 0.25,
+			"cooldown": 4.0,           # 從按下右鍵開始算
+			"windup": 0.05,            # 舉盾；按下就開始格擋（完美格擋從按下算）
+			"active": 2.95,            # 舉盾 + 維持合計 3 秒
+			"recovery": 0.15,
+			"move_speed_mul": 0.5,     # 格擋時移速減半
+			"roll_cancel": true,       # 可以用翻滾提前結束
+			"block_arc": PI * 75.0 / 180.0,   # 正前方合計 75°（左右各 37.5°）
+			"perfect_window": 0.2,     # 按下後這麼久內擋下 = 完美格擋，觸發盾反
+			"block_knockback_mul": 0.3,   # 擋下時自己被推退的比例（不扣血）
+			"sfx_block": "shieldBash",
+			"sfx_parry": "hitHeavy",
+			"parry": {
+				"damage": 25.0,
+				"range": 2.5,
+				"arc": PI * 120.0 / 180.0,
+				"knockback": 14.0,
+				"hit_stop": 0.08,
+				"shake": 0.3,
+			},
 		},
 	},
 

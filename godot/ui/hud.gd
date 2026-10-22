@@ -245,6 +245,10 @@ func _on_event(name: String, p: Dictionary) -> void:
 			_floaters.spawn(target, str(p.amount), &"player" if is_player else (&"crit" if big else &"dmg"))
 			if is_player:
 				_flash_vignette()
+		"player:blocked":
+			var player: Entity = world.entities.get(p.player_id) if world else null
+			if player != null:
+				_floaters.spawn(player, "完美格擋！" if p.perfect else "格擋", &"crit" if p.perfect else &"dmg")
 		"entity:healed":
 			var target: Entity = world.entities.get(p.target_id) if world else null
 			if target != null and p.amount > 0:

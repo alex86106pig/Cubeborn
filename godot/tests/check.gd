@@ -61,7 +61,8 @@ func _initialize() -> void:
 	_check("武器資料：behavior 存在、三段時間為正數、音效名稱存在於網頁版 CUES", _check_weapon_defs)
 	_check("劍盾普攻：三段時間合計 0.36 秒，期間移速 ×0.35、收招後回到 ready", _check_attack_timing)
 	_check("劍盾連段：傷害 12 / 12 / 22（第三段 ×1.8）、第三段後搖 ×1.6、同一目標每次出手只中一次", _check_combo)
-	_check("盾擊衝鋒：CD 4 秒、衝刺 17 單位/秒 × 0.22 秒、受傷 ×0.2 且不被打斷、CD 中發 skill:onCooldown", _check_shield_bash)
+	_check("格擋（v0.18.0 取代盾擊衝鋒）：按一下維持 3 秒、移速 ×0.5 可轉向；CD 4 秒、CD 中發 skill:onCooldown；翻滾可提前結束", _check_shield_block)
+	_check("格擋判定：正前方 ±37.5° 擋下揮砍與箭（不扣血、箭消失）、背後擋不住；Boss 砸地擋不住；0.2 秒內完美格擋觸發盾反 25 傷害並結束格擋", _check_block_hits)
 	_check("受擊：扣血後進入 stagger（移速 ×0.4、0.15 秒）、無敵 0.6 秒、畫面震動", _check_stagger)
 	_check("輸入緩衝：攻擊中按右鍵會在後搖取消並接特殊技；0.25 秒後過期", _check_buffer)
 	_check("法杖魔彈：前方 0.6 產生、20 單位/秒、命中造成 8 傷害、最遠 14 單位", _check_fire_bolt)
@@ -89,7 +90,7 @@ func _initialize() -> void:
 	_check("屬性接上遊戲：攻速 ×2 普攻時間減半、冷卻 ×0.5、最大生命 +20 時目前生命同步增加、每秒回血、除錯移速 +50% = 9.75", _check_stats_hooks)
 	_check("翻滾：0.35 秒翻 4 單位；移速 +50% 時同樣 0.35 秒翻 6 單位；冷卻 1.2 秒（−10% 為 1.08）；次數 +1 可連翻兩次", _check_roll_motion)
 	_check("翻滾無敵：前 0.2 秒打不到、投射物穿過，之後會被打中", _check_roll_invuln)
-	_check("翻滾取消：普攻前搖與後搖可取消；揮下去、特殊技、硬直中先緩衝，結束後才翻", _check_roll_cancel)
+	_check("翻滾取消：普攻前搖與後搖可取消；揮下去、特殊技（奧術爆裂）、硬直中先緩衝，結束後才翻", _check_roll_cancel)
 	_check("跳躍：第 18 步最高 1.5、第 36 步落地；空中不能再跳；攻擊中可以跳、硬直中不行；空中翻滾照常下墜且一樣翻 4 單位", _check_jump_motion)
 	_check("地形：0.5 石台走不上去、跳得上去；從 0.5 跳上 1.0；走出邊緣會掉回地面；2.5 的牆跳不過去", _check_terrain)
 	_check("高度判定：最高點時箭從腳下飛過、地面會中箭；跳起來躲過 Boss 砸地；空中揮砍與空中魔彈打得到地上的怪", _check_height_hits)
@@ -510,41 +511,95 @@ func _check_combo() -> String:
 	return ""
 
 
-func _check_shield_bash() -> String:
+func _check_shield_block() -> String:
 	var w := _new_world()
 	var p := _player(w)
 	var events: Array[Dictionary] = []
 	_run_collect(w, _cmd(Vector2.ZERO, Vector2(5, 0), InputCmd.BTN_SPECIAL), 1, events)
-	if not p.action.is_in(&"special") or _named(events, "skill:used").is_empty():
-		return "右鍵後應進入 special 並發出 skill:used"
-	var idle := _cmd(Vector2.ZERO, Vector2(5, 0))
-	var hurt_checked := false
-	for i in 60:
-		_run_collect(w, idle, 1, events)
-		if not hurt_checked and p.action.data.get("phase_index", 0) == 1:
-			hurt_checked = true
-			var dealt := p.take_damage(10.0, Vector2(-1, 0), 20.0, 0)
-			if dealt != 2 or not p.action.is_in(&"special"):
-				return "衝鋒中受到 10 傷害實際扣 %d（預期 2），狀態 %s（應維持 special）" % [dealt, p.action.current_name]
-		if p.action.is_in(&"ready"):
-			break
-	if not hurt_checked:
-		return "沒有進入 active 階段"
-	var dist := p.pos.x
-	if absf(dist - 17.0 * 0.22) > 17.0 * DT * 1.5:
-		return "衝刺距離 %.3f，預期約 %.3f" % [dist, 17.0 * 0.22]
-	if p.mass != Config.PLAYER.mass or p.damage_taken_mul != 1.0 or p.knockback_mul != 1.0:
-		return "結束後質量 / 受傷倍率 / 擊退倍率沒有還原"
+	if not p.action.is_in(&"special") or p.block_time < 0.0 or _named(events, "skill:used").is_empty():
+		return "右鍵後應開始格擋並發出 skill:used"
+	# 格擋中可以移動（×0.5）、會轉向瞄準點
+	_run(w, _cmd(Vector2(0, 1), Vector2(5, 0)), 20)
+	var aim_angle := MathUtil.angle_to(p.pos, Vector2(5, 0))   # 邊走邊瞄準固定點，朝向要用目前位置算
+	if absf(p.velocity.length() - 6.5 * 0.5) > EPS or absf(angle_difference(p.facing, aim_angle)) > 0.05:
+		return "格擋中移速 %.3f（預期 3.25）、朝向 %.2f（預期 %.2f）" % [p.velocity.length(), p.facing, aim_angle]
+	var steps := 21
+	while p.block_time >= 0.0 and steps < 400:
+		_run(w, _cmd(Vector2.ZERO, Vector2(5, 0)), 1)
+		steps += 1
+	if absi(steps - roundi(3.0 / DT)) > 2:
+		return "格擋應維持約 %d 步，實際 %d 步" % [roundi(3.0 / DT), steps]
 	_run_collect(w, _cmd(Vector2.ZERO, Vector2(5, 0), InputCmd.BTN_SPECIAL), 2, events)
-	if _named(events, "skill:onCooldown").is_empty() or p.action.is_in(&"special"):
-		return "CD 中按右鍵應發出 skill:onCooldown 且不出招"
+	if _named(events, "skill:onCooldown").is_empty() or p.block_time >= 0.0:
+		return "CD 中按右鍵應發出 skill:onCooldown 且不格擋"
 	var remaining := w.cooldowns.remaining("player.special")
 	var elapsed := w.tick * DT
 	if absf(remaining - (4.0 - elapsed + DT)) > DT * 1.5:
 		return "CD 剩餘 %.3f 秒，預期約 %.3f" % [remaining, 4.0 - elapsed + DT]
-	_run(w, idle, ceili(remaining / DT) + 1)
-	if not w.cooldowns.is_ready("player.special"):
-		return "4 秒後 CD 應已結束"
+	# 翻滾可以提前結束格擋
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 10)
+	_run(w2, _cmd(Vector2(1, 0), Vector2(0, 5), InputCmd.BTN_ROLL), 1)
+	if not p2.action.is_in(&"roll") or p2.block_time >= 0.0:
+		return "格擋中按翻滾應結束格擋並翻滾，實際狀態 %s" % p2.action.current_name
+	return ""
+
+
+func _check_block_hits() -> String:
+	var front := Vector2(0, -5)   # 骷髏在玩家 -Z 方向（_grunt_swinging 的配置）
+	# 一般格擋：骷髏舉刀時就開始格擋，命中時已超過 0.2 秒 → 擋下但不是完美格擋
+	var w := _new_world()
+	var p := _player(w)
+	var g := _grunt_swinging(w, p)
+	_run(w, _cmd(Vector2.ZERO, front, InputCmd.BTN_SPECIAL), 1)
+	var events: Array[Dictionary] = []
+	_run_collect(w, _cmd(Vector2.ZERO, front), 40, events)
+	var blocked := _named(events, "player:blocked")
+	if p.hp != p.max_hp or blocked.size() != 1 or blocked[0].perfect:
+		return "正面應擋下揮砍（非完美）：血量 %.0f、blocked 事件 %s" % [p.hp, blocked]
+	# 背對：擋不住
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	_grunt_swinging(w2, p2)
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 10), InputCmd.BTN_SPECIAL), 1)
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 10)), 40)
+	if p2.hp >= p2.max_hp:
+		return "背對骷髏格擋應擋不住"
+	# 完美格擋：先面向骷髏，在命中前約 0.15 秒才按右鍵 → 擋下、下一步盾反 25 傷害並結束格擋
+	var w3 := _new_world()
+	var p3 := _player(w3)
+	var g3 := _grunt_swinging(w3, p3)
+	var s: Dictionary = EnemyDefs.ENEMIES.grunt.swing
+	_run(w3, _cmd(Vector2.ZERO, front), roundi((s.windup - 0.15) / DT) - 1)
+	var g_hp := g3.hp
+	var ev3: Array[Dictionary] = []
+	_run_collect(w3, _cmd(Vector2.ZERO, front, InputCmd.BTN_SPECIAL), 1, ev3)
+	_run_collect(w3, _cmd(Vector2.ZERO, front), 15, ev3)
+	var b3 := _named(ev3, "player:blocked")
+	if b3.size() != 1 or not b3[0].perfect or p3.hp != p3.max_hp:
+		return "0.2 秒內擋下應為完美格擋：%s、血量 %.0f" % [b3, p3.hp]
+	if g_hp - g3.hp != 25.0 or p3.block_time >= 0.0:
+		return "盾反應造成 25 傷害並結束格擋：傷害 %.0f、格擋 %s" % [g_hp - g3.hp, p3.block_time >= 0.0]
+	# 箭：正面擋下並消失
+	var w4 := _new_world()
+	var p4 := _player(w4)
+	var archer := _spawn(w4, &"archer", Vector2(0, 15))
+	_run(w4, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 20)
+	var arrow := Projectile.new(w4, {"owner": archer, "pos": p4.pos + Vector2(0, 1.5), "direction": Vector2(0, -1),
+		"speed": 10.0, "range": 5.0, "damage": 12.0, "altitude": Config.HEIGHT.arrow_altitude, "blockable": true})
+	w4.spawn_projectile(arrow)
+	_run(w4, _cmd(Vector2.ZERO, Vector2(0, 5)), 20)
+	if not arrow.is_removed or p4.hp != p4.max_hp:
+		return "正面應擋下箭（箭消失、不扣血）：removed=%s 血量 %.0f" % [arrow.is_removed, p4.hp]
+	# Boss 砸地：格擋也擋不住
+	var w5 := _new_world()
+	var p5 := _player(w5)
+	var boss := _spawn(w5, &"boss", Vector2(0, 2.0))
+	_run(w5, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 20)
+	boss.slam_impact()
+	if p5.hp >= p5.max_hp:
+		return "Boss 砸地不能被格擋"
 	return ""
 
 
@@ -571,7 +626,7 @@ func _check_stagger() -> String:
 
 
 func _check_buffer() -> String:
-	# 劍盾：前搖中按右鍵 → 後搖第一步取消 → 下一步接盾擊（不等攻擊自然結束的第 23 步）
+	# 劍盾：前搖中按右鍵 → 後搖第一步取消 → 下一步接格擋（不等攻擊自然結束的第 23 步）
 	var w := _new_world()
 	var p := _player(w)
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1)
@@ -584,7 +639,7 @@ func _check_buffer() -> String:
 			started = w.tick
 			break
 	if started < 0 or started >= 23:
-		return "盾擊在第 %d 步才開始，應在攻擊後搖時取消（第 23 步之前）" % started
+		return "格擋在第 %d 步才開始，應在攻擊後搖時取消（第 23 步之前）" % started
 	# 法杖：奧術爆裂前搖 0.35 秒，期間再按右鍵的緩衝 0.25 秒後過期 → 不會在後搖時被消化（不發 skill:onCooldown）
 	var w2 := _new_world()
 	var p2 := _player(w2)
@@ -1403,6 +1458,8 @@ func _check_roll_cancel() -> String:
 		var w3 := _new_world()
 		var p3 := _player(w3)
 		if state == &"special":
+			# 用法杖的奧術爆裂（劍盾格擋 v0.18.0 起可以用翻滾結束，見 _check_shield_block）
+			p3.equip_weapon(&"staff")
 			_run(w3, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 1)
 		else:
 			p3.action.change(&"stagger")
@@ -2078,9 +2135,15 @@ const WEB_DIVERGENCE := {
 	"contactInterval": "同上",
 	"contactKnockback": "同上",
 }
+# 整段不比對的路徑
+const WEB_DIVERGENCE_PATHS := {
+	"WEAPONS.swordShield.special": "v0.18.0 B5：使用者決定劍盾右鍵從盾擊衝鋒改成格擋與盾反",
+}
 
 
 func _compare_web(path: String, w: Variant, g: Variant, diffs: Array[String]) -> void:
+	if WEB_DIVERGENCE_PATHS.has(path):
+		return
 	if w is Dictionary:
 		if not g is Dictionary:
 			diffs.append("%s：Godot 不是 Dictionary（%s）" % [path, type_string(typeof(g))])

@@ -30,6 +30,8 @@ func update(p: Player, dt: float) -> void:
 		_pose_airborne(a)
 	if a.loco != &"dead":
 		_pose_action(p, a, dt)
+		if a.parry > 0.0:
+			_pose_parry(1.0 - a.parry)
 	if rig.weapon_model == &"staff" and rig.weapon_main != null:
 		rig.weapon_main.rotation.x = weapon_tilt - rig.arm_r.rotation.x
 	if rig.weapon_gem != null:
@@ -97,8 +99,8 @@ func _pose_action(p: Player, a: Dictionary, dt: float) -> void:
 			match a.behavior:
 				&"meleeSwing":
 					_pose_melee_swing(idle, a, e, dt)
-				&"shieldBash":
-					_pose_shield_bash(a, e)
+				&"shieldBlock":
+					_pose_shield_block(a, e, dt)
 				&"fireBolt":
 					_pose_fire_bolt(idle, a, e)
 				&"arcaneBurst":
@@ -161,19 +163,29 @@ func _pose_melee_swing(idle: Dictionary, a: Dictionary, e: float, dt: float) -> 
 			body.rotation.y = lerpf(0.35 * s, 0.0, e)
 
 
-func _pose_shield_bash(a: Dictionary, e: float) -> void:
+# 格擋：盾舉到身前、劍收在身側、身體微蹲前傾；收招時放下（腿照常隨移動擺動）
+func _pose_shield_block(a: Dictionary, e: float, dt: float) -> void:
 	match a.phase:
 		&"windup":
-			rig.arm_l.rotation.x = lerpf(-0.1, -1.5, e)
-			rig.arm_l.rotation.y = lerpf(0.0, -0.6, e)
-			rig.arm_r.rotation.x = lerpf(-0.35, 0.5, e)
-			rig.body.rotation.x = lerpf(0.0, 0.25, e)
+			rig.arm_l.rotation.x = lerpf(-0.1, -1.45, e)
+			rig.arm_l.rotation.y = lerpf(0.0, -0.75, e)
+			rig.arm_r.rotation.x = lerpf(-0.35, 0.3, e)
+			rig.body.rotation.x = lerpf(0.0, 0.12, e)
 		&"active":
-			rig.arm_l.rotation = Vector3(-1.5, -0.6, 0.0)
-			rig.arm_r.rotation.x = 0.5
-			rig.body.rotation.x = 0.25
+			rig.arm_l.rotation = Vector3(-1.45, -0.75, 0.0)
+			rig.arm_r.rotation.x = 0.3
+			rig.body.rotation.x = 0.12
 		_:
-			rig.body.rotation.x = lerpf(0.25, 0.0, e)
+			rig.arm_l.rotation.x = _step_lerp(rig.arm_l.rotation.x, -0.1, 0.3, dt)
+			rig.arm_l.rotation.y = lerpf(-0.75, 0.0, e)
+			rig.body.rotation.x = lerpf(0.12, 0.0, e)
+
+
+# 盾反：盾往前猛推、身體前衝（parry 從 1 降到 0）
+func _pose_parry(k: float) -> void:
+	var push := sin(k * PI)
+	rig.arm_l.rotation = Vector3(-1.5 - 0.2 * push, -0.4, 0.0)
+	rig.body.rotation.x = 0.35 * push
 
 
 func _pose_fire_bolt(idle: Dictionary, a: Dictionary, e: float) -> void:

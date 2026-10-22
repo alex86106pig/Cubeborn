@@ -75,6 +75,11 @@ func can_be_hit() -> bool:
 	return not is_dead and invuln_timer <= 0.0 and not is_dodging()
 
 
+# 能格擋的攻擊打過來時由 Combat 呼叫；回傳 true = 擋下（不扣血）。只有玩家格擋時會擋（Player.try_block）
+func try_block(_from: Vector2, _hit: Dictionary) -> bool:
+	return false
+
+
 # 閃避中（翻滾無敵）：不能被打中，投射物直接穿過；受傷後的無敵時間則仍會擋下投射物
 func is_dodging() -> bool:
 	return false

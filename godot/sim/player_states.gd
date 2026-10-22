@@ -118,7 +118,9 @@ class TimedAction:
 			return
 		var name := PHASES[d.phase_index]
 		# 普攻的前搖與後搖可以用翻滾取消（揮下去的 active 不行，按鍵留在緩衝等 active 結束）
-		if kind == &"attack" and name != &"active" and p.buffered_action.get("type") == &"roll" and p.roll_charges > 0:
+		# 有 roll_cancel 的特殊技（格擋）任何階段都能用翻滾結束
+		var roll_cancelable: bool = (kind == &"attack" and name != &"active") or d.def.get("roll_cancel", false)
+		if roll_cancelable and p.buffered_action.get("type") == &"roll" and p.roll_charges > 0:
 			PlayerStates.try_roll(p, fsm)
 			return
 		var duration: float = d.durations[d.phase_index]

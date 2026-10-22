@@ -74,36 +74,22 @@ class MeleeSwing extends Behavior:
 		p.combo_timer = def.combo_window
 
 
-class ShieldBash extends Behavior:
-	func enter(p: Player, def: Dictionary, data: Dictionary) -> void:
-		data.dir = WeaponBehaviors.aim_direction(p)
-		data.hit = {}
-		data.lock_facing = true
-		p.facing = atan2(data.dir.x, data.dir.y)
-		p.set_stat_source(&"shieldBash", [[&"damage_taken", Stats.MUL, def.damage_taken_mul], [&"knockback_taken", Stats.MUL, 0.0]])
+# 格擋（v0.18.0）：按下就開始格擋，舉盾 + 維持合計 3 秒（windup + active），可以移動與轉向；收招時放下盾
+# 擋下的判斷在 Player.try_block（Combat.apply_damage 呼叫）；完美格擋的盾反在 Player.update 執行
+class ShieldBlock extends Behavior:
+	func enter(p: Player, _def: Dictionary, _data: Dictionary) -> void:
+		p.block_time = 0.0
 
-	func phase(p: Player, def: Dictionary, data: Dictionary, name: StringName) -> void:
-		if name == &"active":
-			p.forced_velocity = data.dir * def.dash_speed
-			p.has_forced_velocity = true
-			p.mass = def.dash_mass
-		elif name == &"recovery":
-			p.has_forced_velocity = false
-			p.mass = Config.PLAYER.mass
+	func phase(p: Player, _def: Dictionary, _data: Dictionary, name: StringName) -> void:
+		if name == &"recovery":
+			p.block_time = -1.0
 
-	func update(p: Player, def: Dictionary, data: Dictionary, name: StringName, _k: float, _dt: float) -> void:
-		if name != &"active":
-			return
-		var center: Vector2 = p.pos + data.dir * def.hit_offset
-		Hitbox.strike(p.world, p, center, p.facing, {"shape": &"circle", "radius": def.radius}, {
-			"damage": def.damage * p.damage_mul, "knockback": def.knockback, "origin": p.pos,
-			"hit_stop": def.hit_stop, "shake": def.shake, "is_heavy": true, "blockable": false,
-		}, data.hit)
+	func update(p: Player, _def: Dictionary, _data: Dictionary, name: StringName, _k: float, dt: float) -> void:
+		if name != &"recovery":
+			p.block_time += dt
 
 	func exit(p: Player, _def: Dictionary, _data: Dictionary) -> void:
-		p.has_forced_velocity = false
-		p.mass = Config.PLAYER.mass
-		p.remove_stat_source(&"shieldBash")
+		p.block_time = -1.0
 
 
 class FireBolt extends Behavior:
@@ -145,7 +131,7 @@ class ArcaneBurst extends Behavior:
 
 static var BEHAVIORS := {
 	&"meleeSwing": MeleeSwing.new(),
-	&"shieldBash": ShieldBash.new(),
+	&"shieldBlock": ShieldBlock.new(),
 	&"fireBolt": FireBolt.new(),
 	&"arcaneBurst": ArcaneBurst.new(),
 }

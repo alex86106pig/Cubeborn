@@ -3,6 +3,7 @@ class_name Player
 extends Entity
 
 const ROLL_CD := "player.roll"
+const PARRY_ANIM_TIME := 0.2
 
 var peer_id := 0
 var move_input := Vector2.ZERO
@@ -17,6 +18,9 @@ var slots := ActiveSlots.new(Config.PLAYER.slots)
 var buffs: Dictionary = {}             # id -> { remaining, stats?（屬性加成，見 sim/stats.gd）, trail_color? }
 var roll_charges := 0                  # 目前可用的翻滾次數（上限為 roll_charges 屬性）
 var dodge_timer := 0.0                 # 翻滾無敵剩餘秒數
+var block_time := -1.0                 # 格擋開始後經過的秒數；< 0 = 沒有在格擋（weapon_behaviors 的 ShieldBlock）
+var pending_parry := false             # 本步完美格擋，下一步開頭執行盾反
+var parry_timer := 0.0                 # 盾反動作剩餘秒數（畫面用）
 var forced_velocity := Vector2.ZERO
 var has_forced_velocity := false
 var locomotion: StateMachine
@@ -44,6 +48,36 @@ func try_jump() -> bool:
 		return false
 	vz = 4.0 * Config.JUMP.height / Config.JUMP.air_time
 	return true
+
+
+# 由 Combat.apply_damage 對能格擋的攻擊呼叫：格擋中、攻擊來自正前方 block_arc 內就擋下（不扣血、自己被推退一點）
+# from 是攻擊來的位置（近戰為攻擊者、投射物為飛來的方向）；按下格擋後 perfect_window 內擋下 = 完美格擋，下一步盾反
+func try_block(from: Vector2, hit: Dictionary) -> bool:
+	if block_time < 0.0:
+		return false
+	var def: Dictionary = weapon.special
+	var to_source := from - pos
+	if to_source.length_squared() > 1e-6:
+		if absf(angle_difference(facing, atan2(to_source.x, to_source.y))) > def.block_arc / 2.0:
+			return false
+		knockback -= to_source.normalized() * (hit.get("knockback", 0.0) * def.block_knockback_mul / mass)
+	var perfect: bool = block_time <= def.perfect_window + 1e-6
+	world.emit_event("player:blocked", {"player_id": id, "perfect": perfect})
+	world.emit_event("sfx:cue", {"cue": def.sfx_parry if perfect else def.sfx_block})
+	if perfect:
+		pending_parry = true
+	return true
+
+
+# 盾反：對前方扇形造成傷害（隨攻擊力），然後結束格擋
+func _parry() -> void:
+	var pr: Dictionary = weapon.special.parry
+	Hitbox.strike(world, self, pos, facing, {"shape": &"sector", "range": pr.range, "arc": pr.arc}, {
+		"damage": pr.damage * damage_mul, "knockback": pr.knockback, "hit_stop": pr.hit_stop,
+		"shake": pr.shake, "is_heavy": true, "blockable": false,
+	})
+	parry_timer = PARRY_ANIM_TIME
+	action.change(&"ready")
 
 
 func roll_max() -> int:
@@ -114,6 +148,10 @@ func update(dt: float) -> void:
 		return
 
 	_read_input()
+	if pending_parry:
+		pending_parry = false
+		if block_time >= 0.0:
+			_parry()
 	action.update(dt)
 
 	var data := action.data
@@ -133,6 +171,7 @@ func update(dt: float) -> void:
 func _tick_timers(dt: float) -> void:
 	combo_timer = maxf(0.0, combo_timer - dt)
 	dodge_timer = maxf(0.0, dodge_timer - dt)
+	parry_timer = maxf(0.0, parry_timer - dt)
 	_tick_roll_charges()
 	for id: StringName in buffs.keys():
 		buffs[id].remaining -= dt
@@ -184,6 +223,8 @@ func _update_anim() -> void:
 		"is_finisher": d.get("is_finisher", false),
 		"trail_color": trail_color(),   # 疾跑殘影（特效里程碑再畫）
 		"airborne": not is_grounded(),
+		"blocking": block_time >= 0.0,
+		"parry": parry_timer / PARRY_ANIM_TIME,   # 1 → 0（盾反剛發動到結束）
 		"vz": vz,
 	}
 
