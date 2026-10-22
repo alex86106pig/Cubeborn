@@ -60,7 +60,9 @@ func try_block(from: Vector2, hit: Dictionary) -> bool:
 	if to_source.length_squared() > 1e-6:
 		if absf(angle_difference(facing, atan2(to_source.x, to_source.y))) > def.block_arc / 2.0:
 			return false
-		knockback -= to_source.normalized() * (hit.get("knockback", 0.0) * def.block_knockback_mul / mass)
+		# 攻擊可以指定擋下時的推退比例（Boss 衝鋒 100%），沒指定就用盾的 block_knockback_mul（30%）
+		var push_mul: float = hit.get("block_knockback_mul", def.block_knockback_mul)
+		knockback -= to_source.normalized() * (hit.get("knockback", 0.0) * push_mul / mass)
 	var perfect: bool = block_time <= def.perfect_window + 1e-6
 	world.emit_event("player:blocked", {"player_id": id, "perfect": perfect})
 	world.emit_event("sfx:cue", {"cue": def.sfx_parry if perfect else def.sfx_block})

@@ -85,7 +85,8 @@ const ENEMIES := {
 			"min_distance": 5.0, "windup": 0.75, "speed": 15.0, "duration": 0.85, "recovery": 1.0,
 			"wall_stun": 1.6, "damage": 22.0, "knockback": 18.0, "cooldown": 6.0,
 			"hit_reach": 0.3, "hit_stop": 0.06, "shake": 0.4, "wall_margin": 0.05,
-			"wall_shake": 0.6, "wall_shake_duration": 0.35, "blockable": false,
+			"wall_shake": 0.6, "wall_shake_duration": 0.35,
+			"blockable": true, "block_knockback_mul": 1.0,   # v0.18.2 使用者決定：擋得住，但擋下時照樣被全額擊退
 		},
 		"summon": {
 			"hp_threshold": 0.75, "count": 3, "windup": 1.0, "recovery": 0.4, "cooldown": 14.0,

@@ -510,7 +510,7 @@ godot/
 ### 15.14 通用攻擊判定（v0.17.0）
 - 設計方向：怪物**沒有碰撞傷害**，每種怪物都靠自己的招式（預備 → 判定 → 收招）攻擊。貼著怪物不會扣血。
 - `sim/hitbox.gd`：玩家與怪物共用。`Hitbox.strike(world, 攻擊者, 原點, 朝向, 形狀, hit, already)` 查詢形狀內的敵對目標並套用 `Combat.apply_damage`；`already`（id 字典）讓同一招每個目標只打一次。形狀：`{shape: &"sector", range, arc}`、`{shape: &"circle", radius}`。
-- hit 欄位加上 `blockable`（能不能被格擋，B5 使用）：揮砍、箭 = true；Boss 砸地、衝鋒、爆炸、盾擊 = false。數值寫在資料表（`enemy_defs` 的 `swing.blockable`、`slam.blockable`、`charge.blockable`、`projectile_blockable`）。
+- hit 欄位加上 `blockable`（能不能被格擋，B5 使用）：揮砍、箭、Boss 衝鋒（v0.18.2 起）= true；Boss 砸地、爆炸、盾反 = false。可另給 `block_knockback_mul` 指定擋下時的推退比例。數值寫在資料表（`enemy_defs` 的 `swing.blockable`、`slam.blockable`、`charge.blockable`、`projectile_blockable`）。
 - 每次 `strike` 都記錄到 `world.hitboxes`（每步清空，只給畫面層 F2 畫形狀，不影響模擬）。
 - 骷髏戰士揮砍（使用者選「中等」）：中心距離 1.3 內且冷卻好時舉刀 0.5 秒（站定，前 50% 轉向、之後鎖定）→ 揮下 0.1 秒（前方 100°、距離 1.5 的扇形，傷害 12）→ 收招 0.5 秒；冷卻 1.2 秒從舉刀算。舉刀中被打進入受擊硬直，揮砍中斷。
 - 弓手與 Boss 拿掉碰撞傷害後不補新招（使用者決定）。
@@ -520,6 +520,7 @@ godot/
 - 使用者決定：劍盾右鍵從盾擊衝鋒改成格擋；按一下自動維持 3 秒；格擋時可以移動。其餘由 Claude 訂（數值在 `weapon_defs.gd` 的 `swordShield.special`）：
   - 移速 ×0.5、會轉向瞄準點；只能用翻滾提前結束；冷卻 4 秒從按下算。
   - 擋得住：`blockable` 的攻擊（揮砍、箭），來向在正前方合計 75°（左右各 37.5°）內。擋下時不扣血、自己被推退 30% 擊退，發出 `player:blocked` 與音效；箭會消失。
-  - 擋不住：砸地、衝鋒、爆炸（不是 blockable），或來自側面 / 背後。
+  - Boss 衝鋒（v0.18.2 使用者決定）：擋得住、不扣血，但推退 100%（`charge.block_knockback_mul`）；同一次衝鋒擋下後不再判定。
+  - 擋不住：砸地、爆炸（不是 blockable），或來自側面 / 背後。
   - 完美格擋：按下後 0.2 秒內擋下 → 下一步開頭盾反（前方 120°、距離 2.5，傷害 25 × 攻擊力，大擊退、重擊顯示），然後結束格擋。
 - 實作：`ShieldBlock` 行為記錄 `player.block_time`（格擋開始後秒數，< 0 = 沒在格擋）；`Combat.apply_damage` 對 blockable 的攻擊先呼叫 `target.try_block(來源位置, hit)`；盾反延到下一步執行（`pending_parry`），避免在怪物出招的途中改動怪物狀態。

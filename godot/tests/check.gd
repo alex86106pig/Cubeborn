@@ -62,7 +62,7 @@ func _initialize() -> void:
 	_check("劍盾普攻：三段時間合計 0.36 秒，期間移速 ×0.35、收招後回到 ready", _check_attack_timing)
 	_check("劍盾連段：傷害 12 / 12 / 22（第三段 ×1.8）、第三段後搖 ×1.6、同一目標每次出手只中一次", _check_combo)
 	_check("格擋（v0.18.0 取代盾擊衝鋒）：按一下維持 3 秒、移速 ×0.5 可轉向；CD 4 秒、CD 中發 skill:onCooldown；翻滾可提前結束", _check_shield_block)
-	_check("格擋判定：正前方 ±37.5° 擋下揮砍與箭（不扣血、箭消失）、背後擋不住；Boss 砸地擋不住；0.2 秒內完美格擋觸發盾反 25 傷害並結束格擋", _check_block_hits)
+	_check("格擋判定：正前方 ±37.5° 擋下揮砍與箭（不扣血、箭消失）、背後擋不住；Boss 衝鋒擋得住但推退 100%、只判定一次；Boss 砸地擋不住；0.2 秒內完美格擋觸發盾反 25 傷害並結束格擋", _check_block_hits)
 	_check("受擊：扣血後進入 stagger（移速 ×0.4、0.15 秒）、無敵 0.6 秒、畫面震動", _check_stagger)
 	_check("輸入緩衝：攻擊中按右鍵會在後搖取消並接特殊技；0.25 秒後過期", _check_buffer)
 	_check("法杖魔彈：前方 0.6 產生、20 單位/秒、命中造成 8 傷害、最遠 14 單位", _check_fire_bolt)
@@ -592,6 +592,27 @@ func _check_block_hits() -> String:
 	_run(w4, _cmd(Vector2.ZERO, Vector2(0, 5)), 20)
 	if not arrow.is_removed or p4.hp != p4.max_hp:
 		return "正面應擋下箭（箭消失、不扣血）：removed=%s 血量 %.0f" % [arrow.is_removed, p4.hp]
+	# Boss 衝鋒（v0.18.2）：正面擋得住、不扣血、只判定一次，但被推退得比一般格擋遠（100% 擊退）
+	var w6 := _new_world()
+	var p6 := _player(w6)
+	var boss6 := _spawn(w6, &"boss", Vector2(0, 8.0))
+	_run(w6, _cmd(Vector2.ZERO, Vector2(0, 8)), roundi(EnemyDefs.ENEMIES.boss.spawn_time / DT) + 2)
+	boss6.facing = PI
+	boss6.fsm.change(&"charge")
+	_run(w6, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), 1)
+	var ev6: Array[Dictionary] = []
+	var push := 0.0   # 擋下那一步的被動推退速度（Boss 本身的推擠不算在內）
+	for i in 90:
+		_run_collect(w6, _cmd(Vector2.ZERO, boss6.pos), 1, ev6)
+		if push == 0.0 and not _named(w6.events, "player:blocked").is_empty():
+			push = p6.knockback.length()
+	var b6 := _named(ev6, "player:blocked")
+	if p6.hp != p6.max_hp or b6.size() != 1:
+		return "正面應擋下 Boss 衝鋒且只判定一次：血量 %.0f、blocked %d 次" % [p6.hp, b6.size()]
+	# 衝鋒擊退 18 ÷ 玩家質量 2 = 9，同一步衰減一次後約 7.7；一般格擋 30% 只有約 2.3
+	var expected_push: float = EnemyDefs.ENEMIES.boss.charge.knockback / Config.PLAYER.mass * exp(-Config.COMBAT.knockback_damping * DT)
+	if absf(push - expected_push) > 0.05:
+		return "擋下衝鋒的推退速度應約 %.2f（100%% 擊退），實際 %.2f" % [expected_push, push]
 	# Boss 砸地：格擋也擋不住
 	var w5 := _new_world()
 	var p5 := _player(w5)

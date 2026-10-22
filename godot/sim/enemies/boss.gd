@@ -133,6 +133,7 @@ class Charge:
 		data.phase = &"windup"
 		data.phase_time = 0.0
 		data.has_hit = false
+		data.blocked = {}   # 已擋下這次衝鋒的玩家 id（之後不再判定，不會連續跳「格擋」）
 
 	func update(e: Boss, dt: float, fsm: StateMachine) -> void:
 		var c: Dictionary = e.def.charge
@@ -147,13 +148,19 @@ class Charge:
 
 		if d.phase == &"dash":
 			e.velocity = d.dir * c.speed
-			# 衝鋒的判定：Boss 身體外擴 hit_reach 的圓，整段衝鋒只打中一次
+			# 衝鋒的判定：Boss 身體外擴 hit_reach 的圓，整段衝鋒只打中一次（無敵中碰到的目標之後仍可能被打中，同網頁版）
+			# 擋下這次衝鋒的玩家之後不再判定
 			if not d.has_hit:
+				var events_before := e.world.events.size()
 				var hits := Hitbox.strike(e.world, e, e.pos, e.facing, {"shape": &"circle", "radius": e.radius + c.hit_reach}, {
 					"damage": c.damage * e.damage_mul, "knockback": c.knockback,
 					"shake": c.shake, "hit_stop": c.hit_stop, "blockable": c.blockable,
-				})
+					"block_knockback_mul": c.block_knockback_mul,
+				}, d.blocked.duplicate())
 				d.has_hit = not hits.is_empty()
+				for i in range(events_before, e.world.events.size()):
+					if e.world.events[i].name == "player:blocked":
+						d.blocked[e.world.events[i].player_id] = true   # 事件的 player_id 就是實體 id
 			var limit: float = e.world.arena_half_size - e.radius - c.wall_margin
 			if absf(e.pos.x) >= limit or absf(e.pos.y) >= limit:
 				e.world.emit_event("sfx:cue", {"cue": "bossWallHit"})
