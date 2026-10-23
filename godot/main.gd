@@ -1,7 +1,7 @@
 # 組合根：建立 World、輸入、畫面、HUD、音效與連線；固定步長主迴圈、通關慢動作、暫停 / 選單、靜音、重新開始、離開遊戲
 # 三種模式（15.18）：單機（= 沒有連線的房主）、房主（跑唯一的 World、收輸入、送快照與事件）、客戶端（鏡像 World + 本機預測）
 # 指令列參數（放在 -- 之後）：--seconds=S --screenshot=路徑 --auto-move=x,y（螢幕方向）--auto-move-seconds=S（幾秒後停止移動）
-#   --auto-attack（一直按住左鍵）--auto-special（冷卻好就放特殊技）--auto-interact（一直按住 F）--weapon=staff（開場武器）
+#   --auto-attack（一直按住左鍵）--auto-special（開場按一次右鍵，之後每 5.1 秒再按一次）--auto-interact（一直按住 F）--weapon=staff（開場武器）
 #   --wave=N（直接從第 N 波開始）--player-hp=N（開場血量）--items=id,id（開場放進身上的道具，見 defs/item_defs.gd）--no-spawn（不生怪）
 #   連線：--host（開房）--join=IP（加入）--net-port=N --net-autostart=N（房主：滿 N 人自動開始）
 #   --net-latency=毫秒（模擬單程延遲）--net-loss=0.1（模擬掉包）

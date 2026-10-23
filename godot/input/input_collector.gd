@@ -18,7 +18,9 @@ const MOUSE_ACTIONS: Array[StringName] = [&"attack", &"special"]
 var camera_rig: CameraRig
 var auto_move := Vector2.ZERO   # 測試用：螢幕方向的固定移動輸入（--auto-move）
 var auto_attack := false        # 測試用：一直按住左鍵（--auto-attack）
-var auto_special := false       # 測試用：每步都按右鍵，冷卻好就放特殊技（--auto-special）
+var auto_special := false       # 測試用：開場按一次右鍵，之後每 AUTO_SPECIAL_INTERVAL 秒再按一次（--auto-special）
+const AUTO_SPECIAL_INTERVAL := 5.1   # 比兩把武器的特殊技冷卻（4 / 5 秒）長；v0.23.0 起格擋中再按會放下盾，不能每步都按
+var _auto_special_steps := 0
 var auto_interact := false      # 測試用：一直按住 F（--auto-interact）
 var enabled := true             # 關掉時（大廳、輸入框打字中）送出空輸入
 
@@ -82,7 +84,9 @@ func build_cmd(tick: int) -> InputCmd:
 	if auto_attack or Input.is_action_pressed(&"attack"):
 		cmd.buttons |= InputCmd.BTN_ATTACK
 	if auto_special:
-		cmd.buttons |= InputCmd.BTN_SPECIAL
+		if _auto_special_steps % roundi(AUTO_SPECIAL_INTERVAL / Config.FIXED_DT) == 0:
+			cmd.buttons |= InputCmd.BTN_SPECIAL
+		_auto_special_steps += 1
 	if auto_interact or Input.is_action_pressed(&"interact"):
 		cmd.buttons |= InputCmd.BTN_INTERACT
 	return cmd
