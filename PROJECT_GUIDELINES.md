@@ -452,8 +452,8 @@ godot/
 ├─ main.tscn / main.gd        組合根：建立 world、輸入、畫面，主迴圈、重新開始
 ├─ core/                      與遊戲內容無關：config.gd、version.gd、math_util.gd、state_machine.gd、cooldowns.gd、
 │                             game_events.gd（autoload GameEvents）
-├─ defs/                      資料表：weapon_defs.gd、skill_defs.gd、enemy_defs.gd、wave_defs.gd、stat_defs.gd、terrain_defs.gd
-├─ sim/                       模擬層：world.gd、input_cmd.gd、stats.gd、terrain.gd、hitbox.gd、entity.gd、player.gd、player_states.gd、enemy.gd、
+├─ defs/                      資料表：weapon_defs.gd、skill_defs.gd、enemy_defs.gd、wave_defs.gd、stat_defs.gd、item_defs.gd、map_defs.gd
+├─ sim/                       模擬層：world.gd、input_cmd.gd、stats.gd、terrain.gd、nav.gd、hitbox.gd、entity.gd、player.gd、player_states.gd、enemy.gd、
 │  │                          enemies/（melee_enemy、ranged_enemy、boss）、projectile.gd、combat.gd、
 │  │                          physics.gd、spawner.gd、weapon_behaviors.gd、skill_behaviors.gd、active_slots.gd
 ├─ input/                     input_collector.gd（按鍵在程式中註冊，不寫在 project.godot）
@@ -521,9 +521,9 @@ godot/
 - 高度是模擬層的資料：`entity.height`（腳底）、`vz`、`ground_height`、`body_height`（身高，依 kind 查 `HEIGHT.body`）。重力 = 8 × 高度 ÷ 時間²，所有實體共用；垂直移動在 `World.step` 的碰撞分離與地形推擠之後（`Entity.integrate_vertical`，用前後速度平均，60 步 / 秒時第 18 步最高 1.5、第 36 步落地）。
 - 起跳：`InputCmd.BTN_JUMP`，站在地面上隨時可跳（攻擊、翻滾中也行），硬直與倒地不行；落地沒有硬直。
 - **命中高度**：目標佔 [height, height + body_height]；攻擊用 `hit.band`（Vector2 下緣、上緣）。沒給 band 時用攻擊者身體往腳底下延伸 `reach_below`（近戰、碰撞、衝鋒）。投射物是飛行高度 ± `projectile_half`，高度不重疊就從頭頂 / 腳下穿過；爆炸是地面往上 `explosion_height`；Boss 砸地只到 `slam_height`。
-- 投射物的 `height` 就是飛行高度：敵人箭矢 = 發射者腳底 + `arrow_altitude`、高度不變；玩家投射物 = 腳底 + `bolt_altitude`，在空中發射時飛出 `bolt_settle_distance` 內降回離地 `bolt_altitude`。撞到比飛行高度高的石台就結束（會爆炸的照樣爆炸）。
+- 投射物的 `height` 就是飛行高度：敵人箭矢 = 發射者腳底 + `arrow_altitude`，飛向目標的過程中線性變到「目標腳下地面 + `arrow_altitude`」（D1，打得到高台上的玩家；跳起來照樣躲得過），之後高度不變；玩家投射物 = 腳底 + `bolt_altitude`，飛出 `bolt_settle_distance` 內降到「min(發射時腳下地面, 目前位置的地面) + `bolt_altitude`」（只往下貼地，不會順著牆往上爬）。撞到比飛行高度高的石台就結束（會爆炸的照樣爆炸）。
 - 碰撞分離：高度不重疊的兩個實體不互推。
-- **地形**：`sim/terrain.gd`，石台資料在 `defs/terrain_defs.gd`（目前只有場地角落的測試石台 0.5 / 1.0 / 2.5，D1 換成正式地圖）。腳底 ≥ 頂面 − `HEIGHT.step` 才能站上去，否則石台當牆、把實體推出去；圓心在石台範圍內時地面高度就是頂面。怪物不會跳。
+- **地形**：`sim/terrain.gd`，石台資料在 `defs/map_defs.gd`（見 15.19）。腳底 ≥ 頂面 − `HEIGHT.step` 才能站上去，否則石台當牆、把實體推出去；圓心在石台範圍內時地面高度就是頂面。查詢用 4 單位的格子分桶。
 - 連線：快照的實體欄位要加 `height`（15.7）。
 
 ### 15.14 通用攻擊判定（v0.17.0）
@@ -576,3 +576,17 @@ godot/
 - **倒下與救援**（`Player.die` / `_go_down` / `revive`、`World._update_downed`、動作層 `revive` 狀態）：多人時生命歸零先倒地（`is_downed`，移動層 `downed`，不能被打、不被怪追、不接受輸入）；隊友按住 F（`InputCmd.BTN_INTERACT`）、中心距離 ≤ `REVIVE.range` 就進入 `revive` 動作（不能移動 / 攻擊 / 跳），倒地者救援進度 +1/秒、倒數暫停；放開時進度每秒 −`decay_rate`（Claude 暫定和累積同速）、倒數照走；沒有站著的玩家時所有倒地者直接死亡並發 `game:defeat`。單機倒下 = 死亡（和以前一樣）。
 - **只有單機才有**：F3~F5 除錯鍵（直接改模擬狀態）、暫停（連線時 Esc 只開選單）、失去焦點自動暫停。F1 切武器改走 `InputCmd.BTN_SWAP_WEAPON`，連線時也能用。
 - **斷線**：房主那邊有人斷線就移除他的角色；客戶端和房主斷線就回到單機。網頁版不支援 ENet，連線選單不顯示。
+
+### 15.19 地圖與怪物尋路（v0.22.0，D1）
+- **地圖資料**：`defs/map_defs.gd` 的 `MAPS`。地圖座標左上角 (0, 0)、x 往右、y 往下（= 世界 X、Z），世界座標 = 地圖座標 − `origin`（地圖中央在世界原點）；畫面是等距視角，所以地圖在畫面上轉 45°（菱形）。每張圖有 `size`、`spawn`（玩家出生點）、`dig`（挖墳點 = 出口，D6 使用）、`spawn_rule`、`blocks`（[x, y, 寬, 深, 頂面, 種類]）、`tomb_rows`（一排排墓碑）。
+- **石台種類**：`wall`（牆 / 陵墓，頂面 3.0，跳不上去）、`tomb`（墓碑 1.2 × 0.5、高 1.3：擋箭與魔彈，玩家跳得上去）、`platform`（可以站的高台，0.5 / 1.0）。
+- **地圖**：`graveyard_a`（A 環形墓園，96 × 96，使用者選定；遊戲用 `Config.WORLD.default_map`）、`test_arena`（舊的 32 × 32 測試場地，`check.gd` 大部分檢查用）。B、C、D 草圖在 `mockups/graveyard_map.html`，之後做成資料並隨機抽（使用者決定）；屆時房主要把地圖編號傳給客戶端（目前兩邊都用 default_map）。
+- `World` 建立時載入地圖（`World.new(map_id)`、`load_map`）：`half_extents`（場地一半大小，限制實體與投射物）、`terrain`、`nav`、`spawn_point`；玩家出生在 `spawn_point`。
+- **沒有安全區**（使用者決定）：玩家去得了的地方怪物都去得了，怪物只是比玩家多花一點時間上去。
+  - 尋路（`sim/nav.gd`）：1 單位的格子，牆與墓碑往外擴 `NAV.margin` 的格子是障礙，高台可走；路徑用引擎內建的 `AStarGrid2D`（八方向、不切牆角），再拉直看得到的點。只在權威端算。
+  - 怪物每 `NAV.repath_interval` 秒判斷一次：直線上沒有障礙格就直接走向玩家（和以前一樣），否則照路徑點走（`Enemy.steer_point`）。
+  - 跳上高台（`Enemy._update_jump`）：站在地上往前走、前方 `jump_lookahead` 的地面比腳下高出 `step` ~ `climb_height`（1.1）就先蹲 `jump_windup`（0.25 秒）再用玩家的起跳速度跳。1.3 的墓碑太高不跳，站在下面揮砍 / 射擊打得到。Boss 衝鋒中不跳，撞到比腳下高的石台會暈眩（同撞牆）。
+  - 弓手：看不到玩家或箭會撞到石台時先繞路靠近、不射擊；箭瞄準玩家腳下地面的高度。
+  - 地圖規則（`check.gd` 檢查）：所有可走格連成一片、相鄰可走格高低差 ≤ `climb_height`、牆比最高的地面高出跳躍高度 + 0.3 以上。
+- **生成**（`spawn_rule`）：`arena` 同以前（整個場地隨機、Boss 在玩家對面）；`around_player`（大地圖）小怪生在離玩家 `min_distance_from_player` ~ `max_distance_from_player`（8 ~ 18）、可走而且走得到玩家的格子；Boss 往地圖中央方向、離玩家 `boss_distance`；Boss 召喚的小怪落在障礙格時移到最近的空地。
+- 畫面：`ArenaView.create_blocks` 把所有石台合併成一個網格（每個石台 5 面、頂點色依種類），地圖上有上百個石台也只畫 1 次。

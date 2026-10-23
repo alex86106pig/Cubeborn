@@ -4,6 +4,7 @@ extends Enemy
 
 var strafe_dir := 1.0
 var strafe_timer := 0.0
+var line_of_fire := true   # 箭飛得到目標（沒被牆、墓碑擋住）；重新判斷路線時更新（D1）
 
 
 func _init(p_world: World, p_type: StringName, at: Vector2, mul: Dictionary) -> void:
@@ -20,16 +21,38 @@ func on_added() -> void:
 	world.cooldowns.start(cd("fire"), world.rng.randf_range(delay[0], delay[1]))
 
 
+# 箭從自己的高度飛向目標腳下地面 + arrow_altitude（D1：打得到高台上的玩家；目標跳起來照樣躲得過）
+func _shot_altitudes(target: Vector2) -> Vector2:
+	var a: float = Config.HEIGHT.arrow_altitude
+	return Vector2(height + a, world.terrain.ground_at(target) + a)
+
+
+func _on_nav_refresh(target: Vector2) -> void:
+	var alt := _shot_altitudes(target)
+	var d := target - pos
+	var n := ceili(d.length() / 0.5)
+	line_of_fire = true
+	for i in range(1, n):
+		var k := float(i) / n
+		if world.terrain.is_solid(pos + d * k, lerpf(alt.x, alt.y, k)):
+			line_of_fire = false
+			return
+
+
 func fire() -> void:
 	world.emit_event("sfx:cue", {"cue": "arrowShot"})
 	var dir := MathUtil.dir_from_angle(facing)
-	world.spawn_projectile(Projectile.new(world, {
+	var aim := {}
+	var target := nearest_player()
+	if target != null:
+		aim = {"aim_altitude": _shot_altitudes(target.pos).y, "aim_distance": pos.distance_to(target.pos)}
+	world.spawn_projectile(Projectile.new(world, aim.merged({
 		"owner": self, "pos": pos + dir * def.projectile_offset, "direction": dir,
 		"speed": def.projectile_speed, "range": def.projectile_range, "radius": def.projectile_radius,
 		"damage": def.projectile_damage * damage_mul, "knockback": def.projectile_knockback,
 		"color": def.projectile_color, "visual": &"arrow", "altitude": height + Config.HEIGHT.arrow_altitude,
 		"blockable": def.projectile_blockable,
-	}))
+	})))
 
 
 class Kite:
@@ -42,6 +65,14 @@ class Kite:
 		var dist := e.pos.distance_to(target.pos)
 		var range_: Array = e.def.preferred_range
 		var rng := e.world.rng
+
+		# 被牆擋住或箭射不到：先繞路靠近，不射擊（D1）
+		var aim := e.steer_point(target.pos)
+		if not e.has_direct_path() or not e.line_of_fire:
+			var to_aim := MathUtil.angle_to(e.pos, aim)
+			e.facing = MathUtil.turn_towards(e.facing, to_aim, e.def.turn_speed * dt)
+			e.velocity = MathUtil.dir_from_angle(to_aim) * e.speed
+			return
 
 		e.strafe_timer -= dt
 		if e.strafe_timer <= 0.0:

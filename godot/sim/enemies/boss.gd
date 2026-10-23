@@ -26,6 +26,11 @@ func on_added() -> void:
 		world.cooldowns.start(cd(name), first[name])
 
 
+# 衝鋒中不跳（撞到石台就暈眩）
+func _can_jump() -> bool:
+	return not fsm.is_in(&"charge")
+
+
 func enrage_mul(key: String) -> float:
 	return def.enrage[key] if is_enraged else 1.0
 
@@ -55,12 +60,13 @@ func slam_impact() -> void:
 func summon_minions() -> void:
 	var s: Dictionary = def.summon
 	var n: int = s.count
-	var limit: float = world.arena_half_size - s.edge_margin
+	var limit: Vector2 = world.half_extents - Vector2(s.edge_margin, s.edge_margin)
 	for i in n:
 		var a: float = facing + PI + (i - (n - 1) / 2.0) * s.spread
-		var x := clampf(pos.x + sin(a) * s.distance, -limit, limit)
-		var z := clampf(pos.y + cos(a) * s.distance, -limit, limit)
-		world.spawner.spawn_at(world, &"grunt", Vector2(x, z))
+		var x := clampf(pos.x + sin(a) * s.distance, -limit.x, limit.x)
+		var z := clampf(pos.y + cos(a) * s.distance, -limit.y, limit.y)
+		# 落在牆或墓碑上就移到最近的空地（D1）
+		world.spawner.spawn_at(world, &"grunt", world.nav.nearest_walkable(Vector2(x, z)))
 
 
 func _on_damaged(_amount: int, _source_id: int) -> void:
@@ -89,13 +95,14 @@ class Chase:
 			if dist <= d.slam.trigger_distance and cds.is_ready(e.cd("slam")):
 				fsm.change(&"slam")
 				return
-			if dist >= d.charge.min_distance and cds.is_ready(e.cd("charge")):
+			if dist >= d.charge.min_distance and cds.is_ready(e.cd("charge")) and e.has_direct_path():
 				fsm.change(&"charge")
 				return
 			if e.hp / e.max_hp <= d.summon.hp_threshold and cds.is_ready(e.cd("summon")):
 				fsm.change(&"summon")
 				return
-		e.facing = MathUtil.turn_towards(e.facing, MathUtil.angle_to(e.pos, target.pos), d.turn_speed * dt)
+		var aim := e.steer_point(target.pos)   # 被牆擋住時繞路（D1）
+		e.facing = MathUtil.turn_towards(e.facing, MathUtil.angle_to(e.pos, aim), d.turn_speed * dt)
 		e.velocity = MathUtil.dir_from_angle(e.facing) * (e.speed * e.enrage_mul("speed_mul"))
 
 
@@ -162,8 +169,11 @@ class Charge:
 				for i in range(events_before, e.world.events.size()):
 					if e.world.events[i].name == "player:blocked":
 						d.blocked[e.world.events[i].player_id] = true   # 事件的 player_id 就是實體 id
-			var limit: float = e.world.arena_half_size - e.radius - c.wall_margin
-			if absf(e.pos.x) >= limit or absf(e.pos.y) >= limit:
+			var limit: Vector2 = e.world.half_extents - Vector2(e.radius + c.wall_margin, e.radius + c.wall_margin)
+			# 撞到場地邊緣，或前方是比腳下高的石台（牆、墓碑、高台；D1）
+			var ahead: Vector2 = e.pos + d.dir * (e.radius + c.wall_margin)
+			var blocked: bool = e.world.terrain.ground_at(ahead) > e.height + Config.HEIGHT.step
+			if absf(e.pos.x) >= limit.x or absf(e.pos.y) >= limit.y or blocked:
 				e.world.emit_event("sfx:cue", {"cue": "bossWallHit"})
 				e.world.emit_event("camera:shake", {"amount": c.wall_shake, "duration": c.wall_shake_duration})
 				e.world.emit_event("fx:boss_wall", {"pos": e.pos, "height": e.height})

@@ -14,6 +14,10 @@ var main_state: StringName = &"chase"
 var fsm: StateMachine
 var anim: Dictionary = {}
 var _cd_names: Array[String] = []   # 移除時要 reset 的 CD（enemy<id>.<名稱>）
+# 尋路與跳躍（D1，只在權威端；見 sim/nav.gd）
+var _nav_timer := 0.0
+var _path := PackedVector2Array()   # 空 = 看得到目標，直接走過去
+var _jump_windup := 0.0
 
 
 # mul：波次倍率 { hp, damage, speed }
@@ -30,6 +34,7 @@ func _init(p_world: World, p_type: StringName, at: Vector2, mul: Dictionary, sta
 	])
 	hp = max_hp
 	pos = at
+	height = p_world.terrain.ground_at(at)
 	var target := nearest_player()
 	if target != null:
 		facing = MathUtil.angle_to(pos, target.pos)
@@ -70,8 +75,56 @@ func nearest_player() -> Player:
 
 
 func update(dt: float) -> void:
+	_nav_timer -= dt
 	fsm.update(dt)
+	_update_jump(dt)
 	_update_anim()
+
+
+# 往 target 走時下一步要朝向的點：看得到就是 target 本身，被牆或墓碑擋住就走路徑點（每 repath_interval 秒重新判斷）
+func steer_point(target: Vector2) -> Vector2:
+	var n: Dictionary = Config.NAV
+	if _nav_timer <= 0.0:
+		_nav_timer = n.repath_interval
+		_path = PackedVector2Array() if world.nav.has_los(pos, target) else world.nav.find_path(pos, target)
+		_on_nav_refresh(target)
+	if _path.is_empty():
+		return target
+	var reach: float = n.waypoint_reach
+	while _path.size() > 1 and pos.distance_squared_to(_path[0]) < reach * reach:
+		_path.remove_at(0)
+	return _path[0]
+
+
+# 目前是否直接看得到目標（沒有在繞路）
+func has_direct_path() -> bool:
+	return _path.is_empty()
+
+
+func _can_jump() -> bool:
+	return true
+
+
+# 子類別在重新判斷路線時順便更新自己的資料（例如弓手的射線）
+func _on_nav_refresh(_target: Vector2) -> void:
+	pass
+
+
+# 跳上高台：站在地上往前走、前方的地面比腳下高（超過 step、不超過 climb_height）就先蹲 jump_windup 秒再起跳（同玩家的跳躍速度）
+func _update_jump(dt: float) -> void:
+	if _jump_windup > 0.0:
+		velocity = Vector2.ZERO
+		_jump_windup -= dt
+		if _jump_windup <= 0.0 and not is_dead:
+			vz = 4.0 * Config.JUMP.height / Config.JUMP.air_time
+		return
+	if is_dead or velocity == Vector2.ZERO or not is_grounded() or not _can_jump():
+		return
+	var ahead := pos + velocity.normalized() * (radius + Config.NAV.jump_lookahead)
+	var rise := world.terrain.ground_at(ahead) - ground_height
+	if rise > Config.HEIGHT.step and rise <= Config.NAV.climb_height:
+		_jump_windup = Config.NAV.jump_windup
+		velocity = Vector2.ZERO
 
 
 func _update_anim() -> void:

@@ -17,8 +17,13 @@ var projectiles: Array[Entity] = []
 var stats := {"wave": 0, "kills": 0, "time": 0.0}
 var is_over := false                 # 通關後為 true
 var hit_stop_timer := 0.0            # 剩餘的整體放慢（真實秒數），由主迴圈換算成時間縮放；v0.18.3 起只有打倒 Boss 時使用（一般命中改成畫面定格）
-var arena_half_size: float = Config.WORLD.arena_half_size
-var terrain := Terrain.new(TerrainDefs.TEST_BLOCKS)
+# 地圖（D1，defs/map_defs.gd）：場地大小、地形、尋路格子、出生點；房主與客戶端用同一張（目前固定 Config.WORLD.default_map）
+var map_id: StringName
+var map: Dictionary
+var half_extents := Vector2.ZERO     # 場地的一半大小（世界原點在中央）
+var terrain: Terrain
+var nav: Nav
+var spawn_point := Vector2.ZERO
 var spawner := Spawner.new()
 var boss_id := 0                     # 目前的 Boss（0 = 沒有），HUD 的 Boss 血條用
 var victory_timer := 0.0
@@ -31,6 +36,19 @@ var event_actor := 0
 
 var _next_id := 1
 var _bodies: Array[Entity] = []
+
+
+func _init(p_map_id: StringName = Config.WORLD.default_map) -> void:
+	load_map(p_map_id)
+
+
+func load_map(p_map_id: StringName) -> void:
+	map_id = p_map_id
+	map = MapDefs.get_map(p_map_id)
+	half_extents = (map.size as Vector2) / 2.0
+	terrain = Terrain.new(MapDefs.world_blocks(map))
+	nav = Nav.new(terrain, half_extents)
+	spawn_point = MapDefs.to_world(map, map.spawn)
 
 
 func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
@@ -49,7 +67,10 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 	spawner.reset()
 	_next_id = 1
 	for peer_id in peer_ids:
-		add_entity(Player.new(self, peer_id))
+		var p := Player.new(self, peer_id)
+		p.pos = spawn_point
+		p.height = terrain.ground_at(spawn_point)
+		add_entity(p)
 	emit_event("game:restart", {})
 
 
@@ -205,7 +226,7 @@ func step(cmds: Dictionary, dt: float) -> void:
 	SimPhysics.separate(_bodies, rng)
 	for b in _bodies:
 		terrain.push_out(b)
-		SimPhysics.clamp_to_arena(b, arena_half_size)
+		SimPhysics.clamp_to_arena(b, half_extents)
 		b.integrate_vertical(dt, terrain)
 	_bodies.clear()   # 不留參照，已移除的實體才能立即釋放
 
@@ -243,7 +264,7 @@ func step_predicted(peer_id: int, cmd: InputCmd, dt: float) -> void:
 	event_actor = 0
 	p.integrate(dt)
 	terrain.push_out(p)
-	SimPhysics.clamp_to_arena(p, arena_half_size)
+	SimPhysics.clamp_to_arena(p, half_extents)
 	p.integrate_vertical(dt, terrain)
 
 

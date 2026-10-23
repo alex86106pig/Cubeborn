@@ -72,7 +72,8 @@ static func separate_brute_force(entities: Array[Entity], rng: RandomNumberGener
 				_resolve(entities[i], entities[j], rng)
 
 
-static func clamp_to_arena(e: Entity, half_size: float) -> void:
-	var limit := half_size - e.radius
-	e.pos.x = clampf(e.pos.x, -limit, limit)
-	e.pos.y = clampf(e.pos.y, -limit, limit)
+# half：場地的一半大小（World.half_extents）
+static func clamp_to_arena(e: Entity, half: Vector2) -> void:
+	var limit := half - Vector2(e.radius, e.radius)
+	e.pos.x = clampf(e.pos.x, -limit.x, limit.x)
+	e.pos.y = clampf(e.pos.y, -limit.y, limit.y)

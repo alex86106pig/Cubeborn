@@ -6,7 +6,8 @@ const MAX_STEPS_PER_FRAME := 5
 const HIT_STOP_TIME_SCALE := 0.05
 
 const WORLD := {
-	"arena_half_size": 16.0,
+	"arena_half_size": 16.0,        # 測試場地（MapDefs 的 test_arena）的一半邊長；正式地圖的大小在 defs/map_defs.gd
+	"default_map": &"graveyard_a",  # 遊戲用的地圖（D1）；check.gd 大部分檢查用 test_arena
 	"physics_cell": 2.0,          # 碰撞分離的格子邊長（≥ 任兩個實體半徑相加的最大值：Boss 1.0 + 1.0）
 	"victory_delay": 2.2,         # 打倒 Boss 後幾秒發出 game:victory
 	"victory_hit_stop": 0.25,
@@ -23,7 +24,8 @@ const SPAWNER := {
 	"min_distance_from_player": 8.0,
 	"edge_margin": 2.0,           # 生成點離場地邊緣至少這麼遠
 	"spawn_attempts": 20,
-	"boss_distance": 8.0,         # Boss 出現在玩家對面、離中央這麼遠
+	"boss_distance": 8.0,         # Boss 出現在玩家對面、離中央這麼遠（大地圖：往地圖中央方向、離玩家這麼遠）
+	"max_distance_from_player": 18.0,   # 大地圖（spawn_rule = around_player）：生在離玩家 min ~ max 的一圈內、走得到的地方
 }
 
 const CAMERA := {
@@ -91,6 +93,19 @@ const ROLL := {
 const JUMP := {
 	"height": 1.5,
 	"air_time": 0.6,
+}
+
+# 怪物尋路與跳躍（D1，使用者決定：玩家去得了的地方怪物都去得了、沒有安全區，怪物只是比玩家多花一點時間上去）
+const NAV := {
+	"cell": 1.0,                # 尋路格子邊長
+	"margin": 0.4,              # 牆與墓碑往外擴多少才算障礙格（約小怪半徑，貼牆的格子不走）
+	"repath_interval": 0.25,    # 每隔幾秒重新判斷「直接走過去」或「重找路徑」
+	"waypoint_reach": 0.6,      # 離路徑點這麼近就換下一點
+	"smooth_lookahead": 8,      # 拉直路徑時往後看幾個點
+	"nearest_search": 6,        # 目標在障礙格上時，往外找幾圈可走格
+	"climb_height": 1.1,        # 怪物會跳上去的最大高低差（1.0 高台；1.3 的墓碑太高，站在下面揮砍 / 射擊）
+	"jump_windup": 0.25,        # 怪物起跳前蹲的秒數（比玩家多花的那一點時間）
+	"jump_lookahead": 0.3,      # 移動方向前方多遠（從身體邊緣算）有高台就起跳
 }
 
 # 命中的高度判定：每個實體佔 [腳底高度, 腳底 + 身高]，攻擊有自己的高度範圍，兩者重疊才命中

@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D1 墓地地圖草圖</title>
+<style>
+  :root {
+    --bg: #15161a; --card: #1e2026; --line: #34373f; --text: #e6e2d6; --dim: #9a978c;
+    --wall: #8b8577; --tomb: #c4bda9; --low: #a3876a; --ramp: #7fb0a0;
+    --group: #d9534f; --chest: #e0b84a; --dig: #a97be8; --spawn: #6fd08c; --route: #efe6c8; --view: #7fc8ff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 16px 48px; background: var(--bg); color: var(--text);
+    font: 15px/1.6 "Microsoft JhengHei", "Noto Sans TC", sans-serif; }
+  h1 { margin: 0 0 4px; font-size: 24px; }
+  .sub { color: var(--dim); margin: 0 0 16px; }
+  .info { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .box { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .box h3 { margin: 0 0 6px; font-size: 15px; }
+  .box ul { margin: 0; padding-left: 18px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+  .sw { width: 16px; height: 12px; border-radius: 2px; display: inline-block; border: 1px solid #0006; }
+  .maps { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+  .map { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; max-width: 100%; }
+  .map h2 { margin: 0; font-size: 20px; }
+  .map h2 b { color: var(--chest); margin-right: 6px; }
+  .tag { color: var(--dim); margin: 2px 0 10px; }
+  .map svg { display: block; max-width: 100%; height: auto; background: #101114; border-radius: 4px; }
+  .stats { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 10px 0 6px; font-size: 14px; }
+  .stats dt { color: var(--dim); }
+  .stats dd { margin: 0; }
+  .pc { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px; }
+  .pc h4 { margin: 4px 0 2px; font-size: 14px; }
+  .pc ul { margin: 0; padding-left: 18px; }
+  .good h4 { color: var(--spawn); } .bad h4 { color: var(--group); }
+  .ask { margin-top: 24px; }
+  .ask ol { margin: 4px 0 0; padding-left: 22px; }
+</style>
+</head>
+<body>
+<h1>D1 墓地地圖：四種配置草圖</h1>
+<p class="sub">俯視草圖，上方 = 遊戲畫面上方。四張用同一比例尺，可以直接比大小。數字都是 Claude 暫定，選定後再調整。</p>
+
+<div class="info">
+  <div class="box">
+    <h3>估算依據（現有數值）</h3>
+    <ul>
+      <li>移速 6.5 單位/秒；跳躍最高 1.5；目前場地 32 × 32</li>
+      <li>一個畫面在地面上約 35.6 × 31（藍色虛線框，畫在出生點）</li>
+      <li>目標：一層 5 分鐘內走得完（含戰鬥），所以純走路控制在 1 分半內</li>
+      <li>「走路秒數」= 主路線長度 ÷ 6.5，不含戰鬥與繞路</li>
+    </ul>
+  </div>
+  <div class="box">
+    <h3>圖例</h3>
+    <div class="legend" id="legend"></div>
+  </div>
+  <div class="box">
+    <h3>共通限制（四張都一樣）</h3>
+    <ul>
+      <li>挖墳點挖完就變成往下一層的洞口（出口 = 挖墳點）</li>
+      <li>怪物目前不會跳：高台沒有斜坡的話，怪物上不去、只能在下面等</li>
+      <li>斜坡是新地形（現在只有平頂石台），要多做一點工；畫了斜坡的地方都可以改成「只能跳上去」</li>
+      <li>怪群人數只是示意，實際數量在 D5 決定</li>
+    </ul>
+  </div>
+</div>
+
+<div class="maps" id="maps"></div>
+
+<div class="box ask">
+  <h3>想請你決定</h3>
+  <ol>
+    <li>選哪一張（或「A 的 xx ＋ C 的 xx」這樣混搭）</li>
+    <li>大小可以：照圖上的尺寸，還是要更大 / 更小</li>
+    <li>高低差要不要加斜坡讓怪物追上來，還是高台就當作玩家的安全區</li>
+  </ol>
+</div>
+
+<script>
+const S = 4; // 每個世界單位畫幾個像素（四張共用）
+const COLORS = { wall: "#8b8577", tomb: "#c4bda9", low: "#a3876a", ramp: "#7fb0a0" };
+const HEIGHT_COLOR = { 0: "#2a3127", 0.5: "#3a4535", 1: "#4b5843", 2: "#5d6c52", 3: "#707f62" };
+
+// 一排排墓碑：起點、欄數、列數、間距
+function rows(x, y, cols, rs, dx, dy) {
+  const out = [];
+  for (let r = 0; r < rs; r++) for (let c = 0; c < cols; c++) out.push([x + c * dx, y + r * dy, 1.2, 0.5]);
+  return out;
+}
+function border(w, h) { return [[0, 0, w, 2], [0, h - 2, w, 2], [0, 0, 2, h], [w - 2, 0, 2, h]]; }
+
+const MAPS = [
+  {
+    id: "A", name: "環形墓園", tag: "中央是圍牆圍住的王族墓，外圈繞半圈才到北邊大門。",
+    w: 96, h: 96,
+    ground: [ { r: [40, 6, 30, 22], h: 0.5 }, { r: [46, 10, 18, 14], h: 1 },
+              { r: [36, 37, 5, 5], h: 1 }, { r: [55, 37, 5, 5], h: 1 }, { r: [36, 55, 5, 5], h: 1 }, { r: [55, 55, 5, 5], h: 1 } ],
+    walls: [ ...border(96, 96),
+      [33, 33, 12, 1.5], [51, 33, 12, 1.5], [33, 61.5, 30, 1.5], [33, 33, 1.5, 30], [61.5, 33, 1.5, 30],
+      [6, 36, 20, 1.5], [6, 36, 1.5, 18], [24.5, 36, 1.5, 8], [6, 52.5, 10, 1.5],
+      [67, 67, 6, 5], [77, 67, 6, 5], [86, 67, 6, 5], [67, 79, 6, 5], [77, 79, 6, 5], [86, 79, 6, 5] ],
+    tombs: [ ...rows(6, 66, 8, 5, 3, 4), ...rows(6, 6, 7, 4, 3.5, 5) ],
+    low: [ [68, 38, 10, 3], [80, 38, 10, 3], [68, 48, 10, 3], [80, 48, 10, 3] ],
+    ramps: [ [52, 28, 6, 3, "up"] ],
+    trees: [ [72, 10], [80, 8], [88, 14], [70, 24], [86, 26], [28, 40], [4, 58] ],
+    groups: [ [18, 74, 8], [10, 88, 5], [16, 46, 10, 1], [18, 18, 8], [55, 17, 6], [80, 16, 6], [78, 56, 8], [75, 75, 6], [82, 89, 5] ],
+    chests: [ [28, 88], [73, 89], [58, 13], [88, 8], [12, 42, 1] ],
+    dig: [48, 50], spawn: [48, 88],
+    route: [ [48, 88], [24, 86], [12, 72], [18, 58], [29, 50], [29, 30], [30, 22], [48, 28], [48, 36], [48, 50] ],
+    side: [ [48, 88], [64, 90], [65, 76], [65, 64], [78, 56], [84, 36], [80, 16], [62, 26] ],
+    labels: [ [48, 47, "王族墓"], [12, 50, "教堂廢墟"], [55, 7, "小山丘"], [79, 44, "亂葬坑"], [78, 64, "陵墓列"] ],
+    good: [ "目標明確：一進場就看到中央圍牆，知道要繞過去", "外圈四個區各有特色，探索感夠", "Boss 戰在圍牆內，空間固定好設計" ],
+    bad: [ "東半圈是可選的，玩家可能整區跳過", "挖墳時怪物只能從北門進，可能太好守" ],
+  },
+  {
+    id: "B", name: "山坡墓道", tag: "一路往上爬的長條地圖，每上一層台地換一種景，最上面是王墓。",
+    w: 60, h: 150,
+    ground: [ { r: [2, 76, 56, 36], h: 1 }, { r: [2, 40, 56, 36], h: 2 }, { r: [2, 2, 56, 38], h: 3 } ],
+    walls: [ ...border(60, 150),
+      [2, 111, 36, 1.5], [22, 75, 36, 1.5], [2, 39, 36, 1.5],
+      [8, 82, 7, 6], [8, 96, 7, 6], [44, 84, 8, 6],
+      [30, 46, 22, 1.5], [30, 46, 1.5, 14], [50.5, 46, 1.5, 10],
+      [16, 10, 3, 3], [41, 10, 3, 3], [16, 26, 3, 3], [41, 26, 3, 3] ],
+    tombs: [ ...rows(6, 118, 6, 4, 3, 5), ...rows(37, 118, 6, 4, 3, 5), ...rows(6, 50, 4, 5, 3, 4) ],
+    low: [], ramps: [ [40, 110, 16, 3, "up"], [4, 74, 16, 3, "up"], [40, 38, 16, 3, "up"] ],
+    trees: [ [54, 140], [4, 140], [54, 66], [26, 64] ],
+    groups: [ [14, 124, 6], [46, 124, 6], [30, 92, 10], [40, 56, 8, 1], [14, 62, 6], [12, 34, 6], [48, 30, 6] ],
+    chests: [ [8, 145], [52, 104], [52, 6], [40, 52, 1] ],
+    dig: [30, 18], spawn: [30, 145],
+    route: [ [30, 145], [46, 130], [48, 114], [48, 106], [30, 94], [18, 80], [12, 72], [28, 62], [24, 48], [36, 43], [48, 43], [48, 34], [30, 24], [30, 18] ],
+    side: [],
+    labels: [ [30, 136, "入口墓園（高 0）"], [30, 104, "陵墓台地（高 1）"], [16, 46, "教堂台地（高 2）"], [30, 6, "王墓（高 3）"] ],
+    good: [ "節奏最好控制：一段一段打上去，難度可以逐段加", "高低差是主角，跳躍很有用", "最容易做到「5 分鐘走完」" ],
+    bad: [ "幾乎沒有岔路，重玩時每次都一樣", "全程在爬坡，Boss 戰只能在最上面那塊" ],
+  },
+  {
+    id: "C", name: "廣場三翼", tag: "出生在中央廣場，西、北、東三個區自己選順序；北邊教堂是挖墳點。",
+    w: 120, h: 100,
+    ground: [ { r: [80, 44, 36, 50], h: 0.5 }, { r: [86, 50, 24, 38], h: 1 } ],
+    walls: [ ...border(120, 100),
+      [45, 58, 12, 1.5], [63, 58, 12, 1.5], [45, 58, 1.5, 10], [45, 74, 1.5, 12], [73.5, 58, 1.5, 10], [73.5, 74, 1.5, 12], [45, 84.5, 30, 1.5],
+      [55.5, 38, 1.5, 20], [63, 38, 1.5, 20],
+      [10, 38, 36, 1.5], [76, 38, 34, 1.5], [44, 40, 1.5, 18], [75, 40, 1.5, 18],
+      [44, 8, 32, 1.5], [44, 8, 1.5, 22], [74.5, 8, 1.5, 22], [44, 28.5, 12, 1.5], [64, 28.5, 12, 1.5],
+      [90, 56, 6, 5], [100, 56, 6, 5], [90, 76, 6, 5], [100, 76, 6, 5] ],
+    tombs: [ ...rows(6, 46, 10, 8, 3.6, 6) ],
+    low: [], ramps: [ [80, 64, 3, 8, "right"] ],
+    trees: [ [20, 10], [30, 26], [8, 22], [94, 10], [108, 28], [86, 24] ],
+    groups: [ [14, 58, 8], [30, 80, 8], [12, 92, 5], [24, 20, 8], [96, 20, 8], [60, 34, 6], [96, 88, 10, 1], [86, 48, 6] ],
+    chests: [ [40, 94], [6, 44], [110, 8], [98, 67, 1] ],
+    dig: [60, 18], spawn: [60, 80],
+    route: [ [60, 80], [60, 60], [60, 40], [60, 32], [60, 18] ],
+    side: [ [50, 71], [30, 80], [14, 58], [6, 36], [24, 20], [44, 32], [60, 32], [76, 32], [96, 20], [114, 34], [114, 44], [100, 48], [98, 67], [96, 88], [80, 71], [70, 71] ],
+    labels: [ [60, 72, "中央廣場"], [24, 70, "墓碑林"], [60, 5, "教堂"], [98, 96, "陵墓台地"] ],
+    good: [ "玩家自己決定要清多少再挖墳：直衝或全清都行，最符合「高風險高回報」", "多人可以分頭探索", "廣場當集合點，好找隊友" ],
+    bad: [ "從出生點直走到挖墳點只要約 10 秒，資源少的人可能直接衝", "三翼都是死路，清完要走回頭" ],
+  },
+  {
+    id: "D", name: "開闊墓原", tag: "幾乎沒有通道的大片墓地，到處是小怪群，最適合割草。",
+    w: 110, h: 90,
+    ground: [ { r: [14, 12, 26, 20], h: 0.5 }, { r: [20, 16, 14, 12], h: 1 }, { r: [66, 52, 24, 18], h: 0.5 }, { r: [71, 56, 14, 10], h: 1 } ],
+    walls: [ ...border(110, 90), [56, 28, 8, 1.5], [56, 28, 1.5, 6], [30, 40, 1.5, 8], [88, 70, 1.5, 8], [88, 70, 6, 1.5] ],
+    tombs: [ ...rows(50, 10, 5, 3, 3, 4), ...rows(8, 52, 4, 4, 3, 4), ...rows(38, 66, 6, 2, 3, 4), ...rows(72, 28, 4, 3, 3, 4) ],
+    low: [ [84, 24, 8, 1], [98, 24, 8, 1], [84, 4, 1, 20] ],
+    ramps: [],
+    trees: [ [8, 8], [46, 24], [62, 12], [100, 36], [104, 48], [58, 58], [24, 70], [96, 84], [10, 34], [40, 54] ],
+    groups: [ [24, 22, 6], [54, 18, 5], [20, 58, 6], [46, 40, 8, 1], [70, 38, 6], [78, 61, 6], [48, 74, 5], [96, 46, 8], [30, 78, 4], [66, 80, 5], [94, 30, 6] ],
+    chests: [ [28, 22], [78, 61], [100, 60], [6, 40], [44, 32, 1] ],
+    dig: [95, 13], spawn: [12, 82],
+    route: [ [12, 82], [30, 70], [44, 46], [70, 36], [92, 28], [95, 13] ],
+    side: [],
+    labels: [ [27, 10, "山丘"], [78, 50, "山丘"], [95, 4, "籬笆圍起的墓"] ],
+    good: [ "怪群分散又多，割草感最強", "最好做：幾乎只有石台和墓碑", "怪物從四面八方來，挖墳時很緊張" ],
+    bad: [ "沒有地標引導，容易迷路（要靠小地圖或指示）", "地形單調，探索感最弱" ],
+  },
+];
+
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function rect(p, r, fill, extra = {}) { return el("rect", { x: r[0], y: r[1], width: r[2], height: r[3], fill, ...extra }, p); }
+function text(p, x, y, s, size, fill, extra = {}) {
+  const t = el("text", { x, y, "font-size": size, fill, "text-anchor": "middle", "dominant-baseline": "central", ...extra }, p);
+  t.textContent = s; return t;
+}
+function pathLen(pts) {
+  let len = 0;
+  for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+  return len;
+}
+function poly(p, pts, stroke, dash, width) {
+  el("polyline", { points: pts.map(q => q.join(",")).join(" "), fill: "none", stroke, "stroke-width": width,
+    "stroke-dasharray": dash, "stroke-linejoin": "round", "stroke-linecap": "round" }, p);
+}
+
+function drawMap(m) {
+  const svg = el("svg", { viewBox: `0 0 ${m.w} ${m.h}`, width: m.w * S, height: m.h * S });
+  rect(svg, [0, 0, m.w, m.h], HEIGHT_COLOR[0]);
+  // 每 10 單位一條格線
+  for (let x = 10; x < m.w; x += 10) el("line", { x1: x, y1: 0, x2: x, y2: m.h, stroke: "#ffffff0d", "stroke-width": 0.2 }, svg);
+  for (let y = 10; y < m.h; y += 10) el("line", { x1: 0, y1: y, x2: m.w, y2: y, stroke: "#ffffff0d", "stroke-width": 0.2 }, svg);
+  for (const g of m.ground) {
+    rect(svg, g.r, HEIGHT_COLOR[g.h], { stroke: "#00000080", "stroke-width": 0.4 });
+    text(svg, g.r[0] + 2.2, g.r[1] + 1.8, "高" + g.h, 1.8, "#ffffffa0", { "text-anchor": "start" });
+  }
+  for (const r of m.ramps) {
+    rect(svg, r, COLORS.ramp, { opacity: 0.55 });
+    const cx = r[0] + r[2] / 2, cy = r[1] + r[3] / 2;
+    text(svg, cx, cy, r[4] === "up" ? "▲" : "▶", 2.2, "#0b1a14");
+  }
+  for (const r of m.low) rect(svg, r, COLORS.low, { stroke: "#00000080", "stroke-width": 0.2 });
+  for (const r of m.tombs) rect(svg, r, COLORS.tomb, { rx: 0.2 });
+  for (const t of m.trees) el("circle", { cx: t[0], cy: t[1], r: 1.1, fill: "#4a3d33", stroke: "#2a221c", "stroke-width": 0.3 }, svg);
+  for (const r of m.walls) rect(svg, r, COLORS.wall, { stroke: "#3a3731", "stroke-width": 0.3 });
+  for (const l of m.labels) text(svg, l[0], l[1], l[2], 2.4, "#ffffffc0", { "font-weight": 700 });
+  // 畫面範圍（出生點為中心）
+  const [sx, sy] = m.spawn;
+  rect(svg, [sx - 17.8, sy - 15.5, 35.6, 31], "none", { stroke: "var(--view)", "stroke-width": 0.35, "stroke-dasharray": "1.2 0.8" });
+  if (m.side.length) poly(svg, m.side, "#efe6c880", "0.6 1.2", 0.5);
+  poly(svg, m.route, "var(--route)", "1.6 1", 0.7);
+  for (const g of m.groups) {
+    const r = 1.2 * Math.sqrt(g[2]) + 0.8;
+    el("circle", { cx: g[0], cy: g[1], r, fill: "#d9534f55", stroke: g[3] ? "#ffd166" : "#d9534f", "stroke-width": g[3] ? 0.6 : 0.35 }, svg);
+    text(svg, g[0], g[1], g[2], 2.2, "#fff", { "font-weight": 700 });
+  }
+  for (const c of m.chests) {
+    const s = c[2] ? 3 : 1.8;
+    rect(svg, [c[0] - s / 2, c[1] - s / 2, s, s], "var(--chest)", { stroke: "#5a4310", "stroke-width": 0.3, rx: 0.3 });
+  }
+  el("circle", { cx: m.dig[0], cy: m.dig[1], r: 3, fill: "#a97be855", stroke: "var(--dig)", "stroke-width": 0.6 }, svg);
+  text(svg, m.dig[0], m.dig[1], "挖", 2.6, "#fff", { "font-weight": 700 });
+  el("polygon", { points: `${sx},${sy - 2.4} ${sx - 2},${sy + 1.4} ${sx + 2},${sy + 1.4}`, fill: "var(--spawn)" }, svg);
+  // 比例尺 10 單位
+  const bx = 4, by = m.h - 4;
+  el("line", { x1: bx, y1: by, x2: bx + 10, y2: by, stroke: "#fff", "stroke-width": 0.4 }, svg);
+  text(svg, bx + 5, by - 1.4, "10", 1.8, "#fff");
+  return svg;
+}
+
+const host = document.getElementById("maps");
+for (const m of MAPS) {
+  const card = document.createElement("section");
+  card.className = "map";
+  const main = pathLen(m.route), side = m.side.length ? pathLen(m.side) : 0;
+  const mobs = m.groups.reduce((s, g) => s + g[2], 0);
+  const big = m.chests.filter(c => c[2]).length;
+  card.innerHTML = `<h2><b>${m.id}</b>${m.name}</h2><p class="tag">${m.tag}</p>`;
+  card.appendChild(drawMap(m));
+  const walk = side ? `主線約 ${Math.round(main)}（${Math.round(main / 6.5)} 秒）；全部繞完再加約 ${Math.round(side)}（${Math.round(side / 6.5)} 秒）`
+                    : `約 ${Math.round(main)}（${Math.round(main / 6.5)} 秒）`;
+  card.insertAdjacentHTML("beforeend", `
+    <dl class="stats">
+      <dt>大小</dt><dd>${m.w} × ${m.h}（目前場地的 ${(m.w * m.h / 1024).toFixed(1)} 倍面積）</dd>
+      <dt>路線長度</dt><dd>${walk}</dd>
+      <dt>怪群</dt><dd>${m.groups.length} 群、共約 ${mobs} 隻（金框 = 精英群）</dd>
+      <dt>寶箱</dt><dd>小 ${m.chests.length - big}、大 ${big}</dd>
+    </dl>
+    <div class="pc"><div class="good"><h4>優點</h4><ul>${m.good.map(s => `<li>${s}</li>`).join("")}</ul></div>
+    <div class="bad"><h4>缺點</h4><ul>${m.bad.map(s => `<li>${s}</li>`).join("")}</ul></div></div>`);
+  host.appendChild(card);
+}
+
+const LEGEND = [
+  ["sw", HEIGHT_COLOR[0], "地面（高 0）"], ["sw", HEIGHT_COLOR[0.5], "高 0.5（要跳）"], ["sw", HEIGHT_COLOR[1], "高 1（要跳）"],
+  ["sw", HEIGHT_COLOR[2], "高 2"], ["sw", HEIGHT_COLOR[3], "高 3"],
+  ["sw", COLORS.wall, "牆 / 陵墓（跳不上）"], ["sw", COLORS.tomb, "墓碑（擋箭、跳得過）"], ["sw", COLORS.low, "矮籬 / 棺木（跳得過）"],
+  ["sw", COLORS.ramp, "斜坡（新地形）"], ["dot", "#d9534f", "怪群（數字 = 隻數）"], ["sw", "#e0b84a", "寶箱（大方塊 = 大寶箱）"],
+  ["dot", "#a97be8", "挖墳點 = 出口"], ["tri", "#6fd08c", "出生點"], ["line", "#efe6c8", "主路線（淡的是可選）"], ["box", "#7fc8ff", "一個畫面的範圍"],
+];
+const lg = document.getElementById("legend");
+for (const [kind, color, label] of LEGEND) {
+  let mark = `<i class="sw" style="background:${color}"></i>`;
+  if (kind === "dot") mark = `<i class="sw" style="background:${color}88;border:2px solid ${color};border-radius:50%;width:14px;height:14px"></i>`;
+  if (kind === "tri") mark = `<i style="width:0;height:0;border:7px solid transparent;border-bottom:12px solid ${color};border-top:0"></i>`;
+  if (kind === "line") mark = `<i style="width:18px;border-top:2px dashed ${color}"></i>`;
+  if (kind === "box") mark = `<i style="width:16px;height:12px;border:1.5px dashed ${color}"></i>`;
+  lg.insertAdjacentHTML("beforeend", `<span>${mark}${label}</span>`);
+}
+</script>
+</body>
+</html>

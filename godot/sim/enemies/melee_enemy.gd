@@ -21,7 +21,8 @@ class Chase:
 		if e.pos.distance_to(target.pos) <= s.trigger_distance and e.world.cooldowns.is_ready(e.cd("swing")):
 			fsm.change(&"swing")
 			return
-		e.facing = MathUtil.turn_towards(e.facing, MathUtil.angle_to(e.pos, target.pos), e.def.turn_speed * dt)
+		var aim := e.steer_point(target.pos)   # 被牆擋住時繞路（D1）
+		e.facing = MathUtil.turn_towards(e.facing, MathUtil.angle_to(e.pos, aim), e.def.turn_speed * dt)
 		e.velocity = MathUtil.dir_from_angle(e.facing) * e.speed
 
 

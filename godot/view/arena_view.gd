@@ -4,38 +4,66 @@ class_name ArenaView
 extends Node3D
 
 
-const BLOCK_SIDE := Color("3b4152")   # 石台側面
-const BLOCK_TOP := Color("596178")    # 石台頂面（較亮，看得出可以站）
+# 石台顏色（側面、頂面）：頂面較亮，看得出可以站；牆是深色石頭、墓碑是灰白、高台是土色
+const BLOCK_COLORS := {
+	&"wall": [Color("3d3a35"), Color("57524a")],
+	&"tomb": [Color("7d786d"), Color("9a9487")],
+	&"platform": [Color("3b4152"), Color("596178")],
+}
 
 
-func build(half_size: float, terrain: Terrain) -> void:
+# half：場地的一半大小（World.half_extents）
+func build(half: Vector2, terrain: Terrain) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
-	add_child(DarkFantasy.build_arena(half_size, rng))
-	for b in terrain.blocks:
-		add_child(_create_block(b))
+	add_child(DarkFantasy.build_arena(maxf(half.x, half.y), rng))
+	if not terrain.blocks.is_empty():
+		add_child(create_blocks(terrain.blocks))
 
 
-# 地形石台：側面方塊 + 較亮的頂面薄片
-func _create_block(b: Dictionary) -> Node3D:
-	var root := Node3D.new()
-	var size: Vector2 = b.max - b.min
-	var center: Vector2 = (b.min + b.max) / 2.0
-	var top: float = b.top
-	for part in [[Vector3(size.x, top, size.y), top / 2.0, BLOCK_SIDE], [Vector3(size.x + 0.04, 0.06, size.y + 0.04), top - 0.02, BLOCK_TOP]]:
-		var mi := MeshInstance3D.new()
-		var box := BoxMesh.new()
-		box.size = part[0]
-		mi.mesh = box
-		mi.position = Vector3(center.x, part[1], center.y)
-		var m := StandardMaterial3D.new()
-		m.albedo_color = part[2]
-		m.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
-		m.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
-		m.roughness = 1.0
-		mi.material_override = m
-		root.add_child(mi)
-	return root
+# 所有地形石台合併成一個網格（每個石台 5 面：頂面 + 四個側面；頂點色），地圖上有上百個石台也只畫 1 次
+static func create_blocks(blocks: Array[Dictionary]) -> MeshInstance3D:
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	for b in blocks:
+		var c: Array = BLOCK_COLORS.get(b.kind, BLOCK_COLORS[&"platform"])
+		var x0: float = b.min.x
+		var z0: float = b.min.y
+		var x1: float = b.max.x
+		var z1: float = b.max.y
+		var t: float = b.top
+		_quad(verts, normals, colors, [Vector3(x0, t, z0), Vector3(x1, t, z0), Vector3(x1, t, z1), Vector3(x0, t, z1)], Vector3.UP, c[1])
+		_quad(verts, normals, colors, [Vector3(x0, 0, z0), Vector3(x1, 0, z0), Vector3(x1, t, z0), Vector3(x0, t, z0)], Vector3.FORWARD, c[0])
+		_quad(verts, normals, colors, [Vector3(x0, 0, z1), Vector3(x1, 0, z1), Vector3(x1, t, z1), Vector3(x0, t, z1)], Vector3.BACK, c[0])
+		_quad(verts, normals, colors, [Vector3(x0, 0, z0), Vector3(x0, 0, z1), Vector3(x0, t, z1), Vector3(x0, t, z0)], Vector3.LEFT, c[0])
+		_quad(verts, normals, colors, [Vector3(x1, 0, z0), Vector3(x1, 0, z1), Vector3(x1, t, z1), Vector3(x1, t, z0)], Vector3.RIGHT, c[0])
+	var mi := MeshInstance3D.new()
+	mi.mesh = PartKit.array_mesh(verts, normals, colors)
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.vertex_color_is_srgb = true
+	m.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
+	m.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+	m.roughness = 1.0
+	mi.material_override = m
+	return mi
+
+
+# 四邊形拆成兩個三角形；依法線調整頂點順序（Godot 的正面：cross(b - a, c - a) 與法線反向）
+static func _quad(verts: PackedVector3Array, normals: PackedVector3Array, colors: PackedColorArray, q: Array, n: Vector3, color: Color) -> void:
+	var a: Vector3 = q[0]
+	var b: Vector3 = q[1]
+	var c: Vector3 = q[2]
+	var d: Vector3 = q[3]
+	if (b - a).cross(c - a).dot(n) > 0.0:
+		var tmp := b
+		b = d
+		d = tmp
+	for v: Vector3 in [a, b, c, a, c, d]:
+		verts.append(v)
+		normals.append(n)
+		colors.append(color)
 
 
 # 平滑的偽隨機雜訊（0~1）

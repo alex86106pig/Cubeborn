@@ -76,7 +76,10 @@ func _start_wave(world: World, p_wave: int) -> void:
 func _spawn_from_queue(world: World, type: StringName) -> void:
 	var player := world.first_alive_player()
 	var p := player.pos if player != null else Vector2.ZERO
-	var limit: float = world.arena_half_size - Config.SPAWNER.edge_margin
+	if world.map.spawn_rule == &"around_player":
+		spawn_at(world, type, _around_player(world, type, p))
+		return
+	var limit: float = world.half_extents.x - Config.SPAWNER.edge_margin
 	var at := Vector2.ZERO
 	if type == &"boss":
 		# 出現在玩家對面、靠近場地中央
@@ -89,6 +92,29 @@ func _spawn_from_queue(world: World, type: StringName) -> void:
 			if at.distance_to(p) >= Config.SPAWNER.min_distance_from_player:
 				break
 	spawn_at(world, type, at)
+
+
+# 大地圖（D1）：小怪生在離玩家 min ~ max 的一圈內、可走而且走得到玩家的格子；Boss 往地圖中央方向、離玩家 boss_distance
+# 找不到合適的點時退回玩家旁邊最近的空地
+static func _around_player(world: World, type: StringName, p: Vector2) -> Vector2:
+	var s: Dictionary = Config.SPAWNER
+	var nav := world.nav
+	if type == &"boss":
+		var to_center := -p
+		var dir := to_center.normalized() if to_center.length() > 1.0 else Vector2(0.0, -1.0)
+		var at := nav.nearest_walkable(p + dir * s.boss_distance)
+		if nav.same_region(at, p):
+			return at
+	for attempt in s.spawn_attempts:
+		var a := world.rng.randf() * TAU
+		var r := world.rng.randf_range(s.min_distance_from_player, s.max_distance_from_player)
+		var at := p + Vector2(sin(a), cos(a)) * r
+		var lim: Vector2 = world.half_extents - Vector2(s.edge_margin, s.edge_margin)
+		if absf(at.x) > lim.x or absf(at.y) > lim.y:
+			continue
+		if nav.is_walkable(at) and nav.same_region(at, p):
+			return at
+	return nav.nearest_walkable(p)
 
 
 func spawn_at(world: World, type: StringName, at: Vector2) -> Enemy:

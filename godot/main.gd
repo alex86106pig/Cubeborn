@@ -56,7 +56,7 @@ func _ready() -> void:
 	add_child(camera_rig)
 	add_child(world_view)
 	add_child(arena_view)
-	arena_view.build(world.arena_half_size, world.terrain)
+	arena_view.build(world.half_extents, world.terrain)
 	input_collector.camera_rig = camera_rig
 	add_child(input_collector)
 	hud = HUD_SCENE.instantiate()

@@ -95,6 +95,12 @@ func _initialize() -> void:
 	_check("翻滾取消：普攻前搖與後搖可取消；揮下去、特殊技（奧術爆裂）、硬直中先緩衝，結束後才翻", _check_roll_cancel)
 	_check("跳躍：第 18 步最高 1.5、第 36 步落地；空中不能再跳；攻擊中可以跳、硬直中不行；空中翻滾照常下墜且一樣翻 4 單位", _check_jump_motion)
 	_check("地形：0.5 石台走不上去、跳得上去；從 0.5 跳上 1.0；走出邊緣會掉回地面；2.5 的牆跳不過去", _check_terrain)
+	_check("地圖 A（環形墓園）：96 × 96、石台都在場地內、出生點與挖墳點可走且相連、所有可走的格子連成一片（沒有怪物到不了的地方）、相鄰可走格高低差 ≤ 1.1、牆比旁邊的地面高出跳躍高度以上", _check_map_a)
+	_check("怪物繞牆：玩家在王族墓圍牆內，骷髏戰士從南邊牆外繞到北門進來打到玩家；弓手繞進來射中玩家", _check_enemy_pathing)
+	_check("怪物跳上高台：玩家站在 1.0 石台上，骷髏戰士先蹲 0.25 秒再跳，經 0.5 跳上 1.0 並打到玩家；Boss 也跳得上去", _check_enemy_climb)
+	_check("弓手打得到高台：玩家站在 1.0 石台上會中箭；被牆擋住時弓手先移動、不對牆射", _check_archer_high_ground)
+	_check("投射物不穿牆：魔彈對牆射會在牆前消失；從高台往下射照樣打得到地上的怪", _check_projectile_walls)
+	_check("地圖 A 生成：小怪都生在離玩家 8~18、可走而且走得到玩家的地方", _check_map_spawns)
 	_check("高度判定：最高點時箭從腳下飛過、地面會中箭；跳起來躲過 Boss 砸地；空中揮砍與空中魔彈打得到地上的怪", _check_height_hits)
 	_check("沒有碰撞傷害：骷髏戰士（揮砍冷卻中）、弓手（不射箭時）、Boss（不出招時）貼身 2 秒都不扣血", _check_no_contact_damage)
 	_check("骷髏揮砍：舉刀 0.5 秒後才命中、傷害 12；扇形 100° / 1.5 的邊界；舉刀後半鎖定方向，繞到側面就躲開；舉刀中被打會中斷", _check_grunt_swing)
@@ -151,8 +157,8 @@ func _check(title: String, fn: Callable) -> void:
 # ---- 工具 ----
 
 # 預設關掉生成器，只測玩家；要測波次時傳 with_spawner = true
-func _new_world(seed_value: int = 12345, with_spawner: bool = false) -> World:
-	var w := World.new()
+func _new_world(seed_value: int = 12345, with_spawner: bool = false, map_id: StringName = &"test_arena") -> World:
+	var w := World.new(map_id)
 	w.reset(seed_value)
 	w.spawner.finished = not with_spawner
 	_worlds.append(w)
@@ -1772,6 +1778,215 @@ func _check_terrain() -> String:
 		_walk(w, Vector2(0, 1), 40, true)
 	if p.pos.y > 7.5 - p.radius + 0.01:
 		return "2.5 的牆不應跳得過：z %.2f、高度 %.2f" % [p.pos.y, p.height]
+	return ""
+
+
+func _check_map_a() -> String:
+	var w := _new_world(12345, false, &"graveyard_a")
+	var m := w.map
+	if m.size != Vector2(96, 96):
+		return "大小 %s，預期 96 × 96" % m.size
+	var half := w.half_extents
+	for b in w.terrain.blocks:
+		if b.min.x < -half.x - EPS or b.min.y < -half.y - EPS or b.max.x > half.x + EPS or b.max.y > half.y + EPS:
+			return "石台超出場地：%s ~ %s" % [b.min, b.max]
+	var nav := w.nav
+	var spawn := w.spawn_point
+	var dig := MapDefs.to_world(m, m.dig)
+	if not nav.is_walkable(spawn) or not nav.is_walkable(dig) or not nav.same_region(spawn, dig):
+		return "出生點 %s 與挖墳點 %s 應可走且相連" % [spawn, dig]
+	if _player(w).pos != spawn:
+		return "玩家應出生在 %s，實際 %s" % [spawn, _player(w).pos]
+	var regions := {}
+	var walkable := 0
+	for r in nav.region:
+		if r >= 0:
+			regions[r] = true
+			walkable += 1
+	if regions.size() != 1:
+		return "可走的格子分成 %d 塊（有怪物到不了的地方）" % regions.size()
+	var climb: float = Config.NAV.climb_height
+	for x in nav.size.x:
+		for y in nav.size.y:
+			var c := Vector2i(x, y)
+			if not nav.is_walkable_cell(c):
+				continue
+			var g := w.terrain.ground_at(nav.cell_center(c))
+			for d: Vector2i in [Vector2i(1, 0), Vector2i(0, 1)]:
+				var q := c + d
+				if nav.is_walkable_cell(q) and absf(w.terrain.ground_at(nav.cell_center(q)) - g) > climb + EPS:
+					return "相鄰可走格 %s → %s 高低差 %.2f > %.2f（怪物跳不上去）" % [c, q, absf(w.terrain.ground_at(nav.cell_center(q)) - g), climb]
+	var highest := 0.0
+	var counts := {}
+	for b in w.terrain.blocks:
+		counts[b.kind] = counts.get(b.kind, 0) + 1
+		if b.kind == MapDefs.PLATFORM:
+			highest = maxf(highest, b.top)
+	for b in w.terrain.blocks:
+		if b.kind == MapDefs.WALL and b.top - highest < Config.JUMP.height + 0.3:
+			return "牆 %.1f 只比最高的地面 %.1f 高 %.1f，跳得上去" % [b.top, highest, b.top - highest]
+	# 畫面：所有石台合併成一個網格，每個三角形都是正面（Godot：cross(b - a, c - a) 與法線反向）
+	var mi := ArenaView.create_blocks(w.terrain.blocks)
+	var arrays := (mi.mesh as ArrayMesh).surface_get_arrays(0)
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+	mi.free()
+	if verts.size() != w.terrain.blocks.size() * 30:
+		return "石台網格應有 %d 個頂點（每個石台 5 面），實際 %d" % [w.terrain.blocks.size() * 30, verts.size()]
+	for i in range(0, verts.size(), 3):
+		if (verts[i + 1] - verts[i]).cross(verts[i + 2] - verts[i]).dot(normals[i]) >= 0.0:
+			return "石台網格第 %d 個三角形是背面" % (i / 3)
+	print("    地圖 A：可走格 %d / %d、牆 %d、墓碑 %d、高台 %d" % [walkable, nav.size.x * nav.size.y, counts.get(MapDefs.WALL, 0), counts.get(MapDefs.TOMB, 0), counts.get(MapDefs.PLATFORM, 0)])
+	return ""
+
+
+# 玩家站著不動、每步補滿血；回傳第一次被打中的步數（-1 = 沒被打中）；on_step 每步之後呼叫
+func _run_until_hurt(w: World, max_steps: int, on_step: Callable = Callable()) -> int:
+	var p := _player(w)
+	for i in max_steps:
+		p.hp = p.max_hp
+		w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO)}, DT)
+		if on_step.is_valid():
+			on_step.call()
+		if p.hp < p.max_hp:
+			return i + 1
+	return -1
+
+
+func _check_enemy_pathing() -> String:
+	var w := _new_world(12345, false, &"graveyard_a")
+	var p := _player(w)
+	p.pos = MapDefs.to_world(w.map, w.map.dig)
+	var g := _spawn(w, &"grunt", Vector2(0, 22))   # 圍牆南邊外面
+	var north := [INF]
+	var t := _run_until_hurt(w, 90 * 60, func() -> void: north[0] = minf(north[0], g.pos.y))
+	if t < 0:
+		return "骷髏戰士 90 秒內沒打到玩家（停在 %s）" % g.pos
+	if north[0] > -15.0:
+		return "骷髏戰士應繞到北門（z < -15）進來，最北只到 z %.1f" % north[0]
+	var w2 := _new_world(12345, false, &"graveyard_a")
+	var p2 := _player(w2)
+	p2.pos = p.pos
+	var a := _spawn(w2, &"archer", Vector2(0, 22))
+	var t2 := _run_until_hurt(w2, 90 * 60)
+	if t2 < 0:
+		return "弓手 90 秒內沒射中玩家（停在 %s）" % a.pos
+	print("    繞北門：骷髏戰士 %.1f 秒打到玩家（最北 z %.1f）、弓手 %.1f 秒射中" % [t * DT, north[0], t2 * DT])
+	return ""
+
+
+func _check_enemy_climb() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	p.pos = Vector2(12, 12)   # 1.0 石台中央；西邊 x 7.75~10.25 是 0.5 石台
+	p.height = 1.0
+	var g := _spawn(w, &"grunt", Vector2(2, 12))
+	var heights := {"half": -1, "top": -1, "windup": 0, "windup_done": false}
+	var watch := func() -> void:
+		if g._jump_windup > 0.0 and not heights.windup_done:
+			heights.windup += 1
+		elif heights.windup > 0:
+			heights.windup_done = true
+		if g.is_grounded() and heights.half < 0 and absf(g.height - 0.5) < EPS:
+			heights.half = w.tick
+		if g.is_grounded() and heights.top < 0 and absf(g.height - 1.0) < EPS:
+			heights.top = w.tick
+	var t := _run_until_hurt(w, 20 * 60, watch)
+	if heights.half < 0 or heights.top < 0:
+		return "骷髏戰士應先跳上 0.5 再跳上 1.0：0.5 第 %d 步、1.0 第 %d 步、高度 %.2f" % [heights.half, heights.top, g.height]
+	if absi(heights.windup - roundi(Config.NAV.jump_windup / DT)) > 1:
+		return "起跳前應蹲 %.2f 秒，實際 %d 步" % [Config.NAV.jump_windup, heights.windup]
+	if t < 0:
+		return "骷髏戰士上了石台卻沒打到玩家"
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	p2.pos = Vector2(12, 12)
+	p2.height = 1.0
+	var boss := _spawn(w2, &"boss", Vector2(2, 12))
+	var top := -1
+	for i in 30 * 60:
+		p2.hp = p2.max_hp
+		w2.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO)}, DT)
+		if boss.is_grounded() and absf(boss.height - 1.0) < EPS:
+			top = i + 1
+			break
+	if top < 0:
+		return "Boss 30 秒內沒跳上 1.0 石台（停在 %s、高度 %.2f）" % [boss.pos, boss.height]
+	print("    骷髏戰士：第 %.2f 秒上 0.5、%.2f 秒上 1.0、%.2f 秒打到玩家（起跳前蹲 %d 步）；Boss %.1f 秒上 1.0" % [heights.half * DT, heights.top * DT, t * DT, heights.windup, top * DT])
+	return ""
+
+
+func _check_archer_high_ground() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	p.pos = Vector2(12, 12)
+	p.height = 1.0
+	_spawn(w, &"archer", Vector2(0, 12))
+	var t := _run_until_hurt(w, 10 * 60)
+	if t < 0:
+		return "玩家在 1.0 石台上，弓手 10 秒內沒射中"
+	# 2.5 的牆（x 8~14、z 7.5~8.5）擋在中間：弓手先移動到射得到的地方，不對牆射
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	p2.pos = Vector2(12, 12)
+	p2.height = 1.0
+	var a := _spawn(w2, &"archer", Vector2(11, 3))
+	var fizzles := [0]
+	var t2 := _run_until_hurt(w2, 20 * 60, func() -> void: fizzles[0] += _named(w2.events, "fx:fizzle").size())
+	if t2 < 0:
+		return "牆後的弓手 20 秒內沒射中玩家（停在 %s）" % a.pos
+	if fizzles[0] > 0:
+		return "弓手射中前有 %d 支箭撞牆或落空" % fizzles[0]
+	print("    弓手射中 1.0 石台上的玩家：開闊 %.1f 秒、隔著牆 %.1f 秒（繞到 %s）" % [t * DT, t2 * DT, a.pos])
+	return ""
+
+
+func _check_projectile_walls() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	p.pos = Vector2(11, 5)   # 牆在 z 7.5~8.5
+	var d := _dummy(w, Vector2(11, 11))
+	var bolt := Projectile.new(w, {"owner": p, "pos": p.pos, "direction": Vector2(0, 1), "speed": 10.0, "range": 10.0,
+		"damage": 10.0, "settle_altitude": Config.HEIGHT.bolt_altitude, "settle_distance": Config.HEIGHT.bolt_settle_distance})
+	w.spawn_projectile(bolt)
+	_run(w, _cmd(Vector2.ZERO), 60)
+	if not bolt.is_removed or bolt.pos.y > 7.5 + 0.2 or d.hp < 1000.0:
+		return "魔彈應在牆前消失：z %.2f、已移除 %s、牆後的假人血 %.0f" % [bolt.pos.y, bolt.is_removed, d.hp]
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	p2.pos = Vector2(12, 12)
+	p2.height = 1.0
+	_run(w2, _cmd(Vector2.ZERO), 1)
+	var d2 := _dummy(w2, Vector2(18, 12))
+	w2.spawn_projectile(Projectile.new(w2, {"owner": p2, "pos": p2.pos, "direction": Vector2(1, 0), "speed": 10.0, "range": 10.0,
+		"damage": 10.0, "settle_altitude": Config.HEIGHT.bolt_altitude, "settle_distance": Config.HEIGHT.bolt_settle_distance}))
+	_run(w2, _cmd(Vector2.ZERO), 60)
+	if d2.hp >= 1000.0:
+		return "從 1.0 石台往下射，應打到地上的假人"
+	return ""
+
+
+func _check_map_spawns() -> String:
+	var w := _new_world(12345, true, &"graveyard_a")
+	var p := _player(w)
+	var s: Dictionary = Config.SPAWNER
+	var seen := {}
+	var count := 0
+	for i in 60 * 60:
+		p.hp = p.max_hp
+		w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO)}, DT)
+		for e: Entity in w.enemies:
+			if seen.has(e.id):
+				continue
+			seen[e.id] = true
+			var dist := e.pos.distance_to(p.pos)
+			if dist < s.min_distance_from_player - EPS or dist > s.max_distance_from_player + EPS:
+				return "第 %d 隻生在離玩家 %.1f 的地方" % [count + 1, dist]
+			if not w.nav.is_walkable(e.pos) or not w.nav.same_region(e.pos, p.pos):
+				return "第 %d 隻生在 %s：不可走或走不到玩家" % [count + 1, e.pos]
+			count += 1
+	if count < 5:
+		return "60 秒只生了 %d 隻" % count
 	return ""
 
 

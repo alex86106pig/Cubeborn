@@ -18,10 +18,13 @@ var traveled := 0.0
 var start_altitude := 0.0       # 發射時的飛行高度（height 是目前的飛行高度）
 var settle_altitude := 0.0      # 離地高度目標（settle_distance > 0 時才用）
 var settle_distance := 0.0      # 飛出幾單位內從 start_altitude 降到「地面 + settle_altitude」；0 = 高度不變
+var launch_ground := 0.0        # 發射者腳下的地面高度：settle 的「地面」不會高過它（D1）
+var aim_altitude := 0.0         # 敵人箭矢瞄準的高度（D1）：飛到 aim_distance 時到達，之後高度不變
+var aim_distance := 0.0         # 0 = 不瞄高度（高度不變）
 
 
 # p：owner、pos、direction、speed、range、radius、damage、knockback、color、visual、hit_stop、shake、explosion、
-#    altitude（預設 發射者腳底 + HEIGHT.bolt_altitude）、settle_altitude、settle_distance
+#    altitude（預設 發射者腳底 + HEIGHT.bolt_altitude）、settle_altitude、settle_distance、aim_altitude、aim_distance
 # damage 與 explosion.damage 在發射時就乘好攻擊者的攻擊力，發射者死掉後命中也照樣算
 func _init(p_world: World, p: Dictionary) -> void:
 	var owner: Entity = p.owner
@@ -43,6 +46,9 @@ func _init(p_world: World, p: Dictionary) -> void:
 	start_altitude = p.get("altitude", owner.height + Config.HEIGHT.bolt_altitude)
 	settle_altitude = p.get("settle_altitude", 0.0)
 	settle_distance = p.get("settle_distance", 0.0)
+	launch_ground = owner.ground_height
+	aim_altitude = p.get("aim_altitude", start_altitude)
+	aim_distance = p.get("aim_distance", 0.0)
 	height = start_altitude
 
 
@@ -57,8 +63,12 @@ func update(dt: float) -> void:
 	pos += direction * step_len
 	traveled += step_len
 	if settle_distance > 0.0:
+		# 只往下貼地（飛出高台後降到低處的離地高度），不會順著牆往上爬：牆照樣擋得住
 		var k := minf(traveled / settle_distance, 1.0)
-		height = lerpf(start_altitude, world.terrain.ground_at(pos) + settle_altitude, k)
+		var ground := minf(launch_ground, world.terrain.ground_at(pos))
+		height = lerpf(start_altitude, ground + settle_altitude, k)
+	elif aim_distance > 0.0:
+		height = lerpf(start_altitude, aim_altitude, minf(traveled / aim_distance, 1.0))
 	if world.terrain.is_solid(pos, height):
 		_expire()
 		return
@@ -73,8 +83,8 @@ func update(dt: float) -> void:
 			_on_hit(target)
 			return
 
-	var half := world.arena_half_size
-	var outside := absf(pos.x) > half or absf(pos.y) > half
+	var half := world.half_extents
+	var outside := absf(pos.x) > half.x or absf(pos.y) > half.y
 	if traveled >= range_ or outside:
 		_expire()
 

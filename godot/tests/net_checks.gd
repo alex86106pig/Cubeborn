@@ -15,7 +15,7 @@ static func cleanup() -> void:
 
 # 假的網路：房主 World + NetHost ⇄ NetClient，單程延遲 latency 步、unreliable 掉包比例 loss（reliable 不掉）
 class _Link:
-	var host_world := World.new()
+	var host_world := World.new(&"test_arena")
 	var host: NetHost
 	var client: NetClient
 	var latency := 0
@@ -37,6 +37,7 @@ class _Link:
 		host_world.spawner.finished = not spawn
 		host = NetHost.new(host_world)
 		client = NetClient.new(peers[1])
+		client.world.load_map(&"test_arena")   # 房主與客戶端要同一張地圖
 		NetChecks._made.append_array([host_world, client.world])
 		host_events.append_array(host_world.events)   # reset 的 game:restart
 		_send_events()
@@ -91,7 +92,7 @@ static func _cmd(move: Vector2, buttons: int = 0, aim: Vector2 = Vector2(0, 5)) 
 
 
 static func _world(peers: Array[int]) -> World:
-	var w := World.new()
+	var w := World.new(&"test_arena")
 	w.reset(7, peers)
 	w.spawner.finished = true
 	_made.append(w)
