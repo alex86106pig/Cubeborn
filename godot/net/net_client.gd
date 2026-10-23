@@ -226,5 +226,6 @@ func _apply_own_authority(me: Player, a: Array) -> void:
 	NetCodec.apply_life(me, a)
 	me.net_sync_life(a[NetCodec.E_DEAD], extra[NetCodec.P_DOWNED], extra[NetCodec.P_DOWN_TIMER], extra[NetCodec.P_REVIVE])
 	me.parry_timer = maxf(me.parry_timer, extra[NetCodec.P_PARRY])
+	me.sync_inventory(extra[NetCodec.P_INV])   # 背包以房主為準（D3：撿、丟、搬動都在房主執行）
 	if me.weapon_id != extra[NetCodec.P_WEAPON] and _last_ack >= _swap_tick:
 		me.equip_weapon(extra[NetCodec.P_WEAPON])

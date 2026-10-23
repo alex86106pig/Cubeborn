@@ -9,7 +9,7 @@ const ACTIONS := {
 	&"slot_1": KEY_1, &"slot_2": KEY_2, &"slot_3": KEY_3, &"slot_4": KEY_4, &"slot_5": KEY_5,
 	&"interact": KEY_F,
 	&"pause": KEY_ESCAPE, &"mute": KEY_M, &"restart": KEY_R,
-	&"stats_panel": KEY_TAB,
+	&"stats_panel": KEY_TAB, &"inventory": KEY_I,
 	&"debug_weapon": KEY_F1, &"debug_hitbox": KEY_F2, &"debug_speed": KEY_F3,
 	&"debug_item": KEY_F4, &"debug_clear_items": KEY_F5,
 }
@@ -23,6 +23,8 @@ const AUTO_SPECIAL_INTERVAL := 5.1   # 比兩把武器的特殊技冷卻（4 / 5
 var _auto_special_steps := 0
 var auto_interact := false      # 測試用：一直按住 F（--auto-interact）
 var enabled := true             # 關掉時（大廳、輸入框打字中）送出空輸入
+var mouse_captured := false     # 背包開著（D3）：滑鼠只給背包用，不攻擊、不格擋、瞄準點不動；WASD 照常
+var _inv_ops: Array = []        # 背包介面送出的操作，下一筆輸入帶走
 
 var _latched := 0               # 兩次模擬步之間按過的按鈕，步驟執行後才清除
 var _aim := Vector2(0.0, 5.0)
@@ -49,9 +51,11 @@ func _input(event: InputEvent) -> void:
 	if event.is_echo():
 		return
 	if event.is_action_pressed(&"attack"):
-		_latched |= InputCmd.BTN_ATTACK
+		if not mouse_captured:
+			_latched |= InputCmd.BTN_ATTACK
 	elif event.is_action_pressed(&"special"):
-		_latched |= InputCmd.BTN_SPECIAL
+		if not mouse_captured:
+			_latched |= InputCmd.BTN_SPECIAL
 	elif event.is_action_pressed(&"roll"):
 		_latched |= InputCmd.BTN_ROLL
 	elif event.is_action_pressed(&"jump"):
@@ -62,6 +66,11 @@ func _input(event: InputEvent) -> void:
 		for i in InputCmd.SLOT_COUNT:
 			if event.is_action_pressed(StringName("slot_%d" % (i + 1))):
 				_latched |= InputCmd.slot_bit(i)
+
+
+# 背包介面的操作（InputCmd.OP_*），隨下一筆輸入送出
+func queue_inventory_op(op: Array) -> void:
+	_inv_ops.append(op)
 
 
 func build_cmd(tick: int) -> InputCmd:
@@ -76,12 +85,13 @@ func build_cmd(tick: int) -> InputCmd:
 	cmd.move = (camera_rig.screen_right * screen.x + camera_rig.screen_forward * screen.y).limit_length(1.0)
 
 	var ground: Variant = camera_rig.screen_to_ground(get_viewport().get_mouse_position())
-	if ground != null:
+	if ground != null and not mouse_captured:
 		_aim = Vector2(ground.x, ground.z)
 	cmd.aim = _aim
 
 	cmd.buttons = _latched
-	if auto_attack or Input.is_action_pressed(&"attack"):
+	cmd.inv_ops = _inv_ops.duplicate()
+	if auto_attack or (Input.is_action_pressed(&"attack") and not mouse_captured):
 		cmd.buttons |= InputCmd.BTN_ATTACK
 	if auto_special:
 		if _auto_special_steps % roundi(AUTO_SPECIAL_INTERVAL / Config.FIXED_DT) == 0:
@@ -95,3 +105,4 @@ func build_cmd(tick: int) -> InputCmd:
 # 模擬步實際執行後呼叫
 func consume_latched() -> void:
 	_latched = 0
+	_inv_ops.clear()

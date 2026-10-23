@@ -173,11 +173,11 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `godot/project.godot` | Godot 專案設定（4.7、Forward+、1920×1080、預設字型 `hud_font.tres`） |
 | `godot/export_presets.cfg` | 匯出設定：「Web」（單執行緒、輸出到 `../build/web/index.html`，排除 tests / stress_test） |
 | `godot/assets/fonts/` | 打包字型 Noto Sans TC（OFL 授權，見該資料夾 README）與字重 700 的 `hud_font.tres` |
-| `godot/main.tscn` / `main.gd` | Godot 組合根：單機 / 房主 / 客戶端三種模式、大廳（開房、加入、開始、離開連線）、主迴圈（每秒 60 步）、通關慢動作、暫停 / 選單、重新開始、離開遊戲、畫面震動、特效與命中定格事件轉給畫面層、Tab 屬性面板、F3 除錯移速 +50%、F4 / F5 除錯放入 / 清空道具（F3~F5 單機才有）、自動驗證參數（`--seconds`、`--screenshot`、`--auto-move`、`--auto-move-seconds`、`--auto-attack`、`--auto-special`、`--auto-interact`、`--weapon`、`--wave`、`--player-hp`、`--items`、`--no-spawn`、`--host`、`--join=IP`、`--net-port`、`--net-autostart=N`、`--net-latency`、`--net-loss`） |
+| `godot/main.tscn` / `main.gd` | Godot 組合根：單機 / 房主 / 客戶端三種模式、大廳（開房、加入、開始、離開連線）、主迴圈（每秒 60 步）、通關慢動作、暫停 / 選單、重新開始、離開遊戲、畫面震動、特效與命中定格事件轉給畫面層、Tab 屬性面板、F3 除錯移速 +50%、I 背包、F4 / F5 除錯放入背包 / 清空道具（F3~F5 單機才有）、自動驗證參數（`--seconds`、`--screenshot`、`--auto-move`、`--auto-move-seconds`、`--auto-attack`、`--auto-special`、`--auto-interact`、`--weapon`、`--wave`、`--player-hp`、`--items`、`--no-spawn`、`--host`、`--join=IP`、`--net-port`、`--net-autostart=N`、`--net-latency`、`--net-loss`） |
 | `godot/net/` | 多人連線（15.18）：net_session（ENet 傳輸、RPC、大廳、模擬延遲 / 掉包）、net_host（房主：輸入排隊、ack、快照）、net_client（客戶端：鏡像 World、補間與外推、自己角色的預測修正、事件延到畫面時間）、net_codec（快照編碼 / 套用） |
 | `godot/core/` | config、version、math_util、state_machine、cooldowns、game_events（autoload `GameEvents`） |
-| `godot/defs/` | 資料表：weapon_defs（劍盾、法杖）、enemy_defs（grunt / archer / boss）、wave_defs（5 波與成長倍率）、skill_defs（治療藥水、疾跑）、stat_defs（屬性名稱、基礎值、上下限、顯示格式、護甲公式）、map_defs（地圖：A 環形墓園與測試場地的大小、出生點、挖墳點、牆 / 墓碑 / 高台）、item_defs（武器與 45 個道具：稀有度、占格形狀、效果列表） |
-| `godot/sim/` | 模擬層（不碰場景樹）：world（含通關流程、倒下與救援、客戶端的本機預測 step_predicted）、input_cmd、stats（屬性計算：加值 / 百分比 / 相乘、依來源加入移除）、terrain（地面高度、石台當牆、投射物撞牆）、nav（怪物尋路：AStarGrid2D 格子、直線判斷、連通區塊）、vision（角色視野：扇形、身邊一圈、牆擋視線；只給畫面用）、hitbox（通用攻擊判定：扇形 / 圓形、只打一次、能否格擋、記錄給 F2）、entity（含高度、重力、落地）、player（含翻滾充能）、player_states（雙層狀態機，含翻滾）、weapon_behaviors、combat、projectile、enemy（敵人基底與共用狀態）、spawner（分波生成）、physics（格子碰撞分離）、active_slots（數字鍵欄位）、skill_behaviors |
+| `godot/defs/` | 資料表：weapon_defs（劍盾、法杖）、enemy_defs（grunt / archer / boss）、wave_defs（5 波與成長倍率）、skill_defs（治療藥水、疾跑）、stat_defs（屬性名稱、基礎值、上下限、顯示格式、護甲公式）、map_defs（地圖：A 環形墓園與測試場地的大小、出生點、挖墳點、牆 / 墓碑 / 高台、寶箱位置）、loot_defs（殺怪金幣、寶箱價格與稀有度機率）、item_defs（武器與 45 個道具：稀有度、占格形狀、效果列表） |
+| `godot/sim/` | 模擬層（不碰場景樹）：world（含通關流程、倒下與救援、客戶端的本機預測 step_predicted）、input_cmd、stats（屬性計算：加值 / 百分比 / 相乘、依來源加入移除）、terrain（地面高度、石台當牆、投射物撞牆）、nav（怪物尋路：AStarGrid2D 格子、直線判斷、連通區塊）、vision（角色視野：扇形、身邊一圈、牆擋視線；只給畫面用）、inventory（8 × 6 格子背包：形狀旋轉、擺放、自動找空位）、chest（寶箱：扣共用的錢、抽稀有度、道具掉地上）、item_pickup（地上的道具）、hitbox（通用攻擊判定：扇形 / 圓形、只打一次、能否格擋、記錄給 F2）、entity（含高度、重力、落地）、player（含翻滾充能）、player_states（雙層狀態機，含翻滾）、weapon_behaviors、combat、projectile、enemy（敵人基底與共用狀態）、spawner（分波生成）、physics（格子碰撞分離）、active_slots（數字鍵欄位）、skill_behaviors |
 | `godot/sim/enemies/` | melee_enemy（追擊、舉刀揮砍）、ranged_enemy、boss；v0.17.0 起沒有碰撞傷害；v0.22.0 起會繞牆、跳上高台（共用部分在 enemy.gd） |
 | `godot/input/input_collector.gd` | 按鍵註冊、InputMap → InputCmd（螢幕方向轉世界、滑鼠投射地面、鎖存按下） |
 | `godot/view/` | 畫面層：camera_rig（正交等距相機）、world_view（依 id 建模型、補間、命中定格（預設關）、F2 碰撞圈與攻擊判定形狀、格擋扇形、視野外隱藏與變暗著色器）、effects（特效：粒子、揮砍弧光、衝擊環、預警圈；fx:* 事件與持續性粒子）、rig（關節階層、換武器、閃白、同種角色共用合併好的零件）、part_kit（形狀工廠、材質、零件合併與平面法線）、animator（玩家姿勢）、enemy_animator（敵人姿勢、Boss 地面預警）、arena_view（場地、地形石台、地面 / 散佈工具） |
@@ -185,6 +185,7 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `godot/ui/hud.tscn` / `hud.gd` | Godot HUD：血條、波次 / 擊殺 / 時間、Boss 血條、屬性面板、橫幅、受擊暗角、暫停（含離開遊戲按鈕）與結算畫面 |
 | `godot/ui/skill_bar.gd` / `floaters.gd` / `ui_kit.gd` | 技能欄（左鍵、右鍵、Shift 翻滾、1~5；CD 遮罩、次數）、浮動數字、HUD 共用的文字 / 色塊 / 顏色 |
 | `godot/ui/stats_panel.gd` | 屬性面板（Tab 開關），有加成的數值以金色標示 |
+| `godot/ui/inventory_panel.gd` / `world_labels.gd` | 背包介面（I 開關、拖曳、R 旋轉、拖出去丟掉、道具說明）；寶箱價格與地上道具名稱、[F] 提示 |
 | `godot/ui/net_panel.gd` / `player_tags.gd` | 選單裡的連線面板（開房、IP 加入、大廳名單、開始、離開連線）；多人時頭上的 P1~P4 名牌與倒地倒數 / 救援進度條 |
 | `godot/ui/skill_icons.gd` | 字型沒有的圖示（⚔ 🛡 ✦ ✺、翻滾 ⟳）改用向量圖畫 |
 | `godot/audio/sound.gd` | 音效與背景音樂：事件 → 音效（照網頁版）、多音播放、M 鍵靜音（存 `user://settings.cfg`）、一般 / Boss 曲切換與淡出 |

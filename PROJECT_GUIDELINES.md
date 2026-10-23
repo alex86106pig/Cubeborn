@@ -274,6 +274,10 @@ export const SKILLS = {
 | `player:revived` | `{ player_id }`（僅 Godot 版 v0.21.0：被隊友救起） | Player.revive |
 | `game:defeat` | `{ stats }`（僅 Godot 版 v0.21.0：全員倒下 = 輸；單機和 `player:died` 同一步發出） | World |
 | `item:added` | `{ player_id, item, uid }`（僅 Godot 版 v0.19.0：道具放進身上；item = 物品 id，uid = 實例 id，武器為空字串） | Player.add_item |
+| `inventory:full` | `{ player_id, item }`（v0.25.0：背包放不下） | Player.add_item |
+| `gold:gained` | `{ amount, pos, total }`（v0.25.0：殺怪得到共用的錢） | World.on_enemy_died |
+| `chest:denied` | `{ chest_id, player_id, price }`（v0.25.0：錢不夠開寶箱） | Chest.try_open |
+| `chest:opened` | `{ chest_id, player_id, item, rarity, pos }`（v0.25.0：開了寶箱，道具掉在地上） | Chest.try_open |
 | `skill:used` | `{ key, def }` | playerStates / ActiveSlots |
 | `skill:onCooldown` | `{ key }` | playerStates / ActiveSlots |
 | `wave:started` | `{ wave, total, isBoss }` | Spawner |
@@ -601,3 +605,14 @@ godot/
 - 判斷在 `sim/vision.gd`（純函式）：`Vision.point_visible(world, 看的人, 位置, 目標半徑)`：距離 ≤ 18（加目標半徑）、在身邊 4 單位內或扇形內（身體邊緣進入就算）、而且視線不被牆擋（`Terrain.sight_blocked`，身邊一圈也會被牆擋）。`Vision.entity_visible`：自己、自己發出的投射物一律看得到；怪物、隊友、別人的投射物照位置判斷；看的人不存在或已陣亡時全部看得到。
 - 看不到時不畫：怪物與隊友的模型（Boss 地面預警是模型的子節點，一起隱藏）、別人的投射物、位置在視野外的 `fx:*` 特效事件、看不到的實體的持續性粒子（`Effects.hidden_ids`）、HUD 的傷害數字、隊友名牌。音效照常播（聽得到）。之後的寶箱等可互動物件也要接 `Vision`。
 - 變暗：`WorldView` 的全畫面四邊形著色器，從深度貼圖還原每個像素的世界位置，在扇形與身邊一圈之外蓋 `darkness`（0.5）的黑色，邊緣漸層 `edge`（0.8）。牆擋住的區域不畫暗（只隱藏牆後的東西）。Compatibility（網頁版）用 `CURRENT_RENDERER` 換深度的換算方式，網頁版還沒實測。
+
+### 15.21 金錢、寶箱與背包（v0.25.0，D3）
+- 數值（Claude 暫定，使用者說先用建議值）在 `defs/loot_defs.gd`：殺怪金幣 `KILL_GOLD`（骷髏 5、Boss 50，Boss 召喚的小怪照樣給）、寶箱 `CHESTS`（價格、稀有度權重、半徑）、`INTERACT_RANGE`（身體邊緣距離 1.6）、`DROP_DISTANCE`（1.4）。寶箱位置在 `map_defs.gd` 每張地圖的 `chests`（地圖 A：4 小 1 大）。
+- **金錢**：`World.gold`，多人共用；`World.on_enemy_died` 加錢並發 `gold:gained`；快照的世界欄位 `W_GOLD`。
+- **寶箱**（`sim/chest.gd`，實體 kind `chest`，不擋路、不能被打）：`World.reset` 依地圖放好。`try_open`：錢不夠發 `chest:denied`；夠了扣錢、`LootDefs.roll_rarity` 用 `world.rng` 抽稀有度、再從該稀有度的道具（不含武器）抽一個，掉在寶箱往玩家方向 `DROP_DISTANCE`（`World.drop_item`，落在最近的可走格），發 `chest:opened`。快照 extra：`[tier, opened]`。
+- **地上的道具**（`sim/item_pickup.gd`，kind `pickup`）：快照 extra `[item_id]`；畫面是稀有度顏色的發光寶石 + 光柱。
+- **F 互動**（`Player._try_interact`，只在權威端、只在「剛按下」那一步）：附近有倒地隊友時讓給救援；否則先撿最近的道具（`World.nearest_interactable`），沒有道具才開最近的寶箱。多人同一步按，依玩家更新順序先到先得。
+- **背包**（`sim/inventory.gd`）：`ItemDefs.BAG_SIZE` 8 × 6；形狀轉 rot 次 90 度（(x, y) → (−y, x) 後平移到左上）；`find_spot` 由上到下、左到右，每格依序試 0 / 90 / 180 / 270 度。`Player.add_item` 自動放進第一個空位才生效（屬性來源 = 實例 uid），放不下回傳 `&""` 並發 `inventory:full`。`Player.items` 與 `inventory` 同步。
+- **背包操作走輸入**：`InputCmd.inv_ops`（`[OP_MOVE, uid, x, y, rot]`、`[OP_DROP, uid]`），房主合併輸入時接在一起；只在權威端執行（`Player._apply_inventory_ops`）。客戶端的背包以快照為準（玩家 extra 的 `P_INV`，`Player.sync_inventory` 依增減的道具加減屬性，本機預測的移速才對）。
+- **介面**：`ui/inventory_panel.gd`（I 開關；滑鼠拖曳、拖著時按 R 旋轉、拖到面板外丟掉；下方顯示滑鼠停著的道具名稱與效果，效果還沒實作的標「效果尚未實作」）。開著時不暫停、WASD 照常，`InputCollector.mouse_captured` 讓滑鼠不攻擊、不格擋、瞄準點不動。`ui/world_labels.gd`：沒開的寶箱顯示名稱與價格（錢不夠紅色）、地上道具顯示名稱，按得到 F 的那一個加「[F] 開啟 / 撿起」；視野外不顯示。左上顯示金幣。
+- 屍體裝背包、冤魂復活移到 D6。

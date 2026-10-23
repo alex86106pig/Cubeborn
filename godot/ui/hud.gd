@@ -6,7 +6,7 @@ extends CanvasLayer
 signal quit_requested   # 暫停畫面按下「離開遊戲」
 
 # 手動分行（中文自動折行會斷在詞中間）
-const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 空白鍵 跳躍 · Shift 翻滾\n1~5 道具 · F 按住救援隊友 · Tab 屬性 · Esc 選單 · M 靜音 · R 重新開始\nF1 切換武器 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具（F3~F5 單機才有）"
+const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 空白鍵 跳躍 · Shift 翻滾\n1~5 道具 · F 撿道具 / 開寶箱 / 按住救援隊友 · I 背包 · Tab 屬性 · Esc 選單 · M 靜音 · R 重新開始\nF1 切換武器 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具（F3~F5 單機才有）"
 const FPS_INTERVAL := 0.5
 const HP_GHOST_SPEED := 0.5      # 殘影每秒縮短的比例
 const BOSS_GHOST_SPEED := 0.3
@@ -34,6 +34,9 @@ var net_panel := NetPanel.new()
 var _hp: Dictionary
 var _hp_ghost := 1.0
 var _weapon := UiKit.label("", 16)
+var _gold := UiKit.label("", 18, UiKit.GOLD)
+var _world_labels := WorldLabels.new()
+var inventory_panel := InventoryPanel.new()   # I 開關（main.gd 接到輸入）
 var _wave := UiKit.label("", 22)
 var _kills := UiKit.label("", 16)
 var _time := UiKit.label("", 16)
@@ -69,11 +72,16 @@ func setup(p_world: World, p_camera: Camera3D) -> void:
 	_floaters.camera = p_camera
 	_tags.world = p_world
 	_tags.camera = p_camera
+	_world_labels.world = p_world
+	_world_labels.camera = p_camera
+	inventory_panel.world = p_world
 
 
 func set_local_peer(peer_id: int) -> void:
 	local_peer = peer_id
 	_tags.local_peer = peer_id
+	_world_labels.local_peer = peer_id
+	inventory_panel.local_peer = peer_id
 
 
 func local_player() -> Player:
@@ -102,6 +110,7 @@ func _init() -> void:
 	_vignette.material = mat
 	root.add_child(_vignette)
 	root.add_child(_tags)
+	root.add_child(_world_labels)
 	root.add_child(_floaters)
 
 	# 左上：血條、武器、操作說明
@@ -111,6 +120,7 @@ func _init() -> void:
 	_hp = UiKit.bar(Vector2(280, 26), UiKit.HP_BG, UiKit.HP_FILL, 3)
 	tl.add_child(_hp.root)
 	tl.add_child(_weapon)
+	tl.add_child(_gold)
 	_hp.root.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN   # 說明文字較寬時血條不跟著拉長
 	tl.add_child(UiKit.label(CONTROLS_TEXT, 12, Color(1, 1, 1, 0.55), 1))
 	root.add_child(tl)
@@ -148,6 +158,13 @@ func _init() -> void:
 	_stats_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_stats_panel.visible = false
 	root.add_child(_stats_panel)
+
+	# 右側中央：背包（I 開關，D3）
+	inventory_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_RIGHT, Control.PRESET_MODE_MINSIZE, 24)
+	inventory_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	inventory_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	inventory_panel.visible = false
+	root.add_child(inventory_panel)
 
 	# 橫幅（畫面 22% 高處）
 	_banner.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -225,6 +242,7 @@ func _process(delta: float) -> void:
 	_set_bar(_hp, ratio, _hp_ghost)
 	_hp.text.text = "%d / %d" % [player.hp, player.max_hp]
 	_weapon.text = "武器：" + player.weapon.name
+	_gold.text = "金幣 %d" % world.gold
 	var s := world.stats
 	_wave.text = "第 %d / %d 波" % [s.wave, world.spawner.total_waves()] if s.wave > 0 else "準備中"
 	_kills.text = "擊殺 %d" % s.kills
@@ -280,6 +298,17 @@ func _on_event(name: String, p: Dictionary) -> void:
 			var target: Entity = world.entities.get(p.target_id) if world else null
 			if target != null and p.amount > 0:
 				_floaters.spawn(target, "+%d" % p.amount, &"heal")
+		"inventory:full":
+			if _is_local(p.player_id):
+				_floaters.spawn(local_player(), "背包滿了", &"dmg")
+		"chest:denied":
+			if _is_local(p.player_id):
+				_floaters.spawn(local_player(), "金幣不足（需要 %d）" % p.price, &"dmg")
+		"chest:opened":
+			var item_name: String = ItemDefs.ITEMS[StringName(p.item)].name
+			var rarity: Dictionary = ItemDefs.RARITIES[StringName(p.rarity)]
+			if _is_local(p.player_id):
+				_show_banner("開出：%s（%s）" % [item_name, rarity.name], false, rarity.color)
 		"skill:onCooldown":
 			if _is_local(p.get("player_id", 0)):
 				_skill_bar.flash(p.key, true)

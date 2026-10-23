@@ -41,6 +41,7 @@ func take_cmds() -> Dictionary:
 		while q.size() > limit:
 			var next: InputCmd = q.pop_front()
 			next.buttons |= cmd.buttons & ~InputCmd.HELD_BUTTONS
+			next.inv_ops = cmd.inv_ops + next.inv_ops
 			cmd = next
 		acks[peer_id] = cmd.tick
 		out[peer_id] = cmd

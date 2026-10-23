@@ -262,6 +262,52 @@ static func check_revive() -> String:
 
 # ───────── C2 / C3：快照、同步、預測 ─────────
 
+# D3：客戶端靠近寶箱按 F → 房主開箱扣錢、道具掉在地上；再按 F 撿起；拖曳搬動、丟掉。兩邊的寶箱、金錢、背包一致
+static func check_net_loot() -> String:
+	var link := _Link.new(41, [1, 2], 3, 0.0, false)
+	var hw := link.host_world
+	var chest := Chest.new(hw, &"small", Vector2(3, 0))
+	hw.add_entity(chest)
+	hw.chests.append(chest)
+	hw.gold = 30
+	var hp2: Player = hw.players[2]
+	hp2.pos = Vector2(1.5, 0)
+	var idle := func(n: int) -> void:
+		for i in n:
+			link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO))
+	idle.call(20)
+	link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO, InputCmd.BTN_INTERACT))
+	idle.call(20)
+	var cw := link.client.world
+	if not chest.opened or hw.gold != 5 or hw.pickups.size() != 1:
+		return "房主：寶箱應打開、錢 30 → 5、地上 1 個道具：%s / %d / %d" % [chest.opened, hw.gold, hw.pickups.size()]
+	var mirror: Chest = cw.entities.get(chest.id)
+	if mirror == null or not mirror.opened or cw.gold != 5 or cw.pickups.size() != 1:
+		return "客戶端：寶箱 %s、錢 %d、地上道具 %d（應為 已開 / 5 / 1）" % [mirror.opened if mirror else null, cw.gold, cw.pickups.size()]
+	link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO, InputCmd.BTN_INTERACT))
+	idle.call(20)
+	var me := link.client.local_player()
+	if hp2.inventory.entries.size() != 1 or me.inventory.entries.size() != 1 or me.items.size() != 1 or not cw.pickups.is_empty():
+		return "撿起後：房主背包 %d、客戶端背包 %d、客戶端生效道具 %d、客戶端地上 %d（應為 1 / 1 / 1 / 0）" % [
+			hp2.inventory.entries.size(), me.inventory.entries.size(), me.items.size(), cw.pickups.size()]
+	var uid: String = me.inventory.entries[0].uid
+	var move := _cmd(Vector2.ZERO)
+	move.inv_ops = [[InputCmd.OP_MOVE, uid, 5, 3, 1]]
+	link.step(_cmd(Vector2.ZERO), move)
+	idle.call(20)
+	var e: Dictionary = me.inventory.entries[0]
+	if e.cell != Vector2i(5, 3) or e.rot != 1 or hp2.inventory.entries[0].cell != Vector2i(5, 3):
+		return "搬到 (5, 3) 轉 90°：客戶端 %s / %d、房主 %s" % [e.cell, e.rot, hp2.inventory.entries[0].cell]
+	var drop := _cmd(Vector2.ZERO)
+	drop.inv_ops = [[InputCmd.OP_DROP, uid]]
+	link.step(_cmd(Vector2.ZERO), drop)
+	idle.call(20)
+	if not me.inventory.entries.is_empty() or not me.items.is_empty() or cw.pickups.size() != 1 or hw.pickups.size() != 1:
+		return "丟掉後：客戶端背包 %d、生效 %d、地上 客戶端 %d / 房主 %d（應為 0 / 0 / 1 / 1）" % [
+			me.inventory.entries.size(), me.items.size(), cw.pickups.size(), hw.pickups.size()]
+	return ""
+
+
 static func check_codec() -> String:
 	var w := _world([1, 2])
 	w.spawner.spawn_at(w, &"grunt", Vector2(5, 5))

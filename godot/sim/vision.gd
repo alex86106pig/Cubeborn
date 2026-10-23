@@ -26,6 +26,6 @@ static func entity_visible(world: World, viewer: Player, e: Entity) -> bool:
 		if (e as Projectile).owner_id == viewer.id:
 			return true
 		return point_visible(world, viewer, e.pos, e.radius)
-	if e is Enemy or e is Player:
+	if e is Enemy or e is Player or e is Chest or e is ItemPickup:
 		return point_visible(world, viewer, e.pos, e.radius)
 	return true

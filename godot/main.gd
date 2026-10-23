@@ -62,6 +62,7 @@ func _ready() -> void:
 	hud = HUD_SCENE.instantiate()
 	hud.setup(world, camera_rig.camera)
 	hud.quit_requested.connect(get_tree().quit)
+	hud.inventory_panel.op_requested.connect(input_collector.queue_inventory_op)
 	add_child(hud)
 	sound.setup(world)
 	add_child(sound)
@@ -394,6 +395,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		world_view.show_hitboxes = not world_view.show_hitboxes
 	elif event.is_action_pressed(&"stats_panel"):
 		hud.toggle_stats_panel()
+	elif event.is_action_pressed(&"inventory"):
+		# 背包開著時不暫停、角色照常移動，滑鼠只給背包用（D3）
+		hud.inventory_panel.visible = not hud.inventory_panel.visible
+		input_collector.mouse_captured = hud.inventory_panel.visible
 	elif mode != Mode.SINGLE:
 		return   # 以下除錯鍵直接改模擬狀態、不經過 InputCmd，單機才有
 	elif event.is_action_pressed(&"debug_speed"):
@@ -406,7 +411,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			player.clear_items()
 
 
-# 除錯用（非正式系統，單機才有）：依道具清單順序，每按一次 F4 放一個道具進身上（循環）
+# 除錯用（非正式系統，單機才有）：依道具清單順序，每按一次 F4 放一個道具進背包（循環；放不下就提示背包滿了）
 func debug_add_next_item() -> void:
 	var player := local_player()
 	if player == null or player.is_dead:

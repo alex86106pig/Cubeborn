@@ -12,10 +12,14 @@ const BTN_INTERACT := 1 << 9     # F 互動（按住）：救援倒地的隊友
 const BTN_SWAP_WEAPON := 1 << 10 # F1 切換武器（本步按下；除錯用，連線時也走輸入）
 const HELD_BUTTONS := BTN_ATTACK | BTN_INTERACT   # 按住類的按鈕：沿用上一筆輸入時保留，其餘「本步按下」的不重複觸發
 
+const OP_MOVE := 0   # 背包操作（D3）：[OP_MOVE, uid, x, y, rot] 搬到 (x, y)、轉 rot 次 90 度
+const OP_DROP := 1   # [OP_DROP, uid] 丟到面前的地上
+
 var tick := 0
 var move := Vector2.ZERO   # 世界 XZ 方向，長度 ≤ 1
 var aim := Vector2.ZERO    # 世界 XZ 瞄準點
 var buttons := 0
+var inv_ops: Array = []    # 本步的背包操作（同「本步按下」：只執行一次，合併輸入時接在一起）
 
 
 static func slot_bit(index: int) -> int:
@@ -27,7 +31,7 @@ func has(bit: int) -> bool:
 
 
 func to_array() -> Array:
-	return [tick, move.x, move.y, aim.x, aim.y, buttons]
+	return [tick, move.x, move.y, aim.x, aim.y, buttons, inv_ops]
 
 
 static func from_array(a: Array) -> InputCmd:
@@ -36,4 +40,6 @@ static func from_array(a: Array) -> InputCmd:
 	cmd.move = Vector2(a[1], a[2])
 	cmd.aim = Vector2(a[3], a[4])
 	cmd.buttons = a[5]
+	if a.size() > 6:
+		cmd.inv_ops = a[6]
 	return cmd

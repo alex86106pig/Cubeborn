@@ -21,9 +21,12 @@ var dodge_timer := 0.0                 # 翻滾無敵剩餘秒數
 var block_time := -1.0                 # 格擋開始後經過的秒數；< 0 = 沒有在格擋（weapon_behaviors 的 ShieldBlock）
 var pending_parry := false             # 本步完美格擋，下一步開頭執行盾反
 var parry_timer := 0.0                 # 盾反動作剩餘秒數（畫面用）
-var items: Array[Dictionary] = []     # 身上的道具實例 { uid, id }；uid 同時是屬性加成的來源名稱
+var items: Array[Dictionary] = []     # 背包裡生效的道具實例 { uid, id }；uid 同時是屬性加成的來源名稱
+var inventory := Inventory.new()       # 背包的擺放（D3）；items 與它同步
 var _next_item_uid := 1
-var is_interact_held := false          # F 按住（救援隊友）
+var is_interact_held := false          # F 按住（救援隊友）；剛按下那一步撿道具 / 開寶箱（D3）
+var _interact_was_held := false
+var _inventory_ops: Array = []         # 本步收到的背包操作（InputCmd.inv_ops），只在權威端執行
 var is_downed := false                 # 倒地假死（C4）：倒數 down_timer 秒，隊友救起前不能動
 var down_timer := 0.0
 var revive_progress := 0.0             # 隊友已累積的救援秒數（到 REVIVE.revive_time 救起）
@@ -236,6 +239,7 @@ func apply_cmd(cmd: InputCmd) -> void:
 	is_attack_held = cmd.has(InputCmd.BTN_ATTACK)
 	is_interact_held = cmd.has(InputCmd.BTN_INTERACT)
 	_pressed |= cmd.buttons
+	_inventory_ops.append_array(cmd.inv_ops)
 
 
 func equip_weapon(id: StringName) -> void:
@@ -256,8 +260,8 @@ func add_buff(id: StringName, duration: float, mods: Dictionary) -> void:
 		set_stat_source(id, buff.stats)
 
 
-# 道具放進身上（B6 還沒有背包，放進來就生效）：屬性效果以實例 uid 為來源套上；武器則直接換上
-# 同一個道具拿兩個就是兩個實例、加成相加
+# 道具放進背包（D3）：自動放到第一個放得下的位置，放進去就生效（屬性效果以實例 uid 為來源套上）；武器則直接換上
+# 同一個道具拿兩個就是兩個實例、加成相加。背包放不下時回傳 &""、發出 inventory:full
 func add_item(item_id: StringName) -> StringName:
 	assert(ItemDefs.ITEMS.has(item_id), "Unknown item: %s" % item_id)
 	var def: Dictionary = ItemDefs.ITEMS[item_id]
@@ -265,8 +269,13 @@ func add_item(item_id: StringName) -> StringName:
 	if def.kind == &"weapon":
 		equip_weapon(def.weapon)
 	else:
+		var spot := inventory.find_spot(item_id)
+		if spot.is_empty():
+			world.emit_event("inventory:full", {"player_id": id, "item": String(item_id)})
+			return &""
 		uid = StringName("item_%d" % _next_item_uid)
 		_next_item_uid += 1
+		inventory.add(uid, item_id, spot.cell, spot.rot)
 		items.append({"uid": uid, "id": item_id})
 		set_stat_source(uid, ItemDefs.stat_mods(item_id))
 	world.emit_event("item:added", {"player_id": id, "item": String(item_id), "uid": String(uid)})
@@ -274,11 +283,59 @@ func add_item(item_id: StringName) -> StringName:
 
 
 func remove_item(uid: StringName) -> void:
+	inventory.remove(uid)
 	for i in items.size():
 		if items[i].uid == uid:
 			items.remove_at(i)
 			remove_stat_source(uid)
 			return
+
+
+# 客戶端：背包以房主的快照為準（[[uid, id, x, y, rot], …]），增減的道具同步加減屬性（本機預測移動要用到移速等）
+func sync_inventory(arr: Array) -> void:
+	var keep := {}
+	inventory.entries.clear()
+	for a: Array in arr:
+		var uid := StringName(a[0])
+		inventory.add(uid, StringName(a[1]), Vector2i(a[2], a[3]), a[4])
+		keep[uid] = StringName(a[1])
+	for it: Dictionary in items.duplicate():
+		if not keep.has(it.uid):
+			items.erase(it)
+			remove_stat_source(it.uid)
+	for uid: StringName in keep:
+		if not items.any(func(it: Dictionary) -> bool: return it.uid == uid):
+			items.append({"uid": uid, "id": keep[uid]})
+			set_stat_source(uid, ItemDefs.stat_mods(keep[uid]))
+
+
+# 背包操作（InputCmd.inv_ops）：[OP_MOVE, uid, x, y, rot] 搬動 / 旋轉；[OP_DROP, uid] 丟到面前的地上
+func _apply_inventory_ops() -> void:
+	for op: Array in _inventory_ops:
+		var uid := StringName(op[1])
+		match int(op[0]):
+			InputCmd.OP_MOVE:
+				inventory.move(uid, Vector2i(op[2], op[3]), op[4])
+			InputCmd.OP_DROP:
+				var entry := inventory.find(uid)
+				if not entry.is_empty():
+					remove_item(uid)
+					world.drop_item(entry.id, pos + MathUtil.dir_from_angle(facing) * LootDefs.DROP_DISTANCE)
+	_inventory_ops.clear()
+
+
+# 剛按下 F：附近有倒地隊友時讓給救援（動作層 Ready 處理）；否則先撿最近的道具，沒有道具才開最近的寶箱
+func _try_interact() -> void:
+	if find_revive_target() != null:
+		return
+	var pickup := world.nearest_interactable(self, world.pickups)
+	if pickup != null:
+		if add_item((pickup as ItemPickup).item_id) != &"":
+			pickup.remove()
+		return
+	var chest := world.nearest_interactable(self, world.chests)
+	if chest != null:
+		(chest as Chest).try_open(self)
 
 
 func clear_items() -> void:
@@ -290,12 +347,22 @@ func update(dt: float) -> void:
 	_tick_timers(dt)
 	if is_dead or is_downed:
 		_pressed = 0
+		_inventory_ops.clear()
+		_interact_was_held = is_interact_held
 		velocity = Vector2.ZERO
 		locomotion.update(dt)
 		_update_anim()
 		return
 
 	_read_input()
+	# 撿道具、開寶箱、整理背包只在權威端（客戶端本機預測不做，等快照）
+	if world.is_authority:
+		if is_interact_held and not _interact_was_held:
+			_try_interact()
+		_apply_inventory_ops()
+	else:
+		_inventory_ops.clear()
+	_interact_was_held = is_interact_held
 	if pending_parry:
 		pending_parry = false
 		if block_time >= 0.0:

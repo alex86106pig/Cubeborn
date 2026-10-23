@@ -67,6 +67,10 @@ func _initialize() -> void:
 	_check("尋路不擦牆：直線離牆小於 0.6 就不算看得到；繞北門時被牆擋住而變慢的步數 < 30", _check_nav_clearance)
 	_check("角色視野：前方 ±60° / 18 單位看得到、65° 與 19 單位看不到、身邊 4 單位背後也看得到；牆擋視線（身邊也擋）、高台不擋；自己的投射物在背後也看得到、怪物的看不到", _check_vision_rules)
 	_check("視野畫面：背後的骷髏模型隱藏、前方的顯示；背後的特效事件不畫、前方的照畫；本機角色陣亡後全部看得到", _check_vision_view)
+	_check("背包（D3）：8 × 6；形狀旋轉 90° 後格子正確；超出邊界、重疊放不下；自動找第一個空位（不夠時會轉向）；搬動成功 / 失敗；裝滿後撿不起來並發出 inventory:full", _check_inventory)
+	_check("金錢與寶箱（D3）：地圖 A 有 4 小 1 大寶箱；骷髏 +5、Boss +50（共用）；錢不夠開不了（chest:denied）、夠了扣錢並在寶箱旁掉一個道具；開過不能再開", _check_gold_chests)
+	_check("寶箱稀有度（D3）：各抽 20000 次，小箱 白 70 / 綠 25 / 藍 5、大箱 綠 50 / 藍 35 / 紫 13 / 橘 2（誤差 ±1.5%），不會開出武器", _check_chest_rarity)
+	_check("撿道具（D3）：按 F 撿起最近的道具放進背包並生效；剛按下那一步才算（按住不會連撿）；兩人同一步按 F 只有一人拿到；丟掉後道具回到地上、效果移除；附近有倒地隊友時 F 先救人", _check_pickups)
 	_check("格擋判定：正前方 ±60° 擋下揮砍與箭（不扣血、箭消失）、背後擋不住；Boss 衝鋒擋得住但推退 100%、只判定一次；Boss 砸地擋不住；0.2 秒內完美格擋觸發盾反 25 傷害並結束格擋", _check_block_hits)
 	_check("受擊：扣血後進入 stagger（移速 ×0.4、0.15 秒）、無敵 0.6 秒、畫面震動", _check_stagger)
 	_check("輸入緩衝：攻擊中按右鍵會在後搖取消並接特殊技；0.25 秒後過期", _check_buffer)
@@ -133,6 +137,7 @@ func _initialize() -> void:
 	_check("快照（C1）：房主的實體經過序列化後，客戶端建立同樣類別、位置、血量、武器的鏡像；動畫狀態相同時數值補間", NetChecks.check_codec)
 	_check("戰鬥同步（C2）：延遲 3 步、30 秒對打，客戶端套用的每筆快照擊殺 / 波次 / 敵人血量都和房主當時一致，事件順序一致", NetChecks.check_sync.bind(_feel_lines))
 	_check("延遲下的手感（C3）：延遲 100 ms + 掉包 10%，按下就在本機移動、修正誤差 < 0.25、停下後與房主差 < 0.01；別人的角色每步位移平順（±0.02）", NetChecks.check_prediction.bind(_feel_lines))
+	_check("連線寶箱與背包（D3）：客戶端按 F 開箱（房主扣錢 30 → 5、道具掉地上）、再按 F 撿起，拖曳搬動與丟掉；兩邊的寶箱、金錢、背包、生效道具一致", NetChecks.check_net_loot)
 	_check("連線倒下與救援（C4）：客戶端跟著房主倒地、不能預測移動，被救起後站起來 30 血；客戶端按住 F 也能救起房主", NetChecks.check_net_downed)
 	_check("兩個程序連線（C1）：headless 開房 + 加入（ENet），各自移動 2 秒後停下，兩邊的玩家位置一致（< 0.01）", NetChecks.check_two_processes.bind(_feel_lines))
 	print("\n手感量測（給 docs/手感對照.md）：\n    " + "\n    ".join(_feel_lines))
@@ -2185,6 +2190,164 @@ func _check_vision_view() -> String:
 			err = "本機角色陣亡後應全部看得到"
 	view.free()
 	return err
+
+
+func _check_inventory() -> String:
+	var inv := Inventory.new()
+	if inv.size != Vector2i(8, 6):
+		return "背包大小 %s" % inv.size
+	# l3：(0,0) (0,1) (1,1)；轉 90° → (-y, x) 再平移：(1,0) (0,0) (0,1)
+	var r1 := Inventory.cells_of(&"thunder_rune", 1)
+	r1.sort()
+	var expect: Array[Vector2i] = [Vector2i(0, 0), Vector2i(0, 1), Vector2i(1, 0)]
+	if r1 != expect:
+		return "l3 轉 90° 應為 (0,0) (0,1) (1,0)，實際 %s" % [r1]
+	# i4 橫放在 (5, 0) 超出邊界，(4, 0) 剛好；直放（轉 90°）在 (0, 3) 超出、(0, 2) 剛好
+	if inv.fits(&"staff", Vector2i(5, 0), 0) or not inv.fits(&"staff", Vector2i(4, 0), 0) \
+			or inv.fits(&"staff", Vector2i(0, 3), 1) or not inv.fits(&"staff", Vector2i(0, 2), 1):
+		return "i4 的邊界判斷錯誤"
+	inv.add(&"a", &"whetstone", Vector2i(0, 0), 0)   # i2：(0,0) (1,0)
+	if inv.fits(&"loaded_dice", Vector2i(1, 0), 0) or not inv.fits(&"loaded_dice", Vector2i(2, 0), 0):
+		return "重疊判斷錯誤"
+	var spot := inv.find_spot(&"whetstone")
+	if spot.cell != Vector2i(2, 0) or spot.rot != 0:
+		return "第一個空位應為 (2, 0) 不轉，實際 %s" % [spot]
+	if not inv.move(&"a", Vector2i(7, 4), 1) or inv.find(&"a").cell != Vector2i(7, 4) or inv.move(&"a", Vector2i(7, 5), 1):
+		return "搬動：(7, 4) 直放應成功、(7, 5) 直放應失敗"
+	# 只剩直的一行空位時會轉 90° 放進去
+	var inv2 := Inventory.new()
+	inv2.size = Vector2i(1, 3)
+	var s2 := inv2.find_spot(&"whetstone")
+	if s2.is_empty() or s2.rot % 2 != 1:
+		return "1 × 3 的空間應轉 90° 放下 i2，實際 %s" % [s2]
+	# 玩家：裝滿 48 個 1 格道具後撿不起來
+	var w := _new_world()
+	var p := _player(w)
+	for i in 48:
+		if p.add_item(&"loaded_dice") == &"":
+			return "第 %d 個 1 格道具應放得下" % (i + 1)
+	if p.add_item(&"loaded_dice") != &"" or _named(w.events, "inventory:full").is_empty():
+		return "背包滿了應放不下並發出 inventory:full"
+	return ""
+
+
+func _check_gold_chests() -> String:
+	var w := _new_world(12345, false, &"graveyard_a")
+	var tiers := {}
+	for c: Entity in w.chests:
+		tiers[(c as Chest).tier] = tiers.get((c as Chest).tier, 0) + 1
+		if not w.nav.is_walkable(c.pos) and absf(c.height) < EPS:
+			return "寶箱 %s 放在不能走的地方" % c.pos
+	if tiers.get(&"small", 0) != 4 or tiers.get(&"big", 0) != 1:
+		return "地圖 A 應有 4 小 1 大寶箱，實際 %s" % tiers
+	var p := _player(w)
+	var g := _spawn(w, &"grunt", p.pos + Vector2(3, 0))
+	g.die()
+	var b := _spawn(w, &"boss", p.pos + Vector2(-6, 0))
+	b.die()
+	if w.gold != 55:
+		return "殺骷髏 + Boss 應得 55 金幣，實際 %d" % w.gold
+	var chest: Chest = null
+	for c: Entity in w.chests:
+		if (c as Chest).tier == &"big":
+			chest = c
+	p.pos = chest.pos + Vector2(0, 1.5)
+	w.events.clear()
+	if chest.try_open(p) or chest.opened or w.gold != 55 or _named(w.events, "chest:denied").is_empty():
+		return "錢 55 < 60 應開不了並發出 chest:denied"
+	w.gold = 61
+	if not chest.try_open(p) or not chest.opened or w.gold != 1 or w.pickups.size() != 1:
+		return "錢夠應打開：開了 %s、剩 %d、地上 %d" % [chest.opened, w.gold, w.pickups.size()]
+	var drop: ItemPickup = w.pickups[0]
+	if drop.pos.distance_to(chest.pos) > LootDefs.DROP_DISTANCE + 1.0 or not ItemDefs.ITEMS.has(drop.item_id):
+		return "道具應掉在寶箱旁：距離 %.2f" % drop.pos.distance_to(chest.pos)
+	if LootDefs.CHESTS.big.weights.get(drop.rarity(), 0.0) <= 0.0:
+		return "大寶箱不應開出 %s" % drop.rarity()
+	w.gold = 100
+	if chest.try_open(p) or w.gold != 100:
+		return "開過的寶箱不能再開"
+	return ""
+
+
+func _check_chest_rarity() -> String:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	for tier: StringName in LootDefs.CHESTS:
+		var weights: Dictionary = LootDefs.CHESTS[tier].weights
+		var counts := {}
+		var n := 20000
+		for i in n:
+			var r := LootDefs.roll_rarity(tier, rng)
+			counts[r] = counts.get(r, 0) + 1
+		for r: StringName in counts:
+			if not weights.has(r):
+				return "%s 開出了不該有的 %s" % [tier, r]
+		for r: StringName in weights:
+			var pct: float = counts.get(r, 0) * 100.0 / n
+			if absf(pct - weights[r]) > 1.5:
+				return "%s 的 %s 應約 %.0f%%，實際 %.2f%%" % [tier, r, weights[r], pct]
+		for r: StringName in weights:
+			for id in LootDefs.items_of(r):
+				if ItemDefs.ITEMS[id].kind != &"item":
+					return "寶箱會開出武器 %s" % id
+			if LootDefs.items_of(r).is_empty():
+				return "%s 稀有度沒有道具可開" % r
+	return ""
+
+
+func _check_pickups() -> String:
+	var w := _new_world(12345, false, &"test_arena")
+	var p := _player(w)
+	var drop := w.drop_item(&"whetstone", p.pos + Vector2(1.0, 0))
+	var press := _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_INTERACT)
+	_run(w, press, 1)
+	if p.inventory.entries.size() != 1 or not drop.is_removed or absf(p.stats.value(&"damage") - 1.08) > EPS:
+		return "按 F 應撿起磨刀石並生效：背包 %d、攻擊力 %.2f" % [p.inventory.entries.size(), p.stats.value(&"damage")]
+	# 按住不放不會連撿
+	w.drop_item(&"whetstone", p.pos + Vector2(1.0, 0))
+	_run(w, press, 10)
+	if p.inventory.entries.size() != 1:
+		return "按住 F 不放不應再撿，背包 %d" % p.inventory.entries.size()
+	_run(w, _cmd(Vector2.ZERO), 1)
+	_run(w, press, 1)
+	if p.inventory.entries.size() != 2:
+		return "放開再按應撿起第二個，背包 %d" % p.inventory.entries.size()
+	# 丟掉：回到地上、效果移除
+	var uid: StringName = p.inventory.entries[0].uid
+	var drop_cmd := _cmd(Vector2.ZERO)
+	drop_cmd.inv_ops = [[InputCmd.OP_DROP, String(uid)]]
+	_run(w, drop_cmd, 1)
+	if p.inventory.entries.size() != 1 or w.pickups.size() != 1 or absf(p.stats.value(&"damage") - 1.08) > EPS:
+		return "丟掉一個：背包 %d、地上 %d、攻擊力 %.2f（應為 1 / 1 / 1.08）" % [p.inventory.entries.size(), w.pickups.size(), p.stats.value(&"damage")]
+	# 兩人同一步按 F：只有一人拿到
+	var w2 := World.new(&"test_arena")
+	w2.reset(5, [1, 2])
+	w2.spawner.finished = true
+	_worlds.append(w2)
+	var a: Player = w2.players[1]
+	var c: Player = w2.players[2]
+	a.pos = Vector2(-1, 0)
+	c.pos = Vector2(1, 0)
+	w2.drop_item(&"whetstone", Vector2(0, 0))
+	w2.step({1: press, 2: press}, DT)
+	if a.inventory.entries.size() + c.inventory.entries.size() != 1:
+		return "兩人同時撿：共拿到 %d 個（應為 1）" % (a.inventory.entries.size() + c.inventory.entries.size())
+	# 倒地隊友在旁邊：F 先救人，不撿道具
+	var w3 := World.new(&"test_arena")
+	w3.reset(5, [1, 2])
+	w3.spawner.finished = true
+	_worlds.append(w3)
+	var r: Player = w3.players[1]
+	var d: Player = w3.players[2]
+	r.pos = Vector2(0, 0)
+	d.pos = Vector2(1.2, 0)
+	d.hp = 1.0
+	d.take_damage(10.0, Vector2.RIGHT, 0.0, 0)
+	w3.drop_item(&"whetstone", Vector2(0.8, 0.5))
+	w3.step({1: press, 2: _cmd(Vector2.ZERO)}, DT)
+	if not d.is_downed or r.inventory.entries.size() != 0:
+		return "旁邊有倒地隊友時 F 應先救人：倒地 %s、撿到 %d" % [d.is_downed, r.inventory.entries.size()]
+	return ""
 
 
 func _check_map_spawns() -> String:

@@ -14,6 +14,9 @@ var entities: Dictionary = {}        # id -> Entity
 var players: Dictionary = {}         # peer_id -> Player
 var enemies: Array[Entity] = []
 var projectiles: Array[Entity] = []
+var chests: Array[Entity] = []       # 寶箱（D3）
+var pickups: Array[Entity] = []      # 掉在地上的道具（D3）
+var gold := 0                        # 共用的錢（D3）：殺怪賺、開寶箱花
 var stats := {"wave": 0, "kills": 0, "time": 0.0}
 var is_over := false                 # 通關後為 true
 var hit_stop_timer := 0.0            # 剩餘的整體放慢（真實秒數），由主迴圈換算成時間縮放；v0.18.3 起只有打倒 Boss 時使用（一般命中改成畫面定格）
@@ -77,6 +80,11 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 		p.pos = spawn_point
 		p.height = terrain.ground_at(spawn_point)
 		add_entity(p)
+	gold = 0
+	for c: Array in map.get("chests", []):
+		var chest := Chest.new(self, c[2], MapDefs.to_world(map, Vector2(c[0], c[1])))
+		add_entity(chest)
+		chests.append(chest)
 	emit_event("game:restart", {})
 
 
@@ -90,6 +98,8 @@ func clear() -> void:
 	players.clear()
 	enemies.clear()
 	projectiles.clear()
+	chests.clear()
+	pickups.clear()
 
 
 func add_entity(e: Entity) -> Entity:
@@ -138,8 +148,36 @@ func first_alive_player() -> Player:
 	return null
 
 
-func on_enemy_died(_e: Enemy) -> void:
+func on_enemy_died(e: Enemy) -> void:
 	stats.kills += 1
+	var g: int = LootDefs.KILL_GOLD.get(e.type, 0)
+	if g > 0:
+		gold += g
+		emit_event("gold:gained", {"amount": g, "pos": e.pos, "total": gold})
+
+
+# 道具掉在地上（開寶箱、從背包丟出）；客戶端不產生（等快照）
+func drop_item(item_id: StringName, at: Vector2) -> ItemPickup:
+	var spot := nav.nearest_walkable(at)
+	var pickup := ItemPickup.new(self, item_id, spot)
+	if is_authority:
+		add_entity(pickup)
+		pickups.append(pickup)
+	return pickup
+
+
+# 離 p 最近、按得到 F 的寶箱 / 道具（已開的寶箱、已被撿走的道具不算）；沒有回傳 null
+func nearest_interactable(p: Player, list: Array[Entity]) -> Entity:
+	var best: Entity = null
+	var best_d := INF
+	for e in list:
+		if e.is_removed or (e is Chest and (e as Chest).opened):
+			continue
+		var d := e.pos.distance_to(p.pos) - e.radius - p.radius
+		if d <= LootDefs.INTERACT_RANGE and d < best_d:
+			best_d = d
+			best = e
+	return best
 
 
 # 打倒 Boss：通關，其餘敵人一起倒下、敵方投射物消失，延遲後發出 game:victory
@@ -311,3 +349,4 @@ func _remove_dead_entities() -> void:
 				players.erase(e.peer_id)
 	enemies.assign(enemies.filter(func(e: Entity) -> bool: return not e.is_removed))
 	projectiles.assign(projectiles.filter(func(e: Entity) -> bool: return not e.is_removed))
+	pickups.assign(pickups.filter(func(e: Entity) -> bool: return not e.is_removed))

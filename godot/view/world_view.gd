@@ -124,6 +124,14 @@ func sync(world: World, alpha: float, dt: float) -> void:
 		node.get_node(^"Hitbox").visible = show_hitboxes
 		if e is Player:
 			_sync_block_fan(node.get_node(^"BlockFan"), e as Player)
+		elif e is Chest:
+			var lid: Node3D = node.get_node(^"Lid")
+			lid.rotation.x = lerpf(lid.rotation.x, -1.9 if (e as Chest).opened else 0.0, minf(1.0, dt * 8.0))
+		elif e is ItemPickup:
+			var gem: Node3D = node.get_node(^"Gem")
+			var t := Time.get_ticks_msec() / 1000.0 + id * 0.7
+			gem.position.y = 0.55 + 0.12 * sin(t * 2.5)
+			gem.rotation.y = t * 1.6
 		if _animators.has(id):
 			_animators[id].update(e, dt)
 	_sync_strikes(world, dt)
@@ -206,6 +214,82 @@ func _sync_vision_overlay(me: Player) -> void:
 		var mat: ShaderMaterial = _vision_overlay.material_override
 		mat.set_shader_parameter(&"viewer", Vector2(node.position.x, node.position.z))
 		mat.set_shader_parameter(&"facing", node.rotation.y)
+
+
+# 寶箱（D3）：木箱 + 鐵條，大寶箱較大、鑲金邊；箱蓋（Lid）以後緣為軸，打開時往後翻
+func _create_chest(c: Chest) -> Node3D:
+	var root := Node3D.new()
+	var big := c.tier == &"big"
+	var s := 1.35 if big else 1.0
+	var wood := _flat_material(Color("5a3a22"))
+	var band := _flat_material(Color("c9a227") if big else Color("6b6e75"))
+	var body := Vector3(1.1, 0.6, 0.75) * s
+	root.add_child(_box(body, Vector3(0, body.y / 2.0, 0), wood))
+	root.add_child(_box(Vector3(body.x + 0.04, 0.08 * s, body.z + 0.04), Vector3(0, body.y * 0.75, 0), band))
+	var lid := Node3D.new()
+	lid.name = "Lid"
+	lid.position = Vector3(0, body.y, -body.z / 2.0)
+	lid.add_child(_box(Vector3(body.x, 0.28 * s, body.z), Vector3(0, 0.14 * s, body.z / 2.0), wood))
+	lid.add_child(_box(Vector3(body.x + 0.04, 0.06 * s, 0.1 * s), Vector3(0, 0.2 * s, body.z / 2.0), band))
+	lid.add_child(_box(Vector3(0.16, 0.18, 0.06) * s, Vector3(0, 0.0, body.z + 0.02), band))   # 鎖扣
+	root.add_child(lid)
+	return root
+
+
+# 地上的道具（D3）：稀有度顏色的發光寶石（Gem，畫面層上下浮動與旋轉）+ 一道淡淡的光柱，遠處也看得到
+func _create_pickup(p: ItemPickup) -> Node3D:
+	var root := Node3D.new()
+	var color: Color = ItemDefs.RARITIES[p.rarity()].color
+	var gem := MeshInstance3D.new()
+	gem.name = "Gem"
+	var mesh := SphereMesh.new()
+	mesh.radius = 0.28
+	mesh.height = 0.7
+	mesh.radial_segments = 4
+	mesh.rings = 2
+	gem.mesh = mesh
+	var m := StandardMaterial3D.new()
+	m.albedo_color = color
+	m.emission_enabled = true
+	m.emission = color
+	m.emission_energy_multiplier = 1.6
+	gem.material_override = m
+	root.add_child(gem)
+	var beam := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.06
+	cyl.bottom_radius = 0.2
+	cyl.height = 2.4
+	cyl.radial_segments = 8
+	beam.mesh = cyl
+	var bm := StandardMaterial3D.new()
+	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	bm.albedo_color = Color(color, 0.22)
+	beam.material_override = bm
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	beam.position.y = 1.2
+	root.add_child(beam)
+	return root
+
+
+static func _flat_material(color: Color) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = color
+	m.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
+	m.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+	m.roughness = 1.0
+	return m
+
+
+static func _box(size_: Vector3, at: Vector3, mat: Material) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = size_
+	mi.mesh = box
+	mi.material_override = mat
+	mi.position = at
+	return mi
 
 
 # 格擋範圍：格擋中顯示（輕微呼吸閃爍），跟著角色的位置與朝向
@@ -297,6 +381,10 @@ func _create_view(e: Entity) -> Node3D:
 		&"projectile":
 			var proj := e as Projectile
 			root = _create_arrow(proj) if proj.visual == &"arrow" else _create_projectile(proj)
+		&"chest":
+			root = _create_chest(e as Chest)
+		&"pickup":
+			root = _create_pickup(e as ItemPickup)
 		_:
 			root = _create_placeholder(e)
 	root.add_child(_create_hitbox_ring(e.radius))
