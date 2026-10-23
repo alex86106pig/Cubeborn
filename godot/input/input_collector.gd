@@ -9,7 +9,7 @@ const ACTIONS := {
 	&"slot_1": KEY_1, &"slot_2": KEY_2, &"slot_3": KEY_3, &"slot_4": KEY_4, &"slot_5": KEY_5,
 	&"interact": KEY_F,
 	&"pause": KEY_ESCAPE, &"mute": KEY_M, &"restart": KEY_R,
-	&"stats_panel": KEY_TAB, &"inventory": KEY_I,
+	&"stats_panel": KEY_TAB,
 	&"swap_weapon": KEY_Q, &"debug_hitbox": KEY_F2, &"debug_speed": KEY_F3,
 	&"debug_item": KEY_F4, &"debug_clear_items": KEY_F5,
 }

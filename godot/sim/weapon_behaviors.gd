@@ -55,7 +55,7 @@ class MeleeSwing extends Behavior:
 			data.lock_facing = true
 			p.knockback += WeaponBehaviors.forward(p) * (def.lunge * data.scale)
 			p.world.emit_event("fx:slash", {
-				"pos": p.pos, "height": p.height, "facing": p.facing, "range": def.range * data.scale,
+				"pos": p.pos, "height": p.height, "facing": p.facing, "range": def.range * data.scale * p.weapon_range_mul(),
 				"arc": def.arc * data.scale, "color": def.slash_finisher_color if data.is_finisher else def.slash_color,
 				"swing_dir": data.swing_dir,
 			})
@@ -66,7 +66,7 @@ class MeleeSwing extends Behavior:
 		if name != &"active":
 			return
 		var fin: bool = data.is_finisher
-		var shape := {"shape": &"sector", "range": def.range * data.scale, "arc": def.arc * data.scale}
+		var shape := {"shape": &"sector", "range": def.range * data.scale * p.weapon_range_mul(), "arc": def.arc * data.scale}
 		Hitbox.strike(p.world, p, p.pos, p.facing, shape, {
 			"damage": def.damage * (def.finisher_mul if fin else 1.0) * p.damage_mul,
 			"knockback": def.knockback * (def.finisher_impact_mul if fin else 1.0),
@@ -105,8 +105,9 @@ class FireBolt extends Behavior:
 		p.facing = atan2(dir.x, dir.y)
 		WeaponBehaviors.spawn_projectile(p, {
 			"pos": p.pos + dir * def.spawn_offset, "direction": dir, "speed": def.projectile_speed,
-			"range": def.range, "radius": def.projectile_radius, "damage": def.damage * p.damage_mul,
+			"range": def.range * p.weapon_range_mul(), "radius": def.projectile_radius, "damage": def.damage * p.damage_mul,
 			"knockback": def.knockback, "color": def.color, "hit_stop": def.hit_stop, "shake": def.shake,
+			"no_stagger": def.get("no_stagger", false),
 		})
 		p.world.emit_event("fx:muzzle", {"pos": p.pos + dir * def.spawn_offset, "height": p.height + Config.HEIGHT.bolt_altitude, "color": def.color})
 

@@ -25,7 +25,7 @@ static func hostiles_of(world: World, team: StringName, source_id: int = 0) -> A
 #      hit_stop（命中定格秒數，只給畫面層）、shake、is_heavy（重擊：第三段、盾反、爆炸，只影響顯示與音效）、blockable（能不能被格擋）、
 #      color（命中粒子顏色，只給畫面層；預設白色）、
 #      band（高度範圍 Vector2(下緣, 上緣)；預設是攻擊者的身體往腳底下延伸 HEIGHT.reach_below，見 body_band）、
-#      max_air（選填：目標腳底離自己腳下地面超過這個高度就打不到）
+#      max_air（選填：目標腳底離自己腳下地面超過這個高度就打不到）、no_stagger（選填：不讓目標進入受擊硬直）
 # 這裡套用攻擊者的爆擊與擊退屬性；護甲與受傷倍率在 Entity.take_damage
 # 回傳是否實際命中（高度不重疊、被格擋也算沒命中）
 static func apply_damage(world: World, source: Entity, target: Entity, hit: Dictionary) -> bool:
@@ -64,7 +64,9 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 		is_crit = true
 		damage *= source.stats.value(&"crit_damage")
 	var knockback: float = hit.get("knockback", 0.0) * source.stats.value(&"knockback")
+	target.suppress_stagger = hit.get("no_stagger", false)   # 遠程武器的普攻不讓怪物進入受擊硬直（v0.27.0）
 	var dealt := target.take_damage(damage, dir, knockback, source.id)
+	target.suppress_stagger = false
 	if dealt < 0:
 		return false
 

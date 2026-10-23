@@ -173,7 +173,7 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `godot/project.godot` | Godot 專案設定（4.7、Forward+、1920×1080、預設字型 `hud_font.tres`） |
 | `godot/export_presets.cfg` | 匯出設定：「Web」（單執行緒、輸出到 `../build/web/index.html`，排除 tests / stress_test） |
 | `godot/assets/fonts/` | 打包字型 Noto Sans TC（OFL 授權，見該資料夾 README）與字重 700 的 `hud_font.tres` |
-| `godot/main.tscn` / `main.gd` | Godot 組合根：單機 / 房主 / 客戶端三種模式、大廳（開房、加入、開始、離開連線）、主迴圈（每秒 60 步）、通關慢動作、暫停 / 選單、重新開始、離開遊戲、畫面震動、特效與命中定格事件轉給畫面層、Tab 屬性面板、F3 除錯移速 +50%、I 背包、Q / 滾輪切換武器、F4 / F5 除錯放入背包 / 清空道具（F3~F5 單機才有）、自動驗證參數（`--seconds`、`--screenshot`、`--auto-move`、`--auto-move-seconds`、`--auto-attack`、`--auto-special`、`--auto-interact`、`--weapon`、`--wave`、`--player-hp`、`--items`、`--no-spawn`、`--host`、`--join=IP`、`--net-port`、`--net-autostart=N`、`--net-latency`、`--net-loss`） |
+| `godot/main.tscn` / `main.gd` | Godot 組合根：單機 / 房主 / 客戶端三種模式、大廳（開房、加入、開始、離開連線）、主迴圈（每秒 60 步）、通關慢動作、暫停 / 選單、重新開始、離開遊戲、畫面震動、特效與命中定格事件轉給畫面層、Tab 背包與屬性面板、F3 除錯移速 +50%、Q / 滾輪切換武器、F4 / F5 除錯放入背包 / 清空道具（F3~F5 單機才有）、自動驗證參數（`--seconds`、`--screenshot`、`--auto-move`、`--auto-move-seconds`、`--auto-attack`、`--auto-special`、`--auto-interact`、`--weapon`、`--wave`、`--player-hp`、`--items`、`--no-spawn`、`--host`、`--join=IP`、`--net-port`、`--net-autostart=N`、`--net-latency`、`--net-loss`） |
 | `godot/net/` | 多人連線（15.18）：net_session（ENet 傳輸、RPC、大廳、模擬延遲 / 掉包）、net_host（房主：輸入排隊、ack、快照）、net_client（客戶端：鏡像 World、補間與外推、自己角色的預測修正、事件延到畫面時間）、net_codec（快照編碼 / 套用） |
 | `godot/core/` | config、version、math_util、state_machine、cooldowns、game_events（autoload `GameEvents`） |
 | `godot/defs/` | 資料表：weapon_defs（劍盾、法杖）、enemy_defs（grunt / archer / boss）、wave_defs（5 波與成長倍率）、skill_defs（治療藥水、疾跑）、stat_defs（屬性名稱、基礎值、上下限、顯示格式、護甲公式）、map_defs（地圖：A 環形墓園與測試場地的大小、出生點、挖墳點、牆 / 墓碑 / 高台、寶箱位置）、loot_defs（殺怪金幣、寶箱價格與稀有度機率）、weapon_drop_defs（武器掉落率、稀有度、10 種詞條、合成）、item_defs（武器與 45 個道具：稀有度、占格形狀、效果列表） |
@@ -185,7 +185,7 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `godot/ui/hud.tscn` / `hud.gd` | Godot HUD：血條、波次 / 擊殺 / 時間、Boss 血條、屬性面板、橫幅、受擊暗角、暫停（含離開遊戲按鈕）與結算畫面 |
 | `godot/ui/skill_bar.gd` / `floaters.gd` / `ui_kit.gd` | 技能欄（左鍵、右鍵、Shift 翻滾、1~5；CD 遮罩、次數）、浮動數字、HUD 共用的文字 / 色塊 / 顏色 |
 | `godot/ui/stats_panel.gd` | 屬性面板（Tab 開關），有加成的數值以金色標示 |
-| `godot/ui/inventory_panel.gd` / `world_labels.gd` | 背包介面（I 開關、2 格裝備欄、拖曳、R 旋轉、拖到武器上合成、拖出去丟掉、道具與詞條說明）；寶箱價格與地上道具 / 武器名稱、[F] 提示 |
+| `godot/ui/inventory_panel.gd` / `world_labels.gd` | 背包介面（Tab 開關、2 格裝備欄、拖曳、R 旋轉、拖到武器上合成、拖出去丟掉、道具與詞條說明）；寶箱價格與地上道具 / 武器名稱、[F] 提示 |
 | `godot/ui/net_panel.gd` / `player_tags.gd` | 選單裡的連線面板（開房、IP 加入、大廳名單、開始、離開連線）；多人時頭上的 P1~P4 名牌與倒地倒數 / 救援進度條 |
 | `godot/ui/skill_icons.gd` | 字型沒有的圖示（⚔ 🛡 ✦ ✺、翻滾 ⟳）改用向量圖畫 |
 | `godot/audio/sound.gd` | 音效與背景音樂：事件 → 音效（照網頁版）、多音播放、M 鍵靜音（存 `user://settings.cfg`）、一般 / Boss 曲切換與淡出 |

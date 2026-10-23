@@ -13,6 +13,7 @@ var visual: StringName = &"orb" # 只給畫面用：&"orb" 發光球體、&"arro
 var hit_stop := 0.0
 var shake := 0.0
 var blockable := true           # 有方向的投射物預設能被格擋（B5）；爆炸一律不能
+var no_stagger := false         # 打中不會讓怪物進入受擊硬直（v0.27.0：遠程武器的普攻）
 var explosion: Dictionary = {}  # { radius, damage, knockback, hit_stop, shake }；空 = 一般投射物
 var traveled := 0.0
 var start_altitude := 0.0       # 發射時的飛行高度（height 是目前的飛行高度）
@@ -43,6 +44,7 @@ func _init(p_world: World, p: Dictionary) -> void:
 	shake = p.get("shake", 0.0)
 	explosion = p.get("explosion", {})
 	blockable = p.get("blockable", true)
+	no_stagger = p.get("no_stagger", false)
 	start_altitude = p.get("altitude", owner.height + Config.HEIGHT.bolt_altitude)
 	settle_altitude = p.get("settle_altitude", 0.0)
 	settle_distance = p.get("settle_distance", 0.0)
@@ -102,6 +104,7 @@ func _on_hit(target: Entity) -> void:
 		var hit := Combat.apply_damage(world, _source(), target, {
 			"damage": damage, "knockback": knockback_force, "origin": pos - direction,
 			"hit_stop": hit_stop, "shake": shake, "band": band(), "blockable": blockable, "color": color,
+			"no_stagger": no_stagger,
 		})
 		if not hit:
 			_fizzle()

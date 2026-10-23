@@ -394,10 +394,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed(&"debug_hitbox"):
 		world_view.show_hitboxes = not world_view.show_hitboxes
 	elif event.is_action_pressed(&"stats_panel"):
+		# Tab 同時開關背包與屬性面板（v0.27.0 使用者決定，取代 I）；開著時不暫停、角色照常移動，滑鼠只給背包用
 		hud.toggle_stats_panel()
-	elif event.is_action_pressed(&"inventory"):
-		# 背包開著時不暫停、角色照常移動，滑鼠只給背包用（D3）
-		hud.inventory_panel.visible = not hud.inventory_panel.visible
+		hud.inventory_panel.visible = hud.is_stats_panel_open()
 		input_collector.mouse_captured = hud.inventory_panel.visible
 	elif mode != Mode.SINGLE:
 		return   # 以下除錯鍵直接改模擬狀態、不經過 InputCmd，單機才有

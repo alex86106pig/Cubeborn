@@ -150,7 +150,7 @@ func _anim_extra(_a: Dictionary) -> void:
 
 
 func _on_damaged(_amount: int, _source_id: int) -> void:
-	if not is_dead and not is_spawning() and fsm.states.has(&"hurt"):
+	if not is_dead and not is_spawning() and fsm.states.has(&"hurt") and not suppress_stagger:
 		fsm.change(&"hurt")
 
 

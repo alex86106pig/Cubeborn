@@ -272,6 +272,7 @@ export const SKILLS = {
 | `player:died` | `{ player }`（Godot 版 v0.21.0 起只代表這位玩家真的死亡；輸掉一局改看 `game:defeat`） | Player |
 | `player:downed` | `{ player_id }`（僅 Godot 版 v0.21.0：多人時生命歸零先倒地假死，見 15.18） | Player |
 | `player:revived` | `{ player_id }`（僅 Godot 版 v0.21.0：被隊友救起） | Player.revive |
+| `player:stunned` | `{ player_id, duration }`（v0.27.0：被 Boss 衝鋒撞到暈眩） | Player.stun |
 | `game:defeat` | `{ stats }`（僅 Godot 版 v0.21.0：全員倒下 = 輸；單機和 `player:died` 同一步發出） | World |
 | `item:added` | `{ player_id, item, uid }`（僅 Godot 版 v0.19.0：道具放進身上；item = 物品 id，uid = 實例 id，武器為空字串） | Player.add_item |
 | `inventory:full` | `{ player_id, item }`（v0.25.0：背包放不下） | Player.add_item / add_weapon |
@@ -302,6 +303,7 @@ export const SKILLS = {
 | `fx:sprint` | `{ pos, height, color }` | 疾跑 |
 | `fx:boss_slam` | `{ pos, height, radius }` | Boss 砸地 |
 | `fx:boss_wall` | `{ pos, height }` | Boss 衝鋒撞牆 |
+| `fx:boss_teleport` | `{ pos, height, to }` | 狂暴 Boss 瞬移砸地（v0.27.0）：原地與目的地的紫色煙霧 |
 
 ---
 
@@ -608,7 +610,7 @@ godot/
 - **只影響畫面**：模擬照常進行（看不到的怪照樣會打你），沒有網路同步的改動；每個程序只依自己的本機玩家（`WorldView.local_peer`，`main.gd` 換 World 時設定）決定畫什麼。
 - 判斷在 `sim/vision.gd`（純函式）：`Vision.point_visible(world, 看的人, 位置, 目標半徑)`：距離 ≤ 18（加目標半徑）、在身邊 4 單位內或扇形內（身體邊緣進入就算）、而且視線不被牆擋（`Terrain.sight_blocked`，身邊一圈也會被牆擋）。`Vision.entity_visible`：自己、自己發出的投射物一律看得到；怪物、隊友、別人的投射物照位置判斷；看的人不存在或已陣亡時全部看得到。
 - 看不到時不畫：怪物與隊友的模型（Boss 地面預警是模型的子節點，一起隱藏）、別人的投射物、位置在視野外的 `fx:*` 特效事件、看不到的實體的持續性粒子（`Effects.hidden_ids`）、HUD 的傷害數字、隊友名牌。音效照常播（聽得到）。之後的寶箱等可互動物件也要接 `Vision`。
-- 變暗：`WorldView` 的全畫面四邊形著色器，從深度貼圖還原每個像素的世界位置，在扇形與身邊一圈之外蓋 `darkness`（0.5）的黑色，邊緣漸層 `edge`（0.8）。牆擋住的區域不畫暗（只隱藏牆後的東西）。Compatibility（網頁版）用 `CURRENT_RENDERER` 換深度的換算方式，網頁版還沒實測。
+- 變暗：`WorldView` 的全畫面四邊形著色器，從深度貼圖還原每個像素的世界位置，視野內蓋 `inner_darkness`（0.1）、視野外蓋 `darkness`（0.3）的黑色，邊緣漸層 `edge`（3.0）；v0.27.0 使用者要內外亮度差小一點（原本只有外面 0.5、漸層 0.8）。牆擋住的區域不畫暗（只隱藏牆後的東西）。Compatibility（網頁版）用 `CURRENT_RENDERER` 換深度的換算方式，網頁版還沒實測。
 
 ### 15.21 金錢、寶箱與背包（v0.25.0，D3）
 - 數值（Claude 暫定，使用者說先用建議值）在 `defs/loot_defs.gd`：殺怪金幣 `KILL_GOLD`（骷髏 5、Boss 50，Boss 召喚的小怪照樣給）、寶箱 `CHESTS`（價格、稀有度權重、半徑）、`INTERACT_RANGE`（身體邊緣距離 1.6）、`DROP_DISTANCE`（1.4）。寶箱位置在 `map_defs.gd` 每張地圖的 `chests`（地圖 A：4 小 1 大）。
@@ -618,7 +620,7 @@ godot/
 - **F 互動**（`Player._try_interact`，只在權威端、只在「剛按下」那一步）：附近有倒地隊友時讓給救援；否則先撿最近的道具（`World.nearest_interactable`），沒有道具才開最近的寶箱。多人同一步按，依玩家更新順序先到先得。
 - **背包**（`sim/inventory.gd`）：`ItemDefs.BAG_SIZE` 8 × 6；形狀轉 rot 次 90 度（(x, y) → (−y, x) 後平移到左上）；`find_spot` 由上到下、左到右，每格依序試 0 / 90 / 180 / 270 度。`Player.add_item` 自動放進第一個空位才生效（屬性來源 = 實例 uid），放不下回傳 `&""` 並發 `inventory:full`。`Player.items` 與 `inventory` 同步。
 - **背包操作走輸入**：`InputCmd.inv_ops`（`[OP_MOVE, uid, x, y, rot]`、`[OP_DROP, uid]`），房主合併輸入時接在一起；只在權威端執行（`Player._apply_inventory_ops`）。客戶端的背包以快照為準（玩家 extra 的 `P_INV`，`Player.sync_inventory` 依增減的道具加減屬性，本機預測的移速才對）。
-- **介面**：`ui/inventory_panel.gd`（I 開關；滑鼠拖曳、拖著時按 R 旋轉、拖到面板外丟掉；下方顯示滑鼠停著的道具名稱與效果，效果還沒實作的標「效果尚未實作」）。開著時不暫停、WASD 照常，`InputCollector.mouse_captured` 讓滑鼠不攻擊、不格擋、瞄準點不動。`ui/world_labels.gd`：沒開的寶箱顯示名稱與價格（錢不夠紅色）、地上道具顯示名稱，按得到 F 的那一個加「[F] 開啟 / 撿起」；視野外不顯示。左上顯示金幣。
+- **介面**：`ui/inventory_panel.gd`（Tab 開關，和屬性面板一起開（v0.27.0 起，原本 I）；滑鼠拖曳、拖著時按 R 旋轉、拖到面板外丟掉；下方顯示滑鼠停著的道具名稱與效果，效果還沒實作的標「效果尚未實作」）。開著時不暫停、WASD 照常，`InputCollector.mouse_captured` 讓滑鼠不攻擊、不格擋、瞄準點不動。`ui/world_labels.gd`：沒開的寶箱顯示名稱與價格（錢不夠紅色）、地上道具顯示名稱，按得到 F 的那一個加「[F] 開啟 / 撿起」；視野外不顯示。左上顯示金幣。
 - 屍體裝背包、冤魂復活移到 D6。
 
 ### 15.22 武器掉落、裝備欄與合成（v0.26.0，D4）
@@ -631,3 +633,17 @@ godot/
 - **背包操作**（`InputCmd.inv_ops`）：`OP_MOVE` 武器可以從裝備欄搬進背包、`OP_DROP` 丟到地上（手上至少留一把）；`OP_EQUIP [uid, slot]` 放進裝備欄（從另一格來就互換，從背包來時原本那把回背包、放不下就不換）；`OP_MERGE [a, b]` 把 a 拖到 b 上：同種、同稀有度、不是橘色才行，b 的位置換成高一級、詞條重抽的新武器（uid 沿用 b），a 消失；手上唯一的一把拖到背包的武器上時，結果留在裝備欄。不能合成發 `weapon:merge_denied`。
 - **快照**：玩家 extra 加 `P_SLOTS`（兩格武器）、`P_ACTIVE`；背包條目第 6 欄是武器；地上道具 extra 第 2 欄是武器。
 - **介面**：背包面板上方 2 格裝備欄（使用中金框），拖到武器上顯示「合成」、拖到裝備欄裝上；下方說明顯示武器詞條（在背包裡標「不生效」）。左上「武器：稀有度 名稱（Q：另一把）」，文字用稀有度顏色。地上的武器是斜放的發光長條。
+
+### 15.23 試玩回饋調整（v0.27.0）
+- **二段跳**：道具能力 `double_jump`（雙躍之靴）接上：`Player.air_jumps()`（背包裡有就 1 次），空中再按跳躍從目前高度往上跳一次（同第一段的起跳速度），落地重置。`ItemDefs.is_implemented` 把 double_jump 算進已實作。
+- **武器基礎數值**（使用者決定：要看得到實際數字，例如白色攻擊力 10、綠色 12）：每把武器有攻擊力（普攻傷害）、攻速（每秒普攻次數）、範圍（揮砍距離 / 魔彈射程），依稀有度乘 `WeaponDropDefs.RARITY_BASE`（Claude 暫定：攻擊力每級 +20%，攻速與範圍每級 +5%）。攻擊力與攻速以屬性來源 `&"weapon"` 乘上去（和詞條同一個來源），範圍由 `Player.weapon_range_mul()` 直接乘在揮砍與魔彈上。`WeaponDropDefs.base_stats(inst)` 給介面顯示實際數字。
+- **法杖與遠程武器**（使用者決定）：法杖普攻三段時間都 ×2（0.28 → 0.56 秒一發）；遠程武器的普攻不擊退（knockback 0）、不讓怪物受擊硬直（攻擊資料 `no_stagger` → 投射物 → hit 欄位 `no_stagger` → `Entity.suppress_stagger`）。奧術爆裂照常。
+- **Boss 加強**（使用者決定方向，數值 Claude 訂，`enemy_defs.gd` 的 boss；網頁版比對整段跳過）：
+  - 跑速 3.0、轉身 4.0、出招間隔與冷卻約 ×0.7。
+  - 直劈（新招）：距離 4 以內，舉劍 0.6 秒（沒有地面預警，看動作）→ 前方 40°、4.5 的扇形 30 傷害；舉劍前半段用一半轉速追蹤、之後鎖定。
+  - 砸地：紅圈 3 / 6 / 9 一圈圈往外（間隔 0.25 秒），每圈只打那一圈範圍內、同一次砸地每人最多被打一次；打到擊飛（`Player.knock_up`）+ 移速 ×0.5 兩秒（增益 `boss_slam`）；跳起來躲得過。
+  - 衝鋒：蓄力 0.45 秒、判定外擴 0.8；撞到（沒擋下）的玩家暈眩 0.8 秒（`Player.stun`：不能移動、出招、翻滾、跳；快照 `P_STUN`，客戶端立刻跟著暈眩；頭上星星）。
+  - 召喚：4 隻，每隻 50% 骷髏戰士 / 50% 弓手。
+  - 狂暴（血量一半以下）：移速 ×1.3、冷卻 ×0.6、前搖 ×0.75；衝鋒連衝 3 次（中間 0.3 秒重新瞄準）；召喚的骷髏戰士爬出來後衝撞一次（`MeleeEnemy.rush`：蓄力 0.5 → 11 單位/秒衝 0.5 秒）；砸地不管多遠都放：玩家腳下紫色預警 0.6 秒 → 瞬移（`fx:boss_teleport`）→ 0.3 秒後砸下。
+- **武器稀有度的光**：不是白色的武器在手上掛一盞稀有度顏色的小燈（所有稀有度同樣亮，使用者決定）。
+- **視野**：見 15.20（內外亮度差變小、漸層變寬）。**Tab**：背包與屬性面板一起開關（拿掉 I）。

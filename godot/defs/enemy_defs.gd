@@ -29,6 +29,11 @@ const ENEMIES := {
 			"cooldown": 1.2,            # 從舉刀開始算
 			"blockable": true,
 		},
+		# 衝撞（v0.27.0）：狂暴的 Boss 召喚出來的骷髏戰士爬出來後衝一次（同 Boss 衝鋒的模式、規模小）
+		"rush": {
+			"windup": 0.5, "speed": 11.0, "duration": 0.5, "recovery": 0.5, "hit_reach": 0.3,
+			"damage": 12.0, "knockback": 10.0, "blockable": true,
+		},
 	},
 
 	&"archer": {
@@ -66,35 +71,50 @@ const ENEMIES := {
 		"visual": &"boss",
 		"hit_color": Color("ff4040"),   # 砸地、衝鋒打中時的命中粒子（網頁版 0xff4040）
 		"max_hp": 900.0,
-		"move_speed": 2.2,
+		# v0.27.0 使用者決定 Boss 加強：跑速 2.2 → 3.0、出招間隔縮短 30%、招式範圍變大、新招直劈、狂暴進化（數值 Claude 訂）
+		"move_speed": 3.0,
 		"speed_variance": 0.0,
-		"turn_speed": 3.5,
+		"turn_speed": 4.0,
 		"radius": 1.0,
 		"mass": 30.0,
 		"knockback_mul": 0.12,
 		"spawn_time": 1.6,
 		"spawn_shake": 0.4,
 		"corpse_time": 3.5,
-		"decide_delay": 0.4,              # 回到追擊後至少這麼久才出下一招
-		"first_cooldowns": {"charge": 3.0, "summon": 2.0},   # 開場給玩家一點時間
+		"decide_delay": 0.28,             # 回到追擊後至少這麼久才出下一招（0.4 × 0.7）
+		"first_cooldowns": {"charge": 2.1, "summon": 1.4},   # 開場給玩家一點時間
+		# 砸地：以 Boss 為中心，紅圈一圈一圈往外擴散；每圈只打到「那一圈範圍內」的目標（同一次砸地每人最多被打一次）
+		# 打到：擊飛（往上 knockup 速度）＋ 移速 ×slow_mul 持續 slow_time 秒；跳起來躲得過（同 v0.23.0 的 max_air）
 		"slam": {
-			"trigger_distance": 3.2, "radius": 3.4, "windup": 0.85, "recovery": 0.8,
-			"damage": 26.0, "knockback": 16.0, "cooldown": 3.5,
+			"trigger_distance": 4.0, "rings": [3.0, 6.0, 9.0], "ring_delay": 0.25, "windup": 0.7, "recovery": 0.8,
+			"damage": 26.0, "knockback": 8.0, "knockup": 7.0, "slow_mul": 0.5, "slow_time": 2.0, "cooldown": 2.45,
 			"hit_stop": 0.06, "shake": 0.7, "shake_duration": 0.35, "blockable": false,
 		},
+		# 衝鋒：準備時間縮短、判定加大，撞到（沒擋下）的玩家暈眩 stun 秒
 		"charge": {
-			"min_distance": 5.0, "windup": 0.75, "speed": 15.0, "duration": 0.85, "recovery": 1.0,
-			"wall_stun": 1.6, "damage": 22.0, "knockback": 18.0, "cooldown": 6.0,
-			"hit_reach": 0.3, "hit_stop": 0.06, "shake": 0.4, "wall_margin": 0.05,
+			"min_distance": 5.0, "windup": 0.45, "speed": 15.0, "duration": 0.85, "recovery": 0.8,
+			"wall_stun": 1.6, "damage": 22.0, "knockback": 18.0, "cooldown": 4.2, "stun": 0.8,
+			"hit_reach": 0.8, "hit_stop": 0.06, "shake": 0.4, "wall_margin": 0.05,
 			"wall_shake": 0.6, "wall_shake_duration": 0.35,
 			"blockable": true, "block_knockback_mul": 1.0,   # v0.18.2 使用者決定：擋得住，但擋下時照樣被全額擊退
 		},
+		# 召喚：4 隻，每隻隨機是骷髏戰士或弓手
 		"summon": {
-			"hp_threshold": 0.75, "count": 3, "windup": 1.0, "recovery": 0.4, "cooldown": 14.0,
+			"hp_threshold": 0.75, "count": 4, "archer_chance": 0.5, "windup": 0.8, "recovery": 0.4, "cooldown": 9.8,
 			"spread": 0.9, "distance": 2.5, "edge_margin": 1.5,
 		},
+		# 直劈（v0.27.0 新招）：沒有紅圈，舉劍 windup 秒（看動作就知道要來）→ 往前劈下前方細長的扇形
+		# 舉劍的前 track 比例用一半的轉身速度跟著玩家（追得不好），之後鎖定方向：繞圈走位就躲得開
+		"cleave": {
+			"trigger_distance": 4.0, "windup": 0.6, "track": 0.5, "track_turn_mul": 0.5, "active": 0.1, "recovery": 0.6,
+			"range": 4.5, "arc": PI * 40.0 / 180.0, "damage": 30.0, "knockback": 12.0, "cooldown": 2.5,
+			"hit_stop": 0.06, "shake": 0.35, "blockable": true,
+		},
+		# 狂暴（血量一半以下）：全部更快；衝鋒連續 3 次；召喚完的骷髏戰士各衝撞一次；砸地不管多遠都放（先在玩家腳下預警，再瞬移過去砸）
 		"enrage": {
-			"hp_threshold": 0.5, "speed_mul": 1.3, "cooldown_mul": 0.65,
+			"hp_threshold": 0.5, "speed_mul": 1.3, "cooldown_mul": 0.6, "windup_mul": 0.75,
+			"charge_count": 3, "charge_rewindup": 0.3,   # 連衝之間重新瞄準的秒數
+			"teleport_warn": 0.6, "teleport_windup": 0.3,   # 玩家腳下預警幾秒後瞬移過去、再過幾秒砸下
 			"shake": 0.5, "shake_duration": 0.4,
 		},
 	},

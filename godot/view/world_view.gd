@@ -11,6 +11,8 @@ const STRIKE_ALPHA := 0.45
 const BLOCK_FAN_COLOR := Color("ffd36b")   # 格擋範圍（v0.23.0）：腳下前方的金色扇形，角度 = 盾的 block_arc
 const BLOCK_FAN_RANGE := 2.2
 const BLOCK_FAN_ALPHA := 0.32
+const WEAPON_GLOW_RANGE := 1.6     # 武器稀有度光：所有稀有度同樣亮度，只差顏色（使用者決定）
+const WEAPON_GLOW_ENERGY := 1.2
 
 var show_hitboxes := false
 var effects := Effects.new()
@@ -124,6 +126,11 @@ func sync(world: World, alpha: float, dt: float) -> void:
 		node.get_node(^"Hitbox").visible = show_hitboxes
 		if e is Player:
 			_sync_block_fan(node.get_node(^"BlockFan"), e as Player)
+			var glow: OmniLight3D = node.get_meta(&"glow")
+			var inst := (e as Player).active_weapon()
+			glow.visible = not inst.is_empty() and inst.rarity != &"white"
+			if glow.visible:
+				glow.light_color = ItemDefs.RARITIES[inst.rarity].color
 		elif e is Chest:
 			var lid: Node3D = node.get_node(^"Lid")
 			lid.rotation.x = lerpf(lid.rotation.x, -1.9 if (e as Chest).opened else 0.0, minf(1.0, dt * 8.0))
@@ -155,6 +162,7 @@ uniform float half_angle;
 uniform float range;
 uniform float near_radius;
 uniform float darkness;
+uniform float inner_darkness;
 uniform float edge;
 
 void vertex() {
@@ -178,7 +186,7 @@ void fragment() {
 	float cone = (1.0 - smoothstep(range - edge, range, dist)) * (1.0 - smoothstep(half_angle - ang_soft, half_angle, diff));
 	float near = 1.0 - smoothstep(near_radius - edge, near_radius, dist);
 	ALBEDO = vec3(0.0);
-	ALPHA = darkness * (1.0 - max(cone, near));
+	ALPHA = mix(darkness, inner_darkness, max(cone, near));
 }
 """
 
@@ -195,6 +203,7 @@ func _create_vision_overlay() -> MeshInstance3D:
 	mat.set_shader_parameter(&"range", v.range)
 	mat.set_shader_parameter(&"near_radius", v.near_radius)
 	mat.set_shader_parameter(&"darkness", v.darkness)
+	mat.set_shader_parameter(&"inner_darkness", v.inner_darkness)
 	mat.set_shader_parameter(&"edge", v.edge)
 	var mi := MeshInstance3D.new()
 	mi.name = "VisionOverlay"
@@ -381,6 +390,14 @@ func _create_view(e: Entity) -> Node3D:
 			_animators[e.id] = Animator.new(rig)
 			root = rig
 			root.add_child(_create_block_fan())
+			var glow := OmniLight3D.new()   # 武器稀有度的光（D4 回饋）：不是白色的武器發出淡淡的稀有度顏色光
+			glow.name = "WeaponGlow"
+			glow.omni_range = WEAPON_GLOW_RANGE
+			glow.light_energy = WEAPON_GLOW_ENERGY
+			glow.shadow_enabled = false
+			glow.visible = false
+			rig.hand_r.add_child(glow)
+			root.set_meta(&"glow", glow)
 		&"grunt", &"archer", &"boss":
 			var rig := DarkFantasy.character(e.kind)
 			_animators[e.id] = EnemyAnimator.new(rig, e as Enemy)

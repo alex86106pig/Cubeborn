@@ -227,6 +227,8 @@ func _apply_own_authority(me: Player, a: Array) -> void:
 	me.net_sync_life(a[NetCodec.E_DEAD], extra[NetCodec.P_DOWNED], extra[NetCodec.P_DOWN_TIMER], extra[NetCodec.P_REVIVE])
 	me.parry_timer = maxf(me.parry_timer, extra[NetCodec.P_PARRY])
 	me.sync_inventory(extra[NetCodec.P_INV])   # 背包以房主為準（D3：撿、丟、搬動都在房主執行）
+	if extra[NetCodec.P_STUN] > me.stun_timer + 0.05:   # 被房主判定暈眩（v0.27.0）：本機預測也立刻站住
+		me.stun(extra[NetCodec.P_STUN])
 	# 裝備欄以房主為準；手上哪一格在房主處理完最近一次切換（Q / 滾輪）之後才跟著房主，之前保留本機預測
 	var active: int = extra[NetCodec.P_ACTIVE] if _last_ack >= _swap_tick else me.active_slot
 	me.sync_weapon_slots(extra[NetCodec.P_SLOTS], active)

@@ -13,6 +13,16 @@ const RARITY_WEIGHTS := {
 
 const RARITY_ORDER: Array[StringName] = [&"white", &"green", &"blue", &"purple", &"orange"]
 
+# 武器基礎數值依稀有度提高（v0.27.0 使用者決定：要看得到「白色攻擊力 10、綠色 12」這種實際數字）
+# 倍率是 Claude 暫定：攻擊力每級 +20%（白 10 → 綠 12），攻速與範圍每級 +5%
+const RARITY_BASE := {
+	&"white": {"damage": 1.0, "attack_speed": 1.0, "range": 1.0},
+	&"green": {"damage": 1.2, "attack_speed": 1.05, "range": 1.05},
+	&"blue": {"damage": 1.4, "attack_speed": 1.10, "range": 1.10},
+	&"purple": {"damage": 1.6, "attack_speed": 1.15, "range": 1.15},
+	&"orange": {"damage": 1.8, "attack_speed": 1.20, "range": 1.20},
+}
+
 # 詞條：屬性加成（格式同 ItemDefs 的屬性效果）；desc 給介面顯示
 const AFFIXES := {
 	&"aff_damage": {"desc": "攻擊力 +10%", "stat": &"damage", "op": Stats.PCT, "value": 0.10},
@@ -78,8 +88,25 @@ static func make(uid: StringName, base: StringName, rarity: StringName, rng: Ran
 	return {"uid": uid, "base": base, "rarity": rarity, "affixes": roll_affixes(affix_count(rarity), rng)}
 
 
+# 武器的基礎數值（介面顯示用的實際數字）：攻擊力 = 普攻傷害、攻速 = 每秒普攻次數、範圍 = 揮砍距離或魔彈射程，都乘上稀有度倍率
+static func base_stats(inst: Dictionary) -> Dictionary:
+	var atk: Dictionary = WeaponDefs.WEAPONS[ItemDefs.ITEMS[inst.base].weapon].attack
+	var m: Dictionary = RARITY_BASE[inst.rarity]
+	return {
+		"damage": atk.damage * m.damage,
+		"attack_speed": m.attack_speed / (atk.windup + atk.active + atk.recovery),
+		"range": atk.range * m.range,
+	}
+
+
+# 手上這把生效的屬性：稀有度的基礎倍率（攻擊力、攻速）＋詞條；範圍由 Player.weapon_range_mul 直接乘
 static func stat_mods(inst: Dictionary) -> Array:
+	var m: Dictionary = RARITY_BASE[inst.rarity]
 	var mods := []
+	if m.damage != 1.0:
+		mods.append([&"damage", Stats.MUL, m.damage])
+	if m.attack_speed != 1.0:
+		mods.append([&"attack_speed", Stats.MUL, m.attack_speed])
 	for id: StringName in inst.affixes:
 		var a: Dictionary = AFFIXES[id]
 		mods.append([a.stat, a.op, a.value])

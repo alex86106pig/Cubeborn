@@ -8,20 +8,20 @@ enum { S_RUN, S_TICK, S_ACK, S_WORLD, S_ENTITIES }
 enum { W_WAVE, W_KILLS, W_TIME, W_OVER, W_BOSS, W_DEFEATED, W_GOLD }
 enum { E_ID, E_KIND, E_X, E_Z, E_H, E_FACING, E_HP, E_MAX_HP, E_VX, E_VZ, E_FLASH, E_INVULN, E_DEAD, E_ANIM, E_EXTRA }
 # 玩家的 E_EXTRA
-enum { P_PEER, P_WEAPON, P_ROLLS, P_DOWNED, P_DOWN_TIMER, P_REVIVE, P_PARRY, P_DODGE, P_INV, P_SLOTS, P_ACTIVE }
+enum { P_PEER, P_WEAPON, P_ROLLS, P_DOWNED, P_DOWN_TIMER, P_REVIVE, P_PARRY, P_DODGE, P_INV, P_SLOTS, P_ACTIVE, P_STUN }
 # 寶箱的 E_EXTRA：[tier, opened]；地上道具：[item_id, 武器（WeaponDropDefs.to_array，不是武器為 []）]（D3 / D4）
 
 const ENEMY_KINDS: Array[StringName] = [&"grunt", &"archer", &"boss"]
 # 動畫欄位名稱 → 索引（Player._update_anim、Enemy._update_anim、Boss._anim_extra）；不在表裡的照樣用字串送
 const ANIM_KEYS: Array[String] = [
 	"loco", "loco_time", "action", "action_time", "behavior", "phase", "k", "swing_dir", "is_finisher",
-	"trail_color", "airborne", "blocking", "parry", "vz", "revive",
+	"trail_color", "airborne", "blocking", "parry", "vz", "revive", "stunned",
 	"state", "time", "enraged", "phase_time", "origin",
 ]
 # 玩家動畫欄位的預設值：和預設值相同的欄位不送（大部分時間只剩移動層、動作層的名稱與秒數），收到時補回
 const PLAYER_ANIM_DEFAULTS := {
 	"behavior": &"", "phase": &"", "k": 0.0, "swing_dir": 1, "is_finisher": false, "trail_color": null,
-	"airborne": false, "blocking": false, "parry": 0.0, "vz": 0.0, "revive": 0.0,
+	"airborne": false, "blocking": false, "parry": 0.0, "vz": 0.0, "revive": 0.0, "stunned": false,
 }
 const NUM_FIRST := E_X      # E_X ~ E_INVULN 是數值欄位，網路上放進一個 PackedFloat32Array
 const NUM_LAST := E_INVULN
@@ -92,7 +92,7 @@ static func entity_fields(e: Entity) -> Array:
 		var p := e as Player
 		a[E_ANIM] = p.anim
 		a[E_EXTRA] = [p.peer_id, p.weapon_id, p.roll_charges, p.is_downed, p.down_timer, p.revive_progress, p.parry_timer, p.dodge_timer, p.inventory.to_array(),
-			p.weapon_slots.map(WeaponDropDefs.to_array), p.active_slot]
+			p.weapon_slots.map(WeaponDropDefs.to_array), p.active_slot, p.stun_timer]
 	elif e is Chest:
 		a[E_EXTRA] = [(e as Chest).tier, (e as Chest).opened]
 	elif e is ItemPickup:
@@ -192,6 +192,9 @@ static func apply_entity(e: Entity, a: Array, b: Array, t: float, ahead: float =
 		var pl := e as Player
 		pl.anim = anim
 		pl.show_weapon(extra[P_WEAPON])   # 別人的角色只需要招式資料與模型
+		for i in pl.weapon_slots.size():   # 裝備欄只給畫面（武器稀有度的光），不套屬性
+			pl.weapon_slots[i] = WeaponDropDefs.from_array(extra[P_SLOTS][i])
+		pl.active_slot = extra[P_ACTIVE]
 		pl.roll_charges = extra[P_ROLLS]
 		pl.is_downed = extra[P_DOWNED]
 		pl.down_timer = extra[P_DOWN_TIMER]

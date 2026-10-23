@@ -13,7 +13,7 @@ const SLAM_FOLLOW_TIME := 0.12   # 重砸落地後手臂揮下的秒數
 var rig: Rig
 var walk_phase := 0.0
 var _prev_state: StringName = &""
-var _slam_ring: MeshInstance3D = null
+var _slam_rings: Array[MeshInstance3D] = []   # Boss 砸地的每一圈（v0.27.0：一圈圈往外擴散）
 var _charge_line: MeshInstance3D = null
 
 
@@ -21,7 +21,8 @@ func _init(p_rig: Rig, e: Enemy) -> void:
 	rig = p_rig
 	walk_phase = randf() * TAU   # 畫面用隨機，與模擬無關
 	if e.is_boss():
-		_slam_ring = _make_ring(e.def.slam.radius)
+		for r: float in e.def.slam.rings:
+			_slam_rings.append(_make_ring(r))
 		_charge_line = _make_line(e.def.charge.speed * e.def.charge.duration, e.radius * 2.0)
 
 
@@ -77,9 +78,18 @@ func update(e: Enemy, dt: float) -> void:
 			rig.leg_r.rotation.x = 0.0
 			rig.leg_l.rotation.x = 0.0
 		&"slam":
-			_pose_slam(t, def.slam)
+			_pose_slam(a)
 		&"charge":
 			_pose_charge(a, dt, def.charge)
+		&"cleave":
+			# 直劈（沒有地面預警）：比骷髏揮砍更誇張地把劍舉過頭、身體後仰，看動作就知道要劈下來
+			_pose_walk(0.0, -0.5, -0.3)
+			var c: Dictionary = def.cleave
+			_pose_melee_swing(t, {"windup": a.get("windup", c.windup), "active": c.active, "recovery": c.recovery})
+			if t < a.get("windup", c.windup):
+				rig.body.rotation.x = lerpf(0.0, -0.32, MathUtil.ease_out_cubic(t / a.get("windup", c.windup)))
+		&"rush":
+			_pose_rush(a, dt, def.rush)
 		&"summon":
 			var k := clampf(t / def.summon.windup, 0.0, 1.0)
 			_pose_arms(lerpf(-0.4, -2.9, MathUtil.ease_out_cubic(k)), 0.5)
@@ -124,22 +134,45 @@ func _pose_melee_swing(t: float, s: Dictionary) -> void:
 		rig.body.rotation.x = lerpf(0.25, 0.0, k)
 
 
-func _pose_slam(t: float, s: Dictionary) -> void:
-	if t < s.windup:
-		var k := MathUtil.ease_out_cubic(t / s.windup)
-		_pose_arms(lerpf(-0.4, -3.0, k), 0.3)
-		rig.body.rotation.x = lerpf(0.0, -0.2, k)
-		return
-	var k := clampf((t - s.windup) / SLAM_FOLLOW_TIME, 0.0, 1.0)
-	_pose_arms(lerpf(-3.0, -0.9, k), 0.3)
-	rig.body.rotation.x = lerpf(-0.2, 0.3, k)
+# 砸地：warn（狂暴瞬移前，低頭蓄力）→ windup（舉起雙手）→ impact（揮下）
+func _pose_slam(a: Dictionary) -> void:
+	var pt: float = a.get("phase_time", 0.0)
+	match a.get("phase", &"windup"):
+		&"warn":
+			_pose_arms(-0.4 + sin(pt * 20.0) * 0.1, 0.3)
+			rig.body.rotation.x = 0.2
+		&"windup":
+			var k := MathUtil.ease_out_cubic(clampf(pt / maxf(a.get("windup", 0.7), 0.01), 0.0, 1.0))
+			_pose_arms(lerpf(-0.4, -3.0, k), 0.3)
+			rig.body.rotation.x = lerpf(0.0, -0.2, k)
+		_:
+			var k := clampf(pt / SLAM_FOLLOW_TIME, 0.0, 1.0)
+			_pose_arms(lerpf(-3.0, -0.9, k), 0.3)
+			rig.body.rotation.x = lerpf(-0.2, 0.3, k)
+
+
+# 骷髏戰士衝撞（v0.27.0）：蓄力前傾 → 低頭衝刺 → 收招
+func _pose_rush(a: Dictionary, dt: float, r: Dictionary) -> void:
+	var pt: float = a.get("phase_time", 0.0)
+	match a.get("phase", &"windup"):
+		&"windup":
+			var k := MathUtil.ease_out_cubic(clampf(pt / r.windup, 0.0, 1.0))
+			_pose_arms(lerpf(-0.6, 0.5, k))
+			rig.body.rotation.x = lerpf(0.0, 0.4, k)
+		&"dash":
+			walk_phase += dt * r.speed * 1.5
+			_pose_walk(1.0, 0.5, 0.5)
+			rig.body.rotation.x = 0.4
+		_:
+			rig.body.rotation.x = lerpf(0.4, 0.0, clampf(pt / r.recovery, 0.0, 1.0))
+			_pose_arms(-0.6)
 
 
 func _pose_charge(a: Dictionary, dt: float, c: Dictionary) -> void:
 	var pt: float = a.get("phase_time", 0.0)
 	match a.get("phase", &"windup"):
 		&"windup":
-			var k := MathUtil.ease_out_cubic(clampf(pt / c.windup, 0.0, 1.0))
+			var k := MathUtil.ease_out_cubic(clampf(pt / maxf(a.get("windup", c.windup), 0.01), 0.0, 1.0))
 			_pose_arms(lerpf(-0.4, 0.6, k))
 			rig.body.rotation.x = lerpf(0.0, 0.35, k)
 		&"dash":
@@ -157,23 +190,29 @@ func _pose_charge(a: Dictionary, dt: float, c: Dictionary) -> void:
 
 # ───────── Boss 地面預警（網頁版 Effects.telegraph / telegraphLine） ─────────
 
+# 砸地：舉手時所有圈一起閃；落地後每一圈在打到之前繼續亮著、打到就消失（看得出波往外擴散）
 func _update_telegraphs(e: Enemy, a: Dictionary) -> void:
-	if _slam_ring == null:
+	if _slam_rings.is_empty():
 		return
-	var t: float = a.time
 	var slam: Dictionary = e.def.slam
-	var show_slam: bool = a.state == &"slam" and t < slam.windup
-	_slam_ring.visible = show_slam
-	if show_slam:
-		var k: float = t / slam.windup
-		_set_alpha(_slam_ring, 0.35 + 0.35 * pow(sin(k * PI * 6.0), 2.0))
+	var pt: float = a.get("phase_time", 0.0)
+	var phase: StringName = a.get("phase", &"")
+	for i in _slam_rings.size():
+		var ring := _slam_rings[i]
+		var show := false
+		if a.state == &"slam" and phase == &"windup":
+			show = true
+			_set_alpha(ring, 0.35 + 0.35 * pow(sin(pt / maxf(a.get("windup", 0.7), 0.01) * PI * 6.0), 2.0))
+		elif a.state == &"slam" and phase == &"impact" and pt < i * slam.ring_delay:
+			show = true
+			_set_alpha(ring, 0.7)
+		ring.visible = show
 
 	var charge: Dictionary = e.def.charge
-	var pt: float = a.get("phase_time", 0.0)
-	var show_line: bool = a.state == &"charge" and a.get("phase", &"") == &"windup"
+	var show_line: bool = a.state == &"charge" and phase == &"windup"
 	_charge_line.visible = show_line
 	if show_line:
-		var k: float = pt / charge.windup
+		var k: float = pt / maxf(a.get("windup", charge.windup), 0.01)
 		_set_alpha(_charge_line, 0.2 + 0.3 * pow(sin(k * PI * 5.0), 2.0))
 
 

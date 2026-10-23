@@ -78,10 +78,12 @@ const WEAPONS := {
 			"projectile_radius": 0.22,
 			"spawn_offset": 0.6,       # 投射物出生點在玩家前方的距離
 			"range": 14.0,
-			"knockback": 3.5,
-			"windup": 0.06,
-			"active": 0.02,
-			"recovery": 0.2,
+			# v0.27.0 使用者決定：法杖像法師，普攻不是重點 → 攻速減半（0.28 → 0.56 秒一發）；遠程武器的普攻不擊退、不讓怪物受擊硬直
+			"knockback": 0.0,
+			"no_stagger": true,
+			"windup": 0.12,
+			"active": 0.04,
+			"recovery": 0.4,
 			"move_speed_mul": 0.8,
 			"color": Color("7fd8ff"),
 			"hit_stop": 0.02,

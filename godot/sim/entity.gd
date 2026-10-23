@@ -35,6 +35,7 @@ var vz := 0.0                     # 垂直速度（向上為正）
 var ground_height := 0.0          # 腳下的地面高度（地形石台頂面或 0）
 var body_height := 2.0            # 身高：命中判定佔 [height, height + body_height]
 var invuln_timer := 0.0
+var suppress_stagger := false     # 這一下傷害不造成受擊硬直（Combat 在 take_damage 前後設定，v0.27.0）
 var flash_timer := 0.0
 var is_dead := false
 var is_removed := false

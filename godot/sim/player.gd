@@ -14,6 +14,8 @@ var weapon_id: StringName = &""
 var weapon_slots: Array[Dictionary] = [{}, {}]   # 裝備欄 2 格（D4）：武器實例（WeaponDropDefs）或 {}
 var active_slot := 0
 var _applied_weapon_uid := &""
+var _air_jumps_used := 0               # 這次離地後用掉的空中跳躍（落地歸零）
+var stun_timer := 0.0                  # 暈眩剩餘秒數（v0.27.0：Boss 衝鋒撞到）：不能移動、出招、翻滾、跳
 var combo_step := 0
 var combo_timer := 0.0
 var buffered_action: Dictionary = {}   # { type: &"special" | &"slot" | &"roll", index?, time }；空 = 沒有緩衝
@@ -57,10 +59,41 @@ func _init(p_world: World, p_peer_id: int) -> void:
 
 # 跳躍：站在地面上隨時可以跳（攻擊、翻滾中也行），受擊硬直與倒地時不行；只有一段跳
 func try_jump() -> bool:
-	if is_dead or is_downed or not is_grounded() or action.is_in(&"stagger") or action.is_in(&"revive"):
+	if is_dead or is_downed or action.is_in(&"stagger") or action.is_in(&"revive"):
 		return false
+	if not is_grounded():
+		# 二段跳（道具能力 double_jump，v0.27.0）：空中可以再跳一次，高度同第一段（從目前高度往上 JUMP.height）
+		if _air_jumps_used >= air_jumps():
+			return false
+		_air_jumps_used += 1
 	vz = 4.0 * Config.JUMP.height / Config.JUMP.air_time
 	return true
+
+
+# 被擊飛（v0.27.0：Boss 砸地）：往上給一個速度，照常受重力落地
+func knock_up(speed: float) -> void:
+	if is_dead or is_downed:
+		return
+	vz = maxf(vz, speed)
+
+
+# 暈眩（v0.27.0：Boss 衝鋒）：期間不能移動、出招、翻滾、跳；動作中斷
+func stun(duration: float) -> void:
+	if is_dead or is_downed:
+		return
+	stun_timer = maxf(stun_timer, duration)
+	action.change(&"ready")
+	buffered_action = {}
+	world.emit_event("player:stunned", {"player_id": id, "duration": duration})
+
+
+# 空中還能跳幾次：背包裡每個有 double_jump 能力的道具 +1（同一種拿兩個也只算 1 次）
+func air_jumps() -> int:
+	for it: Dictionary in items:
+		for eff: Dictionary in ItemDefs.ITEMS[it.id].effects:
+			if eff.get("ability", &"") == &"double_jump":
+				return 1
+	return 0
 
 
 # 由 Combat.apply_damage 對能格擋的攻擊呼叫：格擋中、攻擊來自正前方 block_arc 內就擋下（不扣血、自己被推退一點）
@@ -284,6 +317,12 @@ func active_weapon() -> Dictionary:
 	return weapon_slots[active_slot]
 
 
+# 手上武器稀有度的範圍倍率（揮砍距離、魔彈射程）
+func weapon_range_mul() -> float:
+	var inst := active_weapon()
+	return WeaponDropDefs.RARITY_BASE[inst.rarity].range if not inst.is_empty() else 1.0
+
+
 # 撿到武器（D4）：裝備欄有空先放裝備欄（不換手上的），滿了放背包；都放不下回傳 false、發出 inventory:full
 func add_weapon(inst: Dictionary) -> bool:
 	for i in weapon_slots.size():
@@ -501,7 +540,10 @@ func clear_items() -> void:
 
 func update(dt: float) -> void:
 	_tick_timers(dt)
-	if is_dead or is_downed:
+	if is_dead or is_downed or stun_timer > 0.0:
+		stun_timer = maxf(0.0, stun_timer - dt)
+		if stun_timer > 0.0:
+			move_input = Vector2.ZERO   # 暈眩時站著不動（移動層回到 idle）
 		_pressed = 0
 		_inventory_ops.clear()
 		_interact_was_held = is_interact_held
@@ -510,6 +552,8 @@ func update(dt: float) -> void:
 		_update_anim()
 		return
 
+	if is_grounded():
+		_air_jumps_used = 0
 	_read_input()
 	# 撿道具、開寶箱、整理背包只在權威端（客戶端本機預測不做，等快照）
 	if world.is_authority:
@@ -600,6 +644,7 @@ func _update_anim() -> void:
 		"parry": parry_timer / PARRY_ANIM_TIME,   # 1 → 0（盾反剛發動到結束）
 		"vz": vz,
 		"revive": revive_progress / Config.REVIVE.revive_time,   # 倒地時被救的進度 0~1（畫面顯示用）
+		"stunned": stun_timer > 0.0,
 	}
 
 

@@ -28,6 +28,7 @@ const HANDLERS := {
 	"fx:sprint": &"_fx_sprint",
 	"fx:boss_slam": &"_fx_boss_slam",
 	"fx:boss_wall": &"_fx_boss_wall",
+	"fx:boss_teleport": &"_fx_boss_teleport",
 }
 
 const DUST_COLOR := Color("6b4f2e")         # 骷髏爬出的泥土
@@ -268,6 +269,15 @@ func _fx_boss_slam(p: Dictionary) -> void:
 	burst(_at(p, 0.2), {"color": CHARGE_DUST_COLOR, "count": 30, "speed": 7.0, "up": 6.0, "size": 0.25})
 
 
+# 狂暴 Boss 瞬移（v0.27.0）：原地與目的地各一團紫色煙霧
+func _fx_boss_teleport(p: Dictionary) -> void:
+	var color := Color("b36bff")
+	var to: Vector2 = p.to
+	for at: Vector3 in [_at(p, 1.2), Vector3(to.x, p.get("height", 0.0) + 1.2, to.y)]:
+		burst(at, {"color": color, "count": 24, "speed": 5.0, "up": 3.0, "size": 0.22, "life": 0.5})
+	ring(Vector3(to.x, p.get("height", 0.0), to.y), 3.0, {"color": color, "life": 0.35})
+
+
 func _fx_boss_wall(p: Dictionary) -> void:
 	ring(_at(p), 2.5, {"color": Color.WHITE, "life": 0.35})
 	burst(_at(p, 1.0), {"color": WALL_DEBRIS_COLOR, "count": 20, "speed": 6.0, "up": 5.0, "size": 0.22})
@@ -315,6 +325,10 @@ func _emit_continuous(dt: float) -> void:
 
 func _emit_player(p: Player, dt: float) -> void:
 	var a := p.anim
+	# 暈眩（v0.27.0：被 Boss 衝鋒撞到）：頭上轉圈的星星，同 Boss 撞牆暈眩
+	if a.get("stunned", false):
+		for i in _count("%d:stun" % p.id, 0.2, dt):
+			mote(_jitter(p, 0.4, p.height + p.body_height + 0.2), {"color": STUN_STAR_COLOR, "size": 0.13, "life": 0.4, "vy": 0.4})
 	# 奧術爆裂蓄力：魔力粒子往杖頭聚集
 	if a.get("behavior") == &"arcaneBurst" and a.get("phase") == &"windup":
 		var c: Dictionary = p.weapon.special

@@ -76,6 +76,9 @@ func _initialize() -> void:
 	_check("撿武器（D4）：裝備欄有空先放裝備欄（不換手上的），滿了放背包（背包裡沒效果），都滿了撿不起來；裝備欄 ↔ 背包搬動、手上至少留一把", _check_weapon_pickup)
 	_check("武器合成（D4）：兩把同種同稀有度拖在一起 → 高一級、詞條重抽、放在被拖上去的位置；不同種 / 不同稀有度 / 橘色不能合成；合成手上那把屬性立刻更新", _check_weapon_merge)
 	_check("連線武器（D4）：客戶端按 Q 切換、拖曳合成，房主與客戶端的裝備欄、手上武器、詞條一致；殺怪掉的武器兩邊都看得到", NetChecks.check_net_weapons)
+	_check("二段跳（v0.27.0）：沒有道具時空中跳不了；放進雙躍之靴後空中可再跳一次、最高超過 1.5、第三次跳不了；落地後重置", _check_double_jump)
+	_check("法杖與遠程（v0.27.0）：普攻 0.56 秒一發（原本 0.28）、打中骷髏不擊退也不硬直；奧術爆裂照常", _check_staff_changes)
+	_check("武器基礎數值（v0.27.0）：白劍盾攻擊力 12 / 攻速 2.78 / 範圍 2.3，綠色 14.4 / 2.92 / 2.42；裝上綠劍盾後攻擊力 ×1.2、揮砍距離 ×1.05", _check_weapon_base_stats)
 	_check("格擋判定：正前方 ±60° 擋下揮砍與箭（不扣血、箭消失）、背後擋不住；Boss 衝鋒擋得住但推退 100%、只判定一次；Boss 砸地擋不住；0.2 秒內完美格擋觸發盾反 25 傷害並結束格擋", _check_block_hits)
 	_check("受擊：扣血後進入 stagger（移速 ×0.4、0.15 秒）、無敵 0.6 秒、畫面震動", _check_stagger)
 	_check("輸入緩衝：攻擊中按右鍵會在後搖取消並接特殊技；0.25 秒後過期", _check_buffer)
@@ -89,9 +92,11 @@ func _initialize() -> void:
 	_check("一局流程：5 波依序開始、打倒 Boss 後 is_over、2.2 秒後 game:victory、擊殺數正確", _check_full_run)
 	_check("近戰小怪：爬出 0.7 秒後追擊、揮砍傷害 12、間隔 ≥ 1.2 秒（v0.17.0 取代接觸傷害 10 / 0.8 秒）；受擊硬直 0.22 秒", _check_melee_enemy)
 	_check("遠程小怪：瞄準 0.75 秒後射出 12 傷害的箭、保持 6~10 單位距離", _check_ranged_enemy)
-	_check("Boss 重砸：近身時前搖 0.85 秒後造成 26 傷害、CD 3.5 秒；霸體不硬直、擊退 ×0.12", _check_boss_slam)
-	_check("Boss 衝鋒：蓄力 0.75 秒、15 單位/秒、命中 22 傷害、撞牆暈眩 1.6 秒", _check_boss_charge)
-	_check("Boss 召喚與狂暴：血量 ≤ 75% 召喚 3 隻、≤ 50% 狂暴（移速 ×1.3、CD ×0.65）", _check_boss_summon_enrage)
+	_check("Boss 砸地（v0.27.0）：近身時前搖 0.7 秒後 26 傷害、擊飛 + 移速減半、CD 2.45 秒；紅圈 3 / 6 / 9 一圈圈往外（外圈晚 0.5 秒）、每人只被打一次；霸體不硬直、擊退 ×0.12", _check_boss_slam)
+	_check("Boss 衝鋒（v0.27.0）：蓄力 0.45 秒、15 單位/秒、命中 22 傷害並讓玩家暈眩 0.8 秒、撞牆自己暈眩 1.6 秒", _check_boss_charge)
+	_check("Boss 直劈（v0.27.0）：沒有地面預警；舉劍 0.6 秒後劈下；追蹤只做一半，繞圈走位躲得開", _check_boss_cleave)
+	_check("Boss 狂暴招式（v0.27.0）：衝鋒連 3 次；召喚的骷髏戰士衝撞一次；砸地不管多遠都放（玩家腳下預警 0.6 秒 → 瞬移 → 0.3 秒後砸）", _check_boss_enraged_moves)
+	_check("Boss 召喚與狂暴（v0.27.0）：血量 ≤ 75% 召喚 4 隻（骷髏戰士 / 弓手隨機）、≤ 50% 狂暴（移速 ×1.3、CD ×0.6、前搖 ×0.75）", _check_boss_summon_enrage)
 	_check("碰撞分離：格子切分與兩兩比對結果一致（80 個實體）", _check_grid_matches_brute_force)
 	_check("決定性：有敵人與波次時，同種子、同輸入的兩個 World 結果相同", _check_determinism_with_enemies)
 	_check("記憶體：敵人移除後 CD 清除、實體會被釋放", _check_enemy_release)
@@ -134,7 +139,7 @@ func _initialize() -> void:
 	_check("手感：劍盾普攻前衝同網頁版公式（3.5、第三段 ×1.25），連段 0.35 秒內接下一段、超過就重來", _check_feel_lunge_combo)
 	_check("手感：斬擊扇形範圍與網頁版 querySector 完全一致（距離 2.3、角度 117°、加目標半徑、貼身必中）", _check_feel_sector)
 	_check("手感：生成間隔 0.35 秒、開波 0.6 秒後出第一隻、清空 2.5 秒後開下一波，步數與網頁版計時器完全相同", _check_feel_wave_timing)
-	_check("手感：小怪移速 = 基礎 × 波次成長 × 隨機 ±變異、Boss 固定 2.2；弓手箭速 10、射程 18", _check_feel_enemy_speed)
+	_check("手感：小怪移速 = 基礎 × 波次成長 × 隨機 ±變異、Boss 固定 3.0（v0.27.0 加強）；弓手箭速 10、射程 18", _check_feel_enemy_speed)
 	_check("誤傷（C2）：玩家揮劍打得到前方的隊友（12 傷害）、打不到自己；魔彈打得到隊友、不打發射者；單機目標不含自己", NetChecks.check_friendly_fire)
 	_check("人數調整（C3 決定）：敵人數量不變、血量每多 1 人 +50%（1 / 2 / 4 人 ×1 / ×1.5 / ×2.5，Boss 也是）", NetChecks.check_player_count_scaling)
 	_check("倒下（C4）：多人時生命歸零先倒地假死（不能動、不被打、不被追），10 秒沒人救才死亡；最後一人倒下全員死亡並 game:defeat；單機倒下直接死亡", NetChecks.check_downed)
@@ -656,7 +661,7 @@ func _check_block_hits() -> String:
 	var p5 := _player(w5)
 	var boss := _spawn(w5, &"boss", Vector2(0, 2.0))
 	_run(w5, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 20)
-	boss.slam_impact()
+	boss.slam_ring(0, {})
 	if p5.hp >= p5.max_hp:
 		return "Boss 砸地不能被格擋"
 	return ""
@@ -987,29 +992,59 @@ func _check_ranged_enemy() -> String:
 	return ""
 
 
+# v0.27.0：砸地的紅圈一圈圈往外擴散（3 / 6 / 9，每圈隔 0.25 秒），打到擊飛 + 移速減半 2 秒
 func _check_boss_slam() -> String:
+	var s: Dictionary = EnemyDefs.ENEMIES.boss.slam
 	var w := _new_world(3)
 	var p := _player(w)
-	var b := _spawn(w, &"boss", Vector2(0, 3))
+	var b := _spawn(w, &"boss", Vector2(0, 2.5))
 	if w.boss_id != b.id:
 		return "world.boss_id 沒有記錄 Boss"
+	w.cooldowns.start(b.cd("cleave"), 99.0)   # 只測砸地
 	var events: Array[Dictionary] = []
-	var slam_start := _run_until(w, _cmd(Vector2.ZERO), 60 * 4, events, func() -> bool: return b.fsm.is_in(&"slam"))
-	if slam_start < 0:
-		return "4 秒內沒有重砸（狀態 %s）" % b.fsm.current_name
+	if _run_until(w, _cmd(Vector2.ZERO), 60 * 4, events, func() -> bool: return b.fsm.is_in(&"slam")) < 0:
+		return "4 秒內沒有砸地（狀態 %s）" % b.fsm.current_name
 	var start_tick := w.tick
-	var hit := _run_until(w, _cmd(Vector2.ZERO), 120, events, func() -> bool: return not _damage_amounts(w.events, p.id).is_empty())
-	if hit < 0 or _damage_amounts(w.events, p.id) != [26]:
-		return "重砸傷害 %s，預期 [26]" % [_damage_amounts(events, p.id)]
+	if _run_until(w, _cmd(Vector2.ZERO), 120, events, func() -> bool: return not _damage_amounts(w.events, p.id).is_empty()) < 0 \
+			or _damage_amounts(w.events, p.id) != [26]:
+		return "砸地傷害 %s，預期 [26]" % [_damage_amounts(events, p.id)]
 	var windup := (w.tick - start_tick) * DT
-	if absf(windup - 0.85) > DT * 1.5:
-		return "前搖 %.3f 秒，預期 0.85" % windup
+	if absf(windup - s.windup) > DT * 1.5:
+		return "前搖 %.3f 秒，預期 %.2f" % [windup, s.windup]
+	if p.vz <= 0.0 or absf(p.stats.value(&"move_speed") - Config.PLAYER.move_speed * s.slow_mul) > EPS:
+		return "被砸到應擊飛並緩速：vz %.2f、移速 %.2f" % [p.vz, p.stats.value(&"move_speed")]
 	var cd := w.cooldowns.remaining(b.cd("slam"))
-	if absf(cd - (3.5 - windup)) > DT * 2:
-		return "重砸 CD 剩 %.3f，預期約 %.3f" % [cd, 3.5 - windup]
+	if absf(cd - (s.cooldown - windup)) > DT * 2:
+		return "砸地 CD 剩 %.3f，預期約 %.3f" % [cd, s.cooldown - windup]
 	b.take_damage(10.0, Vector2(0, 1), 100.0, p.id)
 	if b.fsm.is_in(&"hurt") or absf(b.knockback.length() - 100.0 * 0.12 / 30.0) > EPS:
 		return "Boss 不應硬直，擊退應為 100 × 0.12 / 質量 30 = 0.4，實際 %.3f" % b.knockback.length()
+	# 外圈：站在 7.5 的玩家在第 3 圈（0.5 秒後）才被打到；站在 1 的玩家只被第 1 圈打一次
+	var w2 := World.new(&"test_arena")
+	w2.reset(9, [1, 2])
+	w2.spawner.finished = true
+	_worlds.append(w2)
+	var near: Player = w2.players[1]
+	var far: Player = w2.players[2]
+	near.pos = Vector2(1, 0)
+	far.pos = Vector2(7.5, 0)
+	var b2: Boss = _spawn(w2, &"boss", Vector2.ZERO)
+	_run(w2, _cmd(Vector2.ZERO), roundi(EnemyDefs.ENEMIES.boss.spawn_time / DT) + 2)
+	b2.fsm.change(&"slam", {"target": Vector2.INF})
+	var times := {}
+	for i in 120:
+		near.hp = near.max_hp
+		far.hp = far.max_hp
+		w2.step({1: _cmd(Vector2.ZERO), 2: _cmd(Vector2.ZERO)}, DT)
+		for e in _named(w2.events, "entity:damaged"):
+			times[e.target_id] = times.get(e.target_id, []) + [i + 1]
+	var t_near: Array = times.get(near.id, [])
+	var t_far: Array = times.get(far.id, [])
+	if t_near.size() != 1 or t_far.size() != 1:
+		return "每人應只被打一次：近 %s、遠 %s" % [t_near, t_far]
+	var gap: float = (t_far[0] - t_near[0]) * DT
+	if absf(gap - 2.0 * s.ring_delay) > DT * 1.5:
+		return "第 3 圈應比第 1 圈晚 %.2f 秒，實際 %.3f" % [2.0 * s.ring_delay, gap]
 	return ""
 
 
@@ -1021,15 +1056,18 @@ func _check_boss_charge() -> String:
 	var events: Array[Dictionary] = []
 	if _run_until(w, _cmd(Vector2.ZERO), 60 * 5, events, func() -> bool: return b.fsm.is_in(&"charge")) < 0:
 		return "5 秒內沒有衝鋒（狀態 %s）" % b.fsm.current_name
+	var c: Dictionary = EnemyDefs.ENEMIES.boss.charge
 	var windup_steps := _run_until(w, _cmd(Vector2.ZERO), 120, events, func() -> bool: return b.fsm.data.phase == &"dash")
-	if absf(windup_steps * DT - 0.75) > DT * 1.5:
-		return "蓄力 %.3f 秒，預期 0.75" % (windup_steps * DT)
+	if absf(windup_steps * DT - c.windup) > DT * 1.5:
+		return "蓄力 %.3f 秒，預期 %.2f" % [windup_steps * DT, c.windup]
 	_run_collect(w, _cmd(Vector2.ZERO), 1, events)
 	if absf(b.velocity.length() - 15.0) > EPS:
 		return "衝刺速度 %.3f，預期 15" % b.velocity.length()
 	# 命中後把玩家移出路線，否則玩家被擊退到牆邊會擋住 Boss，測不到撞牆
 	if _run_until(w, _cmd(Vector2.ZERO), 60, events, func() -> bool: return not _damage_amounts(w.events, p.id).is_empty()) < 0:
 		return "衝刺沒有撞到玩家"
+	if absf(p.stun_timer - c.stun) > DT * 1.5 or not p.anim.get("stunned", false) and p.stun_timer <= 0.0:
+		return "被衝鋒撞到應暈眩 %.1f 秒，實際 %.3f" % [c.stun, p.stun_timer]
 	p.pos = Vector2(-12, -12)
 	if _run_until(w, _cmd(Vector2.ZERO), 120, events, func() -> bool: return b.fsm.data.get("phase") == &"stunned") < 0:
 		return "沒有撞牆暈眩（階段 %s）" % b.fsm.data.get("phase")
@@ -1051,24 +1089,135 @@ func _check_boss_summon_enrage() -> String:
 	var events: Array[Dictionary] = []
 	if _run_until(w, _cmd(Vector2.ZERO), 60 * 4, events, func() -> bool: return b.fsm.is_in(&"summon")) < 0:
 		return "血量 600/900 時 4 秒內沒有召喚（狀態 %s）" % b.fsm.current_name
-	_run_collect(w, _cmd(Vector2.ZERO), ceili(1.0 / DT) + 1, events)
-	var minions := w.enemies.filter(func(e: Entity) -> bool: return e.kind == &"grunt")
-	if minions.size() != 3:
-		return "召喚 %d 隻，預期 3" % minions.size()
+	var su: Dictionary = EnemyDefs.ENEMIES.boss.summon
+	_run_collect(w, _cmd(Vector2.ZERO), ceili(su.windup / DT) + 1, events)
+	var minions := w.enemies.filter(func(e: Entity) -> bool: return e.kind == &"grunt" or e.kind == &"archer")
+	if minions.size() != su.count:
+		return "召喚 %d 隻，預期 %d" % [minions.size(), su.count]
 	for m in minions:
 		if absf(m.pos.distance_to(b.pos) - 2.5) > 0.3:
 			return "召喚的小怪離 Boss %.2f，預期 2.5" % m.pos.distance_to(b.pos)
+	# 召喚的種類是隨機的：多召喚幾次，骷髏戰士與弓手都要出現
+	var kinds := {}
+	for i in 10:
+		b.summon_minions()
+	for e: Entity in w.enemies:
+		kinds[e.kind] = true
+	if not kinds.has(&"grunt") or not kinds.has(&"archer"):
+		return "召喚應隨機出現骷髏戰士與弓手，實際 %s" % kinds.keys()
+	for e: Entity in w.enemies.duplicate():
+		if e != b and not minions.has(e):
+			e.remove()
+	w._remove_dead_entities()
 	Combat.apply_damage(w, p, b, {"damage": 160.0})
 	if not b.is_enraged or _named(w.events, "boss:enraged").is_empty():
 		return "血量 %.0f/900 應進入狂暴" % b.hp
-	if absf(b.enrage_mul("speed_mul") - 1.3) > EPS or absf(b.enrage_mul("cooldown_mul") - 0.65) > EPS:
+	if absf(b.enrage_mul("speed_mul") - 1.3) > EPS or absf(b.enrage_mul("cooldown_mul") - 0.6) > EPS or absf(b.enrage_mul("windup_mul") - 0.75) > EPS:
 		return "狂暴倍率錯誤"
 	for m in minions:
 		m.die()
 	if _run_until(w, _cmd(Vector2.ZERO), 60 * 3, events, func() -> bool: return b.fsm.is_in(&"chase") and b.velocity != Vector2.ZERO) < 0:
 		return "狂暴後沒有回到追擊"
-	if absf(b.velocity.length() - 2.2 * 1.3) > EPS:
-		return "狂暴移速 %.3f，預期 %.3f" % [b.velocity.length(), 2.2 * 1.3]
+	if absf(b.velocity.length() - 3.0 * 1.3) > EPS:
+		return "狂暴移速 %.3f，預期 %.3f" % [b.velocity.length(), 3.0 * 1.3]
+	return ""
+
+
+# v0.27.0 新招直劈：沒有地面預警事件；舉劍 0.6 秒後劈下；前半段只用一半轉速跟著玩家 → 繞圈就躲得開
+func _check_boss_cleave() -> String:
+	var c: Dictionary = EnemyDefs.ENEMIES.boss.cleave
+	for case in [["站著不動", false], ["繞圈走位", true]]:
+		var w := _new_world(4)
+		var p := _player(w)
+		p.pos = Vector2(0, 3)
+		var b: Boss = _spawn(w, &"boss", Vector2.ZERO)
+		_run(w, _cmd(Vector2.ZERO), roundi(EnemyDefs.ENEMIES.boss.spawn_time / DT) + 2)
+		b.facing = 0.0
+		b.fsm.change(&"cleave")
+		var events: Array[Dictionary] = []
+		var hit_at := -1
+		for i in roundi((c.windup + c.active + 0.1) / DT):
+			var move := Vector2.ZERO
+			if case[1]:
+				move = Vector2(1, 0).rotated(-float(i) * 0.03)   # 繞著 Boss 往側面跑
+			p.hp = p.max_hp
+			_run_collect(w, _cmd(move), 1, events)
+			if p.hp < p.max_hp and hit_at < 0:
+				hit_at = i + 1
+		if not _named(events, "fx:telegraph").is_empty():
+			return "直劈不應有地面預警"
+		if case[1] and hit_at >= 0:
+			return "繞圈走位應躲得開直劈（第 %d 步被打到，玩家在 %s）" % [hit_at, p.pos]
+		if not case[1] and absf(hit_at * DT - c.windup) > DT * 2.5:
+			return "站著不動應在舉劍 %.2f 秒後被劈到，實際 %.3f" % [c.windup, hit_at * DT]
+	return ""
+
+
+# v0.27.0 狂暴：衝鋒連 3 次；召喚的骷髏戰士衝撞一次；砸地不管多遠都放（玩家腳下預警 → 瞬移 → 砸）
+func _check_boss_enraged_moves() -> String:
+	var en: Dictionary = EnemyDefs.ENEMIES.boss.enrage
+	var w := _new_world(6)
+	var p := _player(w)
+	p.pos = Vector2(0, 12)
+	var b: Boss = _spawn(w, &"boss", Vector2(0, -12))
+	_run(w, _cmd(Vector2.ZERO), roundi(EnemyDefs.ENEMIES.boss.spawn_time / DT) + 2)
+	b.is_enraged = true
+	b.fsm.change(&"charge")
+	var dashes := 0
+	var prev := &""
+	for i in 60 * 6:
+		p.hp = p.max_hp
+		p.pos = Vector2(0, 12) if i % 120 < 60 else Vector2(0, -12)
+		w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO)}, DT)
+		if not b.fsm.is_in(&"charge"):
+			break
+		var ph: StringName = b.fsm.data.phase
+		if ph == &"dash" and prev != &"dash":
+			dashes += 1
+		prev = ph
+	if dashes != en.charge_count:
+		return "狂暴衝鋒應連衝 %d 次，實際 %d" % [en.charge_count, dashes]
+	# 召喚的骷髏戰士爬出來後衝撞一次
+	var w2 := _new_world(7)
+	var p2 := _player(w2)
+	var b2: Boss = _spawn(w2, &"boss", Vector2(0, -8))
+	b2.is_enraged = true
+	b2.summon_minions()
+	var rushed := {}
+	for i in 60 * 3:
+		p2.hp = p2.max_hp
+		w2.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO)}, DT)
+		for e: Entity in w2.enemies:
+			if e is MeleeEnemy and (e as MeleeEnemy).fsm.is_in(&"rush"):
+				rushed[e.id] = true
+	var grunts := w2.enemies.filter(func(e: Entity) -> bool: return e is MeleeEnemy)
+	if grunts.is_empty() or rushed.size() != grunts.size():
+		return "狂暴召喚的骷髏戰士都應衝撞一次：%d 隻裡 %d 隻衝了" % [grunts.size(), rushed.size()]
+	# 瞬移砸地：玩家在 20 單位外也會放；先在玩家腳下預警 teleport_warn 秒，瞬移後 teleport_windup 秒砸下
+	var w3 := _new_world(8)
+	var p3 := _player(w3)
+	p3.pos = Vector2(0, 12)
+	var b3: Boss = _spawn(w3, &"boss", Vector2(0, -8))
+	_run(w3, _cmd(Vector2.ZERO), roundi(EnemyDefs.ENEMIES.boss.spawn_time / DT) + 2)
+	b3.is_enraged = true
+	w3.cooldowns.start(b3.cd("charge"), 99.0)
+	w3.cooldowns.start(b3.cd("summon"), 99.0)
+	w3.cooldowns.reset(b3.cd("slam"))
+	var events: Array[Dictionary] = []
+	if _run_until(w3, _cmd(Vector2.ZERO), 60, events, func() -> bool: return b3.fsm.is_in(&"slam")) < 0:
+		return "狂暴時離玩家 20 單位也應砸地"
+	var warn := _named(events, "fx:telegraph")
+	if warn.is_empty() or (warn.back().pos as Vector2).distance_to(p3.pos) > 1.0:
+		return "瞬移前應在玩家腳下預警"
+	var start := w3.tick
+	if _run_until(w3, _cmd(Vector2.ZERO), 120, events, func() -> bool: return b3.pos.distance_to(p3.pos) < 3.0) < 0:
+		return "Boss 應瞬移到玩家旁邊"
+	if absf((w3.tick - start) * DT - en.teleport_warn) > DT * 2:
+		return "預警 %.3f 秒後才瞬移，預期 %.2f" % [(w3.tick - start) * DT, en.teleport_warn]
+	var tp := w3.tick
+	if _run_until(w3, _cmd(Vector2.ZERO), 120, events, func() -> bool: return b3.fsm.data.get("phase") == &"impact") < 0 \
+			or absf((w3.tick - tp) * DT - en.teleport_windup) > DT * 2:
+		return "瞬移後應 %.2f 秒砸下，實際 %.3f" % [en.teleport_windup, (w3.tick - tp) * DT]
 	return ""
 
 
@@ -2422,8 +2571,11 @@ func _check_weapon_affixes() -> String:
 	if p.weapon_slots[1].is_empty() or p.active_slot != 0 or absf(p.stats.value(&"damage") - 1.0) > EPS:
 		return "撿到的武器應放第 2 格、不換手上、詞條不生效：攻擊力 %.2f" % p.stats.value(&"damage")
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SWAP_WEAPON), 1)
-	if p.active_slot != 1 or p.weapon_id != &"staff" or absf(p.stats.value(&"damage") - 1.1) > EPS or absf(p.stats.value(&"attack_speed") - 1.1) > EPS:
-		return "按 Q 換成藍法杖後攻擊力 / 攻速應為 1.10：%s、%.2f / %.2f" % [p.weapon_id, p.stats.value(&"damage"), p.stats.value(&"attack_speed")]
+	# v0.27.0 起稀有度有基礎倍率：藍色攻擊力 ×1.4、攻速 ×1.10，再乘詞條的 +10%
+	var want_dmg: float = WeaponDropDefs.RARITY_BASE.blue.damage * 1.1
+	var want_spd: float = WeaponDropDefs.RARITY_BASE.blue.attack_speed * 1.1
+	if p.active_slot != 1 or p.weapon_id != &"staff" or absf(p.stats.value(&"damage") - want_dmg) > EPS or absf(p.stats.value(&"attack_speed") - want_spd) > EPS:
+		return "按 Q 換成藍法杖後攻擊力 / 攻速應為 %.2f / %.2f：%s、%.2f / %.2f" % [want_dmg, want_spd, p.weapon_id, p.stats.value(&"damage"), p.stats.value(&"attack_speed")]
 	_run(w, _cmd(Vector2.ZERO), 1)
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SWAP_WEAPON), 1)
 	if p.active_slot != 0 or p.weapon_id != &"swordShield" or absf(p.stats.value(&"damage") - 1.0) > EPS:
@@ -2522,6 +2674,80 @@ func _check_weapon_merge() -> String:
 	return ""
 
 
+func _check_double_jump() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var peak := func(presses: Array) -> float:
+		var top := 0.0
+		for i in 90:
+			var jump := presses.has(i)
+			_run(w, _jump_cmd() if jump else _cmd(Vector2.ZERO), 1)
+			top = maxf(top, p.height)
+		return top
+	var h1: float = peak.call([0, 15])
+	if h1 > Config.JUMP.height + 0.01:
+		return "沒有道具時空中不應再跳（最高 %.2f）" % h1
+	if p.add_item(&"twin_leap_boots") == &"":
+		return "雙躍之靴應放得進背包"
+	var h2: float = peak.call([0, 15, 30])
+	if h2 <= Config.JUMP.height + 0.3:
+		return "有雙躍之靴時空中應能再跳（最高 %.2f）" % h2
+	var h3: float = peak.call([0, 15, 30])
+	if absf(h3 - h2) > 0.01:
+		return "落地後應重置空中跳躍次數：第二次最高 %.2f，第一次 %.2f" % [h3, h2]
+	return ""
+
+
+func _check_staff_changes() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	p.equip_weapon(&"staff")
+	var events: Array[Dictionary] = []
+	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 120, events)
+	var shots := _named(events, "fx:muzzle").size()
+	# 2 秒、每發 0.56 秒：4 發（原本 0.28 秒是 8 發）
+	if shots != 4:
+		return "法杖 2 秒普攻 %d 發，預期 4（0.56 秒一發）" % shots
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	p2.equip_weapon(&"staff")
+	var g := _spawn(w2, &"grunt", Vector2(0, 5))
+	_run(w2, _cmd(Vector2.ZERO), roundi(EnemyDefs.ENEMIES.grunt.spawn_time / DT) + 2)
+	var hp := g.hp
+	var hurt := false
+	for i in 40:
+		_run(w2, _cmd(Vector2.ZERO, g.pos, InputCmd.BTN_ATTACK), 1)
+		hurt = hurt or g.fsm.is_in(&"hurt")
+		if g.hp < hp:
+			break
+	if g.hp >= hp:
+		return "魔彈應打中骷髏"
+	if hurt or g.fsm.is_in(&"hurt") or g.knockback.length() > EPS:
+		return "遠程普攻不應讓骷髏硬直或擊退：硬直 %s、擊退 %.3f" % [hurt or g.fsm.is_in(&"hurt"), g.knockback.length()]
+	return ""
+
+
+func _check_weapon_base_stats() -> String:
+	var white := WeaponDropDefs.base_stats({"base": &"swordShield", "rarity": &"white"})
+	var green := WeaponDropDefs.base_stats({"base": &"swordShield", "rarity": &"green"})
+	if absf(white.damage - 12.0) > EPS or absf(white.attack_speed - 1.0 / 0.36) > 0.01 or absf(white.range - 2.3) > EPS:
+		return "白劍盾應為 12 / 2.78 / 2.3，實際 %.2f / %.2f / %.2f" % [white.damage, white.attack_speed, white.range]
+	if absf(green.damage - 14.4) > EPS or absf(green.attack_speed - 1.05 / 0.36) > 0.01 or absf(green.range - 2.415) > EPS:
+		return "綠劍盾應為 14.4 / 2.92 / 2.42，實際 %.2f / %.2f / %.2f" % [green.damage, green.attack_speed, green.range]
+	var w := _new_world()
+	var p := _player(w)
+	p.weapon_slots[0] = {"uid": &"g", "base": &"swordShield", "rarity": &"green", "affixes": [] as Array[StringName]}
+	p._apply_active_weapon()
+	if absf(p.stats.value(&"damage") - 1.2) > EPS or absf(p.weapon_range_mul() - 1.05) > EPS:
+		return "裝上綠劍盾：攻擊力 %.2f（應 1.2）、範圍倍率 %.2f（應 1.05）" % [p.stats.value(&"damage"), p.weapon_range_mul()]
+	var events: Array[Dictionary] = []
+	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 15, events)
+	var slash := _named(events, "fx:slash")
+	if slash.is_empty() or absf(slash[0].range - 2.3 * 1.05) > EPS:
+		return "綠劍盾揮砍距離應為 %.3f" % (2.3 * 1.05)
+	return ""
+
+
 func _check_map_spawns() -> String:
 	var w := _new_world(12345, true, &"graveyard_a")
 	var p := _player(w)
@@ -2575,11 +2801,11 @@ func _check_height_hits() -> String:
 	var boss := _spawn(w2, &"boss", Vector2(0, 2.0))
 	p2.height = 0.8
 	var hp2 := p2.hp
-	boss.slam_impact()
+	boss.slam_ring(0, {})
 	if p2.hp != hp2:
 		return "腳底 0.8 時不應被砸地打到"
 	p2.height = 0.0
-	boss.slam_impact()
+	boss.slam_ring(0, {})
 	if p2.hp >= hp2:
 		return "站在地面應被砸地打到"
 
@@ -2734,7 +2960,7 @@ func _check_hit_feel() -> String:
 		return "玩家被打應震動"
 	var boss := _spawn(w3, &"boss", Vector2(0, 8))
 	w3.events.clear()
-	boss.slam_impact()
+	boss.slam_ring(0, {})
 	if _named(w3.events, "camera:shake").is_empty():
 		return "Boss 砸地應震動"
 	# 命中定格 v0.19.1 起關閉：打中後模型照常跟著實際位置
@@ -2799,7 +3025,7 @@ func _check_effects_events() -> String:
 	_run_collect(w2, _cmd(Vector2.ZERO), 90, events)
 	var boss := _spawn(w2, &"boss", Vector2(0, 8))
 	w2.events.clear()
-	boss.slam_impact()
+	boss.slam_ring(0, {})
 	events.append_array(w2.events)
 	for name in ["fx:slash", "fx:muzzle", "fx:fizzle", "fx:telegraph", "fx:explosion", "fx:boss_slam", "entity:damaged"]:
 		if _named(events, name).is_empty():
@@ -3181,8 +3407,8 @@ func _check_feel_enemy_speed() -> String:
 				_feel("%s 第 3 波移速：網頁版範圍 %.3f~%.3f，Godot 40 隻實測 %.3f~%.3f" % [type, lo, hi, s_min, s_max])
 	w.spawner.wave = 5
 	var boss := _spawn(w, &"boss", Vector2(-10, -10))
-	if boss.speed != 2.2:
-		return "Boss 移速 %.3f，預期固定 2.2" % boss.speed
+	if boss.speed != 3.0:   # v0.27.0 使用者要求 Boss 加強（網頁版 2.2）
+		return "Boss 移速 %.3f，預期固定 3.0" % boss.speed
 	boss.remove()
 
 	# 弓手箭：射出後把玩家移開讓箭落空，量速度與最遠距離
@@ -3270,6 +3496,11 @@ const WEB_DIVERGENCE := {
 # 整段不比對的路徑
 const WEB_DIVERGENCE_PATHS := {
 	"WEAPONS.swordShield.special": "v0.18.0 B5：使用者決定劍盾右鍵從盾擊衝鋒改成格擋與盾反",
+	"WEAPONS.staff.attack.knockback": "v0.27.0：使用者決定遠程武器的普攻不擊退",
+	"WEAPONS.staff.attack.windup": "v0.27.0：使用者決定法杖普攻攻速減半（三段時間都 ×2）",
+	"WEAPONS.staff.attack.active": "同上",
+	"WEAPONS.staff.attack.recovery": "同上",
+	"ENEMIES.boss": "v0.27.0：使用者決定 Boss 加強（跑速、招式範圍、新招直劈、狂暴進化），不再照網頁版",
 }
 
 

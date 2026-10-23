@@ -232,4 +232,6 @@ static func stat_mods(id: StringName) -> Array:
 
 # 效果是否已接上遊戲（目前只有屬性；條件、觸發、能力之後才做）
 static func is_implemented(effect: Dictionary) -> bool:
+	if effect.get("ability", &"") == &"double_jump":   # v0.27.0（Player.air_jumps）
+		return true
 	return effect.has("stat") and not effect.has("when") and StatDefs.STATS[effect.stat].in_use

@@ -212,7 +212,8 @@ func _draw_slots(font: Font, me: Player) -> void:
 		draw_rect(r.grow(-3), Color(color.darkened(0.55), 0.4 if dim else 0.9))
 		draw_rect(r.grow(-3), UiKit.GOLD if active else color, false, 3.0 if active else 2.0)
 		draw_string(font, r.position + Vector2(12, 30), WeaponDropDefs.display_name(inst), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 20, 17, color)
-		draw_string(font, r.position + Vector2(12, 54), "詞條 %d 條" % inst.affixes.size(), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.7))
+		var b := WeaponDropDefs.base_stats(inst)
+		draw_string(font, r.position + Vector2(12, 54), "攻擊力 %.1f · 詞條 %d 條" % [b.damage, inst.affixes.size()], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.7))
 
 
 func _draw_item(font: Font, id: StringName, cell: Vector2i, rot: int, rarity: StringName, alpha: float) -> void:
@@ -248,11 +249,14 @@ func _draw_info(font: Font, me: Player) -> void:
 		var rarity: Dictionary = ItemDefs.RARITIES[inst.rarity]
 		var title := WeaponDropDefs.display_name(inst) + ("（在背包裡不生效）" if in_bag else "")
 		draw_string(font, Vector2(PAD, y), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 17, rarity.color)
+		var b := WeaponDropDefs.base_stats(inst)
+		draw_string(font, Vector2(PAD, y + 22), "攻擊力 %.1f · 攻速 %.2f 次/秒 · 範圍 %.1f" % [b.damage, b.attack_speed, b.range],
+			HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 14, Color.WHITE)
 		var lines: Array[String] = []
 		for a: StringName in inst.affixes:
 			lines.append(WeaponDropDefs.AFFIXES[a].desc)
-		var text := "沒有詞條" if lines.is_empty() else " · ".join(lines)
-		draw_multiline_string(font, Vector2(PAD, y + 24), text, HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 14, -1, Color(1, 1, 1, 0.85))
+		var text := "沒有詞條" if lines.is_empty() else "詞條：" + " · ".join(lines)
+		draw_multiline_string(font, Vector2(PAD, y + 44), text, HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 14, -1, Color(1, 1, 1, 0.8))
 		return
 	if e.is_empty():
 		return
