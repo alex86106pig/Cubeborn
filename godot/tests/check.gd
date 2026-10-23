@@ -72,10 +72,11 @@ func _initialize() -> void:
 	_check("寶箱稀有度（D3）：各抽 20000 次，小箱 白 70 / 綠 25 / 藍 5、大箱 綠 50 / 藍 35 / 紫 13 / 橘 2（誤差 ±1.5%），不會開出武器", _check_chest_rarity)
 	_check("撿道具（D3）：按 F 撿起最近的道具放進背包並生效；剛按下那一步才算（按住不會連撿）；兩人同一步按 F 只有一人拿到；丟掉後道具回到地上、效果移除；附近有倒地隊友時 F 先救人", _check_pickups)
 	_check("武器掉落（D4）：小怪死 5000 次約掉 4%（3.1~4.9%）、Boss 必掉；稀有度各抽 20000 次，小怪 白 60 / 綠 25 / 藍 12 / 紫 3、Boss 藍 60 / 紫 30 / 橘 10（±1.5%）", _check_weapon_drops)
-	_check("武器詞條（D4）：白 0 / 綠 1 / 藍 2 / 紫 3 / 橘 4 條不重複；只有手上那把生效，Q 切換後屬性跟著換；另一格空的不能切", _check_weapon_affixes)
+	_check("武器詞條（D4）：白 0 / 綠 1 / 藍 2 / 紫 3 / 橘 4 條不重複；只有手上那把生效，X 切換後屬性跟著換；另一格空的不能切", _check_weapon_affixes)
+	_check("新手提示（v0.31.0）：換武器鍵是 X；開場跳操作與挖墳；撿到東西、開背包、可合成、出口打開、隊友倒地各跳一次；看過不再跳、排隊中條件不成立就跳過；重設後再跳", _check_hints)
 	_check("撿武器（D4）：裝備欄有空先放裝備欄（不換手上的），滿了放背包（背包裡沒效果），都滿了撿不起來；裝備欄 ↔ 背包搬動、手上至少留一把", _check_weapon_pickup)
 	_check("武器合成（D4）：兩把同種同稀有度拖在一起 → 高一級、詞條重抽、放在被拖上去的位置；不同種 / 不同稀有度 / 橘色不能合成；合成手上那把屬性立刻更新", _check_weapon_merge)
-	_check("連線武器（D4）：客戶端按 Q 切換、拖曳合成，房主與客戶端的裝備欄、手上武器、詞條一致；殺怪掉的武器兩邊都看得到", NetChecks.check_net_weapons)
+	_check("連線武器（D4）：客戶端按 X 切換、拖曳合成，房主與客戶端的裝備欄、手上武器、詞條一致；殺怪掉的武器兩邊都看得到", NetChecks.check_net_weapons)
 	_check("二段跳（v0.27.0）：沒有道具時空中跳不了；放進雙躍之靴後空中可再跳一次、最高超過 1.5、第三次跳不了；落地後重置", _check_double_jump)
 	_check("法杖與遠程（v0.27.0）：普攻 0.56 秒一發（原本 0.28）、打中骷髏不擊退也不硬直；奧術爆裂照常", _check_staff_changes)
 	_check("武器基礎數值（v0.27.0）：白劍盾攻擊力 12 / 攻速 2.78 / 範圍 2.3，綠色 14.4 / 2.92 / 2.42；裝上綠劍盾後攻擊力 ×1.2、揮砍距離 ×1.05", _check_weapon_base_stats)
@@ -2605,11 +2606,78 @@ func _check_weapon_affixes() -> String:
 	var want_dmg: float = WeaponDropDefs.RARITY_BASE.blue.damage * 1.1
 	var want_spd: float = WeaponDropDefs.RARITY_BASE.blue.attack_speed * 1.1
 	if p.active_slot != 1 or p.weapon_id != &"staff" or absf(p.stats.value(&"damage") - want_dmg) > EPS or absf(p.stats.value(&"attack_speed") - want_spd) > EPS:
-		return "按 Q 換成藍法杖後攻擊力 / 攻速應為 %.2f / %.2f：%s、%.2f / %.2f" % [want_dmg, want_spd, p.weapon_id, p.stats.value(&"damage"), p.stats.value(&"attack_speed")]
+		return "按 X 換成藍法杖後攻擊力 / 攻速應為 %.2f / %.2f：%s、%.2f / %.2f" % [want_dmg, want_spd, p.weapon_id, p.stats.value(&"damage"), p.stats.value(&"attack_speed")]
 	_run(w, _cmd(Vector2.ZERO), 1)
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SWAP_WEAPON), 1)
 	if p.active_slot != 0 or p.weapon_id != &"swordShield" or absf(p.stats.value(&"damage") - 1.0) > EPS:
-		return "再按 Q 換回劍盾，詞條應移除：攻擊力 %.2f" % p.stats.value(&"damage")
+		return "再按 X 換回劍盾，詞條應移除：攻擊力 %.2f" % p.stats.value(&"damage")
+	return ""
+
+
+func _check_hints() -> String:
+	if InputCollector.ACTIONS.swap_weapon != KEY_X:
+		return "換武器鍵應為 X（使用者 v0.31.0 指定）"
+	var w := _new_world(7, false, &"graveyard_a")
+	w.reset(7, [1, 2])
+	w.spawner.finished = true
+	var p: Player = w.players[1]
+	var p2: Player = w.players[2]
+	var h := Hints.new()
+	h.save_path = ""
+	var shown: Array[StringName] = []
+	# 每 0.1 秒模擬一次畫面更新，記錄依序跳出的提示
+	var tick := func(seconds: float, bag_open: bool = false) -> void:
+		for i in int(round(seconds / 0.1)):
+			h.update(0.1, w, p, bag_open)
+			if h.current != &"" and (shown.is_empty() or shown[-1] != h.current):
+				shown.append(h.current)
+	tick.call(20.0)
+	if Array(shown) != [&"controls", &"dig_goal"]:
+		h.free()
+		return "開場應依序跳操作、挖墳：%s" % [shown]
+	# 撿到第 2 把同種同色武器：背包提示與合成提示
+	var mk := func(uid: String) -> Dictionary:
+		return {"uid": StringName(uid), "base": &"swordShield", "rarity": &"white", "affixes": [] as Array[StringName]}
+	p.weapon_slots[0] = mk.call("w1")
+	p.add_weapon(mk.call("w2"))
+	tick.call(20.0)
+	tick.call(10.0, true)
+	if Array(shown.slice(2)) != [&"bag_open", &"craft", &"bag_ops"]:
+		h.free()
+		return "撿到可合成的武器、開背包後應跳 bag_open、craft、bag_ops：%s" % [shown]
+	# 看過的不再跳
+	tick.call(20.0, true)
+	if shown.size() != 5:
+		h.free()
+		return "看過的提示又跳了：%s" % [shown]
+	# 出口打開
+	w.event._start(w)
+	w.event.state = DigEvent.OPEN
+	tick.call(10.0)
+	if shown[-1] != &"exit":
+		h.free()
+		return "出口打開應跳 exit：%s" % [shown]
+	# 排隊中條件不成立就跳過：隊友倒地排進佇列，顯示前已經救起
+	p2.is_downed = true
+	h.current = &"bag_ops"   # 假裝還有一則在顯示，讓 revive 留在佇列
+	h.update(0.1, w, p, false)
+	if not h.queue.has(&"revive"):
+		h.free()
+		return "隊友倒地應排進 revive"
+	p2.is_downed = false
+	h.current = &""
+	tick.call(5.0)
+	if h.seen.has(&"revive"):
+		h.free()
+		return "隊友已經救起，revive 不該顯示"
+	# 重設後再跳
+	var before := shown.size()
+	h.reset_seen()
+	tick.call(10.0)
+	var first: StringName = shown[before] if shown.size() > before else &""
+	h.free()
+	if first != &"controls":
+		return "重設後應重新跳操作提示：%s" % first
 	return ""
 
 

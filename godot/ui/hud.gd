@@ -6,7 +6,7 @@ extends CanvasLayer
 signal quit_requested   # 暫停畫面按下「離開遊戲」
 
 # 手動分行（中文自動折行會斷在詞中間）
-const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 空白鍵 跳躍 · Shift 翻滾\n1~5 道具 · F 撿道具 / 開寶箱 / 按住救援隊友 · Tab 背包與屬性 · Esc 選單 · M 靜音 · R 重新開始\nQ / 滾輪 切換武器 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具（F3~F5 單機才有）"
+const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 空白鍵 跳躍 · Shift 翻滾\n1~5 道具 · F 撿道具 / 開寶箱 / 按住救援隊友 · Tab 背包與屬性 · Esc 選單 · M 靜音 · R 重新開始\nX / 滾輪 切換武器 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具（F3~F5 單機才有）"
 const FPS_INTERVAL := 0.5
 const HP_GHOST_SPEED := 0.5      # 殘影每秒縮短的比例
 const BOSS_GHOST_SPEED := 0.3
@@ -58,6 +58,8 @@ var _pause := ColorRect.new()
 var _pause_title := UiKit.label("已暫停", 56, Color.WHITE, 3)
 var _pause_hint := UiKit.label("按 Esc 繼續", 20)
 var _quit_button := Button.new()
+var _reset_hints_button := Button.new()
+var hints := Hints.new()   # 新手提示框（v0.31.0）
 var _tags := PlayerTags.new()
 var _fps_timer := 0.0
 var _fps_frames := 0
@@ -90,6 +92,7 @@ func local_player() -> Player:
 
 # 選單（Esc）：單機時是暫停畫面；連線時遊戲不會停，標題改成「選單」
 func show_menu(visible_: bool, title: String = "已暫停", hint: String = "按 Esc 繼續") -> void:
+	_reset_hints_button.text = "重新顯示提示"
 	_pause_title.text = title
 	_pause_hint.text = hint
 	_pause.visible = visible_
@@ -153,6 +156,12 @@ func _init() -> void:
 	_skill_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	root.add_child(_skill_bar)
 
+	# 下方中央、技能欄上面：新手提示（v0.31.0）
+	hints.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 150)
+	hints.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	hints.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	root.add_child(hints)
+
 	# 左側中央：屬性面板（Tab 開關）
 	_stats_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_MINSIZE, 16)
 	_stats_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
@@ -186,7 +195,15 @@ func _init() -> void:
 	_quit_button.focus_mode = Control.FOCUS_NONE
 	_quit_button.visible = not OS.has_feature("web")
 	_quit_button.pressed.connect(quit_requested.emit)
-	_build_overlay(_pause, Color(5 / 255.0, 8 / 255.0, 16 / 255.0, 0.65), [_pause_title, _pause_hint, pause_controls, net_panel, _quit_button])
+	_reset_hints_button.text = "重新顯示提示"
+	_reset_hints_button.add_theme_font_size_override(&"font_size", 18)
+	_reset_hints_button.custom_minimum_size = Vector2(180, 40)
+	_reset_hints_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_reset_hints_button.focus_mode = Control.FOCUS_NONE
+	_reset_hints_button.pressed.connect(func() -> void:
+		hints.reset_seen()
+		_reset_hints_button.text = "提示已重設")
+	_build_overlay(_pause, Color(5 / 255.0, 8 / 255.0, 16 / 255.0, 0.65), [_pause_title, _pause_hint, pause_controls, net_panel, _reset_hints_button, _quit_button])
 	_pause.mouse_filter = Control.MOUSE_FILTER_STOP   # 選單的按鈕與輸入框要能點
 	root.add_child(_pause)
 
@@ -238,6 +255,8 @@ func _process(delta: float) -> void:
 	if player == null:
 		return
 	_skill_bar.refresh(world, player)
+	if not _pause.visible and not _game_over.visible:   # 暫停、結算時提示不倒數
+		hints.update(delta, world, player, inventory_panel.visible)
 	if _stats_panel.visible:
 		_stats_panel.refresh(player)
 

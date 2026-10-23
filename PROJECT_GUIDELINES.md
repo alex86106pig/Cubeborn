@@ -627,7 +627,7 @@ godot/
 - 資料在 `defs/weapon_drop_defs.gd`：`DROP_CHANCE`（小怪 4%、Boss 100%）、`RARITY_WEIGHTS`（小怪 白 60 / 綠 25 / 藍 12 / 紫 3、Boss 藍 60 / 紫 30 / 橘 10）、`AFFIXES`（10 種詞條，Claude 擬、暫定）。詞條數 = 稀有度序號（白 0 ~ 橘 4），同一把不重複（部分洗牌，用 `world.rng`）。
 - **武器實例**：`{ uid, base, rarity, affixes }`；uid 由 `World.new_weapon_uid()` 產生（全場唯一，`w1`、`w2`…，`reset` 歸零）。快照格式 `WeaponDropDefs.to_array / from_array`。
 - **裝備欄**：`Player.weapon_slots`（2 格）與 `active_slot`。只有手上那把的詞條生效（屬性來源 `&"weapon"`，`_apply_active_weapon`）；換了另一把（uid 不同）才重設連段與動作。`equip_weapon(id)` 把手上這格換成新的白色武器（開場、`--weapon`、測試）。`show_weapon` 只換招式資料（客戶端畫別人用）。
-- **切換**：`InputCmd.BTN_SWAP_WEAPON`（Q、滑鼠滾輪；取代 F1 除錯切換）→ `swap_weapon` 換到另一格，另一格是空的不換。客戶端在房主處理完自己最後一次切換前保留本機預測的 `active_slot`。
+- **切換**：`InputCmd.BTN_SWAP_WEAPON`（X、滑鼠滾輪，v0.31.0 起取代 Q；取代 F1 除錯切換）→ `swap_weapon` 換到另一格，另一格是空的不換。客戶端在房主處理完自己最後一次切換前保留本機預測的 `active_slot`。
 - **掉落**：`World.on_enemy_died` 依機率在屍體位置 `drop_weapon`（`ItemPickup` 帶 `weapon`）；多人時房主只產生一個實體，先撿先得。發 `weapon:dropped`。
 - **撿起**（F，同 D3）：`add_weapon`：空的裝備欄 → 背包（`find_spot`，條目帶 `weapon`、不算生效道具）→ 都放不下發 `inventory:full`。
 - **背包操作**（`InputCmd.inv_ops`）：`OP_MOVE` 武器可以從裝備欄搬進背包、`OP_DROP` 丟到地上（手上至少留一把）；`OP_EQUIP [uid, slot]` 放進裝備欄（從另一格來就互換，從背包來時原本那把回背包、放不下就不換）；`OP_MERGE [a, b]` 把 a 拖到 b 上：同種、同稀有度、不是橘色才行，b 的位置換成高一級、詞條重抽的新武器（uid 沿用 b），a 消失；手上唯一的一把拖到背包的武器上時，結果留在裝備欄。不能合成發 `weapon:merge_denied`。

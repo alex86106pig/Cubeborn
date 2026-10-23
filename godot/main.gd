@@ -79,6 +79,8 @@ func _ready() -> void:
 	hud.setup(world, camera_rig.camera)
 	hud.quit_requested.connect(get_tree().quit)
 	hud.inventory_panel.op_requested.connect(input_collector.queue_inventory_op)
+	if _run_seconds > 0.0:
+		hud.hints.save_path = ""   # 自動驗證（截圖、量效能）不記「看過的提示」，免得使用者自己玩時提示不跳
 	add_child(hud)
 	sound.setup(world)
 	add_child(sound)

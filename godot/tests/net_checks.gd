@@ -308,7 +308,7 @@ static func check_net_loot() -> String:
 	return ""
 
 
-# D4：客戶端按 Q 切到第 2 格、拖曳合成背包裡兩把白法杖；Boss 掉的武器兩邊都看得到
+# D4：客戶端按 X 切到第 2 格、拖曳合成背包裡兩把白法杖；Boss 掉的武器兩邊都看得到
 static func check_net_weapons() -> String:
 	var link := _Link.new(43, [1, 2], 3, 0.0, false)
 	var hw := link.host_world
@@ -326,7 +326,7 @@ static func check_net_weapons() -> String:
 	idle.call(20)
 	var me := link.client.local_player()
 	if hp2.active_slot != 1 or me.active_slot != 1 or me.weapon_id != &"staff" or hp2.weapon_id != &"staff":
-		return "按 Q 後兩邊都應換到第 2 格的法杖：房主 %d %s、客戶端 %d %s" % [hp2.active_slot, hp2.weapon_id, me.active_slot, me.weapon_id]
+		return "按 X 後兩邊都應換到第 2 格的法杖：房主 %d %s、客戶端 %d %s" % [hp2.active_slot, hp2.weapon_id, me.active_slot, me.weapon_id]
 	var merge := _cmd(Vector2.ZERO)
 	merge.inv_ops = [[InputCmd.OP_MERGE, "m1", "m2"]]
 	link.step(_cmd(Vector2.ZERO), merge)
