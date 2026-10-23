@@ -34,6 +34,7 @@ var prev_height := 0.0
 var vz := 0.0                     # 垂直速度（向上為正）
 var ground_height := 0.0          # 腳下的地面高度（地形石台頂面或 0）
 var terrain_checked_pos := Vector2.INF   # 上次推出石台、算過落地時的位置（World.step 沒移動就跳過，D5）
+var fixed := false                # 固定不動（休眠的怪群）：不積分；互推時不被推、只推開別人（v0.30.0 效能）
 var body_height := 2.0            # 身高：命中判定佔 [height, height + body_height]
 var invuln_timer := 0.0
 var suppress_stagger := false     # 這一下傷害不造成受擊硬直（Combat 在 take_damage 前後設定，v0.27.0）

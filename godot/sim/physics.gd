@@ -19,6 +19,8 @@ static func separate(entities: Array[Entity], rng: RandomNumberGenerator) -> voi
 	var high := PackedFloat64Array()   # 頭頂高度
 	var cx := PackedInt32Array()
 	var cz := PackedInt32Array()
+	var fix := PackedByteArray()      # 1 = 固定不動（Entity.fixed）
+	fix.resize(n)
 	px.resize(n)   # Packed 陣列是複製寫入，不能放進陣列用迴圈 resize
 	pz.resize(n)
 	rad.resize(n)
@@ -37,6 +39,7 @@ static func separate(entities: Array[Entity], rng: RandomNumberGenerator) -> voi
 		pz[i] = e.pos.y
 		rad[i] = e.radius
 		mass[i] = -1.0 if e.is_dead else e.mass   # 質量 < 0 = 已死亡，不參與
+		fix[i] = 1 if e.fixed else 0
 		low[i] = e.height
 		high[i] = e.height + e.body_height
 		cx[i] = floori(px[i] / cell)
@@ -60,15 +63,15 @@ static func separate(entities: Array[Entity], rng: RandomNumberGenerator) -> voi
 	var moved := false
 	var neighbors := PackedInt32Array()
 	for i in n:
-		if mass[i] < 0.0:
-			continue
-		# 收集相鄰格內索引比 i 大的實體，排序後依序處理（與兩兩比對的處理順序相同）
+		if mass[i] < 0.0 or fix[i] == 1:
+			continue   # 固定的不主動找鄰居：和會動的那一對由會動的那一方處理，兩個都固定的不必比（v0.30.0 效能）
+		# 收集相鄰格內索引比 i 大、或固定不動的實體，排序後依序處理（與兩兩比對的處理順序相同）
 		neighbors.clear()
 		for dz in range(maxi(cz[i] - 1, min_z), mini(cz[i] + 1, max_z) + 1):
 			for dx in range(maxi(cx[i] - 1, min_x), mini(cx[i] + 1, max_x) + 1):
 				var j := head[(dz - min_z) * gw + (dx - min_x)]
 				while j >= 0:
-					if j > i:
+					if j > i or fix[j] == 1:
 						neighbors.append(j)
 					j = next[j]
 		if neighbors.is_empty():
@@ -89,9 +92,12 @@ static func separate(entities: Array[Entity], rng: RandomNumberGenerator) -> voi
 				dist_sq = dx * dx + dz * dz
 			var dist := sqrt(dist_sq)
 			var overlap := min_dist - dist
-			var total := mass[i] + mass[j]
-			var ka := overlap * mass[j] / total / dist
-			var kb := overlap * mass[i] / total / dist
+			var ka := overlap / dist   # j 固定不動：i 自己退開全部重疊
+			var kb := 0.0
+			if fix[j] == 0:
+				var total := mass[i] + mass[j]
+				ka = overlap * mass[j] / total / dist
+				kb = overlap * mass[i] / total / dist
 			px[i] -= dx * ka
 			pz[i] -= dz * ka
 			px[j] += dx * kb
@@ -120,19 +126,22 @@ static func _resolve(a: Entity, b: Entity, rng: RandomNumberGenerator) -> void:
 	var dist := sqrt(dist_sq)
 	var overlap := min_dist - dist
 	var normal := d / dist
+	if b.fixed:   # b 固定不動：a 退開全部重疊
+		a.pos -= normal * overlap
+		return
 	var total := a.mass + b.mass
 	a.pos -= normal * (overlap * b.mass / total)
 	b.pos += normal * (overlap * a.mass / total)
 
 
-# 兩兩比對版本：只給 tests/check.gd 驗證格子版結果一致
+# 兩兩比對版本：只給 tests/check.gd 驗證格子版結果一致（處理順序同格子版：會動的 i 依序比對 j > i 或固定的 j）
 static func separate_brute_force(entities: Array[Entity], rng: RandomNumberGenerator) -> void:
 	var n := entities.size()
 	for i in n:
-		if entities[i].is_dead:
+		if entities[i].is_dead or entities[i].fixed:
 			continue
-		for j in range(i + 1, n):
-			if not entities[j].is_dead:
+		for j in n:
+			if j != i and (j > i or entities[j].fixed) and not entities[j].is_dead:
 				_resolve(entities[i], entities[j], rng)
 
 

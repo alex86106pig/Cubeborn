@@ -1,5 +1,6 @@
 # 成群怪物的模擬層耗時（D5）：地圖 A、玩家在出生點、周圍 N 隻醒著的小怪，量 World.step 各段平均耗時（毫秒 / 步）
-# 用法（在 godot/ 內，headless）：<Godot> --headless --path . -s res://stress_test/profile_horde.gd -- --horde=200
+# 用法（在 godot/ 內，headless）：<Godot> --headless --path . -s res://stress_test/profile_horde.gd -- --horde=200 [--packs]
+# --packs：照實際遊戲放地圖預放的怪群（大多在休眠）
 extends SceneTree
 
 const DT := 1.0 / 60.0
@@ -9,11 +10,14 @@ const STEPS := 300
 
 func _initialize() -> void:
 	var n := 200
+	var packs := false
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--horde="):
 			n = arg.get_slice("=", 1).to_int()
+		elif arg == "--packs":
+			packs = true
 	var w := World.new(&"graveyard_a")
-	w.spawn_packs = false
+	w.spawn_packs = packs
 	w.reset(1)
 	w.spawner.finished = true
 	var p: Player = w.players[World.HOST_PEER_ID]
@@ -62,14 +66,18 @@ func _initialize() -> void:
 		var bs: Array[Entity] = [p]
 		bs.append_array(w.enemies)
 		for b in bs:
-			b.integrate(DT)
+			if not b.fixed:
+				b.integrate(DT)
 		t = _lap(parts, "integrate", t)
 		SimPhysics.separate(bs, w.rng)
 		t = _lap(parts, "separate", t)
 		for b in bs:
+			if b.pos == b.terrain_checked_pos and b.vz == 0.0 and b.height == b.ground_height:
+				continue   # 同 World.step：沒移動、站在地上的不必再算
 			w.terrain.push_out(b)
 			SimPhysics.clamp_to_arena(b, w.half_extents)
 			b.integrate_vertical(DT, w.terrain)
+			b.terrain_checked_pos = b.pos
 		t = _lap(parts, "terrain", t)
 		w._update_downed(DT)
 		w.spawner.update(w, DT)

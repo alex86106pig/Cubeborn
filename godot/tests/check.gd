@@ -450,6 +450,18 @@ func _check_separation() -> String:
 	# 重疊 0.6：輕的（質量 1）推 0.45、重的（質量 3）推 0.15
 	if absf(a.pos.x + 0.45) > EPS or absf(b.pos.x - 0.55) > EPS:
 		return "a.x=%.4f b.x=%.4f，預期 -0.45 / 0.55" % [a.pos.x, b.pos.x]
+	# 固定不動的（休眠怪群，v0.30.0）不被推，會動的一方退開全部重疊；兩個都固定的不互推
+	a.pos = Vector2(0, 0)
+	b.pos = Vector2(0.4, 0)
+	b.fixed = true
+	SimPhysics.separate(list, w.rng)
+	if absf(a.pos.x + 0.6) > EPS or absf(b.pos.x - 0.4) > EPS:
+		return "b 固定時 a.x=%.4f b.x=%.4f，預期 -0.6 / 0.4" % [a.pos.x, b.pos.x]
+	a.pos = Vector2(0, 0)
+	a.fixed = true
+	SimPhysics.separate(list, w.rng)
+	if a.pos != Vector2.ZERO or absf(b.pos.x - 0.4) > EPS:
+		return "兩個都固定時不應互推：a=%s b=%s" % [a.pos, b.pos]
 	return ""
 
 
@@ -1248,6 +1260,7 @@ func _check_grid_matches_brute_force() -> String:
 		for list in [a, b]:
 			var e := Entity.new(w, &"test", &"enemy", r, 10.0, m)
 			e.pos = at
+			e.fixed = i % 4 == 0   # 每 4 個有 1 個固定不動（休眠怪群，v0.30.0）
 			list.append(e)
 	var r1 := RandomNumberGenerator.new()
 	var r2 := RandomNumberGenerator.new()

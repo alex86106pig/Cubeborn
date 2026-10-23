@@ -24,7 +24,10 @@ var rarity: StringName = MonsterRarityDefs.NORMAL
 var affixes: Array[StringName] = []
 var rare_name := ""
 var pack_id := -1                    # 地圖預放的怪群（-1 = 波次或召喚出來的）
-var dormant := false                 # 怪群休眠中：站著不動，整群醒來後才開始追（World.wake_pack）
+var dormant := false:                # 怪群休眠中：站著不動，整群醒來後才開始追（World.wake_pack）
+	set(v):
+		dormant = v
+		fixed = v
 var wave_member := false             # 波次生成的：場上的波次怪都死了才開下一波（怪群不算）
 var action_speed := 1.0              # 狀態機時間的倍率（狂暴詞條 1.4：舉刀、瞄準、收招與冷卻都變快）
 var summoner_id := 0                 # 召喚詞條叫出來的：召喚者的 id
@@ -127,6 +130,14 @@ func nearest_player() -> Player:
 
 
 func update(dt: float) -> void:
+	if dormant and not is_dead:
+		# 休眠的怪群只推進狀態時間（呼吸動畫用），不跑狀態機、跳躍與詞條（v0.30.0 效能）；醒來後下一步由 Dormant 切到 main_state
+		velocity = Vector2.ZERO
+		fsm.time += dt
+		if anim.is_empty():
+			_update_anim()
+		anim["time"] = fsm.time
+		return
 	_nav_timer -= dt
 	_update_affixes(dt)
 	fsm.update(dt * action_speed)

@@ -243,6 +243,8 @@ static func check_packs() -> String:
 			var e: Enemy = w.entities.get(id)
 			if e != null and e.dormant == should:
 				return "第 %d 群的 %d 號沒跟著整群%s" % [i, id, "醒來" if should else "休眠"]
+			if e != null and e.fixed == should:
+				return "第 %d 群的 %d 號 fixed 應跟著休眠（v0.30.0）：%s" % [i, id, e.fixed]
 			if e != null and should and e.fsm.is_in(&"dormant"):
 				return "第 %d 群醒來同一步就該開始追，%d 號還在 dormant" % [i, id]
 	# 遠處被打：整群醒來
