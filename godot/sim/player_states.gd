@@ -3,6 +3,7 @@
 class_name PlayerStates
 
 const PHASES: Array[StringName] = [&"windup", &"active", &"recovery"]
+const DIG_MASS := 1000.0   # 挖墳中的質量（D6）：碰撞分離時幾乎推不動
 
 
 static func locomotion_states() -> Dictionary:
@@ -18,6 +19,7 @@ static func action_states() -> Dictionary:
 		&"stagger": Stagger.new(),
 		&"roll": Roll.new(),
 		&"revive": Revive.new(),
+		&"dig": Dig.new(),
 	}
 
 
@@ -65,6 +67,9 @@ class Ready:
 			var target := p.find_revive_target()
 			if target != null:
 				fsm.change(&"revive", {"target_id": target.id})
+				return
+			if p.world.event.can_dig(p.world, p):
+				fsm.change(&"dig")
 				return
 		var buffered := p.buffered_action
 		if not buffered.is_empty():
@@ -212,6 +217,28 @@ class Revive:
 		var t: Entity = p.world.entities.get(target_id)
 		if t != null:
 			p.facing = MathUtil.angle_to(p.pos, t.pos)
+
+
+# 挖墳（D6）：在挖墳點附近按住互動鍵；期間不能移動、攻擊、用技能（同救援），被打不中斷（Player._on_damaged、stun）
+# 進度由 DigEvent 依 is_digging() 累積；放開、離開範圍、出口打開就結束
+class Dig:
+	func enter(p: Player, data: Dictionary, _fsm: StateMachine) -> void:
+		data.move_speed_mul = 0.0
+		data.lock_facing = true
+		p.facing = MathUtil.angle_to(p.pos, p.world.event.point)
+		# 被打不中斷：挖墳中不會被擊退、也不會被怪擠走（不然會被推出挖墳範圍）
+		p.set_stat_source(&"digging", [[&"knockback_taken", Stats.MUL, 0.0]])
+		data.mass = p.mass
+		p.mass = PlayerStates.DIG_MASS
+
+	func update(p: Player, _dt: float, fsm: StateMachine) -> void:
+		p.buffered_action = {}
+		if not p.is_interact_held or not p.world.event.can_dig(p.world, p):
+			fsm.change(&"ready")
+
+	func exit(p: Player, fsm: StateMachine) -> void:
+		p.remove_stat_source(&"digging")
+		p.mass = fsm.data.mass
 
 
 class Stagger:

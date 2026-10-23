@@ -199,6 +199,9 @@ const ITEMS := {
 		"desc": "所有攻擊都會點燃敵人，燃燒會擴散到附近敵人", "effects": [{"on": &"hit", "do": &"ignite", "spread": true}]},
 	&"stasis_watch": {"kind": &"item", "name": "停滯懷錶", "rarity": &"orange", "power": 10.0, "shape": &"cross6",
 		"desc": "翻滾時周圍時間變慢 2 秒（敵人慢 70%）", "effects": [{"on": &"roll", "do": &"slow_time", "duration": 2.0, "slow": 0.7}]},
+	# 隊友的屍體（D6，kind &"corpse"）：不是道具，寶箱不會開出；背包條目 uid 是 Player.corpse_uid(死者)
+	&"corpse": {"kind": &"corpse", "name": "隊友的屍體", "rarity": &"white", "shape": &"r6",
+		"desc": "帶到下一層，死者會變成冤魂；打倒冤魂就能復活", "effects": []},
 }
 
 

@@ -10,6 +10,7 @@ const DEATH_FALL_TIME := 0.45
 const BLINK_RATE := 20.0      # 無敵時間每秒閃爍次數
 const GEM_SPIN := 3.0         # 法杖寶石自轉（弧度/秒；網頁版每幀 0.05 × 60）
 const ROLL_CENTER := 0.4      # 翻滾的旋轉中心（角色高度的比例）
+const DIG_RATE := 1.5         # 挖墳每秒挖幾下（D6）
 
 var rig: Rig
 var walk_phase := 0.0
@@ -114,6 +115,12 @@ func _pose_action(p: Player, a: Dictionary, dt: float) -> void:
 			rig.body.rotation.x = -0.3 * sin(k * PI)
 		&"roll":
 			_pose_roll(clampf(a.action_time / Config.ROLL.duration, 0.0, 1.0))
+		&"dig":
+			# 挖墳（D6）：彎腰、雙手一下一下往下挖（每秒約 1.5 下）
+			var swing := 0.5 + 0.5 * sin(a.action_time * TAU * DIG_RATE)
+			rig.body.rotation.x = lerpf(0.25, 0.55, swing)
+			rig.arm_r.rotation.x = lerpf(-1.9, -0.3, swing)
+			rig.arm_l.rotation.x = lerpf(-1.9, -0.3, swing)
 
 
 # 翻滾：繞身體中心往前翻一圈（body 樞紐在腳底，所以同時位移讓中心不動），四肢縮起

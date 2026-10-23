@@ -261,26 +261,6 @@ static func check_packs() -> String:
 	return ""
 
 
-# 怪群不擋波次：第 1 波的波次怪都死了就開下一波（怪群還在睡）
-static func check_packs_waves() -> String:
-	var w := _world(&"graveyard_a", true, 12345, true)
-	for i in 900:
-		_step(w, 1, true)
-		if w.spawner.wave == 1 and w.spawner.queue.is_empty():
-			break
-	var killed := 0
-	for e in w.enemies:
-		if e is Enemy and (e as Enemy).wave_member and not e.is_dead:
-			e.die()
-			killed += 1
-	if killed != 5:
-		return "第 1 波應有 5 隻波次怪，實際 %d" % killed
-	_step(w, roundi(3.5 / DT), true)
-	if w.spawner.wave != 2:
-		return "波次怪死光 3.5 秒後應開第 2 波，實際第 %d 波" % w.spawner.wave
-	return ""
-
-
 # 蒙皮小怪（D5 效能）：骷髏戰士 / 弓手每隻 ≤ 2 個網格、三角形數與原本的零件相同；關節寫進骨架
 static func check_skinned_rig() -> String:
 	for kind: StringName in [&"grunt", &"archer"]:

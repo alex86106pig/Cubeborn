@@ -21,7 +21,11 @@ var gold := 0                        # 共用的錢（D3）：殺怪賺、開寶
 var packs: Array[Dictionary] = []    # 地圖預放的怪群（D5）：{ center, ids, awake }，只在權威端
 var spawn_packs := true              # reset 時是否散放怪群（地圖要有 "packs": true；check.gd 大部分檢查關掉）
 var stats := {"wave": 0, "kills": 0, "time": 0.0}
-var is_over := false                 # 通關後為 true
+var is_over := false                 # 通關後為 true（挖墳事件的地圖沒有通關，一層一層往下）
+# 挖墳事件與層數（D6，sim/dig_event.gd）：每層基礎難度 = (層數 − 1) × DIFFICULTY.per_floor
+var floor_num := 1
+var base_difficulty := 0.0
+var event := DigEvent.new()
 var hit_stop_timer := 0.0            # 剩餘的整體放慢（真實秒數），由主迴圈換算成時間縮放；v0.18.3 起只有打倒 Boss 時使用（一般命中改成畫面定格）
 # 地圖（D1，defs/map_defs.gd）：場地大小、地形、尋路格子、出生點；房主與客戶端用同一張（目前固定 Config.WORLD.default_map）
 var map_id: StringName
@@ -58,6 +62,7 @@ func load_map(p_map_id: StringName) -> void:
 	nav = Nav.new(terrain, half_extents, Config.NAV.margin)
 	nav_large = Nav.new(terrain, half_extents, Config.NAV.margin_large)
 	spawn_point = MapDefs.to_world(map, map.spawn)
+	event.point = MapDefs.to_world(map, map.dig)   # 客戶端不跑 reset，挖墳點在這裡就設好（本機預測要判斷挖不挖得到）
 
 
 func nav_for(radius: float) -> Nav:
@@ -69,7 +74,7 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 	tick = 0
 	rng.seed = seed_value
 	cooldowns.reset_all()
-	stats = {"wave": 0, "kills": 0, "time": 0.0}
+	stats = {"wave": 0, "kills": 0, "time": 0.0, "floor": 1}
 	is_over = false
 	hit_stop_timer = 0.0
 	boss_id = 0
@@ -86,13 +91,82 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 		p.height = terrain.ground_at(spawn_point)
 		add_entity(p)
 	gold = 0
+	floor_num = 1
+	base_difficulty = 0.0
+	_populate_floor()
+	emit_event("game:restart", {})
+
+
+# 一層開始時的地圖內容：寶箱、怪群、挖墳事件歸零
+func _populate_floor() -> void:
+	event.reset(self)   # 先歸零：怪群的難度倍率要用這一層的基礎難度
 	for c: Array in map.get("chests", []):
 		var chest := Chest.new(self, c[2], MapDefs.to_world(map, Vector2(c[0], c[1])))
 		add_entity(chest)
 		chests.append(chest)
 	if spawn_packs and map.get("packs", false):
 		spawner.spawn_packs(self)
-	emit_event("game:restart", {})
+
+
+# 目前難度（D6）：沒有挖墳事件的地圖固定 0
+func difficulty() -> float:
+	return event.difficulty(self) if DigEvent.enabled(self) else 0.0
+
+
+# 全員走進出口（D6）：同一張地圖重新來過、基礎難度 +per_floor；玩家保留背包、武器、生命與共用的錢
+# 地上的東西、敵人、投射物、寶箱全部清掉重新放；有人背著死者的屍體時，死者在新的一層變成冤魂
+func next_floor() -> void:
+	floor_num += 1
+	base_difficulty = (floor_num - 1) * EventDefs.DIFFICULTY.per_floor
+	stats["floor"] = floor_num
+	for e: Entity in entities.values():
+		if not e is Player:
+			e.remove()
+	_remove_dead_entities()
+	packs.clear()
+	boss_id = 0
+	for p in player_list:
+		p.arrive_floor(spawn_point, terrain.ground_at(spawn_point))
+	_populate_floor()
+	for p in player_list:
+		if p.is_dead and not corpse_carrier(p.peer_id).is_empty():
+			_spawn_ghost(p)
+	emit_event("floor:started", {"floor": floor_num, "difficulty": base_difficulty})
+
+
+# 背著某位死者屍體的玩家與背包條目 uid；沒有回傳 {}
+func corpse_carrier(peer_id: int) -> Dictionary:
+	var uid := Player.corpse_uid(peer_id)
+	for p in player_list:
+		if not p.is_dead and not p.inventory.find(uid).is_empty():
+			return {"player": p, "uid": uid}
+	return {}
+
+
+# 冤魂：出生點附近 GHOST.distance 內、走得到的地方
+func _spawn_ghost(dead: Player) -> void:
+	var g: Dictionary = EventDefs.GHOST
+	var at := spawn_point
+	for attempt in 20:
+		var a := rng.randf() * TAU
+		var c := nav.nearest_walkable(spawn_point + Vector2(sin(a), cos(a)) * rng.randf_range(g.distance[0], g.distance[1]))
+		if nav.is_walkable(c) and nav.same_region(c, spawn_point):
+			at = c
+			break
+	var ghost := spawner.spawn_at(self, &"ghost", at)
+	ghost.ghost_of = dead.peer_id
+	emit_event("ghost:spawned", {"player_id": dead.id, "pos": at})
+
+
+# 冤魂被打倒：死者在冤魂的位置復活，背包裡的屍體消失
+func on_ghost_defeated(ghost: Enemy) -> void:
+	var dead: Player = players.get(ghost.ghost_of)
+	if dead == null or not dead.is_dead:
+		return
+	var carrier := corpse_carrier(dead.peer_id)
+	if not carrier.is_empty():
+		(carrier.player as Player).remove_item(carrier.uid)
+	dead.resurrect(ghost.pos, EventDefs.GHOST.revive_hp_ratio)
 
 
 # 實體與 World 互相參照（RefCounted 循環），移除時必須 detach() 才會釋放
@@ -180,6 +254,13 @@ func new_weapon_uid() -> StringName:
 	return StringName("w%d" % _next_weapon_uid)
 
 
+# 隊友的屍體（D6）：一般的地上物件，撿起來進背包（Player.add_corpse）
+func drop_corpse(peer_id: int, at: Vector2) -> ItemPickup:
+	var pickup := drop_item(&"corpse", at)
+	pickup.corpse_of = peer_id
+	return pickup
+
+
 func drop_weapon(inst: Dictionary, at: Vector2) -> ItemPickup:
 	return drop_item(inst.base, at, inst)
 
@@ -208,8 +289,17 @@ func nearest_interactable(p: Player, list: Array[Entity]) -> Entity:
 	return best
 
 
-# 打倒 Boss：通關，其餘敵人一起倒下、敵方投射物消失，延遲後發出 game:victory
+# 打倒 Boss：挖墳事件的地圖（D6）不通關，額外掉一個大寶箱機率的道具（武器與金幣照 on_enemy_died）；
+# 測試場地照舊通關：其餘敵人一起倒下、敵方投射物消失，延遲後發出 game:victory
 func on_boss_defeated(boss: Enemy) -> void:
+	if DigEvent.enabled(self):
+		var pool := LootDefs.items_of(LootDefs.roll_rarity(&"big", rng))
+		var item_id: StringName = pool[rng.randi_range(0, pool.size() - 1)]
+		drop_item(item_id, boss.pos + Vector2(LootDefs.DROP_DISTANCE, 0.0))
+		emit_event("boss:reward", {"item": String(item_id), "pos": boss.pos})
+		hit_stop(Config.WORLD.victory_hit_stop)
+		emit_event("camera:shake", {"amount": Config.WORLD.victory_shake, "duration": Config.WORLD.victory_shake_duration})
+		return
 	is_over = true
 	victory_timer = Config.WORLD.victory_delay
 	hit_stop(Config.WORLD.victory_hit_stop)
@@ -292,7 +382,8 @@ func step(cmds: Dictionary, dt: float) -> void:
 
 	_bodies.clear()
 	for p in player_list:
-		_bodies.append(p)
+		if not p.descended:   # 已走進出口的不擋路（D6）
+			_bodies.append(p)
 	_bodies.append_array(enemies)
 	for b in _bodies:
 		b.integrate(dt)
@@ -309,6 +400,7 @@ func step(cmds: Dictionary, dt: float) -> void:
 
 	_update_downed(dt)
 	spawner.update(self, dt)
+	event.update(self, dt)
 	_remove_dead_entities()
 	if boss_id != 0 and not entities.has(boss_id):
 		boss_id = 0
@@ -407,3 +499,4 @@ func _remove_dead_entities() -> void:
 	enemies.assign(enemies.filter(func(e: Entity) -> bool: return not e.is_removed))
 	projectiles.assign(projectiles.filter(func(e: Entity) -> bool: return not e.is_removed))
 	pickups.assign(pickups.filter(func(e: Entity) -> bool: return not e.is_removed))
+	chests.assign(chests.filter(func(e: Entity) -> bool: return not e.is_removed))   # 換層時整批移除（D6）

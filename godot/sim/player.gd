@@ -15,6 +15,7 @@ var weapon_slots: Array[Dictionary] = [{}, {}]   # 裝備欄 2 格（D4）：武
 var active_slot := 0
 var _applied_weapon_uid := &""
 var _air_jumps_used := 0               # 這次離地後用掉的空中跳躍（落地歸零）
+var descended := false                 # 已走進出口（D6）：等其他人到齊才換層，期間不見、不能被打
 var stun_timer := 0.0                  # 暈眩剩餘秒數（v0.27.0：Boss 衝鋒撞到）：不能移動、出招、翻滾、跳
 var combo_step := 0
 var combo_timer := 0.0
@@ -59,7 +60,7 @@ func _init(p_world: World, p_peer_id: int) -> void:
 
 # 跳躍：站在地面上隨時可以跳（攻擊、翻滾中也行），受擊硬直與倒地時不行；只有一段跳
 func try_jump() -> bool:
-	if is_dead or is_downed or action.is_in(&"stagger") or action.is_in(&"revive"):
+	if is_dead or is_downed or action.is_in(&"stagger") or action.is_in(&"revive") or action.is_in(&"dig"):
 		return false
 	if not is_grounded():
 		# 二段跳（道具能力 double_jump，v0.27.0）：空中可以再跳一次，高度同第一段（從目前高度往上 JUMP.height）
@@ -82,7 +83,8 @@ func stun(duration: float) -> void:
 	if is_dead or is_downed:
 		return
 	stun_timer = maxf(stun_timer, duration)
-	action.change(&"ready")
+	if not action.is_in(&"dig"):   # 挖墳被打不中斷（D6）
+		action.change(&"ready")
 	buffered_action = {}
 	world.emit_event("player:stunned", {"player_id": id, "duration": duration})
 
@@ -147,11 +149,69 @@ func cd(key: String) -> String:
 
 
 func can_be_hit() -> bool:
-	return super() and not is_downed
+	return super() and not is_downed and not descended
 
 
 func is_targetable() -> bool:
-	return not is_dead and not is_downed
+	return not is_dead and not is_downed and not descended
+
+
+# ───────── 挖墳、下一層、屍體（D6）─────────
+
+static func corpse_uid(p_peer_id: int) -> StringName:
+	return StringName("corpse_%d" % p_peer_id)
+
+
+func is_digging() -> bool:
+	return not is_dead and not is_downed and not descended and action != null and action.is_in(&"dig")
+
+
+# 走進出口：從這一層消失（不能被打、不被追），等其他人
+func descend() -> void:
+	descended = true
+	velocity = Vector2.ZERO
+	has_forced_velocity = false
+	buffered_action = {}
+	action.change(&"ready")
+	world.emit_event("player:descended", {"player_id": id})
+
+
+# 新的一層：回到出生點（死者也搬過去，等冤魂被打倒才在冤魂的位置站起來）
+func arrive_floor(at: Vector2, ground: float) -> void:
+	descended = false
+	pos = at
+	prev_pos = at
+	height = ground
+	prev_height = ground
+	vz = 0.0
+	knockback = Vector2.ZERO
+	velocity = Vector2.ZERO
+
+
+# 冤魂被打倒：在 at 復活，生命 = 最大生命 × ratio，短暫無敵
+func resurrect(at: Vector2, ratio: float) -> void:
+	is_dead = false
+	is_downed = false
+	down_timer = 0.0
+	revive_progress = 0.0
+	pos = at
+	height = world.terrain.ground_at(at)
+	hp = maxf(1.0, roundf(max_hp * ratio))
+	invuln_timer = Config.REVIVE.revive_invuln
+	action.change(&"ready")
+	locomotion.change(&"idle")
+	world.emit_event("player:revived", {"player_id": id})
+
+
+# 撿起隊友的屍體放進背包（占 corpse 形狀的格子、沒有效果）；放不下回傳 false 並發出 inventory:full
+func add_corpse(owner_peer: int) -> bool:
+	var spot := inventory.find_spot(&"corpse")
+	if spot.is_empty():
+		world.emit_event("inventory:full", {"player_id": id, "item": "corpse"})
+		return false
+	inventory.add(corpse_uid(owner_peer), &"corpse", spot.cell, spot.rot)
+	world.emit_event("item:added", {"player_id": id, "item": "corpse", "uid": String(corpse_uid(owner_peer))})
+	return true
 
 
 # 範圍內最近的倒地隊友（救援對象）；沒有回傳 null
@@ -221,6 +281,9 @@ func net_sync_life(dead: bool, downed: bool, p_down_timer: float, p_revive: floa
 		locomotion.change(&"downed")
 	elif not downed and is_downed:
 		is_downed = false
+		locomotion.change(&"idle")
+	elif not dead and is_dead:   # 冤魂被打倒、在下一層復活（D6）
+		is_dead = false
 		locomotion.change(&"idle")
 
 
@@ -451,7 +514,7 @@ func sync_inventory(arr: Array) -> void:
 		var uid := StringName(a[0])
 		var w := WeaponDropDefs.from_array(a[5])
 		inventory.add(uid, StringName(a[1]), Vector2i(a[2], a[3]), a[4], w)
-		if w.is_empty():   # 背包裡的武器沒有效果
+		if w.is_empty() and ItemDefs.ITEMS[StringName(a[1])].kind == &"item":   # 背包裡的武器、屍體沒有效果
 			keep[uid] = StringName(a[1])
 	for it: Dictionary in items.duplicate():
 		if not keep.has(it.uid):
@@ -512,8 +575,12 @@ func _drop(uid: StringName) -> void:
 		world.drop_weapon(w.inst, at)
 		return
 	var entry := inventory.find(uid)
-	if not entry.is_empty():
-		remove_item(uid)
+	if entry.is_empty():
+		return
+	remove_item(uid)
+	if entry.id == &"corpse":
+		world.drop_corpse(String(uid).get_slice("_", 1).to_int(), at)
+	else:
 		world.drop_item(entry.id, at)
 
 
@@ -524,7 +591,13 @@ func _try_interact() -> void:
 	var pickup := world.nearest_interactable(self, world.pickups)
 	if pickup != null:
 		var ip := pickup as ItemPickup
-		var taken: bool = add_weapon(ip.weapon) if ip.is_weapon() else add_item(ip.item_id) != &""
+		var taken: bool
+		if ip.corpse_of != 0:
+			taken = add_corpse(ip.corpse_of)
+		elif ip.is_weapon():
+			taken = add_weapon(ip.weapon)
+		else:
+			taken = add_item(ip.item_id) != &""
 		if taken:
 			pickup.remove()
 		return
@@ -540,7 +613,7 @@ func clear_items() -> void:
 
 func update(dt: float) -> void:
 	_tick_timers(dt)
-	if is_dead or is_downed or stun_timer > 0.0:
+	if is_dead or is_downed or descended or stun_timer > 0.0:
 		stun_timer = maxf(0.0, stun_timer - dt)
 		if stun_timer > 0.0:
 			move_input = Vector2.ZERO   # 暈眩時站著不動（移動層回到 idle）
@@ -654,8 +727,8 @@ func _on_damaged(amount: int, _source_id: int) -> void:
 	invuln_timer = Config.PLAYER.invuln_time
 	# player_id：多人時只有被打的那位玩家的畫面震動
 	world.emit_event("camera:shake", {"amount": Config.PLAYER.hurt_shake, "duration": Config.PLAYER.hurt_shake_duration, "player_id": id})
-	# 特殊技期間有霸體，不會被打斷
-	if not action.is_in(&"special"):
+	# 特殊技期間有霸體，不會被打斷；挖墳被打也不中斷（D6）
+	if not action.is_in(&"special") and not action.is_in(&"dig"):
 		action.change(&"stagger")
 
 
@@ -676,3 +749,6 @@ func _on_died(_source_id: int) -> void:
 	if was_downed:
 		locomotion.time = Config.REVIVE.down_time   # 已經躺在地上：倒地動畫直接播完，不會先站起來再倒一次
 	world.emit_event("player:died", {"player_id": id})
+	# 多人時留下屍體（D6）：隊友撿進背包帶到下一層，就會在那裡變成冤魂
+	if world.is_authority and world.players.size() > 1:
+		world.drop_corpse(peer_id, pos)

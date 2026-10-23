@@ -118,4 +118,27 @@ const ENEMIES := {
 			"shake": 0.5, "shake_duration": 0.4,
 		},
 	},
+
+	# 冤魂（D6，Godot 版新增，數值 Claude 暫定）：死去的隊友在下一層的樣子，打倒就復活；行為同骷髏戰士（MeleeEnemy）
+	# 不掉金幣、不掉武器（LootDefs / WeaponDropDefs 沒有它）；畫面是半透明的騎士
+	&"ghost": {
+		"visual": &"ghost",
+		"max_hp": 150.0,
+		"move_speed": 3.0,
+		"speed_variance": 0.0,
+		"turn_speed": 6.0,
+		"radius": 0.45,
+		"mass": 1.5,
+		"hurt_time": 0.22,
+		"spawn_time": 0.7,
+		"corpse_time": 1.0,
+		"swing": {
+			"trigger_distance": 1.4, "windup": 0.45, "track": 0.5, "active": 0.1, "recovery": 0.45,
+			"range": 1.6, "arc": PI * 100.0 / 180.0, "damage": 14.0, "knockback": 9.0, "cooldown": 1.1, "blockable": true,
+		},
+		"rush": {
+			"windup": 0.5, "speed": 11.0, "duration": 0.5, "recovery": 0.5, "hit_reach": 0.3,
+			"damage": 14.0, "knockback": 10.0, "blockable": true,
+		},
+	},
 }

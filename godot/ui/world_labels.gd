@@ -6,6 +6,9 @@ extends Control
 const CHEST_OFFSET := 1.6   # 文字在物件腳底上方的高度（世界單位）
 const PICKUP_OFFSET := 1.1
 const ENEMY_OFFSET := 0.35  # 魔法 / 稀有怪的詞條在頭頂上方多高
+const GRAVE_OFFSET := 1.8   # 挖墳點文字的高度（D6）
+const GHOST_COLOR := Color("8fd0ff")
+const EXIT_COLOR := Color("8fd0ff")
 
 var world: World
 var camera: Camera3D
@@ -59,10 +62,39 @@ func _draw() -> void:
 		if en.rare_name != "":
 			_text(font, en, offset, en.rare_name, color, 18, Vector2(0, -18))
 		_text(font, en, offset, MonsterRarityDefs.affix_names(en.affixes), color, 14)
+	for e: Entity in world.enemies:
+		if e is Enemy and (e as Enemy).ghost_of != 0 and not e.is_dead and Vision.entity_visible(world, me, e):
+			_text(font, e, e.body_height + ENEMY_OFFSET, "冤魂：打倒就能復活隊友", GHOST_COLOR, 15)
+	_draw_grave(font, me)
+
+
+# 挖墳點（D6）：沒開始時提示、挖的時候顯示進度、挖完顯示出口與到齊人數
+func _draw_grave(font: Font, me: Player) -> void:
+	if not DigEvent.enabled(world):
+		return
+	var ev := world.event
+	var at := Vector3(ev.point.x, world.terrain.ground_at(ev.point) + GRAVE_OFFSET, ev.point.y)
+	var near := me != null and ev.can_dig(world, me) and not me.is_digging()
+	if ev.state == DigEvent.OPEN:
+		var total := 0
+		var down := 0
+		for p in world.player_list:
+			if not p.is_dead:
+				total += 1
+				down += 1 if p.descended else 0
+		_text_at(font, at, "出口：走進去前往第 %d 層（%d / %d 人）" % [world.floor_num + 1, down, total], EXIT_COLOR)
+		return
+	var text := "挖墳 %d%%" % floori(ev.progress * 100.0) if ev.state == DigEvent.ACTIVE else "墓"
+	if near:
+		text = "[F] 按住挖墳  " + text
+	_text_at(font, at, text, UiKit.GOLD if ev.state == DigEvent.ACTIVE else Color.WHITE)
 
 
 func _text(font: Font, e: Entity, offset: float, text: String, color: Color, size := 17, shift := Vector2.ZERO) -> void:
-	var at := Vector3(e.pos.x, e.height + offset, e.pos.y)
+	_text_at(font, Vector3(e.pos.x, e.height + offset, e.pos.y), text, color, size, shift)
+
+
+func _text_at(font: Font, at: Vector3, text: String, color: Color, size := 17, shift := Vector2.ZERO) -> void:
 	if camera.is_position_behind(at):
 		return
 	var s := camera.unproject_position(at) + Vector2(-150, 0) + shift

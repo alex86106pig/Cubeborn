@@ -15,6 +15,11 @@ const WEAPON_GLOW_RANGE := 1.6     # 武器稀有度光：所有稀有度同樣�
 const WEAPON_GLOW_ENERGY := 1.2
 const RARITY_GLOW_RANGE := 3.0     # 魔法 / 稀有怪身上的光（D5）
 const RARITY_GLOW_ENERGY := 1.5
+const GRAVE_SOIL := Color("4a3a2a")          # 挖墳點（D6）
+const GRAVE_STONE := Color("6a6d72")
+const EXIT_COLOR := Color("8fd0ff")
+const GHOST_TINT := Color(0.55, 0.8, 1.0)   # 冤魂（D6）的顏色與透明度
+const GHOST_TRANSPARENCY := 0.45
 const SHADOW_MAX_DISTANCE := 70.0  # 陰影範圍（從相機算；相機距離 40，畫面最遠的地面約 60）
 const LOS_INTERVAL := 3           # 視野的牆擋判斷每隻每幾個 tick 重算一次（50 毫秒）
 const ENEMY_ANIM_STEP := 1.0 / 60.0 - 1e-4   # 敵人四肢動畫的最短間隔（略小於 1/60，60 FPS 時每幀都更新）
@@ -32,6 +37,7 @@ var hidden_ids: Dictionary = {}        # 這一幀看不到的實體 id（Effect
 var _vision_key := []                  # 上次算視野時的 tick 與觀看者狀態（沒變就沿用 hidden_ids）
 var _los_blocked: Dictionary = {}      # entity id -> 視線被牆擋住（分批更新，見 sync）
 var _anim_pending: Dictionary = {}     # entity id -> 還沒拿去擺姿勢的秒數（敵人動畫每秒最多 60 次）
+var _grave: Node3D = null              # 挖墳點（D6）
 var _hitboxes_shown := false
 var profile := false                   # main 的 --perf：各段累計耗時（微秒）放進 profile_usec
 var profile_usec: Dictionary = {}
@@ -119,6 +125,9 @@ func sync(world: World, alpha: float, dt: float) -> void:
 		hidden_ids.clear()
 		for id: int in world.entities:
 			var e: Entity = world.entities[id]
+			if e is Player and (e as Player).descended:   # 走進出口的玩家（D6，含自己）不畫
+				hidden_ids[id] = true
+				continue
 			if not Vision.is_hideable(me, e):
 				continue
 			if not Vision.in_view_cone(me, e.pos, e.radius):
@@ -193,6 +202,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 				_animators[id].update(e, anim_dt)
 			anim_usec += Time.get_ticks_usec() - ta
 	var t2 := Time.get_ticks_usec()
+	_sync_grave(world)
 	_sync_strikes(world, dt)
 	_sync_vision_overlay(me)
 	effects.sync(world, dt)
@@ -467,9 +477,17 @@ func _create_view(e: Entity) -> Node3D:
 			glow.visible = false
 			rig.hand_r.add_child(glow)
 			root.set_meta(&"glow", glow)
-		&"grunt", &"archer", &"boss":
+		&"grunt", &"archer", &"boss", &"ghost":
 			# 小怪用蒙皮版本（D5 效能：每隻 1~2 次繪製）；Boss 只有一隻，照舊用關節節點
-			var rig: Node3D = DarkFantasy.character(e.kind) if e.kind == &"boss" else DarkFantasy.skinned_character(e.kind)
+			# 冤魂（D6）：半透明的騎士（玩家的模型，不拿武器）
+			var rig: Node3D
+			if e.kind == &"boss":
+				rig = DarkFantasy.character(e.kind)
+			elif e.kind == &"ghost":
+				rig = DarkFantasy.skinned_character(&"player")
+				(rig as SkinnedRig).set_ghost(GHOST_TINT, GHOST_TRANSPARENCY)
+			else:
+				rig = DarkFantasy.skinned_character(e.kind)
 			_animators[e.id] = EnemyAnimator.new(rig, e as Enemy)
 			root = rig
 			_add_rarity_marks(rig, e as Enemy)
@@ -487,6 +505,81 @@ func _create_view(e: Entity) -> Node3D:
 	root.add_child(ring)
 	root.set_meta(&"entity", e.get_instance_id())
 	add_child(root)
+	return root
+
+
+# 挖墳點（D6）：土堆 + 墓碑，挖的進度越多土堆越矮；挖完變成發光的墓穴（出口）
+func _sync_grave(world: World) -> void:
+	if not DigEvent.enabled(world):
+		if _grave != null:
+			_grave.visible = false
+		return
+	if _grave == null:
+		_grave = _create_grave()
+		add_child(_grave)
+	_grave.visible = true
+	var ev := world.event
+	_grave.position = Vector3(ev.point.x, world.terrain.ground_at(ev.point), ev.point.y)
+	var open := ev.state == DigEvent.OPEN
+	var mound: Node3D = _grave.get_node(^"Mound")
+	mound.visible = not open
+	mound.scale.y = maxf(0.08, 1.0 - ev.progress)
+	_grave.get_node(^"Hole").visible = open
+	_grave.get_node(^"ExitRing").visible = open
+	_grave.get_node(^"Headstone").visible = not open
+
+
+func _create_grave() -> Node3D:
+	var root := Node3D.new()
+	root.name = "Grave"
+	var mound := MeshInstance3D.new()
+	mound.name = "Mound"
+	var sphere := SphereMesh.new()
+	sphere.radius = 1.0
+	sphere.height = 0.9
+	sphere.radial_segments = 10
+	sphere.rings = 4
+	mound.mesh = sphere
+	mound.scale = Vector3(1.1, 1.0, 0.75)
+	mound.material_override = _flat_material(GRAVE_SOIL)
+	root.add_child(mound)
+	var stone := _box(Vector3(0.9, 1.3, 0.25), Vector3(0.0, 0.65, -0.95), _flat_material(GRAVE_STONE))
+	stone.name = "Headstone"
+	root.add_child(stone)
+	var hole := MeshInstance3D.new()
+	hole.name = "Hole"
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = EventDefs.DIG.exit_radius
+	cyl.bottom_radius = EventDefs.DIG.exit_radius * 0.8
+	cyl.height = 0.06
+	hole.mesh = cyl
+	hole.position.y = 0.03
+	var dark := StandardMaterial3D.new()
+	dark.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	dark.albedo_color = Color("07060a")
+	hole.material_override = dark
+	root.add_child(hole)
+	var ring := MeshInstance3D.new()
+	ring.name = "ExitRing"
+	var torus := TorusMesh.new()
+	torus.inner_radius = EventDefs.DIG.exit_radius
+	torus.outer_radius = EventDefs.DIG.exit_radius + 0.18
+	ring.mesh = torus
+	ring.scale.y = 0.2
+	ring.position.y = 0.06
+	var glow := StandardMaterial3D.new()
+	glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	glow.albedo_color = EXIT_COLOR
+	ring.material_override = glow
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(ring)
+	var light := OmniLight3D.new()
+	light.name = "ExitLight"
+	light.light_color = EXIT_COLOR
+	light.omni_range = 4.0
+	light.light_energy = 1.5
+	light.position.y = 0.8
+	ring.add_child(light)
 	return root
 
 

@@ -5,13 +5,13 @@
 class_name NetCodec
 
 enum { S_RUN, S_TICK, S_ACK, S_WORLD, S_ENTITIES }
-enum { W_WAVE, W_KILLS, W_TIME, W_OVER, W_BOSS, W_DEFEATED, W_GOLD }
+enum { W_WAVE, W_KILLS, W_TIME, W_OVER, W_BOSS, W_DEFEATED, W_GOLD, W_FLOOR, W_EVENT }
 enum { E_ID, E_KIND, E_X, E_Z, E_H, E_FACING, E_HP, E_MAX_HP, E_VX, E_VZ, E_FLASH, E_INVULN, E_DEAD, E_ANIM, E_EXTRA }
 # 玩家的 E_EXTRA
-enum { P_PEER, P_WEAPON, P_ROLLS, P_DOWNED, P_DOWN_TIMER, P_REVIVE, P_PARRY, P_DODGE, P_INV, P_SLOTS, P_ACTIVE, P_STUN }
-# 寶箱的 E_EXTRA：[tier, opened]；地上道具：[item_id, 武器（WeaponDropDefs.to_array，不是武器為 []）]（D3 / D4）
+enum { P_PEER, P_WEAPON, P_ROLLS, P_DOWNED, P_DOWN_TIMER, P_REVIVE, P_PARRY, P_DODGE, P_INV, P_SLOTS, P_ACTIVE, P_STUN, P_DESCENDED }
+# 寶箱的 E_EXTRA：[tier, opened]；地上道具：[item_id, 武器（WeaponDropDefs.to_array，不是武器為 []）, 屍體的主人 peer id]（D3 / D4 / D6）
 
-const ENEMY_KINDS: Array[StringName] = [&"grunt", &"archer", &"boss"]
+const ENEMY_KINDS: Array[StringName] = [&"grunt", &"archer", &"boss", &"ghost"]
 # 動畫欄位名稱 → 索引（Player._update_anim、Enemy._update_anim、Boss._anim_extra）；不在表裡的照樣用字串送
 const ANIM_KEYS: Array[String] = [
 	"loco", "loco_time", "action", "action_time", "behavior", "phase", "k", "swing_dir", "is_finisher",
@@ -38,7 +38,8 @@ static func encode_entities(world: World) -> Array:
 
 static func make_snapshot(world: World, entities: Array, ack: int) -> Array:
 	var s := world.stats
-	return [world.run_id, world.tick, ack, [s.wave, s.kills, s.time, world.is_over, world.boss_id, world.is_defeated, world.gold], entities]
+	return [world.run_id, world.tick, ack, [s.wave, s.kills, s.time, world.is_over, world.boss_id, world.is_defeated, world.gold,
+		world.floor_num, [world.event.state, world.event.progress, world.event.time, world.base_difficulty]], entities]
 
 
 # 網路格式：[id, kind, 數值（PackedFloat32Array）, is_dead, 動畫（[索引或名稱, 值, …]）, extra]
@@ -92,11 +93,11 @@ static func entity_fields(e: Entity) -> Array:
 		var p := e as Player
 		a[E_ANIM] = p.anim
 		a[E_EXTRA] = [p.peer_id, p.weapon_id, p.roll_charges, p.is_downed, p.down_timer, p.revive_progress, p.parry_timer, p.dodge_timer, p.inventory.to_array(),
-			p.weapon_slots.map(WeaponDropDefs.to_array), p.active_slot, p.stun_timer]
+			p.weapon_slots.map(WeaponDropDefs.to_array), p.active_slot, p.stun_timer, p.descended]
 	elif e is Chest:
 		a[E_EXTRA] = [(e as Chest).tier, (e as Chest).opened]
 	elif e is ItemPickup:
-		a[E_EXTRA] = [(e as ItemPickup).item_id, WeaponDropDefs.to_array((e as ItemPickup).weapon)]
+		a[E_EXTRA] = [(e as ItemPickup).item_id, WeaponDropDefs.to_array((e as ItemPickup).weapon), (e as ItemPickup).corpse_of]
 	elif e is Enemy:
 		a[E_ANIM] = (e as Enemy).anim
 		var en := e as Enemy
@@ -146,6 +147,7 @@ static func create_entity(world: World, a: Array) -> Entity:
 		e = chest
 	elif kind == &"pickup":
 		var pickup := ItemPickup.new(world, extra[0], at, WeaponDropDefs.from_array(extra[1]))
+		pickup.corpse_of = extra[2]
 		world.add_entity_with_id(pickup, a[E_ID])
 		world.pickups.append(pickup)
 		e = pickup
@@ -206,6 +208,7 @@ static func apply_entity(e: Entity, a: Array, b: Array, t: float, ahead: float =
 		pl.revive_progress = extra[P_REVIVE]
 		pl.parry_timer = extra[P_PARRY]
 		pl.dodge_timer = extra[P_DODGE]
+		pl.descended = extra[P_DESCENDED]
 	elif e is Enemy:
 		var en := e as Enemy
 		en.anim = anim
@@ -250,3 +253,9 @@ static func apply_world(world: World, snap: Array) -> void:
 	world.boss_id = w[W_BOSS]
 	world.is_defeated = w[W_DEFEATED]
 	world.gold = w[W_GOLD]
+	world.floor_num = w[W_FLOOR]
+	var ev: Array = w[W_EVENT]
+	world.event.state = ev[0]
+	world.event.progress = ev[1]
+	world.event.time = ev[2]
+	world.base_difficulty = ev[3]

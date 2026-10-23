@@ -27,7 +27,7 @@ func reset() -> void:
 
 
 func update(world: World, dt: float) -> void:
-	if not world.is_any_player_alive() or world.is_over or finished:
+	if not world.is_any_player_alive() or world.is_over or finished or DigEvent.enabled(world):   # 挖墳地圖沒有波次（D6，改由 DigEvent 生怪）
 		return
 
 	if not queue.is_empty():
@@ -119,7 +119,11 @@ static func _around_player(world: World, type: StringName, p: Vector2) -> Vector
 
 # extra 併進 mul（例如 dormant = true，見 Enemy._init）
 func spawn_at(world: World, type: StringName, at: Vector2, extra: Dictionary = {}) -> Enemy:
-	var mul: Dictionary = (WaveDefs.NO_SCALING if type == &"boss" else WaveDefs.wave_multipliers(wave)).duplicate()
+	var mul: Dictionary
+	if DigEvent.enabled(world):   # 挖墳地圖（D6）：所有怪（含 Boss、怪群、冤魂）依目前難度
+		mul = EventDefs.difficulty_mul(world.difficulty())
+	else:
+		mul = (WaveDefs.NO_SCALING if type == &"boss" else WaveDefs.wave_multipliers(wave)).duplicate()
 	mul.hp *= player_count_hp_mul(world.players.size())
 	mul.merge(extra)
 	var enemy := create(world, type, at, mul)
@@ -212,7 +216,7 @@ static func player_count_hp_mul(count: int) -> float:
 # 敵人類型 → 行為類別（網頁版 Spawner 的 ENEMY_CLASSES）；客戶端建立鏡像實體也用這個
 static func create(world: World, type: StringName, at: Vector2, mul: Dictionary) -> Enemy:
 	match type:
-		&"grunt":
+		&"grunt", &"ghost":
 			return MeleeEnemy.new(world, type, at, mul)
 		&"archer":
 			return RangedEnemy.new(world, type, at, mul)

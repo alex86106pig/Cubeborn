@@ -253,7 +253,10 @@ func _process(delta: float) -> void:
 	_weapon.add_theme_color_override(&"font_color", ItemDefs.RARITIES[inst.rarity].color if not inst.is_empty() else Color.WHITE)
 	_gold.text = "金幣 %d" % world.gold
 	var s := world.stats
-	_wave.text = "第 %d / %d 波" % [s.wave, world.spawner.total_waves()] if s.wave > 0 else "準備中"
+	if DigEvent.enabled(world):   # 挖墳地圖（D6）：層數與難度
+		_wave.text = "第 %d 層 · 難度 %d" % [world.floor_num, floori(world.difficulty())]
+	else:
+		_wave.text = "第 %d / %d 波" % [s.wave, world.spawner.total_waves()] if s.wave > 0 else "準備中"
 	_kills.text = "擊殺 %d" % s.kills
 	_time.text = UiKit.format_time(s.time)
 	_update_boss(delta)
@@ -348,10 +351,20 @@ func _on_event(name: String, p: Dictionary) -> void:
 		"player:died":
 			# 多人時有人真的死亡但隊友還在：只提示（全員倒下才是結算，見 game:defeat）
 			if world.players.size() > 1 and world.is_any_player_alive():
-				_show_banner(("你陣亡了，等隊友打完這局" if _is_local(p.player_id) else "%s 陣亡了" % _tag_of(p.player_id)), true)
+				_show_banner(("你陣亡了：隊友撿起你的屍體帶到下一層，打倒冤魂就能復活" if _is_local(p.player_id) else "%s 陣亡了：撿起屍體帶到下一層" % _tag_of(p.player_id)), true)
+		"event:started":
+			_show_banner("開始挖墳！Boss 出現了，怪物會越來越多", true)
+		"event:exit_open":
+			_show_banner("墓穴挖開了：全員走進去前往下一層", false, UiKit.GOLD)
+		"floor:started":
+			_show_banner("第 %d 層（基礎難度 %d）" % [p.floor, p.difficulty], false, UiKit.GOLD)
+		"boss:reward":
+			_show_banner("擊敗 %s！掉落獎勵" % BOSS_NAME, false, UiKit.GOLD)
+		"ghost:spawned":
+			_show_banner("%s 的冤魂出現了：打倒就能復活" % _tag_of(p.player_id), true)
 		"game:defeat":
 			var s: Dictionary = p.stats
-			_set_game_over("你倒下了" if world.players.size() <= 1 else "全員倒下", "撐到第 %d 波 · 擊殺 %d · 時間 %s" % [s.wave, s.kills, UiKit.format_time(s.time)], false)
+			_set_game_over("你倒下了" if world.players.size() <= 1 else "全員倒下", ("撐到第 %d 層" % s.get("floor", 1) if DigEvent.enabled(world) else "撐到第 %d 波" % s.wave) + " · 擊殺 %d · 時間 %s" % [s.kills, UiKit.format_time(s.time)], false)
 			_game_over_delay = GAME_OVER_DELAY
 		"game:victory":
 			var s: Dictionary = p.stats

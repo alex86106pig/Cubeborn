@@ -661,3 +661,13 @@ godot/
   - 模擬層：`SimPhysics.separate` 用 Packed 陣列與攤平的鏈結串列格子；`World.player_list` 取代每次 `players.values()`；`Enemy.cd()` 快取字串；`Enemy.anim` 沿用同一個 Dictionary；位置與上次算地形時相同、站在地上的實體跳過推出石台與落地（`Entity.terrain_checked_pos`）。
   - 畫面層：視野結果只在 tick 或觀看者改變時重算，牆擋視線每隻每 `LOS_INTERVAL`（3）步重算（剛進入扇形立刻算）；看不到的節點不更新；敵人四肢動畫每秒最多 60 次；節點位置與朝向一次寫入 transform；閃白沒變不改材質；太陽陰影 `SHADOW_ORTHOGONAL`、最遠 70。
   - 量測：`main.gd --horde=N --perf`（離屏截圖場景，見 1.8）與 `stress_test/profile_horde.gd`（headless，模擬層各段）。
+
+### 15.25 挖墳事件、難度與換層（v0.29.0，D6）
+- 資料在 `defs/event_defs.gd`（`DIG`、`DIFFICULTY`、`SPAWN`、`GHOST`），邏輯在 `sim/dig_event.gd`（`World.event`）。只有地圖資料 `"dig_event": true` 的地圖有（`DigEvent.enabled`）；這種地圖的 `Spawner.update` 不跑波次，測試場地照舊。
+- **挖墳**：玩家動作層 `dig`（`Ready` 在按住 F、附近沒有倒地隊友、`event.can_dig` 時進入）：移速 0、鎖定朝向、不能跳；`_on_damaged` 與 `stun` 不打斷；屬性來源 `&"digging"` 讓擊退 ×0，質量暫時 `DIG_MASS`（1000，碰撞推不動）。`DigEvent.update`（`World.step` 在 `spawner.update` 之後）：有人 `is_digging()` 且狀態 idle → `_start`（`event:started`、Boss 在挖墳點旁 `boss_distance`）；active 時進度 += 挖的人數 × dt ÷ 60，沒人挖每秒 −0.01；滿了 → `open`（`event:exit_open`）。
+- **難度** = `World.base_difficulty` + 事件秒數 × 1（`World.difficulty()`）。`Spawner.spawn_at` 在挖墳地圖用 `EventDefs.difficulty_mul`（所有怪，含 Boss）。事件生怪：每 `spawn_interval(難度)` 秒在隨機一位可被當目標的玩家周圍（`Spawner._around_player`）冒 `group_size` 隻（`wave_member = true`，同時最多 `max_alive`），稀有度 `EventDefs.roll_rarity`。`--no-spawn`（`spawner.finished`）時事件照常但不生怪、不出 Boss。
+- **出口與換層**：`open` 後活著、沒倒地的玩家走進 `exit_radius` → `Player.descend()`（`descended`：不更新、不能被打、不被追、不參與碰撞、畫面隱藏）。活著的都 descended（倒地的算還沒到）→ `World.next_floor()`：層數 +1、基礎難度 = (層數 − 1) × 10、移除所有非玩家實體、`arrive_floor` 回出生點、`_populate_floor`（事件歸零 → 寶箱 → 怪群）、帶著屍體的死者生冤魂、發 `floor:started`。實體 id 不重來（客戶端照常增減鏡像）。
+- **Boss**：挖墳地圖的 `on_boss_defeated` 不通關，在 Boss 旁掉一個大寶箱稀有度的道具（`boss:reward`）；武器與 50 金幣照 `on_enemy_died`。
+- **屍體與冤魂**：多人時真的死亡（`_on_died`）→ `World.drop_corpse`：`ItemPickup`（item_id `&"corpse"`、`corpse_of` = peer id）。撿起 → `Player.add_corpse`：背包條目 uid `corpse_<peer>`、id `&"corpse"`（`ItemDefs` 的 kind `&"corpse"`，形狀 r6，不算生效道具）；丟出來還是屍體。換層時 `corpse_carrier` 找到就 `_spawn_ghost`（`EnemyDefs` 的 `ghost`，MeleeEnemy，`ghost_of`，出生點 10~14）；冤魂死亡 → `on_ghost_defeated`：移除屍體、`Player.resurrect`（冤魂位置、30% 血、短暫無敵）。客戶端 `net_sync_life` 支援死亡 → 復活。
+- **快照**：世界加 `W_FLOOR`、`W_EVENT`（[狀態, 進度, 秒數, 基礎難度]）；玩家 extra 加 `P_DESCENDED`；地上道具 extra 第 3 欄是屍體主人。挖墳點在 `World.load_map` 就設好（客戶端預測要判斷挖不挖得到）。
+- **畫面**：挖墳點土堆 + 墓碑（土堆隨進度變矮），打開後是黑洞 + 發光環與光；`WorldLabels` 顯示「[F] 按住挖墳」、「挖墳 N%」、「出口：走進去前往第 N 層（k / n 人）」、冤魂說明；HUD 右上「第 N 層 · 難度 D」與事件橫幅；冤魂是半透明偏藍的騎士（`SkinnedRig.set_ghost`）；挖墳姿勢彎腰雙手往下挖。

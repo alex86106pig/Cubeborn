@@ -186,8 +186,8 @@ func _reconcile(snap: Array) -> void:
 		while not _pending.is_empty() and _pending[0].tick <= ack:
 			_pending.pop_front()
 	_apply_own_authority(me, a)
-	if me.is_dead or me.is_downed:
-		# 倒地 / 死亡時不預測：位置直接用房主的（可能被怪推動）
+	if me.is_dead or me.is_downed or me.descended:
+		# 倒地 / 死亡 / 已走進出口時不預測：位置直接用房主的（可能被怪推動、換層時搬到出生點）
 		_history.clear()
 		me.pos = Vector2(a[NetCodec.E_X], a[NetCodec.E_Z])
 		me.height = a[NetCodec.E_H]
@@ -226,6 +226,7 @@ func _apply_own_authority(me: Player, a: Array) -> void:
 	NetCodec.apply_life(me, a)
 	me.net_sync_life(a[NetCodec.E_DEAD], extra[NetCodec.P_DOWNED], extra[NetCodec.P_DOWN_TIMER], extra[NetCodec.P_REVIVE])
 	me.parry_timer = maxf(me.parry_timer, extra[NetCodec.P_PARRY])
+	me.descended = extra[NetCodec.P_DESCENDED]
 	me.sync_inventory(extra[NetCodec.P_INV])   # 背包以房主為準（D3：撿、丟、搬動都在房主執行）
 	if extra[NetCodec.P_STUN] > me.stun_timer + 0.05:   # 被房主判定暈眩（v0.27.0）：本機預測也立刻站住
 		me.stun(extra[NetCodec.P_STUN])

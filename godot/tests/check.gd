@@ -119,11 +119,16 @@ func _initialize() -> void:
 	_check("怪物跳上高台：玩家站在 1.0 石台上，骷髏戰士先蹲 0.25 秒再跳，經 0.5 跳上 1.0 並打到玩家；Boss 也跳得上去", _check_enemy_climb)
 	_check("弓手打得到高台：玩家站在 1.0 石台上會中箭；被牆擋住時弓手先移動、不對牆射", _check_archer_high_ground)
 	_check("投射物不穿牆：魔彈對牆射會在牆前消失；從高台往下射照樣打得到地上的怪", _check_projectile_walls)
-	_check("地圖 A 生成：小怪都生在離玩家 8~18、可走而且走得到玩家的地方", _check_map_spawns)
+	_check("地圖 A 生成（D6 起由挖墳事件生）：小怪都生在離玩家 8~18、可走而且走得到玩家的地方", _check_map_spawns)
 	_check("怪物稀有度（D5）：稀有骷髏生命 180、攻擊力 ×1.5、體型 ×1.2；魔法 72、×1.2；詞條魔法 1~2 / 稀有 3 條不重複、稀有怪有名字；每群魔法 1~2 隻、稀有 25%（±1.5%）", MonsterChecks.check_rarity)
 	_check("怪物詞條（D5）：迅捷移速 ×1.3、強壯 ×1.3、厚皮 20 → 15、再生每秒 0.72、吸血揮砍 12 回 2.4、狂暴 <30% 移速與狀態機 ×1.4、死亡爆炸 0.8 秒後 2.2 內 20 傷害、召喚 8 秒 2 隻最多 6 隻", MonsterChecks.check_affixes)
 	_check("怪群（D5）：地圖 A 散放 12~20 群、每群 6~15 隻、離出生點 15 以上、群距 10 以上、都走得到；開場休眠不播音效、不動；玩家走到 12 以內整群醒來、被打一隻整群醒來；同種子結果相同", MonsterChecks.check_packs)
-	_check("怪群不擋波次（D5）：第 1 波 5 隻死光後 3.5 秒內開第 2 波，休眠的怪群不算", MonsterChecks.check_packs_waves)
+	_check("挖墳（D6）：挖墳點 2.2 內按住 F 開始事件並挖墳；挖墳中不能移動、跳，被打不中斷也不會被擊退；60 秒挖完（30 秒 50%）、放手每秒 −1%、兩人一起挖速度相加；挖完出口打開、不能再挖", EventChecks.check_dig)
+	_check("事件難度（D6）：每秒 +1；難度 60 怪物生命 ×1.3；生怪間隔 3 → 0.8 秒、每批 2 隻起（難度 100 單人 7、雙人 10）；魔法 / 稀有機率隨難度（±1.5%）；Boss 在挖墳點旁邊；3 秒後冒第一批；休眠的怪群不擋事件生怪", EventChecks.check_difficulty)
+	_check("出口與換層（D6）：活著的人都走進出口才換層（有人倒地不換）；先到的消失、不能被打；新的一層回出生點、基礎難度 +10、保留金幣與背包、地上與怪物清空、寶箱重放、事件歸零；第 2 層怪物生命 ×1.05", EventChecks.check_next_floor)
+	_check("Boss 獎勵（D6）：挖墳地圖打倒 Boss 不通關，掉 1 把武器、1 個大寶箱機率的道具、50 金幣", EventChecks.check_boss_reward)
+	_check("屍體與冤魂（D6）：多人時死亡留下屍體，撿進背包占 6 格；背著換層出現冤魂（離出生點 10~14），打倒後死者在那裡復活 30% 血、屍體消失；沒人帶屍體就沒有冤魂", EventChecks.check_corpse_ghost)
+	_check("連線挖墳（D6）：層數、事件狀態、進度、難度、走進出口、屍體的主人與挖墳點在客戶端相同", EventChecks.check_net_event)
 	_check("蒙皮小怪（D5 效能）：骷髏戰士 / 弓手合成一個蒙皮網格（≤ 2 個網格、頂點數與原本零件相同），關節姿勢寫進骨架", MonsterChecks.check_skinned_rig)
 	_check("連線稀有度（D5）：客戶端的稀有度、詞條、名字、半徑、最大生命與房主相同；普通怪的快照不帶稀有度欄位", MonsterChecks.check_net_rarity)
 	_check("高度判定：最高點時箭從腳下飛過、地面會中箭；跳起來躲過 Boss 砸地；空中揮砍與空中魔彈打得到地上的怪", _check_height_hits)
@@ -162,6 +167,7 @@ func _initialize() -> void:
 	_worlds.clear()
 	NetChecks.cleanup()
 	MonsterChecks.cleanup()
+	EventChecks.cleanup()
 	print("\n%d / %d 通過" % [_passed, _passed + _failed])
 	OS.remove_logger(_errors)
 	quit(1 if _failed > 0 else 0)
@@ -1578,6 +1584,9 @@ func _check_item_defs() -> String:
 					return "%s 占 %d 格，強度 %.1f ÷ 效率 %.2f 應占 %d 格" % [id, ItemDefs.cell_count(id), def.power,
 						ItemDefs.RARITIES[def.rarity].efficiency, ItemDefs.expected_cells(id)]
 				counts[def.rarity] = counts.get(def.rarity, 0) + 1
+			&"corpse":   # 隊友的屍體（D6）：2 × 3 格、沒有效果，不算在 45 個道具裡
+				if ItemDefs.cell_count(id) != 6 or not def.effects.is_empty():
+					return "屍體應占 6 格、沒有效果"
 			_:
 				return "%s 的 kind 不存在：%s" % [id, def.kind]
 		for e: Dictionary in def.effects:
@@ -2756,17 +2765,22 @@ func _check_weapon_base_stats() -> String:
 	return ""
 
 
+# D6 起地圖 A 沒有波次，小怪由挖墳事件生（同樣用 Spawner._around_player 的距離）；Boss 在挖墳點旁邊，不算
 func _check_map_spawns() -> String:
 	var w := _new_world(12345, true, &"graveyard_a")
 	var p := _player(w)
 	var s: Dictionary = Config.SPAWNER
 	var seen := {}
 	var count := 0
+	w.event._start(w)
+	for e: Entity in w.enemies:
+		seen[e.id] = true
 	for i in 60 * 60:
 		p.hp = p.max_hp
 		w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO)}, DT)
 		for e: Entity in w.enemies:
-			if seen.has(e.id):
+			# Boss、Boss 召喚的、召喚詞條叫出來的（生在召喚者旁邊）不算
+			if seen.has(e.id) or not (e is Enemy and (e as Enemy).wave_member and (e as Enemy).summoner_id == 0):
 				continue
 			seen[e.id] = true
 			var dist := e.pos.distance_to(p.pos)

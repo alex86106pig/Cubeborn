@@ -7,6 +7,7 @@ const RADIUS := 0.4
 
 var item_id: StringName          # 道具 id；武器時是武器種類（ItemDefs 的武器 id）
 var weapon: Dictionary = {}      # 武器實例（WeaponDropDefs）；空 = 一般道具
+var corpse_of := 0               # 屍體（D6，item_id = &"corpse"）：死者的 peer id
 
 
 func _init(p_world: World, p_item_id: StringName, at: Vector2, p_weapon: Dictionary = {}) -> void:

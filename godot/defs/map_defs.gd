@@ -63,6 +63,7 @@ const MAPS := {
 		# 寶箱（D3，照草圖）：[x, y, 種類]；大寶箱在教堂廢墟裡
 		"chests": [[28.0, 88.0, &"small"], [73.0, 89.0, &"small"], [58.0, 13.0, &"small"], [88.0, 8.0, &"small"], [12.0, 42.0, &"big"]],
 		"packs": true,   # 開場散放怪群（D5，defs/monster_rarity_defs.gd 的 PACKS）
+		"dig_event": true,   # 挖墳事件取代波次（D6，sim/dig_event.gd）
 	},
 }
 

@@ -28,6 +28,7 @@ var dormant := false                 # 怪群休眠中：站著不動，整群�
 var wave_member := false             # 波次生成的：場上的波次怪都死了才開下一波（怪群不算）
 var action_speed := 1.0              # 狀態機時間的倍率（狂暴詞條 1.4：舉刀、瞄準、收招與冷卻都變快）
 var summoner_id := 0                 # 召喚詞條叫出來的：召喚者的 id
+var ghost_of := 0                    # 冤魂（D6）：死去玩家的 peer id，打倒後那位玩家復活
 var _frenzied := false
 var _exploded := false
 var _summon_timer := 0.0
@@ -256,6 +257,8 @@ func _on_died(_source_id: int) -> void:
 	action_speed = 1.0   # 爆炸延遲、屍體時間不受狂暴影響
 	fsm.change(&"dead")
 	world.on_enemy_died(self)
+	if ghost_of != 0:
+		world.on_ghost_defeated(self)
 	if has_affix(&"volatile") and not world.is_over:
 		var v := affix(&"volatile")
 		world.emit_event("fx:telegraph", {"pos": pos, "height": ground_height, "radius": v.radius, "color": v.color, "life": v.delay})

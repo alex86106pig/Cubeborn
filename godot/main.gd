@@ -7,6 +7,7 @@
 #   --net-latency=毫秒（模擬單程延遲）--net-loss=0.1（模擬掉包）
 #   效能量測：--horde=N（開場在玩家周圍生 N 隻醒著的小怪）--perf（關垂直同步，結束時印出 FPS 與各段耗時）
 #   --elites（畫面上方生 1 隻稀有、2 隻魔法骷髏，截圖確認外觀）
+#   挖墳（D6）：--at-dig（開場站在挖墳點旁邊）--exit-open（開場出口就打開）--ghost（畫面上方生一隻冤魂）
 extends Node3D
 
 enum Mode { SINGLE, HOST, CLIENT }
@@ -52,6 +53,9 @@ var _autostart_players := 0
 # 效能量測（D5）：--horde=N 開場在玩家周圍生 N 隻醒著的小怪；--perf 關垂直同步、2 秒後開始記錄幀時間，結束時印出
 var _horde := 0
 var _elites := false   # --elites：畫面上方生 1 隻稀有、2 隻魔法骷髏（截圖確認外觀用）
+var _at_dig := false     # --at-dig：開場站在挖墳點旁邊（D6，配合 --auto-interact 挖墳）
+var _exit_open := false  # --exit-open：開場事件就開始、出口已打開（D6 截圖）
+var _ghost := false      # --ghost：畫面上方生一隻冤魂（D6 截圖，不對應任何玩家）
 var _perf := false
 var _perf_frames := PackedFloat32Array()
 var _perf_step_usec := 0
@@ -144,6 +148,12 @@ func _parse_args() -> void:
 			_horde = value.to_int()
 		elif arg == "--elites":
 			_elites = true
+		elif arg == "--at-dig":
+			_at_dig = true
+		elif arg == "--exit-open":
+			_exit_open = true
+		elif arg == "--ghost":
+			_ghost = true
 		elif arg == "--perf":
 			_perf = true
 			DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
@@ -451,6 +461,16 @@ func _spawn_horde(me: Player) -> void:
 		var a := rng.randf() * TAU
 		var at := world.nav.nearest_walkable(me.pos + Vector2(sin(a), cos(a)) * rng.randf_range(4.0, 16.0))
 		world.spawner.spawn_at(world, type, at)
+	if _at_dig:
+		me.pos = world.event.point + (world.spawn_point - world.event.point).normalized() * 1.5
+		me.prev_pos = me.pos
+	if _exit_open:
+		world.event._start(world)
+		world.event.state = DigEvent.OPEN
+		world.event.progress = 1.0
+	if _ghost:
+		var g := world.spawner.spawn_at(world, &"ghost", world.nav.nearest_walkable(me.pos + Vector2(-1.0, -1.0).normalized() * 5.0))
+		g.ghost_of = -1
 	if _elites:
 		var up := Vector2(-1.0, -1.0).normalized()   # 等距相機的畫面上方
 		var side := Vector2(1.0, -1.0).normalized()

@@ -106,6 +106,15 @@ func set_flash(k: float) -> void:
 	_lit_material.emission = Color(k, k, k)
 
 
+# 冤魂（D6）：整隻半透明、偏藍，不投影
+func set_ghost(tint: Color, transparency: float) -> void:
+	if _lit_material != null:
+		_lit_material.albedo_color = tint
+	for mi in PartKit.mesh_instances(self):
+		mi.transparency = transparency
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
 func mesh_count() -> int:
 	return PartKit.mesh_instances(self).size()
 
