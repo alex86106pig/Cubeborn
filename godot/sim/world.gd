@@ -22,7 +22,8 @@ var map_id: StringName
 var map: Dictionary
 var half_extents := Vector2.ZERO     # 場地的一半大小（世界原點在中央）
 var terrain: Terrain
-var nav: Nav
+var nav: Nav                         # 小怪用的尋路格子；Boss 用 nav_large（nav_for 依半徑選）
+var nav_large: Nav
 var spawn_point := Vector2.ZERO
 var spawner := Spawner.new()
 var boss_id := 0                     # 目前的 Boss（0 = 沒有），HUD 的 Boss 血條用
@@ -47,8 +48,13 @@ func load_map(p_map_id: StringName) -> void:
 	map = MapDefs.get_map(p_map_id)
 	half_extents = (map.size as Vector2) / 2.0
 	terrain = Terrain.new(MapDefs.world_blocks(map))
-	nav = Nav.new(terrain, half_extents)
+	nav = Nav.new(terrain, half_extents, Config.NAV.margin)
+	nav_large = Nav.new(terrain, half_extents, Config.NAV.margin_large)
 	spawn_point = MapDefs.to_world(map, map.spawn)
+
+
+func nav_for(radius: float) -> Nav:
+	return nav_large if radius > Config.NAV.large_radius else nav
 
 
 func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:

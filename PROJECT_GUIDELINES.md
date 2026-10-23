@@ -289,7 +289,7 @@ export const SKILLS = {
 | `fx:telegraph` | `{ pos, height, radius, color, life }` | 奧術爆裂落點預警 |
 | `fx:fizzle` | `{ pos, height, color }` | 投射物飛到盡頭、撞牆或被格擋 |
 | `fx:explosion` | `{ pos, height, radius, color }` | 投射物爆炸 |
-| `fx:parry` | `{ pos, height, radius, color }` | 盾反 |
+| `fx:parry` | `{ pos, height, radius, facing, arc, color }` | 盾反（畫出實際的扇形範圍） |
 | `fx:heal` | `{ pos, height, color }` | 治療藥水 |
 | `fx:sprint` | `{ pos, height, color }` | 疾跑 |
 | `fx:boss_slam` | `{ pos, height, radius }` | Boss 砸地 |
@@ -520,7 +520,7 @@ godot/
 - 使用者決定：空白鍵、最高 1.5、起跳到落地 0.6 秒、只有一段跳；空中可以攻擊、用技能與道具、翻滾（空中翻滾照常下墜）；命中照實際高度計算。數值在 `core/config.gd` 的 `JUMP` 與 `HEIGHT`。
 - 高度是模擬層的資料：`entity.height`（腳底）、`vz`、`ground_height`、`body_height`（身高，依 kind 查 `HEIGHT.body`）。重力 = 8 × 高度 ÷ 時間²，所有實體共用；垂直移動在 `World.step` 的碰撞分離與地形推擠之後（`Entity.integrate_vertical`，用前後速度平均，60 步 / 秒時第 18 步最高 1.5、第 36 步落地）。
 - 起跳：`InputCmd.BTN_JUMP`，站在地面上隨時可跳（攻擊、翻滾中也行），硬直與倒地不行；落地沒有硬直。
-- **命中高度**：目標佔 [height, height + body_height]；攻擊用 `hit.band`（Vector2 下緣、上緣）。沒給 band 時用攻擊者身體往腳底下延伸 `reach_below`（近戰、碰撞、衝鋒）。投射物是飛行高度 ± `projectile_half`，高度不重疊就從頭頂 / 腳下穿過；爆炸是地面往上 `explosion_height`；Boss 砸地只到 `slam_height`。
+- **命中高度**：目標佔 [height, height + body_height]；攻擊用 `hit.band`（Vector2 下緣、上緣）。沒給 band 時用攻擊者身體往腳底下延伸 `reach_below`（近戰、碰撞、衝鋒）。投射物是飛行高度 ± `projectile_half`，高度不重疊就從頭頂 / 腳下穿過；爆炸是地面往上 `explosion_height`；Boss 砸地打得到上下各一層高台，但目標腳底離自己腳下地面超過 `slam_height` 就打不到（`hit.max_air`，見 15.19）。
 - 投射物的 `height` 就是飛行高度：敵人箭矢 = 發射者腳底 + `arrow_altitude`，飛向目標的過程中線性變到「目標腳下地面 + `arrow_altitude`」（D1，打得到高台上的玩家；跳起來照樣躲得過），之後高度不變；玩家投射物 = 腳底 + `bolt_altitude`，飛出 `bolt_settle_distance` 內降到「min(發射時腳下地面, 目前位置的地面) + `bolt_altitude`」（只往下貼地，不會順著牆往上爬）。撞到比飛行高度高的石台就結束（會爆炸的照樣爆炸）。
 - 碰撞分離：高度不重疊的兩個實體不互推。
 - **地形**：`sim/terrain.gd`，石台資料在 `defs/map_defs.gd`（見 15.19）。腳底 ≥ 頂面 − `HEIGHT.step` 才能站上去，否則石台當牆、把實體推出去；圓心在石台範圍內時地面高度就是頂面。查詢用 4 單位的格子分桶。
@@ -537,11 +537,12 @@ godot/
 
 ### 15.15 劍盾格擋與盾反（v0.18.0）
 - 使用者決定：劍盾右鍵從盾擊衝鋒改成格擋；按一下自動維持 3 秒；格擋時可以移動。其餘由 Claude 訂（數值在 `weapon_defs.gd` 的 `swordShield.special`）：
-  - 移速 ×0.5、會轉向瞄準點；只能用翻滾提前結束；冷卻 4 秒從按下算。
-  - 擋得住：`blockable` 的攻擊（揮砍、箭），來向在正前方合計 75°（左右各 37.5°）內。擋下時不扣血、自己被推退 30% 擊退，發出 `player:blocked` 與音效；箭會消失。
+  - 移速 ×0.5、會轉向瞄準點；用翻滾或再按一次右鍵（v0.23.0 使用者決定，`press_cancel`：直接進入 0.15 秒收招）提前結束；冷卻 4 秒從按下算（取消不退冷卻）。
+  - 擋得住：`blockable` 的攻擊（揮砍、箭），來向在正前方合計 120°（左右各 60°；v0.23.0 使用者決定，原本 75°）內。格擋中腳下前方顯示金色扇形（`WorldView` 的 BlockFan，半徑 2.2、角度同 `block_arc`）。擋下時不扣血、自己被推退 30% 擊退，發出 `player:blocked` 與音效；箭會消失。
   - Boss 衝鋒（v0.18.2 使用者決定）：擋得住、不扣血，但推退 100%（`charge.block_knockback_mul`）；同一次衝鋒擋下後不再判定。
   - 擋不住：砸地、爆炸（不是 blockable），或來自側面 / 背後。
-  - 完美格擋：按下後 0.2 秒內擋下 → 下一步開頭盾反（前方 120°、距離 2.5，傷害 25 × 攻擊力，大擊退、重擊顯示），然後結束格擋。
+  - 完美格擋：按下後 0.2 秒內擋下 → 下一步開頭盾反（前方 180°、距離 3.5；v0.23.0 使用者決定，原本 120° / 2.5；傷害 25 × 攻擊力，大擊退、重擊顯示），然後結束格擋。`fx:parry` 帶 facing 與 arc，畫面閃一下實際打得到的扇形。
+  - 注意：`InputCmd.buttons` 是「這一步按下」，測試裡連續好幾步帶 `BTN_SPECIAL` 等於連按，格擋會被第二下取消。
 - 實作：`ShieldBlock` 行為記錄 `player.block_time`（格擋開始後秒數，< 0 = 沒在格擋）；`Combat.apply_damage` 對 blockable 的攻擊先呼叫 `target.try_block(來源位置, hit)`；盾反延到下一步執行（`pending_parry`），避免在怪物出招的途中改動怪物狀態。
 
 ### 15.16 物品資料（v0.19.0）
@@ -583,9 +584,12 @@ godot/
 - **地圖**：`graveyard_a`（A 環形墓園，96 × 96，使用者選定；遊戲用 `Config.WORLD.default_map`）、`test_arena`（舊的 32 × 32 測試場地，`check.gd` 大部分檢查用）。B、C、D 草圖在 `mockups/graveyard_map.html`，之後做成資料並隨機抽（使用者決定）；屆時房主要把地圖編號傳給客戶端（目前兩邊都用 default_map）。
 - `World` 建立時載入地圖（`World.new(map_id)`、`load_map`）：`half_extents`（場地一半大小，限制實體與投射物）、`terrain`、`nav`、`spawn_point`；玩家出生在 `spawn_point`。
 - **沒有安全區**（使用者決定）：玩家去得了的地方怪物都去得了，怪物只是比玩家多花一點時間上去。
-  - 尋路（`sim/nav.gd`）：1 單位的格子，牆與墓碑往外擴 `NAV.margin` 的格子是障礙，高台可走；路徑用引擎內建的 `AStarGrid2D`（八方向、不切牆角），再拉直看得到的點。只在權威端算。
-  - 怪物每 `NAV.repath_interval` 秒判斷一次：直線上沒有障礙格就直接走向玩家（和以前一樣），否則照路徑點走（`Enemy.steer_point`）。
-  - 跳上高台（`Enemy._update_jump`）：站在地上往前走、前方 `jump_lookahead` 的地面比腳下高出 `step` ~ `climb_height`（1.1）就先蹲 `jump_windup`（0.25 秒）再用玩家的起跳速度跳。1.3 的墓碑太高不跳，站在下面揮砍 / 射擊打得到。Boss 衝鋒中不跳，撞到比腳下高的石台會暈眩（同撞牆）。
+  - 尋路（`sim/nav.gd`）：1 單位的格子，牆與墓碑往外擴 margin 的格子是障礙，高台可走；路徑用引擎內建的 `AStarGrid2D`（八方向、不切牆角），再拉直看得到的點。只在權威端算。依體型兩張：`World.nav`（小怪，`NAV.margin` 0.6 = 半徑 0.45 + 0.15）、`World.nav_large`（半徑 > `large_radius` 的 Boss，`margin_large` 1.15），用 `World.nav_for(radius)` 取。
+  - 「看得到、直接走」是精確的線段判斷（`Terrain.segment_blocked`：線段與「牆 / 墓碑往外擴 margin」的長方形相交；起點已貼牆時往外走不算擋住）。v0.22.0 用格子取樣，直線會擦到牆角，怪物看起來一直撞牆（繞北門時 154 步被牆擋住變慢，v0.23.0 為 0 步）。
+  - 怪物每 `NAV.repath_interval` 秒判斷一次：看得到就直接走向玩家（和以前一樣），否則照路徑點走（`Enemy.steer_point`）。
+  - 跳上高台（`Enemy._update_jump`）：站在地上往前走、前方 `jump_lookahead` 的地面比腳下高出 `step` ~ `climb_height`（1.1）就先蹲 `jump_windup`（0.25 秒）再用玩家的起跳速度跳；空中往起跳方向至少 `jump_air_speed`（4.0），身體整個越過邊緣才落地（Boss 半徑 1.0、移速 2.2，v0.22.0 會掉回去）。1.3 的墓碑太高不跳，站在下面揮砍 / 射擊打得到。
+  - Boss 衝鋒（v0.23.0）：前方是高低差 ≤ `climb_height` 的高台就在衝鋒途中直接跳上去、不停；更高的牆與墓碑、場地邊緣才撞停暈眩。衝鋒中不做一般的蹲跳。
+  - Boss 砸地（v0.23.0）：範圍內站在任何地面上（含旁邊的高台）的目標都打得到；`hit.max_air` = `slam_height`，腳底離自己腳下地面超過 0.5（跳起來）才躲得過。
   - 弓手：看不到玩家或箭會撞到石台時先繞路靠近、不射擊；箭瞄準玩家腳下地面的高度。
   - 地圖規則（`check.gd` 檢查）：所有可走格連成一片、相鄰可走格高低差 ≤ `climb_height`、牆比最高的地面高出跳躍高度 + 0.3 以上。
 - **生成**（`spawn_rule`）：`arena` 同以前（整個場地隨機、Boss 在玩家對面）；`around_player`（大地圖）小怪生在離玩家 `min_distance_from_player` ~ `max_distance_from_player`（8 ~ 18）、可走而且走得到玩家的格子；Boss 往地圖中央方向、離玩家 `boss_distance`；Boss 召喚的小怪落在障礙格時移到最近的空地。

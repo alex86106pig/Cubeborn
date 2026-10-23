@@ -8,6 +8,9 @@ const STRIKE_PLAYER_COLOR := Color(1.0, 0.93, 0.0)   # F2：玩家攻擊判定
 const STRIKE_ENEMY_COLOR := Color(1.0, 0.25, 0.2)    # F2：怪物攻擊判定
 const STRIKE_FADE := 0.3                             # 判定形狀顯示後淡出的秒數
 const STRIKE_ALPHA := 0.45
+const BLOCK_FAN_COLOR := Color("ffd36b")   # 格擋範圍（v0.23.0）：腳下前方的金色扇形，角度 = 盾的 block_arc
+const BLOCK_FAN_RANGE := 2.2
+const BLOCK_FAN_ALPHA := 0.32
 
 var show_hitboxes := false
 var effects := Effects.new()
@@ -100,10 +103,37 @@ func sync(world: World, alpha: float, dt: float) -> void:
 		node.position = Vector3(p.x, lerpf(e.prev_height, e.height, alpha), p.y)
 		node.rotation.y = lerp_angle(e.prev_facing, e.facing, alpha)
 		node.get_node(^"Hitbox").visible = show_hitboxes
+		if e is Player:
+			_sync_block_fan(node.get_node(^"BlockFan"), e as Player)
 		if _animators.has(id):
 			_animators[id].update(e, dt)
 	_sync_strikes(world, dt)
 	effects.sync(world, dt)
+
+
+# 格擋範圍：格擋中顯示（輕微呼吸閃爍），跟著角色的位置與朝向
+func _create_block_fan() -> MeshInstance3D:
+	var arc: float = WeaponDefs.WEAPONS[&"swordShield"].special.block_arc
+	var fan := MeshInstance3D.new()
+	fan.name = "BlockFan"
+	fan.mesh = Effects._make_sector_mesh(0.45, BLOCK_FAN_RANGE, arc, 24)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.albedo_color = Color(BLOCK_FAN_COLOR, BLOCK_FAN_ALPHA)
+	fan.material_override = mat
+	fan.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	fan.position.y = 0.06
+	fan.visible = false
+	return fan
+
+
+func _sync_block_fan(fan: MeshInstance3D, p: Player) -> void:
+	fan.visible = p.anim.get("blocking", false) and not p.is_dead
+	if fan.visible:
+		var pulse := 0.85 + 0.15 * sin(Time.get_ticks_msec() * 0.008)
+		(fan.material_override as StandardMaterial3D).albedo_color.a = BLOCK_FAN_ALPHA * pulse
 
 
 # F2：模擬層記錄的攻擊判定（world.hitboxes）畫成地上的扇形 / 圓形，出現後淡出
@@ -162,6 +192,7 @@ func _create_view(e: Entity) -> Node3D:
 			var rig := DarkFantasy.character(e.kind)
 			_animators[e.id] = Animator.new(rig)
 			root = rig
+			root.add_child(_create_block_fan())
 		&"grunt", &"archer", &"boss":
 			var rig := DarkFantasy.character(e.kind)
 			_animators[e.id] = EnemyAnimator.new(rig, e as Enemy)

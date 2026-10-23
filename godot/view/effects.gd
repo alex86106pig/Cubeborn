@@ -233,8 +233,23 @@ func _fx_explosion(p: Dictionary) -> void:
 	burst(_at(p, 0.6), {"color": p.color, "count": 26, "speed": 9.0, "up": 6.0, "size": 0.2, "life": 0.6})
 
 
+# 盾反（v0.23.0）：閃一下實際打得到的扇形範圍（距離 radius、角度 arc），外緣噴金色碎光
 func _fx_parry(p: Dictionary) -> void:
-	ring(_at(p), p.radius, {"color": p.color, "life": 0.25})
+	var pos := _at(p, 0.08)
+	var key := "parry|%.2f|%.2f" % [p.radius, p.arc]
+	if not _slash_meshes.has(key):
+		_slash_meshes[key] = _make_sector_mesh(0.3, p.radius, p.arc, 32)
+	var node := _transient_mesh(_slash_meshes[key], p.color, 0.6)
+	node.position = pos
+	node.rotation.y = p.facing
+	_add_transient(node, 0.35, func(k: float) -> void:
+		_set_alpha(node, 0.6 * (1.0 - k) * (1.0 - k))
+		var s := 0.8 + 0.2 * sqrt(k)
+		node.scale = Vector3(s, 1.0, s))
+	slash(pos + Vector3(0, 0.02, 0), p.facing, p.radius, p.arc, {"color": Color.WHITE, "opacity": 0.5, "life": 0.18})
+	for i in 7:
+		var a: float = p.facing - p.arc / 2.0 + p.arc * i / 6.0
+		burst(pos + Vector3(sin(a), 0.4, cos(a)) * Vector3(p.radius, 1.0, p.radius), {"color": p.color, "count": 3, "speed": 2.5, "up": 2.0, "size": 0.12, "life": 0.3})
 
 
 func _fx_heal(p: Dictionary) -> void:

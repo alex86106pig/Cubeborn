@@ -129,6 +129,13 @@ class TimedAction:
 		if roll_cancelable and p.buffered_action.get("type") == &"roll" and p.roll_charges > 0:
 			PlayerStates.try_roll(p, fsm)
 			return
+		# 有 press_cancel 的特殊技（格擋）：維持中再按一次同一個鍵就提前進入收招
+		if d.def.get("press_cancel", false) and name != &"recovery" and p.buffered_action.get("type") == &"special":
+			p.buffered_action = {}
+			d.phase_index = PHASES.find(&"recovery")
+			d.phase_time = 0.0
+			_enter_phase(p, d, d.phase_index)
+			return
 		var duration: float = d.durations[d.phase_index]
 		d.k = d.phase_time / duration if duration > 0.0 else 1.0
 		d.behavior.update(p, d.def, d, name, d.k, dt)

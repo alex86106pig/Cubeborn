@@ -58,6 +58,53 @@ func blocks_nav(p: Vector2, margin: float) -> bool:
 	return false
 
 
+# 線段 a → b 是否會擦到怪物尋路的障礙（牆、墓碑往外擴 clearance）：精確的線段與長方形相交，不是取樣格子
+# 每 0.5 取一個點查附近的桶子（桶子裡的石台已往外擴 REACH，clearance ≤ 1.25 時不會漏）
+func segment_blocked(a: Vector2, b: Vector2, clearance: float) -> bool:
+	var seen := {}
+	var d := b - a
+	var n := maxi(1, ceili(d.length() / 0.5))
+	for s in n + 1:
+		for i in _near(a + d * (float(s) / n)):
+			if seen.has(i):
+				continue
+			seen[i] = true
+			var blk := blocks[i]
+			if blk.kind == MapDefs.PLATFORM:
+				continue
+			var c := Vector2(clearance, clearance)
+			var lo: Vector2 = blk.min - c
+			var hi: Vector2 = blk.max + c
+			# 起點已經貼在牆邊（被推到半徑距離）：往離開牆的方向走不算擋住
+			if a.x >= lo.x and a.x <= hi.x and a.y >= lo.y and a.y <= hi.y:
+				var closest := Vector2(clampf(a.x, blk.min.x, blk.max.x), clampf(a.y, blk.min.y, blk.max.y))
+				if (a - closest).dot(d) > 0.0:
+					continue
+				return true
+			if _segment_hits_rect(a, b, lo, hi):
+				return true
+	return false
+
+
+# 線段與長方形（含邊）是否相交：slab 法
+static func _segment_hits_rect(a: Vector2, b: Vector2, lo: Vector2, hi: Vector2) -> bool:
+	var t0 := 0.0
+	var t1 := 1.0
+	var d := b - a
+	for axis in 2:
+		if absf(d[axis]) < 1e-9:
+			if a[axis] < lo[axis] or a[axis] > hi[axis]:
+				return false
+			continue
+		var ta := (lo[axis] - a[axis]) / d[axis]
+		var tb := (hi[axis] - a[axis]) / d[axis]
+		t0 = maxf(t0, minf(ta, tb))
+		t1 = minf(t1, maxf(ta, tb))
+		if t0 > t1:
+			return false
+	return true
+
+
 # 腳底低於頂面的石台當牆：圓與長方形重疊時，沿最近點方向推出去
 func push_out(e: Entity) -> void:
 	var step: float = Config.HEIGHT.step

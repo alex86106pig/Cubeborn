@@ -44,15 +44,16 @@ const WEAPONS := {
 			"recovery": 0.15,
 			"move_speed_mul": 0.5,     # 格擋時移速減半
 			"roll_cancel": true,       # 可以用翻滾提前結束
-			"block_arc": PI * 75.0 / 180.0,   # 正前方合計 75°（左右各 37.5°）
+			"press_cancel": true,      # 格擋中再按一次右鍵放下盾（v0.23.0 使用者決定；冷卻照舊從舉盾算）
+			"block_arc": PI * 120.0 / 180.0,  # 正前方合計 120°（左右各 60°；v0.23.0 使用者決定，原本 75°）
 			"perfect_window": 0.2,     # 按下後這麼久內擋下 = 完美格擋，觸發盾反
 			"block_knockback_mul": 0.3,   # 擋下時自己被推退的比例（不扣血）
 			"sfx_block": "shieldBash",
 			"sfx_parry": "hitHeavy",
 			"parry": {
 				"damage": 25.0,
-				"range": 2.5,
-				"arc": PI * 120.0 / 180.0,
+				"range": 3.5,                 # v0.23.0 使用者決定（原本 2.5 / 120°）
+				"arc": PI * 180.0 / 180.0,
 				"knockback": 14.0,
 				"hit_stop": 0.08,
 				"shake": 0.3,

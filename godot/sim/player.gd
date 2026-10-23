@@ -93,7 +93,7 @@ func _do_parry() -> void:
 		"damage": pr.damage * damage_mul, "knockback": pr.knockback, "hit_stop": pr.hit_stop,
 		"shake": pr.shake, "is_heavy": true, "blockable": false, "color": pr.color,
 	})
-	world.emit_event("fx:parry", {"pos": pos, "height": height, "radius": pr.range, "color": pr.color})
+	world.emit_event("fx:parry", {"pos": pos, "height": height, "radius": pr.range, "facing": facing, "arc": pr.arc, "color": pr.color})
 	parry_timer = PARRY_ANIM_TIME
 	action.change(&"ready")
 

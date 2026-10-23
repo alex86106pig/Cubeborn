@@ -98,7 +98,7 @@ func _spawn_from_queue(world: World, type: StringName) -> void:
 # 找不到合適的點時退回玩家旁邊最近的空地
 static func _around_player(world: World, type: StringName, p: Vector2) -> Vector2:
 	var s: Dictionary = Config.SPAWNER
-	var nav := world.nav
+	var nav := world.nav_for(EnemyDefs.ENEMIES[type].radius)   # Boss 用大隻的格子圖，不會生在窄縫裡
 	if type == &"boss":
 		var to_center := -p
 		var dir := to_center.normalized() if to_center.length() > 1.0 else Vector2(0.0, -1.0)

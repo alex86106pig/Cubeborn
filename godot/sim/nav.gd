@@ -1,4 +1,5 @@
-# 怪物尋路（D1）：把地圖切成 NAV.cell 的格子，牆與墓碑（往外擴 NAV.margin）是障礙，高台照常可走（怪物會跳上去，見 Enemy）
+# 怪物尋路（D1）：把地圖切成 NAV.cell 的格子，牆與墓碑（往外擴 margin）是障礙，高台照常可走（怪物會跳上去，見 Enemy）
+# 依體型建兩張（World.nav / nav_large）：margin = 身體半徑 + 一點餘裕，大隻的不會去擠窄縫
 # 路徑用引擎內建的 AStarGrid2D（八方向、不切牆角）；只在權威端使用，客戶端的怪物照快照移動
 # 不持有 World（避免循環參照）
 class_name Nav
@@ -6,12 +7,16 @@ extends RefCounted
 
 var astar := AStarGrid2D.new()
 var cell := 1.0
+var margin := 0.6               # 障礙往外擴的距離，也是「直線走得過去」要離牆多遠
 var origin := Vector2.ZERO      # 格子 (0, 0) 的左上角（世界座標）
 var size := Vector2i.ZERO
 var region := PackedInt32Array()   # 每格所屬的連通區塊編號（-1 = 障礙）；生成怪物時確認走得到玩家
+var terrain: Terrain
 
 
-func _init(terrain: Terrain, half: Vector2) -> void:
+func _init(p_terrain: Terrain, half: Vector2, p_margin: float) -> void:
+	terrain = p_terrain
+	margin = p_margin
 	cell = Config.NAV.cell
 	origin = -half
 	size = Vector2i(ceili(half.x * 2.0 / cell), ceili(half.y * 2.0 / cell))
@@ -21,7 +26,6 @@ func _init(terrain: Terrain, half: Vector2) -> void:
 	astar.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
 	astar.default_estimate_heuristic = AStarGrid2D.HEURISTIC_OCTILE
 	astar.update()
-	var margin: float = Config.NAV.margin
 	for x in size.x:
 		for y in size.y:
 			var c := cell_center(Vector2i(x, y))
@@ -48,14 +52,9 @@ func is_walkable(p: Vector2) -> bool:
 	return is_walkable_cell(to_cell(p))
 
 
-# 直線上（每半格取一點）沒有障礙格 = 可以直接走過去
+# 直線 a → b 離牆與墓碑都至少 margin（精確的線段判斷，v0.23.0 前用格子取樣會擦到牆角）= 可以直接走過去
 func has_los(a: Vector2, b: Vector2) -> bool:
-	var d := b - a
-	var n := ceili(d.length() / (cell * 0.5))
-	for i in range(1, n + 1):
-		if not is_walkable(a + d * (float(i) / n)):
-			return false
-	return true
+	return not terrain.segment_blocked(a, b, margin)
 
 
 # 離 c 最近的可走格（一圈一圈往外找，找不到回傳 (-1, -1)）

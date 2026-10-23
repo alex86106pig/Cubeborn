@@ -18,6 +18,7 @@ var _cd_names: Array[String] = []   # 移除時要 reset 的 CD（enemy<id>.<名
 var _nav_timer := 0.0
 var _path := PackedVector2Array()   # 空 = 看得到目標，直接走過去
 var _jump_windup := 0.0
+var _jump_dir := Vector2.ZERO        # 起跳方向；空中往這個方向至少 NAV.jump_air_speed，落地後清掉
 
 
 # mul：波次倍率 { hp, damage, speed }
@@ -86,7 +87,8 @@ func steer_point(target: Vector2) -> Vector2:
 	var n: Dictionary = Config.NAV
 	if _nav_timer <= 0.0:
 		_nav_timer = n.repath_interval
-		_path = PackedVector2Array() if world.nav.has_los(pos, target) else world.nav.find_path(pos, target)
+		var nav := world.nav_for(radius)
+		_path = PackedVector2Array() if nav.has_los(pos, target) else nav.find_path(pos, target)
 		_on_nav_refresh(target)
 	if _path.is_empty():
 		return target
@@ -118,12 +120,22 @@ func _update_jump(dt: float) -> void:
 		if _jump_windup <= 0.0 and not is_dead:
 			vz = 4.0 * Config.JUMP.height / Config.JUMP.air_time
 		return
+	if _jump_dir != Vector2.ZERO:
+		if is_grounded():
+			_jump_dir = Vector2.ZERO
+		elif not is_dead:
+			# 空中往起跳方向至少 jump_air_speed：身體整個越過高台邊緣才落地（大隻的也站得上去）
+			var along := velocity.dot(_jump_dir)
+			if along < Config.NAV.jump_air_speed:
+				velocity += _jump_dir * (Config.NAV.jump_air_speed - along)
+			return
 	if is_dead or velocity == Vector2.ZERO or not is_grounded() or not _can_jump():
 		return
 	var ahead := pos + velocity.normalized() * (radius + Config.NAV.jump_lookahead)
 	var rise := world.terrain.ground_at(ahead) - ground_height
 	if rise > Config.HEIGHT.step and rise <= Config.NAV.climb_height:
 		_jump_windup = Config.NAV.jump_windup
+		_jump_dir = velocity.normalized()
 		velocity = Vector2.ZERO
 
 

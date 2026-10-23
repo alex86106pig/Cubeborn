@@ -62,7 +62,10 @@ func _initialize() -> void:
 	_check("劍盾普攻：三段時間合計 0.36 秒，期間移速 ×0.35、收招後回到 ready", _check_attack_timing)
 	_check("劍盾連段：傷害 12 / 12 / 22（第三段 ×1.8）、第三段後搖 ×1.6、同一目標每次出手只中一次", _check_combo)
 	_check("格擋（v0.18.0 取代盾擊衝鋒）：按一下維持 3 秒、移速 ×0.5 可轉向；CD 4 秒、CD 中發 skill:onCooldown；翻滾可提前結束", _check_shield_block)
-	_check("格擋判定：正前方 ±37.5° 擋下揮砍與箭（不扣血、箭消失）、背後擋不住；Boss 衝鋒擋得住但推退 100%、只判定一次；Boss 砸地擋不住；0.2 秒內完美格擋觸發盾反 25 傷害並結束格擋", _check_block_hits)
+	_check("格擋 v0.23.0：箭從正前方 ±55° 擋得下、±65° 擋不下（合計 120°）；格擋中再按一次右鍵放下盾（進入收招、之後被打會扣血）；盾反距離 3.5、角度 180°（正側面 3.3 打得到、3.7 打不到），fx:parry 帶 facing 與 arc", _check_block_v023)
+	_check("Boss 跳上高台、衝鋒跳上去、砸地打得到高台：Boss 從地面跳上 1.0 石座；衝鋒途中遇到 1.0 石台直接跳上去不暈眩、遇到牆照樣暈眩；砸地打得到站在旁邊 1.0 石台上的玩家，跳起來躲得過", _check_boss_high_ground)
+	_check("尋路不擦牆：直線離牆小於 0.6 就不算看得到；繞北門時被牆擋住而變慢的步數 < 30", _check_nav_clearance)
+	_check("格擋判定：正前方 ±60° 擋下揮砍與箭（不扣血、箭消失）、背後擋不住；Boss 衝鋒擋得住但推退 100%、只判定一次；Boss 砸地擋不住；0.2 秒內完美格擋觸發盾反 25 傷害並結束格擋", _check_block_hits)
 	_check("受擊：扣血後進入 stagger（移速 ×0.4、0.15 秒）、無敵 0.6 秒、畫面震動", _check_stagger)
 	_check("輸入緩衝：攻擊中按右鍵會在後搖取消並接特殊技；0.25 秒後過期", _check_buffer)
 	_check("法杖魔彈：前方 0.6 產生、20 單位/秒、命中造成 8 傷害、最遠 14 單位", _check_fire_bolt)
@@ -606,7 +609,9 @@ func _check_block_hits() -> String:
 	var w4 := _new_world()
 	var p4 := _player(w4)
 	var archer := _spawn(w4, &"archer", Vector2(0, 15))
-	_run(w4, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 20)
+	# InputCmd.buttons 是「這一步按下」：只按一次（v0.23.0 起格擋中再按一次會放下盾）
+	_run(w4, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 1)
+	_run(w4, _cmd(Vector2.ZERO, Vector2(0, 5)), 19)
 	var arrow := Projectile.new(w4, {"owner": archer, "pos": p4.pos + Vector2(0, 1.5), "direction": Vector2(0, -1),
 		"speed": 10.0, "range": 5.0, "damage": 12.0, "altitude": Config.HEIGHT.arrow_altitude, "blockable": true})
 	w4.spawn_projectile(arrow)
@@ -1963,6 +1968,152 @@ func _check_projectile_walls() -> String:
 	_run(w2, _cmd(Vector2.ZERO), 60)
 	if d2.hp >= 1000.0:
 		return "從 1.0 石台往下射，應打到地上的假人"
+	return ""
+
+
+func _check_block_v023() -> String:
+	# 角度：面向 +Z 舉盾 20 步後（過了完美格擋），箭從不同角度飛向玩家
+	for case in [[55.0, true], [65.0, false]]:
+		var w := _new_world()
+		var p := _player(w)
+		var archer := _spawn(w, &"archer", Vector2(0, 15))
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 1)
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 19)
+		var a := deg_to_rad(case[0])
+		var from := p.pos + Vector2(sin(a), cos(a)) * 1.5
+		w.spawn_projectile(Projectile.new(w, {"owner": archer, "pos": from, "direction": p.pos - from, "speed": 10.0,
+			"range": 5.0, "damage": 12.0, "altitude": Config.HEIGHT.arrow_altitude, "blockable": true}))
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 20)
+		if (p.hp == p.max_hp) != case[1]:
+			return "箭從 %.0f° 飛來：%s，血量 %.0f" % [case[0], "應擋下" if case[1] else "應擋不下", p.hp]
+	# 再按一次右鍵：進入收招（0.15 秒）後放下盾
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 1)
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5)), 10)
+	if p2.block_time < 0.0:
+		return "按一下右鍵應開始格擋"
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 1)
+	if p2.block_time >= 0.0 or p2.anim.phase != &"recovery":
+		return "格擋中再按右鍵應立刻放下盾、進入收招：格擋 %s、階段 %s" % [p2.block_time >= 0.0, p2.anim.phase]
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5)), 10)
+	if not p2.action.is_in(&"ready"):
+		return "收招後應回到 ready，實際 %s" % p2.action.current_name
+	# 盾反：距離 3.5（加目標半徑 0.5）、角度 180°
+	var w3 := _new_world()
+	var p3 := _player(w3)
+	p3.facing = 0.0
+	var side_in := _dummy(w3, Vector2(sin(deg_to_rad(85.0)), cos(deg_to_rad(85.0))) * 3.8)
+	var side_out := _dummy(w3, Vector2(-sin(deg_to_rad(85.0)), cos(deg_to_rad(85.0))) * 4.2)
+	var back := _dummy(w3, Vector2(0, -2.0))
+	p3._do_parry()
+	var fx := _named(w3.events, "fx:parry")
+	if side_in.hp >= 1000.0 or side_out.hp < 1000.0 or back.hp < 1000.0:
+		return "盾反範圍：側面 3.8 %s、4.2 %s、背後 2.0 %s（應為 中 / 沒中 / 沒中）" % [side_in.hp < 1000.0, side_out.hp < 1000.0, back.hp < 1000.0]
+	if fx.size() != 1 or absf(fx[0].radius - 3.5) > EPS or absf(fx[0].arc - PI) > EPS or not fx[0].has("facing"):
+		return "fx:parry 應帶 radius 3.5、arc 180°、facing：%s" % [fx]
+	return ""
+
+
+func _check_boss_high_ground() -> String:
+	# 地圖 A：玩家站在西北角 1.0 石座上，Boss 從地面跳上去（v0.22.0 會在下面一直砸地）
+	var w := _new_world(12345, false, &"graveyard_a")
+	var p := _player(w)
+	p.pos = MapDefs.to_world(w.map, Vector2(38.5, 39.5))
+	p.height = 1.0
+	var b := _spawn(w, &"boss", MapDefs.to_world(w.map, w.map.dig))
+	var up := -1
+	var hit := -1
+	for i in 30 * 60:
+		var before := p.max_hp
+		p.hp = before
+		w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO)}, DT)
+		if up < 0 and b.is_grounded() and absf(b.height - 1.0) < EPS:
+			up = i + 1
+		if hit < 0 and p.hp < before:
+			hit = i + 1
+		if up > 0 and hit > 0:
+			break
+	if up < 0 or hit < 0:
+		return "Boss 30 秒內應跳上石座並打到玩家：上去第 %d 步、打到第 %d 步（停在 %s 高 %.2f）" % [up, hit, b.pos, b.height]
+	# 衝鋒：往 +X 衝向 1.0 石台上的玩家，途中經過 0.5、1.0 石台都直接跳上去、不暈眩
+	# 衝鋒 15 × 0.85 = 12.75：從 x -2 停在 x 約 10.75（1.0 石台 x 10.25~13.75），不會碰到場地邊緣（±16）
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	p2.pos = Vector2(12.5, 12)
+	p2.height = 1.0
+	var b2 := _spawn(w2, &"boss", Vector2(-2, 12))
+	_run(w2, _cmd(Vector2.ZERO), roundi(EnemyDefs.ENEMIES.boss.spawn_time / DT) + 2)
+	b2.fsm.change(&"charge")
+	var ev: Array[Dictionary] = []
+	var top := 0.0
+	for i in 120:
+		p2.hp = p2.max_hp
+		_run_collect(w2, _cmd(Vector2.ZERO), 1, ev)
+		top = maxf(top, b2.height)
+		if not b2.fsm.is_in(&"charge"):
+			break
+	if not _named(ev, "fx:boss_wall").is_empty() or top < 1.0:
+		return "衝鋒遇到 1.0 石台應跳上去、不暈眩：撞牆事件 %d、最高 %.2f" % [_named(ev, "fx:boss_wall").size(), top]
+	# 衝鋒撞到 2.5 的牆（z 7.5~8.5）照樣暈眩
+	var w3 := _new_world()
+	var p3 := _player(w3)
+	p3.pos = Vector2(11, 9.6)
+	var b3 := _spawn(w3, &"boss", Vector2(11, 0))
+	_run(w3, _cmd(Vector2.ZERO), roundi(EnemyDefs.ENEMIES.boss.spawn_time / DT) + 2)
+	b3.fsm.change(&"charge")
+	var ev3: Array[Dictionary] = []
+	_run_collect(w3, _cmd(Vector2.ZERO), 120, ev3)
+	if _named(ev3, "fx:boss_wall").is_empty():
+		return "衝鋒撞到 2.5 的牆應暈眩"
+	# 砸地：玩家站在旁邊 1.0 石台上打得到；跳起來躲得過
+	for jump in [false, true]:
+		var w4 := _new_world()
+		var p4 := _player(w4)
+		p4.pos = Vector2(12, 12)
+		p4.height = 1.0
+		var b4 := _spawn(w4, &"boss", Vector2(12, 15.2))
+		_run(w4, _cmd(Vector2.ZERO), roundi(EnemyDefs.ENEMIES.boss.spawn_time / DT) + 2)
+		b4.fsm.change(&"slam")
+		var impact := roundi(EnemyDefs.ENEMIES.boss.slam.windup / DT)
+		_run(w4, _cmd(Vector2.ZERO), impact - 12)
+		if jump:
+			_run(w4, _jump_cmd(), 1)
+		_run(w4, _cmd(Vector2.ZERO), 20)
+		var hurt := p4.hp < p4.max_hp
+		if hurt == jump:
+			return "Boss 砸地，玩家在 1.0 石台上%s：%s" % ["跳起來" if jump else "站著", "被打到" if hurt else "沒被打到"]
+	print("    Boss：%.1f 秒跳上石座、%.1f 秒打到石座上的玩家" % [up * DT, hit * DT])
+	return ""
+
+
+func _check_nav_clearance() -> String:
+	var w := _new_world()
+	# 2.5 的牆 x 8~14、z 7.5~8.5：貼著北緣 0.5 的直線算擋住，0.7 的不算
+	if w.nav.has_los(Vector2(5, 7.0), Vector2(17, 7.0)):
+		return "離牆 0.5 的直線不應算看得到"
+	if not w.nav.has_los(Vector2(5, 6.8), Vector2(17, 6.8)):
+		return "離牆 0.7 的直線應算看得到"
+	# 貼在牆邊往外走不算擋住
+	if not w.nav.has_los(Vector2(11, 7.05), Vector2(11, 3.0)):
+		return "貼牆往外走應算看得到"
+	var w2 := _new_world(12345, false, &"graveyard_a")
+	var p := _player(w2)
+	p.pos = MapDefs.to_world(w2.map, w2.map.dig)
+	var g := _spawn(w2, &"grunt", Vector2(0, 22))
+	var slowed := 0
+	for i in 90 * 60:
+		p.hp = p.max_hp
+		var before := g.pos
+		w2.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO)}, DT)
+		var want := g.velocity.length() * DT
+		if want > 0.0 and g.pos.distance_to(before) < want * 0.95:
+			slowed += 1
+		if g.pos.distance_to(p.pos) < 1.6:
+			break
+	if slowed >= 30:
+		return "繞北門時被牆擋住變慢 %d 步（應 < 30）" % slowed
+	print("    繞北門被牆擋住變慢 %d 步（v0.22.0 為 154 步）" % slowed)
 	return ""
 
 

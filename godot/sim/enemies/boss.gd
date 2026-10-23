@@ -47,10 +47,13 @@ func _anim_extra(a: Dictionary) -> void:
 func slam_impact() -> void:
 	world.emit_event("sfx:cue", {"cue": "bossSlam"})
 	var s: Dictionary = def.slam
-	# 貼地的衝擊：腳底高於 HEIGHT.slam_height 的目標（跳起來）打不到
-	var band := Vector2(height - Config.HEIGHT.reach_below, height + Config.HEIGHT.slam_height)
+	# 貼地的衝擊（v0.23.0）：範圍內站在任何地面上（含旁邊的高台）的目標都打得到；
+	# 腳底離「自己腳下的地面」超過 HEIGHT.slam_height（跳起來）才躲得過。高度範圍涵蓋上下各一層高台
+	var reach: float = Config.NAV.climb_height
+	var band := Vector2(height - reach - Config.HEIGHT.reach_below, height + reach + Config.HEIGHT.slam_height)
 	Hitbox.strike(world, self, pos, facing, {"shape": &"circle", "radius": s.radius}, {
 		"damage": s.damage * damage_mul, "knockback": s.knockback, "hit_stop": s.hit_stop, "band": band,
+		"max_air": Config.HEIGHT.slam_height,
 		"blockable": s.blockable, "color": def.hit_color,
 	})
 	world.emit_event("camera:shake", {"amount": s.shake, "duration": s.shake_duration})
@@ -66,7 +69,7 @@ func summon_minions() -> void:
 		var x := clampf(pos.x + sin(a) * s.distance, -limit.x, limit.x)
 		var z := clampf(pos.y + cos(a) * s.distance, -limit.y, limit.y)
 		# 落在牆或墓碑上就移到最近的空地（D1）
-		world.spawner.spawn_at(world, &"grunt", world.nav.nearest_walkable(Vector2(x, z)))
+		world.spawner.spawn_at(world, &"grunt", world.nav_for(EnemyDefs.ENEMIES[&"grunt"].radius).nearest_walkable(Vector2(x, z)))
 
 
 func _on_damaged(_amount: int, _source_id: int) -> void:
@@ -170,9 +173,14 @@ class Charge:
 					if e.world.events[i].name == "player:blocked":
 						d.blocked[e.world.events[i].player_id] = true   # 事件的 player_id 就是實體 id
 			var limit: Vector2 = e.world.half_extents - Vector2(e.radius + c.wall_margin, e.radius + c.wall_margin)
-			# 撞到場地邊緣，或前方是比腳下高的石台（牆、墓碑、高台；D1）
+			# 前方的高台（高低差 ≤ climb_height）衝鋒中直接跳上去、不停下（v0.23.0）；更高的牆與墓碑、場地邊緣才撞停暈眩
 			var ahead: Vector2 = e.pos + d.dir * (e.radius + c.wall_margin)
-			var blocked: bool = e.world.terrain.ground_at(ahead) > e.height + Config.HEIGHT.step
+			var top := e.world.terrain.ground_at(ahead)
+			var rise := top - e.ground_height
+			var hop: bool = rise > Config.HEIGHT.step and rise <= Config.NAV.climb_height
+			if hop and e.is_grounded():
+				e.vz = 4.0 * Config.JUMP.height / Config.JUMP.air_time
+			var blocked: bool = top > e.height + Config.HEIGHT.step and not hop
 			if absf(e.pos.x) >= limit.x or absf(e.pos.y) >= limit.y or blocked:
 				e.world.emit_event("sfx:cue", {"cue": "bossWallHit"})
 				e.world.emit_event("camera:shake", {"amount": c.wall_shake, "duration": c.wall_shake_duration})
