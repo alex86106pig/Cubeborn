@@ -293,7 +293,7 @@ func nearest_interactable(p: Player, list: Array[Entity]) -> Entity:
 # 測試場地照舊通關：其餘敵人一起倒下、敵方投射物消失，延遲後發出 game:victory
 func on_boss_defeated(boss: Enemy) -> void:
 	if DigEvent.enabled(self):
-		var pool := LootDefs.items_of(LootDefs.roll_rarity(&"big", rng))
+		var pool := LootDefs.drop_pool(LootDefs.roll_rarity(&"big", rng))
 		var item_id: StringName = pool[rng.randi_range(0, pool.size() - 1)]
 		drop_item(item_id, boss.pos + Vector2(LootDefs.DROP_DISTANCE, 0.0))
 		emit_event("boss:reward", {"item": String(item_id), "pos": boss.pos})

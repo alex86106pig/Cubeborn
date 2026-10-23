@@ -57,8 +57,15 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 	dir = dir.normalized()
 
 	var damage: float = hit.damage
+	var is_proc: bool = hit.get("proc", false)   # 道具效果造成的傷害（v0.33.0）：不爆擊、不再觸發命中效果
+	if source is Player and not is_proc:
+		# 只對這一下生效的條件加成（對滿血敵人）：換算成攻擊力倍率乘上去（hit.damage 已含攻擊力）
+		var extra := ItemEffects.target_damage_pct(source as Player, target)
+		var base_mul := source.stats.value(&"damage")
+		if extra > 0.0 and base_mul > 0.0:
+			damage *= source.stats.value_with_pct(&"damage", extra) / base_mul
 	var is_crit := false
-	var crit_chance := source.stats.value(&"crit_chance")
+	var crit_chance := 0.0 if is_proc else source.stats.value(&"crit_chance")
 	# 爆擊率 0 時不擲骰，不消耗亂數（沒有爆擊道具時與網頁版的亂數序列相同）
 	if crit_chance > 0.0 and world.rng.randf() < crit_chance:
 		is_crit = true
@@ -81,6 +88,12 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 	var shake: float = hit.get("shake", 0.0)
 	if shake > 0.0 and should_shake(source):
 		world.emit_event("camera:shake", {"amount": shake, "duration": Config.COMBAT.hit_shake_duration})
+	if source is Player and target is Enemy:
+		# 道具的命中 / 擊殺效果（v0.33.0）：放在事件之後，連鎖閃電、爆炸的傷害事件排在這一下後面
+		if not is_proc:
+			ItemEffects.on_hit(world, source as Player, target, damage)
+		if target.is_dead:
+			ItemEffects.on_kill(world, source as Player, target, damage)
 	return true
 
 

@@ -48,6 +48,17 @@ func value(stat: StringName) -> float:
 	var cached: Variant = _cache.get(stat)
 	if cached != null:
 		return cached
+	var v := _compute(stat, 0.0)
+	_cache[stat] = v
+	return v
+
+
+# 多加 extra_pct 的百分比加成時的值（不存快取）：只對某一下攻擊生效的條件加成用（例如對滿血敵人，sim/item_effects.gd）
+func value_with_pct(stat: StringName, extra_pct: float) -> float:
+	return _compute(stat, extra_pct)
+
+
+func _compute(stat: StringName, extra_pct: float) -> float:
 	var add := 0.0
 	var pct := 0.0
 	var mul := 1.0
@@ -63,9 +74,7 @@ func value(stat: StringName) -> float:
 				MUL:
 					mul *= m[2]
 	var def: Dictionary = StatDefs.STATS[stat]
-	var v := (base(stat) + add) * (1.0 + pct) * mul
+	var v := (base(stat) + add) * (1.0 + pct + extra_pct) * mul
 	if def.get("round", false):
 		v = roundf(v)
-	v = clampf(v, def.min, def.max)
-	_cache[stat] = v
-	return v
+	return clampf(v, def.min, def.max)

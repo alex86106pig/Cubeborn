@@ -24,6 +24,8 @@ var skeleton := Skeleton3D.new()
 var _joints: Array[Joint] = []
 var _lit_material: StandardMaterial3D
 var _flash := 0.0
+var _base_tint := Color.WHITE     # 冤魂的底色（set_ghost）
+var _status_tint := Color.WHITE   # 冰凍 / 中毒的染色（set_status_tint）
 
 static var _built: Dictionary = {}   # 種類 -> { meshes, skin }（同種只合成一次）
 
@@ -106,10 +108,19 @@ func set_flash(k: float) -> void:
 	_lit_material.emission = Color(k, k, k)
 
 
+# 道具狀態的染色（v0.33.0：冰凍偏藍、中毒偏綠，Color.WHITE = 沒有）；乘在冤魂的底色上；和上次一樣就不動材質
+func set_status_tint(tint: Color) -> void:
+	if tint == _status_tint or _lit_material == null:
+		return
+	_status_tint = tint
+	_lit_material.albedo_color = _base_tint * tint
+
+
 # 冤魂（D6）：整隻半透明、偏藍，不投影
 func set_ghost(tint: Color, transparency: float) -> void:
+	_base_tint = tint
 	if _lit_material != null:
-		_lit_material.albedo_color = tint
+		_lit_material.albedo_color = tint * _status_tint
 	for mi in PartKit.mesh_instances(self):
 		mi.transparency = transparency
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

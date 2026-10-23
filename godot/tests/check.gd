@@ -74,6 +74,9 @@ func _initialize() -> void:
 	_check("撿道具（D3）：按 F 撿起最近的道具放進背包並生效；剛按下那一步才算（按住不會連撿）；兩人同一步按 F 只有一人拿到；丟掉後道具回到地上、效果移除；附近有倒地隊友時 F 先救人", _check_pickups)
 	_check("武器掉落（D4）：小怪死 5000 次約掉 4%（3.1~4.9%）、Boss 必掉；稀有度各抽 20000 次，小怪 白 60 / 綠 25 / 藍 12 / 紫 3、Boss 藍 60 / 紫 30 / 橘 10（±1.5%）", _check_weapon_drops)
 	_check("武器詞條（D4）：白 0 / 綠 1 / 藍 2 / 紫 3 / 橘 4 條不重複；只有手上那把生效，X 切換後屬性跟著換；另一格空的不能切", _check_weapon_affixes)
+	_check("道具條件（v0.33.0）：對滿血敵人傷害 +25%、低於 35% 生命傷害 +25%（拿掉道具就沒了）、擊殺後 3 秒攻速 +30%、擊殺回復 3% 最大生命", _check_item_conditions)
+	_check("道具觸發（v0.33.0）：擊殺小爆炸 50%、連鎖閃電每跳 50% 不重複且不連鎖觸發、中毒 3 秒共 60%、冰凍 1.5 秒不能動（Boss 不會）；機率相加", _check_item_procs)
+	_check("道具掉落（v0.33.0）：寶箱只開出效果都接上的道具；沒有的稀有度往下一級找", _check_item_drop_pool)
 	_check("新手提示（v0.31.0）：換武器鍵是 X；開場跳操作與挖墳；撿到東西、開背包、可合成、出口打開、隊友倒地各跳一次；看過不再跳、排隊中條件不成立就跳過；重設後再跳", _check_hints)
 	_check("撿武器（D4）：裝備欄有空先放裝備欄（不換手上的），滿了放背包（背包裡沒效果），都滿了撿不起來；裝備欄 ↔ 背包搬動、手上至少留一把", _check_weapon_pickup)
 	_check("武器合成（D4）：兩把同種同稀有度拖在一起 → 高一級、詞條重抽、放在被拖上去的位置；不同種 / 不同稀有度 / 橘色不能合成；合成手上那把屬性立刻更新", _check_weapon_merge)
@@ -2519,7 +2522,7 @@ func _check_chest_rarity() -> String:
 			for id in LootDefs.items_of(r):
 				if ItemDefs.ITEMS[id].kind != &"item":
 					return "寶箱會開出武器 %s" % id
-			if LootDefs.items_of(r).is_empty():
+			if LootDefs.drop_pool(r).is_empty():
 				return "%s 稀有度沒有道具可開" % r
 	return ""
 
@@ -2654,6 +2657,161 @@ func _check_weapon_affixes() -> String:
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SWAP_WEAPON), 1)
 	if p.active_slot != 0 or p.weapon_id != &"swordShield" or absf(p.stats.value(&"damage") - 1.0) > EPS:
 		return "再按 X 換回劍盾，詞條應移除：攻擊力 %.2f" % p.stats.value(&"damage")
+	return ""
+
+
+# 生一隻血很多、站在 at 的骷髏（道具檢查用）
+func _item_dummy(w: World, at: Vector2, hp: float = 1000.0) -> Enemy:
+	var e := _spawn(w, &"grunt", at)
+	e.fsm.change(e.main_state)   # 不等爬出來
+	e.stats.set_base(&"max_hp", hp)
+	e.hp = e.max_hp
+	return e
+
+
+func _hp_loss(e: Enemy, before: float) -> int:
+	return roundi(before - e.hp)
+
+
+# 怪受到 raw 傷害時實際扣多少（套護甲與受傷倍率，同 Entity.take_damage）
+func _dealt(e: Enemy, raw: float) -> int:
+	return roundi(raw * StatDefs.armor_damage_factor(e.stats.value(&"armor")) * e.damage_taken_mul)
+
+
+func _check_item_conditions() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var idle := _cmd(Vector2.ZERO)
+	# 獵犬項圈：滿血那一下 ×1.25，之後照常
+	p.add_item(&"hound_collar")
+	var a := _item_dummy(w, Vector2(0, 3))
+	var before := a.hp
+	Combat.apply_damage(w, p, a, {"damage": 10.0})
+	if _hp_loss(a, before) != _dealt(a, 12.5):
+		return "對滿血敵人應扣 %d，實際 %d" % [_dealt(a, 12.5), _hp_loss(a, before)]
+	before = a.hp
+	Combat.apply_damage(w, p, a, {"damage": 10.0})
+	if _hp_loss(a, before) != _dealt(a, 10.0):
+		return "不是滿血時應扣 %d，實際 %d" % [_dealt(a, 10.0), _hp_loss(a, before)]
+	p.clear_items()
+	# 狂戰士護符：低於 35% 才 +25%；拿掉道具就沒了
+	var uid := p.add_item(&"berserker_charm")
+	p.hp = p.max_hp * 0.3
+	_run(w, idle, 1)
+	if absf(p.stats.value(&"damage") - 1.25) > EPS:
+		return "30%% 生命時攻擊力應為 1.25，實際 %.3f" % p.stats.value(&"damage")
+	p.remove_item(uid)
+	if absf(p.stats.value(&"damage") - 1.0) > EPS:
+		return "拿掉狂戰士護符後攻擊力應回到 1.0，實際 %.3f" % p.stats.value(&"damage")
+	p.add_item(&"berserker_charm")
+	p.hp = p.max_hp
+	_run(w, idle, 1)
+	if absf(p.stats.value(&"damage") - 1.0) > EPS:
+		return "滿血時不應有狂戰士加成：%.3f" % p.stats.value(&"damage")
+	p.clear_items()
+	# 戰鼓：擊殺後 3 秒攻速 +30%；吸魂鐮：擊殺回復 3% 最大生命
+	p.add_item(&"war_drum")
+	p.add_item(&"soul_scythe")
+	p.hp = 50.0
+	var b := _item_dummy(w, Vector2(0, 3), 1.0)
+	Combat.apply_damage(w, p, b, {"damage": 10.0})
+	if not b.is_dead or absf(p.hp - (50.0 + p.max_hp * 0.03)) > EPS:
+		return "擊殺後生命應為 %.1f，實際 %.1f（怪死了 %s）" % [50.0 + p.max_hp * 0.03, p.hp, b.is_dead]
+	_run(w, idle, 1)
+	if absf(p.stats.value(&"attack_speed") - 1.3) > EPS:
+		return "擊殺後攻速應為 1.3，實際 %.3f" % p.stats.value(&"attack_speed")
+	_run(w, idle, 180)
+	if absf(p.stats.value(&"attack_speed") - 1.0) > EPS:
+		return "擊殺 3 秒後攻速應回到 1.0，實際 %.3f" % p.stats.value(&"attack_speed")
+	return ""
+
+
+func _check_item_procs() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var idle := _cmd(Vector2.ZERO)
+	# 10 個火藥包 = 擊殺時 100% 爆炸：打死 a（那一下 40），旁邊的 b 受 20
+	for i in 10:
+		p.add_item(&"powder_pouch")
+	var a := _item_dummy(w, Vector2(0, 4), 1.0)
+	var b := _item_dummy(w, Vector2(1, 4))
+	var b_before := b.hp
+	Combat.apply_damage(w, p, a, {"damage": 40.0})
+	if _hp_loss(b, b_before) != _dealt(b, 20.0):
+		return "爆炸應讓旁邊的怪扣 %d，實際 %d" % [_dealt(b, 20.0), _hp_loss(b, b_before)]
+	p.clear_items()
+	w.clear()
+	# 10 個雷鳴符文 = 命中 100% 閃電：a → b（3）→ c（4），d 太遠；每跳 50%，閃電不會再觸發閃電
+	w = _new_world()
+	p = _player(w)
+	for i in 10:
+		p.add_item(&"thunder_rune")
+	a = _item_dummy(w, Vector2(0, 5))
+	b = _item_dummy(w, Vector2(0, 8))
+	var c := _item_dummy(w, Vector2(0, 12))
+	var d := _item_dummy(w, Vector2(0, 30))
+	var hp0 := [a.hp, b.hp, c.hp, d.hp]
+	w.events.clear()
+	Combat.apply_damage(w, p, a, {"damage": 10.0})
+	var got := [_hp_loss(a, hp0[0]), _hp_loss(b, hp0[1]), _hp_loss(c, hp0[2]), _hp_loss(d, hp0[3])]
+	var want := [_dealt(a, 10.0), _dealt(b, 5.0), _dealt(c, 5.0), 0]
+	if got != want:
+		return "連鎖閃電 a / b / c / d 應扣 %s，實際 %s" % [want, got]
+	var bolts := w.events.filter(func(ev: Dictionary) -> bool: return ev.name == "fx:lightning")
+	if bolts.size() != 1 or bolts[0].points.size() != 3:
+		return "應有 1 道經過 3 點的閃電：%s" % [bolts]
+	p.clear_items()
+	w.clear()
+	# 7 個淬毒刀刃（105%）：命中 10 → 3 秒共 6（每 0.5 秒 1）
+	w = _new_world()
+	p = _player(w)
+	for i in 7:
+		p.add_item(&"venom_blade")
+	a = _item_dummy(w, Vector2(0, 5))
+	var before := a.hp
+	Combat.apply_damage(w, p, a, {"damage": 10.0})
+	if not a.anim.is_empty() and a.poison_timer <= 0.0:
+		return "命中後應中毒"
+	_run(w, idle, 200)
+	var want_poison := _dealt(a, 10.0) + 6 * _dealt(a, 1.0)
+	if _hp_loss(a, before) != want_poison:
+		return "中毒 3 秒後總共應扣 %d，實際 %d" % [want_poison, _hp_loss(a, before)]
+	p.clear_items()
+	w.clear()
+	# 10 個霜之心：冰凍 1.5 秒不能動，之後照常追；Boss 不會被冰凍
+	w = _new_world()
+	p = _player(w)
+	for i in 10:
+		p.add_item(&"frost_heart")
+	a = _item_dummy(w, Vector2(0, 6))
+	Combat.apply_damage(w, p, a, {"damage": 1.0})
+	var at := a.pos
+	_run(w, idle, 60)
+	if a.pos.distance_to(at) > EPS or not a.anim.get("frozen", false):
+		return "冰凍 1 秒內不應移動：移動 %.3f、frozen %s" % [a.pos.distance_to(at), a.anim.get("frozen", false)]
+	# 解凍後先把被打中的受擊硬直做完（約 0.27 秒，凍住時狀態機停住），之後才開始追
+	_run(w, idle, 100)
+	if a.pos.distance_to(at) < 0.1 or a.anim.get("frozen", false):
+		return "2.67 秒後應解凍並開始追：移動 %.3f" % a.pos.distance_to(at)
+	var boss := _spawn(w, &"boss", Vector2(10, 10))
+	boss.apply_freeze(1.5)
+	if boss.frozen_timer > 0.0:
+		return "Boss 不應被冰凍"
+	return ""
+
+
+func _check_item_drop_pool() -> String:
+	for r: StringName in ItemDefs.RARITIES:
+		var pool := LootDefs.drop_pool(r)
+		if pool.is_empty():
+			return "%s 沒有可以掉的道具" % r
+		for id in pool:
+			if not ItemDefs.item_implemented(id):
+				return "%s 的掉落裡有還沒實作的 %s" % [r, id]
+	if LootDefs.drop_pool(&"green").has(&"thorn_mail") or not LootDefs.drop_pool(&"green").has(&"thunder_rune"):
+		return "綠色掉落應有雷鳴符文、不該有荊棘鎖甲"
+	if ItemDefs.ITEMS[LootDefs.drop_pool(&"orange")[0]].rarity != &"purple":
+		return "橘色都還沒實作，應改掉紫色"
 	return ""
 
 

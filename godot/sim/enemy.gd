@@ -35,6 +35,12 @@ var ghost_of := 0                    # 冤魂（D6）：死去玩家的 peer id�
 var _frenzied := false
 var _exploded := false
 var _summon_timer := 0.0
+# 道具造成的狀態（v0.33.0，ItemDefs.PROCS）：只在權威端推進；畫面看 anim 的 frozen / poisoned
+var frozen_timer := 0.0              # 冰凍剩餘秒數：不能動、不出招
+var poison_timer := 0.0              # 中毒剩餘秒數
+var poison_tick_damage := 0.0        # 每次扣的傷害
+var poison_source_id := 0            # 下毒的玩家（傷害與擊殺算他的）
+var _poison_tick := 0.0
 
 
 # mul：波次倍率 { hp, damage, speed }；選填 dormant = true 時以休眠狀態出生（怪群，不播爬出動畫與音效）
@@ -138,11 +144,55 @@ func update(dt: float) -> void:
 			_update_anim()
 		anim["time"] = fsm.time
 		return
+	_update_poison(dt)
+	if frozen_timer > 0.0 and not is_dead:
+		frozen_timer -= dt
+		velocity = Vector2.ZERO   # 冰凍：狀態機停住（出招到一半也停），解凍後接著做
+		_update_anim()
+		return
 	_nav_timer -= dt
 	_update_affixes(dt)
 	fsm.update(dt * action_speed)
 	_update_jump(dt)
 	_update_anim()
+
+
+# 中毒（v0.33.0）：再中毒重新計時，每次扣的傷害取較高的
+func apply_poison(source_id: int, total: float) -> void:
+	if is_dead:
+		return
+	var cfg: Dictionary = ItemDefs.PROCS.poison
+	var per_tick: float = total / (cfg.duration / cfg.tick)
+	if poison_timer <= 0.0:
+		_poison_tick = cfg.tick
+		poison_tick_damage = 0.0
+	poison_timer = cfg.duration
+	poison_tick_damage = maxf(poison_tick_damage, per_tick)
+	poison_source_id = source_id
+	world.emit_event("fx:status", {"pos": pos, "height": ground_height, "color": cfg.color})
+
+
+# 冰凍（v0.33.0）：Boss 不會被冰凍；已經凍住的取較長的
+func apply_freeze(duration: float) -> void:
+	if is_dead or type == &"boss":
+		return
+	frozen_timer = maxf(frozen_timer, duration)
+	world.emit_event("fx:status", {"pos": pos, "height": ground_height, "color": ItemDefs.PROCS.freeze.color})
+
+
+func _update_poison(dt: float) -> void:
+	if poison_timer <= 0.0 or is_dead:
+		return
+	poison_timer -= dt
+	_poison_tick -= dt
+	if _poison_tick > 1e-6:   # 容許浮點誤差：3 秒剛好扣滿 6 次
+		return
+	_poison_tick += ItemDefs.PROCS.poison.tick
+	var src: Entity = world.entities.get(poison_source_id)
+	if src != null:
+		Combat.apply_damage(world, src, self, ItemEffects.proc_hit(poison_tick_damage, self, ItemDefs.PROCS.poison.color))
+	if poison_timer <= 0.0:
+		poison_tick_damage = 0.0
 
 
 # 冷卻秒數套用 action_speed（狂暴時攻擊間隔也縮短）
@@ -249,6 +299,11 @@ func _update_anim() -> void:
 	anim.clear()
 	anim["state"] = fsm.current_name
 	anim["time"] = fsm.time
+	# 道具狀態（v0.33.0）：只在有的時候放，快照不必多送
+	if frozen_timer > 0.0:
+		anim["frozen"] = true
+	if poison_timer > 0.0:
+		anim["poisoned"] = true
 	_anim_extra(anim)
 
 

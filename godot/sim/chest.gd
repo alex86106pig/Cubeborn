@@ -32,7 +32,7 @@ func try_open(by: Player) -> bool:
 	world.gold -= price()
 	opened = true
 	var rarity := LootDefs.roll_rarity(tier, world.rng)
-	var pool := LootDefs.items_of(rarity)
+	var pool := LootDefs.drop_pool(rarity)
 	var item_id: StringName = pool[world.rng.randi_range(0, pool.size() - 1)]
 	var to_player := by.pos - pos
 	var dir := to_player.normalized() if to_player.length() > 1e-3 else Vector2(0.0, 1.0)

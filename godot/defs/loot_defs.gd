@@ -39,3 +39,17 @@ static func items_of(rarity: StringName) -> Array[StringName]:
 		if def.kind == &"item" and def.rarity == rarity:
 			out.append(id)
 	return out
+
+
+# 寶箱 / Boss 獎勵實際抽的道具：只抽效果都接上的（v0.33.0 使用者決定，還沒做的先不開出來）；
+# 那個稀有度一個都沒有（目前的橘色）就往下一級找
+static func drop_pool(rarity: StringName) -> Array[StringName]:
+	var order: Array = ItemDefs.RARITIES.keys()
+	for i in range(order.find(rarity), -1, -1):
+		var out: Array[StringName] = []
+		for id in items_of(order[i]):
+			if ItemDefs.item_implemented(id):
+				out.append(id)
+		if not out.is_empty():
+			return out
+	return items_of(rarity)

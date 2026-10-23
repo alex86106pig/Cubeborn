@@ -22,6 +22,7 @@ var combo_timer := 0.0
 var buffered_action: Dictionary = {}   # { type: &"special" | &"slot" | &"roll", index?, time }；空 = 沒有緩衝
 var slots := ActiveSlots.new(Config.PLAYER.slots)
 var buffs: Dictionary = {}             # id -> { remaining, stats?（屬性加成，見 sim/stats.gd）, trail_color? }
+var kill_timers: Dictionary = {}       # 道具 uid -> 「擊殺後幾秒」條件剩下的秒數（sim/item_effects.gd）
 var roll_charges := 0                  # 目前可用的翻滾次數（上限為 roll_charges 屬性）
 var dodge_timer := 0.0                 # 翻滾無敵剩餘秒數
 var block_time := -1.0                 # 格擋開始後經過的秒數；< 0 = 沒有在格擋（weapon_behaviors 的 ShieldBlock）
@@ -503,6 +504,7 @@ func remove_item(uid: StringName) -> void:
 		if items[i].uid == uid:
 			items.remove_at(i)
 			remove_stat_source(uid)
+			ItemEffects.forget_item(self, uid)
 			return
 
 
@@ -520,6 +522,7 @@ func sync_inventory(arr: Array) -> void:
 		if not keep.has(it.uid):
 			items.erase(it)
 			remove_stat_source(it.uid)
+			ItemEffects.forget_item(self, it.uid)
 	for uid: StringName in keep:
 		if not items.any(func(it: Dictionary) -> bool: return it.uid == uid):
 			items.append({"uid": uid, "id": keep[uid]})
@@ -661,6 +664,7 @@ func _tick_timers(dt: float) -> void:
 	dodge_timer = maxf(0.0, dodge_timer - dt)
 	parry_timer = maxf(0.0, parry_timer - dt)
 	_tick_roll_charges()
+	ItemEffects.update_player(self, dt)   # 低血、擊殺後的道具條件加成（v0.33.0）
 	for id: StringName in buffs.keys():
 		buffs[id].remaining -= dt
 		if buffs[id].remaining <= 0.0:

@@ -29,7 +29,12 @@ const HANDLERS := {
 	"fx:boss_slam": &"_fx_boss_slam",
 	"fx:boss_wall": &"_fx_boss_wall",
 	"fx:boss_teleport": &"_fx_boss_teleport",
+	"fx:lightning": &"_fx_lightning",
+	"fx:status": &"_fx_status",
 }
+const LIGHTNING_HEIGHT := 1.1   # 連鎖閃電畫在離地多高（v0.33.0）
+const LIGHTNING_WIDTH := 0.09
+const LIGHTNING_LIFE := 0.22
 
 const DUST_COLOR := Color("6b4f2e")         # 骷髏爬出的泥土
 const CHARGE_DUST_COLOR := Color("8a7a5a")  # Boss 衝鋒揚塵、砸地碎石
@@ -252,6 +257,31 @@ func _fx_parry(p: Dictionary) -> void:
 	for i in 7:
 		var a: float = p.facing - p.arc / 2.0 + p.arc * i / 6.0
 		burst(pos + Vector3(sin(a), 0.4, cos(a)) * Vector3(p.radius, 1.0, p.radius), {"color": p.color, "count": 3, "speed": 2.5, "up": 2.0, "size": 0.12, "life": 0.3})
+
+
+# 連鎖閃電（v0.33.0 道具）：points 依序連成發亮的細線，每個落點噴一點火花
+func _fx_lightning(p: Dictionary) -> void:
+	var y: float = p.get("height", 0.0) + LIGHTNING_HEIGHT
+	var pts: Array = p.points
+	for i in range(1, pts.size()):
+		var a := Vector3(pts[i - 1].x, y, pts[i - 1].y)
+		var b := Vector3(pts[i].x, y, pts[i].y)
+		var length := a.distance_to(b)
+		if length < 1e-3:
+			continue
+		var box := BoxMesh.new()
+		box.size = Vector3(LIGHTNING_WIDTH, LIGHTNING_WIDTH, length)
+		var node := _transient_mesh(box, p.color, 1.0)
+		node.position = (a + b) / 2.0
+		node.look_at_from_position(node.position, b, Vector3.UP)
+		_add_transient(node, LIGHTNING_LIFE, func(k: float) -> void:
+			_set_alpha(node, 1.0 - k))
+		burst(b, {"color": p.color, "count": 6, "speed": 3.0, "up": 2.0, "size": 0.1, "life": 0.25})
+
+
+# 中毒、冰凍上身（v0.33.0 道具）：一小團該顏色的粒子
+func _fx_status(p: Dictionary) -> void:
+	burst(_at(p, 1.0), {"color": p.color, "count": 8, "speed": 1.6, "up": 2.5, "size": 0.12, "life": 0.45})
 
 
 func _fx_heal(p: Dictionary) -> void:

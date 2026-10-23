@@ -304,6 +304,8 @@ export const SKILLS = {
 | `fx:boss_slam` | `{ pos, height, radius }` | Boss 砸地 |
 | `fx:boss_wall` | `{ pos, height }` | Boss 衝鋒撞牆 |
 | `fx:boss_teleport` | `{ pos, height, to }` | 狂暴 Boss 瞬移砸地（v0.27.0）：原地與目的地的紫色煙霧 |
+| `fx:lightning` | `{ pos, height, points, color }` | 道具連鎖閃電（v0.33.0）：points 依序連成的閃電線 |
+| `fx:status` | `{ pos, height, color }` | 道具讓怪中毒 / 冰凍（v0.33.0）：一小團該顏色的粒子 |
 
 ---
 
@@ -671,3 +673,10 @@ godot/
 - **屍體與冤魂**：多人時真的死亡（`_on_died`）→ `World.drop_corpse`：`ItemPickup`（item_id `&"corpse"`、`corpse_of` = peer id）。撿起 → `Player.add_corpse`：背包條目 uid `corpse_<peer>`、id `&"corpse"`（`ItemDefs` 的 kind `&"corpse"`，形狀 r6，不算生效道具）；丟出來還是屍體。換層時 `corpse_carrier` 找到就 `_spawn_ghost`（`EnemyDefs` 的 `ghost`，MeleeEnemy，`ghost_of`，出生點 10~14）；冤魂死亡 → `on_ghost_defeated`：移除屍體、`Player.resurrect`（冤魂位置、30% 血、短暫無敵）。客戶端 `net_sync_life` 支援死亡 → 復活。
 - **快照**：世界加 `W_FLOOR`、`W_EVENT`（[狀態, 進度, 秒數, 基礎難度]）；玩家 extra 加 `P_DESCENDED`；地上道具 extra 第 3 欄是屍體主人。挖墳點在 `World.load_map` 就設好（客戶端預測要判斷挖不挖得到）。
 - **畫面**：挖墳點土堆 + 墓碑（土堆隨進度變矮），打開後是黑洞 + 發光環與光；`WorldLabels` 顯示「[F] 按住挖墳」、「挖墳 N%」、「出口：走進去前往第 N 層（k / n 人）」、冤魂說明；HUD 右上「第 N 層 · 難度 D」與事件橫幅；冤魂是半透明偏藍的騎士（`SkinnedRig.set_ghost`）；挖墳姿勢彎腰雙手往下挖。
+
+### 15.26 試玩回饋：效能、提示、牆後剪影、道具效果（v0.30.0~v0.33.0）
+- **休眠怪群**（v0.30.0）：`Entity.fixed`（`Enemy.dormant` 的 setter 同步）＝不積分；`SimPhysics.separate` 固定的不主動找鄰居、不被推，會動的一方退開全部重疊。`Enemy.update` 休眠時只推進 `fsm.time`。
+- **新手提示**（v0.31.0）：`ui/hints.gd` 每幀讀 World 判斷條件（客戶端讀鏡像也一樣），看過的存 `user://settings.cfg` `[hints] seen`；`--seconds` 自動驗證不存。文字在 `defs/hint_defs.gd`。換武器鍵 X。
+- **牆後剪影**（v0.32.0）：角色材質 `stencil_mode = CUSTOM`（寫入 `XRAY_STENCIL`），`material_overlay` 是不做深度測試、模板值不等於它才畫的純色材質（`WorldView.XRAY_SHADER`）。玩家一直開；怪物在 `_xray_needed`（往相機方向取樣地形高度，每 `LOS_INTERVAL` tick）成立時才開。地上的圈與扇形（`XRAY_SKIP`）不畫。
+- **道具效果**（v0.33.0）：`sim/item_effects.gd`。`Combat._apply_damage` 對玩家方的一般攻擊：先乘「對滿血敵人」的攻擊力倍率（`Stats.value_with_pct`），命中後 `on_hit`（連鎖閃電、中毒、冰凍），打死後 `on_kill`（爆炸、回血、擊殺計時）。道具效果造成的傷害帶 `proc = true`：不爆擊、不觸發 `on_hit`，打死怪仍觸發 `on_kill`。低血、擊殺後的加成由 `Player._tick_timers` → `update_player` 以來源 `cond:<uid>` 套上。中毒 / 冰凍狀態在 `Enemy`（權威端推進），畫面看 `anim.frozen / poisoned` 染色（`SkinnedRig.set_status_tint`）。數值在 `ItemDefs.PROCS`；已接上的在 `IMPLEMENTED_CONDITIONS / IMPLEMENTED_TRIGGERS`；寶箱與 Boss 獎勵用 `LootDefs.drop_pool`（只抽全部接上的，沒有就往下一級）。
+- **已知限制**：客戶端不知道「擊殺後攻速 +30%」（擊殺只在房主結算），自己的出招速度在 3 秒內會比房主慢，房主的判定為準。

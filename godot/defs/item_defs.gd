@@ -7,7 +7,7 @@
 #   條件屬性  {"when", "stat", "op", "value", ...}：條件成立時才生效（例如低血、翻滾後幾秒），參數見 CONDITIONS
 #   觸發      {"on", "do", "chance"?, ...}：事件發生時執行動作，參數見 TRIGGERS / ACTIONS
 #   能力      {"ability", ...}：新增一種能力（二段跳、護盾），參數見 ABILITIES
-# 後三種目前只有資料，之後的里程碑才接上（implemented = false）
+# 後三種有些已接上（IMPLEMENTED_*，效果在 sim/item_effects.gd），其他的只有資料：說明加「效果尚未實作」、寶箱不開出（LootDefs.drop_pool）
 class_name ItemDefs
 
 const BAG_SIZE := Vector2i(8, 6)   # 背包 8 × 6 格（暫定）
@@ -87,6 +87,19 @@ const ACTIONS := {
 const ABILITIES := {
 	&"double_jump": {"name": "二段跳", "params": []},
 	&"bone_shield": {"name": "自動回充的護盾", "params": ["ratio", "recharge_delay"]},
+}
+
+# 已接上的條件、觸發 + 動作（v0.33.0 第一批 8 個道具，sim/item_effects.gd）；能力的二段跳在 Player.air_jumps
+const IMPLEMENTED_CONDITIONS: Array[StringName] = [&"target_full_hp", &"hp_below", &"after_kill"]
+const IMPLEMENTED_TRIGGERS: Array[String] = ["kill|explode", "kill|heal_max_hp", "hit|chain_lightning", "hit|poison", "hit|freeze"]
+
+# 觸發動作的數值（v0.33.0，說明沒寫到的由 Claude 暫定，試玩後再調）；damage_ratio 都是乘「觸發的那一下」的傷害
+# 同一種動作有多個道具時機率相加（最多 100%）、沒有機率的（回血）效果相加
+const PROCS := {
+	&"explode": {"radius": 2.5, "damage_ratio": 0.5, "knockback": 6.0, "color": Color("ff9a2e")},   # 擊殺那一下的 50%
+	&"chain_lightning": {"jump_range": 5.0, "damage_ratio": 0.5, "color": Color("9fd8ff")},       # 每跳 50%，不會打同一隻兩次
+	&"poison": {"duration": 3.0, "total_ratio": 0.6, "tick": 0.5, "color": Color("7cff5a")},       # 3 秒共 60%，每 0.5 秒扣一次；再中毒重新計時、取較高的
+	&"freeze": {"color": Color("a8e6ff")},   # 冰凍時不能動、不出招（Boss 不會被冰凍）
 }
 
 # kind：&"item" 道具 / &"weapon" 武器（weapon 對應 WeaponDefs，數值在那邊，這裡只放背包用的欄位）
@@ -233,8 +246,17 @@ static func stat_mods(id: StringName) -> Array:
 	return mods
 
 
-# 效果是否已接上遊戲（目前只有屬性；條件、觸發、能力之後才做）
+# 效果是否已接上遊戲
 static func is_implemented(effect: Dictionary) -> bool:
 	if effect.get("ability", &"") == &"double_jump":   # v0.27.0（Player.air_jumps）
 		return true
-	return effect.has("stat") and not effect.has("when") and StatDefs.STATS[effect.stat].in_use
+	if effect.has("on"):
+		return IMPLEMENTED_TRIGGERS.has("%s|%s" % [effect.on, effect.do])
+	if effect.has("when") and not IMPLEMENTED_CONDITIONS.has(effect.when):
+		return false
+	return effect.has("stat") and StatDefs.STATS[effect.stat].in_use
+
+
+# 道具的效果是不是全部都接上了
+static func item_implemented(id: StringName) -> bool:
+	return ITEMS[id].effects.all(is_implemented)
