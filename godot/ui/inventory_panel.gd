@@ -9,7 +9,7 @@ signal op_requested(op: Array)
 
 const CELL := 52
 const PAD := 14
-const TITLE_H := 34
+const TITLE_H := 50   # 標題 + 一行操作說明
 const SLOT_LABEL_H := 20
 const SLOTS_H := CELL * 2 + SLOT_LABEL_H + 12   # 裝備欄一格 = 4 × 2 個背包格子大
 const INFO_H := 110
@@ -151,7 +151,7 @@ func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), UiKit.SLOT_BG)
 	draw_rect(Rect2(Vector2.ZERO, size), UiKit.SLOT_OUTLINE, false, 1.0)
 	draw_string(font, Vector2(PAD, PAD + 22), "背包", HORIZONTAL_ALIGNMENT_LEFT, -1, 20)
-	draw_string(font, Vector2(PAD + 60, PAD + 22), "拖曳搬動 · 拖著按 R 旋轉 · 拖到外面丟掉 · 武器拖到同種同色武器上合成", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.55))
+	draw_string(font, Vector2(PAD, PAD + 42), "拖曳搬動 · 拖著按 R 旋轉 · 拖到外面丟掉 · 拖到同種同色武器上合成", HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 12, Color(1, 1, 1, 0.55))
 	var me := _player()
 	_draw_slots(font, me)
 	var bag: Vector2i = ItemDefs.BAG_SIZE
