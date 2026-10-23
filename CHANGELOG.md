@@ -2,6 +2,11 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.27.1] - 2026-10-23
+
+### 修改
+- 離屏截圖確認（`docs/進度.md`）：Boss 直劈把劍舉過頭、砸地三圈紅圈（3 / 6 / 9）、狂暴時玩家腳下的紫色預警圈、瞬移後的紫色煙霧與紅圈、綠色劍盾在腳邊的淡綠光都正確顯示。
+
 ## [0.27.0] - 2026-10-23
 
 使用者試玩 v0.26.1 後的 7 點回饋；規格見 `PROJECT_GUIDELINES.md` 15.23。
