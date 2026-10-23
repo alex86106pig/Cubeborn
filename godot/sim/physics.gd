@@ -4,41 +4,105 @@
 class_name SimPhysics
 
 
+# D5 起改成先把位置、半徑、質量、高度抄進 Packed 陣列計算，最後才寫回實體（200 隻怪時 GDScript 讀寫物件屬性太慢）
+# 格子用攤平的鏈結串列（head / next），每步不配置 Dictionary 與 Array；計算順序與 _resolve 兩兩比對相同
 static func separate(entities: Array[Entity], rng: RandomNumberGenerator) -> void:
 	var cell: float = Config.WORLD.physics_cell
 	var n := entities.size()
-	var cells := PackedVector2Array()   # 每個實體所在的格子 (cx, cz)，在分離前一次算好
-	cells.resize(n)
-	var grid: Dictionary = {}           # Vector2i -> Array（實體索引，遞增；Packed 陣列放進 Dictionary 是複本，不能就地 append）
+	if n < 2:
+		return
+	var px := PackedFloat64Array()
+	var pz := PackedFloat64Array()
+	var rad := PackedFloat64Array()
+	var mass := PackedFloat64Array()
+	var low := PackedFloat64Array()    # 腳底高度
+	var high := PackedFloat64Array()   # 頭頂高度
+	var cx := PackedInt32Array()
+	var cz := PackedInt32Array()
+	px.resize(n)   # Packed 陣列是複製寫入，不能放進陣列用迴圈 resize
+	pz.resize(n)
+	rad.resize(n)
+	mass.resize(n)
+	low.resize(n)
+	high.resize(n)
+	cx.resize(n)
+	cz.resize(n)
+	var min_x := 1 << 30
+	var min_z := 1 << 30
+	var max_x := -(1 << 30)
+	var max_z := -(1 << 30)
 	for i in n:
-		var c := Vector2i(floori(entities[i].pos.x / cell), floori(entities[i].pos.y / cell))
-		cells[i] = Vector2(c)
-		if not grid.has(c):
-			grid[c] = []
-		grid[c].append(i)
+		var e := entities[i]
+		px[i] = e.pos.x
+		pz[i] = e.pos.y
+		rad[i] = e.radius
+		mass[i] = -1.0 if e.is_dead else e.mass   # 質量 < 0 = 已死亡，不參與
+		low[i] = e.height
+		high[i] = e.height + e.body_height
+		cx[i] = floori(px[i] / cell)
+		cz[i] = floori(pz[i] / cell)
+		min_x = mini(min_x, cx[i])
+		min_z = mini(min_z, cz[i])
+		max_x = maxi(max_x, cx[i])
+		max_z = maxi(max_z, cz[i])
+	var gw := max_x - min_x + 1
+	var gh := max_z - min_z + 1
+	var head := PackedInt32Array()
+	head.resize(gw * gh)
+	head.fill(-1)
+	var next := PackedInt32Array()
+	next.resize(n)
+	for i in range(n - 1, -1, -1):   # 倒著插入，每格的串列由小到大
+		var k := (cz[i] - min_z) * gw + (cx[i] - min_x)
+		next[i] = head[k]
+		head[k] = i
 
+	var moved := false
 	var neighbors := PackedInt32Array()
 	for i in n:
-		var a := entities[i]
-		if a.is_dead:
+		if mass[i] < 0.0:
 			continue
 		# 收集相鄰格內索引比 i 大的實體，排序後依序處理（與兩兩比對的處理順序相同）
 		neighbors.clear()
-		var ci := Vector2i(cells[i])
-		for dx in range(-1, 2):
-			for dz in range(-1, 2):
-				var key := ci + Vector2i(dx, dz)
-				if not grid.has(key):
-					continue
-				for j in grid[key]:
+		for dz in range(maxi(cz[i] - 1, min_z), mini(cz[i] + 1, max_z) + 1):
+			for dx in range(maxi(cx[i] - 1, min_x), mini(cx[i] + 1, max_x) + 1):
+				var j := head[(dz - min_z) * gw + (dx - min_x)]
+				while j >= 0:
 					if j > i:
 						neighbors.append(j)
+					j = next[j]
+		if neighbors.is_empty():
+			continue
 		neighbors.sort()
 		for j in neighbors:
-			var b := entities[j]
-			if b.is_dead:
+			if mass[j] < 0.0 or not (low[i] < high[j] and high[i] > low[j]):
+				continue   # 死亡、或高度不重疊（例如跳過怪物頭頂）就不互推
+			var dx := px[j] - px[i]
+			var dz := pz[j] - pz[i]
+			var min_dist := rad[i] + rad[j]
+			var dist_sq := dx * dx + dz * dz
+			if dist_sq >= min_dist * min_dist:
 				continue
-			_resolve(a, b, rng)
+			if dist_sq < 1e-8:
+				dx = rng.randf() - 0.5
+				dz = rng.randf() - 0.5
+				dist_sq = dx * dx + dz * dz
+			var dist := sqrt(dist_sq)
+			var overlap := min_dist - dist
+			var total := mass[i] + mass[j]
+			var ka := overlap * mass[j] / total / dist
+			var kb := overlap * mass[i] / total / dist
+			px[i] -= dx * ka
+			pz[i] -= dz * ka
+			px[j] += dx * kb
+			pz[j] += dz * kb
+			moved = true
+	if not moved:
+		return
+	for i in n:
+		var e := entities[i]
+		if e.pos.x != px[i] or e.pos.y != pz[i]:
+			e.pos = Vector2(px[i], pz[i])
 
 
 static func _resolve(a: Entity, b: Entity, rng: RandomNumberGenerator) -> void:

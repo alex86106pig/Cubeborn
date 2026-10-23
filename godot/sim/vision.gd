@@ -5,6 +5,11 @@ class_name Vision
 
 
 static func point_visible(world: World, viewer: Player, p: Vector2, target_radius: float = 0.0) -> bool:
+	return in_view_cone(viewer, p, target_radius) and not line_blocked(world, viewer, p)
+
+
+# 只看距離與角度（不管牆）：畫面層每幀都判斷，牆擋視線（line_blocked）比較貴，分批更新（D5）
+static func in_view_cone(viewer: Player, p: Vector2, target_radius: float = 0.0) -> bool:
 	var v: Dictionary = Config.VISION
 	var d := p - viewer.pos
 	var dist := d.length()
@@ -15,17 +20,22 @@ static func point_visible(world: World, viewer: Player, p: Vector2, target_radiu
 		var allowance: float = v.angle / 2.0 + (asin(minf(1.0, target_radius / dist)) if dist > 1e-4 else 0.0)
 		if absf(MathUtil.wrap_angle(atan2(d.x, d.y) - viewer.facing)) > allowance:
 			return false
-	return dist < 1e-4 or not world.terrain.sight_blocked(viewer.pos, p)
+	return true
+
+
+static func line_blocked(world: World, viewer: Player, p: Vector2) -> bool:
+	return viewer.pos.distance_squared_to(p) > 1e-8 and world.terrain.sight_blocked(viewer.pos, p)
+
+
+# 會被視野隱藏的實體（怪物、玩家、寶箱、地上的道具、別人的投射物）；其他的一律看得到
+static func is_hideable(viewer: Player, e: Entity) -> bool:
+	if viewer == null or viewer.is_dead or e == viewer:
+		return false
+	if e is Projectile:
+		return (e as Projectile).owner_id != viewer.id
+	return e is Enemy or e is Player or e is Chest or e is ItemPickup
 
 
 # viewer 為 null（例如還沒有角色）或已陣亡時什麼都看得到
 static func entity_visible(world: World, viewer: Player, e: Entity) -> bool:
-	if viewer == null or viewer.is_dead or e == viewer:
-		return true
-	if e is Projectile:
-		if (e as Projectile).owner_id == viewer.id:
-			return true
-		return point_visible(world, viewer, e.pos, e.radius)
-	if e is Enemy or e is Player or e is Chest or e is ItemPickup:
-		return point_visible(world, viewer, e.pos, e.radius)
-	return true
+	return not is_hideable(viewer, e) or point_visible(world, viewer, e.pos, e.radius)

@@ -647,3 +647,17 @@ godot/
   - 狂暴（血量一半以下）：移速 ×1.3、冷卻 ×0.6、前搖 ×0.75；衝鋒連衝 3 次（中間 0.3 秒重新瞄準）；召喚的骷髏戰士爬出來後衝撞一次（`MeleeEnemy.rush`：蓄力 0.5 → 11 單位/秒衝 0.5 秒）；砸地不管多遠都放：玩家腳下紫色預警 0.6 秒 → 瞬移（`fx:boss_teleport`）→ 0.3 秒後砸下。
 - **武器稀有度的光**：不是白色的武器在手上掛一盞稀有度顏色的小燈（所有稀有度同樣亮，使用者決定）。
 - **視野**：見 15.20（內外亮度差變小、漸層變寬）。**Tab**：背包與屬性面板一起開關（拿掉 I）。
+
+### 15.24 成群怪物與怪物稀有度（v0.28.0，D5）
+- 資料在 `defs/monster_rarity_defs.gd`：`RARITIES`（普通 / 魔法 / 稀有的生命、傷害、體型倍率、詞條數、顏色）、`AFFIXES`（8 種）、`PACKS`（怪群規則）、稀有怪名字表。
+- **稀有度**：`Enemy.set_rarity(rarity, affixes, name)` 設欄位與體型（半徑、身高 × scale）；權威端再 `apply_rarity_stats()`：屬性來源 `&"rarity"`（最大生命、攻擊力相乘，乘在 `&"wave"` 之上）、`&"affixes"`（詞條的 mods）、`&"affix_regen"`（再生 = 最大生命 × 2% 的 hp_regen）。`Spawner.roll_rarity` 抽詞條（不重複、`world.rng`）與名字；普通不抽、不耗亂數。
+- **詞條行為**（`Enemy`）：吸血在 `Combat._apply_damage` 命中後呼叫 `on_dealt_damage`；狂暴在 `_update_affixes` 觸發一次，`action_speed` 1.4 乘在狀態機時間上（`fsm.update(dt × action_speed)`），冷卻用 `cd_time()` 除以它，移速來源 `&"frenzy"`；死亡爆炸在死亡時發 `fx:telegraph`、`Dead` 狀態 delay 秒後 `Hitbox.strike`（擋不住、通關後不炸）；召喚醒著時每 interval 秒用 `spawner.spawn_at` 叫骷髏戰士（`summoner_id`，同時最多 max_alive）。
+- **怪群**：地圖資料 `"packs": true` 且 `World.spawn_packs`（`--no-spawn` 與 check.gd 預設關）時，`World.reset` 呼叫 `Spawner.spawn_packs`：群中心離出生點 ≥ 15、可走且連通、群距 ≥ 10；成員散在 3.5 內、彼此 ≥ 1.0。成員以 `mul.dormant = true` 出生（狀態 `dormant`，不播爬出），`World.packs` 記 `{ center, ids, awake }`。`World._update_packs`（玩家更新後、敵人更新前）任一可被當目標的玩家離中心 ≤ 12 就 `wake_pack`；成員被打（`_on_damaged`）也整群醒來。醒來同一步就切到主狀態。
+- **波次**：只有 `wave_member`（`_spawn_from_queue` 生的）擋下一波；怪群、召喚的不算。通關時休眠的怪群不會一起倒下。
+- **快照**：敵人 extra 第 2~4 欄是稀有度、詞條（字串陣列）、名字，普通怪不送；客戶端只 `set_rarity`（外觀），數值以快照為準。
+- **畫面**：魔法 / 稀有怪腳下發光環、身上 OmniLight（範圍 3、亮度 1.5），稀有怪模型 ×1.2；`WorldLabels` 頭上畫詞條（稀有怪多一行名字）。
+- **效能做法**（200 隻怪的目標：RTX 3070 144 FPS、內顯 60 FPS）：
+  - 骷髏戰士 / 弓手用 `view/skinned_rig.gd`（`DarkFantasy.skinned_character`）：同種的零件模板合成一個蒙皮網格（頂點色、依「自發光、投影」分組，最多 2 個網格），9 根骨頭 = Rig 的 anchors，綁定姿勢為單位矩陣（頂點存在各自關節的座標系）。關節是只存數值的 `Joint`（介面同 Node3D 的 position / rotation / scale），動畫寫完後 `flush()` 只把有變的骨頭寫進 Skeleton3D。Boss 與玩家仍用 `Rig`。
+  - 模擬層：`SimPhysics.separate` 用 Packed 陣列與攤平的鏈結串列格子；`World.player_list` 取代每次 `players.values()`；`Enemy.cd()` 快取字串；`Enemy.anim` 沿用同一個 Dictionary；位置與上次算地形時相同、站在地上的實體跳過推出石台與落地（`Entity.terrain_checked_pos`）。
+  - 畫面層：視野結果只在 tick 或觀看者改變時重算，牆擋視線每隻每 `LOS_INTERVAL`（3）步重算（剛進入扇形立刻算）；看不到的節點不更新；敵人四肢動畫每秒最多 60 次；節點位置與朝向一次寫入 transform；閃白沒變不改材質；太陽陰影 `SHADOW_ORTHOGONAL`、最遠 70。
+  - 量測：`main.gd --horde=N --perf`（離屏截圖場景，見 1.8）與 `stress_test/profile_horde.gd`（headless，模擬層各段）。

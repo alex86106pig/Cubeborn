@@ -95,7 +95,7 @@ class Kite:
 		var key := e.cd("fire")
 		if dist <= range_[1] + e.def.fire_reach and e.world.cooldowns.is_ready(key):
 			var j: Array = e.def.fire_interval_jitter
-			e.world.cooldowns.start(key, e.def.fire_interval * rng.randf_range(j[0], j[1]))
+			e.world.cooldowns.start(key, e.cd_time(e.def.fire_interval * rng.randf_range(j[0], j[1])))
 			e.fsm.change(&"aim")
 
 

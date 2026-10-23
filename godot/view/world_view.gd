@@ -13,6 +13,11 @@ const BLOCK_FAN_RANGE := 2.2
 const BLOCK_FAN_ALPHA := 0.32
 const WEAPON_GLOW_RANGE := 1.6     # 武器稀有度光：所有稀有度同樣亮度，只差顏色（使用者決定）
 const WEAPON_GLOW_ENERGY := 1.2
+const RARITY_GLOW_RANGE := 3.0     # 魔法 / 稀有怪身上的光（D5）
+const RARITY_GLOW_ENERGY := 1.5
+const SHADOW_MAX_DISTANCE := 70.0  # 陰影範圍（從相機算；相機距離 40，畫面最遠的地面約 60）
+const LOS_INTERVAL := 3           # 視野的牆擋判斷每隻每幾個 tick 重算一次（50 毫秒）
+const ENEMY_ANIM_STEP := 1.0 / 60.0 - 1e-4   # 敵人四肢動畫的最短間隔（略小於 1/60，60 FPS 時每幀都更新）
 
 var show_hitboxes := false
 var effects := Effects.new()
@@ -24,6 +29,12 @@ var _last_strike_tick := -1
 # 角色視野（D2，sim/vision.gd）：只畫本機玩家看得到的怪物、攻擊、隊友；視野外的地面蓋一層暗色
 var local_peer := World.HOST_PEER_ID
 var hidden_ids: Dictionary = {}        # 這一幀看不到的實體 id（Effects 的持續性粒子也跳過）
+var _vision_key := []                  # 上次算視野時的 tick 與觀看者狀態（沒變就沿用 hidden_ids）
+var _los_blocked: Dictionary = {}      # entity id -> 視線被牆擋住（分批更新，見 sync）
+var _anim_pending: Dictionary = {}     # entity id -> 還沒拿去擺姿勢的秒數（敵人動畫每秒最多 60 次）
+var _hitboxes_shown := false
+var profile := false                   # main 的 --perf：各段累計耗時（微秒）放進 profile_usec
+var profile_usec: Dictionary = {}
 var _world: World
 var _vision_overlay := _create_vision_overlay()
 
@@ -89,6 +100,9 @@ func _setup_environment() -> void:
 	sun.light_color = Config.ENVIRONMENT.sun_color
 	sun.light_energy = 1.2
 	sun.shadow_enabled = true
+	# 正交等距相機看得到的深度範圍很固定，一張陰影圖就夠（預設分 4 層，每個投影物要畫 4 次；D5 效能）
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+	sun.directional_shadow_max_distance = SHADOW_MAX_DISTANCE
 	add_child(sun)
 	sun.look_at_from_position(Vector3(-10.0, 22.0, 8.0), Vector3.ZERO)
 
@@ -97,10 +111,31 @@ func _setup_environment() -> void:
 func sync(world: World, alpha: float, dt: float) -> void:
 	_world = world
 	var me := local_player()
-	hidden_ids.clear()
-	for id: int in world.entities:
-		if not Vision.entity_visible(world, me, world.entities[id]):
-			hidden_ids[id] = true
+	# 視野只依模擬層的位置與朝向決定：同一個 tick 不必重算（D5：200 隻怪時每幀做視線判斷太慢）
+	var vision_key := [world.tick, world.run_id, world.entities.size(), me, me.pos if me else Vector2.ZERO, me.facing if me else 0.0, me.is_dead if me else false]
+	var t0 := Time.get_ticks_usec()
+	if vision_key != _vision_key:
+		_vision_key = vision_key
+		hidden_ids.clear()
+		for id: int in world.entities:
+			var e: Entity = world.entities[id]
+			if not Vision.is_hideable(me, e):
+				continue
+			if not Vision.in_view_cone(me, e.pos, e.radius):
+				hidden_ids[id] = true
+				_los_blocked.erase(id)
+				continue
+			# 牆擋視線：剛進入視野時立刻判斷，之後每隻每 LOS_INTERVAL 個 tick 才重算（依 id 錯開，D5 效能）
+			if not _los_blocked.has(id) or (world.tick + id) % LOS_INTERVAL == 0:
+				_los_blocked[id] = Vision.line_blocked(world, me, e.pos)
+			if _los_blocked[id]:
+				hidden_ids[id] = true
+	if show_hitboxes != _hitboxes_shown:
+		_hitboxes_shown = show_hitboxes
+		for node: Node3D in _nodes.values():
+			node.get_node(^"Hitbox").visible = show_hitboxes
+	var t1 := Time.get_ticks_usec()
+	var anim_usec := 0
 	for id: int in _nodes.keys():
 		# 實體不在了，或同一個 id 已經是另一個實體（重新開始後 id 從 1 重來，客戶端可能在同一幀就換掉）
 		var e: Entity = world.entities.get(id)
@@ -109,21 +144,25 @@ func sync(world: World, alpha: float, dt: float) -> void:
 			_nodes.erase(id)
 			_animators.erase(id)
 			_frozen.erase(id)
+			_los_blocked.erase(id)
+			_anim_pending.erase(id)
 	for id: int in world.entities:
 		var e: Entity = world.entities[id]
 		if not _nodes.has(id):
 			_nodes[id] = _create_view(e)
 		var node: Node3D = _nodes[id]
 		node.visible = not hidden_ids.has(id)
+		if not node.visible:
+			continue   # 看不到的不必擺位置與姿勢（D5 效能）
 		if _frozen.has(id):
 			_frozen[id] -= dt
 			if _frozen[id] > 0.0:
 				continue
 			_frozen.erase(id)
 		var p := e.prev_pos.lerp(e.pos, alpha)
-		node.position = Vector3(p.x, lerpf(e.prev_height, e.height, alpha), p.y)
-		node.rotation.y = lerp_angle(e.prev_facing, e.facing, alpha)
-		node.get_node(^"Hitbox").visible = show_hitboxes
+		# 位置與朝向一次寫入（分兩次寫會更新兩次子節點的變換，D5 效能）
+		node.transform = Transform3D(Basis(Vector3.UP, lerp_angle(e.prev_facing, e.facing, alpha)),
+			Vector3(p.x, lerpf(e.prev_height, e.height, alpha), p.y))
 		if e is Player:
 			_sync_block_fan(node.get_node(^"BlockFan"), e as Player)
 			var glow: OmniLight3D = node.get_meta(&"glow")
@@ -140,14 +179,44 @@ func sync(world: World, alpha: float, dt: float) -> void:
 			gem.position.y = 0.55 + 0.12 * sin(t * 2.5)
 			gem.rotation.y = t * 1.6
 		if _animators.has(id):
-			_animators[id].update(e, dt)
+			var ta := Time.get_ticks_usec()
+			var anim_dt := dt
+			if e is Enemy:
+				# 敵人的四肢動畫最多每秒 60 次（同模擬步）：144 FPS 時不必每幀擺姿勢；位置照樣每幀補間（D5 效能）
+				anim_dt += _anim_pending.get(id, 0.0)
+				if anim_dt < ENEMY_ANIM_STEP:
+					_anim_pending[id] = anim_dt
+					anim_dt = -1.0
+				else:
+					_anim_pending[id] = 0.0
+			if anim_dt >= 0.0:
+				_animators[id].update(e, anim_dt)
+			anim_usec += Time.get_ticks_usec() - ta
+	var t2 := Time.get_ticks_usec()
 	_sync_strikes(world, dt)
 	_sync_vision_overlay(me)
 	effects.sync(world, dt)
+	if profile:
+		_add_profile(&"vision", t1 - t0)
+		_add_profile(&"nodes", t2 - t1 - anim_usec)
+		_add_profile(&"animators", anim_usec)
+		_add_profile(&"effects", Time.get_ticks_usec() - t2)
+
+
+func _add_profile(key: StringName, usec: int) -> void:
+	profile_usec[key] = profile_usec.get(key, 0) + usec
 
 
 func local_player() -> Player:
 	return _world.players.get(local_peer) if _world != null else null
+
+
+# 視野外（不畫）的敵人數，效能量測用
+func hidden_enemy_count(world: World) -> int:
+	var n := 0
+	for e in world.enemies:
+		n += 1 if hidden_ids.has(e.id) else 0
+	return n
 
 
 # 視野外變暗：蓋滿畫面的四邊形，從深度貼圖算出每個像素的世界位置，在視野扇形與身邊一圈之外蓋上暗色
@@ -399,9 +468,11 @@ func _create_view(e: Entity) -> Node3D:
 			rig.hand_r.add_child(glow)
 			root.set_meta(&"glow", glow)
 		&"grunt", &"archer", &"boss":
-			var rig := DarkFantasy.character(e.kind)
+			# 小怪用蒙皮版本（D5 效能：每隻 1~2 次繪製）；Boss 只有一隻，照舊用關節節點
+			var rig: Node3D = DarkFantasy.character(e.kind) if e.kind == &"boss" else DarkFantasy.skinned_character(e.kind)
 			_animators[e.id] = EnemyAnimator.new(rig, e as Enemy)
 			root = rig
+			_add_rarity_marks(rig, e as Enemy)
 		&"projectile":
 			var proj := e as Projectile
 			root = _create_arrow(proj) if proj.visual == &"arrow" else _create_projectile(proj)
@@ -411,10 +482,43 @@ func _create_view(e: Entity) -> Node3D:
 			root = _create_pickup(e as ItemPickup)
 		_:
 			root = _create_placeholder(e)
-	root.add_child(_create_hitbox_ring(e.radius))
+	var ring := _create_hitbox_ring(e.radius)
+	ring.visible = show_hitboxes
+	root.add_child(ring)
 	root.set_meta(&"entity", e.get_instance_id())
 	add_child(root)
 	return root
+
+
+# 魔法 / 稀有怪（D5）：體型（稀有 ×1.2）、身上稀有度顏色的光、腳下一圈發光環
+func _add_rarity_marks(rig: Node3D, e: Enemy) -> void:
+	if e.rarity == MonsterRarityDefs.NORMAL:
+		return
+	var r: Dictionary = MonsterRarityDefs.RARITIES[e.rarity]
+	rig.body.scale *= r.scale
+	rig.height *= r.scale
+	var glow := OmniLight3D.new()
+	glow.light_color = r.color
+	glow.omni_range = RARITY_GLOW_RANGE
+	glow.light_energy = RARITY_GLOW_ENERGY
+	glow.shadow_enabled = false
+	glow.position.y = e.body_height * 0.6
+	rig.add_child(glow)
+	var ring := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	torus.inner_radius = e.radius + 0.12
+	torus.outer_radius = e.radius + 0.24
+	torus.rings = 24
+	torus.ring_segments = 4
+	ring.mesh = torus
+	ring.scale.y = 0.15
+	ring.position.y = 0.04
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = r.color
+	ring.material_override = mat
+	rig.add_child(ring)
 
 
 # 發光球體（網頁版 Projectile 的預設外觀）；飛行高度由模擬層的 height 決定

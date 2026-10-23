@@ -99,7 +99,10 @@ static func entity_fields(e: Entity) -> Array:
 		a[E_EXTRA] = [(e as ItemPickup).item_id, WeaponDropDefs.to_array((e as ItemPickup).weapon)]
 	elif e is Enemy:
 		a[E_ANIM] = (e as Enemy).anim
+		var en := e as Enemy
 		a[E_EXTRA] = [(e as Boss).is_enraged if e is Boss else false]
+		if en.rarity != MonsterRarityDefs.NORMAL:   # 稀有度（D5）：普通怪不送
+			a[E_EXTRA].append_array([en.rarity, en.affixes.map(func(id: StringName) -> String: return String(id)), en.rare_name])
 	elif e is Projectile:
 		var pr := e as Projectile
 		a[E_EXTRA] = [pr.visual, pr.color, pr.radius, pr.team]
@@ -132,6 +135,8 @@ static func create_entity(world: World, a: Array) -> Entity:
 	elif kind in ENEMY_KINDS:
 		var enemy := Spawner.create(world, kind, at, WaveDefs.NO_SCALING)
 		enemy.stats.remove_source(&"wave")   # 最大生命直接用快照的數字
+		if extra.size() > 1:   # 稀有度只要外觀（體型、光、名字），數值以快照為準
+			enemy.set_rarity(StringName(extra[1]), (extra[2] as Array).map(func(id: String) -> StringName: return StringName(id)), extra[3])
 		world.add_enemy(enemy, a[E_ID])
 		e = enemy
 	elif kind == &"chest":

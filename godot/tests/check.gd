@@ -120,6 +120,12 @@ func _initialize() -> void:
 	_check("弓手打得到高台：玩家站在 1.0 石台上會中箭；被牆擋住時弓手先移動、不對牆射", _check_archer_high_ground)
 	_check("投射物不穿牆：魔彈對牆射會在牆前消失；從高台往下射照樣打得到地上的怪", _check_projectile_walls)
 	_check("地圖 A 生成：小怪都生在離玩家 8~18、可走而且走得到玩家的地方", _check_map_spawns)
+	_check("怪物稀有度（D5）：稀有骷髏生命 180、攻擊力 ×1.5、體型 ×1.2；魔法 72、×1.2；詞條魔法 1~2 / 稀有 3 條不重複、稀有怪有名字；每群魔法 1~2 隻、稀有 25%（±1.5%）", MonsterChecks.check_rarity)
+	_check("怪物詞條（D5）：迅捷移速 ×1.3、強壯 ×1.3、厚皮 20 → 15、再生每秒 0.72、吸血揮砍 12 回 2.4、狂暴 <30% 移速與狀態機 ×1.4、死亡爆炸 0.8 秒後 2.2 內 20 傷害、召喚 8 秒 2 隻最多 6 隻", MonsterChecks.check_affixes)
+	_check("怪群（D5）：地圖 A 散放 12~20 群、每群 6~15 隻、離出生點 15 以上、群距 10 以上、都走得到；開場休眠不播音效、不動；玩家走到 12 以內整群醒來、被打一隻整群醒來；同種子結果相同", MonsterChecks.check_packs)
+	_check("怪群不擋波次（D5）：第 1 波 5 隻死光後 3.5 秒內開第 2 波，休眠的怪群不算", MonsterChecks.check_packs_waves)
+	_check("蒙皮小怪（D5 效能）：骷髏戰士 / 弓手合成一個蒙皮網格（≤ 2 個網格、頂點數與原本零件相同），關節姿勢寫進骨架", MonsterChecks.check_skinned_rig)
+	_check("連線稀有度（D5）：客戶端的稀有度、詞條、名字、半徑、最大生命與房主相同；普通怪的快照不帶稀有度欄位", MonsterChecks.check_net_rarity)
 	_check("高度判定：最高點時箭從腳下飛過、地面會中箭；跳起來躲過 Boss 砸地；空中揮砍與空中魔彈打得到地上的怪", _check_height_hits)
 	_check("沒有碰撞傷害：骷髏戰士（揮砍冷卻中）、弓手（不射箭時）、Boss（不出招時）貼身 2 秒都不扣血", _check_no_contact_damage)
 	_check("骷髏揮砍：舉刀 0.5 秒後才命中、傷害 12；扇形 100° / 1.5 的邊界；舉刀後半鎖定方向，繞到側面就躲開；舉刀中被打會中斷", _check_grunt_swing)
@@ -155,6 +161,7 @@ func _initialize() -> void:
 		w.clear()
 	_worlds.clear()
 	NetChecks.cleanup()
+	MonsterChecks.cleanup()
 	print("\n%d / %d 通過" % [_passed, _passed + _failed])
 	OS.remove_logger(_errors)
 	quit(1 if _failed > 0 else 0)
@@ -179,6 +186,7 @@ func _check(title: String, fn: Callable) -> void:
 # 預設關掉生成器，只測玩家；要測波次時傳 with_spawner = true
 func _new_world(seed_value: int = 12345, with_spawner: bool = false, map_id: StringName = &"test_arena") -> World:
 	var w := World.new(map_id)
+	w.spawn_packs = false   # 怪群（D5）另外檢查
 	w.reset(seed_value)
 	w.spawner.finished = not with_spawner
 	_worlds.append(w)

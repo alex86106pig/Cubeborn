@@ -48,7 +48,7 @@ class Chase:
 class Swing:
 	func enter(e: MeleeEnemy, data: Dictionary, _fsm: StateMachine) -> void:
 		e.velocity = Vector2.ZERO
-		e.world.cooldowns.start(e.cd("swing"), e.def.swing.cooldown)
+		e.world.cooldowns.start(e.cd("swing"), e.cd_time(e.def.swing.cooldown))
 		data.hit = {}
 
 	func update(e: MeleeEnemy, dt: float, fsm: StateMachine) -> void:

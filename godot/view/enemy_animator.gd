@@ -10,14 +10,14 @@ const CORPSE_SINK_START := 0.6   # 屍體停留時間的 60% 後開始沉入地�
 const CORPSE_SINK_DEPTH := 0.8
 const SLAM_FOLLOW_TIME := 0.12   # 重砸落地後手臂揮下的秒數
 
-var rig: Rig
+var rig   # Rig（Boss）或 SkinnedRig（小怪，D5）：關節介面相同
 var walk_phase := 0.0
 var _prev_state: StringName = &""
 var _slam_rings: Array[MeshInstance3D] = []   # Boss 砸地的每一圈（v0.27.0：一圈圈往外擴散）
 var _charge_line: MeshInstance3D = null
 
 
-func _init(p_rig: Rig, e: Enemy) -> void:
+func _init(p_rig: Node3D, e: Enemy) -> void:
 	rig = p_rig
 	walk_phase = randf() * TAU   # 畫面用隨機，與模擬無關
 	if e.is_boss():
@@ -45,6 +45,8 @@ func update(e: Enemy, dt: float) -> void:
 			var k := MathUtil.ease_out_cubic(clampf(t / def.spawn_time, 0.0, 1.0))
 			rig.position.y = lerpf(-rig.height, 0.0, k)
 			_pose_walk(0.0, -0.4, -0.2)
+		&"dormant":
+			_pose_walk(0.0, -0.6, -0.3)   # 怪群休眠：站著
 		&"hurt":
 			var k := clampf(t / def.hurt_time, 0.0, 1.0)
 			rig.body.rotation.x = -0.35 * sin(k * PI)
@@ -97,6 +99,8 @@ func update(e: Enemy, dt: float) -> void:
 	_update_telegraphs(e, a)
 	var flash_time: float = Config.COMBAT.flash_time
 	rig.set_flash(0.9 * e.flash_timer / flash_time if e.flash_timer > 0.0 else 0.0)
+	if rig is SkinnedRig:
+		rig.flush()
 
 
 func _pose_walk(amount: float, arm_r: float, arm_l: float) -> void:
@@ -117,7 +121,7 @@ func _pose_arms(rx: float, ry: float = 0.0) -> void:
 
 # 骷髏戰士揮砍：舉刀（手臂高舉、身體後仰，看得出要出手）→ 揮下（由上往下砸、身體前傾）→ 收招回到持刀姿勢
 func _pose_melee_swing(t: float, s: Dictionary) -> void:
-	var arm := rig.arm_r
+	var arm = rig.arm_r   # Node3D 或 SkinnedRig.Joint
 	var windup: float = s.windup
 	var active: float = s.active
 	if t < windup:

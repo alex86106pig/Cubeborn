@@ -12,11 +12,14 @@ var events: Array[Dictionary] = []   # 本步事件，只放 id 與數值，才�
 var hitboxes: Array[Dictionary] = [] # 本步出現的攻擊判定（sim/hitbox.gd 記錄；畫面層 F2 顯示用，不影響模擬）
 var entities: Dictionary = {}        # id -> Entity
 var players: Dictionary = {}         # peer_id -> Player
+var player_list: Array[Player] = []  # 同 players.values()（加入順序），每步大量查詢時不必每次配置新陣列（D5）
 var enemies: Array[Entity] = []
 var projectiles: Array[Entity] = []
 var chests: Array[Entity] = []       # 寶箱（D3）
 var pickups: Array[Entity] = []      # 掉在地上的道具（D3）
 var gold := 0                        # 共用的錢（D3）：殺怪賺、開寶箱花
+var packs: Array[Dictionary] = []    # 地圖預放的怪群（D5）：{ center, ids, awake }，只在權威端
+var spawn_packs := true              # reset 時是否散放怪群（地圖要有 "packs": true；check.gd 大部分檢查關掉）
 var stats := {"wave": 0, "kills": 0, "time": 0.0}
 var is_over := false                 # 通關後為 true
 var hit_stop_timer := 0.0            # 剩餘的整體放慢（真實秒數），由主迴圈換算成時間縮放；v0.18.3 起只有打倒 Boss 時使用（一般命中改成畫面定格）
@@ -87,6 +90,8 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 		var chest := Chest.new(self, c[2], MapDefs.to_world(map, Vector2(c[0], c[1])))
 		add_entity(chest)
 		chests.append(chest)
+	if spawn_packs and map.get("packs", false):
+		spawner.spawn_packs(self)
 	emit_event("game:restart", {})
 
 
@@ -98,10 +103,12 @@ func clear() -> void:
 	hitboxes.clear()
 	entities.clear()
 	players.clear()
+	player_list.clear()
 	enemies.clear()
 	projectiles.clear()
 	chests.clear()
 	pickups.clear()
+	packs.clear()
 
 
 func add_entity(e: Entity) -> Entity:
@@ -118,6 +125,7 @@ func add_entity_with_id(e: Entity, p_id: int) -> Entity:
 	entities[e.id] = e
 	if e is Player:
 		players[e.peer_id] = e
+		player_list.assign(players.values())
 	elif e is Enemy:
 		e.on_added()
 	return e
@@ -144,7 +152,7 @@ func remove_entity_now(p_id: int) -> void:
 
 
 func first_alive_player() -> Player:
-	for p: Player in players.values():
+	for p in player_list:
 		if not p.is_dead:
 			return p
 	return null
@@ -207,7 +215,7 @@ func on_boss_defeated(boss: Enemy) -> void:
 	hit_stop(Config.WORLD.victory_hit_stop)
 	emit_event("camera:shake", {"amount": Config.WORLD.victory_shake, "duration": Config.WORLD.victory_shake_duration})
 	for e in enemies:
-		if e != boss and not e.is_dead:
+		if e != boss and not e.is_dead and not (e is Enemy and (e as Enemy).dormant):   # 還在休眠的怪群留著（D5）
 			e.die()
 	for p in projectiles:
 		if p.team == &"enemy":
@@ -251,7 +259,7 @@ func consume_hit_stop(real_dt: float) -> float:
 
 
 func is_any_player_alive() -> bool:
-	for p: Player in players.values():
+	for p in player_list:
 		if not p.is_dead:
 			return true
 	return false
@@ -276,22 +284,27 @@ func step(cmds: Dictionary, dt: float) -> void:
 		event_actor = peer_id
 		p.update(dt)
 		event_actor = 0
+	_update_packs()
 	for e in enemies:
 		e.update(dt)
 	for e in projectiles:
 		e.update(dt)
 
 	_bodies.clear()
-	for p: Player in players.values():
+	for p in player_list:
 		_bodies.append(p)
 	_bodies.append_array(enemies)
 	for b in _bodies:
 		b.integrate(dt)
 	SimPhysics.separate(_bodies, rng)
 	for b in _bodies:
+		# 位置和上次算過地形時一樣、站在地上的（休眠的怪群、站著出招的）已經推出牆、落地過，不必再算（D5）
+		if b.pos == b.terrain_checked_pos and b.vz == 0.0 and b.height == b.ground_height:
+			continue
 		terrain.push_out(b)
 		SimPhysics.clamp_to_arena(b, half_extents)
 		b.integrate_vertical(dt, terrain)
+		b.terrain_checked_pos = b.pos
 	_bodies.clear()   # 不留參照，已移除的實體才能立即釋放
 
 	_update_downed(dt)
@@ -332,18 +345,41 @@ func step_predicted(peer_id: int, cmd: InputCmd, dt: float) -> void:
 	p.integrate_vertical(dt, terrain)
 
 
+# 怪群（D5）：任一位能被當成目標的玩家走到群中心 wake_distance 以內，整群醒來
+func _update_packs() -> void:
+	var r: float = MonsterRarityDefs.PACKS.wake_distance
+	for i in packs.size():
+		if packs[i].awake:
+			continue
+		for p in player_list:
+			if p.is_targetable() and p.pos.distance_squared_to(packs[i].center) <= r * r:
+				wake_pack(i)
+				break
+
+
+func wake_pack(i: int) -> void:
+	var pk: Dictionary = packs[i]
+	if pk.awake:
+		return
+	pk.awake = true
+	for id: int in pk.ids:
+		var e: Entity = entities.get(id)
+		if e is Enemy:
+			(e as Enemy).wake()
+
+
 # 倒下與救援（C4）：有隊友按住互動鍵就累積救援時間、倒數暫停；放開時累積的時間慢慢減少
 # 沒有站著的玩家時，所有倒地的人直接死亡（全員倒下就輸；單機倒下就是死亡）
 func _update_downed(dt: float) -> void:
 	var standing := 0
 	var reviving := {}   # 倒地者 id -> true
-	for p: Player in players.values():
+	for p in player_list:
 		if not p.is_dead and not p.is_downed:
 			standing += 1
 			if p.revive_target_id != 0:
 				reviving[p.revive_target_id] = true
 	var r: Dictionary = Config.REVIVE
-	for p: Player in players.values():
+	for p in player_list:
 		if not p.is_downed:
 			continue
 		if standing == 0:
@@ -367,6 +403,7 @@ func _remove_dead_entities() -> void:
 			entities.erase(id)
 			if e is Player:
 				players.erase(e.peer_id)
+				player_list.erase(e)
 	enemies.assign(enemies.filter(func(e: Entity) -> bool: return not e.is_removed))
 	projectiles.assign(projectiles.filter(func(e: Entity) -> bool: return not e.is_removed))
 	pickups.assign(pickups.filter(func(e: Entity) -> bool: return not e.is_removed))

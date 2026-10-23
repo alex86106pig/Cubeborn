@@ -21,6 +21,7 @@ var weapon_model: StringName = &""
 
 var _weapon_kit: PartKit = null
 var _joints: Dictionary
+var _flash := 0.0
 
 
 # 關節位置 j：{ neck, shoulder_y, shoulder_x, arm_len, hip_y, hip_x, height, scale? }
@@ -103,6 +104,9 @@ func set_weapon(model: StringName) -> void:
 
 # 受擊閃白，k 為 0~1（自發光零件不受影響）
 func set_flash(k: float) -> void:
+	if k == _flash:   # 和上次一樣就不動材質（每幀改材質參數很慢，D5）
+		return
+	_flash = k
 	kit.set_flash(k)
 	if _weapon_kit != null:
 		_weapon_kit.set_flash(k)

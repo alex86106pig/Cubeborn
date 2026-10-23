@@ -13,15 +13,27 @@ var speed: float:   # 移速屬性的捷徑（基礎值含個體隨機差異，�
 var main_state: StringName = &"chase"
 var fsm: StateMachine
 var anim: Dictionary = {}
-var _cd_names: Array[String] = []   # 移除時要 reset 的 CD（enemy<id>.<名稱>）
+var _cd_keys: Dictionary = {}       # 名稱 -> CD key（enemy<id>.<名稱>），移除時全部 reset
 # 尋路與跳躍（D1，只在權威端；見 sim/nav.gd）
 var _nav_timer := 0.0
 var _path := PackedVector2Array()   # 空 = 看得到目標，直接走過去
 var _jump_windup := 0.0
 var _jump_dir := Vector2.ZERO        # 起跳方向；空中往這個方向至少 NAV.jump_air_speed，落地後清掉
+# 稀有度與詞條（D5，defs/monster_rarity_defs.gd）；客戶端的鏡像只有這三個欄位與體型（數值以快照為準）
+var rarity: StringName = MonsterRarityDefs.NORMAL
+var affixes: Array[StringName] = []
+var rare_name := ""
+var pack_id := -1                    # 地圖預放的怪群（-1 = 波次或召喚出來的）
+var dormant := false                 # 怪群休眠中：站著不動，整群醒來後才開始追（World.wake_pack）
+var wave_member := false             # 波次生成的：場上的波次怪都死了才開下一波（怪群不算）
+var action_speed := 1.0              # 狀態機時間的倍率（狂暴詞條 1.4：舉刀、瞄準、收招與冷卻都變快）
+var summoner_id := 0                 # 召喚詞條叫出來的：召喚者的 id
+var _frenzied := false
+var _exploded := false
+var _summon_timer := 0.0
 
 
-# mul：波次倍率 { hp, damage, speed }
+# mul：波次倍率 { hp, damage, speed }；選填 dormant = true 時以休眠狀態出生（怪群，不播爬出動畫與音效）
 func _init(p_world: World, p_type: StringName, at: Vector2, mul: Dictionary, states: Dictionary) -> void:
 	var d: Dictionary = EnemyDefs.ENEMIES[p_type]
 	super(p_world, p_type, &"enemy", d.radius, d.max_hp, d.mass)
@@ -39,8 +51,43 @@ func _init(p_world: World, p_type: StringName, at: Vector2, mul: Dictionary, sta
 	var target := nearest_player()
 	if target != null:
 		facing = MathUtil.angle_to(pos, target.pos)
-	fsm = StateMachine.new(self, states, &"spawn")
+	dormant = mul.get("dormant", false)
+	states[&"dormant"] = Dormant.new()
+	fsm = StateMachine.new(self, states, &"dormant" if dormant else &"spawn")
 	_update_anim()
+
+
+# 設定稀有度、詞條與名字（體型跟著變）；權威端接著呼叫 apply_rarity_stats，客戶端的鏡像只要外觀
+func set_rarity(p_rarity: StringName, p_affixes: Array, p_name: String = "") -> void:
+	var s: float = MonsterRarityDefs.RARITIES[p_rarity].scale
+	var before: float = MonsterRarityDefs.RARITIES[rarity].scale
+	rarity = p_rarity
+	affixes.assign(p_affixes)
+	rare_name = p_name
+	radius *= s / before
+	body_height *= s / before
+
+
+# 稀有度倍率（&"rarity"）、詞條加成（&"affixes"）、再生（依最大生命）；目前生命跟著最大生命增加
+func apply_rarity_stats() -> void:
+	var r: Dictionary = MonsterRarityDefs.RARITIES[rarity]
+	set_stat_source(&"rarity", [[&"max_hp", Stats.MUL, r.hp], [&"damage", Stats.MUL, r.damage]])
+	var mods := []
+	for id in affixes:
+		mods.append_array(MonsterRarityDefs.AFFIXES[id].get("mods", []))
+	set_stat_source(&"affixes", mods)
+	if has_affix(&"regen"):
+		set_stat_source(&"affix_regen", [[&"hp_regen", Stats.ADD, max_hp * MonsterRarityDefs.AFFIXES.regen.regen_ratio]])
+	if has_affix(&"summoner"):
+		_summon_timer = MonsterRarityDefs.AFFIXES.summoner.interval
+
+
+func has_affix(id: StringName) -> bool:
+	return id in affixes
+
+
+func affix(id: StringName) -> Dictionary:
+	return MonsterRarityDefs.AFFIXES[id]
 
 
 func is_boss() -> bool:
@@ -51,10 +98,13 @@ func is_spawning() -> bool:
 	return fsm.is_in(&"spawn")
 
 
+# 字串只組一次（D5：200 隻怪每步都查冷卻，每次 format 太慢）
 func cd(name: String) -> String:
-	if not name in _cd_names:
-		_cd_names.append(name)
-	return "enemy%d.%s" % [id, name]
+	var key: String = _cd_keys.get(name, "")
+	if key == "":
+		key = "enemy%d.%s" % [id, name]
+		_cd_keys[name] = key
+	return key
 
 
 # 由 World.add_entity 在取得 id 之後呼叫（CD key 需要 id）
@@ -65,7 +115,7 @@ func on_added() -> void:
 func nearest_player() -> Player:
 	var best: Player = null
 	var best_d := INF
-	for p: Player in world.players.values():
+	for p in world.player_list:
 		if not p.is_targetable():   # 倒地的玩家不追
 			continue
 		var d := p.pos.distance_squared_to(pos)
@@ -77,9 +127,52 @@ func nearest_player() -> Player:
 
 func update(dt: float) -> void:
 	_nav_timer -= dt
-	fsm.update(dt)
+	_update_affixes(dt)
+	fsm.update(dt * action_speed)
 	_update_jump(dt)
 	_update_anim()
+
+
+# 冷卻秒數套用 action_speed（狂暴時攻擊間隔也縮短）
+func cd_time(seconds: float) -> float:
+	return seconds / action_speed
+
+
+# 狂暴（生命低於門檻時加速，只觸發一次）、召喚（醒著時每 interval 秒叫幾隻，同時最多 max_alive 隻）
+func _update_affixes(dt: float) -> void:
+	if is_dead or dormant or is_spawning():
+		return
+	if has_affix(&"frenzy") and not _frenzied and hp <= max_hp * affix(&"frenzy").threshold:
+		_frenzied = true
+		action_speed = affix(&"frenzy").speed
+		set_stat_source(&"frenzy", [[&"move_speed", Stats.MUL, action_speed]])
+	if has_affix(&"summoner"):
+		_summon_timer -= dt
+		if _summon_timer <= 0.0:
+			var s := affix(&"summoner")
+			_summon_timer = s.interval
+			var alive := 0
+			for e in world.enemies:
+				if e is Enemy and (e as Enemy).summoner_id == id and not e.is_dead:
+					alive += 1
+			var nav := world.nav_for(EnemyDefs.ENEMIES.grunt.radius)
+			for i in mini(s.count, s.max_alive - alive):
+				var a := world.rng.randf() * TAU
+				var spread: float = s.spread
+				var at := nav.nearest_walkable(pos + Vector2(sin(a), cos(a)) * spread)
+				var minion := world.spawner.spawn_at(world, &"grunt", at)
+				minion.summoner_id = id
+				minion.wave_member = wave_member
+
+
+# 吸血詞條：造成傷害後回血（Combat 在命中後呼叫）
+func on_dealt_damage(amount: int) -> void:
+	if has_affix(&"vampiric") and amount > 0:
+		heal(amount * affix(&"vampiric").lifesteal)
+
+
+func wake() -> void:
+	dormant = false
 
 
 # 往 target 走時下一步要朝向的點：看得到就是 target 本身，被牆或墓碑擋住就走路徑點（每 repath_interval 秒重新判斷）
@@ -139,8 +232,11 @@ func _update_jump(dt: float) -> void:
 		velocity = Vector2.ZERO
 
 
+# 沿用同一個 Dictionary（D5：每步每隻配置新的太慢）；快照編碼時會複製成陣列
 func _update_anim() -> void:
-	anim = {"state": fsm.current_name, "time": fsm.time}
+	anim.clear()
+	anim["state"] = fsm.current_name
+	anim["time"] = fsm.time
 	_anim_extra(anim)
 
 
@@ -150,19 +246,38 @@ func _anim_extra(_a: Dictionary) -> void:
 
 
 func _on_damaged(_amount: int, _source_id: int) -> void:
+	if pack_id >= 0 and dormant:
+		world.wake_pack(pack_id)   # 被打（例如遠距離魔彈）整群醒來
 	if not is_dead and not is_spawning() and fsm.states.has(&"hurt") and not suppress_stagger:
 		fsm.change(&"hurt")
 
 
 func _on_died(_source_id: int) -> void:
+	action_speed = 1.0   # 爆炸延遲、屍體時間不受狂暴影響
 	fsm.change(&"dead")
 	world.on_enemy_died(self)
+	if has_affix(&"volatile") and not world.is_over:
+		var v := affix(&"volatile")
+		world.emit_event("fx:telegraph", {"pos": pos, "height": ground_height, "radius": v.radius, "color": v.color, "life": v.delay})
+
+
+# 死亡爆炸詞條：死後 delay 秒在屍體位置爆炸（擋不住；傷害含稀有度與詞條的攻擊力）
+func _explode() -> void:
+	_exploded = true
+	var v := affix(&"volatile")
+	var blast := Vector2(ground_height - Config.HEIGHT.reach_below, ground_height + Config.HEIGHT.explosion_height)
+	world.emit_event("sfx:cue", {"cue": "explosion"})
+	Hitbox.strike(world, self, pos, facing, {"shape": &"circle", "radius": v.radius}, {
+		"damage": v.damage * damage_mul, "knockback": v.knockback, "origin": pos, "is_heavy": true,
+		"band": blast, "blockable": false, "color": v.color,
+	})
+	world.emit_event("fx:explosion", {"pos": pos, "height": ground_height, "radius": v.radius, "color": v.color})
 
 
 func remove() -> void:
 	if world != null:
-		for name in _cd_names:
-			world.cooldowns.reset("enemy%d.%s" % [id, name])
+		for key: String in _cd_keys.values():
+			world.cooldowns.reset(key)
 	super()
 
 
@@ -175,6 +290,14 @@ func detach() -> void:
 
 static func base_states() -> Dictionary:
 	return {&"spawn": Spawn.new(), &"hurt": Hurt.new(), &"dead": Dead.new()}
+
+
+# 怪群休眠（D5）：站著不動，醒來（dormant = false）後直接開始追，不播爬出動畫
+class Dormant:
+	func update(e: Enemy, _dt: float, fsm: StateMachine) -> void:
+		e.velocity = Vector2.ZERO
+		if not e.dormant:
+			fsm.change(e.main_state)
 
 
 class Spawn:
@@ -204,5 +327,7 @@ class Dead:
 		e.velocity = Vector2.ZERO
 
 	func update(e: Enemy, _dt: float, fsm: StateMachine) -> void:
+		if e.has_affix(&"volatile") and not e._exploded and not e.world.is_over and fsm.time >= e.affix(&"volatile").delay:
+			e._explode()
 		if fsm.time >= e.def.corpse_time:
 			e.remove()

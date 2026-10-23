@@ -49,6 +49,13 @@ static func character(kind: StringName) -> Rig:
 	return rig
 
 
+# 小怪（骷髏戰士、弓手）的蒙皮版本（D5 效能，view/skinned_rig.gd）：同樣的零件與關節，每隻只剩 1~2 次繪製
+static func skinned_character(kind: StringName) -> SkinnedRig:
+	if not _templates.has(kind):
+		character(kind).free()
+	return SkinnedRig.new(kind, _templates[kind])
+
+
 # ───────── 角色 ─────────
 
 static func _armored_body(rig: Rig, armor: Color, trim: Color, cape: Color, eye: Variant = null, horns := false) -> void:

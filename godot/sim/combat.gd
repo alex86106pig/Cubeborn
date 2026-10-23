@@ -11,11 +11,11 @@ static func hostiles_of(world: World, team: StringName, source_id: int = 0) -> A
 			if not e.is_dead:
 				out.append(e)
 		if Config.NET.friendly_fire:
-			for p: Player in world.players.values():
+			for p in world.player_list:
 				if p.id != source_id and p.is_targetable():
 					out.append(p)
 	else:
-		for p: Player in world.players.values():
+		for p in world.player_list:
 			if p.is_targetable():
 				out.append(p)
 	return out
@@ -69,6 +69,8 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 	target.suppress_stagger = false
 	if dealt < 0:
 		return false
+	if source is Enemy:
+		(source as Enemy).on_dealt_damage(dealt)   # 吸血詞條（D5）
 
 	# hit_stop 只放進事件：畫面層讓攻擊者與目標的模型定格這麼久（v0.18.3 起模擬時間不再放慢，多人時不影響其他人）
 	world.emit_event("entity:damaged", {

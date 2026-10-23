@@ -5,11 +5,14 @@
 #   --wave=N（直接從第 N 波開始）--player-hp=N（開場血量）--items=id,id（開場放進身上的道具，見 defs/item_defs.gd）--no-spawn（不生怪）
 #   連線：--host（開房）--join=IP（加入）--net-port=N --net-autostart=N（房主：滿 N 人自動開始）
 #   --net-latency=毫秒（模擬單程延遲）--net-loss=0.1（模擬掉包）
+#   效能量測：--horde=N（開場在玩家周圍生 N 隻醒著的小怪）--perf（關垂直同步，結束時印出 FPS 與各段耗時）
+#   --elites（畫面上方生 1 隻稀有、2 隻魔法骷髏，截圖確認外觀）
 extends Node3D
 
 enum Mode { SINGLE, HOST, CLIENT }
 
 const HUD_SCENE := preload("res://ui/hud.tscn")
+const PERF_WARMUP := 2.0   # --perf：開場幾秒不記錄（建模與第一次編譯著色器）
 
 var mode := Mode.SINGLE
 var world := World.new()      # 單機 / 房主：權威的 World；客戶端：net_client.world（快照的鏡像）
@@ -46,6 +49,15 @@ var _arg_host := false
 var _arg_join := ""
 var _net_port: int = Config.NET.port
 var _autostart_players := 0
+# 效能量測（D5）：--horde=N 開場在玩家周圍生 N 隻醒著的小怪；--perf 關垂直同步、2 秒後開始記錄幀時間，結束時印出
+var _horde := 0
+var _elites := false   # --elites：畫面上方生 1 隻稀有、2 隻魔法骷髏（截圖確認外觀用）
+var _perf := false
+var _perf_frames := PackedFloat32Array()
+var _perf_step_usec := 0
+var _perf_steps := 0
+var _perf_sync_usec := 0
+var _perf_syncs := 0
 
 
 func _ready() -> void:
@@ -128,6 +140,14 @@ func _parse_args() -> void:
 			net.latency_ms = value.to_int()
 		elif arg.begins_with("--net-loss="):
 			net.loss = value.to_float()
+		elif arg.begins_with("--horde="):
+			_horde = value.to_int()
+		elif arg == "--elites":
+			_elites = true
+		elif arg == "--perf":
+			_perf = true
+			DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+			Engine.max_fps = 0
 
 
 func local_player() -> Player:
@@ -142,6 +162,7 @@ func restart() -> void:
 	if mode == Mode.HOST:
 		peers.assign(net.lobby_peers)
 		peers.sort()
+	world.spawn_packs = not _no_spawn
 	world.reset(randi(), peers)
 	world.spawner.finished = _no_spawn
 	var me := local_player()
@@ -153,6 +174,7 @@ func restart() -> void:
 		me.add_item(item)
 	if _start_hp > 0.0:
 		me.hp = _start_hp
+	_spawn_horde(me)
 	_sim_accumulator = 0.0
 	input_collector.consume_latched()
 	GameEvents.emit_all(world.events)
@@ -332,7 +354,11 @@ func _authority_physics() -> void:
 		_sim_accumulator -= Config.FIXED_DT
 		var cmds := net_host.take_cmds() if net_host != null else {}
 		cmds[World.HOST_PEER_ID] = input_collector.build_cmd(world.tick + 1)
+		var t0 := Time.get_ticks_usec()
 		world.step(cmds, Config.FIXED_DT)
+		if _perf and _elapsed >= PERF_WARMUP:
+			_perf_step_usec += Time.get_ticks_usec() - t0
+			_perf_steps += 1
 		input_collector.consume_latched()
 		GameEvents.emit_all(world.events)
 		if mode == Mode.HOST:
@@ -363,7 +389,13 @@ func _client_physics() -> void:
 
 func _process(delta: float) -> void:
 	var alpha := Engine.get_physics_interpolation_fraction() if _stepped_this_tick else 1.0
+	var t0 := Time.get_ticks_usec()
 	world_view.sync(world, alpha, delta)
+	if _perf and _elapsed >= PERF_WARMUP:
+		_perf_sync_usec += Time.get_ticks_usec() - t0
+		_perf_syncs += 1
+		_perf_frames.append(delta)
+	world_view.profile = _perf and _elapsed >= PERF_WARMUP
 	camera_rig.follow(_player_view_position(alpha), delta)
 	_check_auto_quit(delta)
 
@@ -410,6 +442,24 @@ func _unhandled_input(event: InputEvent) -> void:
 			player.clear_items()
 
 
+# 效能量測用（--horde=N）：玩家周圍 4~16 隨機生 N 隻（骷髏戰士 80%、弓手 20%），照常爬出後追玩家
+func _spawn_horde(me: Player) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5   # 固定位置，每次量測可以比較
+	for i in _horde:
+		var type := &"archer" if rng.randf() < 0.2 else &"grunt"
+		var a := rng.randf() * TAU
+		var at := world.nav.nearest_walkable(me.pos + Vector2(sin(a), cos(a)) * rng.randf_range(4.0, 16.0))
+		world.spawner.spawn_at(world, type, at)
+	if _elites:
+		var up := Vector2(-1.0, -1.0).normalized()   # 等距相機的畫面上方
+		var side := Vector2(1.0, -1.0).normalized()
+		var list := [[MonsterRarityDefs.RARE, up * 5.0], [MonsterRarityDefs.MAGIC, up * 4.0 + side * 3.0], [MonsterRarityDefs.MAGIC, up * 4.0 - side * 3.0]]
+		for r: Array in list:
+			var e := world.spawner.spawn_at(world, &"grunt", world.nav.nearest_walkable(me.pos + r[1]))
+			Spawner.roll_rarity(world, e, r[0])
+
+
 # 除錯用（非正式系統，單機才有）：依道具清單順序，每按一次 F4 放一個道具進背包（循環；放不下就提示背包滿了）
 func debug_add_next_item() -> void:
 	var player := local_player()
@@ -445,6 +495,30 @@ func _on_event(name: String, payload: Dictionary) -> void:
 		if not payload.has("player_id") or (me != null and payload.player_id == me.id):
 			camera_rig.shake(payload.amount, payload.duration)
 	world_view.on_event(name, payload)
+
+
+# --perf：平均 FPS、最慢 1% 的幀、每步邏輯與每幀畫面同步的平均耗時、活著的敵人與畫出來的數量
+func _print_perf() -> void:
+	var frames := _perf_frames.duplicate()
+	frames.sort()
+	var n := frames.size()
+	if n == 0:
+		return
+	var total := 0.0
+	for f in frames:
+		total += f
+	var alive := 0
+	for e in world.enemies:
+		alive += 0 if e.is_dead else 1
+	print("perf frames=%d avg_fps=%.1f p99_ms=%.2f worst_ms=%.2f logic_ms_per_step=%.3f view_sync_ms=%.3f enemies=%d visible=%d draw_calls=%d" % [
+		n, n / total, frames[mini(n - 1, int(n * 0.99))] * 1000.0, frames[n - 1] * 1000.0,
+		_perf_step_usec / 1000.0 / maxi(1, _perf_steps), _perf_sync_usec / 1000.0 / maxi(1, _perf_syncs),
+		alive, world.enemies.size() - world_view.hidden_enemy_count(world),
+		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)])
+	var parts := ""
+	for k: StringName in world_view.profile_usec:
+		parts += " %s=%.3f" % [k, world_view.profile_usec[k] / 1000.0 / maxi(1, _perf_syncs)]
+	print("perf view_sync_parts_ms:" + parts)
 
 
 # 切到其他視窗時自動暫停（單機才會），避免回來時已經被打死
@@ -486,6 +560,8 @@ func _check_auto_quit(delta: float) -> void:
 	var boss: Enemy = world.entities.get(world.boss_id)
 	if boss != null:
 		print("boss state=%s hp=%.0f" % [boss.fsm.current_name if boss.fsm else &"", boss.hp])
+	if _perf:
+		_print_perf()
 	if _screenshot_path != "":
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png(_screenshot_path)
