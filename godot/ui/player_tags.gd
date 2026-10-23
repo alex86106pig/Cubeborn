@@ -28,6 +28,8 @@ func _draw() -> void:
 	peers.sort()
 	for peer_id: int in peers:
 		var p: Player = world.players[peer_id]
+		if not Vision.entity_visible(world, world.players.get(local_peer), p):   # 視野外的隊友連名牌都看不到（D2）
+			continue
 		var at := Vector3(p.pos.x, p.height + HEAD_OFFSET, p.pos.y)
 		if camera.is_position_behind(at):
 			continue

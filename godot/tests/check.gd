@@ -65,6 +65,8 @@ func _initialize() -> void:
 	_check("格擋 v0.23.0：箭從正前方 ±55° 擋得下、±65° 擋不下（合計 120°）；格擋中再按一次右鍵放下盾（進入收招、之後被打會扣血）；盾反距離 3.5、角度 180°（正側面 3.3 打得到、3.7 打不到），fx:parry 帶 facing 與 arc", _check_block_v023)
 	_check("Boss 跳上高台、衝鋒跳上去、砸地打得到高台：Boss 從地面跳上 1.0 石座；衝鋒途中遇到 1.0 石台直接跳上去不暈眩、遇到牆照樣暈眩；砸地打得到站在旁邊 1.0 石台上的玩家，跳起來躲得過", _check_boss_high_ground)
 	_check("尋路不擦牆：直線離牆小於 0.6 就不算看得到；繞北門時被牆擋住而變慢的步數 < 30", _check_nav_clearance)
+	_check("角色視野：前方 ±60° / 18 單位看得到、65° 與 19 單位看不到、身邊 4 單位背後也看得到；牆擋視線（身邊也擋）、高台不擋；自己的投射物在背後也看得到、怪物的看不到", _check_vision_rules)
+	_check("視野畫面：背後的骷髏模型隱藏、前方的顯示；背後的特效事件不畫、前方的照畫；本機角色陣亡後全部看得到", _check_vision_view)
 	_check("格擋判定：正前方 ±60° 擋下揮砍與箭（不扣血、箭消失）、背後擋不住；Boss 衝鋒擋得住但推退 100%、只判定一次；Boss 砸地擋不住；0.2 秒內完美格擋觸發盾反 25 傷害並結束格擋", _check_block_hits)
 	_check("受擊：扣血後進入 stagger（移速 ×0.4、0.15 秒）、無敵 0.6 秒、畫面震動", _check_stagger)
 	_check("輸入緩衝：攻擊中按右鍵會在後搖取消並接特殊技；0.25 秒後過期", _check_buffer)
@@ -2115,6 +2117,74 @@ func _check_nav_clearance() -> String:
 		return "繞北門時被牆擋住變慢 %d 步（應 < 30）" % slowed
 	print("    繞北門被牆擋住變慢 %d 步（v0.22.0 為 154 步）" % slowed)
 	return ""
+
+
+func _check_vision_rules() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	p.pos = Vector2.ZERO
+	p.facing = 0.0   # 面向 +Z
+	var at := func(deg: float, dist: float) -> Vector2: return Vector2(sin(deg_to_rad(deg)), cos(deg_to_rad(deg))) * dist
+	var cases := [
+		[at.call(0.0, 10.0), true, "正前方 10"], [at.call(55.0, 10.0), true, "55° 10"], [at.call(65.0, 10.0), false, "65° 10"],
+		[at.call(0.0, 17.5), true, "正前方 17.5"], [at.call(0.0, 19.0), false, "正前方 19"],
+		[at.call(180.0, 3.5), true, "正後方 3.5"], [at.call(180.0, 5.0), false, "正後方 5"],
+	]
+	for c in cases:
+		if Vision.point_visible(w, p, c[0]) != c[1]:
+			return "%s 應%s" % [c[2], "看得到" if c[1] else "看不到"]
+	# 牆（x 8~14、z 7.5~8.5）：從 (11, 5) 往 +Z 看
+	p.pos = Vector2(11, 5)
+	if Vision.point_visible(w, p, Vector2(11, 12)):
+		return "牆後 (11, 12) 應看不到"
+	if Vision.point_visible(w, p, Vector2(11, 8.8)):
+		return "身邊 4 單位內、但在牆後的 (11, 8.8) 也應看不到"
+	if not Vision.point_visible(w, p, Vector2(11, 7.2)):
+		return "牆前的 (11, 7.2) 應看得到"
+	# 高台不擋：從 (2, 12) 往 +X 看過 0.5、1.0 石台
+	p.pos = Vector2(2, 12)
+	p.facing = PI / 2.0
+	if not Vision.point_visible(w, p, Vector2(15, 12)):
+		return "高台不應擋視線"
+	# 投射物：自己的在背後也看得到、怪物的看不到
+	p.pos = Vector2.ZERO
+	p.facing = 0.0
+	var archer := _spawn(w, &"archer", Vector2(0, -12))
+	var mine := Projectile.new(w, {"owner": p, "pos": Vector2(0, -8), "direction": Vector2(0, -1), "speed": 0.0, "range": 5.0})
+	var theirs := Projectile.new(w, {"owner": archer, "pos": Vector2(0, -8), "direction": Vector2(0, 1), "speed": 0.0, "range": 5.0})
+	if not Vision.entity_visible(w, p, mine) or Vision.entity_visible(w, p, theirs) or Vision.entity_visible(w, p, archer):
+		return "背後：自己的投射物 %s、弓手的箭 %s、弓手 %s（應為 看得到 / 看不到 / 看不到）" % [
+			Vision.entity_visible(w, p, mine), Vision.entity_visible(w, p, theirs), Vision.entity_visible(w, p, archer)]
+	return ""
+
+
+func _check_vision_view() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	p.facing = 0.0
+	var front := _spawn(w, &"grunt", Vector2(0, 8))
+	var back := _spawn(w, &"grunt", Vector2(0, -8))
+	var view := WorldView.new()
+	view.sync(w, 1.0, 0.016)
+	var front_node: Node3D = view._nodes[front.id]
+	var back_node: Node3D = view._nodes[back.id]
+	var err := ""
+	if not front_node.visible or back_node.visible:
+		err = "前方骷髏顯示 %s、背後骷髏顯示 %s（應為 true / false）" % [front_node.visible, back_node.visible]
+	if err == "":
+		var before := view.effects._transients.size()
+		view.on_event("fx:slash", {"pos": Vector2(0, -8), "height": 0.0, "facing": 0.0, "range": 1.5, "arc": 1.7, "color": Color.WHITE, "swing_dir": 1})
+		var after_back := view.effects._transients.size()
+		view.on_event("fx:slash", {"pos": Vector2(0, 8), "height": 0.0, "facing": 0.0, "range": 1.5, "arc": 1.7, "color": Color.WHITE, "swing_dir": 1})
+		if after_back != before or view.effects._transients.size() != before + 1:
+			err = "特效：背後的揮砍多了 %d 個、前方的多了 %d 個（應為 0 / 1）" % [after_back - before, view.effects._transients.size() - after_back]
+	if err == "":
+		p.is_dead = true
+		view.sync(w, 1.0, 0.016)
+		if not back_node.visible:
+			err = "本機角色陣亡後應全部看得到"
+	view.free()
+	return err
 
 
 func _check_map_spawns() -> String:

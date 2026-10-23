@@ -86,6 +86,22 @@ func segment_blocked(a: Vector2, b: Vector2, clearance: float) -> bool:
 	return false
 
 
+# 視線 a → b 是否被牆擋住（D2）：只有 wall 種類擋，墓碑與高台不擋；不往外擴
+func sight_blocked(a: Vector2, b: Vector2) -> bool:
+	var seen := {}
+	var d := b - a
+	var n := maxi(1, ceili(d.length() / 0.5))
+	for s in n + 1:
+		for i in _near(a + d * (float(s) / n)):
+			if seen.has(i):
+				continue
+			seen[i] = true
+			var blk := blocks[i]
+			if blk.kind == MapDefs.WALL and _segment_hits_rect(a, b, blk.min, blk.max):
+				return true
+	return false
+
+
 # 線段與長方形（含邊）是否相交：slab 法
 static func _segment_hits_rect(a: Vector2, b: Vector2, lo: Vector2, hi: Vector2) -> bool:
 	var t0 := 0.0

@@ -39,6 +39,7 @@ const STUN_STAR_COLOR := Color("ffe14a")
 var world: World                  # 由 sync 設定；事件處理時用來查實體位置
 var paused := false               # 遊戲暫停時粒子停住、不產生新的持續性粒子
 var spawned_total := 0            # 累計產生過的粒子數（檢查用）
+var hidden_ids: Dictionary = {}   # 本機玩家看不到的實體 id（WorldView 每幀更新）：不產生它們的持續性粒子（D2）
 var _rng := RandomNumberGenerator.new()
 var _particles: Array[Dictionary] = []
 var _transients: Array[Dictionary] = []
@@ -299,7 +300,7 @@ func _jitter(e: Entity, spread: float, y: float) -> Vector3:
 func _emit_continuous(dt: float) -> void:
 	_next_carry = {}
 	for e: Entity in world.entities.values():
-		if e.is_removed:
+		if e.is_removed or hidden_ids.has(e.id):
 			continue
 		if e is Projectile:
 			var pr := e as Projectile

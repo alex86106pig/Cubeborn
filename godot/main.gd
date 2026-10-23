@@ -283,6 +283,7 @@ func _use_world(w: World) -> void:
 	world_view.clear_views()
 	hud.setup(world, camera_rig.camera)
 	hud.set_local_peer(_local_peer)
+	world_view.local_peer = _local_peer
 	sound.setup(world)
 
 

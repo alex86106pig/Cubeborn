@@ -19,10 +19,17 @@ var _animators: Dictionary = {}   # entity id -> Animator（有骨架的實體�
 var _frozen: Dictionary = {}           # entity id -> 剩餘定格秒數（命中定格）
 var _strikes: Array[Dictionary] = []   # F2 顯示中的攻擊判定 { node, life }
 var _last_strike_tick := -1
+# 角色視野（D2，sim/vision.gd）：只畫本機玩家看得到的怪物、攻擊、隊友；視野外的地面蓋一層暗色
+var local_peer := World.HOST_PEER_ID
+var hidden_ids: Dictionary = {}        # 這一幀看不到的實體 id（Effects 的持續性粒子也跳過）
+var _world: World
+var _vision_overlay := _create_vision_overlay()
 
 
 func _init() -> void:
 	add_child(effects)   # 建立時就掛上，WorldView 沒進場景樹就被釋放時也會一起釋放
+	add_child(_vision_overlay)
+	effects.hidden_ids = hidden_ids
 
 
 func _ready() -> void:
@@ -43,6 +50,11 @@ func clear_views() -> void:
 func on_event(name: String, p: Dictionary) -> void:
 	if name == "game:restart":
 		effects.clear()
+	# 視野外的特效（怪物的攻擊、命中粒子、預警圈…）不畫
+	if name.begins_with("fx:") and p.has("pos"):
+		var me := local_player()
+		if me != null and not me.is_dead and not Vision.point_visible(_world, me, p.pos):
+			return
 	effects.on_event(name, p)
 	_freeze_on_hit(name, p)
 
@@ -81,6 +93,12 @@ func _setup_environment() -> void:
 
 # alpha：上一步到這一步之間的補間比例（0~1）；dt：渲染幀秒數（動畫用）
 func sync(world: World, alpha: float, dt: float) -> void:
+	_world = world
+	var me := local_player()
+	hidden_ids.clear()
+	for id: int in world.entities:
+		if not Vision.entity_visible(world, me, world.entities[id]):
+			hidden_ids[id] = true
 	for id: int in _nodes.keys():
 		# 實體不在了，或同一個 id 已經是另一個實體（重新開始後 id 從 1 重來，客戶端可能在同一幀就換掉）
 		var e: Entity = world.entities.get(id)
@@ -94,6 +112,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 		if not _nodes.has(id):
 			_nodes[id] = _create_view(e)
 		var node: Node3D = _nodes[id]
+		node.visible = not hidden_ids.has(id)
 		if _frozen.has(id):
 			_frozen[id] -= dt
 			if _frozen[id] > 0.0:
@@ -108,7 +127,85 @@ func sync(world: World, alpha: float, dt: float) -> void:
 		if _animators.has(id):
 			_animators[id].update(e, dt)
 	_sync_strikes(world, dt)
+	_sync_vision_overlay(me)
 	effects.sync(world, dt)
+
+
+func local_player() -> Player:
+	return _world.players.get(local_peer) if _world != null else null
+
+
+# 視野外變暗：蓋滿畫面的四邊形，從深度貼圖算出每個像素的世界位置，在視野扇形與身邊一圈之外蓋上暗色
+# 高台、牆的頂面也照它們自己的位置判斷；牆擋住的區域不畫暗（只隱藏牆後的怪物）
+const VISION_SHADER := """
+shader_type spatial;
+render_mode unshaded, depth_draw_never, depth_test_disabled, cull_disabled, fog_disabled;
+uniform sampler2D depth_tex : hint_depth_texture, filter_nearest;
+uniform vec2 viewer;
+uniform float facing;
+uniform float half_angle;
+uniform float range;
+uniform float near_radius;
+uniform float darkness;
+uniform float edge;
+
+void vertex() {
+	POSITION = vec4(VERTEX.xy, 1.0, 1.0);
+}
+
+void fragment() {
+	float depth = texture(depth_tex, SCREEN_UV).r;
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	vec3 ndc = vec3(SCREEN_UV, depth) * 2.0 - 1.0;
+#else
+	vec3 ndc = vec3(SCREEN_UV * 2.0 - 1.0, depth);
+#endif
+	vec4 view = INV_PROJECTION_MATRIX * vec4(ndc, 1.0);
+	view.xyz /= view.w;
+	vec2 p = (INV_VIEW_MATRIX * vec4(view.xyz, 1.0)).xz;
+	vec2 d = p - viewer;
+	float dist = length(d);
+	float diff = abs(mod(atan(d.x, d.y) - facing + 3.14159265, 6.2831853) - 3.14159265);
+	float ang_soft = edge / max(dist, 0.5);
+	float cone = (1.0 - smoothstep(range - edge, range, dist)) * (1.0 - smoothstep(half_angle - ang_soft, half_angle, diff));
+	float near = 1.0 - smoothstep(near_radius - edge, near_radius, dist);
+	ALBEDO = vec3(0.0);
+	ALPHA = darkness * (1.0 - max(cone, near));
+}
+"""
+
+
+func _create_vision_overlay() -> MeshInstance3D:
+	var quad := QuadMesh.new()
+	quad.size = Vector2(2.0, 2.0)
+	var shader := Shader.new()
+	shader.code = VISION_SHADER
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	var v: Dictionary = Config.VISION
+	mat.set_shader_parameter(&"half_angle", v.angle / 2.0)
+	mat.set_shader_parameter(&"range", v.range)
+	mat.set_shader_parameter(&"near_radius", v.near_radius)
+	mat.set_shader_parameter(&"darkness", v.darkness)
+	mat.set_shader_parameter(&"edge", v.edge)
+	var mi := MeshInstance3D.new()
+	mi.name = "VisionOverlay"
+	mi.mesh = quad
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.extra_cull_margin = 16384.0   # 頂點在著色器裡直接放到整個畫面，不能被視錐剔除
+	mi.visible = false
+	return mi
+
+
+# 跟著本機角色畫面上的（補間後）位置與朝向；沒有角色或已陣亡時不蓋
+func _sync_vision_overlay(me: Player) -> void:
+	var node: Node3D = _nodes.get(me.id) if me != null else null
+	_vision_overlay.visible = node != null and not me.is_dead
+	if _vision_overlay.visible:
+		var mat: ShaderMaterial = _vision_overlay.material_override
+		mat.set_shader_parameter(&"viewer", Vector2(node.position.x, node.position.z))
+		mat.set_shader_parameter(&"facing", node.rotation.y)
 
 
 # 格擋範圍：格擋中顯示（輕微呼吸閃爍），跟著角色的位置與朝向

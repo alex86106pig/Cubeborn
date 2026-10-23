@@ -265,6 +265,8 @@ func _on_event(name: String, p: Dictionary) -> void:
 			var target: Entity = world.entities.get(p.target_id) if world else null
 			if target == null:
 				return
+			if not Vision.entity_visible(world, local_player(), target):   # 視野外的傷害數字不顯示（D2）
+				return
 			var is_player := target is Player
 			var big: bool = p.get("is_heavy", false) or p.get("is_crit", false)
 			_floaters.spawn(target, str(p.amount), &"player" if is_player else (&"crit" if big else &"dmg"))
