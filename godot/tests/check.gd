@@ -71,6 +71,11 @@ func _initialize() -> void:
 	_check("金錢與寶箱（D3）：地圖 A 有 4 小 1 大寶箱；骷髏 +5、Boss +50（共用）；錢不夠開不了（chest:denied）、夠了扣錢並在寶箱旁掉一個道具；開過不能再開", _check_gold_chests)
 	_check("寶箱稀有度（D3）：各抽 20000 次，小箱 白 70 / 綠 25 / 藍 5、大箱 綠 50 / 藍 35 / 紫 13 / 橘 2（誤差 ±1.5%），不會開出武器", _check_chest_rarity)
 	_check("撿道具（D3）：按 F 撿起最近的道具放進背包並生效；剛按下那一步才算（按住不會連撿）；兩人同一步按 F 只有一人拿到；丟掉後道具回到地上、效果移除；附近有倒地隊友時 F 先救人", _check_pickups)
+	_check("武器掉落（D4）：小怪死 5000 次約掉 4%（3.1~4.9%）、Boss 必掉；稀有度各抽 20000 次，小怪 白 60 / 綠 25 / 藍 12 / 紫 3、Boss 藍 60 / 紫 30 / 橘 10（±1.5%）", _check_weapon_drops)
+	_check("武器詞條（D4）：白 0 / 綠 1 / 藍 2 / 紫 3 / 橘 4 條不重複；只有手上那把生效，Q 切換後屬性跟著換；另一格空的不能切", _check_weapon_affixes)
+	_check("撿武器（D4）：裝備欄有空先放裝備欄（不換手上的），滿了放背包（背包裡沒效果），都滿了撿不起來；裝備欄 ↔ 背包搬動、手上至少留一把", _check_weapon_pickup)
+	_check("武器合成（D4）：兩把同種同稀有度拖在一起 → 高一級、詞條重抽、放在被拖上去的位置；不同種 / 不同稀有度 / 橘色不能合成；合成手上那把屬性立刻更新", _check_weapon_merge)
+	_check("連線武器（D4）：客戶端按 Q 切換、拖曳合成，房主與客戶端的裝備欄、手上武器、詞條一致；殺怪掉的武器兩邊都看得到", NetChecks.check_net_weapons)
 	_check("格擋判定：正前方 ±60° 擋下揮砍與箭（不扣血、箭消失）、背後擋不住；Boss 衝鋒擋得住但推退 100%、只判定一次；Boss 砸地擋不住；0.2 秒內完美格擋觸發盾反 25 傷害並結束格擋", _check_block_hits)
 	_check("受擊：扣血後進入 stagger（移速 ×0.4、0.15 秒）、無敵 0.6 秒、畫面震動", _check_stagger)
 	_check("輸入緩衝：攻擊中按右鍵會在後搖取消並接特殊技；0.25 秒後過期", _check_buffer)
@@ -2256,9 +2261,10 @@ func _check_gold_chests() -> String:
 	if chest.try_open(p) or chest.opened or w.gold != 55 or _named(w.events, "chest:denied").is_empty():
 		return "錢 55 < 60 應開不了並發出 chest:denied"
 	w.gold = 61
-	if not chest.try_open(p) or not chest.opened or w.gold != 1 or w.pickups.size() != 1:
-		return "錢夠應打開：開了 %s、剩 %d、地上 %d" % [chest.opened, w.gold, w.pickups.size()]
-	var drop: ItemPickup = w.pickups[0]
+	var before := w.pickups.size()   # D4 起 Boss 必掉一把武器，地上原本就有東西
+	if not chest.try_open(p) or not chest.opened or w.gold != 1 or w.pickups.size() != before + 1:
+		return "錢夠應打開：開了 %s、剩 %d、地上多了 %d 個" % [chest.opened, w.gold, w.pickups.size() - before]
+	var drop: ItemPickup = w.pickups.back()
 	if drop.pos.distance_to(chest.pos) > LootDefs.DROP_DISTANCE + 1.0 or not ItemDefs.ITEMS.has(drop.item_id):
 		return "道具應掉在寶箱旁：距離 %.2f" % drop.pos.distance_to(chest.pos)
 	if LootDefs.CHESTS.big.weights.get(drop.rarity(), 0.0) <= 0.0:
@@ -2347,6 +2353,172 @@ func _check_pickups() -> String:
 	w3.step({1: press, 2: _cmd(Vector2.ZERO)}, DT)
 	if not d.is_downed or r.inventory.entries.size() != 0:
 		return "旁邊有倒地隊友時 F 應先救人：倒地 %s、撿到 %d" % [d.is_downed, r.inventory.entries.size()]
+	return ""
+
+
+func _check_weapon_drops() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var drops := 0
+	var n := 5000
+	for i in n:
+		var g := _spawn(w, &"grunt", p.pos + Vector2(6, 0))
+		var before := w.events.size()
+		g.die()
+		for k in range(before, w.events.size()):
+			if w.events[k].name == "weapon:dropped":
+				drops += 1
+		g.remove()
+		if i % 200 == 0:
+			for d in w.pickups:
+				d.remove()
+			w._remove_dead_entities()
+			w.events.clear()
+	var pct := drops * 100.0 / n
+	if pct < 3.1 or pct > 4.9:
+		return "小怪掉武器 %.2f%%，應約 4%%" % pct
+	var w2 := _new_world()
+	var before2 := w2.pickups.size()
+	_spawn(w2, &"boss", Vector2(6, 0)).die()
+	if w2.pickups.size() != before2 + 1 or not (w2.pickups.back() as ItemPickup).is_weapon():
+		return "Boss 應必掉一把武器"
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	for source: StringName in WeaponDropDefs.RARITY_WEIGHTS:
+		var weights: Dictionary = WeaponDropDefs.RARITY_WEIGHTS[source]
+		var counts := {}
+		for i in 20000:
+			var r := WeaponDropDefs.roll_rarity(source, rng)
+			counts[r] = counts.get(r, 0) + 1
+		for r: StringName in counts:
+			if not weights.has(r):
+				return "%s 掉出了不該有的 %s" % [source, r]
+		for r: StringName in weights:
+			var got: float = counts.get(r, 0) * 100.0 / 20000.0
+			if absf(got - weights[r]) > 1.5:
+				return "%s 的 %s 應約 %.0f%%，實際 %.2f%%" % [source, r, weights[r], got]
+	print("    小怪死 %d 次掉 %d 把（%.2f%%）" % [n, drops, pct])
+	return ""
+
+
+func _check_weapon_affixes() -> String:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	for r in WeaponDropDefs.RARITY_ORDER:
+		for i in 50:
+			var inst := WeaponDropDefs.make(&"x", &"staff", r, rng)
+			var uniq := {}
+			for a in inst.affixes:
+				uniq[a] = true
+			if inst.affixes.size() != WeaponDropDefs.RARITY_ORDER.find(r) or uniq.size() != inst.affixes.size():
+				return "%s 應有 %d 條不重複詞條，實際 %s" % [r, WeaponDropDefs.RARITY_ORDER.find(r), inst.affixes]
+	var w := _new_world()
+	var p := _player(w)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SWAP_WEAPON), 1)
+	if p.active_slot != 0:
+		return "另一格是空的時不應切換"
+	var aff: Array[StringName] = [&"aff_damage", &"aff_attack_speed"]
+	p.add_weapon({"uid": &"blue", "base": &"staff", "rarity": &"blue", "affixes": aff})
+	if p.weapon_slots[1].is_empty() or p.active_slot != 0 or absf(p.stats.value(&"damage") - 1.0) > EPS:
+		return "撿到的武器應放第 2 格、不換手上、詞條不生效：攻擊力 %.2f" % p.stats.value(&"damage")
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SWAP_WEAPON), 1)
+	if p.active_slot != 1 or p.weapon_id != &"staff" or absf(p.stats.value(&"damage") - 1.1) > EPS or absf(p.stats.value(&"attack_speed") - 1.1) > EPS:
+		return "按 Q 換成藍法杖後攻擊力 / 攻速應為 1.10：%s、%.2f / %.2f" % [p.weapon_id, p.stats.value(&"damage"), p.stats.value(&"attack_speed")]
+	_run(w, _cmd(Vector2.ZERO), 1)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SWAP_WEAPON), 1)
+	if p.active_slot != 0 or p.weapon_id != &"swordShield" or absf(p.stats.value(&"damage") - 1.0) > EPS:
+		return "再按 Q 換回劍盾，詞條應移除：攻擊力 %.2f" % p.stats.value(&"damage")
+	return ""
+
+
+func _check_weapon_pickup() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var mk := func(uid: String, base: StringName) -> Dictionary:
+		return {"uid": StringName(uid), "base": base, "rarity": &"white", "affixes": [] as Array[StringName]}
+	# 地上的武器按 F 撿起 → 第 2 格
+	w.drop_weapon(mk.call("a", &"staff"), p.pos + Vector2(1, 0))
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_INTERACT), 1)
+	if p.weapon_slots[1].get("uid", &"") != &"a" or p.active_slot != 0:
+		return "撿起的武器應放進空的第 2 格、不換手上"
+	# 裝備欄滿了 → 背包（不生效）
+	if not p.add_weapon(mk.call("b", &"staff")) or p.inventory.find(&"b").is_empty() or not p.items.is_empty():
+		return "裝備欄滿了應放進背包、而且不算生效的道具"
+	# 背包塞滿 → 撿不起來
+	for i in 48:
+		p.add_item(&"loaded_dice")
+	w.events.clear()
+	if p.add_weapon(mk.call("c", &"staff")) or _named(w.events, "inventory:full").is_empty():
+		return "背包滿了應撿不起來並發出 inventory:full"
+	p.clear_items()
+	# 背包的武器拖到第 1 格：原本那把（劍盾）回背包
+	var equip := _cmd(Vector2.ZERO)
+	equip.inv_ops = [[InputCmd.OP_EQUIP, "b", 0]]
+	_run(w, equip, 1)
+	var sword_uid: StringName = &""
+	for e in p.inventory.entries:
+		if e.has("weapon"):
+			sword_uid = e.uid
+	if p.weapon_slots[0].get("uid", &"") != &"b" or p.weapon_id != &"staff" or sword_uid == &"":
+		return "背包武器裝上第 1 格後，原本的劍盾應回背包：第 1 格 %s、手上 %s" % [p.weapon_slots[0].get("uid", &""), p.weapon_id]
+	# 裝備欄 → 背包：還有另一把時可以；只剩一把時不行，也不能丟
+	var to_bag := _cmd(Vector2.ZERO)
+	to_bag.inv_ops = [[InputCmd.OP_MOVE, "a", 0, 5, 0]]
+	_run(w, to_bag, 1)
+	if not p.weapon_slots[1].is_empty() or p.inventory.find(&"a").is_empty():
+		return "第 2 格的武器應能搬進背包"
+	var last := _cmd(Vector2.ZERO)
+	last.inv_ops = [[InputCmd.OP_MOVE, "b", 4, 5, 0], [InputCmd.OP_DROP, "b"]]
+	_run(w, last, 1)
+	if p.weapon_slots[0].get("uid", &"") != &"b":
+		return "手上只剩一把時不能搬走或丟掉"
+	return ""
+
+
+func _check_weapon_merge() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var mk := func(uid: String, base: StringName, rarity: StringName) -> Dictionary:
+		return {"uid": StringName(uid), "base": base, "rarity": rarity, "affixes": [] as Array[StringName]}
+	var start_uid: StringName = p.weapon_slots[0].uid
+	p.add_weapon(mk.call("s2", &"swordShield", &"white"))   # 第 2 格
+	p.add_weapon(mk.call("s3", &"swordShield", &"white"))   # 背包
+	p.add_weapon(mk.call("st", &"staff", &"white"))         # 背包
+	p.add_weapon(mk.call("g1", &"swordShield", &"green"))   # 背包
+	var merge := func(a: String, b: String) -> void:
+		var c := _cmd(Vector2.ZERO)
+		c.inv_ops = [[InputCmd.OP_MERGE, a, b]]
+		w.events.clear()
+		_run(w, c, 1)
+	# 背包的白劍盾拖到手上的白劍盾 → 綠色、1 條詞條、留在第 1 格、手上立刻生效
+	merge.call("s3", String(start_uid))
+	var m: Dictionary = p.weapon_slots[0]
+	if m.rarity != &"green" or m.affixes.size() != 1 or not p.inventory.find(&"s3").is_empty() or _named(w.events, "weapon:merged").is_empty():
+		return "合成應得到綠色 1 條詞條、在第 1 格：%s" % [m]
+	var mods := WeaponDropDefs.stat_mods(m)
+	var stat: StringName = mods[0][0]
+	if is_equal_approx(p.stats.value(stat), p.stats.base(stat)):
+		return "合成後手上的詞條（%s）應立刻生效" % stat
+	# 不同種、不同稀有度不能合成
+	merge.call("st", "s2")
+	if _named(w.events, "weapon:merge_denied").is_empty() or p.inventory.find(&"st").is_empty():
+		return "法杖拖到劍盾上不應合成"
+	merge.call("s2", "g1")
+	if _named(w.events, "weapon:merge_denied").is_empty() or p.weapon_slots[1].is_empty():
+		return "白色拖到綠色上不應合成"
+	# 綠 + 綠 → 藍，放在背包那把的位置
+	var cell: Vector2i = p.inventory.find(&"g1").cell
+	merge.call(String(start_uid), "g1")
+	var g := p.inventory.find(&"g1")
+	if g.is_empty() or g.weapon.rarity != &"blue" or g.cell != cell or not p.weapon_slots[0].is_empty() and p.weapon_slots[0].uid == start_uid:
+		return "綠 + 綠應在背包原位得到藍色"
+	if p.active_slot != 1:
+		return "手上那把被合成走之後應換成第 2 格"
+	# 橘色不能再合成
+	var o1: Dictionary = mk.call("o1", &"staff", &"orange")
+	var o2: Dictionary = mk.call("o2", &"staff", &"orange")
+	if WeaponDropDefs.can_merge(o1, o2):
+		return "橘色不能再合成"
 	return ""
 
 

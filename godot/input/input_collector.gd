@@ -10,7 +10,7 @@ const ACTIONS := {
 	&"interact": KEY_F,
 	&"pause": KEY_ESCAPE, &"mute": KEY_M, &"restart": KEY_R,
 	&"stats_panel": KEY_TAB, &"inventory": KEY_I,
-	&"debug_weapon": KEY_F1, &"debug_hitbox": KEY_F2, &"debug_speed": KEY_F3,
+	&"swap_weapon": KEY_Q, &"debug_hitbox": KEY_F2, &"debug_speed": KEY_F3,
 	&"debug_item": KEY_F4, &"debug_clear_items": KEY_F5,
 }
 const MOUSE_ACTIONS: Array[StringName] = [&"attack", &"special"]
@@ -60,8 +60,11 @@ func _input(event: InputEvent) -> void:
 		_latched |= InputCmd.BTN_ROLL
 	elif event.is_action_pressed(&"jump"):
 		_latched |= InputCmd.BTN_JUMP
-	elif event.is_action_pressed(&"debug_weapon"):
+	elif event.is_action_pressed(&"swap_weapon"):
 		_latched |= InputCmd.BTN_SWAP_WEAPON
+	elif event is InputEventMouseButton and event.pressed and not mouse_captured \
+			and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+		_latched |= InputCmd.BTN_SWAP_WEAPON   # 滑鼠滾輪也能切換武器（D4，兩把之間切換，上下都一樣）
 	else:
 		for i in InputCmd.SLOT_COUNT:
 			if event.is_action_pressed(StringName("slot_%d" % (i + 1))):

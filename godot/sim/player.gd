@@ -9,8 +9,11 @@ var peer_id := 0
 var move_input := Vector2.ZERO
 var aim_point := Vector2(0.0, 5.0)
 var is_attack_held := false
-var weapon: Dictionary = {}
+var weapon: Dictionary = {}            # 手上武器的招式資料（WeaponDefs）
 var weapon_id: StringName = &""
+var weapon_slots: Array[Dictionary] = [{}, {}]   # 裝備欄 2 格（D4）：武器實例（WeaponDropDefs）或 {}
+var active_slot := 0
+var _applied_weapon_uid := &""
 var combo_step := 0
 var combo_timer := 0.0
 var buffered_action: Dictionary = {}   # { type: &"special" | &"slot" | &"roll", index?, time }；空 = 沒有緩衝
@@ -198,8 +201,12 @@ func net_hurt() -> void:
 		action.change(&"stagger")
 
 
+# Q / 滑鼠滾輪（D4）：換到另一格裝備欄的武器；另一格是空的就不換
 func swap_weapon() -> void:
-	equip_weapon(&"staff" if weapon_id == &"swordShield" else &"swordShield")
+	var other := 1 - active_slot
+	if not weapon_slots[other].is_empty():
+		active_slot = other
+		_apply_active_weapon()
 
 
 func is_dodging() -> bool:
@@ -242,13 +249,119 @@ func apply_cmd(cmd: InputCmd) -> void:
 	_inventory_ops.append_array(cmd.inv_ops)
 
 
+# 把手上這格換成一把新的白色武器（開場、--weapon、測試與除錯用；正式取得武器走 add_weapon）
 func equip_weapon(id: StringName) -> void:
 	assert(WeaponDefs.WEAPONS.has(id), "Unknown weapon: %s" % id)
+	weapon_slots[active_slot] = {"uid": world.new_weapon_uid(), "base": id, "rarity": &"white", "affixes": [] as Array[StringName]}
+	_apply_active_weapon()
+
+
+# 套用手上那格武器：招式資料與詞條（只有手上的那把生效，屬性來源 &"weapon"）
+func _apply_active_weapon() -> void:
+	if weapon_slots[active_slot].is_empty():
+		active_slot = 1 - active_slot
+	var inst: Dictionary = weapon_slots[active_slot]
+	if inst.is_empty():
+		return
+	# 換了一把（uid 不同）才重設連段與動作；只是合成 / 搬動別的武器時不打斷手上的動作
+	show_weapon(ItemDefs.ITEMS[inst.base].weapon, inst.uid != _applied_weapon_uid)
+	_applied_weapon_uid = inst.uid
+	set_stat_source(&"weapon", WeaponDropDefs.stat_mods(inst))
+
+
+# 只換招式資料與模型（客戶端畫別人的角色也用這個）；force 時同一種也重設連段與動作
+func show_weapon(id: StringName, force := false) -> void:
+	if weapon_id == id and not force:
+		return
 	weapon = WeaponDefs.WEAPONS[id]
 	weapon_id = id
 	combo_step = 0
 	combo_timer = 0.0
 	action.change(&"ready")
+
+
+func active_weapon() -> Dictionary:
+	return weapon_slots[active_slot]
+
+
+# 撿到武器（D4）：裝備欄有空先放裝備欄（不換手上的），滿了放背包；都放不下回傳 false、發出 inventory:full
+func add_weapon(inst: Dictionary) -> bool:
+	for i in weapon_slots.size():
+		if weapon_slots[i].is_empty():
+			weapon_slots[i] = inst
+			world.emit_event("weapon:added", {"player_id": id, "uid": String(inst.uid), "slot": i})
+			return true
+	var spot := inventory.find_spot(inst.base)
+	if spot.is_empty():
+		world.emit_event("inventory:full", {"player_id": id, "item": String(inst.base)})
+		return false
+	inventory.add(inst.uid, inst.base, spot.cell, spot.rot, inst)
+	world.emit_event("weapon:added", {"player_id": id, "uid": String(inst.uid), "slot": -1})
+	return true
+
+
+# 依 uid 找武器在哪：{ slot: 0 / 1 } 或 { bag: 背包條目 }；找不到回傳 {}
+func _find_weapon(uid: StringName) -> Dictionary:
+	for i in weapon_slots.size():
+		if not weapon_slots[i].is_empty() and weapon_slots[i].uid == uid:
+			return {"slot": i, "inst": weapon_slots[i]}
+	var e := inventory.find(uid)
+	if not e.is_empty() and e.has("weapon"):
+		return {"bag": e, "inst": e.weapon}
+	return {}
+
+
+func _take_weapon(where: Dictionary) -> void:
+	if where.has("slot"):
+		weapon_slots[where.slot] = {}
+	else:
+		inventory.remove(where.bag.uid)
+
+
+# 武器放進裝備欄 slot：從另一格來就互換；從背包來時原本那把放回背包（放不下就不換）
+func _equip_from(uid: StringName, slot: int) -> bool:
+	var src := _find_weapon(uid)
+	if src.is_empty() or slot < 0 or slot >= weapon_slots.size():
+		return false
+	if src.has("slot"):
+		var tmp: Dictionary = weapon_slots[slot]
+		weapon_slots[slot] = weapon_slots[src.slot]
+		weapon_slots[src.slot] = tmp
+	else:
+		var old: Dictionary = weapon_slots[slot]
+		inventory.remove(uid)
+		if not old.is_empty():
+			var spot := inventory.find_spot(old.base)
+			if spot.is_empty():
+				inventory.add(uid, src.bag.id, src.bag.cell, src.bag.rot, src.inst)
+				return false
+			inventory.add(old.uid, old.base, spot.cell, spot.rot, old)
+		weapon_slots[slot] = src.inst
+	_apply_active_weapon()
+	return true
+
+
+# 把武器 a 拖到 b 上面合成（D4）：同種、同稀有度才行；b 的位置換成高一級、詞條重新抽的新武器，a 消失
+func _merge(uid_a: StringName, uid_b: StringName) -> bool:
+	var a := _find_weapon(uid_a)
+	var b := _find_weapon(uid_b)
+	if a.is_empty() or b.is_empty() or not WeaponDropDefs.can_merge(a.inst, b.inst):
+		world.emit_event("weapon:merge_denied", {"player_id": id})
+		return false
+	var merged := WeaponDropDefs.make(b.inst.uid, b.inst.base, WeaponDropDefs.next_rarity(b.inst.rarity), world.rng)
+	if a.has("slot") and b.has("bag") and _equipped_count() <= 1:
+		# 手上唯一的一把拖到背包的武器上：合成結果留在裝備欄（手上不能沒有武器），背包那把消失
+		inventory.remove(b.bag.uid)
+		weapon_slots[a.slot] = merged
+	elif b.has("slot"):
+		_take_weapon(a)
+		weapon_slots[b.slot] = merged
+	else:
+		_take_weapon(a)
+		b.bag.weapon = merged
+	_apply_active_weapon()
+	world.emit_event("weapon:merged", {"player_id": id, "uid": String(merged.uid), "base": String(merged.base), "rarity": String(merged.rarity)})
+	return true
 
 
 # 增益：同一個 id 再加一次會重新計時；mods.stats 以增益 id 為來源套上屬性加成，到期時移除
@@ -297,8 +410,10 @@ func sync_inventory(arr: Array) -> void:
 	inventory.entries.clear()
 	for a: Array in arr:
 		var uid := StringName(a[0])
-		inventory.add(uid, StringName(a[1]), Vector2i(a[2], a[3]), a[4])
-		keep[uid] = StringName(a[1])
+		var w := WeaponDropDefs.from_array(a[5])
+		inventory.add(uid, StringName(a[1]), Vector2i(a[2], a[3]), a[4], w)
+		if w.is_empty():   # 背包裡的武器沒有效果
+			keep[uid] = StringName(a[1])
 	for it: Dictionary in items.duplicate():
 		if not keep.has(it.uid):
 			items.erase(it)
@@ -309,19 +424,58 @@ func sync_inventory(arr: Array) -> void:
 			set_stat_source(uid, ItemDefs.stat_mods(keep[uid]))
 
 
-# 背包操作（InputCmd.inv_ops）：[OP_MOVE, uid, x, y, rot] 搬動 / 旋轉；[OP_DROP, uid] 丟到面前的地上
+# 客戶端：裝備欄以房主的快照為準（[武器, 武器]，見 WeaponDropDefs.to_array）；手上哪一格由呼叫端決定要不要同步
+func sync_weapon_slots(arr: Array, p_active: int) -> void:
+	for i in weapon_slots.size():
+		weapon_slots[i] = WeaponDropDefs.from_array(arr[i])
+	active_slot = p_active
+	_apply_active_weapon()
+
+
+# 背包操作（InputCmd.inv_ops）：
+#   [OP_MOVE, uid, x, y, rot] 搬到背包 (x, y)（道具或武器；武器可以從裝備欄搬進背包，但手上至少留一把）
+#   [OP_DROP, uid] 丟到面前的地上；[OP_EQUIP, uid, slot] 武器放進裝備欄；[OP_MERGE, uid_a, uid_b] 把 a 拖到 b 上合成
 func _apply_inventory_ops() -> void:
 	for op: Array in _inventory_ops:
 		var uid := StringName(op[1])
 		match int(op[0]):
 			InputCmd.OP_MOVE:
-				inventory.move(uid, Vector2i(op[2], op[3]), op[4])
+				var w := _find_weapon(uid)
+				if w.has("slot"):
+					if _equipped_count() > 1 and inventory.fits(w.inst.base, Vector2i(op[2], op[3]), op[4]):
+						weapon_slots[w.slot] = {}
+						inventory.add(uid, w.inst.base, Vector2i(op[2], op[3]), op[4], w.inst)
+						_apply_active_weapon()
+				else:
+					inventory.move(uid, Vector2i(op[2], op[3]), op[4])
 			InputCmd.OP_DROP:
-				var entry := inventory.find(uid)
-				if not entry.is_empty():
-					remove_item(uid)
-					world.drop_item(entry.id, pos + MathUtil.dir_from_angle(facing) * LootDefs.DROP_DISTANCE)
+				_drop(uid)
+			InputCmd.OP_EQUIP:
+				_equip_from(uid, int(op[2]))
+			InputCmd.OP_MERGE:
+				_merge(uid, StringName(op[2]))
 	_inventory_ops.clear()
+
+
+func _equipped_count() -> int:
+	return weapon_slots.filter(func(s: Dictionary) -> bool: return not s.is_empty()).size()
+
+
+# 丟到面前的地上：道具移除效果；武器從裝備欄丟時手上至少留一把
+func _drop(uid: StringName) -> void:
+	var at := pos + MathUtil.dir_from_angle(facing) * LootDefs.DROP_DISTANCE
+	var w := _find_weapon(uid)
+	if not w.is_empty():
+		if w.has("slot") and _equipped_count() <= 1:
+			return
+		_take_weapon(w)
+		_apply_active_weapon()
+		world.drop_weapon(w.inst, at)
+		return
+	var entry := inventory.find(uid)
+	if not entry.is_empty():
+		remove_item(uid)
+		world.drop_item(entry.id, at)
 
 
 # 剛按下 F：附近有倒地隊友時讓給救援（動作層 Ready 處理）；否則先撿最近的道具，沒有道具才開最近的寶箱
@@ -330,7 +484,9 @@ func _try_interact() -> void:
 		return
 	var pickup := world.nearest_interactable(self, world.pickups)
 	if pickup != null:
-		if add_item((pickup as ItemPickup).item_id) != &"":
+		var ip := pickup as ItemPickup
+		var taken: bool = add_weapon(ip.weapon) if ip.is_weapon() else add_item(ip.item_id) != &""
+		if taken:
 			pickup.remove()
 		return
 	var chest := world.nearest_interactable(self, world.chests)

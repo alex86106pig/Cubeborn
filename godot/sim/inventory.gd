@@ -4,7 +4,7 @@ class_name Inventory
 extends RefCounted
 
 var size: Vector2i = ItemDefs.BAG_SIZE
-var entries: Array[Dictionary] = []   # { uid: StringName, id: StringName, cell: Vector2i, rot: int }
+var entries: Array[Dictionary] = []   # { uid: StringName, id: StringName, cell: Vector2i, rot: int, weapon?: 武器實例（D4，放在背包的武器沒有效果） }
 
 
 # 道具轉 rot 次 90 度後占的格子（以左上角為 (0, 0)）
@@ -60,8 +60,11 @@ func find_spot(id: StringName) -> Dictionary:
 	return {}
 
 
-func add(uid: StringName, id: StringName, cell: Vector2i, rot: int) -> void:
-	entries.append({"uid": uid, "id": id, "cell": cell, "rot": posmod(rot, 4)})
+func add(uid: StringName, id: StringName, cell: Vector2i, rot: int, weapon: Dictionary = {}) -> void:
+	var e := {"uid": uid, "id": id, "cell": cell, "rot": posmod(rot, 4)}
+	if not weapon.is_empty():
+		e["weapon"] = weapon
+	entries.append(e)
 
 
 func remove(uid: StringName) -> void:
@@ -81,9 +84,9 @@ func move(uid: StringName, cell: Vector2i, rot: int) -> bool:
 	return true
 
 
-# 快照用：[[uid, id, x, y, rot], …]
+# 快照用：[[uid, id, x, y, rot, 武器（WeaponDropDefs.to_array，不是武器為 []）], …]
 func to_array() -> Array:
 	var out := []
 	for e in entries:
-		out.append([String(e.uid), String(e.id), e.cell.x, e.cell.y, e.rot])
+		out.append([String(e.uid), String(e.id), e.cell.x, e.cell.y, e.rot, WeaponDropDefs.to_array(e.get("weapon", {}))])
 	return out

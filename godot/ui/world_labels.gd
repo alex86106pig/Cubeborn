@@ -44,11 +44,10 @@ func _draw() -> void:
 		var pickup := p as ItemPickup
 		if pickup.is_removed or not Vision.entity_visible(world, me, pickup):
 			continue
-		var def: Dictionary = ItemDefs.ITEMS[pickup.item_id]
-		var text: String = def.name
+		var text := pickup.display_name()
 		if pickup == focus:
 			text = "[F] 撿起 " + text
-		_text(font, pickup, PICKUP_OFFSET, text, ItemDefs.RARITIES[def.rarity].color)
+		_text(font, pickup, PICKUP_OFFSET, text, ItemDefs.RARITIES[pickup.rarity()].color)
 
 
 func _text(font: Font, e: Entity, offset: float, text: String, color: Color) -> void:

@@ -6,7 +6,7 @@ extends CanvasLayer
 signal quit_requested   # 暫停畫面按下「離開遊戲」
 
 # 手動分行（中文自動折行會斷在詞中間）
-const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 空白鍵 跳躍 · Shift 翻滾\n1~5 道具 · F 撿道具 / 開寶箱 / 按住救援隊友 · I 背包 · Tab 屬性 · Esc 選單 · M 靜音 · R 重新開始\nF1 切換武器 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具（F3~F5 單機才有）"
+const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 空白鍵 跳躍 · Shift 翻滾\n1~5 道具 · F 撿道具 / 開寶箱 / 按住救援隊友 · I 背包 · Tab 屬性 · Esc 選單 · M 靜音 · R 重新開始\nQ / 滾輪 切換武器 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具（F3~F5 單機才有）"
 const FPS_INTERVAL := 0.5
 const HP_GHOST_SPEED := 0.5      # 殘影每秒縮短的比例
 const BOSS_GHOST_SPEED := 0.3
@@ -241,7 +241,12 @@ func _process(delta: float) -> void:
 	_hp_ghost = maxf(ratio, _hp_ghost - delta * HP_GHOST_SPEED)
 	_set_bar(_hp, ratio, _hp_ghost)
 	_hp.text.text = "%d / %d" % [player.hp, player.max_hp]
-	_weapon.text = "武器：" + player.weapon.name
+	var inst := player.active_weapon()
+	var other: Dictionary = player.weapon_slots[1 - player.active_slot]
+	_weapon.text = "武器：" + (WeaponDropDefs.display_name(inst) if not inst.is_empty() else player.weapon.name)
+	if not other.is_empty():
+		_weapon.text += "　（Q：%s）" % WeaponDropDefs.display_name(other)
+	_weapon.add_theme_color_override(&"font_color", ItemDefs.RARITIES[inst.rarity].color if not inst.is_empty() else Color.WHITE)
 	_gold.text = "金幣 %d" % world.gold
 	var s := world.stats
 	_wave.text = "第 %d / %d 波" % [s.wave, world.spawner.total_waves()] if s.wave > 0 else "準備中"
@@ -326,6 +331,13 @@ func _on_event(name: String, p: Dictionary) -> void:
 			_show_banner("BOSS 戰：" + BOSS_NAME if p.is_boss else "第 %d / %d 波" % [p.wave, p.total], p.is_boss)
 		"boss:enraged":
 			_show_banner("狂暴化！", true)
+		"weapon:merged":
+			if _is_local(p.player_id):
+				var rarity: Dictionary = ItemDefs.RARITIES[StringName(p.rarity)]
+				_show_banner("合成成功：%s %s" % [rarity.name, ItemDefs.ITEMS[StringName(p.base)].name], false, rarity.color)
+		"weapon:merge_denied":
+			if _is_local(p.player_id):
+				_floaters.spawn(local_player(), "不能合成（要同種、同稀有度）", &"dmg")
 		"item:added":
 			var item: Dictionary = ItemDefs.ITEMS[StringName(p.item)]
 			_show_banner("獲得 %s\n%s" % [item.name, item.desc], false, ItemDefs.RARITIES[item.rarity].color)

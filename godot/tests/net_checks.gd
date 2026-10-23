@@ -308,6 +308,43 @@ static func check_net_loot() -> String:
 	return ""
 
 
+# D4：客戶端按 Q 切到第 2 格、拖曳合成背包裡兩把白法杖；Boss 掉的武器兩邊都看得到
+static func check_net_weapons() -> String:
+	var link := _Link.new(43, [1, 2], 3, 0.0, false)
+	var hw := link.host_world
+	var hp2: Player = hw.players[2]
+	var mk := func(uid: String) -> Dictionary:
+		return {"uid": StringName(uid), "base": &"staff", "rarity": &"white", "affixes": [] as Array[StringName]}
+	hp2.add_weapon(mk.call("x"))
+	hp2.add_weapon(mk.call("m1"))
+	hp2.add_weapon(mk.call("m2"))
+	var idle := func(n: int) -> void:
+		for i in n:
+			link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO))
+	idle.call(20)
+	link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO, InputCmd.BTN_SWAP_WEAPON))
+	idle.call(20)
+	var me := link.client.local_player()
+	if hp2.active_slot != 1 or me.active_slot != 1 or me.weapon_id != &"staff" or hp2.weapon_id != &"staff":
+		return "按 Q 後兩邊都應換到第 2 格的法杖：房主 %d %s、客戶端 %d %s" % [hp2.active_slot, hp2.weapon_id, me.active_slot, me.weapon_id]
+	var merge := _cmd(Vector2.ZERO)
+	merge.inv_ops = [[InputCmd.OP_MERGE, "m1", "m2"]]
+	link.step(_cmd(Vector2.ZERO), merge)
+	idle.call(20)
+	var host_e := hp2.inventory.find(&"m2")
+	var mine := me.inventory.find(&"m2")
+	if host_e.is_empty() or mine.is_empty() or host_e.weapon.rarity != &"green" or mine.weapon.rarity != &"green" \
+			or mine.weapon.affixes != host_e.weapon.affixes or not me.inventory.find(&"m1").is_empty():
+		return "合成後兩邊背包的 m2 都應是綠色、詞條相同：房主 %s、客戶端 %s" % [host_e.get("weapon"), mine.get("weapon")]
+	var before := link.client.world.pickups.size()
+	hw.spawner.spawn_at(hw, &"boss", Vector2(8, 8)).die()
+	idle.call(20)
+	var drops := link.client.world.pickups.filter(func(e: Entity) -> bool: return (e as ItemPickup).is_weapon())
+	if link.client.world.pickups.size() != before + 1 or drops.size() != 1:
+		return "Boss 掉的武器客戶端應看得到：地上 %d 個、武器 %d 把" % [link.client.world.pickups.size(), drops.size()]
+	return ""
+
+
 static func check_codec() -> String:
 	var w := _world([1, 2])
 	w.spawner.spawn_at(w, &"grunt", Vector2(5, 5))

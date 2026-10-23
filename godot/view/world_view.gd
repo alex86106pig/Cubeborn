@@ -242,12 +242,19 @@ func _create_pickup(p: ItemPickup) -> Node3D:
 	var color: Color = ItemDefs.RARITIES[p.rarity()].color
 	var gem := MeshInstance3D.new()
 	gem.name = "Gem"
-	var mesh := SphereMesh.new()
-	mesh.radius = 0.28
-	mesh.height = 0.7
-	mesh.radial_segments = 4
-	mesh.rings = 2
-	gem.mesh = mesh
+	if p.is_weapon():
+		# 武器（D4）：斜放的發光長條，和道具的寶石分得出來
+		var blade := BoxMesh.new()
+		blade.size = Vector3(0.14, 0.95, 0.14)
+		gem.mesh = blade
+		gem.rotation.z = 0.5
+	else:
+		var mesh := SphereMesh.new()
+		mesh.radius = 0.28
+		mesh.height = 0.7
+		mesh.radial_segments = 4
+		mesh.rings = 2
+		gem.mesh = mesh
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
 	m.emission_enabled = true

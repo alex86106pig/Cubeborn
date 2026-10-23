@@ -39,6 +39,7 @@ var run_id := 0                      # 每次 reset 加 1：客戶端靠它知�
 var event_actor := 0
 
 var _next_id := 1
+var _next_weapon_uid := 0   # 武器實例的 uid（全場唯一：武器會在玩家之間經過地上轉手）
 var _bodies: Array[Entity] = []
 
 
@@ -75,6 +76,7 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 	run_id += 1
 	spawner.reset()
 	_next_id = 1
+	_next_weapon_uid = 0
 	for peer_id in peer_ids:
 		var p := Player.new(self, peer_id)
 		p.pos = spawn_point
@@ -154,12 +156,30 @@ func on_enemy_died(e: Enemy) -> void:
 	if g > 0:
 		gold += g
 		emit_event("gold:gained", {"amount": g, "pos": e.pos, "total": gold})
+	# 武器掉落（D4）：多人時也只掉一把（房主產生一個實體，先撿先得）
+	var chance: float = WeaponDropDefs.DROP_CHANCE.get(e.type, 0.0)
+	if chance > 0.0 and (chance >= 1.0 or rng.randf() < chance):
+		var source := &"boss" if e.is_boss() else &"minion"
+		var bases := WeaponDropDefs.bases()
+		var base := bases[rng.randi_range(0, bases.size() - 1)]
+		var inst := WeaponDropDefs.make(new_weapon_uid(), base, WeaponDropDefs.roll_rarity(source, rng), rng)
+		drop_weapon(inst, e.pos)
+		emit_event("weapon:dropped", {"uid": String(inst.uid), "base": String(base), "rarity": String(inst.rarity), "pos": e.pos})
 
 
-# 道具掉在地上（開寶箱、從背包丟出）；客戶端不產生（等快照）
-func drop_item(item_id: StringName, at: Vector2) -> ItemPickup:
+func new_weapon_uid() -> StringName:
+	_next_weapon_uid += 1
+	return StringName("w%d" % _next_weapon_uid)
+
+
+func drop_weapon(inst: Dictionary, at: Vector2) -> ItemPickup:
+	return drop_item(inst.base, at, inst)
+
+
+# 道具 / 武器掉在地上（開寶箱、殺怪、從背包丟出）；客戶端不產生（等快照）
+func drop_item(item_id: StringName, at: Vector2, weapon: Dictionary = {}) -> ItemPickup:
 	var spot := nav.nearest_walkable(at)
-	var pickup := ItemPickup.new(self, item_id, spot)
+	var pickup := ItemPickup.new(self, item_id, spot, weapon)
 	if is_authority:
 		add_entity(pickup)
 		pickups.append(pickup)

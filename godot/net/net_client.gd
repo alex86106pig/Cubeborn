@@ -20,7 +20,7 @@ var _history: Dictionary = {}    # 客戶端 tick -> [預測的位置, 高度]
 var _pending: Array[InputCmd] = []   # 還沒被房主確認的輸入（重送用）
 var _client_tick := 0
 var _last_ack := 0
-var _swap_tick := -1             # 最近一次按 F1 切武器的客戶端 tick
+var _swap_tick := -1             # 最近一次按 Q / 滾輪切武器的客戶端 tick
 
 
 func _init(p_peer_id: int) -> void:
@@ -227,5 +227,6 @@ func _apply_own_authority(me: Player, a: Array) -> void:
 	me.net_sync_life(a[NetCodec.E_DEAD], extra[NetCodec.P_DOWNED], extra[NetCodec.P_DOWN_TIMER], extra[NetCodec.P_REVIVE])
 	me.parry_timer = maxf(me.parry_timer, extra[NetCodec.P_PARRY])
 	me.sync_inventory(extra[NetCodec.P_INV])   # 背包以房主為準（D3：撿、丟、搬動都在房主執行）
-	if me.weapon_id != extra[NetCodec.P_WEAPON] and _last_ack >= _swap_tick:
-		me.equip_weapon(extra[NetCodec.P_WEAPON])
+	# 裝備欄以房主為準；手上哪一格在房主處理完最近一次切換（Q / 滾輪）之後才跟著房主，之前保留本機預測
+	var active: int = extra[NetCodec.P_ACTIVE] if _last_ack >= _swap_tick else me.active_slot
+	me.sync_weapon_slots(extra[NetCodec.P_SLOTS], active)
