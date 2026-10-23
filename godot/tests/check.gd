@@ -67,6 +67,7 @@ func _initialize() -> void:
 	_check("尋路不擦牆：直線離牆小於 0.6 就不算看得到；繞北門時被牆擋住而變慢的步數 < 30", _check_nav_clearance)
 	_check("角色視野：前方 ±60° / 18 單位看得到、65° 與 19 單位看不到、身邊 4 單位背後也看得到；牆擋視線（身邊也擋）、高台不擋；自己的投射物在背後也看得到、怪物的看不到", _check_vision_rules)
 	_check("視野畫面：背後的骷髏模型隱藏、前方的顯示；背後的特效事件不畫、前方的照畫；本機角色陣亡後全部看得到", _check_vision_view)
+	_check("牆後剪影（v0.32.0）：角色材質寫模板值；玩家一直有剪影；怪物只有和相機之間有牆擋住時才有，離開牆邊就拿掉", _check_xray)
 	_check("背包（D3）：8 × 6；形狀旋轉 90° 後格子正確；超出邊界、重疊放不下；自動找第一個空位（不夠時會轉向）；搬動成功 / 失敗；裝滿後撿不起來並發出 inventory:full", _check_inventory)
 	_check("金錢與寶箱（D3）：地圖 A 有 4 小 1 大寶箱；骷髏 +5、Boss +50（共用）；錢不夠開不了（chest:denied）、夠了扣錢並在寶箱旁掉一個道具；開過不能再開", _check_gold_chests)
 	_check("寶箱稀有度（D3）：各抽 20000 次，小箱 白 70 / 綠 25 / 藍 5、大箱 綠 50 / 藍 35 / 紫 13 / 橘 2（誤差 ±1.5%），不會開出武器", _check_chest_rarity)
@@ -2373,6 +2374,48 @@ func _check_vision_view() -> String:
 		view.sync(w, 1.0, 0.016)
 		if not back_node.visible:
 			err = "本機角色陣亡後應全部看得到"
+	view.free()
+	return err
+
+
+func _check_xray() -> String:
+	var w := _new_world(3, false, &"graveyard_a")
+	var p := _player(w)
+	# 王族墓裡面、南牆（地圖 y 61.5~63）北邊：玩家在 y 57 面向南（+Z），怪在牆邊 y 60.6（往相機 (+1, +1) 走 1.3 就碰到牆）
+	p.pos = MapDefs.to_world(w.map, Vector2(48, 57))
+	p.facing = 0.0
+	var e := _spawn(w, &"grunt", MapDefs.to_world(w.map, Vector2(48, 60.6)))
+	var view := WorldView.new()
+	var has_overlay := func(node: Node3D) -> bool:
+		for mi in PartKit.mesh_instances(node):
+			if mi.material_overlay != null:
+				return true
+		return false
+	view.sync(w, 1.0, 0.016)
+	var err := ""
+	var pn: Node3D = view._nodes[p.id]
+	var en: Node3D = view._nodes[e.id]
+	if not en.visible:
+		err = "牆邊的怪應在視野內"
+	elif not view._xray_needed(w, e) or not has_overlay.call(en):
+		err = "牆邊的怪和相機之間有牆，應有剪影：判斷 %s、疊加材質 %s" % [view._xray_needed(w, e), has_overlay.call(en)]
+	elif not has_overlay.call(pn):
+		err = "玩家應一直有剪影"
+	if err == "":
+		for mi in PartKit.mesh_instances(pn):
+			var m := mi.material_override as BaseMaterial3D
+			if not WorldView.XRAY_SKIP.has(mi.name) and m != null and m.stencil_mode != BaseMaterial3D.STENCIL_MODE_CUSTOM:
+				err = "玩家的材質 %s 沒有寫模板值" % mi.name
+				break
+	if err == "":
+		# 走到墓中央的空地：之後的 LOS_INTERVAL 個 tick 內重新判斷，剪影拿掉
+		e.pos = MapDefs.to_world(w.map, Vector2(46, 55))
+		e.prev_pos = e.pos
+		for i in WorldView.LOS_INTERVAL:
+			w.tick += 1
+			view.sync(w, 1.0, 0.016)
+		if view._xray_needed(w, e) or has_overlay.call(en):
+			err = "空地上的怪不應有剪影：判斷 %s、疊加材質 %s" % [view._xray_needed(w, e), has_overlay.call(en)]
 	view.free()
 	return err
 

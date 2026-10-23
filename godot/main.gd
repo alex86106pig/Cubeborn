@@ -8,6 +8,7 @@
 #   效能量測：--horde=N（開場在玩家周圍生 N 隻醒著的小怪）--perf（關垂直同步，結束時印出 FPS 與各段耗時）
 #   --elites（畫面上方生 1 隻稀有、2 隻魔法骷髏，截圖確認外觀）
 #   挖墳（D6）：--at-dig（開場站在挖墳點旁邊）--exit-open（開場出口就打開）--ghost（畫面上方生一隻冤魂）
+#   --player-at=x,y（開場站在地圖座標 x, y，v0.32.0）
 extends Node3D
 
 enum Mode { SINGLE, HOST, CLIENT }
@@ -54,6 +55,7 @@ var _autostart_players := 0
 var _horde := 0
 var _elites := false   # --elites：畫面上方生 1 隻稀有、2 隻魔法骷髏（截圖確認外觀用）
 var _at_dig := false     # --at-dig：開場站在挖墳點旁邊（D6，配合 --auto-interact 挖墳）
+var _player_at := Vector2.INF   # --player-at=x,y：開場站在地圖座標 (x, y)（v0.32.0 牆後剪影截圖）
 var _exit_open := false  # --exit-open：開場事件就開始、出口已打開（D6 截圖）
 var _ghost := false      # --ghost：畫面上方生一隻冤魂（D6 截圖，不對應任何玩家）
 var _perf := false
@@ -152,6 +154,9 @@ func _parse_args() -> void:
 			_elites = true
 		elif arg == "--at-dig":
 			_at_dig = true
+		elif arg.begins_with("--player-at="):
+			var xy := value.split(",")
+			_player_at = Vector2(xy[0].to_float(), xy[1].to_float())
 		elif arg == "--exit-open":
 			_exit_open = true
 		elif arg == "--ghost":
@@ -458,6 +463,9 @@ func _unhandled_input(event: InputEvent) -> void:
 func _spawn_horde(me: Player) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5   # 固定位置，每次量測可以比較
+	if _player_at != Vector2.INF:   # 先移動玩家，--horde 才會生在新位置周圍
+		me.pos = MapDefs.to_world(world.map, _player_at)
+		me.prev_pos = me.pos
 	for i in _horde:
 		var type := &"archer" if rng.randf() < 0.2 else &"grunt"
 		var a := rng.randf() * TAU

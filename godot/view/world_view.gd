@@ -23,6 +23,29 @@ const GHOST_TRANSPARENCY := 0.45
 const SHADOW_MAX_DISTANCE := 70.0  # 陰影範圍（從相機算；相機距離 40，畫面最遠的地面約 60）
 const LOS_INTERVAL := 3           # 視野的牆擋判斷每隻每幾個 tick 重算一次（50 毫秒）
 const ENEMY_ANIM_STEP := 1.0 / 60.0 - 1e-4   # 敵人四肢動畫的最短間隔（略小於 1/60，60 FPS 時每幀都更新）
+# 牆後透視剪影（v0.32.0 使用者選定）：角色被牆、石台擋住的部分畫成半透明純色（自己藍、隊友綠、怪紅）
+# 作法：角色自己的材質畫的時候寫入模板值 XRAY_STENCIL；疊加材質（material_overlay）不做深度測試、只畫在模板值不是它的地方
+# → 被牆擋住的部分（那裡最後畫的是牆，沒有寫模板）才看得到，被自己或其他角色擋住的不會變色
+const XRAY_STENCIL := 1
+const XRAY_SELF := Color(0.31, 0.64, 1.0, 0.55)
+const XRAY_ALLY := Color(0.42, 1.0, 0.48, 0.5)
+const XRAY_ENEMY := Color(1.0, 0.3, 0.3, 0.45)
+const XRAY_SKIP := [&"Hitbox", &"BlockFan", &"RarityRing"]   # 這些子節點（地上的圈、扇形）不畫剪影
+const XRAY_SHADER := """
+shader_type spatial;
+render_mode unshaded, depth_test_disabled, depth_draw_never, cull_back, blend_mix, shadows_disabled;
+stencil_mode read, compare_not_equal, 1;
+uniform vec4 color : source_color;
+void fragment() {
+	ALBEDO = color.rgb;
+	ALPHA = color.a;
+}
+"""
+const XRAY_PROBE_STEP := 0.5   # 判斷「相機方向有沒有東西擋住」的取樣間隔（單位）
+static var _xray_materials: Dictionary = {}   # 顏色 -> ShaderMaterial
+var _xray_on: Dictionary = {}   # 怪物 id -> 剪影是否打開（只有被擋住的才畫，省繪製次數）
+var _xray_dir := Vector2(sin(Config.CAMERA.azimuth), cos(Config.CAMERA.azimuth))   # 地面上往相機的方向
+var _xray_slope := tan(Config.CAMERA.elevation)   # 往相機每走 1 單位，視線升高多少
 
 var show_hitboxes := false
 var effects := Effects.new()
@@ -137,6 +160,8 @@ func sync(world: World, alpha: float, dt: float) -> void:
 			# 牆擋視線：剛進入視野時立刻判斷，之後每隻每 LOS_INTERVAL 個 tick 才重算（依 id 錯開，D5 效能）
 			if not _los_blocked.has(id) or (world.tick + id) % LOS_INTERVAL == 0:
 				_los_blocked[id] = Vision.line_blocked(world, me, e.pos)
+				if e is Enemy:
+					_xray_on[id] = _xray_needed(world, e)   # 同樣分批：每隻每 LOS_INTERVAL 個 tick 判斷一次
 			if _los_blocked[id]:
 				hidden_ids[id] = true
 	if show_hitboxes != _hitboxes_shown:
@@ -155,6 +180,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 			_frozen.erase(id)
 			_los_blocked.erase(id)
 			_anim_pending.erase(id)
+			_xray_on.erase(id)
 	for id: int in world.entities:
 		var e: Entity = world.entities[id]
 		if not _nodes.has(id):
@@ -168,6 +194,9 @@ func sync(world: World, alpha: float, dt: float) -> void:
 			if _frozen[id] > 0.0:
 				continue
 			_frozen.erase(id)
+		if node.has_meta(&"xray") and node.get_meta(&"xray_shown") != _xray_on.get(id, not e is Enemy):
+			node.set_meta(&"xray_shown", _xray_on.get(id, not e is Enemy))
+			apply_xray(node, node.get_meta(&"xray"), node.get_meta(&"xray_shown"))
 		var p := e.prev_pos.lerp(e.pos, alpha)
 		# 位置與朝向一次寫入（分兩次寫會更新兩次子節點的變換，D5 效能）
 		node.transform = Transform3D(Basis(Vector3.UP, lerp_angle(e.prev_facing, e.facing, alpha)),
@@ -201,6 +230,10 @@ func sync(world: World, alpha: float, dt: float) -> void:
 			if anim_dt >= 0.0:
 				_animators[id].update(e, anim_dt)
 			anim_usec += Time.get_ticks_usec() - ta
+			if e is Player and node.get_meta(&"xray_weapon", &"") != (e as Player).weapon_id:
+				# 換了武器：新的武器模型也要寫模板值，否則身體的剪影會畫在擋在身體前面的武器上
+				node.set_meta(&"xray_weapon", (e as Player).weapon_id)
+				apply_xray(node, node.get_meta(&"xray"), node.get_meta(&"xray_shown"))
 	var t2 := Time.get_ticks_usec()
 	_sync_grave(world)
 	_sync_strikes(world, dt)
@@ -502,10 +535,59 @@ func _create_view(e: Entity) -> Node3D:
 			root = _create_placeholder(e)
 	var ring := _create_hitbox_ring(e.radius)
 	ring.visible = show_hitboxes
+	ring.name = &"Hitbox"
 	root.add_child(ring)
 	root.set_meta(&"entity", e.get_instance_id())
+	if e is Player or e is Enemy:
+		var color := XRAY_ENEMY
+		if e is Player:
+			color = XRAY_SELF if e == local_player() else XRAY_ALLY
+		var on := not e is Enemy   # 怪物等視野判斷過有東西擋住才打開（_xray_needed）
+		root.set_meta(&"xray", color)
+		root.set_meta(&"xray_shown", on)
+		apply_xray(root, color, on)
 	add_child(root)
 	return root
+
+
+# 角色的每個網格：自己的材質寫入模板值；on 時疊上剪影材質（換武器、怪物被擋住 / 不再被擋住時再呼叫，見 sync）
+static func apply_xray(node: Node, color: Color, on: bool) -> void:
+	for child in node.get_children():
+		if XRAY_SKIP.has(child.name):
+			continue
+		if child is MeshInstance3D:
+			var mi := child as MeshInstance3D
+			var m := mi.material_override as BaseMaterial3D
+			if m != null and m.stencil_mode != BaseMaterial3D.STENCIL_MODE_CUSTOM:
+				m.stencil_mode = BaseMaterial3D.STENCIL_MODE_CUSTOM
+				m.stencil_flags = BaseMaterial3D.STENCIL_FLAG_WRITE
+				m.stencil_compare = BaseMaterial3D.STENCIL_COMPARE_ALWAYS
+				m.stencil_reference = XRAY_STENCIL
+			mi.material_overlay = xray_material(color) if on else null
+		apply_xray(child, color, on)
+
+
+# 怪物和相機之間有沒有牆或石台擋住：沿著往相機的方向取樣，地形頂面高過「腳底往相機的視線」就算擋住
+# 腳底被擋住才開剪影（被擋住的通常從腳開始）；最遠取樣到最高的牆擋得到的距離
+func _xray_needed(world: World, e: Entity) -> bool:
+	var reach := MapDefs.WALL_TOP / _xray_slope
+	var d := e.radius
+	while d <= reach:
+		if world.terrain.ground_at(e.pos + _xray_dir * d) > e.height + d * _xray_slope + 0.1:
+			return true
+		d += XRAY_PROBE_STEP
+	return false
+
+
+static func xray_material(color: Color) -> ShaderMaterial:
+	if not _xray_materials.has(color):
+		var shader := Shader.new()
+		shader.code = XRAY_SHADER
+		var mat := ShaderMaterial.new()
+		mat.shader = shader
+		mat.set_shader_parameter(&"color", color)
+		_xray_materials[color] = mat
+	return _xray_materials[color]
 
 
 # 挖墳點（D6）：土堆 + 墓碑，挖的進度越多土堆越矮；挖完變成發光的墓穴（出口）
@@ -611,6 +693,7 @@ func _add_rarity_marks(rig: Node3D, e: Enemy) -> void:
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.albedo_color = r.color
 	ring.material_override = mat
+	ring.name = &"RarityRing"
 	rig.add_child(ring)
 
 
