@@ -62,6 +62,7 @@ var _pause_hint := UiKit.label("按 Esc 繼續", 20)
 var _quit_button := Button.new()
 var _reset_hints_button := Button.new()
 var hints := Hints.new()   # 新手提示框（v0.31.0）
+var _loading := ColorRect.new()   # 開場預熱時蓋住畫面（v0.37.0）；底下先畫一次會用到的中文字，字形在這時候產生
 var _tags := PlayerTags.new()
 var _fps_timer := 0.0
 var _fps_frames := 0
@@ -208,6 +209,49 @@ func _init() -> void:
 	_build_overlay(_pause, Color(5 / 255.0, 8 / 255.0, 16 / 255.0, 0.65), [_pause_title, _pause_hint, pause_controls, net_panel, _reset_hints_button, _quit_button])
 	_pause.mouse_filter = Control.MOUSE_FILTER_STOP   # 選單的按鈕與輸入框要能點
 	root.add_child(_pause)
+	_build_overlay(_loading, Color(0.03, 0.03, 0.05, 1.0), [UiKit.label("準備中…", 28)])
+	root.add_child(_loading)
+
+
+# 開場預熱（v0.37.0）：on 時蓋住畫面；第一次打開時在蓋板上畫一次道具、怪物、提示會用到的字（幾乎透明），
+# 動態字型的字形在這時候產生，之後第一次出現就不會卡
+func set_loading(on: bool) -> void:
+	if on and _loading.get_child_count() < 2:
+		var box := VBoxContainer.new()
+		box.modulate.a = 0.02
+		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var text := warm_text()
+		for style: Array in [[16, 0], [18, 0], [20, 2], [28, 2], [48, 4]]:
+			var l := UiKit.label(text, style[0], Color.WHITE, style[1])
+			l.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
+			l.custom_minimum_size.x = 1800
+			box.add_child(l)
+		_loading.add_child(box)
+	_loading.visible = on
+
+
+# 會在遊戲中途第一次出現的字：道具名稱與說明、稀有度、怪物詞條與名字、武器詞條、新手提示
+static func warm_text() -> String:
+	var chars := {}
+	for script: Script in [ItemDefs, MonsterRarityDefs, WeaponDropDefs, HintDefs, StatDefs, LootDefs]:
+		_collect_chars(script.get_script_constant_map(), chars)
+	var out := ""
+	for ch: String in chars:
+		out += ch
+	return out
+
+
+static func _collect_chars(v: Variant, chars: Dictionary) -> void:
+	if v is String or v is StringName:
+		for ch in String(v):
+			if ch.unicode_at(0) > 127:
+				chars[ch] = true
+	elif v is Dictionary:
+		for k: Variant in v:
+			_collect_chars(v[k], chars)
+	elif v is Array:
+		for x: Variant in v:
+			_collect_chars(x, chars)
 
 
 func _ready() -> void:

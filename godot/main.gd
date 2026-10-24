@@ -56,6 +56,8 @@ var _menu_flow := false
 var _start_pos := Vector2.INF
 var _prev_first: Array[String] = []   # --perf：前一幀第一次畫出來的東西
 var _hitches: Array[float] = []       # --perf：超過 HITCH_MS 的幀（毫秒）
+var _warming := false                 # 開場預熱中（蓋著「準備中」）
+var _warm_ms := 0.0                   # --perf：預熱那幾幀合計多久
 var _net_port: int = Config.NET.port
 var _autostart_players := 0
 # 效能量測（D5）：--horde=N 開場在玩家周圍生 N 隻醒著的小怪；--perf 關垂直同步、2 秒後開始記錄幀時間，結束時印出
@@ -99,6 +101,10 @@ func _ready() -> void:
 	_emit_muted()
 	GameEvents.event_emitted.connect(_on_event)
 	restart()
+	# 開場預熱（v0.37.0）：每種模型、剪影、特效、會出現的中文字先在鏡頭前畫幾幀，避免第一次出現時卡一下
+	world_view.warm_up(_player_view_position(1.0))
+	hud.set_loading(true)
+	_warming = true
 	if _menu_flow and (_arg_host or _arg_join != ""):
 		set_paused(true)   # --menu-flow：照玩家的操作順序，先在單機按 Esc 暫停，再從選單開房 / 加入（v0.36.2）
 	if _arg_host:
@@ -452,6 +458,9 @@ func _process(delta: float) -> void:
 		_prev_first = world_view.first_seen + world_view.effects.first_seen
 	world_view.first_seen.clear()
 	world_view.effects.first_seen.clear()
+	if _warming and not world_view.is_warming_up():
+		_warming = false
+		hud.set_loading(false)
 	if _perf and _elapsed >= PERF_WARMUP:
 		_perf_sync_usec += Time.get_ticks_usec() - t0
 		_perf_syncs += 1
@@ -464,6 +473,9 @@ func _process(delta: float) -> void:
 # --perf 的卡頓紀錄（v0.36.3）：超過 HITCH_MS 的幀印出來，附上前一幀第一次畫出來的東西（模型種類、特效）
 func _log_hitch(delta: float) -> void:
 	var ms := delta * 1000.0
+	if _warming:
+		_warm_ms += ms   # 預熱那幾幀本來就會慢（蓋著「準備中」），另外記、不算卡頓
+		return
 	if ms < HITCH_MS or _elapsed <= 0.0:
 		return
 	_hitches.append(ms)
@@ -600,7 +612,7 @@ func _print_perf() -> void:
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)])
 	var over50 := _hitches.filter(func(ms: float) -> bool: return ms >= 50.0).size()
 	var over100 := _hitches.filter(func(ms: float) -> bool: return ms >= 100.0).size()
-	print("perf hitches over33=%d over50=%d over100=%d worst_hitch_ms=%.1f" % [_hitches.size(), over50, over100, _hitches.max() if not _hitches.is_empty() else 0.0])
+	print("perf hitches over33=%d over50=%d over100=%d worst_hitch_ms=%.1f warmup_ms=%.1f" % [_hitches.size(), over50, over100, _hitches.max() if not _hitches.is_empty() else 0.0, _warm_ms])
 	var parts := ""
 	for k: StringName in world_view.profile_usec:
 		parts += " %s=%.3f" % [k, world_view.profile_usec[k] / 1000.0 / maxi(1, _perf_syncs)]

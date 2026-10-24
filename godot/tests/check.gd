@@ -67,6 +67,7 @@ func _initialize() -> void:
 	_check("尋路不擦牆：直線離牆小於 0.6 就不算看得到；繞北門時被牆擋住而變慢的步數 < 30", _check_nav_clearance)
 	_check("角色視野：前方 ±60° / 18 單位看得到、65° 與 19 單位看不到、身邊 4 單位背後也看得到；牆擋視線（身邊也擋）、高台不擋；自己的投射物在背後也看得到、怪物的看不到", _check_vision_rules)
 	_check("視野畫面：背後的骷髏模型隱藏、前方的顯示；背後的特效事件不畫、前方的照畫；本機角色陣亡後全部看得到", _check_vision_view)
+	_check("開場預熱（v0.37.0）：每一種怪、魔法 / 稀有怪、玩家、兩種寶箱、道具、武器、兩種投射物都在鏡頭附近畫 3 幀後移除；預熱文字含道具名稱、怪物詞條與稀有怪名字", _check_warm_up)
 	_check("牆後剪影（v0.32.0）：角色材質寫模板值；玩家一直有剪影；怪物只有和相機之間有牆擋住時才有，離開牆邊就拿掉", _check_xray)
 	_check("背包（D3）：8 × 6；形狀旋轉 90° 後格子正確；超出邊界、重疊放不下；自動找第一個空位（不夠時會轉向）；搬動成功 / 失敗；裝滿後撿不起來並發出 inventory:full", _check_inventory)
 	_check("金錢與寶箱（D3）：地圖 A 有 4 小 1 大寶箱；骷髏 +5、Boss +50（共用）；錢不夠開不了（chest:denied）、夠了扣錢並在寶箱旁掉一個道具；開過不能再開", _check_gold_chests)
@@ -2423,6 +2424,45 @@ func _check_vision_rules() -> String:
 		return "背後：自己的投射物 %s、弓手的箭 %s、弓手 %s（應為 看得到 / 看不到 / 看不到）" % [
 			Vision.entity_visible(w, p, mine), Vision.entity_visible(w, p, theirs), Vision.entity_visible(w, p, archer)]
 	return ""
+
+
+func _check_warm_up() -> String:
+	var view := WorldView.new()
+	root.add_child(view)
+	var center := Vector3(20, 0, -15)
+	view.warm_up(center)
+	var want: Array[String] = ["player", "chest:small", "chest:big", "projectile:arrow", "projectile:orb",
+		"grunt:%s" % MonsterRarityDefs.MAGIC, "grunt:%s" % MonsterRarityDefs.RARE]
+	for kind: StringName in EnemyDefs.ENEMIES:
+		want.append(String(kind))
+	var err := ""
+	for k in want:
+		if not view.warm_keys.has(k):
+			err = "預熱缺少 %s（預熱了 %s）" % [k, view.warm_keys]
+			break
+	if err == "" and (not view.warm_keys.any(func(k: String) -> bool: return k.begins_with("item:")) or not view.warm_keys.any(func(k: String) -> bool: return k.begins_with("weapon:"))):
+		err = "預熱應包含地上的道具與武器：%s" % [view.warm_keys]
+	if err == "":
+		for node in view._warm_nodes:
+			if node.position.distance_to(center) > 4.0:
+				err = "預熱的模型要在鏡頭附近（離中心 %.1f）" % node.position.distance_to(center)
+				break
+	if err == "":
+		var w := _new_world()
+		for i in WorldView.WARM_FRAMES:
+			if not view.is_warming_up():
+				err = "預熱應維持 %d 幀，第 %d 幀就結束了" % [WorldView.WARM_FRAMES, i]
+				break
+			view.sync(w, 1.0, DT)
+		if err == "" and (view.is_warming_up() or not view._warm_nodes.is_empty()):
+			err = "預熱 %d 幀後應移除" % WorldView.WARM_FRAMES
+	var text: String = load("res://ui/hud.gd").warm_text()
+	var sample: String = ItemDefs.ITEMS.values()[0].name + MonsterRarityDefs.RARE_NAME_B[0]
+	for ch in sample:
+		if err == "" and ch.unicode_at(0) > 127 and not text.contains(ch):
+			err = "預熱文字缺「%s」" % ch
+	view.queue_free()
+	return err
 
 
 func _check_vision_view() -> String:

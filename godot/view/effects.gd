@@ -80,15 +80,13 @@ func _init() -> void:
 	_ring_mesh = _make_ring_mesh()
 
 
-func _ready() -> void:
-	_warm_up()
-
-
 # 開場先各畫一次（透明度 0），讓粒子與半透明材質的著色器在載入時就編譯，避免第一次出現時卡頓
-func _warm_up() -> void:
-	burst(Vector3(0, 0.05, 0), {"count": 1, "life": 0.05, "size": 0.001})
-	ring(Vector3.ZERO, 1.0, {"life": 0.05, "opacity": 0.0})
-	slash(Vector3.ZERO, 0.0, 1.0, 1.0, {"life": 0.05, "opacity": 0.0})
+# v0.37.0：要畫在鏡頭裡（WorldView.warm_up 傳入玩家附近的位置）；以前畫在原點，地圖 A 的出生點離原點很遠、顯示卡根本沒畫
+func warm_up(pos: Vector3) -> void:
+	burst(pos + Vector3(0, 0.05, 0), {"count": 1, "life": 0.1, "size": 0.001})
+	ring(pos, 1.0, {"life": 0.1, "opacity": 0.0})
+	slash(pos, 0.0, 1.0, 1.0, {"life": 0.1, "opacity": 0.0})
+	telegraph(pos, 1.0, {"life": 0.1, "opacity": 0.0})
 
 
 func clear() -> void:

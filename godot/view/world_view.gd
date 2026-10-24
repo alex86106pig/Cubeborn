@@ -45,6 +45,7 @@ void fragment() {
 """
 const XRAY_PROBE_STEP := 0.5   # 判斷「相機方向有沒有東西擋住」的取樣間隔（單位）
 static var _xray_materials: Dictionary = {}   # 顏色 -> ShaderMaterial
+static var _xray_shader: Shader
 var _xray_on: Dictionary = {}   # 怪物 id -> 剪影是否打開（只有被擋住的才畫，省繪製次數）
 var _xray_dir := Vector2(sin(Config.CAMERA.azimuth), cos(Config.CAMERA.azimuth))   # 地面上往相機的方向
 var _xray_slope := tan(Config.CAMERA.elevation)   # 往相機每走 1 單位，視線升高多少
@@ -66,6 +67,9 @@ var _grave: Node3D = null              # 挖墳點（D6）
 var _hitboxes_shown := false
 var first_seen: Array[String] = []     # 這一幀第一次被畫出來的模型種類（main.gd 的卡頓紀錄取走後清空，v0.36.3）
 var _seen_keys: Dictionary = {}
+var _warm_nodes: Array[Node3D] = []   # 開場預熱的模型（WARM_FRAMES 幀後移除）
+var warm_keys: Array[String] = []     # 預熱過的模型種類（check.gd 確認每一種都有）
+var _warm_left := 0
 var profile := false                   # main 的 --perf：各段累計耗時（微秒）放進 profile_usec
 var profile_usec: Dictionary = {}
 var _world: World
@@ -143,6 +147,7 @@ func _setup_environment() -> void:
 # alpha：上一步到這一步之間的補間比例（0~1）；dt：渲染幀秒數（動畫用）
 func sync(world: World, alpha: float, dt: float) -> void:
 	_world = world
+	_tick_warm_up()
 	var me := local_player()
 	# 視野只依模擬層的位置與朝向決定：同一個 tick 不必重算（D5：200 隻怪時每幀做視線判斷太慢）
 	var vision_key := [world.tick, world.run_id, world.entities.size(), me, me.pos if me else Vector2.ZERO, me.facing if me else 0.0, me.is_dead if me else false]
@@ -505,6 +510,65 @@ func _create_strike(h: Dictionary, ground: float) -> MeshInstance3D:
 	return mi
 
 
+# 開場預熱（v0.37.0）：每一種模型（玩家含武器光、各種怪、魔法 / 稀有怪的光環與點光源、冤魂、Boss、寶箱、道具、武器、投射物）
+# 各放一個在 center 附近（一定要在鏡頭裡，顯示卡才會真的畫、才會編譯著色器），疊上三種剪影，畫 WARM_FRAMES 幀後移除。
+# 用一個暫時的 World 建實體，不影響真正的遊戲；要在第一次 sync 之前呼叫（_create_view 會用實體 id 登記動畫器，之後就清掉）
+const WARM_FRAMES := 3
+
+
+func warm_up(center: Vector3) -> void:
+	var tw := World.new(&"test_arena")
+	tw.reset(1, [World.HOST_PEER_ID])
+	tw.spawner.finished = true
+	var c := Vector2(center.x, center.z)
+	var ents: Array[Entity] = [tw.players[World.HOST_PEER_ID]]
+	for kind: StringName in [&"grunt", &"archer", &"boss", &"ghost"]:
+		ents.append(tw.spawner.spawn_at(tw, kind, c))
+	for rarity: StringName in [MonsterRarityDefs.MAGIC, MonsterRarityDefs.RARE]:
+		var e := tw.spawner.spawn_at(tw, &"grunt", c)
+		Spawner.roll_rarity(tw, e, rarity)
+		ents.append(e)
+	for tier: StringName in [&"small", &"big"]:
+		ents.append(Chest.new(tw, tier, c))
+	ents.append(tw.drop_item(&"loaded_dice", c))
+	var rarities: Array = ItemDefs.RARITIES.keys()
+	ents.append(tw.drop_weapon(WeaponDropDefs.make(tw.new_weapon_uid(), WeaponDefs.WEAPONS.keys()[0], rarities[mini(1, rarities.size() - 1)], tw.rng), c))
+	for visual: StringName in [&"arrow", &"orb"]:
+		ents.append(Projectile.new(tw, {"owner": ents[0], "pos": c, "direction": Vector2.UP, "speed": 0.0, "range": 0.0,
+			"radius": 0.25, "color": Color.ORANGE, "visual": visual}))
+	var colors := [XRAY_SELF, XRAY_ALLY, XRAY_ENEMY]
+	for i in ents.size():
+		var e := ents[i]
+		var node := _create_view(e)
+		_animators.erase(e.id)
+		# 排成一圈（半徑 3），都在鏡頭裡
+		var a := TAU * i / ents.size()
+		node.position = center + Vector3(sin(a), 0.0, cos(a)) * 3.0
+		if node.has_meta(&"glow"):
+			(node.get_meta(&"glow") as Node3D).visible = true   # 武器光：拿到有顏色的武器才會開
+		if node.has_meta(&"xray"):
+			apply_xray(node, colors[i % colors.size()], true)
+		_warm_nodes.append(node)
+		warm_keys.append(_view_key(e))
+	_warm_left = WARM_FRAMES
+	effects.warm_up(center)
+	tw.clear()
+
+
+func is_warming_up() -> bool:
+	return _warm_left > 0
+
+
+func _tick_warm_up() -> void:
+	if _warm_left <= 0:
+		return
+	_warm_left -= 1
+	if _warm_left == 0:
+		for node in _warm_nodes:
+			node.queue_free()
+		_warm_nodes.clear()
+
+
 # 卡頓紀錄用的模型種類：材質或光不同的分開算（稀有怪有光環與點光源、寶箱分大小、道具分武器與稀有度、投射物分外觀）
 static func _view_key(e: Entity) -> String:
 	if e is Enemy and (e as Enemy).rarity != MonsterRarityDefs.NORMAL:
@@ -604,12 +668,14 @@ func _xray_needed(world: World, e: Entity) -> bool:
 	return false
 
 
+# 三種顏色共用一個 Shader，只用參數換顏色（v0.37.0：以前每種顏色各建一個 Shader，各自要編譯一次）
 static func xray_material(color: Color) -> ShaderMaterial:
 	if not _xray_materials.has(color):
-		var shader := Shader.new()
-		shader.code = XRAY_SHADER
+		if _xray_shader == null:
+			_xray_shader = Shader.new()
+			_xray_shader.code = XRAY_SHADER
 		var mat := ShaderMaterial.new()
-		mat.shader = shader
+		mat.shader = _xray_shader
 		mat.set_shader_parameter(&"color", color)
 		_xray_materials[color] = mat
 	return _xray_materials[color]
