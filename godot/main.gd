@@ -15,6 +15,7 @@ enum Mode { SINGLE, HOST, CLIENT }
 
 const HUD_SCENE := preload("res://ui/hud.tscn")
 const PERF_WARMUP := 2.0   # --perf：開場幾秒不記錄（建模與第一次編譯著色器）
+const WEB_URL_ARGS: Array[String] = ["seconds", "horde", "perf", "elites", "player-hp"]   # 網頁版可以從網址帶的參數（url_query_args）
 
 var mode := Mode.SINGLE
 var world := World.new()      # 單機 / 房主：權威的 World；客戶端：net_client.world（快照的鏡像）
@@ -105,7 +106,10 @@ func _exit_tree() -> void:
 
 
 func _parse_args() -> void:
-	for arg in OS.get_cmdline_user_args():
+	var args := OS.get_cmdline_user_args()
+	if OS.has_feature("web"):
+		args.append_array(url_query_args(str(JavaScriptBridge.eval("window.location.search", true))))
+	for arg in args:
 		var value := arg.get_slice("=", 1)
 		if arg.begins_with("--seconds="):
 			_run_seconds = value.to_float()
@@ -165,6 +169,18 @@ func _parse_args() -> void:
 			_perf = true
 			DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 			Engine.max_fps = 0
+
+
+# 網頁版沒有指令列：網址的查詢參數轉成同樣的 --參數（例如 ?horde=200&perf&seconds=20 → --horde=200 --perf --seconds=20）；
+# 只開放量效能用的 WEB_URL_ARGS（v0.34.3，量網頁版當房主跑不跑得動，見想法清單 #12），朋友正常開網站不受影響
+static func url_query_args(query: String) -> PackedStringArray:
+	var out := PackedStringArray()
+	for pair in query.trim_prefix("?").split("&", false):
+		var key := pair.get_slice("=", 0).uri_decode()
+		var value := pair.get_slice("=", 1).uri_decode() if pair.contains("=") else ""
+		if key in WEB_URL_ARGS:
+			out.append("--" + key + ("=" + value if value != "" else ""))   # ?perf= 與 ?perf 一樣
+	return out
 
 
 func local_player() -> Player:

@@ -2,6 +2,17 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.34.3] - 2026-10-24
+
+網頁版可以從網址帶效能量測參數，用來量「網頁版當房主跑不跑得動」（網頁連線的前置判斷，見 `docs/想法清單.md` #12）。
+
+### 新增
+- 網頁版把網址的查詢參數轉成指令列參數：例如 `?horde=200&perf&seconds=20&player-hp=99999` → `--horde=200 --perf --seconds=20 --player-hp=99999`。只開放 `seconds`、`horde`、`perf`、`elites`、`player-hp`（`Main.WEB_URL_ARGS`），沒帶參數時和以前一樣。`--perf` 的結果印在瀏覽器的 console。
+- 檢查：網址參數轉換正確、不在開放清單的（`host`、`join`）不轉、`?elites=` 與 `?elites` 相同。
+
+### 未驗證
+- 本機沒有網頁匯出模板，實際在瀏覽器裡的效果要推送後開網站確認。
+
 ## [0.34.2] - 2026-10-24
 
 README、網頁版字型瘦身、Actions 升版（程式碼審查建議第 6 則）。遊戲本身沒有改。

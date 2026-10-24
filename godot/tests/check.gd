@@ -109,6 +109,7 @@ func _initialize() -> void:
 	_check("疾跑：移速 6.5 × 1.6 = 10.4、持續 3 秒、CD 8 秒；使用道具動作 0.18 秒", _check_sprint_slot)
 	_check("數字鍵緩衝：攻擊中按 1 會在後搖取消並使用道具；空欄位不提示", _check_slot_buffer)
 	_check("HUD：能建立、處理各種事件、顯示波次 / 血量 / 結算文字、暫停畫面有「離開遊戲」", _check_hud)
+	_check("網頁版網址參數（v0.34.3）：?horde=200&perf&seconds=20 轉成 --horde=200 --perf --seconds=20；不在開放清單的參數（例如 host、join）不轉", _check_url_query_args)
 	_check("遊玩紀錄（v0.34.0）：自己的擊殺依種類、受到的傷害依攻擊者、被看不見的攻擊（背後）、倒下被誰打倒；結算畫面顯示且塞得進 1920×1080；重新開始清空", _check_run_log)
 	_check("屬性計算：同類相加（+8% ×2 = +16%）、暫時效果與冷卻縮減相乘（0.94 × 0.75 = 0.705）、取整、上下限、來源可移除", _check_stats_formula)
 	_check("護甲與爆擊：護甲 100 減傷 50%、護甲 8 減傷 7.4%；爆擊率 100% 時 ×1.5，爆擊率 0% 不消耗亂數", _check_stats_armor_crit)
@@ -1467,6 +1468,17 @@ func _check_hud() -> String:
 		return "game:victory 應顯示勝利畫面"
 	hud.queue_free()
 	cam.queue_free()
+	return ""
+
+
+func _check_url_query_args() -> String:
+	var main_script: GDScript = load("res://main.gd")
+	var got: PackedStringArray = main_script.url_query_args("?horde=200&perf&seconds=20&player-hp=99999&host&join=1.2.3.4&elites=")
+	var want := PackedStringArray(["--horde=200", "--perf", "--seconds=20", "--player-hp=99999", "--elites"])
+	if got != want:
+		return "轉換結果 %s，預期 %s" % [got, want]
+	if not main_script.url_query_args("").is_empty() or not main_script.url_query_args("?").is_empty():
+		return "沒有參數時應回傳空的"
 	return ""
 
 
