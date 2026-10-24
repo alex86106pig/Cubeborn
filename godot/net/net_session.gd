@@ -1,5 +1,7 @@
 # 傳輸層（15.18）：建立房間 / 加入 / 斷線、大廳名單、RPC 收送；對外只用訊號與 send_* 函式
-# 開發期用 Godot 內建 ENet（區網），上架前換成 Steam 連線只改這個檔案
+# 桌面版用 Godot 內建 ENet（區網 / 虛擬區網，輸入 IP）；網頁版（v0.36.0）用 WebRTC 直連，房號經 PeerJS 公開配對伺服器牽線
+# （net/peerjs_signaling.gd）。兩種都是 MultiplayerPeer，RPC、快照、輸入的程式相同；網頁版和桌面版不能互連（桌面版沒有內建 WebRTC）
+# 上架前換成 Steam 連線只改這個檔案
 # 模擬延遲 / 掉包（除錯用）：送出前排隊 latency_ms 再真的送；掉包只套用在 unreliable（輸入與快照）
 class_name NetSession
 extends Node
@@ -22,8 +24,17 @@ var lobby_peers: Array[int] = []
 var latency_ms: int = Config.NET.debug_latency_ms
 var loss: float = Config.NET.debug_loss
 
+var room_code := ""              # 網頁版：房號（房主開房後、客戶端輸入的）
+var last_error := ""             # connection_failed 的原因（網頁版配對失敗時才有；空的 = 用預設說明）
+
 var _outbox: Array = []          # [送出時間 ms, Callable]（模擬延遲用）
 var _rng := RandomNumberGenerator.new()
+var _signal: PeerJsSignaling     # 網頁版配對（連上之後客戶端就關掉；房主開始遊戲時關掉）
+var _rtc: WebRTCMultiplayerPeer
+var _conns := {}                 # 對方的配對 ID → WebRTCPeerConnection
+var _web_peer_id := 0            # 網頁版客戶端自己的 peer id（2 ~ 2^31-2 隨機）
+var _join_timer := 0.0
+var _room_tries := 0
 
 
 func _ready() -> void:
@@ -41,7 +52,13 @@ func _exit_tree() -> void:
 
 
 func is_active() -> bool:
-	return multiplayer.multiplayer_peer is ENetMultiplayerPeer
+	var p := multiplayer.multiplayer_peer
+	return p != null and not p is OfflineMultiplayerPeer
+
+
+# 網頁版只能用 WebRTC（瀏覽器不能開 UDP）
+static func uses_webrtc() -> bool:
+	return OS.has_feature("web")
 
 
 func local_peer_id() -> int:
@@ -73,21 +90,143 @@ func join(address: String, port: int = Config.NET.port) -> Error:
 	return OK
 
 
+# 網頁版開房：先抽房號向配對伺服器註冊（撞到別人就重抽），註冊成功才建立 WebRTC 房間並發 lobby_changed
+func host_web() -> Error:
+	close()
+	last_error = ""
+	is_host = true
+	lobby_peers = [World.HOST_PEER_ID]
+	_room_tries = 0
+	return _open_room()
+
+
+func _open_room() -> Error:
+	room_code = PeerJsSignaling.random_room_code(_rng)
+	_signal = _new_signal()
+	_signal.opened.connect(_on_room_opened)
+	_signal.id_taken.connect(func() -> void:
+		_room_tries += 1
+		if _room_tries < Config.NET.web_room_retries:
+			_open_room()
+		else:
+			_fail("開房失敗：房號一直撞到別人"))
+	return _signal.open(PeerJsSignaling.host_id(room_code))
+
+
+func _on_room_opened() -> void:
+	_rtc = WebRTCMultiplayerPeer.new()
+	var err := _rtc.create_server([MultiplayerPeer.TRANSFER_MODE_UNRELIABLE])   # 頻道 1 = unreliable（同 ENet 的 CHANNEL_UNRELIABLE）
+	if err != OK:
+		_fail("開房失敗（WebRTC 錯誤 %d）" % err)
+		return
+	multiplayer.multiplayer_peer = _rtc
+	lobby_changed.emit(lobby_peers.duplicate())
+
+
+# 網頁版加入：用隨機 ID 註冊 → 建立連到房主（peer 1）的 WebRTC 連線、送出 OFFER；web_join_timeout 秒內沒連上就放棄
+func join_web(code: String) -> Error:
+	close()
+	last_error = ""
+	is_host = false
+	lobby_peers = []
+	room_code = code.strip_edges().to_upper()
+	_web_peer_id = _rng.randi_range(2, 2147483646)
+	_join_timer = Config.NET.web_join_timeout
+	_signal = _new_signal()
+	_signal.opened.connect(_on_join_opened)
+	return _signal.open("%sc-%08x%08x" % [Config.NET.web_id_prefix, _rng.randi(), _rng.randi()])
+
+
+func _on_join_opened() -> void:
+	_rtc = WebRTCMultiplayerPeer.new()
+	var err := _rtc.create_client(_web_peer_id, [MultiplayerPeer.TRANSFER_MODE_UNRELIABLE])
+	if err != OK:
+		_fail("加入失敗（WebRTC 錯誤 %d）" % err)
+		return
+	multiplayer.multiplayer_peer = _rtc
+	var conn := _new_conn(PeerJsSignaling.host_id(room_code))
+	_rtc.add_peer(conn, World.HOST_PEER_ID)
+	conn.create_offer()
+
+
+func _new_signal() -> PeerJsSignaling:
+	var s := PeerJsSignaling.new()
+	s.failed.connect(_fail)
+	s.expired.connect(func(_dst: String) -> void:
+		if not is_host:
+			_fail("找不到房號 %s（房主還沒開房，或已經關掉了）" % room_code))
+	s.message_received.connect(_on_signal_message)
+	return s
+
+
+# 一條 WebRTC 連線：自己的 SDP 與候選位址都經配對伺服器送給對方
+func _new_conn(remote_id: String) -> WebRTCPeerConnection:
+	var conn := WebRTCPeerConnection.new()
+	conn.initialize({"iceServers": Config.NET.ice_servers})
+	conn.session_description_created.connect(func(type: String, sdp: String) -> void:
+		conn.set_local_description(type, sdp)
+		if _signal != null:
+			_signal.send("OFFER" if type == "offer" else "ANSWER", remote_id, {"type": type, "sdp": sdp, "peer_id": _web_peer_id}))
+	conn.ice_candidate_created.connect(func(mid: String, index: int, sdp: String) -> void:
+		if _signal != null:
+			_signal.send("CANDIDATE", remote_id, {"mid": mid, "index": index, "sdp": sdp}))
+	_conns[remote_id] = conn
+	return conn
+
+
+func _on_signal_message(type: String, src: String, payload: Dictionary) -> void:
+	if _rtc == null:
+		return
+	match type:
+		"OFFER":
+			# 只有房主收 OFFER；開始了或滿了就不回應（對方逾時）
+			var pid := int(payload.get("peer_id", 0))
+			if not is_host or is_started or lobby_peers.size() >= Config.NET.max_players or pid < 2 or _conns.has(src):
+				return
+			var conn := _new_conn(src)
+			_rtc.add_peer(conn, pid)
+			conn.set_remote_description("offer", str(payload.get("sdp", "")))
+		"ANSWER":
+			var conn: WebRTCPeerConnection = _conns.get(src)
+			if conn != null:
+				conn.set_remote_description("answer", str(payload.get("sdp", "")))
+		"CANDIDATE":
+			var conn: WebRTCPeerConnection = _conns.get(src)
+			if conn != null:
+				conn.add_ice_candidate(str(payload.get("mid", "")), int(payload.get("index", 0)), str(payload.get("sdp", "")))
+
+
+func _fail(reason: String) -> void:
+	last_error = reason
+	close()
+	connection_failed.emit()
+
+
 func close() -> void:
 	var api := multiplayer
 	if api != null:
 		if api.multiplayer_peer != null:
 			api.multiplayer_peer.close()
 		api.multiplayer_peer = OfflineMultiplayerPeer.new()
+	if _signal != null:
+		_signal.close()
+		_signal = null
+	_rtc = null
+	_conns.clear()
+	room_code = ""
+	_join_timer = 0.0
 	is_host = false
 	is_started = false
 	lobby_peers = []
 	_outbox.clear()
 
 
-# 房主：開始遊戲，之後不再接受加入（中途加入先不開放，使用者決定）
+# 房主：開始遊戲，之後不再接受加入（中途加入先不開放，使用者決定）；網頁版也不再需要配對伺服器
 func start_game() -> void:
 	is_started = true
+	if _signal != null:
+		_signal.close()
+		_signal = null
 	_send(func() -> void: _rpc_start.rpc(lobby_peers), false)
 
 
@@ -114,7 +253,13 @@ func _send(fn: Callable, unreliable: bool) -> void:
 		_outbox.append([Time.get_ticks_msec() + latency_ms, fn])
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if _signal != null:
+		_signal.poll(delta)
+	if _join_timer > 0.0 and not is_host and lobby_peers.is_empty():
+		_join_timer -= delta
+		if _join_timer <= 0.0:
+			_fail("連不上房主（房號 %s 逾時；對方的網路可能擋住直連）" % room_code)
 	var now := Time.get_ticks_msec()
 	while not _outbox.is_empty() and _outbox[0][0] <= now and is_active():
 		_outbox.pop_front()[1].call()
@@ -124,7 +269,7 @@ func _on_peer_connected(peer_id: int) -> void:
 	if not is_host:
 		return
 	if is_started or lobby_peers.size() >= Config.NET.max_players:
-		(multiplayer.multiplayer_peer as ENetMultiplayerPeer).disconnect_peer(peer_id)
+		multiplayer.multiplayer_peer.disconnect_peer(peer_id)
 		return
 	lobby_peers.append(peer_id)
 	_broadcast_lobby()
@@ -139,6 +284,9 @@ func _on_peer_disconnected(peer_id: int) -> void:
 
 
 func _on_connected() -> void:
+	if _signal != null and not is_host:   # 網頁版客戶端連上房主後就不需要配對伺服器
+		_signal.close()
+		_signal = null
 	lobby_changed.emit(lobby_peers.duplicate())
 
 

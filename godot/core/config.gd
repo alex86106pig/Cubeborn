@@ -157,6 +157,20 @@ const NET := {
 	"enemy_hp_per_extra_player": 0.5,   # 每多 1 位玩家，敵人血量 +50%（2 人 ×1.5、4 人 ×2.5）
 	"debug_latency_ms": 0,           # 模擬延遲（單程，毫秒），--net-latency=100 設定
 	"debug_loss": 0.0,               # 模擬掉包比例（只對 unreliable），--net-loss=0.1 設定
+	# 網頁版連線（v0.36.0）：WebRTC 直連，配對借 PeerJS 的免費公開伺服器（沒有保證，偶爾會掛；掛的時候不能開新房，已連上的不受影響）
+	"web_signal_url": "wss://0.peerjs.com:443/peerjs",
+	"web_signal_key": "peerjs",
+	"web_id_prefix": "cubeborn-mp-",         # 房主在配對伺服器上的 ID = 前綴 + 房號
+	"web_room_chars": "ABCDEFGHJKLMNPQRSTUVWXYZ23456789",   # 不含容易看錯的 0 / O、1 / I
+	"web_room_length": 4,
+	"web_room_retries": 5,                   # 房號撞到別人時重抽幾次
+	"web_heartbeat": 5.0,                    # 每幾秒對配對伺服器送一次 HEARTBEAT（不然 ID 會被收回）
+	"web_join_timeout": 20.0,                # 加入時幾秒內沒連上就放棄
+	# STUN 找自己的公開位址；TURN 是直連打不通時的中繼（PeerJS 預設的公開 TURN，免費共用、沒有保證）
+	"ice_servers": [
+		{"urls": ["stun:stun.l.google.com:19302"]},
+		{"urls": ["turn:eu-0.turn.peerjs.com:3478", "turn:us-0.turn.peerjs.com:3478"], "username": "peerjs", "credential": "peerjsp"},
+	],
 }
 
 # 倒下與救援（C4，使用者 2026-10-23 決定；decay_rate 是 Claude 暫定）

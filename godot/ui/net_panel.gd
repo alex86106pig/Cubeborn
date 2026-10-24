@@ -1,4 +1,4 @@
-# 連線選單（放在暫停 / 選單畫面裡）：開房、輸入 IP 加入、大廳名單、開始遊戲、離開連線
+# 連線選單（放在暫停 / 選單畫面裡）：開房、輸入 IP 加入（網頁版：房號，v0.36.0）、大廳名單、開始遊戲、離開連線
 # 只發訊號，實際連線由 main.gd 處理
 class_name NetPanel
 extends VBoxContainer
@@ -8,9 +8,11 @@ signal join_pressed(address: String)
 signal start_pressed
 signal leave_pressed
 
+var room_code := ""   # 網頁版：房主的房號（main.gd 在 show_state 前設定）
+var _web := NetSession.uses_webrtc()
 var _status := UiKit.label("", 18, Color(1, 1, 1, 0.9))
 var _address := LineEdit.new()
-var _host_button := _button("開房（區網）")
+var _host_button := _button("開房（網路）" if NetSession.uses_webrtc() else "開房（區網）")
 var _join_button := _button("加入")
 var _start_button := _button("開始遊戲")
 var _leave_button := _button("離開連線")
@@ -22,8 +24,8 @@ func _init() -> void:
 	add_theme_constant_override(&"separation", 8)
 	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_status)
-	_address.text = "127.0.0.1"
-	_address.placeholder_text = "房主 IP"
+	_address.text = "" if _web else "127.0.0.1"
+	_address.placeholder_text = "房號（4 碼）" if _web else "房主 IP"
 	_address.custom_minimum_size = Vector2(200, 44)
 	_address.add_theme_font_size_override(&"font_size", 20)
 	_connect_row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -40,8 +42,6 @@ func _init() -> void:
 	_start_button.pressed.connect(start_pressed.emit)
 	_leave_button.pressed.connect(leave_pressed.emit)
 	show_state(&"single", [], 1, "")
-	# 網頁版不支援 ENet 連線（15.1），整個選單不顯示
-	visible = not OS.has_feature("web")
 
 
 # 輸入框打字中：main.gd 暫停收集遊戲輸入
@@ -54,11 +54,19 @@ func show_state(mode: StringName, peers: Array, local_peer: int, message: String
 	var names := ", ".join(peers.map(func(id: int) -> String: return _peer_name(peers, id, local_peer)))
 	match mode:
 		&"single":
-			_status.text = message if message != "" else "多人連線（區網）：開房，或輸入房主的 IP 加入"
+			if message != "":
+				_status.text = message
+			elif _web:
+				_status.text = "多人連線（網頁版之間）：開房，或輸入房主的房號加入"
+			else:
+				_status.text = "多人連線（區網）：開房，或輸入房主的 IP 加入"
 		&"connecting":
-			_status.text = "連線中…"
+			_status.text = "連線中…（房號 %s）" % room_code if _web and room_code != "" else "連線中…"
 		&"lobby_host":
-			_status.text = "已開房（%d / %d 人）：%s\n其他人輸入這台電腦的區網 IP 加入；到齊後按「開始遊戲」" % [peers.size(), Config.NET.max_players, names]
+			if _web:
+				_status.text = "房號 %s（%d / %d 人）：%s\n其他人在網頁版輸入這 4 碼加入；到齊後按「開始遊戲」\n房主不要切換分頁或縮小視窗，不然所有人都會停住" % [room_code, peers.size(), Config.NET.max_players, names]
+			else:
+				_status.text = "已開房（%d / %d 人）：%s\n其他人輸入這台電腦的區網 IP 加入；到齊後按「開始遊戲」" % [peers.size(), Config.NET.max_players, names]
 		&"lobby_client":
 			_status.text = "已加入（%d 人）：%s\n等待房主開始遊戲" % [peers.size(), names]
 		&"playing":

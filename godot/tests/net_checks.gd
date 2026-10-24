@@ -388,6 +388,52 @@ static func check_codec() -> String:
 	return err
 
 
+# 網頁連線的配對（v0.36.0）：桌面版沒有內建 WebRTC，這裡只驗配對訊息、房號、傳輸方式的選擇；實際連線要在瀏覽器測
+static func check_web_signaling() -> String:
+	var url := PeerJsSignaling.url_for("cubeborn-mp-ABCD", "tok123")
+	if url != "wss://0.peerjs.com:443/peerjs?key=peerjs&id=cubeborn-mp-ABCD&token=tok123&version=1.5.4":
+		return "配對伺服器網址錯誤：%s" % url
+	if PeerJsSignaling.host_id("ab2c") != "cubeborn-mp-AB2C":
+		return "房主 ID 應是前綴 + 大寫房號：%s" % PeerJsSignaling.host_id("ab2c")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var chars: String = Config.NET.web_room_chars
+	for i in 300:
+		var code := PeerJsSignaling.random_room_code(rng)
+		if code.length() != 4:
+			return "房號長度 %d：%s" % [code.length(), code]
+		for ch in code:
+			if not chars.contains(ch) or ch in ["0", "O", "1", "I"]:
+				return "房號有不該出現的字：%s" % code
+	# 送出的訊息：{type, dst, payload}；伺服器轉來的：多一個 src，數字會變成浮點數
+	var sent: Variant = JSON.parse_string(PeerJsSignaling.encode("OFFER", "cubeborn-mp-ABCD", {"sdp": "v=0", "peer_id": 12345}))
+	if not sent is Dictionary or sent.type != "OFFER" or sent.dst != "cubeborn-mp-ABCD" or sent.payload.sdp != "v=0" or int(sent.payload.peer_id) != 12345:
+		return "送出的配對訊息格式錯誤：%s" % [sent]
+	var got := PeerJsSignaling.decode('{"type":"ANSWER","src":"cubeborn-mp-c-1","dst":"x","payload":{"type":"answer","sdp":"v=0 a"}}')
+	if got.type != "ANSWER" or got.src != "cubeborn-mp-c-1" or got.payload.sdp != "v=0 a":
+		return "收到的配對訊息解析錯誤：%s" % [got]
+	if not PeerJsSignaling.decode("not json").is_empty() or not PeerJsSignaling.decode('{"payload":1}').is_empty():
+		return "格式不對的訊息應該忽略"
+	# 伺服器訊息 → 訊號
+	var s := PeerJsSignaling.new()
+	var log: Array[String] = []
+	s.opened.connect(func() -> void: log.append("opened"))
+	s.id_taken.connect(func() -> void: log.append("taken"))
+	s.expired.connect(func(dst: String) -> void: log.append("expired:" + dst))
+	s.failed.connect(func(reason: String) -> void: log.append("failed"))
+	s.message_received.connect(func(type: String, src: String, payload: Dictionary) -> void: log.append("%s:%s:%s" % [type, src, payload.get("mid", "")]))
+	for text in ['{"type":"OPEN"}', '{"type":"CANDIDATE","src":"h","payload":{"mid":"0","index":0,"sdp":"c"}}',
+			'{"type":"EXPIRE","src":"cubeborn-mp-ZZZZ"}', '{"type":"HEARTBEAT"}', '{"type":"ID-TAKEN","payload":{"msg":"ID is taken"}}',
+			'{"type":"ERROR","payload":{"msg":"x"}}']:
+		s._handle(PeerJsSignaling.decode(text))
+	var want: Array[String] = ["opened", "CANDIDATE:h:0", "expired:cubeborn-mp-ZZZZ", "taken", "failed"]
+	if log != want:
+		return "伺服器訊息對應的訊號 %s，預期 %s" % [log, want]
+	if NetSession.uses_webrtc():
+		return "桌面版應該用 ENet（IP），不是 WebRTC"
+	return ""
+
+
 # 快照大小（v0.35.0，網頁連線前置）：地圖 A + 怪群（約 170 隻）、4 位玩家分散；一般情境另外把 30 隻怪圍在 P2 身邊
 # 每份快照（每位客戶端各一份）序列化後的位元組數要 ≤ SNAPSHOT_MAX_BYTES（WebRTC 單則訊息約 16 KB 的安全上限留 4 倍空間）
 const SNAPSHOT_MAX_BYTES := 4096

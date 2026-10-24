@@ -244,7 +244,8 @@ func _connect_net() -> void:
 		if net_client != null:
 			net_client.receive_events(run, tick, events))
 	net.peer_left.connect(_on_peer_left)
-	net.connection_failed.connect(func() -> void: leave_net("連不上房主（IP 或防火牆？）"))
+	net.connection_failed.connect(func() -> void:
+		leave_net(net.last_error if net.last_error != "" else ("連不上房主" if NetSession.uses_webrtc() else "連不上房主（IP 或防火牆？）")))
 	net.disconnected.connect(func() -> void: leave_net("和房主斷線了"))
 	hud.net_panel.host_pressed.connect(start_hosting)
 	hud.net_panel.join_pressed.connect(start_joining)
@@ -252,8 +253,9 @@ func _connect_net() -> void:
 	hud.net_panel.leave_pressed.connect(leave_net.bind(""))
 
 
+# 網頁版用房號（WebRTC + 配對伺服器），桌面版用 IP（ENet）
 func start_hosting() -> void:
-	var err := net.host(_net_port)
+	var err := net.host_web() if NetSession.uses_webrtc() else net.host(_net_port)
 	if err != OK:
 		_net_message = "開房失敗（連接埠 %d 被占用？錯誤 %d）" % [_net_port, err]
 		_refresh_net_panel()
@@ -268,7 +270,7 @@ func start_hosting() -> void:
 func start_joining(address: String) -> void:
 	if address == "":
 		return
-	var err := net.join(address, _net_port)
+	var err := net.join_web(address) if NetSession.uses_webrtc() else net.join(address, _net_port)
 	if err != OK:
 		_net_message = "加入失敗（錯誤 %d）" % err
 		_refresh_net_panel()
@@ -355,14 +357,19 @@ func _open_menu(open: bool) -> void:
 func _refresh_net_panel() -> void:
 	var state := &"single"
 	if mode == Mode.HOST:
-		state = &"lobby_host" if is_in_lobby else &"playing"
+		if not net.is_active():
+			state = &"connecting"   # 網頁版：還在向配對伺服器註冊房號
+		else:
+			state = &"lobby_host" if is_in_lobby else &"playing"
 	elif mode == Mode.CLIENT:
-		if not net.is_active() or net.local_peer_id() == World.HOST_PEER_ID:
+		# 網頁版的 WebRTC 在連上前就有自己的 peer id，所以也看「收到房主的大廳名單了沒」
+		if not net.is_active() or net.local_peer_id() == World.HOST_PEER_ID or net.lobby_peers.is_empty():
 			state = &"connecting"
 		else:
 			state = &"lobby_client" if is_in_lobby else &"playing"
 	var peers: Array = net.lobby_peers.duplicate()
 	peers.sort()
+	hud.net_panel.room_code = net.room_code
 	hud.net_panel.show_state(state, peers, net.local_peer_id(), _net_message)
 
 

@@ -5,9 +5,9 @@
 ![遊戲畫面](docs/images/screenshot.jpg)
 
 ## 試玩
-- **網頁版（單人）**：https://alex86106pig.github.io/Cubeborn/ ，用電腦的瀏覽器開，第一次載入要等一下。
-- **Windows 版（可以連線）**：到 [Releases](https://github.com/alex86106pig/Cubeborn/releases) 下載最新的 `Cubeborn-vX.Y.Z-windows.zip`，解壓後執行 `Cubeborn.exe`。
-- **和朋友連線**：見 [連線試玩說明](docs/連線試玩.md)（虛擬區網、開房、加入、防火牆）。
+- **網頁版**：https://alex86106pig.github.io/Cubeborn/ ，用電腦的瀏覽器開，第一次載入要等一下。可以多人連線：Esc →「開房（網路）」，其他人輸入 4 碼房號加入。
+- **Windows 版**：到 [Releases](https://github.com/alex86106pig/Cubeborn/releases) 下載最新的 `Cubeborn-vX.Y.Z-windows.zip`，解壓後執行 `Cubeborn.exe`。
+- **和朋友連線**：見 [連線試玩說明](docs/連線試玩.md)（網頁版房號，或 Windows 版 + 虛擬區網）。網頁版和 Windows 版不能混著玩。
 
 ## 操作
 | 按鍵 | 動作 |
