@@ -2,6 +2,24 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.34.2] - 2026-10-24
+
+README、網頁版字型瘦身、Actions 升版（程式碼審查建議第 6 則）。遊戲本身沒有改。
+
+### 新增
+- `README.md`：試玩連結（網頁版、Windows 版 Releases、連線說明）、操作表、試玩回報方式、版權說明；封面 `docs/images/screenshot.jpg`（離屏截圖，裁掉左上角的除錯血量，1280×720、87 KB）。
+- `tools/subset_font.py`：CI 匯出網頁版前把 `NotoSansTC-VF.ttf` 只留 `godot/` 程式裡出現過的字（+ ASCII、全形標點，保留粗細軸），repo 照常放完整字型；接著的 `check.gd` 字型檢查會擋下缺字。Windows 版用完整字型。
+
+### 修改
+- GitHub Actions 升版（Node 20 淘汰警告）：checkout v4 → v7、cache v4 → v6、upload-pages-artifact v3 → v5、deploy-pages v4 → v5。
+
+### 決定不做
+- LICENSE：要上 Steam，維持保留所有權利（README 寫明）。
+- 背景音樂改 OGG：兩首 WAV 只有 2.1 MB，省得少，還可能影響循環接點。
+
+### 未驗證
+- 字型子集化與新版 Actions 只能推送後看 Actions 的紀錄（本機沒有 Python）；子集後的實際大小也要看紀錄。
+
 ## [0.34.1] - 2026-10-24
 
 Windows 版自動發布，讓不在同一個家裡的朋友也能連線試玩（程式碼審查建議第 5 則：網頁版連線先不做）。遊戲本身沒有改。

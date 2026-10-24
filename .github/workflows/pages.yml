@@ -1,4 +1,4 @@
-# 推送 main 後：下載 Godot 與匯出模板 → 跑自動檢查 → 匯出網頁版 → 加上舊網頁版（/legacy/）→ 發布到 GitHub Pages
+# 推送 main 後：下載 Godot 與匯出模板 → 字型子集化 → 跑自動檢查 → 匯出網頁版 → 加上舊網頁版（/legacy/）→ 發布到 GitHub Pages
 # repo 的 Settings → Pages → Source 必須設成「GitHub Actions」
 name: Deploy to GitHub Pages
 
@@ -23,11 +23,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Cache Godot and web export templates
         id: cache-godot
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/godot
@@ -46,6 +46,13 @@ jobs:
           unzip -q /tmp/templates.tpz -d /tmp/templates
           # 只留網頁版模板，快取比較小
           cp /tmp/templates/templates/version.txt /tmp/templates/templates/web_* "$templates/"
+
+      # 網頁版第一次載入要下載字型：只留用到的字（約 11 MB → 1 MB 以下）；接著的 check.gd 會檢查介面文字沒有缺字
+      - name: Subset font for web
+        run: |
+          python3 -m venv /tmp/fontenv
+          /tmp/fontenv/bin/pip install --quiet fonttools
+          /tmp/fontenv/bin/python tools/subset_font.py
 
       - name: Import project and run checks
         run: |
@@ -66,7 +73,7 @@ jobs:
           cp -r legacy build/web/legacy
           rm -rf build/web/legacy/node_modules
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: build/web
 
@@ -78,4 +85,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
