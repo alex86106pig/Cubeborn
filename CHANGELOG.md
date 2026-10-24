@@ -2,6 +2,21 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.36.1] - 2026-10-24
+
+修正網頁版加入時出現「和配對伺服器斷線」、連不上。
+
+### 修正
+- **原因**（在瀏覽器實測確認）：公開的 `0.peerjs.com` 會檢查 OFFER / ANSWER / CANDIDATE 的 payload 是不是 PeerJS 函式庫的格式（而且 SDP 要是真的），不是就直接關掉送出者的連線（code 1000）。開源版的 peerjs-server 沒有這個檢查，所以 v0.36.0 照開源版的行為設計時沒發現。
+  - 實測：真正的 PeerJS 1.5.4 送的 OFFER 可以通過；同樣格式但 SDP 換成假的、或改成我們自己的格式（`{type, sdp, peer_id}`），都會被斷線。連 LEAVE 也一樣。
+  - 用瀏覽器自己產生的真 SDP、包成 PeerJS 格式，用原始 WebSocket 送出：OFFER、CANDIDATE 都能通過，對方也收到了。
+- **修正**：payload 改照 PeerJS 1.5.4 的格式（`PeerJsSignaling.offer_payload / answer_payload / candidate_payload`）：
+  - OFFER：`{sdp: {sdp, type}, type: "data", connectionId, label, reliable, serialization, metadata: {peer_id}}`，我們的 peer id 放在 `metadata`。
+  - ANSWER：`{sdp: {sdp, type}, type: "data", connectionId}`。
+  - CANDIDATE：`{candidate: {candidate, sdpMid, sdpMLineIndex}, type: "data", connectionId}`。
+  - 同一條連線用同一個 `connectionId`（`dc_` + 10 碼）。
+- 檢查改成驗證 PeerJS 格式。v0.36.0 的檢查驗的是我們自己的格式，那個格式本身就會被公開伺服器拒絕，所以是測試錯，不是遊戲錯。
+
 ## [0.36.0] - 2026-10-24
 
 網頁版可以多人連線了（網頁連線第二階段，見 `docs/想法清單.md` #12）：輸入 4 碼房號就能和朋友在瀏覽器裡一起玩，不用下載、不用裝虛擬區網。

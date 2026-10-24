@@ -1,5 +1,7 @@
 # 網頁連線的配對（v0.36.0，想法清單 #12）：借 PeerJS 的免費公開配對伺服器（Config.NET.web_signal_url），只用來交換 WebRTC 的
-# OFFER / ANSWER / CANDIDATE；伺服器原樣轉送 payload，兩端都是本遊戲，不必相容 PeerJS 函式庫的資料格式。連上之後遊戲資料走 WebRTC 直連。
+# OFFER / ANSWER / CANDIDATE；連上之後遊戲資料走 WebRTC 直連。
+# v0.36.1：公開的 0.peerjs.com 會檢查 payload 是不是 PeerJS 函式庫的格式（含真的 SDP），不是就直接斷線（開源版伺服器沒有這個檢查），
+# 所以 payload 照 PeerJS 1.5.4 的樣子包（offer_payload / answer_payload / candidate_payload），我們自己的 peer id 放在 metadata。
 # 協定：WebSocket 連 <url>?key=&id=&token=&version= → 伺服器回 OPEN（註冊成功）/ ID-TAKEN / ERROR；
 # 送 {type, dst, payload}、收 {type, src, payload}；每 web_heartbeat 秒送 HEARTBEAT；對方不在線時伺服器回 EXPIRE
 # NetSession._process 每幀呼叫 poll()
@@ -38,6 +40,46 @@ static func random_room_code(rng: RandomNumberGenerator) -> String:
 
 static func host_id(room_code: String) -> String:
 	return Config.NET.web_id_prefix + room_code.to_upper()
+
+
+static func random_connection_id(rng: RandomNumberGenerator) -> String:
+	const CHARS := "abcdefghijklmnopqrstuvwxyz0123456789"
+	var out := "dc_"
+	for i in 10:
+		out += CHARS[rng.randi_range(0, CHARS.length() - 1)]
+	return out
+
+
+# PeerJS 1.5.4 的 payload 格式（伺服器會檢查）
+static func offer_payload(sdp: String, connection_id: String, peer_id: int) -> Dictionary:
+	return {"sdp": {"sdp": sdp, "type": "offer"}, "type": "data", "connectionId": connection_id, "metadata": {"peer_id": peer_id},
+		"label": connection_id, "reliable": false, "serialization": "binary"}
+
+
+static func answer_payload(sdp: String, connection_id: String) -> Dictionary:
+	return {"sdp": {"sdp": sdp, "type": "answer"}, "type": "data", "connectionId": connection_id}
+
+
+static func candidate_payload(mid: String, index: int, candidate: String, connection_id: String) -> Dictionary:
+	return {"candidate": {"candidate": candidate, "sdpMid": mid, "sdpMLineIndex": index}, "type": "data", "connectionId": connection_id}
+
+
+static func sdp_of(payload: Dictionary) -> String:
+	var sdp: Variant = payload.get("sdp", {})
+	return str(sdp.get("sdp", "")) if sdp is Dictionary else ""
+
+
+static func peer_id_of(payload: Dictionary) -> int:
+	var meta: Variant = payload.get("metadata", {})
+	return int(meta.get("peer_id", 0)) if meta is Dictionary else 0
+
+
+# → [mid, index, candidate]
+static func candidate_of(payload: Dictionary) -> Array:
+	var c: Variant = payload.get("candidate", {})
+	if not c is Dictionary:
+		return ["", 0, ""]
+	return [str(c.get("sdpMid", "")), int(c.get("sdpMLineIndex", 0)), str(c.get("candidate", ""))]
 
 
 static func encode(type: String, dst: String, payload: Dictionary) -> String:

@@ -144,7 +144,7 @@ func _on_join_opened() -> void:
 		_fail("加入失敗（WebRTC 錯誤 %d）" % err)
 		return
 	multiplayer.multiplayer_peer = _rtc
-	var conn := _new_conn(PeerJsSignaling.host_id(room_code))
+	var conn := _new_conn(PeerJsSignaling.host_id(room_code), PeerJsSignaling.random_connection_id(_rng))
 	_rtc.add_peer(conn, World.HOST_PEER_ID)
 	conn.create_offer()
 
@@ -159,17 +159,21 @@ func _new_signal() -> PeerJsSignaling:
 	return s
 
 
-# 一條 WebRTC 連線：自己的 SDP 與候選位址都經配對伺服器送給對方
-func _new_conn(remote_id: String) -> WebRTCPeerConnection:
+# 一條 WebRTC 連線：自己的 SDP 與候選位址都經配對伺服器送給對方（PeerJS 格式，同一條連線用同一個 connection_id）
+func _new_conn(remote_id: String, connection_id: String) -> WebRTCPeerConnection:
 	var conn := WebRTCPeerConnection.new()
 	conn.initialize({"iceServers": Config.NET.ice_servers})
 	conn.session_description_created.connect(func(type: String, sdp: String) -> void:
 		conn.set_local_description(type, sdp)
+		if _signal == null:
+			return
+		if type == "offer":
+			_signal.send("OFFER", remote_id, PeerJsSignaling.offer_payload(sdp, connection_id, _web_peer_id))
+		else:
+			_signal.send("ANSWER", remote_id, PeerJsSignaling.answer_payload(sdp, connection_id)))
+	conn.ice_candidate_created.connect(func(mid: String, index: int, candidate: String) -> void:
 		if _signal != null:
-			_signal.send("OFFER" if type == "offer" else "ANSWER", remote_id, {"type": type, "sdp": sdp, "peer_id": _web_peer_id}))
-	conn.ice_candidate_created.connect(func(mid: String, index: int, sdp: String) -> void:
-		if _signal != null:
-			_signal.send("CANDIDATE", remote_id, {"mid": mid, "index": index, "sdp": sdp}))
+			_signal.send("CANDIDATE", remote_id, PeerJsSignaling.candidate_payload(mid, index, candidate, connection_id)))
 	_conns[remote_id] = conn
 	return conn
 
@@ -180,20 +184,21 @@ func _on_signal_message(type: String, src: String, payload: Dictionary) -> void:
 	match type:
 		"OFFER":
 			# 只有房主收 OFFER；開始了或滿了就不回應（對方逾時）
-			var pid := int(payload.get("peer_id", 0))
+			var pid := PeerJsSignaling.peer_id_of(payload)
 			if not is_host or is_started or lobby_peers.size() >= Config.NET.max_players or pid < 2 or _conns.has(src):
 				return
-			var conn := _new_conn(src)
+			var conn := _new_conn(src, str(payload.get("connectionId", "")))
 			_rtc.add_peer(conn, pid)
-			conn.set_remote_description("offer", str(payload.get("sdp", "")))
+			conn.set_remote_description("offer", PeerJsSignaling.sdp_of(payload))
 		"ANSWER":
 			var conn: WebRTCPeerConnection = _conns.get(src)
 			if conn != null:
-				conn.set_remote_description("answer", str(payload.get("sdp", "")))
+				conn.set_remote_description("answer", PeerJsSignaling.sdp_of(payload))
 		"CANDIDATE":
 			var conn: WebRTCPeerConnection = _conns.get(src)
 			if conn != null:
-				conn.add_ice_candidate(str(payload.get("mid", "")), int(payload.get("index", 0)), str(payload.get("sdp", "")))
+				var c := PeerJsSignaling.candidate_of(payload)
+				conn.add_ice_candidate(c[0], c[1], c[2])
 
 
 func _fail(reason: String) -> void:

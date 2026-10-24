@@ -405,12 +405,20 @@ static func check_web_signaling() -> String:
 		for ch in code:
 			if not chars.contains(ch) or ch in ["0", "O", "1", "I"]:
 				return "房號有不該出現的字：%s" % code
-	# 送出的訊息：{type, dst, payload}；伺服器轉來的：多一個 src，數字會變成浮點數
-	var sent: Variant = JSON.parse_string(PeerJsSignaling.encode("OFFER", "cubeborn-mp-ABCD", {"sdp": "v=0", "peer_id": 12345}))
-	if not sent is Dictionary or sent.type != "OFFER" or sent.dst != "cubeborn-mp-ABCD" or sent.payload.sdp != "v=0" or int(sent.payload.peer_id) != 12345:
-		return "送出的配對訊息格式錯誤：%s" % [sent]
-	var got := PeerJsSignaling.decode('{"type":"ANSWER","src":"cubeborn-mp-c-1","dst":"x","payload":{"type":"answer","sdp":"v=0 a"}}')
-	if got.type != "ANSWER" or got.src != "cubeborn-mp-c-1" or got.payload.sdp != "v=0 a":
+	# 送出的訊息：{type, dst, payload}，payload 照 PeerJS 1.5.4 的格式（公開伺服器會檢查，v0.36.1 在瀏覽器實測確認）
+	var sent: Variant = JSON.parse_string(PeerJsSignaling.encode("OFFER", "cubeborn-mp-ABCD", PeerJsSignaling.offer_payload("v=0 o", "dc_abc", 12345)))
+	if not sent is Dictionary or sent.type != "OFFER" or sent.dst != "cubeborn-mp-ABCD" or sent.payload.sdp.sdp != "v=0 o" or sent.payload.sdp.type != "offer" \
+			or sent.payload.type != "data" or sent.payload.connectionId != "dc_abc" or sent.payload.label != "dc_abc" or sent.payload.serialization != "binary" \
+			or PeerJsSignaling.peer_id_of(sent.payload) != 12345:
+		return "送出的 OFFER 不是 PeerJS 格式：%s" % [sent]
+	var cand: Dictionary = PeerJsSignaling.candidate_payload("0", 0, "candidate:1 1 udp 1 1.2.3.4 5 typ host", "dc_abc")
+	if cand.candidate.sdpMid != "0" or cand.candidate.sdpMLineIndex != 0 or cand.connectionId != "dc_abc" or cand.type != "data":
+		return "送出的 CANDIDATE 不是 PeerJS 格式：%s" % [cand]
+	if not PeerJsSignaling.random_connection_id(rng).begins_with("dc_"):
+		return "connectionId 應該是 dc_ 開頭"
+	# 伺服器轉來的：多一個 src，數字會變成浮點數
+	var got := PeerJsSignaling.decode('{"type":"ANSWER","src":"cubeborn-mp-c-1","dst":"x","payload":{"sdp":{"sdp":"v=0 a","type":"answer"},"type":"data","connectionId":"dc_abc"}}')
+	if got.type != "ANSWER" or got.src != "cubeborn-mp-c-1" or PeerJsSignaling.sdp_of(got.payload) != "v=0 a":
 		return "收到的配對訊息解析錯誤：%s" % [got]
 	if not PeerJsSignaling.decode("not json").is_empty() or not PeerJsSignaling.decode('{"payload":1}').is_empty():
 		return "格式不對的訊息應該忽略"
@@ -421,8 +429,8 @@ static func check_web_signaling() -> String:
 	s.id_taken.connect(func() -> void: log.append("taken"))
 	s.expired.connect(func(dst: String) -> void: log.append("expired:" + dst))
 	s.failed.connect(func(reason: String) -> void: log.append("failed"))
-	s.message_received.connect(func(type: String, src: String, payload: Dictionary) -> void: log.append("%s:%s:%s" % [type, src, payload.get("mid", "")]))
-	for text in ['{"type":"OPEN"}', '{"type":"CANDIDATE","src":"h","payload":{"mid":"0","index":0,"sdp":"c"}}',
+	s.message_received.connect(func(type: String, src: String, payload: Dictionary) -> void: log.append("%s:%s:%s" % [type, src, PeerJsSignaling.candidate_of(payload)[0]]))
+	for text in ['{"type":"OPEN"}', '{"type":"CANDIDATE","src":"h","payload":{"candidate":{"candidate":"c","sdpMid":"0","sdpMLineIndex":0},"type":"data","connectionId":"dc_x"}}',
 			'{"type":"EXPIRE","src":"cubeborn-mp-ZZZZ"}', '{"type":"HEARTBEAT"}', '{"type":"ID-TAKEN","payload":{"msg":"ID is taken"}}',
 			'{"type":"ERROR","payload":{"msg":"x"}}']:
 		s._handle(PeerJsSignaling.decode(text))
