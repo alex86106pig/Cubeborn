@@ -530,9 +530,16 @@ func warm_up(center: Vector3) -> void:
 		ents.append(e)
 	for tier: StringName in [&"small", &"big"]:
 		ents.append(Chest.new(tw, tier, c))
-	ents.append(tw.drop_item(&"loaded_dice", c))
-	var rarities: Array = ItemDefs.RARITIES.keys()
-	ents.append(tw.drop_weapon(WeaponDropDefs.make(tw.new_weapon_uid(), WeaponDefs.WEAPONS.keys()[0], rarities[mini(1, rarities.size() - 1)], tw.rng), c))
+	# 道具與武器每種稀有度都要：白色沒有發光，材質組合不同（v0.37.1：只預熱綠色時，第一把白色武器仍卡 70.8 ms）
+	var item_of := {}
+	for id: StringName in ItemDefs.ITEMS:
+		var rarity: StringName = ItemDefs.ITEMS[id].rarity
+		if not item_of.has(rarity) and not WeaponDefs.WEAPONS.has(id) and id != &"corpse":
+			item_of[rarity] = id
+	for rarity: StringName in ItemDefs.RARITIES:
+		if item_of.has(rarity):
+			ents.append(tw.drop_item(item_of[rarity], c))
+		ents.append(tw.drop_weapon(WeaponDropDefs.make(tw.new_weapon_uid(), WeaponDefs.WEAPONS.keys()[0], rarity, tw.rng), c))
 	for visual: StringName in [&"arrow", &"orb"]:
 		ents.append(Projectile.new(tw, {"owner": ents[0], "pos": c, "direction": Vector2.UP, "speed": 0.0, "range": 0.0,
 			"radius": 0.25, "color": Color.ORANGE, "visual": visual}))

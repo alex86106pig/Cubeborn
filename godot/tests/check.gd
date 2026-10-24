@@ -2440,8 +2440,12 @@ func _check_warm_up() -> String:
 		if not view.warm_keys.has(k):
 			err = "預熱缺少 %s（預熱了 %s）" % [k, view.warm_keys]
 			break
-	if err == "" and (not view.warm_keys.any(func(k: String) -> bool: return k.begins_with("item:")) or not view.warm_keys.any(func(k: String) -> bool: return k.begins_with("weapon:"))):
-		err = "預熱應包含地上的道具與武器：%s" % [view.warm_keys]
+	# 武器每種稀有度都要（白色沒有發光、材質組合不同；v0.37.1 網頁版實測：只預熱綠色時第一把白色武器仍卡 70.8 ms）
+	for rarity: StringName in ItemDefs.RARITIES:
+		if err == "" and not view.warm_keys.has("weapon:%s" % rarity):
+			err = "預熱缺少 %s 的武器：%s" % [rarity, view.warm_keys]
+	if err == "" and not view.warm_keys.any(func(k: String) -> bool: return k.begins_with("item:")):
+		err = "預熱應包含地上的道具：%s" % [view.warm_keys]
 	if err == "":
 		for node in view._warm_nodes:
 			if node.position.distance_to(center) > 4.0:
