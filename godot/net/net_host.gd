@@ -48,11 +48,21 @@ func take_cmds() -> Dictionary:
 	return out
 
 
-# 每位客戶端各一份（只差 ack）
+# 每位客戶端各一份：只送該玩家附近（NET.interest_radius）的實體，玩家與 Boss 一律送（v0.35.0，網頁 WebRTC 單則訊息有大小上限）
+# 每個實體只編碼一次，再依玩家挑選；附近以外的怪客戶端本來就看不到（視野 18），離開範圍就從鏡像移除、回來再建立
 func snapshots() -> Dictionary:
 	var entities := NetCodec.encode_entities(world)
 	var out := {}
 	for peer_id: int in world.players:
 		if peer_id != World.HOST_PEER_ID:
-			out[peer_id] = NetCodec.make_snapshot(world, entities, acks.get(peer_id, 0))
+			var viewer: Player = world.players[peer_id]
+			var picked := entities.filter(func(rec: Array) -> bool: return in_interest(rec[2], viewer))
+			out[peer_id] = NetCodec.make_snapshot(world, picked, acks.get(peer_id, 0), peer_id)
 	return out
+
+
+func in_interest(e: Entity, viewer: Player) -> bool:
+	if viewer == null or e is Player or e.id == world.boss_id:
+		return true
+	var r: float = Config.NET.interest_radius
+	return e.pos.distance_squared_to(viewer.pos) <= r * r

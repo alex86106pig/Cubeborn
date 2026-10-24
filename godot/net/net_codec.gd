@@ -23,11 +23,27 @@ const PLAYER_ANIM_DEFAULTS := {
 	"behavior": &"", "phase": &"", "k": 0.0, "swing_dir": 1, "is_finisher": false, "trail_color": null,
 	"airborne": false, "blocking": false, "parry": 0.0, "vz": 0.0, "revive": 0.0, "stunned": false,
 }
-const NUM_FIRST := E_X      # E_X ~ E_INVULN 是數值欄位，網路上放進一個 PackedFloat32Array
-const NUM_LAST := E_INVULN
+# 數值欄位 E_X ~ E_MAX_HP 用 float32；E_VX ~ E_INVULN 只給別人的實體外推與閃白，用 half（16 位元）
+# 二進位格式（v0.35.0）用的種類與常見名稱表：在表裡的送 1 byte 索引，不在表裡的照樣送字串（表只影響大小、不影響正確性）
+const KINDS: Array[StringName] = [&"player", &"grunt", &"archer", &"boss", &"ghost", &"chest", &"pickup", &"projectile"]
+const NAMES: Array[StringName] = [
+	&"idle", &"move", &"chase", &"kite", &"aim", &"attack", &"swing", &"cleave", &"slam", &"charge", &"rush", &"summon",
+	&"hurt", &"stagger", &"dead", &"dormant", &"spawn", &"climb", &"jump", &"stun", &"ready", &"special", &"roll", &"dig",
+	&"downed", &"revive", &"windup", &"strike", &"recover", &"block", &"parry",
+]
+enum { T_NULL, T_FALSE, T_TRUE, T_INT, T_FLOAT, T_NAME, T_SNAME, T_STRING, T_COLOR, T_VEC2, T_VARIANT }
+const NO_INDEX := 255
+const NORMAL_ENEMY_EXTRA := [false]   # 普通怪（非 Boss、沒有稀有度）的 extra：網路上不送
+# 實體旗標（encode_entity）：F_DEAD 已死；F_EXTRA 有 extra；其餘表示該欄位是預設值、整個不送
+const F_DEAD := 1
+const F_EXTRA := 2
+const F_FULL_HP := 4
+const F_STILL := 8
+const F_NO_TIMERS := 16
+const F_GROUND0 := 32
 
 
-# 實體的部分只編一次，再依玩家填上各自的 ack（房主最後套用的該玩家輸入編號）
+# 每個實體只編一次：[位元組（id、種類、數值、旗標、動畫）, extra（普通怪為 null）, 實體]；房主再依玩家挑選（NetHost.snapshots）
 static func encode_entities(world: World) -> Array:
 	var out := []
 	for e: Entity in world.entities.values():
@@ -36,33 +52,195 @@ static func encode_entities(world: World) -> Array:
 	return out
 
 
-static func make_snapshot(world: World, entities: Array, ack: int) -> Array:
+# entities：encode_entities 的紀錄（可以只挑一部分）；peer_id：收件人（別人的背包不送；0 = 全送）
+# 網路格式：[run, tick, ack, world, 所有實體接在一起的 PackedByteArray, 有 extra 的實體的 extra（照順序）]；收到後 decode_snapshot 展開成 E_* 陣列
+static func make_snapshot(world: World, entities: Array, ack: int, peer_id: int = 0) -> Array:
 	var s := world.stats
+	var bytes := PackedByteArray()
+	var extras := []
+	for rec: Array in entities:
+		bytes.append_array(rec[0])
+		var extra: Variant = rec[1]
+		if extra == null:
+			continue
+		if peer_id != 0 and rec[2] is Player and (rec[2] as Player).peer_id != peer_id:
+			extra = (extra as Array).duplicate()
+			extra[P_INV] = []   # 別人的背包客戶端用不到（只有自己的背包面板要看）
+		extras.append(extra)
 	return [world.run_id, world.tick, ack, [s.wave, s.kills, s.time, world.is_over, world.boss_id, world.is_defeated, world.gold,
-		world.floor_num, [world.event.state, world.event.progress, world.event.time, world.base_difficulty]], entities]
+		world.floor_num, [world.event.state, world.event.progress, world.event.time, world.base_difficulty]], bytes, extras]
 
 
-# 網路格式：[id, kind, 數值（PackedFloat32Array）, is_dead, 動畫（[索引或名稱, 值, …]）, extra]
+# 單一實體的網路紀錄：[位元組, extra（普通怪為 null）, 實體]
+# 位元組：id（u32）、種類（u8，不在表裡再接字串）、旗標（u8）、x、z、[高度]、朝向、最大生命、[生命]、[速度 x2（half）]、[閃白、無敵（half）]、動畫
+# 旗標標示的欄位等於預設值時整個不送（無損）：滿血、靜止、計時器都是 0、高度 0；大部分的怪每隻約 40 bytes
 static func encode_entity(e: Entity) -> Array:
 	var a := entity_fields(e)
-	var nums := PackedFloat32Array(a.slice(NUM_FIRST, NUM_LAST + 1))
-	var is_player: bool = a[E_KIND] == &"player"
-	return [a[E_ID], a[E_KIND], nums, a[E_DEAD], pack_anim(a[E_ANIM], PLAYER_ANIM_DEFAULTS if is_player else {}), a[E_EXTRA]]
+	var extra: Variant = a[E_EXTRA]
+	if extra == NORMAL_ENEMY_EXTRA:
+		extra = null
+	var flags := 0
+	if a[E_DEAD]:
+		flags |= F_DEAD
+	if extra != null:
+		flags |= F_EXTRA
+	if a[E_HP] == a[E_MAX_HP]:
+		flags |= F_FULL_HP
+	if a[E_VX] == 0.0 and a[E_VZ] == 0.0:
+		flags |= F_STILL
+	if a[E_FLASH] == 0.0 and a[E_INVULN] == 0.0:
+		flags |= F_NO_TIMERS
+	if a[E_H] == 0.0:
+		flags |= F_GROUND0
+	var b := StreamPeerBuffer.new()
+	b.put_u32(a[E_ID])
+	var ki := KINDS.find(a[E_KIND])
+	b.put_u8(ki if ki >= 0 else NO_INDEX)
+	if ki < 0:
+		b.put_utf8_string(String(a[E_KIND]))
+	b.put_u8(flags)
+	b.put_float(a[E_X])
+	b.put_float(a[E_Z])
+	if not flags & F_GROUND0:
+		b.put_float(a[E_H])
+	b.put_float(a[E_FACING])
+	b.put_float(a[E_MAX_HP])
+	if not flags & F_FULL_HP:
+		b.put_float(a[E_HP])
+	if not flags & F_STILL:
+		b.put_half(a[E_VX])
+		b.put_half(a[E_VZ])
+	if not flags & F_NO_TIMERS:
+		b.put_half(a[E_FLASH])
+		b.put_half(a[E_INVULN])
+	var pairs := pack_anim(a[E_ANIM], PLAYER_ANIM_DEFAULTS if a[E_KIND] == &"player" else {})
+	b.put_u8(pairs.size() / 2)
+	for i in range(0, pairs.size(), 2):
+		if pairs[i] is int:
+			b.put_u8(pairs[i])
+		else:
+			b.put_u8(NO_INDEX)
+			b.put_utf8_string(pairs[i])
+		_put_value(b, pairs[i + 1])
+	return [b.data_array, extra, e]
 
 
-static func decode_entity(w: Array) -> Array:
-	var a := [w[0], w[1]]
-	for v: float in w[2]:
-		a.append(v)
-	var is_player: bool = w[1] == &"player"
-	a.append_array([w[3], unpack_anim(w[4], PLAYER_ANIM_DEFAULTS if is_player else {}), w[5]])
-	return a
+# 單一實體：encode_entity 的紀錄 → E_* 陣列
+static func decode_entity(rec: Array) -> Array:
+	var b := StreamPeerBuffer.new()
+	b.data_array = rec[0]
+	return _read_entity(b, [rec[1]])
 
 
 # 收到的快照展開成 E_* 格式（原地修改並回傳）
 static func decode_snapshot(snap: Array) -> Array:
-	snap[S_ENTITIES] = (snap[S_ENTITIES] as Array).map(decode_entity)
+	if not snap[S_ENTITIES] is PackedByteArray:
+		return snap   # 已經展開過
+	var b := StreamPeerBuffer.new()
+	b.data_array = snap[S_ENTITIES]
+	var extras: Array = (snap[S_ENTITIES + 1] as Array).duplicate()
+	extras.reverse()   # 從尾端取（pop_back）比較快
+	var list := []
+	while b.get_position() < b.get_size():
+		list.append(_read_entity(b, extras))
+	snap.resize(S_ENTITIES + 1)
+	snap[S_ENTITIES] = list
 	return snap
+
+
+# extras：還沒用掉的 extra（倒序，有 F_EXTRA 旗標的實體從尾端取一個）
+static func _read_entity(b: StreamPeerBuffer, extras: Array) -> Array:
+	var a := [b.get_u32()]
+	var ki := b.get_u8()
+	var kind: StringName = KINDS[ki] if ki != NO_INDEX else StringName(b.get_utf8_string())
+	var flags := b.get_u8()
+	var x := b.get_float()
+	var z := b.get_float()
+	var h := 0.0 if flags & F_GROUND0 else b.get_float()
+	var facing := b.get_float()
+	var max_hp := b.get_float()
+	var hp := max_hp if flags & F_FULL_HP else b.get_float()
+	var vx := 0.0
+	var vz := 0.0
+	if not flags & F_STILL:
+		vx = b.get_half()
+		vz = b.get_half()
+	var flash := 0.0
+	var invuln := 0.0
+	if not flags & F_NO_TIMERS:
+		flash = b.get_half()
+		invuln = b.get_half()
+	a.append_array([kind, x, z, h, facing, hp, max_hp, vx, vz, flash, invuln, flags & F_DEAD != 0])
+	var pairs := []
+	for i in b.get_u8():
+		var k := b.get_u8()
+		pairs.append(k if k != NO_INDEX else b.get_utf8_string())
+		pairs.append(_get_value(b))
+	a.append(unpack_anim(pairs, PLAYER_ANIM_DEFAULTS if kind == &"player" else {}))
+	a.append(extras.pop_back() if flags & F_EXTRA else NORMAL_ENEMY_EXTRA.duplicate())
+	return a
+
+
+# 動畫欄位的值：型別一個 byte + 內容（浮點數用 double，補間與比對都和房主完全一樣）
+static func _put_value(b: StreamPeerBuffer, v: Variant) -> void:
+	match typeof(v):
+		TYPE_NIL:
+			b.put_u8(T_NULL)
+		TYPE_BOOL:
+			b.put_u8(T_TRUE if v else T_FALSE)
+		TYPE_INT:
+			b.put_u8(T_INT)
+			b.put_64(v)
+		TYPE_FLOAT:
+			b.put_u8(T_FLOAT)
+			b.put_double(v)
+		TYPE_STRING_NAME:
+			var i := NAMES.find(v)
+			if i >= 0:
+				b.put_u8(T_NAME)
+				b.put_u8(i)
+			else:
+				b.put_u8(T_SNAME)
+				b.put_utf8_string(String(v))
+		TYPE_STRING:
+			b.put_u8(T_STRING)
+			b.put_utf8_string(v)
+		TYPE_COLOR:
+			b.put_u8(T_COLOR)
+			for c: float in [v.r, v.g, v.b, v.a]:
+				b.put_float(c)
+		TYPE_VECTOR2:
+			b.put_u8(T_VEC2)
+			b.put_float(v.x)
+			b.put_float(v.y)
+		_:
+			b.put_u8(T_VARIANT)
+			b.put_var(v)
+
+
+static func _get_value(b: StreamPeerBuffer) -> Variant:
+	match b.get_u8():
+		T_FALSE:
+			return false
+		T_TRUE:
+			return true
+		T_INT:
+			return b.get_64()
+		T_FLOAT:
+			return b.get_double()
+		T_NAME:
+			return NAMES[b.get_u8()]
+		T_SNAME:
+			return StringName(b.get_utf8_string())
+		T_STRING:
+			return b.get_utf8_string()
+		T_COLOR:
+			return Color(b.get_float(), b.get_float(), b.get_float(), b.get_float())
+		T_VEC2:
+			return Vector2(b.get_float(), b.get_float())
+		T_VARIANT:
+			return b.get_var()
+	return null
 
 
 static func pack_anim(anim: Dictionary, defaults: Dictionary) -> Array:

@@ -57,9 +57,12 @@ class _Link:
 		if host_world.tick % Config.NET.snapshot_interval == 0 and not _lost():
 			_to_client.append([t + latency, &"snap", _wire(host.snapshots()[client.peer_id])])
 		if record_states:
+			# v0.35.0 起快照只帶客戶端玩家附近的實體：比對範圍同房主送出的範圍
 			var hp := {}
+			var viewer: Player = host_world.players.get(client.peer_id)
 			for e: Entity in host_world.enemies:
-				hp[e.id] = e.hp
+				if host.in_interest(e, viewer):
+					hp[e.id] = e.hp
 			host_states[host_world.tick] = {"kills": host_world.stats.kills, "wave": host_world.stats.wave, "hp": hp}
 		while not _to_client.is_empty() and _to_client[0][0] <= t:
 			var m: Array = _to_client.pop_front()
@@ -383,6 +386,55 @@ static func check_codec() -> String:
 	w.clear()
 	c.world.clear()
 	return err
+
+
+# 快照大小（v0.35.0，網頁連線前置）：地圖 A + 怪群（約 170 隻）、4 位玩家分散；一般情境另外把 30 隻怪圍在 P2 身邊
+# 每份快照（每位客戶端各一份）序列化後的位元組數要 ≤ SNAPSHOT_MAX_BYTES（WebRTC 單則訊息約 16 KB 的安全上限留 4 倍空間）
+const SNAPSHOT_MAX_BYTES := 4096
+const SNAPSHOT_CROWD_MAX_BYTES := 8192   # 最壞情況（身邊 120 隻）：上限的一半
+
+
+static func check_snapshot_size(feel: Array[String]) -> String:
+	var w := World.new(&"graveyard_a")
+	_made.append(w)
+	w.reset(11, [1, 2, 3, 4])
+	w.spawner.finished = true
+	var spots := [Vector2(0.3, 0.3), Vector2(-0.6, 0.5), Vector2(0.6, -0.6), Vector2(-0.5, -0.4)]
+	for i in 4:
+		var p: Player = w.players[i + 1]
+		p.pos = w.nav.nearest_walkable(spots[i] * w.half_extents)
+	for i in 30:
+		var a := TAU * i / 30.0
+		w.spawner.spawn_at(w, &"grunt" if i % 5 else &"archer", w.nav.nearest_walkable(w.players[2].pos + Vector2(sin(a), cos(a)) * (3.0 + i % 4)))
+	for i in 20:
+		w.step({}, DT)
+	var host := NetHost.new(w)
+	var snaps := host.snapshots()
+	var worst := 0
+	var parts := ""
+	for peer: int in [2, 3, 4]:
+		var bytes := var_to_bytes(snaps[peer]).size()
+		worst = maxi(worst, bytes)
+		parts += " P%d %d 實體 %d bytes" % [peer, _entity_count(snaps[peer]), bytes]
+	# 最壞情況：挖墳事件同時最多 120 隻（EventDefs），全部圍在 P2 身邊
+	for i in 90:
+		var a := TAU * i / 90.0
+		w.spawner.spawn_at(w, &"grunt" if i % 5 else &"archer", w.nav.nearest_walkable(w.players[2].pos + Vector2(sin(a), cos(a)) * (4.0 + i % 9)))
+	for i in 5:
+		w.step({}, DT)
+	var crowd: Array = host.snapshots()[2]
+	var crowd_bytes := var_to_bytes(crowd).size()
+	feel.append("快照大小：場上 %d 個實體（敵人 %d）；一般%s；P2 被 120 隻圍住時 %d 實體 %d bytes（v0.34 每份送全部、約 28 KB）" % [
+		w.entities.size(), w.enemies.size(), parts, _entity_count(crowd), crowd_bytes])
+	if worst > SNAPSHOT_MAX_BYTES:
+		return "最大一份快照 %d bytes，超過 %d：%s；被 120 隻圍住時 %d bytes" % [worst, SNAPSHOT_MAX_BYTES, parts, crowd_bytes]
+	if crowd_bytes > SNAPSHOT_CROWD_MAX_BYTES:
+		return "P2 被 120 隻圍住時快照 %d bytes，超過 %d" % [crowd_bytes, SNAPSHOT_CROWD_MAX_BYTES]
+	return ""
+
+
+static func _entity_count(snap: Array) -> int:
+	return (NetCodec.decode_snapshot(snap.duplicate(true))[NetCodec.S_ENTITIES] as Array).size()
 
 
 # C2：同一串輸入下，客戶端畫面套用的每一筆快照都和房主當時的狀態一致；事件順序也一樣

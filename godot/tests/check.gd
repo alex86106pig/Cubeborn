@@ -163,6 +163,7 @@ func _initialize() -> void:
 	_check("倒下（C4）：多人時生命歸零先倒地假死（不能動、不被打、不被追），10 秒沒人救才死亡；最後一人倒下全員死亡並 game:defeat；單機倒下直接死亡", NetChecks.check_downed)
 	_check("救援（C4）：範圍內按住 F 累積 5 秒救起、期間不能移動 / 攻擊 / 跳、倒數暫停；放開時進度每秒 −1、倒數照走；救起後 30% 血；範圍外不能救", NetChecks.check_revive)
 	_check("快照（C1）：房主的實體經過序列化後，客戶端建立同樣類別、位置、血量、武器的鏡像；動畫狀態相同時數值補間", NetChecks.check_codec)
+	_check("快照大小（v0.35.0）：地圖 A 怪群 + 4 人分散、P2 被 30 隻圍住，每份快照 ≤ 4 KB（網頁 WebRTC 單則約 16 KB）", NetChecks.check_snapshot_size.bind(_feel_lines))
 	_check("戰鬥同步（C2）：延遲 3 步、30 秒對打，客戶端套用的每筆快照擊殺 / 波次 / 敵人血量都和房主當時一致，事件順序一致", NetChecks.check_sync.bind(_feel_lines))
 	_check("延遲下的手感（C3）：延遲 100 ms + 掉包 10%，按下就在本機移動、修正誤差 < 0.25、停下後與房主差 < 0.01；別人的角色每步位移平順（±0.02）", NetChecks.check_prediction.bind(_feel_lines))
 	_check("連線寶箱與背包（D3）：客戶端按 F 開箱（房主扣錢 30 → 5、道具掉地上）、再按 F 撿起，拖曳搬動與丟掉；兩邊的寶箱、金錢、背包、生效道具一致", NetChecks.check_net_loot)

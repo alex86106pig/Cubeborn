@@ -297,7 +297,8 @@ static func check_net_rarity() -> String:
 	var w := _world()
 	var e := w.spawner.spawn_at(w, &"grunt", Vector2(0, 8))
 	Spawner.roll_rarity(w, e, MonsterRarityDefs.RARE)
-	var wire: Array = bytes_to_var(var_to_bytes(NetCodec.encode_entity(e)))
+	var rec := NetCodec.encode_entity(e)
+	var wire: Array = bytes_to_var(var_to_bytes([rec[0], rec[1]]))   # 紀錄的第 3 格是實體本身，不上網路
 	var cw := World.new(&"test_arena")
 	cw.is_authority = false
 	_made.append(cw)
@@ -307,6 +308,6 @@ static func check_net_rarity() -> String:
 	if absf(m.radius - e.radius) > EPS or absf(m.max_hp - e.max_hp) > EPS:
 		return "客戶端半徑 %.3f / 最大生命 %.1f，房主 %.3f / %.1f" % [m.radius, m.max_hp, e.radius, e.max_hp]
 	var plain := w.spawner.spawn_at(w, &"grunt", Vector2(3, 8))
-	if (NetCodec.encode_entity(plain)[5] as Array).size() != 1:
+	if NetCodec.encode_entity(plain)[1] != null:   # v0.35.0 起普通怪的 extra 整格不送（null）
 		return "普通怪的快照不該帶稀有度欄位"
 	return ""

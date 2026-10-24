@@ -146,6 +146,7 @@ const NET := {
 	"port": 24680,
 	"max_players": 4,
 	"snapshot_interval": 3,          # 房主每幾步送一次快照（3 = 每秒 20 次）
+	"interest_radius": 24.0,         # 每位客戶端只收這個距離內的實體（視野 18 + 緩衝 6；玩家與 Boss 一律送，v0.35.0）
 	"interp_delay_ticks": 6,         # 其他實體的畫面比最新快照晚幾步（6 = 100 ms），在兩次快照之間補間
 	"max_extrapolate_ticks": 6,      # 快照連續掉包、畫面時間追上最新快照時，最多沿速度往前推幾步（不然會停住再跳）
 	"input_redundancy": 4,           # 客戶端每步送出最近幾筆輸入（防掉包）
