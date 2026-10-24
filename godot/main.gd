@@ -15,7 +15,9 @@ enum Mode { SINGLE, HOST, CLIENT }
 
 const HUD_SCENE := preload("res://ui/hud.tscn")
 const PERF_WARMUP := 2.0   # --perf：開場幾秒不記錄（建模與第一次編譯著色器）
-const WEB_URL_ARGS: Array[String] = ["seconds", "horde", "perf", "elites", "player-hp"]   # 網頁版可以從網址帶的參數（url_query_args）
+const HITCH_MS := 33.0     # --perf：超過這麼久的幀算卡頓（30 FPS 以下）
+# 網頁版可以從網址帶的參數（url_query_args）；v0.36.3 加自動移動 / 攻擊，用來量「第一次出現」的卡頓
+const WEB_URL_ARGS: Array[String] = ["seconds", "horde", "perf", "elites", "player-hp", "auto-move", "auto-move-seconds", "auto-attack"]
 
 var mode := Mode.SINGLE
 var world := World.new()      # 單機 / 房主：權威的 World；客戶端：net_client.world（快照的鏡像）
@@ -52,6 +54,8 @@ var _arg_host := false
 var _arg_join := ""
 var _menu_flow := false
 var _start_pos := Vector2.INF
+var _prev_first: Array[String] = []   # --perf：前一幀第一次畫出來的東西
+var _hitches: Array[float] = []       # --perf：超過 HITCH_MS 的幀（毫秒）
 var _net_port: int = Config.NET.port
 var _autostart_players := 0
 # 效能量測（D5）：--horde=N 開場在玩家周圍生 N 隻醒著的小怪；--perf 關垂直同步、2 秒後開始記錄幀時間，結束時印出
@@ -438,9 +442,16 @@ func _client_physics() -> void:
 
 
 func _process(delta: float) -> void:
+	if _perf:
+		_log_hitch(delta)
 	var alpha := Engine.get_physics_interpolation_fraction() if _stepped_this_tick else 1.0
 	var t0 := Time.get_ticks_usec()
 	world_view.sync(world, alpha, delta)
+	if _perf:
+		# 這一幀第一次畫的東西，成本（編譯著色器、產生字形）會算在下一幀的 delta 裡
+		_prev_first = world_view.first_seen + world_view.effects.first_seen
+	world_view.first_seen.clear()
+	world_view.effects.first_seen.clear()
 	if _perf and _elapsed >= PERF_WARMUP:
 		_perf_sync_usec += Time.get_ticks_usec() - t0
 		_perf_syncs += 1
@@ -448,6 +459,15 @@ func _process(delta: float) -> void:
 	world_view.profile = _perf and _elapsed >= PERF_WARMUP
 	camera_rig.follow(_player_view_position(alpha), delta)
 	_check_auto_quit(delta)
+
+
+# --perf 的卡頓紀錄（v0.36.3）：超過 HITCH_MS 的幀印出來，附上前一幀第一次畫出來的東西（模型種類、特效）
+func _log_hitch(delta: float) -> void:
+	var ms := delta * 1000.0
+	if ms < HITCH_MS or _elapsed <= 0.0:
+		return
+	_hitches.append(ms)
+	print("perf hitch t=%.2f ms=%.1f first=%s" % [_elapsed, ms, ", ".join(_prev_first) if not _prev_first.is_empty() else "-"])
 
 
 func _player_view_position(alpha: float) -> Vector3:
@@ -578,6 +598,9 @@ func _print_perf() -> void:
 		_perf_step_usec / 1000.0 / maxi(1, _perf_steps), _perf_sync_usec / 1000.0 / maxi(1, _perf_syncs),
 		alive, world.enemies.size() - world_view.hidden_enemy_count(world),
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)])
+	var over50 := _hitches.filter(func(ms: float) -> bool: return ms >= 50.0).size()
+	var over100 := _hitches.filter(func(ms: float) -> bool: return ms >= 100.0).size()
+	print("perf hitches over33=%d over50=%d over100=%d worst_hitch_ms=%.1f" % [_hitches.size(), over50, over100, _hitches.max() if not _hitches.is_empty() else 0.0])
 	var parts := ""
 	for k: StringName in world_view.profile_usec:
 		parts += " %s=%.3f" % [k, world_view.profile_usec[k] / 1000.0 / maxi(1, _perf_syncs)]

@@ -64,6 +64,8 @@ var _los_blocked: Dictionary = {}      # entity id -> 視線被牆擋住（分�
 var _anim_pending: Dictionary = {}     # entity id -> 還沒拿去擺姿勢的秒數（敵人動畫每秒最多 60 次）
 var _grave: Node3D = null              # 挖墳點（D6）
 var _hitboxes_shown := false
+var first_seen: Array[String] = []     # 這一幀第一次被畫出來的模型種類（main.gd 的卡頓紀錄取走後清空，v0.36.3）
+var _seen_keys: Dictionary = {}
 var profile := false                   # main 的 --perf：各段累計耗時（微秒）放進 profile_usec
 var profile_usec: Dictionary = {}
 var _world: World
@@ -191,6 +193,10 @@ func sync(world: World, alpha: float, dt: float) -> void:
 		node.visible = not hidden_ids.has(id)
 		if not node.visible:
 			continue   # 看不到的不必擺位置與姿勢（D5 效能）
+		var key := _view_key(e)
+		if not _seen_keys.has(key):   # --perf 的卡頓紀錄：這種模型第一次被畫出來（v0.36.3）
+			_seen_keys[key] = true
+			first_seen.append(key)
 		if _frozen.has(id):
 			_frozen[id] -= dt
 			if _frozen[id] > 0.0:
@@ -497,6 +503,20 @@ func _create_strike(h: Dictionary, ground: float) -> MeshInstance3D:
 	m.albedo_color = Color(color, STRIKE_ALPHA)
 	mi.material_override = m
 	return mi
+
+
+# 卡頓紀錄用的模型種類：材質或光不同的分開算（稀有怪有光環與點光源、寶箱分大小、道具分武器與稀有度、投射物分外觀）
+static func _view_key(e: Entity) -> String:
+	if e is Enemy and (e as Enemy).rarity != MonsterRarityDefs.NORMAL:
+		return "%s:%s" % [e.kind, (e as Enemy).rarity]
+	if e is Chest:
+		return "chest:%s" % (e as Chest).tier
+	if e is ItemPickup:
+		var p := e as ItemPickup
+		return "%s:%s" % ["weapon" if p.is_weapon() else "item", p.rarity()]
+	if e is Projectile:
+		return "projectile:%s" % (e as Projectile).visual
+	return String(e.kind)
 
 
 func _create_view(e: Entity) -> Node3D:

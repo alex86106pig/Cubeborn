@@ -46,6 +46,8 @@ var world: World                  # 由 sync 設定；事件處理時用來查�
 var paused := false               # 遊戲暫停時粒子停住、不產生新的持續性粒子
 var spawned_total := 0            # 累計產生過的粒子數（檢查用）
 var hidden_ids: Dictionary = {}   # 本機玩家看不到的實體 id（WorldView 每幀更新）：不產生它們的持續性粒子（D2）
+var first_seen: Array[String] = []   # 這一幀第一次出現的特效種類（main.gd 的卡頓紀錄取走後清空）
+var _seen_fx: Dictionary = {}
 var _rng := RandomNumberGenerator.new()
 var _particles: Array[Dictionary] = []
 var _transients: Array[Dictionary] = []
@@ -177,6 +179,9 @@ func telegraph(pos: Vector3, radius: float, o: Dictionary = {}) -> void:
 func on_event(name: String, p: Dictionary) -> void:
 	var handler: StringName = HANDLERS.get(name, &"")
 	if handler != &"":
+		if not _seen_fx.has(name):   # --perf 的卡頓紀錄：這種特效第一次出現（v0.36.3）
+			_seen_fx[name] = true
+			first_seen.append(name)
 		call(handler, p)
 
 
