@@ -67,7 +67,7 @@ func _initialize() -> void:
 	_check("尋路不擦牆：直線離牆小於 0.6 就不算看得到；繞北門時被牆擋住而變慢的步數 < 30", _check_nav_clearance)
 	_check("角色視野：前方 ±60° / 18 單位看得到、65° 與 19 單位看不到、身邊 4 單位背後也看得到；牆擋視線（身邊也擋）、高台不擋；自己的投射物在背後也看得到、怪物的看不到", _check_vision_rules)
 	_check("視野畫面：背後的骷髏模型隱藏、前方的顯示；背後的特效事件不畫、前方的照畫；本機角色陣亡後全部看得到", _check_vision_view)
-	_check("開場預熱（v0.37.0）：每一種怪、魔法 / 稀有怪、玩家、兩種寶箱、道具、武器、兩種投射物都在鏡頭附近畫 3 幀後移除；預熱文字含道具名稱、怪物詞條與稀有怪名字", _check_warm_up)
+	_check("開場預熱（v0.37.0）：每一種怪、魔法 / 稀有怪、玩家、兩種寶箱、道具、武器、兩種投射物、每種稀有度的武器都在鏡頭附近畫 3 幀後移除；預熱文字含道具名稱、怪物詞條、稀有怪名字與介面字串的每個字", _check_warm_up)
 	_check("牆後剪影（v0.32.0）：角色材質寫模板值；玩家一直有剪影；怪物只有和相機之間有牆擋住時才有，離開牆邊就拿掉", _check_xray)
 	_check("背包（D3）：8 × 6；形狀旋轉 90° 後格子正確；超出邊界、重疊放不下；自動找第一個空位（不夠時會轉向）；搬動成功 / 失敗；裝滿後撿不起來並發出 inventory:full", _check_inventory)
 	_check("金錢與寶箱（D3）：地圖 A 有 4 小 1 大寶箱；骷髏 +5、Boss +50（共用）；錢不夠開不了（chest:denied）、夠了扣錢並在寶箱旁掉一個道具；開過不能再開", _check_gold_chests)
@@ -2426,6 +2426,18 @@ func _check_vision_rules() -> String:
 	return ""
 
 
+# 去掉一行 GDScript 的註解（字串外面的 # 之後）
+static func _strip_comment(line: String) -> String:
+	var in_string := false
+	for i in line.length():
+		var ch := line[i]
+		if ch == "\"" and (i == 0 or line[i - 1] != "\\"):
+			in_string = not in_string
+		elif ch == "#" and not in_string:
+			return line.substr(0, i)
+	return line
+
+
 func _check_warm_up() -> String:
 	var view := WorldView.new()
 	root.add_child(view)
@@ -2465,6 +2477,17 @@ func _check_warm_up() -> String:
 	for ch in sample:
 		if err == "" and ch.unicode_at(0) > 127 and not text.contains(ch):
 			err = "預熱文字缺「%s」" % ch
+	# 介面程式碼裡寫死的字串（橫幅、場上文字…）也要涵蓋（v0.37.2：第一把武器的名字「[F] 撿起」等沒預熱，網頁版仍卡 78 ms）
+	var re := RegEx.create_from_string("\"([^\"\\\\]*)\"")
+	var missing := {}
+	for path in ["res://ui/hud.gd", "res://ui/world_labels.gd", "res://ui/floaters.gd", "res://ui/net_panel.gd", "res://ui/player_tags.gd", "res://ui/inventory_panel.gd", "res://ui/run_log.gd"]:
+		for line in _read_text(path).split("\n"):
+			for m in re.search_all(_strip_comment(line)):
+				for ch in m.get_string(1):
+					if ch.unicode_at(0) > 127 and not text.contains(ch):
+						missing[ch] = true
+	if err == "" and not missing.is_empty():
+		err = "介面字串的字沒有預熱，加到 HUD.UI_CHARS：%s" % "".join(missing.keys())
 	view.queue_free()
 	return err
 

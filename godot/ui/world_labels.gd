@@ -10,9 +10,13 @@ const GRAVE_OFFSET := 1.8   # 挖墳點文字的高度（D6）
 const GHOST_COLOR := Color("8fd0ff")
 const EXIT_COLOR := Color("8fd0ff")
 
+const WARM_SIZES: Array[int] = [14, 15, 17, 18]   # 這裡用到的字級（_text 的 size）
+const OUTLINE := 4
+
 var world: World
 var camera: Camera3D
 var local_peer := World.HOST_PEER_ID
+var warm := ""   # 開場預熱（v0.37.2）：HUD 蓋著「準備中」時設定，用同樣的字級與描邊先畫一次，字形在這時候產生
 
 
 func _init() -> void:
@@ -25,6 +29,12 @@ func _process(_delta: float) -> void:
 
 
 func _draw() -> void:
+	if warm != "":
+		var font := get_theme_default_font()
+		for i in WARM_SIZES.size():
+			var at := Vector2(40, 60 + i * 120)
+			draw_multiline_string_outline(font, at, warm, HORIZONTAL_ALIGNMENT_LEFT, 1800, WARM_SIZES[i], -1, OUTLINE, Color(0, 0, 0, 0.02))
+			draw_multiline_string(font, at, warm, HORIZONTAL_ALIGNMENT_LEFT, 1800, WARM_SIZES[i], -1, Color(1, 1, 1, 0.02))
 	if world == null or camera == null:
 		return
 	var me: Player = world.players.get(local_peer)
@@ -98,5 +108,5 @@ func _text_at(font: Font, at: Vector3, text: String, color: Color, size := 17, s
 	if camera.is_position_behind(at):
 		return
 	var s := camera.unproject_position(at) + Vector2(-150, 0) + shift
-	draw_string_outline(font, s, text, HORIZONTAL_ALIGNMENT_CENTER, 300, size, 4, Color(0, 0, 0, 0.85))
+	draw_string_outline(font, s, text, HORIZONTAL_ALIGNMENT_CENTER, 300, size, OUTLINE, Color(0, 0, 0, 0.85))
 	draw_string(font, s, text, HORIZONTAL_ALIGNMENT_CENTER, 300, size, color)

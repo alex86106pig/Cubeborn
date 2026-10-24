@@ -15,6 +15,9 @@ const BANNER_TIME := 1.6
 const VIGNETTE_TIME := 0.45
 const GAME_OVER_DELAY := 0.7     # 死亡後幾秒顯示結算
 const BOSS_NAME := "亡骸騎士"     # darkFantasy.js 的 names.boss
+# 介面程式碼裡寫死的中文字（橫幅、浮動文字、場上文字、連線面板、遊玩紀錄…；資料表以外的）：開場預熱用（v0.37.2）
+# check.gd 會掃 ui/ 的字串，缺字就列出來，加到這裡
+const UI_CHARS := "　！（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體"
 
 const VIGNETTE_SHADER := """
 shader_type canvas_item;
@@ -228,6 +231,7 @@ func set_loading(on: bool) -> void:
 			box.add_child(l)
 		_loading.add_child(box)
 	_loading.visible = on
+	_world_labels.warm = warm_text() if on else ""   # 場上文字是描邊字，字形另外快取，用它自己的畫法預熱
 
 
 # 會在遊戲中途第一次出現的字：道具名稱與說明、稀有度、怪物詞條與名字、武器詞條、新手提示
@@ -235,6 +239,7 @@ static func warm_text() -> String:
 	var chars := {}
 	for script: Script in [ItemDefs, MonsterRarityDefs, WeaponDropDefs, HintDefs, StatDefs, LootDefs]:
 		_collect_chars(script.get_script_constant_map(), chars)
+	_collect_chars(UI_CHARS, chars)
 	var out := ""
 	for ch: String in chars:
 		out += ch
