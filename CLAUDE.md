@@ -65,6 +65,7 @@ Godot 4（GDScript）等距視角 Roguelike 動作遊戲（暫定名 Cubeborn）
 - repo 的 Settings → Pages → Source 必須是「GitHub Actions」（使用者設定），否則推送後網站會找不到首頁。
 - 網頁版用 Compatibility 渲染器、單執行緒（GitHub Pages 不能設 COOP / COEP 標頭）；介面文字只能用打包的字型（`godot/assets/fonts/`）。
 - 網站必須維持「純靜態檔案、相對路徑」，不能依賴本機伺服器。
+- 連線要用 Windows 版：推送 `v*` tag 後 `.github/workflows/release.yml` 自動建立 GitHub Release、附 zip（朋友的說明在 `docs/連線試玩.md`）。一次推送超過 3 個 tag 時 GitHub 不會觸發，要到 Actions 頁面手動跑。
 
 ### 1.8 Godot 開發與視窗
 - 用 **Godot 4.7.2 普通版（GDScript）**，專案在 `godot/`。效能不夠的部分（依 `docs/進度.md` 的壓力測試數字）才改用 C++（GDExtension）。

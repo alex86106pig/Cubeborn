@@ -2,6 +2,18 @@
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 
+## [0.34.1] - 2026-10-24
+
+Windows 版自動發布，讓不在同一個家裡的朋友也能連線試玩（程式碼審查建議第 5 則：網頁版連線先不做）。遊戲本身沒有改。
+
+### 新增
+- 匯出設定「Windows Desktop」：單一 `Cubeborn.exe`（pck 內嵌），排除 tests / stress_test。
+- `.github/workflows/release.yml`：推送 `v*` tag 後跑自動檢查、匯出 Windows 版、壓成 `Cubeborn-vX.Y.Z-windows.zip`（附連線說明），建立 GitHub Release，說明取 CHANGELOG 該版的段落。也可以在 Actions 頁面輸入 tag 手動跑。
+- `docs/連線試玩.md`：給朋友的步驟（下載、Radmin VPN / ZeroTier / Tailscale 虛擬區網、開房 / 加入、防火牆放行 UDP 24680、未簽章警告）。
+
+### 未驗證
+- 本機沒有匯出模板，Windows 匯出與 Release 只能等推送後看 Actions 的紀錄。
+
 ## [0.34.0] - 2026-10-24
 
 遊玩紀錄：試玩時不用手抄，結算畫面直接顯示這一局的數字（使用者依程式碼審查建議提出：確認「割草 + 只看得到前方 120°」會不會常被看不見的東西打死）。
