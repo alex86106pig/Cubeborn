@@ -191,6 +191,7 @@ Three.js 等距視角 Roguelike 動作遊戲原型（暫定名 Cubeborn）。
 | `godot/ui/stats_panel.gd` | 屬性面板（Tab 開關），有加成的數值以金色標示 |
 | `godot/ui/inventory_panel.gd` / `world_labels.gd` | 背包介面（Tab 開關、2 格裝備欄、拖曳、R 旋轉、拖到武器上合成、拖出去丟掉、道具與詞條說明）；寶箱價格與地上道具 / 武器名稱、[F] 提示、魔法 / 稀有怪的詞條與名字、挖墳進度與出口、冤魂 |
 | `godot/ui/net_panel.gd` / `player_tags.gd` | 選單裡的連線面板（開房、IP 加入、大廳名單、開始、離開連線）；多人時頭上的 P1~P4 名牌與倒地倒數 / 救援進度條 |
+| `godot/ui/run_log.gd` | 遊玩紀錄：本機玩家這一局的擊殺、受到的傷害（依攻擊者）、被看不見的攻擊、倒下被誰打倒，結算畫面顯示 |
 | `godot/ui/hints.gd` | 新手提示框：條件第一次成立時在技能欄上方跳出、每種只一次（記在 `user://settings.cfg`；暫停選單可重設） |
 | `godot/ui/skill_icons.gd` | 字型沒有的圖示（⚔ 🛡 ✦ ✺、翻滾 ⟳）改用向量圖畫 |
 | `godot/audio/sound.gd` | 音效與背景音樂：事件 → 音效（照網頁版）、多音播放、M 鍵靜音（存 `user://settings.cfg`）、一般 / Boss 曲切換與淡出 |

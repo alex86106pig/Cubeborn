@@ -109,6 +109,7 @@ func _initialize() -> void:
 	_check("疾跑：移速 6.5 × 1.6 = 10.4、持續 3 秒、CD 8 秒；使用道具動作 0.18 秒", _check_sprint_slot)
 	_check("數字鍵緩衝：攻擊中按 1 會在後搖取消並使用道具；空欄位不提示", _check_slot_buffer)
 	_check("HUD：能建立、處理各種事件、顯示波次 / 血量 / 結算文字、暫停畫面有「離開遊戲」", _check_hud)
+	_check("遊玩紀錄（v0.34.0）：自己的擊殺依種類、受到的傷害依攻擊者、被看不見的攻擊（背後）、倒下被誰打倒；結算畫面顯示且塞得進 1920×1080；重新開始清空", _check_run_log)
 	_check("屬性計算：同類相加（+8% ×2 = +16%）、暫時效果與冷卻縮減相乘（0.94 × 0.75 = 0.705）、取整、上下限、來源可移除", _check_stats_formula)
 	_check("護甲與爆擊：護甲 100 減傷 50%、護甲 8 減傷 7.4%；爆擊率 100% 時 ×1.5，爆擊率 0% 不消耗亂數", _check_stats_armor_crit)
 	_check("屬性接上遊戲：攻速 ×2 普攻時間減半、冷卻 ×0.5、最大生命 +20 時目前生命同步增加、每秒回血、除錯移速 +50% = 9.75", _check_stats_hooks)
@@ -1464,6 +1465,64 @@ func _check_hud() -> String:
 	hud._on_event("game:victory", {"stats": w.stats.duplicate()})
 	if not hud._game_over.visible or hud._game_over_title.text != "勝利！":
 		return "game:victory 應顯示勝利畫面"
+	hud.queue_free()
+	cam.queue_free()
+	return ""
+
+
+func _check_run_log() -> String:
+	var w := _new_world(5)
+	var cam := Camera3D.new()
+	root.add_child(cam)
+	var hud: Variant = load("res://ui/hud.tscn").instantiate()
+	hud.setup(w, cam)
+	root.add_child(hud)
+	var p := _player(w)
+	p.pos = Vector2.ZERO
+	p.facing = 0.0   # 面向 +Z：前方 8 單位看得到、背後 8 單位看不到（身邊一圈只有 4）
+	var front := _spawn(w, &"grunt", Vector2(0, 8))
+	var back := _spawn(w, &"archer", Vector2(0, -8))
+	w.events.clear()
+	Combat.apply_damage(w, front, p, {"damage": 10.0})
+	p.invuln_timer = 0.0
+	Combat.apply_damage(w, back, p, {"damage": 7.0})
+	p.invuln_timer = 0.0
+	Combat.apply_damage(w, p, front, {"damage": 9999.0})
+	p.hp = 1.0
+	Combat.apply_damage(w, back, p, {"damage": 7.0})   # 致命的一下：單機直接死亡
+	_feed_hud(hud, w.events)
+	var rl: RunLog = hud.run_log
+	var seen: int = rl.by_source.get(&"grunt", {}).get("damage", -1)
+	var unseen: Dictionary = rl.by_source.get(&"archer", {})
+	if rl.hits_taken != 3 or seen <= 0 or unseen.get("hits", 0) != 2 or unseen.get("unseen", 0) != 2:
+		return "受傷紀錄錯誤：%d 次、骷髏戰士 %d、骷髏弓手 %s" % [rl.hits_taken, seen, unseen]
+	if rl.unseen_hits != 2 or rl.damage_taken != seen + unseen.damage or rl.unseen_damage != unseen.damage:
+		return "看不見的攻擊應 2 次 / %d 傷害，實際 %d 次 / %d（總傷害 %d）" % [unseen.damage, rl.unseen_hits, rl.unseen_damage, rl.damage_taken]
+	if rl.kills != {&"grunt": 1}:
+		return "擊殺應只有骷髏戰士 1 隻：%s" % rl.kills
+	if rl.downs != [{"kind": &"archer", "unseen": true}]:
+		return "應記一次被看不見的骷髏弓手打倒：%s" % [rl.downs]
+	hud._on_event("game:defeat", {"stats": w.stats.duplicate()})
+	var text: String = hud._game_over_log.text
+	for want in ["你的擊殺 1：骷髏戰士 1", "被打中 3 次", "被看不見的攻擊打中 2 次", "骷髏弓手：", "（看不見 2 次）", "倒下 1 次：被 骷髏弓手（看不見） 打倒"]:
+		if not text.contains(want):
+			return "結算文字缺「%s」：\n%s" % [want, text]
+	# 最多行的情況（每種攻擊者都打過、倒下超過顯示上限）也要塞得進畫面
+	for kind: StringName in RunLog.NAMES:
+		rl.by_source[kind] = {"damage": 99999, "hits": 9999, "unseen": 9999}
+		rl.kills[kind] = 9999
+	for i in RunLog.MAX_DOWNS_SHOWN + 3:
+		rl.downs.append({"kind": &"projectile", "unseen": true})
+	hud._on_event("game:defeat", {"stats": w.stats.duplicate()})
+	var box: Control = hud._game_over_log.get_parent()
+	var need: Vector2 = box.get_combined_minimum_size()
+	var screen := Vector2(ProjectSettings.get_setting("display/window/size/viewport_width"), ProjectSettings.get_setting("display/window/size/viewport_height"))
+	if need.y <= 0.0 or need.x > screen.x or need.y > screen.y:
+		return "結算畫面需要 %s，超出 %s" % [need, screen]
+	print("    結算畫面最多行時需要 %.0f × %.0f（畫面 %.0f × %.0f）" % [need.x, need.y, screen.x, screen.y])
+	hud._on_event("game:restart", {})
+	if rl.hits_taken != 0 or not rl.kills.is_empty() or not rl.downs.is_empty():
+		return "game:restart 後遊玩紀錄應清空"
 	hud.queue_free()
 	cam.queue_free()
 	return ""

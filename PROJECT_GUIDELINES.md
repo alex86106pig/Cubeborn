@@ -265,10 +265,10 @@ export const SKILLS = {
 
 | 事件 | payload | 發出者 |
 |---|---|---|
-| `entity:damaged` | `{ target, amount, source, knockback, isCrit }`（Godot 版：`isCrit` 拆成 `is_heavy` 重擊顯示（第三段、盾反、爆炸）與 `is_crit` 屬性擲出的爆擊，見 15.11；另帶 `hit_stop` 命中定格秒數，見 15.3） | Combat |
+| `entity:damaged` | `{ target, amount, source, knockback, isCrit }`（Godot 版：`isCrit` 拆成 `is_heavy` 重擊顯示（第三段、盾反、爆炸）與 `is_crit` 屬性擲出的爆擊，見 15.11；另帶 `hit_stop` 命中定格秒數，見 15.3；目標是玩家時再帶 `source_kind`、`origin`、`lethal` 給遊玩紀錄，v0.34.0） | Combat |
 | `entity:healed` | `{ target, amount }` | skillBehaviors |
 | `player:blocked` | `{ player_id, perfect }`（Godot 版 v0.18.0：格擋擋下攻擊；perfect = 完美格擋，下一步盾反） | Player.try_block |
-| `entity:died` | `{ entity, source }` | Entity |
+| `entity:died` | `{ entity, source }`（Godot 版另帶 `kind`，v0.34.0 遊玩紀錄用） | Entity |
 | `player:died` | `{ player }`（Godot 版 v0.21.0 起只代表這位玩家真的死亡；輸掉一局改看 `game:defeat`） | Player |
 | `player:downed` | `{ player_id }`（僅 Godot 版 v0.21.0：多人時生命歸零先倒地假死，見 15.18） | Player |
 | `player:revived` | `{ player_id }`（僅 Godot 版 v0.21.0：被隊友救起） | Player.revive |

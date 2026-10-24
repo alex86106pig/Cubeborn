@@ -54,6 +54,8 @@ var _vignette := ColorRect.new()
 var _game_over := ColorRect.new()
 var _game_over_title := UiKit.label("", 56, UiKit.ALERT, 3)
 var _game_over_stats := UiKit.label("", 20)
+var _game_over_log := UiKit.label("", 18, Color(1, 1, 1, 0.85))   # 遊玩紀錄（v0.34.0）
+var run_log := RunLog.new()
 var _pause := ColorRect.new()
 var _pause_title := UiKit.label("已暫停", 56, Color.WHITE, 3)
 var _pause_hint := UiKit.label("按 Esc 繼續", 20)
@@ -184,7 +186,7 @@ func _init() -> void:
 	_banner.modulate.a = 0.0
 	root.add_child(_banner)
 
-	_build_overlay(_game_over, Color(40 / 255.0, 0, 0, 0.55), [_game_over_title, _game_over_stats, _pulse(UiKit.label("按 R 重新開始", 20))])
+	_build_overlay(_game_over, Color(40 / 255.0, 0, 0, 0.55), [_game_over_title, _game_over_stats, _game_over_log, _pulse(UiKit.label("按 R 重新開始", 20))])
 	root.add_child(_game_over)
 	var pause_controls := UiKit.label(CONTROLS_TEXT, 14, Color(1, 1, 1, 0.75))
 	# 離開遊戲按鈕：網頁版不顯示（瀏覽器不允許網頁自己關閉）
@@ -309,6 +311,10 @@ func _set_bar(bar: Dictionary, value: float, ghost: float) -> void:
 
 
 func _on_event(name: String, p: Dictionary) -> void:
+	var me := local_player()
+	if me != null:
+		run_log.me_id = me.id
+	run_log.on_event(world, name, p)
 	match name:
 		"entity:damaged":
 			var target: Entity = world.entities.get(p.target_id) if world else null
@@ -422,6 +428,7 @@ func _set_game_over(title: String, stats: String, victory: bool) -> void:
 	_game_over_title.text = title
 	_game_over_title.add_theme_color_override(&"font_color", UiKit.GOLD if victory else UiKit.ALERT)
 	_game_over_stats.text = stats
+	_game_over_log.text = run_log.summary_text()
 	_game_over.color = Color(40 / 255.0, 30 / 255.0, 0, 0.5) if victory else Color(40 / 255.0, 0, 0, 0.55)
 
 

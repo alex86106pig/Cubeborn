@@ -120,7 +120,7 @@ func die(source_id: int = 0) -> void:
 		return
 	is_dead = true
 	velocity = Vector2.ZERO
-	world.emit_event("entity:died", {"entity_id": id, "source_id": source_id})
+	world.emit_event("entity:died", {"entity_id": id, "source_id": source_id, "kind": kind})   # kind：遊玩紀錄算擊殺種類（v0.34.0）
 	_on_died(source_id)
 
 

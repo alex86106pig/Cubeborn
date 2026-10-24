@@ -80,11 +80,18 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 		(source as Enemy).on_dealt_damage(dealt)   # 吸血詞條（D5）
 
 	# hit_stop 只放進事件：畫面層讓攻擊者與目標的模型定格這麼久（v0.18.3 起模擬時間不再放慢，多人時不影響其他人）
-	world.emit_event("entity:damaged", {
+	var ev := {
 		"target_id": target.id, "amount": dealt, "source_id": source.id,
 		"knockback": knockback, "is_heavy": hit.get("is_heavy", false), "is_crit": is_crit,
 		"hit_stop": hit.get("hit_stop", 0.0), "color": hit.get("color", Color.WHITE),
-	})
+	}
+	if target is Player:
+		# 遊玩紀錄（ui/run_log.gd，v0.34.0）：攻擊者可能這一步就消失（射手死了、投射物撞到就移除），種類與位置直接帶在事件裡；
+		# lethal：這一下讓玩家倒下 / 死亡（倒下的事件比這個事件早發出）
+		ev["source_kind"] = source.kind
+		ev["origin"] = origin
+		ev["lethal"] = target.hp <= 0.0
+	world.emit_event("entity:damaged", ev)
 	var shake: float = hit.get("shake", 0.0)
 	if shake > 0.0 and should_shake(source):
 		world.emit_event("camera:shake", {"amount": shake, "duration": Config.COMBAT.hit_shake_duration})
