@@ -41,12 +41,12 @@
 
 ```
 Cubeborn/
-├─ CLAUDE.md                  AI 最高指導原則（自動載入）、檔案地圖
+├─ CLAUDE.md                  AI 最高指導原則（自動載入）
 ├─ PROJECT_GUIDELINES.md      本文件
 ├─ CHANGELOG.md               版本紀錄
 ├─ check.js                   自動檢查（資料完整性與核心機制）
 ├─ package.json               Node 設定（只用於檢查）
-├─ docs/                      進度.md（跨對話交接）、設計方向.md（設計目標）、新電腦設定.md
+├─ docs/                      進度.md（跨對話交接）、設計方向.md（設計目標）、檔案地圖.md、新電腦設定.md
 ├─ index.html                 遊戲頁面、importmap、HUD 容器
 ├─ preview.html               模型檢視頁（並排展示四個角色，可拖曳旋轉）
 ├─ css/style.css              HUD 與頁面樣式
@@ -104,7 +104,7 @@ Cubeborn/
 ```
 
 規則：
-- 新增、刪除、搬移檔案時，同步更新本節與 `CLAUDE.md` 第 4 節的檔案地圖。
+- 新增、刪除、搬移檔案時，同步更新本節與 `docs/檔案地圖.md`。
 - **一個檔案一個主要職責**，單檔超過約 300 行就該考慮拆分。
 - `core/` 不得 import 任何其他目錄（依賴只能由上往下：內容 → core）。`src/Game.js` 是唯一的組合根，負責建立並串接所有系統。
 - 模組之間優先透過 **建構時注入**（傳入 `game`）或 **EventBus** 溝通，禁止使用全域變數（除錯用的 `window.__game` 例外）。
@@ -480,7 +480,7 @@ godot/
 └─ stress_test/               效能壓力測試（保留作為效能基準）
 ```
 - 依賴方向：`core` ← `defs` ← `sim` ← `view` / `ui` / `audio` / `net` ← `main`。`sim` 不得引用 `view`、`ui`、`audio`、`input`、`net`。
-- 單檔約 300 行就考慮拆分；新增、刪除、搬移檔案時同步更新本節與 `CLAUDE.md` 檔案地圖。
+- 單檔約 300 行就考慮拆分；新增、刪除、搬移檔案時同步更新本節與 `docs/檔案地圖.md`。
 - 網頁版檔案對應：`Game.js → main.gd + sim/world.gd`、`Input.js → input/`、`Renderer.js → view/camera_rig.gd`、`render/rig.js → view/rig.gd + part_kit.gd`、`*Defs.js → defs/`、`EventBus.js → GameEvents autoload`、`HUD.js → ui/`、`Sound.js → audio/ + tools/bake_sfx.gd`，其餘同名改 snake_case。
 
 ### 15.9 命名與程式風格（GDScript）
