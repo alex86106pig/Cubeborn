@@ -72,6 +72,8 @@ func show_state(mode: StringName, peers: Array, local_peer: int, message: String
 		&"playing":
 			_status.text = "連線中（%d 人）：%s" % [peers.size(), names]
 	_connect_row.visible = mode == &"single"
+	if not _connect_row.visible and _address.has_focus():
+		_address.release_focus()   # 打完房號 / IP 按加入後輸入框還有焦點的話，is_typing() 會一直擋住遊戲輸入
 	_start_button.visible = mode == &"lobby_host"
 	_leave_button.visible = mode != &"single"
 

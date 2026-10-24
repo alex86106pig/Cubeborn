@@ -50,6 +50,8 @@ var _no_spawn := false
 var _debug_item_index := 0
 var _arg_host := false
 var _arg_join := ""
+var _menu_flow := false
+var _start_pos := Vector2.INF
 var _net_port: int = Config.NET.port
 var _autostart_players := 0
 # 效能量測（D5）：--horde=N 開場在玩家周圍生 N 隻醒著的小怪；--perf 關垂直同步、2 秒後開始記錄幀時間，結束時印出
@@ -93,6 +95,8 @@ func _ready() -> void:
 	_emit_muted()
 	GameEvents.event_emitted.connect(_on_event)
 	restart()
+	if _menu_flow and (_arg_host or _arg_join != ""):
+		set_paused(true)   # --menu-flow：照玩家的操作順序，先在單機按 Esc 暫停，再從選單開房 / 加入（v0.36.2）
 	if _arg_host:
 		start_hosting()
 	elif _arg_join != "":
@@ -144,6 +148,8 @@ func _parse_args() -> void:
 			_arg_host = true
 		elif arg.begins_with("--join="):
 			_arg_join = value
+		elif arg == "--menu-flow":
+			_menu_flow = true
 		elif arg.begins_with("--net-port="):
 			_net_port = value.to_int()
 		elif arg.begins_with("--net-autostart="):
@@ -255,6 +261,7 @@ func _connect_net() -> void:
 
 # 網頁版用房號（WebRTC + 配對伺服器），桌面版用 IP（ENet）
 func start_hosting() -> void:
+	set_paused(false)   # 從單機的暫停選單開房：連線時遊戲不會暫停（v0.36.2 修正）
 	var err := net.host_web() if NetSession.uses_webrtc() else net.host(_net_port)
 	if err != OK:
 		_net_message = "開房失敗（連接埠 %d 被占用？錯誤 %d）" % [_net_port, err]
@@ -270,6 +277,8 @@ func start_hosting() -> void:
 func start_joining(address: String) -> void:
 	if address == "":
 		return
+	# 從單機的暫停選單加入：先解除暫停，不然連線後一直停在暫停（不收輸入、特效凍住；v0.36.2 修正）
+	set_paused(false)
 	var err := net.join_web(address) if NetSession.uses_webrtc() else net.join(address, _net_port)
 	if err != OK:
 		_net_message = "加入失敗（錯誤 %d）" % err
@@ -293,6 +302,7 @@ func start_net_game() -> void:
 
 
 func _on_game_started(_peers: Array) -> void:
+	set_paused(false)
 	_local_peer = net.local_peer_id()
 	net_client = NetClient.new(_local_peer)
 	_use_world(net_client.world)
@@ -590,6 +600,9 @@ func _check_auto_quit(delta: float) -> void:
 			return
 	else:
 		_elapsed += delta
+		var me := local_player()
+		if _start_pos == Vector2.INF and me != null:
+			_start_pos = me.pos   # 開始遊戲後自己角色的第一個位置（結束時印出移動了多遠）
 	if _auto_move_seconds > 0.0 and _elapsed >= _auto_move_seconds:
 		input_collector.auto_move = Vector2.ZERO
 	if _elapsed < _run_seconds and _lobby_elapsed < _run_seconds:
@@ -608,6 +621,9 @@ func _check_auto_quit(delta: float) -> void:
 		var p: Player = world.players[peer_id]
 		line += " %d=(%.3f,%.3f)" % [peer_id, p.pos.x, p.pos.y]
 	print(line)
+	var me := local_player()
+	var moved := me.pos.distance_to(_start_pos) if me != null and _start_pos != Vector2.INF else -1.0
+	print("state paused=%d input=%d effects_paused=%d self_moved=%.2f" % [int(is_paused), int(input_collector.enabled), int(world_view.effects.paused), moved])
 	if net_client != null:
 		print("net corrections=%d max_error=%.4f" % [net_client.corrections, net_client.max_error])
 	var boss: Enemy = world.entities.get(world.boss_id)

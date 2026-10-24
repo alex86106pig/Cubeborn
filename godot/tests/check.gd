@@ -169,7 +169,7 @@ func _initialize() -> void:
 	_check("延遲下的手感（C3）：延遲 100 ms + 掉包 10%，按下就在本機移動、修正誤差 < 0.25、停下後與房主差 < 0.01；別人的角色每步位移平順（±0.02）", NetChecks.check_prediction.bind(_feel_lines))
 	_check("連線寶箱與背包（D3）：客戶端按 F 開箱（房主扣錢 30 → 5、道具掉地上）、再按 F 撿起，拖曳搬動與丟掉；兩邊的寶箱、金錢、背包、生效道具一致", NetChecks.check_net_loot)
 	_check("連線倒下與救援（C4）：客戶端跟著房主倒地、不能預測移動，被救起後站起來 30 血；客戶端按住 F 也能救起房主", NetChecks.check_net_downed)
-	_check("兩個程序連線（C1）：headless 開房 + 加入（ENet），各自移動 2 秒後停下，兩邊的玩家位置一致（< 0.01）", NetChecks.check_two_processes.bind(_feel_lines))
+	_check("兩個程序連線（C1）：headless 照玩家順序（單機按 Esc 暫停 → 從選單開房 / 加入，v0.36.2）連線（ENet），兩邊都沒停在暫停、收得到輸入、特效在走、自己的角色各移動約 13 單位，停下後兩邊的玩家位置一致（< 0.01）", NetChecks.check_two_processes.bind(_feel_lines))
 	print("\n手感量測（給 docs/手感對照.md）：\n    " + "\n    ".join(_feel_lines))
 	for w in _worlds:
 		w.clear()

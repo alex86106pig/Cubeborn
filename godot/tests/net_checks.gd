@@ -662,8 +662,9 @@ static func check_two_processes(feel: Array[String]) -> String:
 		DirAccess.remove_absolute(path)
 	var port := "--net-port=%d" % (Config.NET.port + 7)
 	var common := ["--headless", "--path", project]
-	var host_args := common + ["--log-file", logs[0], "--", "--host", port, "--net-autostart=2", "--no-spawn", "--auto-move=1,0", "--auto-move-seconds=2", "--seconds=5"]
-	var client_args := common + ["--log-file", logs[1], "--", "--join=127.0.0.1", port, "--no-spawn", "--auto-move=0,1", "--auto-move-seconds=2", "--seconds=5"]
+	# --menu-flow（v0.36.2）：照玩家的順序，先在單機按 Esc 暫停、再從選單開房 / 加入（之前加入後一直停在暫停，客戶端不能動）
+	var host_args := common + ["--log-file", logs[0], "--", "--menu-flow", "--host", port, "--net-autostart=2", "--no-spawn", "--auto-move=1,0", "--auto-move-seconds=2", "--seconds=5"]
+	var client_args := common + ["--log-file", logs[1], "--", "--menu-flow", "--join=127.0.0.1", port, "--no-spawn", "--auto-move=0,1", "--auto-move-seconds=2", "--seconds=5"]
 	var host_pid := OS.create_process(exe, host_args)
 	OS.delay_msec(500)
 	var client_pid := OS.create_process(exe, client_args)
@@ -675,14 +676,28 @@ static func check_two_processes(feel: Array[String]) -> String:
 		if OS.is_process_running(pid):
 			OS.kill(pid)
 	var lines := []
+	var states := []
 	for path: String in logs:
 		var f := FileAccess.open(path, FileAccess.READ)
 		var found := ""
+		var state := ""
 		if f != null:
 			for line in f.get_as_text().split("\n"):
 				if line.begins_with("players "):
 					found = line.strip_edges()
+				elif line.begins_with("state "):
+					state = line.strip_edges()
 		lines.append(found)
+		states.append(state)
+	# 兩邊都要：沒有停在暫停、有在收輸入、特效有在走、自己的角色真的動了（各自 auto-move 2 秒，約 13 單位）
+	for i in 2:
+		var who := "房主" if i == 0 else "客戶端"
+		var s: String = states[i]
+		if s == "" or not s.contains("paused=0 input=1 effects_paused=0"):
+			return "%s從選單開房 / 加入後應該能玩（沒有暫停、收輸入、特效在走）：%s" % [who, s]
+		var moved := s.get_slice("self_moved=", 1).to_float()
+		if moved < 5.0:
+			return "%s自己的角色應移動約 13 單位，實際 %.2f：%s" % [who, moved, s]
 	if lines[0] == "" or lines[1] == "":
 		return "沒有讀到兩邊的玩家位置（房主：%s；客戶端：%s）" % [lines[0], lines[1]]
 	var host_pos := _parse_players(lines[0])
@@ -695,7 +710,7 @@ static func check_two_processes(feel: Array[String]) -> String:
 			return "客戶端沒有玩家 %d" % peer
 		worst = maxf(worst, (host_pos[peer] as Vector2).distance_to(client_pos[peer]))
 	var moved := (host_pos.values()[0] as Vector2).length()
-	feel.append("C1 兩個程序：房主 %s；客戶端 %s；位置最大差 %.4f" % [lines[0], lines[1], worst])
+	feel.append("C1 兩個程序（照選單流程）：房主 %s；客戶端 %s；位置最大差 %.4f；%s / %s" % [lines[0], lines[1], worst, states[0], states[1]])
 	if moved < 5.0:
 		return "房主的角色應移動了約 13 單位（實際 %.2f），檢查才有意義" % moved
 	return "" if worst < 0.01 else "兩邊的玩家位置差 %.4f（應 < 0.01）" % worst
