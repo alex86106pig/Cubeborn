@@ -476,7 +476,7 @@ godot/
 ├─ ui/                        hud.tscn / hud.gd、skill_bar.gd、stats_panel.gd、floaters.gd、ui_kit.gd、net_panel.gd、player_tags.gd
 ├─ audio/                     sound.gd、sfx/*.wav、music/
 ├─ tools/                     synth.gd（離線合成）、bake_sfx.gd / bake_music.gd（headless 產生音效 / 背景音樂 WAV）
-├─ tests/                     check.gd（headless 自動檢查）、net_checks.gd（連線的檢查，check.gd 呼叫）、capture.tscn / capture.gd（離屏截圖）
+├─ tests/                     check.gd（headless 自動檢查的執行器）、check_kit.gd（共用工具）、*_checks.gd（依主題分檔的檢查）、capture.tscn / capture.gd（離屏截圖）
 └─ stress_test/               效能壓力測試（保留作為效能基準）
 ```
 - 依賴方向：`core` ← `defs` ← `sim` ← `view` / `ui` / `audio` / `net` ← `main`。`sim` 不得引用 `view`、`ui`、`audio`、`input`、`net`。
@@ -505,7 +505,11 @@ godot/
 ### 15.10 驗收
 - `tests/check.gd`（作用等同 `check.js`），在 `godot/` 內執行：`<Godot console 執行檔> --headless --path . -s res://tests/check.gd`，全部通過才算完成。網頁版已凍結，只有動到網頁版時才跑 `node check.js`。
 - 因為模擬層不依賴場景樹，檢查可以直接建立 `World`、餵假的 `InputCmd`、推進 N 步讀數值（例如移動 1 秒的距離、三段攻擊總時間、CD 是否到期）。
-- 搬移時對照網頁版：同樣輸入下的移速、攻擊時間、傷害、CD、波次數量要與網頁版一致，數字寫進回報。資料表由 `check.gd` 對 `tests/web_defs.json`（`tools/dump_web_defs.mjs` 匯出）逐欄比對；對照結果整理在 `docs/手感對照.md`。
+- 檢查分檔：`check.gd` 只放檢查清單（標題 + 函式），本體依主題放在 `core / player / combat / boss / map / loot / view / monster / event / net_checks.gd`，共用工具在 `check_kit.gd`（各檔 `extends CheckKit`）。新增檢查放進對應主題的檔案，再到 `check.gd` 加一行。
+- 檢查機制、不檢查數值快照（v0.37.3）：預期值從資料表（`Config`、`defs/`）讀或算出來，例如「三段傷害 = 資料的 damage、damage、damage × finisher_mul」，不寫死 12 / 12 / 22；標題寫規則（「持續 stagger_time」），不寫數字。這樣調數值不用改檢查，只有機制改了才要改。
+  - 例外：公式本身（護甲減傷曲線）、效能上限（零件數）、素材屬性（音樂長度）可以寫死數字，因為那就是要守住的規則。
+  - `monster / event / net_checks.gd` 還有寫死的數值，之後動到時順便改。
+- 網頁版對照（v0.37.3 退役）：搬移時曾用 `tests/web_defs.json` 逐欄比對，結果留在 `docs/手感對照.md`；Godot 版已照使用者決定改了很多數值，網頁版也已凍結，比對與匯出工具已移除。
 - 畫面用離屏截圖場景 `tests/capture.tscn` 驗證（用法與「開視窗前先問使用者」的規則見 `CLAUDE.md` 1.8），截圖存暫存資料夾，不進版控；手感與效能定案以使用者實際遊玩為準。
 - 版號必須三處一致（`CHANGELOG.md`、`godot/core/version.gd`、git tag）；遊戲畫面角落顯示版號。
 
@@ -545,7 +549,6 @@ godot/
 - 每次 `strike` 都記錄到 `world.hitboxes`（每步清空，只給畫面層 F2 畫形狀，不影響模擬）。
 - 骷髏戰士揮砍（使用者選「中等」）：中心距離 1.3 內且冷卻好時舉刀 0.5 秒（站定，前 50% 轉向、之後鎖定）→ 揮下 0.1 秒（前方 100°、距離 1.5 的扇形，傷害 12）→ 收招 0.5 秒；冷卻 1.2 秒從舉刀算。舉刀中被打進入受擊硬直，揮砍中斷。
 - 弓手與 Boss 拿掉碰撞傷害後不補新招（使用者決定）。
-- 網頁版對照：`check.gd` 的 `WEB_DIVERGENCE`（欄位）與 `WEB_DIVERGENCE_PATHS`（整段）列出刻意不同的地方與原因，其他欄位照常逐欄比對。
 
 ### 15.15 劍盾格擋與盾反（v0.18.0）
 - 使用者決定：劍盾右鍵從盾擊衝鋒改成格擋；按一下自動維持 3 秒；格擋時可以移動。其餘由 Claude 訂（數值在 `weapon_defs.gd` 的 `swordShield.special`）：

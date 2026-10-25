@@ -1,0 +1,740 @@
+# 畫面、介面與音效：視野、預熱、剪影、新手提示、HUD、結算、特效、字型、模型零件、音效與音樂
+# 由 tests/check.gd 呼叫；每個 check_* 回傳 "" = 通過，否則是失敗原因
+class_name ViewChecks
+extends CheckKit
+
+static func check_sim_cues() -> String:
+	var cues := _cue_names()
+	var re := RegEx.create_from_string("\"cue\": \"(\\w+)\"")
+	var count := 0
+	for path in _list_gd("res://sim"):
+		for m in re.search_all(_read_text(path)):
+			count += 1
+			if not cues.has(m.get_string(1)):
+				return "%s 的音效「%s」不在 Sound.CUE_NAMES" % [path, m.get_string(1)]
+	if count < 8:   # 目前 sim/ 有 9 個字面音效名稱；玩家武器音效走變數，由「武器資料」檢查負責
+		return "只比對到 %d 個 sfx:cue，比對規則可能失效" % count
+	return ""
+
+
+# -s 執行的檢查腳本在 autoload 註冊前就編譯，不能直接寫 HUD / GameEvents 型別（hud.gd 引用了 GameEvents），
+# 所以 HUD 用 load() 在執行時載入、變數不寫型別，事件直接交給 HUD
+static func _feed_hud(hud: Node, events: Array[Dictionary]) -> void:
+	for e in events:
+		hud._on_event(e.name, e)
+
+
+static func check_hud() -> String:
+	var w := _new_world(5, true)
+	var cam := Camera3D.new()
+	_scene_root().add_child(cam)
+	var hud: Variant = load("res://ui/hud.tscn").instantiate()
+	hud.setup(w, cam)
+	_scene_root().add_child(hud)
+	var p := _player(w)
+	hud._process(DT)
+	var hp_text := "%d / %d" % [p.max_hp, p.max_hp]
+	if hud._wave.text != "準備中" or hud._hp.text.text != hp_text:
+		return "開場文字錯誤：%s / %s（預期 準備中 / %s）" % [hud._wave.text, hud._hp.text.text, hp_text]
+	_run(w, _cmd(Vector2.ZERO), roundi(Config.SPAWNER.first_delay / DT) + 10)
+	_feed_hud(hud, w.events)
+	hud._process(DT)
+	var wave_text := "第 1 / %d 波" % WaveDefs.WAVES.size()
+	if hud._wave.text != wave_text:
+		return "波次文字 %s，預期 %s" % [hud._wave.text, wave_text]
+	var b := _spawn(w, &"boss", Vector2(5, 5))
+	_run(w, _cmd(Vector2.ZERO), 30)
+	Combat.apply_damage(w, p, b, {"damage": 500.0, "is_heavy": true})
+	p.hp = 50.0
+	Combat.apply_damage(w, b, p, {"damage": 10.0})
+	_feed_hud(hud, w.events)
+	hud._process(DT)
+	if not hud._boss_box.visible or not hud._boss_name.text.contains("狂暴"):
+		return "Boss 血條應顯示且標示狂暴：visible=%s name=%s" % [hud._boss_box.visible, hud._boss_name.text]
+	if hud._floaters.get_child_count() < 2:
+		return "應產生浮動數字，實際 %d 個" % hud._floaters.get_child_count()
+	w.events.clear()
+	p.add_item(&"loaded_dice")
+	_feed_hud(hud, w.events)
+	var dice: Dictionary = ItemDefs.ITEMS[&"loaded_dice"]
+	if hud._banner.text != "獲得 %s\n%s" % [dice.name, dice.desc]:
+		return "item:added 橫幅文字錯誤：%s" % hud._banner.text
+	for name in ["game:paused", "player:died", "game:defeat", "game:victory", "game:restart"]:
+		var payload := {"paused": true, "stats": w.stats.duplicate()}
+		hud._on_event(name, payload)
+	if hud._game_over.visible or hud._pause.visible:
+		return "game:restart 後結算與暫停畫面應隱藏"
+	if hud._quit_button.get_parent() == null or not hud._pause.is_ancestor_of(hud._quit_button) or not hud._quit_button.visible:
+		return "暫停畫面應有可見的「離開遊戲」按鈕"
+	var quit_count := [0]
+	hud.quit_requested.connect(func() -> void: quit_count[0] += 1)
+	hud._quit_button.pressed.emit()
+	if quit_count[0] != 1:
+		return "按下「離開遊戲」應發出 quit_requested 一次，實際 %d 次" % quit_count[0]
+	hud._on_event("game:victory", {"stats": w.stats.duplicate()})
+	if not hud._game_over.visible or hud._game_over_title.text != "勝利！":
+		return "game:victory 應顯示勝利畫面"
+	hud.queue_free()
+	cam.queue_free()
+	return ""
+
+
+static func check_url_query_args() -> String:
+	var main_script: GDScript = load("res://main.gd")
+	var got: PackedStringArray = main_script.url_query_args("?horde=200&perf&seconds=20&player-hp=99999&host&join=1.2.3.4&elites=")
+	var want := PackedStringArray(["--horde=200", "--perf", "--seconds=20", "--player-hp=99999", "--elites"])
+	if got != want:
+		return "轉換結果 %s，預期 %s" % [got, want]
+	if not main_script.url_query_args("").is_empty() or not main_script.url_query_args("?").is_empty():
+		return "沒有參數時應回傳空的"
+	return ""
+
+
+static func check_run_log() -> String:
+	var w := _new_world(5)
+	var cam := Camera3D.new()
+	_scene_root().add_child(cam)
+	var hud: Variant = load("res://ui/hud.tscn").instantiate()
+	hud.setup(w, cam)
+	_scene_root().add_child(hud)
+	var p := _player(w)
+	p.pos = Vector2.ZERO
+	p.facing = 0.0   # 面向 +Z：前方 8 單位看得到、背後 8 單位看不到（身邊一圈只有 4）
+	var front := _spawn(w, &"grunt", Vector2(0, 8))
+	var back := _spawn(w, &"archer", Vector2(0, -8))
+	w.events.clear()
+	Combat.apply_damage(w, front, p, {"damage": 10.0})
+	p.invuln_timer = 0.0
+	Combat.apply_damage(w, back, p, {"damage": 7.0})
+	p.invuln_timer = 0.0
+	Combat.apply_damage(w, p, front, {"damage": 9999.0})
+	p.hp = 1.0
+	Combat.apply_damage(w, back, p, {"damage": 7.0})   # 致命的一下：單機直接死亡
+	_feed_hud(hud, w.events)
+	var rl: RunLog = hud.run_log
+	var seen: int = rl.by_source.get(&"grunt", {}).get("damage", -1)
+	var unseen: Dictionary = rl.by_source.get(&"archer", {})
+	if rl.hits_taken != 3 or seen <= 0 or unseen.get("hits", 0) != 2 or unseen.get("unseen", 0) != 2:
+		return "受傷紀錄錯誤：%d 次、骷髏戰士 %d、骷髏弓手 %s" % [rl.hits_taken, seen, unseen]
+	if rl.unseen_hits != 2 or rl.damage_taken != seen + unseen.damage or rl.unseen_damage != unseen.damage:
+		return "看不見的攻擊應 2 次 / %d 傷害，實際 %d 次 / %d（總傷害 %d）" % [unseen.damage, rl.unseen_hits, rl.unseen_damage, rl.damage_taken]
+	if rl.kills != {&"grunt": 1}:
+		return "擊殺應只有骷髏戰士 1 隻：%s" % rl.kills
+	if rl.downs != [{"kind": &"archer", "unseen": true}]:
+		return "應記一次被看不見的骷髏弓手打倒：%s" % [rl.downs]
+	hud._on_event("game:defeat", {"stats": w.stats.duplicate()})
+	var text: String = hud._game_over_log.text
+	for want in ["你的擊殺 1：骷髏戰士 1", "被打中 3 次", "被看不見的攻擊打中 2 次", "骷髏弓手：", "（看不見 2 次）", "倒下 1 次：被 骷髏弓手（看不見） 打倒"]:
+		if not text.contains(want):
+			return "結算文字缺「%s」：\n%s" % [want, text]
+	# 最多行的情況（每種攻擊者都打過、倒下超過顯示上限）也要塞得進畫面
+	for kind: StringName in RunLog.NAMES:
+		rl.by_source[kind] = {"damage": 99999, "hits": 9999, "unseen": 9999}
+		rl.kills[kind] = 9999
+	for i in RunLog.MAX_DOWNS_SHOWN + 3:
+		rl.downs.append({"kind": &"projectile", "unseen": true})
+	hud._on_event("game:defeat", {"stats": w.stats.duplicate()})
+	var box: Control = hud._game_over_log.get_parent()
+	var need: Vector2 = box.get_combined_minimum_size()
+	var screen := Vector2(ProjectSettings.get_setting("display/window/size/viewport_width"), ProjectSettings.get_setting("display/window/size/viewport_height"))
+	if need.y <= 0.0 or need.x > screen.x or need.y > screen.y:
+		return "結算畫面需要 %s，超出 %s" % [need, screen]
+	print("    結算畫面最多行時需要 %.0f × %.0f（畫面 %.0f × %.0f）" % [need.x, need.y, screen.x, screen.y])
+	hud._on_event("game:restart", {})
+	if rl.hits_taken != 0 or not rl.kills.is_empty() or not rl.downs.is_empty():
+		return "game:restart 後遊玩紀錄應清空"
+	hud.queue_free()
+	cam.queue_free()
+	return ""
+
+
+static func check_vision_rules() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	p.pos = Vector2.ZERO
+	p.facing = 0.0   # 面向 +Z
+	var at := func(deg: float, dist: float) -> Vector2: return Vector2(sin(deg_to_rad(deg)), cos(deg_to_rad(deg))) * dist
+	var v := Config.VISION
+	var half_deg := rad_to_deg(v.angle / 2.0)
+	var cases := [
+		[at.call(0.0, 10.0), true, "正前方 10"], [at.call(half_deg - 5.0, 10.0), true, "邊界內 5°"], [at.call(half_deg + 5.0, 10.0), false, "邊界外 5°"],
+		[at.call(0.0, v.range - 0.5), true, "正前方視野內 0.5"], [at.call(0.0, v.range + 1.0), false, "正前方視野外 1"],
+		[at.call(180.0, v.near_radius - 0.5), true, "正後方身邊一圈內"], [at.call(180.0, v.near_radius + 1.0), false, "正後方身邊一圈外"],
+	]
+	for c in cases:
+		if Vision.point_visible(w, p, c[0]) != c[1]:
+			return "%s 應%s" % [c[2], "看得到" if c[1] else "看不到"]
+	# 牆（x 8~14、z 7.5~8.5）：從 (11, 5) 往 +Z 看
+	p.pos = Vector2(11, 5)
+	if Vision.point_visible(w, p, Vector2(11, 12)):
+		return "牆後 (11, 12) 應看不到"
+	if Vision.point_visible(w, p, Vector2(11, 8.8)):
+		return "身邊 4 單位內、但在牆後的 (11, 8.8) 也應看不到"
+	if not Vision.point_visible(w, p, Vector2(11, 7.2)):
+		return "牆前的 (11, 7.2) 應看得到"
+	# 高台不擋：從 (2, 12) 往 +X 看過 0.5、1.0 石台
+	p.pos = Vector2(2, 12)
+	p.facing = PI / 2.0
+	if not Vision.point_visible(w, p, Vector2(15, 12)):
+		return "高台不應擋視線"
+	# 投射物：自己的在背後也看得到、怪物的看不到
+	p.pos = Vector2.ZERO
+	p.facing = 0.0
+	var archer := _spawn(w, &"archer", Vector2(0, -12))
+	var mine := Projectile.new(w, {"owner": p, "pos": Vector2(0, -8), "direction": Vector2(0, -1), "speed": 0.0, "range": 5.0})
+	var theirs := Projectile.new(w, {"owner": archer, "pos": Vector2(0, -8), "direction": Vector2(0, 1), "speed": 0.0, "range": 5.0})
+	if not Vision.entity_visible(w, p, mine) or Vision.entity_visible(w, p, theirs) or Vision.entity_visible(w, p, archer):
+		return "背後：自己的投射物 %s、弓手的箭 %s、弓手 %s（應為 看得到 / 看不到 / 看不到）" % [
+			Vision.entity_visible(w, p, mine), Vision.entity_visible(w, p, theirs), Vision.entity_visible(w, p, archer)]
+	return ""
+
+
+# 去掉一行 GDScript 的註解（字串外面的 # 之後）
+static func _strip_comment(line: String) -> String:
+	var in_string := false
+	for i in line.length():
+		var ch := line[i]
+		if ch == "\"" and (i == 0 or line[i - 1] != "\\"):
+			in_string = not in_string
+		elif ch == "#" and not in_string:
+			return line.substr(0, i)
+	return line
+
+
+static func check_warm_up() -> String:
+	var view := WorldView.new()
+	_scene_root().add_child(view)
+	var center := Vector3(20, 0, -15)
+	view.warm_up(center)
+	var want: Array[String] = ["player", "chest:small", "chest:big", "projectile:arrow", "projectile:orb",
+		"grunt:%s" % MonsterRarityDefs.MAGIC, "grunt:%s" % MonsterRarityDefs.RARE]
+	for kind: StringName in EnemyDefs.ENEMIES:
+		want.append(String(kind))
+	var err := ""
+	for k in want:
+		if not view.warm_keys.has(k):
+			err = "預熱缺少 %s（預熱了 %s）" % [k, view.warm_keys]
+			break
+	# 武器每種稀有度都要（白色沒有發光、材質組合不同；v0.37.1 網頁版實測：只預熱綠色時第一把白色武器仍卡 70.8 ms）
+	for rarity: StringName in ItemDefs.RARITIES:
+		if err == "" and not view.warm_keys.has("weapon:%s" % rarity):
+			err = "預熱缺少 %s 的武器：%s" % [rarity, view.warm_keys]
+	if err == "" and not view.warm_keys.any(func(k: String) -> bool: return k.begins_with("item:")):
+		err = "預熱應包含地上的道具：%s" % [view.warm_keys]
+	if err == "":
+		for node in view._warm_nodes:
+			if node.position.distance_to(center) > 4.0:
+				err = "預熱的模型要在鏡頭附近（離中心 %.1f）" % node.position.distance_to(center)
+				break
+	if err == "":
+		var w := _new_world()
+		for i in WorldView.WARM_FRAMES:
+			if not view.is_warming_up():
+				err = "預熱應維持 %d 幀，第 %d 幀就結束了" % [WorldView.WARM_FRAMES, i]
+				break
+			view.sync(w, 1.0, DT)
+		if err == "" and (view.is_warming_up() or not view._warm_nodes.is_empty()):
+			err = "預熱 %d 幀後應移除" % WorldView.WARM_FRAMES
+	var text: String = load("res://ui/hud.gd").warm_text()
+	var sample: String = ItemDefs.ITEMS.values()[0].name + MonsterRarityDefs.RARE_NAME_B[0]
+	for ch in sample:
+		if err == "" and ch.unicode_at(0) > 127 and not text.contains(ch):
+			err = "預熱文字缺「%s」" % ch
+	# 介面程式碼裡寫死的字串（橫幅、場上文字…）也要涵蓋（v0.37.2：第一把武器的名字「[F] 撿起」等沒預熱，網頁版仍卡 78 ms）
+	var re := RegEx.create_from_string("\"([^\"\\\\]*)\"")
+	var missing := {}
+	for path in ["res://ui/hud.gd", "res://ui/world_labels.gd", "res://ui/floaters.gd", "res://ui/net_panel.gd", "res://ui/player_tags.gd", "res://ui/inventory_panel.gd", "res://ui/run_log.gd"]:
+		for line in _read_text(path).split("\n"):
+			for m in re.search_all(_strip_comment(line)):
+				for ch in m.get_string(1):
+					if ch.unicode_at(0) > 127 and not text.contains(ch):
+						missing[ch] = true
+	if err == "" and not missing.is_empty():
+		err = "介面字串的字沒有預熱，加到 HUD.UI_CHARS：%s" % "".join(missing.keys())
+	view.queue_free()
+	return err
+
+
+static func check_vision_view() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	p.facing = 0.0
+	var front := _spawn(w, &"grunt", Vector2(0, 8))
+	var back := _spawn(w, &"grunt", Vector2(0, -8))
+	var view := WorldView.new()
+	view.sync(w, 1.0, 0.016)
+	var front_node: Node3D = view._nodes[front.id]
+	var back_node: Node3D = view._nodes[back.id]
+	var err := ""
+	if not front_node.visible or back_node.visible:
+		err = "前方骷髏顯示 %s、背後骷髏顯示 %s（應為 true / false）" % [front_node.visible, back_node.visible]
+	if err == "":
+		var before := view.effects._transients.size()
+		view.on_event("fx:slash", {"pos": Vector2(0, -8), "height": 0.0, "facing": 0.0, "range": 1.5, "arc": 1.7, "color": Color.WHITE, "swing_dir": 1})
+		var after_back := view.effects._transients.size()
+		view.on_event("fx:slash", {"pos": Vector2(0, 8), "height": 0.0, "facing": 0.0, "range": 1.5, "arc": 1.7, "color": Color.WHITE, "swing_dir": 1})
+		if after_back != before or view.effects._transients.size() != before + 1:
+			err = "特效：背後的揮砍多了 %d 個、前方的多了 %d 個（應為 0 / 1）" % [after_back - before, view.effects._transients.size() - after_back]
+	if err == "":
+		p.is_dead = true
+		view.sync(w, 1.0, 0.016)
+		if not back_node.visible:
+			err = "本機角色陣亡後應全部看得到"
+	view.free()
+	return err
+
+
+static func check_xray() -> String:
+	var w := _new_world(3, false, &"graveyard_a")
+	var p := _player(w)
+	# 王族墓裡面、南牆（地圖 y 61.5~63）北邊：玩家在 y 57 面向南（+Z），怪在牆邊 y 60.6（往相機 (+1, +1) 走 1.3 就碰到牆）
+	p.pos = MapDefs.to_world(w.map, Vector2(48, 57))
+	p.facing = 0.0
+	var e := _spawn(w, &"grunt", MapDefs.to_world(w.map, Vector2(48, 60.6)))
+	var view := WorldView.new()
+	var has_overlay := func(node: Node3D) -> bool:
+		for mi in PartKit.mesh_instances(node):
+			if mi.material_overlay != null:
+				return true
+		return false
+	view.sync(w, 1.0, 0.016)
+	var err := ""
+	var pn: Node3D = view._nodes[p.id]
+	var en: Node3D = view._nodes[e.id]
+	if not en.visible:
+		err = "牆邊的怪應在視野內"
+	elif not view._xray_needed(w, e) or not has_overlay.call(en):
+		err = "牆邊的怪和相機之間有牆，應有剪影：判斷 %s、疊加材質 %s" % [view._xray_needed(w, e), has_overlay.call(en)]
+	elif not has_overlay.call(pn):
+		err = "玩家應一直有剪影"
+	if err == "":
+		for mi in PartKit.mesh_instances(pn):
+			var m := mi.material_override as BaseMaterial3D
+			if not WorldView.XRAY_SKIP.has(mi.name) and m != null and m.stencil_mode != BaseMaterial3D.STENCIL_MODE_CUSTOM:
+				err = "玩家的材質 %s 沒有寫模板值" % mi.name
+				break
+	if err == "":
+		# 走到墓中央的空地：之後的 LOS_INTERVAL 個 tick 內重新判斷，剪影拿掉
+		e.pos = MapDefs.to_world(w.map, Vector2(46, 55))
+		e.prev_pos = e.pos
+		for i in WorldView.LOS_INTERVAL:
+			w.tick += 1
+			view.sync(w, 1.0, 0.016)
+		if view._xray_needed(w, e) or has_overlay.call(en):
+			err = "空地上的怪不應有剪影：判斷 %s、疊加材質 %s" % [view._xray_needed(w, e), has_overlay.call(en)]
+	view.free()
+	return err
+
+
+static func check_hints() -> String:
+	if InputCollector.ACTIONS.swap_weapon != KEY_X:
+		return "換武器鍵應為 X（使用者 v0.31.0 指定）"
+	var w := _new_world(7, false, &"graveyard_a")
+	w.reset(7, [1, 2])
+	w.spawner.finished = true
+	var p: Player = w.players[1]
+	var p2: Player = w.players[2]
+	var h := Hints.new()
+	h.save_path = ""
+	var shown: Array[StringName] = []
+	# 每 0.1 秒模擬一次畫面更新，記錄依序跳出的提示
+	var tick := func(seconds: float, bag_open: bool = false) -> void:
+		for i in int(round(seconds / 0.1)):
+			h.update(0.1, w, p, bag_open)
+			if h.current != &"" and (shown.is_empty() or shown[-1] != h.current):
+				shown.append(h.current)
+	tick.call(20.0)
+	if Array(shown) != [&"controls", &"dig_goal"]:
+		h.free()
+		return "開場應依序跳操作、挖墳：%s" % [shown]
+	# 撿到第 2 把同種同色武器：背包提示與合成提示
+	var mk := func(uid: String) -> Dictionary:
+		return {"uid": StringName(uid), "base": &"swordShield", "rarity": &"white", "affixes": [] as Array[StringName]}
+	p.weapon_slots[0] = mk.call("w1")
+	p.add_weapon(mk.call("w2"))
+	tick.call(20.0)
+	tick.call(10.0, true)
+	if Array(shown.slice(2)) != [&"bag_open", &"craft", &"bag_ops"]:
+		h.free()
+		return "撿到可合成的武器、開背包後應跳 bag_open、craft、bag_ops：%s" % [shown]
+	# 看過的不再跳
+	tick.call(20.0, true)
+	if shown.size() != 5:
+		h.free()
+		return "看過的提示又跳了：%s" % [shown]
+	# 出口打開
+	w.event._start(w)
+	w.event.state = DigEvent.OPEN
+	tick.call(10.0)
+	if shown[-1] != &"exit":
+		h.free()
+		return "出口打開應跳 exit：%s" % [shown]
+	# 排隊中條件不成立就跳過：隊友倒地排進佇列，顯示前已經救起
+	p2.is_downed = true
+	h.current = &"bag_ops"   # 假裝還有一則在顯示，讓 revive 留在佇列
+	h.update(0.1, w, p, false)
+	if not h.queue.has(&"revive"):
+		h.free()
+		return "隊友倒地應排進 revive"
+	p2.is_downed = false
+	h.current = &""
+	tick.call(5.0)
+	if h.seen.has(&"revive"):
+		h.free()
+		return "隊友已經救起，revive 不該顯示"
+	# 重設後再跳
+	var before := shown.size()
+	h.reset_seen()
+	tick.call(10.0)
+	var first: StringName = shown[before] if shown.size() > before else &""
+	h.free()
+	if first != &"controls":
+		return "重設後應重新跳操作提示：%s" % first
+	return ""
+
+
+static func check_effects_events() -> String:
+	var handlers: Dictionary = Effects.HANDLERS
+	var fx_view := Effects.new()
+	for name: String in handlers:
+		if not fx_view.has_method(handlers[name]):
+			fx_view.free()
+			return "Effects 沒有 %s 的處理函式 %s" % [name, handlers[name]]
+	fx_view.free()
+	# 靜態：sim/ 裡 emit_event("fx:…") 的名稱都要有處理、也要列進規範的事件表
+	var guidelines := _read_text(ProjectSettings.globalize_path("res://").path_join("../PROJECT_GUIDELINES.md"))
+	var re := RegEx.create_from_string("emit_event\\(\"(fx:\\w+)\"")
+	var found := {}
+	for path in _list_gd("res://sim"):
+		for m in re.search_all(_read_text(path)):
+			found[m.get_string(1)] = true
+	for name: String in found:
+		if not handlers.has(name):
+			return "模擬層發出 %s，但 Effects.HANDLERS 沒有處理" % name
+		if not guidelines.contains("`%s`" % name):
+			return "%s 沒有列進 PROJECT_GUIDELINES 第 9 節的事件表" % name
+	for name: String in handlers:
+		if name.begins_with("fx:") and not found.has(name):
+			return "Effects 處理 %s，但模擬層沒有發出這個事件" % name
+	if found.size() < 10:
+		return "只找到 %d 種 fx 事件，應有 10 種" % found.size()
+	# 動態：實際跑招式收集事件，餵給 Effects
+	var events: Array[Dictionary] = []
+	var w := _new_world()
+	_spawn(w, &"grunt", Vector2(0, 1.5))
+	for i in 3:
+		_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1, events)
+		_run_collect(w, _cmd(Vector2.ZERO), 30, events)
+	var slashes := _named(events, "fx:slash")
+	if slashes.size() != 3 or slashes[2].color != WeaponDefs.WEAPONS.swordShield.attack.slash_finisher_color or slashes[1].swing_dir != -1:
+		return "三段揮砍應發出 3 次 fx:slash（第二段反手、第三段金色），實際 %s" % [slashes]
+	var w2 := _new_world()
+	_player(w2).equip_weapon(&"staff")
+	_run_collect(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1, events)
+	_run_collect(w2, _cmd(Vector2.ZERO), 60, events)
+	_run_collect(w2, _cmd(Vector2.ZERO, Vector2(0, 6), InputCmd.BTN_SPECIAL), 1, events)
+	_run_collect(w2, _cmd(Vector2.ZERO), 90, events)
+	var boss := _spawn(w2, &"boss", Vector2(0, 8))
+	w2.events.clear()
+	boss.slam_ring(0, {})
+	events.append_array(w2.events)
+	for name in ["fx:slash", "fx:muzzle", "fx:fizzle", "fx:telegraph", "fx:explosion", "fx:boss_slam", "entity:damaged"]:
+		if _named(events, name).is_empty():
+			return "應發出 %s" % name
+	var view := Effects.new()
+	_scene_root().add_child(view)
+	view.world = w
+	for e in events:
+		view.on_event(e.name, e)
+	var particles := view.particle_count()
+	var transients := view.transient_count()
+	view.sync(w2, DT)
+	view.queue_free()
+	if particles < 40 or transients < 6:
+		return "餵完事件應有粒子與弧光環，實際粒子 %d、弧光環 %d" % [particles, transients]
+	return ""
+
+
+static func check_effects_limits() -> String:
+	var view := Effects.new()
+	_scene_root().add_child(view)
+	view.burst(Vector3.ZERO, {"count": 2000})
+	if view.particle_count() != Effects.MAX_PARTICLES:
+		return "粒子應限制在 %d，實際 %d" % [Effects.MAX_PARTICLES, view.particle_count()]
+	for i in 100:
+		view.ring(Vector3.ZERO, 2.0)
+	if view.transient_count() != Effects.MAX_TRANSIENTS:
+		return "弧光環應限制在 %d，實際 %d" % [Effects.MAX_TRANSIENTS, view.transient_count()]
+	view.clear()
+	# 投射物拖尾：每個模擬步一顆（每秒 60 顆），不同幀率下每秒顆數要一樣
+	var w := _new_world()
+	var p := _player(w)
+	w.spawn_projectile(Projectile.new(w, {"owner": p, "pos": Vector2(0, 2), "direction": Vector2(0, 1), "speed": 0.0, "range": 100.0}))
+	var counts := []
+	for fps in [30, 144]:
+		var before := view.spawned_total
+		for i in fps * 3:
+			view.sync(w, 1.0 / fps)
+		counts.append((view.spawned_total - before) / 3.0)
+	for c: float in counts:
+		if absf(c - 60.0) > 1.0:
+			view.queue_free()
+			return "拖尾每秒顆數應約 60（30 FPS / 144 FPS），實際 %.1f / %.1f" % counts
+	var before_pause := view.spawned_total
+	view.paused = true
+	for i in 30:
+		view.sync(w, 1.0 / 30.0)
+	var paused_count := view.spawned_total - before_pause
+	view.queue_free()
+	if paused_count != 0:
+		return "暫停時不應產生粒子，實際 %d 顆" % paused_count
+	_feel("特效拖尾：30 FPS 每秒 %.1f 顆、144 FPS 每秒 %.1f 顆（每步 1 顆 = 60 顆）" % counts)
+	return ""
+
+
+static func check_flash_no_shader_switch() -> String:
+	var kit := PartKit.new()
+	var m := kit.mat(Color("8899aa"))
+	for k in [0.0, 0.9, 0.0]:
+		kit.set_flash(k)
+		if not m.emission_enabled:
+			return "set_flash(%.1f) 後 emission_enabled 應保持 true" % k
+		if not m.emission.is_equal_approx(Color(k, k, k)):
+			return "set_flash(%.1f) 後自發光應為 (%.1f, %.1f, %.1f)，實際 %s" % [k, k, k, k, m.emission]
+	return ""
+
+
+static func check_font_coverage() -> String:
+	if ProjectSettings.get_setting("gui/theme/custom_font", "") != "res://assets/fonts/hud_font.tres":
+		return "project.godot 的 gui/theme/custom_font 沒有設成打包字型"
+	var font := load("res://assets/fonts/NotoSansTC-VF.ttf") as FontFile
+	if font == null:
+		return "讀不到 assets/fonts/NotoSansTC-VF.ttf"
+	var drawn: Array = load("res://ui/skill_bar.gd").get_script_constant_map().DRAWN_ICONS
+	var texts: Array[String] = []
+	for w: Dictionary in WeaponDefs.WEAPONS.values():
+		texts.append_array([w.name, w.attack.name, w.attack.icon, w.special.name, w.special.icon])
+	for s: Dictionary in SkillDefs.SKILLS.values():
+		texts.append_array([s.name, s.icon])
+	var hud_consts: Dictionary = load("res://ui/hud.gd").get_script_constant_map()
+	texts.append_array([hud_consts.CONTROLS_TEXT, hud_consts.BOSS_NAME])
+	for s: Dictionary in StatDefs.STATS.values():
+		texts.append(s.name)
+	for item: Dictionary in ItemDefs.ITEMS.values():
+		texts.append_array([item.name, item.desc, "獲得 "])
+	texts.append(StatDefs.format_value(&"armor", 8.0) + StatDefs.format_value(&"hp_regen", 1.0))
+	# HUD 程式裡的字串常值（標題、橫幅、結算、按鍵名稱）
+	var re := RegEx.create_from_string("\"([^\"\\\\]*)\"")
+	for path in ["res://ui/hud.gd", "res://ui/skill_bar.gd", "res://ui/stats_panel.gd"]:
+		for m in re.search_all(_read_text(path)):
+			texts.append(m.get_string(1))
+	var missing := {}
+	for t in texts:
+		if t in drawn:
+			continue
+		for i in t.length():
+			var code := t.unicode_at(i)
+			if code > 32 and not font.has_char(code):
+				missing[t[i]] = true
+	if not missing.is_empty():
+		return "打包字型缺字：%s" % " ".join(missing.keys())
+	return ""
+
+
+# 以 root 為座標系統計零件：{ meshes, min, max, bad_faces（法線與正面方向不符的三角形數） }
+static func _mesh_stats(root: Node3D) -> Dictionary:
+	var lo := Vector3.INF
+	var hi := -Vector3.INF
+	var bad := 0
+	var meshes := PartKit.mesh_instances(root)
+	for mi in meshes:
+		var xf := mi.transform
+		var n: Node = mi.get_parent()
+		while n != root:
+			xf = (n as Node3D).transform * xf
+			n = n.get_parent()
+		var arrays := mi.mesh.surface_get_arrays(0)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		for v in verts:
+			lo = lo.min(xf * v)
+			hi = hi.max(xf * v)
+		if mi.mesh is ArrayMesh and arrays[Mesh.ARRAY_INDEX] == null:
+			for i in range(0, verts.size(), 3):
+				var face := (verts[i + 1] - verts[i]).cross(verts[i + 2] - verts[i])
+				# Godot 正面為順時針：(b-a)×(c-a) 朝內，與法線相反（頂點是 float32，用 dot 容許誤差）
+				if face.normalized().dot(-normals[i]) < 0.999:
+					bad += 1
+	return {"meshes": meshes.size(), "min": lo, "max": hi, "bad_faces": bad}
+
+
+static func check_merge_static() -> String:
+	var kit := PartKit.new()
+	var root := Node3D.new()
+	var arm := Node3D.new()
+	arm.position = Vector3(0.5, 1, 0)
+	arm.rotation.z = 0.4
+	root.add_child(arm)
+	var sub := Node3D.new()   # 非 anchor 的子群組：應被併入 arm
+	sub.position = Vector3(0, -0.3, 0.1)
+	sub.rotation.x = 0.7
+	arm.add_child(sub)
+	var red := kit.mat(Color.RED)
+	var blue := kit.mat(Color.BLUE)
+	kit.add(root, PartKit.box(0.4, 0.6, 0.3), red, {"y": 1.0})
+	kit.add(root, PartKit.cyl(0.1, 0.1, 0.5, 6), red, {"x": 0.3, "rz": 0.5})
+	kit.add(arm, PartKit.ico(0.1, 0), red, {"y": -0.2})
+	kit.add(sub, PartKit.box(0.1, 0.1, 0.1), red, {"s": 2.0})
+	kit.add(sub, PartKit.cone(0.1, 0.2, 4), blue)
+	kit.add(sub, PartKit.torus(0.2, 0.03, 4, 8, PI), blue, {"rx": 0.3, "ry": 1.1})
+	var gem := kit.add(arm, PartKit.ico(0.05, 1), blue, {"y": -0.5})
+
+	var before := _mesh_stats(root)
+	kit.merge_static(root, [root, arm], [gem])
+	var after := _mesh_stats(root)
+	var err := ""
+	if not (after.min as Vector3).is_equal_approx(before.min) or not (after.max as Vector3).is_equal_approx(before.max):
+		err = "外框改變：%s~%s → %s~%s" % [before.min, before.max, after.min, after.max]
+	elif after.meshes != 4:
+		err = "應剩 root 紅、arm 紅、arm 藍、gem 共 4 個，實際 %d 個" % after.meshes
+	elif gem.get_parent() != arm or arm.get_parent() != root:
+		err = "keep 的零件與 anchor 應留在原位"
+	elif is_instance_valid(sub):
+		err = "空的子群組應移除"
+	elif after.bad_faces > 0:
+		err = "%d 個三角形的法線不是朝外的面法線" % after.bad_faces
+	root.free()
+	return err
+
+
+# 讀 tools/synth.gd 寫出的 16-bit WAV（資料從第 44 位元組開始），回傳 { samples, peak }
+static func _wav_stats(path: String) -> Dictionary:
+	var bytes := FileAccess.get_file_as_bytes(path)
+	if bytes.size() < 44 or bytes.slice(0, 4).get_string_from_ascii() != "RIFF":
+		return {"samples": 0, "peak": 0.0}
+	var n := bytes.decode_u32(40) / 2
+	var peak := 0
+	for i in n:
+		peak = maxi(peak, absi(bytes.decode_s16(44 + i * 2)))
+	return {"samples": n, "peak": peak / 32767.0}
+
+
+static func check_sfx_files() -> String:
+	var sound_script := _sound_script()
+	var recipes: Array = load("res://tools/bake_sfx.gd").cues().keys()
+	recipes.sort()
+	var names: Array = sound_script.CUE_NAMES.duplicate()
+	names.sort()
+	if names.is_empty() or names != recipes:
+		return "名稱不一致：配方 %d 個、Sound.CUE_NAMES %d 個" % [recipes.size(), names.size()]
+	for cue_name: String in names:
+		var stats := _wav_stats(sound_script.SFX_DIR + cue_name + ".wav")
+		if stats.samples == 0:
+			return "%s.wav 不存在或是空的（執行 tools/bake_sfx.gd）" % cue_name
+		if stats.peak >= 1.0:
+			return "%s.wav 峰值 %.3f，會失真" % [cue_name, stats.peak]
+		if not ResourceLoader.exists(sound_script.SFX_DIR + cue_name + ".wav"):
+			return "%s.wav 還沒匯入（執行 --import）" % cue_name
+	return ""
+
+
+static func check_music_files() -> String:
+	var sound_script := _sound_script()
+	var expected := {&"normal": 60.0 / 64.0 * 16.0, &"boss": 60.0 / 92.0 * 16.0}
+	for track: StringName in expected:
+		var stream: AudioStreamWAV = sound_script.MUSIC[track]
+		if stream.loop_mode != AudioStreamWAV.LOOP_FORWARD:
+			return "%s 沒有設定循環（loop_mode = %d）" % [track, stream.loop_mode]
+		if absf(stream.get_length() - expected[track]) > 0.01:
+			return "%s 長度 %.3f 秒，應為 %.3f" % [track, stream.get_length(), expected[track]]
+		var stats := _wav_stats("res://audio/music/%s.wav" % track)
+		if stats.peak >= 1.0:
+			return "%s 峰值 %.3f，會失真" % [track, stats.peak]
+	return ""
+
+
+static func check_sound_mapping() -> String:
+	var sound_script := _sound_script()
+	var w := _new_world(7, true)
+	var p := _player(w)
+	var grunt := _spawn(w, &"grunt", Vector2(6, 0))
+	var boss := _spawn(w, &"boss", Vector2(-6, 0))
+	var cue := func(event_name: String, payload: Dictionary) -> String:
+		return sound_script.cue_for_event(w, event_name, payload)
+	var cases := [
+		[cue.call("entity:damaged", {"target_id": p.id, "is_crit": false}), "playerHurt"],
+		[cue.call("entity:damaged", {"target_id": grunt.id, "is_crit": false}), "hit"],
+		[cue.call("entity:damaged", {"target_id": grunt.id, "is_crit": true}), "hitHeavy"],
+		[cue.call("entity:damaged", {"target_id": grunt.id, "is_heavy": true}), "hitHeavy"],
+		[cue.call("entity:died", {"entity_id": grunt.id}), "enemyDeath"],
+		[cue.call("entity:died", {"entity_id": boss.id}), "bossDeath"],
+		[cue.call("entity:died", {"entity_id": p.id}), ""],
+		[cue.call("skill:used", {"key": "player.special", "player_id": p.id}), ""],
+		[cue.call("skill:onCooldown", {"key": "player.slot1", "player_id": p.id}), "denied"],
+		[cue.call("wave:started", {"is_boss": false}), "waveStart"],
+		[cue.call("wave:started", {"is_boss": true}), "bossAppear"],
+		[cue.call("boss:enraged", {}), "enrage"],
+		[cue.call("game:defeat", {}), "defeat"],
+		[cue.call("player:died", {}), ""],   # v0.21.0：多人時一人陣亡不算輸，結算音效改由全員倒下的 game:defeat 播
+		[cue.call("game:victory", {}), "victory"],
+		[cue.call("game:paused", {"paused": true}), "pause"],
+		[cue.call("game:paused", {"paused": false}), "resume"],
+		[cue.call("sfx:cue", {"cue": "arrowShot"}), "arrowShot"],
+	]
+	for i in ActiveSlots.SLOT_COUNT:   # 道具欄依裝備的技能決定音效
+		var slot: Variant = p.slots.slots[i]
+		var expect: String = sound_script.SKILL_CUES.get(slot.def.id, "") if slot != null else ""
+		cases.append([cue.call("skill:used", {"key": ActiveSlots.cd_key(i), "player_id": p.id}), expect])
+	for c in cases:
+		if c[0] != c[1]:
+			return "預期 %s，實際 %s（第 %d 組）" % [c[1], c[0], cases.find(c) + 1]
+		if c[1] != "" and not c[1] in sound_script.CUE_NAMES:
+			return "%s 不在 CUE_NAMES" % c[1]
+	if not "potion" in cases.map(func(c: Array) -> String: return c[0]):
+		return "道具欄沒有治療藥水，無法驗證 potion"
+
+	var m := func(current: StringName, event_name: String, payload: Dictionary) -> StringName:
+		return sound_script.music_for_event(current, event_name, payload)
+	var music_cases := [
+		[m.call(&"", "game:restart", {}), &"normal"],
+		[m.call(&"boss", "game:restart", {}), &"normal"],
+		[m.call(&"normal", "wave:started", {"is_boss": false}), &"normal"],
+		[m.call(&"normal", "wave:started", {"is_boss": true}), &"boss"],
+		[m.call(&"boss", "game:defeat", {}), &""],
+		[m.call(&"boss", "player:died", {}), &"boss"],
+		[m.call(&"normal", "game:victory", {}), &""],
+		[m.call(&"boss", "game:paused", {"paused": true}), &"boss"],
+	]
+	for c in music_cases:
+		if c[0] != c[1]:
+			return "音樂：預期 %s，實際 %s（第 %d 組）" % [c[1], c[0], music_cases.find(c) + 1]
+	return ""
+
+
+static func check_mesh_counts() -> String:
+	var limits := {&"player": 20, &"grunt": 16, &"archer": 16, &"boss": 22}
+	var err := ""
+	for kind: StringName in limits:
+		var rig := DarkFantasy.character(kind)
+		var stats := _mesh_stats(rig)
+		if stats.meshes > limits[kind]:
+			err = "%s 有 %d 個零件，上限 %d" % [kind, stats.meshes, limits[kind]]
+		elif stats.bad_faces > 0:
+			err = "%s 有 %d 個三角形法線方向錯誤" % [kind, stats.bad_faces]
+		rig.free()
+		if err != "":
+			return err
+	var rng := RandomNumberGenerator.new()
+	var arena := DarkFantasy.build_arena(Config.WORLD.arena_half_size, rng)
+	var n := PartKit.mesh_instances(arena).size()
+	arena.free()
+	if n > 12:
+		return "場地有 %d 個零件，上限 12" % n
+	for model: StringName in [&"swordShield", &"staff"]:
+		var w := DarkFantasy.weapon(model)
+		if w.is_empty() or w.main == null:
+			return "武器 %s 沒有建立外觀" % model
+		for node: Variant in [w.main, w.offhand]:
+			if node != null:
+				(node as Node3D).free()
+	return ""
