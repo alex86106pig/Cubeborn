@@ -481,6 +481,82 @@ static func check_vision_view() -> String:
 	return err
 
 
+# 頭頂血條（v0.43.0）：滿血不畫、受傷畫；自己與隊友綠、怪物紅；背後視野外、Boss、倒地、WorldView 隱藏的不畫；
+# 長度比例 = hp / max_hp；怪物血條在詞條文字下方、頭頂上方，玩家的在名牌文字下方
+static func check_health_bars() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	p.pos = Vector2.ZERO
+	p.facing = 0.0   # 面向 +Z
+	var mate := Player.new(w, 2)
+	mate.pos = Vector2(0, 3)
+	w.add_entity(mate)
+	var grunt := _spawn(w, &"grunt", Vector2(0, 8))
+	var rare := _spawn(w, &"grunt", Vector2(3, 8))
+	rare.set_rarity(MonsterRarityDefs.RARE, [&"swift"], "測試")
+	rare.apply_rarity_stats()
+	rare.hp = rare.max_hp
+	var back := _spawn(w, &"grunt", Vector2(0, -8))
+	var boss := _spawn(w, &"boss", Vector2(-4, 10))
+	var cam := Camera3D.new()   # 不在場景樹裡不能投影，只是讓 bars() 有相機；投影用 _FlatBars 的固定公式
+	var hb := _FlatBars.new()
+	hb.world = w
+	hb.camera = cam
+	var err := ""
+	if not hb.bars().is_empty():
+		err = "全部滿血時不應畫血條，畫了 %d 條" % hb.bars().size()
+	var want := {p: [0.5, hb.PLAYER_FILL], mate: [0.3, hb.PLAYER_FILL], grunt: [0.25, hb.ENEMY_FILL], rare: [0.6, hb.ENEMY_FILL]}
+	for e: Entity in want:
+		e.hp = e.max_hp * want[e][0]
+	back.hp = back.max_hp * 0.5
+	boss.hp = boss.max_hp * 0.5
+	var got := {}
+	if err == "":
+		for b: Dictionary in hb.bars():
+			got[b.entity] = b
+		for e: Entity in got:
+			if not want.has(e):
+				err = "不該畫血條的 %s（%s）畫了" % [e.kind, "Boss" if e == boss else "背後視野外" if e == back else "?"]
+	if err == "":
+		for e: Entity in want:
+			if not got.has(e):
+				err = "受傷的 %s 沒有血條" % e.kind
+				break
+			var b: Dictionary = got[e]
+			var size: Vector2 = hb.PLAYER_SIZE if e is Player else hb.ENEMY_SIZE
+			if absf(b.ratio - want[e][0]) > EPS or b.color != want[e][1] or not (b.rect as Rect2).size.is_equal_approx(size):
+				err = "%s 血條：比例 %.3f、顏色 %s、尺寸 %s（應為 %.3f、%s、%s）" % [e.kind, b.ratio, b.color, b.rect.size, want[e][0], want[e][1], size]
+				break
+	if err == "":
+		# 不和文字重疊：血條上緣在詞條 / 名牌的基線加字的下緣（descent）之下；怪物的下緣在頭頂之上
+		var font: Font = hb.get_theme_default_font()
+		var label_y: float = hb._screen(Vector3(rare.pos.x, rare.height + rare.body_height + WorldLabels.ENEMY_OFFSET, rare.pos.y)).y
+		var head_y: float = hb._screen(Vector3(rare.pos.x, rare.height + rare.body_height, rare.pos.y)).y
+		var r: Rect2 = got[rare].rect
+		var tag_y: float = hb._screen(Vector3(mate.pos.x, mate.height + PlayerTags.HEAD_OFFSET, mate.pos.y)).y
+		var rp: Rect2 = got[mate].rect
+		if r.position.y < label_y + font.get_descent(14) or r.end.y > head_y:
+			err = "稀有怪血條 y %.1f~%.1f，應在詞條下緣 %.1f 與頭頂 %.1f 之間" % [r.position.y, r.end.y, label_y + font.get_descent(14), head_y]
+		elif rp.position.y < tag_y + font.get_descent(18):
+			err = "隊友血條上緣 %.1f 疊到名牌（下緣 %.1f）" % [rp.position.y, tag_y + font.get_descent(18)]
+	if err == "":
+		mate.is_downed = true
+		hb.hidden_ids = {grunt.id: true}
+		for b: Dictionary in hb.bars():
+			if b.entity == mate or b.entity == grunt:
+				err = "倒地的隊友（改顯示倒數）、WorldView 隱藏的骷髏不應畫血條：%s" % b.entity.kind
+	hb.free()
+	cam.free()
+	return err
+
+
+# 遊戲的正交等距相機：畫面上 1 世界單位 ≈ 1080 / (view_half_height × 2) px，高度乘 cos(仰角)（相機往下看）
+class _FlatBars extends HealthBars:
+	func _screen(at: Vector3) -> Variant:
+		var px: float = 1080.0 / (Config.CAMERA.view_half_height * 2.0)
+		return Vector2(960.0 + (at.x - at.z) * px * 0.7071, 540.0 - at.y * px * cos(Config.CAMERA.elevation) + (at.x + at.z) * px * 0.7071 * sin(Config.CAMERA.elevation))
+
+
 static func check_xray() -> String:
 	var w := _new_world(3, false, &"graveyard_a")
 	var p := _player(w)

@@ -90,6 +90,7 @@ func _ready() -> void:
 	add_child(input_collector)
 	hud = HUD_SCENE.instantiate()
 	hud.setup(world, camera_rig.camera)
+	hud.health_bars.hidden_ids = world_view.hidden_ids   # 同一個字典，WorldView 每個 tick 原地更新
 	hud.quit_requested.connect(get_tree().quit)
 	hud.title_requested.connect(return_to_title)
 	hud.main_menu.single_pressed.connect(start_single)

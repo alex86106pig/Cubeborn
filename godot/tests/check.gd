@@ -116,6 +116,7 @@ func _initialize() -> void:
 	# 畫面、介面與音效
 	_check("角色視野：前方扇形（angle 邊界內外）與 range 內看得到、身邊 near_radius 背後也看得到；牆擋視線（身邊也擋）、高台不擋；自己的投射物在背後也看得到、怪物的看不到", ViewChecks.check_vision_rules)
 	_check("視野畫面：背後的骷髏模型隱藏、前方的顯示；背後的特效事件不畫、前方的照畫；本機角色陣亡後全部看得到", ViewChecks.check_vision_view)
+	_check("頭頂血條：滿血不畫、受傷畫；自己與隊友綠、怪物紅；背後視野外、Boss、倒地、WorldView 隱藏的不畫；比例 = hp / max_hp；不疊到詞條與名牌", ViewChecks.check_health_bars)
 	_check("開場預熱：每一種怪、魔法 / 稀有怪、玩家、兩種寶箱、道具、武器、兩種投射物、每種稀有度的武器都在鏡頭附近畫幾幀後移除；預熱文字含道具名稱、怪物詞條、稀有怪名字與介面字串的每個字", ViewChecks.check_warm_up)
 	_check("牆後剪影：角色材質寫模板值；玩家一直有剪影；怪物只有和相機之間有牆擋住時才有，離開牆邊就拿掉", ViewChecks.check_xray)
 	_check("新手提示：換武器鍵是 X；開場跳操作與挖墳；撿到東西、開背包、可合成、出口打開、隊友倒地各跳一次；看過不再跳、排隊中條件不成立就跳過；重設後再跳", ViewChecks.check_hints)

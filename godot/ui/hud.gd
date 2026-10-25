@@ -74,6 +74,7 @@ var _reset_hints_button := Button.new()
 var hints := Hints.new()   # 新手提示框（v0.31.0）
 var _loading := ColorRect.new()   # 開場預熱時蓋住畫面（v0.37.0）；底下先畫一次會用到的中文字，字形在這時候產生
 var _tags := PlayerTags.new()
+var health_bars := HealthBars.new()   # 頭頂血條（v0.43.0）；main.gd 接上 WorldView.hidden_ids
 var _fps_timer := 0.0
 var _fps_frames := 0
 var _game_over_delay := -1.0     # 死亡後倒數顯示結算；負數 = 沒有在倒數（重新開始時取消）
@@ -87,6 +88,8 @@ func setup(p_world: World, p_camera: Camera3D) -> void:
 	_floaters.camera = p_camera
 	_tags.world = p_world
 	_tags.camera = p_camera
+	health_bars.world = p_world
+	health_bars.camera = p_camera
 	_world_labels.world = p_world
 	_world_labels.camera = p_camera
 	inventory_panel.world = p_world
@@ -95,6 +98,7 @@ func setup(p_world: World, p_camera: Camera3D) -> void:
 func set_local_peer(peer_id: int) -> void:
 	local_peer = peer_id
 	_tags.local_peer = peer_id
+	health_bars.local_peer = peer_id
 	_world_labels.local_peer = peer_id
 	inventory_panel.local_peer = peer_id
 
@@ -139,6 +143,7 @@ func _init() -> void:
 	mat.shader.code = VIGNETTE_SHADER
 	_vignette.material = mat
 	root.add_child(_vignette)
+	root.add_child(health_bars)   # 在名牌與場上文字底下
 	root.add_child(_tags)
 	root.add_child(_world_labels)
 	root.add_child(_floaters)
