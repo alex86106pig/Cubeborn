@@ -196,19 +196,32 @@ static func _check_main_menu(hud: Variant) -> String:
 	menu.single_button.pressed.emit()
 	menu.quit_button.pressed.emit()
 	menu.multi_button.pressed.emit()
+	# 桌面版先選連線方式（v0.40.0）：房號（要有 webrtc-native 擴充）/ IP；網頁版只有房號，直接進多人頁
+	if NetSession.ip_supported():
+		if menu.page != &"method" or not _shown(menu.room_button, menu) or not _shown(menu.ip_button, menu):
+			return "桌面版按「多人遊戲」應先到選連線方式頁（房號 / IP）"
+		if menu.room_button.disabled:
+			return "載入 webrtc-native 後「房號連線」應可以按"
+		menu.ip_button.pressed.emit()
+		if hud.net_panel.method != &"ip" or hud.net_panel._address.placeholder_text != "房主 IP":
+			return "選 IP 連線後連線面板應改成輸入 IP：%s / %s" % [hud.net_panel.method, hud.net_panel._address.placeholder_text]
+		menu.show_page(&"method")
+		menu.room_button.pressed.emit()
+	if hud.net_panel.method != &"room" or not hud.net_panel._address.placeholder_text.contains("房號"):
+		return "選房號連線後連線面板應改成輸入房號：%s" % hud.net_panel.method
 	if menu.page != &"multi" or _shown(menu.single_button, menu) or not _shown(menu.back_button, menu):
-		return "按「多人遊戲」應切到多人頁（看得到返回、看不到首頁按鈕）"
+		return "選好連線方式應切到多人頁（看得到返回、看不到首頁按鈕）"
 	if hud.net_panel.get_parent() != menu.net_slot or not _shown(hud.net_panel, menu):
 		return "多人頁應看得到連線面板"
 	menu.back_button.pressed.emit()
 	if counts.single != 1 or counts.quit != 1 or counts.back != 1:
 		return "按鈕訊號次數錯誤：%s" % counts
-	# 最長的狀態文字（網頁版房主大廳、4 人）也要塞得進畫面
+	# 最長的狀態文字（房號房主大廳、4 人）也要塞得進畫面
 	hud.net_panel.room_code = "ABCD"
-	hud.net_panel._web = true
 	hud.net_panel.show_state(&"lobby_host", [1, 2, 3, 4], 1, "")
-	hud.net_panel._web = NetSession.uses_webrtc()
-	for page: StringName in [&"home", &"multi"]:
+	if not hud.net_panel._status.text.contains("網頁版都可以"):
+		return "房號大廳應說明電腦版、網頁版都能加入：%s" % hud.net_panel._status.text
+	for page: StringName in [&"home", &"method", &"multi"]:
 		menu.show_page(page)
 		var size: Vector2 = menu.get_child(0).get_combined_minimum_size()
 		if size.x > 1920.0 or size.y > 1080.0:
@@ -396,7 +409,7 @@ static func check_warm_up() -> String:
 	# 介面程式碼裡寫死的字串（橫幅、場上文字…）也要涵蓋（v0.37.2：第一把武器的名字「[F] 撿起」等沒預熱，網頁版仍卡 78 ms）
 	var re := RegEx.create_from_string("\"([^\"\\\\]*)\"")
 	var missing := {}
-	for path in ["res://ui/hud.gd", "res://ui/world_labels.gd", "res://ui/floaters.gd", "res://ui/net_panel.gd", "res://ui/player_tags.gd", "res://ui/inventory_panel.gd", "res://ui/run_log.gd"]:
+	for path in ["res://ui/hud.gd", "res://ui/world_labels.gd", "res://ui/floaters.gd", "res://ui/net_panel.gd", "res://ui/main_menu.gd", "res://ui/player_tags.gd", "res://ui/inventory_panel.gd", "res://ui/run_log.gd"]:
 		for line in _read_text(path).split("\n"):
 			for m in re.search_all(_strip_comment(line)):
 				for ch in m.get_string(1):

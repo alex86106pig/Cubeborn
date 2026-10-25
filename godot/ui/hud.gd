@@ -18,7 +18,7 @@ const GAME_OVER_DELAY := 0.7     # 死亡後幾秒顯示結算
 const BOSS_NAME := "亡骸騎士"     # darkFantasy.js 的 names.boss
 # 介面程式碼裡寫死的中文字（橫幅、浮動文字、場上文字、連線面板、遊玩紀錄…；資料表以外的）：開場預熱用（v0.37.2）
 # check.gd 會掃 ui/ 的字串，缺字就列出來，加到這裡
-const UI_CHARS := "　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體"
+const UI_CHARS := "　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體"
 
 const VIGNETTE_SHADER := """
 shader_type canvas_item;
@@ -253,6 +253,7 @@ func _init() -> void:
 	root.add_child(_pause)
 	main_menu.visible = false
 	main_menu.quit_pressed.connect(quit_requested.emit)
+	main_menu.method_chosen.connect(net_panel.set_method)
 	root.add_child(main_menu)
 	_build_overlay(_loading, Color(0.03, 0.03, 0.05, 1.0), [UiKit.label("準備中…", 28)])
 	root.add_child(_loading)

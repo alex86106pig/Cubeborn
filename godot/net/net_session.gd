@@ -1,6 +1,7 @@
 # 傳輸層（15.18）：建立房間 / 加入 / 斷線、大廳名單、RPC 收送；對外只用訊號與 send_* 函式
-# 桌面版用 Godot 內建 ENet（區網 / 虛擬區網，輸入 IP）；網頁版（v0.36.0）用 WebRTC 直連，房號經 PeerJS 公開配對伺服器牽線
-# （net/peerjs_signaling.gd）。兩種都是 MultiplayerPeer，RPC、快照、輸入的程式相同；網頁版和桌面版不能互連（桌面版沒有內建 WebRTC）
+# 兩種連線方式（玩家在主選單選）：IP = Godot 內建 ENet（區網 / 虛擬區網，只有桌面版）；房號 = WebRTC 直連，經 PeerJS 公開配對伺服器牽線
+# （net/peerjs_signaling.gd，網頁版 v0.36.0）。桌面版的 WebRTC 來自 addons/webrtc_native（v0.40.0），所以桌面版與網頁版用房號可以互連。
+# 兩種都是 MultiplayerPeer，RPC、快照、輸入的程式相同
 # 上架前換成 Steam 連線只改這個檔案
 # 模擬延遲 / 掉包（除錯用）：送出前排隊 latency_ms 再真的送；掉包只套用在 unreliable（輸入與快照）
 class_name NetSession
@@ -24,15 +25,15 @@ var lobby_peers: Array[int] = []
 var latency_ms: int = Config.NET.debug_latency_ms
 var loss: float = Config.NET.debug_loss
 
-var room_code := ""              # 網頁版：房號（房主開房後、客戶端輸入的）
-var last_error := ""             # connection_failed 的原因（網頁版配對失敗時才有；空的 = 用預設說明）
+var room_code := ""              # 房號連線：房號（房主開房後、客戶端輸入的）
+var last_error := ""             # connection_failed 的原因（房號配對失敗時才有；空的 = 用預設說明）
 
 var _outbox: Array = []          # [送出時間 ms, Callable]（模擬延遲用）
 var _rng := RandomNumberGenerator.new()
-var _signal: PeerJsSignaling     # 網頁版配對（連上之後客戶端就關掉；房主開始遊戲時關掉）
+var _signal: PeerJsSignaling     # 房號配對（連上之後客戶端就關掉；房主開始遊戲時關掉）
 var _rtc: WebRTCMultiplayerPeer
 var _conns := {}                 # 對方的配對 ID → WebRTCPeerConnection
-var _web_peer_id := 0            # 網頁版客戶端自己的 peer id（2 ~ 2^31-2 隨機）
+var _web_peer_id := 0            # 房號連線客戶端自己的 peer id（2 ~ 2^31-2 隨機）
 var _join_timer := 0.0
 var _room_tries := 0
 
@@ -56,9 +57,14 @@ func is_active() -> bool:
 	return p != null and not p is OfflineMultiplayerPeer
 
 
-# 網頁版只能用 WebRTC（瀏覽器不能開 UDP）
-static func uses_webrtc() -> bool:
-	return OS.has_feature("web")
+# IP 連線：網頁版不能用（瀏覽器不能開 UDP）
+static func ip_supported() -> bool:
+	return not OS.has_feature("web")
+
+
+# 房號連線：網頁版用瀏覽器內建的 WebRTC；桌面版要載入 webrtc-native 擴充（缺檔時沒有這個類別）
+static func room_supported() -> bool:
+	return OS.has_feature("web") or ClassDB.class_exists(&"WebRTCLibPeerConnection")
 
 
 func local_peer_id() -> int:
@@ -90,8 +96,8 @@ func join(address: String, port: int = Config.NET.port) -> Error:
 	return OK
 
 
-# 網頁版開房：先抽房號向配對伺服器註冊（撞到別人就重抽），註冊成功才建立 WebRTC 房間並發 lobby_changed
-func host_web() -> Error:
+# 房號開房：先抽房號向配對伺服器註冊（撞到別人就重抽），註冊成功才建立 WebRTC 房間並發 lobby_changed
+func host_room() -> Error:
 	close()
 	last_error = ""
 	is_host = true
@@ -123,8 +129,8 @@ func _on_room_opened() -> void:
 	lobby_changed.emit(lobby_peers.duplicate())
 
 
-# 網頁版加入：用隨機 ID 註冊 → 建立連到房主（peer 1）的 WebRTC 連線、送出 OFFER；web_join_timeout 秒內沒連上就放棄
-func join_web(code: String) -> Error:
+# 房號加入：用隨機 ID 註冊 → 建立連到房主（peer 1）的 WebRTC 連線、送出 OFFER；web_join_timeout 秒內沒連上就放棄
+func join_room(code: String) -> Error:
 	close()
 	last_error = ""
 	is_host = false
@@ -226,7 +232,7 @@ func close() -> void:
 	_outbox.clear()
 
 
-# 房主：開始遊戲，之後不再接受加入（中途加入先不開放，使用者決定）；網頁版也不再需要配對伺服器
+# 房主：開始遊戲，之後不再接受加入（中途加入先不開放，使用者決定）；房號連線也不再需要配對伺服器
 func start_game() -> void:
 	is_started = true
 	if _signal != null:
@@ -289,7 +295,7 @@ func _on_peer_disconnected(peer_id: int) -> void:
 
 
 func _on_connected() -> void:
-	if _signal != null and not is_host:   # 網頁版客戶端連上房主後就不需要配對伺服器
+	if _signal != null and not is_host:   # 房號連線的客戶端連上房主後就不需要配對伺服器
 		_signal.close()
 		_signal = null
 	lobby_changed.emit(lobby_peers.duplicate())

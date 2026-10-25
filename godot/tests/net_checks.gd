@@ -516,8 +516,64 @@ static func check_web_signaling() -> String:
 	var want: Array[String] = ["opened", "CANDIDATE:h:0", "expired:cubeborn-mp-ZZZZ", "taken", "failed"]
 	if log != want:
 		return "伺服器訊息對應的訊號 %s，預期 %s" % [log, want]
-	if NetSession.uses_webrtc():
-		return "桌面版應該用 ENet（IP），不是 WebRTC"
+	if not NetSession.ip_supported():
+		return "桌面版應該能用 IP 連線（ENet）"
+	if not NetSession.room_supported():
+		return "桌面版應該能用房號連線（addons/webrtc_native 沒有載入？）"
+	return ""
+
+
+# 桌面版 WebRTC（v0.40.0，webrtc-native）：同一程序裡兩條 WebRTCPeerConnection 直接交換 SDP / 候選位址（不經配對伺服器），
+# 用和 NetSession 相同的設定建房主 / 客戶端，連上後房主送的封包客戶端收得到
+static func check_desktop_webrtc(feel: Array[String]) -> String:
+	var server := WebRTCMultiplayerPeer.new()
+	var client := WebRTCMultiplayerPeer.new()
+	var channels := [MultiplayerPeer.TRANSFER_MODE_UNRELIABLE]
+	if server.create_server(channels) != OK or client.create_client(5, channels) != OK:
+		return "建立 WebRTC 房主 / 客戶端失敗"
+	var a := WebRTCPeerConnection.new()   # 房主那邊連到客戶端（peer 5）
+	var b := WebRTCPeerConnection.new()   # 客戶端那邊連到房主（peer 1）
+	for c: WebRTCPeerConnection in [a, b]:
+		if c.initialize({"iceServers": []}) != OK:
+			return "WebRTCPeerConnection.initialize 失敗（%s）" % c.get_class()
+	# 訊號只把訊息放進信箱、迴圈裡再轉給對方：lambda 不抓連線本身，免得互相參照留到結束（WebRTC 的執行緒會讓程式關不掉）
+	var mail := [[], []]   # mail[i]：要交給連線 i 的 [種類, 參數...]
+	a.session_description_created.connect(func(type: String, sdp: String) -> void: mail[0].append(["local", type, sdp]); mail[1].append(["remote", type, sdp]))
+	b.session_description_created.connect(func(type: String, sdp: String) -> void: mail[1].append(["local", type, sdp]); mail[0].append(["remote", type, sdp]))
+	a.ice_candidate_created.connect(func(mid: String, index: int, cand: String) -> void: mail[1].append(["ice", mid, index, cand]))
+	b.ice_candidate_created.connect(func(mid: String, index: int, cand: String) -> void: mail[0].append(["ice", mid, index, cand]))
+	var conns: Array[WebRTCPeerConnection] = [a, b]
+	server.add_peer(a, 5)
+	client.add_peer(b, World.HOST_PEER_ID)
+	b.create_offer()   # 和 NetSession.join_room 一樣由客戶端送 OFFER
+	var got := PackedByteArray()
+	var start := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - start < 5000:
+		for i in 2:
+			while not mail[i].is_empty():
+				var m: Array = mail[i].pop_front()
+				match m[0]:
+					"local": conns[i].set_local_description(m[1], m[2])
+					"remote": conns[i].set_remote_description(m[1], m[2])
+					"ice": conns[i].add_ice_candidate(m[1], m[2], m[3])
+		server.poll()
+		client.poll()
+		if client.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED and server.has_peer(5) and server.get_peer(5).connected:
+			server.set_target_peer(5)
+			server.set_transfer_mode(MultiplayerPeer.TRANSFER_MODE_RELIABLE)
+			server.put_packet(PackedByteArray([7, 8, 9]))
+			if client.get_available_packet_count() > 0:
+				got = client.get_packet()
+				break
+		OS.delay_msec(10)
+	var ms := Time.get_ticks_msec() - start
+	for c: WebRTCPeerConnection in [a, b]:
+		c.close()
+	server.close()
+	client.close()
+	if got != PackedByteArray([7, 8, 9]):
+		return "5 秒內沒有連上或沒收到封包（客戶端狀態 %d）" % client.get_connection_status()
+	feel.append("桌面版 WebRTC（本機兩條連線）：%d ms 連上並收到封包" % ms)
 	return ""
 
 

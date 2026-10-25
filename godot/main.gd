@@ -3,7 +3,7 @@
 # 指令列參數（放在 -- 之後）：--seconds=S --screenshot=路徑 --auto-move=x,y（螢幕方向）--auto-move-seconds=S（幾秒後停止移動）
 #   --auto-attack（一直按住左鍵）--auto-special（開場按一次右鍵，之後每 5.1 秒再按一次）--auto-interact（一直按住 F）--weapon=staff（開場武器）
 #   --wave=N（直接從第 N 波開始）--player-hp=N（開場血量）--items=id,id（開場放進身上的道具，見 defs/item_defs.gd）--no-spawn（不生怪）
-#   連線：--host（開房）--join=IP（加入）--net-port=N --net-autostart=N（房主：滿 N 人自動開始）
+#   連線：--host（開房）--join=IP（加入）--room（改用房號：--join=房號）--net-port=N --net-autostart=N（房主：滿 N 人自動開始）
 #   --net-latency=毫秒（模擬單程延遲）--net-loss=0.1（模擬掉包）
 #   效能量測：--horde=N（開場在玩家周圍生 N 隻醒著的小怪）--perf（關垂直同步，結束時印出 FPS 與各段耗時）
 #   --elites（畫面上方生 1 隻稀有、2 隻魔法骷髏，截圖確認外觀）
@@ -54,6 +54,7 @@ var _debug_item_index := 0
 var _arg_host := false
 var _arg_join := ""
 var _menu_flow := false
+var _arg_room := false   # --room：--host / --join 改用房號連線（--join=房號；房主開房後印出 net room=房號）
 var _start_pos := Vector2.INF
 var _prev_first: Array[String] = []   # --perf：前一幀第一次畫出來的東西
 var _hitches: Array[float] = []       # --perf：超過 HITCH_MS 的幀（毫秒）
@@ -115,6 +116,8 @@ func _ready() -> void:
 		show_title(&"multi" if _arg_host or _arg_join != "" else &"home")
 		if _menu_flow and not (_arg_host or _arg_join != ""):
 			start_single()   # --menu-flow 單人：在主選單按「單人遊戲」
+	if _arg_room:
+		hud.net_panel.set_method(&"room")
 	if _arg_host:
 		start_hosting()
 	elif _arg_join != "":
@@ -168,6 +171,8 @@ func _parse_args() -> void:
 			_arg_join = value
 		elif arg == "--menu-flow":
 			_menu_flow = true
+		elif arg == "--room":
+			_arg_room = true
 		elif arg.begins_with("--net-port="):
 			_net_port = value.to_int()
 		elif arg.begins_with("--net-autostart="):
@@ -281,7 +286,7 @@ func _on_title_back() -> void:
 	if mode != Mode.SINGLE:
 		leave_net("")
 	_net_message = ""
-	show_title(&"home")
+	show_title(&"method" if NetSession.ip_supported() else &"home")   # 桌面版回到選連線方式
 
 
 # 暫停 / 選單按「回主選單」：連線中先離開連線，單機直接結束這局
@@ -310,7 +315,7 @@ func _connect_net() -> void:
 			net_client.receive_events(run, tick, events))
 	net.peer_left.connect(_on_peer_left)
 	net.connection_failed.connect(func() -> void:
-		leave_net(net.last_error if net.last_error != "" else ("連不上房主" if NetSession.uses_webrtc() else "連不上房主（IP 或防火牆？）")))
+		leave_net(net.last_error if net.last_error != "" else ("連不上房主" if hud.net_panel.method == &"room" else "連不上房主（IP 或防火牆？）")))
 	net.disconnected.connect(func() -> void: leave_net("和房主斷線了"))
 	hud.net_panel.host_pressed.connect(start_hosting)
 	hud.net_panel.join_pressed.connect(start_joining)
@@ -321,7 +326,7 @@ func _connect_net() -> void:
 # 網頁版用房號（WebRTC + 配對伺服器），桌面版用 IP（ENet）
 func start_hosting() -> void:
 	set_paused(false)   # 從單機的暫停選單開房：連線時遊戲不會暫停（v0.36.2 修正）
-	var err := net.host_web() if NetSession.uses_webrtc() else net.host(_net_port)
+	var err := net.host_room() if hud.net_panel.method == &"room" else net.host(_net_port)
 	if err != OK:
 		_net_message = "開房失敗（連接埠 %d 被占用？錯誤 %d）" % [_net_port, err]
 		_refresh_net_panel()
@@ -338,7 +343,7 @@ func start_joining(address: String) -> void:
 		return
 	# 從單機的暫停選單加入：先解除暫停，不然連線後一直停在暫停（不收輸入、特效凍住；v0.36.2 修正）
 	set_paused(false)
-	var err := net.join_web(address) if NetSession.uses_webrtc() else net.join(address, _net_port)
+	var err := net.join_room(address) if hud.net_panel.method == &"room" else net.join(address, _net_port)
 	if err != OK:
 		_net_message = "加入失敗（錯誤 %d）" % err
 		_refresh_net_panel()
@@ -375,6 +380,8 @@ func _on_game_started(_peers: Array) -> void:
 
 func _on_lobby_changed(peers: Array) -> void:
 	_refresh_net_panel()
+	if _run_seconds > 0.0 and mode == Mode.HOST and peers.size() == 1 and net.room_code != "":
+		print("net room=%s" % net.room_code)   # --room 自動驗證：另一個程序用這個房號加入
 	if mode == Mode.HOST and is_in_lobby and _autostart_players > 0 and peers.size() >= _autostart_players:
 		start_net_game()
 

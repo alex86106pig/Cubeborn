@@ -469,7 +469,7 @@ godot/
 │  │                          enemies/（melee_enemy、ranged_enemy、boss）、projectile.gd、combat.gd、
 │  │                          physics.gd、spawner.gd、weapon_behaviors.gd、skill_behaviors.gd、active_slots.gd
 ├─ input/                     input_collector.gd（按鍵在程式中註冊，不寫在 project.godot）
-├─ net/                       連線：net_session.gd（ENet / WebRTC 傳輸、RPC、大廳）、peerjs_signaling.gd（網頁版配對）、net_host.gd（輸入排隊、快照）、
+├─ net/                       連線：net_session.gd（ENet / WebRTC 傳輸、RPC、大廳）、peerjs_signaling.gd（房號配對）、net_host.gd（輸入排隊、快照）、
 │                             net_client.gd（鏡像 World、補間、預測修正）、net_codec.gd（快照二進位編碼）
 ├─ view/                      world_view.gd、arena_view.gd、camera_rig.gd、animator.gd、enemy_animator.gd、rig.gd、part_kit.gd、effects.gd、
 │  └─ styles/                 dark_fantasy.gd（第 14 節介面照搬）
@@ -582,7 +582,7 @@ godot/
 ### 15.18 多人連線（v0.21.0，C1~C4）
 - **使用者決定**（2026-10-23）：區網 ENet、1~4 人合作、房主即權威；誤傷開啟；敵人數量不變、血量每多 1 人 +50%；只能開局前加入（中途加入先不開放）；移動 / 翻滾 / 跳躍本機預測，攻擊與技能的動作、音效本機立即播，傷害一律由房主判定；倒下假死 10 秒、隊友按住 F 累積 5 秒救起、救起 30% 血、全員倒下就輸。數值在 `Config.NET`、`Config.REVIVE`。
 - **三種模式**（`main.gd`）：單機 = 沒有連線的房主（同一條程式路徑）；房主跑唯一的 `World`，`NetHost` 收各玩家輸入排隊（每步取一筆，排超過 `input_queue_max` 筆就把最舊的併進下一筆，本步按下的按鈕保留）；客戶端不跑 `World.step()`，`NetClient` 用快照維護鏡像 `World`（`is_authority = false`）。
-- **傳輸**（`net/net_session.gd`）：桌面版 ENet（輸入 IP）；網頁版 WebRTC（v0.36.0，`WebRTCMultiplayerPeer`，頻道 1 = unreliable；`net/peerjs_signaling.gd` 經 PeerJS 公開配對伺服器用 4 碼房號交換 OFFER / ANSWER / CANDIDATE，連上後就不經過伺服器；ICE 用 Google STUN + PeerJS 公開 TURN）。兩種不能互連。輸入（客戶端每步送最近 `input_redundancy` 筆）與快照（房主每 3 步）走 unreliable；事件每步一包走 reliable（`[run_id, tick, events]`）。RPC 的節點路徑以 `main` 為根（`get_tree().set_multiplayer(…, main 的路徑)`），直接執行與在 `capture.tscn` 裡執行的程序能互連。`--net-latency` / `--net-loss` 模擬延遲與掉包。
+- **傳輸**（`net/net_session.gd`）：玩家在主選單選連線方式（v0.40.0）。IP 連線 = ENet（只有桌面版）；房號連線 = WebRTC（v0.36.0，`WebRTCMultiplayerPeer`，頻道 1 = unreliable；`net/peerjs_signaling.gd` 經 PeerJS 公開配對伺服器用 4 碼房號交換 OFFER / ANSWER / CANDIDATE，連上後就不經過伺服器；ICE 用 Google STUN + PeerJS 公開 TURN）。網頁版用瀏覽器內建的 WebRTC，桌面版用 `addons/webrtc_native`（Godot 官方 webrtc-native 1.2.2，只放 Windows / Linux x86_64），所以房號連線桌面版與網頁版能互連。輸入（客戶端每步送最近 `input_redundancy` 筆）與快照（房主每 3 步）走 unreliable；事件每步一包走 reliable（`[run_id, tick, events]`）。RPC 的節點路徑以 `main` 為根（`get_tree().set_multiplayer(…, main 的路徑)`），直接執行與在 `capture.tscn` 裡執行的程序能互連。`--net-latency` / `--net-loss` 模擬延遲與掉包。
 - **快照**（`net/net_codec.gd`，v0.35.0 改成二進位 + 只送附近）：`[run_id, tick, ack, 世界狀態, 實體位元組 PackedByteArray, 有 extra 的實體的 extra]`。每個實體：id（u32）、種類（u8，`KINDS` 表）、旗標（u8）、x、z、[高度]、朝向、最大生命、[生命]（float32）、[速度、閃白 / 無敵]（half）、動畫（欄位名稱用 `ANIM_KEYS` 索引、常見名稱用 `NAMES` 索引、浮點數 double）。旗標標示的欄位是預設值時整個不送（滿血、靜止、計時器 0、高度 0；普通怪沒有 extra），無損。每個實體只編碼一次（`encode_entities`），`NetHost.snapshots` 再依玩家挑出 `NET.interest_radius`（24 = 視野 18 + 緩衝）內的實體，玩家與 Boss 一律送；別人的背包（`P_INV`）不送。客戶端照舊「快照有就建、沒有就移除」。量測（地圖 A 怪群 + 4 人）：一般每份 1.7~3.8 KB、身邊 120 隻時 7.0 KB（v0.34 每份送全部約 28 KB）；檢查上限 4 KB / 8 KB（網頁 WebRTC 單則約 16 KB）。客戶端用同樣的類別建立鏡像實體（`Player`、`Spawner.create`、`Projectile`），畫面層不用分辨單機或連線。
 - **其他實體**：畫面時間 = 估計的房主 tick（最新快照 + 收到後經過的步數）− `interp_delay_ticks`（6 步 = 100 ms），在前後兩筆快照之間補間（位置、高度、朝向；動畫的狀態相同時數值欄位也補間）；連續掉包追上最新快照時，沿速度最多往前推 `max_extrapolate_ticks` 步。事件也依 tick 延到畫面時間才播，和畫面對得上。
 - **自己的角色**：`World.step_predicted` 只推進自己（同 `step()` 的順序，但不扣血、不產生投射物，投射物等快照）。每筆快照帶 `ack`（房主最後套用的該玩家輸入編號），誤差 = 房主在 ack 時的位置 − 本機當時預測的位置，加到目前位置與之後的預測紀錄（不倒帶重播，狀態機與計時器不用存檔）；差超過 `snap_distance` 直接跳過去。血量、倒地 / 死亡、盾反、武器以房主最新快照為準；倒地 / 死亡時不預測，位置直接用房主的。被房主判定打中時本機立刻進入受擊硬直（`Player.net_hurt`）。

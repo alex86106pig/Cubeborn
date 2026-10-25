@@ -65,12 +65,14 @@ jobs:
           cd godot
           "$HOME/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" --headless --path . --export-release "Windows Desktop" ../build/windows/Cubeborn.exe
           test -f ../build/windows/Cubeborn.exe
+          # webrtc-native 擴充（房號連線，v0.40.0）匯出成 exe 旁邊的 dll，少了就不能用房號
+          ls ../build/windows/*.dll
 
       - name: Package zip
         run: |
           cp docs/連線試玩.md build/windows/HOW-TO-PLAY-ONLINE.txt
           cd build/windows
-          zip -q -9 "../Cubeborn-${TAG}-windows.zip" Cubeborn.exe HOW-TO-PLAY-ONLINE.txt
+          zip -q -9 "../Cubeborn-${TAG}-windows.zip" Cubeborn.exe *.dll HOW-TO-PLAY-ONLINE.txt
           ls -l ..
 
       - name: Create GitHub Release
