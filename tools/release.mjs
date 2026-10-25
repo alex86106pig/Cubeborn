@@ -1,14 +1,16 @@
 // 檢查與推送（Windows / Mac 都能跑，只用 Node 內建模組）。規則見 PROJECT_GUIDELINES.md 第 12、13 節
 //   node tools/release.mjs --check                        只跑 Godot 匯入 + check.gd（有逾時）
 //   node tools/release.mjs --web                          匯出網頁版並開本機伺服器 http://localhost:8060（--port 換埠）
+//   node tools/release.mjs --perf                         匯出網頁版，在背景的 Chrome 原地轉身 30 秒量效能（--chrome <路徑> 或環境變數 CHROME）
 //   node tools/release.mjs --summary "摘要"               推送：更新（rebase）→ 決定版號 → 檢查 → commit + tag → push
 //   node tools/release.mjs --summary "摘要" --dry-run     不動 git 歷史、不推：只 fetch、算版號、改檔跑檢查，最後還原
 //   加 --bump=minor|patch 可以蓋過自動判斷的版號
 // Godot：--godot <console 執行檔路徑> 或環境變數 GODOT（每台電腦的路徑寫在 CLAUDE.local.md）
 // git：環境變數 GIT，沒有就用 PATH 上的 git（Windows 找不到時改用 Program Files 裡的）
-import { spawnSync } from 'node:child_process';
-import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { createReadStream, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
 import { dirname, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -79,8 +81,8 @@ function runChecks() {
 
 if (has('check')) process.exit(runChecks() ? 0 : 1);
 
-// 匯出網頁版到 build/web 並開本機伺服器（Ctrl+C 結束）；字型不做子集化（CI 才做），第一次載入比網站慢
-if (has('web')) {
+// 匯出網頁版到 build/web；字型不做子集化（CI 才做），第一次載入比網站慢
+function exportWeb() {
   const godot = godotPath();
   const out = join(ROOT, 'build', 'web');
   mkdirSync(out, { recursive: true });
@@ -89,18 +91,115 @@ if (has('web')) {
     const missing = /No export template found|template file not found/i.test(`${exp.out}\n${exp.err}`);
     fail(missing ? '找不到 Godot 的網頁版匯出模板：照 docs/新電腦設定.md 安裝' : `匯出失敗\n${`${exp.out}\n${exp.err || ''}`.trim().split('\n').slice(-15).join('\n')}`);
   }
-  const port = Number(opt('port')) || 8060;
+  return out;
+}
+
+// 只聽本機的靜態伺服器（.wasm 要用 application/wasm 才能串流編譯）
+function serveWeb(out, port) {
   const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.wasm': 'application/wasm',
     '.pck': 'application/octet-stream', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json' };
-  createServer((req, res) => {
+  const server = createServer((req, res) => {
     const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     const file = normalize(join(out, path === '/' ? 'index.html' : path));
     if (!file.startsWith(out) || !existsSync(file) || statSync(file).isDirectory()) { res.writeHead(404); res.end(); return; }
     res.writeHead(200, { 'Content-Type': types[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
     createReadStream(file).pipe(res);
-  }).listen(port, '127.0.0.1', () => console.log(`✔ 已匯出網頁版：http://localhost:${port}/（量幀時間加 ?perf；Ctrl+C 結束）`));
+  });
+  return new Promise((resolve, reject) => { server.on('error', reject); server.listen(port, '127.0.0.1', () => resolve(server)); });
+}
+
+if (has('web') && !has('perf')) {
+  const port = Number(opt('port')) || 8060;
+  await serveWeb(exportWeb(), port).catch(e => fail(`開不了伺服器（埠 ${port}）：${e.message}`));
+  console.log(`✔ 已匯出網頁版：http://localhost:${port}/（量幀時間加 ?perf；Ctrl+C 結束）`);
   await new Promise(() => {});   // 伺服器一直開著，不往下跑推送
 }
+
+// 網頁版效能：匯出後開獨立的 Chrome（自己的設定資料夾、放在螢幕外、關掉背景限速，照樣用顯示卡畫），
+// 原地讓 60 群怪圍過來、每 0.5 秒用滑鼠來回轉身 180°，跑 30 秒；印出 WebGL 用的顯示卡、遊戲的 perf 統計、Console 錯誤
+const PERF_SECONDS = 30;
+const PERF_QUERY = `?perf&seconds=${PERF_SECONDS}&horde=60&elites&player-hp=99999`;
+const TURN_SECONDS = 0.5;
+
+function chromePath() {
+  const p = opt('chrome') || process.env.CHROME;
+  if (p) return existsSync(p) ? p : fail(`找不到 Chrome：${p}`);
+  const found = [
+    join(process.env.ProgramFiles || 'C:\\Program Files', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    join(process.env.LOCALAPPDATA || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  ].find(existsSync);
+  return found || fail('找不到 Chrome：加 --chrome <路徑> 或設環境變數 CHROME（路徑寫在 CLAUDE.local.md）');
+}
+
+async function webPerf() {
+  const chrome = chromePath();
+  const port = Number(opt('port')) || 8061;
+  const server = await serveWeb(exportWeb(), port).catch(e => fail(`開不了伺服器（埠 ${port}）：${e.message}`));
+  const debugPort = 9333;
+  const profile = mkdtempSync(join(tmpdir(), 'cubeborn-chrome-'));
+  const proc = spawn(chrome, [
+    `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check',
+    '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows',
+    '--window-position=-3000,0', '--window-size=960,540', '--new-window', `http://localhost:${port}/${PERF_QUERY}`,
+  ], { stdio: 'ignore' });
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const lines = [];
+  let hitches = 0, ok = false, timer = null;
+  const close = async () => {
+    clearInterval(timer);
+    try {
+      const v = await (await fetch(`http://127.0.0.1:${debugPort}/json/version`)).json();
+      const b = new WebSocket(v.webSocketDebuggerUrl);
+      b.onopen = () => b.send(JSON.stringify({ id: 1, method: 'Browser.close' }));
+    } catch {}
+    await sleep(1500);
+    try { proc.kill(); } catch {}
+    try { rmSync(profile, { recursive: true, force: true }); } catch {}
+    server.close();
+  };
+  let page = null;
+  for (let i = 0; i < 60 && !page; i++) {
+    await sleep(500);
+    try { page = (await (await fetch(`http://127.0.0.1:${debugPort}/json`)).json()).find(t => t.type === 'page' && t.url.includes(`:${port}/`)); } catch {}
+  }
+  if (!page) { await close(); fail('Chrome 開不起來或連不上除錯介面'); }
+  await new Promise(resolve => {
+    const ws = new WebSocket(page.webSocketDebuggerUrl);
+    let id = 10;
+    const send = (method, params = {}) => ws.send(JSON.stringify({ id: ++id, method, params }));
+    const deadline = setTimeout(() => { lines.push('✘ 逾時：遊戲沒有印出 perf 統計'); resolve(); }, (PERF_SECONDS + 90) * 1000);
+    ws.onopen = () => {
+      send('Runtime.enable');
+      // 實際畫 WebGL 的顯示卡（SwiftShader = 軟體繪製，數字不能用）
+      ws.send(JSON.stringify({ id: 1, method: 'Runtime.evaluate', params: { returnByValue: true, expression:
+        "(() => { const g = document.createElement('canvas').getContext('webgl2'); const e = g && g.getExtension('WEBGL_debug_renderer_info'); return g ? (e ? g.getParameter(e.UNMASKED_RENDERER_WEBGL) : g.getParameter(g.RENDERER)) : '沒有 WebGL2'; })()" } }));
+    };
+    ws.onmessage = ev => {
+      const m = JSON.parse(ev.data);
+      if (m.id === 1) lines.push(`顯示卡：${m.result?.result?.value}`);
+      if (m.method === 'Runtime.exceptionThrown') lines.push(`例外：${m.params.exceptionDetails.text}`);
+      if (m.method !== 'Runtime.consoleAPICalled') return;
+      const text = m.params.args.map(a => a.value ?? a.description ?? '').join(' ');
+      if (/^perf hitch/.test(text)) { if (++hitches <= 20) lines.push(text); return; }
+      // 第一行 perf 出現 = 遊戲開始跑了：開始來回轉身（滑鼠在畫面中央左右兩側，角色面向跟著滑鼠）
+      if (/^perf|^Build configuration/.test(text) && !timer) {
+        let side = 1;
+        timer = setInterval(() => { side = -side; send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 472 + side * 250, y: 250 }); }, TURN_SECONDS * 1000);
+      }
+      if (/^perf /.test(text)) lines.push(text);
+      else if (/ERROR|SCRIPT/.test(text) && !/webrtc_native|GDExtension/.test(text)) lines.push(`Console：${text}`);
+      if (/^perf view_sync_parts_ms/.test(text)) { ok = true; clearTimeout(deadline); resolve(); }
+    };
+  });
+  await close();
+  console.log(lines.join('\n'));
+  if (hitches > 20) console.log(`（hitch 共 ${hitches} 筆，只列前 20）`);
+  return ok;
+}
+
+if (has('perf')) process.exit(await webPerf() ? 0 : 1);
 
 // ---- 推送 ----
 const dryRun = has('dry-run');
