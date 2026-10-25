@@ -237,6 +237,59 @@ static func check_boss_enraged_moves() -> String:
 	return ""
 
 
+# 瞬移砸地躲不躲得掉（v0.42.0：ring_delay 0.25 → 0.5）：站著不動被第 1 圈打一次；
+# 看到預警後反應 0.3 秒往外直跑就躲得掉（三圈打到時都在那一圈外面）；砸地每圈的畫面透明度依序閃亮
+static func check_teleport_slam_dodge(feel: Array[String]) -> String:
+	var s: Dictionary = EnemyDefs.ENEMIES.boss.slam
+	var results := []
+	for run in [false, true]:
+		var w := _new_world(8)
+		var p := _player(w)
+		p.pos = Vector2(0, 12)
+		var b: Boss = _spawn(w, &"boss", Vector2(0, -8))
+		_run(w, _cmd(Vector2.ZERO), roundi(EnemyDefs.ENEMIES.boss.spawn_time / DT) + 2)
+		b.is_enraged = true
+		w.cooldowns.start(b.cd("charge"), 99.0)
+		w.cooldowns.start(b.cd("summon"), 99.0)
+		w.cooldowns.start(b.cd("cleave"), 99.0)
+		w.cooldowns.reset(b.cd("slam"))
+		var events: Array[Dictionary] = []
+		if _run_until(w, _cmd(Vector2.ZERO), 60, events, func() -> bool: return b.fsm.is_in(&"slam")) < 0:
+			return "狂暴時應瞬移砸地"
+		var start := w.tick
+		var center: Vector2 = b.fsm.data.target
+		var dists: Array[float] = []   # 每一圈打出去那一步，玩家離砸地中心的距離
+		var hits := 0
+		for i in 240:
+			var move := Vector2.ZERO
+			if run and (w.tick - start) * DT >= 0.3:
+				move = (Vector2.ZERO - center).normalized()   # 往場地中央跑（玩家在 (0, 12)，往外跑會撞到場地邊緣）
+			w.step({World.HOST_PEER_ID: _cmd(move, p.pos + move * 5.0)}, DT)
+			for e in w.events:
+				if e.name == "fx:boss_slam":
+					dists.append(p.pos.distance_to(center))
+				elif e.name == "entity:damaged" and e.target_id == p.id:
+					hits += 1
+			if not b.fsm.is_in(&"slam"):
+				break
+		results.append([hits, dists])
+	if results[0][0] != 1:
+		return "站著不動應被第 1 圈打一次，實際 %d 次" % results[0][0]
+	var d: Array = results[1][1]
+	var rings: Array = s.rings
+	if results[1][0] != 0 or d.size() != rings.size():
+		return "反應 0.3 秒往外跑應躲得掉：被打 %d 次、每圈打出時的距離 %s（圈半徑 %s）" % [results[1][0], d, rings]
+	feel.append("瞬移砸地往外跑（反應 0.3 秒、移速 %.1f）：三圈打出時離中心 %.2f / %.2f / %.2f，圈外緣 %s（加角色半徑 %.2f）" % [Config.PLAYER.move_speed, d[0], d[1], d[2], rings, Config.PLAYER.radius])
+	# 畫面：舉手時都亮；落地後第 2 圈在 ring_delay 前淡淡亮著、打到那一刻最亮、之後淡掉
+	var A := EnemyAnimator.slam_ring_alpha
+	var dl: float = s.ring_delay
+	if A.call(true, &"windup", 0.1, 0.7, 2, dl) <= 0.0 or A.call(true, &"impact", dl - 0.01, 0.7, 1, dl) != 0.3 \
+			or A.call(true, &"impact", dl, 0.7, 1, dl) < 0.8 or A.call(true, &"impact", dl + 0.5, 0.7, 1, dl) != 0.0 \
+			or A.call(false, &"impact", 0.0, 0.7, 0, dl) != 0.0:
+		return "砸地圈的透明度不對：等待 0.3、打到 0.85 後淡掉"
+	return ""
+
+
 static func check_boss_high_ground() -> String:
 	# 地圖 A：玩家站在西北角 1.0 石座上，Boss 從地面跳上去（v0.22.0 會在下面一直砸地）
 	var w := _new_world(12345, false, &"graveyard_a")

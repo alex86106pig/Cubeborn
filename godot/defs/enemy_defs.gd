@@ -86,7 +86,8 @@ const ENEMIES := {
 		# 砸地：以 Boss 為中心，紅圈一圈一圈往外擴散；每圈只打到「那一圈範圍內」的目標（同一次砸地每人最多被打一次）
 		# 打到：擊飛（往上 knockup 速度）＋ 移速 ×slow_mul 持續 slow_time 秒；跳起來躲得過（同 v0.23.0 的 max_air）
 		"slam": {
-			"trigger_distance": 4.0, "rings": [3.0, 6.0, 9.0], "ring_delay": 0.25, "windup": 0.7, "recovery": 0.8,
+			# ring_delay 0.25 → 0.5（v0.42.0 使用者決定）：波往外每秒 6 單位，比玩家移速 6.5 慢，往外跑躲得掉
+			"trigger_distance": 4.0, "rings": [3.0, 6.0, 9.0], "ring_delay": 0.5, "windup": 0.7, "recovery": 0.8,
 			"damage": 26.0, "knockback": 8.0, "knockup": 7.0, "slow_mul": 0.5, "slow_time": 2.0, "cooldown": 2.45,
 			"hit_stop": 0.06, "shake": 0.7, "shake_duration": 0.35, "blockable": false,
 		},

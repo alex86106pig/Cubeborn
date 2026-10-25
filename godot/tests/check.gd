@@ -81,6 +81,7 @@ func _initialize() -> void:
 	_check("敵人移速與箭：小怪移速 = 基礎 × 波次成長 × 隨機 ±變異、Boss 固定；弓手的箭速與射程照資料", CombatChecks.check_enemy_speed)
 	_check("投射物不穿牆：魔彈對牆射會在牆前消失；從高台往下射照樣打得到地上的怪", CombatChecks.check_projectile_walls)
 	# Boss 招式
+	_check("瞬移砸地躲得掉（v0.42.0，每圈間隔 0.5 秒）：站著不動被第 1 圈打一次；看到預警反應 0.3 秒往外直跑三圈都打不到；砸地圈依序閃亮（等待 0.3、打到 0.85 後淡掉）", BossChecks.check_teleport_slam_dodge.bind(CheckKit._feel_lines))
 	_check("Boss 砸地：近身時前搖後打中、擊飛 + 緩速、CD；紅圈一圈圈往外（外圈晚 ring_delay）、每人只被打一次；霸體不硬直、擊退乘 knockback_mul", BossChecks.check_boss_slam)
 	_check("Boss 衝鋒：蓄力 windup、照 speed 衝刺、命中傷害並讓玩家暈眩 stun、撞牆自己暈眩 wall_stun", BossChecks.check_boss_charge)
 	_check("Boss 直劈：沒有地面預警；舉劍 windup 秒後劈下；追蹤只做一半，繞圈走位躲得開", BossChecks.check_boss_cleave)

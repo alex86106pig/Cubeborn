@@ -9,6 +9,7 @@ const DEATH_FALL_TIME := 0.4
 const CORPSE_SINK_START := 0.6   # 屍體停留時間的 60% 後開始沉入地面
 const CORPSE_SINK_DEPTH := 0.8
 const SLAM_FOLLOW_TIME := 0.12   # 重砸落地後手臂揮下的秒數
+const SLAM_FLASH_TIME := 0.3     # 砸地每一圈打到時閃亮後淡掉的秒數（v0.42.0）
 
 var rig   # Rig（Boss）或 SkinnedRig（小怪，D5）：關節介面相同
 var walk_phase := 0.0
@@ -21,8 +22,10 @@ func _init(p_rig: Node3D, e: Enemy) -> void:
 	rig = p_rig
 	walk_phase = randf() * TAU   # 畫面用隨機，與模擬無關
 	if e.is_boss():
+		var inner := 0.0
 		for r: float in e.def.slam.rings:
-			_slam_rings.append(_make_ring(r))
+			_slam_rings.append(_make_ring(inner, r))
+			inner = r
 		_charge_line = _make_line(e.def.charge.speed * e.def.charge.duration, e.radius * 2.0)
 
 
@@ -194,7 +197,7 @@ func _pose_charge(a: Dictionary, dt: float, c: Dictionary) -> void:
 
 # ───────── Boss 地面預警（網頁版 Effects.telegraph / telegraphLine） ─────────
 
-# 砸地：舉手時所有圈一起閃；落地後每一圈在打到之前繼續亮著、打到就消失（看得出波往外擴散）
+# 砸地：舉手時所有圈一起閃；落地後還沒打到的圈淡淡亮著，打到的那一刻那一圈閃亮再淡掉（v0.42.0：看得出一圈接一圈往外）
 func _update_telegraphs(e: Enemy, a: Dictionary) -> void:
 	if _slam_rings.is_empty():
 		return
@@ -203,14 +206,10 @@ func _update_telegraphs(e: Enemy, a: Dictionary) -> void:
 	var phase: StringName = a.get("phase", &"")
 	for i in _slam_rings.size():
 		var ring := _slam_rings[i]
-		var show := false
-		if a.state == &"slam" and phase == &"windup":
-			show = true
-			_set_alpha(ring, 0.35 + 0.35 * pow(sin(pt / maxf(a.get("windup", 0.7), 0.01) * PI * 6.0), 2.0))
-		elif a.state == &"slam" and phase == &"impact" and pt < i * slam.ring_delay:
-			show = true
-			_set_alpha(ring, 0.7)
-		ring.visible = show
+		var alpha := slam_ring_alpha(a.state == &"slam", phase, pt, a.get("windup", 0.7), i, slam.ring_delay)
+		ring.visible = alpha > 0.0
+		if ring.visible:
+			_set_alpha(ring, alpha)
 
 	var charge: Dictionary = e.def.charge
 	var show_line: bool = a.state == &"charge" and phase == &"windup"
@@ -220,10 +219,27 @@ func _update_telegraphs(e: Enemy, a: Dictionary) -> void:
 		_set_alpha(_charge_line, 0.2 + 0.3 * pow(sin(k * PI * 5.0), 2.0))
 
 
-func _make_ring(radius: float) -> MeshInstance3D:
+# 砸地第 i 圈的透明度（0 = 不顯示）：舉手時 0.2~0.45 閃爍；落地後還沒打到 0.3，打到的那一刻 0.85、SLAM_FLASH_TIME 秒內淡到 0
+static func slam_ring_alpha(in_slam: bool, phase: StringName, pt: float, windup: float, i: int, ring_delay: float) -> float:
+	if not in_slam:
+		return 0.0
+	if phase == &"windup":
+		return 0.2 + 0.25 * pow(sin(pt / maxf(windup, 0.01) * PI * 6.0), 2.0)
+	if phase != &"impact":
+		return 0.0
+	var since_hit := pt - i * ring_delay
+	if since_hit < 0.0:
+		return 0.3
+	if since_hit < SLAM_FLASH_TIME:
+		return 0.85 * (1.0 - since_hit / SLAM_FLASH_TIME)
+	return 0.0
+
+
+# 實心的一圈（v0.42.0 使用者決定，原本是外緣細環）：上一圈半徑 ~ 這一圈半徑整片填滿，壓扁的圓環
+func _make_ring(inner: float, radius: float) -> MeshInstance3D:
 	var ring := MeshInstance3D.new()
 	var torus := TorusMesh.new()
-	torus.inner_radius = radius * 0.85
+	torus.inner_radius = maxf(inner, 0.01)
 	torus.outer_radius = radius
 	torus.rings = 48
 	ring.mesh = torus
