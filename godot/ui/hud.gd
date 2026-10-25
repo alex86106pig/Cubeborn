@@ -18,7 +18,7 @@ const GAME_OVER_DELAY := 0.7     # 死亡後幾秒顯示結算
 const BOSS_NAME := "亡骸騎士"     # darkFantasy.js 的 names.boss
 # 介面程式碼裡寫死的中文字（橫幅、浮動文字、場上文字、連線面板、遊玩紀錄…；資料表以外的）：開場預熱用（v0.37.2）
 # check.gd 會掃 ui/ 的字串，缺字就列出來，加到這裡
-const UI_CHARS := "　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過"
+const UI_CHARS := "　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長"
 
 const VIGNETTE_SHADER := """
 shader_type canvas_item;
@@ -64,6 +64,9 @@ var _game_over := ColorRect.new()
 var _game_over_title := UiKit.label("", 56, UiKit.ALERT, 3)
 var _game_over_stats := UiKit.label("", 20)
 var _game_over_log := UiKit.label("", 18, Color(1, 1, 1, 0.85))   # 遊玩紀錄（v0.34.0）
+var _copy_button := Button.new()   # 複製遊玩紀錄（RunLog.report_text）回報
+var _copy_note := UiKit.label("", 16, UiKit.GOLD)
+var last_report := ""              # 上次複製的文字（測試用）
 var run_log := RunLog.new()
 var profile: Profile                # 局外存檔（v0.45，main.gd 給）：結算畫面顯示累計金幣；null = 不顯示累計
 var _floor_coins := 0               # 剛過關拿到的金幣：同一步的 floor:started 橫幅一起顯示
@@ -231,7 +234,13 @@ func _init() -> void:
 	_banner.modulate.a = 0.0
 	root.add_child(_banner)
 
-	_build_overlay(_game_over, Color(40 / 255.0, 0, 0, 0.55), [_game_over_title, _game_over_stats, _game_over_log, _pulse(UiKit.label("按 R 重新開始", 20))])
+	_copy_button.text = "複製遊玩紀錄"
+	_copy_button.add_theme_font_size_override(&"font_size", 20)
+	_copy_button.custom_minimum_size = Vector2(220, 44)
+	_copy_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_copy_button.focus_mode = Control.FOCUS_NONE
+	_copy_button.pressed.connect(copy_report)
+	_build_overlay(_game_over, Color(40 / 255.0, 0, 0, 0.55), [_game_over_title, _game_over_stats, _game_over_log, _copy_button, _copy_note, _pulse(UiKit.label("按 R 重新開始", 20))])
 	root.add_child(_game_over)
 	var pause_controls := UiKit.label(CONTROLS_TEXT, 14, Color(1, 1, 1, 0.75))
 	# 離開遊戲按鈕：網頁版不顯示（瀏覽器不允許網頁自己關閉）
@@ -358,8 +367,9 @@ func _process(delta: float) -> void:
 	if player == null:
 		return
 	_skill_bar.refresh(world, player)
-	if not _pause.visible and not _game_over.visible and not main_menu.visible:   # 暫停、結算、主選單時提示不倒數
+	if not _pause.visible and not _game_over.visible and not main_menu.visible:   # 暫停、結算、主選單時提示不倒數、不記效能
 		hints.update(delta, world, player, inventory_panel.visible)
+		run_log.add_frame(delta, world.stats.time)
 	if _stats_panel.visible:
 		_stats_panel.refresh(player)
 
@@ -527,6 +537,7 @@ func _on_event(name: String, p: Dictionary) -> void:
 		"game:restart":
 			_game_over_delay = -1.0
 			_game_over.visible = false
+			_copy_note.text = ""
 			_pause.visible = false
 			_hp_ghost = 1.0
 			_boss_ghost = 1.0
@@ -554,6 +565,7 @@ func _set_game_over(title: String, stats: String, victory: bool) -> void:
 	_game_over_title.add_theme_color_override(&"font_color", UiKit.GOLD if victory else UiKit.ALERT)
 	_game_over_stats.text = stats + "\n" + coins_summary()
 	_game_over_log.text = run_log.summary_text()
+	run_log.result = title
 	_game_over.color = Color(40 / 255.0, 30 / 255.0, 0, 0.5) if victory else Color(40 / 255.0, 0, 0, 0.55)
 
 
@@ -563,6 +575,13 @@ func coins_summary() -> String:
 	if profile != null:
 		text += "（累計 %d）" % profile.coins
 	return text
+
+
+# 結算畫面的「複製遊玩紀錄」：精簡文字放進剪貼簿，玩家貼到聊天軟體回報
+func copy_report() -> void:
+	last_report = run_log.report_text(world)
+	DisplayServer.clipboard_set(last_report)
+	_copy_note.text = "已複製，貼到聊天軟體回報給我們"
 
 
 # 網頁版 @keyframes banner：0~15% 由 1.3 倍縮回並淡入，75% 後淡出

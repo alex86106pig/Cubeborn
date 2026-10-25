@@ -6,6 +6,8 @@ extends RefCounted
 var world: World
 var acks: Dictionary = {}       # peer_id -> 最後套用的輸入編號（客戶端的 tick）
 var _queues: Dictionary = {}    # peer_id -> Array[InputCmd]（依 tick 遞增）
+var input_gap_max_ms: Dictionary = {}   # peer_id -> 兩次收到輸入最長隔多久（遊玩紀錄；以房主的模擬步換算毫秒）
+var _last_input_tick: Dictionary = {}   # peer_id -> 上次收到輸入時的 world.tick
 
 
 func _init(p_world: World) -> void:
@@ -16,10 +18,16 @@ func _init(p_world: World) -> void:
 func remove_peer(peer_id: int) -> void:
 	_queues.erase(peer_id)
 	acks.erase(peer_id)
+	input_gap_max_ms.erase(peer_id)
+	_last_input_tick.erase(peer_id)
 
 
 # arrays：客戶端送來的最近幾筆輸入（InputCmd.to_array，舊到新）；已經套用或已在排隊的跳過（重送的備份）
 func receive_inputs(peer_id: int, arrays: Array) -> void:
+	var last: int = _last_input_tick.get(peer_id, -1)
+	if last >= 0 and world.tick >= last:   # 重新開始時 tick 歸零：跳過那一次
+		input_gap_max_ms[peer_id] = maxi(input_gap_max_ms.get(peer_id, 0), roundi((world.tick - last) * Config.FIXED_DT * 1000.0))
+	_last_input_tick[peer_id] = world.tick
 	var q: Array = _queues.get_or_add(peer_id, [])
 	var newest: int = q.back().tick if not q.is_empty() else acks.get(peer_id, 0)
 	for a: Array in arrays:

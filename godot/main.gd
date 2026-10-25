@@ -52,6 +52,7 @@ func _ready() -> void:
 	hud = HUD_SCENE.instantiate()
 	hud.setup(world, camera_rig.camera)
 	hud.health_bars.hidden_ids = world_view.hidden_ids   # 同一個字典，WorldView 每個 tick 原地更新
+	hud.run_log.net_info = _net_report
 	hud.quit_requested.connect(get_tree().quit)
 	hud.title_requested.connect(return_to_title)
 	hud.main_menu.single_pressed.connect(start_single)
@@ -305,6 +306,19 @@ func leave_net(message: String) -> void:
 	_net_message = message
 	restart()
 	show_title(&"multi")
+
+
+# 遊玩紀錄的連線數據（ui/run_log.gd）；單機回傳空的
+func _net_report() -> Dictionary:
+	if mode == Mode.SINGLE:
+		return {}
+	var out := {"role": "房主" if mode == Mode.HOST else "客戶端", "players": world.players.size()}
+	if net_client != null:
+		out.rtt_ms = net_client.rtt_ms
+		out.snapshot_gap_max_ms = net_client.snapshot_gap_max_ms
+	if net_host != null:
+		out.input_gap_max_ms = net_host.input_gap_max_ms
+	return out
 
 
 func _use_world(w: World) -> void:

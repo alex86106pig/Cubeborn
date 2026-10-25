@@ -10,6 +10,11 @@ var last_error := 0.0            # 最近一次修正時的預測誤差（測試
 var max_error := 0.0             # 連線後最大的預測誤差（不含直接跳過去的大誤差）
 var corrections := 0             # 修正次數
 var applied_tick := -1           # 目前畫面套用的快照 tick（補間的前一筆；測試用）
+# 遊玩紀錄的連線數據（ui/run_log.gd）；用模擬步換算毫秒，測試裡不受實際時間影響
+const RTT_MAX_SAMPLES := 20000
+var rtt_ms: Array[int] = []      # 回應時間：送出一筆輸入到房主的快照確認套用（ack）之間（含網路來回、排隊、快照間隔）
+var snapshot_gap_max_ms := 0     # 兩份快照之間最長隔多久（房主卡住、切到背景時會很大）
+var _last_snapshot_tick := -1    # 收到上一份快照時的客戶端 tick
 
 var _run_id := -1
 var _snapshots: Array = []       # 依 tick 遞增
@@ -88,6 +93,10 @@ func _take_prediction(target_id: int) -> bool:
 
 
 # 要送給房主的輸入：最近 input_redundancy 筆（舊到新），掉包時下一次還會帶到
+static func _ticks_to_ms(ticks: int) -> int:
+	return roundi(ticks * Config.FIXED_DT * 1000.0)
+
+
 func outgoing_inputs() -> Array:
 	var out := []
 	var n: int = Config.NET.input_redundancy
@@ -109,6 +118,9 @@ func receive_snapshot(snap: Array) -> void:
 	_snapshots.append(snap)
 	_latest_tick = tick
 	_since_snapshot = 0
+	if _last_snapshot_tick >= 0:
+		snapshot_gap_max_ms = maxi(snapshot_gap_max_ms, _ticks_to_ms(_client_tick - _last_snapshot_tick))
+	_last_snapshot_tick = _client_tick
 	_reconcile(snap)
 
 
@@ -220,6 +232,8 @@ func _reconcile(snap: Array) -> void:
 	var is_new_ack := ack > _last_ack
 	if is_new_ack:
 		_last_ack = ack
+		if ack <= _client_tick and rtt_ms.size() < RTT_MAX_SAMPLES:
+			rtt_ms.append(_ticks_to_ms(_client_tick - ack))
 		while not _pending.is_empty() and _pending[0].tick <= ack:
 			_pending.pop_front()
 	_apply_own_authority(me, a)

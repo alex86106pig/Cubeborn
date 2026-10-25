@@ -691,6 +691,35 @@ static func check_sync(feel: Array[String]) -> String:
 	return err
 
 
+# 遊玩紀錄的連線數據：單程延遲 latency 步時，客戶端的回應時間（輸入 → 房主快照確認）在「來回 + 快照間隔」內；
+# 快照最長間隔約 snapshot_interval 步；房主收到隊友輸入的最長間隔約 1 步
+static func check_net_stats(feel: Array[String]) -> String:
+	var latency := 6
+	var link := _Link.new(41, [1, 2], latency, 0.0, false)
+	for i in 300:
+		link.step(_cmd(Vector2.ZERO), _cmd(Vector2(1, 0)))
+	var step_ms := Config.FIXED_DT * 1000.0
+	var rtt := link.client.rtt_ms.duplicate()
+	rtt.sort()
+	var lo := roundi(2 * latency * step_ms)
+	var hi := roundi((2 * latency + Config.NET.snapshot_interval + 1) * step_ms)
+	var gap := link.client.snapshot_gap_max_ms
+	var host_gap: int = link.host.input_gap_max_ms.get(link.client.peer_id, -1)
+	var err := ""
+	if rtt.size() < 50:
+		err = "回應時間只量到 %d 次" % rtt.size()
+	elif rtt[0] < lo or rtt[-1] > hi:
+		err = "單程延遲 %d 步：回應時間 %d ~ %d ms，應在 %d ~ %d ms" % [latency, rtt[0], rtt[-1], lo, hi]
+	elif gap <= 0 or gap > roundi(Config.NET.snapshot_interval * step_ms) + 1:
+		err = "快照最長間隔 %d ms，應約 %d ms" % [gap, roundi(Config.NET.snapshot_interval * step_ms)]
+	elif host_gap <= 0 or host_gap > roundi(step_ms) + 1:
+		err = "房主收到隊友輸入的最長間隔 %d ms，應約 %d ms" % [host_gap, roundi(step_ms)]
+	if err == "":
+		feel.append("遊玩紀錄的連線數據：單程 %d ms 時回應 %d ~ %d ms（%d 次）、快照最長間隔 %d ms、房主收隊友輸入最長間隔 %d ms" % [roundi(latency * step_ms), rtt[0], rtt[-1], rtt.size(), gap, host_gap])
+	link.clear()
+	return err
+
+
 static func _chase_cmd(w: World, peer_id: int) -> InputCmd:
 	var p: Player = w.players.get(peer_id)
 	if p == null:

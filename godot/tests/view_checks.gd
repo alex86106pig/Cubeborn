@@ -323,6 +323,22 @@ static func check_run_log() -> String:
 	for want in ["你的擊殺 1：骷髏戰士 1", "被打中 3 次", "被看不見的攻擊打中 2 次", "骷髏弓手：", "（看不見 2 次）", "倒下 1 次：被 骷髏弓手（看不見） 打倒"]:
 		if not text.contains(want):
 			return "結算文字缺「%s」：\n%s" % [want, text]
+	# 複製遊玩紀錄：結算畫面的按鈕，按下去拿到回報用的精簡文字；單機沒有連線那行
+	rl.add_frame(0.016, 1.0)
+	rl.add_frame(0.12, 65.0)
+	if hud._copy_button.get_parent() != hud._game_over_log.get_parent():
+		return "「複製遊玩紀錄」按鈕應在結算畫面上"
+	hud._copy_button.pressed.emit()
+	var report: String = hud.last_report
+	for want in ["Cubeborn v%s" % GameVersion.VERSION, "結果：你倒下了", "武器：", "你的擊殺 1", "被打中 3 次", "最慢一幀 120 ms（1:05）", "卡頓（超過 50 ms）1 次"]:
+		if not report.contains(want):
+			return "回報文字缺「%s」：\n%s" % [want, report]
+	if report.contains("連線："):
+		return "單機的回報不該有連線那行：\n%s" % report
+	var nt := RunLog.net_text({"role": "客戶端", "players": 3, "rtt_ms": [100, 60, 240, 80], "snapshot_gap_max_ms": 380, "input_gap_max_ms": {}})
+	if nt != "連線：客戶端 · 3 人 · 回應 平均 120 / 最低 60 / 90% 240 / 最高 240 ms（4 次） · 快照最長間隔 380 ms":
+		return "連線那行不對：%s" % nt
+	_note("回報文字：\n" + report)
 	# 最多行的情況（每種攻擊者都打過、倒下超過顯示上限）也要塞得進畫面
 	for kind: StringName in RunLog.NAMES:
 		rl.by_source[kind] = {"damage": 99999, "hits": 9999, "unseen": 9999}
@@ -337,7 +353,7 @@ static func check_run_log() -> String:
 		return "結算畫面需要 %s，超出 %s" % [need, screen]
 	_note("結算畫面最多行時需要 %.0f × %.0f（畫面 %.0f × %.0f）" % [need.x, need.y, screen.x, screen.y])
 	hud._on_event("game:restart", {})
-	if rl.hits_taken != 0 or not rl.kills.is_empty() or not rl.downs.is_empty():
+	if rl.hits_taken != 0 or not rl.kills.is_empty() or not rl.downs.is_empty() or rl.frames != 0 or rl.result != "":
 		return "game:restart 後遊玩紀錄應清空"
 	hud.queue_free()
 	cam.queue_free()
