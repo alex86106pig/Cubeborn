@@ -1,4 +1,4 @@
-# 組合根：建立 World、輸入、畫面、HUD、音效與連線；固定步長主迴圈、通關慢動作、暫停 / 選單、靜音、重新開始、離開遊戲
+# 組合根：建立 World、輸入、畫面、HUD、音效與連線；主選單、固定步長主迴圈、通關慢動作、暫停 / 選單、靜音、重新開始、離開遊戲
 # 三種模式（15.18）：單機（= 沒有連線的房主）、房主（跑唯一的 World、收輸入、送快照與事件）、客戶端（鏡像 World + 本機預測）
 # 指令列參數（放在 -- 之後）：--seconds=S --screenshot=路徑 --auto-move=x,y（螢幕方向）--auto-move-seconds=S（幾秒後停止移動）
 #   --auto-attack（一直按住左鍵）--auto-special（開場按一次右鍵，之後每 5.1 秒再按一次）--auto-interact（一直按住 F）--weapon=staff（開場武器）
@@ -24,6 +24,7 @@ var world := World.new()      # 單機 / 房主：權威的 World；客戶端：
 var is_paused := false        # 單機暫停（連線時 Esc 只開選單，遊戲不停）
 var is_menu_open := false     # 連線時的選單
 var is_in_lobby := false      # 開房 / 加入後、開始遊戲前
+var is_at_title := false      # 停在主選單（v0.39.0）：遊戲不跑、不收遊戲輸入
 
 var camera_rig := CameraRig.new()
 var world_view := WorldView.new()
@@ -89,6 +90,9 @@ func _ready() -> void:
 	hud = HUD_SCENE.instantiate()
 	hud.setup(world, camera_rig.camera)
 	hud.quit_requested.connect(get_tree().quit)
+	hud.title_requested.connect(return_to_title)
+	hud.main_menu.single_pressed.connect(start_single)
+	hud.main_menu.back_pressed.connect(_on_title_back)
 	hud.inventory_panel.op_requested.connect(input_collector.queue_inventory_op)
 	if _run_seconds > 0.0:
 		hud.hints.save_path = ""   # 自動驗證（截圖、量效能）不記「看過的提示」，免得使用者自己玩時提示不跳
@@ -105,8 +109,12 @@ func _ready() -> void:
 	world_view.warm_up(_player_view_position(1.0))
 	hud.set_loading(true)
 	_warming = true
-	if _menu_flow and (_arg_host or _arg_join != ""):
-		set_paused(true)   # --menu-flow：照玩家的操作順序，先在單機按 Esc 暫停，再從選單開房 / 加入（v0.36.2）
+	# 自動驗證（--seconds、--host、--join）直接開局；--menu-flow 照玩家的操作順序從主選單走（v0.39.0）
+	var auto_start := _run_seconds > 0.0 or _arg_host or _arg_join != ""
+	if _menu_flow or not auto_start:
+		show_title(&"multi" if _arg_host or _arg_join != "" else &"home")
+		if _menu_flow and not (_arg_host or _arg_join != ""):
+			start_single()   # --menu-flow 單人：在主選單按「單人遊戲」
 	if _arg_host:
 		start_hosting()
 	elif _arg_join != "":
@@ -236,13 +244,54 @@ func restart() -> void:
 # 單機才會真的暫停；只在遊戲進行中可以暫停（死亡、通關畫面已經停在結算）
 func set_paused(paused: bool) -> void:
 	var player := local_player()
-	if paused and (mode != Mode.SINGLE or world.is_over or player == null or player.is_dead):
+	if paused and (is_at_title or mode != Mode.SINGLE or world.is_over or player == null or player.is_dead):
 		return
 	if is_paused == paused:
 		return
 	is_paused = paused
 	world_view.effects.paused = paused
 	GameEvents.event_emitted.emit("game:paused", {"name": "game:paused", "paused": paused})
+
+
+# ───────── 主選單 ─────────
+
+func show_title(page: StringName = &"home") -> void:
+	set_paused(false)
+	is_at_title = true
+	is_menu_open = false
+	hud.show_menu(false)
+	hud.show_title(true, page)
+	_refresh_net_panel()
+
+
+func _leave_title() -> void:
+	is_at_title = false
+	hud.show_title(false)
+
+
+# 主選單按「單人遊戲」：開一局新的
+func start_single() -> void:
+	_net_message = ""
+	restart()
+	_leave_title()
+
+
+# 多人頁按「返回」：還在大廳就先離開連線
+func _on_title_back() -> void:
+	if mode != Mode.SINGLE:
+		leave_net("")
+	_net_message = ""
+	show_title(&"home")
+
+
+# 暫停 / 選單按「回主選單」：連線中先離開連線，單機直接結束這局
+func return_to_title() -> void:
+	if mode != Mode.SINGLE:
+		leave_net("")
+	else:
+		restart()
+	_net_message = ""
+	show_title(&"home")
 
 
 # ───────── 連線 ─────────
@@ -306,6 +355,7 @@ func start_net_game() -> void:
 		return
 	net.start_game()
 	is_in_lobby = false
+	_leave_title()
 	_open_menu(false)
 	restart()
 	_refresh_net_panel()
@@ -318,6 +368,7 @@ func _on_game_started(_peers: Array) -> void:
 	_use_world(net_client.world)
 	is_in_lobby = false
 	_elapsed = 0.0
+	_leave_title()
 	_open_menu(false)
 	_refresh_net_panel()
 
@@ -337,7 +388,7 @@ func _on_peer_left(peer_id: int) -> void:
 		p.remove()
 
 
-# 離開連線回到單機（自己按的、連不上、房主斷線）
+# 離開連線（自己按的、連不上、房主斷線）：回到主選單的多人頁，顯示原因
 func leave_net(message: String) -> void:
 	net.close()
 	mode = Mode.SINGLE
@@ -350,8 +401,7 @@ func leave_net(message: String) -> void:
 	is_in_lobby = false
 	_net_message = message
 	restart()
-	_open_menu(message != "")
-	_refresh_net_panel()
+	show_title(&"multi")
 
 
 func _use_world(w: World) -> void:
@@ -366,6 +416,9 @@ func _use_world(w: World) -> void:
 
 
 func _open_menu(open: bool) -> void:
+	if is_at_title:
+		is_menu_open = false   # 從主選單開房 / 加入：大廳就顯示在主選單的多人頁
+		return
 	if mode == Mode.SINGLE:
 		is_menu_open = false
 		set_paused(open)
@@ -397,7 +450,7 @@ func _refresh_net_panel() -> void:
 
 func _physics_process(_delta: float) -> void:
 	_stepped_this_tick = false
-	input_collector.enabled = not (is_menu_open or is_paused or hud.net_panel.is_typing())
+	input_collector.enabled = not (is_at_title or is_menu_open or is_paused or hud.net_panel.is_typing())
 	if mode == Mode.CLIENT:
 		_client_physics()
 	else:
@@ -405,7 +458,7 @@ func _physics_process(_delta: float) -> void:
 
 
 func _authority_physics() -> void:
-	if is_paused or is_in_lobby:
+	if is_paused or is_in_lobby or is_at_title:
 		input_collector.consume_latched()   # 暫停中的點擊與按鍵不留到繼續之後
 		return
 	# 通關慢動作：真實時間照走，邏輯時間放慢到 5%，每步仍是 FIXED_DT（v0.18.3 起只剩打倒 Boss 時用；一般命中改成畫面層的命中定格）
@@ -493,6 +546,8 @@ func _player_view_position(alpha: float) -> Vector3:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_echo():
 		return
+	if is_at_title and not event.is_action_pressed(&"mute"):
+		return   # 主選單只用滑鼠點按鈕；M 靜音照常
 	if event.is_action_pressed(&"pause"):
 		if mode == Mode.SINGLE:
 			set_paused(not is_paused)
@@ -658,7 +713,7 @@ func _check_auto_quit(delta: float) -> void:
 	print(line)
 	var me := local_player()
 	var moved := me.pos.distance_to(_start_pos) if me != null and _start_pos != Vector2.INF else -1.0
-	print("state paused=%d input=%d effects_paused=%d self_moved=%.2f" % [int(is_paused), int(input_collector.enabled), int(world_view.effects.paused), moved])
+	print("state title=%d paused=%d input=%d effects_paused=%d self_moved=%.2f" % [int(is_at_title), int(is_paused), int(input_collector.enabled), int(world_view.effects.paused), moved])
 	if net_client != null:
 		print("net corrections=%d max_error=%.4f" % [net_client.corrections, net_client.max_error])
 	var boss: Enemy = world.entities.get(world.boss_id)

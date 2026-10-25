@@ -473,7 +473,7 @@ godot/
 │                             net_client.gd（鏡像 World、補間、預測修正）、net_codec.gd（快照二進位編碼）
 ├─ view/                      world_view.gd、arena_view.gd、camera_rig.gd、animator.gd、enemy_animator.gd、rig.gd、part_kit.gd、effects.gd、
 │  └─ styles/                 dark_fantasy.gd（第 14 節介面照搬）
-├─ ui/                        hud.tscn / hud.gd、skill_bar.gd、stats_panel.gd、floaters.gd、ui_kit.gd、net_panel.gd、player_tags.gd
+├─ ui/                        hud.tscn / hud.gd、skill_bar.gd、stats_panel.gd、floaters.gd、ui_kit.gd、main_menu.gd、net_panel.gd、player_tags.gd
 ├─ audio/                     sound.gd、sfx/*.wav、music/
 ├─ tools/                     synth.gd（離線合成）、bake_sfx.gd / bake_music.gd（headless 產生音效 / 背景音樂 WAV）
 ├─ tests/                     check.gd（headless 自動檢查的執行器）、check_kit.gd（共用工具）、*_checks.gd（依主題分檔的檢查）、capture.tscn / capture.gd（離屏截圖）

@@ -120,6 +120,7 @@ func _initialize() -> void:
 	_check("挖墳進度條：事件進行中所有人上方中央都看得到進度與說明（Boss 活著 / 怪潮中），出口打開後收起；Boss 血條排在它下面、寬度塞得進 1920", ViewChecks.check_dig_bar)
 	_check("寶箱模型：已開過的寶箱重新建立模型時（連線離開視野再回來）箱蓋直接打開、不重播開蓋；沒開過的關著", ViewChecks.check_chest_lid)
 	_check("HUD：能建立、處理各種事件、顯示波次 / 血量 / 結算文字、暫停畫面有「離開遊戲」；別人撿到道具不跳橫幅；武器欄的另一把標示切換鍵 X", ViewChecks.check_hud)
+	_check("主選單：首頁有單人 / 多人 / 離開遊戲（網頁版不顯示離開）、多人頁放連線面板與返回、按鈕發訊號、塞得進 1920×1080；關掉後單機暫停不顯示連線面板、連線中才顯示；暫停畫面有「回主選單」", ViewChecks.check_main_menu)
 	_check("網頁版網址參數：?horde=200&perf&seconds=20 轉成 --horde=200 --perf --seconds=20；不在開放清單的參數（例如 host、join）不轉", ViewChecks.check_url_query_args)
 	_check("遊玩紀錄：自己的擊殺依種類、受到的傷害依攻擊者、被看不見的攻擊（背後）、倒下被誰打倒；結算畫面顯示且塞得進 1920×1080；重新開始清空", ViewChecks.check_run_log)
 	_check("特效事件：模擬層發出的每個 fx:* 都有畫面處理、也列在 PROJECT_GUIDELINES 第 9 節；揮砍 / 魔彈 / 奧術 / Boss 砸地的事件餵給 Effects 會產生粒子與弧光環", ViewChecks.check_effects_events)

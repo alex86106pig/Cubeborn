@@ -3,7 +3,8 @@
 class_name HUD
 extends CanvasLayer
 
-signal quit_requested   # 暫停畫面按下「離開遊戲」
+signal quit_requested   # 暫停畫面或主選單按下「離開遊戲」
+signal title_requested  # 暫停畫面按下「回主選單」
 
 # 手動分行（中文自動折行會斷在詞中間）
 const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技 · 空白鍵 跳躍 · Shift 翻滾\n1~5 道具 · F 撿道具 / 開寶箱 / 按住救援隊友 · Tab 背包與屬性 · Esc 選單 · M 靜音 · R 重新開始\nX / 滾輪 切換武器 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具（F3~F5 單機才有）"
@@ -17,7 +18,7 @@ const GAME_OVER_DELAY := 0.7     # 死亡後幾秒顯示結算
 const BOSS_NAME := "亡骸騎士"     # darkFantasy.js 的 names.boss
 # 介面程式碼裡寫死的中文字（橫幅、浮動文字、場上文字、連線面板、遊玩紀錄…；資料表以外的）：開場預熱用（v0.37.2）
 # check.gd 會掃 ui/ 的字串，缺字就列出來，加到這裡
-const UI_CHARS := "　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體"
+const UI_CHARS := "　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體"
 
 const VIGNETTE_SHADER := """
 shader_type canvas_item;
@@ -33,6 +34,7 @@ var world: World
 var camera: Camera3D
 var local_peer := World.HOST_PEER_ID   # 這台電腦的玩家（連線時由 main.gd 設定）
 var net_panel := NetPanel.new()
+var main_menu := MainMenu.new()   # 開場的主選單（v0.39.0）
 
 var _hp: Dictionary
 var _hp_ghost := 1.0
@@ -66,6 +68,8 @@ var _pause := ColorRect.new()
 var _pause_title := UiKit.label("已暫停", 56, Color.WHITE, 3)
 var _pause_hint := UiKit.label("按 Esc 繼續", 20)
 var _quit_button := Button.new()
+var _title_button := Button.new()
+var _pause_net_slot := VBoxContainer.new()   # 暫停畫面放連線面板的位置（連線中顯示人數與離開連線）
 var _reset_hints_button := Button.new()
 var hints := Hints.new()   # 新手提示框（v0.31.0）
 var _loading := ColorRect.new()   # 開場預熱時蓋住畫面（v0.37.0）；底下先畫一次會用到的中文字，字形在這時候產生
@@ -105,6 +109,20 @@ func show_menu(visible_: bool, title: String = "已暫停", hint: String = "按 
 	_pause_title.text = title
 	_pause_hint.text = hint
 	_pause.visible = visible_
+	# 單機的暫停畫面不放連線面板（開房 / 加入改從主選單），連線中才顯示人數與離開連線
+	net_panel.visible = net_panel.mode != &"single" or net_panel.get_parent() != _pause_net_slot
+
+
+# 主選單：打開時連線面板搬到多人頁，關掉時搬回暫停畫面
+func show_title(on: bool, page: StringName = &"home") -> void:
+	main_menu.visible = on
+	main_menu.show_page(page)
+	var slot: Control = main_menu.net_slot if on else _pause_net_slot
+	if net_panel.get_parent() != slot:
+		net_panel.reparent(slot, false)
+	if on:
+		_pause.visible = false
+		net_panel.visible = true
 
 
 # 在建構時就建好介面（不等 _ready），HUD 一建立就能更新與接收事件
@@ -215,6 +233,13 @@ func _init() -> void:
 	_quit_button.focus_mode = Control.FOCUS_NONE
 	_quit_button.visible = not OS.has_feature("web")
 	_quit_button.pressed.connect(quit_requested.emit)
+	_title_button.text = "回主選單"
+	_title_button.add_theme_font_size_override(&"font_size", 20)
+	_title_button.custom_minimum_size = Vector2(180, 44)
+	_title_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_title_button.focus_mode = Control.FOCUS_NONE
+	_title_button.pressed.connect(title_requested.emit)
+	_pause_net_slot.add_child(net_panel)
 	_reset_hints_button.text = "重新顯示提示"
 	_reset_hints_button.add_theme_font_size_override(&"font_size", 18)
 	_reset_hints_button.custom_minimum_size = Vector2(180, 40)
@@ -223,9 +248,12 @@ func _init() -> void:
 	_reset_hints_button.pressed.connect(func() -> void:
 		hints.reset_seen()
 		_reset_hints_button.text = "提示已重設")
-	_build_overlay(_pause, Color(5 / 255.0, 8 / 255.0, 16 / 255.0, 0.65), [_pause_title, _pause_hint, pause_controls, net_panel, _reset_hints_button, _quit_button])
+	_build_overlay(_pause, Color(5 / 255.0, 8 / 255.0, 16 / 255.0, 0.65), [_pause_title, _pause_hint, pause_controls, _pause_net_slot, _reset_hints_button, _title_button, _quit_button])
 	_pause.mouse_filter = Control.MOUSE_FILTER_STOP   # 選單的按鈕與輸入框要能點
 	root.add_child(_pause)
+	main_menu.visible = false
+	main_menu.quit_pressed.connect(quit_requested.emit)
+	root.add_child(main_menu)
 	_build_overlay(_loading, Color(0.03, 0.03, 0.05, 1.0), [UiKit.label("準備中…", 28)])
 	root.add_child(_loading)
 
@@ -320,7 +348,7 @@ func _process(delta: float) -> void:
 	if player == null:
 		return
 	_skill_bar.refresh(world, player)
-	if not _pause.visible and not _game_over.visible:   # 暫停、結算時提示不倒數
+	if not _pause.visible and not _game_over.visible and not main_menu.visible:   # 暫停、結算、主選單時提示不倒數
 		hints.update(delta, world, player, inventory_panel.visible)
 	if _stats_panel.visible:
 		_stats_panel.refresh(player)

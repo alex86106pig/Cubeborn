@@ -741,7 +741,7 @@ static func check_two_processes(feel: Array[String]) -> String:
 		DirAccess.remove_absolute(path)
 	var port := "--net-port=%d" % (Config.NET.port + 7)
 	var common := ["--headless", "--path", project]
-	# --menu-flow（v0.36.2）：照玩家的順序，先在單機按 Esc 暫停、再從選單開房 / 加入（之前加入後一直停在暫停，客戶端不能動）
+	# --menu-flow（v0.36.2，v0.39.0 改從主選單）：照玩家的順序，在主選單的多人頁開房 / 加入（v0.36.2 之前加入後一直停在暫停，客戶端不能動）
 	var host_args := common + ["--log-file", logs[0], "--", "--menu-flow", "--host", port, "--net-autostart=2", "--no-spawn", "--auto-move=1,0", "--auto-move-seconds=2", "--seconds=5"]
 	var client_args := common + ["--log-file", logs[1], "--", "--menu-flow", "--join=127.0.0.1", port, "--no-spawn", "--auto-move=0,1", "--auto-move-seconds=2", "--seconds=5"]
 	var host_pid := OS.create_process(exe, host_args)
@@ -772,8 +772,8 @@ static func check_two_processes(feel: Array[String]) -> String:
 	for i in 2:
 		var who := "房主" if i == 0 else "客戶端"
 		var s: String = states[i]
-		if s == "" or not s.contains("paused=0 input=1 effects_paused=0"):
-			return "%s從選單開房 / 加入後應該能玩（沒有暫停、收輸入、特效在走）：%s" % [who, s]
+		if s == "" or not s.contains("title=0 paused=0 input=1 effects_paused=0"):
+			return "%s從主選單開房 / 加入後應該能玩（離開主選單、沒有暫停、收輸入、特效在走）：%s" % [who, s]
 		var moved := s.get_slice("self_moved=", 1).to_float()
 		if moved < 5.0:
 			return "%s自己的角色應移動約 13 單位，實際 %.2f：%s" % [who, moved, s]

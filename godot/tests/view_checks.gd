@@ -149,6 +149,89 @@ static func check_hud() -> String:
 	return ""
 
 
+# 主選單（v0.39.0）：首頁三個按鈕、多人頁放連線面板、按鈕發訊號、尺寸塞得進 1920×1080；
+# 關掉後連線面板搬回暫停畫面，單機暫停時不顯示、連線中才顯示；暫停畫面有「回主選單」
+static func check_main_menu() -> String:
+	var w := _new_world(5)
+	var cam := Camera3D.new()
+	_scene_root().add_child(cam)
+	var hud: Variant = load("res://ui/hud.tscn").instantiate()
+	hud.setup(w, cam)
+	_scene_root().add_child(hud)
+	var err := _check_main_menu(hud)
+	hud.queue_free()
+	cam.queue_free()
+	return err
+
+
+# 從 node 往上到 menu 都是 visible（-s 檢查裡 is_visible_in_tree 不可靠）
+static func _shown(node: Control, menu: Control) -> bool:
+	var n: Node = node
+	while n != null and n != menu:
+		if n is CanvasItem and not n.visible:
+			return false
+		n = n.get_parent()
+	return n == menu and menu.visible
+
+
+static func _check_main_menu(hud: Variant) -> String:
+	var menu: Variant = hud.main_menu
+	if menu.visible:
+		return "HUD 一建立時主選單應隱藏（由 main.gd 決定要不要顯示）"
+	hud.show_title(true)
+	if not menu.visible or menu.page != &"home" or hud._pause.visible:
+		return "show_title 後應顯示主選單首頁、暫停畫面隱藏"
+	for b: Button in [menu.single_button, menu.multi_button]:
+		if not _shown(b, menu):
+			return "主選單首頁應看得到「%s」" % b.text
+	if menu.quit_button.visible == OS.has_feature("web"):
+		return "「離開遊戲」桌面版要顯示、網頁版要隱藏"
+	if _shown(menu.back_button, menu):
+		return "首頁不應看到多人頁的「返回」"
+	var counts := {"single": 0, "back": 0, "quit": 0, "title": 0}
+	menu.single_pressed.connect(func() -> void: counts.single += 1)
+	menu.back_pressed.connect(func() -> void: counts.back += 1)
+	hud.quit_requested.connect(func() -> void: counts.quit += 1)
+	hud.title_requested.connect(func() -> void: counts.title += 1)
+	menu.single_button.pressed.emit()
+	menu.quit_button.pressed.emit()
+	menu.multi_button.pressed.emit()
+	if menu.page != &"multi" or _shown(menu.single_button, menu) or not _shown(menu.back_button, menu):
+		return "按「多人遊戲」應切到多人頁（看得到返回、看不到首頁按鈕）"
+	if hud.net_panel.get_parent() != menu.net_slot or not _shown(hud.net_panel, menu):
+		return "多人頁應看得到連線面板"
+	menu.back_button.pressed.emit()
+	if counts.single != 1 or counts.quit != 1 or counts.back != 1:
+		return "按鈕訊號次數錯誤：%s" % counts
+	# 最長的狀態文字（網頁版房主大廳、4 人）也要塞得進畫面
+	hud.net_panel.room_code = "ABCD"
+	hud.net_panel._web = true
+	hud.net_panel.show_state(&"lobby_host", [1, 2, 3, 4], 1, "")
+	hud.net_panel._web = NetSession.uses_webrtc()
+	for page: StringName in [&"home", &"multi"]:
+		menu.show_page(page)
+		var size: Vector2 = menu.get_child(0).get_combined_minimum_size()
+		if size.x > 1920.0 or size.y > 1080.0:
+			return "主選單%s頁 %.0f×%.0f，超出 1920×1080" % [page, size.x, size.y]
+	hud.show_title(false)
+	if menu.visible or hud.net_panel.get_parent() != hud._pause_net_slot:
+		return "關掉主選單後連線面板應搬回暫停畫面"
+	hud.net_panel.show_state(&"single", [], 1, "")
+	hud.show_menu(true)
+	if hud.net_panel.visible:
+		return "單機暫停時不應顯示連線面板（開房 / 加入改從主選單）"
+	hud.net_panel.show_state(&"playing", [1, 2], 1, "")
+	hud.show_menu(true, "選單", "")
+	if not hud.net_panel.visible:
+		return "連線中的選單應顯示連線面板（人數與離開連線）"
+	if not hud._pause.is_ancestor_of(hud._title_button) or not hud._title_button.visible:
+		return "暫停畫面應有可見的「回主選單」按鈕"
+	hud._title_button.pressed.emit()
+	if counts.title != 1:
+		return "按下「回主選單」應發出 title_requested 一次，實際 %d 次" % counts.title
+	return ""
+
+
 static func check_url_query_args() -> String:
 	var main_script: GDScript = load("res://main.gd")
 	var got: PackedStringArray = main_script.url_query_args("?horde=200&perf&seconds=20&player-hp=99999&host&join=1.2.3.4&elites=")

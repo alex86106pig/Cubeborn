@@ -1,4 +1,5 @@
-# 連線選單（放在暫停 / 選單畫面裡）：開房、輸入 IP 加入（網頁版：房號，v0.36.0）、大廳名單、開始遊戲、離開連線
+# 連線面板：開房、輸入 IP 加入（網頁版：房號，v0.36.0）、大廳名單、開始遊戲、離開連線
+# 平常放在主選單的多人頁；遊戲中放在 Esc 選單（只有連線中才顯示，v0.39.0）
 # 只發訊號，實際連線由 main.gd 處理
 class_name NetPanel
 extends VBoxContainer
@@ -9,6 +10,7 @@ signal start_pressed
 signal leave_pressed
 
 var room_code := ""   # 網頁版：房主的房號（main.gd 在 show_state 前設定）
+var mode: StringName = &"single"   # 最後一次 show_state 的狀態
 var _web := NetSession.uses_webrtc()
 var _status := UiKit.label("", 18, Color(1, 1, 1, 0.9))
 var _address := LineEdit.new()
@@ -50,7 +52,8 @@ func is_typing() -> bool:
 
 
 # mode：&"single" | &"lobby_host" | &"lobby_client" | &"connecting" | &"playing"
-func show_state(mode: StringName, peers: Array, local_peer: int, message: String) -> void:
+func show_state(p_mode: StringName, peers: Array, local_peer: int, message: String) -> void:
+	mode = p_mode
 	var names := ", ".join(peers.map(func(id: int) -> String: return _peer_name(peers, id, local_peer)))
 	match mode:
 		&"single":
