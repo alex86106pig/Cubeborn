@@ -151,7 +151,16 @@ if (version) {
 const push = version ? git('push', '--atomic', 'origin', 'main', `v${version}`) : git('push', 'origin', 'main');
 if (!push.ok) {
   if (version) { git('tag', '-d', `v${version}`); git('reset', '--keep', 'HEAD~1'); }
-  fail(`推送被拒絕，已撤掉這次的版號 commit 與 tag，回到推送前。多半是剛好有人先推了，重跑一次即可\n    ${push.err}`);
+  const undone = version ? '已撤掉這次的版號 commit 與 tag，回到推送前' : '本機沒有改動';
+  // 依錯誤訊息判斷原因：權限不夠時重跑沒用，要先請 repo 擁有者加協作者（2026-10-25 第一次推送踩過）
+  const reason = /403|Permission .* denied|permission denied/i.test(push.err)
+    ? '這個 GitHub 帳號沒有 repo 的寫入權限：請 repo 擁有者到 Settings → Collaborators 加入、接受邀請後再推'
+    : /rejected|fetch first|non-fast-forward/i.test(push.err)
+      ? '剛好有人先推了：重跑一次即可（會先 rebase 再推）'
+      : /Could not resolve|unable to access|timed out|Connection/i.test(push.err)
+        ? '連不上 GitHub：確認網路後重跑'
+        : '原因看下面 git 的訊息';
+  fail(`推送失敗，${undone}。${reason}\n    ${push.err}`);
 }
 console.log(version
   ? `✔ 已推送 v${version}：網站約數分鐘後更新，GitHub Actions 會建立 Release`
