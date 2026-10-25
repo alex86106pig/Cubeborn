@@ -17,8 +17,8 @@ static func check_boss_slam() -> String:
 		return "4 秒內沒有砸地（狀態 %s）" % b.fsm.current_name
 	var start_tick := w.tick
 	if _run_until(w, _cmd(Vector2.ZERO), 120, events, func() -> bool: return not _damage_amounts(w.events, p.id).is_empty()) < 0 \
-			or _damage_amounts(w.events, p.id) != [roundi(s.damage)]:
-		return "砸地傷害 %s，預期 [%d]" % [_damage_amounts(events, p.id), roundi(s.damage)]
+			or _damage_amounts(w.events, p.id) != [float(s.damage)]:
+		return "砸地傷害 %s，預期 [%.1f]" % [_damage_amounts(events, p.id), s.damage]
 	var windup := (w.tick - start_tick) * DT
 	if absf(windup - s.windup) > DT * 1.5:
 		return "前搖 %.3f 秒，預期 %.2f" % [windup, s.windup]
@@ -84,8 +84,8 @@ static func check_boss_charge() -> String:
 	p.pos = Vector2(-12, -12)
 	if _run_until(w, _cmd(Vector2.ZERO), 120, events, func() -> bool: return b.fsm.data.get("phase") == &"stunned") < 0:
 		return "沒有撞牆暈眩（階段 %s）" % b.fsm.data.get("phase")
-	if not _damage_amounts(events, p.id).has(roundi(c.damage)):
-		return "衝鋒命中傷害 %s，應含 %d" % [_damage_amounts(events, p.id), roundi(c.damage)]
+	if not _damage_amounts(events, p.id).has(float(c.damage)):
+		return "衝鋒命中傷害 %s，應含 %.1f" % [_damage_amounts(events, p.id), c.damage]
 	if _named(events, "sfx:cue").filter(func(e: Dictionary) -> bool: return e.cue == "bossWallHit").is_empty():
 		return "撞牆應發出 bossWallHit"
 	var stun := _run_until(w, _cmd(Vector2.ZERO), 200, events, func() -> bool: return not b.fsm.is_in(&"charge"))

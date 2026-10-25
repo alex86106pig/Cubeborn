@@ -71,11 +71,20 @@ class Ready:
 			if p.world.event.can_dig(p.world, p):
 				fsm.change(&"dig")
 				return
+		# 按住類的特殊技（劍盾格擋，v0.41.0）：右鍵按著就舉盾，沒有冷卻；按鍵緩衝不用
+		var hold: bool = p.weapon.special.get("hold", false)
+		if hold and p.is_special_held:
+			if p.buffered_action.get("type") == &"special":
+				p.buffered_action = {}
+			fsm.change(&"special")
+			return
 		var buffered := p.buffered_action
 		if not buffered.is_empty():
 			p.buffered_action = {}
 			if buffered.type == &"special":
-				if p.world.cooldowns.is_ready(p.cd("player.special")):
+				if hold:
+					pass   # 按一下就放開（不到一步）：不舉盾
+				elif p.world.cooldowns.is_ready(p.cd("player.special")):
 					fsm.change(&"special")
 					return
 				p.world.emit_event("skill:onCooldown", {"key": "player.special", "player_id": p.id})
@@ -105,7 +114,7 @@ class TimedAction:
 		data.k = 0.0
 		data.move_speed_mul = def.get("move_speed_mul", 1.0)
 		data.lock_facing = false
-		if kind == &"special":
+		if kind == &"special" and def.has("cooldown"):   # 按住格擋沒有冷卻（v0.41.0）
 			p.world.cooldowns.start(p.cd("player.special"), def.cooldown * p.stats.value(&"cooldown"))
 			p.world.emit_event("skill:used", {"key": "player.special", "player_id": p.id})
 		data.behavior.enter(p, def, data)
@@ -120,6 +129,10 @@ class TimedAction:
 		var d := fsm.data
 		d.phase_time += dt
 		while d.phase_index < PHASES.size() and d.phase_time >= d.durations[d.phase_index]:
+			# 按住類（def.hold）：右鍵按著或招架判定中就停在 active，放開才收招
+			if d.phase_index == 1 and d.def.get("hold", false) and (p.is_special_held or p.parry_time >= 0.0):
+				d.phase_time = 0.0
+				break
 			d.phase_time -= d.durations[d.phase_index]
 			d.phase_index += 1
 			if d.phase_index < PHASES.size():
@@ -134,13 +147,8 @@ class TimedAction:
 		if roll_cancelable and p.buffered_action.get("type") == &"roll" and p.roll_charges > 0:
 			PlayerStates.try_roll(p, fsm)
 			return
-		# 有 press_cancel 的特殊技（格擋）：維持中再按一次同一個鍵就提前進入收招
-		if d.def.get("press_cancel", false) and name != &"recovery" and p.buffered_action.get("type") == &"special":
-			p.buffered_action = {}
-			d.phase_index = PHASES.find(&"recovery")
-			d.phase_time = 0.0
-			_enter_phase(p, d, d.phase_index)
-			return
+		if d.def.get("hold", false) and p.buffered_action.get("type") == &"special":
+			p.buffered_action = {}   # 格擋中右鍵的「按下」不留緩衝（不然放開後的收招會被它取消）
 		var duration: float = d.durations[d.phase_index]
 		d.k = d.phase_time / duration if duration > 0.0 else 1.0
 		d.behavior.update(p, d.def, d, name, d.k, dt)

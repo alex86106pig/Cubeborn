@@ -9,6 +9,9 @@ var peer_id := 0
 var move_input := Vector2.ZERO
 var aim_point := Vector2(0.0, 5.0)
 var is_attack_held := false
+var is_special_held := false           # 右鍵按住（劍盾按住格擋，v0.41.0）
+var attack_pressed := false            # 本步剛按下左鍵（格擋中按左鍵 = 招架）
+var _attack_was_held := false
 var weapon: Dictionary = {}            # 手上武器的招式資料（WeaponDefs）
 var weapon_id: StringName = &""
 var weapon_slots: Array[Dictionary] = [{}, {}]   # 裝備欄 2 格（D4）：武器實例（WeaponDropDefs）或 {}
@@ -26,7 +29,8 @@ var kill_timers: Dictionary = {}       # 道具 uid -> 「擊殺後幾秒」條�
 var roll_charges := 0                  # 目前可用的翻滾次數（上限為 roll_charges 屬性）
 var dodge_timer := 0.0                 # 翻滾無敵剩餘秒數
 var block_time := -1.0                 # 格擋開始後經過的秒數；< 0 = 沒有在格擋（weapon_behaviors 的 ShieldBlock）
-var pending_parry := false             # 本步完美格擋，下一步開頭執行盾反
+var parry_time := -1.0                 # 招架判定開始後經過的秒數；< 0 = 沒有在招架（v0.41.0）
+var pending_parry := false             # 本步招架成功，下一步開頭執行盾反
 var parry_timer := 0.0                 # 盾反動作剩餘秒數（畫面用）
 var items: Array[Dictionary] = []     # 背包裡生效的道具實例 { uid, id }；uid 同時是屬性加成的來源名稱
 var inventory := Inventory.new()       # 背包的擺放（D3）；items 與它同步
@@ -101,7 +105,7 @@ func air_jumps() -> int:
 
 
 # 由 Combat.apply_damage 對能格擋的攻擊呼叫：格擋中、攻擊來自正前方 block_arc 內就擋下（不扣血、自己被推退一點）
-# from 是攻擊來的位置（近戰為攻擊者、投射物為飛來的方向）；按下格擋後 perfect_window 內擋下 = 完美格擋，下一步盾反
+# from 是攻擊來的位置（近戰為攻擊者、投射物為飛來的方向）；招架判定中（parry_time）擋下 = 招架成功，下一步全額盾反（v0.41.0）
 func try_block(from: Vector2, hit: Dictionary) -> bool:
 	if block_time < 0.0:
 		return false
@@ -113,32 +117,35 @@ func try_block(from: Vector2, hit: Dictionary) -> bool:
 		# 攻擊可以指定擋下時的推退比例（Boss 衝鋒 100%），沒指定就用盾的 block_knockback_mul（30%）
 		var push_mul: float = hit.get("block_knockback_mul", def.block_knockback_mul)
 		knockback -= to_source.normalized() * (hit.get("knockback", 0.0) * push_mul / mass)
-	var perfect: bool = block_time <= def.perfect_window + 1e-6
+	# perfect：招架成功（事件名稱沿用；HUD 顯示「招架！」）
+	var perfect := parry_time >= 0.0
 	world.emit_event("player:blocked", {"player_id": id, "perfect": perfect})
 	world.emit_event("sfx:cue", {"cue": def.sfx_parry if perfect else def.sfx_block})
 	if perfect:
+		parry_time = -1.0
 		pending_parry = true
 	return true
 
 
-# 盾反：對前方扇形造成傷害（隨攻擊力），然後結束格擋
-# 盾反由房主的格擋判定觸發、客戶端沒辦法預測，事件不標行動者（客戶端照常播）
-func _parry() -> void:
+# 盾反：招架成功時全額、判定時間內沒擋到時傷害 × fail_damage_mul（v0.41.0）；之後右鍵還按著就繼續格擋
+# 招架成功由房主的格擋判定觸發、客戶端沒辦法預測，事件不標行動者（客戶端照常播）
+func _parry(success: bool) -> void:
 	var actor := world.event_actor
-	world.event_actor = 0
-	_do_parry()
+	if success:
+		world.event_actor = 0
+	_do_parry(success)
 	world.event_actor = actor
 
 
-func _do_parry() -> void:
+func _do_parry(success: bool = true) -> void:
 	var pr: Dictionary = weapon.special.parry
+	var mul: float = 1.0 if success else pr.fail_damage_mul
 	Hitbox.strike(world, self, pos, facing, {"shape": &"sector", "range": pr.range, "arc": pr.arc}, {
-		"damage": pr.damage * damage_mul, "knockback": pr.knockback, "hit_stop": pr.hit_stop,
-		"shake": pr.shake, "is_heavy": true, "blockable": false, "color": pr.color,
+		"damage": pr.damage * mul * damage_mul, "knockback": pr.knockback * mul, "hit_stop": pr.hit_stop,
+		"shake": pr.shake * mul, "is_heavy": success, "blockable": false, "color": pr.color,
 	})
 	world.emit_event("fx:parry", {"pos": pos, "height": height, "radius": pr.range, "facing": facing, "arc": pr.arc, "color": pr.color})
 	parry_timer = PARRY_ANIM_TIME
-	action.change(&"ready")
 
 
 func roll_max() -> int:
@@ -342,6 +349,7 @@ func apply_cmd(cmd: InputCmd) -> void:
 	move_input = cmd.move.limit_length(1.0)
 	aim_point = cmd.aim
 	is_attack_held = cmd.has(InputCmd.BTN_ATTACK)
+	is_special_held = cmd.has(InputCmd.BTN_SPECIAL_HELD)
 	is_interact_held = cmd.has(InputCmd.BTN_INTERACT)
 	_pressed |= cmd.buttons
 	_inventory_ops.append_array(cmd.inv_ops)
@@ -625,6 +633,7 @@ func update(dt: float) -> void:
 		_pressed = 0
 		_inventory_ops.clear()
 		_interact_was_held = is_interact_held
+		_attack_was_held = is_attack_held
 		velocity = Vector2.ZERO
 		locomotion.update(dt)
 		_update_anim()
@@ -641,10 +650,12 @@ func update(dt: float) -> void:
 	else:
 		_inventory_ops.clear()
 	_interact_was_held = is_interact_held
+	attack_pressed = is_attack_held and not _attack_was_held
+	_attack_was_held = is_attack_held
 	if pending_parry:
 		pending_parry = false
 		if block_time >= 0.0:
-			_parry()
+			_parry(true)
 	action.update(dt)
 
 	var data := action.data
@@ -727,13 +738,13 @@ func _update_anim() -> void:
 	}
 
 
-func _on_damaged(amount: int, _source_id: int) -> void:
+func _on_damaged(amount: float, _source_id: int) -> void:
 	if is_dead or amount <= 0:
 		return
 	invuln_timer = Config.PLAYER.invuln_time
 	# player_id：多人時只有被打的那位玩家的畫面震動
 	world.emit_event("camera:shake", {"amount": Config.PLAYER.hurt_shake, "duration": Config.PLAYER.hurt_shake_duration, "player_id": id})
-	# 特殊技期間有霸體，不會被打斷；挖墳被打也不中斷（D6）
+	# 特殊技期間（含按住格擋）有霸體，不會被打斷；挖墳被打也不中斷（D6）
 	if not action.is_in(&"special") and not action.is_in(&"dig"):
 		action.change(&"stagger")
 

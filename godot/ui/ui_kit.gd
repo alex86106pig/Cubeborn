@@ -62,5 +62,15 @@ static func bar(size: Vector2, bg: Color, fill: Color, border: int) -> Dictionar
 	return {"root": root, "ghost": ghost, "fill": fill_rect, "text": text, "width": size.x}
 
 
+# 傷害、治療、統計數字的顯示（v0.41.0）：模擬保留小數，畫面四捨五入；0.4 這種還有傷害的至少顯示 1
+static func dmg_text(amount: float) -> String:
+	return str(maxi(roundi(amount), 1 if amount > 0.0 else 0))
+
+
+# 血量的顯示：無條件進位，還活著（剩 0.4）就不會顯示 0；1e-4 以下的浮點誤差不進位
+static func hp_text(hp: float) -> String:
+	return str(ceili(hp - 1e-4))
+
+
 static func format_time(seconds: float) -> String:
 	return "%d:%02d" % [floori(seconds / 60.0), floori(fmod(seconds, 60.0))]

@@ -13,20 +13,20 @@ const NAMES := {
 
 var me_id := 0          # 本機玩家的實體 id（HUD 每次有角色時更新；倒下 / 陣亡後角色還在，id 不變）
 var kills := {}         # 種類 → 隻數（只算自己打死的）
-var damage_taken := 0
+var damage_taken := 0.0
 var hits_taken := 0
 var unseen_hits := 0
-var unseen_damage := 0
+var unseen_damage := 0.0
 var by_source := {}     # 種類 → {damage, hits, unseen}
 var downs: Array[Dictionary] = []   # 每次倒下 / 死亡：{kind, unseen}
 
 
 func reset() -> void:
 	kills.clear()
-	damage_taken = 0
+	damage_taken = 0.0
 	hits_taken = 0
 	unseen_hits = 0
-	unseen_damage = 0
+	unseen_damage = 0.0
 	by_source.clear()
 	downs.clear()
 
@@ -37,9 +37,9 @@ func on_event(world: World, name: String, p: Dictionary) -> void:
 			if me_id == 0 or p.get("target_id", 0) != me_id:
 				return
 			var kind: StringName = p.get("source_kind", &"")
-			var amount: int = p.get("amount", 0)
+			var amount: float = p.get("amount", 0.0)
 			var unseen := not _attacker_seen(world, p)
-			var s: Dictionary = by_source.get(kind, {"damage": 0, "hits": 0, "unseen": 0})
+			var s: Dictionary = by_source.get(kind, {"damage": 0.0, "hits": 0, "unseen": 0})
 			s.damage += amount
 			s.hits += 1
 			hits_taken += 1
@@ -91,13 +91,13 @@ func summary_text() -> String:
 	if hits_taken == 0:
 		lines.append("沒有受到傷害")
 	else:
-		lines.append("受到傷害 %d（被打中 %d 次）" % [damage_taken, hits_taken])
-		lines.append("被看不見的攻擊打中 %d 次 / %d 傷害（%d%%）" % [unseen_hits, unseen_damage, roundi(100.0 * unseen_damage / maxf(1.0, damage_taken))])
+		lines.append("受到傷害 %s（被打中 %d 次）" % [UiKit.dmg_text(damage_taken), hits_taken])
+		lines.append("被看不見的攻擊打中 %d 次 / %s 傷害（%d%%）" % [unseen_hits, UiKit.dmg_text(unseen_damage), roundi(100.0 * unseen_damage / maxf(1.0, damage_taken))])
 		var kinds := by_source.keys()
 		kinds.sort_custom(func(a: StringName, b: StringName) -> bool: return by_source[a].damage > by_source[b].damage)
 		for k: StringName in kinds:
 			var s: Dictionary = by_source[k]
-			lines.append("%s：%d 傷害 · %d 次" % [name_of(k), s.damage, s.hits] + ("（看不見 %d 次）" % s.unseen if s.unseen > 0 else ""))
+			lines.append("%s：%s 傷害 · %d 次" % [name_of(k), UiKit.dmg_text(s.damage), s.hits] + ("（看不見 %d 次）" % s.unseen if s.unseen > 0 else ""))
 	if not downs.is_empty():
 		var parts: Array[String] = []
 		for d in downs.slice(0, MAX_DOWNS_SHOWN):

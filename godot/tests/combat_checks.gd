@@ -12,7 +12,8 @@ static func check_weapon_defs() -> String:
 			if not WeaponBehaviors.BEHAVIORS.has(def.behavior):
 				return "%s.%s 的 behavior「%s」不存在" % [id, kind, def.behavior]
 			for t in ["windup", "active", "recovery"]:
-				if def[t] <= 0.0:
+				# 按住類（劍盾格擋，v0.41.0）的 active 是 0：按著就停在 active，放開立刻收招
+				if def[t] <= 0.0 and not (t == "active" and def.get("hold", false) and def[t] == 0.0):
 					return "%s.%s 的 %s 不是正數" % [id, kind, t]
 			for key in ["sfx", "sfx_heavy"]:
 				if def.has(key) and not cues.has(def[key]):
@@ -40,8 +41,8 @@ static func check_fire_bolt() -> String:
 	if absf(bolt.pos.y - bolt.traveled - a.spawn_offset) > EPS or absf(bolt.traveled - step_len) > EPS:
 		return "產生位置 %.3f（預期 %.2f）、第一步飛行 %.4f（預期 %.4f）" % [bolt.pos.y - bolt.traveled, a.spawn_offset, bolt.traveled, step_len]
 	_run_collect(w, _cmd(Vector2.ZERO), 30, events)
-	if _damage_amounts(events, dummy.id) != [roundi(a.damage)] or not bolt.is_removed:
-		return "命中傷害 %s（預期 [%d]），投射物 is_removed=%s" % [_damage_amounts(events, dummy.id), roundi(a.damage), bolt.is_removed]
+	if _damage_amounts(events, dummy.id) != [float(a.damage)] or not bolt.is_removed:
+		return "命中傷害 %s（預期 [%.1f]），投射物 is_removed=%s" % [_damage_amounts(events, dummy.id), a.damage, bolt.is_removed]
 	# 射程：沒有目標時飛滿射程後消失
 	var w2 := _new_world()
 	_player(w2).equip_weapon(&"staff")
@@ -68,8 +69,8 @@ static func check_arcane_burst() -> String:
 	if absf(p.action.data.get("dist", 0.0) - max_r) > EPS:
 		return "瞄準射程外，落點距離 %.3f，預期限制為 %.1f" % [p.action.data.get("dist", 0.0), max_r]
 	_run_collect(w, _cmd(Vector2.ZERO, far_aim), 90, events)
-	if _damage_amounts(events, near.id) != [roundi(s.damage)]:
-		return "範圍內目標受到 %s，預期 [%d]" % [_damage_amounts(events, near.id), roundi(s.damage)]
+	if _damage_amounts(events, near.id) != [float(s.damage)]:
+		return "範圍內目標受到 %s，預期 [%.1f]" % [_damage_amounts(events, near.id), s.damage]
 	if not _damage_amounts(events, far.id).is_empty():
 		return "範圍外目標不應受傷，實際 %s" % [_damage_amounts(events, far.id)]
 	var names := _named(events, "sfx:cue").map(func(e: Dictionary) -> String: return e.cue)
@@ -102,8 +103,8 @@ static func check_melee_enemy() -> String:
 		w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO)}, DT)
 		for e in _named(w.events, "entity:damaged"):
 			if e.target_id == p.id:
-				if e.amount != roundi(gd.swing.damage):
-					return "揮砍傷害 %d，預期 %d" % [e.amount, roundi(gd.swing.damage)]
+				if absf(e.amount - gd.swing.damage) > 1e-4:
+					return "揮砍傷害 %.2f，預期 %.2f" % [e.amount, gd.swing.damage]
 				hit_ticks.append(w.tick)
 	if hit_ticks.size() < 3:
 		return "5 秒內只命中 %d 次" % hit_ticks.size()
@@ -322,16 +323,16 @@ static func check_grunt_swing() -> String:
 	if not g.fsm.is_in(&"swing"):
 		return "玩家在 1.2 內時骷髏應開始舉刀"
 	var steps := 0
-	var dealt := 0
-	while steps < 60 and dealt == 0:
+	var dealt := 0.0
+	while steps < 60 and dealt == 0.0:
 		_run(w, _cmd(Vector2.ZERO), 1)
 		steps += 1
 		for e in _named(w.events, "entity:damaged"):
 			if e.target_id == p.id:
 				dealt = e.amount
 	var expected_steps := roundi(s.windup / DT)
-	if dealt != roundi(s.damage) or absi(steps - expected_steps) > 1:
-		return "舉刀約 %d 步後應命中 %d，實際第 %d 步、傷害 %d" % [expected_steps, roundi(s.damage), steps, dealt]
+	if absf(dealt - s.damage) > 1e-4 or absi(steps - expected_steps) > 1:
+		return "舉刀約 %d 步後應命中 %.1f，實際第 %d 步、傷害 %.2f" % [expected_steps, s.damage, steps, dealt]
 	if w.hitboxes.is_empty() or w.hitboxes[0].shape.shape != &"sector":
 		return "命中當步應記錄扇形判定（F2 顯示用）"
 

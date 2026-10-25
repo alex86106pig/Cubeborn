@@ -11,6 +11,8 @@ const ROLL_ICON := "⟳"
 
 var _slots: Dictionary = {}   # cd key -> Slot
 var _weapon_id: StringName = &""
+var _attack_slot: Slot        # 左鍵：平常是普攻
+var _parry_slot: Slot         # 劍盾格擋中左鍵改成招架（v0.41.0）：同一個位置，兩格輪流顯示
 
 
 func _init() -> void:
@@ -27,6 +29,9 @@ func reset() -> void:
 func refresh(world: World, player: Player) -> void:
 	if player.weapon_id != _weapon_id:
 		_build(player)
+	if _parry_slot != null:
+		_parry_slot.visible = player.block_time >= 0.0
+		_attack_slot.visible = not _parry_slot.visible
 	for key: String in _slots:
 		var slot: Slot = _slots[key]
 		slot.cd_left = world.cooldowns.remaining(player.cd(key))   # 每位玩家各自的 CD（Player.cd）
@@ -55,7 +60,11 @@ func _build(player: Player) -> void:
 		c.queue_free()
 	_slots.clear()
 	var w := player.weapon
-	_add_slot("", w.attack.icon, "左鍵", -1, false)
+	_attack_slot = _add_slot("", w.attack.icon, "左鍵", -1, false)
+	_parry_slot = null
+	if w.special.has("parry") and w.special.parry.has("name"):
+		_parry_slot = _add_slot("player.parry", w.special.parry.name, "左鍵", -1, false)
+		_parry_slot.visible = false
 	_add_slot("player.special", w.special.icon, "右鍵", -1, false)
 	_add_slot(Player.ROLL_CD, ROLL_ICON, "Shift", -1, false)
 	var divider := UiKit.rect(Color(1, 1, 1, 0.25), Vector2(2, 48))
@@ -67,13 +76,14 @@ func _build(player: Player) -> void:
 	_weapon_id = player.weapon_id
 
 
-func _add_slot(key: String, icon: String, key_label: String, index: int, empty: bool) -> void:
+func _add_slot(key: String, icon: String, key_label: String, index: int, empty: bool) -> Slot:
 	var slot := Slot.new(icon, key_label, index)
 	if empty:
 		slot.modulate.a = 0.35
 	add_child(slot)
 	if key != "":
 		_slots[key] = slot
+	return slot
 
 
 class Slot extends Control:
@@ -95,7 +105,7 @@ class Slot extends Control:
 		if p_icon in DRAWN_ICONS:
 			drawn_icon = p_icon
 			p_icon = ""
-		icon = _centered(UiKit.label(p_icon, 28))
+		icon = _centered(UiKit.label(p_icon, 20 if p_icon.length() > 1 else 28))   # 兩個字的（招架）縮小才塞得進
 		cd_text = _centered(UiKit.label("", 18))
 		charges = UiKit.label("", 13, UiKit.CHARGES, 1)
 		charges.position = Vector2(SLOT_SIZE - 16, -1)

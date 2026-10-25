@@ -164,6 +164,37 @@ static func check_main_menu() -> String:
 	return err
 
 
+# 技能欄（v0.41.0）：劍盾格擋中左鍵那格換成「招架」並顯示招架冷卻，放下盾換回普攻；法杖沒有招架格
+static func check_skill_bar_parry() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var bar := SkillBar.new()
+	_scene_root().add_child(bar)
+	var err := ""
+	bar.refresh(w, p)
+	if bar._parry_slot == null or bar._parry_slot.visible or not bar._attack_slot.visible:
+		err = "沒格擋時左鍵應顯示普攻、招架格隱藏"
+	if err == "":
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL | InputCmd.BTN_SPECIAL_HELD), 3)
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL_HELD | InputCmd.BTN_ATTACK), 1)
+		bar.refresh(w, p)
+		var cd_left: float = bar._slots["player.parry"].cd_left
+		if not bar._parry_slot.visible or bar._attack_slot.visible or bar._parry_slot.icon.text != "招架" or cd_left <= 0.0:
+			err = "格擋中左鍵應換成「招架」並顯示冷卻：顯示 %s、文字 %s、冷卻 %.2f" % [bar._parry_slot.visible, bar._parry_slot.icon.text, cd_left]
+	if err == "":
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 30)
+		bar.refresh(w, p)
+		if bar._parry_slot.visible or not bar._attack_slot.visible:
+			err = "放下盾後左鍵應換回普攻"
+	if err == "":
+		p.equip_weapon(&"staff")
+		bar.refresh(w, p)
+		if bar._parry_slot != null:
+			err = "法杖不應有招架格"
+	bar.queue_free()
+	return err
+
+
 # 從 node 往上到 menu 都是 visible（-s 檢查裡 is_visible_in_tree 不可靠）
 static func _shown(node: Control, menu: Control) -> bool:
 	var n: Node = node

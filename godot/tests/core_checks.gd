@@ -298,6 +298,25 @@ static func check_stats_formula() -> String:
 	return ""
 
 
+# 傷害保留小數、只在顯示時取整（v0.41.0 使用者決定）：12.5 實際扣 12.5、兩下是 25；
+# 傷害數字四捨五入（12.5 → 13、0.4 → 至少 1）、血量無條件進位（87.5 → 88、剩 0.4 → 1）
+static func check_fractional_damage() -> String:
+	var w := _new_world()
+	var g := _dummy(w, Vector2(0, 3))
+	var before := g.hp
+	var dealt := g.take_damage(12.5, Vector2(0, 1), 0.0, 0)
+	g.invuln_timer = 0.0
+	g.take_damage(12.5, Vector2(0, 1), 0.0, 0)
+	if absf(dealt - 12.5) > 1e-6 or absf((before - g.hp) - 25.0) > 1e-6:
+		return "12.5 傷害應實際扣 12.5、兩下 25：回傳 %.4f、合計 %.4f" % [dealt, before - g.hp]
+	var cases := [[UiKit.dmg_text(12.5), "13"], [UiKit.dmg_text(12.4), "12"], [UiKit.dmg_text(0.4), "1"], [UiKit.dmg_text(0.0), "0"],
+		[UiKit.hp_text(87.5), "88"], [UiKit.hp_text(0.4), "1"], [UiKit.hp_text(100.0), "100"], [UiKit.hp_text(0.0), "0"]]
+	for c: Array in cases:
+		if c[0] != c[1]:
+			return "顯示取整錯誤：%s" % [cases]
+	return ""
+
+
 static func check_stats_armor_crit() -> String:
 	var w := _new_world()
 	var p := _player(w)
@@ -310,8 +329,10 @@ static func check_stats_armor_crit() -> String:
 		var before := g.hp
 		Combat.apply_damage(w, p, g, {"damage": 20.0})
 		dealt.append(before - g.hp)
-	if dealt != [10.0, 19.0]:
-		return "20 傷害打護甲 100 / 8 應為 10 / 19（20 × 100 ÷ 108 = 18.5），實際 %s" % [dealt]
+	# v0.41.0 起傷害保留小數（使用者決定），原本扣血前四捨五入成 19
+	var want_8 := 20.0 * 100.0 / 108.0
+	if absf(dealt[0] - 10.0) > 1e-4 or absf(dealt[1] - want_8) > 1e-4:
+		return "20 傷害打護甲 100 / 8 應為 10 / %.4f（20 × 100 ÷ 108，保留小數），實際 %s" % [want_8, dealt]
 	g.stats.set_base(&"armor", 0.0)
 	var state := w.rng.state
 	w.events.clear()
@@ -351,6 +372,8 @@ static func check_stats_hooks() -> String:
 		return "攻速 ×2 普攻應從 %d 步變約 %d 步，實際 %d 步" % [normal, normal / 2, fast]
 	p.remove_stat_source(&"test")
 
+	# 劍盾格擋 v0.41.0 起沒有冷卻，改用法杖的奧術爆裂
+	p.equip_weapon(&"staff")
 	p.set_stat_source(&"test", [[&"cooldown", Stats.MUL, 0.5]])
 	_run(w, _cmd(Vector2.ZERO), 120)
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 1)

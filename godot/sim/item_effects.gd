@@ -104,7 +104,7 @@ static func on_kill(world: World, p: Player, target: Entity, damage: float) -> v
 			&"heal_max_hp":
 				var healed := p.heal(p.max_hp * proc.effect.ratio * proc.count)
 				if healed > 0.0:
-					world.emit_event("entity:healed", {"target_id": p.id, "amount": roundi(healed)})
+					world.emit_event("entity:healed", {"target_id": p.id, "amount": healed})
 
 
 static func proc_hit(damage: float, target: Entity, color: Color, knockback := 0.0) -> Dictionary:

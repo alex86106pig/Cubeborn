@@ -79,22 +79,41 @@ class MeleeSwing extends Behavior:
 		p.combo_timer = def.combo_window
 
 
-# 格擋（v0.18.0）：按下就開始格擋，舉盾 + 維持合計 3 秒（windup + active），可以移動與轉向；收招時放下盾
-# 擋下的判斷在 Player.try_block（Combat.apply_damage 呼叫）；完美格擋的盾反在 Player.update 執行
+# 格擋（v0.41.0）：按住右鍵就格擋（TimedAction 依 def.hold 停在 active），可以移動與轉向；放開進入收招、放下盾
+# 格擋中按左鍵招架：開始冷卻與 parry.window 秒的判定；判定中擋下由 Player.try_block 標記成功（下一步全額盾反），
+# 判定時間結束都沒擋到就打出傷害減半的盾擊
 class ShieldBlock extends Behavior:
 	func enter(p: Player, _def: Dictionary, _data: Dictionary) -> void:
 		p.block_time = 0.0
+		p.parry_time = -1.0
 
 	func phase(p: Player, _def: Dictionary, _data: Dictionary, name: StringName) -> void:
 		if name == &"recovery":
 			p.block_time = -1.0
+			p.parry_time = -1.0
 
-	func update(p: Player, _def: Dictionary, _data: Dictionary, name: StringName, _k: float, dt: float) -> void:
-		if name != &"recovery":
-			p.block_time += dt
+	func update(p: Player, def: Dictionary, _data: Dictionary, name: StringName, _k: float, dt: float) -> void:
+		if name == &"recovery":
+			return
+		p.block_time += dt
+		var pr: Dictionary = def.parry
+		if p.parry_time >= 0.0:
+			p.parry_time += dt
+			if p.parry_time >= pr.window - 1e-6:
+				p.parry_time = -1.0
+				p._parry(false)
+		elif p.attack_pressed:
+			var key := p.cd("player.parry")
+			if p.world.cooldowns.is_ready(key):
+				p.world.cooldowns.start(key, pr.cooldown * p.stats.value(&"cooldown"))
+				p.world.emit_event("skill:used", {"key": "player.parry", "player_id": p.id})
+				p.parry_time = 0.0
+			else:
+				p.world.emit_event("skill:onCooldown", {"key": "player.parry", "player_id": p.id})
 
 	func exit(p: Player, _def: Dictionary, _data: Dictionary) -> void:
 		p.block_time = -1.0
+		p.parry_time = -1.0
 
 
 class FireBolt extends Behavior:

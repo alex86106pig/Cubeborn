@@ -107,7 +107,7 @@ const PROCS := {
 const ITEMS := {
 	# ---- 武器 ----
 	&"swordShield": {"kind": &"weapon", "name": "劍盾", "rarity": &"white", "shape": &"o4", "weapon": &"swordShield",
-		"desc": "左鍵三段斬擊、右鍵格擋與盾反", "effects": []},
+		"desc": "左鍵三段斬擊、按住右鍵格擋，格擋中左鍵招架", "effects": []},
 	&"staff": {"kind": &"weapon", "name": "法杖", "rarity": &"white", "shape": &"i4", "weapon": &"staff",
 		"desc": "左鍵魔彈、右鍵奧術爆裂", "effects": []},
 

@@ -228,7 +228,7 @@ func _update_affixes(dt: float) -> void:
 
 
 # 吸血詞條：造成傷害後回血（Combat 在命中後呼叫）
-func on_dealt_damage(amount: int) -> void:
+func on_dealt_damage(amount: float) -> void:
 	if has_affix(&"vampiric") and amount > 0:
 		heal(amount * affix(&"vampiric").lifesteal)
 
@@ -312,7 +312,7 @@ func _anim_extra(_a: Dictionary) -> void:
 	pass
 
 
-func _on_damaged(_amount: int, _source_id: int) -> void:
+func _on_damaged(_amount: float, _source_id: int) -> void:
 	if pack_id >= 0 and dormant:
 		world.wake_pack(pack_id)   # 被打（例如遠距離魔彈）整群醒來
 	if not is_dead and not is_spawning() and fsm.states.has(&"hurt") and not suppress_stagger:

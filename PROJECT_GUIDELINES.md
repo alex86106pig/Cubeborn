@@ -267,7 +267,7 @@ export const SKILLS = {
 |---|---|---|
 | `entity:damaged` | `{ target, amount, source, knockback, isCrit }`（Godot 版：`isCrit` 拆成 `is_heavy` 重擊顯示（第三段、盾反、爆炸）與 `is_crit` 屬性擲出的爆擊，見 15.11；另帶 `hit_stop` 命中定格秒數，見 15.3；目標是玩家時再帶 `source_kind`、`origin`、`lethal` 給遊玩紀錄，v0.34.0） | Combat |
 | `entity:healed` | `{ target, amount }` | skillBehaviors |
-| `player:blocked` | `{ player_id, perfect }`（Godot 版 v0.18.0：格擋擋下攻擊；perfect = 完美格擋，下一步盾反） | Player.try_block |
+| `player:blocked` | `{ player_id, perfect }`（Godot 版 v0.18.0：格擋擋下攻擊；perfect = 招架成功（v0.41.0 起），下一步盾反） | Player.try_block |
 | `entity:died` | `{ entity, source }`（Godot 版另帶 `kind`，v0.34.0 遊玩紀錄用） | Entity |
 | `player:died` | `{ player }`（Godot 版 v0.21.0 起只代表這位玩家真的死亡；輸掉一局改看 `game:defeat`） | Player |
 | `player:downed` | `{ player_id }`（僅 Godot 版 v0.21.0：多人時生命歸零先倒地假死，見 15.18） | Player |
@@ -550,14 +550,16 @@ godot/
 - 骷髏戰士揮砍（使用者選「中等」）：中心距離 1.3 內且冷卻好時舉刀 0.5 秒（站定，前 50% 轉向、之後鎖定）→ 揮下 0.1 秒（前方 100°、距離 1.5 的扇形，傷害 12）→ 收招 0.5 秒；冷卻 1.2 秒從舉刀算。舉刀中被打進入受擊硬直，揮砍中斷。
 - 弓手與 Boss 拿掉碰撞傷害後不補新招（使用者決定）。
 
-### 15.15 劍盾格擋與盾反（v0.18.0）
-- 使用者決定：劍盾右鍵從盾擊衝鋒改成格擋；按一下自動維持 3 秒；格擋時可以移動。其餘由 Claude 訂（數值在 `weapon_defs.gd` 的 `swordShield.special`）：
-  - 移速 ×0.5、會轉向瞄準點；用翻滾或再按一次右鍵（v0.23.0 使用者決定，`press_cancel`：直接進入 0.15 秒收招）提前結束；冷卻 4 秒從按下算（取消不退冷卻）。
+### 15.15 劍盾格擋與招架（v0.18.0，v0.41.0 改成按住格擋 + 招架）
+- 使用者決定（v0.41.0）：**按住右鍵格擋、放開就放下，沒有冷卻與時間上限**；格擋中**按左鍵招架**（冷卻 4 秒，從按下算）。數值在 `weapon_defs.gd` 的 `swordShield.special`：
+  - 移速 ×0.5、會轉向瞄準點；用翻滾提前結束；格擋中有霸體（不硬直）。右鍵按住走 `InputCmd.BTN_SPECIAL_HELD`（按住類、在 `HELD_BUTTONS`），`special.hold = true` 讓 `TimedAction` 在按著時停在 active（active 長度 0：放開立刻進 0.15 秒收招）；只按一下沒按住不舉盾。
+  - 招架：格擋中左鍵剛按下那一步（`Player.attack_pressed`，按住不連發）開始 `parry.window`（0.2 秒）判定。判定中擋下 = 招架成功（`player:blocked.perfect`，HUD「招架！」）→ 下一步全額盾反；判定結束都沒擋到 → 打出傷害與擊退 × `fail_damage_mul`（0.5）的盾擊。盾反後右鍵還按著就繼續格擋；判定中放開右鍵要等判定結束才放下。
+  - 技能欄：格擋中左鍵那格換成「招架」（`SkillBar._parry_slot`）並顯示招架冷卻。
   - 擋得住：`blockable` 的攻擊（揮砍、箭），來向在正前方合計 120°（左右各 60°；v0.23.0 使用者決定，原本 75°）內。格擋中腳下前方顯示金色扇形（`WorldView` 的 BlockFan，半徑 2.2、角度同 `block_arc`）。擋下時不扣血、自己被推退 30% 擊退，發出 `player:blocked` 與音效；箭會消失。
   - Boss 衝鋒（v0.18.2 使用者決定）：擋得住、不扣血，但推退 100%（`charge.block_knockback_mul`）；同一次衝鋒擋下後不再判定。
   - 擋不住：砸地、爆炸（不是 blockable），或來自側面 / 背後。
-  - 完美格擋：按下後 0.2 秒內擋下 → 下一步開頭盾反（前方 180°、距離 3.5；v0.23.0 使用者決定，原本 120° / 2.5；傷害 25 × 攻擊力，大擊退、重擊顯示），然後結束格擋。`fx:parry` 帶 facing 與 arc，畫面閃一下實際打得到的扇形。
-  - 注意：`InputCmd.buttons` 是「這一步按下」，測試裡連續好幾步帶 `BTN_SPECIAL` 等於連按，格擋會被第二下取消。
+  - 盾反範圍：前方 180°、距離 3.5（v0.23.0 使用者決定，原本 120° / 2.5）；傷害 25 × 攻擊力、大擊退、重擊顯示（招架失敗的減半盾擊不算重擊）。`fx:parry` 帶 facing 與 arc，畫面閃一下實際打得到的扇形。
+  - 測試裡按住格擋要每步帶 `BTN_SPECIAL_HELD`（`player_checks.gd` 的 `HOLD` / `PRESS_HOLD`）。
 - 實作：`ShieldBlock` 行為記錄 `player.block_time`（格擋開始後秒數，< 0 = 沒在格擋）；`Combat.apply_damage` 對 blockable 的攻擊先呼叫 `target.try_block(來源位置, hit)`；盾反延到下一步執行（`pending_parry`），避免在怪物出招的途中改動怪物狀態。
 
 ### 15.16 物品資料（v0.19.0）

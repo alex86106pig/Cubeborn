@@ -80,9 +80,12 @@ static func check_combo() -> String:
 		elif reached_finisher and p.action.is_in(&"attack"):
 			break   # 第四刀開始（回到第一段）
 	var a: Dictionary = WeaponDefs.WEAPONS[&"swordShield"].attack
-	var want := [roundi(a.damage), roundi(a.damage), roundi(a.damage * a.finisher_mul)]
+	var want := [a.damage, a.damage, a.damage * a.finisher_mul]   # v0.41.0 起保留小數（第三段 21.6，原本四捨五入成 22）
 	var amounts := _damage_amounts(events, dummy.id)
-	if amounts != want:
+	var same := amounts.size() == want.size()
+	for i in mini(amounts.size(), want.size()):
+		same = same and absf(amounts[i] - want[i]) < 1e-4
+	if not same:
 		return "三段傷害 %s，預期 %s" % [amounts, want]
 	if absf(finisher_recovery - a.recovery * a.finisher_recovery_mul) > EPS:
 		return "第三段後搖 %.3f 秒，預期 %.3f" % [finisher_recovery, a.recovery * a.finisher_recovery_mul]
@@ -109,82 +112,136 @@ static func check_block() -> String:
 	return err
 
 
-# 操作：按一下維持、可移動轉向、CD、翻滾可提前結束
+const HOLD := InputCmd.BTN_SPECIAL_HELD                       # 右鍵按住
+const PRESS_HOLD := InputCmd.BTN_SPECIAL | InputCmd.BTN_SPECIAL_HELD   # 右鍵這一步按下並按住
+
+
+# 操作（v0.41.0）：按住才格擋、放開就放下、沒有冷卻與時間上限、可移動轉向、翻滾可提前結束；
+# 格擋中按左鍵招架（冷卻 parry.cooldown，冷卻中按發 skill:onCooldown），判定時間結束都沒擋到 = 盾擊傷害 × fail_damage_mul
 static func _block_controls() -> String:
 	var w := _new_world()
 	var p := _player(w)
 	var events: Array[Dictionary] = []
-	_run_collect(w, _cmd(Vector2.ZERO, Vector2(5, 0), InputCmd.BTN_SPECIAL), 1, events)
-	if not p.action.is_in(&"special") or p.block_time < 0.0 or _named(events, "skill:used").is_empty():
-		return "右鍵後應開始格擋並發出 skill:used"
+	_run_collect(w, _cmd(Vector2.ZERO, Vector2(5, 0), PRESS_HOLD), 1, events)
+	if not p.action.is_in(&"special") or p.block_time < 0.0:
+		return "按住右鍵應開始格擋"
+	if not _named(events, "skill:used").is_empty() or not w.cooldowns.is_ready(p.cd("player.special")):
+		return "格擋不應有冷卻：%s" % [_named(events, "skill:used")]
 	# 格擋中可以移動（×0.5）、會轉向瞄準點
-	_run(w, _cmd(Vector2(0, 1), Vector2(5, 0)), 20)
+	_run(w, _cmd(Vector2(0, 1), Vector2(5, 0), HOLD), 20)
 	var sp: Dictionary = WeaponDefs.WEAPONS[&"swordShield"].special
 	var block_speed: float = Config.PLAYER.move_speed * sp.move_speed_mul
 	var aim_angle := MathUtil.angle_to(p.pos, Vector2(5, 0))   # 邊走邊瞄準固定點，朝向要用目前位置算
 	if absf(p.velocity.length() - block_speed) > EPS or absf(angle_difference(p.facing, aim_angle)) > 0.05:
 		return "格擋中移速 %.3f（預期 %.3f）、朝向 %.2f（預期 %.2f）" % [p.velocity.length(), block_speed, p.facing, aim_angle]
-	var steps := 21
-	while p.block_time >= 0.0 and steps < 400:
-		_run(w, _cmd(Vector2.ZERO, Vector2(5, 0)), 1)
-		steps += 1
-	var hold_steps := roundi((sp.windup + sp.active) / DT)
-	if absi(steps - hold_steps) > 2:
-		return "格擋應維持約 %d 步，實際 %d 步" % [hold_steps, steps]
-	_run_collect(w, _cmd(Vector2.ZERO, Vector2(5, 0), InputCmd.BTN_SPECIAL), 2, events)
-	if _named(events, "skill:onCooldown").is_empty() or p.block_time >= 0.0:
-		return "CD 中按右鍵應發出 skill:onCooldown 且不格擋"
-	var remaining := w.cooldowns.remaining(_player(w).cd("player.special"))
-	var elapsed := w.tick * DT
-	if absf(remaining - (sp.cooldown - elapsed + DT)) > DT * 1.5:
-		return "CD 剩餘 %.3f 秒，預期約 %.3f" % [remaining, sp.cooldown - elapsed + DT]
+	# 沒有時間上限：按住 5 秒還在格擋（原本 3 秒就放下）
+	_run(w, _cmd(Vector2.ZERO, Vector2(5, 0), HOLD), roundi(5.0 / DT))
+	if p.block_time < 0.0:
+		return "按住右鍵 5 秒後應還在格擋"
+	# 放開：下一步就放下盾（進入收招），收招後回到 ready
+	_run(w, _cmd(Vector2.ZERO, Vector2(5, 0)), 1)
+	if p.block_time >= 0.0 or p.anim.phase != &"recovery":
+		return "放開右鍵應立刻放下盾、進入收招：格擋 %s、階段 %s" % [p.block_time >= 0.0, p.anim.phase]
+	_run(w, _cmd(Vector2.ZERO, Vector2(5, 0)), ceili(sp.recovery / DT) + 1)
+	if not p.action.is_in(&"ready"):
+		return "收招後應回到 ready，實際 %s" % p.action.current_name
+	# 沒有冷卻：馬上再按住又能格擋
+	_run(w, _cmd(Vector2.ZERO, Vector2(5, 0), PRESS_HOLD), 1)
+	if p.block_time < 0.0:
+		return "放開後馬上再按住右鍵應能再格擋（沒有冷卻）"
+	# 按一下就放開（同一步）：不舉盾
+	var w1 := _new_world()
+	var p1 := _player(w1)
+	_run(w1, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 1)
+	_run(w1, _cmd(Vector2.ZERO, Vector2(0, 5)), 3)
+	if p1.block_time >= 0.0 or not p1.action.is_in(&"ready"):
+		return "只按一下沒按住右鍵不應格擋：%s" % p1.action.current_name
 	# 翻滾可以提前結束格擋
 	var w2 := _new_world()
 	var p2 := _player(w2)
-	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 10)
-	_run(w2, _cmd(Vector2(1, 0), Vector2(0, 5), InputCmd.BTN_ROLL), 1)
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5), PRESS_HOLD), 10)
+	_run(w2, _cmd(Vector2(1, 0), Vector2(0, 5), HOLD | InputCmd.BTN_ROLL), 1)
 	if not p2.action.is_in(&"roll") or p2.block_time >= 0.0:
 		return "格擋中按翻滾應結束格擋並翻滾，實際狀態 %s" % p2.action.current_name
+	return _parry_controls(sp)
+
+
+# 招架：格擋中按左鍵、冷卻、判定時間內沒擋到 → 傷害減半的盾擊；放開右鍵也等判定結束；沒格擋時左鍵照常普攻
+static func _parry_controls(sp: Dictionary) -> String:
+	var pr: Dictionary = sp.parry
+	var w := _new_world()
+	var p := _player(w)
+	p.facing = 0.0
+	var dummy := _dummy(w, Vector2(0, 2.0))
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), PRESS_HOLD), 5)
+	var events: Array[Dictionary] = []
+	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), HOLD | InputCmd.BTN_ATTACK), 1, events)
+	var used := _named(events, "skill:used").filter(func(e: Dictionary) -> bool: return e.key == "player.parry")
+	if p.parry_time < 0.0 or used.size() != 1 or not p.action.is_in(&"special"):
+		return "格擋中按左鍵應開始招架（skill:used player.parry、還在格擋）：parry_time %.2f、%s、%s" % [p.parry_time, used, p.action.current_name]
+	if absf(w.cooldowns.remaining(p.cd("player.parry")) - pr.cooldown) > DT * 1.5:
+		return "招架冷卻應約 %.1f 秒，實際 %.3f" % [pr.cooldown, w.cooldowns.remaining(p.cd("player.parry"))]
+	# 判定中放開右鍵：等判定結束才打出盾擊；沒擋到攻擊 → 傷害 25 × 0.5 = 12.5（保留小數，v0.41.0）
+	var hp0 := dummy.hp
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), ceili(pr.window / DT) + 1)
+	var want: float = pr.damage * pr.fail_damage_mul
+	if absf((hp0 - dummy.hp) - want) > 1e-4:
+		return "招架沒擋到攻擊應打出 %.1f 傷害（%.0f × %.1f），實際 %.4f" % [want, pr.damage, pr.fail_damage_mul, hp0 - dummy.hp]
+	if p.parry_time >= 0.0 or p.block_time >= 0.0:
+		return "判定結束、右鍵已放開後應放下盾"
+	# 冷卻中再招架：發 skill:onCooldown、不招架
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), ceili(sp.recovery / DT) + 1)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), PRESS_HOLD), 3)
+	var ev2: Array[Dictionary] = []
+	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), HOLD | InputCmd.BTN_ATTACK), 1, ev2)
+	var cd_ev := _named(ev2, "skill:onCooldown").filter(func(e: Dictionary) -> bool: return e.key == "player.parry")
+	if cd_ev.size() != 1 or p.parry_time >= 0.0:
+		return "招架冷卻中按左鍵應發 skill:onCooldown 且不招架：%s、parry_time %.2f" % [cd_ev, p.parry_time]
+	# 一直按住左鍵不會連續招架（只有剛按下那一步算）：冷卻好了也要再按一次
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), HOLD | InputCmd.BTN_ATTACK), roundi(pr.cooldown / DT) + 2)
+	if p.parry_time >= 0.0 or not w.cooldowns.is_ready(p.cd("player.parry")):
+		return "按住左鍵不放不應在冷卻好後自動招架"
 	return ""
 
 
-# 判定：正面擋揮砍、背後擋不住、完美格擋盾反、Boss 衝鋒擋得住但全額推退、Boss 砸地擋不住
+# 判定：正面擋揮砍、背後擋不住、招架成功全額盾反、Boss 衝鋒擋得住但全額推退、Boss 砸地擋不住
 static func _block_hits() -> String:
 	var front := Vector2(0, -5)   # 骷髏在玩家 -Z 方向（_grunt_swinging 的配置）
-	# 一般格擋：骷髏舉刀時就開始格擋，命中時已超過 0.2 秒 → 擋下但不是完美格擋
+	# 一般格擋：骷髏舉刀時就按住右鍵 → 擋下、不是招架
 	var w := _new_world()
 	var p := _player(w)
 	var g := _grunt_swinging(w, p)
-	_run(w, _cmd(Vector2.ZERO, front, InputCmd.BTN_SPECIAL), 1)
+	_run(w, _cmd(Vector2.ZERO, front, PRESS_HOLD), 1)
 	var events: Array[Dictionary] = []
-	_run_collect(w, _cmd(Vector2.ZERO, front), 40, events)
+	_run_collect(w, _cmd(Vector2.ZERO, front, HOLD), 40, events)
 	var blocked := _named(events, "player:blocked")
 	if p.hp != p.max_hp or blocked.size() != 1 or blocked[0].perfect:
-		return "正面應擋下揮砍（非完美）：血量 %.0f、blocked 事件 %s" % [p.hp, blocked]
+		return "正面應擋下揮砍（不是招架）：血量 %.0f、blocked 事件 %s" % [p.hp, blocked]
 	# 背對：擋不住
 	var w2 := _new_world()
 	var p2 := _player(w2)
 	_grunt_swinging(w2, p2)
-	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 10), InputCmd.BTN_SPECIAL), 1)
-	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 10)), 40)
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 10), PRESS_HOLD), 1)
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 10), HOLD), 40)
 	if p2.hp >= p2.max_hp:
 		return "背對骷髏格擋應擋不住"
-	# 完美格擋：先面向骷髏，在命中前約 0.15 秒才按右鍵 → 擋下、下一步盾反 25 傷害並結束格擋
+	# 招架成功：面向骷髏按住右鍵，在命中前約 0.1 秒按左鍵 → 擋下、下一步全額盾反 25 傷害，右鍵還按著就繼續格擋
 	var w3 := _new_world()
 	var p3 := _player(w3)
 	var g3 := _grunt_swinging(w3, p3)
 	var s: Dictionary = EnemyDefs.ENEMIES.grunt.swing
-	_run(w3, _cmd(Vector2.ZERO, front), roundi((s.windup - 0.15) / DT) - 1)
+	_run(w3, _cmd(Vector2.ZERO, front, PRESS_HOLD), 1)
+	_run(w3, _cmd(Vector2.ZERO, front, HOLD), roundi((s.windup - 0.1) / DT) - 2)
 	var g_hp := g3.hp
 	var ev3: Array[Dictionary] = []
-	_run_collect(w3, _cmd(Vector2.ZERO, front, InputCmd.BTN_SPECIAL), 1, ev3)
-	_run_collect(w3, _cmd(Vector2.ZERO, front), 15, ev3)
+	_run_collect(w3, _cmd(Vector2.ZERO, front, HOLD | InputCmd.BTN_ATTACK), 1, ev3)
+	_run_collect(w3, _cmd(Vector2.ZERO, front, HOLD), 15, ev3)
 	var b3 := _named(ev3, "player:blocked")
 	if b3.size() != 1 or not b3[0].perfect or p3.hp != p3.max_hp:
-		return "0.2 秒內擋下應為完美格擋：%s、血量 %.0f" % [b3, p3.hp]
+		return "招架判定中擋下應為招架成功：%s、血量 %.0f" % [b3, p3.hp]
 	var parry_dmg: float = WeaponDefs.WEAPONS[&"swordShield"].special.parry.damage
-	if g_hp - g3.hp != parry_dmg or p3.block_time >= 0.0:
-		return "盾反應造成 %.0f 傷害並結束格擋：傷害 %.0f、格擋 %s" % [parry_dmg, g_hp - g3.hp, p3.block_time >= 0.0]
+	if absf((g_hp - g3.hp) - parry_dmg) > 1e-4 or p3.block_time < 0.0:
+		return "招架成功應造成 %.0f 傷害、右鍵還按著就繼續格擋：傷害 %.2f、格擋 %s" % [parry_dmg, g_hp - g3.hp, p3.block_time >= 0.0]
 	# Boss 衝鋒（v0.18.2）：正面擋得住、不扣血、只判定一次，但被推退得比一般格擋遠（100% 擊退）
 	var w6 := _new_world()
 	var p6 := _player(w6)
@@ -192,11 +249,11 @@ static func _block_hits() -> String:
 	_run(w6, _cmd(Vector2.ZERO, Vector2(0, 8)), roundi(EnemyDefs.ENEMIES.boss.spawn_time / DT) + 2)
 	boss6.facing = PI
 	boss6.fsm.change(&"charge")
-	_run(w6, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), 1)
+	_run(w6, _cmd(Vector2.ZERO, Vector2(0, 8), PRESS_HOLD), 1)
 	var ev6: Array[Dictionary] = []
 	var push := 0.0   # 擋下那一步的被動推退速度（Boss 本身的推擠不算在內）
 	for i in 90:
-		_run_collect(w6, _cmd(Vector2.ZERO, boss6.pos), 1, ev6)
+		_run_collect(w6, _cmd(Vector2.ZERO, boss6.pos, HOLD), 1, ev6)
 		if push == 0.0 and not _named(w6.events, "player:blocked").is_empty():
 			push = p6.knockback.length()
 	var b6 := _named(ev6, "player:blocked")
@@ -210,7 +267,7 @@ static func _block_hits() -> String:
 	var w5 := _new_world()
 	var p5 := _player(w5)
 	var boss := _spawn(w5, &"boss", Vector2(0, 2.0))
-	_run(w5, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 20)
+	_run(w5, _cmd(Vector2.ZERO, Vector2(0, 5), PRESS_HOLD), 20)
 	boss.slam_ring(0, {})
 	if p5.hp >= p5.max_hp:
 		return "Boss 砸地不能被格擋"
@@ -247,10 +304,10 @@ static func check_buffer() -> String:
 	var p := _player(w)
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1)
 	_run(w, _cmd(Vector2.ZERO), 1)
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 1)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), PRESS_HOLD), 1)
 	var started := -1
 	for i in 30:
-		_run(w, _cmd(Vector2.ZERO), 1)
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), HOLD), 1)
 		if p.action.is_in(&"special"):
 			started = w.tick
 			break
@@ -573,38 +630,25 @@ static func check_jump_motion() -> String:
 	return ""
 
 
-# 範圍：擋箭的角度（block_arc 邊界內外各 5°，箭擋下會消失）、格擋中再按右鍵放下盾、盾反的距離與角度
+# 範圍：擋箭的角度（block_arc 邊界內外各 5°，箭擋下會消失）、盾反的距離與角度
 static func _block_ranges() -> String:
 	var sp: Dictionary = WeaponDefs.WEAPONS[&"swordShield"].special
 	var edge := rad_to_deg(sp.block_arc / 2.0)
-	# 角度：面向 +Z 舉盾 20 步後（過了完美格擋），箭從不同角度飛向玩家；InputCmd.buttons 是「這一步按下」，只按一次
+	# 角度：面向 +Z 按住右鍵 20 步後，箭從不同角度飛向玩家
 	for case in [[edge - 5.0, true], [edge + 5.0, false]]:
 		var w := _new_world()
 		var p := _player(w)
 		var archer := _spawn(w, &"archer", Vector2(0, 15))
-		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 1)
-		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 19)
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), PRESS_HOLD), 1)
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), HOLD), 19)
 		var a := deg_to_rad(case[0])
 		var from := p.pos + Vector2(sin(a), cos(a)) * 1.5
 		var arrow := Projectile.new(w, {"owner": archer, "pos": from, "direction": p.pos - from, "speed": 10.0,
 			"range": 5.0, "damage": 12.0, "altitude": Config.HEIGHT.arrow_altitude, "blockable": true})
 		w.spawn_projectile(arrow)
-		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 20)
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), HOLD), 20)
 		if (p.hp == p.max_hp) != case[1] or not arrow.is_removed:
 			return "箭從 %.0f° 飛來：%s，血量 %.0f、箭消失 %s" % [case[0], "應擋下" if case[1] else "應擋不下", p.hp, arrow.is_removed]
-	# 再按一次右鍵：進入收招後放下盾
-	var w2 := _new_world()
-	var p2 := _player(w2)
-	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 1)
-	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5)), 10)
-	if p2.block_time < 0.0:
-		return "按一下右鍵應開始格擋"
-	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 1)
-	if p2.block_time >= 0.0 or p2.anim.phase != &"recovery":
-		return "格擋中再按右鍵應立刻放下盾、進入收招：格擋 %s、階段 %s" % [p2.block_time >= 0.0, p2.anim.phase]
-	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5)), 10)
-	if not p2.action.is_in(&"ready"):
-		return "收招後應回到 ready，實際 %s" % p2.action.current_name
 	# 盾反：距離 range（加目標半徑 0.5）、角度 arc；邊界角內 5°、距離邊界內外
 	var pa: Dictionary = sp.parry
 	var w3 := _new_world()

@@ -16,7 +16,7 @@ class Heal extends Behavior:
 
 	func activate(owner: Player, def: Dictionary) -> void:
 		var healed := owner.heal(def.amount)
-		owner.world.emit_event("entity:healed", {"target_id": owner.id, "amount": roundi(healed)})
+		owner.world.emit_event("entity:healed", {"target_id": owner.id, "amount": healed})
 		owner.world.emit_event("fx:heal", {"pos": owner.pos, "height": owner.height, "color": def.color})
 
 

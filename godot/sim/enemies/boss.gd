@@ -104,7 +104,7 @@ func summon_minions() -> void:
 			(e as MeleeEnemy).pending_rush = true
 
 
-func _on_damaged(_amount: int, _source_id: int) -> void:
+func _on_damaged(_amount: float, _source_id: int) -> void:
 	var e: Dictionary = def.enrage
 	if not is_enraged and not is_dead and hp / max_hp <= e.hp_threshold:
 		is_enraged = true

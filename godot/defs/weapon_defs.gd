@@ -33,24 +33,27 @@ const WEAPONS := {
 			"slash_color": Color.WHITE,                  # 揮砍弧光（網頁版 effects.slash）
 			"slash_finisher_color": Color("ffe27a"),     # 第三段弧光
 		},
-		# 格擋與盾反（v0.18.0，取代網頁版的盾擊衝鋒；使用者決定：按一下自動維持、可以移動、拿掉衝鋒，其餘數值 Claude 訂）
+		# 格擋與招架（v0.41.0 使用者決定，取代 v0.18.0 的「按一下維持 3 秒、剛舉盾擋下 = 完美格擋」）：
+		# 按住右鍵格擋、放開就放下，沒有冷卻；格擋中按左鍵招架（有冷卻），判定時間內擋到攻擊 = 全額盾反，沒擋到 = 盾擊傷害減半
 		"special": {
 			"behavior": &"shieldBlock",
 			"name": "格擋",
 			"icon": "🛡",
-			"cooldown": 4.0,           # 從按下右鍵開始算
-			"windup": 0.05,            # 舉盾；按下就開始格擋（完美格擋從按下算）
-			"active": 2.95,            # 舉盾 + 維持合計 3 秒
+			"hold": true,              # 按住右鍵維持（InputCmd.BTN_SPECIAL_HELD）：active 期間右鍵按著或招架中就停在 active
+			"windup": 0.05,            # 舉盾；按下就開始格擋
+			"active": 0.0,             # 放開右鍵就進入收招
 			"recovery": 0.15,
 			"move_speed_mul": 0.5,     # 格擋時移速減半
 			"roll_cancel": true,       # 可以用翻滾提前結束
-			"press_cancel": true,      # 格擋中再按一次右鍵放下盾（v0.23.0 使用者決定；冷卻照舊從舉盾算）
 			"block_arc": PI * 120.0 / 180.0,  # 正前方合計 120°（左右各 60°；v0.23.0 使用者決定，原本 75°）
-			"perfect_window": 0.2,     # 按下後這麼久內擋下 = 完美格擋，觸發盾反
 			"block_knockback_mul": 0.3,   # 擋下時自己被推退的比例（不扣血）
 			"sfx_block": "shieldBash",
 			"sfx_parry": "hitHeavy",
 			"parry": {
+				"name": "招架",               # 格擋中技能欄左鍵那格顯示這兩個字
+				"window": 0.2,                # 按下左鍵後這麼久內擋到攻擊 = 招架成功（沿用原本完美格擋的 0.2 秒）
+				"cooldown": 4.0,              # 從按下左鍵開始算（沿用原本格擋的 4 秒）
+				"fail_damage_mul": 0.5,       # 判定時間結束都沒擋到：盾擊照樣打出，傷害與擊退 × 0.5（25 → 12.5）
 				"damage": 25.0,
 				"range": 3.5,                 # v0.23.0 使用者決定（原本 2.5 / 120°）
 				"arc": PI * 180.0 / 180.0,
