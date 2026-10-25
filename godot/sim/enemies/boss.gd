@@ -65,7 +65,7 @@ func slam_ring(i: int, hit: Dictionary) -> void:
 	var outer: float = rings[i]
 	var inner: float = rings[i - 1] if i > 0 else 0.0
 	if i == 0:
-		world.emit_event("sfx:cue", {"cue": "bossSlam"})
+		world.emit_event("sfx:cue", {"cue": "bossSlam", "pos": pos})
 		world.emit_event("camera:shake", {"amount": s.shake, "duration": s.shake_duration})
 	# 內圈裡面的目標這一圈不打（已經過去的波）
 	var skip := hit.duplicate()
@@ -100,6 +100,7 @@ func summon_minions() -> void:
 		var z := clampf(pos.y + cos(a) * s.distance, -limit.y, limit.y)
 		# 落在牆或墓碑上就移到最近的空地（D1）
 		var e := world.spawner.spawn_at(world, type, world.nav_for(EnemyDefs.ENEMIES[type].radius).nearest_walkable(Vector2(x, z)))
+		e.no_gold = true
 		if is_enraged and e is MeleeEnemy:
 			(e as MeleeEnemy).pending_rush = true
 
@@ -187,11 +188,11 @@ class Slam:
 			data.windup = e.def.enrage.teleport_windup
 			e.world.emit_event("fx:telegraph", {"pos": data.target, "height": e.world.terrain.ground_at(data.target),
 				"radius": e.radius + 1.0, "color": Color("b36bff"), "life": e.def.enrage.teleport_warn})
-			e.world.emit_event("sfx:cue", {"cue": "bossChargeWindup"})
+			e.world.emit_event("sfx:cue", {"cue": "bossChargeWindup", "pos": e.pos})
 		else:
 			data.phase = &"windup"
 			data.windup = e.windup_of(s)
-			e.world.emit_event("sfx:cue", {"cue": "bossSlamWindup"})
+			e.world.emit_event("sfx:cue", {"cue": "bossSlamWindup", "pos": e.pos})
 
 	func update(e: Boss, dt: float, fsm: StateMachine) -> void:
 		var s: Dictionary = e.def.slam
@@ -204,7 +205,7 @@ class Slam:
 				e.pos = d.target
 				e.prev_pos = d.target   # 瞬移：畫面不要補間滑過去
 				e.height = e.world.terrain.ground_at(d.target)
-				e.world.emit_event("sfx:cue", {"cue": "bossSlamWindup"})
+				e.world.emit_event("sfx:cue", {"cue": "bossSlamWindup", "pos": e.pos})
 				d.phase = &"windup"
 				d.phase_time = 0.0
 			return
@@ -231,7 +232,7 @@ class Charge:
 		_aim(e, data, e.windup_of(c))
 
 	static func _aim(e: Boss, data: Dictionary, windup: float) -> void:
-		e.world.emit_event("sfx:cue", {"cue": "bossChargeWindup"})
+		e.world.emit_event("sfx:cue", {"cue": "bossChargeWindup", "pos": e.pos})
 		var target := e.nearest_player()
 		if target != null:
 			e.facing = MathUtil.angle_to(e.pos, target.pos)
@@ -282,7 +283,7 @@ class Charge:
 				e.vz = 4.0 * Config.JUMP.height / Config.JUMP.air_time
 			var blocked: bool = top > e.height + Config.HEIGHT.step and not hop
 			if absf(e.pos.x) >= limit.x or absf(e.pos.y) >= limit.y or blocked:
-				e.world.emit_event("sfx:cue", {"cue": "bossWallHit"})
+				e.world.emit_event("sfx:cue", {"cue": "bossWallHit", "pos": e.pos})
 				e.world.emit_event("camera:shake", {"amount": c.wall_shake, "duration": c.wall_shake_duration})
 				e.world.emit_event("fx:boss_wall", {"pos": e.pos, "height": e.height})
 				d.phase = &"stunned"
@@ -307,7 +308,7 @@ class Charge:
 # 召喚：高舉雙手後在身邊召喚小怪
 class Summon:
 	func enter(e: Boss, data: Dictionary, _fsm: StateMachine) -> void:
-		e.world.emit_event("sfx:cue", {"cue": "bossSummon"})
+		e.world.emit_event("sfx:cue", {"cue": "bossSummon", "pos": e.pos})
 		e.velocity = Vector2.ZERO
 		e.world.cooldowns.start(e.cd("summon"), e.def.summon.cooldown * e.enrage_mul("cooldown_mul"))
 		data.done = false

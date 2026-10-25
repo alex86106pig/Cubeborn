@@ -107,12 +107,38 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 # 一層開始時的地圖內容：寶箱、怪群、挖墳事件歸零
 func _populate_floor() -> void:
 	event.reset(self)   # 先歸零：怪群的難度倍率要用這一層的基礎難度
-	for c: Array in map.get("chests", []):
-		var chest := Chest.new(self, c[2], MapDefs.to_world(map, Vector2(c[0], c[1])))
-		add_entity(chest)
-		chests.append(chest)
 	if spawn_packs and map.get("packs", false):
 		spawner.spawn_packs(self)
+	_place_chests()   # 放在怪群之後：寶箱用掉的亂數不改變怪群的位置
+
+
+# 寶箱（v0.44.0 隨機放）：每種數量 × 人數倍率；可走、走得到出生點、離出生點 / 挖墳點 / 地圖邊緣 / 其他寶箱夠遠
+# 找不到夠遠的位置時，寶箱之間的距離逐步放寬（× 0.5、× 0）
+func _place_chests() -> void:
+	var c: Dictionary = LootDefs.CHEST_PLACEMENT
+	var tiers: Array[StringName] = []
+	var counts: Dictionary = map.get("chest_count", {})
+	for tier: StringName in counts:
+		for i in roundi(counts[tier] * LootDefs.player_mul(player_list.size())):
+			tiers.append(tier)
+	var lim: Vector2 = half_extents - Vector2(c.edge_margin, c.edge_margin)
+	var placed: Array[Vector2] = []
+	for gap_mul: float in [1.0, 0.5, 0.0]:
+		for attempt in c.attempts:
+			if placed.size() >= tiers.size():
+				break
+			var at := Vector2(rng.randf_range(-lim.x, lim.x), rng.randf_range(-lim.y, lim.y))
+			if at.distance_to(spawn_point) < c.min_spawn_distance or at.distance_to(event.point) < c.min_dig_distance:
+				continue
+			if not nav.is_walkable(at) or not nav.same_region(at, spawn_point):
+				continue
+			if placed.any(func(o: Vector2) -> bool: return o.distance_to(at) < c.min_chest_distance * gap_mul):
+				continue
+			placed.append(at)
+	for i in placed.size():
+		var chest := Chest.new(self, tiers[i], placed[i])
+		add_entity(chest)
+		chests.append(chest)
 
 
 # 目前難度（D6）：沒有挖墳事件的地圖固定 0
@@ -241,7 +267,7 @@ func first_alive_player() -> Player:
 
 func on_enemy_died(e: Enemy) -> void:
 	stats.kills += 1
-	var g: int = LootDefs.KILL_GOLD.get(e.type, 0)
+	var g := 0 if e.no_gold else roundi(LootDefs.KILL_GOLD.get(e.type, 0) * LootDefs.player_mul(player_list.size()))
 	if g > 0:
 		gold += g
 		emit_event("gold:gained", {"amount": g, "pos": e.pos, "total": gold})

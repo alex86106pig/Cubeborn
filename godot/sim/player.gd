@@ -120,7 +120,7 @@ func try_block(from: Vector2, hit: Dictionary) -> bool:
 	# perfect：招架成功（事件名稱沿用；HUD 顯示「招架！」）
 	var perfect := parry_time >= 0.0
 	world.emit_event("player:blocked", {"player_id": id, "perfect": perfect})
-	world.emit_event("sfx:cue", {"cue": def.sfx_parry if perfect else def.sfx_block})
+	world.emit_event("sfx:cue", {"cue": def.sfx_parry if perfect else def.sfx_block, "pos": pos})
 	if perfect:
 		parry_time = -1.0
 		pending_parry = true

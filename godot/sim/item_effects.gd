@@ -140,7 +140,7 @@ static func chain_lightning(world: World, p: Player, first: Entity, damage: floa
 
 static func explode(world: World, p: Player, at: Vector2, ground: float, damage: float) -> void:
 	var cfg: Dictionary = ItemDefs.PROCS.explode
-	world.emit_event("sfx:cue", {"cue": "explosion"})
+	world.emit_event("sfx:cue", {"cue": "explosion", "pos": at})
 	world.emit_event("fx:explosion", {"pos": at, "height": ground, "radius": cfg.radius, "color": cfg.color})
 	for e in Combat.query_circle(at, cfg.radius, Combat.hostiles_of(world, p.team, p.id)):
 		var hit := proc_hit(damage, e, cfg.color, cfg.knockback)

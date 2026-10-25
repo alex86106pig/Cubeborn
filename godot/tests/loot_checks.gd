@@ -233,16 +233,9 @@ static func check_inventory() -> String:
 
 static func check_gold_chests() -> String:
 	var w := _new_world(12345, false, &"graveyard_a")
-	var want_tiers := {}
-	for c: Array in w.map.chests:
-		want_tiers[c[2]] = want_tiers.get(c[2], 0) + 1
-	var tiers := {}
-	for c: Entity in w.chests:
-		tiers[(c as Chest).tier] = tiers.get((c as Chest).tier, 0) + 1
-		if not w.nav.is_walkable(c.pos) and absf(c.height) < EPS:
-			return "寶箱 %s 放在不能走的地方" % c.pos
-	if tiers != want_tiers or not tiers.has(&"big"):
-		return "地圖 A 的寶箱 %s，地圖資料是 %s（要有大寶箱）" % [tiers, want_tiers]
+	var err := _chest_layout(w, 1)
+	if err != "":
+		return err
 	var p := _player(w)
 	var g := _spawn(w, &"grunt", p.pos + Vector2(3, 0))
 	g.die()
@@ -273,6 +266,99 @@ static func check_gold_chests() -> String:
 	w.gold = 100
 	if chest.try_open(p) or w.gold != 100:
 		return "開過的寶箱不能再開"
+	return ""
+
+
+# 寶箱的數量（× 人數倍率）與位置規則（可走、走得到出生點、離出生點 / 挖墳點 / 地圖邊緣夠遠）
+static func _chest_layout(w: World, players: int) -> String:
+	var c: Dictionary = LootDefs.CHEST_PLACEMENT
+	var want := {}
+	for tier: StringName in w.map.chest_count:
+		want[tier] = roundi(w.map.chest_count[tier] * LootDefs.player_mul(players))
+	var tiers := {}
+	var lim: Vector2 = w.half_extents - Vector2(c.edge_margin, c.edge_margin)
+	for e: Entity in w.chests:
+		tiers[(e as Chest).tier] = tiers.get((e as Chest).tier, 0) + 1
+		if not w.nav.is_walkable(e.pos) or not w.nav.same_region(e.pos, w.spawn_point):
+			return "寶箱 %s 放在走不到的地方" % e.pos
+		if e.pos.distance_to(w.spawn_point) < c.min_spawn_distance or e.pos.distance_to(w.event.point) < c.min_dig_distance:
+			return "寶箱 %s 離出生點 %.1f、挖墳點 %.1f，太近" % [e.pos, e.pos.distance_to(w.spawn_point), e.pos.distance_to(w.event.point)]
+		if absf(e.pos.x) > lim.x or absf(e.pos.y) > lim.y:
+			return "寶箱 %s 太靠近地圖邊緣" % e.pos
+	if tiers != want:
+		return "%d 人時地圖 A 的寶箱 %s，應為 %s" % [players, tiers, want]
+	return ""
+
+
+# 寶箱隨機放與金錢平衡（v0.44.0）：不同種子位置不同、同種子相同；2 / 4 人寶箱 ×1.5 / ×2.5、殺怪金錢也一樣；
+# 召喚出來的怪不給錢；開場怪群全清（10 個種子）賺的錢都買不完全部寶箱
+static func check_chest_balance() -> String:
+	var spots := func(w: World) -> Array:
+		return w.chests.map(func(e: Entity) -> Vector2: return e.pos)
+	var a := _new_world(1, false, &"graveyard_a")
+	var a2 := _new_world(1, false, &"graveyard_a")
+	var b := _new_world(2, false, &"graveyard_a")
+	if spots.call(a) != spots.call(a2):
+		return "同一個種子的寶箱位置應相同（連線重播與決定性）"
+	if spots.call(a) == spots.call(b):
+		return "不同種子的寶箱位置應不同（隨機放）"
+	var min_gap := INF
+	for i in a.chests.size():
+		for j in range(i + 1, a.chests.size()):
+			min_gap = minf(min_gap, a.chests[i].pos.distance_to(a.chests[j].pos))
+	if min_gap < LootDefs.CHEST_PLACEMENT.min_chest_distance:
+		return "單人時寶箱之間最近 %.1f，應至少 %.1f（地圖 A 放得下，不該放寬）" % [min_gap, LootDefs.CHEST_PLACEMENT.min_chest_distance]
+	for players in [2, 4]:
+		var peers: Array[int] = []
+		for i in players:
+			peers.append(World.HOST_PEER_ID + i)
+		var wm := World.new(&"graveyard_a")
+		wm.spawn_packs = false
+		wm.reset(3, peers)
+		wm.spawner.finished = true
+		_worlds.append(wm)
+		var err := _chest_layout(wm, players)
+		if err != "":
+			return err
+		var g := _spawn(wm, &"grunt", Vector2(0, 30))
+		g.die()
+		var want := roundi(LootDefs.KILL_GOLD[&"grunt"] * LootDefs.player_mul(players))
+		if wm.gold != want:
+			return "%d 人時殺一隻骷髏應得 %d 金幣，實際 %d" % [players, want, wm.gold]
+	# 召喚詞條、Boss 召喚出來的怪不給錢
+	var w := _new_world(4, false, &"graveyard_a")
+	var summoner := _spawn(w, &"grunt", Vector2(0, 30))
+	summoner.set_rarity(MonsterRarityDefs.MAGIC, [&"summoner"], "")
+	summoner._summon_timer = 0.0
+	summoner.dormant = false
+	var boss := _spawn(w, &"boss", Vector2(10, 30))
+	for i in roundi(EnemyDefs.ENEMIES.grunt.get("spawn_time", 1.0) / DT) + 5:
+		w.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+	boss.summon_minions()
+	var minions := w.enemies.filter(func(e: Entity) -> bool: return e is Enemy and (e as Enemy).no_gold)
+	var from_affix := minions.filter(func(e: Entity) -> bool: return (e as Enemy).summoner_id == summoner.id).size()
+	if from_affix == 0 or minions.size() <= from_affix:
+		return "應有召喚詞條與 Boss 叫出來的怪（詞條 %d、全部 %d）" % [from_affix, minions.size()]
+	w.gold = 0
+	for e: Entity in minions:
+		e.die()
+	if w.gold != 0:
+		return "召喚出來的 %d 隻怪死了給了 %d 金幣，應為 0" % [minions.size(), w.gold]
+	# 開場怪群全清 + Boss 的錢 < 全部寶箱的價錢
+	var total_price := 0
+	for tier: StringName in a.map.chest_count:
+		total_price += a.map.chest_count[tier] * LootDefs.CHESTS[tier].price
+	var most := 0
+	for seed_value in range(1, 11):
+		var wp := World.new(&"graveyard_a")
+		wp.reset(seed_value)
+		_worlds.append(wp)
+		var gold: int = LootDefs.KILL_GOLD.boss
+		for e: Entity in wp.enemies:
+			gold += LootDefs.KILL_GOLD.get((e as Enemy).type, 0)
+		most = maxi(most, gold)
+	if most >= total_price:
+		return "開場怪群全清最多賺 %d 金幣，全部寶箱 %d，應買不完" % [most, total_price]
 	return ""
 
 

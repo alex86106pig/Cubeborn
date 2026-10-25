@@ -77,6 +77,10 @@ const AUDIO := {
 	"music": 0.5,
 	"baked_gain": 1.0,       # tools/bake_*.gd 寫入 WAV 時乘上的倍數（防止峰值超過 1）；播放時再除回來
 	"music_fade": 1.0,       # 換曲、死亡、勝利時音樂淡出的秒數
+	# 距離衰減（v0.44.0 使用者要求：看不到的隊友打怪不該聽得清楚）：離本機角色 hear_full 內全音量（約畫面範圍），
+	# 到 hear_max 之間音量 (1 − t)² 遞減（20 單位約 −5 dB、25 約 −12 dB、30 約 −24 dB），hear_max 以外不播
+	"hear_full": 15.0,
+	"hear_max": 35.0,
 }
 
 # 翻滾（Godot 版新增，使用者 2026-10-22 決定）：速度與距離隨移速屬性等比放大（÷ PLAYER.move_speed），時間與無敵不變

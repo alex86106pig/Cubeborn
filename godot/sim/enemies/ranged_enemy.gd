@@ -40,7 +40,7 @@ func _on_nav_refresh(target: Vector2) -> void:
 
 
 func fire() -> void:
-	world.emit_event("sfx:cue", {"cue": "arrowShot"})
+	world.emit_event("sfx:cue", {"cue": "arrowShot", "pos": pos})
 	var dir := MathUtil.dir_from_angle(facing)
 	var aim := {}
 	var target := nearest_player()
@@ -101,7 +101,7 @@ class Kite:
 
 class Aim:
 	func enter(e: RangedEnemy, _data: Dictionary, _fsm: StateMachine) -> void:
-		e.world.emit_event("sfx:cue", {"cue": "bowDraw"})
+		e.world.emit_event("sfx:cue", {"cue": "bowDraw", "pos": e.pos})
 		e.velocity = Vector2.ZERO
 
 	func update(e: RangedEnemy, dt: float, fsm: StateMachine) -> void:

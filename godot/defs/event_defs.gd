@@ -19,12 +19,13 @@ const DIFFICULTY := {
 }
 
 # 事件中不斷冒怪：每 interval 秒冒一批，數量 = base + 難度 × per_point（無條件捨去），多人每多 1 人 ×1.5
+# v0.44.0 使用者試玩：清怪比不上生怪、完全挖不了 → 方案 B（單人第 60 秒累計 68 → 26 隻、120 秒 238 → 76 隻）
 const SPAWN := {
-	"interval_start": 3.0,
-	"interval_min": 0.8,
+	"interval_start": 5.0,          # 原本 3.0
+	"interval_min": 1.0,            # 原本 0.8
 	"interval_per_point": 0.01,     # 難度每點間隔 −0.01 秒
 	"group_base": 2,
-	"group_per_point": 0.05,        # 難度每 20 點多 1 隻
+	"group_per_point": 0.02,        # 難度每 50 點多 1 隻（原本每 20 點）
 	"per_extra_player": 0.5,
 	"archer_ratio": 0.25,
 	"magic_base": 0.05, "magic_per_point": 0.002, "magic_max": 0.5,

@@ -28,7 +28,6 @@ const MAPS := {
 			[24.0, 23.5, 6.0, 1.0, 2.5, WALL],         # 跳不上去，當牆
 		],
 		"tomb_rows": [],
-		"chests": [],
 	},
 	# A 環形墓園（使用者 2026-10-23 選定）：中央是圍牆圍住的王族墓，北門進；外圈四區
 	&"graveyard_a": {
@@ -60,8 +59,8 @@ const MAPS := {
 		],
 		# 西南、西北的墓碑林
 		"tomb_rows": [[6.0, 66.0, 8, 5, 3.0, 4.0], [6.0, 6.0, 7, 4, 3.5, 5.0]],
-		# 寶箱（D3，照草圖）：[x, y, 種類]；大寶箱在教堂廢墟裡
-		"chests": [[28.0, 88.0, &"small"], [73.0, 89.0, &"small"], [58.0, 13.0, &"small"], [88.0, 8.0, &"small"], [12.0, 42.0, &"big"]],
+		# 寶箱（D3）：每種幾個，開場隨機放（v0.44.0 使用者要求，原本照草圖固定 4 小 1 大；規則在 LootDefs.CHEST_PLACEMENT）
+		"chest_count": {&"small": 12, &"big": 4},
 		"packs": true,   # 開場散放怪群（D5，defs/monster_rarity_defs.gd 的 PACKS）
 		"dig_event": true,   # 挖墳事件取代波次（D6，sim/dig_event.gd）
 	},

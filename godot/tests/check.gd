@@ -101,7 +101,8 @@ func _initialize() -> void:
 	_check("地圖 A 生成（由挖墳事件生）：小怪都生在離玩家 min ~ max_distance、可走而且走得到玩家的地方", MapChecks.check_map_spawns)
 	# 背包、寶箱、道具與武器
 	_check("背包：大小照 BAG_SIZE；形狀旋轉 90° 後格子正確；超出邊界、重疊放不下；自動找第一個空位（不夠時會轉向）；搬動成功 / 失敗；裝滿後撿不起來並發出 inventory:full", LootChecks.check_inventory)
-	_check("金錢與寶箱：寶箱數量照地圖資料；殺怪金幣照 KILL_GOLD（共用）；錢不夠開不了（chest:denied）、夠了扣錢並在寶箱旁掉一個道具；開過不能再開", LootChecks.check_gold_chests)
+	_check("金錢與寶箱：寶箱數量照地圖資料、位置可走且離出生點 / 挖墳點 / 邊緣夠遠；殺怪金幣照 KILL_GOLD（共用）；錢不夠開不了（chest:denied）、夠了扣錢並在寶箱旁掉一個道具；開過不能再開", LootChecks.check_gold_chests)
+	_check("寶箱隨機放與金錢平衡（v0.44.0）：同種子位置相同、不同種子不同、寶箱間距；2 / 4 人寶箱與殺怪金錢 ×1.5 / ×2.5；召喚詞條與 Boss 召喚的怪不給錢；開場怪群全清（10 個種子）買不完全部寶箱", LootChecks.check_chest_balance)
 	_check("寶箱稀有度：各抽 20000 次，比例符合權重（誤差 ±1.5%），不會開出武器", LootChecks.check_chest_rarity)
 	_check("撿道具：按 F 撿起最近的道具放進背包並生效；剛按下那一步才算（按住不會連撿）；兩人同一步按 F 只有一人拿到；丟掉後道具回到地上、效果移除；附近有倒地隊友時 F 先救人", LootChecks.check_pickups)
 	_check("武器掉落：小怪死 5000 次的掉落率符合 DROP_CHANCE（±0.9%）、Boss 必掉；稀有度各抽 20000 次符合權重（±1.5%）", LootChecks.check_weapon_drops)
@@ -137,15 +138,16 @@ func _initialize() -> void:
 	_check("音效檔：Sound.CUE_NAMES 每個名稱都有配方與 audio/sfx/*.wav，檔案不是空的、峰值 ≤ 1", ViewChecks.check_sfx_files)
 	_check("背景音樂：一般 / Boss 兩首匯入後為往前循環，長度 15.00 / 10.43 秒（64 / 92 BPM × 4 小節）", ViewChecks.check_music_files)
 	_check("音效對應：事件 → 音效（受傷 / 爆擊 / Boss 死亡 / 道具…），Boss 波換 Boss 曲、死亡停音樂", ViewChecks.check_sound_mapping)
+	_check("音效距離衰減（v0.44.0）：15 內全音量、35 外不播、中間 (1 − t)²；模擬層 sfx:cue 都帶位置；遠處隊友揮劍聽不到、身邊聽得到；法杖普攻 −8 dB", ViewChecks.check_sound_distance)
 	# 怪物稀有度與挖墳事件
 	_check("怪物稀有度（D5）：稀有骷髏生命 180、攻擊力 ×1.5、體型 ×1.2；魔法 72、×1.2；詞條魔法 1~2 / 稀有 3 條不重複、稀有怪有名字；每群魔法 1~2 隻、稀有 25%（±1.5%）", MonsterChecks.check_rarity)
 	_check("怪物詞條（D5）：迅捷移速 ×1.3、強壯 ×1.3、厚皮 20 → 15、再生每秒 0.72、吸血揮砍 12 回 2.4、狂暴 <30% 移速與狀態機 ×1.4、死亡爆炸 0.8 秒後 2.2 內 20 傷害、召喚 8 秒 2 隻最多 6 隻", MonsterChecks.check_affixes)
 	_check("怪群（D5）：地圖 A 散放 12~20 群、每群 6~15 隻、離出生點 15 以上、群距 10 以上、都走得到；開場休眠不播音效、不動；玩家走到 12 以內整群醒來、被打一隻整群醒來；同種子結果相同", MonsterChecks.check_packs)
 	_check("蒙皮小怪（D5 效能）：骷髏戰士 / 弓手合成一個蒙皮網格（≤ 2 個網格、頂點數與原本零件相同），關節姿勢寫進骨架", MonsterChecks.check_skinned_rig)
 	_check("挖墳（D6）：挖墳點 2.2 內按住 F 開始事件並挖墳；挖墳中不能移動、跳，照樣跟著滑鼠轉向，被打不中斷也不會被擊退；60 秒挖完（30 秒 50%）、放手每秒掉 DIG.decay、兩人一起挖速度相加；挖完出口打開、不能再挖", EventChecks.check_dig)
-	_check("事件難度（D6）：難度 60 怪物生命 ×1.3；生怪間隔 3 → 0.8 秒、每批 2 隻起（難度 100 單人 7、雙人 10）；魔法 / 稀有機率隨難度（±1.5%）；Boss 在挖墳點旁邊；Boss 活著時不冒怪、難度不漲，倒下後發 event:horde、interval_start 秒後冒第一批、難度每秒 +1；休眠的怪群不擋事件生怪", EventChecks.check_difficulty)
+	_check("事件難度（D6）：難度 60 怪物生命 ×1.3；生怪間隔 5 → 1 秒、每批 2 隻起（難度 100 單人 4、雙人 6）；魔法 / 稀有機率隨難度（±1.5%）；Boss 在挖墳點旁邊；Boss 活著時不冒怪、難度不漲，倒下後發 event:horde、interval_start 秒後冒第一批、難度每秒 +1；休眠的怪群不擋事件生怪", EventChecks.check_difficulty)
 	_check("出口與換層（D6）：活著的人都走進出口才換層（有人倒地不換）；先到的消失、不能被打；新的一層回出生點、基礎難度 +10、保留金幣與背包、地上與怪物清空、寶箱重放、事件歸零；第 2 層怪物生命 ×1.05", EventChecks.check_next_floor)
-	_check("Boss 獎勵（D6）：挖墳地圖打倒 Boss 不通關，掉 1 把武器、1 個大寶箱機率的道具、50 金幣", EventChecks.check_boss_reward)
+	_check("Boss 獎勵（D6）：挖墳地圖打倒 Boss 不通關，掉 1 把武器、1 個大寶箱機率的道具、KILL_GOLD 的 Boss 金幣（30）", EventChecks.check_boss_reward)
 	_check("屍體與冤魂（D6）：多人時死亡留下屍體，撿進背包占 6 格；背著換層出現冤魂（離出生點 10~14），打倒後死者在那裡復活 30% 血、屍體消失；沒人帶屍體就沒有冤魂", EventChecks.check_corpse_ghost)
 	# 連線
 	_check("連線武器（D4）：客戶端按 X 切換、拖曳合成，房主與客戶端的裝備欄、手上武器、詞條一致；殺怪掉的武器兩邊都看得到", NetChecks.check_net_weapons)

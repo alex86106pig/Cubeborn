@@ -421,6 +421,7 @@ func _use_world(w: World) -> void:
 	hud.set_local_peer(_local_peer)
 	world_view.local_peer = _local_peer
 	sound.setup(world)
+	sound.local_peer = _local_peer   # 音效距離衰減以本機角色為準（v0.44.0）
 
 
 func _open_menu(open: bool) -> void:

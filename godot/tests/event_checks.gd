@@ -129,10 +129,10 @@ static func check_dig() -> String:
 static func check_difficulty() -> String:
 	if absf(EventDefs.difficulty_mul(60.0).hp - 1.3) > EPS:
 		return "難度 60 怪物生命 ×%.2f，預期 ×1.3" % EventDefs.difficulty_mul(60.0).hp
-	for c: Array in [[0.0, 3.0], [100.0, 2.0], [300.0, 0.8]]:
+	for c: Array in [[0.0, 5.0], [100.0, 4.0], [450.0, 1.0]]:   # v0.44.0 方案 B（原本 3.0 / 2.0 / 0.8）
 		if absf(EventDefs.spawn_interval(c[0]) - c[1]) > EPS:
 			return "難度 %d 生怪間隔 %.2f，預期 %.2f" % [c[0], EventDefs.spawn_interval(c[0]), c[1]]
-	for c: Array in [[0.0, 1, 2], [100.0, 1, 7], [100.0, 2, 10]]:
+	for c: Array in [[0.0, 1, 2], [100.0, 1, 4], [100.0, 2, 6]]:   # 每 50 點多 1 隻（原本難度 100 單人 7、雙人 10）
 		if EventDefs.group_size(c[0], c[1]) != c[2]:
 			return "難度 %d、%d 人每批 %d 隻，預期 %d" % [c[0], c[1], EventDefs.group_size(c[0], c[1]), c[2]]
 	var rng := RandomNumberGenerator.new()
@@ -220,8 +220,11 @@ static func check_next_floor() -> String:
 		return "新的一層應回到出生點"
 	if w.gold != 40 or p.inventory.entries.size() != 1:
 		return "換層後金幣 %d、背包 %d 件，應保留 40 / 1" % [w.gold, p.inventory.entries.size()]
-	if not w.pickups.is_empty() or w.event.state != DigEvent.IDLE or w.chests.size() != 5 or (w.chests[0] as Chest).opened:
-		return "換層後地上的東西要清掉、寶箱重放、事件歸零（地上 %d、事件 %s）" % [w.pickups.size(), w.event.state]
+	var want_chests := 0
+	for n: int in w.map.chest_count.values():
+		want_chests += n
+	if not w.pickups.is_empty() or w.event.state != DigEvent.IDLE or w.chests.size() != want_chests or (w.chests[0] as Chest).opened:
+		return "換層後地上的東西要清掉、寶箱重放（%d / %d 個）、事件歸零（地上 %d、事件 %s）" % [w.chests.size(), want_chests, w.pickups.size(), w.event.state]
 	if not w.enemies.is_empty():
 		return "換層後還有 %d 隻怪" % w.enemies.size()
 	# 第 2 層的怪群用基礎難度 10：生命 ×1.05
@@ -277,8 +280,8 @@ static func check_boss_reward() -> String:
 			items += 1
 	if w.is_over or not _named(ev, "game:victory").is_empty():
 		return "挖墳地圖打倒 Boss 不該通關"
-	if weapons != 1 or items != 1 or w.gold != gold + 50:
-		return "Boss 應掉 1 把武器、1 個道具、50 金幣（實際 %d / %d / %d）" % [weapons, items, w.gold - gold]
+	if weapons != 1 or items != 1 or w.gold != gold + LootDefs.KILL_GOLD.boss:   # v0.44.0 Boss 金幣 50 → 30
+		return "Boss 應掉 1 把武器、1 個道具、%d 金幣（實際 %d / %d / %d）" % [LootDefs.KILL_GOLD.boss, weapons, items, w.gold - gold]
 	return ""
 
 

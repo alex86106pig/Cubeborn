@@ -125,7 +125,7 @@ func _fizzle() -> void:
 
 
 func _explode() -> void:
-	world.emit_event("sfx:cue", {"cue": "explosion"})
+	world.emit_event("sfx:cue", {"cue": "explosion", "pos": pos})
 	var source := _source()
 	# 爆炸範圍從地面往上 HEIGHT.explosion_height（空中目標太高就炸不到）
 	var ground := world.terrain.ground_at(pos)

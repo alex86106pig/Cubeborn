@@ -166,7 +166,7 @@ class TimedAction:
 		if name == &"active":
 			var sfx: String = data.def.get("sfx_heavy", data.def.sfx) if data.get("is_finisher", false) else data.def.get("sfx", "")
 			if sfx != "":
-				p.world.emit_event("sfx:cue", {"cue": sfx})
+				p.world.emit_event("sfx:cue", {"cue": sfx, "pos": p.pos})
 
 
 class UseItem:
@@ -192,7 +192,7 @@ class Roll:
 		p.dodge_timer = Config.ROLL.invuln_time
 		p.consume_roll_charge()
 		p.world.emit_event("skill:used", {"key": Player.ROLL_CD, "player_id": p.id})
-		p.world.emit_event("sfx:cue", {"cue": Config.ROLL.sfx})
+		p.world.emit_event("sfx:cue", {"cue": Config.ROLL.sfx, "pos": p.pos})
 
 	func update(_p: Player, _dt: float, fsm: StateMachine) -> void:
 		if fsm.time >= Config.ROLL.duration - 1e-6:

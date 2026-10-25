@@ -21,8 +21,11 @@ const CUE_NAMES: Array[String] = [
 const MIN_INTERVAL := {"hit": 0.04, "hitHeavy": 0.05, "enemyDeath": 0.06, "enemySpawn": 0.1, "bowDraw": 0.15}
 const DEFAULT_INTERVAL := 0.03
 const SKILL_CUES := {&"heal": "potion", &"sprint": "sprint"}
+# 個別音效的音量（dB）：v0.44.0 法杖普攻太吵（fireBolt 平均 −31.6 dB，比揮砍 swing 的 −36.1 大 4.5 dB，每 0.56 秒一發）
+const CUE_DB := {"fireBolt": -8.0}
 
 var world: World
+var local_peer := World.HOST_PEER_ID   # 距離衰減以這個玩家為準（main.gd 連線時設定）
 var is_muted := false
 
 var _streams: Dictionary = {}       # 音效名稱 -> AudioStream
@@ -60,15 +63,52 @@ func _exit_tree() -> void:
 	_music.stop()
 
 
-func play(cue_name: String) -> void:
+# gain：距離衰減的音量比例（0~1），0 不播（也不占同一音效的最短間隔）
+func play(cue_name: String, gain := 1.0) -> void:
 	var stream: AudioStream = _streams.get(cue_name)
-	if stream == null or not _sfx.playing:
+	if stream == null or not _sfx.playing or gain <= 0.0:
 		return
 	var now := Time.get_ticks_msec() / 1000.0
 	if now - _last_played.get(cue_name, -INF) < MIN_INTERVAL.get(cue_name, DEFAULT_INTERVAL):
 		return
 	_last_played[cue_name] = now
-	(_sfx.get_stream_playback() as AudioStreamPlaybackPolyphonic).play_stream(stream)
+	(_sfx.get_stream_playback() as AudioStreamPlaybackPolyphonic).play_stream(stream, 0.0, cue_db(cue_name, gain))
+
+
+## 一次播放的音量（dB）：個別音效的音量 + 距離衰減
+static func cue_db(cue_name: String, gain: float) -> float:
+	return CUE_DB.get(cue_name, 0.0) + linear_to_db(gain)
+
+
+## 距離 → 音量比例：hear_full 內 1、hear_max 以外 0，中間 (1 − t)²
+static func distance_gain(dist: float) -> float:
+	var a: Dictionary = Config.AUDIO
+	var t := clampf((dist - a.hear_full) / (a.hear_max - a.hear_full), 0.0, 1.0)
+	return (1.0 - t) * (1.0 - t)
+
+
+## 事件的發聲位置（沒有位置的全場音效：勝利、波次、暫停…回傳 null）
+static func event_pos(w: World, event_name: String, p: Dictionary) -> Variant:
+	if p.has("pos") and event_name in ["sfx:cue", "entity:damaged", "hit:predicted", "entity:died"]:
+		return p.pos
+	var id: int = 0
+	match event_name:
+		"entity:damaged", "hit:predicted":
+			id = p.get("target_id", 0)
+		"entity:died":
+			id = p.get("entity_id", 0)
+		"skill:used", "player:revived":
+			id = p.get("player_id", 0)
+	var e: Entity = w.entities.get(id) if w != null and id != 0 else null
+	return e.pos if e != null else null
+
+
+## 這個事件的音效在本機要多大聲（0~1）：本機角色還在時依距離衰減，否則（主選單、還沒有角色）全音量
+static func event_gain(w: World, listener: Player, event_name: String, p: Dictionary) -> float:
+	if listener == null:
+		return 1.0
+	var at: Variant = event_pos(w, event_name, p)
+	return 1.0 if at == null else distance_gain(listener.pos.distance_to(at))
 
 
 func toggle_mute() -> bool:
@@ -139,7 +179,7 @@ func _on_event(event_name: String, p: Dictionary) -> void:
 	if cue == "restart" and not _has_started:
 		cue = ""
 	if cue != "":
-		play(cue)
+		play(cue, event_gain(world, world.players.get(local_peer) if world != null else null, event_name, p))
 	if event_name == "game:restart":
 		_has_started = true
 	if event_name == "game:paused":

@@ -27,7 +27,7 @@ func try_open(by: Player) -> bool:
 		return false
 	if world.gold < price():
 		world.emit_event("chest:denied", {"chest_id": id, "player_id": by.id, "price": price()})
-		world.emit_event("sfx:cue", {"cue": "denied"})
+		world.emit_event("sfx:cue", {"cue": "denied", "pos": pos})
 		return false
 	world.gold -= price()
 	opened = true
@@ -38,5 +38,5 @@ func try_open(by: Player) -> bool:
 	var dir := to_player.normalized() if to_player.length() > 1e-3 else Vector2(0.0, 1.0)
 	world.drop_item(item_id, pos + dir * LootDefs.DROP_DISTANCE)
 	world.emit_event("chest:opened", {"chest_id": id, "player_id": by.id, "item": String(item_id), "rarity": String(rarity), "pos": pos})
-	world.emit_event("sfx:cue", {"cue": "potion"})
+	world.emit_event("sfx:cue", {"cue": "potion", "pos": pos})
 	return true

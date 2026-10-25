@@ -984,6 +984,53 @@ static func check_sound_mapping() -> String:
 	return ""
 
 
+# 音效距離衰減與個別音量（v0.44.0）：hear_full 內全音量、hear_max 以外不播、中間 (1 − t)²；
+# 模擬層的 sfx:cue 都帶發聲位置（全場音效除外）；多人時遠處隊友的攻擊音效聽不到；法杖普攻 −8 dB
+static func check_sound_distance() -> String:
+	var sound_script := _sound_script()
+	var a: Dictionary = Config.AUDIO
+	for c: Array in [[0.0, 1.0], [a.hear_full, 1.0], [20.0, 0.5625], [25.0, 0.25], [30.0, 0.0625], [a.hear_max, 0.0], [50.0, 0.0]]:
+		if absf(sound_script.distance_gain(c[0]) - c[1]) > EPS:
+			return "距離 %.0f 音量比例 %.4f，預期 %.4f" % [c[0], sound_script.distance_gain(c[0]), c[1]]
+	if absf(sound_script.cue_db("fireBolt", 1.0) + 8.0) > EPS or absf(sound_script.cue_db("swing", 1.0)) > EPS:
+		return "法杖普攻 %.1f dB、揮砍 %.1f dB，預期 −8 / 0" % [sound_script.cue_db("fireBolt", 1.0), sound_script.cue_db("swing", 1.0)]
+	# 模擬層每個 sfx:cue 都要帶 pos（勝利是全場音效）
+	var re := RegEx.create_from_string("\"sfx:cue\", \\{\"cue\": [^}]*\\}")
+	for path in _list_gd("res://sim"):
+		for m in re.search_all(_read_text(path)):
+			var s := m.get_string()
+			if not s.contains("\"pos\"") and not s.contains("\"victory\""):
+				return "%s 的 %s 沒有帶發聲位置 pos" % [path, s]
+	# 兩人：隊友在場地另一角（距離 > hear_max）揮劍，本機聽不到；走近後聽得到
+	var w := World.new(&"test_arena")
+	w.reset(5, [World.HOST_PEER_ID, World.HOST_PEER_ID + 1])
+	w.spawner.finished = true
+	_worlds.append(w)
+	var me: Player = w.players[World.HOST_PEER_ID]
+	var mate: Player = w.players[World.HOST_PEER_ID + 1]
+	me.pos = Vector2(-14, -14)
+	var gains := []
+	for at: Vector2 in [Vector2(14, 14), me.pos + Vector2(4, 0)]:
+		mate.pos = at
+		var events: Array[Dictionary] = []
+		for i in 40:
+			w.step({World.HOST_PEER_ID: InputCmd.new(), World.HOST_PEER_ID + 1: _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK)}, DT)
+			events.append_array(w.events)
+		var swings := _named(events, "sfx:cue")
+		if swings.is_empty():
+			return "隊友攻擊沒有發出音效事件"
+		gains.append(sound_script.event_gain(w, me, "sfx:cue", swings[0]))
+	if gains[0] > 0.0 or absf(gains[1] - 1.0) > EPS:
+		return "隊友在 %.1f 外揮劍音量 %.3f（應 0）、身邊 4 單位 %.3f（應 1）" % [Vector2(14, 14).distance_to(me.pos), gains[0], gains[1]]
+	# 受傷、死亡用目標的位置；沒有位置的全場音效（波次）全音量；沒有本機角色時全音量
+	var far := _spawn(w, &"grunt", me.pos + Vector2(0, 25))
+	if absf(sound_script.event_gain(w, me, "entity:damaged", {"target_id": far.id}) - 0.25) > EPS:
+		return "25 單位外的骷髏受傷音量應 0.25，實際 %.3f" % sound_script.event_gain(w, me, "entity:damaged", {"target_id": far.id})
+	if absf(sound_script.event_gain(w, me, "wave:started", {"is_boss": false}) - 1.0) > EPS or absf(sound_script.event_gain(w, null, "entity:damaged", {"target_id": far.id}) - 1.0) > EPS:
+		return "全場音效與沒有本機角色時應全音量"
+	return ""
+
+
 static func check_mesh_counts() -> String:
 	var limits := {&"player": 20, &"grunt": 16, &"archer": 16, &"boss": 22}
 	var err := ""
