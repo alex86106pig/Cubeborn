@@ -1,4 +1,4 @@
-# 背包、金錢、寶箱、道具與武器：撿取、掉落、詞條、合成、道具資料與效果
+# 背包、靈魂、祭壇 / 石棺（程式裡叫 chest）、局外金幣、道具與武器：撿取、掉落、詞條、合成、道具資料與效果
 # 由 tests/check.gd 呼叫；每個 check_* 回傳 "" = 通過，否則是失敗原因
 class_name LootChecks
 extends CheckKit
@@ -231,7 +231,7 @@ static func check_inventory() -> String:
 	return ""
 
 
-static func check_gold_chests() -> String:
+static func check_soul_chests() -> String:
 	var w := _new_world(12345, false, &"graveyard_a")
 	var err := _chest_layout(w, 1)
 	if err != "":
@@ -241,30 +241,30 @@ static func check_gold_chests() -> String:
 	g.die()
 	var b := _spawn(w, &"boss", p.pos + Vector2(-6, 0))
 	b.die()
-	var earned: int = LootDefs.KILL_GOLD[&"grunt"] + LootDefs.KILL_GOLD[&"boss"]
-	if w.gold != earned:
-		return "殺骷髏 + Boss 應得 %d 金幣，實際 %d" % [earned, w.gold]
+	var earned: int = LootDefs.KILL_SOULS[&"grunt"] + LootDefs.KILL_SOULS[&"boss"]
+	if w.souls != earned:
+		return "殺骷髏 + Boss 應得 %d 靈魂，實際 %d" % [earned, w.souls]
 	var chest: Chest = null
 	for c: Entity in w.chests:
 		if (c as Chest).tier == &"big":
 			chest = c
 	var price: int = LootDefs.CHESTS[&"big"].price
 	p.pos = chest.pos + Vector2(0, 1.5)
-	w.gold = price - 1
+	w.souls = price - 1
 	w.events.clear()
-	if chest.try_open(p) or chest.opened or w.gold != price - 1 or _named(w.events, "chest:denied").is_empty():
-		return "錢 %d < %d 應開不了並發出 chest:denied" % [price - 1, price]
-	w.gold = price + 1
+	if chest.try_open(p) or chest.opened or w.souls != price - 1 or _named(w.events, "chest:denied").is_empty():
+		return "靈魂 %d < %d 應開不了並發出 chest:denied" % [price - 1, price]
+	w.souls = price + 1
 	var before := w.pickups.size()   # Boss 必掉一把武器，地上原本就有東西
-	if not chest.try_open(p) or not chest.opened or w.gold != 1 or w.pickups.size() != before + 1:
-		return "錢夠應打開：開了 %s、剩 %d、地上多了 %d 個" % [chest.opened, w.gold, w.pickups.size() - before]
+	if not chest.try_open(p) or not chest.opened or w.souls != 1 or w.pickups.size() != before + 1:
+		return "靈魂夠應打開：開了 %s、剩 %d、地上多了 %d 個" % [chest.opened, w.souls, w.pickups.size() - before]
 	var drop: ItemPickup = w.pickups.back()
 	if drop.pos.distance_to(chest.pos) > LootDefs.DROP_DISTANCE + 1.0 or not ItemDefs.ITEMS.has(drop.item_id):
 		return "道具應掉在寶箱旁：距離 %.2f" % drop.pos.distance_to(chest.pos)
 	if LootDefs.CHESTS.big.weights.get(drop.rarity(), 0.0) <= 0.0:
 		return "大寶箱不應開出 %s" % drop.rarity()
-	w.gold = 100
-	if chest.try_open(p) or w.gold != 100:
+	w.souls = 100
+	if chest.try_open(p) or w.souls != 100:
 		return "開過的寶箱不能再開"
 	return ""
 
@@ -290,8 +290,8 @@ static func _chest_layout(w: World, players: int) -> String:
 	return ""
 
 
-# 寶箱隨機放與金錢平衡（v0.44.0）：不同種子位置不同、同種子相同；2 / 4 人寶箱 ×1.5 / ×2.5、殺怪金錢也一樣；
-# 召喚出來的怪不給錢；開場怪群全清（10 個種子）賺的錢都買不完全部寶箱
+# 寶箱隨機放與靈魂平衡（v0.44.0）：不同種子位置不同、同種子相同；2 / 4 人寶箱 ×1.5 / ×2.5、殺怪靈魂也一樣；
+# 召喚出來的怪不給靈魂；開場怪群全清（10 個種子）賺的靈魂都買不完全部寶箱
 static func check_chest_balance() -> String:
 	var spots := func(w: World) -> Array:
 		return w.chests.map(func(e: Entity) -> Vector2: return e.pos)
@@ -322,10 +322,10 @@ static func check_chest_balance() -> String:
 			return err
 		var g := _spawn(wm, &"grunt", Vector2(0, 30))
 		g.die()
-		var want := roundi(LootDefs.KILL_GOLD[&"grunt"] * LootDefs.player_mul(players))
-		if wm.gold != want:
-			return "%d 人時殺一隻骷髏應得 %d 金幣，實際 %d" % [players, want, wm.gold]
-	# 召喚詞條、Boss 召喚出來的怪不給錢
+		var want := roundi(LootDefs.KILL_SOULS[&"grunt"] * LootDefs.player_mul(players))
+		if wm.souls != want:
+			return "%d 人時殺一隻骷髏應得 %d 靈魂，實際 %d" % [players, want, wm.souls]
+	# 召喚詞條、Boss 召喚出來的怪不給靈魂
 	var w := _new_world(4, false, &"graveyard_a")
 	var summoner := _spawn(w, &"grunt", Vector2(0, 30))
 	summoner.set_rarity(MonsterRarityDefs.MAGIC, [&"summoner"], "")
@@ -335,16 +335,16 @@ static func check_chest_balance() -> String:
 	for i in roundi(EnemyDefs.ENEMIES.grunt.get("spawn_time", 1.0) / DT) + 5:
 		w.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
 	boss.summon_minions()
-	var minions := w.enemies.filter(func(e: Entity) -> bool: return e is Enemy and (e as Enemy).no_gold)
+	var minions := w.enemies.filter(func(e: Entity) -> bool: return e is Enemy and (e as Enemy).no_souls)
 	var from_affix := minions.filter(func(e: Entity) -> bool: return (e as Enemy).summoner_id == summoner.id).size()
 	if from_affix == 0 or minions.size() <= from_affix:
 		return "應有召喚詞條與 Boss 叫出來的怪（詞條 %d、全部 %d）" % [from_affix, minions.size()]
-	w.gold = 0
+	w.souls = 0
 	for e: Entity in minions:
 		e.die()
-	if w.gold != 0:
-		return "召喚出來的 %d 隻怪死了給了 %d 金幣，應為 0" % [minions.size(), w.gold]
-	# 開場怪群全清 + Boss 的錢 < 全部寶箱的價錢
+	if w.souls != 0:
+		return "召喚出來的 %d 隻怪死了給了 %d 靈魂，應為 0" % [minions.size(), w.souls]
+	# 開場怪群全清 + Boss 的靈魂 < 全部寶箱的價錢
 	var total_price := 0
 	for tier: StringName in a.map.chest_count:
 		total_price += a.map.chest_count[tier] * LootDefs.CHESTS[tier].price
@@ -353,12 +353,103 @@ static func check_chest_balance() -> String:
 		var wp := World.new(&"graveyard_a")
 		wp.reset(seed_value)
 		_worlds.append(wp)
-		var gold: int = LootDefs.KILL_GOLD.boss
+		var souls: int = LootDefs.KILL_SOULS.boss
 		for e: Entity in wp.enemies:
-			gold += LootDefs.KILL_GOLD.get((e as Enemy).type, 0)
-		most = maxi(most, gold)
+			souls += LootDefs.KILL_SOULS.get((e as Enemy).type, 0)
+		most = maxi(most, souls)
 	if most >= total_price:
-		return "開場怪群全清最多賺 %d 金幣，全部寶箱 %d，應買不完" % [most, total_price]
+		return "開場怪群全清最多賺 %d 靈魂，全部寶箱 %d，應買不完" % [most, total_price]
+	return ""
+
+
+# 局外金幣（v0.45）：過關給 floor_clear_per_floor × 剛過的層數（越後面越多）；地上的金幣活著的玩家走近自動撿、倒地的不撿；
+# 多人時只記一個數字（全員各拿一份）；Profile 存檔讀得回來、save_path = "" 不寫檔
+static func check_run_coins() -> String:
+	var w := _new_world(5, false, &"graveyard_a")
+	var per: int = LootDefs.RUN_COINS.floor_clear_per_floor
+	w.next_floor()
+	var got := [w.run_coins]
+	w.events.clear()   # 沒有經過 step，事件不會自動清
+	w.next_floor()
+	got.append(w.run_coins)
+	if got != [per, per * 3]:
+		return "過第 1、2 層後金幣應為 %d / %d（第 2 層給 %d），實際 %s" % [per, per * 3, per * 2, got]
+	var ev := _named(w.events, "coins:gained")
+	if ev.size() != 1 or ev[0].amount != per * 2 or ev[0].reason != "floor":
+		return "過第 2 層應發出一個 coins:gained（%d、floor）：%s" % [per * 2, ev]
+	# 走近自動撿；倒地的玩家不撿
+	var peers: Array[int] = [World.HOST_PEER_ID, World.HOST_PEER_ID + 1]
+	var wm := World.new(&"graveyard_a")
+	wm.spawn_packs = false
+	wm.reset(6, peers)
+	wm.spawner.finished = true
+	_worlds.append(wm)
+	var p1: Player = wm.players[peers[0]]
+	var p2: Player = wm.players[peers[1]]
+	p2.pos = p1.pos + Vector2(-8, 0)
+	var coin := wm.drop_coin(p1.pos + Vector2(4, 0))
+	var idle := {peers[0]: InputCmd.new(), peers[1]: InputCmd.new()}
+	for i in 10:
+		wm.step(idle, DT)
+	if coin.is_removed or wm.run_coins != 0:
+		return "離 4 單位的金幣不該被撿走（撿取距離 %.1f）" % LootDefs.RUN_COINS.collect_range
+	p1.is_downed = true
+	p1.down_timer = 99.0   # 倒地計時到 0 會直接死亡（World._update_downed）
+	p1.pos = coin.pos
+	wm.step(idle, DT)
+	if coin.is_removed:
+		return "倒地的玩家不該撿到金幣"
+	p1.is_downed = false
+	wm.step(idle, DT)
+	if not coin.is_removed or wm.run_coins != 1 or not wm.coins.is_empty() or _named(wm.events, "coins:gained").is_empty():
+		return "走到金幣上應撿起：移除 %s、本局金幣 %d（應 1）、地上 %d" % [coin.is_removed, wm.run_coins, wm.coins.size()]
+	# 存檔
+	var path := "user://check_profile.cfg"
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	var pf := Profile.new()
+	pf.save_path = path
+	pf.load_file()
+	pf.add_coins(7)
+	pf.add_coins(3)
+	var pf2 := Profile.new()
+	pf2.save_path = path
+	pf2.load_file()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	if pf2.coins != 10:
+		return "存檔後重新讀取應有 10 金幣，實際 %d" % pf2.coins
+	var mem := Profile.new()
+	mem.save_path = ""
+	mem.add_coins(5)
+	if mem.coins != 5 or FileAccess.file_exists(path):
+		return "save_path 為空時只記在記憶體、不寫檔"
+	return ""
+
+
+# 掉金幣的機率（v0.45）：小怪、Boss 大量抽樣符合 RUN_COINS.drop_chance；召喚出來的不掉（用另外的 coin_rng，world.rng 的序列不變）
+static func check_coin_drops() -> String:
+	var w := _new_world(8, false, &"graveyard_a")
+	var cases := {&"grunt": 40000, &"boss": 3000}
+	for type: StringName in cases:
+		var n: int = cases[type]
+		var chance: float = LootDefs.RUN_COINS.drop_chance[type]
+		var e := _spawn(w, type, Vector2(0, 30))
+		var before := w.coins.size()
+		for i in n:
+			w.on_enemy_died(e)
+		var rate := float(w.coins.size() - before) / n
+		# 容許 4 個標準差（二項分布）
+		var tol := 4.0 * sqrt(chance * (1.0 - chance) / n)
+		_feel("v0.45 掉金幣：%s 死 %d 次掉 %d 枚（%.2f%%，設定 %.2f%%）" % [type, n, w.coins.size() - before, rate * 100.0, chance * 100.0])
+		if absf(rate - chance) > tol:
+			return "%s 掉金幣率 %.3f%%，應為 %.3f%% ± %.3f%%" % [type, rate * 100.0, chance * 100.0, tol * 100.0]
+		e.remove()
+	var minion := _spawn(w, &"grunt", Vector2(5, 30))
+	minion.no_souls = true
+	var before_minion := w.coins.size()
+	for i in 20000:
+		w.on_enemy_died(minion)
+	if w.coins.size() != before_minion:
+		return "召喚出來的怪不該掉金幣（掉了 %d 枚）" % (w.coins.size() - before_minion)
 	return ""
 
 

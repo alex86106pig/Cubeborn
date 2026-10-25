@@ -227,7 +227,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 		elif e is Chest:
 			var lid: Node3D = node.get_node(^"Lid")
 			lid.rotation.x = lerpf(lid.rotation.x, CHEST_LID_OPEN if (e as Chest).opened else 0.0, minf(1.0, dt * 8.0))
-		elif e is ItemPickup:
+		elif e is ItemPickup or e is Coin:
 			var gem: Node3D = node.get_node(^"Gem")
 			var t := Time.get_ticks_msec() / 1000.0 + id * 0.7
 			gem.position.y = 0.55 + 0.12 * sin(t * 2.5)
@@ -451,6 +451,47 @@ func _create_pickup(p: ItemPickup) -> Node3D:
 	return root
 
 
+# 地上的金幣（v0.45）：立起來的金色圓片（Gem，和道具一樣上下浮動與旋轉）+ 細細的金色光柱
+func _create_coin() -> Node3D:
+	var root := Node3D.new()
+	var gem := MeshInstance3D.new()
+	var disc := CylinderMesh.new()
+	disc.top_radius = Coin.RADIUS
+	disc.bottom_radius = Coin.RADIUS
+	disc.height = 0.06
+	disc.radial_segments = 12
+	gem.mesh = disc
+	gem.rotation.x = PI / 2.0
+	var m := StandardMaterial3D.new()
+	m.albedo_color = UiKit.GOLD
+	m.emission_enabled = true
+	m.emission = UiKit.GOLD
+	m.emission_energy_multiplier = 1.2
+	m.metallic = 0.8
+	gem.material_override = m
+	gem.name = "Disc"
+	var spin := Node3D.new()   # Gem 的旋轉繞 y 軸；圓片本身先立起來（rotation.x）再放進會轉的節點
+	spin.name = "Gem"
+	spin.add_child(gem)
+	root.add_child(spin)
+	var beam := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.03
+	cyl.bottom_radius = 0.1
+	cyl.height = 1.6
+	cyl.radial_segments = 8
+	beam.mesh = cyl
+	var bm := StandardMaterial3D.new()
+	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	bm.albedo_color = Color(UiKit.GOLD, 0.2)
+	beam.material_override = bm
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	beam.position.y = 0.8
+	root.add_child(beam)
+	return root
+
+
 static func _flat_material(color: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
@@ -564,6 +605,7 @@ func warm_up(center: Vector3) -> void:
 		ents.append(e)
 	for tier: StringName in [&"small", &"big"]:
 		ents.append(Chest.new(tw, tier, c))
+	ents.append(tw.drop_coin(c))
 	# 道具與武器每種稀有度都要：白色沒有發光，材質組合不同（v0.37.1：只預熱綠色時，第一把白色武器仍卡 70.8 ms）
 	var item_of := {}
 	for id: StringName in ItemDefs.ITEMS:
@@ -665,6 +707,8 @@ func _create_view(e: Entity) -> Node3D:
 			root = _create_chest(e as Chest)
 		&"pickup":
 			root = _create_pickup(e as ItemPickup)
+		&"coin":
+			root = _create_coin()
 		_:
 			root = _create_placeholder(e)
 	var ring := _create_hitbox_ring(e.radius)

@@ -26,6 +26,7 @@ var hud: HUD
 var args: LaunchArgs          # 啟動參數（正常遊玩全部是預設值）
 var perf: PerfMeter           # --perf 才有
 var debug_tools := DebugTools.new()
+var profile := Profile.new()  # 局外存檔（v0.45）：累計金幣
 
 var _local_peer := World.HOST_PEER_ID
 var _net_message := ""
@@ -58,6 +59,9 @@ func _ready() -> void:
 	hud.inventory_panel.op_requested.connect(input_collector.queue_inventory_op)
 	if args.run_seconds > 0.0:
 		hud.hints.save_path = ""   # 自動驗證（截圖、量效能）不記「看過的提示」，免得使用者自己玩時提示不跳
+		profile.save_path = ""     # 也不把自動驗證拿到的金幣算進使用者的存檔
+	profile.load_file()
+	hud.profile = profile
 	add_child(hud)
 	sound.setup(world)
 	add_child(sound)
@@ -468,6 +472,8 @@ func _emit_muted() -> void:
 
 
 func _on_event(name: String, payload: Dictionary) -> void:
+	if name == "coins:gained":
+		profile.add_coins(payload.amount)   # 多人時全員各拿一份：每台電腦收到同一個事件，各自存自己的
 	if name == "camera:shake":
 		# 玩家被打的震動只給那位玩家（player_id）；Boss 招式、通關等照常
 		var me := local_player()

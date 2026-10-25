@@ -28,9 +28,9 @@ const STATS := {
 	&"projectile_damage_taken": {"name": "受到投射物傷害", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": false},
 	&"life_on_hit": {"name": "命中回復", "base": 0.0, "min": 0.0, "max": INF, "format": &"float", "in_use": false},
 	&"lifesteal": {"name": "吸血", "base": 0.0, "min": 0.0, "max": 1.0, "format": &"pct", "in_use": false},
-	&"gold_gain": {"name": "金幣獲得", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": false},
+	&"soul_gain": {"name": "靈魂獲得", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": false},
 	&"pickup_radius": {"name": "撿取範圍", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": false},
-	&"chest_price": {"name": "寶箱價格", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": false},
+	&"chest_price": {"name": "祭壇 / 石棺價格", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": false},
 	&"vision": {"name": "視野", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": false},
 }
 

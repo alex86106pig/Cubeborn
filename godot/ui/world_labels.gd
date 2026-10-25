@@ -1,4 +1,4 @@
-# 場上物件的文字（D3）：沒開的寶箱上方顯示名稱與價格（錢不夠時紅色），地上的道具顯示名稱（稀有度顏色）；魔法 / 稀有怪的詞條與名字（D5）
+# 場上物件的文字（D3）：沒開的祭壇 / 石棺上方顯示名稱與價格（靈魂不夠時紅色），地上的道具顯示名稱（稀有度顏色）；魔法 / 稀有怪的詞條與名字（D5）
 # 本機玩家按得到 F 的那一個加上「[F] 開啟 / 撿起」提示；視野外的不顯示（sim/vision.gd）
 class_name WorldLabels
 extends Control
@@ -49,8 +49,8 @@ func _draw() -> void:
 		if chest.opened or not Vision.entity_visible(world, me, chest):
 			continue
 		var def: Dictionary = LootDefs.CHESTS[chest.tier]
-		var color := UiKit.GOLD if world.gold >= chest.price() else UiKit.ALERT
-		var text := "%s  %d 金幣" % [def.name, chest.price()]
+		var color := UiKit.SOUL if world.souls >= chest.price() else UiKit.ALERT
+		var text := "%s  %d 靈魂" % [def.name, chest.price()]
 		if chest == focus:
 			text = "[F] 開啟 " + text
 		_text(font, chest, CHEST_OFFSET, text, color)

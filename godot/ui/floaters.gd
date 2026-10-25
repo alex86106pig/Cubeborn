@@ -15,6 +15,7 @@ const STYLES := {
 	&"crit": [28, UiKit.GOLD],
 	&"player": [24, UiKit.PLAYER_HURT],
 	&"heal": [24, UiKit.HEAL],
+	&"coin": [24, UiKit.GOLD],   # 撿到金幣（v0.45）
 }
 
 var camera: Camera3D

@@ -1,10 +1,12 @@
-# 金錢與寶箱（D3）：殺怪給的錢（多人共用）、寶箱價格、開出各稀有度的機率
+# 靈魂與祭壇 / 石棺（D3）：殺怪給的靈魂（多人共用）、祭壇 / 石棺價格、開出各稀有度的機率；局外金幣（RUN_COINS）
 # 數值是 Claude 暫定（2026-10-23，使用者說都先用建議值，試玩後再調）
+# v0.45 使用者決定（盜墓主題）：局內貨幣「錢」改成「靈魂」、小寶箱 / 大寶箱改成祭壇 / 石棺（程式裡沿用 chest 與 small / big），
+# 金幣改成帶出去的局外貨幣。舊註解的「金」「錢」就是現在的靈魂
 class_name LootDefs
 
-# 殺一隻給多少錢（召喚出來的不給，Enemy.no_gold）；多人時乘 player_mul
+# 殺一隻給多少靈魂（召喚出來的不給，Enemy.no_souls）；多人時乘 player_mul
 # v0.44.0 使用者試玩：錢太多（地圖 A 開場平均 155 隻怪 ×5 ≈ 775 金，寶箱總價才 160）→ 5 → 2、Boss 50 → 30，清完也開不完全部寶箱
-const KILL_GOLD := {&"grunt": 2, &"archer": 2, &"boss": 30}
+const KILL_SOULS := {&"grunt": 2, &"archer": 2, &"boss": 30}
 
 # 寶箱（v0.44.0）：開場隨機放在地圖上（有 "chest_count" 的地圖），數量乘 player_mul（四捨五入）
 # 開場怪群 109~207 隻（40 個種子量測，平均 155），清完 + Boss ≈ 248~444 金（平均 340）< 寶箱總價 12×25 + 4×60 = 540
@@ -19,10 +21,19 @@ const PER_EXTRA_PLAYER := 0.5   # 多人每多 1 人，寶箱數量與殺怪金�
 
 # 寶箱：價格、開出的稀有度權重（加總 100）、碰撞半徑（只給互動距離與畫面用，不擋路）
 const CHESTS := {
-	&"small": {"name": "小寶箱", "price": 25, "radius": 0.6,
+	&"small": {"name": "祭壇", "price": 25, "radius": 0.6,
 		"weights": {&"white": 70.0, &"green": 25.0, &"blue": 5.0}},
-	&"big": {"name": "大寶箱", "price": 60, "radius": 0.85,
+	&"big": {"name": "石棺", "price": 60, "radius": 0.85,
 		"weights": {&"green": 50.0, &"blue": 35.0, &"purple": 13.0, &"orange": 2.0}},
+}
+
+# 局外金幣（v0.45，Claude 暫定，獲得量與方式使用者還在構思）：本局拿到的存進 Profile；多人時全員各拿一份（不用搶）
+# - 過關：全員走進出口時給 floor_clear_per_floor × 剛過的層數（第 1 層最少）；之後要做「開寶箱噴錢」的過場
+# - 掉落：殺怪極低機率掉 1 枚在地上，活著的玩家走到 collect_range 內自動撿（參考雨中冒險 2 的月幣）；召喚出來的怪不掉
+const RUN_COINS := {
+	"floor_clear_per_floor": 5,
+	"drop_chance": {&"grunt": 0.003, &"archer": 0.003, &"boss": 0.03},
+	"collect_range": 1.2,   # 身體邊緣到金幣中心多近就撿起
 }
 
 const INTERACT_RANGE := 1.6     # 身體邊緣到寶箱 / 道具邊緣多近才按得到 F

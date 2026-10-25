@@ -203,7 +203,7 @@ static func check_next_floor() -> String:
 	# 單人：走進出口就換層
 	var w := _world()
 	var p := _p(w)
-	w.gold = 40
+	w.souls = 40
 	p.add_item(&"whetstone")
 	_open(w)
 	p.pos = w.event.point + Vector2(EventDefs.DIG.exit_radius + 0.5, 0.0)
@@ -218,8 +218,8 @@ static func check_next_floor() -> String:
 		return "走進出口後應到第 2 層、基礎難度 10（實際第 %d 層、%.1f）" % [w.floor_num, w.base_difficulty]
 	if p.pos.distance_to(w.spawn_point) > EPS or p.descended:
 		return "新的一層應回到出生點"
-	if w.gold != 40 or p.inventory.entries.size() != 1:
-		return "換層後金幣 %d、背包 %d 件，應保留 40 / 1" % [w.gold, p.inventory.entries.size()]
+	if w.souls != 40 or p.inventory.entries.size() != 1:
+		return "換層後靈魂 %d、背包 %d 件，應保留 40 / 1" % [w.souls, p.inventory.entries.size()]
 	var want_chests := 0
 	for n: int in w.map.chest_count.values():
 		want_chests += n
@@ -268,7 +268,7 @@ static func check_boss_reward() -> String:
 	var w := _world([World.HOST_PEER_ID], true)
 	w.event._start(w)
 	var boss: Enemy = w.entities.get(w.boss_id)
-	var gold := w.gold
+	var souls := w.souls
 	boss.take_damage(1e6, Vector2(1, 0), 0.0, 0)
 	var ev := _step(w, 3)
 	var weapons := 0
@@ -280,8 +280,8 @@ static func check_boss_reward() -> String:
 			items += 1
 	if w.is_over or not _named(ev, "game:victory").is_empty():
 		return "挖墳地圖打倒 Boss 不該通關"
-	if weapons != 1 or items != 1 or w.gold != gold + LootDefs.KILL_GOLD.boss:   # v0.44.0 Boss 金幣 50 → 30
-		return "Boss 應掉 1 把武器、1 個道具、%d 金幣（實際 %d / %d / %d）" % [LootDefs.KILL_GOLD.boss, weapons, items, w.gold - gold]
+	if weapons != 1 or items != 1 or w.souls != souls + LootDefs.KILL_SOULS.boss:   # v0.44.0 Boss 靈魂 50 → 30
+		return "Boss 應掉 1 把武器、1 個道具、%d 靈魂（實際 %d / %d / %d）" % [LootDefs.KILL_SOULS.boss, weapons, items, w.souls - souls]
 	return ""
 
 

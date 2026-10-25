@@ -344,14 +344,39 @@ static func check_hit_prediction(feel: Array[String]) -> String:
 	return ""
 
 
-# D3：客戶端靠近寶箱按 F → 房主開箱扣錢、道具掉在地上；再按 F 撿起；拖曳搬動、丟掉。兩邊的寶箱、金錢、背包一致
+# v0.45 局外金幣：房主掉在地上的金幣客戶端看得到；客戶端的角色走過去 → 房主判定撿起，兩邊的本局金幣都是 1、地上都沒了，
+# 客戶端也收到 coins:gained（main.gd 靠它存檔）
+static func check_net_coins() -> String:
+	var link := _Link.new(43, [1, 2], 3, 0.0, false)
+	var hw := link.host_world
+	var hp2: Player = hw.players[2]
+	hp2.pos = Vector2(0, 0)
+	(hw.players[1] as Player).pos = Vector2(-8, -8)
+	var coin := hw.drop_coin(Vector2(4, 0))
+	for i in 20:
+		link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO))
+	var cw := link.client.world
+	if cw.coins.size() != 1 or not cw.entities.has(coin.id):
+		return "客戶端應看到地上 1 枚金幣，實際 %d" % cw.coins.size()
+	for i in 40:
+		link.step(_cmd(Vector2.ZERO), _cmd(Vector2(1, 0)))
+	for i in 20:
+		link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO))
+	var got := link.client_events.filter(func(e: Dictionary) -> bool: return e.name == "coins:gained")
+	if hw.run_coins != 1 or cw.run_coins != 1 or not cw.coins.is_empty() or got.size() != 1:
+		return "撿起後：房主 %d、客戶端 %d 金幣（應 1 / 1）、客戶端地上 %d、客戶端收到 coins:gained %d 次（應 1）" % [
+			hw.run_coins, cw.run_coins, cw.coins.size(), got.size()]
+	return ""
+
+
+# D3：客戶端靠近寶箱按 F → 房主開箱扣靈魂、道具掉在地上；再按 F 撿起；拖曳搬動、丟掉。兩邊的寶箱、靈魂、背包一致
 static func check_net_loot() -> String:
 	var link := _Link.new(41, [1, 2], 3, 0.0, false)
 	var hw := link.host_world
 	var chest := Chest.new(hw, &"small", Vector2(3, 0))
 	hw.add_entity(chest)
 	hw.chests.append(chest)
-	hw.gold = 30
+	hw.souls = 30
 	var hp2: Player = hw.players[2]
 	hp2.pos = Vector2(1.5, 0)
 	var idle := func(n: int) -> void:
@@ -361,11 +386,11 @@ static func check_net_loot() -> String:
 	link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO, InputCmd.BTN_INTERACT))
 	idle.call(20)
 	var cw := link.client.world
-	if not chest.opened or hw.gold != 5 or hw.pickups.size() != 1:
-		return "房主：寶箱應打開、錢 30 → 5、地上 1 個道具：%s / %d / %d" % [chest.opened, hw.gold, hw.pickups.size()]
+	if not chest.opened or hw.souls != 5 or hw.pickups.size() != 1:
+		return "房主：寶箱應打開、靈魂 30 → 5、地上 1 個道具：%s / %d / %d" % [chest.opened, hw.souls, hw.pickups.size()]
 	var mirror: Chest = cw.entities.get(chest.id)
-	if mirror == null or not mirror.opened or cw.gold != 5 or cw.pickups.size() != 1:
-		return "客戶端：寶箱 %s、錢 %d、地上道具 %d（應為 已開 / 5 / 1）" % [mirror.opened if mirror else null, cw.gold, cw.pickups.size()]
+	if mirror == null or not mirror.opened or cw.souls != 5 or cw.pickups.size() != 1:
+		return "客戶端：寶箱 %s、靈魂 %d、地上道具 %d（應為 已開 / 5 / 1）" % [mirror.opened if mirror else null, cw.souls, cw.pickups.size()]
 	link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO, InputCmd.BTN_INTERACT))
 	idle.call(20)
 	var me := link.client.local_player()

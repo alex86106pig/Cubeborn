@@ -96,7 +96,7 @@ func summon_minions() -> void:
 		var z := clampf(pos.y + cos(a) * s.distance, -limit.y, limit.y)
 		# 落在牆或墓碑上就移到最近的空地（D1）
 		var e := world.spawner.spawn_at(world, type, world.nav_for(EnemyDefs.ENEMIES[type].radius).nearest_walkable(Vector2(x, z)))
-		e.no_gold = true
+		e.no_souls = true
 		if is_enraged and e is MeleeEnemy:
 			(e as MeleeEnemy).pending_rush = true
 

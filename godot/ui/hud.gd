@@ -7,7 +7,7 @@ signal quit_requested   # 暫停畫面或主選單按下「離開遊戲」
 signal title_requested  # 暫停畫面按下「回主選單」
 
 # 手動分行（中文自動折行會斷在詞中間）
-const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技（劍盾：按住格擋，格擋中左鍵招架） · 空白鍵 跳躍 · Shift 翻滾\n1~5 道具 · F 撿道具 / 開寶箱 / 按住救援隊友 · Tab 背包與屬性 · Esc 選單 · M 靜音 · R 重新開始\nX / 滾輪 切換武器 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具（F3~F5 單機才有）"
+const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技（劍盾：按住格擋，格擋中左鍵招架） · 空白鍵 跳躍 · Shift 翻滾\n1~5 道具 · F 撿道具 / 開祭壇與石棺 / 按住救援隊友 · Tab 背包與屬性 · Esc 選單 · M 靜音 · R 重新開始\nX / 滾輪 切換武器 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具（F3~F5 單機才有）"
 const FPS_INTERVAL := 0.5
 const HP_GHOST_SPEED := 0.5      # 殘影每秒縮短的比例
 const BOSS_GHOST_SPEED := 0.3
@@ -18,7 +18,7 @@ const GAME_OVER_DELAY := 0.7     # 死亡後幾秒顯示結算
 const BOSS_NAME := "亡骸騎士"     # darkFantasy.js 的 names.boss
 # 介面程式碼裡寫死的中文字（橫幅、浮動文字、場上文字、連線面板、遊玩紀錄…；資料表以外的）：開場預熱用（v0.37.2）
 # check.gd 會掃 ui/ 的字串，缺字就列出來，加到這裡
-const UI_CHARS := "　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體"
+const UI_CHARS := "　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過"
 
 const VIGNETTE_SHADER := """
 shader_type canvas_item;
@@ -39,7 +39,8 @@ var main_menu := MainMenu.new()   # 開場的主選單（v0.39.0）
 var _hp: Dictionary
 var _hp_ghost := 1.0
 var _weapon := UiKit.label("", 16)
-var _gold := UiKit.label("", 18, UiKit.GOLD)
+var _souls := UiKit.label("", 18, UiKit.SOUL)
+var _coins := UiKit.label("", 18, UiKit.GOLD)   # 本局拿到的金幣（局外貨幣）
 var _world_labels := WorldLabels.new()
 var inventory_panel := InventoryPanel.new()   # I 開關（main.gd 接到輸入）
 var _wave := UiKit.label("", 22)
@@ -64,6 +65,8 @@ var _game_over_title := UiKit.label("", 56, UiKit.ALERT, 3)
 var _game_over_stats := UiKit.label("", 20)
 var _game_over_log := UiKit.label("", 18, Color(1, 1, 1, 0.85))   # 遊玩紀錄（v0.34.0）
 var run_log := RunLog.new()
+var profile: Profile                # 局外存檔（v0.45，main.gd 給）：結算畫面顯示累計金幣；null = 不顯示累計
+var _floor_coins := 0               # 剛過關拿到的金幣：同一步的 floor:started 橫幅一起顯示
 var _pause := ColorRect.new()
 var _pause_title := UiKit.label("已暫停", 56, Color.WHITE, 3)
 var _pause_hint := UiKit.label("按 Esc 繼續", 20)
@@ -155,7 +158,8 @@ func _init() -> void:
 	_hp = UiKit.bar(Vector2(280, 26), UiKit.HP_BG, UiKit.HP_FILL, 3)
 	tl.add_child(_hp.root)
 	tl.add_child(_weapon)
-	tl.add_child(_gold)
+	tl.add_child(_souls)
+	tl.add_child(_coins)
 	_hp.root.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN   # 說明文字較寬時血條不跟著拉長
 	tl.add_child(UiKit.label(CONTROLS_TEXT, 12, Color(1, 1, 1, 0.55), 1))
 	root.add_child(tl)
@@ -369,7 +373,8 @@ func _process(delta: float) -> void:
 	if not other.is_empty():
 		_weapon.text += "　（X：%s）" % WeaponDropDefs.display_name(other)
 	_weapon.add_theme_color_override(&"font_color", ItemDefs.RARITIES[inst.rarity].color if not inst.is_empty() else Color.WHITE)
-	_gold.text = "金幣 %d" % world.gold
+	_souls.text = "靈魂 %d" % world.souls
+	_coins.text = "金幣 %d" % world.run_coins
 	var s := world.stats
 	if DigEvent.enabled(world):   # 挖墳地圖（D6）：層數與難度
 		_wave.text = "第 %d 層 · 難度 %d" % [world.floor_num, floori(world.difficulty())]
@@ -449,7 +454,7 @@ func _on_event(name: String, p: Dictionary) -> void:
 				_floaters.spawn(local_player(), "背包滿了", &"dmg")
 		"chest:denied":
 			if _is_local(p.player_id):
-				_floaters.spawn(local_player(), "金幣不足（需要 %d）" % p.price, &"dmg")
+				_floaters.spawn(local_player(), "靈魂不足（需要 %d）" % p.price, &"dmg")
 		"chest:opened":
 			var item_name: String = ItemDefs.ITEMS[StringName(p.item)].name
 			var rarity: Dictionary = ItemDefs.RARITIES[StringName(p.rarity)]
@@ -494,8 +499,17 @@ func _on_event(name: String, p: Dictionary) -> void:
 				_show_banner("擊敗 %s！掉落獎勵\n怪物開始湧出，越來越多" % BOSS_NAME, true)
 		"event:exit_open":
 			_show_banner("墓穴挖開了：全員走進去前往下一層", false, UiKit.GOLD)
+		"coins:gained":
+			if p.reason == "floor":
+				_floor_coins = p.amount
+			elif local_player() != null:   # 全員各拿一份，所以誰撿到都跳在自己頭上
+				_floaters.spawn(local_player(), "+%d 金幣" % p.amount, &"coin")
 		"floor:started":
-			_show_banner("第 %d 層（基礎難度 %d）" % [p.floor, p.difficulty], false, UiKit.GOLD)
+			var text := "第 %d 層（基礎難度 %d）" % [p.floor, p.difficulty]
+			if _floor_coins > 0:
+				text += "\n過關 +%d 金幣" % _floor_coins
+				_floor_coins = 0
+			_show_banner(text, false, UiKit.GOLD)
 		"ghost:spawned":
 			_show_banner("%s 的冤魂出現了：打倒就能復活" % _tag_of(p.player_id), true)
 		"game:defeat":
@@ -538,9 +552,17 @@ func _tag_of(player_id: int) -> String:
 func _set_game_over(title: String, stats: String, victory: bool) -> void:
 	_game_over_title.text = title
 	_game_over_title.add_theme_color_override(&"font_color", UiKit.GOLD if victory else UiKit.ALERT)
-	_game_over_stats.text = stats
+	_game_over_stats.text = stats + "\n" + coins_summary()
 	_game_over_log.text = run_log.summary_text()
 	_game_over.color = Color(40 / 255.0, 30 / 255.0, 0, 0.5) if victory else Color(40 / 255.0, 0, 0, 0.55)
+
+
+# 結算畫面的金幣：本局拿到多少、存檔累計多少（v0.45）
+func coins_summary() -> String:
+	var text := "金幣 本局 +%d" % world.run_coins
+	if profile != null:
+		text += "（累計 %d）" % profile.coins
+	return text
 
 
 # 網頁版 @keyframes banner：0~15% 由 1.3 倍縮回並淡入，75% 後淡出

@@ -410,7 +410,7 @@ static func check_warm_up() -> String:
 	_scene_root().add_child(view)
 	var center := Vector3(20, 0, -15)
 	view.warm_up(center)
-	var want: Array[String] = ["player", "chest:small", "chest:big", "projectile:arrow", "projectile:orb",
+	var want: Array[String] = ["player", "chest:small", "chest:big", "coin", "projectile:arrow", "projectile:orb",
 		"grunt:%s" % MonsterRarityDefs.MAGIC, "grunt:%s" % MonsterRarityDefs.RARE]
 	for kind: StringName in EnemyDefs.ENEMIES:
 		want.append(String(kind))

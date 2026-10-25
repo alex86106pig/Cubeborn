@@ -129,7 +129,7 @@ const ITEMS := {
 	&"bat_fang": {"kind": &"item", "name": "蝙蝠牙", "rarity": &"white", "power": 1.5, "shape": &"i2",
 		"desc": "每次命中回復 1 生命", "effects": [{"stat": &"life_on_hit", "op": Stats.ADD, "value": 1.0}]},
 	&"grave_purse": {"kind": &"item", "name": "盜墓者錢袋", "rarity": &"white", "power": 1.0, "shape": &"dot",
-		"desc": "金幣獲得 +15%", "effects": [{"stat": &"gold_gain", "op": Stats.PCT, "value": 0.15}]},
+		"desc": "靈魂獲得 +15%", "effects": [{"stat": &"soul_gain", "op": Stats.PCT, "value": 0.15}]},
 	&"light_feather": {"kind": &"item", "name": "輕羽", "rarity": &"white", "power": 0.8, "shape": &"dot",
 		"desc": "翻滾冷卻 −10%", "effects": [{"stat": &"roll_cooldown", "op": Stats.MUL, "value": 0.9}]},
 	&"lead_weight": {"kind": &"item", "name": "鉛墜", "rarity": &"white", "power": 0.8, "shape": &"dot",
@@ -163,7 +163,7 @@ const ITEMS := {
 	&"wisp_lantern": {"kind": &"item", "name": "鬼火燈籠", "rarity": &"green", "power": 3.5, "shape": &"t4",
 		"desc": "擊殺時放出會追蹤敵人的鬼火", "effects": [{"on": &"kill", "do": &"wisp"}]},
 	&"lockpick": {"kind": &"item", "name": "撬鎖工具", "rarity": &"green", "power": 1.5, "shape": &"i2",
-		"desc": "寶箱價格 −10%", "effects": [{"stat": &"chest_price", "op": Stats.MUL, "value": 0.9}]},
+		"desc": "祭壇與石棺價格 −10%", "effects": [{"stat": &"chest_price", "op": Stats.MUL, "value": 0.9}]},
 	&"lodestone": {"kind": &"item", "name": "磁石", "rarity": &"green", "power": 1.0, "shape": &"dot",
 		"desc": "撿東西的範圍 +50%", "effects": [{"stat": &"pickup_radius", "op": Stats.PCT, "value": 0.5}]},
 	&"iron_cloak": {"kind": &"item", "name": "鐵皮斗篷", "rarity": &"green", "power": 2.3, "shape": &"i2",
@@ -187,7 +187,7 @@ const ITEMS := {
 	&"thunder_bell": {"kind": &"item", "name": "雷霆鈴", "rarity": &"blue", "power": 5.5, "shape": &"t5",
 		"desc": "每 5 秒對附近敵人落雷", "effects": [{"on": &"interval", "period": 5.0, "do": &"lightning_strike"}]},
 	&"greedy_hand": {"kind": &"item", "name": "貪婪之手", "rarity": &"blue", "power": 2.5, "shape": &"i2",
-		"desc": "精英怪掉落的金幣 ×2", "effects": [{"when": &"from_elite", "stat": &"gold_gain", "op": Stats.MUL, "value": 2.0}]},
+		"desc": "精英怪給的靈魂 ×2", "effects": [{"when": &"from_elite", "stat": &"soul_gain", "op": Stats.MUL, "value": 2.0}]},
 
 	# ---- 紫色：強力 ----
 	&"resurrection_cross": {"kind": &"item", "name": "復活十字", "rarity": &"purple", "power": 9.0, "shape": &"cross6",

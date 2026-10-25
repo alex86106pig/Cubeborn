@@ -27,19 +27,19 @@ static func line_blocked(world: World, viewer: Player, p: Vector2) -> bool:
 	return viewer.pos.distance_squared_to(p) > 1e-8 and world.terrain.sight_blocked(viewer.pos, p)
 
 
-# 會被視野隱藏的實體（怪物、玩家、寶箱、地上的道具、別人的投射物）；其他的一律看得到
+# 會被視野隱藏的實體（怪物、玩家、祭壇 / 石棺、地上的道具與金幣、別人的投射物）；其他的一律看得到
 static func is_hideable(viewer: Player, e: Entity) -> bool:
 	if viewer == null or viewer.is_dead or e == viewer:
 		return false
 	if e is Projectile:
 		return (e as Projectile).owner_id != viewer.id
-	return e is Enemy or e is Player or e is Chest or e is ItemPickup
+	return e is Enemy or e is Player or e is Chest or e is ItemPickup or e is Coin
 
 
-# 判斷看不看得到時用的半徑：寶箱、地上的道具看中心（露一角不算）；
+# 判斷看不看得到時用的半徑：祭壇 / 石棺、地上的道具與金幣看中心（露一角不算）；
 # 怪物、玩家、投射物看身體邊緣（不會半個身子在眼前卻整隻消失）
 static func view_radius(e: Entity) -> float:
-	return 0.0 if e is Chest or e is ItemPickup else e.radius
+	return 0.0 if e is Chest or e is ItemPickup or e is Coin else e.radius
 
 
 # viewer 為 null（例如還沒有角色）或已陣亡時什麼都看得到

@@ -1,4 +1,4 @@
-# 寶箱（D3）：地圖上的固定位置，靠近按 F、共用的錢夠就開；開出一個道具掉在地上（ItemPickup），稀有度依 LootDefs.CHESTS
+# 祭壇 / 石棺（D3，程式裡沿用 Chest / chest；v0.45 起改名）：地圖上的固定位置，靠近按 F、共用的靈魂夠就開；開出一個道具掉在地上（ItemPickup），稀有度依 LootDefs.CHESTS
 # 不擋路、不能被打；開過的寶箱留在原地（畫面顯示打開的箱蓋）
 class_name Chest
 extends Entity
@@ -25,11 +25,11 @@ func can_be_hit() -> bool:
 func try_open(by: Player) -> bool:
 	if opened:
 		return false
-	if world.gold < price():
+	if world.souls < price():
 		world.emit_event("chest:denied", {"chest_id": id, "player_id": by.id, "price": price()})
 		world.emit_event("sfx:cue", {"cue": "denied", "pos": pos})
 		return false
-	world.gold -= price()
+	world.souls -= price()
 	opened = true
 	var rarity := LootDefs.roll_rarity(tier, world.rng)
 	var pool := LootDefs.drop_pool(rarity)

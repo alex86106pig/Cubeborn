@@ -31,7 +31,7 @@ var dormant := false:                # 怪群休眠中：站著不動，整群�
 var wave_member := false             # 波次生成的：場上的波次怪都死了才開下一波（怪群不算）
 var action_speed := 1.0              # 狀態機時間的倍率（狂暴詞條 1.4：舉刀、瞄準、收招與冷卻都變快）
 var summoner_id := 0                 # 召喚詞條叫出來的：召喚者的 id
-var no_gold := false                 # 召喚出來的（召喚詞條、Boss 召喚）：死了不給錢（v0.44.0，避免刷錢）
+var no_souls := false                 # 召喚出來的（召喚詞條、Boss 召喚）：死了不給靈魂（v0.44.0，避免刷錢）
 var ghost_of := 0                    # 冤魂（D6）：死去玩家的 peer id，打倒後那位玩家復活
 var _frenzied := false
 var _exploded := false
@@ -225,7 +225,7 @@ func _update_affixes(dt: float) -> void:
 				var at := nav.nearest_walkable(pos + Vector2(sin(a), cos(a)) * spread)
 				var minion := world.spawner.spawn_at(world, &"grunt", at)
 				minion.summoner_id = id
-				minion.no_gold = true
+				minion.no_souls = true
 				minion.wave_member = wave_member
 
 

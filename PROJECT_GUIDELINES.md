@@ -215,9 +215,10 @@ godot/
 | `weapon:added` | `{ player_id, uid, slot }`（v0.26.0：撿到武器；slot = 裝備欄 0 / 1，-1 = 背包） | Player.add_weapon |
 | `weapon:merged` | `{ player_id, uid, base, rarity }`（v0.26.0：合成成功） | Loadout |
 | `weapon:merge_denied` | `{ player_id }`（v0.26.0：不能合成） | Loadout |
-| `gold:gained` | `{ amount, pos, total }`（v0.25.0：殺怪得到共用的錢） | World.on_enemy_died |
-| `chest:denied` | `{ chest_id, player_id, price }`（v0.25.0：錢不夠開寶箱） | Chest.try_open |
-| `chest:opened` | `{ chest_id, player_id, item, rarity, pos }`（v0.25.0：開了寶箱，道具掉在地上） | Chest.try_open |
+| `souls:gained` | `{ amount, pos, total }`（v0.25.0：殺怪得到共用的靈魂；v0.45 前叫 `gold:gained`） | World.on_enemy_died |
+| `coins:gained` | `{ amount, total, reason, floor, pos }`（v0.45：局外金幣；reason `floor` 過關、`pickup` 撿到地上的；main.gd 收到就存檔） | World.gain_coins |
+| `chest:denied` | `{ chest_id, player_id, price }`（v0.25.0：靈魂不夠開祭壇 / 石棺） | Chest.try_open |
+| `chest:opened` | `{ chest_id, player_id, item, rarity, pos }`（v0.25.0：開了祭壇 / 石棺，道具掉在地上） | Chest.try_open |
 | `skill:used` | `{ key, def }` | PlayerStates / ActiveSlots |
 | `skill:onCooldown` | `{ key }` | PlayerStates / ActiveSlots |
 | `wave:started` | `{ wave, total, isBoss }` | Spawner |

@@ -17,7 +17,10 @@ var enemies: Array[Entity] = []
 var projectiles: Array[Entity] = []
 var chests: Array[Entity] = []       # 寶箱（D3）
 var pickups: Array[Entity] = []      # 掉在地上的道具（D3）
-var gold := 0                        # 共用的錢（D3）：殺怪賺、開寶箱花
+var coins: Array[Entity] = []        # 掉在地上的金幣（v0.45，sim/coin.gd）
+var souls := 0                        # 共用的靈魂（局內貨幣，D3）：殺怪賺、開祭壇 / 石棺花
+var run_coins := 0                   # 本局拿到的金幣（v0.45，局外貨幣）：多人時是每人各自拿到的數量（全員一樣）；Profile 存累計
+var coin_rng := RandomNumberGenerator.new()   # 掉金幣專用的亂數：不動 rng 的序列，怪群、寶箱、武器掉落維持原樣
 var packs: Array[Dictionary] = []    # 地圖預放的怪群（D5）：{ center, ids, awake }，只在權威端
 var spawn_packs := true              # reset 時是否散放怪群（地圖要有 "packs": true；check.gd 大部分檢查關掉）
 var stats := {"wave": 0, "kills": 0, "time": 0.0}
@@ -78,6 +81,7 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 	clear()
 	tick = 0
 	rng.seed = seed_value
+	coin_rng.seed = hash([seed_value, &"coin"])
 	cooldowns.reset_all()
 	stats = {"wave": 0, "kills": 0, "time": 0.0, "floor": 1}
 	is_over = false
@@ -97,7 +101,8 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 		p.pos = spawn_point
 		p.height = terrain.ground_at(spawn_point)
 		add_entity(p)
-	gold = 0
+	souls = 0
+	run_coins = 0
 	floor_num = 1
 	base_difficulty = 0.0
 	_populate_floor()
@@ -146,9 +151,10 @@ func difficulty() -> float:
 	return event.difficulty(self) if DigEvent.enabled(self) else 0.0
 
 
-# 全員走進出口（D6）：同一張地圖重新來過、基礎難度 +per_floor；玩家保留背包、武器、生命與共用的錢
+# 全員走進出口（D6）：同一張地圖重新來過、基礎難度 +per_floor；玩家保留背包、武器、生命與共用的靈魂
 # 地上的東西、敵人、投射物、寶箱全部清掉重新放；有人背著死者的屍體時，死者在新的一層變成冤魂
 func next_floor() -> void:
+	gain_coins(LootDefs.RUN_COINS.floor_clear_per_floor * floor_num, &"floor")   # 過關的金幣（v0.45）：越後面的層越多
 	floor_num += 1
 	base_difficulty = (floor_num - 1) * EventDefs.DIFFICULTY.per_floor
 	stats["floor"] = floor_num
@@ -215,6 +221,7 @@ func clear() -> void:
 	projectiles.clear()
 	chests.clear()
 	pickups.clear()
+	coins.clear()
 	packs.clear()
 
 
@@ -267,10 +274,14 @@ func first_alive_player() -> Player:
 
 func on_enemy_died(e: Enemy) -> void:
 	stats.kills += 1
-	var g := 0 if e.no_gold else roundi(LootDefs.KILL_GOLD.get(e.type, 0) * LootDefs.player_mul(player_list.size()))
+	var g := 0 if e.no_souls else roundi(LootDefs.KILL_SOULS.get(e.type, 0) * LootDefs.player_mul(player_list.size()))
 	if g > 0:
-		gold += g
-		emit_event("gold:gained", {"amount": g, "pos": e.pos, "total": gold})
+		souls += g
+		emit_event("souls:gained", {"amount": g, "pos": e.pos, "total": souls})
+	# 局外金幣（v0.45）：極低機率掉 1 枚；召喚出來的不掉（和靈魂一樣避免刷）
+	var coin_chance: float = LootDefs.RUN_COINS.drop_chance.get(e.type, 0.0)
+	if not e.no_souls and coin_chance > 0.0 and coin_rng.randf() < coin_chance:
+		drop_coin(e.pos)
 	# 武器掉落（D4）：多人時也只掉一把（房主產生一個實體，先撿先得）
 	var chance: float = WeaponDropDefs.DROP_CHANCE.get(e.type, 0.0)
 	if chance > 0.0 and (chance >= 1.0 or rng.randf() < chance):
@@ -306,6 +317,37 @@ func drop_item(item_id: StringName, at: Vector2, weapon: Dictionary = {}) -> Ite
 		add_entity(pickup)
 		pickups.append(pickup)
 	return pickup
+
+
+func drop_coin(at: Vector2) -> Coin:
+	var coin := Coin.new(self, nav.nearest_walkable(at))
+	if is_authority:
+		add_entity(coin)
+		coins.append(coin)
+	return coin
+
+
+# 金幣進帳（過關 reason = &"floor"、撿到地上的 &"pickup"）：多人時全員各拿一份，所以只記一個數字
+func gain_coins(amount: int, reason: StringName, at := Vector2.ZERO) -> void:
+	if amount <= 0:
+		return
+	run_coins += amount
+	emit_event("coins:gained", {"amount": amount, "total": run_coins, "reason": String(reason), "floor": floor_num, "pos": at})
+
+
+# 活著、沒倒地、還沒走進出口的玩家走近就撿起（不用按 F）
+func _collect_coins() -> void:
+	for c in coins:
+		if c.is_removed:
+			continue
+		for p in player_list:
+			if p.is_dead or p.is_downed or p.descended:
+				continue
+			if c.pos.distance_to(p.pos) - p.radius <= LootDefs.RUN_COINS.collect_range:
+				c.remove()
+				gain_coins(1, &"pickup", c.pos)
+				emit_event("sfx:cue", {"cue": "potion", "pos": c.pos})
+				break
 
 
 # 離 p 最近、按得到 F 的寶箱 / 道具（已開的寶箱、已被撿走的道具不算）；沒有回傳 null
@@ -435,6 +477,7 @@ func step(cmds: Dictionary, dt: float) -> void:
 	_bodies.clear()   # 不留參照，已移除的實體才能立即釋放
 
 	_update_downed(dt)
+	_collect_coins()
 	spawner.update(self, dt)
 	event.update(self, dt)
 	_remove_dead_entities()
@@ -558,4 +601,5 @@ func _remove_dead_entities() -> void:
 	enemies.assign(enemies.filter(func(e: Entity) -> bool: return not e.is_removed))
 	projectiles.assign(projectiles.filter(func(e: Entity) -> bool: return not e.is_removed))
 	pickups.assign(pickups.filter(func(e: Entity) -> bool: return not e.is_removed))
+	coins.assign(coins.filter(func(e: Entity) -> bool: return not e.is_removed))
 	chests.assign(chests.filter(func(e: Entity) -> bool: return not e.is_removed))   # 換層時整批移除（D6）
