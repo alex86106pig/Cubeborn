@@ -8,8 +8,9 @@ Godot 4（GDScript）等距視角 Roguelike 動作遊戲（暫定名 Cubeborn）
 
 ## 0. 開工順序
 
-1. **同步**：新對話的第一件事執行 `git pull --ff-only origin main`，取得其他電腦推上去的內容。
+1. **同步**：新對話的第一件事執行 `git pull --ff-only origin main`，接著 `git fetch origin --tags`，取得其他電腦推上去的內容與版號 tag。
    - 成功（含「已是最新」）→ 繼續下一步。
+   - 為什麼要另外抓 tag：指定分支的 `git pull` 不會帶回別台推的 tag，`tools/release.mjs` 會因為「CHANGELOG 最新版和最新的 tag 不一樣」拒絕推送（2026-10-26 發生過）。
    - 失敗（兩台電腦改出不同版本、有未 commit 的修改、連不上網路）→ **停下來告訴使用者原因**，不自己合併、不丟棄任何修改，等使用者決定。
    - pull 到新的 commit 時：用 `git log --oneline ORIG_HEAD..HEAD` 和 `CHANGELOG.md` 最上面（「未發布」與剛發布的版本）**向使用者簡報另一邊改了什麼**，不要讓使用者自己去翻歷史。
    - 為什麼：兩位作者在多台電腦開發，聊天紀錄不會同步，忘了同步就會在舊版本上修改。

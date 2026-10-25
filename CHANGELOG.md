@@ -3,6 +3,11 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
+## [未發布]
+
+### 修改
+- `CLAUDE.md` 開工同步多一步 `git fetch origin --tags`：指定分支的 `git pull` 不會帶回別台推的 tag，`release.mjs` 會因為版號和 tag 對不上而拒絕推送（推 v0.45.0 時遇到）。
+
 ## [0.45.0] - 2026-10-26
 
 ### 新增
