@@ -63,6 +63,7 @@ var local_peer := World.HOST_PEER_ID
 var hidden_ids: Dictionary = {}        # 這一幀看不到的實體 id（Effects 的持續性粒子也跳過）
 var _vision_key := []                  # 上次算視野時的 tick 與觀看者狀態（沒變就沿用 hidden_ids）
 var _los_blocked: Dictionary = {}      # entity id -> 視線被牆擋住（分批更新，見 sync）
+var _fade_level: Dictionary = {}       # entity id -> 顯示程度 0~1（視野的淡入淡出，view/fade.gd）
 var _anim_pending: Dictionary = {}     # entity id -> 還沒拿去擺姿勢的秒數（敵人動畫每秒最多 60 次）
 var _grave: Node3D = null              # 挖墳點（D6）
 var _hitboxes_shown := false
@@ -94,6 +95,7 @@ func clear_views() -> void:
 	_nodes.clear()
 	_animators.clear()
 	_frozen.clear()
+	_fade_level.clear()
 	effects.clear()
 
 
@@ -163,7 +165,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 				continue
 			if not Vision.is_hideable(me, e):
 				continue
-			if not Vision.in_view_cone(me, e.pos, e.radius):
+			if not Vision.in_view_cone(me, e.pos, Vision.view_radius(e)):
 				hidden_ids[id] = true
 				_los_blocked.erase(id)
 				continue
@@ -191,14 +193,14 @@ func sync(world: World, alpha: float, dt: float) -> void:
 			_los_blocked.erase(id)
 			_anim_pending.erase(id)
 			_xray_on.erase(id)
+			_fade_level.erase(id)
 	for id: int in world.entities:
 		var e: Entity = world.entities[id]
 		if not _nodes.has(id):
 			_nodes[id] = _create_view(e)
 		var node: Node3D = _nodes[id]
-		node.visible = not hidden_ids.has(id)
-		if not node.visible:
-			continue   # 看不到的不必擺位置與姿勢（D5 效能）
+		if not _sync_fade(id, node, e, me, dt):
+			continue   # 看不到的不必擺位置與姿勢（D5 效能）；淡出中的照常擺
 		var key := _view_key(e)
 		if not _seen_keys.has(key):   # --perf 的卡頓紀錄：這種模型第一次被畫出來（v0.36.3）
 			_seen_keys[key] = true
@@ -208,7 +210,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 			if _frozen[id] > 0.0:
 				continue
 			_frozen.erase(id)
-		if node.has_meta(&"xray") and node.get_meta(&"xray_shown") != _xray_on.get(id, not e is Enemy):
+		if node.has_meta(&"xray") and not Fade.is_fading(node) and node.get_meta(&"xray_shown") != _xray_on.get(id, not e is Enemy):
 			node.set_meta(&"xray_shown", _xray_on.get(id, not e is Enemy))
 			apply_xray(node, node.get_meta(&"xray"), node.get_meta(&"xray_shown"))
 		var p := e.prev_pos.lerp(e.pos, alpha)
@@ -247,7 +249,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 			if node is SkinnedRig:
 				var a: Dictionary = (e as Enemy).anim
 				(node as SkinnedRig).set_status_tint(FROZEN_TINT if a.get("frozen", false) else (POISON_TINT if a.get("poisoned", false) else Color.WHITE))
-			if e is Player and node.get_meta(&"xray_weapon", &"") != (e as Player).weapon_id:
+			if e is Player and not Fade.is_fading(node) and node.get_meta(&"xray_weapon", &"") != (e as Player).weapon_id:
 				# 換了武器：新的武器模型也要寫模板值，否則身體的剪影會畫在擋在身體前面的武器上
 				node.set_meta(&"xray_weapon", (e as Player).weapon_id)
 				apply_xray(node, node.get_meta(&"xray"), node.get_meta(&"xray_shown"))
@@ -261,6 +263,28 @@ func sync(world: World, alpha: float, dt: float) -> void:
 		_add_profile(&"nodes", t2 - t1 - anim_usec)
 		_add_profile(&"animators", anim_usec)
 		_add_profile(&"effects", Time.get_ticks_usec() - t2)
+
+
+# 視野的淡入淡出（view/fade.gd）：顯示程度每幀往目標（看得到 1、看不到 0）靠近，0 就整個不畫；回傳這一幀要不要畫
+# 直接到位、不淡：剛建立的模型（開場、爬出來的怪）、走進出口的玩家、沒有本機角色或已陣亡（全部看得到）
+func _sync_fade(id: int, node: Node3D, e: Entity, me: Player, dt: float) -> bool:
+	var target := 0.0 if hidden_ids.has(id) else 1.0
+	var old: float = _fade_level.get(id, -1.0)
+	var level := target if old < 0.0 else old
+	if me == null or me.is_dead or (e is Player and (e as Player).descended):
+		level = target
+	elif level != target:
+		var v: Dictionary = Config.VISION
+		level = move_toward(level, target, dt / (v.fade_in if target > level else v.fade_out))
+	if level != old:
+		_fade_level[id] = level
+		if Fade.apply(node, level) and node.has_meta(&"xray"):
+			# 淡入完成：接回牆後剪影（淡入淡出中不畫）
+			var on: bool = _xray_on.get(id, not e is Enemy)
+			node.set_meta(&"xray_shown", on)
+			apply_xray(node, node.get_meta(&"xray"), on)
+	node.visible = level > 0.0
+	return node.visible
 
 
 func _add_profile(key: StringName, usec: int) -> void:
@@ -547,19 +571,23 @@ func warm_up(center: Vector3) -> void:
 		ents.append(Projectile.new(tw, {"owner": ents[0], "pos": c, "direction": Vector2.UP, "speed": 0.0, "range": 0.0,
 			"radius": 0.25, "color": Color.ORANGE, "visual": visual}))
 	var colors := [XRAY_SELF, XRAY_ALLY, XRAY_ENEMY]
-	for i in ents.size():
-		var e := ents[i]
+	var count := ents.size() * 2
+	for i in count:
+		var e := ents[i / 2]
+		var faded := i % 2 == 1   # 每種模型再一個淡入淡出中的（半透明材質是另一組著色器，見 view/fade.gd）
 		var node := _create_view(e)
 		_animators.erase(e.id)
 		# 排成一圈（半徑 3），都在鏡頭裡
-		var a := TAU * i / ents.size()
+		var a := TAU * i / count
 		node.position = center + Vector3(sin(a), 0.0, cos(a)) * 3.0
 		if node.has_meta(&"glow"):
 			(node.get_meta(&"glow") as Node3D).visible = true   # 武器光：拿到有顏色的武器才會開
 		if node.has_meta(&"xray"):
 			apply_xray(node, colors[i % colors.size()], true)
+		if faded:
+			Fade.apply(node, 0.5)
 		_warm_nodes.append(node)
-		warm_keys.append(_view_key(e))
+		warm_keys.append(("fade:" if faded else "") + _view_key(e))
 	_warm_left = WARM_FRAMES
 	effects.warm_up(center)
 	tw.clear()

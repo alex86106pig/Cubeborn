@@ -36,6 +36,12 @@ static func is_hideable(viewer: Player, e: Entity) -> bool:
 	return e is Enemy or e is Player or e is Chest or e is ItemPickup
 
 
+# 判斷看不看得到時用的半徑：寶箱、地上的道具看中心（露一角不算，2026-10-26 使用者決定）；
+# 怪物、玩家、投射物看身體邊緣（不會半個身子在眼前卻整隻消失）
+static func view_radius(e: Entity) -> float:
+	return 0.0 if e is Chest or e is ItemPickup else e.radius
+
+
 # viewer 為 null（例如還沒有角色）或已陣亡時什麼都看得到
 static func entity_visible(world: World, viewer: Player, e: Entity) -> bool:
-	return not is_hideable(viewer, e) or point_visible(world, viewer, e.pos, e.radius)
+	return not is_hideable(viewer, e) or point_visible(world, viewer, e.pos, view_radius(e))

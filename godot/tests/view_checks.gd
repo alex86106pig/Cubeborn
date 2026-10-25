@@ -382,6 +382,14 @@ static func check_vision_rules() -> String:
 	if not Vision.entity_visible(w, p, mine) or Vision.entity_visible(w, p, theirs) or Vision.entity_visible(w, p, archer):
 		return "背後：自己的投射物 %s、弓手的箭 %s、弓手 %s（應為 看得到 / 看不到 / 看不到）" % [
 			Vision.entity_visible(w, p, mine), Vision.entity_visible(w, p, theirs), Vision.entity_visible(w, p, archer)]
+	# 視野邊界上、中心在外面一點：寶箱看中心（露一角不算），怪物看身體邊緣（2026-10-26）
+	var edge_at: Vector2 = at.call(half_deg + 1.0, 10.0)
+	var chest := Chest.new(w, &"small", edge_at)
+	var grunt := _spawn(w, &"grunt", edge_at)
+	if rad_to_deg(asin(chest.radius / 10.0)) <= 1.0 or rad_to_deg(asin(grunt.radius / 10.0)) <= 1.0:
+		return "測試前提：寶箱與骷髏的邊緣要在視野內（半徑 %.2f / %.2f）" % [chest.radius, grunt.radius]
+	if Vision.entity_visible(w, p, chest) or not Vision.entity_visible(w, p, grunt):
+		return "中心在視野外 1°：寶箱 %s、骷髏 %s（應為 看不到 / 看得到）" % [Vision.entity_visible(w, p, chest), Vision.entity_visible(w, p, grunt)]
 	return ""
 
 
@@ -408,8 +416,8 @@ static func check_warm_up() -> String:
 		want.append(String(kind))
 	var err := ""
 	for k in want:
-		if not view.warm_keys.has(k):
-			err = "預熱缺少 %s（預熱了 %s）" % [k, view.warm_keys]
+		if not view.warm_keys.has(k) or not view.warm_keys.has("fade:" + k):
+			err = "預熱缺少 %s 或它淡入淡出中的版本（預熱了 %s）" % [k, view.warm_keys]
 			break
 	# 武器每種稀有度都要（白色沒有發光、材質組合不同；v0.37.1 網頁版實測：只預熱綠色時第一把白色武器仍卡 70.8 ms）
 	for rarity: StringName in ItemDefs.RARITIES:
@@ -471,13 +479,44 @@ static func check_vision_view() -> String:
 		view.on_event("fx:slash", {"pos": Vector2(0, 8), "height": 0.0, "facing": 0.0, "range": 1.5, "arc": 1.7, "color": Color.WHITE, "swing_dir": 1})
 		if after_back != before or view.effects._transients.size() != before + 1:
 			err = "特效：背後的揮砍多了 %d 個、前方的多了 %d 個（應為 0 / 1）" % [after_back - before, view.effects._transients.size() - after_back]
+	# 淡入淡出（2026-10-26）：轉身後原本前方的骷髏先半透明、fade_out 秒後才隱藏；背後的從透明淡入，fade_in 秒後還原成不透明
+	var v := Config.VISION
+	if err == "":
+		p.facing = PI
+		w.tick += 1   # 視野依 tick 重算
+		view.sync(w, 1.0, 0.1)
+		var fa := _fade_alpha(front_node)
+		var ba := _fade_alpha(back_node)
+		if not front_node.visible or not is_equal_approx(fa, 1.0 - 0.1 / v.fade_out):
+			err = "轉身 0.1 秒：原本前方的骷髏應還看得到、透明度 %.2f（實際 %s / %.2f）" % [1.0 - 0.1 / v.fade_out, front_node.visible, fa]
+		elif not back_node.visible or not is_equal_approx(ba, 0.1 / v.fade_in):
+			err = "轉身 0.1 秒：背後的骷髏應開始淡入、透明度 %.2f（實際 %s / %.2f）" % [0.1 / v.fade_in, back_node.visible, ba]
+	if err == "":
+		var t := 0.1
+		while t < maxf(v.fade_in, v.fade_out) + 0.05:
+			view.sync(w, 1.0, 0.05)
+			t += 0.05
+		if front_node.visible:
+			err = "fade_out 秒後原本前方的骷髏應隱藏"
+		elif not back_node.visible or Fade.is_fading(back_node) or _fade_alpha(back_node) != 1.0:
+			err = "fade_in 秒後背後的骷髏應還原成不透明（材質透明度 %.2f）" % _fade_alpha(back_node)
+		elif PartKit.mesh_instances(back_node).any(func(mi: MeshInstance3D) -> bool: return mi.name != &"Hitbox" and (mi.material_override as BaseMaterial3D).transparency != BaseMaterial3D.TRANSPARENCY_DISABLED):
+			err = "淡入完成後材質應還原成不透明模式"
 	if err == "":
 		p.is_dead = true
 		view.sync(w, 1.0, 0.016)
-		if not back_node.visible:
-			err = "本機角色陣亡後應全部看得到"
+		if not front_node.visible or _fade_alpha(front_node) != 1.0:
+			err = "本機角色陣亡後應立刻全部看得到（不淡入）"
 	view.free()
 	return err
+
+
+# 模型第一個網格材質的 alpha（淡入淡出的程度；SkinnedRig：Skeleton 底下的網格）
+static func _fade_alpha(node: Node3D) -> float:
+	for mi in PartKit.mesh_instances(node):
+		if mi.name != &"Hitbox" and mi.material_override is BaseMaterial3D:
+			return (mi.material_override as BaseMaterial3D).albedo_color.a
+	return -1.0
 
 
 # 頭頂血條（v0.43.0）：滿血不畫、受傷畫；自己與隊友綠、怪物紅；背後視野外、Boss、倒地、WorldView 隱藏的不畫；

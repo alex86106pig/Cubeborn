@@ -121,10 +121,10 @@ func _initialize() -> void:
 	_check("道具觸發：疊到 100% 時擊殺爆炸、連鎖閃電（每跳在 jump_range 內、不重複、不連鎖觸發）、中毒（duration 內共 total_ratio）、冰凍不能動（Boss 不會）；機率相加", LootChecks.check_item_procs)
 	_check("道具掉落：寶箱只開出效果都接上的道具；沒有的稀有度往下一級找", LootChecks.check_item_drop_pool)
 	# 畫面、介面與音效
-	_check("角色視野：前方扇形（angle 邊界內外）與 range 內看得到、身邊 near_radius 背後也看得到；牆擋視線（身邊也擋）、高台不擋；自己的投射物在背後也看得到、怪物的看不到", ViewChecks.check_vision_rules)
-	_check("視野畫面：背後的骷髏模型隱藏、前方的顯示；背後的特效事件不畫、前方的照畫；本機角色陣亡後全部看得到", ViewChecks.check_vision_view)
+	_check("角色視野：前方扇形（angle 邊界內外）與 range 內看得到、身邊 near_radius 背後也看得到；牆擋視線（身邊也擋）、高台不擋；自己的投射物在背後也看得到、怪物的看不到；寶箱看中心、怪物看身體邊緣", ViewChecks.check_vision_rules)
+	_check("視野畫面：背後的骷髏模型隱藏、前方的顯示；背後的特效事件不畫、前方的照畫；轉身時離開視野的 fade_out 秒淡出、進入的 fade_in 秒淡入（材質半透明，完成後還原）；本機角色陣亡後立刻全部看得到", ViewChecks.check_vision_view)
 	_check("頭頂血條：滿血不畫、受傷畫；自己與隊友綠、怪物紅；背後視野外、Boss、倒地、WorldView 隱藏的不畫；比例 = hp / max_hp；不疊到詞條與名牌", ViewChecks.check_health_bars)
-	_check("開場預熱：每一種怪、魔法 / 稀有怪、玩家、兩種寶箱、道具、武器、兩種投射物、每種稀有度的武器都在鏡頭附近畫幾幀後移除；預熱文字含道具名稱、怪物詞條、稀有怪名字與介面字串的每個字", ViewChecks.check_warm_up)
+	_check("開場預熱：每一種怪、魔法 / 稀有怪、玩家、兩種寶箱、道具、武器、兩種投射物、每種稀有度的武器（各再一個淡入淡出中的半透明版本）都在鏡頭附近畫幾幀後移除；預熱文字含道具名稱、怪物詞條、稀有怪名字與介面字串的每個字", ViewChecks.check_warm_up)
 	_check("牆後剪影：角色材質寫模板值；玩家一直有剪影；怪物只有和相機之間有牆擋住時才有，離開牆邊就拿掉", ViewChecks.check_xray)
 	_check("新手提示：換武器鍵是 X；開場跳操作與挖墳；撿到東西、開背包、可合成、出口打開、隊友倒地各跳一次；看過不再跳、排隊中條件不成立就跳過；重設後再跳", ViewChecks.check_hints)
 	_check("挖墳進度條：事件進行中所有人上方中央都看得到進度與說明（Boss 活著 / 怪潮中），出口打開後收起；Boss 血條排在它下面、寬度塞得進 1920", ViewChecks.check_dig_bar)
