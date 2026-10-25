@@ -1,4 +1,4 @@
-# 畫面層動畫：依模擬層的 player.anim（狀態、階段、進度 k）算出關節角度（15.5）
+# 畫面層動畫：依模擬層的 player.anim（狀態、階段、進度 k）算出關節角度（PROJECT_GUIDELINES.md 第 11 節）
 # 姿勢公式照搬網頁版 playerStates.js（腿、上半身、倒地、硬直）與 weaponBehaviors.js（各武器的 update）
 # 每個渲染幀執行；網頁版「每步 lerp 固定比例」換算成與幀率無關的版本（_step_lerp）
 class_name Animator

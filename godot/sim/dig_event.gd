@@ -1,4 +1,4 @@
-# 挖墳事件（D6，規格見 PROJECT_GUIDELINES.md 15.25；數值在 defs/event_defs.gd）
+# 挖墳事件（D6，規格見 docs/系統說明.md §15；數值在 defs/event_defs.gd）
 # 有人在挖墳點按住 F（玩家動作 dig）就累積進度，第一下開始事件：先只有 Boss 出現；Boss 倒下後怪潮才開始（怪物依難度不斷冒出、
 # 難度從這時起往上加）；沒人挖時進度慢慢掉（使用者 2026-10-25：原本 Boss 與怪潮同時來，怪太多沒空打 Boss、更沒空挖）
 # 挖完墓穴變成出口：活著的玩家走進去就「下去」（descended），全部下去（沒有倒地的人）就 World.next_floor()

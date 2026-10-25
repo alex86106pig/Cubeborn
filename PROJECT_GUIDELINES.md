@@ -2,298 +2,233 @@
 
 > 本文件是專案的**唯一事實來源**。任何與本文件衝突的程式碼都視為 bug；架構變更時必須同步更新本文件。
 
-> **轉換期說明**：第 1~14 節描述網頁版（Three.js），網頁版已凍結（v0.8.0 起不修 bug、不更新版號）並於 v0.10.0 搬到 `legacy/`，只當玩法設計圖；**第 1~14 節的檔案路徑都相對於 `legacy/`**。正式開發改用 Godot 4.7.2（GDScript，專案在 `godot/`），架構與多人連線規範見**第 15 節**；第 15 節沒寫到的玩法規則（狀態機分段、CD key、事件名稱、資料格式）沿用第 4~9 節，只把語法換成 GDScript。
+> 本文件只放**現行、共通**的規則（Godot 4.7.2，GDScript，專案在 `godot/`）。各系統的細節與使用者做過的決定（屬性、翻滾、連線、地圖、背包、怪群、挖墳…）在 [`docs/系統說明.md`](docs/系統說明.md)，要動那個系統時讀對應的一節。凍結的網頁版（`legacy/`）規則在 [`legacy/GUIDELINES.md`](legacy/GUIDELINES.md)。
+> 節號（2026-10-26 整理）：第 4~14 節沿用舊版節號；舊的 15.1~15.10 分到第 1~3、15~17 節，15.11~15.26 = 系統說明 §1~§16。
 
 ---
 
-## 1. 專案概要
+## 1. 目標與已定案的方向
 
-| 項目 | 內容 |
+| 項目 | 決定 |
 |---|---|
-| 類型 | 3D 等距俯視角 Roguelike 動作遊戲（網頁版原型） |
-| 美術風格 | 程式生成的低多邊形奇幻角色（不使用外部模型與貼圖），造型已定案為**暗黑幻想**（寫實比例、硬朗多面體、月夜墓地） |
-| 目前階段 | Phase 1：核心戰鬥、5 波制（含 Boss 戰）的一局流程 |
-| 不在 Phase 1 範圍 | 職業選擇、房間/關卡生成、升級、掉落、武器切換、存檔、背景音樂（試聽中） |
+| 類型 | 3D 等距俯視角 Roguelike 動作遊戲，目標 Steam 上架 |
+| 引擎 | Godot 4.7.2 普通版，GDScript（一律寫型別）；效能不夠的熱點才改 C++（GDExtension），判斷依據見 `docs/效能.md` |
+| 平台 | Windows 優先。網頁匯出（GitHub Pages）給朋友試玩：網頁用 Compatibility 渲染器（`project.godot` 的 `.web` 覆寫），電腦版維持 Forward+；網頁版只能用房號連線（WebRTC） |
+| 多人 | **合作 1~4 人**，不做對戰 |
+| 連線架構 | **房主當伺服器**（listen server，房主即權威端）。開發期用 Godot 內建 ENet / WebRTC，上架前換成 Steam 連線（GodotSteam），只換傳輸層 |
+| 美術 | **程式生成**低多邊形暗黑幻想造型（寫實比例、硬朗多面體、月夜墓地，第 14 節），不用外部模型與貼圖 |
+| 音效 | 合成公式寫在工具腳本，預先產生 WAV 檔放進專案（不在遊戲中即時合成）；背景音樂為已選定的「B 哥德輓歌」 |
+| 設計目標 | 見 `docs/設計方向.md`；改核心玩法前先讀（`CLAUDE.md` 1.6） |
 
----
-
-## 2. 技術棧
-
-| 項目 | 選擇 | 理由 |
-|---|---|---|
-| 語言 | 原生 JavaScript（ES2022），ES6 Modules | 零建置、易讀 |
-| 音效 | Web Audio API 即時合成，不使用音檔 | 免授權、零下載；瀏覽器規定使用者操作後才能出聲 |
-| 3D 引擎 | Three.js `0.170.0`，透過 `importmap` 從 jsDelivr CDN 載入（含 `three/addons/` 內建工具） | 不需 npm |
-| 建置工具 | 無。日後需要打包上線再導入 Vite | 降低初期複雜度 |
-| 本機伺服器 | `tools/serve.ps1`（PowerShell 內建 HttpListener） | ES Modules 不能用 `file://` 開啟；遊戲執行不依賴 Node |
-| 自動檢查 | Node 24 LTS + `check.js`（`node check.js`）；`package.json` 只為檢查安裝 `three@0.170.0`，`node_modules/` 不進版控 | 不開瀏覽器即可驗證資料與核心機制 |
-| 物理 | 不用物理引擎，自寫圓形碰撞 | 俯視角動作遊戲只需 2D 平面碰撞 |
-| UI | DOM + CSS 疊在 canvas 上 | 好排版、好除錯 |
-| 版控 | git，每個版本一個 commit + tag | 可回溯 |
-
-**啟動方式**：在專案根目錄執行 `powershell -ExecutionPolicy Bypass -File legacy/tools/serve.ps1`，瀏覽器開 `http://localhost:5173`。`.claude/launch.json` 也有同樣設定（名稱 `cubeborn-legacy`），可供 Claude 的瀏覽器預覽使用。
-
-**AI 測試技巧**：瀏覽器分頁在背景時 `requestAnimationFrame` 會暫停。測試邏輯時可在 Console 透過 `__game.update(1/60)` 加 `__game.input.endStep()` 手動推進邏輯步。
-
----
-
-## 3. 目錄結構
-
+## 2. 三層分離（最重要的規則）
 ```
-Cubeborn/
-├─ CLAUDE.md                  AI 最高指導原則（自動載入）
-├─ PROJECT_GUIDELINES.md      本文件
-├─ CHANGELOG.md               版本紀錄
-├─ check.js                   自動檢查（資料完整性與核心機制）
-├─ package.json               Node 設定（只用於檢查）
-├─ docs/                      進度.md（跨對話交接）、設計方向.md（設計目標）、檔案地圖.md、新電腦設定.md
-├─ index.html                 遊戲頁面、importmap、HUD 容器
-├─ preview.html               模型檢視頁（並排展示四個角色，可拖曳旋轉）
-├─ css/style.css              HUD 與頁面樣式
-├─ tools/serve.ps1            本機靜態伺服器
-└─ src/
-   ├─ main.js                 遊戲進入點：建立 Game 並啟動
-   ├─ preview.js              模型檢視頁進入點
-   ├─ Game.js                 遊戲主體（組合根）：持有所有系統、主迴圈、命中停頓、重新開始、通關
-   ├─ core/                   與遊戲內容無關的底層機制
-   │  ├─ config.js            全域可調參數（迴圈、世界、相機、玩家、生成、除錯開關）
-   │  ├─ version.js           VERSION 常數（與 CHANGELOG 同步）
-   │  ├─ math.js              角度、插值、緩動等數學小工具
-   │  ├─ EventBus.js          發布/訂閱事件匯流排
-   │  ├─ StateMachine.js      通用有限狀態機
-   │  ├─ CooldownManager.js   統一冷卻時間管理
-   │  └─ Input.js             鍵盤/滑鼠狀態，提供「本步按下」查詢
-   ├─ render/
-   │  ├─ Renderer.js          WebGLRenderer、場景、燈光、正交相機與跟隨、套用環境
-   │  ├─ rig.js               角色骨架 Rig、零件組 PartKit、幾何體工廠 G、材質工廠
-   │  ├─ environment.js       低多邊形地面、邊界點位、裝飾散佈工具
-   │  ├─ WeaponModels.js      依目前風格建立玩家武器外觀並同步姿勢
-   │  ├─ Effects.js           粒子、揮砍弧光、衝擊環、圓形/直線預警
-   │  └─ styles/              造型風格（介面見第 14 節）
-   │     ├─ index.js          風格登錄、getStyle()
-   │     └─ darkFantasy.js    暗黑幻想（定案）
-   ├─ entities/
-   │  ├─ Entity.js            實體基底：位置、速度、半徑、血量、擊退、受傷/死亡、模型重建
-   │  ├─ Player.js            玩家：雙層狀態機、武器、主動欄位
-   │  ├─ playerStates.js      玩家的移動層與動作層狀態定義
-   │  ├─ Enemy.js             敵人基底：波次倍率、共用狀態（spawn/hurt/dead）、接觸傷害
-   │  ├─ enemyDefs.js         敵人資料定義（grunt / archer / boss）
-   │  ├─ enemies/
-   │  │  ├─ MeleeEnemy.js     近戰小怪：追擊、接觸傷害
-   │  │  ├─ RangedEnemy.js    遠程小怪：保持距離、瞄準預備、發射投射物
-   │  │  └─ Boss.js           Boss：重砸、衝鋒、召喚、狂暴
-   │  └─ Projectile.js        投射物（可自訂外觀；可設定範圍爆炸）
-   ├─ combat/
-   │  ├─ Combat.js            傷害結算、命中判定查詢（扇形、圓形）、擊退計算
-   │  └─ Physics.js           圓形碰撞分離、場地邊界
-   ├─ weapons/
-   │  ├─ weaponDefs.js        武器資料定義（劍盾、法杖）
-   │  └─ weaponBehaviors.js   武器攻擊/特殊技的行為函式
-   ├─ skills/
-   │  ├─ skillDefs.js         主動技能/道具資料定義（治療藥水、疾跑）
-   │  ├─ skillBehaviors.js    技能行為：canUse（選用條件）與 activate（效果）
-   │  └─ ActiveSlots.js       數字鍵 1~5 主動欄位：裝備、觸發、CD 或次數
-   ├─ audio/
-   │  └─ Sound.js           Web Audio 即時合成音效；訂閱事件播放、M 鍵靜音
-   ├─ world/
-   │  ├─ Arena.js             依風格建立場地；碰撞邊界固定
-   │  ├─ waveDefs.js          波次表與波次數值成長
-   │  └─ Spawner.js           分波生成、Boss 出場、召喚用 spawnAt
-   └─ ui/
-      └─ HUD.js               血條、技能欄、波次/時間、Boss 血條、橫幅、死亡/勝利畫面
+輸入層（本機）        模擬層（只在權威端跑）              畫面層（每台都跑）
+InputCollector ──► InputCmd ──► World.step(cmds, dt) ──► 快照 + 事件 ──► WorldView / HUD / Sound
 ```
+- **模擬層（`sim/`）**：遊戲的全部規則（移動、狀態機、命中、傷害、CD、生成、勝敗）。只用 `RefCounted` 類別與資料，**不繼承 Node、不碰場景樹**。
+  - 禁止使用：`Input`、`get_node` / `$`、任何 `Node` 型別、`Engine.time_scale`、全域 `randf()` / `randi()`、`Time.get_ticks_*`、讀檔。`tests/check.gd` 會掃描 `sim/` 擋住這些字。
+  - 時間只來自 `step()` 傳入的 `dt`；隨機只用 `world.rng`（`RandomNumberGenerator`，種子由權威端決定）。
+  - 輸出只有兩種：可讀取的狀態（實體列表、CD、波次）與本步的事件列表 `world.events`。
+- **輸入層（`input/`）**：把 Godot 的 `InputMap` 動作轉成一筆 `InputCmd`。螢幕方向的 WASD 在這裡轉成世界 XZ 向量、滑鼠在這裡投射到地面得到瞄準點，模擬層只看到世界座標。`InputCmd` 本身放在 `sim/`：它是模擬層的輸入格式（連線時原樣傳送），`input/` 只負責產生它。
+- **畫面層（`view/`、`ui/`、`audio/`）**：依實體 id 建立 / 移除模型，每個渲染幀讀模擬狀態擺位置與姿勢；消化事件來播特效、音效、更新 HUD。**畫面層不得修改模擬狀態**。
+- **單機 = 沒有連線的房主**：單機時本機同時當權威端與玩家，走的是跟連線房主完全相同的程式路徑，不另寫一套單機邏輯。
 
-規則：
-- 新增、刪除、搬移檔案時，同步更新本節與 `docs/檔案地圖.md`。
-- **一個檔案一個主要職責**，單檔超過約 300 行就該考慮拆分。
-- `core/` 不得 import 任何其他目錄（依賴只能由上往下：內容 → core）。`src/Game.js` 是唯一的組合根，負責建立並串接所有系統。
-- 模組之間優先透過 **建構時注入**（傳入 `game`）或 **EventBus** 溝通，禁止使用全域變數（除錯用的 `window.__game` 例外）。
+## 3. 目錄結構（`godot/`）
+```
+godot/
+├─ project.godot
+├─ main.tscn / main.gd        組合根：建立 world、輸入、畫面，主迴圈、三種模式（單機 / 房主 / 客戶端）、重新開始
+├─ core/                      與遊戲內容無關：config.gd、version.gd、math_util.gd、state_machine.gd、cooldowns.gd、
+│                             game_events.gd（autoload GameEvents）
+├─ defs/                      資料表（第 8 節）：weapon / skill / enemy / wave / stat / item / map / loot / weapon_drop /
+│                             monster_rarity / event / hint_defs.gd
+├─ sim/                       模擬層：world、input_cmd、stats、terrain、nav、vision、hitbox、entity、player、player_states、
+│  │                          loadout、inventory、item_effects、enemy、projectile、combat、physics、spawner、chest、item_pickup、
+│  │                          dig_event、weapon_behaviors、skill_behaviors、active_slots
+│  └─ enemies/                melee_enemy、ranged_enemy、boss
+├─ input/                     input_collector.gd（按鍵在程式中註冊，不寫在 project.godot）
+├─ net/                       連線：net_session（ENet / WebRTC 傳輸、RPC、大廳）、peerjs_signaling（房號配對）、net_host（輸入排隊、快照）、
+│                             net_client（鏡像 World、補間、預測修正）、net_codec（快照二進位編碼）
+├─ view/                      world_view、arena_view、camera_rig、animator、enemy_animator、rig、skinned_rig、part_kit、effects
+│  └─ styles/                 dark_fantasy.gd（第 14 節）
+├─ ui/                        hud.tscn / hud.gd、skill_bar、stats_panel、inventory_panel、floaters、world_labels、health_bars、hints、
+│                             main_menu、net_panel、player_tags、run_log、skill_icons、ui_kit
+├─ audio/                     sound.gd、sfx/*.wav、music/
+├─ debug/                     launch_args（指令列參數）、perf_meter（--perf）、debug_tools（F3~F5、--items 等）
+├─ tools/                     synth.gd（離線合成）、bake_sfx.gd / bake_music.gd（headless 產生音效 / 背景音樂 WAV）
+├─ tests/                     check.gd（headless 自動檢查的執行器）、check_kit.gd（共用工具）、*_checks.gd（依主題分檔的檢查）、
+│                             capture.tscn / capture.gd（離屏截圖）
+└─ stress_test/               效能壓力測試（保留作為效能基準）
+```
+- 依賴方向：`core` ← `defs` ← `sim` ← `view` / `ui` / `audio` / `net` / `debug` ← `main`。`sim` 不得引用 `view`、`ui`、`audio`、`input`、`net`、`debug`。
+- `main.gd` 是唯一的組合根，負責建立並串接所有系統；模組之間透過建構時注入或事件溝通，不用全域變數（autoload 只有 `GameEvents`）。
+- **一個檔案一個主要職責**，單檔約 300 行就考慮拆分。新增、刪除、搬移檔案時同步更新本節與 `docs/檔案地圖.md`。
+- 網頁版檔案對應：`Game.js → main.gd + sim/world.gd`、`Input.js → input/`、`Renderer.js → view/camera_rig.gd`、`render/rig.js → view/rig.gd + part_kit.gd`、`*Defs.js → defs/`、`EventBus.js → GameEvents autoload`、`HUD.js → ui/`、`Sound.js → audio/ + tools/bake_sfx.gd`，其餘同名改 snake_case。
 
 ---
 
 ## 4. 座標、單位與時間
 
 - **單位**：1 單位 = 1 個方塊 ≈ 1 公尺。人形高約 2 單位。
-- **座標**：Y 軸朝上，地面 `y = 0`。遊戲邏輯只在 XZ 平面運算（`x`、`z`），Y 只用於視覺。
-- **角度**：弧度。角色朝向 `facing` 以 XZ 平面角度表示。
+- **座標**：Y 軸朝上，地面 `y = 0`。邏輯在 XZ 平面運算（模擬層用 `Vector2(x, z)`），高度另外記在 `entity.height`（系統說明 §3）。
+- **角度**：弧度。`facing = atan2(dx, dz)`（0 = 面向 +Z）；模型面向 +Z 建模，`rotation.y = facing` 可直接套用。
 - **時間**：秒。所有速度、CD、持續時間都以秒為單位。
-- **主迴圈**：固定步長 `FIXED_DT = 1/60` 更新邏輯（累加器模式，單幀最多補 5 步），渲染每幀一次。遊戲邏輯一律使用傳入的 `dt`，禁止直接讀 `performance.now()`。
-- **命中停頓**：呼叫 `game.hitStop(秒)`。期間 `Game` 以真實時間倒數並把邏輯時間縮放到 5%，所有系統自動受影響，不需各自處理。
-- **輸入**：`Input` 的「本步按下」狀態保留到下一個邏輯步執行完才清除，高更新率螢幕也不會漏按。
-- **更新順序**（`Game.update`）：系統按鍵 → CD tick → 玩家 → 敵人 → 投射物 → 位移積分 → 碰撞分離 → 場地限制 → 生成器 → 特效 → 清除已移除物件。模型同步與 HUD 在每個渲染幀執行。
+- **主迴圈**：模擬固定每秒 60 步，用 Godot 內建 `_physics_process`（`physics_ticks_per_second=60`、`max_physics_steps_per_frame=5`；等於預設值的設定 Godot 存檔時會從 `project.godot` 刪掉，看不到是正常的）。不使用 Godot 的物理引擎與物理節點，只借用它的固定步長。
+- `main.gd` 在 `_physics_process` 收集輸入 → `world.step()` → 分送事件；畫面在 `_process` 以 `Engine.get_physics_interpolation_fraction()` 在上一步與這一步的位置之間補間。
+- **更新順序**（`World.step`）：CD → 玩家 → 敵人 → 投射物 → 位移積分 → 碰撞分離 → 場地與地形限制 → 垂直移動 → 生成器 / 事件 → 清除已移除物件。
+- **輸入**：「本步按下」由 `InputCollector` 鎖存：兩次 `step` 之間按過就算，送出後才清除，高更新率螢幕也不漏按。
+- **命中定格**（v0.18.3 使用者決定，取代網頁版的整體放慢）：模擬時間照常走，`entity:damaged` 帶 `hit_stop` 秒數，畫面層（`world_view.gd`）讓攻擊者與目標的模型停住、之後跟上。只是畫面效果。**v0.19.1 起預設關閉**（`Config.FEEL.hit_freeze = false`），事件仍帶 `hit_stop`，要加回來只改開關。
+- 整體放慢只剩打倒 Boss 的 0.25 秒慢動作：邏輯時間放慢到 5%，**每步仍是 `FIXED_DT`**（只是少跑幾步）。模擬層用 `world.hit_stop(秒)` 記錄，`main.gd` 每個真實固定步呼叫 `world.consume_hit_stop()` 取得縮放。
+- 畫面震動：玩家方的攻擊打中不震動（`Config.FEEL.player_attack_shake = false`，v0.18.3 使用者決定）；玩家被打、Boss 砸地 / 撞牆 / 狂暴 / 登場、通關照常震動。
+- 實體與 `World` 互相參照（RefCounted 循環），移除實體、`reset()` 與結束遊戲時必須經過 `world.clear()` / 移除流程切斷參照，否則記憶體洩漏（`check.gd` 有檢查）。
+- 暫停：單機時 `Esc` 停止呼叫 `step()`，失去焦點自動暫停；連線時 `Esc` 只開選單，模擬不停。
 
 ---
 
 ## 5. 操作對應
 
+按鍵在 `input/input_collector.gd` 註冊。
+
 | 輸入 | 功能 |
 |---|---|
 | WASD | 移動，**以螢幕方向為準**（W = 畫面上方，世界座標為斜向） |
-| 滑鼠游標 | 射線投射到地面平面得到瞄準點，角色面朝該點 |
-| 滑鼠左鍵 | 普通攻擊（按住可連續攻擊） |
-| 滑鼠右鍵 | 武器特殊技（受 CD 管理） |
-| 空白鍵 | 跳躍（Godot 版，見 15.13；只有一段跳） |
-| Shift | 翻滾（Godot 版，見 15.12；受次數與回充管理） |
+| 滑鼠游標 | 投射到地面得到瞄準點，角色面朝該點 |
+| 滑鼠左鍵 | 普通攻擊（按住可連續攻擊）；劍盾格擋中按 = 招架 |
+| 滑鼠右鍵 | 武器特殊技（劍盾：按住格擋；法杖：奧術爆裂） |
+| 空白鍵 | 跳躍（系統說明 §3） |
+| Shift | 翻滾（系統說明 §2；受次數與回充管理） |
 | 1 ~ 5 | 主動欄位（受 CD 或次數管理） |
-| F | 按住救援倒地的隊友（Godot 版 v0.21.0，見 15.18） |
-| Tab | 屬性面板（Godot 版） |
-| R | 死亡或通關後重新開始（連線時只有房主能按） |
-| F1 | 除錯：切換劍盾 / 法杖（非正式武器切換系統；Godot 版 v0.21.0 起走 InputCmd，連線時也能用） |
+| F | 撿道具、開寶箱；按住救援倒地的隊友、挖墳 |
+| X、滑鼠滾輪 | 切換兩格裝備欄的武器 |
+| Tab | 背包與屬性面板 |
+| R | 死亡或通關後重新開始（連線時只有房主能按）；拖著背包道具時旋轉 |
+| Esc | 暫停 / 選單（失去焦點時自動暫停；死亡或通關畫面不能暫停）；連線時只開選單、遊戲不停 |
+| M | 靜音切換 |
 | F2 | 除錯：顯示碰撞與命中範圍 |
-| F3 | 除錯：移速 +50%（Godot 版；F3~F5 只有單機） |
-| Esc | 暫停 / 繼續（視窗失去焦點時自動暫停；死亡或通關畫面不能暫停）；Godot 版選單裡有開房 / 加入，連線時 Esc 只開選單、遊戲不停 |
-| M | 靜音切換（記在瀏覽器） |
-
-右鍵選單在 canvas 上一律停用。
+| F3 / F4 / F5 | 除錯（只有單機）：移速 +50% / 放入下一個道具 / 清空道具 |
 
 ---
 
-## 6. 狀態機規範
+## 6. 狀態機
 
-### 6.1 通用 StateMachine
-- 狀態是一個物件：`{ enter(ctx, data), update(ctx, dt), exit(ctx), canExit?(ctx, next) }`，皆為選用。
-- 只能透過 `fsm.change(name, data)` 切換；**禁止**直接改 `fsm.current`。
-- 每個狀態可讀 `fsm.time`（進入此狀態後經過的秒數）。
-- 狀態名稱用 camelCase 字串，例如 `'idle'`、`'attack'`。
+### 6.1 通用 StateMachine（`core/state_machine.gd`）
+- 狀態是一個物件，可實作 `enter(ctx, data, fsm)`、`update(ctx, dt, fsm)`、`exit(ctx, fsm)`、`can_exit(ctx, next, fsm) -> bool`，皆為選用。
+- 只能透過 `fsm.change(name, data)` 切換（`can_exit` 拒絕時回傳 false）；**禁止**直接改 `fsm.current`。
+- 可讀：`fsm.current_name`、`previous_name`、`time`（進入此狀態後經過的秒數）、`data`（每次進入時重建，放這次執行的暫存資料）；`fsm.is_in(name)`。
+- 狀態名稱用 StringName、camelCase，例如 `&"idle"`、`&"useItem"`。
 
-### 6.2 玩家雙層狀態機
+### 6.2 玩家雙層狀態機（`sim/player_states.gd`）
 | 層 | 狀態 | 說明 |
 |---|---|---|
-| 移動層 `locomotion` | `idle` / `move` / `dead` | 只處理位移與腿部動畫 |
-| 動作層 `action` | `ready` / `attack` / `special` / `useItem` / `stagger` | 處理攻擊、技能、受擊硬直與上半身動畫 |
+| 移動層 | `idle` / `move` / `downed` / `dead` | 只處理位移 |
+| 動作層 | `ready` / `attack` / `special` / `useItem` / `stagger` / `roll` / `revive` / `dig` | 攻擊、技能、硬直、翻滾、救援、挖墳 |
 
-- 兩層各自 update，**動作層可以限制移動層**：每個動作狀態宣告 `moveSpeedMul`（例如劍攻擊 0.3、法杖 0.8、硬直 0）。
-- 攻擊類動作固定分三段：**`windup`（前搖） → `active`（判定） → `recovery`（後搖）**。命中判定只在 `active` 期間生效，每次出手同一目標只命中一次。
-- 時間長度一律來自武器/技能的資料定義，狀態本身不寫死數值。
-- `dead` 為終止狀態，進入後兩層都不再接受輸入。
+- 兩層各自 update，**動作層可以限制移動層**：每個動作在 `data.move_speed_mul` 宣告移速倍率（例如硬直 0）；`data.lock_facing = true` 鎖定轉向。
+- 攻擊類動作固定分三段：**`windup`（前搖）→ `active`（判定）→ `recovery`（後搖）**（`PlayerStates.PHASES`）。命中判定只在 `active` 期間生效，每次出手同一目標只命中一次。時間長度一律來自武器 / 技能的資料，狀態本身不寫死數值。
+- 動作層輸入有**緩衝**（`Config.PLAYER.action_buffer_time`）：先存入 `player.buffered_action`，由 `ready` 狀態消化；攻擊後搖期間若有緩衝會直接取消後搖。
+- `dead` 為終止狀態，進入後兩層都不再接受輸入。多人時生命歸零先進 `downed`（系統說明 §8）。
+- 模擬層只記錄動畫所需的資料 `player.anim`，姿勢在畫面層算（第 11 節）。
 
-- 動作層輸入有 **緩衝**（`PLAYER.actionBufferTime`）：右鍵與數字鍵先存入 `player.bufferedAction`，由 `ready` 狀態消化；攻擊後搖期間若有緩衝會直接取消後搖。
-- 動作狀態可在 `fsm.data.lockFacing = true` 時鎖定轉向。
-
-### 6.3 敵人
-敵人使用同一個 `StateMachine`。`Enemy.js` 提供共用狀態 `spawn`（從地底爬出）/ `hurt`（硬直）/ `dead`（倒地沉沒後移除），子類別以 `static STATES` 合併自己的狀態，並以 `mainState` 指定爬出與硬直結束後回到哪個狀態。
+### 6.3 敵人（`sim/enemy.gd`、`sim/enemies/`）
+敵人使用同一個 `StateMachine`。`Enemy.base_states()` 提供共用狀態 `dormant`（怪群休眠）/ `spawn`（從地底爬出）/ `hurt`（硬直）/ `dead`，子類別把自己的狀態合併進去，並以 `main_state` 指定爬出、醒來與硬直結束後回到哪個狀態。
 
 | 類別 | 狀態 | 說明 |
 |---|---|---|
-| `MeleeEnemy` | `chase` | 追擊、接觸傷害（命中時播放揮擊動畫） |
-| `RangedEnemy` | `kite` / `aim` | 保持 `preferredRange` 距離並橫移；冷卻好時停下瞄準，前 75% 追蹤玩家、最後鎖定方向再發射 |
-| `Boss` | `chase` / `slam` / `charge` / `summon` | 霸體（不使用 `hurt`，擊退大幅減免）；招式都有地面預警；血量低於門檻進入狂暴（移速提升、冷卻縮短） |
+| `MeleeEnemy` | `chase` / `swing` / `rush` | 追擊、舉刀揮砍（系統說明 §4）、狂暴 Boss 召喚的衝撞 |
+| `RangedEnemy` | `kite` / `aim` | 保持距離並橫移；冷卻好時停下瞄準再發射 |
+| `Boss` | `chase` / `cleave` / `slam` / `charge` / `summon` | 霸體（拿掉 `hurt`）；招式見系統說明 §13 |
 
-- 敵人的招式冷卻同樣使用 `CooldownManager`，key 為 `enemy<id>.<招式>`，敵人移除時需 `reset`。
-- 波次倍率（血量 / 傷害 / 移速）在建構時套用，Boss 不套用。
+- 行為類別由資料表的 `behavior` 欄位決定（`Spawner.behavior_class`），流程只看 `behavior`、`is_boss` 等欄位，不寫死怪物種類。
+- 敵人的招式冷卻同樣用 `CooldownManager`，key 由 `Enemy.cd(招式)` 產生（`enemy<id>.<招式>`），在 `on_added()` 之後才開始；敵人移除時 `reset`。
 
-### 6.4 武器行為介面
-`weaponBehaviors.js` 的每個行為物件可實作以下選用函式，由 `attack` / `special` 狀態呼叫：
+### 6.4 武器行為介面（`sim/weapon_behaviors.gd`）
+每個行為類別（繼承 `Behavior`）可實作以下函式，由 `attack` / `special` 狀態呼叫：
 
 | 函式 | 呼叫時機 |
 |---|---|
 | `enter(p, def, data)` | 進入動作時（可修改 `data.durations` 調整三段時間） |
-| `phase(p, def, data, name)` | 每個階段開始時（`windup` / `active` / `recovery`），產生投射物、特效 |
-| `update(p, def, data, name, k, dt)` | 每步呼叫，`k` 為階段進度 0~1；負責命中判定與姿勢 |
+| `phase(p, def, data, name)` | 每個階段開始時（`windup` / `active` / `recovery`），產生投射物、發特效事件 |
+| `update(p, def, data, name, k, dt)` | 每步呼叫，`k` 為階段進度 0~1；負責命中判定 |
 | `exit(p, def, data)` | 離開動作時（含被打斷），負責還原暫時狀態 |
 
 ---
 
 ## 7. 冷卻時間（CD）管理
 
-- 全遊戲只有 **一個** `CooldownManager` 實例，由 `Game` 持有，於固定步長中 `tick(dt)`。
-- Key 命名規則：`<擁有者>.<用途>`，例如 `player.special`、`player.slot1`。
-- API：
-  - `start(key, duration)`：開始冷卻
-  - `isReady(key)` → boolean
-  - `remaining(key)` → 剩餘秒數
-  - `progress(key)` → 0~1（1 = 冷卻完成，給 HUD 畫遮罩用）
-  - `reset(key)` / `resetAll()`
-- **適用範圍**：右鍵特殊技、數字鍵 1~5、敵人招式。左鍵普攻不使用 CD Manager，攻擊頻率由動作狀態的前搖/後搖時間自然決定。
+- 全遊戲只有**一個** `CooldownManager`（`core/cooldowns.gd`），由 `world.cooldowns` 持有，於 `World.step` 中 `tick(dt)`。
+- Key 命名規則：`<擁有者>.<用途>`，例如 `player.special`、`player.slot1`、`player.roll`。多人時每位玩家實際存在 `Player.cd(key)`（`key@peer_id`）；事件與 HUD 仍用 `player.special` 這類名稱。
+- API：`start(key, duration)`、`tick(dt)`、`is_ready(key)`、`remaining(key)`（剩餘秒數）、`progress(key)`（0~1，1 = 冷卻完成，給 HUD 畫遮罩）、`reset(key)`、`reset_all()`。
+- **適用範圍**：右鍵特殊技、數字鍵 1~5、翻滾回充、敵人招式。左鍵普攻不使用 CD，攻擊頻率由動作的前搖 / 後搖時間決定。
+- 冷卻縮減屬性乘在 `start` 的時間上（系統說明 §1）。
 - 嘗試在冷卻中觸發時，發出 `skill:onCooldown` 事件（HUD 閃爍提示），不做其他事。
 
 ---
 
 ## 8. 資料驅動的內容定義
 
-武器與技能都是「資料 + 行為」分離：數值放在 `*Defs.js`，邏輯放在行為函式。新增內容時優先只加一份資料。
+- 內容都是「資料 + 行為」分離：數值放在 `defs/*.gd` 的 `const` Dictionary（不用 `.tres` Resource），邏輯放在 `sim/` 的行為類別。新增內容時優先只加一份資料。
+- Key 用 StringName（`&"swordShield"`），欄位名稱 snake_case（從網頁版搬來的照原名改 snake_case，方便對照）。
+- 資料表與對應的行為：
 
-### 8.1 武器定義格式（`weaponDefs.js`）
-```js
-export const WEAPONS = {
-  swordShield: {
-    id: 'swordShield',
-    name: '劍盾',
-    type: 'melee',                 // 'melee' | 'ranged'
-    model: 'swordShield',          // 對應造型風格的 weapons 欄位
-    idle: { armR: -0.35, armL: -0.1, tilt: 0 }, // 待機姿勢
-    attack: {                      // 左鍵
-      behavior: 'meleeSwing',      // 對應 weaponBehaviors.js 的行為名稱
-      damage: 12, range: 2.3, arc: Math.PI * 0.65,
-      windup: 0.07, active: 0.09, recovery: 0.2,
-      knockback: 7, moveSpeedMul: 0.35,
-    },
-    special: {                     // 右鍵
-      behavior: 'shieldBash',
-      cooldown: 4, /* ...其他參數 */
-    },
-  },
-};
-```
+| 資料表 | 內容 | 行為 / 使用者 |
+|---|---|---|
+| `weapon_defs.gd` `WEAPONS` | 武器的 `attack`（左鍵）、`special`（右鍵）：`behavior`、傷害、範圍、三段時間、`move_speed_mul` | `WeaponBehaviors`（`behavior` 對應類別） |
+| `skill_defs.gd` `SKILLS` | 主動欄位：`mode`（`&"cooldown"` / `&"charges"`）、`cooldown`、`charges`、`behavior` | `SkillBehaviors`、`ActiveSlots` |
+| `enemy_defs.gd` `ENEMIES` | 每種怪的 `visual`、`behavior`（melee / ranged / boss）、`is_boss`、`freeze_immune`、數值與招式 | `Spawner.behavior_class`、`sim/enemies/` |
+| `wave_defs.gd` | 波次表（每波 `spawns`、`is_boss`）、波次成長 | `Spawner` |
+| `stat_defs.gd` | 屬性名稱、基礎值、上下限、顯示方式 | `Stats`（系統說明 §1） |
+| `item_defs.gd` | 道具與武器、稀有度、形狀、效果（屬性 / 條件 / 觸發 / 能力） | `ItemEffects`（系統說明 §6、§16） |
+| `map_defs.gd` | 地圖、石台、寶箱、生成規則 | `World.load_map`（系統說明 §9） |
+| `loot_defs.gd`、`weapon_drop_defs.gd` | 金幣、寶箱、武器掉落與詞條 | 系統說明 §11、§12 |
+| `monster_rarity_defs.gd` | 怪物稀有度、詞條、怪群 | 系統說明 §14 |
+| `event_defs.gd` | 挖墳事件、難度 | 系統說明 §15 |
+| `hint_defs.gd` | 新手提示文字 | `ui/hints.gd` |
 
-### 8.2 主動欄位定義格式（`skillDefs.js`）
-```js
-export const SKILLS = {
-  heal: {
-    id: 'heal', name: '治療', icon: '✚',
-    mode: 'cooldown',              // 'cooldown'（只有 CD）| 'charges'（有使用次數）
-    cooldown: 8, charges: null,
-    behavior: 'heal', amount: 30,
-  },
-};
-```
-
-### 8.3 敵人與波次（`enemyDefs.js`、`waveDefs.js`）
-- `ENEMIES` 每個類型有 `visual`（對應造型風格的 `characters.melee / ranged / boss`）與數值；行為類別由 `Spawner` 的 `ENEMY_CLASSES` 對應（`grunt → MeleeEnemy`、`archer → RangedEnemy`、`boss → Boss`）。
-- `WAVES` 是陣列，每波 `{ spawns: { 類型: 數量 }, isBoss? }`；最後一波打倒 Boss 即通關。
-- `WAVE_SCALING` 定義每多一波小怪的血量 / 傷害 / 移速成長比例。
+- 道具效果的條件與動作是 `ItemEffects` 的類別，用 `CONDITIONS` / `ACTIONS` 查表；新增時加一個類別並登錄，再把名稱加進 `ItemDefs.IMPLEMENTED_*`（`check.gd` 會比對兩邊一致）。
+- 可調數值放 `core/config.gd` 或 `defs/`，邏輯內不寫魔術數字。
 
 ---
 
-## 9. 事件（EventBus）
+## 9. 事件
 
-- 事件名稱格式：`<領域>:<動作>`，全小寫駝峰，例如 `entity:damaged`、`entity:died`、`player:died`、`skill:used`、`skill:onCooldown`、`game:restart`。
-- payload 一律為單一物件，例如 `{ target, amount, source }`。
-- 事件用於**通知**（UI、特效、音效），不用於核心流程控制；核心流程用直接呼叫。
-- Godot 版 v0.21.0 起：玩家自己的動作途中發出的事件會被 World 加上 `actor`（peer id），客戶端用它丟掉自己已經本機預測播過的事件（15.18）；命中結果與盾反不加。
-- 所有事件名稱必須列在本節下方的清單中：
+- 模擬層每步把事件 append 到 `world.events`（`world.emit_event(name, payload)`；`{ "name": String, ... }`，**只放 id 與數值，不放物件參照**，才能透過網路傳送），步驟結束後由組合根交給 `GameEvents`（autoload）以訊號 `event_emitted(name, payload)` 發出。
+- 事件名稱格式：`<領域>:<動作>`，例如 `entity:damaged`、`player:died`、`skill:onCooldown`。payload 一律為單一 Dictionary。
+- payload 的 `name` 欄位保留給事件名稱（`emit_event` 會擋下衝突），所以 `sfx:cue` 的音效名稱放在 `cue`（必須是 `audio/sound.gd` 的 `CUE_NAMES` 之一，`check.gd` 會檢查）。
+- 事件用於**通知**（UI、特效、音效），只有畫面層訂閱；模擬層內部流程用直接呼叫。震動是 `camera:shake`，特效是 `fx:*`（系統說明 §7），模擬層不能直接呼叫畫面。
+- 玩家自己的動作途中發出的事件會被 World 加上 `actor`（peer id），客戶端用它丟掉自己已經本機預測播過的事件（系統說明 §8）；命中結果與盾反不加。
+- 所有事件名稱必須列在下表（`check.gd` 會檢查 `fx:*`）。下表的 payload 欄位沿用網頁版的名稱，物件欄位在 Godot 版改成 id（例如 `target` → `target_id`）：
 
 | 事件 | payload | 發出者 |
 |---|---|---|
-| `entity:damaged` | `{ target, amount, source, knockback, isCrit }`（Godot 版：`isCrit` 拆成 `is_heavy` 重擊顯示（第三段、盾反、爆炸）與 `is_crit` 屬性擲出的爆擊，見 15.11；另帶 `hit_stop` 命中定格秒數，見 15.3；目標是玩家時再帶 `source_kind`、`origin`、`lethal` 給遊玩紀錄，v0.34.0） | Combat |
-| `entity:healed` | `{ target, amount }` | skillBehaviors |
-| `player:blocked` | `{ player_id, perfect }`（Godot 版 v0.18.0：格擋擋下攻擊；perfect = 招架成功（v0.41.0 起），下一步盾反） | Player.try_block |
-| `entity:died` | `{ entity, source }`（Godot 版另帶 `kind`，v0.34.0 遊玩紀錄用） | Entity |
-| `player:died` | `{ player }`（Godot 版 v0.21.0 起只代表這位玩家真的死亡；輸掉一局改看 `game:defeat`） | Player |
-| `player:downed` | `{ player_id }`（僅 Godot 版 v0.21.0：多人時生命歸零先倒地假死，見 15.18） | Player |
-| `player:revived` | `{ player_id }`（僅 Godot 版 v0.21.0：被隊友救起） | Player.revive |
+| `entity:damaged` | `{ target, amount, source, knockback, isCrit }`（Godot 版：`isCrit` 拆成 `is_heavy` 重擊顯示（第三段、盾反、爆炸）與 `is_crit` 屬性擲出的爆擊，見系統說明 §1；另帶 `hit_stop` 命中定格秒數，見第 4 節；目標是玩家時再帶 `source_kind`、`origin`、`lethal` 給遊玩紀錄，v0.34.0） | Combat |
+| `entity:healed` | `{ target, amount }` | SkillBehaviors、ItemEffects |
+| `player:blocked` | `{ player_id, perfect }`（v0.18.0：格擋擋下攻擊；perfect = 招架成功（v0.41.0 起），下一步盾反） | Player.try_block |
+| `entity:died` | `{ entity, source, kind }`（`kind` 給 v0.34.0 遊玩紀錄） | Entity |
+| `player:died` | `{ player }`（v0.21.0 起只代表這位玩家真的死亡；輸掉一局看 `game:defeat`） | Player |
+| `player:downed` | `{ player_id }`（v0.21.0：多人時生命歸零先倒地假死，見系統說明 §8） | Player |
+| `player:revived` | `{ player_id }`（v0.21.0：被隊友救起） | Player.revive |
 | `player:stunned` | `{ player_id, duration }`（v0.27.0：被 Boss 衝鋒撞到暈眩） | Player.stun |
-| `game:defeat` | `{ stats }`（僅 Godot 版 v0.21.0：全員倒下 = 輸；單機和 `player:died` 同一步發出） | World |
-| `item:added` | `{ player_id, item, uid }`（僅 Godot 版 v0.19.0：道具放進身上；item = 物品 id，uid = 實例 id，武器為空字串） | Player.add_item |
+| `game:defeat` | `{ stats }`（v0.21.0：全員倒下 = 輸；單機和 `player:died` 同一步發出） | World |
+| `item:added` | `{ player_id, item, uid }`（v0.19.0：道具放進身上；item = 物品 id，uid = 實例 id，武器為空字串） | Player.add_item |
 | `inventory:full` | `{ player_id, item }`（v0.25.0：背包放不下） | Player.add_item / add_weapon |
 | `weapon:dropped` | `{ uid, base, rarity, pos }`（v0.26.0：殺怪掉武器） | World.on_enemy_died |
 | `weapon:added` | `{ player_id, uid, slot }`（v0.26.0：撿到武器；slot = 裝備欄 0 / 1，-1 = 背包） | Player.add_weapon |
-| `weapon:merged` | `{ player_id, uid, base, rarity }`（v0.26.0：合成成功） | Player._merge |
-| `weapon:merge_denied` | `{ player_id }`（v0.26.0：不能合成） | Player._merge |
+| `weapon:merged` | `{ player_id, uid, base, rarity }`（v0.26.0：合成成功） | Loadout |
+| `weapon:merge_denied` | `{ player_id }`（v0.26.0：不能合成） | Loadout |
 | `gold:gained` | `{ amount, pos, total }`（v0.25.0：殺怪得到共用的錢） | World.on_enemy_died |
 | `chest:denied` | `{ chest_id, player_id, price }`（v0.25.0：錢不夠開寶箱） | Chest.try_open |
 | `chest:opened` | `{ chest_id, player_id, item, rarity, pos }`（v0.25.0：開了寶箱，道具掉在地上） | Chest.try_open |
-| `skill:used` | `{ key, def }` | playerStates / ActiveSlots |
-| `skill:onCooldown` | `{ key }` | playerStates / ActiveSlots |
+| `skill:used` | `{ key, def }` | PlayerStates / ActiveSlots |
+| `skill:onCooldown` | `{ key }` | PlayerStates / ActiveSlots |
 | `wave:started` | `{ wave, total, isBoss }` | Spawner |
 | `boss:enraged` | `{ boss }` | Boss |
-| `game:victory` | `{ stats }` | Game（Boss 死亡後延遲發出） |
-| `game:restart` | `{}` | Game |
-| `game:paused` | `{ paused }` | Game（Esc、失去焦點） |
-| `audio:muted` | `{ muted }` | Game（M 鍵） |
-| `sfx:cue` | `{ name }` | 各遊戲物件；`name` 必須是 `audio/Sound.js` 的 `CUES` 之一（check.js 會檢查）。Godot 版欄位為 `cue` |
-| `camera:shake` | `{ amount, duration, player_id? }` | 僅 Godot 版：Combat、Player、Projectile、Enemy、Boss、World（模擬層不能直接震相機）；有 `player_id`（玩家被打）時只震那位玩家的畫面 |
-| `fx:slash` | `{ pos, height, facing, range, arc, color, swing_dir }` | 僅 Godot 版（v0.20.0 起的特效事件，見 15.17）：劍盾揮砍 |
+| `game:victory` | `{ stats }` | World（Boss 死亡後延遲發出） |
+| `game:restart` | `{}` | World.reset |
+| `game:paused` | `{ paused }` | main.gd（Esc、失去焦點） |
+| `audio:muted` | `{ muted }` | main.gd（M 鍵） |
+| `sfx:cue` | `{ cue, pos? }` | 各遊戲物件；`cue` 必須是 `audio/sound.gd` 的 `CUE_NAMES` 之一 |
+| `camera:shake` | `{ amount, duration, player_id? }` | Combat、Player、Projectile、Enemy、Boss、World（模擬層不能直接震相機）；有 `player_id`（玩家被打）時只震那位玩家的畫面 |
+| `fx:slash` | `{ pos, height, facing, range, arc, color, swing_dir }` | 劍盾揮砍（`fx:*` 是 v0.20.0 起的特效事件，見系統說明 §7） |
 | `fx:muzzle` | `{ pos, height, color }` | 法杖魔彈發射 |
 | `fx:telegraph` | `{ pos, height, radius, color, life }` | 奧術爆裂落點預警 |
 | `fx:fizzle` | `{ pos, height, color }` | 投射物飛到盡頭、撞牆或被格擋 |
@@ -307,36 +242,38 @@ export const SKILLS = {
 | `fx:lightning` | `{ pos, height, points, color }` | 道具連鎖閃電（v0.33.0）：points 依序連成的閃電線 |
 | `fx:status` | `{ pos, height, color }` | 道具讓怪中毒 / 冰凍（v0.33.0）：一小團該顏色的粒子 |
 
+其他系統的事件（`event:*`、`floor:started`、`boss:reward`、`hit:predicted` 等）寫在系統說明對應的一節。
+
 ---
 
-## 10. 命名慣例
+## 10. 命名與程式風格（GDScript）
 
 | 對象 | 規則 | 範例 |
 |---|---|---|
-| Class 檔案 | PascalCase，與 class 同名 | `CooldownManager.js` |
-| 非 class 模組 | camelCase | `weaponDefs.js`、`playerStates.js` |
-| Class | PascalCase | `class Zombie` |
-| 函式、變數、物件屬性 | camelCase | `applyDamage`、`moveSpeedMul` |
-| 常數 | UPPER_SNAKE_CASE | `FIXED_DT`、`WEAPONS` |
-| 私有成員 | `#` 前綴（原生私有欄位） | `#accumulator` |
-| 布林值 | `is` / `has` / `can` 開頭 | `isDead`、`canMove` |
-| 事件名稱 | `domain:action` | `entity:damaged` |
-| CD key | `owner.purpose` | `player.slot1` |
+| 檔案 | snake_case | `cooldowns.gd`、`player_states.gd` |
+| 類別（`class_name`） | PascalCase | `class_name CooldownManager` |
+| 函式、變數 | snake_case | `apply_damage`、`move_speed_mul` |
+| 常數、資料表 | UPPER_SNAKE_CASE | `FIXED_DT`、`WEAPONS` |
+| 私有成員 | `_` 前綴 | `_accumulator` |
+| 布林值 | `is_` / `has_` / `can_` 開頭 | `is_dead` |
+| 訊號 | 過去式 | `event_emitted` |
+| 狀態名稱 | StringName、camelCase | `&"idle"`、`&"useItem"` |
+| 事件名稱 | `domain:action` | `"entity:damaged"` |
+| CD key | `owner.purpose` | `"player.slot1"` |
 
 - 程式碼的識別名稱一律英文；**註解與文件使用繁體中文**。
-- 每個檔案開頭用一行註解說明職責。
-- 只在「為什麼這樣做」不明顯時才寫註解，不寫重述程式碼的註解。
+- 每個檔案開頭用一行註解說明職責；只在「為什麼這樣做」不明顯時才寫註解，不寫重述程式碼的註解。
+- 一律寫靜態型別（`var hp: float`、`func step(cmds: Dictionary, dt: float) -> void`），型別錯誤在匯入時就會報出，也比較快。
+- GDScript 的 `const` Dictionary 不能放類別參照（會報 "isn't a constant expression"）：要用表對應類別時用 `match` 或 `static var`。
+- 每幀執行的程式避免配置新物件（重複使用 Dictionary / 陣列）；共用網格與材質，受擊閃白改材質參數，不在每次受擊時建立新材質。
+- 實體移除時從場景移除節點並釋放專屬資源。
 
 ---
 
-## 11. 程式風格
+## 11. 動畫與姿勢
 
-- 使用 `const` / `let`，禁止 `var`。
-- 每個模組使用具名匯出（`export class` / `export const`），不使用 default export。
-- 重用 Three.js 物件：每幀運算用的 `Vector3` 等暫存物件放在模組層級重複使用，避免 GC 卡頓。
-- 共用幾何體與材質；受擊閃爍透過切換 `emissive`，不在每次受擊時建立新材質。
-- 實體移除時必須從場景移除 mesh 並 `dispose()` 專屬資源。
-- 可調數值集中放在 `config.js` 或 `*Defs.js`，邏輯程式內不出現魔術數字。
+- 網頁版的武器行為在 `update` 裡同時做命中判定與擺姿勢；Godot 版**拆開**：模擬層只記錄動畫所需的資料 `anim`（動作名稱、階段 `windup` / `active` / `recovery`、階段進度 `k`、狀態經過秒數），畫面層的 `view/animator.gd`（玩家）、`view/enemy_animator.gd`（敵人）依 `anim` 算出關節角度。
+- 規則：模擬層不出現關節名稱。連線時只要同步 `anim`，每台都能畫出同樣動作。
 
 ---
 
@@ -354,16 +291,16 @@ export const SKILLS = {
 - **推送**：`node tools/release.mjs --summary "摘要"`（流程見 `CLAUDE.md` 1.3）把「未發布」換成 `## [X.Y.Z] - 日期`、同步 `version.gd`、打 tag，一次推送 = 一個版號。「未發布」是空的（例如只改進度交接）就直接推、不升版號。自動判斷不對時用 `--bump=minor|patch` 蓋過。
 - 為什麼：兩位作者同時開發，各自先升版號會撞號；版號在推送前更新之後才決定就不會。每次推送最多一個 tag，Release 也一定會觸發。
 - 版號在已發布的部分三處一致：CHANGELOG 最新的已發布版本、`godot/core/version.gd`、git tag（`check.gd` 會檢查前兩者；網頁版的 `legacy/src/core/version.js` 已凍結在 0.7.0）。
-- HUD 角落顯示目前版號，方便確認瀏覽器載入的是最新版。
+- HUD 角落顯示目前版號，方便確認載入的是最新版。
 
 ---
 
 ## 13. 開發工作流程
 
-1. **開工**：`git pull --ff-only origin main`（失敗就停下來問使用者；有新 commit 就向使用者簡報）→ 讀 `CLAUDE.md` → `docs/進度.md`（先看「通知」）→ 本文件 → CHANGELOG 最上面 → 相關模組。
+1. **開工**：`git pull --ff-only origin main`（失敗就停下來問使用者；有新 commit 就向使用者簡報）→ 讀 `CLAUDE.md` → `docs/進度.md`（先看「通知」）→ 本文件與 `docs/系統說明.md` 相關的節 → CHANGELOG 最上面 → 相關模組。
 2. **實作**：先列出預計修改的檔案並取得使用者同意；遵守本文件；若需要偏離規範，先更新本文件再寫程式。
-3. **驗證**：`node tools/release.mjs --check`，全部通過；改到畫面或操作時，另外用離屏截圖驗證（見 15.10）。
-4. **記錄**：改動記進 CHANGELOG 的「未發布」；架構有變就更新本文件；兩位作者都要知道的流程變更在 `docs/進度.md` 加「通知」。
+3. **驗證**：`node tools/release.mjs --check`，全部通過；改到畫面或操作時，另外用離屏截圖驗證（見第 17 節）。
+4. **記錄**：改動記進 CHANGELOG 的「未發布」；架構有變就更新本文件，系統細節有變就更新 `docs/系統說明.md`；兩位作者都要知道的流程變更在 `docs/進度.md` 加「通知」。
 5. **提交**：`git commit -m "摘要"`（不升版號、不打 tag）。只有使用者當次明確要求時才用 `node tools/release.mjs --summary "摘要"` 推送（見 `CLAUDE.md` 1.3）。
 6. **回報**：告訴使用者變更內容、驗證結果與已知問題；推送時另外報新版號。
 
@@ -371,324 +308,58 @@ export const SKILLS = {
 
 ## 14. 造型風格與角色模型
 
-- 所有角色都是 `render/rig.js` 的 **`Rig`**：統一關節階層 `root → body → head / armR / armL / legR / legL`，手掌掛點 `handR / handL`。角色面向 +Z、右側為 -X、四肢往 -Y 延伸。**動畫程式只轉動關節，不依賴任何特定造型**，因此改造型不需改動畫。
-- 手臂、腿的關節旋轉順序為 `YXZ`：先用 `rotation.x` 前後抬起，再用 `rotation.y` 水平揮動。
-- 零件用 `PartKit.add()` 建立、材質用 `kit.mat(color, { glow, metal })` 取得，才能統一受擊閃白、淡出與釋放資源。自發光部位（眼睛、寶石）用 `glow: true`，不受閃白影響。
-- **零件數影響效能**：角色建好後呼叫 `rig.optimize()`，武器與場地呼叫 `kit.mergeStatic(根節點, [會動的節點], [不合併的零件])`，把一起動的零件合併成少數 mesh（使用 Three.js 內建 `mergeGeometries`）。會單獨動畫的零件（例如法杖寶石）要放進不合併清單。`check.js` 會檢查每個角色與場地的零件數上限。
-- 風格是 `render/styles/` 下的一個模組（目前只有 `darkFantasy`），必須實作以下介面並在 `styles/index.js` 登錄：
+- 所有角色都是 `view/rig.gd` 的 **`Rig`**（Node3D）：統一關節階層 `root → body → head / arm_r / arm_l / leg_r / leg_l`，手掌掛點 `hand_r / hand_l`。角色面向 +Z、右側為 -X、四肢往 -Y 延伸。**動畫程式只轉動關節，不依賴任何特定造型**，因此改造型不需改動畫。
+- 關節旋轉順序為 Godot 預設的 `YXZ`：先用 `rotation.x` 前後抬起，再用 `rotation.y` 水平揮動。
+- 零件用 `PartKit.add(parent, mesh, material, t)` 建立、材質用 `kit.mat(color, glow)` 取得（同色共用），才能統一受擊閃白（`set_flash`）與釋放資源。自發光部位（眼睛、寶石）用 `glow = true`，不受閃白影響。網格用 `PartKit.box / cyl / cone / sphere / ico…`。
+- **零件數影響效能**：角色建好後呼叫 `rig.optimize()`，武器與場地呼叫 `kit.merge_static(根節點, [會動的節點], [不合併的零件])`，把一起動的零件合併成少數網格。會單獨動畫的零件（例如法杖寶石）要放進不合併清單。`check.gd` 會檢查每個角色與場地的零件數上限。
+- 大量的小怪用蒙皮版 `view/skinned_rig.gd`（系統說明 §14）；大量相同外觀的物件（投射物、粒子）用 `MultiMeshInstance3D`。
+- 造型在 `view/styles/dark_fantasy.gd`（`DarkFantasy`，已定案的暗黑幻想）：
 
-| 欄位 | 內容 |
+| 函式 | 內容 |
 |---|---|
-| `id`, `name` | 識別碼與顯示名稱 |
-| `names` | `{ knight, melee, ranged, boss }` 角色顯示名稱（Boss 血條使用） |
-| `environment` | `{ background, hemiSky, hemiGround, hemiIntensity, sunColor, sunIntensity }` |
-| `colors` | `{ blood, bossBlood, enemyProjectile, hitSpark }` |
-| `characters` | `{ knight, melee, ranged, boss }`，各為 `() => Rig` |
-| `weapons` | `{ swordShield, staff }`，各為 `() => { kit, main, offhand, gem? }`；`main` 掛在右手，`offhand` 掛在左臂 |
-| `enemyProjectile()` | `→ { kit, mesh }`，沿 +Z 建模 |
-| `buildArena(halfSize)` | `→ { kit, group }`；只負責外觀，碰撞邊界固定 |
+| `character(kind)` | 依實體種類（player / grunt / archer / boss…）建立 `Rig`；同種第二次起用合併好的模板 |
+| `skinned_character(kind)` | 小怪的蒙皮版本 |
+| `weapon(model)` | 武器外觀 `{ kit, main, offhand, gem? }`；`main` 掛在右手，`offhand` 掛在左臂 |
+| `enemy_projectile(color)` | 敵人投射物，沿 +Z 建模 |
+| `build_arena(half, rng)` | 測試場地外觀；地圖的石台由 `ArenaView` 畫 |
 
-- 新增職業或敵人時：先在 `darkFantasy.js` 補上對應的 `characters` 欄位，再新增資料定義。
+- 新增職業或敵人時：先在 `DarkFantasy` 補上外觀，再新增資料定義。
 - 新造型或新外觀的候選方案，依 `CLAUDE.md` 第 2.5 節先做對比頁給使用者挑選，選定後才做進遊戲。
 
 ---
 
-## 15. Godot 版架構（正式版）
+## 15. 實體與效能
 
-### 15.1 目標與已定案的方向
-| 項目 | 決定 |
-|---|---|
-| 引擎 | Godot 4.7.2 普通版，GDScript（一律寫型別）；效能不夠的熱點才改 C++（GDExtension），判斷依據見 `docs/進度.md` 壓力測試 |
-| 平台 | Windows 優先，目標 Steam 上架。能完整玩一局後加上**網頁匯出**取代試玩網站：網頁用 Compatibility 渲染器（`project.godot` 的 `.web` 覆寫），電腦版維持 Forward+；網頁版不支援 ENet / Steam 連線，只給朋友試玩單機 |
-| 多人 | **合作 1~4 人**，不做對戰 |
-| 連線架構 | **房主當伺服器**（listen server，房主即權威端）。開發期用 Godot 內建 ENet（本機 / 區網），上架前換成 Steam 連線（GodotSteam），只換傳輸層 |
-| 美術 | 照網頁版**程式生成**低多邊形暗黑幻想造型（第 14 節），用 GDScript 重寫，不用外部模型 |
-| 音效 | 照網頁版合成公式，用工具腳本預先產生 WAV 檔放進專案（不在遊戲中即時合成）；背景音樂為已選定的「B 哥德輓歌」 |
-| 開發順序 | 階段一：單機 1:1 搬完網頁版並驗收手感；階段二：接上 1~4 人連線。**階段一就必須照本節分層**，階段二才不用重寫 |
-
-### 15.2 三層分離（最重要的規則）
-```
-輸入層（本機）        模擬層（只在權威端跑）              畫面層（每台都跑）
-InputCollector ──► InputCmd ──► World.step(cmds, dt) ──► 快照 + 事件 ──► WorldView / HUD / Sound
-```
-- **模擬層（`sim/`）**：遊戲的全部規則（移動、狀態機、命中、傷害、CD、生成、勝敗）。只用 `RefCounted` 類別與資料，**不繼承 Node、不碰場景樹**。
-  - 禁止使用：`Input`、`get_node` / `$`、任何 `Node` 型別、`Engine.time_scale`、全域 `randf()` / `randi()`、`Time.get_ticks_*`、讀檔。`tests/check.gd` 會掃描 `sim/` 擋住這些字。
-  - 時間只來自 `step()` 傳入的 `dt`；隨機只用 `world.rng`（`RandomNumberGenerator`，種子由權威端決定）。
-  - 輸出只有兩種：可讀取的狀態（實體列表、CD、波次）與本步的事件列表 `world.events`。
-- **輸入層（`input/`）**：把 Godot 的 `InputMap` 動作轉成一筆 `InputCmd`。螢幕方向的 WASD 在這裡轉成世界 XZ 向量、滑鼠在這裡投射到地面得到瞄準點，模擬層只看到世界座標。
-- **畫面層（`view/`、`ui/`、`audio/`）**：依實體 id 建立 / 移除模型，每個渲染幀讀模擬狀態擺位置與姿勢；消化事件來播特效、音效、更新 HUD。**畫面層不得修改模擬狀態**。
-- **單機 = 沒有連線的房主**：單機時本機同時當權威端與玩家，走的是跟連線房主完全相同的程式路徑，不另寫一套單機邏輯。
-
-### 15.3 主迴圈與時間
-- 模擬固定每秒 60 步：使用 Godot 內建 `_physics_process`，`physics/common/physics_ticks_per_second=60`、`max_physics_steps_per_frame=5`（對應網頁版 `FIXED_DT`、`MAX_STEPS_PER_FRAME`）。每秒 60 步與 Forward+ 渲染器都是 Godot 預設值，Godot 編輯器存檔時會把等於預設值的設定從 `project.godot` 刪掉，看不到是正常的。不使用 Godot 的物理引擎與物理節點，只借用它的固定步長。
-- 組合根 `main.gd` 在 `_physics_process` 收集輸入 → `world.step()` → 分送事件；畫面在 `_process` 以 `Engine.get_physics_interpolation_fraction()` 在上一步與這一步的位置之間補間，高更新率螢幕也平順。
-- 更新順序與網頁版第 4 節相同（CD → 玩家 → 敵人 → 投射物 → 位移 → 碰撞分離 → 場地限制 → 生成器 → 清除）。
-- 「本步按下」由 `InputCollector` 鎖存：兩次 `step` 之間按過就算，送出後才清除，不漏按。
-- **命中定格**（v0.18.3 使用者決定，取代網頁版的整體放慢）：打中時模擬時間照常走，`entity:damaged` 事件帶 `hit_stop` 秒數，畫面層（`world_view.gd`）讓攻擊者與目標的模型停住這麼久、之後跟上實際狀態。只是畫面效果，多人時不影響其他玩家。**v0.19.1 使用者試玩覺得怪，預設關閉**（`Config.FEEL.hit_freeze = false`），事件仍帶 `hit_stop`，要加回來只改開關。
-- 整體放慢只剩打倒 Boss 的 0.25 秒慢動作：真實時間照走、邏輯時間放慢到 5%，**每步仍是 `FIXED_DT`**（只是少跑幾步）。模擬層用 `world.hit_stop(秒)` 記錄，`main.gd` 每個真實固定步呼叫 `world.consume_hit_stop()` 取得縮放；通關時所有人一起放慢。
-- 畫面震動：玩家方的攻擊打中不震動（`Config.FEEL.player_attack_shake = false`，v0.18.3 使用者決定）；玩家被打、Boss 砸地 / 撞牆 / 狂暴 / 登場、通關照常震動。
-- `InputCmd` 放在 `sim/`：它是模擬層的輸入格式（連線時原樣傳送），`input/` 只負責產生它。
-- 實體與 `World` 互相參照（RefCounted 循環），移除實體、`reset()` 與結束遊戲時必須經過 `world.clear()` / 移除流程切斷參照，否則記憶體洩漏（`tests/check.gd` 有檢查）。
-- 暫停：單機時 `Esc` 停止呼叫 `step()`，失去焦點自動暫停；連線時 `Esc` 只開選單，模擬不停。
-
-### 15.4 實體與效能
 - 實體是 `sim/` 裡的 `RefCounted` 物件，由 `world` 以**整數 id**（`world.next_id` 遞增，不重複使用）管理；連線同步、畫面對應、CD key（`enemy<id>.<招式>`）都用這個 id。
-- 碰撞分離與投射物命中用格子切分（uniform grid，作法同 `godot/stress_test/`），集中在 `sim/physics.gd`（v0.8.0 碰撞分離已改用格子；投射物命中目前仍逐一比對，數量變多時再改）。
+- 碰撞分離與投射物命中用格子切分（uniform grid，作法同 `godot/stress_test/`），集中在 `sim/physics.gd`（碰撞分離已改用格子；投射物命中目前仍逐一比對，數量變多時再改）。
 - 敵人與 Spawner 不持有 World 以外的循環參照：Spawner 不存 World（每次呼叫時傳入），敵人的 CD key 需要 id，所以在 `World.add_entity` 之後的 `on_added()` 才開始 CD。這兩段是之後改 C++ 的首選，介面要保持「輸入陣列 → 輸出陣列」，方便替換。
-- 大量相同外觀的物件（投射物、未來的大量小怪）用 `MultiMeshInstance3D`；角色用節點樹 Rig。
+- 角色用節點樹 Rig（小怪用蒙皮網格），大量相同外觀的物件用 `MultiMeshInstance3D`。
+- 效能目標、量測方法與數字在 `docs/效能.md`；怪群的效能做法見系統說明 §14。
 
-### 15.5 動畫與姿勢
-- 網頁版的武器行為在 `update` 裡同時做命中判定與擺姿勢；Godot 版**拆開**：模擬層只記錄動畫所需的資料 `anim`（動作名稱、階段 `windup` / `active` / `recovery`、階段進度 `k`、狀態經過秒數），畫面層的 `view/animator.gd` 依 `anim` 算出關節角度。
-- 規則：姿勢公式從網頁版照搬到畫面層，模擬層不出現關節名稱。這樣連線時只要同步 `anim`，每台都能畫出同樣動作。
+---
 
-### 15.6 事件
-- 模擬層每步把事件 append 到 `world.events`（`{ "name": String, ... }`，只放 id 與數值，不放物件參照，才能透過網路傳送），步驟結束後由組合根交給 `GameEvents`（autoload）以 Godot 訊號 `event_emitted(name, payload)` 發出。
-- 事件名稱、payload 欄位與第 9 節相同（`entity:damaged`、`sfx:cue`…），物件欄位改為 id（例如 `target` → `target_id`）。新增事件時同樣要列進第 9 節的表。
-- payload 的 `name` 欄位保留給事件名稱（`world.emit_event` 會寫入並擋下衝突），所以 `sfx:cue` 的音效名稱放在 `cue`。
-- 網頁版直接呼叫畫面的地方（`renderer.shake`、`effects.*`）改成事件：震動是 `camera:shake`，特效是 `fx:*`（見 15.17）。
-- 只有畫面層訂閱事件；模擬層內部流程用直接呼叫。
+## 16. 多人連線
 
-### 15.7 多人連線（階段二實作，階段一就要遵守資料形狀）
+規格如下，實際做法與使用者的決定見系統說明 §8。
 - **權威**：房主（peer id 1）跑唯一的 `world`。傷害、死亡、生成、掉落、隨機一律由房主決定；其他玩家不跑 `world.step()`。
-- **InputCmd**：`{ tick, move: Vector2, aim: Vector2, buttons: int }`，`buttons` 為位元旗標（攻擊按住、右鍵按下、1~5 按下）。玩家每步送出，用 unreliable 通道並夾帶最近幾筆未確認的輸入以防掉包。
-- **快照**：房主每 3 步（20 次/秒）送出所有實體的 `id、類型、x、z、height（v0.16.0 起）、facing、hp、anim`，加上該玩家自己的 CD 與欄位；unreliable 通道。事件走 reliable 通道。
+- **InputCmd**：`{ tick, move: Vector2, aim: Vector2, buttons: int, … }`，`buttons` 為位元旗標（攻擊按住、右鍵按下、1~5 按下…）。玩家每步送出，用 unreliable 通道並夾帶最近幾筆輸入以防掉包。
+- **快照**：房主每 3 步（20 次/秒）送出附近實體的 `id、類型、x、z、height、facing、hp、anim`，加上該玩家自己的 CD 與欄位；unreliable 通道。事件走 reliable 通道。
 - **其他玩家的畫面**：遠端實體保留約 100 ms 的快照緩衝，在兩次快照之間補間。
-- **自己的角色**：移動先在本機預測（用同一份 `sim/` 移動程式），收到快照後以伺服器位置為準修正。實作方式見 15.18（v0.21.0 改成「誤差平移」，不倒帶重播）。
+- **自己的角色**：移動先在本機預測（用同一份 `sim/` 移動程式），收到快照後以伺服器位置為準修正（誤差平移，不倒帶重播）。
 - **玩家對應**：`world.players` 以 peer id 為 key；單機的唯一玩家也是 peer id 1。
-- **傳輸層**：`net/` 封裝建立房間 / 加入 / 斷線，對外只暴露 Godot 的 `MultiplayerPeer`；從 ENet 換 Steam 只改 `net/`。
-- v0.21.0 已實作（C1~C4），使用者的決定與實際做法見 15.18。
+- **傳輸層**：`net/` 封裝建立房間 / 加入 / 斷線，對外只暴露 Godot 的 `MultiplayerPeer`；從 ENet / WebRTC 換 Steam 只改 `net/`。
+- 新增會影響畫面的模擬狀態時，同時想好它怎麼進快照（`net/net_codec.gd`）；只有房主知道的狀態，客戶端要能接受「以房主為準」。
 
-### 15.8 目錄結構（`godot/`）
-```
-godot/
-├─ project.godot
-├─ main.tscn / main.gd        組合根：建立 world、輸入、畫面，主迴圈、重新開始
-├─ core/                      與遊戲內容無關：config.gd、version.gd、math_util.gd、state_machine.gd、cooldowns.gd、
-│                             game_events.gd（autoload GameEvents）
-├─ defs/                      資料表：weapon_defs.gd、skill_defs.gd、enemy_defs.gd、wave_defs.gd、stat_defs.gd、item_defs.gd、map_defs.gd
-├─ sim/                       模擬層：world.gd、input_cmd.gd、stats.gd、terrain.gd、nav.gd、hitbox.gd、entity.gd、player.gd、player_states.gd、enemy.gd、
-│  │                          enemies/（melee_enemy、ranged_enemy、boss）、projectile.gd、combat.gd、
-│  │                          physics.gd、spawner.gd、weapon_behaviors.gd、skill_behaviors.gd、active_slots.gd
-├─ input/                     input_collector.gd（按鍵在程式中註冊，不寫在 project.godot）
-├─ net/                       連線：net_session.gd（ENet / WebRTC 傳輸、RPC、大廳）、peerjs_signaling.gd（房號配對）、net_host.gd（輸入排隊、快照）、
-│                             net_client.gd（鏡像 World、補間、預測修正）、net_codec.gd（快照二進位編碼）
-├─ view/                      world_view.gd、arena_view.gd、camera_rig.gd、animator.gd、enemy_animator.gd、rig.gd、part_kit.gd、effects.gd、
-│  └─ styles/                 dark_fantasy.gd（第 14 節介面照搬）
-├─ ui/                        hud.tscn / hud.gd、skill_bar.gd、stats_panel.gd、floaters.gd、ui_kit.gd、main_menu.gd、net_panel.gd、player_tags.gd
-├─ audio/                     sound.gd、sfx/*.wav、music/
-├─ tools/                     synth.gd（離線合成）、bake_sfx.gd / bake_music.gd（headless 產生音效 / 背景音樂 WAV）
-├─ tests/                     check.gd（headless 自動檢查的執行器）、check_kit.gd（共用工具）、*_checks.gd（依主題分檔的檢查）、capture.tscn / capture.gd（離屏截圖）
-└─ stress_test/               效能壓力測試（保留作為效能基準）
-```
-- 依賴方向：`core` ← `defs` ← `sim` ← `view` / `ui` / `audio` / `net` ← `main`。`sim` 不得引用 `view`、`ui`、`audio`、`input`、`net`。
-- 單檔約 300 行就考慮拆分；新增、刪除、搬移檔案時同步更新本節與 `docs/檔案地圖.md`。
-- 網頁版檔案對應：`Game.js → main.gd + sim/world.gd`、`Input.js → input/`、`Renderer.js → view/camera_rig.gd`、`render/rig.js → view/rig.gd + part_kit.gd`、`*Defs.js → defs/`、`EventBus.js → GameEvents autoload`、`HUD.js → ui/`、`Sound.js → audio/ + tools/bake_sfx.gd`，其餘同名改 snake_case。
+---
 
-### 15.9 命名與程式風格（GDScript）
-| 對象 | 規則 | 範例 |
-|---|---|---|
-| 檔案 | snake_case | `cooldowns.gd`、`player_states.gd` |
-| 類別（`class_name`） | PascalCase | `class_name CooldownManager` |
-| 函式、變數 | snake_case | `apply_damage`、`move_speed_mul` |
-| 常數、資料表 | UPPER_SNAKE_CASE | `FIXED_DT`、`WEAPONS` |
-| 私有成員 | `_` 前綴 | `_accumulator` |
-| 布林值 | `is_` / `has_` / `can_` 開頭 | `is_dead` |
-| 訊號 | 過去式 | `event_emitted` |
-| 狀態名稱 | StringName | `&"idle"`、`&"attack"` |
-| 事件名稱、CD key、音效名稱 | 與網頁版相同字串 | `"entity:damaged"`、`"player.slot1"` |
+## 17. 驗收
 
-- 一律寫靜態型別（`var hp: float`、`func step(cmds: Dictionary, dt: float) -> void`），型別錯誤在匯入時就會報出，也比較快。
-- 資料表用 `const` Dictionary（不用 `.tres` Resource），欄位名稱照網頁版改 snake_case，方便逐欄對照網頁版數值。
-- 可調數值放 `core/config.gd` 或 `defs/`，邏輯內不寫魔術數字。
-- 每個檔案開頭一行註解說明職責；註解用繁體中文。
-- 座標、單位、角度與第 4 節相同：Y 朝上、邏輯只用 XZ、`facing = atan2(dx, dz)`（0 = 面向 +Z），模型面向 +Z 建模，Godot 的 `rotation.y = facing` 可直接套用。
-
-### 15.10 驗收
-- `tests/check.gd`（作用等同 `check.js`），平常在專案根目錄用 `node tools/release.mjs --check --godot <路徑>` 跑（先匯入、有逾時），全部通過才算完成；CI 直接在 `godot/` 內跑 `<Godot console 執行檔> --headless --path . -s res://tests/check.gd`。畫面只印沒過的項目與總數，每項結果、`CheckKit._note()` 記的數字、手感量測（`CheckKit._feel()`）寫進 `tests/check_last.log`（不進版控）。網頁版已凍結，只有動到網頁版時才跑 `node check.js`。
+- `tests/check.gd`（headless 自動檢查），平常在專案根目錄用 `node tools/release.mjs --check --godot <路徑>` 跑（先匯入、有逾時），全部通過才算完成；CI 直接在 `godot/` 內跑 `<Godot console 執行檔> --headless --path . -s res://tests/check.gd`。畫面只印沒過的項目與總數，每項結果、`CheckKit._note()` 記的數字、手感量測（`CheckKit._feel()`）寫進 `tests/check_last.log`（不進版控）。網頁版已凍結，只有動到網頁版時才在 `legacy/` 跑 `node check.js`。
 - 因為模擬層不依賴場景樹，檢查可以直接建立 `World`、餵假的 `InputCmd`、推進 N 步讀數值（例如移動 1 秒的距離、三段攻擊總時間、CD 是否到期）。
 - 檢查分檔：`check.gd` 只放檢查清單（標題 + 函式），本體依主題放在 `core / player / combat / boss / map / loot / view / monster / event / net_checks.gd`，共用工具在 `check_kit.gd`（各檔 `extends CheckKit`）。新增檢查放進對應主題的檔案，再到 `check.gd` 加一行。
 - 檢查機制、不檢查數值快照（v0.37.3）：預期值從資料表（`Config`、`defs/`）讀或算出來，例如「三段傷害 = 資料的 damage、damage、damage × finisher_mul」，不寫死 12 / 12 / 22；標題寫規則（「持續 stagger_time」），不寫數字。這樣調數值不用改檢查，只有機制改了才要改。
   - 例外：公式本身（護甲減傷曲線）、效能上限（零件數）、素材屬性（音樂長度）可以寫死數字，因為那就是要守住的規則。
   - `monster / event / net_checks.gd` 還有寫死的數值，之後動到時順便改。
-- 網頁版對照（v0.37.3 退役）：搬移時曾用 `tests/web_defs.json` 逐欄比對，結果留在 `docs/手感對照.md`；Godot 版已照使用者決定改了很多數值，網頁版也已凍結，比對與匯出工具已移除。
+- 網頁版對照（v0.37.3 退役）：搬移時曾用 `tests/web_defs.json` 逐欄比對，結果留在 `docs/手感對照.md`。
 - 畫面用離屏截圖場景 `tests/capture.tscn` 驗證（用法與「開視窗前先問使用者」的規則見 `CLAUDE.md` 1.8），截圖存暫存資料夾，不進版控；手感與效能定案以使用者實際遊玩為準。
-- 版號只在推送時升，已發布的部分三處一致（CHANGELOG 最新的已發布版本、`godot/core/version.gd`、git tag），見第 12 節；遊戲畫面角落顯示版號。
-
-### 15.11 屬性系統（v0.14.0）
-- 玩家與敵人共用一套屬性：名稱、基礎值、上下限、顯示方式在 `defs/stat_defs.gd`；計算在 `sim/stats.gd`，每個實體一個 `entity.stats`。
-- **公式**：結果 = (基礎值 + Σadd) × (1 + Σpct) × Πmul，再取整（有 `round` 的屬性）、限制上下限。使用者決定：
-  - 同類加成**相加**（兩個 +8% = +16%）。暫時效果（疾跑 ×1.6）、波次倍率、**冷卻縮減**用 `mul` **相乘**（−6% 與 −25% → ×0.94 × 0.75 = 0.705，疊再多也不會到 0）。
-  - **護甲**：受到傷害 × 100 ÷ (100 + 護甲)（`StatDefs.ARMOR_SCALE`），護甲 100 減傷 50%。
-  - **爆擊**：基礎爆擊率 0%、爆擊傷害 ×1.5；爆擊率 0 時不擲骰（不消耗 `world.rng`）。
-- 加成以「來源」為單位整批設定 / 移除：`entity.set_stat_source(來源, [[屬性, Stats.ADD|PCT|MUL, 數值], …])`、`remove_stat_source(來源)`。來源名稱：增益用增益 id（`sprint`）、盾擊 `shieldBash`、敵人波次 `wave`、除錯 `debug`；之後的道具用道具實例的 id。
-- 最大生命提高時目前生命增加同樣的量；降低時只截到上限。
-- 套用位置：攻擊力由出招方乘進 `hit.damage`（投射物在發射時就乘好）；爆擊與擊退在 `Combat.apply_damage`；護甲與受到傷害在 `Entity.take_damage`；攻速只除普攻三階段時間；冷卻縮減套在特殊技與數字鍵欄位；每秒回血在 `Entity.integrate`。
-- `Entity.max_hp`、`damage_mul`、`damage_taken_mul`、`knockback_mul`（受到擊退）與 `Enemy.speed` 是屬性的唯讀捷徑，不能直接賦值。
-- 新增屬性時先加進 `stat_defs.gd`；對應系統還沒做的屬性設 `in_use = false`（屬性面板不顯示）。
-
-### 15.12 翻滾（v0.15.0）
-- 使用者決定：左 Shift；往移動方向翻（沒按方向鍵就往面對方向）；0.35 秒；前 0.2 秒無敵；1 次充能、回充 1.2 秒；**速度與距離隨移速屬性等比放大**（基礎移速 6.5 時 4 單位，移速 ×1.5 時 6 單位），時間與無敵不變。數值在 `core/config.gd` 的 `ROLL`。
-- 動作層狀態 `roll`（`sim/player_states.gd`）。翻滾按鍵走 `InputCmd.BTN_ROLL` 與動作緩衝（0.25 秒）：普攻的前搖與後搖會被翻滾取消；揮下去（active）、特殊技、硬直、使用道具中先緩衝，結束後才翻。
-- 無敵用 `player.dodge_timer`（`Entity.is_dodging()`）：不能被打中，投射物直接穿過；受傷後的無敵時間（`invuln_timer`）則照舊擋下投射物。
-- 充能：`player.roll_charges`，上限是 `roll_charges` 屬性；回充計時用 CD key `player.roll`（乘 `roll_cooldown` 屬性），一次回 1 格，沒滿就接著回充。
-- 移速只算屬性（含疾跑等暫時加成），動作本身的走路減速（攻擊、硬直）不算。
-
-### 15.13 跳躍、高度與地形（v0.16.0）
-- 使用者決定：空白鍵、最高 1.5、起跳到落地 0.6 秒、只有一段跳；空中可以攻擊、用技能與道具、翻滾（空中翻滾照常下墜）；命中照實際高度計算。數值在 `core/config.gd` 的 `JUMP` 與 `HEIGHT`。
-- 高度是模擬層的資料：`entity.height`（腳底）、`vz`、`ground_height`、`body_height`（身高，依 kind 查 `HEIGHT.body`）。重力 = 8 × 高度 ÷ 時間²，所有實體共用；垂直移動在 `World.step` 的碰撞分離與地形推擠之後（`Entity.integrate_vertical`，用前後速度平均，60 步 / 秒時第 18 步最高 1.5、第 36 步落地）。
-- 起跳：`InputCmd.BTN_JUMP`，站在地面上隨時可跳（攻擊、翻滾中也行），硬直與倒地不行；落地沒有硬直。
-- **命中高度**：目標佔 [height, height + body_height]；攻擊用 `hit.band`（Vector2 下緣、上緣）。沒給 band 時用攻擊者身體往腳底下延伸 `reach_below`（近戰、碰撞、衝鋒）。投射物是飛行高度 ± `projectile_half`，高度不重疊就從頭頂 / 腳下穿過；爆炸是地面往上 `explosion_height`；Boss 砸地打得到上下各一層高台，但目標腳底離自己腳下地面超過 `slam_height` 就打不到（`hit.max_air`，見 15.19）。
-- 投射物的 `height` 就是飛行高度：敵人箭矢 = 發射者腳底 + `arrow_altitude`，飛向目標的過程中線性變到「目標腳下地面 + `arrow_altitude`」（D1，打得到高台上的玩家；跳起來照樣躲得過），之後高度不變；玩家投射物 = 腳底 + `bolt_altitude`，飛出 `bolt_settle_distance` 內降到「min(發射時腳下地面, 目前位置的地面) + `bolt_altitude`」（只往下貼地，不會順著牆往上爬）。撞到比飛行高度高的石台就結束（會爆炸的照樣爆炸）。
-- 碰撞分離：高度不重疊的兩個實體不互推。
-- **地形**：`sim/terrain.gd`，石台資料在 `defs/map_defs.gd`（見 15.19）。腳底 ≥ 頂面 − `HEIGHT.step` 才能站上去，否則石台當牆、把實體推出去；圓心在石台範圍內時地面高度就是頂面。查詢用 4 單位的格子分桶。
-- 連線：快照的實體欄位要加 `height`（15.7）。
-
-### 15.14 通用攻擊判定（v0.17.0）
-- 設計方向：怪物**沒有碰撞傷害**，每種怪物都靠自己的招式（預備 → 判定 → 收招）攻擊。貼著怪物不會扣血。
-- `sim/hitbox.gd`：玩家與怪物共用。`Hitbox.strike(world, 攻擊者, 原點, 朝向, 形狀, hit, already)` 查詢形狀內的敵對目標並套用 `Combat.apply_damage`；`already`（id 字典）讓同一招每個目標只打一次。形狀：`{shape: &"sector", range, arc}`、`{shape: &"circle", radius}`。
-- hit 欄位加上 `blockable`（能不能被格擋，B5 使用）：揮砍、箭、Boss 衝鋒（v0.18.2 起）= true；Boss 砸地、爆炸、盾反 = false。可另給 `block_knockback_mul` 指定擋下時的推退比例。數值寫在資料表（`enemy_defs` 的 `swing.blockable`、`slam.blockable`、`charge.blockable`、`projectile_blockable`）。
-- 每次 `strike` 都記錄到 `world.hitboxes`（每步清空，只給畫面層 F2 畫形狀，不影響模擬）。
-- 骷髏戰士揮砍（使用者選「中等」）：中心距離 1.3 內且冷卻好時舉刀 0.5 秒（站定，前 50% 轉向、之後鎖定）→ 揮下 0.1 秒（前方 100°、距離 1.5 的扇形，傷害 12）→ 收招 0.5 秒；冷卻 1.2 秒從舉刀算。舉刀中被打進入受擊硬直，揮砍中斷。
-- 弓手與 Boss 拿掉碰撞傷害後不補新招（使用者決定）。
-
-### 15.15 劍盾格擋與招架（v0.18.0，v0.41.0 改成按住格擋 + 招架）
-- 使用者決定（v0.41.0）：**按住右鍵格擋、放開就放下，沒有冷卻與時間上限**；格擋中**按左鍵招架**（冷卻 4 秒，從按下算）。數值在 `weapon_defs.gd` 的 `swordShield.special`：
-  - 移速 ×0.5、會轉向瞄準點；用翻滾提前結束；格擋中有霸體（不硬直）。右鍵按住走 `InputCmd.BTN_SPECIAL_HELD`（按住類、在 `HELD_BUTTONS`），`special.hold = true` 讓 `TimedAction` 在按著時停在 active（active 長度 0：放開立刻進 0.15 秒收招）；只按一下沒按住不舉盾。
-  - 招架：格擋中左鍵剛按下那一步（`Player.attack_pressed`，按住不連發）開始 `parry.window`（0.2 秒）判定。判定中擋下 = 招架成功（`player:blocked.perfect`，HUD「招架！」）→ 下一步全額盾反；判定結束都沒擋到 → 打出傷害與擊退 × `fail_damage_mul`（0.5）的盾擊。盾反後右鍵還按著就繼續格擋；判定中放開右鍵要等判定結束才放下。
-  - 技能欄：格擋中左鍵那格換成「招架」（`SkillBar._parry_slot`）並顯示招架冷卻。
-  - 擋得住：`blockable` 的攻擊（揮砍、箭），來向在正前方合計 120°（左右各 60°；v0.23.0 使用者決定，原本 75°）內。格擋中腳下前方顯示金色扇形（`WorldView` 的 BlockFan，半徑 2.2、角度同 `block_arc`）。擋下時不扣血、自己被推退 30% 擊退，發出 `player:blocked` 與音效；箭會消失。
-  - Boss 衝鋒（v0.18.2 使用者決定）：擋得住、不扣血，但推退 100%（`charge.block_knockback_mul`）；同一次衝鋒擋下後不再判定。
-  - 擋不住：砸地、爆炸（不是 blockable），或來自側面 / 背後。
-  - 盾反範圍：前方 180°、距離 3.5（v0.23.0 使用者決定，原本 120° / 2.5）；傷害 25 × 攻擊力、大擊退、重擊顯示（招架失敗的減半盾擊不算重擊）。`fx:parry` 帶 facing 與 arc，畫面閃一下實際打得到的扇形。
-  - 測試裡按住格擋要每步帶 `BTN_SPECIAL_HELD`（`player_checks.gd` 的 `HOLD` / `PRESS_HOLD`）。
-- 實作：`ShieldBlock` 行為記錄 `player.block_time`（格擋開始後秒數，< 0 = 沒在格擋）；`Combat.apply_damage` 對 blockable 的攻擊先呼叫 `target.try_block(來源位置, hit)`；盾反延到下一步執行（`pending_parry`），避免在怪物出招的途中改動怪物狀態。
-
-### 15.16 物品資料（v0.19.0）
-- 使用者決定：資料放程式資料表 `defs/item_defs.gd`（`ItemDefs.ITEMS`）。武器與道具共用一種格式：`kind`（`item` / `weapon`）、`name`、`rarity`、`shape`、`desc`、`effects`；道具另有強度分數 `power`，武器另有 `weapon`（對應 `WeaponDefs`，武器數值仍在那邊）。
-- 稀有度 `RARITIES`（名稱、顏色、效率）、占格形狀 `SHAPES`（格子座標，左上為 (0, 0)、上下左右相連）、背包 `BAG_SIZE` 8×6。**道具格數必須 = ceil(power ÷ 稀有度效率)**（`docs/道具清單.md`），新增道具時先估 power 再挑形狀。
-- 效果四種寫法：
-  - 屬性 `{stat, op, value}`：放進身上就生效。
-  - 條件屬性 `{when, stat, op, value, …}`：條件見 `CONDITIONS`。
-  - 觸發 `{on, do, chance?, …}`：時機見 `TRIGGERS`，動作見 `ACTIONS`。
-  - 能力 `{ability, …}`：見 `ABILITIES`。
-  - 各表的 `params` 是必填參數，`check.gd` 會檢查。新增條件、觸發、動作或能力時先加進表。
-- **目前只接上屬性效果**（`ItemDefs.stat_mods`）；條件、觸發、能力等之後的里程碑再實作。
-- 放進身上：`Player.add_item(id)` 建立實例 `{uid, id}`，以 `uid`（`item_N`）為屬性來源；`remove_item(uid)`、`clear_items()` 拿掉。武器道具直接 `equip_weapon`，不放進 `items`。還沒有背包介面，放進來就生效。
-- 除錯：F4 依清單順序放入下一個道具，F5 清空；`--items=id,id`。
-
-### 15.17 特效（v0.20.0）
-- 畫面層 `view/effects.gd`（`WorldView.effects`）照搬網頁版 `Effects.js`：方塊粒子（`burst`、`mote`）、揮砍弧光（`slash`）、衝擊環（`ring`）、預警圈（`telegraph`）。Boss 招式的地面預警仍在 `enemy_animator.gd`。
-- **一次性特效走事件**：模擬層發 `fx:*`（第 9 節的表），payload 只放位置（`pos` Vector2、`height`）、顏色與尺寸，不放實體參照。命中、死亡、狂暴直接用既有事件。新增特效事件時：模擬層 emit → `Effects.HANDLERS` 加處理函式 → 列進第 9 節；`check.gd` 會檢查三者一致。
-- **持續性粒子由畫面層依狀態產生**（投射物拖尾、蓄力、爬出、拉弓、衝鋒、暈眩、召喚、疾跑殘影），不發事件，連線時不佔頻寬。網頁版「每步機率 p」換算成每秒 p × 60 顆，小數累積到下一幀（`_count`），和幀率無關。
-- 上限：粒子 `MAX_PARTICLES` 600（一個 MultiMesh），弧光與環 `MAX_TRANSIENTS` 64。開場先畫一次透明的粒子與環來預先編譯著色器。暫停時停住、`game:restart` 時清空。
-
-### 15.18 多人連線（v0.21.0，C1~C4）
-- **使用者決定**（2026-10-23）：區網 ENet、1~4 人合作、房主即權威；誤傷開啟；敵人數量不變、血量每多 1 人 +50%；只能開局前加入（中途加入先不開放）；移動 / 翻滾 / 跳躍本機預測，攻擊與技能的動作、音效本機立即播，傷害一律由房主判定；倒下假死 10 秒、隊友按住 F 累積 5 秒救起、救起 30% 血、全員倒下就輸。數值在 `Config.NET`、`Config.REVIVE`。
-- **三種模式**（`main.gd`）：單機 = 沒有連線的房主（同一條程式路徑）；房主跑唯一的 `World`，`NetHost` 收各玩家輸入排隊（每步取一筆，排超過 `input_queue_max` 筆就把最舊的併進下一筆，本步按下的按鈕保留）；客戶端不跑 `World.step()`，`NetClient` 用快照維護鏡像 `World`（`is_authority = false`）。
-- **傳輸**（`net/net_session.gd`）：玩家在主選單選連線方式（v0.40.0）。IP 連線 = ENet（只有桌面版）；房號連線 = WebRTC（v0.36.0，`WebRTCMultiplayerPeer`，頻道 1 = unreliable；`net/peerjs_signaling.gd` 經 PeerJS 公開配對伺服器用 4 碼房號交換 OFFER / ANSWER / CANDIDATE，連上後就不經過伺服器；ICE 用 Google STUN + PeerJS 公開 TURN）。網頁版用瀏覽器內建的 WebRTC，桌面版用 `addons/webrtc_native`（Godot 官方 webrtc-native 1.2.2，只放 Windows / Linux x86_64），所以房號連線桌面版與網頁版能互連。輸入（客戶端每步送最近 `input_redundancy` 筆）與快照（房主每 3 步）走 unreliable；事件每步一包走 reliable（`[run_id, tick, events]`）。RPC 的節點路徑以 `main` 為根（`get_tree().set_multiplayer(…, main 的路徑)`），直接執行與在 `capture.tscn` 裡執行的程序能互連。`--net-latency` / `--net-loss` 模擬延遲與掉包。
-- **快照**（`net/net_codec.gd`，v0.35.0 改成二進位 + 只送附近）：`[run_id, tick, ack, 世界狀態, 實體位元組 PackedByteArray, 有 extra 的實體的 extra]`。每個實體：id（u32）、種類（u8，`KINDS` 表）、旗標（u8）、x、z、[高度]、朝向、最大生命、[生命]（float32）、[速度、閃白 / 無敵]（half）、動畫（欄位名稱用 `ANIM_KEYS` 索引、常見名稱用 `NAMES` 索引、浮點數 double）。旗標標示的欄位是預設值時整個不送（滿血、靜止、計時器 0、高度 0；普通怪沒有 extra），無損。每個實體只編碼一次（`encode_entities`），`NetHost.snapshots` 再依玩家挑出 `NET.interest_radius`（24 = 視野 18 + 緩衝）內的實體，玩家與 Boss 一律送；別人的背包（`P_INV`）不送。客戶端照舊「快照有就建、沒有就移除」。量測（地圖 A 怪群 + 4 人）：一般每份 1.7~3.8 KB、身邊 120 隻時 7.0 KB（v0.34 每份送全部約 28 KB）；檢查上限 4 KB / 8 KB（網頁 WebRTC 單則約 16 KB）。客戶端用同樣的類別建立鏡像實體（`Player`、`Spawner.create`、`Projectile`），畫面層不用分辨單機或連線。
-- **其他實體**：畫面時間 = 估計的房主 tick（最新快照 + 收到後經過的步數）− `interp_delay_ticks`（6 步 = 100 ms），在前後兩筆快照之間補間（位置、高度、朝向；動畫的狀態相同時數值欄位也補間）；連續掉包追上最新快照時，沿速度最多往前推 `max_extrapolate_ticks` 步。事件也依 tick 延到畫面時間才播，和畫面對得上。
-- **自己的角色**：`World.step_predicted` 只推進自己（同 `step()` 的順序，但不扣血、不產生投射物，投射物等快照）。每筆快照帶 `ack`（房主最後套用的該玩家輸入編號），誤差 = 房主在 ack 時的位置 − 本機當時預測的位置，加到目前位置與之後的預測紀錄（不倒帶重播，狀態機與計時器不用存檔）；差超過 `snap_distance` 直接跳過去。血量、倒地 / 死亡、盾反、武器以房主最新快照為準；倒地 / 死亡時不預測，位置直接用房主的。被房主判定打中時本機立刻進入受擊硬直（`Player.net_hurt`）。
-- **事件去重**：World 更新某位玩家時，事件標上 `actor`（peer id）；`Combat.apply_damage` 與盾反期間清掉（不是預測得到的）。客戶端丟掉 `actor` 是自己的房主事件。
-- **打中回饋預測與延遲補償**（v0.38.0，試玩回報「打怪有 0.幾秒延遲」：量到客戶端看到命中 = 出招時間 + 來回延遲 + 100 ms）：
-  - 客戶端預測自己的出招時，`Combat.apply_damage` 不扣血，但目標的高度範圍對得上（對方沒在格擋）就發 `hit:predicted`：畫面層馬上噴火花（`Effects`）、播命中音效（`Sound`），`NetClient` 讓目標閃白（`_flash`，蓋過快照的閃白）。
-  - 房主的同一下 `entity:damaged`（source 是自己、`predicted_hit_window` 步內有預測紀錄）被標 `predicted = true`：只顯示傷害數字、扣血照房主，火花與音效不再播；順序照房主，照樣排到畫面時間（傷害數字仍晚「延遲 + 100 ms」）。
-  - 延遲補償：`InputCmd.view_tick` = 客戶端這一步的畫面時間（`render_tick`）。房主（`NetHost` 開 `World.rewind_enabled`）每步結束記敵人與玩家的位置（最多 `rewind_max_ticks` = 30 步），更新該玩家時 `rewind_tick = view_tick`，`Hitbox.query` 先把目標移到那時的位置再判定、判定完放回去。只補償近戰判定（投射物照房主的時間飛）；怪物打玩家沒有補償。
-  - 量測（`tests/net_checks.gd` 的 `check_hit_prediction`）：單程 100 ms 時打中回饋從第 24 步（400 ms）變成第 6 步（100 ms，同單機）；側移的怪「客戶端看到打中、房主也判定打中」沒補償 11 / 17、補償後 17 / 17。
-- **CD**：每位玩家的 CD 實際存在 `Player.cd(key)`（`key@peer_id`）；事件與 HUD 仍用 `player.special` 這類名稱。
-- **誤傷**：`Combat.hostiles_of(world, team, source_id)` 在 `Config.NET.friendly_fire` 時把其他玩家也當目標，但不含出招者自己（投射物用發射者 id）。
-- **倒下與救援**（`Player.die` / `_go_down` / `revive`、`World._update_downed`、動作層 `revive` 狀態）：多人時生命歸零先倒地（`is_downed`，移動層 `downed`，不能被打、不被怪追、不接受輸入）；隊友按住 F（`InputCmd.BTN_INTERACT`）、中心距離 ≤ `REVIVE.range` 就進入 `revive` 動作（不能移動 / 攻擊 / 跳），倒地者救援進度 +1/秒、倒數暫停；放開時進度每秒 −`decay_rate`（Claude 暫定和累積同速）、倒數照走；沒有站著的玩家時所有倒地者直接死亡並發 `game:defeat`。單機倒下 = 死亡（和以前一樣）。
-- **只有單機才有**：F3~F5 除錯鍵（直接改模擬狀態）、暫停（連線時 Esc 只開選單）、失去焦點自動暫停。F1 切武器改走 `InputCmd.BTN_SWAP_WEAPON`，連線時也能用。
-- **斷線**：房主那邊有人斷線就移除他的角色；客戶端和房主斷線就回到單機。網頁版（v0.36.0 起）連線選單改成房號；房主切換分頁時瀏覽器停掉畫面更新，所有人都會停住（大廳有提示）。
-
-### 15.19 地圖與怪物尋路（v0.22.0，D1）
-- **地圖資料**：`defs/map_defs.gd` 的 `MAPS`。地圖座標左上角 (0, 0)、x 往右、y 往下（= 世界 X、Z），世界座標 = 地圖座標 − `origin`（地圖中央在世界原點）；畫面是等距視角，所以地圖在畫面上轉 45°（菱形）。每張圖有 `size`、`spawn`（玩家出生點）、`dig`（挖墳點 = 出口，D6 使用）、`spawn_rule`、`blocks`（[x, y, 寬, 深, 頂面, 種類]）、`tomb_rows`（一排排墓碑）。
-- **石台種類**：`wall`（牆 / 陵墓，頂面 3.0，跳不上去）、`tomb`（墓碑 1.2 × 0.5、高 1.3：擋箭與魔彈，玩家跳得上去）、`platform`（可以站的高台，0.5 / 1.0）。
-- **地圖**：`graveyard_a`（A 環形墓園，96 × 96，使用者選定；遊戲用 `Config.WORLD.default_map`）、`test_arena`（舊的 32 × 32 測試場地，`check.gd` 大部分檢查用）。B、C、D 草圖在 `mockups/graveyard_map.html`，之後做成資料並隨機抽（使用者決定）；屆時房主要把地圖編號傳給客戶端（目前兩邊都用 default_map）。
-- `World` 建立時載入地圖（`World.new(map_id)`、`load_map`）：`half_extents`（場地一半大小，限制實體與投射物）、`terrain`、`nav`、`spawn_point`；玩家出生在 `spawn_point`。
-- **沒有安全區**（使用者決定）：玩家去得了的地方怪物都去得了，怪物只是比玩家多花一點時間上去。
-  - 尋路（`sim/nav.gd`）：1 單位的格子，牆與墓碑往外擴 margin 的格子是障礙，高台可走；路徑用引擎內建的 `AStarGrid2D`（八方向、不切牆角），再拉直看得到的點。只在權威端算。依體型兩張：`World.nav`（小怪，`NAV.margin` 0.6 = 半徑 0.45 + 0.15）、`World.nav_large`（半徑 > `large_radius` 的 Boss，`margin_large` 1.15），用 `World.nav_for(radius)` 取。
-  - 「看得到、直接走」是精確的線段判斷（`Terrain.segment_blocked`：線段與「牆 / 墓碑往外擴 margin」的長方形相交；起點已貼牆時往外走不算擋住）。v0.22.0 用格子取樣，直線會擦到牆角，怪物看起來一直撞牆（繞北門時 154 步被牆擋住變慢，v0.23.0 為 0 步）。
-  - 怪物每 `NAV.repath_interval` 秒判斷一次：看得到就直接走向玩家（和以前一樣），否則照路徑點走（`Enemy.steer_point`）。
-  - 跳上高台（`Enemy._update_jump`）：站在地上往前走、前方 `jump_lookahead` 的地面比腳下高出 `step` ~ `climb_height`（1.1）就先蹲 `jump_windup`（0.25 秒）再用玩家的起跳速度跳；空中往起跳方向至少 `jump_air_speed`（4.0），身體整個越過邊緣才落地（Boss 半徑 1.0、移速 2.2，v0.22.0 會掉回去）。1.3 的墓碑太高不跳，站在下面揮砍 / 射擊打得到。
-  - Boss 衝鋒（v0.23.0）：前方是高低差 ≤ `climb_height` 的高台就在衝鋒途中直接跳上去、不停；更高的牆與墓碑、場地邊緣才撞停暈眩。衝鋒中不做一般的蹲跳。
-  - Boss 砸地（v0.23.0）：範圍內站在任何地面上（含旁邊的高台）的目標都打得到；`hit.max_air` = `slam_height`，腳底離自己腳下地面超過 0.5（跳起來）才躲得過。
-  - 弓手：看不到玩家或箭會撞到石台時先繞路靠近、不射擊；箭瞄準玩家腳下地面的高度。
-  - 地圖規則（`check.gd` 檢查）：所有可走格連成一片、相鄰可走格高低差 ≤ `climb_height`、牆比最高的地面高出跳躍高度 + 0.3 以上。
-- **生成**（`spawn_rule`）：`arena` 同以前（整個場地隨機、Boss 在玩家對面）；`around_player`（大地圖）小怪生在離玩家 `min_distance_from_player` ~ `max_distance_from_player`（8 ~ 18）、可走而且走得到玩家的格子；Boss 往地圖中央方向、離玩家 `boss_distance`；Boss 召喚的小怪落在障礙格時移到最近的空地。
-- 畫面：`ArenaView.create_blocks` 把所有石台合併成一個網格（每個石台 5 面、頂點色依種類），地圖上有上百個石台也只畫 1 次。
-
-### 15.20 角色視野（v0.24.0，D2）
-- 使用者決定：前方 120°、18 單位；身邊 4 單位不管方向都看得到；牆（`wall` 種類）擋視線，墓碑與高台不擋；視野外的地面變暗。數值在 `Config.VISION`。
-- **只影響畫面**：模擬照常進行（看不到的怪照樣會打你），沒有網路同步的改動；每個程序只依自己的本機玩家（`WorldView.local_peer`，`main.gd` 換 World 時設定）決定畫什麼。
-- 判斷在 `sim/vision.gd`（純函式）：`Vision.point_visible(world, 看的人, 位置, 目標半徑)`：距離 ≤ 18（加目標半徑）、在身邊 4 單位內或扇形內（身體邊緣進入就算）、而且視線不被牆擋（`Terrain.sight_blocked`，身邊一圈也會被牆擋）。`Vision.entity_visible`：自己、自己發出的投射物一律看得到；怪物、隊友、別人的投射物照位置判斷；看的人不存在或已陣亡時全部看得到。
-- 看不到時不畫：怪物與隊友的模型（Boss 地面預警是模型的子節點，一起隱藏）、別人的投射物、位置在視野外的 `fx:*` 特效事件、看不到的實體的持續性粒子（`Effects.hidden_ids`）、HUD 的傷害數字、隊友名牌。音效照常播（聽得到）。之後的寶箱等可互動物件也要接 `Vision`。
-- 變暗：`WorldView` 的全畫面四邊形著色器，從深度貼圖還原每個像素的世界位置，視野內蓋 `inner_darkness`（0.1）、視野外蓋 `darkness`（0.3）的黑色，邊緣漸層 `edge`（3.0）；v0.27.0 使用者要內外亮度差小一點（原本只有外面 0.5、漸層 0.8）。牆擋住的區域不畫暗（只隱藏牆後的東西）。Compatibility（網頁版）用 `CURRENT_RENDERER` 換深度的換算方式，網頁版還沒實測。
-
-### 15.21 金錢、寶箱與背包（v0.25.0，D3）
-- 數值（Claude 暫定，使用者說先用建議值）在 `defs/loot_defs.gd`：殺怪金幣 `KILL_GOLD`（骷髏 5、Boss 50，Boss 召喚的小怪照樣給）、寶箱 `CHESTS`（價格、稀有度權重、半徑）、`INTERACT_RANGE`（身體邊緣距離 1.6）、`DROP_DISTANCE`（1.4）。寶箱位置在 `map_defs.gd` 每張地圖的 `chests`（地圖 A：4 小 1 大）。
-- **金錢**：`World.gold`，多人共用；`World.on_enemy_died` 加錢並發 `gold:gained`；快照的世界欄位 `W_GOLD`。
-- **寶箱**（`sim/chest.gd`，實體 kind `chest`，不擋路、不能被打）：`World.reset` 依地圖放好。`try_open`：錢不夠發 `chest:denied`；夠了扣錢、`LootDefs.roll_rarity` 用 `world.rng` 抽稀有度、再從該稀有度的道具（不含武器）抽一個，掉在寶箱往玩家方向 `DROP_DISTANCE`（`World.drop_item`，落在最近的可走格），發 `chest:opened`。快照 extra：`[tier, opened]`。
-- **地上的道具**（`sim/item_pickup.gd`，kind `pickup`）：快照 extra `[item_id]`；畫面是稀有度顏色的發光寶石 + 光柱。
-- **F 互動**（`Player._try_interact`，只在權威端、只在「剛按下」那一步）：附近有倒地隊友時讓給救援；否則先撿最近的道具（`World.nearest_interactable`），沒有道具才開最近的寶箱。多人同一步按，依玩家更新順序先到先得。
-- **背包**（`sim/inventory.gd`）：`ItemDefs.BAG_SIZE` 8 × 6；形狀轉 rot 次 90 度（(x, y) → (−y, x) 後平移到左上）；`find_spot` 由上到下、左到右，每格依序試 0 / 90 / 180 / 270 度。`Player.add_item` 自動放進第一個空位才生效（屬性來源 = 實例 uid），放不下回傳 `&""` 並發 `inventory:full`。`Player.items` 與 `inventory` 同步。
-- **背包操作走輸入**：`InputCmd.inv_ops`（`[OP_MOVE, uid, x, y, rot]`、`[OP_DROP, uid]`），房主合併輸入時接在一起；只在權威端執行（`Player._apply_inventory_ops`）。客戶端的背包以快照為準（玩家 extra 的 `P_INV`，`Player.sync_inventory` 依增減的道具加減屬性，本機預測的移速才對）。
-- **介面**：`ui/inventory_panel.gd`（Tab 開關，和屬性面板一起開（v0.27.0 起，原本 I）；滑鼠拖曳、拖著時按 R 旋轉、拖到面板外丟掉；下方顯示滑鼠停著的道具名稱與效果，效果還沒實作的標「效果尚未實作」）。開著時不暫停、WASD 照常，`InputCollector.mouse_captured` 讓滑鼠不攻擊、不格擋、瞄準點不動。`ui/world_labels.gd`：沒開的寶箱顯示名稱與價格（錢不夠紅色）、地上道具顯示名稱，按得到 F 的那一個加「[F] 開啟 / 撿起」；視野外不顯示。左上顯示金幣。
-- 屍體裝背包、冤魂復活移到 D6。
-
-### 15.22 武器掉落、裝備欄與合成（v0.26.0，D4）
-- 資料在 `defs/weapon_drop_defs.gd`：`DROP_CHANCE`（小怪 4%、Boss 100%）、`RARITY_WEIGHTS`（小怪 白 60 / 綠 25 / 藍 12 / 紫 3、Boss 藍 60 / 紫 30 / 橘 10）、`AFFIXES`（10 種詞條，Claude 擬、暫定）。詞條數 = 稀有度序號（白 0 ~ 橘 4），同一把不重複（部分洗牌，用 `world.rng`）。
-- **武器實例**：`{ uid, base, rarity, affixes }`；uid 由 `World.new_weapon_uid()` 產生（全場唯一，`w1`、`w2`…，`reset` 歸零）。快照格式 `WeaponDropDefs.to_array / from_array`。
-- **裝備欄**：`Player.weapon_slots`（2 格）與 `active_slot`。只有手上那把的詞條生效（屬性來源 `&"weapon"`，`_apply_active_weapon`）；換了另一把（uid 不同）才重設連段與動作。`equip_weapon(id)` 把手上這格換成新的白色武器（開場、`--weapon`、測試）。`show_weapon` 只換招式資料（客戶端畫別人用）。
-- **切換**：`InputCmd.BTN_SWAP_WEAPON`（X、滑鼠滾輪，v0.31.0 起取代 Q；取代 F1 除錯切換）→ `swap_weapon` 換到另一格，另一格是空的不換。客戶端在房主處理完自己最後一次切換前保留本機預測的 `active_slot`。
-- **掉落**：`World.on_enemy_died` 依機率在屍體位置 `drop_weapon`（`ItemPickup` 帶 `weapon`）；多人時房主只產生一個實體，先撿先得。發 `weapon:dropped`。
-- **撿起**（F，同 D3）：`add_weapon`：空的裝備欄 → 背包（`find_spot`，條目帶 `weapon`、不算生效道具）→ 都放不下發 `inventory:full`。
-- **背包操作**（`InputCmd.inv_ops`）：`OP_MOVE` 武器可以從裝備欄搬進背包、`OP_DROP` 丟到地上（手上至少留一把）；`OP_EQUIP [uid, slot]` 放進裝備欄（從另一格來就互換，從背包來時原本那把回背包、放不下就不換）；`OP_MERGE [a, b]` 把 a 拖到 b 上：同種、同稀有度、不是橘色才行，b 的位置換成高一級、詞條重抽的新武器（uid 沿用 b），a 消失；手上唯一的一把拖到背包的武器上時，結果留在裝備欄。不能合成發 `weapon:merge_denied`。
-- **快照**：玩家 extra 加 `P_SLOTS`（兩格武器）、`P_ACTIVE`；背包條目第 6 欄是武器；地上道具 extra 第 2 欄是武器。
-- **介面**：背包面板上方 2 格裝備欄（使用中金框），拖到武器上顯示「合成」、拖到裝備欄裝上；下方說明顯示武器詞條（在背包裡標「不生效」）。左上「武器：稀有度 名稱（Q：另一把）」，文字用稀有度顏色。地上的武器是斜放的發光長條。
-
-### 15.23 試玩回饋調整（v0.27.0）
-- **二段跳**：道具能力 `double_jump`（雙躍之靴）接上：`Player.air_jumps()`（背包裡有就 1 次），空中再按跳躍從目前高度往上跳一次（同第一段的起跳速度），落地重置。`ItemDefs.is_implemented` 把 double_jump 算進已實作。
-- **武器基礎數值**（使用者決定：要看得到實際數字，例如白色攻擊力 10、綠色 12）：每把武器有攻擊力（普攻傷害）、攻速（每秒普攻次數）、範圍（揮砍距離 / 魔彈射程），依稀有度乘 `WeaponDropDefs.RARITY_BASE`（Claude 暫定：攻擊力每級 +20%，攻速與範圍每級 +5%）。攻擊力與攻速以屬性來源 `&"weapon"` 乘上去（和詞條同一個來源），範圍由 `Player.weapon_range_mul()` 直接乘在揮砍與魔彈上。`WeaponDropDefs.base_stats(inst)` 給介面顯示實際數字。
-- **法杖與遠程武器**（使用者決定）：法杖普攻三段時間都 ×2（0.28 → 0.56 秒一發）；遠程武器的普攻不擊退（knockback 0）、不讓怪物受擊硬直（攻擊資料 `no_stagger` → 投射物 → hit 欄位 `no_stagger` → `Entity.suppress_stagger`）。奧術爆裂照常。
-- **Boss 加強**（使用者決定方向，數值 Claude 訂，`enemy_defs.gd` 的 boss；網頁版比對整段跳過）：
-  - 跑速 3.0、轉身 4.0、出招間隔與冷卻約 ×0.7。
-  - 直劈（新招）：距離 4 以內，舉劍 0.6 秒（沒有地面預警，看動作）→ 前方 40°、4.5 的扇形 30 傷害；舉劍前半段用一半轉速追蹤、之後鎖定。
-  - 砸地：實心紅圈 3 / 6 / 9 一圈圈往外（間隔 0.5 秒，v0.42.0 原本 0.25；打到的那一圈閃亮後淡掉），每圈只打那一圈範圍內、同一次砸地每人最多被打一次；打到擊飛（`Player.knock_up`）+ 移速 ×0.5 兩秒（增益 `boss_slam`）；跳起來躲得過。
-  - 衝鋒：蓄力 0.45 秒、判定外擴 0.8；撞到（沒擋下）的玩家暈眩 0.8 秒（`Player.stun`：不能移動、出招、翻滾、跳；快照 `P_STUN`，客戶端立刻跟著暈眩；頭上星星）。
-  - 召喚：4 隻，每隻 50% 骷髏戰士 / 50% 弓手。
-  - 狂暴（血量一半以下）：移速 ×1.3、冷卻 ×0.6、前搖 ×0.75；衝鋒連衝 3 次（中間 0.3 秒重新瞄準）；召喚的骷髏戰士爬出來後衝撞一次（`MeleeEnemy.rush`：蓄力 0.5 → 11 單位/秒衝 0.5 秒）；砸地不管多遠都放：玩家腳下紫色預警 0.6 秒 → 瞬移（`fx:boss_teleport`）→ 0.3 秒後砸下。
-- **武器稀有度的光**：不是白色的武器在手上掛一盞稀有度顏色的小燈（所有稀有度同樣亮，使用者決定）。
-- **視野**：見 15.20（內外亮度差變小、漸層變寬）。**Tab**：背包與屬性面板一起開關（拿掉 I）。
-
-### 15.24 成群怪物與怪物稀有度（v0.28.0，D5）
-- 資料在 `defs/monster_rarity_defs.gd`：`RARITIES`（普通 / 魔法 / 稀有的生命、傷害、體型倍率、詞條數、顏色）、`AFFIXES`（8 種）、`PACKS`（怪群規則）、稀有怪名字表。
-- **稀有度**：`Enemy.set_rarity(rarity, affixes, name)` 設欄位與體型（半徑、身高 × scale）；權威端再 `apply_rarity_stats()`：屬性來源 `&"rarity"`（最大生命、攻擊力相乘，乘在 `&"wave"` 之上）、`&"affixes"`（詞條的 mods）、`&"affix_regen"`（再生 = 最大生命 × 2% 的 hp_regen）。`Spawner.roll_rarity` 抽詞條（不重複、`world.rng`）與名字；普通不抽、不耗亂數。
-- **詞條行為**（`Enemy`）：吸血在 `Combat._apply_damage` 命中後呼叫 `on_dealt_damage`；狂暴在 `_update_affixes` 觸發一次，`action_speed` 1.4 乘在狀態機時間上（`fsm.update(dt × action_speed)`），冷卻用 `cd_time()` 除以它，移速來源 `&"frenzy"`；死亡爆炸在死亡時發 `fx:telegraph`、`Dead` 狀態 delay 秒後 `Hitbox.strike`（擋不住、通關後不炸）；召喚醒著時每 interval 秒用 `spawner.spawn_at` 叫骷髏戰士（`summoner_id`，同時最多 max_alive）。
-- **怪群**：地圖資料 `"packs": true` 且 `World.spawn_packs`（`--no-spawn` 與 check.gd 預設關）時，`World.reset` 呼叫 `Spawner.spawn_packs`：群中心離出生點 ≥ 15、可走且連通、群距 ≥ 10；成員散在 3.5 內、彼此 ≥ 1.0。成員以 `mul.dormant = true` 出生（狀態 `dormant`，不播爬出），`World.packs` 記 `{ center, ids, awake }`。`World._update_packs`（玩家更新後、敵人更新前）任一可被當目標的玩家離中心 ≤ 12 就 `wake_pack`；成員被打（`_on_damaged`）也整群醒來。醒來同一步就切到主狀態。
-- **波次**：只有 `wave_member`（`_spawn_from_queue` 生的）擋下一波；怪群、召喚的不算。通關時休眠的怪群不會一起倒下。
-- **快照**：敵人 extra 第 2~4 欄是稀有度、詞條（字串陣列）、名字，普通怪不送；客戶端只 `set_rarity`（外觀），數值以快照為準。
-- **畫面**：魔法 / 稀有怪腳下發光環、身上 OmniLight（範圍 3、亮度 1.5），稀有怪模型 ×1.2；`WorldLabels` 頭上畫詞條（稀有怪多一行名字）。
-- **效能做法**（200 隻怪的目標：RTX 3070 144 FPS、內顯 60 FPS）：
-  - 骷髏戰士 / 弓手用 `view/skinned_rig.gd`（`DarkFantasy.skinned_character`）：同種的零件模板合成一個蒙皮網格（頂點色、依「自發光、投影」分組，最多 2 個網格），9 根骨頭 = Rig 的 anchors，綁定姿勢為單位矩陣（頂點存在各自關節的座標系）。關節是只存數值的 `Joint`（介面同 Node3D 的 position / rotation / scale），動畫寫完後 `flush()` 只把有變的骨頭寫進 Skeleton3D。Boss 與玩家仍用 `Rig`。
-  - 模擬層：`SimPhysics.separate` 用 Packed 陣列與攤平的鏈結串列格子；`World.player_list` 取代每次 `players.values()`；`Enemy.cd()` 快取字串；`Enemy.anim` 沿用同一個 Dictionary；位置與上次算地形時相同、站在地上的實體跳過推出石台與落地（`Entity.terrain_checked_pos`）。
-  - 畫面層：視野結果只在 tick 或觀看者改變時重算，牆擋視線每隻每 `LOS_INTERVAL`（3）步重算（剛進入扇形立刻算）；看不到的節點不更新；敵人四肢動畫每秒最多 60 次；節點位置與朝向一次寫入 transform；閃白沒變不改材質；太陽陰影 `SHADOW_ORTHOGONAL`、最遠 70。
-  - 量測：`main.gd --horde=N --perf`（離屏截圖場景，見 1.8）與 `stress_test/profile_horde.gd`（headless，模擬層各段）。
-
-### 15.25 挖墳事件、難度與換層（v0.29.0，D6）
-- 資料在 `defs/event_defs.gd`（`DIG`、`DIFFICULTY`、`SPAWN`、`GHOST`），邏輯在 `sim/dig_event.gd`（`World.event`）。只有地圖資料 `"dig_event": true` 的地圖有（`DigEvent.enabled`）；這種地圖的 `Spawner.update` 不跑波次，測試場地照舊。
-- **挖墳**：玩家動作層 `dig`（`Ready` 在按住 F、附近沒有倒地隊友、`event.can_dig` 時進入）：移速 0、不能跳，**朝向照樣跟著滑鼠**（v0.38.0：按住互動的吟唱動作——救援、挖墳、以後新增的——都不鎖轉向）；`_on_damaged` 與 `stun` 不打斷；屬性來源 `&"digging"` 讓擊退 ×0，質量暫時 `DIG_MASS`（1000，碰撞推不動）。`DigEvent.update`（`World.step` 在 `spawner.update` 之後）：有人 `is_digging()` 且狀態 idle → `_start`（`event:started`、Boss 在挖墳點旁 `boss_distance`）；active 時進度 += 挖的人數 × dt ÷ 60，沒人挖每秒 −`DIG.decay`（v0.38.0 起 0.002）；滿了 → `open`（`event:exit_open`）。
-- **先 Boss、後怪潮**（v0.38.0 使用者決定）：事件開始時只出 Boss（`_boss_id`）。Boss 死了（實體不在或 `is_dead`）→ `horde = true`、發 `event:horde`，這時才開始事件生怪（第一批在 `interval_start` 秒後）、事件秒數 `time` 才開始累加。Boss 戰期間照樣可以挖。`--no-spawn` 沒有 Boss，下一步就算怪潮開始（但照樣不生怪）。
-- **難度** = `World.base_difficulty` + 怪潮秒數 × 1（`World.difficulty()`）。`Spawner.spawn_at` 在挖墳地圖用 `EventDefs.difficulty_mul`（所有怪，含 Boss）。事件生怪：每 `spawn_interval(難度)` 秒在隨機一位可被當目標的玩家周圍（`Spawner._around_player`）冒 `group_size` 隻（`wave_member = true`，同時最多 `max_alive`），稀有度 `EventDefs.roll_rarity`。`--no-spawn`（`spawner.finished`）時事件照常但不生怪、不出 Boss。
-- **出口與換層**：`open` 後活著、沒倒地的玩家走進 `exit_radius` → `Player.descend()`（`descended`：不更新、不能被打、不被追、不參與碰撞、畫面隱藏）。活著的都 descended（倒地的算還沒到）→ `World.next_floor()`：層數 +1、基礎難度 = (層數 − 1) × 10、移除所有非玩家實體、`arrive_floor` 回出生點、`_populate_floor`（事件歸零 → 寶箱 → 怪群）、帶著屍體的死者生冤魂、發 `floor:started`。實體 id 不重來（客戶端照常增減鏡像）。
-- **Boss**：挖墳地圖的 `on_boss_defeated` 不通關，在 Boss 旁掉一個大寶箱稀有度的道具（`boss:reward`）；武器與 50 金幣照 `on_enemy_died`。
-- **屍體與冤魂**：多人時真的死亡（`_on_died`）→ `World.drop_corpse`：`ItemPickup`（item_id `&"corpse"`、`corpse_of` = peer id）。撿起 → `Player.add_corpse`：背包條目 uid `corpse_<peer>`、id `&"corpse"`（`ItemDefs` 的 kind `&"corpse"`，形狀 r6，不算生效道具）；丟出來還是屍體。換層時 `corpse_carrier` 找到就 `_spawn_ghost`（`EnemyDefs` 的 `ghost`，MeleeEnemy，`ghost_of`，出生點 10~14）；冤魂死亡 → `on_ghost_defeated`：移除屍體、`Player.resurrect`（冤魂位置、30% 血、短暫無敵）。客戶端 `net_sync_life` 支援死亡 → 復活。
-- **快照**：世界加 `W_FLOOR`、`W_EVENT`（[狀態, 進度, 秒數, 基礎難度, 怪潮開始了沒]）；玩家 extra 加 `P_DESCENDED`；地上道具 extra 第 3 欄是屍體主人。挖墳點在 `World.load_map` 就設好（客戶端預測要判斷挖不挖得到）。
-- **畫面**：挖墳點土堆 + 墓碑（土堆隨進度變矮），打開後是黑洞 + 發光環與光；`WorldLabels` 顯示「[F] 按住挖墳」、「挖墳 N%」、「出口：走進去前往第 N 層（k / n 人）」、冤魂說明；HUD 右上「第 N 層 · 難度 D」與事件橫幅；HUD 上方中央的挖墳進度條（v0.38.0，事件進行中所有人都看得到，Boss 血條在它下面）；冤魂是半透明偏藍的騎士（`SkinnedRig.set_ghost`）；挖墳姿勢彎腰雙手往下挖。
-
-### 15.26 試玩回饋：效能、提示、牆後剪影、道具效果（v0.30.0~v0.33.0）
-- **休眠怪群**（v0.30.0）：`Entity.fixed`（`Enemy.dormant` 的 setter 同步）＝不積分；`SimPhysics.separate` 固定的不主動找鄰居、不被推，會動的一方退開全部重疊。`Enemy.update` 休眠時只推進 `fsm.time`。
-- **新手提示**（v0.31.0）：`ui/hints.gd` 每幀讀 World 判斷條件（客戶端讀鏡像也一樣），看過的存 `user://settings.cfg` `[hints] seen`；`--seconds` 自動驗證不存。文字在 `defs/hint_defs.gd`。換武器鍵 X。
-- **牆後剪影**（v0.32.0）：角色材質 `stencil_mode = CUSTOM`（寫入 `XRAY_STENCIL`），`material_overlay` 是不做深度測試、模板值不等於它才畫的純色材質（`WorldView.XRAY_SHADER`）。玩家一直開；怪物在 `_xray_needed`（往相機方向取樣地形高度，每 `LOS_INTERVAL` tick）成立時才開。地上的圈與扇形（`XRAY_SKIP`）不畫。
-- **道具效果**（v0.33.0）：`sim/item_effects.gd`。`Combat._apply_damage` 對玩家方的一般攻擊：先乘「對滿血敵人」的攻擊力倍率（`Stats.value_with_pct`），命中後 `on_hit`（連鎖閃電、中毒、冰凍），打死後 `on_kill`（爆炸、回血、擊殺計時）。道具效果造成的傷害帶 `proc = true`：不爆擊、不觸發 `on_hit`，打死怪仍觸發 `on_kill`。低血、擊殺後的加成由 `Player._tick_timers` → `update_player` 以來源 `cond:<uid>` 套上。中毒 / 冰凍狀態在 `Enemy`（權威端推進），畫面看 `anim.frozen / poisoned` 染色（`SkinnedRig.set_status_tint`）。數值在 `ItemDefs.PROCS`；已接上的在 `IMPLEMENTED_CONDITIONS / IMPLEMENTED_TRIGGERS`；寶箱與 Boss 獎勵用 `LootDefs.drop_pool`（只抽全部接上的，沒有就往下一級）。
-- **已知限制**：客戶端不知道「擊殺後攻速 +30%」（擊殺只在房主結算），自己的出招速度在 3 秒內會比房主慢，房主的判定為準。
+- 版號三處一致見第 12 節；遊戲畫面角落顯示版號。

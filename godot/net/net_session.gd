@@ -1,4 +1,4 @@
-# 傳輸層（15.18）：建立房間 / 加入 / 斷線、大廳名單、RPC 收送；對外只用訊號與 send_* 函式
+# 傳輸層（docs/系統說明.md §8）：建立房間 / 加入 / 斷線、大廳名單、RPC 收送；對外只用訊號與 send_* 函式
 # 兩種連線方式（玩家在主選單選）：IP = Godot 內建 ENet（區網 / 虛擬區網，只有桌面版）；房號 = WebRTC 直連，經 PeerJS 公開配對伺服器牽線
 # （net/peerjs_signaling.gd，網頁版 v0.36.0）。桌面版的 WebRTC 來自 addons/webrtc_native（v0.40.0），所以桌面版與網頁版用房號可以互連。
 # 兩種都是 MultiplayerPeer，RPC、快照、輸入的程式相同

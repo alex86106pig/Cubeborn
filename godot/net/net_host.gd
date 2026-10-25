@@ -1,5 +1,5 @@
 # 房主端的連線邏輯（不碰傳輸層）：收各玩家的輸入排隊、每步取一筆給 World.step、記錄 ack、產生快照
-# 單機 = 沒有連線的房主（15.2）：房主自己的輸入不經過這裡，由 main.gd 直接放進 cmds
+# 單機 = 沒有連線的房主（PROJECT_GUIDELINES.md 第 2 節）：房主自己的輸入不經過這裡，由 main.gd 直接放進 cmds
 class_name NetHost
 extends RefCounted
 

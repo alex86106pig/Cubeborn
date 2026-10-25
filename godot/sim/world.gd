@@ -39,7 +39,7 @@ var spawner := Spawner.new()
 var boss_id := 0                     # 目前的 Boss（0 = 沒有），HUD 的 Boss 血條用
 var victory_timer := 0.0
 var is_defeated := false             # 全員倒下（已發出 game:defeat）
-# 連線（15.18）：房主 / 單機為權威端；客戶端的 World 只是快照的鏡像，加上本機預測自己的角色（不扣血、不產生實體）
+# 連線（docs/系統說明.md §8）：房主 / 單機為權威端；客戶端的 World 只是快照的鏡像，加上本機預測自己的角色（不扣血、不產生實體）
 var is_authority := true
 var run_id := 0                      # 每次 reset 加 1：客戶端靠它知道房主重新開始了
 # 正在更新哪位玩家（peer id；0 = 不是玩家的動作）：這段期間的事件標上 actor，客戶端丟掉自己已經預測播過的

@@ -57,7 +57,7 @@ var forced_velocity := Vector2.ZERO
 var has_forced_velocity := false
 var locomotion: StateMachine
 var action: StateMachine
-# 畫面層算姿勢用的資料（15.5）：只放名稱與數值，連線時同步這份就能畫出同樣動作
+# 畫面層算姿勢用的資料（PROJECT_GUIDELINES.md 第 11 節）：只放名稱與數值，連線時同步這份就能畫出同樣動作
 var anim: Dictionary = {}
 
 var _pressed := 0   # 本步按下的按鈕；讀過就清除，沒收到新輸入時不會重複觸發

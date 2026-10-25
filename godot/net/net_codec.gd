@@ -1,4 +1,4 @@
-# 快照的編碼與套用（15.18）：房主把 World 打包成只含數值的陣列，客戶端把陣列套到鏡像 World 的實體上
+# 快照的編碼與套用（docs/系統說明.md §8）：房主把 World 打包成只含數值的陣列，客戶端把陣列套到鏡像 World 的實體上
 # 實體欄位固定順序（E_*），各類別的額外欄位放在 E_EXTRA
 # 網路上傳的是壓縮過的格式（encode_entity）：數值欄位放 PackedFloat32Array、動畫的欄位名稱換成 ANIM_KEYS 的索引；
 # 客戶端收到時 decode_snapshot 展開成 E_* 的格式再使用

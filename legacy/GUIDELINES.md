@@ -1,0 +1,391 @@
+# Cubeborn 網頁版開發守則（已凍結）
+
+> 網頁版（Three.js）v0.8.0 起凍結、v0.10.0 搬到 `legacy/`，只當玩法設計圖。本文件是 2026-10-26 從 `PROJECT_GUIDELINES.md` 第 1~14 節原樣搬來的，**檔案路徑都相對於 `legacy/`**，之後不再更新。
+> 正式版（Godot）的規則見 [`PROJECT_GUIDELINES.md`](../PROJECT_GUIDELINES.md)。文中的「第 15 節」「15.x」「Godot 版」是搬移前的舊編號與註記：15.11~15.26 現在是 [`docs/系統說明.md`](../docs/系統說明.md) 的 §1~§16，其餘在 `PROJECT_GUIDELINES.md`。
+
+---
+
+## 1. 專案概要
+
+| 項目 | 內容 |
+|---|---|
+| 類型 | 3D 等距俯視角 Roguelike 動作遊戲（網頁版原型） |
+| 美術風格 | 程式生成的低多邊形奇幻角色（不使用外部模型與貼圖），造型已定案為**暗黑幻想**（寫實比例、硬朗多面體、月夜墓地） |
+| 目前階段 | Phase 1：核心戰鬥、5 波制（含 Boss 戰）的一局流程 |
+| 不在 Phase 1 範圍 | 職業選擇、房間/關卡生成、升級、掉落、武器切換、存檔、背景音樂（試聽中） |
+
+---
+
+## 2. 技術棧
+
+| 項目 | 選擇 | 理由 |
+|---|---|---|
+| 語言 | 原生 JavaScript（ES2022），ES6 Modules | 零建置、易讀 |
+| 音效 | Web Audio API 即時合成，不使用音檔 | 免授權、零下載；瀏覽器規定使用者操作後才能出聲 |
+| 3D 引擎 | Three.js `0.170.0`，透過 `importmap` 從 jsDelivr CDN 載入（含 `three/addons/` 內建工具） | 不需 npm |
+| 建置工具 | 無。日後需要打包上線再導入 Vite | 降低初期複雜度 |
+| 本機伺服器 | `tools/serve.ps1`（PowerShell 內建 HttpListener） | ES Modules 不能用 `file://` 開啟；遊戲執行不依賴 Node |
+| 自動檢查 | Node 24 LTS + `check.js`（`node check.js`）；`package.json` 只為檢查安裝 `three@0.170.0`，`node_modules/` 不進版控 | 不開瀏覽器即可驗證資料與核心機制 |
+| 物理 | 不用物理引擎，自寫圓形碰撞 | 俯視角動作遊戲只需 2D 平面碰撞 |
+| UI | DOM + CSS 疊在 canvas 上 | 好排版、好除錯 |
+| 版控 | git，每個版本一個 commit + tag | 可回溯 |
+
+**啟動方式**：在專案根目錄執行 `powershell -ExecutionPolicy Bypass -File legacy/tools/serve.ps1`，瀏覽器開 `http://localhost:5173`。`.claude/launch.json` 也有同樣設定（名稱 `cubeborn-legacy`），可供 Claude 的瀏覽器預覽使用。
+
+**AI 測試技巧**：瀏覽器分頁在背景時 `requestAnimationFrame` 會暫停。測試邏輯時可在 Console 透過 `__game.update(1/60)` 加 `__game.input.endStep()` 手動推進邏輯步。
+
+---
+
+## 3. 目錄結構
+
+```
+Cubeborn/
+├─ CLAUDE.md                  AI 最高指導原則（自動載入）
+├─ PROJECT_GUIDELINES.md      本文件
+├─ CHANGELOG.md               版本紀錄
+├─ check.js                   自動檢查（資料完整性與核心機制）
+├─ package.json               Node 設定（只用於檢查）
+├─ docs/                      進度.md（跨對話交接）、設計方向.md（設計目標）、檔案地圖.md、新電腦設定.md
+├─ index.html                 遊戲頁面、importmap、HUD 容器
+├─ preview.html               模型檢視頁（並排展示四個角色，可拖曳旋轉）
+├─ css/style.css              HUD 與頁面樣式
+├─ tools/serve.ps1            本機靜態伺服器
+└─ src/
+   ├─ main.js                 遊戲進入點：建立 Game 並啟動
+   ├─ preview.js              模型檢視頁進入點
+   ├─ Game.js                 遊戲主體（組合根）：持有所有系統、主迴圈、命中停頓、重新開始、通關
+   ├─ core/                   與遊戲內容無關的底層機制
+   │  ├─ config.js            全域可調參數（迴圈、世界、相機、玩家、生成、除錯開關）
+   │  ├─ version.js           VERSION 常數（與 CHANGELOG 同步）
+   │  ├─ math.js              角度、插值、緩動等數學小工具
+   │  ├─ EventBus.js          發布/訂閱事件匯流排
+   │  ├─ StateMachine.js      通用有限狀態機
+   │  ├─ CooldownManager.js   統一冷卻時間管理
+   │  └─ Input.js             鍵盤/滑鼠狀態，提供「本步按下」查詢
+   ├─ render/
+   │  ├─ Renderer.js          WebGLRenderer、場景、燈光、正交相機與跟隨、套用環境
+   │  ├─ rig.js               角色骨架 Rig、零件組 PartKit、幾何體工廠 G、材質工廠
+   │  ├─ environment.js       低多邊形地面、邊界點位、裝飾散佈工具
+   │  ├─ WeaponModels.js      依目前風格建立玩家武器外觀並同步姿勢
+   │  ├─ Effects.js           粒子、揮砍弧光、衝擊環、圓形/直線預警
+   │  └─ styles/              造型風格（介面見第 14 節）
+   │     ├─ index.js          風格登錄、getStyle()
+   │     └─ darkFantasy.js    暗黑幻想（定案）
+   ├─ entities/
+   │  ├─ Entity.js            實體基底：位置、速度、半徑、血量、擊退、受傷/死亡、模型重建
+   │  ├─ Player.js            玩家：雙層狀態機、武器、主動欄位
+   │  ├─ playerStates.js      玩家的移動層與動作層狀態定義
+   │  ├─ Enemy.js             敵人基底：波次倍率、共用狀態（spawn/hurt/dead）、接觸傷害
+   │  ├─ enemyDefs.js         敵人資料定義（grunt / archer / boss）
+   │  ├─ enemies/
+   │  │  ├─ MeleeEnemy.js     近戰小怪：追擊、接觸傷害
+   │  │  ├─ RangedEnemy.js    遠程小怪：保持距離、瞄準預備、發射投射物
+   │  │  └─ Boss.js           Boss：重砸、衝鋒、召喚、狂暴
+   │  └─ Projectile.js        投射物（可自訂外觀；可設定範圍爆炸）
+   ├─ combat/
+   │  ├─ Combat.js            傷害結算、命中判定查詢（扇形、圓形）、擊退計算
+   │  └─ Physics.js           圓形碰撞分離、場地邊界
+   ├─ weapons/
+   │  ├─ weaponDefs.js        武器資料定義（劍盾、法杖）
+   │  └─ weaponBehaviors.js   武器攻擊/特殊技的行為函式
+   ├─ skills/
+   │  ├─ skillDefs.js         主動技能/道具資料定義（治療藥水、疾跑）
+   │  ├─ skillBehaviors.js    技能行為：canUse（選用條件）與 activate（效果）
+   │  └─ ActiveSlots.js       數字鍵 1~5 主動欄位：裝備、觸發、CD 或次數
+   ├─ audio/
+   │  └─ Sound.js           Web Audio 即時合成音效；訂閱事件播放、M 鍵靜音
+   ├─ world/
+   │  ├─ Arena.js             依風格建立場地；碰撞邊界固定
+   │  ├─ waveDefs.js          波次表與波次數值成長
+   │  └─ Spawner.js           分波生成、Boss 出場、召喚用 spawnAt
+   └─ ui/
+      └─ HUD.js               血條、技能欄、波次/時間、Boss 血條、橫幅、死亡/勝利畫面
+```
+
+規則：
+- 新增、刪除、搬移檔案時，同步更新本節與 `docs/檔案地圖.md`。
+- **一個檔案一個主要職責**，單檔超過約 300 行就該考慮拆分。
+- `core/` 不得 import 任何其他目錄（依賴只能由上往下：內容 → core）。`src/Game.js` 是唯一的組合根，負責建立並串接所有系統。
+- 模組之間優先透過 **建構時注入**（傳入 `game`）或 **EventBus** 溝通，禁止使用全域變數（除錯用的 `window.__game` 例外）。
+
+---
+
+## 4. 座標、單位與時間
+
+- **單位**：1 單位 = 1 個方塊 ≈ 1 公尺。人形高約 2 單位。
+- **座標**：Y 軸朝上，地面 `y = 0`。遊戲邏輯只在 XZ 平面運算（`x`、`z`），Y 只用於視覺。
+- **角度**：弧度。角色朝向 `facing` 以 XZ 平面角度表示。
+- **時間**：秒。所有速度、CD、持續時間都以秒為單位。
+- **主迴圈**：固定步長 `FIXED_DT = 1/60` 更新邏輯（累加器模式，單幀最多補 5 步），渲染每幀一次。遊戲邏輯一律使用傳入的 `dt`，禁止直接讀 `performance.now()`。
+- **命中停頓**：呼叫 `game.hitStop(秒)`。期間 `Game` 以真實時間倒數並把邏輯時間縮放到 5%，所有系統自動受影響，不需各自處理。
+- **輸入**：`Input` 的「本步按下」狀態保留到下一個邏輯步執行完才清除，高更新率螢幕也不會漏按。
+- **更新順序**（`Game.update`）：系統按鍵 → CD tick → 玩家 → 敵人 → 投射物 → 位移積分 → 碰撞分離 → 場地限制 → 生成器 → 特效 → 清除已移除物件。模型同步與 HUD 在每個渲染幀執行。
+
+---
+
+## 5. 操作對應
+
+| 輸入 | 功能 |
+|---|---|
+| WASD | 移動，**以螢幕方向為準**（W = 畫面上方，世界座標為斜向） |
+| 滑鼠游標 | 射線投射到地面平面得到瞄準點，角色面朝該點 |
+| 滑鼠左鍵 | 普通攻擊（按住可連續攻擊） |
+| 滑鼠右鍵 | 武器特殊技（受 CD 管理） |
+| 空白鍵 | 跳躍（Godot 版，見 15.13；只有一段跳） |
+| Shift | 翻滾（Godot 版，見 15.12；受次數與回充管理） |
+| 1 ~ 5 | 主動欄位（受 CD 或次數管理） |
+| F | 按住救援倒地的隊友（Godot 版 v0.21.0，見 15.18） |
+| Tab | 屬性面板（Godot 版） |
+| R | 死亡或通關後重新開始（連線時只有房主能按） |
+| F1 | 除錯：切換劍盾 / 法杖（非正式武器切換系統；Godot 版 v0.21.0 起走 InputCmd，連線時也能用） |
+| F2 | 除錯：顯示碰撞與命中範圍 |
+| F3 | 除錯：移速 +50%（Godot 版；F3~F5 只有單機） |
+| Esc | 暫停 / 繼續（視窗失去焦點時自動暫停；死亡或通關畫面不能暫停）；Godot 版選單裡有開房 / 加入，連線時 Esc 只開選單、遊戲不停 |
+| M | 靜音切換（記在瀏覽器） |
+
+右鍵選單在 canvas 上一律停用。
+
+---
+
+## 6. 狀態機規範
+
+### 6.1 通用 StateMachine
+- 狀態是一個物件：`{ enter(ctx, data), update(ctx, dt), exit(ctx), canExit?(ctx, next) }`，皆為選用。
+- 只能透過 `fsm.change(name, data)` 切換；**禁止**直接改 `fsm.current`。
+- 每個狀態可讀 `fsm.time`（進入此狀態後經過的秒數）。
+- 狀態名稱用 camelCase 字串，例如 `'idle'`、`'attack'`。
+
+### 6.2 玩家雙層狀態機
+| 層 | 狀態 | 說明 |
+|---|---|---|
+| 移動層 `locomotion` | `idle` / `move` / `dead` | 只處理位移與腿部動畫 |
+| 動作層 `action` | `ready` / `attack` / `special` / `useItem` / `stagger` | 處理攻擊、技能、受擊硬直與上半身動畫 |
+
+- 兩層各自 update，**動作層可以限制移動層**：每個動作狀態宣告 `moveSpeedMul`（例如劍攻擊 0.3、法杖 0.8、硬直 0）。
+- 攻擊類動作固定分三段：**`windup`（前搖） → `active`（判定） → `recovery`（後搖）**。命中判定只在 `active` 期間生效，每次出手同一目標只命中一次。
+- 時間長度一律來自武器/技能的資料定義，狀態本身不寫死數值。
+- `dead` 為終止狀態，進入後兩層都不再接受輸入。
+
+- 動作層輸入有 **緩衝**（`PLAYER.actionBufferTime`）：右鍵與數字鍵先存入 `player.bufferedAction`，由 `ready` 狀態消化；攻擊後搖期間若有緩衝會直接取消後搖。
+- 動作狀態可在 `fsm.data.lockFacing = true` 時鎖定轉向。
+
+### 6.3 敵人
+敵人使用同一個 `StateMachine`。`Enemy.js` 提供共用狀態 `spawn`（從地底爬出）/ `hurt`（硬直）/ `dead`（倒地沉沒後移除），子類別以 `static STATES` 合併自己的狀態，並以 `mainState` 指定爬出與硬直結束後回到哪個狀態。
+
+| 類別 | 狀態 | 說明 |
+|---|---|---|
+| `MeleeEnemy` | `chase` | 追擊、接觸傷害（命中時播放揮擊動畫） |
+| `RangedEnemy` | `kite` / `aim` | 保持 `preferredRange` 距離並橫移；冷卻好時停下瞄準，前 75% 追蹤玩家、最後鎖定方向再發射 |
+| `Boss` | `chase` / `slam` / `charge` / `summon` | 霸體（不使用 `hurt`，擊退大幅減免）；招式都有地面預警；血量低於門檻進入狂暴（移速提升、冷卻縮短） |
+
+- 敵人的招式冷卻同樣使用 `CooldownManager`，key 為 `enemy<id>.<招式>`，敵人移除時需 `reset`。
+- 波次倍率（血量 / 傷害 / 移速）在建構時套用，Boss 不套用。
+
+### 6.4 武器行為介面
+`weaponBehaviors.js` 的每個行為物件可實作以下選用函式，由 `attack` / `special` 狀態呼叫：
+
+| 函式 | 呼叫時機 |
+|---|---|
+| `enter(p, def, data)` | 進入動作時（可修改 `data.durations` 調整三段時間） |
+| `phase(p, def, data, name)` | 每個階段開始時（`windup` / `active` / `recovery`），產生投射物、特效 |
+| `update(p, def, data, name, k, dt)` | 每步呼叫，`k` 為階段進度 0~1；負責命中判定與姿勢 |
+| `exit(p, def, data)` | 離開動作時（含被打斷），負責還原暫時狀態 |
+
+---
+
+## 7. 冷卻時間（CD）管理
+
+- 全遊戲只有 **一個** `CooldownManager` 實例，由 `Game` 持有，於固定步長中 `tick(dt)`。
+- Key 命名規則：`<擁有者>.<用途>`，例如 `player.special`、`player.slot1`。
+- API：
+  - `start(key, duration)`：開始冷卻
+  - `isReady(key)` → boolean
+  - `remaining(key)` → 剩餘秒數
+  - `progress(key)` → 0~1（1 = 冷卻完成，給 HUD 畫遮罩用）
+  - `reset(key)` / `resetAll()`
+- **適用範圍**：右鍵特殊技、數字鍵 1~5、敵人招式。左鍵普攻不使用 CD Manager，攻擊頻率由動作狀態的前搖/後搖時間自然決定。
+- 嘗試在冷卻中觸發時，發出 `skill:onCooldown` 事件（HUD 閃爍提示），不做其他事。
+
+---
+
+## 8. 資料驅動的內容定義
+
+武器與技能都是「資料 + 行為」分離：數值放在 `*Defs.js`，邏輯放在行為函式。新增內容時優先只加一份資料。
+
+### 8.1 武器定義格式（`weaponDefs.js`）
+```js
+export const WEAPONS = {
+  swordShield: {
+    id: 'swordShield',
+    name: '劍盾',
+    type: 'melee',                 // 'melee' | 'ranged'
+    model: 'swordShield',          // 對應造型風格的 weapons 欄位
+    idle: { armR: -0.35, armL: -0.1, tilt: 0 }, // 待機姿勢
+    attack: {                      // 左鍵
+      behavior: 'meleeSwing',      // 對應 weaponBehaviors.js 的行為名稱
+      damage: 12, range: 2.3, arc: Math.PI * 0.65,
+      windup: 0.07, active: 0.09, recovery: 0.2,
+      knockback: 7, moveSpeedMul: 0.35,
+    },
+    special: {                     // 右鍵
+      behavior: 'shieldBash',
+      cooldown: 4, /* ...其他參數 */
+    },
+  },
+};
+```
+
+### 8.2 主動欄位定義格式（`skillDefs.js`）
+```js
+export const SKILLS = {
+  heal: {
+    id: 'heal', name: '治療', icon: '✚',
+    mode: 'cooldown',              // 'cooldown'（只有 CD）| 'charges'（有使用次數）
+    cooldown: 8, charges: null,
+    behavior: 'heal', amount: 30,
+  },
+};
+```
+
+### 8.3 敵人與波次（`enemyDefs.js`、`waveDefs.js`）
+- `ENEMIES` 每個類型有 `visual`（對應造型風格的 `characters.melee / ranged / boss`）與數值；行為類別由 `Spawner` 的 `ENEMY_CLASSES` 對應（`grunt → MeleeEnemy`、`archer → RangedEnemy`、`boss → Boss`）。
+- `WAVES` 是陣列，每波 `{ spawns: { 類型: 數量 }, isBoss? }`；最後一波打倒 Boss 即通關。
+- `WAVE_SCALING` 定義每多一波小怪的血量 / 傷害 / 移速成長比例。
+
+---
+
+## 9. 事件（EventBus）
+
+- 事件名稱格式：`<領域>:<動作>`，全小寫駝峰，例如 `entity:damaged`、`entity:died`、`player:died`、`skill:used`、`skill:onCooldown`、`game:restart`。
+- payload 一律為單一物件，例如 `{ target, amount, source }`。
+- 事件用於**通知**（UI、特效、音效），不用於核心流程控制；核心流程用直接呼叫。
+- Godot 版 v0.21.0 起：玩家自己的動作途中發出的事件會被 World 加上 `actor`（peer id），客戶端用它丟掉自己已經本機預測播過的事件（15.18）；命中結果與盾反不加。
+- 所有事件名稱必須列在本節下方的清單中：
+
+| 事件 | payload | 發出者 |
+|---|---|---|
+| `entity:damaged` | `{ target, amount, source, knockback, isCrit }`（Godot 版：`isCrit` 拆成 `is_heavy` 重擊顯示（第三段、盾反、爆炸）與 `is_crit` 屬性擲出的爆擊，見 15.11；另帶 `hit_stop` 命中定格秒數，見 15.3；目標是玩家時再帶 `source_kind`、`origin`、`lethal` 給遊玩紀錄，v0.34.0） | Combat |
+| `entity:healed` | `{ target, amount }` | skillBehaviors |
+| `player:blocked` | `{ player_id, perfect }`（Godot 版 v0.18.0：格擋擋下攻擊；perfect = 招架成功（v0.41.0 起），下一步盾反） | Player.try_block |
+| `entity:died` | `{ entity, source }`（Godot 版另帶 `kind`，v0.34.0 遊玩紀錄用） | Entity |
+| `player:died` | `{ player }`（Godot 版 v0.21.0 起只代表這位玩家真的死亡；輸掉一局改看 `game:defeat`） | Player |
+| `player:downed` | `{ player_id }`（僅 Godot 版 v0.21.0：多人時生命歸零先倒地假死，見 15.18） | Player |
+| `player:revived` | `{ player_id }`（僅 Godot 版 v0.21.0：被隊友救起） | Player.revive |
+| `player:stunned` | `{ player_id, duration }`（v0.27.0：被 Boss 衝鋒撞到暈眩） | Player.stun |
+| `game:defeat` | `{ stats }`（僅 Godot 版 v0.21.0：全員倒下 = 輸；單機和 `player:died` 同一步發出） | World |
+| `item:added` | `{ player_id, item, uid }`（僅 Godot 版 v0.19.0：道具放進身上；item = 物品 id，uid = 實例 id，武器為空字串） | Player.add_item |
+| `inventory:full` | `{ player_id, item }`（v0.25.0：背包放不下） | Player.add_item / add_weapon |
+| `weapon:dropped` | `{ uid, base, rarity, pos }`（v0.26.0：殺怪掉武器） | World.on_enemy_died |
+| `weapon:added` | `{ player_id, uid, slot }`（v0.26.0：撿到武器；slot = 裝備欄 0 / 1，-1 = 背包） | Player.add_weapon |
+| `weapon:merged` | `{ player_id, uid, base, rarity }`（v0.26.0：合成成功） | Player._merge |
+| `weapon:merge_denied` | `{ player_id }`（v0.26.0：不能合成） | Player._merge |
+| `gold:gained` | `{ amount, pos, total }`（v0.25.0：殺怪得到共用的錢） | World.on_enemy_died |
+| `chest:denied` | `{ chest_id, player_id, price }`（v0.25.0：錢不夠開寶箱） | Chest.try_open |
+| `chest:opened` | `{ chest_id, player_id, item, rarity, pos }`（v0.25.0：開了寶箱，道具掉在地上） | Chest.try_open |
+| `skill:used` | `{ key, def }` | playerStates / ActiveSlots |
+| `skill:onCooldown` | `{ key }` | playerStates / ActiveSlots |
+| `wave:started` | `{ wave, total, isBoss }` | Spawner |
+| `boss:enraged` | `{ boss }` | Boss |
+| `game:victory` | `{ stats }` | Game（Boss 死亡後延遲發出） |
+| `game:restart` | `{}` | Game |
+| `game:paused` | `{ paused }` | Game（Esc、失去焦點） |
+| `audio:muted` | `{ muted }` | Game（M 鍵） |
+| `sfx:cue` | `{ name }` | 各遊戲物件；`name` 必須是 `audio/Sound.js` 的 `CUES` 之一（check.js 會檢查）。Godot 版欄位為 `cue` |
+| `camera:shake` | `{ amount, duration, player_id? }` | 僅 Godot 版：Combat、Player、Projectile、Enemy、Boss、World（模擬層不能直接震相機）；有 `player_id`（玩家被打）時只震那位玩家的畫面 |
+| `fx:slash` | `{ pos, height, facing, range, arc, color, swing_dir }` | 僅 Godot 版（v0.20.0 起的特效事件，見 15.17）：劍盾揮砍 |
+| `fx:muzzle` | `{ pos, height, color }` | 法杖魔彈發射 |
+| `fx:telegraph` | `{ pos, height, radius, color, life }` | 奧術爆裂落點預警 |
+| `fx:fizzle` | `{ pos, height, color }` | 投射物飛到盡頭、撞牆或被格擋 |
+| `fx:explosion` | `{ pos, height, radius, color }` | 投射物爆炸 |
+| `fx:parry` | `{ pos, height, radius, facing, arc, color }` | 盾反（畫出實際的扇形範圍） |
+| `fx:heal` | `{ pos, height, color }` | 治療藥水 |
+| `fx:sprint` | `{ pos, height, color }` | 疾跑 |
+| `fx:boss_slam` | `{ pos, height, radius }` | Boss 砸地 |
+| `fx:boss_wall` | `{ pos, height }` | Boss 衝鋒撞牆 |
+| `fx:boss_teleport` | `{ pos, height, to }` | 狂暴 Boss 瞬移砸地（v0.27.0）：原地與目的地的紫色煙霧 |
+| `fx:lightning` | `{ pos, height, points, color }` | 道具連鎖閃電（v0.33.0）：points 依序連成的閃電線 |
+| `fx:status` | `{ pos, height, color }` | 道具讓怪中毒 / 冰凍（v0.33.0）：一小團該顏色的粒子 |
+
+---
+
+## 10. 命名慣例
+
+| 對象 | 規則 | 範例 |
+|---|---|---|
+| Class 檔案 | PascalCase，與 class 同名 | `CooldownManager.js` |
+| 非 class 模組 | camelCase | `weaponDefs.js`、`playerStates.js` |
+| Class | PascalCase | `class Zombie` |
+| 函式、變數、物件屬性 | camelCase | `applyDamage`、`moveSpeedMul` |
+| 常數 | UPPER_SNAKE_CASE | `FIXED_DT`、`WEAPONS` |
+| 私有成員 | `#` 前綴（原生私有欄位） | `#accumulator` |
+| 布林值 | `is` / `has` / `can` 開頭 | `isDead`、`canMove` |
+| 事件名稱 | `domain:action` | `entity:damaged` |
+| CD key | `owner.purpose` | `player.slot1` |
+
+- 程式碼的識別名稱一律英文；**註解與文件使用繁體中文**。
+- 每個檔案開頭用一行註解說明職責。
+- 只在「為什麼這樣做」不明顯時才寫註解，不寫重述程式碼的註解。
+
+---
+
+## 11. 程式風格
+
+- 使用 `const` / `let`，禁止 `var`。
+- 每個模組使用具名匯出（`export class` / `export const`），不使用 default export。
+- 重用 Three.js 物件：每幀運算用的 `Vector3` 等暫存物件放在模組層級重複使用，避免 GC 卡頓。
+- 共用幾何體與材質；受擊閃爍透過切換 `emissive`，不在每次受擊時建立新材質。
+- 實體移除時必須從場景移除 mesh 並 `dispose()` 專屬資源。
+- 可調數值集中放在 `config.js` 或 `*Defs.js`，邏輯程式內不出現魔術數字。
+
+---
+
+## 12. 版號與 CHANGELOG 規則
+
+採用語意化版本 `MAJOR.MINOR.PATCH`，**只在推送時升版號**（2026-10-25 起；之前是每次請求一版）：
+
+| 這次推送「未發布」裡有 | 升級 | 範例 |
+|---|---|---|
+| `### 新增`（新功能、新系統、新內容：武器、敵人、技能） | MINOR | 0.42.0 → 0.43.0 |
+| 只有修改 / 修復 / 移除（修 bug、調數值、重構、工具、文件） | PATCH | 0.42.0 → 0.42.1 |
+| 正式版或存檔不相容的大改 | MAJOR | 1.0 之前不使用 |
+
+- **平常**：改動記在 CHANGELOG 最上面的 `## [未發布]`，分類 `新增` / `修改` / `修復` / `移除`；commit 不升版號、不改 `version.gd`、不打 tag。
+- **推送**：`node tools/release.mjs --summary "摘要"`（流程見 `CLAUDE.md` 1.3）把「未發布」換成 `## [X.Y.Z] - 日期`、同步 `version.gd`、打 tag，一次推送 = 一個版號。「未發布」是空的（例如只改進度交接）就直接推、不升版號。自動判斷不對時用 `--bump=minor|patch` 蓋過。
+- 為什麼：兩位作者同時開發，各自先升版號會撞號；版號在推送前更新之後才決定就不會。每次推送最多一個 tag，Release 也一定會觸發。
+- 版號在已發布的部分三處一致：CHANGELOG 最新的已發布版本、`godot/core/version.gd`、git tag（`check.gd` 會檢查前兩者；網頁版的 `legacy/src/core/version.js` 已凍結在 0.7.0）。
+- HUD 角落顯示目前版號，方便確認瀏覽器載入的是最新版。
+
+---
+
+## 13. 開發工作流程
+
+1. **開工**：`git pull --ff-only origin main`（失敗就停下來問使用者；有新 commit 就向使用者簡報）→ 讀 `CLAUDE.md` → `docs/進度.md`（先看「通知」）→ 本文件 → CHANGELOG 最上面 → 相關模組。
+2. **實作**：先列出預計修改的檔案並取得使用者同意；遵守本文件；若需要偏離規範，先更新本文件再寫程式。
+3. **驗證**：`node tools/release.mjs --check`，全部通過；改到畫面或操作時，另外用離屏截圖驗證（見 15.10）。
+4. **記錄**：改動記進 CHANGELOG 的「未發布」；架構有變就更新本文件；兩位作者都要知道的流程變更在 `docs/進度.md` 加「通知」。
+5. **提交**：`git commit -m "摘要"`（不升版號、不打 tag）。只有使用者當次明確要求時才用 `node tools/release.mjs --summary "摘要"` 推送（見 `CLAUDE.md` 1.3）。
+6. **回報**：告訴使用者變更內容、驗證結果與已知問題；推送時另外報新版號。
+
+---
+
+## 14. 造型風格與角色模型
+
+- 所有角色都是 `render/rig.js` 的 **`Rig`**：統一關節階層 `root → body → head / armR / armL / legR / legL`，手掌掛點 `handR / handL`。角色面向 +Z、右側為 -X、四肢往 -Y 延伸。**動畫程式只轉動關節，不依賴任何特定造型**，因此改造型不需改動畫。
+- 手臂、腿的關節旋轉順序為 `YXZ`：先用 `rotation.x` 前後抬起，再用 `rotation.y` 水平揮動。
+- 零件用 `PartKit.add()` 建立、材質用 `kit.mat(color, { glow, metal })` 取得，才能統一受擊閃白、淡出與釋放資源。自發光部位（眼睛、寶石）用 `glow: true`，不受閃白影響。
+- **零件數影響效能**：角色建好後呼叫 `rig.optimize()`，武器與場地呼叫 `kit.mergeStatic(根節點, [會動的節點], [不合併的零件])`，把一起動的零件合併成少數 mesh（使用 Three.js 內建 `mergeGeometries`）。會單獨動畫的零件（例如法杖寶石）要放進不合併清單。`check.js` 會檢查每個角色與場地的零件數上限。
+- 風格是 `render/styles/` 下的一個模組（目前只有 `darkFantasy`），必須實作以下介面並在 `styles/index.js` 登錄：
+
+| 欄位 | 內容 |
+|---|---|
+| `id`, `name` | 識別碼與顯示名稱 |
+| `names` | `{ knight, melee, ranged, boss }` 角色顯示名稱（Boss 血條使用） |
+| `environment` | `{ background, hemiSky, hemiGround, hemiIntensity, sunColor, sunIntensity }` |
+| `colors` | `{ blood, bossBlood, enemyProjectile, hitSpark }` |
+| `characters` | `{ knight, melee, ranged, boss }`，各為 `() => Rig` |
+| `weapons` | `{ swordShield, staff }`，各為 `() => { kit, main, offhand, gem? }`；`main` 掛在右手，`offhand` 掛在左臂 |
+| `enemyProjectile()` | `→ { kit, mesh }`，沿 +Z 建模 |
+| `buildArena(halfSize)` | `→ { kit, group }`；只負責外觀，碰撞邊界固定 |
+
+- 新增職業或敵人時：先在 `darkFantasy.js` 補上對應的 `characters` 欄位，再新增資料定義。
+- 新造型或新外觀的候選方案，依 `CLAUDE.md` 第 2.5 節先做對比頁給使用者挑選，選定後才做進遊戲。

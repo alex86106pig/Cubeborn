@@ -2,7 +2,7 @@
 
 Godot 4（GDScript）等距視角 Roguelike 動作遊戲（暫定名 Cubeborn），目標 Steam 上架、多人連線。
 本文件在每次新對話開始時自動載入，**所有規則優先於 AI 的預設行為**。
-**兩位作者**共同開發，各自有好幾台電腦（Windows 與 Mac）；本文件的「使用者」指正在對話的那位作者，設計方向兩人都能決定。技術細節（架構、命名、狀態機、CD、事件、資料格式、連線）以 [`PROJECT_GUIDELINES.md`](PROJECT_GUIDELINES.md) 為準；各檔案的職責見 [`docs/檔案地圖.md`](docs/檔案地圖.md)。
+**兩位作者**共同開發，各自有好幾台電腦（Windows 與 Mac）；本文件的「使用者」指正在對話的那位作者，設計方向兩人都能決定。技術細節（架構、命名、狀態機、CD、事件、資料格式、連線）以 [`PROJECT_GUIDELINES.md`](PROJECT_GUIDELINES.md) 為準，各系統的細節與使用者的決定在 [`docs/系統說明.md`](docs/系統說明.md)；各檔案的職責見 [`docs/檔案地圖.md`](docs/檔案地圖.md)。
 
 ---
 
@@ -14,7 +14,7 @@ Godot 4（GDScript）等距視角 Roguelike 動作遊戲（暫定名 Cubeborn）
    - pull 到新的 commit 時：用 `git log --oneline ORIG_HEAD..HEAD` 和 `CHANGELOG.md` 最上面（「未發布」與剛發布的版本）**向使用者簡報另一邊改了什麼**，不要讓使用者自己去翻歷史。
    - 為什麼：兩位作者在多台電腦開發，聊天紀錄不會同步，忘了同步就會在舊版本上修改。
 2. 讀 [`docs/進度.md`](docs/進度.md)：**先看最上面的「通知」**（另一位作者留的流程變更，照 3.2 處理），再看上一輪卡在哪、下一步是什麼。
-3. 要動程式時：讀 [`PROJECT_GUIDELINES.md`](PROJECT_GUIDELINES.md) 中相關的章節、[`CHANGELOG.md`](CHANGELOG.md) 最上面一個版本，再用 [`docs/檔案地圖.md`](docs/檔案地圖.md) 定位要動的模組，只讀那幾段。只是討論、評估、改文件時不必讀。
+3. 要動程式時：讀 [`PROJECT_GUIDELINES.md`](PROJECT_GUIDELINES.md) 與 [`docs/系統說明.md`](docs/系統說明.md) 中相關的章節、[`CHANGELOG.md`](CHANGELOG.md) 最上面一個版本，再用 [`docs/檔案地圖.md`](docs/檔案地圖.md) 定位要動的模組，只讀那幾段。只是討論、評估、改文件時不必讀。
 
 ---
 
@@ -55,7 +55,10 @@ Godot 4（GDScript）等距視角 Roguelike 動作遊戲（暫定名 Cubeborn）
 1. 完成第 1.4 節的驗收。
 2. 把改動記進 `CHANGELOG.md` 最上面的 `## [未發布]`（沒有就新增；分類照 `PROJECT_GUIDELINES.md` 第 12 節）。**不升版號、不改 `version.gd`、不打 tag**，這些推送時由 `tools/release.mjs` 做。
 3. `git commit -m "摘要"`（不 push）。新腳本的 `.gd.uid` 一起 commit。
-4. 新增、刪除、搬移檔案時更新 `docs/檔案地圖.md`；架構或核心規則有變時更新 `PROJECT_GUIDELINES.md`。
+4. 新增、刪除、搬移檔案時更新 `docs/檔案地圖.md`。規則有變時依範圍決定寫哪裡：
+   - 每個系統都要遵守的共通規則（分層、命名、狀態機、事件表、版號、驗收）→ `PROJECT_GUIDELINES.md`。
+   - 只屬於某個系統的做法與使用者的決定（數值規則、連線同步方式、背包格式…）→ `docs/系統說明.md` 的那一節；新系統在最後加一節，標題寫版本號。
+   - 判斷：別的系統也要照著做的是共通規則，否則是系統細節。
 5. 回覆使用者：變更摘要、驗證證據、已知問題（版號推送時才有）。
 6. 改了**兩位作者都要知道的流程或規則**（本文件、`PROJECT_GUIDELINES.md` 的工作方式、工具用法）時，在 `docs/進度.md` 的「通知」加一條（見 3.2）。
 
@@ -84,7 +87,7 @@ Godot 4（GDScript）等距視角 Roguelike 動作遊戲（暫定名 Cubeborn）
   - 例外：`--headless` 的檢查與匯入不需要問。
   - 禁止直接開一般視窗模式（1920×1080 會蓋滿整個螢幕）；`--position` 開到螢幕外無效。
   - 為什麼：使用者可能正在玩其他遊戲，突然跳出視窗會打斷他；直接開視窗曾經蓋住整個螢幕。
-- **多人連線從架構層就要考慮**（權威端、同步方式，見 `PROJECT_GUIDELINES.md` 第 15 節）。
+- **多人連線從架構層就要考慮**（權威端、同步方式，見 `PROJECT_GUIDELINES.md` 第 16 節）。
 
 ---
 

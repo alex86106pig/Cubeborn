@@ -3,6 +3,11 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
+## [未發布]
+
+### 修改
+- **拆 `PROJECT_GUIDELINES.md`**（695 → 365 行）：只留現行、共通的 Godot 規則。第 4~14 節沿用舊節號（狀態機、CD、資料表、事件表改寫成 GDScript 的 API）；舊 15.1~15.10 分到第 1~3、15~17 節（三層分離 = 第 2 節、目錄 = 第 3 節、多人連線 = 第 16 節、驗收 = 第 17 節）。各系統的細節 15.11~15.26 原文搬到新的 `docs/系統說明.md` §1~§16（15.18 多人連線 → §8，依此類推）；網頁版的第 1~14 節原文搬到 `legacy/GUIDELINES.md`。程式註解、`CLAUDE.md`、`docs/製作計畫.md`、`docs/檔案地圖.md` 的章節號一起更新。
+
 ## [0.44.1] - 2026-10-26
 
 兩位作者（各自有 Windows、Mac）會同時開發：原本「每次修改就升版號 + 打 tag」會撞號，一次推太多 tag 也讓 Release 不觸發。參考 space_rogue 的做法調整開發流程（遊戲內容沒有改）。

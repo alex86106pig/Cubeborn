@@ -145,7 +145,7 @@ const FEEL := {
 	"hit_freeze": false,            # 命中定格：打中時攻擊者與目標的模型停住 hit_stop 秒（v0.18.3 加入，v0.19.1 使用者試玩覺得怪而關掉）
 }
 
-# 多人連線（C1~C3，見 PROJECT_GUIDELINES.md 15.18）
+# 多人連線（C1~C3，見 docs/系統說明.md §8）
 const NET := {
 	"port": 24680,
 	"max_players": 4,

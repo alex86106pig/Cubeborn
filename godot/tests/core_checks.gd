@@ -3,7 +3,7 @@
 class_name CoreChecks
 extends CheckKit
 
-# 模擬層禁止使用的東西（見 PROJECT_GUIDELINES.md 15.2）
+# 模擬層禁止使用的東西（見 PROJECT_GUIDELINES.md 第 2 節）
 const SIM_FORBIDDEN := {
 	"Input 單例": "\\bInput\\.",
 	"get_node / $": "get_node|get_tree|\\$[A-Za-z_\"]",
