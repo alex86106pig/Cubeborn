@@ -3,6 +3,7 @@
 # 兩次繪製：先畫一次只寫深度（DEPTH_SHADER），再畫原本的材質（next_pass，半透明）。只有最前面的面畫得到顏色，
 # 角色前後重疊的零件不會互相透出來（Godot 的 TRANSPARENCY_ALPHA_DEPTH_PRE_PASS 只在 alpha ≥ 0.99 時寫深度，淡入淡出時沒用）
 # 材質就地修改：角色的材質每隻各一份（受擊閃白、狀態染色也改同一份）；標了 SHARED 的共用材質先複製一份給這個模型
+# 同一個模型的好幾個網格常共用一個材質（寶箱的木頭、角色的盔甲），原本的設定每個材質只記一次
 # 淡入淡出中不投影、不畫牆後剪影（WorldView 處理）
 class_name Fade
 
@@ -27,12 +28,11 @@ static func apply(root: Node3D, a: float) -> bool:
 		return true
 	if not root.has_meta(&"fade"):
 		root.set_meta(&"fade", _collect(root))
-	for entry: Array in root.get_meta(&"fade"):
-		if entry[0] is Light3D:
-			(entry[0] as Light3D).light_energy = entry[1] * a
-		else:
-			var m: BaseMaterial3D = entry[1]
-			m.albedo_color.a = entry[3] * a
+	var state: Dictionary = root.get_meta(&"fade")
+	for entry: Array in state.lights:
+		(entry[0] as Light3D).light_energy = entry[1] * a
+	for entry: Array in state.materials:
+		(entry[0] as BaseMaterial3D).albedo_color.a = entry[2] * a
 	return false
 
 
@@ -40,12 +40,15 @@ static func is_fading(root: Node) -> bool:
 	return root.has_meta(&"fade")
 
 
-# 記下每個材質原本的透明模式與 alpha、每盞燈原本的亮度；網格換成「只寫深度 → 原本的材質（半透明）」；剪影（material_overlay）先拿掉
-static func _collect(root: Node) -> Array:
-	var out: Array = []
+# 記下燈原本的亮度、每個材質原本的透明模式與 alpha、每個網格原本的材質；網格換成「只寫深度 → 原本的材質（半透明）」；
+# 剪影（material_overlay）先拿掉
+static func _collect(root: Node) -> Dictionary:
+	var state := {"lights": [], "materials": [], "meshes": []}
+	var depth_of := {}    # 材質 -> 它的只寫深度那一次（同一個模型裡共用）
+	var copy_of := {}     # 共用材質 -> 這個模型自己的複本
 	for node in _descendants(root):
 		if node is Light3D:
-			out.append([node, (node as Light3D).light_energy])
+			state.lights.append([node, (node as Light3D).light_energy])
 		elif node is MeshInstance3D:
 			var mi := node as MeshInstance3D
 			mi.material_overlay = null
@@ -53,26 +56,33 @@ static func _collect(root: Node) -> Array:
 			if m == null:
 				continue
 			if m.has_meta(SHARED):
-				m = m.duplicate()
-				m.remove_meta(SHARED)
-			out.append([mi, m, m.transparency, m.albedo_color.a])
-			if m.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED:
-				m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			m.render_priority = 1   # 半透明的顏色排在所有「只寫深度」之後畫
-			mi.material_override = _depth_pass(m)
-	return out
+				if not copy_of.has(m):
+					var own: BaseMaterial3D = m.duplicate()
+					own.remove_meta(SHARED)
+					copy_of[m] = own
+				m = copy_of[m]
+			if not depth_of.has(m):
+				state.materials.append([m, m.transparency, m.albedo_color.a, m.render_priority])
+				if m.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED:
+					m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+				m.render_priority = 1   # 半透明的顏色排在所有「只寫深度」之後畫
+				depth_of[m] = _depth_pass(m)
+			state.meshes.append([mi, m])
+			mi.material_override = depth_of[m]
+	return state
 
 
 static func _restore(root: Node) -> void:
-	for entry: Array in root.get_meta(&"fade"):
-		if entry[0] is Light3D:
-			(entry[0] as Light3D).light_energy = entry[1]
-		else:
-			var m: BaseMaterial3D = entry[1]
-			m.transparency = entry[2]
-			m.albedo_color.a = entry[3]
-			m.render_priority = 0
-			(entry[0] as MeshInstance3D).material_override = m
+	var state: Dictionary = root.get_meta(&"fade")
+	for entry: Array in state.lights:
+		(entry[0] as Light3D).light_energy = entry[1]
+	for entry: Array in state.materials:
+		var m: BaseMaterial3D = entry[0]
+		m.transparency = entry[1]
+		m.albedo_color.a = entry[2]
+		m.render_priority = entry[3]
+	for entry: Array in state.meshes:
+		(entry[0] as MeshInstance3D).material_override = entry[1]
 	root.remove_meta(&"fade")
 
 

@@ -511,6 +511,16 @@ static func check_vision_view() -> String:
 			err = "fade_in 秒後背後的骷髏應還原成不透明（材質透明度 %.2f）" % _fade_alpha(back_node)
 		elif PartKit.mesh_instances(back_node).any(func(mi: MeshInstance3D) -> bool: return mi.name != &"Hitbox" and (mi.material_override as BaseMaterial3D).transparency != BaseMaterial3D.TRANSPARENCY_DISABLED):
 			err = "淡入完成後材質應還原成不透明模式"
+	# 一個材質用在好幾個網格上（寶箱的木頭、角色的盔甲）：淡到一半再完全顯示後，每個網格的材質與設定都要回到原本的
+	if err == "":
+		for e: Entity in [Chest.new(w, &"small", Vector2(0, 5)), _spawn(w, &"boss", Vector2(3, 5)), p]:
+			var node := view._create_view(e)
+			var before := _material_state(node)
+			Fade.apply(node, 0.5)
+			Fade.apply(node, 1.0)
+			if _material_state(node) != before:
+				err = "%s 淡入淡出後材質沒有還原：%s → %s" % [e.kind, before, _material_state(node)]
+				break
 	if err == "":
 		p.is_dead = true
 		view.sync(w, 1.0, 0.016)
@@ -518,6 +528,15 @@ static func check_vision_view() -> String:
 			err = "本機角色陣亡後應立刻全部看得到（不淡入）"
 	view.free()
 	return err
+
+
+# 每個網格的材質與透明相關設定（比對淡入淡出前後）
+static func _material_state(node: Node3D) -> Array:
+	var out := []
+	for mi in PartKit.mesh_instances(node):
+		var m := mi.material_override as BaseMaterial3D
+		out.append([mi.name, m.get_instance_id() if m else 0, m.transparency if m else -1, m.albedo_color.a if m else -1.0, m.render_priority if m else 0])
+	return out
 
 
 # 模型第一個網格材質的 alpha（淡入淡出的程度；SkinnedRig：Skeleton 底下的網格）
