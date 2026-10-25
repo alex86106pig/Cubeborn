@@ -19,6 +19,7 @@
 
 ### 重構（遊戲行為不變）
 - **怪物種類只看資料表**：`EnemyDefs` 每種怪加 `behavior`（melee / ranged / boss），Boss 加 `is_boss`、`freeze_immune`；`Spawner.create` 用 `behavior_class()` 對應類別，Boss 先出場、出生位置、不套波次倍率、冰凍免疫都改看欄位，不再寫死 `&"boss"`。挖墳事件的 Boss 改從 `EventDefs.DIG.boss_type` 讀。新增檢查「怪物種類只看資料表」。
+- **道具效果改成類別**：`ItemEffects` 的條件（對滿血敵人、低血、擊殺後）與動作（連鎖閃電、中毒、冰凍、爆炸、回血）各一個類別，用 `CONDITIONS` / `ACTIONS` 查表，取代原本的 `match`；之後接剩下 16 個道具只要加類別。新增檢查「道具效果的類別」：`ItemDefs.IMPLEMENTED_*` 和登錄的類別一一對應。
 
 ### 驗證
 - `node tools/release.mjs --check`：126 / 126 通過，畫面只印 1 行，`check_last.log` 156 行。

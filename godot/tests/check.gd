@@ -116,6 +116,7 @@ func _initialize() -> void:
 	_check("武器合成：兩把同種同稀有度拖在一起 → 高一級、詞條重抽、放在被拖上去的位置；不同種 / 不同稀有度 / 橘色不能合成；合成手上那把屬性立刻更新", LootChecks.check_weapon_merge)
 	_check("物品資料：每個稀有度都有道具，名稱不重複、欄位完整、形狀合法（相連、不重複、放得進背包）、格數 = ceil(強度 ÷ 稀有度效率)、效果都對應到存在的屬性 / 條件 / 觸發 / 能力", LootChecks.check_item_defs)
 	_check("道具放進身上：屬性效果照道具資料生效（百分比同類相加）、最大生命與目前生命一起加、翻滾次數 +1、移除與清空後回到原值、武器道具直接換武器、發出 item:added", LootChecks.check_items_apply)
+	_check("道具效果的類別：ItemDefs 標成已接上的條件與觸發，和 ItemEffects 的條件 / 動作類別一一對應", LootChecks.check_item_effect_registry)
 	_check("道具條件：對滿血敵人加傷、低於門檻生命加傷（拿掉道具就沒了）、擊殺後一段時間加攻速、擊殺回復最大生命的比例", LootChecks.check_item_conditions)
 	_check("道具觸發：疊到 100% 時擊殺爆炸、連鎖閃電（每跳在 jump_range 內、不重複、不連鎖觸發）、中毒（duration 內共 total_ratio）、冰凍不能動（Boss 不會）；機率相加", LootChecks.check_item_procs)
 	_check("道具掉落：寶箱只開出效果都接上的道具；沒有的稀有度往下一級找", LootChecks.check_item_drop_pool)

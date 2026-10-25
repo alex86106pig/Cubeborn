@@ -541,6 +541,28 @@ static func _dealt(e: Enemy, raw: float) -> int:
 	return roundi(raw * StatDefs.armor_damage_factor(e.stats.value(&"armor")) * e.damage_taken_mul)
 
 
+# 道具效果的類別（v0.42.1 重構）：ItemDefs 標成「已接上」的條件 / 觸發，和 ItemEffects 登錄的類別一一對應
+static func check_item_effect_registry() -> String:
+	var conds: Array = ItemEffects.CONDITIONS.keys()
+	for c: StringName in ItemDefs.IMPLEMENTED_CONDITIONS:
+		if not conds.has(c):
+			return "條件 %s 標成已接上，但 ItemEffects.CONDITIONS 沒有類別" % c
+	for c: StringName in conds:
+		if not ItemDefs.IMPLEMENTED_CONDITIONS.has(c):
+			return "條件 %s 有類別，但 ItemDefs.IMPLEMENTED_CONDITIONS 沒列" % c
+	var wired: Array[String] = []
+	for do: StringName in ItemEffects.ACTIONS:
+		for on: StringName in (ItemEffects.ACTIONS[do] as ItemEffects.Action).triggers():
+			wired.append("%s|%s" % [on, do])
+	for t: String in ItemDefs.IMPLEMENTED_TRIGGERS:
+		if not wired.has(t):
+			return "觸發 %s 標成已接上，但沒有動作類別接在這個觸發上" % t
+	for t: String in wired:
+		if not ItemDefs.IMPLEMENTED_TRIGGERS.has(t):
+			return "觸發 %s 有動作類別，但 ItemDefs.IMPLEMENTED_TRIGGERS 沒列" % t
+	return ""
+
+
 static func check_item_conditions() -> String:
 	var w := _new_world()
 	var p := _player(w)
