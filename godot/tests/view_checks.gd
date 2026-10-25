@@ -479,6 +479,8 @@ static func check_vision_view() -> String:
 		view.on_event("fx:slash", {"pos": Vector2(0, 8), "height": 0.0, "facing": 0.0, "range": 1.5, "arc": 1.7, "color": Color.WHITE, "swing_dir": 1})
 		if after_back != before or view.effects._transients.size() != before + 1:
 			err = "特效：背後的揮砍多了 %d 個、前方的多了 %d 個（應為 0 / 1）" % [after_back - before, view.effects._transients.size() - after_back]
+	if err == "" and (view._vision_overlay.material_override as Material).render_priority != Material.RENDER_PRIORITY_MIN:
+		err = "視野變暗的遮罩要最先畫（半透明的模型不在深度貼圖裡，後畫會被切成上下兩半）"
 	# 淡入淡出（2026-10-26）：轉身後原本前方的骷髏先半透明、fade_out 秒後才隱藏；背後的從透明淡入，fade_in 秒後還原成不透明
 	var v := Config.VISION
 	if err == "":
