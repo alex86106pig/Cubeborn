@@ -277,12 +277,11 @@ static func _check_main_menu(hud: Variant) -> String:
 
 
 static func check_url_query_args() -> String:
-	var main_script: GDScript = load("res://main.gd")
-	var got: PackedStringArray = main_script.url_query_args("?horde=200&perf&seconds=20&player-hp=99999&host&join=1.2.3.4&elites=")
+	var got: PackedStringArray = LaunchArgs.url_query_args("?horde=200&perf&seconds=20&player-hp=99999&host&join=1.2.3.4&elites=")
 	var want := PackedStringArray(["--horde=200", "--perf", "--seconds=20", "--player-hp=99999", "--elites"])
 	if got != want:
 		return "轉換結果 %s，預期 %s" % [got, want]
-	if not main_script.url_query_args("").is_empty() or not main_script.url_query_args("?").is_empty():
+	if not LaunchArgs.url_query_args("").is_empty() or not LaunchArgs.url_query_args("?").is_empty():
 		return "沒有參數時應回傳空的"
 	return ""
 
