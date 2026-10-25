@@ -439,6 +439,17 @@ static func check_warm_up() -> String:
 			view.sync(w, 1.0, DT)
 		if err == "" and (view.is_warming_up() or not view._warm_nodes.is_empty()):
 			err = "預熱 %d 幀後應移除" % WorldView.WARM_FRAMES
+	# 預熱過後，遊戲中的怪、寶箱、玩家淡入淡出的每一階都不必新建材質
+	if err == "":
+		var fw := _new_world()
+		var n0 := Fade.cache_size()
+		for e: Entity in [_spawn(fw, &"grunt", Vector2(0, 5)), _spawn(fw, &"archer", Vector2(2, 5)), _spawn(fw, &"boss", Vector2(4, 5)), Chest.new(fw, &"big", Vector2(-2, 5)), _player(fw)]:
+			var node := view._create_view(e)
+			for level in range(1, Fade.LEVELS):
+				Fade.apply(node, float(level) / Fade.LEVELS)
+			Fade.apply(node, 1.0)
+		if Fade.cache_size() != n0:
+			err = "預熱後淡入淡出還新建了 %d 個半透明材質" % (Fade.cache_size() - n0)
 	var text: String = load("res://ui/hud.gd").warm_text()
 	var sample: String = ItemDefs.ITEMS.values()[0].name + MonsterRarityDefs.RARE_NAME_B[0]
 	for ch in sample:
@@ -489,10 +500,12 @@ static func check_vision_view() -> String:
 		view.sync(w, 1.0, 0.1)
 		var fa := _fade_alpha(front_node)
 		var ba := _fade_alpha(back_node)
-		if not front_node.visible or not is_equal_approx(fa, 1.0 - 0.1 / v.fade_out):
-			err = "轉身 0.1 秒：原本前方的骷髏應還看得到、透明度 %.2f（實際 %s / %.2f）" % [1.0 - 0.1 / v.fade_out, front_node.visible, fa]
-		elif not back_node.visible or not is_equal_approx(ba, 0.1 / v.fade_in):
-			err = "轉身 0.1 秒：背後的骷髏應開始淡入、透明度 %.2f（實際 %s / %.2f）" % [0.1 / v.fade_in, back_node.visible, ba]
+		var want_out := Fade.level_of(1.0 - 0.1 / v.fade_out) / float(Fade.LEVELS)   # 透明度分 LEVELS 階
+		var want_in := Fade.level_of(0.1 / v.fade_in) / float(Fade.LEVELS)
+		if not front_node.visible or not is_equal_approx(fa, want_out):
+			err = "轉身 0.1 秒：原本前方的骷髏應還看得到、透明度 %.2f（實際 %s / %.2f）" % [want_out, front_node.visible, fa]
+		elif not back_node.visible or not is_equal_approx(ba, want_in):
+			err = "轉身 0.1 秒：背後的骷髏應開始淡入、透明度 %.2f（實際 %s / %.2f）" % [want_in, back_node.visible, ba]
 		else:
 			# 兩次繪製：先只寫深度、再畫半透明的原材質（零件不互相透出來）
 			for mi in PartKit.mesh_instances(back_node):
@@ -511,6 +524,17 @@ static func check_vision_view() -> String:
 			err = "fade_in 秒後背後的骷髏應還原成不透明（材質透明度 %.2f）" % _fade_alpha(back_node)
 		elif PartKit.mesh_instances(back_node).any(func(mi: MeshInstance3D) -> bool: return mi.name != &"Hitbox" and (mi.material_override as BaseMaterial3D).transparency != BaseMaterial3D.TRANSPARENCY_DISABLED):
 			err = "淡入完成後材質應還原成不透明模式"
+	# 半透明的材質共用快取：同樣的怪再轉身幾次不會再新建材質（網頁版每次轉身新建 / 切換材質會卡）
+	if err == "":
+		var n0 := Fade.cache_size()
+		for i in 4:
+			p.facing = PI - p.facing
+			w.tick += 1
+			view.sync(w, 1.0, 0.1)
+			for j in 4:
+				view.sync(w, 1.0, 0.05)
+		if Fade.cache_size() != n0:
+			err = "再轉身 4 次，半透明材質的快取從 %d 個變成 %d 個（應不變）" % [n0, Fade.cache_size()]
 	# 一個材質用在好幾個網格上（寶箱的木頭、角色的盔甲）：淡到一半再完全顯示後，每個網格的材質與設定都要回到原本的
 	if err == "":
 		for e: Entity in [Chest.new(w, &"small", Vector2(0, 5)), _spawn(w, &"boss", Vector2(3, 5)), p]:

@@ -190,5 +190,4 @@ static func _glow_material() -> StandardMaterial3D:
 		_glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		_glow.vertex_color_use_as_albedo = true
 		_glow.vertex_color_is_srgb = true
-		_glow.set_meta(Fade.SHARED, true)   # 所有小怪共用：淡入淡出時先複製一份（view/fade.gd）
 	return _glow

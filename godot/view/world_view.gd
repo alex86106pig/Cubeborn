@@ -634,6 +634,7 @@ func warm_up(center: Vector3) -> void:
 		if node.has_meta(&"xray"):
 			apply_xray(node, colors[i % colors.size()], true)
 		if faded:
+			Fade.prepare(node)   # 每一階的半透明材質都先建好，遊戲中轉身時不必新建
 			Fade.apply(node, 0.5)
 		_warm_nodes.append(node)
 		warm_keys.append(("fade:" if faded else "") + _view_key(e))

@@ -1,13 +1,15 @@
 // 檢查與推送（Windows / Mac 都能跑，只用 Node 內建模組）。規則見 PROJECT_GUIDELINES.md 第 12、13 節
 //   node tools/release.mjs --check                        只跑 Godot 匯入 + check.gd（有逾時）
+//   node tools/release.mjs --web                          匯出網頁版並開本機伺服器 http://localhost:8060（--port 換埠）
 //   node tools/release.mjs --summary "摘要"               推送：更新（rebase）→ 決定版號 → 檢查 → commit + tag → push
 //   node tools/release.mjs --summary "摘要" --dry-run     不動 git 歷史、不推：只 fetch、算版號、改檔跑檢查，最後還原
 //   加 --bump=minor|patch 可以蓋過自動判斷的版號
 // Godot：--godot <console 執行檔路徑> 或環境變數 GODOT（每台電腦的路徑寫在 CLAUDE.local.md）
 // git：環境變數 GIT，沒有就用 PATH 上的 git（Windows 找不到時改用 Program Files 裡的）
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { dirname, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -76,6 +78,29 @@ function runChecks() {
 }
 
 if (has('check')) process.exit(runChecks() ? 0 : 1);
+
+// 匯出網頁版到 build/web 並開本機伺服器（Ctrl+C 結束）；字型不做子集化（CI 才做），第一次載入比網站慢
+if (has('web')) {
+  const godot = godotPath();
+  const out = join(ROOT, 'build', 'web');
+  mkdirSync(out, { recursive: true });
+  const exp = runGodot(godot, ['--headless', '--path', '.', '--export-release', 'Web', '../build/web/index.html'], IMPORT_TIMEOUT, '匯出');
+  if (!existsSync(join(out, 'index.wasm')) || !exp.ok) {
+    const missing = /No export template found|template file not found/i.test(`${exp.out}\n${exp.err}`);
+    fail(missing ? '找不到 Godot 的網頁版匯出模板：照 docs/新電腦設定.md 安裝' : `匯出失敗\n${`${exp.out}\n${exp.err || ''}`.trim().split('\n').slice(-15).join('\n')}`);
+  }
+  const port = Number(opt('port')) || 8060;
+  const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.wasm': 'application/wasm',
+    '.pck': 'application/octet-stream', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json' };
+  createServer((req, res) => {
+    const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    const file = normalize(join(out, path === '/' ? 'index.html' : path));
+    if (!file.startsWith(out) || !existsSync(file) || statSync(file).isDirectory()) { res.writeHead(404); res.end(); return; }
+    res.writeHead(200, { 'Content-Type': types[extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
+    createReadStream(file).pipe(res);
+  }).listen(port, '127.0.0.1', () => console.log(`✔ 已匯出網頁版：http://localhost:${port}/（量幀時間加 ?perf；Ctrl+C 結束）`));
+  await new Promise(() => {});   // 伺服器一直開著，不往下跑推送
+}
 
 // ---- 推送 ----
 const dryRun = has('dry-run');
