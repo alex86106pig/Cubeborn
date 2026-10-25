@@ -68,7 +68,7 @@ static func make_snapshot(world: World, entities: Array, ack: int, peer_id: int 
 			extra[P_INV] = []   # 別人的背包客戶端用不到（只有自己的背包面板要看）
 		extras.append(extra)
 	return [world.run_id, world.tick, ack, [s.wave, s.kills, s.time, world.is_over, world.boss_id, world.is_defeated, world.gold,
-		world.floor_num, [world.event.state, world.event.progress, world.event.time, world.base_difficulty]], bytes, extras]
+		world.floor_num, [world.event.state, world.event.progress, world.event.time, world.base_difficulty, world.event.horde]], bytes, extras]
 
 
 # 單一實體的網路紀錄：[位元組, extra（普通怪為 null）, 實體]
@@ -437,3 +437,4 @@ static func apply_world(world: World, snap: Array) -> void:
 	world.event.progress = ev[1]
 	world.event.time = ev[2]
 	world.base_difficulty = ev[3]
+	world.event.horde = ev[4]

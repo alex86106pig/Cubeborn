@@ -97,7 +97,9 @@ static func cue_for_event(w: World, event_name: String, p: Dictionary) -> String
 	match event_name:
 		"sfx:cue":
 			return p.cue
-		"entity:damaged":
+		"entity:damaged", "hit:predicted":   # 客戶端預測打中先播；房主的同一下（predicted）不再播
+			if p.get("predicted", false):
+				return ""
 			if w != null and w.entities.get(p.target_id) is Player:
 				return "playerHurt"
 			return "hitHeavy" if p.get("is_heavy", false) or p.get("is_crit", false) else "hit"

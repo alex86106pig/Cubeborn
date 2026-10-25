@@ -32,6 +32,7 @@ var items: Array[Dictionary] = []     # 背包裡生效的道具實例 { uid, id
 var inventory := Inventory.new()       # 背包的擺放（D3）；items 與它同步
 var _next_item_uid := 1
 var is_interact_held := false          # F 按住（救援隊友）；剛按下那一步撿道具 / 開寶箱（D3）
+var view_tick := 0                     # 最近一筆輸入的畫面時間（InputCmd.view_tick；房主延遲補償用，v0.38.0）
 var _interact_was_held := false
 var _inventory_ops: Array = []         # 本步收到的背包操作（InputCmd.inv_ops），只在權威端執行
 var is_downed := false                 # 倒地假死（C4）：倒數 down_timer 秒，隊友救起前不能動
@@ -344,6 +345,7 @@ func apply_cmd(cmd: InputCmd) -> void:
 	is_interact_held = cmd.has(InputCmd.BTN_INTERACT)
 	_pressed |= cmd.buttons
 	_inventory_ops.append_array(cmd.inv_ops)
+	view_tick = cmd.view_tick
 
 
 # 把手上這格換成一把新的白色武器（開場、--weapon、測試與除錯用；正式取得武器走 add_weapon）

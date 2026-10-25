@@ -196,12 +196,11 @@ class Roll:
 
 # 救援（C4）：按住互動鍵、倒地隊友在範圍內就一直救；期間不能移動、攻擊、用技能（按鍵不留緩衝）
 # 救援進度由 World._update_downed 依 revive_target_id 累積
+# 按住互動的吟唱動作（救援、挖墳，以後新增的也一樣）都不鎖轉向：角色照樣跟著滑鼠轉頭看四周（使用者 2026-10-25）
 class Revive:
 	func enter(p: Player, data: Dictionary, _fsm: StateMachine) -> void:
 		data.move_speed_mul = 0.0
-		data.lock_facing = true
 		p.revive_target_id = data.target_id
-		_face(p, data.target_id)
 
 	func update(p: Player, _dt: float, fsm: StateMachine) -> void:
 		p.buffered_action = {}
@@ -213,19 +212,12 @@ class Revive:
 	func exit(p: Player, _fsm: StateMachine) -> void:
 		p.revive_target_id = 0
 
-	func _face(p: Player, target_id: int) -> void:
-		var t: Entity = p.world.entities.get(target_id)
-		if t != null:
-			p.facing = MathUtil.angle_to(p.pos, t.pos)
-
 
 # 挖墳（D6）：在挖墳點附近按住互動鍵；期間不能移動、攻擊、用技能（同救援），被打不中斷（Player._on_damaged、stun）
 # 進度由 DigEvent 依 is_digging() 累積；放開、離開範圍、出口打開就結束
 class Dig:
 	func enter(p: Player, data: Dictionary, _fsm: StateMachine) -> void:
 		data.move_speed_mul = 0.0
-		data.lock_facing = true
-		p.facing = MathUtil.angle_to(p.pos, p.world.event.point)
 		# 被打不中斷：挖墳中不會被擊退、也不會被怪擠走（不然會被推出挖墳範圍）
 		p.set_stat_source(&"digging", [[&"knockback_taken", Stats.MUL, 0.0]])
 		data.mass = p.mass

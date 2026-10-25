@@ -336,6 +336,7 @@ static func check_map_spawns() -> String:
 	var seen := {}
 	var count := 0
 	w.event._start(w)
+	(w.entities.get(w.boss_id) as Enemy).die()   # 怪潮在 Boss 倒下後才開始（v0.38.0）
 	for e: Entity in w.enemies:
 		seen[e.id] = true
 	for i in 60 * 60:

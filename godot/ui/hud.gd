@@ -17,7 +17,7 @@ const GAME_OVER_DELAY := 0.7     # 死亡後幾秒顯示結算
 const BOSS_NAME := "亡骸騎士"     # darkFantasy.js 的 names.boss
 # 介面程式碼裡寫死的中文字（橫幅、浮動文字、場上文字、連線面板、遊玩紀錄…；資料表以外的）：開場預熱用（v0.37.2）
 # check.gd 會掃 ui/ 的字串，缺字就列出來，加到這裡
-const UI_CHARS := "　！（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體"
+const UI_CHARS := "　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體"
 
 const VIGNETTE_SHADER := """
 shader_type canvas_item;
@@ -49,6 +49,9 @@ var _boss_box := VBoxContainer.new()
 var _boss_name := UiKit.label("", 18)
 var _boss: Dictionary
 var _boss_ghost := 1.0
+var _dig_box := VBoxContainer.new()   # 挖墳進度條（v0.38.0）：事件進行中所有人都看得到
+var _dig_name := UiKit.label("", 20, UiKit.GOLD)
+var _dig: Dictionary
 var _skill_bar := SkillBar.new()
 var _stats_panel := StatsPanel.new()
 var _floaters := Floaters.new()
@@ -146,15 +149,26 @@ func _init() -> void:
 	_fps.modulate.a = 0.6
 	root.add_child(tr)
 
-	# 上方中央：Boss 血條
-	_boss_box.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 18)
-	_boss_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	# 上方中央：挖墳進度條，下面是 Boss 血條（兩個都有時往下排）
+	var top := VBoxContainer.new()
+	top.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 18)
+	top.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	top.add_theme_constant_override(&"separation", 14)
+	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_dig_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_dig_box.add_child(_dig_name)
+	_dig = UiKit.bar(Vector2(560, 22), UiKit.DIG_BG, UiKit.GOLD, 3)
+	_dig.text.add_theme_font_size_override(&"font_size", 16)
+	_dig_box.add_child(_dig.root)
+	_dig_box.visible = false
+	top.add_child(_dig_box)
 	_boss_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_boss_box.add_child(_boss_name)
 	_boss = UiKit.bar(Vector2(560, 16), UiKit.BOSS_BG, UiKit.BOSS_FILL, 3)
 	_boss_box.add_child(_boss.root)
 	_boss_box.visible = false
-	root.add_child(_boss_box)
+	top.add_child(_boss_box)
+	root.add_child(top)
 
 	# 下方中央：技能欄
 	_skill_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 20)
@@ -319,7 +333,7 @@ func _process(delta: float) -> void:
 	var other: Dictionary = player.weapon_slots[1 - player.active_slot]
 	_weapon.text = "武器：" + (WeaponDropDefs.display_name(inst) if not inst.is_empty() else player.weapon.name)
 	if not other.is_empty():
-		_weapon.text += "　（Q：%s）" % WeaponDropDefs.display_name(other)
+		_weapon.text += "　（X：%s）" % WeaponDropDefs.display_name(other)
 	_weapon.add_theme_color_override(&"font_color", ItemDefs.RARITIES[inst.rarity].color if not inst.is_empty() else Color.WHITE)
 	_gold.text = "金幣 %d" % world.gold
 	var s := world.stats
@@ -330,6 +344,7 @@ func _process(delta: float) -> void:
 	_kills.text = "擊殺 %d" % s.kills
 	_time.text = UiKit.format_time(s.time)
 	_update_boss(delta)
+	_update_dig()
 
 
 func _update_fps(delta: float) -> void:
@@ -352,6 +367,17 @@ func _update_boss(delta: float) -> void:
 	_boss_name.text = BOSS_NAME + ("（狂暴）" if boss.is_enraged else "")
 	_boss_name.add_theme_color_override(&"font_color", UiKit.BOSS_NAME_ENRAGED if boss.is_enraged else Color.WHITE)
 	_boss.fill.color = UiKit.BOSS_FILL_ENRAGED if boss.is_enraged else UiKit.BOSS_FILL
+
+
+# 挖墳進度條：事件開始後、出口打開前顯示（客戶端讀快照同步的進度）
+func _update_dig() -> void:
+	var ev := world.event
+	_dig_box.visible = DigEvent.enabled(world) and ev.state == DigEvent.ACTIVE
+	if not _dig_box.visible:
+		return
+	_set_bar(_dig, ev.progress, ev.progress)
+	_dig.text.text = "%d%%" % floori(ev.progress * 100.0)
+	_dig_name.text = "挖墳進度" + ("　·　打倒 Boss 後怪物才會湧出" if not ev.horde else "　·　怪物越來越多")
 
 
 func _set_bar(bar: Dictionary, value: float, ghost: float) -> void:
@@ -420,20 +446,22 @@ func _on_event(name: String, p: Dictionary) -> void:
 			if _is_local(p.player_id):
 				_floaters.spawn(local_player(), "不能合成（要同種、同稀有度）", &"dmg")
 		"item:added":
-			var item: Dictionary = ItemDefs.ITEMS[StringName(p.item)]
-			_show_banner("獲得 %s\n%s" % [item.name, item.desc], false, ItemDefs.RARITIES[item.rarity].color)
+			if _is_local(p.player_id):   # 別人撿到的不跳（連線時事件全廣播）
+				var item: Dictionary = ItemDefs.ITEMS[StringName(p.item)]
+				_show_banner("獲得 %s\n%s" % [item.name, item.desc], false, ItemDefs.RARITIES[item.rarity].color)
 		"player:died":
 			# 多人時有人真的死亡但隊友還在：只提示（全員倒下才是結算，見 game:defeat）
 			if world.players.size() > 1 and world.is_any_player_alive():
 				_show_banner(("你陣亡了：隊友撿起你的屍體帶到下一層，打倒冤魂就能復活" if _is_local(p.player_id) else "%s 陣亡了：撿起屍體帶到下一層" % _tag_of(p.player_id)), true)
 		"event:started":
-			_show_banner("開始挖墳！Boss 出現了，怪物會越來越多", true)
+			_show_banner("開始挖墳！先打倒 Boss，之後怪物會越來越多", true)
+		"event:horde":   # Boss 倒下的下一步（同時有 boss:reward，橫幅合在這裡）
+			if p.get("after_boss", false):
+				_show_banner("擊敗 %s！掉落獎勵\n怪物開始湧出，越來越多" % BOSS_NAME, true)
 		"event:exit_open":
 			_show_banner("墓穴挖開了：全員走進去前往下一層", false, UiKit.GOLD)
 		"floor:started":
 			_show_banner("第 %d 層（基礎難度 %d）" % [p.floor, p.difficulty], false, UiKit.GOLD)
-		"boss:reward":
-			_show_banner("擊敗 %s！掉落獎勵" % BOSS_NAME, false, UiKit.GOLD)
 		"ghost:spawned":
 			_show_banner("%s 的冤魂出現了：打倒就能復活" % _tag_of(p.player_id), true)
 		"game:defeat":

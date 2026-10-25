@@ -70,8 +70,14 @@ static func check_dig() -> String:
 	_step(w, 30, {World.HOST_PEER_ID: _cmd(InputCmd.BTN_INTERACT | InputCmd.BTN_JUMP, Vector2(1, 0))})
 	if p.pos.distance_to(at) > EPS or p.height > EPS:
 		return "挖墳中移動了 %.3f、高度 %.2f" % [p.pos.distance_to(at), p.height]
+	# 挖墳中照樣跟著滑鼠轉向（v0.38.0 使用者要求）：瞄準正東 → facing = π/2
+	var look := _cmd(InputCmd.BTN_INTERACT)
+	look.aim = p.pos + Vector2(10, 0)
+	_step(w, 20, {World.HOST_PEER_ID: look})
+	if not p.is_digging() or absf(angle_difference(p.facing, PI / 2.0)) > 0.01:
+		return "挖墳中應跟著滑鼠轉向：挖墳 %s、朝向 %.2f（預期 %.2f）" % [p.is_digging(), p.facing, PI / 2.0]
 	# 30 秒 = 50%
-	_step(w, 60 * 30 - 31, dig)
+	_step(w, 60 * 30 - 51, dig)
 	if absf(w.event.progress - 0.5) > 0.01:
 		return "挖 30 秒進度 %.3f，預期 0.5" % w.event.progress
 	# 被打不中斷、不會被擊退出挖墳範圍
@@ -89,11 +95,13 @@ static func check_dig() -> String:
 	for e in w.enemies:
 		e.remove()
 	if not crowd_ok:
-		return "被骷髏圍住時被擠走 %.2f 或中斷挖墳" % p.pos.distance_to(hit_at)	# 放手 10 秒掉 10%
+		return "被骷髏圍住時被擠走 %.2f 或中斷挖墳" % p.pos.distance_to(hit_at)
+	# 放手 10 秒掉 10 × decay
 	var before := w.event.progress
+	var drop: float = EventDefs.DIG.decay * 10.0
 	_step(w, 600)
-	if p.is_digging() or absf(before - w.event.progress - 0.1) > 0.005:
-		return "放手 10 秒進度 %.3f → %.3f，預期少 0.1" % [before, w.event.progress]
+	if p.is_digging() or absf(before - w.event.progress - drop) > 0.002:
+		return "放手 10 秒進度 %.3f → %.3f，預期少 %.3f" % [before, w.event.progress, drop]
 	# 兩個人一起挖速度相加
 	var w2 := _world([1, 2])
 	_p(w2, 1).pos = w2.event.point + Vector2(1.5, 0.0)
@@ -138,7 +146,8 @@ static func check_difficulty() -> String:
 			r += 1 if x == MonsterRarityDefs.RARE else 0
 		if absf(m / 20000.0 - c[1]) > 0.015 or absf(r / 20000.0 - c[2]) > 0.015:
 			return "難度 %d：魔法 %.1f%%、稀有 %.1f%%，預期 %.0f%% / %.0f%%" % [c[0], m / 200.0, r / 200.0, c[1] * 100, c[2] * 100]
-	# 事件中：難度每秒 +1；Boss 在挖墳點旁邊出現；3 秒後第一批 2 隻（離玩家 8~18）；60 秒後冒出來的骷髏生命 ×1.3
+	# 事件中：Boss 在挖墳點旁邊出現；Boss 活著時不冒怪、難度不漲（v0.38.0）；Boss 倒下後怪潮開始：
+	# interval_start 秒後第一批 2 隻（離玩家 8~18）、難度每秒 +1；60 秒後冒出來的骷髏生命 ×1.3
 	var w := _world([World.HOST_PEER_ID], true)
 	var p := _p(w)
 	p.pos = w.event.point + Vector2(1.5, 0.0)
@@ -148,12 +157,22 @@ static func check_difficulty() -> String:
 		return "事件開始時 Boss 應出現在挖墳點旁邊"
 	var spawned := func() -> Array:
 		return w.enemies.filter(func(e: Entity) -> bool: return e is Enemy and (e as Enemy).wave_member)
-	_step(w, roundi(3.0 / DT) - 3)
+	_step(w, roundi(20.0 / DT))   # 玩家每步補滿血，只等時間
+	if not spawned.call().is_empty() or w.event.horde or absf(w.difficulty() - w.base_difficulty) > EPS:
+		return "Boss 活著的 20 秒內不應冒怪、難度不漲：冒了 %d 隻、怪潮 %s、難度 %.1f" % [spawned.call().size(), w.event.horde, w.difficulty()]
+	boss.die()
+	var ev_boss := _step(w, 1)
+	if not w.event.horde or _named(ev_boss, "event:horde").is_empty():
+		return "Boss 倒下後應開始怪潮並發出 event:horde"
+	var first := roundi(EventDefs.SPAWN.interval_start / DT)
+	_step(w, first - 3)
 	if not spawned.call().is_empty():
-		return "3 秒前就冒怪了"
+		return "怪潮開始後 %.1f 秒前就冒怪了" % EventDefs.SPAWN.interval_start
 	_step(w, 4)
-	if spawned.call().size() != 2:
-		return "3 秒後應冒 2 隻，實際 %d" % spawned.call().size()
+	if spawned.call().size() != EventDefs.SPAWN.group_base:
+		return "怪潮開始 %.1f 秒後應冒 %d 隻，實際 %d" % [EventDefs.SPAWN.interval_start, EventDefs.SPAWN.group_base, spawned.call().size()]
+	if absf(w.difficulty() - (w.base_difficulty + EventDefs.SPAWN.interval_start)) > 0.1:
+		return "怪潮 %.1f 秒時難度 %.2f，預期約 %.1f（每秒 +1）" % [EventDefs.SPAWN.interval_start, w.difficulty(), w.base_difficulty + EventDefs.SPAWN.interval_start]
 	w.event.time = 60.0
 	var g := w.spawner.spawn_at(w, &"grunt", w.event.point + Vector2(0, 6))
 	if absf(w.difficulty() - 60.0) > 0.01 or absf(g.max_hp - roundf(36.0 * 1.3)) > EPS:   # 最大生命取整：46.8 → 47
@@ -164,9 +183,11 @@ static func check_difficulty() -> String:
 	w2.reset(12345)
 	var before := w2.enemies.size()
 	w2.event._start(w2)
-	_step(w2, roundi(3.0 / DT) + 2)
-	if before < 50 or w2.enemies.size() < before + 3:
-		return "有 %d 隻怪群時事件沒有冒怪（%d → %d）" % [before, before, w2.enemies.size()]
+	(w2.entities.get(w2.boss_id) as Enemy).die()   # 怪潮在 Boss 倒下後才開始
+	_step(w2, roundi(EventDefs.SPAWN.interval_start / DT) + 3)
+	var horde := w2.enemies.filter(func(e: Entity) -> bool: return e is Enemy and (e as Enemy).wave_member and not e.is_dead).size()
+	if before < 50 or horde < EventDefs.SPAWN.group_base:
+		return "有 %d 隻怪群時事件沒有冒怪（冒了 %d 隻）" % [before, horde]
 	return ""
 
 
@@ -339,6 +360,15 @@ static func check_net_event() -> String:
 		NetCodec.create_entity(cw, a)
 	if cw.floor_num != 3 or cw.event.state != DigEvent.OPEN or absf(cw.difficulty() - 32.5) > EPS:
 		return "客戶端層數 %d、事件 %s、難度 %.1f，預期 3 / open / 32.5" % [cw.floor_num, cw.event.state, cw.difficulty()]
+	# 怪潮開始了沒（v0.38.0，HUD 進度條的說明文字要用）
+	if cw.event.horde != w.event.horde:
+		return "客戶端的怪潮狀態 %s，房主 %s" % [cw.event.horde, w.event.horde]
+	w.event.horde = true
+	var snap2: Array = bytes_to_var(var_to_bytes(NetCodec.make_snapshot(w, NetCodec.encode_entities(w), 0)))
+	NetCodec.decode_snapshot(snap2)
+	NetCodec.apply_world(cw, snap2)
+	if not cw.event.horde:
+		return "房主怪潮開始後，客戶端應同步 horde = true"
 	var mp: Player = cw.players.get(1)
 	var mc: ItemPickup = cw.entities.get(pk.id)
 	if mp == null or not mp.descended or mc == null or mc.corpse_of != 2:

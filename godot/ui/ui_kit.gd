@@ -12,6 +12,7 @@ const BOSS_FILL_ENRAGED := Color("d03030")
 const BOSS_NAME_ENRAGED := Color("ff7070")
 const ALERT := Color("ff6b6b")
 const GOLD := Color("ffd84a")
+const DIG_BG := Color("241c0c")   # 挖墳進度條的底色
 const HEAL := Color("6cff7a")
 const PLAYER_HURT := Color("ff5050")
 const CHARGES := Color("9cff9c")

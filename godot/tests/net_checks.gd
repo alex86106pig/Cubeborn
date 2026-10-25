@@ -258,12 +258,91 @@ static func check_revive() -> String:
 	for i in 30:
 		w2.step({1: _cmd(Vector2.ZERO, InputCmd.BTN_INTERACT), 2: _cmd(Vector2.ZERO)}, DT)
 	var far_err := "" if a.action.is_in(&"ready") and b.revive_progress == 0.0 else "倒地者在範圍外時不應開始救援"
+	# 救援中照樣跟著滑鼠轉向（v0.38.0 使用者要求）：倒地隊友在 +Z，瞄準正東 → facing = π/2
+	var w3 := _world([1, 2])
+	var r: Player = w3.players[1]
+	var d: Player = w3.players[2]
+	d.pos = Vector2(0, 1.0)
+	d.take_damage(1000.0, Vector2(1, 0), 0.0, 0)
+	var look := _cmd(Vector2.ZERO, InputCmd.BTN_INTERACT, Vector2(10, 0))
+	for i in 20:
+		w3.step({1: look, 2: _cmd(Vector2.ZERO)}, DT)
+	if far_err == "" and (not r.action.is_in(&"revive") or absf(angle_difference(r.facing, PI / 2.0)) > 0.01):
+		far_err = "救援中應跟著滑鼠轉向：動作 %s、朝向 %.2f（預期 %.2f）" % [r.action.current_name, r.facing, PI / 2.0]
 	w.clear()
 	w2.clear()
+	w3.clear()
 	return far_err
 
 
 # ───────── C2 / C3：快照、同步、預測 ─────────
+
+# v0.38.0：客戶端打中的回饋不等網路——單程延遲 6 步（100 ms）時，火花 / 音效 / 閃白（hit:predicted）和單機一樣在出招當下；
+# 房主的同一下到了標 predicted（只顯示傷害數字）；側移的怪：客戶端看到打中，房主用延遲補償也判定打中
+static func check_hit_prediction(feel: Array[String]) -> String:
+	var setup := func(lat: int) -> Array:
+		var link := _Link.new(7, [1, 2], lat, 0.0, false)
+		var hw := link.host_world
+		hw.players[1].pos = Vector2(-10, -10)
+		hw.players[2].pos = Vector2.ZERO
+		var g: Enemy = hw.spawner.spawn_at(hw, &"grunt", Vector2(0, 1.6))
+		hw.cooldowns.start(g.cd("swing"), 999.0)
+		return [link, g]
+	var idle := _cmd(Vector2.ZERO)
+	var press := _cmd(Vector2.ZERO, InputCmd.BTN_ATTACK)
+	# 單機出招到打中幾步（基準）
+	var a: Dictionary = WeaponDefs.WEAPONS[&"swordShield"].attack
+	var solo := ceili(a.windup / DT) + 1
+	var s: Array = setup.call(6)
+	var link: _Link = s[0]
+	var g: Enemy = s[1]
+	for i in 90:
+		g.pos = Vector2(0, 1.6)
+		link.step(idle, idle)
+	link.client_events.clear()
+	var fx := -1
+	var number: Dictionary = {}
+	for i in 60:
+		g.pos = Vector2(0, 1.6)
+		link.step(idle, press if i == 0 else idle)
+		for e in link.client_events:
+			if e.get("target_id", 0) == g.id and e.name == "hit:predicted" and fx < 0:
+				fx = i + 1
+			if e.get("target_id", 0) == g.id and e.name == "entity:damaged" and number.is_empty():
+				number = e
+	var preds := link.client_events.filter(func(e: Dictionary) -> bool: return e.name == "hit:predicted").size()
+	link.clear()
+	if fx < 0 or fx > solo + 1 or preds != 1:
+		return "延遲 100 ms 時打中回饋應在第 %d 步左右出現一次（同單機），實際第 %d 步、%d 次" % [solo, fx, preds]
+	if number.is_empty() or not number.get("predicted", false):
+		return "房主的同一下應標 predicted（不再播火花與音效）：%s" % [number]
+	# 側移 3 單位/秒的怪：在不同時機出手，客戶端看到打中的每一次，房主都要判定打中
+	var seen := 0
+	var agreed := 0
+	for k in 12:
+		var m: Array = setup.call(6)
+		var ml: _Link = m[0]
+		var mg: Enemy = m[1]
+		var x := -6.0
+		var host_hit := false
+		var at := 120 + k * 9
+		for i in 280:
+			x += 3.0 * DT
+			mg.pos = Vector2(x, 1.9)
+			mg.velocity = Vector2(3.0, 0)
+			ml.step(idle, press if i == at else idle)
+			for e in ml.host_world.events:
+				if e.name == "entity:damaged" and e.target_id == mg.id:
+					host_hit = true
+		if not ml.client_events.filter(func(e: Dictionary) -> bool: return e.name == "hit:predicted").is_empty():
+			seen += 1
+			agreed += 1 if host_hit else 0
+		ml.clear()
+	feel.append("v0.38.0 打中回饋：延遲 100 ms 時第 %d 步出現（單機 %d 步、修正前 %d 步）；側移的怪客戶端看到打中 %d 次、房主判定打中 %d 次" % [fx, solo, solo + 6 + 2 * 6, seen, agreed])
+	if seen < 4 or agreed != seen:
+		return "側移的怪：客戶端看到打中 %d 次，房主只判定 %d 次（延遲補償沒對上）" % [seen, agreed]
+	return ""
+
 
 # D3：客戶端靠近寶箱按 F → 房主開箱扣錢、道具掉在地上；再按 F 撿起；拖曳搬動、丟掉。兩邊的寶箱、金錢、背包一致
 static func check_net_loot() -> String:

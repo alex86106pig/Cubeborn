@@ -22,6 +22,7 @@ var move := Vector2.ZERO   # 世界 XZ 方向，長度 ≤ 1
 var aim := Vector2.ZERO    # 世界 XZ 瞄準點
 var buttons := 0
 var inv_ops: Array = []    # 本步的背包操作（同「本步按下」：只執行一次，合併輸入時接在一起）
+var view_tick := 0         # 連線：客戶端這一步畫面上其他實體的時間（房主 tick），房主做延遲補償用；0 = 不補償（v0.38.0）
 
 
 static func slot_bit(index: int) -> int:
@@ -33,7 +34,7 @@ func has(bit: int) -> bool:
 
 
 func to_array() -> Array:
-	return [tick, move.x, move.y, aim.x, aim.y, buttons, inv_ops]
+	return [tick, move.x, move.y, aim.x, aim.y, buttons, inv_ops, view_tick]
 
 
 static func from_array(a: Array) -> InputCmd:
@@ -44,4 +45,6 @@ static func from_array(a: Array) -> InputCmd:
 	cmd.buttons = a[5]
 	if a.size() > 6:
 		cmd.inv_ops = a[6]
+	if a.size() > 7:
+		cmd.view_tick = a[7]
 	return cmd

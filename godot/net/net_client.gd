@@ -21,6 +21,8 @@ var _pending: Array[InputCmd] = []   # 還沒被房主確認的輸入（重送�
 var _client_tick := 0
 var _last_ack := 0
 var _swap_tick := -1             # 最近一次按 X / 滾輪切武器的客戶端 tick
+var _predicted: Dictionary = {}  # 目標 id -> [預測打中時的客戶端 tick, ...]（v0.38.0：房主的同一下到了就標 predicted）
+var _flash: Dictionary = {}      # 目標 id -> 預測打中的閃白剩幾秒（快照的閃白還沒到，先在本機閃）
 
 
 func _init(p_peer_id: int) -> void:
@@ -43,16 +45,46 @@ func step(cmd: InputCmd, dt: float) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	_advance_render_clock()
 	_apply_interpolated()
+	_apply_predicted_flash(dt)
+	cmd.view_tick = roundi(render_tick) if render_tick >= 0.0 else 0
 	var me := local_player()
 	if me != null:
 		world.step_predicted(peer_id, cmd, dt)
 		out.append_array(world.events)
 		_history[_client_tick] = [me.pos, me.height]
+		for ev: Dictionary in world.events:
+			if ev.name == "hit:predicted":
+				var ticks: Array = _predicted.get_or_add(ev.target_id, [])
+				ticks.append(_client_tick)
+				_flash[ev.target_id] = Config.COMBAT.flash_time
 	else:
 		world.tick += 1
 	while not _events.is_empty() and _events[0][0] <= render_tick:
 		out.append_array(_events.pop_front()[1])
 	return out
+
+
+# 預測打中的閃白：補間會用快照的閃白蓋掉，這裡再取比較大的那個（房主的閃白到了就接上）
+func _apply_predicted_flash(dt: float) -> void:
+	for id: int in _flash.keys():
+		var e: Entity = world.entities.get(id)
+		if e != null:
+			e.flash_timer = maxf(e.flash_timer, _flash[id])
+		_flash[id] -= dt
+		if _flash[id] <= 0.0:
+			_flash.erase(id)
+
+
+# 房主傳來的「自己打中」是不是已經預測播過了：配對最舊的一筆、太舊的丟掉
+func _take_prediction(target_id: int) -> bool:
+	var ticks: Array = _predicted.get(target_id, [])
+	while not ticks.is_empty() and _client_tick - ticks[0] > Config.NET.predicted_hit_window:
+		ticks.pop_front()
+	if ticks.is_empty():
+		_predicted.erase(target_id)
+		return false
+	ticks.pop_front()
+	return true
 
 
 # 要送給房主的輸入：最近 input_redundancy 筆（舊到新），掉包時下一次還會帶到
@@ -94,6 +126,9 @@ func receive_events(run: int, tick: int, events: Array) -> void:
 		# 自己被打：受擊硬直與無敵在本機立刻反應（傷害與擊退以房主為準，位置由修正跟上）
 		if me != null and ev.name == "entity:damaged" and ev.target_id == me.id:
 			me.net_hurt()
+		# 自己打中、本機已經預測播過火花、音效與閃白：標 predicted（畫面層只顯示傷害數字）；順序照房主，跟其他事件一起排到畫面時間
+		if me != null and ev.name == "entity:damaged" and ev.get("source_id", 0) == me.id and _take_prediction(ev.target_id):
+			ev["predicted"] = true
 		kept.append(ev)
 	if not kept.is_empty():
 		_events.append([tick, kept])
@@ -107,6 +142,8 @@ func _reset_mirror(run: int) -> void:
 	_latest_tick = -1
 	_events.clear()
 	_history.clear()
+	_predicted.clear()
+	_flash.clear()
 	render_tick = -1.0
 
 

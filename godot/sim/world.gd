@@ -44,6 +44,11 @@ var is_authority := true
 var run_id := 0                      # 每次 reset 加 1：客戶端靠它知道房主重新開始了
 # 正在更新哪位玩家（peer id；0 = 不是玩家的動作）：這段期間的事件標上 actor，客戶端丟掉自己已經預測播過的
 var event_actor := 0
+# 延遲補償（v0.38.0，房主開了才記）：每步結束記下敵人與玩家的位置；更新某位客戶端玩家時 rewind_tick = 他畫面上的時間，
+# 他的近戰判定（Hitbox.query）就用那時的位置——他看到打中就是打中。只補償近戰判定，投射物照房主的時間飛
+var rewind_enabled := false
+var rewind_tick := 0
+var _pos_history: Array = []   # [[tick, {id: pos}], ...]，最舊在前，最多 Config.NET.rewind_max_ticks 筆
 
 var _next_id := 1
 var _next_weapon_uid := 0   # 武器實例的 uid（全場唯一：武器會在玩家之間經過地上轉手）
@@ -81,6 +86,8 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 	victory_timer = 0.0
 	is_defeated = false
 	event_actor = 0
+	rewind_tick = 0
+	_pos_history.clear()
 	run_id += 1
 	spawner.reset()
 	_next_id = 1
@@ -372,7 +379,9 @@ func step(cmds: Dictionary, dt: float) -> void:
 		if cmds.has(peer_id):
 			p.apply_cmd(cmds[peer_id])
 		event_actor = peer_id
+		rewind_tick = p.view_tick if rewind_enabled else 0
 		p.update(dt)
+		rewind_tick = 0
 		event_actor = 0
 	_update_packs()
 	for e in enemies:
@@ -414,6 +423,29 @@ func step(cmds: Dictionary, dt: float) -> void:
 		victory_timer -= dt
 		if victory_timer <= 0.0:
 			emit_event("game:victory", {"stats": stats.duplicate()})
+	if rewind_enabled:
+		_record_positions()
+
+
+func _record_positions() -> void:
+	var at := {}
+	for e in enemies:
+		at[e.id] = e.pos
+	for p in player_list:
+		at[p.id] = p.pos
+	_pos_history.append([tick, at])
+	if _pos_history.size() > Config.NET.rewind_max_ticks:
+		_pos_history.pop_front()
+
+
+# 延遲補償：目前更新的玩家畫面上那一刻（rewind_tick 那一步結束時）的位置 {id: pos}；不用補償時回傳空的
+# 太舊的夾到記錄裡最舊的那筆（補償上限 rewind_max_ticks 步，延遲再大就不完全補）；上一步就是現在的位置，也不必補
+func rewound_positions() -> Dictionary:
+	if rewind_tick <= 0 or _pos_history.is_empty() or rewind_tick >= tick - 1:
+		return {}
+	var oldest: int = _pos_history[0][0]
+	var t := maxi(rewind_tick, oldest)
+	return _pos_history[t - oldest][1] if t - oldest < _pos_history.size() and _pos_history[t - oldest][0] == t else {}
 
 
 # 客戶端：只推進自己的角色（本機預測，C3）。順序同 step()，但不碰其他實體、不扣血、不產生投射物

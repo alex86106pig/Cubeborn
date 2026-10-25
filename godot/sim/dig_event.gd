@@ -1,5 +1,6 @@
 # 挖墳事件（D6，規格見 PROJECT_GUIDELINES.md 15.25；數值在 defs/event_defs.gd）
-# 有人在挖墳點按住 F（玩家動作 dig）就累積進度，第一下開始事件：Boss 出現、怪物依難度不斷冒出；沒人挖時進度慢慢掉
+# 有人在挖墳點按住 F（玩家動作 dig）就累積進度，第一下開始事件：先只有 Boss 出現；Boss 倒下後怪潮才開始（怪物依難度不斷冒出、
+# 難度從這時起往上加）；沒人挖時進度慢慢掉（使用者 2026-10-25：原本 Boss 與怪潮同時來，怪太多沒空打 Boss、更沒空挖）
 # 挖完墓穴變成出口：活著的玩家走進去就「下去」（descended），全部下去（沒有倒地的人）就 World.next_floor()
 # 只有地圖資料 "dig_event": true 的地圖才有（測試場地照舊用波次）；不持有 World，每次呼叫時傳入；只在權威端更新
 class_name DigEvent
@@ -11,16 +12,20 @@ const OPEN := &"open"       # 挖完，出口打開（事件照常進行、難�
 
 var state := IDLE
 var progress := 0.0         # 0~1
-var time := 0.0             # 事件開始後的秒數（難度用）
+var horde := false          # 怪潮開始了沒（Boss 倒下後；沒有 Boss 時事件一開始就是）
+var time := 0.0             # 怪潮開始後的秒數（難度用）
 var point := Vector2.ZERO   # 挖墳點（世界座標）
 var spawn_timer := 0.0
+var _boss_id := 0           # 事件叫出來的 Boss
 
 
 func reset(world: World) -> void:
 	state = IDLE
 	progress = 0.0
+	horde = false
 	time = 0.0
 	spawn_timer = 0.0
+	_boss_id = 0
 	point = MapDefs.to_world(world.map, world.map.dig)
 
 
@@ -58,17 +63,23 @@ func update(world: World, dt: float) -> void:
 			world.emit_event("sfx:cue", {"cue": "victory"})
 	if state == IDLE:
 		return
-	time += dt
-	_spawn(world, dt)
+	if not horde:
+		var boss: Entity = world.entities.get(_boss_id)
+		if boss == null or boss.is_dead:
+			horde = true
+			spawn_timer = EventDefs.SPAWN.interval_start
+			world.emit_event("event:horde", {"pos": point, "after_boss": _boss_id != 0})
+	if horde:
+		time += dt
+		_spawn(world, dt)
 	if state == OPEN:
 		_update_descend(world)
 
 
 func _start(world: World) -> void:
 	state = ACTIVE
-	spawn_timer = EventDefs.SPAWN.interval_start
 	world.emit_event("event:started", {"pos": point})
-	if world.spawner.finished:   # --no-spawn：只挖墳、不生怪
+	if world.spawner.finished:   # --no-spawn：只挖墳、不生怪（沒有 Boss，下一步就算怪潮開始，但照樣不生怪）
 		return
 	var nav := world.nav_for(EnemyDefs.ENEMIES.boss.radius)
 	var at := point
@@ -78,7 +89,7 @@ func _start(world: World) -> void:
 		if nav.is_walkable(c) and nav.same_region(c, point):
 			at = c
 			break
-	world.spawner.spawn_at(world, &"boss", at)
+	_boss_id = world.spawner.spawn_at(world, &"boss", at).id
 
 
 # 每 interval 秒在一位活著的玩家周圍冒一批（同 Spawner._around_player 的距離），稀有度依難度

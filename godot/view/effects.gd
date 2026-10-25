@@ -16,6 +16,7 @@ const SLASH_SEGMENTS := 24
 # 會處理的事件 → 處理函式；check.gd 會確認模擬層發出的每個 fx:* 都在這裡
 const HANDLERS := {
 	"entity:damaged": &"_on_damaged",
+	"hit:predicted": &"_on_damaged",   # 客戶端預測自己打中（v0.38.0）：先噴火花，房主的那一下到了就不再噴
 	"entity:died": &"_on_died",
 	"boss:enraged": &"_on_enraged",
 	"fx:slash": &"_fx_slash",
@@ -198,7 +199,7 @@ static func _entity_at(e: Entity, y_offset: float) -> Vector3:
 
 func _on_damaged(p: Dictionary) -> void:
 	var target := _entity(p.target_id)
-	if target == null:
+	if target == null or p.get("predicted", false):
 		return
 	var heavy: bool = p.get("is_heavy", false) or p.get("is_crit", false)
 	burst(_entity_at(target, 1.1), {"color": p.get("color", Color.WHITE), "count": 12 if heavy else 6, "speed": 6.0 if heavy else 4.0})

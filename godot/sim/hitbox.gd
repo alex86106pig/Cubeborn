@@ -4,15 +4,26 @@
 class_name Hitbox
 
 
+# 房主更新客戶端玩家時（World.rewind_tick）目標先移到那位玩家畫面上的位置再判定，判定完放回去（延遲補償，v0.38.0）
 static func query(world: World, team: StringName, origin: Vector2, facing: float, shape: Dictionary, source_id: int = 0) -> Array[Entity]:
 	var candidates := Combat.hostiles_of(world, team, source_id)
+	var rewound := world.rewound_positions() if team == &"player" else {}
+	var saved := {}
+	for c in candidates:
+		if rewound.has(c.id):
+			saved[c] = c.pos
+			c.pos = rewound[c.id]
+	var out: Array[Entity] = []
 	match shape.shape:
 		&"sector":
-			return Combat.query_sector(origin, facing, shape.range, shape.arc, candidates)
+			out = Combat.query_sector(origin, facing, shape.range, shape.arc, candidates)
 		&"circle":
-			return Combat.query_circle(origin, shape.radius, candidates)
-	assert(false, "Unknown hitbox shape: %s" % shape.shape)
-	return []
+			out = Combat.query_circle(origin, shape.radius, candidates)
+		_:
+			assert(false, "Unknown hitbox shape: %s" % shape.shape)
+	for c: Entity in saved:
+		c.pos = saved[c]
+	return out
 
 
 # 出一次招：記錄判定、對形狀內的敵對目標套用傷害；already（id -> true）裡的目標跳過，查到的目標會加進去（同一招只打一次）

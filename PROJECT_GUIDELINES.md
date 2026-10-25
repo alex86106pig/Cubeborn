@@ -587,6 +587,11 @@ godot/
 - **其他實體**：畫面時間 = 估計的房主 tick（最新快照 + 收到後經過的步數）− `interp_delay_ticks`（6 步 = 100 ms），在前後兩筆快照之間補間（位置、高度、朝向；動畫的狀態相同時數值欄位也補間）；連續掉包追上最新快照時，沿速度最多往前推 `max_extrapolate_ticks` 步。事件也依 tick 延到畫面時間才播，和畫面對得上。
 - **自己的角色**：`World.step_predicted` 只推進自己（同 `step()` 的順序，但不扣血、不產生投射物，投射物等快照）。每筆快照帶 `ack`（房主最後套用的該玩家輸入編號），誤差 = 房主在 ack 時的位置 − 本機當時預測的位置，加到目前位置與之後的預測紀錄（不倒帶重播，狀態機與計時器不用存檔）；差超過 `snap_distance` 直接跳過去。血量、倒地 / 死亡、盾反、武器以房主最新快照為準；倒地 / 死亡時不預測，位置直接用房主的。被房主判定打中時本機立刻進入受擊硬直（`Player.net_hurt`）。
 - **事件去重**：World 更新某位玩家時，事件標上 `actor`（peer id）；`Combat.apply_damage` 與盾反期間清掉（不是預測得到的）。客戶端丟掉 `actor` 是自己的房主事件。
+- **打中回饋預測與延遲補償**（v0.38.0，試玩回報「打怪有 0.幾秒延遲」：量到客戶端看到命中 = 出招時間 + 來回延遲 + 100 ms）：
+  - 客戶端預測自己的出招時，`Combat.apply_damage` 不扣血，但目標的高度範圍對得上（對方沒在格擋）就發 `hit:predicted`：畫面層馬上噴火花（`Effects`）、播命中音效（`Sound`），`NetClient` 讓目標閃白（`_flash`，蓋過快照的閃白）。
+  - 房主的同一下 `entity:damaged`（source 是自己、`predicted_hit_window` 步內有預測紀錄）被標 `predicted = true`：只顯示傷害數字、扣血照房主，火花與音效不再播；順序照房主，照樣排到畫面時間（傷害數字仍晚「延遲 + 100 ms」）。
+  - 延遲補償：`InputCmd.view_tick` = 客戶端這一步的畫面時間（`render_tick`）。房主（`NetHost` 開 `World.rewind_enabled`）每步結束記敵人與玩家的位置（最多 `rewind_max_ticks` = 30 步），更新該玩家時 `rewind_tick = view_tick`，`Hitbox.query` 先把目標移到那時的位置再判定、判定完放回去。只補償近戰判定（投射物照房主的時間飛）；怪物打玩家沒有補償。
+  - 量測（`tests/net_checks.gd` 的 `check_hit_prediction`）：單程 100 ms 時打中回饋從第 24 步（400 ms）變成第 6 步（100 ms，同單機）；側移的怪「客戶端看到打中、房主也判定打中」沒補償 11 / 17、補償後 17 / 17。
 - **CD**：每位玩家的 CD 實際存在 `Player.cd(key)`（`key@peer_id`）；事件與 HUD 仍用 `player.special` 這類名稱。
 - **誤傷**：`Combat.hostiles_of(world, team, source_id)` 在 `Config.NET.friendly_fire` 時把其他玩家也當目標，但不含出招者自己（投射物用發射者 id）。
 - **倒下與救援**（`Player.die` / `_go_down` / `revive`、`World._update_downed`、動作層 `revive` 狀態）：多人時生命歸零先倒地（`is_downed`，移動層 `downed`，不能被打、不被怪追、不接受輸入）；隊友按住 F（`InputCmd.BTN_INTERACT`）、中心距離 ≤ `REVIVE.range` 就進入 `revive` 動作（不能移動 / 攻擊 / 跳），倒地者救援進度 +1/秒、倒數暫停；放開時進度每秒 −`decay_rate`（Claude 暫定和累積同速）、倒數照走；沒有站著的玩家時所有倒地者直接死亡並發 `game:defeat`。單機倒下 = 死亡（和以前一樣）。
@@ -669,13 +674,14 @@ godot/
 
 ### 15.25 挖墳事件、難度與換層（v0.29.0，D6）
 - 資料在 `defs/event_defs.gd`（`DIG`、`DIFFICULTY`、`SPAWN`、`GHOST`），邏輯在 `sim/dig_event.gd`（`World.event`）。只有地圖資料 `"dig_event": true` 的地圖有（`DigEvent.enabled`）；這種地圖的 `Spawner.update` 不跑波次，測試場地照舊。
-- **挖墳**：玩家動作層 `dig`（`Ready` 在按住 F、附近沒有倒地隊友、`event.can_dig` 時進入）：移速 0、鎖定朝向、不能跳；`_on_damaged` 與 `stun` 不打斷；屬性來源 `&"digging"` 讓擊退 ×0，質量暫時 `DIG_MASS`（1000，碰撞推不動）。`DigEvent.update`（`World.step` 在 `spawner.update` 之後）：有人 `is_digging()` 且狀態 idle → `_start`（`event:started`、Boss 在挖墳點旁 `boss_distance`）；active 時進度 += 挖的人數 × dt ÷ 60，沒人挖每秒 −0.01；滿了 → `open`（`event:exit_open`）。
-- **難度** = `World.base_difficulty` + 事件秒數 × 1（`World.difficulty()`）。`Spawner.spawn_at` 在挖墳地圖用 `EventDefs.difficulty_mul`（所有怪，含 Boss）。事件生怪：每 `spawn_interval(難度)` 秒在隨機一位可被當目標的玩家周圍（`Spawner._around_player`）冒 `group_size` 隻（`wave_member = true`，同時最多 `max_alive`），稀有度 `EventDefs.roll_rarity`。`--no-spawn`（`spawner.finished`）時事件照常但不生怪、不出 Boss。
+- **挖墳**：玩家動作層 `dig`（`Ready` 在按住 F、附近沒有倒地隊友、`event.can_dig` 時進入）：移速 0、不能跳，**朝向照樣跟著滑鼠**（v0.38.0：按住互動的吟唱動作——救援、挖墳、以後新增的——都不鎖轉向）；`_on_damaged` 與 `stun` 不打斷；屬性來源 `&"digging"` 讓擊退 ×0，質量暫時 `DIG_MASS`（1000，碰撞推不動）。`DigEvent.update`（`World.step` 在 `spawner.update` 之後）：有人 `is_digging()` 且狀態 idle → `_start`（`event:started`、Boss 在挖墳點旁 `boss_distance`）；active 時進度 += 挖的人數 × dt ÷ 60，沒人挖每秒 −`DIG.decay`（v0.38.0 起 0.002）；滿了 → `open`（`event:exit_open`）。
+- **先 Boss、後怪潮**（v0.38.0 使用者決定）：事件開始時只出 Boss（`_boss_id`）。Boss 死了（實體不在或 `is_dead`）→ `horde = true`、發 `event:horde`，這時才開始事件生怪（第一批在 `interval_start` 秒後）、事件秒數 `time` 才開始累加。Boss 戰期間照樣可以挖。`--no-spawn` 沒有 Boss，下一步就算怪潮開始（但照樣不生怪）。
+- **難度** = `World.base_difficulty` + 怪潮秒數 × 1（`World.difficulty()`）。`Spawner.spawn_at` 在挖墳地圖用 `EventDefs.difficulty_mul`（所有怪，含 Boss）。事件生怪：每 `spawn_interval(難度)` 秒在隨機一位可被當目標的玩家周圍（`Spawner._around_player`）冒 `group_size` 隻（`wave_member = true`，同時最多 `max_alive`），稀有度 `EventDefs.roll_rarity`。`--no-spawn`（`spawner.finished`）時事件照常但不生怪、不出 Boss。
 - **出口與換層**：`open` 後活著、沒倒地的玩家走進 `exit_radius` → `Player.descend()`（`descended`：不更新、不能被打、不被追、不參與碰撞、畫面隱藏）。活著的都 descended（倒地的算還沒到）→ `World.next_floor()`：層數 +1、基礎難度 = (層數 − 1) × 10、移除所有非玩家實體、`arrive_floor` 回出生點、`_populate_floor`（事件歸零 → 寶箱 → 怪群）、帶著屍體的死者生冤魂、發 `floor:started`。實體 id 不重來（客戶端照常增減鏡像）。
 - **Boss**：挖墳地圖的 `on_boss_defeated` 不通關，在 Boss 旁掉一個大寶箱稀有度的道具（`boss:reward`）；武器與 50 金幣照 `on_enemy_died`。
 - **屍體與冤魂**：多人時真的死亡（`_on_died`）→ `World.drop_corpse`：`ItemPickup`（item_id `&"corpse"`、`corpse_of` = peer id）。撿起 → `Player.add_corpse`：背包條目 uid `corpse_<peer>`、id `&"corpse"`（`ItemDefs` 的 kind `&"corpse"`，形狀 r6，不算生效道具）；丟出來還是屍體。換層時 `corpse_carrier` 找到就 `_spawn_ghost`（`EnemyDefs` 的 `ghost`，MeleeEnemy，`ghost_of`，出生點 10~14）；冤魂死亡 → `on_ghost_defeated`：移除屍體、`Player.resurrect`（冤魂位置、30% 血、短暫無敵）。客戶端 `net_sync_life` 支援死亡 → 復活。
-- **快照**：世界加 `W_FLOOR`、`W_EVENT`（[狀態, 進度, 秒數, 基礎難度]）；玩家 extra 加 `P_DESCENDED`；地上道具 extra 第 3 欄是屍體主人。挖墳點在 `World.load_map` 就設好（客戶端預測要判斷挖不挖得到）。
-- **畫面**：挖墳點土堆 + 墓碑（土堆隨進度變矮），打開後是黑洞 + 發光環與光；`WorldLabels` 顯示「[F] 按住挖墳」、「挖墳 N%」、「出口：走進去前往第 N 層（k / n 人）」、冤魂說明；HUD 右上「第 N 層 · 難度 D」與事件橫幅；冤魂是半透明偏藍的騎士（`SkinnedRig.set_ghost`）；挖墳姿勢彎腰雙手往下挖。
+- **快照**：世界加 `W_FLOOR`、`W_EVENT`（[狀態, 進度, 秒數, 基礎難度, 怪潮開始了沒]）；玩家 extra 加 `P_DESCENDED`；地上道具 extra 第 3 欄是屍體主人。挖墳點在 `World.load_map` 就設好（客戶端預測要判斷挖不挖得到）。
+- **畫面**：挖墳點土堆 + 墓碑（土堆隨進度變矮），打開後是黑洞 + 發光環與光；`WorldLabels` 顯示「[F] 按住挖墳」、「挖墳 N%」、「出口：走進去前往第 N 層（k / n 人）」、冤魂說明；HUD 右上「第 N 層 · 難度 D」與事件橫幅；HUD 上方中央的挖墳進度條（v0.38.0，事件進行中所有人都看得到，Boss 血條在它下面）；冤魂是半透明偏藍的騎士（`SkinnedRig.set_ghost`）；挖墳姿勢彎腰雙手往下挖。
 
 ### 15.26 試玩回饋：效能、提示、牆後剪影、道具效果（v0.30.0~v0.33.0）
 - **休眠怪群**（v0.30.0）：`Entity.fixed`（`Enemy.dormant` 的 setter 同步）＝不積分；`SimPhysics.separate` 固定的不主動找鄰居、不被推，會動的一方退開全部重疊。`Enemy.update` 休眠時只推進 `fsm.time`。

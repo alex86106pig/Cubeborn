@@ -30,7 +30,10 @@ static func hostiles_of(world: World, team: StringName, source_id: int = 0) -> A
 # 回傳是否實際命中（高度不重疊、被格擋也算沒命中）
 static func apply_damage(world: World, source: Entity, target: Entity, hit: Dictionary) -> bool:
 	# 傷害一律由房主判定：客戶端本機預測自己的出招時不扣任何血（C3）
-	if not world.is_authority or target == null or not target.can_be_hit():
+	if target == null or not target.can_be_hit():
+		return false
+	if not world.is_authority:
+		_predict_hit(world, source, target, hit)
 		return false
 	# 命中結果不是本機預測得到的，事件不標行動者（客戶端才不會當成自己已經播過而丟掉）
 	var actor := world.event_actor
@@ -38,6 +41,23 @@ static func apply_damage(world: World, source: Entity, target: Entity, hit: Dict
 	var landed := _apply_damage(world, source, target, hit)
 	world.event_actor = actor
 	return landed
+
+
+# 客戶端預測自己的攻擊打中（v0.38.0）：只發 hit:predicted 給畫面層先播火花、音效、閃白，不扣血；
+# 扣血與傷害數字照樣等房主的 entity:damaged（NetClient 標成 predicted，畫面層就不再播一次火花與音效）
+# 房主用延遲補償（World.rewound_positions）照「這位玩家當時看到的位置」判定，兩邊的結果才會一致
+static func _predict_hit(world: World, source: Entity, target: Entity, hit: Dictionary) -> void:
+	if world.event_actor == 0 or not source is Player:
+		return
+	var band: Vector2 = hit.get("band", body_band(source))
+	if not target.overlaps_height(band.x, band.y):
+		return
+	if hit.has("max_air") and target.height - target.ground_height > hit.max_air + 1e-4:
+		return
+	if target is Player and (target as Player).block_time >= 0.0:
+		return   # 對方在格擋：結果不確定，等房主
+	world.emit_event("hit:predicted", {"source_id": source.id, "target_id": target.id,
+		"is_heavy": hit.get("is_heavy", false), "color": hit.get("color", Color.WHITE)})
 
 
 static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dictionary) -> bool:

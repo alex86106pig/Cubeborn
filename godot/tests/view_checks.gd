@@ -24,6 +24,66 @@ static func _feed_hud(hud: Node, events: Array[Dictionary]) -> void:
 		hud._on_event(e.name, e)
 
 
+# 寶箱模型（v0.38.0）：已開過的寶箱重新建立模型時（連線離開視野再回來）箱蓋直接是打開的，沒開過的照常關著
+static func check_chest_lid() -> String:
+	var w := _new_world()
+	var shut := Chest.new(w, &"small", Vector2(3, 3))
+	var open := Chest.new(w, &"big", Vector2(-3, 3))
+	open.opened = true
+	for c in [shut, open]:
+		w.add_entity(c)
+		w.chests.append(c)
+	var view := WorldView.new()
+	view.sync(w, 1.0, DT)
+	var lid_shut: float = (view._nodes[shut.id] as Node3D).get_node(^"Lid").rotation.x
+	var lid_open: float = (view._nodes[open.id] as Node3D).get_node(^"Lid").rotation.x
+	view.free()
+	if absf(lid_shut) > EPS or absf(lid_open - WorldView.CHEST_LID_OPEN) > EPS:
+		return "剛建立的模型：沒開過的箱蓋 %.2f（應 0）、開過的 %.2f（應 %.2f）" % [lid_shut, lid_open, WorldView.CHEST_LID_OPEN]
+	return ""
+
+
+# 挖墳進度條（v0.38.0）：事件進行中顯示進度與說明（Boss 活著 / 怪潮中），出口打開後收起；Boss 血條排在它下面
+static func check_dig_bar() -> String:
+	var w := _new_world(5, true, &"graveyard_a")
+	var cam := Camera3D.new()
+	_scene_root().add_child(cam)
+	var hud: Variant = load("res://ui/hud.tscn").instantiate()
+	hud.setup(w, cam)
+	_scene_root().add_child(hud)
+	var err := ""
+	hud._process(DT)
+	if hud._dig_box.visible:
+		err = "事件還沒開始就顯示挖墳進度條"
+	if err == "":
+		w.event._start(w)
+		w.event.progress = 0.42
+		hud._process(DT)
+		if not hud._dig_box.visible or hud._dig.text.text != "42%" or not hud._dig_name.text.contains("打倒 Boss"):
+			err = "事件中、Boss 活著：進度條 %s、%s、%s" % [hud._dig_box.visible, hud._dig.text.text, hud._dig_name.text]
+		elif absf(hud._dig.fill.size.x - hud._dig.width * 0.42) > 0.5:
+			err = "進度條長度 %.1f，預期 %.1f" % [hud._dig.fill.size.x, hud._dig.width * 0.42]
+	if err == "":
+		w.event.horde = true
+		hud._process(DT)
+		if not hud._dig_name.text.contains("越來越多"):
+			err = "怪潮開始後說明應改成怪物越來越多：%s" % hud._dig_name.text
+	if err == "":
+		var top: Control = hud._dig_box.get_parent()
+		if top != hud._boss_box.get_parent() or hud._dig_box.get_index() > hud._boss_box.get_index():
+			err = "Boss 血條應和挖墳進度條在同一欄、排在下面"
+		elif top.get_combined_minimum_size().x > 1920.0:
+			err = "上方中央那一欄寬 %.0f，超出 1920" % top.get_combined_minimum_size().x
+	if err == "":
+		w.event.state = DigEvent.OPEN
+		hud._process(DT)
+		if hud._dig_box.visible:
+			err = "出口打開後應收起挖墳進度條"
+	hud.queue_free()
+	cam.queue_free()
+	return err
+
+
 static func check_hud() -> String:
 	var w := _new_world(5, true)
 	var cam := Camera3D.new()
@@ -59,6 +119,16 @@ static func check_hud() -> String:
 	var dice: Dictionary = ItemDefs.ITEMS[&"loaded_dice"]
 	if hud._banner.text != "獲得 %s\n%s" % [dice.name, dice.desc]:
 		return "item:added 橫幅文字錯誤：%s" % hud._banner.text
+	# 別人撿到的不跳（v0.38.0：連線時事件全廣播，原本會跳在對方畫面）
+	hud._banner.text = ""
+	hud._on_event("item:added", {"player_id": p.id + 1000, "item": "whetstone", "uid": "x"})
+	if hud._banner.text != "":
+		return "別人撿到道具不應跳橫幅：%s" % hud._banner.text
+	# 武器欄的另一把標示切換鍵 X（v0.38.0，原本寫 Q）
+	p.add_weapon({"uid": &"st", "base": &"staff", "rarity": &"white", "affixes": [] as Array[StringName]})
+	hud._process(DT)
+	if not hud._weapon.text.contains("（X："):
+		return "武器欄的另一把應標示 X：%s" % hud._weapon.text
 	for name in ["game:paused", "player:died", "game:defeat", "game:victory", "game:restart"]:
 		var payload := {"paused": true, "stats": w.stats.duplicate()}
 		hud._on_event(name, payload)

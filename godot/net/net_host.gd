@@ -10,6 +10,7 @@ var _queues: Dictionary = {}    # peer_id -> Array[InputCmd]（依 tick 遞增�
 
 func _init(p_world: World) -> void:
 	world = p_world
+	world.rewind_enabled = true   # 延遲補償：客戶端玩家的近戰照他畫面上的位置判定（v0.38.0）
 
 
 func remove_peer(peer_id: int) -> void:

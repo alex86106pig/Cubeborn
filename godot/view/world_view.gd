@@ -18,6 +18,7 @@ const RARITY_GLOW_ENERGY := 1.5
 const GRAVE_SOIL := Color("4a3a2a")          # 挖墳點（D6）
 const GRAVE_STONE := Color("6a6d72")
 const EXIT_COLOR := Color("8fd0ff")
+const CHEST_LID_OPEN := -1.9                # 寶箱打開時箱蓋往後翻的角度（弧度）
 const GHOST_TINT := Color(0.55, 0.8, 1.0)   # 冤魂（D6）的顏色與透明度
 const GHOST_TRANSPARENCY := 0.45
 const FROZEN_TINT := Color(0.35, 0.75, 1.8)   # 道具狀態（v0.33.0）：冰凍偏藍、中毒偏綠（乘在模型顏色上；場景偏暗，要染重一點才看得出來）
@@ -223,7 +224,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 				glow.light_color = ItemDefs.RARITIES[inst.rarity].color
 		elif e is Chest:
 			var lid: Node3D = node.get_node(^"Lid")
-			lid.rotation.x = lerpf(lid.rotation.x, -1.9 if (e as Chest).opened else 0.0, minf(1.0, dt * 8.0))
+			lid.rotation.x = lerpf(lid.rotation.x, CHEST_LID_OPEN if (e as Chest).opened else 0.0, minf(1.0, dt * 8.0))
 		elif e is ItemPickup:
 			var gem: Node3D = node.get_node(^"Gem")
 			var t := Time.get_ticks_msec() / 1000.0 + id * 0.7
@@ -369,6 +370,8 @@ func _create_chest(c: Chest) -> Node3D:
 	lid.add_child(_box(Vector3(body.x, 0.28 * s, body.z), Vector3(0, 0.14 * s, body.z / 2.0), wood))
 	lid.add_child(_box(Vector3(body.x + 0.04, 0.06 * s, 0.1 * s), Vector3(0, 0.2 * s, body.z / 2.0), band))
 	lid.add_child(_box(Vector3(0.16, 0.18, 0.06) * s, Vector3(0, 0.0, body.z + 0.02), band))   # 鎖扣
+	# 已經開過的（連線時離開視野再回來會重建模型）直接是打開的，不重播開蓋
+	lid.rotation.x = CHEST_LID_OPEN if c.opened else 0.0
 	root.add_child(lid)
 	return root
 
