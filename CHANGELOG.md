@@ -1,6 +1,23 @@
 # Changelog
 
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
+還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
+
+## [未發布]
+
+兩位作者（各自有 Windows、Mac）會同時開發：原本「每次修改就升版號 + 打 tag」會撞號，一次推太多 tag 也讓 Release 不觸發。參考 space_rogue 的做法調整開發流程（遊戲內容沒有改）。
+
+### 修改
+- **版號改成推送時才升**：平常 commit 不升版號、不打 tag，改動記在 CHANGELOG 最上面的「未發布」；推送時才決定號碼（有「新增」升次版號，否則升修訂號），每次推送最多一個 tag。
+- **推送改用 `node tools/release.mjs --summary "摘要"`**：更新（rebase 還沒推送的 commit）→ 決定版號 → 改 CHANGELOG 與 `version.gd` → 匯入 + `check.gd` → commit + tag → 推送；任何一步失敗就還原、不推。`--dry-run` 試跑（不動 git 歷史、不推）。Windows / Mac 都能跑，只用 Node 內建模組。
+- **檢查改用 `node tools/release.mjs --check`**：匯入 + `check.gd`，內建逾時（取代 `CLAUDE.md` 5.2 的 PowerShell 寫法）。
+- **`check.gd` 只印沒過的項目與總數**（原本每次約 158 行）：每項結果、單項量到的數字（新的 `CheckKit._note`）、手感量測都寫進 `godot/tests/check_last.log`（不進版控）。
+- **`.gitattributes`**：換行一律 LF（Windows 與 Mac 一起開發；原本 Windows 一匯入就有 33 個 `.import` 顯示只差換行的修改）；`CHANGELOG.md`、`docs/進度.md` 用 union 合併，兩人同時在最上面加內容時 rebase 不衝突。
+- **`docs/進度.md` 最上面新增「通知」**：給另一位作者的流程變更，對方看完、做完就刪；效能與壓力測試數字搬到新的 `docs/效能.md`，截圖注意事項搬進 `CLAUDE.md` 5.3。
+- `CLAUDE.md`：寫明兩位作者；開工 pull 到新 commit 時先向使用者簡報對方改了什麼。`docs/新電腦設定.md`：Node 改成必裝。
+
+### 驗證
+- `node tools/release.mjs --check`：126 / 126 通過，畫面只印 1 行，`check_last.log` 156 行。
 
 ## [0.44.0] - 2026-10-25
 

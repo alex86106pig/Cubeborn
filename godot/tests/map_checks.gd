@@ -193,7 +193,7 @@ static func check_map_a() -> String:
 	for i in range(0, verts.size(), 3):
 		if (verts[i + 1] - verts[i]).cross(verts[i + 2] - verts[i]).dot(normals[i]) >= 0.0:
 			return "石台網格第 %d 個三角形是背面" % (i / 3)
-	print("    地圖 A：可走格 %d / %d、牆 %d、墓碑 %d、高台 %d" % [walkable, nav.size.x * nav.size.y, counts.get(MapDefs.WALL, 0), counts.get(MapDefs.TOMB, 0), counts.get(MapDefs.PLATFORM, 0)])
+	_note("地圖 A：可走格 %d / %d、牆 %d、墓碑 %d、高台 %d" % [walkable, nav.size.x * nav.size.y, counts.get(MapDefs.WALL, 0), counts.get(MapDefs.TOMB, 0), counts.get(MapDefs.PLATFORM, 0)])
 	return ""
 
 
@@ -228,7 +228,7 @@ static func check_enemy_pathing() -> String:
 	var t2 := _run_until_hurt(w2, 90 * 60)
 	if t2 < 0:
 		return "弓手 90 秒內沒射中玩家（停在 %s）" % a.pos
-	print("    繞北門：骷髏戰士 %.1f 秒打到玩家（最北 z %.1f）、弓手 %.1f 秒射中" % [t * DT, north[0], t2 * DT])
+	_note("繞北門：骷髏戰士 %.1f 秒打到玩家（最北 z %.1f）、弓手 %.1f 秒射中" % [t * DT, north[0], t2 * DT])
 	return ""
 
 
@@ -269,7 +269,7 @@ static func check_enemy_climb() -> String:
 			break
 	if top < 0:
 		return "Boss 30 秒內沒跳上 1.0 石台（停在 %s、高度 %.2f）" % [boss.pos, boss.height]
-	print("    骷髏戰士：第 %.2f 秒上 0.5、%.2f 秒上 1.0、%.2f 秒打到玩家（起跳前蹲 %d 步）；Boss %.1f 秒上 1.0" % [heights.half * DT, heights.top * DT, t * DT, heights.windup, top * DT])
+	_note("骷髏戰士：第 %.2f 秒上 0.5、%.2f 秒上 1.0、%.2f 秒打到玩家（起跳前蹲 %d 步）；Boss %.1f 秒上 1.0" % [heights.half * DT, heights.top * DT, t * DT, heights.windup, top * DT])
 	return ""
 
 
@@ -294,7 +294,7 @@ static func check_archer_high_ground() -> String:
 		return "牆後的弓手 20 秒內沒射中玩家（停在 %s）" % a.pos
 	if fizzles[0] > 0:
 		return "弓手射中前有 %d 支箭撞牆或落空" % fizzles[0]
-	print("    弓手射中 1.0 石台上的玩家：開闊 %.1f 秒、隔著牆 %.1f 秒（繞到 %s）" % [t * DT, t2 * DT, a.pos])
+	_note("弓手射中 1.0 石台上的玩家：開闊 %.1f 秒、隔著牆 %.1f 秒（繞到 %s）" % [t * DT, t2 * DT, a.pos])
 	return ""
 
 
@@ -324,7 +324,7 @@ static func check_nav_clearance() -> String:
 			break
 	if slowed >= 30:
 		return "繞北門時被牆擋住變慢 %d 步（應 < 30）" % slowed
-	print("    繞北門被牆擋住變慢 %d 步（v0.22.0 為 154 步）" % slowed)
+	_note("繞北門被牆擋住變慢 %d 步（v0.22.0 為 154 步）" % slowed)
 	return ""
 
 

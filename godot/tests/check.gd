@@ -1,12 +1,16 @@
-# 自動檢查的執行器：依序跑各主題檔的 check_*，印出通過 / 失敗與手感量測，有失敗就以 1 結束
-# 在 godot/ 內執行：<Godot console 執行檔> --headless --path . -s res://tests/check.gd
+# 自動檢查的執行器：依序跑各主題檔的 check_*，畫面只印沒過的項目與總數，有失敗就以 1 結束
+# 每一項的結果、單項量到的數字（CheckKit._note）、手感量測都寫進 tests/check_last.log（不進版控）
+# 平常用 `node tools/release.mjs --check` 跑（含匯入與逾時）；直接跑：在 godot/ 內 <Godot console 執行檔> --headless --path . -s res://tests/check.gd
 # 檢查本體在 core / player / combat / boss / map / loot / view / monster / event / net_checks.gd，共用工具在 check_kit.gd
 # 數值都從資料表（Config、defs/）讀：調數值不用改檢查，只有機制改了才要改
 extends SceneTree
 
+const LOG_PATH := "res://tests/check_last.log"
+
 var _passed := 0
 var _failed := 0
 var _errors := _ErrorCounter.new()
+var _log: FileAccess
 
 
 # Godot 的執行期錯誤（SCRIPT ERROR）只會印出來、函式照樣往下跑，檢查本身看不出來；
@@ -28,11 +32,12 @@ class _ErrorCounter extends Logger:
 
 func _initialize() -> void:
 	OS.add_logger(_errors)
-	print("Cubeborn Godot 自動檢查\n")
+	_log = FileAccess.open(LOG_PATH, FileAccess.WRITE)
+	_log.store_line("Cubeborn Godot 自動檢查　%s\n" % Time.get_datetime_string_from_system(false, true))
 	# 核心規範與基礎系統
 	_check("編譯：專案內所有 .gd（含畫面層、main）都能編譯", CoreChecks.check_all_scripts_compile)
 	_check("模擬層：sim/ 沒有使用禁止的 API（Input、節點、全域隨機、時間、讀檔、畫面層）", CoreChecks.check_sim_forbidden)
-	_check("版號：version.gd 與 CHANGELOG 最新版一致", CoreChecks.check_versions)
+	_check("版號：version.gd 與 CHANGELOG 最新的已發布版本一致；[未發布] 只能在最上面", CoreChecks.check_versions)
 	_check("CD：計時、進度、到期、長度 0 視為立即可用", CoreChecks.check_cooldowns)
 	_check("狀態機：enter/exit 順序、can_exit 否決、time 累計、data 複製", CoreChecks.check_state_machine)
 	_check("InputCmd：按鈕位元不重疊、陣列序列化來回一致", CoreChecks.check_input_cmd)
@@ -167,14 +172,17 @@ func _initialize() -> void:
 	_check("連線寶箱與背包（D3）：客戶端按 F 開箱（房主扣錢 30 → 5、道具掉地上）、再按 F 撿起，拖曳搬動與丟掉；兩邊的寶箱、金錢、背包、生效道具一致", NetChecks.check_net_loot)
 	_check("連線倒下與救援（C4）：客戶端跟著房主倒地、不能預測移動，被救起後站起來 30 血；客戶端按住 F 也能救起房主", NetChecks.check_net_downed)
 	_check("兩個程序連線（C1）：headless 照玩家順序（主選單多人頁開房 / 加入，v0.39.0）連線（ENet），兩邊都沒停在暫停、收得到輸入、特效在走、自己的角色各移動約 13 單位，停下後兩邊的玩家位置一致（< 0.01）", NetChecks.check_two_processes.bind(CheckKit._feel_lines))
-	print("\n手感量測（給 docs/手感對照.md）：\n    " + "\n    ".join(CheckKit._feel_lines))
+	_log.store_line("\n手感量測（給 docs/手感對照.md）：\n    " + "\n    ".join(CheckKit._feel_lines))
 	for w in CheckKit._worlds:
 		w.clear()
 	CheckKit._worlds.clear()
 	NetChecks.cleanup()
 	MonsterChecks.cleanup()
 	EventChecks.cleanup()
-	print("\n%d / %d 通過" % [_passed, _passed + _failed])
+	var summary := "%d / %d 通過" % [_passed, _passed + _failed]
+	_log.store_line("\n" + summary)
+	_log.close()
+	print(("\n" if _failed > 0 else "") + summary + "（完整結果：godot/tests/check_last.log）")
 	OS.remove_logger(_errors)
 	quit(1 if _failed > 0 else 0)
 
@@ -187,7 +195,12 @@ func _check(title: String, fn: Callable) -> void:
 		err = "執行期間發生 %d 個錯誤，最後一個：%s" % [_errors.count - errors_before, _errors.last]
 	if err == "":
 		_passed += 1
-		print("✔ ", title)
+		_log.store_line("✔ " + title)
 	else:
 		_failed += 1
-		print("✘ ", title, "\n    ", err)
+		var line := "✘ %s\n    %s" % [title, err]
+		_log.store_line(line)
+		print(line)
+	for note in CheckKit._notes:
+		_log.store_line("    " + note)
+	CheckKit._notes.clear()

@@ -336,7 +336,7 @@ static func check_run_log() -> String:
 	var screen := Vector2(ProjectSettings.get_setting("display/window/size/viewport_width"), ProjectSettings.get_setting("display/window/size/viewport_height"))
 	if need.y <= 0.0 or need.x > screen.x or need.y > screen.y:
 		return "結算畫面需要 %s，超出 %s" % [need, screen]
-	print("    結算畫面最多行時需要 %.0f × %.0f（畫面 %.0f × %.0f）" % [need.x, need.y, screen.x, screen.y])
+	_note("結算畫面最多行時需要 %.0f × %.0f（畫面 %.0f × %.0f）" % [need.x, need.y, screen.x, screen.y])
 	hud._on_event("game:restart", {})
 	if rl.hits_taken != 0 or not rl.kills.is_empty() or not rl.downs.is_empty():
 		return "game:restart 後遊玩紀錄應清空"

@@ -5,3 +5,4 @@ build/
 Thumbs.db
 .claude/settings.local.json
 CLAUDE.local.md
+godot/tests/check_last.log

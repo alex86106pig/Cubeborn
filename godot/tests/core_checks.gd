@@ -47,11 +47,15 @@ static func check_sim_forbidden() -> String:
 static func check_versions() -> String:
 	var root := ProjectSettings.globalize_path("res://").path_join("..")
 	var changelog := _read_text(root.path_join("CHANGELOG.md"))
-	var cl_ver := RegEx.create_from_string("## \\[([^\\]]+)\\]").search(changelog)
+	# 還沒推送的改動記在最上面的 [未發布]（推送時才換成版號，見 PROJECT_GUIDELINES 第 12 節），比對跳過它
+	var cl_ver := RegEx.create_from_string("## \\[(\\d+\\.\\d+\\.\\d+)\\]").search(changelog)
 	if cl_ver == null:
 		return "讀不到 CHANGELOG.md 的版號"
 	if cl_ver.get_string(1) != GameVersion.VERSION:
 		return "version.gd=%s CHANGELOG=%s" % [GameVersion.VERSION, cl_ver.get_string(1)]
+	var unreleased := changelog.find("## [未發布]")
+	if unreleased != -1 and unreleased > cl_ver.get_start():
+		return "[未發布] 要放在最新版號的上面"
 	return ""
 
 

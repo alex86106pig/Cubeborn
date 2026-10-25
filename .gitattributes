@@ -1,0 +1,11 @@
+# 換行一律用 LF：Windows 與 Mac 一起開發，Godot 寫回 .import 等檔案也是 LF，避免出現只差換行的假修改
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.wav binary
+*.ttf binary
+*.otf binary
+
+# 兩位作者同時在最上面加內容時，rebase 保留兩邊新加的行、不產生衝突（tools/release.mjs 推送時用）
+CHANGELOG.md merge=union
+docs/進度.md merge=union

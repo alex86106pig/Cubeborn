@@ -131,6 +131,14 @@ static func _feel(line: String) -> void:
 	_feel_lines.append(line)
 
 
+# 單項檢查順便量到的數字：不印在畫面上，由 check.gd 寫進 check_last.log 那一項的下面
+static var _notes: Array[String] = []
+
+
+static func _note(line: String) -> void:
+	_notes.append(line)
+
+
 # audio/sound.gd 用到 GameEvents（autoload），在檢查腳本編譯時還不存在，所以執行時才載入（同 HUD）
 static func _sound_script() -> GDScript:
 	return load("res://audio/sound.gd")

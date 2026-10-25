@@ -486,7 +486,7 @@ static func check_weapon_drops() -> String:
 			var got: float = counts.get(r, 0) * 100.0 / 20000.0
 			if absf(got - weights[r]) > 1.5:
 				return "%s 的 %s 應約 %.0f%%，實際 %.2f%%" % [source, r, weights[r], got]
-	print("    小怪死 %d 次掉 %d 把（%.2f%%）" % [n, drops, pct])
+	_note("小怪死 %d 次掉 %d 把（%.2f%%）" % [n, drops, pct])
 	return ""
 
 

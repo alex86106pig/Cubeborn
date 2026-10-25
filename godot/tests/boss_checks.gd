@@ -358,5 +358,5 @@ static func check_boss_high_ground() -> String:
 		var hurt := p4.hp < p4.max_hp
 		if hurt == jump:
 			return "Boss 砸地，玩家在 1.0 石台上%s：%s" % ["跳起來" if jump else "站著", "被打到" if hurt else "沒被打到"]
-	print("    Boss：%.1f 秒跳上石座、%.1f 秒打到石座上的玩家" % [up * DT, hit * DT])
+	_note("Boss：%.1f 秒跳上石座、%.1f 秒打到石座上的玩家" % [up * DT, hit * DT])
 	return ""

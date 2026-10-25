@@ -342,29 +342,30 @@ export const SKILLS = {
 
 ## 12. 版號與 CHANGELOG 規則
 
-採用語意化版本 `MAJOR.MINOR.PATCH`：
+採用語意化版本 `MAJOR.MINOR.PATCH`，**只在推送時升版號**（2026-10-25 起；之前是每次請求一版）：
 
-| 變更類型 | 升級 | 範例 |
+| 這次推送「未發布」裡有 | 升級 | 範例 |
 |---|---|---|
-| 新功能、新系統、新內容（武器、敵人、技能） | MINOR | 0.1.0 → 0.2.0 |
-| 修 bug、調數值、重構、改文件 | PATCH | 0.2.0 → 0.2.1 |
+| `### 新增`（新功能、新系統、新內容：武器、敵人、技能） | MINOR | 0.42.0 → 0.43.0 |
+| 只有修改 / 修復 / 移除（修 bug、調數值、重構、工具、文件） | PATCH | 0.42.0 → 0.42.1 |
 | 正式版或存檔不相容的大改 | MAJOR | 1.0 之前不使用 |
 
-- **一次使用者請求 = 一個版號**，同一請求內的多項修改合併在同一版記錄。
-- CHANGELOG 分類：`新增` / `修改` / `修復` / `移除`。
-- 版號必須三處一致：`CHANGELOG.md`、`godot/core/version.gd`、git tag（網頁版的 `legacy/src/core/version.js` 已凍結在 0.7.0）。
+- **平常**：改動記在 CHANGELOG 最上面的 `## [未發布]`，分類 `新增` / `修改` / `修復` / `移除`；commit 不升版號、不改 `version.gd`、不打 tag。
+- **推送**：`node tools/release.mjs --summary "摘要"`（流程見 `CLAUDE.md` 1.3）把「未發布」換成 `## [X.Y.Z] - 日期`、同步 `version.gd`、打 tag，一次推送 = 一個版號。「未發布」是空的（例如只改進度交接）就直接推、不升版號。自動判斷不對時用 `--bump=minor|patch` 蓋過。
+- 為什麼：兩位作者同時開發，各自先升版號會撞號；版號在推送前更新之後才決定就不會。每次推送最多一個 tag，Release 也一定會觸發。
+- 版號在已發布的部分三處一致：CHANGELOG 最新的已發布版本、`godot/core/version.gd`、git tag（`check.gd` 會檢查前兩者；網頁版的 `legacy/src/core/version.js` 已凍結在 0.7.0）。
 - HUD 角落顯示目前版號，方便確認瀏覽器載入的是最新版。
 
 ---
 
 ## 13. 開發工作流程
 
-1. **開工**：`git pull --ff-only origin main`（失敗就停下來問使用者）→ 讀 `CLAUDE.md` → `docs/進度.md` → 本文件 → CHANGELOG 最新版本 → 相關模組。
+1. **開工**：`git pull --ff-only origin main`（失敗就停下來問使用者；有新 commit 就向使用者簡報）→ 讀 `CLAUDE.md` → `docs/進度.md`（先看「通知」）→ 本文件 → CHANGELOG 最上面 → 相關模組。
 2. **實作**：先列出預計修改的檔案並取得使用者同意；遵守本文件；若需要偏離規範，先更新本文件再寫程式。
-3. **驗證**：執行 Godot `tests/check.gd`，全部通過；改到畫面或操作時，另外用離屏截圖驗證（見 15.10）。
-4. **記錄**：更新 CHANGELOG 與 `godot/core/version.gd`；架構有變就更新本文件。
-5. **提交**：`git commit -m "vX.Y.Z: 摘要"`，`git tag vX.Y.Z`。只有使用者當次明確要求時才 `git push`（見 `CLAUDE.md` 1.3）。
-6. **回報**：告訴使用者新版號、變更內容、驗證結果與已知問題。
+3. **驗證**：`node tools/release.mjs --check`，全部通過；改到畫面或操作時，另外用離屏截圖驗證（見 15.10）。
+4. **記錄**：改動記進 CHANGELOG 的「未發布」；架構有變就更新本文件；兩位作者都要知道的流程變更在 `docs/進度.md` 加「通知」。
+5. **提交**：`git commit -m "摘要"`（不升版號、不打 tag）。只有使用者當次明確要求時才用 `node tools/release.mjs --summary "摘要"` 推送（見 `CLAUDE.md` 1.3）。
+6. **回報**：告訴使用者變更內容、驗證結果與已知問題；推送時另外報新版號。
 
 ---
 
@@ -503,7 +504,7 @@ godot/
 - 座標、單位、角度與第 4 節相同：Y 朝上、邏輯只用 XZ、`facing = atan2(dx, dz)`（0 = 面向 +Z），模型面向 +Z 建模，Godot 的 `rotation.y = facing` 可直接套用。
 
 ### 15.10 驗收
-- `tests/check.gd`（作用等同 `check.js`），在 `godot/` 內執行：`<Godot console 執行檔> --headless --path . -s res://tests/check.gd`，全部通過才算完成。網頁版已凍結，只有動到網頁版時才跑 `node check.js`。
+- `tests/check.gd`（作用等同 `check.js`），平常在專案根目錄用 `node tools/release.mjs --check --godot <路徑>` 跑（先匯入、有逾時），全部通過才算完成；CI 直接在 `godot/` 內跑 `<Godot console 執行檔> --headless --path . -s res://tests/check.gd`。畫面只印沒過的項目與總數，每項結果、`CheckKit._note()` 記的數字、手感量測（`CheckKit._feel()`）寫進 `tests/check_last.log`（不進版控）。網頁版已凍結，只有動到網頁版時才跑 `node check.js`。
 - 因為模擬層不依賴場景樹，檢查可以直接建立 `World`、餵假的 `InputCmd`、推進 N 步讀數值（例如移動 1 秒的距離、三段攻擊總時間、CD 是否到期）。
 - 檢查分檔：`check.gd` 只放檢查清單（標題 + 函式），本體依主題放在 `core / player / combat / boss / map / loot / view / monster / event / net_checks.gd`，共用工具在 `check_kit.gd`（各檔 `extends CheckKit`）。新增檢查放進對應主題的檔案，再到 `check.gd` 加一行。
 - 檢查機制、不檢查數值快照（v0.37.3）：預期值從資料表（`Config`、`defs/`）讀或算出來，例如「三段傷害 = 資料的 damage、damage、damage × finisher_mul」，不寫死 12 / 12 / 22；標題寫規則（「持續 stagger_time」），不寫數字。這樣調數值不用改檢查，只有機制改了才要改。
@@ -511,7 +512,7 @@ godot/
   - `monster / event / net_checks.gd` 還有寫死的數值，之後動到時順便改。
 - 網頁版對照（v0.37.3 退役）：搬移時曾用 `tests/web_defs.json` 逐欄比對，結果留在 `docs/手感對照.md`；Godot 版已照使用者決定改了很多數值，網頁版也已凍結，比對與匯出工具已移除。
 - 畫面用離屏截圖場景 `tests/capture.tscn` 驗證（用法與「開視窗前先問使用者」的規則見 `CLAUDE.md` 1.8），截圖存暫存資料夾，不進版控；手感與效能定案以使用者實際遊玩為準。
-- 版號必須三處一致（`CHANGELOG.md`、`godot/core/version.gd`、git tag）；遊戲畫面角落顯示版號。
+- 版號只在推送時升，已發布的部分三處一致（CHANGELOG 最新的已發布版本、`godot/core/version.gd`、git tag），見第 12 節；遊戲畫面角落顯示版號。
 
 ### 15.11 屬性系統（v0.14.0）
 - 玩家與敵人共用一套屬性：名稱、基礎值、上下限、顯示方式在 `defs/stat_defs.gd`；計算在 `sim/stats.gd`，每個實體一個 `entity.stats`。

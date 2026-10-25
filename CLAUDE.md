@@ -1,7 +1,8 @@
 # Cubeborn — AI 最高指導原則
 
 Godot 4（GDScript）等距視角 Roguelike 動作遊戲（暫定名 Cubeborn），目標 Steam 上架、多人連線。
-本文件在每次新對話開始時自動載入，**所有規則優先於 AI 的預設行為**。技術細節（架構、命名、狀態機、CD、事件、資料格式、連線）以 [`PROJECT_GUIDELINES.md`](PROJECT_GUIDELINES.md) 為準；各檔案的職責見 [`docs/檔案地圖.md`](docs/檔案地圖.md)。
+本文件在每次新對話開始時自動載入，**所有規則優先於 AI 的預設行為**。
+**兩位作者**共同開發，各自有好幾台電腦（Windows 與 Mac）；本文件的「使用者」指正在對話的那位作者，設計方向兩人都能決定。技術細節（架構、命名、狀態機、CD、事件、資料格式、連線）以 [`PROJECT_GUIDELINES.md`](PROJECT_GUIDELINES.md) 為準；各檔案的職責見 [`docs/檔案地圖.md`](docs/檔案地圖.md)。
 
 ---
 
@@ -10,8 +11,9 @@ Godot 4（GDScript）等距視角 Roguelike 動作遊戲（暫定名 Cubeborn）
 1. **同步**：新對話的第一件事執行 `git pull --ff-only origin main`，取得其他電腦推上去的內容。
    - 成功（含「已是最新」）→ 繼續下一步。
    - 失敗（兩台電腦改出不同版本、有未 commit 的修改、連不上網路）→ **停下來告訴使用者原因**，不自己合併、不丟棄任何修改，等使用者決定。
-   - 為什麼：使用者在三台電腦輪流開發，聊天紀錄不會同步，忘了同步就會在舊版本上修改。
-2. 讀 [`docs/進度.md`](docs/進度.md)：上一輪卡在哪、下一步是什麼。
+   - pull 到新的 commit 時：用 `git log --oneline ORIG_HEAD..HEAD` 和 `CHANGELOG.md` 最上面（「未發布」與剛發布的版本）**向使用者簡報另一邊改了什麼**，不要讓使用者自己去翻歷史。
+   - 為什麼：兩位作者在多台電腦開發，聊天紀錄不會同步，忘了同步就會在舊版本上修改。
+2. 讀 [`docs/進度.md`](docs/進度.md)：**先看最上面的「通知」**（另一位作者留的流程變更，照 3.2 處理），再看上一輪卡在哪、下一步是什麼。
 3. 要動程式時：讀 [`PROJECT_GUIDELINES.md`](PROJECT_GUIDELINES.md) 中相關的章節、[`CHANGELOG.md`](CHANGELOG.md) 最上面一個版本，再用 [`docs/檔案地圖.md`](docs/檔案地圖.md) 定位要動的模組，只讀那幾段。只是討論、評估、改文件時不必讀。
 
 ---
@@ -30,13 +32,15 @@ Godot 4（GDScript）等距視角 Roguelike 動作遊戲（暫定名 Cubeborn）
 ### 1.3 權限
 - 平常**不執行 `git push`**。只有使用者在**當次對話明確說要推送**（例如「推上去」「上傳」「更新網站」）時，才可以推送到 `origin`。
 - 判斷：每次推送都要有當次的明確同意，不沿用之前對話或之前那次的同意。完成修改不等於可以推送。
-- 推送前必須：`check.gd` 全部通過（動到 `legacy/` 時另外在 `legacy/` 內跑 `node check.js`）、工作目錄已 commit 並打 tag。推送指令用 `git push origin main --tags`。
-- **絕對不准** `git push --force`、刪除遠端分支或 tag。
-- 為什麼：推送後 GitHub Pages 會更新朋友試玩的網站（見 1.7），推送就是對外發布。
-- `git commit` 與 `git tag` 依第 1.5 節流程照常執行。
+- 推送一律用 `node tools/release.mjs --summary "這次的摘要" --godot <Godot 路徑>`（在專案根目錄；Godot 路徑看 `CLAUDE.local.md`）：它會 rebase 還沒推送的 commit → 依 CHANGELOG「未發布」決定版號 → 改 CHANGELOG 與 `version.gd` → 匯入 + `check.gd` → commit + tag → 推送；任何一步失敗就還原、不推。不確定時先加 `--dry-run` 試跑。
+  - 推送前工作目錄要全部 commit；動到 `legacy/` 時另外在 `legacy/` 內跑 `node check.js`。
+  - 更新時有程式衝突（兩人改到同一段）→ 腳本會還原並列出檔案，**停下來告訴使用者**，不自己決定怎麼合併。
+  - 版號判斷錯了（例如「新增」只是工具、不該升次版號）用 `--bump=patch` / `--bump=minor` 蓋過。
+- **絕對不准** `git push --force`、刪除遠端分支或 tag，也不要繞過腳本手動 `git tag` / `git push`。
+- 為什麼：推送後 GitHub Pages 會更新朋友試玩的網站（見 1.7），推送就是對外發布；版號在推送時才定，兩位作者才不會撞號。
 
 ### 1.4 驗收
-- 驗收指令（在 `godot/` 內）：`<Godot console 執行檔> --headless --path . -s res://tests/check.gd`。**全部通過才算完成**。新增 `class_name` 後要先 `--headless --import --path .`，不然會找不到新類別。
+- 驗收指令（在專案根目錄）：`node tools/release.mjs --check --godot <Godot 路徑>`（先匯入再跑 `check.gd`，內建逾時）。**全部通過才算完成**。畫面只印沒過的項目與總數；每項結果、量到的數字、手感量測在 `godot/tests/check_last.log`，要查細節或抄數字時讀那個檔。
 - 畫面驗證：平常先用 `check.gd` 驗——文字內容直接比對、排版用控制項的最小尺寸算有沒有超出 1920×1080。
   - 判斷：只有文字比對與尺寸計算都驗不到（特效、模型、著色器、光影、動畫姿勢），**而且**使用者近期不會親眼看到時，才用離屏截圖（見 1.8，開視窗前先問使用者）。
   - 例外：使用者要求截圖，或正在追查只有畫面看得出來的 bug。
@@ -49,10 +53,11 @@ Godot 4（GDScript）等距視角 Roguelike 動作遊戲（暫定名 Cubeborn）
 
 ### 1.5 每次修改完成後
 1. 完成第 1.4 節的驗收。
-2. 依 `PROJECT_GUIDELINES.md` 第 12 節升版號，同步更新 `CHANGELOG.md` 與 `godot/core/version.gd`。
-3. `git commit -m "vX.Y.Z: 摘要"`，並 `git tag vX.Y.Z`（不 push）。新腳本的 `.gd.uid` 一起 commit。
+2. 把改動記進 `CHANGELOG.md` 最上面的 `## [未發布]`（沒有就新增；分類照 `PROJECT_GUIDELINES.md` 第 12 節）。**不升版號、不改 `version.gd`、不打 tag**，這些推送時由 `tools/release.mjs` 做。
+3. `git commit -m "摘要"`（不 push）。新腳本的 `.gd.uid` 一起 commit。
 4. 新增、刪除、搬移檔案時更新 `docs/檔案地圖.md`；架構或核心規則有變時更新 `PROJECT_GUIDELINES.md`。
-5. 回覆使用者：新版號、變更摘要、驗證證據、已知問題。
+5. 回覆使用者：變更摘要、驗證證據、已知問題（版號推送時才有）。
+6. 改了**兩位作者都要知道的流程或規則**（本文件、`PROJECT_GUIDELINES.md` 的工作方式、工具用法）時，在 `docs/進度.md` 的「通知」加一條（見 3.2）。
 
 ### 1.6 重大修改
 - 修改任何**核心玩法**（戰鬥手感、敵人行為、波次節奏、數值平衡、操作方式）前，必須先讀 [`docs/設計方向.md`](docs/設計方向.md)，確認符合設計目標與平衡品味。
@@ -65,7 +70,7 @@ Godot 4（GDScript）等距視角 Roguelike 動作遊戲（暫定名 Cubeborn）
 - repo 的 Settings → Pages → Source 必須是「GitHub Actions」（使用者設定），否則推送後網站會找不到首頁。
 - 網頁版用 Compatibility 渲染器、單執行緒（GitHub Pages 不能設 COOP / COEP 標頭）；介面文字只能用打包的字型（`godot/assets/fonts/`）。
 - 網站必須維持「純靜態檔案、相對路徑」，不能依賴本機伺服器。
-- 連線要用 Windows 版：推送 `v*` tag 後 `.github/workflows/release.yml` 自動建立 GitHub Release、附 zip（朋友的說明在 `docs/連線試玩.md`）。一次推送超過 3 個 tag 時 GitHub 不會觸發，要到 Actions 頁面手動跑。
+- 連線要用 Windows 版：推送 `v*` tag 後 `.github/workflows/release.yml` 自動建立 GitHub Release、附 zip（朋友的說明在 `docs/連線試玩.md`）。`tools/release.mjs` 每次推送最多一個 tag；萬一一次推超過 3 個 tag，GitHub 不會觸發，要到 Actions 頁面手動跑。
 
 ### 1.8 Godot 開發與視窗
 - 用 **Godot 4.7.2 普通版（GDScript）**，專案在 `godot/`。效能不夠的部分（依 `docs/進度.md` 的壓力測試數字）才改用 C++（GDExtension）。
@@ -126,11 +131,16 @@ Godot 4（GDScript）等距視角 Roguelike 動作遊戲（暫定名 Cubeborn）
 - 問題解決 → 刪除該段落；屬於通則 → 搬進本文件；能用測試擋住 → 寫成測試。
 - 長度保持在**一個螢幕內能看完**（約 40 行內）。每次結束一個任務前更新。
 - 收工前（使用者說要結束、或一個段落完成時）：更新本檔並 commit，然後提醒使用者「要換電腦的話記得叫我推上去」。沒推送的內容，其他電腦看不到。
+- **「通知」段落**（本檔最上面）：給另一位作者的流程或規則變更。
+  - 寫法：日期、誰改的、改了什麼、對方要做什麼、細節在哪一節；一條幾行就好。
+  - 處理：開工讀到另一位作者留的通知 → 告訴使用者、照著做完 → **刪掉那一條並 commit**（自己留的不要刪，等對方刪）。
+  - 每台電腦都要做的一次性設定（例如安裝工具）不只寫在通知，也要寫進 `docs/新電腦設定.md`：通知刪掉後，對方其他電腦還查得到。
 
 ### 3.3 每台電腦的本機設定（`CLAUDE.local.md`）
 - 各台的專案路徑、Godot 與 Node 路徑、硬體、壓力測試數字寫在專案根目錄的 `CLAUDE.local.md`：會自動載入，但不進版控，每台各一份。
 - 判斷：開工時沒看到 `CLAUDE.local.md` 的內容 → 這台還沒設定，先問使用者電腦名稱與 Godot 路徑，再建立（建立本檔不需另外同意）。
 - 本檔與其他進版控的檔案不寫任何單一電腦的絕對路徑。
+- Godot 路徑寫 console 版（指令列用）：Windows 是解壓縮資料夾裡的 `Godot_v4.7.2-stable_win64_console.exe`；Mac 是 `/Applications/Godot.app/Contents/MacOS/Godot`（或放的位置）。
 - 為什麼：寫死在共用檔案的路徑換到別台就錯，而且三台會互相改來改去。
 
 ---
@@ -146,7 +156,12 @@ Godot 4（GDScript）等距視角 Roguelike 動作遊戲（暫定名 Cubeborn）
 - 為什麼：perl 與 sed 會把 `\G`、`\n` 等當成跳脫字元吃掉，已發生兩次，而且不會報錯。
 
 ### 5.2 headless 執行 Godot 腳本要設逾時，輸出不要接 `head`
-- 平常做法：`-s` 腳本、`--import` 用 PowerShell `Start-Process … -RedirectStandardOutput/-RedirectStandardError -PassThru`，再 `WaitForExit(毫秒)`，逾時就 `Kill()` 並讀錯誤檔。不要把 Godot 輸出接到 `head`、`Select-Object -First`。
-- 判斷：新寫或剛改過的 `-s` 腳本一定照做；`check.gd` 也建議照做。
+- 平常做法：`check.gd` 一律用 `node tools/release.mjs --check`（內建逾時，Windows / Mac 都能用）。其他 `-s` 腳本、`--import`：Windows 用 PowerShell `Start-Process … -RedirectStandardOutput/-RedirectStandardError -PassThru`，再 `WaitForExit(毫秒)`，逾時就 `Kill()` 並讀錯誤檔；Mac 用 `perl -e 'alarm 120; exec @ARGV' <指令>`（macOS 沒有 `timeout`）。不要把 Godot 輸出接到 `head`、`Select-Object -First`。
+- 判斷：新寫或剛改過的 `-s` 腳本一定照做。
 - 例外：只有一行、確定不會卡住的指令（例如 `--version`）。
 - 為什麼：`-s` 腳本有編譯錯誤時 `_initialize` 不會呼叫 `quit()`，Godot 會一直閒置；輸出接 `head` 提早關閉管線也會讓 Godot 卡住。v0.12.0 兩種各發生一次。
+
+### 5.3 截圖驗證的注意事項
+- `-s` 腳本開的小視窗沒有焦點，單機會自動暫停，腳本裡要 `set_paused(false)`。
+- 要讓 Boss 在模擬步裡自己出招；從外面硬切狀態時，enter 發的事件會在下一步開頭被清掉，畫面收不到。
+- 為什麼：都踩過；原本記在 `docs/進度.md`，屬於通則所以搬來這裡（2026-10-25）。
