@@ -125,8 +125,8 @@ func report_text(world: World) -> String:
 		var items: Array[String] = []
 		for it: Dictionary in me.items:
 			items.append(ItemDefs.ITEMS[it.id].name)
-		lines.append("武器：%s；道具：%s；金幣 %d" % [WeaponDropDefs.display_name(inst) if not inst.is_empty() else me.weapon.name,
-			"、".join(PackedStringArray(items)) if not items.is_empty() else "無", world.gold])
+		lines.append("武器：%s；道具：%s；靈魂 %d；本局金幣 %d" % [WeaponDropDefs.display_name(inst) if not inst.is_empty() else me.weapon.name,
+			"、".join(PackedStringArray(items)) if not items.is_empty() else "無", world.souls, world.run_coins])
 	lines.append_array(summary_text().split("
 "))
 	if frames > 0:
