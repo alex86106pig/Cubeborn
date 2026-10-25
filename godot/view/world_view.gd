@@ -68,6 +68,7 @@ var _anim_pending: Dictionary = {}     # entity id -> 還沒拿去擺姿勢的�
 var _grave: Node3D = null              # 挖墳點（D6）
 var _hitboxes_shown := false
 var first_seen: Array[String] = []     # 這一幀第一次被畫出來的模型種類（main.gd 的卡頓紀錄取走後清空，v0.36.3）
+var created := 0                       # 這一幀新建的模型數（--perf 的卡頓紀錄，main.gd 取走後歸零）
 var _seen_keys: Dictionary = {}
 var _warm_nodes: Array[Node3D] = []   # 開場預熱的模型（WARM_FRAMES 幀後移除）
 var warm_keys: Array[String] = []     # 預熱過的模型種類（check.gd 確認每一種都有）
@@ -198,6 +199,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 		var e: Entity = world.entities[id]
 		if not _nodes.has(id):
 			_nodes[id] = _create_view(e)
+			created += 1
 		var node: Node3D = _nodes[id]
 		if not _sync_fade(id, node, e, me, dt):
 			continue   # 看不到的不必擺位置與姿勢（D5 效能）；淡出中的照常擺
@@ -257,6 +259,8 @@ func sync(world: World, alpha: float, dt: float) -> void:
 	_sync_grave(world)
 	_sync_strikes(world, dt)
 	_sync_vision_overlay(me)
+	if is_warming_up():
+		_vision_overlay.visible = true
 	effects.sync(world, dt)
 	if profile:
 		_add_profile(&"vision", t1 - t0)
@@ -588,7 +592,11 @@ func _create_strike(h: Dictionary, ground: float) -> MeshInstance3D:
 # 開場預熱（v0.37.0）：每一種模型（玩家含武器光、各種怪、魔法 / 稀有怪的光環與點光源、冤魂、Boss、寶箱、道具、武器、投射物）
 # 各放一個在 center 附近（一定要在鏡頭裡，顯示卡才會真的畫、才會編譯著色器），疊上三種剪影，畫 WARM_FRAMES 幀後移除。
 # 用一個暫時的 World 建實體，不影響真正的遊戲；要在第一次 sync 之前呼叫（_create_view 會用實體 id 登記動畫器，之後就清掉）
-const WARM_FRAMES := 3
+# 前一半的幀關掉預熱模型上的點光源、後一半打開：Compatibility（網頁版）依「有沒有被點光源照到」把同一個材質編成兩個版本，
+# 只預熱有光的版本時，遊戲中第一次畫到沒被照到的怪會當場編譯（每個 35~75 ms）。視野遮罩預熱期間也強制畫
+const WARM_FRAMES := 4
+var _warm_lights: Array[Light3D] = []
+var _warm_center := Vector3.ZERO
 
 
 func warm_up(center: Vector3) -> void:
@@ -629,8 +637,6 @@ func warm_up(center: Vector3) -> void:
 		# 排成一圈（半徑 3），都在鏡頭裡
 		var a := TAU * i / count
 		node.position = center + Vector3(sin(a), 0.0, cos(a)) * 3.0
-		if node.has_meta(&"glow"):
-			(node.get_meta(&"glow") as Node3D).visible = true   # 武器光：拿到有顏色的武器才會開
 		if node.has_meta(&"xray"):
 			apply_xray(node, colors[i % colors.size()], true)
 		if faded:
@@ -638,7 +644,12 @@ func warm_up(center: Vector3) -> void:
 			Fade.apply(node, 0.5)
 		_warm_nodes.append(node)
 		warm_keys.append(("fade:" if faded else "") + _view_key(e))
+	for node in _warm_nodes:
+		for light: Light3D in node.find_children("*", "Light3D", true, false):
+			_warm_lights.append(light)
+			light.visible = false
 	_warm_left = WARM_FRAMES
+	_warm_center = center
 	effects.warm_up(center)
 	tw.clear()
 
@@ -651,10 +662,15 @@ func _tick_warm_up() -> void:
 	if _warm_left <= 0:
 		return
 	_warm_left -= 1
+	if _warm_left == WARM_FRAMES / 2:
+		for light in _warm_lights:
+			light.visible = true
+		effects.warm_up(_warm_center)   # 粒子也要有光、沒光各畫一次
 	if _warm_left == 0:
 		for node in _warm_nodes:
 			node.queue_free()
 		_warm_nodes.clear()
+		_warm_lights.clear()
 
 
 # 卡頓紀錄用的模型種類：材質或光不同的分開算（稀有怪有光環與點光源、寶箱分大小、道具分武器與稀有度、投射物分外觀）

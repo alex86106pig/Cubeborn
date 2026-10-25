@@ -7,6 +7,12 @@ const WARMUP := 2.0     # 開場幾秒不記錄（建模與第一次編譯著色
 const HITCH_MS := 33.0  # 超過這麼久的幀算卡頓（30 FPS 以下）
 
 var prev_first: Array[String] = []   # 前一幀第一次畫出來的東西（模型種類、特效）
+# 卡頓的拆解：這一幀的 delta = 這次 _process 前跑的模擬步（邏輯 + 事件處理）+ 上一幀的畫面同步 + 其餘（多半是瀏覽器 / 驅動在渲染）
+var prev_sync_usec := 0              # 上一幀 WorldView.sync 的耗時
+var prev_created := 0                # 上一幀新建的模型數
+var _frame_logic_usec := 0           # 上次 _process 之後跑的模擬步：World.step
+var _frame_event_usec := 0           # 上次 _process 之後跑的模擬步：事件交給畫面層、HUD、音效（GameEvents.emit_all）
+var _frame_steps := 0
 var _frames := PackedFloat32Array()
 var _hitches: Array[float] = []      # 超過 HITCH_MS 的幀（毫秒）
 var _warm_ms := 0.0                  # 預熱那幾幀合計多久
@@ -25,7 +31,10 @@ func recording(elapsed: float) -> bool:
 	return elapsed >= WARMUP
 
 
-func add_step(usec: int, elapsed: float) -> void:
+func add_step(usec: int, elapsed: float, event_usec: int = 0) -> void:
+	_frame_logic_usec += usec
+	_frame_event_usec += event_usec
+	_frame_steps += 1
 	if recording(elapsed):
 		_step_usec += usec
 		_steps += 1
@@ -41,13 +50,22 @@ func add_frame(delta: float, sync_usec: int, elapsed: float) -> void:
 # 卡頓紀錄：這一幀的 delta 包含前一幀第一次畫的東西的成本（編譯著色器、產生字形）
 func log_hitch(delta: float, elapsed: float, warming: bool) -> void:
 	var ms := delta * 1000.0
+	var logic := _frame_logic_usec / 1000.0
+	var events := _frame_event_usec / 1000.0
+	var steps := _frame_steps
+	_frame_logic_usec = 0
+	_frame_event_usec = 0
+	_frame_steps = 0
 	if warming:
 		_warm_ms += ms   # 預熱那幾幀本來就會慢（蓋著「準備中」），另外記、不算卡頓
 		return
 	if ms < HITCH_MS or elapsed <= 0.0:
 		return
 	_hitches.append(ms)
-	print("perf hitch t=%.2f ms=%.1f first=%s" % [elapsed, ms, ", ".join(prev_first) if not prev_first.is_empty() else "-"])
+	var sync := prev_sync_usec / 1000.0
+	print("perf hitch t=%.2f ms=%.1f first=%s | logic=%.1f(%d步) events=%.1f prev_sync=%.1f created=%d other=%.1f" % [
+		elapsed, ms, ", ".join(prev_first) if not prev_first.is_empty() else "-",
+		logic, steps, events, sync, prev_created, ms - logic - events - sync])
 
 
 # 平均 FPS、最慢 1% 的幀、每步邏輯與每幀畫面同步的平均耗時、活著的敵人與畫出來的數量

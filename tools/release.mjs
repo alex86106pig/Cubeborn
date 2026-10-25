@@ -1,7 +1,7 @@
 // 檢查與推送（Windows / Mac 都能跑，只用 Node 內建模組）。規則見 PROJECT_GUIDELINES.md 第 12、13 節
 //   node tools/release.mjs --check                        只跑 Godot 匯入 + check.gd（有逾時）
 //   node tools/release.mjs --web                          匯出網頁版並開本機伺服器 http://localhost:8060（--port 換埠）
-//   node tools/release.mjs --perf                         匯出網頁版，在背景的 Chrome 原地轉身 30 秒量效能（--chrome <路徑> 或環境變數 CHROME）
+//   node tools/release.mjs --perf                         匯出網頁版，在不開視窗的 Chrome 原地轉身 30 秒量效能（--chrome <路徑> 或環境變數 CHROME；環境變數 PERF_QUERY 換網址參數）
 //   node tools/release.mjs --summary "摘要"               推送：更新（rebase）→ 決定版號 → 檢查 → commit + tag → push
 //   node tools/release.mjs --summary "摘要" --dry-run     不動 git 歷史、不推：只 fetch、算版號、改檔跑檢查，最後還原
 //   加 --bump=minor|patch 可以蓋過自動判斷的版號
@@ -115,10 +115,10 @@ if (has('web') && !has('perf')) {
   await new Promise(() => {});   // 伺服器一直開著，不往下跑推送
 }
 
-// 網頁版效能：匯出後開獨立的 Chrome（自己的設定資料夾、放在螢幕外、關掉背景限速，照樣用顯示卡畫），
+// 網頁版效能：匯出後開獨立的 headless Chrome（自己的設定資料夾、不開視窗、關掉背景限速；新版 headless 照樣用顯示卡畫），
 // 原地讓 60 群怪圍過來、每 0.5 秒用滑鼠來回轉身 180°，跑 30 秒；印出 WebGL 用的顯示卡、遊戲的 perf 統計、Console 錯誤
 const PERF_SECONDS = 30;
-const PERF_QUERY = `?perf&seconds=${PERF_SECONDS}&horde=60&elites&player-hp=99999`;
+const PERF_QUERY = process.env.PERF_QUERY || `?perf&seconds=${PERF_SECONDS}&horde=60&elites&player-hp=99999`;
 const TURN_SECONDS = 0.5;
 
 function chromePath() {
@@ -142,7 +142,7 @@ async function webPerf() {
   const proc = spawn(chrome, [
     `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check',
     '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows',
-    '--window-position=-3000,0', '--window-size=960,540', '--new-window', `http://localhost:${port}/${PERF_QUERY}`,
+    '--headless=new', '--disable-features=Translate', '--window-size=960,540', `http://localhost:${port}/${PERF_QUERY}`,
   ], { stdio: 'ignore' });
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const lines = [];

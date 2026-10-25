@@ -387,10 +387,11 @@ func _authority_physics() -> void:
 		cmds[World.HOST_PEER_ID] = input_collector.build_cmd(world.tick + 1)
 		var t0 := Time.get_ticks_usec()
 		world.step(cmds, Config.FIXED_DT)
-		if perf != null:
-			perf.add_step(Time.get_ticks_usec() - t0, _elapsed)
+		var t1 := Time.get_ticks_usec()
 		input_collector.consume_latched()
 		GameEvents.emit_all(world.events)
+		if perf != null:
+			perf.add_step(t1 - t0, _elapsed, Time.get_ticks_usec() - t1)
 		if mode == Mode.HOST:
 			_broadcast_step()
 		_stepped_this_tick = true
@@ -426,6 +427,9 @@ func _process(delta: float) -> void:
 	if perf != null:
 		# 這一幀第一次畫的東西，成本（編譯著色器、產生字形）會算在下一幀的 delta 裡
 		perf.prev_first = world_view.first_seen + world_view.effects.first_seen
+		perf.prev_sync_usec = Time.get_ticks_usec() - t0
+		perf.prev_created = world_view.created
+	world_view.created = 0
 	world_view.first_seen.clear()
 	world_view.effects.first_seen.clear()
 	if _warming and not world_view.is_warming_up():

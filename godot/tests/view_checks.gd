@@ -446,6 +446,12 @@ static func check_warm_up() -> String:
 			if node.position.distance_to(center) > 4.0:
 				err = "預熱的模型要在鏡頭附近（離中心 %.1f）" % node.position.distance_to(center)
 				break
+	# 前一半的幀預熱模型上的點光源全關、後一半全開（網頁版有光 / 沒光是兩個著色器版本）；預熱期間視野遮罩也畫
+	var lights: Array[Light3D] = []
+	for node in view._warm_nodes:
+		lights.append_array(node.find_children("*", "Light3D", true, false))
+	if err == "" and (lights.is_empty() or lights.any(func(l: Light3D) -> bool: return l.visible)):
+		err = "預熱一開始模型上的點光源應全部關掉（找到 %d 盞）" % lights.size()
 	if err == "":
 		var w := _new_world()
 		for i in WorldView.WARM_FRAMES:
@@ -453,6 +459,12 @@ static func check_warm_up() -> String:
 				err = "預熱應維持 %d 幀，第 %d 幀就結束了" % [WorldView.WARM_FRAMES, i]
 				break
 			view.sync(w, 1.0, DT)
+			if i == WorldView.WARM_FRAMES / 2 - 1 and lights.any(func(l: Light3D) -> bool: return not l.visible):
+				err = "預熱後一半的幀模型上的點光源應全部打開"
+				break
+			if i < WorldView.WARM_FRAMES - 1 and not view._vision_overlay.visible:
+				err = "預熱期間視野遮罩應該畫出來（第 %d 幀）" % i
+				break
 		if err == "" and (view.is_warming_up() or not view._warm_nodes.is_empty()):
 			err = "預熱 %d 幀後應移除" % WorldView.WARM_FRAMES
 	# 預熱過後，遊戲中的怪、寶箱、玩家淡入淡出的每一階都不必新建材質
