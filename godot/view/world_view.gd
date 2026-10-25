@@ -315,6 +315,7 @@ uniform float half_angle;
 uniform float range;
 uniform float near_radius;
 uniform float near_edge;
+uniform float range_edge;
 uniform float darkness;
 uniform float inner_darkness;
 uniform float edge;
@@ -337,7 +338,7 @@ void fragment() {
 	float dist = length(d);
 	float diff = abs(mod(atan(d.x, d.y) - facing + 3.14159265, 6.2831853) - 3.14159265);
 	float ang_soft = edge / max(dist, 0.5);
-	float cone = (1.0 - smoothstep(range - edge, range, dist)) * (1.0 - smoothstep(half_angle - ang_soft, half_angle, diff));
+	float cone = (1.0 - smoothstep(range - range_edge, range, dist)) * (1.0 - smoothstep(half_angle - ang_soft, half_angle, diff));
 	float near = 1.0 - smoothstep(near_radius - near_edge, near_radius, dist);
 	ALBEDO = vec3(0.0);
 	ALPHA = mix(darkness, inner_darkness, max(cone, near));
@@ -360,6 +361,7 @@ func _create_vision_overlay() -> MeshInstance3D:
 	mat.set_shader_parameter(&"inner_darkness", v.inner_darkness)
 	mat.set_shader_parameter(&"edge", v.edge)
 	mat.set_shader_parameter(&"near_edge", v.near_edge)
+	mat.set_shader_parameter(&"range_edge", v.range_edge)
 	# 最先畫（半透明物件裡）：半透明的東西不在深度貼圖裡，這層會讀到它們後面的地面來判斷壓不壓暗，
 	# 淡入淡出中的怪物、冤魂會被切成上下兩半（頭頂對到較遠的地面）。最先畫 = 半透明的一律畫在上面、不被壓暗
 	mat.render_priority = Material.RENDER_PRIORITY_MIN

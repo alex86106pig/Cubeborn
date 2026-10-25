@@ -382,7 +382,7 @@ static func check_vision_rules() -> String:
 	if not Vision.entity_visible(w, p, mine) or Vision.entity_visible(w, p, theirs) or Vision.entity_visible(w, p, archer):
 		return "背後：自己的投射物 %s、弓手的箭 %s、弓手 %s（應為 看得到 / 看不到 / 看不到）" % [
 			Vision.entity_visible(w, p, mine), Vision.entity_visible(w, p, theirs), Vision.entity_visible(w, p, archer)]
-	# 視野邊界上、中心在外面一點：寶箱看中心（露一角不算），怪物看身體邊緣（2026-10-26）
+	# 視野邊界上、中心在外面一點：寶箱看中心（露一角不算），怪物看身體邊緣
 	var edge_at: Vector2 = at.call(half_deg + 1.0, 10.0)
 	var chest := Chest.new(w, &"small", edge_at)
 	var grunt := _spawn(w, &"grunt", edge_at)
@@ -481,7 +481,7 @@ static func check_vision_view() -> String:
 			err = "特效：背後的揮砍多了 %d 個、前方的多了 %d 個（應為 0 / 1）" % [after_back - before, view.effects._transients.size() - after_back]
 	if err == "" and (view._vision_overlay.material_override as Material).render_priority != Material.RENDER_PRIORITY_MIN:
 		err = "視野變暗的遮罩要最先畫（半透明的模型不在深度貼圖裡，後畫會被切成上下兩半）"
-	# 淡入淡出（2026-10-26）：轉身後原本前方的骷髏先半透明、fade_out 秒後才隱藏；背後的從透明淡入，fade_in 秒後還原成不透明
+	# 淡入淡出：轉身後原本前方的骷髏先半透明、fade_out 秒後才隱藏；背後的從透明淡入，fade_in 秒後還原成不透明
 	var v := Config.VISION
 	if err == "":
 		p.facing = PI
@@ -493,6 +493,13 @@ static func check_vision_view() -> String:
 			err = "轉身 0.1 秒：原本前方的骷髏應還看得到、透明度 %.2f（實際 %s / %.2f）" % [1.0 - 0.1 / v.fade_out, front_node.visible, fa]
 		elif not back_node.visible or not is_equal_approx(ba, 0.1 / v.fade_in):
 			err = "轉身 0.1 秒：背後的骷髏應開始淡入、透明度 %.2f（實際 %s / %.2f）" % [0.1 / v.fade_in, back_node.visible, ba]
+		else:
+			# 兩次繪製：先只寫深度、再畫半透明的原材質（零件不互相透出來）
+			for mi in PartKit.mesh_instances(back_node):
+				var dm := mi.material_override as ShaderMaterial
+				if mi.name != &"Hitbox" and (dm == null or not dm.next_pass is BaseMaterial3D or (dm.next_pass as BaseMaterial3D).transparency == BaseMaterial3D.TRANSPARENCY_DISABLED):
+					err = "淡入淡出中每個網格應是「只寫深度 → 半透明的原材質」兩次繪製（%s）" % mi.name
+					break
 	if err == "":
 		var t := 0.1
 		while t < maxf(v.fade_in, v.fade_out) + 0.05:
@@ -516,8 +523,11 @@ static func check_vision_view() -> String:
 # 模型第一個網格材質的 alpha（淡入淡出的程度；SkinnedRig：Skeleton 底下的網格）
 static func _fade_alpha(node: Node3D) -> float:
 	for mi in PartKit.mesh_instances(node):
-		if mi.name != &"Hitbox" and mi.material_override is BaseMaterial3D:
-			return (mi.material_override as BaseMaterial3D).albedo_color.a
+		var m := mi.material_override
+		if m is ShaderMaterial:
+			m = m.next_pass   # 淡入淡出中：只寫深度的那一次後面接原本的材質
+		if mi.name != &"Hitbox" and m is BaseMaterial3D:
+			return (m as BaseMaterial3D).albedo_color.a
 	return -1.0
 
 
