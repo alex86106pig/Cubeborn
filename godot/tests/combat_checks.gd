@@ -227,7 +227,7 @@ static func check_weapon_base_stats() -> String:
 	var w := _new_world()
 	var p := _player(w)
 	p.weapon_slots[0] = {"uid": &"g", "base": &"swordShield", "rarity": &"green", "affixes": [] as Array[StringName]}
-	p._apply_active_weapon()
+	p.apply_active_weapon()
 	if absf(p.stats.value(&"damage") - green.damage) > EPS or absf(p.weapon_range_mul() - green.range) > EPS:
 		return "裝上綠劍盾：攻擊力 %.2f（應 %.2f）、範圍倍率 %.2f（應 %.2f）" % [p.stats.value(&"damage"), green.damage, p.weapon_range_mul(), green.range]
 	var events: Array[Dictionary] = []

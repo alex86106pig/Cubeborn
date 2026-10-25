@@ -21,6 +21,7 @@
 - **怪物種類只看資料表**：`EnemyDefs` 每種怪加 `behavior`（melee / ranged / boss），Boss 加 `is_boss`、`freeze_immune`；`Spawner.create` 用 `behavior_class()` 對應類別，Boss 先出場、出生位置、不套波次倍率、冰凍免疫都改看欄位，不再寫死 `&"boss"`。挖墳事件的 Boss 改從 `EventDefs.DIG.boss_type` 讀。新增檢查「怪物種類只看資料表」。
 - **道具效果改成類別**：`ItemEffects` 的條件（對滿血敵人、低血、擊殺後）與動作（連鎖閃電、中毒、冰凍、爆炸、回血）各一個類別，用 `CONDITIONS` / `ACTIONS` 查表，取代原本的 `match`；之後接剩下 16 個道具只要加類別。新增檢查「道具效果的類別」：`ItemDefs.IMPLEMENTED_*` 和登錄的類別一一對應。
 - **拆 `main.gd`**（738 → 530 行）：指令列 / 網址參數搬到 `debug/launch_args.gd`（`LaunchArgs`）、`--perf` 量測搬到 `debug/perf_meter.gd`（`PerfMeter`）、開場布置與 F3~F5 除錯鍵搬到 `debug/debug_tools.gd`（`DebugTools`）。用法不變。
+- **從 `Player` 拆出 `Loadout`**（`sim/loadout.gd`；`player.gd` 771 → 594 行）：裝備欄、背包、生效的道具、背包操作、撿起、合成、丟棄。`Player` 保留原本的名稱轉過去（`add_item`、`weapon_slots`、`inventory`…），連線、介面、檢查都不用改；`Loadout` 不存 `Player`（避免循環參照），需要時由 `Player` 傳入。`_apply_active_weapon` 改名 `apply_active_weapon`。
 
 ### 驗證
 - `node tools/release.mjs --check`：126 / 126 通過，畫面只印 1 行，`check_last.log` 156 行。
