@@ -18,10 +18,6 @@ func _init(p_world: World, p_type: StringName, at: Vector2, mul: Dictionary) -> 
 	super(p_world, p_type, at, mul, states)
 
 
-func is_boss() -> bool:
-	return true
-
-
 func on_added() -> void:
 	var first: Dictionary = def.first_cooldowns
 	for name: String in first:

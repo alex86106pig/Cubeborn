@@ -89,7 +89,7 @@ func _start(world: World) -> void:
 		if nav.is_walkable(c) and nav.same_region(c, point):
 			at = c
 			break
-	_boss_id = world.spawner.spawn_at(world, &"boss", at).id
+	_boss_id = world.spawner.spawn_at(world, EventDefs.DIG.boss_type, at).id
 
 
 # 每 interval 秒在一位活著的玩家周圍冒一批（同 Spawner._around_player 的距離），稀有度依難度

@@ -102,7 +102,7 @@ func affix(id: StringName) -> Dictionary:
 
 
 func is_boss() -> bool:
-	return false
+	return def.get("is_boss", false)
 
 
 func is_spawning() -> bool:
@@ -173,9 +173,9 @@ func apply_poison(source_id: int, total: float) -> void:
 	world.emit_event("fx:status", {"pos": pos, "height": ground_height, "color": cfg.color})
 
 
-# 冰凍（v0.33.0）：Boss 不會被冰凍；已經凍住的取較長的
+# 冰凍（v0.33.0）：freeze_immune 的怪（Boss）不會被冰凍；已經凍住的取較長的
 func apply_freeze(duration: float) -> void:
-	if is_dead or type == &"boss":
+	if is_dead or def.get("freeze_immune", false):
 		return
 	frozen_timer = maxf(frozen_timer, duration)
 	world.emit_event("fx:status", {"pos": pos, "height": ground_height, "color": ItemDefs.PROCS.freeze.color})

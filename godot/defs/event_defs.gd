@@ -10,6 +10,7 @@ const DIG := {
 	"range": 2.2,              # 離挖墳點這麼近才能挖（中心距離）
 	"exit_radius": 1.4,        # 挖完後墓穴就是出口：走進這個範圍就「下去」
 	"boss_distance": 8.0,      # 事件開始時 Boss 出現在挖墳點旁邊這麼遠
+	"boss_type": &"boss",     # 事件開始時出現的 Boss（EnemyDefs 的種類；之後每層可以換）
 }
 
 const DIFFICULTY := {

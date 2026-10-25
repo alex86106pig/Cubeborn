@@ -15,6 +15,10 @@
 - **`.gitattributes`**：換行一律 LF（Windows 與 Mac 一起開發；原本 Windows 一匯入就有 33 個 `.import` 顯示只差換行的修改）；`CHANGELOG.md`、`docs/進度.md` 用 union 合併，兩人同時在最上面加內容時 rebase 不衝突。
 - **`docs/進度.md` 最上面新增「通知」**：給另一位作者的流程變更，對方看完、做完就刪；效能與壓力測試數字搬到新的 `docs/效能.md`，截圖注意事項搬進 `CLAUDE.md` 5.3。
 - `CLAUDE.md`：寫明兩位作者；開工 pull 到新 commit 時先向使用者簡報對方改了什麼。`docs/新電腦設定.md`：Node 改成必裝。
+- `release.mjs` 逾時改成匯入 5 分鐘、`check.gd` 3 分鐘（正常約 25 秒；腳本編譯錯誤時 Godot 不會結束，原本 10 分鐘等太久）。
+
+### 重構（遊戲行為不變）
+- **怪物種類只看資料表**：`EnemyDefs` 每種怪加 `behavior`（melee / ranged / boss），Boss 加 `is_boss`、`freeze_immune`；`Spawner.create` 用 `behavior_class()` 對應類別，Boss 先出場、出生位置、不套波次倍率、冰凍免疫都改看欄位，不再寫死 `&"boss"`。挖墳事件的 Boss 改從 `EventDefs.DIG.boss_type` 讀。新增檢查「怪物種類只看資料表」。
 
 ### 驗證
 - `node tools/release.mjs --check`：126 / 126 通過，畫面只印 1 行，`check_last.log` 156 行。

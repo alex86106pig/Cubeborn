@@ -145,6 +145,7 @@ func _initialize() -> void:
 	_check("音效對應：事件 → 音效（受傷 / 爆擊 / Boss 死亡 / 道具…），Boss 波換 Boss 曲、死亡停音樂", ViewChecks.check_sound_mapping)
 	_check("音效距離衰減（v0.44.0）：15 內全音量、35 外不播、中間 (1 − t)²；模擬層 sfx:cue 都帶位置；遠處隊友揮劍聽不到、身邊聽得到；法杖普攻 −8 dB", ViewChecks.check_sound_distance)
 	# 怪物稀有度與挖墳事件
+	_check("怪物種類只看資料表：每種怪的 behavior 都對應得到行為類別、建出來的類別一致；is_boss、freeze_immune 照資料；挖墳事件的 boss_type 是 Boss", MonsterChecks.check_enemy_defs)
 	_check("怪物稀有度（D5）：稀有骷髏生命 180、攻擊力 ×1.5、體型 ×1.2；魔法 72、×1.2；詞條魔法 1~2 / 稀有 3 條不重複、稀有怪有名字；每群魔法 1~2 隻、稀有 25%（±1.5%）", MonsterChecks.check_rarity)
 	_check("怪物詞條（D5）：迅捷移速 ×1.3、強壯 ×1.3、厚皮 20 → 15、再生每秒 0.72、吸血揮砍 12 回 2.4、狂暴 <30% 移速與狀態機 ×1.4、死亡爆炸 0.8 秒後 2.2 內 20 傷害、召喚 8 秒 2 隻最多 6 隻", MonsterChecks.check_affixes)
 	_check("怪群（D5）：地圖 A 散放 12~20 群、每群 6~15 隻、離出生點 15 以上、群距 10 以上、都走得到；開場休眠不播音效、不動；玩家走到 12 以內整群醒來、被打一隻整群醒來；同種子結果相同", MonsterChecks.check_packs)

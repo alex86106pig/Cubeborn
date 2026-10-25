@@ -613,7 +613,7 @@ func _create_view(e: Entity) -> Node3D:
 			# 小怪用蒙皮版本（D5 效能：每隻 1~2 次繪製）；Boss 只有一隻，照舊用關節節點
 			# 冤魂（D6）：半透明的騎士（玩家的模型，不拿武器）
 			var rig: Node3D
-			if e.kind == &"boss":
+			if (e as Enemy).is_boss():
 				rig = DarkFantasy.character(e.kind)
 			elif e.kind == &"ghost":
 				rig = DarkFantasy.skinned_character(&"player")

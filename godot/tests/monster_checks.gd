@@ -39,6 +39,27 @@ static func _grunt(w: World, at: Vector2, rarity: StringName, affixes: Array = [
 
 # ───────── 稀有度 ─────────
 
+# 怪物種類只靠資料表區分（v0.42.1 重構）：behavior 對應得到行為類別、建出來的類別一致；is_boss / freeze_immune 照資料
+static func check_enemy_defs() -> String:
+	var w := _world()
+	for type: StringName in EnemyDefs.ENEMIES:
+		var d: Dictionary = EnemyDefs.ENEMIES[type]
+		if Spawner.behavior_class(d.get("behavior", &"")) == null:
+			return "%s 的 behavior「%s」沒有對應的類別" % [type, d.get("behavior", "")]
+		var e := Spawner.create(w, type, Vector2.ZERO, WaveDefs.NO_SCALING.duplicate())
+		if e.get_script() != Spawner.behavior_class(d.behavior):
+			return "%s 建出來的類別不對" % type
+		if e.is_boss() != d.get("is_boss", false):
+			return "%s 的 is_boss() 跟資料表不一致" % type
+		e.apply_freeze(1.0)
+		var immune: bool = d.get("freeze_immune", false)
+		if (e.frozen_timer > 0.0) == immune:
+			return "%s 冰凍：資料表 freeze_immune=%s，實際 frozen_timer=%.1f" % [type, immune, e.frozen_timer]
+	if not EnemyDefs.ENEMIES.has(EventDefs.DIG.boss_type) or not EnemyDefs.is_boss(EventDefs.DIG.boss_type):
+		return "挖墳事件的 boss_type 不是 Boss：%s" % EventDefs.DIG.boss_type
+	return ""
+
+
 static func check_rarity() -> String:
 	var w := _world()
 	var rare := _grunt(w, Vector2(0, 10), MonsterRarityDefs.RARE)

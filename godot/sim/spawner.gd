@@ -60,7 +60,7 @@ func _start_wave(world: World, p_wave: int) -> void:
 	var others: Array[StringName] = []
 	for type: StringName in def.spawns:
 		for i in def.spawns[type]:
-			(bosses if type == &"boss" else others).append(type)
+			(bosses if EnemyDefs.is_boss(type) else others).append(type)
 	# Boss 先出場，其餘隨機排序（Fisher-Yates，用 world.rng 才有決定性）
 	for i in range(others.size() - 1, 0, -1):
 		var j := world.rng.randi_range(0, i)
@@ -81,7 +81,7 @@ func _spawn_from_queue(world: World, type: StringName) -> void:
 		return
 	var limit: float = world.half_extents.x - Config.SPAWNER.edge_margin
 	var at := Vector2.ZERO
-	if type == &"boss":
+	if EnemyDefs.is_boss(type):
 		# 出現在玩家對面、靠近場地中央
 		var from_center := p.length()
 		var dist := minf(Config.SPAWNER.boss_distance, limit)
@@ -99,7 +99,7 @@ func _spawn_from_queue(world: World, type: StringName) -> void:
 static func _around_player(world: World, type: StringName, p: Vector2) -> Vector2:
 	var s: Dictionary = Config.SPAWNER
 	var nav := world.nav_for(EnemyDefs.ENEMIES[type].radius)   # Boss 用大隻的格子圖，不會生在窄縫裡
-	if type == &"boss":
+	if EnemyDefs.is_boss(type):
 		var to_center := -p
 		var dir := to_center.normalized() if to_center.length() > 1.0 else Vector2(0.0, -1.0)
 		var at := nav.nearest_walkable(p + dir * s.boss_distance)
@@ -123,7 +123,7 @@ func spawn_at(world: World, type: StringName, at: Vector2, extra: Dictionary = {
 	if DigEvent.enabled(world):   # 挖墳地圖（D6）：所有怪（含 Boss、怪群、冤魂）依目前難度
 		mul = EventDefs.difficulty_mul(world.difficulty())
 	else:
-		mul = (WaveDefs.NO_SCALING if type == &"boss" else WaveDefs.wave_multipliers(wave)).duplicate()
+		mul = (WaveDefs.NO_SCALING if EnemyDefs.is_boss(type) else WaveDefs.wave_multipliers(wave)).duplicate()
 	mul.hp *= player_count_hp_mul(world.players.size())
 	mul.merge(extra)
 	var enemy := create(world, type, at, mul)
@@ -213,14 +213,20 @@ static func player_count_hp_mul(count: int) -> float:
 	return 1.0 + Config.NET.enemy_hp_per_extra_player * maxi(0, count - 1)
 
 
-# 敵人類型 → 行為類別（網頁版 Spawner 的 ENEMY_CLASSES）；客戶端建立鏡像實體也用這個
-static func create(world: World, type: StringName, at: Vector2, mul: Dictionary) -> Enemy:
-	match type:
-		&"grunt", &"ghost":
-			return MeleeEnemy.new(world, type, at, mul)
-		&"archer":
-			return RangedEnemy.new(world, type, at, mul)
+# EnemyDefs 的 behavior → 行為類別（網頁版 Spawner 的 ENEMY_CLASSES）：新增怪物種類只改資料表，新增一種行為才改這裡
+# （不能寫成 const Dictionary：類別互相參照時不算常數運算式）
+static func behavior_class(behavior: StringName) -> GDScript:
+	match behavior:
+		&"melee":
+			return MeleeEnemy
+		&"ranged":
+			return RangedEnemy
 		&"boss":
-			return Boss.new(world, type, at, mul)
-	assert(false, "Unknown enemy type: %s" % type)
+			return Boss
 	return null
+
+
+# 客戶端建立鏡像實體也用這個
+static func create(world: World, type: StringName, at: Vector2, mul: Dictionary) -> Enemy:
+	assert(EnemyDefs.ENEMIES.has(type), "Unknown enemy type: %s" % type)
+	return behavior_class(EnemyDefs.ENEMIES[type].behavior).new(world, type, at, mul)

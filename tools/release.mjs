@@ -16,8 +16,9 @@ const CHANGELOG = join(ROOT, 'CHANGELOG.md');
 const VERSION_GD = join(ROOT, 'godot', 'core', 'version.gd');
 const UNRELEASED = '## [未發布]';
 // 逾時：-s 腳本有編譯錯誤時 Godot 不會結束（CLAUDE.md 5.2），一定要能自己停
-const IMPORT_TIMEOUT = 10 * 60 * 1000;
-const CHECK_TIMEOUT = 10 * 60 * 1000;
+// 正常：匯入幾秒～1 分鐘（新電腦第一次較久）、check.gd 約 25 秒（2026-10-25 RTX 3070）
+const IMPORT_TIMEOUT = 5 * 60 * 1000;
+const CHECK_TIMEOUT = 3 * 60 * 1000;
 
 const args = process.argv.slice(2);
 const opt = name => {

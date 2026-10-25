@@ -1,11 +1,14 @@
 # 敵人資料定義（照搬網頁版 legacy/src/entities/enemyDefs.js，欄位改 snake_case）；行為在 sim/enemies/
 # 網頁版寫死在行為程式裡的數字也搬到這裡（例如 Boss 招式的震動與停頓）
 # v0.17.0 起和網頁版刻意不同：拿掉接觸傷害（contact_*），骷髏戰士改用 swing 揮砍；blockable 標示能否被格擋（B5）
+# behavior：行為類別（Spawner.BEHAVIORS：melee / ranged / boss）；is_boss：Boss（先出場、出生位置、不套波次倍率、Boss 血條）；
+# freeze_immune：不會被道具冰凍。流程只看這些欄位，不寫死怪物種類
 class_name EnemyDefs
 
 const ENEMIES := {
 	&"grunt": {
 		"visual": &"melee",
+		"behavior": &"melee",
 		"max_hp": 36.0,
 		"move_speed": 2.6,
 		"speed_variance": 0.2,
@@ -38,6 +41,7 @@ const ENEMIES := {
 
 	&"archer": {
 		"visual": &"ranged",
+		"behavior": &"ranged",
 		"max_hp": 26.0,
 		"move_speed": 2.3,
 		"speed_variance": 0.15,
@@ -69,6 +73,9 @@ const ENEMIES := {
 
 	&"boss": {
 		"visual": &"boss",
+		"behavior": &"boss",
+		"is_boss": true,
+		"freeze_immune": true,   # v0.33.0：Boss 不會被冰凍
 		"hit_color": Color("ff4040"),   # 砸地、衝鋒打中時的命中粒子（網頁版 0xff4040）
 		"max_hp": 900.0,
 		# v0.27.0 使用者決定 Boss 加強：跑速 2.2 → 3.0、出招間隔縮短 30%、招式範圍變大、新招直劈、狂暴進化（數值 Claude 訂）
@@ -124,6 +131,7 @@ const ENEMIES := {
 	# 不掉金幣、不掉武器（LootDefs / WeaponDropDefs 沒有它）；畫面是半透明的騎士
 	&"ghost": {
 		"visual": &"ghost",
+		"behavior": &"melee",
 		"max_hp": 150.0,
 		"move_speed": 3.0,
 		"speed_variance": 0.0,
@@ -143,3 +151,7 @@ const ENEMIES := {
 		},
 	},
 }
+
+
+static func is_boss(type: StringName) -> bool:
+	return ENEMIES[type].get("is_boss", false)
