@@ -270,6 +270,7 @@ static func _shovel() -> Dictionary:
 # 兩端往拉弓的人這側（-Z）彎回來，弦接兩端（2026-10-27 使用者：原本圓心偏後，手握的位置不在弓身上）
 const BOW_SEGMENTS := 8
 const BOW_HALF_ARC := 0.85   # 弓身半邊張開的角度（弧度）
+const QUIVER_SCALE := 1.4    # 箭袋大小（2026-10-27 使用者：做大一點）
 
 
 # arrow：箭長（短弓的箭短一點，2026-10-27 使用者）；背上一律有箭袋（back，掛在 Rig.body），
@@ -312,8 +313,9 @@ static func _player_bow(size: float, wood: Color, arrow: float) -> Dictionary:
 		k.add(a, PartKit.box(0.06, 0.1, 0.01), k.mat(Color("f0f0f0")), {"y": 0.04, "ry": ang})
 		quiver.add_child(a)
 		arrows.append(a)
-	quiver.position = Vector3(-0.12, 1.3, -0.26)
+	quiver.position = Vector3(-0.12, 1.25, -0.32)
 	quiver.rotation = Vector3(-0.15, 0.0, 0.4)   # 上端往右肩（-X）斜
+	quiver.scale = Vector3.ONE * QUIVER_SCALE
 	out["back"] = quiver
 	out["quiver_arrows"] = arrows
 	return out
