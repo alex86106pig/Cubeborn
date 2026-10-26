@@ -6,6 +6,7 @@ extends Node3D
 enum Mode { SINGLE, HOST, CLIENT }
 
 const HUD_SCENE := preload("res://ui/hud.tscn")
+const QUIT_AUDIO_DELAY := 0.2   # 結束前停音效後等幾秒（quit_game）：音效伺服器下一次混音才放掉播放物件
 
 var mode := Mode.SINGLE
 var world := World.new()      # 單機 / 房主：權威的 World；客戶端：net_client.world（快照的鏡像）
@@ -56,7 +57,8 @@ func _ready() -> void:
 	hud.setup(world, camera_rig.camera)
 	hud.health_bars.hidden_ids = world_view.hidden_ids   # 同一個字典，WorldView 每個 tick 原地更新
 	hud.run_log.net_info = _net_report
-	hud.quit_requested.connect(get_tree().quit)
+	hud.quit_requested.connect(quit_game)
+	get_tree().auto_accept_quit = false   # 關視窗也走 quit_game（先停音效）
 	hud.title_requested.connect(return_to_title)
 	hud.main_menu.single_pressed.connect(start_single)
 	hud.main_menu.back_pressed.connect(_on_title_back)
@@ -525,6 +527,8 @@ func _on_event(name: String, payload: Dictionary) -> void:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and args.run_seconds <= 0.0:
 		set_paused(true)
+	elif what == NOTIFICATION_WM_CLOSE_REQUEST:
+		quit_game()   # auto_accept_quit 關掉了：關視窗也先停音效再結束
 
 
 func _check_auto_quit(delta: float) -> void:
@@ -575,4 +579,12 @@ func _check_auto_quit(delta: float) -> void:
 	if mode != Mode.SINGLE:
 		# 連線時晚 1 秒才結束：另一個程序也印完之前不要斷線（斷線會移除角色）
 		await get_tree().create_timer(1.0).timeout
+	quit_game()
+
+
+# 結束程式（離開遊戲按鈕、關視窗、自動驗證跑完）：先停音效、等音效伺服器放掉播放物件再結束，
+# 直接 quit 時還在播的音效會被回報「ObjectDB instances leaked」
+func quit_game() -> void:
+	sound.stop_all()
+	await get_tree().create_timer(QUIT_AUDIO_DELAY, true, false, true).timeout
 	get_tree().quit()

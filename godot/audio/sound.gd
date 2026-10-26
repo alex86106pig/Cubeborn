@@ -56,11 +56,15 @@ func _ready() -> void:
 	GameEvents.event_emitted.connect(_on_event)
 
 
-# 離開時停止播放，否則音效伺服器還握著多音播放物件，結束時回報洩漏
-func _exit_tree() -> void:
+# 停止所有音效與音樂：音效伺服器下一次混音才放掉播放物件，結束程式前要先呼叫、等幾幀（main.quit_game），否則回報洩漏
+func stop_all() -> void:
 	_kill_tween()
 	_sfx.stop()
 	_music.stop()
+
+
+func _exit_tree() -> void:
+	stop_all()
 
 
 # gain：距離衰減的音量比例（0~1），0 不播（也不占同一音效的最短間隔）

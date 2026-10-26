@@ -152,6 +152,7 @@ func _initialize() -> void:
 	_check("背景音樂：一般 / Boss 兩首匯入後為往前循環，長度 15.00 / 10.43 秒（64 / 92 BPM × 4 小節）", ViewChecks.check_music_files)
 	_check("音效對應：事件 → 音效（受傷 / 爆擊 / Boss 死亡 / 道具…），Boss 波換 Boss 曲、死亡停音樂", ViewChecks.check_sound_mapping)
 	_check("音效距離衰減（v0.44.0）：15 內全音量、35 外不播、中間 (1 − t)²；模擬層 sfx:cue 都帶位置；遠處隊友揮劍聽不到、身邊聽得到；法杖普攻 −8 dB", ViewChecks.check_sound_distance)
+	_check("結束程式不洩漏：主場景跑 3 秒（有怪、一直攻擊，音效還在播）後結束兩次，輸出沒有 ObjectDB 洩漏、資源還在用（先停音效、等音效伺服器放掉再結束）", ViewChecks.check_quit_no_leak)
 	# 怪物稀有度與挖墳事件
 	_check("怪物種類只看資料表：每種怪的 behavior 都對應得到行為類別、建出來的類別一致；is_boss、freeze_immune 照資料；挖墳事件的 boss_type 是 Boss", MonsterChecks.check_enemy_defs)
 	_check("怪物稀有度（D5）：魔法 / 稀有骷髏的生命、攻擊力、體型照 RARITIES 的倍率；詞條數照 RARITIES.affixes 不重複、稀有怪有名字；每群魔法 magic_per_pack 隻、稀有 rare_chance（±1.5%）", MonsterChecks.check_rarity)

@@ -1322,3 +1322,19 @@ static func check_spectate() -> String:
 	if host.viewer_of(1) != p1:
 		return "P1 復活後快照應回到以自己為中心"
 	return ""
+
+
+# 結束程式不洩漏：主場景跑 3 秒（有怪、一直攻擊，音效還在播）後自己結束，輸出沒有 ObjectDB 洩漏、資源還在用
+# 直接 quit 時還在播的音效會留下播放物件（約 5 次 4 次）；main.quit_game 先停音效、等 QUIT_AUDIO_DELAY 再結束。跑兩次提高抓到的機率
+static func check_quit_no_leak() -> String:
+	var args := ["--headless", "--path", ProjectSettings.globalize_path("res://"), "--", "--seconds=3", "--horde=40", "--auto-attack"]
+	for run in 2:
+		var out := []
+		var code := OS.execute(OS.get_executable_path(), args, out, true)
+		var text := "\n".join(out)
+		if code != 0 or not text.contains("tick="):
+			return "主場景沒有正常跑完（exit %d）" % code
+		for line in text.split("\n"):
+			if line.contains("leaked at exit") or line.contains("still in use at exit"):
+				return "第 %d 次結束時有洩漏：%s" % [run + 1, line.strip_edges()]
+	return ""
