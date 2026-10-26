@@ -68,7 +68,7 @@ class MeleeSwing extends Behavior:
 		var fin: bool = data.is_finisher
 		var shape := {"shape": &"sector", "range": def.range * data.scale * p.weapon_range_mul(), "arc": def.arc * data.scale}
 		Hitbox.strike(p.world, p, p.pos, p.facing, shape, {
-			"damage": def.damage * (def.finisher_mul if fin else 1.0) * p.damage_mul,
+			"damage": p.move_damage(def) * (def.finisher_mul if fin else 1.0), "damage_type": p.weapon.damage_type,
 			"knockback": def.knockback * (def.finisher_impact_mul if fin else 1.0),
 			"hit_stop": def.hit_stop * (def.finisher_impact_mul if fin else 1.0),
 			"shake": def.shake * (def.finisher_shake_mul if fin else 1.0),
@@ -124,8 +124,8 @@ class FireBolt extends Behavior:
 		p.facing = atan2(dir.x, dir.y)
 		WeaponBehaviors.spawn_projectile(p, {
 			"pos": p.pos + dir * def.spawn_offset, "direction": dir, "speed": def.projectile_speed,
-			"range": def.range * p.weapon_range_mul(), "radius": def.projectile_radius, "damage": def.damage * p.damage_mul,
-			"knockback": def.knockback, "color": def.color, "hit_stop": def.hit_stop, "shake": def.shake,
+			"range": def.range * p.weapon_range_mul(), "radius": def.projectile_radius, "damage": p.move_damage(def),
+			"damage_type": p.weapon.damage_type, "knockback": def.knockback, "color": def.color, "hit_stop": def.hit_stop, "shake": def.shake,
 			"no_stagger": def.get("no_stagger", false),
 		})
 		p.world.emit_event("fx:muzzle", {"pos": p.pos + dir * def.spawn_offset, "height": p.height + Config.HEIGHT.bolt_altitude, "color": def.color})
@@ -151,10 +151,10 @@ class ArcaneBurst extends Behavior:
 			return
 		WeaponBehaviors.spawn_projectile(p, {
 			"pos": p.pos + data.dir * def.spawn_offset, "direction": data.dir, "speed": def.projectile_speed,
-			"range": data.dist - def.spawn_offset, "radius": def.projectile_radius, "damage": 0.0,
+			"range": data.dist - def.spawn_offset, "radius": def.projectile_radius, "damage": 0.0, "damage_type": p.weapon.damage_type,
 			"color": def.color,
 			"explosion": {
-				"radius": def.explosion_radius, "damage": def.damage * p.damage_mul, "knockback": def.knockback,
+				"radius": def.explosion_radius, "damage": p.move_damage(def), "knockback": def.knockback,
 				"hit_stop": def.hit_stop, "shake": def.shake,
 			},
 		})

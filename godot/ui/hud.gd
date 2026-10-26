@@ -465,6 +465,10 @@ func _on_event(name: String, p: Dictionary) -> void:
 			_floaters.spawn(target, UiKit.dmg_text(p.amount),&"player" if is_player else (&"crit" if big else &"dmg"))
 			if target == local_player():
 				_flash_vignette()
+		"entity:dodged":
+			var target: Entity = world.entities.get(p.target_id) if world else null
+			if target != null and Vision.entity_visible(world, local_player(), target):
+				_floaters.spawn(target, "閃避", &"dmg")
 		"player:blocked":
 			var player: Entity = world.entities.get(p.player_id) if world else null
 			if player != null:

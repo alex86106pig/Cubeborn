@@ -80,7 +80,8 @@ static func check_combo() -> String:
 		elif reached_finisher and p.action.is_in(&"attack"):
 			break   # 第四刀開始（回到第一段）
 	var a: Dictionary = WeaponDefs.WEAPONS[&"swordShield"].attack
-	var want := [a.damage, a.damage, a.damage * a.finisher_mul]   # v0.41.0 起保留小數（第三段 21.6，原本四捨五入成 22）
+	var base := WeaponDefs.move_base_damage(WeaponDefs.WEAPONS[&"swordShield"], a)
+	var want := [base, base, base * a.finisher_mul]   # v0.41.0 起保留小數（第三段 21.6，原本四捨五入成 22）
 	var amounts := _damage_amounts(events, dummy.id)
 	var same := amounts.size() == want.size()
 	for i in mini(amounts.size(), want.size()):
@@ -181,12 +182,13 @@ static func _parry_controls(sp: Dictionary) -> String:
 		return "格擋中按左鍵應開始招架（skill:used player.parry、還在格擋）：parry_time %.2f、%s、%s" % [p.parry_time, used, p.action.current_name]
 	if absf(w.cooldowns.remaining(p.cd("player.parry")) - pr.cooldown) > DT * 1.5:
 		return "招架冷卻應約 %.1f 秒，實際 %.3f" % [pr.cooldown, w.cooldowns.remaining(p.cd("player.parry"))]
-	# 判定中放開右鍵：等判定結束才打出盾擊；沒擋到攻擊 → 傷害 25 × 0.5 = 12.5（保留小數，v0.41.0）
+	# 判定中放開右鍵：等判定結束才打出盾擊；沒擋到攻擊 → 傷害 24 × 0.5 = 12（保留小數，v0.41.0）
 	var hp0 := dummy.hp
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), ceili(pr.window / DT) + 1)
-	var want: float = pr.damage * pr.fail_damage_mul
+	var full := WeaponDefs.move_base_damage(WeaponDefs.WEAPONS[&"swordShield"], pr)
+	var want: float = full * pr.fail_damage_mul
 	if absf((hp0 - dummy.hp) - want) > 1e-4:
-		return "招架沒擋到攻擊應打出 %.1f 傷害（%.0f × %.1f），實際 %.4f" % [want, pr.damage, pr.fail_damage_mul, hp0 - dummy.hp]
+		return "招架沒擋到攻擊應打出 %.1f 傷害（%.0f × %.1f），實際 %.4f" % [want, full, pr.fail_damage_mul, hp0 - dummy.hp]
 	if p.parry_time >= 0.0 or p.block_time >= 0.0:
 		return "判定結束、右鍵已放開後應放下盾"
 	# 冷卻中再招架：發 skill:onCooldown、不招架
@@ -239,7 +241,7 @@ static func _block_hits() -> String:
 	var b3 := _named(ev3, "player:blocked")
 	if b3.size() != 1 or not b3[0].perfect or p3.hp != p3.max_hp:
 		return "招架判定中擋下應為招架成功：%s、血量 %.0f" % [b3, p3.hp]
-	var parry_dmg: float = WeaponDefs.WEAPONS[&"swordShield"].special.parry.damage
+	var parry_dmg := WeaponDefs.move_base_damage(WeaponDefs.WEAPONS[&"swordShield"], WeaponDefs.WEAPONS[&"swordShield"].special.parry)
 	if absf((g_hp - g3.hp) - parry_dmg) > 1e-4 or p3.block_time < 0.0:
 		return "招架成功應造成 %.0f 傷害、右鍵還按著就繼續格擋：傷害 %.2f、格擋 %s" % [parry_dmg, g_hp - g3.hp, p3.block_time >= 0.0]
 	# Boss 衝鋒（v0.18.2）：正面擋得住、不扣血、只判定一次，但被推退得比一般格擋遠（100% 擊退）

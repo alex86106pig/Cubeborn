@@ -44,9 +44,25 @@ static func player_mul(players: int) -> float:
 	return 1.0 + PER_EXTRA_PLAYER * maxi(0, players - 1)
 
 
-# 依權重抽一個稀有度（用 world.rng 才有決定性）
-static func roll_rarity(tier: StringName, rng: RandomNumberGenerator) -> StringName:
-	var weights: Dictionary = CHESTS[tier].weights
+# 依權重抽一個稀有度（用 world.rng 才有決定性）；treasure = 開箱者的尋寶（F1）
+static func roll_rarity(tier: StringName, rng: RandomNumberGenerator, treasure := 0.0) -> StringName:
+	return pick_rarity(treasure_weights(CHESTS[tier].weights, treasure), rng)
+
+
+# 尋寶（F1）：表裡最低一級（第一個）以外的權重 × (1 + 尋寶)；武器掉落（WeaponDropDefs）共用
+static func treasure_weights(weights: Dictionary, treasure: float) -> Dictionary:
+	if treasure <= 0.0:
+		return weights
+	var out := {}
+	var first := true
+	for r: StringName in weights:
+		out[r] = weights[r] if first else weights[r] * (1.0 + treasure)
+		first = false
+	return out
+
+
+# 依權重抽一個（只擲一次 rng）
+static func pick_rarity(weights: Dictionary, rng: RandomNumberGenerator) -> StringName:
 	var total := 0.0
 	for r: StringName in weights:
 		total += weights[r]

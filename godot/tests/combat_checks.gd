@@ -41,8 +41,9 @@ static func check_fire_bolt() -> String:
 	if absf(bolt.pos.y - bolt.traveled - a.spawn_offset) > EPS or absf(bolt.traveled - step_len) > EPS:
 		return "產生位置 %.3f（預期 %.2f）、第一步飛行 %.4f（預期 %.4f）" % [bolt.pos.y - bolt.traveled, a.spawn_offset, bolt.traveled, step_len]
 	_run_collect(w, _cmd(Vector2.ZERO), 30, events)
-	if _damage_amounts(events, dummy.id) != [float(a.damage)] or not bolt.is_removed:
-		return "命中傷害 %s（預期 [%.1f]），投射物 is_removed=%s" % [_damage_amounts(events, dummy.id), a.damage, bolt.is_removed]
+	var bolt_dmg := WeaponDefs.move_base_damage(WeaponDefs.WEAPONS[&"staff"], a)
+	if _damage_amounts(events, dummy.id) != [bolt_dmg] or not bolt.is_removed:
+		return "命中傷害 %s（預期 [%.1f]），投射物 is_removed=%s" % [_damage_amounts(events, dummy.id), bolt_dmg, bolt.is_removed]
 	# 射程：沒有目標時飛滿射程後消失
 	var w2 := _new_world()
 	_player(w2).equip_weapon(&"staff")
@@ -69,8 +70,9 @@ static func check_arcane_burst() -> String:
 	if absf(p.action.data.get("dist", 0.0) - max_r) > EPS:
 		return "瞄準射程外，落點距離 %.3f，預期限制為 %.1f" % [p.action.data.get("dist", 0.0), max_r]
 	_run_collect(w, _cmd(Vector2.ZERO, far_aim), 90, events)
-	if _damage_amounts(events, near.id) != [float(s.damage)]:
-		return "範圍內目標受到 %s，預期 [%.1f]" % [_damage_amounts(events, near.id), s.damage]
+	var burst_dmg := WeaponDefs.move_base_damage(WeaponDefs.WEAPONS[&"staff"], s)
+	if _damage_amounts(events, near.id) != [burst_dmg]:
+		return "範圍內目標受到 %s，預期 [%.1f]" % [_damage_amounts(events, near.id), burst_dmg]
 	if not _damage_amounts(events, far.id).is_empty():
 		return "範圍外目標不應受傷，實際 %s" % [_damage_amounts(events, far.id)]
 	var names := _named(events, "sfx:cue").map(func(e: Dictionary) -> String: return e.cue)
@@ -220,7 +222,7 @@ static func check_weapon_base_stats() -> String:
 	for r: StringName in [&"white", &"green"]:
 		var got := WeaponDropDefs.base_stats({"base": &"swordShield", "rarity": r})
 		var m: Dictionary = WeaponDropDefs.RARITY_BASE[r]
-		var want := [a.damage * m.damage, m.attack_speed / swing_time, a.range * m.range]
+		var want := [WeaponDefs.move_base_damage(WeaponDefs.WEAPONS[&"swordShield"], a) * m.damage, m.attack_speed / swing_time, a.range * m.range]
 		if absf(got.damage - want[0]) > EPS or absf(got.attack_speed - want[1]) > 0.01 or absf(got.range - want[2]) > EPS:
 			return "%s 劍盾應為 %.2f / %.2f / %.2f，實際 %.2f / %.2f / %.2f" % [r, want[0], want[1], want[2], got.damage, got.attack_speed, got.range]
 	var green: Dictionary = WeaponDropDefs.RARITY_BASE[&"green"]
@@ -496,4 +498,60 @@ static func check_enemy_speed() -> String:
 		return "箭速 %.2f，預期 %.1f" % [speed, ad.projectile_speed]
 	if farthest < ad.projectile_range - ad.projectile_speed * DT - EPS or farthest > ad.projectile_range + EPS:
 		return "箭最遠 %.2f，預期約 %.1f" % [farthest, ad.projectile_range]
+	return ""
+
+
+# F1：招式傷害 = 基礎傷害 × 招式 % × 攻擊力 × 物理 / 魔法傷害；護甲只擋物理、魔抗只擋魔法；閃避整下閃掉；尋寶加權
+static func check_damage_types() -> String:
+	for id: StringName in WeaponDefs.WEAPONS:
+		var wd: Dictionary = WeaponDefs.WEAPONS[id]
+		if wd.get("base_damage", 0.0) <= 0.0 or not wd.get("damage_type", &"") in [&"phys", &"magic"]:
+			return "%s 要有 base_damage > 0 與 damage_type（phys / magic）" % id
+		for kind in ["attack", "special"]:
+			if wd[kind].has("damage"):
+				return "%s.%s 還留著固定 damage，應改成 damage_pct" % [id, kind]
+	# 物理 / 魔法傷害只乘對應類型的武器
+	var w := _new_world()
+	var p := _player(w)
+	p.set_stat_source(&"test", [[&"phys_damage", Stats.PCT, 0.5], [&"magic_damage", Stats.PCT, 1.0]])
+	var sword: Dictionary = WeaponDefs.WEAPONS[&"swordShield"]
+	var staff: Dictionary = WeaponDefs.WEAPONS[&"staff"]
+	if absf(p.move_damage(sword.attack) - WeaponDefs.move_base_damage(sword, sword.attack) * 1.5) > EPS:
+		return "物理傷害 +50%%：劍盾普攻應 ×1.5，實際 %.2f" % p.move_damage(sword.attack)
+	p.equip_weapon(&"staff")
+	if absf(p.move_damage(staff.attack) - WeaponDefs.move_base_damage(staff, staff.attack) * 2.0) > EPS:
+		return "魔法傷害 +100%%：法杖普攻應 ×2，實際 %.2f" % p.move_damage(staff.attack)
+	# 護甲 100 / 魔抗 100 各減一半，只擋自己那一類
+	var t := _dummy(w, Vector2(0, 3))
+	t.set_stat_source(&"test", [[&"armor", Stats.ADD, 100.0]])
+	var phys := t.take_damage(10.0, Vector2.UP, 0.0, p.id, &"phys")
+	var magic := t.take_damage(10.0, Vector2.UP, 0.0, p.id, &"magic")
+	t.set_stat_source(&"test", [[&"magic_resist", Stats.ADD, 100.0]])
+	var magic2 := t.take_damage(10.0, Vector2.UP, 0.0, p.id, &"magic")
+	if absf(phys - 5.0) > EPS or absf(magic - 10.0) > EPS or absf(magic2 - 5.0) > EPS:
+		return "護甲 100 擋物理 10 → 5、不擋魔法 10；魔抗 100 擋魔法 10 → 5：實際 %.2f / %.2f / %.2f" % [phys, magic, magic2]
+	# 閃避率 0 不擲骰（不消耗 world.rng）
+	var state := w.rng.state
+	Combat.apply_damage(w, p, t, {"damage": 1.0})
+	if w.rng.state != state:
+		return "閃避率 0 時不應消耗 world.rng"
+	# 閃避率上限 75%：閃掉的那幾下不扣血、發 entity:dodged
+	t.set_stat_source(&"test", [[&"dodge", Stats.ADD, 2.0]])
+	var dodge := t.stats.value(&"dodge")
+	var dodged := 0
+	var hp0 := t.hp
+	var n := 400
+	w.events.clear()
+	for i in n:
+		Combat.apply_damage(w, p, t, {"damage": 1.0})
+	dodged = _named(w.events, "entity:dodged").size()
+	var hits := _named(w.events, "entity:damaged").size()
+	_note("閃避率 %.2f：%d 下閃掉 %d" % [dodge, n, dodged])
+	if absf(dodge - 0.75) > EPS or dodged + hits != n or absf((hp0 - t.hp) - hits) > EPS or absf(float(dodged) / n - dodge) > 0.07:
+		return "閃避率應封頂 75%%（%.2f）；%d 下閃掉 %d、命中 %d、扣血 %.1f" % [dodge, n, dodged, hits, hp0 - t.hp]
+	# 尋寶：最低一級以外的權重 × (1 + 尋寶)；0 時原樣
+	var base := {&"white": 70.0, &"green": 25.0, &"blue": 5.0}
+	var got := LootDefs.treasure_weights(base, 1.0)
+	if got != {&"white": 70.0, &"green": 50.0, &"blue": 10.0} or LootDefs.treasure_weights(base, 0.0) != base:
+		return "尋寶 100%% 權重應為白 70 / 綠 50 / 藍 10，實際 %s" % got
 	return ""

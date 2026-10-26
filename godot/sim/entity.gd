@@ -95,10 +95,11 @@ func is_dodging() -> bool:
 
 # dir 為已正規化的 XZ 方向；回傳實際傷害（套用護甲與受傷倍率），未命中回傳 -1
 # 傷害與血量保留小數（v0.41.0 使用者決定），只在畫面上取整：傷害數字四捨五入、血量無條件進位（UiKit.dmg_text / hp_text）
-func take_damage(amount: float, dir: Vector2, p_knockback: float, source_id: int) -> float:
+# damage_type：&"phys" 看護甲、&"magic" 看魔抗（F1）
+func take_damage(amount: float, dir: Vector2, p_knockback: float, source_id: int, damage_type := &"phys") -> float:
 	if not can_be_hit():
 		return -1.0
-	var dealt := maxf(0.0, amount * StatDefs.armor_damage_factor(stats.value(&"armor")) * damage_taken_mul)
+	var dealt := maxf(0.0, amount * StatDefs.armor_damage_factor(stats.value(StatDefs.resist_stat(damage_type))) * damage_taken_mul)
 	hp = maxf(0.0, hp - dealt)
 	flash_timer = Config.COMBAT.flash_time
 	knockback += dir * (p_knockback * knockback_mul / mass)

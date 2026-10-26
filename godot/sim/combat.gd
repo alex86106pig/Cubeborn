@@ -25,7 +25,8 @@ static func hostiles_of(world: World, team: StringName, source_id: int = 0) -> A
 #      hit_stop（命中定格秒數，只給畫面層）、shake、is_heavy（重擊：第三段、盾反、爆炸，只影響顯示與音效）、blockable（能不能被格擋）、
 #      color（命中粒子顏色，只給畫面層；預設白色）、
 #      band（高度範圍 Vector2(下緣, 上緣)；預設是攻擊者的身體往腳底下延伸 HEIGHT.reach_below，見 body_band）、
-#      max_air（選填：目標腳底離自己腳下地面超過這個高度就打不到）、no_stagger（選填：不讓目標進入受擊硬直）
+#      max_air（選填：目標腳底離自己腳下地面超過這個高度就打不到）、no_stagger（選填：不讓目標進入受擊硬直）、
+#      damage_type（選填：&"phys" / &"magic"，預設物理；怪物的攻擊都是物理，F1）
 # 這裡套用攻擊者的爆擊與擊退屬性；護甲與受傷倍率在 Entity.take_damage
 # 回傳是否實際命中（高度不重疊、被格擋也算沒命中）
 static func apply_damage(world: World, source: Entity, target: Entity, hit: Dictionary) -> bool:
@@ -71,6 +72,11 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 	# 格擋：只對 blockable 的攻擊（揮砍、箭）；砸地、衝鋒、爆炸擋不住
 	if hit.get("blockable", false) and target.try_block(origin, hit):
 		return false
+	# 閃避（F1）：整下閃掉，不扣血、不硬直；閃避率 0 時不擲骰（不消耗 world.rng）
+	var dodge := target.stats.value(&"dodge")
+	if dodge > 0.0 and world.rng.randf() < dodge:
+		world.emit_event("entity:dodged", {"target_id": target.id, "source_id": source.id})
+		return false
 	var dir := target.pos - origin
 	if dir.length_squared() < 1e-6:
 		dir = MathUtil.dir_from_angle(source.facing)
@@ -92,7 +98,7 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 		damage *= source.stats.value(&"crit_damage")
 	var knockback: float = hit.get("knockback", 0.0) * source.stats.value(&"knockback")
 	target.suppress_stagger = hit.get("no_stagger", false)   # 遠程武器的普攻不讓怪物進入受擊硬直（v0.27.0）
-	var dealt := target.take_damage(damage, dir, knockback, source.id)
+	var dealt := target.take_damage(damage, dir, knockback, source.id, hit.get("damage_type", &"phys"))
 	target.suppress_stagger = false
 	if dealt < 0:
 		return false

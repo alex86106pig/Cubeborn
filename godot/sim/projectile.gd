@@ -13,6 +13,7 @@ var visual: StringName = &"orb" # 只給畫面用：&"orb" 發光球體、&"arro
 var hit_stop := 0.0
 var shake := 0.0
 var blockable := true           # 有方向的投射物預設能被格擋（B5）；爆炸一律不能
+var damage_type := &"phys"     # 物理 / 魔法（F1）：決定看目標的護甲還是魔抗
 var no_stagger := false         # 打中不會讓怪物進入受擊硬直（v0.27.0：遠程武器的普攻）
 var explosion: Dictionary = {}  # { radius, damage, knockback, hit_stop, shake }；空 = 一般投射物
 var traveled := 0.0
@@ -24,7 +25,7 @@ var aim_altitude := 0.0         # 敵人箭矢瞄準的高度（D1）：飛到 a
 var aim_distance := 0.0         # 0 = 不瞄高度（高度不變）
 
 
-# p：owner、pos、direction、speed、range、radius、damage、knockback、color、visual、hit_stop、shake、explosion、
+# p：owner、pos、direction、speed、range、radius、damage、damage_type、knockback、color、visual、hit_stop、shake、explosion、
 #    altitude（預設 發射者腳底 + HEIGHT.bolt_altitude）、settle_altitude、settle_distance、aim_altitude、aim_distance
 # damage 與 explosion.damage 在發射時就乘好攻擊者的攻擊力，發射者死掉後命中也照樣算
 func _init(p_world: World, p: Dictionary) -> void:
@@ -45,6 +46,7 @@ func _init(p_world: World, p: Dictionary) -> void:
 	explosion = p.get("explosion", {})
 	blockable = p.get("blockable", true)
 	no_stagger = p.get("no_stagger", false)
+	damage_type = p.get("damage_type", &"phys")
 	start_altitude = p.get("altitude", owner.height + Config.HEIGHT.bolt_altitude)
 	settle_altitude = p.get("settle_altitude", 0.0)
 	settle_distance = p.get("settle_distance", 0.0)
@@ -104,7 +106,7 @@ func _on_hit(target: Entity) -> void:
 		var hit := Combat.apply_damage(world, _source(), target, {
 			"damage": damage, "knockback": knockback_force, "origin": pos - direction,
 			"hit_stop": hit_stop, "shake": shake, "band": band(), "blockable": blockable, "color": color,
-			"no_stagger": no_stagger,
+			"no_stagger": no_stagger, "damage_type": damage_type,
 		})
 		if not hit:
 			_fizzle()
@@ -133,6 +135,7 @@ func _explode() -> void:
 	Hitbox.strike(world, source, pos, facing, {"shape": &"circle", "radius": explosion.radius}, {
 		"damage": explosion.damage, "knockback": explosion.knockback, "origin": pos,
 		"hit_stop": explosion.hit_stop, "is_heavy": true, "band": blast, "blockable": false, "color": color,
+		"damage_type": damage_type,
 	})
 	world.emit_event("fx:explosion", {"pos": pos, "height": ground, "radius": explosion.radius, "color": color})
 	if Combat.should_shake(self):

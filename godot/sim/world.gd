@@ -288,9 +288,17 @@ func on_enemy_died(e: Enemy) -> void:
 		var source := &"boss" if e.is_boss() else &"minion"
 		var bases := WeaponDropDefs.bases()
 		var base := bases[rng.randi_range(0, bases.size() - 1)]
-		var inst := WeaponDropDefs.make(new_weapon_uid(), base, WeaponDropDefs.roll_rarity(source, rng), rng)
+		var inst := WeaponDropDefs.make(new_weapon_uid(), base, WeaponDropDefs.roll_rarity(source, rng, team_treasure()), rng)
 		drop_weapon(inst, e.pos)
 		emit_event("weapon:dropped", {"uid": String(inst.uid), "base": String(base), "rarity": String(inst.rarity), "pos": e.pos})
+
+
+# 殺怪掉落用全隊最高的尋寶（F1，Claude 暫定）：擊殺者常常是投射物、追不到是誰，靈魂本來也是全隊共用
+func team_treasure() -> float:
+	var best := 0.0
+	for p in player_list:
+		best = maxf(best, p.stats.value(&"treasure"))
+	return best
 
 
 func new_weapon_uid() -> StringName:
@@ -368,7 +376,7 @@ func nearest_interactable(p: Player, list: Array[Entity]) -> Entity:
 # 測試場地照舊通關：其餘敵人一起倒下、敵方投射物消失，延遲後發出 game:victory
 func on_boss_defeated(boss: Enemy) -> void:
 	if DigEvent.enabled(self):
-		var pool := LootDefs.drop_pool(LootDefs.roll_rarity(&"big", rng))
+		var pool := LootDefs.drop_pool(LootDefs.roll_rarity(&"big", rng, team_treasure()))
 		var item_id: StringName = pool[rng.randi_range(0, pool.size() - 1)]
 		drop_item(item_id, boss.pos + Vector2(LootDefs.DROP_DISTANCE, 0.0))
 		emit_event("boss:reward", {"item": String(item_id), "pos": boss.pos})

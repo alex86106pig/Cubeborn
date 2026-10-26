@@ -31,7 +31,7 @@ func try_open(by: Player) -> bool:
 		return false
 	world.souls -= price()
 	opened = true
-	var rarity := LootDefs.roll_rarity(tier, world.rng)
+	var rarity := LootDefs.roll_rarity(tier, world.rng, by.stats.value(&"treasure"))
 	var pool := LootDefs.drop_pool(rarity)
 	var item_id: StringName = pool[world.rng.randi_range(0, pool.size() - 1)]
 	var to_player := by.pos - pos

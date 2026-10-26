@@ -1,4 +1,5 @@
 # 武器資料定義（照搬網頁版 legacy/src/weapons/weaponDefs.js，欄位改 snake_case）；邏輯在 sim/weapon_behaviors.gd
+# 每把武器一個 base_damage 與 damage_type（&"phys" / &"magic"），招式用 damage_pct（基礎傷害的倍率，F1）；實際傷害見 Player.move_damage
 class_name WeaponDefs
 
 const WEAPONS := {
@@ -6,6 +7,8 @@ const WEAPONS := {
 		"id": &"swordShield",
 		"name": "劍盾",
 		"type": &"melee",
+		"base_damage": 12.0,
+		"damage_type": &"phys",
 		"model": &"swordShield",
 		"idle": {"arm_r": -0.35, "arm_l": -0.1, "tilt": 0.0},
 		"attack": {
@@ -13,7 +16,7 @@ const WEAPONS := {
 			"sfx": "swing", "sfx_heavy": "swingHeavy",
 			"name": "斬擊",
 			"icon": "⚔",
-			"damage": 12.0,
+			"damage_pct": 1.0,
 			"range": 2.3,
 			"arc": PI * 0.65,
 			"windup": 0.07,
@@ -53,8 +56,8 @@ const WEAPONS := {
 				"name": "招架",               # 格擋中技能欄左鍵那格顯示這兩個字
 				"window": 0.2,                # 按下左鍵後這麼久內擋到攻擊 = 招架成功（沿用原本完美格擋的 0.2 秒）
 				"cooldown": 4.0,              # 從按下左鍵開始算（沿用原本格擋的 4 秒）
-				"fail_damage_mul": 0.5,       # 判定時間結束都沒擋到：盾擊照樣打出，傷害與擊退 × 0.5（25 → 12.5）
-				"damage": 25.0,
+				"fail_damage_mul": 0.5,       # 判定時間結束都沒擋到：盾擊照樣打出，傷害與擊退 × 0.5（24 → 12）
+				"damage_pct": 2.0,             # 200% = 24（原本固定 25，F1 使用者同意）
 				"range": 3.5,                 # v0.23.0 使用者決定（原本 2.5 / 120°）
 				"arc": PI * 180.0 / 180.0,
 				"knockback": 14.0,
@@ -69,6 +72,8 @@ const WEAPONS := {
 		"id": &"staff",
 		"name": "法杖",
 		"type": &"ranged",
+		"base_damage": 8.0,
+		"damage_type": &"magic",
 		"model": &"staff",
 		"idle": {"arm_r": -0.5, "arm_l": 0.0, "tilt": 0.0},
 		"attack": {
@@ -76,7 +81,7 @@ const WEAPONS := {
 			"sfx": "fireBolt",
 			"name": "魔彈",
 			"icon": "✦",
-			"damage": 8.0,
+			"damage_pct": 1.0,
 			"projectile_speed": 20.0,
 			"projectile_radius": 0.22,
 			"spawn_offset": 0.6,       # 投射物出生點在玩家前方的距離
@@ -104,7 +109,7 @@ const WEAPONS := {
 			"min_range": 2.0,
 			"range": 12.0,
 			"explosion_radius": 3.2,
-			"damage": 28.0,
+			"damage_pct": 3.5,
 			"knockback": 13.0,
 			"windup": 0.35,
 			"active": 0.02,
@@ -116,3 +121,8 @@ const WEAPONS := {
 		},
 	},
 }
+
+
+# 招式的基礎傷害（不含屬性）= 武器基礎傷害 × 招式 %（F1）；weapon 是 WEAPONS 的一筆，move 是它的 attack / special / parry
+static func move_base_damage(weapon: Dictionary, move: Dictionary) -> float:
+	return weapon.base_damage * move.damage_pct

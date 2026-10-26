@@ -151,7 +151,7 @@ func _do_parry(success: bool = true) -> void:
 	var pr: Dictionary = weapon.special.parry
 	var mul: float = 1.0 if success else pr.fail_damage_mul
 	Hitbox.strike(world, self, pos, facing, {"shape": &"sector", "range": pr.range, "arc": pr.arc}, {
-		"damage": pr.damage * mul * damage_mul, "knockback": pr.knockback * mul, "hit_stop": pr.hit_stop,
+		"damage": move_damage(pr) * mul, "damage_type": weapon.damage_type, "knockback": pr.knockback * mul, "hit_stop": pr.hit_stop,
 		"shake": pr.shake * mul, "is_heavy": success, "blockable": false, "color": pr.color,
 	})
 	world.emit_event("fx:parry", {"pos": pos, "height": height, "radius": pr.range, "facing": facing, "arc": pr.arc, "color": pr.color})
@@ -386,6 +386,11 @@ func show_weapon(id: StringName, force := false) -> void:
 
 func active_weapon() -> Dictionary:
 	return loadout.active_weapon()
+
+
+# 招式傷害 = 武器基礎傷害 × 招式 % × 攻擊力 × 物理 / 魔法傷害（F1）
+func move_damage(move: Dictionary) -> float:
+	return WeaponDefs.move_base_damage(weapon, move) * damage_mul * stats.value(StatDefs.type_damage_stat(weapon.damage_type))
 
 
 func weapon_range_mul() -> float:

@@ -56,17 +56,9 @@ static func next_rarity(rarity: StringName) -> StringName:
 	return RARITY_ORDER[i + 1] if i >= 0 and i + 1 < RARITY_ORDER.size() else &""
 
 
-static func roll_rarity(source: StringName, rng: RandomNumberGenerator) -> StringName:
-	var weights: Dictionary = RARITY_WEIGHTS[source]
-	var total := 0.0
-	for r: StringName in weights:
-		total += weights[r]
-	var x := rng.randf() * total
-	for r: StringName in weights:
-		x -= weights[r]
-		if x < 0.0:
-			return r
-	return weights.keys().back()
+# treasure = 全隊最高的尋寶（F1，見 World.team_treasure）
+static func roll_rarity(source: StringName, rng: RandomNumberGenerator, treasure := 0.0) -> StringName:
+	return LootDefs.pick_rarity(LootDefs.treasure_weights(RARITY_WEIGHTS[source], treasure), rng)
 
 
 # 不重複地抽 count 條詞條（依 AFFIXES 順序做部分洗牌，用 world.rng 才有決定性）
@@ -90,10 +82,11 @@ static func make(uid: StringName, base: StringName, rarity: StringName, rng: Ran
 
 # 武器的基礎數值（介面顯示用的實際數字）：攻擊力 = 普攻傷害、攻速 = 每秒普攻次數、範圍 = 揮砍距離或魔彈射程，都乘上稀有度倍率
 static func base_stats(inst: Dictionary) -> Dictionary:
-	var atk: Dictionary = WeaponDefs.WEAPONS[ItemDefs.ITEMS[inst.base].weapon].attack
+	var wd: Dictionary = WeaponDefs.WEAPONS[ItemDefs.ITEMS[inst.base].weapon]
+	var atk: Dictionary = wd.attack
 	var m: Dictionary = RARITY_BASE[inst.rarity]
 	return {
-		"damage": atk.damage * m.damage,
+		"damage": WeaponDefs.move_base_damage(wd, atk) * m.damage,
 		"attack_speed": m.attack_speed / (atk.windup + atk.active + atk.recovery),
 		"range": atk.range * m.range,
 	}
