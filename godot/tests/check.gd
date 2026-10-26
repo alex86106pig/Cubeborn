@@ -101,8 +101,10 @@ func _initialize() -> void:
 	_check("地圖 A（環形墓園）：大小與邊界一致、石台都在場地內、出生點與挖墳點可走且相連、所有可走的格子連成一片（沒有怪物到不了的地方）、相鄰可走格高低差 ≤ climb_height、牆比最高的地面高出跳躍高度以上", MapChecks.check_map_a)
 	_check("尋路不擦牆：直線離牆小於 margin 就不算看得到；繞北門時被牆擋住而變慢的步數 < 30", MapChecks.check_nav_clearance)
 	_check("怪物繞牆：玩家在王族墓圍牆內，骷髏戰士從南邊牆外繞到北門進來打到玩家；弓手繞進來射中玩家", MapChecks.check_enemy_pathing)
+	_check("起跳偵測的快速排除（Terrain.may_rise）：兩張地圖密集取點、各種腳下高度，ground_at 會起跳的地方都沒被排除", MapChecks.check_may_rise)
 	_check("怪物跳上高台：玩家站在 1.0 石台上，骷髏戰士先蹲 jump_windup 再跳，經 0.5 跳上 1.0 並打到玩家；Boss 也跳得上去", MapChecks.check_enemy_climb)
 	_check("弓手打得到高台：玩家站在 1.0 石台上會中箭；被牆擋住時弓手先移動、不對牆射", MapChecks.check_archer_high_ground)
+	_check("遠的小怪降低重新判斷路線的頻率：離目標超過 far_distance 時至少間隔 repath_interval_far 秒，走進來的那一步立刻判斷，弓手進射程後照常瞄準", MapChecks.check_far_repath)
 	_check("地圖 A 生成（由挖墳事件生）：小怪都生在離玩家 min ~ max_distance、可走而且走得到玩家的地方", MapChecks.check_map_spawns)
 	# 背包、寶箱、道具與武器
 	_check("背包：大小照 BAG_SIZE；形狀旋轉 90° 後格子正確；超出邊界、重疊放不下；自動找第一個空位（不夠時會轉向）；搬動成功 / 失敗；裝滿後撿不起來並發出 inventory:full", LootChecks.check_inventory)

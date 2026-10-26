@@ -16,6 +16,7 @@ var anim: Dictionary = {}
 var _cd_keys: Dictionary = {}       # 名稱 -> CD key（enemy<id>.<名稱>），移除時全部 reset
 # 尋路與跳躍（D1，只在權威端；見 sim/nav.gd）
 var _nav_timer := 0.0
+var _nav_far := false                # 上次判斷時離目標超過 NAV.far_distance（降低重新判斷的頻率）
 var _path := PackedVector2Array()   # 空 = 看得到目標，直接走過去
 var _jump_windup := 0.0
 var _jump_dir := Vector2.ZERO        # 起跳方向；空中往這個方向至少 NAV.jump_air_speed，落地後清掉
@@ -240,10 +241,15 @@ func wake() -> void:
 
 
 # 往 target 走時下一步要朝向的點：看得到就是 target 本身，被牆或墓碑擋住就走路徑點（每 repath_interval 秒重新判斷）
+# 離目標超過 far_distance（視野外）改成每 repath_interval_far 秒，依 id 錯開；走近的那一步立刻重新判斷（弓手進射程不用舊的判斷）。Boss 照舊
 func steer_point(target: Vector2) -> Vector2:
 	var n: Dictionary = Config.NAV
+	var far: bool = not is_boss() and pos.distance_squared_to(target) > n.far_distance * n.far_distance
+	if _nav_far and not far:
+		_nav_timer = 0.0
+	_nav_far = far
 	if _nav_timer <= 0.0:
-		_nav_timer = n.repath_interval
+		_nav_timer = n.repath_interval_far + (id % n.far_stagger_steps) * Config.FIXED_DT if far else n.repath_interval
 		var nav := world.nav_for(radius)
 		_path = PackedVector2Array() if nav.has_los(pos, target) else nav.find_path(pos, target)
 		_on_nav_refresh(target)
@@ -289,6 +295,8 @@ func _update_jump(dt: float) -> void:
 	if is_dead or velocity == Vector2.ZERO or not is_grounded() or not _can_jump():
 		return
 	var ahead := pos + velocity.normalized() * (radius + Config.NAV.jump_lookahead)
+	if not world.terrain.may_rise(ahead, ground_height, Config.HEIGHT.step, Config.NAV.climb_height):
+		return   # 附近沒有跳得上去的高低差（多數時候），不必逐一比對石台
 	var rise := world.terrain.ground_at(ahead) - ground_height
 	if rise > Config.HEIGHT.step and rise <= Config.NAV.climb_height:
 		_jump_windup = Config.NAV.jump_windup

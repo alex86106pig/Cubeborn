@@ -107,6 +107,9 @@ const NAV := {
 	"large_radius": 0.6,        # 半徑超過這個就用 margin_large 的格子圖
 	"jump_air_speed": 4.0,      # 怪物跳上高台時空中往前的最低速度（Boss 2.2 太慢，落地時身體還在邊緣外會掉回去）
 	"repath_interval": 0.25,    # 每隔幾秒重新判斷「直接走過去」或「重找路徑」
+	"far_distance": 18.0,       # 離目標超過這麼遠（= 視野範圍 VISION.range，玩家看不到）的小怪降低重新判斷的頻率（效能）
+	"repath_interval_far": 1.0, # 遠的小怪每隔幾秒重新判斷；走進 far_distance 內的那一步立刻判斷
+	"far_stagger_steps": 8,     # 遠的小怪依 id 錯開 0~7 步，同一步醒來的怪群不會每次都擠在同一步找路
 	"waypoint_reach": 0.6,      # 離路徑點這麼近就換下一點
 	"smooth_lookahead": 8,      # 拉直路徑時往後看幾個點
 	"nearest_search": 6,        # 目標在障礙格上時，往外找幾圈可走格

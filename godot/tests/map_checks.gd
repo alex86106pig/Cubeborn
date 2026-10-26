@@ -138,6 +138,44 @@ static func check_terrain() -> String:
 	return ""
 
 
+# Terrain.may_rise 排除的點，ground_at 一定不會落在起跳範圍（怪物起跳偵測先用它排除，不能漏掉任何一次起跳）
+# 兩張地圖：網格取點 + 每個石台的角與邊緣內外；腳下高度含 0、各頂面，以及剛好差 step / climb_height 的邊界值
+static func check_may_rise() -> String:
+	var lo: float = Config.HEIGHT.step
+	var hi: float = Config.NAV.climb_height
+	var tested := 0
+	for map_id: StringName in [&"test_arena", &"graveyard_a"]:
+		var w := _new_world(12345, false, map_id)
+		var t := w.terrain
+		var froms: Array[float] = [0.0]
+		for b in t.blocks:
+			for f: float in [b.top, b.top - lo, b.top - hi]:
+				if f >= 0.0 and not froms.has(f):
+					froms.append(f)
+		var points := PackedVector2Array()
+		var x := -w.half_extents.x
+		while x <= w.half_extents.x:
+			var z := -w.half_extents.y
+			while z <= w.half_extents.y:
+				points.append(Vector2(x, z))
+				z += 0.25
+			x += 0.25
+		for b in t.blocks:
+			for d: float in [-1e-6, 0.0, 1e-6]:
+				for corner: Vector2 in [b.min, b.max, Vector2(b.min.x, b.max.y), Vector2(b.max.x, b.min.y)]:
+					points.append(corner + Vector2(d, d))
+					points.append(corner - Vector2(d, -d))
+		for p in points:
+			var ground := t.ground_at(p)
+			for f in froms:
+				var rise := ground - f
+				if rise > lo and rise <= hi and not t.may_rise(p, f, lo, hi):
+					return "%s：%s 腳下 %.3f 會起跳（高低差 %.3f），may_rise 卻排除" % [map_id, p, f, rise]
+				tested += 1
+	_note("may_rise 比對 %d 組（點 × 腳下高度），沒有漏掉起跳" % tested)
+	return ""
+
+
 static func check_map_a() -> String:
 	var w := _new_world(12345, false, &"graveyard_a")
 	var m := w.map
@@ -295,6 +333,51 @@ static func check_archer_high_ground() -> String:
 	if fizzles[0] > 0:
 		return "弓手射中前有 %d 支箭撞牆或落空" % fizzles[0]
 	_note("弓手射中 1.0 石台上的玩家：開闊 %.1f 秒、隔著牆 %.1f 秒（繞到 %s）" % [t * DT, t2 * DT, a.pos])
+	return ""
+
+
+# 遠的小怪降低重新判斷路線的頻率（效能）：離目標超過 far_distance 時至少間隔 repath_interval_far 秒，
+# 走進 far_distance 的那一步立刻重新判斷，弓手進射程後照常瞄準（不沿用遠處「看不到」的判斷）
+static func check_far_repath() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	p.pos = Vector2(-13, -13)
+	var a := _spawn(w, &"archer", Vector2(13, 13)) as RangedEnemy
+	var n: Dictionary = Config.NAV
+	var far_gap := INF        # 遠處兩次重新判斷之間最短的間隔（步）
+	var last_far := -1
+	var entered := -1         # 走進 far_distance 的那一步
+	var refreshed_on_enter := false
+	var in_range := -1        # 走進射擊距離的那一步
+	var aimed := -1
+	for i in 30 * 60:
+		p.hp = p.max_hp
+		var before := a._nav_timer
+		w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO)}, DT)
+		var refreshed := absf(a._nav_timer - (before - DT)) > EPS   # 計時器不是只扣一步 = 這一步重新判斷
+		var dist := a.pos.distance_to(p.pos)
+		if refreshed and a._nav_far:
+			if last_far >= 0:
+				far_gap = minf(far_gap, i - last_far)
+			last_far = i
+		if entered < 0 and last_far >= 0 and not a._nav_far:
+			entered = i
+			refreshed_on_enter = refreshed
+		if in_range < 0 and dist <= a.def.preferred_range[1] + a.def.fire_reach:
+			in_range = i
+		if a.fsm.current_name == &"aim":
+			aimed = i
+			break
+	if entered < 0:
+		return "弓手 30 秒內沒走進 far_distance（停在 %s）" % a.pos
+	if far_gap < roundi(n.repath_interval_far / DT):
+		return "遠處重新判斷的間隔應至少 %.2f 秒，最短 %d 步" % [n.repath_interval_far, far_gap]
+	if not refreshed_on_enter:
+		return "弓手走進 far_distance 的那一步應立刻重新判斷路線"
+	if aimed < 0:
+		return "弓手走進射擊距離後沒有瞄準（停在 %s）" % a.pos
+	_note("遠的弓手：遠處重新判斷間隔最短 %.2f 秒，第 %.2f 秒走進 %.0f 並立刻重新判斷，第 %.2f 秒進射程、%.2f 秒開始瞄準" % [
+		far_gap * DT, entered * DT, n.far_distance, in_range * DT, aimed * DT])
 	return ""
 
 

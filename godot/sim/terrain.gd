@@ -9,6 +9,7 @@ const REACH := 1.5      # 石台放進桶子時往外擴的距離（≥ 最大�
 
 var blocks: Array[Dictionary] = []   # { min: Vector2, max: Vector2, top: float, kind: StringName }
 var _buckets: Dictionary = {}        # Vector2i -> PackedInt32Array（石台索引，遞增 = 資料順序）
+var _bucket_tops: Dictionary = {}    # Vector2i -> PackedFloat64Array（桶子裡石台的頂面高度，不重複；給 may_rise）
 
 
 func _init(p_blocks: Array[Dictionary] = []) -> void:
@@ -23,6 +24,10 @@ func _init(p_blocks: Array[Dictionary] = []) -> void:
 				var list: PackedInt32Array = _buckets.get(key, PackedInt32Array())
 				list.append(i)
 				_buckets[key] = list
+				var tops: PackedFloat64Array = _bucket_tops.get(key, PackedFloat64Array())
+				if not tops.has(b.top):
+					tops.append(b.top)
+					_bucket_tops[key] = tops
 
 
 static func _cell(p: Vector2) -> Vector2i:
@@ -40,6 +45,17 @@ func ground_at(p: Vector2) -> float:
 		if p.x >= b.min.x and p.x <= b.max.x and p.y >= b.min.y and p.y <= b.max.y:
 			ground = maxf(ground, b.top)
 	return ground
+
+
+# 站在高度 from 的實體走到 p，地面有沒有可能高出 (rise_min, rise_max]（怪物起跳偵測先用這個排除，D5 效能）
+# ground_at 只會是 0 或桶子裡某個石台的頂面（0 不會比腳下高），這些都不在範圍內就不必逐一比對石台，結果和 ground_at 相同
+func may_rise(p: Vector2, from: float, rise_min: float, rise_max: float) -> bool:
+	var tops: PackedFloat64Array = _bucket_tops.get(_cell(p), PackedFloat64Array())
+	for top in tops:
+		var rise := top - from
+		if rise > rise_min and rise <= rise_max:
+			return true
+	return false
 
 
 # 高度 altitude 的點是否在某個石台裡面（投射物撞牆用）
