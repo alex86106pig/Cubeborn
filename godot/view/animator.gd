@@ -322,8 +322,9 @@ func _pose_bow(idle: Dictionary, a: Dictionary, e: float, charge: bool) -> void:
 		return
 	var fwd := rig.global_transform.basis.z
 	if arrow == &"hand":
-		# 從箭袋抽出：箭頭朝上（袋口方向），手往上繞到前方的過程中轉成朝前（2026-10-27 使用者：原本沿手臂往後橫著戳出去）
-		var dir := Vector3.UP.slerp(fwd, bring)
+		# 從箭袋抽出：一開始和箭袋平行、箭頭朝袋底（使用者 2026-10-27），手往上繞到前方的過程中轉成朝前
+		var start := -rig.weapon_back.global_transform.basis.y.normalized()
+		var dir := start.slerp(fwd, bring)
 		rig.weapon_nock.position = Vector3.ZERO
 		rig.weapon_nock.look_at(rig.weapon_nock.global_position + dir, Vector3.RIGHT if absf(dir.y) > 0.99 else Vector3.UP)
 	elif rig.weapon_left != null:

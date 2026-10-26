@@ -192,9 +192,9 @@ static func weapon(model: StringName) -> Dictionary:
 		&"staff":
 			return _staff()
 		&"shortbow":
-			return _player_bow(0.5, Color("8a5a32"), 0.6, WeaponDefs.WEAPONS[&"shortbow"].attack.quiver)
+			return _player_bow(0.5, Color("8a5a32"), 0.6)
 		&"longbow":
-			return _player_bow(0.8, Color("5a3a1e"), 0.9, WeaponDefs.WEAPONS[&"shortbow"].attack.quiver)   # 長弓也背同一款箭袋（使用者 2026-10-27），沒有箭數機制、一直是滿的
+			return _player_bow(0.8, Color("5a3a1e"), 0.9)
 		&"daggers":
 			return _daggers()
 		&"scepter":
@@ -272,9 +272,9 @@ const BOW_SEGMENTS := 8
 const BOW_HALF_ARC := 0.85   # 弓身半邊張開的角度（弧度）
 
 
-# arrow：箭長（短弓的箭短一點，2026-10-27 使用者）；quiver > 0 時背上有箭袋（back，掛在 Rig.body），
-# 袋裡露出 quiver_count 支箭（quiver_arrows；有箭袋機制的短弓照剩幾發顯示，長弓一直是滿的）
-static func _player_bow(size: float, wood: Color, arrow: float, quiver_count: int) -> Dictionary:
+# arrow：箭長（短弓的箭短一點，2026-10-27 使用者）；背上一律有箭袋（back，掛在 Rig.body），
+# 袋裡露出短弓箭袋的支數（quiver_arrows；短弓照剩幾發顯示，長弓沒有箭數機制、一直是滿的）
+static func _player_bow(size: float, wood: Color, arrow: float) -> Dictionary:
 	var k := PartKit.new()
 	var g := Node3D.new()
 	var step := BOW_HALF_ARC * 2.0 / BOW_SEGMENTS
@@ -297,8 +297,7 @@ static func _player_bow(size: float, wood: Color, arrow: float, quiver_count: in
 	k.merge_static(nock, [nock])
 	nock.visible = false
 	var out := {"kit": k, "main": null, "offhand": null, "left": g, "nock": nock, "gem": null}
-	if quiver_count <= 0:
-		return out
+	var quiver_count: int = WeaponDefs.WEAPONS[&"shortbow"].attack.quiver
 	# 箭袋：背在身後、上端靠右肩；袋口露出 quiver_count 支箭（各自一個節點，不合併，射一支藏一支）
 	var quiver := Node3D.new()
 	k.add(quiver, PartKit.cyl(0.1, 0.08, 0.6, 6), k.mat(C.leather), {"y": 0.0})
