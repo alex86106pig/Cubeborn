@@ -7,6 +7,7 @@ extends RefCounted
 # 新招式借用的現有姿勢（behavior → meleeSwing / fireBolt / arcaneBurst；沒列的用 fireBolt）
 const POSE_OF := {
 	&"arrowFan": &"arcaneBurst",
+	&"chargedShot": &"arcaneBurst",
 }
 
 const WALK_SHARPNESS := 12.0

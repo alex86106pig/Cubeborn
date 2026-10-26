@@ -180,10 +180,37 @@ class ArrowFan extends Behavior:
 		p.world.emit_event("fx:muzzle", {"pos": p.pos + dir * def.spawn_offset, "height": p.height + Config.HEIGHT.bolt_altitude, "color": def.color})
 
 
+# 蓄力穿透箭（F5 長弓右鍵）：按住蓄力（hold，停在 active），放開進收招時射出；
+# 傷害 = damage_pct → full_damage_pct 依蓄力秒數 / charge_time 線性變化，箭穿透一直線上所有敵人
+class ChargedShot extends Behavior:
+	func enter(_p: Player, _def: Dictionary, data: Dictionary) -> void:
+		data.charge = 0.0
+
+	func update(p: Player, def: Dictionary, data: Dictionary, name: StringName, _k: float, dt: float) -> void:
+		if name == &"active":
+			data.charge = minf(data.charge + dt, def.charge_time)
+			var dir := WeaponBehaviors.aim_direction(p)
+			p.facing = atan2(dir.x, dir.y)
+
+	func phase(p: Player, def: Dictionary, data: Dictionary, name: StringName) -> void:
+		if name != &"recovery":
+			return
+		var dir := WeaponBehaviors.aim_direction(p)
+		p.facing = atan2(dir.x, dir.y)
+		var params := WeaponBehaviors.shot_params(p, def, dir)
+		var ratio: float = data.charge / def.charge_time
+		params.damage = p.move_damage(def) * lerpf(1.0, def.full_damage_pct / def.damage_pct, ratio)
+		params.pierce = true
+		WeaponBehaviors.spawn_projectile(p, params)
+		p.world.emit_event("sfx:cue", {"cue": def.sfx_release, "pos": p.pos})
+		p.world.emit_event("fx:muzzle", {"pos": p.pos + dir * def.spawn_offset, "height": p.height + Config.HEIGHT.bolt_altitude, "color": def.color})
+
+
 static var BEHAVIORS := {
 	&"meleeSwing": MeleeSwing.new(),
 	&"shieldBlock": ShieldBlock.new(),
 	&"fireBolt": FireBolt.new(),
 	&"arcaneBurst": ArcaneBurst.new(),
 	&"arrowFan": ArrowFan.new(),
+	&"chargedShot": ChargedShot.new(),
 }

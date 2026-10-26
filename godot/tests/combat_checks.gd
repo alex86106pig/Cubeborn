@@ -15,7 +15,7 @@ static func check_weapon_defs() -> String:
 				# 按住類（劍盾格擋，v0.41.0）的 active 是 0：按著就停在 active，放開立刻收招
 				if def[t] <= 0.0 and not (t == "active" and def.get("hold", false) and def[t] == 0.0):
 					return "%s.%s 的 %s 不是正數" % [id, kind, t]
-			for key in ["sfx", "sfx_heavy"]:
+			for key in ["sfx", "sfx_heavy", "sfx_release"]:
 				if def.has(key) and not cues.has(def[key]):
 					return "%s.%s 的音效「%s」不在 Sound.CUE_NAMES" % [id, kind, def[key]]
 	return ""
@@ -616,4 +616,36 @@ static func check_shortbow() -> String:
 	var p3 := _player(w3)
 	if absf(p3.velocity.length() - p3.stats.value(&"move_speed") * bow.special.move_speed_mul) > 0.05:
 		return "右鍵照常減速：速度 %.2f，應 %.2f" % [p3.velocity.length(), p3.stats.value(&"move_speed") * bow.special.move_speed_mul]
+	return ""
+
+
+# F5 長弓：重射可擊退；右鍵按住蓄力、放開射出穿透箭（沒蓄 150%、蓄滿 400%），一直線上的敵人都打到、每隻一次
+static func check_longbow() -> String:
+	var bow: Dictionary = WeaponDefs.WEAPONS[&"longbow"]
+	if bow.attack.knockback <= 0.0 or bow.attack.get("no_stagger", false):
+		return "長弓是重型遠程，普攻要可擊退"
+	var results := []
+	for hold_steps: int in [0, roundi(bow.special.charge_time / DT) + 10]:
+		var w := _new_world()
+		var p := _player(w)
+		p.equip_weapon(&"longbow")
+		var dummies: Array[Entity] = []
+		for z in [4.0, 6.0, 8.0]:
+			dummies.append(_dummy(w, Vector2(0, z)))
+		var held := InputCmd.BTN_SPECIAL | InputCmd.BTN_SPECIAL_HELD
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 8), held), 1)
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL_HELD), roundi(bow.special.windup / DT) + hold_steps)
+		var events: Array[Dictionary] = []
+		_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 8)), 40, events)
+		var amounts := []
+		for d in dummies:
+			amounts.append(_damage_amounts(events, d.id))
+		results.append(amounts)
+	var base := WeaponDefs.move_base_damage(WeaponDefs.WEAPONS[&"longbow"], bow.special)
+	var tap: Array = results[0]
+	var full: Array = results[1]
+	var want_full: float = base * bow.special.full_damage_pct / bow.special.damage_pct
+	for i in 3:
+		if tap[i].size() != 1 or absf(tap[i][0] - base) > EPS or full[i].size() != 1 or absf(full[i][0] - want_full) > EPS:
+			return "穿透箭：沒蓄力每隻應 [%.1f]、蓄滿 [%.1f]（一直線 3 隻都打到一次）；實際 %s / %s" % [base, want_full, tap, full]
 	return ""

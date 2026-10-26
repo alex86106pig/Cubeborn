@@ -193,6 +193,8 @@ static func weapon(model: StringName) -> Dictionary:
 			return _staff()
 		&"shortbow":
 			return _player_bow(0.55, Color("8a5a32"))
+		&"longbow":
+			return _player_bow(0.85, Color("5a3a1e"))
 	return {}
 
 

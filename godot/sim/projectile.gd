@@ -13,6 +13,8 @@ var visual: StringName = &"orb" # 只給畫面用：&"orb" 發光球體、&"arro
 var hit_stop := 0.0
 var shake := 0.0
 var blockable := true           # 有方向的投射物預設能被格擋（B5）；爆炸一律不能
+var pierce := false            # 穿透（F5 長弓蓄力箭）：打中不消失，同一隻只打一次
+var _pierced := {}
 var damage_type := &"phys"     # 物理 / 魔法（F1）：決定看目標的護甲還是魔抗
 var no_stagger := false         # 打中不會讓怪物進入受擊硬直（v0.27.0：遠程武器的普攻）
 var explosion: Dictionary = {}  # { radius, damage, knockback, hit_stop, shake }；空 = 一般投射物
@@ -47,6 +49,7 @@ func _init(p_world: World, p: Dictionary) -> void:
 	blockable = p.get("blockable", true)
 	no_stagger = p.get("no_stagger", false)
 	damage_type = p.get("damage_type", &"phys")
+	pierce = p.get("pierce", false)
 	start_altitude = p.get("altitude", owner.height + Config.HEIGHT.bolt_altitude)
 	settle_altitude = p.get("settle_altitude", 0.0)
 	settle_distance = p.get("settle_distance", 0.0)
@@ -84,6 +87,11 @@ func update(dt: float) -> void:
 			continue
 		var r := radius + target.radius
 		if target.pos.distance_squared_to(pos) <= r * r:
+			if pierce:
+				if not _pierced.has(target.id):
+					_pierced[target.id] = true
+					_hit_once(target)
+				continue
 			_on_hit(target)
 			return
 
@@ -101,16 +109,18 @@ func _source() -> Entity:
 func _on_hit(target: Entity) -> void:
 	if not explosion.is_empty():
 		_explode()
-	else:
-		# 擊退方向沿飛行方向；被格擋時沒有命中粒子，改成碎散
-		var hit := Combat.apply_damage(world, _source(), target, {
-			"damage": damage, "knockback": knockback_force, "origin": pos - direction,
-			"hit_stop": hit_stop, "shake": shake, "band": band(), "blockable": blockable, "color": color,
-			"no_stagger": no_stagger, "damage_type": damage_type,
-		})
-		if not hit:
-			_fizzle()
+	elif not _hit_once(target):
+		_fizzle()
 	remove()
+
+
+# 擊退方向沿飛行方向；回傳是否命中（被格擋時沒有命中粒子，改成碎散）
+func _hit_once(target: Entity) -> bool:
+	return Combat.apply_damage(world, _source(), target, {
+		"damage": damage, "knockback": knockback_force, "origin": pos - direction,
+		"hit_stop": hit_stop, "shake": shake, "band": band(), "blockable": blockable, "color": color,
+		"no_stagger": no_stagger, "damage_type": damage_type,
+	})
 
 
 func _expire() -> void:

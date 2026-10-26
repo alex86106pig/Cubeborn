@@ -177,6 +177,65 @@ const WEAPONS := {
 		},
 	},
 
+
+	# 長弓（F5，只從怪物身上掉）：重型遠程，攻速慢、普攻可擊退；右鍵按住蓄力、放開射出穿透一直線的箭
+	&"longbow": {
+		"id": &"longbow",
+		"name": "長弓",
+		"type": &"ranged",
+		"model": &"longbow",
+		"base_damage": 11.0,
+		"damage_type": &"phys",
+		"idle": {"arm_r": -0.4, "arm_l": -0.6, "tilt": 0.0},
+		"attack": {
+			"behavior": &"fireBolt",
+			"sfx": "arrowShot",
+			"name": "重射",
+			"icon": "重射",
+			"damage_pct": 1.0,
+			"visual": &"arrow",
+			"projectile_speed": 26.0,
+			"projectile_radius": 0.22,
+			"spawn_offset": 0.6,
+			"range": 18.0,
+			"knockback": 8.0,          # 重型遠程：普攻可擊退（設計方向「職業與武器手感」）
+			"windup": 0.22,            # 三段合計 0.7 秒一發
+			"active": 0.04,
+			"recovery": 0.44,
+			"move_speed_mul": 0.7,
+			"color": Color("f0e0b0"),
+			"hit_stop": 0.04,
+			"shake": 0.06,
+		},
+		"special": {
+			"behavior": &"chargedShot",
+			"sfx": "bowDraw",
+			"sfx_release": "arrowShot",
+			"name": "穿透箭",
+			"icon": "穿透",
+			"cooldown": 6.0,
+			"hold": true,              # 按住右鍵蓄力（同格擋的按住機制），放開射出
+			"roll_cancel": true,
+			"damage_pct": 1.5,         # 沒蓄力
+			"full_damage_pct": 4.0,    # 蓄滿
+			"charge_time": 1.0,
+			"pierce": true,
+			"visual": &"arrow",
+			"projectile_speed": 30.0,
+			"projectile_radius": 0.3,
+			"spawn_offset": 0.6,
+			"range": 20.0,
+			"knockback": 10.0,
+			"windup": 0.1,
+			"active": 0.0,             # 放開右鍵就射出
+			"recovery": 0.2,
+			"move_speed_mul": 0.5,     # 蓄力中移速 ×0.5
+			"color": Color("ffe9a0"),
+			"hit_stop": 0.05,
+			"shake": 0.15,
+		},
+	},
+
 }
 
 

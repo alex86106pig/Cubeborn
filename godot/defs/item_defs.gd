@@ -112,6 +112,8 @@ const ITEMS := {
 		"desc": "左鍵魔彈、右鍵奧術爆裂", "effects": []},
 	&"shortbow": {"kind": &"weapon", "name": "短弓", "rarity": &"white", "shape": &"l4", "weapon": &"shortbow",
 		"desc": "左鍵快射（可按住連射）、右鍵扇形散射 5 支", "effects": []},
+	&"longbow": {"kind": &"weapon", "name": "長弓", "rarity": &"white", "shape": &"i4", "weapon": &"longbow",
+		"desc": "左鍵重射（可擊退）、按住右鍵蓄力、放開射出穿透箭", "effects": []},
 
 	# ---- 白色：基本屬性 ----
 	&"worn_boots": {"kind": &"item", "name": "磨損皮靴", "rarity": &"white", "power": 1.6, "shape": &"i2",
