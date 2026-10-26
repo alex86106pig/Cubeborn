@@ -59,7 +59,13 @@ func update(p: Player, dt: float) -> void:
 	for i in rig.weapon_quiver_arrows.size():   # 短弓箭袋：剩幾發就露出幾支；長弓沒有箭數機制，一直是滿的
 		(rig.weapon_quiver_arrows[i] as Node3D).visible = i < shown
 	if rig.weapon_model in BOW_MODELS and rig.weapon_left != null:
-		rig.weapon_left.rotation.x = -rig.arm_l.rotation.x   # 弓一直直立（左手平舉時也不會躺平）
+		# 弓一直直立、弓面朝瞄準方向：抵銷身體側轉和弓手上抬、左右擺的轉向（2026-10-27 使用者：弓要跟著抬手逆時針轉回來）
+		if rig.weapon_left.is_inside_tree():
+			var bow_xf := rig.weapon_left.global_transform
+			var face := Basis.looking_at(-rig.global_transform.basis.z, Vector3.UP)   # 弓的 +Z（弓背）朝前
+			rig.weapon_left.global_transform = Transform3D(face.scaled(bow_xf.basis.get_scale()), bow_xf.origin)
+		else:
+			rig.weapon_left.rotation.x = -rig.arm_l.rotation.x
 	if rig.weapon_gem != null:
 		rig.weapon_gem.rotation.y += GEM_SPIN * dt
 
@@ -290,7 +296,6 @@ const SHORTBOW_TWIST := 0.7              # 短弓拉滿只轉約 40°（2026-10-
 const BOW_IN := 0.6                      # 搭箭時弓手往身體內側收多少，讓右手搆得到弦
 const BOW_LOW := 0.5                     # 搭箭時弓手放低多少
 const BOW_FRONT := 1.0                   # 弓手往胸前偏多少：箭的直線走在胸口前方，右臂才不會橫切過脖子和胸口（2026-10-27 使用者：手穿過身體）
-const BOW_RIGHT := 0.4                   # 弓手往角色自己的右邊（身體中線）擺多少，箭才不會太突出（2026-10-27 使用者）
 const BOW_UP := 0.3                      # 弓手往上抬多少：箭的直線在下巴高度，右臂從軀幹上緣斜上去
 const PULL_OUT := 0.25                   # 帶箭到弓前的前段佔多少：箭頭從朝袋底轉成朝前（之後一直朝前）
 const QUIVER_TOUCH := 0.95               # 收招走到這個比例時手碰到箭袋，箭才出現
@@ -326,7 +331,7 @@ func _pose_bow(idle: Dictionary, a: Dictionary, e: float, charge: bool) -> void:
 	var fwd := rig.global_transform.basis.z.normalized()
 	var chest := rig.body.global_transform.basis.z.normalized()
 	var inward := -rig.body.global_transform.basis.x.normalized()   # 左手往身體中線
-	var bow_dir := fwd + chest * BOW_FRONT + Vector3.UP * BOW_UP + inward * BOW_RIGHT + (Vector3.DOWN * BOW_LOW + inward * BOW_IN) * slack
+	var bow_dir := fwd + chest * BOW_FRONT + Vector3.UP * BOW_UP + (Vector3.DOWN * BOW_LOW + inward * BOW_IN) * slack
 	var l := _arm_toward(rig.arm_l, rig.arm_l.global_position + bow_dir)
 	rig.arm_l.rotation = Vector3(l.x, l.y, 0.0)
 	# 右手伸直指向「箭的直線上、右手剛好搆到」的點（箭尾）：拉多長由身體轉多少、弓手收多少決定，手一定在箭尾上
