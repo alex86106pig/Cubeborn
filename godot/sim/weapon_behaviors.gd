@@ -303,6 +303,75 @@ class FireBreath extends Behavior:
 		WeaponBehaviors.ignite(p, def, hits)
 
 
+# 鏟起（F9 鐵鏟右鍵）：抓起面前 reach 內最近的一隻非 Boss 敵人，舉著 hold_time 秒（Player.grab_enemy）；沒抓到冷卻改成 miss_cooldown
+class ShovelGrab extends Behavior:
+	func phase(p: Player, def: Dictionary, _data: Dictionary, name: StringName) -> void:
+		if name != &"active":
+			return
+		var best: Enemy = null
+		var best_d := INF
+		for e in p.world.enemies:
+			var en := e as Enemy
+			if en == null or en.is_dead or en.is_boss() or en.grabbed_by != 0:
+				continue
+			var d := en.pos.distance_to(p.pos) - en.radius - p.radius
+			var ahead := WeaponBehaviors.forward(p).dot((en.pos - p.pos).normalized()) > 0.3
+			if d <= def.reach and ahead and d < best_d:
+				best_d = d
+				best = en
+		if best == null:
+			p.world.cooldowns.start(p.cd("player.special"), def.miss_cooldown * p.stats.value(&"cooldown"))
+			return
+		p.grab_enemy(best, def.hold_time)
+
+
+# 拋出（F9，舉著怪時的左鍵）：往前丟 distance（撞牆就停在牆前），路上撞到的怪受 path_damage_pct、被丟的怪落地受 damage_pct，都可擊退
+class ShovelThrow extends Behavior:
+	func phase(p: Player, def: Dictionary, _data: Dictionary, name: StringName) -> void:
+		if name != &"active":
+			return
+		var held := p.release_enemy()
+		if held == null:
+			return
+		var dir := WeaponBehaviors.aim_direction(p)
+		p.facing = atan2(dir.x, dir.y)
+		var start := held.pos
+		var land := start
+		var step := 0.5
+		var travel := 0.0
+		while travel + step <= def.distance:
+			var nxt := start + dir * (travel + step)
+			if p.world.terrain.blocks_nav(nxt, held.radius) or absf(nxt.x) > p.world.half_extents.x - held.radius or absf(nxt.y) > p.world.half_extents.y - held.radius:
+				break
+			travel += step
+			land = nxt
+		for e in p.world.enemies:
+			if e == held or e.is_dead:
+				continue
+			var t := clampf((e.pos - start).dot(dir), 0.0, travel)
+			if (start + dir * t).distance_to(e.pos) <= def.path_width + e.radius:
+				Combat.apply_damage(p.world, p, e, {"damage": p.pct_damage(def.path_damage_pct), "damage_type": p.weapon.damage_type,
+					"knockback": def.knockback, "origin": start + dir * t - dir, "is_heavy": true, "color": def.color})
+		held.pos = land
+		held.prev_pos = land
+		Combat.apply_damage(p.world, p, held, {"damage": p.move_damage(def), "damage_type": p.weapon.damage_type,
+			"knockback": def.knockback, "origin": land - dir, "hit_stop": def.hit_stop, "shake": def.shake, "is_heavy": true, "color": def.color})
+		p.world.emit_event("fx:explosion", {"pos": land, "height": p.world.terrain.ground_at(land), "radius": 1.2, "color": def.color})
+
+
+# 埋入（F9，舉著怪時的右鍵）：埋進土裡只露半身，暈 stun 秒再花 crawl 秒爬出（Enemy.bury），受到 damage_pct
+class ShovelBury extends Behavior:
+	func phase(p: Player, def: Dictionary, _data: Dictionary, name: StringName) -> void:
+		if name != &"active":
+			return
+		var held := p.release_enemy()
+		if held == null:
+			return
+		held.bury(def.stun + def.crawl)
+		Combat.apply_damage(p.world, p, held, {"damage": p.move_damage(def), "damage_type": p.weapon.damage_type,
+			"knockback": 0.0, "no_stagger": true, "hit_stop": def.hit_stop, "shake": def.shake, "is_heavy": true, "color": def.color})
+
+
 # 目標背後（和它面向相反）貼身的位置；被牆擋住就每 45° 繞一圈找第一個站得住的地方，都不行就留在原地
 static func behind(p: Player, target: Entity) -> Vector2:
 	var dist := target.radius + p.radius + 0.15
@@ -330,4 +399,7 @@ static var BEHAVIORS := {
 	&"torchStance": TorchStance.new(),
 	&"plantTorch": PlantTorch.new(),
 	&"fireBreath": FireBreath.new(),
+	&"shovelGrab": ShovelGrab.new(),
+	&"shovelThrow": ShovelThrow.new(),
+	&"shovelBury": ShovelBury.new(),
 }

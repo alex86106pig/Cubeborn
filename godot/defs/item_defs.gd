@@ -118,6 +118,8 @@ const ITEMS := {
 		"desc": "左鍵聖光敲擊（魔法、擊退）、右鍵聖光圈（隊友回血、亡靈受傷）", "effects": []},
 	&"torch": {"kind": &"weapon", "name": "火把", "rarity": &"white", "shape": &"i3", "weapon": &"torch",
 		"desc": "左鍵揮擊並點燃；右鍵舉起火把（準備姿態：左鍵插火把、右鍵噴火），火光全隊看得到", "effects": []},
+	&"shovel": {"kind": &"weapon", "name": "鐵鏟", "rarity": &"white", "shape": &"l4", "weapon": &"shovel",
+		"desc": "左鍵鏟地（窄、遠、擊退）；右鍵鏟起面前一隻怪：再按左鍵拋出、右鍵埋進土裡", "effects": []},
 	&"longbow": {"kind": &"weapon", "name": "長弓", "rarity": &"white", "shape": &"i4", "weapon": &"longbow",
 		"desc": "左鍵重射（可擊退）、按住右鍵蓄力、放開射出穿透箭", "effects": []},
 

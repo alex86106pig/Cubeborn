@@ -46,9 +46,11 @@ func _init() -> void:
 	quit_button.visible = not OS.has_feature("web")   # 瀏覽器不允許網頁自己關閉
 
 	_class.add_child(_heading("選擇職業"))
-	var cards := HBoxContainer.new()
-	cards.alignment = BoxContainer.ALIGNMENT_CENTER
-	cards.add_theme_constant_override(&"separation", 40)
+	var cards := GridContainer.new()   # 每排 4 張（7 個職業排兩排，塞得進 1920 寬）
+	cards.columns = 4
+	cards.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	cards.add_theme_constant_override(&"h_separation", 40)
+	cards.add_theme_constant_override(&"v_separation", 24)
 	for id: StringName in ClassDefs.ORDER:
 		cards.add_child(_class_card(id))
 	_class.add_child(cards)

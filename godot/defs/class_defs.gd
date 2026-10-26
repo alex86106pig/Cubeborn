@@ -5,12 +5,13 @@
 # passive.roll_buff：[秒數, 屬性加成]，翻滾結束後套上（增益 &"rollHaste"）
 # passive.revive_speed / revive_hp_ratio：救隊友的速度倍率、救起後的血量比例（World._update_downed）
 # passive.vision_add / near_radius：視野距離加多少、身邊一圈的半徑（Vision.view_range / near_radius）
+# passive.dig_speed / dig_damage_taken：挖墳速度倍率（DigEvent）、挖墳中受到傷害的倍率（Combat）
 # colors：模型配色（DarkFantasy.player_character）：armor 盔甲、trim 腰甲、cape 披風
 class_name ClassDefs
 
 const NONE := &""   # 沒選職業：照舊用共用的基準數值（測試與自動驗證用）
 
-const ORDER: Array[StringName] = [&"guardian", &"arcanist", &"ranger", &"shadow", &"priest", &"mercenary"]
+const ORDER: Array[StringName] = [&"guardian", &"arcanist", &"ranger", &"gravedigger", &"shadow", &"priest", &"mercenary"]
 
 const CLASSES := {
 	&"guardian": {
@@ -83,5 +84,18 @@ const CLASSES := {
 			"near_radius": 6.0,
 		},
 		"colors": {"armor": Color("8a4a3a"), "trim": Color("4a2a20"), "cape": Color("ffb070")},
+	},
+	&"gravedigger": {
+		"name": "掘墓人",
+		"weapon": &"shovel",
+		"pitch": "把怪鏟起來，丟出去砸別隻，或埋進土裡。",
+		"stats": {&"max_hp": 120.0, &"armor": 15.0, &"magic_resist": 5.0, &"phys_damage": 1.1, &"magic_damage": 0.9, &"attack_speed": 0.9,
+			&"hp_regen": 1.2, &"treasure": 0.2, &"move_speed": 6.2},
+		"passive": {
+			"desc": "挖墳速度 +40%；挖墳中受到傷害 −25%",
+			"dig_speed": 1.4,
+			"dig_damage_taken": 0.75,
+		},
+		"colors": {"armor": Color("7a5a3a"), "trim": Color("4a3624"), "cape": Color("d9b98a")},
 	},
 }

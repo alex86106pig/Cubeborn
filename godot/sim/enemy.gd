@@ -39,6 +39,8 @@ var _exploded := false
 var _summon_timer := 0.0
 # 道具造成的狀態（v0.33.0，ItemDefs.PROCS）：只在權威端推進；畫面看 anim 的 frozen / poisoned
 var frozen_timer := 0.0              # 冰凍剩餘秒數：不能動、不出招
+var grabbed_by := 0                  # 被鐵鏟舉著（F9）：舉著的玩家 id；期間不能動、不出招，位置由玩家擺
+var buried_timer := 0.0              # 被埋進土裡（F9）：剩餘秒數，不能動、不出招
 var poison_timer := 0.0              # 中毒剩餘秒數
 var poison_tick_damage := 0.0        # 每次扣的傷害
 var poison_source_id := 0            # 下毒的玩家（傷害與擊殺算他的）
@@ -154,9 +156,10 @@ func update(dt: float) -> void:
 		return
 	_update_poison(dt)
 	_update_burn(dt)
-	if frozen_timer > 0.0 and not is_dead:
-		frozen_timer -= dt
-		velocity = Vector2.ZERO   # 冰凍：狀態機停住（出招到一半也停），解凍後接著做
+	if (frozen_timer > 0.0 or buried_timer > 0.0 or grabbed_by != 0) and not is_dead:
+		frozen_timer = maxf(0.0, frozen_timer - dt)
+		buried_timer = maxf(0.0, buried_timer - dt)
+		velocity = Vector2.ZERO   # 冰凍 / 被埋 / 被舉著：狀態機停住（出招到一半也停），結束後接著做
 		_update_anim()
 		return
 	_nav_timer -= dt
@@ -209,6 +212,13 @@ func _update_burn(dt: float) -> void:
 		Combat.apply_damage(world, src, self, hit)
 	if burn_timer <= 0.0:
 		burn_tick_damage = 0.0
+
+
+# 埋進土裡（F9 鐵鏟）：seconds 秒不能動、不出招（Boss 不會被舉起，所以也不會被埋）
+func bury(seconds: float) -> void:
+	if is_dead:
+		return
+	buried_timer = maxf(buried_timer, seconds)
 
 
 # 冰凍（v0.33.0）：freeze_immune 的怪（Boss）不會被冰凍；已經凍住的取較長的
@@ -353,6 +363,10 @@ func _update_anim() -> void:
 		anim["poisoned"] = true
 	if burn_timer > 0.0:
 		anim["burning"] = true
+	if buried_timer > 0.0:
+		anim["buried"] = true
+	if grabbed_by != 0:
+		anim["grabbed"] = true
 	_anim_extra(anim)
 
 

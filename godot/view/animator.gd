@@ -13,6 +13,9 @@ const POSE_OF := {
 	&"torchStance": &"arcaneBurst",
 	&"plantTorch": &"meleeSwing",
 	&"fireBreath": &"arcaneBurst",
+	&"shovelGrab": &"meleeSwing",
+	&"shovelThrow": &"meleeSwing",
+	&"shovelBury": &"arcaneBurst",
 }
 
 const WALK_SHARPNESS := 12.0

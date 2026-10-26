@@ -227,6 +227,10 @@ func sync(world: World, alpha: float, dt: float) -> void:
 		# 位置與朝向一次寫入（分兩次寫會更新兩次子節點的變換，D5 效能）
 		node.transform = Transform3D(Basis(Vector3.UP, lerp_angle(e.prev_facing, e.facing, alpha)),
 			Vector3(p.x, lerpf(e.prev_height, e.height, alpha), p.y))
+		if e is Enemy and (e as Enemy).anim.has("buried"):
+			node.position.y -= BURIED_DEPTH    # 被鐵鏟埋進土裡（F9）：只露半身
+		elif e is Enemy and (e as Enemy).anim.has("grabbed"):
+			node.position.y += GRABBED_LIFT    # 被鐵鏟舉著（F9）
 		if e is Player:
 			_sync_block_fan(node.get_node(^"BlockFan"), e as Player)
 			var glow: OmniLight3D = node.get_meta(&"glow")
@@ -343,6 +347,8 @@ func hidden_enemy_count(world: World) -> int:
 
 # 視野外變暗：蓋滿畫面的四邊形，從深度貼圖算出每個像素的世界位置，在視野扇形與身邊一圈之外蓋上暗色
 # 高台、牆的頂面也照它們自己的位置判斷；牆擋住的區域不畫暗（只隱藏牆後的怪物）
+const BURIED_DEPTH := 0.9   # 被埋的怪往下沉多少（F9）
+const GRABBED_LIFT := 0.8   # 被舉著的怪抬多高
 const MAX_LIGHTS := 16   # 視野遮罩最多畫幾個火把的光（F8；4 人 × 3 支 + 舉著的 4 支）
 
 const VISION_SHADER := """

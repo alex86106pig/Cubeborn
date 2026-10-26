@@ -433,6 +433,96 @@ const WEAPONS := {
 		},
 	},
 
+
+	# 鐵鏟（F9，掘墓人的起始武器）：技能型，普攻慢又窄；右鍵鏟起貼在面前的一隻非 Boss 敵人舉著 2 秒（不用一直按），
+	# 舉著時左右鍵換成 grab 的招式：左鍵拋出（被丟的怪與路上撞到的怪受傷、可擊退）、右鍵埋進土裡（暈 1.5 秒 + 0.5 秒爬出）；2 秒內都沒按就掙脫
+	&"shovel": {
+		"id": &"shovel",
+		"name": "鐵鏟",
+		"type": &"melee",
+		"model": &"shovel",
+		"base_damage": 12.0,
+		"damage_type": &"phys",
+		"idle": {"arm_r": -0.4, "arm_l": -0.5, "tilt": 0.0},
+		"attack": {
+			"behavior": &"meleeSwing",
+			"sfx": "swingHeavy", "sfx_heavy": "swingHeavy",
+			"name": "鏟地",
+			"icon": "鏟地",
+			"damage_pct": 1.0,
+			"combo_count": 1,
+			"range": 3.6,              # 打得比較遠（像把一排土鏟出去）
+			"arc": PI * 40.0 / 180.0,  # 只打前方窄角度
+			"windup": 0.3,             # 三段合計 0.8 秒一下
+			"active": 0.1,
+			"recovery": 0.4,
+			"knockback": 9.0,
+			"lunge": 1.0,
+			"move_speed_mul": 0.4,
+			"combo_window": 0.3,
+			"finisher_mul": 1.0,
+			"finisher_impact_mul": 1.0,
+			"finisher_shake_mul": 1.0,
+			"finisher_scale": 1.0,
+			"finisher_recovery_mul": 1.0,
+			"hit_stop": 0.06,
+			"shake": 0.1,
+			"slash_color": Color("b89a6a"),
+			"slash_finisher_color": Color("b89a6a"),
+		},
+		"special": {
+			"behavior": &"shovelGrab",
+			"sfx": "shieldBash",
+			"name": "鏟起",
+			"icon": "鏟起",
+			"cooldown": 10.0,
+			"miss_cooldown": 2.0,      # 沒抓到：冷卻只算這麼久
+			"reach": 1.4,              # 抓取距離（自己身體邊緣到怪身體邊緣）
+			"hold_time": 2.0,          # 舉著這麼久沒按就掙脫
+			"windup": 0.12,
+			"active": 0.05,
+			"recovery": 0.15,
+			"move_speed_mul": 0.3,
+		},
+		"grab": {
+			"move_speed_mul": 0.7,     # 舉著怪時的移速
+			"attack": {
+				"behavior": &"shovelThrow",
+				"sfx": "swingHeavy",
+				"name": "拋出",
+				"icon": "拋出",
+				"damage_pct": 2.0,     # 被丟的怪落地
+				"path_damage_pct": 1.5,   # 路上撞到的怪
+				"distance": 7.0,
+				"path_width": 0.8,
+				"knockback": 10.0,
+				"windup": 0.12,
+				"active": 0.05,
+				"recovery": 0.25,
+				"move_speed_mul": 0.3,
+				"color": Color("b89a6a"),
+				"hit_stop": 0.06,
+				"shake": 0.3,
+			},
+			"special": {
+				"behavior": &"shovelBury",
+				"sfx": "bossSlam",
+				"name": "埋入",
+				"icon": "埋入",
+				"damage_pct": 0.8,
+				"stun": 1.5,
+				"crawl": 0.5,
+				"windup": 0.15,
+				"active": 0.05,
+				"recovery": 0.25,
+				"move_speed_mul": 0.0,
+				"color": Color("6a5236"),
+				"hit_stop": 0.06,
+				"shake": 0.25,
+			},
+		},
+	},
+
 }
 
 

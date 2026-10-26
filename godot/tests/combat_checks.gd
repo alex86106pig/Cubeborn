@@ -819,3 +819,69 @@ static func check_torch() -> String:
 	if absf(Vision.view_range(m) - (Config.VISION.range + 3.0)) > EPS or absf(Vision.near_radius(m) - 6.0) > EPS:
 		return "火把傭兵視野應 %.0f、身邊 6：%.1f / %.1f" % [Config.VISION.range + 3.0, Vision.view_range(m), Vision.near_radius(m)]
 	return ""
+
+
+# F9 鐵鏟與掘墓人：鏟地窄而遠、可擊退；鏟起面前的怪舉 2 秒（不能跳、翻滾，移速 ×0.7），左鍵拋出（落地 200%、路上 150%）、
+# 右鍵埋入（80%、2 秒不能動）、沒按就掙脫；Boss 抓不起來、沒抓到冷卻 2 秒；掘墓人挖墳 +40%、挖墳中受傷 −25%
+static func check_shovel() -> String:
+	var sv: Dictionary = WeaponDefs.WEAPONS[&"shovel"]
+	var results := {}
+	for mode: StringName in [&"throw", &"bury", &"free"]:
+		var w := _new_world()
+		var p := _player(w)
+		p.equip_weapon(&"shovel")
+		var g := _spawn(w, &"grunt", Vector2(0, 1.4))
+		g.stats.set_base(&"max_hp", 1000.0)
+		g.hp = 1000.0
+		var other := _dummy(w, Vector2(0, 5.0))
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), 1)
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), 20)
+		if p.held_enemy_id != g.id or g.grabbed_by != p.id:
+			return "鏟起應抓住面前的骷髏：舉著 %d、骷髏 %d" % [p.held_enemy_id, g.id]
+		if mode == &"throw":
+			_run(w, _cmd(Vector2(1, 0), Vector2(0, 8)), 3)
+			if absf(p.velocity.length() - p.stats.value(&"move_speed") * sv.grab.move_speed_mul) > 0.05 or p.try_jump():
+				return "舉著怪移速 ×0.7、不能跳：%.2f" % p.velocity.length()
+			var hp_g := g.hp
+			var hp_o := other.hp
+			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_ATTACK), 1)
+			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), 20)
+			results[mode] = [hp_g - g.hp, hp_o - other.hp, g.pos.y, p.held_enemy_id]
+		elif mode == &"bury":
+			var hp_g := g.hp
+			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), 1)
+			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), 20)
+			results[mode] = [hp_g - g.hp, g.buried_timer, p.held_enemy_id]
+		else:
+			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), roundi(sv.special.hold_time / DT) + 2)
+			results[mode] = [p.held_enemy_id, g.grabbed_by]
+	var base := 12.0
+	var th: Array = results[&"throw"]
+	if absf(th[0] - base * sv.grab.attack.damage_pct) > EPS or absf(th[1] - base * sv.grab.attack.path_damage_pct) > EPS or th[2] < 5.0 or th[3] != 0:
+		return "拋出：被丟的 %.0f、路上的 %.0f、飛到 z ≥ 5、手上放開：%s" % [base * sv.grab.attack.damage_pct, base * sv.grab.attack.path_damage_pct, th]
+	var bu: Array = results[&"bury"]
+	var bury_time: float = sv.grab.special.stun + sv.grab.special.crawl
+	if absf(bu[0] - base * sv.grab.special.damage_pct) > EPS or bu[1] <= 0.0 or bu[1] > bury_time or bu[2] != 0:
+		return "埋入：%.1f 傷害、埋 %.1f 秒、手上放開：%s" % [base * sv.grab.special.damage_pct, bury_time, bu]
+	if results[&"free"] != [0, 0]:
+		return "2 秒沒按應掙脫：%s" % [results[&"free"]]
+	# Boss 抓不起來、沒抓到冷卻 2 秒
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	p2.equip_weapon(&"shovel")
+	_spawn(w2, &"boss", Vector2(0, 2.5))
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), 1)
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 8)), 12)
+	if p2.held_enemy_id != 0 or w2.cooldowns.remaining(p2.cd("player.special")) > sv.special.miss_cooldown:
+		return "Boss 抓不起來、沒抓到冷卻 %.0f 秒：舉著 %d、冷卻 %.2f" % [sv.special.miss_cooldown, p2.held_enemy_id, w2.cooldowns.remaining(p2.cd("player.special"))]
+	# 掘墓人：挖墳中受傷 −25%
+	var w3 := _class_world(&"gravedigger")
+	var gd := _player(w3)
+	var dummy := _dummy(w3, Vector2(0, 3))
+	gd.action.change(&"dig")
+	var before := gd.hp
+	Combat.apply_damage(w3, dummy, gd, {"damage": 20.0})
+	var want: float = 20.0 * 0.75 * StatDefs.armor_damage_factor(gd.stats.value(&"armor"))
+	if absf((before - gd.hp) - want) > EPS:
+		return "掘墓人挖墳中受到 20 應扣 %.2f（−25%% 再算護甲），實際 %.2f" % [want, before - gd.hp]
+	return ""

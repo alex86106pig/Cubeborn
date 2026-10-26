@@ -45,10 +45,10 @@ func can_dig(world: World, p: Player) -> bool:
 func update(world: World, dt: float) -> void:
 	if not enabled(world):
 		return
-	var diggers := 0
+	var diggers := 0.0   # 挖墳速度的合計：一人 1；掘墓人被動 +40%（F9）
 	for p in world.player_list:
 		if p.is_digging():
-			diggers += 1
+			diggers += p.class_passive("dig_speed", 1.0)
 	if diggers > 0 and state == IDLE:
 		_start(world)
 	if state == ACTIVE:

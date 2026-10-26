@@ -201,6 +201,8 @@ static func weapon(model: StringName) -> Dictionary:
 			return _scepter()
 		&"torch":
 			return _torch()
+		&"shovel":
+			return _shovel()
 	return {}
 
 
@@ -244,6 +246,17 @@ static func _torch() -> Dictionary:
 	var flame := k.add(g, PartKit.cone(0.09, 0.3, 5), k.mat(Color("ffb040"), true), {"y": 0.94})
 	k.merge_static(g, [g], [flame])
 	return {"kit": k, "main": g, "offhand": null, "gem": flame}
+
+
+# 鐵鏟（F9）：長木柄 + 握把 + 鐵鏟面
+static func _shovel() -> Dictionary:
+	var k := PartKit.new()
+	var g := Node3D.new()
+	k.add(g, PartKit.cyl(0.03, 0.03, 1.3, 5), k.mat(C.wood), {"y": 0.35})
+	k.add(g, PartKit.box(0.16, 0.04, 0.04), k.mat(C.wood), {"y": -0.3})
+	k.add(g, PartKit.box(0.26, 0.32, 0.03), k.mat(Color("a8a8a8")), {"y": 1.12})
+	k.merge_static(g, [g])
+	return {"kit": k, "main": g, "offhand": null, "gem": null}
 
 
 # 玩家的弓（F4）：豎直的弓身弧 + 弓弦，握在右手；size 是弓身半徑（短弓 0.55、長弓更大）

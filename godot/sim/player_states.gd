@@ -27,6 +27,9 @@ static func action_states() -> Dictionary:
 static func try_roll(p: Player, fsm: StateMachine) -> bool:
 	if p.buffered_action.get("type") != &"roll":
 		return false
+	if p.held_enemy_id != 0:   # 鐵鏟舉著怪時不能翻滾（F9）
+		p.buffered_action = {}
+		return false
 	p.buffered_action = {}
 	if p.roll_charges > 0:
 		fsm.change(&"roll")
