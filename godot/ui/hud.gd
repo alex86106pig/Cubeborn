@@ -220,11 +220,11 @@ func _init() -> void:
 	# 上方中央、標題列下面：武器測試場的按鈕列（每把武器一顆 + 重置木樁；Esc 回主選單）
 	weapon_test_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 90)
 	weapon_test_bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	weapon_test_bar.add_theme_constant_override(&"separation", 6)
+	weapon_test_bar.add_theme_constant_override(&"separation", 8)
 	for id: StringName in WeaponDefs.WEAPONS:
 		weapon_test_bar.add_child(_test_button(WeaponDefs.WEAPONS[id].name, weapon_test_equip.emit.bind(id)))
 	weapon_test_bar.add_child(_test_button("重置木樁", weapon_test_reset.emit))
-	weapon_test_bar.add_child(UiKit.label("Esc 回主選單", 16, Color(1, 1, 1, 0.7)))
+	weapon_test_bar.add_child(UiKit.label("Esc 回主選單", 20, Color(1, 1, 1, 0.8)))
 	weapon_test_bar.visible = false
 	root.add_child(weapon_test_bar)
 
@@ -323,12 +323,20 @@ func set_loading(on: bool) -> void:
 	_world_labels.warm = warm_text() if on else ""   # 場上文字是描邊字，字形另外快取，用它自己的畫法預熱
 
 
+# 武器測試場的按鈕（2026-10-27 使用者：原本 16 號字、高 36 太小不好點、底色淡得像文字）
 static func _test_button(text: String, on_pressed: Callable) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.add_theme_font_size_override(&"font_size", 16)
-	b.custom_minimum_size = Vector2(0, 36)
+	b.add_theme_font_size_override(&"font_size", 22)
+	b.custom_minimum_size = Vector2(110, 52)
 	b.focus_mode = Control.FOCUS_NONE
+	for state in [&"normal", &"hover", &"pressed"]:
+		var box := StyleBoxFlat.new()
+		box.bg_color = Color(0.12, 0.14, 0.2, 0.85) if state == &"normal" else (Color(0.22, 0.26, 0.36, 0.95) if state == &"hover" else Color(0.32, 0.38, 0.52, 1.0))
+		box.border_color = Color(1, 1, 1, 0.35)
+		box.set_border_width_all(2)
+		box.set_corner_radius_all(6)
+		b.add_theme_stylebox_override(state, box)
 	b.pressed.connect(on_pressed)
 	return b
 

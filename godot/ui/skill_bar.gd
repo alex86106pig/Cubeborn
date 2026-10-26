@@ -13,6 +13,9 @@ var _slots: Dictionary = {}   # cd key -> Slot
 var _weapon_id: StringName = &""
 var _attack_slot: Slot        # 左鍵：平常是普攻
 var _parry_slot: Slot         # 劍盾格擋中左鍵改成招架（v0.41.0）：同一個位置，兩格輪流顯示
+var _special_slot: Slot       # 右鍵：平常是武器特殊技
+var _alt_left: Slot           # 火把準備姿態 / 鐵鏟舉著怪時的左右鍵（2026-10-27）：和平常的格子同位置輪流顯示
+var _alt_right: Slot
 
 
 func _init() -> void:
@@ -32,6 +35,8 @@ func refresh(world: World, player: Player) -> void:
 	if _parry_slot != null:
 		_parry_slot.visible = player.block_time >= 0.0
 		_attack_slot.visible = not _parry_slot.visible
+	if _alt_left != null:
+		_refresh_alt(world, player)
 	var atk: Dictionary = player.weapon.attack
 	if atk.has("quiver") and _attack_slot != null:
 		# 短弓：左鍵格顯示箭袋剩幾支，裝填中蓋遮罩倒數
@@ -60,6 +65,35 @@ func refresh(world: World, player: Player) -> void:
 		slot.mask.queue_redraw()
 
 
+# 火把準備姿態（左鍵插火把 + 剩幾支、插完改回揮擊；右鍵噴火 + 冷卻）、鐵鏟舉著怪（左鍵拋出、右鍵埋入）時換成那兩格
+func _refresh_alt(world: World, player: Player) -> void:
+	var w := player.weapon
+	var stance: bool = player.torch_stance and w.has("stance")
+	var holding: bool = w.has("grab") and (player.held_enemy_id != 0 or player.anim.get("holding", false))
+	var on: bool = stance or holding
+	_alt_left.visible = on
+	_alt_right.visible = on
+	_attack_slot.visible = not on and (_parry_slot == null or not _parry_slot.visible)
+	_special_slot.visible = not on
+	if stance:
+		var left := player.action_def(&"attack")
+		_alt_left.icon.text = left.icon
+		var planting: bool = left == w.stance.attack
+		_alt_left.charges.text = str(player.torches_left) if planting else ""
+		_alt_left.cd_left = world.cooldowns.remaining(player.cd("player.torch")) if planting else 0.0
+		_alt_left.cd_ratio = 1.0 - world.cooldowns.progress(player.cd("player.torch")) if planting else 0.0
+		_alt_right.cd_left = world.cooldowns.remaining(player.cd("player.special"))
+		_alt_right.cd_ratio = 1.0 - world.cooldowns.progress(player.cd("player.special"))
+	else:
+		_alt_left.cd_left = 0.0
+		_alt_left.cd_ratio = 0.0
+		_alt_right.cd_left = 0.0
+		_alt_right.cd_ratio = 0.0
+	for slot: Slot in [_alt_left, _alt_right]:
+		slot.queue_redraw()
+		slot.mask.queue_redraw()
+
+
 func flash(key: String, deny: bool) -> void:
 	if _slots.has(key):
 		_slots[key].flash(deny)
@@ -75,7 +109,16 @@ func _build(player: Player) -> void:
 	if w.special.has("parry") and w.special.parry.has("name"):
 		_parry_slot = _add_slot("player.parry", w.special.parry.name, "左鍵", -1, false)
 		_parry_slot.visible = false
-	_add_slot("player.special", w.special.icon, "右鍵", -1, false)
+	var alt: Dictionary = w.get("stance", w.get("grab", {}))
+	_alt_left = null
+	_alt_right = null
+	if not alt.is_empty():
+		_alt_left = _add_slot("", alt.attack.icon, "左鍵", -1, false)
+		_alt_left.visible = false
+	_special_slot = _add_slot("player.special", w.special.icon, "右鍵", -1, false)
+	if not alt.is_empty():
+		_alt_right = _add_slot("", alt.special.icon, "右鍵", -1, false)
+		_alt_right.visible = false
 	_add_slot(Player.ROLL_CD, ROLL_ICON, "Shift", -1, false)
 	var divider := UiKit.rect(Color(1, 1, 1, 0.25), Vector2(2, 48))
 	divider.size_flags_vertical = Control.SIZE_SHRINK_END

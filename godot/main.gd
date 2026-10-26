@@ -63,9 +63,7 @@ func _ready() -> void:
 	hud.title_requested.connect(return_to_title)
 	hud.main_menu.single_pressed.connect(start_single)
 	hud.main_menu.weapon_test_pressed.connect(start_weapon_test)
-	hud.weapon_test_equip.connect(func(id: StringName) -> void:
-		if in_weapon_test and local_player() != null:
-			local_player().equip_weapon(id))
+	hud.weapon_test_equip.connect(_weapon_test_equip)
 	hud.weapon_test_reset.connect(_reset_training_dummies)
 	hud.main_menu.back_pressed.connect(_on_title_back)
 	hud.inventory_panel.op_requested.connect(input_collector.queue_inventory_op)
@@ -204,6 +202,17 @@ func leave_weapon_test() -> void:
 	hud.weapon_test_bar.visible = false
 	restart()
 	show_title(&"home")
+
+
+# 武器測試場換武器：換成白色的那把，技能冷卻歸零、箭袋與這關的火把補滿（2026-10-27 使用者：換完要重置技能時間）
+func _weapon_test_equip(id: StringName) -> void:
+	var me := local_player()
+	if not in_weapon_test or me == null:
+		return
+	me.equip_weapon(id)
+	for key in ["player.special", "player.parry", "player.torch"]:
+		world.cooldowns.reset(me.cd(key))
+	me.torches_left = WeaponDefs.WEAPONS[&"torch"].stance.attack.per_floor
 
 
 # 木樁被打飛、埋掉後擺回原位：清掉場上的木樁，在玩家旁邊重擺

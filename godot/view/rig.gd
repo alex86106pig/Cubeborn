@@ -17,6 +17,9 @@ var kit := PartKit.new()
 var weapon_main: Node3D = null      # 掛在 hand_r
 var weapon_offhand: Node3D = null   # 掛在 arm_l（盾）
 var weapon_left: Node3D = null      # 掛在 hand_l（弓、左手的匕首）
+var weapon_back: Node3D = null       # 背在身上的（短弓的箭袋），掛在 body
+var weapon_quiver_arrows: Array = []   # 箭袋裡露出的箭（照剩幾發顯示）
+var weapon_nock: Node3D = null       # 掛在 hand_r 的搭弦箭（弓），拉弓時才顯示
 var weapon_hold_point: Node3D = null   # 武器上的托舉點（鐵鏟鏟起的怪放這裡），沒有就是 null
 var weapon_gem: Node3D = null       # 法杖寶石（自轉）
 var weapon_model: StringName = &""
@@ -90,7 +93,7 @@ func set_weapon(model: StringName) -> void:
 	if model == weapon_model:
 		return
 	weapon_model = model
-	for n in [weapon_main, weapon_offhand, weapon_left]:
+	for n in [weapon_main, weapon_offhand, weapon_left, weapon_nock, weapon_back]:
 		if n != null:
 			n.queue_free()
 	var w := DarkFantasy.weapon(model)
@@ -99,6 +102,13 @@ func set_weapon(model: StringName) -> void:
 	weapon_offhand = w.get("offhand")
 	weapon_left = w.get("left")
 	weapon_hold_point = w.get("hold_point")
+	weapon_back = w.get("back")
+	weapon_quiver_arrows = w.get("quiver_arrows", [])
+	if weapon_back != null:
+		body.add_child(weapon_back)
+	weapon_nock = w.get("nock")
+	if weapon_nock != null:
+		hand_r.add_child(weapon_nock)
 	weapon_gem = w.get("gem")
 	if weapon_main != null:
 		hand_r.add_child(weapon_main)

@@ -104,7 +104,10 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 		is_crit = true
 		damage *= source.stats.value(&"crit_damage")
 	var knockback: float = hit.get("knockback", 0.0) * source.stats.value(&"knockback")
-	target.suppress_stagger = hit.get("no_stagger", false)   # 遠程武器的普攻不讓怪物進入受擊硬直（v0.27.0）
+	var buried := target is Enemy and (target as Enemy).buried_timer > 0.0
+	if buried:
+		knockback = 0.0   # 被鐵鏟埋著（F9）：打得到，但不會被擊退、不硬直（2026-10-27 使用者）
+	target.suppress_stagger = hit.get("no_stagger", false) or buried   # 遠程武器的普攻不讓怪物進入受擊硬直（v0.27.0）
 	var dealt := target.take_damage(damage, dir, knockback, source.id, hit.get("damage_type", &"phys"))
 	target.suppress_stagger = false
 	if dealt < 0:

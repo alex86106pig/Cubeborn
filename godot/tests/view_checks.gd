@@ -212,6 +212,34 @@ static func check_skill_bar_parry() -> String:
 		bar.refresh(w, p)
 		if bar._parry_slot != null:
 			err = "法杖不應有招架格"
+	if err == "":
+		# 火把準備姿態：左右鍵換成插火把（剩幾支）/ 噴火；插完改回揮擊（2026-10-27）
+		p.equip_weapon(&"torch")
+		bar.refresh(w, p)
+		p.torch_stance = true
+		bar.refresh(w, p)
+		var tw: Dictionary = WeaponDefs.WEAPONS[&"torch"]
+		if not bar._alt_left.visible or bar._special_slot.visible or bar._alt_left.icon.text != tw.stance.attack.icon \
+				or bar._alt_left.charges.text != str(p.torches_left) or bar._alt_right.icon.text != tw.stance.special.icon:
+			err = "火把準備姿態左右鍵應換成「%s」（剩 %d）/「%s」：%s / %s / %s" % [tw.stance.attack.icon, p.torches_left, tw.stance.special.icon, bar._alt_left.icon.text, bar._alt_left.charges.text, bar._alt_right.icon.text]
+		p.torches_left = 0
+		bar.refresh(w, p)
+		if err == "" and bar._alt_left.icon.text != tw.attack.icon:
+			err = "火把插完後左鍵應顯示「%s」，實際 %s" % [tw.attack.icon, bar._alt_left.icon.text]
+		p.torch_stance = false
+		bar.refresh(w, p)
+		if err == "" and (bar._alt_left.visible or not bar._special_slot.visible):
+			err = "離開準備姿態應換回平常的左右鍵"
+	if err == "":
+		# 鐵鏟舉著怪：左右鍵換成拋出 / 埋入
+		p.equip_weapon(&"shovel")
+		bar.refresh(w, p)
+		p.held_enemy_id = -1
+		bar.refresh(w, p)
+		var gr: Dictionary = WeaponDefs.WEAPONS[&"shovel"].grab
+		if not bar._alt_left.visible or bar._alt_left.icon.text != gr.attack.icon or bar._alt_right.icon.text != gr.special.icon:
+			err = "舉著怪時左右鍵應換成「%s」/「%s」" % [gr.attack.icon, gr.special.icon]
+		p.held_enemy_id = 0
 	bar.queue_free()
 	return err
 

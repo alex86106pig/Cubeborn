@@ -192,9 +192,9 @@ static func weapon(model: StringName) -> Dictionary:
 		&"staff":
 			return _staff()
 		&"shortbow":
-			return _player_bow(0.55, Color("8a5a32"))
+			return _player_bow(0.5, Color("8a5a32"), 0.6, WeaponDefs.WEAPONS[&"shortbow"].attack.quiver)
 		&"longbow":
-			return _player_bow(0.85, Color("5a3a1e"))
+			return _player_bow(0.8, Color("5a3a1e"), 0.9, WeaponDefs.WEAPONS[&"shortbow"].attack.quiver)   # 長弓也背同一款箭袋（使用者 2026-10-27），沒有箭數機制、一直是滿的
 		&"daggers":
 			return _daggers()
 		&"scepter":
@@ -265,15 +265,59 @@ static func _shovel() -> Dictionary:
 	return {"kit": k, "main": g, "offhand": null, "gem": null, "hold_point": hold}
 
 
-# 玩家的弓（F4）：豎直的弓身弧 + 弓弦，握在左手（Animator 讓它一直保持直立，右手拉弦）；size 是弓身半徑（短弓 0.55、長弓更大）
-static func _player_bow(size: float, wood: Color) -> Dictionary:
+# 玩家的弓（F4）：握在左手（Animator 讓它一直保持直立，右手拉弦）；size 是弓身的弧半徑（短弓 0.55、長弓 0.85）
+# 座標同身體：+Y 上、+Z 前。弓身沿 YZ 平面的圓弧排 8 段，正中間（握把）就在手上、是最前面的點，
+# 兩端往拉弓的人這側（-Z）彎回來，弦接兩端（2026-10-27 使用者：原本圓心偏後，手握的位置不在弓身上）
+const BOW_SEGMENTS := 8
+const BOW_HALF_ARC := 0.85   # 弓身半邊張開的角度（弧度）
+
+
+# arrow：箭長（短弓的箭短一點，2026-10-27 使用者）；quiver > 0 時背上有箭袋（back，掛在 Rig.body），
+# 袋裡露出 quiver_count 支箭（quiver_arrows；有箭袋機制的短弓照剩幾發顯示，長弓一直是滿的）
+static func _player_bow(size: float, wood: Color, arrow: float, quiver_count: int) -> Dictionary:
 	var k := PartKit.new()
 	var g := Node3D.new()
-	k.add(g, PartKit.torus(size, 0.03, 4, 10, PI * 0.8), k.mat(wood), {"y": 0.15, "z": -size * 0.55, "ry": PI / 2.0, "rz": PI / 2.0 + PI * 0.1})
-	k.add(g, PartKit.cyl(0.008, 0.008, size * 1.9, 3), k.mat(Color("d8d2bf")), {"y": 0.15, "z": -size * 0.55 + size * cos(PI * 0.4)})
-	k.add(g, PartKit.box(0.06, 0.16, 0.06), k.mat(C.leather), {"y": 0.15})
+	var step := BOW_HALF_ARC * 2.0 / BOW_SEGMENTS
+	for i in BOW_SEGMENTS:
+		var phi := -BOW_HALF_ARC + step * (i + 0.5)
+		# 弧上的點 = 圓心 (0, 0, -size) + size × (0, sin φ, cos φ)；切線 (0, cos φ, -sin φ) = Y 軸繞 X 轉 -φ
+		k.add(g, PartKit.cyl(0.028, 0.028, size * step * 1.05, 4), k.mat(wood),
+			{"y": size * sin(phi), "z": -size + size * cos(phi), "rx": -phi})
+	var tip_y := size * sin(BOW_HALF_ARC)
+	var string_z := -size * (1.0 - cos(BOW_HALF_ARC))
+	k.add(g, PartKit.cyl(0.007, 0.007, tip_y * 2.0, 3), k.mat(Color("d8d2bf")), {"z": string_z})
+	k.add(g, PartKit.box(0.06, 0.14, 0.07), k.mat(C.leather))   # 握把（在手上）
 	k.merge_static(g, [g])
-	return {"kit": k, "main": null, "offhand": null, "left": g, "gem": null}
+	# 搭在弦上的箭：掛在右手、沿 -Z 建模（Animator 每幀 look_at 弓的握把，不管右手臂怎麼擺都指著弓）；只在拉弓時顯示
+	var nock := Node3D.new()
+	k.add(nock, PartKit.cyl(0.022, 0.022, arrow, 4), k.mat(Color("e0c890")), {"z": -arrow / 2.0, "rx": PI / 2.0})
+	k.add(nock, PartKit.cone(0.05, 0.16, 4), k.mat(Color("e8eef8"), true), {"z": -arrow - 0.06, "rx": -PI / 2.0})
+	for sgn in [-1.0, 1.0]:
+		k.add(nock, PartKit.box(0.1, 0.012, 0.16), k.mat(Color("f0f0f0")), {"z": -0.06, "rz": sgn * 0.3})
+	k.merge_static(nock, [nock])
+	nock.visible = false
+	var out := {"kit": k, "main": null, "offhand": null, "left": g, "nock": nock, "gem": null}
+	if quiver_count <= 0:
+		return out
+	# 箭袋：背在身後、上端靠右肩；袋口露出 quiver_count 支箭（各自一個節點，不合併，射一支藏一支）
+	var quiver := Node3D.new()
+	k.add(quiver, PartKit.cyl(0.1, 0.08, 0.6, 6), k.mat(C.leather), {"y": 0.0})
+	k.add(quiver, PartKit.cyl(0.105, 0.105, 0.05, 6), k.mat(Color("8a6a3a")), {"y": 0.29})
+	k.merge_static(quiver, [quiver])
+	var arrows: Array[Node3D] = []
+	for i in quiver_count:
+		var a := Node3D.new()
+		var ang := TAU * i / quiver_count
+		a.position = Vector3(cos(ang) * 0.045, 0.36, sin(ang) * 0.045)
+		k.add(a, PartKit.cyl(0.012, 0.012, 0.14, 3), k.mat(Color("e0c890")), {"y": -0.05})
+		k.add(a, PartKit.box(0.06, 0.1, 0.01), k.mat(Color("f0f0f0")), {"y": 0.04, "ry": ang})
+		quiver.add_child(a)
+		arrows.append(a)
+	quiver.position = Vector3(-0.12, 1.3, -0.26)
+	quiver.rotation = Vector3(-0.15, 0.0, 0.4)   # 上端往右肩（-X）斜
+	out["back"] = quiver
+	out["quiver_arrows"] = arrows
+	return out
 
 
 static func _sword_shield() -> Dictionary:

@@ -565,7 +565,7 @@ static func _weapon_catalog() -> String:
 		var model := DarkFantasy.weapon(WeaponDefs.WEAPONS[id].model)
 		if model.is_empty():
 			return "%s 的模型 %s 沒有在 DarkFantasy.weapon 做" % [id, WeaponDefs.WEAPONS[id].model]
-		for key in ["main", "offhand", "left"]:
+		for key in ["main", "offhand", "left", "nock", "back"]:
 			if model.get(key) != null:
 				(model[key] as Node).free()
 	for id: StringName in ClassDefs.CLASSES:
@@ -831,6 +831,8 @@ static func check_torch() -> String:
 		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 70)
 	if w.torches.size() != tw.stance.attack.per_floor or p.torches_left != 0:
 		return "每關只能插 %d 支：%d 支、剩 %d" % [tw.stance.attack.per_floor, w.torches.size(), p.torches_left]
+	if p.action_def(&"attack") != tw.attack:
+		return "火把插完後準備姿態的左鍵應改回揮擊"
 	# 噴火：前方的怪受到 120% 魔法 + 點燃
 	var front := _dummy(w, Vector2(0, 3))
 	var events: Array[Dictionary] = []
@@ -892,6 +894,13 @@ static func check_shovel() -> String:
 			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), 1)
 			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), 20)
 			results[mode] = [hp_g - g.hp, g.buried_timer, p.held_enemy_id]
+			# 埋著打得到、但不會被擊退（2026-10-27 使用者）
+			var hp_b := g.hp
+			var at := g.pos
+			Combat.apply_damage(w, p, g, {"damage": 5.0, "knockback": 20.0})
+			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), 5)
+			if absf((hp_b - g.hp) - 5.0) > EPS or g.pos.distance_to(at) > 0.05:
+				return "埋著的怪應打得到（扣 5）、不被擊退：扣 %.2f、移動 %.2f" % [hp_b - g.hp, g.pos.distance_to(at)]
 		else:
 			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), roundi(sv.special.hold_time / DT) + 2)
 			results[mode] = [p.held_enemy_id, g.grabbed_by]

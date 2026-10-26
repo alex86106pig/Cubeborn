@@ -342,7 +342,7 @@ class ShovelGrab extends Behavior:
 		var best_d := INF
 		for e in p.world.enemies:
 			var en := e as Enemy
-			if en == null or en.is_dead or en.is_boss() or en.grabbed_by != 0:
+			if en == null or en.is_dead or en.is_boss() or en.grabbed_by != 0 or en.buried_timer > 0.0:
 				continue
 			var d := en.pos.distance_to(p.pos) - en.radius - p.radius
 			var ahead := WeaponBehaviors.forward(p).dot((en.pos - p.pos).normalized()) > 0.3
@@ -397,9 +397,9 @@ class ShovelBury extends Behavior:
 		var held := p.release_enemy()
 		if held == null:
 			return
-		held.bury(def.stun + def.crawl)
 		Combat.apply_damage(p.world, p, held, {"damage": p.move_damage(def), "damage_type": p.weapon.damage_type,
 			"knockback": 0.0, "no_stagger": true, "hit_stop": def.hit_stop, "shake": def.shake, "is_heavy": true, "color": def.color})
+		held.bury(def.stun + def.crawl)
 
 
 # 目標背後（和它面向相反）貼身的位置；被牆擋住就每 45° 繞一圈找第一個站得住的地方，都不行就留在原地

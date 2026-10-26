@@ -454,6 +454,8 @@ func action_def(kind: StringName) -> Dictionary:
 	if held_enemy_id != 0 and weapon.has("grab"):
 		return weapon.grab[kind]   # 鐵鏟舉著怪：左鍵拋出、右鍵埋入（F9）
 	if torch_stance and weapon.has("stance"):
+		if kind == &"attack" and torches_left <= 0:
+			return weapon.attack   # 這關的火把插完了：左鍵改回揮擊（2026-10-27 使用者：插完 3 支後什麼都不能做）
 		return weapon.stance[kind]
 	return weapon[kind]
 

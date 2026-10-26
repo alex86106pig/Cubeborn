@@ -52,6 +52,11 @@ func update(p: Player, dt: float) -> void:
 			_pose_parry(1.0 - a.parry)
 	if rig.weapon_model in UPRIGHT_MODELS and rig.weapon_main != null:
 		rig.weapon_main.rotation.x = weapon_tilt - rig.arm_r.rotation.x
+	if rig.weapon_nock != null and not (a.action in [&"attack", &"special"] and _pose_for(a.behavior) in [&"bow", &"bowCharge"]):
+		rig.weapon_nock.visible = false
+	var shown: int = p.quiver if p.weapon.attack.has("quiver") else rig.weapon_quiver_arrows.size()
+	for i in rig.weapon_quiver_arrows.size():   # 短弓箭袋：剩幾發就露出幾支；長弓沒有箭數機制，一直是滿的
+		(rig.weapon_quiver_arrows[i] as Node3D).visible = i < shown
 	if rig.weapon_model in BOW_MODELS and rig.weapon_left != null:
 		rig.weapon_left.rotation.x = -rig.arm_l.rotation.x   # 弓一直直立（左手平舉時也不會躺平）
 	if rig.weapon_gem != null:
@@ -270,21 +275,49 @@ func _pose_mace(idle: Dictionary, a: Dictionary, e: float, dt: float) -> void:
 	weapon_tilt = 1.4 if a.phase == &"active" else lerpf(0.0, 1.4, e) if a.phase == &"windup" else lerpf(1.4, idle.tilt, e)
 
 
-# 拉弓：左手持弓平舉、右手把弦拉到胸前（身體側過來），放箭時右手往後彈；蓄力（charge）時 active 一直拉滿
+# 拉弓（2026-10-27 使用者：箭要從右手拿出、搭上弓弦）：一發的循環 = 收招時右手往上繞到背後箭袋把下一支箭往上抽出（箭沿手臂拿著）
+# → 前搖前段經過頭頂往上繞到弓前搭弦（搭上後箭和瞄準方向平行）→ 前搖後段拉到胸前 → active 放箭、手往外彈、箭消失；
+# 蓄力（charge）時 active 一直拉滿。左手持弓平舉、一直保持直立。右臂 rotation.y 正 = 往身體中線（內側）
+const QUIVER_ARM := Vector2(-3.6, 0.15)  # 右手在背後箭袋上方把箭往上抽（手臂往上、稍微往後）；和 NOCK_ARM 之間內插 = 經過頭頂往上繞到前方
+# （2026-10-27 使用者：箭袋維持在背上，從箭袋取出、向上繞再搭到弓上；水平往後擺的版本弧度太大）
+const NOCK_ARM := Vector2(-1.5, 0.45)    # 右手在弓前搭弦
+const DRAW_IN := 0.3                     # 拉滿時再往胸前收的角度
+const BRING_PART := 0.45                 # 前搖的前段（帶到弓前）佔多少
+
+
 func _pose_bow(idle: Dictionary, a: Dictionary, e: float, charge: bool) -> void:
-	var draw := 0.0   # 0 = 沒拉、1 = 拉滿
+	var arm := NOCK_ARM
+	var arrow := &"none"   # none / hand（沿手臂拿著）/ bow（搭在弦上、指向握把）
 	match a.phase:
 		&"windup":
-			draw = e
+			var bring := minf(1.0, e / BRING_PART)
+			var draw := maxf(0.0, (e - BRING_PART) / (1.0 - BRING_PART))
+			arm = QUIVER_ARM.lerp(NOCK_ARM, bring) + Vector2(0.0, DRAW_IN * draw)
+			arrow = &"bow" if bring >= 0.7 else &"hand"
 		&"active":
-			draw = 1.0 if charge else 1.0 - e
+			if charge:
+				arm = NOCK_ARM + Vector2(0.0, DRAW_IN)
+				arrow = &"bow"
+			else:
+				arm = NOCK_ARM + Vector2(0.0, DRAW_IN - 1.2 * e)   # 放箭：手往外彈開
 		_:
-			draw = 0.0 if not charge else 1.0 - e
-	var raise := 1.0 if a.phase != &"recovery" else 1.0 - e
-	rig.arm_l.rotation = Vector3(lerpf(idle.arm_l, -1.55, raise), 0.25 * raise, 0.0)
-	rig.arm_r.rotation = Vector3(lerpf(idle.arm_r, -1.45, raise), lerpf(0.0, -0.9, draw), 0.0)
-	rig.body.rotation.y = 0.45 * raise   # 左肩朝前
+			var from := NOCK_ARM + Vector2(0.0, DRAW_IN - 1.2)
+			arm = from.lerp(QUIVER_ARM, e)   # 收招：伸到肩後拿下一支箭
+			arrow = &"hand" if e >= 0.6 else &"none"
+	const BODY_YAW := 0.35   # 身體側過來、左肩朝前
+	rig.body.rotation.y = BODY_YAW
 	rig.body.rotation.x = 0.0
+	rig.arm_l.rotation = Vector3(-1.55, -BODY_YAW, 0.0)   # 弓手抵銷身體轉向，指向前方
+	rig.arm_r.rotation = Vector3(arm.x, arm.y, 0.0)
+	if rig.weapon_nock == null:
+		return
+	rig.weapon_nock.visible = arrow != &"none"
+	if arrow == &"hand":
+		rig.weapon_nock.rotation = Vector3(-PI / 2.0, 0.0, 0.0)   # 從箭袋抽出：箭沿手臂方向（模型沿 -Z → 轉成 -Y）
+	elif arrow == &"bow" and rig.weapon_nock.is_inside_tree():
+		# 搭在弦上：箭和瞄準方向平行（2026-10-27 使用者：原本從右手指向握把、角度很怪）
+		var fwd := rig.global_transform.basis.z
+		rig.weapon_nock.look_at(rig.weapon_nock.global_position + fwd, Vector3.UP)
 
 
 # 舉起火把（進入準備姿態）
