@@ -17,6 +17,7 @@ var kit := PartKit.new()
 var weapon_main: Node3D = null      # 掛在 hand_r
 var weapon_offhand: Node3D = null   # 掛在 arm_l（盾）
 var weapon_left: Node3D = null      # 掛在 hand_l（弓、左手的匕首）
+var weapon_hold_point: Node3D = null   # 武器上的托舉點（鐵鏟鏟起的怪放這裡），沒有就是 null
 var weapon_gem: Node3D = null       # 法杖寶石（自轉）
 var weapon_model: StringName = &""
 
@@ -97,6 +98,7 @@ func set_weapon(model: StringName) -> void:
 	weapon_main = w.get("main")
 	weapon_offhand = w.get("offhand")
 	weapon_left = w.get("left")
+	weapon_hold_point = w.get("hold_point")
 	weapon_gem = w.get("gem")
 	if weapon_main != null:
 		hand_r.add_child(weapon_main)

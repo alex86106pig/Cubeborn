@@ -246,12 +246,12 @@ func _pose_overhead(idle: Dictionary, a: Dictionary, e: float, to: float, lean: 
 	rig.body.rotation.x = body
 
 
-# 舉著怪（鐵鏟）：雙手把鏟子往前上抬
+# 舉著怪（鐵鏟）：雙手把鏟子往前上抬到鏟面約肩膀高，身體後仰撐住（怪放在鏟上的托舉點，2026-10-27 原本 -1.15 鏟面貼地、怪像被推著）
 func _pose_holding(dt: float) -> void:
-	rig.arm_r.rotation.x = _step_lerp(rig.arm_r.rotation.x, -1.15, 0.3, dt)
-	rig.arm_l.rotation.x = _step_lerp(rig.arm_l.rotation.x, -1.0, 0.3, dt)
+	rig.arm_r.rotation.x = _step_lerp(rig.arm_r.rotation.x, -1.8, 0.3, dt)
+	rig.arm_l.rotation.x = _step_lerp(rig.arm_l.rotation.x, -1.65, 0.3, dt)
 	rig.arm_l.rotation.y = _step_lerp(rig.arm_l.rotation.y, 0.35, 0.3, dt)
-	rig.body.rotation.x = _step_lerp(rig.body.rotation.x, -0.12, 0.3, dt)
+	rig.body.rotation.x = _step_lerp(rig.body.rotation.x, -0.2, 0.3, dt)
 
 
 # 權杖：第 1 下橫掃（頭朝前），第 2 下（終結技）舉過頭往下砸

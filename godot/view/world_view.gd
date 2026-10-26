@@ -203,6 +203,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 			_anim_pending.erase(id)
 			_xray_on.erase(id)
 			_fade_level.erase(id)
+	var grabbed: Array[int] = []   # 被鐵鏟舉著的怪（迴圈後放到鏟面上）
 	for id: int in world.entities:
 		var e: Entity = world.entities[id]
 		if not _nodes.has(id):
@@ -230,7 +231,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 		if e is Enemy and (e as Enemy).anim.has("buried"):
 			node.position.y -= BURIED_DEPTH    # 被鐵鏟埋進土裡（F9）：只露半身
 		elif e is Enemy and (e as Enemy).anim.has("grabbed"):
-			node.position.y += GRABBED_LIFT    # 被鐵鏟舉著（F9）
+			grabbed.append(id)   # 被鐵鏟舉著（F9）：等玩家的手臂姿勢算好，迴圈後放到鏟面上
 		if e is Player:
 			_sync_block_fan(node.get_node(^"BlockFan"), e as Player)
 			var glow: OmniLight3D = node.get_meta(&"glow")
@@ -267,6 +268,8 @@ func sync(world: World, alpha: float, dt: float) -> void:
 				# 換了武器：新的武器模型也要寫模板值，否則身體的剪影會畫在擋在身體前面的武器上
 				node.set_meta(&"xray_weapon", (e as Player).weapon_id)
 				apply_xray(node, node.get_meta(&"xray"), node.get_meta(&"xray_shown"))
+	for id: int in grabbed:
+		_place_on_shovel(world, world.entities[id] as Enemy, _nodes[id])
 	var t2 := Time.get_ticks_usec()
 	_sync_grave(world)
 	_sync_strikes(world, dt)
@@ -348,7 +351,7 @@ func hidden_enemy_count(world: World) -> int:
 # 視野外變暗：蓋滿畫面的四邊形，從深度貼圖算出每個像素的世界位置，在視野扇形與身邊一圈之外蓋上暗色
 # 高台、牆的頂面也照它們自己的位置判斷；牆擋住的區域不畫暗（只隱藏牆後的怪物）
 const BURIED_DEPTH := 0.9   # 被埋的怪往下沉多少（F9）
-const GRABBED_LIFT := 0.8   # 被舉著的怪抬多高
+const GRABBED_TILT := -0.45   # 被舉著的怪身體往後仰（弧度）
 const MAX_LIGHTS := 16   # 視野遮罩最多畫幾個火把的光（F8；4 人 × 3 支 + 舉著的 4 支）
 
 const VISION_SHADER := """
@@ -742,6 +745,24 @@ func _tick_warm_up() -> void:
 			node.queue_free()
 		_warm_nodes.clear()
 		_warm_lights.clear()
+
+
+# 被鐵鏟舉著的怪（2026-10-27 網頁版實測：原本只抬高 0.8、維持站姿，看起來浮在空中）：
+# 腳放在舉著它的玩家武器上的托舉點（Rig.weapon_hold_point，跟著手臂動），身體往後仰。舉著的人：房主看 grabbed_by，客戶端找附近正在舉的玩家
+func _place_on_shovel(world: World, e: Enemy, node: Node3D) -> void:
+	var holder: Entity = world.entities.get(e.grabbed_by)
+	if holder == null:
+		var best := INF
+		for p in world.player_list:
+			var d := p.pos.distance_to(e.pos)
+			if p.anim.get("holding", false) and d < best:
+				best = d
+				holder = p
+	var rig := _nodes.get(holder.id) as Rig if holder != null else null
+	if rig == null or rig.weapon_hold_point == null:
+		return
+	node.global_position = rig.weapon_hold_point.global_position
+	node.rotate_object_local(Vector3.RIGHT, GRABBED_TILT)
 
 
 # 卡頓紀錄用的模型種類：材質或光不同的分開算（稀有怪有光環與點光源、寶箱分大小、道具分武器與稀有度、投射物分外觀）

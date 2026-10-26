@@ -248,7 +248,7 @@ static func _torch() -> Dictionary:
 	return {"kit": k, "main": g, "offhand": null, "gem": flame}
 
 
-# 鐵鏟（F9）：手握在柄的尾端（T 形握把），柄沿 -Y（手臂延伸的方向）伸出，鏟面在遠端
+# 鐵鏟（F9）：手握在柄的尾端（T 形握把），柄沿 -Y（手臂延伸的方向）伸出，鏟面在遠端，鏟面上有托舉點（hold_point）
 # 2026-10-27 網頁版實測：原本握在柄中段、柄沿 +Y，下半截柄往前戳、鏟面甩到身後，看起來像拿反
 static func _shovel() -> Dictionary:
 	var k := PartKit.new()
@@ -257,7 +257,12 @@ static func _shovel() -> Dictionary:
 	k.add(g, PartKit.cyl(0.03, 0.03, 1.15, 5), k.mat(C.wood), {"y": -0.55})
 	k.add(g, PartKit.box(0.26, 0.34, 0.03), k.mat(Color("a8a8a8")), {"y": -1.25, "rx": 0.25})
 	k.merge_static(g, [g])
-	return {"kit": k, "main": g, "offhand": null, "gem": null}
+	# 托舉點：鏟起的怪放在這裡（WorldView._place_on_shovel）；merge_static 之後才加，不會被合併掉
+	var hold := Node3D.new()
+	hold.name = "HoldPoint"
+	hold.position = Vector3(0.0, -1.3, 0.05)
+	g.add_child(hold)
+	return {"kit": k, "main": g, "offhand": null, "gem": null, "hold_point": hold}
 
 
 # 玩家的弓（F4）：豎直的弓身弧 + 弓弦，握在左手（Animator 讓它一直保持直立，右手拉弦）；size 是弓身半徑（短弓 0.55、長弓更大）
