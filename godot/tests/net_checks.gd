@@ -195,7 +195,7 @@ static func check_downed() -> String:
 	if p2.pos.distance_to(start) > 0.01:
 		return "倒地時不能移動（移動 %.3f）" % p2.pos.distance_to(start)
 	if not p2.is_dead or absf(steps * DT - Config.REVIVE.down_time) > 2.0 * DT:
-		return "沒人救應在 10 秒後死亡，實際 %d 步（%.2f 秒）" % [steps, steps * DT]
+		return "沒人救應在 %.0f 秒後死亡，實際 %d 步（%.2f 秒）" % [Config.REVIVE.down_time, steps, steps * DT]
 	if _named(events, "player:died").is_empty() or not _named(events, "game:defeat").is_empty():
 		return "P2 死亡應發出 player:died；P1 還站著，不應 game:defeat"
 	# P1 也倒下：沒有站著的人 → 全員死亡、game:defeat
@@ -226,17 +226,19 @@ static func check_revive() -> String:
 	p1.pos = Vector2(0, 0)
 	p2.pos = Vector2(0, 1.0)
 	p2.take_damage(1000.0, Vector2(1, 0), 0.0, 0)
+	var rv: Dictionary = Config.REVIVE
 	var hold := _cmd(Vector2(1, 0), InputCmd.BTN_INTERACT | InputCmd.BTN_ATTACK | InputCmd.BTN_JUMP)
 	for i in 180:   # 按住 3 秒（同時按移動、攻擊、跳躍：救援中都不應生效）
 		w.step({1: hold, 2: _cmd(Vector2.ZERO)}, DT)
 	if p1.pos.distance_to(Vector2.ZERO) > 0.01 or not p1.action.is_in(&"revive") or p1.height > 0.0:
 		return "按住 F 救援時不能移動、攻擊、跳躍（位置 %s、動作 %s、高度 %.2f）" % [p1.pos, p1.action.current_name, p1.height]
-	if absf(p2.revive_progress - 3.0) > 0.02 or absf(p2.down_timer - Config.REVIVE.down_time) > 0.02:
-		return "救援 3 秒：進度應 3.0、倒數暫停在 10.0，實際 %.3f / %.3f" % [p2.revive_progress, p2.down_timer]
-	for i in 60:    # 放開 1 秒：進度每秒 −1、倒數照走
+	if absf(p2.revive_progress - 3.0) > 0.02 or absf(p2.down_timer - rv.down_time) > 0.02:
+		return "救援 3 秒：進度應 3.0、倒數暫停在 %.1f，實際 %.3f / %.3f" % [rv.down_time, p2.revive_progress, p2.down_timer]
+	for i in 60:    # 放開 1 秒：進度每秒 −decay_rate、倒數照走
 		w.step({1: _cmd(Vector2.ZERO), 2: _cmd(Vector2.ZERO)}, DT)
-	if absf(p2.revive_progress - 2.0) > 0.02 or absf(p2.down_timer - 9.0) > 0.02:
-		return "放開 1 秒：進度應 2.0、倒數 9.0，實際 %.3f / %.3f" % [p2.revive_progress, p2.down_timer]
+	var left: float = 3.0 - rv.decay_rate
+	if absf(p2.revive_progress - left) > 0.02 or absf(p2.down_timer - (rv.down_time - 1.0)) > 0.02:
+		return "放開 1 秒：進度應 %.1f、倒數 %.1f，實際 %.3f / %.3f" % [left, rv.down_time - 1.0, p2.revive_progress, p2.down_timer]
 	if not p1.action.is_in(&"ready"):
 		return "放開 F 應結束救援，實際 %s" % p1.action.current_name
 	var events: Array[Dictionary] = []
@@ -245,10 +247,12 @@ static func check_revive() -> String:
 		w.step({1: _cmd(Vector2.ZERO, InputCmd.BTN_INTERACT), 2: _cmd(Vector2.ZERO)}, DT)
 		events.append_array(w.events)
 		steps += 1
-	if p2.is_downed or absf(steps * DT - 3.0) > 2.0 * DT:
-		return "再按住 3 秒（累積到 5 秒）應救起，實際 %d 步" % steps
-	if p2.hp != 30.0 or _named(events, "player:revived").is_empty() or not p2.locomotion.is_in(&"idle"):
-		return "救起後血量應為最大生命 30%%（30），實際 %.1f；應發出 player:revived 並站起來" % p2.hp
+	var more: float = rv.revive_time - left
+	if p2.is_downed or absf(steps * DT - more) > 2.0 * DT:
+		return "再按住 %.1f 秒（累積到 %.1f 秒）應救起，實際 %d 步" % [more, rv.revive_time, steps]
+	var revived_hp := roundf(p2.max_hp * rv.revive_hp_ratio)
+	if p2.hp != revived_hp or _named(events, "player:revived").is_empty() or not p2.locomotion.is_in(&"idle"):
+		return "救起後血量應為最大生命 %.0f%%（%.0f），實際 %.1f；應發出 player:revived 並站起來" % [rv.revive_hp_ratio * 100.0, revived_hp, p2.hp]
 	# 超出範圍：救援中斷
 	var w2 := _world([1, 2])
 	var a: Player = w2.players[1]
@@ -386,11 +390,12 @@ static func check_net_loot() -> String:
 	link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO, InputCmd.BTN_INTERACT))
 	idle.call(20)
 	var cw := link.client.world
-	if not chest.opened or hw.souls != 5 or hw.pickups.size() != 1:
-		return "房主：寶箱應打開、靈魂 30 → 5、地上 1 個道具：%s / %d / %d" % [chest.opened, hw.souls, hw.pickups.size()]
+	var left: int = 30 - LootDefs.CHESTS[&"small"].price
+	if not chest.opened or hw.souls != left or hw.pickups.size() != 1:
+		return "房主：寶箱應打開、靈魂 30 → %d、地上 1 個道具：%s / %d / %d" % [left, chest.opened, hw.souls, hw.pickups.size()]
 	var mirror: Chest = cw.entities.get(chest.id)
-	if mirror == null or not mirror.opened or cw.souls != 5 or cw.pickups.size() != 1:
-		return "客戶端：寶箱 %s、靈魂 %d、地上道具 %d（應為 已開 / 5 / 1）" % [mirror.opened if mirror else null, cw.souls, cw.pickups.size()]
+	if mirror == null or not mirror.opened or cw.souls != left or cw.pickups.size() != 1:
+		return "客戶端：寶箱 %s、靈魂 %d、地上道具 %d（應為 已開 / %d / 1）" % [mirror.opened if mirror else null, cw.souls, cw.pickups.size(), left]
 	link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO, InputCmd.BTN_INTERACT))
 	idle.call(20)
 	var me := link.client.local_player()
@@ -749,8 +754,9 @@ static func check_prediction(feel: Array[String]) -> String:
 	me = cp.pos
 	link.step(_cmd(Vector2.ZERO), _cmd(Vector2(1, 0)))
 	var first_move := cp.pos.x - me.x
-	if absf(first_move - 6.5 * DT) > 1e-3:
-		err = "按下移動的第一步就該在本機移動 %.4f，實際 %.4f（沒有預測）" % [6.5 * DT, first_move]
+	var speed: float = Config.PLAYER.move_speed
+	if absf(first_move - speed * DT) > 1e-3:
+		err = "按下移動的第一步就該在本機移動 %.4f，實際 %.4f（沒有預測）" % [speed * DT, first_move]
 	# 移動、跳、翻滾、轉彎、停下；房主的角色從場地下緣一直往 +Z 走（看客戶端畫面上的平順度；離客戶端的角色遠，不會互推、不會撞牆）
 	(link.host_world.players[1] as Player).pos = Vector2(-8, -15)
 	for i in 20:
@@ -774,7 +780,7 @@ static func check_prediction(feel: Array[String]) -> String:
 	var server_pos: Vector2 = (link.host_world.players[2] as Player).pos
 	var final_err := cp.pos.distance_to(server_pos)
 	var c := link.client
-	var expected_step := 6.5 * DT
+	var expected_step := speed * DT
 	var worst := 0.0
 	var outliers := []
 	for i in remote_steps.size():
@@ -820,8 +826,9 @@ static func check_net_downed() -> String:
 		steps += 1
 	for i in 15:
 		link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO))
-	if hp2.is_downed or me.is_downed or me.hp != 30.0 or not me.locomotion.is_in(&"idle"):
-		return "房主救起 P2 後，客戶端應站起來、血量 30（實際 downed=%s hp=%.1f %s）" % [me.is_downed, me.hp, me.locomotion.current_name]
+	var revived_hp := roundf(hp2.max_hp * Config.REVIVE.revive_hp_ratio)
+	if hp2.is_downed or me.is_downed or me.hp != revived_hp or not me.locomotion.is_in(&"idle"):
+		return "房主救起 P2 後，客戶端應站起來、血量 %.0f（實際 downed=%s hp=%.1f %s）" % [revived_hp, me.is_downed, me.hp, me.locomotion.current_name]
 	# 反過來：客戶端救倒地的房主
 	_hurt_between_steps(link, hp1)
 	steps = 0
@@ -829,7 +836,7 @@ static func check_net_downed() -> String:
 		link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO, InputCmd.BTN_INTERACT))
 		steps += 1
 	link.clear()
-	if hp1.is_downed or hp1.hp != 30.0:
+	if hp1.is_downed or hp1.hp != roundf(hp1.max_hp * Config.REVIVE.revive_hp_ratio):
 		return "客戶端按住 F 應能救起倒地的房主（%d 步後 downed=%s）" % [steps, hp1.is_downed]
 	return ""
 

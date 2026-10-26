@@ -76,10 +76,11 @@ static func check_dig() -> String:
 	_step(w, 20, {World.HOST_PEER_ID: look})
 	if not p.is_digging() or absf(angle_difference(p.facing, PI / 2.0)) > 0.01:
 		return "挖墳中應跟著滑鼠轉向：挖墳 %s、朝向 %.2f（預期 %.2f）" % [p.is_digging(), p.facing, PI / 2.0]
-	# 30 秒 = 50%
-	_step(w, 60 * 30 - 51, dig)
+	# 挖一半的時間 = 50%（前面已經挖了 51 步）
+	var dig_time: float = EventDefs.DIG.time
+	_step(w, roundi(dig_time / 2.0 / DT) - 51, dig)
 	if absf(w.event.progress - 0.5) > 0.01:
-		return "挖 30 秒進度 %.3f，預期 0.5" % w.event.progress
+		return "挖 %.0f 秒進度 %.3f，預期 0.5" % [dig_time / 2.0, w.event.progress]
 	# 被打不中斷、不會被擊退出挖墳範圍
 	var hit_at := p.pos
 	p.take_damage(10.0, Vector2(1, 0), 20.0, 0)
@@ -107,14 +108,15 @@ static func check_dig() -> String:
 	_p(w2, 1).pos = w2.event.point + Vector2(1.5, 0.0)
 	_p(w2, 2).pos = w2.event.point + Vector2(-1.5, 0.0)
 	_step(w2, 600, {1: _cmd(InputCmd.BTN_INTERACT), 2: _cmd(InputCmd.BTN_INTERACT)})
-	if absf(w2.event.progress - 1.0 / 3.0) > 0.01:
-		return "兩人一起挖 10 秒進度 %.3f，預期 0.333" % w2.event.progress
+	var two := 2.0 * 10.0 / dig_time
+	if absf(w2.event.progress - two) > 0.01:
+		return "兩人一起挖 10 秒進度 %.3f，預期 %.3f" % [w2.event.progress, two]
 	# 挖完：出口打開，不能再挖
 	var w3 := _world()
 	_p(w3).pos = w3.event.point + Vector2(1.5, 0.0)
-	var ev3 := _step(w3, 60 * 60 + 2, {World.HOST_PEER_ID: _cmd(InputCmd.BTN_INTERACT)})
+	var ev3 := _step(w3, roundi(dig_time / DT) + 2, {World.HOST_PEER_ID: _cmd(InputCmd.BTN_INTERACT)})
 	if w3.event.state != DigEvent.OPEN or _named(ev3, "event:exit_open").size() != 1 or _p(w3).is_digging():
-		return "挖滿 60 秒應打開出口並停止挖墳（狀態 %s）" % w3.event.state
+		return "挖滿 %.0f 秒應打開出口並停止挖墳（狀態 %s）" % [dig_time, w3.event.state]
 	# 太遠挖不到
 	var w4 := _world()
 	_p(w4).pos = w4.event.point + Vector2(EventDefs.DIG.range + 0.3, 0.0)
@@ -127,17 +129,26 @@ static func check_dig() -> String:
 # ───────── 難度與生怪 ─────────
 
 static func check_difficulty() -> String:
-	if absf(EventDefs.difficulty_mul(60.0).hp - 1.3) > EPS:
-		return "難度 60 怪物生命 ×%.2f，預期 ×1.3" % EventDefs.difficulty_mul(60.0).hp
-	for c: Array in [[0.0, 5.0], [100.0, 4.0], [450.0, 1.0]]:   # v0.44.0 方案 B（原本 3.0 / 2.0 / 0.8）
+	var dd: Dictionary = EventDefs.DIFFICULTY
+	var sp: Dictionary = EventDefs.SPAWN
+	var mul60: float = 1.0 + dd.stat_per_point * 60.0
+	if absf(EventDefs.difficulty_mul(60.0).hp - mul60) > EPS:
+		return "難度 60 怪物生命 ×%.2f，預期 ×%.2f" % [EventDefs.difficulty_mul(60.0).hp, mul60]
+	# 生怪間隔：難度 0 = interval_start、每點 −interval_per_point，夾在 interval_min（取到夾住前的 1/4 處與夾住後）
+	var clamp_at: float = (sp.interval_start - sp.interval_min) / sp.interval_per_point
+	for c: Array in [[0.0, sp.interval_start], [clamp_at / 4.0, sp.interval_start - sp.interval_per_point * clamp_at / 4.0], [clamp_at * 1.125, sp.interval_min]]:
 		if absf(EventDefs.spawn_interval(c[0]) - c[1]) > EPS:
 			return "難度 %d 生怪間隔 %.2f，預期 %.2f" % [c[0], EventDefs.spawn_interval(c[0]), c[1]]
-	for c: Array in [[0.0, 1, 2], [100.0, 1, 4], [100.0, 2, 6]]:   # 每 50 點多 1 隻（原本難度 100 單人 7、雙人 10）
+	# 每批數量：group_base + 難度 × group_per_point（捨去），每多 1 人 × (1 + per_extra_player)
+	var d2: float = 2.0 / sp.group_per_point   # 多 2 隻的難度
+	for c: Array in [[0.0, 1, sp.group_base], [d2, 1, sp.group_base + 2], [d2, 2, int((sp.group_base + 2) * (1.0 + sp.per_extra_player))]]:
 		if EventDefs.group_size(c[0], c[1]) != c[2]:
 			return "難度 %d、%d 人每批 %d 隻，預期 %d" % [c[0], c[1], EventDefs.group_size(c[0], c[1]), c[2]]
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 9
-	for c: Array in [[0.0, 0.05, 0.0], [200.0, 0.45, 0.16]]:
+	var d200 := 200.0
+	for c: Array in [[0.0, sp.magic_base, sp.rare_base],
+			[d200, minf(sp.magic_max, sp.magic_base + sp.magic_per_point * d200), minf(sp.rare_max, sp.rare_base + sp.rare_per_point * d200)]]:
 		var m := 0
 		var r := 0
 		for i in 20000:
@@ -147,7 +158,7 @@ static func check_difficulty() -> String:
 		if absf(m / 20000.0 - c[1]) > 0.015 or absf(r / 20000.0 - c[2]) > 0.015:
 			return "難度 %d：魔法 %.1f%%、稀有 %.1f%%，預期 %.0f%% / %.0f%%" % [c[0], m / 200.0, r / 200.0, c[1] * 100, c[2] * 100]
 	# 事件中：Boss 在挖墳點旁邊出現；Boss 活著時不冒怪、難度不漲（v0.38.0）；Boss 倒下後怪潮開始：
-	# interval_start 秒後第一批 2 隻（離玩家 8~18）、難度每秒 +1；60 秒後冒出來的骷髏生命 ×1.3
+	# interval_start 秒後第一批 group_base 隻（離玩家 8~18）、難度每秒 +per_second；60 秒後冒出來的骷髏生命 × difficulty_mul
 	var w := _world([World.HOST_PEER_ID], true)
 	var p := _p(w)
 	p.pos = w.event.point + Vector2(1.5, 0.0)
@@ -175,8 +186,10 @@ static func check_difficulty() -> String:
 		return "怪潮 %.1f 秒時難度 %.2f，預期約 %.1f（每秒 +1）" % [EventDefs.SPAWN.interval_start, w.difficulty(), w.base_difficulty + EventDefs.SPAWN.interval_start]
 	w.event.time = 60.0
 	var g := w.spawner.spawn_at(w, &"grunt", w.event.point + Vector2(0, 6))
-	if absf(w.difficulty() - 60.0) > 0.01 or absf(g.max_hp - roundf(36.0 * 1.3)) > EPS:   # 最大生命取整：46.8 → 47
-		return "難度 %.1f 時骷髏生命 %.1f，預期 60 / 47" % [w.difficulty(), g.max_hp]
+	var diff60: float = 60.0 * dd.per_second
+	var hp60 := roundf(EnemyDefs.ENEMIES.grunt.max_hp * EventDefs.difficulty_mul(diff60).hp)   # 最大生命取整：46.8 → 47
+	if absf(w.difficulty() - diff60) > 0.01 or absf(g.max_hp - hp60) > EPS:
+		return "難度 %.1f 時骷髏生命 %.1f，預期 %.0f / %.0f" % [w.difficulty(), g.max_hp, diff60, hp60]
 	# 怪群不擋事件生怪：放滿怪群（休眠）也照樣冒
 	var w2 := World.new(&"graveyard_a")
 	_made.append(w2)
@@ -186,7 +199,8 @@ static func check_difficulty() -> String:
 	(w2.entities.get(w2.boss_id) as Enemy).die()   # 怪潮在 Boss 倒下後才開始
 	_step(w2, roundi(EventDefs.SPAWN.interval_start / DT) + 3)
 	var horde := w2.enemies.filter(func(e: Entity) -> bool: return e is Enemy and (e as Enemy).wave_member and not e.is_dead).size()
-	if before < 50 or horde < EventDefs.SPAWN.group_base:
+	var min_packed: int = MonsterRarityDefs.PACKS.count[0] * MonsterRarityDefs.PACKS.size[0]
+	if before < min_packed or horde < EventDefs.SPAWN.group_base:
 		return "有 %d 隻怪群時事件沒有冒怪（冒了 %d 隻）" % [before, horde]
 	return ""
 
@@ -214,8 +228,9 @@ static func check_next_floor() -> String:
 	(w.chests[0] as Chest).opened = true
 	p.pos = w.event.point
 	var ev := _step(w, 1)
-	if w.floor_num != 2 or absf(w.base_difficulty - 10.0) > EPS or _named(ev, "floor:started").is_empty():
-		return "走進出口後應到第 2 層、基礎難度 10（實際第 %d 層、%.1f）" % [w.floor_num, w.base_difficulty]
+	var per_floor: float = EventDefs.DIFFICULTY.per_floor
+	if w.floor_num != 2 or absf(w.base_difficulty - per_floor) > EPS or _named(ev, "floor:started").is_empty():
+		return "走進出口後應到第 2 層、基礎難度 %.0f（實際第 %d 層、%.1f）" % [per_floor, w.floor_num, w.base_difficulty]
 	if p.pos.distance_to(w.spawn_point) > EPS or p.descended:
 		return "新的一層應回到出生點"
 	if w.souls != 40 or p.inventory.entries.size() != 1:
@@ -227,7 +242,7 @@ static func check_next_floor() -> String:
 		return "換層後地上的東西要清掉、寶箱重放（%d / %d 個）、事件歸零（地上 %d、事件 %s）" % [w.chests.size(), want_chests, w.pickups.size(), w.event.state]
 	if not w.enemies.is_empty():
 		return "換層後還有 %d 隻怪" % w.enemies.size()
-	# 第 2 層的怪群用基礎難度 10：生命 ×1.05
+	# 第 2 層的怪群用基礎難度 per_floor 的生命倍率
 	var w5 := World.new(&"graveyard_a")
 	_made.append(w5)
 	w5.reset(7)
@@ -237,8 +252,9 @@ static func check_next_floor() -> String:
 		if (e as Enemy).rarity == MonsterRarityDefs.NORMAL and e.kind == &"grunt":
 			normal = e
 			break
-	if normal == null or absf(normal.max_hp - roundf(36.0 * 1.05)) > EPS:   # 37.8 取整 38
-		return "第 2 層普通骷髏生命 %.2f，預期 38" % (normal.max_hp if normal else 0.0)
+	var hp2 := roundf(EnemyDefs.ENEMIES.grunt.max_hp * EventDefs.difficulty_mul(per_floor).hp)   # 37.8 取整 38
+	if normal == null or absf(normal.max_hp - hp2) > EPS:
+		return "第 2 層普通骷髏生命 %.2f，預期 %.0f" % [normal.max_hp if normal else 0.0, hp2]
 
 	# 兩人：先到的消失（不能被打、不被追），等另一人；有人倒地就不換層
 	var w2 := _world([1, 2])
@@ -303,13 +319,14 @@ static func check_corpse_ghost() -> String:
 			corpse = pk
 	if corpse == null:
 		return "多人時死亡應留下屍體"
-	# 撿起：占 6 格、沒有效果
+	# 撿起：占屍體形狀的格數、沒有效果
 	a.pos = corpse.pos + Vector2(0.6, 0)
 	_step(w, 1, {1: _cmd(InputCmd.BTN_INTERACT)})
 	var entry := a.inventory.find(Player.corpse_uid(2))
-	if entry.is_empty() or Inventory.cells_of(entry.id, entry.rot).size() != 6 or not a.items.is_empty():
-		return "撿起屍體應放進背包占 6 格、不算生效道具"
-	# 換層：出現冤魂（離出生點 10~14）
+	var cells: int = ItemDefs.SHAPES[ItemDefs.ITEMS.corpse.shape].size()
+	if entry.is_empty() or Inventory.cells_of(entry.id, entry.rot).size() != cells or not a.items.is_empty():
+		return "撿起屍體應放進背包占 %d 格、不算生效道具" % cells
+	# 換層：出現冤魂（離出生點 GHOST.distance）
 	_open(w)
 	a.pos = w.event.point
 	_step(w, 1)
@@ -321,13 +338,14 @@ static func check_corpse_ghost() -> String:
 		return "背著屍體換層後應出現冤魂"
 	var d := ghost.pos.distance_to(w.spawn_point)
 	if d < EventDefs.GHOST.distance[0] - 1.0 or d > EventDefs.GHOST.distance[1] + 1.0:
-		return "冤魂離出生點 %.1f，預期 10~14" % d
-	# 打倒冤魂：在那裡復活 30% 血、屍體從背包消失
+		return "冤魂離出生點 %.1f，預期 %.0f~%.0f" % [d, EventDefs.GHOST.distance[0], EventDefs.GHOST.distance[1]]
+	# 打倒冤魂：在那裡復活 revive_hp_ratio 的血、屍體從背包消失
 	var at := ghost.pos
 	ghost.take_damage(1e6, Vector2(1, 0), 0.0, a.id)
 	_step(w, 1, {}, false)
-	if b.is_dead or absf(b.hp - roundf(b.max_hp * 0.3)) > EPS or b.pos.distance_to(at) > 0.5:
-		return "打倒冤魂後應在冤魂位置復活、30%% 血（死亡 %s、血 %.0f）" % [b.is_dead, b.hp]
+	var ratio: float = EventDefs.GHOST.revive_hp_ratio
+	if b.is_dead or absf(b.hp - roundf(b.max_hp * ratio)) > EPS or b.pos.distance_to(at) > 0.5:
+		return "打倒冤魂後應在冤魂位置復活、%.0f%% 血（死亡 %s、血 %.0f）" % [ratio * 100.0, b.is_dead, b.hp]
 	if not a.inventory.find(Player.corpse_uid(2)).is_empty():
 		return "復活後屍體應從背包消失"
 	# 沒人帶屍體：下一層沒有冤魂
@@ -361,8 +379,9 @@ static func check_net_event() -> String:
 	NetCodec.apply_world(cw, snap)
 	for a: Array in snap[NetCodec.S_ENTITIES]:
 		NetCodec.create_entity(cw, a)
-	if cw.floor_num != 3 or cw.event.state != DigEvent.OPEN or absf(cw.difficulty() - 32.5) > EPS:
-		return "客戶端層數 %d、事件 %s、難度 %.1f，預期 3 / open / 32.5" % [cw.floor_num, cw.event.state, cw.difficulty()]
+	var diff: float = 20.0 + 12.5 * EventDefs.DIFFICULTY.per_second
+	if cw.floor_num != 3 or cw.event.state != DigEvent.OPEN or absf(cw.difficulty() - diff) > EPS:
+		return "客戶端層數 %d、事件 %s、難度 %.1f，預期 3 / open / %.1f" % [cw.floor_num, cw.event.state, cw.difficulty(), diff]
 	# 怪潮開始了沒（v0.38.0，HUD 進度條的說明文字要用）
 	if cw.event.horde != w.event.horde:
 		return "客戶端的怪潮狀態 %s，房主 %s" % [cw.event.horde, w.event.horde]

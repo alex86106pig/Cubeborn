@@ -62,15 +62,21 @@ static func check_enemy_defs() -> String:
 
 static func check_rarity() -> String:
 	var w := _world()
+	var gd: Dictionary = EnemyDefs.ENEMIES.grunt
+	var body: float = Config.HEIGHT.body.grunt
+	var rd: Dictionary = MonsterRarityDefs.RARITIES[MonsterRarityDefs.RARE]
 	var rare := _grunt(w, Vector2(0, 10), MonsterRarityDefs.RARE)
-	if absf(rare.max_hp - 180.0) > EPS or absf(rare.hp - 180.0) > EPS or absf(rare.damage_mul - 1.5) > EPS:
-		return "稀有骷髏：生命 %.1f / %.1f、攻擊力 ×%.2f，預期 180 / 180、×1.5" % [rare.hp, rare.max_hp, rare.damage_mul]
-	if absf(rare.radius - 0.54) > EPS or absf(rare.body_height - 1.95 * 1.2) > EPS:
-		return "稀有骷髏體型：半徑 %.3f、身高 %.3f，預期 0.54、2.34" % [rare.radius, rare.body_height]
+	var rare_hp: float = gd.max_hp * rd.hp
+	if absf(rare.max_hp - rare_hp) > EPS or absf(rare.hp - rare_hp) > EPS or absf(rare.damage_mul - rd.damage) > EPS:
+		return "稀有骷髏：生命 %.1f / %.1f、攻擊力 ×%.2f，預期 %.0f / %.0f、×%.1f" % [rare.hp, rare.max_hp, rare.damage_mul, rare_hp, rare_hp, rd.damage]
+	if absf(rare.radius - gd.radius * rd.scale) > EPS or absf(rare.body_height - body * rd.scale) > EPS:
+		return "稀有骷髏體型：半徑 %.3f、身高 %.3f，預期 %.2f、%.2f" % [rare.radius, rare.body_height, gd.radius * rd.scale, body * rd.scale]
+	var md: Dictionary = MonsterRarityDefs.RARITIES[MonsterRarityDefs.MAGIC]
 	var magic := _grunt(w, Vector2(5, 10), MonsterRarityDefs.MAGIC)
-	if absf(magic.max_hp - 72.0) > EPS or absf(magic.damage_mul - 1.2) > EPS or absf(magic.radius - 0.45) > EPS:
-		return "魔法骷髏：生命 %.1f、攻擊力 ×%.2f、半徑 %.2f，預期 72、×1.2、0.45" % [magic.max_hp, magic.damage_mul, magic.radius]
-	# 詞條數：魔法 1~2（兩種都會出現）、稀有 3，不重複；稀有怪有名字
+	var magic_hp: float = gd.max_hp * md.hp
+	if absf(magic.max_hp - magic_hp) > EPS or absf(magic.damage_mul - md.damage) > EPS or absf(magic.radius - gd.radius * md.scale) > EPS:
+		return "魔法骷髏：生命 %.1f、攻擊力 ×%.2f、半徑 %.2f，預期 %.0f、×%.1f、%.2f" % [magic.max_hp, magic.damage_mul, magic.radius, magic_hp, md.damage, gd.radius * md.scale]
+	# 詞條數：魔法 1~2（每種條數都會出現）、稀有 3，不重複；稀有怪有名字
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
 	var seen := {}
@@ -87,50 +93,61 @@ static func check_rarity() -> String:
 				return "詞條重複：%s" % [list]
 			if r == MonsterRarityDefs.MAGIC:
 				seen[list.size()] = true
-	if not (seen.has(1) and seen.has(2)):
-		return "魔法怪 2000 次只抽到 %s 條" % [seen.keys()]
+	var magic_range: Array = md.affixes
+	for k in range(magic_range[0], magic_range[1] + 1):
+		if not seen.has(k):
+			return "魔法怪 2000 次只抽到 %s 條" % [seen.keys()]
 	var named := w.spawner.spawn_at(w, &"grunt", Vector2(-5, 10))
 	Spawner.roll_rarity(w, named, MonsterRarityDefs.RARE)
-	if named.rare_name == "" or named.affixes.size() != 3:
-		return "稀有怪應有名字與 3 條詞條：「%s」%s" % [named.rare_name, named.affixes]
-	# 每群：魔法 1~2 隻（平均 1.5）、稀有 25%（20000 群，誤差 ±1.5%）
+	var rare_range: Array = rd.affixes
+	if named.rare_name == "" or named.affixes.size() < rare_range[0] or named.affixes.size() > rare_range[1]:
+		return "稀有怪應有名字與 %d 條詞條：「%s」%s" % [rare_range[0], named.rare_name, named.affixes]
+	# 每群：魔法 magic_per_pack 隻（取平均）、稀有 rare_chance 機率最多 1 隻（20000 群，誤差 ±1.5%）
+	var pc: Dictionary = MonsterRarityDefs.PACKS
+	var per_pack: Array = pc.magic_per_pack
+	var magic_avg: float = (per_pack[0] + per_pack[1]) / 2.0
 	var rares := 0
 	var magics := 0
 	for i in 20000:
 		var list := MonsterRarityDefs.roll_pack_rarities(10, rng)
 		var m := list.count(MonsterRarityDefs.MAGIC)
 		var r := list.count(MonsterRarityDefs.RARE)
-		if m < 1 or m > 2 or r > 1:
+		if m < per_pack[0] or m > per_pack[1] or r > 1:
 			return "一群有 %d 隻魔法、%d 隻稀有" % [m, r]
 		magics += m
 		rares += r
-	if absf(rares / 20000.0 - 0.25) > 0.015 or absf(magics / 20000.0 - 1.5) > 0.03:
-		return "20000 群：稀有 %.1f%%（預期 25%%）、每群魔法 %.2f 隻（預期 1.5）" % [rares / 200.0, magics / 20000.0]
+	if absf(rares / 20000.0 - pc.rare_chance) > 0.015 or absf(magics / 20000.0 - magic_avg) > 0.03:
+		return "20000 群：稀有 %.1f%%（預期 %.0f%%）、每群魔法 %.2f 隻（預期 %.1f）" % [rares / 200.0, pc.rare_chance * 100.0, magics / 20000.0, magic_avg]
 	return ""
 
 
 # ───────── 詞條 ─────────
 
 static func check_affixes() -> String:
+	var af: Dictionary = MonsterRarityDefs.AFFIXES
 	var w := _world()
 	var g := w.spawner.spawn_at(w, &"grunt", Vector2(0, 10))
 	var s0 := g.speed
+	var swift: float = af.swift.mods[0][2]
+	var mighty: float = af.mighty.mods[0][2]
 	g.set_rarity(MonsterRarityDefs.NORMAL, [&"swift", &"mighty"])
 	g.apply_rarity_stats()
-	if absf(g.speed - s0 * 1.3) > EPS or absf(g.damage_mul - 1.3) > EPS:
-		return "迅捷 / 強壯：移速 %.3f（預期 %.3f）、攻擊力 ×%.2f（預期 ×1.3）" % [g.speed, s0 * 1.3, g.damage_mul]
+	if absf(g.speed - s0 * swift) > EPS or absf(g.damage_mul - mighty) > EPS:
+		return "迅捷 / 強壯：移速 %.3f（預期 %.3f）、攻擊力 ×%.2f（預期 ×%.2f）" % [g.speed, s0 * swift, g.damage_mul, mighty]
 	var armored := _grunt(w, Vector2(5, 10), MonsterRarityDefs.NORMAL, [&"armored"])
 	var dealt := armored.take_damage(20.0, Vector2(0, 1), 0.0, 0)
-	if dealt != 15:
-		return "厚皮：受到 20 傷害扣 %d，預期 15" % dealt
-	# 再生：每秒 2% 最大生命（36 → 0.72）
+	var armored_want := roundi(20.0 * af.armored.mods[0][2])
+	if dealt != armored_want:
+		return "厚皮：受到 20 傷害扣 %d，預期 %d" % [dealt, armored_want]
+	# 再生：每秒 regen_ratio × 最大生命
 	var regen := _grunt(w, Vector2(-5, 10), MonsterRarityDefs.NORMAL, [&"regen"])
 	regen.hp = 10.0
 	_step(w, 60)
-	if absf(regen.hp - 10.72) > 0.01:
-		return "再生：1 秒後生命 %.3f，預期 10.72" % regen.hp
+	var regen_want: float = 10.0 + regen.max_hp * af.regen.regen_ratio
+	if absf(regen.hp - regen_want) > 0.01:
+		return "再生：1 秒後生命 %.3f，預期 %.2f" % [regen.hp, regen_want]
 
-	# 吸血：揮砍 12 → 回 2.4
+	# 吸血：揮砍傷害 × lifesteal 回血
 	var w2 := _world()
 	var vamp := _grunt(w2, Vector2(0, 1.2), MonsterRarityDefs.NORMAL, [&"vampiric"])
 	vamp.hp = 20.0
@@ -139,48 +156,54 @@ static func check_affixes() -> String:
 		_step(w2, 1)
 		if p2.hp < p2.max_hp:
 			break
-	if p2.hp >= p2.max_hp or absf(vamp.hp - 22.4) > 0.01:
-		return "吸血：玩家生命 %.0f、骷髏生命 %.2f（預期打中 12 後回到 22.4）" % [p2.hp, vamp.hp]
+	var swing: float = EnemyDefs.ENEMIES.grunt.swing.damage
+	var vamp_want: float = 20.0 + swing * af.vampiric.lifesteal
+	if p2.hp >= p2.max_hp or absf(vamp.hp - vamp_want) > 0.01:
+		return "吸血：玩家生命 %.0f、骷髏生命 %.2f（預期打中 %.0f 後回到 %.2f）" % [p2.hp, vamp.hp, swing, vamp_want]
 
-	# 狂暴：生命低於 30% 時移速、狀態機速度 ×1.4
+	# 狂暴：生命低於 threshold 時移速、狀態機速度 × speed
+	var fz: Dictionary = af.frenzy
 	var w3 := _world()
 	var fr := _grunt(w3, Vector2(0, 12), MonsterRarityDefs.NORMAL, [&"frenzy"])
 	_step(w3, 50)
 	var fs := fr.speed
-	fr.hp = 36.0 * 0.3 + 0.5
+	fr.hp = fr.max_hp * fz.threshold + 0.5
 	_step(w3, 1)
 	if fr.action_speed != 1.0:
-		return "狂暴：生命 31% 就觸發了"
-	fr.hp = 36.0 * 0.3 - 0.5
+		return "狂暴：生命 %.0f%% 就觸發了" % (fr.hp / fr.max_hp * 100.0)
+	fr.hp = fr.max_hp * fz.threshold - 0.5
 	_step(w3, 1)
-	if absf(fr.action_speed - 1.4) > EPS or absf(fr.speed - fs * 1.4) > EPS:
-		return "狂暴：生命 29%% 時狀態機速度 ×%.2f、移速 %.3f（預期 ×1.4、%.3f）" % [fr.action_speed, fr.speed, fs * 1.4]
+	if absf(fr.action_speed - fz.speed) > EPS or absf(fr.speed - fs * fz.speed) > EPS:
+		return "狂暴：生命 %.0f%% 時狀態機速度 ×%.2f、移速 %.3f（預期 ×%.1f、%.3f）" % [fr.hp / fr.max_hp * 100.0, fr.action_speed, fr.speed, fz.speed, fs * fz.speed]
 
-	# 死亡爆炸：死時預警、0.8 秒後半徑 2.2 爆炸 20 傷害；3.0 外炸不到
-	for dist: float in [1.5, 3.0]:
+	# 死亡爆炸：死時預警、delay 秒後半徑 radius 爆炸；半徑內 0.7 炸得到、半徑外 0.8 炸不到
+	var vd: Dictionary = af.volatile
+	var boom_step := roundi(vd.delay / DT)
+	for dist: float in [vd.radius - 0.7, vd.radius + 0.8]:
 		var w4 := _world()
 		var p4: Player = w4.players[World.HOST_PEER_ID]
 		var vol := _grunt(w4, Vector2(0, dist), MonsterRarityDefs.NORMAL, [&"volatile"])
 		vol.die()
-		var warned := w4.events.any(func(ev: Dictionary) -> bool: return ev.name == "fx:telegraph" and absf(ev.radius - 2.2) < EPS)
+		var warned := w4.events.any(func(ev: Dictionary) -> bool: return ev.name == "fx:telegraph" and absf(ev.radius - vd.radius) < EPS)
 		if not warned:
-			return "死亡爆炸：死的時候沒有 2.2 的預警圈"
+			return "死亡爆炸：死的時候沒有 %.1f 的預警圈" % vd.radius
 		var hit_step := -1
-		for i in 60:
+		for i in boom_step + 12:
 			_step(w4, 1)
 			for ev in w4.events:
 				if ev.name == "entity:damaged" and ev.target_id == p4.id:
-					if ev.amount != 20:
-						return "死亡爆炸傷害 %d，預期 20" % ev.amount
+					if ev.amount != roundi(vd.damage):
+						return "死亡爆炸傷害 %d，預期 %.0f" % [ev.amount, vd.damage]
 					hit_step = i + 1
 			if hit_step > 0:
 				break
-		if dist < 2.0 and (hit_step < 47 or hit_step > 50):
-			return "死亡爆炸：第 %d 步炸到玩家，預期約第 48 步（0.8 秒）" % hit_step
-		if dist > 2.0 and hit_step > 0:
-			return "死亡爆炸：距離 3.0 的玩家也被炸到"
+		if dist < vd.radius and (hit_step < boom_step - 1 or hit_step > boom_step + 2):
+			return "死亡爆炸：第 %d 步炸到玩家，預期約第 %d 步（%.1f 秒）" % [hit_step, boom_step, vd.delay]
+		if dist > vd.radius and hit_step > 0:
+			return "死亡爆炸：距離 %.1f 的玩家也被炸到" % dist
 
-	# 召喚：醒來 8 秒後叫 2 隻骷髏戰士，同時最多 6 隻
+	# 召喚：爬出後 interval 秒叫 count 隻骷髏戰士，同時最多 max_alive 隻
+	var sd: Dictionary = af.summoner
 	var w5 := _world()
 	var sm := _grunt(w5, Vector2(0, 12), MonsterRarityDefs.NORMAL, [&"summoner"])
 	var minions := func() -> int:
@@ -189,15 +212,18 @@ static func check_affixes() -> String:
 			if e is Enemy and (e as Enemy).summoner_id == sm.id and not e.is_dead:
 				n += 1
 		return n
-	_step(w5, roundi((0.7 + 8.0) / DT) - 3, true)
+	var first: float = EnemyDefs.ENEMIES.grunt.spawn_time + sd.interval
+	_step(w5, roundi(first / DT) - 3, true)
 	if minions.call() != 0:
-		return "召喚：8.7 秒前就叫出 %d 隻" % minions.call()
+		return "召喚：%.1f 秒前就叫出 %d 隻" % [first, minions.call()]
 	_step(w5, 6, true)
-	if minions.call() != 2:
-		return "召喚：8.7 秒後應有 2 隻，實際 %d" % minions.call()
-	_step(w5, roundi(25.0 / DT), true)
-	if minions.call() != 6:
-		return "召喚：33.7 秒後應有 6 隻（上限），實際 %d" % minions.call()
+	if minions.call() != sd.count:
+		return "召喚：%.1f 秒後應有 %d 隻，實際 %d" % [first, sd.count, minions.call()]
+	# 再等到上限之後多一輪：一直叫到 max_alive 就停
+	var more: float = ceili(float(sd.max_alive) / sd.count) * sd.interval + 1.0
+	_step(w5, roundi(more / DT), true)
+	if minions.call() != sd.max_alive:
+		return "召喚：%.1f 秒後應有 %d 隻（上限），實際 %d" % [first + more, sd.max_alive, minions.call()]
 	return ""
 
 
@@ -208,7 +234,7 @@ static func check_packs() -> String:
 	var c: Dictionary = MonsterRarityDefs.PACKS
 	var n := w.packs.size()
 	if n < c.count[0] or n > c.count[1]:
-		return "地圖 A 有 %d 群，預期 12~20" % n
+		return "地圖 A 有 %d 群，預期 %d~%d" % [n, c.count[0], c.count[1]]
 	for ev in w.events:
 		if ev.name == "sfx:cue" and ev.cue == "enemySpawn":
 			return "開場散放怪群時播了爬出音效"
@@ -224,7 +250,7 @@ static func check_packs() -> String:
 				return "第 %d、%d 群只相距 %.1f" % [j, i, center.distance_to(w.packs[j].center)]
 		var ids: Array = pk.ids
 		if ids.size() < c.size[0] or ids.size() > c.size[1]:
-			return "第 %d 群有 %d 隻，預期 6~15" % [i, ids.size()]
+			return "第 %d 群有 %d 隻，預期 %d~%d" % [i, ids.size(), c.size[0], c.size[1]]
 		var magic := 0
 		var rare := 0
 		for id: int in ids:
@@ -236,7 +262,7 @@ static func check_packs() -> String:
 			magic += 1 if e.rarity == MonsterRarityDefs.MAGIC else 0
 			rare += 1 if e.rarity == MonsterRarityDefs.RARE else 0
 			start[id] = e.pos
-		if magic < 1 or magic > 2 or rare > 1:
+		if magic < c.magic_per_pack[0] or magic > c.magic_per_pack[1] or rare > 1:
 			return "第 %d 群有 %d 隻魔法、%d 隻稀有" % [i, magic, rare]
 		total += ids.size()
 	# 玩家沒靠近：3 秒都不走（速度 0）；成員一開始若有重疊，碰撞分離推開後就完全靜止
@@ -249,9 +275,9 @@ static func check_packs() -> String:
 		var e: Enemy = w.entities[id]
 		if not e.dormant or e.velocity != Vector2.ZERO or e.pos.distance_to(settled[id]) > EPS:
 			return "玩家沒靠近，%d 號就醒了或在走（第 2~3 秒移動 %.3f）" % [id, e.pos.distance_to(settled[id])]
-	# 走到第 0 群 11 單位內：中心 12 以內的群整群醒來，其他的照睡
+	# 走到第 0 群 wake_distance − 1 內：中心 wake_distance 以內的群整群醒來，其他的照睡
 	var p: Player = w.players[World.HOST_PEER_ID]
-	var near := w.nav.nearest_walkable(w.packs[0].center + Vector2(0, 11))
+	var near := w.nav.nearest_walkable(w.packs[0].center + Vector2(0, c.wake_distance - 1.0))
 	if near.distance_to(w.packs[0].center) > c.wake_distance:
 		near = w.packs[0].center
 	p.pos = near
