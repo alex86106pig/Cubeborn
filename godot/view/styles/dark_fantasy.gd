@@ -194,7 +194,7 @@ static func weapon(model: StringName) -> Dictionary:
 		&"shortbow":
 			return _player_bow(0.5, Color("8a5a32"), 0.6)
 		&"longbow":
-			return _player_bow(0.8, Color("5a3a1e"), 0.9)
+			return _player_bow(0.8, Color("5a3a1e"), 0.68)   # 箭長：拉滿時（沒手肘、側身 70° 約拉 0.57）箭頭剛好露出弓外一點，0.9 太凸（2026-10-27 使用者）
 		&"daggers":
 			return _daggers()
 		&"scepter":
