@@ -6,3 +6,5 @@ Thumbs.db
 .claude/settings.local.json
 CLAUDE.local.md
 godot/tests/check_last.log
+# webrtc-native 的 macOS 程式庫：只有 Mac 開發機要，各台自己下載（docs/新電腦設定.md 5.2）
+godot/addons/webrtc_native/lib/*.framework/

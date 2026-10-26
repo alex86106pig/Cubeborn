@@ -1,5 +1,6 @@
 ; Godot 官方 webrtc-native 1.2.2（https://github.com/godotengine/webrtc-native，MIT，授權見同資料夾 LICENSE.*）
-; 讓桌面版也有 WebRTC：房號連線、和網頁版互連（v0.40.0）。只留 Windows / Linux x86_64（Linux 給 CI 的 check.gd 用）；
+; 讓桌面版也有 WebRTC：房號連線、和網頁版互連（v0.40.0）。repo 只留 Windows / Linux x86_64（Linux 給 CI 的 check.gd 用）；
+; macOS 的 .framework 不進版控（.gitignore），只有 Mac 開發機要，各台照 docs/新電腦設定.md 自己下載；
 ; 網頁版用瀏覽器內建的 WebRTC，匯出時排除（exclude_tags）
 [configuration]
 
@@ -10,7 +11,9 @@ exclude_tags = ["web", "no-webrtc"]
 
 [libraries]
 
+macos.debug = "lib/libwebrtc_native.macos.template_debug.universal.framework"
 linux.debug.x86_64 = "lib/libwebrtc_native.linux.template_debug.x86_64.so"
 windows.debug.x86_64 = "lib/libwebrtc_native.windows.template_debug.x86_64.dll"
+macos.release = "lib/libwebrtc_native.macos.template_release.universal.framework"
 linux.release.x86_64 = "lib/libwebrtc_native.linux.template_release.x86_64.so"
 windows.release.x86_64 = "lib/libwebrtc_native.windows.template_release.x86_64.dll"

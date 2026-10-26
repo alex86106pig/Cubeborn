@@ -3,6 +3,11 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
+## [未發布]
+
+### 修改
+- **Mac 開發機也能載入 webrtc-native**：`webrtc_native.gdextension` 加上 macOS（universal）的兩行；程式庫本身不進版控（`.gitignore`），Mac 照 `docs/新電腦設定.md` 5.2 從官方 1.2.2 下載。Mac 上 `check.gd` 132 / 135 → 135 / 135（原本房號連線的 3 項找不到程式庫）。Windows / Linux 與 CI 不受影響。
+
 ## [0.45.2] - 2026-10-26
 
 ### 新增
