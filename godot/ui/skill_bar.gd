@@ -48,6 +48,7 @@ func refresh(world: World, player: Player) -> void:
 			if player.roll_charges > 0:
 				slot.cd_ratio = 0.0
 		slot.queue_redraw()
+		slot.mask.queue_redraw()
 
 
 func flash(key: String, deny: bool) -> void:
@@ -90,6 +91,7 @@ class Slot extends Control:
 	var index := -1
 	var icon: Label
 	var drawn_icon := ""        # DRAWN_ICONS 之一時由 _draw 畫，icon 文字留空
+	var mask: Control           # CD 扇形遮罩；子節點會畫在格子的 _draw 上面，獨立一層才能蓋住文字圖示、又墊在秒數底下
 	var charges: Label
 	var cd_text: Label
 	var cd_left := 0.0
@@ -106,7 +108,14 @@ class Slot extends Control:
 			drawn_icon = p_icon
 			p_icon = ""
 		icon = _centered(UiKit.label(p_icon, 20 if p_icon.length() > 1 else 28))   # 兩個字的（招架）縮小才塞得進
-		cd_text = _centered(UiKit.label("", 18))
+		mask = Control.new()
+		mask.size = Vector2(SLOT_SIZE, SLOT_SIZE)
+		mask.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		mask.draw.connect(_draw_mask)
+		add_child(mask)
+		cd_text = _centered(UiKit.label("", 24))
+		cd_text.add_theme_color_override(&"font_outline_color", UiKit.SHADOW)
+		cd_text.add_theme_constant_override(&"outline_size", 6)
 		charges = UiKit.label("", 13, UiKit.CHARGES, 1)
 		charges.position = Vector2(SLOT_SIZE - 16, -1)
 		add_child(charges)
@@ -131,8 +140,10 @@ class Slot extends Control:
 		draw_rect(r.grow(-3.0), UiKit.SLOT_BG)
 		if drawn_icon != "":
 			SkillIcons.draw(self, drawn_icon, size / 2.0, icon.modulate.a)
+
+	# 從 12 點鐘方向順時針的扇形遮罩（網頁版 conic-gradient）；隨冷卻從 12 點鐘逆時針露出圖示
+	func _draw_mask() -> void:
 		if cd_ratio > 0.0:
-			# 從 12 點鐘方向順時針的扇形遮罩（網頁版 conic-gradient）
 			var c := size / 2.0
 			var pts := PackedVector2Array([c])
 			var steps := 32
@@ -141,7 +152,7 @@ class Slot extends Control:
 				pts.append(c + Vector2(cos(a), sin(a)) * SLOT_SIZE)
 			var clipped := Geometry2D.intersect_polygons(pts, PackedVector2Array([Vector2.ZERO, Vector2(size.x, 0), size, Vector2(0, size.y)]))
 			for poly in clipped:
-				draw_colored_polygon(poly, Color(0, 0, 0, 0.7))
+				mask.draw_colored_polygon(poly, Color(0, 0, 0, 0.7))
 
 	func flash(deny: bool) -> void:
 		if _tween:

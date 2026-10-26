@@ -195,6 +195,28 @@ static func check_skill_bar_parry() -> String:
 	return err
 
 
+# 技能欄 CD 遮罩：文字圖示（散射、影步…）與秒數都是格子的子節點，會畫在格子 _draw 上面；
+# 遮罩獨立一層，疊放順序要是 圖示 < 遮罩 < 秒數，冷卻中才會壓暗圖示、秒數浮在最上面
+static func check_skill_bar_cd_mask() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	p.equip_weapon(&"shortbow")
+	var bar := SkillBar.new()
+	_scene_root().add_child(bar)
+	bar.refresh(w, p)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL | InputCmd.BTN_SPECIAL_HELD), 1)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 30)
+	bar.refresh(w, p)
+	var s: SkillBar.Slot = bar._slots["player.special"]
+	var err := ""
+	if s.cd_ratio <= 0.0 or s.cd_left <= 0.0:
+		err = "短弓散射後右鍵格應在冷卻：比例 %.2f、秒數 %.2f" % [s.cd_ratio, s.cd_left]
+	elif not (s.icon.get_index() < s.mask.get_index() and s.mask.get_index() < s.cd_text.get_index()):
+		err = "疊放順序應為 圖示 < 遮罩 < 秒數：%d / %d / %d" % [s.icon.get_index(), s.mask.get_index(), s.cd_text.get_index()]
+	bar.queue_free()
+	return err
+
+
 # 從 node 往上到 menu 都是 visible（-s 檢查裡 is_visible_in_tree 不可靠）
 static func _shown(node: Control, menu: Control) -> bool:
 	var n: Node = node
