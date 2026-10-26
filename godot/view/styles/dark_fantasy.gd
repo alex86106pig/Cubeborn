@@ -270,7 +270,11 @@ static func _shovel() -> Dictionary:
 # 兩端往拉弓的人這側（-Z）彎回來，弦接兩端（2026-10-27 使用者：原本圓心偏後，手握的位置不在弓身上）
 const BOW_SEGMENTS := 8
 const BOW_HALF_ARC := 0.85   # 弓身半邊張開的角度（弧度）
-const QUIVER_SCALE := 1.4    # 箭袋大小（2026-10-27 使用者：做大一點）
+# 箭袋（身體座標，玩家騎士 KNIGHT_JOINTS 的右肩在 (-0.36, 1.55, 0)）：袋口放在右手往後上方伸直時手停的位置
+# （Animator.QUIVER_ARM），箭袋從那裡斜穿背部到左腰下方，夠長夠粗：手伸進袋口、箭在袋裡出現被擋住（2026-10-27 使用者）
+const QUIVER_MOUTH := Vector3(-0.47, 1.94, -0.57)
+const QUIVER_BOTTOM := Vector3(0.12, 1.05, -0.32)
+const QUIVER_RADIUS := 0.14
 
 
 # arrow：箭長（短弓的箭短一點，2026-10-27 使用者）；背上一律有箭袋（back，掛在 Rig.body），
@@ -299,23 +303,23 @@ static func _player_bow(size: float, wood: Color, arrow: float) -> Dictionary:
 	nock.visible = false
 	var out := {"kit": k, "main": null, "offhand": null, "left": g, "nock": nock, "gem": null}
 	var quiver_count: int = WeaponDefs.WEAPONS[&"shortbow"].attack.quiver
-	# 箭袋：背在身後、上端靠右肩；袋口露出 quiver_count 支箭（各自一個節點，不合併，射一支藏一支）
+	# 箭袋：從右肩後上方（袋口）斜穿背部到左腰；袋口露出 quiver_count 支箭（各自一個節點，不合併，射一支藏一支）
+	var axis := QUIVER_MOUTH - QUIVER_BOTTOM
+	var length := axis.length()
 	var quiver := Node3D.new()
-	k.add(quiver, PartKit.cyl(0.1, 0.08, 0.6, 6), k.mat(C.leather), {"y": 0.0})
-	k.add(quiver, PartKit.cyl(0.105, 0.105, 0.05, 6), k.mat(Color("8a6a3a")), {"y": 0.29})
+	k.add(quiver, PartKit.cyl(QUIVER_RADIUS, QUIVER_RADIUS * 0.75, length, 7), k.mat(C.leather), {"y": 0.0})
+	k.add(quiver, PartKit.cyl(QUIVER_RADIUS + 0.01, QUIVER_RADIUS + 0.01, 0.06, 7), k.mat(Color("8a6a3a")), {"y": length / 2.0 - 0.03})
 	k.merge_static(quiver, [quiver])
 	var arrows: Array[Node3D] = []
 	for i in quiver_count:
 		var a := Node3D.new()
 		var ang := TAU * i / quiver_count
-		a.position = Vector3(cos(ang) * 0.045, 0.36, sin(ang) * 0.045)
-		k.add(a, PartKit.cyl(0.012, 0.012, 0.14, 3), k.mat(Color("e0c890")), {"y": -0.05})
-		k.add(a, PartKit.box(0.06, 0.1, 0.01), k.mat(Color("f0f0f0")), {"y": 0.04, "ry": ang})
+		a.position = Vector3(cos(ang) * QUIVER_RADIUS * 0.5, length / 2.0 + 0.07, sin(ang) * QUIVER_RADIUS * 0.5)
+		k.add(a, PartKit.cyl(0.014, 0.014, 0.18, 3), k.mat(Color("e0c890")), {"y": -0.06})
+		k.add(a, PartKit.box(0.08, 0.13, 0.012), k.mat(Color("f0f0f0")), {"y": 0.05, "ry": ang})
 		quiver.add_child(a)
 		arrows.append(a)
-	quiver.position = Vector3(-0.12, 1.25, -0.32)
-	quiver.rotation = Vector3(-0.15, 0.0, 0.4)   # 上端往右肩（-X）斜
-	quiver.scale = Vector3.ONE * QUIVER_SCALE
+	quiver.transform = Transform3D(Basis(Quaternion(Vector3.UP, axis.normalized())), (QUIVER_MOUTH + QUIVER_BOTTOM) / 2.0)
 	out["back"] = quiver
 	out["quiver_arrows"] = arrows
 	return out

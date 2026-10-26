@@ -278,13 +278,14 @@ func _pose_mace(idle: Dictionary, a: Dictionary, e: float, dt: float) -> void:
 # 拉弓（2026-10-27 使用者：箭要從右手拿出、搭上弓弦）：一發的循環 = 收招時右手往上繞到背後箭袋把下一支箭往上抽出（箭沿手臂拿著）
 # → 前搖前段經過頭頂往上繞到弓前搭弦（搭上後箭和瞄準方向平行）→ 前搖後段拉到胸前 → active 放箭、手往外彈、箭消失；
 # 蓄力（charge）時 active 一直拉滿。左手持弓平舉、一直保持直立。右臂 rotation.y 正 = 往身體中線（內側）
-const QUIVER_ARM := Vector2(-4.4, 0.2)   # 右手碰到背後的箭袋口（手臂往正後方、稍微往上）；和 NOCK_ARM 之間內插 = 往上抽、經過頭頂繞到前方
+const QUIVER_ARM := Vector2(-4.13, 0.19) # 右手伸進背後的箭袋口（手臂往後上方；DarkFantasy.QUIVER_MOUTH 就擺在這時手的位置）；和 NOCK_ARM 之間內插 = 往上抽、經過頭頂繞到前方
 # （2026-10-27 使用者：箭袋維持在背上，從箭袋取出、向上繞再搭到弓上；水平往後擺的版本弧度太大）
 const NOCK_ARM := Vector2(-1.5, 0.45)    # 右手在弓前搭弦
 const DRAW_OUT := -0.35                  # 拉弦時右手往外後方收的角度
 const NOCK_BACK := 0.25                  # 剛搭上弦時箭尾在握把後方多遠
 const DRAWN_BACK := 0.6                  # 拉滿時箭尾在握把後方多遠（箭往後縮）
 const BRING_PART := 0.45                 # 前搖的前段（帶到弓前）佔多少
+const BOW_TWIST := 0.7                   # 拉滿時身體順時針轉多少（弧度）
 const QUIVER_TOUCH := 0.95               # 收招走到這個比例時手碰到箭袋，箭才出現
 
 
@@ -310,10 +311,19 @@ func _pose_bow(idle: Dictionary, a: Dictionary, e: float, charge: bool) -> void:
 			var from := NOCK_ARM + Vector2(0.0, DRAW_OUT - 0.8)
 			arm = from.lerp(QUIVER_ARM, e)   # 收招：伸到肩後拿下一支箭
 			arrow = &"hand" if e >= QUIVER_TOUCH else &"none"   # 手碰到箭袋才拿出箭（2026-10-27 使用者）
-	const BODY_YAW := 0.35   # 身體側過來、左肩朝前
-	rig.body.rotation.y = BODY_YAW
+	# 拉弓時身體順時針轉（從上往下看；左肩朝向目標），拉得越滿轉越多（2026-10-27 使用者：原本 +0.35 是逆時針、右肩朝前）
+	var twist := 0.0
+	match a.phase:
+		&"windup":
+			twist = 0.4 * bring + 0.6 * draw
+		&"active":
+			twist = 1.0 if charge else 1.0 - 0.5 * e
+		_:
+			twist = 0.5 * (1.0 - e)
+	var yaw := -BOW_TWIST * twist
+	rig.body.rotation.y = yaw
 	rig.body.rotation.x = 0.0
-	rig.arm_l.rotation = Vector3(-1.55, -BODY_YAW, 0.0)   # 弓手抵銷身體轉向，指向前方
+	rig.arm_l.rotation = Vector3(-1.55, -yaw, 0.0)   # 弓手抵銷身體轉向，指向前方
 	rig.arm_r.rotation = Vector3(arm.x, arm.y, 0.0)
 	if rig.weapon_nock == null:
 		return
