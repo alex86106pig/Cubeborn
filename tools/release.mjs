@@ -2,6 +2,7 @@
 //   node tools/release.mjs --check                        只跑 Godot 匯入 + check.gd（有逾時）
 //   node tools/release.mjs --web                          匯出網頁版並開本機伺服器 http://localhost:8060（--port 換埠）
 //   node tools/release.mjs --perf                         匯出網頁版，在不開視窗的 Chrome 原地轉身 30 秒量效能（--chrome <路徑> 或環境變數 CHROME；環境變數 PERF_QUERY 換網址參數）
+//   node tools/release.mjs --load                         匯出網頁版，在不開視窗的 Chrome 開兩次（沒有 / 有瀏覽器快取），量開場時間軸與著色器編譯
 //   node tools/release.mjs --summary "摘要"               推送：更新（rebase）→ 決定版號 → 檢查 → commit + tag → push
 //   node tools/release.mjs --summary "摘要" --dry-run     不動 git 歷史、不推：只 fetch、算版號、改檔跑檢查，最後還原
 //   加 --bump=minor|patch 可以蓋過自動判斷的版號
@@ -108,7 +109,7 @@ function serveWeb(out, port) {
   return new Promise((resolve, reject) => { server.on('error', reject); server.listen(port, '127.0.0.1', () => resolve(server)); });
 }
 
-if (has('web') && !has('perf')) {
+if (has('web') && !has('perf') && !has('load')) {
   const port = Number(opt('port')) || 8060;
   await serveWeb(exportWeb(), port).catch(e => fail(`開不了伺服器（埠 ${port}）：${e.message}`));
   console.log(`✔ 已匯出網頁版：http://localhost:${port}/（量幀時間加 ?perf；Ctrl+C 結束）`);
@@ -182,6 +183,7 @@ async function webPerf() {
       if (m.method === 'Runtime.exceptionThrown') lines.push(`例外：${m.params.exceptionDetails.text}`);
       if (m.method !== 'Runtime.consoleAPICalled') return;
       const text = m.params.args.map(a => a.value ?? a.description ?? '').join(' ');
+      if (/^perf load /.test(text)) return;   // 開場時間點是給 --load 的，不算遊戲開始跑
       if (/^perf hitch/.test(text)) { if (++hitches <= 20) lines.push(text); return; }
       // 第一行 perf 出現 = 遊戲開始跑了：開始來回轉身（滑鼠在畫面中央左右兩側，角色面向跟著滑鼠）
       if (/^perf|^Build configuration/.test(text) && !timer) {
@@ -200,6 +202,154 @@ async function webPerf() {
 }
 
 if (has('perf')) process.exit(await webPerf() ? 0 : 1);
+
+// 網頁版開場載入（--load）：匯出後用全新設定資料夾的 headless Chrome 開兩次（第一次沒有瀏覽器的著色器快取、第二次有，
+// 同玩家第一次 / 之後再來），攔截 WebGL 的著色器編譯，印出開場時間軸、編了幾個著色器程式、等編譯的時間與最慢的程式
+// 程式類型看 Godot 編進去的 #define：一般繪製（BASE_PASS）、陰影深度（MODE_RENDER_DEPTH）、點光源疊加（USE_ADDITIVE_LIGHTING）
+// 只量得到 WebGL 呼叫裡等編譯的時間；驅動延到第一次畫才編的部分算在預熱的其餘時間裡
+const LOAD_TIMEOUT = 3 * 60 * 1000;
+const LOAD_KEYS = ['BASE_PASS', 'MODE_RENDER_DEPTH', 'USE_ADDITIVE_LIGHTING', 'MODE_UNSHADED', 'USE_INSTANCING'];
+
+// 在頁面裡執行（轉成字串注入）：每個程式的耗時 = 連結 + 查連結結果 + 它的著色器編譯與查編譯結果
+function loadHook(keys) {
+  const S = window.__load = { programs: [], marks: [], waitMs: 0 };
+  const NL = String.fromCharCode(10);
+  const src = new WeakMap(), shMs = new WeakMap(), att = new WeakMap(), prog = new WeakMap();
+  const P = WebGL2RenderingContext.prototype;
+  const timed = (name, after) => {
+    const f = P[name];
+    P[name] = function (...a) {
+      const t = performance.now();
+      const r = f.apply(this, a);
+      const d = performance.now() - t;
+      S.waitMs += d;
+      after(a, d);
+      return r;
+    };
+  };
+  const ss = P.shaderSource;
+  P.shaderSource = function (sh, code) { src.set(sh, code); return ss.call(this, sh, code); };
+  const as = P.attachShader;
+  P.attachShader = function (pr, sh) { if (!att.has(pr)) att.set(pr, []); att.get(pr).push(sh); return as.call(this, pr, sh); };
+  timed('compileShader', (a, d) => shMs.set(a[0], (shMs.get(a[0]) || 0) + d));
+  timed('getShaderParameter', (a, d) => shMs.set(a[0], (shMs.get(a[0]) || 0) + d));
+  timed('linkProgram', (a, d) => {
+    const shs = att.get(a[0]) || [];
+    const defs = new Set();
+    for (const sh of shs) {
+      for (const line of (src.get(sh) || '').split(NL)) {
+        const l = line.trim();
+        if (l.startsWith('#define ')) defs.add(l.slice(8).trim());
+      }
+    }
+    const e = { t: Math.round(performance.now()), ms: d + shs.reduce((x, sh) => x + (shMs.get(sh) || 0), 0), defs: keys.filter(k => defs.has(k)) };
+    S.programs.push(e);
+    prog.set(a[0], e);
+  });
+  timed('getProgramParameter', (a, d) => { const e = prog.get(a[0]); if (e) e.ms += d; });
+  const log = console.log;
+  console.log = function (...a) {
+    const s = a.join(' ');
+    if (s.startsWith('perf load ')) S.marks.push([s.split(' ')[2], performance.now()]);
+    else if (s.startsWith('Godot Engine')) S.marks.push(['engine', performance.now()]);
+    return log.apply(this, a);
+  };
+}
+
+// 開一次 Chrome（profile 沿用就有上一次的瀏覽器快取），等到預熱結束，回傳頁面量到的資料與 Console 錯誤
+async function loadRun(chrome, url, profile) {
+  const debugPort = 9335;
+  const proc = spawn(chrome, [
+    `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check',
+    '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows',
+    '--headless=new', '--disable-features=Translate', '--window-size=960,540', 'about:blank',
+  ], { stdio: 'ignore' });
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  let page = null;
+  for (let i = 0; i < 60 && !page; i++) {
+    await sleep(500);
+    try { page = (await (await fetch(`http://127.0.0.1:${debugPort}/json`)).json()).find(t => t.type === 'page'); } catch {}
+  }
+  if (!page) { try { proc.kill(); } catch {} fail('Chrome 開不起來或連不上除錯介面'); }
+  const ws = new WebSocket(page.webSocketDebuggerUrl);
+  const pending = {};
+  const errors = [];
+  let id = 0;
+  const send = (method, params = {}) => new Promise(resolve => { pending[++id] = resolve; ws.send(JSON.stringify({ id, method, params })); });
+  ws.onmessage = ev => {
+    const m = JSON.parse(ev.data);
+    if (pending[m.id]) { pending[m.id](m.result); delete pending[m.id]; }
+    if (m.method === 'Runtime.exceptionThrown') errors.push(`例外：${m.params.exceptionDetails.text}`);
+    if (m.method === 'Runtime.consoleAPICalled') {
+      const text = m.params.args.map(a => a.value ?? a.description ?? '').join(' ');
+      if (/ERROR|SCRIPT/.test(text) && !/webrtc_native|GDExtension/.test(text)) errors.push(`Console：${text}`);
+    }
+  };
+  await new Promise(r => { ws.onopen = r; });
+  const evaluate = async expression => (await send('Runtime.evaluate', { expression, returnByValue: true }))?.result?.value;
+  await send('Runtime.enable');
+  await send('Page.enable');
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: `(${loadHook})(${JSON.stringify(LOAD_KEYS)});` });
+  await send('Page.navigate', { url });
+  const start = Date.now();
+  let done = false;
+  while (!done && Date.now() - start < LOAD_TIMEOUT) {
+    await sleep(500);
+    done = await evaluate("!!(window.__load && window.__load.marks.some(m => m[0] === 'warm_done'))");
+  }
+  const data = await evaluate('window.__load');
+  if (!data) { try { proc.kill(); } catch {} fail('頁面沒有載入量測腳本（window.__load 不存在）'); }
+  data.resources = await evaluate("performance.getEntriesByType('resource').filter(e => /index[.](wasm|pck)$/.test(e.name)).map(e => [e.name.split('/').pop(), e.responseEnd])");
+  data.renderer = await evaluate("(() => { const g = document.createElement('canvas').getContext('webgl2'); const e = g && g.getExtension('WEBGL_debug_renderer_info'); return g ? (e ? g.getParameter(e.UNMASKED_RENDERER_WEBGL) : g.getParameter(g.RENDERER)) : '沒有 WebGL2'; })()");
+  data.done = done;
+  try { await send('Browser.close'); } catch {}
+  await sleep(1500);
+  try { proc.kill(); } catch {}
+  return { data, errors };
+}
+
+function loadReport(title, { data, errors }) {
+  const sec = ms => `${(ms / 1000).toFixed(2)} 秒`;
+  const mark = name => data.marks.find(m => m[0] === name)?.[1];
+  const kind = defs => defs.includes('MODE_RENDER_DEPTH') ? '陰影深度' : defs.includes('USE_ADDITIVE_LIGHTING') ? '點光源疊加' : defs.includes('BASE_PASS') ? '一般繪製' : '其他';
+  const tags = defs => defs.filter(d => d === 'MODE_UNSHADED' || d === 'USE_INSTANCING').map(d => d === 'MODE_UNSHADED' ? '不吃光' : 'MultiMesh');
+  const lines = [`[${title}]`];
+  const ready = mark('ready'), warm = mark('warm_done');
+  if (!data.done || ready === undefined || warm === undefined) lines.push(`  ✘ ${LOAD_TIMEOUT / 60000} 分鐘內沒有等到預熱結束（時間點：${JSON.stringify(data.marks)}）`);
+  else lines.push(`  時間軸：引擎啟動 ${sec(mark('engine') ?? 0)} → _ready ${sec(ready)} → 預熱結束 ${sec(warm)}（預熱 ${sec(warm - ready)}）`);
+  lines.push(`  下載（本機伺服器，不含網路）：${data.resources.map(([n, t]) => `${n} ${sec(t)}`).join('、')}`);
+  const ps = data.programs;
+  const during = ready === undefined ? 0 : ps.filter(p => p.t >= ready && (warm === undefined || p.t <= warm)).length;
+  const kinds = {};
+  for (const p of ps) kinds[kind(p.defs)] = (kinds[kind(p.defs)] || 0) + 1;
+  lines.push(`  著色器：${ps.length} 個程式（_ready 到預熱結束 ${during} 個），等編譯合計 ${sec(data.waitMs)}；${Object.entries(kinds).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join('、')}`);
+  const slow = [...ps].sort((a, b) => b.ms - a.ms).slice(0, 10);
+  lines.push(`  最慢 10 個：${slow.map(p => `${Math.round(p.ms)} ms ${kind(p.defs)}${tags(p.defs).length ? `（${tags(p.defs).join('、')}）` : ''}`).join('、')}`);
+  for (const e of errors.slice(0, 10)) lines.push(`  ${e}`);
+  console.log(lines.join('\n'));
+  return data.done;
+}
+
+async function webLoad() {
+  const chrome = chromePath();
+  const port = Number(opt('port')) || 8062;
+  const server = await serveWeb(exportWeb(), port).catch(e => fail(`開不了伺服器（埠 ${port}）：${e.message}`));
+  const profile = mkdtempSync(join(tmpdir(), 'cubeborn-chrome-'));
+  const url = `http://localhost:${port}/?perf`;
+  let ok = true;
+  try {
+    const first = await loadRun(chrome, url, profile);
+    console.log(`顯示卡：${first.data.renderer}`);
+    ok = loadReport('第一次開（沒有瀏覽器快取）', first) && ok;
+    ok = loadReport('第二次開（有上一次的瀏覽器快取）', await loadRun(chrome, url, profile)) && ok;
+  } finally {
+    try { rmSync(profile, { recursive: true, force: true }); } catch {}
+    server.close();
+  }
+  return ok;
+}
+
+if (has('load')) process.exit(await webLoad() ? 0 : 1);
 
 // ---- 推送 ----
 const dryRun = has('dry-run');

@@ -27,6 +27,11 @@ func _init() -> void:
 	Engine.max_fps = 0
 
 
+# 開場載入的時間點（tools/release.mjs --load 用頁面時間對齊）：ready = _ready 開始、warm_done = 預熱結束
+func mark(name: String) -> void:
+	print("perf load %s ticks=%d" % [name, Time.get_ticks_msec()])
+
+
 func recording(elapsed: float) -> bool:
 	return elapsed >= WARMUP
 

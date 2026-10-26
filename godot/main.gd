@@ -43,6 +43,8 @@ func _ready() -> void:
 	get_tree().set_multiplayer(SceneMultiplayer.new(), get_path())
 	InputCollector.register_actions()
 	_apply_args()
+	if perf != null:
+		perf.mark("ready")
 	add_child(camera_rig)
 	add_child(world_view)
 	add_child(arena_view)
@@ -435,6 +437,8 @@ func _process(delta: float) -> void:
 	if _warming and not world_view.is_warming_up():
 		_warming = false
 		hud.set_loading(false)
+		if perf != null:
+			perf.mark("warm_done")
 	if perf != null:
 		perf.add_frame(delta, Time.get_ticks_usec() - t0, _elapsed)
 	world_view.profile = perf != null and perf.recording(_elapsed)
