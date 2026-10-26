@@ -1,15 +1,16 @@
 # 主選單（v0.39.0，想法清單 #14）：開場畫面。首頁有單人遊戲、多人遊戲、離開遊戲（網頁版不顯示）；
 # 選連線方式頁（v0.40.0，只有桌面版）：房號連線（網路，可和網頁版一起玩）/ IP 連線（區網）；
 # 多人頁放連線面板（開房 / 加入 / 大廳，HUD 把 net_panel 搬進 net_slot）與返回。只發訊號，流程由 main.gd 處理
+# 單人遊戲先到選職業頁（F2）：每個職業一張卡（起始武器、介紹、被動、和基準不同的數值），按職業名稱開始
 class_name MainMenu
 extends ColorRect
 
-signal single_pressed
+signal single_pressed(class_id: StringName)
 signal method_chosen(method: StringName)   # 選了連線方式（&"room" / &"ip"），接著顯示多人頁
 signal back_pressed   # 多人頁按「返回」（還在大廳時 main.gd 先離開連線）
 signal quit_pressed
 
-var page: StringName = &"home"   # &"home" | &"method" | &"multi"
+var page: StringName = &"home"   # &"home" | &"class" | &"method" | &"multi"
 var net_slot := VBoxContainer.new()   # 多人頁放連線面板的位置
 var single_button := _button("單人遊戲")
 var multi_button := _button("多人遊戲")
@@ -18,7 +19,10 @@ var room_button := _button("房號連線")
 var ip_button := _button("IP 連線")
 var method_back_button := _button("返回")
 var back_button := _button("返回")
+var class_back_button := _button("返回")
+var class_buttons: Dictionary = {}   # 職業 id → 按鈕
 var _home := VBoxContainer.new()
+var _class := VBoxContainer.new()
 var _method := VBoxContainer.new()
 var _multi := VBoxContainer.new()
 
@@ -41,6 +45,16 @@ func _init() -> void:
 		_home.add_child(b)
 	quit_button.visible = not OS.has_feature("web")   # 瀏覽器不允許網頁自己關閉
 
+	_class.add_child(_heading("選擇職業"))
+	var cards := HBoxContainer.new()
+	cards.alignment = BoxContainer.ALIGNMENT_CENTER
+	cards.add_theme_constant_override(&"separation", 40)
+	for id: StringName in ClassDefs.ORDER:
+		cards.add_child(_class_card(id))
+	_class.add_child(cards)
+	_class.add_child(_spacer(12))
+	_class.add_child(class_back_button)
+
 	_method.add_child(_heading("選擇連線方式"))
 	var room_ok := NetSession.room_supported()
 	room_button.disabled = not room_ok
@@ -56,12 +70,13 @@ func _init() -> void:
 	_multi.add_child(net_slot)
 	_multi.add_child(_spacer(12))
 	_multi.add_child(back_button)
-	for v: VBoxContainer in [_home, _method, _multi]:
+	for v: VBoxContainer in [_home, _class, _method, _multi]:
 		v.alignment = BoxContainer.ALIGNMENT_CENTER
 		v.add_theme_constant_override(&"separation", 14)
 		box.add_child(v)
 	add_child(box)
-	single_button.pressed.connect(single_pressed.emit)
+	single_button.pressed.connect(show_page.bind(&"class"))
+	class_back_button.pressed.connect(show_page.bind(&"home"))
 	# 網頁版只有房號，直接進多人頁
 	multi_button.pressed.connect(func() -> void:
 		if NetSession.ip_supported():
@@ -79,6 +94,7 @@ func _init() -> void:
 func show_page(p: StringName) -> void:
 	page = p
 	_home.visible = p == &"home"
+	_class.visible = p == &"class"
 	_method.visible = p == &"method"
 	_multi.visible = p == &"multi"
 
@@ -86,6 +102,28 @@ func show_page(p: StringName) -> void:
 func _choose(m: StringName) -> void:
 	method_chosen.emit(m)
 	show_page(&"multi")
+
+
+# 職業卡：按鈕（職業名稱）+ 起始武器、介紹、被動、和基準不同的數值
+func _class_card(id: StringName) -> VBoxContainer:
+	var c: Dictionary = ClassDefs.CLASSES[id]
+	var card := VBoxContainer.new()
+	card.add_theme_constant_override(&"separation", 8)
+	var b := _button(c.name)
+	b.pressed.connect(single_pressed.emit.bind(id))
+	class_buttons[id] = b
+	card.add_child(b)
+	var lines: Array[String] = ["起始武器：" + WeaponDefs.WEAPONS[c.weapon].name, c.pitch, "被動：" + c.passive.desc]
+	var stat_parts: Array[String] = []
+	for stat: StringName in c.stats:
+		stat_parts.append("%s %s" % [StatDefs.STATS[stat].name, StatDefs.format_value(stat, c.stats[stat])])
+	lines.append("、".join(stat_parts))
+	for line in lines:
+		var l := _note(line)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size = Vector2(360, 0)
+		card.add_child(l)
+	return card
 
 
 static func _heading(text: String) -> Label:

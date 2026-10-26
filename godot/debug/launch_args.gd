@@ -1,6 +1,6 @@
 # 啟動參數：自動驗證、截圖、量效能、連線測試與除錯用；正常遊玩全部是預設值（2026-10-25 從 main.gd 搬出來）
 # 指令列（放在 -- 之後）：--seconds=S --screenshot=路徑 --auto-move=x,y（螢幕方向）--auto-move-seconds=S（幾秒後停止移動）
-#   --auto-attack（一直按住左鍵）--auto-special（開場按一次右鍵，之後每 5.1 秒再按一次）--auto-interact（一直按住 F）--weapon=staff（開場武器）
+#   --auto-attack（一直按住左鍵）--auto-special（開場按一次右鍵，之後每 5.1 秒再按一次）--auto-interact（一直按住 F）--weapon=staff（開場武器）--class=arcanist（職業，ClassDefs）
 #   --wave=N（直接從第 N 波開始）--player-hp=N（開場血量）--items=id,id（開場放進身上的道具，見 defs/item_defs.gd）--no-spawn（不生怪）
 #   連線：--host（開房）--join=IP（加入）--room（改用房號：--join=房號）--net-port=N --net-autostart=N（房主：滿 N 人自動開始）
 #   --net-latency=毫秒（模擬單程延遲）--net-loss=0.1（模擬掉包）--menu-flow（照玩家的操作順序從主選單走，v0.39.0）
@@ -23,6 +23,7 @@ var auto_attack := false
 var auto_special := false
 var auto_interact := false
 var start_weapon: StringName = &""
+var start_class: StringName = &""
 var start_wave := 0
 var start_hp := 0.0
 var start_items: Array[StringName] = []
@@ -70,6 +71,8 @@ static func parse(args: PackedStringArray) -> LaunchArgs:
 			a.auto_special = true
 		elif arg == "--auto-interact":
 			a.auto_interact = true
+		elif arg.begins_with("--class="):
+			a.start_class = StringName(value)
 		elif arg.begins_with("--weapon="):
 			a.start_weapon = StringName(value)
 		elif arg.begins_with("--wave="):

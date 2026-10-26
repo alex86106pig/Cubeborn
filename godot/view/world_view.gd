@@ -714,6 +714,8 @@ static func _view_key(e: Entity) -> String:
 		return "%s:%s" % ["weapon" if p.is_weapon() else "item", p.rarity()]
 	if e is Projectile:
 		return "projectile:%s" % (e as Projectile).visual
+	if e is Player and (e as Player).class_id != ClassDefs.NONE:
+		return "player:%s" % (e as Player).class_id
 	return String(e.kind)
 
 
@@ -721,7 +723,7 @@ func _create_view(e: Entity) -> Node3D:
 	var root: Node3D
 	match e.kind:
 		&"player":
-			var rig := DarkFantasy.character(e.kind)
+			var rig := DarkFantasy.player_character((e as Player).class_id)
 			_animators[e.id] = Animator.new(rig)
 			root = rig
 			root.add_child(_create_block_fan())

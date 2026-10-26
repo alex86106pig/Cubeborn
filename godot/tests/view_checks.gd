@@ -220,11 +220,24 @@ static func _check_main_menu(hud: Variant) -> String:
 	if _shown(menu.back_button, menu):
 		return "首頁不應看到多人頁的「返回」"
 	var counts := {"single": 0, "back": 0, "quit": 0, "title": 0}
-	menu.single_pressed.connect(func() -> void: counts.single += 1)
+	var picked: Array[StringName] = []
+	menu.single_pressed.connect(func(id: StringName) -> void:
+		counts.single += 1
+		picked.append(id))
 	menu.back_pressed.connect(func() -> void: counts.back += 1)
 	hud.quit_requested.connect(func() -> void: counts.quit += 1)
 	hud.title_requested.connect(func() -> void: counts.title += 1)
+	# 單人遊戲先到選職業頁（F2）：每個職業一顆按鈕，按下才開始、帶職業 id
 	menu.single_button.pressed.emit()
+	if menu.page != &"class" or counts.single != 0:
+		return "按「單人遊戲」應先到選職業頁、還不開始：%s / %d" % [menu.page, counts.single]
+	for id: StringName in ClassDefs.ORDER:
+		if not _shown(menu.class_buttons[id], menu):
+			return "選職業頁應看得到「%s」" % ClassDefs.CLASSES[id].name
+	menu.class_buttons[ClassDefs.ORDER.back()].pressed.emit()
+	if picked != [ClassDefs.ORDER.back()]:
+		return "按職業應發出 single_pressed(該職業)：%s" % [picked]
+	menu.show_page(&"home")
 	menu.quit_button.pressed.emit()
 	menu.multi_button.pressed.emit()
 	# 桌面版先選連線方式（v0.40.0）：房號（要有 webrtc-native 擴充）/ IP；網頁版只有房號，直接進多人頁
@@ -252,7 +265,7 @@ static func _check_main_menu(hud: Variant) -> String:
 	hud.net_panel.show_state(&"lobby_host", [1, 2, 3, 4], 1, "")
 	if not hud.net_panel._status.text.contains("網頁版都可以"):
 		return "房號大廳應說明電腦版、網頁版都能加入：%s" % hud.net_panel._status.text
-	for page: StringName in [&"home", &"method", &"multi"]:
+	for page: StringName in [&"home", &"class", &"method", &"multi"]:
 		menu.show_page(page)
 		var size: Vector2 = menu.get_child(0).get_combined_minimum_size()
 		if size.x > 1920.0 or size.y > 1080.0:

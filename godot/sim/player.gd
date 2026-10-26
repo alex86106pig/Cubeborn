@@ -15,6 +15,7 @@ var attack_pressed := false            # 本步剛按下左鍵（格擋中按左
 var _attack_was_held := false
 var weapon: Dictionary = {}            # 手上武器的招式資料（WeaponDefs）
 var weapon_id: StringName = &""
+var class_id := ClassDefs.NONE        # 職業（F2，ClassDefs）；NONE = 共用基準數值
 var loadout := Loadout.new()           # 裝備欄、背包、生效的道具（sim/loadout.gd）
 var weapon_slots: Array[Dictionary]:   # 裝備欄 2 格（D4）：武器實例（WeaponDropDefs）或 {}
 	get:
@@ -354,6 +355,30 @@ func apply_cmd(cmd: InputCmd) -> void:
 	_pressed |= cmd.buttons
 	loadout.queue_ops(cmd.inv_ops)
 	view_tick = cmd.view_tick
+
+
+# 套用職業（F2）：基礎數值、起始武器、被動（屬性來源 &"class"）；開局時 World.reset 呼叫，NONE 不改
+func apply_class(id: StringName) -> void:
+	class_id = id
+	if id == ClassDefs.NONE:
+		return
+	var c: Dictionary = ClassDefs.CLASSES[id]
+	for stat: StringName in c.stats:
+		stats.set_base(stat, c.stats[stat])
+	set_stat_source(&"class", c.passive.get("mods", []))
+	equip_weapon(c.weapon)
+	hp = max_hp
+
+
+# 被隊友（誤傷）打到時的傷害倍率：守墓騎士被動，攻擊來自背後（和面向差超過 90°）才減傷（F2）
+func friendly_back_mul(from: Vector2) -> float:
+	if class_id == ClassDefs.NONE:
+		return 1.0
+	var mul: float = ClassDefs.CLASSES[class_id].passive.get("friendly_back_mul", 1.0)
+	var d := from - pos
+	if mul == 1.0 or d.length_squared() < 1e-6:
+		return 1.0
+	return mul if absf(MathUtil.wrap_angle(atan2(d.x, d.y) - facing)) > PI / 2.0 else 1.0
 
 
 func equip_weapon(id: StringName) -> void:

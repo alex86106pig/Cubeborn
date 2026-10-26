@@ -773,3 +773,37 @@ static func check_motion_feel() -> String:
 	var fin_expect := _knockback_distance(def.lunge * def.finisher_scale, steps_after) + _knockback_distance(residual, 121)
 	_feel("第三段前衝：公式 %.4f，實測 %.4f 單位" % [fin_expect, fin])
 	return "" if absf(fin - fin_expect) < 0.005 else "第三段前衝 %.4f，公式 %.4f" % [fin, fin_expect]
+
+
+# 職業（F2）：開局套用基礎數值、起始武器與被動；沒選職業照舊；守墓騎士被隊友從背後打到減半、正面照常
+static func check_classes() -> String:
+	var plain := _player(_new_world())
+	if plain.class_id != ClassDefs.NONE or plain.max_hp != Config.PLAYER.max_hp or plain.weapon_id != Config.PLAYER.start_weapon:
+		return "沒選職業應照舊：%s、生命 %.0f、%s" % [plain.class_id, plain.max_hp, plain.weapon_id]
+	for id: StringName in ClassDefs.ORDER:
+		var c: Dictionary = ClassDefs.CLASSES[id]
+		var w := World.new(&"test_arena")
+		_worlds.append(w)
+		w.spawn_packs = false
+		w.player_classes[World.HOST_PEER_ID] = id
+		w.reset(1)
+		var p := _player(w)
+		if p.class_id != id or p.weapon_id != c.weapon or p.hp != p.max_hp:
+			return "%s：職業 %s、武器 %s（應 %s）、血 %.0f / %.0f" % [c.name, p.class_id, p.weapon_id, c.weapon, p.hp, p.max_hp]
+		for stat: StringName in c.stats:
+			if absf(p.stats.base(stat) - c.stats[stat]) > EPS:
+				return "%s 的%s基礎值應 %.2f，實際 %.2f" % [c.name, StatDefs.STATS[stat].name, c.stats[stat], p.stats.base(stat)]
+		for m: Array in c.passive.get("mods", []):
+			if absf(p.stats.value(m[0]) - p.stats.base(m[0]) * m[2]) > EPS:
+				return "%s 被動：%s 應 × %.2f，實際 %.3f" % [c.name, StatDefs.STATS[m[0]].name, m[2], p.stats.value(m[0])]
+		w.reset(2)
+		if _player(w).class_id != id:
+			return "重新開始應保留職業"
+	# 騎士被隊友從背後打到減半、正面照常（誤傷，Config.NET.friendly_fire）
+	var g: Dictionary = ClassDefs.CLASSES[&"guardian"]
+	var knight := Player.new(_new_world(), 7)
+	knight.apply_class(&"guardian")
+	knight.facing = 0.0   # 面向 +Z
+	if knight.friendly_back_mul(Vector2(0, -2)) != g.passive.friendly_back_mul or knight.friendly_back_mul(Vector2(0, 2)) != 1.0:
+		return "騎士：背後來的應 × %.1f、正面 × 1：%.2f / %.2f" % [g.passive.friendly_back_mul, knight.friendly_back_mul(Vector2(0, -2)), knight.friendly_back_mul(Vector2(0, 2))]
+	return ""

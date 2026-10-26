@@ -83,6 +83,8 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 	dir = dir.normalized()
 
 	var damage: float = hit.damage
+	if source is Player and target is Player:
+		damage *= (target as Player).friendly_back_mul(origin)   # 誤傷：守墓騎士被隊友從背後打到減傷（F2）
 	var is_proc: bool = hit.get("proc", false)   # 道具效果造成的傷害（v0.33.0）：不爆擊、不再觸發命中效果
 	if source is Player and not is_proc:
 		# 只對這一下生效的條件加成（對滿血敵人）：換算成攻擊力倍率乘上去（hit.damage 已含攻擊力）

@@ -50,6 +50,21 @@ static func character(kind: StringName) -> Rig:
 	return rig
 
 
+# 玩家依職業換配色（F2 demo：同一套騎士模型，ClassDefs 的 colors）；沒選職業 = 原本的騎士
+static func player_character(class_id: StringName) -> Rig:
+	if class_id == ClassDefs.NONE:
+		return character(&"player")
+	var key := StringName("player:%s" % class_id)
+	if _templates.has(key):
+		return Rig.from_template(_templates[key])
+	var c: Dictionary = ClassDefs.CLASSES[class_id].colors
+	var rig := Rig.new(KNIGHT_JOINTS)
+	_armored_body(rig, c.armor, c.trim, c.cape)
+	rig = rig.optimize()
+	_templates[key] = rig.to_template()
+	return rig
+
+
 # 小怪（骷髏戰士、弓手）的蒙皮版本（D5 效能，view/skinned_rig.gd）：同樣的零件與關節，每隻只剩 1~2 次繪製
 static func skinned_character(kind: StringName) -> SkinnedRig:
 	if not _templates.has(kind):

@@ -85,7 +85,7 @@ func _ready() -> void:
 	if args.menu_flow or not args.auto_start():
 		show_title(&"multi" if args.host or args.join != "" else &"home")
 		if args.menu_flow and not (args.host or args.join != ""):
-			start_single()   # --menu-flow 單人：在主選單按「單人遊戲」
+			start_single(args.start_class if args.start_class != &"" else ClassDefs.ORDER[0])   # --menu-flow 單人：主選單「單人遊戲」→ 選職業（F2）
 	if args.room:
 		hud.net_panel.set_method(&"room")
 	if args.host:
@@ -127,6 +127,10 @@ func restart() -> void:
 		peers.assign(net.lobby_peers)
 		peers.sort()
 	world.spawn_packs = not args.no_spawn
+	if mode != Mode.SINGLE:
+		world.player_classes.clear()   # 多人還沒有選職業的大廳（F3）：先用共用基準
+	if args.start_class != &"":
+		world.player_classes[World.HOST_PEER_ID] = args.start_class
 	world.reset(randi(), peers)
 	world.spawner.finished = args.no_spawn
 	var me := local_player()
@@ -176,9 +180,10 @@ func _leave_title() -> void:
 	hud.show_title(false)
 
 
-# 主選單按「單人遊戲」：開一局新的
-func start_single() -> void:
+# 主選單選好職業：開一局新的單人遊戲（F2）
+func start_single(class_id: StringName) -> void:
 	_net_message = ""
+	world.player_classes[World.HOST_PEER_ID] = class_id
 	restart()
 	_leave_title()
 

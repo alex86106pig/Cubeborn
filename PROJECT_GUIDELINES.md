@@ -183,6 +183,7 @@ godot/
 | `monster_rarity_defs.gd` | 怪物稀有度、詞條、怪群 | 系統說明 §14 |
 | `event_defs.gd` | 挖墳事件、難度 | 系統說明 §15 |
 | `hint_defs.gd` | 新手提示文字 | `ui/hints.gd` |
+| `class_defs.gd` | 職業：基礎數值、起始武器、被動、模型配色 | `Player.apply_class`（系統說明 §18） |
 
 - 道具效果的條件與動作是 `ItemEffects` 的類別，用 `CONDITIONS` / `ACTIONS` 查表；新增時加一個類別並登錄，再把名稱加進 `ItemDefs.IMPLEMENTED_*`（`check.gd` 會比對兩邊一致）。
 - 可調數值放 `core/config.gd` 或 `defs/`，邏輯內不寫魔術數字。

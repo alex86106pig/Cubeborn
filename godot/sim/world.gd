@@ -12,6 +12,7 @@ var events: Array[Dictionary] = []   # 本步事件，只放 id 與數值，才�
 var hitboxes: Array[Dictionary] = [] # 本步出現的攻擊判定（sim/hitbox.gd 記錄；畫面層 F2 顯示用，不影響模擬）
 var entities: Dictionary = {}        # id -> Entity
 var players: Dictionary = {}         # peer_id -> Player
+var player_classes: Dictionary = {}  # peer id → 職業（F2，ClassDefs）；reset 不清，重新開始照舊
 var player_list: Array[Player] = []  # 同 players.values()（加入順序），每步大量查詢時不必每次配置新陣列（D5）
 var enemies: Array[Entity] = []
 var projectiles: Array[Entity] = []
@@ -98,6 +99,7 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 	_next_weapon_uid = 0
 	for peer_id in peer_ids:
 		var p := Player.new(self, peer_id)
+		p.apply_class(player_classes.get(peer_id, ClassDefs.NONE))
 		p.pos = spawn_point
 		p.height = terrain.ground_at(spawn_point)
 		add_entity(p)
