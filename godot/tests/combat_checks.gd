@@ -660,11 +660,29 @@ static func check_daggers() -> String:
 	p.equip_weapon(&"daggers")
 	var dummy := _dummy(w, Vector2(0, 1.2))
 	var events: Array[Dictionary] = []
-	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 90, events)
+	var hit_steps: Array[int] = []
+	for step in 200:
+		_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1, events)
+		for e in w.events:
+			if e.name == "entity:damaged" and e.target_id == dummy.id:
+				hit_steps.append(step)
 	var hits := _named(events, "entity:damaged").filter(func(e: Dictionary) -> bool: return e.target_id == dummy.id)
 	var base := WeaponDefs.move_base_damage(dg, dg.attack)
-	if hits.size() < 5:
-		return "五連刺 90 步內應打滿 5 下，實際 %d 下" % hits.size()
+	if hits.size() < 6:
+		return "五連刺 200 步內應打完一輪再接下一刺，實際 %d 下" % hits.size()
+	# 節奏：刺刺─停─刺刺─停─重擊（間隔：一刺、一刺 + 停頓、一刺、一刺 + 停頓 + 重擊的前搖差）
+	var a: Dictionary = dg.attack
+	var one: float = a.windup + a.active + a.recovery
+	var want_gaps := [one, one + a.beat_pause, one, one + a.beat_pause - a.windup + a.finisher_windup]
+	var gaps: Array = []
+	for i in 4:
+		gaps.append((hit_steps[i + 1] - hit_steps[i]) * DT)
+	for i in 4:   # 每下多 2 步：收招 → 待機 → 出下一刺的狀態切換（每拍一樣，不影響節奏）
+		if gaps[i] - want_gaps[i] < -DT * 0.5 or gaps[i] - want_gaps[i] > DT * 2.5:
+			return "五連刺的間隔應約 %s 秒（+2 步切換），實際 %s" % [want_gaps, gaps]
+	var cycle: float = (hit_steps[5] - hit_steps[0]) * DT
+	var dmg_cycle: float = base * 4.0 + base * a.finisher_mul * p.stats.value(&"crit_damage")
+	_note("雙匕首一輪 %.2f 秒、%.2f 傷害、每秒約 %.1f（不算職業加成）" % [cycle, dmg_cycle, dmg_cycle / cycle])
 	for i in 5:
 		var fin := i == 4
 		var want: float = base * (dg.attack.finisher_mul * p.stats.value(&"crit_damage") if fin else 1.0)

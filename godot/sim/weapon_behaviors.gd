@@ -59,7 +59,10 @@ class MeleeSwing extends Behavior:
 		data.scale = def.finisher_scale if data.is_finisher else 1.0
 		data.hit = {}
 		if data.is_finisher:
-			data.durations[2] = def.recovery * def.finisher_recovery_mul
+			data.durations[0] = def.get("finisher_windup", def.windup)
+			data.durations[2] = def.get("finisher_recovery", def.recovery * def.finisher_recovery_mul)
+		elif p.combo_step in def.get("beat_steps", []):
+			data.durations[2] += def.beat_pause   # 節奏的停頓（雙匕首第 2、4 刺後）
 
 	func phase(p: Player, def: Dictionary, data: Dictionary, name: StringName) -> void:
 		if name == &"active":

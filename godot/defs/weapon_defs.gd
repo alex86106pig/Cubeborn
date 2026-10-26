@@ -243,7 +243,7 @@ const WEAPONS := {
 		"name": "雙匕首",
 		"type": &"melee",
 		"model": &"daggers",
-		"base_damage": 5.0,
+		"base_damage": 9.0,            # 2026-10-27 放慢後 5 → 9（每秒傷害約 31.6 → 27.8）
 		"damage_type": &"phys",
 		"idle": {"arm_r": -0.6, "arm_l": -0.6, "tilt": 0.0},
 		"attack": {
@@ -255,20 +255,26 @@ const WEAPONS := {
 			"combo_count": 5,          # 第 combo_count 下是終結技
 			"range": 1.6,
 			"arc": PI * 0.5,           # 90°
-			"windup": 0.04,            # 三段合計 0.18 秒一下
+			# 節奏「刺刺─停─刺刺─停─重擊」（使用者 2026-10-27：原本 0.18 秒一下太快、沒節奏）：一刺 0.3 秒，
+			# 第 2、4 刺後多停 beat_pause；第 5 下前搖 finisher_windup（蓄一下）、收招 finisher_recovery，一輪約 2.0 秒
+			"windup": 0.1,
 			"active": 0.05,
-			"recovery": 0.09,
+			"recovery": 0.15,
+			"beat_pause": 0.12,
+			"beat_steps": [1, 3],      # combo_step（0 起算）：第 2、4 刺
+			"finisher_windup": 0.18,
+			"finisher_recovery": 0.35,
 			"knockback": 0.0,          # 前 4 下不擊退
 			"finisher_knockback": 9.0, # 第 5 下可擊退
 			"finisher_crit": true,     # 第 5 下必爆擊
 			"lunge": 1.5,
 			"move_speed_mul": 0.6,
-			"combo_window": 0.3,
+			"combo_window": 0.35,
 			"finisher_mul": 1.5,
 			"finisher_impact_mul": 1.5,
 			"finisher_shake_mul": 2.0,
-			"finisher_scale": 1.15,
-			"finisher_recovery_mul": 2.0,
+			"finisher_scale": 1.4,     # 重擊往前衝得更遠、範圍更大
+			"finisher_recovery_mul": 1.0,   # 用 finisher_recovery
 			"hit_stop": 0.03,
 			"shake": 0.05,
 			"slash_color": Color("c8d0e0"),
