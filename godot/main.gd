@@ -427,9 +427,9 @@ func _process(delta: float) -> void:
 	var alpha := Engine.get_physics_interpolation_fraction() if _stepped_this_tick else 1.0
 	var step := 0
 	if _spectate != 0 and not is_menu_open and not hud.is_stats_panel_open():
-		if Input.is_action_just_pressed(&"attack") or Input.is_action_just_pressed(&"ui_left"):
+		if Input.is_action_just_pressed(&"attack") or Input.is_action_just_pressed(&"move_left"):
 			step = -1
-		elif Input.is_action_just_pressed(&"special") or Input.is_action_just_pressed(&"ui_right"):
+		elif Input.is_action_just_pressed(&"special") or Input.is_action_just_pressed(&"move_right"):
 			step = 1
 	_update_spectate(step)
 	var t0 := Time.get_ticks_usec()
@@ -454,7 +454,7 @@ func _process(delta: float) -> void:
 	_check_auto_quit(delta)
 
 
-# 觀戰（規則見 WorldView.spectate_target）：step = −1 換上一位（滑鼠左鍵、←）、+1 下一位（右鍵、→）；
+# 觀戰（規則見 WorldView.spectate_target）：step = −1 換上一位（滑鼠左鍵、A）、+1 下一位（右鍵、D）；
 # 視野、鏡頭、場上文字跟著換人，房主也改送他附近的實體（InputCmd.spectate）；復活後回到自己
 func _update_spectate(step := 0) -> void:
 	_spectate = WorldView.spectate_target(world, _local_peer, _spectate, step)
