@@ -5,6 +5,8 @@ extends CanvasLayer
 
 signal quit_requested   # 暫停畫面或主選單按下「離開遊戲」
 signal title_requested  # 暫停畫面按下「回主選單」
+signal weapon_test_equip(weapon_id: StringName)   # 武器測試場：換武器（2026-10-27）
+signal weapon_test_reset                          # 武器測試場：木樁擺回原位
 
 # 手動分行（中文自動折行會斷在詞中間）
 const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技（劍盾：按住格擋，格擋中左鍵招架） · 空白鍵 跳躍 · Shift 翻滾\n1~5 道具 · F 撿道具 / 開祭壇與石棺 / 按住救援隊友 · Tab 背包與屬性 · Esc 選單 · M 靜音 · R 重新開始\nX / 滾輪 切換武器 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具（F3~F5 單機才有）"
@@ -18,7 +20,7 @@ const GAME_OVER_DELAY := 0.7     # 死亡後幾秒顯示結算
 const BOSS_NAME := "亡骸騎士"     # darkFantasy.js 的 names.boss
 # 介面程式碼裡寫死的中文字（橫幅、浮動文字、場上文字、連線面板、遊玩紀錄…；資料表以外的）：開場預熱用（v0.37.2）
 # check.gd 會掃 ui/ 的字串，缺字就列出來，加到這裡
-const UI_CHARS := "　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還"
+const UI_CHARS := "　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木"
 
 const VIGNETTE_SHADER := """
 shader_type canvas_item;
@@ -76,6 +78,7 @@ var _pause_title := UiKit.label("已暫停", 56, Color.WHITE, 3)
 var _pause_hint := UiKit.label("按 Esc 繼續", 20)
 var _quit_button := Button.new()
 var _title_button := Button.new()
+var weapon_test_bar := HBoxContainer.new()   # 武器測試場：上方的武器按鈕列（只有在測試場才顯示）
 var _pause_net_slot := VBoxContainer.new()   # 暫停畫面放連線面板的位置（連線中顯示人數與離開連線）
 var _reset_hints_button := Button.new()
 var hints := Hints.new()   # 新手提示框（v0.31.0）
@@ -214,6 +217,17 @@ func _init() -> void:
 	top.add_child(_boss_box)
 	root.add_child(top)
 
+	# 上方中央、標題列下面：武器測試場的按鈕列（每把武器一顆 + 重置木樁；Esc 回主選單）
+	weapon_test_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 90)
+	weapon_test_bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	weapon_test_bar.add_theme_constant_override(&"separation", 6)
+	for id: StringName in WeaponDefs.WEAPONS:
+		weapon_test_bar.add_child(_test_button(WeaponDefs.WEAPONS[id].name, weapon_test_equip.emit.bind(id)))
+	weapon_test_bar.add_child(_test_button("重置木樁", weapon_test_reset.emit))
+	weapon_test_bar.add_child(UiKit.label("Esc 回主選單", 16, Color(1, 1, 1, 0.7)))
+	weapon_test_bar.visible = false
+	root.add_child(weapon_test_bar)
+
 	# 下方中央：技能欄
 	_skill_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 20)
 	_skill_bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -307,6 +321,16 @@ func set_loading(on: bool) -> void:
 		_loading.add_child(box)
 	_loading.visible = on
 	_world_labels.warm = warm_text() if on else ""   # 場上文字是描邊字，字形另外快取，用它自己的畫法預熱
+
+
+static func _test_button(text: String, on_pressed: Callable) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.add_theme_font_size_override(&"font_size", 16)
+	b.custom_minimum_size = Vector2(0, 36)
+	b.focus_mode = Control.FOCUS_NONE
+	b.pressed.connect(on_pressed)
+	return b
 
 
 # 會在遊戲中途第一次出現的字：道具名稱與說明、稀有度、怪物詞條與名字、武器詞條、新手提示、職業卡（F2）

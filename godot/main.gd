@@ -26,6 +26,7 @@ var net_client: NetClient
 var hud: HUD
 var args: LaunchArgs          # 啟動參數（正常遊玩全部是預設值）
 var perf: PerfMeter           # --perf 才有
+var in_weapon_test := false   # 在武器測試場裡（主選單入口，2026-10-27）
 var debug_tools := DebugTools.new()
 var profile := Profile.new()  # 局外存檔（v0.45）：累計金幣
 
@@ -61,6 +62,11 @@ func _ready() -> void:
 	get_tree().auto_accept_quit = false   # 關視窗也走 quit_game（先停音效）
 	hud.title_requested.connect(return_to_title)
 	hud.main_menu.single_pressed.connect(start_single)
+	hud.main_menu.weapon_test_pressed.connect(start_weapon_test)
+	hud.weapon_test_equip.connect(func(id: StringName) -> void:
+		if in_weapon_test and local_player() != null:
+			local_player().equip_weapon(id))
+	hud.weapon_test_reset.connect(_reset_training_dummies)
 	hud.main_menu.back_pressed.connect(_on_title_back)
 	hud.inventory_panel.op_requested.connect(input_collector.queue_inventory_op)
 	if args.run_seconds > 0.0:
@@ -126,13 +132,14 @@ func restart() -> void:
 	if mode == Mode.HOST:
 		peers.assign(net.lobby_peers)
 		peers.sort()
-	world.spawn_packs = not args.no_spawn
+	var no_spawn := args.no_spawn or in_weapon_test
+	world.spawn_packs = not no_spawn
 	if mode == Mode.HOST:
 		world.player_classes = net.classes()   # 大廳選的職業（F3）
 	if args.start_class != &"":
 		world.player_classes[World.HOST_PEER_ID] = args.start_class
 	world.reset(randi(), peers)
-	world.spawner.finished = args.no_spawn
+	world.spawner.finished = no_spawn
 	var me := local_player()
 	if args.start_weapon != &"":
 		me.equip_weapon(args.start_weapon)
@@ -143,6 +150,8 @@ func restart() -> void:
 	if args.start_hp > 0.0:
 		me.hp = args.start_hp
 	DebugTools.setup_run(world, me, args)
+	if in_weapon_test and not args.weapon_test:
+		Spawner.spawn_training_dummies(world, me.pos)
 	_sim_accumulator = 0.0
 	input_collector.consume_latched()
 	GameEvents.emit_all(world.events)
@@ -180,9 +189,41 @@ func _leave_title() -> void:
 	hud.show_title(false)
 
 
+# 武器測試場（2026-10-27，主選單入口）：沒有怪群與波次，玩家旁邊擺木樁；上方按鈕列換武器、重置木樁，Esc 回主選單
+func start_weapon_test() -> void:
+	_net_message = ""
+	in_weapon_test = true
+	world.player_classes.erase(World.HOST_PEER_ID)   # 共用基準數值，看武器本身
+	restart()
+	_leave_title()
+	hud.weapon_test_bar.visible = true
+
+
+func leave_weapon_test() -> void:
+	in_weapon_test = false
+	hud.weapon_test_bar.visible = false
+	restart()
+	show_title(&"home")
+
+
+# 木樁被打飛、埋掉後擺回原位：清掉場上的木樁，在玩家旁邊重擺
+func _reset_training_dummies() -> void:
+	var me := local_player()
+	if not in_weapon_test or me == null:
+		return
+	if me.held_enemy_id != 0:
+		me.release_enemy()
+	for e in world.enemies:
+		if (e as Enemy).main_state == &"train":
+			e.remove()   # World 下一步清掉已移除的實體
+	Spawner.spawn_training_dummies(world, me.pos)
+
+
 # 主選單選好職業：開一局新的單人遊戲（F2）
 func start_single(class_id: StringName) -> void:
 	_net_message = ""
+	in_weapon_test = false
+	hud.weapon_test_bar.visible = false
 	world.player_classes[World.HOST_PEER_ID] = class_id
 	restart()
 	_leave_title()
@@ -487,7 +528,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if is_at_title and not event.is_action_pressed(&"mute"):
 		return   # 主選單只用滑鼠點按鈕；M 靜音照常
 	if event.is_action_pressed(&"pause"):
-		if mode == Mode.SINGLE:
+		if in_weapon_test:
+			leave_weapon_test()   # 武器測試場：Esc 直接回主選單
+		elif mode == Mode.SINGLE:
 			set_paused(not is_paused)
 		elif not is_in_lobby:
 			_open_menu(not is_menu_open)

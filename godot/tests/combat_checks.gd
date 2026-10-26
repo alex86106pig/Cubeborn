@@ -18,7 +18,7 @@ static func check_weapon_defs() -> String:
 			for key in ["sfx", "sfx_heavy", "sfx_release"]:
 				if def.has(key) and not cues.has(def[key]):
 					return "%s.%s 的音效「%s」不在 Sound.CUE_NAMES" % [id, kind, def[key]]
-	return ""
+	return _weapon_catalog()
 
 
 static func check_fire_bolt() -> String:
@@ -557,8 +557,8 @@ static func check_damage_types() -> String:
 	return ""
 
 
-# 每把武器都有道具資料（才會掉落、進背包）、模型與職業的起始武器都存在（F4 起）
-static func check_weapon_catalog() -> String:
+# 每把武器都有道具資料（才會掉落、進背包）、模型與職業的起始武器都存在（F4 起，併在 check_weapon_defs）
+static func _weapon_catalog() -> String:
 	for id: StringName in WeaponDefs.WEAPONS:
 		if not ItemDefs.ITEMS.has(id) or ItemDefs.ITEMS[id].weapon != id:
 			return "%s 沒有對應的 ItemDefs 武器資料" % id
@@ -616,7 +616,7 @@ static func check_shortbow() -> String:
 	var p3 := _player(w3)
 	if absf(p3.velocity.length() - p3.stats.value(&"move_speed") * bow.special.move_speed_mul) > 0.05:
 		return "右鍵照常減速：速度 %.2f，應 %.2f" % [p3.velocity.length(), p3.stats.value(&"move_speed") * bow.special.move_speed_mul]
-	return ""
+	return _quiver()
 
 
 # F5 長弓：重射可擊退；右鍵按住蓄力、放開射出穿透箭（沒蓄 150%、蓄滿 400%），一直線上的敵人都打到、每隻一次
@@ -927,8 +927,8 @@ static func check_shovel() -> String:
 	return ""
 
 
-# 短弓箭袋：6 支，最後一支是重箭（多拉弓、200%、擊退）；射空自動裝填 1.2 秒（不能射、移速 ×0.5）；翻滾瞬間補滿
-static func check_quiver() -> String:
+# 短弓箭袋：6 支，最後一支是重箭（多拉弓、200%、擊退）；射空自動裝填 1.2 秒（不能射、移速 ×0.5）；翻滾瞬間補滿（併在 check_shortbow）
+static func _quiver() -> String:
 	var atk: Dictionary = WeaponDefs.WEAPONS[&"shortbow"].attack
 	var w := _new_world()
 	var p := _player(w)

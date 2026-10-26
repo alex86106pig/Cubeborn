@@ -159,9 +159,30 @@ static func check_main_menu() -> String:
 	hud.setup(w, cam)
 	_scene_root().add_child(hud)
 	var err := _check_main_menu(hud)
+	if err == "":
+		err = _check_weapon_test_bar(hud)
 	hud.queue_free()
 	cam.queue_free()
 	return err
+
+
+# 武器測試場的按鈕列（2026-10-27）：預設隱藏；每把武器一顆（按下發 weapon_test_equip）+ 重置木樁；寬度塞得進 1920
+static func _check_weapon_test_bar(hud: Variant) -> String:
+	var bar: HBoxContainer = hud.weapon_test_bar
+	if bar.visible:
+		return "武器測試場的按鈕列平常應隱藏"
+	var buttons := bar.get_children().filter(func(c: Node) -> bool: return c is Button)
+	if buttons.size() != WeaponDefs.WEAPONS.size() + 1:
+		return "按鈕列應有 %d 把武器 + 重置木樁，實際 %d 顆" % [WeaponDefs.WEAPONS.size(), buttons.size()]
+	var got: Array[StringName] = []
+	hud.weapon_test_equip.connect(func(id: StringName) -> void: got.append(id))
+	for i in WeaponDefs.WEAPONS.size():
+		(buttons[i] as Button).pressed.emit()
+	if got != WeaponDefs.WEAPONS.keys():
+		return "武器按鈕應依序發出 %s，實際 %s" % [WeaponDefs.WEAPONS.keys(), got]
+	if bar.get_combined_minimum_size().x > 1920.0:
+		return "按鈕列寬 %.0f，超出 1920" % bar.get_combined_minimum_size().x
+	return ""
 
 
 # 技能欄（v0.41.0）：劍盾格擋中左鍵那格換成「招架」並顯示招架冷卻，放下盾換回普攻；法杖沒有招架格
@@ -234,7 +255,7 @@ static func _check_main_menu(hud: Variant) -> String:
 	hud.show_title(true)
 	if not menu.visible or menu.page != &"home" or hud._pause.visible:
 		return "show_title 後應顯示主選單首頁、暫停畫面隱藏"
-	for b: Button in [menu.single_button, menu.multi_button]:
+	for b: Button in [menu.single_button, menu.multi_button, menu.weapon_test_button]:
 		if not _shown(b, menu):
 			return "主選單首頁應看得到「%s」" % b.text
 	if menu.quit_button.visible == OS.has_feature("web"):

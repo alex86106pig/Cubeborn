@@ -52,10 +52,10 @@ func _input(event: InputEvent) -> void:
 	if event.is_echo():
 		return
 	if event.is_action_pressed(&"attack"):
-		if not mouse_captured:
+		if not mouse_captured and not _mouse_over_button():
 			_latched |= InputCmd.BTN_ATTACK
 	elif event.is_action_pressed(&"special"):
-		if not mouse_captured:
+		if not mouse_captured and not _mouse_over_button():
 			_latched |= InputCmd.BTN_SPECIAL
 	elif event.is_action_pressed(&"roll"):
 		_latched |= InputCmd.BTN_ROLL
@@ -70,6 +70,11 @@ func _input(event: InputEvent) -> void:
 		for i in InputCmd.SLOT_COUNT:
 			if event.is_action_pressed(StringName("slot_%d" % (i + 1))):
 				_latched |= InputCmd.slot_bit(i)
+
+
+# 滑鼠在遊戲中的按鈕上（武器測試場的按鈕列）：點按鈕不算攻擊（左鍵在介面之前就收到）
+func _mouse_over_button() -> bool:
+	return get_viewport().gui_get_hovered_control() is BaseButton
 
 
 # 背包介面的操作（InputCmd.OP_*），隨下一筆輸入送出
@@ -96,9 +101,10 @@ func build_cmd(tick: int) -> InputCmd:
 
 	cmd.buttons = _latched
 	cmd.inv_ops = _inv_ops.duplicate()
-	if auto_attack or (Input.is_action_pressed(&"attack") and not mouse_captured):
+	var over_button := _mouse_over_button()
+	if auto_attack or (Input.is_action_pressed(&"attack") and not mouse_captured and not over_button):
 		cmd.buttons |= InputCmd.BTN_ATTACK
-	if Input.is_action_pressed(&"special") and not mouse_captured:
+	if Input.is_action_pressed(&"special") and not mouse_captured and not over_button:
 		cmd.buttons |= InputCmd.BTN_SPECIAL_HELD
 	if auto_special:
 		if _auto_special_steps % roundi(AUTO_SPECIAL_INTERVAL / Config.FIXED_DT) == 0:
