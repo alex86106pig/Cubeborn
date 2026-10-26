@@ -278,32 +278,38 @@ func _pose_mace(idle: Dictionary, a: Dictionary, e: float, dt: float) -> void:
 # 拉弓（2026-10-27 使用者：箭要從右手拿出、搭上弓弦）：一發的循環 = 收招時右手往上繞到背後箭袋把下一支箭往上抽出（箭沿手臂拿著）
 # → 前搖前段經過頭頂往上繞到弓前搭弦（搭上後箭和瞄準方向平行）→ 前搖後段拉到胸前 → active 放箭、手往外彈、箭消失；
 # 蓄力（charge）時 active 一直拉滿。左手持弓平舉、一直保持直立。右臂 rotation.y 正 = 往身體中線（內側）
-const QUIVER_ARM := Vector2(-3.6, 0.15)  # 右手在背後箭袋上方把箭往上抽（手臂往上、稍微往後）；和 NOCK_ARM 之間內插 = 經過頭頂往上繞到前方
+const QUIVER_ARM := Vector2(-4.4, 0.2)   # 右手碰到背後的箭袋口（手臂往正後方、稍微往上）；和 NOCK_ARM 之間內插 = 往上抽、經過頭頂繞到前方
 # （2026-10-27 使用者：箭袋維持在背上，從箭袋取出、向上繞再搭到弓上；水平往後擺的版本弧度太大）
 const NOCK_ARM := Vector2(-1.5, 0.45)    # 右手在弓前搭弦
-const DRAW_IN := 0.3                     # 拉滿時再往胸前收的角度
+const DRAW_OUT := -0.35                  # 拉弦時右手往外後方收的角度
+const NOCK_BACK := 0.25                  # 剛搭上弦時箭尾在握把後方多遠
+const DRAWN_BACK := 0.6                  # 拉滿時箭尾在握把後方多遠（箭往後縮）
 const BRING_PART := 0.45                 # 前搖的前段（帶到弓前）佔多少
+const QUIVER_TOUCH := 0.95               # 收招走到這個比例時手碰到箭袋，箭才出現
 
 
 func _pose_bow(idle: Dictionary, a: Dictionary, e: float, charge: bool) -> void:
 	var arm := NOCK_ARM
-	var arrow := &"none"   # none / hand（沿手臂拿著）/ bow（搭在弦上、指向握把）
+	var arrow := &"none"   # none / hand（從箭袋抽出、拿在手上）/ bow（搭在弦上）
+	var bring := 0.0       # 手從箭袋帶到弓前的進度（箭頭從朝上轉成朝前）
+	var draw := 0.0        # 拉弦的進度（搭在弦上的箭往後滑）
 	match a.phase:
 		&"windup":
-			var bring := minf(1.0, e / BRING_PART)
-			var draw := maxf(0.0, (e - BRING_PART) / (1.0 - BRING_PART))
-			arm = QUIVER_ARM.lerp(NOCK_ARM, bring) + Vector2(0.0, DRAW_IN * draw)
-			arrow = &"bow" if bring >= 0.7 else &"hand"
+			bring = minf(1.0, e / BRING_PART)
+			draw = maxf(0.0, (e - BRING_PART) / (1.0 - BRING_PART))
+			arm = QUIVER_ARM.lerp(NOCK_ARM, bring) + Vector2(0.0, DRAW_OUT * draw)
+			arrow = &"bow" if bring >= 1.0 else &"hand"
 		&"active":
 			if charge:
-				arm = NOCK_ARM + Vector2(0.0, DRAW_IN)
+				arm = NOCK_ARM + Vector2(0.0, DRAW_OUT)
 				arrow = &"bow"
+				draw = 1.0
 			else:
-				arm = NOCK_ARM + Vector2(0.0, DRAW_IN - 1.2 * e)   # 放箭：手往外彈開
+				arm = NOCK_ARM + Vector2(0.0, DRAW_OUT - 0.8 * e)   # 放箭：手往外彈開
 		_:
-			var from := NOCK_ARM + Vector2(0.0, DRAW_IN - 1.2)
+			var from := NOCK_ARM + Vector2(0.0, DRAW_OUT - 0.8)
 			arm = from.lerp(QUIVER_ARM, e)   # 收招：伸到肩後拿下一支箭
-			arrow = &"hand" if e >= 0.6 else &"none"
+			arrow = &"hand" if e >= QUIVER_TOUCH else &"none"   # 手碰到箭袋才拿出箭（2026-10-27 使用者）
 	const BODY_YAW := 0.35   # 身體側過來、左肩朝前
 	rig.body.rotation.y = BODY_YAW
 	rig.body.rotation.x = 0.0
@@ -312,12 +318,18 @@ func _pose_bow(idle: Dictionary, a: Dictionary, e: float, charge: bool) -> void:
 	if rig.weapon_nock == null:
 		return
 	rig.weapon_nock.visible = arrow != &"none"
+	if arrow == &"none" or not rig.weapon_nock.is_inside_tree():
+		return
+	var fwd := rig.global_transform.basis.z
 	if arrow == &"hand":
-		rig.weapon_nock.rotation = Vector3(-PI / 2.0, 0.0, 0.0)   # 從箭袋抽出：箭沿手臂方向（模型沿 -Z → 轉成 -Y）
-	elif arrow == &"bow" and rig.weapon_nock.is_inside_tree():
-		# 搭在弦上：箭和瞄準方向平行（2026-10-27 使用者：原本從右手指向握把、角度很怪）
-		var fwd := rig.global_transform.basis.z
-		rig.weapon_nock.look_at(rig.weapon_nock.global_position + fwd, Vector3.UP)
+		# 從箭袋抽出：箭頭朝上（袋口方向），手往上繞到前方的過程中轉成朝前（2026-10-27 使用者：原本沿手臂往後橫著戳出去）
+		var dir := Vector3.UP.slerp(fwd, bring)
+		rig.weapon_nock.position = Vector3.ZERO
+		rig.weapon_nock.look_at(rig.weapon_nock.global_position + dir, Vector3.RIGHT if absf(dir.y) > 0.99 else Vector3.UP)
+	elif rig.weapon_left != null:
+		# 搭在弦上：箭尾在弦上（握把後方）、和瞄準方向平行，拉弦時往後滑（2026-10-27 使用者：準備射出前要往後縮）
+		var tail := rig.weapon_left.global_position - fwd * lerpf(NOCK_BACK, DRAWN_BACK, draw)
+		rig.weapon_nock.look_at_from_position(tail, tail + fwd, Vector3.UP)
 
 
 # 舉起火把（進入準備姿態）
