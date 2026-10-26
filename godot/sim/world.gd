@@ -16,6 +16,7 @@ var player_classes: Dictionary = {}  # peer id → 職業（F2，ClassDefs）；
 var player_list: Array[Player] = []  # 同 players.values()（加入順序），每步大量查詢時不必每次配置新陣列（D5）
 var enemies: Array[Entity] = []
 var projectiles: Array[Entity] = []
+var zones: Array[Dictionary] = []   # 地上的持續區域（F7 聖光圈，GroundZones）
 var chests: Array[Entity] = []       # 寶箱（D3）
 var pickups: Array[Entity] = []      # 掉在地上的道具（D3）
 var coins: Array[Entity] = []        # 掉在地上的金幣（v0.45，sim/coin.gd）
@@ -221,6 +222,7 @@ func clear() -> void:
 	player_list.clear()
 	enemies.clear()
 	projectiles.clear()
+	zones.clear()
 	chests.clear()
 	pickups.clear()
 	coins.clear()
@@ -466,6 +468,7 @@ func step(cmds: Dictionary, dt: float) -> void:
 		e.update(dt)
 	for e in projectiles:
 		e.update(dt)
+	GroundZones.update(self, dt)
 
 	_bodies.clear()
 	for p in player_list:
@@ -576,12 +579,14 @@ func wake_pack(i: int) -> void:
 # 沒有站著的玩家時，所有倒地的人直接死亡（全員倒下就輸；單機倒下就是死亡）
 func _update_downed(dt: float) -> void:
 	var standing := 0
-	var reviving := {}   # 倒地者 id -> true
+	var reviving := {}   # 倒地者 id -> 救他的人（多人一起救取最快的；驅魔神官被動救得快、救起的血多，F7）
 	for p in player_list:
 		if not p.is_dead and not p.is_downed:
 			standing += 1
 			if p.revive_target_id != 0:
-				reviving[p.revive_target_id] = true
+				var cur: Player = reviving.get(p.revive_target_id)
+				if cur == null or p.class_passive("revive_speed", 1.0) > cur.class_passive("revive_speed", 1.0):
+					reviving[p.revive_target_id] = p
 	var r: Dictionary = Config.REVIVE
 	for p in player_list:
 		if not p.is_downed:
@@ -589,9 +594,10 @@ func _update_downed(dt: float) -> void:
 		if standing == 0:
 			p.die()
 		elif reviving.has(p.id):
-			p.revive_progress += dt
+			var rescuer: Player = reviving[p.id]
+			p.revive_progress += dt * rescuer.class_passive("revive_speed", 1.0)
 			if p.revive_progress >= r.revive_time - TIME_EPSILON:
-				p.revive()
+				p.revive(rescuer.class_passive("revive_hp_ratio", r.revive_hp_ratio))
 		else:
 			p.revive_progress = maxf(0.0, p.revive_progress - r.decay_rate * dt)
 			p.down_timer -= dt

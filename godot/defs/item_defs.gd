@@ -114,6 +114,8 @@ const ITEMS := {
 		"desc": "左鍵快射（可按住連射）、右鍵扇形散射 5 支", "effects": []},
 	&"daggers": {"kind": &"weapon", "name": "雙匕首", "rarity": &"white", "shape": &"i2", "weapon": &"daggers",
 		"desc": "左鍵五連刺（第 5 下必爆擊、擊退）、右鍵影步到怪背後背刺", "effects": []},
+	&"scepter": {"kind": &"weapon", "name": "驅魔權杖", "rarity": &"white", "shape": &"l3", "weapon": &"scepter",
+		"desc": "左鍵聖光敲擊（魔法、擊退）、右鍵聖光圈（隊友回血、亡靈受傷）", "effects": []},
 	&"longbow": {"kind": &"weapon", "name": "長弓", "rarity": &"white", "shape": &"i4", "weapon": &"longbow",
 		"desc": "左鍵重射（可擊退）、按住右鍵蓄力、放開射出穿透箭", "effects": []},
 

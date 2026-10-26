@@ -265,11 +265,12 @@ func _go_down() -> void:
 
 
 # 救起：回到最大生命的 REVIVE.revive_hp_ratio，短暫無敵
-func revive() -> void:
+# hp_ratio：救起後的血量比例（驅魔神官救的比較多，F7）
+func revive(hp_ratio: float = Config.REVIVE.revive_hp_ratio) -> void:
 	is_downed = false
 	down_timer = 0.0
 	revive_progress = 0.0
-	hp = maxf(1.0, roundf(max_hp * Config.REVIVE.revive_hp_ratio))
+	hp = maxf(1.0, roundf(max_hp * hp_ratio))
 	invuln_timer = Config.REVIVE.revive_invuln
 	locomotion.change(&"idle")
 	world.emit_event("player:revived", {"player_id": id})

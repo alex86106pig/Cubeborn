@@ -197,6 +197,8 @@ static func weapon(model: StringName) -> Dictionary:
 			return _player_bow(0.85, Color("5a3a1e"))
 		&"daggers":
 			return _daggers()
+		&"scepter":
+			return _scepter()
 	return {}
 
 
@@ -214,6 +216,21 @@ static func _daggers() -> Dictionary:
 	parts[1].position = Vector3(0.0, -0.62, 0.05)
 	parts[1].rotation.x = PI / 2.0
 	return {"kit": k, "main": parts[0], "offhand": parts[1], "gem": null}
+
+
+# 驅魔權杖（F7）：木柄 + 金色燈籠形的頭，中間發光（會自轉的 gem）
+static func _scepter() -> Dictionary:
+	var k := PartKit.new()
+	var g := Node3D.new()
+	k.add(g, PartKit.cyl(0.03, 0.035, 0.9, 5), k.mat(C.wood), {"y": 0.2})
+	k.add(g, PartKit.box(0.2, 0.05, 0.2), k.mat(Color("c9a64a")), {"y": 0.66})
+	k.add(g, PartKit.box(0.2, 0.05, 0.2), k.mat(Color("c9a64a")), {"y": 0.94})
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			k.add(g, PartKit.box(0.03, 0.28, 0.03), k.mat(Color("c9a64a")), {"x": sx * 0.085, "y": 0.8, "z": sz * 0.085})
+	var gem := k.add(g, PartKit.ico(0.07), k.mat(Color("fff0b0"), true), {"y": 0.8})
+	k.merge_static(g, [g], [gem])
+	return {"kit": k, "main": g, "offhand": null, "gem": gem}
 
 
 # 玩家的弓（F4）：豎直的弓身弧 + 弓弦，握在右手；size 是弓身半徑（短弓 0.55、長弓更大）

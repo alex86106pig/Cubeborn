@@ -238,6 +238,17 @@ class ShadowStep extends Behavior:
 		})
 
 
+# 聖光圈（F7 驅魔權杖右鍵）：在腳下放 duration 秒的聖光圈（GroundZones），隊友每秒回血、敵人每秒受到 damage_pct（持續傷害）
+class HolyCircle extends Behavior:
+	func phase(p: Player, def: Dictionary, _data: Dictionary, name: StringName) -> void:
+		if name != &"active":
+			return
+		GroundZones.add(p.world, {
+			"pos": p.pos, "radius": def.radius, "duration": def.duration, "owner_id": p.id, "color": def.color,
+			"heal_per_sec": def.heal_per_sec, "damage_per_sec": p.move_damage(def), "damage_type": p.weapon.damage_type,
+		})
+
+
 # 目標背後（和它面向相反）貼身的位置；被牆擋住就每 45° 繞一圈找第一個站得住的地方，都不行就留在原地
 static func behind(p: Player, target: Entity) -> Vector2:
 	var dist := target.radius + p.radius + 0.15
@@ -261,4 +272,5 @@ static var BEHAVIORS := {
 	&"arrowFan": ArrowFan.new(),
 	&"chargedShot": ChargedShot.new(),
 	&"shadowStep": ShadowStep.new(),
+	&"holyCircle": HolyCircle.new(),
 }

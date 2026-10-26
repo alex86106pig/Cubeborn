@@ -3,12 +3,13 @@
 # stats：覆寫 StatDefs 的基礎值（沒寫的照 StatDefs / Config.PLAYER）；passive.mods：被動的屬性加成（來源 &"class"）
 # passive.friendly_back_mul：被隊友從背後打到時的傷害倍率（Combat.apply_damage）；passive.attack_no_slow：移動中普攻不減速（Player 算移速）
 # passive.roll_buff：[秒數, 屬性加成]，翻滾結束後套上（增益 &"rollHaste"）
+# passive.revive_speed / revive_hp_ratio：救隊友的速度倍率、救起後的血量比例（World._update_downed）
 # colors：模型配色（DarkFantasy.player_character）：armor 盔甲、trim 腰甲、cape 披風
 class_name ClassDefs
 
 const NONE := &""   # 沒選職業：照舊用共用的基準數值（測試與自動驗證用）
 
-const ORDER: Array[StringName] = [&"guardian", &"arcanist", &"ranger", &"shadow"]
+const ORDER: Array[StringName] = [&"guardian", &"arcanist", &"ranger", &"shadow", &"priest"]
 
 const CLASSES := {
 	&"guardian": {
@@ -57,5 +58,17 @@ const CLASSES := {
 			"roll_buff": [1.5, [[&"attack_speed", Stats.PCT, 0.3]]],
 		},
 		"colors": {"armor": Color("3a3f4a"), "trim": Color("22252c"), "cape": Color("9aa3b5")},
+	},
+	&"priest": {
+		"name": "驅魔神官",
+		"weapon": &"scepter",
+		"pitch": "揮著權杖把亡靈逼退，順便替隊友補血。",
+		"stats": {&"max_hp": 110.0, &"armor": 10.0, &"magic_resist": 20.0, &"phys_damage": 0.95, &"magic_damage": 1.1, &"hp_regen": 1.5},
+		"passive": {
+			"desc": "救援速度 +50%；被救起的隊友恢復 50% 生命（平常 30%）",
+			"revive_speed": 1.5,
+			"revive_hp_ratio": 0.5,
+		},
+		"colors": {"armor": Color("8a7a4a"), "trim": Color("4a4028"), "cape": Color("fff0b0")},
 	},
 }

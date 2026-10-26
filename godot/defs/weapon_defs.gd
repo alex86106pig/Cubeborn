@@ -294,6 +294,60 @@ const WEAPONS := {
 		},
 	},
 
+
+	# 驅魔權杖（F7，驅魔神官的起始武器）：魔法近戰敲擊（可擊退）；右鍵腳下聖光圈 4 秒，隊友回血、亡靈（所有怪物）受傷
+	&"scepter": {
+		"id": &"scepter",
+		"name": "驅魔權杖",
+		"type": &"melee",
+		"model": &"scepter",
+		"base_damage": 10.0,
+		"damage_type": &"magic",
+		"idle": {"arm_r": -0.4, "arm_l": -0.1, "tilt": 0.0},
+		"attack": {
+			"behavior": &"meleeSwing",
+			"sfx": "swing", "sfx_heavy": "swingHeavy",
+			"name": "聖光敲擊",
+			"icon": "敲擊",
+			"damage_pct": 1.0,
+			"combo_count": 1,          # 沒有連段：每一下都一樣（終結技倍率都是 1）
+			"range": 2.6,
+			"arc": PI * 150.0 / 180.0,
+			"windup": 0.12,            # 三段合計 0.45 秒一下
+			"active": 0.08,
+			"recovery": 0.25,
+			"knockback": 8.0,
+			"lunge": 2.0,
+			"move_speed_mul": 0.4,
+			"combo_window": 0.3,
+			"finisher_mul": 1.0,
+			"finisher_impact_mul": 1.0,
+			"finisher_shake_mul": 1.0,
+			"finisher_scale": 1.0,
+			"finisher_recovery_mul": 1.0,
+			"hit_stop": 0.05,
+			"shake": 0.08,
+			"slash_color": Color("fff0b0"),
+			"slash_finisher_color": Color("fff0b0"),
+		},
+		"special": {
+			"behavior": &"holyCircle",
+			"sfx": "arcaneCast",
+			"name": "聖光圈",
+			"icon": "光圈",
+			"cooldown": 12.0,
+			"damage_pct": 0.6,         # 亡靈每秒受到 60%
+			"heal_per_sec": 4.0,       # 隊友（含自己）每秒回血
+			"radius": 4.0,
+			"duration": 4.0,
+			"windup": 0.25,
+			"active": 0.05,
+			"recovery": 0.25,
+			"move_speed_mul": 0.3,
+			"color": Color("fff0b0"),
+		},
+	},
+
 }
 
 

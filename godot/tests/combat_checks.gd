@@ -702,3 +702,58 @@ static func check_daggers() -> String:
 	if absf(p4.stats.value(&"attack_speed") - aspd0) > EPS:
 		return "1.5 秒後攻速應回到 %.2f，實際 %.2f" % [aspd0, p4.stats.value(&"attack_speed")]
 	return ""
+
+
+# F7 驅魔權杖與驅魔神官：敲擊是魔法、可擊退；聖光圈每 0.5 秒對範圍內敵人造成持續傷害（不爆擊、不算命中）、隊友回血，4 秒後消失；
+# 神官救人快 50%、救起回 50% 生命
+static func check_scepter() -> String:
+	var sc: Dictionary = WeaponDefs.WEAPONS[&"scepter"]
+	var w := _new_world()
+	var p := _player(w)
+	p.equip_weapon(&"scepter")
+	var near := _dummy(w, Vector2(0, 2.0))
+	var far := _dummy(w, Vector2(0, sc.special.radius + 2.0))
+	p.take_damage(30.0, Vector2.UP, 0.0, 0)
+	var hp0 := p.hp
+	var events: Array[Dictionary] = []
+	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, -5), InputCmd.BTN_SPECIAL), 1, events)
+	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, -5)), roundi((sc.special.windup + sc.special.active + sc.special.duration) / DT) + 30, events)
+	var ticks := roundi(sc.special.duration / GroundZones.TICK_INTERVAL)
+	var per_tick := WeaponDefs.move_base_damage(sc, sc.special) * GroundZones.TICK_INTERVAL
+	var got := _damage_amounts(events, near.id)
+	var crit := _named(events, "entity:damaged").any(func(e: Dictionary) -> bool: return e.is_crit)
+	if got.size() != ticks or absf(got[0] - per_tick) > EPS or crit or not _damage_amounts(events, far.id).is_empty() or not w.zones.is_empty():
+		return "聖光圈應對範圍內打 %d 次、每次 %.1f、不爆擊、範圍外不受傷、結束後消失：%s / 範圍外 %s / 剩 %d 個" % [ticks, per_tick, got, _damage_amounts(events, far.id), w.zones.size()]
+	var healed := p.hp - hp0
+	if absf(healed - minf(30.0, sc.special.heal_per_sec * sc.special.duration)) > EPS:
+		return "聖光圈隊友每秒回 %.0f，4 秒應回 %.0f，實際 %.1f" % [sc.special.heal_per_sec, sc.special.heal_per_sec * sc.special.duration, healed]
+	# 敲擊：魔法、可擊退
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	p2.equip_weapon(&"scepter")
+	var t2 := _dummy(w2, Vector2(0, 1.5))
+	t2.set_stat_source(&"test", [[&"armor", Stats.ADD, 1000.0]])   # 護甲不擋魔法
+	var ev2: Array[Dictionary] = []
+	_run_collect(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 20, ev2)
+	var h2 := _named(ev2, "entity:damaged").filter(func(e: Dictionary) -> bool: return e.target_id == t2.id)
+	if h2.is_empty() or absf(h2[0].amount - WeaponDefs.move_base_damage(sc, sc.attack)) > EPS or h2[0].knockback <= 0.0:
+		return "聖光敲擊應是魔法（護甲不擋）%.0f、可擊退：%s" % [WeaponDefs.move_base_damage(sc, sc.attack), h2]
+	# 神官救人
+	var w3 := World.new(&"test_arena")
+	_worlds.append(w3)
+	w3.player_classes = {1: &"priest"}
+	w3.reset(9, [1, 2] as Array[int])
+	w3.spawner.finished = true
+	var priest: Player = w3.players[1]
+	var down: Player = w3.players[2]
+	priest.pos = Vector2.ZERO
+	down.pos = Vector2(0, 1.0)
+	down.take_damage(1000.0, Vector2(1, 0), 0.0, 0)
+	var steps := 0
+	while down.is_downed and steps < 600:
+		w3.step({1: _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_INTERACT), 2: _cmd(Vector2.ZERO)}, DT)
+		steps += 1
+	var want_steps: float = Config.REVIVE.revive_time / 1.5 / DT
+	if down.is_downed or absf(steps - want_steps) > 3 or absf(down.hp - roundf(down.max_hp * 0.5)) > EPS:
+		return "神官救人約 %.0f 步、救起 50%% 生命：%d 步、倒地 %s、血 %.0f / %.0f" % [want_steps, steps, down.is_downed, down.hp, down.max_hp]
+	return ""

@@ -9,6 +9,7 @@ const POSE_OF := {
 	&"arrowFan": &"arcaneBurst",
 	&"chargedShot": &"arcaneBurst",
 	&"shadowStep": &"meleeSwing",
+	&"holyCircle": &"arcaneBurst",
 }
 
 const WALK_SHARPNESS := 12.0
