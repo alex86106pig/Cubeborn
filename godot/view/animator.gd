@@ -54,6 +54,7 @@ func update(p: Player, dt: float) -> void:
 		rig.weapon_main.rotation.x = weapon_tilt - rig.arm_r.rotation.x
 	if rig.weapon_nock != null and not (a.action in [&"attack", &"special"] and _pose_for(a.behavior) in [&"bow", &"bowCharge"]):
 		rig.weapon_nock.visible = false
+		_bow_string(null)
 	var shown: int = p.quiver if p.weapon.attack.has("quiver") else rig.weapon_quiver_arrows.size()
 	for i in rig.weapon_quiver_arrows.size():   # 短弓箭袋：剩幾發就露出幾支；長弓沒有箭數機制，一直是滿的
 		(rig.weapon_quiver_arrows[i] as Node3D).visible = i < shown
@@ -280,37 +281,29 @@ func _pose_mace(idle: Dictionary, a: Dictionary, e: float, dt: float) -> void:
 # 蓄力（charge）時 active 一直拉滿。左手持弓平舉、一直保持直立。右臂 rotation.y 正 = 往身體中線（內側）
 const QUIVER_ARM := Vector2(-4.13, 0.19) # 右手伸進背後的箭袋口（手臂往後上方；DarkFantasy.QUIVER_MOUTH 就擺在這時手的位置）；和 NOCK_ARM 之間內插 = 往上抽、經過頭頂繞到前方
 # （2026-10-27 使用者：箭袋維持在背上，從箭袋取出、向上繞再搭到弓上；水平往後擺的版本弧度太大）
-const NOCK_ARM := Vector2(-1.5, 0.45)    # 右手在弓前搭弦
-const DRAW_OUT := -0.35                  # 拉弦時右手往外後方收的角度
-const NOCK_BACK := 0.25                  # 剛搭上弦時箭尾在握把後方多遠
-const DRAWN_BACK := 0.6                  # 拉滿時箭尾在握把後方多遠（箭往後縮）
+# 2026-10-27 查過正確流程（NASP / World Archery）：側身約 90° 對靶；抽箭時箭頭朝前；弓放低、箭擱在握把再把箭尾卡上弦；
+# 舉弓、靠肩膀往後轉拉滿。骨架沒有手肘，改成「推拉式」：搭箭時弓手往內收讓兩手靠近，拉弦時弓往外推、身體側轉，兩臂平行時拉滿
+const NOCK_ARM := Vector2(-1.5, 0.45)    # 放箭彈開後的參考姿勢（只在收招起點用）
+const DRAWN_BACK := 0.72                 # 拉滿時右手（箭尾）瞄在握把後方多遠：側身時兩臂平行伸直的距離（短弓箭短，以箭長 - 0.1 為上限）
 const BRING_PART := 0.45                 # 前搖的前段（帶到弓前）佔多少
-const BOW_TWIST := 0.7                   # 拉滿時身體順時針轉多少（弧度）
+const BOW_TWIST := 1.4                   # 拉滿時身體順時針轉多少（弧度，約 80°，側身對靶）
+const BOW_IN := 0.6                      # 搭箭時弓手往身體內側收多少（弧度），讓右手搆得到弦
+const BOW_LOW := 0.5                     # 搭箭時弓手放低多少（弧度）
+const ARROW_SWING_OUT := 1.2            # 抽箭途中箭頭往右外側偏多少（繞到身體外面）
 const QUIVER_TOUCH := 0.95               # 收招走到這個比例時手碰到箭袋，箭才出現
 
 
 func _pose_bow(idle: Dictionary, a: Dictionary, e: float, charge: bool) -> void:
 	var arm := NOCK_ARM
+	var drawn_back := minf(DRAWN_BACK, rig.weapon_nock.get_meta(&"arrow", 0.9) - 0.1) if rig.weapon_nock != null else DRAWN_BACK
 	var arrow := &"none"   # none / hand（從箭袋抽出、拿在手上）/ bow（搭在弦上）
 	var bring := 0.0       # 手從箭袋帶到弓前的進度（箭頭從朝上轉成朝前）
 	var draw := 0.0        # 拉弦的進度（搭在弦上的箭往後滑）
-	match a.phase:
-		&"windup":
-			bring = minf(1.0, e / BRING_PART)
-			draw = maxf(0.0, (e - BRING_PART) / (1.0 - BRING_PART))
-			arm = QUIVER_ARM.lerp(NOCK_ARM, bring) + Vector2(0.0, DRAW_OUT * draw)
-			arrow = &"bow" if bring >= 1.0 else &"hand"
-		&"active":
-			if charge:
-				arm = NOCK_ARM + Vector2(0.0, DRAW_OUT)
-				arrow = &"bow"
-				draw = 1.0
-			else:
-				arm = NOCK_ARM + Vector2(0.0, DRAW_OUT - 0.8 * e)   # 放箭：手往外彈開
-		_:
-			var from := NOCK_ARM + Vector2(0.0, DRAW_OUT - 0.8)
-			arm = from.lerp(QUIVER_ARM, e)   # 收招：伸到肩後拿下一支箭
-			arrow = &"hand" if e >= QUIVER_TOUCH else &"none"   # 手碰到箭袋才拿出箭（2026-10-27 使用者）
+	if a.phase == &"windup":
+		bring = minf(1.0, e / BRING_PART)
+		draw = maxf(0.0, (e - BRING_PART) / (1.0 - BRING_PART))
+	elif a.phase == &"active" and charge:
+		draw = 1.0
 	# 拉弓時身體順時針轉（從上往下看；左肩朝向目標），拉得越滿轉越多（2026-10-27 使用者：原本 +0.35 是逆時針、右肩朝前）
 	var twist := 0.0
 	match a.phase:
@@ -323,24 +316,75 @@ func _pose_bow(idle: Dictionary, a: Dictionary, e: float, charge: bool) -> void:
 	var yaw := -BOW_TWIST * twist
 	rig.body.rotation.y = yaw
 	rig.body.rotation.x = 0.0
-	rig.arm_l.rotation = Vector3(-1.55, -yaw, 0.0)   # 弓手抵銷身體轉向，指向前方
+	# 弓手抵銷身體轉向指向前方；搭箭時放低、往內收，拉弦時推出去（還沒拉的 slack = 1）
+	var slack := 0.0
+	if a.phase == &"windup":
+		slack = bring * (1.0 - draw)
+	rig.arm_l.rotation = Vector3(-1.55 + BOW_LOW * slack, -yaw - BOW_IN * slack, 0.0)
+	# 右手伸直指向握把後方 drawn_back * draw 的點（搭箭時就是握把本身，手盡量靠近）
+	var fwd := rig.global_transform.basis.z
+	var grip := rig.weapon_left.global_position if rig.weapon_left != null else rig.global_position
+	var drawn_arm := _arm_r_toward(grip - fwd * drawn_back)
+	match a.phase:
+		&"windup":
+			arm = QUIVER_ARM.lerp(_arm_r_toward(grip - fwd * drawn_back * draw), bring)
+			arrow = &"bow" if bring >= 1.0 else &"hand"
+		&"active":
+			if charge:
+				arm = drawn_arm
+				arrow = &"bow"
+			else:
+				arm = drawn_arm + Vector2(0.0, -0.8 * e)   # 放箭：手往外彈開
+		_:
+			arm = (drawn_arm + Vector2(0.0, -0.8)).lerp(QUIVER_ARM, e)   # 收招：伸到肩後拿下一支箭
+			arrow = &"hand" if e >= QUIVER_TOUCH else &"none"   # 手碰到箭袋才拿出箭（2026-10-27 使用者）
 	rig.arm_r.rotation = Vector3(arm.x, arm.y, 0.0)
 	if rig.weapon_nock == null:
 		return
 	rig.weapon_nock.visible = arrow != &"none"
+	_bow_string(rig.hand_r.global_position if arrow == &"bow" and rig.hand_r.is_inside_tree() else null)
 	if arrow == &"none" or not rig.weapon_nock.is_inside_tree():
 		return
-	var fwd := rig.global_transform.basis.z
 	if arrow == &"hand":
 		# 從箭袋抽出：一開始和箭袋平行、箭頭朝袋底（使用者 2026-10-27），手往上繞到前方的過程中轉成朝前
 		var start := -rig.weapon_back.global_transform.basis.y.normalized()
-		var dir := start.slerp(fwd, bring)
+		# 中途箭頭往身體右外側偏、朝前（抽箭時箭頭朝靶），不然手在頭上時箭朝下、整支插進頭和身體裡看不到（2026-10-27 使用者：搭弦中途箭不見）
+		var outward := -rig.body.global_transform.basis.x.normalized()
+		var dir := (start.slerp(fwd, bring) + outward * ARROW_SWING_OUT * sin(PI * bring)).normalized()
 		rig.weapon_nock.position = Vector3.ZERO
 		rig.weapon_nock.look_at(rig.weapon_nock.global_position + dir, Vector3.RIGHT if absf(dir.y) > 0.99 else Vector3.UP)
 	elif rig.weapon_left != null:
-		# 搭在弦上：箭尾在弦上（握把後方）、和瞄準方向平行，拉弦時往後滑（2026-10-27 使用者：準備射出前要往後縮）
-		var tail := rig.weapon_left.global_position - fwd * lerpf(NOCK_BACK, DRAWN_BACK, draw)
-		rig.weapon_nock.look_at_from_position(tail, tail + fwd, Vector3.UP)
+		# 搭在弦上：箭尾在右手（勾弦處）、箭身穿過握把；拉弦時手往後、箭跟著往後縮（2026-10-27 使用者）
+		var tail := rig.hand_r.global_position
+		var dir := grip - tail
+		if dir.length() < 0.05:
+			dir = fwd
+		rig.weapon_nock.look_at_from_position(tail, tail + dir, Vector3.UP)
+
+
+# 弓弦：pull（世界座標的拉弦點，箭尾）在弦的後方（弓手那側的反方向）時，上下兩段從弓梢拉到 pull 成 V 字；null 或在弦前方就是直的
+func _bow_string(pull: Variant) -> void:
+	var bow := rig.weapon_left
+	if bow == null or not bow.has_meta(&"strings"):
+		return
+	var tips: Array = bow.get_meta(&"string_tips")
+	var rest: Vector3 = (tips[0] + tips[1]) / 2.0
+	var p := rest
+	if pull != null and bow.is_inside_tree():
+		var local := bow.to_local(pull)
+		if local.z < rest.z:
+			p = local
+	var strings: Array = bow.get_meta(&"strings")
+	for i in 2:
+		var span: Vector3 = p - tips[i]
+		var seg: MeshInstance3D = strings[i]
+		seg.transform = Transform3D(Basis(Quaternion(Vector3.UP, span.normalized())).scaled_local(Vector3(1.0, span.length(), 1.0)), (tips[i] + p) / 2.0)
+
+
+# 右臂伸直指向 target（世界座標）的 rotation (x, y)；手臂方向 = Ry(y)·(0, -cos x, -sin x)
+func _arm_r_toward(target: Vector3) -> Vector2:
+	var d := (rig.body.to_local(target) - rig.arm_r.position).normalized()
+	return Vector2(-acos(clampf(-d.y, -1.0, 1.0)), atan2(d.x, d.z))
 
 
 # 舉起火把（進入準備姿態）

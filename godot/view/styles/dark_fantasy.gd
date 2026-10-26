@@ -290,9 +290,15 @@ static func _player_bow(size: float, wood: Color, arrow: float) -> Dictionary:
 			{"y": size * sin(phi), "z": -size + size * cos(phi), "rx": -phi})
 	var tip_y := size * sin(BOW_HALF_ARC)
 	var string_z := -size * (1.0 - cos(BOW_HALF_ARC))
-	k.add(g, PartKit.cyl(0.007, 0.007, tip_y * 2.0, 3), k.mat(Color("d8d2bf")), {"z": string_z})
+	# 弓弦：上下兩段各從弓梢連到拉弦點（Animator.bow_string 每幀擺，拉弓時拉成 V 字；2026-10-27 使用者），不合併
+	var string_mat := k.mat(Color("d8d2bf"))
+	var strings: Array[MeshInstance3D] = []
+	for i in 2:
+		strings.append(k.add(g, PartKit.cyl(0.007, 0.007, 1.0, 3), string_mat))
+	g.set_meta(&"strings", strings)
+	g.set_meta(&"string_tips", [Vector3(0.0, tip_y, string_z), Vector3(0.0, -tip_y, string_z)])
 	k.add(g, PartKit.box(0.06, 0.14, 0.07), k.mat(C.leather))   # 握把（在手上）
-	k.merge_static(g, [g])
+	k.merge_static(g, [g], strings)
 	# 搭在弦上的箭：掛在右手、沿 -Z 建模（Animator 每幀 look_at 弓的握把，不管右手臂怎麼擺都指著弓）；只在拉弓時顯示
 	var nock := Node3D.new()
 	k.add(nock, PartKit.cyl(0.022, 0.022, arrow, 4), k.mat(Color("e0c890")), {"z": -arrow / 2.0, "rx": PI / 2.0})
@@ -300,6 +306,7 @@ static func _player_bow(size: float, wood: Color, arrow: float) -> Dictionary:
 	for sgn in [-1.0, 1.0]:
 		k.add(nock, PartKit.box(0.1, 0.012, 0.16), k.mat(Color("f0f0f0")), {"z": -0.06, "rz": sgn * 0.3})
 	k.merge_static(nock, [nock])
+	nock.set_meta(&"arrow", arrow)   # Animator 用來限制拉弦距離（箭尾不能拉過箭頭）
 	nock.visible = false
 	var out := {"kit": k, "main": null, "offhand": null, "left": g, "nock": nock, "gem": null}
 	var quiver_count: int = WeaponDefs.WEAPONS[&"shortbow"].attack.quiver
