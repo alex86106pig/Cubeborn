@@ -287,9 +287,10 @@ const NOCK_ARM := Vector2(-1.5, 0.45)    # 放箭彈開後的參考姿勢（只�
 const DRAWN_BACK := 0.72                 # 拉滿時右手（箭尾）瞄在握把後方多遠：側身時兩臂平行伸直的距離（短弓箭短，以箭長 - 0.1 為上限）
 const BRING_PART := 0.45                 # 前搖的前段（帶到弓前）佔多少
 const BOW_TWIST := 1.4                   # 拉滿時身體順時針轉多少（弧度，約 80°，側身對靶）
+const SHORTBOW_TWIST := 0.7              # 短弓拉滿只轉約 40°（2026-10-27 使用者）
 const BOW_IN := 0.6                      # 搭箭時弓手往身體內側收多少（弧度），讓右手搆得到弦
 const BOW_LOW := 0.5                     # 搭箭時弓手放低多少（弧度）
-const ARROW_SWING_OUT := 1.2            # 抽箭途中箭頭往右外側偏多少（繞到身體外面）
+const PULL_OUT := 0.25                   # 帶箭到弓前的前段佔多少：箭頭從朝袋底轉成朝前（之後一直朝前）
 const QUIVER_TOUCH := 0.95               # 收招走到這個比例時手碰到箭袋，箭才出現
 
 
@@ -313,7 +314,7 @@ func _pose_bow(idle: Dictionary, a: Dictionary, e: float, charge: bool) -> void:
 			twist = 1.0 if charge else 1.0 - 0.5 * e
 		_:
 			twist = 0.5 * (1.0 - e)
-	var yaw := -BOW_TWIST * twist
+	var yaw := -(SHORTBOW_TWIST if rig.weapon_model == &"shortbow" else BOW_TWIST) * twist
 	rig.body.rotation.y = yaw
 	rig.body.rotation.x = 0.0
 	# 弓手抵銷身體轉向指向前方；搭箭時放低、往內收，拉弦時推出去（還沒拉的 slack = 1）
@@ -348,9 +349,15 @@ func _pose_bow(idle: Dictionary, a: Dictionary, e: float, charge: bool) -> void:
 	if arrow == &"hand":
 		# 從箭袋抽出：一開始和箭袋平行、箭頭朝袋底（使用者 2026-10-27），手往上繞到前方的過程中轉成朝前
 		var start := -rig.weapon_back.global_transform.basis.y.normalized()
-		# 中途箭頭往身體右外側偏、朝前（抽箭時箭頭朝靶），不然手在頭上時箭朝下、整支插進頭和身體裡看不到（2026-10-27 使用者：搭弦中途箭不見）
+		# 抽出後箭頭一直朝靶（射箭教學：從箭袋拿到弓上的途中箭頭朝前）：前 PULL_OUT 從朝袋底經右外側轉到「朝前略往下外」，之後再轉平。
+		# 不這樣的話箭尾在手、箭頭朝袋底 = 沿著手臂往肩膀，整支藏在手臂和頭裡（2026-10-27 使用者：搭弦中途箭不見）
 		var outward := -rig.body.global_transform.basis.x.normalized()
-		var dir := (start.slerp(fwd, bring) + outward * ARROW_SWING_OUT * sin(PI * bring)).normalized()
+		var ahead := fwd.normalized()
+		var carry := (ahead + Vector3.DOWN * 0.3 + outward * 0.4).normalized()
+		var dir := carry.slerp(ahead, (bring - PULL_OUT) / (1.0 - PULL_OUT))
+		if bring < PULL_OUT:
+			var k := bring / PULL_OUT
+			dir = (start.slerp(carry, k) + outward * sin(PI * k)).normalized()
 		rig.weapon_nock.position = Vector3.ZERO
 		rig.weapon_nock.look_at(rig.weapon_nock.global_position + dir, Vector3.RIGHT if absf(dir.y) > 0.99 else Vector3.UP)
 	elif rig.weapon_left != null:
