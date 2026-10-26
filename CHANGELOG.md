@@ -3,7 +3,7 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
-## [未發布]
+## [0.45.3] - 2026-10-26
 
 ### 修改
 - `tools/release.mjs --load`：量網頁版開場載入。匯出後用全新設定資料夾的 headless Chrome 開兩次（沒有 / 有瀏覽器的著色器快取），攔截 WebGL 著色器編譯，印出開場時間軸（引擎啟動、`_ready`、預熱結束）、著色器程式數與類型（一般繪製 / 陰影深度 / 點光源疊加）、等編譯合計與最慢 10 個。遊戲在 `?perf` 時用 `PerfMeter.mark` 印出 `_ready` 與預熱結束的時間點（`--perf` 不受影響）。M5：第一次 3.5 秒、第二次 3.1 秒、172 個程式。
