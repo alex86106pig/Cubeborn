@@ -131,6 +131,28 @@ func spawn_at(world: World, type: StringName, at: Vector2, extra: Dictionary = {
 	return enemy
 
 
+# ───────── 武器測試場景（--weapon-test，2026-10-27）──────────
+# 木樁位置（center 為原點，等距相機的畫面方向）：右邊貼身 1 隻（近戰、鏟起）、往右一排 3 隻（穿透、散射、拋出）、上方 1 隻（影步）
+const TRAINING_RIGHT := Vector2(1.0, -1.0)   # 畫面右方（世界座標，未正規化）
+const TRAINING_UP := Vector2(-1.0, -1.0)     # 畫面上方
+const TRAINING_SPOTS := [[&"right", 1.6], [&"right", 5.0], [&"right", 7.0], [&"right", 9.0], [&"up", 4.0]]
+const TRAINING_HP := 100000.0
+
+
+# 木樁：骷髏戰士、main_state 固定 train（不動不打）、血很多、不給靈魂；被抓、被埋、燃燒、擊退照常
+static func spawn_training_dummies(world: World, center: Vector2) -> Array[Enemy]:
+	var out: Array[Enemy] = []
+	for spot: Array in TRAINING_SPOTS:
+		var dir: Vector2 = (TRAINING_RIGHT if spot[0] == &"right" else TRAINING_UP).normalized()
+		var e := world.spawner.spawn_at(world, &"grunt", center + dir * spot[1])
+		e.main_state = &"train"
+		e.no_souls = true
+		e.stats.set_base(&"max_hp", TRAINING_HP)
+		e.hp = e.max_hp
+		out.append(e)
+	return out
+
+
 # ───────── 怪群（D5）：開場在地圖上散放，休眠到玩家靠近（World._update_packs）──────────
 
 # 群中心：離出生點 min_spawn_distance 以上、可走而且走得到出生點、群與群之間 min_pack_distance 以上

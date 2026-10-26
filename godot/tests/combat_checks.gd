@@ -964,3 +964,35 @@ static func check_quiver() -> String:
 		return "翻滾應瞬間補滿箭袋：剩 %d" % p.quiver
 	return ""
 
+
+
+# 武器測試場景（--weapon-test）的木樁：爬出後站著不動、不打人；鐵鏟抓得起來、埋得下去，埋完回到站著
+static func check_training_dummies() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var dummies := Spawner.spawn_training_dummies(w, p.pos)
+	var start := dummies.map(func(e: Enemy) -> Vector2: return e.pos)
+	var hp0 := p.hp
+	_run(w, _cmd(Vector2.ZERO), 240)
+	for i in dummies.size():
+		var e: Enemy = dummies[i]
+		if e.pos.distance_to(start[i]) > 0.05 or not e.fsm.is_in(&"train"):
+			return "木樁 %d 應站著不動（狀態 train）：移動 %.2f、狀態 %s" % [i, e.pos.distance_to(start[i]), e.fsm.current_name]
+	if p.hp != hp0:
+		return "木樁不應打人：玩家血 %.0f → %.0f" % [hp0, p.hp]
+	# 鐵鏟：朝貼身那隻抓起、埋入，埋完回到 train
+	p.equip_weapon(&"shovel")
+	var near: Enemy = dummies[0]
+	var aim := p.pos + (near.pos - p.pos) * 3.0
+	_run(w, _cmd(Vector2.ZERO, aim, InputCmd.BTN_SPECIAL), 1)
+	_run(w, _cmd(Vector2.ZERO, aim), 20)
+	if p.held_enemy_id != near.id:
+		return "鐵鏟應抓起貼身的木樁：舉著 %d、木樁 %d" % [p.held_enemy_id, near.id]
+	_run(w, _cmd(Vector2.ZERO, aim, InputCmd.BTN_SPECIAL), 1)
+	_run(w, _cmd(Vector2.ZERO, aim), 20)
+	if near.buried_timer <= 0.0 or near.grabbed_by != 0:
+		return "右鍵應把木樁埋下去：埋 %.2f 秒、被舉 %d" % [near.buried_timer, near.grabbed_by]
+	_run(w, _cmd(Vector2.ZERO, aim), 180)
+	if near.buried_timer > 0.0 or not near.fsm.is_in(&"train"):
+		return "埋完應回到站著：埋 %.2f、狀態 %s" % [near.buried_timer, near.fsm.current_name]
+	return ""

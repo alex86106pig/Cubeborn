@@ -421,7 +421,13 @@ func detach() -> void:
 # ───────── 共用狀態 ─────────
 
 static func base_states() -> Dictionary:
-	return {&"spawn": Spawn.new(), &"hurt": Hurt.new(), &"dead": Dead.new()}
+	return {&"spawn": Spawn.new(), &"hurt": Hurt.new(), &"dead": Dead.new(), &"train": Train.new()}
+
+
+# 武器測試場景的木樁（--weapon-test，2026-10-27）：main_state 設成 train，爬出、受擊後都回來站著，不移動、不攻擊
+class Train:
+	func update(e: Enemy, _dt: float, _fsm: StateMachine) -> void:
+		e.velocity = Vector2.ZERO
 
 
 # 怪群休眠（D5）：站著不動，醒來（dormant = false）後直接開始追，不播爬出動畫

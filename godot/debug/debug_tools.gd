@@ -7,7 +7,7 @@ extends RefCounted
 var _item_index := 0
 
 
-# 開局後照啟動參數布置場面：效能量測的怪群、站位、挖墳事件、冤魂、魔法 / 稀有怪
+# 開局後照啟動參數布置場面：效能量測的怪群、站位、挖墳事件、冤魂、魔法 / 稀有怪、武器測試木樁
 static func setup_run(world: World, me: Player, args: LaunchArgs) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5   # 固定位置，每次量測可以比較
@@ -30,6 +30,8 @@ static func setup_run(world: World, me: Player, args: LaunchArgs) -> void:
 	if args.ghost:
 		var g := world.spawner.spawn_at(world, &"ghost", world.nav.nearest_walkable(me.pos + Vector2(-1.0, -1.0).normalized() * 5.0))
 		g.ghost_of = -1
+	if args.weapon_test:
+		Spawner.spawn_training_dummies(world, me.pos)
 	if args.elites:
 		var up := Vector2(-1.0, -1.0).normalized()   # 等距相機的畫面上方
 		var side := Vector2(1.0, -1.0).normalized()

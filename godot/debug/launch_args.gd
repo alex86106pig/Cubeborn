@@ -6,6 +6,7 @@
 #   --net-latency=毫秒（模擬單程延遲）--net-loss=0.1（模擬掉包）--menu-flow（照玩家的操作順序從主選單走，v0.39.0）
 #   效能量測：--horde=N（開場在玩家周圍生 N 隻醒著的小怪）--perf（關垂直同步，結束時印出 FPS 與各段耗時，見 PerfMeter）
 #   --elites（畫面上方生 1 隻稀有、2 隻魔法骷髏，截圖確認外觀）
+#   --weapon-test（武器測試場景：不生怪；畫面右邊貼身 1 隻、往右 5 / 7 / 9 一排、上方 4 一隻木樁，不動不打、血很多）
 #   挖墳（D6）：--at-dig（開場站在挖墳點旁邊）--exit-open（開場出口就打開）--ghost（畫面上方生一隻冤魂）
 #   --player-at=x,y（開場站在地圖座標 x, y，v0.32.0）
 # 網頁版沒有指令列：網址的查詢參數轉成同樣的 --參數，只開放 WEB_URL_ARGS
@@ -13,7 +14,7 @@ class_name LaunchArgs
 extends RefCounted
 
 # 網頁版可以從網址帶的參數（url_query_args）；v0.36.3 加自動移動 / 攻擊，用來量「第一次出現」的卡頓
-const WEB_URL_ARGS: Array[String] = ["seconds", "horde", "perf", "elites", "player-hp", "auto-move", "auto-move-seconds", "auto-attack", "weapon", "class", "no-spawn"]   # weapon / class / no-spawn：網頁版逐把看武器（2026-10-27）
+const WEB_URL_ARGS: Array[String] = ["seconds", "horde", "perf", "elites", "player-hp", "auto-move", "auto-move-seconds", "auto-attack", "weapon", "class", "no-spawn", "weapon-test"]   # weapon / class / no-spawn / weapon-test：網頁版逐把看武器（2026-10-27）
 
 var run_seconds := 0.0           # > 0：跑這麼多秒後印出狀態並結束（自動驗證）
 var screenshot_path := ""
@@ -38,6 +39,7 @@ var net_latency_ms := -1         # -1 = 沒指定（用 Config.NET 的預設）
 var net_loss := -1.0
 var horde := 0
 var elites := false
+var weapon_test := false        # 武器測試場景：不生怪群與波次，玩家旁邊擺木樁（DebugTools.setup_run）
 var at_dig := false
 var player_at := Vector2.INF
 var exit_open := false
@@ -107,6 +109,9 @@ static func parse(args: PackedStringArray) -> LaunchArgs:
 			a.horde = value.to_int()
 		elif arg == "--elites":
 			a.elites = true
+		elif arg == "--weapon-test":
+			a.weapon_test = true
+			a.no_spawn = true
 		elif arg == "--at-dig":
 			a.at_dig = true
 		elif arg.begins_with("--player-at="):

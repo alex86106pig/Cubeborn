@@ -5,6 +5,7 @@ extends Entity
 
 const ROLL_CD := "player.roll"
 const PARRY_ANIM_TIME := 0.2
+const HELD_REACH := 0.9   # 鐵鏟舉著的怪離身體邊緣多遠：放在鏟面上（2026-10-27 網頁版實測：原本 0.2，怪浮在手邊、鏟面在牠下方的地上）
 
 var peer_id := 0
 var move_input := Vector2.ZERO
@@ -499,7 +500,7 @@ func _follow_held() -> void:
 	if e == null or e.is_dead:
 		release_enemy()
 		return
-	e.pos = pos + MathUtil.dir_from_angle(facing) * (radius + e.radius + 0.2)
+	e.pos = pos + MathUtil.dir_from_angle(facing) * (radius + e.radius + HELD_REACH)
 	e.velocity = Vector2.ZERO
 
 
