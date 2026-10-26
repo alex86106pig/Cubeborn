@@ -311,6 +311,7 @@ static func create_entity(world: World, a: Array) -> Entity:
 	var e: Entity
 	if kind == &"player":
 		e = Player.new(world, extra[P_PEER])
+		(e as Player).apply_class(world.player_classes.get(extra[P_PEER], ClassDefs.NONE))   # 開局時大廳給的職業（F3）
 		e.pos = at
 		world.add_entity_with_id(e, a[E_ID])
 	elif kind in ENEMY_KINDS:

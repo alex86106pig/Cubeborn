@@ -170,6 +170,7 @@ func _initialize() -> void:
 	_check("連線武器（D4）：客戶端按 X 切換、拖曳合成，房主與客戶端的裝備欄、手上武器、詞條一致；殺怪掉的武器兩邊都看得到", NetChecks.check_net_weapons)
 	_check("連線稀有度（D5）：客戶端的稀有度、詞條、名字、半徑、最大生命與房主相同；普通怪的快照不帶稀有度欄位", MonsterChecks.check_net_rarity)
 	_check("連線挖墳（D6）：層數、事件狀態、進度、難度、怪潮開始了沒、走進出口、屍體的主人與挖墳點在客戶端相同", EventChecks.check_net_event)
+	_check("大廳選職業（F3）：預設第一個職業、全員準備好才能開始、名單帶職業與準備；開局後房主與客戶端的角色職業、移速、武器一致", NetChecks.check_lobby_classes)
 	_check("誤傷（C2）：玩家揮劍打得到前方的隊友（12 傷害）、打不到自己；魔彈打得到隊友、不打發射者；單機目標不含自己", NetChecks.check_friendly_fire)
 	_check("人數調整（C3 決定）：敵人數量不變、血量每多 1 人 +50%（1 / 2 / 4 人 ×1 / ×1.5 / ×2.5，Boss 也是）", NetChecks.check_player_count_scaling)
 	_check("倒下（C4）：多人時生命歸零先倒地假死（不能動、不被打、不被追），REVIVE.down_time 秒沒人救才死亡；最後一人倒下全員死亡並 game:defeat；單機倒下直接死亡", NetChecks.check_downed)

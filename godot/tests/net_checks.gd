@@ -917,3 +917,56 @@ static func _parse_players(line: String) -> Dictionary:
 	for m in RegEx.create_from_string("(\\d+)=\\(([-\\d.]+),([-\\d.]+)\\)").search_all(line):
 		out[m.get_string(1).to_int()] = Vector2(m.get_string(2).to_float(), m.get_string(3).to_float())
 	return out
+
+
+# ───────── F3：大廳選職業 ─────────
+
+# 大廳：預設選第一個職業、房主算準備好；全員準備好才能開始；開局職業進房主與客戶端的 World，客戶端從快照建的角色套用職業
+static func check_lobby_classes() -> String:
+	var s := NetSession.new()
+	s.lobby_peers.assign([1, 2, 3])
+	s.lobby_choices = {1: NetSession.default_choice(true), 2: ["arcanist", true], 3: NetSession.default_choice(false)}
+	var ready_before := s.all_ready()
+	s.lobby_choices[3] = ["guardian", true]
+	var ready_after := s.all_ready()
+	var classes := s.classes()
+	var choices: Dictionary = s.lobby_choices.duplicate(true)
+	s.free()
+	if ready_before or not ready_after or classes != {1: ClassDefs.ORDER[0], 2: &"arcanist", 3: &"guardian"}:
+		return "全員準備好才算 all_ready（%s → %s），職業 %s" % [ready_before, ready_after, classes]
+	# 連線面板：名單帶職業與準備狀態；有人沒準備時「開始遊戲」不能按
+	var panel := NetPanel.new()
+	choices[3] = ["guardian", false]
+	panel.show_state(&"lobby_host", [1, 2, 3], 1, "", choices)
+	var waiting: bool = panel._start_button.disabled
+	var text: String = panel._status.text
+	var class_row: bool = panel._class_row.visible and panel.class_buttons[ClassDefs.ORDER[0]].button_pressed
+	choices[3] = ["guardian", true]
+	panel.show_state(&"lobby_host", [1, 2, 3], 1, "", choices)
+	var can_start: bool = not panel._start_button.disabled
+	panel.show_state(&"lobby_client", [1, 2, 3], 2, "", choices)
+	var client_ready: bool = panel.ready_button.visible and panel.ready_button.text == "取消準備" and panel.class_buttons[&"arcanist"].button_pressed
+	panel.free()
+	if not waiting or not can_start or not text.contains("祕術師") or not class_row or not client_ready:
+		return "大廳面板：沒準備時不能開始 %s、全員準備可以開始 %s、名單「%s」、選職業列 %s、客戶端準備鈕 %s" % [waiting, can_start, text, class_row, client_ready]
+	# 開局：房主 World 照職業建角色；客戶端從快照建的角色也套用（自己的移動預測用同樣的移速）
+	var w := World.new(&"test_arena")
+	_made.append(w)
+	w.player_classes = {1: &"guardian", 2: &"arcanist"}
+	w.reset(3, [1, 2] as Array[int])
+	w.spawner.finished = true
+	var host := NetHost.new(w)
+	var client := NetClient.new(2)
+	client.world.load_map(&"test_arena")
+	client.world.player_classes = {1: &"guardian", 2: &"arcanist"}
+	_made.append(client.world)
+	w.step({1: _cmd(Vector2.ZERO), 2: _cmd(Vector2.ZERO)}, DT)
+	client.receive_snapshot(bytes_to_var(var_to_bytes(host.snapshots()[2])))
+	client.step(_cmd(Vector2.ZERO), DT)
+	for id: int in [1, 2]:
+		var hp: Player = w.players[id]
+		var cp: Player = client.world.players.get(id)
+		if cp == null or cp.class_id != hp.class_id or absf(cp.stats.value(&"move_speed") - hp.stats.value(&"move_speed")) > 1e-4 or cp.weapon_id != hp.weapon_id:
+			return "P%d：房主 %s / %.2f / %s，客戶端 %s" % [id, hp.class_id, hp.stats.value(&"move_speed"), hp.weapon_id,
+				"沒有" if cp == null else "%s / %.2f / %s" % [cp.class_id, cp.stats.value(&"move_speed"), cp.weapon_id]]
+	return ""

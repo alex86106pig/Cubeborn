@@ -22,6 +22,7 @@ const CHANNEL_UNRELIABLE := 1
 var is_host := false
 var is_started := false
 var lobby_peers: Array[int] = []
+var lobby_choices: Dictionary = {}   # 大廳選擇（F3）：peer id → [職業 id（String）, 準備好了]；房主決定、廣播給所有人
 var latency_ms: int = Config.NET.debug_latency_ms
 var loss: float = Config.NET.debug_loss
 
@@ -80,6 +81,7 @@ func host(port: int = Config.NET.port) -> Error:
 	is_host = true
 	is_started = false
 	lobby_peers = [World.HOST_PEER_ID]
+	lobby_choices = {World.HOST_PEER_ID: default_choice(true)}
 	lobby_changed.emit(lobby_peers.duplicate())
 	return OK
 
@@ -93,6 +95,7 @@ func join(address: String, port: int = Config.NET.port) -> Error:
 	is_host = false
 	is_started = false
 	lobby_peers = []
+	lobby_choices = {}
 	return OK
 
 
@@ -102,6 +105,7 @@ func host_room() -> Error:
 	last_error = ""
 	is_host = true
 	lobby_peers = [World.HOST_PEER_ID]
+	lobby_choices = {World.HOST_PEER_ID: default_choice(true)}
 	_room_tries = 0
 	return _open_room()
 
@@ -229,6 +233,7 @@ func close() -> void:
 	is_host = false
 	is_started = false
 	lobby_peers = []
+	lobby_choices = {}
 	_outbox.clear()
 
 
@@ -238,7 +243,7 @@ func start_game() -> void:
 	if _signal != null:
 		_signal.close()
 		_signal = null
-	_send(func() -> void: _rpc_start.rpc(lobby_peers), false)
+	_send(func() -> void: _rpc_start.rpc(lobby_peers, lobby_choices), false)
 
 
 func send_inputs(arrays: Array) -> void:
@@ -283,6 +288,7 @@ func _on_peer_connected(peer_id: int) -> void:
 		multiplayer.multiplayer_peer.disconnect_peer(peer_id)
 		return
 	lobby_peers.append(peer_id)
+	lobby_choices[peer_id] = default_choice(false)
 	_broadcast_lobby()
 
 
@@ -290,6 +296,7 @@ func _on_peer_disconnected(peer_id: int) -> void:
 	if not is_host:
 		return
 	lobby_peers.erase(peer_id)
+	lobby_choices.erase(peer_id)
 	peer_left.emit(peer_id)
 	_broadcast_lobby()
 
@@ -303,19 +310,72 @@ func _on_connected() -> void:
 
 func _broadcast_lobby() -> void:
 	lobby_changed.emit(lobby_peers.duplicate())
-	_send(func() -> void: _rpc_lobby.rpc(lobby_peers), false)
+	_send(func() -> void: _rpc_lobby.rpc(lobby_peers, lobby_choices), false)
+
+
+# ───────── 大廳選職業與準備（F3） ─────────
+
+# 新加入的人預設選第一個職業、還沒準備好；房主一律算準備好（按開始就是準備好了）
+static func default_choice(ready: bool) -> Array:
+	return [String(ClassDefs.ORDER[0]), ready]
+
+
+func class_of(peer_id: int) -> StringName:
+	return StringName(lobby_choices[peer_id][0]) if lobby_choices.has(peer_id) else ClassDefs.ORDER[0]
+
+
+func is_ready(peer_id: int) -> bool:
+	return peer_id == World.HOST_PEER_ID or (lobby_choices.has(peer_id) and lobby_choices[peer_id][1])
+
+
+# 房主的「開始遊戲」要全員準備好才能按
+func all_ready() -> bool:
+	for id in lobby_peers:
+		if not is_ready(id):
+			return false
+	return true
+
+
+# 開局時每個人的職業（World.player_classes）
+func classes() -> Dictionary:
+	var out := {}
+	for id in lobby_peers:
+		out[id] = class_of(id)
+	return out
+
+
+# 自己選職業 / 切換準備：房主直接改、廣播；客戶端送給房主，等房主廣播回來才更新
+func set_choice(class_id: StringName, ready: bool) -> void:
+	if is_started or not ClassDefs.CLASSES.has(class_id):
+		return
+	if is_host:
+		lobby_choices[World.HOST_PEER_ID] = [String(class_id), true]
+		_broadcast_lobby()
+	else:
+		_send(func() -> void: _rpc_choice.rpc_id(World.HOST_PEER_ID, String(class_id), ready), false)
+
+
+@rpc("any_peer", "call_remote", "reliable", CHANNEL_RELIABLE)
+func _rpc_choice(class_id: String, ready: bool) -> void:
+	var pid := multiplayer.get_remote_sender_id()
+	if not is_host or is_started or not lobby_peers.has(pid) or not ClassDefs.CLASSES.has(StringName(class_id)):
+		return
+	lobby_choices[pid] = [class_id, ready]
+	_broadcast_lobby()
 
 
 @rpc("authority", "call_remote", "reliable", CHANNEL_RELIABLE)
-func _rpc_lobby(peers: Array) -> void:
+func _rpc_lobby(peers: Array, choices: Dictionary) -> void:
 	lobby_peers.assign(peers)
+	lobby_choices = choices
 	lobby_changed.emit(peers)
 
 
 @rpc("authority", "call_remote", "reliable", CHANNEL_RELIABLE)
-func _rpc_start(peers: Array) -> void:
+func _rpc_start(peers: Array, choices: Dictionary) -> void:
 	is_started = true
 	lobby_peers.assign(peers)
+	lobby_choices = choices
 	game_started.emit(peers)
 
 

@@ -127,8 +127,8 @@ func restart() -> void:
 		peers.assign(net.lobby_peers)
 		peers.sort()
 	world.spawn_packs = not args.no_spawn
-	if mode != Mode.SINGLE:
-		world.player_classes.clear()   # 多人還沒有選職業的大廳（F3）：先用共用基準
+	if mode == Mode.HOST:
+		world.player_classes = net.classes()   # 大廳選的職業（F3）
 	if args.start_class != &"":
 		world.player_classes[World.HOST_PEER_ID] = args.start_class
 	world.reset(randi(), peers)
@@ -228,6 +228,8 @@ func _connect_net() -> void:
 	hud.net_panel.join_pressed.connect(start_joining)
 	hud.net_panel.start_pressed.connect(start_net_game)
 	hud.net_panel.leave_pressed.connect(leave_net.bind(""))
+	hud.net_panel.class_chosen.connect(func(id: StringName) -> void: net.set_choice(id, net.is_ready(net.local_peer_id())))
+	hud.net_panel.ready_toggled.connect(func(on: bool) -> void: net.set_choice(net.class_of(net.local_peer_id()), on))
 
 
 # 網頁版用房號（WebRTC + 配對伺服器），桌面版用 IP（ENet）
@@ -277,6 +279,7 @@ func _on_game_started(_peers: Array) -> void:
 	set_paused(false)
 	_local_peer = net.local_peer_id()
 	net_client = NetClient.new(_local_peer)
+	net_client.world.player_classes = net.classes()   # 快照建立角色時套用職業（F3）
 	_use_world(net_client.world)
 	is_in_lobby = false
 	_elapsed = 0.0
@@ -371,7 +374,7 @@ func _refresh_net_panel() -> void:
 	var peers: Array = net.lobby_peers.duplicate()
 	peers.sort()
 	hud.net_panel.room_code = net.room_code
-	hud.net_panel.show_state(state, peers, net.local_peer_id(), _net_message)
+	hud.net_panel.show_state(state, peers, net.local_peer_id(), _net_message, net.lobby_choices)
 
 
 # ───────── 主迴圈 ─────────
