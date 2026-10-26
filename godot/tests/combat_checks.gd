@@ -565,8 +565,8 @@ static func check_weapon_catalog() -> String:
 		var model := DarkFantasy.weapon(WeaponDefs.WEAPONS[id].model)
 		if model.is_empty():
 			return "%s 的模型 %s 沒有在 DarkFantasy.weapon 做" % [id, WeaponDefs.WEAPONS[id].model]
-		for key in ["main", "offhand"]:
-			if model[key] != null:
+		for key in ["main", "offhand", "left"]:
+			if model.get(key) != null:
 				(model[key] as Node).free()
 	for id: StringName in ClassDefs.CLASSES:
 		if not WeaponDefs.WEAPONS.has(ClassDefs.CLASSES[id].weapon):
@@ -641,6 +641,22 @@ static func check_longbow() -> String:
 		for d in dummies:
 			amounts.append(_damage_amounts(events, d.id))
 		results.append(amounts)
+	# 冷卻中再按住右鍵：不射（按住類也要看冷卻）
+	var wc := _new_world()
+	var pc := _player(wc)
+	pc.equip_weapon(&"longbow")
+	var hold := InputCmd.BTN_SPECIAL | InputCmd.BTN_SPECIAL_HELD
+	var seen := {}   # 射出過的箭（飛完射程就會消失，所以記 id）
+	var plan := [[hold, 1], [0, 20]]
+	for i in 4:
+		plan.append_array([[hold, 10], [0, 10]])
+	for step: Array in plan:
+		for j in step[1]:
+			_run(wc, _cmd(Vector2.ZERO, Vector2(0, 8), step[0]), 1)
+			for pr in wc.projectiles:
+				seen[pr.id] = true
+	if seen.size() != 1:
+		return "穿透箭冷卻 %.0f 秒內再按不應再射：共射出 %d 支" % [bow.special.cooldown, seen.size()]
 	var base := WeaponDefs.move_base_damage(WeaponDefs.WEAPONS[&"longbow"], bow.special)
 	var tap: Array = results[0]
 	var full: Array = results[1]

@@ -13,7 +13,7 @@ static func add(world: World, zone: Dictionary) -> void:
 	z.tick_timer = TICK_INTERVAL
 	if world.is_authority:   # 客戶端預測自己的出招時只畫圈，回血與傷害以房主為準
 		world.zones.append(z)
-	world.emit_event("fx:telegraph", {"pos": z.pos, "height": world.terrain.ground_at(z.pos), "radius": z.radius, "color": z.color, "life": z.duration})
+	world.emit_event("fx:telegraph", {"pos": z.pos, "height": world.terrain.ground_at(z.pos), "radius": z.radius, "color": z.color, "life": z.duration, "fill": true})
 
 
 static func update(world: World, dt: float) -> void:

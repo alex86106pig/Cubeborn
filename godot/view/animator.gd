@@ -4,19 +4,21 @@
 class_name Animator
 extends RefCounted
 
-# 新招式借用的現有姿勢（behavior → meleeSwing / fireBolt / arcaneBurst；沒列的用 fireBolt）
+# 招式 → 姿勢（2026-10-27 網頁版實測後補專屬動作）；同一個招式依武器模型換姿勢的在 _pose_for
 const POSE_OF := {
-	&"arrowFan": &"arcaneBurst",
-	&"chargedShot": &"arcaneBurst",
-	&"shadowStep": &"meleeSwing",
+	&"arrowFan": &"bow",
+	&"chargedShot": &"bowCharge",
+	&"shadowStep": &"thrust",
 	&"holyCircle": &"arcaneBurst",
-	&"torchStance": &"arcaneBurst",
-	&"plantTorch": &"meleeSwing",
+	&"torchStance": &"torchRaise",
+	&"plantTorch": &"plant",
 	&"fireBreath": &"arcaneBurst",
-	&"shovelGrab": &"meleeSwing",
-	&"shovelThrow": &"meleeSwing",
-	&"shovelBury": &"arcaneBurst",
+	&"shovelGrab": &"scoop",
+	&"shovelThrow": &"fling",
+	&"shovelBury": &"slam",
 }
+const BOW_MODELS: Array[StringName] = [&"shortbow", &"longbow"]
+const UPRIGHT_MODELS: Array[StringName] = [&"staff", &"torch", &"scepter"]   # 武器跟著 weapon_tilt 保持直立（不隨手臂轉）
 
 const WALK_SHARPNESS := 12.0
 const IDLE_SHARPNESS := 18.0
@@ -48,8 +50,10 @@ func update(p: Player, dt: float) -> void:
 		_pose_action(p, a, dt)
 		if a.parry > 0.0:
 			_pose_parry(1.0 - a.parry)
-	if rig.weapon_model == &"staff" and rig.weapon_main != null:
+	if rig.weapon_model in UPRIGHT_MODELS and rig.weapon_main != null:
 		rig.weapon_main.rotation.x = weapon_tilt - rig.arm_r.rotation.x
+	if rig.weapon_model in BOW_MODELS and rig.weapon_left != null:
+		rig.weapon_left.rotation.x = -rig.arm_l.rotation.x   # 弓一直直立（左手平舉時也不會躺平）
 	if rig.weapon_gem != null:
 		rig.weapon_gem.rotation.y += GEM_SPIN * dt
 
@@ -110,26 +114,39 @@ func _pose_action(p: Player, a: Dictionary, dt: float) -> void:
 	match a.action:
 		&"ready":
 			_pose_idle_upper_body(idle, dt)
+			if a.get("holding", false):
+				_pose_holding(dt)        # 鐵鏟舉著怪
+			elif a.get("torch_stance", false):
+				_pose_torch_raised(dt)   # 火把準備姿態
 		&"attack", &"special":
 			var e := _ease(a.k)
-			match a.behavior:
+			match _pose_for(a.behavior):
 				&"meleeSwing":
 					_pose_melee_swing(idle, a, e, dt)
 				&"shieldBlock":
 					_pose_shield_block(a, e, dt)
-				&"fireBolt":
-					_pose_fire_bolt(idle, a, e)
 				&"arcaneBurst":
 					_pose_arcane_burst(idle, a, e)
+				&"thrust":
+					_pose_thrust(idle, a, e)
+				&"scoop":
+					_pose_scoop(idle, a, e)
+				&"fling":
+					_pose_overhead(idle, a, e, -1.0, 0.1)
+				&"slam":
+					_pose_overhead(idle, a, e, -0.15, 0.45)
+				&"mace":
+					_pose_mace(idle, a, e, dt)
+				&"bow":
+					_pose_bow(idle, a, e, false)
+				&"bowCharge":
+					_pose_bow(idle, a, e, true)
+				&"torchRaise":
+					_pose_torch_raise(idle, a, e)
+				&"plant":
+					_pose_plant(idle, a, e)
 				_:
-					# F4 起的新招式先借現有姿勢（POSE_OF），之後再做專屬動作
-					match POSE_OF.get(a.behavior, &"fireBolt"):
-						&"meleeSwing":
-							_pose_melee_swing(idle, a, e, dt)
-						&"arcaneBurst":
-							_pose_arcane_burst(idle, a, e)
-						_:
-							_pose_fire_bolt(idle, a, e)
+					_pose_fire_bolt(idle, a, e)
 		&"useItem":
 			var k := clampf(a.action_time / Config.PLAYER.use_item_time, 0.0, 1.0)
 			rig.arm_l.rotation.x = lerpf(0.0, -2.4, sin(k * PI))
@@ -144,6 +161,151 @@ func _pose_action(p: Player, a: Dictionary, dt: float) -> void:
 			rig.body.rotation.x = lerpf(0.25, 0.55, swing)
 			rig.arm_r.rotation.x = lerpf(-1.9, -0.3, swing)
 			rig.arm_l.rotation.x = lerpf(-1.9, -0.3, swing)
+
+
+# 招式的姿勢：普攻依武器模型分（匕首刺、鐵鏟鏟、權杖敲砸、弓拉弓），其餘查 POSE_OF
+func _pose_for(behavior: StringName) -> StringName:
+	match behavior:
+		&"meleeSwing":
+			match rig.weapon_model:
+				&"daggers":
+					return &"thrust"
+				&"shovel":
+					return &"scoop"
+				&"scepter":
+					return &"mace"
+			return &"meleeSwing"
+		&"fireBolt":
+			return &"bow" if rig.weapon_model in BOW_MODELS else &"fireBolt"
+		&"shieldBlock", &"arcaneBurst":
+			return behavior
+	return POSE_OF.get(behavior, &"fireBolt")
+
+
+# ───────── 2026-10-27 補的專屬動作（網頁版實測：原本都借劍的橫掃或法杖的舉手） ─────────
+# 手臂 rotation.x：0 = 自然下垂，負的往前抬（-1.5 約平舉、-2.7 舉過頭），正的往後擺
+
+# 刺（雙匕首、影步）：swing_dir 1 右手、-1 左手輪流往前刺；終結技雙手一起刺、身體前傾
+func _pose_thrust(idle: Dictionary, a: Dictionary, e: float) -> void:
+	var fin: bool = a.get("is_finisher", false)
+	var right: bool = fin or a.get("swing_dir", 1) >= 0
+	var left: bool = fin or a.get("swing_dir", 1) < 0
+	var back := 0.5 if fin else 0.35
+	var x := 0.0
+	match a.phase:
+		&"windup":
+			x = lerpf(idle.arm_r, back, e)
+		&"active":
+			x = lerpf(back, -1.65, e)
+		_:
+			x = lerpf(-1.65, idle.arm_r, e)
+	if right:
+		rig.arm_r.rotation = Vector3(x, 0.15 if fin else 0.0, 0.0)
+	if left:
+		rig.arm_l.rotation = Vector3(x, -0.15 if fin else 0.0, 0.0)
+	var twist := 0.0 if fin else (0.3 if right else -0.3)   # 出手那一側的肩膀往前
+	rig.body.rotation.y = twist * (1.0 if a.phase == &"active" else 0.5)
+	rig.body.rotation.x = (0.25 if fin else 0.1) * (e if a.phase == &"active" else (1.0 - e if a.phase == &"recovery" else 0.0))
+
+
+# 鏟（鐵鏟鏟地、鏟起）：雙手握柄，先往後拉、彎腰，再由下往前上鏟出去
+func _pose_scoop(idle: Dictionary, a: Dictionary, e: float) -> void:
+	var x := 0.0
+	var bend := 0.0
+	match a.phase:
+		&"windup":
+			x = lerpf(idle.arm_r, 0.55, e)
+			bend = lerpf(0.0, 0.35, e)
+		&"active":
+			x = lerpf(0.55, -1.25, e)
+			bend = lerpf(0.35, 0.05, e)
+		_:
+			x = lerpf(-1.25, idle.arm_r, e)
+			bend = lerpf(0.05, 0.0, e)
+	rig.arm_r.rotation = Vector3(x, 0.0, 0.0)
+	rig.arm_l.rotation = Vector3(x + 0.15, 0.35, 0.0)   # 左手在右手前面一點握柄
+	rig.body.rotation.x = bend
+
+
+# 舉過頭再往前甩（拋出）/ 往下砸（埋入）：雙手；to = active 結束時手臂的角度，lean = 身體前傾
+func _pose_overhead(idle: Dictionary, a: Dictionary, e: float, to: float, lean: float) -> void:
+	var x := 0.0
+	var body := 0.0
+	match a.phase:
+		&"windup":
+			x = lerpf(-1.1, -2.6, e)
+			body = lerpf(0.0, -0.15, e)
+		&"active":
+			x = lerpf(-2.6, to, e)
+			body = lerpf(-0.15, lean, e)
+		_:
+			x = lerpf(to, idle.arm_r, e)
+			body = lerpf(lean, 0.0, e)
+	rig.arm_r.rotation = Vector3(x, 0.0, 0.0)
+	rig.arm_l.rotation = Vector3(x, 0.3, 0.0)
+	rig.body.rotation.x = body
+
+
+# 舉著怪（鐵鏟）：雙手把鏟子往前上抬
+func _pose_holding(dt: float) -> void:
+	rig.arm_r.rotation.x = _step_lerp(rig.arm_r.rotation.x, -1.15, 0.3, dt)
+	rig.arm_l.rotation.x = _step_lerp(rig.arm_l.rotation.x, -1.0, 0.3, dt)
+	rig.arm_l.rotation.y = _step_lerp(rig.arm_l.rotation.y, 0.35, 0.3, dt)
+	rig.body.rotation.x = _step_lerp(rig.body.rotation.x, -0.12, 0.3, dt)
+
+
+# 權杖：第 1 下橫掃（頭朝前），第 2 下（終結技）舉過頭往下砸
+func _pose_mace(idle: Dictionary, a: Dictionary, e: float, dt: float) -> void:
+	if a.get("is_finisher", false):
+		_pose_overhead(idle, a, e, -0.6, 0.35)
+		match a.phase:
+			&"windup":
+				weapon_tilt = lerpf(0.0, -0.4, e)
+			&"active":
+				weapon_tilt = lerpf(-0.4, 1.7, e)
+			_:
+				weapon_tilt = lerpf(1.7, idle.tilt, e)
+		return
+	_pose_melee_swing(idle, a, e, dt)
+	weapon_tilt = 1.4 if a.phase == &"active" else lerpf(0.0, 1.4, e) if a.phase == &"windup" else lerpf(1.4, idle.tilt, e)
+
+
+# 拉弓：左手持弓平舉、右手把弦拉到胸前（身體側過來），放箭時右手往後彈；蓄力（charge）時 active 一直拉滿
+func _pose_bow(idle: Dictionary, a: Dictionary, e: float, charge: bool) -> void:
+	var draw := 0.0   # 0 = 沒拉、1 = 拉滿
+	match a.phase:
+		&"windup":
+			draw = e
+		&"active":
+			draw = 1.0 if charge else 1.0 - e
+		_:
+			draw = 0.0 if not charge else 1.0 - e
+	var raise := 1.0 if a.phase != &"recovery" else 1.0 - e
+	rig.arm_l.rotation = Vector3(lerpf(idle.arm_l, -1.55, raise), 0.25 * raise, 0.0)
+	rig.arm_r.rotation = Vector3(lerpf(idle.arm_r, -1.45, raise), lerpf(0.0, -0.9, draw), 0.0)
+	rig.body.rotation.y = 0.45 * raise   # 左肩朝前
+	rig.body.rotation.x = 0.0
+
+
+# 舉起火把（進入準備姿態）
+func _pose_torch_raise(idle: Dictionary, a: Dictionary, e: float) -> void:
+	var k := e if a.phase == &"windup" else 1.0
+	rig.arm_r.rotation = Vector3(lerpf(idle.arm_r, -2.7, k), 0.0, 0.0)
+	weapon_tilt = 0.0
+
+
+# 準備姿態中：火把舉過頭（全隊看得到的火光）
+func _pose_torch_raised(dt: float) -> void:
+	rig.arm_r.rotation.x = _step_lerp(rig.arm_r.rotation.x, -2.7, 0.3, dt)
+	rig.arm_r.rotation.y = 0.0
+	weapon_tilt = 0.0
+
+
+# 插火把：蹲下、手往下把火把插進地裡
+func _pose_plant(idle: Dictionary, a: Dictionary, e: float) -> void:
+	var k := e if a.phase == &"windup" else (1.0 if a.phase == &"active" else 1.0 - e)
+	rig.arm_r.rotation = Vector3(lerpf(-2.7, -0.6, k), 0.0, 0.0)
+	rig.body.rotation.x = 0.45 * k
 
 
 # 翻滾：繞身體中心往前翻一圈（body 樞紐在腳底，所以同時位移讓中心不動），四肢縮起

@@ -16,6 +16,7 @@ var height := 2.0
 var kit := PartKit.new()
 var weapon_main: Node3D = null      # 掛在 hand_r
 var weapon_offhand: Node3D = null   # 掛在 arm_l（盾）
+var weapon_left: Node3D = null      # 掛在 hand_l（弓、左手的匕首）
 var weapon_gem: Node3D = null       # 法杖寶石（自轉）
 var weapon_model: StringName = &""
 
@@ -88,18 +89,21 @@ func set_weapon(model: StringName) -> void:
 	if model == weapon_model:
 		return
 	weapon_model = model
-	for n in [weapon_main, weapon_offhand]:
+	for n in [weapon_main, weapon_offhand, weapon_left]:
 		if n != null:
 			n.queue_free()
 	var w := DarkFantasy.weapon(model)
 	_weapon_kit = w.get("kit")
 	weapon_main = w.get("main")
 	weapon_offhand = w.get("offhand")
+	weapon_left = w.get("left")
 	weapon_gem = w.get("gem")
 	if weapon_main != null:
 		hand_r.add_child(weapon_main)
 	if weapon_offhand != null:
 		arm_l.add_child(weapon_offhand)
+	if weapon_left != null:
+		hand_l.add_child(weapon_left)
 
 
 # 受擊閃白，k 為 0~1（自發光零件不受影響）

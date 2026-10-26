@@ -54,6 +54,8 @@ var _particles: Array[Dictionary] = []
 var _transients: Array[Dictionary] = []
 var _multimesh := MultiMesh.new()
 var _ring_mesh: ArrayMesh
+var _disc_mesh: Mesh                 # telegraph 的填色圓（半徑 1，用 scale 放大）
+const FILL_ALPHA := 0.18
 var _slash_meshes: Dictionary = {}   # "range|arc" -> ArrayMesh
 var _carry: Dictionary = {}          # 持續性粒子的小數累積：產生源 key -> 不滿一顆的部分
 var _next_carry: Dictionary = {}     # 這一幀用到的 key（沒用到的產生源下一幀就丟掉）
@@ -79,6 +81,13 @@ func _init() -> void:
 	mmi.custom_aabb = AABB(Vector3(-200, -10, -200), Vector3(400, 60, 400))   # 粒子散在整個場地，不讓整組被視錐剔除
 	add_child(mmi)
 	_ring_mesh = _make_ring_mesh()
+	var disc := CylinderMesh.new()
+	disc.top_radius = 1.0
+	disc.bottom_radius = 1.0
+	disc.height = 0.02
+	disc.radial_segments = 32
+	disc.rings = 1
+	_disc_mesh = disc
 
 
 # 開場先各畫一次（透明度 0），讓粒子與半透明材質的著色器在載入時就編譯，避免第一次出現時卡頓
@@ -165,7 +174,14 @@ func ring(pos: Vector3, radius: float, o: Dictionary = {}) -> void:
 
 
 # 預警圈：固定大小、閃爍，用於範圍技落點
+# fill：圈內再鋪一層半透明的圓（持續型的範圍，例如聖光圈）
 func telegraph(pos: Vector3, radius: float, o: Dictionary = {}) -> void:
+	if o.get("fill", false):
+		var disc := _transient_mesh(_disc_mesh, o.get("color", Color.WHITE), FILL_ALPHA)
+		disc.position = pos + Vector3(0, 0.04, 0)
+		disc.scale = Vector3(radius, 1.0, radius)
+		_add_transient(disc, o.get("life", 0.4), func(k: float) -> void:
+			_set_alpha(disc, FILL_ALPHA * (1.0 - smoothstep(0.85, 1.0, k))))
 	var node := _transient_mesh(_ring_mesh, o.get("color", Color.WHITE), 0.5)
 	node.position = pos + Vector3(0, 0.05, 0)
 	node.scale = Vector3(radius, 1.0, radius)
@@ -231,7 +247,7 @@ func _fx_muzzle(p: Dictionary) -> void:
 
 
 func _fx_telegraph(p: Dictionary) -> void:
-	telegraph(_at(p), p.radius, {"color": p.color, "life": p.life})
+	telegraph(_at(p), p.radius, {"color": p.color, "life": p.life, "fill": p.get("fill", false)})
 
 
 func _fx_fizzle(p: Dictionary) -> void:

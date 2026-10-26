@@ -77,7 +77,9 @@ class Ready:
 		# 按住類的特殊技（劍盾格擋，v0.41.0）：右鍵按著就舉盾，沒有冷卻；按鍵緩衝不用
 		var sdef := p.action_def(&"special")
 		var hold: bool = sdef.get("hold", false)
-		if hold and p.is_special_held:
+		var special_ready: bool = not sdef.has("cooldown") or p.world.cooldowns.is_ready(p.cd("player.special"))
+		# 按住類有冷卻的（長弓蓄力）冷卻中不進招式（2026-10-27 網頁版實測：原本按一次射一支，冷卻被繞過）
+		if hold and p.is_special_held and special_ready:
 			if p.buffered_action.get("type") == &"special":
 				p.buffered_action = {}
 			fsm.change(&"special")
@@ -88,7 +90,7 @@ class Ready:
 			if buffered.type == &"special":
 				if hold:
 					pass   # 按一下就放開（不到一步）：不舉盾
-				elif not sdef.has("cooldown") or p.world.cooldowns.is_ready(p.cd("player.special")):
+				elif special_ready:
 					fsm.change(&"special")
 					return
 				p.world.emit_event("skill:onCooldown", {"key": "player.special", "player_id": p.id})

@@ -206,7 +206,8 @@ static func weapon(model: StringName) -> Dictionary:
 	return {}
 
 
-# 雙匕首（F6）：右手一把、左臂一把（offhand）
+# 雙匕首（F6）：左右手各一把（left 掛 hand_l）；刀刃沿手臂延伸方向（-Y），手往前刺時刀尖朝前
+# 2026-10-27 網頁版實測：原本左手那把掛在左臂、轉 90°，畫面上看不到
 static func _daggers() -> Dictionary:
 	var k := PartKit.new()
 	var parts: Array[Node3D] = []
@@ -216,10 +217,9 @@ static func _daggers() -> Dictionary:
 		k.add(g, PartKit.box(0.16, 0.03, 0.05), k.mat(C.steel_dark), {"y": 0.09})
 		k.add(g, PartKit.cyl(0.025, 0.025, 0.14, 4), k.mat(C.leather), {"y": 0.0})
 		k.merge_static(g, [g])
+		g.rotation.x = PI   # 刀尖朝 -Y
 		parts.append(g)
-	parts[1].position = Vector3(0.0, -0.62, 0.05)
-	parts[1].rotation.x = PI / 2.0
-	return {"kit": k, "main": parts[0], "offhand": parts[1], "gem": null}
+	return {"kit": k, "main": parts[0], "offhand": null, "left": parts[1], "gem": null}
 
 
 # 驅魔權杖（F7）：木柄 + 金色燈籠形的頭，中間發光（會自轉的 gem）
@@ -248,18 +248,19 @@ static func _torch() -> Dictionary:
 	return {"kit": k, "main": g, "offhand": null, "gem": flame}
 
 
-# 鐵鏟（F9）：長木柄 + 握把 + 鐵鏟面
+# 鐵鏟（F9）：手握在柄的尾端（T 形握把），柄沿 -Y（手臂延伸的方向）伸出，鏟面在遠端
+# 2026-10-27 網頁版實測：原本握在柄中段、柄沿 +Y，下半截柄往前戳、鏟面甩到身後，看起來像拿反
 static func _shovel() -> Dictionary:
 	var k := PartKit.new()
 	var g := Node3D.new()
-	k.add(g, PartKit.cyl(0.03, 0.03, 1.3, 5), k.mat(C.wood), {"y": 0.35})
-	k.add(g, PartKit.box(0.16, 0.04, 0.04), k.mat(C.wood), {"y": -0.3})
-	k.add(g, PartKit.box(0.26, 0.32, 0.03), k.mat(Color("a8a8a8")), {"y": 1.12})
+	k.add(g, PartKit.box(0.18, 0.04, 0.04), k.mat(C.wood), {"y": 0.05})
+	k.add(g, PartKit.cyl(0.03, 0.03, 1.15, 5), k.mat(C.wood), {"y": -0.55})
+	k.add(g, PartKit.box(0.26, 0.34, 0.03), k.mat(Color("a8a8a8")), {"y": -1.25, "rx": 0.25})
 	k.merge_static(g, [g])
 	return {"kit": k, "main": g, "offhand": null, "gem": null}
 
 
-# 玩家的弓（F4）：豎直的弓身弧 + 弓弦，握在右手；size 是弓身半徑（短弓 0.55、長弓更大）
+# 玩家的弓（F4）：豎直的弓身弧 + 弓弦，握在左手（Animator 讓它一直保持直立，右手拉弦）；size 是弓身半徑（短弓 0.55、長弓更大）
 static func _player_bow(size: float, wood: Color) -> Dictionary:
 	var k := PartKit.new()
 	var g := Node3D.new()
@@ -267,7 +268,7 @@ static func _player_bow(size: float, wood: Color) -> Dictionary:
 	k.add(g, PartKit.cyl(0.008, 0.008, size * 1.9, 3), k.mat(Color("d8d2bf")), {"y": 0.15, "z": -size * 0.55 + size * cos(PI * 0.4)})
 	k.add(g, PartKit.box(0.06, 0.16, 0.06), k.mat(C.leather), {"y": 0.15})
 	k.merge_static(g, [g])
-	return {"kit": k, "main": g, "offhand": null, "gem": null}
+	return {"kit": k, "main": null, "offhand": null, "left": g, "gem": null}
 
 
 static func _sword_shield() -> Dictionary:

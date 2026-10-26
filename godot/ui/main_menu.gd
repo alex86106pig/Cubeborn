@@ -123,7 +123,7 @@ func _class_card(id: StringName) -> VBoxContainer:
 	for line in lines:
 		var l := _note(line)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		l.custom_minimum_size = Vector2(360, 0)
+		l.custom_minimum_size = Vector2(400, 0)   # 360 時「。」「）」會被折到下一行單獨掛著（2026-10-27 網頁版實測）
 		card.add_child(l)
 	return card
 
