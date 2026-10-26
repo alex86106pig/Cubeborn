@@ -4,12 +4,13 @@
 # passive.friendly_back_mul：被隊友從背後打到時的傷害倍率（Combat.apply_damage）；passive.attack_no_slow：移動中普攻不減速（Player 算移速）
 # passive.roll_buff：[秒數, 屬性加成]，翻滾結束後套上（增益 &"rollHaste"）
 # passive.revive_speed / revive_hp_ratio：救隊友的速度倍率、救起後的血量比例（World._update_downed）
+# passive.vision_add / near_radius：視野距離加多少、身邊一圈的半徑（Vision.view_range / near_radius）
 # colors：模型配色（DarkFantasy.player_character）：armor 盔甲、trim 腰甲、cape 披風
 class_name ClassDefs
 
 const NONE := &""   # 沒選職業：照舊用共用的基準數值（測試與自動驗證用）
 
-const ORDER: Array[StringName] = [&"guardian", &"arcanist", &"ranger", &"shadow", &"priest"]
+const ORDER: Array[StringName] = [&"guardian", &"arcanist", &"ranger", &"shadow", &"priest", &"mercenary"]
 
 const CLASSES := {
 	&"guardian": {
@@ -70,5 +71,17 @@ const CLASSES := {
 			"revive_hp_ratio": 0.5,
 		},
 		"colors": {"armor": Color("8a7a4a"), "trim": Color("4a4028"), "cape": Color("fff0b0")},
+	},
+	&"mercenary": {
+		"name": "火把傭兵",
+		"weapon": &"torch",
+		"pitch": "插火把替全隊照亮戰場，必要時吹出一片火。",
+		"stats": {&"max_hp": 100.0, &"armor": 10.0, &"magic_resist": 10.0, &"magic_damage": 1.1, &"hp_regen": 0.8, &"crit_damage": 1.6, &"move_speed": 6.8},
+		"passive": {
+			"desc": "視野 +3 單位；身邊看得到的範圍 4 → 6",
+			"vision_add": 3.0,
+			"near_radius": 6.0,
+		},
+		"colors": {"armor": Color("8a4a3a"), "trim": Color("4a2a20"), "cape": Color("ffb070")},
 	},
 }

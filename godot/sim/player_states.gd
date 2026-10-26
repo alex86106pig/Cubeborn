@@ -72,7 +72,8 @@ class Ready:
 				fsm.change(&"dig")
 				return
 		# 按住類的特殊技（劍盾格擋，v0.41.0）：右鍵按著就舉盾，沒有冷卻；按鍵緩衝不用
-		var hold: bool = p.weapon.special.get("hold", false)
+		var sdef := p.action_def(&"special")
+		var hold: bool = sdef.get("hold", false)
 		if hold and p.is_special_held:
 			if p.buffered_action.get("type") == &"special":
 				p.buffered_action = {}
@@ -84,7 +85,7 @@ class Ready:
 			if buffered.type == &"special":
 				if hold:
 					pass   # 按一下就放開（不到一步）：不舉盾
-				elif p.world.cooldowns.is_ready(p.cd("player.special")):
+				elif not sdef.has("cooldown") or p.world.cooldowns.is_ready(p.cd("player.special")):
 					fsm.change(&"special")
 					return
 				p.world.emit_event("skill:onCooldown", {"key": "player.special", "player_id": p.id})
@@ -105,7 +106,7 @@ class TimedAction:
 		kind = p_kind
 
 	func enter(p: Player, data: Dictionary, _fsm: StateMachine) -> void:
-		var def: Dictionary = p.weapon[kind]
+		var def: Dictionary = p.action_def(kind)   # 火把準備姿態中換成 stance 的招式（F8）
 		data.def = def
 		data.behavior = WeaponBehaviors.BEHAVIORS[def.behavior]
 		data.durations = [def.windup, def.active, def.recovery]
@@ -187,6 +188,7 @@ class Roll:
 		data.lock_facing = true
 		data.move_speed_mul = 1.0
 		p.facing = atan2(dir.x, dir.y)
+		p.torch_stance = false   # 翻滾取消火把準備姿態（F8）
 		p.forced_velocity = dir * p.roll_speed()
 		p.has_forced_velocity = true
 		p.dodge_timer = Config.ROLL.invuln_time

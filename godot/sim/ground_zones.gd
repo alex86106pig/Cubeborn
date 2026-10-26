@@ -11,7 +11,8 @@ static func add(world: World, zone: Dictionary) -> void:
 	var z := zone.duplicate()
 	z.remaining = zone.duration
 	z.tick_timer = TICK_INTERVAL
-	world.zones.append(z)
+	if world.is_authority:   # 客戶端預測自己的出招時只畫圈，回血與傷害以房主為準
+		world.zones.append(z)
 	world.emit_event("fx:telegraph", {"pos": z.pos, "height": world.terrain.ground_at(z.pos), "radius": z.radius, "color": z.color, "life": z.duration})
 
 

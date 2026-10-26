@@ -16,6 +16,7 @@ var player_classes: Dictionary = {}  # peer id → 職業（F2，ClassDefs）；
 var player_list: Array[Player] = []  # 同 players.values()（加入順序），每步大量查詢時不必每次配置新陣列（D5）
 var enemies: Array[Entity] = []
 var projectiles: Array[Entity] = []
+var torches: Array[Entity] = []     # 插在地上的火把（F8，sim/torch.gd）
 var zones: Array[Dictionary] = []   # 地上的持續區域（F7 聖光圈，GroundZones）
 var chests: Array[Entity] = []       # 寶箱（D3）
 var pickups: Array[Entity] = []      # 掉在地上的道具（D3）
@@ -222,6 +223,7 @@ func clear() -> void:
 	player_list.clear()
 	enemies.clear()
 	projectiles.clear()
+	torches.clear()
 	zones.clear()
 	chests.clear()
 	pickups.clear()
@@ -618,4 +620,5 @@ func _remove_dead_entities() -> void:
 	projectiles.assign(projectiles.filter(func(e: Entity) -> bool: return not e.is_removed))
 	pickups.assign(pickups.filter(func(e: Entity) -> bool: return not e.is_removed))
 	coins.assign(coins.filter(func(e: Entity) -> bool: return not e.is_removed))
+	torches.assign(torches.filter(func(e: Entity) -> bool: return not e.is_removed))
 	chests.assign(chests.filter(func(e: Entity) -> bool: return not e.is_removed))   # 換層時整批移除（D6）

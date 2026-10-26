@@ -78,13 +78,14 @@ class MeleeSwing extends Behavior:
 			return
 		var fin: bool = data.is_finisher
 		var shape := {"shape": &"sector", "range": def.range * data.scale * p.weapon_range_mul(), "arc": def.arc * data.scale}
-		Hitbox.strike(p.world, p, p.pos, p.facing, shape, {
+		var hits := Hitbox.strike(p.world, p, p.pos, p.facing, shape, {
 			"damage": p.move_damage(def) * (def.finisher_mul if fin else 1.0), "damage_type": p.weapon.damage_type,
 			"knockback": def.get("finisher_knockback", def.knockback * def.finisher_impact_mul) if fin else def.knockback,
 			"hit_stop": def.hit_stop * (def.finisher_impact_mul if fin else 1.0),
 			"shake": def.shake * (def.finisher_shake_mul if fin else 1.0),
 			"is_heavy": fin, "blockable": true, "force_crit": fin and def.get("finisher_crit", false),
 		}, data.hit)
+		WeaponBehaviors.ignite(p, def, hits)
 
 	func exit(p: Player, def: Dictionary, _data: Dictionary) -> void:
 		p.combo_timer = def.combo_window
@@ -249,6 +250,59 @@ class HolyCircle extends Behavior:
 		})
 
 
+# 點燃（F8 火把）：招式有 burn 時，打中的怪每秒受到 burn.pct_per_sec 的持續傷害 burn.duration 秒（不觸發道具）
+static func ignite(p: Player, def: Dictionary, hits: Array[Entity]) -> void:
+	if not def.has("burn"):
+		return
+	for t in hits:
+		if t is Enemy:
+			(t as Enemy).apply_burn(p.id, p.pct_damage(def.burn.pct_per_sec), def.burn.duration)
+
+
+# 火把準備姿態（F8）：進入後左右鍵換成 stance 的招式（Player.action_def），翻滾、跳躍、換武器、倒地才結束
+class TorchStance extends Behavior:
+	func phase(p: Player, _def: Dictionary, _data: Dictionary, name: StringName) -> void:
+		if name == &"active":
+			p.torch_stance = true
+
+
+# 插火把（F8，準備姿態的左鍵）：插在腳下，整關不熄；每關 per_floor 支、冷卻 cooldown 秒；只有房主產生火把實體
+class PlantTorch extends Behavior:
+	func phase(p: Player, def: Dictionary, _data: Dictionary, name: StringName) -> void:
+		if name != &"active":
+			return
+		var key := p.cd("player.torch")
+		if p.torches_left <= 0 or not p.world.cooldowns.is_ready(key):
+			p.world.emit_event("skill:onCooldown", {"key": "player.torch", "player_id": p.id})
+			return
+		p.world.cooldowns.start(key, def.cooldown)
+		p.torches_left -= 1
+		if p.world.is_authority:
+			var t := Torch.new(p.world, p.pos + WeaponBehaviors.forward(p) * 0.6, p.id)
+			p.world.add_entity(t)
+			p.world.torches.append(t)
+
+
+# 噴火（F8，準備姿態的右鍵）：前方扇形大範圍傷害 + 點燃
+class FireBreath extends Behavior:
+	func phase(p: Player, def: Dictionary, data: Dictionary, name: StringName) -> void:
+		if name == &"windup":
+			data.lock_facing = false
+		elif name == &"active":
+			data.lock_facing = true
+			data.hit = {}
+			p.world.emit_event("fx:slash", {"pos": p.pos, "height": p.height, "facing": p.facing, "range": def.range, "arc": def.arc, "color": def.color, "swing_dir": 1})
+
+	func update(p: Player, def: Dictionary, data: Dictionary, name: StringName, _k: float, _dt: float) -> void:
+		if name != &"active":
+			return
+		var hits := Hitbox.strike(p.world, p, p.pos, p.facing, {"shape": &"sector", "range": def.range, "arc": def.arc}, {
+			"damage": p.move_damage(def), "damage_type": p.weapon.damage_type, "knockback": def.knockback,
+			"hit_stop": def.hit_stop, "shake": def.shake, "color": def.color, "blockable": false,
+		}, data.hit)
+		WeaponBehaviors.ignite(p, def, hits)
+
+
 # 目標背後（和它面向相反）貼身的位置；被牆擋住就每 45° 繞一圈找第一個站得住的地方，都不行就留在原地
 static func behind(p: Player, target: Entity) -> Vector2:
 	var dist := target.radius + p.radius + 0.15
@@ -273,4 +327,7 @@ static var BEHAVIORS := {
 	&"chargedShot": ChargedShot.new(),
 	&"shadowStep": ShadowStep.new(),
 	&"holyCircle": HolyCircle.new(),
+	&"torchStance": TorchStance.new(),
+	&"plantTorch": PlantTorch.new(),
+	&"fireBreath": FireBreath.new(),
 }

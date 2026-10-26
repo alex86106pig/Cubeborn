@@ -4,8 +4,39 @@
 class_name Vision
 
 
+# 火把（F8）照亮的範圍全隊都看得到：不管視野扇形與牆
 static func point_visible(world: World, viewer: Player, p: Vector2, target_radius: float = 0.0) -> bool:
-	return in_view_cone(viewer, p, target_radius) and not line_blocked(world, viewer, p)
+	return lit(lights(world), p, target_radius) or (in_view_cone(viewer, p, target_radius) and not line_blocked(world, viewer, p))
+
+
+# 火把的光（F8）：插在地上的火把、舉著火把（準備姿態）的玩家；Vector3(x, z, 半徑)
+static func lights(world: World) -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	var r: float = WeaponDefs.WEAPONS[&"torch"].light_radius
+	for t in world.torches:
+		if not t.is_removed:
+			out.append(Vector3(t.pos.x, t.pos.y, r))
+	for p in world.player_list:
+		if not p.is_dead and p.anim.get("torch_stance", false):
+			out.append(Vector3(p.pos.x, p.pos.y, r))
+	return out
+
+
+static func lit(lights_: Array[Vector3], p: Vector2, target_radius: float = 0.0) -> bool:
+	for l in lights_:
+		var rr := l.z + target_radius
+		if Vector2(l.x, l.y).distance_squared_to(p) <= rr * rr:
+			return true
+	return false
+
+
+# 視野距離與身邊一圈：火把傭兵被動加大（F8）
+static func view_range(viewer: Player) -> float:
+	return Config.VISION.range + viewer.class_passive("vision_add", 0.0)
+
+
+static func near_radius(viewer: Player) -> float:
+	return viewer.class_passive("near_radius", Config.VISION.near_radius)
 
 
 # 只看距離與角度（不管牆）：畫面層每幀都判斷，牆擋視線（line_blocked）比較貴，分批更新（D5）
@@ -13,9 +44,9 @@ static func in_view_cone(viewer: Player, p: Vector2, target_radius: float = 0.0)
 	var v: Dictionary = Config.VISION
 	var d := p - viewer.pos
 	var dist := d.length()
-	if dist > v.range + target_radius:
+	if dist > view_range(viewer) + target_radius:
 		return false
-	if dist > v.near_radius + target_radius:
+	if dist > near_radius(viewer) + target_radius:
 		# 身體邊緣進入扇形就算看得到（不會半個身子在視野內卻整隻消失）
 		var allowance: float = v.angle / 2.0 + (asin(minf(1.0, target_radius / dist)) if dist > 1e-4 else 0.0)
 		if absf(MathUtil.wrap_angle(atan2(d.x, d.y) - viewer.facing)) > allowance:

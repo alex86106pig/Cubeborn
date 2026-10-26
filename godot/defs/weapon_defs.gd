@@ -348,6 +348,91 @@ const WEAPONS := {
 		},
 	},
 
+
+	# 火把（F8，火把傭兵的起始武器）：功能型，普攻刻意偏低、打中點燃；右鍵舉起火把進入準備姿態（翻滾 / 跳躍取消，不會自己結束），
+	# 準備姿態的左右鍵換成 stance 的招式：左鍵插火把、右鍵噴火。舉著的與插著的火把都照亮周圍、全隊看得到（Vision.lights）
+	&"torch": {
+		"id": &"torch",
+		"name": "火把",
+		"type": &"melee",
+		"model": &"torch",
+		"base_damage": 6.0,
+		"damage_type": &"magic",
+		"idle": {"arm_r": -0.5, "arm_l": -0.1, "tilt": 0.0},
+		"light_radius": 6.0,           # 舉著 / 插著的火把照亮的半徑
+		"attack": {
+			"behavior": &"meleeSwing",
+			"sfx": "swing", "sfx_heavy": "swing",
+			"name": "火把揮擊",
+			"icon": "揮擊",
+			"damage_pct": 1.0,
+			"combo_count": 1,
+			"burn": {"pct_per_sec": 0.15, "duration": 3.0},   # 點燃：每秒 15% × 3 秒（持續傷害不觸發道具）
+			"range": 2.0,
+			"arc": PI * 0.6,
+			"windup": 0.1,             # 三段合計 0.4 秒一下
+			"active": 0.07,
+			"recovery": 0.23,
+			"knockback": 6.0,
+			"lunge": 1.5,
+			"move_speed_mul": 0.5,
+			"combo_window": 0.3,
+			"finisher_mul": 1.0,
+			"finisher_impact_mul": 1.0,
+			"finisher_shake_mul": 1.0,
+			"finisher_scale": 1.0,
+			"finisher_recovery_mul": 1.0,
+			"hit_stop": 0.04,
+			"shake": 0.06,
+			"slash_color": Color("ffb040"),
+			"slash_finisher_color": Color("ffb040"),
+		},
+		"special": {
+			"behavior": &"torchStance",
+			"sfx": "arcaneCast",
+			"name": "準備姿態",
+			"icon": "舉火",
+			"windup": 0.1,
+			"active": 0.02,
+			"recovery": 0.1,
+			"move_speed_mul": 0.6,
+		},
+		"stance": {
+			"move_speed_mul": 0.6,     # 準備姿態中的移速
+			"attack": {
+				"behavior": &"plantTorch",
+				"sfx": "shieldBash",
+				"name": "插火把",
+				"icon": "插火",
+				"per_floor": 3,        # 每關只能插 3 支
+				"cooldown": 1.0,
+				"windup": 0.15,
+				"active": 0.02,
+				"recovery": 0.15,
+				"move_speed_mul": 0.0,
+			},
+			"special": {
+				"behavior": &"fireBreath",
+				"sfx": "explosion",
+				"name": "噴火",
+				"icon": "噴火",
+				"cooldown": 6.0,
+				"damage_pct": 1.2,
+				"burn": {"pct_per_sec": 0.15, "duration": 3.0},
+				"range": 5.0,
+				"arc": PI * 0.5,       # 90°
+				"knockback": 0.0,
+				"windup": 0.2,
+				"active": 0.1,
+				"recovery": 0.25,
+				"move_speed_mul": 0.3,
+				"color": Color("ff8a30"),
+				"hit_stop": 0.04,
+				"shake": 0.2,
+			},
+		},
+	},
+
 }
 
 

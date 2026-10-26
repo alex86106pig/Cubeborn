@@ -16,16 +16,16 @@ const ENEMY_KINDS: Array[StringName] = [&"grunt", &"archer", &"boss", &"ghost"]
 const ANIM_KEYS: Array[String] = [
 	"loco", "loco_time", "action", "action_time", "behavior", "phase", "k", "swing_dir", "is_finisher",
 	"trail_color", "airborne", "blocking", "parry", "vz", "revive", "stunned",
-	"state", "time", "enraged", "phase_time", "origin",
+	"state", "time", "enraged", "phase_time", "origin", "torch_stance", "burning",
 ]
 # 玩家動畫欄位的預設值：和預設值相同的欄位不送（大部分時間只剩移動層、動作層的名稱與秒數），收到時補回
 const PLAYER_ANIM_DEFAULTS := {
 	"behavior": &"", "phase": &"", "k": 0.0, "swing_dir": 1, "is_finisher": false, "trail_color": null,
-	"airborne": false, "blocking": false, "parry": 0.0, "vz": 0.0, "revive": 0.0, "stunned": false,
+	"airborne": false, "blocking": false, "parry": 0.0, "vz": 0.0, "revive": 0.0, "stunned": false, "torch_stance": false,
 }
 # 數值欄位 E_X ~ E_MAX_HP 用 float32；E_VX ~ E_INVULN 只給別人的實體外推與閃白，用 half（16 位元）
 # 二進位格式（v0.35.0）用的種類與常見名稱表：在表裡的送 1 byte 索引，不在表裡的照樣送字串（表只影響大小、不影響正確性）
-const KINDS: Array[StringName] = [&"player", &"grunt", &"archer", &"boss", &"ghost", &"chest", &"pickup", &"projectile", &"coin"]
+const KINDS: Array[StringName] = [&"player", &"grunt", &"archer", &"boss", &"ghost", &"chest", &"pickup", &"projectile", &"coin", &"torch"]
 const NAMES: Array[StringName] = [
 	&"idle", &"move", &"chase", &"kite", &"aim", &"attack", &"swing", &"cleave", &"slam", &"charge", &"rush", &"summon",
 	&"hurt", &"stagger", &"dead", &"dormant", &"spawn", &"climb", &"jump", &"stun", &"ready", &"special", &"roll", &"dig",
@@ -276,7 +276,7 @@ static func entity_fields(e: Entity) -> Array:
 		a[E_EXTRA] = [(e as Chest).tier, (e as Chest).opened]
 	elif e is ItemPickup:
 		a[E_EXTRA] = [(e as ItemPickup).item_id, WeaponDropDefs.to_array((e as ItemPickup).weapon), (e as ItemPickup).corpse_of]
-	elif e is Coin:
+	elif e is Coin or e is Torch:
 		a[E_EXTRA] = []
 	elif e is Enemy:
 		a[E_ANIM] = (e as Enemy).anim
@@ -337,6 +337,11 @@ static func create_entity(world: World, a: Array) -> Entity:
 		world.add_entity_with_id(coin, a[E_ID])
 		world.coins.append(coin)
 		e = coin
+	elif kind == &"torch":
+		var torch := Torch.new(world, at)
+		world.add_entity_with_id(torch, a[E_ID])
+		world.torches.append(torch)
+		e = torch
 	elif kind == &"projectile":
 		var owner := Entity.new(world, &"owner", extra[3], 0.1, 1.0)
 		var pr := Projectile.new(world, {

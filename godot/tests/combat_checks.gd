@@ -757,3 +757,65 @@ static func check_scepter() -> String:
 	if down.is_downed or absf(steps - want_steps) > 3 or absf(down.hp - roundf(down.max_hp * 0.5)) > EPS:
 		return "神官救人約 %.0f 步、救起 50%% 生命：%d 步、倒地 %s、血 %.0f / %.0f" % [want_steps, steps, down.is_downed, down.hp, down.max_hp]
 	return ""
+
+
+# F8 火把與火把傭兵：右鍵進入準備姿態（移速 ×0.6），姿態中左鍵插火把（冷卻 1 秒、每關 3 支）、右鍵噴火（120% + 點燃）；
+# 翻滾 / 跳躍取消姿態；插著與舉著的火把照亮的範圍不管視野扇形都看得到；揮擊點燃；傭兵視野 +3、身邊 6
+static func check_torch() -> String:
+	var tw: Dictionary = WeaponDefs.WEAPONS[&"torch"]
+	var w := _new_world()
+	var p := _player(w)
+	p.equip_weapon(&"torch")
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 1)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 20)
+	if not p.torch_stance or not p.anim.get("torch_stance", false):
+		return "按右鍵應進入準備姿態"
+	_run(w, _cmd(Vector2(1, 0), Vector2(0, 5)), 3)
+	if absf(p.velocity.length() - p.stats.value(&"move_speed") * tw.stance.move_speed_mul) > 0.05:
+		return "準備姿態移速應 ×%.1f：%.2f" % [tw.stance.move_speed_mul, p.velocity.length()]
+	# 背後 10 單位的怪：視野外；插了火把之後（火把在它旁邊）看得到
+	var behind := _dummy(w, Vector2(0, -10))
+	if Vision.point_visible(w, p, behind.pos):
+		return "背後的怪本來應看不到"
+	p.pos = Vector2(0, -6)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 20)
+	if w.torches.size() != 1 or p.torches_left != tw.stance.attack.per_floor - 1:
+		return "姿態中左鍵應插 1 支火把：%d 支、剩 %d" % [w.torches.size(), p.torches_left]
+	p.pos = Vector2.ZERO
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 1)
+	if not Vision.point_visible(w, p, behind.pos):
+		return "火把旁邊的怪不管視野都應看得到"
+	for i in 6:   # 再插 6 次：冷卻 1 秒、每關最多 3 支
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1)
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 70)
+	if w.torches.size() != tw.stance.attack.per_floor or p.torches_left != 0:
+		return "每關只能插 %d 支：%d 支、剩 %d" % [tw.stance.attack.per_floor, w.torches.size(), p.torches_left]
+	# 噴火：前方的怪受到 120% 魔法 + 點燃
+	var front := _dummy(w, Vector2(0, 3))
+	var events: Array[Dictionary] = []
+	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 1, events)
+	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 30, events)
+	var got := _damage_amounts(events, front.id)
+	if got.is_empty() or absf(got[0] - WeaponDefs.move_base_damage(tw, tw.stance.special)) > EPS:
+		return "噴火應打中前方 %.1f：%s" % [WeaponDefs.move_base_damage(tw, tw.stance.special), got]
+	# 翻滾取消姿態
+	_run(w, _cmd(Vector2(1, 0), Vector2(0, 5), InputCmd.BTN_ROLL), 2)
+	if p.torch_stance:
+		return "翻滾應取消準備姿態"
+	# 揮擊點燃（燃燒是 Enemy 的狀態：用真的骷髏）
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	p2.equip_weapon(&"torch")
+	var g := _spawn(w2, &"grunt", Vector2(0, 1.5))
+	g.stats.set_base(&"max_hp", 1000.0)
+	g.hp = 1000.0
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 15)
+	if g.burn_timer <= 0.0:
+		return "火把揮擊應點燃打中的怪"
+	# 傭兵視野
+	var w3 := _class_world(&"mercenary")
+	var m := _player(w3)
+	if absf(Vision.view_range(m) - (Config.VISION.range + 3.0)) > EPS or absf(Vision.near_radius(m) - 6.0) > EPS:
+		return "火把傭兵視野應 %.0f、身邊 6：%.1f / %.1f" % [Config.VISION.range + 3.0, Vision.view_range(m), Vision.near_radius(m)]
+	return ""

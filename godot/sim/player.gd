@@ -16,6 +16,8 @@ var _attack_was_held := false
 var weapon: Dictionary = {}            # 手上武器的招式資料（WeaponDefs）
 var weapon_id: StringName = &""
 var class_id := ClassDefs.NONE        # 職業（F2，ClassDefs）；NONE = 共用基準數值
+var torch_stance := false              # 火把準備姿態（F8）：左右鍵換成插火把 / 噴火
+var torches_left: int = WeaponDefs.WEAPONS[&"torch"].stance.attack.per_floor   # 這一關還能插幾支火把（F8，換層補滿）
 var loadout := Loadout.new()           # 裝備欄、背包、生效的道具（sim/loadout.gd）
 var weapon_slots: Array[Dictionary]:   # 裝備欄 2 格（D4）：武器實例（WeaponDropDefs）或 {}
 	get:
@@ -85,6 +87,7 @@ func try_jump() -> bool:
 			return false
 		_air_jumps_used += 1
 	vz = 4.0 * Config.JUMP.height / Config.JUMP.air_time
+	torch_stance = false   # 跳躍取消火把準備姿態（F8）
 	return true
 
 
@@ -199,6 +202,7 @@ func descend() -> void:
 # 新的一層：回到出生點（死者也搬過去，等冤魂被打倒才在冤魂的位置站起來）
 func arrive_floor(at: Vector2, ground: float) -> void:
 	descended = false
+	torches_left = WeaponDefs.WEAPONS[&"torch"].stance.attack.per_floor   # 新的一關火把補滿（F8）
 	pos = at
 	prev_pos = at
 	height = ground
@@ -253,6 +257,7 @@ func die(source_id: int = 0) -> void:
 
 func _go_down() -> void:
 	is_downed = true
+	torch_stance = false
 	hp = 0.0
 	down_timer = Config.REVIVE.down_time
 	revive_progress = 0.0
@@ -413,6 +418,7 @@ func show_weapon(id: StringName, force := false) -> void:
 		return
 	weapon = WeaponDefs.WEAPONS[id]
 	weapon_id = id
+	torch_stance = false
 	combo_step = 0
 	combo_timer = 0.0
 	action.change(&"ready")
@@ -424,7 +430,19 @@ func active_weapon() -> Dictionary:
 
 # 招式傷害 = 武器基礎傷害 × 招式 % × 攻擊力 × 物理 / 魔法傷害（F1）
 func move_damage(move: Dictionary) -> float:
-	return WeaponDefs.move_base_damage(weapon, move) * damage_mul * stats.value(StatDefs.type_damage_stat(weapon.damage_type))
+	return pct_damage(move.damage_pct)
+
+
+# 武器基礎傷害的 pct 倍，乘上攻擊力與物理 / 魔法傷害（燃燒每秒傷害也用這個，F8）
+func pct_damage(pct: float) -> float:
+	return weapon.base_damage * pct * damage_mul * stats.value(StatDefs.type_damage_stat(weapon.damage_type))
+
+
+# 動作層要用的招式資料：火把準備姿態中換成 stance 的左右鍵（F8），其餘就是武器的 attack / special
+func action_def(kind: StringName) -> Dictionary:
+	if torch_stance and weapon.has("stance"):
+		return weapon.stance[kind]
+	return weapon[kind]
 
 
 func weapon_range_mul() -> float:
@@ -527,6 +545,8 @@ func update(dt: float) -> void:
 		var slow: float = data.get("move_speed_mul", 1.0)
 		if action.is_in(&"attack") and class_passive("attack_no_slow", false):
 			slow = 1.0   # 盜墓遊俠被動：移動中普攻不減速（F4）
+		if torch_stance and action.is_in(&"ready"):
+			slow *= weapon.stance.move_speed_mul   # 火把準備姿態（F8）
 		velocity = move_input * (stats.value(&"move_speed") * slow)
 
 	if not data.get("lock_facing", false):
@@ -600,6 +620,7 @@ func _update_anim() -> void:
 		"vz": vz,
 		"revive": revive_progress / Config.REVIVE.revive_time,   # 倒地時被救的進度 0~1（畫面顯示用）
 		"stunned": stun_timer > 0.0,
+		"torch_stance": torch_stance,   # 舉著火把：全隊的視野都看得到周圍（F8，Vision.lights）
 	}
 
 

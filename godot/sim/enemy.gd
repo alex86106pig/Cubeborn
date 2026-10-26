@@ -42,6 +42,12 @@ var frozen_timer := 0.0              # 冰凍剩餘秒數：不能動、不出�
 var poison_timer := 0.0              # 中毒剩餘秒數
 var poison_tick_damage := 0.0        # 每次扣的傷害
 var poison_source_id := 0            # 下毒的玩家（傷害與擊殺算他的）
+var burn_timer := 0.0                # 燃燒（F8 火把）剩餘秒數；每 BURN_TICK 秒扣 burn_tick_damage
+var burn_tick_damage := 0.0
+var burn_source_id := 0
+var _burn_tick := 0.0
+const BURN_TICK := 0.5
+const BURN_COLOR := Color("ff8a30")
 var _poison_tick := 0.0
 
 
@@ -147,6 +153,7 @@ func update(dt: float) -> void:
 		anim["time"] = fsm.time
 		return
 	_update_poison(dt)
+	_update_burn(dt)
 	if frozen_timer > 0.0 and not is_dead:
 		frozen_timer -= dt
 		velocity = Vector2.ZERO   # 冰凍：狀態機停住（出招到一半也停），解凍後接著做
@@ -172,6 +179,36 @@ func apply_poison(source_id: int, total: float) -> void:
 	poison_tick_damage = maxf(poison_tick_damage, per_tick)
 	poison_source_id = source_id
 	world.emit_event("fx:status", {"pos": pos, "height": ground_height, "color": cfg.color})
+
+
+# 燃燒（F8 火把）：每秒 per_sec、持續 duration 秒；再點燃重新計時、每次扣的取較高的；持續傷害不算命中（不觸發道具）
+func apply_burn(source_id: int, per_sec: float, duration: float) -> void:
+	if is_dead:
+		return
+	if burn_timer <= 0.0:
+		_burn_tick = BURN_TICK
+		burn_tick_damage = 0.0
+	burn_timer = duration
+	burn_tick_damage = maxf(burn_tick_damage, per_sec * BURN_TICK)
+	burn_source_id = source_id
+	world.emit_event("fx:status", {"pos": pos, "height": ground_height, "color": BURN_COLOR})
+
+
+func _update_burn(dt: float) -> void:
+	if burn_timer <= 0.0 or is_dead:
+		return
+	burn_timer -= dt
+	_burn_tick -= dt
+	if _burn_tick > 1e-6:
+		return
+	_burn_tick += BURN_TICK
+	var src: Entity = world.entities.get(burn_source_id)
+	if src != null:
+		var hit := ItemEffects.proc_hit(burn_tick_damage, self, BURN_COLOR)
+		hit["damage_type"] = &"magic"
+		Combat.apply_damage(world, src, self, hit)
+	if burn_timer <= 0.0:
+		burn_tick_damage = 0.0
 
 
 # 冰凍（v0.33.0）：freeze_immune 的怪（Boss）不會被冰凍；已經凍住的取較長的
@@ -314,6 +351,8 @@ func _update_anim() -> void:
 		anim["frozen"] = true
 	if poison_timer > 0.0:
 		anim["poisoned"] = true
+	if burn_timer > 0.0:
+		anim["burning"] = true
 	_anim_extra(anim)
 
 

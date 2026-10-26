@@ -161,6 +161,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 	if vision_key != _vision_key:
 		_vision_key = vision_key
 		hidden_ids.clear()
+		var lights := Vision.lights(world)   # 火把照亮的範圍全隊看得到（F8）
 		for id: int in world.entities:
 			var e: Entity = world.entities[id]
 			if e is Player and (e as Player).descended:   # 走進出口的玩家（D6，含自己）不畫
@@ -169,6 +170,9 @@ func sync(world: World, alpha: float, dt: float) -> void:
 			if e is Projectile:
 				_xray_on[id] = _xray_needed(world, e)   # 投射物飛得快、數量少：每個 tick 都判斷牆後剪影
 			if not Vision.is_hideable(me, e):
+				continue
+			if not lights.is_empty() and Vision.lit(lights, e.pos, Vision.view_radius(e)):
+				_los_blocked.erase(id)
 				continue
 			if not Vision.in_view_cone(me, e.pos, Vision.view_radius(e)):
 				hidden_ids[id] = true
@@ -339,6 +343,8 @@ func hidden_enemy_count(world: World) -> int:
 
 # 視野外變暗：蓋滿畫面的四邊形，從深度貼圖算出每個像素的世界位置，在視野扇形與身邊一圈之外蓋上暗色
 # 高台、牆的頂面也照它們自己的位置判斷；牆擋住的區域不畫暗（只隱藏牆後的怪物）
+const MAX_LIGHTS := 16   # 視野遮罩最多畫幾個火把的光（F8；4 人 × 3 支 + 舉著的 4 支）
+
 const VISION_SHADER := """
 shader_type spatial;
 render_mode unshaded, depth_draw_never, depth_test_disabled, cull_disabled, fog_disabled;
@@ -353,6 +359,8 @@ uniform float range_edge;
 uniform float darkness;
 uniform float inner_darkness;
 uniform float edge;
+uniform vec3 lights[16];   // 火把的光（F8）：xz 位置 + 半徑
+uniform int light_count;
 
 void vertex() {
 	POSITION = vec4(VERTEX.xy, 1.0, 1.0);
@@ -374,8 +382,16 @@ void fragment() {
 	float ang_soft = edge / max(dist, 0.5);
 	float cone = (1.0 - smoothstep(range - range_edge, range, dist)) * (1.0 - smoothstep(half_angle - ang_soft, half_angle, diff));
 	float near = 1.0 - smoothstep(near_radius - near_edge, near_radius, dist);
+	float lit = 0.0;
+	for (int i = 0; i < 16; i++) {
+		if (i >= light_count) {
+			break;
+		}
+		float ld = length(p - lights[i].xy);
+		lit = max(lit, 1.0 - smoothstep(lights[i].z - near_edge, lights[i].z, ld));
+	}
 	ALBEDO = vec3(0.0);
-	ALPHA = mix(darkness, inner_darkness, max(cone, near));
+	ALPHA = mix(darkness, inner_darkness, max(max(cone, near), lit));
 }
 """
 
@@ -417,6 +433,15 @@ func _sync_vision_overlay(me: Player) -> void:
 		var mat: ShaderMaterial = _vision_overlay.material_override
 		mat.set_shader_parameter(&"viewer", Vector2(node.position.x, node.position.z))
 		mat.set_shader_parameter(&"facing", node.rotation.y)
+		mat.set_shader_parameter(&"range", Vision.view_range(me))          # 火把傭兵被動（F8）
+		mat.set_shader_parameter(&"near_radius", Vision.near_radius(me))
+		var lights := Vision.lights(_world) if _world != null else ([] as Array[Vector3])
+		var packed := PackedVector3Array()
+		for l in lights.slice(0, MAX_LIGHTS):
+			packed.append(l)
+		packed.resize(MAX_LIGHTS)
+		mat.set_shader_parameter(&"lights", packed)
+		mat.set_shader_parameter(&"light_count", mini(lights.size(), MAX_LIGHTS))
 
 
 # 寶箱（D3）：木箱 + 鐵條，大寶箱較大、鑲金邊；箱蓋（Lid）以後緣為軸，打開時往後翻
@@ -486,6 +511,16 @@ func _create_pickup(p: ItemPickup) -> Node3D:
 
 
 # 地上的金幣（v0.45）：立起來的金色圓片（Gem，和道具一樣上下浮動與旋轉）+ 細細的金色光柱
+# 插在地上的火把（F8）：木柄 + 發光的火焰（不放點光源：網頁版點光源很貴，照亮的範圍由視野遮罩畫）
+func _create_torch() -> Node3D:
+	var root := Node3D.new()
+	var model: Dictionary = DarkFantasy.weapon(&"torch")
+	var g: Node3D = model.main
+	g.position.y = 0.0
+	root.add_child(g)
+	return root
+
+
 func _create_coin() -> Node3D:
 	var root := Node3D.new()
 	var gem := MeshInstance3D.new()
@@ -758,6 +793,8 @@ func _create_view(e: Entity) -> Node3D:
 			root = _create_pickup(e as ItemPickup)
 		&"coin":
 			root = _create_coin()
+		&"torch":
+			root = _create_torch()
 		_:
 			root = _create_placeholder(e)
 	var ring := _create_hitbox_ring(e.radius)

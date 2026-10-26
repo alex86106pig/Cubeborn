@@ -83,6 +83,7 @@ func _initialize() -> void:
 	_check("長弓（F5）：重射可擊退；按住右鍵蓄力、放開射出穿透箭（沒蓄 150%、蓄滿 400%），一直線上每隻打一次", CombatChecks.check_longbow)
 	_check("雙匕首（F6）：五連刺第 5 下 150% 必爆擊且只有它擊退；影步瞬移到怪背後背刺必爆擊、沒有怪不瞬移冷卻 1 秒；竊影者翻滾 2 次、翻滾後攻速 +30% 持續 1.5 秒", CombatChecks.check_daggers)
 	_check("驅魔權杖（F7）：敲擊是魔法、可擊退；聖光圈 4 秒每 0.5 秒對範圍內敵人持續傷害（不爆擊）、隊友回血；神官救人快 50%、救起回 50% 生命", CombatChecks.check_scepter)
+	_check("火把（F8）：右鍵準備姿態（移速 ×0.6）、姿態中左鍵插火把（冷卻 1 秒、每關 3 支）、右鍵噴火 120%；翻滾取消；火把旁不管視野都看得到；揮擊點燃；傭兵視野 +3、身邊 6", CombatChecks.check_torch)
 	_check("傷害類型（F1）：基礎傷害 × 招式 % × 物理 / 魔法傷害；護甲只擋物理、魔抗只擋魔法；閃避率封頂 75% 且 0 時不擲骰；尋寶加權", CombatChecks.check_damage_types)
 	_check("高度判定：最高點時箭從腳下飛過、地面會中箭；跳起來躲過 Boss 砸地；空中揮砍與空中魔彈打得到地上的怪", CombatChecks.check_height_hits)
 	_check("打擊感：玩家打中不震動、模擬時間不放慢（hit_stop 只放進事件）；玩家被打與 Boss 砸地照常震動；沒有命中定格，打中後模型照常移動", CombatChecks.check_hit_feel)
