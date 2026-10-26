@@ -903,3 +903,42 @@ static func check_shovel() -> String:
 	if absf((before - gd.hp) - want) > EPS:
 		return "掘墓人挖墳中受到 20 應扣 %.2f（−25%% 再算護甲），實際 %.2f" % [want, before - gd.hp]
 	return ""
+
+
+# 短弓箭袋：6 支，最後一支是重箭（多拉弓、200%、擊退）；射空自動裝填 1.2 秒（不能射、移速 ×0.5）；翻滾瞬間補滿
+static func check_quiver() -> String:
+	var atk: Dictionary = WeaponDefs.WEAPONS[&"shortbow"].attack
+	var w := _new_world()
+	var p := _player(w)
+	p.equip_weapon(&"shortbow")
+	var dummy := _dummy(w, Vector2(0, 4))
+	var events: Array[Dictionary] = []
+	var steps := 0
+	while p.quiver > 0 and steps < 300:
+		_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_ATTACK), 1, events)
+		steps += 1
+	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 8)), 15, events)
+	var dmg := _damage_amounts(events, dummy.id)
+	var base := WeaponDefs.move_base_damage(WeaponDefs.WEAPONS[&"shortbow"], atk)
+	var heavy: float = base * atk.heavy_last.damage_pct
+	if dmg.size() != atk.quiver or absf(dmg.back() - heavy) > EPS or absf(dmg[0] - base) > EPS:
+		return "箭袋 %d 支、最後一支 %.1f：%s" % [atk.quiver, heavy, dmg]
+	var kb := _named(events, "entity:damaged").filter(func(e: Dictionary) -> bool: return e.target_id == dummy.id)
+	if kb.back().knockback <= 0.0 or kb[0].knockback != 0.0:
+		return "只有重箭擊退：%s / %s" % [kb[0].knockback, kb.back().knockback]
+	# 裝填中：按住也不射、移速 ×0.5
+	var before := w.projectiles.size()
+	_run(w, _cmd(Vector2(1, 0), Vector2(0, 8), InputCmd.BTN_ATTACK), 10)
+	if p.reload_timer <= 0.0 or w.projectiles.size() > before or absf(p.velocity.length() - p.stats.value(&"move_speed") * atk.reload_move_mul) > 0.05:
+		return "裝填中不能射、移速 ×%.1f：裝填 %.2f、速度 %.2f" % [atk.reload_move_mul, p.reload_timer, p.velocity.length()]
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), ceili(atk.reload_time / DT) + 1)
+	if p.quiver != atk.quiver or p.reload_timer > 0.0:
+		return "裝填 %.1f 秒後應補滿：剩 %d、裝填 %.2f" % [atk.reload_time, p.quiver, p.reload_timer]
+	# 翻滾瞬間補滿
+	p.quiver = 1
+	p.reload_timer = 0.0
+	_run(w, _cmd(Vector2(1, 0), Vector2(0, 8), InputCmd.BTN_ROLL), 2)
+	if p.quiver != atk.quiver:
+		return "翻滾應瞬間補滿箭袋：剩 %d" % p.quiver
+	return ""
+

@@ -32,6 +32,15 @@ func refresh(world: World, player: Player) -> void:
 	if _parry_slot != null:
 		_parry_slot.visible = player.block_time >= 0.0
 		_attack_slot.visible = not _parry_slot.visible
+	var atk: Dictionary = player.weapon.attack
+	if atk.has("quiver") and _attack_slot != null:
+		# 短弓：左鍵格顯示箭袋剩幾支，裝填中蓋遮罩倒數
+		_attack_slot.charges.text = str(player.quiver)
+		_attack_slot.cd_left = player.reload_timer
+		_attack_slot.cd_ratio = player.reload_timer / atk.reload_time if player.reload_timer > 0.0 else 0.0
+		_attack_slot.icon.modulate.a = 0.3 if player.reload_timer > 0.0 else 1.0
+		_attack_slot.queue_redraw()
+		_attack_slot.mask.queue_redraw()
 	for key: String in _slots:
 		var slot: Slot = _slots[key]
 		slot.cd_left = world.cooldowns.remaining(player.cd(key))   # 每位玩家各自的 CD（Player.cd）

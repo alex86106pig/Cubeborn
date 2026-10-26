@@ -132,12 +132,28 @@ class ShieldBlock extends Behavior:
 
 
 class FireBolt extends Behavior:
-	func phase(p: Player, def: Dictionary, _data: Dictionary, name: StringName) -> void:
+	# 有箭袋的弓（短弓）：最後一支是重箭，多拉弓 heavy_last.extra_windup 秒
+	func enter(p: Player, def: Dictionary, data: Dictionary) -> void:
+		data.heavy = def.has("quiver") and p.quiver == 1
+		if data.heavy:
+			data.durations[0] += def.heavy_last.extra_windup
+			data.is_finisher = true
+
+	func phase(p: Player, def: Dictionary, data: Dictionary, name: StringName) -> void:
 		if name != &"active":
 			return
 		var dir := WeaponBehaviors.aim_direction(p)
 		p.facing = atan2(dir.x, dir.y)
-		WeaponBehaviors.spawn_projectile(p, WeaponBehaviors.shot_params(p, def, dir))
+		var params := WeaponBehaviors.shot_params(p, def, dir)
+		if data.get("heavy", false):
+			var hv: Dictionary = def.heavy_last
+			params.damage = p.pct_damage(hv.damage_pct)
+			params.knockback = hv.knockback
+			params.no_stagger = false
+			params.color = hv.color
+		WeaponBehaviors.spawn_projectile(p, params)
+		if def.has("quiver"):
+			p.use_arrow(def)
 		p.world.emit_event("fx:muzzle", {"pos": p.pos + dir * def.spawn_offset, "height": p.height + Config.HEIGHT.bolt_altitude, "color": def.color})
 
 

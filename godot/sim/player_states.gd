@@ -97,7 +97,7 @@ class Ready:
 					fsm.change(&"useItem", {"index": buffered.index})
 					return
 				p.slots.notify_blocked(p, buffered.index)
-		if p.is_attack_held:
+		if p.is_attack_held and p.can_attack():   # 短弓裝填中不能射
 			fsm.change(&"attack")
 
 
@@ -192,6 +192,7 @@ class Roll:
 		data.move_speed_mul = 1.0
 		p.facing = atan2(dir.x, dir.y)
 		p.torch_stance = false   # 翻滾取消火把準備姿態（F8）
+		p.refill_quiver()        # 翻滾瞬間補滿箭袋（短弓）
 		p.forced_velocity = dir * p.roll_speed()
 		p.has_forced_velocity = true
 		p.dodge_timer = Config.ROLL.invuln_time

@@ -17,6 +17,8 @@ var weapon: Dictionary = {}            # 手上武器的招式資料（WeaponDef
 var weapon_id: StringName = &""
 var class_id := ClassDefs.NONE        # 職業（F2，ClassDefs）；NONE = 共用基準數值
 var torch_stance := false              # 火把準備姿態（F8）：左右鍵換成插火把 / 噴火
+var quiver := 6                        # 箭袋裡剩幾支（短弓，F4 回饋）：射完自動裝填
+var reload_timer := 0.0                # 裝填剩餘秒數；> 0 時不能射、移速變慢
 var held_enemy_id := 0                # 鐵鏟舉著的怪（F9）；0 = 沒有
 var hold_timer := 0.0                  # 舉著的剩餘秒數，到 0 怪掙脫
 var torches_left: int = WeaponDefs.WEAPONS[&"torch"].stance.attack.per_floor   # 這一關還能插幾支火把（F8，換層補滿）
@@ -423,6 +425,8 @@ func show_weapon(id: StringName, force := false) -> void:
 	weapon = WeaponDefs.WEAPONS[id]
 	weapon_id = id
 	torch_stance = false
+	reload_timer = 0.0   # 換到有箭袋的弓就是滿的（換武器本身就要花時間；翻滾也能瞬間補滿）
+	quiver = weapon.attack.get("quiver", 0)
 	if held_enemy_id != 0:
 		release_enemy()
 	combo_step = 0
@@ -451,6 +455,25 @@ func action_def(kind: StringName) -> Dictionary:
 	if torch_stance and weapon.has("stance"):
 		return weapon.stance[kind]
 	return weapon[kind]
+
+
+# 射出一支箭（有箭袋的弓）：射空就開始裝填
+func use_arrow(def: Dictionary) -> void:
+	quiver = maxi(0, quiver - 1)
+	if quiver == 0:
+		reload_timer = def.reload_time
+
+
+# 普攻能不能出手：有箭袋的弓在裝填中不能射
+func can_attack() -> bool:
+	return not weapon.attack.has("quiver") or (reload_timer <= 0.0 and quiver > 0)
+
+
+# 箭袋補滿（裝填完、翻滾）
+func refill_quiver() -> void:
+	if weapon.attack.has("quiver"):
+		quiver = weapon.attack.quiver
+		reload_timer = 0.0
 
 
 # 鐵鏟舉起一隻怪（F9）：怪停住、跟在面前，seconds 秒內沒拋出 / 埋入就掙脫
@@ -573,6 +596,10 @@ func update(dt: float) -> void:
 			_parry(true)
 	action.update(dt)
 
+	if reload_timer > 0.0:   # 短弓裝填（F4 回饋）
+		reload_timer -= dt
+		if reload_timer <= 1e-6:
+			refill_quiver()
 	if held_enemy_id != 0:   # 鐵鏟舉著怪（F9）：倒數到 0 掙脫，期間怪跟在面前
 		hold_timer -= dt
 		if hold_timer <= 1e-6:
@@ -590,6 +617,8 @@ func update(dt: float) -> void:
 			slow *= weapon.stance.move_speed_mul   # 火把準備姿態（F8）
 		if held_enemy_id != 0 and action.is_in(&"ready"):
 			slow *= weapon.grab.move_speed_mul     # 舉著怪（F9）
+		if reload_timer > 0.0 and weapon.attack.has("quiver"):
+			slow *= weapon.attack.reload_move_mul  # 短弓裝填中
 		velocity = move_input * (stats.value(&"move_speed") * slow)
 
 	if not data.get("lock_facing", false):

@@ -80,6 +80,7 @@ func _initialize() -> void:
 	_check("職業（F2）：開局套用基礎數值、起始武器、被動；沒選職業照舊、重新開始保留；守墓騎士被隊友從背後打到減半", PlayerChecks.check_classes)
 	_check("武器清單：每把武器都有道具資料與模型，職業的起始武器都存在", CombatChecks.check_weapon_catalog)
 	_check("短弓（F4）：快射是不擊退的箭、傷害照物理加成；散射 5 支平均分在 50° 內；盜墓遊俠移動中普攻不減速、右鍵照常減速", CombatChecks.check_shortbow)
+	_check("短弓箭袋：6 支、最後一支重箭（多拉弓、200%、擊退）；射空裝填 1.2 秒不能射、移速 ×0.5；翻滾瞬間補滿", CombatChecks.check_quiver)
 	_check("長弓（F5）：重射可擊退；按住右鍵蓄力、放開射出穿透箭（沒蓄 150%、蓄滿 400%），一直線上每隻打一次", CombatChecks.check_longbow)
 	_check("雙匕首（F6）：五連刺第 5 下 150% 必爆擊且只有它擊退；影步瞬移到怪背後背刺必爆擊、沒有怪不瞬移冷卻 1 秒；竊影者翻滾 2 次、翻滾後攻速 +30% 持續 1.5 秒", CombatChecks.check_daggers)
 	_check("驅魔權杖（F7）：敲擊是魔法、可擊退；聖光圈 4 秒每 0.5 秒對範圍內敵人持續傷害（不爆擊）、隊友回血；神官救人快 50%、救起回 50% 生命", CombatChecks.check_scepter)

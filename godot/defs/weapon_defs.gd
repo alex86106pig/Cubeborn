@@ -136,6 +136,12 @@ const WEAPONS := {
 			"name": "快射",
 			"icon": "快射",
 			"damage_pct": 1.0,
+			# 箭袋（使用者 2026-10-27：原本按住就一直射太無腦）：6 支射完自動裝填 1.2 秒（移速 ×0.5、不能射），翻滾瞬間補滿；
+			# 最後一支是重箭：多拉弓 0.15 秒、200%、小擊退。節奏「射射射射射─碰─翻滾或裝填」
+			"quiver": 6,
+			"reload_time": 1.2,
+			"reload_move_mul": 0.5,
+			"heavy_last": {"damage_pct": 2.0, "extra_windup": 0.15, "knockback": 4.0, "color": Color("ffd36b")},
 			"visual": &"arrow",
 			"projectile_speed": 24.0,
 			"projectile_radius": 0.2,
