@@ -555,3 +555,65 @@ static func check_damage_types() -> String:
 	if got != {&"white": 70.0, &"green": 50.0, &"blue": 10.0} or LootDefs.treasure_weights(base, 0.0) != base:
 		return "尋寶 100%% 權重應為白 70 / 綠 50 / 藍 10，實際 %s" % got
 	return ""
+
+
+# 每把武器都有道具資料（才會掉落、進背包）、模型與職業的起始武器都存在（F4 起）
+static func check_weapon_catalog() -> String:
+	for id: StringName in WeaponDefs.WEAPONS:
+		if not ItemDefs.ITEMS.has(id) or ItemDefs.ITEMS[id].weapon != id:
+			return "%s 沒有對應的 ItemDefs 武器資料" % id
+		var model := DarkFantasy.weapon(WeaponDefs.WEAPONS[id].model)
+		if model.is_empty():
+			return "%s 的模型 %s 沒有在 DarkFantasy.weapon 做" % [id, WeaponDefs.WEAPONS[id].model]
+		for key in ["main", "offhand"]:
+			if model[key] != null:
+				(model[key] as Node).free()
+	for id: StringName in ClassDefs.CLASSES:
+		if not WeaponDefs.WEAPONS.has(ClassDefs.CLASSES[id].weapon):
+			return "職業 %s 的起始武器 %s 不存在" % [id, ClassDefs.CLASSES[id].weapon]
+	return ""
+
+
+# 職業開局的世界（測試用）
+static func _class_world(class_id: StringName) -> World:
+	var w := World.new(&"test_arena")
+	_worlds.append(w)
+	w.spawn_packs = false
+	w.player_classes[World.HOST_PEER_ID] = class_id
+	w.reset(5)
+	w.spawner.finished = true
+	return w
+
+
+# F4 短弓與盜墓遊俠：快射是箭、不擊退；散射一次 5 支平均分在 50° 內、每支 80%；遊俠移動中普攻不減速、右鍵照常減速
+static func check_shortbow() -> String:
+	var w := _class_world(&"ranger")
+	var p := _player(w)
+	var bow: Dictionary = WeaponDefs.WEAPONS[&"shortbow"]
+	_run(w, _cmd(Vector2(0, 1), Vector2(0, 8), InputCmd.BTN_ATTACK), 8)
+	var moving_attack := p.velocity.length()
+	if w.projectiles.is_empty() or w.projectiles[0].visual != &"arrow" or w.projectiles[0].knockback_force != 0.0:
+		return "快射應射出不擊退的箭：%d 支" % w.projectiles.size()
+	if absf(w.projectiles[0].damage - p.move_damage(bow.attack)) > EPS or absf(p.move_damage(bow.attack) - 6.0 * 1.15) > EPS:
+		return "快射傷害應 = 6 × 100%% × 物理 115%% = 6.9，實際 %.2f" % w.projectiles[0].damage
+	if absf(moving_attack - p.stats.value(&"move_speed")) > 0.05:
+		return "遊俠移動中普攻不減速：速度 %.2f，移速 %.2f" % [moving_attack, p.stats.value(&"move_speed")]
+	var w2 := _class_world(&"ranger")
+	var p2 := _player(w2)
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), 1)
+	_run(w2, _cmd(Vector2(0, 1), Vector2(0, 8)), ceili((bow.special.windup + bow.special.active) / DT) + 1)
+	var arrows := w2.projectiles.filter(func(pr: Projectile) -> bool: return pr.owner_id == p2.id)
+	var angles: Array[float] = []
+	for pr: Projectile in arrows:
+		angles.append(atan2(pr.direction.x, pr.direction.y))
+	angles.sort()
+	if arrows.size() != bow.special.count or absf((angles.back() - angles.front()) - bow.special.fan_arc) > 0.01:
+		return "散射應射出 %d 支、扇形 %.0f°：%d 支、%.1f°" % [bow.special.count, rad_to_deg(bow.special.fan_arc), arrows.size(), rad_to_deg(angles.back() - angles.front()) if angles.size() > 1 else 0.0]
+	if absf(arrows[0].damage - p2.move_damage(bow.special)) > EPS:
+		return "散射每支應 %.2f，實際 %.2f" % [p2.move_damage(bow.special), arrows[0].damage]
+	var w3 := _class_world(&"ranger")
+	_run(w3, _cmd(Vector2(0, 1), Vector2(0, 8), InputCmd.BTN_SPECIAL), 3)
+	var p3 := _player(w3)
+	if absf(p3.velocity.length() - p3.stats.value(&"move_speed") * bow.special.move_speed_mul) > 0.05:
+		return "右鍵照常減速：速度 %.2f，應 %.2f" % [p3.velocity.length(), p3.stats.value(&"move_speed") * bow.special.move_speed_mul]
+	return ""

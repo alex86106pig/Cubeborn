@@ -370,11 +370,18 @@ func apply_class(id: StringName) -> void:
 	hp = max_hp
 
 
+# 職業被動的一個欄位（ClassDefs passive）；沒選職業或沒有這個欄位回傳 default
+func class_passive(key: String, default: Variant) -> Variant:
+	if class_id == ClassDefs.NONE:
+		return default
+	return ClassDefs.CLASSES[class_id].passive.get(key, default)
+
+
 # 被隊友（誤傷）打到時的傷害倍率：守墓騎士被動，攻擊來自背後（和面向差超過 90°）才減傷（F2）
 func friendly_back_mul(from: Vector2) -> float:
 	if class_id == ClassDefs.NONE:
 		return 1.0
-	var mul: float = ClassDefs.CLASSES[class_id].passive.get("friendly_back_mul", 1.0)
+	var mul: float = class_passive("friendly_back_mul", 1.0)
 	var d := from - pos
 	if mul == 1.0 or d.length_squared() < 1e-6:
 		return 1.0
@@ -515,7 +522,10 @@ func update(dt: float) -> void:
 	if has_forced_velocity:
 		velocity = forced_velocity
 	else:
-		velocity = move_input * (stats.value(&"move_speed") * data.get("move_speed_mul", 1.0))
+		var slow: float = data.get("move_speed_mul", 1.0)
+		if action.is_in(&"attack") and class_passive("attack_no_slow", false):
+			slow = 1.0   # 盜墓遊俠被動：移動中普攻不減速（F4）
+		velocity = move_input * (stats.value(&"move_speed") * slow)
 
 	if not data.get("lock_facing", false):
 		var target := MathUtil.angle_to(pos, aim_point)

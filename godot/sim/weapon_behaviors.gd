@@ -32,6 +32,16 @@ static func aim_direction(p: Player) -> Vector2:
 
 
 # 玩家投射物從胸口高度發射；在空中發射時，飛出 bolt_settle_distance 內降回離地 bolt_altitude（才打得到地上的怪）
+# 一般投射物（魔彈、箭）的參數：往 dir 射出，傷害、擊退、外觀照招式資料（visual 預設光球）
+static func shot_params(p: Player, def: Dictionary, dir: Vector2) -> Dictionary:
+	return {
+		"pos": p.pos + dir * def.spawn_offset, "direction": dir, "speed": def.projectile_speed,
+		"range": def.range * p.weapon_range_mul(), "radius": def.projectile_radius, "damage": p.move_damage(def),
+		"damage_type": p.weapon.damage_type, "knockback": def.knockback, "color": def.color, "hit_stop": def.hit_stop, "shake": def.shake,
+		"no_stagger": def.get("no_stagger", false), "visual": def.get("visual", &"orb"),
+	}
+
+
 static func spawn_projectile(p: Player, params: Dictionary) -> void:
 	params["owner"] = p
 	params["altitude"] = p.height + Config.HEIGHT.bolt_altitude
@@ -122,12 +132,7 @@ class FireBolt extends Behavior:
 			return
 		var dir := WeaponBehaviors.aim_direction(p)
 		p.facing = atan2(dir.x, dir.y)
-		WeaponBehaviors.spawn_projectile(p, {
-			"pos": p.pos + dir * def.spawn_offset, "direction": dir, "speed": def.projectile_speed,
-			"range": def.range * p.weapon_range_mul(), "radius": def.projectile_radius, "damage": p.move_damage(def),
-			"damage_type": p.weapon.damage_type, "knockback": def.knockback, "color": def.color, "hit_stop": def.hit_stop, "shake": def.shake,
-			"no_stagger": def.get("no_stagger", false),
-		})
+		WeaponBehaviors.spawn_projectile(p, WeaponBehaviors.shot_params(p, def, dir))
 		p.world.emit_event("fx:muzzle", {"pos": p.pos + dir * def.spawn_offset, "height": p.height + Config.HEIGHT.bolt_altitude, "color": def.color})
 
 
@@ -160,9 +165,25 @@ class ArcaneBurst extends Behavior:
 		})
 
 
+# 扇形散射（F4 短弓右鍵）：朝瞄準方向一次射出 count 支，平均分布在 fan_arc 內
+class ArrowFan extends Behavior:
+	func phase(p: Player, def: Dictionary, _data: Dictionary, name: StringName) -> void:
+		if name != &"active":
+			return
+		var dir := WeaponBehaviors.aim_direction(p)
+		var base := atan2(dir.x, dir.y)
+		p.facing = base
+		var n: int = def.count
+		for i in n:
+			var a: float = base + (def.fan_arc * (float(i) / (n - 1) - 0.5) if n > 1 else 0.0)
+			WeaponBehaviors.spawn_projectile(p, WeaponBehaviors.shot_params(p, def, MathUtil.dir_from_angle(a)))
+		p.world.emit_event("fx:muzzle", {"pos": p.pos + dir * def.spawn_offset, "height": p.height + Config.HEIGHT.bolt_altitude, "color": def.color})
+
+
 static var BEHAVIORS := {
 	&"meleeSwing": MeleeSwing.new(),
 	&"shieldBlock": ShieldBlock.new(),
 	&"fireBolt": FireBolt.new(),
 	&"arcaneBurst": ArcaneBurst.new(),
+	&"arrowFan": ArrowFan.new(),
 }

@@ -110,6 +110,8 @@ const ITEMS := {
 		"desc": "左鍵三段斬擊、按住右鍵格擋，格擋中左鍵招架", "effects": []},
 	&"staff": {"kind": &"weapon", "name": "法杖", "rarity": &"white", "shape": &"i4", "weapon": &"staff",
 		"desc": "左鍵魔彈、右鍵奧術爆裂", "effects": []},
+	&"shortbow": {"kind": &"weapon", "name": "短弓", "rarity": &"white", "shape": &"l4", "weapon": &"shortbow",
+		"desc": "左鍵快射（可按住連射）、右鍵扇形散射 5 支", "effects": []},
 
 	# ---- 白色：基本屬性 ----
 	&"worn_boots": {"kind": &"item", "name": "磨損皮靴", "rarity": &"white", "power": 1.6, "shape": &"i2",

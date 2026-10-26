@@ -191,7 +191,20 @@ static func weapon(model: StringName) -> Dictionary:
 			return _sword_shield()
 		&"staff":
 			return _staff()
+		&"shortbow":
+			return _player_bow(0.55, Color("8a5a32"))
 	return {}
+
+
+# 玩家的弓（F4）：豎直的弓身弧 + 弓弦，握在右手；size 是弓身半徑（短弓 0.55、長弓更大）
+static func _player_bow(size: float, wood: Color) -> Dictionary:
+	var k := PartKit.new()
+	var g := Node3D.new()
+	k.add(g, PartKit.torus(size, 0.03, 4, 10, PI * 0.8), k.mat(wood), {"y": 0.15, "z": -size * 0.55, "ry": PI / 2.0, "rz": PI / 2.0 + PI * 0.1})
+	k.add(g, PartKit.cyl(0.008, 0.008, size * 1.9, 3), k.mat(Color("d8d2bf")), {"y": 0.15, "z": -size * 0.55 + size * cos(PI * 0.4)})
+	k.add(g, PartKit.box(0.06, 0.16, 0.06), k.mat(C.leather), {"y": 0.15})
+	k.merge_static(g, [g])
+	return {"kit": k, "main": g, "offhand": null, "gem": null}
 
 
 static func _sword_shield() -> Dictionary:

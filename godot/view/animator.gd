@@ -4,6 +4,11 @@
 class_name Animator
 extends RefCounted
 
+# 新招式借用的現有姿勢（behavior → meleeSwing / fireBolt / arcaneBurst；沒列的用 fireBolt）
+const POSE_OF := {
+	&"arrowFan": &"arcaneBurst",
+}
+
 const WALK_SHARPNESS := 12.0
 const IDLE_SHARPNESS := 18.0
 const DEATH_FALL_TIME := 0.45
@@ -107,6 +112,15 @@ func _pose_action(p: Player, a: Dictionary, dt: float) -> void:
 					_pose_fire_bolt(idle, a, e)
 				&"arcaneBurst":
 					_pose_arcane_burst(idle, a, e)
+				_:
+					# F4 起的新招式先借現有姿勢（POSE_OF），之後再做專屬動作
+					match POSE_OF.get(a.behavior, &"fireBolt"):
+						&"meleeSwing":
+							_pose_melee_swing(idle, a, e, dt)
+						&"arcaneBurst":
+							_pose_arcane_burst(idle, a, e)
+						_:
+							_pose_fire_bolt(idle, a, e)
 		&"useItem":
 			var k := clampf(a.action_time / Config.PLAYER.use_item_time, 0.0, 1.0)
 			rig.arm_l.rotation.x = lerpf(0.0, -2.4, sin(k * PI))

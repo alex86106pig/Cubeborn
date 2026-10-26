@@ -78,6 +78,8 @@ func _initialize() -> void:
 	_check("法杖普攻：按住時照三段時間連發、打中骷髏不擊退也不硬直", CombatChecks.check_staff_changes)
 	_check("武器基礎數值：面板攻擊力 / 攻速 / 範圍 = 武器資料 × 稀有度倍率；裝上綠劍盾後攻擊力與揮砍距離跟著倍率", CombatChecks.check_weapon_base_stats)
 	_check("職業（F2）：開局套用基礎數值、起始武器、被動；沒選職業照舊、重新開始保留；守墓騎士被隊友從背後打到減半", PlayerChecks.check_classes)
+	_check("武器清單：每把武器都有道具資料與模型，職業的起始武器都存在", CombatChecks.check_weapon_catalog)
+	_check("短弓（F4）：快射是不擊退的箭、傷害照物理加成；散射 5 支平均分在 50° 內；盜墓遊俠移動中普攻不減速、右鍵照常減速", CombatChecks.check_shortbow)
 	_check("傷害類型（F1）：基礎傷害 × 招式 % × 物理 / 魔法傷害；護甲只擋物理、魔抗只擋魔法；閃避率封頂 75% 且 0 時不擲骰；尋寶加權", CombatChecks.check_damage_types)
 	_check("高度判定：最高點時箭從腳下飛過、地面會中箭；跳起來躲過 Boss 砸地；空中揮砍與空中魔彈打得到地上的怪", CombatChecks.check_height_hits)
 	_check("打擊感：玩家打中不震動、模擬時間不放慢（hit_stop 只放進事件）；玩家被打與 Boss 砸地照常震動；沒有命中定格，打中後模型照常移動", CombatChecks.check_hit_feel)

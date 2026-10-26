@@ -312,7 +312,7 @@ func set_loading(on: bool) -> void:
 # 會在遊戲中途第一次出現的字：道具名稱與說明、稀有度、怪物詞條與名字、武器詞條、新手提示、職業卡（F2）
 static func warm_text() -> String:
 	var chars := {}
-	for script: Script in [ItemDefs, MonsterRarityDefs, WeaponDropDefs, HintDefs, StatDefs, LootDefs, ClassDefs]:
+	for script: Script in [ItemDefs, MonsterRarityDefs, WeaponDropDefs, HintDefs, StatDefs, LootDefs, ClassDefs, WeaponDefs]:
 		_collect_chars(script.get_script_constant_map(), chars)
 	_collect_chars(UI_CHARS, chars)
 	var out := ""
