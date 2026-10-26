@@ -1179,3 +1179,146 @@ static func check_mesh_counts() -> String:
 			if node != null:
 				(node as Node3D).free()
 	return ""
+
+
+# 投射物的牆後剪影：箭飛到牆後（和相機之間有牆）也畫剪影，顏色看發射者（怪物紅、自己藍）；空地上的不畫
+static func check_projectile_xray() -> String:
+	var w := _new_world(3, false, &"graveyard_a")
+	var p := _player(w)
+	# 同 check_xray：王族墓南牆北邊，玩家在 y 57 面向南，牆邊 y 60.6 和相機之間有牆
+	p.pos = MapDefs.to_world(w.map, Vector2(48, 57))
+	p.facing = 0.0
+	var archer := _spawn(w, &"archer", MapDefs.to_world(w.map, Vector2(40, 50)))
+	var arrow := Projectile.new(w, {"owner": archer, "pos": MapDefs.to_world(w.map, Vector2(48, 60.6)), "direction": Vector2.UP,
+		"speed": 0.0, "range": 10.0, "radius": 0.15, "color": Color.ORANGE, "visual": &"arrow", "altitude": Config.HEIGHT.arrow_altitude})
+	w.spawn_projectile(arrow)
+	var mine := Projectile.new(w, {"owner": p, "pos": MapDefs.to_world(w.map, Vector2(47, 60.6)), "direction": Vector2.UP,
+		"speed": 0.0, "range": 10.0, "radius": 0.25, "color": Color.ORANGE, "visual": &"orb", "altitude": 1.0})
+	w.spawn_projectile(mine)
+	var view := WorldView.new()
+	var overlay := func(node: Node3D) -> Material:
+		for mi in PartKit.mesh_instances(node):
+			if mi.material_overlay != null:
+				return mi.material_overlay
+		return null
+	view.sync(w, 1.0, 0.016)
+	var err := ""
+	var an: Node3D = view._nodes[arrow.id]
+	var mn: Node3D = view._nodes[mine.id]
+	if not an.visible:
+		err = "牆邊的箭應在視野內"
+	elif not view._xray_needed(w, arrow) or overlay.call(an) != WorldView.xray_material(WorldView.XRAY_ENEMY):
+		err = "牆後的怪物箭應有紅色剪影：判斷 %s、疊加材質 %s" % [view._xray_needed(w, arrow), overlay.call(an)]
+	elif overlay.call(mn) != WorldView.xray_material(WorldView.XRAY_SELF):
+		err = "牆後自己的魔彈應有藍色剪影：%s" % overlay.call(mn)
+	if err == "":
+		# 同顏色的投射物共用材質：寫了模板值的材質各自一份時，每射一發都在遊戲中編一次著色器（卡 30~40 ms）
+		var materials := func(node: Node3D) -> Array:
+			var out := []
+			for mi in PartKit.mesh_instances(node):
+				if not WorldView.XRAY_SKIP.has(mi.name) and not WorldView.XRAY_SKIP.has(mi.get_parent().name):   # 除錯用的 Hitbox 圈各自一份，不算
+					out.append(mi.material_override)
+			return out
+		for pair: Array in [[an, view._create_view(arrow)], [mn, view._create_view(mine)]]:
+			var again: Node3D = pair[1]
+			var same: bool = materials.call(pair[0]) == materials.call(again)
+			again.free()
+			if not same:
+				err = "同顏色的投射物應共用材質（%s）" % (pair[0] as Node3D).name
+				break
+	if err == "":
+		# 飛到墓中央的空地：下一個 tick 就拿掉（投射物每個 tick 都判斷）
+		arrow.pos = MapDefs.to_world(w.map, Vector2(46, 55))
+		arrow.prev_pos = arrow.pos
+		w.tick += 1
+		view.sync(w, 1.0, 0.016)
+		if view._xray_needed(w, arrow) or overlay.call(an) != null:
+			err = "空地上的箭不應有剪影：判斷 %s、疊加材質 %s" % [view._xray_needed(w, arrow), overlay.call(an)]
+	view.free()
+	return err
+
+
+# 挖墳時視野跟著滑鼠轉：模擬層的朝向跟著瞄準點，畫面的視野遮罩（變暗的扇形）跟著模型朝向
+static func check_dig_vision() -> String:
+	var w := _new_world(12345, false, &"graveyard_a")
+	var p := _player(w)
+	p.pos = w.event.point + Vector2(1.5, 0.0)
+	var view := WorldView.new()
+	var err := ""
+	for aim: Vector2 in [Vector2(10, 0), Vector2(0, -10), Vector2(-10, 0)]:
+		var want := MathUtil.angle_to(Vector2.ZERO, aim)
+		_run(w, _cmd(Vector2.ZERO, p.pos + aim, InputCmd.BTN_INTERACT), 40)
+		view.sync(w, 1.0, 0.016)
+		var shown: float = (view._vision_overlay.material_override as ShaderMaterial).get_shader_parameter(&"facing")
+		if not p.is_digging():
+			err = "按住 F 應在挖墳（動作 %s）" % p.action.current_name
+		elif absf(angle_difference(p.facing, want)) > 0.01 or absf(angle_difference(shown, want)) > 0.01:
+			err = "挖墳中瞄準 %s：朝向 %.2f、視野遮罩 %.2f，預期都是 %.2f" % [aim, p.facing, shown, want]
+		if err != "":
+			break
+	view.free()
+	return err
+
+
+# 觀戰（多人時本機陣亡後看隊友）：選人規則、視野改用隊友的、房主改送隊友附近的實體；復活後回到自己
+static func check_spectate() -> String:
+	var w := _new_world()
+	w.reset(12345, [1, 2, 3])
+	var p1: Player = w.players[1]
+	var p2: Player = w.players[2]
+	var p3: Player = w.players[3]
+	# 選人：本機活著、倒地假死都不觀戰；陣亡後看第一位，±1 循環；看的人死了或走進出口就換
+	if WorldView.spectate_target(w, 1, 0) != 0:
+		return "本機活著不應觀戰"
+	p1.is_downed = true
+	if WorldView.spectate_target(w, 1, 0) != 0:
+		return "倒地假死時不應觀戰"
+	p1.is_downed = false
+	p1.is_dead = true
+	var picks := [WorldView.spectate_target(w, 1, 0), WorldView.spectate_target(w, 1, 2, 1), WorldView.spectate_target(w, 1, 3, 1), WorldView.spectate_target(w, 1, 2, -1)]
+	if picks != [2, 3, 2, 3]:
+		return "陣亡後第一位、下一位、循環、上一位應為 [2, 3, 2, 3]，實際 %s" % [picks]
+	p2.is_dead = true
+	if WorldView.spectate_target(w, 1, 2) != 3:
+		return "看的隊友死了應換到下一位"
+	p3.descended = true
+	if WorldView.spectate_target(w, 1, 3) != 0:
+		return "沒有站著的隊友（死了、走進出口）就不觀戰"
+	p2.is_dead = false
+	p3.descended = false
+	# 視野：P2 面向 +Z，前方的骷髏看得到、背後的看不到（P1 陣亡時本來全部看得到）
+	p1.pos = Vector2(-10, -10)
+	p2.pos = Vector2(5, 0)
+	p2.facing = 0.0
+	var front := _spawn(w, &"grunt", Vector2(5, 8))
+	var back := _spawn(w, &"grunt", Vector2(5, -8))
+	var view := WorldView.new()
+	view.local_peer = 1
+	view.spectate_peer = 2
+	view.sync(w, 1.0, 0.016)
+	var err := ""
+	if view.viewer() != p2 or not view._nodes[front.id].visible or view._nodes[back.id].visible or not view._vision_overlay.visible:
+		err = "觀戰 P2：視野以 %s 為準、前方 %s、背後 %s、遮罩 %s（應為 P2 / true / false / true）" % [
+			view.viewer().id if view.viewer() else 0, view._nodes[front.id].visible, view._nodes[back.id].visible, view._vision_overlay.visible]
+	# 復活（救起、冤魂）後視野回到自己
+	if err == "":
+		p1.is_dead = false
+		if view.viewer() != p1 or WorldView.spectate_target(w, 1, 2) != 0:
+			err = "復活後視野應回到自己（觀戰對象 %d）" % WorldView.spectate_target(w, 1, 2)
+	view.free()
+	if err != "":
+		return err
+	# 房主：輸入帶著觀戰對象，快照改以他為中心挑實體（遠處的怪才送得到）
+	p1.is_dead = true
+	var host := NetHost.new(w)
+	var cmd := _cmd(Vector2.ZERO)
+	cmd.tick = 1
+	cmd.spectate = 2
+	host.receive_inputs(1, [cmd.to_array()])
+	host.take_cmds()
+	if host.spectating.get(1, 0) != 2 or host.viewer_of(1) != p2 or not host.in_interest(front, host.viewer_of(1)):
+		return "房主應記下 P1 在看 P2、快照以 P2 為中心：記錄 %s、中心 %s" % [host.spectating.get(1, 0), host.viewer_of(1).id if host.viewer_of(1) else 0]
+	p1.is_dead = false
+	if host.viewer_of(1) != p1:
+		return "P1 復活後快照應回到以自己為中心"
+	return ""

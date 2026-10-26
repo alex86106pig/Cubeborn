@@ -5,6 +5,7 @@ extends RefCounted
 
 var world: World
 var acks: Dictionary = {}       # peer_id -> 最後套用的輸入編號（客戶端的 tick）
+var spectating: Dictionary = {} # peer_id -> 陣亡後觀戰的隊友 peer id（最新一筆輸入的 InputCmd.spectate；0 = 沒在觀戰）
 var _queues: Dictionary = {}    # peer_id -> Array[InputCmd]（依 tick 遞增）
 var input_gap_max_ms: Dictionary = {}   # peer_id -> 兩次收到輸入最長隔多久（遊玩紀錄；以房主的模擬步換算毫秒）
 var _last_input_tick: Dictionary = {}   # peer_id -> 上次收到輸入時的 world.tick
@@ -53,6 +54,7 @@ func take_cmds() -> Dictionary:
 			next.inv_ops = cmd.inv_ops + next.inv_ops
 			cmd = next
 		acks[peer_id] = cmd.tick
+		spectating[peer_id] = cmd.spectate
 		out[peer_id] = cmd
 	return out
 
@@ -64,10 +66,17 @@ func snapshots() -> Dictionary:
 	var out := {}
 	for peer_id: int in world.players:
 		if peer_id != World.HOST_PEER_ID:
-			var viewer: Player = world.players[peer_id]
+			var viewer := viewer_of(peer_id)
 			var picked := entities.filter(func(rec: Array) -> bool: return in_interest(rec[2], viewer))
 			out[peer_id] = NetCodec.make_snapshot(world, picked, acks.get(peer_id, 0), peer_id)
 	return out
+
+
+# 這位客戶端的快照以誰為中心挑實體：自己；陣亡後觀戰時是他看的隊友（InputCmd.spectate）
+func viewer_of(peer_id: int) -> Player:
+	var me: Player = world.players.get(peer_id)
+	var target: Player = world.players.get(spectating.get(peer_id, 0))
+	return target if me != null and me.is_dead and target != null else me
 
 
 func in_interest(e: Entity, viewer: Player) -> bool:

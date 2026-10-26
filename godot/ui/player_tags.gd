@@ -9,6 +9,7 @@ const BAR_SIZE := Vector2(64, 7)
 var world: World
 var camera: Camera3D
 var local_peer := World.HOST_PEER_ID
+var view_peer := 0   # 觀戰中的隊友（0 = 本機）
 
 
 func _init() -> void:
@@ -28,7 +29,7 @@ func _draw() -> void:
 	peers.sort()
 	for peer_id: int in peers:
 		var p: Player = world.players[peer_id]
-		if p.descended or not Vision.entity_visible(world, world.players.get(local_peer), p):   # 視野外、已走進出口（D6）的隊友連名牌都看不到（D2）
+		if p.descended or not Vision.entity_visible(world, world.players.get(view_peer if view_peer != 0 else local_peer), p):   # 視野外、已走進出口（D6）的隊友連名牌都看不到（D2）；觀戰時用隊友的視野
 			continue
 		var at := Vector3(p.pos.x, p.height + HEAD_OFFSET, p.pos.y)
 		if camera.is_position_behind(at):

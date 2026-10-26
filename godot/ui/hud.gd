@@ -18,7 +18,7 @@ const GAME_OVER_DELAY := 0.7     # 死亡後幾秒顯示結算
 const BOSS_NAME := "亡骸騎士"     # darkFantasy.js 的 names.boss
 # 介面程式碼裡寫死的中文字（橫幅、浮動文字、場上文字、連線面板、遊玩紀錄…；資料表以外的）：開場預熱用（v0.37.2）
 # check.gd 會掃 ui/ 的字串，缺字就列出來，加到這裡
-const UI_CHARS := "　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長"
+const UI_CHARS := "　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵向切換"
 
 const VIGNETTE_SHADER := """
 shader_type canvas_item;
@@ -52,6 +52,7 @@ var _boss_box := VBoxContainer.new()
 var _boss_name := UiKit.label("", 18)
 var _boss: Dictionary
 var _boss_ghost := 1.0
+var _spectate := UiKit.label("", 22, Color.WHITE, 3)   # 觀戰中：看的是誰、怎麼切換
 var _dig_box := VBoxContainer.new()   # 挖墳進度條（v0.38.0）：事件進行中所有人都看得到
 var _dig_name := UiKit.label("", 20, UiKit.GOLD)
 var _dig: Dictionary
@@ -99,6 +100,16 @@ func setup(p_world: World, p_camera: Camera3D) -> void:
 	_world_labels.world = p_world
 	_world_labels.camera = p_camera
 	inventory_panel.world = p_world
+
+
+# 觀戰（本機陣亡後看隊友，0 = 沒在觀戰）：上方中央顯示看的是誰；場上文字與名牌改用他的視野
+func set_spectating(peer_id: int) -> void:
+	_world_labels.view_peer = peer_id
+	_tags.view_peer = peer_id
+	var target: Player = world.players.get(peer_id) if world != null and peer_id != 0 else null
+	_spectate.visible = target != null
+	if target != null:
+		_spectate.text = "觀戰中：%s　滑鼠左右鍵或方向鍵切換" % _tag_of(target.id)
 
 
 func set_local_peer(peer_id: int) -> void:
@@ -185,6 +196,9 @@ func _init() -> void:
 	top.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	top.add_theme_constant_override(&"separation", 14)
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_spectate.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_spectate.visible = false
+	top.add_child(_spectate)
 	_dig_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_dig_box.add_child(_dig_name)
 	_dig = UiKit.bar(Vector2(560, 22), UiKit.DIG_BG, UiKit.GOLD, 3)

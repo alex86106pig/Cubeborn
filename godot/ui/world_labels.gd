@@ -16,6 +16,7 @@ const OUTLINE := 4
 var world: World
 var camera: Camera3D
 var local_peer := World.HOST_PEER_ID
+var view_peer := 0   # 觀戰中的隊友（0 = 本機）：看不看得到改用他的視野
 var warm := ""   # 開場預熱（v0.37.2）：HUD 蓋著「準備中」時設定，用同樣的字級與描邊先畫一次，字形在這時候產生
 
 
@@ -38,6 +39,7 @@ func _draw() -> void:
 	if world == null or camera == null:
 		return
 	var me: Player = world.players.get(local_peer)
+	var viewer: Player = world.players.get(view_peer if view_peer != 0 else local_peer)   # 看不看得到以他為準（觀戰時是隊友）
 	var focus: Entity = null
 	if me != null and not me.is_dead and not me.is_downed:
 		focus = world.nearest_interactable(me, world.pickups)
@@ -46,7 +48,7 @@ func _draw() -> void:
 	var font := get_theme_default_font()
 	for c: Entity in world.chests:
 		var chest := c as Chest
-		if chest.opened or not Vision.entity_visible(world, me, chest):
+		if chest.opened or not Vision.entity_visible(world, viewer, chest):
 			continue
 		var def: Dictionary = LootDefs.CHESTS[chest.tier]
 		var color := UiKit.SOUL if world.souls >= chest.price() else UiKit.ALERT
@@ -56,7 +58,7 @@ func _draw() -> void:
 		_text(font, chest, CHEST_OFFSET, text, color)
 	for p: Entity in world.pickups:
 		var pickup := p as ItemPickup
-		if pickup.is_removed or not Vision.entity_visible(world, me, pickup):
+		if pickup.is_removed or not Vision.entity_visible(world, viewer, pickup):
 			continue
 		var text := pickup.display_name()
 		if pickup == focus:
@@ -65,7 +67,7 @@ func _draw() -> void:
 	# 魔法 / 稀有怪（D5）：頭上顯示詞條（稀有怪多一行名字）
 	for e: Entity in world.enemies:
 		var en := e as Enemy
-		if en == null or en.is_dead or en.rarity == MonsterRarityDefs.NORMAL or not Vision.entity_visible(world, me, en):
+		if en == null or en.is_dead or en.rarity == MonsterRarityDefs.NORMAL or not Vision.entity_visible(world, viewer, en):
 			continue
 		var color: Color = MonsterRarityDefs.RARITIES[en.rarity].color
 		var offset := en.body_height + ENEMY_OFFSET
@@ -73,7 +75,7 @@ func _draw() -> void:
 			_text(font, en, offset, en.rare_name, color, 18, Vector2(0, -18))
 		_text(font, en, offset, MonsterRarityDefs.affix_names(en.affixes), color, 14)
 	for e: Entity in world.enemies:
-		if e is Enemy and (e as Enemy).ghost_of != 0 and not e.is_dead and Vision.entity_visible(world, me, e):
+		if e is Enemy and (e as Enemy).ghost_of != 0 and not e.is_dead and Vision.entity_visible(world, viewer, e):
 			_text(font, e, e.body_height + ENEMY_OFFSET, "冤魂：打倒就能復活隊友", GHOST_COLOR, 15)
 	_draw_grave(font, me)
 

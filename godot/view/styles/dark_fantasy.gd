@@ -19,6 +19,7 @@ const SKELETON_JOINTS := {
 	"hip_y": 0.92, "hip_x": 0.12, "height": 1.95,
 }
 const BOSS_SCALE := 1.85
+static var _projectile_kit: PartKit   # 箭的材質（enemy_projectile）
 
 const BLOOD := Color("d8d2bf")        # 骷髏死亡碎骨（網頁版 colors.blood）
 const BOSS_BLOOD := Color("55e0ff")   # 亡骸騎士的死亡、狂暴、召喚（網頁版 colors.bossBlood）
@@ -209,7 +210,10 @@ static func _staff() -> Dictionary:
 
 # 敵人箭矢：沿 +Z 建模，箭頭發光（color 為投射物顏色）
 static func enemy_projectile(color: Color) -> Node3D:
-	var k := PartKit.new()
+	# 所有箭共用同一組材質：牆後剪影寫模板值後，每支箭各自的材質會各編一次著色器（遊戲中每射一箭卡一下）
+	if _projectile_kit == null:
+		_projectile_kit = PartKit.new()
+	var k := _projectile_kit
 	var g := Node3D.new()
 	k.add(g, PartKit.cyl(0.018, 0.018, 0.7, 4), k.mat(Color("2a2420")), {"rx": PI / 2.0, "shadow": false})
 	k.add(g, PartKit.cone(0.05, 0.16, 4), k.mat(color, true), {"z": 0.42, "rx": PI / 2.0, "shadow": false})

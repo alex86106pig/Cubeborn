@@ -36,6 +36,7 @@ var _elapsed := 0.0
 var _lobby_elapsed := 0.0
 var _start_pos := Vector2.INF
 var _warming := false                 # 開場預熱中（蓋著「準備中」）
+var _spectate := 0                     # 本機陣亡後觀戰的隊友 peer id（0 = 沒在觀戰；_update_spectate）
 
 
 func _ready() -> void:
@@ -424,6 +425,13 @@ func _process(delta: float) -> void:
 	if perf != null:
 		perf.log_hitch(delta, _elapsed, _warming)
 	var alpha := Engine.get_physics_interpolation_fraction() if _stepped_this_tick else 1.0
+	var step := 0
+	if _spectate != 0 and not is_menu_open and not hud.is_stats_panel_open():
+		if Input.is_action_just_pressed(&"attack") or Input.is_action_just_pressed(&"ui_left"):
+			step = -1
+		elif Input.is_action_just_pressed(&"special") or Input.is_action_just_pressed(&"ui_right"):
+			step = 1
+	_update_spectate(step)
 	var t0 := Time.get_ticks_usec()
 	world_view.sync(world, alpha, delta)
 	if perf != null:
@@ -446,8 +454,17 @@ func _process(delta: float) -> void:
 	_check_auto_quit(delta)
 
 
+# 觀戰（規則見 WorldView.spectate_target）：step = −1 換上一位（滑鼠左鍵、←）、+1 下一位（右鍵、→）；
+# 視野、鏡頭、場上文字跟著換人，房主也改送他附近的實體（InputCmd.spectate）；復活後回到自己
+func _update_spectate(step := 0) -> void:
+	_spectate = WorldView.spectate_target(world, _local_peer, _spectate, step)
+	world_view.spectate_peer = _spectate
+	input_collector.spectate = _spectate
+	hud.set_spectating(_spectate)
+
+
 func _player_view_position(alpha: float) -> Vector3:
-	var player := local_player()
+	var player: Player = world.players.get(_spectate) if _spectate != 0 else local_player()   # 觀戰時鏡頭跟著隊友
 	if player == null:
 		return Vector3.ZERO
 	var p := player.prev_pos.lerp(player.pos, alpha)

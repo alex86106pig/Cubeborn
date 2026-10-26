@@ -46,6 +46,7 @@ void fragment() {
 """
 const XRAY_PROBE_STEP := 0.5   # 判斷「相機方向有沒有東西擋住」的取樣間隔（單位）
 static var _xray_materials: Dictionary = {}   # 顏色 -> ShaderMaterial
+static var _orb_materials: Dictionary = {}    # 顏色 -> 魔彈的 StandardMaterial3D（_create_projectile）
 static var _xray_shader: Shader
 var _xray_on: Dictionary = {}   # 怪物 id -> 剪影是否打開（只有被擋住的才畫，省繪製次數）
 var _xray_dir := Vector2(sin(Config.CAMERA.azimuth), cos(Config.CAMERA.azimuth))   # 地面上往相機的方向
@@ -60,6 +61,7 @@ var _strikes: Array[Dictionary] = []   # F2 顯示中的攻擊判定 { node, lif
 var _last_strike_tick := -1
 # 角色視野（D2，sim/vision.gd）：只畫本機玩家看得到的怪物、攻擊、隊友；視野外的地面蓋一層暗色
 var local_peer := World.HOST_PEER_ID
+var spectate_peer := 0                 # 本機陣亡後觀戰的隊友（0 = 不觀戰，由 main.gd 決定）：視野改用他的
 var hidden_ids: Dictionary = {}        # 這一幀看不到的實體 id（Effects 的持續性粒子也跳過）
 var _vision_key := []                  # 上次算視野時的 tick 與觀看者狀態（沒變就沿用 hidden_ids）
 var _los_blocked: Dictionary = {}      # entity id -> 視線被牆擋住（分批更新，見 sync）
@@ -106,7 +108,7 @@ func on_event(name: String, p: Dictionary) -> void:
 		effects.clear()
 	# 視野外的特效（怪物的攻擊、命中粒子、預警圈…）不畫
 	if name.begins_with("fx:") and p.has("pos"):
-		var me := local_player()
+		var me := viewer()
 		if me != null and not me.is_dead and not Vision.point_visible(_world, me, p.pos):
 			return
 	effects.on_event(name, p)
@@ -152,7 +154,7 @@ func _setup_environment() -> void:
 func sync(world: World, alpha: float, dt: float) -> void:
 	_world = world
 	_tick_warm_up()
-	var me := local_player()
+	var me := viewer()
 	# 視野只依模擬層的位置與朝向決定：同一個 tick 不必重算（D5：200 隻怪時每幀做視線判斷太慢）
 	var vision_key := [world.tick, world.run_id, world.entities.size(), me, me.pos if me else Vector2.ZERO, me.facing if me else 0.0, me.is_dead if me else false]
 	var t0 := Time.get_ticks_usec()
@@ -164,6 +166,8 @@ func sync(world: World, alpha: float, dt: float) -> void:
 			if e is Player and (e as Player).descended:   # 走進出口的玩家（D6，含自己）不畫
 				hidden_ids[id] = true
 				continue
+			if e is Projectile:
+				_xray_on[id] = _xray_needed(world, e)   # 投射物飛得快、數量少：每個 tick 都判斷牆後剪影
 			if not Vision.is_hideable(me, e):
 				continue
 			if not Vision.in_view_cone(me, e.pos, Vision.view_radius(e)):
@@ -212,8 +216,8 @@ func sync(world: World, alpha: float, dt: float) -> void:
 			if _frozen[id] > 0.0:
 				continue
 			_frozen.erase(id)
-		if node.has_meta(&"xray") and not Fade.is_fading(node) and node.get_meta(&"xray_shown") != _xray_on.get(id, not e is Enemy):
-			node.set_meta(&"xray_shown", _xray_on.get(id, not e is Enemy))
+		if node.has_meta(&"xray") and not Fade.is_fading(node) and node.get_meta(&"xray_shown") != _xray_on.get(id, e is Player):
+			node.set_meta(&"xray_shown", _xray_on.get(id, e is Player))
 			apply_xray(node, node.get_meta(&"xray"), node.get_meta(&"xray_shown"))
 		var p := e.prev_pos.lerp(e.pos, alpha)
 		# 位置與朝向一次寫入（分兩次寫會更新兩次子節點的變換，D5 效能）
@@ -284,7 +288,7 @@ func _sync_fade(id: int, node: Node3D, e: Entity, me: Player, dt: float) -> bool
 		_fade_level[id] = level
 		if Fade.apply(node, level) and node.has_meta(&"xray"):
 			# 淡入完成：接回牆後剪影（淡入淡出中不畫）
-			var on: bool = _xray_on.get(id, not e is Enemy)
+			var on: bool = _xray_on.get(id, e is Player)
 			node.set_meta(&"xray_shown", on)
 			apply_xray(node, node.get_meta(&"xray"), on)
 	node.visible = level > 0.0
@@ -297,6 +301,32 @@ func _add_profile(key: StringName, usec: int) -> void:
 
 func local_player() -> Player:
 	return _world.players.get(local_peer) if _world != null else null
+
+
+# 觀戰對象（多人時本機真的陣亡才觀戰；倒地假死不算）：站著、沒走進出口的隊友依 peer id 排序，
+# current 不能看了（死了、走進出口、離線）就換第一位，step = ±1 換上一位 / 下一位；本機沒死或沒人可看回傳 0
+static func spectate_target(world: World, local_peer: int, current: int, step := 0) -> int:
+	var me: Player = world.players.get(local_peer)
+	var targets: Array[int] = []
+	for peer_id: int in world.players:
+		var p: Player = world.players[peer_id]
+		if peer_id != local_peer and not p.is_dead and not p.descended:
+			targets.append(peer_id)
+	if me == null or not me.is_dead or targets.is_empty():
+		return 0
+	targets.sort()
+	var i := targets.find(current)
+	return targets[0] if i < 0 else targets[posmod(i + step, targets.size())]
+
+
+# 視野以誰為準：本機角色；陣亡後觀戰時是被觀戰的隊友（他的扇形、牆擋視線、變暗遮罩）
+func viewer() -> Player:
+	var me := local_player()
+	if spectate_peer != 0 and me != null and me.is_dead:
+		var target: Player = _world.players.get(spectate_peer)
+		if target != null:
+			return target
+	return me
 
 
 # 視野外（不畫）的敵人數，效能量測用
@@ -733,11 +763,15 @@ func _create_view(e: Entity) -> Node3D:
 	ring.name = &"Hitbox"
 	root.add_child(ring)
 	root.set_meta(&"entity", e.get_instance_id())
-	if e is Player or e is Enemy:
+	if e is Player or e is Enemy or e is Projectile:
+		# 投射物（箭、魔彈）飛到牆後也畫剪影，顏色看發射的人：自己藍、隊友綠、怪物紅
+		var source: Entity = e
+		if e is Projectile and _world != null:
+			source = _world.entities.get((e as Projectile).owner_id)
 		var color := XRAY_ENEMY
-		if e is Player:
-			color = XRAY_SELF if e == local_player() else XRAY_ALLY
-		var on := not e is Enemy   # 怪物等視野判斷過有東西擋住才打開（_xray_needed）
+		if source is Player:
+			color = XRAY_SELF if source == local_player() else XRAY_ALLY
+		var on := e is Player   # 怪物與投射物等判斷過有東西擋住才打開（_xray_needed）
 		root.set_meta(&"xray", color)
 		root.set_meta(&"xray_shown", on)
 		apply_xray(root, color, on)
@@ -905,10 +939,13 @@ func _create_projectile(e: Projectile) -> Node3D:
 	sphere.rings = 6
 	ball.mesh = sphere
 	ball.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.albedo_color = e.color
-	ball.material_override = mat
+	# 同顏色的魔彈共用材質（同 DarkFantasy.enemy_projectile：寫模板值後各自的材質會各編一次著色器）
+	if not _orb_materials.has(e.color):
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.albedo_color = e.color
+		_orb_materials[e.color] = mat
+	ball.material_override = _orb_materials[e.color]
 	root.add_child(ball)
 	return root
 

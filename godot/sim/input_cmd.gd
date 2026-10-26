@@ -24,6 +24,7 @@ var aim := Vector2.ZERO    # 世界 XZ 瞄準點
 var buttons := 0
 var inv_ops: Array = []    # 本步的背包操作（同「本步按下」：只執行一次，合併輸入時接在一起）
 var view_tick := 0         # 連線：客戶端這一步畫面上其他實體的時間（房主 tick），房主做延遲補償用；0 = 不補償（v0.38.0）
+var spectate := 0          # 連線：陣亡後觀戰的隊友 peer id（0 = 沒在觀戰）；房主改用他的位置挑快照裡的實體，模擬層不用
 
 
 static func slot_bit(index: int) -> int:
@@ -35,7 +36,7 @@ func has(bit: int) -> bool:
 
 
 func to_array() -> Array:
-	return [tick, move.x, move.y, aim.x, aim.y, buttons, inv_ops, view_tick]
+	return [tick, move.x, move.y, aim.x, aim.y, buttons, inv_ops, view_tick, spectate]
 
 
 static func from_array(a: Array) -> InputCmd:
@@ -48,4 +49,6 @@ static func from_array(a: Array) -> InputCmd:
 		cmd.inv_ops = a[6]
 	if a.size() > 7:
 		cmd.view_tick = a[7]
+	if a.size() > 8:
+		cmd.spectate = a[8]
 	return cmd
