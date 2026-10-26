@@ -794,8 +794,10 @@ static func check_classes() -> String:
 			if absf(p.stats.base(stat) - c.stats[stat]) > EPS:
 				return "%s 的%s基礎值應 %.2f，實際 %.2f" % [c.name, StatDefs.STATS[stat].name, c.stats[stat], p.stats.base(stat)]
 		for m: Array in c.passive.get("mods", []):
-			if absf(p.stats.value(m[0]) - p.stats.base(m[0]) * m[2]) > EPS:
-				return "%s 被動：%s 應 × %.2f，實際 %.3f" % [c.name, StatDefs.STATS[m[0]].name, m[2], p.stats.value(m[0])]
+			var b := p.stats.base(m[0])
+			var want: float = b + m[2] if m[1] == Stats.ADD else (b * (1.0 + m[2]) if m[1] == Stats.PCT else b * m[2])
+			if absf(p.stats.value(m[0]) - want) > EPS:
+				return "%s 被動：%s 應 %.2f，實際 %.3f" % [c.name, StatDefs.STATS[m[0]].name, want, p.stats.value(m[0])]
 		w.reset(2)
 		if _player(w).class_id != id:
 			return "重新開始應保留職業"

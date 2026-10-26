@@ -8,6 +8,7 @@ extends RefCounted
 const POSE_OF := {
 	&"arrowFan": &"arcaneBurst",
 	&"chargedShot": &"arcaneBurst",
+	&"shadowStep": &"meleeSwing",
 }
 
 const WALK_SHARPNESS := 12.0

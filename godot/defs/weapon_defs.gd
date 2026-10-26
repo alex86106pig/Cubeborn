@@ -236,6 +236,64 @@ const WEAPONS := {
 		},
 	},
 
+
+	# 雙匕首（F6，竊影者的起始武器）：很快的五連刺，第 5 下必爆擊、可擊退；右鍵影步瞬移到怪背後背刺（必爆擊）
+	&"daggers": {
+		"id": &"daggers",
+		"name": "雙匕首",
+		"type": &"melee",
+		"model": &"daggers",
+		"base_damage": 5.0,
+		"damage_type": &"phys",
+		"idle": {"arm_r": -0.6, "arm_l": -0.6, "tilt": 0.0},
+		"attack": {
+			"behavior": &"meleeSwing",
+			"sfx": "swing", "sfx_heavy": "swingHeavy",
+			"name": "五連刺",
+			"icon": "連刺",
+			"damage_pct": 1.0,
+			"combo_count": 5,          # 第 combo_count 下是終結技
+			"range": 1.6,
+			"arc": PI * 0.5,           # 90°
+			"windup": 0.04,            # 三段合計 0.18 秒一下
+			"active": 0.05,
+			"recovery": 0.09,
+			"knockback": 0.0,          # 前 4 下不擊退
+			"finisher_knockback": 9.0, # 第 5 下可擊退
+			"finisher_crit": true,     # 第 5 下必爆擊
+			"lunge": 1.5,
+			"move_speed_mul": 0.6,
+			"combo_window": 0.3,
+			"finisher_mul": 1.5,
+			"finisher_impact_mul": 1.5,
+			"finisher_shake_mul": 2.0,
+			"finisher_scale": 1.15,
+			"finisher_recovery_mul": 2.0,
+			"hit_stop": 0.03,
+			"shake": 0.05,
+			"slash_color": Color("c8d0e0"),
+			"slash_finisher_color": Color("9aa3ff"),
+		},
+		"special": {
+			"behavior": &"shadowStep",
+			"sfx": "swingHeavy",
+			"name": "影步",
+			"icon": "影步",
+			"cooldown": 5.0,
+			"miss_cooldown": 1.0,      # 6 單位內沒有怪：不瞬移，冷卻只算這麼久
+			"damage_pct": 3.0,         # 背刺必爆擊
+			"range": 6.0,
+			"knockback": 0.0,
+			"windup": 0.06,
+			"active": 0.04,
+			"recovery": 0.18,
+			"move_speed_mul": 0.0,
+			"color": Color("9aa3ff"),
+			"hit_stop": 0.06,
+			"shake": 0.2,
+		},
+	},
+
 }
 
 

@@ -2,12 +2,13 @@
 # 職業 = 基礎數值 + 起始武器 + 職業被動；被動跟著職業走、不綁武器。套用在 Player.apply_class
 # stats：覆寫 StatDefs 的基礎值（沒寫的照 StatDefs / Config.PLAYER）；passive.mods：被動的屬性加成（來源 &"class"）
 # passive.friendly_back_mul：被隊友從背後打到時的傷害倍率（Combat.apply_damage）；passive.attack_no_slow：移動中普攻不減速（Player 算移速）
+# passive.roll_buff：[秒數, 屬性加成]，翻滾結束後套上（增益 &"rollHaste"）
 # colors：模型配色（DarkFantasy.player_character）：armor 盔甲、trim 腰甲、cape 披風
 class_name ClassDefs
 
 const NONE := &""   # 沒選職業：照舊用共用的基準數值（測試與自動驗證用）
 
-const ORDER: Array[StringName] = [&"guardian", &"arcanist", &"ranger"]
+const ORDER: Array[StringName] = [&"guardian", &"arcanist", &"ranger", &"shadow"]
 
 const CLASSES := {
 	&"guardian": {
@@ -43,5 +44,18 @@ const CLASSES := {
 			"attack_no_slow": true,
 		},
 		"colors": {"armor": Color("4d6b45"), "trim": Color("2c3d27"), "cape": Color("b8d49a")},
+	},
+	&"shadow": {
+		"name": "竊影者",
+		"weapon": &"daggers",
+		"pitch": "貼身高速連擊，翻滾進出、影步繞到背後。",
+		"stats": {&"max_hp": 85.0, &"armor": 5.0, &"magic_resist": 5.0, &"phys_damage": 1.05, &"magic_damage": 0.9, &"attack_speed": 1.15,
+			&"hp_regen": 0.5, &"crit_damage": 1.75, &"dodge": 0.1, &"move_speed": 7.2},
+		"passive": {
+			"desc": "翻滾後 1.5 秒內攻速 +30%；翻滾次數 +1",
+			"mods": [[&"roll_charges", Stats.ADD, 1.0]],
+			"roll_buff": [1.5, [[&"attack_speed", Stats.PCT, 0.3]]],
+		},
+		"colors": {"armor": Color("3a3f4a"), "trim": Color("22252c"), "cape": Color("9aa3b5")},
 	},
 }

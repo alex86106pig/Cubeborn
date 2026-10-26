@@ -26,7 +26,7 @@ static func hostiles_of(world: World, team: StringName, source_id: int = 0) -> A
 #      color（命中粒子顏色，只給畫面層；預設白色）、
 #      band（高度範圍 Vector2(下緣, 上緣)；預設是攻擊者的身體往腳底下延伸 HEIGHT.reach_below，見 body_band）、
 #      max_air（選填：目標腳底離自己腳下地面超過這個高度就打不到）、no_stagger（選填：不讓目標進入受擊硬直）、
-#      damage_type（選填：&"phys" / &"magic"，預設物理；怪物的攻擊都是物理，F1）
+#      damage_type（選填：&"phys" / &"magic"，預設物理；怪物的攻擊都是物理，F1）、force_crit（選填：必爆擊，F6）
 # 這裡套用攻擊者的爆擊與擊退屬性；護甲與受傷倍率在 Entity.take_damage
 # 回傳是否實際命中（高度不重疊、被格擋也算沒命中）
 static func apply_damage(world: World, source: Entity, target: Entity, hit: Dictionary) -> bool:
@@ -95,7 +95,10 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 	var is_crit := false
 	var crit_chance := 0.0 if is_proc else source.stats.value(&"crit_chance")
 	# 爆擊率 0 時不擲骰，不消耗亂數（沒有爆擊道具時與網頁版的亂數序列相同）
-	if crit_chance > 0.0 and world.rng.randf() < crit_chance:
+	if hit.get("force_crit", false) and not is_proc:   # 必爆擊（F6 雙匕首第 5 下、影步）：不擲骰
+		is_crit = true
+		damage *= source.stats.value(&"crit_damage")
+	elif crit_chance > 0.0 and world.rng.randf() < crit_chance:
 		is_crit = true
 		damage *= source.stats.value(&"crit_damage")
 	var knockback: float = hit.get("knockback", 0.0) * source.stats.value(&"knockback")

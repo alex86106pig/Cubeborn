@@ -52,9 +52,10 @@ static func spawn_projectile(p: Player, params: Dictionary) -> void:
 
 class MeleeSwing extends Behavior:
 	func enter(p: Player, def: Dictionary, data: Dictionary) -> void:
-		p.combo_step = (p.combo_step + 1) % 3 if p.combo_timer > 0.0 else 0
-		data.is_finisher = p.combo_step == 2
-		data.swing_dir = -1 if p.combo_step == 1 else 1   # 第二段反手
+		var count: int = def.get("combo_count", 3)   # 雙匕首五連刺（F6）；劍盾三段
+		p.combo_step = (p.combo_step + 1) % count if p.combo_timer > 0.0 else 0
+		data.is_finisher = p.combo_step == count - 1
+		data.swing_dir = -1 if p.combo_step % 2 == 1 else 1   # 偶數段反手
 		data.scale = def.finisher_scale if data.is_finisher else 1.0
 		data.hit = {}
 		if data.is_finisher:
@@ -79,10 +80,10 @@ class MeleeSwing extends Behavior:
 		var shape := {"shape": &"sector", "range": def.range * data.scale * p.weapon_range_mul(), "arc": def.arc * data.scale}
 		Hitbox.strike(p.world, p, p.pos, p.facing, shape, {
 			"damage": p.move_damage(def) * (def.finisher_mul if fin else 1.0), "damage_type": p.weapon.damage_type,
-			"knockback": def.knockback * (def.finisher_impact_mul if fin else 1.0),
+			"knockback": def.get("finisher_knockback", def.knockback * def.finisher_impact_mul) if fin else def.knockback,
 			"hit_stop": def.hit_stop * (def.finisher_impact_mul if fin else 1.0),
 			"shake": def.shake * (def.finisher_shake_mul if fin else 1.0),
-			"is_heavy": fin, "blockable": true,
+			"is_heavy": fin, "blockable": true, "force_crit": fin and def.get("finisher_crit", false),
 		}, data.hit)
 
 	func exit(p: Player, def: Dictionary, _data: Dictionary) -> void:
@@ -206,6 +207,52 @@ class ChargedShot extends Behavior:
 		p.world.emit_event("fx:muzzle", {"pos": p.pos + dir * def.spawn_offset, "height": p.height + Config.HEIGHT.bolt_altitude, "color": def.color})
 
 
+# 影步（F6 雙匕首右鍵）：瞬移到 range 內離準星最近那隻怪的背後（背後是牆就繞著怪找空位），背刺一下必爆擊；
+# 沒有怪就不瞬移，冷卻改成 miss_cooldown
+class ShadowStep extends Behavior:
+	func enter(p: Player, def: Dictionary, data: Dictionary) -> void:
+		data.lock_facing = true
+		data.target_id = 0
+		var best := INF
+		for e in Combat.hostiles_of(p.world, p.team, p.id):
+			if e is Player or e.pos.distance_to(p.pos) > def.range + e.radius:
+				continue
+			var d := e.pos.distance_squared_to(p.aim_point)
+			if d < best:
+				best = d
+				data.target_id = e.id
+		if data.target_id == 0:
+			p.world.cooldowns.start(p.cd("player.special"), def.miss_cooldown * p.stats.value(&"cooldown"))
+
+	func phase(p: Player, def: Dictionary, data: Dictionary, name: StringName) -> void:
+		var target: Entity = p.world.entities.get(data.target_id)
+		if name != &"active" or target == null or target.is_dead:
+			return
+		var spot := WeaponBehaviors.behind(p, target)
+		p.pos = spot
+		p.facing = MathUtil.angle_to(spot, target.pos)
+		p.world.emit_event("fx:slash", {"pos": p.pos, "height": p.height, "facing": p.facing, "range": 1.6, "arc": PI * 0.5, "color": def.color, "swing_dir": 1})
+		Combat.apply_damage(p.world, p, target, {
+			"damage": p.move_damage(def), "damage_type": p.weapon.damage_type, "knockback": def.knockback,
+			"hit_stop": def.hit_stop, "shake": def.shake, "is_heavy": true, "force_crit": true, "color": def.color,
+		})
+
+
+# 目標背後（和它面向相反）貼身的位置；被牆擋住就每 45° 繞一圈找第一個站得住的地方，都不行就留在原地
+static func behind(p: Player, target: Entity) -> Vector2:
+	var dist := target.radius + p.radius + 0.15
+	var base := target.facing + PI
+	for i in 8:
+		var a := base + PI / 4.0 * ceilf(i / 2.0) * (1.0 if i % 2 == 0 else -1.0)
+		var spot := target.pos + MathUtil.dir_from_angle(a) * dist
+		var half := p.world.half_extents - Vector2(p.radius, p.radius)
+		if absf(spot.x) > half.x or absf(spot.y) > half.y:
+			continue
+		if p.world.terrain.ground_at(spot) - target.ground_height <= Config.HEIGHT.step and not p.world.terrain.blocks_nav(spot, p.radius):
+			return spot
+	return p.pos
+
+
 static var BEHAVIORS := {
 	&"meleeSwing": MeleeSwing.new(),
 	&"shieldBlock": ShieldBlock.new(),
@@ -213,4 +260,5 @@ static var BEHAVIORS := {
 	&"arcaneBurst": ArcaneBurst.new(),
 	&"arrowFan": ArrowFan.new(),
 	&"chargedShot": ChargedShot.new(),
+	&"shadowStep": ShadowStep.new(),
 }

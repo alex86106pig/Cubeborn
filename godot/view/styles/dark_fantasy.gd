@@ -195,7 +195,25 @@ static func weapon(model: StringName) -> Dictionary:
 			return _player_bow(0.55, Color("8a5a32"))
 		&"longbow":
 			return _player_bow(0.85, Color("5a3a1e"))
+		&"daggers":
+			return _daggers()
 	return {}
+
+
+# 雙匕首（F6）：右手一把、左臂一把（offhand）
+static func _daggers() -> Dictionary:
+	var k := PartKit.new()
+	var parts: Array[Node3D] = []
+	for i in 2:
+		var g := Node3D.new()
+		k.add(g, PartKit.cone(0.045, 0.42, 4), k.mat(Color("c8d0e0")), {"y": 0.3, "sx": 0.35})
+		k.add(g, PartKit.box(0.16, 0.03, 0.05), k.mat(C.steel_dark), {"y": 0.09})
+		k.add(g, PartKit.cyl(0.025, 0.025, 0.14, 4), k.mat(C.leather), {"y": 0.0})
+		k.merge_static(g, [g])
+		parts.append(g)
+	parts[1].position = Vector3(0.0, -0.62, 0.05)
+	parts[1].rotation.x = PI / 2.0
+	return {"kit": k, "main": parts[0], "offhand": parts[1], "gem": null}
 
 
 # 玩家的弓（F4）：豎直的弓身弧 + 弓弦，握在右手；size 是弓身半徑（短弓 0.55、長弓更大）

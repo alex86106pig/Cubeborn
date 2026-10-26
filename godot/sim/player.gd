@@ -368,6 +368,7 @@ func apply_class(id: StringName) -> void:
 	set_stat_source(&"class", c.passive.get("mods", []))
 	equip_weapon(c.weapon)
 	hp = max_hp
+	roll_charges = roll_max()
 
 
 # 職業被動的一個欄位（ClassDefs passive）；沒選職業或沒有這個欄位回傳 default

@@ -649,3 +649,56 @@ static func check_longbow() -> String:
 		if tap[i].size() != 1 or absf(tap[i][0] - base) > EPS or full[i].size() != 1 or absf(full[i][0] - want_full) > EPS:
 			return "穿透箭：沒蓄力每隻應 [%.1f]、蓄滿 [%.1f]（一直線 3 隻都打到一次）；實際 %s / %s" % [base, want_full, tap, full]
 	return ""
+
+
+# F6 雙匕首與竊影者：五連刺第 5 下 150% 必爆擊、只有第 5 下擊退；影步瞬移到怪背後背刺 300% 必爆擊，沒有怪不瞬移、冷卻 1 秒；
+# 竊影者翻滾次數 2、翻滾後攻速 +30%
+static func check_daggers() -> String:
+	var dg: Dictionary = WeaponDefs.WEAPONS[&"daggers"]
+	var w := _new_world()
+	var p := _player(w)
+	p.equip_weapon(&"daggers")
+	var dummy := _dummy(w, Vector2(0, 1.2))
+	var events: Array[Dictionary] = []
+	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 90, events)
+	var hits := _named(events, "entity:damaged").filter(func(e: Dictionary) -> bool: return e.target_id == dummy.id)
+	var base := WeaponDefs.move_base_damage(dg, dg.attack)
+	if hits.size() < 5:
+		return "五連刺 90 步內應打滿 5 下，實際 %d 下" % hits.size()
+	for i in 5:
+		var fin := i == 4
+		var want: float = base * (dg.attack.finisher_mul * p.stats.value(&"crit_damage") if fin else 1.0)
+		if absf(hits[i].amount - want) > EPS or hits[i].is_crit != fin or (hits[i].knockback > 0.0) != fin:
+			return "第 %d 下應 %.2f、爆擊 %s、擊退 %s：%s" % [i + 1, want, fin, fin, hits[i]]
+	# 影步
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	p2.equip_weapon(&"daggers")
+	var target := _dummy(w2, Vector2(0, 4.0))
+	target.facing = 0.0   # 面向 +Z：背後在 z 較小的一側
+	var ev2: Array[Dictionary] = []
+	_run_collect(w2, _cmd(Vector2.ZERO, Vector2(0, 4), InputCmd.BTN_SPECIAL), 20, ev2)
+	var stab := _damage_amounts(ev2, target.id)
+	var want_stab := WeaponDefs.move_base_damage(dg, dg.special) * p2.stats.value(&"crit_damage")
+	if p2.pos.y > target.pos.y - target.radius or p2.pos.distance_to(target.pos) > target.radius + p2.radius + 0.3 or stab != [want_stab]:
+		return "影步應到怪背後貼身、背刺 [%.2f]：位置 %s、傷害 %s" % [want_stab, p2.pos, stab]
+	var w3 := _new_world()
+	var p3 := _player(w3)
+	p3.equip_weapon(&"daggers")
+	_run(w3, _cmd(Vector2.ZERO, Vector2(0, 4), InputCmd.BTN_SPECIAL), 2)
+	if p3.pos.length() > 0.01 or absf(w3.cooldowns.remaining(p3.cd("player.special")) - dg.special.miss_cooldown) > 3 * DT:
+		return "沒有怪不瞬移、冷卻 %.1f 秒：位置 %s、冷卻 %.2f" % [dg.special.miss_cooldown, p3.pos, w3.cooldowns.remaining(p3.cd("player.special"))]
+	# 竊影者：翻滾 2 次、翻滾後攻速 +30%
+	var w4 := _class_world(&"shadow")
+	var p4 := _player(w4)
+	var aspd0 := p4.stats.value(&"attack_speed")
+	if p4.roll_charges != 2:
+		return "竊影者翻滾次數應 2，實際 %d" % p4.roll_charges
+	_run(w4, _cmd(Vector2(1, 0), Vector2(0, 5), InputCmd.BTN_ROLL), 1)
+	_run(w4, _cmd(Vector2.ZERO), ceili(Config.ROLL.duration / DT) + 2)
+	if absf(p4.stats.value(&"attack_speed") - aspd0 * 1.3 / 1.0) > 0.02 and absf(p4.stats.value(&"attack_speed") - (aspd0 + 0.3)) > 0.02:
+		return "翻滾後攻速應 +30%%：%.2f → %.2f" % [aspd0, p4.stats.value(&"attack_speed")]
+	_run(w4, _cmd(Vector2.ZERO), ceili(1.5 / DT) + 2)
+	if absf(p4.stats.value(&"attack_speed") - aspd0) > EPS:
+		return "1.5 秒後攻速應回到 %.2f，實際 %.2f" % [aspd0, p4.stats.value(&"attack_speed")]
+	return ""
