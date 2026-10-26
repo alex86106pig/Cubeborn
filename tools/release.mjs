@@ -76,8 +76,15 @@ function runChecks() {
   const chk = runGodot(godot, ['--headless', '--path', '.', '-s', 'res://tests/check.gd'], CHECK_TIMEOUT, 'check.gd ');
   const lines = chk.out.split('\n').filter(l => !l.startsWith('Godot Engine') && !/^(Vulkan|OpenGL|WARNING)/.test(l));
   console.log(lines.join('\n').trim());
+  // 要看到「N / N 通過」才算過：check.gd 編譯失敗時 Godot 照樣以 0 結束、什麼都不印（2026-10-27 踩過，會被當成通過）
+  const total = chk.out.match(/(\d+) \/ (\d+) 通過/);
+  if (!total) {
+    const errs = `${chk.err || ''}\n${chk.out}`.split('\n').filter(l => /ERROR|Error/.test(l)).slice(-15).join('\n');
+    console.log(`✘ check.gd 沒有跑完（沒有印出「N / N 通過」，多半是腳本編譯失敗）\n${errs}`);
+    return false;
+  }
   if (!chk.ok && !chk.out.includes('通過')) console.log((chk.err || '').split('\n').slice(-15).join('\n'));
-  return chk.ok;
+  return chk.ok && total[1] === total[2];
 }
 
 if (has('check')) process.exit(runChecks() ? 0 : 1);

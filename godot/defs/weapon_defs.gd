@@ -322,7 +322,12 @@ const WEAPONS := {
 			"name": "聖光敲擊",
 			"icon": "敲擊",
 			"damage_pct": 1.0,
-			"combo_count": 1,          # 沒有連段：每一下都一樣（終結技倍率都是 1）
+			# 兩段「敲─砸」（使用者 2026-10-27：每一下都一樣太無腦）：第 2 下蓄一下再砸，扇形 130%，
+			# 並在前方 finisher_burst.offset 處砸出半徑 radius 的聖光圈（再 60%、擊退）
+			"combo_count": 2,
+			"finisher_windup": 0.22,
+			"finisher_recovery": 0.35,
+			"finisher_burst": {"offset": 1.6, "radius": 2.0, "damage_pct": 0.6, "knockback": 10.0, "color": Color("fff0b0")},
 			"range": 2.6,
 			"arc": PI * 150.0 / 180.0,
 			"windup": 0.12,            # 三段合計 0.45 秒一下
@@ -331,16 +336,16 @@ const WEAPONS := {
 			"knockback": 8.0,
 			"lunge": 2.0,
 			"move_speed_mul": 0.4,
-			"combo_window": 0.3,
-			"finisher_mul": 1.0,
-			"finisher_impact_mul": 1.0,
-			"finisher_shake_mul": 1.0,
+			"combo_window": 0.35,
+			"finisher_mul": 1.3,
+			"finisher_impact_mul": 1.25,
+			"finisher_shake_mul": 2.0,
 			"finisher_scale": 1.0,
-			"finisher_recovery_mul": 1.0,
+			"finisher_recovery_mul": 1.0,   # 用 finisher_recovery
 			"hit_stop": 0.05,
 			"shake": 0.08,
 			"slash_color": Color("fff0b0"),
-			"slash_finisher_color": Color("fff0b0"),
+			"slash_finisher_color": Color("ffe27a"),
 		},
 		"special": {
 			"behavior": &"holyCircle",

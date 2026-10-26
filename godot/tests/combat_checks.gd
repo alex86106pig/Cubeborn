@@ -745,17 +745,23 @@ static func check_scepter() -> String:
 	var healed := p.hp - hp0
 	if absf(healed - minf(30.0, sc.special.heal_per_sec * sc.special.duration)) > EPS:
 		return "聖光圈隊友每秒回 %.0f，4 秒應回 %.0f，實際 %.1f" % [sc.special.heal_per_sec, sc.special.heal_per_sec * sc.special.duration, healed]
-	# 敲擊：魔法、可擊退
+	# 敲擊：魔法、可擊退；兩段「敲─砸」：第 2 下扇形 130% + 前方一圈 60%（同一隻兩邊都打到）
 	var w2 := _new_world()
 	var p2 := _player(w2)
 	p2.equip_weapon(&"scepter")
 	var t2 := _dummy(w2, Vector2(0, 1.5))
 	t2.set_stat_source(&"test", [[&"armor", Stats.ADD, 1000.0]])   # 護甲不擋魔法
+	var side := _dummy(w2, Vector2(2.0, 2.6))   # 第 2 下往前衝後也在扇形內，但會被砸出的圈多打一次
 	var ev2: Array[Dictionary] = []
-	_run_collect(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 20, ev2)
+	_run_collect(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 75, ev2)
 	var h2 := _named(ev2, "entity:damaged").filter(func(e: Dictionary) -> bool: return e.target_id == t2.id)
-	if h2.is_empty() or absf(h2[0].amount - WeaponDefs.move_base_damage(sc, sc.attack)) > EPS or h2[0].knockback <= 0.0:
-		return "聖光敲擊應是魔法（護甲不擋）%.0f、可擊退：%s" % [WeaponDefs.move_base_damage(sc, sc.attack), h2]
+	var b := WeaponDefs.move_base_damage(sc, sc.attack)
+	var want2 := [b, b * sc.attack.finisher_mul, sc.base_damage * sc.attack.finisher_burst.damage_pct]
+	var got2 := h2.map(func(e: Dictionary) -> float: return e.amount)
+	if got2.size() < 3 or absf(got2[0] - want2[0]) > EPS or absf(got2[1] - want2[1]) > EPS or absf(got2[2] - want2[2]) > EPS or h2[0].knockback <= 0.0:
+		return "聖光敲擊（魔法，護甲不擋）應依序 %s、可擊退：%s" % [want2, got2]
+	if not _damage_amounts(ev2, side.id).has(want2[2]):
+		return "第 2 下砸出的圈應打到旁邊的怪（%.1f）：%s" % [want2[2], _damage_amounts(ev2, side.id)]
 	# 神官救人
 	var w3 := World.new(&"test_arena")
 	_worlds.append(w3)

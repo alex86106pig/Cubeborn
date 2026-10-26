@@ -89,6 +89,17 @@ class MeleeSwing extends Behavior:
 			"is_heavy": fin, "blockable": true, "force_crit": fin and def.get("finisher_crit", false),
 		}, data.hit)
 		WeaponBehaviors.ignite(p, def, hits)
+		if fin and def.has("finisher_burst"):
+			# 終結技在前方砸出一圈（驅魔權杖第 2 下）：和扇形分開算，同一隻兩邊都打得到
+			var fb: Dictionary = def.finisher_burst
+			var at: Vector2 = p.pos + WeaponBehaviors.forward(p) * fb.offset
+			if not data.has("burst_hit"):
+				data.burst_hit = {}
+				p.world.emit_event("fx:explosion", {"pos": at, "height": p.world.terrain.ground_at(at), "radius": fb.radius, "color": fb.color})
+			Hitbox.strike(p.world, p, at, p.facing, {"shape": &"circle", "radius": fb.radius}, {
+				"damage": p.pct_damage(fb.damage_pct), "damage_type": p.weapon.damage_type, "knockback": fb.knockback,
+				"origin": at, "is_heavy": true, "blockable": false, "color": fb.color,
+			}, data.burst_hit)
 
 	func exit(p: Player, def: Dictionary, _data: Dictionary) -> void:
 		p.combo_timer = def.combo_window
