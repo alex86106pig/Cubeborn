@@ -90,6 +90,8 @@ func _ready() -> void:
 		show_title(&"multi" if args.host or args.join != "" else &"home")
 		if args.menu_flow and not (args.host or args.join != ""):
 			start_single(args.start_class if args.start_class != &"" else ClassDefs.ORDER[0])   # --menu-flow 單人：主選單「單人遊戲」→ 選職業（F2）
+		elif args.weapon_test:
+			start_weapon_test()   # --weapon-test（網頁版 ?weapon-test）：跳過主選單直接進武器測試場，?weapon= 指定武器
 	if args.room:
 		hud.net_panel.set_method(&"room")
 	if args.host:
