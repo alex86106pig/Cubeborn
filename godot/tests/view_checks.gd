@@ -46,8 +46,7 @@ static func check_chest_lid() -> String:
 # 挖墳進度條（v0.38.0）：事件進行中顯示進度與說明（Boss 活著 / 怪潮中），出口打開後收起；Boss 血條排在它下面
 static func check_dig_bar() -> String:
 	var w := _new_world(5, true, &"graveyard_a")
-	var cam := Camera3D.new()
-	_scene_root().add_child(cam)
+	var cam := _test_camera()
 	var hud: Variant = load("res://ui/hud.tscn").instantiate()
 	hud.setup(w, cam)
 	_scene_root().add_child(hud)
@@ -86,8 +85,7 @@ static func check_dig_bar() -> String:
 
 static func check_hud() -> String:
 	var w := _new_world(5, true)
-	var cam := Camera3D.new()
-	_scene_root().add_child(cam)
+	var cam := _test_camera()
 	var hud: Variant = load("res://ui/hud.tscn").instantiate()
 	hud.setup(w, cam)
 	_scene_root().add_child(hud)
@@ -153,14 +151,13 @@ static func check_hud() -> String:
 # 關掉後連線面板搬回暫停畫面，單機暫停時不顯示、連線中才顯示；暫停畫面有「回主選單」
 static func check_main_menu() -> String:
 	var w := _new_world(5)
-	var cam := Camera3D.new()
-	_scene_root().add_child(cam)
+	var cam := _test_camera()
 	var hud: Variant = load("res://ui/hud.tscn").instantiate()
 	hud.setup(w, cam)
 	_scene_root().add_child(hud)
 	var err := _check_main_menu(hud)
 	if err == "":
-		err = _check_class_select(hud)
+		err = await _check_class_select(hud)
 	if err == "":
 		err = _check_weapon_test_bar(hud)
 	hud.queue_free()
@@ -206,10 +203,17 @@ static func _check_class_select(hud: Variant) -> String:
 			return "%s：技能應有 4 格（%d）、名稱「%s」" % [ClassDefs.CLASSES[id].name, cs._skills.get_child_count(), cs.name_label.text]
 		p.detach()
 	var room := _menu_room()
-	var need: Vector2 = cs.get_child(0).get_child(0).get_combined_minimum_size()
+	var need := await _settled_min_size(cs.get_child(0).get_child(0))
 	_note("選角畫面 %.0f×%.0f（介面最大檔時可用 %.0f×%.0f）" % [need.x, need.y, room.x, room.y])
 	if need.x > room.x or need.y > room.y:
 		return "選角畫面 %.0f×%.0f，超出介面最大檔時的 %.0f×%.0f" % [need.x, need.y, room.x, room.y]
+	# 四人大廳（名單、四個人的頭上標籤）也要塞得進
+	cs.show_lobby(&"lobby_host", [1, 2, 3, 4], 1, {1: ["guardian", true], 2: ["ranger", true], 3: ["priest", false], 4: ["gravedigger", true]}, &"hard", "房號 ABCD（4 / 4 人）")
+	need = await _settled_min_size(cs.get_child(0).get_child(0))
+	_note("選角畫面（四人大廳）%.0f×%.0f" % [need.x, need.y])
+	if need.x > room.x or need.y > room.y:
+		return "四人大廳的選角畫面 %.0f×%.0f，超出介面最大檔時的 %.0f×%.0f" % [need.x, need.y, room.x, room.y]
+	cs.open_single()
 	cs.back_button.pressed.emit()
 	if cs.visible:
 		return "選角畫面按「返回」應關掉"
@@ -434,8 +438,7 @@ static func check_url_query_args() -> String:
 # 音量套到 Master / Music / SFX 匯流排；陰影、光源開關套到太陽與點光源（之後新建的精英怪也照設定）；--shadows=0 / --lights=0 解析
 static func check_settings() -> String:
 	var w := _new_world(5)
-	var cam := Camera3D.new()
-	_scene_root().add_child(cam)
+	var cam := _test_camera()
 	var hud: Variant = load("res://ui/hud.tscn").instantiate()
 	hud.setup(w, cam)
 	_scene_root().add_child(hud)
@@ -570,6 +573,24 @@ static func check_buttons() -> String:
 
 
 # 選單在介面大小最大檔時能用的大小（16:9）
+# 剛建好或換過文字的介面，字級（主題）與容器的最小尺寸要等畫面更新才算準（立刻量偏小約 15%：
+# 四人大廳立刻量 1850 寬、等兩幀 2184）；等兩幀再量
+static func _settled_min_size(c: Control) -> Vector2:
+	var tree := Engine.get_main_loop() as SceneTree
+	await tree.process_frame
+	await tree.process_frame
+	return c.get_combined_minimum_size()
+
+
+# HUD 用的測試相機：放在遊戲的視角（上方斜看），不要在原點——檢查等過畫面更新後相機才生效，
+# 傷害數字等在原點附近的東西投影到相機平面會出錯（2026-10-27 加了 await 的檢查後發現）
+static func _test_camera() -> Camera3D:
+	var cam := Camera3D.new()
+	_scene_root().add_child(cam)
+	cam.look_at_from_position(Vector3(0, 20, 14), Vector3.ZERO)
+	return cam
+
+
 static func _menu_room() -> Vector2:
 	var base := Vector2(ProjectSettings.get_setting("display/window/size/viewport_width"), ProjectSettings.get_setting("display/window/size/viewport_height"))
 	return base / (SettingsPanel.UI_SCALES.max() * SettingsPanel.BASE_UI_SCALE)
@@ -577,8 +598,7 @@ static func _menu_room() -> Vector2:
 
 static func check_run_log() -> String:
 	var w := _new_world(5)
-	var cam := Camera3D.new()
-	_scene_root().add_child(cam)
+	var cam := _test_camera()
 	var hud: Variant = load("res://ui/hud.tscn").instantiate()
 	hud.setup(w, cam)
 	_scene_root().add_child(hud)

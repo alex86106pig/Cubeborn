@@ -1,4 +1,5 @@
 # 選角畫面（參考雨中冒險 2，2026-10-27 使用者選方案 A）：左職業格、中 3D 角色（可拖動旋轉）、右資訊（數值條、技能），下方難度 / 名單 / 開始
+# 多人時名單在左欄職業格下方（底下那排塞不下，2026-10-27 截圖確認超出 1920）
 # 單人：主選單「單人遊戲」打開，點職業只是選，按「開始」才開局；多人：進大廳後顯示（main.gd 依連線狀態呼叫 show_lobby）
 # 角色結構和遊戲共用：模型 DarkFantasy.player_character + Animator 擺待機姿勢，數值讀 Player.apply_class 後的屬性，技能格用技能欄的 SkillBar.Slot
 # 只發訊號，流程由 main.gd 處理
@@ -34,7 +35,7 @@ const CHART := [
 const EXTRA: Array[StringName] = [&"hp_regen", &"dodge", &"crit_damage"]   # 不上圖，和基準不同時列在圖下方
 const ROLL_DESC := "朝移動方向翻滾，翻滾中不會受傷。"
 # 多人時其他人站的位置（自己在原點、比較大）
-const OTHER_SPOTS: Array[Vector3] = [Vector3(-1.9, 0, -1.2), Vector3(1.9, 0, -1.2), Vector3(3.3, 0, -2.6)]
+const OTHER_SPOTS: Array[Vector3] = [Vector3(-1.7, 0, -1.2), Vector3(1.8, 0, -1.2), Vector3(3.1, 0, -2.6)]
 const OTHER_SCALE := 0.8
 const DRAG_TURN := 0.01   # 拖動旋轉：每像素轉幾弧度
 const FACE_TURN := -0.35  # 預設側一點朝鏡頭
@@ -54,7 +55,7 @@ var pitch_label := UiKit.label("", UiKit.FONT_NOTE, Color(1, 1, 1, 0.8), 1)
 var weapon_label := UiKit.label("", UiKit.FONT_NOTE, Color(1, 1, 1, 0.8), 1)
 var extra_label := UiKit.label("", UiKit.FONT_NOTE, Color(1, 1, 1, 0.65), 1)
 var chart := StatChart.new()
-var roster := HBoxContainer.new()
+var roster := VBoxContainer.new()   # 大廳名單：左欄職業格下方
 var tags: Array[Label] = []          # 角色頭上的「P1 守墓騎士」
 var _skills := VBoxContainer.new()
 var _diff_note := UiKit.label("房主選", UiKit.FONT_NOTE, Color(1, 1, 1, 0.6), 1)
@@ -96,7 +97,12 @@ func _init() -> void:
 
 	var main := HBoxContainer.new()
 	main.add_theme_constant_override(&"separation", 24)
-	main.add_child(_build_tiles())
+	var left := VBoxContainer.new()
+	left.add_theme_constant_override(&"separation", 24)
+	left.add_child(_build_tiles())
+	roster.add_theme_constant_override(&"separation", 10)
+	left.add_child(roster)
+	main.add_child(left)
 	main.add_child(_build_stage())
 	main.add_child(_build_info())
 	page.add_child(main)
@@ -119,10 +125,9 @@ func _init() -> void:
 		bottom.add_child(b)
 	_diff_note.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	bottom.add_child(_diff_note)
-	roster.alignment = BoxContainer.ALIGNMENT_CENTER
-	roster.add_theme_constant_override(&"separation", 16)
-	roster.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bottom.add_child(roster)
+	var fill_bottom := Control.new()
+	fill_bottom.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bottom.add_child(fill_bottom)
 	for b: Button in [ready_button, start_button]:
 		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		bottom.add_child(b)
@@ -434,8 +439,9 @@ func _build_lineup() -> void:
 			tags[i].add_theme_color_override(&"font_color", PICKED if i == 0 else Color.WHITE)
 	# 多人時鏡頭拉遠一點，四個人才站得下
 	var multi := _lineup.size() > 1
-	_camera.fov = 46.0 if multi else 34.0
-	_camera.look_at_from_position(Vector3(0.6 if multi else 0.0, 1.6, 6.4), Vector3(0.6 if multi else 0.0, 1.0, 0.0))
+	var x := 0.55 if multi else 0.0   # 第三個人站右後方，鏡頭往右偏一點
+	_camera.fov = 50.0 if multi else 34.0
+	_camera.look_at_from_position(Vector3(x, 1.6, 6.4), Vector3(x, 1.0, 0.0))
 
 
 func _process(dt: float) -> void:

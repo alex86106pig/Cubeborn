@@ -221,7 +221,7 @@ func _initialize() -> void:
 	_check("兩個程序連線（C1）：headless 照玩家順序（主選單多人頁開房 / 加入）連線（ENet），兩邊都沒停在暫停、收得到輸入、特效在走、自己的角色各移動約 13 單位，停下後兩邊的玩家位置一致（< 0.01）", NetChecks.check_two_processes.bind(feel))
 	_check("兩個程序連線道具（G）：房主帶亡者大軍、骨製護盾、鬼火燈籠打一群怪，兩邊這一局都看過玩家方的骷髏僕從，兩份 log 沒有執行期錯誤", NetChecks.check_two_processes_items.bind(feel))
 
-	_run_all()
+	await _run_all()
 	_log.store_line("\n手感量測（給 docs/手感對照.md）：\n    " + "\n    ".join(CheckKit._feel_lines))
 	for w in CheckKit._worlds:
 		w.clear()
@@ -258,12 +258,13 @@ func _run_all() -> void:
 			_log.store_line("（打亂順序，種子 %s）\n" % arg.get_slice("=", 1))
 	for it: Array in _items:
 		if only == "" or (it[0] as String).begins_with(only):
-			_run_one(it[0], it[1])
+			await _run_one(it[0], it[1])
 
 
+# 檢查函式可以 await（要等畫面更新一幀才量得準的，例如換過文字的介面尺寸）；沒 await 的照舊同步跑完、不會多跑幀
 func _run_one(title: String, fn: Callable) -> void:
 	var errors_before := _errors.count
-	var result: Variant = fn.call()
+	var result: Variant = await fn.call()
 	var err: String = result if result is String else "檢查函式沒有回傳結果"
 	if _errors.count > errors_before:
 		err = "執行期間發生 %d 個錯誤，最後一個：%s" % [_errors.count - errors_before, _errors.last]
