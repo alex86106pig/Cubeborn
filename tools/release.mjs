@@ -35,6 +35,50 @@ const has = name => args.includes(`--${name}`);
 
 const fail = msg => { console.log(`✘ ${msg}`); process.exit(1); };
 
+// CHANGELOG 設了 merge=union：對方推送後把他的 [未發布] 換成版號，我們 rebase 時自己的 [未發布] 會接在那個版號後面
+// （兩邊輪流推就會發生，2026-10-28 v0.49.0 遇到）。把所有 [未發布] 段合成一段、同名的「### 分類」合在一起，放回第一個版號前面
+function normalizeUnreleased(text) {
+  const lines = text.split('\n');
+  const isHeading = l => l.startsWith('## [');
+  const isUnreleased = l => l.trimEnd() === UNRELEASED;
+  const firstHeading = lines.findIndex(isHeading);
+  const count = lines.filter(isUnreleased).length;
+  if (count === 0 || (count === 1 && isUnreleased(lines[firstHeading]))) return text;
+
+  const trim = arr => { const a = [...arr]; while (a.length && !a[0].trim()) a.shift(); while (a.length && !a.at(-1).trim()) a.pop(); return a; };
+  const kept = [], intro = [], sections = new Map();   // intro：[未發布] 底下、第一個「###」之前的文字
+  let inside = false, cur = null, piece = [];
+  const flush = () => {
+    const p = trim(piece);
+    if (p.length) (cur === null ? intro : sections.get(cur)).push(...(cur === null && intro.length ? ['', ...p] : p));
+    piece = [];
+  };
+  for (const line of lines) {
+    if (isHeading(line)) {
+      if (inside) flush();
+      inside = isUnreleased(line);
+      cur = null;
+      if (inside) continue;
+    }
+    if (!inside) { kept.push(line); continue; }
+    if (line.startsWith('### ')) {
+      flush();
+      cur = line.trimEnd();
+      if (!sections.has(cur)) sections.set(cur, []);
+      continue;
+    }
+    piece.push(line);
+  }
+  if (inside) flush();
+
+  const block = [UNRELEASED, ''];
+  if (intro.length) block.push(...intro, '');
+  for (const [name, body] of sections) if (body.length) block.push(name, ...body, '');
+  const at = kept.findIndex(isHeading);
+  kept.splice(at === -1 ? kept.length : at, 0, ...block);
+  return kept.join('\n');
+}
+
 const GIT = process.env.GIT || (() => {
   if (spawnSync('git', ['--version']).status === 0) return 'git';
   const win = join(process.env.ProgramFiles || 'C:\\Program Files', 'Git', 'cmd', 'git.exe');
@@ -389,7 +433,9 @@ const behind = Number(gitOrFail('rev-list', '--count', 'HEAD..origin/main'));
 if (ahead === 0) fail('沒有要推送的 commit');
 
 // 2. 決定版號：[未發布] 有內容才升；有「### 新增」升次版號，否則升修訂號
-const changelog = readFileSync(CHANGELOG, 'utf8');
+const raw = readFileSync(CHANGELOG, 'utf8');
+const changelog = normalizeUnreleased(raw);
+if (changelog !== raw) console.log('CHANGELOG：[未發布] 不在最上面（rebase 時 union 合併接到對方的版號後面），已搬回最上面');
 const latest = (changelog.match(/## \[(\d+)\.(\d+)\.(\d+)\]/) || []).slice(1).map(Number);
 if (latest.length !== 3) fail('CHANGELOG.md 讀不到最新的版號');
 const latestTag = git('tag', '--list', 'v*', '--sort=-v:refname').out.split('\n')[0];

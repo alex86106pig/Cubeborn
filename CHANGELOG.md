@@ -20,6 +20,7 @@
 ## [未發布]
 
 ### 修復
+- **推送時 CHANGELOG 版號順序錯**：`CHANGELOG.md` 設了 `merge=union`，對方先推過（把他的「未發布」換成版號）時，rebase 後自己的「未發布」會接在對方的版號後面，`release.mjs` 原本照位置就地換版號，新版號就排在舊版號下面（2026-10-28 本機 4 個 commit 接到 v0.49.0 後面時試算出來）。`release.mjs` 換版號前先把所有「未發布」段合成一段、同分類合併、搬回最上面（`normalizeUnreleased`）；用那次真實的合併結果驗過：順序正確、條目一行不少、本來就對的檔案不動。
 - **第一次掉武器、開寶箱、掉金幣卡 60~90 ms**（使用者在網頁版看到 `[Violation] 'requestAnimationFrame' handler took 61ms`）：效能追蹤顯示卡頓那幀在等著色器編譯（`GetShaderiv` 54~136 ms）。Godot 的 `BaseMaterial3D` 著色器依「還有幾個材質在用」保留、用到 0 就釋放（`material.cpp` 的解構），只在開場預熱出現過的外觀（地上的道具、金幣）在預熱模型刪掉後就被釋放，第一次出現又重編。`WorldView` 預熱結束時把用過的材質整場留著（`_warm_materials`），外觀不變。掉落測試場景：預熱後才編譯的著色器 12 → 0、卡頓 0。
 - 抖動影子在網頁版狂刷 `GL_INVALID_OPERATION: Active draw buffers with missing fragment shader outputs`：影子著色器在一般畫面寫成一定丟棄，編譯器把顏色輸出整個拿掉；條件多看 `coverage` 保留輸出（使用者確認不再刷、影子照樣跟著淡）。
 - `--player-hp` 對有生命回復的職業沒用（第一次回血就截回上限，量測時角色照樣死、死後全圖都畫）：大於上限時上限一起拉高。
