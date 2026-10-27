@@ -9,7 +9,9 @@ signal changed(key: String, value: Variant)
 const DEFAULTS := {"shadows": true, "lights": true, "ui_scale": 1.0, "master": 1.0, "music": 1.0, "sfx": 1.0}
 const SECTION := {"shadows": "video", "lights": "video", "ui_scale": "video", "master": "audio", "music": "audio", "sfx": "audio"}
 # 介面大小的檔位（2026-10-27 使用者：先限制幾個檔位、用滑桿拉）：乘在視窗縮放上（專案是 canvas_items 縮放、以 1920×1080 為基準）
-const UI_SCALES: Array[float] = [0.8, 0.9, 1.0, 1.1]   # 1.2 時選職業頁（1720 寬）放不進 16:9 的 1600
+# 顯示的 100% 實際是 BASE_UI_SCALE 倍（2026-10-27 使用者：原本的 100% 角色畫面太滿，改拿 90% 當 100%）
+const UI_SCALES: Array[float] = [0.8, 0.9, 1.0, 1.1]
+const BASE_UI_SCALE := 0.9
 const VOLUME_NAMES := {"master": "總音量", "music": "音樂", "sfx": "音效"}
 const ROW_WIDTH := 640
 const SWITCH_SIZE := Vector2(72, 38)          # 自己畫的開關（_custom_switch）

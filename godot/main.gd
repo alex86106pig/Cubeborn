@@ -401,7 +401,7 @@ func _apply_setting(key: String, value: Variant) -> void:
 		"sfx":
 			Sound.set_volume(Sound.SFX_BUS, value)
 		"ui_scale":
-			get_tree().root.content_scale_factor = value   # 乘在 canvas_items 的視窗縮放上
+			get_tree().root.content_scale_factor = value * SettingsPanel.BASE_UI_SCALE   # 乘在 canvas_items 的視窗縮放上
 	hud.run_log.video = hud.settings_panel.video_text()
 
 
