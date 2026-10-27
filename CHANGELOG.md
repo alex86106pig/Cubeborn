@@ -6,7 +6,7 @@
 ## [0.49.1] - 2026-10-28
 
 ### 修復
-- **網頁版音量滑桿套錯條：總音量、M 靜音管不到音樂，音樂調 0 音效也沒聲音**：網頁版的 WAV 預設交給瀏覽器播（Sample），走 JS 那份匯流排；那份的順序和 Godot 相反（Godot 網頁模板的 `Bus.addAt(-1)` 問題，[godotengine/godot#119026](https://github.com/godotengine/godot/issues/119026)，修正還沒合併；用 `default_bus_layout.tres` 一樣會發生）。音效的 `play_stream` 沒給匯流排時，網頁版還會走 Master（[#100696](https://github.com/godotengine/godot/issues/100696)）。實測：Godot 的 Master / SFX / Music → JS 的 J3 / J2 / J1，音效接在 J3、經 J2、J1 才到喇叭，音樂滑桿調的正是 J1。音樂播放器與每一次 `play_stream` 都改成由 Godot 混音（`PLAYBACK_TYPE_STREAM`）並明給 SFX 匯流排，完全不經過 JS 那份。網頁版實測（JS 插紀錄 + 輸出音量偵測）：交給瀏覽器播的次數 0、音樂調 0 後音效照常輸出（峰值 0.11）；`--perf` 60 FPS、卡頓 0。網頁版音效可能比以前小聲（現在和電腦版一樣由 Godot 混音，峰值 0.3 → 0.11，還沒人聽過）。檢查「設定頁」加上音樂由 Godot 混音。
+- **網頁版音量滑桿套錯條：總音量、M 靜音管不到音樂，音樂調 0 音效也沒聲音**：網頁版的 WAV 預設交給瀏覽器播（Sample），走 JS 那份匯流排；那份的順序和 Godot 相反（Godot 網頁模板的 `Bus.addAt(-1)` 問題，[godotengine/godot#119026](https://github.com/godotengine/godot/issues/119026)，修正還沒合併；用 `default_bus_layout.tres` 一樣會發生）。音效的 `play_stream` 沒給匯流排時，網頁版還會走 Master（[#100696](https://github.com/godotengine/godot/issues/100696)）。實測：Godot 的 Master / SFX / Music → JS 的 J3 / J2 / J1，音效接在 J3、經 J2、J1 才到喇叭，音樂滑桿調的正是 J1。音樂播放器與每一次 `play_stream` 都改成由 Godot 混音（`PLAYBACK_TYPE_STREAM`）並明給 SFX 匯流排，完全不經過 JS 那份。網頁版實測（JS 插紀錄 + 輸出音量偵測）：交給瀏覽器播的次數 0、音樂調 0 後音效照常輸出（峰值 0.11）；`--perf` 60 FPS、卡頓 0。網頁版音效改和電腦版一樣由 Godot 混音（網頁版量到的峰值 0.3 → 0.11）。檢查「設定頁」加上音樂由 Godot 混音。
 - **選角畫面「拖動旋轉」提示超出舞台**：提示用建立當下的文字寬度靠右下對齊，字級第一幀才套上、文字變寬時往右長（實測多 21 px，邊距 16 時超出約 5 px）。改成往左上長，並離右邊 40（使用者要往左擺一點）。檢查「主選單」加上提示在舞台內、離右邊至少 40（舊寫法量到 19，會失敗）。
 - **多人大廳有人換職業時，所有人的待機動畫都從頭播**：舞台只要有一格職業不同就整排重建模型。改成只重建換了的那一格；檢查「大廳選職業」加上其他人的模型不重建（舊寫法會失敗）。
 - **鐵鏟拿反（凹面朝下）**：鏟面原本是平板、鏟尖往下彎。改成 U 形槽，凹的一側和鏟尖朝上（手往前伸時），托著鏟起的怪。
@@ -17,7 +17,7 @@
 - **連線中卡一下就當掉**（2026-10-27 三人試玩：房主狂刷 `Buffer full! Dropping data.` 後 `function signature mismatch` 當掉、隊友玩到一半畫面卡住）：網頁版每條 WebRTC 資料通道的接收緩衝區預設只有 64 KB，房主每秒送 20 次 2~7 KB 的快照，任一邊卡超過約 1 秒就塞滿、開始丟資料（可靠通道也丟），狂刷錯誤後越卡越慢。專案設定 `network/limits/webrtc/max_channel_in_buffer_kb` 改 2048。本機網頁版兩個關掉背景降速的 Chrome 視窗實測（帶 100 隻怪、加入方卡住）：改前卡 1.5 秒丟 18 筆，改後卡 1.5 秒、5 秒都 0 筆，卡完回到 60 FPS；持續變慢（CPU 6 倍、25 FPS）本來就不會塞。檢查「桌面版 WebRTC」加上緩衝區至少 1024 KB。
 - **網頁版開場三行紅字**（`No GDExtension library found ... webrtc_native.gdextension`）：電腦版用的 webrtc-native 擴充被打包進網頁版，開場載入失敗（無害但每次都有，會混淆除錯）。原本靠 `.gdextension` 的 `exclude_tags` 排除，但 Godot 不認得這個欄位；改成 Web 匯出預設的 `exclude_filter` 加 `addons/webrtc_native/*`（Godot 匯出時擴充清單只留有匯出的擴充檔）。
 - 設定頁拉「音效」滑桿時播一聲試聽（大廳、主選單沒有音效可以聽大小）；拖動中每 0.15 秒最多一聲（`Sound.PREVIEW_INTERVAL`），開場套設定時不出聲。檢查「設定頁」加上試聽的間隔。
-- **視野淡入淡出時影子也跟著淡**（使用者要求）：原本淡入淡出中的模型不投影，影子在淡入結束時突然出現、淡出一開始就消失。影子圖沒有半透明，改用抖動（依透明度丟掉部分像素，業界通用做法）畫在影子裡（`view/fade.gd`）。網頁版 `--perf` 60 FPS、卡頓 0；著色器程式 161 → 175，M5 開場預熱 2.9~3.1 → 2.7~3.2 秒。畫面還沒有人看過。
+- **視野淡入淡出時影子也跟著淡**（使用者要求）：原本淡入淡出中的模型不投影，影子在淡入結束時突然出現、淡出一開始就消失。影子圖沒有半透明，改用抖動（依透明度丟掉部分像素，業界通用做法）畫在影子裡（`view/fade.gd`）。網頁版 `--perf` 60 FPS、卡頓 0；著色器程式 161 → 175，M5 開場預熱 2.9~3.1 → 2.7~3.2 秒。
 - 網頁版網址參數開放 `host` / `join` / `room` / `net-autostart`（使用者同意）：`?host&room&net-autostart=N` 開房、`?join=房號&room` 加入，多人自動測試用，之後可做邀請連結。檢查「網頁版網址參數」改成驗證會轉換。
 
 ### 修改
