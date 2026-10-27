@@ -545,6 +545,9 @@ static func _check_settings(hud: Variant, view: WorldView, snd: Variant, w: Worl
 	var sound_script := _sound_script()
 	if snd._music.bus != &"Music" or snd._sfx.bus != &"SFX":
 		return "音樂、音效應走 Music / SFX 匯流排：%s / %s" % [snd._music.bus, snd._sfx.bus]
+	# 網頁版交給瀏覽器播（Sample）的聲音不照 Godot 的匯流排音量，音樂要由 Godot 混音
+	if snd._music.playback_type != AudioServer.PLAYBACK_TYPE_STREAM:
+		return "音樂應由 Godot 混音（PLAYBACK_TYPE_STREAM），網頁版音量滑桿才有效：%s" % snd._music.playback_type
 	sound_script.set_volume(&"SFX", 0.5)
 	var sfx_db := AudioServer.get_bus_volume_db(AudioServer.get_bus_index(&"SFX"))
 	sound_script.set_volume(&"SFX", 0.0)

@@ -47,6 +47,9 @@ func setup(p_world: World) -> void:
 func _init() -> void:
 	_sfx.bus = _bus(SFX_BUS)
 	_music.bus = _bus(MUSIC_BUS)
+	# 網頁版的 WAV 預設交給瀏覽器播（Sample），走 JS 那份匯流排；執行中 add_bus 建的匯流排在 JS 順序是錯的，音量會套到別條。
+	# 改成由 Godot 混音（同音效），音量才照 Godot 的匯流排。之後新增播放器也要設
+	_music.playback_type = AudioServer.PLAYBACK_TYPE_STREAM
 
 
 func _ready() -> void:
