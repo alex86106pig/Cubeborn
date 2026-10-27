@@ -3,7 +3,7 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
-## [未發布]
+## [0.49.0] - 2026-10-27
 
 ### 新增
 - **跑步**（使用者 2026-10-27，所有職業共通，取代數字鍵 2 的疾跑）：按一下 Ctrl 開始跑、再按一下停（切換式），移速 ×1.4（`Config.PLAYER.run_speed_mul`），沒有殘影。跳躍、翻滾、開寶箱、撿東西、換武器不取消；普攻、右鍵特殊技（格擋、舉火把、鏟起…）、技能欄、救人、挖墳、受擊硬直、倒地都會打斷（規則：動作層離開待機與翻滾就取消）。`InputCmd.BTN_RUN`、`Player.running`，anim 的 `running` 進快照。網頁版注意：按著 Ctrl 再按 W 會被瀏覽器當成 Ctrl+W 關分頁（遊戲擋不住），使用者決定先用 Ctrl。
