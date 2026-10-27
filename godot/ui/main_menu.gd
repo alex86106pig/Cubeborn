@@ -36,7 +36,7 @@ var _multi := VBoxContainer.new()
 
 
 func _init() -> void:
-	color = Color(5 / 255.0, 8 / 255.0, 16 / 255.0, 0.82)
+	color = UiKit.MENU_DIM
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP   # 按鈕與輸入框要能點，也擋住底下的遊戲
 	var box := VBoxContainer.new()

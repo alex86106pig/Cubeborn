@@ -25,6 +25,8 @@ const FONT_TITLE := 52     # 頁面標題（已暫停、選擇職業、設定）
 const FONT_HEADING := 32   # 段落標題（畫面、音量）
 const FONT_BODY := 28      # 按鈕、選項、主要文字
 const FONT_NOTE := 20      # 說明、提示、版號
+# 選單的壓黑底色（暫停、主選單、設定頁共用；2026-10-27 使用者：Esc → 回主選單時背景又暗一次，原本 0.65 / 0.82 / 0.9 各不同）
+const MENU_DIM := Color(5 / 255.0, 8 / 255.0, 16 / 255.0, 0.8)
 # 按鈕三種尺寸（2026-10-27 使用者：按鈕標準化）：UiKit.button(文字, UiKit.BUTTON_?)
 const BUTTON_L := {"size": Vector2(280, 60), "font": FONT_BODY}   # 選單：主選單、暫停畫面、設定頁、結算畫面
 const BUTTON_M := {"size": Vector2(200, 52), "font": 24}          # 面板裡的操作：連線面板（開房、加入、選職業、準備）

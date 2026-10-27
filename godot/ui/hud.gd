@@ -134,11 +134,18 @@ func show_menu(visible_: bool, title: String = "已暫停", hint: String = "按 
 	_reset_hints_button.text = "重新顯示提示"
 	_pause_title.text = title
 	_pause_hint.text = hint
-	_pause.visible = visible_
 	if not visible_:
-		settings_panel.hide()   # 連線時選單關掉（Esc 已被設定頁吃掉，這裡是別的原因關選單）
+		settings_panel.close()   # 連線時選單關掉（Esc 已被設定頁吃掉，這裡是別的原因關選單）；先關，關的時候會把暫停畫面叫回來
+	_pause.visible = visible_
 	# 單機的暫停畫面不放連線面板（開房 / 加入改從主選單），連線中才顯示人數與離開連線
 	net_panel.visible = net_panel.mode != &"single" or net_panel.get_parent() != _pause_net_slot
+
+
+# 設定頁：打開時把底下的選單（暫停畫面或主選單）收起來、關掉時叫回來，畫面上只有一層壓黑
+func _open_settings(opener: Control) -> void:
+	opener.visible = false
+	settings_panel.show()
+	settings_panel.closed.connect(func() -> void: opener.visible = true, CONNECT_ONE_SHOT)
 
 
 # 主選單：打開時連線面板搬到多人頁，關掉時搬回暫停畫面
@@ -279,14 +286,14 @@ func _init() -> void:
 	_reset_hints_button.pressed.connect(func() -> void:
 		hints.reset_seen()
 		_reset_hints_button.text = "提示已重設")
-	_settings_button.pressed.connect(settings_panel.show)
-	_build_overlay(_pause, Color(5 / 255.0, 8 / 255.0, 16 / 255.0, 0.65), [_pause_title, _pause_hint, pause_controls, _pause_net_slot, _settings_button, _reset_hints_button, _title_button, _quit_button])
+	_settings_button.pressed.connect(_open_settings.bind(_pause))
+	_build_overlay(_pause, UiKit.MENU_DIM, [_pause_title, _pause_hint, pause_controls, _pause_net_slot, _settings_button, _reset_hints_button, _title_button, _quit_button])
 	_pause.mouse_filter = Control.MOUSE_FILTER_STOP   # 選單的按鈕與輸入框要能點
 	root.add_child(_pause)
 	main_menu.visible = false
 	main_menu.quit_pressed.connect(quit_requested.emit)
 	main_menu.method_chosen.connect(net_panel.set_method)
-	main_menu.settings_pressed.connect(settings_panel.show)
+	main_menu.settings_pressed.connect(_open_settings.bind(main_menu))
 	root.add_child(main_menu)
 	root.add_child(settings_panel)
 	_build_overlay(_loading, Color(0.03, 0.03, 0.05, 1.0), [UiKit.label("準備中…", 28)])
@@ -390,7 +397,7 @@ func _process(delta: float) -> void:
 	if player == null:
 		return
 	_skill_bar.refresh(world, player)
-	if not _pause.visible and not _game_over.visible and not main_menu.visible:   # 暫停、結算、主選單時提示不倒數、不記效能
+	if not _pause.visible and not _game_over.visible and not main_menu.visible and not settings_panel.visible:   # 暫停、結算、主選單、設定頁時提示不倒數、不記效能
 		hints.update(delta, world, player, inventory_panel.visible)
 		run_log.add_frame(delta, world.stats.time)
 	if _stats_panel.visible:

@@ -5,6 +5,7 @@ class_name SettingsPanel
 extends ColorRect
 
 signal changed(key: String, value: Variant)
+signal closed   # 返回、Esc、選單被關掉（hud 把底下的選單叫回來）
 
 const DEFAULTS := {"shadows": true, "lights": true, "ui_scale": 1.0, "master": 1.0, "music": 1.0, "sfx": 1.0}
 const SECTION := {"shadows": "video", "lights": "video", "ui_scale": "video", "master": "audio", "music": "audio", "sfx": "audio"}
@@ -32,7 +33,7 @@ var _ui_scale_label := UiKit.label("", UiKit.FONT_BODY)
 
 
 func _init() -> void:
-	color = Color(5 / 255.0, 8 / 255.0, 16 / 255.0, 0.9)
+	color = UiKit.MENU_DIM
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	visible = false
@@ -74,7 +75,7 @@ func _init() -> void:
 		rows.add_child(_slider_row(VOLUME_NAMES[key], sl, pct))
 	box.add_child(rows)
 	box.add_child(_centered(UiKit.label("光源 = 精英怪、稀有武器、出口的光；內顯畫面卡頓時可以關掉陰影或光源試試", UiKit.FONT_NOTE, Color(1, 1, 1, 0.7), 1)))
-	back_button.pressed.connect(hide)
+	back_button.pressed.connect(close)
 	box.add_child(back_button)
 	add_child(box)
 	_refresh()
@@ -83,8 +84,14 @@ func _init() -> void:
 # 開著時 Esc 只關設定頁（不要同時切換暫停）
 func _input(event: InputEvent) -> void:
 	if visible and event.is_action_pressed(&"pause"):
-		hide()
+		close()
 		get_viewport().set_input_as_handled()
+
+
+func close() -> void:
+	if visible:
+		hide()
+		closed.emit()
 
 
 func load_file() -> void:

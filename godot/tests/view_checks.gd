@@ -417,8 +417,11 @@ static func _check_settings(hud: Variant, view: WorldView, snd: Variant, w: Worl
 		return "設定頁一開始應隱藏"
 	hud.show_title(true)
 	hud.main_menu.settings_button.pressed.emit()
-	if not panel.visible:
-		return "主選單「設定」應打開設定頁"
+	if not panel.visible or hud.main_menu.visible:
+		return "主選單「設定」應打開設定頁、收起主選單（畫面上只有一層壓黑）"
+	for overlay: ColorRect in [hud._pause, hud.main_menu, panel]:
+		if overlay.color != UiKit.MENU_DIM:
+			return "暫停、主選單、設定頁的壓黑要一樣（UiKit.MENU_DIM）：%s 是 %s" % [overlay.name, overlay.color]
 	var need := panel.get_child(0).get_combined_minimum_size() as Vector2
 	if need.x > _menu_room().x or need.y > _menu_room().y:
 		return "設定頁需要 %s，超出介面最大檔時的 %s" % [need, _menu_room()]
@@ -428,14 +431,18 @@ static func _check_settings(hud: Variant, view: WorldView, snd: Variant, w: Worl
 		return "介面大小檔位不對：%s / %d" % [panel.values.ui_scale, SettingsPanel.scale_index(1.04)]
 	panel.set_value("ui_scale", 1.0)
 	panel.back_button.pressed.emit()
+	if panel.visible or not hud.main_menu.visible:
+		return "設定頁按返回應回到主選單"
 	hud.show_title(false)
 	hud.show_menu(true)
 	if not _shown(hud._settings_button, hud._pause):
 		return "暫停畫面應看得到「設定」"
 	hud._settings_button.pressed.emit()
+	if not panel.visible or hud._pause.visible:
+		return "暫停畫面「設定」應打開設定頁、收起暫停畫面"
 	hud.show_menu(false)
-	if panel.visible:
-		return "選單關掉時設定頁也要關"
+	if panel.visible or hud._pause.visible:
+		return "選單關掉時設定頁也要關、暫停畫面不能被叫回來"
 	# 改值：發 changed、存檔、讀得回來
 	var path := "user://check_settings.cfg"
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
