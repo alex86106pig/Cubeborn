@@ -34,7 +34,7 @@ static func enabled(world: World) -> bool:
 
 
 func difficulty(world: World) -> float:
-	return world.base_difficulty + time * EventDefs.DIFFICULTY.per_second
+	return world.base_difficulty + time * EventDefs.DIFFICULTY.per_second * EventDefs.MODES[world.difficulty_mode].rate
 
 
 # 玩家站得到這裡挖嗎（出口打開後就不能再挖）

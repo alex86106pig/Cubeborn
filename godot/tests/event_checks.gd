@@ -190,6 +190,18 @@ static func check_difficulty() -> String:
 	var hp60 := roundf(EnemyDefs.ENEMIES.grunt.max_hp * EventDefs.difficulty_mul(diff60).hp)   # 最大生命取整：46.8 → 47
 	if absf(w.difficulty() - diff60) > 0.01 or absf(g.max_hp - hp60) > EPS:
 		return "難度 %.1f 時骷髏生命 %.1f，預期 %.0f / %.0f" % [w.difficulty(), g.max_hp, diff60, hp60]
+	# 選角畫面的難度（2026-10-27）：同樣 60 秒，簡單 / 普通 / 困難的難度是 ×rate；重新開始保留選的檔位
+	for m: StringName in EventDefs.MODE_ORDER:
+		w.difficulty_mode = m
+		var want: float = w.base_difficulty + 60.0 * dd.per_second * EventDefs.MODES[m].rate
+		if absf(w.difficulty() - want) > 0.01:
+			return "難度「%s」怪潮 60 秒時應是 %.1f，實際 %.1f" % [EventDefs.MODES[m].name, want, w.difficulty()]
+	w.difficulty_mode = &"hard"
+	w.reset(7)
+	var kept := w.difficulty_mode
+	w.difficulty_mode = EventDefs.DEFAULT_MODE
+	if kept != &"hard":
+		return "重新開始應保留選的難度，實際 %s" % kept
 	# 怪群不擋事件生怪：放滿怪群（休眠）也照樣冒
 	var w2 := World.new(&"graveyard_a")
 	_made.append(w2)

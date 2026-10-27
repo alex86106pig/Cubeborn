@@ -37,6 +37,7 @@ var camera: Camera3D
 var local_peer := World.HOST_PEER_ID   # 這台電腦的玩家（連線時由 main.gd 設定）
 var net_panel := NetPanel.new()
 var main_menu := MainMenu.new()   # 開場的主選單（v0.39.0）
+var class_select := ClassSelect.new()   # 選角畫面（2026-10-27）：主選單「單人遊戲」與連線大廳共用
 
 var _hp: Dictionary
 var _hp_ghost := 1.0
@@ -151,6 +152,7 @@ func _open_settings(opener: Control) -> void:
 # 主選單：打開時連線面板搬到多人頁，關掉時搬回暫停畫面
 func show_title(on: bool, page: StringName = &"home") -> void:
 	main_menu.visible = on
+	class_select.close()   # 大廳的選角畫面由 main.gd 依連線狀態再打開
 	main_menu.show_page(page)
 	var slot: Control = main_menu.net_slot if on else _pause_net_slot
 	if net_panel.get_parent() != slot:
@@ -295,6 +297,9 @@ func _init() -> void:
 	main_menu.method_chosen.connect(net_panel.set_method)
 	main_menu.settings_pressed.connect(_open_settings.bind(main_menu))
 	root.add_child(main_menu)
+	main_menu.single_pressed.connect(class_select.open_single)
+	class_select.back_pressed.connect(class_select.close)
+	root.add_child(class_select)
 	root.add_child(settings_panel)
 	_build_overlay(_loading, Color(0.03, 0.03, 0.05, 1.0), [UiKit.label("準備中…", 28)])
 	root.add_child(_loading)
@@ -397,7 +402,7 @@ func _process(delta: float) -> void:
 	if player == null:
 		return
 	_skill_bar.refresh(world, player)
-	if not _pause.visible and not _game_over.visible and not main_menu.visible and not settings_panel.visible:   # 暫停、結算、主選單、設定頁時提示不倒數、不記效能
+	if not _pause.visible and not _game_over.visible and not main_menu.visible and not class_select.visible and not settings_panel.visible:   # 暫停、結算、主選單、選角、設定頁時提示不倒數、不記效能
 		hints.update(delta, world, player, inventory_panel.visible)
 		run_log.add_frame(delta, world.stats.time)
 	if _stats_panel.visible:

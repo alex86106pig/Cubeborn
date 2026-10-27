@@ -1,22 +1,18 @@
 # 主選單（v0.39.0，想法清單 #14）：開場畫面。首頁有單人遊戲、多人遊戲、離開遊戲（網頁版不顯示）；
 # 選連線方式頁（v0.40.0，只有桌面版）：房號連線（網路，可和網頁版一起玩）/ IP 連線（區網）；
 # 多人頁放連線面板（開房 / 加入 / 大廳，HUD 把 net_panel 搬進 net_slot）與返回。只發訊號，流程由 main.gd 處理
-# 單人遊戲先到選職業頁（F2）：每個職業一張卡（起始武器、介紹、被動、和基準不同的數值），按職業名稱開始
+# 「單人遊戲」打開選角畫面（ui/class_select.gd，HUD 處理），選好按「開始」才開局
 class_name MainMenu
 extends ColorRect
 
-signal single_pressed(class_id: StringName)
+signal single_pressed   # 首頁「單人遊戲」：HUD 打開選角畫面
 signal method_chosen(method: StringName)   # 選了連線方式（&"room" / &"ip"），接著顯示多人頁
 signal back_pressed   # 多人頁按「返回」（還在大廳時 main.gd 先離開連線）
 signal quit_pressed
 signal weapon_test_pressed   # 首頁「武器測試場」（2026-10-27）
 signal settings_pressed      # 首頁「設定」（2026-10-27，HUD 打開設定頁）
 
-const CARD_COLUMNS := 4   # 選職業頁：每排幾張、卡片寬、間距（寬度 = 4 × 400 + 3 × 40 = 1720，檢查用它算介面最大檔放不放得下）
-const CARD_WIDTH := 400
-const CARD_GAP := 40
-
-var page: StringName = &"home"   # &"home" | &"class" | &"method" | &"multi"
+var page: StringName = &"home"   # &"home" | &"method" | &"multi"
 var net_slot := VBoxContainer.new()   # 多人頁放連線面板的位置
 var single_button := _button("單人遊戲")
 var multi_button := _button("多人遊戲")
@@ -27,10 +23,7 @@ var room_button := _button("房號連線")
 var ip_button := _button("IP 連線")
 var method_back_button := _button("返回")
 var back_button := _button("返回")
-var class_back_button := _button("返回")
-var class_buttons: Dictionary = {}   # 職業 id → 按鈕
 var _home := VBoxContainer.new()
-var _class := VBoxContainer.new()
 var _method := VBoxContainer.new()
 var _multi := VBoxContainer.new()
 
@@ -53,18 +46,6 @@ func _init() -> void:
 		_home.add_child(b)
 	quit_button.visible = not OS.has_feature("web")   # 瀏覽器不允許網頁自己關閉
 
-	_class.add_child(_heading("選擇職業"))
-	var cards := GridContainer.new()   # 每排 4 張（7 個職業排兩排，塞得進 1920 寬）
-	cards.columns = CARD_COLUMNS
-	cards.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	cards.add_theme_constant_override(&"h_separation", CARD_GAP)
-	cards.add_theme_constant_override(&"v_separation", 24)
-	for id: StringName in ClassDefs.ORDER:
-		cards.add_child(_class_card(id))
-	_class.add_child(cards)
-	_class.add_child(_spacer(12))
-	_class.add_child(class_back_button)
-
 	_method.add_child(_heading("選擇連線方式"))
 	var room_ok := NetSession.room_supported()
 	room_button.disabled = not room_ok
@@ -80,13 +61,12 @@ func _init() -> void:
 	_multi.add_child(net_slot)
 	_multi.add_child(_spacer(12))
 	_multi.add_child(back_button)
-	for v: VBoxContainer in [_home, _class, _method, _multi]:
+	for v: VBoxContainer in [_home, _method, _multi]:
 		v.alignment = BoxContainer.ALIGNMENT_CENTER
 		v.add_theme_constant_override(&"separation", 14)
 		box.add_child(v)
 	add_child(box)
-	single_button.pressed.connect(show_page.bind(&"class"))
-	class_back_button.pressed.connect(show_page.bind(&"home"))
+	single_button.pressed.connect(single_pressed.emit)
 	# 網頁版只有房號，直接進多人頁
 	multi_button.pressed.connect(func() -> void:
 		if NetSession.ip_supported():
@@ -106,7 +86,6 @@ func _init() -> void:
 func show_page(p: StringName) -> void:
 	page = p
 	_home.visible = p == &"home"
-	_class.visible = p == &"class"
 	_method.visible = p == &"method"
 	_multi.visible = p == &"multi"
 
@@ -114,28 +93,6 @@ func show_page(p: StringName) -> void:
 func _choose(m: StringName) -> void:
 	method_chosen.emit(m)
 	show_page(&"multi")
-
-
-# 職業卡：按鈕（職業名稱）+ 起始武器、介紹、被動、和基準不同的數值
-func _class_card(id: StringName) -> VBoxContainer:
-	var c: Dictionary = ClassDefs.CLASSES[id]
-	var card := VBoxContainer.new()
-	card.add_theme_constant_override(&"separation", 8)
-	var b := _button(c.name)
-	b.pressed.connect(single_pressed.emit.bind(id))
-	class_buttons[id] = b
-	card.add_child(b)
-	var lines: Array[String] = ["起始武器：" + WeaponDefs.WEAPONS[c.weapon].name, c.pitch, "被動：" + c.passive.desc]
-	var stat_parts: Array[String] = []
-	for stat: StringName in c.stats:
-		stat_parts.append("%s %s" % [StatDefs.STATS[stat].name, StatDefs.format_value(stat, c.stats[stat])])
-	lines.append("、".join(stat_parts))
-	for line in lines:
-		var l := _note(line)
-		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		l.custom_minimum_size = Vector2(CARD_WIDTH, 0)   # 360 時「。」「）」會被折到下一行單獨掛著（2026-10-27 網頁版實測）
-		card.add_child(l)
-	return card
 
 
 static func _heading(text: String) -> Label:

@@ -15,7 +15,7 @@ class_name LaunchArgs
 extends RefCounted
 
 # 網頁版可以從網址帶的參數（url_query_args）；v0.36.3 加自動移動 / 攻擊，用來量「第一次出現」的卡頓
-const WEB_URL_ARGS: Array[String] = ["seconds", "horde", "perf", "elites", "player-hp", "auto-move", "auto-move-seconds", "auto-attack", "weapon", "class", "no-spawn", "weapon-test", "items", "shadows", "lights"]   # shadows / lights：內顯量效能的對照組（2026-10-27）；weapon / class / no-spawn / weapon-test：網頁版逐把看武器（2026-10-27）；items：帶道具量效能（G7）
+const WEB_URL_ARGS: Array[String] = ["seconds", "horde", "perf", "elites", "player-hp", "auto-move", "auto-move-seconds", "auto-attack", "weapon", "class", "difficulty", "no-spawn", "weapon-test", "items", "shadows", "lights"]   # shadows / lights：內顯量效能的對照組（2026-10-27）；weapon / class / no-spawn / weapon-test：網頁版逐把看武器（2026-10-27）；difficulty：選角畫面的難度；items：帶道具量效能（G7）
 
 var run_seconds := 0.0           # > 0：跑這麼多秒後印出狀態並結束（自動驗證）
 var screenshot_path := ""
@@ -26,6 +26,7 @@ var auto_special := false
 var auto_interact := false
 var start_weapon: StringName = &""
 var start_class: StringName = &""
+var difficulty: StringName = &""   # --difficulty=easy|normal|hard（選角畫面的難度，EventDefs.MODES）
 var start_wave := 0
 var start_hp := 0.0
 var start_items: Array[StringName] = []
@@ -77,6 +78,8 @@ static func parse(args: PackedStringArray) -> LaunchArgs:
 			a.auto_interact = true
 		elif arg.begins_with("--class="):
 			a.start_class = StringName(value)
+		elif arg.begins_with("--difficulty="):
+			a.difficulty = StringName(value)
 		elif arg.begins_with("--weapon="):
 			a.start_weapon = StringName(value)
 		elif arg.begins_with("--wave="):

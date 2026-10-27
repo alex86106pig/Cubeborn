@@ -160,10 +160,60 @@ static func check_main_menu() -> String:
 	_scene_root().add_child(hud)
 	var err := _check_main_menu(hud)
 	if err == "":
+		err = _check_class_select(hud)
+	if err == "":
 		err = _check_weapon_test_bar(hud)
 	hud.queue_free()
 	cam.queue_free()
 	return err
+
+
+# 選角畫面（2026-10-27）：點職業只是選、按「開始」才發出（職業, 難度）；鎖住的佔位選不到；
+# 數值條是選的職業套上 Player.apply_class 後的屬性；技能四格；整頁塞得進介面最大檔
+static func _check_class_select(hud: Variant) -> String:
+	var cs: ClassSelect = hud.class_select
+	var started: Array = []
+	cs.start_pressed.connect(func(id: StringName, d: StringName) -> void: started.append([id, d]))
+	cs.open_single()
+	var last: StringName = ClassDefs.ORDER.back()
+	cs.class_buttons[last].pressed.emit()
+	if not started.is_empty() or cs.selected != last:
+		return "點職業應只是選、不開局：選了 %s、開局 %s" % [cs.selected, started]
+	for id: StringName in ClassDefs.PLACEHOLDERS:
+		if not _shown(cs.class_buttons[id], cs):
+			return "選角畫面應看得到佔位「%s」" % ClassDefs.PLACEHOLDERS[id].name
+		cs.class_buttons[id].pressed.emit()
+	if cs.selected != last:
+		return "點鎖住的佔位不應被選到：%s" % cs.selected
+	cs.difficulty_buttons[&"hard"].pressed.emit()
+	cs.start_button.pressed.emit()
+	if started != [[last, &"hard"]]:
+		return "按「開始」應發出 start_pressed(選的職業, 難度)：%s" % [started]
+	for id: StringName in ClassDefs.ORDER:
+		cs.class_buttons[id].pressed.emit()
+		var p := Player.new(hud.world, 0)   # 每個職業一個新角色：apply_class 只覆寫職業有寫的屬性
+		p.apply_class(id)
+		for i in ClassSelect.CHART.size():
+			var want := p.stats.base(ClassSelect.CHART[i][0])
+			if not is_equal_approx(cs.chart.values[i][1], want):
+				p.detach()
+				return "%s 的數值條「%s」應是 %s，實際 %s" % [ClassDefs.CLASSES[id].name, ClassSelect.CHART[i][1], want, cs.chart.values[i][1]]
+		if not is_equal_approx(cs.chart.values[0][1], ClassDefs.CLASSES[id].stats.max_hp):
+			p.detach()
+			return "%s 的生命條應是職業資料的 %s" % [ClassDefs.CLASSES[id].name, ClassDefs.CLASSES[id].stats.max_hp]
+		if cs._skills.get_child_count() != 4 or cs.name_label.text != ClassDefs.CLASSES[id].name:
+			p.detach()
+			return "%s：技能應有 4 格（%d）、名稱「%s」" % [ClassDefs.CLASSES[id].name, cs._skills.get_child_count(), cs.name_label.text]
+		p.detach()
+	var room := _menu_room()
+	var need: Vector2 = cs.get_child(0).get_child(0).get_combined_minimum_size()
+	_note("選角畫面 %.0f×%.0f（介面最大檔時可用 %.0f×%.0f）" % [need.x, need.y, room.x, room.y])
+	if need.x > room.x or need.y > room.y:
+		return "選角畫面 %.0f×%.0f，超出介面最大檔時的 %.0f×%.0f" % [need.x, need.y, room.x, room.y]
+	cs.back_button.pressed.emit()
+	if cs.visible:
+		return "選角畫面按「返回」應關掉"
+	return ""
 
 
 # 武器測試場的按鈕列（2026-10-27）：預設隱藏；每把武器一顆（按下發 weapon_test_equip）+ 重置木樁；寬度塞得進 1920
@@ -291,24 +341,17 @@ static func _check_main_menu(hud: Variant) -> String:
 	if _shown(menu.back_button, menu):
 		return "首頁不應看到多人頁的「返回」"
 	var counts := {"single": 0, "back": 0, "quit": 0, "title": 0}
-	var picked: Array[StringName] = []
-	menu.single_pressed.connect(func(id: StringName) -> void:
-		counts.single += 1
-		picked.append(id))
+	menu.single_pressed.connect(func() -> void: counts.single += 1)
 	menu.back_pressed.connect(func() -> void: counts.back += 1)
 	hud.quit_requested.connect(func() -> void: counts.quit += 1)
 	hud.title_requested.connect(func() -> void: counts.title += 1)
-	# 單人遊戲先到選職業頁（F2）：每個職業一顆按鈕，按下才開始、帶職業 id
+	# 單人遊戲打開選角畫面（2026-10-27），選角畫面的內容在「選角畫面」那項檢查
 	menu.single_button.pressed.emit()
-	if menu.page != &"class" or counts.single != 0:
-		return "按「單人遊戲」應先到選職業頁、還不開始：%s / %d" % [menu.page, counts.single]
-	for id: StringName in ClassDefs.ORDER:
-		if not _shown(menu.class_buttons[id], menu):
-			return "選職業頁應看得到「%s」" % ClassDefs.CLASSES[id].name
-	menu.class_buttons[ClassDefs.ORDER.back()].pressed.emit()
-	if picked != [ClassDefs.ORDER.back()]:
-		return "按職業應發出 single_pressed(該職業)：%s" % [picked]
-	menu.show_page(&"home")
+	if not hud.class_select.visible or hud.class_select.mode != &"single":
+		return "按「單人遊戲」應打開選角畫面（單人）"
+	hud.class_select.back_button.pressed.emit()
+	if hud.class_select.visible or not menu.visible or menu.page != &"home":
+		return "選角畫面按「返回」應回到主選單首頁"
 	menu.quit_button.pressed.emit()
 	menu.multi_button.pressed.emit()
 	# 桌面版先選連線方式（v0.40.0）：房號（要有 webrtc-native 擴充）/ IP；網頁版只有房號，直接進多人頁
@@ -340,7 +383,7 @@ static func _check_main_menu(hud: Variant) -> String:
 	var room := _menu_room()
 	# 節點不在場景樹裡，切頁後整個選單的最小尺寸快取不會更新：改成「該頁自己的尺寸 + 上方標題那幾行」
 	var box: VBoxContainer = menu.get_child(0)
-	var pages := {&"home": menu._home, &"class": menu._class, &"method": menu._method, &"multi": menu._multi}
+	var pages := {&"home": menu._home, &"method": menu._method, &"multi": menu._multi}
 	var header := 0.0
 	for c: Control in box.get_children():
 		if not pages.values().has(c):
@@ -349,8 +392,6 @@ static func _check_main_menu(hud: Variant) -> String:
 		menu.show_page(page)
 		var page_size: Vector2 = pages[page].get_combined_minimum_size()
 		var size := Vector2(page_size.x, page_size.y + header)
-		if page == &"class":   # 主題常數（卡片間距）在場景樹外讀不到，寬度照常數算
-			size.x = MainMenu.CARD_COLUMNS * MainMenu.CARD_WIDTH + (MainMenu.CARD_COLUMNS - 1) * MainMenu.CARD_GAP
 		_note("主選單%s頁 %.0f×%.0f（介面最大檔時可用 %.0f×%.0f）" % [page, size.x, size.y, room.x, room.y])
 		if size.x > room.x or size.y > room.y:
 			return "主選單%s頁 %.0f×%.0f，超出介面最大檔時的 %.0f×%.0f" % [page, size.x, size.y, room.x, room.y]

@@ -1041,21 +1041,47 @@ static func check_lobby_classes() -> String:
 	s.free()
 	if ready_before or not ready_after or classes != {1: ClassDefs.ORDER[0], 2: &"arcanist", 3: &"guardian"}:
 		return "全員準備好才算 all_ready（%s → %s），職業 %s" % [ready_before, ready_after, classes]
-	# 連線面板：名單帶職業與準備狀態；有人沒準備時「開始遊戲」不能按
-	var panel := NetPanel.new()
+	# 選角畫面（大廳）：名單帶職業與準備狀態；有人沒準備時「開始遊戲」不能按；自己站中間、其他人也站上舞台
+	var cs := ClassSelect.new()
 	choices[3] = ["guardian", false]
-	panel.show_state(&"lobby_host", [1, 2, 3], 1, "", choices)
-	var waiting: bool = panel._start_button.disabled
-	var text: String = panel._status.text
-	var class_row: bool = panel._class_row.visible and panel.class_buttons[ClassDefs.ORDER[0]].button_pressed
+	cs.show_lobby(&"lobby_host", [1, 2, 3], 1, choices, &"normal", "房號 ABCD（3 / 4 人）")
+	var waiting: bool = cs.start_button.disabled
+	var roster_text := ""
+	for c: Label in cs.roster.get_children():
+		roster_text += c.text + " / "
+	var lineup := cs._lineup.map(func(e: Array) -> StringName: return e[0])
 	choices[3] = ["guardian", true]
-	panel.show_state(&"lobby_host", [1, 2, 3], 1, "", choices)
-	var can_start: bool = not panel._start_button.disabled
-	panel.show_state(&"lobby_client", [1, 2, 3], 2, "", choices)
-	var client_ready: bool = panel.ready_button.visible and panel.ready_button.text == "取消準備" and panel.class_buttons[&"arcanist"].button_pressed
-	panel.free()
-	if not waiting or not can_start or not text.contains("祕術師") or not class_row or not client_ready:
-		return "大廳面板：沒準備時不能開始 %s、全員準備可以開始 %s、名單「%s」、選職業列 %s、客戶端準備鈕 %s" % [waiting, can_start, text, class_row, client_ready]
+	cs.show_lobby(&"lobby_host", [1, 2, 3], 1, choices, &"normal", "")
+	var can_start: bool = cs.start_button.visible and not cs.start_button.disabled and cs.class_buttons[ClassDefs.ORDER[0]].button_pressed
+	# 客戶端：準備鈕、看不到開始鈕、難度不能改（只有房主選的那檔能按）；自己選的職業按下去、站中間
+	cs.show_lobby(&"lobby_client", [1, 2, 3], 2, choices, &"hard", "")
+	var client_ok: bool = cs.ready_button.visible and cs.ready_button.text == "取消準備" and not cs.start_button.visible \
+		and cs.class_buttons[&"arcanist"].button_pressed and cs._lineup[0][0] == &"arcanist" \
+		and cs.difficulty_buttons[&"easy"].disabled and cs.difficulty_buttons[&"hard"].button_pressed
+	# 預選即時更新：房主收到別人換職業（還沒準備）再刷新，舞台上那個人跟著換
+	choices[2] = ["priest", false]
+	cs.show_lobby(&"lobby_host", [1, 2, 3], 1, choices, &"normal", "")
+	var live: bool = cs._lineup[1][0] == &"priest"
+	cs.free()
+	if not waiting or not can_start or not roster_text.contains("祕術師") or not roster_text.contains("還沒準備") or lineup != [ClassDefs.ORDER[0], &"arcanist", &"guardian"] or not client_ok or not live:
+		return "大廳選角畫面：沒準備時不能開始 %s、全員準備可以開始 %s、名單「%s」、舞台 %s、客戶端 %s、預選即時更新 %s" % [waiting, can_start, roster_text, lineup, client_ok, live]
+	# 房主改難度：客戶端的準備全部重設；客戶端硬送鎖住的職業或佔位，房主不收
+	var s2 := NetSession.new()
+	s2.is_host = true
+	s2.lobby_peers.assign([1, 2])
+	s2.lobby_choices = {1: NetSession.default_choice(true), 2: ["arcanist", true]}
+	s2.set_difficulty(&"hard")
+	var reset_ok: bool = s2.difficulty() == &"hard" and not s2.lobby_choices[2][1] and s2.lobby_choices[1][1]
+	s2.lobby_difficulty = "nonsense"
+	var bad_falls_back: bool = s2.difficulty() == EventDefs.DEFAULT_MODE
+	s2.free()
+	var locked_ok := true
+	for id: StringName in ClassDefs.PLACEHOLDERS:
+		locked_ok = locked_ok and not ClassDefs.is_pickable(id)
+	for id: StringName in ClassDefs.ORDER:
+		locked_ok = locked_ok and ClassDefs.is_pickable(id) != ClassDefs.CLASSES[id].get("locked", false)
+	if not reset_ok or not bad_falls_back or not locked_ok:
+		return "房主改難度應重設客戶端準備 %s、不認得的難度當預設 %s、佔位與鎖住的職業不能選 %s" % [reset_ok, bad_falls_back, locked_ok]
 	# 開局：房主 World 照職業建角色；客戶端從快照建的角色也套用（自己的移動預測用同樣的移速）
 	var w := World.new(&"test_arena")
 	_made.append(w)

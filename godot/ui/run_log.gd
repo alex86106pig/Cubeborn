@@ -128,7 +128,8 @@ func report_text(world: World) -> String:
 	var screen := DisplayServer.window_get_size()
 	lines.append("顯示卡：%s · %d×%d · %s" % [RenderingServer.get_video_adapter_name(), screen.x, screen.y, video])
 	var s := world.stats
-	var where := "第 %d 層 · 難度 %d" % [world.floor_num, floori(world.difficulty())] if DigEvent.enabled(world) else "第 %d 波" % s.wave
+	var mode_name: String = EventDefs.MODES[world.difficulty_mode].name
+	var where := "第 %d 層 · 難度 %d（%s）" % [world.floor_num, floori(world.difficulty()), mode_name] if DigEvent.enabled(world) else "第 %d 波" % s.wave
 	var boss: Enemy = world.entities.get(world.boss_id) as Enemy
 	if boss != null and not boss.is_dead:
 		where += " · %s剩 %d%% 血" % [name_of(boss.kind), roundi(100.0 * boss.hp / boss.max_hp)]

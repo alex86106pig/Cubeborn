@@ -63,7 +63,7 @@ func _ready() -> void:
 	hud.quit_requested.connect(quit_game)
 	get_tree().auto_accept_quit = false   # 關視窗也走 quit_game（先停音效）
 	hud.title_requested.connect(return_to_title)
-	hud.main_menu.single_pressed.connect(start_single)
+	hud.class_select.start_pressed.connect(start_single)
 	hud.main_menu.weapon_test_pressed.connect(start_weapon_test)
 	hud.weapon_test_equip.connect(_weapon_test_equip)
 	hud.weapon_test_reset.connect(_reset_training_dummies)
@@ -93,7 +93,7 @@ func _ready() -> void:
 	if args.menu_flow or not args.auto_start():
 		show_title(&"multi" if args.host or args.join != "" else &"home")
 		if args.menu_flow and not (args.host or args.join != ""):
-			start_single(args.start_class if args.start_class != &"" else ClassDefs.ORDER[0])   # --menu-flow 單人：主選單「單人遊戲」→ 選職業（F2）
+			start_single(args.start_class if args.start_class != &"" else ClassDefs.ORDER[0], EventDefs.DEFAULT_MODE)   # --menu-flow 單人：主選單「單人遊戲」→ 選角畫面「開始」
 		elif args.weapon_test:
 			start_weapon_test()   # --weapon-test（網頁版 ?weapon-test）：跳過主選單直接進武器測試場，?weapon= 指定武器
 	if args.room:
@@ -140,8 +140,11 @@ func restart() -> void:
 	world.spawn_packs = not no_spawn
 	if mode == Mode.HOST:
 		world.player_classes = net.classes()   # 大廳選的職業（F3）
+		world.difficulty_mode = net.difficulty()
 	if args.start_class != &"":
 		world.player_classes[World.HOST_PEER_ID] = args.start_class
+	if EventDefs.MODES.has(args.difficulty):
+		world.difficulty_mode = args.difficulty
 	world.reset(randi(), peers)
 	world.spawner.finished = no_spawn
 	var me := local_player()
@@ -234,12 +237,13 @@ func _reset_training_dummies() -> void:
 	Spawner.spawn_training_dummies(world, me.pos)
 
 
-# 主選單選好職業：開一局新的單人遊戲（F2）
-func start_single(class_id: StringName) -> void:
+# 選角畫面按「開始」：開一局新的單人遊戲（F2）
+func start_single(class_id: StringName, difficulty: StringName) -> void:
 	_net_message = ""
 	in_weapon_test = false
 	hud.weapon_test_bar.visible = false
 	world.player_classes[World.HOST_PEER_ID] = class_id
+	world.difficulty_mode = difficulty
 	restart()
 	_leave_title()
 
@@ -282,10 +286,13 @@ func _connect_net() -> void:
 	net.disconnected.connect(func() -> void: leave_net("和房主斷線了"))
 	hud.net_panel.host_pressed.connect(start_hosting)
 	hud.net_panel.join_pressed.connect(start_joining)
-	hud.net_panel.start_pressed.connect(start_net_game)
 	hud.net_panel.leave_pressed.connect(leave_net.bind(""))
-	hud.net_panel.class_chosen.connect(func(id: StringName) -> void: net.set_choice(id, net.is_ready(net.local_peer_id())))
-	hud.net_panel.ready_toggled.connect(func(on: bool) -> void: net.set_choice(net.class_of(net.local_peer_id()), on))
+	# 大廳在選角畫面：選職業、準備、房主選難度與開始
+	hud.class_select.class_chosen.connect(func(id: StringName) -> void: net.set_choice(id, net.is_ready(net.local_peer_id())))
+	hud.class_select.ready_toggled.connect(func(on: bool) -> void: net.set_choice(net.class_of(net.local_peer_id()), on))
+	hud.class_select.difficulty_chosen.connect(net.set_difficulty)
+	hud.class_select.net_start_pressed.connect(start_net_game)
+	hud.class_select.leave_pressed.connect(leave_net.bind(""))
 
 
 # 網頁版用房號（WebRTC + 配對伺服器），桌面版用 IP（ENet）
@@ -336,6 +343,7 @@ func _on_game_started(_peers: Array) -> void:
 	_local_peer = net.local_peer_id()
 	net_client = NetClient.new(_local_peer)
 	net_client.world.player_classes = net.classes()   # 快照建立角色時套用職業（F3）
+	net_client.world.difficulty_mode = net.difficulty()   # HUD 的「難度 D」與回報文字在客戶端自己算
 	_use_world(net_client.world)
 	is_in_lobby = false
 	_elapsed = 0.0
@@ -465,6 +473,11 @@ func _refresh_net_panel() -> void:
 	peers.sort()
 	hud.net_panel.room_code = net.room_code
 	hud.net_panel.show_state(state, peers, net.local_peer_id(), _net_message, net.lobby_choices)
+	if state == &"lobby_host" or state == &"lobby_client":
+		var room := "房號 %s" % net.room_code if hud.net_panel.method == &"room" else "區網"
+		hud.class_select.show_lobby(state, peers, net.local_peer_id(), net.lobby_choices, net.difficulty(), "%s（%d / %d 人）" % [room, peers.size(), Config.NET.max_players])
+	elif hud.class_select.mode != &"single":
+		hud.class_select.close()
 
 
 # ───────── 主迴圈 ─────────

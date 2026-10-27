@@ -7,6 +7,7 @@
 # passive.vision_add / near_radius：視野距離加多少、身邊一圈的半徑（Vision.view_range / near_radius）
 # passive.dig_speed / dig_damage_taken：挖墳速度倍率（DigEvent）、挖墳中受到傷害的倍率（Combat）
 # colors：模型配色（DarkFantasy.player_character）：armor 盔甲、trim 腰甲、cape 披風
+# locked / unlock：還沒解鎖（選角畫面顯示鎖頭與解鎖條件、選不到；目前都解鎖了，之後成就解鎖用）
 class_name ClassDefs
 
 const NONE := &""   # 沒選職業：照舊用共用的基準數值（測試與自動驗證用）
@@ -99,3 +100,13 @@ const CLASSES := {
 		"colors": {"armor": Color("7a5a3a"), "trim": Color("4a3624"), "cape": Color("d9b98a")},
 	},
 }
+
+# 選角畫面上還沒做的職業：只佔一格（問號、鎖住），不進 ORDER / CLASSES（大廳預設、apply_class 都碰不到）
+const PLACEHOLDERS := {
+	&"necromancer": {"name": "死靈術士", "unlock": "尚未開放"},
+}
+
+
+# 可以選嗎：有這個職業而且沒鎖（大廳收客戶端的選擇也看這個）
+static func is_pickable(id: StringName) -> bool:
+	return CLASSES.has(id) and not CLASSES[id].get("locked", false)

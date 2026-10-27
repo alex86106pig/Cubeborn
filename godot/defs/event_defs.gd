@@ -19,6 +19,15 @@ const DIFFICULTY := {
 	"stat_per_point": 0.005,   # 怪物生命與攻擊力每點 +0.5%（30 點 +15%）
 }
 
+# 選角畫面選的難度（2026-10-27 使用者決定）：只改怪潮開始後難度上升的速度（per_second 的倍率），其他都不動
+const MODE_ORDER: Array[StringName] = [&"easy", &"normal", &"hard"]
+const MODES := {
+	&"easy": {"name": "簡單", "rate": 0.75},
+	&"normal": {"name": "普通", "rate": 1.0},
+	&"hard": {"name": "困難", "rate": 1.5},
+}
+const DEFAULT_MODE := &"normal"
+
 # 事件中不斷冒怪：每 interval 秒冒一批，數量 = base + 難度 × per_point（無條件捨去），多人每多 1 人 ×1.5
 # v0.44.0 使用者試玩：清怪比不上生怪、完全挖不了 → 方案 B（單人第 60 秒累計 68 → 26 隻、120 秒 238 → 76 隻）
 const SPAWN := {
