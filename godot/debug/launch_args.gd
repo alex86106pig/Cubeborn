@@ -14,7 +14,7 @@ class_name LaunchArgs
 extends RefCounted
 
 # 網頁版可以從網址帶的參數（url_query_args）；v0.36.3 加自動移動 / 攻擊，用來量「第一次出現」的卡頓
-const WEB_URL_ARGS: Array[String] = ["seconds", "horde", "perf", "elites", "player-hp", "auto-move", "auto-move-seconds", "auto-attack", "weapon", "class", "no-spawn", "weapon-test"]   # weapon / class / no-spawn / weapon-test：網頁版逐把看武器（2026-10-27）
+const WEB_URL_ARGS: Array[String] = ["seconds", "horde", "perf", "elites", "player-hp", "auto-move", "auto-move-seconds", "auto-attack", "weapon", "class", "no-spawn", "weapon-test", "items"]   # weapon / class / no-spawn / weapon-test：網頁版逐把看武器（2026-10-27）；items：帶道具量效能（G7）
 
 var run_seconds := 0.0           # > 0：跑這麼多秒後印出狀態並結束（自動驗證）
 var screenshot_path := ""

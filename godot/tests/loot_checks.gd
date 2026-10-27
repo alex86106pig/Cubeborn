@@ -1249,6 +1249,10 @@ static func check_item_summons_g6() -> String:
 
 
 static func check_item_drop_pool() -> String:
+	# 道具第二批（G）做完後全部接上：之後新增的道具也要接好才進資料表（只有資料的不會掉，等於沒有）
+	for id in ItemDefs.item_ids():
+		if not ItemDefs.item_implemented(id):
+			return "%s 還有效果沒接上" % id
 	var order: Array = ItemDefs.RARITIES.keys()
 	for r: StringName in ItemDefs.RARITIES:
 		var pool := LootDefs.drop_pool(r)
