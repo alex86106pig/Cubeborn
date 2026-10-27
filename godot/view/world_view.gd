@@ -700,6 +700,10 @@ func _create_strike(h: Dictionary, ground: float) -> MeshInstance3D:
 # 只預熱有光的版本時，遊戲中第一次畫到沒被照到的怪會當場編譯（每個 35~75 ms）。視野遮罩預熱期間也強制畫
 const WARM_FRAMES := 4
 var _warm_lights: Array[Light3D] = []
+# 預熱用過的材質整場留著（2026-10-27）：BaseMaterial3D 的著色器依「還有幾個材質在用」保留，用到 0 就連編譯好的程式一起釋放
+# （Godot material.cpp ~BaseMaterial3D）。只在預熱出現過的外觀（金幣、地上的道具）刪掉預熱模型後就被釋放，
+# 遊戲中第一次出現又要重新編譯，網頁版卡 60~90 ms
+var _warm_materials: Array[Material] = []
 var _warm_center := Vector3.ZERO
 
 
@@ -772,9 +776,23 @@ func _tick_warm_up() -> void:
 		effects.warm_up(_warm_center)   # 粒子也要有光、沒光各畫一次
 	if _warm_left == 0:
 		for node in _warm_nodes:
+			_keep_materials(node)
 			node.queue_free()
 		_warm_nodes.clear()
 		_warm_lights.clear()
+
+
+func _keep_materials(node: Node) -> void:
+	for gi: GeometryInstance3D in node.find_children("*", "GeometryInstance3D", true, false):
+		for m: Material in [gi.material_override, gi.material_overlay]:
+			if m != null:
+				_warm_materials.append(m)
+		var mi := gi as MeshInstance3D
+		if mi != null and mi.mesh != null:
+			for i in mi.mesh.get_surface_count():
+				for m: Material in [mi.mesh.surface_get_material(i), mi.get_surface_override_material(i)]:
+					if m != null:
+						_warm_materials.append(m)
 
 
 # 被鐵鏟舉著的怪（2026-10-27 網頁版實測：原本只抬高 0.8、維持站姿，看起來浮在空中）：

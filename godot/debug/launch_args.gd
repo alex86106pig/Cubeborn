@@ -6,6 +6,7 @@
 #   --net-latency=毫秒（模擬單程延遲）--net-loss=0.1（模擬掉包）--menu-flow（照玩家的操作順序從主選單走，v0.39.0）
 #   效能量測：--horde=N（開場在玩家周圍生 N 隻醒著的小怪）--perf（關垂直同步，結束時印出 FPS 與各段耗時，見 PerfMeter）
 #   --elites（畫面上方生 1 隻稀有、2 隻魔法骷髏，截圖確認外觀）
+#   --loot-test（旁邊擺小寶箱、第 4 秒自動開，由近到遠 6 隻 1 血必掉武器的骷髏；配 --no-spawn --items=thorn_mail 量開箱與第一次掉落的卡頓）
 #   --weapon-test（武器測試場景：不生怪；畫面右邊貼身 1 隻、往右 5 / 7 / 9 一排、上方 4 一隻木樁，不動不打、血很多）
 #   挖墳（D6）：--at-dig（開場站在挖墳點旁邊）--exit-open（開場出口就打開）--ghost（畫面上方生一隻冤魂）
 #   --player-at=x,y（開場站在地圖座標 x, y，v0.32.0）
@@ -15,7 +16,7 @@ class_name LaunchArgs
 extends RefCounted
 
 # 網頁版可以從網址帶的參數（url_query_args）；v0.36.3 加自動移動 / 攻擊，用來量「第一次出現」的卡頓
-const WEB_URL_ARGS: Array[String] = ["seconds", "horde", "perf", "elites", "player-hp", "auto-move", "auto-move-seconds", "auto-attack", "weapon", "class", "difficulty", "no-spawn", "weapon-test", "items", "shadows", "lights", "host", "join", "room", "net-autostart"]   # host / join / room / net-autostart：網頁版多人自動測試、之後的邀請連結（2026-10-27 使用者同意開放；?host&room 開房印 net room=房號，?join=房號&room 加入）；shadows / lights：內顯量效能的對照組（2026-10-27）；weapon / class / no-spawn / weapon-test：網頁版逐把看武器（2026-10-27）；difficulty：選角畫面的難度；items：帶道具量效能（G7）
+const WEB_URL_ARGS: Array[String] = ["seconds", "horde", "perf", "elites", "player-hp", "auto-move", "auto-move-seconds", "auto-attack", "weapon", "class", "difficulty", "no-spawn", "weapon-test", "items", "shadows", "lights", "host", "join", "room", "net-autostart", "loot-test"]   # loot-test：開箱與掉落卡頓的固定場景； host / join / room / net-autostart：網頁版多人自動測試、之後的邀請連結（2026-10-27 使用者同意開放；?host&room 開房印 net room=房號，?join=房號&room 加入）；shadows / lights：內顯量效能的對照組（2026-10-27）；weapon / class / no-spawn / weapon-test：網頁版逐把看武器（2026-10-27）；difficulty：選角畫面的難度；items：帶道具量效能（G7）
 
 var run_seconds := 0.0           # > 0：跑這麼多秒後印出狀態並結束（自動驗證）
 var screenshot_path := ""
@@ -41,6 +42,7 @@ var net_latency_ms := -1         # -1 = 沒指定（用 Config.NET 的預設）
 var net_loss := -1.0
 var horde := 0
 var elites := false
+var loot_test := false
 var weapon_test := false        # 武器測試場景：不生怪群與波次，玩家旁邊擺木樁（DebugTools.setup_run）
 var at_dig := false
 var player_at := Vector2.INF
@@ -112,6 +114,8 @@ static func parse(args: PackedStringArray) -> LaunchArgs:
 			a.net_loss = value.to_float()
 		elif arg.begins_with("--horde="):
 			a.horde = value.to_int()
+		elif arg == "--loot-test":
+			a.loot_test = true
 		elif arg == "--elites":
 			a.elites = true
 		elif arg == "--weapon-test":

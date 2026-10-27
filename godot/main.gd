@@ -155,6 +155,8 @@ func restart() -> void:
 	for item in args.start_items:
 		me.add_item(item)
 	if args.start_hp > 0.0:
+		if args.start_hp > me.max_hp:   # 高於上限時上限一起拉高：有回血的職業第一次回血就會把生命截回上限（2026-10-27 量測時 --player-hp=99999 照樣死）
+			me.stats.set_base(&"max_hp", args.start_hp)
 		me.hp = args.start_hp
 	DebugTools.setup_run(world, me, args)
 	if in_weapon_test and not args.weapon_test:
@@ -506,6 +508,8 @@ func _authority_physics() -> void:
 		cmds[World.HOST_PEER_ID] = input_collector.build_cmd(world.tick + 1)
 		var t0 := Time.get_ticks_usec()
 		world.step(cmds, Config.FIXED_DT)
+		if args.loot_test:
+			DebugTools.loot_test_step(world, local_player())
 		var t1 := Time.get_ticks_usec()
 		input_collector.consume_latched()
 		GameEvents.emit_all(world.events)

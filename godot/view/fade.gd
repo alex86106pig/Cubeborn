@@ -18,12 +18,15 @@ void fragment() {
 	ALPHA = 0.0;
 }
 """
+# 一般畫面全部丟掉；條件多看 coverage（每份材質的參數）：寫成一定丟的話網頁版的編譯器會把顏色輸出整個優化掉，
+# WebGL 每次畫都報「Active draw buffers with missing fragment shader outputs」並拒畫、狂刷錯誤（2026-10-27 實測）
 const SHADOW_SHADER := """
 shader_type spatial;
 render_mode unshaded, cull_back, shadows_disabled, fog_disabled;
 uniform float coverage = 0.5;
 void fragment() {
-	if (!IN_SHADOW_PASS) {
+	ALBEDO = vec3(0.0);
+	if (!IN_SHADOW_PASS && coverage >= 0.0) {
 		discard;
 	}
 	float bayer[16] = {0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0};
@@ -31,7 +34,6 @@ void fragment() {
 	if ((bayer[p.y * 4 + p.x] + 0.5) / 16.0 >= coverage) {
 		discard;
 	}
-	ALBEDO = vec3(0.0);
 }
 """
 static var _depth_shader: Shader

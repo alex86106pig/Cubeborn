@@ -4,6 +4,8 @@
 class_name DebugTools
 extends RefCounted
 
+const LOOT_TEST_OPEN := 4.0   # --loot-test：第幾秒開寶箱
+
 var _item_index := 0
 
 
@@ -32,6 +34,18 @@ static func setup_run(world: World, me: Player, args: LaunchArgs) -> void:
 		g.ghost_of = -1
 	if args.weapon_test:
 		Spawner.spawn_training_dummies(world, me.pos)
+	# --loot-test：開箱與第一次掉落的卡頓（2026-10-27）。玩家站著不動，小寶箱在旁邊、靈魂夠開，第 LOOT_TEST_OPEN 秒自動開（loot_test_step）；
+	# 6 隻 1 血的骷髏由近到遠排，陸續走來砍玩家、被荊棘鎖甲（配 --items=thorn_mail）反彈打死，每隻必掉武器。
+	# 時間自然錯開，開箱與掉落都在 PerfMeter.WARMUP（2 秒）之後才記得到卡頓
+	if args.loot_test:
+		world.debug_drop_all = true
+		world.souls = LootDefs.CHESTS.small.price
+		var chest := Chest.new(world, &"small", world.nav.nearest_walkable(me.pos + Vector2(1.5, 0.0)))
+		world.add_entity(chest)
+		world.chests.append(chest)
+		for i in 6:
+			var g := world.spawner.spawn_at(world, &"grunt", world.nav.nearest_walkable(me.pos + Vector2(-5.0 - i * 6.0, 0.0)))
+			g.hp = 1.0
 	if args.elites:
 		var up := Vector2(-1.0, -1.0).normalized()   # 等距相機的畫面上方
 		var side := Vector2(1.0, -1.0).normalized()
@@ -39,6 +53,17 @@ static func setup_run(world: World, me: Player, args: LaunchArgs) -> void:
 		for r: Array in list:
 			var e := world.spawner.spawn_at(world, &"grunt", world.nav.nearest_walkable(me.pos + r[1]))
 			Spawner.roll_rarity(world, e, r[0])
+
+
+# --loot-test：第 LOOT_TEST_OPEN 秒讓玩家開旁邊的寶箱（走正式的 Chest.try_open，在 world.step 之後呼叫、事件照常送出）；
+# 不用 --auto-interact：它是一直按住 F，開箱只在「剛按下」那一下判斷
+static func loot_test_step(world: World, me: Player) -> void:
+	if me != null and world.tick == roundi(LOOT_TEST_OPEN / Config.FIXED_DT):
+		var chest := world.nearest_interactable(me, world.chests)
+		if chest != null:
+			(chest as Chest).try_open(me)
+	if me != null and world.tick == roundi((LOOT_TEST_OPEN + 2.0) / Config.FIXED_DT):
+		world.drop_coin(me.pos + Vector2(0.0, 2.0))   # 金幣平常掉率 0.3%，第一次出現也要量
 
 
 # F4：依道具清單順序，每按一次放一個道具進背包（循環；放不下就提示背包滿了）

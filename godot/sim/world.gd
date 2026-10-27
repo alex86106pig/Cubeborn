@@ -24,6 +24,7 @@ var chests: Array[Entity] = []       # 寶箱（D3）
 var pickups: Array[Entity] = []      # 掉在地上的道具（D3）
 var coins: Array[Entity] = []        # 掉在地上的金幣（v0.45，sim/coin.gd）
 var souls := 0                        # 共用的靈魂（局內貨幣，D3）：殺怪賺、開祭壇 / 石棺花
+var debug_drop_all := false          # 除錯（--loot-test）：每隻怪死掉都掉武器
 var soul_carry := 0.0                 # 靈魂道具多給的小數部分（G1：小怪一隻只給 2，+15% 要累積才湊得到 1）
 var run_coins := 0                   # 本局拿到的金幣（v0.45，局外貨幣）：多人時是每人各自拿到的數量（全員一樣）；Profile 存累計
 var coin_rng := RandomNumberGenerator.new()   # 掉金幣專用的亂數：不動 rng 的序列，怪群、寶箱、武器掉落維持原樣
@@ -305,7 +306,7 @@ func on_enemy_died(e: Enemy, killer_id: int = 0) -> void:
 	if not e.no_souls and coin_chance > 0.0 and coin_rng.randf() < coin_chance:
 		drop_coin(e.pos)
 	# 武器掉落（D4）：多人時也只掉一把（房主產生一個實體，先撿先得）
-	var chance: float = WeaponDropDefs.DROP_CHANCE.get(e.type, 0.0)
+	var chance: float = 1.0 if debug_drop_all else WeaponDropDefs.DROP_CHANCE.get(e.type, 0.0)
 	if chance > 0.0 and (chance >= 1.0 or rng.randf() < chance):
 		var source := &"boss" if e.is_boss() else &"minion"
 		var bases := WeaponDropDefs.bases()
