@@ -6,8 +6,10 @@ extends ColorRect
 
 signal changed(key: String, value: Variant)
 
-const DEFAULTS := {"shadows": true, "lights": true, "master": 1.0, "music": 1.0, "sfx": 1.0}
-const SECTION := {"shadows": "video", "lights": "video", "master": "audio", "music": "audio", "sfx": "audio"}
+const DEFAULTS := {"shadows": true, "lights": true, "ui_scale": 1.0, "master": 1.0, "music": 1.0, "sfx": 1.0}
+const SECTION := {"shadows": "video", "lights": "video", "ui_scale": "video", "master": "audio", "music": "audio", "sfx": "audio"}
+# 介面大小的檔位（2026-10-27 使用者：先限制幾個檔位、用滑桿拉）：乘在視窗縮放上（專案是 canvas_items 縮放、以 1920×1080 為基準）
+const UI_SCALES: Array[float] = [0.8, 0.9, 1.0, 1.1]   # 1.2 時選職業頁（1720 寬）放不進 16:9 的 1600
 const VOLUME_NAMES := {"master": "總音量", "music": "音樂", "sfx": "音效"}
 const ROW_WIDTH := 640
 const SWITCH_SIZE := Vector2(72, 38)          # 自己畫的開關（_custom_switch）
@@ -23,6 +25,8 @@ var back_button := UiKit.button("返回")
 var toggles: Dictionary = {}   # "shadows" / "lights" → CheckButton
 var sliders: Dictionary = {}   # "master" / "music" / "sfx" → HSlider
 var _percent: Dictionary = {}  # 同上 → 百分比文字
+var ui_scale_slider := HSlider.new()   # 介面大小：值是 UI_SCALES 的索引
+var _ui_scale_label := UiKit.label("", UiKit.FONT_BODY)
 
 
 func _init() -> void:
@@ -50,29 +54,22 @@ func _init() -> void:
 		t.toggled.connect(func(on: bool) -> void: set_value(key, on))
 		toggles[key] = t
 		rows.add_child(t)
+	ui_scale_slider.max_value = UI_SCALES.size() - 1
+	ui_scale_slider.step = 1.0
+	ui_scale_slider.tick_count = UI_SCALES.size()
+	ui_scale_slider.ticks_on_borders = true
+	ui_scale_slider.value_changed.connect(func(i: float) -> void: set_value("ui_scale", UI_SCALES[int(i)]))
+	rows.add_child(_slider_row("介面大小", ui_scale_slider, _ui_scale_label))
 	rows.add_child(_centered(UiKit.label("音量", UiKit.FONT_HEADING, UiKit.GOLD, 2)))
 	for key: String in VOLUME_NAMES:
-		var row := HBoxContainer.new()
-		row.custom_minimum_size = Vector2(ROW_WIDTH, 56)
-		row.add_theme_constant_override(&"separation", 20)
-		var name_label := UiKit.label(VOLUME_NAMES[key], UiKit.FONT_BODY)
-		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var sl := HSlider.new()
-		sl.min_value = 0.0
 		sl.max_value = 1.0
 		sl.step = 0.05
-		sl.custom_minimum_size = Vector2(380, 56)
-		sl.focus_mode = Control.FOCUS_NONE
 		sl.value_changed.connect(func(v: float) -> void: set_value(key, v))
 		var pct := UiKit.label("", UiKit.FONT_BODY)
-		pct.custom_minimum_size.x = 84
-		pct.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		sliders[key] = sl
 		_percent[key] = pct
-		for c: Control in [name_label, sl, pct]:
-			c.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			row.add_child(c)
-		rows.add_child(row)
+		rows.add_child(_slider_row(VOLUME_NAMES[key], sl, pct))
 	box.add_child(rows)
 	box.add_child(_centered(UiKit.label("光源 = 精英怪、稀有武器、出口的光；內顯畫面卡頓時可以關掉陰影或光源試試", UiKit.FONT_NOTE, Color(1, 1, 1, 0.7), 1)))
 	back_button.pressed.connect(hide)
@@ -122,6 +119,34 @@ func _refresh() -> void:
 	for key: String in sliders:
 		sliders[key].set_value_no_signal(values[key])
 		_percent[key].text = "%d%%" % roundi(values[key] * 100.0)
+	ui_scale_slider.set_value_no_signal(scale_index(values.ui_scale))
+	_ui_scale_label.text = "%d%%" % roundi(values.ui_scale * 100.0)
+
+
+# 最接近的檔位（設定檔裡的值不在檔位上時）
+static func scale_index(scale: float) -> int:
+	var best := 0
+	for i in UI_SCALES.size():
+		if absf(UI_SCALES[i] - scale) < absf(UI_SCALES[best] - scale):
+			best = i
+	return best
+
+
+# 一行：名稱靠左、滑桿 + 百分比靠右
+static func _slider_row(title: String, sl: HSlider, tail: Label) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.custom_minimum_size = Vector2(ROW_WIDTH, 56)
+	row.add_theme_constant_override(&"separation", 20)
+	var name_label := UiKit.label(title, UiKit.FONT_BODY)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sl.custom_minimum_size = Vector2(380, 56)
+	sl.focus_mode = Control.FOCUS_NONE
+	tail.custom_minimum_size.x = 84
+	tail.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	for c: Control in [name_label, sl, tail]:
+		c.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(c)
+	return row
 
 
 # 開關自己畫（2026-10-27 使用者：預設圖示放大後描邊很醜）：圖示換成同尺寸的透明圖占位，CheckButton 畫完後在右邊畫圓角軌道 + 圓形旋鈕

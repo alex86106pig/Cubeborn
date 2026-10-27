@@ -16,7 +16,7 @@ func _init() -> void:
 
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override(&"separation", 8)
-	box.add_child(UiKit.label("屬性", 20))
+	box.add_child(UiKit.label("屬性", UiKit.FONT_BODY))
 	var grid := GridContainer.new()
 	grid.columns = 2
 	grid.add_theme_constant_override(&"h_separation", 24)
@@ -24,8 +24,8 @@ func _init() -> void:
 	for stat: StringName in StatDefs.STATS:
 		if not StatDefs.STATS[stat].in_use:
 			continue
-		grid.add_child(UiKit.label(StatDefs.STATS[stat].name, 15, Color(1, 1, 1, 0.75), 1))
-		var value := UiKit.label("", 15, Color.WHITE, 1)
+		grid.add_child(UiKit.label(StatDefs.STATS[stat].name, UiKit.FONT_NOTE, Color(1, 1, 1, 0.75), 1))   # 15 → 20（2026-10-27 使用者：太小）
+		var value := UiKit.label("", UiKit.FONT_NOTE, Color.WHITE, 1)
 		value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		grid.add_child(value)
 		_values[stat] = value

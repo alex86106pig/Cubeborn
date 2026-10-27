@@ -12,6 +12,10 @@ signal quit_pressed
 signal weapon_test_pressed   # 首頁「武器測試場」（2026-10-27）
 signal settings_pressed      # 首頁「設定」（2026-10-27，HUD 打開設定頁）
 
+const CARD_COLUMNS := 4   # 選職業頁：每排幾張、卡片寬、間距（寬度 = 4 × 400 + 3 × 40 = 1720，檢查用它算介面最大檔放不放得下）
+const CARD_WIDTH := 400
+const CARD_GAP := 40
+
 var page: StringName = &"home"   # &"home" | &"class" | &"method" | &"multi"
 var net_slot := VBoxContainer.new()   # 多人頁放連線面板的位置
 var single_button := _button("單人遊戲")
@@ -51,9 +55,9 @@ func _init() -> void:
 
 	_class.add_child(_heading("選擇職業"))
 	var cards := GridContainer.new()   # 每排 4 張（7 個職業排兩排，塞得進 1920 寬）
-	cards.columns = 4
+	cards.columns = CARD_COLUMNS
 	cards.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	cards.add_theme_constant_override(&"h_separation", 40)
+	cards.add_theme_constant_override(&"h_separation", CARD_GAP)
 	cards.add_theme_constant_override(&"v_separation", 24)
 	for id: StringName in ClassDefs.ORDER:
 		cards.add_child(_class_card(id))
@@ -129,7 +133,7 @@ func _class_card(id: StringName) -> VBoxContainer:
 	for line in lines:
 		var l := _note(line)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		l.custom_minimum_size = Vector2(400, 0)   # 360 時「。」「）」會被折到下一行單獨掛著（2026-10-27 網頁版實測）
+		l.custom_minimum_size = Vector2(CARD_WIDTH, 0)   # 360 時「。」「）」會被折到下一行單獨掛著（2026-10-27 網頁版實測）
 		card.add_child(l)
 	return card
 

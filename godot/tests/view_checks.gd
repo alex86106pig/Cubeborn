@@ -336,11 +336,30 @@ static func _check_main_menu(hud: Variant) -> String:
 	hud.net_panel.show_state(&"lobby_host", [1, 2, 3, 4], 1, "")
 	if not hud.net_panel._status.text.contains("網頁版都可以"):
 		return "房號大廳應說明電腦版、網頁版都能加入：%s" % hud.net_panel._status.text
-	for page: StringName in [&"home", &"class", &"method", &"multi"]:
+	# 介面大小開到最大檔時，16:9 的畫面只剩 1920×1080 ÷ 檔位（設定頁 UI_SCALES）
+	var room := _menu_room()
+	# 節點不在場景樹裡，切頁後整個選單的最小尺寸快取不會更新：改成「該頁自己的尺寸 + 上方標題那幾行」
+	var box: VBoxContainer = menu.get_child(0)
+	var pages := {&"home": menu._home, &"class": menu._class, &"method": menu._method, &"multi": menu._multi}
+	var header := 0.0
+	for c: Control in box.get_children():
+		if not pages.values().has(c):
+			header += c.get_combined_minimum_size().y + box.get_theme_constant(&"separation")
+	for page: StringName in pages:
 		menu.show_page(page)
-		var size: Vector2 = menu.get_child(0).get_combined_minimum_size()
-		if size.x > 1920.0 or size.y > 1080.0:
-			return "主選單%s頁 %.0f×%.0f，超出 1920×1080" % [page, size.x, size.y]
+		var page_size: Vector2 = pages[page].get_combined_minimum_size()
+		var size := Vector2(page_size.x, page_size.y + header)
+		if page == &"class":   # 主題常數（卡片間距）在場景樹外讀不到，寬度照常數算
+			size.x = MainMenu.CARD_COLUMNS * MainMenu.CARD_WIDTH + (MainMenu.CARD_COLUMNS - 1) * MainMenu.CARD_GAP
+		_note("主選單%s頁 %.0f×%.0f（介面最大檔時可用 %.0f×%.0f）" % [page, size.x, size.y, room.x, room.y])
+		if size.x > room.x or size.y > room.y:
+			return "主選單%s頁 %.0f×%.0f，超出介面最大檔時的 %.0f×%.0f" % [page, size.x, size.y, room.x, room.y]
+	hud.show_menu(true)
+	var pause_need: Vector2 = hud._pause.get_child(0).get_combined_minimum_size()
+	hud.show_menu(false)
+	_note("暫停畫面 %.0f×%.0f" % [pause_need.x, pause_need.y])
+	if pause_need.x > room.x or pause_need.y > room.y:
+		return "暫停畫面 %.0f×%.0f，超出介面最大檔時的 %.0f×%.0f" % [pause_need.x, pause_need.y, room.x, room.y]
 	hud.show_title(false)
 	if menu.visible or hud.net_panel.get_parent() != hud._pause_net_slot:
 		return "關掉主選單後連線面板應搬回暫停畫面"
@@ -401,8 +420,13 @@ static func _check_settings(hud: Variant, view: WorldView, snd: Variant, w: Worl
 	if not panel.visible:
 		return "主選單「設定」應打開設定頁"
 	var need := panel.get_child(0).get_combined_minimum_size() as Vector2
-	if need.x > 1920.0 or need.y > 1080.0:
-		return "設定頁需要 %s，超出 1920×1080" % need
+	if need.x > _menu_room().x or need.y > _menu_room().y:
+		return "設定頁需要 %s，超出介面最大檔時的 %s" % [need, _menu_room()]
+	# 介面大小：滑桿是檔位索引，拉到第 0 格 = UI_SCALES[0]；設定檔裡不在檔位上的值取最接近的
+	panel.ui_scale_slider.value_changed.emit(0.0)
+	if panel.values.ui_scale != SettingsPanel.UI_SCALES[0] or SettingsPanel.scale_index(1.04) != SettingsPanel.UI_SCALES.find(1.0):
+		return "介面大小檔位不對：%s / %d" % [panel.values.ui_scale, SettingsPanel.scale_index(1.04)]
+	panel.set_value("ui_scale", 1.0)
 	panel.back_button.pressed.emit()
 	hud.show_title(false)
 	hud.show_menu(true)
@@ -495,6 +519,11 @@ static func check_buttons() -> String:
 		if not ok:
 			return "UiKit.button 的尺寸 / 字級 / 底框不對：%s" % kind
 	return ""
+
+
+# 選單在介面大小最大檔時能用的大小（16:9）
+static func _menu_room() -> Vector2:
+	return Vector2(1920.0, 1080.0) / SettingsPanel.UI_SCALES.max()
 
 
 static func check_run_log() -> String:
