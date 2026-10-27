@@ -624,6 +624,13 @@ func _check_auto_quit(delta: float) -> void:
 		var p: Player = world.players[peer_id]
 		line += " %d=(%.3f,%.3f)" % [peer_id, p.pos.x, p.pos.y]
 	print(line)
+	# 連線檢查用（G 道具）：玩家方的骷髏僕從、追蹤鬼火的數量，每位玩家的護盾（占最大生命的比例）
+	var items_line := "items allies=%d wisps=%d" % [
+		world.allies.filter(func(e: Entity) -> bool: return not e.is_dead).size(),
+		world.projectiles.filter(func(e: Entity) -> bool: return (e as Projectile).homing > 0.0).size()]
+	for peer_id: int in peers:
+		items_line += " shield%d=%.3f" % [peer_id, (world.players[peer_id] as Player).anim.get("shield", 0.0)]
+	print(items_line)
 	var me := local_player()
 	var moved := me.pos.distance_to(_start_pos) if me != null and _start_pos != Vector2.INF else -1.0
 	print("state title=%d paused=%d input=%d effects_paused=%d self_moved=%.2f" % [int(is_at_title), int(is_paused), int(input_collector.enabled), int(world_view.effects.paused), moved])

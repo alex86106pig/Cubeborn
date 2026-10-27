@@ -233,7 +233,7 @@ const ITEMS := {
 			{"stat": &"damage_taken", "op": Stats.MUL, "value": 0.8},
 			{"stat": &"move_speed", "op": Stats.PCT, "value": -0.05}]},
 	&"army_of_dead": {"kind": &"item", "name": "亡者大軍", "rarity": &"purple", "power": 8.0, "shape": &"r6",
-		"desc": "擊殺時 20% 機率召喚骷髏僕從（最多 3 隻）", "effects": [{"on": &"kill", "chance": 0.2, "do": &"summon_skeleton", "max": 3}]},
+		"desc": "擊殺時 20% 機率召喚骷髏僕從（最多 3 隻），僕從倒下時碎骨爆裂", "effects": [{"on": &"kill", "chance": 0.2, "do": &"summon_skeleton", "max": 3}]},
 
 	# ---- 橘色：改變整個 build ----
 	&"tomb_heart": {"kind": &"item", "name": "王墓之心", "rarity": &"orange", "power": 10.0, "shape": &"r6",

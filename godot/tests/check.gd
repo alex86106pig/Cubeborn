@@ -198,9 +198,11 @@ func _initialize() -> void:
 	_check("延遲下的手感（C3）：延遲 100 ms + 掉包 10%，按下就在本機移動、修正誤差 < 0.25、停下後與房主差 < 0.01；別人的角色每步位移平順（±0.02）", NetChecks.check_prediction.bind(CheckKit._feel_lines))
 	_check("打中回饋與延遲補償（v0.38.0）：延遲 100 ms 時客戶端的火花 / 音效 / 閃白和單機一樣在出招當下出現一次，房主的同一下標 predicted；側移的怪客戶端看到打中，房主也判定打中", NetChecks.check_hit_prediction.bind(CheckKit._feel_lines))
 	_check("連線寶箱與背包（D3）：客戶端按 F 開箱（房主扣祭壇價格的靈魂、道具掉地上）、再按 F 撿起，拖曳搬動與丟掉；兩邊的寶箱、靈魂、背包、生效道具一致", NetChecks.check_net_loot)
+	_check("連線道具（G）：房主擊殺 → 客戶端看到玩家方的骷髏僕從與鬼火；客戶端自己的護盾量跟房主一致（被打後也是）；守護亡靈在房主救下、客戶端不倒地並收到 player:saved；僕從倒下的碎骨爆裂客戶端收得到", NetChecks.check_net_items)
 	_check("連線金幣（v0.45）：房主掉的金幣客戶端看得到；客戶端走過去撿起，兩邊本局金幣都是 1、地上都沒了，客戶端收到 coins:gained", NetChecks.check_net_coins)
 	_check("連線倒下與救援（C4）：客戶端跟著房主倒地、不能預測移動，被救起後站起來 30 血；客戶端按住 F 也能救起房主", NetChecks.check_net_downed)
 	_check("兩個程序連線（C1）：headless 照玩家順序（主選單多人頁開房 / 加入，v0.39.0）連線（ENet），兩邊都沒停在暫停、收得到輸入、特效在走、自己的角色各移動約 13 單位，停下後兩邊的玩家位置一致（< 0.01）", NetChecks.check_two_processes.bind(CheckKit._feel_lines))
+	_check("兩個程序連線道具（G）：房主帶亡者大軍、骨製護盾、鬼火燈籠打一群怪，兩邊結束時都看得到玩家方的骷髏僕從，兩份 log 沒有執行期錯誤", NetChecks.check_two_processes_items.bind(CheckKit._feel_lines))
 	_log.store_line("\n手感量測（給 docs/手感對照.md）：\n    " + "\n    ".join(CheckKit._feel_lines))
 	for w in CheckKit._worlds:
 		w.clear()

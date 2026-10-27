@@ -1221,6 +1221,14 @@ static func check_item_summons_g6() -> String:
 	if Combat.hostiles_of(w, &"player", p.id).has(m) or Combat.hostiles_of(w, m.team, m.id).has(p) or not Combat.hostiles_of(w, &"enemy").has(m):
 		return "僕從的敵我判斷不對：玩家打得到 %s、它打得到玩家 %s、怪打得到 %s" % [
 			Combat.hostiles_of(w, &"player", p.id).has(m), Combat.hostiles_of(w, m.team, m.id).has(p), Combat.hostiles_of(w, &"enemy").has(m)]
+	# 一般怪會把比較近的僕從當目標；Boss 只追玩家
+	var lure := _item_dummy(w, m.pos + Vector2(1.5, 0))
+	var boss := _spawn(w, &"boss", m.pos + Vector2(-1.5, 0))
+	if lure.nearest_target() != m or boss.nearest_target() != p:
+		return "一般怪應追比較近的僕從、Boss 只追玩家：%s / %s" % [lure.nearest_target() == m, boss.nearest_target() == p]
+	lure.remove()
+	boss.remove()
+	_run(w, idle, 1)
 	var foe := _item_dummy(w, Vector2(6, 3))
 	foe.dormant = false
 	foe.fsm.change(&"chase")
@@ -1245,6 +1253,18 @@ static func check_item_summons_g6() -> String:
 		return "僕從 %.0f 秒後應倒下" % md.life
 	if w.souls != souls or w.stats.kills != kills:
 		return "僕從倒下不該給靈魂、不算擊殺：靈魂 %d → %d、擊殺 %d → %d" % [souls, w.souls, kills, w.stats.kills]
+	# 碎骨爆裂：倒下時半徑內的怪受 burst.damage；玩家不會被炸
+	var bu: Dictionary = md.burst
+	var m2 := Minion.new(w, Vector2(10, 10), p)
+	w.add_enemy(m2)
+	var near := _item_dummy(w, Vector2(10 + bu.radius * 0.5, 10))
+	near.dormant = true
+	p.pos = Vector2(10, 10 - bu.radius * 0.5)
+	var hp_near := near.hp
+	var hp_p := p.hp
+	m2.die(0)
+	if _hp_loss(near, hp_near) != _dealt(near, bu.damage) or p.hp < hp_p:
+		return "碎骨爆裂：旁邊的怪應扣 %d、玩家不扣：%d、玩家 %.1f → %.1f" % [_dealt(near, bu.damage), _hp_loss(near, hp_near), hp_p, p.hp]
 	return ""
 
 

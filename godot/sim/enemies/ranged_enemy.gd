@@ -43,7 +43,7 @@ func fire() -> void:
 	world.emit_event("sfx:cue", {"cue": "arrowShot", "pos": pos})
 	var dir := MathUtil.dir_from_angle(facing)
 	var aim := {}
-	var target := nearest_player()
+	var target: Entity = nearest_target()
 	if target != null:
 		aim = {"aim_altitude": _shot_altitudes(target.pos).y, "aim_distance": pos.distance_to(target.pos)}
 	world.spawn_projectile(Projectile.new(world, aim.merged({
@@ -57,7 +57,7 @@ func fire() -> void:
 
 class Kite:
 	func update(e: RangedEnemy, dt: float, _fsm: StateMachine) -> void:
-		var target := e.nearest_player()
+		var target: Entity = e.nearest_target()
 		if target == null:
 			e.velocity = Vector2.ZERO
 			return
@@ -107,7 +107,7 @@ class Aim:
 	func update(e: RangedEnemy, dt: float, fsm: StateMachine) -> void:
 		var k: float = fsm.time / e.def.aim_time
 		# 前 75% 追蹤玩家，之後鎖定方向，讓玩家有閃避的機會
-		var target := e.nearest_player()
+		var target: Entity = e.nearest_target()
 		if k < e.def.aim_track and target != null:
 			var turn: float = e.def.turn_speed * e.def.aim_turn_mul * dt
 			e.facing = MathUtil.turn_towards(e.facing, MathUtil.angle_to(e.pos, target.pos), turn)

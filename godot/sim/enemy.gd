@@ -136,9 +136,20 @@ func on_added() -> void:
 	pass
 
 
-# 近戰 AI 追的對象：一般怪是最近的玩家；玩家方的骷髏僕從（G6）覆寫成最近的怪
+# 近戰 / 遠程 AI 追的對象：最近的玩家或玩家方的骷髏僕從（G6，Boss 只追玩家）；僕從自己覆寫成最近的怪
 func nearest_target() -> Entity:
-	return nearest_player()
+	var best: Entity = nearest_player()
+	if is_boss() or world.allies.is_empty():
+		return best
+	var best_d := best.pos.distance_squared_to(pos) if best != null else INF
+	for a in world.allies:
+		if a.is_dead:
+			continue
+		var d := a.pos.distance_squared_to(pos)
+		if d < best_d:
+			best_d = d
+			best = a
+	return best
 
 
 func nearest_player() -> Player:

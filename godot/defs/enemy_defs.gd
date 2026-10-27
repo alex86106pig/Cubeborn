@@ -168,6 +168,8 @@ const ENEMIES := {
 		"life": 20.0,            # 存在秒數
 		"seek_range": 12.0,      # 找多遠內的怪；沒有就跟著召喚者
 		"follow_distance": 2.5,  # 跟著召喚者時離多遠就停
+		# 專屬特性「碎骨爆裂」：倒下時（被打死或時間到）炸開，半徑內的怪受傷並被擊退
+		"burst": {"radius": 2.2, "damage": 20.0, "knockback": 8.0, "color": Color("d8e8c0")},
 		"swing": {
 			"trigger_distance": 1.3, "windup": 0.35, "track": 0.5, "active": 0.1, "recovery": 0.35,
 			"range": 1.5, "arc": PI * 100.0 / 180.0, "damage": 8.0, "knockback": 6.0, "cooldown": 0.9, "blockable": false,

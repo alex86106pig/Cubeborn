@@ -457,6 +457,67 @@ static func check_net_weapons() -> String:
 	return ""
 
 
+# 道具第二批（G）連線：房主擊殺 → 客戶端看得到玩家方的骷髏僕從、追蹤鬼火；客戶端自己的護盾量跟房主一致（被打後也是）；
+# 客戶端被致命傷時守護亡靈在房主救下，客戶端收到 player:saved、不會倒地；僕從倒下的碎骨爆裂客戶端收得到
+static func check_net_items() -> String:
+	var link := _Link.new(47, [1, 2], 3, 0.0, false)
+	var hw := link.host_world
+	var hp1: Player = hw.players[1]
+	var hp2: Player = hw.players[2]
+	hp1.pos = Vector2(0, 0)
+	hp2.pos = Vector2(2, 0)
+	for i in 5:
+		hp1.add_item(&"army_of_dead")   # 20% × 5 = 一定召喚
+	hp1.add_item(&"wisp_lantern")
+	hp2.add_item(&"bone_buckler")
+	hp2.add_item(&"guardian_spirit")
+	var idle := func(n: int) -> void:
+		for i in n:
+			link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO))
+	idle.call(20)
+	var cw := link.client.world
+	var me := link.client.local_player()
+	if hp2.shield <= 0.0 or absf(me.shield - hp2.shield) > 0.01:
+		return "客戶端自己的護盾應跟房主一樣：房主 %.2f、客戶端 %.2f" % [hp2.shield, me.shield]
+	var prey: Enemy = hw.spawner.spawn_at(hw, &"grunt", Vector2(0, 3))
+	prey.stats.set_base(&"max_hp", 1.0)
+	prey.hp = 1.0
+	Combat.apply_damage(hw, hp1, prey, {"damage": 20.0})
+	var wisps := hw.projectiles.filter(func(e: Entity) -> bool: return (e as Projectile).homing > 0.0)
+	if hw.allies.size() != 1 or wisps.size() != 1:
+		return "房主擊殺應召喚 1 隻僕從、放 1 顆鬼火：%d / %d" % [hw.allies.size(), wisps.size()]
+	var minion: Entity = hw.allies[0]
+	idle.call(12)
+	var mirror: Entity = cw.entities.get(minion.id)
+	if mirror == null or mirror.kind != &"minion" or mirror.team != &"player" or not cw.allies.has(mirror):
+		return "客戶端應看到玩家方的骷髏僕從：%s" % (["沒有"] if mirror == null else [mirror.kind, mirror.team, cw.allies.has(mirror)])
+	if not cw.entities.has(wisps[0].id):
+		return "客戶端應看到鬼火（投射物 %d）" % wisps[0].id
+	# 客戶端被怪打：盾先扣，客戶端的盾量跟著房主
+	var foe: Enemy = hw.spawner.spawn_at(hw, &"grunt", hp2.pos + Vector2(1.2, 0))   # 同一塊平地（高度範圍要重疊才打得到）
+	foe.dormant = true
+	Combat.apply_damage(hw, foe, hp2, {"damage": 3.0})
+	idle.call(12)
+	if hp2.shield >= hp2.max_hp * 0.08 - 0.01 or absf(me.shield - hp2.shield) > 0.01:
+		return "被打後客戶端的盾應跟房主一樣（變少）：房主 %.2f、客戶端 %.2f" % [hp2.shield, me.shield]
+	# 致命傷：守護亡靈在房主救下，客戶端不倒地、收到 player:saved
+	hp2.invuln_timer = 0.0
+	Combat.apply_damage(hw, foe, hp2, {"damage": hp2.max_hp * 10.0})
+	link._send_events()   # 在兩步之間直接打的：事件要先送出（下一步開頭會清掉）
+	idle.call(12)
+	var saved := _named(link.client_events, "player:saved")
+	if hp2.is_downed or me.is_downed or saved.size() != 1 or saved[0].player_id != hp2.id:
+		return "守護亡靈：房主倒地 %s、客戶端倒地 %s、客戶端收到 player:saved %d 次" % [hp2.is_downed, me.is_downed, saved.size()]
+	# 僕從倒下：客戶端收到碎骨爆裂的特效、鏡像消失
+	(minion as Enemy).die(0)
+	link._send_events()
+	idle.call(12)
+	var bursts := _named(link.client_events, "fx:explosion").filter(func(e: Dictionary) -> bool: return e.pos.distance_to(minion.pos) < 0.01)
+	if bursts.is_empty():
+		return "客戶端應收到僕從倒下的碎骨爆裂特效"
+	return ""
+
+
 static func check_codec() -> String:
 	var w := _world([1, 2])
 	w.spawner.spawn_at(w, &"grunt", Vector2(5, 5))
@@ -910,6 +971,51 @@ static func check_two_processes(feel: Array[String]) -> String:
 	if moved < 5.0:
 		return "房主的角色應移動了約 13 單位（實際 %.2f），檢查才有意義" % moved
 	return "" if worst < 0.01 else "兩邊的玩家位置差 %.4f（應 < 0.01）" % worst
+
+
+# 道具第二批（G）的兩個程序實測：房主帶亡者大軍（必定召喚）與骨製護盾、開場一群怪、一直按左鍵；
+# 兩邊結束時都要看到玩家方的骷髏僕從（客戶端靠快照），兩份 log 都不能有執行期錯誤（畫面層也有跑）
+static func check_two_processes_items(feel: Array[String]) -> String:
+	var exe := OS.get_executable_path()
+	var project := ProjectSettings.globalize_path("res://")
+	var dir := OS.get_user_data_dir()
+	var logs := [dir.path_join("net_items_host.log"), dir.path_join("net_items_client.log")]
+	for path: String in logs:
+		DirAccess.remove_absolute(path)
+	var port := "--net-port=%d" % (Config.NET.port + 9)
+	var common := ["--headless", "--path", project]
+	var items := ",".join(["army_of_dead", "army_of_dead", "army_of_dead", "army_of_dead", "army_of_dead", "bone_buckler", "wisp_lantern"])
+	var host_args := common + ["--log-file", logs[0], "--", "--menu-flow", "--host", port, "--net-autostart=2",
+		"--horde=25", "--player-hp=99999", "--auto-attack", "--items=" + items, "--seconds=8"]
+	var client_args := common + ["--log-file", logs[1], "--", "--menu-flow", "--join=127.0.0.1", port, "--seconds=8"]
+	var host_pid := OS.create_process(exe, host_args)
+	OS.delay_msec(500)
+	var client_pid := OS.create_process(exe, client_args)
+	var waited := 0
+	while (OS.is_process_running(host_pid) or OS.is_process_running(client_pid)) and waited < 40000:
+		OS.delay_msec(100)
+		waited += 100
+	for pid: int in [host_pid, client_pid]:
+		if OS.is_process_running(pid):
+			OS.kill(pid)
+	var found := ["", ""]
+	for i in 2:
+		var who := "房主" if i == 0 else "客戶端"
+		var f := FileAccess.open(logs[i], FileAccess.READ)
+		if f == null:
+			return "%s沒有 log：%s" % [who, logs[i]]
+		for line in f.get_as_text().split("\n"):
+			if line.contains("SCRIPT ERROR") or line.begins_with("ERROR:"):
+				return "%s執行期錯誤：%s" % [who, line.strip_edges()]
+			if line.begins_with("items "):
+				found[i] = line.strip_edges()
+		if found[i] == "":
+			return "%s沒有印出道具狀態（遊戲沒有跑完？）" % who
+		var allies := (found[i] as String).get_slice("allies=", 1).to_int()
+		if allies < 1:
+			return "%s結束時應看到玩家方的骷髏僕從：%s" % [who, found[i]]
+	feel.append("G 道具兩個程序：房主 %s；客戶端 %s" % [found[0], found[1]])
+	return ""
 
 
 static func _parse_players(line: String) -> Dictionary:

@@ -1,5 +1,6 @@
 # 骷髏僕從（G6 亡者大軍）：玩家方的骷髏戰士。隊伍是 &"player"：打怪、不打玩家（Combat.hostiles_of 看隊伍），怪的攻擊打得到它
-# 追 seek_range 內最近的怪，沒有就跟著召喚者；life 秒後自己倒下。怪物的 AI 不會主動追它（只追玩家）
+# 追 seek_range 內最近的怪，沒有就跟著召喚者；life 秒後自己倒下。一般怪會把它當目標（Enemy.nearest_target，Boss 不會）
+# 專屬特性「碎骨爆裂」：倒下時炸開（def.burst），被打死也不浪費
 # 放在 world.enemies 照常更新、碰撞、進快照（種類 &"minion"）；不給靈魂、不算擊殺（World.on_enemy_died）
 class_name Minion
 extends MeleeEnemy
@@ -24,6 +25,17 @@ func update(dt: float) -> void:
 	life -= dt
 	if life <= 0.0:
 		die(0)
+
+
+func _on_died(source_id: int) -> void:
+	super(source_id)
+	var b: Dictionary = def.burst
+	world.emit_event("sfx:cue", {"cue": "explosion", "pos": pos})
+	world.emit_event("fx:explosion", {"pos": pos, "height": ground_height, "radius": b.radius, "color": b.color})
+	var band := Vector2(ground_height - Config.HEIGHT.reach_below, ground_height + Config.HEIGHT.explosion_height)
+	Hitbox.strike(world, self, pos, facing, {"shape": &"circle", "radius": b.radius}, {
+		"damage": b.damage, "knockback": b.knockback, "origin": pos, "is_heavy": true, "band": band, "blockable": false, "color": b.color,
+	})
 
 
 # 範圍內最近、還活著的怪（休眠的怪群不主動去打）
