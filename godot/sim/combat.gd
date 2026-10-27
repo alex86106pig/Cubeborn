@@ -117,6 +117,7 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 		return false
 	if source is Enemy:
 		(source as Enemy).on_dealt_damage(dealt)   # 吸血詞條（D5）
+	var hurt_by_enemy := source is Enemy and target is Player and not is_proc and dealt > 0.0
 
 	# hit_stop 只放進事件：畫面層讓攻擊者與目標的模型定格這麼久（v0.18.3 起模擬時間不再放慢，多人時不影響其他人）
 	var ev := {
@@ -134,11 +135,14 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 	var shake: float = hit.get("shake", 0.0)
 	if shake > 0.0 and should_shake(source):
 		world.emit_event("camera:shake", {"amount": shake, "duration": Config.COMBAT.hit_shake_duration})
+	if hurt_by_enemy:
+		# 道具的受傷效果（G3 荊棘鎖甲、王墓之心）：同樣放在事件之後
+		ItemEffects.on_hurt(world, target as Player, source, damage, dealt, hit.get("projectile", false))
 	if source is Player and target is Enemy:
 		# 道具的命中 / 擊殺效果（v0.33.0）：放在事件之後，連鎖閃電、爆炸的傷害事件排在這一下後面
 		if not is_proc:
 			ItemEffects.on_dealt(world, source as Player, dealt)   # 命中回復、吸血（G1）
-			ItemEffects.on_hit(world, source as Player, target, damage)
+			ItemEffects.on_hit(world, source as Player, target, damage, hit.get("projectile", false))
 		if target.is_dead:
 			ItemEffects.on_kill(world, source as Player, target, damage)
 	return true

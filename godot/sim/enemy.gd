@@ -48,6 +48,8 @@ var burn_timer := 0.0                # 燃燒（F8 火把）剩餘秒數；每 B
 var burn_tick_damage := 0.0
 var burn_source_id := 0
 var _burn_tick := 0.0
+var burn_spread := false             # 會擴散的燃燒（G3 永恆之焰）
+var _spread_timer := 0.0
 const BURN_TICK := 0.5
 const BURN_COLOR := Color("ff8a30")
 var _poison_tick := 0.0
@@ -185,13 +187,17 @@ func apply_poison(source_id: int, total: float) -> void:
 
 
 # 燃燒（F8 火把）：每秒 per_sec、持續 duration 秒；再點燃重新計時、每次扣的取較高的；持續傷害不算命中（不觸發道具）
-func apply_burn(source_id: int, per_sec: float, duration: float) -> void:
+# spread（G3 永恆之焰）：燒著的時候每 spread_interval 秒把剩下的燃燒傳給 spread_range 內一隻沒在燒的怪（傳過去的也會擴散）
+func apply_burn(source_id: int, per_sec: float, duration: float, spread := false) -> void:
 	if is_dead:
 		return
 	if burn_timer <= 0.0:
 		_burn_tick = BURN_TICK
 		burn_tick_damage = 0.0
-	burn_timer = duration
+		burn_spread = false
+		_spread_timer = ItemDefs.PROCS.ignite.spread_interval
+	burn_spread = burn_spread or spread
+	burn_timer = maxf(burn_timer, duration)
 	burn_tick_damage = maxf(burn_tick_damage, per_sec * BURN_TICK)
 	burn_source_id = source_id
 	world.emit_event("fx:status", {"pos": pos, "height": ground_height, "color": BURN_COLOR})
@@ -202,6 +208,11 @@ func _update_burn(dt: float) -> void:
 		return
 	burn_timer -= dt
 	_burn_tick -= dt
+	if burn_spread:
+		_spread_timer -= dt
+		if _spread_timer <= 1e-6:
+			_spread_timer += ItemDefs.PROCS.ignite.spread_interval
+			_spread_burn()
 	if _burn_tick > 1e-6:
 		return
 	_burn_tick += BURN_TICK
@@ -212,6 +223,24 @@ func _update_burn(dt: float) -> void:
 		Combat.apply_damage(world, src, self, hit)
 	if burn_timer <= 0.0:
 		burn_tick_damage = 0.0
+
+
+func _spread_burn() -> void:
+	if burn_timer <= 0.0:
+		return
+	var r: float = ItemDefs.PROCS.ignite.spread_range
+	var best: Enemy = null
+	var best_d := INF
+	for e in world.enemies:
+		var en := e as Enemy
+		if en == self or en.is_dead or en.burn_timer > 0.0:
+			continue
+		var d := en.pos.distance_to(pos) - en.radius - radius
+		if d <= r and d < best_d:
+			best_d = d
+			best = en
+	if best != null:
+		best.apply_burn(burn_source_id, burn_tick_damage / BURN_TICK, burn_timer, true)
 
 
 # 埋進土裡（F9 鐵鏟）：seconds 秒不能動、不出招（Boss 不會被舉起，所以也不會被埋）

@@ -128,21 +128,48 @@ class Freeze extends Action:
 		(target as Enemy).apply_freeze(proc.effect.duration)
 
 
-# 以目標的位置為中心的小爆炸（擊殺那一下的 damage_ratio）
+# 以目標的位置為中心的爆炸：擊殺（火藥包，擊殺那一下的 damage_ratio）、投射物命中（G3 爆裂箭袋，以被打中的怪為中心）、
+# 受傷（G3 王墓之心：以自己為中心、受傷量 × 道具的 damage_ratio、半徑 hurt_explode）；道具資料有 damage_ratio 時蓋過預設
 class Explode extends Action:
 	func triggers() -> Array[StringName]:
-		return [&"kill"]
+		return [&"kill", &"projectile_hit", &"hurt"]
 
-	func run(world: World, p: Player, target: Entity, damage: float, _proc: Dictionary) -> void:
+	func run(world: World, p: Player, target: Entity, damage: float, proc: Dictionary) -> void:
 		var cfg: Dictionary = ItemDefs.PROCS.explode
+		var radius: float = ItemDefs.PROCS.hurt_explode.radius if proc.on == &"hurt" else cfg.radius
+		var color: Color = ItemDefs.PROCS.hurt_explode.color if proc.on == &"hurt" else cfg.color
+		var ratio: float = proc.effect.get("damage_ratio", cfg.damage_ratio) * ItemEffects.stacks(proc)
 		var at := target.pos
 		world.emit_event("sfx:cue", {"cue": "explosion", "pos": at})
-		world.emit_event("fx:explosion", {"pos": at, "height": target.ground_height, "radius": cfg.radius, "color": cfg.color})
-		for e in Combat.query_circle(at, cfg.radius, Combat.hostiles_of(world, p.team, p.id)):
-			var hit := ItemEffects.proc_hit(damage * cfg.damage_ratio, e, cfg.color, cfg.knockback)
+		world.emit_event("fx:explosion", {"pos": at, "height": target.ground_height, "radius": radius, "color": color})
+		for e in Combat.query_circle(at, radius, Combat.hostiles_of(world, p.team, p.id)):
+			var hit := ItemEffects.proc_hit(damage * ratio, e, color, cfg.knockback)
 			hit["origin"] = at
 			hit["is_heavy"] = true
 			Combat.apply_damage(world, p, e, hit)
+
+
+# 反彈（G3 荊棘鎖甲）：受到近戰傷害時，把實際扣的血 × ratio 打回攻擊者
+class Reflect extends Action:
+	func triggers() -> Array[StringName]:
+		return [&"hurt_melee"]
+
+	func run(world: World, p: Player, attacker: Entity, dealt: float, proc: Dictionary) -> void:
+		if not attacker is Enemy or attacker.is_dead:
+			return
+		var hit := ItemEffects.proc_hit(dealt * proc.effect.ratio * ItemEffects.stacks(proc), attacker, ItemDefs.PROCS.reflect.color)
+		hit["origin"] = p.pos
+		Combat.apply_damage(world, p, attacker, hit)
+
+
+# 點燃（G3 永恆之焰）：命中那一下 × pct_per_sec 每秒、duration 秒；spread 的燃燒會傳給旁邊的怪（Enemy._update_burn）
+class Ignite extends Action:
+	func triggers() -> Array[StringName]:
+		return [&"hit"]
+
+	func run(_world: World, p: Player, target: Entity, damage: float, proc: Dictionary) -> void:
+		var cfg: Dictionary = ItemDefs.PROCS.ignite
+		(target as Enemy).apply_burn(p.id, damage * cfg.pct_per_sec * ItemEffects.stacks(proc), cfg.duration, proc.effect.get("spread", false))
 
 
 # 回血：沒有機率，多個道具的比例相加（proc.count）
@@ -171,6 +198,8 @@ static var ACTIONS := {
 	&"freeze": Freeze.new(),
 	&"explode": Explode.new(),
 	&"heal_max_hp": HealMaxHp.new(),
+	&"reflect": Reflect.new(),
+	&"ignite": Ignite.new(),
 }
 
 
@@ -204,11 +233,16 @@ static func procs_of(p: Player, on: StringName) -> Array[Dictionary]:
 		if not ItemDefs.is_implemented(eff):
 			continue
 		if not by_do.has(eff.do):
-			by_do[eff.do] = {"do": eff.do, "effect": eff, "chance": 0.0, "count": 0}
+			by_do[eff.do] = {"do": eff.do, "on": on, "effect": eff, "chance": 0.0, "count": 0}
 			order.append(by_do[eff.do])
 		by_do[eff.do].chance += eff.get("chance", 1.0)
 		by_do[eff.do].count += 1
 	return order
+
+
+# 沒有機率的觸發（荊棘、王墓之心、爆裂箭袋、永恆之焰）拿兩個效果相加；有機率的疊的是機率，效果只算一份
+static func stacks(proc: Dictionary) -> int:
+	return 1 if proc.effect.has("chance") else proc.count
 
 
 static func _rolled(world: World, proc: Dictionary) -> bool:
@@ -307,11 +341,24 @@ static func soul_mul(p: Player, e: Enemy) -> float:
 	return mul
 
 
-# 命中時（Combat 在一般攻擊命中後呼叫）：damage 是這一下的傷害（扣護甲前）
-static func on_hit(world: World, p: Player, target: Entity, damage: float) -> void:
+# 命中時（Combat 在一般攻擊命中後呼叫）：damage 是這一下的傷害（扣護甲前）；projectile = 投射物直接命中（G3 爆裂箭袋）
+static func on_hit(world: World, p: Player, target: Entity, damage: float, projectile := false) -> void:
 	if not target is Enemy:
 		return
 	_run_procs(world, p, &"hit", target, damage)
+	if projectile:
+		_run_procs(world, p, &"projectile_hit", target, damage)
+
+
+# 玩家被怪打到時（G3，Combat 在扣血之後呼叫）：damage 是扣護甲前、dealt 是實際扣的
+# 近戰（不是投射物）→ 荊棘鎖甲反彈給攻擊者；任何傷害 → 王墓之心以自己為中心爆炸（內部冷卻 hurt_explode.icd）
+static func on_hurt(world: World, p: Player, attacker: Entity, damage: float, dealt: float, projectile: bool) -> void:
+	if not projectile:
+		_run_procs(world, p, &"hurt_melee", attacker, dealt)
+	var procs := procs_of(p, &"hurt")
+	if not procs.is_empty() and icd_ready(p, &"hurt_explode"):
+		for proc in procs:
+			(ACTIONS[proc.do] as Action).run(world, p, p, damage, proc)
 
 
 # 擊殺時（Combat 在玩家方的傷害打死怪之後呼叫，含道具效果打死的）

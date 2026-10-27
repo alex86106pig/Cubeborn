@@ -91,7 +91,8 @@ const ABILITIES := {
 
 # 已接上的條件、觸發 + 動作（v0.33.0 第一批 8 個道具，sim/item_effects.gd）；能力的二段跳在 Player.air_jumps
 const IMPLEMENTED_CONDITIONS: Array[StringName] = [&"target_full_hp", &"hp_below", &"after_kill", &"after_roll", &"per_kill_stack", &"from_elite"]
-const IMPLEMENTED_TRIGGERS: Array[String] = ["kill|explode", "kill|heal_max_hp", "hit|chain_lightning", "hit|poison", "hit|freeze"]
+const IMPLEMENTED_TRIGGERS: Array[String] = ["kill|explode", "kill|heal_max_hp", "hit|chain_lightning", "hit|poison", "hit|freeze",
+	"hurt_melee|reflect", "hurt|explode", "projectile_hit|explode", "hit|ignite"]
 
 # 觸發動作的數值（v0.33.0，說明沒寫到的由 Claude 暫定，試玩後再調）；damage_ratio 都是乘「觸發的那一下」的傷害
 # 同一種動作有多個道具時機率相加（最多 100%）、沒有機率的（回血）效果相加
@@ -102,6 +103,9 @@ const PROCS := {
 	&"freeze": {"color": Color("a8e6ff")},   # 冰凍時不能動、不出招（Boss 不會被冰凍）
 	# ---- 第二批（G，2026-10-27 Claude 暫定）；icd = 內部冷卻秒數（快速武器不會觸發過頻，ItemEffects.icd_ready）----
 	&"life_on_hit": {"icd": 0.3},   # 蝙蝠牙：命中回復每 0.3 秒最多一次
+	&"reflect": {"color": Color("d0d0d0")},   # 荊棘鎖甲：反彈實際扣的血 × 道具的 ratio
+	&"hurt_explode": {"radius": 3.0, "icd": 0.5, "color": Color("ff5a3a")},   # 王墓之心：以自己為中心、扣護甲前的受傷量 × damage_ratio
+	&"ignite": {"pct_per_sec": 0.15, "duration": 3.0, "spread_interval": 1.0, "spread_range": 2.0},   # 永恆之焰：命中那一下 15% / 秒 × 3 秒（同火把）；每 1 秒傳給 2 單位內一隻
 }
 
 # kind：&"item" 道具 / &"weapon" 武器（weapon 對應 WeaponDefs，數值在那邊，這裡只放背包用的欄位）
