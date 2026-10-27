@@ -55,6 +55,7 @@ var floor_kills := 0                   # 本層擊殺數（G2 亡者之契；換
 var interval_timers: Dictionary = {}   # 道具 uid -> 下次「每隔固定秒數」觸發還剩幾秒（G4 雷霆鈴）
 var shield := 0.0                      # 護盾剩多少（G4 骨製護盾，房主算；客戶端看快照的 anim.shield）
 var shield_delay := 0.0                # 還要幾秒沒受傷才回充
+var guardian_uses := 0                 # 這一層用掉幾次守護亡靈（G5；每個道具每層一次）
 var roll_charges := 0                  # 目前可用的翻滾次數（上限為 roll_charges 屬性）
 var dodge_timer := 0.0                 # 翻滾無敵剩餘秒數
 var block_time := -1.0                 # 格擋開始後經過的秒數；< 0 = 沒有在格擋（weapon_behaviors 的 ShieldBlock）
@@ -216,6 +217,7 @@ func arrive_floor(at: Vector2, ground: float) -> void:
 	descended = false
 	torches_left = WeaponDefs.WEAPONS[&"torch"].stance.attack.per_floor   # 新的一關火把補滿（F8）
 	floor_kills = 0   # 亡者之契的疊層只算本層（G2）
+	guardian_uses = 0   # 守護亡靈每層一次（G5）
 	pos = at
 	prev_pos = at
 	height = ground
@@ -259,8 +261,11 @@ func find_revive_target() -> Player:
 
 
 # 多人時生命歸零先倒地假死（C4）；單機、或已經倒地後倒數結束 / 全員倒下，才真的死亡
+# 守護亡靈、復活十字（G5）在倒地 / 單機死亡之前攔下；已經倒地後倒數結束的死亡不攔
 func die(source_id: int = 0) -> void:
 	if is_dead:
+		return
+	if not is_downed and world.is_authority and ItemEffects.on_lethal(world, self):
 		return
 	if not is_downed and world.players.size() > 1:
 		_go_down()

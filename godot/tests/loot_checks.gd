@@ -1123,6 +1123,67 @@ static func check_item_actions_g4() -> String:
 	return ""
 
 
+# 打 p 一下致命傷（先清掉受傷無敵）
+static func _lethal_hit(w: World, foe: Entity, p: Player) -> void:
+	p.invuln_timer = 0.0
+	Combat.apply_damage(w, foe, p, {"damage": p.max_hp * 10.0})
+
+
+# 道具第二批 G5：守護亡靈（每層一次、先用）、復活十字（用完碎掉）都在倒地 / 死亡之前攔下
+static func check_item_lifesaver_g5() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var foe := _item_dummy(w, Vector2(0, 3))
+	foe.dormant = true
+	var guard := _effect(&"guardian_spirit")
+	var rev: Dictionary = ItemDefs.PROCS.revive
+	p.add_item(&"guardian_spirit")
+	var cross_uid := p.add_item(&"resurrection_cross")
+	# 第一次：守護亡靈先用，留 1 血、無敵 invuln 秒，十字還在
+	_lethal_hit(w, foe, p)
+	if p.is_dead or p.is_downed or absf(p.hp - 1.0) > EPS or absf(p.invuln_timer - guard.invuln) > EPS or p.inventory.find(cross_uid).is_empty():
+		return "守護亡靈應先用：死 %s、生命 %.1f、無敵 %.2f、十字還在 %s" % [p.is_dead, p.hp, p.invuln_timer, not p.inventory.find(cross_uid).is_empty()]
+	# 第二次（同一層）：換復活十字，回 hp_ratio、十字碎掉空出格子
+	_lethal_hit(w, foe, p)
+	var want := roundf(p.max_hp * rev.hp_ratio)
+	if p.is_dead or absf(p.hp - want) > EPS or not p.inventory.find(cross_uid).is_empty() or p.items.any(func(it: Dictionary) -> bool: return it.uid == cross_uid):
+		return "同一層第二次應用復活十字並碎掉：死 %s、生命 %.1f（應 %.0f）" % [p.is_dead, p.hp, want]
+	# 第三次：都用完了，單機就死
+	_lethal_hit(w, foe, p)
+	if not p.is_dead:
+		return "守護亡靈本層用過、十字碎了，應該死亡"
+	w.clear()
+	# 換層後守護亡靈又能用一次
+	w = _new_world()
+	p = _player(w)
+	foe = _item_dummy(w, Vector2(0, 3))
+	foe.dormant = true
+	p.add_item(&"guardian_spirit")
+	_lethal_hit(w, foe, p)
+	p.arrive_floor(p.pos, p.height)
+	_lethal_hit(w, foe, p)
+	if p.is_dead or absf(p.hp - 1.0) > EPS:
+		return "換層後守護亡靈應再救一次：死 %s、生命 %.1f" % [p.is_dead, p.hp]
+	w.clear()
+	# 多人：攔在倒地之前（不會倒地）
+	w = World.new(&"test_arena")
+	w.spawn_packs = false
+	w.reset(12345, [World.HOST_PEER_ID, 2])
+	w.spawner.finished = true
+	p = _player(w)
+	foe = _item_dummy(w, Vector2(0, 3))
+	foe.dormant = true
+	p.add_item(&"guardian_spirit")
+	_lethal_hit(w, foe, p)
+	if p.is_downed or p.is_dead:
+		return "多人時守護亡靈應在倒地之前救下：倒地 %s" % p.is_downed
+	_lethal_hit(w, foe, p)
+	if not p.is_downed:
+		return "多人時用完守護亡靈應照常倒地"
+	w.clear()
+	return ""
+
+
 static func check_item_drop_pool() -> String:
 	var order: Array = ItemDefs.RARITIES.keys()
 	for r: StringName in ItemDefs.RARITIES:

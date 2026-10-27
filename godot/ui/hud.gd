@@ -511,6 +511,10 @@ func _on_event(name: String, p: Dictionary) -> void:
 			var target: Entity = world.entities.get(p.target_id) if world else null
 			if target != null and p.amount > 0:
 				_floaters.spawn(target, "+" + UiKit.dmg_text(p.amount), &"heal")
+		"player:saved":   # 守護亡靈 / 復活十字救下來（G5）
+			var saved: Entity = world.entities.get(p.player_id) if world else null
+			if saved != null and ItemDefs.ITEMS.has(StringName(p.item)):
+				_floaters.spawn(saved, ItemDefs.ITEMS[StringName(p.item)].name + "！", &"heal")
 		"inventory:full":
 			if _is_local(p.player_id):
 				_floaters.spawn(local_player(), "背包滿了", &"dmg")

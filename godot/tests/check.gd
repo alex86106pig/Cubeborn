@@ -136,6 +136,7 @@ func _initialize() -> void:
 	_check("道具條件（G2）：翻滾結束後一段時間加爆擊率、本層每擊殺疊一層（有上限、換層歸零）", LootChecks.check_item_conditions_g2)
 	_check("道具觸發（G3）：近戰傷害反彈給攻擊者（投射物不算）、受傷以自己為中心爆炸（有內部冷卻）、投射物命中爆炸（近戰不算）、命中點燃並擴散到旁邊一隻", LootChecks.check_item_procs_g3)
 	_check("道具動作（G4）：普攻出手追加飛刀、左右對稱的穿透斬波（都有內部冷卻、傷害照武器基礎傷害）、每隔幾秒落雷打最近的幾隻、翻滾減速周圍的怪並恢復、護盾先扣且幾秒沒受傷才補滿", LootChecks.check_item_actions_g4)
+	_check("道具保命（G5）：致命傷時守護亡靈先用（留 1 血、無敵、每層一次、換層恢復），再用復活十字（回血、碎掉空出格子）；多人時攔在倒地之前、用完照常倒地", LootChecks.check_item_lifesaver_g5)
 	_check("道具掉落：寶箱只開出效果都接上的道具；沒有的稀有度往下一級找", LootChecks.check_item_drop_pool)
 	# 畫面、介面與音效
 	_check("角色視野：前方扇形（angle 邊界內外）與 range 內看得到、身邊 near_radius 背後也看得到；牆擋視線（身邊也擋）、高台不擋；自己的投射物在背後也看得到、怪物的看不到；寶箱看中心、怪物看身體邊緣", ViewChecks.check_vision_rules)

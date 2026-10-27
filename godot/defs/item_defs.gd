@@ -89,11 +89,12 @@ const ABILITIES := {
 	&"bone_shield": {"name": "自動回充的護盾", "params": ["ratio", "recharge_delay"]},
 }
 
-# 已接上的條件、觸發 + 動作（v0.33.0 第一批 8 個道具，sim/item_effects.gd）；能力的二段跳在 Player.air_jumps
+# 已接上的條件、觸發 + 動作（v0.33.0 第一批 8 個道具、G 第二批，sim/item_effects.gd）
 const IMPLEMENTED_CONDITIONS: Array[StringName] = [&"target_full_hp", &"hp_below", &"after_kill", &"after_roll", &"per_kill_stack", &"from_elite"]
 const IMPLEMENTED_TRIGGERS: Array[String] = ["kill|explode", "kill|heal_max_hp", "hit|chain_lightning", "hit|poison", "hit|freeze",
 	"hurt_melee|reflect", "hurt|explode", "projectile_hit|explode", "hit|ignite",
-	"attack|throw_knife", "attack|slash_wave", "interval|lightning_strike", "roll|slow_time"]
+	"attack|throw_knife", "attack|slash_wave", "interval|lightning_strike", "roll|slow_time",
+	"lethal|cheat_death", "death|revive"]
 const IMPLEMENTED_ABILITIES: Array[StringName] = [&"double_jump", &"bone_shield"]   # 二段跳在 Player.air_jumps，護盾在 ItemEffects.absorb
 
 # 觸發動作的數值（v0.33.0，說明沒寫到的由 Claude 暫定，試玩後再調）；damage_ratio 都是乘「觸發的那一下」的傷害
@@ -113,6 +114,7 @@ const PROCS := {
 	&"slash_wave": {"icd": 0.3, "spread": 0.2618, "speed": 16.0, "range": 8.0, "radius": 0.45, "color": Color("b36bff"), "visual": &"orb", "sfx": "arcaneCast"},   # 穿透；spread 0.2618 = 15°
 	&"lightning_strike": {"range": 8.0, "targets": 3, "damage_pct": 1.5, "radius": 0.8, "color": Color("9fd8ff")},
 	&"slow_time": {"radius": 5.0, "boss_mul": 0.6, "color": Color("8fa8ff")},   # 一般怪移速與出招 × (1 − slow)，Boss × boss_mul
+	&"revive": {"hp_ratio": 0.5, "invuln": 2.0, "color": Color("ffe08a")},   # 復活十字；守護亡靈的無敵秒數在道具資料
 }
 
 # kind：&"item" 道具 / &"weapon" 武器（weapon 對應 WeaponDefs，數值在那邊，這裡只放背包用的欄位）

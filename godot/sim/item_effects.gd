@@ -248,6 +248,31 @@ class SlowTime extends Action:
 				(e as Enemy).apply_slow(proc.effect.duration, proc.effect.slow)
 
 
+# 受到致命傷害時留 1 血並無敵（G5 守護亡靈）；次數由 on_lethal 管
+class CheatDeath extends Action:
+	func triggers() -> Array[StringName]:
+		return [&"lethal"]
+
+	func run(world: World, p: Player, _target: Entity, _damage: float, proc: Dictionary) -> void:
+		p.hp = 1.0
+		p.invuln_timer = proc.effect.invuln
+		ItemEffects._saved(world, p, proc.item)
+
+
+# 死亡時復活一次（G5 復活十字）：回 hp_ratio 的血、短暫無敵，道具碎掉空出格子
+class Revive extends Action:
+	func triggers() -> Array[StringName]:
+		return [&"death"]
+
+	func run(world: World, p: Player, _target: Entity, _damage: float, proc: Dictionary) -> void:
+		var cfg: Dictionary = ItemDefs.PROCS.revive
+		p.hp = maxf(1.0, roundf(p.max_hp * cfg.hp_ratio))
+		p.invuln_timer = cfg.invuln
+		if proc.effect.get("consume", false):
+			p.remove_item(proc.uid)
+		ItemEffects._saved(world, p, proc.item)
+
+
 # 回血：沒有機率，多個道具的比例相加（proc.count）
 class HealMaxHp extends Action:
 	func triggers() -> Array[StringName]:
@@ -280,6 +305,8 @@ static var ACTIONS := {
 	&"slash_wave": SlashWave.new(),
 	&"lightning_strike": LightningStrike.new(),
 	&"slow_time": SlowTime.new(),
+	&"cheat_death": CheatDeath.new(),
+	&"revive": Revive.new(),
 }
 
 
@@ -419,6 +446,36 @@ static func absorb(p: Player, amount: float) -> float:
 # 普攻出手時（G4，TimedAction 進入 active、只在權威端）：袖中飛刀、裂空之刃
 static func on_attack(world: World, p: Player) -> void:
 	_run_procs(world, p, &"attack", null, 0.0)
+
+
+# 生命歸零、還沒倒地時（G5，Player.die、只在權威端）：守護亡靈先用（每個道具每層一次），沒有才用復活十字；救下來回傳 true
+static func on_lethal(world: World, p: Player) -> bool:
+	var guards := effects_of(p, "on", &"lethal")
+	if p.guardian_uses < guards.size():
+		p.guardian_uses += 1
+		var g: Dictionary = guards[0]
+		(ACTIONS[g.effect.do] as Action).run(world, p, p, 0.0, _single(g, p))
+		return true
+	var crosses := effects_of(p, "on", &"death")
+	if not crosses.is_empty():
+		var c: Dictionary = crosses[0]
+		(ACTIONS[c.effect.do] as Action).run(world, p, p, 0.0, _single(c, p))
+		return true
+	return false
+
+
+static func _single(x: Dictionary, p: Player) -> Dictionary:
+	var item: StringName = &""
+	for it: Dictionary in p.items:
+		if it.uid == x.uid:
+			item = it.id
+	return {"do": x.effect.do, "on": x.effect.on, "effect": x.effect, "chance": 1.0, "count": 1, "uid": x.uid, "item": item}
+
+
+static func _saved(world: World, p: Player, item: StringName) -> void:
+	world.emit_event("player:saved", {"player_id": p.id, "item": String(item)})
+	world.emit_event("fx:heal", {"pos": p.pos, "height": p.height, "color": ItemDefs.PROCS.revive.color})
+	world.emit_event("sfx:cue", {"cue": "potion", "pos": p.pos})
 
 
 # 翻滾開始時（G4，Roll.enter、只在權威端）：停滯懷錶
