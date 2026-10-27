@@ -284,7 +284,7 @@ func _fill_skills(c: Dictionary) -> void:
 	for n in _skills.get_children():
 		n.free()
 	var w: Dictionary = WeaponDefs.WEAPONS[c.weapon]
-	_skills.add_child(_skill_row(SkillBar.Slot.new("", "被動", -1), "職業被動", c.passive.desc))
+	_skills.add_child(_skill_row(SkillBar.Slot.new("passive", "被動", -1), "職業被動", c.passive.desc))
 	_skills.add_child(_skill_row(SkillBar.Slot.new(w.attack.icon, "左鍵", -1), w.attack.name, w.attack.get("desc", "")))
 	_skills.add_child(_skill_row(SkillBar.Slot.new(w.special.icon, "右鍵", -1), w.special.name, w.special.get("desc", "")))
 	_skills.add_child(_skill_row(SkillBar.Slot.new(SkillBar.ROLL_ICON, "Shift", -1), "翻滾", ROLL_DESC))

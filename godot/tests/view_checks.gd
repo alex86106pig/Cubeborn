@@ -250,8 +250,8 @@ static func check_skill_bar_parry() -> String:
 		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL_HELD | InputCmd.BTN_ATTACK), 1)
 		bar.refresh(w, p)
 		var cd_left: float = bar._slots["player.parry"].cd_left
-		if not bar._parry_slot.visible or bar._attack_slot.visible or bar._parry_slot.icon.text != "招架" or cd_left <= 0.0:
-			err = "格擋中左鍵應換成「招架」並顯示冷卻：顯示 %s、文字 %s、冷卻 %.2f" % [bar._parry_slot.visible, bar._parry_slot.icon.text, cd_left]
+		if not bar._parry_slot.visible or bar._attack_slot.visible or bar._parry_slot.icon_id != WeaponDefs.WEAPONS.swordShield.special.parry.icon or cd_left <= 0.0:
+			err = "格擋中左鍵應換成「招架」並顯示冷卻：顯示 %s、文字 %s、冷卻 %.2f" % [bar._parry_slot.visible, bar._parry_slot.icon_id, cd_left]
 	if err == "":
 		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 30)
 		bar.refresh(w, p)
@@ -269,13 +269,13 @@ static func check_skill_bar_parry() -> String:
 		p.torch_stance = true
 		bar.refresh(w, p)
 		var tw: Dictionary = WeaponDefs.WEAPONS[&"torch"]
-		if not bar._alt_left.visible or bar._special_slot.visible or bar._alt_left.icon.text != tw.stance.attack.icon \
-				or bar._alt_left.charges.text != str(p.torches_left) or bar._alt_right.icon.text != tw.stance.special.icon:
-			err = "火把準備姿態左右鍵應換成「%s」（剩 %d）/「%s」：%s / %s / %s" % [tw.stance.attack.icon, p.torches_left, tw.stance.special.icon, bar._alt_left.icon.text, bar._alt_left.charges.text, bar._alt_right.icon.text]
+		if not bar._alt_left.visible or bar._special_slot.visible or bar._alt_left.icon_id != tw.stance.attack.icon \
+				or bar._alt_left.charges.text != str(p.torches_left) or bar._alt_right.icon_id != tw.stance.special.icon:
+			err = "火把準備姿態左右鍵應換成「%s」（剩 %d）/「%s」：%s / %s / %s" % [tw.stance.attack.icon, p.torches_left, tw.stance.special.icon, bar._alt_left.icon_id, bar._alt_left.charges.text, bar._alt_right.icon_id]
 		p.torches_left = 0
 		bar.refresh(w, p)
-		if err == "" and bar._alt_left.icon.text != tw.attack.icon:
-			err = "火把插完後左鍵應顯示「%s」，實際 %s" % [tw.attack.icon, bar._alt_left.icon.text]
+		if err == "" and bar._alt_left.icon_id != tw.attack.icon:
+			err = "火把插完後左鍵應顯示「%s」，實際 %s" % [tw.attack.icon, bar._alt_left.icon_id]
 		p.torch_stance = false
 		bar.refresh(w, p)
 		if err == "" and (bar._alt_left.visible or not bar._special_slot.visible):
@@ -287,7 +287,7 @@ static func check_skill_bar_parry() -> String:
 		p.held_enemy_id = -1
 		bar.refresh(w, p)
 		var gr: Dictionary = WeaponDefs.WEAPONS[&"shovel"].grab
-		if not bar._alt_left.visible or bar._alt_left.icon.text != gr.attack.icon or bar._alt_right.icon.text != gr.special.icon:
+		if not bar._alt_left.visible or bar._alt_left.icon_id != gr.attack.icon or bar._alt_right.icon_id != gr.special.icon:
 			err = "舉著怪時左右鍵應換成「%s」/「%s」" % [gr.attack.icon, gr.special.icon]
 		p.held_enemy_id = 0
 	bar.queue_free()
@@ -1197,10 +1197,17 @@ static func check_font_coverage() -> String:
 	var font := load("res://assets/fonts/NotoSansTC-VF.ttf") as FontFile
 	if font == null:
 		return "讀不到 assets/fonts/NotoSansTC-VF.ttf"
-	var drawn: Array = load("res://ui/skill_bar.gd").get_script_constant_map().DRAWN_ICONS
+	var drawn: Array = SkillIcons.DRAWN
 	var texts: Array[String] = []
 	for w: Dictionary in WeaponDefs.WEAPONS.values():
-		texts.append_array([w.name, w.attack.name, w.attack.icon, w.special.name, w.special.icon])
+		texts.append_array([w.name, w.attack.name, w.attack.icon, w.special.name, w.special.icon, w.attack.get("desc", ""), w.special.get("desc", "")])
+		for alt: Dictionary in [w.get("stance", {}), w.get("grab", {})]:
+			if not alt.is_empty():
+				texts.append_array([alt.attack.name, alt.attack.icon, alt.attack.get("desc", ""), alt.special.name, alt.special.icon, alt.special.get("desc", "")])
+	for c: Dictionary in ClassDefs.CLASSES.values():
+		texts.append_array([c.name, c.pitch, c.passive.desc])
+	for c: Dictionary in ClassDefs.PLACEHOLDERS.values():
+		texts.append_array([c.name, c.unlock])
 	for s: Dictionary in SkillDefs.SKILLS.values():
 		texts.append_array([s.name, s.icon])
 	var hud_consts: Dictionary = load("res://ui/hud.gd").get_script_constant_map()
@@ -1212,7 +1219,7 @@ static func check_font_coverage() -> String:
 	texts.append(StatDefs.format_value(&"armor", 8.0) + StatDefs.format_value(&"hp_regen", 1.0))
 	# HUD 程式裡的字串常值（標題、橫幅、結算、按鍵名稱）
 	var re := RegEx.create_from_string("\"([^\"\\\\]*)\"")
-	for path in ["res://ui/hud.gd", "res://ui/skill_bar.gd", "res://ui/stats_panel.gd"]:
+	for path in ["res://ui/hud.gd", "res://ui/skill_bar.gd", "res://ui/stats_panel.gd", "res://ui/class_select.gd"]:
 		for m in re.search_all(_read_text(path)):
 			texts.append(m.get_string(1))
 	var missing := {}

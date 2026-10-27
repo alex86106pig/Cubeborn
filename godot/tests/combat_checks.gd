@@ -53,6 +53,18 @@ static func check_fire_bolt() -> String:
 	_run(w2, _cmd(Vector2.ZERO, Vector2(0, -5)), 60)
 	if not far.is_removed or far.traveled < a.range or far.traveled > a.range + step_len:
 		return "射程：飛行 %.3f 後 is_removed=%s，預期 %.1f" % [far.traveled, far.is_removed, a.range]
+	# 每一招都有畫好的圖示與說明（技能欄與選角畫面共用，2026-10-27）
+	for wid: StringName in WeaponDefs.WEAPONS:
+		var wd: Dictionary = WeaponDefs.WEAPONS[wid]
+		var moves: Array = [wd.attack, wd.special]
+		for alt: Dictionary in [wd.get("stance", {}), wd.get("grab", {})]:
+			if not alt.is_empty():
+				moves.append_array([alt.attack, alt.special])
+		if wd.special.has("parry"):
+			moves.append(wd.special.parry)
+		for m: Dictionary in moves:
+			if not SkillIcons.has(m.get("icon", "")) or m.get("desc", "") == "":
+				return "%s「%s」要有畫好的圖示（SkillIcons.DRAWN）與說明 desc：%s / %s" % [wd.name, m.name, m.get("icon", ""), m.get("desc", "")]
 	return ""
 
 

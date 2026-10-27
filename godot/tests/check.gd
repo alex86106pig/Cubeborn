@@ -78,7 +78,7 @@ func _initialize() -> void:
 
 	# ───────── 職業與武器 ─────────
 	_check("職業（F2）：開局套用基礎數值、起始武器、被動；沒選職業照舊、重新開始保留；守墓騎士被隊友從背後打到減半", PlayerChecks.check_classes)
-	_check("武器資料：behavior 存在、三段時間為正數、音效名稱都在 Sound.CUE_NAMES；每把武器都有道具資料與模型，職業的起始武器都存在", CombatChecks.check_weapon_defs)
+	_check("武器資料：behavior 存在、三段時間為正數、音效名稱都在 Sound.CUE_NAMES；每把武器都有道具資料與模型，職業的起始武器都存在；每一招都有畫好的圖示與說明", CombatChecks.check_weapon_defs)
 	_check("武器基礎數值：面板攻擊力 / 攻速 / 範圍 = 武器資料 × 稀有度倍率；裝上綠劍盾後攻擊力與揮砍距離跟著倍率", CombatChecks.check_weapon_base_stats)
 	_check("傷害類型（F1）：基礎傷害 × 招式 % × 物理 / 魔法傷害；護甲只擋物理、魔抗只擋魔法；閃避率封頂 75% 且 0 時不擲骰；尋寶加權", CombatChecks.check_damage_types)
 	_check("法杖：魔彈從前方 spawn_offset 產生、照速度飛、命中造成武器傷害、飛滿射程消失；奧術爆裂落點限制在 min_range ~ range、半徑內才受傷；普攻按住照三段時間連發、打中骷髏不擊退不硬直",

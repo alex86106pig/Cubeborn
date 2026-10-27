@@ -15,6 +15,7 @@ const WEAPONS := {
 			"behavior": &"meleeSwing",
 			"sfx": "swing", "sfx_heavy": "swingHeavy",
 			"name": "斬擊",
+			"desc": "三段連斬，第三下是終結技、收招比較久。",
 			"icon": "⚔",
 			"damage_pct": 1.0,
 			"range": 2.3,
@@ -41,6 +42,7 @@ const WEAPONS := {
 		"special": {
 			"behavior": &"shieldBlock",
 			"name": "格擋",
+			"desc": "按住舉盾，擋下正前方 120° 的攻擊；格擋中移速減半。",
 			"icon": "🛡",
 			"hold": true,              # 按住右鍵維持（InputCmd.BTN_SPECIAL_HELD）：active 期間右鍵按著或招架中就停在 active
 			"windup": 0.05,            # 舉盾；按下就開始格擋
@@ -53,7 +55,9 @@ const WEAPONS := {
 			"sfx_block": "shieldBash",
 			"sfx_parry": "hitHeavy",
 			"parry": {
-				"name": "招架",               # 格擋中技能欄左鍵那格顯示這兩個字
+				"name": "招架",
+				"icon": "parry",              # 格擋中技能欄左鍵那格換成這個圖示
+				"desc": "格擋中按左鍵：0.2 秒內擋到攻擊就招架成功，盾擊 200% 並大幅擊退；冷卻 4 秒。",
 				"window": 0.2,                # 按下左鍵後這麼久內擋到攻擊 = 招架成功（沿用原本完美格擋的 0.2 秒）
 				"cooldown": 4.0,              # 從按下左鍵開始算（沿用原本格擋的 4 秒）
 				"fail_damage_mul": 0.5,       # 判定時間結束都沒擋到：盾擊照樣打出，傷害與擊退 × 0.5（24 → 12）
@@ -80,6 +84,7 @@ const WEAPONS := {
 			"behavior": &"fireBolt",
 			"sfx": "fireBolt",
 			"name": "魔彈",
+			"desc": "射出魔法彈，射程 14、不擊退。",
 			"icon": "✦",
 			"damage_pct": 1.0,
 			"projectile_speed": 20.0,
@@ -101,6 +106,7 @@ const WEAPONS := {
 			"behavior": &"arcaneBurst",
 			"sfx": "arcaneCast",
 			"name": "奧術爆裂",
+			"desc": "往準星丟出法球，落地爆炸（半徑 3.2）造成 350% 並擊退；冷卻 5 秒。",
 			"icon": "✺",
 			"cooldown": 5.0,
 			"projectile_speed": 16.0,
@@ -134,7 +140,8 @@ const WEAPONS := {
 			"behavior": &"fireBolt",
 			"sfx": "arrowShot",
 			"name": "快射",
-			"icon": "快射",
+			"desc": "0.35 秒一箭、不擊退；箭袋 6 支，最後一支是 200% 的重箭，射空要裝填 1.2 秒（翻滾瞬間補滿）。",
+			"icon": "bow_shot",
 			"damage_pct": 1.0,
 			# 箭袋（使用者 2026-10-27：原本按住就一直射太無腦）：6 支射完自動裝填 1.2 秒（移速 ×0.5、不能射），翻滾瞬間補滿；
 			# 最後一支是重箭：多拉弓 0.15 秒、200%、小擊退。節奏「射射射射射─碰─翻滾或裝填」
@@ -161,7 +168,8 @@ const WEAPONS := {
 			"behavior": &"arrowFan",
 			"sfx": "arrowShot",
 			"name": "散射",
-			"icon": "散射",
+			"desc": "一次 5 支箭散開 50°，每支 80%；冷卻 5 秒。",
+			"icon": "bow_fan",
 			"cooldown": 5.0,
 			"damage_pct": 0.8,
 			"count": 5,
@@ -197,7 +205,8 @@ const WEAPONS := {
 			"behavior": &"fireBolt",
 			"sfx": "arrowShot",
 			"name": "重射",
-			"icon": "重射",
+			"desc": "0.7 秒一發的重箭，射程 18、會擊退。",
+			"icon": "bow_heavy",
 			"damage_pct": 1.0,
 			"visual": &"arrow",
 			"projectile_speed": 26.0,
@@ -218,7 +227,8 @@ const WEAPONS := {
 			"sfx": "bowDraw",
 			"sfx_release": "arrowShot",
 			"name": "穿透箭",
-			"icon": "穿透",
+			"desc": "按住蓄力、放開射出：150% → 400%（蓄滿 1 秒），穿過路上所有敵人；冷卻 6 秒。",
+			"icon": "bow_pierce",
 			"cooldown": 6.0,
 			"hold": true,              # 按住右鍵蓄力（同格擋的按住機制），放開射出
 			"roll_cancel": true,
@@ -256,7 +266,8 @@ const WEAPONS := {
 			"behavior": &"meleeSwing",
 			"sfx": "swing", "sfx_heavy": "swingHeavy",
 			"name": "五連刺",
-			"icon": "連刺",
+			"desc": "刺刺、停、刺刺、停、重擊：第 5 下 150% 必爆擊並擊退。",
+			"icon": "dagger_combo",
 			"damage_pct": 1.0,
 			"combo_count": 5,          # 第 combo_count 下是終結技
 			"range": 1.6,
@@ -290,7 +301,8 @@ const WEAPONS := {
 			"behavior": &"shadowStep",
 			"sfx": "swingHeavy",
 			"name": "影步",
-			"icon": "影步",
+			"desc": "瞬移到準星附近敵人的背後（6 單位內），背刺 300% 必爆擊；冷卻 5 秒。",
+			"icon": "shadow_step",
 			"cooldown": 5.0,
 			"miss_cooldown": 1.0,      # 6 單位內沒有怪：不瞬移，冷卻只算這麼久
 			"damage_pct": 3.0,         # 背刺必爆擊
@@ -320,7 +332,8 @@ const WEAPONS := {
 			"behavior": &"meleeSwing",
 			"sfx": "swing", "sfx_heavy": "swingHeavy",
 			"name": "聖光敲擊",
-			"icon": "敲擊",
+			"desc": "兩段：先橫掃 100%，再往前砸出一圈聖光（130%，圈內再 60%）。",
+			"icon": "mace_smash",
 			"damage_pct": 1.0,
 			# 兩段「敲─砸」（使用者 2026-10-27：每一下都一樣太無腦）：第 2 下蓄一下再砸，扇形 130%，
 			# 並在前方 finisher_burst.offset 處砸出半徑 radius 的聖光圈（再 60%、擊退）
@@ -351,7 +364,8 @@ const WEAPONS := {
 			"behavior": &"holyCircle",
 			"sfx": "arcaneCast",
 			"name": "聖光圈",
-			"icon": "光圈",
+			"desc": "腳下放 4 秒的聖光圈（半徑 4）：隊友每秒回 4、亡靈每秒受到 60% 魔法傷害；冷卻 12 秒。",
+			"icon": "holy_circle",
 			"cooldown": 12.0,
 			"damage_pct": 0.6,         # 亡靈每秒受到 60%
 			"heal_per_sec": 4.0,       # 隊友（含自己）每秒回血
@@ -381,7 +395,8 @@ const WEAPONS := {
 			"behavior": &"meleeSwing",
 			"sfx": "swing", "sfx_heavy": "swing",
 			"name": "火把揮擊",
-			"icon": "揮擊",
+			"desc": "揮動火把 100% 並點燃：3 秒內每秒 15%。",
+			"icon": "torch_swing",
 			"damage_pct": 1.0,
 			"combo_count": 1,
 			"burn": {"pct_per_sec": 0.15, "duration": 3.0},   # 點燃：每秒 15% × 3 秒（持續傷害不觸發道具）
@@ -408,7 +423,8 @@ const WEAPONS := {
 			"behavior": &"torchStance",
 			"sfx": "arcaneCast",
 			"name": "準備姿態",
-			"icon": "舉火",
+			"desc": "舉起火把（移速 ×0.6）：左鍵插火把、右鍵噴火；翻滾、跳躍取消。",
+			"icon": "torch_raise",
 			"windup": 0.1,
 			"active": 0.02,
 			"recovery": 0.1,
@@ -420,7 +436,8 @@ const WEAPONS := {
 				"behavior": &"plantTorch",
 				"sfx": "shieldBash",
 				"name": "插火把",
-				"icon": "插火",
+				"desc": "把火把插在地上照亮周圍，全隊都看得到；每層 3 支。",
+				"icon": "torch_plant",
 				"per_floor": 3,        # 每關只能插 3 支
 				"cooldown": 1.0,
 				"windup": 0.15,
@@ -432,7 +449,8 @@ const WEAPONS := {
 				"behavior": &"fireBreath",
 				"sfx": "explosion",
 				"name": "噴火",
-				"icon": "噴火",
+				"desc": "向前噴火（90°、長 5）120% 並點燃；冷卻 6 秒。",
+				"icon": "fire_breath",
 				"cooldown": 6.0,
 				"damage_pct": 1.2,
 				"burn": {"pct_per_sec": 0.15, "duration": 3.0},
@@ -465,7 +483,8 @@ const WEAPONS := {
 			"behavior": &"meleeSwing",
 			"sfx": "swingHeavy", "sfx_heavy": "swingHeavy",
 			"name": "鏟地",
-			"icon": "鏟地",
+			"desc": "往前鏟一下，範圍窄、長 3.6，會擊退。",
+			"icon": "shovel_dig",
 			"damage_pct": 1.0,
 			"combo_count": 1,
 			"range": 3.6,              # 打得比較遠（像把一排土鏟出去）
@@ -491,7 +510,8 @@ const WEAPONS := {
 			"behavior": &"shovelGrab",
 			"sfx": "shieldBash",
 			"name": "鏟起",
-			"icon": "鏟起",
+			"desc": "把面前一隻怪（Boss 除外）鏟起來舉 2 秒，之後左鍵拋出、右鍵埋入；冷卻 10 秒。",
+			"icon": "shovel_grab",
 			"cooldown": 10.0,
 			"miss_cooldown": 2.0,      # 沒抓到：冷卻只算這麼久
 			"reach": 1.4,              # 抓取距離（自己身體邊緣到怪身體邊緣）
@@ -507,7 +527,8 @@ const WEAPONS := {
 				"behavior": &"shovelThrow",
 				"sfx": "swingHeavy",
 				"name": "拋出",
-				"icon": "拋出",
+				"desc": "把舉著的怪往準星丟出 7 單位：路上的怪 150%、被丟的怪落地 200%。",
+				"icon": "shovel_throw",
 				"damage_pct": 2.0,     # 被丟的怪落地
 				"path_damage_pct": 1.5,   # 路上撞到的怪
 				"distance": 7.0,
@@ -525,7 +546,8 @@ const WEAPONS := {
 				"behavior": &"shovelBury",
 				"sfx": "bossSlam",
 				"name": "埋入",
-				"icon": "埋入",
+				"desc": "把舉著的怪埋進土裡 80%，2 秒不能動也不能出招。",
+				"icon": "shovel_bury",
 				"damage_pct": 0.8,
 				"stun": 1.5,
 				"crawl": 0.5,

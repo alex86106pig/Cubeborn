@@ -5,9 +5,7 @@ extends HBoxContainer
 const SLOT_SIZE := 58.0
 const FLASH_DENY_TIME := 0.3
 const FLASH_USED_TIME := 0.25
-# 打包的字型（Noto Sans TC）沒有這幾個符號，改用向量圖形畫；網頁版沒有系統字型可借
-const DRAWN_ICONS: Array[String] = ["⚔", "🛡", "✦", "✺", "⟳"]
-const ROLL_ICON := "⟳"
+const ROLL_ICON := "⟳"   # 圖示都是 SkillIcons 畫的（打包字型沒有這些符號）
 
 var _slots: Dictionary = {}   # cd key -> Slot
 var _weapon_id: StringName = &""
@@ -77,7 +75,7 @@ func _refresh_alt(world: World, player: Player) -> void:
 	_special_slot.visible = not on
 	if stance:
 		var left := player.action_def(&"attack")
-		_alt_left.icon.text = left.icon
+		_alt_left.set_icon(left.icon)
 		var planting: bool = left == w.stance.attack
 		_alt_left.charges.text = str(player.torches_left) if planting else ""
 		_alt_left.cd_left = world.cooldowns.remaining(player.cd("player.torch")) if planting else 0.0
@@ -107,7 +105,7 @@ func _build(player: Player) -> void:
 	_attack_slot = _add_slot("", w.attack.icon, "左鍵", -1, false)
 	_parry_slot = null
 	if w.special.has("parry") and w.special.parry.has("name"):
-		_parry_slot = _add_slot("player.parry", w.special.parry.name, "左鍵", -1, false)
+		_parry_slot = _add_slot("player.parry", w.special.parry.get("icon", w.special.parry.name), "左鍵", -1, false)
 		_parry_slot.visible = false
 	var alt: Dictionary = w.get("stance", w.get("grab", {}))
 	_alt_left = null
@@ -142,7 +140,8 @@ func _add_slot(key: String, icon: String, key_label: String, index: int, empty: 
 class Slot extends Control:
 	var index := -1
 	var icon: Label
-	var drawn_icon := ""        # DRAWN_ICONS 之一時由 _draw 畫，icon 文字留空
+	var icon_id := ""           # 招式的 icon（WeaponDefs）
+	var drawn_icon := ""        # SkillIcons 畫得出來時由 _draw 畫，icon 文字留空
 	var mask: Control           # CD 扇形遮罩；子節點會畫在格子的 _draw 上面，獨立一層才能蓋住文字圖示、又墊在秒數底下
 	var charges: Label
 	var cd_text: Label
@@ -156,10 +155,8 @@ class Slot extends Control:
 		custom_minimum_size = Vector2(SLOT_SIZE, SLOT_SIZE)
 		pivot_offset = custom_minimum_size / 2.0
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		if p_icon in DRAWN_ICONS:
-			drawn_icon = p_icon
-			p_icon = ""
-		icon = _centered(UiKit.label(p_icon, 20 if p_icon.length() > 1 else 28))   # 兩個字的（招架）縮小才塞得進
+		icon = _centered(UiKit.label("", 28))
+		set_icon(p_icon)
 		mask = Control.new()
 		mask.size = Vector2(SLOT_SIZE, SLOT_SIZE)
 		mask.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -174,6 +171,14 @@ class Slot extends Control:
 		var key := UiKit.label(key_label, 11, Color(1, 1, 1, 0.8), 1)
 		key.position = Vector2(4, SLOT_SIZE - 18)
 		add_child(key)
+
+	# 換圖示（火把準備姿態的左鍵在插火 / 揮擊之間換）
+	func set_icon(p_icon: String) -> void:
+		icon_id = p_icon
+		drawn_icon = p_icon if SkillIcons.has(p_icon) else ""
+		icon.text = "" if drawn_icon != "" else p_icon
+		icon.add_theme_font_size_override(&"font_size", 20 if p_icon.length() > 1 else 28)   # 沒畫的兩個字縮小才塞得進
+		queue_redraw()
 
 	func _centered(l: Label) -> Label:
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
