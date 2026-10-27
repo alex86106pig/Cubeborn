@@ -100,7 +100,7 @@ func take_damage(amount: float, dir: Vector2, p_knockback: float, source_id: int
 	if not can_be_hit():
 		return -1.0
 	var dealt := maxf(0.0, amount * StatDefs.armor_damage_factor(stats.value(StatDefs.resist_stat(damage_type))) * damage_taken_mul)
-	hp = maxf(0.0, hp - dealt)
+	hp = maxf(0.0, hp - _absorb(dealt))   # 護盾先扣（G4 骨製護盾）；回傳的 dealt 仍是整下的量
 	flash_timer = Config.COMBAT.flash_time
 	knockback += dir * (p_knockback * knockback_mul / mass)
 	_on_damaged(dealt, source_id)
@@ -128,6 +128,11 @@ func die(source_id: int = 0) -> void:
 
 func _on_damaged(_amount: float, _source_id: int) -> void:
 	pass
+
+
+# 這一下要扣血的部分（有護盾的子類別覆寫）
+func _absorb(amount: float) -> float:
+	return amount
 
 
 func _on_died(_source_id: int) -> void:

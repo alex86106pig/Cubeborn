@@ -92,7 +92,9 @@ const ABILITIES := {
 # 已接上的條件、觸發 + 動作（v0.33.0 第一批 8 個道具，sim/item_effects.gd）；能力的二段跳在 Player.air_jumps
 const IMPLEMENTED_CONDITIONS: Array[StringName] = [&"target_full_hp", &"hp_below", &"after_kill", &"after_roll", &"per_kill_stack", &"from_elite"]
 const IMPLEMENTED_TRIGGERS: Array[String] = ["kill|explode", "kill|heal_max_hp", "hit|chain_lightning", "hit|poison", "hit|freeze",
-	"hurt_melee|reflect", "hurt|explode", "projectile_hit|explode", "hit|ignite"]
+	"hurt_melee|reflect", "hurt|explode", "projectile_hit|explode", "hit|ignite",
+	"attack|throw_knife", "attack|slash_wave", "interval|lightning_strike", "roll|slow_time"]
+const IMPLEMENTED_ABILITIES: Array[StringName] = [&"double_jump", &"bone_shield"]   # 二段跳在 Player.air_jumps，護盾在 ItemEffects.absorb
 
 # 觸發動作的數值（v0.33.0，說明沒寫到的由 Claude 暫定，試玩後再調）；damage_ratio 都是乘「觸發的那一下」的傷害
 # 同一種動作有多個道具時機率相加（最多 100%）、沒有機率的（回血）效果相加
@@ -106,6 +108,11 @@ const PROCS := {
 	&"reflect": {"color": Color("d0d0d0")},   # 荊棘鎖甲：反彈實際扣的血 × 道具的 ratio
 	&"hurt_explode": {"radius": 3.0, "icd": 0.5, "color": Color("ff5a3a")},   # 王墓之心：以自己為中心、扣護甲前的受傷量 × damage_ratio
 	&"ignite": {"pct_per_sec": 0.15, "duration": 3.0, "spread_interval": 1.0, "spread_range": 2.0},   # 永恆之焰：命中那一下 15% / 秒 × 3 秒（同火把）；每 1 秒傳給 2 單位內一隻
+	# 飛刀 / 斬波 / 落雷的傷害是手上武器基礎傷害的百分比（Player.pct_damage，含攻擊力與物理 / 魔法傷害）
+	&"throw_knife": {"icd": 0.3, "damage_pct": 0.6, "speed": 18.0, "range": 10.0, "radius": 0.2, "color": Color("c8d0dc"), "visual": &"arrow", "sfx": "arrowShot"},
+	&"slash_wave": {"icd": 0.3, "spread": 0.2618, "speed": 16.0, "range": 8.0, "radius": 0.45, "color": Color("b36bff"), "visual": &"orb", "sfx": "arcaneCast"},   # 穿透；spread 0.2618 = 15°
+	&"lightning_strike": {"range": 8.0, "targets": 3, "damage_pct": 1.5, "radius": 0.8, "color": Color("9fd8ff")},
+	&"slow_time": {"radius": 5.0, "boss_mul": 0.6, "color": Color("8fa8ff")},   # 一般怪移速與出招 × (1 − slow)，Boss × boss_mul
 }
 
 # kind：&"item" 道具 / &"weapon" 武器（weapon 對應 WeaponDefs，數值在那邊，這裡只放背包用的欄位）
@@ -266,8 +273,8 @@ static func stat_mods(id: StringName) -> Array:
 
 # 效果是否已接上遊戲
 static func is_implemented(effect: Dictionary) -> bool:
-	if effect.get("ability", &"") == &"double_jump":   # v0.27.0（Player.air_jumps）
-		return true
+	if effect.has("ability"):
+		return IMPLEMENTED_ABILITIES.has(effect.ability)
 	if effect.has("on"):
 		return IMPLEMENTED_TRIGGERS.has("%s|%s" % [effect.on, effect.do])
 	if effect.has("when") and not IMPLEMENTED_CONDITIONS.has(effect.when):

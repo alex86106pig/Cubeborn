@@ -423,6 +423,8 @@ func _process(delta: float) -> void:
 	_hp_ghost = maxf(ratio, _hp_ghost - delta * HP_GHOST_SPEED)
 	_set_bar(_hp, ratio, _hp_ghost)
 	_hp.text.text = "%s / %s" % [UiKit.hp_text(player.hp), UiKit.hp_text(player.max_hp)]
+	if player.shield >= 0.5:   # 骨製護盾（G4）：先用文字顯示
+		_hp.text.text += "  盾 %s" % UiKit.hp_text(player.shield)
 	var inst := player.active_weapon()
 	var other: Dictionary = player.weapon_slots[1 - player.active_slot]
 	_weapon.text = "武器：" + (WeaponDropDefs.display_name(inst) if not inst.is_empty() else player.weapon.name)

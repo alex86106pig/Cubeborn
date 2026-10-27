@@ -14,6 +14,7 @@ var hit_stop := 0.0
 var shake := 0.0
 var blockable := true           # 有方向的投射物預設能被格擋（B5）；爆炸一律不能
 var pierce := false            # 穿透（F5 長弓蓄力箭）：打中不消失，同一隻只打一次
+var proc := false              # 道具效果射出的（G4 飛刀、斬波）：不爆擊、不再觸發道具
 var _pierced := {}
 var damage_type := &"phys"     # 物理 / 魔法（F1）：決定看目標的護甲還是魔抗
 var no_stagger := false         # 打中不會讓怪物進入受擊硬直（v0.27.0：遠程武器的普攻）
@@ -50,6 +51,7 @@ func _init(p_world: World, p: Dictionary) -> void:
 	no_stagger = p.get("no_stagger", false)
 	damage_type = p.get("damage_type", &"phys")
 	pierce = p.get("pierce", false)
+	proc = p.get("proc", false)
 	start_altitude = p.get("altitude", owner.height + Config.HEIGHT.bolt_altitude)
 	settle_altitude = p.get("settle_altitude", 0.0)
 	settle_distance = p.get("settle_distance", 0.0)
@@ -119,7 +121,7 @@ func _hit_once(target: Entity) -> bool:
 	return Combat.apply_damage(world, _source(), target, {
 		"damage": damage, "knockback": knockback_force, "origin": pos - direction,
 		"hit_stop": hit_stop, "shake": shake, "band": band(), "blockable": blockable, "color": color,
-		"no_stagger": no_stagger, "damage_type": damage_type, "projectile": true,
+		"no_stagger": no_stagger, "damage_type": damage_type, "projectile": true, "proc": proc,
 	})
 
 

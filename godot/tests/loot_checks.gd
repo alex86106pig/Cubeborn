@@ -1016,6 +1016,113 @@ static func check_item_procs_g3() -> String:
 	return ""
 
 
+static func _item_projectiles(w: World) -> Array[Projectile]:
+	var out: Array[Projectile] = []
+	for e in w.projectiles:
+		if not e.is_removed and (e as Projectile).proc:
+			out.append(e as Projectile)
+	return out
+
+
+# 道具第二批 G4：普攻追加飛刀 / 斬波（內部冷卻）、每隔幾秒落雷、翻滾減速周圍的怪、自動回充的護盾
+static func check_item_actions_g4() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var idle := _cmd(Vector2.ZERO)
+	# 袖中飛刀疊到 100%：劍盾普攻出手就射出 1 把（proc、武器基礎傷害 × damage_pct）；內部冷卻內再出手不射
+	var kn: Dictionary = ItemDefs.PROCS.throw_knife
+	for i in _stacks_for_sure(&"sleeve_knife"):
+		p.add_item(&"sleeve_knife")
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), roundi(p.weapon.attack.windup / DT) + 2)
+	var knives := _item_projectiles(w)
+	if knives.size() != 1 or absf(knives[0].damage - p.pct_damage(kn.damage_pct)) > EPS or knives[0].pierce:
+		return "普攻出手應射 1 把飛刀（傷害 %.2f）：%d 把 %s" % [p.pct_damage(kn.damage_pct), knives.size(), knives.map(func(k: Projectile) -> float: return k.damage)]
+	ItemEffects.on_attack(w, p)
+	if _item_projectiles(w).size() != 1:
+		return "飛刀內部冷卻 %.1f 秒內不該再射" % kn.icd
+	p.clear_items()
+	w.clear()
+	# 裂空之刃：左右對稱 count 道穿透斬波，各 damage_ratio
+	w = _new_world()
+	p = _player(w)
+	var rb := _effect(&"rift_blade")
+	p.add_item(&"rift_blade")
+	p.aim_point = p.pos + Vector2(0, 5)
+	ItemEffects.on_attack(w, p)
+	var waves := _item_projectiles(w)
+	if waves.size() != rb.count:
+		return "裂空之刃應射出 %d 道斬波，實際 %d" % [rb.count, waves.size()]
+	var sw: Dictionary = ItemDefs.PROCS.slash_wave
+	for wv in waves:
+		var off := absf(MathUtil.wrap_angle(wv.facing - 0.0))
+		if not wv.pierce or absf(wv.damage - p.pct_damage(rb.damage_ratio)) > EPS or absf(off - sw.spread) > 0.01:
+			return "斬波應穿透、傷害 %.2f、偏 ±%.2f：穿透 %s、%.2f、偏 %.2f" % [p.pct_damage(rb.damage_ratio), sw.spread, wv.pierce, wv.damage, off]
+	w.clear()
+	# 雷霆鈴：每 period 秒打 range 內最近的 targets 隻，再遠的、第 targets + 1 近的不打
+	w = _new_world()
+	p = _player(w)
+	var bell := _effect(&"thunder_bell")
+	var ls: Dictionary = ItemDefs.PROCS.lightning_strike
+	p.add_item(&"thunder_bell")
+	var foes: Array[Enemy] = []
+	for i in ls.targets + 1:
+		foes.append(_item_dummy(w, Vector2(0, 2.0 + i)))
+	var far := _item_dummy(w, Vector2(0, ls.range + 4.0))
+	for e in foes:
+		e.dormant = true   # 不要走過來
+	far.dormant = true
+	_run(w, idle, roundi(bell.period / DT) - 5)
+	if foes.any(func(e: Enemy) -> bool: return e.hp < e.max_hp):
+		return "雷霆鈴 %.0f 秒前不該打" % bell.period
+	_run(w, idle, 10)
+	var struck := foes.map(func(e: Enemy) -> bool: return e.hp < e.max_hp)
+	var want_struck := []
+	for i in foes.size():
+		want_struck.append(i < ls.targets)
+	if struck != want_struck or far.hp < far.max_hp:
+		return "雷霆鈴應打最近的 %d 隻：%s、遠的 %s" % [ls.targets, struck, far.hp < far.max_hp]
+	w.clear()
+	# 停滯懷錶：翻滾時 radius 內的怪移速 × (1 − slow)、duration 秒後恢復；範圍外的不變
+	w = _new_world()
+	p = _player(w)
+	var watch := _effect(&"stasis_watch")
+	var st: Dictionary = ItemDefs.PROCS.slow_time
+	p.add_item(&"stasis_watch")
+	var near := _item_dummy(w, Vector2(0, st.radius * 0.5))
+	var away := _item_dummy(w, Vector2(0, -(st.radius + 4.0)))
+	var spd_near := near.speed
+	var spd_away := away.speed
+	_run(w, _cmd(Vector2(1, 0), Vector2(0, 5), InputCmd.BTN_ROLL), 1)
+	if absf(near.speed - spd_near * (1.0 - watch.slow)) > EPS or absf(away.speed - spd_away) > EPS:
+		return "停滯懷錶：近的移速應 %.2f、遠的 %.2f：%.2f / %.2f" % [spd_near * (1.0 - watch.slow), spd_away, near.speed, away.speed]
+	_run(w, idle, roundi(watch.duration / DT) + 2)
+	if absf(near.speed - spd_near) > EPS:
+		return "停滯懷錶 %.0f 秒後移速應恢復：%.2f / %.2f" % [watch.duration, near.speed, spd_near]
+	w.clear()
+	# 骨製護盾：盾量 = 最大生命 × ratio、先扣盾；recharge_delay 秒沒受傷才補滿
+	w = _new_world()
+	p = _player(w)
+	var bs := _effect(&"bone_buckler")
+	p.add_item(&"bone_buckler")
+	_run(w, idle, 1)
+	var cap: float = p.max_hp * bs.ratio
+	if absf(p.shield - cap) > EPS:
+		return "骨製護盾應有 %.1f，實際 %.1f" % [cap, p.shield]
+	var foe := _item_dummy(w, Vector2(0, 3))
+	foe.dormant = true   # 不要走過來打（會一直重設回充時間）
+	var hp0 := p.hp
+	Combat.apply_damage(w, foe, p, {"damage": 1.0})
+	if absf(p.hp - hp0) > EPS or p.shield >= cap - EPS:
+		return "小傷害應全部扣在盾上：生命 %.1f → %.1f、盾 %.1f" % [hp0, p.hp, p.shield]
+	_run(w, idle, roundi(bs.recharge_delay / DT) - 10)
+	if p.shield >= cap - EPS:
+		return "%.0f 秒內不該回充：盾 %.1f" % [bs.recharge_delay, p.shield]
+	_run(w, idle, 20)
+	if absf(p.shield - cap) > EPS:
+		return "%.0f 秒沒受傷應補滿 %.1f：%.1f" % [bs.recharge_delay, cap, p.shield]
+	return ""
+
+
 static func check_item_drop_pool() -> String:
 	var order: Array = ItemDefs.RARITIES.keys()
 	for r: StringName in ItemDefs.RARITIES:

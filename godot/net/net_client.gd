@@ -278,6 +278,7 @@ func _apply_own_authority(me: Player, a: Array) -> void:
 	me.net_sync_life(a[NetCodec.E_DEAD], extra[NetCodec.P_DOWNED], extra[NetCodec.P_DOWN_TIMER], extra[NetCodec.P_REVIVE])
 	me.parry_timer = maxf(me.parry_timer, extra[NetCodec.P_PARRY])
 	me.descended = extra[NetCodec.P_DESCENDED]
+	me.shield = (a[NetCodec.E_ANIM] as Dictionary).get("shield", 0.0) * me.max_hp   # 護盾以房主為準（G4）
 	if extra.size() > NetCodec.P_RELOAD:   # 箭袋以房主為準（只有拿著短弓才送）
 		me.quiver = extra[NetCodec.P_QUIVER]
 		me.reload_timer = extra[NetCodec.P_RELOAD]

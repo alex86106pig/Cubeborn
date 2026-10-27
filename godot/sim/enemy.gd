@@ -49,6 +49,8 @@ var burn_tick_damage := 0.0
 var burn_source_id := 0
 var _burn_tick := 0.0
 var burn_spread := false             # 會擴散的燃燒（G3 永恆之焰）
+var slow_timer := 0.0                # 被停滯懷錶減速（G4）剩餘秒數：移速（屬性來源 &"slow"）與狀態機時間都乘 slow_mul
+var slow_mul := 1.0
 var _spread_timer := 0.0
 const BURN_TICK := 0.5
 const BURN_COLOR := Color("ff8a30")
@@ -158,6 +160,7 @@ func update(dt: float) -> void:
 		return
 	_update_poison(dt)
 	_update_burn(dt)
+	_update_slow(dt)
 	if (frozen_timer > 0.0 or buried_timer > 0.0 or grabbed_by != 0) and not is_dead:
 		frozen_timer = maxf(0.0, frozen_timer - dt)
 		buried_timer = maxf(0.0, buried_timer - dt)
@@ -166,7 +169,7 @@ func update(dt: float) -> void:
 		return
 	_nav_timer -= dt
 	_update_affixes(dt)
-	fsm.update(dt * action_speed)
+	fsm.update(dt * action_speed * slow_mul)
 	_update_jump(dt)
 	_update_anim()
 
@@ -223,6 +226,25 @@ func _update_burn(dt: float) -> void:
 		Combat.apply_damage(world, src, self, hit)
 	if burn_timer <= 0.0:
 		burn_tick_damage = 0.0
+
+
+# 減速（G4 停滯懷錶）：一般怪 × (1 − slow)，Boss × PROCS.slow_time.boss_mul；再被減速取較長的時間、較慢的倍率
+func apply_slow(duration: float, slow: float) -> void:
+	if is_dead:
+		return
+	var mul: float = ItemDefs.PROCS.slow_time.boss_mul if is_boss() else 1.0 - slow
+	slow_mul = mul if slow_timer <= 0.0 else minf(slow_mul, mul)
+	slow_timer = maxf(slow_timer, duration)
+	set_stat_source(&"slow", [[&"move_speed", Stats.MUL, slow_mul]])
+
+
+func _update_slow(dt: float) -> void:
+	if slow_timer <= 0.0:
+		return
+	slow_timer -= dt
+	if slow_timer <= 0.0:
+		slow_mul = 1.0
+		remove_stat_source(&"slow")
 
 
 func _spread_burn() -> void:

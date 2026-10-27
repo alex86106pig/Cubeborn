@@ -52,6 +52,9 @@ var roll_timers: Dictionary = {}       # 道具 uid -> 「翻滾後幾秒」條�
 var proc_timers: Dictionary = {}       # 道具效果的內部冷卻：動作 / 屬性名稱 -> 剩下的秒數（ItemEffects.icd_ready）
 var cond_values: Dictionary = {}       # 條件加成目前套上的數值（「cond:uid」-> 數值），疊層變了才重設
 var floor_kills := 0                   # 本層擊殺數（G2 亡者之契；換層歸零）
+var interval_timers: Dictionary = {}   # 道具 uid -> 下次「每隔固定秒數」觸發還剩幾秒（G4 雷霆鈴）
+var shield := 0.0                      # 護盾剩多少（G4 骨製護盾，房主算；客戶端看快照的 anim.shield）
+var shield_delay := 0.0                # 還要幾秒沒受傷才回充
 var roll_charges := 0                  # 目前可用的翻滾次數（上限為 roll_charges 屬性）
 var dodge_timer := 0.0                 # 翻滾無敵剩餘秒數
 var block_time := -1.0                 # 格擋開始後經過的秒數；< 0 = 沒有在格擋（weapon_behaviors 的 ShieldBlock）
@@ -702,7 +705,12 @@ func _update_anim() -> void:
 		"stunned": stun_timer > 0.0,
 		"torch_stance": torch_stance,
 		"holding": held_enemy_id != 0,   # 鐵鏟舉著怪（F9）   # 舉著火把：全隊的視野都看得到周圍（F8，Vision.lights）
+		"shield": shield / max_hp if max_hp > 0.0 else 0.0,   # 護盾占最大生命的比例（G4；0 不進快照）
 	}
+
+
+func _absorb(amount: float) -> float:
+	return ItemEffects.absorb(self, amount)
 
 
 func _on_damaged(amount: float, _source_id: int) -> void:

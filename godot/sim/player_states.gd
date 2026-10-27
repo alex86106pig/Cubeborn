@@ -169,6 +169,9 @@ class TimedAction:
 	func _enter_phase(p: Player, data: Dictionary, index: int) -> void:
 		var name := PHASES[index]
 		data.behavior.phase(p, data.def, data, name)
+		# 普攻出手（G4 袖中飛刀、裂空之刃）：只算武器本身的左鍵（火把準備姿態、舉著怪時換掉的招式不算），只在權威端
+		if name == &"active" and kind == &"attack" and is_same(data.def, p.weapon.attack) and p.world.is_authority:
+			ItemEffects.on_attack(p.world, p)
 		if name == &"active":
 			var sfx: String = data.def.get("sfx_heavy", data.def.sfx) if data.get("is_finisher", false) else data.def.get("sfx", "")
 			if sfx != "":
@@ -199,6 +202,8 @@ class Roll:
 		p.has_forced_velocity = true
 		p.dodge_timer = Config.ROLL.invuln_time
 		p.consume_roll_charge()
+		if p.world.is_authority:
+			ItemEffects.on_roll(p.world, p)   # 停滯懷錶（G4）
 		p.world.emit_event("skill:used", {"key": Player.ROLL_CD, "player_id": p.id})
 		p.world.emit_event("sfx:cue", {"cue": Config.ROLL.sfx, "pos": p.pos})
 

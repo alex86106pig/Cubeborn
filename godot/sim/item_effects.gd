@@ -172,6 +172,82 @@ class Ignite extends Action:
 		(target as Enemy).apply_burn(p.id, damage * cfg.pct_per_sec * ItemEffects.stacks(proc), cfg.duration, proc.effect.get("spread", false))
 
 
+# 普攻時追加的投射物（G4 袖中飛刀、裂空之刃）：傷害是手上武器基礎傷害的百分比、proc（不爆擊、不觸發命中效果）；內部冷卻 icd
+static func _spawn_extra(world: World, p: Player, cfg: Dictionary, damage_pct: float, angles: Array[float], pierce: bool) -> void:
+	var dir := WeaponBehaviors.aim_direction(p)
+	var base := atan2(dir.x, dir.y)
+	for off in angles:
+		var d := MathUtil.dir_from_angle(base + off)
+		WeaponBehaviors.spawn_projectile(p, {
+			"pos": p.pos + d * 0.6, "direction": d, "speed": cfg.speed, "range": cfg.range, "radius": cfg.radius,
+			"damage": p.pct_damage(damage_pct), "damage_type": p.weapon.damage_type, "color": cfg.color,
+			"visual": cfg.visual, "no_stagger": true, "blockable": false, "pierce": pierce, "proc": true,
+		})
+	world.emit_event("sfx:cue", {"cue": cfg.sfx, "pos": p.pos})
+
+
+class ThrowKnife extends Action:
+	func triggers() -> Array[StringName]:
+		return [&"attack"]
+
+	func run(world: World, p: Player, _target: Entity, _damage: float, _proc: Dictionary) -> void:
+		if ItemEffects.icd_ready(p, &"throw_knife"):
+			var cfg: Dictionary = ItemDefs.PROCS.throw_knife
+			ItemEffects._spawn_extra(world, p, cfg, cfg.damage_pct, [0.0], false)
+
+
+class SlashWave extends Action:
+	func triggers() -> Array[StringName]:
+		return [&"attack"]
+
+	func run(world: World, p: Player, _target: Entity, _damage: float, proc: Dictionary) -> void:
+		if not ItemEffects.icd_ready(p, &"slash_wave"):
+			return
+		var cfg: Dictionary = ItemDefs.PROCS.slash_wave
+		var n: int = proc.effect.count * proc.count
+		var angles: Array[float] = []
+		for i in n:   # 左右對稱：2 道 = ±spread，4 道 = ±spread、±2 spread
+			angles.append(cfg.spread * (floori(i / 2.0) + 1) * (1 if i % 2 == 0 else -1))
+		ItemEffects._spawn_extra(world, p, cfg, proc.effect.damage_ratio, angles, true)
+
+
+# 每隔固定秒數（G4 雷霆鈴）：打 range 內最近的 targets 隻
+class LightningStrike extends Action:
+	func triggers() -> Array[StringName]:
+		return [&"interval"]
+
+	func run(world: World, p: Player, _target: Entity, _damage: float, _proc: Dictionary) -> void:
+		var cfg: Dictionary = ItemDefs.PROCS.lightning_strike
+		var near: Array[Entity] = []
+		for e in Combat.query_circle(p.pos, cfg.range, Combat.hostiles_of(world, p.team, p.id)):
+			if e is Enemy:   # 不打隊友
+				near.append(e)
+		near.sort_custom(func(a: Entity, b: Entity) -> bool: return a.pos.distance_squared_to(p.pos) < b.pos.distance_squared_to(p.pos))
+		if near.is_empty():
+			return
+		world.emit_event("sfx:cue", {"cue": "explosion", "pos": p.pos})
+		for e in near.slice(0, cfg.targets):
+			world.emit_event("fx:explosion", {"pos": e.pos, "height": e.ground_height, "radius": cfg.radius, "color": cfg.color})
+			var hit := ItemEffects.proc_hit(p.pct_damage(cfg.damage_pct), e, cfg.color)
+			hit["damage_type"] = &"magic"
+			hit["band"] = Vector2(e.height - 1.0, e.height + e.body_height + 1.0)   # 從天上打下來：不管高低差
+			Combat.apply_damage(world, p, e, hit)
+
+
+# 翻滾時（G4 停滯懷錶）：周圍 radius 內的怪移速與出招速度變慢
+class SlowTime extends Action:
+	func triggers() -> Array[StringName]:
+		return [&"roll"]
+
+	func run(world: World, p: Player, _target: Entity, _damage: float, proc: Dictionary) -> void:
+		var cfg: Dictionary = ItemDefs.PROCS.slow_time
+		world.emit_event("fx:telegraph", {"pos": p.pos, "height": p.ground_height, "radius": cfg.radius, "color": cfg.color,
+			"life": proc.effect.duration, "fill": true})
+		for e in world.enemies:
+			if not e.is_dead and e.pos.distance_to(p.pos) <= cfg.radius + e.radius:
+				(e as Enemy).apply_slow(proc.effect.duration, proc.effect.slow)
+
+
 # 回血：沒有機率，多個道具的比例相加（proc.count）
 class HealMaxHp extends Action:
 	func triggers() -> Array[StringName]:
@@ -200,6 +276,10 @@ static var ACTIONS := {
 	&"heal_max_hp": HealMaxHp.new(),
 	&"reflect": Reflect.new(),
 	&"ignite": Ignite.new(),
+	&"throw_knife": ThrowKnife.new(),
+	&"slash_wave": SlashWave.new(),
+	&"lightning_strike": LightningStrike.new(),
+	&"slow_time": SlowTime.new(),
 }
 
 
@@ -270,6 +350,9 @@ static func update_player(p: Player, dt: float) -> void:
 	_tick(p.kill_timers, dt)
 	_tick(p.roll_timers, dt)
 	_tick(p.proc_timers, dt)
+	if p.world.is_authority and not p.is_dead and not p.is_downed:
+		_update_intervals(p, dt)
+		_update_shield(p, dt)
 	for x in conditions_of(p):
 		var cond: Condition = x.condition
 		if not cond.per_step():
@@ -284,6 +367,63 @@ static func update_player(p: Player, dt: float) -> void:
 		elif p.stats.has_source(source):
 			p.remove_stat_source(source)
 			p.cond_values.erase(source)
+
+
+# 每隔固定秒數的觸發（G4 雷霆鈴）：每個道具自己一個計時（拿兩個 = 兩個各自打）；只在權威端
+static func _update_intervals(p: Player, dt: float) -> void:
+	for x in effects_of(p, "on", &"interval"):
+		var eff: Dictionary = x.effect
+		if not ItemDefs.is_implemented(eff):
+			continue
+		var t: float = p.interval_timers.get(x.uid, eff.period) - dt
+		if t <= 0.0:
+			t += eff.period
+			(ACTIONS[eff.do] as Action).run(p.world, p, null, 0.0, {"do": eff.do, "on": &"interval", "effect": eff, "chance": 1.0, "count": 1})
+		p.interval_timers[x.uid] = t
+
+
+# 自動回充的護盾（G4 骨製護盾）：盾量 = 最大生命 × 比例（拿兩個相加）；recharge_delay 秒沒受傷就一次補滿。只在權威端
+static func shield_info(p: Player) -> Vector2:
+	var ratio := 0.0
+	var delay := 0.0
+	for it: Dictionary in p.items:
+		for eff: Dictionary in ItemDefs.ITEMS[it.id].effects:
+			if eff.get("ability", &"") == &"bone_shield":
+				ratio += eff.ratio
+				delay = maxf(delay, eff.recharge_delay)
+	return Vector2(p.max_hp * ratio, delay)
+
+
+static func _update_shield(p: Player, dt: float) -> void:
+	var cap := shield_info(p).x
+	if cap <= 0.0:
+		p.shield = 0.0
+	elif p.shield_delay > 0.0:
+		p.shield_delay -= dt
+		p.shield = minf(p.shield, cap)
+	else:
+		p.shield = cap
+
+
+# 受到傷害時先扣盾（Player._absorb），回傳要扣血的部分；有護盾道具就重新計算回充時間
+static func absorb(p: Player, amount: float) -> float:
+	var info := shield_info(p)
+	if info.x <= 0.0:
+		return amount
+	p.shield_delay = info.y
+	var used := minf(p.shield, amount)
+	p.shield -= used
+	return amount - used
+
+
+# 普攻出手時（G4，TimedAction 進入 active、只在權威端）：袖中飛刀、裂空之刃
+static func on_attack(world: World, p: Player) -> void:
+	_run_procs(world, p, &"attack", null, 0.0)
+
+
+# 翻滾開始時（G4，Roll.enter、只在權威端）：停滯懷錶
+static func on_roll(world: World, p: Player) -> void:
+	_run_procs(world, p, &"roll", p, 0.0)
 
 
 # 計時表：每個 key 剩下的秒數，到 0 就移除
@@ -301,6 +441,7 @@ static func forget_item(p: Player, uid: StringName) -> void:
 	p.cond_values.erase(source)
 	p.kill_timers.erase(uid)
 	p.roll_timers.erase(uid)
+	p.interval_timers.erase(uid)
 
 
 # 翻滾結束時（Roll.exit）：「翻滾後幾秒」的條件開始計時
