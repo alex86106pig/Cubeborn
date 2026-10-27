@@ -20,7 +20,11 @@
 ## [未發布]
 
 ### 修復
-- **連線中卡一下就當掉**（2026-10-27 三人試玩：房主狂刷 `Buffer full! Dropping data.` 後 `function signature mismatch` 當掉、隊友玩到一半畫面卡住）：網頁版每條 WebRTC 資料通道的接收緩衝區預設只有 64 KB，房主每秒送 20 次 2~7 KB 的快照，任一邊卡超過約 1 秒就塞滿、開始丟資料（可靠通道也丟），狂刷錯誤後越卡越慢。專案設定 `network/limits/webrtc/max_channel_in_buffer_kb` 改 2048。本機網頁版兩個關掉背景降速的 Chrome 視窗實測（暫時開放網址參數開房 / 加入，沒有 commit；帶 100 隻怪、加入方卡住）：改前卡 1.5 秒丟 18 筆，改後卡 1.5 秒、5 秒都 0 筆，卡完回到 60 FPS；持續變慢（CPU 6 倍、25 FPS）本來就不會塞。檢查「桌面版 WebRTC」加上緩衝區至少 1024 KB。
+- **連線中卡一下就當掉**（2026-10-27 三人試玩：房主狂刷 `Buffer full! Dropping data.` 後 `function signature mismatch` 當掉、隊友玩到一半畫面卡住）：網頁版每條 WebRTC 資料通道的接收緩衝區預設只有 64 KB，房主每秒送 20 次 2~7 KB 的快照，任一邊卡超過約 1 秒就塞滿、開始丟資料（可靠通道也丟），狂刷錯誤後越卡越慢。專案設定 `network/limits/webrtc/max_channel_in_buffer_kb` 改 2048。本機網頁版兩個關掉背景降速的 Chrome 視窗實測（帶 100 隻怪、加入方卡住）：改前卡 1.5 秒丟 18 筆，改後卡 1.5 秒、5 秒都 0 筆，卡完回到 60 FPS；持續變慢（CPU 6 倍、25 FPS）本來就不會塞。檢查「桌面版 WebRTC」加上緩衝區至少 1024 KB。
+- **網頁版開場三行紅字**（`No GDExtension library found ... webrtc_native.gdextension`）：電腦版用的 webrtc-native 擴充被打包進網頁版，開場載入失敗（無害但每次都有，會混淆除錯）。原本靠 `.gdextension` 的 `exclude_tags` 排除，但 Godot 不認得這個欄位；改成 Web 匯出預設的 `exclude_filter` 加 `addons/webrtc_native/*`（Godot 匯出時擴充清單只留有匯出的擴充檔）。
+
+### 新增
+- 網頁版網址參數開放 `host` / `join` / `room` / `net-autostart`（使用者同意）：`?host&room&net-autostart=N` 開房、`?join=房號&room` 加入，多人自動測試用，之後可做邀請連結。檢查「網頁版網址參數」改成驗證會轉換。
 
 ## [0.48.2] - 2026-10-27
 

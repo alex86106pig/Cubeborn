@@ -451,8 +451,9 @@ static func _check_main_menu(hud: Variant) -> String:
 
 
 static func check_url_query_args() -> String:
-	var got: PackedStringArray = LaunchArgs.url_query_args("?horde=200&perf&seconds=20&player-hp=99999&host&join=1.2.3.4&elites=")
-	var want := PackedStringArray(["--horde=200", "--perf", "--seconds=20", "--player-hp=99999", "--elites"])
+	# 連線參數 2026-10-27 起開放（使用者同意：多人自動測試、之後的邀請連結）；不在清單的（--net-latency、--menu-flow）照樣不轉
+	var got: PackedStringArray = LaunchArgs.url_query_args("?horde=200&perf&seconds=20&player-hp=99999&host&join=ABCD&room&net-autostart=3&net-latency=100&menu-flow&elites=")
+	var want := PackedStringArray(["--horde=200", "--perf", "--seconds=20", "--player-hp=99999", "--host", "--join=ABCD", "--room", "--net-autostart=3", "--elites"])
 	if got != want:
 		return "轉換結果 %s，預期 %s" % [got, want]
 	if not LaunchArgs.url_query_args("").is_empty() or not LaunchArgs.url_query_args("?").is_empty():

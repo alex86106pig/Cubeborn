@@ -1,13 +1,12 @@
 ; Godot 官方 webrtc-native 1.2.2（https://github.com/godotengine/webrtc-native，MIT，授權見同資料夾 LICENSE.*）
 ; 讓桌面版也有 WebRTC：房號連線、和網頁版互連（v0.40.0）。repo 只留 Windows / Linux x86_64（Linux 給 CI 的 check.gd 用）；
 ; macOS 的 .framework 不進版控（.gitignore），只有 Mac 開發機要，各台照 docs/新電腦設定.md 自己下載；
-; 網頁版用瀏覽器內建的 WebRTC，匯出時排除（exclude_tags）
+; 網頁版用瀏覽器內建的 WebRTC：export_presets.cfg 的 Web 預設用 exclude_filter 排除 addons/webrtc_native/*
+; （Godot 不認得 exclude_tags；沒排除時網頁版開場會印三行「No GDExtension library found」紅字，2026-10-27 修）
 [configuration]
 
 entry_symbol = "webrtc_extension_init"
 compatibility_minimum = 4.3
-
-exclude_tags = ["web", "no-webrtc"]
 
 [libraries]
 
