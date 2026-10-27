@@ -33,8 +33,8 @@ func _init() -> void:
 	add_theme_constant_override(&"separation", 8)
 	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_status)
-	_address.custom_minimum_size = Vector2(220, UiKit.MENU_BUTTON.y)
-	_address.add_theme_font_size_override(&"font_size", UiKit.FONT_BODY)
+	_address.custom_minimum_size = Vector2(220, UiKit.BUTTON_M.size.y)
+	_address.add_theme_font_size_override(&"font_size", UiKit.BUTTON_M.font)
 	_connect_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	_connect_row.add_theme_constant_override(&"separation", 8)
 	for c: Control in [_host_button, _address, _join_button]:
@@ -134,9 +134,4 @@ static func _peer_name(peers: Array, id: int, local_peer: int, choices: Dictiona
 
 
 static func _button(text: String) -> Button:
-	var b := Button.new()
-	b.text = text
-	b.add_theme_font_size_override(&"font_size", UiKit.FONT_BODY)
-	b.custom_minimum_size = Vector2(200, UiKit.MENU_BUTTON.y)
-	b.focus_mode = Control.FOCUS_NONE
-	return b
+	return UiKit.button(text, UiKit.BUTTON_M)

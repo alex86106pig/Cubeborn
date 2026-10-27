@@ -270,6 +270,7 @@ godot/
 - GDScript 的 `const` Dictionary 不能放類別參照（會報 "isn't a constant expression"）：要用表對應類別時用 `match` 或 `static var`。
 - 每幀執行的程式避免配置新物件（重複使用 Dictionary / 陣列）；共用網格與材質，受擊閃白改材質參數，不在每次受擊時建立新材質。
 - 實體移除時從場景移除節點並釋放專屬資源。
+- **介面的按鈕與字級**（2026-10-27）：按鈕一律 `UiKit.button(文字, UiKit.BUTTON_L / BUTTON_M / BUTTON_S)`（選單 280×60 / 面板操作 200×52 / 一排很多顆 120×44），不自己 `Button.new()` 設大小與字；選單類畫面的文字用 `UiKit.FONT_TITLE / FONT_HEADING / FONT_BODY / FONT_NOTE`（52 / 32 / 28 / 20）。檢查「按鈕」會擋 `ui/` 裡的 `Button.new()`。
 
 ---
 

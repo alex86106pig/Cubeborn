@@ -147,7 +147,7 @@ static func _note(text: String) -> Label:
 
 
 static func _button(text: String) -> Button:
-	return UiKit.menu_button(text)
+	return UiKit.button(text)
 
 
 static func _spacer(h: float) -> Control:

@@ -67,7 +67,7 @@ var _game_over := ColorRect.new()
 var _game_over_title := UiKit.label("", 56, UiKit.ALERT, 3)
 var _game_over_stats := UiKit.label("", 20)
 var _game_over_log := UiKit.label("", 18, Color(1, 1, 1, 0.85))   # 遊玩紀錄（v0.34.0）
-var _copy_button := Button.new()   # 複製遊玩紀錄（RunLog.report_text）回報
+var _copy_button := UiKit.button("複製遊玩紀錄")   # 複製遊玩紀錄（RunLog.report_text）回報
 var _copy_note := UiKit.label("", 16, UiKit.GOLD)
 var last_report := ""              # 上次複製的文字（測試用）
 var run_log := RunLog.new()
@@ -76,12 +76,12 @@ var _floor_coins := 0               # 剛過關拿到的金幣：同一步的 fl
 var _pause := ColorRect.new()
 var _pause_title := UiKit.label("已暫停", UiKit.FONT_TITLE, Color.WHITE, 3)
 var _pause_hint := UiKit.label("按 Esc 繼續", UiKit.FONT_NOTE)
-var _quit_button := UiKit.menu_button("離開遊戲")
-var _title_button := UiKit.menu_button("回主選單")
+var _quit_button := UiKit.button("離開遊戲")
+var _title_button := UiKit.button("回主選單")
 var weapon_test_bar := HBoxContainer.new()   # 武器測試場：上方的武器按鈕列（只有在測試場才顯示）
 var _pause_net_slot := VBoxContainer.new()   # 暫停畫面放連線面板的位置（連線中顯示人數與離開連線）
-var _reset_hints_button := UiKit.menu_button("重新顯示提示")
-var _settings_button := UiKit.menu_button("設定")
+var _reset_hints_button := UiKit.button("重新顯示提示")
+var _settings_button := UiKit.button("設定")
 var settings_panel := SettingsPanel.new()   # 設定頁（2026-10-27）：主選單首頁與暫停畫面的「設定」打開
 var hints := Hints.new()   # 新手提示框（v0.31.0）
 var _loading := ColorRect.new()   # 開場預熱時蓋住畫面（v0.37.0）；底下先畫一次會用到的中文字，字形在這時候產生
@@ -266,11 +266,6 @@ func _init() -> void:
 	_banner.modulate.a = 0.0
 	root.add_child(_banner)
 
-	_copy_button.text = "複製遊玩紀錄"
-	_copy_button.add_theme_font_size_override(&"font_size", 20)
-	_copy_button.custom_minimum_size = Vector2(220, 44)
-	_copy_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_copy_button.focus_mode = Control.FOCUS_NONE
 	_copy_button.pressed.connect(copy_report)
 	_build_overlay(_game_over, Color(40 / 255.0, 0, 0, 0.55), [_game_over_title, _game_over_stats, _game_over_log, _copy_button, _copy_note, _pulse(UiKit.label("按 R 重新開始", 20))])
 	root.add_child(_game_over)
@@ -318,18 +313,7 @@ func set_loading(on: bool) -> void:
 
 # 武器測試場的按鈕（2026-10-27 使用者：原本 16 號字、高 36 太小不好點、底色淡得像文字）
 static func _test_button(text: String, on_pressed: Callable) -> Button:
-	var b := Button.new()
-	b.text = text
-	b.add_theme_font_size_override(&"font_size", 22)
-	b.custom_minimum_size = Vector2(110, 52)
-	b.focus_mode = Control.FOCUS_NONE
-	for state in [&"normal", &"hover", &"pressed"]:
-		var box := StyleBoxFlat.new()
-		box.bg_color = Color(0.12, 0.14, 0.2, 0.85) if state == &"normal" else (Color(0.22, 0.26, 0.36, 0.95) if state == &"hover" else Color(0.32, 0.38, 0.52, 1.0))
-		box.border_color = Color(1, 1, 1, 0.35)
-		box.set_border_width_all(2)
-		box.set_corner_radius_all(6)
-		b.add_theme_stylebox_override(state, box)
+	var b := UiKit.button(text, UiKit.BUTTON_S)
 	b.pressed.connect(on_pressed)
 	return b
 

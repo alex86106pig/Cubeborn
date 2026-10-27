@@ -19,7 +19,7 @@ const SWITCH_OFF_KNOB := Color(1, 1, 1, 0.65)
 static var _blank_icon: Texture2D   # 開關的透明占位圖示（_custom_switch）
 var save_path := "user://settings.cfg"   # 測試與自動驗證設成 "" 就不讀寫檔案
 var values := DEFAULTS.duplicate()
-var back_button := UiKit.menu_button("返回")
+var back_button := UiKit.button("返回")
 var toggles: Dictionary = {}   # "shadows" / "lights" → CheckButton
 var sliders: Dictionary = {}   # "master" / "music" / "sfx" → HSlider
 var _percent: Dictionary = {}  # 同上 → 百分比文字

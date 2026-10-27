@@ -477,6 +477,26 @@ static func _check_settings(hud: Variant, view: WorldView, snd: Variant, w: Worl
 	return ""
 
 
+# 按鈕標準化（2026-10-27）：ui/ 裡的按鈕都經過 UiKit.button（三種尺寸），不自己 Button.new()；三種尺寸各建一顆確認大小與字級
+static func check_buttons() -> String:
+	var dir := DirAccess.open("res://ui")
+	for file in dir.get_files():
+		if not file.ends_with(".gd") or file == "ui_kit.gd":
+			continue
+		var lines := FileAccess.get_file_as_string("res://ui/" + file).split("\n")
+		for i in lines.size():
+			var code := lines[i].get_slice("#", 0)
+			if RegEx.create_from_string("(?<![A-Za-z])Button\\.new\\(").search(code):
+				return "ui/%s:%d 自己建按鈕，改用 UiKit.button：%s" % [file, i + 1, lines[i].strip_edges()]
+	for kind: Dictionary in [UiKit.BUTTON_L, UiKit.BUTTON_M, UiKit.BUTTON_S]:
+		var b := UiKit.button("測試", kind)
+		var ok: bool = b.custom_minimum_size == kind.size and b.get_theme_font_size(&"font_size") == kind.font and b.has_theme_stylebox_override(&"normal")
+		b.free()
+		if not ok:
+			return "UiKit.button 的尺寸 / 字級 / 底框不對：%s" % kind
+	return ""
+
+
 static func check_run_log() -> String:
 	var w := _new_world(5)
 	var cam := Camera3D.new()

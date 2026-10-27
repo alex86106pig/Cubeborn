@@ -25,7 +25,12 @@ const FONT_TITLE := 52     # 頁面標題（已暫停、選擇職業、設定）
 const FONT_HEADING := 32   # 段落標題（畫面、音量）
 const FONT_BODY := 28      # 按鈕、選項、主要文字
 const FONT_NOTE := 20      # 說明、提示、版號
-const MENU_BUTTON := Vector2(280, 60)
+# 按鈕三種尺寸（2026-10-27 使用者：按鈕標準化）：UiKit.button(文字, UiKit.BUTTON_?)
+const BUTTON_L := {"size": Vector2(280, 60), "font": FONT_BODY}   # 選單：主選單、暫停畫面、設定頁、結算畫面
+const BUTTON_M := {"size": Vector2(200, 52), "font": 24}          # 面板裡的操作：連線面板（開房、加入、選職業、準備）
+const BUTTON_S := {"size": Vector2(120, 44), "font": FONT_NOTE}   # 一排很多顆的：武器測試場的武器列
+const BUTTON_BG := {&"normal": Color(0.12, 0.14, 0.2, 0.85), &"hover": Color(0.22, 0.26, 0.36, 0.95),
+	&"pressed": Color(0.32, 0.38, 0.52, 1.0), &"disabled": Color(0.1, 0.1, 0.12, 0.6)}
 
 
 static func label(text: String, size: int, color: Color = Color.WHITE, shadow_px: int = 2) -> Label:
@@ -40,14 +45,23 @@ static func label(text: String, size: int, color: Color = Color.WHITE, shadow_px
 	return l
 
 
-# 選單按鈕：FONT_BODY 字、MENU_BUTTON 大小、置中、不搶鍵盤焦點
-static func menu_button(text: String) -> Button:
+# 標準按鈕：kind 是 BUTTON_L / BUTTON_M / BUTTON_S；有底色與框（原本武器測試場的樣式，預設的太淡像文字）、置中、不搶鍵盤焦點
+static func button(text: String, kind: Dictionary = BUTTON_L) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.add_theme_font_size_override(&"font_size", FONT_BODY)
-	b.custom_minimum_size = MENU_BUTTON
+	b.add_theme_font_size_override(&"font_size", kind.font)
+	b.custom_minimum_size = kind.size
 	b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	b.focus_mode = Control.FOCUS_NONE
+	for state: StringName in BUTTON_BG:
+		var box := StyleBoxFlat.new()
+		box.bg_color = BUTTON_BG[state]
+		box.border_color = Color(1, 1, 1, 0.35 if state != &"disabled" else 0.15)
+		box.set_border_width_all(2)
+		box.set_corner_radius_all(6)
+		box.set_content_margin_all(8)
+		b.add_theme_stylebox_override(state, box)
+	b.add_theme_stylebox_override(&"hover_pressed", b.get_theme_stylebox(&"pressed"))
 	return b
 
 
