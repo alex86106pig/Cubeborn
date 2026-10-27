@@ -94,7 +94,7 @@ const IMPLEMENTED_CONDITIONS: Array[StringName] = [&"target_full_hp", &"hp_below
 const IMPLEMENTED_TRIGGERS: Array[String] = ["kill|explode", "kill|heal_max_hp", "hit|chain_lightning", "hit|poison", "hit|freeze",
 	"hurt_melee|reflect", "hurt|explode", "projectile_hit|explode", "hit|ignite",
 	"attack|throw_knife", "attack|slash_wave", "interval|lightning_strike", "roll|slow_time",
-	"lethal|cheat_death", "death|revive"]
+	"lethal|cheat_death", "death|revive", "kill|wisp", "kill|summon_skeleton"]
 const IMPLEMENTED_ABILITIES: Array[StringName] = [&"double_jump", &"bone_shield"]   # 二段跳在 Player.air_jumps，護盾在 ItemEffects.absorb
 
 # 觸發動作的數值（v0.33.0，說明沒寫到的由 Claude 暫定，試玩後再調）；damage_ratio 都是乘「觸發的那一下」的傷害
@@ -115,6 +115,9 @@ const PROCS := {
 	&"lightning_strike": {"range": 8.0, "targets": 3, "damage_pct": 1.5, "radius": 0.8, "color": Color("9fd8ff")},
 	&"slow_time": {"radius": 5.0, "boss_mul": 0.6, "color": Color("8fa8ff")},   # 一般怪移速與出招 × (1 − slow)，Boss × boss_mul
 	&"revive": {"hp_ratio": 0.5, "invuln": 2.0, "color": Color("ffe08a")},   # 復活十字；守護亡靈的無敵秒數在道具資料
+	# 鬼火燈籠：擊殺那一下的 80%；速度 8、飛 4 秒、每秒最多轉 4 弧度追 10 單位內最近的怪；每人同時最多 6 顆
+	&"wisp": {"damage_ratio": 0.8, "speed": 8.0, "life": 4.0, "turn_rate": 4.0, "seek_range": 10.0, "max": 6, "radius": 0.22, "color": Color("7dffb0")},
+	# 亡者大軍的骷髏僕從數值在 EnemyDefs.ENEMIES.minion
 }
 
 # kind：&"item" 道具 / &"weapon" 武器（weapon 對應 WeaponDefs，數值在那邊，這裡只放背包用的欄位）

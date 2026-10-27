@@ -11,7 +11,7 @@ enum { E_ID, E_KIND, E_X, E_Z, E_H, E_FACING, E_HP, E_MAX_HP, E_VX, E_VZ, E_FLAS
 enum { P_PEER, P_WEAPON, P_ROLLS, P_DOWNED, P_DOWN_TIMER, P_REVIVE, P_PARRY, P_DODGE, P_INV, P_SLOTS, P_ACTIVE, P_STUN, P_DESCENDED, P_QUIVER, P_RELOAD }
 # 寶箱的 E_EXTRA：[tier, opened]；地上道具：[item_id, 武器（WeaponDropDefs.to_array，不是武器為 []）, 屍體的主人 peer id]（D3 / D4 / D6）
 
-const ENEMY_KINDS: Array[StringName] = [&"grunt", &"archer", &"boss", &"ghost"]
+const ENEMY_KINDS: Array[StringName] = [&"grunt", &"archer", &"boss", &"ghost", &"minion"]
 # 動畫欄位名稱 → 索引（Player._update_anim、Enemy._update_anim、Boss._anim_extra）；不在表裡的照樣用字串送
 const ANIM_KEYS: Array[String] = [
 	"loco", "loco_time", "action", "action_time", "behavior", "phase", "k", "swing_dir", "is_finisher",
@@ -27,7 +27,7 @@ const PLAYER_ANIM_DEFAULTS := {
 }
 # 數值欄位 E_X ~ E_MAX_HP 用 float32；E_VX ~ E_INVULN 只給別人的實體外推與閃白，用 half（16 位元）
 # 二進位格式（v0.35.0）用的種類與常見名稱表：在表裡的送 1 byte 索引，不在表裡的照樣送字串（表只影響大小、不影響正確性）
-const KINDS: Array[StringName] = [&"player", &"grunt", &"archer", &"boss", &"ghost", &"chest", &"pickup", &"projectile", &"coin", &"torch"]
+const KINDS: Array[StringName] = [&"player", &"grunt", &"archer", &"boss", &"ghost", &"chest", &"pickup", &"projectile", &"coin", &"torch", &"minion"]
 const NAMES: Array[StringName] = [
 	&"idle", &"move", &"chase", &"kite", &"aim", &"attack", &"swing", &"cleave", &"slam", &"charge", &"rush", &"summon",
 	&"hurt", &"stagger", &"dead", &"dormant", &"spawn", &"climb", &"jump", &"stun", &"ready", &"special", &"roll", &"dig",
@@ -321,6 +321,8 @@ static func create_entity(world: World, a: Array) -> Entity:
 	elif kind in ENEMY_KINDS:
 		var enemy := Spawner.create(world, kind, at, WaveDefs.NO_SCALING)
 		enemy.stats.remove_source(&"wave")   # 最大生命直接用快照的數字
+		if kind == &"minion":
+			enemy.team = &"player"   # 骷髏僕從（G6）：客戶端的預測、頭頂血條顏色也要當成自己人
 		if extra.size() > 1:   # 稀有度只要外觀（體型、光、名字），數值以快照為準
 			enemy.set_rarity(StringName(extra[1]), (extra[2] as Array).map(func(id: String) -> StringName: return StringName(id)), extra[3])
 		world.add_enemy(enemy, a[E_ID])

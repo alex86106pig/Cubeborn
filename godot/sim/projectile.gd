@@ -15,6 +15,7 @@ var shake := 0.0
 var blockable := true           # 有方向的投射物預設能被格擋（B5）；爆炸一律不能
 var pierce := false            # 穿透（F5 長弓蓄力箭）：打中不消失，同一隻只打一次
 var proc := false              # 道具效果射出的（G4 飛刀、斬波）：不爆擊、不再觸發道具
+var homing := 0.0              # 追蹤（G6 鬼火）：每秒最多轉幾弧度、轉向 PROCS.wisp.seek_range 內最近的怪；0 = 直線
 var _pierced := {}
 var damage_type := &"phys"     # 物理 / 魔法（F1）：決定看目標的護甲還是魔抗
 var no_stagger := false         # 打中不會讓怪物進入受擊硬直（v0.27.0：遠程武器的普攻）
@@ -52,6 +53,7 @@ func _init(p_world: World, p: Dictionary) -> void:
 	damage_type = p.get("damage_type", &"phys")
 	pierce = p.get("pierce", false)
 	proc = p.get("proc", false)
+	homing = p.get("homing", 0.0)
 	start_altitude = p.get("altitude", owner.height + Config.HEIGHT.bolt_altitude)
 	settle_altitude = p.get("settle_altitude", 0.0)
 	settle_distance = p.get("settle_distance", 0.0)
@@ -68,6 +70,8 @@ func band() -> Vector2:
 func update(dt: float) -> void:
 	if is_removed:
 		return
+	if homing > 0.0:
+		_steer(dt)
 	var step_len := speed * dt
 	pos += direction * step_len
 	traveled += step_len
@@ -101,6 +105,22 @@ func update(dt: float) -> void:
 	var outside := absf(pos.x) > half.x or absf(pos.y) > half.y
 	if traveled >= range_ or outside:
 		_expire()
+
+
+func _steer(dt: float) -> void:
+	var best: Entity = null
+	var best_d: float = ItemDefs.PROCS.wisp.seek_range ** 2
+	for e in world.enemies:
+		if e.is_dead or e.team == team:
+			continue
+		var d := e.pos.distance_squared_to(pos)
+		if d < best_d:
+			best_d = d
+			best = e
+	if best == null:
+		return
+	facing = MathUtil.turn_towards(facing, MathUtil.angle_to(pos, best.pos), homing * dt)
+	direction = MathUtil.dir_from_angle(facing)
 
 
 # 發射者已被移除時，以投射物本身當傷害來源

@@ -136,6 +136,11 @@ func on_added() -> void:
 	pass
 
 
+# 近戰 AI 追的對象：一般怪是最近的玩家；玩家方的骷髏僕從（G6）覆寫成最近的怪
+func nearest_target() -> Entity:
+	return nearest_player()
+
+
 func nearest_player() -> Player:
 	var best: Player = null
 	var best_d := INF
@@ -255,7 +260,7 @@ func _spread_burn() -> void:
 	var best_d := INF
 	for e in world.enemies:
 		var en := e as Enemy
-		if en == self or en.is_dead or en.burn_timer > 0.0:
+		if en == self or en.is_dead or en.team != team or en.burn_timer > 0.0:
 			continue
 		var d := en.pos.distance_to(pos) - en.radius - radius
 		if d <= r and d < best_d:

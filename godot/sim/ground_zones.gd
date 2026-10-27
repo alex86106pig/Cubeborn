@@ -39,7 +39,7 @@ static func _tick(world: World, z: Dictionary) -> void:
 				world.emit_event("entity:healed", {"target_id": p.id, "amount": healed})
 	if z.get("damage_per_sec", 0.0) > 0.0 and owner != null:
 		for e in world.enemies:
-			if e.is_dead or e.pos.distance_to(z.pos) > z.radius + e.radius:
+			if e.is_dead or e.team == owner.team or e.pos.distance_to(z.pos) > z.radius + e.radius:
 				continue
 			Combat.apply_damage(world, owner, e, {
 				"damage": z.damage_per_sec * TICK_INTERVAL, "damage_type": z.damage_type, "proc": true, "no_stagger": true,

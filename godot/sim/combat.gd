@@ -3,14 +3,15 @@ class_name Combat
 
 
 # team 的敵對陣營中仍存活的實體；倒地的玩家不會被當成目標
-# 誤傷（Config.NET.friendly_fire）：玩家方的攻擊也會打到其他玩家，但不會打到出招者自己（source_id）
+# 誤傷（Config.NET.friendly_fire）：玩家的攻擊也會打到其他玩家，但不會打到出招者自己（source_id）
+# 骷髏僕從（G6）在 world.enemies 裡但隊伍是玩家方：玩家打不到它、它不打玩家；怪的攻擊打得到它
 static func hostiles_of(world: World, team: StringName, source_id: int = 0) -> Array[Entity]:
 	var out: Array[Entity] = []
+	for e in (world.enemies if team == &"player" else world.allies):
+		if not e.is_dead and e.team != team:
+			out.append(e)
 	if team == &"player":
-		for e in world.enemies:
-			if not e.is_dead:
-				out.append(e)
-		if Config.NET.friendly_fire:
+		if Config.NET.friendly_fire and world.entities.get(source_id) is Player:
 			for p in world.player_list:
 				if p.id != source_id and p.is_targetable():
 					out.append(p)

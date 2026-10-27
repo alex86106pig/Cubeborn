@@ -1184,6 +1184,70 @@ static func check_item_lifesaver_g5() -> String:
 	return ""
 
 
+# 道具第二批 G6：擊殺放追蹤鬼火、擊殺召喚玩家方的骷髏僕從
+static func check_item_summons_g6() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var idle := _cmd(Vector2.ZERO)
+	# 鬼火燈籠：擊殺時從屍體飛出 1 顆（擊殺那一下 × damage_ratio），會轉彎打到旁邊的怪；同時最多 max 顆
+	var wp: Dictionary = ItemDefs.PROCS.wisp
+	p.add_item(&"wisp_lantern")
+	var b := _item_dummy(w, Vector2(4, 6))
+	b.dormant = true
+	Combat.apply_damage(w, p, _item_dummy(w, Vector2(0, 6), 1.0), {"damage": 20.0})
+	var wisps := _item_projectiles(w).filter(func(x: Projectile) -> bool: return x.homing > 0.0)
+	if wisps.size() != 1 or absf(wisps[0].damage - 20.0 * wp.damage_ratio) > EPS:
+		return "擊殺應放出 1 顆鬼火（傷害 %.1f）：%s" % [20.0 * wp.damage_ratio, wisps.map(func(x: Projectile) -> float: return x.damage)]
+	_run(w, idle, roundi(wp.life / DT))
+	if b.hp >= b.max_hp:
+		return "鬼火應追到旁邊的怪"
+	for i in wp.max + 4:
+		Combat.apply_damage(w, p, _item_dummy(w, Vector2(-8, -8), 1.0), {"damage": 20.0})
+	var alive := _item_projectiles(w).filter(func(x: Projectile) -> bool: return x.homing > 0.0).size()
+	if alive != wp.max:
+		return "鬼火同時最多 %d 顆，實際 %d" % [wp.max, alive]
+	w.clear()
+	# 亡者大軍疊到 100%：擊殺召喚 1 隻玩家方的僕從；玩家打不到它、它打不到玩家、怪打得到它；會去打怪；最多 max 隻；life 秒後倒下、不給靈魂
+	w = _new_world()
+	p = _player(w)
+	var army := _effect(&"army_of_dead")
+	var md: Dictionary = EnemyDefs.ENEMIES.minion
+	for i in _stacks_for_sure(&"army_of_dead"):
+		p.add_item(&"army_of_dead")
+	Combat.apply_damage(w, p, _item_dummy(w, Vector2(0, 3), 1.0), {"damage": 20.0})
+	if w.allies.size() != 1 or not w.allies[0] is Minion or w.allies[0].team != &"player":
+		return "擊殺應召喚 1 隻玩家方的骷髏僕從：%d" % w.allies.size()
+	var m := w.allies[0] as Minion
+	if Combat.hostiles_of(w, &"player", p.id).has(m) or Combat.hostiles_of(w, m.team, m.id).has(p) or not Combat.hostiles_of(w, &"enemy").has(m):
+		return "僕從的敵我判斷不對：玩家打得到 %s、它打得到玩家 %s、怪打得到 %s" % [
+			Combat.hostiles_of(w, &"player", p.id).has(m), Combat.hostiles_of(w, m.team, m.id).has(p), Combat.hostiles_of(w, &"enemy").has(m)]
+	var foe := _item_dummy(w, Vector2(6, 3))
+	foe.dormant = false
+	foe.fsm.change(&"chase")
+	_run(w, idle, roundi(5.0 / DT))
+	if foe.hp >= foe.max_hp:
+		return "僕從 5 秒內應去打旁邊的怪（離 %.1f）" % m.pos.distance_to(foe.pos)
+	for i in army.max + 3:
+		Combat.apply_damage(w, p, _item_dummy(w, Vector2(-6, -6), 1.0), {"damage": 20.0})
+	var minions := w.allies.filter(func(e: Entity) -> bool: return not e.is_dead).size()
+	if minions != army.max:
+		return "僕從同時最多 %d 隻，實際 %d" % [army.max, minions]
+	# 快照鏡像：客戶端建出來的也是玩家方
+	var mirror := World.new(&"test_arena")
+	var copy := NetCodec.create_entity(mirror, NetCodec.entity_fields(m))
+	if copy.team != &"player" or not mirror.allies.has(copy):
+		return "客戶端的僕從鏡像應是玩家方：%s" % copy.team
+	mirror.clear()
+	var souls := w.souls
+	var kills: int = w.stats.kills
+	_run(w, idle, roundi(md.life / DT) + 10)
+	if w.allies.any(func(e: Entity) -> bool: return not e.is_dead and not e.is_removed):
+		return "僕從 %.0f 秒後應倒下" % md.life
+	if w.souls != souls or w.stats.kills != kills:
+		return "僕從倒下不該給靈魂、不算擊殺：靈魂 %d → %d、擊殺 %d → %d" % [souls, w.souls, kills, w.stats.kills]
+	return ""
+
+
 static func check_item_drop_pool() -> String:
 	var order: Array = ItemDefs.RARITIES.keys()
 	for r: StringName in ItemDefs.RARITIES:

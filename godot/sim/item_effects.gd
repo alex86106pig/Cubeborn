@@ -96,7 +96,7 @@ class ChainLightning extends Action:
 			var best: Entity = null
 			var best_d: float = cfg.jump_range * cfg.jump_range
 			for e in world.enemies:
-				if e.is_dead or hit_ids.has(e.id):
+				if e.is_dead or e.team == p.team or hit_ids.has(e.id):
 					continue
 				var d := e.pos.distance_squared_to(from.pos)
 				if d <= best_d:
@@ -244,8 +244,46 @@ class SlowTime extends Action:
 		world.emit_event("fx:telegraph", {"pos": p.pos, "height": p.ground_height, "radius": cfg.radius, "color": cfg.color,
 			"life": proc.effect.duration, "fill": true})
 		for e in world.enemies:
-			if not e.is_dead and e.pos.distance_to(p.pos) <= cfg.radius + e.radius:
+			if not e.is_dead and e.team != p.team and e.pos.distance_to(p.pos) <= cfg.radius + e.radius:
 				(e as Enemy).apply_slow(proc.effect.duration, proc.effect.slow)
+
+
+# 擊殺時放出追蹤鬼火（G6 鬼火燈籠）：從屍體飛出、轉向最近的怪，打擊殺那一下的 damage_ratio；每人同時最多 max 顆
+class Wisp extends Action:
+	func triggers() -> Array[StringName]:
+		return [&"kill"]
+
+	func run(world: World, p: Player, target: Entity, damage: float, proc: Dictionary) -> void:
+		var cfg: Dictionary = ItemDefs.PROCS.wisp
+		var alive := 0
+		for e in world.projectiles:
+			if not e.is_removed and (e as Projectile).homing > 0.0 and (e as Projectile).owner_id == p.id:
+				alive += 1
+		for i in mini(ItemEffects.stacks(proc), cfg.max - alive):
+			var a := world.rng.randf() * TAU
+			var params := {
+				"pos": target.pos, "direction": MathUtil.dir_from_angle(a), "speed": cfg.speed, "range": cfg.speed * cfg.life,
+				"radius": cfg.radius, "damage": damage * cfg.damage_ratio, "damage_type": &"magic", "color": cfg.color,
+				"no_stagger": true, "blockable": false, "proc": true, "homing": cfg.turn_rate,
+			}
+			WeaponBehaviors.spawn_projectile(p, params)
+
+
+# 擊殺時召喚骷髏僕從（G6 亡者大軍）：在屍體的位置爬出來；每人同時最多 max 隻
+class SummonSkeleton extends Action:
+	func triggers() -> Array[StringName]:
+		return [&"kill"]
+
+	func run(world: World, p: Player, target: Entity, _damage: float, proc: Dictionary) -> void:
+		var alive := 0
+		for e in world.allies:
+			if not e.is_dead and e is Minion and (e as Minion).owner_id == p.id:
+				alive += 1
+		if alive >= proc.effect.max:
+			return
+		var m := Minion.new(world, world.nav.nearest_walkable(target.pos), p)
+		world.add_enemy(m)
+		world.emit_event("sfx:cue", {"cue": "enemySpawn", "pos": m.pos})
 
 
 # 受到致命傷害時留 1 血並無敵（G5 守護亡靈）；次數由 on_lethal 管
@@ -307,6 +345,8 @@ static var ACTIONS := {
 	&"slow_time": SlowTime.new(),
 	&"cheat_death": CheatDeath.new(),
 	&"revive": Revive.new(),
+	&"wisp": Wisp.new(),
+	&"summon_skeleton": SummonSkeleton.new(),
 }
 
 

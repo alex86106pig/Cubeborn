@@ -48,7 +48,7 @@ func bars() -> Array[Dictionary]:
 	for e: Entity in world.enemies:
 		if e is Boss:
 			continue
-		_add(out, me, e, e.body_height + WorldLabels.ENEMY_OFFSET, ENEMY_GAP, ENEMY_SIZE, ENEMY_FILL)
+		_add(out, me, e, e.body_height + WorldLabels.ENEMY_OFFSET, ENEMY_GAP, ENEMY_SIZE, PLAYER_FILL if e.team == &"player" else ENEMY_FILL)   # 骷髏僕從（G6）綠色
 	return out
 
 

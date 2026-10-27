@@ -342,7 +342,7 @@ class ShovelGrab extends Behavior:
 		var best_d := INF
 		for e in p.world.enemies:
 			var en := e as Enemy
-			if en == null or en.is_dead or en.is_boss() or en.grabbed_by != 0 or en.buried_timer > 0.0:
+			if en == null or en.is_dead or en.team == p.team or en.is_boss() or en.grabbed_by != 0 or en.buried_timer > 0.0:
 				continue
 			var d := en.pos.distance_to(p.pos) - en.radius - p.radius
 			var ahead := WeaponBehaviors.forward(p).dot((en.pos - p.pos).normalized()) > 0.3
@@ -376,7 +376,7 @@ class ShovelThrow extends Behavior:
 			travel += step
 			land = nxt
 		for e in p.world.enemies:
-			if e == held or e.is_dead:
+			if e == held or e.is_dead or e.team == p.team:
 				continue
 			var t := clampf((e.pos - start).dot(dir), 0.0, travel)
 			if (start + dir * t).distance_to(e.pos) <= def.path_width + e.radius:

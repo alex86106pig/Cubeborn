@@ -150,6 +150,33 @@ const ENEMIES := {
 			"damage": 14.0, "knockback": 10.0, "blockable": true,
 		},
 	},
+
+	# 骷髏僕從（G6 亡者大軍，數值 Claude 暫定）：玩家方的骷髏戰士（sim/enemies/minion.gd），打怪、不打玩家，life 秒後消失
+	# 不給靈魂、不掉金幣與武器（LootDefs / WeaponDropDefs 沒有它）；畫面是染綠的骷髏戰士
+	&"minion": {
+		"visual": &"melee",
+		"behavior": &"melee",
+		"max_hp": 60.0,
+		"move_speed": 4.5,
+		"speed_variance": 0.0,
+		"turn_speed": 8.0,
+		"radius": 0.4,
+		"mass": 1.0,
+		"hurt_time": 0.15,
+		"spawn_time": 0.5,
+		"corpse_time": 0.8,
+		"life": 20.0,            # 存在秒數
+		"seek_range": 12.0,      # 找多遠內的怪；沒有就跟著召喚者
+		"follow_distance": 2.5,  # 跟著召喚者時離多遠就停
+		"swing": {
+			"trigger_distance": 1.3, "windup": 0.35, "track": 0.5, "active": 0.1, "recovery": 0.35,
+			"range": 1.5, "arc": PI * 100.0 / 180.0, "damage": 8.0, "knockback": 6.0, "cooldown": 0.9, "blockable": false,
+		},
+		"rush": {
+			"windup": 0.5, "speed": 11.0, "duration": 0.5, "recovery": 0.5, "hit_reach": 0.3,
+			"damage": 8.0, "knockback": 6.0, "blockable": false,
+		},
+	},
 }
 
 

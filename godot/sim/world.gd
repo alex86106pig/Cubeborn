@@ -15,6 +15,7 @@ var players: Dictionary = {}         # peer_id -> Player
 var player_classes: Dictionary = {}  # peer id → 職業（F2，ClassDefs）；reset 不清，重新開始照舊
 var player_list: Array[Player] = []  # 同 players.values()（加入順序），每步大量查詢時不必每次配置新陣列（D5）
 var enemies: Array[Entity] = []
+var allies: Array[Entity] = []       # enemies 裡隊伍是玩家方的（G6 骷髏僕從）：怪的攻擊只要多看這幾隻，不必掃全部 enemies
 var projectiles: Array[Entity] = []
 var torches: Array[Entity] = []     # 插在地上的火把（F8，sim/torch.gd）
 var zones: Array[Dictionary] = []   # 地上的持續區域（F7 聖光圈，GroundZones）
@@ -224,6 +225,7 @@ func clear() -> void:
 	players.clear()
 	player_list.clear()
 	enemies.clear()
+	allies.clear()
 	projectiles.clear()
 	torches.clear()
 	zones.clear()
@@ -259,6 +261,8 @@ func add_enemy(e: Enemy, p_id: int = 0) -> Enemy:
 	else:
 		add_entity(e)
 	enemies.append(e)
+	if e.team == &"player":
+		allies.append(e)
 	if e.is_boss():
 		boss_id = e.id
 	return e
@@ -282,6 +286,8 @@ func first_alive_player() -> Player:
 
 # killer_id：打死牠的實體（投射物算發射者）；是玩家時套他的靈魂道具（G1 錢袋、G2 貪婪之手），多給的小數累積到湊滿 1
 func on_enemy_died(e: Enemy, killer_id: int = 0) -> void:
+	if e.team == &"player":
+		return   # 骷髏僕從（G6）倒下：不算擊殺、不給東西
 	stats.kills += 1
 	var g := 0 if e.no_souls else roundi(LootDefs.KILL_SOULS.get(e.type, 0) * LootDefs.player_mul(player_list.size()))
 	var killer: Entity = entities.get(killer_id)
@@ -626,6 +632,8 @@ func _remove_dead_entities() -> void:
 				players.erase(e.peer_id)
 				player_list.erase(e)
 	enemies.assign(enemies.filter(func(e: Entity) -> bool: return not e.is_removed))
+	if not allies.is_empty():
+		allies.assign(allies.filter(func(e: Entity) -> bool: return not e.is_removed))
 	projectiles.assign(projectiles.filter(func(e: Entity) -> bool: return not e.is_removed))
 	pickups.assign(pickups.filter(func(e: Entity) -> bool: return not e.is_removed))
 	coins.assign(coins.filter(func(e: Entity) -> bool: return not e.is_removed))

@@ -28,7 +28,7 @@ func _can_jump() -> bool:
 
 class Chase:
 	func update(e: MeleeEnemy, dt: float, fsm: StateMachine) -> void:
-		var target := e.nearest_player()
+		var target: Entity = e.nearest_target()
 		if target == null:
 			e.velocity = Vector2.ZERO
 			return
@@ -55,7 +55,7 @@ class Swing:
 		var s: Dictionary = e.def.swing
 		var t := fsm.time
 		e.velocity = Vector2.ZERO
-		var target := e.nearest_player()
+		var target: Entity = e.nearest_target()
 		if t < s.windup * s.track and target != null:
 			e.facing = MathUtil.turn_towards(e.facing, MathUtil.angle_to(e.pos, target.pos), e.def.turn_speed * dt)
 		if t >= s.windup and t < s.windup + s.active:
@@ -70,7 +70,7 @@ class Swing:
 class Rush:
 	func enter(e: MeleeEnemy, data: Dictionary, _fsm: StateMachine) -> void:
 		e.velocity = Vector2.ZERO
-		var target := e.nearest_player()
+		var target: Entity = e.nearest_target()
 		if target != null:
 			e.facing = MathUtil.angle_to(e.pos, target.pos)
 		data.dir = MathUtil.dir_from_angle(e.facing)

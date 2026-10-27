@@ -21,6 +21,7 @@ const EXIT_COLOR := Color("8fd0ff")
 const CHEST_LID_OPEN := -1.9                # 寶箱打開時箱蓋往後翻的角度（弧度）
 const GHOST_TINT := Color(0.55, 0.8, 1.0)   # 冤魂（D6）的顏色與透明度
 const GHOST_TRANSPARENCY := 0.45
+const MINION_TINT := Color(0.55, 1.0, 0.6)   # 骷髏僕從（G6）的顏色
 const FROZEN_TINT := Color(0.35, 0.75, 1.8)   # 道具狀態（v0.33.0）：冰凍偏藍、中毒偏綠（乘在模型顏色上；場景偏暗，要染重一點才看得出來）
 const POISON_TINT := Color(0.4, 1.5, 0.3)
 const SHADOW_MAX_DISTANCE := 70.0  # 陰影範圍（從相機算；相機距離 40，畫面最遠的地面約 60）
@@ -680,7 +681,7 @@ func warm_up(center: Vector3) -> void:
 	tw.spawner.finished = true
 	var c := Vector2(center.x, center.z)
 	var ents: Array[Entity] = [tw.players[World.HOST_PEER_ID]]
-	for kind: StringName in [&"grunt", &"archer", &"boss", &"ghost"]:
+	for kind: StringName in [&"grunt", &"archer", &"boss", &"ghost", &"minion"]:
 		ents.append(tw.spawner.spawn_at(tw, kind, c))
 	for rarity: StringName in [MonsterRarityDefs.MAGIC, MonsterRarityDefs.RARE]:
 		var e := tw.spawner.spawn_at(tw, &"grunt", c)
@@ -798,7 +799,7 @@ func _create_view(e: Entity) -> Node3D:
 			glow.visible = false
 			rig.hand_r.add_child(glow)
 			root.set_meta(&"glow", glow)
-		&"grunt", &"archer", &"boss", &"ghost":
+		&"grunt", &"archer", &"boss", &"ghost", &"minion":
 			# 小怪用蒙皮版本（D5 效能：每隻 1~2 次繪製）；Boss 只有一隻，照舊用關節節點
 			# 冤魂（D6）：半透明的騎士（玩家的模型，不拿武器）
 			var rig: Node3D
@@ -807,6 +808,9 @@ func _create_view(e: Entity) -> Node3D:
 			elif e.kind == &"ghost":
 				rig = DarkFantasy.skinned_character(&"player")
 				(rig as SkinnedRig).set_ghost(GHOST_TINT, GHOST_TRANSPARENCY)
+			elif e.kind == &"minion":   # 骷髏僕從（G6）：染綠的骷髏戰士（不透明）
+				rig = DarkFantasy.skinned_character(&"grunt")
+				(rig as SkinnedRig).set_ghost(MINION_TINT, 0.0)
 			else:
 				rig = DarkFantasy.skinned_character(e.kind)
 			_animators[e.id] = EnemyAnimator.new(rig, e as Enemy)
