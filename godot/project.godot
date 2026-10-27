@@ -29,6 +29,10 @@ window/stretch/aspect="expand"
 
 theme/custom_font="res://assets/fonts/hud_font.tres"
 
+[network]
+
+limits/webrtc/max_channel_in_buffer_kb=2048
+
 [physics]
 
 common/max_physics_steps_per_frame=5

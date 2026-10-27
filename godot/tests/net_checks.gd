@@ -617,6 +617,11 @@ static func check_web_signaling() -> String:
 # 桌面版 WebRTC（v0.40.0，webrtc-native）：同一程序裡兩條 WebRTCPeerConnection 直接交換 SDP / 候選位址（不經配對伺服器），
 # 用和 NetSession 相同的設定建房主 / 客戶端，連上後房主送的封包客戶端收得到
 static func check_desktop_webrtc(feel: Array[String]) -> String:
+	# 網頁版每條資料通道的接收緩衝區（2026-10-27）：預設 64 KB，對方卡 1 秒多就塞滿、開始丟資料（含可靠通道），
+	# 狂刷「Buffer full」後當掉；2048 KB 實測卡 5 秒也 0 次（docs/系統說明.md §8）
+	var in_kb: int = ProjectSettings.get_setting("network/limits/webrtc/max_channel_in_buffer_kb", 64)
+	if in_kb < 1024:
+		return "網頁版 WebRTC 接收緩衝區 %d KB，至少要 1024（卡一下就會丟資料）" % in_kb
 	var server := WebRTCMultiplayerPeer.new()
 	var client := WebRTCMultiplayerPeer.new()
 	var channels := [MultiplayerPeer.TRANSFER_MODE_UNRELIABLE]

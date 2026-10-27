@@ -201,7 +201,7 @@ func _initialize() -> void:
 	_check("快照：房主的實體序列化後客戶端建立同樣類別、位置、血量、武器的鏡像、動畫狀態相同時數值補間；地圖 A 怪群 + 4 人、P2 被 30 隻圍住時每份快照 ≤ 4 KB",
 		all.bind([NetChecks.check_codec, NetChecks.check_snapshot_size.bind(feel)]))
 	_check("網頁連線配對（v0.36.0）：PeerJS 網址、房主 ID、房號（4 碼、不含易混字）、訊息格式、伺服器訊息對應的訊號；桌面版 IP 與房號兩種都能用", NetChecks.check_web_signaling)
-	_check("桌面版 WebRTC（v0.40.0）：同一程序兩條連線交換 SDP，照 NetSession 的設定建房主 / 客戶端，5 秒內連上且封包收得到", NetChecks.check_desktop_webrtc.bind(feel))
+	_check("桌面版 WebRTC（v0.40.0）：同一程序兩條連線交換 SDP，照 NetSession 的設定建房主 / 客戶端，5 秒內連上且封包收得到；網頁版接收緩衝區至少 1024 KB", NetChecks.check_desktop_webrtc.bind(feel))
 	_check("誤傷（C2）：玩家揮劍打得到前方的隊友、打不到自己；魔彈打得到隊友、不打發射者；單機目標不含自己", NetChecks.check_friendly_fire)
 	_check("人數調整（C3）：敵人數量不變、血量每多 1 人 +50%（Boss 也是）", NetChecks.check_player_count_scaling)
 	_check("倒下與救援（C4）：多人時生命歸零先倒地假死、down_time 秒沒人救才死亡、最後一人倒下 game:defeat、單機直接死亡；範圍內按住 F 累積 revive_time 秒救起、期間不能動但會轉向、放開進度衰退、救起 revive_hp_ratio 的血",
