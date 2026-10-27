@@ -523,7 +523,8 @@ static func check_buttons() -> String:
 
 # 選單在介面大小最大檔時能用的大小（16:9）
 static func _menu_room() -> Vector2:
-	return Vector2(1920.0, 1080.0) / (SettingsPanel.UI_SCALES.max() * SettingsPanel.BASE_UI_SCALE)
+	var base := Vector2(ProjectSettings.get_setting("display/window/size/viewport_width"), ProjectSettings.get_setting("display/window/size/viewport_height"))
+	return base / (SettingsPanel.UI_SCALES.max() * SettingsPanel.BASE_UI_SCALE)
 
 
 static func check_run_log() -> String:
