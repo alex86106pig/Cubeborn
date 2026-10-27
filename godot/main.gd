@@ -590,7 +590,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_emit_muted()
 	elif event.is_action_pressed(&"debug_hitbox"):
 		world_view.show_hitboxes = not world_view.show_hitboxes
-	elif event.is_action_pressed(&"stats_panel"):
+	elif event.is_action_pressed(&"stats_panel") and not (is_paused or is_menu_open):   # 暫停 / 選單開著時不開關（2026-10-27 使用者回報）
 		# Tab 同時開關背包與屬性面板（v0.27.0 使用者決定，取代 I）；開著時不暫停、角色照常移動，滑鼠只給背包用
 		hud.toggle_stats_panel()
 		hud.inventory_panel.visible = hud.is_stats_panel_open()

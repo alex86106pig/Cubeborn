@@ -13,6 +13,9 @@
 - **按鈕標準化**（使用者要求）：`UiKit.button(文字, 尺寸)` 三種尺寸——`BUTTON_L` 選單 280×60 / 28 號字（主選單、暫停畫面、設定頁、結算畫面）、`BUTTON_M` 面板操作 200×52 / 24（連線面板）、`BUTTON_S` 一排很多顆 120×44 / 20（武器測試場）；全部用武器測試場原本那種有底色與框的樣式（預設的太淡像文字）。新增檢查「按鈕」擋 `ui/` 裡自己 `Button.new()`；規則寫進 `PROJECT_GUIDELINES.md` 第 10 節。
 - 新增檢查「設定頁」，「遊玩紀錄」加上顯示卡、設定分組、最慢一幀狀況。
 
+### 修復
+- 暫停畫面 / 連線時的 Esc 選單開著時，Tab 還能開關背包（`main._unhandled_input` 沒判斷）；現在選單開著時 Tab 不作用。
+
 ### 文件
 - 查證：Godot 相容渲染器（網頁版）沒開影子的點光源全部在同一次繪製裡算（`drivers/gles3/rasterizer_scene_gles3.cpp`：`Lights without shadow can all go in base pass`，每個物件最多 8 盞），**不是**每多一盞就多畫一次；開影子的光（太陽）才讓每個模型多畫一次。`docs/效能.md`「網頁版」記下。
 
