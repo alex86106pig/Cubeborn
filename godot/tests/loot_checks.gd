@@ -787,6 +787,155 @@ static func check_item_procs() -> String:
 	return ""
 
 
+# 道具第二批 G1：屬性類道具接到各系統（命中回復、吸血、投射物減傷、靈魂、祭壇價格、撿取範圍、視野）
+static func check_item_stats() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var idle := _cmd(Vector2.ZERO)
+	# 蝙蝠牙：同一步打兩下只回一次（內部冷卻），冷卻過了再回
+	var loh := _effect_value(&"bat_fang", &"life_on_hit")
+	p.add_item(&"bat_fang")
+	p.hp = 50.0
+	var a := _item_dummy(w, Vector2(0, 3))
+	Combat.apply_damage(w, p, a, {"damage": 10.0})
+	Combat.apply_damage(w, p, a, {"damage": 10.0})
+	if absf(p.hp - (50.0 + loh)) > EPS:
+		return "蝙蝠牙同一步打兩下應只回 %.0f：生命 %.1f" % [loh, p.hp]
+	_run(w, idle, ceili(ItemDefs.PROCS.life_on_hit.icd / DT) + 1)
+	Combat.apply_damage(w, p, a, {"damage": 10.0})
+	if absf(p.hp - (50.0 + loh * 2.0)) > EPS:
+		return "蝙蝠牙冷卻過後應再回 %.0f：生命 %.1f" % [loh, p.hp]
+	p.clear_items()
+	# 血族王冠：實際扣血的比例；道具效果（proc）的傷害不算
+	var ls := _effect_value(&"blood_crown", &"lifesteal")
+	p.add_item(&"blood_crown")
+	p.hp = 50.0
+	var before := a.hp
+	Combat.apply_damage(w, p, a, {"damage": 40.0})
+	var want_hp := 50.0 + (before - a.hp) * ls
+	if absf(p.hp - want_hp) > EPS:
+		return "血族王冠應回到 %.2f：%.2f" % [want_hp, p.hp]
+	Combat.apply_damage(w, p, a, ItemEffects.proc_hit(40.0, a, Color.WHITE))
+	if absf(p.hp - want_hp) > EPS:
+		return "道具效果的傷害不該吸血：%.2f → %.2f" % [want_hp, p.hp]
+	p.clear_items()
+	# 鐵皮斗篷：投射物的傷害 × projectile_damage_taken，近戰照常
+	var archer := _item_dummy(w, Vector2(5, 0))
+	p.hp = p.max_hp
+	Combat.apply_damage(w, archer, p, {"damage": 20.0, "projectile": true})
+	var plain := p.max_hp - p.hp
+	p.add_item(&"iron_cloak")
+	p.hp = p.max_hp
+	p.invuln_timer = 0.0   # 受傷後的無敵時間
+	Combat.apply_damage(w, archer, p, {"damage": 20.0, "projectile": true})
+	var cloaked := p.max_hp - p.hp
+	var mul := _effect_value(&"iron_cloak", &"projectile_damage_taken")
+	if absf(cloaked - plain * mul) > 0.01:
+		return "鐵皮斗篷：投射物 %.2f × %.2f 應為 %.2f，實際 %.2f" % [plain, mul, plain * mul, cloaked]
+	p.hp = p.max_hp
+	p.invuln_timer = 0.0
+	Combat.apply_damage(w, archer, p, {"damage": 20.0})
+	if absf((p.max_hp - p.hp) - plain) > 0.01:
+		return "鐵皮斗篷不該減近戰傷害：%.2f / %.2f" % [p.max_hp - p.hp, plain]
+	p.clear_items()
+	# 盜墓者錢袋：擊殺者的靈魂獲得，小數累積；貪婪之手：精英怪（魔法 / 稀有）再 ×2，普通怪不變
+	var base := roundi(LootDefs.KILL_SOULS[&"grunt"] * LootDefs.player_mul(1))
+	var gain := _effect_value(&"grave_purse", &"soul_gain")
+	p.add_item(&"grave_purse")
+	w.souls = 0
+	var kills := 20
+	for i in kills:
+		Combat.apply_damage(w, p, _item_dummy(w, Vector2(0, 3), 1.0), {"damage": 10.0})
+	var want_souls := kills * base * (1.0 + gain)
+	if absf(w.souls - want_souls) > 1.0:
+		return "盜墓者錢袋殺 %d 隻應得約 %.1f 靈魂，實際 %d" % [kills, want_souls, w.souls]
+	p.clear_items()
+	p.add_item(&"greedy_hand")
+	w.souls = 0
+	w.soul_carry = 0.0
+	Combat.apply_damage(w, p, _item_dummy(w, Vector2(0, 3), 1.0), {"damage": 10.0})
+	var elite := _item_dummy(w, Vector2(0, 3), 1.0)
+	elite.set_rarity(MonsterRarityDefs.MAGIC, [])
+	Combat.apply_damage(w, p, elite, {"damage": 10.0})
+	var greed: float = _effect(&"greedy_hand").value
+	if w.souls != base + roundi(base * greed):
+		return "貪婪之手：普通 %d + 精英 %d 應為 %d，實際 %d" % [base, roundi(base * greed), base + roundi(base * greed), w.souls]
+	p.clear_items()
+	# 撬鎖工具：開的人的價格 × chest_price；靈魂剛好夠打折價就開得了
+	var chest := Chest.new(w, &"small", Vector2(0, 2))
+	w.add_entity(chest)
+	p.add_item(&"lockpick")
+	var cost := chest.price_for(p)
+	if cost != roundi(chest.price() * _effect_value(&"lockpick", &"chest_price")) or cost >= chest.price():
+		return "撬鎖工具：原價 %d 應打折，實際 %d" % [chest.price(), cost]
+	w.souls = cost
+	if not chest.try_open(p) or w.souls != 0:
+		return "靈魂剛好 %d 應開得了並扣光：剩 %d" % [cost, w.souls]
+	p.clear_items()
+	# 磁石：F 的距離與自動撿金幣的距離都乘 pickup_radius
+	p.pos = Vector2(12, -12)   # 離開剛剛祭壇掉的道具
+	var reach := _effect_value(&"lodestone", &"pickup_radius")
+	var far := LootDefs.INTERACT_RANGE * (1.0 + reach * 0.5)
+	var drop := w.drop_item(&"whetstone", p.pos + Vector2(0, p.radius + far))
+	drop.pos = p.pos + Vector2(0, p.radius + drop.radius + far)
+	if w.nearest_interactable(p, w.pickups) != null:
+		return "沒有磁石時 %.2f 外的道具不該按得到" % far
+	p.add_item(&"lodestone")
+	if w.nearest_interactable(p, w.pickups) != drop:
+		return "有磁石時 %.2f 外的道具應按得到" % far
+	var coin := w.drop_coin(p.pos)
+	coin.pos = p.pos + Vector2(p.radius + LootDefs.RUN_COINS.collect_range * (1.0 + reach * 0.5), 0)
+	var coins_before := w.run_coins
+	_run(w, idle, 1)
+	if w.run_coins != coins_before + 1:
+		return "有磁石時稍遠的金幣應自動撿起"
+	p.clear_items()
+	# 守夜蠟燭：視野距離與扇形角度 × vision
+	var v := _effect_value(&"vigil_candle", &"vision")
+	var r0 := Vision.view_range(p)
+	var a0 := Vision.view_angle(p)
+	p.add_item(&"vigil_candle")
+	if absf(Vision.view_range(p) - r0 * (1.0 + v)) > EPS or absf(Vision.view_angle(p) - a0 * (1.0 + v)) > EPS:
+		return "守夜蠟燭：視野 %.2f / %.3f 應 ×%.2f：%.2f / %.3f" % [r0, a0, 1.0 + v, Vision.view_range(p), Vision.view_angle(p)]
+	return ""
+
+
+# 道具第二批 G2：翻滾後一段時間、本層每擊殺疊一層
+static func check_item_conditions_g2() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var idle := _cmd(Vector2.ZERO)
+	# 獵人斗篷：翻滾結束後 duration 秒內爆擊率 +value，之後回來
+	var hc := _effect(&"hunter_cloak")
+	p.add_item(&"hunter_cloak")
+	var crit0 := p.stats.value(&"crit_chance")
+	_run(w, _cmd(Vector2(1, 0), Vector2(0, 5), InputCmd.BTN_ROLL), 1)
+	_run(w, idle, ceili(Config.ROLL.duration / DT) + 1)
+	if absf(p.stats.value(&"crit_chance") - (crit0 + hc.value)) > EPS:
+		return "翻滾後爆擊率應為 %.2f，實際 %.2f" % [crit0 + hc.value, p.stats.value(&"crit_chance")]
+	_run(w, idle, ceili(hc.duration / DT) + 1)
+	if absf(p.stats.value(&"crit_chance") - crit0) > EPS:
+		return "翻滾 %.1f 秒後爆擊率應回到 %.2f，實際 %.2f" % [hc.duration, crit0, p.stats.value(&"crit_chance")]
+	p.clear_items()
+	# 亡者之契：本層每擊殺 +value、最多 max 層；換層歸零
+	var pact := _effect(&"pact_of_dead")
+	p.add_item(&"pact_of_dead")
+	for i in 5:
+		Combat.apply_damage(w, p, _item_dummy(w, Vector2(0, 3), 1.0), {"damage": 10.0})
+	_run(w, idle, 1)
+	if absf(p.stats.value(&"damage") - (1.0 + pact.value * 5)) > EPS:
+		return "亡者之契殺 5 隻攻擊力應為 %.2f，實際 %.3f" % [1.0 + pact.value * 5, p.stats.value(&"damage")]
+	p.floor_kills = pact.max + 20
+	_run(w, idle, 1)
+	if absf(p.stats.value(&"damage") - (1.0 + pact.value * pact.max)) > EPS:
+		return "亡者之契最多 %d 層：攻擊力 %.3f" % [pact.max, p.stats.value(&"damage")]
+	p.arrive_floor(p.pos, p.height)
+	_run(w, idle, 1)
+	if absf(p.stats.value(&"damage") - 1.0) > EPS:
+		return "換層後亡者之契應歸零：攻擊力 %.3f" % p.stats.value(&"damage")
+	return ""
+
+
 static func check_item_drop_pool() -> String:
 	var order: Array = ItemDefs.RARITIES.keys()
 	for r: StringName in ItemDefs.RARITIES:

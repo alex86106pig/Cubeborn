@@ -26,7 +26,8 @@ static func hostiles_of(world: World, team: StringName, source_id: int = 0) -> A
 #      color（命中粒子顏色，只給畫面層；預設白色）、
 #      band（高度範圍 Vector2(下緣, 上緣)；預設是攻擊者的身體往腳底下延伸 HEIGHT.reach_below，見 body_band）、
 #      max_air（選填：目標腳底離自己腳下地面超過這個高度就打不到）、no_stagger（選填：不讓目標進入受擊硬直）、
-#      damage_type（選填：&"phys" / &"magic"，預設物理；怪物的攻擊都是物理，F1）、force_crit（選填：必爆擊，F6）
+#      damage_type（選填：&"phys" / &"magic"，預設物理；怪物的攻擊都是物理，F1）、force_crit（選填：必爆擊，F6）、
+#      projectile（選填：投射物直接命中，G1 鐵皮斗篷、爆裂箭袋看這個）
 # 這裡套用攻擊者的爆擊與擊退屬性；護甲與受傷倍率在 Entity.take_damage
 # 回傳是否實際命中（高度不重疊、被格擋也算沒命中）
 static func apply_damage(world: World, source: Entity, target: Entity, hit: Dictionary) -> bool:
@@ -87,6 +88,8 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 		damage *= (target as Player).friendly_back_mul(origin)   # 誤傷：守墓騎士被隊友從背後打到減傷（F2）
 	if target is Player and (target as Player).is_digging():
 		damage *= (target as Player).class_passive("dig_damage_taken", 1.0)   # 掘墓人被動：挖墳中受傷減少（F9）
+	if target is Player and hit.get("projectile", false):
+		damage *= target.stats.value(&"projectile_damage_taken")   # 鐵皮斗篷（G1）
 	var is_proc: bool = hit.get("proc", false)   # 道具效果造成的傷害（v0.33.0）：不爆擊、不再觸發命中效果
 	if source is Player and not is_proc:
 		# 只對這一下生效的條件加成（對滿血敵人）：換算成攻擊力倍率乘上去（hit.damage 已含攻擊力）
@@ -134,6 +137,7 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 	if source is Player and target is Enemy:
 		# 道具的命中 / 擊殺效果（v0.33.0）：放在事件之後，連鎖閃電、爆炸的傷害事件排在這一下後面
 		if not is_proc:
+			ItemEffects.on_dealt(world, source as Player, dealt)   # 命中回復、吸血（G1）
 			ItemEffects.on_hit(world, source as Player, target, damage)
 		if target.is_dead:
 			ItemEffects.on_kill(world, source as Player, target, damage)

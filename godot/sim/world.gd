@@ -22,6 +22,7 @@ var chests: Array[Entity] = []       # 寶箱（D3）
 var pickups: Array[Entity] = []      # 掉在地上的道具（D3）
 var coins: Array[Entity] = []        # 掉在地上的金幣（v0.45，sim/coin.gd）
 var souls := 0                        # 共用的靈魂（局內貨幣，D3）：殺怪賺、開祭壇 / 石棺花
+var soul_carry := 0.0                 # 靈魂道具多給的小數部分（G1：小怪一隻只給 2，+15% 要累積才湊得到 1）
 var run_coins := 0                   # 本局拿到的金幣（v0.45，局外貨幣）：多人時是每人各自拿到的數量（全員一樣）；Profile 存累計
 var coin_rng := RandomNumberGenerator.new()   # 掉金幣專用的亂數：不動 rng 的序列，怪群、寶箱、武器掉落維持原樣
 var packs: Array[Dictionary] = []    # 地圖預放的怪群（D5）：{ center, ids, awake }，只在權威端
@@ -106,6 +107,7 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 		p.height = terrain.ground_at(spawn_point)
 		add_entity(p)
 	souls = 0
+	soul_carry = 0.0
 	run_coins = 0
 	floor_num = 1
 	base_difficulty = 0.0
@@ -278,9 +280,16 @@ func first_alive_player() -> Player:
 	return null
 
 
-func on_enemy_died(e: Enemy) -> void:
+# killer_id：打死牠的實體（投射物算發射者）；是玩家時套他的靈魂道具（G1 錢袋、G2 貪婪之手），多給的小數累積到湊滿 1
+func on_enemy_died(e: Enemy, killer_id: int = 0) -> void:
 	stats.kills += 1
 	var g := 0 if e.no_souls else roundi(LootDefs.KILL_SOULS.get(e.type, 0) * LootDefs.player_mul(player_list.size()))
+	var killer: Entity = entities.get(killer_id)
+	if g > 0 and killer is Player:
+		soul_carry += g * (ItemEffects.soul_mul(killer as Player, e) - 1.0)
+		var extra := floori(soul_carry)
+		soul_carry -= extra
+		g = maxi(0, g + extra)
 	if g > 0:
 		souls += g
 		emit_event("souls:gained", {"amount": g, "pos": e.pos, "total": souls})
@@ -357,7 +366,7 @@ func _collect_coins() -> void:
 		for p in player_list:
 			if p.is_dead or p.is_downed or p.descended:
 				continue
-			if c.pos.distance_to(p.pos) - p.radius <= LootDefs.RUN_COINS.collect_range:
+			if c.pos.distance_to(p.pos) - p.radius <= LootDefs.RUN_COINS.collect_range * p.stats.value(&"pickup_radius"):
 				c.remove()
 				gain_coins(1, &"pickup", c.pos)
 				emit_event("sfx:cue", {"cue": "potion", "pos": c.pos})
@@ -372,7 +381,7 @@ func nearest_interactable(p: Player, list: Array[Entity]) -> Entity:
 		if e.is_removed or (e is Chest and (e as Chest).opened):
 			continue
 		var d := e.pos.distance_to(p.pos) - e.radius - p.radius
-		if d <= LootDefs.INTERACT_RANGE and d < best_d:
+		if d <= LootDefs.INTERACT_RANGE * p.stats.value(&"pickup_radius") and d < best_d:   # 磁石（G1）
 			best_d = d
 			best = e
 	return best

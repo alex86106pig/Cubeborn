@@ -51,8 +51,9 @@ func _draw() -> void:
 		if chest.opened or not Vision.entity_visible(world, viewer, chest):
 			continue
 		var def: Dictionary = LootDefs.CHESTS[chest.tier]
-		var color := UiKit.SOUL if world.souls >= chest.price() else UiKit.ALERT
-		var text := "%s  %d 靈魂" % [def.name, chest.price()]
+		var cost := chest.price_for(me)   # 撬鎖工具（G1）：顯示自己開的價格
+		var color := UiKit.SOUL if world.souls >= cost else UiKit.ALERT
+		var text := "%s  %d 靈魂" % [def.name, cost]
 		if chest == focus:
 			text = "[F] 開啟 " + text
 		_text(font, chest, CHEST_OFFSET, text, color)

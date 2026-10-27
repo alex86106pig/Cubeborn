@@ -23,6 +23,10 @@ class Condition:
 	func on_kill(_p: Player, _uid: StringName, _eff: Dictionary) -> void:
 		pass
 
+	# 成立時套上的數值（會隨狀況變的條件覆寫，例如每擊殺疊一層）
+	func value(_p: Player, _uid: StringName, eff: Dictionary) -> float:
+		return eff.value
+
 
 class TargetFullHp extends Condition:
 	func per_step() -> bool:
@@ -45,6 +49,27 @@ class AfterKill extends Condition:
 
 	func on_kill(p: Player, uid: StringName, eff: Dictionary) -> void:
 		p.kill_timers[uid] = maxf(p.kill_timers.get(uid, 0.0), eff.duration)
+
+
+# 翻滾結束後一段時間（G2 獵人斗篷）：Roll.exit 呼叫 on_roll_end 開始計時；翻滾本機也會預測，客戶端自己就知道
+class AfterRoll extends Condition:
+	func active(p: Player, uid: StringName, _eff: Dictionary) -> bool:
+		return p.roll_timers.has(uid)
+
+
+# 本層每擊殺 1 隻疊一層、最多 max 層（G2 亡者之契）：Player.floor_kills 換層歸零
+class PerKillStack extends Condition:
+	func active(p: Player, _uid: StringName, _eff: Dictionary) -> bool:
+		return p.floor_kills > 0
+
+	func value(p: Player, _uid: StringName, eff: Dictionary) -> float:
+		return eff.value * mini(p.floor_kills, eff.max)
+
+
+# 來自精英怪（G2 貪婪之手）：不是每步或每一下的加成，由 soul_mul 在擊殺時讀
+class FromElite extends Condition:
+	func per_step() -> bool:
+		return false
 
 
 # 觸發的動作：proc = procs_of 合併後的 { do, effect, chance, count }；damage 是觸發那一下的傷害（扣護甲前）
@@ -135,6 +160,9 @@ static var CONDITIONS := {
 	&"target_full_hp": TargetFullHp.new(),
 	&"hp_below": HpBelow.new(),
 	&"after_kill": AfterKill.new(),
+	&"after_roll": AfterRoll.new(),
+	&"per_kill_stack": PerKillStack.new(),
+	&"from_elite": FromElite.new(),
 }
 
 static var ACTIONS := {
@@ -205,28 +233,78 @@ static func target_damage_pct(p: Player, target: Entity) -> float:
 
 # 每步：每步判斷的條件加成，成立時以「cond:道具 uid」為來源套上屬性，不成立就拿掉（有變才改，免得每步清屬性快取）
 static func update_player(p: Player, dt: float) -> void:
-	for uid: StringName in p.kill_timers.keys():
-		p.kill_timers[uid] -= dt
-		if p.kill_timers[uid] <= 0.0:
-			p.kill_timers.erase(uid)
+	_tick(p.kill_timers, dt)
+	_tick(p.roll_timers, dt)
+	_tick(p.proc_timers, dt)
 	for x in conditions_of(p):
 		var cond: Condition = x.condition
 		if not cond.per_step():
 			continue
 		var eff: Dictionary = x.effect
-		var active := cond.active(p, x.uid, eff)
 		var source := StringName("cond:%s" % x.uid)
-		if active != p.stats.has_source(source):
-			if active:
-				p.set_stat_source(source, [[eff.stat, eff.op, eff.value]])
-			else:
-				p.remove_stat_source(source)
+		if cond.active(p, x.uid, eff):
+			var v := cond.value(p, x.uid, eff)
+			if not p.stats.has_source(source) or p.cond_values.get(source) != v:
+				p.set_stat_source(source, [[eff.stat, eff.op, v]])
+				p.cond_values[source] = v
+		elif p.stats.has_source(source):
+			p.remove_stat_source(source)
+			p.cond_values.erase(source)
+
+
+# 計時表：每個 key 剩下的秒數，到 0 就移除
+static func _tick(timers: Dictionary, dt: float) -> void:
+	for k in timers.keys():
+		timers[k] -= dt
+		if timers[k] <= 0.0:
+			timers.erase(k)
 
 
 # 道具拿掉時（Player.remove_item / sync_inventory）連同它的條件加成與計時一起拿掉
 static func forget_item(p: Player, uid: StringName) -> void:
-	p.remove_stat_source(StringName("cond:%s" % uid))
+	var source := StringName("cond:%s" % uid)
+	p.remove_stat_source(source)
+	p.cond_values.erase(source)
 	p.kill_timers.erase(uid)
+	p.roll_timers.erase(uid)
+
+
+# 翻滾結束時（Roll.exit）：「翻滾後幾秒」的條件開始計時
+static func on_roll_end(p: Player) -> void:
+	for x in effects_of(p, "when", &"after_roll"):
+		p.roll_timers[x.uid] = maxf(p.roll_timers.get(x.uid, 0.0), x.effect.duration)
+
+
+# 內部冷卻（ItemDefs.PROCS 的 icd）：key 是動作或屬性名稱，冷卻好了回傳 true 並開始計時
+static func icd_ready(p: Player, key: StringName) -> bool:
+	if p.proc_timers.has(key):
+		return false
+	var t: float = ItemDefs.PROCS.get(key, {}).get("icd", 0.0)
+	if t > 0.0:
+		p.proc_timers[key] = t
+	return true
+
+
+# 玩家方的一般攻擊實際扣了 dealt 血之後（G1）：命中回復（有內部冷卻）+ 吸血；打隊友不算
+static func on_dealt(world: World, p: Player, dealt: float) -> void:
+	var amount := dealt * p.stats.value(&"lifesteal")
+	var per_hit := p.stats.value(&"life_on_hit")
+	if per_hit > 0.0 and icd_ready(p, &"life_on_hit"):
+		amount += per_hit
+	if amount <= 0.0:
+		return
+	var healed := p.heal(amount)
+	if healed >= 0.5:   # 吸血一下常常不到 1：照樣回，只是不飄字
+		world.emit_event("entity:healed", {"target_id": p.id, "amount": healed})
+
+
+# 殺這隻怪得到的靈魂倍率（G1 / G2）：擊殺者的靈魂獲得 × 精英怪（魔法 / 稀有）的道具倍率
+static func soul_mul(p: Player, e: Enemy) -> float:
+	var mul := p.stats.value(&"soul_gain")
+	if e.rarity != MonsterRarityDefs.NORMAL:
+		for x in effects_of(p, "when", &"from_elite"):
+			mul *= x.effect.value
+	return mul
 
 
 # 命中時（Combat 在一般攻擊命中後呼叫）：damage 是這一下的傷害（扣護甲前）
@@ -238,6 +316,7 @@ static func on_hit(world: World, p: Player, target: Entity, damage: float) -> vo
 
 # 擊殺時（Combat 在玩家方的傷害打死怪之後呼叫，含道具效果打死的）
 static func on_kill(world: World, p: Player, target: Entity, damage: float) -> void:
+	p.floor_kills += 1
 	for x in conditions_of(p):
 		(x.condition as Condition).on_kill(p, x.uid, x.effect)
 	_run_procs(world, p, &"kill", target, damage)

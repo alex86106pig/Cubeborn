@@ -211,6 +211,7 @@ class Roll:
 		var buff: Array = p.class_passive("roll_buff", [])   # 竊影者被動（F6）：翻滾後一段時間攻速提高
 		if not buff.is_empty():
 			p.add_buff(&"rollHaste", buff[0], {"stats": buff[1]})
+		ItemEffects.on_roll_end(p)   # 獵人斗篷：翻滾後幾秒的條件（G2）
 
 
 # 救援（C4）：按住互動鍵、倒地隊友在範圍內就一直救；期間不能移動、攻擊、用技能（按鍵不留緩衝）

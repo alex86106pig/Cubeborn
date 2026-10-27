@@ -30,14 +30,14 @@ const STATS := {
 	&"roll_cooldown": {"name": "翻滾冷卻", "base": 1.0, "min": 0.05, "max": INF, "format": &"pct", "in_use": true},
 	&"roll_charges": {"name": "翻滾次數", "base": 1.0, "min": 1.0, "max": INF, "round": true, "format": &"int", "in_use": true},
 	&"treasure": {"name": "尋寶", "base": 0.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},   # 開祭壇 / 石棺、掉武器時，比最低一級稀有的權重 × (1 + 尋寶)（F1）
-	# 已定名、之後的里程碑才接上
-	&"projectile_damage_taken": {"name": "受到投射物傷害", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": false},
-	&"life_on_hit": {"name": "命中回復", "base": 0.0, "min": 0.0, "max": INF, "format": &"float", "in_use": false},
-	&"lifesteal": {"name": "吸血", "base": 0.0, "min": 0.0, "max": 1.0, "format": &"pct", "in_use": false},
-	&"soul_gain": {"name": "靈魂獲得", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": false},
-	&"pickup_radius": {"name": "撿取範圍", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": false},
-	&"chest_price": {"name": "祭壇 / 石棺價格", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": false},
-	&"vision": {"name": "視野", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": false},
+	# 道具第二批（G1）接上：命中回復、吸血、受到投射物傷害在 Combat；靈魂、價格、撿取範圍在 World / Chest；視野在 Vision
+	&"projectile_damage_taken": {"name": "受到投射物傷害", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
+	&"life_on_hit": {"name": "命中回復", "base": 0.0, "min": 0.0, "max": INF, "format": &"float", "in_use": true},
+	&"lifesteal": {"name": "吸血", "base": 0.0, "min": 0.0, "max": 1.0, "format": &"pct", "in_use": true},
+	&"soul_gain": {"name": "靈魂獲得", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
+	&"pickup_radius": {"name": "撿取範圍", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
+	&"chest_price": {"name": "祭壇 / 石棺價格", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
+	&"vision": {"name": "視野", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
 }
 
 

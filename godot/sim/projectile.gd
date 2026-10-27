@@ -119,7 +119,7 @@ func _hit_once(target: Entity) -> bool:
 	return Combat.apply_damage(world, _source(), target, {
 		"damage": damage, "knockback": knockback_force, "origin": pos - direction,
 		"hit_stop": hit_stop, "shake": shake, "band": band(), "blockable": blockable, "color": color,
-		"no_stagger": no_stagger, "damage_type": damage_type,
+		"no_stagger": no_stagger, "damage_type": damage_type, "projectile": true,
 	})
 
 

@@ -382,10 +382,10 @@ func _on_damaged(_amount: float, _source_id: int) -> void:
 		fsm.change(&"hurt")
 
 
-func _on_died(_source_id: int) -> void:
+func _on_died(source_id: int) -> void:
 	action_speed = 1.0   # 爆炸延遲、屍體時間不受狂暴影響
 	fsm.change(&"dead")
-	world.on_enemy_died(self)
+	world.on_enemy_died(self, source_id)
 	if ghost_of != 0:
 		world.on_ghost_defeated(self)
 	if has_affix(&"volatile") and not world.is_over:

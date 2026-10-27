@@ -48,6 +48,10 @@ var buffered_action: Dictionary = {}   # { type: &"special" | &"slot" | &"roll",
 var slots := ActiveSlots.new(Config.PLAYER.slots)
 var buffs: Dictionary = {}             # id -> { remaining, stats?（屬性加成，見 sim/stats.gd）, trail_color? }
 var kill_timers: Dictionary = {}       # 道具 uid -> 「擊殺後幾秒」條件剩下的秒數（sim/item_effects.gd）
+var roll_timers: Dictionary = {}       # 道具 uid -> 「翻滾後幾秒」條件剩下的秒數（G2）
+var proc_timers: Dictionary = {}       # 道具效果的內部冷卻：動作 / 屬性名稱 -> 剩下的秒數（ItemEffects.icd_ready）
+var cond_values: Dictionary = {}       # 條件加成目前套上的數值（「cond:uid」-> 數值），疊層變了才重設
+var floor_kills := 0                   # 本層擊殺數（G2 亡者之契；換層歸零）
 var roll_charges := 0                  # 目前可用的翻滾次數（上限為 roll_charges 屬性）
 var dodge_timer := 0.0                 # 翻滾無敵剩餘秒數
 var block_time := -1.0                 # 格擋開始後經過的秒數；< 0 = 沒有在格擋（weapon_behaviors 的 ShieldBlock）
@@ -208,6 +212,7 @@ func descend() -> void:
 func arrive_floor(at: Vector2, ground: float) -> void:
 	descended = false
 	torches_left = WeaponDefs.WEAPONS[&"torch"].stance.attack.per_floor   # 新的一關火把補滿（F8）
+	floor_kills = 0   # 亡者之契的疊層只算本層（G2）
 	pos = at
 	prev_pos = at
 	height = ground

@@ -18,6 +18,11 @@ func price() -> int:
 	return LootDefs.CHESTS[tier].price
 
 
+# 這位玩家開要多少（G1 撬鎖工具看開的人）；by 為 null 時是原價
+func price_for(by: Player) -> int:
+	return price() if by == null else roundi(price() * by.stats.value(&"chest_price"))
+
+
 func can_be_hit() -> bool:
 	return false
 
@@ -25,11 +30,12 @@ func can_be_hit() -> bool:
 func try_open(by: Player) -> bool:
 	if opened:
 		return false
-	if world.souls < price():
-		world.emit_event("chest:denied", {"chest_id": id, "player_id": by.id, "price": price()})
+	var cost := price_for(by)
+	if world.souls < cost:
+		world.emit_event("chest:denied", {"chest_id": id, "player_id": by.id, "price": cost})
 		world.emit_event("sfx:cue", {"cue": "denied", "pos": pos})
 		return false
-	world.souls -= price()
+	world.souls -= cost
 	opened = true
 	var rarity := LootDefs.roll_rarity(tier, world.rng, by.stats.value(&"treasure"))
 	var pool := LootDefs.drop_pool(rarity)

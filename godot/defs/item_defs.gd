@@ -90,7 +90,7 @@ const ABILITIES := {
 }
 
 # 已接上的條件、觸發 + 動作（v0.33.0 第一批 8 個道具，sim/item_effects.gd）；能力的二段跳在 Player.air_jumps
-const IMPLEMENTED_CONDITIONS: Array[StringName] = [&"target_full_hp", &"hp_below", &"after_kill"]
+const IMPLEMENTED_CONDITIONS: Array[StringName] = [&"target_full_hp", &"hp_below", &"after_kill", &"after_roll", &"per_kill_stack", &"from_elite"]
 const IMPLEMENTED_TRIGGERS: Array[String] = ["kill|explode", "kill|heal_max_hp", "hit|chain_lightning", "hit|poison", "hit|freeze"]
 
 # 觸發動作的數值（v0.33.0，說明沒寫到的由 Claude 暫定，試玩後再調）；damage_ratio 都是乘「觸發的那一下」的傷害
@@ -100,6 +100,8 @@ const PROCS := {
 	&"chain_lightning": {"jump_range": 5.0, "damage_ratio": 0.5, "color": Color("9fd8ff")},       # 每跳 50%，不會打同一隻兩次
 	&"poison": {"duration": 3.0, "total_ratio": 0.6, "tick": 0.5, "color": Color("7cff5a")},       # 3 秒共 60%，每 0.5 秒扣一次；再中毒重新計時、取較高的
 	&"freeze": {"color": Color("a8e6ff")},   # 冰凍時不能動、不出招（Boss 不會被冰凍）
+	# ---- 第二批（G，2026-10-27 Claude 暫定）；icd = 內部冷卻秒數（快速武器不會觸發過頻，ItemEffects.icd_ready）----
+	&"life_on_hit": {"icd": 0.3},   # 蝙蝠牙：命中回復每 0.3 秒最多一次
 }
 
 # kind：&"item" 道具 / &"weapon" 武器（weapon 對應 WeaponDefs，數值在那邊，這裡只放背包用的欄位）

@@ -31,8 +31,13 @@ static func lit(lights_: Array[Vector3], p: Vector2, target_radius: float = 0.0)
 
 
 # 視野距離與身邊一圈：火把傭兵被動加大（F8）
+# 守夜蠟燭（G1）的視野屬性乘在距離與扇形角度上（身邊一圈不變）
 static func view_range(viewer: Player) -> float:
-	return Config.VISION.range + viewer.class_passive("vision_add", 0.0)
+	return (Config.VISION.range + viewer.class_passive("vision_add", 0.0)) * viewer.stats.value(&"vision")
+
+
+static func view_angle(viewer: Player) -> float:
+	return minf(TAU, Config.VISION.angle * viewer.stats.value(&"vision"))
 
 
 static func near_radius(viewer: Player) -> float:
@@ -41,14 +46,13 @@ static func near_radius(viewer: Player) -> float:
 
 # 只看距離與角度（不管牆）：畫面層每幀都判斷，牆擋視線（line_blocked）比較貴，分批更新（D5）
 static func in_view_cone(viewer: Player, p: Vector2, target_radius: float = 0.0) -> bool:
-	var v: Dictionary = Config.VISION
 	var d := p - viewer.pos
 	var dist := d.length()
 	if dist > view_range(viewer) + target_radius:
 		return false
 	if dist > near_radius(viewer) + target_radius:
 		# 身體邊緣進入扇形就算看得到（不會半個身子在視野內卻整隻消失）
-		var allowance: float = v.angle / 2.0 + (asin(minf(1.0, target_radius / dist)) if dist > 1e-4 else 0.0)
+		var allowance: float = view_angle(viewer) / 2.0 + (asin(minf(1.0, target_radius / dist)) if dist > 1e-4 else 0.0)
 		if absf(MathUtil.wrap_angle(atan2(d.x, d.y) - viewer.facing)) > allowance:
 			return false
 	return true

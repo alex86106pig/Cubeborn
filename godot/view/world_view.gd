@@ -442,7 +442,8 @@ func _sync_vision_overlay(me: Player) -> void:
 		var mat: ShaderMaterial = _vision_overlay.material_override
 		mat.set_shader_parameter(&"viewer", Vector2(node.position.x, node.position.z))
 		mat.set_shader_parameter(&"facing", node.rotation.y)
-		mat.set_shader_parameter(&"range", Vision.view_range(me))          # 火把傭兵被動（F8）
+		mat.set_shader_parameter(&"range", Vision.view_range(me))          # 火把傭兵被動（F8）、守夜蠟燭（G1）
+		mat.set_shader_parameter(&"half_angle", Vision.view_angle(me) / 2.0)
 		mat.set_shader_parameter(&"near_radius", Vision.near_radius(me))
 		var lights := Vision.lights(_world) if _world != null else ([] as Array[Vector3])
 		var packed := PackedVector3Array()
