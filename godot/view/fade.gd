@@ -4,7 +4,9 @@
 # 角色前後重疊的零件不會互相透出來（Godot 的 TRANSPARENCY_ALPHA_DEPTH_PRE_PASS 只在 alpha ≥ 0.99 時寫深度，淡入淡出時沒用）
 # 半透明的材質全部共用一份快取：依原本材質的外觀（指紋）與透明程度（分 LEVELS 階）各建一個，開場預熱時建好；
 # 淡入淡出時只換網格指向的材質，不改原本的材質、不新建材質（網頁版每次轉身新建 / 切換材質會卡）
-# 淡入淡出中受擊閃白、狀態染色不更新（停在開始那一刻），不投影、不畫牆後剪影（WorldView 處理）
+# 淡入淡出中受擊閃白、狀態染色不更新（停在開始那一刻），不畫牆後剪影（WorldView 處理）
+# 影子跟著淡（2026-10-27 使用者要求）：半透明的材質不會投影、影子圖也沒有「半透明」，第三次繪製（SHADOW_SHADER）只在畫影子時畫，
+# 依透明度用 4×4 Bayer 抖動丟掉一部分像素（業界淡出物件影子的通用做法）；一般畫面全部丟掉。只跟階數有關，全部共用 LEVELS - 1 份
 class_name Fade
 
 const LEVELS := 8
@@ -16,8 +18,26 @@ void fragment() {
 	ALPHA = 0.0;
 }
 """
+const SHADOW_SHADER := """
+shader_type spatial;
+render_mode unshaded, cull_back, shadows_disabled, fog_disabled;
+uniform float coverage = 0.5;
+void fragment() {
+	if (!IN_SHADOW_PASS) {
+		discard;
+	}
+	float bayer[16] = {0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0};
+	ivec2 p = ivec2(FRAGCOORD.xy) % 4;
+	if ((bayer[p.y * 4 + p.x] + 0.5) / 16.0 >= coverage) {
+		discard;
+	}
+	ALBEDO = vec3(0.0);
+}
+"""
 static var _depth_shader: Shader
-static var _cache: Dictionary = {}   # "指紋|階" -> 只寫深度的 ShaderMaterial（next_pass = 半透明的材質）
+static var _shadow_shader: Shader
+static var _cache: Dictionary = {}   # "指紋|階" -> 只寫深度的 ShaderMaterial（next_pass = 半透明的材質，再 next_pass = 抖動影子）
+static var _shadow_cache: Dictionary = {}   # 階 -> 抖動影子的 ShaderMaterial
 
 
 # 套上顯示程度 a（0 = 看不到、1 = 完全顯示）；a = 1 時還原，回傳 true 代表這次還原了（呼叫端要把剪影接回去）
@@ -99,11 +119,25 @@ static func faded(m: BaseMaterial3D, level: int) -> ShaderMaterial:
 		if _depth_shader == null:
 			_depth_shader = Shader.new()
 			_depth_shader.code = DEPTH_SHADER
+		f.next_pass = _shadow(level)
 		var dm := ShaderMaterial.new()
 		dm.shader = _depth_shader
 		dm.next_pass = f
 		_cache[key] = dm
 	return _cache[key]
+
+
+# 第 level 階的抖動影子：影子圖裡畫 level / LEVELS 的像素
+static func _shadow(level: int) -> ShaderMaterial:
+	if not _shadow_cache.has(level):
+		if _shadow_shader == null:
+			_shadow_shader = Shader.new()
+			_shadow_shader.code = SHADOW_SHADER
+		var sm := ShaderMaterial.new()
+		sm.shader = _shadow_shader
+		sm.set_shader_parameter(&"coverage", float(level) / LEVELS)
+		_shadow_cache[level] = sm
+	return _shadow_cache[level]
 
 
 # 外觀相同的材質（同種怪每隻各一份的材質）共用同一組半透明版本

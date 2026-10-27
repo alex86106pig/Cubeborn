@@ -24,6 +24,7 @@
 - **網頁版開場三行紅字**（`No GDExtension library found ... webrtc_native.gdextension`）：電腦版用的 webrtc-native 擴充被打包進網頁版，開場載入失敗（無害但每次都有，會混淆除錯）。原本靠 `.gdextension` 的 `exclude_tags` 排除，但 Godot 不認得這個欄位；改成 Web 匯出預設的 `exclude_filter` 加 `addons/webrtc_native/*`（Godot 匯出時擴充清單只留有匯出的擴充檔）。
 
 ### 新增
+- **視野淡入淡出時影子也跟著淡**（使用者要求）：原本淡入淡出中的模型不投影，影子在淡入結束時突然出現、淡出一開始就消失。影子圖沒有半透明，改用抖動（依透明度丟掉部分像素，業界通用做法）畫在影子裡（`view/fade.gd`）。網頁版 `--perf` 60 FPS、卡頓 0；著色器程式 161 → 175，M5 開場預熱 2.9~3.1 → 2.7~3.2 秒。畫面還沒有人看過。
 - 網頁版網址參數開放 `host` / `join` / `room` / `net-autostart`（使用者同意）：`?host&room&net-autostart=N` 開房、`?join=房號&room` 加入，多人自動測試用，之後可做邀請連結。檢查「網頁版網址參數」改成驗證會轉換。
 
 ## [0.48.2] - 2026-10-27
