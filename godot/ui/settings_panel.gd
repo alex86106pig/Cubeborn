@@ -10,13 +10,13 @@ const DEFAULTS := {"shadows": true, "lights": true, "master": 1.0, "music": 1.0,
 const SECTION := {"shadows": "video", "lights": "video", "master": "audio", "music": "audio", "sfx": "audio"}
 const VOLUME_NAMES := {"master": "總音量", "music": "音樂", "sfx": "音效"}
 const ROW_FONT := 28
-const TOGGLE_SIZE := Vector2(160, 60)
-const ON_COLOR := Color("6cff7a")
+const ROW_WIDTH := 640
+const SWITCH_SCALE := 1.6   # 預設的開關圖示太小不好點，放大
 
 var save_path := "user://settings.cfg"   # 測試與自動驗證設成 "" 就不讀寫檔案
 var values := DEFAULTS.duplicate()
 var back_button := Button.new()
-var toggles: Dictionary = {}   # "shadows" / "lights" → Button（toggle_mode，文字「開」/「關」）
+var toggles: Dictionary = {}   # "shadows" / "lights" → CheckButton
 var sliders: Dictionary = {}   # "master" / "music" / "sfx" → HSlider
 var _percent: Dictionary = {}  # 同上 → 百分比文字
 
@@ -31,38 +31,45 @@ func _init() -> void:
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override(&"separation", 14)
 	box.add_child(_centered(UiKit.label("設定", 52, Color.WHITE, 3)))
-	# 每一行：名稱 | 開關或滑桿 | 百分比；用表格排，開關和滑桿的左邊對齊（2026-10-27 使用者：開關要對齊、要好點）
-	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	grid.add_theme_constant_override(&"h_separation", 24)
-	grid.add_theme_constant_override(&"v_separation", 18)
-	_section(grid, "畫面")
+	# 每一行同寬：名稱靠左，開關 / 滑桿 + 百分比靠右，右邊對齊（2026-10-27 使用者：用原本的切換開關、靠右對齊、好點、字大）
+	var rows := VBoxContainer.new()
+	rows.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	rows.add_theme_constant_override(&"separation", 16)
+	rows.add_child(UiKit.label("畫面", 32, UiKit.GOLD, 2))
 	for key: String in ["shadows", "lights"]:
-		var t := Button.new()
-		t.toggle_mode = true
-		t.add_theme_font_size_override(&"font_size", 28)
-		t.custom_minimum_size = TOGGLE_SIZE
-		t.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		var t := CheckButton.new()   # 文字在左、開關在右，整行都點得到
+		t.text = "陰影" if key == "shadows" else "光源"
+		t.add_theme_font_size_override(&"font_size", ROW_FONT)
+		t.custom_minimum_size = Vector2(ROW_WIDTH, 56)
 		t.focus_mode = Control.FOCUS_NONE
+		_scale_switch(t)
 		t.toggled.connect(func(on: bool) -> void: set_value(key, on))
 		toggles[key] = t
-		_row(grid, "陰影" if key == "shadows" else "光源", t, UiKit.label("", ROW_FONT))
-	_section(grid, "音量")
+		rows.add_child(t)
+	rows.add_child(UiKit.label("音量", 32, UiKit.GOLD, 2))
 	for key: String in VOLUME_NAMES:
+		var row := HBoxContainer.new()
+		row.custom_minimum_size = Vector2(ROW_WIDTH, 56)
+		row.add_theme_constant_override(&"separation", 20)
+		var name_label := UiKit.label(VOLUME_NAMES[key], ROW_FONT)
+		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var sl := HSlider.new()
 		sl.min_value = 0.0
 		sl.max_value = 1.0
 		sl.step = 0.05
-		sl.custom_minimum_size = Vector2(420, 48)
+		sl.custom_minimum_size = Vector2(380, 56)
 		sl.focus_mode = Control.FOCUS_NONE
 		sl.value_changed.connect(func(v: float) -> void: set_value(key, v))
 		var pct := UiKit.label("", ROW_FONT)
-		pct.custom_minimum_size.x = 90
+		pct.custom_minimum_size.x = 84
+		pct.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		sliders[key] = sl
 		_percent[key] = pct
-		_row(grid, VOLUME_NAMES[key], sl, pct)
-	box.add_child(grid)
+		for c: Control in [name_label, sl, pct]:
+			c.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			row.add_child(c)
+		rows.add_child(row)
+	box.add_child(rows)
 	box.add_child(_centered(UiKit.label("光源 = 精英怪、稀有武器、出口的光；內顯畫面卡頓時可以關掉陰影或光源試試", 20, Color(1, 1, 1, 0.7), 1)))
 	back_button.text = "返回"
 	back_button.add_theme_font_size_override(&"font_size", 28)
@@ -111,28 +118,20 @@ func video_text() -> String:
 
 func _refresh() -> void:
 	for key: String in toggles:
-		var t: Button = toggles[key]
-		t.set_pressed_no_signal(values[key])
-		t.text = "開" if values[key] else "關"
-		for state: StringName in [&"font_color", &"font_hover_color", &"font_pressed_color", &"font_hover_pressed_color"]:
-			t.add_theme_color_override(state, ON_COLOR if values[key] else Color(1, 1, 1, 0.6))
+		toggles[key].set_pressed_no_signal(values[key])
 	for key: String in sliders:
 		sliders[key].set_value_no_signal(values[key])
 		_percent[key].text = "%d%%" % roundi(values[key] * 100.0)
 
 
-static func _section(grid: GridContainer, title: String) -> void:
-	grid.add_child(UiKit.label(title, 32, UiKit.GOLD, 2))
-	grid.add_child(Control.new())
-	grid.add_child(Control.new())
-
-
-static func _row(grid: GridContainer, title: String, control: Control, tail: Control) -> void:
-	var l := UiKit.label(title, ROW_FONT)
-	l.custom_minimum_size.x = 130
-	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	for c: Control in [l, control, tail]:
-		grid.add_child(c)
+# 開關圖示放大 SWITCH_SCALE 倍（預設主題的圖示換成放大的複本）
+static func _scale_switch(t: CheckButton) -> void:
+	for icon: StringName in [&"checked", &"unchecked", &"checked_disabled", &"unchecked_disabled"]:
+		var img := t.get_theme_icon(icon).get_image()
+		if img == null:
+			continue
+		img.resize(roundi(img.get_width() * SWITCH_SCALE), roundi(img.get_height() * SWITCH_SCALE), Image.INTERPOLATE_BILINEAR)
+		t.add_theme_icon_override(icon, ImageTexture.create_from_image(img))
 
 
 static func _centered(l: Label) -> Label:
