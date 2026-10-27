@@ -3,6 +3,24 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
+## [未發布]
+
+### 修復
+- **選角畫面「拖動旋轉」提示超出舞台**：提示用建立當下的文字寬度靠右下對齊，字級第一幀才套上、文字變寬時往右長（實測多 21 px，邊距 16 時超出約 5 px）。改成往左上長，並離右邊 40（使用者要往左擺一點）。檢查「主選單」加上提示在舞台內、離右邊至少 40（舊寫法量到 19，會失敗）。
+- **多人大廳有人換職業時，所有人的待機動畫都從頭播**：舞台只要有一格職業不同就整排重建模型。改成只重建換了的那一格；檢查「大廳選職業」加上其他人的模型不重建（舊寫法會失敗）。
+- **鐵鏟拿反（凹面朝下）**：鏟面原本是平板、鏟尖往下彎。改成 U 形槽，凹的一側和鏟尖朝上（手往前伸時），托著鏟起的怪。
+- **對方先推過時，推送會被版號檢查擋下**：`CHANGELOG.md` 設了 `merge=union`，對方把他的「未發布」換成版號後，rebase 時自己的「未發布」會接在對方的版號後面；`release.mjs` 照位置就地換版號，最上面的版號就和 `version.gd` 對不上，檢查「版號」失敗、推送中止（本機 4 個 commit 接到 v0.49.0 後面時試算出來）。`release.mjs` 換版號前先把所有「未發布」段合成一段、同分類合併、搬回最上面（`normalizeUnreleased`）；用那次真實的合併結果驗過：順序正確、條目一行不少、本來就對的檔案不動。
+- **第一次掉武器、開寶箱、掉金幣卡 60~90 ms**（使用者在網頁版看到 `[Violation] 'requestAnimationFrame' handler took 61ms`）：效能追蹤顯示卡頓那幀在等著色器編譯（`GetShaderiv` 54~136 ms）。Godot 的 `BaseMaterial3D` 著色器依「還有幾個材質在用」保留、用到 0 就釋放（`material.cpp` 的解構），只在開場預熱出現過的外觀（地上的道具、金幣）在預熱模型刪掉後就被釋放，第一次出現又重編。`WorldView` 預熱結束時把用過的材質整場留著（`_warm_materials`），外觀不變。掉落測試場景：預熱後才編譯的著色器 12 → 0、卡頓 0。
+- 抖動影子在網頁版狂刷 `GL_INVALID_OPERATION: Active draw buffers with missing fragment shader outputs`：影子著色器在一般畫面寫成一定丟棄，編譯器把顏色輸出整個拿掉；條件多看 `coverage` 保留輸出（使用者確認不再刷、影子照樣跟著淡）。
+- `--player-hp` 對有生命回復的職業沒用（第一次回血就截回上限，量測時角色照樣死、死後全圖都畫）：大於上限時上限一起拉高。
+- **連線中卡一下就當掉**（2026-10-27 三人試玩：房主狂刷 `Buffer full! Dropping data.` 後 `function signature mismatch` 當掉、隊友玩到一半畫面卡住）：網頁版每條 WebRTC 資料通道的接收緩衝區預設只有 64 KB，房主每秒送 20 次 2~7 KB 的快照，任一邊卡超過約 1 秒就塞滿、開始丟資料（可靠通道也丟），狂刷錯誤後越卡越慢。專案設定 `network/limits/webrtc/max_channel_in_buffer_kb` 改 2048。本機網頁版兩個關掉背景降速的 Chrome 視窗實測（帶 100 隻怪、加入方卡住）：改前卡 1.5 秒丟 18 筆，改後卡 1.5 秒、5 秒都 0 筆，卡完回到 60 FPS；持續變慢（CPU 6 倍、25 FPS）本來就不會塞。檢查「桌面版 WebRTC」加上緩衝區至少 1024 KB。
+- **網頁版開場三行紅字**（`No GDExtension library found ... webrtc_native.gdextension`）：電腦版用的 webrtc-native 擴充被打包進網頁版，開場載入失敗（無害但每次都有，會混淆除錯）。原本靠 `.gdextension` 的 `exclude_tags` 排除，但 Godot 不認得這個欄位；改成 Web 匯出預設的 `exclude_filter` 加 `addons/webrtc_native/*`（Godot 匯出時擴充清單只留有匯出的擴充檔）。
+
+### 新增
+- 除錯場景 `--loot-test`（網頁版 `?loot-test`）：旁邊小寶箱第 4 秒自動開、6 隻 1 血骷髏陸續被荊棘鎖甲反彈打死且每隻必掉武器、第 6 秒掉一枚金幣；配 `--no-spawn --items=thorn_mail --player-hp=99999` 固定重現開箱與第一次掉落的卡頓。
+- **視野淡入淡出時影子也跟著淡**（使用者要求）：原本淡入淡出中的模型不投影，影子在淡入結束時突然出現、淡出一開始就消失。影子圖沒有半透明，改用抖動（依透明度丟掉部分像素，業界通用做法）畫在影子裡（`view/fade.gd`）。網頁版 `--perf` 60 FPS、卡頓 0；著色器程式 161 → 175，M5 開場預熱 2.9~3.1 → 2.7~3.2 秒。畫面還沒有人看過。
+- 網頁版網址參數開放 `host` / `join` / `room` / `net-autostart`（使用者同意）：`?host&room&net-autostart=N` 開房、`?join=房號&room` 加入，多人自動測試用，之後可做邀請連結。檢查「網頁版網址參數」改成驗證會轉換。
+
 ## [0.49.0] - 2026-10-27
 
 ### 新增
@@ -17,21 +35,6 @@
 
 ### 移除
 - 疾跑（數字鍵 2：×1.6、3 秒、冷卻 8 秒）與它的特效 `fx:sprint`；音效檔留著（翻滾借用）。
-## [未發布]
-
-### 修復
-- **推送時 CHANGELOG 版號順序錯**：`CHANGELOG.md` 設了 `merge=union`，對方先推過（把他的「未發布」換成版號）時，rebase 後自己的「未發布」會接在對方的版號後面，`release.mjs` 原本照位置就地換版號，新版號就排在舊版號下面（2026-10-28 本機 4 個 commit 接到 v0.49.0 後面時試算出來）。`release.mjs` 換版號前先把所有「未發布」段合成一段、同分類合併、搬回最上面（`normalizeUnreleased`）；用那次真實的合併結果驗過：順序正確、條目一行不少、本來就對的檔案不動。
-- **第一次掉武器、開寶箱、掉金幣卡 60~90 ms**（使用者在網頁版看到 `[Violation] 'requestAnimationFrame' handler took 61ms`）：效能追蹤顯示卡頓那幀在等著色器編譯（`GetShaderiv` 54~136 ms）。Godot 的 `BaseMaterial3D` 著色器依「還有幾個材質在用」保留、用到 0 就釋放（`material.cpp` 的解構），只在開場預熱出現過的外觀（地上的道具、金幣）在預熱模型刪掉後就被釋放，第一次出現又重編。`WorldView` 預熱結束時把用過的材質整場留著（`_warm_materials`），外觀不變。掉落測試場景：預熱後才編譯的著色器 12 → 0、卡頓 0。
-- 抖動影子在網頁版狂刷 `GL_INVALID_OPERATION: Active draw buffers with missing fragment shader outputs`：影子著色器在一般畫面寫成一定丟棄，編譯器把顏色輸出整個拿掉；條件多看 `coverage` 保留輸出（使用者確認不再刷、影子照樣跟著淡）。
-- `--player-hp` 對有生命回復的職業沒用（第一次回血就截回上限，量測時角色照樣死、死後全圖都畫）：大於上限時上限一起拉高。
-- **連線中卡一下就當掉**（2026-10-27 三人試玩：房主狂刷 `Buffer full! Dropping data.` 後 `function signature mismatch` 當掉、隊友玩到一半畫面卡住）：網頁版每條 WebRTC 資料通道的接收緩衝區預設只有 64 KB，房主每秒送 20 次 2~7 KB 的快照，任一邊卡超過約 1 秒就塞滿、開始丟資料（可靠通道也丟），狂刷錯誤後越卡越慢。專案設定 `network/limits/webrtc/max_channel_in_buffer_kb` 改 2048。本機網頁版兩個關掉背景降速的 Chrome 視窗實測（帶 100 隻怪、加入方卡住）：改前卡 1.5 秒丟 18 筆，改後卡 1.5 秒、5 秒都 0 筆，卡完回到 60 FPS；持續變慢（CPU 6 倍、25 FPS）本來就不會塞。檢查「桌面版 WebRTC」加上緩衝區至少 1024 KB。
-- **網頁版開場三行紅字**（`No GDExtension library found ... webrtc_native.gdextension`）：電腦版用的 webrtc-native 擴充被打包進網頁版，開場載入失敗（無害但每次都有，會混淆除錯）。原本靠 `.gdextension` 的 `exclude_tags` 排除，但 Godot 不認得這個欄位；改成 Web 匯出預設的 `exclude_filter` 加 `addons/webrtc_native/*`（Godot 匯出時擴充清單只留有匯出的擴充檔）。
-
-### 新增
-- 除錯場景 `--loot-test`（網頁版 `?loot-test`）：旁邊小寶箱第 4 秒自動開、6 隻 1 血骷髏陸續被荊棘鎖甲反彈打死且每隻必掉武器、第 6 秒掉一枚金幣；配 `--no-spawn --items=thorn_mail --player-hp=99999` 固定重現開箱與第一次掉落的卡頓。
-- **視野淡入淡出時影子也跟著淡**（使用者要求）：原本淡入淡出中的模型不投影，影子在淡入結束時突然出現、淡出一開始就消失。影子圖沒有半透明，改用抖動（依透明度丟掉部分像素，業界通用做法）畫在影子裡（`view/fade.gd`）。網頁版 `--perf` 60 FPS、卡頓 0；著色器程式 161 → 175，M5 開場預熱 2.9~3.1 → 2.7~3.2 秒。畫面還沒有人看過。
-- 網頁版網址參數開放 `host` / `join` / `room` / `net-autostart`（使用者同意）：`?host&room&net-autostart=N` 開房、`?join=房號&room` 加入，多人自動測試用，之後可做邀請連結。檢查「網頁版網址參數」改成驗證會轉換。
-
 ## [0.48.2] - 2026-10-27
 
 ### 新增

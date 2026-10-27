@@ -35,8 +35,8 @@ const has = name => args.includes(`--${name}`);
 
 const fail = msg => { console.log(`✘ ${msg}`); process.exit(1); };
 
-// CHANGELOG 設了 merge=union：對方推送後把他的 [未發布] 換成版號，我們 rebase 時自己的 [未發布] 會接在那個版號後面
-// （兩邊輪流推就會發生，2026-10-28 v0.49.0 遇到）。把所有 [未發布] 段合成一段、同名的「### 分類」合在一起，放回第一個版號前面
+// CHANGELOG 設了 merge=union：對方推送後把他的 [未發布] 換成版號，我們 rebase 時自己的 [未發布] 會接在那個版號後面。
+// 把所有 [未發布] 段合成一段、同名的「### 分類」合在一起，放回第一個版號前面
 function normalizeUnreleased(text) {
   const lines = text.split('\n');
   const isHeading = l => l.startsWith('## [');

@@ -41,6 +41,7 @@ const OTHER_SPOTS: Array[Vector3] = [Vector3(-1.7, 0, -1.2), Vector3(1.8, 0, -1.
 const OTHER_SCALE := 0.8
 const DRAG_TURN := 0.01   # 拖動旋轉：每像素轉幾弧度
 const FACE_TURN := -0.35  # 預設側一點朝鏡頭
+const HINT_MARGIN := Vector2(40, 16)   # 「拖動旋轉」提示離舞台右下角多遠
 
 var mode: StringName = &"single"   # &"single" | &"lobby_host" | &"lobby_client"
 var selected: StringName = ClassDefs.ORDER[0]
@@ -63,6 +64,7 @@ var extra_label := UiKit.label("", UiKit.FONT_NOTE, Color(1, 1, 1, 0.65), 1)
 var chart := StatChart.new()
 var roster := VBoxContainer.new()   # 大廳名單：左欄職業格下方
 var tags: Array[Label] = []          # 角色頭上的「P1 守墓騎士」
+var drag_hint := UiKit.label("↔ 拖動旋轉", UiKit.FONT_NOTE, Color(1, 1, 1, 0.45), 1)
 var _skills := VBoxContainer.new()
 var _diff_note := UiKit.label("房主選", UiKit.FONT_NOTE, Color(1, 1, 1, 0.6), 1)
 var _ready := false
@@ -381,9 +383,15 @@ func _build_stage() -> Control:
 	_viewport.add_child(_stage_root)
 	_tag_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_tag_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var hint := UiKit.label("↔ 拖動旋轉", UiKit.FONT_NOTE, Color(1, 1, 1, 0.45), 1)
-	_tag_layer.add_child(hint)
-	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 16)
+	_tag_layer.add_child(drag_hint)
+	# 往左上長：字級第一幀才套上，往右長會超出舞台
+	drag_hint.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	drag_hint.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	drag_hint.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	drag_hint.offset_right = -HINT_MARGIN.x
+	drag_hint.offset_bottom = -HINT_MARGIN.y
+	drag_hint.offset_left = -HINT_MARGIN.x
+	drag_hint.offset_top = -HINT_MARGIN.y
 	var wrap := Control.new()   # 標籤疊在 3D 舞台上（SubViewportContainer 只能放 SubViewport）
 	wrap.custom_minimum_size = STAGE_SIZE
 	_stage.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -438,29 +446,30 @@ func _reset_copy_text() -> void:
 	copy_button.text = "複製房號"
 
 
-# 舞台上的角色：自己在中間、比較大，其他人往後站、縮小；職業換了才重建模型
+# 舞台上的角色：自己在中間、比較大，其他人往後站、縮小
+# 只重建職業換了的那一格：整排重建會讓其他人的待機動畫一起從頭播
 func _build_lineup() -> void:
-	var want: Array[StringName] = []
-	for e: Array in _lineup:
-		want.append(e[0])
-	var have: Array[StringName] = []
-	for r: Rig in _rigs:
-		have.append(r.get_meta(&"class"))
-	if want != have:
-		for r: Rig in _rigs:
-			r.queue_free()
-		_rigs.clear()
-		_animators.clear()
-		for i in want.size():
-			var rig := DarkFantasy.player_character(want[i])
-			rig.set_meta(&"class", want[i])
-			var anim := Animator.new(rig)
-			anim.update(preview_player(want[i]), 0.0)
-			_stage_root.add_child(rig)
-			if i > 0:
-				rig.position = OTHER_SPOTS[(i - 1) % OTHER_SPOTS.size()]
-				rig.scale = Vector3.ONE * OTHER_SCALE
-				rig.rotation.y = FACE_TURN
+	while _rigs.size() > _lineup.size():
+		_rigs.pop_back().queue_free()
+		_animators.pop_back()
+	for i in _lineup.size():
+		var want: StringName = _lineup[i][0]
+		if i < _rigs.size() and _rigs[i].get_meta(&"class") == want:
+			continue
+		var rig := DarkFantasy.player_character(want)
+		rig.set_meta(&"class", want)
+		var anim := Animator.new(rig)
+		anim.update(preview_player(want), 0.0)
+		_stage_root.add_child(rig)
+		if i > 0:
+			rig.position = OTHER_SPOTS[(i - 1) % OTHER_SPOTS.size()]
+			rig.scale = Vector3.ONE * OTHER_SCALE
+			rig.rotation.y = FACE_TURN
+		if i < _rigs.size():
+			_rigs[i].queue_free()
+			_rigs[i] = rig
+			_animators[i] = anim
+		else:
 			_rigs.append(rig)
 			_animators.append(anim)
 	while tags.size() < _lineup.size():

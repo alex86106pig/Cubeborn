@@ -1063,13 +1063,16 @@ static func check_lobby_classes() -> String:
 	var client_ok: bool = cs.ready_button.visible and cs.ready_button.text == "取消準備" and not cs.start_button.visible \
 		and cs.class_buttons[&"arcanist"].button_pressed and cs._lineup[0][0] == &"arcanist" \
 		and cs.difficulty_buttons[&"easy"].disabled and cs.difficulty_buttons[&"hard"].button_pressed
-	# 預選即時更新：房主收到別人換職業（還沒準備）再刷新，舞台上那個人跟著換
+	# 預選即時更新：房主收到別人換職業（還沒準備）再刷新，舞台上那個人跟著換，其他人的模型不重建
+	cs.show_lobby(&"lobby_host", [1, 2, 3], 1, choices, &"normal", "")
+	var rigs_before: Array = cs._rigs.duplicate()
 	choices[2] = ["priest", false]
 	cs.show_lobby(&"lobby_host", [1, 2, 3], 1, choices, &"normal", "")
 	var live: bool = cs._lineup[1][0] == &"priest"
+	var kept: bool = cs._rigs[0] == rigs_before[0] and cs._rigs[2] == rigs_before[2] and cs._rigs[1] != rigs_before[1]
 	cs.free()
-	if not waiting or not can_start or not roster_text.contains("祕術師") or not roster_text.contains("還沒準備") or lineup != [ClassDefs.ORDER[0], &"arcanist", &"guardian"] or not client_ok or not live:
-		return "大廳選角畫面：沒準備時不能開始 %s、全員準備可以開始 %s、名單「%s」、舞台 %s、客戶端 %s、預選即時更新 %s" % [waiting, can_start, roster_text, lineup, client_ok, live]
+	if not waiting or not can_start or not roster_text.contains("祕術師") or not roster_text.contains("還沒準備") or lineup != [ClassDefs.ORDER[0], &"arcanist", &"guardian"] or not client_ok or not live or not kept:
+		return "大廳選角畫面：沒準備時不能開始 %s、全員準備可以開始 %s、名單「%s」、舞台 %s、客戶端 %s、預選即時更新 %s、只重建換職業的那個人 %s" % [waiting, can_start, roster_text, lineup, client_ok, live, kept]
 	# 房主改難度：客戶端的準備全部重設；客戶端硬送鎖住的職業或佔位，房主不收
 	var s2 := NetSession.new()
 	s2.is_host = true

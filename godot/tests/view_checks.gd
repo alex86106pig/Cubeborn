@@ -218,6 +218,12 @@ static func _check_class_select(hud: Variant) -> String:
 		var content_h: float = cs.info_box.get_combined_minimum_size().y
 		if page_size != single_size or content_h > clip_h:
 			return "%s：整頁 %s（應固定 %s）、資訊欄內容高 %.0f（框 %.0f）" % [ClassDefs.CLASSES[id].name, page_size, single_size, content_h, clip_h]
+	# 「拖動旋轉」提示在舞台右下角、不超出舞台
+	var stage_rect := (cs.drag_hint.get_parent() as Control).get_global_rect()
+	var hint_rect := cs.drag_hint.get_global_rect()
+	_note("拖動旋轉提示 %s（舞台 %s）" % [hint_rect, stage_rect])
+	if not stage_rect.encloses(hint_rect) or stage_rect.end.x - hint_rect.end.x < ClassSelect.HINT_MARGIN.x - 1.0:
+		return "「拖動旋轉」提示 %s 應在舞台 %s 裡、離右邊至少 %.0f" % [hint_rect, stage_rect, ClassSelect.HINT_MARGIN.x]
 	# 四人大廳（名單、四個人的頭上標籤）也一樣大；右上角有「複製房號」
 	cs.show_lobby(&"lobby_client", [1, 2, 3, 4], 3, {1: ["guardian", true], 2: ["ranger", true], 3: ["priest", false], 4: ["gravedigger", true]}, &"hard", "房號 ABCD（4 / 4 人）", "ABCD")
 	need = await _settled_min_size(cs.get_child(0).get_child(0))

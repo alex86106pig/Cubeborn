@@ -249,13 +249,16 @@ static func _torch() -> Dictionary:
 
 
 # 鐵鏟（F9）：手握在柄的尾端（T 形握把），柄沿 -Y（手臂延伸的方向）伸出，鏟面在遠端，鏟面上有托舉點（hold_point）
-# 2026-10-27 網頁版實測：原本握在柄中段、柄沿 +Y，下半截柄往前戳、鏟面甩到身後，看起來像拿反
+# 鏟面是 U 形槽、凹的一側朝 +Z（手往前伸時朝上，托著鏟起的怪），鏟尖往 +Z 翹
 static func _shovel() -> Dictionary:
 	var k := PartKit.new()
 	var g := Node3D.new()
+	var steel := k.mat(Color("a8a8a8"))
 	k.add(g, PartKit.box(0.18, 0.04, 0.04), k.mat(C.wood), {"y": 0.05})
 	k.add(g, PartKit.cyl(0.03, 0.03, 1.15, 5), k.mat(C.wood), {"y": -0.55})
-	k.add(g, PartKit.box(0.26, 0.34, 0.03), k.mat(Color("a8a8a8")), {"y": -1.25, "rx": 0.25})
+	k.add(g, PartKit.box(0.26, 0.34, 0.03), steel, {"y": -1.25, "rx": -0.25})
+	for sx in [-1.0, 1.0]:
+		k.add(g, PartKit.box(0.03, 0.34, 0.08), steel, {"x": sx * 0.13, "y": -1.25, "z": 0.04, "rx": -0.25})
 	k.merge_static(g, [g])
 	# 托舉點：鏟起的怪放在這裡（WorldView._place_on_shovel）；merge_static 之後才加，不會被合併掉
 	var hold := Node3D.new()
