@@ -3,7 +3,7 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
-## [未發布]
+## [0.48.0] - 2026-10-27
 
 ### 修復
 - **檢查結束時的 ObjectDB 洩漏（v0.47.1 起 128 個、加了骷髏僕從後 139 個）**：「怪物種類」用 `Spawner.create` 建的怪、「職業」建的騎士都沒加進 World，結束時 `clear()` 不會 `detach()`，實體與狀態機的循環參照留到程式結束（每多一種怪就多一組，所以加了 `minion` 後變多）。兩處改成加進 World（逐項單獨跑找到：這兩項單獨跑各洩漏 96 / 54 個，其他項 0；逐個 commit 量到 128 → 139 發生在加入骷髏僕從那一步）。
