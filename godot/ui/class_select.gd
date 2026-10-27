@@ -15,8 +15,10 @@ signal net_start_pressed                            # 大廳：房主「開始�
 signal leave_pressed                                # 大廳：「離開」
 
 const TILE_SIZE := Vector2(160, 100)
-const STAGE_SIZE := Vector2(800, 760)
-const INFO_SIZE := Vector2(640, 760)
+# 舞台與資訊欄固定大小（2026-10-27 使用者：畫面不要隨字數變化）；資訊欄放不下的會被切掉，檢查「主選單」擋
+const STAGE_SIZE := Vector2(800, 860)
+const INFO_SIZE := Vector2(640, 860)
+const INFO_PAD := 24.0
 const BG := Color(6 / 255.0, 8 / 255.0, 14 / 255.0, 0.97)
 const STAGE_BG := Color("151a28")
 const PANEL_BG := Color(0.09, 0.11, 0.16, 0.95)
@@ -47,6 +49,10 @@ var class_buttons: Dictionary = {}       # 職業 id（含佔位）→ 按鈕
 var difficulty_buttons: Dictionary = {}  # 難度 → 按鈕
 var title := UiKit.label("選擇角色", UiKit.FONT_TITLE, Color.WHITE, 3)
 var room_label := UiKit.label("", UiKit.FONT_BODY, Color(1, 1, 1, 0.85), 2)
+var copy_button := UiKit.button("複製房號", UiKit.BUTTON_S)   # 大廳右上角：把房號放進剪貼簿
+var info_box := VBoxContainer.new()   # 資訊欄的內容（固定大小的框裡，檢查用它量放不放得下）
+var _copy_text := ""
+var copied := ""   # 最後一次「複製房號」放進剪貼簿的文字（沒有剪貼簿的環境也記，檢查用）
 var back_button := UiKit.button("返回", UiKit.BUTTON_M)
 var start_button := UiKit.button("開始", UiKit.BUTTON_L)
 var ready_button := UiKit.button("準備好了", UiKit.BUTTON_L)
@@ -93,6 +99,10 @@ func _init() -> void:
 	head.add_child(fill)
 	room_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	head.add_child(room_label)
+	copy_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	copy_button.custom_minimum_size.x = 140
+	copy_button.pressed.connect(_copy_room)
+	head.add_child(copy_button)
 	page.add_child(head)
 
 	var main := HBoxContainer.new()
@@ -166,10 +176,12 @@ func open_single() -> void:
 
 
 # 大廳（main.gd 每次名單變動都呼叫）：choices = NetSession.lobby_choices（peer id → [職業, 準備好了]）
-func show_lobby(p_mode: StringName, peers: Array, local_peer: int, choices: Dictionary, p_difficulty: StringName, room_text: String) -> void:
+# copy_text：「複製房號」放進剪貼簿的文字（區網連線沒有房號就是空的，按鈕不顯示）
+func show_lobby(p_mode: StringName, peers: Array, local_peer: int, choices: Dictionary, p_difficulty: StringName, room_text: String, copy_text: String = "") -> void:
 	mode = p_mode
 	difficulty = p_difficulty
 	room_label.text = room_text
+	_copy_text = copy_text
 	var mine: Array = choices.get(local_peer, NetSession.default_choice(local_peer == World.HOST_PEER_ID))
 	selected = StringName(mine[0]) if ClassDefs.is_pickable(StringName(mine[0])) else ClassDefs.ORDER[0]
 	_ready = mine[1]
@@ -246,6 +258,7 @@ func _refresh() -> void:
 	var single := mode == &"single"
 	title.text = "選擇角色" if single else "連線大廳 · 選擇角色"
 	room_label.visible = not single
+	copy_button.visible = not single and _copy_text != ""
 	back_button.text = "返回" if single else "離開"
 	start_button.visible = mode != &"lobby_client"
 	if single:
@@ -366,8 +379,8 @@ func _build_stage() -> Control:
 	_tag_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_tag_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var hint := UiKit.label("↔ 拖動旋轉", UiKit.FONT_NOTE, Color(1, 1, 1, 0.45), 1)
-	hint.position = Vector2(16, STAGE_SIZE.y - 36)
 	_tag_layer.add_child(hint)
+	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 16)
 	var wrap := Control.new()   # 標籤疊在 3D 舞台上（SubViewportContainer 只能放 SubViewport）
 	wrap.custom_minimum_size = STAGE_SIZE
 	_stage.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -382,24 +395,44 @@ func _build_info() -> Control:
 	var style := StyleBoxFlat.new()
 	style.bg_color = PANEL_BG
 	style.set_corner_radius_all(10)
-	style.set_content_margin_all(24)
+	style.set_content_margin_all(INFO_PAD)
 	panel.add_theme_stylebox_override(&"panel", style)
-	var box := VBoxContainer.new()
+	# 內容放在固定大小、會裁切的框裡：字多字少面板都一樣大（PanelContainer 會跟著內容長大）
+	var clip := Control.new()
+	clip.custom_minimum_size = INFO_SIZE - Vector2.ONE * INFO_PAD * 2.0
+	clip.clip_contents = true
+	panel.add_child(clip)
+	var box := info_box
 	box.add_theme_constant_override(&"separation", 10)
-	panel.add_child(box)
+	clip.add_child(box)
+	box.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	var w := INFO_SIZE.x - INFO_PAD * 2.0
 	box.add_child(name_label)
 	for l: Label in [pitch_label, weapon_label]:
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		l.custom_minimum_size.x = INFO_SIZE.x - 48
+		l.custom_minimum_size.x = w
 		box.add_child(l)
-	chart.custom_minimum_size = Vector2(INFO_SIZE.x - 48, CHART.size() * StatChart.ROW_HEIGHT)
+	chart.custom_minimum_size = Vector2(w, CHART.size() * StatChart.ROW_HEIGHT)
 	box.add_child(chart)
-	extra_label.custom_minimum_size.x = INFO_SIZE.x - 48
+	extra_label.custom_minimum_size.x = w
 	extra_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(extra_label)
 	_skills.add_theme_constant_override(&"separation", 10)
 	box.add_child(_skills)
 	return panel
+
+
+# 大廳「複製房號」：放進剪貼簿（網頁版要 https 或 localhost），按鈕短暫顯示「已複製」
+func _copy_room() -> void:
+	copied = _copy_text
+	if DisplayServer.has_feature(DisplayServer.FEATURE_CLIPBOARD):
+		DisplayServer.clipboard_set(_copy_text)
+	copy_button.text = "已複製"
+	get_tree().create_timer(1.5).timeout.connect(_reset_copy_text)   # 方法連線：畫面先被釋放時會自動斷開
+
+
+func _reset_copy_text() -> void:
+	copy_button.text = "複製房號"
 
 
 # 舞台上的角色：自己在中間、比較大，其他人往後站、縮小；職業換了才重建模型
@@ -472,7 +505,7 @@ func _shake(b: Control) -> void:
 
 # 數值條：灰 = 到基準為止、綠 = 高於基準的部分、紅 = 低於基準少掉的部分，白線 = 基準；右邊是實際數字（和屬性面板同格式）
 class StatChart extends Control:
-	const ROW_HEIGHT := 40.0
+	const ROW_HEIGHT := 36.0
 	const LABEL_W := 70.0
 	const VALUE_W := 220.0
 	const BAR_H := 14.0

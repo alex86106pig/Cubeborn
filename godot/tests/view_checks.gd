@@ -207,12 +207,26 @@ static func _check_class_select(hud: Variant) -> String:
 	_note("選角畫面 %.0f×%.0f（介面最大檔時可用 %.0f×%.0f）" % [need.x, need.y, room.x, room.y])
 	if need.x > room.x or need.y > room.y:
 		return "選角畫面 %.0f×%.0f，超出介面最大檔時的 %.0f×%.0f" % [need.x, need.y, room.x, room.y]
-	# 四人大廳（名單、四個人的頭上標籤）也要塞得進
-	cs.show_lobby(&"lobby_host", [1, 2, 3, 4], 1, {1: ["guardian", true], 2: ["ranger", true], 3: ["priest", false], 4: ["gravedigger", true]}, &"hard", "房號 ABCD（4 / 4 人）")
+	# 畫面大小固定（2026-10-27 使用者：不要隨字數變化）：每個職業、單人 / 四人大廳的整頁一樣大，資訊欄的內容放得下（固定框會裁切）
+	var single_size := need
+	var clip_h: float = ClassSelect.INFO_SIZE.y - ClassSelect.INFO_PAD * 2.0
+	for id: StringName in ClassDefs.ORDER:
+		cs.class_buttons[id].pressed.emit()
+		var page_size := await _settled_min_size(cs.get_child(0).get_child(0))
+		var content_h: float = cs.info_box.get_combined_minimum_size().y
+		if page_size != single_size or content_h > clip_h:
+			return "%s：整頁 %s（應固定 %s）、資訊欄內容高 %.0f（框 %.0f）" % [ClassDefs.CLASSES[id].name, page_size, single_size, content_h, clip_h]
+	# 四人大廳（名單、四個人的頭上標籤）也一樣大；右上角有「複製房號」
+	cs.show_lobby(&"lobby_client", [1, 2, 3, 4], 3, {1: ["guardian", true], 2: ["ranger", true], 3: ["priest", false], 4: ["gravedigger", true]}, &"hard", "房號 ABCD（4 / 4 人）", "ABCD")
 	need = await _settled_min_size(cs.get_child(0).get_child(0))
 	_note("選角畫面（四人大廳）%.0f×%.0f" % [need.x, need.y])
-	if need.x > room.x or need.y > room.y:
-		return "四人大廳的選角畫面 %.0f×%.0f，超出介面最大檔時的 %.0f×%.0f" % [need.x, need.y, room.x, room.y]
+	if need != single_size:
+		return "四人大廳的選角畫面 %.0f×%.0f，應和單人一樣 %.0f×%.0f" % [need.x, need.y, single_size.x, single_size.y]
+	if not _shown(cs.copy_button, cs):
+		return "大廳右上角應有「複製房號」"
+	cs.copy_button.pressed.emit()
+	if cs.copied != "ABCD":
+		return "按「複製房號」應放進 ABCD，實際「%s」" % cs.copied
 	cs.open_single()
 	cs.back_button.pressed.emit()
 	if cs.visible:

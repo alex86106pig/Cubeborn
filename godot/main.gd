@@ -475,7 +475,8 @@ func _refresh_net_panel() -> void:
 	hud.net_panel.show_state(state, peers, net.local_peer_id(), _net_message, net.lobby_choices)
 	if state == &"lobby_host" or state == &"lobby_client":
 		var room := "房號 %s" % net.room_code if hud.net_panel.method == &"room" else "區網"
-		hud.class_select.show_lobby(state, peers, net.local_peer_id(), net.lobby_choices, net.difficulty(), "%s（%d / %d 人）" % [room, peers.size(), Config.NET.max_players])
+		var code := net.room_code if hud.net_panel.method == &"room" else ""
+		hud.class_select.show_lobby(state, peers, net.local_peer_id(), net.lobby_choices, net.difficulty(), "%s（%d / %d 人）" % [room, peers.size(), Config.NET.max_players], code)
 	elif hud.class_select.mode != &"single":
 		hud.class_select.close()
 
