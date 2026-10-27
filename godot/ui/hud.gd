@@ -74,14 +74,14 @@ var run_log := RunLog.new()
 var profile: Profile                # 局外存檔（v0.45，main.gd 給）：結算畫面顯示累計金幣；null = 不顯示累計
 var _floor_coins := 0               # 剛過關拿到的金幣：同一步的 floor:started 橫幅一起顯示
 var _pause := ColorRect.new()
-var _pause_title := UiKit.label("已暫停", 56, Color.WHITE, 3)
-var _pause_hint := UiKit.label("按 Esc 繼續", 20)
-var _quit_button := Button.new()
-var _title_button := Button.new()
+var _pause_title := UiKit.label("已暫停", UiKit.FONT_TITLE, Color.WHITE, 3)
+var _pause_hint := UiKit.label("按 Esc 繼續", UiKit.FONT_NOTE)
+var _quit_button := UiKit.menu_button("離開遊戲")
+var _title_button := UiKit.menu_button("回主選單")
 var weapon_test_bar := HBoxContainer.new()   # 武器測試場：上方的武器按鈕列（只有在測試場才顯示）
 var _pause_net_slot := VBoxContainer.new()   # 暫停畫面放連線面板的位置（連線中顯示人數與離開連線）
-var _reset_hints_button := Button.new()
-var _settings_button := Button.new()
+var _reset_hints_button := UiKit.menu_button("重新顯示提示")
+var _settings_button := UiKit.menu_button("設定")
 var settings_panel := SettingsPanel.new()   # 設定頁（2026-10-27）：主選單首頁與暫停畫面的「設定」打開
 var hints := Hints.new()   # 新手提示框（v0.31.0）
 var _loading := ColorRect.new()   # 開場預熱時蓋住畫面（v0.37.0）；底下先畫一次會用到的中文字，字形在這時候產生
@@ -274,35 +274,16 @@ func _init() -> void:
 	_copy_button.pressed.connect(copy_report)
 	_build_overlay(_game_over, Color(40 / 255.0, 0, 0, 0.55), [_game_over_title, _game_over_stats, _game_over_log, _copy_button, _copy_note, _pulse(UiKit.label("按 R 重新開始", 20))])
 	root.add_child(_game_over)
-	var pause_controls := UiKit.label(CONTROLS_TEXT, 14, Color(1, 1, 1, 0.75))
+	var pause_controls := UiKit.label(CONTROLS_TEXT, UiKit.FONT_NOTE, Color(1, 1, 1, 0.75))
 	# 離開遊戲按鈕：網頁版不顯示（瀏覽器不允許網頁自己關閉）
-	_quit_button.text = "離開遊戲"
-	_quit_button.add_theme_font_size_override(&"font_size", 20)
-	_quit_button.custom_minimum_size = Vector2(180, 44)
-	_quit_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_quit_button.focus_mode = Control.FOCUS_NONE
 	_quit_button.visible = not OS.has_feature("web")
 	_quit_button.pressed.connect(quit_requested.emit)
-	_title_button.text = "回主選單"
-	_title_button.add_theme_font_size_override(&"font_size", 20)
-	_title_button.custom_minimum_size = Vector2(180, 44)
-	_title_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_title_button.focus_mode = Control.FOCUS_NONE
 	_title_button.pressed.connect(title_requested.emit)
 	_pause_net_slot.add_child(net_panel)
 	_reset_hints_button.text = "重新顯示提示"
-	_reset_hints_button.add_theme_font_size_override(&"font_size", 18)
-	_reset_hints_button.custom_minimum_size = Vector2(180, 40)
-	_reset_hints_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_reset_hints_button.focus_mode = Control.FOCUS_NONE
 	_reset_hints_button.pressed.connect(func() -> void:
 		hints.reset_seen()
 		_reset_hints_button.text = "提示已重設")
-	_settings_button.text = "設定"
-	_settings_button.add_theme_font_size_override(&"font_size", 20)
-	_settings_button.custom_minimum_size = Vector2(180, 44)
-	_settings_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_settings_button.focus_mode = Control.FOCUS_NONE
 	_settings_button.pressed.connect(settings_panel.show)
 	_build_overlay(_pause, Color(5 / 255.0, 8 / 255.0, 16 / 255.0, 0.65), [_pause_title, _pause_hint, pause_controls, _pause_net_slot, _settings_button, _reset_hints_button, _title_button, _quit_button])
 	_pause.mouse_filter = Control.MOUSE_FILTER_STOP   # 選單的按鈕與輸入框要能點

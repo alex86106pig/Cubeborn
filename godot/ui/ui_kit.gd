@@ -20,6 +20,12 @@ const CHARGES := Color("9cff9c")
 const SLOT_BG := Color(20 / 255.0, 24 / 255.0, 36 / 255.0, 0.85)
 const SLOT_OUTLINE := Color(1, 1, 1, 0.15)
 const DENY := Color("ff4040")
+# 選單類畫面（主選單、暫停、設定、連線面板）的字級，各畫面共用（2026-10-27 使用者：標題畫面、Esc 選單的字有大有小）
+const FONT_TITLE := 52     # 頁面標題（已暫停、選擇職業、設定）
+const FONT_HEADING := 32   # 段落標題（畫面、音量）
+const FONT_BODY := 28      # 按鈕、選項、主要文字
+const FONT_NOTE := 20      # 說明、提示、版號
+const MENU_BUTTON := Vector2(280, 60)
 
 
 static func label(text: String, size: int, color: Color = Color.WHITE, shadow_px: int = 2) -> Label:
@@ -32,6 +38,17 @@ static func label(text: String, size: int, color: Color = Color.WHITE, shadow_px
 	l.add_theme_constant_override(&"shadow_offset_y", shadow_px)
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return l
+
+
+# 選單按鈕：FONT_BODY 字、MENU_BUTTON 大小、置中、不搶鍵盤焦點
+static func menu_button(text: String) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.add_theme_font_size_override(&"font_size", FONT_BODY)
+	b.custom_minimum_size = MENU_BUTTON
+	b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	b.focus_mode = Control.FOCUS_NONE
+	return b
 
 
 static func rect(color: Color, size: Vector2 = Vector2.ZERO) -> ColorRect:

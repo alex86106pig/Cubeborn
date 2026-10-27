@@ -40,7 +40,7 @@ func _init() -> void:
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override(&"separation", 12)
 	var title := UiKit.label("Cubeborn", 96, Color.WHITE, 5)
-	var version := UiKit.label("v" + GameVersion.VERSION, 16, Color(1, 1, 1, 0.6), 1)
+	var version := UiKit.label("v" + GameVersion.VERSION, UiKit.FONT_NOTE, Color(1, 1, 1, 0.6), 1)
 	for l: Label in [title, version]:
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(l)
@@ -135,25 +135,19 @@ func _class_card(id: StringName) -> VBoxContainer:
 
 
 static func _heading(text: String) -> Label:
-	var l := UiKit.label(text, 36, Color.WHITE, 3)
+	var l := UiKit.label(text, UiKit.FONT_TITLE, Color.WHITE, 3)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	return l
 
 
 static func _note(text: String) -> Label:
-	var l := UiKit.label(text, 16, Color(1, 1, 1, 0.75), 1)
+	var l := UiKit.label(text, UiKit.FONT_NOTE, Color(1, 1, 1, 0.75), 1)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	return l
 
 
 static func _button(text: String) -> Button:
-	var b := Button.new()
-	b.text = text
-	b.add_theme_font_size_override(&"font_size", 26)
-	b.custom_minimum_size = Vector2(280, 56)
-	b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	b.focus_mode = Control.FOCUS_NONE
-	return b
+	return UiKit.menu_button(text)
 
 
 static func _spacer(h: float) -> Control:

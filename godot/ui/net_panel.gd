@@ -15,7 +15,7 @@ signal ready_toggled(ready: bool)           # 客戶端按「準備好了」/「
 var room_code := ""   # 房號連線：房主的房號（main.gd 在 show_state 前設定）
 var mode: StringName = &"single"   # 最後一次 show_state 的狀態
 var method: StringName = &"room"   # 連線方式（v0.40.0，主選單選）：&"room" 房號 | &"ip" 區網 IP
-var _status := UiKit.label("", 18, Color(1, 1, 1, 0.9))
+var _status := UiKit.label("", UiKit.FONT_NOTE, Color(1, 1, 1, 0.9))
 var _address := LineEdit.new()
 var _host_button := _button("開房")
 var _join_button := _button("加入")
@@ -33,8 +33,8 @@ func _init() -> void:
 	add_theme_constant_override(&"separation", 8)
 	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_status)
-	_address.custom_minimum_size = Vector2(200, 44)
-	_address.add_theme_font_size_override(&"font_size", 20)
+	_address.custom_minimum_size = Vector2(220, UiKit.MENU_BUTTON.y)
+	_address.add_theme_font_size_override(&"font_size", UiKit.FONT_BODY)
 	_connect_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	_connect_row.add_theme_constant_override(&"separation", 8)
 	for c: Control in [_host_button, _address, _join_button]:
@@ -136,7 +136,7 @@ static func _peer_name(peers: Array, id: int, local_peer: int, choices: Dictiona
 static func _button(text: String) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.add_theme_font_size_override(&"font_size", 20)
-	b.custom_minimum_size = Vector2(160, 44)
+	b.add_theme_font_size_override(&"font_size", UiKit.FONT_BODY)
+	b.custom_minimum_size = Vector2(200, UiKit.MENU_BUTTON.y)
 	b.focus_mode = Control.FOCUS_NONE
 	return b
