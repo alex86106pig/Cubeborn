@@ -57,7 +57,10 @@ func _ready() -> void:
 
 
 # 停止所有音效與音樂：音效伺服器下一次混音才放掉播放物件，結束程式前要先呼叫、等幾幀（main.quit_game），否則回報洩漏
+# 只在結束程式時呼叫，之後不再理會事件：連線時等待結束的這段時間對方先斷線，客戶端收到 game:restart 會把音樂又播起來（2026-10-27 查到的洩漏）
 func stop_all() -> void:
+	if GameEvents.event_emitted.is_connected(_on_event):
+		GameEvents.event_emitted.disconnect(_on_event)
 	_kill_tween()
 	_sfx.stop()
 	_music.stop()

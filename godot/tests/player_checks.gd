@@ -803,7 +803,9 @@ static func check_classes() -> String:
 			return "重新開始應保留職業"
 	# 騎士被隊友從背後打到減半、正面照常（誤傷，Config.NET.friendly_fire）
 	var g: Dictionary = ClassDefs.CLASSES[&"guardian"]
-	var knight := Player.new(_new_world(), 7)
+	var kw := _new_world()
+	var knight := Player.new(kw, 7)
+	kw.add_entity(knight)   # 加進 World：結束時 clear() 才會切斷玩家與狀態機的循環參照（不加會洩漏）
 	knight.apply_class(&"guardian")
 	knight.facing = 0.0   # 面向 +Z
 	if knight.friendly_back_mul(Vector2(0, -2)) != g.passive.friendly_back_mul or knight.friendly_back_mul(Vector2(0, 2)) != 1.0:

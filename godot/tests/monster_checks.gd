@@ -46,7 +46,7 @@ static func check_enemy_defs() -> String:
 		var d: Dictionary = EnemyDefs.ENEMIES[type]
 		if Spawner.behavior_class(d.get("behavior", &"")) == null:
 			return "%s 的 behavior「%s」沒有對應的類別" % [type, d.get("behavior", "")]
-		var e := Spawner.create(w, type, Vector2.ZERO, WaveDefs.NO_SCALING.duplicate())
+		var e := w.add_enemy(Spawner.create(w, type, Vector2.ZERO, WaveDefs.NO_SCALING.duplicate()))   # 加進 World：clear() 才會切斷循環參照（不加會洩漏）
 		if e.get_script() != Spawner.behavior_class(d.behavior):
 			return "%s 建出來的類別不對" % type
 		if e.is_boss() != d.get("is_boss", false):

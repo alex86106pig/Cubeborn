@@ -5,6 +5,7 @@
 # 數值都從資料表（Config、defs/）讀：調數值不用改檢查，只有機制改了才要改
 # 清單依種類分組（PROJECT_GUIDELINES.md 第 17 節）：同一種機制的子檢查用 CheckKit.all_of 合成一項，子檢查各自獨立
 # 打亂順序跑（驗證項目之間不互相依賴）：… -s res://tests/check.gd -- --shuffle=種子
+# 只跑標題開頭相符的項目（逐項找洩漏、單獨重跑）：… -- --only=標題開頭
 extends SceneTree
 
 const LOG_PATH := "res://tests/check_last.log"
@@ -238,9 +239,12 @@ func _check(title: String, fn: Callable) -> void:
 	_items.append([title, fn])
 
 
-# --shuffle=種子：打亂順序跑，項目之間有依賴（共用的狀態、靜態快取、存檔）就會失敗
+# --shuffle=種子：打亂順序跑，項目之間有依賴（共用的狀態、靜態快取、存檔）就會失敗；--only=標題開頭：只跑相符的項目
 func _run_all() -> void:
+	var only := ""
 	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--only="):
+			only = arg.get_slice("=", 1)
 		if arg.begins_with("--shuffle="):
 			var rng := RandomNumberGenerator.new()
 			rng.seed = arg.get_slice("=", 1).to_int()
@@ -251,7 +255,8 @@ func _run_all() -> void:
 				_items[j] = t
 			_log.store_line("（打亂順序，種子 %s）\n" % arg.get_slice("=", 1))
 	for it: Array in _items:
-		_run_one(it[0], it[1])
+		if only == "" or (it[0] as String).begins_with(only):
+			_run_one(it[0], it[1])
 
 
 func _run_one(title: String, fn: Callable) -> void:

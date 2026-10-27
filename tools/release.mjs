@@ -84,6 +84,14 @@ function runChecks() {
     return false;
   }
   if (!chk.ok && !chk.out.includes('通過')) console.log((chk.err || '').split('\n').slice(-15).join('\n'));
+  // 程式結束時沒釋放的物件（2026-10-27 查到兩種，都沒人發現：檢查建的實體沒加進 World 128 個、連線客戶端結束時音樂又被播起來 2 個）
+  // 警告只印在 stderr（--log-file 那時已經關了）；check.gd 開的子程序（兩個程序連線、結束程式不洩漏）也共用這個 stderr，一起擋
+  const leak = (chk.err || '').match(/\d+ ObjectDB instances were leaked|\d+ resources still in use at exit/);
+  if (leak) {
+    console.log(`✘ 結束時有物件沒釋放（${leak[0]}）：check.gd 本身多半是檢查建的實體沒加進 World、或 World 沒登錄到 _worlds；子程序多半是遊戲結束流程\n` +
+      '    找是哪一項：在 godot/ 內 <Godot> --headless --path . -s res://tests/check.gd -- --only=標題開頭，逐項單獨跑看哪一項會出現這行');
+    return false;
+  }
   return chk.ok && total[1] === total[2];
 }
 
