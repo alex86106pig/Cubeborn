@@ -51,8 +51,8 @@ func setup(p_world: World) -> void:
 func _init() -> void:
 	_sfx.bus = _bus(SFX_BUS)
 	_music.bus = _bus(MUSIC_BUS)
-	# 網頁版的 WAV 預設交給瀏覽器播（Sample），走 JS 那份匯流排；執行中 add_bus 建的匯流排在 JS 順序是錯的，音量會套到別條。
-	# 改成由 Godot 混音（同音效），音量才照 Godot 的匯流排。之後新增播放器也要設
+	# 網頁版的 WAV 預設交給瀏覽器播（Sample），走 JS 那份匯流排，那份的順序和 Godot 對不上（godotengine/godot#119026），音量會套到別條。
+	# 所有聲音都由 Godot 混音（PLAYBACK_TYPE_STREAM）才照 Godot 的匯流排；新增播放器或 play_stream 也要設
 	_music.playback_type = AudioServer.PLAYBACK_TYPE_STREAM
 
 
@@ -94,7 +94,8 @@ func play(cue_name: String, gain := 1.0) -> void:
 	if now - _last_played.get(cue_name, -INF) < MIN_INTERVAL.get(cue_name, DEFAULT_INTERVAL):
 		return
 	_last_played[cue_name] = now
-	(_sfx.get_stream_playback() as AudioStreamPlaybackPolyphonic).play_stream(stream, 0.0, cue_db(cue_name, gain))
+	# 匯流排與混音方式都要明給：不給時網頁版走 Master、交給瀏覽器播，經過 JS 那份順序錯的匯流排（音樂調 0 音效就沒聲音）
+	(_sfx.get_stream_playback() as AudioStreamPlaybackPolyphonic).play_stream(stream, 0.0, cue_db(cue_name, gain), 1.0, AudioServer.PLAYBACK_TYPE_STREAM, _sfx.bus)
 
 
 ## 設定頁拉音效滑桿時播一聲當回饋（大廳、主選單沒有音效可聽）；回傳這次有沒有播
