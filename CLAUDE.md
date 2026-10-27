@@ -15,7 +15,7 @@ Godot 4（GDScript）等距視角 Roguelike 動作遊戲（暫定名 Cubeborn）
    - pull 到新的 commit 時：用 `git log --oneline ORIG_HEAD..HEAD` 和 `CHANGELOG.md` 最上面（「未發布」與剛發布的版本）**向使用者簡報另一邊改了什麼**，不要讓使用者自己去翻歷史。
    - 為什麼：兩位作者在多台電腦開發，聊天紀錄不會同步，忘了同步就會在舊版本上修改。
 2. 讀 [`docs/進度.md`](docs/進度.md)：**先看最上面的「通知」**（另一位作者留的流程變更，照 3.2 處理），再看上一輪卡在哪、下一步是什麼。
-3. 要動程式時：讀 [`PROJECT_GUIDELINES.md`](PROJECT_GUIDELINES.md) 與 [`docs/系統說明.md`](docs/系統說明.md) 中相關的章節、[`CHANGELOG.md`](CHANGELOG.md) 最上面一個版本，再用 [`docs/檔案地圖.md`](docs/檔案地圖.md) 定位要動的模組，只讀那幾段。只是討論、評估、改文件時不必讀。
+3. 要動程式時：讀 [`PROJECT_GUIDELINES.md`](PROJECT_GUIDELINES.md) 與 [`docs/系統說明.md`](docs/系統說明.md) 中相關的章節（`PROJECT_GUIDELINES.md` 第 10 節「命名與程式風格」每次寫程式都要讀）、[`CHANGELOG.md`](CHANGELOG.md) 最上面一個版本，再用 [`docs/檔案地圖.md`](docs/檔案地圖.md) 定位要動的模組，只讀那幾段。只是討論、評估、改文件時不必讀。
 
 ---
 
@@ -59,7 +59,7 @@ Godot 4（GDScript）等距視角 Roguelike 動作遊戲（暫定名 Cubeborn）
 
 ### 1.5 每次修改完成後
 1. 完成第 1.4 節的驗收。
-2. 把改動記進 `CHANGELOG.md` 最上面的 `## [未發布]`（沒有就新增；分類照 `PROJECT_GUIDELINES.md` 第 12 節）。**不升版號、不改 `version.gd`、不打 tag**，這些推送時由 `tools/release.mjs` 做。
+2. 把改動記進 `CHANGELOG.md` 最上面的 `## [未發布]`（沒有就新增；分類與寫法照 `PROJECT_GUIDELINES.md` 第 12 節）。**不升版號、不改 `version.gd`、不打 tag**，這些推送時由 `tools/release.mjs` 做。
 3. `git commit -m "摘要"`（不 push）。新腳本的 `.gd.uid` 一起 commit。
 4. 新增、刪除、搬移檔案時更新 `docs/檔案地圖.md`。規則有變時依範圍決定寫哪裡：
    - 每個系統都要遵守的共通規則（分層、命名、狀態機、事件表、版號、驗收）→ `PROJECT_GUIDELINES.md`。
