@@ -37,6 +37,7 @@ var _stepped_this_tick := false
 var _elapsed := 0.0
 var _lobby_elapsed := 0.0
 var _start_pos := Vector2.INF
+var _allies_seen := {}   # 自動驗證：這一局看過的玩家方骷髏僕從 id（G 連線檢查）
 var _warming := false                 # 開場預熱中（蓋著「準備中」）
 var _spectate := 0                     # 本機陣亡後觀戰的隊友 peer id（0 = 沒在觀戰；_update_spectate）
 
@@ -606,6 +607,8 @@ func _check_auto_quit(delta: float) -> void:
 		var me := local_player()
 		if _start_pos == Vector2.INF and me != null:
 			_start_pos = me.pos   # 開始遊戲後自己角色的第一個位置（結束時印出移動了多遠）
+		for a in world.allies:   # 連線檢查用（G）：這一局看過的玩家方骷髏僕從（結束時不一定還活著）
+			_allies_seen[a.id] = true
 	if args.auto_move_seconds > 0.0 and _elapsed >= args.auto_move_seconds:
 		input_collector.auto_move = Vector2.ZERO
 	if _elapsed < args.run_seconds and _lobby_elapsed < args.run_seconds:
@@ -625,7 +628,7 @@ func _check_auto_quit(delta: float) -> void:
 		line += " %d=(%.3f,%.3f)" % [peer_id, p.pos.x, p.pos.y]
 	print(line)
 	# 連線檢查用（G 道具）：玩家方的骷髏僕從、追蹤鬼火的數量，每位玩家的護盾（占最大生命的比例）
-	var items_line := "items allies=%d wisps=%d" % [
+	var items_line := "items allies_seen=%d allies=%d wisps=%d" % [_allies_seen.size(),
 		world.allies.filter(func(e: Entity) -> bool: return not e.is_dead).size(),
 		world.projectiles.filter(func(e: Entity) -> bool: return (e as Projectile).homing > 0.0).size()]
 	for peer_id: int in peers:

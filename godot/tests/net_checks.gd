@@ -974,7 +974,8 @@ static func check_two_processes(feel: Array[String]) -> String:
 
 
 # 道具第二批（G）的兩個程序實測：房主帶亡者大軍（必定召喚）與骨製護盾、開場一群怪、一直按左鍵；
-# 兩邊結束時都要看到玩家方的骷髏僕從（客戶端靠快照），兩份 log 都不能有執行期錯誤（畫面層也有跑）
+# 兩邊這一局都要看過玩家方的骷髏僕從（客戶端靠快照；怪會追僕從，結束那一刻不一定還活著），兩份 log 都不能有執行期錯誤（畫面層也有跑）
+# 不併進 C1：怪群一直推擠，C1「停下後位置一致 < 0.01」不成立（2026-10-27 合併試跑 3 次差 0.06~0.50）
 static func check_two_processes_items(feel: Array[String]) -> String:
 	var exe := OS.get_executable_path()
 	var project := ProjectSettings.globalize_path("res://")
@@ -1011,9 +1012,9 @@ static func check_two_processes_items(feel: Array[String]) -> String:
 				found[i] = line.strip_edges()
 		if found[i] == "":
 			return "%s沒有印出道具狀態（遊戲沒有跑完？）" % who
-		var allies := (found[i] as String).get_slice("allies=", 1).to_int()
-		if allies < 1:
-			return "%s結束時應看到玩家方的骷髏僕從：%s" % [who, found[i]]
+		var seen := (found[i] as String).get_slice("allies_seen=", 1).to_int()
+		if seen < 1:
+			return "%s這一局應看過玩家方的骷髏僕從：%s" % [who, found[i]]
 	feel.append("G 道具兩個程序：房主 %s；客戶端 %s" % [found[0], found[1]])
 	return ""
 
