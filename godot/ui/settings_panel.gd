@@ -38,7 +38,7 @@ func _init() -> void:
 	var rows := VBoxContainer.new()
 	rows.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	rows.add_theme_constant_override(&"separation", 16)
-	rows.add_child(UiKit.label("畫面", 32, UiKit.GOLD, 2))
+	rows.add_child(_centered(UiKit.label("畫面", 32, UiKit.GOLD, 2)))
 	for key: String in ["shadows", "lights"]:
 		var t := CheckButton.new()   # 文字在左、開關在右，整行都點得到
 		t.text = "陰影" if key == "shadows" else "光源"
@@ -49,7 +49,7 @@ func _init() -> void:
 		t.toggled.connect(func(on: bool) -> void: set_value(key, on))
 		toggles[key] = t
 		rows.add_child(t)
-	rows.add_child(UiKit.label("音量", 32, UiKit.GOLD, 2))
+	rows.add_child(_centered(UiKit.label("音量", 32, UiKit.GOLD, 2)))
 	for key: String in VOLUME_NAMES:
 		var row := HBoxContainer.new()
 		row.custom_minimum_size = Vector2(ROW_WIDTH, 56)
