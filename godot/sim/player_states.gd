@@ -100,7 +100,12 @@ class Ready:
 					return
 				p.slots.notify_blocked(p, buffered.index)
 		if p.is_attack_held and p.can_attack():   # 短弓裝填中不能射
-			fsm.change(&"attack")
+			var adef := p.action_def(&"attack")
+			if adef.has("cd_key") and not p.world.cooldowns.is_ready(p.cd(adef.cd_key)):
+				if p.attack_pressed:   # 有冷卻的左鍵招式（舉著火把的噴火）冷卻中：按下那一步提示，不出招
+					p.world.emit_event("skill:onCooldown", {"key": adef.cd_key, "player_id": p.id})
+			else:
+				fsm.change(&"attack")
 
 
 # 攻擊與特殊技共用的三段式動作狀態
@@ -120,12 +125,13 @@ class TimedAction:
 		data.k = 0.0
 		data.move_speed_mul = def.get("move_speed_mul", 1.0)
 		data.lock_facing = false
-		if kind == &"special" and def.has("cooldown"):   # 按住格擋沒有冷卻（v0.41.0）
-			p.world.cooldowns.start(p.cd("player.special"), def.cooldown * p.stats.value(&"cooldown"))
-			p.world.emit_event("skill:used", {"key": "player.special", "player_id": p.id})
+		if def.has("cooldown") and (kind == &"special" or def.has("cd_key")):   # 按住格擋沒有冷卻（v0.41.0）；噴火是有冷卻的左鍵
+			var cd_key: String = def.get("cd_key", "player.special")
+			p.world.cooldowns.start(p.cd(cd_key), def.cooldown * p.stats.value(&"cooldown"))
+			p.world.emit_event("skill:used", {"key": cd_key, "player_id": p.id})
 		data.behavior.enter(p, def, data)
-		# 攻速只影響普攻三個階段（在武器行為調整終結技後搖之後套用）；特殊技由冷卻限制
-		if kind == &"attack":
+		# 攻速只影響普攻三個階段（在武器行為調整終結技後搖之後套用）；特殊技與有冷卻的左鍵招式由冷卻限制
+		if kind == &"attack" and not def.has("cooldown"):
 			var attack_speed := p.stats.value(&"attack_speed")
 			for i in data.durations.size():
 				data.durations[i] /= attack_speed
@@ -181,6 +187,8 @@ class TimedAction:
 class UseItem:
 	func enter(p: Player, data: Dictionary, _fsm: StateMachine) -> void:
 		data.move_speed_mul = 1.0
+		var slot: Variant = p.slots.get_slot(p, data.index)
+		data.item_behavior = slot.def.behavior if slot != null else &""
 		p.slots.use(p, data.index)
 
 	func update(_p: Player, _dt: float, fsm: StateMachine) -> void:

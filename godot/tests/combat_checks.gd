@@ -58,10 +58,13 @@ static func check_fire_bolt() -> String:
 		var wd: Dictionary = WeaponDefs.WEAPONS[wid]
 		var moves: Array = [wd.attack, wd.special]
 		for alt: Dictionary in [wd.get("stance", {}), wd.get("grab", {})]:
-			if not alt.is_empty():
-				moves.append_array([alt.attack, alt.special])
+			for kind: String in ["attack", "special"]:   # 火把舉著時只換左鍵
+				if alt.has(kind):
+					moves.append(alt[kind])
 		if wd.special.has("parry"):
 			moves.append(wd.special.parry)
+		if wd.has("slot_skill"):   # 武器帶的技能欄技能（插火把）也在選角畫面顯示
+			moves.append(SkillDefs.SKILLS[wd.slot_skill])
 		for m: Dictionary in moves:
 			if not SkillIcons.has(m.get("icon", "")) or m.get("desc", "") == "":
 				return "%s「%s」要有畫好的圖示（SkillIcons.DRAWN）與說明 desc：%s / %s" % [wd.name, m.name, m.get("icon", ""), m.get("desc", "")]
@@ -716,6 +719,23 @@ static func check_daggers() -> String:
 		var want: float = base * (dg.attack.finisher_mul * p.stats.value(&"crit_damage") if fin else 1.0)
 		if absf(hits[i].amount - want) > EPS or hits[i].is_crit != fin or (hits[i].knockback > 0.0) != fin:
 			return "第 %d 下應 %.2f、爆擊 %s、擊退 %s：%s" % [i + 1, want, fin, fin, hits[i]]
+	# 前 4 下也不讓怪受擊硬直（2026-10-27 使用者：停下後仰看起來像被擊退），只有第 5 下
+	var wg := _new_world()
+	var pg := _player(wg)
+	pg.equip_weapon(&"daggers")
+	var g := _spawn(wg, &"grunt", Vector2(0, 1.4))
+	_run(wg, _cmd(Vector2.ZERO), roundi(EnemyDefs.ENEMIES.grunt.spawn_time / DT) + 2)
+	g.stats.set_base(&"max_hp", 99999.0)
+	g.hp = 99999.0
+	var staggered := []
+	for step in 130:
+		pg.hp = pg.max_hp
+		_run(wg, _cmd(Vector2.ZERO, g.pos, InputCmd.BTN_ATTACK), 1)
+		for e in wg.events:
+			if e.name == "entity:damaged" and e.target_id == g.id:
+				staggered.append(g.fsm.current_name == &"hurt")
+	if staggered.size() < 5 or staggered.slice(0, 5) != [false, false, false, false, true]:
+		return "雙匕首只有第 5 下讓怪硬直：%s" % [staggered]
 	# 影步
 	var w2 := _new_world()
 	var p2 := _player(w2)
@@ -811,52 +831,77 @@ static func check_scepter() -> String:
 	return ""
 
 
-# F8 火把與火把傭兵：右鍵進入準備姿態（移速 ×0.6），姿態中左鍵插火把（冷卻 1 秒、每關 3 支）、右鍵噴火（120% + 點燃）；
-# 翻滾 / 跳躍取消姿態；插著與舉著的火把照亮的範圍不管視野扇形都看得到；揮擊點燃；傭兵視野 +3、身邊 6
+# F8 火把與火把傭兵（2026-10-27 改）：按住右鍵舉火把（移速 ×0.6）、放開放下；舉著時左鍵噴火（120% + 點燃、冷卻 6 秒，冷卻中不出招）；
+# 插火把在技能欄第一個空格（冷卻 1 秒、次數 3 記在武器上、換層補滿）；翻滾取消；插著與舉著的火把照亮的範圍不管視野扇形都看得到；
+# 揮擊點燃；傭兵視野 +3、身邊 6
 static func check_torch() -> String:
 	var tw: Dictionary = WeaponDefs.WEAPONS[&"torch"]
+	var plant: Dictionary = SkillDefs.SKILLS[tw.slot_skill]
+	var held := InputCmd.BTN_SPECIAL_HELD
 	var w := _new_world()
 	var p := _player(w)
 	p.equip_weapon(&"torch")
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 1)
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 20)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL | held), 1)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), held), 20)
 	if not p.torch_stance or not p.anim.get("torch_stance", false):
-		return "按右鍵應進入準備姿態"
-	_run(w, _cmd(Vector2(1, 0), Vector2(0, 5)), 3)
+		return "按住右鍵應舉起火把"
+	_run(w, _cmd(Vector2(1, 0), Vector2(0, 5), held), 3)
 	if absf(p.velocity.length() - p.stats.value(&"move_speed") * tw.stance.move_speed_mul) > 0.05:
-		return "準備姿態移速應 ×%.1f：%.2f" % [tw.stance.move_speed_mul, p.velocity.length()]
-	# 背後 10 單位的怪：視野外；插了火把之後（火把在它旁邊）看得到
+		return "舉著火把移速應 ×%.1f：%.2f" % [tw.stance.move_speed_mul, p.velocity.length()]
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 1)
+	if p.torch_stance:
+		return "放開右鍵應放下火把"
+	# 噴火：舉著時左鍵，前方的怪受到 120% 魔法；冷卻中再按不出招
+	var front := _dummy(w, Vector2(0, 3))
+	var events: Array[Dictionary] = []
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL | held), 1)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), held), 20)
+	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), held | InputCmd.BTN_ATTACK), 30, events)
+	var got := _damage_amounts(events, front.id)
+	if got.size() != 1 or absf(got[0] - WeaponDefs.move_base_damage(tw, tw.stance.attack)) > EPS:
+		return "舉著火把左鍵噴火應打中前方一次 %.1f（按住 0.5 秒、冷卻 6 秒）：%s" % [WeaponDefs.move_base_damage(tw, tw.stance.attack), got]
+	if not p.torch_stance or w.cooldowns.is_ready(p.cd(tw.stance.attack.cd_key)) or not w.cooldowns.is_ready(p.cd("player.special")):
+		return "噴火後應還舉著火把、冷卻算在 %s（不占右鍵）" % tw.stance.attack.cd_key
+	events.clear()
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), held), 20)   # 等噴火收招
+	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), held | InputCmd.BTN_ATTACK), 1, events)
+	if _named(events, "skill:onCooldown").is_empty() or not p.action.is_in(&"ready"):
+		return "噴火冷卻中按左鍵應提示、不出招：%s" % p.action.current_name
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 1)
+	# 插火把：技能欄第一個空格；背後 10 單位的怪本來看不到，火把插在它旁邊後看得到
+	var idx := p.slots.weapon_slot_index(p)
+	if idx != Config.PLAYER.slots.find(null):
+		return "插火把應在技能欄第一個空格（第 %d 格）：%d" % [Config.PLAYER.slots.find(null) + 1, idx + 1]
 	var behind := _dummy(w, Vector2(0, -10))
 	if Vision.point_visible(w, p, behind.pos):
 		return "背後的怪本來應看不到"
 	p.pos = Vector2(0, -6)
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(idx)), 1)
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 20)
-	if w.torches.size() != 1 or p.torches_left != tw.stance.attack.per_floor - 1:
-		return "姿態中左鍵應插 1 支火把：%d 支、剩 %d" % [w.torches.size(), p.torches_left]
+	if w.torches.size() != 1 or WeaponDropDefs.slot_charges(p.active_weapon()) != plant.charges - 1:
+		return "按技能欄應插 1 支火把：%d 支、武器上剩 %d" % [w.torches.size(), WeaponDropDefs.slot_charges(p.active_weapon())]
 	p.pos = Vector2.ZERO
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 1)
 	if not Vision.point_visible(w, p, behind.pos):
 		return "火把旁邊的怪不管視野都應看得到"
-	for i in 6:   # 再插 6 次：冷卻 1 秒、每關最多 3 支
-		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1)
+	for i in 6:   # 再按 6 次：冷卻 1 秒、最多 3 次
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(idx)), 1)
 		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 70)
-	if w.torches.size() != tw.stance.attack.per_floor or p.torches_left != 0:
-		return "每關只能插 %d 支：%d 支、剩 %d" % [tw.stance.attack.per_floor, w.torches.size(), p.torches_left]
-	if p.action_def(&"attack") != tw.attack:
-		return "火把插完後準備姿態的左鍵應改回揮擊"
-	# 噴火：前方的怪受到 120% 魔法 + 點燃
-	var front := _dummy(w, Vector2(0, 3))
-	var events: Array[Dictionary] = []
-	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 1, events)
-	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 30, events)
-	var got := _damage_amounts(events, front.id)
-	if got.is_empty() or absf(got[0] - WeaponDefs.move_base_damage(tw, tw.stance.special)) > EPS:
-		return "噴火應打中前方 %.1f：%s" % [WeaponDefs.move_base_damage(tw, tw.stance.special), got]
-	# 翻滾取消姿態
-	_run(w, _cmd(Vector2(1, 0), Vector2(0, 5), InputCmd.BTN_ROLL), 2)
+	if w.torches.size() != plant.charges or WeaponDropDefs.slot_charges(p.active_weapon()) != 0:
+		return "插火把最多 %d 次：%d 支、剩 %d" % [plant.charges, w.torches.size(), WeaponDropDefs.slot_charges(p.active_weapon())]
+	# 次數跟著武器：快照來回後還在；換一把新的火把是滿的；換層補滿
+	var used := p.active_weapon()
+	if WeaponDropDefs.slot_charges(WeaponDropDefs.from_array(WeaponDropDefs.to_array(used))) != 0:
+		return "插火把次數應跟著武器實例同步"
+	p.loadout.refill_slot_charges()
+	if WeaponDropDefs.slot_charges(used) != plant.charges:
+		return "換層應補滿插火把次數：%d" % WeaponDropDefs.slot_charges(used)
+	# 翻滾取消舉火把（就算右鍵還按著）
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL | held), 1)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), held), 20)
+	_run(w, _cmd(Vector2(1, 0), Vector2(0, 5), held | InputCmd.BTN_ROLL), 2)
 	if p.torch_stance:
-		return "翻滾應取消準備姿態"
+		return "翻滾應放下火把"
 	# 揮擊點燃（燃燒是 Enemy 的狀態：用真的骷髏）
 	var w2 := _new_world()
 	var p2 := _player(w2)

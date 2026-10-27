@@ -112,14 +112,17 @@ static func can_merge(a: Dictionary, b: Dictionary) -> bool:
 		and a.rarity == b.rarity and next_rarity(a.rarity) != &""
 
 
-# 快照用：[uid, base, rarity, [詞條…]]；空的裝備欄是 []
+# 快照用：[uid, base, rarity, [詞條…], 武器技能剩幾次?]；空的裝備欄是 []；次數沒用過（滿的）不送
 static func to_array(inst: Dictionary) -> Array:
 	if inst.is_empty():
 		return []
 	var affixes := []
 	for id: StringName in inst.affixes:
 		affixes.append(String(id))
-	return [String(inst.uid), String(inst.base), String(inst.rarity), affixes]
+	var a := [String(inst.uid), String(inst.base), String(inst.rarity), affixes]
+	if inst.has("slot_charges"):
+		a.append(inst.slot_charges)
+	return a
 
 
 static func from_array(a: Array) -> Dictionary:
@@ -128,8 +131,24 @@ static func from_array(a: Array) -> Dictionary:
 	var affixes: Array[StringName] = []
 	for s: String in a[3]:
 		affixes.append(StringName(s))
-	return {"uid": StringName(a[0]), "base": StringName(a[1]), "rarity": StringName(a[2]), "affixes": affixes}
+	var inst := {"uid": StringName(a[0]), "base": StringName(a[1]), "rarity": StringName(a[2]), "affixes": affixes}
+	if a.size() > 4:
+		inst["slot_charges"] = int(a[4])
+	return inst
 
 
+# 武器帶的技能（火把的插火把，2026-10-27）還剩幾次：記在武器實例的 slot_charges，沒有就是滿的；沒有武器技能回傳 -1
+static func slot_charges(inst: Dictionary) -> int:
+	if inst.is_empty():
+		return -1
+	var w: Dictionary = WeaponDefs.WEAPONS[ItemDefs.ITEMS[inst.base].weapon]
+	if not w.has("slot_skill"):
+		return -1
+	return inst.get("slot_charges", SkillDefs.SKILLS[w.slot_skill].charges)
+
+
+# 名稱；有武器技能次數的接在後面括號（「白色 火把（2）」）
 static func display_name(inst: Dictionary) -> String:
-	return "%s %s" % [ItemDefs.RARITIES[inst.rarity].name, ItemDefs.ITEMS[inst.base].name]
+	var text := "%s %s" % [ItemDefs.RARITIES[inst.rarity].name, ItemDefs.ITEMS[inst.base].name]
+	var n := slot_charges(inst)
+	return text + ("（%d）" % n if n >= 0 else "")

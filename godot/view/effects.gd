@@ -26,7 +26,6 @@ const HANDLERS := {
 	"fx:explosion": &"_fx_explosion",
 	"fx:parry": &"_fx_parry",
 	"fx:heal": &"_fx_heal",
-	"fx:sprint": &"_fx_sprint",
 	"fx:boss_slam": &"_fx_boss_slam",
 	"fx:boss_wall": &"_fx_boss_wall",
 	"fx:boss_teleport": &"_fx_boss_teleport",
@@ -307,10 +306,6 @@ func _fx_status(p: Dictionary) -> void:
 func _fx_heal(p: Dictionary) -> void:
 	ring(_at(p), 1.6, {"color": p.color, "life": 0.4})
 	burst(_at(p, 0.4), {"color": p.color, "count": 14, "speed": 1.5, "up": 4.0, "gravity": -2.0, "life": 0.7})
-
-
-func _fx_sprint(p: Dictionary) -> void:
-	ring(_at(p), 1.3, {"color": p.color, "life": 0.3})
 
 
 func _fx_boss_slam(p: Dictionary) -> void:

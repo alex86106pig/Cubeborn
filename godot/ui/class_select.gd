@@ -305,6 +305,9 @@ func _fill_skills(c: Dictionary) -> void:
 	_skills.add_child(_skill_row(SkillBar.Slot.new("passive", "被動", -1), "職業被動", c.passive.desc))
 	_skills.add_child(_skill_row(SkillBar.Slot.new(w.attack.icon, "左鍵", -1), w.attack.name, w.attack.get("desc", "")))
 	_skills.add_child(_skill_row(SkillBar.Slot.new(w.special.icon, "右鍵", -1), w.special.name, w.special.get("desc", "")))
+	if w.has("slot_skill"):   # 武器帶的技能欄技能（火把傭兵的插火把）
+		var s: Dictionary = SkillDefs.SKILLS[w.slot_skill]
+		_skills.add_child(_skill_row(SkillBar.Slot.new(s.icon, "數字鍵", -1), s.name, s.desc))
 	_skills.add_child(_skill_row(SkillBar.Slot.new(SkillBar.ROLL_ICON, "Shift", -1), "翻滾", ROLL_DESC))
 
 
@@ -417,7 +420,7 @@ func _build_info() -> Control:
 	extra_label.custom_minimum_size.x = w
 	extra_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(extra_label)
-	_skills.add_theme_constant_override(&"separation", 10)
+	_skills.add_theme_constant_override(&"separation", 8)   # 火把傭兵多一格插火把（5 格）也塞得進資訊欄
 	box.add_child(_skills)
 	return panel
 

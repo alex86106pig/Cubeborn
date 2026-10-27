@@ -238,7 +238,6 @@ godot/
 | `fx:explosion` | `{ pos, height, radius, color }` | 投射物爆炸 |
 | `fx:parry` | `{ pos, height, radius, facing, arc, color }` | 盾反（畫出實際的扇形範圍） |
 | `fx:heal` | `{ pos, height, color }` | 治療藥水 |
-| `fx:sprint` | `{ pos, height, color }` | 疾跑 |
 | `fx:boss_slam` | `{ pos, height, radius }` | Boss 砸地 |
 | `fx:boss_wall` | `{ pos, height }` | Boss 衝鋒撞牆 |
 | `fx:boss_teleport` | `{ pos, height, to }` | 狂暴 Boss 瞬移砸地（v0.27.0）：原地與目的地的紫色煙霧 |

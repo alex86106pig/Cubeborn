@@ -218,10 +218,12 @@ func _weapon_test_equip(id: StringName) -> void:
 	var me := local_player()
 	if not in_weapon_test or me == null:
 		return
-	me.equip_weapon(id)
-	for key in ["player.special", "player.parry", "player.torch"]:
+	me.equip_weapon(id)   # 新的一把：插火把的次數也是滿的（記在武器上）
+	var keys := ["player.special", "player.parry", "player.breath"]
+	for i in ActiveSlots.SLOT_COUNT:
+		keys.append(ActiveSlots.cd_key(i))
+	for key: String in keys:
 		world.cooldowns.reset(me.cd(key))
-	me.torches_left = WeaponDefs.WEAPONS[&"torch"].stance.attack.per_floor
 
 
 # 木樁被打飛、埋掉後擺回原位：清掉場上的木樁，在玩家旁邊重擺

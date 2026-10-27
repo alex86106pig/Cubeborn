@@ -20,13 +20,16 @@ class Heal extends Behavior:
 		owner.world.emit_event("fx:heal", {"pos": owner.pos, "height": owner.height, "color": def.color})
 
 
-class SpeedBuff extends Behavior:
-	func activate(owner: Player, def: Dictionary) -> void:
-		owner.add_buff(def.id, def.duration, {"stats": [[&"move_speed", Stats.MUL, def.speed_mul]], "trail_color": def.color})
-		owner.world.emit_event("fx:sprint", {"pos": owner.pos, "height": owner.height, "color": def.color})
+# 插火把（F8）：插在面前，整關不熄；只有房主產生火把實體
+class PlantTorch extends Behavior:
+	func activate(owner: Player, _def: Dictionary) -> void:
+		if owner.world.is_authority:
+			var t := Torch.new(owner.world, owner.pos + WeaponBehaviors.forward(owner) * 0.6, owner.id)
+			owner.world.add_entity(t)
+			owner.world.torches.append(t)
 
 
 static var BEHAVIORS := {
 	&"heal": Heal.new(),
-	&"speedBuff": SpeedBuff.new(),
+	&"plantTorch": PlantTorch.new(),
 }

@@ -391,32 +391,42 @@ static func check_heal_slot() -> String:
 	return ""
 
 
-static func check_sprint_slot() -> String:
+# 跑步（2026-10-27 取代疾跑）：Ctrl 切換、移速 × run_speed_mul；跳躍、翻滾不取消，攻擊、技能欄、受擊硬直取消；再按一次停下
+static func check_run() -> String:
 	var w := _new_world()
 	var p := _player(w)
-	var events: Array[Dictionary] = []
-	_press_slot(w, 1, events, Vector2(1, 0))
-	if not p.action.is_in(&"useItem"):
-		return "按 2 應進入 useItem，實際 %s" % p.action.current_name
-	var s: Dictionary = SkillDefs.SKILLS[&"sprint"]
 	var base: float = Config.PLAYER.move_speed
-	var item_steps := 1
-	while p.action.is_in(&"useItem") and item_steps < 60:
-		_run(w, _cmd(Vector2(1, 0)), 1)
-		item_steps += 1
-	if item_steps - 1 != ceili(Config.PLAYER.use_item_time / DT):
-		return "使用道具動作 %d 步，預期 %d" % [item_steps - 1, ceili(Config.PLAYER.use_item_time / DT)]
-	if absf(p.velocity.length() - base * s.speed_mul) > EPS:
-		return "疾跑移速 %.3f，預期 %.3f" % [p.velocity.length(), base * s.speed_mul]
-	if p.anim.trail_color == null:
-		return "疾跑中 anim.trail_color 應有顏色（給畫面畫殘影）"
-	_run(w, _cmd(Vector2(1, 0)), ceili(s.duration / DT) - item_steps + 2)
-	if absf(p.velocity.length() - base) > EPS:
-		return "%.1f 秒後移速 %.3f，應回到 %.2f" % [s.duration, p.velocity.length(), base]
-	var cd := w.cooldowns.remaining(_player(w).cd(ActiveSlots.cd_key(1)))
-	var elapsed := (w.tick - 1) * DT
-	if absf(cd - (s.cooldown - elapsed)) > DT * 1.5:
-		return "疾跑 CD 剩 %.3f，預期約 %.3f" % [cd, s.cooldown - elapsed]
+	var run_speed: float = base * Config.PLAYER.run_speed_mul
+	var right := Vector2(1, 0)
+	_run(w, _cmd(right, Vector2(0, 5), InputCmd.BTN_RUN), 1)
+	_run(w, _cmd(right), 2)
+	if not p.running or absf(p.velocity.length() - run_speed) > EPS:
+		return "按 Ctrl 應開始跑步、移速 %.2f：%s / %.3f" % [run_speed, p.running, p.velocity.length()]
+	_run(w, _cmd(right, Vector2(0, 5), InputCmd.BTN_JUMP), 1)
+	_run(w, _cmd(right), 50)
+	_run(w, _cmd(right, Vector2(0, 5), InputCmd.BTN_ROLL), 1)
+	_run(w, _cmd(right), 40)
+	if not p.running or absf(p.velocity.length() - run_speed) > EPS:
+		return "跳躍、翻滾後應還在跑：%s / %.3f" % [p.running, p.velocity.length()]
+	_run(w, _cmd(right, Vector2(0, 5), InputCmd.BTN_RUN), 1)
+	_run(w, _cmd(right), 2)
+	if p.running or absf(p.velocity.length() - base) > EPS:
+		return "再按一次 Ctrl 應停下、移速回到 %.2f：%s / %.3f" % [base, p.running, p.velocity.length()]
+	for name: String in ["普攻", "技能欄", "受擊硬直"]:
+		var w2 := _new_world()
+		var p2 := _player(w2)
+		_run(w2, _cmd(right, Vector2(0, 5), InputCmd.BTN_RUN), 1)
+		match name:
+			"普攻":
+				_run(w2, _cmd(right, Vector2(0, 5), InputCmd.BTN_ATTACK), 1)
+			"技能欄":
+				p2.hp = 10.0   # 治療藥水要沒滿血才能喝
+				_run(w2, _cmd(right, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
+			"受擊硬直":
+				p2.action.change(&"stagger")
+				_run(w2, _cmd(right), 1)
+		if p2.running:
+			return "%s應打斷跑步" % name
 	return ""
 
 

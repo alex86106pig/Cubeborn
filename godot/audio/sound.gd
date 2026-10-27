@@ -23,7 +23,7 @@ const CUE_NAMES: Array[String] = [
 # 同一音效的最短間隔（秒），避免一次打中多隻怪時爆音（同網頁版）
 const MIN_INTERVAL := {"hit": 0.04, "hitHeavy": 0.05, "enemyDeath": 0.06, "enemySpawn": 0.1, "bowDraw": 0.15}
 const DEFAULT_INTERVAL := 0.03
-const SKILL_CUES := {&"heal": "potion", &"sprint": "sprint"}
+const SKILL_CUES := {&"heal": "potion", &"plantTorch": "shieldBash"}
 # 個別音效的音量（dB）：v0.44.0 法杖普攻太吵（fireBolt 平均 −31.6 dB，比揮砍 swing 的 −36.1 大 4.5 dB，每 0.56 秒一發）
 const CUE_DB := {"fireBolt": -8.0}
 
@@ -179,7 +179,7 @@ static func cue_for_event(w: World, event_name: String, p: Dictionary) -> String
 			var player: Player = w.entities.get(p.player_id) as Player if w != null else null
 			var key: String = p.key
 			if player != null and key.begins_with("player.slot"):
-				var slot: Variant = player.slots.slots[key.trim_prefix("player.slot").to_int() - 1]
+				var slot: Variant = player.slots.get_slot(player, key.trim_prefix("player.slot").to_int() - 1)
 				if slot != null:
 					return SKILL_CUES.get(slot.def.id, "")
 		"skill:onCooldown":

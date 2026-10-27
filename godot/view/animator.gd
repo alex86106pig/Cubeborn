@@ -11,7 +11,6 @@ const POSE_OF := {
 	&"shadowStep": &"thrust",
 	&"holyCircle": &"arcaneBurst",
 	&"torchStance": &"torchRaise",
-	&"plantTorch": &"plant",
 	&"fireBreath": &"arcaneBurst",
 	&"shovelGrab": &"scoop",
 	&"shovelThrow": &"fling",
@@ -155,13 +154,16 @@ func _pose_action(p: Player, a: Dictionary, dt: float) -> void:
 					_pose_bow(idle, a, e, true)
 				&"torchRaise":
 					_pose_torch_raise(idle, a, e)
-				&"plant":
-					_pose_plant(idle, a, e)
 				_:
 					_pose_fire_bolt(idle, a, e)
 		&"useItem":
 			var k := clampf(a.action_time / Config.PLAYER.use_item_time, 0.0, 1.0)
-			rig.arm_l.rotation.x = lerpf(0.0, -2.4, sin(k * PI))
+			if a.behavior == &"plantTorch":   # 插火把（技能欄）：彎腰把火把往面前的地上插
+				var s := sin(k * PI)
+				rig.arm_r.rotation = Vector3(lerpf(idle.arm_r, -0.6, s), 0.0, 0.0)
+				rig.body.rotation.x = 0.45 * s
+			else:
+				rig.arm_l.rotation.x = lerpf(0.0, -2.4, sin(k * PI))
 		&"stagger":
 			var k := clampf(a.action_time / Config.PLAYER.stagger_time, 0.0, 1.0)
 			rig.body.rotation.x = -0.3 * sin(k * PI)
@@ -433,12 +435,6 @@ func _pose_torch_raised(dt: float) -> void:
 
 
 # 插火把：蹲下、手往下把火把插進地裡
-func _pose_plant(idle: Dictionary, a: Dictionary, e: float) -> void:
-	var k := e if a.phase == &"windup" else (1.0 if a.phase == &"active" else 1.0 - e)
-	rig.arm_r.rotation = Vector3(lerpf(-2.7, -0.6, k), 0.0, 0.0)
-	rig.body.rotation.x = 0.45 * k
-
-
 # 翻滾：繞身體中心往前翻一圈（body 樞紐在腳底，所以同時位移讓中心不動），四肢縮起
 func _pose_roll(k: float) -> void:
 	var angle := TAU * smoothstep(0.0, 1.0, k)

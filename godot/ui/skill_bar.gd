@@ -34,7 +34,7 @@ func refresh(world: World, player: Player) -> void:
 		_parry_slot.visible = player.block_time >= 0.0
 		_attack_slot.visible = not _parry_slot.visible
 	if _alt_left != null:
-		_refresh_alt(world, player)
+		_refresh_alt(player)
 	var atk: Dictionary = player.weapon.attack
 	if atk.has("quiver") and _attack_slot != null:
 		# 短弓：左鍵格顯示箭袋剩幾支，裝填中蓋遮罩倒數
@@ -49,7 +49,7 @@ func refresh(world: World, player: Player) -> void:
 		slot.cd_left = world.cooldowns.remaining(player.cd(key))   # 每位玩家各自的 CD（Player.cd）
 		slot.cd_ratio = 1.0 - world.cooldowns.progress(player.cd(key))
 		if slot.index >= 0:
-			var data: Variant = player.slots.slots[slot.index]
+			var data: Variant = player.slots.get_slot(player, slot.index)   # 含手上武器帶的技能（插火把）
 			if data != null and data.def.mode == &"charges":
 				slot.charges.text = str(data.charges)
 				slot.icon.modulate.a = 0.3 if data.charges <= 0 else 1.0
@@ -63,33 +63,17 @@ func refresh(world: World, player: Player) -> void:
 		slot.mask.queue_redraw()
 
 
-# 火把準備姿態（左鍵插火把 + 剩幾支、插完改回揮擊；右鍵噴火 + 冷卻）、鐵鏟舉著怪（左鍵拋出、右鍵埋入）時換成那兩格
-func _refresh_alt(world: World, player: Player) -> void:
+# 火把舉著時（左鍵噴火 + 冷卻；右鍵格照舊是舉火把）、鐵鏟舉著怪（左鍵拋出、右鍵埋入）時換成那兩格
+func _refresh_alt(player: Player) -> void:
 	var w := player.weapon
 	var stance: bool = player.torch_stance and w.has("stance")
 	var holding: bool = w.has("grab") and (player.held_enemy_id != 0 or player.anim.get("holding", false))
 	var on: bool = stance or holding
 	_alt_left.visible = on
-	_alt_right.visible = on
 	_attack_slot.visible = not on and (_parry_slot == null or not _parry_slot.visible)
-	_special_slot.visible = not on
-	if stance:
-		var left := player.action_def(&"attack")
-		_alt_left.set_icon(left.icon)
-		var planting: bool = left == w.stance.attack
-		_alt_left.charges.text = str(player.torches_left) if planting else ""
-		_alt_left.cd_left = world.cooldowns.remaining(player.cd("player.torch")) if planting else 0.0
-		_alt_left.cd_ratio = 1.0 - world.cooldowns.progress(player.cd("player.torch")) if planting else 0.0
-		_alt_right.cd_left = world.cooldowns.remaining(player.cd("player.special"))
-		_alt_right.cd_ratio = 1.0 - world.cooldowns.progress(player.cd("player.special"))
-	else:
-		_alt_left.cd_left = 0.0
-		_alt_left.cd_ratio = 0.0
-		_alt_right.cd_left = 0.0
-		_alt_right.cd_ratio = 0.0
-	for slot: Slot in [_alt_left, _alt_right]:
-		slot.queue_redraw()
-		slot.mask.queue_redraw()
+	if _alt_right != null:
+		_alt_right.visible = on
+		_special_slot.visible = not on
 
 
 func flash(key: String, deny: bool) -> void:
@@ -111,10 +95,10 @@ func _build(player: Player) -> void:
 	_alt_left = null
 	_alt_right = null
 	if not alt.is_empty():
-		_alt_left = _add_slot("", alt.attack.icon, "左鍵", -1, false)
+		_alt_left = _add_slot(alt.attack.get("cd_key", ""), alt.attack.icon, "左鍵", -1, false)   # 噴火的冷卻照一般格子更新
 		_alt_left.visible = false
 	_special_slot = _add_slot("player.special", w.special.icon, "右鍵", -1, false)
-	if not alt.is_empty():
+	if alt.has("special"):   # 火把舉著時只換左鍵（右鍵就是按住的舉火把）
 		_alt_right = _add_slot("", alt.special.icon, "右鍵", -1, false)
 		_alt_right.visible = false
 	_add_slot(Player.ROLL_CD, ROLL_ICON, "Shift", -1, false)
@@ -122,7 +106,7 @@ func _build(player: Player) -> void:
 	divider.size_flags_vertical = Control.SIZE_SHRINK_END
 	add_child(divider)
 	for i in ActiveSlots.SLOT_COUNT:
-		var data: Variant = player.slots.slots[i]
+		var data: Variant = player.slots.get_slot(player, i)
 		_add_slot(ActiveSlots.cd_key(i), data.def.icon if data != null else "", str(i + 1), i, data == null)
 	_weapon_id = player.weapon_id
 

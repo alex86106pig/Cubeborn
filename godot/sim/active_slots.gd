@@ -23,8 +23,27 @@ static func cd_key(index: int) -> String:
 	return "player.slot%d" % (index + 1)
 
 
+# 手上武器帶的技能（火把的插火把，2026-10-27）放在第一個空格；沒有就 -1
+func weapon_slot_index(owner: Player) -> int:
+	if not owner.weapon.has("slot_skill"):
+		return -1
+	for i in SLOT_COUNT:
+		if slots[i] == null:
+			return i
+	return -1
+
+
+# 第 index 格目前的內容：null 或 { def, charges }；武器技能的次數讀手上那把武器實例（WeaponDropDefs.slot_charges）
+func get_slot(owner: Player, index: int) -> Variant:
+	if slots[index] != null:
+		return slots[index]
+	if index != weapon_slot_index(owner):
+		return null
+	return {"def": SkillDefs.SKILLS[owner.weapon.slot_skill], "charges": WeaponDropDefs.slot_charges(owner.active_weapon())}
+
+
 func can_use(owner: Player, index: int) -> bool:
-	var slot: Variant = slots[index]
+	var slot: Variant = get_slot(owner, index)
 	if slot == null or slot.charges == 0:
 		return false
 	if not owner.world.cooldowns.is_ready(owner.cd(cd_key(index))):
@@ -35,9 +54,11 @@ func can_use(owner: Player, index: int) -> bool:
 func use(owner: Player, index: int) -> bool:
 	if not can_use(owner, index):
 		return false
-	var slot: Dictionary = slots[index]
+	var slot: Dictionary = get_slot(owner, index)
 	SkillBehaviors.BEHAVIORS[slot.def.behavior].activate(owner, slot.def)
-	if slot.def.mode == &"charges":
+	if slot.def.get("weapon_charges", false):
+		owner.active_weapon()["slot_charges"] = slot.charges - 1   # 次數跟著武器（丟掉、給隊友都帶著）
+	elif slot.def.mode == &"charges":
 		slot.charges -= 1
 	var key := cd_key(index)
 	owner.world.cooldowns.start(owner.cd(key), slot.def.cooldown * owner.stats.value(&"cooldown"))
@@ -47,5 +68,5 @@ func use(owner: Player, index: int) -> bool:
 
 # 無法使用時給 HUD 的回饋（空欄位不提示）
 func notify_blocked(owner: Player, index: int) -> void:
-	if slots[index] != null:
+	if get_slot(owner, index) != null:
 		owner.world.emit_event("skill:onCooldown", {"key": cd_key(index), "player_id": owner.id})

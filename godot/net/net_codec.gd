@@ -17,13 +17,13 @@ const ANIM_KEYS: Array[String] = [
 	"loco", "loco_time", "action", "action_time", "behavior", "phase", "k", "swing_dir", "is_finisher",
 	"trail_color", "airborne", "blocking", "parry", "vz", "revive", "stunned",
 	"state", "time", "enraged", "phase_time", "origin", "torch_stance", "burning", "holding", "buried", "grabbed",
-	"shield",
+	"shield", "running",
 ]
 # 玩家動畫欄位的預設值：和預設值相同的欄位不送（大部分時間只剩移動層、動作層的名稱與秒數），收到時補回
 const PLAYER_ANIM_DEFAULTS := {
 	"behavior": &"", "phase": &"", "k": 0.0, "swing_dir": 1, "is_finisher": false, "trail_color": null,
 	"airborne": false, "blocking": false, "parry": 0.0, "vz": 0.0, "revive": 0.0, "stunned": false, "torch_stance": false, "holding": false,
-	"shield": 0.0,
+	"shield": 0.0, "running": false,
 }
 # 數值欄位 E_X ~ E_MAX_HP 用 float32；E_VX ~ E_INVULN 只給別人的實體外推與閃白，用 half（16 位元）
 # 二進位格式（v0.35.0）用的種類與常見名稱表：在表裡的送 1 byte 索引，不在表裡的照樣送字串（表只影響大小、不影響正確性）

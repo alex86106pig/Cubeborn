@@ -14,15 +14,16 @@ const SKILLS := {
 		"amount": 35.0,
 		"color": Color("5dff7a"),
 	},
-	&"sprint": {
-		"id": &"sprint",
-		"name": "疾跑",
-		"icon": "»",
-		"mode": &"cooldown",
-		"cooldown": 8.0,
-		"behavior": &"speedBuff",
-		"duration": 3.0,
-		"speed_mul": 1.6,
-		"color": Color("6fe3ff"),
+	# 插火把（F8，2026-10-27 從火把準備姿態的左鍵搬來）：手上拿火把時放在第一個空格；次數記在那把火把上（WeaponDropDefs.slot_charges），換層補滿
+	&"plantTorch": {
+		"id": &"plantTorch",
+		"name": "插火把",
+		"desc": "插在地上照亮周圍、全隊看得到；每層 3 次。",
+		"icon": "torch_plant",
+		"mode": &"charges",
+		"charges": 3,
+		"weapon_charges": true,  # 次數記在武器實例上（不是欄位上）
+		"cooldown": 1.0,
+		"behavior": &"plantTorch",
 	},
 }

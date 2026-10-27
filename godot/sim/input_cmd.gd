@@ -11,6 +11,7 @@ const BTN_JUMP := 1 << 8         # 空白鍵跳躍（本步按下）
 const BTN_INTERACT := 1 << 9     # F 互動（按住）：救援倒地的隊友
 const BTN_SWAP_WEAPON := 1 << 10 # Q / 滑鼠滾輪：換到另一格裝備欄的武器（本步按下；D4 起取代 F1 除錯切換）
 const BTN_SPECIAL_HELD := 1 << 11  # 右鍵（按住）：劍盾按住格擋（v0.41.0）；BTN_SPECIAL 仍是「本步按下」，法杖用它
+const BTN_RUN := 1 << 12         # Ctrl 切換跑步（本步按下；2026-10-27 取代數字鍵 2 的疾跑）
 const HELD_BUTTONS := BTN_ATTACK | BTN_INTERACT | BTN_SPECIAL_HELD   # 按住類的按鈕：沿用上一筆輸入時保留，其餘「本步按下」的不重複觸發
 
 const OP_MOVE := 0   # 背包操作（D3）：[OP_MOVE, uid, x, y, rot] 搬到 (x, y)、轉 rot 次 90 度

@@ -283,6 +283,7 @@ const WEAPONS := {
 			"finisher_recovery": 0.35,
 			"knockback": 0.0,          # 前 4 下不擊退
 			"finisher_knockback": 9.0, # 第 5 下可擊退
+			"finisher_only_stagger": true,   # 前 4 下也不讓怪受擊硬直（2026-10-27 使用者：停下後仰看起來像被擊退）
 			"finisher_crit": true,     # 第 5 下必爆擊
 			"lunge": 1.5,
 			"move_speed_mul": 0.6,
@@ -380,8 +381,9 @@ const WEAPONS := {
 	},
 
 
-	# 火把（F8，火把傭兵的起始武器）：功能型，普攻刻意偏低、打中點燃；右鍵舉起火把進入準備姿態（翻滾 / 跳躍取消，不會自己結束），
-	# 準備姿態的左右鍵換成 stance 的招式：左鍵插火把、右鍵噴火。舉著的與插著的火把都照亮周圍、全隊看得到（Vision.lights）
+	# 火把（F8，火把傭兵的起始武器）：功能型，普攻刻意偏低、打中點燃；按住右鍵舉起火把（放開、翻滾、跳躍就放下），
+	# 舉著時左鍵換成 stance 的噴火；插火把是技能欄的技能（slot_skill，放第一個空格，次數記在武器上）。
+	# 舉著的與插著的火把都照亮周圍、全隊看得到（Vision.lights）。2026-10-27 使用者改：原本右鍵按一下進入姿態、姿態中左鍵插火把、右鍵噴火
 	&"torch": {
 		"id": &"torch",
 		"name": "火把",
@@ -391,6 +393,7 @@ const WEAPONS := {
 		"damage_type": &"magic",
 		"idle": {"arm_r": -0.5, "arm_l": -0.1, "tilt": 0.0},
 		"light_radius": 6.0,           # 舉著 / 插著的火把照亮的半徑
+		"slot_skill": &"plantTorch",   # 拿在手上時技能欄第一個空格放插火把（SkillDefs）
 		"attack": {
 			"behavior": &"meleeSwing",
 			"sfx": "swing", "sfx_heavy": "swing",
@@ -423,7 +426,7 @@ const WEAPONS := {
 			"behavior": &"torchStance",
 			"sfx": "arcaneCast",
 			"name": "準備姿態",
-			"desc": "舉起火把（移速 ×0.6）：左鍵插火把、右鍵噴火；翻滾、跳躍取消。",
+			"desc": "按住舉起火把（移速 ×0.6），放開放下；舉著時左鍵噴火。",
 			"icon": "torch_raise",
 			"windup": 0.1,
 			"active": 0.02,
@@ -431,27 +434,15 @@ const WEAPONS := {
 			"move_speed_mul": 0.6,
 		},
 		"stance": {
-			"move_speed_mul": 0.6,     # 準備姿態中的移速
+			"move_speed_mul": 0.6,     # 舉著火把時的移速
 			"attack": {
-				"behavior": &"plantTorch",
-				"sfx": "shieldBash",
-				"name": "插火把",
-				"desc": "把火把插在地上照亮周圍，全隊都看得到；每層 3 支。",
-				"icon": "torch_plant",
-				"per_floor": 3,        # 每關只能插 3 支
-				"cooldown": 1.0,
-				"windup": 0.15,
-				"active": 0.02,
-				"recovery": 0.15,
-				"move_speed_mul": 0.0,
-			},
-			"special": {
 				"behavior": &"fireBreath",
 				"sfx": "explosion",
 				"name": "噴火",
-				"desc": "向前噴火（90°、長 5）120% 並點燃；冷卻 6 秒。",
+				"desc": "舉著火把時向前噴火（90°、長 5）120% 並點燃；冷卻 6 秒。",
 				"icon": "fire_breath",
 				"cooldown": 6.0,
+				"cd_key": "player.breath",   # 左鍵的招式但有冷卻：自己一個冷卻，不占右鍵的 player.special
 				"damage_pct": 1.2,
 				"burn": {"pct_per_sec": 0.15, "duration": 3.0},
 				"range": 5.0,
@@ -489,9 +480,9 @@ const WEAPONS := {
 			"combo_count": 1,
 			"range": 3.6,              # 打得比較遠（像把一排土鏟出去）
 			"arc": PI * 40.0 / 180.0,  # 只打前方窄角度
-			"windup": 0.3,             # 三段合計 0.8 秒一下
+			"windup": 0.38,            # 三段合計 1.0 秒一下（2026-10-27 使用者：0.8 秒還太快）
 			"active": 0.1,
-			"recovery": 0.4,
+			"recovery": 0.52,
 			"knockback": 9.0,
 			"lunge": 1.0,
 			"move_speed_mul": 0.4,

@@ -9,7 +9,7 @@ signal weapon_test_equip(weapon_id: StringName)   # 武器測試場：換武器�
 signal weapon_test_reset                          # 武器測試場：木樁擺回原位
 
 # 手動分行（中文自動折行會斷在詞中間）
-const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技（劍盾：按住格擋，格擋中左鍵招架） · 空白鍵 跳躍 · Shift 翻滾\n1~5 道具 · F 撿道具 / 開祭壇與石棺 / 按住救援隊友 · Tab 背包與屬性 · Esc 選單 · M 靜音 · R 重新開始\nX / 滾輪 切換武器 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具（F3~F5 單機才有）"
+const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技（劍盾：按住格擋，格擋中左鍵招架） · 空白鍵 跳躍 · Shift 翻滾 · Ctrl 跑步（切換）\n1~5 道具 · F 撿道具 / 開祭壇與石棺 / 按住救援隊友 · Tab 背包與屬性 · Esc 選單 · M 靜音 · R 重新開始\nX / 滾輪 切換武器 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具（F3~F5 單機才有）"
 const FPS_INTERVAL := 0.5
 const HP_GHOST_SPEED := 0.5      # 殘影每秒縮短的比例
 const BOSS_GHOST_SPEED := 0.3

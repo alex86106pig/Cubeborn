@@ -17,12 +17,12 @@ var _attack_was_held := false
 var weapon: Dictionary = {}            # 手上武器的招式資料（WeaponDefs）
 var weapon_id: StringName = &""
 var class_id := ClassDefs.NONE        # 職業（F2，ClassDefs）；NONE = 共用基準數值
-var torch_stance := false              # 火把準備姿態（F8）：左右鍵換成插火把 / 噴火
+var torch_stance := false              # 火把準備姿態（F8）：按住右鍵舉著，左鍵換成噴火
+var running := false                   # 跑步（Ctrl 切換）：跳躍、翻滾、開寶箱不取消；進入待機與翻滾以外的動作就取消
 var quiver := 6                        # 箭袋裡剩幾支（短弓，F4 回饋）：射完自動裝填
 var reload_timer := 0.0                # 裝填剩餘秒數；> 0 時不能射、移速變慢
 var held_enemy_id := 0                # 鐵鏟舉著的怪（F9）；0 = 沒有
 var hold_timer := 0.0                  # 舉著的剩餘秒數，到 0 怪掙脫
-var torches_left: int = WeaponDefs.WEAPONS[&"torch"].stance.attack.per_floor   # 這一關還能插幾支火把（F8，換層補滿）
 var loadout := Loadout.new()           # 裝備欄、背包、生效的道具（sim/loadout.gd）
 var weapon_slots: Array[Dictionary]:   # 裝備欄 2 格（D4）：武器實例（WeaponDropDefs）或 {}
 	get:
@@ -215,7 +215,7 @@ func descend() -> void:
 # 新的一層：回到出生點（死者也搬過去，等冤魂被打倒才在冤魂的位置站起來）
 func arrive_floor(at: Vector2, ground: float) -> void:
 	descended = false
-	torches_left = WeaponDefs.WEAPONS[&"torch"].stance.attack.per_floor   # 新的一關火把補滿（F8）
+	loadout.refill_slot_charges()   # 新的一關：身上武器的技能次數補滿（火把的插火把，F8）
 	floor_kills = 0   # 亡者之契的疊層只算本層（G2）
 	guardian_uses = 0   # 守護亡靈每層一次（G5）
 	pos = at
@@ -276,6 +276,7 @@ func die(source_id: int = 0) -> void:
 func _go_down() -> void:
 	is_downed = true
 	torch_stance = false
+	running = false
 	if held_enemy_id != 0:
 		release_enemy()
 	hp = 0.0
@@ -466,10 +467,8 @@ func pct_damage(pct: float) -> float:
 func action_def(kind: StringName) -> Dictionary:
 	if held_enemy_id != 0 and weapon.has("grab"):
 		return weapon.grab[kind]   # 鐵鏟舉著怪：左鍵拋出、右鍵埋入（F9）
-	if torch_stance and weapon.has("stance"):
-		if kind == &"attack" and torches_left <= 0:
-			return weapon.attack   # 這關的火把插完了：左鍵改回揮擊（2026-10-27 使用者：插完 3 支後什麼都不能做）
-		return weapon.stance[kind]
+	if torch_stance and weapon.has("stance") and weapon.stance.has(kind):
+		return weapon.stance[kind]   # 舉著火把：左鍵噴火
 	return weapon[kind]
 
 
@@ -611,6 +610,10 @@ func update(dt: float) -> void:
 		if block_time >= 0.0:
 			_parry(true)
 	action.update(dt)
+	if running and not (action.is_in(&"ready") or action.is_in(&"roll")):
+		running = false   # 攻擊、技能、道具、救人、挖墳、受擊硬直都打斷跑步
+	if torch_stance and not is_special_held:
+		torch_stance = false   # 放開右鍵就放下火把（2026-10-27 使用者）
 
 	if reload_timer > 0.0:   # 短弓裝填（F4 回饋）
 		reload_timer -= dt
@@ -629,6 +632,8 @@ func update(dt: float) -> void:
 		var slow: float = data.get("move_speed_mul", 1.0)
 		if action.is_in(&"attack") and class_passive("attack_no_slow", false):
 			slow = 1.0   # 盜墓遊俠被動：移動中普攻不減速（F4）
+		if running:
+			slow *= Config.PLAYER.run_speed_mul
 		if torch_stance and action.is_in(&"ready"):
 			slow *= weapon.stance.move_speed_mul   # 火把準備姿態（F8）
 		if held_enemy_id != 0 and action.is_in(&"ready"):
@@ -671,6 +676,8 @@ func _read_input() -> void:
 		buffered_action = {"type": &"roll", "time": buffer_time}
 	if _pressed & InputCmd.BTN_JUMP:
 		try_jump()
+	if _pressed & InputCmd.BTN_RUN:
+		running = not running
 	if _pressed & InputCmd.BTN_SWAP_WEAPON:
 		swap_weapon()
 	for i in ActiveSlots.SLOT_COUNT:
@@ -696,7 +703,7 @@ func _update_anim() -> void:
 		"loco_time": locomotion.time,
 		"action": action.current_name,
 		"action_time": action.time,
-		"behavior": d.def.behavior if timed else &"",
+		"behavior": d.def.behavior if timed else d.get("item_behavior", &""),   # 使用技能欄時是那格的行為（插火把有自己的姿勢）
 		"phase": PlayerStates.PHASES[d.phase_index] if timed and d.phase_index < PlayerStates.PHASES.size() else &"",
 		"k": d.get("k", 0.0),
 		"swing_dir": d.get("swing_dir", 1),
@@ -709,6 +716,7 @@ func _update_anim() -> void:
 		"revive": revive_progress / Config.REVIVE.revive_time,   # 倒地時被救的進度 0~1（畫面顯示用）
 		"stunned": stun_timer > 0.0,
 		"torch_stance": torch_stance,
+		"running": running,
 		"holding": held_enemy_id != 0,   # 鐵鏟舉著怪（F9）   # 舉著火把：全隊的視野都看得到周圍（F8，Vision.lights）
 		"shield": shield / max_hp if max_hp > 0.0 else 0.0,   # 護盾占最大生命的比例（G4；0 不進快照）
 	}

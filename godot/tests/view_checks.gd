@@ -198,9 +198,11 @@ static func _check_class_select(hud: Variant) -> String:
 		if not is_equal_approx(cs.chart.values[0][1], ClassDefs.CLASSES[id].stats.max_hp):
 			p.detach()
 			return "%s 的生命條應是職業資料的 %s" % [ClassDefs.CLASSES[id].name, ClassDefs.CLASSES[id].stats.max_hp]
-		if cs._skills.get_child_count() != 4 or cs.name_label.text != ClassDefs.CLASSES[id].name:
+		# 被動 / 左鍵 / 右鍵 / 翻滾，武器帶技能欄技能（火把的插火把）的多一格
+		var want_rows := 5 if WeaponDefs.WEAPONS[ClassDefs.CLASSES[id].weapon].has("slot_skill") else 4
+		if cs._skills.get_child_count() != want_rows or cs.name_label.text != ClassDefs.CLASSES[id].name:
 			p.detach()
-			return "%s：技能應有 4 格（%d）、名稱「%s」" % [ClassDefs.CLASSES[id].name, cs._skills.get_child_count(), cs.name_label.text]
+			return "%s：技能應有 %d 格（%d）、名稱「%s」" % [ClassDefs.CLASSES[id].name, want_rows, cs._skills.get_child_count(), cs.name_label.text]
 		p.detach()
 	var room := _menu_room()
 	var need := await _settled_min_size(cs.get_child(0).get_child(0))
@@ -281,27 +283,37 @@ static func check_skill_bar_parry() -> String:
 		if bar._parry_slot != null:
 			err = "法杖不應有招架格"
 	if err == "":
-		# 火把準備姿態：左右鍵換成插火把（剩幾支）/ 噴火；插完改回揮擊（2026-10-27）
+		# 火把（2026-10-27）：舉著時只有左鍵換成噴火（右鍵格不變）；插火把在技能欄第一個空格、顯示武器上的次數，換武器就消失
 		p.equip_weapon(&"torch")
 		bar.refresh(w, p)
+		var tw: Dictionary = WeaponDefs.WEAPONS[&"torch"]
+		var plant: Dictionary = SkillDefs.SKILLS[tw.slot_skill]
+		var idx := p.slots.weapon_slot_index(p)
+		var plant_slot: SkillBar.Slot = bar._slots.get(ActiveSlots.cd_key(idx)) if idx >= 0 else null
+		if idx != Config.PLAYER.slots.find(null) or plant_slot == null or plant_slot.icon_id != plant.icon \
+				or plant_slot.charges.text != str(plant.charges):
+			err = "拿火把時插火把應在第 %d 格、顯示 %d 次：第 %d 格 %s / %s" % [Config.PLAYER.slots.find(null) + 1, plant.charges, idx + 1,
+				plant_slot.icon_id if plant_slot else "-", plant_slot.charges.text if plant_slot else "-"]
+		p.active_weapon()["slot_charges"] = 1
+		bar.refresh(w, p)
+		if err == "" and (plant_slot.charges.text != "1" or WeaponDropDefs.display_name(p.active_weapon()).right(3) != "（1）"):
+			err = "插火把次數與武器名稱應跟著武器（剩 1）：%s / %s" % [plant_slot.charges.text, WeaponDropDefs.display_name(p.active_weapon())]
 		p.torch_stance = true
 		bar.refresh(w, p)
-		var tw: Dictionary = WeaponDefs.WEAPONS[&"torch"]
-		if not bar._alt_left.visible or bar._special_slot.visible or bar._alt_left.icon_id != tw.stance.attack.icon \
-				or bar._alt_left.charges.text != str(p.torches_left) or bar._alt_right.icon_id != tw.stance.special.icon:
-			err = "火把準備姿態左右鍵應換成「%s」（剩 %d）/「%s」：%s / %s / %s" % [tw.stance.attack.icon, p.torches_left, tw.stance.special.icon, bar._alt_left.icon_id, bar._alt_left.charges.text, bar._alt_right.icon_id]
-		p.torches_left = 0
-		bar.refresh(w, p)
-		if err == "" and bar._alt_left.icon_id != tw.attack.icon:
-			err = "火把插完後左鍵應顯示「%s」，實際 %s" % [tw.attack.icon, bar._alt_left.icon_id]
+		if err == "" and (not bar._alt_left.visible or bar._attack_slot.visible or not bar._special_slot.visible \
+				or bar._alt_left.icon_id != tw.stance.attack.icon):
+			err = "舉著火把時左鍵應換成「%s」、右鍵不變：%s / 右鍵 %s" % [tw.stance.attack.icon, bar._alt_left.icon_id, bar._special_slot.visible]
 		p.torch_stance = false
 		bar.refresh(w, p)
-		if err == "" and (bar._alt_left.visible or not bar._special_slot.visible):
-			err = "離開準備姿態應換回平常的左右鍵"
+		if err == "" and (bar._alt_left.visible or not bar._attack_slot.visible):
+			err = "放下火把應換回平常的左鍵"
 	if err == "":
 		# 鐵鏟舉著怪：左右鍵換成拋出 / 埋入
 		p.equip_weapon(&"shovel")
 		bar.refresh(w, p)
+		var free_key := ActiveSlots.cd_key(Config.PLAYER.slots.find(null))
+		if bar._slots[free_key].icon_id != "" or p.slots.get_slot(p, Config.PLAYER.slots.find(null)) != null:
+			err = "換成鐵鏟後插火把的格子應空出來：%s" % bar._slots[free_key].icon_id
 		p.held_enemy_id = -1
 		bar.refresh(w, p)
 		var gr: Dictionary = WeaponDefs.WEAPONS[&"shovel"].grab
@@ -1236,14 +1248,15 @@ static func check_font_coverage() -> String:
 	for w: Dictionary in WeaponDefs.WEAPONS.values():
 		texts.append_array([w.name, w.attack.name, w.attack.icon, w.special.name, w.special.icon, w.attack.get("desc", ""), w.special.get("desc", "")])
 		for alt: Dictionary in [w.get("stance", {}), w.get("grab", {})]:
-			if not alt.is_empty():
-				texts.append_array([alt.attack.name, alt.attack.icon, alt.attack.get("desc", ""), alt.special.name, alt.special.icon, alt.special.get("desc", "")])
+			for kind: String in ["attack", "special"]:   # 火把舉著時只換左鍵
+				if alt.has(kind):
+					texts.append_array([alt[kind].name, alt[kind].icon, alt[kind].get("desc", "")])
 	for c: Dictionary in ClassDefs.CLASSES.values():
 		texts.append_array([c.name, c.pitch, c.passive.desc])
 	for c: Dictionary in ClassDefs.PLACEHOLDERS.values():
 		texts.append_array([c.name, c.unlock])
 	for s: Dictionary in SkillDefs.SKILLS.values():
-		texts.append_array([s.name, s.icon])
+		texts.append_array([s.name, s.icon, s.get("desc", "")])
 	var hud_consts: Dictionary = load("res://ui/hud.gd").get_script_constant_map()
 	texts.append_array([hud_consts.CONTROLS_TEXT, hud_consts.BOSS_NAME])
 	for s: Dictionary in StatDefs.STATS.values():
@@ -1410,7 +1423,7 @@ static func check_sound_mapping() -> String:
 		[cue.call("sfx:cue", {"cue": "arrowShot"}), "arrowShot"],
 	]
 	for i in ActiveSlots.SLOT_COUNT:   # 道具欄依裝備的技能決定音效
-		var slot: Variant = p.slots.slots[i]
+		var slot: Variant = p.slots.get_slot(p, i)
 		var expect: String = sound_script.SKILL_CUES.get(slot.def.id, "") if slot != null else ""
 		cases.append([cue.call("skill:used", {"key": ActiveSlots.cd_key(i), "player_id": p.id}), expect])
 	for c in cases:

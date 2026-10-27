@@ -27,6 +27,15 @@ func equipped_count() -> int:
 	return weapon_slots.filter(func(s: Dictionary) -> bool: return not s.is_empty()).size()
 
 
+# 換層：裝備欄與背包裡武器的技能次數補滿（火把的插火把；掉在地上的不補）
+func refill_slot_charges() -> void:
+	for inst in weapon_slots:
+		inst.erase("slot_charges")
+	for e in inventory.entries:
+		if e.has("weapon"):
+			e.weapon.erase("slot_charges")
+
+
 # Q / 滑鼠滾輪（D4）：換到另一格裝備欄的武器；另一格是空的就不換
 func swap(p: Player) -> void:
 	var other := 1 - active_slot
