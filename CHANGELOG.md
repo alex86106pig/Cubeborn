@@ -3,6 +3,17 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
+## [未發布]
+
+### 新增
+- **設定頁**（使用者要求）：主選單首頁與暫停畫面的「設定」打開（`ui/settings_panel.gd`），返回或 Esc 關。畫面：陰影、光源（精英怪、武器、出口的點光源；腳下發光環不受影響）開關；音量：總音量、音樂、音效滑桿（0~100%，乘在原本的混音上；音樂與音效改走 `Music` / `SFX` 匯流排，總音量是 Master，M 鍵靜音照舊）。存在 `user://settings.cfg` 的 `[video]` / `[audio]`。
+- **內顯掉幀的對照組**：啟動參數 `--shadows=0` / `--lights=0`（網頁版 `?shadows=0&lights=0`）蓋掉設定頁的值、不存檔，`--perf` 結束時多印 `perf settings`。在內顯那台用 `PERF_QUERY` 跑四種組合，就分得出是陰影還是光源吃效能。
+- **遊玩紀錄**多一行「顯示卡：名稱 · 解析度 · 陰影開・光源開」；最慢一幀附上當時鏡頭裡亮著幾盞點光源、看得到幾隻怪；一局中切換過陰影 / 光源時，各設定分開列平均 FPS 與卡頓次數。
+- 新增檢查「設定頁」，「遊玩紀錄」加上顯示卡、設定分組、最慢一幀狀況。
+
+### 文件
+- 查證：Godot 相容渲染器（網頁版）沒開影子的點光源全部在同一次繪製裡算（`drivers/gles3/rasterizer_scene_gles3.cpp`：`Lights without shadow can all go in base pass`，每個物件最多 8 盞），**不是**每多一盞就多畫一次；開影子的光（太陽）才讓每個模型多畫一次。`docs/效能.md`「網頁版」記下。
+
 ## [0.48.0] - 2026-10-27
 
 ### 修復

@@ -20,7 +20,7 @@ const GAME_OVER_DELAY := 0.7     # 死亡後幾秒顯示結算
 const BOSS_NAME := "亡骸騎士"     # darkFantasy.js 的 names.boss
 # 介面程式碼裡寫死的中文字（橫幅、浮動文字、場上文字、連線面板、遊玩紀錄…；資料表以外的）：開場預熱用（v0.37.2）
 # check.gd 會掃 ui/ 的字串，缺字就列出來，加到這裡
-const UI_CHARS := "　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木"
+const UI_CHARS := "　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木總樂畫陰源・"
 
 const VIGNETTE_SHADER := """
 shader_type canvas_item;
@@ -81,6 +81,8 @@ var _title_button := Button.new()
 var weapon_test_bar := HBoxContainer.new()   # 武器測試場：上方的武器按鈕列（只有在測試場才顯示）
 var _pause_net_slot := VBoxContainer.new()   # 暫停畫面放連線面板的位置（連線中顯示人數與離開連線）
 var _reset_hints_button := Button.new()
+var _settings_button := Button.new()
+var settings_panel := SettingsPanel.new()   # 設定頁（2026-10-27）：主選單首頁與暫停畫面的「設定」打開
 var hints := Hints.new()   # 新手提示框（v0.31.0）
 var _loading := ColorRect.new()   # 開場預熱時蓋住畫面（v0.37.0）；底下先畫一次會用到的中文字，字形在這時候產生
 var _tags := PlayerTags.new()
@@ -133,6 +135,8 @@ func show_menu(visible_: bool, title: String = "已暫停", hint: String = "按 
 	_pause_title.text = title
 	_pause_hint.text = hint
 	_pause.visible = visible_
+	if not visible_:
+		settings_panel.hide()   # 連線時選單關掉（Esc 已被設定頁吃掉，這裡是別的原因關選單）
 	# 單機的暫停畫面不放連線面板（開房 / 加入改從主選單），連線中才顯示人數與離開連線
 	net_panel.visible = net_panel.mode != &"single" or net_panel.get_parent() != _pause_net_slot
 
@@ -294,13 +298,21 @@ func _init() -> void:
 	_reset_hints_button.pressed.connect(func() -> void:
 		hints.reset_seen()
 		_reset_hints_button.text = "提示已重設")
-	_build_overlay(_pause, Color(5 / 255.0, 8 / 255.0, 16 / 255.0, 0.65), [_pause_title, _pause_hint, pause_controls, _pause_net_slot, _reset_hints_button, _title_button, _quit_button])
+	_settings_button.text = "設定"
+	_settings_button.add_theme_font_size_override(&"font_size", 20)
+	_settings_button.custom_minimum_size = Vector2(180, 44)
+	_settings_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_settings_button.focus_mode = Control.FOCUS_NONE
+	_settings_button.pressed.connect(settings_panel.show)
+	_build_overlay(_pause, Color(5 / 255.0, 8 / 255.0, 16 / 255.0, 0.65), [_pause_title, _pause_hint, pause_controls, _pause_net_slot, _settings_button, _reset_hints_button, _title_button, _quit_button])
 	_pause.mouse_filter = Control.MOUSE_FILTER_STOP   # 選單的按鈕與輸入框要能點
 	root.add_child(_pause)
 	main_menu.visible = false
 	main_menu.quit_pressed.connect(quit_requested.emit)
 	main_menu.method_chosen.connect(net_panel.set_method)
+	main_menu.settings_pressed.connect(settings_panel.show)
 	root.add_child(main_menu)
+	root.add_child(settings_panel)
 	_build_overlay(_loading, Color(0.03, 0.03, 0.05, 1.0), [UiKit.label("準備中…", 28)])
 	root.add_child(_loading)
 

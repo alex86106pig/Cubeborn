@@ -184,6 +184,7 @@ func _initialize() -> void:
 	_check("新手提示：換武器鍵是 X；開場跳操作與挖墳；撿到東西、開背包、可合成、出口打開、隊友倒地各跳一次；看過不再跳；重設後再跳", ViewChecks.check_hints)
 	_check("挖墳進度條：事件進行中所有人上方中央都看得到進度與說明，出口打開後收起；Boss 血條排在它下面、寬度塞得進 1920", ViewChecks.check_dig_bar)
 	_check("主選單：首頁有單人 / 多人 / 離開遊戲（網頁版不顯示離開）、桌面版先選房號 / IP、多人頁放連線面板與返回、塞得進 1920×1080；暫停畫面有「回主選單」；武器測試場入口與按鈕列", ViewChecks.check_main_menu)
+	_check("設定頁：主選單與暫停畫面的「設定」打開、塞得進 1920×1080、選單關掉一起關；改值存檔讀得回來（啟動參數蓋的不存）；音量套到 Music / SFX 匯流排、0% = −80 dB；陰影與光源開關套到太陽和精英怪的光（之後新建的也照設定）；--shadows / --lights", ViewChecks.check_settings)
 	_check("網頁版網址參數：?horde=200&perf&seconds=20 轉成 --horde=200 --perf --seconds=20；不在開放清單的參數不轉", ViewChecks.check_url_query_args)
 	_check("遊玩紀錄：自己的擊殺依種類、受到的傷害依攻擊者、被看不見的攻擊、倒下被誰打倒；結算畫面塞得進 1920×1080；「複製遊玩紀錄」內容完整；重新開始清空", ViewChecks.check_run_log)
 	_check("字型：介面文字都在打包的 Noto Sans TC 裡（網頁版沒有系統字型），缺字的圖示改用向量圖", ViewChecks.check_font_coverage)

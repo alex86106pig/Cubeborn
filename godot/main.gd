@@ -59,6 +59,7 @@ func _ready() -> void:
 	hud.setup(world, camera_rig.camera)
 	hud.health_bars.hidden_ids = world_view.hidden_ids   # 同一個字典，WorldView 每個 tick 原地更新
 	hud.run_log.net_info = _net_report
+	hud.run_log.frame_context = _frame_context
 	hud.quit_requested.connect(quit_game)
 	get_tree().auto_accept_quit = false   # 關視窗也走 quit_game（先停音效）
 	hud.title_requested.connect(return_to_title)
@@ -71,11 +72,13 @@ func _ready() -> void:
 	if args.run_seconds > 0.0:
 		hud.hints.save_path = ""   # 自動驗證（截圖、量效能）不記「看過的提示」，免得使用者自己玩時提示不跳
 		profile.save_path = ""     # 也不把自動驗證拿到的金幣算進使用者的存檔
+		hud.settings_panel.save_path = ""   # 量效能用預設設定（再用 --shadows / --lights 蓋），不讀使用者的
 	profile.load_file()
 	hud.profile = profile
 	add_child(hud)
 	sound.setup(world)
 	add_child(sound)
+	_load_settings()
 	net.name = &"Net"
 	add_child(net)
 	_connect_net()
@@ -374,6 +377,38 @@ func leave_net(message: String) -> void:
 	show_title(&"multi")
 
 
+# 設定頁（2026-10-27）：讀檔、套上啟動參數的蓋掉值，之後每次改動都套到音效與畫面
+func _load_settings() -> void:
+	var panel := hud.settings_panel
+	panel.load_file()
+	for key: String in args.video:
+		panel.set_value(key, args.video[key], false)
+	for key: String in panel.values:
+		_apply_setting(key, panel.values[key])
+	panel.changed.connect(_apply_setting)
+
+
+func _apply_setting(key: String, value: Variant) -> void:
+	match key:
+		"shadows":
+			world_view.set_shadows(value)
+		"lights":
+			world_view.set_lights(value)
+		"master":
+			Sound.set_volume(&"Master", value)
+		"music":
+			Sound.set_volume(Sound.MUSIC_BUS, value)
+		"sfx":
+			Sound.set_volume(Sound.SFX_BUS, value)
+	hud.run_log.video = hud.settings_panel.video_text()
+
+
+# 遊玩紀錄的最慢一幀：當時鏡頭裡亮著幾盞點光源、看得到幾隻怪
+func _frame_context() -> String:
+	var shown := world.enemies.size() - world_view.hidden_enemy_count(world)
+	return "光 %d 盞、怪 %d 隻" % [world_view.lights_on_screen(camera_rig.camera), shown]
+
+
 # 遊玩紀錄的連線數據（ui/run_log.gd）；單機回傳空的
 func _net_report() -> Dictionary:
 	if mode == Mode.SINGLE:
@@ -643,6 +678,7 @@ func _check_auto_quit(delta: float) -> void:
 	if boss != null:
 		print("boss state=%s hp=%.0f" % [boss.fsm.current_name if boss.fsm else &"", boss.hp])
 	if perf != null:
+		print("perf settings %s" % hud.settings_panel.video_text())   # 開場就印會被 release.mjs 當成遊戲開始跑
 		perf.print_report(world, world_view)
 	if args.screenshot_path != "":
 		await RenderingServer.frame_post_draw

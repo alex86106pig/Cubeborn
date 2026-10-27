@@ -9,12 +9,13 @@
 #   --weapon-test（武器測試場景：不生怪；畫面右邊貼身 1 隻、往右 5 / 7 / 9 一排、上方 4 一隻木樁，不動不打、血很多）
 #   挖墳（D6）：--at-dig（開場站在挖墳點旁邊）--exit-open（開場出口就打開）--ghost（畫面上方生一隻冤魂）
 #   --player-at=x,y（開場站在地圖座標 x, y，v0.32.0）
+#   畫面設定（2026-10-27）：--shadows=0 / --lights=0 蓋掉設定頁的陰影 / 光源（不存檔），內顯量效能時當對照組
 # 網頁版沒有指令列：網址的查詢參數轉成同樣的 --參數，只開放 WEB_URL_ARGS
 class_name LaunchArgs
 extends RefCounted
 
 # 網頁版可以從網址帶的參數（url_query_args）；v0.36.3 加自動移動 / 攻擊，用來量「第一次出現」的卡頓
-const WEB_URL_ARGS: Array[String] = ["seconds", "horde", "perf", "elites", "player-hp", "auto-move", "auto-move-seconds", "auto-attack", "weapon", "class", "no-spawn", "weapon-test", "items"]   # weapon / class / no-spawn / weapon-test：網頁版逐把看武器（2026-10-27）；items：帶道具量效能（G7）
+const WEB_URL_ARGS: Array[String] = ["seconds", "horde", "perf", "elites", "player-hp", "auto-move", "auto-move-seconds", "auto-attack", "weapon", "class", "no-spawn", "weapon-test", "items", "shadows", "lights"]   # shadows / lights：內顯量效能的對照組（2026-10-27）；weapon / class / no-spawn / weapon-test：網頁版逐把看武器（2026-10-27）；items：帶道具量效能（G7）
 
 var run_seconds := 0.0           # > 0：跑這麼多秒後印出狀態並結束（自動驗證）
 var screenshot_path := ""
@@ -45,6 +46,7 @@ var player_at := Vector2.INF
 var exit_open := false
 var ghost := false
 var perf := false
+var video: Dictionary = {}       # --shadows= / --lights=：設定頁的鍵 → bool（沒指定就不放）
 
 
 # 這次執行的參數：指令列，網頁版再加上網址的查詢參數
@@ -122,6 +124,8 @@ static func parse(args: PackedStringArray) -> LaunchArgs:
 			a.ghost = true
 		elif arg == "--perf":
 			a.perf = true
+		elif arg.begins_with("--shadows=") or arg.begins_with("--lights="):
+			a.video[arg.get_slice("=", 0).trim_prefix("--")] = value != "0"
 	return a
 
 

@@ -2,6 +2,7 @@
 # 結算畫面顯示（ui/hud.gd）。只讀事件與模擬狀態，不修改模擬；連線時客戶端用房主送來的事件各記各的
 # 「看不見」：被打中那一刻攻擊者在不在自己的視野裡（sim/vision.gd，牆擋視線也算看不見）；攻擊者已經消失時用攻擊的出發點判斷
 # 回報：report_text() 是結算畫面「複製遊玩紀錄」的精簡文字（貼到聊天軟體），另含版本、平台、配裝、效能、連線數據
+# 效能另記顯示卡、解析度與畫面設定（2026-10-27）：一局中切換過陰影 / 光源時依設定分開統計，內顯玩一局就有對照組
 class_name RunLog
 extends RefCounted
 
@@ -28,6 +29,10 @@ var frame_time := 0.0
 var worst_frame := 0.0
 var worst_at := 0.0     # 最慢那一幀在這局第幾秒
 var hitches := 0
+var video := ""         # 目前的畫面設定（設定頁 video_text，main.gd 每次改動時設定）
+var by_video := {}      # 畫面設定 → {frames, time, hitches}
+var worst_context := "" # 最慢那一幀當時的畫面狀況（frame_context 回傳）
+var frame_context := Callable()   # main.gd 接上：回傳「光 N 盞、怪 N 隻」，只在出現新的最慢一幀時呼叫
 # 連線數據：main.gd 接上，回傳 { role, players, rtt_ms: Array[int], snapshot_gap_max_ms, input_gap_max_ms: {peer_id: 毫秒} }
 var net_info := Callable()
 
@@ -46,6 +51,8 @@ func reset() -> void:
 	worst_frame = 0.0
 	worst_at = 0.0
 	hitches = 0
+	by_video.clear()
+	worst_context = ""
 
 
 func add_frame(delta: float, run_time: float) -> void:
@@ -54,8 +61,13 @@ func add_frame(delta: float, run_time: float) -> void:
 	if delta > worst_frame:
 		worst_frame = delta
 		worst_at = run_time
+		worst_context = frame_context.call() if frame_context.is_valid() else ""
 	if delta > HITCH:
 		hitches += 1
+	var v: Dictionary = by_video.get_or_add(video, {"frames": 0, "time": 0.0, "hitches": 0})
+	v.frames += 1
+	v.time += delta
+	v.hitches += int(delta > HITCH)
 
 
 func on_event(world: World, name: String, p: Dictionary) -> void:
@@ -113,6 +125,8 @@ func report_text(world: World) -> String:
 	var lines: Array[String] = []
 	var platform := "網頁版" if OS.has_feature("web") else "%s（%s）" % [OS.get_name(), RenderingServer.get_current_rendering_method()]
 	lines.append("Cubeborn v%s · %s · %s" % [GameVersion.VERSION, platform, Time.get_datetime_string_from_system(false, true)])
+	var screen := DisplayServer.window_get_size()
+	lines.append("顯示卡：%s · %d×%d · %s" % [RenderingServer.get_video_adapter_name(), screen.x, screen.y, video])
 	var s := world.stats
 	var where := "第 %d 層 · 難度 %d" % [world.floor_num, floori(world.difficulty())] if DigEvent.enabled(world) else "第 %d 波" % s.wave
 	var boss: Enemy = world.entities.get(world.boss_id) as Enemy
@@ -130,8 +144,13 @@ func report_text(world: World) -> String:
 	lines.append_array(summary_text().split("
 "))
 	if frames > 0:
+		var at := UiKit.format_time(worst_at) + ("，" + worst_context if worst_context != "" else "")
 		lines.append("效能：平均 %d FPS · 最慢一幀 %d ms（%s）· 卡頓（超過 %d ms）%d 次" % [
-			roundi(frames / maxf(frame_time, 1e-6)), roundi(worst_frame * 1000.0), UiKit.format_time(worst_at), roundi(HITCH * 1000.0), hitches])
+			roundi(frames / maxf(frame_time, 1e-6)), roundi(worst_frame * 1000.0), at, roundi(HITCH * 1000.0), hitches])
+		if by_video.size() > 1:   # 一局中切換過畫面設定：各設定分開列，就是對照組
+			for key: String in by_video:
+				var v: Dictionary = by_video[key]
+				lines.append("  %s：平均 %d FPS · 卡頓 %d 次（%s）" % [key, roundi(v.frames / maxf(v.time, 1e-6)), v.hitches, UiKit.format_time(v.time)])
 	var n: Dictionary = net_info.call() if net_info.is_valid() else {}
 	if not n.is_empty():   # 單機時 main.gd 回傳空的
 		lines.append(net_text(n))

@@ -8,6 +8,9 @@ const MUSIC := {&"normal": preload("res://audio/music/normal.wav"), &"boss": pre
 const SETTINGS_PATH := "user://settings.cfg"
 const MAX_POLYPHONY := 32
 const SILENT_DB := -60.0
+# 設定頁的音量滑桿（2026-10-27）：音樂、音效各走一條匯流排，總音量是 Master；滑桿 0~1 乘在 Config.AUDIO 的混音上
+const MUSIC_BUS := &"Music"
+const SFX_BUS := &"SFX"
 
 # 網頁版 CUES 的全部名稱（tests/check.gd 會比對網頁版與 audio/sfx/ 的檔案）
 const CUE_NAMES: Array[String] = [
@@ -39,6 +42,11 @@ var _has_started := false
 
 func setup(p_world: World) -> void:
 	world = p_world
+
+
+func _init() -> void:
+	_sfx.bus = _bus(SFX_BUS)
+	_music.bus = _bus(MUSIC_BUS)
 
 
 func _ready() -> void:
@@ -137,6 +145,19 @@ func _load_settings() -> void:
 
 func _apply_mute() -> void:
 	AudioServer.set_bus_mute(AudioServer.get_bus_index(&"Master"), is_muted)
+
+
+## 設定頁的音量（0~1）：bus 是 &"Master"、MUSIC_BUS 或 SFX_BUS；0 等於關掉（−80 dB）
+static func set_volume(bus: StringName, volume: float) -> void:
+	AudioServer.set_bus_volume_db(AudioServer.get_bus_index(_bus(bus)), linear_to_db(maxf(volume, 1e-4)))
+
+
+# 匯流排不在專案的匯流排配置裡（沒有 default_bus_layout），第一次用到時建立，送到 Master
+static func _bus(bus: StringName) -> StringName:
+	if AudioServer.get_bus_index(bus) < 0:
+		AudioServer.add_bus()
+		AudioServer.set_bus_name(AudioServer.bus_count - 1, bus)
+	return bus
 
 
 ## 事件 → 音效名稱（沒有對應時回傳 ""）；照網頁版 Sound.js 的 #bindEvents

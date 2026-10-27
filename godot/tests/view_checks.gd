@@ -370,6 +370,113 @@ static func check_url_query_args() -> String:
 	return ""
 
 
+# 設定頁（2026-10-27）：主選單首頁與暫停畫面的「設定」打開、塞得進 1920×1080；改值發 changed、存檔後讀得回來；
+# 音量套到 Master / Music / SFX 匯流排；陰影、光源開關套到太陽與點光源（之後新建的精英怪也照設定）；--shadows=0 / --lights=0 解析
+static func check_settings() -> String:
+	var w := _new_world(5)
+	var cam := Camera3D.new()
+	_scene_root().add_child(cam)
+	var hud: Variant = load("res://ui/hud.tscn").instantiate()
+	hud.setup(w, cam)
+	_scene_root().add_child(hud)
+	var view := WorldView.new()
+	view._setup_environment()   # 太陽（不在場景樹裡不會跑 _ready）
+	var snd: Node = _sound_script().new()   # 不進場景樹（_ready 要 GameEvents，check.gd 沒有 autoload）；匯流排在 _init 就接好
+	var err := _check_settings(hud, view, snd, w)
+	for n: Node in [snd._sfx, snd._music, snd]:   # 播放器在 _ready 才掛上去，沒進場景樹要自己釋放
+		n.free()
+	view.free()
+	for n: Node in [hud, cam]:
+		n.queue_free()
+	return err
+
+
+static func _check_settings(hud: Variant, view: WorldView, snd: Variant, w: World) -> String:
+	var panel: SettingsPanel = hud.settings_panel
+	panel.save_path = ""
+	if panel.visible:
+		return "設定頁一開始應隱藏"
+	hud.show_title(true)
+	hud.main_menu.settings_button.pressed.emit()
+	if not panel.visible:
+		return "主選單「設定」應打開設定頁"
+	var need := panel.get_child(0).get_combined_minimum_size() as Vector2
+	if need.x > 1920.0 or need.y > 1080.0:
+		return "設定頁需要 %s，超出 1920×1080" % need
+	panel.back_button.pressed.emit()
+	hud.show_title(false)
+	hud.show_menu(true)
+	if not _shown(hud._settings_button, hud._pause):
+		return "暫停畫面應看得到「設定」"
+	hud._settings_button.pressed.emit()
+	hud.show_menu(false)
+	if panel.visible:
+		return "選單關掉時設定頁也要關"
+	# 改值：發 changed、存檔、讀得回來
+	var path := "user://check_settings.cfg"
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	panel.save_path = path
+	var got: Array = []
+	panel.changed.connect(func(k: String, v: Variant) -> void: got.append([k, v]))
+	panel.sliders["music"].value_changed.emit(0.3)   # check.gd 的節點不在場景樹裡，Range 不會自己發訊號
+	panel.toggles["lights"].button_pressed = false
+	panel.set_value("shadows", false, false)   # 啟動參數蓋掉：不存檔
+	if got != [["music", 0.3], ["lights", false], ["shadows", false]]:
+		return "changed 訊號不對：%s" % [got]
+	if panel.video_text() != "陰影關・光源關":
+		return "設定摘要不對：%s" % panel.video_text()
+	var again := SettingsPanel.new()
+	again.save_path = path
+	again.load_file()
+	var saved := again.values.duplicate()
+	again.free()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	if not is_equal_approx(saved.music, 0.3) or saved.lights != false or saved.shadows != true:
+		return "存檔讀回來不對（shadows 是啟動參數蓋的，不該存）：%s" % saved
+	# 音量：音樂、音效走自己的匯流排
+	var sound_script := _sound_script()
+	if snd._music.bus != &"Music" or snd._sfx.bus != &"SFX":
+		return "音樂、音效應走 Music / SFX 匯流排：%s / %s" % [snd._music.bus, snd._sfx.bus]
+	sound_script.set_volume(&"SFX", 0.5)
+	var sfx_db := AudioServer.get_bus_volume_db(AudioServer.get_bus_index(&"SFX"))
+	sound_script.set_volume(&"SFX", 0.0)
+	var off_db := AudioServer.get_bus_volume_db(AudioServer.get_bus_index(&"SFX"))
+	sound_script.set_volume(&"SFX", 1.0)
+	if not is_equal_approx(sfx_db, linear_to_db(0.5)) or off_db > -79.0:
+		return "音量 50%% 應 %.1f dB、0%% 應 −80 dB：%.1f / %.1f" % [linear_to_db(0.5), sfx_db, off_db]
+	# 陰影、光源
+	view.set_shadows(false)
+	if view._sun.shadow_enabled:
+		return "關陰影後太陽不該有影子"
+	view.set_shadows(true)
+	var rare := _spawn(w, &"grunt", Vector2(3, 8))
+	rare.set_rarity(MonsterRarityDefs.RARE, [&"swift"], "測試")
+	var node := view._create_view(rare)
+	var lights := node.find_children("*", "OmniLight3D", true, false)
+	view.set_lights(false)
+	var node2 := view._create_view(rare)
+	var lights2 := node2.find_children("*", "OmniLight3D", true, false)
+	var err := ""
+	if lights.size() != 1 or lights2.size() != 1:
+		err = "稀有怪應有 1 盞光：%d / %d" % [lights.size(), lights2.size()]
+	elif lights[0].visible or lights2[0].visible:
+		err = "關光源後已有的和之後新建的精英怪都不該亮"
+	else:
+		view.set_lights(true)
+		if not lights[0].visible or not lights2[0].visible:
+			err = "開光源後精英怪的光應亮回來"
+	node.free()
+	node2.free()
+	if err != "":
+		return err
+	var a := LaunchArgs.parse(PackedStringArray(["--shadows=0", "--lights=1"]))
+	if a.video != {"shadows": false, "lights": true}:
+		return "--shadows=0 --lights=1 解析成 %s" % a.video
+	if LaunchArgs.url_query_args("?shadows=0&lights=0") != PackedStringArray(["--shadows=0", "--lights=0"]):
+		return "網頁版應開放 ?shadows= / ?lights="
+	return ""
+
+
 static func check_run_log() -> String:
 	var w := _new_world(5)
 	var cam := Camera3D.new()
@@ -408,13 +515,17 @@ static func check_run_log() -> String:
 		if not text.contains(want):
 			return "結算文字缺「%s」：\n%s" % [want, text]
 	# 複製遊玩紀錄：結算畫面的按鈕，按下去拿到回報用的精簡文字；單機沒有連線那行
+	rl.video = "陰影開・光源開"
+	rl.frame_context = func() -> String: return "光 3 盞、怪 20 隻"
 	rl.add_frame(0.016, 1.0)
+	rl.video = "陰影關・光源開"
 	rl.add_frame(0.12, 65.0)
 	if hud._copy_button.get_parent() != hud._game_over_log.get_parent():
 		return "「複製遊玩紀錄」按鈕應在結算畫面上"
 	hud._copy_button.pressed.emit()
 	var report: String = hud.last_report
-	for want in ["Cubeborn v%s" % GameVersion.VERSION, "結果：你倒下了", "武器：", "你的擊殺 1", "被打中 3 次", "最慢一幀 120 ms（1:05）", "卡頓（超過 50 ms）1 次"]:
+	for want in ["Cubeborn v%s" % GameVersion.VERSION, "結果：你倒下了", "武器：", "你的擊殺 1", "被打中 3 次", "最慢一幀 120 ms（1:05，光 3 盞、怪 20 隻）", "卡頓（超過 50 ms）1 次",
+			"顯示卡：", "· 陰影關・光源開", "  陰影開・光源開：平均 63 FPS · 卡頓 0 次", "  陰影關・光源開：平均 8 FPS · 卡頓 1 次"]:
 		if not report.contains(want):
 			return "回報文字缺「%s」：\n%s" % [want, report]
 	if report.contains("連線："):
@@ -437,7 +548,7 @@ static func check_run_log() -> String:
 		return "結算畫面需要 %s，超出 %s" % [need, screen]
 	_note("結算畫面最多行時需要 %.0f × %.0f（畫面 %.0f × %.0f）" % [need.x, need.y, screen.x, screen.y])
 	hud._on_event("game:restart", {})
-	if rl.hits_taken != 0 or not rl.kills.is_empty() or not rl.downs.is_empty() or rl.frames != 0 or rl.result != "":
+	if rl.hits_taken != 0 or not rl.kills.is_empty() or not rl.downs.is_empty() or rl.frames != 0 or rl.result != "" or not rl.by_video.is_empty():
 		return "game:restart 後遊玩紀錄應清空"
 	hud.queue_free()
 	cam.queue_free()
@@ -570,7 +681,7 @@ static func check_warm_up() -> String:
 	# 介面程式碼裡寫死的字串（橫幅、場上文字…）也要涵蓋（v0.37.2：第一把武器的名字「[F] 撿起」等沒預熱，網頁版仍卡 78 ms）
 	var re := RegEx.create_from_string("\"([^\"\\\\]*)\"")
 	var missing := {}
-	for path in ["res://ui/hud.gd", "res://ui/world_labels.gd", "res://ui/floaters.gd", "res://ui/net_panel.gd", "res://ui/main_menu.gd", "res://ui/player_tags.gd", "res://ui/inventory_panel.gd", "res://ui/run_log.gd"]:
+	for path in ["res://ui/hud.gd", "res://ui/world_labels.gd", "res://ui/floaters.gd", "res://ui/net_panel.gd", "res://ui/main_menu.gd", "res://ui/player_tags.gd", "res://ui/inventory_panel.gd", "res://ui/run_log.gd", "res://ui/settings_panel.gd"]:
 		for line in _read_text(path).split("\n"):
 			for m in re.search_all(_strip_comment(line)):
 				for ch in m.get_string(1):

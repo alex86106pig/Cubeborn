@@ -80,6 +80,8 @@ var profile := false                   # main 的 --perf：各段累計耗時（
 var profile_usec: Dictionary = {}
 var _world: World
 var _vision_overlay := _create_vision_overlay()
+var _sun: DirectionalLight3D
+var lights_on := true                  # 設定頁「光源」：關掉時新建的點光源也不亮
 
 
 func _init() -> void:
@@ -129,6 +131,31 @@ func _freeze_on_hit(name: String, p: Dictionary) -> void:
 		_frozen[id] = maxf(_frozen.get(id, 0.0), duration)
 
 
+# 設定頁「陰影」（2026-10-27）：太陽開影子時每個模型多畫一次、另外畫一次陰影深度（相容渲染器）
+func set_shadows(on: bool) -> void:
+	_sun.shadow_enabled = on
+
+
+# 設定頁「光源」（2026-10-27）：精英怪、武器、出口的點光源一起開關；腳下發光環不受影響
+func set_lights(on: bool) -> void:
+	lights_on = on
+	for light: Light3D in _point_lights():
+		light.visible = on   # 武器光拿白色武器時下一次 sync 再關掉
+
+
+# 鏡頭裡亮著的點光源數（遊玩紀錄的最慢一幀附上）
+func lights_on_screen(camera: Camera3D) -> int:
+	var n := 0
+	for light: Light3D in _point_lights():
+		n += int(light.is_visible_in_tree() and camera.is_position_in_frustum(light.global_position))
+	return n
+
+
+# 模型上的點光源（精英怪、武器、出口）；太陽是平行光不算
+func _point_lights() -> Array[Node]:
+	return find_children("*", "OmniLight3D", true, false)
+
+
 func _setup_environment() -> void:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
@@ -141,6 +168,7 @@ func _setup_environment() -> void:
 	add_child(world_env)
 
 	var sun := DirectionalLight3D.new()
+	_sun = sun
 	sun.light_color = Config.ENVIRONMENT.sun_color
 	sun.light_energy = 1.2
 	sun.shadow_enabled = true
@@ -237,7 +265,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 			_sync_block_fan(node.get_node(^"BlockFan"), e as Player)
 			var glow: OmniLight3D = node.get_meta(&"glow")
 			var inst := (e as Player).active_weapon()
-			glow.visible = not inst.is_empty() and inst.rarity != &"white"
+			glow.visible = lights_on and not inst.is_empty() and inst.rarity != &"white"
 			if glow.visible:
 				glow.light_color = ItemDefs.RARITIES[inst.rarity].color
 		elif e is Chest:
@@ -963,6 +991,7 @@ func _create_grave() -> Node3D:
 	light.omni_range = 4.0
 	light.light_energy = 1.5
 	light.position.y = 0.8
+	light.visible = lights_on
 	ring.add_child(light)
 	return root
 
@@ -980,6 +1009,7 @@ func _add_rarity_marks(rig: Node3D, e: Enemy) -> void:
 	glow.light_energy = RARITY_GLOW_ENERGY
 	glow.shadow_enabled = false
 	glow.position.y = e.body_height * 0.6
+	glow.visible = lights_on
 	rig.add_child(glow)
 	var ring := MeshInstance3D.new()
 	var torus := TorusMesh.new()
