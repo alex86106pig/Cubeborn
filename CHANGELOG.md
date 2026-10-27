@@ -6,7 +6,7 @@
 ## [未發布]
 
 ### 修復
-- **網頁版總音量、M 靜音管不到背景音樂**：網頁版的 WAV 預設交給瀏覽器播（Sample），走 JS 那份匯流排；`Sound._bus` 執行中 `add_bus` 建的匯流排，在 Godot 網頁模板裡插入位置算錯，JS 的順序和 Godot 相反（實測：Godot 的 Master / SFX / Music → JS 的 Music / SFX / Master），音樂接在 JS 的 Master 上，總音量調到的是沒聲音經過的那條。音樂改由 Godot 混音（`playback_type = PLAYBACK_TYPE_STREAM`，同音效）；在網頁版 JS 插紀錄確認音樂不再交給瀏覽器播，`--perf` 60 FPS、卡頓 0。檢查「設定頁」加上音樂由 Godot 混音。
+- **網頁版音量滑桿套錯條：總音量、M 靜音管不到音樂，音樂調 0 音效也沒聲音**：網頁版的 WAV 預設交給瀏覽器播（Sample），走 JS 那份匯流排；那份的順序和 Godot 相反（Godot 網頁模板的 `Bus.addAt(-1)` 問題，[godotengine/godot#119026](https://github.com/godotengine/godot/issues/119026)，修正還沒合併；用 `default_bus_layout.tres` 一樣會發生）。音效的 `play_stream` 沒給匯流排時，網頁版還會走 Master（[#100696](https://github.com/godotengine/godot/issues/100696)）。實測：Godot 的 Master / SFX / Music → JS 的 J3 / J2 / J1，音效接在 J3、經 J2、J1 才到喇叭，音樂滑桿調的正是 J1。音樂播放器與每一次 `play_stream` 都改成由 Godot 混音（`PLAYBACK_TYPE_STREAM`）並明給 SFX 匯流排，完全不經過 JS 那份。網頁版實測（JS 插紀錄 + 輸出音量偵測）：交給瀏覽器播的次數 0、音樂調 0 後音效照常輸出（峰值 0.11）；`--perf` 60 FPS、卡頓 0。網頁版音效可能比以前小聲（現在和電腦版一樣由 Godot 混音，峰值 0.3 → 0.11，還沒人聽過）。檢查「設定頁」加上音樂由 Godot 混音。
 - **選角畫面「拖動旋轉」提示超出舞台**：提示用建立當下的文字寬度靠右下對齊，字級第一幀才套上、文字變寬時往右長（實測多 21 px，邊距 16 時超出約 5 px）。改成往左上長，並離右邊 40（使用者要往左擺一點）。檢查「主選單」加上提示在舞台內、離右邊至少 40（舊寫法量到 19，會失敗）。
 - **多人大廳有人換職業時，所有人的待機動畫都從頭播**：舞台只要有一格職業不同就整排重建模型。改成只重建換了的那一格；檢查「大廳選職業」加上其他人的模型不重建（舊寫法會失敗）。
 - **鐵鏟拿反（凹面朝下）**：鏟面原本是平板、鏟尖往下彎。改成 U 形槽，凹的一側和鏟尖朝上（手往前伸時），托著鏟起的怪。
