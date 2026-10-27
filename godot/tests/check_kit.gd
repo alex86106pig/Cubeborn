@@ -12,6 +12,17 @@ const EPS := 1e-3
 static var _worlds: Array[World] = []   # 結束前全部 clear()，避免循環參照造成洩漏警告
 
 
+# 清單上的一項由幾個子檢查組成（依種類分組，PROJECT_GUIDELINES.md 第 17 節）：依序跑，回傳第一個失敗並標出是哪個子檢查
+# 子檢查各自建 World、不依賴彼此的狀態（check.gd --shuffle 打亂順序驗證）
+static func all_of(fns: Array) -> String:
+	for fn: Callable in fns:
+		var result: Variant = fn.call()
+		var err: String = result if result is String else "檢查函式沒有回傳結果"
+		if err != "":
+			return "[%s] %s" % [fn.get_method(), err]
+	return ""
+
+
 # 預設關掉生成器，只測玩家；要測波次時傳 with_spawner = true
 static func _new_world(seed_value: int = 12345, with_spawner: bool = false, map_id: StringName = &"test_arena") -> World:
 	var w := World.new(map_id)

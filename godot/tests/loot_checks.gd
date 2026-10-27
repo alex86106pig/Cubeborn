@@ -703,37 +703,6 @@ static func check_item_conditions() -> String:
 	_run(w, idle, roundi(drum.duration / DT))
 	if absf(p.stats.value(&"attack_speed") - 1.0) > EPS:
 		return "擊殺 %.1f 秒後攻速應回到 1.0，實際 %.3f" % [drum.duration, p.stats.value(&"attack_speed")]
-	p.clear_items()
-	# ---- 第二批（G2）----
-	# 獵人斗篷：翻滾結束後 duration 秒內爆擊率 +value，之後回來
-	var hc := _effect(&"hunter_cloak")
-	p.add_item(&"hunter_cloak")
-	var crit0 := p.stats.value(&"crit_chance")
-	_run(w, _cmd(Vector2(1, 0), Vector2(0, 5), InputCmd.BTN_ROLL), 1)
-	_run(w, idle, ceili(Config.ROLL.duration / DT) + 1)
-	if absf(p.stats.value(&"crit_chance") - (crit0 + hc.value)) > EPS:
-		return "翻滾後爆擊率應為 %.2f，實際 %.2f" % [crit0 + hc.value, p.stats.value(&"crit_chance")]
-	_run(w, idle, ceili(hc.duration / DT) + 1)
-	if absf(p.stats.value(&"crit_chance") - crit0) > EPS:
-		return "翻滾 %.1f 秒後爆擊率應回到 %.2f，實際 %.2f" % [hc.duration, crit0, p.stats.value(&"crit_chance")]
-	p.clear_items()
-	# 亡者之契：本層每擊殺 +value、最多 max 層；換層歸零
-	var pact := _effect(&"pact_of_dead")
-	p.arrive_floor(p.pos, p.height)   # 前面殺過怪：從新的一層算起
-	p.add_item(&"pact_of_dead")
-	for i in 5:
-		Combat.apply_damage(w, p, _item_dummy(w, Vector2(0, 3), 1.0), {"damage": 10.0})
-	_run(w, idle, 1)
-	if absf(p.stats.value(&"damage") - (1.0 + pact.value * 5)) > EPS:
-		return "亡者之契殺 5 隻攻擊力應為 %.2f，實際 %.3f" % [1.0 + pact.value * 5, p.stats.value(&"damage")]
-	p.floor_kills = pact.max + 20
-	_run(w, idle, 1)
-	if absf(p.stats.value(&"damage") - (1.0 + pact.value * pact.max)) > EPS:
-		return "亡者之契最多 %d 層：攻擊力 %.3f" % [pact.max, p.stats.value(&"damage")]
-	p.arrive_floor(p.pos, p.height)
-	_run(w, idle, 1)
-	if absf(p.stats.value(&"damage") - 1.0) > EPS:
-		return "換層後亡者之契應歸零：攻擊力 %.3f" % p.stats.value(&"damage")
 	return ""
 
 
@@ -815,86 +784,10 @@ static func check_item_procs() -> String:
 	boss.apply_freeze(1.5)
 	if boss.frozen_timer > 0.0:
 		return "Boss 不應被冰凍"
-	w.clear()
-	# ---- 第二批（G3）----
-	w = _new_world()
-	p = _player(w)
-	p.stats.set_base(&"max_hp", 100000.0)
-	p.hp = p.max_hp
-	# 荊棘鎖甲：近戰扣的血 × ratio 打回攻擊者；投射物不反彈
-	var thorn := _effect(&"thorn_mail")
-	p.add_item(&"thorn_mail")
-	a = _item_dummy(w, Vector2(0, 2))
-	var hp_p := p.hp
-	var hp_a := a.hp
-	Combat.apply_damage(w, a, p, {"damage": 40.0})
-	var taken := hp_p - p.hp
-	if _hp_loss(a, hp_a) != _dealt(a, taken * thorn.ratio):
-		return "荊棘鎖甲：受到 %.1f 應反彈讓攻擊者扣 %d，實際 %d" % [taken, _dealt(a, taken * thorn.ratio), _hp_loss(a, hp_a)]
-	hp_a = a.hp
-	p.invuln_timer = 0.0
-	Combat.apply_damage(w, a, p, {"damage": 40.0, "projectile": true})
-	if _hp_loss(a, hp_a) != 0:
-		return "荊棘鎖甲不該反彈投射物：攻擊者扣 %d" % _hp_loss(a, hp_a)
-	p.clear_items()
-	# 王墓之心：以自己為中心、扣護甲前的受傷量 × damage_ratio；內部冷卻內再被打不炸
-	var heart := _effect(&"tomb_heart")
-	var hx: Dictionary = ItemDefs.PROCS.hurt_explode
-	p.add_item(&"tomb_heart")
-	b = _item_dummy(w, Vector2(minf(1.5, hx.radius * 0.5), 0))
-	var hp_b := b.hp
-	p.invuln_timer = 0.0
-	Combat.apply_damage(w, a, p, {"damage": 20.0})
-	if _hp_loss(b, hp_b) != _dealt(b, 20.0 * heart.damage_ratio):
-		return "王墓之心：旁邊的怪應扣 %d，實際 %d" % [_dealt(b, 20.0 * heart.damage_ratio), _hp_loss(b, hp_b)]
-	hp_b = b.hp
-	p.invuln_timer = 0.0
-	Combat.apply_damage(w, a, p, {"damage": 20.0})
-	if _hp_loss(b, hp_b) != 0:
-		return "王墓之心內部冷卻 %.1f 秒內不該再炸：扣 %d" % [hx.icd, _hp_loss(b, hp_b)]
-	_run(w, idle, ceili(hx.icd / DT) + 1)
-	hp_b = b.hp
-	p.invuln_timer = 0.0
-	Combat.apply_damage(w, a, p, {"damage": 20.0})
-	if _hp_loss(b, hp_b) == 0:
-		return "王墓之心冷卻過後應再炸"
-	p.clear_items()
-	w.clear()
-	# 爆裂箭袋：投射物直接命中時以被打中的怪為中心爆炸（該下 × explode.damage_ratio）；近戰不炸
-	w = _new_world()
-	p = _player(w)
-	ex = ItemDefs.PROCS.explode
-	p.add_item(&"blast_quiver")
-	a = _item_dummy(w, Vector2(0, 5))
-	b = _item_dummy(w, Vector2(minf(1.0, ex.radius * 0.5), 5))
-	hp_b = b.hp
-	Combat.apply_damage(w, p, a, {"damage": 20.0, "projectile": true})
-	if _hp_loss(b, hp_b) != _dealt(b, 20.0 * ex.damage_ratio):
-		return "爆裂箭袋：旁邊的怪應扣 %d，實際 %d" % [_dealt(b, 20.0 * ex.damage_ratio), _hp_loss(b, hp_b)]
-	hp_b = b.hp
-	Combat.apply_damage(w, p, a, {"damage": 20.0})
-	if _hp_loss(b, hp_b) != 0:
-		return "爆裂箭袋：近戰命中不該爆炸"
-	p.clear_items()
-	w.clear()
-	# 永恆之焰：命中就點燃；燒著的怪 spread_interval 秒後傳給 spread_range 內一隻，太遠的不會
-	w = _new_world()
-	p = _player(w)
-	var ig: Dictionary = ItemDefs.PROCS.ignite
-	p.add_item(&"eternal_flame")
-	a = _item_dummy(w, Vector2(0, 5))
-	b = _item_dummy(w, Vector2(a.radius * 2.0 + ig.spread_range * 0.5, 5))
-	c = _item_dummy(w, Vector2(-8, 5))
-	Combat.apply_damage(w, p, a, {"damage": 20.0})
-	if a.burn_timer <= 0.0 or not a.burn_spread:
-		return "永恆之焰：命中應點燃（會擴散）"
-	_run(w, idle, ceili(ig.spread_interval / DT) + 2)
-	if b.burn_timer <= 0.0 or c.burn_timer > 0.0:
-		return "燃燒 %.1f 秒後應傳給旁邊的怪、不傳給遠的：旁邊 %.2f、遠的 %.2f" % [ig.spread_interval, b.burn_timer, c.burn_timer]
 	return ""
 
 
-# 道具第二批 G1：屬性類道具接到各系統（命中回復、吸血、投射物減傷、靈魂、祭壇價格、撿取範圍、視野）
+# 屬性（第二批）：接到各系統的屬性（命中回復、吸血、投射物減傷、靈魂、祭壇價格、撿取範圍、視野）
 static func check_item_stats() -> String:
 	var w := _new_world()
 	var p := _player(w)
@@ -1007,6 +900,122 @@ static func check_item_stats() -> String:
 	return ""
 
 
+# 條件（第二批）：翻滾後一段時間、本層每擊殺疊一層
+static func check_item_conditions_roll_kills() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var idle := _cmd(Vector2.ZERO)
+	# 獵人斗篷：翻滾結束後 duration 秒內爆擊率 +value，之後回來
+	var hc := _effect(&"hunter_cloak")
+	p.add_item(&"hunter_cloak")
+	var crit0 := p.stats.value(&"crit_chance")
+	_run(w, _cmd(Vector2(1, 0), Vector2(0, 5), InputCmd.BTN_ROLL), 1)
+	_run(w, idle, ceili(Config.ROLL.duration / DT) + 1)
+	if absf(p.stats.value(&"crit_chance") - (crit0 + hc.value)) > EPS:
+		return "翻滾後爆擊率應為 %.2f，實際 %.2f" % [crit0 + hc.value, p.stats.value(&"crit_chance")]
+	_run(w, idle, ceili(hc.duration / DT) + 1)
+	if absf(p.stats.value(&"crit_chance") - crit0) > EPS:
+		return "翻滾 %.1f 秒後爆擊率應回到 %.2f，實際 %.2f" % [hc.duration, crit0, p.stats.value(&"crit_chance")]
+	p.clear_items()
+	# 亡者之契：本層每擊殺 +value、最多 max 層；換層歸零
+	var pact := _effect(&"pact_of_dead")
+	p.add_item(&"pact_of_dead")
+	for i in 5:
+		Combat.apply_damage(w, p, _item_dummy(w, Vector2(0, 3), 1.0), {"damage": 10.0})
+	_run(w, idle, 1)
+	if absf(p.stats.value(&"damage") - (1.0 + pact.value * 5)) > EPS:
+		return "亡者之契殺 5 隻攻擊力應為 %.2f，實際 %.3f" % [1.0 + pact.value * 5, p.stats.value(&"damage")]
+	p.floor_kills = pact.max + 20
+	_run(w, idle, 1)
+	if absf(p.stats.value(&"damage") - (1.0 + pact.value * pact.max)) > EPS:
+		return "亡者之契最多 %d 層：攻擊力 %.3f" % [pact.max, p.stats.value(&"damage")]
+	p.arrive_floor(p.pos, p.height)
+	_run(w, idle, 1)
+	if absf(p.stats.value(&"damage") - 1.0) > EPS:
+		return "換層後亡者之契應歸零：攻擊力 %.3f" % p.stats.value(&"damage")
+	return ""
+
+
+# 觸發（第二批）：受到近戰傷害反彈、受傷爆炸（內部冷卻）、投射物命中爆炸、點燃並擴散
+static func check_item_procs_hurt_ignite() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var idle := _cmd(Vector2.ZERO)
+	p.stats.set_base(&"max_hp", 100000.0)
+	p.hp = p.max_hp
+	# 荊棘鎖甲：近戰扣的血 × ratio 打回攻擊者；投射物不反彈
+	var thorn := _effect(&"thorn_mail")
+	p.add_item(&"thorn_mail")
+	var a := _item_dummy(w, Vector2(0, 2))
+	var hp_p := p.hp
+	var hp_a := a.hp
+	Combat.apply_damage(w, a, p, {"damage": 40.0})
+	var taken := hp_p - p.hp
+	if _hp_loss(a, hp_a) != _dealt(a, taken * thorn.ratio):
+		return "荊棘鎖甲：受到 %.1f 應反彈讓攻擊者扣 %d，實際 %d" % [taken, _dealt(a, taken * thorn.ratio), _hp_loss(a, hp_a)]
+	hp_a = a.hp
+	p.invuln_timer = 0.0
+	Combat.apply_damage(w, a, p, {"damage": 40.0, "projectile": true})
+	if _hp_loss(a, hp_a) != 0:
+		return "荊棘鎖甲不該反彈投射物：攻擊者扣 %d" % _hp_loss(a, hp_a)
+	p.clear_items()
+	# 王墓之心：以自己為中心、扣護甲前的受傷量 × damage_ratio；內部冷卻內再被打不炸
+	var heart := _effect(&"tomb_heart")
+	var hx: Dictionary = ItemDefs.PROCS.hurt_explode
+	p.add_item(&"tomb_heart")
+	var b := _item_dummy(w, Vector2(minf(1.5, hx.radius * 0.5), 0))
+	var hp_b := b.hp
+	p.invuln_timer = 0.0
+	Combat.apply_damage(w, a, p, {"damage": 20.0})
+	if _hp_loss(b, hp_b) != _dealt(b, 20.0 * heart.damage_ratio):
+		return "王墓之心：旁邊的怪應扣 %d，實際 %d" % [_dealt(b, 20.0 * heart.damage_ratio), _hp_loss(b, hp_b)]
+	hp_b = b.hp
+	p.invuln_timer = 0.0
+	Combat.apply_damage(w, a, p, {"damage": 20.0})
+	if _hp_loss(b, hp_b) != 0:
+		return "王墓之心內部冷卻 %.1f 秒內不該再炸：扣 %d" % [hx.icd, _hp_loss(b, hp_b)]
+	_run(w, idle, ceili(hx.icd / DT) + 1)
+	hp_b = b.hp
+	p.invuln_timer = 0.0
+	Combat.apply_damage(w, a, p, {"damage": 20.0})
+	if _hp_loss(b, hp_b) == 0:
+		return "王墓之心冷卻過後應再炸"
+	p.clear_items()
+	w.clear()
+	# 爆裂箭袋：投射物直接命中時以被打中的怪為中心爆炸（該下 × explode.damage_ratio）；近戰不炸
+	w = _new_world()
+	p = _player(w)
+	var ex: Dictionary = ItemDefs.PROCS.explode
+	p.add_item(&"blast_quiver")
+	a = _item_dummy(w, Vector2(0, 5))
+	b = _item_dummy(w, Vector2(minf(1.0, ex.radius * 0.5), 5))
+	hp_b = b.hp
+	Combat.apply_damage(w, p, a, {"damage": 20.0, "projectile": true})
+	if _hp_loss(b, hp_b) != _dealt(b, 20.0 * ex.damage_ratio):
+		return "爆裂箭袋：旁邊的怪應扣 %d，實際 %d" % [_dealt(b, 20.0 * ex.damage_ratio), _hp_loss(b, hp_b)]
+	hp_b = b.hp
+	Combat.apply_damage(w, p, a, {"damage": 20.0})
+	if _hp_loss(b, hp_b) != 0:
+		return "爆裂箭袋：近戰命中不該爆炸"
+	p.clear_items()
+	w.clear()
+	# 永恆之焰：命中就點燃；燒著的怪 spread_interval 秒後傳給 spread_range 內一隻，太遠的不會
+	w = _new_world()
+	p = _player(w)
+	var ig: Dictionary = ItemDefs.PROCS.ignite
+	p.add_item(&"eternal_flame")
+	a = _item_dummy(w, Vector2(0, 5))
+	b = _item_dummy(w, Vector2(a.radius * 2.0 + ig.spread_range * 0.5, 5))
+	var c := _item_dummy(w, Vector2(-8, 5))
+	Combat.apply_damage(w, p, a, {"damage": 20.0})
+	if a.burn_timer <= 0.0 or not a.burn_spread:
+		return "永恆之焰：命中應點燃（會擴散）"
+	_run(w, idle, ceili(ig.spread_interval / DT) + 2)
+	if b.burn_timer <= 0.0 or c.burn_timer > 0.0:
+		return "燃燒 %.1f 秒後應傳給旁邊的怪、不傳給遠的：旁邊 %.2f、遠的 %.2f" % [ig.spread_interval, b.burn_timer, c.burn_timer]
+	return ""
+
+
 static func _item_projectiles(w: World) -> Array[Projectile]:
 	var out: Array[Projectile] = []
 	for e in w.projectiles:
@@ -1015,8 +1024,8 @@ static func _item_projectiles(w: World) -> Array[Projectile]:
 	return out
 
 
-# 道具第二批 G4：普攻追加飛刀 / 斬波（內部冷卻）、每隔幾秒落雷、翻滾減速周圍的怪、自動回充的護盾
-static func check_item_actions_g4() -> String:
+# 觸發（第二批）：普攻追加飛刀 / 斬波（內部冷卻）、每隔幾秒落雷、翻滾減速周圍的怪
+static func check_item_procs_attack_timed() -> String:
 	var w := _new_world()
 	var p := _player(w)
 	var idle := _cmd(Vector2.ZERO)
@@ -1089,28 +1098,6 @@ static func check_item_actions_g4() -> String:
 	_run(w, idle, roundi(watch.duration / DT) + 2)
 	if absf(near.speed - spd_near) > EPS:
 		return "停滯懷錶 %.0f 秒後移速應恢復：%.2f / %.2f" % [watch.duration, near.speed, spd_near]
-	w.clear()
-	# 骨製護盾：盾量 = 最大生命 × ratio、先扣盾；recharge_delay 秒沒受傷才補滿
-	w = _new_world()
-	p = _player(w)
-	var bs := _effect(&"bone_buckler")
-	p.add_item(&"bone_buckler")
-	_run(w, idle, 1)
-	var cap: float = p.max_hp * bs.ratio
-	if absf(p.shield - cap) > EPS:
-		return "骨製護盾應有 %.1f，實際 %.1f" % [cap, p.shield]
-	var foe := _item_dummy(w, Vector2(0, 3))
-	foe.dormant = true   # 不要走過來打（會一直重設回充時間）
-	var hp0 := p.hp
-	Combat.apply_damage(w, foe, p, {"damage": 1.0})
-	if absf(p.hp - hp0) > EPS or p.shield >= cap - EPS:
-		return "小傷害應全部扣在盾上：生命 %.1f → %.1f、盾 %.1f" % [hp0, p.hp, p.shield]
-	_run(w, idle, roundi(bs.recharge_delay / DT) - 10)
-	if p.shield >= cap - EPS:
-		return "%.0f 秒內不該回充：盾 %.1f" % [bs.recharge_delay, p.shield]
-	_run(w, idle, 20)
-	if absf(p.shield - cap) > EPS:
-		return "%.0f 秒沒受傷應補滿 %.1f：%.1f" % [bs.recharge_delay, cap, p.shield]
 	return ""
 
 
@@ -1120,8 +1107,8 @@ static func _lethal_hit(w: World, foe: Entity, p: Player) -> void:
 	Combat.apply_damage(w, foe, p, {"damage": p.max_hp * 10.0})
 
 
-# 道具第二批 G5：守護亡靈（每層一次、先用）、復活十字（用完碎掉）都在倒地 / 死亡之前攔下
-static func check_item_lifesaver_g5() -> String:
+# 觸發（第二批）：致命傷 / 死亡時——守護亡靈（每層一次、先用）、復活十字（用完碎掉）都在倒地 / 死亡之前攔下
+static func check_item_procs_lethal() -> String:
 	var w := _new_world()
 	var p := _player(w)
 	var foe := _item_dummy(w, Vector2(0, 3))
@@ -1175,8 +1162,8 @@ static func check_item_lifesaver_g5() -> String:
 	return ""
 
 
-# 道具第二批 G6：擊殺放追蹤鬼火、擊殺召喚玩家方的骷髏僕從
-static func check_item_summons_g6() -> String:
+# 觸發（第二批）：擊殺放追蹤鬼火、擊殺召喚玩家方的骷髏僕從
+static func check_item_procs_summon() -> String:
 	var w := _new_world()
 	var p := _player(w)
 	var idle := _cmd(Vector2.ZERO)
@@ -1256,6 +1243,33 @@ static func check_item_summons_g6() -> String:
 	m2.die(0)
 	if _hp_loss(near, hp_near) != _dealt(near, bu.damage) or p.hp < hp_p:
 		return "碎骨爆裂：旁邊的怪應扣 %d、玩家不扣：%d、玩家 %.1f → %.1f" % [_dealt(near, bu.damage), _hp_loss(near, hp_near), hp_p, p.hp]
+	return ""
+
+
+# 能力（第二批）：自動回充的護盾（二段跳在 PlayerChecks.check_double_jump）
+static func check_item_shield() -> String:
+	# 骨製護盾：盾量 = 最大生命 × ratio、先扣盾；recharge_delay 秒沒受傷才補滿
+	var w := _new_world()
+	var p := _player(w)
+	var idle := _cmd(Vector2.ZERO)
+	var bs := _effect(&"bone_buckler")
+	p.add_item(&"bone_buckler")
+	_run(w, idle, 1)
+	var cap: float = p.max_hp * bs.ratio
+	if absf(p.shield - cap) > EPS:
+		return "骨製護盾應有 %.1f，實際 %.1f" % [cap, p.shield]
+	var foe := _item_dummy(w, Vector2(0, 3))
+	foe.dormant = true   # 不要走過來打（會一直重設回充時間）
+	var hp0 := p.hp
+	Combat.apply_damage(w, foe, p, {"damage": 1.0})
+	if absf(p.hp - hp0) > EPS or p.shield >= cap - EPS:
+		return "小傷害應全部扣在盾上：生命 %.1f → %.1f、盾 %.1f" % [hp0, p.hp, p.shield]
+	_run(w, idle, roundi(bs.recharge_delay / DT) - 10)
+	if p.shield >= cap - EPS:
+		return "%.0f 秒內不該回充：盾 %.1f" % [bs.recharge_delay, p.shield]
+	_run(w, idle, 20)
+	if absf(p.shield - cap) > EPS:
+		return "%.0f 秒沒受傷應補滿 %.1f：%.1f" % [bs.recharge_delay, cap, p.shield]
 	return ""
 
 
