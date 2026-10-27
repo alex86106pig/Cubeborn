@@ -12,7 +12,10 @@ const VOLUME_NAMES := {"master": "總音量", "music": "音樂", "sfx": "音效"
 const ROW_FONT := 28
 const ROW_WIDTH := 640
 const SWITCH_SCALE := 1.6   # 預設的開關圖示太小不好點，放大
+const SWITCH_BORDER := 2    # 開關外框粗細（像素）
+const SWITCH_BORDER_COLOR := Color(1, 1, 1, 0.75)
 
+static var _switch_icons: Dictionary = {}   # 放大加框後的開關圖示（_scale_switch）
 var save_path := "user://settings.cfg"   # 測試與自動驗證設成 "" 就不讀寫檔案
 var values := DEFAULTS.duplicate()
 var back_button := Button.new()
@@ -124,14 +127,34 @@ func _refresh() -> void:
 		_percent[key].text = "%d%%" % roundi(values[key] * 100.0)
 
 
-# 開關圖示放大 SWITCH_SCALE 倍（預設主題的圖示換成放大的複本）
+# 開關圖示放大 SWITCH_SCALE 倍並加外框（預設主題的圖示換成處理過的複本；使用者：關掉時太不明顯）
+# 做一次存起來，之後每個面板共用
 static func _scale_switch(t: CheckButton) -> void:
-	for icon: StringName in [&"checked", &"unchecked", &"checked_disabled", &"unchecked_disabled"]:
-		var img := t.get_theme_icon(icon).get_image()
-		if img == null:
-			continue
-		img.resize(roundi(img.get_width() * SWITCH_SCALE), roundi(img.get_height() * SWITCH_SCALE), Image.INTERPOLATE_BILINEAR)
-		t.add_theme_icon_override(icon, ImageTexture.create_from_image(img))
+	for icon: StringName in [&"checked", &"unchecked"]:
+		if not _switch_icons.has(icon):
+			var img := t.get_theme_icon(icon).get_image()
+			if img == null:
+				continue
+			img.decompress()
+			img.convert(Image.FORMAT_RGBA8)
+			img.resize(roundi(img.get_width() * SWITCH_SCALE), roundi(img.get_height() * SWITCH_SCALE), Image.INTERPOLATE_BILINEAR)
+			_switch_icons[icon] = ImageTexture.create_from_image(_outlined(img))
+		t.add_theme_icon_override(icon, _switch_icons[icon])
+
+
+# 沿著圖示的形狀（不透明的部分）往外描 SWITCH_BORDER 像素的框：純色圖用圖示當遮罩、往四周各偏移貼一次，再把圖示疊回中間
+static func _outlined(src: Image) -> Image:
+	var pad := SWITCH_BORDER
+	var rect := Rect2i(Vector2i.ZERO, src.get_size())
+	var out := Image.create(src.get_width() + pad * 2, src.get_height() + pad * 2, false, Image.FORMAT_RGBA8)
+	var solid := Image.create(src.get_width(), src.get_height(), false, Image.FORMAT_RGBA8)
+	solid.fill(SWITCH_BORDER_COLOR)
+	for dy in range(-pad, pad + 1):
+		for dx in range(-pad, pad + 1):
+			if dx * dx + dy * dy <= pad * pad:
+				out.blit_rect_mask(solid, src, rect, Vector2i(pad + dx, pad + dy))
+	out.blend_rect(src, rect, Vector2i(pad, pad))
+	return out
 
 
 static func _centered(l: Label) -> Label:
