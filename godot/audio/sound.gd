@@ -26,6 +26,9 @@ const DEFAULT_INTERVAL := 0.03
 const SKILL_CUES := {&"heal": "potion", &"plantTorch": "shieldBash"}
 # 個別音效的音量（dB）：v0.44.0 法杖普攻太吵（fireBolt 平均 −31.6 dB，比揮砍 swing 的 −36.1 大 4.5 dB，每 0.56 秒一發）
 const CUE_DB := {"fireBolt": -8.0}
+# 設定頁拉音效滑桿時的試聽：拖動時滑桿每格都發 changed，間隔太短會連成一串
+const PREVIEW_CUE := "hit"
+const PREVIEW_INTERVAL := 0.15
 
 var world: World
 var local_peer := World.HOST_PEER_ID   # 距離衰減以這個玩家為準（main.gd 連線時設定）
@@ -38,6 +41,7 @@ var _music := AudioStreamPlayer.new()
 var _music_track: StringName = &""
 var _music_tween: Tween
 var _has_started := false
+var _last_preview := -INF
 
 
 func setup(p_world: World) -> void:
@@ -91,6 +95,16 @@ func play(cue_name: String, gain := 1.0) -> void:
 		return
 	_last_played[cue_name] = now
 	(_sfx.get_stream_playback() as AudioStreamPlaybackPolyphonic).play_stream(stream, 0.0, cue_db(cue_name, gain))
+
+
+## 設定頁拉音效滑桿時播一聲當回饋（大廳、主選單沒有音效可聽）；回傳這次有沒有播
+func preview_sfx() -> bool:
+	var now := Time.get_ticks_msec() / 1000.0
+	if now - _last_preview < PREVIEW_INTERVAL:
+		return false
+	_last_preview = now
+	play(PREVIEW_CUE)
+	return true
 
 
 ## 一次播放的音量（dB）：個別音效的音量 + 距離衰減

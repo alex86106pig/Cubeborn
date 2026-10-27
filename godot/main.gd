@@ -398,6 +398,10 @@ func _load_settings() -> void:
 	for key: String in panel.values:
 		_apply_setting(key, panel.values[key])
 	panel.changed.connect(_apply_setting)
+	# 試聽只接在 changed：開場套設定時（上面的迴圈）不出聲
+	panel.changed.connect(func(key: String, _value: Variant) -> void:
+		if key == "sfx":
+			sound.preview_sfx())
 
 
 func _apply_setting(key: String, value: Variant) -> void:

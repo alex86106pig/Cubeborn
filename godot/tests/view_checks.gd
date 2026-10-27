@@ -555,6 +555,11 @@ static func _check_settings(hud: Variant, view: WorldView, snd: Variant, w: Worl
 	sound_script.set_volume(&"SFX", 1.0)
 	if not is_equal_approx(sfx_db, linear_to_db(0.5)) or off_db > -79.0:
 		return "音量 50%% 應 %.1f dB、0%% 應 −80 dB：%.1f / %.1f" % [linear_to_db(0.5), sfx_db, off_db]
+	# 拉音效滑桿的試聽：第一下播，拖動中緊接著的不播
+	var first: bool = snd.preview_sfx()
+	var burst: bool = snd.preview_sfx()
+	if not first or burst:
+		return "音效試聽應第一下播、%.2f 秒內不再播：%s / %s" % [sound_script.PREVIEW_INTERVAL, first, burst]
 	# 陰影、光源
 	view.set_shadows(false)
 	if view._sun.shadow_enabled:
