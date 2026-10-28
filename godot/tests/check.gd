@@ -132,6 +132,7 @@ func _initialize() -> void:
 	_check("屍犬：玩家站著不轉身時繞到背後（≥ behind_angle）才撲、patience 內做到；玩家一直轉身看著它 patience 內不撲、之後從正面撲；撲中有傷害", MonsterChecks.check_hound)
 	_check("守墓人（假裝 NPC）：玩家在旁邊 3 秒不開打不打人；按 F 說話先冒台詞（不開挖）、reveal_time 後開打；被打不說話直接開打；有人開挖就開打", MonsterChecks.check_gravekeeper_npc)
 	_check("守墓人四招：鐵鏟 windup 後打中一次；鏟土 windup + flight_time 落地打中、發 fx:dirt_lob；噴火每 tick 一下再被殘火燒（冒火苗）；口哨叫 count 隻不給靈魂的屍犬；全程不畫預警圈", MonsterChecks.check_gravekeeper_moves)
+	_check("守墓人半血轉型態：門檻前不變、過門檻變身（無敵 transform.time 秒）→ 狼人移速、嚎叫打到身邊的人、提燈火堆；狼人三連爪吃滿 3 下、飛撲 windup + flight 落地打中、狼嚎叫魔法屍犬並加速", MonsterChecks.check_gravekeeper_transform)
 	_check("各層怪物種類：第 1 層怪群與挖墳怪潮只有 FLOOR_MIX[1] 的怪，挖墳點噴下一層（第 2 層）的怪；召喚詞條叫出同種的怪", MonsterChecks.check_floor_mix)
 	_check("怪物稀有度（D5）：魔法 / 稀有骷髏的生命、攻擊力、體型照倍率；詞條數照 RARITIES.affixes 不重複、稀有怪有名字；每群魔法 magic_per_pack 隻、稀有 rare_chance（±1.5%）", MonsterChecks.check_rarity)
 	_check("怪物詞條（D5）：迅捷 / 強壯 / 厚皮照 mods 倍率、再生、吸血、狂暴、死亡爆炸、召喚照資料", MonsterChecks.check_affixes)

@@ -200,6 +200,27 @@ const ENEMIES := {
 			"embers": [2.5, 4.5], "ember_radius": 1.0, "ember_time": 2.0, "ember_dps": 5.0,   # 噴完沿噴火方向留下的殘火（擋不住）
 		},
 		"whistle": {"windup": 0.6, "recovery": 0.4, "cooldown": 12.0, "count": 2, "max_alive": 2, "distance": 2.0},
+		# 半血轉型態（取代狂暴）：form 0 老守墓人 → 1 墓園狼人；畫面層照 form_models 換模型、HUD 照 form_names 換名字
+		"form_models": [&"gravekeeper", &"werewolf"],
+		"form_names": ["守墓人", "墓園狼人"],
+		"transform": {
+			"hp_threshold": 0.5, "time": 2.0,                       # 變身中無敵
+			"roar_radius": 4.0, "roar_damage": 5.0, "roar_knockback": 14.0, "shake": 0.6, "shake_duration": 0.5,
+		},
+		"wolf": {
+			"move_speed": 7.5, "turn_speed": 9.0, "decide_delay": 0.2,
+			"first_cooldowns": {"leap": 1.5, "howl": 6.0, "stalk": 4.0},
+			"claw": {   # 三連爪：前兩下擋得住，第三下往前撲、擋不住
+				"trigger_distance": 2.2, "windup": 0.3, "interval": 0.25, "range": 2.4, "arc": PI * 100.0 / 180.0,
+				"damage": 10.0, "last_damage": 16.0, "knockback": 5.0, "lunge": 2.0, "lunge_time": 0.15, "recovery": 0.6, "cooldown": 2.0,
+			},
+			"leap": {   # 飛撲：跳到目標當時的位置，看影子躲
+				"min_distance": 4.5, "max_distance": 12.0, "windup": 0.5, "flight": 0.6, "recovery": 0.5, "cooldown": 6.0,
+				"radius": 2.5, "damage": 22.0, "knockback": 10.0, "shake": 0.5,
+			},
+			"stalk": {"max_distance": 10.0, "behind": 6.0, "time": 3.0, "speed_mul": 1.1, "cooldown": 10.0},   # 隱入黑暗：跑到目標背後再撲
+			"howl": {"windup": 1.0, "recovery": 0.3, "cooldown": 15.0, "count": 3, "max_alive": 3, "speed_mul": 1.2, "buff_time": 5.0},
+		},
 	},
 
 	&"boss": {

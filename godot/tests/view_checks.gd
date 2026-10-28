@@ -1233,34 +1233,39 @@ static func check_no_monster_telegraph() -> String:
 
 
 # Boss 每一招的預備動作兩兩不同：各招預備到一半時，手臂（前後、張開）、身體前後傾、頭的角度合計至少差 MIN_POSE_DIFF 弧度
-# 亡骸騎士：砸地、衝鋒、召喚、直劈；守墓人：鐵鏟揮擊、鏟土拋擲、提燈噴火、口哨
+# 亡骸騎士：砸地、衝鋒、召喚、直劈；守墓人：鐵鏟揮擊、鏟土拋擲、提燈噴火、口哨；墓園狼人（守墓人 form 1）：三連爪、飛撲、狼嚎
 const MIN_POSE_DIFF := 1.0
-const BOSS_MOVES := {
-	&"boss": [&"slam", &"charge", &"summon", &"cleave"],
-	&"gravekeeper": [&"shovel", &"lob", &"lantern", &"whistle"],
+const BOSS_MOVES := {   # 模型 -> [種類, 型態, 招式資料所在（"" = 種類的最上層）, 招式]
+	&"boss": [&"boss", 0, "", [&"slam", &"charge", &"summon", &"cleave"]],
+	&"gravekeeper": [&"gravekeeper", 0, "", [&"shovel", &"lob", &"lantern", &"whistle"]],
+	&"werewolf": [&"gravekeeper", 1, "wolf", [&"claw", &"leap", &"howl"]],
 }
 
 static func check_boss_windup_poses() -> String:
-	for type: StringName in BOSS_MOVES:
-		var fail := _check_windup_poses(type, BOSS_MOVES[type])
+	for model: StringName in BOSS_MOVES:
+		var fail := _check_windup_poses(model, BOSS_MOVES[model])
 		if fail != "":
 			return fail
 	return ""
 
 
-static func _check_windup_poses(type: StringName, move_list: Array) -> String:
+static func _check_windup_poses(model: StringName, spec: Array) -> String:
+	var type: StringName = spec[0]
 	var b_def: Dictionary = EnemyDefs.ENEMIES[type]
+	var move_defs: Dictionary = b_def if spec[2] == "" else b_def[spec[2]]
 	var poses := {}
-	for move: StringName in move_list:
+	for move: StringName in spec[3]:
 		var w := _new_world()
 		var p := _player(w)
 		p.pos = Vector2(0, 7)
 		var boss := _spawn(w, type, Vector2.ZERO)
-		var rig := DarkFantasy.character(type)
+		if spec[1] > 0:
+			(boss as Gravekeeper).form = spec[1]
+		var rig := DarkFantasy.character(model)
 		var anim := EnemyAnimator.new(rig, boss)
 		_run(w, _cmd(Vector2.ZERO), roundi(b_def.spawn_time / DT) + 2)
 		boss.fsm.change(move)
-		var windup: float = b_def[move].windup
+		var windup: float = move_defs[move].windup
 		for i in roundi(windup * 0.5 / DT):
 			p.hp = p.max_hp
 			_run(w, _cmd(Vector2.ZERO), 1)
@@ -1280,7 +1285,7 @@ static func _check_windup_poses(type: StringName, move_list: Array) -> String:
 			for k in a.size():
 				diff += absf(a[k] - b[k])
 			if diff < MIN_POSE_DIFF:
-				return "%s 的 %s 和 %s 預備動作太像：關節角度合計只差 %.2f（至少 %.1f）" % [type, moves[i], moves[j], diff, MIN_POSE_DIFF]
+				return "%s 的 %s 和 %s 預備動作太像：關節角度合計只差 %.2f（至少 %.1f）" % [model, moves[i], moves[j], diff, MIN_POSE_DIFF]
 	return ""
 
 

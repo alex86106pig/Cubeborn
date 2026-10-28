@@ -226,6 +226,8 @@ godot/
 | `skill:onCooldown` | `{ key }` | PlayerStates / ActiveSlots |
 | `wave:started` | `{ wave, total, isBoss }` | Spawner |
 | `boss:enraged` | `{ boss }` | Boss |
+| `boss:transforming` | `{ boss_id }`（Boss 半血開始轉型態） | Gravekeeper |
+| `boss:transformed` | `{ boss_id, form, pos }`（轉型態完成：畫面層換模型、HUD 換名字與提示） | Gravekeeper |
 | `boss:revealed` | `{ boss_id, spoke }`（假裝 NPC 的守墓人露出真面目；spoke = 被說話觸發、頭上冒台詞） | Gravekeeper |
 | `game:victory` | `{ stats }` | World（Boss 死亡後延遲發出） |
 | `game:restart` | `{}` | World.reset |
@@ -244,7 +246,7 @@ godot/
 | `fx:boss_wall` | `{ pos, height }` | Boss 衝鋒撞牆 |
 | `fx:boss_teleport` | `{ pos, height, to }` | 狂暴 Boss 瞬移砸地（v0.27.0）：原地與目的地的紫色煙霧 |
 | `fx:boss_teleport_warn` | `{ pos, height, life }` | 狂暴 Boss 瞬移前：目的地冒出越來越濃的紫煙（取代預警圈） |
-| `fx:dirt_lob` | `{ pos, height, targets, flight, radius }` | 守墓人鏟土拋擲：土塊沿拋物線飛到每個落點、地上的影子越來越大（看影子躲，不畫圈） |
+| `fx:dirt_lob` | `{ pos, height, targets, flight, radius, shadow_only? }` | 守墓人鏟土拋擲（shadow_only：狼人飛撲只畫影子）：土塊沿拋物線飛到每個落點、地上的影子越來越大（看影子躲，不畫圈） |
 | `fx:gas_cloud` | `{ pos, height, radius, color, life }` | 怪物的毒氣區（膨脹屍的腐氣，GroundZones `visual = &"gas"`）：範圍內一直冒低低的煙，不畫圈 |
 | `fx:erupt_warn` | `{ pos, height, radius, life }` | 挖墳點噴怪前：墳土隆起、裂開、冒出白骨手（取代預警圈） |
 | `fx:lightning` | `{ pos, height, points, color }` | 道具連鎖閃電（v0.33.0）：points 依序連成的閃電線 |

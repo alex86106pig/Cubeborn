@@ -389,6 +389,86 @@ static func check_gravekeeper_moves() -> String:
 	return ""
 
 
+# 守墓人半血轉型態：血量剛好過門檻前不變；過門檻 → 變身（無敵 time 秒）→ form 1、移速 wolf.move_speed、
+# 嚎叫震退身邊的玩家、提燈掉在地上變成火堆（Torch）；狼人三連爪站著不動吃滿 3 下（後兩下不被受傷無敵擋掉）、
+# 飛撲在 windup + flight 落地打中、狼嚎叫 count 隻魔法屍犬並加速
+static func check_gravekeeper_transform() -> String:
+	var d: Dictionary = EnemyDefs.ENEMIES.gravekeeper
+	var tr: Dictionary = d.transform
+	var w := _world()
+	var p: Player = w.players[World.HOST_PEER_ID]
+	p.stats.set_base(&"max_hp", 9999.0)
+	p.hp = p.max_hp
+	var k := w.spawner.spawn_at(w, &"gravekeeper", Vector2.ZERO) as Gravekeeper
+	_step(w, roundi(d.spawn_time / DT) + 2, true)
+	p.pos = Vector2(0, 2.5)
+	k.hp = k.max_hp * tr.hp_threshold + 2.0
+	Combat.apply_damage(w, p, k, {"damage": 1.0, "knockback": 0.0})
+	if k.fsm.is_in(&"transform"):
+		return "守墓人：血量還在 %.0f%% 以上就變身了" % (tr.hp_threshold * 100.0)
+	k.invuln_timer = 0.0
+	Combat.apply_damage(w, p, k, {"damage": 5.0, "knockback": 0.0})
+	if not k.fsm.is_in(&"transform"):
+		return "守墓人：血量低於 %.0f%% 應開始變身（狀態 %s）" % [tr.hp_threshold * 100.0, k.fsm.current_name]
+	var hp_before := k.hp
+	var events: Array[Dictionary] = []
+	var done_at := -1
+	var roared := false
+	for i in roundi((tr.time + 0.5) / DT):
+		k.invuln_timer = maxf(k.invuln_timer, 0.0)
+		Combat.apply_damage(w, p, k, {"damage": 50.0, "knockback": 0.0})   # 變身中打不動
+		w.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+		events.append_array(w.events)
+		for ev in w.events:
+			if ev.name == "entity:damaged" and ev.target_id == p.id and ev.source_id == k.id:
+				roared = true
+		if done_at < 0 and k.form == 1:
+			done_at = i + 1
+			break
+	if k.hp < hp_before:
+		return "守墓人：變身中應無敵（血 %.0f → %.0f）" % [hp_before, k.hp]
+	if done_at < 0 or absf(done_at * DT - tr.time) > DT * 2.5:
+		return "守墓人：應在 %.1f 秒後變成狼人（第 %d 步）" % [tr.time, done_at]
+	if not roared or w.torches.size() != 1 or not events.any(func(ev: Dictionary) -> bool: return ev.name == "boss:transformed"):
+		return "守墓人：變身完成應嚎叫打到身邊的玩家（%s）、掉下提燈火堆（%d 個）、發 boss:transformed" % [roared, w.torches.size()]
+	if absf(k.speed - d.wolf.move_speed) > 0.01:
+		return "狼人移速 %.2f，預期 %.1f" % [k.speed, d.wolf.move_speed]
+	# 狼人三招
+	var wd: Dictionary = d.wolf
+	for move: StringName in [&"claw", &"leap", &"howl"]:
+		var dist: float = {&"claw": 1.8, &"leap": 8.0, &"howl": 6.0}[move]
+		p.pos = Vector2(0, dist)
+		p.invuln_timer = 0.0
+		k.pos = Vector2.ZERO
+		k.facing = 0.0
+		k.fsm.change(move)
+		var hits := 0
+		var first := -1
+		for i in 180:
+			w.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+			p.pos = Vector2(0, dist)
+			for ev in w.events:
+				if ev.name == "entity:damaged" and ev.target_id == p.id and ev.source_id == k.id:
+					hits += 1
+					if first < 0:
+						first = i + 1
+			if not k.fsm.is_in(move):
+				break
+		match move:
+			&"claw":
+				if hits != 3:
+					return "狼人三連爪：站著不動應吃滿 3 下，實際 %d 下" % hits
+			&"leap":
+				var land: float = wd.leap.windup + wd.leap.flight
+				if hits != 1 or absf(first * DT - land) > DT * 2.5:
+					return "狼人飛撲：應在 %.2f 秒落地打中一次（第 %d 步、%d 次）" % [land, first, hits]
+			&"howl":
+				var dogs := w.enemies.filter(func(e: Entity) -> bool: return e is Hound and (e as Enemy).summoner_id == k.id and (e as Enemy).rarity == MonsterRarityDefs.MAGIC)
+				if dogs.size() < wd.howl.count or absf(k.speed - wd.move_speed * wd.howl.speed_mul) > 0.01:
+					return "狼嚎：應叫出 %d 隻魔法屍犬（%d）、移速 ×%.1f（%.2f）" % [wd.howl.count, dogs.size(), wd.howl.speed_mul, k.speed]
+	return ""
+
+
 static func check_floor_mix() -> String:
 	var w := _world(&"graveyard_a", true)
 	var first: Dictionary = EnemyDefs.floor_mix(1)

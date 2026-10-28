@@ -223,7 +223,8 @@ func sync(world: World, alpha: float, dt: float) -> void:
 	for id: int in _nodes.keys():
 		# 實體不在了，或同一個 id 已經是另一個實體（重新開始後 id 從 1 重來，客戶端可能在同一幀就換掉）
 		var e: Entity = world.entities.get(id)
-		if e == null or _nodes[id].get_meta(&"entity") != e.get_instance_id():
+		# 模型換了（守墓人半血變狼人）也整個重建
+		if e == null or _nodes[id].get_meta(&"entity") != e.get_instance_id() or _nodes[id].get_meta(&"model", &"") != _model_of(e):
 			_nodes[id].queue_free()
 			_nodes.erase(id)
 			_animators.erase(id)
@@ -715,6 +716,10 @@ func warm_up(center: Vector3) -> void:
 	var ents: Array[Entity] = [tw.players[World.HOST_PEER_ID]]
 	for kind: StringName in [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"gravekeeper", &"boss", &"ghost", &"minion"]:
 		ents.append(tw.spawner.spawn_at(tw, kind, c))
+	var wolf := tw.spawner.spawn_at(tw, &"gravekeeper", c) as Gravekeeper   # 半血變身後的狼人模型
+	wolf.form = 1
+	wolf._update_anim()
+	ents.append(wolf)
 	for rarity: StringName in [MonsterRarityDefs.MAGIC, MonsterRarityDefs.RARE]:
 		var e := tw.spawner.spawn_at(tw, &"grunt", c)
 		Spawner.roll_rarity(tw, e, rarity)
@@ -829,6 +834,14 @@ static func _view_key(e: Entity) -> String:
 	return String(e.kind)
 
 
+# 這個實體用哪一種模型：有 form_models 的 Boss 照型態換（守墓人 → 狼人），其餘就是種類
+static func _model_of(e: Entity) -> StringName:
+	if e is Enemy and (e as Enemy).def.has("form_models"):
+		var forms: Array = (e as Enemy).def.form_models
+		return forms[clampi((e as Enemy).anim.get("form", 0), 0, forms.size() - 1)]
+	return e.kind
+
+
 func _create_view(e: Entity) -> Node3D:
 	var root: Node3D
 	match e.kind:
@@ -850,7 +863,7 @@ func _create_view(e: Entity) -> Node3D:
 			# 冤魂（D6）：半透明的騎士（玩家的模型，不拿武器）
 			var rig: Node3D
 			if (e as Enemy).is_boss():
-				rig = DarkFantasy.character(e.kind)
+				rig = DarkFantasy.character(_model_of(e))
 			elif e.kind == &"ghost":
 				rig = DarkFantasy.skinned_character(&"player")
 				(rig as SkinnedRig).set_ghost(GHOST_TINT, GHOST_TRANSPARENCY)
@@ -880,6 +893,7 @@ func _create_view(e: Entity) -> Node3D:
 	ring.name = &"Hitbox"
 	root.add_child(ring)
 	root.set_meta(&"entity", e.get_instance_id())
+	root.set_meta(&"model", _model_of(e))
 	if e is Player or e is Enemy or e is Projectile:
 		# 投射物（箭、魔彈）飛到牆後也畫剪影，顏色看發射的人：自己藍、隊友綠、怪物紅
 		var source: Entity = e

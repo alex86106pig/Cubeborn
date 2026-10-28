@@ -251,10 +251,19 @@ func _pose_slam(a: Dictionary) -> void:
 #   鐵鏟揮擊 = 鏟子扛到右肩後、身體往右扭；鏟土拋擲 = 彎腰把鏟子插進地裡、再往後撬；
 #   提燈噴火 = 左手把提燈舉到臉前、身體後仰吸氣；口哨 = 右手兩指放進嘴裡、抬頭
 func _pose_keeper(e: Enemy, a: Dictionary, state: StringName, t: float, dt: float) -> void:
+	if a.get("form", 0) > 0:
+		_pose_wolf(e, a, state, t, dt)
+		return
 	var def := e.def
 	var pt: float = a.get("phase_time", 0.0)
 	rig.body.rotation.y = 0.0
 	match state:
+		&"transform":
+			# 變身：彎腰咳嗽、全身抖、身體一下一下脹大（結束時換成狼人模型）
+			var k := clampf(t / def.transform.time, 0.0, 1.0)
+			rig.body.rotation.x = 0.6 * minf(1.0, k * 3.0) + sin(t * 40.0) * 0.05
+			_pose_arms(-0.4 - 0.6 * k + sin(t * 30.0) * 0.1, 0.6 * k)
+			rig.body.scale = _base_body_scale * (1.0 + 0.15 * k * (0.7 + 0.3 * sin(t * 18.0)))
 		&"patrol":
 			# 掃地：走的時候駝背慢走，停下來時鏟子左右掃地
 			var moving := e.velocity.length_squared() > 0.01
@@ -324,6 +333,61 @@ func _pose_keeper(e: Enemy, a: Dictionary, state: StringName, t: float, dt: floa
 			rig.arm_l.rotation = Vector3(-0.5, 0.0, 0.0)
 			rig.body.rotation.x = lerpf(0.25, -0.1, k)
 			rig.head.rotation.x = lerpf(0.0, -0.4, k)
+
+
+# 墓園狼人：三招的預備動作兩兩不同
+#   三連爪 = 雙爪往後拉、張開；飛撲 = 四肢著地蹲低；狼嚎 = 仰頭、雙臂張開挺胸；隱入黑暗 = 壓低身體奔跑
+func _pose_wolf(e: Enemy, a: Dictionary, state: StringName, t: float, dt: float) -> void:
+	var w: Dictionary = e.def.wolf
+	var pt: float = a.get("phase_time", 0.0)
+	rig.body.rotation.y = 0.0
+	match state:
+		&"wolf_chase", &"stalk":
+			walk_phase += dt * e.velocity.length() * 1.6
+			_pose_walk(1.0 if e.velocity.length_squared() > 0.01 else 0.0, 0.3, 0.3)
+			rig.body.rotation.x = 0.7 if state == &"stalk" else 0.45
+		&"claw":
+			var c: Dictionary = w.claw
+			if t < c.windup:
+				var k := MathUtil.ease_out_cubic(t / c.windup)
+				_pose_arms(0.9 * k, 0.6 * k)
+				rig.body.rotation.x = 0.2 * k
+				rig.head.rotation.x = 0.1 * k
+			else:
+				var n := clampi(floori((t - c.windup) / c.interval), 0, 2)   # 第幾下（0~2）
+				var k := clampf((t - c.windup - n * c.interval) / c.interval, 0.0, 1.0)
+				var swing := lerpf(0.9, -1.6, k)
+				if n == 2:
+					_pose_arms(swing, 0.2)   # 第三下雙爪一起往前撲
+					rig.body.rotation.x = lerpf(0.2, 0.6, k)
+				else:
+					rig.arm_r.rotation = Vector3(swing if n == 0 else 0.9, -0.3, 0.0)
+					rig.arm_l.rotation = Vector3(swing if n == 1 else 0.9, 0.3, 0.0)
+					rig.body.rotation.x = 0.25
+		&"leap":
+			var l: Dictionary = w.leap
+			match a.get("phase", &"windup"):
+				&"windup":
+					var k := MathUtil.ease_out_cubic(clampf(pt / l.windup, 0.0, 1.0))
+					rig.body.rotation.x = lerpf(0.45, 1.0, k)
+					_pose_arms(lerpf(0.3, -1.2, k))
+					rig.position.y = -0.3 * k
+					rig.head.rotation.x = -0.4 * k
+				&"air":
+					rig.position.y = 0.0
+					rig.body.rotation.x = 0.3
+					_pose_arms(-2.0, 0.3)
+					rig.leg_r.rotation.x = 0.8
+					rig.leg_l.rotation.x = 0.8
+				_:
+					var k := clampf(pt / l.recovery, 0.0, 1.0)
+					rig.body.rotation.x = lerpf(0.8, 0.45, k)
+					_pose_arms(lerpf(-1.2, 0.3, k))
+		&"howl":
+			var k := MathUtil.ease_out_cubic(clampf(t / w.howl.windup, 0.0, 1.0))
+			_pose_arms(lerpf(0.3, -0.6, k), lerpf(0.0, 1.0, k))
+			rig.body.rotation.x = lerpf(0.45, -0.2, k)
+			rig.head.rotation.x = lerpf(0.0, -0.7, k)
 
 
 # 屍犬（四足）：奔跑時前後腳交錯；飛撲 windup 伏低（看得出要撲）→ dash 前腳往前、後腳往後伸直 → recovery 收回；

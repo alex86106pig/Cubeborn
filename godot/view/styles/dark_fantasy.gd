@@ -12,7 +12,7 @@ const C := {
 	"rot_eye": Color("d8e05a"), "bloat_skin": Color("8c946a"), "bloat_glow": Color("a8e04a"),
 	"hound_fur": Color("2e2a28"), "hound_snout": Color("5a4a42"),
 	"keeper_coat": Color("4a3a2a"), "keeper_skin": Color("b8a088"), "keeper_beard": Color("c8c4b8"), "keeper_hat": Color("2a2622"),
-	"keeper_flame": Color("ffb040"),
+	"keeper_flame": Color("ffb040"), "wolf_fur": Color("4a4642"),
 }
 
 # 騎士身上的掛點（Rig.mount_nodes）：back 在披風外、hip_l / hip_r 在腰帶外側（身體座標），head 在頭盔頂（頭的座標），
@@ -42,6 +42,7 @@ const HOUND_JOINTS := {
 }
 const BOSS_SCALE := 1.85
 const KEEPER_SCALE := 1.3
+const WOLF_SCALE := 1.45
 static var _projectile_kit: PartKit   # 箭的材質（enemy_projectile）
 
 const BLOOD := Color("d8d2bf")        # 骷髏死亡碎骨（網頁版 colors.blood）
@@ -73,6 +74,8 @@ static func character(kind: StringName) -> Rig:
 			rig = hound()
 		&"gravekeeper":
 			rig = gravekeeper()
+		&"werewolf":
+			rig = werewolf()
 		&"boss":
 			rig = death_knight()
 		_:
@@ -320,6 +323,33 @@ static func gravekeeper() -> Rig:
 	k.add(lantern, PartKit.box(0.18, 0.24, 0.18), k.mat(C.iron), {"y": -0.2})
 	k.add(lantern, PartKit.box(0.12, 0.16, 0.12), k.mat(C.keeper_flame, true), {"y": -0.2, "shadow": false})
 	rig.hand_l.add_child(_hold(lantern, {"grip": Vector3.ZERO}))
+	return rig.optimize()
+
+
+# 墓園狼人（守墓人半血變身）：比老人高大，黑灰毛、狼頭（口鼻、尖耳、黃眼）、爪子，身上還掛著破外套
+static func werewolf() -> Rig:
+	var j := KNIGHT_JOINTS.duplicate()
+	j["scale"] = WOLF_SCALE
+	var rig := Rig.new(j)
+	var k := rig.kit
+	var fur := k.mat(C.wolf_fur)
+	var dark := k.mat(C.hound_fur)
+	k.add(rig.body, PartKit.cyl(0.36, 0.26, 0.8, 7), fur, {"y": 1.2})
+	k.add(rig.body, PartKit.box(0.6, 0.35, 0.05), k.mat(C.keeper_coat), {"y": 0.95, "z": -0.26, "rx": 0.15})   # 撐破的外套
+	k.add(rig.body, PartKit.cyl(0.24, 0.26, 0.3, 7), dark, {"y": 0.82})
+	k.add(rig.head, PartKit.box(0.32, 0.3, 0.32), fur, {"y": 0.16, "z": 0.02})
+	k.add(rig.head, PartKit.box(0.18, 0.15, 0.3), dark, {"y": 0.1, "z": 0.28})
+	for s in [-1.0, 1.0]:
+		k.add(rig.head, PartKit.cone(0.07, 0.22, 4), fur, {"x": s * 0.11, "y": 0.38, "z": 0.0})
+		k.add(rig.head, PartKit.sphere(0.03, 4, 3), k.mat(C.rot_eye, true), {"x": s * 0.08, "y": 0.2, "z": 0.18, "shadow": false})
+	for pair in [[rig.arm_r, rig.hand_r], [rig.arm_l, rig.hand_l]]:
+		k.add(pair[0], PartKit.cyl(0.11, 0.08, 0.46, 6), fur, {"y": -0.24})
+		k.add(pair[1], PartKit.box(0.14, 0.14, 0.12), dark)
+		for c in 3:
+			k.add(pair[1], PartKit.cone(0.025, 0.16, 4), k.mat(C.bone), {"x": (c - 1) * 0.045, "y": -0.13, "z": 0.04, "rx": PI})
+	for leg in [rig.leg_r, rig.leg_l]:
+		k.add(leg, PartKit.cyl(0.12, 0.09, 0.5, 6), fur, {"y": -0.28})
+		k.add(leg, PartKit.box(0.16, 0.1, 0.28), dark, {"y": -0.88, "z": 0.06})
 	return rig.optimize()
 
 

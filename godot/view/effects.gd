@@ -19,6 +19,7 @@ const HANDLERS := {
 	"hit:predicted": &"_on_damaged",   # 客戶端預測自己打中（v0.38.0）：先噴火花，房主的那一下到了就不再噴
 	"entity:died": &"_on_died",
 	"boss:enraged": &"_on_enraged",
+	"boss:transformed": &"_on_transformed",
 	"fx:slash": &"_fx_slash",
 	"fx:muzzle": &"_fx_muzzle",
 	"fx:telegraph": &"_fx_telegraph",
@@ -49,6 +50,8 @@ const TELEPORT_COLOR := Color("b36bff")
 const BONE_COLOR := Color("d8d0b8")         # 挖墳點冒出的白骨手
 const DIRT_LOB_HEIGHT := 3.0                # 守墓人拋出的土塊飛多高
 const LANTERN_BLUE := Color("6ab0ff")       # 提燈噴火前燈火轉藍
+const WOLF_FUR := Color("4a4642")           # 守墓人變身：毛（同 DarkFantasy 的 wolf_fur）
+const KEEPER_COAT := Color("4a3a2a")        # 撐破的外套碎片
 const ERUPT_HANDS := 4
 const ERUPT_HANDS_FROM := 0.45              # 墳土隆起到這個進度才冒出白骨手
 
@@ -250,6 +253,19 @@ func _on_enraged(p: Dictionary) -> void:
 		ring(_entity_at(e, 0.0), 4.0, {"color": DarkFantasy.BOSS_BLOOD, "life": 0.5})
 
 
+# 守墓人變身完成：撐破的衣服碎片與毛四散、嚎叫的衝擊環（震退範圍）
+func _on_transformed(p: Dictionary) -> void:
+	var e := _entity(p.boss_id)
+	if e == null:
+		return
+	var at := _entity_at(e, 0.0)
+	var roar: float = (e as Enemy).def.transform.roar_radius
+	ring(at, roar, {"color": Color.WHITE, "life": 0.4})
+	ring(at, roar * 1.3, {"color": WOLF_FUR, "life": 0.6, "opacity": 0.5})
+	burst(at + Vector3(0, 1.5, 0), {"color": KEEPER_COAT, "count": 24, "speed": 7.0, "up": 5.0, "size": 0.22})
+	burst(at + Vector3(0, 1.5, 0), {"color": WOLF_FUR, "count": 20, "speed": 5.0, "up": 4.0, "size": 0.16})
+
+
 func _fx_slash(p: Dictionary) -> void:
 	slash(_at(p, 1.0), p.facing, p.range, p.arc, {"color": p.color, "swing_dir": p.swing_dir})
 
@@ -405,11 +421,18 @@ func _fx_dirt_lob(p: Dictionary) -> void:
 	var radius: float = p.radius
 	var clod_mesh := BoxMesh.new()
 	clod_mesh.size = Vector3(0.35, 0.3, 0.35)
+	var shadow_only: bool = p.get("shadow_only", false)   # 狼人飛撲：只畫落點的影子（跳的是狼人本身）
 	for target: Vector2 in p.targets:
 		var to := Vector3(target.x, world.terrain.ground_at(target) if world != null else 0.0, target.y)
-		var clod := _transient_mesh(clod_mesh, DUST_COLOR, 1.0)
 		var shadow := _transient_mesh(_disc_mesh, Color.BLACK, 0.0)
 		shadow.position = to + Vector3(0, 0.04, 0)
+		_add_transient(shadow, flight, func(k: float) -> void:
+			var s := radius * lerpf(0.3, 1.0, k)
+			shadow.scale = Vector3(s, 1.0, s)
+			_set_alpha(shadow, 0.5 * k))
+		if shadow_only:
+			continue
+		var clod := _transient_mesh(clod_mesh, DUST_COLOR, 1.0)
 		var landed := [false]
 		_add_transient(clod, flight, func(k: float) -> void:
 			var pos := from.lerp(to, k)
@@ -419,10 +442,6 @@ func _fx_dirt_lob(p: Dictionary) -> void:
 			if k > 0.97 and not landed[0]:
 				landed[0] = true
 				burst(to + Vector3(0, 0.2, 0), {"color": DUST_COLOR, "count": 14, "speed": 4.0, "up": 4.0, "size": 0.2}))
-		_add_transient(shadow, flight, func(k: float) -> void:
-			var s := radius * lerpf(0.3, 1.0, k)
-			shadow.scale = Vector3(s, 1.0, s)
-			_set_alpha(shadow, 0.5 * k))
 
 
 func _fx_boss_wall(p: Dictionary) -> void:
@@ -510,6 +529,10 @@ func _emit_enemy(e: Enemy, dt: float) -> void:
 			_emit_slam_pebbles(e, a, key, dt)
 		&"lantern":
 			_emit_lantern(e, a, key, dt)
+		&"transform":
+			# 守墓人變身中：身上一直冒黑毛
+			for i in _count(key, 0.8, dt):
+				mote(_jitter(e, 0.6, e.height + _rng.randf_range(0.8, 2.4)), {"color": WOLF_FUR, "size": 0.15, "life": 0.4, "vy": 1.5})
 		&"swell":
 			# 膨脹屍脹大：皮膚裂縫冒出綠氣，越接近爆開越多
 			var k := EnemyAnimator.bloater_swell(e, &"swell", a.get("time", 0.0))

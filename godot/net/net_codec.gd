@@ -17,7 +17,7 @@ const ANIM_KEYS: Array[String] = [
 	"loco", "loco_time", "action", "action_time", "behavior", "phase", "k", "swing_dir", "is_finisher",
 	"trail_color", "airborne", "blocking", "parry", "vz", "revive", "stunned",
 	"state", "time", "enraged", "phase_time", "origin", "torch_stance", "burning", "holding", "buried", "grabbed",
-	"shield", "running", "burst", "spoke",
+	"shield", "running", "burst", "spoke", "form",
 ]
 # 玩家動畫欄位的預設值：和預設值相同的欄位不送（大部分時間只剩移動層、動作層的名稱與秒數），收到時補回
 const PLAYER_ANIM_DEFAULTS := {
@@ -31,7 +31,7 @@ const KINDS: Array[StringName] = [&"player", &"grunt", &"archer", &"boss", &"gho
 const NAMES: Array[StringName] = [
 	&"idle", &"move", &"chase", &"kite", &"aim", &"attack", &"swing", &"cleave", &"slam", &"charge", &"rush", &"summon",
 	&"hurt", &"stagger", &"dead", &"dormant", &"spawn", &"climb", &"jump", &"stun", &"ready", &"special", &"roll", &"dig",
-	&"downed", &"revive", &"windup", &"strike", &"recover", &"block", &"parry", &"lunge", &"bite", &"dash", &"recovery", &"swell", &"pounce", &"patrol", &"reveal", &"shovel", &"lob", &"lantern", &"whistle", &"throw", &"flame",
+	&"downed", &"revive", &"windup", &"strike", &"recover", &"block", &"parry", &"lunge", &"bite", &"dash", &"recovery", &"swell", &"pounce", &"patrol", &"reveal", &"shovel", &"lob", &"lantern", &"whistle", &"throw", &"flame", &"transform", &"wolf_chase", &"claw", &"leap", &"stalk", &"howl", &"air",
 ]
 enum { T_NULL, T_FALSE, T_TRUE, T_INT, T_FLOAT, T_NAME, T_SNAME, T_STRING, T_COLOR, T_VEC2, T_VARIANT }
 const NO_INDEX := 255

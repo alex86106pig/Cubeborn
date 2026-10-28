@@ -28,11 +28,14 @@ static func hostiles_of(world: World, team: StringName, source_id: int = 0) -> A
 #      band（高度範圍 Vector2(下緣, 上緣)；預設是攻擊者的身體往腳底下延伸 HEIGHT.reach_below，見 body_band）、
 #      max_air（選填：目標腳底離自己腳下地面超過這個高度就打不到）、no_stagger（選填：不讓目標進入受擊硬直）、
 #      damage_type（選填：&"phys" / &"magic"，預設物理；怪物的攻擊都是物理，F1）、force_crit（選填：必爆擊，F6）、
-#      projectile（選填：投射物直接命中，G1 鐵皮斗篷、爆裂箭袋看這個）
+#      projectile（選填：投射物直接命中，G1 鐵皮斗篷、爆裂箭袋看這個）、pierce_invuln（選填：目標受傷後的無敵時間不擋這一下，連段用）
 # 這裡套用攻擊者的爆擊與擊退屬性；護甲與受傷倍率在 Entity.take_damage
 # 回傳是否實際命中（高度不重疊、被格擋也算沒命中）
 static func apply_damage(world: World, source: Entity, target: Entity, hit: Dictionary) -> bool:
 	# 傷害一律由房主判定：客戶端本機預測自己的出招時不扣任何血（C3）
+	# pierce_invuln：連段的後幾下（狼人三連爪）不吃受傷後的無敵時間；翻滾的無敵照樣躲得掉
+	if target != null and hit.get("pierce_invuln", false) and world.is_authority and not target.is_dodging():
+		target.invuln_timer = 0.0
 	if target == null or not target.can_be_hit():
 		return false
 	if not world.is_authority:
