@@ -26,11 +26,15 @@ const BLINK_RATE := 20.0      # 無敵時間每秒閃爍次數
 const GEM_SPIN := 3.0         # 法杖寶石自轉（弧度/秒；網頁版每幀 0.05 × 60）
 const ROLL_CENTER := 0.4      # 翻滾的旋轉中心（角色高度的比例）
 const DIG_RATE := 1.5         # 挖墳每秒挖幾下（D6）
+const BOW_REST := Basis(Vector3.RIGHT, Vector3.BACK, Vector3.DOWN)   # 不拉弓時弓平放（相對角色）：弓梢朝前後、弓背朝下、弦在上
 
 var rig: Rig
 var walk_phase := 0.0
 var walk_amount := 0.0
 var weapon_tilt := 0.0
+var bow_rest := 1.0   # 弓平放的比例：1 = 平放（BOW_REST）、0 = 直立
+var bow_raise := 0.0  # 開始拉弓時弓手舉起的進度（0 = 還在出手前的姿勢、1 = 指向舉弓方向）；連射時一直是 1
+var bow_arm_from := Vector2.ZERO   # 開始拉弓那一刻弓手的角度 (x, y)，舉弓從這裡平滑轉過去
 
 
 func _init(p_rig: Rig) -> void:
@@ -52,20 +56,23 @@ func update(p: Player, dt: float) -> void:
 	# 轉手掌掛點而不是武器：拳頭和武器一起轉，握的位置不會滑出拳頭
 	var upright := rig.weapon_model in UPRIGHT_MODELS and rig.weapon_main != null
 	rig.hand_r.rotation = Vector3(weapon_tilt - rig.arm_r.rotation.x, 0.0, 0.0) if upright else Vector3.ZERO
-	if rig.weapon_nock != null and not (a.action in [&"attack", &"special"] and _pose_for(a.behavior) in [&"bow", &"bowCharge"]):
+	var drawing: bool = a.action in [&"attack", &"special"] and _pose_for(a.behavior) in [&"bow", &"bowCharge"]
+	if rig.weapon_nock != null and not drawing:
 		rig.weapon_nock.visible = false
 		_bow_string(null)
 	var shown: int = p.quiver if p.weapon.attack.has("quiver") else rig.weapon_quiver_arrows.size()
 	for i in rig.weapon_quiver_arrows.size():   # 短弓箭袋：剩幾發就露出幾支；長弓沒有箭數機制，一直是滿的
 		(rig.weapon_quiver_arrows[i] as Node3D).visible = i < shown
 	if rig.weapon_model in BOW_MODELS and rig.weapon_left != null:
-		# 弓一直直立、弓面朝瞄準方向：轉左手掌掛點（拳頭跟著弓），抵銷身體側轉和弓手上抬、左右擺的轉向
-		if rig.hand_l.is_inside_tree():
-			var hand_xf := rig.hand_l.global_transform
-			var face := Basis.looking_at(-rig.global_transform.basis.z, Vector3.UP)   # 弓的 +Z（弓背）朝前
-			rig.hand_l.global_transform = Transform3D(face.scaled(hand_xf.basis.get_scale()), hand_xf.origin)
+		# 拉弓時弓直立、弓背朝前（相對角色 = 單位矩陣），其他時候平放；兩者之間平滑轉換。
+		# 轉左手掌掛點（拳頭跟著弓），抵銷身體側轉和弓手上抬、左右擺的轉向
+		if drawing:
+			bow_rest = 1.0 - bow_raise   # 跟著弓手舉起轉成直立
 		else:
-			rig.hand_l.rotation = Vector3(-rig.arm_l.rotation.x, 0.0, 0.0)
+			bow_raise = 0.0
+			bow_rest = MathUtil.damp(bow_rest, 1.0, IDLE_SHARPNESS, dt)
+		var target := Basis(Quaternion.IDENTITY.slerp(BOW_REST.get_rotation_quaternion(), bow_rest))
+		rig.hand_l.basis = (rig.body.basis * rig.arm_l.basis).orthonormalized().inverse() * target
 	else:
 		rig.hand_l.rotation = Vector3.ZERO
 	if rig.weapon_gem != null:
@@ -338,6 +345,12 @@ func _pose_bow(idle: Dictionary, a: Dictionary, e: float, charge: bool) -> void:
 	var inward := -rig.body.global_transform.basis.x.normalized()   # 左手往身體中線
 	var bow_dir := fwd + chest * BOW_FRONT + Vector3.UP * BOW_UP + (Vector3.DOWN * BOW_LOW + inward * BOW_IN) * slack
 	var l := _arm_toward(rig.arm_l, rig.arm_l.global_position + bow_dir)
+	# 從待機開始拉弓：弓手在整段前搖從原本的角度平滑舉起，不在第一幀直接跳到舉弓方向。
+	# 用沒緩動的 a.k：緩動過的 e 在前搖 18% 就讓 bring 到 1，短弓只剩 1 幀
+	if bow_raise <= 0.0:
+		bow_arm_from = Vector2(rig.arm_l.rotation.x, rig.arm_l.rotation.y)
+	bow_raise = maxf(bow_raise, smoothstep(0.0, 1.0, a.k)) if a.phase == &"windup" else 1.0
+	l = bow_arm_from.lerp(l, bow_raise)
 	rig.arm_l.rotation = Vector3(l.x, l.y, 0.0)
 	# 右手伸直指向「箭的直線上、右手剛好搆到」的點（箭尾）：拉多長由身體轉多少、弓手收多少決定，手一定在箭尾上
 	var grip := Rig.mount_point(rig.weapon_left, &"grip") if rig.weapon_left != null else rig.global_position

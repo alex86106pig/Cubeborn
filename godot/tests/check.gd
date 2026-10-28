@@ -174,6 +174,7 @@ func _initialize() -> void:
 	_check("模型零件：依 anchor + 材質合併、外框不變、keep 的零件留在原位、法線朝外；零件數上限（騎士 ≤ 20、骷髏 ≤ 16、Boss ≤ 22、場地 ≤ 12）",
 		all.bind([ViewChecks.check_merge_static, ViewChecks.check_mesh_counts]))
 	_check("握武器：每把玩家武器的 grip 掛點在拳頭中心（手掌掛點）、手掌掛點上有拳頭；法杖類直立靠轉手掌（武器不另外轉）；骷髏與 Boss 的拳頭也在手掌掛點上", ViewChecks.check_weapon_grip)
+	_check("弓：不拉弓時平放（弓梢連線水平、弓背朝下、弦在上）", ViewChecks.check_bow_rest)
 	_check("受擊閃白：只改自發光顏色、不切換 emission_enabled（切換會在第一次命中即時編譯著色器而卡頓）", ViewChecks.check_flash_no_shader_switch)
 	_check("特效：模擬層發出的每個 fx:* 都有畫面處理、也列在 PROJECT_GUIDELINES 第 9 節，餵給 Effects 會產生粒子；粒子與弧光環有上限、拖尾 30 / 144 FPS 每秒粒子數相同、暫停時不產生",
 		all.bind([ViewChecks.check_effects_events, ViewChecks.check_effects_limits]))

@@ -1599,6 +1599,24 @@ static func check_weapon_grip() -> String:
 	return ""
 
 
+# 弓：不拉弓時平放（弓梢連線水平、弓背朝下、弦在上）。
+# 拉弓轉直立沒在這裡驗：拉弓姿勢（Animator._pose_bow）要用世界座標，檢查跑在場景樹就緒前
+static func check_bow_rest() -> String:
+	for id: StringName in [&"shortbow", &"longbow"]:
+		var w := _new_world()
+		var p := _player(w)
+		p.equip_weapon(id)
+		var rig := DarkFantasy.player_character(&"ranger")
+		var anim := Animator.new(rig)
+		for i in 30:
+			anim.update(p, DT)
+		var rest := _basis_under(rig.weapon_left, rig).orthonormalized()
+		rig.free()
+		if absf(rest.y.dot(Vector3.UP)) > 0.01 or rest.z.dot(Vector3.DOWN) < 0.99:
+			return "%s 待機時弓應平放：弓梢方向 %s、弓背方向 %s" % [id, rest.y, rest.z]
+	return ""
+
+
 # node 相對於祖先 top 的方向（各層 basis 相乘）
 static func _basis_under(node: Node3D, top: Node3D) -> Basis:
 	var b := Basis.IDENTITY

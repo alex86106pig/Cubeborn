@@ -135,7 +135,7 @@ const WEAPONS := {
 		"model": &"shortbow",
 		"base_damage": 6.0,
 		"damage_type": &"phys",
-		"idle": {"arm_r": -0.4, "arm_l": -0.6, "tilt": 0.0},
+		"idle": {"arm_r": -0.4, "arm_l": 0.0, "tilt": 0.0},
 		"attack": {
 			"behavior": &"fireBolt",
 			"sfx": "arrowShot",
@@ -200,7 +200,7 @@ const WEAPONS := {
 		"model": &"longbow",
 		"base_damage": 11.0,
 		"damage_type": &"phys",
-		"idle": {"arm_r": -0.4, "arm_l": -0.6, "tilt": 0.0},
+		"idle": {"arm_r": -0.4, "arm_l": 0.0, "tilt": 0.0},
 		"attack": {
 			"behavior": &"fireBolt",
 			"sfx": "arrowShot",
