@@ -171,12 +171,12 @@ func _initialize() -> void:
 	_check("牆後剪影：角色材質寫模板值；玩家一直有、怪物只有被牆擋住時才有；箭與魔彈被牆擋住時畫剪影（怪物紅、自己藍），同顏色的投射物共用材質",
 		all.bind([ViewChecks.check_xray, ViewChecks.check_projectile_xray]))
 	_check("寶箱模型：已開過的寶箱重新建立模型時箱蓋直接打開、不重播開蓋；沒開過的關著", ViewChecks.check_chest_lid)
-	_check("模型零件：依 anchor + 材質合併、外框不變、keep 的零件留在原位、法線朝外；零件數上限（騎士 ≤ 20、骷髏 ≤ 16、Boss ≤ 22、場地 ≤ 12）",
-		all.bind([ViewChecks.check_merge_static, ViewChecks.check_mesh_counts]))
-	_check("握武器：每把玩家武器的 grip 掛點在拳頭中心（手掌掛點）、手掌掛點上有拳頭；法杖類直立靠轉手掌（武器不另外轉）；骷髏與 Boss 的拳頭也在手掌掛點上", ViewChecks.check_weapon_grip)
-	_check("弓：不拉弓時平放（弓梢連線水平、弓背朝下、弦在上）；骷髏弓手瞄準時舉平、射完右手平滑放下、目標在射擊距離內左手停在預備高度、離開射擊距離才平滑放回垂直",
-		all.bind([ViewChecks.check_bow_rest, ViewChecks.check_archer_bow_arm]))
-	_check("身體零件與掛點：披風整片在軀幹後面、身體前方沒有披風色的零件；盾的尖角和盾面同一平面；騎士骨架有 back / forearm_l / head / hip_l / hip_r 掛點，盾掛 forearm_l、箭袋掛 back", ViewChecks.check_body_parts)
+	_check("模型零件：依 anchor + 材質合併、外框不變、keep 的零件留在原位、法線朝外；零件數上限（騎士 ≤ 20、骷髏 ≤ 16、Boss ≤ 22、場地 ≤ 12）；"
+		+ "披風整片在軀幹後面、身體前方沒有披風色的零件；盾的尖角和盾面同一平面；騎士骨架有 back / forearm_l / head / hip_l / hip_r 掛點，盾掛 forearm_l、箭袋掛 back",
+		all.bind([ViewChecks.check_merge_static, ViewChecks.check_mesh_counts, ViewChecks.check_body_parts]))
+	_check("握武器與持弓：每把玩家武器的 grip 掛點在拳頭中心（手掌掛點）、手掌掛點上有拳頭；法杖類直立靠轉手掌（武器不另外轉）；骷髏與 Boss 的拳頭也在手掌掛點上；"
+		+ "弓不拉弓時平放（弓梢連線水平、弓背朝下、弦在上）；骷髏弓手瞄準時舉平、射完右手平滑放下、目標在射擊距離內左手停在預備高度、離開射擊距離才平滑放回垂直",
+		all.bind([ViewChecks.check_weapon_grip, ViewChecks.check_bow_rest, ViewChecks.check_archer_bow_arm]))
 	_check("受擊閃白：只改自發光顏色、不切換 emission_enabled（切換會在第一次命中即時編譯著色器而卡頓）", ViewChecks.check_flash_no_shader_switch)
 	_check("特效：模擬層發出的每個 fx:* 都有畫面處理、也列在 PROJECT_GUIDELINES 第 9 節，餵給 Effects 會產生粒子；粒子與弧光環有上限、拖尾 30 / 144 FPS 每秒粒子數相同、暫停時不產生",
 		all.bind([ViewChecks.check_effects_events, ViewChecks.check_effects_limits]))
