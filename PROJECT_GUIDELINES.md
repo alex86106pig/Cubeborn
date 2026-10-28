@@ -233,7 +233,7 @@ godot/
 | `camera:shake` | `{ amount, duration, player_id? }` | Combat、Player、Projectile、Enemy、Boss、World（模擬層不能直接震相機）；有 `player_id`（玩家被打）時只震那位玩家的畫面 |
 | `fx:slash` | `{ pos, height, facing, range, arc, color, swing_dir }` | 劍盾揮砍（`fx:*` 是 v0.20.0 起的特效事件，見系統說明 §7） |
 | `fx:muzzle` | `{ pos, height, color }` | 法杖魔彈發射 |
-| `fx:telegraph` | `{ pos, height, radius, color, life, fill? }`（fill：圈內鋪半透明的圓，聖光圈用） | 奧術爆裂落點預警、聖光圈 |
+| `fx:telegraph` | `{ pos, height, radius, color, life, fill? }`（fill：圈內鋪半透明的圓，聖光圈用） | 聖光圈、玩家道具。**怪物攻擊不用**（設計方向「怪物攻擊不畫紅圈」，檢查會擋 `sim/` 其他檔案發這個事件） |
 | `fx:fizzle` | `{ pos, height, color }` | 投射物飛到盡頭、撞牆或被格擋 |
 | `fx:explosion` | `{ pos, height, radius, color }` | 投射物爆炸 |
 | `fx:parry` | `{ pos, height, radius, facing, arc, color }` | 盾反（畫出實際的扇形範圍） |
@@ -241,6 +241,8 @@ godot/
 | `fx:boss_slam` | `{ pos, height, radius }` | Boss 砸地 |
 | `fx:boss_wall` | `{ pos, height }` | Boss 衝鋒撞牆 |
 | `fx:boss_teleport` | `{ pos, height, to }` | 狂暴 Boss 瞬移砸地（v0.27.0）：原地與目的地的紫色煙霧 |
+| `fx:boss_teleport_warn` | `{ pos, height, life }` | 狂暴 Boss 瞬移前：目的地冒出越來越濃的紫煙（取代預警圈） |
+| `fx:erupt_warn` | `{ pos, height, radius, life }` | 挖墳點噴怪前：墳土隆起、裂開、冒出白骨手（取代預警圈） |
 | `fx:lightning` | `{ pos, height, points, color }` | 道具連鎖閃電（v0.33.0）：points 依序連成的閃電線 |
 | `fx:status` | `{ pos, height, color }` | 道具讓怪中毒 / 冰凍（v0.33.0）：一小團該顏色的粒子 |
 

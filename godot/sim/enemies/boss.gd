@@ -237,7 +237,7 @@ class Cleave:
 			fsm.change(&"chase")
 
 
-# 砸地：（狂暴且離得遠時：玩家腳下預警 teleport_warn 秒 → 瞬移過去）→ 舉起雙手 → 落地，紅圈依序往外擴散
+# 砸地：（狂暴且離得遠時：目的地冒紫煙 teleport_warn 秒 → 瞬移過去）→ 舉起雙手 → 落地，一圈一圈往外打（畫面是地板裂紋，不畫圈）
 class Slam:
 	func enter(e: Boss, data: Dictionary, _fsm: StateMachine) -> void:
 		var s: Dictionary = e.def.slam
@@ -251,8 +251,8 @@ class Slam:
 			data.phase = &"warn"
 			data.target = e.world.nav_for(e.radius).nearest_walkable(target)
 			data.windup = e.def.enrage.teleport_windup
-			e.world.emit_event("fx:telegraph", {"pos": data.target, "height": e.world.terrain.ground_at(data.target),
-				"radius": e.radius + 1.0, "color": Color("b36bff"), "life": e.def.enrage.teleport_warn})
+			e.world.emit_event("fx:boss_teleport_warn", {"pos": data.target, "height": e.world.terrain.ground_at(data.target),
+				"life": e.def.enrage.teleport_warn})
 			e.world.emit_event("sfx:cue", {"cue": "bossChargeWindup", "pos": e.pos})
 		else:
 			data.phase = &"windup"

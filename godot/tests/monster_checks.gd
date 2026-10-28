@@ -176,7 +176,7 @@ static func check_affixes() -> String:
 	if absf(fr.action_speed - fz.speed) > EPS or absf(fr.speed - fs * fz.speed) > EPS:
 		return "狂暴：生命 %.0f%% 時狀態機速度 ×%.2f、移速 %.3f（預期 ×%.1f、%.3f）" % [fr.hp / fr.max_hp * 100.0, fr.action_speed, fr.speed, fz.speed, fs * fz.speed]
 
-	# 死亡爆炸：死時預警、delay 秒後半徑 radius 爆炸；半徑內 0.7 炸得到、半徑外 0.8 炸不到
+	# 死亡爆炸：死時不畫預警圈（畫面上屍體脹大、閃白）、delay 秒後半徑 radius 爆炸；半徑內 0.7 炸得到、半徑外 0.8 炸不到
 	var vd: Dictionary = af.volatile
 	var boom_step := roundi(vd.delay / DT)
 	for dist: float in [vd.radius - 0.7, vd.radius + 0.8]:
@@ -184,9 +184,11 @@ static func check_affixes() -> String:
 		var p4: Player = w4.players[World.HOST_PEER_ID]
 		var vol := _grunt(w4, Vector2(0, dist), MonsterRarityDefs.NORMAL, [&"volatile"])
 		vol.die()
-		var warned := w4.events.any(func(ev: Dictionary) -> bool: return ev.name == "fx:telegraph" and absf(ev.radius - vd.radius) < EPS)
-		if not warned:
-			return "死亡爆炸：死的時候沒有 %.1f 的預警圈" % vd.radius
+		if w4.events.any(func(ev: Dictionary) -> bool: return ev.name == "fx:telegraph"):
+			return "死亡爆炸：死的時候不應畫預警圈"
+		var mid := EnemyAnimator.volatile_swell(vol, vd.delay * 0.6)
+		if mid <= 0.0 or EnemyAnimator.volatile_swell(vol, vd.delay) != 0.0 or EnemyAnimator.volatile_flash(vol, vd.delay * 0.9) <= 0.0:
+			return "死亡爆炸：爆開前屍體應脹大、閃白（%.1f 秒時膨脹 %.2f）" % [vd.delay * 0.6, mid]
 		var hit_step := -1
 		for i in boom_step + 12:
 			_step(w4, 1)

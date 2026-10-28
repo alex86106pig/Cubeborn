@@ -102,11 +102,13 @@ func _initialize() -> void:
 	_check("投射物不穿牆：魔彈對牆射會在牆前消失；從高台往下射照樣打得到地上的怪", CombatChecks.check_projectile_walls)
 
 	# ───────── Boss ─────────
-	_check("瞬移砸地躲得掉（v0.42.0，每圈間隔 0.5 秒）：站著不動被第 1 圈打一次；看到預警反應 0.3 秒往外直跑三圈都打不到；砸地圈依序閃亮", BossChecks.check_teleport_slam_dodge.bind(feel))
-	_check("Boss 砸地：近身時前搖後打中、擊飛 + 緩速、CD；紅圈一圈圈往外（外圈晚 ring_delay）、每人只被打一次；霸體不硬直、擊退乘 knockback_mul", BossChecks.check_boss_slam)
+	_check("瞬移砸地躲得掉（v0.42.0，每圈間隔 0.5 秒）：站著不動被第 1 圈打一次；看到預兆反應 0.3 秒往外直跑三圈都打不到；地板裂紋比每圈爆開早 ring_delay 爬滿、變亮到爆開後淡掉", BossChecks.check_teleport_slam_dodge.bind(feel))
+	_check("Boss 砸地：近身時前搖後打中、擊飛 + 緩速、CD；一圈圈往外（外圈晚 ring_delay）、每人只被打一次；霸體不硬直、擊退乘 knockback_mul", BossChecks.check_boss_slam)
 	_check("Boss 衝鋒：蓄力 windup、照 speed 衝刺、命中傷害並讓玩家暈眩 stun、撞牆自己暈眩 wall_stun", BossChecks.check_boss_charge)
 	_check("Boss 直劈：沒有地面預警；舉劍 windup 秒後劈下；追蹤只做一半，繞圈走位躲得開", BossChecks.check_boss_cleave)
-	_check("Boss 狂暴招式：衝鋒連 charge_count 次；召喚的骷髏戰士衝撞一次；砸地不管多遠都放（玩家腳下預警 → 瞬移 → 砸）", BossChecks.check_boss_enraged_moves)
+	_check("Boss 狂暴招式：衝鋒連 charge_count 次；召喚的骷髏戰士衝撞一次；砸地不管多遠都放（玩家腳下冒紫煙、不畫圈 → 瞬移 → 砸）", BossChecks.check_boss_enraged_moves)
+	_check("怪物攻擊不畫預警圈：sim/ 只有玩家方的道具與聖光圈發 fx:telegraph；Boss 砸地、衝鋒、召喚、直劈的預備動作兩兩不同",
+		all.bind([ViewChecks.check_no_monster_telegraph, ViewChecks.check_boss_windup_poses]))
 	_check("Boss 召喚與狂暴：血量低於召喚門檻召喚 count 隻、低於狂暴門檻狂暴（移速、CD、前搖倍率）", BossChecks.check_boss_summon_enrage)
 	_check("Boss 跳上高台：從地面跳上 1.0 石座；衝鋒遇到 1.0 石台直接跳上去不暈眩、遇到牆照樣暈眩；砸地打得到旁邊 1.0 石台上的玩家，跳起來躲得過", BossChecks.check_boss_high_ground)
 
@@ -130,7 +132,7 @@ func _initialize() -> void:
 	_check("怪群（D5）：地圖 A 散放 PACKS.count 群、每群 size 隻、距離限制、都走得到；開場休眠不播音效、不動；走近或被打整群醒來；同種子結果相同", MonsterChecks.check_packs)
 	_check("蒙皮小怪（D5 效能）：骷髏戰士 / 弓手合成一個蒙皮網格（≤ 2 個網格、頂點數與原本零件相同），關節姿勢寫進骨架", MonsterChecks.check_skinned_rig)
 	_check("挖墳（D6）：DIG.range 內按住 F 開始事件並挖墳；挖墳中不能移動、跳，照樣轉向，被打不中斷不被擊退；總量 DIG.time × 活著的人數、一起挖速度相加、放手不掉（DIG.decay）、噴怪 +ERUPT.progress；挖完出口打開", EventChecks.check_dig)
-	_check("事件難度（D6）：怪物生命 × difficulty_mul；生怪間隔遞減夾在 interval_min；每批隻數隨難度與人數增加；魔法 / 稀有機率隨難度；挖墳前不冒怪、開挖就開始怪潮、難度每秒 +per_second；選的難度（簡單 / 普通 / 困難）讓上升 ×0.75 / ×1 / ×1.5、重新開始保留；挖墳點噴怪（紅圈預警、數量、下一層難度、拋物線落地）；挖完停怪、難度不漲、場上的怪留著", EventChecks.check_difficulty)
+	_check("事件難度（D6）：怪物生命 × difficulty_mul；生怪間隔遞減夾在 interval_min；每批隻數隨難度與人數增加；魔法 / 稀有機率隨難度；挖墳前不冒怪、開挖就開始怪潮、難度每秒 +per_second；選的難度（簡單 / 普通 / 困難）讓上升 ×0.75 / ×1 / ×1.5、重新開始保留；挖墳點噴怪（墳土隆起預警、不畫圈、數量、下一層難度、拋物線落地）；挖完停怪、難度不漲、場上的怪留著", EventChecks.check_difficulty)
 	_check("出口與換層（D6）：挖完不會自動走；墳墓旁按 F，單人最後一層直接通關；多人投票（Esc 反對取消、全員同意或 VOTE.time 秒到就走、陣亡的不用投）；換層回出生點、基礎難度 +per_floor、保留靈魂與背包、地上與怪物清空、寶箱重放、事件歸零", EventChecks.check_next_floor)
 	_check("Boss（D6）：挖墳地圖開局在 boss_room 裡巡邏、沒看到玩家不追、不出範圍；前方視野或貼近看到玩家、被打就開始追、不限範圍；打倒不通關，掉 1 把武器、1 個大寶箱機率的道具、Boss 靈魂", EventChecks.check_boss_reward)
 	_check("屍體與冤魂（D6）：多人時死亡留下屍體、撿進背包；背著換層出現冤魂，打倒後死者在那裡復活、屍體消失；沒人帶屍體就沒有冤魂", EventChecks.check_corpse_ghost)

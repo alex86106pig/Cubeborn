@@ -225,7 +225,7 @@ static func check_difficulty() -> String:
 	return _check_erupt()
 
 
-# 挖墳點噴怪：每 interval 秒（前 warning 秒冒紅圈）噴出 erupt_count 隻下一層難度的怪、進度 +progress；
+# 挖墳點噴怪：每 interval 秒（前 warning 秒墳土隆起，不畫圈）噴出 erupt_count 隻下一層難度的怪、進度 +progress；
 # 噴出的怪照拋物線飛到 land_distance 外、空中不行動，落地後開始追；挖完就不再冒怪、難度不再漲，場上的怪留著
 static func _check_erupt() -> String:
 	var c: Dictionary = EventDefs.ERUPT
@@ -241,9 +241,11 @@ static func _check_erupt() -> String:
 	var steps := roundi(c.interval / DT)
 	var warn := roundi((c.interval - c.warning) / DT)
 	var ev := _step(w, warn + 1)
-	var circles := _named(ev, "fx:telegraph").filter(func(e: Dictionary) -> bool: return e.pos.distance_to(w.event.point) < EPS)
-	if circles.size() != 1 or absf(circles[0].life - c.warning) > EPS or not _named(ev, "event:erupted").is_empty():
-		return "噴怪前 %.1f 秒應在挖墳點冒一個紅圈（紅圈 %d 個、已噴 %d 次）" % [c.warning, circles.size(), _named(ev, "event:erupted").size()]
+	var warns := _named(ev, "fx:erupt_warn").filter(func(e: Dictionary) -> bool: return e.pos.distance_to(w.event.point) < EPS)
+	if warns.size() != 1 or absf(warns[0].life - c.warning) > EPS or not _named(ev, "event:erupted").is_empty():
+		return "噴怪前 %.1f 秒挖墳點的墳土應開始隆起一次（隆起 %d 次、已噴 %d 次）" % [c.warning, warns.size(), _named(ev, "event:erupted").size()]
+	if not _named(ev, "fx:telegraph").is_empty():
+		return "噴怪前不應畫預警圈"
 	var before := w.event.progress
 	ev = _step(w, steps - warn)
 	var launched := w.enemies.filter(func(e: Entity) -> bool: return (e as Enemy).is_launching())

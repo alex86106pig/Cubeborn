@@ -1198,9 +1198,13 @@ static func check_effects_events() -> String:
 	w2.events.clear()
 	boss.slam_ring(0, {})
 	events.append_array(w2.events)
-	for name in ["fx:slash", "fx:muzzle", "fx:fizzle", "fx:telegraph", "fx:explosion", "fx:boss_slam", "entity:damaged"]:
+	for name in ["fx:slash", "fx:muzzle", "fx:fizzle", "fx:explosion", "fx:boss_slam", "entity:damaged"]:
 		if _named(events, name).is_empty():
 			return "應發出 %s" % name
+	if not _named(events, "fx:telegraph").is_empty():
+		return "法杖奧術爆裂不應畫落點圈"
+	events.append({"name": "fx:erupt_warn", "pos": Vector2(0, 8), "height": 0.0, "radius": 2.5, "life": 1.0})
+	events.append({"name": "fx:boss_teleport_warn", "pos": Vector2(0, 8), "height": 0.0, "life": 0.6})
 	var view := Effects.new()
 	_scene_root().add_child(view)
 	view.world = w
@@ -1212,6 +1216,58 @@ static func check_effects_events() -> String:
 	view.queue_free()
 	if particles < 40 or transients < 6:
 		return "餵完事件應有粒子與弧光環，實際粒子 %d、弧光環 %d" % [particles, transients]
+	return ""
+
+
+# 怪物攻擊不畫預警圈：sim/ 裡只有玩家方的道具與地面持續區（聖光圈）可以發 fx:telegraph；
+# 怪物（Boss 瞬移、死亡爆炸詞條、挖墳點噴怪）與法杖落點各自檢查不發
+const TELEGRAPH_ALLOWED := ["item_effects.gd", "ground_zones.gd"]
+
+static func check_no_monster_telegraph() -> String:
+	for path in _list_gd("res://sim"):
+		if path.get_file() in TELEGRAPH_ALLOWED:
+			continue
+		if _read_text(path).contains("\"fx:telegraph\""):
+			return "%s 發出 fx:telegraph：怪物攻擊不畫預警圈（只允許 %s）" % [path, TELEGRAPH_ALLOWED]
+	return ""
+
+
+# Boss 四招的預備動作兩兩不同：各招預備到一半時，手臂（前後、張開）、身體前後傾、頭的角度合計至少差 MIN_POSE_DIFF 弧度
+const MIN_POSE_DIFF := 1.0
+
+static func check_boss_windup_poses() -> String:
+	var b_def: Dictionary = EnemyDefs.ENEMIES.boss
+	var poses := {}
+	for move: StringName in [&"slam", &"charge", &"summon", &"cleave"]:
+		var w := _new_world()
+		var p := _player(w)
+		p.pos = Vector2(0, 7)
+		var boss := _spawn(w, &"boss", Vector2.ZERO)
+		var rig := DarkFantasy.character(&"boss")
+		var anim := EnemyAnimator.new(rig, boss)
+		_run(w, _cmd(Vector2.ZERO), roundi(b_def.spawn_time / DT) + 2)
+		boss.fsm.change(move)
+		var windup: float = b_def[move].windup
+		for i in roundi(windup * 0.5 / DT):
+			p.hp = p.max_hp
+			_run(w, _cmd(Vector2.ZERO), 1)
+			anim.update(boss, DT)
+		if boss.anim.state != move:
+			rig.free()
+			return "%s 預備到一半時狀態變成 %s" % [move, boss.anim.state]
+		poses[move] = [rig.arm_r.rotation.x, rig.arm_l.rotation.x, rig.arm_r.rotation.y, rig.arm_l.rotation.y,
+			rig.body.rotation.x, rig.head.rotation.x]
+		rig.free()
+	var moves: Array = poses.keys()
+	for i in moves.size():
+		for j in range(i + 1, moves.size()):
+			var a: Array = poses[moves[i]]
+			var b: Array = poses[moves[j]]
+			var diff := 0.0
+			for k in a.size():
+				diff += absf(a[k] - b[k])
+			if diff < MIN_POSE_DIFF:
+				return "Boss 的 %s 和 %s 預備動作太像：關節角度合計只差 %.2f（至少 %.1f）" % [moves[i], moves[j], diff, MIN_POSE_DIFF]
 	return ""
 
 

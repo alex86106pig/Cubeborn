@@ -171,14 +171,14 @@ func _roll_type(world: World) -> StringName:
 	return &"archer" if world.rng.randf() < EventDefs.SPAWN.archer_ratio else &"grunt"
 
 
-# 挖墳點噴怪：倒數到 warning 秒時冒紅圈，到 0 時噴出下一層的怪、進度 +ERUPT.progress（--no-spawn 只加進度）
+# 挖墳點噴怪：倒數到 warning 秒時墳土開始隆起（fx:erupt_warn），到 0 時噴出下一層的怪、進度 +ERUPT.progress（--no-spawn 只加進度）
 func _erupt(world: World, dt: float) -> void:
 	var c: Dictionary = EventDefs.ERUPT
 	erupt_timer -= dt
 	if not _erupt_warned and erupt_timer <= c.warning:
 		_erupt_warned = true
 		if not world.spawner.finished:
-			world.emit_event("fx:telegraph", {"pos": point, "height": world.terrain.ground_at(point), "radius": c.radius, "color": c.color, "life": c.warning, "fill": true})
+			world.emit_event("fx:erupt_warn", {"pos": point, "height": world.terrain.ground_at(point), "radius": c.radius, "life": c.warning})
 	if erupt_timer > 0.0:
 		return
 	erupt_timer += c.interval

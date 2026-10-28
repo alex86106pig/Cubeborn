@@ -12,14 +12,13 @@ const DIG := {
 	"last_floor": 1,           # 這一層挖完再互動就通關（測試版只有一層）；之後的層照舊 World.next_floor
 }
 
-# 挖墳點噴怪：事件進行中每 interval 秒在挖墳點冒紅圈，warning 秒後噴出下一層的怪，同時進度 +progress
+# 挖墳點噴怪：事件進行中每 interval 秒，挖墳點的墳土先隆起、裂開、冒出白骨手（warning 秒，不畫圈），接著噴出下一層的怪，同時進度 +progress
 # 數量 = count_base + 事件開始後漲的難度 × count_per_point（無條件捨去），多人照 SPAWN.per_extra_player 放大
 # 強度：目前難度 + DIFFICULTY.per_floor（下一層的基礎難度起算）
 const ERUPT := {
 	"interval": 10.0,
-	"warning": 1.0,                # 紅圈預警幾秒後噴出（第一次在事件開始後 interval 秒）
-	"radius": 2.5,                 # 紅圈半徑
-	"color": Color("e0322a"),
+	"warning": 1.0,                # 墳土隆起幾秒後噴出（第一次在事件開始後 interval 秒）
+	"radius": 2.5,                 # 隆起的墳土範圍
 	"progress": 0.1,               # 每次噴發進度 +10%（全隊共用的進度條，不隨人數變）
 	"count_base": 3,
 	"count_per_point": 0.05,       # 難度每漲 20 點多 1 隻

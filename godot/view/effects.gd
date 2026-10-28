@@ -29,6 +29,8 @@ const HANDLERS := {
 	"fx:boss_slam": &"_fx_boss_slam",
 	"fx:boss_wall": &"_fx_boss_wall",
 	"fx:boss_teleport": &"_fx_boss_teleport",
+	"fx:boss_teleport_warn": &"_fx_boss_teleport_warn",
+	"fx:erupt_warn": &"_fx_erupt_warn",
 	"fx:lightning": &"_fx_lightning",
 	"fx:status": &"_fx_status",
 }
@@ -41,6 +43,10 @@ const CHARGE_DUST_COLOR := Color("8a7a5a")  # Boss 衝鋒揚塵、砸地碎石
 const WALL_DEBRIS_COLOR := Color("9a9a9a")
 const SLAM_RING_COLOR := Color("9a8a6a")
 const STUN_STAR_COLOR := Color("ffe14a")
+const TELEPORT_COLOR := Color("b36bff")
+const BONE_COLOR := Color("d8d0b8")         # 挖墳點冒出的白骨手
+const ERUPT_HANDS := 4
+const ERUPT_HANDS_FROM := 0.45              # 墳土隆起到這個進度才冒出白骨手
 
 var world: World                  # 由 sync 設定；事件處理時用來查實體位置
 var paused := false               # 遊戲暫停時粒子停住、不產生新的持續性粒子
@@ -56,6 +62,8 @@ var _ring_mesh: ArrayMesh
 var _disc_mesh: Mesh                 # telegraph 的填色圓（半徑 1，用 scale 放大）
 const FILL_ALPHA := 0.18
 var _slash_meshes: Dictionary = {}   # "range|arc" -> ArrayMesh
+var _emitters: Array[Dictionary] = []   # 一段時間內持續冒粒子的特效（事件觸發）：{ key, life, max_life, tick: Callable(k, key, dt) }
+var _emitter_serial := 0
 var _carry: Dictionary = {}          # 持續性粒子的小數累積：產生源 key -> 不滿一顆的部分
 var _next_carry: Dictionary = {}     # 這一幀用到的 key（沒用到的產生源下一幀就丟掉）
 
@@ -104,6 +112,7 @@ func clear() -> void:
 	for t in _transients:
 		t.node.queue_free()
 	_transients.clear()
+	_emitters.clear()
 
 
 func particle_count() -> int:
@@ -323,6 +332,50 @@ func _fx_boss_teleport(p: Dictionary) -> void:
 	ring(Vector3(to.x, p.get("height", 0.0), to.y), 3.0, {"color": color, "life": 0.35})
 
 
+# 狂暴 Boss 瞬移前：目的地冒出越來越濃的紫煙（不畫圈）
+func _fx_boss_teleport_warn(p: Dictionary) -> void:
+	var at := _at(p, 0.1)
+	_add_emitter(p.life, func(k: float, key: String, dt: float) -> void:
+		for i in _count(key, 0.3 + 0.7 * k, dt):
+			var a := _rng.randf() * TAU
+			var r := _rng.randf_range(0.2, 1.3)
+			mote(at + Vector3(sin(a) * r, 0.0, cos(a) * r), {"color": TELEPORT_COLOR, "size": 0.2, "life": 0.6, "vy": 1.8}))
+
+
+# 挖墳點噴怪前：墳土隆起、裂開，冒出白骨手，泥土一直噴（不畫圈）
+func _fx_erupt_warn(p: Dictionary) -> void:
+	var at := _at(p)
+	var radius: float = p.radius
+	var life: float = p.life
+	var mound_mesh := SphereMesh.new()
+	mound_mesh.radius = 1.0
+	mound_mesh.height = 1.0
+	var mound := _transient_mesh(mound_mesh, DUST_COLOR, 1.0)
+	mound.position = at
+	_add_transient(mound, life, func(k: float) -> void:
+		var e := MathUtil.ease_out_cubic(k)
+		var s := radius * 0.5 * maxf(e, 0.05)
+		mound.scale = Vector3(s, 0.05 + 0.45 * e + 0.04 * sin(k * 60.0), s))
+	var hand_mesh := BoxMesh.new()
+	hand_mesh.size = Vector3(0.1, 0.6, 0.1)
+	for i in ERUPT_HANDS:
+		var a := TAU * i / ERUPT_HANDS + _rng.randf_range(-0.4, 0.4)
+		var r := radius * _rng.randf_range(0.15, 0.35)
+		var base := at + Vector3(sin(a) * r, 0.0, cos(a) * r)
+		var tilt := Vector3(_rng.randf_range(-0.4, 0.4), 0.0, _rng.randf_range(-0.4, 0.4))
+		var hand := _transient_mesh(hand_mesh, BONE_COLOR, 0.0)
+		hand.rotation = tilt
+		_add_transient(hand, life, func(k: float) -> void:
+			var rise := clampf((k - ERUPT_HANDS_FROM) / (1.0 - ERUPT_HANDS_FROM), 0.0, 1.0)
+			_set_alpha(hand, 1.0 if rise > 0.0 else 0.0)
+			hand.position = base + Vector3(0.0, -0.3 + 0.55 * rise, 0.0))
+	_add_emitter(life, func(k: float, key: String, dt: float) -> void:
+		for i in _count(key, 0.25 + 0.5 * k, dt):
+			var a := _rng.randf() * TAU
+			var r := _rng.randf_range(0.0, radius * 0.5)
+			burst(at + Vector3(sin(a) * r, 0.2, cos(a) * r), {"color": DUST_COLOR, "count": 2, "speed": 1.5, "up": 3.0, "size": 0.15, "life": 0.4}))
+
+
 func _fx_boss_wall(p: Dictionary) -> void:
 	ring(_at(p), 2.5, {"color": Color.WHITE, "life": 0.35})
 	burst(_at(p, 1.0), {"color": WALL_DEBRIS_COLOR, "count": 20, "speed": 6.0, "up": 5.0, "size": 0.22})
@@ -365,6 +418,7 @@ func _emit_continuous(dt: float) -> void:
 			_emit_player(e, dt)
 		elif e is Enemy:
 			_emit_enemy(e, dt)
+	_update_emitters(dt)   # 要在 _carry 換成這一幀的之前（不滿一顆的小數才留得下來）
 	_carry = _next_carry
 
 
@@ -395,13 +449,28 @@ func _emit_enemy(e: Enemy, dt: float) -> void:
 		&"spawn":
 			for i in _count(key, 0.4, dt):
 				burst(_entity_at(e, 0.1), {"color": DUST_COLOR, "count": 1, "speed": 2.0, "up": 3.0, "size": 0.15})
+		&"dead":
+			# 死亡爆炸詞條：爆開前屍體冒出該詞條顏色的氣體，越接近爆開越多
+			if e.has_affix(&"volatile"):
+				var v := e.affix(&"volatile")
+				var t: float = a.get("time", 0.0)
+				if t < v.delay:
+					for i in _count(key, 0.2 + 0.6 * t / v.delay, dt):
+						mote(_jitter(e, 0.5, e.height + _rng.randf_range(0.2, 0.9)), {"color": v.color, "size": 0.16, "life": 0.45, "vy": 1.2})
+		&"slam":
+			_emit_slam_pebbles(e, a, key, dt)
 		&"aim":
 			var tip := e.pos + MathUtil.dir_from_angle(e.facing) * 0.7
 			for i in _count(key, 0.5, dt):
 				mote(Vector3(tip.x, e.height + e.body_height * 0.65, tip.y),
 					{"color": e.def.projectile_color, "size": 0.08, "life": 0.25, "vy": 0.6})
 		&"charge":
-			if a.get("phase") == &"dash":
+			if a.get("phase") == &"windup":
+				# 後腳刨地揚起的塵土（姿勢見 EnemyAnimator.charge_scrape）
+				var back := e.pos - MathUtil.dir_from_angle(e.facing) * 0.7
+				for i in _count(key, 0.5, dt):
+					burst(Vector3(back.x, e.height + 0.1, back.y), {"color": CHARGE_DUST_COLOR, "count": 2, "speed": 1.5, "up": 1.5, "size": 0.16, "life": 0.4})
+			elif a.get("phase") == &"dash":
 				for i in _count(key, 0.6, dt):
 					burst(_entity_at(e, 0.1), {"color": CHARGE_DUST_COLOR, "count": 1, "speed": 2.0, "up": 2.0, "size": 0.2})
 			elif a.get("phase") == &"stunned":
@@ -410,6 +479,39 @@ func _emit_enemy(e: Enemy, dt: float) -> void:
 		&"summon":
 			for i in _count(key, 0.7, dt):
 				mote(_jitter(e, 1.5, e.height + _rng.randf_range(0.2, 1.0)), {"color": DarkFantasy.BOSS_BLOOD, "size": 0.15, "life": 0.5, "vy": 2.0})
+
+
+# Boss 砸地：裂紋已經爬滿、快要爆開的那一圈，地上的碎石一直跳起來
+func _emit_slam_pebbles(e: Enemy, a: Dictionary, key: String, dt: float) -> void:
+	var slam: Dictionary = e.def.slam
+	var rings: Array = slam.rings
+	var phase: StringName = a.get("phase", &"")
+	var pt: float = a.get("phase_time", 0.0)
+	var windup: float = a.get("windup", slam.windup)
+	for i in rings.size():
+		if not EnemyAnimator.slam_band_charging(phase, pt, windup, i, slam.ring_delay):
+			continue
+		var inner: float = e.radius * 0.6 if i == 0 else rings[i - 1]
+		for n in _count("%s:p%d" % [key, i], 1.2, dt):
+			var ang := _rng.randf() * TAU
+			var r := _rng.randf_range(inner, rings[i])
+			burst(Vector3(e.pos.x + sin(ang) * r, e.height + 0.1, e.pos.y + cos(ang) * r),
+				{"color": CHARGE_DUST_COLOR, "count": 1, "speed": 0.4, "up": 2.5, "size": 0.13, "life": 0.35})
+
+
+func _add_emitter(life: float, tick: Callable) -> void:
+	_emitter_serial += 1
+	_emitters.append({"key": "em%d" % _emitter_serial, "life": life, "max_life": life, "tick": tick})
+
+
+func _update_emitters(dt: float) -> void:
+	for i in range(_emitters.size() - 1, -1, -1):
+		var em := _emitters[i]
+		em.life -= dt
+		if em.life <= 0.0:
+			_emitters.remove_at(i)
+			continue
+		em.tick.call(1.0 - em.life / em.max_life, em.key, dt)
 
 
 func _update_particles(dt: float) -> void:

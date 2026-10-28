@@ -222,9 +222,11 @@ static func check_boss_enraged_moves() -> String:
 	var events: Array[Dictionary] = []
 	if _run_until(w3, _cmd(Vector2.ZERO), 60, events, func() -> bool: return b3.fsm.is_in(&"slam")) < 0:
 		return "狂暴時離玩家 20 單位也應砸地"
-	var warn := _named(events, "fx:telegraph")
+	var warn := _named(events, "fx:boss_teleport_warn")
 	if warn.is_empty() or (warn.back().pos as Vector2).distance_to(p3.pos) > 1.0:
-		return "瞬移前應在玩家腳下預警"
+		return "瞬移前應在玩家腳下冒紫煙（fx:boss_teleport_warn）"
+	if not _named(events, "fx:telegraph").is_empty():
+		return "瞬移砸地不應畫預警圈"
 	var start := w3.tick
 	if _run_until(w3, _cmd(Vector2.ZERO), 120, events, func() -> bool: return b3.pos.distance_to(p3.pos) < 3.0) < 0:
 		return "Boss 應瞬移到玩家旁邊"
@@ -238,7 +240,8 @@ static func check_boss_enraged_moves() -> String:
 
 
 # 瞬移砸地躲不躲得掉（v0.42.0：ring_delay 0.25 → 0.5）：站著不動被第 1 圈打一次；
-# 看到預警後反應 0.3 秒往外直跑就躲得掉（三圈打到時都在那一圈外面）；砸地每圈的畫面透明度依序閃亮
+# 看到預警後反應 0.3 秒往外直跑就躲得掉（三圈打到時都在那一圈外面）；
+# 畫面的地板裂紋：每一圈比爆開早 ring_delay 秒爬滿（舉手時間短時縮短）、之後變亮到爆開、爆開後淡掉
 static func check_teleport_slam_dodge(feel: Array[String]) -> String:
 	var s: Dictionary = EnemyDefs.ENEMIES.boss.slam
 	var results := []
@@ -280,13 +283,30 @@ static func check_teleport_slam_dodge(feel: Array[String]) -> String:
 	if results[1][0] != 0 or d.size() != rings.size():
 		return "反應 0.3 秒往外跑應躲得掉：被打 %d 次、每圈打出時的距離 %s（圈半徑 %s）" % [results[1][0], d, rings]
 	feel.append("瞬移砸地往外跑（反應 0.3 秒、移速 %.1f）：三圈打出時離中心 %.2f / %.2f / %.2f，圈外緣 %s（加角色半徑 %.2f）" % [Config.PLAYER.move_speed, d[0], d[1], d[2], rings, Config.PLAYER.radius])
-	# 畫面：舉手時都亮；落地後第 2 圈在 ring_delay 前淡淡亮著、打到那一刻最亮、之後淡掉
-	var A := EnemyAnimator.slam_ring_alpha
+	var C := EnemyAnimator.slam_crack
 	var dl: float = s.ring_delay
-	if A.call(true, &"windup", 0.1, 0.7, 2, dl) <= 0.0 or A.call(true, &"impact", dl - 0.01, 0.7, 1, dl) != 0.3 \
-			or A.call(true, &"impact", dl, 0.7, 1, dl) < 0.8 or A.call(true, &"impact", dl + 0.5, 0.7, 1, dl) != 0.0 \
-			or A.call(false, &"impact", 0.0, 0.7, 0, dl) != 0.0:
-		return "砸地圈的透明度不對：等待 0.3、打到 0.85 後淡掉"
+	var wu: float = s.windup
+	var fails: Array[String] = []
+	if C.call(&"windup", 0.1, wu, 0, dl).x <= 0.0 or C.call(&"windup", 0.1, wu, 2, dl).y != 0.0:
+		fails.append("舉手 0.1 秒：第 1 圈裂紋應開始長、第 3 圈還沒有")
+	# 第 3 圈在 2 × ring_delay 爆開，ring_delay 前剛好爬滿
+	if C.call(&"impact", dl - 0.01, wu, 2, dl).x >= 1.0 or C.call(&"impact", dl, wu, 2, dl).x < 1.0:
+		fails.append("第 3 圈應在落地後 %.2f 秒爬滿（提前 %.2f 秒）" % [dl, dl])
+	var before: Vector2 = C.call(&"impact", 2.0 * dl - 0.01, wu, 2, dl)
+	if before.y < 0.95 or before.y > 1.0 or C.call(&"impact", 2.0 * dl - 0.2, wu, 2, dl).y >= before.y:
+		fails.append("爬滿後到爆開應越來越亮（爆開前 %.2f）" % before.y)
+	if C.call(&"impact", dl + EnemyAnimator.CRACK_FADE + 0.01, wu, 1, dl).y != 0.0:
+		fails.append("爆開 %.1f 秒後應淡掉" % EnemyAnimator.CRACK_FADE)
+	if C.call(&"warn", 0.1, wu, 0, dl).y != 0.0:
+		fails.append("瞬移前（warn）不應有裂紋")
+	var tw: float = EnemyDefs.ENEMIES.boss.enrage.teleport_windup
+	if C.call(&"windup", 0.02, tw, 0, dl).x <= 0.0 or C.call(&"windup", tw - 0.01, tw, 0, dl).x < 1.0:
+		fails.append("瞬移後舉手只有 %.2f 秒：第 1 圈裂紋也要在落地前爬滿" % tw)
+	var B := EnemyAnimator.slam_band_charging
+	if not B.call(&"impact", dl + 0.1, wu, 2, dl) or B.call(&"impact", dl + 0.1, wu, 1, dl) or B.call(&"impact", dl - 0.1, wu, 2, dl):
+		fails.append("碎石只在爬滿、還沒爆開的那一圈跳")
+	if not fails.is_empty():
+		return "砸地裂紋：" + "；".join(fails)
 	return ""
 
 

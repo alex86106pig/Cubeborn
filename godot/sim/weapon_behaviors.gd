@@ -178,11 +178,6 @@ class ArcaneBurst extends Behavior:
 		data.target = p.pos + data.dir * dist
 		data.lock_facing = true
 		p.facing = atan2(data.dir.x, data.dir.y)
-		# 落點預警圈：持續到魔彈飛到（蓄力 + 飛行時間）
-		p.world.emit_event("fx:telegraph", {
-			"pos": data.target, "height": p.world.terrain.ground_at(data.target), "radius": def.explosion_radius, "color": def.color,
-			"life": def.windup + dist / def.projectile_speed,
-		})
 
 	func phase(p: Player, def: Dictionary, data: Dictionary, name: StringName) -> void:
 		if name != &"active":

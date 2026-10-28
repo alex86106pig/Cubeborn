@@ -470,9 +470,6 @@ func _on_died(source_id: int) -> void:
 	world.on_enemy_died(self, source_id)
 	if ghost_of != 0:
 		world.on_ghost_defeated(self)
-	if has_affix(&"volatile") and not world.is_over:
-		var v := affix(&"volatile")
-		world.emit_event("fx:telegraph", {"pos": pos, "height": ground_height, "radius": v.radius, "color": v.color, "life": v.delay})
 
 
 # 死亡爆炸詞條：死後 delay 秒在屍體位置爆炸（擋不住；傷害含稀有度與詞條的攻擊力）
