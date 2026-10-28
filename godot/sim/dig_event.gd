@@ -47,8 +47,12 @@ func difficulty(world: World) -> float:
 
 
 # 玩家站得到這裡挖嗎（出口打開後就不能再挖）
+# 按 F 會先跟守墓人說話的距離內不開挖（同一下按鍵不會又說話又開挖）
 func can_dig(world: World, p: Player) -> bool:
-	return enabled(world) and state != OPEN and p.pos.distance_to(point) <= EventDefs.DIG.range
+	if not enabled(world) or state == OPEN or p.pos.distance_to(point) > EventDefs.DIG.range:
+		return false
+	var keeper := world.entities.get(world.boss_id) as Gravekeeper
+	return keeper == null or not (keeper.can_talk(p) or keeper.fsm.is_in(&"reveal"))   # 說台詞時也不開挖，讓他說完
 
 
 # 挖完後站在墳墓旁按 F：前往下一層（或通關）
@@ -120,6 +124,9 @@ func _start(world: World) -> void:
 	spawn_timer = EventDefs.SPAWN.interval_start
 	erupt_timer = EventDefs.ERUPT.interval
 	world.emit_event("event:started", {"pos": point})
+	var keeper := world.entities.get(world.boss_id) as Gravekeeper
+	if keeper != null and keeper.is_npc():
+		keeper.aggro()   # 假裝 NPC 的守墓人：有人開挖就不裝了（正在說台詞的就讓他說完）
 
 
 func _open(world: World) -> void:

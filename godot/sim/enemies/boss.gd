@@ -8,15 +8,18 @@ var is_enraged := false
 var patrol_rect := Rect2()   # 巡邏範圍（世界座標；空的 = 原地附近）
 
 
-func _init(p_world: World, p_type: StringName, at: Vector2, mul: Dictionary) -> void:
+# overrides：子類別（守墓人）換掉的狀態，一起交給狀態機（初始狀態的 enter 才會跑對的那個）
+func _init(p_world: World, p_type: StringName, at: Vector2, mul: Dictionary, overrides: Dictionary = {}) -> void:
 	var states := Enemy.base_states()
 	states.erase(&"hurt")   # 霸體：受擊不進入硬直
-	states[&"patrol"] = Patrol.new()
-	states[&"chase"] = Chase.new()
-	states[&"slam"] = Slam.new()
-	states[&"charge"] = Charge.new()
-	states[&"summon"] = Summon.new()
-	states[&"cleave"] = Cleave.new()
+	if overrides.is_empty():
+		states[&"patrol"] = Patrol.new()
+		states[&"chase"] = Chase.new()
+		states[&"slam"] = Slam.new()
+		states[&"charge"] = Charge.new()
+		states[&"summon"] = Summon.new()
+		states[&"cleave"] = Cleave.new()
+	states.merge(overrides, true)
 	super(p_world, p_type, at, mul, states)
 
 

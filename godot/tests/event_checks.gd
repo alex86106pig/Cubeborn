@@ -428,9 +428,14 @@ static func _check_boss_patrol() -> String:
 	var w := _world([World.HOST_PEER_ID], true)
 	var p := _p(w)   # 在出生點（王族墓外、南邊很遠）
 	_step(w, 1)
-	var boss: Boss = w.entities.get(w.boss_id)
 	var room: Array = w.map.boss_room
 	var rect := Rect2(MapDefs.to_world(w.map, Vector2(room[0], room[1])), Vector2(room[2], room[3])).grow(1.0)
+	# 第 1 層的守墓人假裝 NPC、看到人不追（另有檢查）；「看到就追」的巡邏是亡骸騎士的（第 2 層用），換成它來檢查
+	var keeper: Enemy = w.entities.get(w.boss_id)
+	var at := keeper.pos
+	keeper.remove()
+	var boss := w.spawner.spawn_at(w, &"boss", w.nav_for(EnemyDefs.ENEMIES.boss.radius).nearest_walkable(at), {"initial_state": &"patrol"}) as Boss
+	boss.patrol_rect = Rect2(MapDefs.to_world(w.map, Vector2(room[0], room[1])), Vector2(room[2], room[3]))
 	if boss == null or not boss.is_patrolling() or not rect.has_point(boss.pos):
 		return "開局 Boss 應在 boss_room 裡巡邏（Boss %s、狀態 %s）" % [boss != null, boss.fsm.current_name if boss else &""]
 	var walked := 0.0

@@ -9,8 +9,11 @@ const ENEMY_OFFSET := 0.35  # 魔法 / 稀有怪的詞條在頭頂上方多高
 const GRAVE_OFFSET := 1.8   # 挖墳點文字的高度（D6）
 const GHOST_COLOR := Color("8fd0ff")
 const EXIT_COLOR := Color("8fd0ff")
+const NPC_COLOR := Color("5fd27a")      # 假裝 NPC 的守墓人：名字與頭上的綠色血條
+const NPC_BAR := Vector2(90, 9)
+const KEEPER_LINE := "又一頭肥羊……"
 
-const WARM_SIZES: Array[int] = [14, 15, 17, 18]   # 這裡用到的字級（_text 的 size）
+const WARM_SIZES: Array[int] = [14, 15, 17, 18, 22]   # 這裡用到的字級（_text 的 size）
 const OUTLINE := 4
 
 var world: World
@@ -78,7 +81,30 @@ func _draw() -> void:
 	for e: Entity in world.enemies:
 		if e is Enemy and (e as Enemy).ghost_of != 0 and not e.is_dead and Vision.entity_visible(world, viewer, e):
 			_text(font, e, e.body_height + ENEMY_OFFSET, "冤魂：打倒就能復活隊友", GHOST_COLOR, 15)
+	_draw_keeper(font, me, viewer)
 	_draw_grave(font, me)
+
+
+# 假裝 NPC 的守墓人：頭上名字 + 綠色血條（之後換成畫面上方的 Boss 血條），靠近時「[F] 對話」；
+# 被說話揭穿時頭上冒台詞（被打或開挖揭穿的不說話）
+func _draw_keeper(font: Font, me: Player, viewer: Player) -> void:
+	var keeper := world.entities.get(world.boss_id) as Gravekeeper
+	if keeper == null or keeper.is_dead or not Vision.entity_visible(world, viewer, keeper):
+		return
+	var top := keeper.body_height + ENEMY_OFFSET
+	var state: StringName = keeper.anim.get("state", &"")
+	if state == &"patrol":
+		var label := "守墓人"
+		if me != null and keeper.can_talk(me):
+			label = "[F] 對話  " + label
+		_text(font, keeper, top + 0.5, label, NPC_COLOR, 17, Vector2(0, -12))
+		var at := Vector3(keeper.pos.x, keeper.height + top, keeper.pos.y)
+		if not camera.is_position_behind(at):
+			var s := camera.unproject_position(at) + Vector2(-NPC_BAR.x / 2.0, 0)
+			draw_rect(Rect2(s, NPC_BAR), Color(0, 0, 0, 0.7))
+			draw_rect(Rect2(s + Vector2(1, 1), Vector2((NPC_BAR.x - 2) * keeper.hp / keeper.max_hp, NPC_BAR.y - 2)), NPC_COLOR)
+	elif keeper.anim.get("spoke", false):
+		_text(font, keeper, top + 0.3, KEEPER_LINE, Color.WHITE, 22)
 
 
 # 挖墳點（D6）：沒開始時提示、挖的時候顯示進度、挖完提示按 F 前往下一層（投票中由 HUD 顯示）

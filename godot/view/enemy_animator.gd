@@ -36,6 +36,7 @@ var _base_body_scale := Vector3.ZERO        # 稀有度放大後的身體大小�
 var _zombie := false      # 腐屍、膨脹屍：走路時雙手往前伸、駝背
 var _bloater := false     # 膨脹屍：脹大時身體放大、閃白，炸開後整隻不見
 var _hound := false       # 屍犬（四足）：所有狀態都走 _pose_hound（arm = 前腳、leg = 後腳）
+var _keeper := false      # 守墓人：右手鐵鏟、左手提燈；駝背
 var _holds_bow := false   # 骷髏弓手：左手拿弓，不瞄準時照 _bow_arm_target
 var _bow_arm_target := BOW_ARM_REST
 var _dt := 0.0
@@ -48,8 +49,9 @@ func _init(p_rig: Node3D, e: Enemy) -> void:
 	_bloater = e.def.visual == &"bloater"
 	_hound = e.def.visual == &"hound"
 	walk_phase = randf() * TAU   # 畫面用隨機，與模擬無關
-	if e.is_boss():
+	if e.def.has("slam"):
 		_build_cracks(e)
+	_keeper = e.def.visual == &"gravekeeper"
 
 
 func update(e: Enemy, dt: float) -> void:
@@ -77,9 +79,11 @@ func update(e: Enemy, dt: float) -> void:
 		if target != null and e.pos.distance_to(target.pos) <= def.preferred_range[1] + def.fire_reach:
 			_bow_arm_target = BOW_ARM_READY
 
-	match &"hound" if _hound else state:
+	match &"hound" if _hound else (&"keeper" if _keeper and state != &"spawn" and state != &"dead" else state):
 		&"hound":
 			_pose_hound(e, a, state, t, dt)
+		&"keeper":
+			_pose_keeper(e, a, state, t, dt)
 		&"spawn":
 			var k := MathUtil.ease_out_cubic(clampf(t / def.spawn_time, 0.0, 1.0))
 			rig.position.y = lerpf(-rig.height, 0.0, k)
@@ -241,6 +245,85 @@ func _pose_slam(a: Dictionary) -> void:
 			_pose_arms(lerpf(-3.1, -0.6, k), 0.0)
 			rig.body.rotation.x = lerpf(-0.15, 0.55, k)
 			rig.position.y = -SLAM_CROUCH * k
+
+
+# 守墓人（老人）：四招的預備動作兩兩不同（設計方向「怪物攻擊不畫紅圈」）
+#   鐵鏟揮擊 = 鏟子扛到右肩後、身體往右扭；鏟土拋擲 = 彎腰把鏟子插進地裡、再往後撬；
+#   提燈噴火 = 左手把提燈舉到臉前、身體後仰吸氣；口哨 = 右手兩指放進嘴裡、抬頭
+func _pose_keeper(e: Enemy, a: Dictionary, state: StringName, t: float, dt: float) -> void:
+	var def := e.def
+	var pt: float = a.get("phase_time", 0.0)
+	rig.body.rotation.y = 0.0
+	match state:
+		&"patrol":
+			# 掃地：走的時候駝背慢走，停下來時鏟子左右掃地
+			var moving := e.velocity.length_squared() > 0.01
+			walk_phase += dt * e.velocity.length() * 2.0
+			_pose_walk(1.0 if moving else 0.0, -0.8, -0.5)
+			rig.body.rotation.x = 0.3
+			if not moving:
+				rig.arm_r.rotation = Vector3(-0.9, 0.5 * sin(t * 2.5), 0.0)
+		&"reveal":
+			# 揭穿：挺直腰、轉頭看人
+			var k := MathUtil.ease_out_cubic(clampf(t / 0.5, 0.0, 1.0))
+			_pose_walk(0.0, -0.5, -0.4)
+			rig.body.rotation.x = lerpf(0.3, -0.05, k)
+			rig.head.rotation.x = lerpf(0.0, -0.15, k)
+		&"chase":
+			walk_phase += dt * e.velocity.length() * 2.0
+			_pose_walk(1.0 if e.velocity.length_squared() > 0.01 else 0.0, -0.6, -0.5)
+			rig.body.rotation.x = 0.25
+		&"shovel":
+			var s: Dictionary = def.shovel
+			if t < s.windup:
+				var k := MathUtil.ease_out_cubic(t / s.windup)
+				rig.arm_r.rotation = Vector3(lerpf(-0.6, -2.6, k), lerpf(0.0, 0.9, k), 0.0)
+				rig.body.rotation.y = lerpf(0.0, -0.5, k)
+			else:
+				var k := clampf((t - s.windup) / (s.active + 0.1), 0.0, 1.0)
+				rig.arm_r.rotation = Vector3(lerpf(-2.6, -1.3, k), lerpf(0.9, -0.9, k), 0.0)
+				rig.body.rotation.y = lerpf(-0.5, 0.5, k)
+			rig.arm_l.rotation = Vector3(-0.5, 0.0, 0.0)
+			rig.body.rotation.x = 0.15
+		&"lob":
+			var l: Dictionary = def.lob
+			match a.get("phase", &"windup"):
+				&"windup":
+					var k := MathUtil.ease_out_cubic(clampf(pt / l.windup, 0.0, 1.0))
+					rig.body.rotation.x = lerpf(0.25, 0.6, k)
+					rig.arm_r.rotation = Vector3(lerpf(-0.6, 0.1, k), 0.0, 0.0)
+					rig.arm_l.rotation = Vector3(lerpf(-0.5, 0.0, k), 0.0, 0.0)
+				&"throw":
+					var k := clampf(pt / 0.15, 0.0, 1.0)
+					rig.body.rotation.x = lerpf(0.6, -0.15, k)
+					rig.arm_r.rotation = Vector3(lerpf(0.1, -2.8, k), 0.0, 0.0)
+				_:
+					var k := clampf(pt / l.recovery, 0.0, 1.0)
+					rig.body.rotation.x = lerpf(-0.15, 0.25, k)
+					rig.arm_r.rotation = Vector3(lerpf(-2.8, -0.6, k), 0.0, 0.0)
+		&"lantern":
+			var f: Dictionary = def.lantern
+			match a.get("phase", &"windup"):
+				&"windup":
+					var k := MathUtil.ease_out_cubic(clampf(pt / f.windup, 0.0, 1.0))
+					rig.arm_l.rotation = Vector3(lerpf(-0.5, -1.5, k), lerpf(0.0, -0.4, k), 0.0)
+					rig.body.rotation.x = lerpf(0.25, -0.2, k)
+					rig.head.rotation.x = lerpf(0.0, -0.2, k)
+				&"flame":
+					rig.arm_l.rotation = Vector3(-1.5, -0.4, 0.0)
+					rig.body.rotation.x = 0.2
+					rig.head.rotation.x = 0.1
+				_:
+					var k := clampf(pt / f.recovery, 0.0, 1.0)
+					rig.arm_l.rotation = Vector3(lerpf(-1.5, -0.5, k), lerpf(-0.4, 0.0, k), 0.0)
+					rig.body.rotation.x = lerpf(0.2, 0.25, k)
+			rig.arm_r.rotation = Vector3(-0.4, 0.0, 0.0)
+		&"whistle":
+			var k := MathUtil.ease_out_cubic(clampf(t / def.whistle.windup, 0.0, 1.0))
+			rig.arm_r.rotation = Vector3(lerpf(-0.6, -2.3, k), lerpf(0.0, -0.7, k), 0.0)
+			rig.arm_l.rotation = Vector3(-0.5, 0.0, 0.0)
+			rig.body.rotation.x = lerpf(0.25, -0.1, k)
+			rig.head.rotation.x = lerpf(0.0, -0.4, k)
 
 
 # 屍犬（四足）：奔跑時前後腳交錯；飛撲 windup 伏低（看得出要撲）→ dash 前腳往前、後腳往後伸直 → recovery 收回；

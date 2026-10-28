@@ -32,6 +32,7 @@ const HANDLERS := {
 	"fx:boss_teleport_warn": &"_fx_boss_teleport_warn",
 	"fx:erupt_warn": &"_fx_erupt_warn",
 	"fx:gas_cloud": &"_fx_gas_cloud",
+	"fx:dirt_lob": &"_fx_dirt_lob",
 	"fx:lightning": &"_fx_lightning",
 	"fx:status": &"_fx_status",
 }
@@ -46,6 +47,8 @@ const SLAM_RING_COLOR := Color("9a8a6a")
 const STUN_STAR_COLOR := Color("ffe14a")
 const TELEPORT_COLOR := Color("b36bff")
 const BONE_COLOR := Color("d8d0b8")         # 挖墳點冒出的白骨手
+const DIRT_LOB_HEIGHT := 3.0                # 守墓人拋出的土塊飛多高
+const LANTERN_BLUE := Color("6ab0ff")       # 提燈噴火前燈火轉藍
 const ERUPT_HANDS := 4
 const ERUPT_HANDS_FROM := 0.45              # 墳土隆起到這個進度才冒出白骨手
 
@@ -377,18 +380,49 @@ func _fx_erupt_warn(p: Dictionary) -> void:
 			burst(at + Vector3(sin(a) * r, 0.2, cos(a) * r), {"color": DUST_COLOR, "count": 2, "speed": 1.5, "up": 3.0, "size": 0.15, "life": 0.4}))
 
 
-# 怪物的毒氣區（膨脹屍的腐氣）：範圍內一直冒低低的煙，不畫圈；最後 0.5 秒變稀
+# 怪物的毒氣 / 殘火區（膨脹屍的腐氣、守墓人的殘火）：範圍內一直冒低低的煙或火苗，不畫圈；最後 0.5 秒變稀
 func _fx_gas_cloud(p: Dictionary) -> void:
 	var at := _at(p)
 	var radius: float = p.radius
 	var life: float = p.life
 	var color: Color = p.color
+	var fire: bool = p.get("fire", false)
 	_add_emitter(life, func(k: float, key: String, dt: float) -> void:
 		var thin := clampf((1.0 - k) * life / 0.5, 0.0, 1.0)
 		for i in _count(key, 1.2 * thin, dt):
 			var a := _rng.randf() * TAU
 			var r := radius * sqrt(_rng.randf())
-			mote(at + Vector3(sin(a) * r, _rng.randf_range(0.1, 0.6), cos(a) * r), {"color": color, "size": 0.32, "life": 0.9, "vy": 0.35}))
+			if fire:
+				mote(at + Vector3(sin(a) * r, 0.1, cos(a) * r), {"color": color.lerp(Color("ffe070"), _rng.randf()), "size": 0.2, "life": 0.45, "vy": 1.6})
+			else:
+				mote(at + Vector3(sin(a) * r, _rng.randf_range(0.1, 0.6), cos(a) * r), {"color": color, "size": 0.32, "life": 0.9, "vy": 0.35}))
+
+
+# 守墓人鏟土拋擲：每坨土沿拋物線飛到落點，地上的影子跟著越來越大、越來越深（看影子躲，不畫圈）；落地噴泥土
+func _fx_dirt_lob(p: Dictionary) -> void:
+	var from := _at(p)
+	var flight: float = p.flight
+	var radius: float = p.radius
+	var clod_mesh := BoxMesh.new()
+	clod_mesh.size = Vector3(0.35, 0.3, 0.35)
+	for target: Vector2 in p.targets:
+		var to := Vector3(target.x, world.terrain.ground_at(target) if world != null else 0.0, target.y)
+		var clod := _transient_mesh(clod_mesh, DUST_COLOR, 1.0)
+		var shadow := _transient_mesh(_disc_mesh, Color.BLACK, 0.0)
+		shadow.position = to + Vector3(0, 0.04, 0)
+		var landed := [false]
+		_add_transient(clod, flight, func(k: float) -> void:
+			var pos := from.lerp(to, k)
+			pos.y += 4.0 * DIRT_LOB_HEIGHT * k * (1.0 - k)
+			clod.position = pos
+			clod.rotation = Vector3(k * 9.0, k * 6.0, 0.0)
+			if k > 0.97 and not landed[0]:
+				landed[0] = true
+				burst(to + Vector3(0, 0.2, 0), {"color": DUST_COLOR, "count": 14, "speed": 4.0, "up": 4.0, "size": 0.2}))
+		_add_transient(shadow, flight, func(k: float) -> void:
+			var s := radius * lerpf(0.3, 1.0, k)
+			shadow.scale = Vector3(s, 1.0, s)
+			_set_alpha(shadow, 0.5 * k))
 
 
 func _fx_boss_wall(p: Dictionary) -> void:
@@ -474,6 +508,8 @@ func _emit_enemy(e: Enemy, dt: float) -> void:
 						mote(_jitter(e, 0.5, e.height + _rng.randf_range(0.2, 0.9)), {"color": v.color, "size": 0.16, "life": 0.45, "vy": 1.2})
 		&"slam":
 			_emit_slam_pebbles(e, a, key, dt)
+		&"lantern":
+			_emit_lantern(e, a, key, dt)
 		&"swell":
 			# 膨脹屍脹大：皮膚裂縫冒出綠氣，越接近爆開越多
 			var k := EnemyAnimator.bloater_swell(e, &"swell", a.get("time", 0.0))
@@ -517,6 +553,27 @@ func _emit_slam_pebbles(e: Enemy, a: Dictionary, key: String, dt: float) -> void
 			var r := _rng.randf_range(inner, rings[i])
 			burst(Vector3(e.pos.x + sin(ang) * r, e.height + 0.1, e.pos.y + cos(ang) * r),
 				{"color": CHARGE_DUST_COLOR, "count": 1, "speed": 0.4, "up": 2.5, "size": 0.13, "life": 0.35})
+
+
+# 守墓人提燈：windup 時燈火轉藍、往提燈聚（吸氣）；flame 時前方扇形一直噴火
+func _emit_lantern(e: Enemy, a: Dictionary, key: String, dt: float) -> void:
+	var f: Dictionary = e.def.lantern
+	var fwd := MathUtil.dir_from_angle(e.facing)
+	var side := Vector2(fwd.y, -fwd.x)
+	var lamp := e.pos + fwd * 0.7 - side * 0.4
+	var lamp_y := e.height + 1.9
+	match a.get("phase", &""):
+		&"windup":
+			for i in _count(key, 0.8, dt):
+				mote(Vector3(lamp.x + _rng.randf_range(-0.3, 0.3), lamp_y + _rng.randf_range(-0.2, 0.3), lamp.y + _rng.randf_range(-0.3, 0.3)),
+					{"color": LANTERN_BLUE, "size": 0.12, "life": 0.3, "vy": 0.2})
+		&"flame":
+			for i in _count(key, 2.5, dt):
+				var ang: float = e.facing + _rng.randf_range(-f.arc / 2.0, f.arc / 2.0)
+				var r: float = _rng.randf_range(0.5, f.range)
+				var at := e.pos + MathUtil.dir_from_angle(ang) * r
+				mote(Vector3(at.x, e.height + lerpf(1.7, 0.5, r / f.range), at.y),
+					{"color": f.color.lerp(Color("ffe070"), _rng.randf()), "size": 0.24, "life": 0.3, "vy": 1.2})
 
 
 func _add_emitter(life: float, tick: Callable) -> void:

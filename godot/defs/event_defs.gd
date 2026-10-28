@@ -8,7 +8,7 @@ const DIG := {
 	"decay": 0.0,              # 沒人挖時進度每秒掉多少（0 = 不掉）
 	"range": 2.2,              # 離挖墳點這麼近才能挖、挖完後按 F 前往下一層（中心距離）
 	"exit_radius": 1.4,        # 挖完後墓穴洞口的大小（畫面用）
-	"boss_type": &"boss",     # 開局就在挖墳點巡邏的 Boss（EnemyDefs 的種類；之後每層可以換）
+	"boss_type": &"gravekeeper",   # 開局就在挖墳點的 Boss（EnemyDefs 的種類；之後每層可以換；第 1 層是守墓人，舊的亡骸騎士等第 2 層）
 	"last_floor": 1,           # 這一層挖完再互動就通關（測試版只有一層）；之後的層照舊 World.next_floor
 }
 

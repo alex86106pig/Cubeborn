@@ -1232,18 +1232,31 @@ static func check_no_monster_telegraph() -> String:
 	return ""
 
 
-# Boss 四招的預備動作兩兩不同：各招預備到一半時，手臂（前後、張開）、身體前後傾、頭的角度合計至少差 MIN_POSE_DIFF 弧度
+# Boss 每一招的預備動作兩兩不同：各招預備到一半時，手臂（前後、張開）、身體前後傾、頭的角度合計至少差 MIN_POSE_DIFF 弧度
+# 亡骸騎士：砸地、衝鋒、召喚、直劈；守墓人：鐵鏟揮擊、鏟土拋擲、提燈噴火、口哨
 const MIN_POSE_DIFF := 1.0
+const BOSS_MOVES := {
+	&"boss": [&"slam", &"charge", &"summon", &"cleave"],
+	&"gravekeeper": [&"shovel", &"lob", &"lantern", &"whistle"],
+}
 
 static func check_boss_windup_poses() -> String:
-	var b_def: Dictionary = EnemyDefs.ENEMIES.boss
+	for type: StringName in BOSS_MOVES:
+		var fail := _check_windup_poses(type, BOSS_MOVES[type])
+		if fail != "":
+			return fail
+	return ""
+
+
+static func _check_windup_poses(type: StringName, move_list: Array) -> String:
+	var b_def: Dictionary = EnemyDefs.ENEMIES[type]
 	var poses := {}
-	for move: StringName in [&"slam", &"charge", &"summon", &"cleave"]:
+	for move: StringName in move_list:
 		var w := _new_world()
 		var p := _player(w)
 		p.pos = Vector2(0, 7)
-		var boss := _spawn(w, &"boss", Vector2.ZERO)
-		var rig := DarkFantasy.character(&"boss")
+		var boss := _spawn(w, type, Vector2.ZERO)
+		var rig := DarkFantasy.character(type)
 		var anim := EnemyAnimator.new(rig, boss)
 		_run(w, _cmd(Vector2.ZERO), roundi(b_def.spawn_time / DT) + 2)
 		boss.fsm.change(move)
@@ -1267,7 +1280,7 @@ static func check_boss_windup_poses() -> String:
 			for k in a.size():
 				diff += absf(a[k] - b[k])
 			if diff < MIN_POSE_DIFF:
-				return "Boss 的 %s 和 %s 預備動作太像：關節角度合計只差 %.2f（至少 %.1f）" % [moves[i], moves[j], diff, MIN_POSE_DIFF]
+				return "%s 的 %s 和 %s 預備動作太像：關節角度合計只差 %.2f（至少 %.1f）" % [type, moves[i], moves[j], diff, MIN_POSE_DIFF]
 	return ""
 
 

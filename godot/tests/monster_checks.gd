@@ -291,6 +291,104 @@ static func check_hound() -> String:
 	return ""
 
 
+# 守墓人（假裝 NPC）：玩家站在前面 3 秒也不開打、不打人；按 F 說話 → reveal（說台詞）→ reveal_time 後開打；
+# 被打 → 不說話直接開打；有人開挖 → 開打。開挖距離內按 F 先說話、不會同時開挖
+static func check_gravekeeper_npc() -> String:
+	var npc: Dictionary = EnemyDefs.ENEMIES.gravekeeper.npc
+	for how: StringName in [&"talk", &"hit", &"dig"]:
+		var w := _world(&"graveyard_a")
+		var p: Player = w.players[World.HOST_PEER_ID]
+		var k := w.spawner.spawn_at(w, &"gravekeeper", w.event.point, {"initial_state": &"patrol"}) as Gravekeeper
+		p.pos = w.nav.nearest_walkable(k.pos + MathUtil.dir_from_angle(k.facing) * 2.5)
+		var hp := p.hp
+		var events: Array[Dictionary] = []
+		for i in 180:
+			var cmd := InputCmd.new()
+			cmd.aim = k.pos
+			w.step({World.HOST_PEER_ID: cmd}, DT)
+			events.append_array(w.events)
+		if not k.is_npc() or p.hp < hp:
+			return "守墓人：玩家在旁邊 3 秒應該還是 NPC、不打人（狀態 %s、玩家扣血 %.0f）" % [k.fsm.current_name, hp - p.hp]
+		match how:
+			&"talk":
+				p.pos = w.nav.nearest_walkable(k.pos + (p.pos - k.pos).normalized() * (k.radius + p.radius + npc.talk_range * 0.5))
+				var cmd := InputCmd.new()
+				cmd.aim = k.pos
+				cmd.buttons = InputCmd.BTN_INTERACT
+				w.step({World.HOST_PEER_ID: cmd}, DT)
+				events.append_array(w.events)
+				if not k.fsm.is_in(&"reveal") or not k.anim.get("spoke", false) or w.event.state != DigEvent.IDLE:
+					return "守墓人：按 F 說話應進入揭穿、冒台詞、不開挖（狀態 %s、挖墳 %s）" % [k.fsm.current_name, w.event.state]
+				var steps := 0
+				while k.fsm.is_in(&"reveal") and steps < 200:
+					w.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+					events.append_array(w.events)
+					steps += 1
+				if not k.fsm.is_in(&"chase") or absf(steps * DT - npc.reveal_time) > DT * 3:
+					return "守墓人：說完台詞 %.1f 秒後應開打，實際 %.2f 秒後狀態 %s" % [npc.reveal_time, steps * DT, k.fsm.current_name]
+			&"hit":
+				Combat.apply_damage(w, p, k, {"damage": 1.0, "knockback": 0.0})
+				if not k.fsm.is_in(&"chase") or k.anim.get("spoke", false):
+					return "守墓人：被打應不說話直接開打（狀態 %s）" % k.fsm.current_name
+			&"dig":
+				w.event._start(w)
+				if not k.fsm.is_in(&"chase"):
+					return "守墓人：有人開挖應直接開打（狀態 %s）" % k.fsm.current_name
+	return ""
+
+
+# 守墓人第一型態四招：站在合適距離的玩家被打到；鏟土落地時間 = windup + flight_time；噴火每 tick 打一次、留下殘火（只燒玩家）；
+# 口哨叫 count 隻屍犬（不給靈魂）；全程不畫預警圈
+static func check_gravekeeper_moves() -> String:
+	var d: Dictionary = EnemyDefs.ENEMIES.gravekeeper
+	for move: StringName in [&"shovel", &"lob", &"lantern", &"whistle"]:
+		var w := _world()
+		var p: Player = w.players[World.HOST_PEER_ID]
+		p.stats.set_base(&"max_hp", 9999.0)
+		p.hp = p.max_hp
+		var k := w.spawner.spawn_at(w, &"gravekeeper", Vector2.ZERO) as Gravekeeper
+		_step(w, roundi(d.spawn_time / DT) + 2, true)
+		var dist: float = {&"shovel": 2.0, &"lob": 8.0, &"lantern": 3.5, &"whistle": 6.0}[move]
+		p.pos = Vector2(0, dist)
+		k.facing = 0.0
+		k.fsm.change(move)
+		var hits := 0
+		var first_hit := -1
+		var events: Array[Dictionary] = []
+		for i in 240:
+			w.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+			events.append_array(w.events)
+			for ev in w.events:
+				if ev.name == "entity:damaged" and ev.target_id == p.id and ev.source_id == k.id:
+					hits += 1
+					if first_hit < 0:
+						first_hit = i + 1
+			p.pos = Vector2(0, dist)
+			if not k.fsm.is_in(move) and i > 30 and move != &"lantern":
+				break
+		if events.any(func(ev: Dictionary) -> bool: return ev.name == "fx:telegraph"):
+			return "守墓人 %s 不應畫預警圈" % move
+		match move:
+			&"shovel":
+				if hits != 1 or absf(first_hit * DT - d.shovel.windup) > DT * 2.5:
+					return "守墓人鐵鏟：應在 %.1f 秒打中一次（第 %d 步、%d 次）" % [d.shovel.windup, first_hit, hits]
+			&"lob":
+				var land: float = d.lob.windup + d.lob.flight_time
+				if hits < 1 or absf(first_hit * DT - land) > DT * 2.5 or not events.any(func(ev: Dictionary) -> bool: return ev.name == "fx:dirt_lob"):
+					return "守墓人鏟土：應在 %.2f 秒落地打中（第 %d 步、%d 次）並發 fx:dirt_lob" % [land, first_hit, hits]
+			&"lantern":
+				var ticks := roundi(d.lantern.duration / d.lantern.tick)
+				if hits < ticks + 1 or absf(first_hit * DT - d.lantern.windup - d.lantern.tick) > DT * 2.5:
+					return "守墓人噴火：站在前面應被噴 %d 下再被殘火燒（共 %d 次、第一下第 %d 步）" % [ticks, hits, first_hit]
+				if not events.any(func(ev: Dictionary) -> bool: return ev.name == "fx:gas_cloud" and ev.get("fire", false)):
+					return "守墓人噴火：殘火應冒火苗（fx:gas_cloud fire）"
+			&"whistle":
+				var dogs := w.enemies.filter(func(e: Entity) -> bool: return e is Hound and (e as Enemy).summoner_id == k.id and (e as Enemy).no_souls)
+				if dogs.size() != d.whistle.count:
+					return "守墓人口哨：應叫出 %d 隻不給靈魂的屍犬，實際 %d" % [d.whistle.count, dogs.size()]
+	return ""
+
+
 static func check_floor_mix() -> String:
 	var w := _world(&"graveyard_a", true)
 	var first: Dictionary = EnemyDefs.floor_mix(1)

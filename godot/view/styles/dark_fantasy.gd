@@ -11,6 +11,8 @@ const C := {
 	"rot_skin": Color("7a8463"), "rot_dark": Color("4a5238"), "rag": Color("4a4238"), "rag_dark": Color("2e2a2c"),
 	"rot_eye": Color("d8e05a"), "bloat_skin": Color("8c946a"), "bloat_glow": Color("a8e04a"),
 	"hound_fur": Color("2e2a28"), "hound_snout": Color("5a4a42"),
+	"keeper_coat": Color("4a3a2a"), "keeper_skin": Color("b8a088"), "keeper_beard": Color("c8c4b8"), "keeper_hat": Color("2a2622"),
+	"keeper_flame": Color("ffb040"),
 }
 
 # 騎士身上的掛點（Rig.mount_nodes）：back 在披風外、hip_l / hip_r 在腰帶外側（身體座標），head 在頭盔頂（頭的座標），
@@ -39,6 +41,7 @@ const HOUND_JOINTS := {
 	"hip_y": 0.55, "hip_x": 0.12, "hip_z": -0.3, "height": 1.0,
 }
 const BOSS_SCALE := 1.85
+const KEEPER_SCALE := 1.3
 static var _projectile_kit: PartKit   # 箭的材質（enemy_projectile）
 
 const BLOOD := Color("d8d2bf")        # 骷髏死亡碎骨（網頁版 colors.blood）
@@ -68,6 +71,8 @@ static func character(kind: StringName) -> Rig:
 			rig = bloater()
 		&"hound":
 			rig = hound()
+		&"gravekeeper":
+			rig = gravekeeper()
 		&"boss":
 			rig = death_knight()
 		_:
@@ -278,6 +283,43 @@ static func hound() -> Rig:
 		k.add(leg, PartKit.cyl(0.06, 0.045, 0.28, 5), fur, {"y": -0.14})
 		k.add(leg, PartKit.cyl(0.035, 0.03, 0.26, 4), bone, {"y": -0.38})
 		k.add(leg, PartKit.box(0.07, 0.04, 0.1), bone, {"y": -0.5, "z": 0.03})
+	return rig.optimize()
+
+
+# 守墓人：駝背的老人，寬簷帽、灰白鬍子、長外套；右手鐵鏟、左手提燈（燈火發光）
+static func gravekeeper() -> Rig:
+	var j := KNIGHT_JOINTS.duplicate()
+	j["scale"] = KEEPER_SCALE
+	var rig := Rig.new(j)
+	var k := rig.kit
+	var coat := k.mat(C.keeper_coat)
+	var skin := k.mat(C.keeper_skin)
+	k.add(rig.body, PartKit.cyl(0.28, 0.34, 0.75, 7), coat, {"y": 1.15})
+	k.add(rig.body, PartKit.cyl(0.34, 0.38, 0.4, 7), coat, {"y": 0.72})   # 外套下擺
+	k.add(rig.body, PartKit.box(0.5, 0.06, 0.32), k.mat(C.leather), {"y": 0.98})   # 腰帶
+	k.add(rig.head, PartKit.ico(0.17, 1), skin, {"y": 0.16})
+	k.add(rig.head, PartKit.cone(0.15, 0.3, 6), k.mat(C.keeper_beard), {"y": 0.0, "z": 0.12, "rx": PI})
+	k.add(rig.head, PartKit.cyl(0.36, 0.36, 0.03, 10), k.mat(C.keeper_hat), {"y": 0.3})
+	k.add(rig.head, PartKit.cyl(0.17, 0.2, 0.22, 8), k.mat(C.keeper_hat), {"y": 0.42})
+	for s in [-1.0, 1.0]:
+		k.add(rig.head, PartKit.sphere(0.025, 4, 3), k.mat(C.socket), {"x": s * 0.06, "y": 0.2, "z": 0.15})
+	for pair in [[rig.arm_r, rig.hand_r], [rig.arm_l, rig.hand_l]]:
+		k.add(pair[0], PartKit.cyl(0.085, 0.07, 0.42, 6), coat, {"y": -0.22})
+		k.add(pair[1], PartKit.box(0.1, 0.12, 0.09), skin)
+	for leg in [rig.leg_r, rig.leg_l]:
+		k.add(leg, PartKit.cyl(0.09, 0.08, 0.5, 6), k.mat(C.keeper_hat), {"y": -0.3})
+		k.add(leg, PartKit.box(0.14, 0.1, 0.26), k.mat(C.leather), {"y": -0.88, "z": 0.05})
+	# 鐵鏟：握把中央是 grip，鏟面朝下
+	var shovel := Node3D.new()
+	k.add(shovel, PartKit.cyl(0.03, 0.03, 1.2, 5), k.mat(C.wood), {"y": -0.1})
+	k.add(shovel, PartKit.box(0.26, 0.34, 0.03), k.mat(C.iron), {"y": -0.82})
+	shovel.rotation.x = PI / 2.0
+	rig.hand_r.add_child(_hold(shovel, {"grip": Vector3(0.0, 0.2, 0.0)}))
+	# 提燈：提把在 grip，燈火發光（噴火的特效從這裡出來）
+	var lantern := Node3D.new()
+	k.add(lantern, PartKit.box(0.18, 0.24, 0.18), k.mat(C.iron), {"y": -0.2})
+	k.add(lantern, PartKit.box(0.12, 0.16, 0.12), k.mat(C.keeper_flame, true), {"y": -0.2, "shadow": false})
+	rig.hand_l.add_child(_hold(lantern, {"grip": Vector3.ZERO}))
 	return rig.optimize()
 
 

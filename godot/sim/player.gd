@@ -574,6 +574,10 @@ func _try_interact() -> void:
 	if chest != null:
 		(chest as Chest).try_open(self)
 		return
+	var keeper := world.entities.get(world.boss_id) as Gravekeeper
+	if keeper != null and keeper.can_talk(self):
+		keeper.talk()   # 跟假裝 NPC 的守墓人說話（比挖墳優先）
+		return
 	if world.event.can_exit(world, self):
 		world.event.request_exit(world, self)
 

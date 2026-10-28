@@ -20,7 +20,7 @@ const GAME_OVER_DELAY := 0.7     # 死亡後幾秒顯示結算
 const BOSS_NAME := "亡骸騎士"     # darkFantasy.js 的 names.boss
 # 介面程式碼裡寫死的中文字（橫幅、浮動文字、場上文字、連線面板、遊玩紀錄…；資料表以外的）：開場預熱用（v0.37.2）
 # check.gd 會掃 ui/ 的字串，缺字就列出來，加到這裡
-const UI_CHARS := "　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木總樂畫陰源・介想意反對取噴發巡邏膨脹犬"
+const UI_CHARS := "　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木總樂畫陰源・介想意反對取噴發巡邏膨脹犬守話又頭肥羊"
 
 const VIGNETTE_SHADER := """
 shader_type canvas_item;
@@ -446,6 +446,13 @@ func _update_fps(delta: float) -> void:
 		_fps_frames = 0
 
 
+# 目前這層 Boss 的名字（EnemyDefs 的 name）；沒有 Boss 實體（已移除）時用挖墳事件設定的那一種
+func _boss_title() -> String:
+	var boss := world.entities.get(world.boss_id) as Enemy if world != null else null
+	var type: StringName = boss.type if boss != null else EventDefs.DIG.boss_type
+	return EnemyDefs.ENEMIES[type].get("name", BOSS_NAME)
+
+
 func _update_boss(delta: float) -> void:
 	var boss: Boss = world.entities.get(world.boss_id) as Boss
 	_boss_box.visible = boss != null and not (boss.is_spawning() and boss.fsm.time < BOSS_BAR_DELAY) and not boss.is_patrolling()
@@ -454,7 +461,7 @@ func _update_boss(delta: float) -> void:
 	var r := boss.hp / boss.max_hp
 	_boss_ghost = maxf(r, _boss_ghost - delta * BOSS_GHOST_SPEED)
 	_set_bar(_boss, r, _boss_ghost)
-	_boss_name.text = BOSS_NAME + ("（狂暴）" if boss.is_enraged else "")
+	_boss_name.text = _boss_title() + ("（狂暴）" if boss.is_enraged else "")
 	_boss_name.add_theme_color_override(&"font_color", UiKit.BOSS_NAME_ENRAGED if boss.is_enraged else Color.WHITE)
 	_boss.fill.color = UiKit.BOSS_FILL_ENRAGED if boss.is_enraged else UiKit.BOSS_FILL
 
@@ -571,9 +578,9 @@ func _on_event(name: String, p: Dictionary) -> void:
 		"event:started":
 			_show_banner("開始挖墳！怪物開始湧出、墳裡會噴出下一層的怪物", true)
 		"boss:aggro":
-			_show_banner("%s 發現你了！" % BOSS_NAME, true)
+			_show_banner("%s 發現你了！" % _boss_title(), true)
 		"boss:reward":
-			_show_banner("擊敗 %s！掉落獎勵" % BOSS_NAME, false, UiKit.GOLD)
+			_show_banner("擊敗 %s！掉落獎勵" % _boss_title(), false, UiKit.GOLD)
 		"event:exit_open":
 			_show_banner("墓穴挖開了：不會再冒出怪物\n準備好再到墳墓按 F 前往下一層", false, UiKit.GOLD)
 		"vote:canceled":
@@ -597,7 +604,7 @@ func _on_event(name: String, p: Dictionary) -> void:
 			_game_over_delay = GAME_OVER_DELAY
 		"game:victory":
 			var s: Dictionary = p.stats
-			var how := "通過第 %d 層" % s.get("floor", 1) if DigEvent.enabled(world) else "擊敗 %s" % BOSS_NAME
+			var how := "通過第 %d 層" % s.get("floor", 1) if DigEvent.enabled(world) else "擊敗 %s" % _boss_title()
 			_set_game_over("勝利！", "%s · 擊殺 %d · 通關時間 %s" % [how, s.kills, UiKit.format_time(s.time)], true)
 			_game_over.visible = true
 		"game:paused":

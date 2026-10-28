@@ -251,6 +251,8 @@ static func behavior_class(behavior: StringName) -> GDScript:
 			return Bloater
 		&"hound":
 			return Hound
+		&"gravekeeper":
+			return Gravekeeper
 	return null
 
 

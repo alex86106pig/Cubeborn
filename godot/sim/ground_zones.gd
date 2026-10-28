@@ -16,7 +16,9 @@ static func add(world: World, zone: Dictionary) -> void:
 	if world.is_authority:   # 客戶端預測自己的出招時只畫圈，回血與傷害以房主為準
 		world.zones.append(z)
 	var at := {"pos": z.pos, "height": world.terrain.ground_at(z.pos), "radius": z.radius, "color": z.color, "life": z.duration}
-	if z.get("visual", &"") == &"gas":
+	var visual: StringName = z.get("visual", &"")
+	if visual == &"gas" or visual == &"fire":
+		at["fire"] = visual == &"fire"
 		world.emit_event("fx:gas_cloud", at)
 	else:
 		at["fill"] = true
@@ -49,9 +51,15 @@ static func _tick(world: World, z: Dictionary) -> void:
 		var targets: Array[Entity] = []
 		if hits_all:
 			targets.append_array(world.player_list)
-		targets.append_array(world.enemies)
+			targets.append_array(world.enemies)
+		elif owner.team == &"player":
+			targets.append_array(world.enemies)   # 玩家放的只打怪（不誤傷隊友）
+		else:
+			targets.append_array(world.player_list)   # 怪放的（守墓人的殘火）只打玩家
 		for e in targets:
 			if e == owner or e.is_dead or (not hits_all and e.team == owner.team) or e.pos.distance_to(z.pos) > z.radius + e.radius:
+				continue
+			if e is Player and not (e as Player).is_targetable():
 				continue
 			Combat.apply_damage(world, owner, e, {
 				"damage": z.damage_per_sec * TICK_INTERVAL, "damage_type": z.damage_type, "proc": true, "no_stagger": true,

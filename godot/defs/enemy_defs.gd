@@ -161,7 +161,49 @@ const ENEMIES := {
 		},
 	},
 
+	# 守墓人（第 1 層 Boss，數值 Claude 暫定）：開局假裝 NPC，第一型態慢、靠道具（sim/enemies/gravekeeper.gd）
+	&"gravekeeper": {
+		"name": "守墓人",
+		"visual": &"gravekeeper",
+		"behavior": &"gravekeeper",
+		"is_boss": true,
+		"freeze_immune": true,
+		"hit_color": Color("ff9a40"),
+		"max_hp": 700.0,
+		"move_speed": 1.8,
+		"speed_variance": 0.0,
+		"turn_speed": 3.5,
+		"radius": 0.7,
+		"mass": 30.0,
+		"knockback_mul": 0.12,
+		"spawn_time": 1.0,
+		"corpse_time": 3.5,
+		"decide_delay": 0.35,
+		"first_cooldowns": {"lob": 1.5, "lantern": 2.0, "whistle": 4.0},
+		"npc": {
+			"speed_mul": 0.4, "pause": [2.0, 4.0],   # 掃地：慢慢走、停下來掃
+			"talk_range": 1.6,                        # 身體邊緣到身體邊緣多近能按 F 說話
+			"reveal_time": 1.5,                       # 說完「又一頭肥羊……」幾秒後開打
+		},
+		"shovel": {
+			"trigger_distance": 2.8, "windup": 0.9, "track": 0.5, "active": 0.1, "recovery": 0.6,
+			"range": 3.0, "arc": PI * 120.0 / 180.0, "damage": 18.0, "knockback": 9.0, "cooldown": 2.0,
+		},
+		"lob": {
+			"min_distance": 4.0, "max_distance": 14.0, "windup": 0.6, "flight_time": 0.8, "recovery": 0.4, "cooldown": 5.0,
+			"count": 3, "spread": 2.2,      # 第一坨丟目標腳下，其他兩坨在 spread 半徑內
+			"radius": 1.2, "damage": 10.0, "knockback": 4.0, "slow_mul": 0.5, "slow_time": 1.5, "color": Color("6b4f2e"),
+		},
+		"lantern": {
+			"trigger_distance": 5.5, "windup": 0.8, "track": 0.6, "duration": 1.0, "tick": 0.25, "recovery": 0.6, "cooldown": 6.0,
+			"range": 6.0, "arc": PI * 60.0 / 180.0, "damage": 6.0, "color": Color("ff8a30"),
+			"embers": [2.5, 4.5], "ember_radius": 1.0, "ember_time": 2.0, "ember_dps": 5.0,   # 噴完沿噴火方向留下的殘火（擋不住）
+		},
+		"whistle": {"windup": 0.6, "recovery": 0.4, "cooldown": 12.0, "count": 2, "max_alive": 2, "distance": 2.0},
+	},
+
 	&"boss": {
+		"name": "亡骸騎士",
 		"visual": &"boss",
 		"behavior": &"boss",
 		"is_boss": true,
