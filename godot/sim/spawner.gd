@@ -117,11 +117,11 @@ static func _around_player(world: World, type: StringName, p: Vector2) -> Vector
 	return nav.nearest_walkable(p)
 
 
-# extra 併進 mul（例如 dormant = true，見 Enemy._init）
+# extra 併進 mul（例如 dormant = true、initial_state，見 Enemy._init）；difficulty 指定挖墳地圖用的難度（挖墳點噴出的下一層怪）
 func spawn_at(world: World, type: StringName, at: Vector2, extra: Dictionary = {}) -> Enemy:
 	var mul: Dictionary
 	if DigEvent.enabled(world):   # 挖墳地圖（D6）：所有怪（含 Boss、怪群、冤魂）依目前難度
-		mul = EventDefs.difficulty_mul(world.difficulty())
+		mul = EventDefs.difficulty_mul(extra.get("difficulty", world.difficulty()))
 	else:
 		mul = (WaveDefs.NO_SCALING if EnemyDefs.is_boss(type) else WaveDefs.wave_multipliers(wave)).duplicate()
 	mul.hp *= player_count_hp_mul(world.players.size())

@@ -1,20 +1,40 @@
-# 去下一層的事件（D6，第 1 層是挖墳；使用者 2026-10-23 選定：60 秒、難度線性無上限、
-# Boss 必掉武器 + 大寶箱道具、全員進出口後重新載入地圖且基礎難度 +10、屍體裝背包 / 冤魂復活）
-# 使用者 2026-10-25 試玩後改：事件開始先只有 Boss，Boss 倒下才開始怪潮；沒人挖時進度掉得慢很多（1% → 0.2%）
-# 難度 = 該層基礎難度 + 怪潮開始後的秒數 × per_second；怪物的生命與攻擊力、事件生怪的間隔與數量、魔法 / 稀有機率都跟著難度
+# 去下一層的事件（第 1 層是挖墳，規格見 docs/系統說明.md §15）
+# Boss 開局就在挖墳點巡邏；碰到墳墓開始事件：怪潮與挖墳點噴怪同時開始，挖完停怪，再到墳墓互動前往下一層
+# 難度 = 該層基礎難度 + 事件開始後的秒數 × per_second；怪物的生命與攻擊力、事件生怪的間隔與數量、魔法 / 稀有機率都跟著難度
 class_name EventDefs
 
 const DIG := {
-	"time": 60.0,              # 一個人不停挖幾秒挖完（多人一起挖速度相加）
-	"decay": 0.002,            # 沒人挖時進度每秒掉多少（0.2%：離開 30 秒掉 6%）
-	"range": 2.2,              # 離挖墳點這麼近才能挖（中心距離）
-	"exit_radius": 1.4,        # 挖完後墓穴就是出口：走進這個範圍就「下去」
-	"boss_distance": 8.0,      # 事件開始時 Boss 出現在挖墳點旁邊這麼遠
-	"boss_type": &"boss",     # 事件開始時出現的 Boss（EnemyDefs 的種類；之後每層可以換）
+	"time": 60.0,              # 每位玩家要挖幾秒：總量 = time × 活著的人數，多人一起挖速度相加（全員一起挖都是 60 秒）
+	"decay": 0.0,              # 沒人挖時進度每秒掉多少（0 = 不掉）
+	"range": 2.2,              # 離挖墳點這麼近才能挖、挖完後按 F 前往下一層（中心距離）
+	"exit_radius": 1.4,        # 挖完後墓穴洞口的大小（畫面用）
+	"boss_type": &"boss",     # 開局就在挖墳點巡邏的 Boss（EnemyDefs 的種類；之後每層可以換）
+	"last_floor": 1,           # 這一層挖完再互動就通關（測試版只有一層）；之後的層照舊 World.next_floor
+}
+
+# 挖墳點噴怪：事件進行中每 interval 秒在挖墳點冒紅圈，warning 秒後噴出下一層的怪，同時進度 +progress
+# 數量 = count_base + 事件開始後漲的難度 × count_per_point（無條件捨去），多人照 SPAWN.per_extra_player 放大
+# 強度：目前難度 + DIFFICULTY.per_floor（下一層的基礎難度起算）
+const ERUPT := {
+	"interval": 10.0,
+	"warning": 1.0,                # 紅圈預警幾秒後噴出（第一次在事件開始後 interval 秒）
+	"radius": 2.5,                 # 紅圈半徑
+	"color": Color("e0322a"),
+	"progress": 0.1,               # 每次噴發進度 +10%（全隊共用的進度條，不隨人數變）
+	"count_base": 3,
+	"count_per_point": 0.05,       # 難度每漲 20 點多 1 隻
+	"land_distance": [3.0, 6.0],   # 落點離挖墳點多遠
+	"flight_time": 1.0,            # 噴出後在空中幾秒（最高點 = 重力 × flight_time² ÷ 8）
+	"shake": 0.25, "shake_duration": 0.3,
+}
+
+# 挖完後的「前往下一層」投票（多人）：一人在墳墓按 F 發起，其他人 Enter 同意 / Esc 反對；全員同意或時間到就走，有人反對就取消
+const VOTE := {
+	"time": 15.0,
 }
 
 const DIFFICULTY := {
-	"per_second": 1.0,         # 怪潮開始後（Boss 倒下後）每秒 +1
+	"per_second": 1.0,         # 挖墳事件開始後每秒 +1（挖完就停）
 	"per_floor": 10.0,         # 每層基礎難度（第 1 層 0、第 2 層 10…）
 	"stat_per_point": 0.005,   # 怪物生命與攻擊力每點 +0.5%（30 點 +15%）
 }
@@ -61,6 +81,12 @@ static func spawn_interval(difficulty: float) -> float:
 
 static func group_size(difficulty: float, players: int) -> int:
 	var n: float = (SPAWN.group_base + floorf(SPAWN.group_per_point * difficulty)) * (1.0 + SPAWN.per_extra_player * maxi(0, players - 1))
+	return int(n)
+
+
+# 一次噴幾隻：rise = 事件開始後漲了多少難度
+static func erupt_count(rise: float, players: int) -> int:
+	var n: float = (ERUPT.count_base + floorf(ERUPT.count_per_point * rise)) * (1.0 + SPAWN.per_extra_player * maxi(0, players - 1))
 	return int(n)
 
 

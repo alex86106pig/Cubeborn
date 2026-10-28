@@ -58,15 +58,10 @@ static func check_dig_bar() -> String:
 		w.event._start(w)
 		w.event.progress = 0.42
 		hud._process(DT)
-		if not hud._dig_box.visible or hud._dig.text.text != "42%" or not hud._dig_name.text.contains("打倒 Boss"):
-			err = "事件中、Boss 活著：進度條 %s、%s、%s" % [hud._dig_box.visible, hud._dig.text.text, hud._dig_name.text]
+		if not hud._dig_box.visible or hud._dig.text.text != "42%" or not hud._dig_name.text.contains("噴出怪物"):
+			err = "事件中：進度條 %s、%s、%s（說明要提到噴怪）" % [hud._dig_box.visible, hud._dig.text.text, hud._dig_name.text]
 		elif absf(hud._dig.fill.size.x - hud._dig.width * 0.42) > 0.5:
 			err = "進度條長度 %.1f，預期 %.1f" % [hud._dig.fill.size.x, hud._dig.width * 0.42]
-	if err == "":
-		w.event.horde = true
-		hud._process(DT)
-		if not hud._dig_name.text.contains("越來越多"):
-			err = "怪潮開始後說明應改成怪物越來越多：%s" % hud._dig_name.text
 	if err == "":
 		var top: Control = hud._dig_box.get_parent()
 		if top != hud._boss_box.get_parent() or hud._dig_box.get_index() > hud._boss_box.get_index():
@@ -78,6 +73,23 @@ static func check_dig_bar() -> String:
 		hud._process(DT)
 		if hud._dig_box.visible:
 			err = "出口打開後應收起挖墳進度條"
+	# 投票橫幅：投票中才顯示；自己還沒同意時提示 Enter / Esc，同意後不提示
+	if err == "":
+		w.event.vote_by = World.HOST_PEER_ID
+		w.event.vote_left = 9.2
+		w.event.vote_yes.assign([2])
+		hud._process(DT)
+		if not hud._vote.visible or not hud._vote.text.contains("[Enter]") or not hud._vote.text.contains("10 秒"):
+			err = "投票中、自己還沒同意：橫幅 %s「%s」" % [hud._vote.visible, hud._vote.text]
+		w.event.vote_yes.assign([2, World.HOST_PEER_ID])
+		hud._process(DT)
+		if err == "" and hud._vote.text.contains("[Enter]"):
+			err = "自己同意後不應再提示 Enter / Esc：%s" % hud._vote.text
+		w.event.vote_by = 0
+		w.event.vote_yes.clear()
+		hud._process(DT)
+		if err == "" and hud._vote.visible:
+			err = "沒有投票時應收起投票橫幅"
 	hud.queue_free()
 	cam.queue_free()
 	return err

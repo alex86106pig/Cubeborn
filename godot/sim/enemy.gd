@@ -77,7 +77,8 @@ func _init(p_world: World, p_type: StringName, at: Vector2, mul: Dictionary, sta
 		facing = MathUtil.angle_to(pos, target.pos)
 	dormant = mul.get("dormant", false)
 	states[&"dormant"] = Dormant.new()
-	fsm = StateMachine.new(self, states, &"dormant" if dormant else &"spawn")
+	states[&"launch"] = Launch.new()
+	fsm = StateMachine.new(self, states, mul.get("initial_state", &"dormant" if dormant else &"spawn"))
 	_update_anim()
 
 
@@ -120,6 +121,20 @@ func is_boss() -> bool:
 
 func is_spawning() -> bool:
 	return fsm.is_in(&"spawn")
+
+
+func is_launching() -> bool:
+	return fsm.is_in(&"launch")
+
+
+# 噴出去（狀態 launch）：seconds 秒後落在 to（同高度的拋物線，最高點 = 重力 × seconds² ÷ 8）
+func launch_to(to: Vector2, seconds: float) -> void:
+	if not fsm.is_in(&"launch"):
+		fsm.change(&"launch")
+	fsm.data["velocity"] = (to - pos) / seconds
+	fsm.data["flight_time"] = seconds
+	vz = Entity.gravity() * seconds * 0.5
+	facing = MathUtil.angle_to(pos, to)
 
 
 # 字串只組一次（D5：200 隻怪每步都查冷卻，每次 format 太慢）
@@ -445,7 +460,7 @@ func _anim_extra(_a: Dictionary) -> void:
 func _on_damaged(_amount: float, _source_id: int) -> void:
 	if pack_id >= 0 and dormant:
 		world.wake_pack(pack_id)   # 被打（例如遠距離魔彈）整群醒來
-	if not is_dead and not is_spawning() and fsm.states.has(&"hurt") and not suppress_stagger:
+	if not is_dead and not is_spawning() and not is_launching() and fsm.states.has(&"hurt") and not suppress_stagger:
 		fsm.change(&"hurt")
 
 
@@ -495,6 +510,19 @@ static func base_states() -> Dictionary:
 class Train:
 	func update(e: Enemy, _dt: float, _fsm: StateMachine) -> void:
 		e.velocity = Vector2.ZERO
+
+
+# 從挖墳點噴出來（DigEvent._erupt）：照拋物線飛到落點，空中不行動、不硬直，落地後開始追
+class Launch:
+	func update(e: Enemy, _dt: float, fsm: StateMachine) -> void:
+		if not fsm.data.has("velocity"):
+			e.velocity = Vector2.ZERO   # 還沒呼叫 launch_to（不該發生）：當成一般出生
+			fsm.change(e.main_state)
+			return
+		e.velocity = fsm.data.velocity
+		if fsm.time >= fsm.data.flight_time * 0.5 and e.is_grounded():
+			e.velocity = Vector2.ZERO
+			fsm.change(e.main_state)
 
 
 # 怪群休眠（D5）：站著不動，醒來（dormant = false）後直接開始追，不播爬出動畫

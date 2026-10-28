@@ -62,7 +62,13 @@ func update(e: Enemy, dt: float) -> void:
 			var corpse: float = def.corpse_time
 			var sink_start := corpse * CORPSE_SINK_START
 			rig.position.y = -CORPSE_SINK_DEPTH * clampf((t - sink_start) / (corpse - sink_start), 0.0, 1.0)
-		&"chase":
+		&"launch":
+			# 從挖墳點噴出來：雙手往上甩、腿縮起來
+			rig.arm_r.rotation.x = -2.4 + 0.3 * sin(t * 18.0)
+			rig.arm_l.rotation.x = -2.4 - 0.3 * sin(t * 18.0)
+			rig.leg_r.rotation.x = 0.6
+			rig.leg_l.rotation.x = 0.4
+		&"chase", &"patrol":
 			if e.is_boss():
 				walk_phase += dt * e.velocity.length() * 1.6
 				_pose_walk(1.0 if moving else 0.0, -0.5, -0.3)

@@ -411,23 +411,27 @@ static func check_nav_clearance() -> String:
 	return ""
 
 
-# D6 起地圖 A 沒有波次，小怪由挖墳事件生（同樣用 Spawner._around_player 的距離）；Boss 在挖墳點旁邊，不算
+# D6 起地圖 A 沒有波次，小怪由挖墳事件生（怪潮同樣用 Spawner._around_player 的距離）；Boss、挖墳點噴出來的不算
 static func check_map_spawns() -> String:
 	var w := _new_world(12345, true, &"graveyard_a")
 	var p := _player(w)
 	var s: Dictionary = Config.SPAWNER
 	var seen := {}
 	var count := 0
+	w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO)}, DT)   # 第一步放 Boss
+	(w.entities.get(w.boss_id) as Enemy).die()   # Boss 巡邏到玩家附近會打人，這裡只看生怪位置
 	w.event._start(w)
-	(w.entities.get(w.boss_id) as Enemy).die()   # 怪潮在 Boss 倒下後才開始（v0.38.0）
 	for e: Entity in w.enemies:
 		seen[e.id] = true
 	for i in 60 * 60:
 		p.hp = p.max_hp
 		w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO)}, DT)
 		for e: Entity in w.enemies:
-			# Boss、Boss 召喚的、召喚詞條叫出來的（生在召喚者旁邊）不算
+			# Boss、Boss 召喚的、召喚詞條叫出來的（生在召喚者旁邊）、挖墳點噴出來的（出生就在 launch）不算
 			if seen.has(e.id) or not (e is Enemy and (e as Enemy).wave_member and (e as Enemy).summoner_id == 0):
+				continue
+			if (e as Enemy).is_launching():
+				seen[e.id] = true
 				continue
 			seen[e.id] = true
 			var dist := e.pos.distance_to(p.pos)

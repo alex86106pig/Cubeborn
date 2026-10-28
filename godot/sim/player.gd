@@ -40,7 +40,7 @@ var inventory: Inventory:              # 背包的擺放（D3）；items 與它�
 		return loadout.inventory
 var _applied_weapon_uid := &""
 var _air_jumps_used := 0               # 這次離地後用掉的空中跳躍（落地歸零）
-var descended := false                 # 已走進出口（D6）：等其他人到齊才換層，期間不見、不能被打
+var descended := false                 # 已離開這一層、等其他人（不見、不能被打）；換層改成墳墓互動 + 投票後沒有地方設成 true，畫面與快照仍支援
 var stun_timer := 0.0                  # 暈眩剩餘秒數（v0.27.0：Boss 衝鋒撞到）：不能移動、出招、翻滾、跳
 var combo_step := 0
 var combo_timer := 0.0
@@ -200,16 +200,6 @@ static func corpse_uid(p_peer_id: int) -> StringName:
 
 func is_digging() -> bool:
 	return not is_dead and not is_downed and not descended and action != null and action.is_in(&"dig")
-
-
-# 走進出口：從這一層消失（不能被打、不被追），等其他人
-func descend() -> void:
-	descended = true
-	velocity = Vector2.ZERO
-	has_forced_velocity = false
-	buffered_action = {}
-	action.change(&"ready")
-	world.emit_event("player:descended", {"player_id": id})
 
 
 # 新的一層：回到出生點（死者也搬過去，等冤魂被打倒才在冤魂的位置站起來）
@@ -571,6 +561,9 @@ func _try_interact() -> void:
 	var chest := world.nearest_interactable(self, world.chests)
 	if chest != null:
 		(chest as Chest).try_open(self)
+		return
+	if world.event.can_exit(world, self):
+		world.event.request_exit(world, self)
 
 
 func clear_items() -> void:
@@ -579,6 +572,9 @@ func clear_items() -> void:
 
 func update(dt: float) -> void:
 	_tick_timers(dt)
+	# 前往下一層的投票（權威端）：倒地、暈眩時也能投
+	if world.is_authority and not is_dead and _pressed & (InputCmd.BTN_VOTE_YES | InputCmd.BTN_VOTE_NO):
+		world.event.cast_vote(world, self, _pressed & InputCmd.BTN_VOTE_YES != 0)
 	if is_dead or is_downed or descended or stun_timer > 0.0:
 		stun_timer = maxf(0.0, stun_timer - dt)
 		if stun_timer > 0.0:

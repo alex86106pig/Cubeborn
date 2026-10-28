@@ -35,6 +35,7 @@ const MAPS := {
 		"origin": Vector2(48.0, 48.0),
 		"spawn": Vector2(48.0, 88.0),
 		"dig": Vector2(48.0, 50.0),
+		"boss_room": [36.5, 36.5, 23.0, 23.0],   # Boss 巡邏範圍 [x, y, 寬, 深]：王族墓圍牆內側留 2 格（Boss 半徑大，貼牆會卡）
 		"spawn_rule": &"around_player",
 		"blocks": [
 			# 外圍

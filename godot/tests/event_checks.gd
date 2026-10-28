@@ -67,20 +67,22 @@ static func check_dig() -> String:
 		return "按住 F 第一步應開始事件並進入挖墳（狀態 %s、動作 %s）" % [w.event.state, p.action.current_name]
 	# 挖墳中不能移動、不能跳
 	var at := p.pos
-	_step(w, 30, {World.HOST_PEER_ID: _cmd(InputCmd.BTN_INTERACT | InputCmd.BTN_JUMP, Vector2(1, 0))})
+	ev.append_array(_step(w, 30, {World.HOST_PEER_ID: _cmd(InputCmd.BTN_INTERACT | InputCmd.BTN_JUMP, Vector2(1, 0))}))
 	if p.pos.distance_to(at) > EPS or p.height > EPS:
 		return "挖墳中移動了 %.3f、高度 %.2f" % [p.pos.distance_to(at), p.height]
 	# 挖墳中照樣跟著滑鼠轉向（v0.38.0 使用者要求）：瞄準正東 → facing = π/2
 	var look := _cmd(InputCmd.BTN_INTERACT)
 	look.aim = p.pos + Vector2(10, 0)
-	_step(w, 20, {World.HOST_PEER_ID: look})
+	ev.append_array(_step(w, 20, {World.HOST_PEER_ID: look}))
 	if not p.is_digging() or absf(angle_difference(p.facing, PI / 2.0)) > 0.01:
 		return "挖墳中應跟著滑鼠轉向：挖墳 %s、朝向 %.2f（預期 %.2f）" % [p.is_digging(), p.facing, PI / 2.0]
-	# 挖一半的時間 = 50%（前面已經挖了 51 步）
+	# 一人挖 30 秒 = 30 / DIG.time，加上這段時間每次噴怪的 +ERUPT.progress（前面已經挖了 51 步）
 	var dig_time: float = EventDefs.DIG.time
-	_step(w, roundi(dig_time / 2.0 / DT) - 51, dig)
-	if absf(w.event.progress - 0.5) > 0.01:
-		return "挖 %.0f 秒進度 %.3f，預期 0.5" % [dig_time / 2.0, w.event.progress]
+	ev.append_array(_step(w, roundi(dig_time / 2.0 / DT) - 51, dig))
+	var erupts := _named(ev, "event:erupted").size()
+	var want_half: float = 0.5 + erupts * EventDefs.ERUPT.progress
+	if erupts != floori(dig_time / 2.0 / EventDefs.ERUPT.interval) or absf(w.event.progress - want_half) > 0.01:
+		return "挖 %.0f 秒（噴怪 %d 次）進度 %.3f，預期 %.3f" % [dig_time / 2.0, erupts, w.event.progress, want_half]
 	# 被打不中斷、不會被擊退出挖墳範圍
 	var hit_at := p.pos
 	p.take_damage(10.0, Vector2(1, 0), 20.0, 0)
@@ -97,26 +99,37 @@ static func check_dig() -> String:
 		e.remove()
 	if not crowd_ok:
 		return "被骷髏圍住時被擠走 %.2f 或中斷挖墳" % p.pos.distance_to(hit_at)
-	# 放手 10 秒掉 10 × decay
+	# 放手 10 秒進度不掉，只有噴怪的 +ERUPT.progress
 	var before := w.event.progress
-	var drop: float = EventDefs.DIG.decay * 10.0
-	_step(w, 600)
-	if p.is_digging() or absf(before - w.event.progress - drop) > 0.002:
-		return "放手 10 秒進度 %.3f → %.3f，預期少 %.3f" % [before, w.event.progress, drop]
-	# 兩個人一起挖速度相加
+	var ev_idle := _step(w, 600)
+	var want_idle: float = before + _named(ev_idle, "event:erupted").size() * EventDefs.ERUPT.progress
+	if p.is_digging() or absf(w.event.progress - want_idle) > 0.002:
+		return "放手 10 秒進度 %.3f → %.3f，預期 %.3f（不掉，噴怪 %d 次）" % [before, w.event.progress, want_idle, _named(ev_idle, "event:erupted").size()]
+	# 兩人：總量 DIG.time × 2，一起挖 10 秒 = 1 / 6；只有一人挖是一半（還沒到第一次噴怪）
 	var w2 := _world([1, 2])
 	_p(w2, 1).pos = w2.event.point + Vector2(1.5, 0.0)
 	_p(w2, 2).pos = w2.event.point + Vector2(-1.5, 0.0)
-	_step(w2, 600, {1: _cmd(InputCmd.BTN_INTERACT), 2: _cmd(InputCmd.BTN_INTERACT)})
-	var two := 2.0 * 10.0 / dig_time
-	if absf(w2.event.progress - two) > 0.01:
-		return "兩人一起挖 10 秒進度 %.3f，預期 %.3f" % [w2.event.progress, two]
-	# 挖完：出口打開，不能再挖
+	_step(w2, 590, {1: _cmd(InputCmd.BTN_INTERACT), 2: _cmd(InputCmd.BTN_INTERACT)})
+	var two := 2.0 * (590 * DT) / (dig_time * 2.0)
+	if absf(w2.event.progress - two) > 0.002:
+		return "兩人一起挖 %.2f 秒進度 %.3f，預期 %.3f（總量 × 人數）" % [590 * DT, w2.event.progress, two]
+	var w2b := _world([1, 2])
+	_p(w2b, 1).pos = w2b.event.point + Vector2(1.5, 0.0)
+	_step(w2b, 590, {1: _cmd(InputCmd.BTN_INTERACT)})
+	if absf(w2b.event.progress - two / 2.0) > 0.002:
+		return "兩人只有一人挖 %.2f 秒進度 %.3f，預期 %.3f" % [590 * DT, w2b.event.progress, two / 2.0]
+	# 挖完：出口打開，不能再挖（一直挖 + 噴怪，DIG.time 秒內一定挖完）
 	var w3 := _world()
 	_p(w3).pos = w3.event.point + Vector2(1.5, 0.0)
-	var ev3 := _step(w3, roundi(dig_time / DT) + 2, {World.HOST_PEER_ID: _cmd(InputCmd.BTN_INTERACT)})
+	var ev3: Array[Dictionary] = []
+	var open_steps := 0
+	for i in roundi(dig_time / DT) + 2:
+		ev3.append_array(_step(w3, 1, {World.HOST_PEER_ID: _cmd(InputCmd.BTN_INTERACT)}))
+		if open_steps == 0 and w3.event.state == DigEvent.OPEN:
+			open_steps = i + 1
 	if w3.event.state != DigEvent.OPEN or _named(ev3, "event:exit_open").size() != 1 or _p(w3).is_digging():
 		return "挖滿 %.0f 秒應打開出口並停止挖墳（狀態 %s）" % [dig_time, w3.event.state]
+	CheckKit._note("一人一直挖：%.2f 秒挖完（DIG.time %.0f 秒 + 每 %.0f 秒噴怪 +%d%%）" % [open_steps * DT, dig_time, EventDefs.ERUPT.interval, roundi(EventDefs.ERUPT.progress * 100.0)])
 	# 太遠挖不到
 	var w4 := _world()
 	_p(w4).pos = w4.event.point + Vector2(EventDefs.DIG.range + 0.3, 0.0)
@@ -157,24 +170,20 @@ static func check_difficulty() -> String:
 			r += 1 if x == MonsterRarityDefs.RARE else 0
 		if absf(m / 20000.0 - c[1]) > 0.015 or absf(r / 20000.0 - c[2]) > 0.015:
 			return "難度 %d：魔法 %.1f%%、稀有 %.1f%%，預期 %.0f%% / %.0f%%" % [c[0], m / 200.0, r / 200.0, c[1] * 100, c[2] * 100]
-	# 事件中：Boss 在挖墳點旁邊出現；Boss 活著時不冒怪、難度不漲（v0.38.0）；Boss 倒下後怪潮開始：
-	# interval_start 秒後第一批 group_base 隻（離玩家 8~18）、難度每秒 +per_second；60 秒後冒出來的骷髏生命 × difficulty_mul
+	# 事件還沒開始：不冒怪、難度不漲（Boss 在巡邏，另外檢查）
 	var w := _world([World.HOST_PEER_ID], true)
 	var p := _p(w)
-	p.pos = w.event.point + Vector2(1.5, 0.0)
-	_step(w, 1, {World.HOST_PEER_ID: _cmd(InputCmd.BTN_INTERACT)})
-	var boss: Enemy = w.entities.get(w.boss_id)
-	if boss == null or boss.pos.distance_to(w.event.point) > EventDefs.DIG.boss_distance + 1.5:
-		return "事件開始時 Boss 應出現在挖墳點旁邊"
 	var spawned := func() -> Array:
 		return w.enemies.filter(func(e: Entity) -> bool: return e is Enemy and (e as Enemy).wave_member)
-	_step(w, roundi(20.0 / DT))   # 玩家每步補滿血，只等時間
+	_step(w, roundi(20.0 / DT))   # 玩家在出生點、每步補滿血，只等時間
 	if not spawned.call().is_empty() or w.event.horde or absf(w.difficulty() - w.base_difficulty) > EPS:
-		return "Boss 活著的 20 秒內不應冒怪、難度不漲：冒了 %d 隻、怪潮 %s、難度 %.1f" % [spawned.call().size(), w.event.horde, w.difficulty()]
-	boss.die()
-	var ev_boss := _step(w, 1)
-	if not w.event.horde or _named(ev_boss, "event:horde").is_empty():
-		return "Boss 倒下後應開始怪潮並發出 event:horde"
+		return "還沒挖墳的 20 秒內不應冒怪、難度不漲：冒了 %d 隻、怪潮 %s、難度 %.1f" % [spawned.call().size(), w.event.horde, w.difficulty()]
+	# 開挖就開始怪潮（不等 Boss 倒下）：interval_start 秒後第一批 group_base 隻、難度每秒 +per_second
+	(w.entities.get(w.boss_id) as Enemy).remove()   # Boss 會走過來打人、召喚，這裡只數事件生的怪
+	p.pos = w.event.point + Vector2(1.5, 0.0)
+	_step(w, 1, {World.HOST_PEER_ID: _cmd(InputCmd.BTN_INTERACT)})
+	if not w.event.horde or w.event.state != DigEvent.ACTIVE:
+		return "開挖後應立刻開始怪潮（狀態 %s、怪潮 %s）" % [w.event.state, w.event.horde]
 	var first := roundi(EventDefs.SPAWN.interval_start / DT)
 	_step(w, first - 3)
 	if not spawned.call().is_empty():
@@ -183,7 +192,7 @@ static func check_difficulty() -> String:
 	if spawned.call().size() != EventDefs.SPAWN.group_base:
 		return "怪潮開始 %.1f 秒後應冒 %d 隻，實際 %d" % [EventDefs.SPAWN.interval_start, EventDefs.SPAWN.group_base, spawned.call().size()]
 	if absf(w.difficulty() - (w.base_difficulty + EventDefs.SPAWN.interval_start)) > 0.1:
-		return "怪潮 %.1f 秒時難度 %.2f，預期約 %.1f（每秒 +1）" % [EventDefs.SPAWN.interval_start, w.difficulty(), w.base_difficulty + EventDefs.SPAWN.interval_start]
+		return "事件 %.1f 秒時難度 %.2f，預期約 %.1f（每秒 +1）" % [EventDefs.SPAWN.interval_start, w.difficulty(), w.base_difficulty + EventDefs.SPAWN.interval_start]
 	w.event.time = 60.0
 	var g := w.spawner.spawn_at(w, &"grunt", w.event.point + Vector2(0, 6))
 	var diff60: float = 60.0 * dd.per_second
@@ -208,12 +217,67 @@ static func check_difficulty() -> String:
 	w2.reset(12345)
 	var before := w2.enemies.size()
 	w2.event._start(w2)
-	(w2.entities.get(w2.boss_id) as Enemy).die()   # 怪潮在 Boss 倒下後才開始
 	_step(w2, roundi(EventDefs.SPAWN.interval_start / DT) + 3)
 	var horde := w2.enemies.filter(func(e: Entity) -> bool: return e is Enemy and (e as Enemy).wave_member and not e.is_dead).size()
 	var min_packed: int = MonsterRarityDefs.PACKS.count[0] * MonsterRarityDefs.PACKS.size[0]
 	if before < min_packed or horde < EventDefs.SPAWN.group_base:
 		return "有 %d 隻怪群時事件沒有冒怪（冒了 %d 隻）" % [before, horde]
+	return _check_erupt()
+
+
+# 挖墳點噴怪：每 interval 秒（前 warning 秒冒紅圈）噴出 erupt_count 隻下一層難度的怪、進度 +progress；
+# 噴出的怪照拋物線飛到 land_distance 外、空中不行動，落地後開始追；挖完就不再冒怪、難度不再漲，場上的怪留著
+static func _check_erupt() -> String:
+	var c: Dictionary = EventDefs.ERUPT
+	for t: Array in [[0.0, 1, c.count_base], [20.0, 1, c.count_base + 1], [20.0, 2, int((c.count_base + 1) * (1.0 + EventDefs.SPAWN.per_extra_player))]]:
+		if EventDefs.erupt_count(t[0], t[1]) != t[2]:
+			return "難度漲 %d、%d 人一次噴 %d 隻，預期 %d" % [t[0], t[1], EventDefs.erupt_count(t[0], t[1]), t[2]]
+	var w := _world([World.HOST_PEER_ID], true)
+	var p := _p(w)
+	_step(w, 1)
+	(w.entities.get(w.boss_id) as Enemy).remove()
+	w.event._start(w)
+	w.event.spawn_timer = 1e9   # 只看噴怪（怪潮另外檢查）
+	var steps := roundi(c.interval / DT)
+	var warn := roundi((c.interval - c.warning) / DT)
+	var ev := _step(w, warn + 1)
+	var circles := _named(ev, "fx:telegraph").filter(func(e: Dictionary) -> bool: return e.pos.distance_to(w.event.point) < EPS)
+	if circles.size() != 1 or absf(circles[0].life - c.warning) > EPS or not _named(ev, "event:erupted").is_empty():
+		return "噴怪前 %.1f 秒應在挖墳點冒一個紅圈（紅圈 %d 個、已噴 %d 次）" % [c.warning, circles.size(), _named(ev, "event:erupted").size()]
+	var before := w.event.progress
+	ev = _step(w, steps - warn)
+	var launched := w.enemies.filter(func(e: Entity) -> bool: return (e as Enemy).is_launching())
+	var want := EventDefs.erupt_count(w.difficulty() - w.base_difficulty, 1)
+	if _named(ev, "event:erupted").size() != 1 or launched.size() != want or absf(w.event.progress - before - c.progress) > EPS:
+		return "第 %.0f 秒應噴 %d 隻、進度 +%.2f（噴 %d 次、%d 隻在空中、進度 +%.3f）" % [c.interval, want, c.progress, _named(ev, "event:erupted").size(), launched.size(), w.event.progress - before]
+	var g: Enemy = launched[0]
+	var hp_next := roundf(EnemyDefs.ENEMIES[g.type].max_hp * EventDefs.difficulty_mul(w.difficulty() + EventDefs.DIFFICULTY.per_floor).hp)
+	if g.rarity == MonsterRarityDefs.NORMAL and absf(g.max_hp - hp_next) > 1.0:
+		return "噴出的怪生命 %.0f，預期下一層難度的 %.0f" % [g.max_hp, hp_next]
+	var top := 0.0
+	for i in roundi(c.flight_time / DT) + 10:
+		_step(w, 1)
+		top = maxf(top, g.height)
+		if g.is_launching() and g.anim.state != &"launch":
+			return "空中的怪動畫狀態應是 launch"
+	var flown := g.pos.distance_to(w.event.point)
+	if g.is_launching() or not g.is_grounded() or top < 2.0 or flown < c.land_distance[0] - 1.0 or flown > c.land_distance[1] + 1.0:
+		return "噴出的怪應飛起 2 以上、落在 %.0f~%.0f 外並開始行動（最高 %.2f、落點 %.1f、狀態 %s）" % [c.land_distance[0], c.land_distance[1], top, flown, g.fsm.current_name]
+	CheckKit._note("噴怪：一次 %d 隻、最高 %.2f、飛 %.1f 秒落在挖墳點 %.1f 外" % [want, top, c.flight_time, flown])
+	# 挖完：不再冒怪、難度不漲，場上的留著
+	w.event.progress = 0.99
+	p.pos = w.event.point + Vector2(1.5, 0.0)
+	_step(w, 60, {World.HOST_PEER_ID: _cmd(InputCmd.BTN_INTERACT)})
+	if w.event.state != DigEvent.OPEN or w.event.horde:
+		return "挖到 100%% 應打開出口、停止怪潮（狀態 %s、怪潮 %s）" % [w.event.state, w.event.horde]
+	var left := w.enemies.size()
+	var diff := w.difficulty()
+	w.event.spawn_timer = 0.0
+	ev = _step(w, roundi((c.interval + 6.0) / DT))
+	if _named(ev, "event:erupted").size() != 0 or w.enemies.size() > left or absf(w.difficulty() - diff) > EPS:
+		return "挖完後不應再冒怪、難度不漲（噴 %d 次、怪 %d → %d、難度 %.1f → %.1f）" % [_named(ev, "event:erupted").size(), left, w.enemies.size(), diff, w.difficulty()]
+	if left < want:
+		return "挖完時場上的怪不該消失（剩 %d 隻）" % left
 	return ""
 
 
@@ -222,27 +286,46 @@ static func check_difficulty() -> String:
 static func _open(w: World) -> void:
 	w.event._start(w)
 	w.event.state = DigEvent.OPEN
+	w.event.horde = false
 	w.event.progress = 1.0
 
 
 static func check_next_floor() -> String:
-	# 單人：走進出口就換層
+	# 單人：挖完後走到墳墓旁不會自動走；離太遠按 F 沒用；在旁邊按 F，最後一層（last_floor）直接通關
 	var w := _world()
 	var p := _p(w)
+	_open(w)
+	var f := {World.HOST_PEER_ID: _cmd(InputCmd.BTN_INTERACT)}
+	p.pos = w.event.point + Vector2(EventDefs.DIG.range + 0.5, 0.0)
+	_step(w, 1, f)
+	_step(w, 1)
+	p.pos = w.event.point
+	_step(w, 30)
+	if w.is_over or w.floor_num != 1 or w.event.is_voting():
+		return "沒在墳墓旁按 F 就通關 / 換層了"
+	var ev := _step(w, 1, f)
+	if not w.is_over or w.floor_num != 1 or w.event.is_voting() or not _named(ev, "vote:started").is_empty():
+		return "單人第 %d 層（last_floor %d）按 F 應直接通關、不跳投票（通關 %s）" % [w.floor_num, EventDefs.DIG.last_floor, w.is_over]
+	ev = _step(w, roundi(Config.WORLD.victory_delay / DT) + 2)
+	if _named(ev, "game:victory").size() != 1:
+		return "通關後 victory_delay 秒應發出 game:victory"
+	var vote_err := _check_vote()
+	if vote_err != "":
+		return vote_err
+	# 換層本身（不是最後一層時由投票通過呼叫 World.next_floor）
+	w = _world()
+	p = _p(w)
 	w.souls = 40
 	p.add_item(&"whetstone")
 	_open(w)
-	p.pos = w.event.point + Vector2(EventDefs.DIG.exit_radius + 0.5, 0.0)
-	_step(w, 5)
-	if p.descended or w.floor_num != 1:
-		return "還沒走進出口就下去了"
 	w.drop_item(&"worn_boots", w.event.point + Vector2(5, 5))
 	(w.chests[0] as Chest).opened = true
 	p.pos = w.event.point
-	var ev := _step(w, 1)
+	w.next_floor()
+	ev = w.events.duplicate()   # 不跑下一步：下一步會放新一層的 Boss
 	var per_floor: float = EventDefs.DIFFICULTY.per_floor
 	if w.floor_num != 2 or absf(w.base_difficulty - per_floor) > EPS or _named(ev, "floor:started").is_empty():
-		return "走進出口後應到第 2 層、基礎難度 %.0f（實際第 %d 層、%.1f）" % [per_floor, w.floor_num, w.base_difficulty]
+		return "換層後應到第 2 層、基礎難度 %.0f（實際第 %d 層、%.1f）" % [per_floor, w.floor_num, w.base_difficulty]
 	if p.pos.distance_to(w.spawn_point) > EPS or p.descended:
 		return "新的一層應回到出生點"
 	if w.souls != 40 or p.inventory.entries.size() != 1:
@@ -267,26 +350,52 @@ static func check_next_floor() -> String:
 	var hp2 := roundf(EnemyDefs.ENEMIES.grunt.max_hp * EventDefs.difficulty_mul(per_floor).hp)   # 37.8 取整 38
 	if normal == null or absf(normal.max_hp - hp2) > EPS:
 		return "第 2 層普通骷髏生命 %.2f，預期 %.0f" % [normal.max_hp if normal else 0.0, hp2]
+	return ""
 
-	# 兩人：先到的消失（不能被打、不被追），等另一人；有人倒地就不換層
+
+# 多人投票：一人在墳墓旁按 F 發起（他算同意）；別人 Esc 反對就取消；全員 Enter 同意或 VOTE.time 秒到就走；死掉的不用投
+static func _check_vote() -> String:
+	var w := _world([1, 2, 3])
+	_open(w)
+	_p(w, 1).pos = w.event.point
+	var ev := _step(w, 1, {1: _cmd(InputCmd.BTN_INTERACT)})
+	if not w.event.is_voting() or w.event.vote_by != 1 or w.event.vote_yes != [1] or _named(ev, "vote:started").size() != 1 or w.is_over:
+		return "多人在墳墓按 F 應發起投票（投票中 %s、同意 %s、通關 %s）" % [w.event.is_voting(), w.event.vote_yes, w.is_over]
+	if w.event.awaits_vote(1) or not w.event.awaits_vote(2):
+		return "發起人算同意、其他人要回答"
+	_step(w, 1, {2: _cmd(InputCmd.BTN_VOTE_YES)})
+	ev = _step(w, 1, {3: _cmd(InputCmd.BTN_VOTE_NO)})
+	if w.event.is_voting() or w.is_over or _named(ev, "vote:canceled").size() != 1:
+		return "有人按 Esc 反對應取消投票（投票中 %s、通關 %s）" % [w.event.is_voting(), w.is_over]
+	# 再發起：全員同意就走
+	_step(w, 1)
+	_step(w, 1, {1: _cmd(InputCmd.BTN_INTERACT)})
+	_step(w, 1, {2: _cmd(InputCmd.BTN_VOTE_YES)})
+	if w.is_over:
+		return "還有一人沒同意就走了"
+	ev = _step(w, 1, {3: _cmd(InputCmd.BTN_VOTE_YES)})
+	if not w.is_over or _named(ev, "vote:passed").size() != 1:
+		return "全員同意應前往下一層（最後一層 = 通關）"
+	# 時間到：沒人回答也走
 	var w2 := _world([1, 2])
 	_open(w2)
-	var a := _p(w2, 1)
-	var b := _p(w2, 2)
-	a.pos = w2.event.point
-	b.pos = w2.event.point + Vector2(6, 0)
-	_step(w2, 2)
-	if not a.descended or a.is_targetable() or a.can_be_hit() or w2.floor_num != 1:
-		return "第一人進出口後應消失、不能被打，並等另一人"
-	b.die()   # 多人：先倒地
-	b.pos = w2.event.point
-	_step(w2, 5, {}, false)
-	if not b.is_downed or w2.floor_num != 1:
-		return "有人倒地時不應換層"
-	b.revive()
-	_step(w2, 1)
-	if w2.floor_num != 2 or a.descended or b.descended:
-		return "兩人都進出口後應換層（第 %d 層）" % w2.floor_num
+	_p(w2, 2).pos = w2.event.point
+	_step(w2, 1, {2: _cmd(InputCmd.BTN_INTERACT)})
+	_step(w2, roundi(EventDefs.VOTE.time / DT) - 5)
+	if w2.is_over or not w2.event.is_voting():
+		return "投票 %.0f 秒還沒到就結束了" % EventDefs.VOTE.time
+	_step(w2, 10)
+	if not w2.is_over:
+		return "投票 %.0f 秒到了應前往下一層" % EventDefs.VOTE.time
+	# 死掉的不用投：另一人陣亡時，按 F 直接走
+	var w3 := _world([1, 2])
+	_open(w3)
+	_p(w3, 2).die()
+	_p(w3, 2).die()
+	_p(w3, 1).pos = w3.event.point
+	_step(w3, 1, {1: _cmd(InputCmd.BTN_INTERACT)}, false)
+	if not w3.is_over:
+		return "隊友陣亡時活著的人按 F 應直接走"
 	return ""
 
 
@@ -294,7 +403,7 @@ static func check_next_floor() -> String:
 
 static func check_boss_reward() -> String:
 	var w := _world([World.HOST_PEER_ID], true)
-	w.event._start(w)
+	_step(w, 1)   # 第一步放 Boss
 	var boss: Enemy = w.entities.get(w.boss_id)
 	var souls := w.souls
 	boss.take_damage(1e6, Vector2(1, 0), 0.0, 0)
@@ -310,6 +419,51 @@ static func check_boss_reward() -> String:
 		return "挖墳地圖打倒 Boss 不該通關"
 	if weapons != 1 or items != 1 or w.souls != souls + LootDefs.KILL_SOULS.boss:   # v0.44.0 Boss 靈魂 50 → 30
 		return "Boss 應掉 1 把武器、1 個道具、%d 靈魂（實際 %d / %d / %d）" % [LootDefs.KILL_SOULS.boss, weapons, items, w.souls - souls]
+	return _check_boss_patrol()
+
+
+static func _check_boss_patrol() -> String:
+	var w := _world([World.HOST_PEER_ID], true)
+	var p := _p(w)   # 在出生點（王族墓外、南邊很遠）
+	_step(w, 1)
+	var boss: Boss = w.entities.get(w.boss_id)
+	var room: Array = w.map.boss_room
+	var rect := Rect2(MapDefs.to_world(w.map, Vector2(room[0], room[1])), Vector2(room[2], room[3])).grow(1.0)
+	if boss == null or not boss.is_patrolling() or not rect.has_point(boss.pos):
+		return "開局 Boss 應在 boss_room 裡巡邏（Boss %s、狀態 %s）" % [boss != null, boss.fsm.current_name if boss else &""]
+	var walked := 0.0
+	for i in roundi(40.0 / DT):
+		var before := boss.pos
+		_step(w, 1)
+		walked += boss.pos.distance_to(before)
+		if not boss.is_patrolling() or not rect.has_point(boss.pos):
+			return "沒看到玩家時 Boss 應一直在範圍內巡邏（第 %.1f 秒：狀態 %s、位置 %s）" % [i * DT, boss.fsm.current_name, boss.pos]
+	if walked < 5.0:
+		return "Boss 巡邏 40 秒只走了 %.1f" % walked
+	# 走到 Boss 面前（視野內、沒被牆擋）：開始追，之後跟著玩家走出範圍
+	p.pos = boss.pos + MathUtil.dir_from_angle(boss.facing) * 6.0
+	p.pos = w.nav.nearest_walkable(p.pos)
+	var ev := _step(w, 2)
+	if boss.is_patrolling() or _named(ev, "boss:aggro").size() != 1:
+		return "玩家在 Boss 前方 6 應被發現（狀態 %s）" % boss.fsm.current_name
+	p.pos = w.spawn_point
+	var left := false
+	for i in roundi(30.0 / DT):
+		_step(w, 1)
+		if not rect.has_point(boss.pos):
+			left = true
+			break
+	if not left:
+		return "Boss 開始追之後應能離開巡邏範圍追玩家"
+	# 被打也會開始追（玩家在背後、看不到）
+	var w2 := _world([World.HOST_PEER_ID], true)
+	_step(w2, 1)
+	var b2: Boss = w2.entities.get(w2.boss_id)
+	b2.take_damage(1.0, Vector2.ZERO, 0.0, _p(w2).id)
+	_step(w2, 1)
+	if b2.is_patrolling():
+		return "Boss 被打應開始追"
+	CheckKit._note("Boss 巡邏 40 秒走了 %.1f" % walked)
 	return ""
 
 
@@ -339,9 +493,7 @@ static func check_corpse_ghost() -> String:
 	if entry.is_empty() or Inventory.cells_of(entry.id, entry.rot).size() != cells or not a.items.is_empty():
 		return "撿起屍體應放進背包占 %d 格、不算生效道具" % cells
 	# 換層：出現冤魂（離出生點 GHOST.distance）
-	_open(w)
-	a.pos = w.event.point
-	_step(w, 1)
+	w.next_floor()
 	var ghost: Enemy = null
 	for e in w.enemies:
 		if (e as Enemy).ghost_of == 2:
@@ -364,9 +516,7 @@ static func check_corpse_ghost() -> String:
 	var w2 := _world([1, 2])
 	_p(w2, 2).die()
 	_p(w2, 2).die()
-	_open(w2)
-	_p(w2, 1).pos = w2.event.point
-	_step(w2, 1)
+	w2.next_floor()
 	for e in w2.enemies:
 		if (e as Enemy).ghost_of != 0:
 			return "沒人帶屍體也出現冤魂"
@@ -409,4 +559,13 @@ static func check_net_event() -> String:
 		return "客戶端的「已進出口」或屍體主人沒同步"
 	if cw.event.point.distance_to(w.event.point) > EPS:
 		return "客戶端的挖墳點不同"
+	# 投票（HUD 的橫幅與 Enter / Esc 提示要用）
+	w.event.vote_by = 2
+	w.event.vote_left = 7.5
+	w.event.vote_yes.assign([2, 1])
+	var snap3: Array = bytes_to_var(var_to_bytes(NetCodec.make_snapshot(w, NetCodec.encode_entities(w), 0)))
+	NetCodec.decode_snapshot(snap3)
+	NetCodec.apply_world(cw, snap3)
+	if cw.event.vote_by != 2 or absf(cw.event.vote_left - 7.5) > EPS or cw.event.vote_yes != [2, 1] or cw.event.awaits_vote(1):
+		return "客戶端的投票狀態沒同步（發起 %d、剩 %.1f、同意 %s）" % [cw.event.vote_by, cw.event.vote_left, cw.event.vote_yes]
 	return ""

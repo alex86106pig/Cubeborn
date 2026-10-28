@@ -5,11 +5,13 @@ class_name Boss
 extends Enemy
 
 var is_enraged := false
+var patrol_rect := Rect2()   # 巡邏範圍（世界座標；空的 = 原地附近）
 
 
 func _init(p_world: World, p_type: StringName, at: Vector2, mul: Dictionary) -> void:
 	var states := Enemy.base_states()
 	states.erase(&"hurt")   # 霸體：受擊不進入硬直
+	states[&"patrol"] = Patrol.new()
 	states[&"chase"] = Chase.new()
 	states[&"slam"] = Slam.new()
 	states[&"charge"] = Charge.new()
@@ -101,7 +103,38 @@ func summon_minions() -> void:
 			(e as MeleeEnemy).pending_rush = true
 
 
+func is_patrolling() -> bool:
+	return fsm.is_in(&"patrol")
+
+
+# 巡邏中發現玩家：開始追，招式冷卻從這時起算（和出生時一樣給玩家一點時間）
+func aggro() -> void:
+	if not is_patrolling() or is_dead:
+		return
+	on_added()
+	fsm.change(&"chase")
+	world.emit_event("boss:aggro", {"boss_id": id, "pos": pos})
+
+
+# 看得到的玩家：前方扇形內或貼得很近，而且沒被牆擋住
+func sees_player() -> bool:
+	var s: Dictionary = def.patrol
+	var nav := world.nav_for(radius)
+	for p in world.player_list:
+		if not p.is_targetable():
+			continue
+		var d := pos.distance_to(p.pos)
+		if d > s.sight_radius:
+			continue
+		var half_arc: float = s.sight_arc * 0.5
+		var in_arc := absf(angle_difference(facing, MathUtil.angle_to(pos, p.pos))) <= half_arc
+		if (in_arc or d <= s.notice_radius) and nav.has_los(pos, p.pos):
+			return true
+	return false
+
+
 func _on_damaged(_amount: float, _source_id: int) -> void:
+	aggro()
 	var e: Dictionary = def.enrage
 	if not is_enraged and not is_dead and hp / max_hp <= e.hp_threshold:
 		is_enraged = true
@@ -112,6 +145,42 @@ func _on_damaged(_amount: float, _source_id: int) -> void:
 func _on_died(source_id: int) -> void:
 	super(source_id)
 	world.on_boss_defeated(self)
+
+
+# 巡邏：在 patrol_rect 裡挑一個走得到的點慢慢走過去，到了停 pause 秒再挑下一個；看到玩家就 aggro
+class Patrol:
+	func enter(e: Boss, data: Dictionary, _fsm: StateMachine) -> void:
+		data.wait = e.world.rng.randf_range(e.def.patrol.pause[0], e.def.patrol.pause[1])
+		data.goal = e.pos
+
+	func update(e: Boss, dt: float, fsm: StateMachine) -> void:
+		if e.sees_player():
+			e.aggro()
+			return
+		var s: Dictionary = e.def.patrol
+		var data := fsm.data
+		if data.wait > 0.0:
+			data.wait -= dt
+			e.velocity = Vector2.ZERO
+			if data.wait <= 0.0:
+				data.goal = _pick_goal(e)
+			return
+		if e.pos.distance_to(data.goal) < 0.6:
+			data.wait = e.world.rng.randf_range(s.pause[0], s.pause[1])
+			e.velocity = Vector2.ZERO
+			return
+		var aim := e.steer_point(data.goal)
+		e.facing = MathUtil.turn_towards(e.facing, MathUtil.angle_to(e.pos, aim), e.def.turn_speed * dt)
+		e.velocity = MathUtil.dir_from_angle(e.facing) * (e.speed * s.speed_mul)
+
+	func _pick_goal(e: Boss) -> Vector2:
+		var nav := e.world.nav_for(e.radius)
+		var r := e.patrol_rect if e.patrol_rect.has_area() else Rect2(e.pos - Vector2(4.0, 4.0), Vector2(8.0, 8.0))
+		for attempt in 8:
+			var c := r.position + Vector2(e.world.rng.randf(), e.world.rng.randf()) * r.size
+			if nav.is_walkable(c) and nav.same_region(c, e.pos):
+				return c
+		return e.pos
 
 
 class Chase:

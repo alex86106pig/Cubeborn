@@ -81,7 +81,7 @@ func _draw() -> void:
 	_draw_grave(font, me)
 
 
-# 挖墳點（D6）：沒開始時提示、挖的時候顯示進度、挖完顯示出口與到齊人數
+# 挖墳點（D6）：沒開始時提示、挖的時候顯示進度、挖完提示按 F 前往下一層（投票中由 HUD 顯示）
 func _draw_grave(font: Font, me: Player) -> void:
 	if not DigEvent.enabled(world):
 		return
@@ -89,13 +89,9 @@ func _draw_grave(font: Font, me: Player) -> void:
 	var at := Vector3(ev.point.x, world.terrain.ground_at(ev.point) + GRAVE_OFFSET, ev.point.y)
 	var near := me != null and ev.can_dig(world, me) and not me.is_digging()
 	if ev.state == DigEvent.OPEN:
-		var total := 0
-		var down := 0
-		for p in world.player_list:
-			if not p.is_dead:
-				total += 1
-				down += 1 if p.descended else 0
-		_text_at(font, at, "出口：走進去前往第 %d 層（%d / %d 人）" % [world.floor_num + 1, down, total], EXIT_COLOR)
+		var dest := "通關" if world.floor_num >= EventDefs.DIG.last_floor else "前往第 %d 層" % (world.floor_num + 1)
+		var key := "[F] " if me != null and ev.can_exit(world, me) and not ev.is_voting() else ""
+		_text_at(font, at, "出口：%s%s" % [key, dest], EXIT_COLOR)
 		return
 	var text := "挖墳 %d%%" % floori(ev.progress * 100.0) if ev.state == DigEvent.ACTIVE else "墓"
 	if near:

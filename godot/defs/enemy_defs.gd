@@ -89,7 +89,10 @@ const ENEMIES := {
 		"spawn_shake": 0.4,
 		"corpse_time": 3.5,
 		"decide_delay": 0.28,             # 回到追擊後至少這麼久才出下一招（0.4 × 0.7）
-		"first_cooldowns": {"charge": 2.1, "summon": 1.4},   # 開場給玩家一點時間
+		"first_cooldowns": {"charge": 2.1, "summon": 1.4},   # 開場給玩家一點時間（巡邏中發現玩家時重新計算）
+		# 挖墳地圖開局在 map.boss_room 裡巡邏：走到隨機點、停一下再走；前方 sight_arc 扇形 sight_radius 內、
+		# 或任何方向 notice_radius 內看到玩家（沒被牆擋）、或被打，就開始追（之後不再回去巡邏、不限範圍）
+		"patrol": {"speed_mul": 0.45, "pause": [1.0, 2.5], "sight_radius": 12.0, "sight_arc": deg_to_rad(120.0), "notice_radius": 4.0},
 		# 砸地：以 Boss 為中心，紅圈一圈一圈往外擴散；每圈只打到「那一圈範圍內」的目標（同一次砸地每人最多被打一次）
 		# 打到：擊飛（往上 knockup 速度）＋ 移速 ×slow_mul 持續 slow_time 秒；跳起來躲得過（同 v0.23.0 的 max_air）
 		"slam": {

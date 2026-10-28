@@ -120,7 +120,7 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 
 # 一層開始時的地圖內容：寶箱、怪群、挖墳事件歸零
 func _populate_floor() -> void:
-	event.reset(self)   # 先歸零：怪群的難度倍率要用這一層的基礎難度
+	event.reset(self)   # 先歸零：怪群的難度倍率要用這一層的基礎難度；Boss 在這一層的第一步才放（見 DigEvent.update）
 	if spawn_packs and map.get("packs", false):
 		spawner.spawn_packs(self)
 	_place_chests()   # 放在怪群之後：寶箱用掉的亂數不改變怪群的位置
@@ -180,6 +180,16 @@ func next_floor() -> void:
 		if p.is_dead and not corpse_carrier(p.peer_id).is_empty():
 			_spawn_ghost(p)
 	emit_event("floor:started", {"floor": floor_num, "difficulty": base_difficulty})
+
+
+# 通關：延遲 victory_delay 秒後發 game:victory（測試場地打倒 Boss、挖墳地圖最後一層互動完）
+func win() -> void:
+	if is_over:
+		return
+	is_over = true
+	victory_timer = Config.WORLD.victory_delay
+	hit_stop(Config.WORLD.victory_hit_stop)
+	emit_event("camera:shake", {"amount": Config.WORLD.victory_shake, "duration": Config.WORLD.victory_shake_duration})
 
 
 # 背著某位死者屍體的玩家與背包條目 uid；沒有回傳 {}
@@ -406,10 +416,7 @@ func on_boss_defeated(boss: Enemy) -> void:
 		hit_stop(Config.WORLD.victory_hit_stop)
 		emit_event("camera:shake", {"amount": Config.WORLD.victory_shake, "duration": Config.WORLD.victory_shake_duration})
 		return
-	is_over = true
-	victory_timer = Config.WORLD.victory_delay
-	hit_stop(Config.WORLD.victory_hit_stop)
-	emit_event("camera:shake", {"amount": Config.WORLD.victory_shake, "duration": Config.WORLD.victory_shake_duration})
+	win()
 	for e in enemies:
 		if e != boss and not e.is_dead and not (e is Enemy and (e as Enemy).dormant):   # 還在休眠的怪群留著（D5）
 			e.die()

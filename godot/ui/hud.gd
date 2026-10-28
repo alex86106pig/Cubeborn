@@ -20,7 +20,7 @@ const GAME_OVER_DELAY := 0.7     # 死亡後幾秒顯示結算
 const BOSS_NAME := "亡骸騎士"     # darkFantasy.js 的 names.boss
 # 介面程式碼裡寫死的中文字（橫幅、浮動文字、場上文字、連線面板、遊玩紀錄…；資料表以外的）：開場預熱用（v0.37.2）
 # check.gd 會掃 ui/ 的字串，缺字就列出來，加到這裡
-const UI_CHARS := "　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木總樂畫陰源・介"
+const UI_CHARS := "　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木總樂畫陰源・介想意反對取噴發巡邏"
 
 const VIGNETTE_SHADER := """
 shader_type canvas_item;
@@ -58,6 +58,7 @@ var _boss_ghost := 1.0
 var _spectate := UiKit.label("", 22, Color.WHITE, 3)   # 觀戰中：看的是誰、怎麼切換
 var _dig_box := VBoxContainer.new()   # 挖墳進度條（v0.38.0）：事件進行中所有人都看得到
 var _dig_name := UiKit.label("", 20, UiKit.GOLD)
+var _vote := UiKit.label("", 24, UiKit.GOLD)   # 前往下一層的投票（多人）
 var _dig: Dictionary
 var _skill_bar := SkillBar.new()
 var _stats_panel := StatsPanel.new()
@@ -222,6 +223,9 @@ func _init() -> void:
 	_dig_box.add_child(_dig.root)
 	_dig_box.visible = false
 	top.add_child(_dig_box)
+	_vote.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_vote.visible = false
+	top.add_child(_vote)
 	_boss_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_boss_box.add_child(_boss_name)
 	_boss = UiKit.bar(Vector2(560, 16), UiKit.BOSS_BG, UiKit.BOSS_FILL, 3)
@@ -444,7 +448,7 @@ func _update_fps(delta: float) -> void:
 
 func _update_boss(delta: float) -> void:
 	var boss: Boss = world.entities.get(world.boss_id) as Boss
-	_boss_box.visible = boss != null and not (boss.is_spawning() and boss.fsm.time < BOSS_BAR_DELAY)
+	_boss_box.visible = boss != null and not (boss.is_spawning() and boss.fsm.time < BOSS_BAR_DELAY) and not boss.is_patrolling()
 	if boss == null:
 		return
 	var r := boss.hp / boss.max_hp
@@ -458,12 +462,29 @@ func _update_boss(delta: float) -> void:
 # 挖墳進度條：事件開始後、出口打開前顯示（客戶端讀快照同步的進度）
 func _update_dig() -> void:
 	var ev := world.event
+	_update_vote(ev)
 	_dig_box.visible = DigEvent.enabled(world) and ev.state == DigEvent.ACTIVE
 	if not _dig_box.visible:
 		return
 	_set_bar(_dig, ev.progress, ev.progress)
 	_dig.text.text = "%d%%" % floori(ev.progress * 100.0)
-	_dig_name.text = "挖墳進度" + ("　·　打倒 Boss 後怪物才會湧出" if not ev.horde else "　·　怪物越來越多")
+	_dig_name.text = "挖墳進度　·　墳裡每 %d 秒噴出怪物（+%d%%）" % [roundi(EventDefs.ERUPT.interval), roundi(EventDefs.ERUPT.progress * 100.0)]
+
+
+# 投票中：誰發起、幾人同意、剩幾秒；自己還沒同意時提示 Enter / Esc
+func _update_vote(ev: DigEvent) -> void:
+	_vote.visible = DigEvent.enabled(world) and ev.is_voting()
+	if not _vote.visible:
+		return
+	var voters := 0
+	for p in world.player_list:
+		if not p.is_dead:
+			voters += 1
+	var by: Player = world.players.get(ev.vote_by)
+	var who := _tag_of(by.id) if by != null else "隊友"
+	var dest := "通關" if world.floor_num >= EventDefs.DIG.last_floor else "前往第 %d 層" % (world.floor_num + 1)
+	var ask := "　[Enter] 同意　[Esc] 反對" if ev.awaits_vote(local_peer) else ""
+	_vote.text = "%s 想%s（%d / %d 同意，%d 秒）%s" % [who, dest, ev.vote_yes.size(), voters, ceili(ev.vote_left), ask]
 
 
 func _set_bar(bar: Dictionary, value: float, ghost: float) -> void:
@@ -548,12 +569,15 @@ func _on_event(name: String, p: Dictionary) -> void:
 			if world.players.size() > 1 and world.is_any_player_alive():
 				_show_banner(("你陣亡了：隊友撿起你的屍體帶到下一層，打倒冤魂就能復活" if _is_local(p.player_id) else "%s 陣亡了：撿起屍體帶到下一層" % _tag_of(p.player_id)), true)
 		"event:started":
-			_show_banner("開始挖墳！先打倒 Boss，之後怪物會越來越多", true)
-		"event:horde":   # Boss 倒下的下一步（同時有 boss:reward，橫幅合在這裡）
-			if p.get("after_boss", false):
-				_show_banner("擊敗 %s！掉落獎勵\n怪物開始湧出，越來越多" % BOSS_NAME, true)
+			_show_banner("開始挖墳！怪物開始湧出、墳裡會噴出下一層的怪物", true)
+		"boss:aggro":
+			_show_banner("%s 發現你了！" % BOSS_NAME, true)
+		"boss:reward":
+			_show_banner("擊敗 %s！掉落獎勵" % BOSS_NAME, false, UiKit.GOLD)
 		"event:exit_open":
-			_show_banner("墓穴挖開了：全員走進去前往下一層", false, UiKit.GOLD)
+			_show_banner("墓穴挖開了：不會再冒出怪物\n準備好再到墳墓按 F 前往下一層", false, UiKit.GOLD)
+		"vote:canceled":
+			_show_banner("%s 反對，取消前往下一層" % _tag_of(p.player_id), true)
 		"coins:gained":
 			if p.reason == "floor":
 				_floor_coins = p.amount
@@ -573,7 +597,8 @@ func _on_event(name: String, p: Dictionary) -> void:
 			_game_over_delay = GAME_OVER_DELAY
 		"game:victory":
 			var s: Dictionary = p.stats
-			_set_game_over("勝利！", "擊敗 %s · 擊殺 %d · 通關時間 %s" % [BOSS_NAME, s.kills, UiKit.format_time(s.time)], true)
+			var how := "通過第 %d 層" % s.get("floor", 1) if DigEvent.enabled(world) else "擊敗 %s" % BOSS_NAME
+			_set_game_over("勝利！", "%s · 擊殺 %d · 通關時間 %s" % [how, s.kills, UiKit.format_time(s.time)], true)
 			_game_over.visible = true
 		"game:paused":
 			show_menu(p.paused)

@@ -7,7 +7,7 @@ const ACTIONS := {
 	&"move_up": KEY_W, &"move_down": KEY_S, &"move_left": KEY_A, &"move_right": KEY_D,
 	&"attack": MOUSE_BUTTON_LEFT, &"special": MOUSE_BUTTON_RIGHT, &"roll": KEY_SHIFT, &"jump": KEY_SPACE, &"run": KEY_CTRL,
 	&"slot_1": KEY_1, &"slot_2": KEY_2, &"slot_3": KEY_3, &"slot_4": KEY_4, &"slot_5": KEY_5,
-	&"interact": KEY_F,
+	&"interact": KEY_F, &"vote_yes": KEY_ENTER,
 	&"pause": KEY_ESCAPE, &"mute": KEY_M, &"restart": KEY_R,
 	&"stats_panel": KEY_TAB,
 	&"swap_weapon": KEY_X, &"debug_hitbox": KEY_F2, &"debug_speed": KEY_F3,
@@ -25,6 +25,7 @@ var auto_interact := false      # 測試用：一直按住 F（--auto-interact�
 var enabled := true             # 關掉時（大廳、輸入框打字中）送出空輸入
 var mouse_captured := false     # 背包開著（D3）：滑鼠只給背包用，不攻擊、不格擋、瞄準點不動；WASD 照常
 var spectate := 0               # 陣亡後觀戰的隊友 peer id（main.gd 設定），跟著每筆輸入送給房主（InputCmd.spectate）
+var vote_pending := false       # 前往下一層的投票等著自己回答（main.gd 每步設定）：Enter 同意、Esc 反對（這時 Esc 不開選單）
 var _inv_ops: Array = []        # 背包介面送出的操作，下一筆輸入帶走
 
 var _latched := 0               # 兩次模擬步之間按過的按鈕，步驟執行後才清除
@@ -50,6 +51,10 @@ static func register_actions() -> void:
 
 func _input(event: InputEvent) -> void:
 	if event.is_echo():
+		return
+	if vote_pending and (event.is_action_pressed(&"vote_yes") or event.is_action_pressed(&"pause")):
+		_latched |= InputCmd.BTN_VOTE_YES if event.is_action_pressed(&"vote_yes") else InputCmd.BTN_VOTE_NO
+		get_viewport().set_input_as_handled()   # main.gd 的 Esc 開選單收不到
 		return
 	if event.is_action_pressed(&"attack"):
 		if not mouse_captured and not _mouse_over_button():

@@ -104,7 +104,7 @@ func _condition(id: StringName, world: World, player: Player, bag_open: bool) ->
 		&"craft":
 			return has_merge_pair(player)
 		&"exit":
-			return DigEvent.enabled(world) and world.event.state == DigEvent.OPEN and not player.descended
+			return DigEvent.enabled(world) and world.event.state == DigEvent.OPEN
 		&"revive":
 			for p in world.player_list:
 				if p != player and p.is_downed:

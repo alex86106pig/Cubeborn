@@ -28,6 +28,7 @@ static func setup_run(world: World, me: Player, args: LaunchArgs) -> void:
 	if args.exit_open:
 		world.event._start(world)
 		world.event.state = DigEvent.OPEN
+		world.event.horde = false
 		world.event.progress = 1.0
 	if args.ghost:
 		var g := world.spawner.spawn_at(world, &"ghost", world.nav.nearest_walkable(me.pos + Vector2(-1.0, -1.0).normalized() * 5.0))

@@ -494,6 +494,8 @@ func _refresh_net_panel() -> void:
 func _physics_process(_delta: float) -> void:
 	_stepped_this_tick = false
 	input_collector.enabled = not (is_at_title or is_menu_open or is_paused or hud.net_panel.is_typing())
+	var shown := net_client.world if mode == Mode.CLIENT and net_client != null else world
+	input_collector.vote_pending = input_collector.enabled and shown.event.awaits_vote(_local_peer)
 	if mode == Mode.CLIENT:
 		_client_physics()
 	else:
