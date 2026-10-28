@@ -1555,6 +1555,68 @@ static func check_mesh_counts() -> String:
 	return ""
 
 
+# 握武器：每把玩家武器掛上去後，模型標的 grip 掛點就在拳頭中心（手掌掛點），手掌掛點上有拳頭；
+# 法杖類直立是轉手掌掛點（武器本身不另外轉、拳頭和杖身一起朝上）；骷髏與 Boss 的拳頭也掛在手掌掛點上
+# 檢查在 _initialize 裡跑、場景樹還沒就緒，global_transform 拿不到：位置與方向都沿著節點一層層乘局部座標算
+static func check_weapon_grip() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var rig := DarkFantasy.player_character(ClassDefs.ORDER[0])
+	var anim := Animator.new(rig)
+	var err := ""
+	for id: StringName in WeaponDefs.WEAPONS:
+		p.equip_weapon(id)
+		for i in 30:
+			anim.update(p, DT)
+		for pair in [[rig.weapon_main, rig.hand_r], [rig.weapon_left, rig.hand_l]]:
+			var model: Node3D = pair[0]
+			var hand: Node3D = pair[1]
+			if model == null:
+				continue
+			if not model.has_meta(&"mounts"):
+				err = "%s 的模型沒有標掛點（DarkFantasy._hold）" % id
+			elif (model.transform * (model.get_meta(&"mounts").grip as Vector3)).length() > 0.001:
+				err = "%s 的 grip 離拳頭中心 %.3f" % [id, (model.transform * (model.get_meta(&"mounts").grip as Vector3)).length()]
+			elif not _has_fist(hand):
+				err = "%s 的手掌掛點上沒有拳頭" % id
+			if err != "":
+				break
+		if err == "" and id in [&"staff", &"scepter", &"torch"]:
+			var up := _basis_under(rig.weapon_main, rig).y.normalized().dot(Vector3.UP)
+			if not rig.weapon_main.rotation.is_zero_approx() or up < 0.999:
+				err = "%s 待機時應轉手掌讓杖身直立：武器自己的轉角 %s、杖身與正上方 cos %.4f" % [id, rig.weapon_main.rotation, up]
+		if err != "":
+			break
+	rig.free()
+	if err != "":
+		return err
+	for kind: StringName in [&"grunt", &"archer", &"boss"]:
+		var enemy := DarkFantasy.character(kind)
+		var ok := _has_fist(enemy.hand_r) and _has_fist(enemy.hand_l)
+		enemy.free()
+		if not ok:
+			return "%s 的拳頭應掛在手掌掛點上" % kind
+	return ""
+
+
+# node 相對於祖先 top 的方向（各層 basis 相乘）
+static func _basis_under(node: Node3D, top: Node3D) -> Basis:
+	var b := Basis.IDENTITY
+	var n := node
+	while n != top:
+		b = n.basis * b
+		n = n.get_parent() as Node3D
+	return b
+
+
+# 手掌掛點上有零件、而且包住掛點原點（拳頭中心）
+static func _has_fist(hand: Node3D) -> bool:
+	for child in hand.get_children():
+		if child is MeshInstance3D and (child as MeshInstance3D).get_aabb().grow(0.001).has_point(Vector3.ZERO):
+			return true
+	return false
+
+
 # 投射物的牆後剪影：箭飛到牆後（和相機之間有牆）也畫剪影，顏色看發射者（怪物紅、自己藍）；空地上的不畫
 static func check_projectile_xray() -> String:
 	var w := _new_world(3, false, &"graveyard_a")

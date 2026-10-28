@@ -1,5 +1,6 @@
 # 角色骨架（Rig）：與網頁版 render/rig.js 相同的關節階層，動畫只轉動關節
-#   root（位置/朝向）→ body（整體姿勢，樞紐在腳底）→ head / arm_r / arm_l / leg_r / leg_l；手掌掛點 hand_r / hand_l
+#   root（位置/朝向）→ body（整體姿勢，樞紐在腳底）→ head / arm_r / arm_l / leg_r / leg_l；手掌掛點 hand_r / hand_l 在拳頭中心
+# 拳頭模型與手持武器都掛在手掌掛點上（武器的 grip 對齊掛點，見 DarkFantasy._hold），要轉武器就轉手掌掛點
 # 角色面向 +Z，右側為 -X；四肢往 -Y 延伸。造型由 view/styles/ 建立，零件透過 kit 加入
 class_name Rig
 extends Node3D
@@ -29,7 +30,7 @@ var _joints: Dictionary
 var _flash := 0.0
 
 
-# 關節位置 j：{ neck, shoulder_y, shoulder_x, arm_len, hip_y, hip_x, height, scale? }
+# 關節位置 j：{ neck, shoulder_y, shoulder_x, grip（肩膀到拳頭中心）, hip_y, hip_x, height, scale? }
 # Godot 預設的 rotation_order 就是 YXZ（先前後抬起，再水平揮動），與網頁版關節相同
 func _init(j: Dictionary) -> void:
 	_joints = j
@@ -43,8 +44,8 @@ func _init(j: Dictionary) -> void:
 	arm_l.position = Vector3(j.shoulder_x, j.shoulder_y, 0.0)
 	leg_r.position = Vector3(-j.hip_x, j.hip_y, 0.0)
 	leg_l.position = Vector3(j.hip_x, j.hip_y, 0.0)
-	hand_r.position.y = -j.arm_len
-	hand_l.position.y = -j.arm_len
+	hand_r.position.y = -j.grip
+	hand_l.position.y = -j.grip
 	var s: float = j.get("scale", 1.0)
 	body.scale = Vector3.ONE * s
 	height = j.height * s
@@ -116,6 +117,11 @@ func set_weapon(model: StringName) -> void:
 		arm_l.add_child(weapon_offhand)
 	if weapon_left != null:
 		hand_l.add_child(weapon_left)
+
+
+# 武器掛點（DarkFantasy._hold 記的 mounts，例如 grip、string）的世界座標；model 要在場景樹裡
+static func mount_point(model: Node3D, mount: StringName) -> Vector3:
+	return model.to_global(model.get_meta(&"mounts")[mount])
 
 
 # 受擊閃白，k 為 0~1（自發光零件不受影響）

@@ -48,8 +48,8 @@ func _init(kind: StringName, t: Dictionary) -> void:
 	arm_l.position = Vector3(j.shoulder_x, j.shoulder_y, 0.0)
 	leg_r.position = Vector3(-j.hip_x, j.hip_y, 0.0)
 	leg_l.position = Vector3(j.hip_x, j.hip_y, 0.0)
-	hand_r.position.y = -j.arm_len
-	hand_l.position.y = -j.arm_len
+	hand_r.position.y = -j.grip
+	hand_l.position.y = -j.grip
 	var s: float = j.get("scale", 1.0)
 	body.scale = Vector3.ONE * s
 	height = j.height * s

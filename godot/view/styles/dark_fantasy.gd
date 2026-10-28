@@ -11,11 +11,11 @@ const C := {
 }
 
 const KNIGHT_JOINTS := {
-	"neck": 1.6, "shoulder_y": 1.55, "shoulder_x": 0.36, "arm_len": 0.7,
+	"neck": 1.6, "shoulder_y": 1.55, "shoulder_x": 0.36, "grip": 0.58,
 	"hip_y": 0.95, "hip_x": 0.14, "height": 2.1,
 }
 const SKELETON_JOINTS := {
-	"neck": 1.5, "shoulder_y": 1.45, "shoulder_x": 0.3, "arm_len": 0.68,
+	"neck": 1.5, "shoulder_y": 1.45, "shoulder_x": 0.3, "grip": 0.65,
 	"hip_y": 0.92, "hip_x": 0.12, "height": 1.95,
 }
 const BOSS_SCALE := 1.85
@@ -88,19 +88,27 @@ static func _armored_body(rig: Rig, armor: Color, trim: Color, cape: Color, eye:
 		for s in [-1.0, 1.0]:
 			k.add(rig.head, PartKit.cone(0.06, 0.4, 5), k.mat(C.bone_dark), {"x": s * 0.24, "y": 0.42, "rz": -s * 0.9})
 
-	for pair in [[rig.arm_r, -1.0], [rig.arm_l, 1.0]]:
+	for pair in [[rig.arm_r, rig.hand_r, -1.0], [rig.arm_l, rig.hand_l, 1.0]]:
 		var arm: Node3D = pair[0]
-		k.add(arm, PartKit.ico(0.17, 0), k.mat(armor), {"x": pair[1] * 0.04, "y": 0.02, "sy": 0.8})
+		k.add(arm, PartKit.ico(0.17, 0), k.mat(armor), {"x": pair[2] * 0.04, "y": 0.02, "sy": 0.8})
 		k.add(arm, PartKit.cyl(0.085, 0.075, 0.4, 6), k.mat(armor), {"y": -0.22})
-		k.add(arm, PartKit.box(0.14, 0.17, 0.14), k.mat(trim), {"y": -0.58})
+		k.add(pair[1], PartKit.box(0.14, 0.17, 0.14), k.mat(trim))   # 拳頭掛在手掌掛點上，轉手掌時拳頭和武器一起轉
 	for leg in [rig.leg_r, rig.leg_l]:
 		k.add(leg, PartKit.cyl(0.1, 0.09, 0.45, 6), k.mat(trim), {"y": -0.22})
 		k.add(leg, PartKit.cyl(0.095, 0.11, 0.42, 6), k.mat(armor), {"y": -0.64})
 		k.add(leg, PartKit.box(0.16, 0.12, 0.27), k.mat(C.iron), {"y": -0.9, "z": 0.04})
 
 
-# 長劍：劍身沿局部 +Y，整組轉 2.8 弧度
-static func _long_sword(k: PartKit, parent: Node3D, blade: Color, guard: Color, length := 1.0, glow: Variant = null) -> Node3D:
+# 武器的掛點（模型座標）：grip = 拳頭握的位置；弓另有 string（弓弦上勾弦的點）、鐵鏟另有 hold（托舉點）。
+# 模型掛在手掌掛點（拳頭中心）下、往回移 grip，握的位置就在拳頭裡；要轉武器時轉手掌掛點，不轉模型
+static func _hold(model: Node3D, mounts: Dictionary) -> Node3D:
+	model.set_meta(&"mounts", mounts)
+	model.position = -(model.basis * (mounts.grip as Vector3))
+	return model
+
+
+# 長劍：劍身沿局部 +Y，整組轉 2.8 弧度；握把中央是 grip。回傳的模型由呼叫端掛到手掌掛點
+static func _long_sword(k: PartKit, blade: Color, guard: Color, length := 1.0, glow: Variant = null) -> Node3D:
 	var g := Node3D.new()
 	k.add(g, PartKit.cyl(0.03, 0.03, 0.25, 5), k.mat(C.leather))
 	k.add(g, PartKit.ico(0.05), k.mat(guard), {"y": -0.15})
@@ -108,18 +116,17 @@ static func _long_sword(k: PartKit, parent: Node3D, blade: Color, guard: Color, 
 	k.add(g, PartKit.cyl(0.018, 0.055, length, 4), k.mat(glow, true) if glow != null else k.mat(blade),
 		{"y": 0.16 + length / 2.0, "sz": 0.35})
 	g.rotation.x = 2.8
-	parent.add_child(g)
-	return g
+	return _hold(g, {"grip": Vector3.ZERO})
 
 
-static func _bow(k: PartKit, parent: Node3D, color: Color) -> void:
+# 骷髏弓手的弓：半圓弓身的兩端在局部 ±X，弧的正中間（握把）是 grip，弦連兩端、中點是 string
+static func _bow(k: PartKit, color: Color) -> Node3D:
 	var r := 0.45
 	var g := Node3D.new()
 	g.rotation.y = PI / 2.0
-	g.position.y = r * 0.85
 	k.add(g, PartKit.torus(r, 0.025, 4, 9, PI), k.mat(color), {"rx": PI})
-	k.add(g, PartKit.cyl(0.005, 0.005, r * 2.0, 3), k.mat(Color("cccccc")), {"rx": PI / 2.0})
-	parent.add_child(g)
+	k.add(g, PartKit.cyl(0.005, 0.005, r * 2.0, 3), k.mat(Color("cccccc")), {"rz": PI / 2.0})
+	return _hold(g, {"grip": Vector3(0.0, -r, 0.0), "string": Vector3.ZERO})
 
 
 static func knight() -> Rig:
@@ -151,7 +158,8 @@ static func _skeleton_base(rig: Rig, hood := false) -> void:
 		k.add(arm, PartKit.cyl(0.03, 0.03, 0.3, 4), bone, {"y": -0.17})
 		k.add(arm, PartKit.sphere(0.04, 5, 4), bone, {"y": -0.33})
 		k.add(arm, PartKit.cyl(0.028, 0.025, 0.28, 4), bone, {"y": -0.48})
-		k.add(arm, PartKit.box(0.07, 0.1, 0.04), bone, {"y": -0.65})
+	for hand in [rig.hand_r, rig.hand_l]:
+		k.add(hand, PartKit.box(0.07, 0.1, 0.04), bone)   # 骨手掛在手掌掛點上
 	for leg in [rig.leg_r, rig.leg_l]:
 		k.add(leg, PartKit.cyl(0.035, 0.03, 0.42, 4), bone, {"y": -0.22})
 		k.add(leg, PartKit.sphere(0.045, 5, 4), bone, {"y": -0.45})
@@ -162,14 +170,14 @@ static func _skeleton_base(rig: Rig, hood := false) -> void:
 static func skeleton() -> Rig:
 	var rig := Rig.new(SKELETON_JOINTS)
 	_skeleton_base(rig)
-	_long_sword(rig.kit, rig.hand_r, C.rust, C.iron, 0.8)
+	rig.hand_r.add_child(_long_sword(rig.kit, C.rust, C.iron, 0.8))
 	return rig.optimize()
 
 
 static func skeleton_archer() -> Rig:
 	var rig := Rig.new(SKELETON_JOINTS)
 	_skeleton_base(rig, true)
-	_bow(rig.kit, rig.hand_l, C.wood)
+	rig.hand_l.add_child(_bow(rig.kit, C.wood))
 	return rig.optimize()
 
 
@@ -178,7 +186,7 @@ static func death_knight() -> Rig:
 	j["scale"] = BOSS_SCALE
 	var rig := Rig.new(j)
 	_armored_body(rig, C.death_armor, C.iron, Color("1c1a22"), C.death_eye, true)
-	_long_sword(rig.kit, rig.hand_r, Color("9aa4b4"), C.iron, 1.35, Color("7fe8ff"))
+	rig.hand_r.add_child(_long_sword(rig.kit, Color("9aa4b4"), C.iron, 1.35, Color("7fe8ff")))
 	return rig.optimize()
 
 
@@ -218,7 +226,7 @@ static func _daggers() -> Dictionary:
 		k.add(g, PartKit.cyl(0.025, 0.025, 0.14, 4), k.mat(C.leather), {"y": 0.0})
 		k.merge_static(g, [g])
 		g.rotation.x = PI   # 刀尖朝 -Y
-		parts.append(g)
+		parts.append(_hold(g, {"grip": Vector3.ZERO}))
 	return {"kit": k, "main": parts[0], "offhand": null, "left": parts[1], "gem": null}
 
 
@@ -234,7 +242,7 @@ static func _scepter() -> Dictionary:
 			k.add(g, PartKit.box(0.03, 0.28, 0.03), k.mat(Color("c9a64a")), {"x": sx * 0.085, "y": 0.8, "z": sz * 0.085})
 	var gem := k.add(g, PartKit.ico(0.07), k.mat(Color("fff0b0"), true), {"y": 0.8})
 	k.merge_static(g, [g], [gem])
-	return {"kit": k, "main": g, "offhand": null, "gem": gem}
+	return {"kit": k, "main": _hold(g, {"grip": Vector3.ZERO}), "offhand": null, "gem": gem}
 
 
 # 火把（F8）：木柄 + 鐵箍 + 發光的火焰（gem 會自轉當作火焰晃動）
@@ -245,10 +253,10 @@ static func _torch() -> Dictionary:
 	k.add(g, PartKit.cyl(0.05, 0.05, 0.08, 6), k.mat(C.iron), {"y": 0.76})
 	var flame := k.add(g, PartKit.cone(0.09, 0.3, 5), k.mat(Color("ffb040"), true), {"y": 0.94})
 	k.merge_static(g, [g], [flame])
-	return {"kit": k, "main": g, "offhand": null, "gem": flame}
+	return {"kit": k, "main": _hold(g, {"grip": Vector3.ZERO}), "offhand": null, "gem": flame}
 
 
-# 鐵鏟（F9）：手握在柄的尾端（T 形握把），柄沿 -Y（手臂延伸的方向）伸出，鏟面在遠端，鏟面上有托舉點（hold_point）
+# 鐵鏟（F9）：手握在柄的尾端（T 形握把 = grip），柄沿 -Y（手臂延伸的方向）伸出，鏟面在遠端，鏟面上有托舉點（hold）
 # 鏟面是 U 形槽、凹的一側朝 +Z（手往前伸時朝上，托著鏟起的怪），鏟尖往 +Z 翹
 static func _shovel() -> Dictionary:
 	var k := PartKit.new()
@@ -260,10 +268,11 @@ static func _shovel() -> Dictionary:
 	for sx in [-1.0, 1.0]:
 		k.add(g, PartKit.box(0.03, 0.34, 0.08), steel, {"x": sx * 0.13, "y": -1.25, "z": 0.04, "rx": -0.25})
 	k.merge_static(g, [g])
+	_hold(g, {"grip": Vector3(0.0, 0.05, 0.0), "hold": Vector3(0.0, -1.3, 0.05)})
 	# 托舉點：鏟起的怪放在這裡（WorldView._place_on_shovel）；merge_static 之後才加，不會被合併掉
 	var hold := Node3D.new()
 	hold.name = "HoldPoint"
-	hold.position = Vector3(0.0, -1.3, 0.05)
+	hold.position = g.get_meta(&"mounts").hold
 	g.add_child(hold)
 	return {"kit": k, "main": g, "offhand": null, "gem": null, "hold_point": hold}
 
@@ -273,9 +282,10 @@ static func _shovel() -> Dictionary:
 # 兩端往拉弓的人這側（-Z）彎回來，弦接兩端（2026-10-27 使用者：原本圓心偏後，手握的位置不在弓身上）
 const BOW_SEGMENTS := 8
 const BOW_HALF_ARC := 0.85   # 弓身半邊張開的角度（弧度）
-# 箭袋（身體座標，玩家騎士 KNIGHT_JOINTS 的右肩在 (-0.36, 1.55, 0)）：袋口放在右手往後上方伸直時手停的位置
-# （Animator.QUIVER_ARM），箭袋從那裡斜穿背部到左腰下方，夠長夠粗：手伸進袋口、箭在袋裡出現被擋住（2026-10-27 使用者）
-const QUIVER_MOUTH := Vector3(-0.47, 1.94, -0.57)
+# 箭袋（身體座標，玩家騎士 KNIGHT_JOINTS 的右肩在 (-0.36, 1.55, 0)）：袋口放在右手往後上方伸直時拳頭停的位置
+# （Animator.QUIVER_ARM、手臂長 = KNIGHT_JOINTS.grip；改其中一個要重算），箭袋從那裡斜穿背部到左腰下方，
+# 夠長夠粗：手伸進袋口、箭在袋裡出現被擋住
+const QUIVER_MOUTH := Vector3(-0.451, 1.869, -0.476)
 const QUIVER_BOTTOM := Vector3(0.12, 1.05, -0.32)
 const QUIVER_RADIUS := 0.14
 
@@ -302,6 +312,7 @@ static func _player_bow(size: float, wood: Color, arrow: float) -> Dictionary:
 	g.set_meta(&"string_tips", [Vector3(0.0, tip_y, string_z), Vector3(0.0, -tip_y, string_z)])
 	k.add(g, PartKit.box(0.06, 0.14, 0.07), k.mat(C.leather))   # 握把（在手上）
 	k.merge_static(g, [g], strings)
+	_hold(g, {"grip": Vector3.ZERO, "string": Vector3(0.0, 0.0, string_z)})
 	# 搭在弦上的箭：掛在右手、沿 -Z 建模（Animator 每幀 look_at 弓的握把，不管右手臂怎麼擺都指著弓）；只在拉弓時顯示
 	var nock := Node3D.new()
 	k.add(nock, PartKit.cyl(0.022, 0.022, arrow, 4), k.mat(Color("e0c890")), {"z": -arrow / 2.0, "rx": PI / 2.0})
@@ -337,8 +348,7 @@ static func _player_bow(size: float, wood: Color, arrow: float) -> Dictionary:
 
 static func _sword_shield() -> Dictionary:
 	var k := PartKit.new()
-	var holder := Node3D.new()
-	_long_sword(k, holder, Color("b8c0cc"), C.steel_dark, 0.95)
+	var sword := _long_sword(k, Color("b8c0cc"), C.steel_dark, 0.95)
 
 	var shield := Node3D.new()
 	k.add(shield, PartKit.box(0.07, 0.42, 0.46), k.mat(C.cape), {"y": 0.1})
@@ -346,9 +356,9 @@ static func _sword_shield() -> Dictionary:
 	k.add(shield, PartKit.box(0.09, 0.44, 0.05), k.mat(C.steel), {"y": 0.1})
 	k.add(shield, PartKit.ico(0.07), k.mat(C.steel), {"x": 0.05, "y": 0.1})
 	shield.position = Vector3(0.18, -0.4, 0.0)
-	k.merge_static(holder, [holder])
+	k.merge_static(sword, [sword])
 	k.merge_static(shield, [shield])
-	return {"kit": k, "main": holder, "offhand": shield, "gem": null}
+	return {"kit": k, "main": sword, "offhand": shield, "gem": null}
 
 
 static func _staff() -> Dictionary:
@@ -359,7 +369,7 @@ static func _staff() -> Dictionary:
 		k.add(g, PartKit.cone(0.03, 0.3, 4), k.mat(C.wood), {"x": s * 0.08, "y": 1.28, "rz": -s * 0.4})
 	var gem := k.add(g, PartKit.ico(0.1), k.mat(Color("b48cff"), true), {"y": 1.3})
 	k.merge_static(g, [g], [gem])
-	return {"kit": k, "main": g, "offhand": null, "gem": gem}
+	return {"kit": k, "main": _hold(g, {"grip": Vector3.ZERO}), "offhand": null, "gem": gem}
 
 
 # ───────── 投射物 ─────────
