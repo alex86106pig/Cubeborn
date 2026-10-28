@@ -280,6 +280,7 @@ godot/
 - 規則：模擬層不出現關節名稱。連線時只要同步 `anim`，每台都能畫出同樣動作。
 - **握武器用掛點**：`Rig` / `SkinnedRig` 的手掌掛點 `hand_r / hand_l` 在拳頭中心（關節資料的 `grip` = 肩膀到拳頭中心），拳頭模型掛在手掌掛點上。每把武器（玩家與怪物）在自己的模型座標標掛點：`grip` 必有（拳頭握的位置），弓另有 `string`（弓弦勾弦點）、鐵鏟另有 `hold`（托舉點），用 `DarkFantasy._hold` 掛上去，`grip` 就落在拳頭中心；`Rig.mount_point` 取掛點的世界座標。
   - 動畫要讓武器轉向（直立、弓面朝前）時轉手掌掛點，不轉武器模型：拳頭和武器一起轉，握的位置不會滑出拳頭。檢查「握武器」會擋。
+  - 身上的掛點 `Rig.mount_nodes`（關節資料的 `mounts`，騎士是 `DarkFantasy.KNIGHT_MOUNTS`：`forearm_l` 盾、`back` 箭袋，`hip_l` / `hip_r` / `head` 預留）也用 `_hold` 掛；要掛新東西先找現成的掛點，沒有再加，不在 `Rig` 裡寫死位置。
 
 ---
 

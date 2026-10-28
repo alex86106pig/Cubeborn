@@ -10,9 +10,18 @@ const C := {
 	"death_eye": Color("55e0ff"), "wood": Color("4a3526"),
 }
 
+# 騎士身上的掛點（Rig.mount_nodes）：back 在披風外、hip_l / hip_r 在腰帶外側（身體座標），head 在頭盔頂（頭的座標），
+# forearm_l 在左前臂外側（左手臂座標）。目前 forearm_l 掛盾、back 掛箭袋，hip_l / hip_r / head 預留
+const KNIGHT_MOUNTS := {
+	&"back": Vector3(0.0, 1.35, -0.4),
+	&"hip_l": Vector3(0.32, 0.9, 0.0),
+	&"hip_r": Vector3(-0.32, 0.9, 0.0),
+	&"head": Vector3(0.0, 0.5, 0.0),
+	&"forearm_l": Vector3(0.1, -0.4, 0.0),
+}
 const KNIGHT_JOINTS := {
 	"neck": 1.6, "shoulder_y": 1.55, "shoulder_x": 0.36, "grip": 0.58,
-	"hip_y": 0.95, "hip_x": 0.14, "height": 2.1,
+	"hip_y": 0.95, "hip_x": 0.14, "height": 2.1, "mounts": KNIGHT_MOUNTS,
 }
 const SKELETON_JOINTS := {
 	"neck": 1.5, "shoulder_y": 1.45, "shoulder_x": 0.3, "grip": 0.65,
@@ -78,8 +87,8 @@ static func _armored_body(rig: Rig, armor: Color, trim: Color, cape: Color, eye:
 	var k := rig.kit
 	k.add(rig.body, PartKit.cyl(0.3, 0.24, 0.62, 6), k.mat(armor), {"y": 1.28})
 	k.add(rig.body, PartKit.cyl(0.25, 0.3, 0.26, 6), k.mat(trim), {"y": 0.9})
-	k.add(rig.body, PartKit.box(0.56, 0.95, 0.04), k.mat(cape), {"y": 1.05, "z": -0.22, "rx": 0.08})
-	k.add(rig.body, PartKit.box(0.28, 0.5, 0.02), k.mat(cape), {"y": 0.98, "z": 0.2})
+	# 披風整片要在軀幹（上緣半徑 0.3）後面，否則會穿進身體、從六角柱的稜角露出碎片：上緣貼著肩背、下襬略往後
+	k.add(rig.body, PartKit.box(0.56, 0.95, 0.04), k.mat(cape), {"y": 1.07, "z": -0.35, "rx": 0.05})
 
 	k.add(rig.head, PartKit.cyl(0.19, 0.21, 0.38, 7), k.mat(armor), {"y": 0.2})
 	k.add(rig.head, PartKit.box(0.3, 0.035, 0.03), k.mat(eye, true) if eye != null else k.mat(C.socket), {"y": 0.24, "z": 0.19})
@@ -286,7 +295,7 @@ const BOW_HALF_ARC := 0.85   # 弓身半邊張開的角度（弧度）
 # （Animator.QUIVER_ARM、手臂長 = KNIGHT_JOINTS.grip；改其中一個要重算），箭袋從那裡斜穿背部到左腰下方，
 # 夠長夠粗：手伸進袋口、箭在袋裡出現被擋住
 const QUIVER_MOUTH := Vector3(-0.451, 1.869, -0.476)
-const QUIVER_BOTTOM := Vector3(0.12, 1.05, -0.32)
+const QUIVER_BOTTOM := Vector3(0.12, 1.05, -0.49)   # 要在披風（這個高度背面 z 約 -0.37）後面
 const QUIVER_RADIUS := 0.14
 
 
@@ -340,7 +349,10 @@ static func _player_bow(size: float, wood: Color, arrow: float) -> Dictionary:
 		k.add(a, PartKit.box(0.08, 0.13, 0.012), k.mat(Color("f0f0f0")), {"y": 0.05, "ry": ang})
 		quiver.add_child(a)
 		arrows.append(a)
-	quiver.transform = Transform3D(Basis(Quaternion(Vector3.UP, axis.normalized())), (QUIVER_MOUTH + QUIVER_BOTTOM) / 2.0)
+	quiver.basis = Basis(Quaternion(Vector3.UP, axis.normalized()))
+	# 掛在背部掛點：grip 是背部掛點在箭袋座標裡的位置，掛上去後箭袋正好在袋口與袋底中間
+	var back: Vector3 = KNIGHT_MOUNTS[&"back"]
+	_hold(quiver, {"grip": quiver.basis.inverse() * (back - (QUIVER_MOUTH + QUIVER_BOTTOM) / 2.0)})
 	out["back"] = quiver
 	out["quiver_arrows"] = arrows
 	return out
@@ -352,10 +364,15 @@ static func _sword_shield() -> Dictionary:
 
 	var shield := Node3D.new()
 	k.add(shield, PartKit.box(0.07, 0.42, 0.46), k.mat(C.cape), {"y": 0.1})
-	k.add(shield, PartKit.cone(0.33, 0.42, 4), k.mat(C.cape), {"y": -0.31, "rx": PI, "ry": PI / 4.0, "sx": 0.15, "sz": 0.98})
+	# 盾的下半尖角：四角錐先轉 45°（底面和盾面對齊）再壓扁成盾的厚度。節點是先縮放後旋轉，所以壓扁放在外層節點
+	var tip := Node3D.new()
+	tip.position.y = -0.31
+	tip.scale = Vector3(0.15, 1.0, 0.98)
+	shield.add_child(tip)
+	k.add(tip, PartKit.cone(0.33, 0.42, 4), k.mat(C.cape), {"rx": PI, "ry": PI / 4.0})
 	k.add(shield, PartKit.box(0.09, 0.44, 0.05), k.mat(C.steel), {"y": 0.1})
 	k.add(shield, PartKit.ico(0.07), k.mat(C.steel), {"x": 0.05, "y": 0.1})
-	shield.position = Vector3(0.18, -0.4, 0.0)
+	_hold(shield, {"grip": Vector3(-0.08, 0.0, 0.0)})   # 內側綁帶，掛在左前臂外側掛點 forearm_l
 	k.merge_static(sword, [sword])
 	k.merge_static(shield, [shield])
 	return {"kit": k, "main": sword, "offhand": shield, "gem": null}

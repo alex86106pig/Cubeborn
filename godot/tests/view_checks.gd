@@ -1676,6 +1676,62 @@ static func check_archer_bow_arm() -> String:
 	return ""
 
 
+# 身體零件：披風整片在軀幹與腰帶後面（不穿進身體）、身體前方沒有披風色的零件；盾的尖角和盾面同一平面（盾的厚度 < 0.2）；
+# 騎士骨架有 5 個身上掛點（第一次合併與之後用模板組出的都有），盾掛在 forearm_l、箭袋掛在 back、箭袋在袋口與袋底中間
+static func check_body_parts() -> String:
+	var looks := {&"boss": [DarkFantasy.C.death_armor, DarkFantasy.C.iron, Color("1c1a22")]}
+	for id: StringName in ClassDefs.ORDER:
+		var c: Dictionary = ClassDefs.CLASSES[id].colors
+		looks[id] = [c.armor, c.trim, c.cape]
+	for id: StringName in looks:
+		var rig := DarkFantasy.character(id) if id == &"boss" else DarkFantasy.player_character(id)
+		var body_back := INF   # 軀幹與腰帶最後面的 z
+		var cape_front := -INF
+		for child in rig.body.get_children():
+			if not child is MeshInstance3D:
+				continue
+			var mi := child as MeshInstance3D
+			var color: Color = (mi.material_override as StandardMaterial3D).albedo_color
+			var box := mi.get_aabb()
+			if color.is_equal_approx(looks[id][2]):
+				cape_front = maxf(cape_front, box.end.z)
+			elif color.is_equal_approx(looks[id][0]) or color.is_equal_approx(looks[id][1]):
+				body_back = minf(body_back, box.position.z)
+		rig.free()
+		if cape_front == -INF or body_back == INF:
+			return "%s 找不到披風或軀幹的零件（顏色重複？）" % id
+		if cape_front >= body_back:
+			return "%s 的披風穿進身體：披風最前 z %.3f、軀幹最後 z %.3f" % [id, cape_front, body_back]
+	var w := DarkFantasy.weapon(&"swordShield")
+	var shield: Node3D = w.offhand
+	var thick := 0.0
+	for mi in PartKit.mesh_instances(shield):
+		thick = maxf(thick, mi.get_aabb().size.x)
+	(w.main as Node3D).free()
+	shield.free()
+	if thick >= 0.2:
+		return "盾的厚度 %.2f：尖角沒有和盾面同一平面" % thick
+	for n in 2:   # 第一次合併建出的、之後用模板組出的
+		var rig := DarkFantasy.player_character(&"guardian")
+		var want: Array[StringName] = [&"back", &"forearm_l", &"head", &"hip_l", &"hip_r"]
+		if rig.mount_nodes.size() != want.size() or want.any(func(m: StringName) -> bool: return not rig.mount_nodes.has(m)):
+			var names: Array = rig.mount_nodes.keys()
+			rig.free()
+			return "騎士骨架的掛點應有 back / forearm_l / head / hip_l / hip_r：%s" % [names]
+		rig.set_weapon(&"swordShield")
+		var on_forearm: bool = rig.weapon_offhand.get_parent() == rig.mount_nodes[&"forearm_l"]
+		rig.set_weapon(&"shortbow")
+		var back: Node3D = rig.mount_nodes[&"back"]
+		var on_back: bool = rig.weapon_back.get_parent() == back
+		var center := back.position + rig.weapon_back.position
+		rig.free()
+		if not on_forearm or not on_back:
+			return "盾應掛在 forearm_l（%s）、箭袋應掛在 back（%s）" % [on_forearm, on_back]
+		if center.distance_to((DarkFantasy.QUIVER_MOUTH + DarkFantasy.QUIVER_BOTTOM) / 2.0) > 0.001:
+			return "箭袋中心 %s 應在袋口與袋底中間" % center
+	return ""
+
+
 # node 相對於祖先 top 的方向（各層 basis 相乘）
 static func _basis_under(node: Node3D, top: Node3D) -> Basis:
 	var b := Basis.IDENTITY
