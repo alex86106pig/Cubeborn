@@ -9,7 +9,7 @@ const C := {
 	"eye_red": Color("ff3b2f"), "hood": Color("2c2a35"), "rust": Color("8a6a4a"), "death_armor": Color("23262e"),
 	"death_eye": Color("55e0ff"), "wood": Color("4a3526"),
 	"rot_skin": Color("7a8463"), "rot_dark": Color("4a5238"), "rag": Color("4a4238"), "rag_dark": Color("2e2a2c"),
-	"rot_eye": Color("d8e05a"),
+	"rot_eye": Color("d8e05a"), "bloat_skin": Color("8c946a"), "bloat_glow": Color("a8e04a"),
 }
 
 # 騎士身上的掛點（Rig.mount_nodes）：back 在披風外、hip_l / hip_r 在腰帶外側（身體座標），head 在頭盔頂（頭的座標），
@@ -59,6 +59,8 @@ static func character(kind: StringName) -> Rig:
 			rig = skeleton_archer()
 		&"zombie":
 			rig = zombie()
+		&"bloater":
+			rig = bloater()
 		&"boss":
 			rig = death_knight()
 		_:
@@ -221,6 +223,31 @@ static func zombie() -> Rig:
 		k.add(leg, PartKit.cyl(0.085, 0.075, 0.45, 5), k.mat(C.rag_dark), {"y": -0.22})
 		k.add(leg, PartKit.cyl(0.06, 0.055, 0.4, 5), skin, {"y": -0.64})
 		k.add(leg, PartKit.box(0.1, 0.06, 0.2), dark, {"y": -0.88, "z": 0.04})
+	return rig.optimize()
+
+
+# 膨脹屍：同腐屍的骨架，肚子是一顆鼓脹的大肉球（脹大時 body 放大），皮膚上有發光的綠色裂縫
+static func bloater() -> Rig:
+	var rig := Rig.new(ZOMBIE_JOINTS)
+	var k := rig.kit
+	var skin := k.mat(C.bloat_skin)
+	var dark := k.mat(C.rot_dark)
+	k.add(rig.body, PartKit.sphere(0.42, 8, 6), skin, {"y": 1.08, "z": 0.08, "sy": 0.95})
+	for v: Vector3 in [Vector3(0.2, 1.2, 0.42), Vector3(-0.18, 0.98, 0.45), Vector3(0.05, 1.32, 0.38)]:
+		k.add(rig.body, PartKit.box(0.16, 0.035, 0.02), k.mat(C.bloat_glow, true), {"x": v.x, "y": v.y, "z": v.z, "rz": v.x * 3.0, "shadow": false})
+	k.add(rig.body, PartKit.cyl(0.2, 0.22, 0.2, 6), k.mat(C.rag_dark), {"y": 0.86})
+	k.add(rig.head, PartKit.ico(0.15, 1), skin, {"y": 0.13, "z": 0.06})
+	for s in [-1.0, 1.0]:
+		k.add(rig.head, PartKit.sphere(0.03, 4, 3), k.mat(C.rot_eye, true), {"x": s * 0.06, "y": 0.16, "z": 0.19, "shadow": false})
+	for arm in [rig.arm_r, rig.arm_l]:
+		k.add(arm, PartKit.cyl(0.08, 0.07, 0.34, 5), skin, {"y": -0.17})
+		k.add(arm, PartKit.cyl(0.065, 0.055, 0.3, 5), dark, {"y": -0.45})
+	for hand in [rig.hand_r, rig.hand_l]:
+		k.add(hand, PartKit.box(0.1, 0.12, 0.06), skin)
+	for leg in [rig.leg_r, rig.leg_l]:
+		k.add(leg, PartKit.cyl(0.1, 0.09, 0.45, 5), k.mat(C.rag_dark), {"y": -0.22})
+		k.add(leg, PartKit.cyl(0.075, 0.065, 0.4, 5), skin, {"y": -0.64})
+		k.add(leg, PartKit.box(0.12, 0.06, 0.2), dark, {"y": -0.88, "z": 0.04})
 	return rig.optimize()
 
 

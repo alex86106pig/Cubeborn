@@ -713,7 +713,7 @@ func warm_up(center: Vector3) -> void:
 	tw.spawner.finished = true
 	var c := Vector2(center.x, center.z)
 	var ents: Array[Entity] = [tw.players[World.HOST_PEER_ID]]
-	for kind: StringName in [&"grunt", &"archer", &"zombie", &"boss", &"ghost", &"minion"]:
+	for kind: StringName in [&"grunt", &"archer", &"zombie", &"bloater", &"boss", &"ghost", &"minion"]:
 		ents.append(tw.spawner.spawn_at(tw, kind, c))
 	for rarity: StringName in [MonsterRarityDefs.MAGIC, MonsterRarityDefs.RARE]:
 		var e := tw.spawner.spawn_at(tw, &"grunt", c)
@@ -845,7 +845,7 @@ func _create_view(e: Entity) -> Node3D:
 			glow.visible = false
 			rig.hand_r.add_child(glow)
 			root.set_meta(&"glow", glow)
-		&"grunt", &"archer", &"zombie", &"boss", &"ghost", &"minion":
+		&"grunt", &"archer", &"zombie", &"bloater", &"boss", &"ghost", &"minion":
 			# 小怪用蒙皮版本（D5 效能：每隻 1~2 次繪製）；Boss 只有一隻，照舊用關節節點
 			# 冤魂（D6）：半透明的騎士（玩家的模型，不拿武器）
 			var rig: Node3D

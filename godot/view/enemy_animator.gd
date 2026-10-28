@@ -19,6 +19,7 @@ const CRACK_GROWN_GLOW := 0.35   # 爬到外緣時的亮度，之後到爆開時
 const CRACK_FADE := 0.4          # 爆開後淡掉的秒數
 const CRACK_LEAD_MAX_WINDUP := 0.75   # 舉手時間很短時（瞬移砸地），提前量最多是舉手時間的這個比例
 const VOLATILE_SWELL := 0.35     # 死亡爆炸的屍體爆開前膨脹到多大（倍率 +35%）
+const BLOATER_SWELL := 0.5       # 膨脹屍炸開前脹到 +50%
 # 骷髏弓手不瞄準時左手垂直地面：弓固定在骨手上，手垂直時弓平放（弓梢朝前後、弦在上），手平舉瞄準時弓自然直立
 const BOW_ARM_REST := 0.0
 const BOW_ARM_AIM := -1.55       # 瞄準時弓手平舉
@@ -32,7 +33,8 @@ var _crack_root: Node3D = null              # Boss 砸地的裂紋（掛在 rig 
 var _cracks: Array[Dictionary] = []         # 每一段：{ node, ring, start, dir, length }
 var _crack_mats: Array[StandardMaterial3D] = []   # 每一圈共用一個材質（同一圈同時變亮）
 var _base_body_scale := Vector3.ZERO        # 稀有度放大後的身體大小（第一次 update 時記下，膨脹以它為準）
-var _zombie := false      # 腐屍：走路時雙手往前伸、駝背
+var _zombie := false      # 腐屍、膨脹屍：走路時雙手往前伸、駝背
+var _bloater := false     # 膨脹屍：脹大時身體放大、閃白，炸開後整隻不見
 var _holds_bow := false   # 骷髏弓手：左手拿弓，不瞄準時照 _bow_arm_target
 var _bow_arm_target := BOW_ARM_REST
 var _dt := 0.0
@@ -41,7 +43,8 @@ var _dt := 0.0
 func _init(p_rig: Node3D, e: Enemy) -> void:
 	rig = p_rig
 	_holds_bow = e.def.visual == &"ranged"
-	_zombie = e.def.visual == &"zombie"
+	_zombie = e.def.visual == &"zombie" or e.def.visual == &"bloater"
+	_bloater = e.def.visual == &"bloater"
 	walk_phase = randf() * TAU   # 畫面用隨機，與模擬無關
 	if e.is_boss():
 		_build_cracks(e)
@@ -140,6 +143,10 @@ func update(e: Enemy, dt: float) -> void:
 			_pose_rush(a, dt, def.rush)
 		&"lunge":
 			_pose_lunge(a, def.lunge)
+		&"swell":
+			# 膨脹屍脹大：站定、雙手抱著肚子、身體往後仰抖動（放大與閃白在下面 bloater_swell）
+			_pose_walk(0.0, -0.7, -0.7)
+			rig.body.rotation.x = -0.15 + sin(t * 30.0) * 0.04
 		&"bite":
 			# 啃咬：雙手抓著往前、頭一下一下咬下去
 			_pose_walk(0.0, -1.2 + sin(t * 20.0) * 0.08, -1.25 - sin(t * 20.0) * 0.08)
@@ -163,6 +170,11 @@ func update(e: Enemy, dt: float) -> void:
 	var flash := 0.9 * e.flash_timer / flash_time if e.flash_timer > 0.0 else 0.0
 	if state == &"dead":
 		flash = maxf(flash, volatile_flash(e, t))
+	if _bloater:
+		var k := bloater_swell(e, state, t)
+		flash = maxf(flash, 0.7 * k * pow(sin(k * (3.0 + 8.0 * k) * PI), 2.0))
+		rig.body.scale = _base_body_scale * (1.0 + BLOATER_SWELL * k * (0.85 + 0.15 * sin(k * 10.0 * PI)))
+		rig.scale = Vector3.ONE * (0.01 if a.get("burst", false) else 1.0)   # 炸開了：屍體不見（腐氣還在）
 	rig.set_flash(flash)
 	if rig is SkinnedRig:
 		rig.flush()
@@ -291,6 +303,17 @@ func _pose_charge(a: Dictionary, dt: float, c: Dictionary) -> void:
 # 衝鋒預備時後腳的角度：往後刨地兩下（kl = 預備進度 0~1）
 static func charge_scrape(kl: float) -> float:
 	return 0.25 + 0.55 * maxf(0.0, sin(kl * 2.0 * TAU))
+
+
+# 膨脹屍脹大的進度 0~1：swell 狀態照 swell_time、被打死後照 death_delay；其他時候 0
+static func bloater_swell(e: Enemy, state: StringName, t: float) -> float:
+	var b: Dictionary = e.def.burst
+	match state:
+		&"swell":
+			return clampf(t / b.swell_time, 0.0, 1.0)
+		&"dead":
+			return 0.0 if e.anim.get("burst", false) else clampf(t / b.death_delay, 0.0, 1.0)
+	return 0.0
 
 
 # ───────── 死亡爆炸詞條：屍體脹大、閃白 ─────────

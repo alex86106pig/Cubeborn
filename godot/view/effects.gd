@@ -31,6 +31,7 @@ const HANDLERS := {
 	"fx:boss_teleport": &"_fx_boss_teleport",
 	"fx:boss_teleport_warn": &"_fx_boss_teleport_warn",
 	"fx:erupt_warn": &"_fx_erupt_warn",
+	"fx:gas_cloud": &"_fx_gas_cloud",
 	"fx:lightning": &"_fx_lightning",
 	"fx:status": &"_fx_status",
 }
@@ -376,6 +377,20 @@ func _fx_erupt_warn(p: Dictionary) -> void:
 			burst(at + Vector3(sin(a) * r, 0.2, cos(a) * r), {"color": DUST_COLOR, "count": 2, "speed": 1.5, "up": 3.0, "size": 0.15, "life": 0.4}))
 
 
+# 怪物的毒氣區（膨脹屍的腐氣）：範圍內一直冒低低的煙，不畫圈；最後 0.5 秒變稀
+func _fx_gas_cloud(p: Dictionary) -> void:
+	var at := _at(p)
+	var radius: float = p.radius
+	var life: float = p.life
+	var color: Color = p.color
+	_add_emitter(life, func(k: float, key: String, dt: float) -> void:
+		var thin := clampf((1.0 - k) * life / 0.5, 0.0, 1.0)
+		for i in _count(key, 1.2 * thin, dt):
+			var a := _rng.randf() * TAU
+			var r := radius * sqrt(_rng.randf())
+			mote(at + Vector3(sin(a) * r, _rng.randf_range(0.1, 0.6), cos(a) * r), {"color": color, "size": 0.32, "life": 0.9, "vy": 0.35}))
+
+
 func _fx_boss_wall(p: Dictionary) -> void:
 	ring(_at(p), 2.5, {"color": Color.WHITE, "life": 0.35})
 	burst(_at(p, 1.0), {"color": WALL_DEBRIS_COLOR, "count": 20, "speed": 6.0, "up": 5.0, "size": 0.22})
@@ -459,6 +474,11 @@ func _emit_enemy(e: Enemy, dt: float) -> void:
 						mote(_jitter(e, 0.5, e.height + _rng.randf_range(0.2, 0.9)), {"color": v.color, "size": 0.16, "life": 0.45, "vy": 1.2})
 		&"slam":
 			_emit_slam_pebbles(e, a, key, dt)
+		&"swell":
+			# 膨脹屍脹大：皮膚裂縫冒出綠氣，越接近爆開越多
+			var k := EnemyAnimator.bloater_swell(e, &"swell", a.get("time", 0.0))
+			for i in _count(key, 0.3 + 0.9 * k, dt):
+				mote(_jitter(e, 0.5, e.height + _rng.randf_range(0.6, 1.4)), {"color": e.def.gas.color, "size": 0.16, "life": 0.4, "vy": 1.0})
 		&"aim":
 			var tip := e.pos + MathUtil.dir_from_angle(e.facing) * 0.7
 			for i in _count(key, 0.5, dt):

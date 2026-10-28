@@ -8,7 +8,7 @@ const JITTER := 0.6           # 水平隨機偏移（世界單位）
 const HEAD_OFFSET := 0.3
 # 角色頭頂高度（view/rig.gd 的關節高度）
 const HEIGHTS := {
-	&"player": 2.1, &"grunt": 1.95, &"archer": 1.95, &"zombie": 1.85, &"boss": 2.1 * 1.85,
+	&"player": 2.1, &"grunt": 1.95, &"archer": 1.95, &"zombie": 1.85, &"bloater": 1.8, &"boss": 2.1 * 1.85,
 }
 const STYLES := {
 	&"dmg": [20, Color.WHITE],

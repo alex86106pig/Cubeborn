@@ -128,6 +128,7 @@ func _initialize() -> void:
 	# ───────── 怪物稀有度與挖墳事件 ─────────
 	_check("怪物種類只看資料表：每種怪的 behavior 都對應得到行為類別、建出來的類別一致；is_boss、freeze_immune 照資料；挖墳事件的 boss_type 是 Boss", MonsterChecks.check_enemy_defs)
 	_check("腐屍：撲中抓住 grab_time 秒、撲 1 下 + 每 bite_interval 咬一口；被抓時按翻滾立刻掙脫；隊友打它就鬆手；舉盾擋下不被抓、腐屍踉蹌", MonsterChecks.check_zombie)
+	_check("膨脹屍：走近停下脹大 swell_time 秒（被打不硬直）→ 自爆炸到玩家與旁邊的怪、不給靈魂；留下腐氣持續傷害玩家與怪、不畫圈只冒煙；被打死 death_delay 秒後照樣炸、給靈魂", MonsterChecks.check_bloater)
 	_check("各層怪物種類：第 1 層怪群與挖墳怪潮只有 FLOOR_MIX[1] 的怪，挖墳點噴下一層（第 2 層）的怪；召喚詞條叫出同種的怪", MonsterChecks.check_floor_mix)
 	_check("怪物稀有度（D5）：魔法 / 稀有骷髏的生命、攻擊力、體型照倍率；詞條數照 RARITIES.affixes 不重複、稀有怪有名字；每群魔法 magic_per_pack 隻、稀有 rare_chance（±1.5%）", MonsterChecks.check_rarity)
 	_check("怪物詞條（D5）：迅捷 / 強壯 / 厚皮照 mods 倍率、再生、吸血、狂暴、死亡爆炸、召喚照資料", MonsterChecks.check_affixes)

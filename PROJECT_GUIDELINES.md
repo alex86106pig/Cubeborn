@@ -243,6 +243,7 @@ godot/
 | `fx:boss_wall` | `{ pos, height }` | Boss 衝鋒撞牆 |
 | `fx:boss_teleport` | `{ pos, height, to }` | 狂暴 Boss 瞬移砸地（v0.27.0）：原地與目的地的紫色煙霧 |
 | `fx:boss_teleport_warn` | `{ pos, height, life }` | 狂暴 Boss 瞬移前：目的地冒出越來越濃的紫煙（取代預警圈） |
+| `fx:gas_cloud` | `{ pos, height, radius, color, life }` | 怪物的毒氣區（膨脹屍的腐氣，GroundZones `visual = &"gas"`）：範圍內一直冒低低的煙，不畫圈 |
 | `fx:erupt_warn` | `{ pos, height, radius, life }` | 挖墳點噴怪前：墳土隆起、裂開、冒出白骨手（取代預警圈） |
 | `fx:lightning` | `{ pos, height, points, color }` | 道具連鎖閃電（v0.33.0）：points 依序連成的閃電線 |
 | `fx:status` | `{ pos, height, color }` | 道具讓怪中毒 / 冰凍（v0.33.0）：一小團該顏色的粒子 |

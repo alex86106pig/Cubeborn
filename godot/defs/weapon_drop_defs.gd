@@ -4,7 +4,7 @@
 # 武器實例：{ uid, base（WeaponDefs / ItemDefs 的武器 id）, rarity, affixes: Array[StringName] }
 class_name WeaponDropDefs
 
-const DROP_CHANCE := {&"grunt": 0.04, &"archer": 0.04, &"zombie": 0.04, &"boss": 1.0}
+const DROP_CHANCE := {&"grunt": 0.04, &"archer": 0.04, &"zombie": 0.04, &"bloater": 0.04, &"boss": 1.0}
 
 const RARITY_WEIGHTS := {
 	&"minion": {&"white": 60.0, &"green": 25.0, &"blue": 12.0, &"purple": 3.0},

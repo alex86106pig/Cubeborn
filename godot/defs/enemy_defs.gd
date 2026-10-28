@@ -102,6 +102,31 @@ const ENEMIES := {
 		},
 	},
 
+	# 膨脹屍（第 1 層，數值 Claude 暫定）：走近停下脹大 → 自爆，留下腐氣；被打死也會炸（sim/enemies/bloater.gd）
+	&"bloater": {
+		"visual": &"bloater",
+		"behavior": &"bloater",
+		"max_hp": 30.0,
+		"move_speed": 1.5,
+		"speed_variance": 0.1,
+		"turn_speed": 4.0,
+		"radius": 0.55,
+		"mass": 2.0,
+		"hurt_time": 0.22,
+		"spawn_time": 0.9,
+		"corpse_time": 4.0,          # 要比 death_delay + 腐氣持續時間長：腐氣的傷害來源是屍體
+		"burst": {
+			"trigger_distance": 2.0,  # 與目標中心距離在這以內就停下脹大
+			"swell_time": 1.0,
+			"death_delay": 0.5,       # 被打死後幾秒炸
+			"radius": 2.5,
+			"damage": 22.0,
+			"knockback": 10.0,
+			"color": Color("8fbf4a"),
+		},
+		"gas": {"radius": 2.2, "duration": 3.0, "damage_per_sec": 6.0, "color": Color("7aa83a")},
+	},
+
 	&"boss": {
 		"visual": &"boss",
 		"behavior": &"boss",
@@ -219,7 +244,7 @@ const ENEMIES := {
 # 各層的小怪種類與比例（設計方向「各層怪物」）：地圖預放的怪群、挖墳怪潮用這一層的表，挖墳點噴的是下一層的表；
 # 超過表的層數用最後一層的表
 const FLOOR_MIX := {
-	1: {&"zombie": 1.0},
+	1: {&"zombie": 0.9, &"bloater": 0.1},
 	2: {&"grunt": 0.75, &"archer": 0.25},
 }
 

@@ -182,6 +182,77 @@ static func check_zombie() -> String:
 	return ""
 
 
+# 膨脹屍：走到 trigger_distance 內停下脹大 swell_time 秒（被打不硬直）→ 自爆：玩家與旁邊的怪都受傷、不給靈魂、
+# 留下腐氣（玩家與怪都持續受傷、不畫圈）；被打死的 death_delay 秒後照樣炸、給靈魂
+static func check_bloater() -> String:
+	var b: Dictionary = EnemyDefs.ENEMIES.bloater.burst
+	var w := _world()
+	var p: Player = w.players[World.HOST_PEER_ID]
+	p.pos = Vector2.ZERO
+	p.stats.set_base(&"max_hp", 9999.0)
+	p.hp = p.max_hp
+	var dummy := w.spawner.spawn_at(w, &"zombie", Vector2(1.2, 0.8))
+	dummy.main_state = &"train"   # 旁邊站著不動的怪：看爆炸與腐氣會不會傷到它
+	dummy.stats.set_base(&"knockback_taken", 0.0)   # 不被炸飛出腐氣範圍（這裡只看腐氣傷不傷得到怪）
+	var bl := w.spawner.spawn_at(w, &"bloater", Vector2(0, 4))
+	var swell_at := -1
+	var burst_at := -1
+	var stagger_tested := false
+	var hurt := {p.id: 0, dummy.id: 0}       # 爆炸那一步的傷害次數
+	var gassed := {p.id: 0, dummy.id: 0}     # 之後腐氣的傷害次數
+	var all_events: Array[Dictionary] = []
+	for i in 60 * 10:
+		w.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+		all_events.append_array(w.events)
+		if swell_at < 0 and bl.fsm.is_in(&"swell"):
+			swell_at = i
+		if swell_at >= 0 and not stagger_tested and i == swell_at + 10:
+			stagger_tested = true
+			Combat.apply_damage(w, p, bl, {"damage": 1.0, "knockback": 0.0})
+			if not bl.fsm.is_in(&"swell"):
+				return "膨脹屍：脹大中被打不應中斷（變成 %s）" % bl.fsm.current_name
+		for ev in w.events:
+			if ev.name == "entity:damaged" and ev.source_id == bl.id and hurt.has(ev.target_id):
+				if burst_at < 0 or i == burst_at:
+					hurt[ev.target_id] += 1
+				else:
+					gassed[ev.target_id] += 1
+		if burst_at < 0 and (bl as Bloater).has_burst:
+			burst_at = i
+			for ev in w.events:
+				if ev.name == "entity:damaged" and ev.source_id == bl.id and hurt.has(ev.target_id):
+					hurt[ev.target_id] = 1
+		if burst_at >= 0 and i > burst_at + roundi(EnemyDefs.ENEMIES.bloater.gas.duration / DT) + 5:
+			break
+	if swell_at < 0 or burst_at < 0:
+		return "膨脹屍：10 秒內沒有脹大自爆（脹大第 %d 步、爆炸第 %d 步）" % [swell_at, burst_at]
+	if absf((burst_at - swell_at) * DT - b.swell_time) > DT * 2.5:
+		return "膨脹屍：脹大 %.3f 秒才炸，預期 %.2f" % [(burst_at - swell_at) * DT, b.swell_time]
+	if hurt[p.id] < 1 or hurt[dummy.id] < 1:
+		return "膨脹屍：爆炸應炸到玩家與旁邊的怪（玩家 %d 次、怪 %d 次）" % [hurt[p.id], hurt[dummy.id]]
+	if gassed[p.id] < 3 or gassed[dummy.id] < 3:
+		return "膨脹屍：腐氣應持續傷害玩家與怪（玩家 %d 次、怪 %d 次）" % [gassed[p.id], gassed[dummy.id]]
+	if not bl.is_dead or not bl.no_souls:
+		return "膨脹屍：自爆後應死掉、不給靈魂"
+	if all_events.any(func(ev: Dictionary) -> bool: return ev.name == "fx:telegraph") or not all_events.any(func(ev: Dictionary) -> bool: return ev.name == "fx:gas_cloud"):
+		return "膨脹屍：腐氣不應畫圈（fx:telegraph），要冒煙（fx:gas_cloud）"
+	# 被打死：death_delay 秒後照樣炸、給靈魂
+	var w2 := _world()
+	var p2: Player = w2.players[World.HOST_PEER_ID]
+	var bl2 := w2.spawner.spawn_at(w2, &"bloater", Vector2(0, 12))
+	_step(w2, roundi(EnemyDefs.ENEMIES.bloater.spawn_time / DT) + 2, true)
+	Combat.apply_damage(w2, p2, bl2, {"damage": 9999.0, "knockback": 0.0})
+	var died_tick := w2.tick
+	for i in 120:
+		_step(w2, 1, true)
+		if (bl2 as Bloater).has_burst:
+			break
+	var delay := (w2.tick - died_tick) * DT
+	if not (bl2 as Bloater).has_burst or absf(delay - b.death_delay) > DT * 2.5 or bl2.no_souls:
+		return "膨脹屍：被打死後應 %.1f 秒炸（實際 %.3f、炸了 %s）、給靈魂（no_souls %s）" % [b.death_delay, delay, (bl2 as Bloater).has_burst, bl2.no_souls]
+	return ""
+
+
 static func check_floor_mix() -> String:
 	var w := _world(&"graveyard_a", true)
 	var first: Dictionary = EnemyDefs.floor_mix(1)
@@ -396,7 +467,7 @@ static func check_packs() -> String:
 
 # 蒙皮小怪（D5 效能）：骷髏戰士 / 弓手每隻 ≤ 2 個網格、三角形數與原本的零件相同；關節寫進骨架
 static func check_skinned_rig() -> String:
-	for kind: StringName in [&"grunt", &"archer", &"zombie"]:
+	for kind: StringName in [&"grunt", &"archer", &"zombie", &"bloater"]:
 		var old := DarkFantasy.character(kind)
 		var rig := DarkFantasy.skinned_character(kind)
 		var before := 0
