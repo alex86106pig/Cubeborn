@@ -167,8 +167,9 @@ func _spawn(world: World, dt: float) -> void:
 		Spawner.roll_rarity(world, e, EventDefs.roll_rarity(d, world.rng))
 
 
-func _roll_type(world: World) -> StringName:
-	return &"archer" if world.rng.randf() < EventDefs.SPAWN.archer_ratio else &"grunt"
+# 怪潮用這一層的怪；挖墳點噴的是下一層的（floor_offset = 1）
+func _roll_type(world: World, floor_offset: int = 0) -> StringName:
+	return EnemyDefs.roll_floor_type(world.floor_num + floor_offset, world.rng)
 
 
 # 挖墳點噴怪：倒數到 warning 秒時墳土開始隆起（fx:erupt_warn），到 0 時噴出下一層的怪、進度 +ERUPT.progress（--no-spawn 只加進度）
@@ -192,7 +193,7 @@ func _erupt(world: World, dt: float) -> void:
 	var d := difficulty(world) + EventDefs.DIFFICULTY.per_floor   # 下一層的怪
 	var n := mini(EventDefs.erupt_count(rise, world.player_list.size()), EventDefs.SPAWN.max_alive - _alive_event_enemies(world))
 	for i in n:
-		var type := _roll_type(world)
+		var type := _roll_type(world, 1)
 		var nav := world.nav_for(EnemyDefs.ENEMIES[type].radius)
 		var a := world.rng.randf() * TAU
 		var r: float = world.rng.randf_range(c.land_distance[0], c.land_distance[1])

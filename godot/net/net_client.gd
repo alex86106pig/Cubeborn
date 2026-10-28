@@ -283,8 +283,13 @@ func _apply_own_authority(me: Player, a: Array) -> void:
 		me.quiver = extra[NetCodec.P_QUIVER]
 		me.reload_timer = extra[NetCodec.P_RELOAD]
 	me.sync_inventory(extra[NetCodec.P_INV])   # 背包以房主為準（D3：撿、丟、搬動都在房主執行）
-	if extra[NetCodec.P_STUN] > me.stun_timer + 0.05:   # 被房主判定暈眩（v0.27.0）：本機預測也立刻站住
-		me.stun(extra[NetCodec.P_STUN])
+	# 被房主判定暈眩（v0.27.0）：本機預測也立刻站住；負數 = 被腐屍抓住（本機不知道是哪隻，grabbed_by 填 -1）
+	var host_stun: float = extra[NetCodec.P_STUN]
+	var grabbed := host_stun < 0.0
+	if absf(host_stun) > me.stun_timer + 0.05:
+		me.stun(absf(host_stun), -1 if grabbed else 0)
+	elif me.grabbed_by != 0 and not grabbed:
+		me.release_grab()   # 房主那邊已經掙脫、或腐屍被打鬆手
 	# 裝備欄以房主為準；手上哪一格在房主處理完最近一次切換（X / 滾輪）之後才跟著房主，之前保留本機預測
 	var active: int = extra[NetCodec.P_ACTIVE] if _last_ack >= _swap_tick else me.active_slot
 	me.sync_weapon_slots(extra[NetCodec.P_SLOTS], active)

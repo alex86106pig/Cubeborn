@@ -188,7 +188,7 @@ func _spawn_pack(world: World, center: Vector2) -> void:
 	var ids: Array[int] = []
 	var placed: Array[Vector2] = []
 	for r in MonsterRarityDefs.roll_pack_rarities(rng.randi_range(c.size[0], c.size[1]), rng):
-		var type := &"archer" if rng.randf() < c.archer_ratio else &"grunt"
+		var type := EnemyDefs.roll_floor_type(world.floor_num, rng)
 		var at := _pack_member_spot(world, center, placed)
 		placed.append(at)
 		var e := spawn_at(world, type, at, {"dormant": true})
@@ -245,6 +245,8 @@ static func behavior_class(behavior: StringName) -> GDScript:
 			return RangedEnemy
 		&"boss":
 			return Boss
+		&"zombie":
+			return Zombie
 	return null
 
 

@@ -209,7 +209,8 @@ godot/
 | `player:died` | `{ player }`（v0.21.0 起只代表這位玩家真的死亡；輸掉一局看 `game:defeat`） | Player |
 | `player:downed` | `{ player_id }`（v0.21.0：多人時生命歸零先倒地假死，見系統說明 §8） | Player |
 | `player:revived` | `{ player_id }`（v0.21.0：被隊友救起） | Player.revive |
-| `player:stunned` | `{ player_id, duration }`（v0.27.0：被 Boss 衝鋒撞到暈眩） | Player.stun |
+| `player:stunned` | `{ player_id, duration, grabbed }`（v0.27.0：被 Boss 衝鋒撞到暈眩；grabbed = 被腐屍抓住） | Player.stun |
+| `player:grab_escaped` | `{ player_id }`（被腐屍抓住時按翻滾掙脫） | Player.update |
 | `game:defeat` | `{ stats }`（v0.21.0：全員倒下 = 輸；單機和 `player:died` 同一步發出） | World |
 | `item:added` | `{ player_id, item, uid }`（v0.19.0：道具放進身上；item = 物品 id，uid = 實例 id，武器為空字串） | Player.add_item |
 | `inventory:full` | `{ player_id, item }`（v0.25.0：背包放不下） | Player.add_item / add_weapon |

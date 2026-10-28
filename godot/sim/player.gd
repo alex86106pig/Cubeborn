@@ -42,6 +42,7 @@ var _applied_weapon_uid := &""
 var _air_jumps_used := 0               # 這次離地後用掉的空中跳躍（落地歸零）
 var descended := false                 # 已離開這一層、等其他人（不見、不能被打）；換層改成墳墓互動 + 投票後沒有地方設成 true，畫面與快照仍支援
 var stun_timer := 0.0                  # 暈眩剩餘秒數（v0.27.0：Boss 衝鋒撞到）：不能移動、出招、翻滾、跳
+var grabbed_by := 0                    # 被腐屍抓住：抓住的怪 id（客戶端只知道有沒有被抓，填 -1）；同暈眩，但按翻滾立刻掙脫
 var combo_step := 0
 var combo_timer := 0.0
 var buffered_action: Dictionary = {}   # { type: &"special" | &"slot" | &"roll", index?, time }；空 = 沒有緩衝
@@ -112,14 +113,25 @@ func knock_up(speed: float) -> void:
 
 
 # 暈眩（v0.27.0：Boss 衝鋒）：期間不能移動、出招、翻滾、跳；動作中斷
-func stun(duration: float) -> void:
+# p_grabbed_by：被腐屍抓住（抓住的怪 id）：同暈眩，但按翻滾立刻掙脫（update）、怪被打會鬆手（release_grab）
+func stun(duration: float, p_grabbed_by: int = 0) -> void:
 	if is_dead or is_downed:
 		return
 	stun_timer = maxf(stun_timer, duration)
+	if p_grabbed_by != 0:
+		grabbed_by = p_grabbed_by
 	if not action.is_in(&"dig"):   # 挖墳被打不中斷（D6）
 		action.change(&"ready")
 	buffered_action = {}
-	world.emit_event("player:stunned", {"player_id": id, "duration": duration})
+	world.emit_event("player:stunned", {"player_id": id, "duration": duration, "grabbed": p_grabbed_by != 0})
+
+
+# 從抓住中放開（掙脫、腐屍被打或時間到）：暈眩一起結束
+func release_grab() -> void:
+	if grabbed_by == 0:
+		return
+	grabbed_by = 0
+	stun_timer = 0.0
 
 
 # 空中還能跳幾次：背包裡每個有 double_jump 能力的道具 +1（同一種拿兩個也只算 1 次）
@@ -576,7 +588,13 @@ func update(dt: float) -> void:
 	if world.is_authority and not is_dead and _pressed & (InputCmd.BTN_VOTE_YES | InputCmd.BTN_VOTE_NO):
 		world.event.cast_vote(world, self, _pressed & InputCmd.BTN_VOTE_YES != 0)
 	if is_dead or is_downed or descended or stun_timer > 0.0:
+		if grabbed_by != 0 and (is_dead or is_downed or _pressed & InputCmd.BTN_ROLL):
+			if not is_dead and not is_downed:
+				world.emit_event("player:grab_escaped", {"player_id": id})   # 被抓住時按翻滾：立刻掙脫（這一步不翻滾）
+			release_grab()
 		stun_timer = maxf(0.0, stun_timer - dt)
+		if stun_timer <= 0.0:
+			grabbed_by = 0
 		if stun_timer > 0.0:
 			move_input = Vector2.ZERO   # 暈眩時站著不動（移動層回到 idle）
 		_pressed = 0
@@ -710,7 +728,8 @@ func _update_anim() -> void:
 		"parry": parry_timer / PARRY_ANIM_TIME,   # 1 → 0（盾反剛發動到結束）
 		"vz": vz,
 		"revive": revive_progress / Config.REVIVE.revive_time,   # 倒地時被救的進度 0~1（畫面顯示用）
-		"stunned": stun_timer > 0.0,
+		"stunned": stun_timer > 0.0 and grabbed_by == 0,
+		"grabbed": grabbed_by != 0,
 		"torch_stance": torch_stance,
 		"running": running,
 		"holding": held_enemy_id != 0,   # 鐵鏟舉著怪（F9）   # 舉著火把：全隊的視野都看得到周圍（F8，Vision.lights）

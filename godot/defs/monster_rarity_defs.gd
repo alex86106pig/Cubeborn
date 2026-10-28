@@ -24,7 +24,7 @@ const AFFIXES := {
 	&"frenzy": {"name": "狂暴", "desc": "生命低於 30% 時攻速與移速 +40%", "threshold": 0.3, "speed": 1.4},
 	&"volatile": {"name": "死亡爆炸", "desc": "死後 0.8 秒在原地爆炸", "delay": 0.8, "radius": 2.2, "damage": 20.0, "knockback": 10.0,
 		"color": Color("ff7a3a")},
-	&"summoner": {"name": "召喚", "desc": "每 8 秒叫出 2 隻骷髏戰士", "interval": 8.0, "count": 2, "max_alive": 6, "spread": 2.0},
+	&"summoner": {"name": "召喚", "desc": "每 8 秒叫出 2 隻同種的怪", "interval": 8.0, "count": 2, "max_alive": 6, "spread": 2.0},
 }
 
 # 稀有怪的名字：前半 + 後半（POE 式隨機名字）
@@ -41,7 +41,6 @@ const PACKS := {
 	"member_gap": 1.0,            # 成員之間至少這麼遠（找不到就放寬）
 	"edge_margin": 4.0,           # 群中心離地圖邊緣至少這麼遠
 	"wake_distance": 12.0,        # 任一位玩家離群中心這麼近，整群醒來
-	"archer_ratio": 0.2,          # 弓手的比例（其餘骷髏戰士）
 	"magic_per_pack": [1, 2],
 	"rare_chance": 0.25,
 	"attempts": 400,              # 找群中心的嘗試次數

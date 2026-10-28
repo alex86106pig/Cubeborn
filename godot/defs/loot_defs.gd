@@ -6,7 +6,7 @@ class_name LootDefs
 
 # 殺一隻給多少靈魂（召喚出來的不給，Enemy.no_souls）；多人時乘 player_mul
 # v0.44.0 使用者試玩：錢太多（地圖 A 開場平均 155 隻怪 ×5 ≈ 775 金，寶箱總價才 160）→ 5 → 2、Boss 50 → 30，清完也開不完全部寶箱
-const KILL_SOULS := {&"grunt": 2, &"archer": 2, &"boss": 30}
+const KILL_SOULS := {&"grunt": 2, &"archer": 2, &"zombie": 2, &"boss": 30}
 
 # 寶箱（v0.44.0）：開場隨機放在地圖上（有 "chest_count" 的地圖），數量乘 player_mul（四捨五入）
 # 開場怪群 109~207 隻（40 個種子量測，平均 155），清完 + Boss ≈ 248~444 金（平均 340）< 寶箱總價 12×25 + 4×60 = 540
@@ -32,7 +32,7 @@ const CHESTS := {
 # - 掉落：殺怪極低機率掉 1 枚在地上，活著的玩家走到 collect_range 內自動撿（參考雨中冒險 2 的月幣）；召喚出來的怪不掉
 const RUN_COINS := {
 	"floor_clear_per_floor": 5,
-	"drop_chance": {&"grunt": 0.003, &"archer": 0.003, &"boss": 0.03},
+	"drop_chance": {&"grunt": 0.003, &"archer": 0.003, &"zombie": 0.003, &"boss": 0.03},
 	"collect_range": 1.2,   # 身體邊緣到金幣中心多近就撿起
 }
 

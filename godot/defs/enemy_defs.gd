@@ -71,6 +71,37 @@ const ENEMIES := {
 		"projectile_blockable": true,
 	},
 
+	# 腐屍（第 1 層主力，數值 Claude 暫定）：慢、血厚、成群；撲抱抓住後持續啃咬（sim/enemies/zombie.gd）
+	&"zombie": {
+		"visual": &"zombie",
+		"behavior": &"zombie",
+		"max_hp": 48.0,
+		"move_speed": 1.8,
+		"speed_variance": 0.12,
+		"turn_speed": 5.0,
+		"radius": 0.45,
+		"mass": 1.2,
+		"hurt_time": 0.22,
+		"spawn_time": 0.9,
+		"corpse_time": 1.4,
+		"lunge": {
+			"trigger_distance": 1.4,   # 與目標中心距離在這以內、冷卻好時開始舉手
+			"windup": 0.6,             # 舉手後仰：前 track 比例的時間轉向目標，之後鎖定方向
+			"track": 0.6,
+			"distance": 1.2,           # 往前撲多遠（duration 秒內）
+			"duration": 0.18,
+			"hit_reach": 0.35,         # 撲的判定：身體外擴這麼多的圓，只打一次
+			"recovery": 0.6,
+			"damage": 6.0,
+			"cooldown": 1.6,           # 從舉手開始算
+			"blockable": true,
+			"blocked_stagger": 0.5,    # 撲抱被盾擋下時踉蹌幾秒
+			"grab_time": 0.8,          # 撲中後抓住幾秒（期間玩家同暈眩，按翻滾立刻掙脫）
+			"bite_interval": 0.2,
+			"bite_damage": 4.0,        # 每口；抓滿 0.8 秒咬 4 口
+		},
+	},
+
 	&"boss": {
 		"visual": &"boss",
 		"behavior": &"boss",
@@ -185,5 +216,32 @@ const ENEMIES := {
 }
 
 
+# 各層的小怪種類與比例（設計方向「各層怪物」）：地圖預放的怪群、挖墳怪潮用這一層的表，挖墳點噴的是下一層的表；
+# 超過表的層數用最後一層的表
+const FLOOR_MIX := {
+	1: {&"zombie": 1.0},
+	2: {&"grunt": 0.75, &"archer": 0.25},
+}
+
+
 static func is_boss(type: StringName) -> bool:
 	return ENEMIES[type].get("is_boss", false)
+
+
+static func floor_mix(floor_num: int) -> Dictionary:
+	var last: int = FLOOR_MIX.keys().max()
+	return FLOOR_MIX[clampi(floor_num, 1, last)]
+
+
+# 照 floor_mix 的比例抽一種（用傳入的 rng，模擬才有決定性）
+static func roll_floor_type(floor_num: int, rng: RandomNumberGenerator) -> StringName:
+	var mix := floor_mix(floor_num)
+	var r := rng.randf()
+	var acc := 0.0
+	var pick: StringName = mix.keys()[0]
+	for type: StringName in mix:
+		pick = type
+		acc += mix[type]
+		if r < acc:
+			break
+	return pick

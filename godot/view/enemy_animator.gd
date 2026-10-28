@@ -32,6 +32,7 @@ var _crack_root: Node3D = null              # Boss 砸地的裂紋（掛在 rig 
 var _cracks: Array[Dictionary] = []         # 每一段：{ node, ring, start, dir, length }
 var _crack_mats: Array[StandardMaterial3D] = []   # 每一圈共用一個材質（同一圈同時變亮）
 var _base_body_scale := Vector3.ZERO        # 稀有度放大後的身體大小（第一次 update 時記下，膨脹以它為準）
+var _zombie := false      # 腐屍：走路時雙手往前伸、駝背
 var _holds_bow := false   # 骷髏弓手：左手拿弓，不瞄準時照 _bow_arm_target
 var _bow_arm_target := BOW_ARM_REST
 var _dt := 0.0
@@ -40,6 +41,7 @@ var _dt := 0.0
 func _init(p_rig: Node3D, e: Enemy) -> void:
 	rig = p_rig
 	_holds_bow = e.def.visual == &"ranged"
+	_zombie = e.def.visual == &"zombie"
 	walk_phase = randf() * TAU   # 畫面用隨機，與模擬無關
 	if e.is_boss():
 		_build_cracks(e)
@@ -102,6 +104,10 @@ func update(e: Enemy, dt: float) -> void:
 			if e.is_boss():
 				walk_phase += dt * e.velocity.length() * 1.6
 				_pose_walk(1.0 if moving else 0.0, -0.5, -0.3)
+			elif _zombie:
+				walk_phase += dt * e.velocity.length() * 2.6
+				_pose_walk(0.6 if moving else 0.0, -1.35, -1.45)
+				rig.body.rotation.x = 0.18
 			else:
 				walk_phase += dt * e.velocity.length() * 2.2
 				_pose_walk(1.0 if moving else 0.0, -0.6, -0.3)
@@ -132,6 +138,18 @@ func update(e: Enemy, dt: float) -> void:
 				rig.body.rotation.x = lerpf(0.0, -0.32, MathUtil.ease_out_cubic(t / a.get("windup", c.windup)))
 		&"rush":
 			_pose_rush(a, dt, def.rush)
+		&"lunge":
+			_pose_lunge(a, def.lunge)
+		&"bite":
+			# 啃咬：雙手抓著往前、頭一下一下咬下去
+			_pose_walk(0.0, -1.2 + sin(t * 20.0) * 0.08, -1.25 - sin(t * 20.0) * 0.08)
+			rig.body.rotation.x = 0.35
+			rig.head.rotation.x = 0.25 + 0.25 * maxf(0.0, sin(t * TAU / def.lunge.bite_interval))
+		&"stagger":
+			# 撲抱被擋下：往後踉蹌、雙手亂揮
+			var k := clampf(t / def.lunge.blocked_stagger, 0.0, 1.0)
+			rig.body.rotation.x = -0.35 * sin(k * PI)
+			_pose_arms(-0.8 + sin(t * 18.0) * 0.4)
 		&"summon":
 			# 召喚：雙臂往兩側張開、身體後仰、抬頭看天（和砸地的雙手高舉分開）
 			var k := MathUtil.ease_out_cubic(clampf(t / def.summon.windup, 0.0, 1.0))
@@ -207,6 +225,26 @@ func _pose_slam(a: Dictionary) -> void:
 			_pose_arms(lerpf(-3.1, -0.6, k), 0.0)
 			rig.body.rotation.x = lerpf(-0.15, 0.55, k)
 			rig.position.y = -SLAM_CROUCH * k
+
+
+# 腐屍撲抱：windup 雙手舉高、身體後仰（看得出要撲）→ dash 雙手往前抓、身體前撲 → recovery 慢慢收回
+func _pose_lunge(a: Dictionary, l: Dictionary) -> void:
+	var pt: float = a.get("phase_time", 0.0)
+	match a.get("phase", &"windup"):
+		&"windup":
+			var k := MathUtil.ease_out_cubic(clampf(pt / l.windup, 0.0, 1.0))
+			_pose_walk(0.0, lerpf(-1.35, -2.7, k), lerpf(-1.45, -2.7, k))
+			rig.body.rotation.x = lerpf(0.18, -0.3, k)
+			rig.head.rotation.x = lerpf(0.0, -0.3, k)
+		&"dash":
+			var k := clampf(pt / l.duration, 0.0, 1.0)
+			_pose_walk(0.0, lerpf(-2.7, -1.5, k), lerpf(-2.7, -1.5, k))
+			rig.body.rotation.x = lerpf(-0.3, 0.5, k)
+			rig.head.rotation.x = 0.0
+		_:
+			var k := clampf(pt / l.recovery, 0.0, 1.0)
+			_pose_walk(0.0, lerpf(-1.5, -1.35, k), lerpf(-1.5, -1.45, k))
+			rig.body.rotation.x = lerpf(0.5, 0.18, k)
 
 
 # 骷髏戰士衝撞（v0.27.0）：蓄力前傾 → 低頭衝刺 → 收招

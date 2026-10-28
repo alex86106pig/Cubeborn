@@ -8,6 +8,8 @@ const C := {
 	"leather": Color("3b2a20"), "bone": Color("d8d2bf"), "bone_dark": Color("a39d88"), "socket": Color("1a1612"),
 	"eye_red": Color("ff3b2f"), "hood": Color("2c2a35"), "rust": Color("8a6a4a"), "death_armor": Color("23262e"),
 	"death_eye": Color("55e0ff"), "wood": Color("4a3526"),
+	"rot_skin": Color("7a8463"), "rot_dark": Color("4a5238"), "rag": Color("4a4238"), "rag_dark": Color("2e2a2c"),
+	"rot_eye": Color("d8e05a"),
 }
 
 # 騎士身上的掛點（Rig.mount_nodes）：back 在披風外、hip_l / hip_r 在腰帶外側（身體座標），head 在頭盔頂（頭的座標），
@@ -26,6 +28,10 @@ const KNIGHT_JOINTS := {
 const SKELETON_JOINTS := {
 	"neck": 1.5, "shoulder_y": 1.45, "shoulder_x": 0.3, "grip": 0.65,
 	"hip_y": 0.92, "hip_x": 0.12, "height": 1.95,
+}
+const ZOMBIE_JOINTS := {
+	"neck": 1.42, "shoulder_y": 1.4, "shoulder_x": 0.3, "grip": 0.58,
+	"hip_y": 0.92, "hip_x": 0.13, "height": 1.85,
 }
 const BOSS_SCALE := 1.85
 static var _projectile_kit: PartKit   # 箭的材質（enemy_projectile）
@@ -51,6 +57,8 @@ static func character(kind: StringName) -> Rig:
 			rig = skeleton()
 		&"archer":
 			rig = skeleton_archer()
+		&"zombie":
+			rig = zombie()
 		&"boss":
 			rig = death_knight()
 		_:
@@ -187,6 +195,32 @@ static func skeleton_archer() -> Rig:
 	var rig := Rig.new(SKELETON_JOINTS)
 	_skeleton_base(rig, true)
 	rig.hand_l.add_child(_bow(rig.kit, C.wood))
+	return rig.optimize()
+
+
+# 腐屍：灰綠的爛肉、破布衣、駝背；沒拿武器（徒手撲抱）
+static func zombie() -> Rig:
+	var rig := Rig.new(ZOMBIE_JOINTS)
+	var k := rig.kit
+	var skin := k.mat(C.rot_skin)
+	var dark := k.mat(C.rot_dark)
+	var cloth := k.mat(C.rag)
+	k.add(rig.body, PartKit.cyl(0.24, 0.2, 0.55, 6), cloth, {"y": 1.2, "rx": 0.25, "z": 0.06})
+	k.add(rig.body, PartKit.box(0.3, 0.14, 0.04), dark, {"y": 1.08, "z": 0.2, "rx": 0.25})   # 破洞露出的肚子
+	k.add(rig.body, PartKit.cyl(0.22, 0.24, 0.28, 6), k.mat(C.rag_dark), {"y": 0.88})
+	k.add(rig.head, PartKit.ico(0.17, 1), skin, {"y": 0.16, "sy": 1.05, "z": 0.04})
+	k.add(rig.head, PartKit.box(0.15, 0.06, 0.12), dark, {"y": 0.02, "z": 0.08, "rx": 0.3})   # 掉下來的下巴
+	for s in [-1.0, 1.0]:
+		k.add(rig.head, PartKit.sphere(0.035, 4, 3), k.mat(C.rot_eye, true), {"x": s * 0.065, "y": 0.19, "z": 0.18, "shadow": false})
+	for arm in [rig.arm_r, rig.arm_l]:
+		k.add(arm, PartKit.cyl(0.07, 0.06, 0.34, 5), cloth, {"y": -0.17})
+		k.add(arm, PartKit.cyl(0.05, 0.045, 0.3, 5), skin, {"y": -0.45})
+	for hand in [rig.hand_r, rig.hand_l]:
+		k.add(hand, PartKit.box(0.09, 0.12, 0.05), skin)
+	for leg in [rig.leg_r, rig.leg_l]:
+		k.add(leg, PartKit.cyl(0.085, 0.075, 0.45, 5), k.mat(C.rag_dark), {"y": -0.22})
+		k.add(leg, PartKit.cyl(0.06, 0.055, 0.4, 5), skin, {"y": -0.64})
+		k.add(leg, PartKit.box(0.1, 0.06, 0.2), dark, {"y": -0.88, "z": 0.04})
 	return rig.optimize()
 
 

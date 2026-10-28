@@ -11,7 +11,7 @@ enum { E_ID, E_KIND, E_X, E_Z, E_H, E_FACING, E_HP, E_MAX_HP, E_VX, E_VZ, E_FLAS
 enum { P_PEER, P_WEAPON, P_ROLLS, P_DOWNED, P_DOWN_TIMER, P_REVIVE, P_PARRY, P_DODGE, P_INV, P_SLOTS, P_ACTIVE, P_STUN, P_DESCENDED, P_QUIVER, P_RELOAD }
 # 寶箱的 E_EXTRA：[tier, opened]；地上道具：[item_id, 武器（WeaponDropDefs.to_array，不是武器為 []）, 屍體的主人 peer id]（D3 / D4 / D6）
 
-const ENEMY_KINDS: Array[StringName] = [&"grunt", &"archer", &"boss", &"ghost", &"minion"]
+const ENEMY_KINDS: Array[StringName] = [&"grunt", &"archer", &"boss", &"ghost", &"minion", &"zombie"]
 # 動畫欄位名稱 → 索引（Player._update_anim、Enemy._update_anim、Boss._anim_extra）；不在表裡的照樣用字串送
 const ANIM_KEYS: Array[String] = [
 	"loco", "loco_time", "action", "action_time", "behavior", "phase", "k", "swing_dir", "is_finisher",
@@ -22,16 +22,16 @@ const ANIM_KEYS: Array[String] = [
 # 玩家動畫欄位的預設值：和預設值相同的欄位不送（大部分時間只剩移動層、動作層的名稱與秒數），收到時補回
 const PLAYER_ANIM_DEFAULTS := {
 	"behavior": &"", "phase": &"", "k": 0.0, "swing_dir": 1, "is_finisher": false, "trail_color": null,
-	"airborne": false, "blocking": false, "parry": 0.0, "vz": 0.0, "revive": 0.0, "stunned": false, "torch_stance": false, "holding": false,
+	"airborne": false, "blocking": false, "parry": 0.0, "vz": 0.0, "revive": 0.0, "stunned": false, "grabbed": false, "torch_stance": false, "holding": false,
 	"shield": 0.0, "running": false,
 }
 # 數值欄位 E_X ~ E_MAX_HP 用 float32；E_VX ~ E_INVULN 只給別人的實體外推與閃白，用 half（16 位元）
 # 二進位格式（v0.35.0）用的種類與常見名稱表：在表裡的送 1 byte 索引，不在表裡的照樣送字串（表只影響大小、不影響正確性）
-const KINDS: Array[StringName] = [&"player", &"grunt", &"archer", &"boss", &"ghost", &"chest", &"pickup", &"projectile", &"coin", &"torch", &"minion"]
+const KINDS: Array[StringName] = [&"player", &"grunt", &"archer", &"boss", &"ghost", &"chest", &"pickup", &"projectile", &"coin", &"torch", &"minion", &"zombie"]
 const NAMES: Array[StringName] = [
 	&"idle", &"move", &"chase", &"kite", &"aim", &"attack", &"swing", &"cleave", &"slam", &"charge", &"rush", &"summon",
 	&"hurt", &"stagger", &"dead", &"dormant", &"spawn", &"climb", &"jump", &"stun", &"ready", &"special", &"roll", &"dig",
-	&"downed", &"revive", &"windup", &"strike", &"recover", &"block", &"parry",
+	&"downed", &"revive", &"windup", &"strike", &"recover", &"block", &"parry", &"lunge", &"bite", &"dash", &"recovery",
 ]
 enum { T_NULL, T_FALSE, T_TRUE, T_INT, T_FLOAT, T_NAME, T_SNAME, T_STRING, T_COLOR, T_VEC2, T_VARIANT }
 const NO_INDEX := 255
@@ -274,7 +274,7 @@ static func entity_fields(e: Entity) -> Array:
 		var p := e as Player
 		a[E_ANIM] = p.anim
 		a[E_EXTRA] = [p.peer_id, p.weapon_id, p.roll_charges, p.is_downed, p.down_timer, p.revive_progress, p.parry_timer, p.dodge_timer, p.inventory.to_array(),
-			p.weapon_slots.map(WeaponDropDefs.to_array), p.active_slot, p.stun_timer, p.descended]
+			p.weapon_slots.map(WeaponDropDefs.to_array), p.active_slot, -p.stun_timer if p.grabbed_by != 0 else p.stun_timer, p.descended]
 		if p.weapon.attack.has("quiver"):   # 箭袋（短弓）：拿著有箭袋的弓才送，快照才不會變大
 			a[E_EXTRA].append_array([p.quiver, p.reload_timer])
 	elif e is Chest:

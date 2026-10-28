@@ -348,12 +348,12 @@ func _update_affixes(dt: float) -> void:
 			for e in world.enemies:
 				if e is Enemy and (e as Enemy).summoner_id == id and not e.is_dead:
 					alive += 1
-			var nav := world.nav_for(EnemyDefs.ENEMIES.grunt.radius)
+			var nav := world.nav_for(def.radius)
 			for i in mini(s.count, s.max_alive - alive):
 				var a := world.rng.randf() * TAU
 				var spread: float = s.spread
 				var at := nav.nearest_walkable(pos + Vector2(sin(a), cos(a)) * spread)
-				var minion := world.spawner.spawn_at(world, &"grunt", at)
+				var minion := world.spawner.spawn_at(world, type, at)   # 叫出跟自己同一種的怪（設計方向）
 				minion.summoner_id = id
 				minion.no_souls = true
 				minion.wave_member = wave_member

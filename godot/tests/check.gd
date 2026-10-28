@@ -127,10 +127,12 @@ func _initialize() -> void:
 
 	# ───────── 怪物稀有度與挖墳事件 ─────────
 	_check("怪物種類只看資料表：每種怪的 behavior 都對應得到行為類別、建出來的類別一致；is_boss、freeze_immune 照資料；挖墳事件的 boss_type 是 Boss", MonsterChecks.check_enemy_defs)
+	_check("腐屍：撲中抓住 grab_time 秒、撲 1 下 + 每 bite_interval 咬一口；被抓時按翻滾立刻掙脫；隊友打它就鬆手；舉盾擋下不被抓、腐屍踉蹌", MonsterChecks.check_zombie)
+	_check("各層怪物種類：第 1 層怪群與挖墳怪潮只有 FLOOR_MIX[1] 的怪，挖墳點噴下一層（第 2 層）的怪；召喚詞條叫出同種的怪", MonsterChecks.check_floor_mix)
 	_check("怪物稀有度（D5）：魔法 / 稀有骷髏的生命、攻擊力、體型照倍率；詞條數照 RARITIES.affixes 不重複、稀有怪有名字；每群魔法 magic_per_pack 隻、稀有 rare_chance（±1.5%）", MonsterChecks.check_rarity)
 	_check("怪物詞條（D5）：迅捷 / 強壯 / 厚皮照 mods 倍率、再生、吸血、狂暴、死亡爆炸、召喚照資料", MonsterChecks.check_affixes)
 	_check("怪群（D5）：地圖 A 散放 PACKS.count 群、每群 size 隻、距離限制、都走得到；開場休眠不播音效、不動；走近或被打整群醒來；同種子結果相同", MonsterChecks.check_packs)
-	_check("蒙皮小怪（D5 效能）：骷髏戰士 / 弓手合成一個蒙皮網格（≤ 2 個網格、頂點數與原本零件相同），關節姿勢寫進骨架", MonsterChecks.check_skinned_rig)
+	_check("蒙皮小怪（D5 效能）：骷髏戰士 / 弓手 / 腐屍合成一個蒙皮網格（≤ 2 個網格、頂點數與原本零件相同），關節姿勢寫進骨架", MonsterChecks.check_skinned_rig)
 	_check("挖墳（D6）：DIG.range 內按住 F 開始事件並挖墳；挖墳中不能移動、跳，照樣轉向，被打不中斷不被擊退；總量 DIG.time × 活著的人數、一起挖速度相加、放手不掉（DIG.decay）、噴怪 +ERUPT.progress；挖完出口打開", EventChecks.check_dig)
 	_check("事件難度（D6）：怪物生命 × difficulty_mul；生怪間隔遞減夾在 interval_min；每批隻數隨難度與人數增加；魔法 / 稀有機率隨難度；挖墳前不冒怪、開挖就開始怪潮、難度每秒 +per_second；選的難度（簡單 / 普通 / 困難）讓上升 ×0.75 / ×1 / ×1.5、重新開始保留；挖墳點噴怪（墳土隆起預警、不畫圈、數量、下一層難度、拋物線落地）；挖完停怪、難度不漲、場上的怪留著", EventChecks.check_difficulty)
 	_check("出口與換層（D6）：挖完不會自動走；墳墓旁按 F，單人最後一層直接通關；多人投票（Esc 反對取消、全員同意或 VOTE.time 秒到就走、陣亡的不用投）；換層回出生點、基礎難度 +per_floor、保留靈魂與背包、地上與怪物清空、寶箱重放、事件歸零", EventChecks.check_next_floor)
@@ -204,7 +206,7 @@ func _initialize() -> void:
 	_check("結束程式不洩漏：主場景跑 3 秒（有怪、一直攻擊，音效還在播）後結束兩次，沒有 ObjectDB 洩漏、資源還在用", ViewChecks.check_quit_no_leak)
 
 	# ───────── 連線 ─────────
-	_check("快照：房主的實體序列化後客戶端建立同樣類別、位置、血量、武器的鏡像、動畫狀態相同時數值補間；地圖 A 怪群 + 4 人、P2 被 30 隻圍住時每份快照 ≤ 4 KB",
+	_check("快照：房主的實體序列化後客戶端建立同樣類別、位置、血量、武器的鏡像、動畫狀態相同時數值補間；地圖 A 怪群 + 4 人、P2 被 30 隻圍住時每份快照 ≤ 4.5 KB",
 		all.bind([NetChecks.check_codec, NetChecks.check_snapshot_size.bind(feel)]))
 	_check("網頁連線配對（v0.36.0）：PeerJS 網址、房主 ID、房號（4 碼、不含易混字）、訊息格式、伺服器訊息對應的訊號；桌面版 IP 與房號兩種都能用", NetChecks.check_web_signaling)
 	_check("桌面版 WebRTC（v0.40.0）：同一程序兩條連線交換 SDP，照 NetSession 的設定建房主 / 客戶端，5 秒內連上且封包收得到；網頁版接收緩衝區至少 1024 KB", NetChecks.check_desktop_webrtc.bind(feel))

@@ -123,6 +123,88 @@ static func check_rarity() -> String:
 
 # ───────── 詞條 ─────────
 
+# ───────── 第 1 層怪物 ─────────
+
+# 腐屍：站著不動被撲中 → 抓住 grab_time 秒、撲 1 下 + 每 bite_interval 咬一口；被抓時按翻滾立刻掙脫；
+# 隊友打它就鬆手；舉盾擋下撲抱 → 不被抓、腐屍踉蹌 blocked_stagger 秒
+static func check_zombie() -> String:
+	var l: Dictionary = EnemyDefs.ENEMIES.zombie.lunge
+	var bites := roundi(l.grab_time / l.bite_interval)
+	for mode: StringName in [&"stand", &"roll", &"teammate", &"block"]:
+		var w := _world()
+		var p: Player = w.players[World.HOST_PEER_ID]
+		p.pos = Vector2.ZERO
+		p.stats.set_base(&"max_hp", 9999.0)
+		p.hp = p.max_hp
+		var z := w.spawner.spawn_at(w, &"zombie", Vector2(0, 1.2))
+		var grabbed_at := -1
+		var released_at := -1
+		var hits := 0
+		var staggered := false
+		for i in 240:
+			var cmd := InputCmd.new()
+			cmd.aim = Vector2(0, 5)
+			if mode == &"block":
+				cmd.buttons = InputCmd.BTN_SPECIAL_HELD
+			if grabbed_at >= 0 and released_at < 0:
+				if mode == &"roll" and i == grabbed_at + 3:
+					cmd.buttons = InputCmd.BTN_ROLL
+				if mode == &"teammate" and i == grabbed_at + 3:
+					Combat.apply_damage(w, p, z, {"damage": 1.0, "knockback": 0.0})   # 當成隊友打它（傷害來源是玩家）
+			w.step({World.HOST_PEER_ID: cmd}, DT)
+			for ev in w.events:
+				if ev.name == "entity:damaged" and ev.target_id == p.id and ev.source_id == z.id:
+					hits += 1
+			if z.fsm.is_in(&"stagger"):
+				staggered = true
+			if grabbed_at < 0 and p.grabbed_by == z.id:
+				grabbed_at = i
+			elif grabbed_at >= 0 and released_at < 0 and p.grabbed_by == 0:
+				released_at = i
+				break   # 之後冷卻好又會再撲，不算進這次
+			if mode == &"block" and staggered:
+				break
+		match mode:
+			&"stand":
+				if grabbed_at < 0 or released_at < 0:
+					return "腐屍：站著不動應被撲中抓住再放開（抓住第 %d 步、放開第 %d 步）" % [grabbed_at, released_at]
+				var held := (released_at - grabbed_at) * DT
+				if absf(held - l.grab_time) > DT * 2.5:
+					return "腐屍：抓住 %.3f 秒，預期 %.2f" % [held, l.grab_time]
+				if hits != 1 + bites:
+					return "腐屍：撲 1 下 + 咬 %d 口應有 %d 次傷害，實際 %d" % [bites, 1 + bites, hits]
+			&"roll", &"teammate":
+				if grabbed_at < 0 or released_at != grabbed_at + 3 or p.stun_timer > 0.0:
+					return "腐屍：%s 應在第 %d 步放開（實際 %d、剩暈眩 %.2f）" % ["按翻滾" if mode == &"roll" else "隊友打它", grabbed_at + 3, released_at, p.stun_timer]
+			&"block":
+				if grabbed_at >= 0 or not staggered:
+					return "腐屍：舉盾擋下撲抱應不被抓、腐屍踉蹌（被抓 %s、踉蹌 %s）" % [grabbed_at >= 0, staggered]
+	return ""
+
+
+static func check_floor_mix() -> String:
+	var w := _world(&"graveyard_a", true)
+	var first: Dictionary = EnemyDefs.floor_mix(1)
+	var next: Dictionary = EnemyDefs.floor_mix(2)
+	for e in w.enemies:
+		if e is Enemy and (e as Enemy).pack_id >= 0 and not first.has((e as Enemy).type):
+			return "第 1 層的怪群出現 %s（應只有 %s）" % [(e as Enemy).type, first.keys()]
+	for i in 50:
+		var horde: StringName = w.event._roll_type(w)
+		var erupt: StringName = w.event._roll_type(w, 1)
+		if not first.has(horde) or not next.has(erupt):
+			return "第 1 層怪潮抽到 %s、挖墳點噴 %s（應是 %s / %s）" % [horde, erupt, first.keys(), next.keys()]
+	var w2 := _world()
+	var z := w2.spawner.spawn_at(w2, &"zombie", Vector2(0, 6))
+	z.set_rarity(MonsterRarityDefs.RARE, [&"summoner"], "")
+	z.apply_rarity_stats()
+	_step(w2, roundi((EnemyDefs.ENEMIES.zombie.spawn_time + MonsterRarityDefs.AFFIXES.summoner.interval) / DT) + 3, true)
+	var called := w2.enemies.filter(func(e: Entity) -> bool: return e is Enemy and (e as Enemy).summoner_id == z.id)
+	if called.is_empty() or called.any(func(e: Entity) -> bool: return (e as Enemy).type != &"zombie"):
+		return "召喚詞條的腐屍應叫出腐屍：%s" % [called.map(func(e: Entity) -> StringName: return (e as Enemy).type)]
+	return ""
+
+
 static func check_affixes() -> String:
 	var af: Dictionary = MonsterRarityDefs.AFFIXES
 	var w := _world()
@@ -314,7 +396,7 @@ static func check_packs() -> String:
 
 # 蒙皮小怪（D5 效能）：骷髏戰士 / 弓手每隻 ≤ 2 個網格、三角形數與原本的零件相同；關節寫進骨架
 static func check_skinned_rig() -> String:
-	for kind: StringName in [&"grunt", &"archer"]:
+	for kind: StringName in [&"grunt", &"archer", &"zombie"]:
 		var old := DarkFantasy.character(kind)
 		var rig := DarkFantasy.skinned_character(kind)
 		var before := 0

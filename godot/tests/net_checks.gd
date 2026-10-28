@@ -674,8 +674,9 @@ static func check_desktop_webrtc(feel: Array[String]) -> String:
 
 
 # 快照大小（v0.35.0，網頁連線前置）：地圖 A + 怪群（約 170 隻）、4 位玩家分散；一般情境另外把 30 隻怪圍在 P2 身邊
-# 每份快照（每位客戶端各一份）序列化後的位元組數要 ≤ SNAPSHOT_MAX_BYTES（WebRTC 單則訊息約 16 KB 的安全上限留 4 倍空間）
-const SNAPSHOT_MAX_BYTES := 4096
+# 每份快照（每位客戶端各一份）序列化後的位元組數要 ≤ SNAPSHOT_MAX_BYTES（WebRTC 單則訊息約 16 KB 的安全上限留 3.5 倍空間）
+# 4 KB → 4.5 KB（2026-10-28 許家慶決定）：第 1 層換成腐屍後怪群的隨機配置變了，P2 附近 69 → 79 個實體（每個平均 59 → 54 bytes）
+const SNAPSHOT_MAX_BYTES := 4608
 const SNAPSHOT_CROWD_MAX_BYTES := 8192   # 最壞情況（身邊 120 隻）：上限的一半
 
 
@@ -700,7 +701,7 @@ static func check_snapshot_size(feel: Array[String]) -> String:
 	for peer: int in [2, 3, 4]:
 		var bytes := var_to_bytes(snaps[peer]).size()
 		worst = maxi(worst, bytes)
-		parts += " P%d %d 實體 %d bytes" % [peer, _entity_count(snaps[peer]), bytes]
+		parts += " P%d %d 實體（休眠 %d）%d bytes" % [peer, _entity_count(snaps[peer]), _dormant_count(snaps[peer]), bytes]
 	# 最壞情況：挖墳事件同時最多 120 隻（EventDefs），全部圍在 P2 身邊
 	for i in 90:
 		var a := TAU * i / 90.0
@@ -720,6 +721,14 @@ static func check_snapshot_size(feel: Array[String]) -> String:
 
 static func _entity_count(snap: Array) -> int:
 	return (NetCodec.decode_snapshot(snap.duplicate(true))[NetCodec.S_ENTITIES] as Array).size()
+
+
+static func _dormant_count(snap: Array) -> int:
+	var n := 0
+	for a: Array in NetCodec.decode_snapshot(snap.duplicate(true))[NetCodec.S_ENTITIES]:
+		if a[NetCodec.E_ANIM] is Dictionary and (a[NetCodec.E_ANIM] as Dictionary).get("state") == &"dormant":
+			n += 1
+	return n
 
 
 # C2：同一串輸入下，客戶端畫面套用的每一筆快照都和房主當時的狀態一致；事件順序也一樣

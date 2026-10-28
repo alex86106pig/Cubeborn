@@ -56,7 +56,6 @@ const SPAWN := {
 	"group_base": 2,
 	"group_per_point": 0.02,        # 難度每 50 點多 1 隻（原本每 20 點）
 	"per_extra_player": 0.5,
-	"archer_ratio": 0.25,
 	"magic_base": 0.05, "magic_per_point": 0.002, "magic_max": 0.5,
 	"rare_base": 0.0, "rare_per_point": 0.0008, "rare_max": 0.25,
 	"max_alive": 120,               # 事件怪同時最多這麼多隻（效能上限）
