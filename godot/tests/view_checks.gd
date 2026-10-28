@@ -1617,6 +1617,44 @@ static func check_bow_rest() -> String:
 	return ""
 
 
+# 骷髏弓手：不瞄準時左手垂直（弓平放）、瞄準時舉起、射完回 kite 的第一幀不直接跳回垂直（平滑放下）
+static func check_archer_bow_arm() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	p.stats.set_base(&"max_hp", 99999.0)
+	p.hp = 99999.0
+	var archer := _spawn(w, &"archer", p.pos + Vector2(0, 8))
+	var rig := DarkFantasy.character(&"archer")
+	var anim := EnemyAnimator.new(rig, archer)
+	var rest_ok := false
+	var prev_state: StringName = &""
+	var highest := 0.0
+	var after_aim := INF
+	for i in 900:
+		_run(w, _cmd(Vector2.ZERO), 1)
+		anim.update(archer, DT)
+		var state: StringName = archer.anim.state
+		if state == &"aim":
+			highest = minf(highest, rig.arm_l.rotation.x)
+		elif prev_state == &"aim":
+			after_aim = rig.arm_l.rotation.x
+			break
+		elif state == &"kite" and absf(rig.arm_l.rotation.x - EnemyAnimator.BOW_ARM_REST) < 0.01:
+			rest_ok = true
+		prev_state = state
+	rig.free()
+	if not rest_ok:
+		return "弓手不瞄準時左手應垂直（%.2f）" % EnemyAnimator.BOW_ARM_REST
+	if after_aim == INF:
+		return "弓手 15 秒內沒有瞄準射完"
+	if highest > -1.4:
+		return "弓手瞄準時左手應舉到接近水平：最高 %.2f" % highest
+	if after_aim > -0.5:
+		return "弓手射完第一幀左手就回到 %.2f，應平滑放下" % after_aim
+	_note("弓手瞄準時左手最高 %.2f、射完第一幀 %.2f" % [highest, after_aim])
+	return ""
+
+
 # node 相對於祖先 top 的方向（各層 basis 相乘）
 static func _basis_under(node: Node3D, top: Node3D) -> Basis:
 	var b := Basis.IDENTITY

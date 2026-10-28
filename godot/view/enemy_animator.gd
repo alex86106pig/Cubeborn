@@ -10,16 +10,22 @@ const CORPSE_SINK_START := 0.6   # 屍體停留時間的 60% 後開始沉入地�
 const CORPSE_SINK_DEPTH := 0.8
 const SLAM_FOLLOW_TIME := 0.12   # 重砸落地後手臂揮下的秒數
 const SLAM_FLASH_TIME := 0.3     # 砸地每一圈打到時閃亮後淡掉的秒數（v0.42.0）
+# 骷髏弓手不瞄準時左手垂直地面：弓固定在骨手上，手垂直時弓平放（弓梢朝前後、弦在上），手平舉瞄準時弓自然直立
+const BOW_ARM_REST := 0.0
+const BOW_ARM_SHARPNESS := 18.0  # 射完放下弓手的速度（同玩家放下弓）
 
 var rig   # Rig（Boss）或 SkinnedRig（小怪，D5）：關節介面相同
 var walk_phase := 0.0
 var _prev_state: StringName = &""
 var _slam_rings: Array[MeshInstance3D] = []   # Boss 砸地的每一圈（v0.27.0：一圈圈往外擴散）
 var _charge_line: MeshInstance3D = null
+var _holds_bow := false   # 骷髏弓手：左手拿弓，不瞄準時照 BOW_ARM_REST
+var _dt := 0.0
 
 
 func _init(p_rig: Node3D, e: Enemy) -> void:
 	rig = p_rig
+	_holds_bow = e.def.visual == &"ranged"
 	walk_phase = randf() * TAU   # 畫面用隨機，與模擬無關
 	if e.is_boss():
 		var inner := 0.0
@@ -30,6 +36,7 @@ func _init(p_rig: Node3D, e: Enemy) -> void:
 
 
 func update(e: Enemy, dt: float) -> void:
+	_dt = dt
 	var a := e.anim
 	var state: StringName = a.state
 	var t: float = a.time
@@ -83,7 +90,7 @@ func update(e: Enemy, dt: float) -> void:
 			_pose_walk(1.0 if moving else 0.0, -0.2, -0.5)
 		&"aim":
 			var draw := MathUtil.ease_out_cubic(minf(1.0, t / def.aim_time * 1.5))
-			rig.arm_l.rotation.x = lerpf(-0.5, -1.55, draw)
+			rig.arm_l.rotation.x = lerpf(BOW_ARM_REST, -1.55, draw)
 			rig.arm_r.rotation.x = lerpf(-0.2, -1.45, draw)
 			rig.arm_r.rotation.y = lerpf(0.0, 0.5, draw)
 			rig.leg_r.rotation.x = 0.0
@@ -117,7 +124,10 @@ func _pose_walk(amount: float, arm_r: float, arm_l: float) -> void:
 	rig.leg_r.rotation.x = swing
 	rig.leg_l.rotation.x = -swing
 	rig.arm_r.rotation.x = arm_r - swing * 0.4
-	rig.arm_l.rotation.x = arm_l + swing * 0.5
+	if _holds_bow:   # 拿弓的手走路時不擺；射完從瞄準姿勢平滑放下
+		rig.arm_l.rotation.x = MathUtil.damp(rig.arm_l.rotation.x, BOW_ARM_REST, BOW_ARM_SHARPNESS, _dt)
+	else:
+		rig.arm_l.rotation.x = arm_l + swing * 0.5
 	rig.arm_r.rotation.y = 0.0
 	rig.arm_l.rotation.y = 0.0
 	rig.body.position.y = absf(sin(walk_phase)) * 0.04 * amount
