@@ -253,6 +253,44 @@ static func check_bloater() -> String:
 	return ""
 
 
+# 屍犬：玩家站著不轉身 → 繞到背後（相對朝向 ≥ behind_angle）才撲，patience 秒內做到；
+# 玩家一直轉身看著它 → patience 秒內都不撲，之後才從正面撲；撲中有傷害
+static func check_hound() -> String:
+	var hd: Dictionary = EnemyDefs.ENEMIES.hound
+	var start: float = hd.spawn_time + hd.prowl.patience
+	for watch: bool in [false, true]:
+		var w := _world()
+		var p: Player = w.players[World.HOST_PEER_ID]
+		p.pos = Vector2.ZERO
+		p.stats.set_base(&"max_hp", 9999.0)
+		p.hp = p.max_hp
+		var h := w.spawner.spawn_at(w, &"hound", Vector2(0, 9))
+		var pounce_at := -1
+		var bearing := 0.0
+		var hit := false
+		for i in 60 * 12:
+			var cmd := InputCmd.new()
+			cmd.aim = h.pos if watch else Vector2(0, 5)
+			w.step({World.HOST_PEER_ID: cmd}, DT)
+			if pounce_at < 0 and h.fsm.is_in(&"pounce"):
+				pounce_at = i
+				bearing = Hound.bearing_from(p, h.pos)
+			for ev in w.events:
+				if ev.name == "entity:damaged" and ev.target_id == p.id and ev.source_id == h.id:
+					hit = true
+			if hit:
+				break
+		var label := "一直轉身看著它" if watch else "站著不轉身"
+		if pounce_at < 0 or not hit:
+			return "屍犬（%s）：12 秒內沒有撲中（撲第 %d 步）" % [label, pounce_at]
+		var at := pounce_at * DT
+		if not watch and (bearing < hd.prowl.behind_angle - 0.05 or at > start):
+			return "屍犬（站著不轉身）：應在 %.1f 秒內繞到背後才撲，實際 %.2f 秒、相對朝向 %.0f°" % [start, at, rad_to_deg(bearing)]
+		if watch and at < start - DT * 2:
+			return "屍犬（一直轉身看著它）：%.1f 秒前不該撲，實際 %.2f 秒就撲了（相對朝向 %.0f°）" % [start, at, rad_to_deg(bearing)]
+	return ""
+
+
 static func check_floor_mix() -> String:
 	var w := _world(&"graveyard_a", true)
 	var first: Dictionary = EnemyDefs.floor_mix(1)
@@ -467,7 +505,7 @@ static func check_packs() -> String:
 
 # 蒙皮小怪（D5 效能）：骷髏戰士 / 弓手每隻 ≤ 2 個網格、三角形數與原本的零件相同；關節寫進骨架
 static func check_skinned_rig() -> String:
-	for kind: StringName in [&"grunt", &"archer", &"zombie", &"bloater"]:
+	for kind: StringName in [&"grunt", &"archer", &"zombie", &"bloater", &"hound"]:
 		var old := DarkFantasy.character(kind)
 		var rig := DarkFantasy.skinned_character(kind)
 		var before := 0

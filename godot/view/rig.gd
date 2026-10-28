@@ -33,7 +33,8 @@ var _joints: Dictionary
 var _flash := 0.0
 
 
-# 關節位置 j：{ neck, shoulder_y, shoulder_x, grip（肩膀到拳頭中心）, hip_y, hip_x, height, scale?, mounts? }
+# 關節位置 j：{ neck, shoulder_y, shoulder_x, grip（肩膀到拳頭中心）, hip_y, hip_x, height, scale?, mounts?, neck_z?, shoulder_z?, hip_z? }
+# （_z：前後位移，四足的屍犬把前腳（arm）放前面、後腳（leg）放後面）
 # Godot 預設的 rotation_order 就是 YXZ（先前後抬起，再水平揮動），與網頁版關節相同
 func _init(j: Dictionary) -> void:
 	_joints = j
@@ -42,11 +43,11 @@ func _init(j: Dictionary) -> void:
 		body.add_child(joint)
 	arm_r.add_child(hand_r)
 	arm_l.add_child(hand_l)
-	head.position.y = j.neck
-	arm_r.position = Vector3(-j.shoulder_x, j.shoulder_y, 0.0)
-	arm_l.position = Vector3(j.shoulder_x, j.shoulder_y, 0.0)
-	leg_r.position = Vector3(-j.hip_x, j.hip_y, 0.0)
-	leg_l.position = Vector3(j.hip_x, j.hip_y, 0.0)
+	head.position = Vector3(0.0, j.neck, j.get("neck_z", 0.0))
+	arm_r.position = Vector3(-j.shoulder_x, j.shoulder_y, j.get("shoulder_z", 0.0))
+	arm_l.position = Vector3(j.shoulder_x, j.shoulder_y, j.get("shoulder_z", 0.0))
+	leg_r.position = Vector3(-j.hip_x, j.hip_y, j.get("hip_z", 0.0))
+	leg_l.position = Vector3(j.hip_x, j.hip_y, j.get("hip_z", 0.0))
 	hand_r.position.y = -j.grip
 	hand_l.position.y = -j.grip
 	var s: float = j.get("scale", 1.0)

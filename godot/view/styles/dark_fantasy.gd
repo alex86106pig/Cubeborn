@@ -10,6 +10,7 @@ const C := {
 	"death_eye": Color("55e0ff"), "wood": Color("4a3526"),
 	"rot_skin": Color("7a8463"), "rot_dark": Color("4a5238"), "rag": Color("4a4238"), "rag_dark": Color("2e2a2c"),
 	"rot_eye": Color("d8e05a"), "bloat_skin": Color("8c946a"), "bloat_glow": Color("a8e04a"),
+	"hound_fur": Color("2e2a28"), "hound_snout": Color("5a4a42"),
 }
 
 # 騎士身上的掛點（Rig.mount_nodes）：back 在披風外、hip_l / hip_r 在腰帶外側（身體座標），head 在頭盔頂（頭的座標），
@@ -32,6 +33,10 @@ const SKELETON_JOINTS := {
 const ZOMBIE_JOINTS := {
 	"neck": 1.42, "shoulder_y": 1.4, "shoulder_x": 0.3, "grip": 0.58,
 	"hip_y": 0.92, "hip_x": 0.13, "height": 1.85,
+}
+const HOUND_JOINTS := {
+	"neck": 0.8, "neck_z": 0.48, "shoulder_y": 0.55, "shoulder_x": 0.12, "shoulder_z": 0.3, "grip": 0.5,
+	"hip_y": 0.55, "hip_x": 0.12, "hip_z": -0.3, "height": 1.0,
 }
 const BOSS_SCALE := 1.85
 static var _projectile_kit: PartKit   # 箭的材質（enemy_projectile）
@@ -61,6 +66,8 @@ static func character(kind: StringName) -> Rig:
 			rig = zombie()
 		&"bloater":
 			rig = bloater()
+		&"hound":
+			rig = hound()
 		&"boss":
 			rig = death_knight()
 		_:
@@ -248,6 +255,29 @@ static func bloater() -> Rig:
 		k.add(leg, PartKit.cyl(0.1, 0.09, 0.45, 5), k.mat(C.rag_dark), {"y": -0.22})
 		k.add(leg, PartKit.cyl(0.075, 0.065, 0.4, 5), skin, {"y": -0.64})
 		k.add(leg, PartKit.box(0.12, 0.06, 0.2), dark, {"y": -0.88, "z": 0.04})
+	return rig.optimize()
+
+
+# 屍犬（四足）：用同一套關節，arm = 前腳（往前放）、leg = 後腳（往後放）、body 是橫的軀幹；
+# 爛掉的黑毛、露出肋骨、黃眼；手掌掛點不用（沒有拳頭）
+static func hound() -> Rig:
+	var rig := Rig.new(HOUND_JOINTS)
+	var k := rig.kit
+	var fur := k.mat(C.hound_fur)
+	var bone := k.mat(C.bone_dark)
+	k.add(rig.body, PartKit.box(0.32, 0.3, 0.85), fur, {"y": 0.62, "z": 0.0})
+	for i in 3:
+		k.add(rig.body, PartKit.box(0.34, 0.04, 0.05), bone, {"y": 0.55, "z": 0.12 - i * 0.12})   # 露出的肋骨
+	k.add(rig.body, PartKit.cyl(0.05, 0.02, 0.4, 4), fur, {"y": 0.72, "z": -0.55, "rx": -1.0})   # 尾巴
+	k.add(rig.head, PartKit.box(0.22, 0.2, 0.26), fur, {"y": 0.0, "z": 0.08})
+	k.add(rig.head, PartKit.box(0.14, 0.11, 0.22), k.mat(C.hound_snout), {"y": -0.04, "z": 0.3})
+	for s in [-1.0, 1.0]:
+		k.add(rig.head, PartKit.cone(0.05, 0.14, 4), fur, {"x": s * 0.07, "y": 0.14, "z": 0.02})
+		k.add(rig.head, PartKit.sphere(0.025, 4, 3), k.mat(C.rot_eye, true), {"x": s * 0.07, "y": 0.04, "z": 0.21, "shadow": false})
+	for leg in [rig.arm_r, rig.arm_l, rig.leg_r, rig.leg_l]:
+		k.add(leg, PartKit.cyl(0.06, 0.045, 0.28, 5), fur, {"y": -0.14})
+		k.add(leg, PartKit.cyl(0.035, 0.03, 0.26, 4), bone, {"y": -0.38})
+		k.add(leg, PartKit.box(0.07, 0.04, 0.1), bone, {"y": -0.5, "z": 0.03})
 	return rig.optimize()
 
 

@@ -43,11 +43,11 @@ class Joint:
 func _init(kind: StringName, t: Dictionary) -> void:
 	var j: Dictionary = t.joints
 	_joints = [body, head, arm_r, arm_l, leg_r, leg_l, hand_r, hand_l]
-	head.position.y = j.neck
-	arm_r.position = Vector3(-j.shoulder_x, j.shoulder_y, 0.0)
-	arm_l.position = Vector3(j.shoulder_x, j.shoulder_y, 0.0)
-	leg_r.position = Vector3(-j.hip_x, j.hip_y, 0.0)
-	leg_l.position = Vector3(j.hip_x, j.hip_y, 0.0)
+	head.position = Vector3(0.0, j.neck, j.get("neck_z", 0.0))
+	arm_r.position = Vector3(-j.shoulder_x, j.shoulder_y, j.get("shoulder_z", 0.0))
+	arm_l.position = Vector3(j.shoulder_x, j.shoulder_y, j.get("shoulder_z", 0.0))
+	leg_r.position = Vector3(-j.hip_x, j.hip_y, j.get("hip_z", 0.0))
+	leg_l.position = Vector3(j.hip_x, j.hip_y, j.get("hip_z", 0.0))
 	hand_r.position.y = -j.grip
 	hand_l.position.y = -j.grip
 	var s: float = j.get("scale", 1.0)

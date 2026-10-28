@@ -127,6 +127,40 @@ const ENEMIES := {
 		"gas": {"radius": 2.2, "duration": 3.0, "damage_per_sec": 6.0, "color": Color("7aa83a")},
 	},
 
+	# 屍犬（第 1 層，數值 Claude 暫定）：快，繞到目標背後的視野外才撲（sim/enemies/hound.gd）
+	&"hound": {
+		"visual": &"hound",
+		"behavior": &"hound",
+		"max_hp": 22.0,
+		"move_speed": 4.5,
+		"speed_variance": 0.1,
+		"turn_speed": 10.0,
+		"radius": 0.4,
+		"mass": 0.8,
+		"hurt_time": 0.2,
+		"spawn_time": 0.7,
+		"corpse_time": 1.4,
+		"prowl": {
+			"orbit": [5.0, 7.0],               # 繞圈的半徑範圍；被看著時退到外圈
+			"step": 0.7,                       # 每次往目標背後轉多少弧度（決定繞圈的目標點）
+			"behind_angle": deg_to_rad(110.0), # 相對目標朝向超過這個角度算在背後（視野是前方 ±60°）
+			"patience": 6.0,                   # 繞這麼久還到不了背後就從正面撲
+		},
+		"pounce": {
+			"trigger_distance": 4.5,
+			"windup": 0.4,      # 伏低（鎖定方向）
+			"distance": 4.0,
+			"duration": 0.3,
+			"leap_vz": 3.5,     # 撲的時候跳起來
+			"hit_reach": 0.3,
+			"recovery": 0.5,
+			"damage": 10.0,
+			"knockback": 7.0,
+			"cooldown": 2.5,    # 從伏低開始算
+			"blockable": true,
+		},
+	},
+
 	&"boss": {
 		"visual": &"boss",
 		"behavior": &"boss",
@@ -244,7 +278,7 @@ const ENEMIES := {
 # 各層的小怪種類與比例（設計方向「各層怪物」）：地圖預放的怪群、挖墳怪潮用這一層的表，挖墳點噴的是下一層的表；
 # 超過表的層數用最後一層的表
 const FLOOR_MIX := {
-	1: {&"zombie": 0.9, &"bloater": 0.1},
+	1: {&"zombie": 0.7, &"hound": 0.2, &"bloater": 0.1},
 	2: {&"grunt": 0.75, &"archer": 0.25},
 }
 

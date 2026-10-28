@@ -35,6 +35,7 @@ var _crack_mats: Array[StandardMaterial3D] = []   # 每一圈共用一個材質�
 var _base_body_scale := Vector3.ZERO        # 稀有度放大後的身體大小（第一次 update 時記下，膨脹以它為準）
 var _zombie := false      # 腐屍、膨脹屍：走路時雙手往前伸、駝背
 var _bloater := false     # 膨脹屍：脹大時身體放大、閃白，炸開後整隻不見
+var _hound := false       # 屍犬（四足）：所有狀態都走 _pose_hound（arm = 前腳、leg = 後腳）
 var _holds_bow := false   # 骷髏弓手：左手拿弓，不瞄準時照 _bow_arm_target
 var _bow_arm_target := BOW_ARM_REST
 var _dt := 0.0
@@ -45,6 +46,7 @@ func _init(p_rig: Node3D, e: Enemy) -> void:
 	_holds_bow = e.def.visual == &"ranged"
 	_zombie = e.def.visual == &"zombie" or e.def.visual == &"bloater"
 	_bloater = e.def.visual == &"bloater"
+	_hound = e.def.visual == &"hound"
 	walk_phase = randf() * TAU   # 畫面用隨機，與模擬無關
 	if e.is_boss():
 		_build_cracks(e)
@@ -75,7 +77,9 @@ func update(e: Enemy, dt: float) -> void:
 		if target != null and e.pos.distance_to(target.pos) <= def.preferred_range[1] + def.fire_reach:
 			_bow_arm_target = BOW_ARM_READY
 
-	match state:
+	match &"hound" if _hound else state:
+		&"hound":
+			_pose_hound(e, a, state, t, dt)
 		&"spawn":
 			var k := MathUtil.ease_out_cubic(clampf(t / def.spawn_time, 0.0, 1.0))
 			rig.position.y = lerpf(-rig.height, 0.0, k)
@@ -237,6 +241,57 @@ func _pose_slam(a: Dictionary) -> void:
 			_pose_arms(lerpf(-3.1, -0.6, k), 0.0)
 			rig.body.rotation.x = lerpf(-0.15, 0.55, k)
 			rig.position.y = -SLAM_CROUCH * k
+
+
+# 屍犬（四足）：奔跑時前後腳交錯；飛撲 windup 伏低（看得出要撲）→ dash 前腳往前、後腳往後伸直 → recovery 收回；
+# 死掉往側邊倒（橫的身體不能像人一樣往後倒）
+func _pose_hound(e: Enemy, a: Dictionary, state: StringName, t: float, dt: float) -> void:
+	var def := e.def
+	var legs := Vector4.ZERO   # 前右、前左、後右、後左
+	rig.body.rotation.z = 0.0
+	match state:
+		&"spawn":
+			rig.position.y = lerpf(-rig.height, 0.0, MathUtil.ease_out_cubic(clampf(t / def.spawn_time, 0.0, 1.0)))
+		&"chase", &"dormant":
+			var amount := 1.0 if e.velocity.length_squared() > 0.01 else 0.0
+			walk_phase += dt * e.velocity.length() * 2.4
+			var s := sin(walk_phase) * 0.7 * amount
+			var s2 := sin(walk_phase + 0.9) * 0.7 * amount
+			legs = Vector4(s, -s, -s2, s2)
+			rig.body.rotation.x = 0.05 * sin(walk_phase * 2.0) * amount
+			rig.head.rotation.x = 0.0
+		&"pounce":
+			var c: Dictionary = def.pounce
+			var pt: float = a.get("phase_time", 0.0)
+			match a.get("phase", &"windup"):
+				&"windup":
+					var k := MathUtil.ease_out_cubic(clampf(pt / c.windup, 0.0, 1.0))
+					rig.position.y = -0.15 * k
+					rig.body.rotation.x = 0.15 * k
+					rig.head.rotation.x = 0.25 * k
+					legs = Vector4(-0.5, -0.5, 0.5, 0.5) * k
+				&"dash":
+					rig.position.y = 0.0
+					rig.body.rotation.x = -0.1
+					rig.head.rotation.x = -0.2
+					legs = Vector4(-1.1, -1.1, 1.1, 1.1)
+				_:
+					var k := clampf(pt / c.recovery, 0.0, 1.0)
+					rig.body.rotation.x = lerpf(-0.1, 0.0, k)
+					rig.head.rotation.x = lerpf(-0.2, 0.0, k)
+					legs = Vector4(-1.1, -1.1, 1.1, 1.1) * (1.0 - k)
+		&"hurt":
+			rig.body.rotation.z = 0.25 * sin(clampf(t / def.hurt_time, 0.0, 1.0) * PI)
+		&"dead":
+			var fall := clampf(t / DEATH_FALL_TIME, 0.0, 1.0)
+			rig.body.rotation.z = lerpf(0.0, PI / 2.0, MathUtil.ease_out_cubic(fall))
+			legs = Vector4(0.3, -0.2, -0.3, 0.2)
+			var sink_start: float = def.corpse_time * CORPSE_SINK_START
+			rig.position.y = -CORPSE_SINK_DEPTH * clampf((t - sink_start) / (def.corpse_time - sink_start), 0.0, 1.0)
+	rig.arm_r.rotation = Vector3(legs.x, 0.0, 0.0)
+	rig.arm_l.rotation = Vector3(legs.y, 0.0, 0.0)
+	rig.leg_r.rotation = Vector3(legs.z, 0.0, 0.0)
+	rig.leg_l.rotation = Vector3(legs.w, 0.0, 0.0)
 
 
 # 腐屍撲抱：windup 雙手舉高、身體後仰（看得出要撲）→ dash 雙手往前抓、身體前撲 → recovery 慢慢收回
