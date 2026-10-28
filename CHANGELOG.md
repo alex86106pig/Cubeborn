@@ -3,7 +3,7 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
-## [未發布]
+## [0.50.2] - 2026-10-28
 
 ### 新增
 - **身上的掛點**：騎士骨架（玩家、亡骸騎士）多了 5 個掛點 `Rig.mount_nodes`（`DarkFantasy.KNIGHT_MOUNTS`）：`forearm_l` 左前臂外側（盾改掛這裡）、`back` 背部披風外（箭袋改掛這裡）、`hip_l` / `hip_r` 腰帶外側、`head` 頭盔頂（預留，之後例如收起的第二把武器、頭上特效）。用法同手掌掛點（`DarkFantasy._hold`）；合併零件時掛點當 anchor，沒掛東西也不會被清掉，不多一次繪製。
