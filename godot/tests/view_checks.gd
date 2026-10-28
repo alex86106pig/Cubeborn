@@ -1617,7 +1617,8 @@ static func check_bow_rest() -> String:
 	return ""
 
 
-# 骷髏弓手：不瞄準時左手垂直（弓平放）、瞄準時舉起、射完回 kite 的第一幀不直接跳回垂直（平滑放下）
+# 骷髏弓手：瞄準時左手舉平、右手拉弦；射完右手平滑放下（第一幀不直接跳回）；
+# 目標在射擊距離內時左手停在預備高度、不放下（畫面層自己算距離）；離開射擊距離後平滑放回垂直（弓平放）
 static func check_archer_bow_arm() -> String:
 	var w := _new_world()
 	var p := _player(w)
@@ -1626,10 +1627,10 @@ static func check_archer_bow_arm() -> String:
 	var archer := _spawn(w, &"archer", p.pos + Vector2(0, 8))
 	var rig := DarkFantasy.character(&"archer")
 	var anim := EnemyAnimator.new(rig, archer)
-	var rest_ok := false
 	var prev_state: StringName = &""
 	var highest := 0.0
-	var after_aim := INF
+	var aimed := false
+	var right_after := INF   # 射完第一幀右手的角度
 	for i in 900:
 		_run(w, _cmd(Vector2.ZERO), 1)
 		anim.update(archer, DT)
@@ -1637,21 +1638,41 @@ static func check_archer_bow_arm() -> String:
 		if state == &"aim":
 			highest = minf(highest, rig.arm_l.rotation.x)
 		elif prev_state == &"aim":
-			after_aim = rig.arm_l.rotation.x
+			aimed = true
+			right_after = rig.arm_r.rotation.x
 			break
-		elif state == &"kite" and absf(rig.arm_l.rotation.x - EnemyAnimator.BOW_ARM_REST) < 0.01:
-			rest_ok = true
 		prev_state = state
+	var held := 0.0   # 射完後 30 步之後左手的角度（應停在預備高度）
+	for i in 30:
+		_run(w, _cmd(Vector2.ZERO), 1)
+		anim.update(archer, DT)
+		held = rig.arm_l.rotation.x
+	var reach: float = archer.def.preferred_range[1] + archer.def.fire_reach
+	var in_range := archer.pos.distance_to(p.pos) <= reach
+	# 玩家跑到射擊距離外：弓手應平滑放下
+	p.pos = archer.pos + Vector2(0, -(reach + 8.0))
+	var first_out := INF
+	for i in 90:
+		_run(w, _cmd(Vector2.ZERO), 1)
+		anim.update(archer, DT)
+		if first_out == INF and archer.anim.state == &"kite" and archer.pos.distance_to(p.pos) > reach:
+			first_out = rig.arm_l.rotation.x
+	var rest := rig.arm_l.rotation.x
+	var out_state: StringName = archer.anim.state
 	rig.free()
-	if not rest_ok:
-		return "弓手不瞄準時左手應垂直（%.2f）" % EnemyAnimator.BOW_ARM_REST
-	if after_aim == INF:
+	if not aimed:
 		return "弓手 15 秒內沒有瞄準射完"
 	if highest > -1.4:
 		return "弓手瞄準時左手應舉到接近水平：最高 %.2f" % highest
-	if after_aim > -0.5:
-		return "弓手射完第一幀左手就回到 %.2f，應平滑放下" % after_aim
-	_note("弓手瞄準時左手最高 %.2f、射完第一幀 %.2f" % [highest, after_aim])
+	if right_after > -0.8:
+		return "弓手射完第一幀右手就回到 %.2f，應從拉弦姿勢平滑放下" % right_after
+	if not in_range or absf(held - EnemyAnimator.BOW_ARM_READY) > 0.05:
+		return "目標在射擊距離內時弓手射完應停在預備高度 %.2f：在射擊距離內 %s、30 步後 %.2f" % [EnemyAnimator.BOW_ARM_READY, in_range, held]
+	if first_out == INF or first_out > EnemyAnimator.BOW_ARM_READY / 2.0:   # 從預備高度放下，第一幀還要在一半以上
+		return "目標離開射擊距離後第一幀左手 %.2f，應平滑放下、不直接跳回" % first_out
+	if out_state == &"kite" and absf(rest - EnemyAnimator.BOW_ARM_REST) > 0.01:
+		return "目標在射擊距離外 1.5 秒後左手應回到垂直：%.2f" % rest
+	_note("弓手瞄準時左手最高 %.2f、射完第一幀右手 %.2f、射程內射完 30 步後左手 %.2f、離開射程第一幀 %.2f、1.5 秒後 %.2f（%s）" % [highest, right_after, held, first_out, rest, out_state])
 	return ""
 
 

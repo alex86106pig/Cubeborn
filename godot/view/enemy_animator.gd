@@ -12,14 +12,17 @@ const SLAM_FOLLOW_TIME := 0.12   # 重砸落地後手臂揮下的秒數
 const SLAM_FLASH_TIME := 0.3     # 砸地每一圈打到時閃亮後淡掉的秒數（v0.42.0）
 # 骷髏弓手不瞄準時左手垂直地面：弓固定在骨手上，手垂直時弓平放（弓梢朝前後、弦在上），手平舉瞄準時弓自然直立
 const BOW_ARM_REST := 0.0
-const BOW_ARM_SHARPNESS := 18.0  # 射完放下弓手的速度（同玩家放下弓）
+const BOW_ARM_AIM := -1.55       # 瞄準時弓手平舉
+const BOW_ARM_READY := -1.0      # 目標在射擊距離內、拉開距離時的預備高度：比瞄準低，瞄準時再舉平，玩家才看得出要射了
+const BOW_ARM_SHARPNESS := 18.0  # 弓手舉起 / 放下、射完右手放下的速度（同玩家放下弓）
 
 var rig   # Rig（Boss）或 SkinnedRig（小怪，D5）：關節介面相同
 var walk_phase := 0.0
 var _prev_state: StringName = &""
 var _slam_rings: Array[MeshInstance3D] = []   # Boss 砸地的每一圈（v0.27.0：一圈圈往外擴散）
 var _charge_line: MeshInstance3D = null
-var _holds_bow := false   # 骷髏弓手：左手拿弓，不瞄準時照 BOW_ARM_REST
+var _holds_bow := false   # 骷髏弓手：左手拿弓，不瞄準時照 _bow_arm_target
+var _bow_arm_target := BOW_ARM_REST
 var _dt := 0.0
 
 
@@ -49,6 +52,13 @@ func update(e: Enemy, dt: float) -> void:
 		_prev_state = state
 	var moving := e.velocity.length_squared() > 0.01
 	var def := e.def
+	_bow_arm_target = BOW_ARM_REST
+	if _holds_bow and state == &"kite":
+		# 目標在射擊距離內就舉著弓：每台用同步過來的位置自己算，不經連線；
+		# 距離條件同 RangedEnemy 的 Kite（射程上限 + fire_reach），但不看牆，繞牆時也舉著
+		var target: Entity = e.nearest_target()
+		if target != null and e.pos.distance_to(target.pos) <= def.preferred_range[1] + def.fire_reach:
+			_bow_arm_target = BOW_ARM_READY
 
 	match state:
 		&"spawn":
@@ -90,7 +100,8 @@ func update(e: Enemy, dt: float) -> void:
 			_pose_walk(1.0 if moving else 0.0, -0.2, -0.5)
 		&"aim":
 			var draw := MathUtil.ease_out_cubic(minf(1.0, t / def.aim_time * 1.5))
-			rig.arm_l.rotation.x = lerpf(BOW_ARM_REST, -1.55, draw)
+			# 已經舉在預備高度（目標一直在射擊距離內）就從那裡往上舉，不先放下
+			rig.arm_l.rotation.x = minf(rig.arm_l.rotation.x, lerpf(BOW_ARM_REST, BOW_ARM_AIM, draw))
 			rig.arm_r.rotation.x = lerpf(-0.2, -1.45, draw)
 			rig.arm_r.rotation.y = lerpf(0.0, 0.5, draw)
 			rig.leg_r.rotation.x = 0.0
@@ -123,12 +134,15 @@ func _pose_walk(amount: float, arm_r: float, arm_l: float) -> void:
 	var swing := sin(walk_phase) * 0.8 * amount
 	rig.leg_r.rotation.x = swing
 	rig.leg_l.rotation.x = -swing
-	rig.arm_r.rotation.x = arm_r - swing * 0.4
-	if _holds_bow:   # 拿弓的手走路時不擺；射完從瞄準姿勢平滑放下
-		rig.arm_l.rotation.x = MathUtil.damp(rig.arm_l.rotation.x, BOW_ARM_REST, BOW_ARM_SHARPNESS, _dt)
+	if _holds_bow:   # 拿弓的手走路時不擺；兩手的舉起、放下（含射完從拉弦姿勢放下右手）都平滑轉過去
+		var s := BOW_ARM_SHARPNESS
+		rig.arm_l.rotation.x = MathUtil.damp(rig.arm_l.rotation.x, _bow_arm_target, s, _dt)
+		rig.arm_r.rotation.x = MathUtil.damp(rig.arm_r.rotation.x, arm_r - swing * 0.4, s, _dt)
+		rig.arm_r.rotation.y = MathUtil.damp(rig.arm_r.rotation.y, 0.0, s, _dt)
 	else:
+		rig.arm_r.rotation.x = arm_r - swing * 0.4
 		rig.arm_l.rotation.x = arm_l + swing * 0.5
-	rig.arm_r.rotation.y = 0.0
+		rig.arm_r.rotation.y = 0.0
 	rig.arm_l.rotation.y = 0.0
 	rig.body.position.y = absf(sin(walk_phase)) * 0.04 * amount
 
