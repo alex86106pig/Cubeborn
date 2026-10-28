@@ -3,7 +3,7 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
-## [未發布]
+## [0.50.1] - 2026-10-28
 
 ### 修改
 - **遊俠待機拿弓改成平放、手垂直**：短弓 / 長弓待機時左手垂直地面（`idle.arm_l` -0.6 → 0），弓平放在腰側（弓梢朝前後、弓背朝下、弦在上，同骷髏弓手），拉弓時轉成直立、放完再轉回平放（`Animator.BOW_REST`、`bow_rest`）。
