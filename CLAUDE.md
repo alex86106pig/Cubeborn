@@ -98,8 +98,8 @@ Godot 4（GDScript）等距視角 Roguelike 動作遊戲（暫定名 Cubeborn）
 - **多人連線從架構層就要考慮**（權威端、同步方式，見 `PROJECT_GUIDELINES.md` 第 16 節）。
 
 ### 1.9 圖鑑 artifact（設定資料庫）
-- 四個 artifact 是兩位作者共用的**設定資料庫**：[怪物圖鑑](https://claude.ai/artifact/Bi72fM71hMB4hBXk1z5NpW)、[道具圖鑑](https://claude.ai/artifact/2v1qSUCJXKzSDvYZ8KnsX4)、[武器資料](https://claude.ai/artifact/4n5VEg55cBfqDnGd6jtMD8)、[職業資料](https://claude.ai/artifact/Uh213GXWMsG87G4kGJBQnf)。
-- 平常做法：使用者說要怎麼改，就直接改對應的條目（例如「腐屍會撿武器」→ 在腐屍的招式表多一列），定義寫簡短清楚。格式：最上面通則、中間每個條目一張卡（基本數值 + 招式 / 效果表）、最後備註（一句寫不完的才放，條目用「見備註 N」引用）；每條設定標 ✓（遊戲裡有）或 ○（還沒做）。
+- 四個 artifact 是兩位作者共用的**設定資料庫**：[怪物圖鑑](https://claude.ai/artifact/Bi72fM71hMB4hBXk1z5NpW)、[道具圖鑑](https://claude.ai/artifact/2v1qSUCJXKzSDvYZ8KnsX4)、[武器圖鑑](https://claude.ai/artifact/4n5VEg55cBfqDnGd6jtMD8)、[職業圖鑑](https://claude.ai/artifact/Uh213GXWMsG87G4kGJBQnf)。
+- 平常做法：使用者說要怎麼改，就直接改對應的條目（例如「腐屍會撿武器」→ 在腐屍的招式表多一列），定義寫簡短清楚。格式：最上面通則、中間每個條目一張卡（長相圖 + 基本數值 + 招式 / 效果表，怪物的每招附判定範圍示意圖；還沒做進遊戲的條目可以不畫長相）、最後備註（一句寫不完的才放，條目用「見備註 N」引用）；每條設定標 ✓（遊戲裡有）或 ○（還沒做）。
 - 不寫：提案、修改紀錄、已決定 / 待決定清單、對話過程、攻略式的長說明。要問使用者的事在對話裡問。
 - 改到武器、道具、怪物、職業的程式時，同一次工作就把對應的 artifact 改好；已做的數值以 `godot/defs/` 為準。
 - 判斷：要寫進去的東西先問「這是不是一條設定」，不是就不放。
