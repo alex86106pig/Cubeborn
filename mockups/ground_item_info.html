@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>地上道具資訊</title>
+<style>
+  :root {
+    --bg: #15161a; --card: #1e2026; --line: #34373f; --text: #e6e2d6; --dim: #9a978c;
+    --ground: #23251f; --ground2: #2b2d26; --slot: rgba(20, 24, 36, 0.92); --slot-line: rgba(255, 255, 255, 0.15);
+    --ok: #6cff7a; --deny: #ff4040; --soul: #7fe3ff; --gold: #ffd84a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 16px 48px; background: var(--bg); color: var(--text);
+    font: 15px/1.6 "Microsoft JhengHei", "Noto Sans TC", "PingFang TC", sans-serif; }
+  h1 { margin: 0 0 4px; font-size: 24px; }
+  h2 { margin: 28px 0 4px; font-size: 20px; }
+  .sub { color: var(--dim); margin: 0 0 16px; }
+  .box { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; }
+  .box ul { margin: 0; padding-left: 18px; }
+  .opts { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+  .opt { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; width: 360px; max-width: 100%; }
+  .opt.wide { width: 560px; }
+  .opt h3 { margin: 0; font-size: 18px; }
+  .opt h3 b { color: var(--gold); margin-right: 6px; }
+  .tag { color: var(--dim); margin: 2px 0 10px; font-size: 14px; }
+  .pc { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px; margin-top: 10px; }
+  .pc h4 { margin: 4px 0 2px; font-size: 14px; }
+  .pc ul { margin: 0; padding-left: 18px; }
+  .good h4 { color: #6fd08c; } .bad h4 { color: #d9534f; }
+  .note { font-size: 13px; color: var(--dim); margin-top: 8px; }
+
+  /* 地上場景 */
+  .scene { position: relative; width: 100%; aspect-ratio: 330 / 210; border-radius: 6px; overflow: hidden;
+    background: repeating-linear-gradient(45deg, var(--ground) 0 22px, var(--ground2) 22px 44px); }
+  .scene svg.bg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .wl { position: absolute; transform: translate(-50%, -100%); white-space: nowrap; font-size: 13px; font-weight: bold;
+    text-shadow: 0 0 3px #000, 0 0 3px #000, 0 0 3px #000; display: flex; align-items: center; gap: 5px; }
+  .wl svg { filter: drop-shadow(0 0 2px #000); }
+  .key { color: #fff; }
+  .icard { position: absolute; transform: translate(-50%, -100%); background: rgba(10, 12, 20, 0.88); border: 1px solid var(--slot-line);
+    border-radius: 6px; padding: 6px 8px; font-size: 12px; line-height: 1.45; width: 190px; }
+  .icard .row { display: flex; gap: 8px; align-items: center; }
+  .icard .nm { font-weight: bold; font-size: 13px; }
+  .icard .eff { color: #ddd; }
+  .icard .fit { margin-top: 3px; font-weight: bold; }
+
+  /* 背包面板 */
+  .panelwrap { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+  .panel { background: var(--slot); border: 1px solid var(--slot-line); border-radius: 6px; padding: 8px; }
+  .panel .t { font-size: 13px; color: var(--dim); margin-bottom: 4px; }
+  .feet { background: var(--slot); border: 1px solid var(--slot-line); border-radius: 6px; padding: 8px; width: 150px; }
+  .feet .t { font-size: 13px; color: var(--dim); margin-bottom: 6px; }
+  .feet .it { border: 1px solid var(--slot-line); border-radius: 4px; padding: 5px; margin-bottom: 6px; font-size: 12px; display: flex; gap: 6px; align-items: center; }
+  .feet .it.sel { border-color: var(--gold); box-shadow: 0 0 6px var(--gold); }
+  .info { font-size: 12px; margin-top: 6px; min-height: 36px; }
+  .banner { background: rgba(255, 64, 64, 0.15); border: 1px solid var(--deny); color: #ffb0b0; font-size: 12px;
+    border-radius: 4px; padding: 4px 8px; margin-bottom: 6px; }
+  .ask { margin-top: 28px; }
+  .ask ol { margin: 4px 0 0; padding-left: 22px; }
+</style>
+</head>
+<body>
+<h1>地上道具：看得到長怎樣、知道要清出什麼空間</h1>
+<p class="sub">玩家回報：地上的道具不知道長怎樣、要清出什麼空間才放得進背包。現在地上只有名稱（稀有度顏色），按 F 放不下只跳「背包滿了」。</p>
+
+<div class="box">
+  <ul>
+    <li>示意用的背包是真實資料（8 × 6、道具形狀與稀有度顏色照 <code>ItemDefs</code>）：<b>空格有 7 格，但沒有 2 × 2 的空位</b>，所以撿不起地上的「骨製護盾」（優良、2 × 2）。</li>
+    <li>「移走哪件就放得下」是頁面實際算出來的（每件試著拿掉，看形狀轉 4 個方向放不放得進去），遊戲裡用同樣的方法算。</li>
+    <li><b>A</b> 是在地上看的時候、<b>B</b> 是打開背包的時候，兩組各選一個（也可以都不要某組）。</li>
+  </ul>
+</div>
+
+<h2>A. 在地上看：靠近時顯示什麼</h2>
+<p class="sub">背景是地面；發光寶石 + 光柱是現在地上道具的樣子。藍色方塊是玩家。</p>
+<div class="opts">
+  <div class="opt">
+    <h3><b>A1</b>名稱旁加形狀小圖</h3>
+    <p class="tag">每個看得到的地上道具名稱左邊都多一個格子小圖，沒有其他資訊。</p>
+    <div class="scene" id="sceneA1"></div>
+    <div class="pc">
+      <div class="good"><h4>好處</h4><ul><li>一眼看得出大小，不用靠近</li><li>畫面最乾淨</li></ul></div>
+      <div class="bad"><h4>缺點</h4><ul><li>看不到效果</li><li>還是不知道放不放得下</li></ul></div>
+    </div>
+  </div>
+  <div class="opt">
+    <h3><b>A2</b>靠近時顯示道具卡</h3>
+    <p class="tag">按得到 F 的那一個，名稱下方多一張小卡：形狀、稀有度、效果（和背包裡滑鼠停著的說明一樣）。</p>
+    <div class="scene" id="sceneA2"></div>
+    <div class="pc">
+      <div class="good"><h4>好處</h4><ul><li>撿之前就知道值不值得</li><li>遠的道具不多出卡片</li></ul></div>
+      <div class="bad"><h4>缺點</h4><ul><li>放不放得下還是要開背包才知道</li></ul></div>
+    </div>
+  </div>
+  <div class="opt">
+    <h3><b>A3</b>道具卡 + 放不放得下</h3>
+    <p class="tag">A2 再加一行：放得下（綠）／放不下時建議「移走哪件就放得下」（紅），附背包縮圖標出位置。</p>
+    <div class="scene" id="sceneA3" style="aspect-ratio: 330 / 310"></div>
+    <div class="pc">
+      <div class="good"><h4>好處</h4><ul><li>直接回答「要清出什麼空間」</li><li>不用打開背包就能判斷</li></ul></div>
+      <div class="bad"><h4>缺點</h4><ul><li>卡片最大，怪多時會擋畫面</li><li>建議只算「拿掉一件」，要拿兩件以上時只寫放不下</li></ul></div>
+    </div>
+  </div>
+</div>
+
+<h2>B. 打開背包時：怎麼把地上的道具放進去</h2>
+<p class="sub">現在背包只畫背包裡的東西，撿起一律「自動放第一個空位」，玩家沒辦法自己挑位置。</p>
+<div class="opts">
+  <div class="opt wide">
+    <h3><b>B1</b>背包旁多一欄「腳邊」</h3>
+    <p class="tag">站在道具旁按 Tab：右邊列出撿得到的地上道具，拖進背包自己挑位置（拖著時按 R 旋轉，放不下的格子紅色）；背包裡的東西拖到「腳邊」就是丟在地上。</p>
+    <div id="panelB1"></div>
+    <div class="pc">
+      <div class="good"><h4>好處</h4><ul><li>騰空間、擺位置都在同一個畫面完成</li><li>照現有的拖曳、R 旋轉操作，不用學新按鍵</li></ul></div>
+      <div class="bad"><h4>缺點</h4><ul><li>要自己想到按 Tab</li><li>連線要多一個「撿起放到指定格」的操作，由房主檢查</li></ul></div>
+    </div>
+  </div>
+  <div class="opt wide">
+    <h3><b>B2</b>B1 + 撿不下時自動打開背包</h3>
+    <p class="tag">按 F 放不下時不只跳「背包滿了」，而是自動打開背包，腳邊那件發亮、建議移走的那件閃紅框。不想擺就按 Tab 關掉，道具留在地上。</p>
+    <div id="panelB2"></div>
+    <div class="pc">
+      <div class="good"><h4>好處</h4><ul><li>撿不下的當下就帶到解決的畫面</li><li>新玩家不用知道有「腳邊」欄</li></ul></div>
+      <div class="bad"><h4>缺點</h4><ul><li>戰鬥中誤按 F 會跳出背包（背包開著時 WASD 照常、但滑鼠不攻擊）</li></ul></div>
+    </div>
+  </div>
+</div>
+
+<div class="box ask">
+  <b>建議：A3 + B2</b>：在地上就知道「移走撬鎖工具就放得下」，真的按 F 撿不下時直接開背包讓你擺。如果覺得 A3 卡片太大，A2 + B2 也行（放不下時 B2 會帶你去看）。
+  <ol>
+    <li>A 選哪個（A1 / A2 / A3）？</li>
+    <li>B 選哪個（B1 / B2）？</li>
+  </ol>
+</div>
+
+<script>
+// 資料照 godot/defs/item_defs.gd（RARITIES、SHAPES、ITEMS）
+const RAR = {
+  white: { name: "普通", color: "#d8d8d8" }, green: { name: "優良", color: "#5fd35f" },
+  blue: { name: "稀有", color: "#4fa3ff" }, purple: { name: "史詩", color: "#b36bff" }, orange: { name: "傳說", color: "#ff9a2e" },
+};
+const SHAPES = {
+  dot: [[0, 0]], i2: [[0, 0], [1, 0]], i3: [[0, 0], [1, 0], [2, 0]], l3: [[0, 0], [0, 1], [1, 1]],
+  o4: [[0, 0], [1, 0], [0, 1], [1, 1]], t4: [[0, 0], [1, 0], [2, 0], [1, 1]],
+};
+// 背包 8 × 6：每個字母一件道具，. 是空格
+const BAG = [
+  "ABBBCC.D",
+  "AAEEFFF.",
+  "GGE.HHII",
+  "GJJJP.QQ",
+  "KRLLLM..",
+  "K.TLUVVW",
+];
+const ITEMS = {
+  A: { name: "雷鳴符文", rarity: "green" }, B: { name: "淬毒刀刃", rarity: "green" }, C: { name: "磨損皮靴", rarity: "white" },
+  D: { name: "灌鉛骰子", rarity: "white" }, E: { name: "戰鼓", rarity: "green" }, F: { name: "獵人斗篷", rarity: "green" },
+  G: { name: "荊棘鎖甲", rarity: "green" }, H: { name: "磨刀石", rarity: "white" }, I: { name: "鐵皮斗篷", rarity: "green" },
+  J: { name: "袖中飛刀", rarity: "green" }, K: { name: "繃帶捲", rarity: "white" }, L: { name: "鬼火燈籠", rarity: "green" },
+  M: { name: "磁石", rarity: "green" }, P: { name: "輕羽", rarity: "white" }, Q: { name: "撬鎖工具", rarity: "green" },
+  R: { name: "盜墓者錢袋", rarity: "white" }, T: { name: "鉛墜", rarity: "white" }, U: { name: "苦艾酒", rarity: "white" },
+  V: { name: "輕巧手套", rarity: "white" }, W: { name: "獵犬項圈", rarity: "white" },
+};
+const GROUND = { name: "骨製護盾", rarity: "green", shape: "o4", desc: "護盾為最大生命的 8%，3 秒沒受傷就自動回充" };
+const GROUND2 = { name: "磨刀石", rarity: "white", shape: "i2", desc: "攻擊力 +8%" };
+const W = 8, H = 6;
+
+// 形狀轉 rot 次 90 度：(x, y) → (−y, x) 後平移到左上（同 Inventory.cells_of）
+function cellsOf(shape, rot) {
+  let cs = SHAPES[shape].map(c => [...c]);
+  for (let i = 0; i < rot; i++) cs = cs.map(([x, y]) => [-y, x]);
+  const mx = Math.min(...cs.map(c => c[0])), my = Math.min(...cs.map(c => c[1]));
+  return cs.map(([x, y]) => [x - mx, y - my]);
+}
+function occupied(skip) {
+  const o = new Set();
+  BAG.forEach((row, y) => [...row].forEach((ch, x) => { if (ch !== "." && ch !== skip) o.add(x + "," + y); }));
+  return o;
+}
+// 同 Inventory.find_spot：由上到下、左到右，每格試 0 / 90 / 180 / 270 度
+function findSpot(shape, occ) {
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) for (let r = 0; r < 4; r++) {
+    const cs = cellsOf(shape, r).map(([cx, cy]) => [cx + x, cy + y]);
+    if (cs.every(([cx, cy]) => cx < W && cy < H && !occ.has(cx + "," + cy))) return cs;
+  }
+  return null;
+}
+// 拿掉一件就放得下的道具裡，挑占格最少的
+function suggestRemove(shape) {
+  let best = null;
+  for (const id of Object.keys(ITEMS)) {
+    const spot = findSpot(shape, occupied(id));
+    const size = BAG.join("").split(id).length - 1;
+    if (spot && (!best || size < best.size)) best = { id, size, spot };
+  }
+  return best;
+}
+const freeCount = BAG.join("").split(".").length - 1;
+const directSpot = findSpot(GROUND.shape, occupied());
+const sug = suggestRemove(GROUND.shape);
+
+function shapeIcon(shape, px, color) {
+  const cs = SHAPES[shape];
+  const w = Math.max(...cs.map(c => c[0])) + 1, h = Math.max(...cs.map(c => c[1])) + 1;
+  const rects = cs.map(([x, y]) => `<rect x="${x * px + 0.5}" y="${y * px + 0.5}" width="${px - 1}" height="${px - 1}" fill="${color}" fill-opacity="0.55" stroke="${color}" stroke-width="1"/>`).join("");
+  return `<svg width="${w * px + 1}" height="${h * px + 1}" viewBox="0 0 ${w * px + 1} ${h * px + 1}">${rects}</svg>`;
+}
+
+// 背包格子 SVG；opts: { cell, ghost: [[x, y]], ghostOk, mark: 字母（建議移走，紅框）, spot: [[x, y]]（會放的位置，綠框） }
+function bagSvg(opts) {
+  const c = opts.cell;
+  let s = `<svg width="${W * c + 1}" height="${H * c + 1}" viewBox="0 0 ${W * c + 1} ${H * c + 1}" style="display:block">`;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const ch = BAG[y][x];
+    if (ch === ".") {
+      s += `<rect x="${x * c + 0.5}" y="${y * c + 0.5}" width="${c - 1}" height="${c - 1}" fill="#ffffff08" stroke="#ffffff22"/>`;
+      continue;
+    }
+    const col = RAR[ITEMS[ch].rarity].color;
+    s += `<rect x="${x * c}" y="${y * c}" width="${c}" height="${c}" fill="${col}" fill-opacity="0.28"><title>${ITEMS[ch].name}</title></rect>`;
+    // 和鄰格不是同一件時畫邊線
+    const edge = (nx, ny, x1, y1, x2, y2) => {
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H || BAG[ny][nx] !== ch)
+        s += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="1.5"/>`;
+    };
+    edge(x, y - 1, x * c, y * c + 0.75, (x + 1) * c, y * c + 0.75);
+    edge(x, y + 1, x * c, (y + 1) * c - 0.75, (x + 1) * c, (y + 1) * c - 0.75);
+    edge(x - 1, y, x * c + 0.75, y * c, x * c + 0.75, (y + 1) * c);
+    edge(x + 1, y, (x + 1) * c - 0.75, y * c, (x + 1) * c - 0.75, (y + 1) * c);
+  }
+  if (opts.mark) {
+    BAG.forEach((row, y) => [...row].forEach((ch, x) => {
+      if (ch === opts.mark) s += `<rect x="${x * c + 2}" y="${y * c + 2}" width="${c - 4}" height="${c - 4}" fill="none" stroke="var(--deny)" stroke-width="2" stroke-dasharray="4 2"/>`;
+    }));
+  }
+  if (opts.spot) for (const [x, y] of opts.spot)
+    s += `<rect x="${x * c + 2}" y="${y * c + 2}" width="${c - 4}" height="${c - 4}" fill="var(--ok)" fill-opacity="0.18" stroke="var(--ok)" stroke-width="1.5"/>`;
+  if (opts.ghost) for (const [x, y] of opts.ghost) {
+    const bad = BAG[y][x] !== ".";
+    const col = bad ? "var(--deny)" : RAR[GROUND.rarity].color;
+    s += `<rect x="${x * c + 1}" y="${y * c + 1}" width="${c - 2}" height="${c - 2}" fill="${col}" fill-opacity="0.45" stroke="${col}" stroke-width="2"/>`;
+  }
+  return s + "</svg>";
+}
+
+// 地上場景：寶石 + 光柱、玩家
+function sceneBg(items, player) {
+  let s = `<svg class="bg" viewBox="0 0 330 ${items.h}" preserveAspectRatio="xMidYMid slice"><defs>
+    <radialGradient id="glow"><stop offset="0" stop-color="#fff" stop-opacity="0.5"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>`;
+  for (const it of items.list) {
+    const col = RAR[it.rarity].color;
+    s += `<rect x="${it.x - 3}" y="${it.y - 70}" width="6" height="70" fill="${col}" opacity="0.25"/>`;
+    s += `<ellipse cx="${it.x}" cy="${it.y + 2}" rx="18" ry="7" fill="${col}" opacity="0.25"/>`;
+    s += `<polygon points="${it.x},${it.y - 12} ${it.x + 7},${it.y - 3} ${it.x},${it.y + 5} ${it.x - 7},${it.y - 3}" fill="${col}" stroke="#000" stroke-opacity="0.4"/>`;
+  }
+  s += `<ellipse cx="${player.x}" cy="${player.y + 3}" rx="11" ry="5" fill="#000" opacity="0.4"/>
+    <rect x="${player.x - 8}" y="${player.y - 26}" width="16" height="28" rx="3" fill="#4f7fd8" stroke="#1d2f55"/>`;
+  return s + "</svg>";
+}
+const pct = (v, total) => (v / total * 100) + "%";
+
+function card(it, withFit) {
+  const col = RAR[it.rarity].color;
+  const n = SHAPES[it.shape].length;
+  let fit = "";
+  if (withFit) {
+    if (directSpot) fit = `<div class="fit" style="color:var(--ok)">✓ 放得下</div>`;
+    else if (sug) fit = `<div class="fit" style="color:var(--deny)">✗ 放不下：移走「${ITEMS[sug.id].name}」（${sug.size} 格）就放得下</div>`;
+    else fit = `<div class="fit" style="color:var(--deny)">✗ 放不下（要整理背包）</div>`;
+    fit += `<div style="margin-top:4px">${bagSvg({ cell: 12, mark: sug && !directSpot ? sug.id : null, spot: directSpot || (sug && sug.spot) })}</div>`;
+  }
+  return `<div class="row">${shapeIcon(it.shape, 9, col)}<div><div class="nm" style="color:${col}">${it.name}</div>
+    <div style="color:${col}">${RAR[it.rarity].name} · 占 ${n} 格</div></div></div>
+    <div class="eff">${it.desc}</div>${fit}`;
+}
+
+function buildScene(id, mode) {
+  const el = document.getElementById(id);
+  const h = mode === "A3" ? 310 : 210;
+  const near = { x: 120, y: h - 50 }, far = { x: 265, y: h - 25 };
+  el.innerHTML = sceneBg({ h, list: [{ ...near, rarity: GROUND.rarity }, { ...far, rarity: GROUND2.rarity }] }, { x: 80, y: h - 12 });
+  const label = (it, at, focus) => {
+    const col = RAR[it.rarity].color;
+    const icon = mode === "A1" ? shapeIcon(it.shape, 7, col) : "";
+    const d = document.createElement("div");
+    d.className = "wl";
+    d.style.left = pct(at.x, 330); d.style.top = pct(at.y - 22, h);
+    d.innerHTML = `${icon}<span style="color:${col}">${focus ? '<span class="key">[F] 撿起</span> ' : ""}${it.name}</span>`;
+    el.appendChild(d);
+  };
+  label(GROUND, near, true);
+  label(GROUND2, far, false);
+  if (mode !== "A1") {
+    const c = document.createElement("div");
+    c.className = "icard";
+    c.style.left = pct(near.x, 330); c.style.top = pct(near.y - 46, h);   // 名稱的上方
+    c.innerHTML = card(GROUND, mode === "A3");
+    el.appendChild(c);
+  }
+}
+
+function buildPanel(id, mode) {
+  const el = document.getElementById(id);
+  const col = RAR[GROUND.rarity].color;
+  // 拖著骨製護盾停在撬鎖工具上方（右下角那塊 2 × 2）：重疊的格子紅色
+  const ghost = [[6, 3], [7, 3], [6, 4], [7, 4]];
+  const banner = mode === "B2" ? `<div class="banner">背包放不下「${GROUND.name}」：移走「${ITEMS[sug.id].name}」就放得下</div>` : "";
+  el.innerHTML = `<div class="panelwrap">
+    <div class="panel">
+      ${banner}
+      <div class="t">背包（拖著時 R 旋轉）</div>
+      ${bagSvg({ cell: 30, ghost, mark: mode === "B2" ? sug.id : null })}
+      <div class="info"><b style="color:${col}">${GROUND.name}</b>（${RAR[GROUND.rarity].name}）<br>${GROUND.desc}<br>
+        <span style="color:var(--deny)">紅色：和「撬鎖工具」重疊，放不下</span></div>
+    </div>
+    <div class="feet">
+      <div class="t">腳邊（撿得到的）</div>
+      <div class="it ${mode === "B2" ? "sel" : ""}">${shapeIcon(GROUND.shape, 9, col)}<span style="color:${col}">${GROUND.name}</span></div>
+      <div class="it">${shapeIcon(GROUND2.shape, 9, RAR[GROUND2.rarity].color)}<span style="color:${RAR[GROUND2.rarity].color}">${GROUND2.name}</span></div>
+      <div class="note">拖進背包 = 撿起放在那格<br>背包裡的拖到這裡 = 丟在地上</div>
+    </div>
+  </div>
+  <div class="note">示意：拖著「${GROUND.name}」停在右下角，和「${ITEMS.Q.name}」重疊的 2 格變紅；空格共 ${freeCount} 格但沒有 2 × 2 的空位。${mode === "B2" ? "紅色虛線框 = 建議移走的道具。" : ""}</div>`;
+}
+
+buildScene("sceneA1", "A1");
+buildScene("sceneA2", "A2");
+buildScene("sceneA3", "A3");
+buildPanel("panelB1", "B1");
+buildPanel("panelB2", "B2");
+</script>
+</body>
+</html>
