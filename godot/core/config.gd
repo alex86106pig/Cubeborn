@@ -52,6 +52,7 @@ const PLAYER := {
 	"radius": 0.45,
 	"mass": 2.0,
 	"invuln_time": 0.6,
+	"regen_delay": 5.0,                 # 受傷後幾秒內生命回復暫停（職業、道具、詞條的回復都算）
 	"stagger_time": 0.15,
 	"stagger_move_speed_mul": 0.4,
 	"action_buffer_time": 0.25,

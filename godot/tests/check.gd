@@ -55,7 +55,7 @@ func _initialize() -> void:
 	_check("決定性：有敵人與波次時，同種子、同輸入的兩個 World 結果相同（實體位置、朝向、亂數狀態）", CoreChecks.check_determinism_with_enemies)
 	_check("記憶體：reset 與移除實體後舊實體會被釋放（切斷與 World 的循環參照）；敵人移除後 CD 清除",
 		all.bind([CoreChecks.check_entity_release, CoreChecks.check_enemy_release]))
-	_check("屬性系統：同類百分比相加、暫時效果與冷卻縮減相乘、取整、上下限、來源可移除、顯示格式；接上遊戲：攻速 ×2 普攻時間減半、冷卻 ×0.5、最大生命增加時目前生命同步增加、每秒回血、除錯移速加成",
+	_check("屬性系統：同類百分比相加、暫時效果與冷卻縮減相乘、取整、上下限、來源可移除、顯示格式；接上遊戲：攻速 ×2 普攻時間減半、冷卻 ×0.5、最大生命增加時目前生命同步增加、每秒回血、受傷後暫停回血、除錯移速加成",
 		all.bind([CoreChecks.check_stats_formula, CoreChecks.check_stats_hooks]))
 	_check("傷害公式：護甲 100 減傷 50%、護甲 8 減傷 7.4%；爆擊率 100% 時乘爆擊傷害、0% 不消耗亂數；傷害保留小數（12.5 實際扣 12.5），數字四捨五入、血量無條件進位",
 		all.bind([CoreChecks.check_stats_armor_crit, CoreChecks.check_fractional_damage]))

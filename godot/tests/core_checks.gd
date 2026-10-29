@@ -401,6 +401,17 @@ static func check_stats_hooks() -> String:
 	_run(w2, _cmd(Vector2.ZERO), 60)
 	if absf(p2.hp - 76.0) > 0.05:
 		return "每秒回 6 血，1 秒後應為 76，實際 %.2f" % p2.hp
+	# 受傷後 regen_delay 秒內不回血，過了照常回
+	var delay: float = Config.PLAYER.regen_delay
+	p2.invuln_timer = 0.0
+	p2.take_damage(10.0, Vector2.ZERO, 0.0, 0)
+	var hurt_hp := p2.hp
+	_run(w2, _cmd(Vector2.ZERO), roundi((delay - 0.5) / DT))
+	if p2.hp != hurt_hp:
+		return "受傷後 %.1f 秒內不該回血：應維持 %.2f，%.1f 秒後是 %.2f" % [delay, hurt_hp, delay - 0.5, p2.hp]
+	_run(w2, _cmd(Vector2.ZERO), roundi(1.5 / DT))
+	if absf(p2.hp - (hurt_hp + 6.0)) > 0.15:
+		return "受傷 %.1f 秒後恢復回血：應約 %.2f，實際 %.2f" % [delay + 1.0, hurt_hp + 6.0, p2.hp]
 	p2.remove_stat_source(&"bandage")
 
 	p2.set_stat_source(&"debug", [[&"move_speed", Stats.PCT, Config.DEBUG.speed_bonus]])

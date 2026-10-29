@@ -740,6 +740,7 @@ func _on_damaged(amount: float, _source_id: int) -> void:
 	if is_dead or amount <= 0:
 		return
 	invuln_timer = Config.PLAYER.invuln_time
+	regen_block_timer = Config.PLAYER.regen_delay
 	# player_id：多人時只有被打的那位玩家的畫面震動
 	world.emit_event("camera:shake", {"amount": Config.PLAYER.hurt_shake, "duration": Config.PLAYER.hurt_shake_duration, "player_id": id})
 	# 特殊技期間（含按住格擋）有霸體，不會被打斷；挖墳被打也不中斷（D6）

@@ -37,6 +37,7 @@ var terrain_checked_pos := Vector2.INF   # 上次推出石台、算過落地時�
 var fixed := false                # 固定不動（休眠的怪群）：不積分；互推時不被推、只推開別人（v0.30.0 效能）
 var body_height := 2.0            # 身高：命中判定佔 [height, height + body_height]
 var invuln_timer := 0.0
+var regen_block_timer := 0.0      # > 0 時生命回復暫停（玩家受傷後設定，見 Config.PLAYER.regen_delay）
 var suppress_stagger := false     # 這一下傷害不造成受擊硬直（Combat 在 take_damage 前後設定，v0.27.0）
 var flash_timer := 0.0
 var is_dead := false
@@ -148,8 +149,9 @@ func integrate(dt: float) -> void:
 	knockback *= exp(-Config.COMBAT.knockback_damping * dt)
 	invuln_timer = maxf(0.0, invuln_timer - dt)
 	flash_timer = maxf(0.0, flash_timer - dt)
+	regen_block_timer = maxf(0.0, regen_block_timer - dt)
 	var regen := stats.value(&"hp_regen")
-	if regen > 0.0:
+	if regen > 0.0 and regen_block_timer <= 0.0:
 		heal(regen * dt)
 
 
