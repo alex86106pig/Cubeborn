@@ -852,7 +852,7 @@ static func check_warm_up() -> String:
 	# 介面程式碼裡寫死的字串（橫幅、場上文字…）也要涵蓋（v0.37.2：第一把武器的名字「[F] 撿起」等沒預熱，網頁版仍卡 78 ms）
 	var re := RegEx.create_from_string("\"([^\"\\\\]*)\"")
 	var missing := {}
-	for path in ["res://ui/hud.gd", "res://ui/world_labels.gd", "res://ui/floaters.gd", "res://ui/net_panel.gd", "res://ui/main_menu.gd", "res://ui/player_tags.gd", "res://ui/inventory_panel.gd", "res://ui/run_log.gd", "res://ui/settings_panel.gd"]:
+	for path in ["res://ui/hud.gd", "res://ui/world_labels.gd", "res://ui/floaters.gd", "res://ui/net_panel.gd", "res://ui/main_menu.gd", "res://ui/player_tags.gd", "res://ui/inventory_panel.gd", "res://ui/run_log.gd", "res://ui/settings_panel.gd", "res://ui/ui_kit.gd"]:
 		for line in _read_text(path).split("\n"):
 			for m in re.search_all(_strip_comment(line)):
 				for ch in m.get_string(1):
@@ -1981,3 +1981,84 @@ static func check_quit_no_leak() -> String:
 			if line.contains("leaked at exit") or line.contains("still in use at exit"):
 				return "第 %d 次結束時有洩漏：%s" % [run + 1, line.strip_edges()]
 	return ""
+
+
+# 背包介面：背包和屬性面板並排塞得進介面最大檔時的畫面；腳邊欄只列按得到 F 的地上道具，拖進背包送出 OP_PICKUP（實際撿起放在那一格）、
+# 背包的東西拖到腳邊送出 OP_DROP、滑鼠停著的腳邊道具顯示說明；撿不下時 HUD 發 inventory_full，面板提示拿掉哪一件就放得下，關掉就清除
+static func check_inventory_panel() -> String:
+	var w := _new_world(5)
+	var cam := _test_camera()
+	var hud: Variant = load("res://ui/hud.tscn").instantiate()
+	hud.setup(w, cam)
+	_scene_root().add_child(hud)
+	var p := _player(w)
+	var panel: InventoryPanel = hud.inventory_panel
+	hud.toggle_stats_panel()
+	panel.visible = true
+	var room := _menu_room()
+	var stats_size: Vector2 = await _settled_min_size(hud._stats_panel)
+	var panel_size: Vector2 = await _settled_min_size(panel)
+	var need := Vector2(16 + stats_size.x + panel_size.x + 24, maxf(stats_size.y, panel_size.y))   # 兩邊離畫面邊緣 16 / 24（hud.gd）
+	_note("背包 + 屬性面板 %.0f×%.0f（介面最大檔時可用 %.0f×%.0f）" % [need.x, need.y, room.x, room.y])
+	var err := ""
+	if need.x > room.x or need.y > room.y:
+		err = "背包 + 屬性面板 %.0f×%.0f，超出介面最大檔時的 %.0f×%.0f" % [need.x, need.y, room.x, room.y]
+	var ops: Array = []
+	panel.op_requested.connect(func(op: Array) -> void: ops.append(op))
+	var stone := w.drop_item(&"whetstone", p.pos + Vector2(1.0, 0))
+	w.drop_item(&"whetstone", p.pos + Vector2(LootDefs.INTERACT_RANGE + 3.0, 0))
+	panel._process(DT)
+	if err == "" and (panel._feet.size() != 1 or panel._feet[0] != stone):
+		err = "腳邊欄應只有按得到 F 的那一個磨刀石，實際 %d 個" % panel._feet.size()
+	if err == "":
+		panel._hover_pickup = stone.id
+		if not String(panel._info_of(p).get("title", "")).contains("在地上"):
+			err = "滑鼠停在腳邊的道具上應顯示說明（標「在地上」）：%s" % panel._info_of(p)
+		panel._hover_pickup = 0
+	var cell_at := func(c: Vector2i) -> Vector2: return panel._grid_origin() + (Vector2(c) + Vector2(0.5, 0.5)) * InventoryPanel.CELL
+	if err == "":
+		panel._start_drag(p, panel._feet_row_rect(0).get_center())
+		panel._finish_drag(p, cell_at.call(Vector2i(2, 1)))
+		if ops != [[InputCmd.OP_PICKUP, stone.id, 2, 1, 0]]:
+			err = "從腳邊拖到背包 (2, 1) 應送出 OP_PICKUP，實際 %s" % [ops]
+	if err == "":
+		var cmd := _cmd(Vector2.ZERO)
+		cmd.inv_ops = ops.duplicate()
+		ops.clear()
+		_run(w, cmd, 1)
+		if p.inventory.entries.size() != 1 or p.inventory.entries[0].cell != Vector2i(2, 1):
+			err = "送出的 OP_PICKUP 應把磨刀石放在 (2, 1)：%s" % [p.inventory.entries]
+	if err == "":
+		var uid: StringName = p.inventory.entries[0].uid
+		panel._start_drag(p, cell_at.call(Vector2i(2, 1)))
+		panel._finish_drag(p, panel._feet_rect().get_center())
+		if ops != [[InputCmd.OP_DROP, String(uid)]]:
+			err = "背包的東西拖到腳邊應送出 OP_DROP，實際 %s" % [ops]
+	# 撿不下：背包只空 (0, 0) (1, 0) (0, 1)，(1, 1) 的骰子拿掉就放得下 2 × 2 的骨製護盾
+	if err == "":
+		p.clear_items()
+		for y in ItemDefs.BAG_SIZE.y:
+			for x in ItemDefs.BAG_SIZE.x:
+				if x + y > 1:
+					p.inventory.add(StringName("d_%d_%d" % [x, y]), &"loaded_dice", Vector2i(x, y), 0)
+		var buckler := w.drop_item(&"bone_buckler", p.pos + Vector2(0, 1.0))
+		var full_ids: Array[int] = []
+		hud.inventory_full.connect(func(id: int) -> void: full_ids.append(id))
+		w.events.clear()
+		var press := _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_INTERACT)
+		_run(w, press, 1)
+		_feed_hud(hud, w.events)
+		if full_ids != [buckler.id]:
+			err = "撿不下骨製護盾時 HUD 應發 inventory_full(%d)，實際 %s" % [buckler.id, full_ids]
+		else:
+			panel.show_full(buckler.id)
+			panel._process(DT)
+			var text := panel._full_text(p, buckler)
+			if panel._full_target() != buckler or panel._suggest != &"d_1_1" or not text.contains("拿掉") or not text.contains(ItemDefs.ITEMS[&"loaded_dice"].name):
+				err = "撿不下時應標出骨製護盾、建議拿掉 (1, 1) 的骰子：目標 %s、建議 %s、文字 %s" % [panel._full_target(), panel._suggest, text]
+			panel.visible = false
+			if err == "" and panel._full_pickup != 0:
+				err = "關掉背包後應清除撿不下的提示"
+	hud.queue_free()
+	cam.queue_free()
+	return err

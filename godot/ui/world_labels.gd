@@ -1,5 +1,5 @@
 # 場上物件的文字（D3）：沒開的祭壇 / 石棺上方顯示名稱與價格（靈魂不夠時紅色），地上的道具顯示名稱（稀有度顏色）；魔法 / 稀有怪的詞條與名字（D5）
-# 本機玩家按得到 F 的那一個加上「[F] 開啟 / 撿起」提示；視野外的不顯示（sim/vision.gd）
+# 本機玩家按得到 F 的那一個加上「[F] 開啟 / 撿起」提示，地上道具再加一張道具卡（形狀、占幾格、效果）；視野外的不顯示（sim/vision.gd）
 class_name WorldLabels
 extends Control
 
@@ -7,13 +7,17 @@ const CHEST_OFFSET := 1.6   # 文字在物件腳底上方的高度（世界單�
 const PICKUP_OFFSET := 1.1
 const ENEMY_OFFSET := 0.35  # 魔法 / 稀有怪的詞條在頭頂上方多高
 const GRAVE_OFFSET := 1.8   # 挖墳點文字的高度（D6）
+const CARD_W := 300         # 地上道具卡的寬度（px）
+const CARD_PAD := 8
+const CARD_CELL := 10.0     # 道具卡形狀小圖每格的大小
+const CARD_GAP := 24        # 道具卡底部離名稱那一行的距離
 const GHOST_COLOR := Color("8fd0ff")
 const EXIT_COLOR := Color("8fd0ff")
 const NPC_COLOR := Color("5fd27a")      # 假裝 NPC 的守墓人：名字與頭上的綠色血條
 const NPC_BAR := Vector2(90, 9)
 const KEEPER_LINE := "又一頭肥羊……"
 
-const WARM_SIZES: Array[int] = [14, 15, 17, 18, 22]   # 這裡用到的字級（_text 的 size）
+const WARM_SIZES: Array[int] = [13, 14, 15, 16, 17, 18, 22]   # 這裡用到的字級（_text、道具卡的 size）
 const OUTLINE := 4
 
 var world: World
@@ -67,6 +71,7 @@ func _draw() -> void:
 		var text := pickup.display_name()
 		if pickup == focus:
 			text = "[F] 撿起 " + text
+			_draw_card(font, pickup)
 		_text(font, pickup, PICKUP_OFFSET, text, ItemDefs.RARITIES[pickup.rarity()].color)
 	# 魔法 / 稀有怪（D5）：頭上顯示詞條（稀有怪多一行名字）
 	for e: Entity in world.enemies:
@@ -123,6 +128,30 @@ func _draw_grave(font: Font, me: Player) -> void:
 	if near:
 		text = "[F] 按住挖墳  " + text
 	_text_at(font, at, text, UiKit.GOLD if ev.state == DigEvent.ACTIVE else Color.WHITE)
+
+
+# 按得到 F 的地上道具：名稱上方的道具卡，撿之前就看得到形狀、占幾格、效果 / 詞條（和背包的說明欄同一份文字）
+func _draw_card(font: Font, pickup: ItemPickup) -> void:
+	var at := Vector3(pickup.pos.x, pickup.height + PICKUP_OFFSET, pickup.pos.y)
+	if camera.is_position_behind(at):
+		return
+	var info := UiKit.item_info(pickup.item_id, pickup.weapon)
+	var color: Color = info.color
+	var shape := UiKit.shape_size(pickup.item_id, CARD_CELL)
+	var body := "\n".join(info.lines)
+	var text_w := CARD_W - CARD_PAD * 2
+	var body_h := font.get_multiline_string_size(body, HORIZONTAL_ALIGNMENT_LEFT, text_w, 14).y
+	var head_h := maxf(shape.y, 40.0)
+	var h := CARD_PAD * 2 + head_h + 6 + body_h
+	var r := Rect2(camera.unproject_position(at) + Vector2(-CARD_W / 2.0, -CARD_GAP - h), Vector2(CARD_W, h))
+	draw_rect(r, Color(0.04, 0.05, 0.08, 0.88))
+	draw_rect(r, Color(color, 0.6), false, 1.0)
+	var p := r.position + Vector2(CARD_PAD, CARD_PAD)
+	UiKit.draw_shape(self, pickup.item_id, p + Vector2(0, (head_h - shape.y) / 2.0), CARD_CELL, color)
+	var tx := p.x + shape.x + 10
+	draw_string(font, Vector2(tx, p.y + 17), info.title, HORIZONTAL_ALIGNMENT_LEFT, r.end.x - CARD_PAD - tx, 16, color)
+	draw_string(font, Vector2(tx, p.y + 37), "占 %d 格" % Inventory.cells_of(pickup.item_id, 0).size(), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.7))
+	draw_multiline_string(font, Vector2(p.x, p.y + head_h + 6 + 14), body, HORIZONTAL_ALIGNMENT_LEFT, text_w, 14, -1, Color(1, 1, 1, 0.9))
 
 
 func _text(font: Font, e: Entity, offset: float, text: String, color: Color, size := 17, shift := Vector2.ZERO) -> void:

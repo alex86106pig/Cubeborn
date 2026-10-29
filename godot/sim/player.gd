@@ -559,16 +559,7 @@ func _try_interact() -> void:
 		return
 	var pickup := world.nearest_interactable(self, world.pickups)
 	if pickup != null:
-		var ip := pickup as ItemPickup
-		var taken: bool
-		if ip.corpse_of != 0:
-			taken = add_corpse(ip.corpse_of)
-		elif ip.is_weapon():
-			taken = add_weapon(ip.weapon)
-		else:
-			taken = add_item(ip.item_id) != &""
-		if taken:
-			pickup.remove()
+		loadout.take_pickup(self, pickup as ItemPickup)
 		return
 	var chest := world.nearest_interactable(self, world.chests)
 	if chest != null:

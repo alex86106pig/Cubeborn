@@ -396,13 +396,31 @@ func nearest_interactable(p: Player, list: Array[Entity]) -> Entity:
 	var best: Entity = null
 	var best_d := INF
 	for e in list:
-		if e.is_removed or (e is Chest and (e as Chest).opened):
+		if e.is_removed or (e is Chest and (e as Chest).opened) or not can_reach(p, e):
 			continue
-		var d := e.pos.distance_to(p.pos) - e.radius - p.radius
-		if d <= LootDefs.INTERACT_RANGE * p.stats.value(&"pickup_radius") and d < best_d:   # 磁石（G1）
+		var d := _reach_gap(p, e)
+		if d < best_d:
 			best_d = d
 			best = e
 	return best
+
+
+# p 按不按得到 F：身體邊緣到物件邊緣 INTERACT_RANGE 內（磁石（G1）放大）
+func can_reach(p: Player, e: Entity) -> bool:
+	return _reach_gap(p, e) <= LootDefs.INTERACT_RANGE * p.stats.value(&"pickup_radius")
+
+
+func _reach_gap(p: Player, e: Entity) -> float:
+	return e.pos.distance_to(p.pos) - e.radius - p.radius
+
+
+# 按得到 F 的地上道具，由近到遠（背包介面的「腳邊」欄）；結果寫進 out（重複使用，不每幀配置）
+func reachable_pickups(p: Player, out: Array[ItemPickup]) -> void:
+	out.clear()
+	for e in pickups:
+		if not e.is_removed and can_reach(p, e):
+			out.append(e as ItemPickup)
+	out.sort_custom(func(a: ItemPickup, b: ItemPickup) -> bool: return _reach_gap(p, a) < _reach_gap(p, b))
 
 
 # 打倒 Boss：挖墳事件的地圖（D6）不通關，額外掉一個大寶箱機率的道具（武器與金幣照 on_enemy_died）；

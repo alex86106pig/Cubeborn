@@ -146,12 +146,14 @@ func _initialize() -> void:
 	_check("屍體與冤魂（D6）：多人時死亡留下屍體、撿進背包；背著換層出現冤魂，打倒後死者在那裡復活、屍體消失；沒人帶屍體就沒有冤魂", EventChecks.check_corpse_ghost)
 
 	# ───────── 背包、祭壇與武器 ─────────
-	_check("背包：大小照 BAG_SIZE；形狀旋轉後格子正確；超出邊界、重疊放不下；自動找第一個空位（不夠時會轉向）；搬動成功 / 失敗；裝滿後撿不起來並發出 inventory:full", LootChecks.check_inventory)
+	_check("背包：大小照 BAG_SIZE；形狀旋轉後格子正確；超出邊界、重疊放不下；自動找第一個空位（不夠時會轉向）；搬動成功 / 失敗；裝滿後撿不起來並發出 inventory:full；放不下時建議拿掉哪一件（占格最少），拿掉一件也不夠就不建議",
+		all.bind([LootChecks.check_inventory, LootChecks.check_inventory_suggest]))
 	_check("祭壇與石棺：數量照地圖資料、位置可走且夠遠、殺怪靈魂照 KILL_SOULS（共用）、靈魂不夠開不了、夠了扣靈魂並掉一個道具、開過不能再開；隨機放（同種子相同）與人數倍率、全清買不完；稀有度各抽 20000 次符合權重、不會開出武器",
 		all.bind([LootChecks.check_soul_chests, LootChecks.check_chest_balance, LootChecks.check_chest_rarity]))
 	_check("局外金幣（v0.45）：過第 1 / 2 層給 5 / 10；地上的金幣走近自動撿、倒地不撿、多人只記一個數字；Profile 存檔讀得回來；掉落率符合 RUN_COINS.drop_chance（±4 個標準差）、召喚出來的不掉",
 		all.bind([LootChecks.check_run_coins, LootChecks.check_coin_drops]))
-	_check("撿道具：按 F 撿起最近的道具放進背包並生效；剛按下那一步才算；兩人同一步按 F 只有一人拿到；丟掉後道具回到地上、效果移除；附近有倒地隊友時 F 先救人", LootChecks.check_pickups)
+	_check("撿道具：按 F 撿起最近的道具放進背包並生效；剛按下那一步才算；兩人同一步按 F 只有一人拿到；丟掉後道具回到地上、效果移除；附近有倒地隊友時 F 先救人；從腳邊拖進背包放到指定格子（太遠、放不下、已被撿走不動，武器不放裝備欄）；撿不下的事件帶地上道具的 id",
+		all.bind([LootChecks.check_pickups, LootChecks.check_pickup_to_cell]))
 	_check("武器掉落與詞條：小怪掉落率符合 DROP_CHANCE、Boss 必掉、稀有度符合權重；詞條數 = 稀有度順位、不重複；只有手上那把生效，X 切換後屬性跟著換",
 		all.bind([LootChecks.check_weapon_drops, LootChecks.check_weapon_affixes]))
 	_check("武器的背包操作：撿武器先放裝備欄、滿了放背包、都滿撿不起來，裝備欄 ↔ 背包搬動、手上至少留一把；兩把同種同稀有度合成 → 高一級、詞條重抽，不同種 / 不同稀有度 / 橘色不能合成",
@@ -193,6 +195,7 @@ func _initialize() -> void:
 
 	# ───────── 介面 ─────────
 	_check("HUD：能建立、處理各種事件、顯示波次 / 血量 / 結算文字、暫停畫面有「離開遊戲」；別人撿到道具不跳橫幅；武器欄的另一把標示切換鍵 X", ViewChecks.check_hud)
+	_check("背包介面：和屬性面板並排塞得進介面最大檔的畫面；腳邊欄只列按得到 F 的地上道具、滑鼠停著顯示說明，拖進背包撿起放在那一格、背包的拖到腳邊丟掉；撿不下時 HUD 通知打開背包、提示拿掉哪一件就放得下，關掉就清除", ViewChecks.check_inventory_panel)
 	_check("技能欄：劍盾格擋中左鍵換成「招架」與冷卻、法杖沒有招架格；火把準備姿態換成插火把 / 噴火、鐵鏟舉著怪換成拋出 / 埋入；CD 遮罩疊放順序 文字圖示 < 壓黑 < 秒數",
 		all.bind([ViewChecks.check_skill_bar_parry, ViewChecks.check_skill_bar_cd_mask]))
 	_check("新手提示：換武器鍵是 X；開場跳操作與挖墳；撿到東西、開背包、可合成、出口打開、隊友倒地各跳一次；看過不再跳；重設後再跳", ViewChecks.check_hints)
@@ -227,7 +230,7 @@ func _initialize() -> void:
 	_check("打中回饋與延遲補償（v0.38.0）：延遲 100 ms 時客戶端的火花 / 音效 / 閃白在出招當下出現一次，房主的同一下標 predicted；側移的怪兩邊都判定打中", NetChecks.check_hit_prediction.bind(feel))
 	_check("連線武器（D4）：客戶端按 X 切換、拖曳合成，兩邊的裝備欄、手上武器、詞條一致；殺怪掉的武器兩邊都看得到", NetChecks.check_net_weapons)
 	_check("連線稀有度（D5）：客戶端的稀有度、詞條、名字、半徑、最大生命與房主相同；普通怪的快照不帶稀有度欄位", MonsterChecks.check_net_rarity)
-	_check("連線寶箱與背包（D3）：客戶端按 F 開箱、再按 F 撿起、拖曳搬動與丟掉；兩邊的寶箱、靈魂、背包、生效道具一致", NetChecks.check_net_loot)
+	_check("連線寶箱與背包（D3）：客戶端按 F 開箱、再按 F 撿起、拖曳搬動與丟掉、從腳邊拖回背包指定的格子；兩邊的寶箱、靈魂、背包、生效道具一致", NetChecks.check_net_loot)
 	_check("連線金幣（v0.45）：房主掉的金幣客戶端看得到；客戶端走過去撿起，兩邊本局金幣都是 1、地上都沒了", NetChecks.check_net_coins)
 	_check("連線道具（G）：客戶端看到玩家方的骷髏僕從與鬼火；自己的護盾量跟房主一致（被打後也是）；守護亡靈救下後不倒地並收到 player:saved；碎骨爆裂特效收得到", NetChecks.check_net_items)
 	_check("連線倒下與救援（C4）：客戶端跟著房主倒地、不能預測移動，被救起後站起來；客戶端按住 F 也能救起房主", NetChecks.check_net_downed)

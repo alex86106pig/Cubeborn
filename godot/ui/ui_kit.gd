@@ -108,3 +108,39 @@ static func hp_text(hp: float) -> String:
 
 static func format_time(seconds: float) -> String:
 	return "%d:%02d" % [floori(seconds / 60.0), floori(fmod(seconds, 60.0))]
+
+
+# 道具 / 武器的說明（地上的道具卡、背包的說明欄共用）：{ title, color, lines }
+# weapon 是武器實例（WeaponDropDefs）時顯示基本數值與詞條，否則顯示道具效果
+static func item_info(id: StringName, weapon: Dictionary) -> Dictionary:
+	if not weapon.is_empty():
+		var b := WeaponDropDefs.base_stats(weapon)
+		var affixes: Array[String] = []
+		for a: StringName in weapon.affixes:
+			affixes.append(WeaponDropDefs.AFFIXES[a].desc)
+		var lines: Array[String] = ["攻擊力 %.1f · 攻速 %.2f 次/秒 · 範圍 %.1f" % [b.damage, b.attack_speed, b.range],
+			"沒有詞條" if affixes.is_empty() else "詞條：" + " · ".join(affixes)]
+		return {"title": WeaponDropDefs.display_name(weapon), "color": ItemDefs.RARITIES[weapon.rarity].color, "lines": lines}
+	var def: Dictionary = ItemDefs.ITEMS[id]
+	var r: Dictionary = ItemDefs.RARITIES[def.rarity]
+	var desc: String = def.get("desc", "")
+	if not def.get("effects", []).all(ItemDefs.is_implemented):
+		desc += "（效果尚未實作）"
+	var item_lines: Array[String] = [desc]
+	return {"title": "%s（%s）" % [def.name, r.name], "color": r.color, "lines": item_lines}
+
+
+# 道具形狀的小圖（不轉向）：每格 cell px，左上角在 at
+static func draw_shape(ci: CanvasItem, id: StringName, at: Vector2, cell: float, color: Color, alpha := 1.0) -> void:
+	for c in Inventory.cells_of(id, 0):
+		var r := Rect2(at + Vector2(c) * cell, Vector2(cell, cell)).grow(-1)
+		ci.draw_rect(r, Color(color.darkened(0.4), 0.9 * alpha))
+		ci.draw_rect(r, Color(color, alpha), false, 1.0)
+
+
+# 形狀小圖的大小（px）
+static func shape_size(id: StringName, cell: float) -> Vector2:
+	var hi := Vector2i.ZERO
+	for c in Inventory.cells_of(id, 0):
+		hi = Vector2i(maxi(hi.x, c.x), maxi(hi.y, c.y))
+	return Vector2(hi + Vector2i.ONE) * cell

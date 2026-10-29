@@ -7,6 +7,7 @@ signal quit_requested   # 暫停畫面或主選單按下「離開遊戲」
 signal title_requested  # 暫停畫面按下「回主選單」
 signal weapon_test_equip(weapon_id: StringName)   # 武器測試場：換武器（2026-10-27）
 signal weapon_test_reset                          # 武器測試場：木樁擺回原位
+signal inventory_full(pickup_id: int)             # 本機玩家撿不下地上的道具：打開背包標出它（main.gd 接）
 
 # 手動分行（中文自動折行會斷在詞中間）
 const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技（劍盾：按住格擋，格擋中左鍵招架） · 空白鍵 跳躍 · Shift 翻滾 · Ctrl 跑步（切換）\n1~5 道具 · F 撿道具 / 開祭壇與石棺 / 按住救援隊友 · Tab 背包與屬性 · Esc 選單 · M 靜音 · R 重新開始\nX / 滾輪 切換武器 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具（F3~F5 單機才有）"
@@ -20,7 +21,7 @@ const GAME_OVER_DELAY := 0.7     # 死亡後幾秒顯示結算
 const BOSS_NAME := "亡骸騎士"     # darkFantasy.js 的 names.boss
 # 介面程式碼裡寫死的中文字（橫幅、浮動文字、場上文字、連線面板、遊玩紀錄…；資料表以外的）：開場預熱用（v0.37.2）
 # check.gd 會掃 ui/ 的字串，缺字就列出來，加到這裡
-const UI_CHARS := "　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木總樂畫陰源・介想意反對取噴發巡邏膨脹犬守話又頭肥羊園狼原形"
+const UI_CHARS := "　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木總樂畫陰源・介想意反對取噴發巡邏膨脹犬守話又頭肥羊園狼原形占拿件夠"
 
 const VIGNETTE_SHADER := """
 shader_type canvas_item;
@@ -538,6 +539,8 @@ func _on_event(name: String, p: Dictionary) -> void:
 		"inventory:full":
 			if _is_local(p.player_id):
 				_floaters.spawn(local_player(), "背包滿了", &"dmg")
+				if p.get("pickup_id", 0) != 0:
+					inventory_full.emit(p.pickup_id)
 		"chest:denied":
 			if _is_local(p.player_id):
 				_floaters.spawn(local_player(), "靈魂不足（需要 %d）" % p.price, &"dmg")

@@ -51,16 +51,37 @@ func equip_new(p: Player, id: StringName) -> void:
 	p.apply_active_weapon()
 
 
+# 撿起地上的道具 / 武器 / 屍體，放進去就移除地上那個；spot（{ cell, rot }）空 = 自動放，否則放到背包的 spot（呼叫端先確認放得下）
+func take_pickup(p: Player, ip: ItemPickup, spot: Dictionary = {}) -> bool:
+	var taken: bool
+	if ip.corpse_of != 0:
+		taken = add_corpse(p, ip.corpse_of, spot, ip.id)
+	elif ip.is_weapon():
+		taken = add_weapon(p, ip.weapon, spot, ip.id)
+	else:
+		taken = add_item(p, ip.item_id, spot, ip.id) != &""
+	if taken:
+		ip.remove()
+	return taken
+
+
+# 放不下：inventory:full 帶著地上道具的實體 id（不是從地上撿的為 0），背包介面用來標出是哪一個
+func _emit_full(p: Player, item: StringName, pickup_id: int) -> void:
+	p.world.emit_event("inventory:full", {"player_id": p.id, "item": String(item), "pickup_id": pickup_id})
+
+
 # 撿到武器（D4）：裝備欄有空先放裝備欄（不換手上的），滿了放背包；都放不下回傳 false、發出 inventory:full
-func add_weapon(p: Player, inst: Dictionary) -> bool:
-	for i in weapon_slots.size():
-		if weapon_slots[i].is_empty():
-			weapon_slots[i] = inst
-			p.world.emit_event("weapon:added", {"player_id": p.id, "uid": String(inst.uid), "slot": i})
-			return true
-	var spot := inventory.find_spot(inst.base)
+# 指定 spot 時直接放到背包的那一格（背包介面從「腳邊」拖進來）
+func add_weapon(p: Player, inst: Dictionary, spot: Dictionary = {}, pickup_id := 0) -> bool:
 	if spot.is_empty():
-		p.world.emit_event("inventory:full", {"player_id": p.id, "item": String(inst.base)})
+		for i in weapon_slots.size():
+			if weapon_slots[i].is_empty():
+				weapon_slots[i] = inst
+				p.world.emit_event("weapon:added", {"player_id": p.id, "uid": String(inst.uid), "slot": i})
+				return true
+		spot = inventory.find_spot(inst.base)
+	if spot.is_empty():
+		_emit_full(p, inst.base, pickup_id)
 		return false
 	inventory.add(inst.uid, inst.base, spot.cell, spot.rot, inst)
 	p.world.emit_event("weapon:added", {"player_id": p.id, "uid": String(inst.uid), "slot": -1})
@@ -131,18 +152,19 @@ func merge(p: Player, uid_a: StringName, uid_b: StringName) -> bool:
 	return true
 
 
-# 道具放進背包（D3）：自動放到第一個放得下的位置，放進去就生效（屬性效果以實例 uid 為來源套上）；武器則直接換上
+# 道具放進背包（D3）：spot 空 = 自動放到第一個放得下的位置；放進去就生效（屬性效果以實例 uid 為來源套上）；武器則直接換上
 # 同一個道具拿兩個就是兩個實例、加成相加。背包放不下時回傳 &""、發出 inventory:full
-func add_item(p: Player, item_id: StringName) -> StringName:
+func add_item(p: Player, item_id: StringName, spot: Dictionary = {}, pickup_id := 0) -> StringName:
 	assert(ItemDefs.ITEMS.has(item_id), "Unknown item: %s" % item_id)
 	var def: Dictionary = ItemDefs.ITEMS[item_id]
 	var uid := &""
 	if def.kind == &"weapon":
 		equip_new(p, def.weapon)
 	else:
-		var spot := inventory.find_spot(item_id)
 		if spot.is_empty():
-			p.world.emit_event("inventory:full", {"player_id": p.id, "item": String(item_id)})
+			spot = inventory.find_spot(item_id)
+		if spot.is_empty():
+			_emit_full(p, item_id, pickup_id)
 			return &""
 		uid = StringName("item_%d" % _next_item_uid)
 		_next_item_uid += 1
@@ -169,10 +191,11 @@ func clear_items(p: Player) -> void:
 
 
 # 撿起隊友的屍體放進背包（占 corpse 形狀的格子、沒有效果）；放不下回傳 false 並發出 inventory:full
-func add_corpse(p: Player, owner_peer: int) -> bool:
-	var spot := inventory.find_spot(&"corpse")
+func add_corpse(p: Player, owner_peer: int, spot: Dictionary = {}, pickup_id := 0) -> bool:
 	if spot.is_empty():
-		p.world.emit_event("inventory:full", {"player_id": p.id, "item": "corpse"})
+		spot = inventory.find_spot(&"corpse")
+	if spot.is_empty():
+		_emit_full(p, &"corpse", pickup_id)
 		return false
 	inventory.add(Player.corpse_uid(owner_peer), &"corpse", spot.cell, spot.rot)
 	p.world.emit_event("item:added", {"player_id": p.id, "item": "corpse", "uid": String(Player.corpse_uid(owner_peer))})
@@ -219,8 +242,15 @@ func clear_ops() -> void:
 # 背包操作（InputCmd.inv_ops）：
 #   [OP_MOVE, uid, x, y, rot] 搬到背包 (x, y)（道具或武器；武器可以從裝備欄搬進背包，但手上至少留一把）
 #   [OP_DROP, uid] 丟到面前的地上；[OP_EQUIP, uid, slot] 武器放進裝備欄；[OP_MERGE, uid_a, uid_b] 把 a 拖到 b 上合成
+#   [OP_PICKUP, 地上道具 id, x, y, rot] 撿起按得到 F 的地上道具放到背包 (x, y)（已被撿走、太遠、放不下就不動）
 func apply_ops(p: Player) -> void:
 	for op: Array in _ops:
+		if int(op[0]) == InputCmd.OP_PICKUP:
+			var ip := p.world.entities.get(int(op[1])) as ItemPickup
+			var spot := {"cell": Vector2i(op[2], op[3]), "rot": posmod(int(op[4]), 4)}
+			if ip != null and not ip.is_removed and p.world.can_reach(p, ip) and inventory.fits(ip.item_id, spot.cell, spot.rot):
+				take_pickup(p, ip, spot)
+			continue
 		var uid := StringName(op[1])
 		match int(op[0]):
 			InputCmd.OP_MOVE:

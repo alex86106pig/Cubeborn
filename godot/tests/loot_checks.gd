@@ -231,6 +231,30 @@ static func check_inventory() -> String:
 	return ""
 
 
+# 放不下時建議拿掉哪一件：4 × 2 的背包，左上磨刀石（2 格）、右下骰子（1 格），2 × 2 的骨製護盾哪裡都放不下；
+# 拿掉任一件都放得下時挑占格少的骰子；本來就放得下、拿掉一件也不夠時沒有建議
+static func check_inventory_suggest() -> String:
+	var inv := Inventory.new()
+	inv.size = Vector2i(4, 2)
+	inv.add(&"a", &"whetstone", Vector2i(0, 0), 0)
+	inv.add(&"b", &"loaded_dice", Vector2i(3, 1), 0)
+	if not inv.find_spot(&"bone_buckler").is_empty():
+		return "左上被磨刀石、右下被骰子占著，2 × 2 不應放得下"
+	if inv.find_spot(&"bone_buckler", &"a").is_empty() or inv.find_spot(&"bone_buckler", &"b").is_empty():
+		return "find_spot 當作其中一件不在時應放得下"
+	if inv.suggest_removal(&"bone_buckler") != &"b":
+		return "應建議拿掉占格少的骰子，實際「%s」" % inv.suggest_removal(&"bone_buckler")
+	if inv.suggest_removal(&"loaded_dice") != &"":
+		return "本來就放得下時不應有建議"
+	var tight := Inventory.new()
+	tight.size = Vector2i(2, 2)
+	tight.add(&"a", &"loaded_dice", Vector2i(0, 0), 0)
+	tight.add(&"b", &"loaded_dice", Vector2i(1, 1), 0)
+	if tight.suggest_removal(&"bone_buckler") != &"":
+		return "拿掉一件也放不下時不應有建議，實際「%s」" % tight.suggest_removal(&"bone_buckler")
+	return ""
+
+
 static func check_soul_chests() -> String:
 	var w := _new_world(12345, false, &"graveyard_a")
 	var err := _chest_layout(w, 1)
@@ -532,6 +556,53 @@ static func check_pickups() -> String:
 	w3.step({1: press, 2: _cmd(Vector2.ZERO)}, DT)
 	if not d.is_downed or r.inventory.entries.size() != 0:
 		return "旁邊有倒地隊友時 F 應先救人：倒地 %s、撿到 %d" % [d.is_downed, r.inventory.entries.size()]
+	return ""
+
+
+# 從背包介面的「腳邊」撿（OP_PICKUP）：放到指定的格子與方向並生效、地上的消失；已經被撿走、按不到 F、放不下的不動；
+# 武器放進背包指定的格子（不放空的裝備欄）；按 F 撿不下時 inventory:full 帶著地上道具的 id
+static func check_pickup_to_cell() -> String:
+	var w := _new_world(12345, false, &"test_arena")
+	var p := _player(w)
+	var pick := func(ip: ItemPickup, cell: Vector2i, rot: int) -> void:
+		var cmd := _cmd(Vector2.ZERO)
+		cmd.inv_ops = [[InputCmd.OP_PICKUP, ip.id, cell.x, cell.y, rot]]
+		_run(w, cmd, 1)
+	var stone := w.drop_item(&"whetstone", p.pos + Vector2(1.0, 0))
+	pick.call(stone, Vector2i(3, 2), 1)
+	var e: Dictionary = p.inventory.entries[0] if p.inventory.entries.size() == 1 else {}
+	if e.is_empty() or e.cell != Vector2i(3, 2) or e.rot != 1 or not stone.is_removed:
+		return "OP_PICKUP 應把磨刀石直放在 (3, 2) 並從地上移除：背包 %s、地上還在 %s" % [p.inventory.entries, not stone.is_removed]
+	var one := 1.0 + _effect_value(&"whetstone", &"damage")
+	if absf(p.stats.value(&"damage") - one) > EPS:
+		return "指定格子撿起的道具也要生效：攻擊力 %.2f（應為 %.2f）" % [p.stats.value(&"damage"), one]
+	pick.call(stone, Vector2i(0, 0), 0)
+	if p.inventory.entries.size() != 1:
+		return "已經撿走的不應再撿一次，背包 %d" % p.inventory.entries.size()
+	var far := w.drop_item(&"whetstone", p.pos + Vector2(LootDefs.INTERACT_RANGE + 3.0, 0))
+	pick.call(far, Vector2i(0, 0), 0)
+	if p.inventory.entries.size() != 1 or far.is_removed:
+		return "按不到 F 的距離不應撿得到"
+	var near := w.drop_item(&"whetstone", p.pos + Vector2(1.0, 0))
+	pick.call(near, Vector2i(3, 3), 0)   # (3, 3) 被直放的磨刀石占著
+	if p.inventory.entries.size() != 1 or near.is_removed:
+		return "放不下的格子不應撿起"
+	p.weapon_slots[1] = {}
+	var inst := {"uid": w.new_weapon_uid(), "base": &"staff", "rarity": &"white", "affixes": [] as Array[StringName]}
+	var staff := w.drop_weapon(inst, p.pos + Vector2(1.0, 0))
+	pick.call(staff, Vector2i(0, 4), 0)
+	if not p.weapon_slots[1].is_empty() or p.inventory.find(inst.uid).get("cell", Vector2i(-1, -1)) != Vector2i(0, 4):
+		return "武器從腳邊拖進背包應放在 (0, 4)、不放空的裝備欄：裝備欄 %s、背包 %s" % [p.weapon_slots[1], p.inventory.find(inst.uid)]
+	# 背包滿了按 F：inventory:full 帶著地上那個的 id
+	var w2 := _new_world(12345, false, &"test_arena")
+	var q := _player(w2)
+	for i in ItemDefs.BAG_SIZE.x * ItemDefs.BAG_SIZE.y:
+		q.add_item(&"loaded_dice")
+	var dice := w2.drop_item(&"loaded_dice", q.pos + Vector2(1.0, 0))
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_INTERACT), 1)
+	var full := _named(w2.events, "inventory:full")
+	if full.is_empty() or full[-1].get("pickup_id", 0) != dice.id or dice.is_removed:
+		return "撿不下時 inventory:full 應帶 pickup_id = %d：%s" % [dice.id, full]
 	return ""
 
 

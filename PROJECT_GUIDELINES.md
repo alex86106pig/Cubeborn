@@ -213,7 +213,7 @@ godot/
 | `player:grab_escaped` | `{ player_id }`（被腐屍抓住時按翻滾掙脫） | Player.update |
 | `game:defeat` | `{ stats }`（v0.21.0：全員倒下 = 輸；單機和 `player:died` 同一步發出） | World |
 | `item:added` | `{ player_id, item, uid }`（v0.19.0：道具放進身上；item = 物品 id，uid = 實例 id，武器為空字串） | Player.add_item |
-| `inventory:full` | `{ player_id, item }`（v0.25.0：背包放不下） | Player.add_item / add_weapon |
+| `inventory:full` | `{ player_id, item, pickup_id }`（v0.25.0：背包放不下；pickup_id = 地上道具的實體 id，不是從地上撿的為 0） | Loadout.add_item / add_weapon / add_corpse |
 | `weapon:dropped` | `{ uid, base, rarity, pos }`（v0.26.0：殺怪掉武器） | World.on_enemy_died |
 | `weapon:added` | `{ player_id, uid, slot }`（v0.26.0：撿到武器；slot = 裝備欄 0 / 1，-1 = 背包） | Player.add_weapon |
 | `weapon:merged` | `{ player_id, uid, base, rarity }`（v0.26.0：合成成功） | Loadout |

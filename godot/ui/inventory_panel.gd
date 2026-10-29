@@ -1,5 +1,6 @@
-# 背包介面（D3 / D4，I 開關）：上方 2 格裝備欄、下方 8 × 6 背包
-# 滑鼠拖曳搬動、拖著時按 R 旋轉、拖到面板外面丟在地上；武器拖到同種同稀有度的武器上就合成，拖到裝備欄就裝上
+# 背包介面（D3 / D4，Tab 開關）：上方 2 格裝備欄、下方 8 × 6 背包、右邊「腳邊」欄（按得到 F 的地上道具）
+# 滑鼠拖曳搬動、拖著時按 R 旋轉、拖到腳邊或面板外面丟在地上；武器拖到同種同稀有度的武器上就合成，拖到裝備欄就裝上
+# 腳邊的道具拖進背包 = 撿起放在那一格；撿不下時（show_full）標出那一件、建議拿掉哪件就放得下
 # 滑鼠停著（或拖著）的東西在下方顯示名稱、稀有度、效果 / 詞條
 # 只送操作（op_requested → InputCollector → InputCmd.inv_ops），實際擺放由權威端決定，畫面照本機玩家的狀態畫
 class_name InventoryPanel
@@ -13,19 +14,37 @@ const TITLE_H := 50   # 標題 + 一行操作說明
 const SLOT_LABEL_H := 20
 const SLOTS_H := CELL * 2 + SLOT_LABEL_H + 12   # 裝備欄一格 = 4 × 2 個背包格子大
 const INFO_H := 110
+const FEET_W := 220      # 腳邊欄的寬度
+const FEET_HEAD := 26    # 腳邊欄標題的高度
+const FEET_ROW := 46     # 腳邊欄每一列的高度
+const FEET_CELL := 8.0   # 腳邊欄形狀小圖每格的大小
+const HINT := "拖曳搬動 · 拖著按 R 旋轉 · 拖到腳邊丟掉 · 拖到同種同色武器上合成 · 腳邊的拖進背包撿起"
 
 var world: World
 var local_peer := World.HOST_PEER_ID
 
-var _drag: Dictionary = {}   # 拖曳中：{ uid, id, rot, anchor（形狀格子的索引，對齊滑鼠所在格）, weapon（武器實例或 {}） }
+var _drag: Dictionary = {}   # 拖曳中：{ uid, id, rot, anchor（形狀格子的索引，對齊滑鼠所在格）, weapon（武器實例或 {}）, pickup_id（從腳邊拖的才有） }
 var _hover_uid := &""
+var _hover_pickup := 0
+var _feet: Array[ItemPickup] = []   # 腳邊欄的地上道具（每幀照本機玩家的位置更新）
+var _full_pickup := 0               # 撿不下的地上道具（show_full）；不在腳邊了就不顯示
+var _suggest := &""                 # 建議拿掉的背包條目
+var _suggest_key := 0               # 算 _suggest 時的背包與目標，有變才重算
 
 
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	var bag: Vector2i = ItemDefs.BAG_SIZE
-	custom_minimum_size = Vector2(bag.x * CELL + PAD * 2, PAD * 2 + TITLE_H + SLOTS_H + bag.y * CELL + INFO_H)
-	visibility_changed.connect(func() -> void: _drag = {})
+	custom_minimum_size = Vector2(bag.x * CELL + PAD * 3 + FEET_W, PAD * 2 + TITLE_H + SLOTS_H + bag.y * CELL + INFO_H)
+	visibility_changed.connect(func() -> void:
+		_drag = {}
+		_full_pickup = 0)
+
+
+# 撿不下 pickup_id 那個地上道具：腳邊標出它，提示拿掉哪件就放得下（面板要先打開，關掉就清除）
+func show_full(pickup_id: int) -> void:
+	_full_pickup = pickup_id
+	_suggest_key = 0
 
 
 func _player() -> Player:
@@ -59,8 +78,54 @@ func _in_grid(local: Vector2) -> bool:
 
 
 func _process(_delta: float) -> void:
-	if visible:
-		queue_redraw()
+	if not visible:
+		return
+	var me := _player()
+	_feet.clear()
+	if me != null:
+		world.reachable_pickups(me, _feet)
+	_update_suggestion(me)
+	queue_redraw()
+
+
+# 撿不下的那一件還在腳邊時，算拿掉哪一件就放得下；背包或目標有變才重算
+func _update_suggestion(me: Player) -> void:
+	var target := _full_target()
+	if target == null or me == null:
+		_suggest = &""
+		_suggest_key = 0
+		return
+	var key := hash([target.id, me.inventory.entries])
+	if key != _suggest_key:
+		_suggest_key = key
+		_suggest = me.inventory.suggest_removal(target.item_id)
+
+
+func _full_target() -> ItemPickup:
+	for ip in _feet:
+		if ip.id == _full_pickup:
+			return ip
+	return null
+
+
+func _feet_rect() -> Rect2:
+	return Rect2(Vector2(PAD * 2 + ItemDefs.BAG_SIZE.x * CELL, PAD + TITLE_H), Vector2(FEET_W, SLOTS_H + ItemDefs.BAG_SIZE.y * CELL))
+
+
+func _feet_rows() -> int:
+	return mini(_feet.size(), floori((_feet_rect().size.y - FEET_HEAD) / FEET_ROW))
+
+
+func _feet_row_rect(i: int) -> Rect2:
+	var r := _feet_rect()
+	return Rect2(r.position + Vector2(0, FEET_HEAD + i * FEET_ROW), Vector2(FEET_W, FEET_ROW - 6))
+
+
+func _pickup_at(local: Vector2) -> ItemPickup:
+	for i in _feet_rows():
+		if _feet_row_rect(i).has_point(local):
+			return _feet[i]
+	return null
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -69,6 +134,8 @@ func _gui_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseMotion:
 		_hover_uid = _uid_at(me, event.position)
+		var ip := _pickup_at(event.position)
+		_hover_pickup = ip.id if ip != null else 0
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			_start_drag(me, event.position)
@@ -96,6 +163,10 @@ func _uid_at(me: Player, local: Vector2) -> StringName:
 
 
 func _start_drag(me: Player, local: Vector2) -> void:
+	var ip := _pickup_at(local)
+	if ip != null:
+		_drag = {"uid": &"", "id": ip.item_id, "rot": 0, "anchor": 0, "weapon": ip.weapon, "pickup_id": ip.id}
+		return
 	var slot := _slot_at(local)
 	if slot >= 0:
 		var inst: Dictionary = me.weapon_slots[slot]
@@ -117,7 +188,7 @@ func _drag_cell(local: Vector2) -> Vector2i:
 
 # 放開滑鼠時：拖到武器上 = 合成、拖到裝備欄 = 裝上、拖到背包 = 搬動、拖到面板外 = 丟掉
 func _merge_target(me: Player, local: Vector2) -> Dictionary:
-	if _drag.weapon.is_empty():
+	if _drag.weapon.is_empty() or _drag.has("pickup_id"):
 		return {}
 	var slot := _slot_at(local)
 	var target: Dictionary = {}
@@ -130,6 +201,12 @@ func _merge_target(me: Player, local: Vector2) -> Dictionary:
 
 
 func _finish_drag(me: Player, local: Vector2) -> void:
+	if _drag.has("pickup_id"):   # 從腳邊拖進背包 = 撿起放在那一格；放在別處就留在地上
+		if _in_grid(local):
+			var cell := _drag_cell(local)
+			op_requested.emit([InputCmd.OP_PICKUP, _drag.pickup_id, cell.x, cell.y, _drag.rot])
+		_drag = {}
+		return
 	var uid := String(_drag.uid)
 	var merge := _merge_target(me, local)
 	var slot := _slot_at(local)
@@ -141,7 +218,7 @@ func _finish_drag(me: Player, local: Vector2) -> void:
 	elif _in_grid(local):
 		var target := _drag_cell(local)
 		op_requested.emit([InputCmd.OP_MOVE, uid, target.x, target.y, _drag.rot])
-	elif not Rect2(Vector2.ZERO, size).has_point(local):
+	elif _feet_rect().has_point(local) or not Rect2(Vector2.ZERO, size).has_point(local):
 		op_requested.emit([InputCmd.OP_DROP, uid])
 	_drag = {}
 
@@ -151,9 +228,14 @@ func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), UiKit.SLOT_BG)
 	draw_rect(Rect2(Vector2.ZERO, size), UiKit.SLOT_OUTLINE, false, 1.0)
 	draw_string(font, Vector2(PAD, PAD + 22), "背包", HORIZONTAL_ALIGNMENT_LEFT, -1, 20)
-	draw_string(font, Vector2(PAD, PAD + 42), "拖曳搬動 · 拖著按 R 旋轉 · 拖到外面丟掉 · 拖到同種同色武器上合成", HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 12, Color(1, 1, 1, 0.55))
 	var me := _player()
+	var full := _full_target()
+	if full != null:
+		draw_string(font, Vector2(PAD, PAD + 42), _full_text(me, full), HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 14, UiKit.DENY)
+	else:
+		draw_string(font, Vector2(PAD, PAD + 42), HINT, HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 12, Color(1, 1, 1, 0.55))
 	_draw_slots(font, me)
+	_draw_feet(font, full)
 	var bag: Vector2i = ItemDefs.BAG_SIZE
 	var o := _grid_origin()
 	for y in bag.y:
@@ -164,6 +246,8 @@ func _draw() -> void:
 	for e: Dictionary in me.inventory.entries:
 		var dim: bool = not _drag.is_empty() and _drag.uid == e.uid
 		_draw_item(font, e.id, e.cell, e.rot, _rarity_of(e), 0.35 if dim else 1.0)
+	if _suggest != &"":
+		_draw_suggestion(me.inventory.find(_suggest))
 	if not _drag.is_empty():
 		var local := get_local_mouse_position()
 		if not _merge_target(me, local).is_empty():
@@ -178,6 +262,46 @@ func _draw() -> void:
 				draw_rect(r, Color(0.3, 1, 0.4, 0.35) if ok else Color(1, 0.3, 0.3, 0.35))
 			_draw_item(font, _drag.id, target, _drag.rot, _drag_rarity(), 0.85)
 	_draw_info(font, me)
+
+
+# 撿不下時取代操作說明的那一行
+func _full_text(me: Player, target: ItemPickup) -> String:
+	var e := me.inventory.find(_suggest) if me != null and _suggest != &"" else {}
+	if e.is_empty():
+		return "放不下「%s」：拿掉一件也不夠，要整理背包" % target.display_name()
+	var item_name: String = WeaponDropDefs.display_name(e.weapon) if e.has("weapon") else ItemDefs.ITEMS[e.id].name
+	return "放不下「%s」：拿掉「%s」就放得下" % [target.display_name(), item_name]
+
+
+# 建議拿掉的那一件：每格閃爍的紅色虛線框
+func _draw_suggestion(e: Dictionary) -> void:
+	if e.is_empty():
+		return
+	var color := Color(UiKit.DENY, 0.6 + 0.4 * sin(Time.get_ticks_msec() * 0.008))
+	for c in Inventory.cells_of(e.id, e.rot):
+		var r := Rect2(_grid_origin() + Vector2(e.cell + c) * CELL, Vector2(CELL, CELL)).grow(-1)
+		var corners: Array[Vector2] = [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]
+		for i in 4:
+			draw_dashed_line(corners[i], corners[(i + 1) % 4], color, 2.0, 6.0)
+
+
+# 腳邊欄：按得到 F 的地上道具，撿不下的那一件金框
+func _draw_feet(font: Font, target: ItemPickup) -> void:
+	var r := _feet_rect()
+	draw_string(font, r.position + Vector2(0, 14), "腳邊（拖進背包撿起）", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.55))
+	if _feet.is_empty():
+		draw_string(font, r.position + Vector2(0, FEET_HEAD + 20), "（附近沒有東西）", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 1, 1, 0.3))
+		return
+	for i in _feet_rows():
+		var ip := _feet[i]
+		var row := _feet_row_rect(i)
+		var color: Color = ItemDefs.RARITIES[ip.rarity()].color
+		var alpha := 0.35 if _drag.get("pickup_id", 0) == ip.id else 1.0
+		draw_rect(row, Color(1, 1, 1, 0.05))
+		draw_rect(row, UiKit.GOLD if ip == target else UiKit.SLOT_OUTLINE, false, 3.0 if ip == target else 1.0)
+		var shape := UiKit.shape_size(ip.item_id, FEET_CELL)
+		UiKit.draw_shape(self, ip.item_id, row.position + Vector2(6, (row.size.y - shape.y) / 2.0), FEET_CELL, color, alpha)
+		draw_string(font, row.position + Vector2(46, row.size.y / 2.0 + 6), ip.display_name(), HORIZONTAL_ALIGNMENT_LEFT, FEET_W - 52, 15, Color(color, alpha))
 
 
 func _rarity_of(e: Dictionary) -> StringName:
@@ -229,41 +353,36 @@ func _draw_item(font: Font, id: StringName, cell: Vector2i, rot: int, rarity: St
 	draw_string(font, first + Vector2(5, 20), String(def.name).substr(0, 2), HORIZONTAL_ALIGNMENT_LEFT, CELL - 6, 15, Color(1, 1, 1, alpha))
 
 
-# 下方說明：滑鼠停著（或拖著）的東西：道具的效果、武器的詞條
+# 下方說明：滑鼠停著（或拖著）的東西：道具的效果、武器的詞條（腳邊的道具也一樣）
 func _draw_info(font: Font, me: Player) -> void:
-	var uid: StringName = _drag.uid if not _drag.is_empty() else _hover_uid
 	var y := _grid_origin().y + ItemDefs.BAG_SIZE.y * CELL + 26
-	if uid == &"":
+	var info := _info_of(me)
+	if info.is_empty():
 		draw_string(font, Vector2(PAD, y), "%d 個東西" % me.inventory.entries.size(), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 1, 1, 0.55))
 		return
-	var inst: Dictionary = {}
-	var in_bag := false
+	draw_string(font, Vector2(PAD, y), info.title, HORIZONTAL_ALIGNMENT_LEFT, -1, 17, info.color)
+	draw_multiline_string(font, Vector2(PAD, y + 22), "\n".join(info.lines), HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 14, -1, Color(1, 1, 1, 0.85))
+
+
+func _info_of(me: Player) -> Dictionary:
+	var pickup_id: int = _drag.get("pickup_id", 0) if not _drag.is_empty() else _hover_pickup
+	if pickup_id != 0:
+		var ip := world.entities.get(pickup_id) as ItemPickup
+		if ip == null:
+			return {}
+		var on_ground := UiKit.item_info(ip.item_id, ip.weapon)
+		on_ground.title += "（在地上）"
+		return on_ground
+	var uid: StringName = _drag.uid if not _drag.is_empty() else _hover_uid
+	if uid == &"":
+		return {}
 	for s in me.weapon_slots:
 		if s.get("uid", &"") == uid:
-			inst = s
+			return UiKit.item_info(s.base, s)
 	var e := me.inventory.find(uid)
-	if inst.is_empty() and not e.is_empty():
-		inst = e.get("weapon", {})
-		in_bag = true
-	if not inst.is_empty():
-		var rarity: Dictionary = ItemDefs.RARITIES[inst.rarity]
-		var title := WeaponDropDefs.display_name(inst) + ("（在背包裡不生效）" if in_bag else "")
-		draw_string(font, Vector2(PAD, y), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 17, rarity.color)
-		var b := WeaponDropDefs.base_stats(inst)
-		draw_string(font, Vector2(PAD, y + 22), "攻擊力 %.1f · 攻速 %.2f 次/秒 · 範圍 %.1f" % [b.damage, b.attack_speed, b.range],
-			HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 14, Color.WHITE)
-		var lines: Array[String] = []
-		for a: StringName in inst.affixes:
-			lines.append(WeaponDropDefs.AFFIXES[a].desc)
-		var text := "沒有詞條" if lines.is_empty() else "詞條：" + " · ".join(lines)
-		draw_multiline_string(font, Vector2(PAD, y + 44), text, HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 14, -1, Color(1, 1, 1, 0.8))
-		return
 	if e.is_empty():
-		return
-	var def: Dictionary = ItemDefs.ITEMS[e.id]
-	var r: Dictionary = ItemDefs.RARITIES[def.rarity]
-	draw_string(font, Vector2(PAD, y), "%s（%s）" % [def.name, r.name], HORIZONTAL_ALIGNMENT_LEFT, -1, 17, r.color)
-	var desc: String = def.desc
-	if not def.effects.all(ItemDefs.is_implemented):
-		desc += "（效果尚未實作）"
-	draw_string(font, Vector2(PAD, y + 24), desc, HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 14, Color(1, 1, 1, 0.85))
+		return {}
+	var info := UiKit.item_info(e.id, e.get("weapon", {}))
+	if e.has("weapon"):
+		info.title += "（在背包裡不生效）"
+	return info

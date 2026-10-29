@@ -42,22 +42,44 @@ func occupied(ignore: StringName = &"") -> Dictionary:
 
 
 func fits(id: StringName, cell: Vector2i, rot: int, ignore: StringName = &"") -> bool:
-	var taken := occupied(ignore)
-	for c in cells_of(id, rot):
-		var p := cell + c
+	return _fits_cells(occupied(ignore), cells_of(id, rot), cell)
+
+
+func _fits_cells(taken: Dictionary, cells: Array[Vector2i], at: Vector2i) -> bool:
+	for c in cells:
+		var p := at + c
 		if p.x < 0 or p.y < 0 or p.x >= size.x or p.y >= size.y or taken.has(p):
 			return false
 	return true
 
 
 # 第一個放得下的位置：由上到下、由左到右，每格先試不轉、再依序轉 90 / 180 / 270；放不下回傳 {}
-func find_spot(id: StringName) -> Dictionary:
+# ignore：當作那一件不在背包裡（算「拿掉它放不放得下」）。占用表與四個方向的形狀只算一次（suggest_removal 會連叫很多次）
+func find_spot(id: StringName, ignore: StringName = &"") -> Dictionary:
+	var taken := occupied(ignore)
+	var shapes: Array[Array] = []
+	for rot in 4:
+		shapes.append(cells_of(id, rot))
 	for y in size.y:
 		for x in size.x:
 			for rot in 4:
-				if fits(id, Vector2i(x, y), rot):
+				if _fits_cells(taken, shapes[rot], Vector2i(x, y)):
 					return {"cell": Vector2i(x, y), "rot": rot}
 	return {}
+
+
+# 放不下 id 時，拿掉哪一件就放得下（有好幾件時挑占格最少的）；本來就放得下、或拿掉一件也不夠時回傳 &""
+func suggest_removal(id: StringName) -> StringName:
+	if not find_spot(id).is_empty():
+		return &""
+	var best := &""
+	var best_cells := 1 << 20
+	for e in entries:
+		var n := cells_of(e.id, e.rot).size()
+		if n < best_cells and not find_spot(id, e.uid).is_empty():
+			best = e.uid
+			best_cells = n
+	return best
 
 
 func add(uid: StringName, id: StringName, cell: Vector2i, rot: int, weapon: Dictionary = {}) -> void:
