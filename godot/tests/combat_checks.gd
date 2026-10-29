@@ -943,8 +943,13 @@ static func check_shovel() -> String:
 				return "舉著怪移速 ×0.7、不能跳：%.2f" % p.velocity.length()
 			var hp_g := g.hp
 			var hp_o := other.hp
+			var ta: Dictionary = sv.grab.attack
 			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_ATTACK), 1)
-			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), 20)
+			# 飛行一半：還在空中、離地、還沒到落點、沒受落地傷害（拋出有飛行過程，不是瞬移）
+			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), roundi((ta.windup + ta.active + ta.flight_time * 0.5) / DT))
+			if not g.is_launching() or g.height - g.ground_height < 0.3 or g.pos.y > 7.0 or absf(hp_g - g.hp) > EPS:
+				return "拋出飛到一半應還在空中（%.1f 秒飛完）：飛行中 %s、離地 %.2f、z %.2f、扣血 %.1f" % [ta.flight_time, g.is_launching(), g.height - g.ground_height, g.pos.y, hp_g - g.hp]
+			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), roundi(ta.flight_time * 0.5 / DT) + 20)
 			results[mode] = [hp_g - g.hp, hp_o - other.hp, g.pos.y, p.held_enemy_id]
 		elif mode == &"bury":
 			var hp_g := g.hp

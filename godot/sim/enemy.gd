@@ -137,6 +137,37 @@ func launch_to(to: Vector2, seconds: float) -> void:
 	facing = MathUtil.angle_to(pos, to)
 
 
+# 被鐵鏟拋出（F9）：同 launch_to 飛過去；飛行中身體 width 內碰到的怪受 path_hit（每隻一次），落地受 land_hit。
+# 傷害來源是丟的人（落地時已經不在就不算傷害）
+func throw_to(to: Vector2, seconds: float, thrower: Entity, dir: Vector2, width: float, path_hit: Dictionary, land_hit: Dictionary) -> void:
+	launch_to(to, seconds)
+	fsm.data["thrown"] = {"source_id": thrower.id, "team": thrower.team, "dir": dir, "width": width,
+		"path_hit": path_hit, "land_hit": land_hit, "hit": {}}
+
+
+# 被拋出的怪落地：落地傷害（往前擊退）與塵土
+static func land_throw(e: Enemy, thrower: Entity, hit: Dictionary, dir: Vector2) -> void:
+	if thrower != null and not e.is_dead:
+		var h := hit.duplicate()
+		h["origin"] = e.pos - dir
+		Combat.apply_damage(e.world, thrower, e, h)
+	e.world.emit_event("fx:explosion", {"pos": e.pos, "height": e.world.terrain.ground_at(e.pos), "radius": 1.2, "color": hit.color})
+
+
+func _update_throw_path(th: Dictionary) -> void:
+	var thrower: Entity = world.entities.get(th.source_id)
+	if thrower == null:
+		return
+	for o in world.enemies:
+		if o == self or o.is_dead or o.team == th.team or th.hit.has(o.id):
+			continue
+		if o.pos.distance_to(pos) <= th.width + o.radius:
+			th.hit[o.id] = true
+			var h: Dictionary = th.path_hit.duplicate()
+			h["origin"] = pos - th.dir
+			Combat.apply_damage(world, thrower, o, h)
+
+
 # 字串只組一次（D5：200 隻怪每步都查冷卻，每次 format 太慢）
 func cd(name: String) -> String:
 	var key: String = _cd_keys.get(name, "")
@@ -517,9 +548,15 @@ class Launch:
 			fsm.change(e.main_state)
 			return
 		e.velocity = fsm.data.velocity
+		var is_thrown: bool = fsm.data.has("thrown")
+		if is_thrown:
+			e._update_throw_path(fsm.data.thrown)
 		if fsm.time >= fsm.data.flight_time * 0.5 and e.is_grounded():
 			e.velocity = Vector2.ZERO
-			fsm.change(e.main_state)
+			var th: Dictionary = fsm.data.thrown if is_thrown else {}
+			fsm.change(e.main_state)   # 會換掉 fsm.data
+			if is_thrown:
+				Enemy.land_throw(e, e.world.entities.get(th.source_id), th.land_hit, th.dir)
 
 
 # 怪群休眠（D5）：站著不動，醒來（dormant = false）後直接開始追，不播爬出動畫

@@ -523,6 +523,7 @@ const WEAPONS := {
 				"damage_pct": 2.0,     # 被丟的怪落地
 				"path_damage_pct": 1.5,   # 路上撞到的怪
 				"distance": 7.0,
+				"flight_time": 0.6,    # 被丟的怪飛到落點的秒數（拋物線）；路上的怪在飛過時才被撞到
 				"path_width": 0.8,
 				"knockback": 10.0,
 				"windup": 0.12,

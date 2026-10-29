@@ -334,7 +334,8 @@ class ShovelGrab extends Behavior:
 		p.grab_enemy(best, def.hold_time)
 
 
-# 拋出（F9，舉著怪時的左鍵）：往前丟 distance（撞牆就停在牆前），路上撞到的怪受 path_damage_pct、被丟的怪落地受 damage_pct，都可擊退
+# 拋出（F9，舉著怪時的左鍵）：往前丟 distance（撞牆就停在牆前），花 flight_time 秒沿拋物線飛過去（Enemy.throw_to）；
+# 路上撞到的怪受 path_damage_pct、被丟的怪落地受 damage_pct，都可擊退。冰凍中的怪狀態機停住飛不動，直接落在落點
 class ShovelThrow extends Behavior:
 	func phase(p: Player, def: Dictionary, _data: Dictionary, name: StringName) -> void:
 		if name != &"active":
@@ -354,18 +355,16 @@ class ShovelThrow extends Behavior:
 				break
 			travel += step
 			land = nxt
-		for e in p.world.enemies:
-			if e == held or e.is_dead or e.team == p.team:
-				continue
-			var t := clampf((e.pos - start).dot(dir), 0.0, travel)
-			if (start + dir * t).distance_to(e.pos) <= def.path_width + e.radius:
-				Combat.apply_damage(p.world, p, e, {"damage": p.pct_damage(def.path_damage_pct), "damage_type": p.weapon.damage_type,
-					"knockback": def.knockback, "origin": start + dir * t - dir, "is_heavy": true, "color": def.color})
-		held.pos = land
-		held.prev_pos = land
-		Combat.apply_damage(p.world, p, held, {"damage": p.move_damage(def), "damage_type": p.weapon.damage_type,
-			"knockback": def.knockback, "origin": land - dir, "hit_stop": def.hit_stop, "shake": def.shake, "is_heavy": true, "color": def.color})
-		p.world.emit_event("fx:explosion", {"pos": land, "height": p.world.terrain.ground_at(land), "radius": 1.2, "color": def.color})
+		var path_hit := {"damage": p.pct_damage(def.path_damage_pct), "damage_type": p.weapon.damage_type,
+			"knockback": def.knockback, "is_heavy": true, "color": def.color}
+		var land_hit := {"damage": p.move_damage(def), "damage_type": p.weapon.damage_type,
+			"knockback": def.knockback, "hit_stop": def.hit_stop, "shake": def.shake, "is_heavy": true, "color": def.color}
+		if held.frozen_timer > 0.0 or travel <= 0.0:
+			held.pos = land
+			held.prev_pos = land
+			Enemy.land_throw(held, p, land_hit, dir)
+			return
+		held.throw_to(land, def.flight_time, p, dir, def.path_width, path_hit, land_hit)
 
 
 # 埋入（F9，舉著怪時的右鍵）：埋進土裡只露半身，暈 stun 秒再花 crawl 秒爬出（Enemy.bury），受到 damage_pct
