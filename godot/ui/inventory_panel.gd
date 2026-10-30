@@ -1,8 +1,10 @@
 # 背包介面（D3 / D4，Tab 開關；Build 改版第 3 步起照對比頁 A：畫面右半邊、中間可以用滑鼠滾輪捲動）
 # 由上到下：標題與操作說明（固定）→ 主手、副手的武器格子（道具鑲在這裡才生效）→ 羈絆件數 → 8 × 6 背包（只放東西）；右邊「腳邊」欄（按得到 F 的地上道具）
 # → 滑鼠停著的說明（固定在底部）
-# 滑鼠拖曳搬動、拖著時按 R 旋轉、拖到腳邊或面板外面丟在地上；道具拖到武器格子 = 鑲上、拖到背包 = 拿下來；
-# 武器拖到主手 / 副手的名稱框就換上（拿不動的由權威端拒絕），拖到同種同稀有度的武器上合成；腳邊的拖進背包或武器格子 = 撿起放在那一格
+# 左鍵點一下拿起、再點一下放下（按住拖曳也可以）；拿著時按 R 旋轉、右鍵或 Esc 放回原處，放到腳邊或面板外面丟在地上；
+# 道具放到武器格子 = 鑲上、放到背包 = 拿下來；武器放到主手 / 副手的名稱框就換上（拿不動的由權威端拒絕），放到同種同稀有度的武器上合成；
+# 腳邊的放進背包或武器格子 = 撿起放在那一格。右鍵點一下 = 直接裝上 / 拿下來（_quick_equip）
+# 物品的底色看種類（武器鐵灰、技能紫色寶石、輔助紫色虛線框、道具稀有度色＋羈絆色點），外框看稀有度；滑鼠停在羈絆上時只亮那個羈絆的東西
 # 撿不下時（show_full）標出那一件、建議拿掉背包裡哪件就放得下
 # 只送操作（op_requested → InputCollector → InputCmd.inv_ops），實際擺放由權威端決定，畫面照本機玩家的狀態畫
 class_name InventoryPanel
@@ -30,14 +32,23 @@ const FEET_ROW := 46      # 腳邊欄每一列的高度
 const FEET_CELL := 8.0    # 腳邊欄形狀小圖每格的大小
 const SCROLL_STEP := 60.0
 const MIN_VIEW_H := 360.0   # 捲動區至少這麼高（最小尺寸用）
-const HINT := "拖到武器格子鑲上 · 拖進背包拿下來 · 拖著按 R 旋轉 · 拖到腳邊丟掉 · 武器拖到主手 / 副手換上 · 滾輪捲動"
+const HINT := "左鍵拿起 / 放下 · 右鍵直接裝上 / 拿下來 · 拿著按 R 旋轉、右鍵放回 · 放到腳邊丟掉 · 武器放到主手 / 副手換上 · 滾輪捲動"
+const CLICK_SLOP := 6.0     # 按下到放開移動不超過這麼多像素算「點一下」（拿在手上），超過算拖曳
+const NOTICE_MS := 2000     # 右鍵裝不上時的提示顯示多久
+const WEAPON_FILL := Color("4a4f57")   # 武器的底色（鐵灰）
+const SKILL_FILL := Color("6a3f8f")    # 技能、輔助的底色（和寶石座同色）
+const DIM_ALPHA := 0.25                # 滑鼠停在羈絆上時，不屬於那個羈絆的東西變淡
 # 武器格子的部位顏色（WeaponDefs.PARTS）：淡淡的底色，鑲上的道具畫在上面
 const PART_COLORS := {"A": Color("5f7487"), "E": Color("9aa4ab"), "D": Color("8e6a33"), "H": Color("5e4433"), "G": Color("6a3f8f")}
 
 var world: World
 var local_peer := World.HOST_PEER_ID
 
-var _drag: Dictionary = {}   # 拖曳中：{ uid, id, rot, anchor（形狀格子的索引，對齊滑鼠所在格）, weapon（武器實例或 {}）, pickup_id（從腳邊拖的才有） }
+var _drag: Dictionary = {}   # 拖曳中 / 拿在手上：{ uid, id, rot, anchor（形狀格子的索引，對齊滑鼠所在格）, weapon（武器實例或 {}）, pickup_id（從腳邊拖的才有） }
+var _held := false           # _drag 是點一下拿起來的（下一次左鍵放下）；false = 按住拖曳中（放開就放下）
+var _press_at := Vector2.ZERO
+var _notice := ""
+var _notice_until := 0
 var _hover_uid := &""
 var _hover_pickup := 0
 var _hover_bond := &""
@@ -53,7 +64,7 @@ func _init() -> void:
 	clip_contents = true
 	custom_minimum_size = Vector2(PAD * 3 + GRID_W * 2 + HAND_GAP + FEET_W, PAD * 2 + TITLE_H + MIN_VIEW_H + INFO_H)
 	visibility_changed.connect(func() -> void:
-		_drag = {}
+		_cancel()
 		_full_pickup = 0)
 
 
@@ -241,18 +252,49 @@ func _gui_input(event: InputEvent) -> void:
 		accept_event()
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
-			_start_drag(me, event.position)
-		elif not _drag.is_empty():
-			_finish_drag(me, event.position)
+			if _held:
+				_finish_drag(me, event.position)
+			else:
+				_start_drag(me, event.position)
+				_press_at = event.position
+		elif not _drag.is_empty() and not _held:
+			if event.position.distance_to(_press_at) <= CLICK_SLOP:
+				_held = true   # 點一下：拿在手上，下一次左鍵放下
+			else:
+				_finish_drag(me, event.position)
+		accept_event()
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed and _drag.is_empty():
+		_quick_equip(me, event.position)
 		accept_event()
 
 
-# R 旋轉在 _input 處理：拖曳中搶先接走，不會觸發重新開始
+# 拿著東西時在 _input 搶先處理：R 旋轉（不會觸發重新開始）、右鍵 / Esc 放回原處（Esc 不開選單）、
+# 點在面板外面丟在地上（點在其他介面上不算，例如鍛造祭壇的面板）
 func _input(event: InputEvent) -> void:
-	if visible and not _drag.is_empty() and event is InputEventKey and event.pressed and not event.echo \
-			and event.physical_keycode == KEY_R:
-		_drag.rot = (_drag.rot + 1) % 4
-		get_viewport().set_input_as_handled()
+	if not visible or _drag.is_empty():
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.physical_keycode == KEY_R:
+			_drag.rot = (_drag.rot + 1) % 4
+			get_viewport().set_input_as_handled()
+		elif event.physical_keycode == KEY_ESCAPE:
+			_cancel()
+			get_viewport().set_input_as_handled()
+	elif event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_RIGHT:
+			_cancel()
+			get_viewport().set_input_as_handled()
+		elif event.button_index == MOUSE_BUTTON_LEFT and _held and not get_global_rect().has_point(event.position) \
+				and get_viewport().gui_get_hovered_control() == null:
+			var me := _player()
+			if me != null:
+				_finish_drag(me, get_global_transform().affine_inverse() * event.position)
+			get_viewport().set_input_as_handled()
+
+
+func _cancel() -> void:
+	_drag = {}
+	_held = false
 
 
 # 滑鼠下面是哪個東西（主手 / 副手的武器、武器格子裡的道具、背包的條目）
@@ -327,7 +369,7 @@ func _finish_drag(me: Player, local: Vector2) -> void:
 		elif _in_grid(local):
 			var cell := _drag_cell(_cell_at(local))
 			op_requested.emit([InputCmd.OP_PICKUP, _drag.pickup_id, cell.x, cell.y, _drag.rot])
-		_drag = {}
+		_cancel()
 		return
 	var uid := String(_drag.uid)
 	var merge := _merge_target(me, local)
@@ -349,7 +391,79 @@ func _finish_drag(me: Player, local: Vector2) -> void:
 		op_requested.emit([InputCmd.OP_MOVE, uid, target.x, target.y, _drag.rot])
 	elif _feet_rect().has_point(local) or not Rect2(Vector2.ZERO, size).has_point(local):
 		op_requested.emit([InputCmd.OP_DROP, uid])
-	_drag = {}
+	_cancel()
+
+
+# 右鍵：直接裝上 / 拿下來，位置照撿東西的自動擺放（Inventory.find_spot：武器格子先找合部位偏好的）；送的是一般的搬動 / 換上 / 撿起操作
+# 背包的道具、技能 → 主手、再副手的武器格子；背包的武器 → 換上（副手武器到副手）；鑲著的道具、拿著的武器 → 背包；腳邊的 → 先試武器格子、再背包
+func _quick_equip(me: Player, local: Vector2) -> void:
+	var ip := _pickup_at(local)
+	if ip != null:
+		var hands := [Loadout.BAG] if not ip.weapon.is_empty() else [Loadout.MAIN, Loadout.OFF, Loadout.BAG]
+		var ground_spot := _auto_spot(me, ip.item_id, hands)
+		if ground_spot.is_empty():
+			_say("放不下「%s」" % ip.display_name())
+		else:
+			var op: Array = [InputCmd.OP_PICKUP, ip.id, ground_spot.cell.x, ground_spot.cell.y, ground_spot.rot]
+			if ground_spot.hand != Loadout.BAG:
+				op.append(ground_spot.hand)
+			op_requested.emit(op)
+		return
+	var slot := _slot_at(local)
+	if slot >= 0:
+		var inst: Dictionary = me.weapon_slots[slot]
+		if slot == Loadout.MAIN and not inst.is_empty():
+			_say("主手不能空著：在背包的武器上按右鍵換上")
+		elif not inst.is_empty():
+			_to_bag(me, inst.uid, inst.base, WeaponDropDefs.display_name(inst))
+		return
+	var wc := _wcell_at(me, local)
+	if not wc.is_empty():
+		var inv := me.loadout.container(wc.hand)
+		var socketed := inv.find(inv.occupied().get(wc.cell, &""))
+		if not socketed.is_empty():
+			_to_bag(me, socketed.uid, socketed.id, ItemDefs.ITEMS[socketed.id].name)
+		return
+	if not _in_grid(local):
+		return
+	var e := me.inventory.find(me.inventory.occupied().get(_cell_at(local), &""))
+	if e.is_empty() or e.id == &"corpse":
+		return
+	if not e.get("weapon", {}).is_empty():
+		var off: bool = WeaponDefs.WEAPONS[Loadout.weapon_of(e.weapon)].hands == &"off"
+		op_requested.emit([InputCmd.OP_EQUIP, String(e.uid), Loadout.OFF if off else Loadout.MAIN])
+		return
+	var found := _auto_spot(me, e.id, [Loadout.MAIN, Loadout.OFF])
+	if found.is_empty():
+		var item_name: String = ItemDefs.ITEMS[e.id].name
+		_say(("沒有能鑲「%s」的寶石座" if ItemDefs.is_skill(e.id) else "武器格子放不下「%s」") % item_name)
+		return
+	op_requested.emit([InputCmd.OP_MOVE, String(e.uid), found.cell.x, found.cell.y, found.rot, found.hand])
+
+
+func _to_bag(me: Player, uid: StringName, id: StringName, item_name: String) -> void:
+	var found := _auto_spot(me, id, [Loadout.BAG])
+	if found.is_empty():
+		_say("背包放不下「%s」" % item_name)
+		return
+	op_requested.emit([InputCmd.OP_MOVE, String(uid), found.cell.x, found.cell.y, found.rot])
+
+
+# 依序試 hands 裡的容器（沒拿武器的手跳過）：{ hand, cell, rot } 或 {}
+func _auto_spot(me: Player, id: StringName, hands: Array) -> Dictionary:
+	for hand: int in hands:
+		var inv: Inventory = me.inventory if hand == Loadout.BAG else me.loadout.container(hand)
+		if inv == null:
+			continue
+		var spot := inv.find_spot(id)
+		if not spot.is_empty():
+			return {"hand": hand, "cell": spot.cell, "rot": spot.rot}
+	return {}
+
+
+func _say(text: String) -> void:
+	_notice = text
+	_notice_until = Time.get_ticks_msec() + NOTICE_MS
 
 
 # ── 畫 ──
@@ -374,6 +488,8 @@ func _draw() -> void:
 	draw_string(font, Vector2(PAD, PAD + 22), "背包（遊戲不暫停）", HORIZONTAL_ALIGNMENT_LEFT, -1, 20)
 	if full != null:
 		draw_string(font, Vector2(PAD, PAD + 42), _full_text(me, full), HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 14, UiKit.DENY)
+	elif Time.get_ticks_msec() < _notice_until:
+		draw_string(font, Vector2(PAD, PAD + 42), _notice, HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 14, UiKit.ALERT)
 	else:
 		draw_string(font, Vector2(PAD, PAD + 42), HINT, HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 12, Color(1, 1, 1, 0.55))
 	if me != null:
@@ -420,7 +536,7 @@ func _draw_bag(font: Font, me: Player) -> void:
 			draw_rect(Rect2(o + Vector2(x, y) * CELL, Vector2(CELL, CELL)).grow(-1), Color(1, 1, 1, 0.05))
 	for e: Dictionary in me.inventory.entries:
 		var dim: bool = not _drag.is_empty() and _drag.uid == e.uid
-		_draw_item(font, e.id, o, CELL, e.cell, e.rot, _rarity_of(e), 0.35 if dim else 1.0)
+		_draw_item(font, e.id, o, CELL, e.cell, e.rot, _rarity_of(e), 0.35 if dim else 1.0, e.get("weapon", {}))
 	if _suggest != &"":
 		_draw_suggestion(me.inventory.find(_suggest))
 
@@ -450,12 +566,15 @@ func _draw_drag(font: Font, me: Player) -> void:
 		o = _grid_origin()
 		cell_px = CELL
 		at = _drag_cell(_cell_at(local))
-	if inv == null:
+	if inv == null:   # 不在格子上：東西跟著滑鼠（抓住的那一格在滑鼠下）
+		var shape := Inventory.cells_of(_drag.id, _drag.rot)
+		var anchor: Vector2i = shape[mini(_drag.anchor, shape.size() - 1)]
+		_draw_item(font, _drag.id, local - (Vector2(anchor) + Vector2(0.5, 0.5)) * CELL, CELL, Vector2i.ZERO, _drag.rot, _drag_rarity(), 0.85, _drag.weapon)
 		return
 	var ok := inv.fits(_drag.id, at, _drag.rot, _drag.uid)
 	for c in Inventory.cells_of(_drag.id, _drag.rot):
 		draw_rect(Rect2(o + Vector2(at + c) * cell_px, Vector2(cell_px, cell_px)).grow(-2), Color(0.3, 1, 0.4, 0.35) if ok else Color(1, 0.3, 0.3, 0.35))
-	_draw_item(font, _drag.id, o, cell_px, at, _drag.rot, _drag_rarity(), 0.85)
+	_draw_item(font, _drag.id, o, cell_px, at, _drag.rot, _drag_rarity(), 0.85, _drag.weapon)
 
 
 # 撿不下時取代操作說明的那一行
@@ -473,17 +592,20 @@ func _draw_suggestion(e: Dictionary) -> void:
 		return
 	var color := Color(UiKit.DENY, 0.6 + 0.4 * sin(Time.get_ticks_msec() * 0.008))
 	for c in Inventory.cells_of(e.id, e.rot):
-		var r := Rect2(_grid_origin() + Vector2(e.cell + c) * CELL, Vector2(CELL, CELL)).grow(-1)
-		var corners: Array[Vector2] = [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]
-		for i in 4:
-			draw_dashed_line(corners[i], corners[(i + 1) % 4], color, 2.0, 6.0)
+		_draw_dashed_rect(Rect2(_grid_origin() + Vector2(e.cell + c) * CELL, Vector2(CELL, CELL)).grow(-1), color)
+
+
+func _draw_dashed_rect(r: Rect2, color: Color) -> void:
+	var corners: Array[Vector2] = [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]
+	for i in 4:
+		draw_dashed_line(corners[i], corners[(i + 1) % 4], color, 2.0, 6.0)
 
 
 # 腳邊欄：按得到 F 的地上道具，撿不下的那一件金框（固定不捲動）
 func _draw_feet(font: Font, target: ItemPickup) -> void:
 	var r := _feet_rect()
 	draw_rect(r, UiKit.SLOT_BG)
-	draw_string(font, r.position + Vector2(0, 14), "腳邊（拖進格子撿起）", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.55))
+	draw_string(font, r.position + Vector2(0, 14), "腳邊（放進格子撿起 · 右鍵直接撿）", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.55))
 	if _feet.is_empty():
 		draw_string(font, r.position + Vector2(0, FEET_HEAD + 20), "（附近沒有東西）", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 1, 1, 0.3))
 		return
@@ -539,8 +661,11 @@ func _draw_slots(font: Font, me: Player) -> void:
 		for c: Vector2i in cells:
 			var cr := Rect2(o + Vector2(c) * WCELL, Vector2(WCELL, WCELL)).grow(-1)
 			draw_rect(cr, Color(PART_COLORS[cells[c]], 0.45))
-			if cells[c] == "G":   # 寶石座：中間畫一個圈（第 7 步放技能）
-				draw_arc(cr.get_center(), WCELL * 0.22, 0.0, TAU, 16, Color(1, 1, 1, 0.35), 1.5)
+			if cells[c] == "G":   # 寶石座：中間畫一個圈；拿著這把武器能用的技能時發亮
+				var fits_skill: bool = not _drag.is_empty() and ItemDefs.is_skill(_drag.id) and SkillDefs.can_socket(_drag.id, Loadout.weapon_of(inst))
+				if fits_skill:
+					draw_rect(cr, Color(UiKit.GOLD, 0.3))
+				draw_arc(cr.get_center(), WCELL * 0.22, 0.0, TAU, 16, UiKit.GOLD if fits_skill else Color(1, 1, 1, 0.35), 3.0 if fits_skill else 1.5)
 		for im: Dictionary in inst.get("imprints", []):   # 印記格（第 8b 步）：羈絆顏色的粗框＋角落一個菱形
 			var ir := Rect2(o + Vector2(im.cell) * WCELL, Vector2(WCELL, WCELL)).grow(-1)
 			var bc: Color = BondDefs.BONDS[im.bond].color
@@ -552,16 +677,46 @@ func _draw_slots(font: Font, me: Player) -> void:
 			_draw_item(font, e.id, o, WCELL, e.cell, e.rot, _rarity_of(e), 0.35 if edim else 1.0)
 
 
-func _draw_item(font: Font, id: StringName, o: Vector2, cell_px: float, cell: Vector2i, rot: int, rarity: StringName, alpha: float) -> void:
+# 一件東西：底色看種類（武器鐵灰、技能紫色寶石＋圖示字、輔助深紫＋虛線框、道具稀有度色）、外框看稀有度；
+# 道具與有「羈絆 +1」詞條的武器在右上角畫羈絆色點；滑鼠停在羈絆上時，不屬於那個羈絆的變淡
+func _draw_item(font: Font, id: StringName, o: Vector2, cell_px: float, cell: Vector2i, rot: int, rarity: StringName, alpha: float, weapon: Dictionary = {}) -> void:
 	var def: Dictionary = ItemDefs.ITEMS[id]
 	var color: Color = ItemDefs.RARITIES[rarity].color
+	var kind := _kind_of(id)
+	var bonds: Array = WeaponDropDefs.bonds_of(weapon) if not weapon.is_empty() else def.get("bonds", [])
+	if _drag.is_empty() and _hover_bond != &"" and not bonds.has(_hover_bond):
+		alpha *= DIM_ALPHA
+	var fill: Color = {&"weapon": WEAPON_FILL, &"skill": SKILL_FILL, &"support": SKILL_FILL.darkened(0.4)}.get(kind, color.darkened(0.55))
 	var cells := Inventory.cells_of(id, rot)
 	for c in cells:
 		var r := Rect2(o + Vector2(cell + c) * cell_px, Vector2(cell_px, cell_px)).grow(-3)
-		draw_rect(r, Color(color.darkened(0.55), 0.9 * alpha))
-		draw_rect(r, Color(color, alpha), false, 2.0)
+		draw_rect(r, Color(fill, 0.9 * alpha))
+		if kind == &"support":
+			_draw_dashed_rect(r, Color(color, alpha))
+		else:
+			draw_rect(r, Color(color, alpha), false, 2.0)
 	var first: Vector2 = o + Vector2(cell + cells[0]) * cell_px
-	draw_string(font, first + Vector2(4, cell_px * 0.4), String(def.name).substr(0, 2), HORIZONTAL_ALIGNMENT_LEFT, cell_px - 4, 15 if cell_px >= CELL else 12, Color(1, 1, 1, alpha))
+	var big := cell_px >= CELL
+	if kind == &"skill":
+		var center := first + Vector2(cell_px, cell_px) / 2.0
+		draw_arc(center, cell_px * 0.34, 0.0, TAU, 20, Color(1, 1, 1, 0.45 * alpha), 1.5)
+		draw_string(font, first + Vector2(0, cell_px / 2.0 + (7 if big else 5)), SkillDefs.SKILLS.get(id, {}).get("icon", String(def.name).substr(0, 1)),
+				HORIZONTAL_ALIGNMENT_CENTER, cell_px, 20 if big else 15, Color(1, 1, 1, alpha))
+	else:
+		draw_string(font, first + Vector2(4, cell_px * 0.4), String(def.name).substr(0, 2), HORIZONTAL_ALIGNMENT_LEFT, cell_px - 4, 15 if big else 12, Color(1, 1, 1, alpha))
+	if kind == &"weapon" or kind == &"support":
+		draw_string(font, first + Vector2(4, cell_px - 7), "武器" if kind == &"weapon" else "輔助", HORIZONTAL_ALIGNMENT_LEFT, -1, 11 if big else 9, Color(1, 1, 1, 0.6 * alpha))
+	for i in bonds.size():
+		var dot_r := 5.0 if bonds[i] == _hover_bond else 3.5
+		draw_circle(first + Vector2(cell_px - 9 - i * 9, 9), dot_r, Color(BondDefs.BONDS[bonds[i]].color, alpha))
+
+
+# 畫法用的種類：輔助道具（skill_support）是 kind item，另外分出來
+func _kind_of(id: StringName) -> StringName:
+	var kind: StringName = ItemDefs.ITEMS[id].kind
+	if kind == &"item" and not ItemDefs.support_of(id).is_empty():
+		return &"support"
+	return kind
 
 
 # 下方說明（固定）：滑鼠停著（或拖著）的東西：道具的效果與放在哪、武器的詞條（腳邊的道具也一樣）

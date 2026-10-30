@@ -1379,7 +1379,7 @@ static func check_font_coverage() -> String:
 	texts.append(StatDefs.format_value(&"armor", 8.0) + StatDefs.format_value(&"hp_regen", 1.0))
 	# HUD 程式裡的字串常值（標題、橫幅、結算、按鍵名稱）
 	var re := RegEx.create_from_string("\"([^\"\\\\]*)\"")
-	for path in ["res://ui/hud.gd", "res://ui/skill_bar.gd", "res://ui/stats_panel.gd", "res://ui/class_select.gd"]:
+	for path in ["res://ui/hud.gd", "res://ui/skill_bar.gd", "res://ui/stats_panel.gd", "res://ui/class_select.gd", "res://ui/inventory_panel.gd"]:
 		for m in re.search_all(_read_text(path)):
 			texts.append(m.get_string(1))
 	var missing := {}
@@ -2354,3 +2354,138 @@ static func _stats_panel_state(panel: StatsPanel, p: Player, when: String) -> St
 			if panel.is_stat_shown(stat) != want:
 				return "%s：屬性面板的 %s 應%s顯示（值 %.3f、基礎 %.3f）" % [when, StatDefs.STATS[stat].name, "" if want else "不", p.stats.value(stat), p.stats.base(stat)]
 	return ""
+
+
+# 背包的點擊操作：左鍵點一下拿在手上、再點一下放下（送 OP_MOVE），按住拖曳照舊；拿著時右鍵 / Esc 放回、點面板外面丟掉；
+# 右鍵直接裝上：背包的道具 → 主手格子（照 find_spot）、技能只進能用的寶石座（不能用的提示）、鑲著的 → 背包、主手武器不拿下來（提示）、
+# 腳邊的武器 → 背包、背包的武器 → 換上；畫法的種類分得出武器 / 技能 / 輔助 / 道具
+static func check_inventory_click() -> String:
+	var w := _new_world(5)
+	var cam := _test_camera()
+	var hud: Variant = load("res://ui/hud.tscn").instantiate()
+	hud.setup(w, cam)
+	_scene_root().add_child(hud)
+	var p := _player(w)
+	var panel: InventoryPanel = hud.inventory_panel
+	hud.toggle_stats_panel()
+	panel.visible = true
+	await _settled_min_size(panel)
+	panel._process(DT)
+	var ops: Array = []
+	panel.op_requested.connect(func(op: Array) -> void: ops.append(op))
+	var cell_at := func(c: Vector2i) -> Vector2: return panel._grid_origin() + (Vector2(c) + Vector2(0.5, 0.5)) * InventoryPanel.CELL
+	var mouse := func(pos: Vector2, button: MouseButton, pressed: bool) -> InputEventMouseButton:
+		var ev := InputEventMouseButton.new()
+		ev.button_index = button
+		ev.pressed = pressed
+		ev.position = pos
+		ev.global_position = pos
+		return ev
+	var click := func(pos: Vector2) -> void:
+		panel._gui_input(mouse.call(pos, MOUSE_BUTTON_LEFT, true))
+		panel._gui_input(mouse.call(pos, MOUSE_BUTTON_LEFT, false))
+	var apply := func() -> void:
+		var cmd := _cmd(Vector2.ZERO)
+		cmd.inv_ops = ops.duplicate()
+		ops.clear()
+		_run(w, cmd, 1)
+	var err := ""
+	var stone := p.loadout.add_item(p, &"whetstone", {"cell": Vector2i(0, 0), "rot": 0}, 0, Loadout.BAG)
+	click.call(cell_at.call(Vector2i(0, 0)))
+	if not panel._held or panel._drag.get("uid", &"") != stone or not ops.is_empty():
+		err = "左鍵點一下背包的磨刀石應拿在手上、還不送操作：held %s、拿著 %s、操作 %s" % [panel._held, panel._drag, ops]
+	if err == "":
+		panel._gui_input(mouse.call(cell_at.call(Vector2i(3, 2)), MOUSE_BUTTON_LEFT, true))
+		if ops != [[InputCmd.OP_MOVE, String(stone), 3, 2, 0]] or not panel._drag.is_empty() or panel._held:
+			err = "拿著時左鍵點 (3, 2) 應放下（OP_MOVE 到 (3, 2)），實際 %s、手上 %s" % [ops, panel._drag]
+	ops.clear()
+	if err == "":
+		click.call(cell_at.call(Vector2i(0, 0)))
+		panel._input(mouse.call(Vector2.ZERO, MOUSE_BUTTON_RIGHT, true))
+		var esc := InputEventKey.new()
+		esc.physical_keycode = KEY_ESCAPE
+		esc.pressed = true
+		var after_right: bool = panel._drag.is_empty()
+		click.call(cell_at.call(Vector2i(0, 0)))
+		panel._input(esc)
+		if not after_right or not panel._drag.is_empty() or not ops.is_empty():
+			err = "拿著時右鍵、Esc 都應放回原處、不送操作：右鍵後 %s、Esc 後 %s、操作 %s" % [after_right, panel._drag, ops]
+	if err == "":
+		panel._gui_input(mouse.call(cell_at.call(Vector2i(0, 0)), MOUSE_BUTTON_LEFT, true))
+		panel._gui_input(mouse.call(cell_at.call(Vector2i(5, 3)), MOUSE_BUTTON_LEFT, false))
+		if ops != [[InputCmd.OP_MOVE, String(stone), 5, 3, 0]]:
+			err = "按住拖到 (5, 3) 放開應照舊送 OP_MOVE，實際 %s" % [ops]
+	ops.clear()
+	if err == "":
+		click.call(cell_at.call(Vector2i(0, 0)))
+		var outside: Vector2 = panel.get_global_rect().position - Vector2(4, 4)
+		panel._input(mouse.call(outside, MOUSE_BUTTON_LEFT, true))
+		if ops != [[InputCmd.OP_DROP, String(stone)]]:
+			err = "拿著時點面板外面應丟掉（OP_DROP），實際 %s" % [ops]
+	ops.clear()
+	# 右鍵：背包的磨刀石 → 主手長劍的格子，位置和撿起來一樣（find_spot）
+	if err == "":
+		var want: Dictionary = p.loadout.container(Loadout.MAIN).find_spot(&"whetstone")
+		panel._gui_input(mouse.call(cell_at.call(Vector2i(0, 0)), MOUSE_BUTTON_RIGHT, true))
+		if ops != [[InputCmd.OP_MOVE, String(stone), want.cell.x, want.cell.y, want.rot, Loadout.MAIN]]:
+			err = "右鍵背包的磨刀石應鑲進主手 %s，實際 %s" % [want, ops]
+		else:
+			apply.call()
+			if p.loadout.container(Loadout.MAIN).find(stone).is_empty():
+				err = "右鍵送出後磨刀石應鑲在主手：%s" % [p.loadout.container(Loadout.MAIN).entries]
+	if err == "":
+		var at: Dictionary = p.loadout.container(Loadout.MAIN).find(stone)
+		var pos: Vector2 = panel._wgrid_origin(p, Loadout.MAIN) + (Vector2(at.cell + Inventory.cells_of(at.id, at.rot)[0]) + Vector2(0.5, 0.5)) * InventoryPanel.WCELL
+		var back: Dictionary = p.inventory.find_spot(&"whetstone")
+		panel._gui_input(mouse.call(pos, MOUSE_BUTTON_RIGHT, true))
+		if ops != [[InputCmd.OP_MOVE, String(stone), back.cell.x, back.cell.y, back.rot]]:
+			err = "右鍵鑲著的磨刀石應拿回背包 %s，實際 %s" % [back, ops]
+	ops.clear()
+	if err == "":
+		panel._notice = ""
+		panel._gui_input(mouse.call(panel._slot_rect(Loadout.MAIN).get_center(), MOUSE_BUTTON_RIGHT, true))
+		if not ops.is_empty() or panel._notice == "":
+			err = "右鍵主手的武器不應送操作（主手不能空著）、要提示：操作 %s、提示「%s」" % [ops, panel._notice]
+	# 技能：隕石長劍不能用 → 提示；旋風斬 → 長劍的寶石座
+	if err == "":
+		var meteor := p.loadout.add_item(p, &"meteor", {"cell": Vector2i(7, 5), "rot": 0}, 0, Loadout.BAG)
+		var whirl := p.loadout.add_item(p, &"whirlwind", {"cell": Vector2i(6, 5), "rot": 0}, 0, Loadout.BAG)
+		panel._notice = ""
+		panel._gui_input(mouse.call(cell_at.call(Vector2i(7, 5)), MOUSE_BUTTON_RIGHT, true))
+		if not ops.is_empty() or not panel._notice.contains("寶石座"):
+			err = "右鍵長劍不能用的隕石應提示沒有寶石座、不送操作：操作 %s、提示「%s」" % [ops, panel._notice]
+		else:
+			panel._gui_input(mouse.call(cell_at.call(Vector2i(6, 5)), MOUSE_BUTTON_RIGHT, true))
+			var gem: Dictionary = p.loadout.container(Loadout.MAIN).find_spot(&"whirlwind")
+			if gem.is_empty() or ops != [[InputCmd.OP_MOVE, String(whirl), gem.cell.x, gem.cell.y, gem.rot, Loadout.MAIN]]:
+				err = "右鍵旋風斬應鑲進長劍的寶石座 %s，實際 %s" % [gem, ops]
+			elif WeaponDefs.grid_cells(Loadout.weapon_of(p.weapon_slots[Loadout.MAIN]))[gem.cell] != "G":
+				err = "旋風斬的位置 %s 不是寶石座" % gem
+		p.loadout.container(Loadout.BAG).remove(meteor)
+	ops.clear()
+	# 武器：腳邊的法杖右鍵 → 背包（不帶手）；背包的法杖右鍵 → 換上主手
+	if err == "":
+		var inst := {"uid": w.new_weapon_uid(), "base": &"staff", "rarity": &"white", "affixes": [] as Array[StringName]}
+		var staff := w.drop_weapon(inst, p.pos + Vector2(1.0, 0))
+		panel._process(DT)
+		var row := panel._feet.find(staff)
+		panel._gui_input(mouse.call(panel._feet_row_rect(row).get_center(), MOUSE_BUTTON_RIGHT, true))
+		var spot: Dictionary = p.inventory.find_spot(&"staff")
+		if row < 0 or ops != [[InputCmd.OP_PICKUP, staff.id, spot.cell.x, spot.cell.y, spot.rot]]:
+			err = "右鍵腳邊的法杖應撿進背包 %s，實際 %s" % [spot, ops]
+		else:
+			apply.call()
+			var e: Dictionary = p.inventory.find(inst.uid)
+			var first: Vector2i = e.cell + Inventory.cells_of(e.id, e.rot)[0] if not e.is_empty() else Vector2i(-1, -1)
+			panel._gui_input(mouse.call(cell_at.call(first), MOUSE_BUTTON_RIGHT, true))
+			if e.is_empty() or ops != [[InputCmd.OP_EQUIP, String(inst.uid), Loadout.MAIN]]:
+				err = "右鍵背包的法杖應換上主手（OP_EQUIP），實際 %s" % [ops]
+	if err == "":
+		var kinds := {&"staff": &"weapon", &"meteor": &"skill", &"split_support": &"support", &"whetstone": &"item"}
+		for id: StringName in kinds:
+			if panel._kind_of(id) != kinds[id]:
+				err = "%s 的畫法種類應是 %s，實際 %s" % [id, kinds[id], panel._kind_of(id)]
+				break
+	hud.queue_free()
+	cam.queue_free()
+	return err
