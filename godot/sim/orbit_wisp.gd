@@ -39,7 +39,7 @@ func update(dt: float) -> void:
 		return
 	var c: Dictionary = BondDefs.BONDS.wisp.params
 	angle = wrapf(angle + c.orbit_speed * dt, 0.0, TAU)
-	var home: Vector2 = p.pos + MathUtil.dir_from_angle(angle + TAU * slot / total) * c.orbit_radius
+	var home: Vector2 = p.wisp_center() + MathUtil.dir_from_angle(angle + TAU * slot / total) * c.orbit_radius   # 星位：繞著錨點
 	for id: int in _hit_cd.keys():
 		_hit_cd[id] -= dt
 		if _hit_cd[id] <= 0.0:
@@ -48,7 +48,9 @@ func update(dt: float) -> void:
 		ORBIT:
 			pos = home
 			dash_timer -= dt
-			if (forced_dash or BondEffects.tier(p, &"wisp") >= 2) and dash_timer <= 0.0:
+			# 星位停在錨點時當砲台：沒有第 2 階也會衝
+			var turret := p.wisp_center() != p.pos
+			if (forced_dash or turret or BondEffects.tier(p, &"wisp") >= 2) and dash_timer <= 0.0:
 				dash_timer = c.dash_interval
 				forced_dash = false
 				var t := _nearest(c.dash_range)

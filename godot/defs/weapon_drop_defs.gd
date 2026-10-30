@@ -30,6 +30,7 @@ const RARITY_BASE := {
 #   cvt 屬性轉換：玩家的非道具物理傷害有 value 比例改成那個屬性（Combat，轉換的部分會疊狀態）
 #   imp 印記格（藍以上，第 8b 步）：武器上 IMPRINT.cells 格標記，鑲在上面、屬於那個羈絆的道具效果 × IMPRINT.mul（Loadout.refresh_items）；
 #       格子位置在實例的 imprints（make 時擲）
+#   branch 分支（紫橘，第 8c 步）：改寫一個羈絆的規則，一把最多 1 條（roll_affixes）；有沒有在 Loadout.branches，效果在 BondEffects / Player
 # mods 格式同 ItemDefs 的屬性效果；w 是抽中的權重（每個羈絆的強化合計 1）；min 是最低稀有度（沒寫 = 綠）
 const AFFIXES := {
 	&"bond_phys": {"kind": &"bond", "bond": &"phys", "desc": "算 1 件物理羈絆", "w": 1.0, "mods": []},
@@ -54,6 +55,19 @@ const AFFIXES := {
 	&"imp_cold": {"kind": &"imp", "bond": &"cold", "desc": "冰霜印記格：鑲在上面的冰霜道具效果 ×1.5", "w": 0.6, "min": &"blue", "mods": []},
 	&"imp_guard": {"kind": &"imp", "bond": &"guard", "desc": "防禦印記格：鑲在上面的防禦道具效果 ×1.5", "w": 0.6, "min": &"blue", "mods": []},
 	&"imp_wisp": {"kind": &"imp", "bond": &"wisp", "desc": "鬼火印記格：鑲在上面的鬼火道具效果 ×1.5", "w": 0.6, "min": &"blue", "mods": []},
+	&"br_heavy": {"kind": &"branch", "bond": &"phys", "desc": "分支・沉重：攻速 −30%、失衡值累積 ×2.5", "w": 0.5, "min": &"purple",
+		"mods": [[&"attack_speed", Stats.MUL, 0.7], [&"poise_gain", Stats.MUL, 2.5]]},
+	&"br_burn_rush": {"kind": &"branch", "bond": &"fire", "desc": "分支・爆燃：燃燒不疊層，再打中就一次打完剩下的燃燒", "w": 0.5, "min": &"purple", "mods": []},
+	&"br_ice_coffin": {"kind": &"branch", "bond": &"cold", "desc": "分支・冰棺：凍結改成 3 秒冰棺、不碎冰，受傷的 50% 分給旁邊 4 隻", "w": 0.5, "min": &"purple", "mods": []},
+	&"br_counter": {"kind": &"branch", "bond": &"guard", "desc": "分支・反擊架勢：不拿盾也能招架（普攻剛出手時），判定時間減半", "w": 0.5, "min": &"purple", "mods": []},
+	&"br_star": {"kind": &"branch", "bond": &"wisp", "desc": "分支・星位：鬼火停在上次翻滾的地方當砲台", "w": 0.5, "min": &"purple", "mods": []},
+}
+
+# 分支的數字（第 8c 步，Claude 暫定；描述在 AFFIXES 的 desc）
+const BRANCH := {
+	"coffin_time": 3.0, "coffin_share": 0.5, "coffin_radius": 3.0, "coffin_targets": 4,   # 冰棺
+	"counter_window_mul": 0.5, "counter_arc": PI * 0.67,   # 反擊架勢：盾的判定時間 × 0.5、正面 120°
+	"star_leash": 20.0,                                      # 星位：離錨點超過這麼遠（換層、跑遠）鬼火回到身邊
 }
 
 # 印記格（第 8b 步，Claude 暫定）：每條印記詞條標 cells 格（不標寶石座）；道具的屬性數值（加 / 百分比 × mul，相乘的取 mul 次方）
@@ -101,6 +115,8 @@ static func roll_affixes(count: int, rng: RandomNumberGenerator, base := &"", ke
 	var out: Array[StringName] = []
 	for id: StringName in keep:
 		if AFFIXES.has(id) and allowed(id, rarity) and not out.has(id) and out.size() < count:
+			if AFFIXES[id].kind == &"branch" and out.any(func(o: StringName) -> bool: return AFFIXES[o].kind == &"branch"):
+				continue   # 兩把各留一條分支：只留第一條
 			out.append(id)
 	var favored: Array = BIAS.get(base, [])
 	var pool: Array[StringName] = []
@@ -110,6 +126,9 @@ static func roll_affixes(count: int, rng: RandomNumberGenerator, base := &"", ke
 			continue
 		pool.append(id)
 		weights.append(AFFIXES[id].w * (BIAS_MUL if favored.has(AFFIXES[id].bond) else 1.0))
+	var has_branch := out.any(func(id: StringName) -> bool: return AFFIXES[id].kind == &"branch")
+	if has_branch:
+		_drop_branches(pool, weights)
 	while out.size() < count and not pool.is_empty():
 		var total := 0.0
 		for w in weights:
@@ -120,9 +139,19 @@ static func roll_affixes(count: int, rng: RandomNumberGenerator, base := &"", ke
 			r -= weights[i]
 			i += 1
 		out.append(pool[i])
+		var picked_branch: bool = AFFIXES[pool[i]].kind == &"branch"
 		pool.remove_at(i)
 		weights.remove_at(i)
+		if picked_branch:
+			_drop_branches(pool, weights)   # 分支一把最多 1 條
 	return out
+
+
+static func _drop_branches(pool: Array[StringName], weights: Array[float]) -> void:
+	for j in range(pool.size() - 1, -1, -1):
+		if AFFIXES[pool[j]].kind == &"branch":
+			pool.remove_at(j)
+			weights.remove_at(j)
 
 
 # 這種稀有度能不能出這條詞條（AFFIXES 的 min）

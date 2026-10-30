@@ -15,6 +15,11 @@ static func tier(p: Player, bond: StringName) -> int:
 	return BondDefs.tier(bond, p.loadout.bond_counts.get(bond, 0))
 
 
+# 手上武器有沒有這條分支詞條（WeaponDropDefs kind branch，第 8c 步）
+static func has_branch(p: Player, id: StringName) -> bool:
+	return p.loadout.branches.has(id)
+
+
 static func _p(bond: StringName) -> Dictionary:
 	return BondDefs.BONDS[bond].params
 
@@ -48,10 +53,27 @@ static func refresh(p: Player) -> void:
 static func add_burn(world: World, p: Player, e: Enemy, stacks: int) -> void:
 	var c := _p(&"fire")
 	var t := tier(p, &"fire")
+	if has_branch(p, &"br_burn_rush"):
+		_burn_rush(world, p, e)
+		return
 	var cap := burn_cap(p)
 	e.add_burn(p.id, elem_damage(p, c.stack_pct) * p.stats.value(&"burn_damage"), c.duration, stacks, cap if t >= 1 else 1)
 	if t >= 2 and e.burn_stacks >= cap:
 		_fire_burst(world, p, e)
+
+
+# 分支・爆燃：燃燒不疊層；打中燃燒中的怪先一次打出剩下的燃燒傷害（火焰、不再疊狀態），再重新點 1 層；不會疊滿爆炸
+static func _burn_rush(world: World, p: Player, e: Enemy) -> void:
+	var c := _p(&"fire")
+	if e.burn_timer > 0.0 and e.burn_tick_damage > 0.0:
+		var rest := e.burn_tick_damage * e.burn_timer / Enemy.BURN_TICK
+		e.clear_burn()
+		var hit := ItemEffects.proc_hit(rest, e, Enemy.BURN_COLOR, 0.0, &"fire")
+		hit["no_status"] = true
+		Combat.apply_damage(world, p, e, hit)
+		if e.is_dead:
+			return
+	e.add_burn(p.id, elem_damage(p, c.stack_pct) * p.stats.value(&"burn_damage"), c.duration, 1, 1)
 
 
 # 燃燒 / 冰冷的層數上限：羈絆的上限＋武器詞條（燃燒層數上限、冰冷層數上限）
@@ -86,7 +108,9 @@ static func add_chill(_world: World, p: Player, e: Enemy, stacks: int) -> void:
 	var n := e.add_chill(stacks, cap if t >= 1 else 1, c.slow_per_stack + p.stats.value(&"chill_slow"), c.duration)
 	if t >= 2 and n >= cap and not e.def.get("freeze_immune", false):
 		e.clear_chill()
-		e.apply_freeze(c.freeze_time * p.stats.value(&"freeze_time"))
+		var coffin := has_branch(p, &"br_ice_coffin")
+		e.apply_freeze(WeaponDropDefs.BRANCH.coffin_time if coffin else c.freeze_time * p.stats.value(&"freeze_time"))
+		e.ice_coffin = coffin
 		e.freeze_source_id = p.id
 
 
@@ -106,7 +130,7 @@ static func pre_hit(source: Entity, target: Entity, hit: Dictionary, is_proc: bo
 	if not source is Player:
 		return _pre
 	var p := source as Player
-	if e.frozen_timer > 0.0 and not hit.get("no_status", false) and tier(p, &"cold") >= 2:
+	if e.frozen_timer > 0.0 and not e.ice_coffin and not hit.get("no_status", false) and tier(p, &"cold") >= 2:
 		_pre.mul *= _p(&"cold").shatter_mul
 		_pre.shatter = true
 	if hit.get("damage_type", &"phys") == &"phys" and tier(p, &"phys") >= 4:
@@ -132,6 +156,8 @@ static func on_hit(world: World, p: Player, e: Enemy, hit: Dictionary, dealt: fl
 		world.emit_event("fx:explosion", {"pos": e.pos, "height": e.ground_height, "radius": 1.2, "color": Enemy.CHILL_COLOR})
 		if tier(p, &"cold") >= 3:
 			_shards(world, p, e)
+	if e.ice_coffin and e.frozen_timer > 0.0 and dealt > 0.0 and not hit.get("coffin_share", false):
+		_coffin_share(world, p, e, dealt)
 	if hit.get("no_status", false) or e.is_dead:
 		return
 	match type:
@@ -154,6 +180,22 @@ static func on_hit(world: World, p: Player, e: Enemy, hit: Dictionary, dealt: fl
 				if t >= 5 and e.stagger_timer > 0.0 and not e.is_boss() and e.hp < e.max_hp * c.execute_hp:
 					e.hp = 0.0
 					e.die(p.id)
+
+
+# 分支・冰棺：冰棺受到的傷害 coffin_share 倍分給 coffin_radius 內最近的 coffin_targets 隻（冰霜、不再疊狀態、不再分）
+static func _coffin_share(world: World, p: Player, e: Enemy, dealt: float) -> void:
+	var b: Dictionary = WeaponDropDefs.BRANCH
+	var near: Array[Enemy] = []
+	for o in world.enemies:
+		if o != e and not o.is_dead and o.team == e.team and o.pos.distance_to(e.pos) <= b.coffin_radius + o.radius:
+			near.append(o as Enemy)
+	near.sort_custom(func(a: Enemy, c: Enemy) -> bool: return a.pos.distance_squared_to(e.pos) < c.pos.distance_squared_to(e.pos))
+	for i in mini(b.coffin_targets, near.size()):
+		var hit := ItemEffects.proc_hit(dealt * b.coffin_share, near[i], Enemy.CHILL_COLOR, 0.0, &"cold")
+		hit["no_status"] = true
+		hit["coffin_share"] = true
+		hit["origin"] = e.pos
+		Combat.apply_damage(world, p, near[i], hit)
 
 
 # 碎冰噴出的冰錐：從怪的位置往四周平均射出（冰霜傷害、不再疊冰冷）

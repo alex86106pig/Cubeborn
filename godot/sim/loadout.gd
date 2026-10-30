@@ -12,6 +12,7 @@ const BAG := -1    # 道具放哪裡：BAG 背包、MAIN / OFF 主手 / 副手�
 const AUTO := -2   # 自動：主手格子 → 副手格子 → 背包，第一個放得下的
 
 var weapon_slots: Array[Dictionary] = [{}, {}]   # [主手, 副手]：武器實例（WeaponDropDefs）或 {}
+var branches := {}                     # 手上武器的分支詞條（WeaponDropDefs kind branch，第 8c 步）：id → true，refresh_items 同步
 var bond_counts := {}                  # 羈絆 → 件數（BondDefs；鑲在兩隻手上、同一種只算 1 件，refresh_items 同步）
 var items: Array[Dictionary] = []     # 生效的道具實例 { uid, id, parts, mul }（鑲在主手 / 副手上的，refresh_items 同步）；uid 同時是屬性加成的來源名稱，parts 是碰到的部位字元（發動時機）、mul 是印記格倍率
 var inventory := Inventory.new()       # 背包的擺放（只放東西）
@@ -320,9 +321,13 @@ func refresh_items(p: Player) -> void:
 		seen[it.id] = true
 		for bond: StringName in ItemDefs.ITEMS[it.id].get("bonds", []):
 			bond_counts[bond] = bond_counts.get(bond, 0) + 1
+	branches.clear()
 	for w: Dictionary in weapon_slots:   # 武器詞條的「羈絆 +1」（第 8 步）：每把各算 1 件
 		for bond: StringName in WeaponDropDefs.bonds_of(w):
 			bond_counts[bond] = bond_counts.get(bond, 0) + 1
+		for id: StringName in w.get("affixes", []):
+			if WeaponDropDefs.AFFIXES[id].kind == &"branch":
+				branches[id] = true
 	BondEffects.refresh(p)   # 羈絆的屬性加成、該有的鬼火
 
 

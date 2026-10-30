@@ -2193,6 +2193,20 @@ static func check_forge_panel() -> String:
 	_note("合成面板 %.0f×%.0f（背包 %.0f 寬；介面最大檔時可用 %.0f×%.0f）" % [size.x, size.y, inv_size.x, room.x, room.y])
 	if err == "" and (size.x + 16 + inv_size.x + 24 > room.x or size.y + 120 > room.y):
 		err = "合成面板 %.0f×%.0f 放在背包左邊塞不進 %.0f×%.0f" % [size.x, size.y, room.x, room.y]
+	# 背包下方的說明欄：最長的 4 條詞條（含分支）的橘色武器也要塞得進 INFO_H
+	if err == "":
+		var long_ids: Array = WeaponDropDefs.AFFIXES.keys().filter(func(id: StringName) -> bool: return WeaponDropDefs.AFFIXES[id].kind != &"branch")
+		long_ids.sort_custom(func(x: StringName, y: StringName) -> bool: return String(WeaponDropDefs.AFFIXES[x].desc).length() > String(WeaponDropDefs.AFFIXES[y].desc).length())
+		var branches: Array = WeaponDropDefs.AFFIXES.keys().filter(func(id: StringName) -> bool: return WeaponDropDefs.AFFIXES[id].kind == &"branch")
+		branches.sort_custom(func(x: StringName, y: StringName) -> bool: return String(WeaponDropDefs.AFFIXES[x].desc).length() > String(WeaponDropDefs.AFFIXES[y].desc).length())
+		var worst: Array[StringName] = [branches[0], long_ids[0], long_ids[1], long_ids[2]]
+		var info := UiKit.item_info(&"staff", {"uid": &"wi", "base": &"staff", "rarity": &"orange", "affixes": worst})
+		var font: Font = inv.get_theme_default_font()
+		var body_h := font.get_multiline_string_size("\n".join(info.lines), HORIZONTAL_ALIGNMENT_LEFT, inv.size.x - InventoryPanel.PAD * 2, 14).y
+		var room_h := InventoryPanel.INFO_H - 26 - 22 + 14   # 標題在 26、內文從 +22 的基線開始（_draw_info）
+		_note("說明欄：最長的橘色武器 %.0f px（可用 %.0f）" % [body_h, room_h])
+		if body_h > room_h:
+			err = "最長的橘色武器說明 %.0f px 超出說明欄 %.0f px" % [body_h, room_h]
 	if err == "":
 		(forge_panel._rows[0].get_child(1) as Button).pressed.emit()
 		forge_panel.confirm()

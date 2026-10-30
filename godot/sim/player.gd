@@ -61,6 +61,7 @@ var riposte_timer := 0.0               # 防禦羈絆第 2 階：招架成功後
 var wisps: Array[OrbitWisp] = []       # 鬼火羈絆：繞著自己轉的鬼火（權威端，BondEffects.sync_wisps）
 var wisp_plan: Array[StringName] = []  # 該有的鬼火（每顆的屬性；BondEffects.refresh 依道具與階數算）
 var wisp_frenzy_timer := 0.0           # 噬魂燈：鬼火擊殺後這段時間鬼火傷害變高
+var wisp_anchor := Vector2.INF         # 分支・星位（第 8c 步）：上次翻滾的位置，鬼火繞著這裡轉；INF = 跟著自己（權威端）
 var dice: int = LootDefs.RELIC.start_dice   # 遺物的骰子（Build 改版第 6 步）：重擲 N 選 1 用掉 1 顆，整局通用
 var relic_id := 0                      # 打開著的遺物（權威端設定，快照送給自己；0 = 沒打開）
 var skill_levels := {}                 # 技能 id → 等級（Build 改版第 7 步：技能遺物選到已經有的就升 1 級；沒記的是 1 級）
@@ -151,7 +152,7 @@ func air_jumps() -> int:
 # from 是攻擊來的位置（近戰為攻擊者、投射物為飛來的方向）；招架判定中（parry_time）擋下 = 招架成功，下一步全額盾反（v0.41.0）
 func try_block(from: Vector2, hit: Dictionary) -> bool:
 	if block_time < 0.0:
-		return false
+		return _try_counter(from)
 	var def: Dictionary = weapon.special
 	var to_source := from - pos
 	if to_source.length_squared() > 1e-6:
@@ -169,6 +170,31 @@ func try_block(from: Vector2, hit: Dictionary) -> bool:
 		pending_parry = true
 		BondEffects.on_parry(world, self)   # 防禦羈絆
 	return true
+
+
+# 分支・反擊架勢（第 8c 步）：沒拿盾時，普攻出手後盾的判定時間 × counter_window_mul（× 招架判定時間）內、
+# 正面 counter_arc 擋下的攻擊算招架成功（不扣血、防禦羈絆的招架效果照算）；沒有盾反那一下，普攻照常打出去
+func _try_counter(from: Vector2) -> bool:
+	if not BondEffects.has_branch(self, &"br_counter") or weapon.special.has("parry") or not action.is_in(&"attack"):
+		return false
+	var b: Dictionary = WeaponDropDefs.BRANCH
+	var window: float = WeaponDefs.WEAPONS[&"woodShield"].special.parry.window * b.counter_window_mul * stats.value(&"parry_window")
+	if action.time > window + 1e-6:
+		return false
+	var to_source := from - pos
+	if to_source.length_squared() > 1e-6 and absf(angle_difference(facing, atan2(to_source.x, to_source.y))) > b.counter_arc / 2.0:
+		return false
+	world.emit_event("player:blocked", {"player_id": id, "perfect": true})
+	world.emit_event("sfx:cue", {"cue": WeaponDefs.WEAPONS[&"woodShield"].special.sfx_parry, "pos": pos})
+	BondEffects.on_parry(world, self)
+	return true
+
+
+# 星位：鬼火繞的中心（錨點離自己超過 star_leash 就回到身邊）
+func wisp_center() -> Vector2:
+	if wisp_anchor != Vector2.INF and BondEffects.has_branch(self, &"br_star") and wisp_anchor.distance_to(pos) <= WeaponDropDefs.BRANCH.star_leash:
+		return wisp_anchor
+	return pos
 
 
 # 盾反：招架成功時全額、判定時間內沒擋到時傷害 × fail_damage_mul（v0.41.0）；之後右鍵還按著就繼續格擋

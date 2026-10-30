@@ -58,6 +58,7 @@ var chill_timer := 0.0               # 沒再疊就在這麼久後全部消掉
 var chill_slow_per := 0.0
 var chill_mul := 1.0
 var freeze_source_id := 0            # 冰霜羈絆凍住的：凍住它的玩家（第 3 階凍結中被殺沒有死亡效果）
+var ice_coffin := false              # 這次凍結是冰棺（分支・冰棺，第 8c 步）：不碎冰、受到的傷害分給旁邊的怪
 var poise := 0.0                     # 失衡值（物理羈絆第 2 階）：累積到最大生命的 poise_ratio 就失衡
 var poise_timer := 0.0               # 這麼久沒再累積就歸零
 var stagger_timer := 0.0             # 失衡剩餘秒數：不能動、不出招，受到的傷害變多（BondEffects.damage_mul）
@@ -478,6 +479,7 @@ func apply_freeze(duration: float) -> void:
 	if is_dead or def.get("freeze_immune", false):
 		return
 	frozen_timer = maxf(frozen_timer, duration)
+	ice_coffin = false   # 冰棺由 BondEffects.add_chill 凍完再標
 	world.emit_event("fx:status", {"pos": pos, "height": ground_height, "color": ItemDefs.PROCS.freeze.color})
 
 

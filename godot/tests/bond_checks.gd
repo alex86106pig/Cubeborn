@@ -548,4 +548,116 @@ static func _check_imprints() -> String:
 	if absf(p.stats.value(&"damage") - dmg0) > EPS or absf(ItemEffects.procs_of(p, &"attack", "A")[0].chance - chance0) > EPS:
 		return "印記格換成火焰（道具是物理）應還原：攻擊力 %.3f、機率 %.2f" % [p.stats.value(&"damage"), ItemEffects.procs_of(p, &"attack", "A")[0].chance]
 	_note("物理印記格：磨刀石攻擊力 +%.0f%% → +%.0f%%、袖中飛刀 %.0f%% → %.0f%%" % [(dmg0 - 1.0) * 100, (dmg1 - 1.0) * 100, chance0 * 100, chance1 * 100])
+	return _check_branches()
+
+
+# 分支（第 8c 步）：紫橘才有、一把最多 1 條（合成各留一條分支也只留 1 條）；沉重、爆燃、冰棺、反擊架勢、星位的效果
+static func _check_branches() -> String:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 9
+	var seen := 0
+	for r: StringName in [&"blue", &"purple", &"orange"]:
+		for i in 300:
+			var inst := WeaponDropDefs.make(&"x", &"staff", r, rng)
+			var n: int = inst.affixes.filter(func(id: StringName) -> bool: return WeaponDropDefs.AFFIXES[id].kind == &"branch").size()
+			if n > 1 or (r == &"blue" and n > 0):
+				return "%s 分支應最多 1 條（藍色沒有）：%s" % [r, inst.affixes]
+			seen += n
+	if seen == 0:
+		return "紫橘 600 把都沒有分支"
+	var two := WeaponDropDefs.roll_affixes(4, rng, &"staff", [&"br_heavy", &"br_star"] as Array[StringName])
+	if two.count(&"br_heavy") != 1 or two.has(&"br_star") or two.filter(func(id: StringName) -> bool: return WeaponDropDefs.AFFIXES[id].kind == &"branch").size() != 1:
+		return "兩把各留一條分支只留第一條：%s" % [two]
+	# 沉重：攻速 × 0.7、失衡值累積 × 2.5
+	var s := _setup([])
+	var w: World = s[0]
+	var p: Player = s[1]
+	var spd0 := p.stats.value(&"attack_speed")
+	_set_affixes(p, [&"br_heavy"])
+	if absf(p.stats.value(&"attack_speed") - spd0 * 0.7) > EPS or absf(p.stats.value(&"poise_gain") - 2.5) > EPS:
+		return "沉重：攻速 %.2f → 應 %.2f、失衡累積應 250%%：%.2f、%.2f" % [spd0, spd0 * 0.7, p.stats.value(&"attack_speed"), p.stats.value(&"poise_gain")]
+	# 爆燃：燃燒不疊層；第二下先一次打出剩下的燃燒傷害、再點 1 層
+	s = _at_tier(&"fire", 2)
+	if s[2] != "":
+		return s[2]
+	w = s[0]
+	p = s[1]
+	_set_affixes(p, [&"br_burn_rush"])
+	var a := _bdummy(w, Vector2(0, 5))
+	_hit(w, p, a, 1.0, &"fire")
+	var rest := a.burn_tick_damage * a.burn_timer / Enemy.BURN_TICK
+	var hp0 := a.hp
+	_hit(w, p, a, 1.0, &"fire")
+	var want := LootChecks._dealt_exact(a, rest, &"fire") + LootChecks._dealt_exact(a, 1.0, &"fire")
+	if a.burn_stacks != 1 or rest <= 0.0 or absf((hp0 - a.hp) - want) > 0.05:
+		return "爆燃：第二下應打出剩下的燃燒 %.2f（合計 %.2f）、維持 1 層：扣 %.2f、%d 層" % [rest, want, hp0 - a.hp, a.burn_stacks]
+	for i in 6:
+		_hit(w, p, a, 1.0, &"fire")
+	if a.burn_stacks != 1:
+		return "爆燃：一直打也只有 1 層（不會疊滿爆炸），實際 %d" % a.burn_stacks
+	# 冰棺：疊滿凍結 3 秒、打它不碎冰，受到的傷害 50% 分給旁邊的怪
+	var cold: Dictionary = BondDefs.BONDS.cold.params
+	var b: Dictionary = WeaponDropDefs.BRANCH
+	s = _at_tier(&"cold", 2)
+	if s[2] != "":
+		return s[2]
+	w = s[0]
+	p = s[1]
+	_set_affixes(p, [&"br_ice_coffin"])
+	a = _bdummy(w, Vector2(0, 5))
+	var near := _bdummy(w, Vector2(1.5, 5))
+	var far := _bdummy(w, Vector2(0, 5 + b.coffin_radius + 3.0))
+	for i in cold.max_stacks:
+		_hit(w, p, a, 1.0, &"cold")
+	if not a.ice_coffin or absf(a.frozen_timer - b.coffin_time) > EPS:
+		return "冰棺：疊滿應凍結 %.1f 秒的冰棺：%s、%.2f" % [b.coffin_time, a.ice_coffin, a.frozen_timer]
+	var n0 := near.hp
+	var f0 := far.hp
+	var dealt := _hit(w, p, a, 10.0, &"phys")
+	if a.frozen_timer <= 0.0 or absf((n0 - near.hp) - LootChecks._dealt_exact(near, dealt * b.coffin_share, &"cold")) > 0.05 or far.hp != f0:
+		return "冰棺：打它不碎冰、%.1f 傷害的 %.0f%% 分給旁邊的怪：凍結 %.2f、旁邊扣 %.2f、遠的扣 %.2f" % [dealt, b.coffin_share * 100, a.frozen_timer, n0 - near.hp, f0 - far.hp]
+	# 反擊架勢：沒拿盾時普攻剛出手擋下正面的攻擊（不扣血、算招架）；過了判定時間、沒有這條分支都照常扣血
+	for with_branch: bool in [true, false]:
+		s = _setup([])
+		w = s[0]
+		p = s[1]
+		p.weapon_slots[Loadout.OFF] = {}
+		_set_affixes(p, [&"br_counter"] if with_branch else [])
+		var foe := _bdummy(w, p.pos + Vector2(0, 2))
+		_run(w, _cmd(Vector2.ZERO, p.pos + Vector2(0, 5), InputCmd.BTN_ATTACK), 1)
+		var hp1 := p.hp
+		w.events.clear()
+		Combat.apply_damage(w, foe, p, {"damage": 5.0, "blockable": true})
+		var parried := not _named(w.events, "player:blocked").is_empty()
+		if with_branch and (not p.action.is_in(&"attack") or not parried or p.hp != hp1):
+			return "反擊架勢：普攻剛出手（%s %.3f 秒）擋下正面的攻擊應算招架、不扣血：招架 %s、%.1f → %.1f" % [p.action.current_name, p.action.time, parried, hp1, p.hp]
+		if not with_branch and (parried or p.hp >= hp1):
+			return "沒有反擊架勢時沒拿盾不能招架：招架 %s、%.1f → %.1f" % [parried, hp1, p.hp]
+	var window: float = WeaponDefs.WEAPONS[&"woodShield"].special.parry.window * b.counter_window_mul
+	s = _setup([])
+	w = s[0]
+	p = s[1]
+	p.weapon_slots[Loadout.OFF] = {}
+	_set_affixes(p, [&"br_counter"])
+	var foe2 := _bdummy(w, p.pos + Vector2(0, 2))
+	_run(w, _cmd(Vector2.ZERO, p.pos + Vector2(0, 5), InputCmd.BTN_ATTACK), ceili(window / DT) + 2)
+	var hp2 := p.hp
+	p.invuln_timer = 0.0
+	Combat.apply_damage(w, foe2, p, {"damage": 5.0, "blockable": true})
+	if p.hp >= hp2:
+		return "反擊架勢：普攻出手 %.2f 秒後（判定 %.2f 秒）應照常扣血：%s %.3f 秒" % [p.action.time, window, p.action.current_name, p.action.time]
+	# 星位：翻滾開始的位置當錨點，鬼火繞著那裡轉；跑太遠就回到身邊
+	s = _setup([])
+	w = s[0]
+	p = s[1]
+	_set_affixes(p, [&"enh_wisp_count", &"br_star"])
+	var start := p.pos
+	_run(w, _cmd(Vector2(1, 0), p.pos + Vector2(5, 0), InputCmd.BTN_ROLL), 1)
+	_run(w, _cmd(Vector2(1, 0), p.pos + Vector2(5, 0)), 40)
+	var anchor := p.wisp_anchor
+	if anchor == Vector2.INF or anchor.distance_to(start) > 0.5 or p.wisps.size() != 1 or absf(p.wisps[0].pos.distance_to(anchor) - BondDefs.BONDS.wisp.params.orbit_radius) > 0.05:
+		return "星位：鬼火應繞著翻滾開始的位置 %s：錨點 %s、%d 顆、離錨點 %.2f（自己在 %s）" % [start, anchor, p.wisps.size(), p.wisps[0].pos.distance_to(anchor) if not p.wisps.is_empty() else -1.0, p.pos]
+	p.pos = anchor + Vector2(b.star_leash + 2.0, 0)
+	if p.wisp_center() != p.pos:
+		return "星位：離錨點超過 %.0f 單位鬼火應回到身邊" % b.star_leash
 	return ""

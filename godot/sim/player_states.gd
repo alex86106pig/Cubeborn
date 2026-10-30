@@ -212,6 +212,8 @@ class Roll:
 		p.consume_roll_charge()
 		if p.world.is_authority:
 			ItemEffects.on_roll(p.world, p)   # 停滯懷錶（G4）
+			if BondEffects.has_branch(p, &"br_star"):
+				p.wisp_anchor = p.pos   # 分支・星位：鬼火停在翻滾開始的位置
 		p.world.emit_event("skill:used", {"key": Player.ROLL_CD, "player_id": p.id})
 		p.world.emit_event("sfx:cue", {"cue": Config.ROLL.sfx, "pos": p.pos})
 
