@@ -2040,6 +2040,26 @@ static func check_inventory_panel() -> String:
 		panel._finish_drag(p, panel._feet_rect().get_center())
 		if ops != [[InputCmd.OP_DROP, String(uid)]]:
 			err = "背包的東西拖到腳邊應送出 OP_DROP，實際 %s" % [ops]
+	# 腳邊拖到主手長劍的格子 (1, 1)：OP_PICKUP 帶 Loadout.MAIN；送出後鑲上，滑鼠停著顯示鑲在哪、什麼部位
+	if err == "":
+		ops.clear()
+		var stone2 := w.drop_item(&"whetstone", p.pos + Vector2(1.0, 0))
+		panel._process(DT)
+		var at: Vector2 = panel._wgrid_origin(p, Loadout.MAIN) + Vector2(1.5, 1.5) * InventoryPanel.WCELL
+		panel._start_drag(p, panel._feet_row_rect(panel._feet.find(stone2)).get_center())
+		panel._finish_drag(p, at)
+		if ops != [[InputCmd.OP_PICKUP, stone2.id, 1, 1, 0, Loadout.MAIN]]:
+			err = "從腳邊拖到長劍格子 (1, 1) 應送出帶 MAIN 的 OP_PICKUP，實際 %s" % [ops]
+		else:
+			var cmd2 := _cmd(Vector2.ZERO)
+			cmd2.inv_ops = ops.duplicate()
+			ops.clear()
+			_run(w, cmd2, 1)
+			panel._hover_uid = p.loadout.container(Loadout.MAIN).occupied().get(Vector2i(1, 1), &"")
+			var title := String(panel._info_of(p).get("title", ""))
+			panel._hover_uid = &""
+			if not title.contains("鑲在主手") or not title.contains(WeaponDefs.PARTS["A"]):
+				err = "鑲在長劍 (1, 1) 的磨刀石說明應寫「鑲在主手 · 攻擊部位」：%s" % title
 	# 撿不下：背包只空 (0, 0) (1, 0) (0, 1)，(1, 1) 的骰子拿掉就放得下 2 × 2 的骨製護盾
 	if err == "":
 		p.clear_items()
@@ -2068,6 +2088,22 @@ static func check_inventory_panel() -> String:
 			panel.visible = false
 			if err == "" and panel._full_pickup != 0:
 				err = "關掉背包後應清除撿不下的提示"
+	# 滾輪：拿長弓（11 列）時內容比捲動區高就捲得下去，捲到底不會超過
+	if err == "":
+		p.equip_weapon(&"longbow")
+		panel.visible = true
+		panel.size.y = panel.custom_minimum_size.y   # 用最小高度：測試的視窗比 1080 高，內容放得下就測不到捲動
+		panel._process(DT)
+		var wheel := InputEventMouseButton.new()
+		wheel.button_index = MOUSE_BUTTON_WHEEL_DOWN
+		wheel.pressed = true
+		wheel.position = panel._view_rect().get_center()
+		for i in 30:
+			panel._gui_input(wheel)
+		var max_scroll: float = maxf(0.0, panel._content_height(p) - panel._view_rect().size.y)
+		_note("背包介面捲動區高 %.0f、內容高 %.0f" % [panel._view_rect().size.y, panel._content_height(p)])
+		if max_scroll <= 0.0 or absf(panel._scroll - max_scroll) > 0.5:
+			err = "滾輪往下捲到底應停在 %.0f，實際 %.0f" % [max_scroll, panel._scroll]
 	hud.queue_free()
 	cam.queue_free()
 	return err

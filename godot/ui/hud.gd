@@ -21,7 +21,7 @@ const GAME_OVER_DELAY := 0.7     # 死亡後幾秒顯示結算
 const BOSS_NAME := "亡骸騎士"     # darkFantasy.js 的 names.boss
 # 介面程式碼裡寫死的中文字（橫幅、浮動文字、場上文字、連線面板、遊玩紀錄…；資料表以外的）：開場預熱用（v0.37.2）
 # check.gd 會掃 ui/ 的字串，缺字就列出來，加到這裡
-const UI_CHARS := "　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木總樂畫陰源・介想意反對取噴發巡邏膨脹犬守話又頭肥羊園狼原形占拿件夠"
+const UI_CHARS := "鑲輪　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木總樂畫陰源・介想意反對取噴發巡邏膨脹犬守話又頭肥羊園狼原形占拿件夠"
 
 const VIGNETTE_SHADER := """
 shader_type canvas_item;
@@ -46,7 +46,7 @@ var _weapon := UiKit.label("", 16)
 var _souls := UiKit.label("", 18, UiKit.SOUL)
 var _coins := UiKit.label("", 18, UiKit.GOLD)   # 本局拿到的金幣（局外貨幣）
 var _world_labels := WorldLabels.new()
-var inventory_panel := InventoryPanel.new()   # I 開關（main.gd 接到輸入）
+var inventory_panel := InventoryPanel.new()   # Tab 開關（main.gd 接到輸入）
 var _wave := UiKit.label("", 22)
 var _kills := UiKit.label("", 16)
 var _time := UiKit.label("", 16)
@@ -265,9 +265,9 @@ func _init() -> void:
 	root.add_child(_stats_panel)
 
 	# 右側中央：背包（I 開關，D3）
-	inventory_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_RIGHT, Control.PRESET_MODE_MINSIZE, 24)
+	# 對比頁 A：貼著畫面右邊、上下撐滿（中間內容太長就用滾輪捲），左半邊照常看得到戰場
+	inventory_panel.set_anchors_and_offsets_preset(Control.PRESET_RIGHT_WIDE, Control.PRESET_MODE_MINSIZE, 24)
 	inventory_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	inventory_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	inventory_panel.visible = false
 	root.add_child(inventory_panel)
 
