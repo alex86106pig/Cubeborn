@@ -203,7 +203,7 @@ func _initialize() -> void:
 	# ───────── 介面 ─────────
 	_check("HUD：能建立、處理各種事件、顯示波次 / 血量 / 結算文字、暫停畫面有「離開遊戲」；別人撿到道具不跳橫幅；武器欄標示副手；同一目標同時跳的傷害數字往上疊、地上物件名稱重疊時往上錯開",
 		all.bind([ViewChecks.check_hud, ViewChecks.check_overlap_text]))
-	_check("背包介面：和屬性面板並排塞得進介面最大檔的畫面；腳邊欄只列按得到 F 的地上道具、滑鼠停著顯示說明，拖進背包撿起放在那一格、背包的拖到腳邊丟掉；撿不下時 HUD 通知打開背包、提示拿掉哪一件就放得下，關掉就清除；遺物的 N 選 1 卡片塞得進畫面、點卡片 / Esc 送出操作；鍛造祭壇旁拖武器合成先打開挑詞條的面板、送出留下的詞條、離開祭壇就關掉；開著背包時新手提示在屬性面板與背包中間；屬性面板依組列出、核心屬性一直顯示，其他屬性與整組有加成才顯示；左鍵點一下拿起、再點一下放下（拖曳照舊），右鍵 / Esc 放回、點外面丟掉；右鍵直接裝上 / 拿下來（道具照自動擺放、技能只進能用的寶石座、主手武器不拿下來）；物品依種類分畫法；羈絆欄在主手 / 副手右邊、只列收集到的，背包在下面；雙手武器時副手標成不能用；腳邊框浮在背包左邊（點一下拿起放進背包）", all.bind([ViewChecks.check_inventory_panel, ViewChecks.check_relic_panel, ViewChecks.check_forge_panel, ViewChecks.check_hint_beside_bag, ViewChecks.check_stats_panel, ViewChecks.check_inventory_click, ViewChecks.check_inventory_layout]))
+	_check("背包介面：和屬性面板並排塞得進介面最大檔的畫面；腳邊欄只列按得到 F 的地上道具、滑鼠停著顯示說明，拖進背包撿起放在那一格、背包的拖到腳邊丟掉；撿不下時 HUD 通知打開背包、提示拿掉哪一件就放得下，關掉就清除；遺物的 N 選 1 卡片塞得進畫面、點卡片 / Esc 送出操作；鍛造祭壇旁拖武器合成先打開挑詞條的面板、送出留下的詞條、離開祭壇就關掉；開著背包時新手提示在屬性面板與背包中間；屬性面板依組列出、核心屬性一直顯示，其他屬性與整組有加成才顯示；左鍵點一下拿起、再點一下放下（拖曳照舊），右鍵 / Esc 放回、點外面丟掉；右鍵直接裝上 / 拿下來（道具照自動擺放、技能只進能用的寶石座、主手武器不拿下來）；物品依種類分畫法；羈絆欄只列收集到的；雙手武器時副手標成不能用；腳邊框不蓋到背包與技能欄（點一下拿起放進背包）", all.bind([ViewChecks.check_inventory_panel, ViewChecks.check_relic_panel, ViewChecks.check_forge_panel, ViewChecks.check_hint_beside_bag, ViewChecks.check_stats_panel, ViewChecks.check_inventory_click, ViewChecks.check_inventory_layout]))
 	_check("技能欄：劍盾格擋中左鍵換成「招架」與冷卻、法杖沒有招架格；火把準備姿態換成插火把 / 噴火、鐵鏟舉著怪換成拋出 / 埋入；CD 遮罩疊放順序 文字圖示 < 壓黑 < 秒數",
 		all.bind([ViewChecks.check_skill_bar_parry, ViewChecks.check_skill_bar_cd_mask]))
 	_check("新手提示：開場跳操作與挖墳；撿到東西、開背包、可合成、出口打開、腳邊有東西（按住 Alt 看詳細）、隊友倒地各跳一次；看過不再跳；重設後再跳", ViewChecks.check_hints)

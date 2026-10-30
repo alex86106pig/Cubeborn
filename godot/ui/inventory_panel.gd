@@ -13,11 +13,11 @@ extends Control
 signal op_requested(op: Array)
 signal merge_choice(a: Dictionary, b: Dictionary)   # 在鍛造祭壇旁把有詞條的武器拖到另一把上：讓玩家挑要留的詞條（ForgePanel，第 8 步）
 
-const CELL := 64          # 背包一格
+const CELL := 97          # 背包一格：8 格撐滿主手＋副手＋羈絆欄的寬度（8 × 97 = 2 × 250 + 12 + 18 + 246）
 const WCELL := 50         # 武器格子一格
 const GRID_COLS := 5      # 武器格子最寬 5 格（WeaponDefs grid）
 const GRID_W := GRID_COLS * WCELL
-const HAND_GAP := 12      # 兩隻手之間；主手＋副手剛好和背包一樣寬（2 × 250 + 12 = 8 × 64）
+const HAND_GAP := 12      # 兩隻手之間
 const PAD := 18
 const TITLE_H := 64       # 標題 + 一行操作說明（固定在上面）
 const INFO_H := 150       # 說明（固定在下面）
@@ -27,7 +27,7 @@ const INFO_BODY_DY := 28
 const LABEL_H := 24
 const HEAD_H := 62        # 主手 / 副手的名稱框（拖武器到這裡換上）
 const SLOT_NAMES: Array[String] = ["主手", "副手"]
-const BOND_W := 250       # 右上的羈絆欄，和主手 / 副手並排；只列收集到的（件數 > 0）
+const BOND_W := 246       # 右上的羈絆欄，和主手 / 副手並排；只列收集到的（件數 > 0）。改這個值要一起改 CELL（背包右緣對齊羈絆欄）
 const BOND_H := 56        # 羈絆一格：名稱與件數、各階門檻
 const BOND_GAP := 8
 const FEET_W := 280       # 腳邊框（FeetPanel）的寬度
@@ -50,6 +50,7 @@ const PART_COLORS := {"A": Color("5f7487"), "E": Color("9aa4ab"), "D": Color("8e
 var world: World
 var local_peer := World.HOST_PEER_ID
 var feet_panel := FeetPanel.new()   # HUD 加進畫面；位置與大小每幀由這裡算
+var feet_avoid: Control             # 腳邊框不能蓋到的介面（HUD 給技能欄）：水平有重疊時腳邊框的下緣停在它上面
 
 var _drag: Dictionary = {}   # 拖曳中 / 拿在手上：{ uid, id, rot, anchor（形狀格子的索引，對齊滑鼠所在格）, weapon（武器實例或 {}）, pickup_id（從腳邊拖的才有） }
 var _held := false           # _drag 是點一下拿起來的（下一次左鍵放下）；false = 按住拖曳中（放開就放下）
@@ -228,11 +229,17 @@ func _feet_row_rect(i: int) -> Rect2:
 	return r
 
 
-# 腳邊框的大小跟著件數變，貼在背包左邊、下緣對齊
+# 腳邊框的大小跟著件數變，貼在背包左邊、下緣固定往上長：下緣對齊背包，水平碰到 feet_avoid（技能欄）時停在它上面
 func _layout_feet() -> void:
 	var h := FEET_HEAD + maxi(1, _feet_rows()) * FEET_ROW + 8
+	var x := global_position.x - FEET_GAP - FEET_W
+	var bottom := global_position.y + size.y
+	if feet_avoid != null and feet_avoid.visible:
+		var avoid := feet_avoid.get_global_rect()
+		if avoid.position.x < x + FEET_W and avoid.end.x > x:
+			bottom = minf(bottom, avoid.position.y - FEET_GAP)
 	feet_panel.size = Vector2(FEET_W, h)
-	feet_panel.global_position = global_position + Vector2(-FEET_GAP - FEET_W, size.y - h)
+	feet_panel.global_position = Vector2(x, bottom - h)
 	feet_panel.queue_redraw()
 
 
@@ -771,15 +778,16 @@ func _draw_item(font: Font, id: StringName, o: Vector2, cell_px: float, cell: Ve
 	if kind == &"skill":
 		var center := first + Vector2(cell_px, cell_px) / 2.0
 		draw_arc(center, cell_px * 0.34, 0.0, TAU, 20, Color(1, 1, 1, 0.45 * alpha), 1.5)
-		draw_string(font, first + Vector2(0, cell_px / 2.0 + (8 if big else 7)), SkillDefs.SKILLS.get(id, {}).get("icon", String(def.name).substr(0, 1)),
-				HORIZONTAL_ALIGNMENT_CENTER, cell_px, 24 if big else 20, Color(1, 1, 1, alpha))
+		draw_string(font, first + Vector2(0, cell_px / 2.0 + (12 if big else 7)), SkillDefs.SKILLS.get(id, {}).get("icon", String(def.name).substr(0, 1)),
+				HORIZONTAL_ALIGNMENT_CENTER, cell_px, 34 if big else 20, Color(1, 1, 1, alpha))
 	else:
-		draw_string(font, first + Vector2(4, cell_px * 0.4), String(def.name).substr(0, 2), HORIZONTAL_ALIGNMENT_LEFT, cell_px - 4, 18 if big else 15, Color(1, 1, 1, alpha))
+		draw_string(font, first + Vector2(6, cell_px * 0.36), String(def.name).substr(0, 2) if not big else String(def.name).substr(0, 4), HORIZONTAL_ALIGNMENT_LEFT, cell_px - 8, 22 if big else 15, Color(1, 1, 1, alpha))
 	if kind == &"weapon" or kind == &"support":
-		draw_string(font, first + Vector2(4, cell_px - 7), "武器" if kind == &"weapon" else "輔助", HORIZONTAL_ALIGNMENT_LEFT, -1, 13 if big else 11, Color(1, 1, 1, 0.6 * alpha))
+		draw_string(font, first + Vector2(6, cell_px - 9), "武器" if kind == &"weapon" else "輔助", HORIZONTAL_ALIGNMENT_LEFT, -1, 16 if big else 11, Color(1, 1, 1, 0.6 * alpha))
 	for i in bonds.size():
-		var dot_r := 5.0 if bonds[i] == _hover_bond else 3.5
-		draw_circle(first + Vector2(cell_px - 9 - i * 9, 9), dot_r, Color(BondDefs.BONDS[bonds[i]].color, alpha))
+		var dot_r := (5.0 if bonds[i] == _hover_bond else 3.5) * (1.5 if big else 1.0)
+		var dot_step := 9.0 * (1.5 if big else 1.0)
+		draw_circle(first + Vector2(cell_px - dot_step - i * dot_step, dot_step), dot_r, Color(BondDefs.BONDS[bonds[i]].color, alpha))
 
 
 # 畫法用的種類：輔助道具（skill_support）是 kind item，另外分出來

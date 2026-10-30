@@ -2497,8 +2497,8 @@ static func check_inventory_click() -> String:
 	return err
 
 
-# 背包版面：羈絆欄在主手 / 副手右邊並排、只列收集到的（沒有就不列）、背包在兩者下面；主手拿雙手武器時副手標成不能用；
-# 腳邊框浮在背包左邊（下緣對齊、不重疊），在腳邊框上點一下拿起、再點背包的格子 = 撿起放在那一格
+# 背包版面的規則（對齊與位置是 UI，由使用者看，不檢查）：羈絆欄只列收集到的（沒有就不列）；主手拿雙手武器時副手標成不能用；
+# 腳邊框不蓋到背包與技能欄，在腳邊框上點一下拿起、再點背包的格子 = 撿起放在那一格
 static func check_inventory_layout() -> String:
 	var w := _new_world(5)
 	var cam := _test_camera()
@@ -2523,16 +2523,6 @@ static func check_inventory_layout() -> String:
 				want.append(bond)
 		if want.is_empty() or panel._shown_bonds(p) != want:
 			err = "鑲上磨刀石後羈絆欄應只列件數 > 0 的 %s，實際 %s" % [want, panel._shown_bonds(p)]
-	if err == "":
-		var hands_right: float = panel._slot_rect(Loadout.OFF).end.x
-		var bond_r: Rect2 = panel._bond_rect(0)
-		var grid_bottom: float = panel._wgrid_origin(p, Loadout.MAIN).y + panel._grid_rows(p) * InventoryPanel.WCELL
-		if bond_r.position.x < hands_right or absf(bond_r.position.y - panel._slot_rect(Loadout.MAIN).position.y) > 0.5:
-			err = "羈絆欄應在副手右邊、和名稱框同高：羈絆 %s、副手到 %.0f" % [bond_r, hands_right]
-		elif panel._grid_origin().y < maxf(grid_bottom, bond_r.end.y):
-			err = "背包應在武器格子與羈絆欄下面：背包從 %.0f、武器格子到 %.0f、羈絆到 %.0f" % [panel._grid_origin().y, grid_bottom, bond_r.end.y]
-		elif bond_r.end.x > panel.size.x - InventoryPanel.PAD + 0.5:
-			err = "羈絆欄超出背包右邊：%s（背包寬 %.0f）" % [bond_r, panel.size.x]
 	if err == "" and panel._offhand_blocked(p):
 		err = "拿長劍時副手不應標成不能用"
 	if err == "":
@@ -2545,9 +2535,12 @@ static func check_inventory_layout() -> String:
 		panel._process(DT)
 		var feet: Rect2 = panel.feet_panel.get_global_rect()
 		var bag: Rect2 = panel.get_global_rect()
-		_note("腳邊框 %s、背包 %s" % [feet, bag])
-		if not panel.feet_panel.visible or feet.intersects(bag) or feet.end.x > bag.position.x or absf(feet.end.y - bag.end.y) > 0.5:
-			err = "腳邊框應浮在背包左邊、下緣對齊、不重疊：腳邊框 %s（顯示 %s）、背包 %s" % [feet, panel.feet_panel.visible, bag]
+		var skills: Rect2 = hud._skill_bar.get_global_rect()
+		_note("腳邊框 %s、背包 %s、技能欄 %s" % [feet, bag, skills])
+		if not panel.feet_panel.visible or feet.intersects(bag) or feet.end.x > bag.position.x or feet.end.y > bag.end.y + 0.5:
+			err = "腳邊框應浮在背包左邊、下緣不低於背包、不重疊：腳邊框 %s（顯示 %s）、背包 %s" % [feet, panel.feet_panel.visible, bag]
+		elif feet.intersects(skills):
+			err = "腳邊框不能蓋到技能欄：腳邊框 %s、技能欄 %s" % [feet, skills]
 		else:
 			var row := panel._feet.find(stone)
 			var local: Vector2 = panel._feet_row_local(row).get_center()

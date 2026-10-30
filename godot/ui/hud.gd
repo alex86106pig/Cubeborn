@@ -282,6 +282,7 @@ func _init() -> void:
 	inventory_panel.visible = false
 	root.add_child(inventory_panel)
 	root.add_child(inventory_panel.feet_panel)   # 腳邊框：浮在背包左邊，位置由背包每幀算
+	inventory_panel.feet_avoid = _skill_bar
 	inventory_panel.merge_choice.connect(forge_panel.open)
 	root.add_child(forge_panel)
 
