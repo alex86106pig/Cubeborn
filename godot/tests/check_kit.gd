@@ -46,6 +46,15 @@ static func _run(w: World, cmd: InputCmd, steps: int) -> void:
 		w.step({World.HOST_PEER_ID: cmd}, DT)
 
 
+# 第一個是這個形狀的道具（形狀看稀有度，測試要某種形狀時用這個找，不寫死道具）
+static func _shaped(shape: StringName) -> StringName:
+	for id: StringName in ItemDefs.ITEMS:
+		if ItemDefs.ITEMS[id].kind == &"item" and ItemDefs.ITEMS[id].shape == shape:
+			return id
+	assert(false, "沒有 %s 形狀的道具" % shape)
+	return &""
+
+
 static func _player(w: World) -> Player:
 	return w.players[World.HOST_PEER_ID]
 

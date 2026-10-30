@@ -2060,7 +2060,7 @@ static func check_inventory_panel() -> String:
 			panel._hover_uid = &""
 			if not title.contains("鑲在主手") or not title.contains(WeaponDefs.PARTS["A"]):
 				err = "鑲在長劍 (1, 1) 的磨刀石說明應寫「鑲在主手 · 攻擊部位」：%s" % title
-	# 撿不下：背包只空 (0, 0) (1, 0) (0, 1)，(1, 1) 的骰子拿掉就放得下 2 × 2 的骨製護盾
+	# 撿不下：背包只空 (0, 0) (1, 0) (0, 1)，(1, 1) 的骰子拿掉就放得下 2 × 2 的道具
 	if err == "":
 		p.clear_items()
 		for y in ItemDefs.BAG_SIZE.y:
@@ -2070,7 +2070,7 @@ static func check_inventory_panel() -> String:
 		for where: int in [Loadout.MAIN, Loadout.OFF]:   # 武器格子也塞滿，撿起來才會放不下
 			while p.loadout.add_item(p, &"loaded_dice", {}, 0, where) != &"":
 				pass
-		var buckler := w.drop_item(&"bone_buckler", p.pos + Vector2(0, 1.0))
+		var buckler := w.drop_item(_shaped(&"o4"), p.pos + Vector2(0, 1.0))
 		var full_ids: Array[int] = []
 		hud.inventory_full.connect(func(id: int) -> void: full_ids.append(id))
 		w.events.clear()
@@ -2078,13 +2078,13 @@ static func check_inventory_panel() -> String:
 		_run(w, press, 1)
 		_feed_hud(hud, w.events)
 		if full_ids != [buckler.id]:
-			err = "撿不下骨製護盾時 HUD 應發 inventory_full(%d)，實際 %s" % [buckler.id, full_ids]
+			err = "撿不下 2 × 2 的道具時 HUD 應發 inventory_full(%d)，實際 %s" % [buckler.id, full_ids]
 		else:
 			panel.show_full(buckler.id)
 			panel._process(DT)
 			var text := panel._full_text(p, buckler)
 			if panel._full_target() != buckler or panel._suggest != &"d_1_1" or not text.contains("拿掉") or not text.contains(ItemDefs.ITEMS[&"loaded_dice"].name):
-				err = "撿不下時應標出骨製護盾、建議拿掉 (1, 1) 的骰子：目標 %s、建議 %s、文字 %s" % [panel._full_target(), panel._suggest, text]
+				err = "撿不下時應標出那件道具、建議拿掉 (1, 1) 的骰子：目標 %s、建議 %s、文字 %s" % [panel._full_target(), panel._suggest, text]
 			panel.visible = false
 			if err == "" and panel._full_pickup != 0:
 				err = "關掉背包後應清除撿不下的提示"

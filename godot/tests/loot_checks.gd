@@ -102,8 +102,8 @@ static func check_item_defs() -> String:
 				if def.effects.is_empty():
 					return "%s 沒有效果" % id
 				if ItemDefs.cell_count(id) != ItemDefs.expected_cells(id):
-					return "%s 占 %d 格，強度 %.1f ÷ 效率 %.2f 應占 %d 格" % [id, ItemDefs.cell_count(id), def.power,
-						ItemDefs.RARITIES[def.rarity].efficiency, ItemDefs.expected_cells(id)]
+					return "%s 占 %d 格，%s 應占 %d 格" % [id, ItemDefs.cell_count(id),
+						ItemDefs.RARITIES[def.rarity].name, ItemDefs.expected_cells(id)]
 				counts[def.rarity] = counts.get(def.rarity, 0) + 1
 			&"corpse":   # 隊友的屍體（D6）：2 × 3 格、沒有效果，不算在 45 個道具裡
 				if ItemDefs.cell_count(id) != 6 or not def.effects.is_empty():
@@ -194,10 +194,11 @@ static func check_items_apply() -> String:
 
 static func check_inventory() -> String:
 	var inv := Inventory.new()
+	var i2 := _shaped(&"i2")
 	if inv.size != ItemDefs.BAG_SIZE:
 		return "背包大小 %s，預期 %s" % [inv.size, ItemDefs.BAG_SIZE]
 	# l3：(0,0) (0,1) (1,1)；轉 90° → (-y, x) 再平移：(1,0) (0,0) (0,1)
-	var r1 := Inventory.cells_of(&"thunder_rune", 1)
+	var r1 := Inventory.cells_of(_shaped(&"l3"), 1)
 	r1.sort()
 	var expect: Array[Vector2i] = [Vector2i(0, 0), Vector2i(0, 1), Vector2i(1, 0)]
 	if r1 != expect:
@@ -206,10 +207,10 @@ static func check_inventory() -> String:
 	if inv.fits(&"staff", Vector2i(5, 0), 0) or not inv.fits(&"staff", Vector2i(4, 0), 0) \
 			or inv.fits(&"staff", Vector2i(0, 3), 1) or not inv.fits(&"staff", Vector2i(0, 2), 1):
 		return "i4 的邊界判斷錯誤"
-	inv.add(&"a", &"whetstone", Vector2i(0, 0), 0)   # i2：(0,0) (1,0)
+	inv.add(&"a", i2, Vector2i(0, 0), 0)   # i2：(0,0) (1,0)
 	if inv.fits(&"loaded_dice", Vector2i(1, 0), 0) or not inv.fits(&"loaded_dice", Vector2i(2, 0), 0):
 		return "重疊判斷錯誤"
-	var spot := inv.find_spot(&"whetstone")
+	var spot := inv.find_spot(i2)
 	if spot.cell != Vector2i(2, 0) or spot.rot != 0:
 		return "第一個空位應為 (2, 0) 不轉，實際 %s" % [spot]
 	if not inv.move(&"a", Vector2i(7, 4), 1) or inv.find(&"a").cell != Vector2i(7, 4) or inv.move(&"a", Vector2i(7, 5), 1):
@@ -217,7 +218,7 @@ static func check_inventory() -> String:
 	# 只剩直的一行空位時會轉 90° 放進去
 	var inv2 := Inventory.new()
 	inv2.size = Vector2i(1, 3)
-	var s2 := inv2.find_spot(&"whetstone")
+	var s2 := inv2.find_spot(i2)
 	if s2.is_empty() or s2.rot % 2 != 1:
 		return "1 × 3 的空間應轉 90° 放下 i2，實際 %s" % [s2]
 	# 玩家：裝滿背包格數個 1 格道具後撿不起來
@@ -232,26 +233,28 @@ static func check_inventory() -> String:
 
 
 # 放不下時建議拿掉哪一件：4 × 2 的背包，左上磨刀石（2 格）、右下骰子（1 格），2 × 2 的骨製護盾哪裡都放不下；
+# 放不下時建議拿掉哪一件：4 × 2 的背包，左上 2 格道具、右下骰子（1 格），2 × 2 的道具哪裡都放不下；
 # 拿掉任一件都放得下時挑占格少的骰子；本來就放得下、拿掉一件也不夠時沒有建議
 static func check_inventory_suggest() -> String:
+	var big := _shaped(&"o4")
 	var inv := Inventory.new()
 	inv.size = Vector2i(4, 2)
-	inv.add(&"a", &"whetstone", Vector2i(0, 0), 0)
+	inv.add(&"a", _shaped(&"i2"), Vector2i(0, 0), 0)
 	inv.add(&"b", &"loaded_dice", Vector2i(3, 1), 0)
-	if not inv.find_spot(&"bone_buckler").is_empty():
+	if not inv.find_spot(big).is_empty():
 		return "左上被磨刀石、右下被骰子占著，2 × 2 不應放得下"
-	if inv.find_spot(&"bone_buckler", &"a").is_empty() or inv.find_spot(&"bone_buckler", &"b").is_empty():
+	if inv.find_spot(big, &"a").is_empty() or inv.find_spot(big, &"b").is_empty():
 		return "find_spot 當作其中一件不在時應放得下"
-	if inv.suggest_removal(&"bone_buckler") != &"b":
-		return "應建議拿掉占格少的骰子，實際「%s」" % inv.suggest_removal(&"bone_buckler")
+	if inv.suggest_removal(big) != &"b":
+		return "應建議拿掉占格少的骰子，實際「%s」" % inv.suggest_removal(big)
 	if inv.suggest_removal(&"loaded_dice") != &"":
 		return "本來就放得下時不應有建議"
 	var tight := Inventory.new()
 	tight.size = Vector2i(2, 2)
 	tight.add(&"a", &"loaded_dice", Vector2i(0, 0), 0)
 	tight.add(&"b", &"loaded_dice", Vector2i(1, 1), 0)
-	if tight.suggest_removal(&"bone_buckler") != &"":
-		return "拿掉一件也放不下時不應有建議，實際「%s」" % tight.suggest_removal(&"bone_buckler")
+	if tight.suggest_removal(big) != &"":
+		return "拿掉一件也放不下時不應有建議，實際「%s」" % tight.suggest_removal(big)
 	return ""
 
 
@@ -595,7 +598,7 @@ static func check_pickup_to_cell() -> String:
 	if p.inventory.entries.size() != 1 or far.is_removed:
 		return "按不到 F 的距離不應撿得到"
 	var near := w.drop_item(&"whetstone", p.pos + Vector2(1.0, 0))
-	pick.call(near, Vector2i(3, 3), 0)   # (3, 3) 被直放的磨刀石占著
+	pick.call(near, Vector2i(3, 2), 0)   # (3, 2) 被磨刀石占著
 	if p.inventory.entries.size() != 1 or near.is_removed:
 		return "放不下的格子不應撿起"
 	p.weapon_slots[1] = {}
@@ -1394,10 +1397,11 @@ static func check_item_drop_pool() -> String:
 			if not ItemDefs.item_implemented(id):
 				return "%s 的掉落裡有還沒實作的 %s" % [r, id]
 		# 這個稀有度有實作好的道具就全部都在掉落裡；一個都沒有就往下一級找
-		var done := LootDefs.items_of(r).filter(func(id: StringName) -> bool: return ItemDefs.item_implemented(id))
+		var done := LootDefs.items_of(r).filter(func(id: StringName) -> bool:
+			return ItemDefs.item_implemented(id) and not ItemDefs.ITEMS[id].get("bonds", []).is_empty())
 		if not done.is_empty():
 			if pool != done:
-				return "%s 的掉落應為實作好的 %s，實際 %s" % [r, done, pool]
+				return "%s 的掉落應為實作好、屬於羈絆的 %s，實際 %s" % [r, done, pool]
 		elif order.find(ItemDefs.ITEMS[pool[0]].rarity) >= order.find(r):
 			return "%s 都還沒實作，應改掉較低的稀有度，實際掉 %s" % [r, ItemDefs.ITEMS[pool[0]].rarity]
 	return ""
@@ -1535,7 +1539,7 @@ static func check_item_part_timing() -> String:
 	p.loadout.equip_new(p, &"longsword")
 	p.loadout.equip_offhand_new(p, &"woodShield")
 	# 長劍格子：(2, 0) 末端、第 1~4 列中間攻擊部位、第 5 列握柄（WeaponDefs.WEAPONS.longsword.grid）
-	var rune := p.loadout.add_item(p, &"thunder_rune", {"cell": Vector2i(2, 0), "rot": 0}, 0, Loadout.MAIN)
+	var rune := p.loadout.add_item(p, &"thunder_rune", {"cell": Vector2i(2, 0), "rot": 1}, 0, Loadout.MAIN)
 	var it := ItemEffects._item_of(p, rune)
 	if it.get("parts", "") != "EA":
 		return "雷鳴符文鑲在劍尖 + 刃，部位應為 EA：%s" % it.get("parts", "")
@@ -1568,7 +1572,7 @@ static func check_item_part_timing() -> String:
 		return "說明：握柄應寫不發動、數值道具不寫發動：%s / %s" % [ItemDefs.timing_line(&"thunder_rune", "H"), ItemDefs.timing_line(&"whetstone", "A")]
 	# 攻擊部位的裂空之刃：真的普攻出手（狀態機）就射出斬波
 	var rb := _effect(&"rift_blade")
-	var blade := p.loadout.add_item(p, &"rift_blade", {"cell": Vector2i(1, 1), "rot": 0}, 0, Loadout.MAIN)
+	var blade := p.loadout.add_item(p, &"rift_blade", {"cell": Vector2i(1, 2), "rot": 0}, 0, Loadout.MAIN)
 	if ItemEffects._item_of(p, blade).get("parts", "") != "A":
 		return "裂空之刃應只在攻擊部位：%s" % ItemEffects._item_of(p, blade).get("parts", "")
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), roundi(p.weapon.attack.windup / DT) + 2)
@@ -1606,4 +1610,45 @@ static func check_item_part_timing() -> String:
 	for part in ["A", "E", "D"]:
 		if String(auto_stone.get("parts", "")).contains(part):
 			return "自動擺放的磨刀石不該佔 %s：%s" % [part, auto_stone.get("parts", "")]
+	return ""
+
+
+# 羈絆（Build 改版第 5 步）：道具標的羈絆都存在、掉落池只有屬於羈絆的；件數只算鑲在兩隻手上的、同一種只算 1 件、
+# 跨羈絆的兩邊各算；拿下來就扣；階數照門檻
+static func check_bonds() -> String:
+	for id: StringName in ItemDefs.ITEMS:
+		for bond: StringName in ItemDefs.ITEMS[id].get("bonds", []):
+			if not BondDefs.BONDS.has(bond):
+				return "%s 的羈絆不存在：%s" % [id, bond]
+	for r: StringName in ItemDefs.RARITIES:
+		for id in LootDefs.drop_pool(r):
+			if ItemDefs.ITEMS[id].get("bonds", []).is_empty():
+				return "%s 不屬於任何羈絆，不該在掉落池" % id
+	for bond: StringName in BondDefs.BONDS:
+		var th: Array = BondDefs.BONDS[bond].thresholds
+		if BondDefs.BONDS[bond].tiers.size() != th.size():
+			return "%s 的階數和門檻數不一樣" % bond
+		if BondDefs.tier(bond, th[0] - 1) != 0 or BondDefs.tier(bond, th[0]) != 1 or BondDefs.tier(bond, th[-1]) != th.size() \
+				or BondDefs.next_threshold(bond, th[-1]) != -1:
+			return "%s 的階數計算不對" % bond
+	var w := _new_world()
+	var p := _player(w)
+	p.loadout.equip_new(p, &"longsword")
+	p.loadout.equip_offhand_new(p, &"woodShield")
+	p.add_item(&"whetstone")
+	p.add_item(&"whetstone")   # 同一種只算 1 件
+	p.add_item(&"light_gloves")
+	var dice := p.loadout.add_item(p, &"loaded_dice", {}, 0, Loadout.BAG)   # 背包裡的不算
+	p.add_item(&"tomb_heart")   # 防禦 + 火焰
+	var want := {&"phys": 2, &"guard": 1, &"fire": 1}
+	if p.loadout.bond_counts != want:
+		return "件數應為 %s，實際 %s" % [want, p.loadout.bond_counts]
+	if BondDefs.tier(&"phys", p.loadout.bond_counts[&"phys"]) != 1:
+		return "物理 2 件應啟動第 1 階"
+	p.loadout._move_item(p, dice, Vector2i(2, 0), 0, Loadout.MAIN)
+	if p.loadout.bond_counts.get(&"phys", 0) != 3:
+		return "灌鉛骰子鑲上後物理應 3 件，實際 %s" % p.loadout.bond_counts
+	p.loadout.remove_item(p, dice)
+	if p.loadout.bond_counts.get(&"phys", 0) != 2:
+		return "拿掉灌鉛骰子後物理應回到 2 件，實際 %s" % p.loadout.bond_counts
 	return ""

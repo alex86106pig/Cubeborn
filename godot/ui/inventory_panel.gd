@@ -1,5 +1,5 @@
 # 背包介面（D3 / D4，Tab 開關；Build 改版第 3 步起照對比頁 A：畫面右半邊、中間可以用滑鼠滾輪捲動）
-# 由上到下：標題與操作說明（固定）→ 主手、副手的武器格子（道具鑲在這裡才生效）→ 8 × 6 背包（只放東西）；右邊「腳邊」欄（按得到 F 的地上道具）
+# 由上到下：標題與操作說明（固定）→ 主手、副手的武器格子（道具鑲在這裡才生效）→ 羈絆件數 → 8 × 6 背包（只放東西）；右邊「腳邊」欄（按得到 F 的地上道具）
 # → 滑鼠停著的說明（固定在底部）
 # 滑鼠拖曳搬動、拖著時按 R 旋轉、拖到腳邊或面板外面丟在地上；道具拖到武器格子 = 鑲上、拖到背包 = 拿下來；
 # 武器拖到主手 / 副手的名稱框就換上（拿不動的由權威端拒絕），拖到同種同稀有度的武器上合成；腳邊的拖進背包或武器格子 = 撿起放在那一格
@@ -21,6 +21,8 @@ const INFO_H := 110       # 說明（固定在下面）
 const LABEL_H := 20
 const HEAD_H := 50        # 主手 / 副手的名稱框（拖武器到這裡換上）
 const SLOT_NAMES: Array[String] = ["主手", "副手（雙手武器不能拿）"]
+const BOND_H := 44        # 羈絆一列（每個羈絆一格：名稱與件數、各階門檻）
+const BOND_GAP := 6
 const FEET_W := 220       # 腳邊欄的寬度
 const FEET_HEAD := 26     # 腳邊欄標題的高度
 const FEET_ROW := 46      # 腳邊欄每一列的高度
@@ -37,6 +39,7 @@ var local_peer := World.HOST_PEER_ID
 var _drag: Dictionary = {}   # 拖曳中：{ uid, id, rot, anchor（形狀格子的索引，對齊滑鼠所在格）, weapon（武器實例或 {}）, pickup_id（從腳邊拖的才有） }
 var _hover_uid := &""
 var _hover_pickup := 0
+var _hover_bond := &""
 var _feet: Array[ItemPickup] = []   # 腳邊欄的地上道具（每幀照本機玩家的位置更新）
 var _full_pickup := 0               # 撿不下的地上道具（show_full）；不在腳邊了就不顯示
 var _suggest := &""                 # 建議拿掉的背包條目
@@ -104,9 +107,29 @@ func _wgrid_origin(me: Player, i: int) -> Vector2:
 	return Vector2(_hand_x(i) + (GRID_W - cols * WCELL) / 2.0, _content_top() + LABEL_H + HEAD_H + 8)
 
 
-func _grid_origin() -> Vector2:
+func _bonds_origin() -> Vector2:
 	var me := _player()
 	return Vector2(PAD, _content_top() + LABEL_H + HEAD_H + 8 + _grid_rows(me) * WCELL + 18 + LABEL_H)
+
+
+func _bond_rect(i: int) -> Rect2:
+	var w := (GRID_W * 2 + HAND_GAP - BOND_GAP * (BondDefs.BONDS.size() - 1)) / float(BondDefs.BONDS.size())
+	return Rect2(_bonds_origin() + Vector2(i * (w + BOND_GAP), 0), Vector2(w, BOND_H))
+
+
+func _bond_at(local: Vector2) -> StringName:
+	if not _in_view(local):
+		return &""
+	var i := 0
+	for bond: StringName in BondDefs.BONDS:
+		if _bond_rect(i).has_point(local):
+			return bond
+		i += 1
+	return &""
+
+
+func _grid_origin() -> Vector2:
+	return Vector2(PAD, _bonds_origin().y + BOND_H + 18 + LABEL_H)
 
 
 func _content_height(me: Player) -> float:
@@ -207,6 +230,7 @@ func _gui_input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseMotion:
 		_hover_uid = _uid_at(me, event.position)
+		_hover_bond = _bond_at(event.position)
 		var ip := _pickup_at(event.position)
 		_hover_pickup = ip.id if ip != null else 0
 	elif event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
@@ -332,6 +356,7 @@ func _draw() -> void:
 	var full := _full_target()
 	if me != null:
 		_draw_slots(font, me)
+		_draw_bonds(font, me)
 		_draw_bag(font, me)
 		_draw_drag(font, me)
 	_draw_feet(font, full)
@@ -359,6 +384,26 @@ func _draw_scrollbar(me: Player) -> void:
 	var h := view.size.y * view.size.y / total
 	var y := view.position.y + (view.size.y - h) * _scroll / (total - view.size.y)
 	draw_rect(Rect2(Vector2(size.x - 6, y), Vector2(3, h)), Color(1, 1, 1, 0.35))
+
+
+# 羈絆：每個一格，件數到第一個門檻就亮起來；門檻數字到了的變亮
+func _draw_bonds(font: Font, me: Player) -> void:
+	draw_string(font, _bonds_origin() + Vector2(0, -6), "羈絆（鑲在武器上的道具，同一種只算 1 件）", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.55))
+	var i := 0
+	for bond: StringName in BondDefs.BONDS:
+		var def: Dictionary = BondDefs.BONDS[bond]
+		var count: int = me.loadout.bond_counts.get(bond, 0)
+		var on := BondDefs.tier(bond, count) > 0
+		var r := _bond_rect(i)
+		draw_rect(r, Color(def.color, 0.22 if on else 0.05))
+		draw_rect(r, Color(def.color, 0.9 if on else 0.3), false, 2.0 if on or bond == _hover_bond else 1.0)
+		draw_string(font, r.position + Vector2(8, 18), "%s %d" % [def.name, count], HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 12, 15, Color(def.color, 1.0 if on else 0.6))
+		var x := r.position.x + 8
+		for need: int in def.thresholds:
+			var t := str(need)
+			draw_string(font, Vector2(x, r.position.y + 36), t, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1, 1, 1, 0.9 if count >= need else 0.3))
+			x += font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x + 6
+		i += 1
 
 
 func _draw_bag(font: Font, me: Player) -> void:
@@ -519,6 +564,8 @@ func _draw_info(font: Font, me: Player) -> void:
 
 
 func _info_of(me: Player) -> Dictionary:
+	if _drag.is_empty() and _hover_bond != &"":
+		return _bond_info(me, _hover_bond)
 	var pickup_id: int = _drag.get("pickup_id", 0) if not _drag.is_empty() else _hover_pickup
 	if pickup_id != 0:
 		var ip := world.entities.get(pickup_id) as ItemPickup
@@ -548,3 +595,17 @@ func _info_of(me: Player) -> Dictionary:
 	var bag_info := UiKit.item_info(e.id, e.get("weapon", {}))
 	bag_info.title += "（在背包裡不生效）"
 	return bag_info
+
+
+# 滑鼠停在羈絆上：現在第幾階、已啟動的那一階與下一階的效果（效果第 5b 步才接上）
+func _bond_info(me: Player, bond: StringName) -> Dictionary:
+	var def: Dictionary = BondDefs.BONDS[bond]
+	var count: int = me.loadout.bond_counts.get(bond, 0)
+	var t := BondDefs.tier(bond, count)
+	var lines: Array[String] = []
+	if t > 0:
+		lines.append("第 %d 階（%d 件）：%s" % [t, def.thresholds[t - 1], def.tiers[t - 1]])
+	var next := BondDefs.next_threshold(bond, count)
+	if next > 0:
+		lines.append("下一階（%d 件）：%s" % [next, def.tiers[t]])
+	return {"title": "%s羈絆 %d 件（效果尚未實作）" % [def.name, count], "color": def.color, "lines": lines}

@@ -131,6 +131,11 @@ static func item_info(id: StringName, weapon: Dictionary) -> Dictionary:
 	var desc: String = def.get("desc", "")
 	if not def.get("effects", []).all(ItemDefs.is_implemented):
 		desc += "（效果尚未實作）"
+	var bond_names: Array[String] = []
+	for bond: StringName in def.get("bonds", []):
+		bond_names.append(BondDefs.BONDS[bond].name)
+	if def.kind == &"item":
+		desc += "　· 羈絆：" + ("、".join(bond_names) if not bond_names.is_empty() else "沒有")
 	var item_lines: Array[String] = [desc]
 	return {"title": "%s（%s）" % [def.name, r.name], "color": r.color, "lines": item_lines}
 

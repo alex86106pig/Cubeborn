@@ -12,6 +12,7 @@ const BAG := -1    # 道具放哪裡：BAG 背包、MAIN / OFF 主手 / 副手�
 const AUTO := -2   # 自動：主手格子 → 副手格子 → 背包，第一個放得下的
 
 var weapon_slots: Array[Dictionary] = [{}, {}]   # [主手, 副手]：武器實例（WeaponDropDefs）或 {}
+var bond_counts := {}                  # 羈絆 → 件數（BondDefs；鑲在兩隻手上、同一種只算 1 件，refresh_items 同步）
 var items: Array[Dictionary] = []     # 生效的道具實例 { uid, id, parts }（鑲在主手 / 副手上的，refresh_items 同步）；uid 同時是屬性加成的來源名稱，parts 是碰到的部位字元（發動時機）
 var inventory := Inventory.new()       # 背包的擺放（只放東西）
 var _next_item_uid := 1
@@ -295,6 +296,14 @@ func refresh_items(p: Player) -> void:
 		if not items.any(func(it: Dictionary) -> bool: return it.uid == uid):
 			items.append({"uid": uid, "id": want[uid], "parts": parts[uid]})
 			p.set_stat_source(uid, ItemDefs.stat_mods(want[uid]))
+	bond_counts.clear()
+	var seen := {}
+	for it: Dictionary in items:
+		if seen.has(it.id):
+			continue
+		seen[it.id] = true
+		for bond: StringName in ItemDefs.ITEMS[it.id].get("bonds", []):
+			bond_counts[bond] = bond_counts.get(bond, 0) + 1
 
 
 # 把 from 武器上鑲的道具搬走（換下來的武器）：依序試 targets 裡武器的格子、背包；都放不下的留在原本的武器上

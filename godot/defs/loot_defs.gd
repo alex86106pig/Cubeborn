@@ -91,7 +91,7 @@ static func drop_pool(rarity: StringName) -> Array[StringName]:
 	for i in range(order.find(rarity), -1, -1):
 		var out: Array[StringName] = []
 		for id in items_of(order[i]):
-			if ItemDefs.item_implemented(id):
+			if ItemDefs.item_implemented(id) and not ItemDefs.ITEMS[id].get("bonds", []).is_empty():   # 不屬於任何羈絆的先不掉
 				out.append(id)
 		if not out.is_empty():
 			return out
