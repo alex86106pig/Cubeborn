@@ -619,6 +619,8 @@ func _update_anim() -> void:
 	# 道具狀態（v0.33.0）：只在有的時候放，快照不必多送
 	if frozen_timer > 0.0:
 		anim["frozen"] = true
+		if ice_coffin:
+			anim["coffin"] = true
 	if poison_timer > 0.0:
 		anim["poisoned"] = true
 	if burn_timer > 0.0:

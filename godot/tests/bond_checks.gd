@@ -238,6 +238,9 @@ static func check_cold() -> String:
 		_hit(w, p, a, 1.0, &"cold")
 	if absf(a.frozen_timer - c.freeze_time) > EPS or a.chill_stacks != 0:
 		return "冰霜 2 階：疊滿 %d 層應凍結 %.1f 秒並清掉冰冷：凍結 %.2f、冰冷 %d" % [c.max_stacks, c.freeze_time, a.frozen_timer, a.chill_stacks]
+	a._update_anim()
+	if a.anim.has("coffin") or WorldView.status_tint(a.anim) != WorldView.FROZEN_TINT:
+		return "冰霜 2 階：一般凍結不標冰棺、染冰凍的藍：%s" % [a.anim]
 	var bare := _bdummy(w, Vector2(6, 5))
 	var shatter := _hit(w, p, a, 50.0, &"phys", {"no_status": false})
 	var normal := _hit(w, p, bare, 50.0, &"phys")
@@ -611,6 +614,9 @@ static func _check_branches() -> String:
 		_hit(w, p, a, 1.0, &"cold")
 	if not a.ice_coffin or absf(a.frozen_timer - b.coffin_time) > EPS:
 		return "冰棺：疊滿應凍結 %.1f 秒的冰棺：%s、%.2f" % [b.coffin_time, a.ice_coffin, a.frozen_timer]
+	a._update_anim()   # 快照送 anim，客戶端也看得到冰棺
+	if not a.anim.get("coffin", false) or WorldView.status_tint(a.anim) != WorldView.COFFIN_TINT:
+		return "冰棺：動畫狀態應標 coffin、畫面染冰白（和一般冰凍分得開）：%s" % [a.anim]
 	var n0 := near.hp
 	var f0 := far.hp
 	var dealt := _hit(w, p, a, 10.0, &"phys")

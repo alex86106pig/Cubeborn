@@ -46,6 +46,7 @@ const CHARGE_DUST_COLOR := Color("8a7a5a")  # Boss 衝鋒揚塵、砸地碎石
 const WALL_DEBRIS_COLOR := Color("9a9a9a")
 const SLAM_RING_COLOR := Color("9a8a6a")
 const STUN_STAR_COLOR := Color("ffe14a")
+const COFFIN_SHARD_COLOR := Color("e8f8ff")   # 冰棺的冰晶
 const TELEPORT_COLOR := Color("b36bff")
 const BONE_COLOR := Color("d8d0b8")         # 挖墳點冒出的白骨手
 const DIRT_LOB_HEIGHT := 3.0                # 守墓人拋出的土塊飛多高
@@ -561,7 +562,7 @@ func _emit_enemy(e: Enemy, dt: float) -> void:
 				mote(_jitter(e, 1.5, e.height + _rng.randf_range(0.2, 1.0)), {"color": DarkFantasy.BOSS_BLOOD, "size": 0.15, "life": 0.5, "vy": 2.0})
 
 
-# 羈絆的狀態（Build 改版第 5 步）：失衡頭上轉星星、燃燒層數越多冒越多火、冰冷冒白霜
+# 羈絆的狀態（Build 改版第 5 步）：失衡頭上轉星星、燃燒層數越多冒越多火、冰冷冒白霜、冰棺全身冒冰晶
 func _emit_bond_status(e: Enemy, a: Dictionary, key: String, dt: float) -> void:
 	if a.get("staggered", false):
 		for i in _count(key + ":stagger", 0.25, dt):
@@ -574,6 +575,9 @@ func _emit_bond_status(e: Enemy, a: Dictionary, key: String, dt: float) -> void:
 	if chill > 0:
 		for i in _count(key + ":chill", 0.05 * chill, dt):
 			mote(_jitter(e, 0.45, e.height + _rng.randf_range(0.2, e.body_height)), {"color": Enemy.CHILL_COLOR, "size": 0.1, "life": 0.5, "vy": -0.3})
+	if a.get("coffin", false):
+		for i in _count(key + ":coffin", 0.4, dt):
+			mote(_jitter(e, 0.6, e.height + _rng.randf_range(0.0, e.body_height + 0.2)), {"color": COFFIN_SHARD_COLOR, "size": 0.16, "life": 0.6, "vy": 0.5})
 
 
 # Boss 砸地：裂紋已經爬滿、快要爆開的那一圈，地上的碎石一直跳起來

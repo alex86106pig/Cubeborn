@@ -6,6 +6,10 @@ const LIFE := 0.8
 const RISE_SPEED := 1.6       # 世界單位 / 秒
 const JITTER := 0.6           # 水平隨機偏移（世界單位）
 const HEAD_OFFSET := 0.3
+const STACK_WINDOW := 0.2     # 同一個目標這麼多秒內跳的數字（屬性轉換、冰棺分傷害是同一步好幾個）往上疊一層，不疊在一起
+const STACK_STEP := 0.5       # 每疊一層往上幾個世界單位（約一行字高）
+const STACK_MAX := 4          # 最多疊幾層，再多就換到旁邊一欄（冰棺分傷害一次 5、6 個，疊成一整欄太高）
+const STACK_SIDE := 0.8       # 換欄時往左右移幾個世界單位（左右輪流）
 # 角色頭頂高度（view/rig.gd 的關節高度）
 const HEIGHTS := {
 	&"player": 2.1, &"grunt": 1.95, &"archer": 1.95, &"zombie": 1.85, &"bloater": 1.8, &"hound": 1.0, &"boss": 2.1 * 1.85, &"gravekeeper": 2.1 * 1.3,
@@ -19,7 +23,7 @@ const STYLES := {
 }
 
 var camera: Camera3D
-var _items: Array[Dictionary] = []   # { node, world, life }
+var _items: Array[Dictionary] = []   # { node, world, life, target }
 
 
 func _init() -> void:
@@ -32,10 +36,23 @@ func spawn(target: Entity, text: String, style: StringName, color := Color(0, 0,
 	var s: Array = STYLES[style]
 	var node := UiKit.label(text, s[0], s[1] if color.a == 0.0 else color)
 	add_child(node)
-	var height: float = HEIGHTS.get(target.kind, 2.0)
-	var at := Vector3(target.pos.x + (randf() - 0.5) * JITTER, target.height + height + HEAD_OFFSET, target.pos.y)
-	_items.append({"node": node, "world": at, "life": LIFE})
+	var n := stack_count(target.id)
+	var col := floori(n / float(STACK_MAX))
+	var column := ceili(col / 2.0) * (1 if col % 2 == 1 else -1)   # 第幾欄：0、+1、-1、+2…
+	var height: float = HEIGHTS.get(target.kind, 2.0) + (n % STACK_MAX) * STACK_STEP
+	var side := camera.global_basis.x if camera != null and camera.is_inside_tree() else Vector3.RIGHT   # 螢幕的左右
+	var at := Vector3(target.pos.x + (randf() - 0.5) * JITTER, target.height + height + HEAD_OFFSET, target.pos.y) + side * column * STACK_SIDE
+	_items.append({"node": node, "world": at, "life": LIFE, "target": target.id})
 	_place(_items[-1])
+
+
+# 這個目標剛跳出（STACK_WINDOW 秒內）、還在畫面上的數字有幾個
+func stack_count(target_id: int) -> int:
+	var n := 0
+	for it in _items:
+		if it.target == target_id and it.life > LIFE - STACK_WINDOW:
+			n += 1
+	return n
 
 
 func clear() -> void:

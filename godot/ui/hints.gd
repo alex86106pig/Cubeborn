@@ -4,12 +4,14 @@ class_name Hints
 extends PanelContainer
 
 const SECTION := "hints"
+const FONT_SIZE := 20
+const PAD_X := 18   # 左右內距（box.content_margin_left / right）
 
 var save_path := "user://settings.cfg"   # 和 audio/sound.gd 的靜音設定同一個檔案；測試設成 "" 就不讀寫檔案
 var seen: Dictionary = {}              # 提示 id -> true（已經顯示過）
 var queue: Array[StringName] = []      # 條件成立、等著顯示的提示
 var current: StringName = &""          # 正在顯示的提示；"" = 沒有
-var _label := UiKit.label("", 20, Color.WHITE, 2)
+var _label := UiKit.label("", FONT_SIZE, Color.WHITE, 2)
 var _time := 0.0                       # current 已顯示的秒數
 var _wait := HintDefs.START_DELAY      # 下一則之前還要等幾秒
 
@@ -21,8 +23,8 @@ func _init() -> void:
 	box.border_color = Color(UiKit.GOLD, 0.7)
 	box.set_border_width_all(2)
 	box.set_corner_radius_all(6)
-	box.content_margin_left = 18
-	box.content_margin_right = 18
+	box.content_margin_left = PAD_X
+	box.content_margin_right = PAD_X
 	box.content_margin_top = 10
 	box.content_margin_bottom = 10
 	add_theme_stylebox_override(&"panel", box)
@@ -89,6 +91,17 @@ func show_hint(id: StringName) -> void:
 	_label.text = HintDefs.HINTS[id]
 	modulate.a = 0.0
 	visible = true
+
+
+# 提示框最多多寬（px，含框）：放不下一行就換行（開背包時 HUD 縮到屬性面板與背包中間）
+func set_max_width(width: float) -> void:
+	var text_w := _label.get_theme_font(&"font").get_string_size(_label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
+	var fit := minf(ceilf(text_w) + 1.0, width - PAD_X * 2)
+	if _label.custom_minimum_size.x == fit:
+		return
+	_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if fit < text_w else TextServer.AUTOWRAP_OFF
+	_label.custom_minimum_size.x = fit
+	reset_size()
 
 
 func _condition(id: StringName, world: World, player: Player, bag_open: bool) -> bool:

@@ -17,7 +17,7 @@ const ANIM_KEYS: Array[String] = [
 	"loco", "loco_time", "action", "action_time", "behavior", "phase", "k", "swing_dir", "is_finisher",
 	"trail_color", "airborne", "blocking", "parry", "vz", "revive", "stunned",
 	"state", "time", "enraged", "phase_time", "origin", "torch_stance", "burning", "holding", "buried", "grabbed",
-	"shield", "running", "burst", "spoke", "form", "burn_stacks", "chill", "staggered",
+	"shield", "running", "burst", "spoke", "form", "burn_stacks", "chill", "staggered", "coffin",
 ]
 # 玩家動畫欄位的預設值：和預設值相同的欄位不送（大部分時間只剩移動層、動作層的名稱與秒數），收到時補回
 const PLAYER_ANIM_DEFAULTS := {

@@ -19,6 +19,7 @@ const BOSS_BAR_DELAY := 0.3      # Boss 爬出後多久才顯示血條
 const BANNER_TIME := 1.6
 const VIGNETTE_TIME := 0.45
 const GAME_OVER_DELAY := 0.7     # 死亡後幾秒顯示結算
+const HINT_MARGIN := 16.0         # 開背包時新手提示和屬性面板、背包之間留的空隙
 const BOSS_NAME := "亡骸騎士"     # darkFantasy.js 的 names.boss
 # 介面程式碼裡寫死的中文字（橫幅、浮動文字、場上文字、連線面板、遊玩紀錄…；資料表以外的）：開場預熱用（v0.37.2）
 # check.gd 會掃 ui/ 的字串，缺字就列出來，加到這裡
@@ -375,6 +376,19 @@ func _ready() -> void:
 	GameEvents.event_emitted.connect(_on_event)
 
 
+# 新手提示放在下方中央；開著背包時改放在屬性面板與背包中間的空位，太長就換行（不被背包蓋住）
+func _place_hints() -> void:
+	var area := hints.get_parent_control().size
+	var left := 0.0
+	var right := area.x
+	if inventory_panel.visible:
+		right = inventory_panel.position.x - HINT_MARGIN
+		if _stats_panel.visible:
+			left = _stats_panel.position.x + _stats_panel.size.x + HINT_MARGIN
+	hints.set_max_width(right - left)
+	hints.position.x = (left + right - hints.size.x) / 2.0
+
+
 func toggle_stats_panel() -> void:
 	_stats_panel.visible = not _stats_panel.visible
 
@@ -424,6 +438,8 @@ func _process(delta: float) -> void:
 		forge_panel.position = Vector2(inventory_panel.position.x - forge_panel.size.x - 16.0, 120.0)
 	if not _pause.visible and not _game_over.visible and not main_menu.visible and not class_select.visible and not settings_panel.visible:   # 暫停、結算、主選單、選角、設定頁時提示不倒數、不記效能
 		hints.update(delta, world, player, inventory_panel.visible)
+		if hints.visible:
+			_place_hints()
 		run_log.add_frame(delta, world.stats.time)
 	if _stats_panel.visible:
 		_stats_panel.refresh(player)

@@ -2231,3 +2231,71 @@ static func check_forge_panel() -> String:
 	hud.queue_free()
 	cam.queue_free()
 	return err
+
+
+# 疊在一起的字：同一個目標同時跳的傷害數字（屬性轉換、冰棺分傷害）一個比一個高、別的目標不受影響；
+# 地上物件的名稱碰到這一幀已經畫的就往上錯開一行，沒碰到的留在原位
+static func check_overlap_text() -> String:
+	var w := _new_world(5)
+	var cam := _test_camera()
+	var floaters := Floaters.new()
+	floaters.camera = cam
+	_scene_root().add_child(floaters)
+	var a := _spawn(w, &"grunt", Vector2(0, 0))
+	var b := _spawn(w, &"grunt", Vector2(3, 0))
+	floaters.spawn(a, "10", &"dmg")
+	floaters.spawn(a, "10", &"dmg", StatDefs.DAMAGE_TYPES[&"cold"].color)
+	floaters.spawn(b, "10", &"dmg")
+	for i in Floaters.STACK_MAX - 1:   # 疊滿 STACK_MAX 層後下一個換到旁邊一欄、從最低那層開始
+		floaters.spawn(a, "10", &"dmg")
+	var items: Array[Dictionary] = floaters._items
+	var ys: Array = items.map(func(it: Dictionary) -> float: return it.world.y - (b.height if it.target == b.id else a.height))
+	var d: Vector3 = items[-1].world - items[0].world
+	var side := Vector2(d.x, d.z).length()
+	floaters.queue_free()
+	cam.queue_free()
+	if absf(ys[1] - ys[0] - Floaters.STACK_STEP) > EPS or absf(ys[2] - ys[0]) > EPS:
+		return "同一個目標同時跳的第 2 個數字應高 %.2f、別的目標不疊：%s" % [Floaters.STACK_STEP, ys]
+	if absf(ys[-1] - ys[0]) > EPS or absf(side) < Floaters.STACK_SIDE - Floaters.JITTER:
+		return "疊滿 %d 層後應換到旁邊一欄（同高、左右差約 %.1f）：高 %s、左右差 %.2f" % [Floaters.STACK_MAX, Floaters.STACK_SIDE, ys, side]
+	var placed: Array[Rect2] = []
+	var size := 17
+	var y0 := WorldLabels.place_label(placed, 500.0, 300.0, 120.0, size)
+	var y1 := WorldLabels.place_label(placed, 540.0, 300.0, 120.0, size)
+	var y2 := WorldLabels.place_label(placed, 900.0, 300.0, 120.0, size)
+	if y0 != 300.0 or y1 > y0 - size or y2 != 300.0:
+		return "名稱重疊時後畫的往上錯開一行、沒碰到的不動：%.0f / %.0f / %.0f" % [y0, y1, y2]
+	return ""
+
+
+# 開著背包（連屬性面板）時，最長的新手提示放在兩個面板中間、不被蓋住（太長就換行）
+static func check_hint_beside_bag() -> String:
+	var w := _new_world(5)
+	var cam := _test_camera()
+	var hud: Variant = load("res://ui/hud.tscn").instantiate()
+	hud.setup(w, cam)
+	_scene_root().add_child(hud)
+	_player(w)
+	var hints: Hints = hud.hints
+	hints.save_path = ""
+	var longest: StringName = &""
+	for id: StringName in HintDefs.HINTS:
+		if longest == &"" or String(HintDefs.HINTS[id]).length() > String(HintDefs.HINTS[longest]).length():
+			longest = id
+	hud.toggle_stats_panel()
+	hud.inventory_panel.visible = true
+	hints.show_hint(longest)
+	await _settled_min_size(hud.inventory_panel)
+	hud._place_hints()
+	await _settled_min_size(hints)
+	hud._place_hints()
+	await _settled_min_size(hints)
+	var r: Rect2 = hints.get_rect()
+	var bag: Rect2 = hud.inventory_panel.get_rect()
+	var stats: Rect2 = hud._stats_panel.get_rect()
+	_note("開背包時的新手提示 %.0f×%.0f（%.0f ~ %.0f；屬性面板到 %.0f、背包從 %.0f）" % [r.size.x, r.size.y, r.position.x, r.end.x, stats.end.x, bag.position.x])
+	hud.queue_free()
+	cam.queue_free()
+	if r.position.x < stats.end.x or r.end.x > bag.position.x:
+		return "開背包時新手提示（%s）應在屬性面板與背包中間：提示 %s、屬性 %s、背包 %s" % [longest, r, stats, bag]
+	return ""

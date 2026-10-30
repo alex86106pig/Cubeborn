@@ -7,7 +7,7 @@ const CHEST_OFFSET := 1.6   # 文字在物件腳底上方的高度（世界單�
 const PICKUP_OFFSET := 1.1
 const ENEMY_OFFSET := 0.35  # 魔法 / 稀有怪的詞條在頭頂上方多高
 const GRAVE_OFFSET := 1.8   # 挖墳點文字的高度（D6）
-const CARD_W := 300         # 地上道具卡的寬度（px）
+const CARD_W := 400         # 地上道具卡的寬度（px）：武器的「單手・攻擊力・攻速・範圍」與最長的分支詞條各塞一行
 const CARD_PAD := 8
 const CARD_CELL := 10.0     # 道具卡形狀小圖每格的大小
 const CARD_GAP := 24        # 道具卡底部離名稱那一行的距離
@@ -17,6 +17,9 @@ const FORGE_COLOR := Color("ffb070")   # 鍛造祭壇的名稱（Build 改版第
 const NPC_COLOR := Color("5fd27a")      # 假裝 NPC 的守墓人：名字與頭上的綠色血條
 const NPC_BAR := Vector2(90, 9)
 const KEEPER_LINE := "又一頭肥羊……"
+const LABEL_W := 300        # 名稱文字置中的寬度（px）
+const LABEL_GAP := 4        # 物件名稱互相錯開時的間距（px）
+const LABEL_TRIES := 4      # 最多往上錯開幾次（再多就疊著畫）
 
 const WARM_SIZES: Array[int] = [13, 14, 15, 16, 17, 18, 22]   # 這裡用到的字級（_text、道具卡的 size）
 const OUTLINE := 4
@@ -27,6 +30,7 @@ var local_peer := World.HOST_PEER_ID
 var view_peer := 0   # 觀戰中的隊友（0 = 本機）：看不看得到改用他的視野
 var detail_held := false   # 按住 Alt（每幀更新）：按得到 F 的地上武器 / 道具才畫說明卡（2026-10-30 使用者）
 var warm := ""   # 開場預熱（v0.37.2）：HUD 蓋著「準備中」時設定，用同樣的字級與描邊先畫一次，字形在這時候產生
+var _placed: Array[Rect2] = []   # 這一幀已經畫的物件名稱（鍛造祭壇、寶箱、地上道具）的範圍，後畫的碰到就往上錯開
 
 
 func _init() -> void:
@@ -58,10 +62,18 @@ func _draw() -> void:
 		if focus == null:
 			focus = world.nearest_interactable(me, world.forges)
 	var font := get_theme_default_font()
+	_placed.clear()
+	# 按得到 F 的地上道具先畫（名稱留在原位，其他名稱讓開）；說明卡最後畫，蓋在所有名稱上面
+	var card: ItemPickup = null
+	var focus_pickup := focus as ItemPickup
+	if focus_pickup != null and Vision.entity_visible(world, viewer, focus_pickup):
+		_text(font, focus_pickup, PICKUP_OFFSET, pickup_text(focus_pickup.display_name(), true, detail_held), ItemDefs.RARITIES[focus_pickup.rarity()].color, 17, Vector2.ZERO, true)
+		if detail_held:
+			card = focus_pickup
 	for f: Entity in world.forges:
 		if f.is_removed or not Vision.entity_visible(world, viewer, f):
 			continue
-		_text(font, f, CHEST_OFFSET, ("[F] 合成武器 " if f == focus else "") + "鍛造祭壇", FORGE_COLOR)
+		_text(font, f, CHEST_OFFSET, ("[F] 合成武器 " if f == focus else "") + "鍛造祭壇", FORGE_COLOR, 17, Vector2.ZERO, true)
 	for c: Entity in world.chests:
 		var chest := c as Chest
 		if chest.opened or not Vision.entity_visible(world, viewer, chest):
@@ -72,14 +84,12 @@ func _draw() -> void:
 		var text := "%s  %d 靈魂" % [def.name, cost]
 		if chest == focus:
 			text = "[F] 開啟 " + text
-		_text(font, chest, CHEST_OFFSET, text, color)
+		_text(font, chest, CHEST_OFFSET, text, color, 17, Vector2.ZERO, true)
 	for p: Entity in world.pickups:
 		var pickup := p as ItemPickup
-		if pickup.is_removed or not Vision.entity_visible(world, viewer, pickup):
+		if pickup == focus or pickup.is_removed or not Vision.entity_visible(world, viewer, pickup):
 			continue
-		if pickup == focus and detail_held:
-			_draw_card(font, pickup)
-		_text(font, pickup, PICKUP_OFFSET, pickup_text(pickup.display_name(), pickup == focus, detail_held), ItemDefs.RARITIES[pickup.rarity()].color)
+		_text(font, pickup, PICKUP_OFFSET, pickup.display_name(), ItemDefs.RARITIES[pickup.rarity()].color, 17, Vector2.ZERO, true)
 	# 魔法 / 稀有怪（D5）：頭上顯示詞條（稀有怪多一行名字）
 	for e: Entity in world.enemies:
 		var en := e as Enemy
@@ -95,6 +105,8 @@ func _draw() -> void:
 			_text(font, e, e.body_height + ENEMY_OFFSET, "冤魂：打倒就能復活隊友", GHOST_COLOR, 15)
 	_draw_keeper(font, me, viewer)
 	_draw_grave(font, me)
+	if card != null:
+		_draw_card(font, card)
 
 
 # 假裝 NPC 的守墓人：頭上名字 + 綠色血條（之後換成畫面上方的 Boss 血條），靠近時「[F] 對話」；
@@ -168,13 +180,32 @@ func _draw_card(font: Font, pickup: ItemPickup) -> void:
 	draw_multiline_string(font, Vector2(p.x, p.y + head_h + 6 + 14), body, HORIZONTAL_ALIGNMENT_LEFT, text_w, 14, -1, Color(1, 1, 1, 0.9))
 
 
-func _text(font: Font, e: Entity, offset: float, text: String, color: Color, size := 17, shift := Vector2.ZERO) -> void:
-	_text_at(font, Vector3(e.pos.x, e.height + offset, e.pos.y), text, color, size, shift)
+# avoid：物件名稱（不會動的東西）碰到這一幀已經畫的名稱就往上錯開一行；怪物頭上的字不錯開（會跟著動、錯開會跳來跳去）
+func _text(font: Font, e: Entity, offset: float, text: String, color: Color, size := 17, shift := Vector2.ZERO, avoid := false) -> void:
+	_text_at(font, Vector3(e.pos.x, e.height + offset, e.pos.y), text, color, size, shift, avoid)
 
 
-func _text_at(font: Font, at: Vector3, text: String, color: Color, size := 17, shift := Vector2.ZERO) -> void:
+func _text_at(font: Font, at: Vector3, text: String, color: Color, size := 17, shift := Vector2.ZERO, avoid := false) -> void:
 	if camera.is_position_behind(at):
 		return
-	var s := camera.unproject_position(at) + Vector2(-150, 0) + shift
-	draw_string_outline(font, s, text, HORIZONTAL_ALIGNMENT_CENTER, 300, size, OUTLINE, Color(0, 0, 0, 0.85))
-	draw_string(font, s, text, HORIZONTAL_ALIGNMENT_CENTER, 300, size, color)
+	var s := camera.unproject_position(at) + Vector2(-LABEL_W / 2.0, 0) + shift
+	if avoid:
+		s.y = place_label(_placed, s.x + LABEL_W / 2.0, s.y, font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x, size)
+	draw_string_outline(font, s, text, HORIZONTAL_ALIGNMENT_CENTER, LABEL_W, size, OUTLINE, Color(0, 0, 0, 0.85))
+	draw_string(font, s, text, HORIZONTAL_ALIGNMENT_CENTER, LABEL_W, size, color)
+
+
+# 名稱的基線 y：從 y 開始，碰到 placed 裡的範圍就往上一行，最多 LABEL_TRIES 次；放好的範圍加進 placed
+static func place_label(placed: Array[Rect2], center_x: float, y: float, width: float, size: int) -> float:
+	var r := Rect2(center_x - width / 2.0, y - size, width, size + LABEL_GAP)
+	for i in LABEL_TRIES:
+		var hit := false
+		for other in placed:
+			if other.intersects(r):
+				r.position.y = other.position.y - r.size.y
+				hit = true
+				break
+		if not hit:
+			break
+	placed.append(r)
+	return r.position.y + size

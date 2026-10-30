@@ -29,6 +29,7 @@ const RELIC_CORE := Color("f08a6a")
 const RELIC_SKILL_COLOR := Color("f3d36b")   # 技能遺物（第 7 步）：金黃（同武器格子 artifact 的技能色）
 const RELIC_SKILL_CORE := Color("7b4fa0")
 const CHILL_TINT := Color(0.7, 0.95, 1.4)    # 冰冷（冰霜羈絆）：比冰凍淡的藍
+const COFFIN_TINT := Color(1.6, 2.0, 2.4)    # 冰棺（分支・冰棺）：冰白，和一般冰凍的深藍分得開
 const SHADOW_MAX_DISTANCE := 70.0  # 陰影範圍（從相機算；相機距離 40，畫面最遠的地面約 60）
 const LOS_INTERVAL := 3           # 視野的牆擋判斷每隻每幾個 tick 重算一次（50 毫秒）
 const ENEMY_ANIM_STEP := 1.0 / 60.0 - 1e-4   # 敵人四肢動畫的最短間隔（略小於 1/60，60 FPS 時每幀都更新）
@@ -1212,8 +1213,10 @@ func _mat(color: Color) -> StandardMaterial3D:
 	return m
 
 
-# 怪身上的狀態顏色：冰凍 > 中毒 > 冰冷（乘在模型顏色上）
+# 怪身上的狀態顏色：冰棺 > 冰凍 > 中毒 > 冰冷（乘在模型顏色上）
 static func status_tint(a: Dictionary) -> Color:
+	if a.get("coffin", false):
+		return COFFIN_TINT
 	if a.get("frozen", false):
 		return FROZEN_TINT
 	if a.get("poisoned", false):
