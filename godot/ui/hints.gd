@@ -97,10 +97,10 @@ func show_hint(id: StringName) -> void:
 func set_max_width(width: float) -> void:
 	var text_w := _label.get_theme_font(&"font").get_string_size(_label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x
 	var fit := minf(ceilf(text_w) + 1.0, width - PAD_X * 2)
-	if _label.custom_minimum_size.x == fit:
-		return
-	_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if fit < text_w else TextServer.AUTOWRAP_OFF
-	_label.custom_minimum_size.x = fit
+	if _label.custom_minimum_size.x != fit:
+		_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if fit < text_w else TextServer.AUTOWRAP_OFF
+		_label.custom_minimum_size.x = fit
+	# 每次都縮回最小尺寸：換行後 Label 要用新寬度排過一次高度才對，只在寬度改變時縮會卡在第一次量到的（一字一行的）高度
 	reset_size()
 
 

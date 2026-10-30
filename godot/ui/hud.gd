@@ -21,6 +21,7 @@ const BANNER_TIME := 1.6
 const VIGNETTE_TIME := 0.45
 const GAME_OVER_DELAY := 0.7     # 死亡後幾秒顯示結算
 const HINT_MARGIN := 16.0         # 開背包時新手提示和屬性面板、背包之間留的空隙
+const HINT_BOTTOM := 150.0        # 新手提示的下緣離畫面底部多少
 const BOSS_NAME := "亡骸騎士"     # darkFantasy.js 的 names.boss
 # 介面程式碼裡寫死的中文字（橫幅、浮動文字、場上文字、連線面板、遊玩紀錄…；資料表以外的）：開場預熱用（v0.37.2）
 # check.gd 會掃 ui/ 的字串，缺字就列出來，加到這裡
@@ -262,7 +263,7 @@ func _init() -> void:
 	relic_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
 
 	# 下方中央、技能欄上面：新手提示（v0.31.0）
-	hints.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 150)
+	hints.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, int(HINT_BOTTOM))
 	hints.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	hints.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	root.add_child(hints)
@@ -280,6 +281,7 @@ func _init() -> void:
 	inventory_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	inventory_panel.visible = false
 	root.add_child(inventory_panel)
+	root.add_child(inventory_panel.feet_panel)   # 腳邊框：浮在背包左邊，位置由背包每幀算
 	inventory_panel.merge_choice.connect(forge_panel.open)
 	root.add_child(forge_panel)
 
@@ -377,17 +379,17 @@ func _ready() -> void:
 	GameEvents.event_emitted.connect(_on_event)
 
 
-# 新手提示放在下方中央；開著背包時改放在屬性面板與背包中間的空位，太長就換行（不被背包蓋住）
+# 新手提示放在下方中央；開著背包時改放在屬性面板與背包（含左邊的腳邊框）中間的空位，太長就換行（不被蓋住）
 func _place_hints() -> void:
 	var area := hints.get_parent_control().size
 	var left := 0.0
 	var right := area.x
 	if inventory_panel.visible:
-		right = inventory_panel.position.x - HINT_MARGIN
+		right = minf(inventory_panel.position.x, inventory_panel.feet_panel.position.x) - HINT_MARGIN
 		if _stats_panel.visible:
 			left = _stats_panel.position.x + _stats_panel.size.x + HINT_MARGIN
 	hints.set_max_width(right - left)
-	hints.position.x = (left + right - hints.size.x) / 2.0
+	hints.position = Vector2((left + right - hints.size.x) / 2.0, area.y - HINT_BOTTOM - hints.size.y)   # 換行會改變高度：下緣固定、往上長
 
 
 func toggle_stats_panel() -> void:

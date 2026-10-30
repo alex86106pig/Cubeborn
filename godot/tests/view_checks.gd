@@ -2016,11 +2016,12 @@ static func check_inventory_panel() -> String:
 	var room := _menu_room()
 	var stats_size: Vector2 = await _settled_min_size(hud._stats_panel)
 	var panel_size: Vector2 = await _settled_min_size(panel)
-	var need := Vector2(16 + stats_size.x + panel_size.x + 24, maxf(stats_size.y, panel_size.y))   # 兩邊離畫面邊緣 16 / 24（hud.gd）
-	_note("背包 + 屬性面板 %.0f×%.0f（介面最大檔時可用 %.0f×%.0f）" % [need.x, need.y, room.x, room.y])
+	# 兩邊離畫面邊緣 16 / 24（hud.gd）；腳邊框浮在屬性面板與背包中間（再空 16）
+	var need := Vector2(16 + stats_size.x + 16 + InventoryPanel.FEET_W + InventoryPanel.FEET_GAP + panel_size.x + 24, maxf(stats_size.y, panel_size.y))
+	_note("背包 + 腳邊框 + 屬性面板 %.0f×%.0f（介面最大檔時可用 %.0f×%.0f）" % [need.x, need.y, room.x, room.y])
 	var err := ""
 	if need.x > room.x or need.y > room.y:
-		err = "背包 + 屬性面板 %.0f×%.0f，超出介面最大檔時的 %.0f×%.0f" % [need.x, need.y, room.x, room.y]
+		err = "背包 + 腳邊框 + 屬性面板 %.0f×%.0f，超出介面最大檔時的 %.0f×%.0f" % [need.x, need.y, room.x, room.y]
 	var ops: Array = []
 	panel.op_requested.connect(func(op: Array) -> void: ops.append(op))
 	var stone := w.drop_item(&"whetstone", p.pos + Vector2(1.0, 0))
@@ -2214,8 +2215,8 @@ static func check_forge_panel() -> String:
 		var worst: Array[StringName] = [branches[0], long_ids[0], long_ids[1], long_ids[2]]
 		var info := UiKit.item_info(&"staff", {"uid": &"wi", "base": &"staff", "rarity": &"orange", "affixes": worst})
 		var font: Font = inv.get_theme_default_font()
-		var body_h := font.get_multiline_string_size("\n".join(info.lines), HORIZONTAL_ALIGNMENT_LEFT, inv.size.x - InventoryPanel.PAD * 2, 14).y
-		var room_h := InventoryPanel.INFO_H - 26 - 22 + 14   # 標題在 26、內文從 +22 的基線開始（_draw_info）
+		var body_h := font.get_multiline_string_size("\n".join(info.lines), HORIZONTAL_ALIGNMENT_LEFT, inv.size.x - InventoryPanel.PAD * 2, InventoryPanel.INFO_FONT).y
+		var room_h := InventoryPanel.INFO_H - InventoryPanel.INFO_TITLE_Y - InventoryPanel.INFO_BODY_DY + InventoryPanel.INFO_FONT   # 內文從標題下 INFO_BODY_DY 的基線開始（_draw_info）
 		_note("說明欄：最長的橘色武器 %.0f px（可用 %.0f）" % [body_h, room_h])
 		if body_h > room_h:
 			err = "最長的橘色武器說明 %.0f px 超出說明欄 %.0f px" % [body_h, room_h]
@@ -2288,6 +2289,7 @@ static func check_hint_beside_bag() -> String:
 	hud.inventory_panel.visible = true
 	hints.show_hint(longest)
 	await _settled_min_size(hud.inventory_panel)
+	hud.inventory_panel._process(DT)   # 擺好腳邊框
 	hud._place_hints()
 	await _settled_min_size(hints)
 	hud._place_hints()
@@ -2295,11 +2297,15 @@ static func check_hint_beside_bag() -> String:
 	var r: Rect2 = hints.get_rect()
 	var bag: Rect2 = hud.inventory_panel.get_rect()
 	var stats: Rect2 = hud._stats_panel.get_rect()
-	_note("開背包時的新手提示 %.0f×%.0f（%.0f ~ %.0f；屬性面板到 %.0f、背包從 %.0f）" % [r.size.x, r.size.y, r.position.x, r.end.x, stats.end.x, bag.position.x])
+	var feet: Rect2 = hud.inventory_panel.feet_panel.get_rect()
+	_note("開背包時的新手提示 %.0f×%.0f（%.0f ~ %.0f；屬性面板到 %.0f、腳邊框從 %.0f、背包從 %.0f）" % [r.size.x, r.size.y, r.position.x, r.end.x, stats.end.x, feet.position.x, bag.position.x])
 	hud.queue_free()
 	cam.queue_free()
-	if r.position.x < stats.end.x or r.end.x > bag.position.x:
-		return "開背包時新手提示（%s）應在屬性面板與背包中間：提示 %s、屬性 %s、背包 %s" % [longest, r, stats, bag]
+	var screen: Vector2 = hints.get_parent_control().size
+	if r.position.y < 0.0 or r.end.y > screen.y:
+		return "開背包時新手提示（%s）換行後超出畫面：提示 %s、畫面 %s" % [longest, r, screen]
+	if r.position.x < stats.end.x or r.end.x > bag.position.x or r.intersects(feet):
+		return "開背包時新手提示（%s）應在屬性面板與背包中間、不蓋到腳邊框：提示 %s、屬性 %s、腳邊框 %s、背包 %s" % [longest, r, stats, feet, bag]
 	return ""
 
 
@@ -2486,6 +2492,85 @@ static func check_inventory_click() -> String:
 			if panel._kind_of(id) != kinds[id]:
 				err = "%s 的畫法種類應是 %s，實際 %s" % [id, kinds[id], panel._kind_of(id)]
 				break
+	hud.queue_free()
+	cam.queue_free()
+	return err
+
+
+# 背包版面：羈絆欄在主手 / 副手右邊並排、只列收集到的（沒有就不列）、背包在兩者下面；主手拿雙手武器時副手標成不能用；
+# 腳邊框浮在背包左邊（下緣對齊、不重疊），在腳邊框上點一下拿起、再點背包的格子 = 撿起放在那一格
+static func check_inventory_layout() -> String:
+	var w := _new_world(5)
+	var cam := _test_camera()
+	var hud: Variant = load("res://ui/hud.tscn").instantiate()
+	hud.setup(w, cam)
+	_scene_root().add_child(hud)
+	var p := _player(w)
+	var panel: InventoryPanel = hud.inventory_panel
+	panel.visible = true
+	await _settled_min_size(panel)
+	panel._process(DT)
+	var ops: Array = []
+	panel.op_requested.connect(func(op: Array) -> void: ops.append(op))
+	var err := ""
+	if not panel._shown_bonds(p).is_empty():
+		err = "開局沒有羈絆道具，羈絆欄應該是空的，實際 %s" % [panel._shown_bonds(p)]
+	if err == "":
+		p.loadout.add_item(p, &"whetstone", {}, 0, Loadout.MAIN)
+		var want: Array[StringName] = []
+		for bond: StringName in BondDefs.BONDS:
+			if p.loadout.bond_counts.get(bond, 0) > 0:
+				want.append(bond)
+		if want.is_empty() or panel._shown_bonds(p) != want:
+			err = "鑲上磨刀石後羈絆欄應只列件數 > 0 的 %s，實際 %s" % [want, panel._shown_bonds(p)]
+	if err == "":
+		var hands_right: float = panel._slot_rect(Loadout.OFF).end.x
+		var bond_r: Rect2 = panel._bond_rect(0)
+		var grid_bottom: float = panel._wgrid_origin(p, Loadout.MAIN).y + panel._grid_rows(p) * InventoryPanel.WCELL
+		if bond_r.position.x < hands_right or absf(bond_r.position.y - panel._slot_rect(Loadout.MAIN).position.y) > 0.5:
+			err = "羈絆欄應在副手右邊、和名稱框同高：羈絆 %s、副手到 %.0f" % [bond_r, hands_right]
+		elif panel._grid_origin().y < maxf(grid_bottom, bond_r.end.y):
+			err = "背包應在武器格子與羈絆欄下面：背包從 %.0f、武器格子到 %.0f、羈絆到 %.0f" % [panel._grid_origin().y, grid_bottom, bond_r.end.y]
+		elif bond_r.end.x > panel.size.x - InventoryPanel.PAD + 0.5:
+			err = "羈絆欄超出背包右邊：%s（背包寬 %.0f）" % [bond_r, panel.size.x]
+	if err == "" and panel._offhand_blocked(p):
+		err = "拿長劍時副手不應標成不能用"
+	if err == "":
+		p.equip_weapon(&"staff")
+		if not panel._offhand_blocked(p):
+			err = "主手拿雙手的法杖時副手應標成不能用"
+		p.equip_weapon(&"longsword")
+	if err == "":
+		var stone := w.drop_item(&"whetstone", p.pos + Vector2(1.0, 0))
+		panel._process(DT)
+		var feet: Rect2 = panel.feet_panel.get_global_rect()
+		var bag: Rect2 = panel.get_global_rect()
+		_note("腳邊框 %s、背包 %s" % [feet, bag])
+		if not panel.feet_panel.visible or feet.intersects(bag) or feet.end.x > bag.position.x or absf(feet.end.y - bag.end.y) > 0.5:
+			err = "腳邊框應浮在背包左邊、下緣對齊、不重疊：腳邊框 %s（顯示 %s）、背包 %s" % [feet, panel.feet_panel.visible, bag]
+		else:
+			var row := panel._feet.find(stone)
+			var local: Vector2 = panel._feet_row_local(row).get_center()
+			for pressed: bool in [true, false]:
+				var ev := InputEventMouseButton.new()
+				ev.button_index = MOUSE_BUTTON_LEFT
+				ev.pressed = pressed
+				ev.position = local
+				panel.feet_panel._gui_input(ev)
+			if row < 0 or not panel._held or panel._drag.get("pickup_id", 0) != stone.id:
+				err = "在腳邊框上點一下應拿起地上的磨刀石：手上 %s" % [panel._drag]
+			else:
+				var cell := Vector2i(7, 5)
+				var press := InputEventMouseButton.new()
+				press.button_index = MOUSE_BUTTON_LEFT
+				press.pressed = true
+				press.position = panel._grid_origin() + (Vector2(cell) + Vector2(0.5, 0.5)) * InventoryPanel.CELL
+				panel._gui_input(press)
+				if ops != [[InputCmd.OP_PICKUP, stone.id, cell.x, cell.y, 0]]:
+					err = "拿著腳邊的磨刀石點背包 (7, 5) 應送出 OP_PICKUP，實際 %s" % [ops]
+	panel.visible = false
+	if err == "" and panel.feet_panel.visible:
+		err = "背包關掉時腳邊框也要關掉"
 	hud.queue_free()
 	cam.queue_free()
 	return err
