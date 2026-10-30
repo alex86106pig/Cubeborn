@@ -15,6 +15,7 @@ var shake := 0.0
 var blockable := true           # 有方向的投射物預設能被格擋（B5）；爆炸一律不能
 var pierce := false            # 穿透（F5 長弓蓄力箭）：打中不消失，同一隻只打一次
 var proc := false              # 道具效果射出的（G4 飛刀、斬波）：不爆擊、不再觸發道具
+var no_status := false         # 打中不疊燃燒 / 冰冷（冰霜羈絆的冰錐，BondEffects）
 var homing := 0.0              # 追蹤（G6 鬼火）：每秒最多轉幾弧度、轉向 PROCS.wisp.seek_range 內最近的怪；0 = 直線
 var _pierced := {}
 var damage_type := &"phys"     # StatDefs.DAMAGE_TYPES：決定看目標的護甲與哪一種抗性
@@ -53,6 +54,7 @@ func _init(p_world: World, p: Dictionary) -> void:
 	damage_type = p.get("damage_type", &"phys")
 	pierce = p.get("pierce", false)
 	proc = p.get("proc", false)
+	no_status = p.get("no_status", false)
 	homing = p.get("homing", 0.0)
 	start_altitude = p.get("altitude", owner.height + Config.HEIGHT.bolt_altitude)
 	settle_altitude = p.get("settle_altitude", 0.0)
@@ -141,7 +143,7 @@ func _hit_once(target: Entity) -> bool:
 	return Combat.apply_damage(world, _source(), target, {
 		"damage": damage, "knockback": knockback_force, "origin": pos - direction,
 		"hit_stop": hit_stop, "shake": shake, "band": band(), "blockable": blockable, "color": color,
-		"no_stagger": no_stagger, "damage_type": damage_type, "projectile": true, "proc": proc,
+		"no_stagger": no_stagger, "damage_type": damage_type, "projectile": true, "proc": proc, "no_status": no_status,
 	})
 
 

@@ -44,16 +44,33 @@ var buried_timer := 0.0              # 被埋進土裡（F9）：剩餘秒數，
 var poison_timer := 0.0              # 中毒剩餘秒數
 var poison_tick_damage := 0.0        # 每次扣的傷害
 var poison_source_id := 0            # 下毒的玩家（傷害與擊殺算他的）
-var burn_timer := 0.0                # 燃燒（F8 火把）剩餘秒數；每 BURN_TICK 秒扣 burn_tick_damage
+var burn_timer := 0.0                # 燃燒（F8 火把）剩餘秒數；每 BURN_TICK 秒扣 burn_tick_damage（= 層數 × 每層每秒 × BURN_TICK）
 var burn_tick_damage := 0.0
+var burn_stacks := 0                 # 燃燒層數（火焰羈絆第 1 階起才會超過 1）
+var burn_stack_dps := 0.0            # 每層每秒的傷害
 var burn_source_id := 0
 var _burn_tick := 0.0
 var burn_spread := false             # 會擴散的燃燒（G3 永恆之焰）
 var slow_timer := 0.0                # 被停滯懷錶減速（G4）剩餘秒數：移速（屬性來源 &"slow"）與狀態機時間都乘 slow_mul
 var slow_mul := 1.0
+var chill_stacks := 0                # 冰冷層數（冰霜羈絆）：每層減速 chill_slow_per，移速與狀態機時間都乘 chill_mul
+var chill_timer := 0.0               # 沒再疊就在這麼久後全部消掉
+var chill_slow_per := 0.0
+var chill_mul := 1.0
+var freeze_source_id := 0            # 冰霜羈絆凍住的：凍住它的玩家（第 3 階凍結中被殺沒有死亡效果）
+var poise := 0.0                     # 失衡值（物理羈絆第 2 階）：累積到最大生命的 poise_ratio 就失衡
+var poise_timer := 0.0               # 這麼久沒再累積就歸零
+var stagger_timer := 0.0             # 失衡剩餘秒數：不能動、不出招，受到的傷害變多（BondEffects.damage_mul）
+var ram_timer := 0.0                 # 物理羈絆第 3 階：被擊退的這段時間撞到別的怪，兩隻各受 ram_damage
+var ram_damage := 0.0
+var ram_source_id := 0
+var no_death_effect := false         # 死亡爆炸詞條、膨脹屍死後爆炸不發動（冰霜羈絆第 3 階：凍結中被殺）
 var _spread_timer := 0.0
 const BURN_TICK := 0.5
 const BURN_COLOR := Color("ff8a30")
+const CHILL_COLOR := Color("8fd8ff")
+const STAGGER_COLOR := Color("ffe08a")
+const CHILL_MIN_MUL := 0.1          # 冰冷再多層，移速與動作也不會低於原本的 10%
 var _poison_tick := 0.0
 
 
@@ -224,15 +241,18 @@ func update(dt: float) -> void:
 	_update_poison(dt)
 	_update_burn(dt)
 	_update_slow(dt)
-	if (frozen_timer > 0.0 or buried_timer > 0.0 or grabbed_by != 0) and not is_dead:
+	_update_chill(dt)
+	_update_poise(dt)
+	if (frozen_timer > 0.0 or stagger_timer > 0.0 or buried_timer > 0.0 or grabbed_by != 0) and not is_dead:
 		frozen_timer = maxf(0.0, frozen_timer - dt)
+		stagger_timer = maxf(0.0, stagger_timer - dt)
 		buried_timer = maxf(0.0, buried_timer - dt)
-		velocity = Vector2.ZERO   # 冰凍 / 被埋 / 被舉著：狀態機停住（出招到一半也停），結束後接著做
+		velocity = Vector2.ZERO   # 冰凍 / 失衡 / 被埋 / 被舉著：狀態機停住（出招到一半也停），結束後接著做
 		_update_anim()
 		return
 	_nav_timer -= dt
 	_update_affixes(dt)
-	fsm.update(dt * action_speed * slow_mul)
+	fsm.update(dt * action_speed * slow_mul * chill_mul)
 	_update_jump(dt)
 	_update_anim()
 
@@ -252,21 +272,37 @@ func apply_poison(source_id: int, total: float) -> void:
 	world.emit_event("fx:status", {"pos": pos, "height": ground_height, "color": cfg.color})
 
 
-# 燃燒（F8 火把）：每秒 per_sec、持續 duration 秒；再點燃重新計時、每次扣的取較高的；持續傷害不算命中（不觸發道具）
+# 燃燒（F8 火把）：點燃 = 1 層，每秒 per_sec、持續 duration 秒；持續傷害不算命中（不觸發道具）
 # spread（G3 永恆之焰）：燒著的時候每 spread_interval 秒把剩下的燃燒傳給 spread_range 內一隻沒在燒的怪（傳過去的也會擴散）
 func apply_burn(source_id: int, per_sec: float, duration: float, spread := false) -> void:
+	add_burn(source_id, per_sec, duration, 1, 1, spread)
+
+
+# 加 stacks 層燃燒：最多到 max_stacks（施加的人能疊到幾層，火焰羈絆；已經比較多就不減少）；
+# 再點燃重新計時（取較長的）、每層的傷害取較高的
+func add_burn(source_id: int, per_stack_dps: float, duration: float, stacks: int, max_stacks: int, spread := false) -> void:
 	if is_dead:
 		return
 	if burn_timer <= 0.0:
 		_burn_tick = BURN_TICK
-		burn_tick_damage = 0.0
+		burn_stacks = 0
+		burn_stack_dps = 0.0
 		burn_spread = false
 		_spread_timer = ItemDefs.PROCS.ignite.spread_interval
 	burn_spread = burn_spread or spread
 	burn_timer = maxf(burn_timer, duration)
-	burn_tick_damage = maxf(burn_tick_damage, per_sec * BURN_TICK)
+	burn_stack_dps = maxf(burn_stack_dps, per_stack_dps)
+	burn_stacks = mini(burn_stacks + stacks, maxi(max_stacks, burn_stacks))
+	burn_tick_damage = burn_stack_dps * burn_stacks * BURN_TICK
 	burn_source_id = source_id
 	world.emit_event("fx:status", {"pos": pos, "height": ground_height, "color": BURN_COLOR})
+
+
+func clear_burn() -> void:
+	burn_timer = 0.0
+	burn_stacks = 0
+	burn_stack_dps = 0.0
+	burn_tick_damage = 0.0
 
 
 func _update_burn(dt: float) -> void:
@@ -286,9 +322,10 @@ func _update_burn(dt: float) -> void:
 	if src != null:
 		var hit := ItemEffects.proc_hit(burn_tick_damage, self, BURN_COLOR)
 		hit["damage_type"] = &"fire"
+		hit["no_status"] = true   # 燒的那一下不再疊燃燒
 		Combat.apply_damage(world, src, self, hit)
 	if burn_timer <= 0.0:
-		burn_tick_damage = 0.0
+		clear_burn()
 
 
 # 減速（G4 停滯懷錶）：一般怪 × (1 − slow)，Boss × PROCS.slow_time.boss_mul；再被減速取較長的時間、較慢的倍率
@@ -325,7 +362,89 @@ func _spread_burn() -> void:
 			best_d = d
 			best = en
 	if best != null:
-		best.apply_burn(burn_source_id, burn_tick_damage / BURN_TICK, burn_timer, true)
+		best.add_burn(burn_source_id, burn_stack_dps, burn_timer, burn_stacks, burn_stacks, true)
+
+
+# 冰冷（冰霜羈絆）：加 stacks 層，最多到 max_stacks（已經比較多就不減少）；每層減速 slow_per（取較高的），重新計時
+# 回傳加完的層數
+func add_chill(stacks: int, max_stacks: int, slow_per: float, duration: float) -> int:
+	if is_dead:
+		return 0
+	chill_stacks = mini(chill_stacks + stacks, maxi(max_stacks, chill_stacks))
+	chill_slow_per = maxf(chill_slow_per, slow_per)
+	chill_timer = maxf(chill_timer, duration)
+	_set_chill_mul()
+	world.emit_event("fx:status", {"pos": pos, "height": ground_height, "color": CHILL_COLOR})
+	return chill_stacks
+
+
+func clear_chill() -> void:
+	chill_stacks = 0
+	chill_timer = 0.0
+	chill_slow_per = 0.0
+	_set_chill_mul()
+
+
+func _set_chill_mul() -> void:
+	chill_mul = maxf(CHILL_MIN_MUL, 1.0 - chill_stacks * chill_slow_per)
+	if chill_stacks > 0:
+		set_stat_source(&"chill", [[&"move_speed", Stats.MUL, chill_mul]])
+	else:
+		remove_stat_source(&"chill")
+
+
+func _update_chill(dt: float) -> void:
+	if chill_timer <= 0.0:
+		return
+	chill_timer -= dt
+	if chill_timer <= 0.0:
+		clear_chill()
+
+
+# 物理羈絆第 2 階：累積失衡值（實際扣的血），到門檻就失衡 seconds 秒並歸零；回傳這一下有沒有讓它失衡
+func add_poise(amount: float, ratio: float, decay: float, seconds: float) -> bool:
+	if is_dead or stagger_timer > 0.0:
+		return false
+	poise += amount
+	poise_timer = decay
+	if poise < max_hp * ratio:
+		return false
+	poise = 0.0
+	stagger_timer = seconds
+	velocity = Vector2.ZERO
+	world.emit_event("fx:status", {"pos": pos, "height": ground_height, "color": STAGGER_COLOR})
+	return true
+
+
+func _update_poise(dt: float) -> void:
+	if poise_timer > 0.0:
+		poise_timer -= dt
+		if poise_timer <= 0.0:
+			poise = 0.0
+	if ram_timer > 0.0:
+		ram_timer -= dt
+		if not is_dead:
+			_check_ram()
+
+
+# 被擊退中撞到同隊的另一隻怪：兩隻各受 ram_damage 的物理傷害（算打的玩家），一次擊退只撞一次
+func _check_ram() -> void:
+	var src: Entity = world.entities.get(ram_source_id)
+	if src == null:
+		ram_timer = 0.0
+		return
+	for e in world.enemies:
+		if e == self or e.is_dead or e.team != team:
+			continue
+		var r := radius + e.radius + 0.05
+		if e.pos.distance_squared_to(pos) > r * r:
+			continue
+		ram_timer = 0.0
+		for t: Entity in [self, e]:
+			var hit := ItemEffects.proc_hit(ram_damage, t, Color.WHITE)
+			hit["no_status"] = true
+			Combat.apply_damage(world, src, t, hit)
+		return
 
 
 # 埋進土裡（F9 鐵鏟）：seconds 秒不能動、不出招（Boss 不會被舉起，所以也不會被埋）
@@ -483,6 +602,12 @@ func _update_anim() -> void:
 		anim["poisoned"] = true
 	if burn_timer > 0.0:
 		anim["burning"] = true
+		if burn_stacks > 1:
+			anim["burn_stacks"] = burn_stacks
+	if chill_stacks > 0:
+		anim["chill"] = chill_stacks
+	if stagger_timer > 0.0:
+		anim["staggered"] = true
 	if buried_timer > 0.0:
 		anim["buried"] = true
 	if grabbed_by != 0:
@@ -504,6 +629,7 @@ func _on_damaged(_amount: float, _source_id: int) -> void:
 
 func _on_died(source_id: int) -> void:
 	action_speed = 1.0   # 爆炸延遲、屍體時間不受狂暴影響
+	BondEffects.on_enemy_died(world, self)   # 燃燒傳給旁邊的怪、凍結中被殺沒有死亡效果（羈絆）
 	fsm.change(&"dead")
 	world.on_enemy_died(self, source_id)
 	if ghost_of != 0:
@@ -601,7 +727,7 @@ class Dead:
 		e.velocity = Vector2.ZERO
 
 	func update(e: Enemy, _dt: float, fsm: StateMachine) -> void:
-		if e.has_affix(&"volatile") and not e._exploded and not e.world.is_over and fsm.time >= e.affix(&"volatile").delay:
+		if e.has_affix(&"volatile") and not e._exploded and not e.no_death_effect and not e.world.is_over and fsm.time >= e.affix(&"volatile").delay:
 			e._explode()
 		if fsm.time >= e.def.corpse_time:
 			e.remove()

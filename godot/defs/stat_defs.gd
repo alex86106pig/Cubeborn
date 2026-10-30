@@ -62,6 +62,14 @@ const STATS := {
 	&"pickup_radius": {"name": "撿取範圍", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
 	&"chest_price": {"name": "祭壇 / 石棺價格", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
 	&"vision": {"name": "視野", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
+	# 羈絆道具（Build 改版第 5 步）：附加傷害在 Combat（普攻命中時多打一下該屬性，是這一下傷害的比例）；燃燒 / 冰冷在 Enemy；鬼火在 OrbitWisp
+	&"added_fire": {"name": "附加火焰傷害", "base": 0.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
+	&"added_cold": {"name": "附加冰霜傷害", "base": 0.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
+	&"burn_damage": {"name": "燃燒傷害", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
+	&"chill_slow": {"name": "冰冷每層減速", "base": 0.0, "min": 0.0, "max": 1.0, "format": &"pct", "in_use": true},   # 加在羈絆的每層減速上
+	&"chilled_damage_taken": {"name": "受到冰冷敵人的傷害", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
+	&"wisp_damage": {"name": "鬼火傷害", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
+	&"wisp_life_on_hit": {"name": "鬼火命中回復", "base": 0.0, "min": 0.0, "max": INF, "format": &"float", "in_use": true},
 }
 
 

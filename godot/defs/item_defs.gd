@@ -93,11 +93,19 @@ const ACTIONS := {
 	&"slow_time": {"name": "周圍時間變慢", "params": ["duration", "slow"]},
 	&"cheat_death": {"name": "留 1 血並無敵", "params": ["invuln"]},
 	&"revive": {"name": "復活", "params": []},
+	# 羈絆道具（Build 改版第 5 步）：燃燒 / 冰冷的層數照 BondEffects（沒有那個羈絆最多 1 層）
+	&"ignite_area": {"name": "周圍的怪疊燃燒", "params": ["radius", "stacks"]},
+	&"fire_pool": {"name": "留下殘火", "params": ["radius", "duration", "burn_per_sec"]},
+	&"chill": {"name": "目標疊冰冷", "params": ["stacks"]},
+	&"frost_nova": {"name": "周圍的怪疊冰冷（以自己為中心）", "params": ["radius", "stacks"]},
+	&"wisp_rally": {"name": "鬼火衝向最近的怪", "params": []},
 }
 
 const ABILITIES := {
 	&"double_jump": {"name": "二段跳", "params": []},
 	&"bone_shield": {"name": "自動回充的護盾", "params": ["ratio", "recharge_delay"]},
+	&"wisp_orb": {"name": "繞著自己轉的鬼火", "params": ["count", "damage_type"]},   # BondEffects.wisp_plan
+	&"wisp_frenzy": {"name": "鬼火擊殺後鬼火傷害變高", "params": []},                 # 數值在 PROCS.wisp_frenzy
 }
 
 # 已接上的條件、觸發 + 動作（v0.33.0 第一批 8 個道具、G 第二批，sim/item_effects.gd）
@@ -105,8 +113,9 @@ const IMPLEMENTED_CONDITIONS: Array[StringName] = [&"target_full_hp", &"hp_below
 const IMPLEMENTED_TRIGGERS: Array[String] = ["kill|explode", "kill|heal_max_hp", "hit|chain_lightning", "hit|poison", "hit|freeze",
 	"hurt_melee|reflect", "hurt|explode", "projectile_hit|explode", "hit|ignite",
 	"attack|throw_knife", "attack|slash_wave", "interval|lightning_strike", "roll|slow_time",
-	"lethal|cheat_death", "death|revive", "kill|wisp", "kill|summon_skeleton"]
-const IMPLEMENTED_ABILITIES: Array[StringName] = [&"double_jump", &"bone_shield"]   # 二段跳在 Player.air_jumps，護盾在 ItemEffects.absorb
+	"lethal|cheat_death", "death|revive", "kill|wisp", "kill|summon_skeleton",
+	"hit|ignite_area", "hit|fire_pool", "hit|chill", "interval|frost_nova", "roll|frost_nova", "kill|wisp_rally"]
+const IMPLEMENTED_ABILITIES: Array[StringName] = [&"double_jump", &"bone_shield", &"wisp_orb", &"wisp_frenzy"]   # 二段跳在 Player.air_jumps，護盾在 ItemEffects.absorb
 
 # 觸發動作的數值（v0.33.0，說明沒寫到的由 Claude 暫定，試玩後再調）；damage_ratio 都是乘「觸發的那一下」的傷害
 # 同一種動作有多個道具時機率相加（最多 100%）、沒有機率的（回血）效果相加
@@ -129,6 +138,7 @@ const PROCS := {
 	# 鬼火燈籠：擊殺那一下的 80%；速度 8、飛 4 秒、每秒最多轉 4 弧度追 10 單位內最近的怪；每人同時最多 6 顆
 	&"wisp": {"damage_ratio": 0.8, "speed": 8.0, "life": 4.0, "turn_rate": 4.0, "seek_range": 10.0, "max": 6, "radius": 0.22, "color": Color("7dffb0")},
 	# 亡者大軍的骷髏僕從數值在 EnemyDefs.ENEMIES.minion
+	&"wisp_frenzy": {"duration": 5.0, "damage_mul": 1.5},   # 噬魂燈：鬼火擊殺後 5 秒，鬼火傷害 ×1.5
 }
 
 # kind：&"item" 道具 / &"weapon" 武器（weapon 對應 WeaponDefs，數值在那邊，這裡只放背包用的欄位）
@@ -255,6 +265,44 @@ const ITEMS := {
 		"desc": "發動時點燃目標，燃燒會擴散到附近敵人", "effects": [{"on": &"hit", "do": &"ignite", "spread": true}]},
 	&"stasis_watch": {"kind": &"item", "name": "停滯懷錶", "rarity": &"orange", "power": 10.0, "shape": &"t4", "bonds": [&"cold"],
 		"desc": "翻滾時周圍時間變慢 2 秒（敵人慢 70%）", "effects": [{"on": &"roll", "do": &"slow_time", "duration": 2.0, "slow": 0.7}]},
+
+	# ---- 羈絆道具（Build 改版第 5 步，效果 Claude 暫定）：取代移出掉落池的 18 個（那些留給之後的閃電、腐毒、閃避等羈絆）----
+	&"ember_core": {"kind": &"item", "name": "炭心", "rarity": &"white", "power": 1.5, "shape": &"dot", "bonds": [&"fire"],
+		"desc": "普攻附加 10% 火焰傷害", "effects": [{"stat": &"added_fire", "op": Stats.ADD, "value": 0.1}]},
+	&"lamp_oil": {"kind": &"item", "name": "燈油", "rarity": &"white", "power": 1.2, "shape": &"dot", "bonds": [&"fire"],
+		"desc": "燃燒傷害 +25%", "effects": [{"stat": &"burn_damage", "op": Stats.PCT, "value": 0.25}]},
+	&"frost_crystal": {"kind": &"item", "name": "霜晶", "rarity": &"white", "power": 1.5, "shape": &"dot", "bonds": [&"cold"],
+		"desc": "普攻附加 10% 冰霜傷害", "effects": [{"stat": &"added_cold", "op": Stats.ADD, "value": 0.1}]},
+	&"cold_iron_charm": {"kind": &"item", "name": "寒鐵護符", "rarity": &"white", "power": 1.2, "shape": &"dot", "bonds": [&"cold"],
+		"desc": "冰冷的怪對你造成的傷害 −15%", "effects": [{"stat": &"chilled_damage_taken", "op": Stats.MUL, "value": 0.85}]},
+	&"white_wisp_lamp": {"kind": &"item", "name": "白鬼火燈", "rarity": &"white", "power": 1.5, "shape": &"dot", "bonds": [&"wisp"],
+		"desc": "帶 1 顆秘術鬼火繞著你轉", "effects": [{"ability": &"wisp_orb", "count": 1, "damage_type": &"arcane"}]},
+	&"wick": {"kind": &"item", "name": "燈芯", "rarity": &"white", "power": 1.0, "shape": &"dot", "bonds": [&"wisp"],
+		"desc": "鬼火傷害 +20%", "effects": [{"stat": &"wisp_damage", "op": Stats.PCT, "value": 0.2}]},
+	&"incense_burner": {"kind": &"item", "name": "焚香爐", "rarity": &"green", "power": 3.0, "shape": &"i2", "bonds": [&"fire"],
+		"desc": "發動時 25% 機率讓周圍 2 單位的怪各疊 1 層燃燒", "effects": [{"on": &"hit", "chance": 0.25, "do": &"ignite_area", "radius": 2.0, "stacks": 1}]},
+	&"oil_jar": {"kind": &"item", "name": "火油罐", "rarity": &"green", "power": 3.0, "shape": &"i2", "bonds": [&"fire"],
+		"desc": "發動時 20% 機率在目標腳下留 3 秒殘火，站在上面的怪每秒疊 1 層燃燒", "effects": [{"on": &"hit", "chance": 0.2, "do": &"fire_pool", "radius": 1.5, "duration": 3.0, "burn_per_sec": 1.0}]},
+	&"ice_coffin_nail": {"kind": &"item", "name": "冰棺釘", "rarity": &"green", "power": 3.0, "shape": &"i2", "bonds": [&"cold"],
+		"desc": "發動時目標冰冷 +2 層", "effects": [{"on": &"hit", "do": &"chill", "stacks": 2}]},
+	&"blue_wisp_lamp": {"kind": &"item", "name": "藍鬼火燈", "rarity": &"green", "power": 3.0, "shape": &"i2", "bonds": [&"wisp", &"cold"],
+		"desc": "帶 1 顆冰霜鬼火繞著你轉（也算冰霜）", "effects": [{"ability": &"wisp_orb", "count": 1, "damage_type": &"cold"}]},
+	&"red_wisp_lamp": {"kind": &"item", "name": "紅鬼火燈", "rarity": &"green", "power": 3.0, "shape": &"i2", "bonds": [&"wisp", &"fire"],
+		"desc": "帶 1 顆火焰鬼火繞著你轉（也算火焰）", "effects": [{"ability": &"wisp_orb", "count": 1, "damage_type": &"fire"}]},
+	&"frost_bell": {"kind": &"item", "name": "寒霜鈴", "rarity": &"blue", "power": 4.5, "shape": &"l3", "bonds": [&"cold"],
+		"desc": "每 5 秒讓周圍 4 單位的怪冰冷 +2 層", "effects": [{"on": &"interval", "period": 5.0, "do": &"frost_nova", "radius": 4.0, "stacks": 2}]},
+	&"winter_charm": {"kind": &"item", "name": "凜冬護符", "rarity": &"blue", "power": 4.0, "shape": &"i3", "bonds": [&"cold"],
+		"desc": "冰冷每層的減速再 +4%", "effects": [{"stat": &"chill_slow", "op": Stats.ADD, "value": 0.04}]},
+	&"frost_boots": {"kind": &"item", "name": "霜行靴", "rarity": &"blue", "power": 4.0, "shape": &"l3", "bonds": [&"cold"],
+		"desc": "翻滾時周圍 2 單位的怪冰冷 +1 層", "effects": [{"on": &"roll", "do": &"frost_nova", "radius": 2.0, "stacks": 1}]},
+	&"soul_banner": {"kind": &"item", "name": "招魂幡", "rarity": &"blue", "power": 4.0, "shape": &"i3", "bonds": [&"wisp"],
+		"desc": "擊殺時所有鬼火衝向最近的怪", "effects": [{"on": &"kill", "do": &"wisp_rally"}]},
+	&"wisp_jar": {"kind": &"item", "name": "鬼火罐", "rarity": &"blue", "power": 4.5, "shape": &"l3", "bonds": [&"wisp"],
+		"desc": "帶 2 顆秘術鬼火繞著你轉", "effects": [{"ability": &"wisp_orb", "count": 2, "damage_type": &"arcane"}]},
+	&"nether_lamp": {"kind": &"item", "name": "冥燈", "rarity": &"purple", "power": 6.0, "shape": &"t4", "bonds": [&"wisp"],
+		"desc": "鬼火打中怪時回復 1 生命", "effects": [{"stat": &"wisp_life_on_hit", "op": Stats.ADD, "value": 1.0}]},
+	&"soul_eater_lamp": {"kind": &"item", "name": "噬魂燈", "rarity": &"purple", "power": 7.0, "shape": &"o4", "bonds": [&"wisp"],
+		"desc": "鬼火擊殺時，5 秒內鬼火傷害 +50%", "effects": [{"ability": &"wisp_frenzy"}]},
 	# 隊友的屍體（D6，kind &"corpse"）：不是道具，寶箱不會開出；背包條目 uid 是 Player.corpse_uid(死者)
 	&"corpse": {"kind": &"corpse", "name": "隊友的屍體", "rarity": &"white", "shape": &"r6",
 		"desc": "帶到下一層，死者會變成冤魂；打倒冤魂就能復活", "effects": []},

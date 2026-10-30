@@ -304,6 +304,7 @@ func refresh_items(p: Player) -> void:
 		seen[it.id] = true
 		for bond: StringName in ItemDefs.ITEMS[it.id].get("bonds", []):
 			bond_counts[bond] = bond_counts.get(bond, 0) + 1
+	BondEffects.refresh(p)   # 羈絆的屬性加成、該有的鬼火
 
 
 # 把 from 武器上鑲的道具搬走（換下來的武器）：依序試 targets 裡武器的格子、背包；都放不下的留在原本的武器上

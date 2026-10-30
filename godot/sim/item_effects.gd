@@ -124,8 +124,9 @@ class Freeze extends Action:
 	func triggers() -> Array[StringName]:
 		return [&"hit"]
 
-	func run(_world: World, _p: Player, target: Entity, _damage: float, proc: Dictionary) -> void:
+	func run(_world: World, p: Player, target: Entity, _damage: float, proc: Dictionary) -> void:
 		(target as Enemy).apply_freeze(proc.effect.duration)
+		(target as Enemy).freeze_source_id = p.id   # 冰霜羈絆第 3 階：凍結中被殺沒有死亡效果
 
 
 # 以目標的位置為中心的爆炸：擊殺（火藥包，擊殺那一下的 damage_ratio）、投射物命中（G3 爆裂箭袋，以被打中的怪為中心）、
@@ -322,6 +323,70 @@ class HealMaxHp extends Action:
 			world.emit_event("entity:healed", {"target_id": p.id, "amount": healed})
 
 
+# ── 羈絆道具（Build 改版第 5 步）：層數照 BondEffects（沒有那個羈絆最多 1 層）──
+
+# 焚香爐：目標周圍 radius 內的怪（含目標）各疊 stacks 層燃燒
+class IgniteArea extends Action:
+	func triggers() -> Array[StringName]:
+		return [&"hit"]
+
+	func run(world: World, p: Player, target: Entity, _damage: float, proc: Dictionary) -> void:
+		for e in ItemEffects._enemies_near(world, p, target.pos, proc.effect.radius):
+			BondEffects.add_burn(world, p, e, proc.effect.stacks)
+
+
+# 火油罐：目標腳下留一攤殘火（GroundZones 的 burn_per_sec）
+class FirePool extends Action:
+	func triggers() -> Array[StringName]:
+		return [&"hit"]
+
+	func run(world: World, p: Player, target: Entity, _damage: float, proc: Dictionary) -> void:
+		GroundZones.add(world, {
+			"pos": target.pos, "radius": proc.effect.radius, "duration": proc.effect.duration, "owner_id": p.id,
+			"color": Enemy.BURN_COLOR, "visual": &"fire", "burn_per_sec": proc.effect.burn_per_sec,
+		})
+
+
+# 冰棺釘：目標疊 stacks 層冰冷
+class Chill extends Action:
+	func triggers() -> Array[StringName]:
+		return [&"hit"]
+
+	func run(world: World, p: Player, target: Entity, _damage: float, proc: Dictionary) -> void:
+		BondEffects.add_chill(world, p, target as Enemy, proc.effect.stacks)
+
+
+# 寒霜鈴（每隔幾秒）、霜行靴（翻滾時）：以自己為中心 radius 內的怪各疊 stacks 層冰冷
+class FrostNova extends Action:
+	func triggers() -> Array[StringName]:
+		return [&"interval", &"roll"]
+
+	func run(world: World, p: Player, _target: Entity, _damage: float, proc: Dictionary) -> void:
+		var near := ItemEffects._enemies_near(world, p, p.pos, proc.effect.radius)
+		if near.is_empty():
+			return
+		for e in near:
+			BondEffects.add_chill(world, p, e, proc.effect.stacks)
+		world.emit_event("fx:explosion", {"pos": p.pos, "height": p.ground_height, "radius": proc.effect.radius, "color": Enemy.CHILL_COLOR})
+
+
+# 招魂幡：所有鬼火衝向最近的怪
+class WispRally extends Action:
+	func triggers() -> Array[StringName]:
+		return [&"kill"]
+
+	func run(_world: World, p: Player, _target: Entity, _damage: float, _proc: Dictionary) -> void:
+		BondEffects.rally_wisps(p)
+
+
+static func _enemies_near(world: World, p: Player, at: Vector2, radius: float) -> Array[Enemy]:
+	var out: Array[Enemy] = []
+	for e in world.enemies:
+		if not e.is_dead and e.team != p.team and e.pos.distance_to(at) <= radius + e.radius:
+			out.append(e as Enemy)
+	return out
+
+
 static var CONDITIONS := {
 	&"target_full_hp": TargetFullHp.new(),
 	&"hp_below": HpBelow.new(),
@@ -347,6 +412,11 @@ static var ACTIONS := {
 	&"revive": Revive.new(),
 	&"wisp": Wisp.new(),
 	&"summon_skeleton": SummonSkeleton.new(),
+	&"ignite_area": IgniteArea.new(),
+	&"fire_pool": FirePool.new(),
+	&"chill": Chill.new(),
+	&"frost_nova": FrostNova.new(),
+	&"wisp_rally": WispRally.new(),
 }
 
 
@@ -633,3 +703,36 @@ static func on_kill(world: World, p: Player, target: Entity, damage: float) -> v
 static func proc_hit(damage: float, target: Entity, color: Color, knockback := 0.0, damage_type := &"phys") -> Dictionary:
 	return {"damage": damage, "knockback": knockback, "proc": true, "no_stagger": true, "blockable": false,
 		"band": Combat.body_band(target), "color": color, "damage_type": damage_type}
+
+
+# 附加火焰 / 冰霜傷害（炭心、霜晶）：玩家的一般攻擊打中後，多打一下 base（這一下扣護甲前、沒爆擊的傷害）× 比例的屬性傷害
+# 是道具效果的傷害（不爆擊、不觸發命中道具），但會疊燃燒 / 冰冷（羈絆）
+static func added_damage(world: World, p: Player, target: Entity, base: float) -> void:
+	for x: Array in ADDED_DAMAGE:
+		var ratio := p.stats.value(x[0])
+		if ratio > 0.0 and not target.is_dead:
+			Combat.apply_damage(world, p, target, proc_hit(base * ratio, target, StatDefs.DAMAGE_TYPES[x[1]].color, 0.0, x[1]))
+
+
+const ADDED_DAMAGE := [[&"added_fire", &"fire"], [&"added_cold", &"cold"]]
+
+
+# 鬼火打中怪（OrbitWisp）：冥燈回血；鬼火羈絆第 3 階也觸發攻擊部位的命中類道具，機率 × proc_chance_mul
+static func on_wisp_hit(world: World, p: Player, target: Entity, damage: float) -> void:
+	var heal := p.stats.value(&"wisp_life_on_hit")
+	if heal > 0.0:
+		var healed := p.heal(heal)
+		if healed >= 0.5:
+			world.emit_event("entity:healed", {"target_id": p.id, "amount": healed})
+	if BondEffects.tier(p, &"wisp") < 3 or target.is_dead:
+		return
+	var mul: float = BondDefs.BONDS.wisp.params.proc_chance_mul
+	for proc in procs_of(p, &"hit", "A"):
+		if proc.chance * mul >= 1.0 or world.rng.randf() < proc.chance * mul:
+			(ACTIONS[proc.do] as Action).run(world, p, target, damage, proc)
+
+
+# 鬼火打死怪：噬魂燈讓鬼火傷害變高一段時間
+static func on_wisp_kill(p: Player) -> void:
+	if not effects_of(p, "ability", &"wisp_frenzy").is_empty():
+		p.wisp_frenzy_timer = ItemDefs.PROCS.wisp_frenzy.duration

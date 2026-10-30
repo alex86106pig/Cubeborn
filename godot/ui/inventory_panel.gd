@@ -597,7 +597,7 @@ func _info_of(me: Player) -> Dictionary:
 	return bag_info
 
 
-# 滑鼠停在羈絆上：現在第幾階、已啟動的那一階與下一階的效果（效果第 5b 步才接上）
+# 滑鼠停在羈絆上：現在第幾階、已啟動的那一階與下一階的效果
 func _bond_info(me: Player, bond: StringName) -> Dictionary:
 	var def: Dictionary = BondDefs.BONDS[bond]
 	var count: int = me.loadout.bond_counts.get(bond, 0)
@@ -608,4 +608,4 @@ func _bond_info(me: Player, bond: StringName) -> Dictionary:
 	var next := BondDefs.next_threshold(bond, count)
 	if next > 0:
 		lines.append("下一階（%d 件）：%s" % [next, def.tiers[t]])
-	return {"title": "%s羈絆 %d 件（效果尚未實作）" % [def.name, count], "color": def.color, "lines": lines}
+	return {"title": "%s羈絆 %d 件" % [def.name, count], "color": def.color, "lines": lines}

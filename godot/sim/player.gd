@@ -57,6 +57,10 @@ var dodge_timer := 0.0                 # 翻滾無敵剩餘秒數
 var block_time := -1.0                 # 格擋開始後經過的秒數；< 0 = 沒有在格擋（weapon_behaviors 的 ShieldBlock）
 var parry_time := -1.0                 # 招架判定開始後經過的秒數；< 0 = 沒有在招架（v0.41.0）
 var pending_parry := false             # 本步招架成功，下一步開頭執行盾反
+var riposte_timer := 0.0               # 防禦羈絆第 2 階：招架成功後這段時間內的下一擊必爆擊、加傷（BondEffects.pre_hit 用掉）
+var wisps: Array[OrbitWisp] = []       # 鬼火羈絆：繞著自己轉的鬼火（權威端，BondEffects.sync_wisps）
+var wisp_plan: Array[StringName] = []  # 該有的鬼火（每顆的屬性；BondEffects.refresh 依道具與階數算）
+var wisp_frenzy_timer := 0.0           # 噬魂燈：鬼火擊殺後這段時間鬼火傷害變高
 var parry_timer := 0.0                 # 盾反動作剩餘秒數（畫面用）
 var is_interact_held := false          # F 按住（救援隊友）；剛按下那一步撿道具 / 開寶箱（D3）
 var view_tick := 0                     # 最近一筆輸入的畫面時間（InputCmd.view_tick；房主延遲補償用，v0.38.0）
@@ -159,6 +163,7 @@ func try_block(from: Vector2, hit: Dictionary) -> bool:
 	if perfect:
 		parry_time = -1.0
 		pending_parry = true
+		BondEffects.on_parry(world, self)   # 防禦羈絆
 	return true
 
 
@@ -664,6 +669,7 @@ func _tick_timers(dt: float) -> void:
 	parry_timer = maxf(0.0, parry_timer - dt)
 	_tick_roll_charges()
 	ItemEffects.update_player(self, dt)   # 低血、擊殺後的道具條件加成（v0.33.0）
+	BondEffects.update_player(self, dt)   # 招架後的計時、鬼火
 	for id: StringName in buffs.keys():
 		buffs[id].remaining -= dt
 		if buffs[id].remaining <= 0.0:

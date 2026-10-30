@@ -513,6 +513,7 @@ func _emit_player(p: Player, dt: float) -> void:
 func _emit_enemy(e: Enemy, dt: float) -> void:
 	var a := e.anim
 	var key := "%d" % e.id
+	_emit_bond_status(e, a, key, dt)
 	match a.get("state"):
 		&"spawn":
 			for i in _count(key, 0.4, dt):
@@ -558,6 +559,21 @@ func _emit_enemy(e: Enemy, dt: float) -> void:
 		&"summon":
 			for i in _count(key, 0.7, dt):
 				mote(_jitter(e, 1.5, e.height + _rng.randf_range(0.2, 1.0)), {"color": DarkFantasy.BOSS_BLOOD, "size": 0.15, "life": 0.5, "vy": 2.0})
+
+
+# 羈絆的狀態（Build 改版第 5 步）：失衡頭上轉星星、燃燒層數越多冒越多火、冰冷冒白霜
+func _emit_bond_status(e: Enemy, a: Dictionary, key: String, dt: float) -> void:
+	if a.get("staggered", false):
+		for i in _count(key + ":stagger", 0.25, dt):
+			mote(_jitter(e, 0.4, e.height + e.body_height + 0.2), {"color": STUN_STAR_COLOR, "size": 0.13, "life": 0.4, "vy": 0.4})
+	var stacks: int = a.get("burn_stacks", 0)
+	if stacks > 1:
+		for i in _count(key + ":burn", 0.08 * stacks, dt):
+			mote(_jitter(e, 0.45, e.height + _rng.randf_range(0.3, e.body_height)), {"color": Enemy.BURN_COLOR, "size": 0.13, "life": 0.35, "vy": 1.6})
+	var chill: int = a.get("chill", 0)
+	if chill > 0:
+		for i in _count(key + ":chill", 0.05 * chill, dt):
+			mote(_jitter(e, 0.45, e.height + _rng.randf_range(0.2, e.body_height)), {"color": Enemy.CHILL_COLOR, "size": 0.1, "life": 0.5, "vy": -0.3})
 
 
 # Boss 砸地：裂紋已經爬滿、快要爆開的那一圈，地上的碎石一直跳起來

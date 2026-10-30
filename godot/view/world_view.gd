@@ -24,6 +24,7 @@ const GHOST_TRANSPARENCY := 0.45
 const MINION_TINT := Color(0.55, 1.0, 0.6)   # 骷髏僕從（G6）的顏色
 const FROZEN_TINT := Color(0.35, 0.75, 1.8)   # 道具狀態（v0.33.0）：冰凍偏藍、中毒偏綠（乘在模型顏色上；場景偏暗，要染重一點才看得出來）
 const POISON_TINT := Color(0.4, 1.5, 0.3)
+const CHILL_TINT := Color(0.7, 0.95, 1.4)    # 冰冷（冰霜羈絆）：比冰凍淡的藍
 const SHADOW_MAX_DISTANCE := 70.0  # 陰影範圍（從相機算；相機距離 40，畫面最遠的地面約 60）
 const LOS_INTERVAL := 3           # 視野的牆擋判斷每隻每幾個 tick 重算一次（50 毫秒）
 const ENEMY_ANIM_STEP := 1.0 / 60.0 - 1e-4   # 敵人四肢動畫的最短間隔（略小於 1/60，60 FPS 時每幀都更新）
@@ -293,7 +294,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 			anim_usec += Time.get_ticks_usec() - ta
 			if node is SkinnedRig:
 				var a: Dictionary = (e as Enemy).anim
-				(node as SkinnedRig).set_status_tint(FROZEN_TINT if a.get("frozen", false) else (POISON_TINT if a.get("poisoned", false) else Color.WHITE))
+				(node as SkinnedRig).set_status_tint(status_tint(a))
 			if e is Player and not Fade.is_fading(node) and node.get_meta(&"xray_weapon", &"") != (e as Player).weapon_id:
 				# 換了武器：新的武器模型也要寫模板值，否則身體的剪影會畫在擋在身體前面的武器上
 				node.set_meta(&"xray_weapon", (e as Player).weapon_id)
@@ -1132,3 +1133,14 @@ func _mat(color: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
 	return m
+
+
+# 怪身上的狀態顏色：冰凍 > 中毒 > 冰冷（乘在模型顏色上）
+static func status_tint(a: Dictionary) -> Color:
+	if a.get("frozen", false):
+		return FROZEN_TINT
+	if a.get("poisoned", false):
+		return POISON_TINT
+	if a.get("chill", 0) > 0:
+		return CHILL_TINT
+	return Color.WHITE

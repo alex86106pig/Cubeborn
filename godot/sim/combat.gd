@@ -28,7 +28,8 @@ static func hostiles_of(world: World, team: StringName, source_id: int = 0) -> A
 #      band（高度範圍 Vector2(下緣, 上緣)；預設是攻擊者的身體往腳底下延伸 HEIGHT.reach_below，見 body_band）、
 #      max_air（選填：目標腳底離自己腳下地面超過這個高度就打不到）、no_stagger（選填：不讓目標進入受擊硬直）、
 #      damage_type（選填：StatDefs.DAMAGE_TYPES 之一，預設物理）、force_crit（選填：必爆擊，F6）、
-#      projectile（選填：投射物直接命中，G1 鐵皮斗篷、爆裂箭袋看這個）、finisher（選填：連段最後一下，末端部位的道具看這個）、pierce_invuln（選填：目標受傷後的無敵時間不擋這一下，連段用）
+#      projectile（選填：投射物直接命中，G1 鐵皮斗篷、爆裂箭袋看這個）、finisher（選填：連段最後一下，末端部位的道具看這個）、
+#      no_status（選填：不疊燃燒 / 冰冷 / 失衡，羈絆的爆炸、冰錐與持續傷害）、pierce_invuln（選填：目標受傷後的無敵時間不擋這一下，連段用）
 # 這裡套用攻擊者的爆擊與擊退屬性；護甲與受傷倍率在 Entity.take_damage
 # 回傳是否實際命中（高度不重疊、被格擋也算沒命中）
 static func apply_damage(world: World, source: Entity, target: Entity, hit: Dictionary) -> bool:
@@ -96,7 +97,14 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 		damage *= (target as Player).class_passive("dig_damage_taken", 1.0)   # 掘墓人被動：挖墳中受傷減少（F9）
 	if target is Player and hit.get("projectile", false):
 		damage *= target.stats.value(&"projectile_damage_taken")   # 鐵皮斗篷（G1）
+	if target is Player and source is Enemy and (source as Enemy).chill_stacks > 0:
+		damage *= target.stats.value(&"chilled_damage_taken")   # 寒鐵護符：冰冷的怪打人比較不痛
 	var is_proc: bool = hit.get("proc", false)   # 道具效果造成的傷害（v0.33.0）：不爆擊、不再觸發命中效果
+	# 羈絆（Build 改版第 5 步）：失衡加傷、碎冰、無視物理抗性、必爆擊（BondEffects.pre_hit）
+	var pre := BondEffects.pre_hit(source, target, hit, is_proc)
+	damage *= pre.mul
+	var bond_crit: bool = pre.crit
+	var shatter: bool = pre.shatter
 	if source is Player and not is_proc:
 		# 只對這一下生效的條件加成（對滿血敵人）：換算成攻擊力倍率乘上去（hit.damage 已含攻擊力）
 		var extra := ItemEffects.target_damage_pct(source as Player, target)
@@ -106,7 +114,7 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 	var is_crit := false
 	var crit_chance := 0.0 if is_proc else source.stats.value(&"crit_chance")
 	# 爆擊率 0 時不擲骰，不消耗亂數（沒有爆擊道具時與網頁版的亂數序列相同）
-	if hit.get("force_crit", false) and not is_proc:   # 必爆擊（F6 雙匕首第 5 下、影步）：不擲骰
+	if (hit.get("force_crit", false) or bond_crit) and not is_proc:   # 必爆擊（F6 雙匕首第 5 下、影步、羈絆）：不擲骰
 		is_crit = true
 		damage *= source.stats.value(&"crit_damage")
 	elif crit_chance > 0.0 and world.rng.randf() < crit_chance:
@@ -147,11 +155,14 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 	if hurt_by_enemy:
 		# 道具的受傷效果（G3 荊棘鎖甲、王墓之心）：同樣放在事件之後
 		ItemEffects.on_hurt(world, target as Player, source, damage, dealt, hit.get("projectile", false))
+		BondEffects.on_hurt(world, target as Player, source, dealt)
 	if source is Player and target is Enemy:
+		BondEffects.on_hit(world, source as Player, target as Enemy, hit, dealt, knockback, is_proc, shatter)
 		# 道具的命中 / 擊殺效果（v0.33.0）：放在事件之後，連鎖閃電、爆炸的傷害事件排在這一下後面
 		if not is_proc:
 			ItemEffects.on_dealt(world, source as Player, dealt)   # 命中回復、吸血（G1）
 			ItemEffects.on_hit(world, source as Player, target, damage, hit.get("projectile", false), hit.get("finisher", false))
+			ItemEffects.added_damage(world, source as Player, target, hit.damage)   # 附加火焰 / 冰霜傷害（羈絆道具）
 		if target.is_dead:
 			ItemEffects.on_kill(world, source as Player, target, damage)
 	return true

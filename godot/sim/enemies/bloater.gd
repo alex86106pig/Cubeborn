@@ -90,7 +90,7 @@ class BloaterDead:
 		e.velocity = Vector2.ZERO
 
 	func update(e: Bloater, _dt: float, fsm: StateMachine) -> void:
-		if not e.has_burst and not e.world.is_over and fsm.time >= e.def.burst.death_delay:
+		if not e.has_burst and not e.no_death_effect and not e.world.is_over and fsm.time >= e.def.burst.death_delay:
 			e.burst()
 		if fsm.time >= e.def.corpse_time:
 			e.remove()

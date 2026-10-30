@@ -173,6 +173,8 @@ func _initialize() -> void:
 	_check("道具能力：二段跳（沒有道具空中跳不了、有雙躍之靴可再跳一次、落地重置）；自動回充的護盾（先扣盾、recharge_delay 秒沒受傷才補滿）",
 		all.bind([PlayerChecks.check_double_jump, LootChecks.check_item_shield]))
 	_check("羈絆：道具標的羈絆都存在、掉落池只有屬於羈絆的；件數只算鑲在兩隻手上（背包不算）、同一種只算 1 件、跨羈絆兩邊各算、拿下來就扣；階數照門檻", LootChecks.check_bonds)
+	_check("羈絆效果：物理（物理傷害、失衡、擊退撞怪、無視物理抗性、必爆擊與處決）、火焰（沒有羈絆 1 層、疊層、疊滿爆炸、死亡傳層）、冰霜（沒有羈絆 1 層、冰冷減速、疊滿凍結、碎冰加傷、冰錐、凍結中被殺沒有死亡效果）、防禦（護甲、招架回血、招架後必爆擊、衝擊波消箭、反彈）、鬼火（顆數、轉圈碰到怪、定時衝出去）",
+		all.bind([BondChecks.check_phys, BondChecks.check_fire, BondChecks.check_cold, BondChecks.check_guard, BondChecks.check_wisp]))
 	_check("道具掉落：全部道具的效果都已接上；寶箱只開出效果都接上、屬於羈絆的道具；沒有的稀有度往下一級找", LootChecks.check_item_drop_pool)
 
 	# ───────── 畫面 ─────────
