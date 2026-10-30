@@ -541,6 +541,12 @@ func _draw_slots(font: Font, me: Player) -> void:
 			draw_rect(cr, Color(PART_COLORS[cells[c]], 0.45))
 			if cells[c] == "G":   # 寶石座：中間畫一個圈（第 7 步放技能）
 				draw_arc(cr.get_center(), WCELL * 0.22, 0.0, TAU, 16, Color(1, 1, 1, 0.35), 1.5)
+		for im: Dictionary in inst.get("imprints", []):   # 印記格（第 8b 步）：羈絆顏色的粗框＋角落一個菱形
+			var ir := Rect2(o + Vector2(im.cell) * WCELL, Vector2(WCELL, WCELL)).grow(-1)
+			var bc: Color = BondDefs.BONDS[im.bond].color
+			draw_rect(ir, bc, false, 3.0)
+			var tip := ir.position + Vector2(ir.size.x - 8, 8)
+			draw_colored_polygon(PackedVector2Array([tip + Vector2(0, -5), tip + Vector2(5, 0), tip + Vector2(0, 5), tip + Vector2(-5, 0)]), bc)
 		for e: Dictionary in me.loadout.container(i).entries:
 			var edim: bool = not _drag.is_empty() and _drag.uid == e.uid
 			_draw_item(font, e.id, o, WCELL, e.cell, e.rot, _rarity_of(e), 0.35 if edim else 1.0)
@@ -594,6 +600,8 @@ func _info_of(me: Player) -> Dictionary:
 		var timing := ItemDefs.timing_line(found.entry.id, (found.inv as Inventory).parts_of(found.entry))
 		if timing != "":
 			info.lines.append(timing)
+		if WeaponDropDefs.imprint_mul(me.weapon_slots[found.where], found.entry) > 1.0:
+			info.lines.append("在印記格上：效果 ×%s（屬性數值與發動機率）" % WeaponDropDefs.IMPRINT.mul)
 		return info
 	var e := me.inventory.find(uid)
 	if e.is_empty():

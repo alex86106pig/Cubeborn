@@ -13,7 +13,7 @@ const AUTO := -2   # 自動：主手格子 → 副手格子 → 背包，第一�
 
 var weapon_slots: Array[Dictionary] = [{}, {}]   # [主手, 副手]：武器實例（WeaponDropDefs）或 {}
 var bond_counts := {}                  # 羈絆 → 件數（BondDefs；鑲在兩隻手上、同一種只算 1 件，refresh_items 同步）
-var items: Array[Dictionary] = []     # 生效的道具實例 { uid, id, parts }（鑲在主手 / 副手上的，refresh_items 同步）；uid 同時是屬性加成的來源名稱，parts 是碰到的部位字元（發動時機）
+var items: Array[Dictionary] = []     # 生效的道具實例 { uid, id, parts, mul }（鑲在主手 / 副手上的，refresh_items 同步）；uid 同時是屬性加成的來源名稱，parts 是碰到的部位字元（發動時機）、mul 是印記格倍率
 var inventory := Inventory.new()       # 背包的擺放（只放東西）
 var _next_item_uid := 1
 var _ops: Array = []                   # 本步收到的背包操作（InputCmd.inv_ops），只在權威端執行
@@ -189,7 +189,7 @@ func merge(p: Player, uid_a: StringName, uid_b: StringName, keep_a := &"", keep_
 	for x: Array in [[keep_a, a.inst], [keep_b, b.inst]]:
 		if x[1].affixes.has(x[0]):
 			keep.append(x[0])
-	var merged := WeaponDropDefs.make(b.inst.uid, b.inst.base, WeaponDropDefs.next_rarity(b.inst.rarity), p.world.rng, keep)
+	var merged := WeaponDropDefs.make(b.inst.uid, b.inst.base, WeaponDropDefs.next_rarity(b.inst.rarity), p.world.rng, keep)   # 印記格重擲
 	if b.inst.has("sockets"):
 		merged["sockets"] = b.inst.sockets   # 鑲的道具：b 的留著，a 的搬到合成結果、放不下進背包、再不下掉在地上
 	_move_sockets(a.inst, [merged], p)
@@ -288,6 +288,7 @@ func clear_items(p: Player) -> void:
 func refresh_items(p: Player) -> void:
 	var want := {}
 	var parts := {}
+	var muls := {}
 	for where: int in [MAIN, OFF]:
 		var inv := container(where)
 		if inv != null:
@@ -296,6 +297,7 @@ func refresh_items(p: Player) -> void:
 					continue   # 寶石座的技能不是生效的道具（ActiveSlots 直接讀格子）
 				want[e.uid] = e.id
 				parts[e.uid] = inv.parts_of(e)
+				muls[e.uid] = WeaponDropDefs.imprint_mul(weapon_slots[where], e)   # 印記格（第 8b 步）
 	for it: Dictionary in items.duplicate():
 		if not want.has(it.uid):
 			items.erase(it)
@@ -303,10 +305,13 @@ func refresh_items(p: Player) -> void:
 			ItemEffects.forget_item(p, it.uid)
 		else:
 			it.parts = parts[it.uid]   # 同一隻手的格子裡搬位置、換手都會變
+			if it.mul != muls[it.uid]:   # 搬上 / 搬離印記格
+				it.mul = muls[it.uid]
+				p.set_stat_source(it.uid, ItemDefs.stat_mods(it.id, it.mul))
 	for uid: StringName in want:
 		if not items.any(func(it: Dictionary) -> bool: return it.uid == uid):
-			items.append({"uid": uid, "id": want[uid], "parts": parts[uid]})
-			p.set_stat_source(uid, ItemDefs.stat_mods(want[uid]))
+			items.append({"uid": uid, "id": want[uid], "parts": parts[uid], "mul": muls[uid]})
+			p.set_stat_source(uid, ItemDefs.stat_mods(want[uid], muls[uid]))
 	bond_counts.clear()
 	var seen := {}
 	for it: Dictionary in items:

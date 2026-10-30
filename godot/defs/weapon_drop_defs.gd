@@ -28,7 +28,9 @@ const RARITY_BASE := {
 #   bond 羈絆 +1：這把武器本身算那個羈絆 1 件（Loadout.refresh_items）
 #   enh 羈絆強化：那個羈絆專屬的數值（屬性，效果在 BondEffects）
 #   cvt 屬性轉換：玩家的非道具物理傷害有 value 比例改成那個屬性（Combat，轉換的部分會疊狀態）
-# mods 格式同 ItemDefs 的屬性效果；w 是抽中的權重（每個羈絆的強化合計 1）
+#   imp 印記格（藍以上，第 8b 步）：武器上 IMPRINT.cells 格標記，鑲在上面、屬於那個羈絆的道具效果 × IMPRINT.mul（Loadout.refresh_items）；
+#       格子位置在實例的 imprints（make 時擲）
+# mods 格式同 ItemDefs 的屬性效果；w 是抽中的權重（每個羈絆的強化合計 1）；min 是最低稀有度（沒寫 = 綠）
 const AFFIXES := {
 	&"bond_phys": {"kind": &"bond", "bond": &"phys", "desc": "算 1 件物理羈絆", "w": 1.0, "mods": []},
 	&"bond_fire": {"kind": &"bond", "bond": &"fire", "desc": "算 1 件火焰羈絆", "w": 1.0, "mods": []},
@@ -47,7 +49,16 @@ const AFFIXES := {
 	&"enh_wisp_damage": {"kind": &"enh", "bond": &"wisp", "desc": "鬼火傷害 +25%", "w": 0.5, "mods": [[&"wisp_damage", Stats.PCT, 0.25]]},
 	&"cvt_fire": {"kind": &"cvt", "bond": &"fire", "desc": "50% 物理傷害轉成火焰", "w": 1.0, "mods": [[&"convert_fire", Stats.ADD, 0.5]]},
 	&"cvt_cold": {"kind": &"cvt", "bond": &"cold", "desc": "50% 物理傷害轉成冰霜", "w": 1.0, "mods": [[&"convert_cold", Stats.ADD, 0.5]]},
+	&"imp_phys": {"kind": &"imp", "bond": &"phys", "desc": "物理印記格：鑲在上面的物理道具效果 ×1.5", "w": 0.6, "min": &"blue", "mods": []},
+	&"imp_fire": {"kind": &"imp", "bond": &"fire", "desc": "火焰印記格：鑲在上面的火焰道具效果 ×1.5", "w": 0.6, "min": &"blue", "mods": []},
+	&"imp_cold": {"kind": &"imp", "bond": &"cold", "desc": "冰霜印記格：鑲在上面的冰霜道具效果 ×1.5", "w": 0.6, "min": &"blue", "mods": []},
+	&"imp_guard": {"kind": &"imp", "bond": &"guard", "desc": "防禦印記格：鑲在上面的防禦道具效果 ×1.5", "w": 0.6, "min": &"blue", "mods": []},
+	&"imp_wisp": {"kind": &"imp", "bond": &"wisp", "desc": "鬼火印記格：鑲在上面的鬼火道具效果 ×1.5", "w": 0.6, "min": &"blue", "mods": []},
 }
+
+# 印記格（第 8b 步，Claude 暫定）：每條印記詞條標 cells 格（不標寶石座）；道具的屬性數值（加 / 百分比 × mul，相乘的取 mul 次方）
+# 與觸發機率 × mul（ItemDefs.stat_mods、ItemEffects.procs_of）；條件加成、能力（鬼火燈顆數這類）不變
+const IMPRINT := {"cells": 2, "mul": 1.5}
 
 # 屬性轉換：轉換屬性 → 傷害屬性（Combat 依序處理，合計最多 100%）
 const CONVERSIONS := [[&"convert_fire", &"fire"], [&"convert_cold", &"cold"]]
@@ -85,17 +96,17 @@ static func roll_rarity(source: StringName, rng: RandomNumberGenerator, treasure
 
 
 # 不重複地抽 count 條詞條：依 AFFIXES 的權重（武器偏向的羈絆 × BIAS_MUL）一條一條抽，用 world.rng 才有決定性；
-# keep 是一定要留的（合成時兩把各挑的那條），先放進去、不重複
-static func roll_affixes(count: int, rng: RandomNumberGenerator, base := &"", keep: Array[StringName] = []) -> Array[StringName]:
+# keep 是一定要留的（合成時兩把各挑的那條），先放進去、不重複；rarity 低於詞條的 min 就不抽（keep 也一樣）
+static func roll_affixes(count: int, rng: RandomNumberGenerator, base := &"", keep: Array[StringName] = [], rarity := &"orange") -> Array[StringName]:
 	var out: Array[StringName] = []
 	for id: StringName in keep:
-		if AFFIXES.has(id) and not out.has(id) and out.size() < count:
+		if AFFIXES.has(id) and allowed(id, rarity) and not out.has(id) and out.size() < count:
 			out.append(id)
 	var favored: Array = BIAS.get(base, [])
 	var pool: Array[StringName] = []
 	var weights: Array[float] = []
 	for id: StringName in AFFIXES:
-		if out.has(id):
+		if out.has(id) or not allowed(id, rarity):
 			continue
 		pool.append(id)
 		weights.append(AFFIXES[id].w * (BIAS_MUL if favored.has(AFFIXES[id].bond) else 1.0))
@@ -114,8 +125,45 @@ static func roll_affixes(count: int, rng: RandomNumberGenerator, base := &"", ke
 	return out
 
 
+# 這種稀有度能不能出這條詞條（AFFIXES 的 min）
+static func allowed(id: StringName, rarity: StringName) -> bool:
+	return RARITY_ORDER.find(rarity) >= RARITY_ORDER.find(AFFIXES[id].get("min", &"green"))
+
+
 static func make(uid: StringName, base: StringName, rarity: StringName, rng: RandomNumberGenerator, keep: Array[StringName] = []) -> Dictionary:
-	return add_builtin_skill({"uid": uid, "base": base, "rarity": rarity, "affixes": roll_affixes(affix_count(rarity), rng, base, keep)})
+	var inst := {"uid": uid, "base": base, "rarity": rarity, "affixes": roll_affixes(affix_count(rarity), rng, base, keep, rarity)}
+	roll_imprints(inst, rng)
+	return add_builtin_skill(inst)
+
+
+# 印記詞條的格子：每條從武器格子裡（不含寶石座、不和別條重疊）隨機挑 IMPRINT.cells 格，寫進 inst.imprints [{ bond, cell }]
+static func roll_imprints(inst: Dictionary, rng: RandomNumberGenerator) -> void:
+	inst.erase("imprints")
+	var cells := WeaponDefs.grid_cells(ItemDefs.ITEMS[inst.base].weapon)
+	var free: Array[Vector2i] = []
+	for c: Vector2i in cells:
+		if cells[c] != "G":
+			free.append(c)
+	free.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y or (a.y == b.y and a.x < b.x))
+	var out: Array[Dictionary] = []
+	for id: StringName in inst.affixes:
+		if AFFIXES[id].kind != &"imp":
+			continue
+		for i in IMPRINT.cells:
+			if free.is_empty():
+				break
+			out.append({"bond": AFFIXES[id].bond, "cell": free.pop_at(rng.randi_range(0, free.size() - 1))})
+	if not out.is_empty():
+		inst["imprints"] = out
+
+
+# 道具 e（武器格子裡的條目 { id, cell, rot }）的效果倍率：碰到同羈絆的印記格就是 IMPRINT.mul
+static func imprint_mul(inst: Dictionary, e: Dictionary) -> float:
+	var bonds: Array = ItemDefs.ITEMS[e.id].get("bonds", [])
+	for im: Dictionary in inst.get("imprints", []):
+		if bonds.has(im.bond) and Inventory.cells_of(e.id, e.rot).any(func(c: Vector2i) -> bool: return e.cell + c == im.cell):
+			return IMPRINT.mul
+	return 1.0
 
 
 # 武器自帶的技能（WeaponDefs 的 slot_skill，火把的插火把）：出廠就鑲在第一個寶石座；之後可以拿下來
@@ -182,8 +230,8 @@ static func can_merge(a: Dictionary, b: Dictionary) -> bool:
 		and a.rarity == b.rarity and next_rarity(a.rarity) != &""
 
 
-# 快照用：[uid, base, rarity, [詞條…], 武器技能剩幾次?, 鑲的道具?]；空的主手 / 副手是 []；
-# 次數沒用過（滿的）送 -1、沒鑲東西就不送後兩欄。鑲的道具：[[uid, id, x, y, rot], …]
+# 快照用：[uid, base, rarity, [詞條…], 武器技能剩幾次?, 鑲的道具?, 印記格?]；空的主手 / 副手是 []；
+# 次數沒用過（滿的）送 -1、沒鑲東西也沒印記格就不送後面幾欄。鑲的道具：[[uid, id, x, y, rot], …]；印記格：[[羈絆, x, y], …]
 static func to_array(inst: Dictionary) -> Array:
 	if inst.is_empty():
 		return []
@@ -192,13 +240,16 @@ static func to_array(inst: Dictionary) -> Array:
 		affixes.append(String(id))
 	var a := [String(inst.uid), String(inst.base), String(inst.rarity), affixes]
 	var sockets: Array = inst.get("sockets", [])
-	if inst.has("slot_charges") or not sockets.is_empty():
+	var imprints: Array = inst.get("imprints", [])
+	if inst.has("slot_charges") or not sockets.is_empty() or not imprints.is_empty():
 		a.append(inst.get("slot_charges", -1))
-	if not sockets.is_empty():
+	if not sockets.is_empty() or not imprints.is_empty():
 		var arr := []
 		for e: Dictionary in sockets:
 			arr.append([String(e.uid), String(e.id), e.cell.x, e.cell.y, e.rot])
 		a.append(arr)
+	if not imprints.is_empty():
+		a.append(imprints.map(func(im: Dictionary) -> Array: return [String(im.bond), im.cell.x, im.cell.y]))
 	return a
 
 
@@ -216,6 +267,11 @@ static func from_array(a: Array) -> Dictionary:
 		for e: Array in a[5]:
 			sockets.append({"uid": StringName(e[0]), "id": StringName(e[1]), "cell": Vector2i(e[2], e[3]), "rot": int(e[4])})
 		inst["sockets"] = sockets
+	if a.size() > 6:
+		var imprints: Array[Dictionary] = []
+		for im: Array in a[6]:
+			imprints.append({"bond": StringName(im[0]), "cell": Vector2i(im[1], im[2])})
+		inst["imprints"] = imprints
 	return inst
 
 

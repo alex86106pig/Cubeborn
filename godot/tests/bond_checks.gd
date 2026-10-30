@@ -492,4 +492,60 @@ static func check_weapon_affixes() -> String:
 	if amounts.any(func(x: float) -> bool: return x > EPS):
 		return "轉換合計 100%% 時不應有物理傷害：%s" % [amounts]
 	_note("50%% 物理轉冰霜：%.2f → %.2f（物理 + 冰霜）" % [full, split])
+	return _check_imprints()
+
+
+# 印記格（第 8b 步）：藍以上才有；每條標 IMPRINT.cells 格（在格子裡、不是寶石座、不重疊）；
+# 同羈絆的道具放在上面屬性 × mul、觸發機率 × mul，搬開就還原；快照來回不變
+static func _check_imprints() -> String:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var cells := WeaponDefs.grid_cells(&"longsword")
+	var seen := 0
+	for r: StringName in [&"green", &"orange"]:
+		for i in 200:
+			var inst := WeaponDropDefs.make(&"x", &"longsword", r, rng)
+			var imps: Array = inst.affixes.filter(func(id: StringName) -> bool: return WeaponDropDefs.AFFIXES[id].kind == &"imp")
+			if r == &"green" and not imps.is_empty():
+				return "綠色不應有印記格詞條：%s" % [inst.affixes]
+			var marks: Array = inst.get("imprints", [])
+			var uniq := {}
+			for im: Dictionary in marks:
+				uniq[im.cell] = true
+				if not cells.has(im.cell) or cells[im.cell] == "G":
+					return "印記格應在武器格子裡、不是寶石座：%s" % [im]
+			if marks.size() != imps.size() * WeaponDropDefs.IMPRINT.cells or uniq.size() != marks.size():
+				return "%d 條印記詞條應標 %d 格不重疊，實際 %s" % [imps.size(), imps.size() * WeaponDropDefs.IMPRINT.cells, marks]
+			seen += imps.size()
+	if seen == 0:
+		return "橘色 200 把都沒有印記格詞條"
+	var s := _setup([&"whetstone", &"sleeve_knife"])
+	if s[2] != "":
+		return s[2]
+	var p: Player = s[1]
+	var main: Dictionary = p.weapon_slots[Loadout.MAIN]
+	var inv := p.loadout.container(Loadout.MAIN)
+	var stone: Dictionary = inv.entries.filter(func(e: Dictionary) -> bool: return e.id == &"whetstone")[0]
+	var knife: Dictionary = inv.entries.filter(func(e: Dictionary) -> bool: return e.id == &"sleeve_knife")[0]
+	var mul: float = WeaponDropDefs.IMPRINT.mul
+	var dmg0 := p.stats.value(&"damage")
+	var chance0: float = ItemEffects.procs_of(p, &"attack", "A")[0].chance
+	var aff: Array[StringName] = [&"imp_phys"]
+	main.affixes = aff
+	var marks: Array[Dictionary] = [{"bond": &"phys", "cell": stone.cell}, {"bond": &"phys", "cell": knife.cell + Inventory.cells_of(knife.id, knife.rot)[0]}]
+	main["imprints"] = marks
+	p.apply_active_weapon()
+	var dmg1 := p.stats.value(&"damage")
+	var chance1: float = ItemEffects.procs_of(p, &"attack", "A")[0].chance
+	if absf((dmg1 - 1.0) - (dmg0 - 1.0) * mul) > EPS or absf(chance1 - chance0 * mul) > EPS:
+		return "物理印記格上的磨刀石 / 袖中飛刀應 ×%.1f：攻擊力 %.3f → %.3f、機率 %.2f → %.2f" % [mul, dmg0, dmg1, chance0, chance1]
+	var back := WeaponDropDefs.from_array(WeaponDropDefs.to_array(main))
+	if back.get("imprints", []) != main.imprints:
+		return "快照來回後印記格應一樣：%s → %s" % [main.imprints, back.get("imprints", [])]
+	var other: Array[Dictionary] = [{"bond": &"fire", "cell": stone.cell}]
+	main["imprints"] = other
+	p.apply_active_weapon()
+	if absf(p.stats.value(&"damage") - dmg0) > EPS or absf(ItemEffects.procs_of(p, &"attack", "A")[0].chance - chance0) > EPS:
+		return "印記格換成火焰（道具是物理）應還原：攻擊力 %.3f、機率 %.2f" % [p.stats.value(&"damage"), ItemEffects.procs_of(p, &"attack", "A")[0].chance]
+	_note("物理印記格：磨刀石攻擊力 +%.0f%% → +%.0f%%、袖中飛刀 %.0f%% → %.0f%%" % [(dmg0 - 1.0) * 100, (dmg1 - 1.0) * 100, chance0 * 100, chance1 * 100])
 	return ""

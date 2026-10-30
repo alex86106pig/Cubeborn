@@ -455,7 +455,11 @@ static func procs_of(p: Player, on: StringName, part := "") -> Array[Dictionary]
 		if not by_do.has(eff.do):
 			by_do[eff.do] = {"do": eff.do, "on": on, "effect": eff, "chance": 0.0, "count": 0}
 			order.append(by_do[eff.do])
-		by_do[eff.do].chance += eff.get("chance", 1.0)
+		# 印記格（第 8b 步）：有機率的觸發機率 × 倍率；沒有機率的不變（次數照算）
+		var chance: float = eff.get("chance", 1.0)
+		if eff.has("chance"):
+			chance *= _item_of(p, x.uid).get("mul", 1.0)
+		by_do[eff.do].chance += chance
 		by_do[eff.do].count += 1
 	return order
 

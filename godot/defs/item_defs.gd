@@ -369,11 +369,15 @@ static func expected_cells(id: StringName) -> int:
 
 
 # 放進身上就生效的屬性加成，格式同 Stats.set_source：[[屬性, 運算, 數值], …]
-static func stat_mods(id: StringName) -> Array:
+# mul：印記格（WeaponDropDefs.IMPRINT）的倍率，加 / 百分比乘上去、相乘的取 mul 次方
+static func stat_mods(id: StringName, mul := 1.0) -> Array:
 	var mods := []
 	for e: Dictionary in ITEMS[id].effects:
 		if e.has("stat") and not e.has("when"):
-			mods.append([e.stat, e.op, e.value])
+			var v: float = e.value
+			if mul != 1.0:
+				v = pow(v, mul) if e.op == Stats.MUL else v * mul
+			mods.append([e.stat, e.op, v])
 	return mods
 
 

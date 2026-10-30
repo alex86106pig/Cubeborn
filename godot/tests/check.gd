@@ -176,7 +176,7 @@ func _initialize() -> void:
 	_check("寶石座技能：寶石座只放技能、技能只放能用的武器、自動擺放；數字鍵 1~4 照主手→副手的寶石座、Q 治療藥水；每個技能放得出來、進冷卻、有效果；等級加傷減冷卻、技能遺物升級；輔助道具貼著才有效（延長、火焰化、分裂）",
 		all.bind([SkillChecks.check_gem_rules, SkillChecks.check_every_skill, SkillChecks.check_skill_level, SkillChecks.check_supports]))
 	_check("羈絆：道具標的羈絆都存在、掉落池只有屬於羈絆的；件數只算鑲在兩隻手上（背包不算）、同一種只算 1 件、跨羈絆兩邊各算、拿下來就扣；階數照門檻", LootChecks.check_bonds)
-	_check("羈絆效果：物理（物理傷害、失衡、擊退撞怪、無視物理抗性、必爆擊與處決）、火焰（沒有羈絆 1 層、疊層、疊滿爆炸、死亡傳層）、冰霜（沒有羈絆 1 層、冰冷減速、疊滿凍結、碎冰加傷、冰錐、凍結中被殺沒有死亡效果）、防禦（護甲、招架回血、招架後必爆擊、衝擊波消箭、反彈）、鬼火（顆數、轉圈碰到怪、定時衝出去）；武器詞條（羈絆 +1 主副手各算、燃燒 / 冰冷層數上限、凍結時間、額外鬼火、失衡累積、招架判定時間、屬性轉換）",
+	_check("羈絆效果：物理（物理傷害、失衡、擊退撞怪、無視物理抗性、必爆擊與處決）、火焰（沒有羈絆 1 層、疊層、疊滿爆炸、死亡傳層）、冰霜（沒有羈絆 1 層、冰冷減速、疊滿凍結、碎冰加傷、冰錐、凍結中被殺沒有死亡效果）、防禦（護甲、招架回血、招架後必爆擊、衝擊波消箭、反彈）、鬼火（顆數、轉圈碰到怪、定時衝出去）；武器詞條（羈絆 +1 主副手各算、燃燒 / 冰冷層數上限、凍結時間、額外鬼火、失衡累積、招架判定時間、屬性轉換、印記格 ×1.5）",
 		all.bind([BondChecks.check_phys, BondChecks.check_fire, BondChecks.check_cold, BondChecks.check_guard, BondChecks.check_wisp, BondChecks.check_weapon_affixes]))
 	_check("道具掉落：全部道具的效果都已接上；寶箱只開出效果都接上、屬於羈絆的道具（輔助道具也開得出來）；沒有的稀有度往下一級找", LootChecks.check_item_drop_pool)
 
