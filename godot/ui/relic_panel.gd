@@ -72,7 +72,7 @@ func _rebuild(choices: Array, me: Player) -> void:
 		var rarity: Dictionary = ItemDefs.RARITIES[def.rarity]
 		var lines: Array[String] = ["%d　%s" % [i + 1, def.name]]
 		if not bonds.is_empty():
-			lines.append("%s羈絆" % "、".join(bonds))
+			lines.append("、".join(bonds))
 		lines.append(def.desc)
 		var b := UiKit.button("\n".join(lines), UiKit.BUTTON_CARD)
 		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
