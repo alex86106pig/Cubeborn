@@ -1124,6 +1124,16 @@ static func check_hints() -> String:
 	if shown[-1] != &"exit":
 		h.free()
 		return "出口打開應跳 exit：%s" % [shown]
+	# 腳邊有東西：跳「按住 Alt 看詳細」；名稱旁的提示只在按得到 F、沒按 Alt 時出現（按住 Alt 才畫說明卡）
+	w.drop_item(&"whetstone", p.pos + Vector2(1.0, 0))
+	tick.call(10.0)
+	if shown[-1] != &"ground_info":
+		h.free()
+		return "腳邊有東西應跳 ground_info：%s" % [shown]
+	var texts := [WorldLabels.pickup_text("磨刀石", false, false), WorldLabels.pickup_text("磨刀石", true, false), WorldLabels.pickup_text("磨刀石", true, true)]
+	if texts != ["磨刀石", "[F] 撿起 磨刀石  [Alt] 詳細", "[F] 撿起 磨刀石"]:
+		h.free()
+		return "地上道具的名稱：不在腳邊只有名稱、在腳邊加 [F] 與 [Alt] 詳細、按住 Alt 不再提示：%s" % [texts]
 	# 排隊中條件不成立就跳過：隊友倒地排進佇列，顯示前已經救起
 	p2.is_downed = true
 	h.current = &"bag_ops"   # 假裝還有一則在顯示，讓 revive 留在佇列

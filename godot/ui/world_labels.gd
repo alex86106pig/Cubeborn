@@ -25,6 +25,7 @@ var world: World
 var camera: Camera3D
 var local_peer := World.HOST_PEER_ID
 var view_peer := 0   # 觀戰中的隊友（0 = 本機）：看不看得到改用他的視野
+var detail_held := false   # 按住 Alt（每幀更新）：按得到 F 的地上武器 / 道具才畫說明卡（2026-10-30 使用者）
 var warm := ""   # 開場預熱（v0.37.2）：HUD 蓋著「準備中」時設定，用同樣的字級與描邊先畫一次，字形在這時候產生
 
 
@@ -34,6 +35,7 @@ func _init() -> void:
 
 
 func _process(_delta: float) -> void:
+	detail_held = Input.is_key_pressed(KEY_ALT)
 	queue_redraw()
 
 
@@ -75,11 +77,9 @@ func _draw() -> void:
 		var pickup := p as ItemPickup
 		if pickup.is_removed or not Vision.entity_visible(world, viewer, pickup):
 			continue
-		var text := pickup.display_name()
-		if pickup == focus:
-			text = "[F] 撿起 " + text
+		if pickup == focus and detail_held:
 			_draw_card(font, pickup)
-		_text(font, pickup, PICKUP_OFFSET, text, ItemDefs.RARITIES[pickup.rarity()].color)
+		_text(font, pickup, PICKUP_OFFSET, pickup_text(pickup.display_name(), pickup == focus, detail_held), ItemDefs.RARITIES[pickup.rarity()].color)
 	# 魔法 / 稀有怪（D5）：頭上顯示詞條（稀有怪多一行名字）
 	for e: Entity in world.enemies:
 		var en := e as Enemy
@@ -138,6 +138,13 @@ func _draw_grave(font: Font, me: Player) -> void:
 
 
 # 按得到 F 的地上道具：名稱上方的道具卡，撿之前就看得到形狀、占幾格、效果 / 詞條（和背包的說明欄同一份文字）
+# 地上道具 / 武器的名稱：按得到 F 的那一件加「[F] 撿起」，沒按 Alt 時再提示「[Alt] 詳細」（按住 Alt 才畫說明卡）
+static func pickup_text(name: String, is_focus: bool, held: bool) -> String:
+	if not is_focus:
+		return name
+	return "[F] 撿起 " + name + ("" if held else "  [Alt] 詳細")
+
+
 func _draw_card(font: Font, pickup: ItemPickup) -> void:
 	var at := Vector3(pickup.pos.x, pickup.height + PICKUP_OFFSET, pickup.pos.y)
 	if camera.is_position_behind(at):

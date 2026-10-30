@@ -97,6 +97,8 @@ func _condition(id: StringName, world: World, player: Player, bag_open: bool) ->
 			return true
 		&"dig_goal":
 			return DigEvent.enabled(world) and world.event.state == DigEvent.IDLE
+		&"ground_info":
+			return world.nearest_interactable(player, world.pickups) != null
 		&"bag_open":
 			return not player.items.is_empty() or not player.inventory.entries.is_empty()
 		&"bag_ops":

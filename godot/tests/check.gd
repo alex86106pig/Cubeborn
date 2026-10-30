@@ -205,7 +205,7 @@ func _initialize() -> void:
 	_check("背包介面：和屬性面板並排塞得進介面最大檔的畫面；腳邊欄只列按得到 F 的地上道具、滑鼠停著顯示說明，拖進背包撿起放在那一格、背包的拖到腳邊丟掉；撿不下時 HUD 通知打開背包、提示拿掉哪一件就放得下，關掉就清除；遺物的 N 選 1 卡片塞得進畫面、點卡片 / Esc 送出操作；鍛造祭壇旁拖武器合成先打開挑詞條的面板、送出留下的詞條、離開祭壇就關掉", all.bind([ViewChecks.check_inventory_panel, ViewChecks.check_relic_panel, ViewChecks.check_forge_panel]))
 	_check("技能欄：劍盾格擋中左鍵換成「招架」與冷卻、法杖沒有招架格；火把準備姿態換成插火把 / 噴火、鐵鏟舉著怪換成拋出 / 埋入；CD 遮罩疊放順序 文字圖示 < 壓黑 < 秒數",
 		all.bind([ViewChecks.check_skill_bar_parry, ViewChecks.check_skill_bar_cd_mask]))
-	_check("新手提示：換武器鍵是 X；開場跳操作與挖墳；撿到東西、開背包、可合成、出口打開、隊友倒地各跳一次；看過不再跳；重設後再跳", ViewChecks.check_hints)
+	_check("新手提示：換武器鍵是 X；開場跳操作與挖墳；撿到東西、開背包、可合成、出口打開、腳邊有東西（按住 Alt 看詳細）、隊友倒地各跳一次；看過不再跳；重設後再跳", ViewChecks.check_hints)
 	_check("挖墳進度條：事件進行中所有人上方中央都看得到進度與說明，出口打開後收起；Boss 血條排在它下面、寬度塞得進 1920", ViewChecks.check_dig_bar)
 	_check("主選單：首頁有單人 / 多人 / 離開遊戲（網頁版不顯示離開）、桌面版先選房號 / IP、多人頁放連線面板與返回、塞得進 1920×1080；暫停畫面有「回主選單」；選角畫面（點職業只是選、按開始才開局帶難度、佔位選不到、數值條照職業、塞得進）；武器測試場入口與按鈕列", ViewChecks.check_main_menu)
 	_check("設定頁：主選單與暫停畫面的「設定」打開、塞得進 1920×1080、選單關掉一起關；改值存檔讀得回來（啟動參數蓋的不存）；音量套到 Music / SFX 匯流排、0% = −80 dB；陰影與光源開關套到太陽和精英怪的光（之後新建的也照設定）；--shadows / --lights", ViewChecks.check_settings)
