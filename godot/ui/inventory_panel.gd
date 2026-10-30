@@ -4,7 +4,7 @@
 # 左鍵點一下拿起、再點一下放下（按住拖曳也可以）；拿著時按 R 旋轉、右鍵或 Esc 放回原處，放到腳邊或面板外面丟在地上；
 # 道具放到武器格子 = 鑲上、放到背包 = 拿下來；武器放到主手 / 副手的名稱框就換上（拿不動的由權威端拒絕），放到同種同稀有度的武器上合成；
 # 腳邊的放進背包或武器格子 = 撿起放在那一格。右鍵點一下 = 直接裝上 / 拿下來（_quick_equip）
-# 物品的底色看種類（武器鐵灰、技能紫色寶石、輔助紫色虛線框、道具稀有度色＋羈絆色點），外框看稀有度；滑鼠停在羈絆上時只亮那個羈絆的東西
+# 物品的畫法（UiKit.draw_item）：底色看種類、外框看稀有度、道具畫羈絆色點；滑鼠停在羈絆上時只亮那個羈絆的東西
 # 撿不下時（show_full）標出那一件、建議拿掉背包裡哪件就放得下
 # 只送操作（op_requested → InputCollector → InputCmd.inv_ops），實際擺放由權威端決定，畫面照本機玩家的狀態畫
 class_name InventoryPanel
@@ -41,8 +41,6 @@ const MIN_VIEW_H := 420.0   # 捲動區至少這麼高（最小尺寸用）
 const HINT := "左鍵拿起 / 放下 · 右鍵直接裝上 / 拿下來 · 拿著按 R 旋轉、右鍵放回 · 放到腳邊丟掉 · 武器放到主手 / 副手換上 · 滾輪捲動"
 const CLICK_SLOP := 6.0     # 按下到放開移動不超過這麼多像素算「點一下」（拿在手上），超過算拖曳
 const NOTICE_MS := 2000     # 右鍵裝不上時的提示顯示多久
-const WEAPON_FILL := Color("4a4f57")   # 武器的底色（鐵灰）
-const SKILL_FILL := Color("6a3f8f")    # 技能、輔助的底色（和寶石座同色）
 const DIM_ALPHA := 0.25                # 滑鼠停在羈絆上時，不屬於那個羈絆的東西變淡
 # 武器格子的部位顏色（WeaponDefs.PARTS）：淡淡的底色，鑲上的道具畫在上面
 const PART_COLORS := {"A": Color("5f7487"), "E": Color("9aa4ab"), "D": Color("8e6a33"), "H": Color("5e4433"), "G": Color("6a3f8f")}
@@ -651,13 +649,7 @@ func _draw_suggestion(e: Dictionary) -> void:
 		return
 	var color := Color(UiKit.DENY, 0.6 + 0.4 * sin(Time.get_ticks_msec() * 0.008))
 	for c in Inventory.cells_of(e.id, e.rot):
-		_draw_dashed_rect(Rect2(_grid_origin() + Vector2(e.cell + c) * CELL, Vector2(CELL, CELL)).grow(-1), color)
-
-
-func _draw_dashed_rect(r: Rect2, color: Color) -> void:
-	var corners: Array[Vector2] = [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]
-	for i in 4:
-		draw_dashed_line(corners[i], corners[(i + 1) % 4], color, 2.0, 6.0)
+		UiKit.draw_dashed_rect(self, Rect2(_grid_origin() + Vector2(e.cell + c) * CELL, Vector2(CELL, CELL)).grow(-1), color)
 
 
 # 腳邊框（FeetPanel._draw 叫）：按得到 F 的地上道具，撿不下的那一件金框；座標是腳邊框自己的
@@ -755,47 +747,11 @@ func _draw_slots(font: Font, me: Player) -> void:
 			_draw_item(font, e.id, o, WCELL, e.cell, e.rot, _rarity_of(e), 0.35 if edim else 1.0)
 
 
-# 一件東西：底色看種類（武器鐵灰、技能紫色寶石＋圖示字、輔助深紫＋虛線框、道具稀有度色）、外框看稀有度；
-# 道具與有「羈絆 +1」詞條的武器在右上角畫羈絆色點；滑鼠停在羈絆上時，不屬於那個羈絆的變淡
+# 一件東西（畫法在 UiKit.draw_item，和遺物卡片共用）；滑鼠停在羈絆上時，不屬於那個羈絆的變淡
 func _draw_item(font: Font, id: StringName, o: Vector2, cell_px: float, cell: Vector2i, rot: int, rarity: StringName, alpha: float, weapon: Dictionary = {}) -> void:
-	var def: Dictionary = ItemDefs.ITEMS[id]
-	var color: Color = ItemDefs.RARITIES[rarity].color
-	var kind := _kind_of(id)
-	var bonds: Array = WeaponDropDefs.bonds_of(weapon) if not weapon.is_empty() else def.get("bonds", [])
-	if _drag.is_empty() and _hover_bond != &"" and not bonds.has(_hover_bond):
+	if _drag.is_empty() and _hover_bond != &"" and not UiKit.item_bonds(id, weapon).has(_hover_bond):
 		alpha *= DIM_ALPHA
-	var fill: Color = {&"weapon": WEAPON_FILL, &"skill": SKILL_FILL, &"support": SKILL_FILL.darkened(0.4)}.get(kind, color.darkened(0.55))
-	var cells := Inventory.cells_of(id, rot)
-	for c in cells:
-		var r := Rect2(o + Vector2(cell + c) * cell_px, Vector2(cell_px, cell_px)).grow(-3)
-		draw_rect(r, Color(fill, 0.9 * alpha))
-		if kind == &"support":
-			_draw_dashed_rect(r, Color(color, alpha))
-		else:
-			draw_rect(r, Color(color, alpha), false, 2.0)
-	var first: Vector2 = o + Vector2(cell + cells[0]) * cell_px
-	var big := cell_px >= CELL
-	if kind == &"skill":
-		var center := first + Vector2(cell_px, cell_px) / 2.0
-		draw_arc(center, cell_px * 0.34, 0.0, TAU, 20, Color(1, 1, 1, 0.45 * alpha), 1.5)
-		draw_string(font, first + Vector2(0, cell_px / 2.0 + (12 if big else 7)), SkillDefs.SKILLS.get(id, {}).get("icon", String(def.name).substr(0, 1)),
-				HORIZONTAL_ALIGNMENT_CENTER, cell_px, 34 if big else 20, Color(1, 1, 1, alpha))
-	else:
-		draw_string(font, first + Vector2(6, cell_px * 0.36), String(def.name).substr(0, 2) if not big else String(def.name).substr(0, 4), HORIZONTAL_ALIGNMENT_LEFT, cell_px - 8, 22 if big else 15, Color(1, 1, 1, alpha))
-	if kind == &"weapon" or kind == &"support":
-		draw_string(font, first + Vector2(6, cell_px - 9), "武器" if kind == &"weapon" else "輔助", HORIZONTAL_ALIGNMENT_LEFT, -1, 16 if big else 11, Color(1, 1, 1, 0.6 * alpha))
-	for i in bonds.size():
-		var dot_r := (5.0 if bonds[i] == _hover_bond else 3.5) * (1.5 if big else 1.0)
-		var dot_step := 9.0 * (1.5 if big else 1.0)
-		draw_circle(first + Vector2(cell_px - dot_step - i * dot_step, dot_step), dot_r, Color(BondDefs.BONDS[bonds[i]].color, alpha))
-
-
-# 畫法用的種類：輔助道具（skill_support）是 kind item，另外分出來
-func _kind_of(id: StringName) -> StringName:
-	var kind: StringName = ItemDefs.ITEMS[id].kind
-	if kind == &"item" and not ItemDefs.support_of(id).is_empty():
-		return &"support"
-	return kind
+	UiKit.draw_item(self, font, id, o + Vector2(cell) * cell_px, cell_px, rot, rarity, alpha, weapon, _hover_bond if _drag.is_empty() else &"")
 
 
 # 下方說明（固定）：滑鼠停著（或拖著）的東西：道具的效果與放在哪、武器的詞條（腳邊的道具也一樣）

@@ -1,10 +1,15 @@
-# 遺物的 N 選 1（Build 改版第 6 步）：畫面下方中間一排卡片（名稱、稀有度與羈絆、效果），遊戲不暫停
+# 遺物的 N 選 1（Build 改版第 6 步）：畫面下方中間一排卡片（左邊畫物品長怎樣，右邊名稱、稀有度與羈絆、效果），遊戲不暫停
 # 自己的角色打開了遺物（Player.relic_id，連線時看快照）就顯示，選項讀遺物上的 offers；點卡片或按數字鍵選、R 重骰、Esc 先不選
 # 鍵盤由 InputCollector 接（relic_open 時數字鍵、R、Esc 不給技能、重新開始、暫停）；操作走 op_requested → InputCmd.inv_ops，結果等權威端
 class_name RelicPanel
 extends VBoxContainer
 
 signal op_requested(op: Array)
+
+const PREVIEW_W := 140.0          # 卡片左邊畫物品的區塊寬（文字從這裡之後開始）
+const PREVIEW_MAX := 112.0        # 物品小圖最長邊不超過這麼長
+const PREVIEW_CELL := 36.0        # 多格道具每格最大
+const PREVIEW_SINGLE := 72.0      # 單格（技能、白色道具）畫大一點
 
 var _cards := HBoxContainer.new()
 var _title := UiKit.label("", UiKit.FONT_BODY, UiKit.GOLD)
@@ -69,6 +74,7 @@ func _rebuild(choices: Array, me: Player) -> void:
 		b.add_theme_color_override(&"font_color", rarity.color)
 		b.add_theme_color_override(&"font_hover_color", rarity.color.lightened(0.3))
 		b.pressed.connect(pick.bind(i))
+		_add_preview(b, id)
 		_cards.add_child(b)
 
 
@@ -83,7 +89,26 @@ func _skill_card(i: int, id: StringName, me: Player) -> Button:
 	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	b.add_theme_color_override(&"font_color", UiKit.GOLD)
 	b.pressed.connect(pick.bind(i))
+	_add_preview(b, id)
 	return b
+
+
+# 卡片左邊留 PREVIEW_W 畫物品（和背包同一套畫法 UiKit.draw_item），文字靠左排在右邊
+func _add_preview(b: Button, id: StringName) -> void:
+	for state: StringName in UiKit.BUTTON_BG.keys() + [&"hover_pressed"]:
+		var box := b.get_theme_stylebox(state).duplicate() as StyleBox
+		box.content_margin_left = PREVIEW_W
+		b.add_theme_stylebox_override(state, box)
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.draw.connect(_draw_preview.bind(b, id))
+
+
+func _draw_preview(b: Button, id: StringName) -> void:
+	var cells := Inventory.cells_of(id, 0)
+	var extent := UiKit.shape_size(id, 1.0)
+	var cell := PREVIEW_SINGLE if cells.size() == 1 else minf(PREVIEW_CELL, PREVIEW_MAX / maxf(extent.x, extent.y))
+	var at := Vector2(PREVIEW_W, b.size.y) / 2.0 - extent * cell / 2.0
+	UiKit.draw_item(b, b.get_theme_default_font(), id, at, cell, 0, ItemDefs.ITEMS[id].rarity, 1.0)
 
 
 func pick(index: int) -> void:

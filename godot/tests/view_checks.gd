@@ -2489,8 +2489,8 @@ static func check_inventory_click() -> String:
 	if err == "":
 		var kinds := {&"staff": &"weapon", &"meteor": &"skill", &"split_support": &"support", &"whetstone": &"item"}
 		for id: StringName in kinds:
-			if panel._kind_of(id) != kinds[id]:
-				err = "%s 的畫法種類應是 %s，實際 %s" % [id, kinds[id], panel._kind_of(id)]
+			if UiKit.item_kind(id) != kinds[id]:
+				err = "%s 的畫法種類應是 %s，實際 %s" % [id, kinds[id], UiKit.item_kind(id)]
 				break
 	hud.queue_free()
 	cam.queue_free()

@@ -31,6 +31,10 @@ const MENU_DIM := Color(5 / 255.0, 8 / 255.0, 16 / 255.0, 0.8)
 const BUTTON_L := {"size": Vector2(280, 60), "font": FONT_BODY}   # 選單：主選單、暫停畫面、設定頁、結算畫面
 const BUTTON_M := {"size": Vector2(200, 52), "font": 24}          # 面板裡的操作：連線面板（開房、加入、選職業、準備）
 const BUTTON_S := {"size": Vector2(120, 44), "font": FONT_NOTE}   # 一排很多顆的：武器測試場的武器列
+const ITEM_WEAPON_FILL := Color("4a4f57")   # 物品畫法（draw_item）：武器的底色（鐵灰）
+const ITEM_SKILL_FILL := Color("6a3f8f")    # 技能、輔助的底色（和寶石座同色）
+const ITEM_BIG_CELL := 64.0                 # 格子這麼大以上字大一級（背包）
+const ITEM_TEXT_CELL := 40.0                # 格子這麼大以上才寫名稱（遺物卡片的小圖不寫，卡片右邊有字）
 const BUTTON_CARD := {"size": Vector2(440, 230), "font": 24}   # 卡片：遺物的 N 選 1（RelicPanel；3 張約 1344 寬）
 const BUTTON_BG := {&"normal": Color(0.12, 0.14, 0.2, 0.85), &"hover": Color(0.22, 0.26, 0.36, 0.95),
 	&"pressed": Color(0.32, 0.38, 0.52, 1.0), &"disabled": Color(0.1, 0.1, 0.12, 0.6)}
@@ -161,6 +165,59 @@ static func draw_shape(ci: CanvasItem, id: StringName, at: Vector2, cell: float,
 		var r := Rect2(at + Vector2(c) * cell, Vector2(cell, cell)).grow(-1)
 		ci.draw_rect(r, Color(color.darkened(0.4), 0.9 * alpha))
 		ci.draw_rect(r, Color(color, alpha), false, 1.0)
+
+
+# 一件物品（背包、武器格子、遺物卡片共用）：at = 形狀外框的左上角，rot 轉向
+# 底色看種類（武器鐵灰＋「武器」、技能紫色寶石＋圖示字、輔助深紫虛線框＋「輔助」、道具稀有度色）、外框看稀有度；
+# 道具與有「羈絆 +1」詞條的武器在右上角畫羈絆色點（hover_bond 那個畫大一點）；格子 ≥ ITEM_BIG_CELL 時字大一級
+static func draw_item(ci: CanvasItem, font: Font, id: StringName, at: Vector2, cell_px: float, rot: int, rarity: StringName, alpha: float, weapon: Dictionary = {}, hover_bond: StringName = &"") -> void:
+	var def: Dictionary = ItemDefs.ITEMS[id]
+	var color: Color = ItemDefs.RARITIES[rarity].color
+	var kind := item_kind(id)
+	var bonds := item_bonds(id, weapon)
+	var fill: Color = {&"weapon": ITEM_WEAPON_FILL, &"skill": ITEM_SKILL_FILL, &"support": ITEM_SKILL_FILL.darkened(0.4)}.get(kind, color.darkened(0.55))
+	var cells := Inventory.cells_of(id, rot)
+	for c in cells:
+		var r := Rect2(at + Vector2(c) * cell_px, Vector2(cell_px, cell_px)).grow(-3)
+		ci.draw_rect(r, Color(fill, 0.9 * alpha))
+		if kind == &"support":
+			draw_dashed_rect(ci, r, Color(color, alpha))
+		else:
+			ci.draw_rect(r, Color(color, alpha), false, 2.0)
+	var first: Vector2 = at + Vector2(cells[0]) * cell_px
+	var big := cell_px >= ITEM_BIG_CELL
+	if kind == &"skill":
+		var center := first + Vector2(cell_px, cell_px) / 2.0
+		ci.draw_arc(center, cell_px * 0.34, 0.0, TAU, 20, Color(1, 1, 1, 0.45 * alpha), 1.5)
+		ci.draw_string(font, first + Vector2(0, cell_px / 2.0 + (12 if big else 7)), SkillDefs.SKILLS.get(id, {}).get("icon", String(def.name).substr(0, 1)),
+				HORIZONTAL_ALIGNMENT_CENTER, cell_px, 34 if big else 20, Color(1, 1, 1, alpha))
+	elif cell_px >= ITEM_TEXT_CELL:
+		ci.draw_string(font, first + Vector2(6, cell_px * 0.36), String(def.name).substr(0, 4 if big else 2), HORIZONTAL_ALIGNMENT_LEFT, cell_px - 8, 22 if big else 15, Color(1, 1, 1, alpha))
+	if (kind == &"weapon" or kind == &"support") and cell_px >= ITEM_TEXT_CELL:
+		ci.draw_string(font, first + Vector2(6, cell_px - 9), "武器" if kind == &"weapon" else "輔助", HORIZONTAL_ALIGNMENT_LEFT, -1, 16 if big else 11, Color(1, 1, 1, 0.6 * alpha))
+	var dot_scale := 1.5 if big else 1.0
+	for i in bonds.size():
+		var dot_r := (5.0 if bonds[i] == hover_bond else 3.5) * dot_scale
+		ci.draw_circle(first + Vector2(cell_px - 9.0 * dot_scale * (i + 1), 9.0 * dot_scale), dot_r, Color(BondDefs.BONDS[bonds[i]].color, alpha))
+
+
+# 畫法用的種類：weapon / skill / support（輔助道具是 kind item、有 skill_support 能力）/ item / corpse
+static func item_kind(id: StringName) -> StringName:
+	var kind: StringName = ItemDefs.ITEMS[id].kind
+	if kind == &"item" and not ItemDefs.support_of(id).is_empty():
+		return &"support"
+	return kind
+
+
+# 物品屬於哪些羈絆：武器看「羈絆 +1」詞條，其他看道具資料
+static func item_bonds(id: StringName, weapon: Dictionary = {}) -> Array:
+	return WeaponDropDefs.bonds_of(weapon) if not weapon.is_empty() else ItemDefs.ITEMS[id].get("bonds", [])
+
+
+static func draw_dashed_rect(ci: CanvasItem, r: Rect2, color: Color) -> void:
+	var corners: Array[Vector2] = [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]
+	for i in 4:
+		ci.draw_dashed_line(corners[i], corners[(i + 1) % 4], color, 2.0, 6.0)
 
 
 # 形狀小圖的大小（px）
