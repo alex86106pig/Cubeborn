@@ -23,6 +23,7 @@ var zones: Array[Dictionary] = []   # 地上的持續區域（F7 聖光圈，Gro
 var chests: Array[Entity] = []       # 寶箱（D3）
 var pickups: Array[Entity] = []      # 掉在地上的道具（D3）
 var relics: Array[Entity] = []       # 地上的遺物（Build 改版第 6 步：祭壇 / 石棺、Boss 的獎勵）
+var delayed: Array[Dictionary] = []  # 技能晚一點才發生的效果（SkillBehaviors.later，只在權威端）：{ t, owner_id, fn }
 var coins: Array[Entity] = []        # 掉在地上的金幣（v0.45，sim/coin.gd）
 var souls := 0                        # 共用的靈魂（局內貨幣，D3）：殺怪賺、開祭壇 / 石棺花
 var debug_drop_all := false          # 除錯（--loot-test）：每隻怪死掉都掉武器
@@ -173,6 +174,7 @@ func next_floor() -> void:
 			e.remove()
 	_remove_dead_entities()
 	packs.clear()
+	delayed.clear()
 	boss_id = 0
 	for p in player_list:
 		p.arrive_floor(spawn_point, terrain.ground_at(spawn_point))
@@ -245,6 +247,7 @@ func clear() -> void:
 	chests.clear()
 	pickups.clear()
 	relics.clear()
+	delayed.clear()
 	coins.clear()
 	packs.clear()
 
@@ -353,9 +356,9 @@ func drop_weapon(inst: Dictionary, at: Vector2) -> ItemPickup:
 
 
 # 道具 / 武器掉在地上（開寶箱、殺怪、從背包丟出）；客戶端不產生（等快照）
-# 放一個遺物（tier：祭壇 small / 石棺 big 的稀有度機率）
-func drop_relic(tier: StringName, at: Vector2) -> Relic:
-	var r := Relic.new(self, tier, nav.nearest_walkable(at))
+# 放一個遺物（tier：祭壇 small / 石棺 big 的稀有度機率；kind：&"item" 道具 / &"skill" 技能）
+func drop_relic(tier: StringName, at: Vector2, kind: StringName = &"item") -> Relic:
+	var r := Relic.new(self, tier, nav.nearest_walkable(at), kind)
 	if is_authority:
 		add_entity(r)
 		relics.append(r)
@@ -522,6 +525,7 @@ func step(cmds: Dictionary, dt: float) -> void:
 	for e in projectiles:
 		e.update(dt)
 	GroundZones.update(self, dt)
+	SkillBehaviors.update_world(self, dt)
 
 	_bodies.clear()
 	for p in player_list:

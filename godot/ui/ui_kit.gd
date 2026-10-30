@@ -129,6 +129,8 @@ static func item_info(id: StringName, weapon: Dictionary) -> Dictionary:
 		return {"title": WeaponDropDefs.display_name(weapon), "color": ItemDefs.RARITIES[weapon.rarity].color, "lines": lines}
 	var def: Dictionary = ItemDefs.ITEMS[id]
 	var r: Dictionary = ItemDefs.RARITIES[def.rarity]
+	if def.kind == &"skill":
+		return {"title": "%s（技能）" % def.name, "color": GOLD, "lines": [def.desc, skill_line(id)] as Array[String]}
 	var desc: String = def.get("desc", "")
 	if not def.get("effects", []).all(ItemDefs.is_implemented):
 		desc += "（效果尚未實作）"
@@ -139,6 +141,18 @@ static func item_info(id: StringName, weapon: Dictionary) -> Dictionary:
 		desc += "　· 羈絆：" + ("、".join(bond_names) if not bond_names.is_empty() else "沒有")
 	var item_lines: Array[String] = [desc]
 	return {"title": "%s（%s）" % [def.name, r.name], "color": r.color, "lines": item_lines}
+
+
+# 技能的第二行：能用的武器、標籤、冷卻（第 7 步）
+static func skill_line(id: StringName) -> String:
+	var sk: Dictionary = SkillDefs.SKILLS[id]
+	var weapons: Array[String] = []
+	for w: StringName in sk.weapons:
+		weapons.append(WeaponDefs.WEAPONS[w].name)
+	var tags: Array[String] = []
+	for t: StringName in sk.tags:
+		tags.append(SkillDefs.TAGS[t])
+	return "鑲在%s的寶石座 · %s · 冷卻 %.0f 秒" % ["、".join(weapons), "、".join(tags) if not tags.is_empty() else "—", sk.cooldown]
 
 
 # 道具形狀的小圖（不轉向）：每格 cell px，左上角在 at

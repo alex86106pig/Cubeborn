@@ -77,7 +77,21 @@ static func roll_affixes(count: int, rng: RandomNumberGenerator) -> Array[String
 
 
 static func make(uid: StringName, base: StringName, rarity: StringName, rng: RandomNumberGenerator) -> Dictionary:
-	return {"uid": uid, "base": base, "rarity": rarity, "affixes": roll_affixes(affix_count(rarity), rng)}
+	return add_builtin_skill({"uid": uid, "base": base, "rarity": rarity, "affixes": roll_affixes(affix_count(rarity), rng)})
+
+
+# 武器自帶的技能（WeaponDefs 的 slot_skill，火把的插火把）：出廠就鑲在第一個寶石座；之後可以拿下來
+static func add_builtin_skill(inst: Dictionary) -> Dictionary:
+	var w: Dictionary = WeaponDefs.WEAPONS[ItemDefs.ITEMS[inst.base].weapon]
+	if not w.has("slot_skill"):
+		return inst
+	var cells := WeaponDefs.grid_cells(ItemDefs.ITEMS[inst.base].weapon)
+	var gems: Array = cells.keys().filter(func(c: Vector2i) -> bool: return cells[c] == "G")
+	gems.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y or (a.y == b.y and a.x < b.x))
+	if not gems.is_empty():
+		var sockets: Array[Dictionary] = [{"uid": StringName("%s_skill" % inst.uid), "id": w.slot_skill, "cell": gems[0], "rot": 0}]
+		inst["sockets"] = sockets
+	return inst
 
 
 # 武器的基礎數值（介面顯示用的實際數字）：攻擊力 = 普攻傷害、攻速 = 每秒普攻次數、範圍 = 揮砍距離或魔彈射程，都乘上稀有度倍率；
@@ -161,14 +175,15 @@ static func from_array(a: Array) -> Dictionary:
 	return inst
 
 
-# 武器帶的技能（火把的插火把，2026-10-27）還剩幾次：記在武器實例的 slot_charges，沒有就是滿的；沒有武器技能回傳 -1
+# 次數記在武器上的技能（插火把，weapon_charges）還剩幾次：記在鑲著它的武器實例的 slot_charges，沒有就是滿的；沒鑲這種技能回傳 -1
 static func slot_charges(inst: Dictionary) -> int:
 	if inst.is_empty():
 		return -1
-	var w: Dictionary = WeaponDefs.WEAPONS[ItemDefs.ITEMS[inst.base].weapon]
-	if not w.has("slot_skill"):
-		return -1
-	return inst.get("slot_charges", SkillDefs.SKILLS[w.slot_skill].charges)
+	for e: Dictionary in inst.get("sockets", []):
+		var def: Dictionary = SkillDefs.SKILLS.get(e.id, {})
+		if def.get("weapon_charges", false):
+			return inst.get("slot_charges", def.charges)
+	return -1
 
 
 # 名稱；有武器技能次數的接在後面括號（「白色 火把（2）」）

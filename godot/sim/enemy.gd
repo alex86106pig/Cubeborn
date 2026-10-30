@@ -64,6 +64,10 @@ var stagger_timer := 0.0             # 失衡剩餘秒數：不能動、不出�
 var ram_timer := 0.0                 # 物理羈絆第 3 階：被擊退的這段時間撞到別的怪，兩隻各受 ram_damage
 var ram_damage := 0.0
 var ram_source_id := 0
+var stun_timer := 0.0                # 被技能暈眩（盾衝、震地…）：不能動、不出招（Boss 不會被暈）
+var taunt_id := 0                    # 被嘲諷：這段時間只追這位玩家（Boss 不會被嘲諷）
+var taunt_timer := 0.0
+var blind_timer := 0.0               # 在煙霧裡：打玩家的攻擊一半會打偏（Combat）
 var no_death_effect := false         # 死亡爆炸詞條、膨脹屍死後爆炸不發動（冰霜羈絆第 3 階：凍結中被殺）
 var _spread_timer := 0.0
 const BURN_TICK := 0.5
@@ -203,7 +207,7 @@ func on_added() -> void:
 # 近戰 / 遠程 AI 追的對象：最近的玩家或玩家方的骷髏僕從（G6，Boss 只追玩家）；僕從自己覆寫成最近的怪
 func nearest_target() -> Entity:
 	var best: Entity = nearest_player()
-	if is_boss() or world.allies.is_empty():
+	if is_boss() or world.allies.is_empty() or taunt_timer > 0.0:
 		return best
 	var best_d := best.pos.distance_squared_to(pos) if best != null else INF
 	for a in world.allies:
@@ -217,6 +221,10 @@ func nearest_target() -> Entity:
 
 
 func nearest_player() -> Player:
+	if taunt_timer > 0.0:   # 被嘲諷（盾的技能）：只追嘲諷的人
+		var t := world.entities.get(taunt_id) as Player
+		if t != null and t.is_targetable():
+			return t
 	var best: Player = null
 	var best_d := INF
 	for p in world.player_list:
@@ -243,9 +251,12 @@ func update(dt: float) -> void:
 	_update_slow(dt)
 	_update_chill(dt)
 	_update_poise(dt)
-	if (frozen_timer > 0.0 or stagger_timer > 0.0 or buried_timer > 0.0 or grabbed_by != 0) and not is_dead:
+	taunt_timer = maxf(0.0, taunt_timer - dt)
+	blind_timer = maxf(0.0, blind_timer - dt)
+	if (frozen_timer > 0.0 or stagger_timer > 0.0 or stun_timer > 0.0 or buried_timer > 0.0 or grabbed_by != 0) and not is_dead:
 		frozen_timer = maxf(0.0, frozen_timer - dt)
 		stagger_timer = maxf(0.0, stagger_timer - dt)
+		stun_timer = maxf(0.0, stun_timer - dt)
 		buried_timer = maxf(0.0, buried_timer - dt)
 		velocity = Vector2.ZERO   # 冰凍 / 失衡 / 被埋 / 被舉著：狀態機停住（出招到一半也停），結束後接著做
 		_update_anim()
@@ -363,6 +374,14 @@ func _spread_burn() -> void:
 			best = en
 	if best != null:
 		best.add_burn(burn_source_id, burn_stack_dps, burn_timer, burn_stacks, burn_stacks, true)
+
+
+# 技能暈眩：seconds 秒不能動、不出招（Boss 不會）；已經暈著的取較長的
+func stun(seconds: float) -> void:
+	if is_dead or is_boss():
+		return
+	stun_timer = maxf(stun_timer, seconds)
+	velocity = Vector2.ZERO
 
 
 # 冰冷（冰霜羈絆）：加 stacks 層，最多到 max_stacks（已經比較多就不減少）；每層減速 slow_per（取較高的），重新計時
@@ -606,8 +625,8 @@ func _update_anim() -> void:
 			anim["burn_stacks"] = burn_stacks
 	if chill_stacks > 0:
 		anim["chill"] = chill_stacks
-	if stagger_timer > 0.0:
-		anim["staggered"] = true
+	if stagger_timer > 0.0 or stun_timer > 0.0:
+		anim["staggered"] = true   # 失衡與技能暈眩都是頭上冒星星
 	if buried_timer > 0.0:
 		anim["buried"] = true
 	if grabbed_by != 0:

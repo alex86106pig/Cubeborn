@@ -105,6 +105,12 @@ static func check_item_defs() -> String:
 					return "%s 占 %d 格，%s 應占 %d 格" % [id, ItemDefs.cell_count(id),
 						ItemDefs.RARITIES[def.rarity].name, ItemDefs.expected_cells(id)]
 				counts[def.rarity] = counts.get(def.rarity, 0) + 1
+			&"skill":   # 技能（Build 改版第 7 步）：1 格、SkillDefs 有同 id 的資料、寫明能用的武器
+				if ItemDefs.cell_count(id) != 1 or not SkillDefs.SKILLS.has(id) or (SkillDefs.SKILLS[id].get("weapons", []) as Array).is_empty():
+					return "技能 %s 應占 1 格、SkillDefs 有資料並寫明能用的武器" % id
+				for wid: StringName in SkillDefs.SKILLS[id].weapons:
+					if not WeaponDefs.WEAPONS.has(wid) or not WeaponDefs.grid_cells(wid).values().has("G"):
+						return "技能 %s 的武器 %s 不存在或沒有寶石座" % [id, wid]
 			&"corpse":   # 隊友的屍體（D6）：2 × 3 格、沒有效果，不算在 45 個道具裡
 				if ItemDefs.cell_count(id) != 6 or not def.effects.is_empty():
 					return "屍體應占 6 格、沒有效果"
@@ -1400,7 +1406,7 @@ static func check_item_drop_pool() -> String:
 				return "%s 的掉落裡有還沒實作的 %s" % [r, id]
 		# 這個稀有度有實作好的道具就全部都在掉落裡；一個都沒有就往下一級找
 		var done := LootDefs.items_of(r).filter(func(id: StringName) -> bool:
-			return ItemDefs.item_implemented(id) and not ItemDefs.ITEMS[id].get("bonds", []).is_empty())
+			return ItemDefs.item_implemented(id) and (not ItemDefs.ITEMS[id].get("bonds", []).is_empty() or not ItemDefs.support_of(id).is_empty()))
 		if not done.is_empty():
 			if pool != done:
 				return "%s 的掉落應為實作好、屬於羈絆的 %s，實際 %s" % [r, done, pool]
@@ -1624,8 +1630,8 @@ static func check_bonds() -> String:
 				return "%s 的羈絆不存在：%s" % [id, bond]
 	for r: StringName in ItemDefs.RARITIES:
 		for id in LootDefs.drop_pool(r):
-			if ItemDefs.ITEMS[id].get("bonds", []).is_empty():
-				return "%s 不屬於任何羈絆，不該在掉落池" % id
+			if ItemDefs.ITEMS[id].get("bonds", []).is_empty() and ItemDefs.support_of(id).is_empty():
+				return "%s 不屬於任何羈絆（也不是輔助道具），不該在掉落池" % id
 	for bond: StringName in BondDefs.BONDS:
 		var th: Array = BondDefs.BONDS[bond].thresholds
 		if BondDefs.BONDS[bond].tiers.size() != th.size():

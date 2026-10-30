@@ -1,4 +1,4 @@
-# 技能欄（照搬網頁版 HUD 的 skillbar）：左鍵、右鍵、Shift 翻滾（Godot 版新增）、數字鍵 1~5；CD 扇形遮罩與秒數、剩餘次數、閃爍回饋
+# 技能欄（照搬網頁版 HUD 的 skillbar）：左鍵、右鍵、Shift 翻滾（Godot 版新增）、數字鍵 1~4（寶石座的技能）與 Q（治療藥水）；CD 扇形遮罩與秒數、剩餘次數、閃爍回饋
 class_name SkillBar
 extends HBoxContainer
 
@@ -9,6 +9,7 @@ const ROLL_ICON := "⟳"   # 圖示都是 SkillIcons 畫的（打包字型沒有
 
 var _slots: Dictionary = {}   # cd key -> Slot
 var _weapon_id: StringName = &""
+var _slot_sig := ""                    # 寶石座上的技能（ActiveSlots.signature），變了就重建
 var _attack_slot: Slot        # 左鍵：平常是普攻
 var _parry_slot: Slot         # 劍盾格擋中左鍵改成招架（v0.41.0）：同一個位置，兩格輪流顯示
 var _special_slot: Slot       # 右鍵：平常是武器特殊技
@@ -26,9 +27,11 @@ func reset() -> void:
 	_weapon_id = &""
 
 
-# 武器換了（含重新開始）就重建
+# 武器換了（含重新開始）、寶石座上的技能換了就重建
 func refresh(world: World, player: Player) -> void:
-	if player.weapon_id != _weapon_id:
+	var sig := player.slots.signature(player)
+	if player.weapon_id != _weapon_id or sig != _slot_sig:
+		_slot_sig = sig
 		_build(player)
 	if _parry_slot != null:
 		_parry_slot.visible = player.block_time >= 0.0
@@ -49,7 +52,7 @@ func refresh(world: World, player: Player) -> void:
 		slot.cd_left = world.cooldowns.remaining(player.cd(key))   # 每位玩家各自的 CD（Player.cd）
 		slot.cd_ratio = 1.0 - world.cooldowns.progress(player.cd(key))
 		if slot.index >= 0:
-			var data: Variant = player.slots.get_slot(player, slot.index)   # 含手上武器帶的技能（插火把）
+			var data: Variant = player.slots.get_slot(player, slot.index)   # 寶石座的技能（含火把的插火把）
 			if data != null and data.def.mode == &"charges":
 				slot.charges.text = str(data.charges)
 				slot.icon.modulate.a = 0.3 if data.charges <= 0 else 1.0
@@ -107,7 +110,7 @@ func _build(player: Player) -> void:
 	add_child(divider)
 	for i in ActiveSlots.SLOT_COUNT:
 		var data: Variant = player.slots.get_slot(player, i)
-		_add_slot(ActiveSlots.cd_key(i), data.def.icon if data != null else "", str(i + 1), i, data == null)
+		_add_slot(ActiveSlots.cd_key(i), data.def.icon if data != null else "", ActiveSlots.KEY_LABELS[i], i, data == null)
 	_weapon_id = player.weapon_id
 
 

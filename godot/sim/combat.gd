@@ -80,8 +80,10 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 		if target is Player:
 			ItemEffects.on_block(world, target as Player, source)   # 防禦部位的觸發道具（Build 改版第 4 步）
 		return false
-	# 閃避（F1）：整下閃掉，不扣血、不硬直；閃避率 0 時不擲骰（不消耗 world.rng）
+	# 閃避（F1）：整下閃掉，不扣血、不硬直；閃避率 0 時不擲骰（不消耗 world.rng）；煙霧裡的怪打人再多一半打偏（煙霧彈）
 	var dodge := target.stats.value(&"dodge")
+	if source is Enemy and target is Player and (source as Enemy).blind_timer > 0.0:
+		dodge = 1.0 - (1.0 - dodge) * 0.5
 	if dodge > 0.0 and world.rng.randf() < dodge:
 		world.emit_event("entity:dodged", {"target_id": target.id, "source_id": source.id})
 		return false

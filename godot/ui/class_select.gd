@@ -307,9 +307,9 @@ func _fill_skills(c: Dictionary) -> void:
 	_skills.add_child(_skill_row(SkillBar.Slot.new("passive", "被動", -1), "職業被動", c.passive.desc))
 	_skills.add_child(_skill_row(SkillBar.Slot.new(w.attack.icon, "左鍵", -1), w.attack.name, w.attack.get("desc", "")))
 	_skills.add_child(_skill_row(SkillBar.Slot.new(w.special.icon, "右鍵", -1), w.special.name, w.special.get("desc", "")))
-	if w.has("slot_skill"):   # 武器帶的技能欄技能（火把傭兵的插火把）
-		var s: Dictionary = SkillDefs.SKILLS[w.slot_skill]
-		_skills.add_child(_skill_row(SkillBar.Slot.new(s.icon, "數字鍵", -1), s.name, s.desc))
+	if w.has("slot_skill"):   # 武器自帶的技能（火把傭兵的插火把，鑲在寶石座）
+		var item: Dictionary = ItemDefs.ITEMS[w.slot_skill]
+		_skills.add_child(_skill_row(SkillBar.Slot.new(SkillDefs.SKILLS[w.slot_skill].icon, "數字鍵", -1), item.name, item.desc))
 	_skills.add_child(_skill_row(SkillBar.Slot.new(SkillBar.ROLL_ICON, "Shift", -1), "翻滾", ROLL_DESC))
 
 

@@ -224,6 +224,7 @@ godot/
 | `relic:opened` | `{ relic_id, player_id }`（Build 改版第 6 步：打開自己的 N 選 1） | Relic.open_for |
 | `relic:rerolled` | `{ relic_id, player_id, dice }`（用掉 1 顆骰子重擲，dice 是剩下的） | Relic.reroll |
 | `relic:picked` | `{ relic_id, player_id, item }`（選了一個；拿到的道具照樣發 item:added） | Relic.pick |
+| `skill:leveled` | `{ player_id, skill, level }`（Build 改版第 7 步：技能遺物選到已經有的技能，升到 level 級） | Relic.pick |
 | `skill:used` | `{ key, def }` | PlayerStates / ActiveSlots |
 | `skill:onCooldown` | `{ key }` | PlayerStates / ActiveSlots |
 | `wave:started` | `{ wave, total, isBoss }` | Spawner |

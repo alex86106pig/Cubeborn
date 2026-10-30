@@ -7,7 +7,7 @@ extends VBoxContainer
 signal op_requested(op: Array)
 
 var _cards := HBoxContainer.new()
-var _title := UiKit.label("選一個道具（按數字鍵或點卡片）", UiKit.FONT_NOTE, UiKit.GOLD)
+var _title := UiKit.label("", UiKit.FONT_NOTE, UiKit.GOLD)
 var _footer := UiKit.label("", 18, Color(1, 1, 1, 0.85))
 var relic_id := 0                # 正在顯示的遺物（0 = 沒顯示）
 var choice_count := 0
@@ -43,19 +43,23 @@ func refresh(world: World, me: Player) -> void:
 	choice_count = choices.size()
 	if not visible:
 		return
+	_title.text = "選一個%s（按數字鍵或點卡片）" % ("技能" if r.relic_kind == &"skill" else "道具")
 	if choices != _shown_key:
 		_shown_key = choices.duplicate()
-		_rebuild(choices)
+		_rebuild(choices, me)
 	_footer.text = ("骰子 %d 顆 · R 重骰（用掉 1 顆）" % me.dice if me.dice > 0 else "沒有骰子了") + " · Esc 先不選"
 
 
-func _rebuild(choices: Array) -> void:
+func _rebuild(choices: Array, me: Player) -> void:
 	for c in _cards.get_children():
 		_cards.remove_child(c)
 		c.queue_free()
 	for i in choices.size():
 		var id: StringName = choices[i]
 		var def: Dictionary = ItemDefs.ITEMS[id]
+		if def.kind == &"skill":
+			_cards.add_child(_skill_card(i, id, me))
+			continue
 		var bonds: Array[String] = []
 		for b: StringName in def.get("bonds", []):
 			bonds.append(BondDefs.BONDS[b].name)
@@ -66,6 +70,20 @@ func _rebuild(choices: Array) -> void:
 		b.add_theme_color_override(&"font_hover_color", rarity.color.lightened(0.3))
 		b.pressed.connect(pick.bind(i))
 		_cards.add_child(b)
+
+
+# 技能卡：名稱、能用的武器與冷卻、說明；身上已經有就寫會升到幾級
+func _skill_card(i: int, id: StringName, me: Player) -> Button:
+	var def: Dictionary = ItemDefs.ITEMS[id]
+	var lv: int = me.skill_levels.get(id, 1)
+	var head := "%d　%s" % [i + 1, def.name]
+	if me.loadout.has_item(id) and lv < SkillDefs.LEVEL.max:
+		head += "（已有：升到 %d 級）" % (lv + 1)
+	var b := UiKit.button("%s\n%s\n%s" % [head, UiKit.skill_line(id), def.desc], UiKit.BUTTON_CARD)
+	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	b.add_theme_color_override(&"font_color", UiKit.GOLD)
+	b.pressed.connect(pick.bind(i))
+	return b
 
 
 func pick(index: int) -> void:

@@ -2,7 +2,7 @@
 # 每個選項的稀有度照 tier（祭壇 / 石棺）的機率各自擲、看那位玩家的尋寶；3 個是不同的道具。選項擲過就固定，關掉再開還是同一組
 # 骰子（Player.dice）用掉 1 顆把全部選項重擲。每人只能選一次，在場的玩家都選過才消失
 # 選項存在遺物上（offers），快照照送，客戶端的面板直接讀；選、重骰、關掉走背包操作（InputCmd.OP_RELIC_*），只在權威端執行
-# kind（&"item" 道具）留給第 7 步的技能遺物
+# 技能遺物（relic_kind &"skill"，第 7 步）：選項從全部技能抽（SkillDefs.relic_pool，沒有稀有度）；選到身上已經有的技能就升 1 級（Player.skill_levels）
 class_name Relic
 extends Entity
 
@@ -36,7 +36,15 @@ func open_for(p: Player) -> void:
 
 func _roll(p: Player) -> void:
 	var out: Array[StringName] = []
-	for i in maxi(1, roundi(p.stats.value(&"relic_choices"))):
+	var n := maxi(1, roundi(p.stats.value(&"relic_choices")))
+	if relic_kind == &"skill":
+		var skills := SkillDefs.relic_pool()
+		for i in mini(n, skills.size()):
+			var left := skills.filter(func(id: StringName) -> bool: return not out.has(id))
+			out.append(left[world.rng.randi_range(0, left.size() - 1)])
+		offers[p.peer_id] = out
+		return
+	for i in n:
 		var rarity := LootDefs.roll_rarity(tier, world.rng, p.stats.value(&"treasure"))
 		var pool := LootDefs.drop_pool(rarity).filter(func(id: StringName) -> bool: return not out.has(id))
 		if pool.is_empty():
@@ -64,7 +72,11 @@ func pick(p: Player, index: int) -> bool:
 	p.relic_id = 0
 	var item_id: StringName = choices[index]
 	world.emit_event("relic:picked", {"relic_id": id, "player_id": p.id, "item": String(item_id)})
-	if p.loadout.add_item(p, item_id) == &"":
+	var lv: int = p.skill_levels.get(item_id, 1)
+	if ItemDefs.is_skill(item_id) and p.loadout.has_item(item_id) and lv < SkillDefs.LEVEL.max:
+		p.skill_levels[item_id] = lv + 1
+		world.emit_event("skill:leveled", {"player_id": p.id, "skill": String(item_id), "level": lv + 1})
+	elif p.loadout.add_item(p, item_id) == &"":
 		world.drop_item(item_id, p.pos + MathUtil.dir_from_angle(p.facing) * LootDefs.DROP_DISTANCE)
 	if world.player_list.all(func(o: Player) -> bool: return taken.has(o.peer_id)):
 		remove()

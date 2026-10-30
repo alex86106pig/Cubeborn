@@ -161,7 +161,7 @@ func _initialize() -> void:
 		all.bind([LootChecks.check_weapon_pickup, LootChecks.check_weapon_merge]))
 
 	# ───────── 道具（依效果種類：屬性 / 條件 / 觸發 / 能力）─────────
-	_check("物品資料：每個稀有度都有道具，名稱不重複、欄位完整、形狀合法、格數 = ceil(強度 ÷ 稀有度效率)、效果都對應到存在的屬性 / 條件 / 觸發 / 能力", LootChecks.check_item_defs)
+	_check("物品資料：每個稀有度都有道具，名稱不重複、欄位完整、形狀合法、格數看稀有度、技能 1 格且寫明能用的武器、效果都對應到存在的屬性 / 條件 / 觸發 / 能力", LootChecks.check_item_defs)
 	_check("道具效果的類別：ItemDefs 標成已接上的條件與觸發，和 ItemEffects 的條件 / 動作類別一一對應", LootChecks.check_item_effect_registry)
 	_check("道具屬性：放進身上照資料生效（百分比同類相加、最大生命與目前生命一起加、移除後回到原值、武器道具直接換武器）；命中回復有內部冷卻、吸血看實際扣血、投射物減傷、靈魂看擊殺者（小數累積）與精英倍率、祭壇價格看開的人、撿取範圍、視野距離與角度",
 		all.bind([LootChecks.check_items_apply, LootChecks.check_item_stats]))
@@ -173,10 +173,12 @@ func _initialize() -> void:
 	_check("道具能力：二段跳（沒有道具空中跳不了、有雙躍之靴可再跳一次、落地重置）；自動回充的護盾（先扣盾、recharge_delay 秒沒受傷才補滿）",
 		all.bind([PlayerChecks.check_double_jump, LootChecks.check_item_shield]))
 	_check("遺物：每人各自擲 N 選 1（N = 選項數屬性、不重複）、關掉再開同一組、骰子重擲用掉 1 顆（沒有就不能骰）、每人只選一次、全員選過才消失、放不下掉在腳邊、走遠就關掉", LootChecks.check_relic)
+	_check("寶石座技能：寶石座只放技能、技能只放能用的武器、自動擺放；數字鍵 1~4 照主手→副手的寶石座、Q 治療藥水；每個技能放得出來、進冷卻、有效果；等級加傷減冷卻、技能遺物升級；輔助道具貼著才有效（延長、火焰化、分裂）",
+		all.bind([SkillChecks.check_gem_rules, SkillChecks.check_every_skill, SkillChecks.check_skill_level, SkillChecks.check_supports]))
 	_check("羈絆：道具標的羈絆都存在、掉落池只有屬於羈絆的；件數只算鑲在兩隻手上（背包不算）、同一種只算 1 件、跨羈絆兩邊各算、拿下來就扣；階數照門檻", LootChecks.check_bonds)
 	_check("羈絆效果：物理（物理傷害、失衡、擊退撞怪、無視物理抗性、必爆擊與處決）、火焰（沒有羈絆 1 層、疊層、疊滿爆炸、死亡傳層）、冰霜（沒有羈絆 1 層、冰冷減速、疊滿凍結、碎冰加傷、冰錐、凍結中被殺沒有死亡效果）、防禦（護甲、招架回血、招架後必爆擊、衝擊波消箭、反彈）、鬼火（顆數、轉圈碰到怪、定時衝出去）",
 		all.bind([BondChecks.check_phys, BondChecks.check_fire, BondChecks.check_cold, BondChecks.check_guard, BondChecks.check_wisp]))
-	_check("道具掉落：全部道具的效果都已接上；寶箱只開出效果都接上、屬於羈絆的道具；沒有的稀有度往下一級找", LootChecks.check_item_drop_pool)
+	_check("道具掉落：全部道具的效果都已接上；寶箱只開出效果都接上、屬於羈絆的道具（輔助道具也開得出來）；沒有的稀有度往下一級找", LootChecks.check_item_drop_pool)
 
 	# ───────── 畫面 ─────────
 	_check("角色視野：前方扇形與 range 內看得到、身邊 near_radius 背後也看得到；牆擋視線、高台不擋；自己的投射物在背後也看得到、怪物的看不到；寶箱看中心、怪物看身體邊緣", ViewChecks.check_vision_rules)

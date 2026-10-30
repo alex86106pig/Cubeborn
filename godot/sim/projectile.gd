@@ -16,6 +16,7 @@ var blockable := true           # 有方向的投射物預設能被格擋（B5�
 var pierce := false            # 穿透（F5 長弓蓄力箭）：打中不消失，同一隻只打一次
 var proc := false              # 道具效果射出的（G4 飛刀、斬波）：不爆擊、不再觸發道具
 var no_status := false         # 打中不疊燃燒 / 冰冷（冰霜羈絆的冰錐，BondEffects）
+var skill_fx := {}             # 技能射出的（第 7 步）：{ def, ctx }，結束時 SkillBehaviors.projectile_end（跳電、炸開、落地一攤火）
 var homing := 0.0              # 追蹤（G6 鬼火）：每秒最多轉幾弧度、轉向 PROCS.wisp.seek_range 內最近的怪；0 = 直線
 var _pierced := {}
 var damage_type := &"phys"     # StatDefs.DAMAGE_TYPES：決定看目標的護甲與哪一種抗性
@@ -135,6 +136,8 @@ func _on_hit(target: Entity) -> void:
 		_explode()
 	elif not _hit_once(target):
 		_fizzle()
+	if not skill_fx.is_empty():
+		SkillBehaviors.projectile_end(self, target)
 	remove()
 
 
@@ -152,6 +155,8 @@ func _expire() -> void:
 		_explode()
 	else:
 		_fizzle()
+	if not skill_fx.is_empty():
+		SkillBehaviors.projectile_end(self, null)
 	remove()
 
 

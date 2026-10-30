@@ -484,7 +484,7 @@ const WEAPONS := {
 		"damage_type": &"fire",
 		"idle": {"arm_r": -0.5, "arm_l": -0.1, "tilt": 0.0},
 		"light_radius": 6.0,           # 舉著 / 插著的火把照亮的半徑
-		"slot_skill": &"plantTorch",   # 拿在手上時技能欄第一個空格放插火把（SkillDefs）
+		"slot_skill": &"plantTorch",   # 自帶的技能：出廠就鑲在第一個寶石座（WeaponDropDefs.add_builtin_skill）
 		"attack": {
 			"behavior": &"meleeSwing",
 			"sfx": "swing", "sfx_heavy": "swing",

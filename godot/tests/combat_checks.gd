@@ -69,7 +69,8 @@ static func check_fire_bolt() -> String:
 		if wd.special.has("parry"):
 			moves.append(wd.special.parry)
 		if wd.has("slot_skill"):   # 武器帶的技能欄技能（插火把）也在選角畫面顯示
-			moves.append(SkillDefs.SKILLS[wd.slot_skill])
+			var item: Dictionary = ItemDefs.ITEMS[wd.slot_skill]   # 名稱與說明在物品資料（技能是 kind skill 的條目）
+			moves.append(SkillDefs.SKILLS[wd.slot_skill].merged({"name": item.name, "desc": item.desc}))
 		for m: Dictionary in moves:
 			if not SkillIcons.has(m.get("icon", "")) or m.get("desc", "") == "":
 				return "%s「%s」要有畫好的圖示（SkillIcons.DRAWN）與說明 desc：%s / %s" % [wd.name, m.name, m.get("icon", ""), m.get("desc", "")]
@@ -954,7 +955,7 @@ static func check_scepter() -> String:
 
 
 # F8 火把與火把傭兵（2026-10-27 改）：按住右鍵舉火把（移速 ×0.6）、放開放下；舉著時左鍵噴火（120% + 點燃、冷卻 6 秒，冷卻中不出招）；
-# 插火把在技能欄第一個空格（冷卻 1 秒、次數 3 記在武器上、換層補滿）；翻滾取消；插著與舉著的火把照亮的範圍不管視野扇形都看得到；
+# 插火把出廠鑲在火把的寶石座、是數字鍵 1（冷卻 1 秒、次數 3 記在武器上、換層補滿）；翻滾取消；插著與舉著的火把照亮的範圍不管視野扇形都看得到；
 # 揮擊點燃；傭兵視野 +3、身邊 6
 static func check_torch() -> String:
 	var tw: Dictionary = WeaponDefs.WEAPONS[&"torch"]
@@ -990,10 +991,11 @@ static func check_torch() -> String:
 	if _named(events, "skill:onCooldown").is_empty() or not p.action.is_in(&"ready"):
 		return "噴火冷卻中按左鍵應提示、不出招：%s" % p.action.current_name
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 1)
-	# 插火把：技能欄第一個空格；背後 10 單位的怪本來看不到，火把插在它旁邊後看得到
-	var idx := p.slots.weapon_slot_index(p)
-	if idx != Config.PLAYER.slots.find(null):
-		return "插火把應在技能欄第一個空格（第 %d 格）：%d" % [Config.PLAYER.slots.find(null) + 1, idx + 1]
+	# 插火把：火把出廠就鑲在寶石座、是數字鍵 1；背後 10 單位的怪本來看不到，火把插在它旁邊後看得到
+	var idx := 0
+	var first: Variant = p.slots.get_slot(p, idx)
+	if first == null or first.id != tw.slot_skill:
+		return "插火把應鑲在火把的寶石座、是數字鍵 1：%s" % [first]
 	var behind := _dummy(w, Vector2(0, -10))
 	if Vision.point_visible(w, p, behind.pos):
 		return "背後的怪本來應看不到"

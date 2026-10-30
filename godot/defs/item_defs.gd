@@ -105,7 +105,8 @@ const ABILITIES := {
 	&"double_jump": {"name": "二段跳", "params": []},
 	&"bone_shield": {"name": "自動回充的護盾", "params": ["ratio", "recharge_delay"]},
 	&"wisp_orb": {"name": "繞著自己轉的鬼火", "params": ["count", "damage_type"]},   # BondEffects.wisp_plan
-	&"wisp_frenzy": {"name": "鬼火擊殺後鬼火傷害變高", "params": []},                 # 數值在 PROCS.wisp_frenzy
+	&"wisp_frenzy": {"name": "鬼火擊殺後鬼火傷害變高", "params": []},
+	&"skill_support": {"name": "輔助相鄰的技能", "params": ["mode", "tags"]},        # ActiveSlots.supports_of                 # 數值在 PROCS.wisp_frenzy
 }
 
 # 已接上的條件、觸發 + 動作（v0.33.0 第一批 8 個道具、G 第二批，sim/item_effects.gd）
@@ -115,7 +116,7 @@ const IMPLEMENTED_TRIGGERS: Array[String] = ["kill|explode", "kill|heal_max_hp",
 	"attack|throw_knife", "attack|slash_wave", "interval|lightning_strike", "roll|slow_time",
 	"lethal|cheat_death", "death|revive", "kill|wisp", "kill|summon_skeleton",
 	"hit|ignite_area", "hit|fire_pool", "hit|chill", "interval|frost_nova", "roll|frost_nova", "kill|wisp_rally"]
-const IMPLEMENTED_ABILITIES: Array[StringName] = [&"double_jump", &"bone_shield", &"wisp_orb", &"wisp_frenzy"]   # 二段跳在 Player.air_jumps，護盾在 ItemEffects.absorb
+const IMPLEMENTED_ABILITIES: Array[StringName] = [&"double_jump", &"bone_shield", &"wisp_orb", &"wisp_frenzy", &"skill_support"]   # 二段跳在 Player.air_jumps，護盾在 ItemEffects.absorb
 
 # 觸發動作的數值（v0.33.0，說明沒寫到的由 Claude 暫定，試玩後再調）；damage_ratio 都是乘「觸發的那一下」的傷害
 # 同一種動作有多個道具時機率相加（最多 100%）、沒有機率的（回血）效果相加
@@ -141,7 +142,7 @@ const PROCS := {
 	&"wisp_frenzy": {"duration": 5.0, "damage_mul": 1.5},   # 噬魂燈：鬼火擊殺後 5 秒，鬼火傷害 ×1.5
 }
 
-# kind：&"item" 道具 / &"weapon" 武器（weapon 對應 WeaponDefs，數值在那邊，這裡只放背包用的欄位）
+# kind：&"item" 道具 / &"weapon" 武器（weapon 對應 WeaponDefs，數值在那邊，這裡只放背包用的欄位）/ &"skill" 技能（只能鑲在寶石座，SkillDefs 同 id）
 # power 只有道具需要；武器的格數之後和背包一起定
 const ITEMS := {
 	# ---- 武器 ----
@@ -303,6 +304,46 @@ const ITEMS := {
 		"desc": "鬼火打中怪時回復 1 生命", "effects": [{"stat": &"wisp_life_on_hit", "op": Stats.ADD, "value": 1.0}]},
 	&"soul_eater_lamp": {"kind": &"item", "name": "噬魂燈", "rarity": &"purple", "power": 7.0, "shape": &"o4", "bonds": [&"wisp"],
 		"desc": "鬼火擊殺時，5 秒內鬼火傷害 +50%", "effects": [{"ability": &"wisp_frenzy"}]},
+
+	# ---- 技能（Build 改版第 7 步）：只能鑲在寶石座、能用的武器與動作在 SkillDefs（同一個 id）----
+	&"plantTorch": {"kind": &"skill", "name": "插火把", "rarity": &"white", "shape": &"dot", "desc": "插在地上照亮周圍、全隊看得到；每層 3 次（火把自帶）", "effects": []},
+	&"whirlwind": {"kind": &"skill", "name": "旋風斬", "rarity": &"white", "shape": &"dot", "desc": "原地轉一圈，砍四周的怪", "effects": []},
+	&"charge_slash": {"kind": &"skill", "name": "衝鋒斬", "rarity": &"white", "shape": &"dot", "desc": "往前衝 5 單位，砍到路上的怪", "effects": []},
+	&"sword_wave": {"kind": &"skill", "name": "劍氣", "rarity": &"white", "shape": &"dot", "desc": "揮劍射出一道會穿透的劍氣", "effects": []},
+	&"ambush": {"kind": &"skill", "name": "背刺突襲", "rarity": &"white", "shape": &"dot", "desc": "瞬移到 6 單位內最近的怪背後，刺一刀 250%（必爆擊）", "effects": []},
+	&"knife_fan": {"kind": &"skill", "name": "扇形飛刀", "rarity": &"white", "shape": &"dot", "desc": "往前方扇形射出 5 把飛刀", "effects": []},
+	&"smoke_bomb": {"kind": &"skill", "name": "煙霧彈", "rarity": &"white", "shape": &"dot", "desc": "腳下放煙霧 3 秒：裡面的怪攻擊會打偏，自己閃避 +30%", "effects": []},
+	&"fire_nova": {"kind": &"skill", "name": "火焰新星", "rarity": &"white", "shape": &"dot", "desc": "以自己為中心爆一圈火，點燃周圍的怪", "effects": []},
+	&"fire_flask": {"kind": &"skill", "name": "火瓶", "rarity": &"white", "shape": &"dot", "desc": "丟一瓶火油，落地後燒 4 秒", "effects": []},
+	&"flame_dash": {"kind": &"skill", "name": "火焰衝刺", "rarity": &"white", "shape": &"dot", "desc": "往前衝，經過的地方留下一條火", "effects": []},
+	&"shield_charge": {"kind": &"skill", "name": "盾衝", "rarity": &"white", "shape": &"dot", "desc": "舉盾往前衝，撞到的怪被擊退並暈眩 0.8 秒", "effects": []},
+	&"taunt": {"kind": &"skill", "name": "嘲諷", "rarity": &"white", "shape": &"dot", "desc": "周圍的怪 3 秒內改打你，這段時間你受到的傷害 −33%", "effects": []},
+	&"shield_slam": {"kind": &"skill", "name": "震盾", "rarity": &"white", "shape": &"dot", "desc": "敲盾放出震波，周圍的怪被擊退並暈眩 0.5 秒", "effects": []},
+	&"frost_nova": {"kind": &"skill", "name": "冰霜新星", "rarity": &"white", "shape": &"dot", "desc": "身邊爆一圈冰霜，周圍的怪冰冷 +2 層", "effects": []},
+	&"meteor": {"kind": &"skill", "name": "隕石", "rarity": &"white", "shape": &"dot", "desc": "準星的位置延遲 1 秒後大爆炸", "effects": []},
+	&"chain_bolt": {"kind": &"skill", "name": "閃電鏈", "rarity": &"white", "shape": &"dot", "desc": "射出一道閃電，在怪之間跳 4 次", "effects": []},
+	&"holy_pillar": {"kind": &"skill", "name": "聖光柱", "rarity": &"white", "shape": &"dot", "desc": "準星的位置落下光柱：怪受神聖傷害、隊友回血", "effects": []},
+	&"bone_guard": {"kind": &"skill", "name": "骸骨衛士", "rarity": &"white", "shape": &"dot", "desc": "召喚 2 隻骷髏僕從，存在 10 秒", "effects": []},
+	&"blessing": {"kind": &"skill", "name": "祝福", "rarity": &"white", "shape": &"dot", "desc": "5 秒內自己和附近隊友的攻速 +25%", "effects": []},
+	&"volley": {"kind": &"skill", "name": "連珠箭", "rarity": &"white", "shape": &"dot", "desc": "對前方快速連射 5 箭", "effects": []},
+	&"leap_shot": {"kind": &"skill", "name": "後跳射", "rarity": &"white", "shape": &"dot", "desc": "往後跳 4 單位，同時扇形射出 3 箭", "effects": []},
+	&"lightning_arrow": {"kind": &"skill", "name": "閃電箭", "rarity": &"white", "shape": &"dot", "desc": "射中後電到附近 3 隻怪", "effects": []},
+	&"arrow_rain": {"kind": &"skill", "name": "箭雨", "rarity": &"white", "shape": &"dot", "desc": "準星的位置下 2 秒箭雨", "effects": []},
+	&"snipe": {"kind": &"skill", "name": "狙擊", "rarity": &"white", "shape": &"dot", "desc": "蓄力 0.8 秒，射出一支會穿透的重箭，400% 傷害", "effects": []},
+	&"frost_arrow": {"kind": &"skill", "name": "冰霜箭", "rarity": &"white", "shape": &"dot", "desc": "射中後炸開，周圍的怪冰冷 +2 層", "effects": []},
+	&"ground_slam": {"kind": &"skill", "name": "震地", "rarity": &"white", "shape": &"dot", "desc": "往地上一砸，前方扇形的怪被擊退並暈眩 0.5 秒", "effects": []},
+	&"dirt_toss": {"kind": &"skill", "name": "甩土", "rarity": &"white", "shape": &"dot", "desc": "甩出一團土塊，炸開後周圍的怪短暫暈眩", "effects": []},
+	&"burrow": {"kind": &"skill", "name": "掘地", "rarity": &"white", "shape": &"dot", "desc": "鑽進土裡無敵 1 秒、往前移動 6 單位，出土時震開周圍的怪", "effects": []},
+
+	# ---- 輔助道具（Build 改版第 7 步）：鑲在寶石座上下左右才有效，只對標籤相符的技能（SkillDefs.TAGS）----
+	&"split_support": {"kind": &"item", "name": "分裂", "rarity": &"green", "power": 3.0, "shape": &"i2", "bonds": [],
+		"desc": "輔助：相鄰的範圍 / 投射技能 0.25 秒後再放一次（傷害 60%）", "effects": [{"ability": &"skill_support", "mode": &"split", "tags": [&"area", &"projectile"]}]},
+	&"extend_support": {"kind": &"item", "name": "延長", "rarity": &"white", "power": 1.5, "shape": &"dot", "bonds": [],
+		"desc": "輔助：相鄰的範圍 / 投射 / 移動技能範圍與距離 +50%", "effects": [{"ability": &"skill_support", "mode": &"extend", "tags": [&"area", &"projectile", &"move"]}]},
+	&"fire_support": {"kind": &"item", "name": "火焰化", "rarity": &"green", "power": 3.0, "shape": &"i2", "bonds": [&"fire"],
+		"desc": "輔助：相鄰的範圍 / 投射 / 近戰技能改成火焰傷害", "effects": [{"ability": &"skill_support", "mode": &"fire", "tags": [&"area", &"projectile", &"melee"]}]},
+	&"cold_support": {"kind": &"item", "name": "霜化", "rarity": &"green", "power": 3.0, "shape": &"i2", "bonds": [&"cold"],
+		"desc": "輔助：相鄰的範圍 / 投射 / 近戰技能改成冰霜傷害", "effects": [{"ability": &"skill_support", "mode": &"cold", "tags": [&"area", &"projectile", &"melee"]}]},
 	# 隊友的屍體（D6，kind &"corpse"）：不是道具，寶箱不會開出；背包條目 uid 是 Player.corpse_uid(死者)
 	&"corpse": {"kind": &"corpse", "name": "隊友的屍體", "rarity": &"white", "shape": &"r6",
 		"desc": "帶到下一層，死者會變成冤魂；打倒冤魂就能復活", "effects": []},
@@ -370,3 +411,15 @@ static func timing_line(id: StringName, parts: String) -> String:
 # 道具的效果是不是全部都接上了
 static func item_implemented(id: StringName) -> bool:
 	return ITEMS[id].effects.all(is_implemented)
+
+
+# 輔助道具（skill_support 能力）：回傳那筆效果，不是回傳 {}
+static func support_of(id: StringName) -> Dictionary:
+	for e: Dictionary in ITEMS[id].effects:
+		if e.get("ability", &"") == &"skill_support":
+			return e
+	return {}
+
+
+static func is_skill(id: StringName) -> bool:
+	return ITEMS.has(id) and ITEMS[id].kind == &"skill"

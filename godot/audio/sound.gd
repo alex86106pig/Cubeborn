@@ -199,7 +199,7 @@ static func cue_for_event(w: World, event_name: String, p: Dictionary) -> String
 			if player != null and key.begins_with("player.slot"):
 				var slot: Variant = player.slots.get_slot(player, key.trim_prefix("player.slot").to_int() - 1)
 				if slot != null:
-					return SKILL_CUES.get(slot.def.id, "")
+					return SKILL_CUES.get(slot.def.get("id", slot.get("id", &"")), "")
 		"skill:onCooldown":
 			return "denied"
 		"wave:started":

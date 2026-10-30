@@ -58,7 +58,6 @@ const PLAYER := {
 	"action_buffer_time": 0.25,
 	"start_weapon": &"longsword",
 	"start_offhand": &"woodShield",   # 沒選職業時的起始副手（測試與自動驗證）
-	"slots": [&"heal", null, null, null, null],   # 空格給武器的技能（火把的插火把）放第一個空格
 	"run_speed_mul": 1.4,               # Ctrl 切換跑步的移速倍率（2026-10-27 使用者，取代疾跑）
 	"use_item_time": 0.18,              # 使用道具的動作秒數
 	"hurt_shake": 0.25,                 # 受傷時畫面震動強度與秒數

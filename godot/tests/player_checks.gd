@@ -358,26 +358,26 @@ static func check_heal_slot() -> String:
 	var amount := roundi(h.amount)
 	var cd_steps := ceili(h.cooldown / DT)
 	var events: Array[Dictionary] = []
-	_press_slot(w, 0, events)
-	if _named(events, "skill:onCooldown").is_empty() or p.slots.slots[0].charges != h.charges:
+	_press_slot(w, ActiveSlots.HEAL_INDEX, events)
+	if _named(events, "skill:onCooldown").is_empty() or p.slots.heal.charges != h.charges:
 		return "滿血時使用應被擋下（skill:onCooldown）且不扣次數"
 	p.hp = 1.0
 	events.clear()
-	_press_slot(w, 0, events)
-	if p.hp != 1.0 + amount or p.slots.slots[0].charges != h.charges - 1 or not p.action.is_in(&"useItem"):
-		return "1 血喝藥後 hp=%.0f charges=%d 狀態=%s，預期 %d / %d / useItem" % [p.hp, p.slots.slots[0].charges, p.action.current_name, 1 + amount, h.charges - 1]
+	_press_slot(w, ActiveSlots.HEAL_INDEX, events)
+	if p.hp != 1.0 + amount or p.slots.heal.charges != h.charges - 1 or not p.action.is_in(&"useItem"):
+		return "1 血喝藥後 hp=%.0f charges=%d 狀態=%s，預期 %d / %d / useItem" % [p.hp, p.slots.heal.charges, p.action.current_name, 1 + amount, h.charges - 1]
 	var healed := _named(events, "entity:healed")
 	if healed.is_empty() or healed[0].amount != amount:
 		return "entity:healed 應為 %d" % amount
 	_run(w, _cmd(Vector2.ZERO), cd_steps / 2)
 	events.clear()
-	_press_slot(w, 0, events)
-	if p.slots.slots[0].charges != h.charges - 1 or _named(events, "skill:onCooldown").is_empty():
+	_press_slot(w, ActiveSlots.HEAL_INDEX, events)
+	if p.slots.heal.charges != h.charges - 1 or _named(events, "skill:onCooldown").is_empty():
 		return "冷卻 %.2f 秒內再喝應被擋下" % h.cooldown
 	_run(w, _cmd(Vector2.ZERO), cd_steps)
 	p.hp = p.max_hp - 10.0
 	events.clear()
-	_press_slot(w, 0, events)
+	_press_slot(w, ActiveSlots.HEAL_INDEX, events)
 	if p.hp != p.max_hp or _named(events, "entity:healed")[0].amount != 10:
 		return "差 10 血喝藥應補到上限（回 10），實際 hp=%.0f" % p.hp
 	# 用完所有次數後不能再喝
@@ -385,9 +385,9 @@ static func check_heal_slot() -> String:
 		_run(w, _cmd(Vector2.ZERO), cd_steps + 1)
 		p.hp = 1.0
 		events.clear()
-		_press_slot(w, 0, events)
-	if p.slots.slots[0].charges != 0 or p.hp != 1.0 or _named(events, "skill:onCooldown").is_empty():
-		return "%d 次用完後不能再喝：charges=%d hp=%.0f" % [h.charges, p.slots.slots[0].charges, p.hp]
+		_press_slot(w, ActiveSlots.HEAL_INDEX, events)
+	if p.slots.heal.charges != 0 or p.hp != 1.0 or _named(events, "skill:onCooldown").is_empty():
+		return "%d 次用完後不能再喝：charges=%d hp=%.0f" % [h.charges, p.slots.heal.charges, p.hp]
 	return ""
 
 
@@ -421,7 +421,7 @@ static func check_run() -> String:
 				_run(w2, _cmd(right, Vector2(0, 5), InputCmd.BTN_ATTACK), 1)
 			"技能欄":
 				p2.hp = 10.0   # 治療藥水要沒滿血才能喝
-				_run(w2, _cmd(right, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
+				_run(w2, _cmd(right, Vector2(0, 5), InputCmd.slot_bit(ActiveSlots.HEAL_INDEX)), 1)
 			"受擊硬直":
 				p2.action.change(&"stagger")
 				_run(w2, _cmd(right), 1)
@@ -437,7 +437,7 @@ static func check_slot_buffer() -> String:
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1)
 	_run(w, _cmd(Vector2.ZERO), 1)
 	var events: Array[Dictionary] = []
-	_press_slot(w, 0, events)
+	_press_slot(w, ActiveSlots.HEAL_INDEX, events)
 	var started := -1
 	for i in 30:
 		_run(w, _cmd(Vector2.ZERO), 1)

@@ -41,7 +41,7 @@ var grabbed_by := 0                    # 被腐屍抓住：抓住的怪 id（客
 var combo_step := 0
 var combo_timer := 0.0
 var buffered_action: Dictionary = {}   # { type: &"special" | &"slot" | &"roll", index?, time }；空 = 沒有緩衝
-var slots := ActiveSlots.new(Config.PLAYER.slots)
+var slots := ActiveSlots.new()
 var buffs: Dictionary = {}             # id -> { remaining, stats?（屬性加成，見 sim/stats.gd）, trail_color? }
 var kill_timers: Dictionary = {}       # 道具 uid -> 「擊殺後幾秒」條件剩下的秒數（sim/item_effects.gd）
 var roll_timers: Dictionary = {}       # 道具 uid -> 「翻滾後幾秒」條件剩下的秒數（G2）
@@ -63,6 +63,8 @@ var wisp_plan: Array[StringName] = []  # 該有的鬼火（每顆的屬性；Bon
 var wisp_frenzy_timer := 0.0           # 噬魂燈：鬼火擊殺後這段時間鬼火傷害變高
 var dice: int = LootDefs.RELIC.start_dice   # 遺物的骰子（Build 改版第 6 步）：重擲 N 選 1 用掉 1 顆，整局通用
 var relic_id := 0                      # 打開著的遺物（權威端設定，快照送給自己；0 = 沒打開）
+var skill_levels := {}                 # 技能 id → 等級（Build 改版第 7 步：技能遺物選到已經有的就升 1 級；沒記的是 1 級）
+var skill_dash := {}                   # 衝刺類技能進行中：{ left, def, ctx, hit }（SkillBehaviors.update_player）
 var parry_timer := 0.0                 # 盾反動作剩餘秒數（畫面用）
 var is_interact_held := false          # F 按住（救援隊友）；剛按下那一步撿道具 / 開寶箱（D3）
 var view_tick := 0                     # 最近一筆輸入的畫面時間（InputCmd.view_tick；房主延遲補償用，v0.38.0）
@@ -676,6 +678,7 @@ func _tick_timers(dt: float) -> void:
 	_tick_roll_charges()
 	ItemEffects.update_player(self, dt)   # 低血、擊殺後的道具條件加成（v0.33.0）
 	BondEffects.update_player(self, dt)   # 招架後的計時、鬼火
+	SkillBehaviors.update_player(self, dt)   # 衝刺類技能打面前
 	if world.is_authority:
 		Relic.update_player(self)   # 打開的遺物走遠了就關掉
 	for id: StringName in buffs.keys():

@@ -8,7 +8,7 @@ enum { S_RUN, S_TICK, S_ACK, S_WORLD, S_ENTITIES }
 enum { W_WAVE, W_KILLS, W_TIME, W_OVER, W_BOSS, W_DEFEATED, W_SOULS, W_FLOOR, W_EVENT, W_COINS }
 enum { E_ID, E_KIND, E_X, E_Z, E_H, E_FACING, E_HP, E_MAX_HP, E_VX, E_VZ, E_FLASH, E_INVULN, E_DEAD, E_ANIM, E_EXTRA }
 # 玩家的 E_EXTRA
-enum { P_PEER, P_WEAPON, P_ROLLS, P_DOWNED, P_DOWN_TIMER, P_REVIVE, P_PARRY, P_DODGE, P_INV, P_SLOTS, P_STUN, P_DESCENDED, P_DICE, P_RELIC, P_QUIVER, P_RELOAD }
+enum { P_PEER, P_WEAPON, P_ROLLS, P_DOWNED, P_DOWN_TIMER, P_REVIVE, P_PARRY, P_DODGE, P_INV, P_SLOTS, P_STUN, P_DESCENDED, P_DICE, P_RELIC, P_SKILL_LV, P_QUIVER, P_RELOAD }
 # 寶箱的 E_EXTRA：[tier, opened]；地上道具：[item_id, 武器（WeaponDropDefs.to_array，不是武器為 []）, 屍體的主人 peer id]（D3 / D4 / D6）
 
 const ENEMY_KINDS: Array[StringName] = [&"grunt", &"archer", &"boss", &"ghost", &"minion", &"zombie", &"bloater", &"hound", &"gravekeeper"]
@@ -274,7 +274,7 @@ static func entity_fields(e: Entity) -> Array:
 		var p := e as Player
 		a[E_ANIM] = p.anim
 		a[E_EXTRA] = [p.peer_id, p.weapon_id, p.roll_charges, p.is_downed, p.down_timer, p.revive_progress, p.parry_timer, p.dodge_timer, p.inventory.to_array(),
-			p.weapon_slots.map(WeaponDropDefs.to_array), -p.stun_timer if p.grabbed_by != 0 else p.stun_timer, p.descended, p.dice, p.relic_id]
+			p.weapon_slots.map(WeaponDropDefs.to_array), -p.stun_timer if p.grabbed_by != 0 else p.stun_timer, p.descended, p.dice, p.relic_id, p.skill_levels]
 		if p.weapon.attack.has("quiver"):   # 箭袋（短弓）：拿著有箭袋的弓才送，快照才不會變大
 			a[E_EXTRA].append_array([p.quiver, p.reload_timer])
 	elif e is Chest:

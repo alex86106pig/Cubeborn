@@ -40,7 +40,8 @@ func try_open(by: Player) -> bool:
 	opened = true
 	var to_player := by.pos - pos
 	var dir := to_player.normalized() if to_player.length() > 1e-3 else Vector2(0.0, 1.0)
-	var relic := world.drop_relic(tier, pos + dir * LootDefs.DROP_DISTANCE)
+	var kind := &"skill" if world.rng.randf() < LootDefs.RELIC.skill_chance[tier] else &"item"   # 技能遺物（第 7 步）
+	var relic := world.drop_relic(tier, pos + dir * LootDefs.DROP_DISTANCE, kind)
 	world.emit_event("chest:opened", {"chest_id": id, "player_id": by.id, "relic_id": relic.id, "pos": pos})
 	world.emit_event("sfx:cue", {"cue": "potion", "pos": pos})
 	return true

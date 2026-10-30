@@ -49,7 +49,7 @@ func refill_slot_charges() -> void:
 
 func _new_white(p: Player, id: StringName) -> Dictionary:
 	assert(WeaponDefs.WEAPONS.has(id), "Unknown weapon: %s" % id)
-	return {"uid": p.world.new_weapon_uid(), "base": id, "rarity": &"white", "affixes": [] as Array[StringName]}
+	return WeaponDropDefs.add_builtin_skill({"uid": p.world.new_weapon_uid(), "base": id, "rarity": &"white", "affixes": [] as Array[StringName]})
 
 
 # 換上一把新的白色武器（開場、--weapon、武器測試場、測試與除錯用；正式取得武器走 add_weapon）：
@@ -283,6 +283,8 @@ func refresh_items(p: Player) -> void:
 		var inv := container(where)
 		if inv != null:
 			for e: Dictionary in inv.entries:
+				if ItemDefs.is_skill(e.id):
+					continue   # 寶石座的技能不是生效的道具（ActiveSlots 直接讀格子）
 				want[e.uid] = e.id
 				parts[e.uid] = inv.parts_of(e)
 	for it: Dictionary in items.duplicate():
@@ -398,6 +400,15 @@ func apply_ops(p: Player) -> void:
 			InputCmd.OP_MERGE:
 				merge(p, uid, StringName(op[2]))
 	_ops.clear()
+
+
+# 武器格子（兩隻手）或背包裡有沒有這個道具 / 技能
+func has_item(item_id: StringName) -> bool:
+	for where: int in [MAIN, OFF, BAG]:
+		var inv := container(where)
+		if inv != null and inv.entries.any(func(e: Dictionary) -> bool: return e.id == item_id):
+			return true
+	return false
 
 
 # 遺物的操作（Build 改版第 6 步）：只對自己打開著的那個遺物有效

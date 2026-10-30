@@ -7,6 +7,7 @@ extends RefCounted
 var size: Vector2i = ItemDefs.BAG_SIZE
 var entries: Array[Dictionary] = []   # { uid: StringName, id: StringName, cell: Vector2i, rot: int, weapon?: 武器實例（D4，放在背包的武器沒有效果） }
 var mask: Dictionary = {}            # 武器格子：能放的格子（WeaponDefs.grid_cells）；空 = size 內每一格都能放（背包）
+var weapon_id: StringName = &""      # 武器格子是哪種武器的（技能只能鑲在它能用的武器上）
 
 
 # 武器實例的格子：entries 直接用實例的 sockets（同一個陣列，改這裡就是改武器上鑲的東西；沒有就建一個空的）
@@ -15,6 +16,7 @@ static func for_weapon(inst: Dictionary) -> Inventory:
 	var id: StringName = ItemDefs.ITEMS[inst.base].weapon
 	inv.size = WeaponDefs.grid_size(id)
 	inv.mask = WeaponDefs.grid_cells(id)
+	inv.weapon_id = id
 	if not inst.has("sockets"):
 		inst["sockets"] = [] as Array[Dictionary]
 	inv.entries = inst.sockets
@@ -66,13 +68,19 @@ func occupied(ignore: StringName = &"") -> Dictionary:
 
 
 func fits(id: StringName, cell: Vector2i, rot: int, ignore: StringName = &"") -> bool:
-	return _fits_cells(occupied(ignore), cells_of(id, rot), cell)
+	return _fits_cells(occupied(ignore), cells_of(id, rot), cell, id)
 
 
-func _fits_cells(taken: Dictionary, cells: Array[Vector2i], at: Vector2i) -> bool:
+# 武器格子另外的規則（Build 改版第 7 步）：寶石座只放技能、技能只放寶石座，而且要是這把武器能用的技能
+func _fits_cells(taken: Dictionary, cells: Array[Vector2i], at: Vector2i, id: StringName = &"") -> bool:
+	var skill := ItemDefs.is_skill(id)
+	if skill and not mask.is_empty() and not SkillDefs.can_socket(id, weapon_id):
+		return false
 	for c in cells:
 		var p := at + c
 		if p.x < 0 or p.y < 0 or p.x >= size.x or p.y >= size.y or taken.has(p) or (not mask.is_empty() and not mask.has(p)):
+			return false
+		if not mask.is_empty() and id != &"" and (mask[p] == "G") != skill:
 			return false
 	return true
 
@@ -88,7 +96,7 @@ func find_spot(id: StringName, ignore: StringName = &"") -> Dictionary:
 	for y in size.y:
 		for x in size.x:
 			for rot in 4:
-				if _fits_cells(taken, shapes[rot], Vector2i(x, y)):
+				if _fits_cells(taken, shapes[rot], Vector2i(x, y), id):
 					if mask.is_empty() or _preferred(id, shapes[rot], Vector2i(x, y)):
 						return {"cell": Vector2i(x, y), "rot": rot}
 					if fallback.is_empty():

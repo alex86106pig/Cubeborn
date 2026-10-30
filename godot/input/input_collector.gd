@@ -6,7 +6,7 @@ extends Node
 const ACTIONS := {
 	&"move_up": KEY_W, &"move_down": KEY_S, &"move_left": KEY_A, &"move_right": KEY_D,
 	&"attack": MOUSE_BUTTON_LEFT, &"special": MOUSE_BUTTON_RIGHT, &"roll": KEY_SHIFT, &"jump": KEY_SPACE, &"run": KEY_CTRL,
-	&"slot_1": KEY_1, &"slot_2": KEY_2, &"slot_3": KEY_3, &"slot_4": KEY_4, &"slot_5": KEY_5,
+	&"slot_1": KEY_1, &"slot_2": KEY_2, &"slot_3": KEY_3, &"slot_4": KEY_4, &"slot_5": KEY_Q,   # 1~4 寶石座的技能、Q 治療藥水（ActiveSlots）
 	&"interact": KEY_F, &"vote_yes": KEY_ENTER,
 	&"pause": KEY_ESCAPE, &"mute": KEY_M, &"restart": KEY_R,
 	&"stats_panel": KEY_TAB,

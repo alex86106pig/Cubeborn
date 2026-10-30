@@ -305,11 +305,9 @@ static func check_skill_bar_parry() -> String:
 		bar.refresh(w, p)
 		var tw: Dictionary = WeaponDefs.WEAPONS[&"torch"]
 		var plant: Dictionary = SkillDefs.SKILLS[tw.slot_skill]
-		var idx := p.slots.weapon_slot_index(p)
-		var plant_slot: SkillBar.Slot = bar._slots.get(ActiveSlots.cd_key(idx)) if idx >= 0 else null
-		if idx != Config.PLAYER.slots.find(null) or plant_slot == null or plant_slot.icon_id != plant.icon \
-				or plant_slot.charges.text != str(plant.charges):
-			err = "拿火把時插火把應在第 %d 格、顯示 %d 次：第 %d 格 %s / %s" % [Config.PLAYER.slots.find(null) + 1, plant.charges, idx + 1,
+		var plant_slot: SkillBar.Slot = bar._slots.get(ActiveSlots.cd_key(0))
+		if plant_slot == null or plant_slot.icon_id != plant.icon or plant_slot.charges.text != str(plant.charges):
+			err = "拿火把時插火把應鑲在寶石座、是數字鍵 1、顯示 %d 次：%s / %s" % [plant.charges,
 				plant_slot.icon_id if plant_slot else "-", plant_slot.charges.text if plant_slot else "-"]
 		p.active_weapon()["slot_charges"] = 1
 		bar.refresh(w, p)
@@ -328,8 +326,8 @@ static func check_skill_bar_parry() -> String:
 		# 鐵鏟舉著怪：左右鍵換成拋出 / 埋入
 		p.equip_weapon(&"shovel")
 		bar.refresh(w, p)
-		var free_key := ActiveSlots.cd_key(Config.PLAYER.slots.find(null))
-		if bar._slots[free_key].icon_id != "" or p.slots.get_slot(p, Config.PLAYER.slots.find(null)) != null:
+		var free_key := ActiveSlots.cd_key(0)
+		if bar._slots[free_key].icon_id != "" or p.slots.get_slot(p, 0) != null:
 			err = "換成鐵鏟後插火把的格子應空出來：%s" % bar._slots[free_key].icon_id
 		p.held_enemy_id = -1
 		bar.refresh(w, p)
@@ -1218,7 +1216,7 @@ static func check_effects_events() -> String:
 
 # 怪物攻擊不畫預警圈：sim/ 裡只有玩家方的道具與地面持續區（聖光圈）可以發 fx:telegraph；
 # 怪物（Boss 瞬移、死亡爆炸詞條、挖墳點噴怪）與法杖落點各自檢查不發
-const TELEGRAPH_ALLOWED := ["item_effects.gd", "ground_zones.gd"]
+const TELEGRAPH_ALLOWED := ["item_effects.gd", "ground_zones.gd", "skill_behaviors.gd"]   # 都是玩家方的（技能的落點）
 
 static func check_no_monster_telegraph() -> String:
 	for path in _list_gd("res://sim"):
@@ -1357,7 +1355,9 @@ static func check_font_coverage() -> String:
 	for c: Dictionary in ClassDefs.PLACEHOLDERS.values():
 		texts.append_array([c.name, c.unlock])
 	for s: Dictionary in SkillDefs.SKILLS.values():
-		texts.append_array([s.name, s.icon, s.get("desc", "")])
+		texts.append_array([s.get("name", ""), s.icon, s.get("desc", "")])
+	for id: StringName in SkillDefs.gem_skill_ids():   # 技能的名稱與說明在物品資料；技能欄、遺物卡片的那一行
+		texts.append_array([ItemDefs.ITEMS[id].name, ItemDefs.ITEMS[id].desc, UiKit.skill_line(id)])
 	var hud_consts: Dictionary = load("res://ui/hud.gd").get_script_constant_map()
 	texts.append_array([hud_consts.CONTROLS_TEXT, hud_consts.BOSS_NAME])
 	for s: Dictionary in StatDefs.STATS.values():
@@ -1525,7 +1525,7 @@ static func check_sound_mapping() -> String:
 	]
 	for i in ActiveSlots.SLOT_COUNT:   # 道具欄依裝備的技能決定音效
 		var slot: Variant = p.slots.get_slot(p, i)
-		var expect: String = sound_script.SKILL_CUES.get(slot.def.id, "") if slot != null else ""
+		var expect: String = sound_script.SKILL_CUES.get(slot.def.get("id", slot.get("id", &"")), "") if slot != null else ""
 		cases.append([cue.call("skill:used", {"key": ActiveSlots.cd_key(i), "player_id": p.id}), expect])
 	for c in cases:
 		if c[0] != c[1]:

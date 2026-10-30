@@ -9,6 +9,7 @@ const TICK_INTERVAL := 0.5
 
 # zone：pos、radius、duration、owner_id、heal_per_sec（隊友每秒回血）、damage_per_sec（敵人每秒傷害）、damage_type、color
 # 選填 hits_all：玩家與怪都受傷（不分隊伍，不含自己）；visual：&"gas" = 畫成一團煙（不畫圈）、&"fire" = 一團火
+# 選填 smoke：煙霧彈（第 7 步），站在裡面的玩家閃避 + smoke、裡面的怪打人一半打偏（Enemy.blind_timer）
 # 選填 burn_per_sec：站在上面的怪每秒加幾層燃燒（火油罐的殘火，算放的玩家、照他的火焰羈絆，BondEffects.add_burn）
 static func add(world: World, zone: Dictionary) -> void:
 	var z := zone.duplicate()
@@ -41,6 +42,13 @@ static func update(world: World, dt: float) -> void:
 
 static func _tick(world: World, z: Dictionary) -> void:
 	var owner: Entity = world.entities.get(z.owner_id)
+	if z.get("smoke", 0.0) > 0.0:
+		for p in world.player_list:
+			if not p.is_dead and p.pos.distance_to(z.pos) <= z.radius + p.radius:
+				p.add_buff(&"smoke", TICK_INTERVAL * 2.0, {"stats": [[&"dodge", Stats.ADD, z.smoke]]})
+		for e in world.enemies:
+			if not e.is_dead and e.team != &"player" and e.pos.distance_to(z.pos) <= z.radius + e.radius:
+				(e as Enemy).blind_timer = TICK_INTERVAL * 2.0
 	if z.get("burn_per_sec", 0.0) > 0.0 and owner is Player:
 		z.burn_carry += z.burn_per_sec * TICK_INTERVAL
 		var stacks := floori(z.burn_carry + 1e-6)
