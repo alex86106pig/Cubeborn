@@ -10,8 +10,9 @@ signal weapon_test_reset                          # 武器測試場：木樁擺�
 signal inventory_full(pickup_id: int)             # 本機玩家撿不下地上的道具：打開背包標出它（main.gd 接）
 signal forge_opened                               # 本機玩家在鍛造祭壇按 F：打開背包（main.gd 接，Build 改版第 8 步）
 
-# 手動分行（中文自動折行會斷在詞中間）
-const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技（拿盾時按住格擋，格擋中左鍵招架） · 空白鍵 跳躍 · Shift 翻滾 · Ctrl 跑步（切換）\n1~4 寶石座的技能 · Q 治療藥水 · F 撿道具 / 開祭壇與石棺 / 遺物（R 重骰） / 按住救援隊友 · Tab 背包與屬性 · Esc 選單 · M 靜音 · R 重新開始\nTab 背包裡拖曳換主手 / 副手 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具（F3~F5 單機才有）"
+# 暫停畫面的操作說明，依類別分行（手動分行：中文自動折行會斷在詞中間）
+const CONTROLS_TEXT := "移動　WASD 移動 · 滑鼠瞄準 · 空白鍵 跳躍 · Shift 翻滾 · Ctrl 跑步（切換）\n戰鬥　左鍵攻擊 · 右鍵特殊技（拿盾時按住格擋，格擋中左鍵招架） · 1~4 寶石座的技能 · Q 治療藥水\n互動　F 撿道具 / 開祭壇與石棺 / 遺物（R 重骰） / 按住救援隊友 · Tab 背包與屬性（左鍵拿起 / 放下、右鍵直接裝上）\n其他　Esc 選單 · M 靜音 · R 重新開始 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具（F3~F5 單機才有）"
+const PAUSE_CONTROLS_FONT := 24   # 介於 FONT_NOTE 與 FONT_BODY：最長一行在最大檔仍塞得進 1920 寬（檢查「主選單」量暫停畫面）
 const FPS_INTERVAL := 0.5
 const HP_GHOST_SPEED := 0.5      # 殘影每秒縮短的比例
 const BOSS_GHOST_SPEED := 0.3
@@ -187,7 +188,7 @@ func _init() -> void:
 	root.add_child(_world_labels)
 	root.add_child(_floaters)
 
-	# 左上：血條、武器、操作說明
+	# 左上：血條、武器、靈魂、金幣（操作說明只在暫停畫面）
 	var tl := VBoxContainer.new()
 	tl.position = Vector2(16, 16)
 	tl.add_theme_constant_override(&"separation", 8)
@@ -196,8 +197,7 @@ func _init() -> void:
 	tl.add_child(_weapon)
 	tl.add_child(_souls)
 	tl.add_child(_coins)
-	_hp.root.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN   # 說明文字較寬時血條不跟著拉長
-	tl.add_child(UiKit.label(CONTROLS_TEXT, 12, Color(1, 1, 1, 0.55), 1))
+	_hp.root.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN   # 武器名稱較寬時血條不跟著拉長
 	root.add_child(tl)
 
 	# 右上：波次、擊殺、時間、FPS、版號
@@ -295,7 +295,8 @@ func _init() -> void:
 	_copy_button.pressed.connect(copy_report)
 	_build_overlay(_game_over, Color(40 / 255.0, 0, 0, 0.55), [_game_over_title, _game_over_stats, _game_over_log, _copy_button, _copy_note, _pulse(UiKit.label("按 R 重新開始", 20))])
 	root.add_child(_game_over)
-	var pause_controls := UiKit.label(CONTROLS_TEXT, UiKit.FONT_NOTE, Color(1, 1, 1, 0.75))
+	var pause_controls := UiKit.label(CONTROLS_TEXT, PAUSE_CONTROLS_FONT, Color.WHITE)
+	pause_controls.add_theme_constant_override(&"line_spacing", 8)
 	# 離開遊戲按鈕：網頁版不顯示（瀏覽器不允許網頁自己關閉）
 	_quit_button.visible = not OS.has_feature("web")
 	_quit_button.pressed.connect(quit_requested.emit)

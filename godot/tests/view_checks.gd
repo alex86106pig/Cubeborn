@@ -166,7 +166,7 @@ static func check_main_menu() -> String:
 	var hud: Variant = load("res://ui/hud.tscn").instantiate()
 	hud.setup(w, cam)
 	_scene_root().add_child(hud)
-	var err := _check_main_menu(hud)
+	var err: String = await _check_main_menu(hud)
 	if err == "":
 		err = await _check_class_select(hud)
 	if err == "":
@@ -441,7 +441,7 @@ static func _check_main_menu(hud: Variant) -> String:
 		if size.x > room.x or size.y > room.y:
 			return "主選單%s頁 %.0f×%.0f，超出介面最大檔時的 %.0f×%.0f" % [page, size.x, size.y, room.x, room.y]
 	hud.show_menu(true)
-	var pause_need: Vector2 = hud._pause.get_child(0).get_combined_minimum_size()
+	var pause_need: Vector2 = await _settled_min_size(hud._pause.get_child(0))   # 等畫面更新再量：剛顯示時拿到的是舊快取、偏小
 	hud.show_menu(false)
 	_note("暫停畫面 %.0f×%.0f" % [pause_need.x, pause_need.y])
 	if pause_need.x > room.x or pause_need.y > room.y:
