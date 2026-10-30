@@ -7,8 +7,8 @@ extends VBoxContainer
 signal op_requested(op: Array)
 
 var _cards := HBoxContainer.new()
-var _title := UiKit.label("", UiKit.FONT_NOTE, UiKit.GOLD)
-var _footer := UiKit.label("", 18, Color(1, 1, 1, 0.85))
+var _title := UiKit.label("", UiKit.FONT_BODY, UiKit.GOLD)
+var _footer := UiKit.label("", 22, Color(1, 1, 1, 0.85))
 var relic_id := 0                # 正在顯示的遺物（0 = 沒顯示）
 var choice_count := 0
 var _shown_key := []             # 目前卡片對應的選項（變了才重建）

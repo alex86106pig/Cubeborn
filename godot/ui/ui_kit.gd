@@ -31,7 +31,7 @@ const MENU_DIM := Color(5 / 255.0, 8 / 255.0, 16 / 255.0, 0.8)
 const BUTTON_L := {"size": Vector2(280, 60), "font": FONT_BODY}   # 選單：主選單、暫停畫面、設定頁、結算畫面
 const BUTTON_M := {"size": Vector2(200, 52), "font": 24}          # 面板裡的操作：連線面板（開房、加入、選職業、準備）
 const BUTTON_S := {"size": Vector2(120, 44), "font": FONT_NOTE}   # 一排很多顆的：武器測試場的武器列
-const BUTTON_CARD := {"size": Vector2(320, 150), "font": FONT_NOTE}   # 卡片：遺物的 N 選 1（RelicPanel）
+const BUTTON_CARD := {"size": Vector2(440, 230), "font": 24}   # 卡片：遺物的 N 選 1（RelicPanel；3 張約 1344 寬）
 const BUTTON_BG := {&"normal": Color(0.12, 0.14, 0.2, 0.85), &"hover": Color(0.22, 0.26, 0.36, 0.95),
 	&"pressed": Color(0.32, 0.38, 0.52, 1.0), &"disabled": Color(0.1, 0.1, 0.12, 0.6)}
 
