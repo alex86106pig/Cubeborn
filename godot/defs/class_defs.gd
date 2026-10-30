@@ -1,5 +1,6 @@
 # 職業資料（F2，demo 版；草案見 docs/設計方向.md「職業與武器」的職業構想連結，數字 Claude 暫定、使用者逐項確認中）
 # 職業 = 基礎數值 + 起始武器 + 職業被動；被動跟著職業走、不綁武器。套用在 Player.apply_class
+# weapon / offhand：起始的主手與副手（offhand 沒寫 = 空手）
 # stats：覆寫 StatDefs 的基礎值（沒寫的照 StatDefs / Config.PLAYER）；passive.mods：被動的屬性加成（來源 &"class"）
 # passive.friendly_back_mul：被隊友從背後打到時的傷害倍率（Combat.apply_damage）；passive.attack_no_slow：移動中普攻不減速（Player 算移速）
 # passive.roll_buff：[秒數, 屬性加成]，翻滾結束後套上（增益 &"rollHaste"）
@@ -17,7 +18,8 @@ const ORDER: Array[StringName] = [&"guardian", &"arcanist", &"ranger", &"gravedi
 const CLASSES := {
 	&"guardian": {
 		"name": "守墓騎士",
-		"weapon": &"swordShield",
+		"weapon": &"longsword",
+		"offhand": &"woodShield",
 		"pitch": "站在隊伍最前面，替後面的隊友擋傷害。",
 		"stats": {&"max_hp": 130.0, &"armor": 20.0, &"resist_all": 0.09, &"elem_damage": 0.9, &"hp_regen": 0.5, &"move_speed": 6.2},
 		"passive": {
@@ -51,7 +53,8 @@ const CLASSES := {
 	},
 	&"shadow": {
 		"name": "竊影者",
-		"weapon": &"daggers",
+		"weapon": &"dagger",
+		"offhand": &"dagger",
 		"pitch": "貼身高速連擊，翻滾進出、影步繞到背後。",
 		"stats": {&"max_hp": 85.0, &"armor": 5.0, &"resist_all": 0.05, &"phys_damage": 1.05, &"elem_damage": 0.9, &"attack_speed": 1.15,
 			&"hp_regen": 0.25, &"crit_damage": 1.75, &"dodge": 0.1, &"move_speed": 7.2},
@@ -110,3 +113,9 @@ const PLACEHOLDERS := {
 # 可以選嗎：有這個職業而且沒鎖（大廳收客戶端的選擇也看這個）
 static func is_pickable(id: StringName) -> bool:
 	return CLASSES.has(id) and not CLASSES[id].get("locked", false)
+
+
+# 職業起始的主手＋副手組合起來的招式資料（WeaponDefs.def_of）：選角畫面的武器名稱與技能說明
+static func start_weapon_def(id: StringName) -> Dictionary:
+	var c: Dictionary = CLASSES[id]
+	return WeaponDefs.def_of(WeaponDefs.combo_id(c.weapon, c.get("offhand", &"")))

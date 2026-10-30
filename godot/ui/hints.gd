@@ -98,7 +98,7 @@ func _condition(id: StringName, world: World, player: Player, bag_open: bool) ->
 		&"dig_goal":
 			return DigEvent.enabled(world) and world.event.state == DigEvent.IDLE
 		&"bag_open":
-			return not player.items.is_empty() or not player.inventory.entries.is_empty() or not player.weapon_slots[1].is_empty()
+			return not player.items.is_empty() or not player.inventory.entries.is_empty()
 		&"bag_ops":
 			return bag_open
 		&"craft":

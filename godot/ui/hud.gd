@@ -10,7 +10,7 @@ signal weapon_test_reset                          # 武器測試場：木樁擺�
 signal inventory_full(pickup_id: int)             # 本機玩家撿不下地上的道具：打開背包標出它（main.gd 接）
 
 # 手動分行（中文自動折行會斷在詞中間）
-const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技（劍盾：按住格擋，格擋中左鍵招架） · 空白鍵 跳躍 · Shift 翻滾 · Ctrl 跑步（切換）\n1~5 道具 · F 撿道具 / 開祭壇與石棺 / 按住救援隊友 · Tab 背包與屬性 · Esc 選單 · M 靜音 · R 重新開始\nX / 滾輪 切換武器 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具（F3~F5 單機才有）"
+const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技（拿盾時按住格擋，格擋中左鍵招架） · 空白鍵 跳躍 · Shift 翻滾 · Ctrl 跑步（切換）\n1~5 道具 · F 撿道具 / 開祭壇與石棺 / 按住救援隊友 · Tab 背包與屬性 · Esc 選單 · M 靜音 · R 重新開始\nTab 背包裡拖曳換主手 / 副手 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具（F3~F5 單機才有）"
 const FPS_INTERVAL := 0.5
 const HP_GHOST_SPEED := 0.5      # 殘影每秒縮短的比例
 const BOSS_GHOST_SPEED := 0.3
@@ -420,10 +420,10 @@ func _process(delta: float) -> void:
 	if player.shield >= 0.5:   # 骨製護盾（G4）：先用文字顯示
 		_hp.text.text += "  盾 %s" % UiKit.hp_text(player.shield)
 	var inst := player.active_weapon()
-	var other: Dictionary = player.weapon_slots[1 - player.active_slot]
+	var off: Dictionary = player.weapon_slots[Loadout.OFF]
 	_weapon.text = "武器：" + (WeaponDropDefs.display_name(inst) if not inst.is_empty() else player.weapon.name)
-	if not other.is_empty():
-		_weapon.text += "　（X：%s）" % WeaponDropDefs.display_name(other)
+	if not off.is_empty():
+		_weapon.text += "　副手：%s" % WeaponDropDefs.display_name(off)
 	_weapon.add_theme_color_override(&"font_color", ItemDefs.RARITIES[inst.rarity].color if not inst.is_empty() else Color.WHITE)
 	_souls.text = "靈魂 %d" % world.souls
 	_coins.text = "金幣 %d" % world.run_coins

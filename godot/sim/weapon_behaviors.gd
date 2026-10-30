@@ -234,6 +234,42 @@ class ChargedShot extends Behavior:
 		p.world.emit_event("fx:muzzle", {"pos": p.pos + dir * def.spawn_offset, "height": p.height + Config.HEIGHT.bolt_altitude, "color": def.color})
 
 
+# 蓄力突刺（長劍沒有副手時的右鍵）：按住蓄力（同穿透箭的按住機制），放開往準星方向衝刺 dash → full_dash；
+# 衝刺的 dash_time 秒內每步判定前方扇形（同一隻只打一次），傷害依蓄力 damage_pct → full_damage_pct
+class ChargedThrust extends Behavior:
+	func enter(_p: Player, _def: Dictionary, data: Dictionary) -> void:
+		data.charge = 0.0
+		data.hit = {}
+		data.dash_left = 0.0
+
+	func update(p: Player, def: Dictionary, data: Dictionary, name: StringName, _k: float, dt: float) -> void:
+		if name == &"active":
+			data.charge = minf(data.charge + dt, def.charge_time)
+			var dir := WeaponBehaviors.aim_direction(p)
+			p.facing = atan2(dir.x, dir.y)
+		elif name == &"recovery" and data.dash_left > 0.0:
+			data.dash_left -= dt
+			var ratio: float = data.charge / def.charge_time
+			Hitbox.strike(p.world, p, p.pos, p.facing, {"shape": &"sector", "range": def.range * p.weapon_range_mul(), "arc": def.arc}, {
+				"damage": p.move_damage(def) * lerpf(1.0, def.full_damage_pct / def.damage_pct, ratio), "damage_type": p.weapon.damage_type,
+				"knockback": def.knockback, "hit_stop": def.hit_stop, "shake": def.shake, "is_heavy": true, "blockable": true, "color": def.color,
+			}, data.hit)
+
+	func phase(p: Player, def: Dictionary, data: Dictionary, name: StringName) -> void:
+		if name != &"recovery":
+			return
+		var dir := WeaponBehaviors.aim_direction(p)
+		p.facing = atan2(dir.x, dir.y)
+		data.lock_facing = true
+		var ratio: float = data.charge / def.charge_time
+		# knockback 每步先位移 k × dt 再乘 exp(−衰減率 × dt)，滑完的總距離 = k × dt ÷ (1 − exp(−衰減率 × dt))，反推要給的衝量
+		var per_unit := (1.0 - exp(-Config.COMBAT.knockback_damping * Config.FIXED_DT)) / Config.FIXED_DT
+		p.knockback += dir * lerpf(def.dash, def.full_dash, ratio) * per_unit
+		data.dash_left = def.dash_time
+		p.world.emit_event("sfx:cue", {"cue": def.sfx_release, "pos": p.pos})
+		p.world.emit_event("fx:slash", {"pos": p.pos, "height": p.height, "facing": p.facing, "range": def.range, "arc": def.arc, "color": def.color, "swing_dir": 1})
+
+
 # 影步（F6 雙匕首右鍵）：瞬移到 range 內離準星最近那隻怪的背後（背後是牆就繞著怪找空位），背刺一下必爆擊；
 # 沒有怪就不瞬移，冷卻改成 miss_cooldown
 class ShadowStep extends Behavior:
@@ -402,6 +438,7 @@ static var BEHAVIORS := {
 	&"arcaneBurst": ArcaneBurst.new(),
 	&"arrowFan": ArrowFan.new(),
 	&"chargedShot": ChargedShot.new(),
+	&"chargedThrust": ChargedThrust.new(),
 	&"shadowStep": ShadowStep.new(),
 	&"holyCircle": HolyCircle.new(),
 	&"torchStance": TorchStance.new(),

@@ -110,16 +110,21 @@ static func format_time(seconds: float) -> String:
 	return "%d:%02d" % [floori(seconds / 60.0), floori(fmod(seconds, 60.0))]
 
 
+const HANDS_TEXT := {&"one": "單手", &"two": "雙手", &"off": "副手"}
+
+
 # 道具 / 武器的說明（地上的道具卡、背包的說明欄共用）：{ title, color, lines }
-# weapon 是武器實例（WeaponDropDefs）時顯示基本數值與詞條，否則顯示道具效果
+# weapon 是武器實例（WeaponDropDefs）時顯示拿法、基本數值與詞條，否則顯示道具效果
 static func item_info(id: StringName, weapon: Dictionary) -> Dictionary:
 	if not weapon.is_empty():
 		var b := WeaponDropDefs.base_stats(weapon)
 		var affixes: Array[String] = []
 		for a: StringName in weapon.affixes:
 			affixes.append(WeaponDropDefs.AFFIXES[a].desc)
-		var lines: Array[String] = ["攻擊力 %.1f · 攻速 %.2f 次/秒 · 範圍 %.1f" % [b.damage, b.attack_speed, b.range],
-			"沒有詞條" if affixes.is_empty() else "詞條：" + " · ".join(affixes)]
+		var wd: Dictionary = WeaponDefs.WEAPONS[ItemDefs.ITEMS[weapon.base].weapon]
+		var hands: String = HANDS_TEXT[wd.hands] + ("，也能當副手" if wd.get("offhand", false) else "")
+		var stats_line: String = ("%s · 攻擊力 %.1f · 攻速 %.2f 次/秒 · 範圍 %.1f" % [hands, b.damage, b.attack_speed, b.range]) if not b.is_empty() else hands + " · " + wd.special.name
+		var lines: Array[String] = [stats_line, "沒有詞條" if affixes.is_empty() else "詞條：" + " · ".join(affixes)]
 		return {"title": WeaponDropDefs.display_name(weapon), "color": ItemDefs.RARITIES[weapon.rarity].color, "lines": lines}
 	var def: Dictionary = ItemDefs.ITEMS[id]
 	var r: Dictionary = ItemDefs.RARITIES[def.rarity]

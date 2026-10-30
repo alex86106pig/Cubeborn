@@ -1,5 +1,5 @@
-# 背包介面（D3 / D4，Tab 開關）：上方 2 格裝備欄、下方 8 × 6 背包、右邊「腳邊」欄（按得到 F 的地上道具）
-# 滑鼠拖曳搬動、拖著時按 R 旋轉、拖到腳邊或面板外面丟在地上；武器拖到同種同稀有度的武器上就合成，拖到裝備欄就裝上
+# 背包介面（D3 / D4，Tab 開關）：上方主手、副手兩格、下方 8 × 6 背包、右邊「腳邊」欄（按得到 F 的地上道具）
+# 滑鼠拖曳搬動、拖著時按 R 旋轉、拖到腳邊或面板外面丟在地上；武器拖到同種同稀有度的武器上就合成，拖到主手 / 副手就裝上（拿不動的由權威端拒絕）
 # 腳邊的道具拖進背包 = 撿起放在那一格；撿不下時（show_full）標出那一件、建議拿掉哪件就放得下
 # 滑鼠停著（或拖著）的東西在下方顯示名稱、稀有度、效果 / 詞條
 # 只送操作（op_requested → InputCollector → InputCmd.inv_ops），實際擺放由權威端決定，畫面照本機玩家的狀態畫
@@ -12,7 +12,8 @@ const CELL := 52
 const PAD := 14
 const TITLE_H := 50   # 標題 + 一行操作說明
 const SLOT_LABEL_H := 20
-const SLOTS_H := CELL * 2 + SLOT_LABEL_H + 12   # 裝備欄一格 = 4 × 2 個背包格子大
+const SLOTS_H := CELL * 2 + SLOT_LABEL_H + 12   # 主手 / 副手一格 = 4 × 2 個背包格子大
+const SLOT_NAMES: Array[String] = ["主手", "副手（雙手武器不能拿）"]
 const INFO_H := 110
 const FEET_W := 220      # 腳邊欄的寬度
 const FEET_HEAD := 26    # 腳邊欄標題的高度
@@ -324,8 +325,8 @@ func _draw_slots(font: Font, me: Player) -> void:
 	for i in 2:
 		var r := _slot_rect(i)
 		var inst: Dictionary = me.weapon_slots[i] if me != null else {}
-		var active := me != null and me.active_slot == i and not inst.is_empty()
-		draw_string(font, r.position + Vector2(0, -6), "裝備 %d%s" % [i + 1, "（使用中）" if active else ""], HORIZONTAL_ALIGNMENT_LEFT, -1, 13,
+		var active := i == Loadout.MAIN and not inst.is_empty()
+		draw_string(font, r.position + Vector2(0, -6), SLOT_NAMES[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 13,
 			UiKit.GOLD if active else Color(1, 1, 1, 0.55))
 		draw_rect(r, Color(1, 1, 1, 0.05))
 		if inst.is_empty():
@@ -337,7 +338,8 @@ func _draw_slots(font: Font, me: Player) -> void:
 		draw_rect(r.grow(-3), UiKit.GOLD if active else color, false, 3.0 if active else 2.0)
 		draw_string(font, r.position + Vector2(12, 30), WeaponDropDefs.display_name(inst), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 20, 17, color)
 		var b := WeaponDropDefs.base_stats(inst)
-		draw_string(font, r.position + Vector2(12, 54), "攻擊力 %.1f · 詞條 %d 條" % [b.damage, inst.affixes.size()], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.7))
+		var stat_text := ("攻擊力 %.1f" % b.damage) if not b.is_empty() else "副手"
+		draw_string(font, r.position + Vector2(12, 54), "%s · 詞條 %d 條" % [stat_text, inst.affixes.size()], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.7))
 
 
 func _draw_item(font: Font, id: StringName, cell: Vector2i, rot: int, rarity: StringName, alpha: float) -> void:

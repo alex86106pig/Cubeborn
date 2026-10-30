@@ -622,7 +622,7 @@ static func _box(size_: Vector3, at: Vector3, mat: Material) -> MeshInstance3D:
 
 # 格擋範圍：格擋中顯示（輕微呼吸閃爍），跟著角色的位置與朝向
 func _create_block_fan() -> MeshInstance3D:
-	var arc: float = WeaponDefs.WEAPONS[&"swordShield"].special.block_arc
+	var arc: float = WeaponDefs.WEAPONS[&"woodShield"].special.block_arc
 	var fan := MeshInstance3D.new()
 	fan.name = "BlockFan"
 	fan.mesh = Effects._make_sector_mesh(0.45, BLOCK_FAN_RANGE, arc, 24)

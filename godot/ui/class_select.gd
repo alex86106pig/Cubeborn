@@ -278,7 +278,7 @@ func _refresh() -> void:
 	var c: Dictionary = ClassDefs.CLASSES[selected]
 	name_label.text = c.name
 	pitch_label.text = c.pitch
-	weapon_label.text = "起始武器：" + WeaponDefs.WEAPONS[c.weapon].name
+	weapon_label.text = "起始武器：" + ClassDefs.start_weapon_def(selected).name
 	var p := preview_player(selected)
 	var base := baseline_player()
 	chart.values.clear()
@@ -303,7 +303,7 @@ func _refresh() -> void:
 func _fill_skills(c: Dictionary) -> void:
 	for n in _skills.get_children():
 		n.free()
-	var w: Dictionary = WeaponDefs.WEAPONS[c.weapon]
+	var w: Dictionary = ClassDefs.start_weapon_def(ClassDefs.CLASSES.find_key(c))
 	_skills.add_child(_skill_row(SkillBar.Slot.new("passive", "被動", -1), "職業被動", c.passive.desc))
 	_skills.add_child(_skill_row(SkillBar.Slot.new(w.attack.icon, "左鍵", -1), w.attack.name, w.attack.get("desc", "")))
 	_skills.add_child(_skill_row(SkillBar.Slot.new(w.special.icon, "右鍵", -1), w.special.name, w.special.get("desc", "")))

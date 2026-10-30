@@ -364,19 +364,23 @@ static func death_knight() -> Rig:
 
 # ───────── 玩家武器 ─────────
 
-# → { kit, main（掛右手）, offhand（掛左臂，可為 null）, gem（會自轉，可為 null） }
+# 主手武器 → { kit, main（掛右手）, left（掛左手，弓），gem（會自轉，可為 null）… }；副手另外由 offhand 建
 static func weapon(model: StringName) -> Dictionary:
 	match model:
-		&"swordShield":
-			return _sword_shield()
+		&"longsword":
+			var k := PartKit.new()
+			var sword := _long_sword(k, Color("b8c0cc"), C.steel_dark, 0.95)
+			k.merge_static(sword, [sword])
+			return {"kit": k, "main": sword, "gem": null}
+		&"dagger":
+			var k := PartKit.new()
+			return {"kit": k, "main": _dagger(k), "gem": null}
 		&"staff":
 			return _staff()
 		&"shortbow":
 			return _player_bow(0.5, Color("8a5a32"), 0.6)
 		&"longbow":
 			return _player_bow(0.8, Color("5a3a1e"), 0.68)   # 箭長：拉滿時（沒手肘、側身 70° 約拉 0.57）箭頭剛好露出弓外一點，0.9 太凸（2026-10-27 使用者）
-		&"daggers":
-			return _daggers()
 		&"scepter":
 			return _scepter()
 		&"torch":
@@ -386,20 +390,27 @@ static func weapon(model: StringName) -> Dictionary:
 	return {}
 
 
-# 雙匕首（F6）：左右手各一把（left 掛 hand_l）；刀刃沿手臂延伸方向（-Y），手往前刺時刀尖朝前
-# 2026-10-27 網頁版實測：原本左手那把掛在左臂、轉 90°，畫面上看不到
-static func _daggers() -> Dictionary:
+# 副手 → { kit, offhand（盾，掛左前臂外側掛點 forearm_l）或 left（匕首，掛 hand_l） }
+static func offhand(model: StringName) -> Dictionary:
 	var k := PartKit.new()
-	var parts: Array[Node3D] = []
-	for i in 2:
-		var g := Node3D.new()
-		k.add(g, PartKit.cone(0.045, 0.42, 4), k.mat(Color("c8d0e0")), {"y": 0.3, "sx": 0.35})
-		k.add(g, PartKit.box(0.16, 0.03, 0.05), k.mat(C.steel_dark), {"y": 0.09})
-		k.add(g, PartKit.cyl(0.025, 0.025, 0.14, 4), k.mat(C.leather), {"y": 0.0})
-		k.merge_static(g, [g])
-		g.rotation.x = PI   # 刀尖朝 -Y
-		parts.append(_hold(g, {"grip": Vector3.ZERO}))
-	return {"kit": k, "main": parts[0], "offhand": null, "left": parts[1], "gem": null}
+	match model:
+		&"woodShield":
+			return {"kit": k, "offhand": _shield(k)}
+		&"dagger":
+			return {"kit": k, "left": _dagger(k)}
+	return {}
+
+
+# 匕首（F6）：刀刃沿手臂延伸方向（-Y），手往前刺時刀尖朝前；左手那把直接掛 hand_l
+# 2026-10-27 網頁版實測：原本左手那把掛在左臂、轉 90°，畫面上看不到
+static func _dagger(k: PartKit) -> Node3D:
+	var g := Node3D.new()
+	k.add(g, PartKit.cone(0.045, 0.42, 4), k.mat(Color("c8d0e0")), {"y": 0.3, "sx": 0.35})
+	k.add(g, PartKit.box(0.16, 0.03, 0.05), k.mat(C.steel_dark), {"y": 0.09})
+	k.add(g, PartKit.cyl(0.025, 0.025, 0.14, 4), k.mat(C.leather), {"y": 0.0})
+	k.merge_static(g, [g])
+	g.rotation.x = PI   # 刀尖朝 -Y
+	return _hold(g, {"grip": Vector3.ZERO})
 
 
 # 驅魔權杖（F7）：木柄 + 金色燈籠形的頭，中間發光（會自轉的 gem）
@@ -521,10 +532,7 @@ static func _player_bow(size: float, wood: Color, arrow: float) -> Dictionary:
 	return out
 
 
-static func _sword_shield() -> Dictionary:
-	var k := PartKit.new()
-	var sword := _long_sword(k, Color("b8c0cc"), C.steel_dark, 0.95)
-
+static func _shield(k: PartKit) -> Node3D:
 	var shield := Node3D.new()
 	k.add(shield, PartKit.box(0.07, 0.42, 0.46), k.mat(C.cape), {"y": 0.1})
 	# 盾的下半尖角：四角錐先轉 45°（底面和盾面對齊）再壓扁成盾的厚度。節點是先縮放後旋轉，所以壓扁放在外層節點
@@ -536,9 +544,8 @@ static func _sword_shield() -> Dictionary:
 	k.add(shield, PartKit.box(0.09, 0.44, 0.05), k.mat(C.steel), {"y": 0.1})
 	k.add(shield, PartKit.ico(0.07), k.mat(C.steel), {"x": 0.05, "y": 0.1})
 	_hold(shield, {"grip": Vector3(-0.08, 0.0, 0.0)})   # 內側綁帶，掛在左前臂外側掛點 forearm_l
-	k.merge_static(sword, [sword])
 	k.merge_static(shield, [shield])
-	return {"kit": k, "main": sword, "offhand": shield, "gem": null}
+	return shield
 
 
 static func _staff() -> Dictionary:

@@ -23,12 +23,13 @@ var weapon_quiver_arrows: Array = []   # 箭袋裡露出的箭（照剩幾發顯
 var weapon_nock: Node3D = null       # 掛在 hand_r 的搭弦箭（弓），拉弓時才顯示
 var weapon_hold_point: Node3D = null   # 武器上的托舉點（鐵鏟鏟起的怪放這裡），沒有就是 null
 var weapon_gem: Node3D = null       # 法杖寶石（自轉）
-var weapon_model: StringName = &""
+var weapon_model: StringName = &""          # 主手的模型
+var weapon_offhand_model: StringName = &""  # 副手的模型（沒有副手是空的）
 # 身上的掛點（關節資料的 mounts：名稱 → 位置）：back / hip_l / hip_r 在 body、head 在 head、forearm_l 在 arm_l。
 # 用法同手掌掛點：東西用 DarkFantasy._hold 掛上去。沒有設 mounts 的骨架（骷髏）就是空的
 var mount_nodes: Dictionary = {}
 
-var _weapon_kit: PartKit = null
+var _weapon_kits: Array[PartKit] = []
 var _joints: Dictionary
 var _flash := 0.0
 
@@ -108,19 +109,24 @@ static func from_template(t: Dictionary) -> Rig:
 	return rig
 
 
-# 換武器外觀（DarkFantasy.weapon 建立，main 掛右手、offhand 掛左臂）
-func set_weapon(model: StringName) -> void:
-	if model == weapon_model:
+# 換武器外觀：主手 DarkFantasy.weapon（main 掛右手、left 掛左手）、副手 DarkFantasy.offhand（盾掛左臂、匕首掛左手）
+func set_weapon(model: StringName, off_model: StringName = &"") -> void:
+	if model == weapon_model and off_model == weapon_offhand_model:
 		return
 	weapon_model = model
+	weapon_offhand_model = off_model
 	for n in [weapon_main, weapon_offhand, weapon_left, weapon_nock, weapon_back]:
 		if n != null:
 			n.queue_free()
 	var w := DarkFantasy.weapon(model)
-	_weapon_kit = w.get("kit")
+	var off := DarkFantasy.offhand(off_model) if off_model != &"" else {}
+	_weapon_kits.clear()
+	for k: Variant in [w.get("kit"), off.get("kit")]:
+		if k != null:
+			_weapon_kits.append(k)
 	weapon_main = w.get("main")
-	weapon_offhand = w.get("offhand")
-	weapon_left = w.get("left")
+	weapon_offhand = off.get("offhand")
+	weapon_left = w.get("left", off.get("left"))
 	weapon_hold_point = w.get("hold_point")
 	weapon_back = w.get("back")
 	weapon_quiver_arrows = w.get("quiver_arrows", [])
@@ -149,8 +155,8 @@ func set_flash(k: float) -> void:
 		return
 	_flash = k
 	kit.set_flash(k)
-	if _weapon_kit != null:
-		_weapon_kit.set_flash(k)
+	for wk in _weapon_kits:
+		wk.set_flash(k)
 
 
 # 零件（MeshInstance3D）數量，供效能檢查

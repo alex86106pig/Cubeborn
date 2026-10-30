@@ -134,11 +134,10 @@ static func check_hud() -> String:
 	hud._on_event("item:added", {"player_id": p.id + 1000, "item": "whetstone", "uid": "x"})
 	if hud._banner.text != "":
 		return "別人撿到道具不應跳橫幅：%s" % hud._banner.text
-	# 武器欄的另一把標示切換鍵 X（v0.38.0，原本寫 Q）
-	p.add_weapon({"uid": &"st", "base": &"staff", "rarity": &"white", "affixes": [] as Array[StringName]})
+	# 武器欄：主手名稱後面接副手
 	hud._process(DT)
-	if not hud._weapon.text.contains("（X："):
-		return "武器欄的另一把應標示 X：%s" % hud._weapon.text
+	if not hud._weapon.text.contains("副手：" + WeaponDropDefs.display_name(p.weapon_slots[Loadout.OFF])):
+		return "武器欄應標示副手：%s" % hud._weapon.text
 	for name in ["game:paused", "player:died", "game:defeat", "game:victory", "game:restart"]:
 		var payload := {"paused": true, "stats": w.stats.duplicate()}
 		hud._on_event(name, payload)
@@ -288,7 +287,7 @@ static func check_skill_bar_parry() -> String:
 		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL_HELD | InputCmd.BTN_ATTACK), 1)
 		bar.refresh(w, p)
 		var cd_left: float = bar._slots["player.parry"].cd_left
-		if not bar._parry_slot.visible or bar._attack_slot.visible or bar._parry_slot.icon_id != WeaponDefs.WEAPONS.swordShield.special.parry.icon or cd_left <= 0.0:
+		if not bar._parry_slot.visible or bar._attack_slot.visible or bar._parry_slot.icon_id != WeaponDefs.WEAPONS.woodShield.special.parry.icon or cd_left <= 0.0:
 			err = "格擋中左鍵應換成「招架」並顯示冷卻：顯示 %s、文字 %s、冷卻 %.2f" % [bar._parry_slot.visible, bar._parry_slot.icon_id, cd_left]
 	if err == "":
 		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 30)
@@ -1087,8 +1086,6 @@ static func check_xray() -> String:
 
 
 static func check_hints() -> String:
-	if InputCollector.ACTIONS.swap_weapon != KEY_X:
-		return "換武器鍵應為 X（使用者 v0.31.0 指定）"
 	var w := _new_world(7, false, &"graveyard_a")
 	w.reset(7, [1, 2])
 	w.spawner.finished = true
@@ -1109,7 +1106,7 @@ static func check_hints() -> String:
 		return "開場應依序跳操作、挖墳：%s" % [shown]
 	# 撿到第 2 把同種同色武器：背包提示與合成提示
 	var mk := func(uid: String) -> Dictionary:
-		return {"uid": StringName(uid), "base": &"swordShield", "rarity": &"white", "affixes": [] as Array[StringName]}
+		return {"uid": StringName(uid), "base": &"longsword", "rarity": &"white", "affixes": [] as Array[StringName]}
 	p.weapon_slots[0] = mk.call("w1")
 	p.add_weapon(mk.call("w2"))
 	tick.call(20.0)
@@ -1186,7 +1183,7 @@ static func check_effects_events() -> String:
 		_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1, events)
 		_run_collect(w, _cmd(Vector2.ZERO), 30, events)
 	var slashes := _named(events, "fx:slash")
-	if slashes.size() != 3 or slashes[2].color != WeaponDefs.WEAPONS.swordShield.attack.slash_finisher_color or slashes[1].swing_dir != -1:
+	if slashes.size() != 3 or slashes[2].color != WeaponDefs.WEAPONS.longsword.attack.slash_finisher_color or slashes[1].swing_dir != -1:
 		return "三段揮砍應發出 3 次 fx:slash（第二段反手、第三段金色），實際 %s" % [slashes]
 	var w2 := _new_world()
 	_player(w2).equip_weapon(&"staff")
@@ -1347,7 +1344,10 @@ static func check_font_coverage() -> String:
 	var drawn: Array = SkillIcons.DRAWN
 	var texts: Array[String] = []
 	for w: Dictionary in WeaponDefs.WEAPONS.values():
-		texts.append_array([w.name, w.attack.name, w.attack.icon, w.special.name, w.special.icon, w.attack.get("desc", ""), w.special.get("desc", "")])
+		texts.append_array([w.name, w.special.name, w.special.icon, w.special.get("desc", "")])
+		for kind: String in ["attack", "dual_attack"]:   # 盾沒有左鍵；匕首多一招雙持
+			if w.has(kind):
+				texts.append_array([w[kind].name, w[kind].icon, w[kind].get("desc", "")])
 		for alt: Dictionary in [w.get("stance", {}), w.get("grab", {})]:
 			for kind: String in ["attack", "special"]:   # 火把舉著時只換左鍵
 				if alt.has(kind):
@@ -1619,13 +1619,17 @@ static func check_mesh_counts() -> String:
 	arena.free()
 	if n > 12:
 		return "場地有 %d 個零件，上限 12" % n
-	for model: StringName in [&"swordShield", &"staff"]:
+	for model: StringName in [&"longsword", &"staff"]:
 		var w := DarkFantasy.weapon(model)
 		if w.is_empty() or w.main == null:
 			return "武器 %s 沒有建立外觀" % model
-		for node: Variant in [w.main, w.offhand]:
-			if node != null:
-				(node as Node3D).free()
+		(w.main as Node3D).free()
+	for model: StringName in [&"woodShield", &"dagger"]:
+		var o := DarkFantasy.offhand(model)
+		var node: Variant = o.get("offhand", o.get("left"))
+		if node == null:
+			return "副手 %s 沒有建立外觀" % model
+		(node as Node3D).free()
 	return ""
 
 
@@ -1776,12 +1780,10 @@ static func check_body_parts() -> String:
 			return "%s 找不到披風或軀幹的零件（顏色重複？）" % id
 		if cape_front >= body_back:
 			return "%s 的披風穿進身體：披風最前 z %.3f、軀幹最後 z %.3f" % [id, cape_front, body_back]
-	var w := DarkFantasy.weapon(&"swordShield")
-	var shield: Node3D = w.offhand
+	var shield: Node3D = DarkFantasy.offhand(&"woodShield").offhand
 	var thick := 0.0
 	for mi in PartKit.mesh_instances(shield):
 		thick = maxf(thick, mi.get_aabb().size.x)
-	(w.main as Node3D).free()
 	shield.free()
 	if thick >= 0.2:
 		return "盾的厚度 %.2f：尖角沒有和盾面同一平面" % thick
@@ -1792,8 +1794,12 @@ static func check_body_parts() -> String:
 			var names: Array = rig.mount_nodes.keys()
 			rig.free()
 			return "騎士骨架的掛點應有 back / forearm_l / head / hip_l / hip_r：%s" % [names]
-		rig.set_weapon(&"swordShield")
+		rig.set_weapon(&"longsword", &"woodShield")
 		var on_forearm: bool = rig.weapon_offhand.get_parent() == rig.mount_nodes[&"forearm_l"]
+		rig.set_weapon(&"dagger", &"dagger")
+		if rig.weapon_left == null or rig.weapon_left.get_parent() != rig.hand_l or rig.weapon_offhand != null:
+			rig.free()
+			return "副手匕首應掛在左手 hand_l、沒有盾"
 		rig.set_weapon(&"shortbow")
 		var back: Node3D = rig.mount_nodes[&"back"]
 		var on_back: bool = rig.weapon_back.get_parent() == back

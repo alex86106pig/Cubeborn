@@ -93,13 +93,12 @@ godot/
 |---|---|
 | WASD | 移動，**以螢幕方向為準**（W = 畫面上方，世界座標為斜向） |
 | 滑鼠游標 | 投射到地面得到瞄準點，角色面朝該點 |
-| 滑鼠左鍵 | 普通攻擊（按住可連續攻擊）；劍盾格擋中按 = 招架 |
-| 滑鼠右鍵 | 武器特殊技（劍盾：按住格擋；法杖：奧術爆裂） |
+| 滑鼠左鍵 | 普通攻擊（按住可連續攻擊）；拿盾格擋中按 = 招架 |
+| 滑鼠右鍵 | 武器特殊技：有副手時是副手的（木盾：按住格擋；副手匕首：影步），沒有副手時是主手的（長劍：蓄力突刺；法杖：奧術爆裂） |
 | 空白鍵 | 跳躍（系統說明 §3） |
 | Shift | 翻滾（系統說明 §2；受次數與回充管理） |
 | 1 ~ 5 | 主動欄位（受 CD 或次數管理） |
 | F | 撿道具、開寶箱；按住救援倒地的隊友、挖墳 |
-| X、滑鼠滾輪 | 切換兩格裝備欄的武器 |
 | Tab | 背包與屬性面板 |
 | R | 死亡或通關後重新開始（連線時只有房主能按）；拖著背包道具時旋轉 |
 | Esc | 暫停 / 選單（失去焦點時自動暫停；死亡或通關畫面不能暫停）；連線時只開選單、遊戲不停 |
@@ -215,7 +214,7 @@ godot/
 | `item:added` | `{ player_id, item, uid }`（v0.19.0：道具放進身上；item = 物品 id，uid = 實例 id，武器為空字串） | Player.add_item |
 | `inventory:full` | `{ player_id, item, pickup_id }`（v0.25.0：背包放不下；pickup_id = 地上道具的實體 id，不是從地上撿的為 0） | Loadout.add_item / add_weapon / add_corpse |
 | `weapon:dropped` | `{ uid, base, rarity, pos }`（v0.26.0：殺怪掉武器） | World.on_enemy_died |
-| `weapon:added` | `{ player_id, uid, slot }`（v0.26.0：撿到武器；slot = 裝備欄 0 / 1，-1 = 背包） | Player.add_weapon |
+| `weapon:added` | `{ player_id, uid, slot }`（v0.26.0：撿到武器；slot = 主手 0 / 副手 1（Loadout.MAIN / OFF），-1 = 背包） | Player.add_weapon |
 | `weapon:merged` | `{ player_id, uid, base, rarity }`（v0.26.0：合成成功） | Loadout |
 | `weapon:merge_denied` | `{ player_id }`（v0.26.0：不能合成） | Loadout |
 | `souls:gained` | `{ amount, pos, total }`（v0.25.0：殺怪得到共用的靈魂；v0.45 前叫 `gold:gained`） | World.on_enemy_died |
@@ -235,7 +234,7 @@ godot/
 | `audio:muted` | `{ muted }` | main.gd（M 鍵） |
 | `sfx:cue` | `{ cue, pos? }` | 各遊戲物件；`cue` 必須是 `audio/sound.gd` 的 `CUE_NAMES` 之一 |
 | `camera:shake` | `{ amount, duration, player_id? }` | Combat、Player、Projectile、Enemy、Boss、World（模擬層不能直接震相機）；有 `player_id`（玩家被打）時只震那位玩家的畫面 |
-| `fx:slash` | `{ pos, height, facing, range, arc, color, swing_dir }` | 劍盾揮砍（`fx:*` 是 v0.20.0 起的特效事件，見系統說明 §7） |
+| `fx:slash` | `{ pos, height, facing, range, arc, color, swing_dir }` | 近戰揮砍（`fx:*` 是 v0.20.0 起的特效事件，見系統說明 §7） |
 | `fx:muzzle` | `{ pos, height, color }` | 法杖魔彈發射 |
 | `fx:telegraph` | `{ pos, height, radius, color, life, fill? }`（fill：圈內鋪半透明的圓，聖光圈用） | 聖光圈、玩家道具。**怪物攻擊不用**（設計方向「怪物攻擊不畫紅圈」，檢查會擋 `sim/` 其他檔案發這個事件） |
 | `fx:fizzle` | `{ pos, height, color }` | 投射物飛到盡頭、撞牆或被格擋 |

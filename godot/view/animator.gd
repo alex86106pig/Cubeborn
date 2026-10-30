@@ -9,6 +9,7 @@ const POSE_OF := {
 	&"arrowFan": &"bow",
 	&"chargedShot": &"bowCharge",
 	&"shadowStep": &"thrust",
+	&"chargedThrust": &"thrust",   # 蓄力時手往後拉、放開往前刺
 	&"holyCircle": &"arcaneBurst",
 	&"torchStance": &"torchRaise",
 	&"fireBreath": &"arcaneBurst",
@@ -42,7 +43,7 @@ func _init(p_rig: Rig) -> void:
 
 
 func update(p: Player, dt: float) -> void:
-	rig.set_weapon(p.weapon.model)
+	rig.set_weapon(p.weapon.model, p.weapon.get("offhand_model", &""))
 	var a := p.anim
 	rig.body.position.z = 0.0   # 只有翻滾會移動 body 的前後位置
 	_pose_locomotion(p, a, dt)
@@ -192,7 +193,7 @@ func _pose_for(behavior: StringName) -> StringName:
 	match behavior:
 		&"meleeSwing":
 			match rig.weapon_model:
-				&"daggers":
+				&"dagger":
 					return &"thrust"
 				&"shovel":
 					return &"scoop"
@@ -212,8 +213,10 @@ func _pose_for(behavior: StringName) -> StringName:
 # 刺（雙匕首、影步）：swing_dir 1 右手、-1 左手輪流往前刺；終結技雙手一起刺、身體前傾
 func _pose_thrust(idle: Dictionary, a: Dictionary, e: float) -> void:
 	var fin: bool = a.get("is_finisher", false)
-	var right: bool = fin or a.get("swing_dir", 1) >= 0
-	var left: bool = fin or a.get("swing_dir", 1) < 0
+	# 左手沒拿匕首（單拿一把、長劍突刺）就一律右手刺
+	var has_left := rig.weapon_left != null
+	var right: bool = fin or a.get("swing_dir", 1) >= 0 or not has_left
+	var left: bool = has_left and (fin or a.get("swing_dir", 1) < 0)
 	var back := 0.5 if fin else 0.35
 	var x := 0.0
 	match a.phase:

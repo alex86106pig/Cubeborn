@@ -9,7 +9,6 @@ const SLOT_COUNT := 5
 const BTN_ROLL := 1 << 7         # 左 Shift 翻滾（本步按下）；數字鍵占用 1 << 2 ~ 1 << 6
 const BTN_JUMP := 1 << 8         # 空白鍵跳躍（本步按下）
 const BTN_INTERACT := 1 << 9     # F 互動（按住）：救援倒地的隊友
-const BTN_SWAP_WEAPON := 1 << 10 # Q / 滑鼠滾輪：換到另一格裝備欄的武器（本步按下；D4 起取代 F1 除錯切換）
 const BTN_SPECIAL_HELD := 1 << 11  # 右鍵（按住）：劍盾按住格擋（v0.41.0）；BTN_SPECIAL 仍是「本步按下」，法杖用它
 const BTN_RUN := 1 << 12         # Ctrl 切換跑步（本步按下；2026-10-27 取代數字鍵 2 的疾跑）
 const BTN_VOTE_YES := 1 << 13    # Enter：同意前往下一層（本步按下；只在投票中送出）

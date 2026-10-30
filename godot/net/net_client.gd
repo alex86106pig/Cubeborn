@@ -25,7 +25,6 @@ var _history: Dictionary = {}    # 客戶端 tick -> [預測的位置, 高度]
 var _pending: Array[InputCmd] = []   # 還沒被房主確認的輸入（重送用）
 var _client_tick := 0
 var _last_ack := 0
-var _swap_tick := -1             # 最近一次按 X / 滾輪切武器的客戶端 tick
 var _predicted: Dictionary = {}  # 目標 id -> [預測打中時的客戶端 tick, ...]（v0.38.0：房主的同一下到了就標 predicted）
 var _flash: Dictionary = {}      # 目標 id -> 預測打中的閃白剩幾秒（快照的閃白還沒到，先在本機閃）
 
@@ -45,8 +44,6 @@ func step(cmd: InputCmd, dt: float) -> Array[Dictionary]:
 	_client_tick += 1
 	cmd.tick = _client_tick
 	_pending.append(cmd)
-	if cmd.has(InputCmd.BTN_SWAP_WEAPON):
-		_swap_tick = _client_tick
 	var out: Array[Dictionary] = []
 	_advance_render_clock()
 	_apply_interpolated()
@@ -290,6 +287,4 @@ func _apply_own_authority(me: Player, a: Array) -> void:
 		me.stun(absf(host_stun), -1 if grabbed else 0)
 	elif me.grabbed_by != 0 and not grabbed:
 		me.release_grab()   # 房主那邊已經掙脫、或腐屍被打鬆手
-	# 裝備欄以房主為準；手上哪一格在房主處理完最近一次切換（X / 滾輪）之後才跟著房主，之前保留本機預測
-	var active: int = extra[NetCodec.P_ACTIVE] if _last_ack >= _swap_tick else me.active_slot
-	me.sync_weapon_slots(extra[NetCodec.P_SLOTS], active)
+	me.sync_weapon_slots(extra[NetCodec.P_SLOTS])   # 主手與副手以房主為準

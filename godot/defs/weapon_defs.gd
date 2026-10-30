@@ -1,16 +1,20 @@
 # 武器資料定義（照搬網頁版 legacy/src/weapons/weaponDefs.js，欄位改 snake_case）；邏輯在 sim/weapon_behaviors.gd
 # 每把武器一個 base_damage 與 damage_type（StatDefs.DAMAGE_TYPES），招式用 damage_pct（基礎傷害的倍率，F1）；實際傷害見 Player.move_damage
+# hands：&"one" 單手（可以再拿副手）、&"two" 雙手（不能拿副手）、&"off" 只能當副手；offhand = true 的單手武器也能當副手
+# 玩家手上的招式資料是主手＋副手組合出來的（def_of）：左鍵看主手，右鍵有副手時看副手
 class_name WeaponDefs
 
 const WEAPONS := {
-	&"swordShield": {
-		"id": &"swordShield",
-		"name": "劍盾",
+	# 長劍（單手，守墓騎士的主手）：三段斬擊；沒有副手時右鍵蓄力突刺，拿木盾當副手時右鍵換成格擋（def_of）
+	&"longsword": {
+		"id": &"longsword",
+		"name": "長劍",
 		"type": &"melee",
+		"hands": &"one",
 		"base_damage": 12.0,
 		"damage_type": &"phys",
-		"model": &"swordShield",
-		"idle": {"arm_r": -0.35, "arm_l": -0.1, "tilt": 0.0},
+		"model": &"longsword",
+		"idle": {"arm_r": -0.35, "arm_l": 0.0, "tilt": 0.0},
 		"attack": {
 			"behavior": &"meleeSwing",
 			"sfx": "swing", "sfx_heavy": "swingHeavy",
@@ -37,8 +41,45 @@ const WEAPONS := {
 			"slash_color": Color.WHITE,                  # 揮砍弧光（網頁版 effects.slash）
 			"slash_finisher_color": Color("ffe27a"),     # 第三段弧光
 		},
-		# 格擋與招架（v0.41.0 使用者決定，取代 v0.18.0 的「按一下維持 3 秒、剛舉盾擋下 = 完美格擋」）：
-		# 按住右鍵格擋、放開就放下，沒有冷卻；格擋中按左鍵招架（有冷卻），判定時間內擋到攻擊 = 全額盾反，沒擋到 = 盾擊傷害減半
+		# 蓄力突刺（Claude 暫定）：按住蓄力（同長弓穿透箭的按住機制），放開往前衝刺，衝刺途中每步判定前方
+		"special": {
+			"behavior": &"chargedThrust",
+			"sfx": "swing",
+			"sfx_release": "swingHeavy",
+			"name": "蓄力突刺",
+			"desc": "按住蓄力（最多 0.8 秒）、放開往前衝 2 → 5 單位刺出 150% → 300%；冷卻 5 秒。",
+			"icon": "sword_thrust",
+			"cooldown": 5.0,
+			"hold": true,
+			"roll_cancel": true,
+			"damage_pct": 1.5,         # 沒蓄力
+			"full_damage_pct": 3.0,    # 蓄滿
+			"charge_time": 0.8,
+			"dash": 2.0,               # 衝刺距離：沒蓄力 → 蓄滿
+			"full_dash": 5.0,
+			"dash_time": 0.25,         # 放開後這麼久內每步判定前方（同一隻只打一次）
+			"range": 1.6,
+			"arc": PI * 0.5,
+			"knockback": 8.0,
+			"windup": 0.08,
+			"active": 0.0,             # 放開右鍵就衝出去
+			"recovery": 0.35,
+			"move_speed_mul": 0.5,     # 蓄力中移速 ×0.5
+			"hit_stop": 0.06,
+			"shake": 0.15,
+			"color": Color("ffe27a"),
+		},
+	},
+
+	# 木盾（副手）：右鍵格擋、格擋中左鍵招架；招架的傷害用主手的基礎傷害（def_of 把 special 換進主手的招式）
+	# 格擋與招架（v0.41.0 使用者決定）：按住右鍵格擋、放開就放下，沒有冷卻；格擋中按左鍵招架（有冷卻），判定時間內擋到攻擊 = 全額盾反，沒擋到 = 盾擊傷害減半
+	&"woodShield": {
+		"id": &"woodShield",
+		"name": "木盾",
+		"type": &"melee",
+		"hands": &"off",
+		"model": &"woodShield",
+		"offhand_arm_l": -0.1,         # 拿在副手時左手的待機角度
 		"special": {
 			"behavior": &"shieldBlock",
 			"name": "格擋",
@@ -74,6 +115,7 @@ const WEAPONS := {
 
 	&"staff": {
 		"id": &"staff",
+		"hands": &"two",
 		"name": "法杖",
 		"type": &"ranged",
 		"base_damage": 8.0,
@@ -130,6 +172,7 @@ const WEAPONS := {
 	# 短弓（F4，盜墓遊俠的起始武器）：輕型遠程，普攻不擊退、不讓怪硬直；右鍵扇形散射 5 支（不擊退）
 	&"shortbow": {
 		"id": &"shortbow",
+		"hands": &"two",
 		"name": "短弓",
 		"type": &"ranged",
 		"model": &"shortbow",
@@ -195,6 +238,7 @@ const WEAPONS := {
 	# 長弓（F5，只從怪物身上掉）：重型遠程，攻速慢、普攻可擊退；右鍵按住蓄力、放開射出穿透一直線的箭
 	&"longbow": {
 		"id": &"longbow",
+		"hands": &"two",
 		"name": "長弓",
 		"type": &"ranged",
 		"model": &"longbow",
@@ -253,16 +297,51 @@ const WEAPONS := {
 	},
 
 
-	# 雙匕首（F6，竊影者的起始武器）：很快的五連刺，第 5 下必爆擊、可擊退；右鍵影步瞬移到怪背後背刺（必爆擊）
-	&"daggers": {
-		"id": &"daggers",
-		"name": "雙匕首",
+	# 匕首（單手，也能當副手；竊影者主手、副手各一把）：單拿是三連刺；主副手都是匕首（雙持）時左鍵換成 dual_attack 五連刺（def_of）
+	# 右鍵影步：單拿時是主手自己的右鍵，當副手時副手的右鍵也是影步
+	&"dagger": {
+		"id": &"dagger",
+		"name": "匕首",
 		"type": &"melee",
-		"model": &"daggers",
-		"base_damage": 9.0,            # 2026-10-27 放慢後 5 → 9（每秒傷害約 31.6 → 27.8）
+		"hands": &"one",
+		"offhand": true,               # 也能拿在副手
+		"model": &"dagger",
+		"base_damage": 9.0,            # 2026-10-27 放慢後 5 → 9（雙持每秒傷害約 31.6 → 27.8）
 		"damage_type": &"phys",
-		"idle": {"arm_r": -0.6, "arm_l": -0.6, "tilt": 0.0},
+		"idle": {"arm_r": -0.6, "arm_l": 0.0, "tilt": 0.0},
+		"offhand_arm_l": -0.6,
+		# 單拿（Claude 暫定）：刺、刺、重刺，一刺 0.3 秒，第 3 下 120% 並擊退
 		"attack": {
+			"behavior": &"meleeSwing",
+			"sfx": "swing", "sfx_heavy": "swingHeavy",
+			"name": "三連刺",
+			"desc": "刺、刺、重刺：第 3 下 120% 並擊退。",
+			"icon": "dagger_stab",
+			"damage_pct": 1.0,
+			"combo_count": 3,
+			"range": 1.6,
+			"arc": PI * 0.5,
+			"windup": 0.1,
+			"active": 0.05,
+			"recovery": 0.15,
+			"knockback": 0.0,
+			"finisher_knockback": 6.0,
+			"finisher_only_stagger": true,   # 前兩下不讓怪受擊硬直
+			"lunge": 1.5,
+			"move_speed_mul": 0.6,
+			"combo_window": 0.35,
+			"finisher_mul": 1.2,
+			"finisher_impact_mul": 1.2,
+			"finisher_shake_mul": 1.5,
+			"finisher_scale": 1.2,
+			"finisher_recovery_mul": 1.3,
+			"hit_stop": 0.03,
+			"shake": 0.05,
+			"slash_color": Color("c8d0e0"),
+			"slash_finisher_color": Color("9aa3ff"),
+		},
+		# 雙持：很快的五連刺，第 5 下必爆擊、可擊退
+		"dual_attack": {
 			"behavior": &"meleeSwing",
 			"sfx": "swing", "sfx_heavy": "swingHeavy",
 			"name": "五連刺",
@@ -323,6 +402,7 @@ const WEAPONS := {
 	# 驅魔權杖（F7，驅魔神官的起始武器）：神聖近戰敲擊（可擊退）；右鍵腳下聖光圈 4 秒，隊友回血、亡靈（所有怪物）受傷
 	&"scepter": {
 		"id": &"scepter",
+		"hands": &"two",
 		"name": "驅魔權杖",
 		"type": &"melee",
 		"model": &"scepter",
@@ -386,6 +466,7 @@ const WEAPONS := {
 	# 舉著的與插著的火把都照亮周圍、全隊看得到（Vision.lights）。2026-10-27 使用者改：原本右鍵按一下進入姿態、姿態中左鍵插火把、右鍵噴火
 	&"torch": {
 		"id": &"torch",
+		"hands": &"one",
 		"name": "火把",
 		"type": &"melee",
 		"model": &"torch",
@@ -464,6 +545,7 @@ const WEAPONS := {
 	# 舉著時左右鍵換成 grab 的招式：左鍵拋出（被丟的怪與路上撞到的怪受傷、可擊退）、右鍵埋進土裡（暈 1.5 秒 + 0.5 秒爬出）；2 秒內都沒按就掙脫
 	&"shovel": {
 		"id": &"shovel",
+		"hands": &"two",
 		"name": "鐵鏟",
 		"type": &"melee",
 		"model": &"shovel",
@@ -560,3 +642,44 @@ const WEAPONS := {
 # 招式的基礎傷害（不含屬性）= 武器基礎傷害 × 招式 %（F1）；weapon 是 WEAPONS 的一筆，move 是它的 attack / special / parry
 static func move_base_damage(weapon: Dictionary, move: Dictionary) -> float:
 	return weapon.base_damage * move.damage_pct
+
+
+const COMBO_SEP := "+"
+static var _combos := {}   # 組合 id → 組合後的招式資料（def_of 的快取）
+
+
+# 主手＋副手的組合 id：沒有副手就是主手的 id，有就是「主手+副手」（Player.weapon_id、快照的 P_WEAPON）
+static func combo_id(main: StringName, off: StringName) -> StringName:
+	return main if off == &"" else StringName(String(main) + COMBO_SEP + String(off))
+
+
+# 拿得動嗎：主手不能放只能當副手的（盾），副手只能放 hands = off 或 offhand = true 的，主手是雙手時不能有副手
+static func can_hold(main: StringName, off: StringName) -> bool:
+	if main == &"" or WEAPONS[main].hands == &"off":
+		return false
+	if off == &"":
+		return true
+	var o: Dictionary = WEAPONS[off]
+	return WEAPONS[main].hands != &"two" and (o.hands == &"off" or o.get("offhand", false))
+
+
+# 玩家手上的招式資料（組合 id 或單一武器 id）：主手的資料為底，有副手時右鍵換成副手的右鍵、左手待機角度換成副手的；
+# 主副手都是同一種、而且有 dual_attack（匕首）時左鍵換成雙持招式。結果快取，同一個組合每次拿到同一個 Dictionary
+static func def_of(id: StringName) -> Dictionary:
+	if WEAPONS.has(id):
+		return WEAPONS[id]
+	if _combos.has(id):
+		return _combos[id]
+	var parts := String(id).split(COMBO_SEP)
+	var main: Dictionary = WEAPONS[StringName(parts[0])]
+	var off: Dictionary = WEAPONS[StringName(parts[1])]
+	var d := main.duplicate()
+	d.id = id
+	d.name = "%s＋%s" % [main.name, off.name]
+	d.offhand_model = off.model
+	d.special = off.special
+	d.idle = {"arm_r": main.idle.arm_r, "arm_l": off.offhand_arm_l, "tilt": main.idle.tilt}
+	if main.id == off.id and main.has("dual_attack"):
+		d.attack = main.dual_attack
+	_combos[id] = d
+	return d

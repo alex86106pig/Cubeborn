@@ -49,7 +49,7 @@ static func check_attack_timing() -> String:
 	if not p.action.is_in(&"attack"):
 		return "按住左鍵後應進入 attack，實際 %s" % p.action.current_name
 	_run(w, _cmd(Vector2(1, 0)), 1)
-	var a: Dictionary = WeaponDefs.WEAPONS[&"swordShield"].attack
+	var a: Dictionary = WeaponDefs.WEAPONS[&"longsword"].attack
 	var expected_speed: float = Config.PLAYER.move_speed * a.move_speed_mul
 	if absf(p.velocity.length() - expected_speed) > EPS:
 		return "攻擊中移速 %.4f，預期 %.4f" % [p.velocity.length(), expected_speed]
@@ -79,8 +79,8 @@ static func check_combo() -> String:
 			finisher_recovery = p.action.data.durations[2]
 		elif reached_finisher and p.action.is_in(&"attack"):
 			break   # 第四刀開始（回到第一段）
-	var a: Dictionary = WeaponDefs.WEAPONS[&"swordShield"].attack
-	var base := WeaponDefs.move_base_damage(WeaponDefs.WEAPONS[&"swordShield"], a)
+	var a: Dictionary = WeaponDefs.WEAPONS[&"longsword"].attack
+	var base := WeaponDefs.move_base_damage(WeaponDefs.WEAPONS[&"longsword"], a)
 	var want := [base, base, base * a.finisher_mul]   # v0.41.0 起保留小數（第三段 21.6，原本四捨五入成 22）
 	var amounts := _damage_amounts(events, dummy.id)
 	var same := amounts.size() == want.size()
@@ -130,7 +130,7 @@ static func _block_controls() -> String:
 		return "格擋不應有冷卻：%s" % [_named(events, "skill:used")]
 	# 格擋中可以移動（×0.5）、會轉向瞄準點
 	_run(w, _cmd(Vector2(0, 1), Vector2(5, 0), HOLD), 20)
-	var sp: Dictionary = WeaponDefs.WEAPONS[&"swordShield"].special
+	var sp: Dictionary = WeaponDefs.WEAPONS[&"woodShield"].special
 	var block_speed: float = Config.PLAYER.move_speed * sp.move_speed_mul
 	var aim_angle := MathUtil.angle_to(p.pos, Vector2(5, 0))   # 邊走邊瞄準固定點，朝向要用目前位置算
 	if absf(p.velocity.length() - block_speed) > EPS or absf(angle_difference(p.facing, aim_angle)) > 0.05:
@@ -185,7 +185,7 @@ static func _parry_controls(sp: Dictionary) -> String:
 	# 判定中放開右鍵：等判定結束才打出盾擊；沒擋到攻擊 → 傷害 24 × 0.5 = 12（保留小數，v0.41.0）
 	var hp0 := dummy.hp
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), ceili(pr.window / DT) + 1)
-	var full := WeaponDefs.move_base_damage(WeaponDefs.WEAPONS[&"swordShield"], pr)
+	var full := WeaponDefs.move_base_damage(WeaponDefs.WEAPONS[&"longsword"], pr)
 	var want: float = full * pr.fail_damage_mul
 	if absf((hp0 - dummy.hp) - want) > 1e-4:
 		return "招架沒擋到攻擊應打出 %.1f 傷害（%.0f × %.1f），實際 %.4f" % [want, full, pr.fail_damage_mul, hp0 - dummy.hp]
@@ -241,7 +241,7 @@ static func _block_hits() -> String:
 	var b3 := _named(ev3, "player:blocked")
 	if b3.size() != 1 or not b3[0].perfect or p3.hp != p3.max_hp:
 		return "招架判定中擋下應為招架成功：%s、血量 %.0f" % [b3, p3.hp]
-	var parry_dmg := WeaponDefs.move_base_damage(WeaponDefs.WEAPONS[&"swordShield"], WeaponDefs.WEAPONS[&"swordShield"].special.parry)
+	var parry_dmg := WeaponDefs.move_base_damage(WeaponDefs.WEAPONS[&"longsword"], WeaponDefs.WEAPONS[&"woodShield"].special.parry)
 	if absf((g_hp - g3.hp) - parry_dmg) > 1e-4 or p3.block_time < 0.0:
 		return "招架成功應造成 %.0f 傷害、右鍵還按著就繼續格擋：傷害 %.2f、格擋 %s" % [parry_dmg, g_hp - g3.hp, p3.block_time >= 0.0]
 	# Boss 衝鋒（v0.18.2）：正面擋得住、不扣血、只判定一次，但被推退得比一般格擋遠（100% 擊退）
@@ -313,7 +313,7 @@ static func check_buffer() -> String:
 		if p.action.is_in(&"special"):
 			started = w.tick
 			break
-	var a: Dictionary = WeaponDefs.WEAPONS[&"swordShield"].attack
+	var a: Dictionary = WeaponDefs.WEAPONS[&"longsword"].attack
 	var natural_end := ceili((a.windup + a.active + a.recovery) / DT) + 1   # 攻擊自然結束後才接的那一步
 	if started < 0 or started >= natural_end:
 		return "格擋在第 %d 步才開始，應在攻擊後搖時取消（第 %d 步之前）" % [started, natural_end]
@@ -444,7 +444,7 @@ static func check_slot_buffer() -> String:
 		if p.action.is_in(&"useItem"):
 			started = w.tick
 			break
-	var a: Dictionary = WeaponDefs.WEAPONS[&"swordShield"].attack
+	var a: Dictionary = WeaponDefs.WEAPONS[&"longsword"].attack
 	var natural_end := ceili((a.windup + a.active + a.recovery) / DT) + 1
 	var want_hp := 40.0 + SkillDefs.SKILLS[&"heal"].amount
 	if started < 0 or started >= natural_end or p.hp != want_hp:
@@ -566,7 +566,7 @@ static func check_roll_cancel() -> String:
 	while not p2.action.is_in(&"roll") and waited < 30:
 		_run(w2, _cmd(Vector2.ZERO), 1)
 		waited += 1
-	if not p2.action.is_in(&"roll") or waited > roundi(WeaponDefs.WEAPONS[&"swordShield"].attack.active / DT) + 1:
+	if not p2.action.is_in(&"roll") or waited > roundi(WeaponDefs.WEAPONS[&"longsword"].attack.active / DT) + 1:
 		return "揮下去結束後應接著翻滾（%d 步）" % waited
 	# 特殊技與硬直：不取消，結束後在緩衝時間內翻
 	for state in [&"special", &"stagger"]:
@@ -644,7 +644,7 @@ static func check_jump_motion() -> String:
 
 # 範圍：擋箭的角度（block_arc 邊界內外各 5°，箭擋下會消失）、盾反的距離與角度
 static func _block_ranges() -> String:
-	var sp: Dictionary = WeaponDefs.WEAPONS[&"swordShield"].special
+	var sp: Dictionary = WeaponDefs.WEAPONS[&"woodShield"].special
 	var edge := rad_to_deg(sp.block_arc / 2.0)
 	# 角度：面向 +Z 按住右鍵 20 步後，箭從不同角度飛向玩家
 	for case in [[edge - 5.0, true], [edge + 5.0, false]]:
@@ -740,7 +740,7 @@ static func check_motion_feel() -> String:
 	if turn_steps != turn_expect:
 		return "轉身 %d 步，預期 %d" % [turn_steps, turn_expect]
 
-	var def: Dictionary = WeaponDefs.WEAPONS.swordShield.attack
+	var def: Dictionary = WeaponDefs.WEAPONS.longsword.attack
 	var w := _new_world()
 	var p := _player(w)
 	var start := p.pos
@@ -788,7 +788,7 @@ static func check_motion_feel() -> String:
 # 職業（F2）：開局套用基礎數值、起始武器與被動；沒選職業照舊；守墓騎士被隊友從背後打到減半、正面照常
 static func check_classes() -> String:
 	var plain := _player(_new_world())
-	if plain.class_id != ClassDefs.NONE or plain.max_hp != Config.PLAYER.max_hp or plain.weapon_id != Config.PLAYER.start_weapon:
+	if plain.class_id != ClassDefs.NONE or plain.max_hp != Config.PLAYER.max_hp or plain.weapon_id != WeaponDefs.combo_id(Config.PLAYER.start_weapon, Config.PLAYER.start_offhand):
 		return "沒選職業應照舊：%s、生命 %.0f、%s" % [plain.class_id, plain.max_hp, plain.weapon_id]
 	for id: StringName in ClassDefs.ORDER:
 		var c: Dictionary = ClassDefs.CLASSES[id]
@@ -798,8 +798,9 @@ static func check_classes() -> String:
 		w.player_classes[World.HOST_PEER_ID] = id
 		w.reset(1)
 		var p := _player(w)
-		if p.class_id != id or p.weapon_id != c.weapon or p.hp != p.max_hp:
-			return "%s：職業 %s、武器 %s（應 %s）、血 %.0f / %.0f" % [c.name, p.class_id, p.weapon_id, c.weapon, p.hp, p.max_hp]
+		var want_weapon := WeaponDefs.combo_id(c.weapon, c.get("offhand", &""))
+		if p.class_id != id or p.weapon_id != want_weapon or p.hp != p.max_hp:
+			return "%s：職業 %s、武器 %s（應 %s）、血 %.0f / %.0f" % [c.name, p.class_id, p.weapon_id, want_weapon, p.hp, p.max_hp]
 		for stat: StringName in c.stats:
 			if absf(p.stats.base(stat) - c.stats[stat]) > EPS:
 				return "%s 的%s基礎值應 %.2f，實際 %.2f" % [c.name, StatDefs.STATS[stat].name, c.stats[stat], p.stats.base(stat)]

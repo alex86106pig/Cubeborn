@@ -3,7 +3,7 @@
 class_name SkillIcons
 
 const DRAWN: Array[String] = ["⚔", "🛡", "✦", "✺", "⟳", "parry", "passive",
-	"bow_shot", "bow_fan", "bow_heavy", "bow_pierce", "dagger_combo", "shadow_step", "mace_smash", "holy_circle",
+	"bow_shot", "bow_fan", "bow_heavy", "bow_pierce", "sword_thrust", "dagger_combo", "dagger_stab", "shadow_step", "mace_smash", "holy_circle",
 	"torch_swing", "torch_raise", "torch_plant", "fire_breath", "shovel_dig", "shovel_grab", "shovel_throw", "shovel_bury"]
 
 const STEEL := Color("dfe8ff")
@@ -81,6 +81,16 @@ static func draw(ci: CanvasItem, icon: String, c: Vector2, alpha: float = 1.0) -
 		"bow_pierce":   # 穿透箭：箭穿過靶圈
 			ci.draw_arc(c + Vector2(2, -2), 6.5, 0.0, TAU, 20, _a(Color("e0605a"), alpha), 2.5)
 			_arrow(ci, c + Vector2(-12, 12), c + Vector2(12, -12), 2.5, 6.0, alpha)
+		"sword_thrust":   # 蓄力突刺：往右上刺出的劍 + 後面的速度線
+			_line(ci, c + Vector2(-12, 12), c + Vector2(-6, 6), HILT, 3.5, alpha)
+			_line(ci, c + Vector2(-9, 3), c + Vector2(-3, 9), HILT, 3.0, alpha)
+			_line(ci, c + Vector2(-6, 6), c + Vector2(12, -12), STEEL, 3.5, alpha)
+			for o: float in [-6.0, 6.0]:
+				_line(ci, c + Vector2(-13 + o, 3 + o), c + Vector2(-7 + o, -3 + o), Color(STEEL, 0.5), 1.5, alpha)
+		"dagger_stab":   # 三連刺：一把匕首往前刺
+			_line(ci, c + Vector2(-9, 9), c + Vector2(-3, 3), HILT, 3.5, alpha)
+			_line(ci, c + Vector2(-3, 3), c + Vector2(10, -10), STEEL, 3.5, alpha)
+			_line(ci, c + Vector2(-6, -1), c + Vector2(1, 6), HILT, 2.5, alpha)
 		"dagger_combo":   # 五連刺：兩把匕首並排往前刺
 			for o: Vector2 in [Vector2(-5, 3), Vector2(5, -3)]:
 				_line(ci, c + o + Vector2(-7, 7), c + o + Vector2(-3, 3), HILT, 3.0, alpha)

@@ -14,8 +14,8 @@ var is_attack_held := false
 var is_special_held := false           # 右鍵按住（劍盾按住格擋，v0.41.0）
 var attack_pressed := false            # 本步剛按下左鍵（格擋中按左鍵 = 招架）
 var _attack_was_held := false
-var weapon: Dictionary = {}            # 手上武器的招式資料（WeaponDefs）
-var weapon_id: StringName = &""
+var weapon: Dictionary = {}            # 手上的招式資料：主手＋副手組合出來的（WeaponDefs.def_of）
+var weapon_id: StringName = &""        # 組合 id（WeaponDefs.combo_id：「主手」或「主手+副手」），快照的 P_WEAPON
 var class_id := ClassDefs.NONE        # 職業（F2，ClassDefs）；NONE = 共用基準數值
 var torch_stance := false              # 火把準備姿態（F8）：按住右鍵舉著，左鍵換成噴火
 var running := false                   # 跑步（Ctrl 切換）：跳躍、翻滾、開寶箱不取消；進入待機與翻滾以外的動作就取消
@@ -24,14 +24,9 @@ var reload_timer := 0.0                # 裝填剩餘秒數；> 0 時不能射�
 var held_enemy_id := 0                # 鐵鏟舉著的怪（F9）；0 = 沒有
 var hold_timer := 0.0                  # 舉著的剩餘秒數，到 0 怪掙脫
 var loadout := Loadout.new()           # 裝備欄、背包、生效的道具（sim/loadout.gd）
-var weapon_slots: Array[Dictionary]:   # 裝備欄 2 格（D4）：武器實例（WeaponDropDefs）或 {}
+var weapon_slots: Array[Dictionary]:   # [主手, 副手]（Loadout.MAIN / OFF）：武器實例（WeaponDropDefs）或 {}
 	get:
 		return loadout.weapon_slots
-var active_slot: int:
-	get:
-		return loadout.active_slot
-	set(value):
-		loadout.active_slot = value
 var items: Array[Dictionary]:          # 背包裡生效的道具實例 { uid, id }；uid 同時是屬性加成的來源名稱
 	get:
 		return loadout.items
@@ -87,6 +82,7 @@ func _init(p_world: World, p_peer_id: int) -> void:
 	locomotion = StateMachine.new(self, PlayerStates.locomotion_states(), &"idle")
 	action = StateMachine.new(self, PlayerStates.action_states())
 	equip_weapon(Config.PLAYER.start_weapon)
+	loadout.equip_offhand_new(self, Config.PLAYER.start_offhand)
 	roll_charges = roll_max()
 	_update_anim()
 
@@ -339,11 +335,6 @@ func net_hurt() -> void:
 		action.change(&"stagger")
 
 
-# Q / 滑鼠滾輪（D4）：換到另一格裝備欄的武器
-func swap_weapon() -> void:
-	loadout.swap(self)
-
-
 func is_dodging() -> bool:
 	return dodge_timer > 1e-6
 
@@ -396,6 +387,7 @@ func apply_class(id: StringName) -> void:
 		stats.set_base(stat, c.stats[stat])
 	set_stat_source(&"class", c.passive.get("mods", []))
 	equip_weapon(c.weapon)
+	loadout.equip_offhand_new(self, c.get("offhand", &""))
 	hp = max_hp
 	roll_charges = roll_max()
 
@@ -418,28 +410,33 @@ func friendly_back_mul(from: Vector2) -> float:
 	return mul if absf(MathUtil.wrap_angle(atan2(d.x, d.y) - facing)) > PI / 2.0 else 1.0
 
 
+# 換上一把新的白色武器（Loadout.equip_new：盾放副手，其他放主手）
 func equip_weapon(id: StringName) -> void:
 	loadout.equip_new(self, id)
 
 
-# 套用手上那格武器：招式資料與詞條（只有手上的那把生效，屬性來源 &"weapon"）；Loadout 換了武器就呼叫
+# 套用主手與副手：組合招式資料（WeaponDefs.def_of）與詞條（屬性來源 &"weapon" 主手、&"offhand" 副手）；Loadout 換了武器就呼叫
 func apply_active_weapon() -> void:
-	if weapon_slots[active_slot].is_empty():
-		active_slot = 1 - active_slot
-	var inst: Dictionary = weapon_slots[active_slot]
-	if inst.is_empty():
+	var main: Dictionary = weapon_slots[Loadout.MAIN]
+	if main.is_empty():
 		return
-	# 換了一把（uid 不同）才重設連段與動作；只是合成 / 搬動別的武器時不打斷手上的動作
-	show_weapon(ItemDefs.ITEMS[inst.base].weapon, inst.uid != _applied_weapon_uid)
-	_applied_weapon_uid = inst.uid
-	set_stat_source(&"weapon", WeaponDropDefs.stat_mods(inst))
+	var off: Dictionary = weapon_slots[Loadout.OFF]
+	var uids := StringName(String(main.uid) + "/" + String(off.get("uid", "")))
+	# 主手或副手換了一把（uid 不同）才重設連段與動作；只是合成 / 搬動別的武器時不打斷手上的動作
+	show_weapon(WeaponDefs.combo_id(Loadout.weapon_of(main), Loadout.weapon_of(off)), uids != _applied_weapon_uid)
+	_applied_weapon_uid = uids
+	set_stat_source(&"weapon", WeaponDropDefs.stat_mods(main))
+	if off.is_empty():
+		remove_stat_source(&"offhand")
+	else:
+		set_stat_source(&"offhand", WeaponDropDefs.offhand_mods(off))
 
 
 # 只換招式資料與模型（客戶端畫別人的角色也用這個）；force 時同一種也重設連段與動作
 func show_weapon(id: StringName, force := false) -> void:
 	if weapon_id == id and not force:
 		return
-	weapon = WeaponDefs.WEAPONS[id]
+	weapon = WeaponDefs.def_of(id)
 	weapon_id = id
 	torch_stance = false
 	reload_timer = 0.0   # 換到有箭袋的弓就是滿的（換武器本身就要花時間；翻滾也能瞬間補滿）
@@ -451,8 +448,9 @@ func show_weapon(id: StringName, force := false) -> void:
 	action.change(&"ready")
 
 
+# 主手的武器實例（稀有度光、HUD 的武器名稱）
 func active_weapon() -> Dictionary:
-	return loadout.active_weapon()
+	return loadout.main_weapon()
 
 
 # 招式傷害 = 武器基礎傷害 × 招式 % × 攻擊力 × 物理 / 屬性傷害
@@ -549,8 +547,8 @@ func sync_inventory(arr: Array) -> void:
 	loadout.sync_inventory(self, arr)
 
 
-func sync_weapon_slots(arr: Array, p_active: int) -> void:
-	loadout.sync_weapon_slots(self, arr, p_active)
+func sync_weapon_slots(arr: Array) -> void:
+	loadout.sync_weapon_slots(self, arr)
 
 
 # 剛按下 F：附近有倒地隊友時讓給救援（動作層 Ready 處理）；否則先撿最近的道具，沒有道具才開最近的寶箱
@@ -687,8 +685,6 @@ func _read_input() -> void:
 		try_jump()
 	if _pressed & InputCmd.BTN_RUN:
 		running = not running
-	if _pressed & InputCmd.BTN_SWAP_WEAPON:
-		swap_weapon()
 	for i in ActiveSlots.SLOT_COUNT:
 		if _pressed & InputCmd.slot_bit(i):
 			buffered_action = {"type": &"slot", "index": i, "time": buffer_time}

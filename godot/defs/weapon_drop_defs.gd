@@ -80,9 +80,12 @@ static func make(uid: StringName, base: StringName, rarity: StringName, rng: Ran
 	return {"uid": uid, "base": base, "rarity": rarity, "affixes": roll_affixes(affix_count(rarity), rng)}
 
 
-# 武器的基礎數值（介面顯示用的實際數字）：攻擊力 = 普攻傷害、攻速 = 每秒普攻次數、範圍 = 揮砍距離或魔彈射程，都乘上稀有度倍率
+# 武器的基礎數值（介面顯示用的實際數字）：攻擊力 = 普攻傷害、攻速 = 每秒普攻次數、範圍 = 揮砍距離或魔彈射程，都乘上稀有度倍率；
+# 只能當副手的（盾）沒有普攻，回傳 {}
 static func base_stats(inst: Dictionary) -> Dictionary:
 	var wd: Dictionary = WeaponDefs.WEAPONS[ItemDefs.ITEMS[inst.base].weapon]
+	if not wd.has("attack"):
+		return {}
 	var atk: Dictionary = wd.attack
 	var m: Dictionary = RARITY_BASE[inst.rarity]
 	return {
@@ -100,6 +103,15 @@ static func stat_mods(inst: Dictionary) -> Array:
 		mods.append([&"damage", Stats.MUL, m.damage])
 	if m.attack_speed != 1.0:
 		mods.append([&"attack_speed", Stats.MUL, m.attack_speed])
+	for id: StringName in inst.affixes:
+		var a: Dictionary = AFFIXES[id]
+		mods.append([a.stat, a.op, a.value])
+	return mods
+
+
+# 副手生效的屬性：只有詞條（稀有度的攻擊力、攻速倍率只算主手，Claude 暫定）
+static func offhand_mods(inst: Dictionary) -> Array:
+	var mods := []
 	for id: StringName in inst.affixes:
 		var a: Dictionary = AFFIXES[id]
 		mods.append([a.stat, a.op, a.value])

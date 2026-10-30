@@ -295,7 +295,7 @@ static func check_hit_prediction(feel: Array[String]) -> String:
 	var idle := _cmd(Vector2.ZERO)
 	var press := _cmd(Vector2.ZERO, InputCmd.BTN_ATTACK)
 	# 單機出招到打中幾步（基準）
-	var a: Dictionary = WeaponDefs.WEAPONS[&"swordShield"].attack
+	var a: Dictionary = WeaponDefs.WEAPONS[&"longsword"].attack
 	var solo := ceili(a.windup / DT) + 1
 	var s: Array = setup.call(6)
 	var link: _Link = s[0]
@@ -429,7 +429,7 @@ static func check_net_loot() -> String:
 	return ""
 
 
-# D4：客戶端按 X 切到第 2 格、拖曳合成背包裡兩把白法杖；Boss 掉的武器兩邊都看得到
+# D4：客戶端把背包的法杖拖到主手（長劍與木盾回背包）、拖曳合成背包裡兩把白法杖；Boss 掉的武器兩邊都看得到
 static func check_net_weapons() -> String:
 	var link := _Link.new(43, [1, 2], 3, 0.0, false)
 	var hw := link.host_world
@@ -443,11 +443,13 @@ static func check_net_weapons() -> String:
 		for i in n:
 			link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO))
 	idle.call(20)
-	link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO, InputCmd.BTN_SWAP_WEAPON))
+	var equip := _cmd(Vector2.ZERO)
+	equip.inv_ops = [[InputCmd.OP_EQUIP, "x", Loadout.MAIN]]
+	link.step(_cmd(Vector2.ZERO), equip)
 	idle.call(20)
 	var me := link.client.local_player()
-	if hp2.active_slot != 1 or me.active_slot != 1 or me.weapon_id != &"staff" or hp2.weapon_id != &"staff":
-		return "按 X 後兩邊都應換到第 2 格的法杖：房主 %d %s、客戶端 %d %s" % [hp2.active_slot, hp2.weapon_id, me.active_slot, me.weapon_id]
+	if me.weapon_id != &"staff" or hp2.weapon_id != &"staff" or not me.weapon_slots[Loadout.OFF].is_empty() or me.inventory.find(&"x").size() > 0:
+		return "法杖拖到主手後兩邊都應拿法杖、副手空：房主 %s、客戶端 %s %s" % [hp2.weapon_id, me.weapon_id, me.weapon_slots]
 	var merge := _cmd(Vector2.ZERO)
 	merge.inv_ops = [[InputCmd.OP_MERGE, "m1", "m2"]]
 	link.step(_cmd(Vector2.ZERO), merge)

@@ -663,27 +663,34 @@ static func check_weapon_affixes() -> String:
 				uniq[a] = true
 			if inst.affixes.size() != WeaponDropDefs.RARITY_ORDER.find(r) or uniq.size() != inst.affixes.size():
 				return "%s 應有 %d 條不重複詞條，實際 %s" % [r, WeaponDropDefs.RARITY_ORDER.find(r), inst.affixes]
+	# 主手：稀有度倍率 + 詞條都生效；撿到的時候在背包、不生效
 	var w := _new_world()
 	var p := _player(w)
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SWAP_WEAPON), 1)
-	if p.active_slot != 0:
-		return "另一格是空的時不應切換"
 	var aff: Array[StringName] = [&"aff_damage", &"aff_attack_speed"]
 	p.add_weapon({"uid": &"blue", "base": &"staff", "rarity": &"blue", "affixes": aff})
-	if p.weapon_slots[1].is_empty() or p.active_slot != 0 or absf(p.stats.value(&"damage") - 1.0) > EPS:
-		return "撿到的武器應放第 2 格、不換手上、詞條不生效：攻擊力 %.2f" % p.stats.value(&"damage")
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SWAP_WEAPON), 1)
+	if p.inventory.find(&"blue").is_empty() or absf(p.stats.value(&"damage") - 1.0) > EPS:
+		return "撿到的法杖應放背包、詞條不生效：攻擊力 %.2f" % p.stats.value(&"damage")
+	var equip := _cmd(Vector2.ZERO)
+	equip.inv_ops = [[InputCmd.OP_EQUIP, "blue", Loadout.MAIN]]
+	_run(w, equip, 1)
 	# v0.27.0 起稀有度有基礎倍率：藍色攻擊力 ×1.4、攻速 ×1.10，再乘詞條的 +10%
 	var want_dmg: float = WeaponDropDefs.RARITY_BASE.blue.damage * 1.1
 	var want_spd: float = WeaponDropDefs.RARITY_BASE.blue.attack_speed * 1.1
-	if p.active_slot != 1 or p.weapon_id != &"staff" or absf(p.stats.value(&"damage") - want_dmg) > EPS or absf(p.stats.value(&"attack_speed") - want_spd) > EPS:
-		return "按 X 換成藍法杖後攻擊力 / 攻速應為 %.2f / %.2f：%s、%.2f / %.2f" % [want_dmg, want_spd, p.weapon_id, p.stats.value(&"damage"), p.stats.value(&"attack_speed")]
-	_run(w, _cmd(Vector2.ZERO), 1)
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SWAP_WEAPON), 1)
-	if p.active_slot != 0 or p.weapon_id != &"swordShield" or absf(p.stats.value(&"damage") - 1.0) > EPS:
-		return "再按 X 換回劍盾，詞條應移除：攻擊力 %.2f" % p.stats.value(&"damage")
+	if p.weapon_id != &"staff" or absf(p.stats.value(&"damage") - want_dmg) > EPS or absf(p.stats.value(&"attack_speed") - want_spd) > EPS:
+		return "藍法杖裝上主手後攻擊力 / 攻速應為 %.2f / %.2f：%s、%.2f / %.2f" % [want_dmg, want_spd, p.weapon_id, p.stats.value(&"damage"), p.stats.value(&"attack_speed")]
+	# 副手只有詞條生效（稀有度倍率只算主手）
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	var aff2: Array[StringName] = [&"aff_damage"]
+	p2.weapon_slots[Loadout.OFF] = {"uid": &"gs", "base": &"woodShield", "rarity": &"green", "affixes": aff2}
+	p2.apply_active_weapon()
+	if absf(p2.stats.value(&"damage") - 1.1) > EPS:
+		return "綠木盾（攻擊力 +10%%）當副手：攻擊力應 1.10（稀有度倍率不算副手），實際 %.2f" % p2.stats.value(&"damage")
+	p2.weapon_slots[Loadout.OFF] = {}
+	p2.apply_active_weapon()
+	if absf(p2.stats.value(&"damage") - 1.0) > EPS:
+		return "拿掉副手後詞條應移除：攻擊力 %.2f" % p2.stats.value(&"damage")
 	return ""
-
 
 # 生一隻血很多、站在 at 的骷髏（道具檢查用）
 static func _item_dummy(w: World, at: Vector2, hp: float = 1000.0) -> Enemy:
@@ -1376,14 +1383,26 @@ static func check_weapon_pickup() -> String:
 	var p := _player(w)
 	var mk := func(uid: String, base: StringName) -> Dictionary:
 		return {"uid": StringName(uid), "base": base, "rarity": &"white", "affixes": [] as Array[StringName]}
-	# 地上的武器按 F 撿起 → 第 2 格
+	var op := func(ops: Array) -> void:
+		var c := _cmd(Vector2.ZERO)
+		c.inv_ops = ops
+		_run(w, c, 1)
+	var sword: StringName = p.weapon_slots[Loadout.MAIN].uid
+	var shield: StringName = p.weapon_slots[Loadout.OFF].uid
+	if p.weapon_id != &"longsword+woodShield" or p.weapon.special.behavior != &"shieldBlock" or p.weapon.attack.name != WeaponDefs.WEAPONS.longsword.attack.name:
+		return "開局應是長劍＋木盾：左鍵斬擊、右鍵格擋，實際 %s" % p.weapon_id
+	# 地上的武器按 F 撿起：手上有武器時放背包、不換手上的
 	w.drop_weapon(mk.call("a", &"staff"), p.pos + Vector2(1, 0))
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_INTERACT), 1)
-	if p.weapon_slots[1].get("uid", &"") != &"a" or p.active_slot != 0:
-		return "撿起的武器應放進空的第 2 格、不換手上"
-	# 裝備欄滿了 → 背包（不生效）
-	if not p.add_weapon(mk.call("b", &"staff")) or p.inventory.find(&"b").is_empty() or not p.items.is_empty():
-		return "裝備欄滿了應放進背包、而且不算生效的道具"
+	if p.inventory.find(&"a").is_empty() or p.weapon_id != &"longsword+woodShield":
+		return "撿起的法杖應放背包、不換手上：%s" % p.weapon_id
+	# 副手空著時撿到盾：直接拿上副手
+	op.call([[InputCmd.OP_MOVE, String(shield), 6, 0, 0]])
+	if not p.weapon_slots[Loadout.OFF].is_empty() or p.weapon_id != &"longsword" or p.weapon.special.behavior != &"chargedThrust":
+		return "副手的盾搬進背包後應只拿長劍、右鍵蓄力突刺：%s" % p.weapon_id
+	p.add_weapon(mk.call("sh", &"woodShield"))
+	if p.weapon_slots[Loadout.OFF].get("uid", &"") != &"sh":
+		return "副手空著時撿到的盾應放副手"
 	# 背包塞滿 → 撿不起來
 	for i in ItemDefs.BAG_SIZE.x * ItemDefs.BAG_SIZE.y:
 		p.add_item(&"loaded_dice")
@@ -1391,27 +1410,26 @@ static func check_weapon_pickup() -> String:
 	if p.add_weapon(mk.call("c", &"staff")) or _named(w.events, "inventory:full").is_empty():
 		return "背包滿了應撿不起來並發出 inventory:full"
 	p.clear_items()
-	# 背包的武器拖到第 1 格：原本那把（劍盾）回背包
-	var equip := _cmd(Vector2.ZERO)
-	equip.inv_ops = [[InputCmd.OP_EQUIP, "b", 0]]
-	_run(w, equip, 1)
-	var sword_uid: StringName = &""
-	for e in p.inventory.entries:
-		if e.has("weapon"):
-			sword_uid = e.uid
-	if p.weapon_slots[0].get("uid", &"") != &"b" or p.weapon_id != &"staff" or sword_uid == &"":
-		return "背包武器裝上第 1 格後，原本的劍盾應回背包：第 1 格 %s、手上 %s" % [p.weapon_slots[0].get("uid", &""), p.weapon_id]
-	# 裝備欄 → 背包：還有另一把時可以；只剩一把時不行，也不能丟
-	var to_bag := _cmd(Vector2.ZERO)
-	to_bag.inv_ops = [[InputCmd.OP_MOVE, "a", 0, 5, 0]]
-	_run(w, to_bag, 1)
-	if not p.weapon_slots[1].is_empty() or p.inventory.find(&"a").is_empty():
-		return "第 2 格的武器應能搬進背包"
-	var last := _cmd(Vector2.ZERO)
-	last.inv_ops = [[InputCmd.OP_MOVE, "b", 4, 5, 0], [InputCmd.OP_DROP, "b"]]
-	_run(w, last, 1)
-	if p.weapon_slots[0].get("uid", &"") != &"b":
-		return "手上只剩一把時不能搬走或丟掉"
+	# 雙手武器裝上主手：原本的長劍和副手的盾都回背包
+	op.call([[InputCmd.OP_EQUIP, "a", Loadout.MAIN]])
+	if p.weapon_slots[Loadout.MAIN].get("uid", &"") != &"a" or not p.weapon_slots[Loadout.OFF].is_empty() 			or p.inventory.find(sword).is_empty() or p.inventory.find(&"sh").is_empty() or p.weapon_id != &"staff":
+		return "法杖（雙手）裝上主手後長劍與盾應回背包：手上 %s、副手 %s" % [p.weapon_id, p.weapon_slots[Loadout.OFF]]
+	# 盾不能放主手；主手是雙手武器時不能拿副手
+	op.call([[InputCmd.OP_EQUIP, "sh", Loadout.MAIN], [InputCmd.OP_EQUIP, "sh", Loadout.OFF]])
+	if p.weapon_slots[Loadout.MAIN].get("uid", &"") != &"a" or not p.weapon_slots[Loadout.OFF].is_empty():
+		return "盾不能放主手、拿雙手武器時不能放副手"
+	# 主手不能搬進背包、不能丟
+	op.call([[InputCmd.OP_MOVE, "a", 4, 5, 0], [InputCmd.OP_DROP, "a"]])
+	if p.weapon_slots[Loadout.MAIN].get("uid", &"") != &"a":
+		return "主手的武器不能搬走或丟掉"
+	# 換回長劍、盾放副手 → 長劍＋木盾
+	op.call([[InputCmd.OP_EQUIP, String(sword), Loadout.MAIN], [InputCmd.OP_EQUIP, "sh", Loadout.OFF]])
+	if p.weapon_id != &"longsword+woodShield" or p.inventory.find(&"a").is_empty():
+		return "長劍裝回主手、盾放副手後應是長劍＋木盾、法杖回背包：%s" % p.weapon_id
+	# 主手與副手互換：盾不能當主手，互換被拒絕
+	op.call([[InputCmd.OP_EQUIP, "sh", Loadout.MAIN]])
+	if p.weapon_id != &"longsword+woodShield":
+		return "盾拖到主手應被拒絕：%s" % p.weapon_id
 	return ""
 
 
@@ -1421,20 +1439,20 @@ static func check_weapon_merge() -> String:
 	var mk := func(uid: String, base: StringName, rarity: StringName) -> Dictionary:
 		return {"uid": StringName(uid), "base": base, "rarity": rarity, "affixes": [] as Array[StringName]}
 	var start_uid: StringName = p.weapon_slots[0].uid
-	p.add_weapon(mk.call("s2", &"swordShield", &"white"))   # 第 2 格
-	p.add_weapon(mk.call("s3", &"swordShield", &"white"))   # 背包
-	p.add_weapon(mk.call("st", &"staff", &"white"))         # 背包
-	p.add_weapon(mk.call("g1", &"swordShield", &"green"))   # 背包
+	p.add_weapon(mk.call("s2", &"longsword", &"white"))   # 背包（手上有武器時都放背包）
+	p.add_weapon(mk.call("s3", &"longsword", &"white"))   # 背包
+	p.add_weapon(mk.call("st", &"staff", &"white"))       # 背包
+	p.add_weapon(mk.call("g1", &"longsword", &"green"))   # 背包
 	var merge := func(a: String, b: String) -> void:
 		var c := _cmd(Vector2.ZERO)
 		c.inv_ops = [[InputCmd.OP_MERGE, a, b]]
 		w.events.clear()
 		_run(w, c, 1)
-	# 背包的白劍盾拖到手上的白劍盾 → 綠色、1 條詞條、留在第 1 格、手上立刻生效
+	# 背包的白長劍拖到主手的白長劍 → 綠色、1 條詞條、留在主手、立刻生效
 	merge.call("s3", String(start_uid))
 	var m: Dictionary = p.weapon_slots[0]
 	if m.rarity != &"green" or m.affixes.size() != 1 or not p.inventory.find(&"s3").is_empty() or _named(w.events, "weapon:merged").is_empty():
-		return "合成應得到綠色 1 條詞條、在第 1 格：%s" % [m]
+		return "合成應得到綠色 1 條詞條、在主手：%s" % [m]
 	var mods := WeaponDropDefs.stat_mods(m)
 	var stat: StringName = mods[0][0]
 	if is_equal_approx(p.stats.value(stat), p.stats.base(stat)):
@@ -1442,18 +1460,25 @@ static func check_weapon_merge() -> String:
 	# 不同種、不同稀有度不能合成
 	merge.call("st", "s2")
 	if _named(w.events, "weapon:merge_denied").is_empty() or p.inventory.find(&"st").is_empty():
-		return "法杖拖到劍盾上不應合成"
+		return "法杖拖到長劍上不應合成"
 	merge.call("s2", "g1")
-	if _named(w.events, "weapon:merge_denied").is_empty() or p.weapon_slots[1].is_empty():
+	if _named(w.events, "weapon:merge_denied").is_empty() or p.inventory.find(&"s2").is_empty():
 		return "白色拖到綠色上不應合成"
-	# 綠 + 綠 → 藍，放在背包那把的位置
-	var cell: Vector2i = p.inventory.find(&"g1").cell
+	# 主手的綠長劍拖到背包的綠長劍 → 藍色留在主手（主手不能沒有武器），背包那把消失
 	merge.call(String(start_uid), "g1")
-	var g := p.inventory.find(&"g1")
-	if g.is_empty() or g.weapon.rarity != &"blue" or g.cell != cell or not p.weapon_slots[0].is_empty() and p.weapon_slots[0].uid == start_uid:
-		return "綠 + 綠應在背包原位得到藍色"
-	if p.active_slot != 1:
-		return "手上那把被合成走之後應換成第 2 格"
+	var g: Dictionary = p.weapon_slots[Loadout.MAIN]
+	if g.get("rarity", &"") != &"blue" or not p.inventory.find(&"g1").is_empty() or p.weapon_id != &"longsword+woodShield":
+		return "主手的綠 + 背包的綠應在主手得到藍色：%s" % [g]
+	# 雙持的兩把匕首合成 → 結果在主手、副手空出來
+	var wd := _new_world()
+	var pd := _player(wd)
+	pd.equip_weapon(&"dagger")
+	pd.loadout.equip_offhand_new(pd, &"dagger")
+	var c2 := _cmd(Vector2.ZERO)
+	c2.inv_ops = [[InputCmd.OP_MERGE, String(pd.weapon_slots[Loadout.OFF].uid), String(pd.weapon_slots[Loadout.MAIN].uid)]]
+	_run(wd, c2, 1)
+	if pd.weapon_slots[Loadout.MAIN].get("rarity", &"") != &"green" or not pd.weapon_slots[Loadout.OFF].is_empty() or pd.weapon_id != &"dagger":
+		return "主副手兩把白匕首合成應在主手得到綠匕首、副手空：%s %s" % [pd.weapon_id, pd.weapon_slots]
 	# 橘色不能再合成
 	var o1: Dictionary = mk.call("o1", &"staff", &"orange")
 	var o2: Dictionary = mk.call("o2", &"staff", &"orange")
