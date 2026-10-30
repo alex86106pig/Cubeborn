@@ -174,13 +174,22 @@ func _equip_from(p: Player, uid: StringName, slot: int) -> bool:
 
 
 # 把武器 a 拖到 b 上面合成（D4）：同種、同稀有度才行；b 的位置換成高一級、詞條重新抽的新武器，a 消失
-func merge(p: Player, uid_a: StringName, uid_b: StringName) -> bool:
+# 合成（Build 改版第 8 步起要站在鍛造祭壇旁，World.near_forge）：keep_a / keep_b 是兩把各挑要留的詞條（不是那把的就不算），
+# 其他重抽（WeaponDropDefs.roll_affixes 的 keep）
+func merge(p: Player, uid_a: StringName, uid_b: StringName, keep_a := &"", keep_b := &"") -> bool:
 	var a := _find_weapon(uid_a)
 	var b := _find_weapon(uid_b)
 	if a.is_empty() or b.is_empty() or not WeaponDropDefs.can_merge(a.inst, b.inst):
 		p.world.emit_event("weapon:merge_denied", {"player_id": p.id})
 		return false
-	var merged := WeaponDropDefs.make(b.inst.uid, b.inst.base, WeaponDropDefs.next_rarity(b.inst.rarity), p.world.rng)
+	if not p.world.near_forge(p):
+		p.world.emit_event("weapon:merge_denied", {"player_id": p.id, "reason": "forge"})
+		return false
+	var keep: Array[StringName] = []
+	for x: Array in [[keep_a, a.inst], [keep_b, b.inst]]:
+		if x[1].affixes.has(x[0]):
+			keep.append(x[0])
+	var merged := WeaponDropDefs.make(b.inst.uid, b.inst.base, WeaponDropDefs.next_rarity(b.inst.rarity), p.world.rng, keep)
 	if b.inst.has("sockets"):
 		merged["sockets"] = b.inst.sockets   # 鑲的道具：b 的留著，a 的搬到合成結果、放不下進背包、再不下掉在地上
 	_move_sockets(a.inst, [merged], p)
@@ -306,6 +315,9 @@ func refresh_items(p: Player) -> void:
 		seen[it.id] = true
 		for bond: StringName in ItemDefs.ITEMS[it.id].get("bonds", []):
 			bond_counts[bond] = bond_counts.get(bond, 0) + 1
+	for w: Dictionary in weapon_slots:   # 武器詞條的「羈絆 +1」（第 8 步）：每把各算 1 件
+		for bond: StringName in WeaponDropDefs.bonds_of(w):
+			bond_counts[bond] = bond_counts.get(bond, 0) + 1
 	BondEffects.refresh(p)   # 羈絆的屬性加成、該有的鬼火
 
 
@@ -363,7 +375,7 @@ func clear_ops() -> void:
 
 # 背包操作（InputCmd.inv_ops）：
 #   [OP_MOVE, uid, x, y, rot, where?] 搬到 where（BAG 背包、MAIN / OFF 武器格子；沒寫 = 背包）的 (x, y)；武器只能進背包（副手的可以，主手不行）
-#   [OP_DROP, uid] 丟到面前的地上；[OP_EQUIP, uid, slot] 武器放進主手 / 副手（_equip_from）；[OP_MERGE, uid_a, uid_b] 把 a 拖到 b 上合成
+#   [OP_DROP, uid] 丟到面前的地上；[OP_EQUIP, uid, slot] 武器放進主手 / 副手（_equip_from）；[OP_MERGE, uid_a, uid_b, 留 a 的詞條?, 留 b 的詞條?] 把 a 拖到 b 上合成（鍛造祭壇旁）
 #   [OP_PICKUP, 地上道具 id, x, y, rot, where?] 撿起按得到 F 的地上道具放到 where 的 (x, y)（已被撿走、太遠、放不下就不動；武器與屍體只能進背包）
 func apply_ops(p: Player) -> void:
 	for op: Array in _ops:
@@ -398,7 +410,7 @@ func apply_ops(p: Player) -> void:
 			InputCmd.OP_EQUIP:
 				_equip_from(p, uid, int(op[2]))
 			InputCmd.OP_MERGE:
-				merge(p, uid, StringName(op[2]))
+				merge(p, uid, StringName(op[2]), StringName(op[3]) if op.size() > 3 else &"", StringName(op[4]) if op.size() > 4 else &"")
 	_ops.clear()
 
 

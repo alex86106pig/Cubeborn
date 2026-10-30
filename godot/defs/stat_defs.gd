@@ -70,6 +70,16 @@ const STATS := {
 	&"chilled_damage_taken": {"name": "受到冰冷敵人的傷害", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
 	&"wisp_damage": {"name": "鬼火傷害", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
 	&"wisp_life_on_hit": {"name": "鬼火命中回復", "base": 0.0, "min": 0.0, "max": INF, "format": &"float", "in_use": true},
+	# 武器詞條的羈絆強化與屬性轉換（Build 改版第 8 步）：效果在 BondEffects、Combat、WeaponBehaviors 的招架
+	# optional：屬性面板只在不是基礎值時顯示（一般沒有，全部列出來面板會超出畫面）
+	&"poise_gain": {"name": "失衡值累積", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true, "optional": true},
+	&"burn_max_stacks": {"name": "燃燒層數上限", "base": 0.0, "min": 0.0, "max": INF, "round": true, "format": &"bonus_int", "in_use": true, "optional": true},   # 加在羈絆的上限上
+	&"chill_max_stacks": {"name": "冰冷層數上限", "base": 0.0, "min": 0.0, "max": INF, "round": true, "format": &"bonus_int", "in_use": true, "optional": true},
+	&"freeze_time": {"name": "凍結時間", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true, "optional": true},
+	&"parry_window": {"name": "招架判定時間", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true, "optional": true},
+	&"wisp_count": {"name": "額外鬼火", "base": 0.0, "min": 0.0, "max": INF, "round": true, "format": &"int", "in_use": true, "optional": true},
+	&"convert_fire": {"name": "物理轉火焰", "base": 0.0, "min": 0.0, "max": 1.0, "format": &"pct", "in_use": true, "optional": true},
+	&"convert_cold": {"name": "物理轉冰霜", "base": 0.0, "min": 0.0, "max": 1.0, "format": &"pct", "in_use": true, "optional": true},
 	&"relic_choices": {"name": "遺物選項數", "base": 3.0, "min": 1.0, "max": 6.0, "round": true, "format": &"int", "in_use": true},   # N 選 1（Relic）
 }
 
@@ -102,6 +112,8 @@ static func format_value(stat: StringName, value: float) -> String:
 	match STATS[stat].format:
 		&"int":
 			return "%d" % roundi(value)
+		&"bonus_int":
+			return "+%d" % roundi(value)
 		&"regen":
 			return "%.1f / 秒" % value
 		&"pct":

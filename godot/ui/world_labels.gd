@@ -13,6 +13,7 @@ const CARD_CELL := 10.0     # 道具卡形狀小圖每格的大小
 const CARD_GAP := 24        # 道具卡底部離名稱那一行的距離
 const GHOST_COLOR := Color("8fd0ff")
 const EXIT_COLOR := Color("8fd0ff")
+const FORGE_COLOR := Color("ffb070")   # 鍛造祭壇的名稱（Build 改版第 8 步）
 const NPC_COLOR := Color("5fd27a")      # 假裝 NPC 的守墓人：名字與頭上的綠色血條
 const NPC_BAR := Vector2(90, 9)
 const KEEPER_LINE := "又一頭肥羊……"
@@ -52,7 +53,13 @@ func _draw() -> void:
 		focus = world.nearest_interactable(me, world.pickups)
 		if focus == null:
 			focus = world.nearest_interactable(me, world.chests)
+		if focus == null:
+			focus = world.nearest_interactable(me, world.forges)
 	var font := get_theme_default_font()
+	for f: Entity in world.forges:
+		if f.is_removed or not Vision.entity_visible(world, viewer, f):
+			continue
+		_text(font, f, CHEST_OFFSET, ("[F] 合成武器 " if f == focus else "") + "鍛造祭壇", FORGE_COLOR)
 	for c: Entity in world.chests:
 		var chest := c as Chest
 		if chest.opened or not Vision.entity_visible(world, viewer, chest):

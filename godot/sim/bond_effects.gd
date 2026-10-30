@@ -48,9 +48,19 @@ static func refresh(p: Player) -> void:
 static func add_burn(world: World, p: Player, e: Enemy, stacks: int) -> void:
 	var c := _p(&"fire")
 	var t := tier(p, &"fire")
-	e.add_burn(p.id, elem_damage(p, c.stack_pct) * p.stats.value(&"burn_damage"), c.duration, stacks, c.max_stacks if t >= 1 else 1)
-	if t >= 2 and e.burn_stacks >= c.max_stacks:
+	var cap := burn_cap(p)
+	e.add_burn(p.id, elem_damage(p, c.stack_pct) * p.stats.value(&"burn_damage"), c.duration, stacks, cap if t >= 1 else 1)
+	if t >= 2 and e.burn_stacks >= cap:
 		_fire_burst(world, p, e)
+
+
+# 燃燒 / 冰冷的層數上限：羈絆的上限＋武器詞條（燃燒層數上限、冰冷層數上限）
+static func burn_cap(p: Player) -> int:
+	return _p(&"fire").max_stacks + roundi(p.stats.value(&"burn_max_stacks"))
+
+
+static func chill_cap(p: Player) -> int:
+	return _p(&"cold").max_stacks + roundi(p.stats.value(&"chill_max_stacks"))
 
 
 static func _fire_burst(world: World, p: Player, e: Enemy) -> void:
@@ -72,10 +82,11 @@ static func _fire_burst(world: World, p: Player, e: Enemy) -> void:
 static func add_chill(_world: World, p: Player, e: Enemy, stacks: int) -> void:
 	var c := _p(&"cold")
 	var t := tier(p, &"cold")
-	var n := e.add_chill(stacks, c.max_stacks if t >= 1 else 1, c.slow_per_stack + p.stats.value(&"chill_slow"), c.duration)
-	if t >= 2 and n >= c.max_stacks and not e.def.get("freeze_immune", false):
+	var cap := chill_cap(p)
+	var n := e.add_chill(stacks, cap if t >= 1 else 1, c.slow_per_stack + p.stats.value(&"chill_slow"), c.duration)
+	if t >= 2 and n >= cap and not e.def.get("freeze_immune", false):
 		e.clear_chill()
-		e.apply_freeze(c.freeze_time)
+		e.apply_freeze(c.freeze_time * p.stats.value(&"freeze_time"))
 		e.freeze_source_id = p.id
 
 
@@ -135,7 +146,7 @@ static func on_hit(world: World, p: Player, e: Enemy, hit: Dictionary, dealt: fl
 				var c := _p(&"phys")
 				var t := tier(p, &"phys")
 				if t >= 2:
-					e.add_poise(dealt * (c.poise_finisher_mul if hit.get("finisher", false) else 1.0), c.poise_ratio, c.poise_decay, c.stagger_time)
+					e.add_poise(dealt * (c.poise_finisher_mul if hit.get("finisher", false) else 1.0) * p.stats.value(&"poise_gain"), c.poise_ratio, c.poise_decay, c.stagger_time)
 				if t >= 3 and knockback > 0.0:
 					e.ram_timer = c.ram_window
 					e.ram_damage = dealt * c.ram_ratio
@@ -177,7 +188,7 @@ static func on_enemy_died(world: World, e: Enemy) -> void:
 		near.append(o as Enemy)
 	near.sort_custom(func(a: Enemy, b: Enemy) -> bool: return a.pos.distance_squared_to(e.pos) < b.pos.distance_squared_to(e.pos))
 	for i in mini(c.spread_count, near.size()):
-		near[i].add_burn(p.id, e.burn_stack_dps, c.duration, e.burn_stacks, c.max_stacks)
+		near[i].add_burn(p.id, e.burn_stack_dps, c.duration, e.burn_stacks, burn_cap(p))
 
 
 # ── 防禦 ──
@@ -211,7 +222,8 @@ static func on_hurt(world: World, p: Player, attacker: Entity, dealt: float) -> 
 
 # ── 鬼火 ──
 
-# 這位玩家該有的鬼火：每顆一個屬性。鬼火燈（wisp_orb 能力）自帶；第 1 階起其他鬼火道具也各帶 1 顆秘術；第 3 階數量加倍
+# 這位玩家該有的鬼火：每顆一個屬性。鬼火燈（wisp_orb 能力）自帶；第 1 階起其他鬼火道具也各帶 1 顆秘術；
+# 武器詞條的額外鬼火（wisp_count）各 1 顆秘術；第 3 階數量加倍
 static func wisp_plan(p: Player) -> Array[StringName]:
 	var out: Array[StringName] = []
 	var t := tier(p, &"wisp")
@@ -229,6 +241,8 @@ static func wisp_plan(p: Player) -> Array[StringName]:
 					out.append(eff.damage_type)
 		if not own and t >= 1 and def.get("bonds", []).has(&"wisp"):
 			out.append(&"arcane")
+	for i in roundi(p.stats.value(&"wisp_count")):
+		out.append(&"arcane")
 	if t >= 3:
 		out.append_array(out.duplicate())
 	return out

@@ -471,6 +471,7 @@ static func check_net_weapons() -> String:
 	var me := link.client.local_player()
 	if me.weapon_id != &"staff" or hp2.weapon_id != &"staff" or not me.weapon_slots[Loadout.OFF].is_empty() or me.inventory.find(&"x").size() > 0:
 		return "法杖拖到主手後兩邊都應拿法杖、副手空：房主 %s、客戶端 %s %s" % [hp2.weapon_id, me.weapon_id, me.weapon_slots]
+	CheckKit._forge_near(hw, hp2)   # 合成要在鍛造祭壇旁（第 8 步）；客戶端從快照建出來
 	var merge := _cmd(Vector2.ZERO)
 	merge.inv_ops = [[InputCmd.OP_MERGE, "m1", "m2"]]
 	link.step(_cmd(Vector2.ZERO), merge)

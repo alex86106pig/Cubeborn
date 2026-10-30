@@ -62,6 +62,7 @@ const MAPS := {
 		"tomb_rows": [[6.0, 66.0, 8, 5, 3.0, 4.0], [6.0, 6.0, 7, 4, 3.5, 5.0]],
 		# 寶箱（D3）：每種幾個，開場隨機放（v0.44.0 使用者要求，原本照草圖固定 4 小 1 大；規則在 LootDefs.CHEST_PLACEMENT）
 		"chest_count": {&"small": 12, &"big": 4},
+		"forge_count": 1,   # 鍛造祭壇（Build 改版第 8 步）
 		"packs": true,   # 開場散放怪群（D5，defs/monster_rarity_defs.gd 的 PACKS）
 		"dig_event": true,   # 挖墳事件取代波次（D6，sim/dig_event.gd）
 	},

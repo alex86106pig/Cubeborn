@@ -26,6 +26,10 @@ const CHESTS := {
 		"weights": {&"green": 50.0, &"blue": 35.0, &"purple": 13.0, &"orange": 2.0}},
 }
 
+# 鍛造祭壇（Build 改版第 8 步，Claude 暫定）：每層數量寫在地圖的 forge_count；range 是站多近可以合成
+# （身體邊緣到祭壇邊緣，比 F 的互動距離寬，開著 Tab 稍微走動也還能合）
+const FORGE := {"radius": 0.8, "range": 3.0}
+
 # 局外金幣（v0.45，Claude 暫定，獲得量與方式使用者還在構思）：本局拿到的存進 Profile；多人時全員各拿一份（不用搶）
 # - 過關：全員走進出口時給 floor_clear_per_floor × 剛過的層數（第 1 層最少）；之後要做「開寶箱噴錢」的過場
 # - 掉落：殺怪極低機率掉 1 枚在地上，活著的玩家走到 collect_range 內自動撿（參考雨中冒險 2 的月幣）；召喚出來的怪不掉

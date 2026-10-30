@@ -295,9 +295,13 @@ static func check_soul_chests() -> String:
 	if relic.pos.distance_to(chest.pos) > LootDefs.DROP_DISTANCE + 1.0 or relic.tier != &"big":
 		return "石棺的遺物應在旁邊、用石棺的機率：距離 %.2f、%s" % [relic.pos.distance_to(chest.pos), relic.tier]
 	relic.open_for(p)
+	# 道具遺物的選項照石棺的稀有度；技能遺物（第 7 步，skill_chance）的選項都是技能（技能的稀有度固定白色，不看石棺的機率）
 	for id: StringName in relic.offers.get(p.peer_id, []):
-		if LootDefs.CHESTS.big.weights.get(ItemDefs.ITEMS[id].rarity, 0.0) <= 0.0:
-			return "石棺的遺物不應有 %s 的選項" % ItemDefs.ITEMS[id].rarity
+		if relic.relic_kind == &"skill":
+			if not ItemDefs.is_skill(id):
+				return "技能遺物的選項應都是技能：%s" % id
+		elif LootDefs.CHESTS.big.weights.get(ItemDefs.ITEMS[id].rarity, 0.0) <= 0.0:
+			return "石棺的遺物不應有 %s 的選項（%s）" % [ItemDefs.ITEMS[id].rarity, id]
 	w.souls = 100
 	if chest.try_open(p) or w.souls != 100:
 		return "開過的寶箱不能再開"
@@ -683,35 +687,67 @@ static func check_weapon_affixes() -> String:
 			var uniq := {}
 			for a in inst.affixes:
 				uniq[a] = true
-			if inst.affixes.size() != WeaponDropDefs.RARITY_ORDER.find(r) or uniq.size() != inst.affixes.size():
+			if inst.affixes.size() != WeaponDropDefs.RARITY_ORDER.find(r) or uniq.size() != inst.affixes.size() \
+					or not inst.affixes.all(func(a: StringName) -> bool: return WeaponDropDefs.AFFIXES.has(a)):
 				return "%s 應有 %d 條不重複詞條，實際 %s" % [r, WeaponDropDefs.RARITY_ORDER.find(r), inst.affixes]
+	# 每條詞條都跟第一版的羈絆有關（Build 改版第 8 步）、屬性都存在
+	for id: StringName in WeaponDropDefs.AFFIXES:
+		var a: Dictionary = WeaponDropDefs.AFFIXES[id]
+		if not BondDefs.BONDS.has(a.bond) or not a.mods.all(func(m: Array) -> bool: return StatDefs.STATS.has(m[0])):
+			return "詞條 %s 的羈絆或屬性不存在" % id
+	# 武器偏向：法杖偏鬼火、火焰、冰霜，抽到那些羈絆的比例照權重（±3%）
+	var favored: Array = WeaponDropDefs.BIAS[&"staff"]
+	var total := 0.0
+	var fav := 0.0
+	for id: StringName in WeaponDropDefs.AFFIXES:
+		var a: Dictionary = WeaponDropDefs.AFFIXES[id]
+		var wt: float = a.w * (WeaponDropDefs.BIAS_MUL if favored.has(a.bond) else 1.0)
+		total += wt
+		if favored.has(a.bond):
+			fav += wt
+	var hits := 0
+	for i in 4000:
+		var one := WeaponDropDefs.roll_affixes(1, rng, &"staff")
+		if favored.has(WeaponDropDefs.AFFIXES[one[0]].bond):
+			hits += 1
+	var want := fav / total * 100.0
+	var got := hits * 100.0 / 4000.0
+	if absf(got - want) > 3.0:
+		return "法杖抽到偏向羈絆的詞條應約 %.1f%%，實際 %.1f%%" % [want, got]
+	_note("法杖的詞條偏向鬼火 / 火焰 / 冰霜：%.1f%%（權重 %.1f%%）" % [got, want])
+	# 合成要留的詞條一定在、不重複
+	var kept := WeaponDropDefs.roll_affixes(3, rng, &"staff", [&"cvt_fire", &"enh_armor", &"cvt_fire"] as Array[StringName])
+	if kept.size() != 3 or kept.slice(0, 2) != [&"cvt_fire", &"enh_armor"] or kept.count(&"cvt_fire") != 1:
+		return "要留的詞條應排在前面、不重複：%s" % [kept]
 	# 主手：稀有度倍率 + 詞條都生效；撿到的時候在背包、不生效
 	var w := _new_world()
 	var p := _player(w)
-	var aff: Array[StringName] = [&"aff_damage", &"aff_attack_speed"]
+	var aff: Array[StringName] = [&"enh_burn_damage", &"cvt_fire"]
 	p.add_weapon({"uid": &"blue", "base": &"staff", "rarity": &"blue", "affixes": aff})
-	if p.inventory.find(&"blue").is_empty() or absf(p.stats.value(&"damage") - 1.0) > EPS:
-		return "撿到的法杖應放背包、詞條不生效：攻擊力 %.2f" % p.stats.value(&"damage")
+	if p.inventory.find(&"blue").is_empty() or absf(p.stats.value(&"damage") - 1.0) > EPS or p.stats.value(&"convert_fire") > 0.0:
+		return "撿到的法杖應放背包、詞條不生效：攻擊力 %.2f、轉火焰 %.2f" % [p.stats.value(&"damage"), p.stats.value(&"convert_fire")]
 	var equip := _cmd(Vector2.ZERO)
 	equip.inv_ops = [[InputCmd.OP_EQUIP, "blue", Loadout.MAIN]]
 	_run(w, equip, 1)
-	# v0.27.0 起稀有度有基礎倍率：藍色攻擊力 ×1.4、攻速 ×1.10，再乘詞條的 +10%
-	var want_dmg: float = WeaponDropDefs.RARITY_BASE.blue.damage * 1.1
-	var want_spd: float = WeaponDropDefs.RARITY_BASE.blue.attack_speed * 1.1
-	if p.weapon_id != &"staff" or absf(p.stats.value(&"damage") - want_dmg) > EPS or absf(p.stats.value(&"attack_speed") - want_spd) > EPS:
-		return "藍法杖裝上主手後攻擊力 / 攻速應為 %.2f / %.2f：%s、%.2f / %.2f" % [want_dmg, want_spd, p.weapon_id, p.stats.value(&"damage"), p.stats.value(&"attack_speed")]
-	# 副手只有詞條生效（稀有度倍率只算主手）
+	# 稀有度有基礎倍率（v0.27.0）：藍色攻擊力 ×1.4、攻速 ×1.10；詞條：燃燒傷害 +25%、50% 物理轉火焰
+	var want_dmg: float = WeaponDropDefs.RARITY_BASE.blue.damage
+	var want_spd: float = WeaponDropDefs.RARITY_BASE.blue.attack_speed
+	if p.weapon_id != &"staff" or absf(p.stats.value(&"damage") - want_dmg) > EPS or absf(p.stats.value(&"attack_speed") - want_spd) > EPS \
+			or absf(p.stats.value(&"burn_damage") - 1.25) > EPS or absf(p.stats.value(&"convert_fire") - 0.5) > EPS:
+		return "藍法杖裝上主手後攻擊力 / 攻速應為 %.2f / %.2f、燃燒傷害 125%%、轉火焰 50%%：%s、%.2f / %.2f、%.2f、%.2f" % [want_dmg, want_spd, p.weapon_id,
+			p.stats.value(&"damage"), p.stats.value(&"attack_speed"), p.stats.value(&"burn_damage"), p.stats.value(&"convert_fire")]
+	# 副手只有詞條生效（稀有度倍率只算主手）；「算 1 件防禦羈絆」算進件數
 	var w2 := _new_world()
 	var p2 := _player(w2)
-	var aff2: Array[StringName] = [&"aff_damage"]
+	var aff2: Array[StringName] = [&"enh_armor", &"bond_guard"]
 	p2.weapon_slots[Loadout.OFF] = {"uid": &"gs", "base": &"woodShield", "rarity": &"green", "affixes": aff2}
 	p2.apply_active_weapon()
-	if absf(p2.stats.value(&"damage") - 1.1) > EPS:
-		return "綠木盾（攻擊力 +10%%）當副手：攻擊力應 1.10（稀有度倍率不算副手），實際 %.2f" % p2.stats.value(&"damage")
+	if absf(p2.stats.value(&"armor") - 15.0) > EPS or absf(p2.stats.value(&"damage") - 1.0) > EPS or p2.loadout.bond_counts.get(&"guard", 0) != 1:
+		return "綠木盾（護甲 +15、算 1 件防禦）當副手：護甲 15、攻擊力 1.00、防禦 1 件，實際 %.1f、%.2f、%d 件" % [p2.stats.value(&"armor"), p2.stats.value(&"damage"), p2.loadout.bond_counts.get(&"guard", 0)]
 	p2.weapon_slots[Loadout.OFF] = {}
 	p2.apply_active_weapon()
-	if absf(p2.stats.value(&"damage") - 1.0) > EPS:
-		return "拿掉副手後詞條應移除：攻擊力 %.2f" % p2.stats.value(&"damage")
+	if absf(p2.stats.value(&"armor")) > EPS or p2.loadout.bond_counts.get(&"guard", 0) != 0:
+		return "拿掉副手後詞條應移除：護甲 %.1f、防禦 %d 件" % [p2.stats.value(&"armor"), p2.loadout.bond_counts.get(&"guard", 0)]
 	return ""
 
 # 生一隻血很多、站在 at 的骷髏（道具檢查用）
@@ -1495,11 +1531,17 @@ static func check_weapon_merge() -> String:
 	p.add_weapon(mk.call("s3", &"longsword", &"white"))   # 背包
 	p.add_weapon(mk.call("st", &"staff", &"white"))       # 背包
 	p.add_weapon(mk.call("g1", &"longsword", &"green"))   # 背包
-	var merge := func(a: String, b: String) -> void:
+	var merge := func(a: String, b: String, keep_a := "", keep_b := "") -> void:
 		var c := _cmd(Vector2.ZERO)
-		c.inv_ops = [[InputCmd.OP_MERGE, a, b]]
+		c.inv_ops = [[InputCmd.OP_MERGE, a, b, keep_a, keep_b]]
 		w.events.clear()
 		_run(w, c, 1)
+	# 不在鍛造祭壇旁不能合成（Build 改版第 8 步），拒絕的原因是 forge
+	merge.call("s3", String(start_uid))
+	var denied := _named(w.events, "weapon:merge_denied")
+	if denied.is_empty() or denied[0].get("reason", "") != "forge" or p.inventory.find(&"s3").is_empty():
+		return "不在鍛造祭壇旁應不能合成（reason = forge）：%s" % [denied]
+	var forge := _forge_near(w, p)
 	# 背包的白長劍拖到主手的白長劍 → 綠色、1 條詞條、留在主手、立刻生效
 	merge.call("s3", String(start_uid))
 	var m: Dictionary = p.weapon_slots[0]
@@ -1516,16 +1558,27 @@ static func check_weapon_merge() -> String:
 	merge.call("s2", "g1")
 	if _named(w.events, "weapon:merge_denied").is_empty() or p.inventory.find(&"s2").is_empty():
 		return "白色拖到綠色上不應合成"
-	# 主手的綠長劍拖到背包的綠長劍 → 藍色留在主手（主手不能沒有武器），背包那把消失
-	merge.call(String(start_uid), "g1")
+	# 主手的綠長劍拖到背包的綠長劍 → 藍色留在主手（主手不能沒有武器），背包那把消失；兩把各挑的詞條都留下
+	var keep_a: StringName = m.affixes[0]
+	var keep_b: StringName = &"cvt_cold" if keep_a != &"cvt_cold" else &"cvt_fire"
+	var ga: Array[StringName] = [keep_b]
+	p.inventory.find(&"g1").weapon.affixes = ga
+	merge.call(String(start_uid), "g1", String(keep_a), String(keep_b))
 	var g: Dictionary = p.weapon_slots[Loadout.MAIN]
 	if g.get("rarity", &"") != &"blue" or not p.inventory.find(&"g1").is_empty() or p.weapon_id != &"longsword+woodShield":
 		return "主手的綠 + 背包的綠應在主手得到藍色：%s" % [g]
+	if g.affixes.size() != 2 or not g.affixes.has(keep_a) or not g.affixes.has(keep_b):
+		return "合成應留下兩把各挑的詞條（%s、%s）：%s" % [keep_a, keep_b, g.affixes]
+	# 走遠就不能合成
+	forge.pos += Vector2(LootDefs.FORGE.range + 5.0, 0.0)
+	if w.near_forge(p):
+		return "離鍛造祭壇 %.1f 以外不應算在旁邊" % LootDefs.FORGE.range
 	# 雙持的兩把匕首合成 → 結果在主手、副手空出來
 	var wd := _new_world()
 	var pd := _player(wd)
 	pd.equip_weapon(&"dagger")
 	pd.loadout.equip_offhand_new(pd, &"dagger")
+	_forge_near(wd, pd)
 	var c2 := _cmd(Vector2.ZERO)
 	c2.inv_ops = [[InputCmd.OP_MERGE, String(pd.weapon_slots[Loadout.OFF].uid), String(pd.weapon_slots[Loadout.MAIN].uid)]]
 	_run(wd, c2, 1)

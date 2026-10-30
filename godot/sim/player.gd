@@ -577,6 +577,10 @@ func _try_interact() -> void:
 	if chest != null:
 		(chest as Chest).try_open(self)
 		return
+	var forge := world.nearest_interactable(self, world.forges)
+	if forge != null:
+		world.emit_event("forge:opened", {"player_id": id, "forge_id": forge.id})   # 本機玩家的畫面打開背包（main.gd）
+		return
 	var keeper := world.entities.get(world.boss_id) as Gravekeeper
 	if keeper != null and keeper.can_talk(self):
 		keeper.talk()   # 跟假裝 NPC 的守墓人說話（比挖墳優先）

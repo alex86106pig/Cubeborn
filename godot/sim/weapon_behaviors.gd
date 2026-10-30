@@ -126,7 +126,7 @@ class ShieldBlock extends Behavior:
 		var pr: Dictionary = def.parry
 		if p.parry_time >= 0.0:
 			p.parry_time += dt
-			if p.parry_time >= pr.window - 1e-6:
+			if p.parry_time >= pr.window * p.stats.value(&"parry_window") - 1e-6:   # 武器詞條的招架判定時間
 				p.parry_time = -1.0
 				p._parry(false)
 		elif p.attack_pressed:

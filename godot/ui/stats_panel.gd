@@ -3,6 +3,7 @@ class_name StatsPanel
 extends PanelContainer
 
 var _values: Dictionary = {}   # stat -> Label
+var _optional: Dictionary = {} # stat -> 名稱的 Label（StatDefs 的 optional：是基礎值時名稱與數值都不顯示）
 
 
 func _init() -> void:
@@ -29,6 +30,10 @@ func _init() -> void:
 		value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		grid.add_child(value)
 		_values[stat] = value
+		if StatDefs.STATS[stat].get("optional", false):
+			_optional[stat] = grid.get_child(grid.get_child_count() - 2)   # 名稱那一格，和數值一起藏
+			_optional[stat].visible = false
+			value.visible = false
 	box.add_child(grid)
 	add_child(box)
 
@@ -40,3 +45,6 @@ func refresh(entity: Entity) -> void:
 		label.text = StatDefs.format_value(stat, v)
 		var modified := not is_equal_approx(v, entity.stats.base(stat))
 		label.add_theme_color_override(&"font_color", UiKit.GOLD if modified else Color.WHITE)
+		if _optional.has(stat):
+			label.visible = modified
+			_optional[stat].visible = modified

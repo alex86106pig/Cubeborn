@@ -8,6 +8,7 @@ signal title_requested  # 暫停畫面按下「回主選單」
 signal weapon_test_equip(weapon_id: StringName)   # 武器測試場：換武器（2026-10-27）
 signal weapon_test_reset                          # 武器測試場：木樁擺回原位
 signal inventory_full(pickup_id: int)             # 本機玩家撿不下地上的道具：打開背包標出它（main.gd 接）
+signal forge_opened                               # 本機玩家在鍛造祭壇按 F：打開背包（main.gd 接，Build 改版第 8 步）
 
 # 手動分行（中文自動折行會斷在詞中間）
 const CONTROLS_TEXT := "WASD 移動 · 滑鼠瞄準 · 左鍵攻擊 · 右鍵特殊技（拿盾時按住格擋，格擋中左鍵招架） · 空白鍵 跳躍 · Shift 翻滾 · Ctrl 跑步（切換）\n1~4 寶石座的技能 · Q 治療藥水 · F 撿道具 / 開祭壇與石棺 / 遺物（R 重骰） / 按住救援隊友 · Tab 背包與屬性 · Esc 選單 · M 靜音 · R 重新開始\nTab 背包裡拖曳換主手 / 副手 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具（F3~F5 單機才有）"
@@ -47,6 +48,7 @@ var _souls := UiKit.label("", 18, UiKit.SOUL)
 var _coins := UiKit.label("", 18, UiKit.GOLD)   # 本局拿到的金幣（局外貨幣）
 var _world_labels := WorldLabels.new()
 var inventory_panel := InventoryPanel.new()   # Tab 開關（main.gd 接到輸入）
+var forge_panel := ForgePanel.new()           # 鍛造祭壇合成時挑詞條（Build 改版第 8 步；放在背包左邊，main.gd 接到輸入）
 var relic_panel := RelicPanel.new()           # 遺物的 N 選 1（Build 改版第 6 步；main.gd 接到輸入）
 var _wave := UiKit.label("", 22)
 var _kills := UiKit.label("", 16)
@@ -277,6 +279,8 @@ func _init() -> void:
 	inventory_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	inventory_panel.visible = false
 	root.add_child(inventory_panel)
+	inventory_panel.merge_choice.connect(forge_panel.open)
+	root.add_child(forge_panel)
 
 	# 橫幅（畫面 22% 高處）
 	_banner.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -415,6 +419,9 @@ func _process(delta: float) -> void:
 		return
 	_skill_bar.refresh(world, player)
 	relic_panel.refresh(world, player)
+	forge_panel.refresh(world, player, inventory_panel.visible)
+	if forge_panel.visible:
+		forge_panel.position = Vector2(inventory_panel.position.x - forge_panel.size.x - 16.0, 120.0)
 	if not _pause.visible and not _game_over.visible and not main_menu.visible and not class_select.visible and not settings_panel.visible:   # 暫停、結算、主選單、選角、設定頁時提示不倒數、不記效能
 		hints.update(delta, world, player, inventory_panel.visible)
 		run_log.add_frame(delta, world.stats.time)
@@ -586,7 +593,11 @@ func _on_event(name: String, p: Dictionary) -> void:
 				_show_banner("合成成功：%s %s" % [rarity.name, ItemDefs.ITEMS[StringName(p.base)].name], false, rarity.color)
 		"weapon:merge_denied":
 			if _is_local(p.player_id):
-				_floaters.spawn(local_player(), "不能合成（要同種、同稀有度）", &"dmg")
+				var why := "要站在鍛造祭壇旁才能合成" if p.get("reason", "") == "forge" else "不能合成（要同種、同稀有度）"
+				_floaters.spawn(local_player(), why, &"dmg")
+		"forge:opened":
+			if _is_local(p.player_id):
+				forge_opened.emit()
 		"item:added":
 			if _is_local(p.player_id):   # 別人撿到的不跳（連線時事件全廣播）
 				var item: Dictionary = ItemDefs.ITEMS[StringName(p.item)]

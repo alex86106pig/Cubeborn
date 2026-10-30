@@ -23,6 +23,7 @@ var zones: Array[Dictionary] = []   # 地上的持續區域（F7 聖光圈，Gro
 var chests: Array[Entity] = []       # 寶箱（D3）
 var pickups: Array[Entity] = []      # 掉在地上的道具（D3）
 var relics: Array[Entity] = []       # 地上的遺物（Build 改版第 6 步：祭壇 / 石棺、Boss 的獎勵）
+var forges: Array[Entity] = []       # 鍛造祭壇（Build 改版第 8 步，sim/forge.gd）
 var delayed: Array[Dictionary] = []  # 技能晚一點才發生的效果（SkillBehaviors.later，只在權威端）：{ t, owner_id, fn }
 var coins: Array[Entity] = []        # 掉在地上的金幣（v0.45，sim/coin.gd）
 var souls := 0                        # 共用的靈魂（局內貨幣，D3）：殺怪賺、開祭壇 / 石棺花
@@ -130,6 +131,7 @@ func _populate_floor() -> void:
 
 # 寶箱（v0.44.0 隨機放）：每種數量 × 人數倍率；可走、走得到出生點、離出生點 / 挖墳點 / 地圖邊緣 / 其他寶箱夠遠
 # 找不到夠遠的位置時，寶箱之間的距離逐步放寬（× 0.5、× 0）
+# 鍛造祭壇（forge_count）排在寶箱後面、用同一套規則：寶箱的位置和沒有鍛造祭壇時一樣
 func _place_chests() -> void:
 	var c: Dictionary = LootDefs.CHEST_PLACEMENT
 	var tiers: Array[StringName] = []
@@ -137,6 +139,8 @@ func _place_chests() -> void:
 	for tier: StringName in counts:
 		for i in int(counts[tier]):
 			tiers.append(tier)
+	for i in int(map.get("forge_count", 0)):
+		tiers.append(&"forge")
 	var lim: Vector2 = half_extents - Vector2(c.edge_margin, c.edge_margin)
 	var placed: Array[Vector2] = []
 	for gap_mul: float in [1.0, 0.5, 0.0]:
@@ -152,6 +156,11 @@ func _place_chests() -> void:
 				continue
 			placed.append(at)
 	for i in placed.size():
+		if tiers[i] == &"forge":
+			var forge := Forge.new(self, placed[i])
+			add_entity(forge)
+			forges.append(forge)
+			continue
 		var chest := Chest.new(self, tiers[i], placed[i])
 		add_entity(chest)
 		chests.append(chest)
@@ -247,6 +256,7 @@ func clear() -> void:
 	chests.clear()
 	pickups.clear()
 	relics.clear()
+	forges.clear()
 	delayed.clear()
 	coins.clear()
 	packs.clear()
@@ -417,6 +427,14 @@ func nearest_interactable(p: Player, list: Array[Entity]) -> Entity:
 			best_d = d
 			best = e
 	return best
+
+
+# p 站在鍛造祭壇旁（LootDefs.FORGE.range 內）才能合成武器（Build 改版第 8 步）
+func near_forge(p: Player) -> bool:
+	for f in forges:
+		if not f.is_removed and _reach_gap(p, f) <= LootDefs.FORGE.range:
+			return true
+	return false
 
 
 # p 按不按得到 F：身體邊緣到物件邊緣 INTERACT_RANGE 內（磁石（G1）放大）
@@ -680,3 +698,4 @@ func _remove_dead_entities() -> void:
 	coins.assign(coins.filter(func(e: Entity) -> bool: return not e.is_removed))
 	torches.assign(torches.filter(func(e: Entity) -> bool: return not e.is_removed))
 	chests.assign(chests.filter(func(e: Entity) -> bool: return not e.is_removed))   # 換層時整批移除（D6）
+	forges.assign(forges.filter(func(e: Entity) -> bool: return not e.is_removed))

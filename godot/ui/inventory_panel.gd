@@ -9,6 +9,7 @@ class_name InventoryPanel
 extends Control
 
 signal op_requested(op: Array)
+signal merge_choice(a: Dictionary, b: Dictionary)   # 在鍛造祭壇旁把有詞條的武器拖到另一把上：讓玩家挑要留的詞條（ForgePanel，第 8 步）
 
 const CELL := 52          # 背包一格
 const WCELL := 40         # 武器格子一格
@@ -332,7 +333,11 @@ func _finish_drag(me: Player, local: Vector2) -> void:
 	var merge := _merge_target(me, local)
 	var slot := _slot_at(local)
 	if not merge.is_empty():
-		op_requested.emit([InputCmd.OP_MERGE, uid, String(merge.uid)])
+		# 兩把都有詞條、站在鍛造祭壇旁：先挑要留的詞條；白色沒得挑、不在祭壇旁直接送（權威端回「要站在鍛造祭壇旁」）
+		if not merge.affixes.is_empty() and world != null and world.near_forge(me):
+			merge_choice.emit(_drag.weapon, merge)
+		else:
+			op_requested.emit([InputCmd.OP_MERGE, uid, String(merge.uid)])
 	elif slot >= 0:
 		if not _drag.weapon.is_empty():
 			op_requested.emit([InputCmd.OP_EQUIP, uid, slot])
@@ -427,7 +432,8 @@ func _draw_drag(font: Font, me: Player) -> void:
 	if not _merge_target(me, local).is_empty():
 		var r := _hover_rect(local)
 		draw_rect(r, Color(1, 0.85, 0.3, 0.35))
-		draw_string(font, r.position + Vector2(6, r.size.y - 8), "合成", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, UiKit.GOLD)
+		var forge := world != null and world.near_forge(me)
+		draw_string(font, r.position + Vector2(6, r.size.y - 8), "合成" if forge else "合成（要在鍛造祭壇旁）", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, UiKit.GOLD if forge else UiKit.ALERT)
 		return
 	var wc := _wcell_at(me, local) if _drag.weapon.is_empty() and _drag.id != &"corpse" else {}
 	var inv: Inventory = null

@@ -511,6 +511,23 @@ func _create_chest(c: Chest) -> Node3D:
 	return root
 
 
+# 鍛造祭壇（Build 改版第 8 步）：石台 + 黑鐵砧 + 一塊發光的炭火（不加光源，省一盞燈）
+func _create_forge() -> Node3D:
+	var root := Node3D.new()
+	var stone := _flat_material(Color("5d5a55"))
+	var iron := _flat_material(Color("2b2b30"))
+	var ember := StandardMaterial3D.new()
+	ember.albedo_color = Color("ff7a2a")
+	ember.emission_enabled = true
+	ember.emission = Color("ff7a2a")
+	ember.emission_energy_multiplier = 2.0
+	root.add_child(_box(Vector3(1.3, 0.55, 1.0), Vector3(0, 0.275, 0), stone))
+	root.add_child(_box(Vector3(0.5, 0.3, 0.4), Vector3(0, 0.7, 0), iron))
+	root.add_child(_box(Vector3(0.95, 0.2, 0.45), Vector3(0, 0.95, 0), iron))
+	root.add_child(_box(Vector3(0.36, 0.08, 0.3), Vector3(0.38, 0.59, 0.22), ember))
+	return root
+
+
 # 地上的道具（D3）：稀有度顏色的發光寶石（Gem，畫面層上下浮動與旋轉）+ 一道淡淡的光柱，遠處也看得到
 func _create_pickup(p: ItemPickup) -> Node3D:
 	var root := Node3D.new()
@@ -780,6 +797,7 @@ func warm_up(center: Vector3) -> void:
 		ents.append(e)
 	for tier: StringName in [&"small", &"big"]:
 		ents.append(Chest.new(tw, tier, c))
+	ents.append(Forge.new(tw, c))
 	ents.append(tw.drop_coin(c))
 	# 道具與武器每種稀有度都要：白色沒有發光，材質組合不同（v0.37.1：只預熱綠色時，第一把白色武器仍卡 70.8 ms）
 	var item_of := {}
@@ -936,6 +954,8 @@ func _create_view(e: Entity) -> Node3D:
 			root = _create_arrow(proj) if proj.visual == &"arrow" else _create_projectile(proj)
 		&"chest":
 			root = _create_chest(e as Chest)
+		&"forge":
+			root = _create_forge()
 		&"pickup":
 			root = _create_pickup(e as ItemPickup)
 		&"relic":

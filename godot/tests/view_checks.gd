@@ -2151,3 +2151,59 @@ static func check_relic_panel() -> String:
 	hud.queue_free()
 	cam.queue_free()
 	return err
+
+
+# 鍛造祭壇的合成（Build 改版第 8 步）：在祭壇旁把主手拖到背包裡同種同稀有度的武器上 → 打開挑詞條的面板（不直接送）；
+# 點另一條、按合成送出 [OP_MERGE, a, b, 留 a 的, 留 b 的]；面板和背包並排塞得進畫面；離開祭壇自動關掉
+static func check_forge_panel() -> String:
+	var w := _new_world(5)
+	var cam := _test_camera()
+	var hud: Variant = load("res://ui/hud.tscn").instantiate()
+	hud.setup(w, cam)
+	_scene_root().add_child(hud)
+	var p := _player(w)
+	var inv: InventoryPanel = hud.inventory_panel
+	var forge_panel: ForgePanel = hud.forge_panel
+	inv.visible = true
+	var forge := _forge_near(w, p)
+	# 說明最長的詞條，最壞情況的面板寬度
+	var ids: Array = WeaponDropDefs.AFFIXES.keys()
+	ids.sort_custom(func(x: StringName, y: StringName) -> bool: return String(WeaponDropDefs.AFFIXES[x].desc).length() > String(WeaponDropDefs.AFFIXES[y].desc).length())
+	var main_aff: Array[StringName] = [ids[0], ids[1], ids[2], ids[3]]
+	var bag_aff: Array[StringName] = [ids[4], ids[5], ids[6], ids[7]]
+	p.weapon_slots[Loadout.MAIN] = {"uid": &"fa", "base": &"longsword", "rarity": &"purple", "affixes": main_aff}
+	p.apply_active_weapon()
+	p.add_weapon({"uid": &"fb", "base": &"longsword", "rarity": &"purple", "affixes": bag_aff})
+	var ops: Array = []
+	inv.op_requested.connect(func(op: Array) -> void: ops.append(op))
+	forge_panel.op_requested.connect(func(op: Array) -> void: ops.append(op))
+	await _settled_min_size(inv)
+	var b_cell := Vector2i(-1, -1)
+	for c: Vector2i in p.inventory.occupied():
+		if p.inventory.occupied()[c] == &"fb":
+			b_cell = c
+	inv._start_drag(p, inv._slot_rect(Loadout.MAIN).get_center())
+	inv._finish_drag(p, inv._grid_origin() + (Vector2(b_cell) + Vector2(0.5, 0.5)) * InventoryPanel.CELL)
+	var err := ""
+	if not ops.is_empty() or not forge_panel.visible or forge_panel.uid_a != &"fa" or forge_panel.uid_b != &"fb":
+		err = "在祭壇旁把有詞條的主手拖到背包的同種武器上，應打開挑詞條的面板、先不送出：%s、顯示 %s（%s → %s）" % [ops, forge_panel.visible, forge_panel.uid_a, forge_panel.uid_b]
+	var size: Vector2 = await _settled_min_size(forge_panel)
+	var inv_size: Vector2 = await _settled_min_size(inv)
+	var room := _menu_room()
+	_note("合成面板 %.0f×%.0f（背包 %.0f 寬；介面最大檔時可用 %.0f×%.0f）" % [size.x, size.y, inv_size.x, room.x, room.y])
+	if err == "" and (size.x + 16 + inv_size.x + 24 > room.x or size.y + 120 > room.y):
+		err = "合成面板 %.0f×%.0f 放在背包左邊塞不進 %.0f×%.0f" % [size.x, size.y, room.x, room.y]
+	if err == "":
+		(forge_panel._rows[0].get_child(1) as Button).pressed.emit()
+		forge_panel.confirm()
+		if ops != [[InputCmd.OP_MERGE, "fa", "fb", String(main_aff[1]), String(bag_aff[0])]] or forge_panel.visible:
+			err = "點拖過來那把的第 2 條再按合成，應送出留 %s 與 %s 的 OP_MERGE 並關掉：%s" % [main_aff[1], bag_aff[0], ops]
+	if err == "":
+		forge_panel.open(p.weapon_slots[Loadout.MAIN], p.inventory.find(&"fb").weapon)
+		forge.pos += Vector2(LootDefs.FORGE.range + 5.0, 0.0)
+		forge_panel.refresh(w, p, true)
+		if forge_panel.visible:
+			err = "離開鍛造祭壇後合成面板應關掉"
+	hud.queue_free()
+	cam.queue_free()
+	return err

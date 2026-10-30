@@ -102,6 +102,11 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 	if target is Player and source is Enemy and (source as Enemy).chill_stacks > 0:
 		damage *= target.stats.value(&"chilled_damage_taken")   # 寒鐵護符：冰冷的怪打人比較不痛
 	var is_proc: bool = hit.get("proc", false)   # 道具效果造成的傷害（v0.33.0）：不爆擊、不再觸發命中效果
+	# 屬性轉換（武器詞條，Build 改版第 8 步）：玩家的非道具物理傷害有一部分改成別的屬性，這一下只打剩下的物理，轉換的部分在後面另外打
+	var converted := 0.0
+	if source is Player and not is_proc and hit.get("damage_type", &"phys") == &"phys":
+		converted = conversion_total(source as Player)
+		damage *= 1.0 - converted
 	# 羈絆（Build 改版第 5 步）：失衡加傷、碎冰、無視物理抗性、必爆擊（BondEffects.pre_hit）
 	var pre := BondEffects.pre_hit(source, target, hit, is_proc)
 	damage *= pre.mul
@@ -165,9 +170,36 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 			ItemEffects.on_dealt(world, source as Player, dealt)   # 命中回復、吸血（G1）
 			ItemEffects.on_hit(world, source as Player, target, damage, hit.get("projectile", false), hit.get("finisher", false))
 			ItemEffects.added_damage(world, source as Player, target, hit.damage)   # 附加火焰 / 冰霜傷害（羈絆道具）
+			if converted > 0.0:
+				_converted_damage(world, source as Player, target, hit.damage, is_crit)
 		if target.is_dead:
 			ItemEffects.on_kill(world, source as Player, target, damage)
 	return true
+
+
+# 屬性轉換合計（WeaponDropDefs.CONVERSIONS，最多 100%）
+static func conversion_total(p: Player) -> float:
+	var total := 0.0
+	for x: Array in WeaponDropDefs.CONVERSIONS:
+		total += p.stats.value(x[0])
+	return minf(total, 1.0)
+
+
+# 轉換的部分：base（這一下扣護甲前、沒爆擊的傷害）改吃屬性傷害而不是物理傷害，主要那一下爆擊就跟著爆擊；
+# 是道具效果的傷害（不再觸發命中道具），但會疊燃燒 / 冰冷（羈絆）；合計超過 100% 時按比例縮
+static func _converted_damage(world: World, p: Player, target: Entity, base: float, crit: bool) -> void:
+	var total := 0.0
+	for x: Array in WeaponDropDefs.CONVERSIONS:
+		total += p.stats.value(x[0])
+	var phys := p.stats.value(&"phys_damage")
+	if total <= 0.0 or phys <= 0.0:
+		return
+	var scale := minf(1.0, 1.0 / total)
+	var elem := base / phys * p.stats.value(&"elem_damage") * (p.stats.value(&"crit_damage") if crit else 1.0)
+	for x: Array in WeaponDropDefs.CONVERSIONS:
+		var ratio := p.stats.value(x[0]) * scale
+		if ratio > 0.0 and not target.is_dead:
+			apply_damage(world, p, target, ItemEffects.proc_hit(elem * ratio, target, StatDefs.DAMAGE_TYPES[x[1]].color, 0.0, x[1]))
 
 
 # 畫面震動：玩家方的攻擊打中時不震動（v0.18.3 使用者決定，開關在 Config.FEEL）；怪物打中玩家照常震動

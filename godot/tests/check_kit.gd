@@ -59,6 +59,14 @@ static func _player(w: World) -> Player:
 	return w.players[World.HOST_PEER_ID]
 
 
+# 在 p 旁邊放一座鍛造祭壇（合成要站在旁邊，Build 改版第 8 步）
+static func _forge_near(w: World, p: Player) -> Forge:
+	var f := Forge.new(w, p.pos + Vector2(1.5, 0.0))
+	w.add_entity(f)
+	w.forges.append(f)
+	return f
+
+
 # 不會動的假敵人：血多、質量大（擊退位移小），放在 world.enemies 讓玩家的攻擊打得到
 # 玩家拿著的道具（背包與主手 / 副手的武器格子；武器與屍體不算）
 static func _held_items(p: Player) -> Array[Dictionary]:

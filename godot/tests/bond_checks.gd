@@ -371,3 +371,125 @@ static func check_wisp() -> String:
 	if target.hp >= t0:
 		return "鬼火 2 階：應衝向 %.1f 單位外的怪" % (c.orbit_radius + 3.0)
 	return ""
+
+
+# 給手上的武器換詞條（主手 / 副手），重新套用屬性與羈絆件數
+static func _set_affixes(p: Player, main: Array, off: Array = []) -> void:
+	for x: Array in [[Loadout.MAIN, main], [Loadout.OFF, off]]:
+		var inst: Dictionary = p.weapon_slots[x[0]]
+		if not inst.is_empty():
+			var ids: Array[StringName] = []
+			ids.assign(x[1])
+			inst.affixes = ids
+	p.apply_active_weapon()
+
+
+# 武器詞條（Build 改版第 8 步）：羈絆 +1 算件數（主副手各算）、燃燒 / 冰冷層數上限、凍結時間、額外鬼火、失衡累積、招架判定時間、屬性轉換
+static func check_weapon_affixes() -> String:
+	var fire: Dictionary = BondDefs.BONDS.fire.params
+	var cold: Dictionary = BondDefs.BONDS.cold.params
+	# 羈絆 +1：差 1 件的火焰，主手有「算 1 件火焰」就到第 1 階；主副手都有算 2 件
+	var need: int = BondDefs.BONDS.fire.thresholds[0]
+	var s := _setup(_ids(&"fire", need - 1))
+	if s[2] != "":
+		return s[2]
+	var w: World = s[0]
+	var p: Player = s[1]
+	if BondEffects.tier(p, &"fire") != 0:
+		return "火焰 %d 件不應啟動" % (need - 1)
+	_set_affixes(p, [&"bond_fire"])
+	if p.loadout.bond_counts.get(&"fire", 0) != need or BondEffects.tier(p, &"fire") != 1:
+		return "主手「算 1 件火焰羈絆」應湊到 %d 件、第 1 階：%d 件" % [need, p.loadout.bond_counts.get(&"fire", 0)]
+	_set_affixes(p, [&"bond_fire"], [&"bond_fire"])
+	if p.loadout.bond_counts.get(&"fire", 0) != need + 1:
+		return "主副手都有「算 1 件火焰羈絆」應各算 1 件：%d 件" % p.loadout.bond_counts.get(&"fire", 0)
+	# 燃燒層數上限 +2：第 1 階疊到 max + 2；第 2 階要疊到新的上限才爆炸
+	_set_affixes(p, [&"bond_fire", &"enh_burn_cap"])
+	var a := _bdummy(w, Vector2(0, 5))
+	for i in fire.max_stacks + 4:
+		_hit(w, p, a, 1.0, &"fire")
+	if a.burn_stacks != fire.max_stacks + 2:
+		return "燃燒層數上限 +2：應疊到 %d 層，實際 %d" % [fire.max_stacks + 2, a.burn_stacks]
+	_set_affixes(p, [])
+	if p.loadout.bond_counts.get(&"fire", 0) != need - 1 or not is_equal_approx(p.stats.value(&"burn_max_stacks"), 0.0):
+		return "拿掉詞條後件數與上限應還原：%d 件、+%.0f" % [p.loadout.bond_counts.get(&"fire", 0), p.stats.value(&"burn_max_stacks")]
+	# 冰冷層數上限 +2、凍結時間 +50%（冰霜第 2 階：疊到新的上限才凍結）
+	s = _at_tier(&"cold", 2)
+	if s[2] != "":
+		return s[2]
+	w = s[0]
+	p = s[1]
+	_set_affixes(p, [&"enh_chill_cap", &"enh_freeze"])
+	a = _bdummy(w, Vector2(0, 5))
+	for i in cold.max_stacks + 1:
+		_hit(w, p, a, 1.0, &"cold")
+	if a.frozen_timer > 0.0 or a.chill_stacks != cold.max_stacks + 1:
+		return "冰冷層數上限 +2：%d 層時還不該凍結：凍結 %.2f、%d 層" % [cold.max_stacks + 1, a.frozen_timer, a.chill_stacks]
+	_hit(w, p, a, 1.0, &"cold")
+	if absf(a.frozen_timer - cold.freeze_time * 1.5) > EPS:
+		return "凍結時間 +50%%：疊到 %d 層應凍結 %.1f 秒，實際 %.2f" % [cold.max_stacks + 2, cold.freeze_time * 1.5, a.frozen_timer]
+	# 額外鬼火：沒有鬼火道具也有 1 顆秘術
+	s = _setup([])
+	w = s[0]
+	p = s[1]
+	_set_affixes(p, [&"enh_wisp_count"])
+	if Array(p.wisp_plan) != [&"arcane"]:
+		return "「鬼火 +1 顆」應有 1 顆秘術鬼火：%s" % [p.wisp_plan]
+	# 失衡值累積 +40%：物理第 2 階，同一下（直接走 BondEffects.on_hit，不擲爆擊）累積的失衡值 × 1.4
+	s = _at_tier(&"phys", 2)
+	if s[2] != "":
+		return s[2]
+	w = s[0]
+	p = s[1]
+	a = _bdummy(w, Vector2(0, 5))
+	BondEffects.on_hit(w, p, a, {"damage_type": &"phys"}, 10.0, 0.0, false, false)
+	var plain := a.poise
+	_set_affixes(p, [&"enh_poise"])
+	var b := _bdummy(w, Vector2(2, 5))
+	BondEffects.on_hit(w, p, b, {"damage_type": &"phys"}, 10.0, 0.0, false, false)
+	if plain <= 0.0 or absf(b.poise - plain * 1.4) > EPS:
+		return "失衡值累積 +40%%：%.2f → 應 %.2f，實際 %.2f" % [plain, plain * 1.4, b.poise]
+	# 招架判定時間 +50%：格擋中按左鍵後，判定持續 window × 1.5 秒
+	s = _setup([])
+	w = s[0]
+	p = s[1]
+	_set_affixes(p, [], [&"enh_parry"])
+	var pr: Dictionary = p.weapon.special.parry
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), PlayerChecks.PRESS_HOLD), 5)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), PlayerChecks.HOLD | InputCmd.BTN_ATTACK), 1)
+	var steps := 0
+	while p.parry_time >= 0.0 and steps < 120:
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), PlayerChecks.HOLD), 1)
+		steps += 1
+	var got := (steps + 1) * DT
+	if absf(got - pr.window * 1.5) > DT * 1.5:
+		return "招架判定時間 +50%%：應約 %.2f 秒，實際 %.3f" % [pr.window * 1.5, got]
+	# 屬性轉換：50% 物理轉冰霜，這一下物理只打一半、另一半是冰霜（有冰霜羈絆時疊冰冷）；兩條轉換合計 100% 就沒有物理
+	# 冰霜羈絆用主副手的「算 1 件」湊（寒鐵護符只有屬性；不用霜晶，它的附加冰霜傷害會多打一下）
+	s = _setup([&"cold_iron_charm"])
+	if s[2] != "":
+		return s[2]
+	w = s[0]
+	p = s[1]
+	_set_affixes(p, [&"bond_cold"], [&"bond_cold"])
+	if BondEffects.tier(p, &"cold") != 1:
+		return "寒鐵護符＋主副手各「算 1 件冰霜羈絆」應到冰霜第 1 階：%d 件" % p.loadout.bond_counts.get(&"cold", 0)
+	a = _bdummy(w, Vector2(0, 5))
+	var full := _hit(w, p, a, 20.0, &"phys", {"proc": false})
+	_set_affixes(p, [&"bond_cold", &"cvt_cold"], [&"bond_cold"])
+	b = _bdummy(w, Vector2(2, 5))
+	w.events.clear()
+	var split := _hit(w, p, b, 20.0, &"phys", {"proc": false})
+	var types := _named(w.events, "entity:damaged").filter(func(e: Dictionary) -> bool: return e.target_id == b.id).map(func(e: Dictionary) -> StringName: return e.get("damage_type", &"phys"))
+	var elem_per_phys := p.stats.value(&"elem_damage") / p.stats.value(&"phys_damage")
+	if types != [&"phys", &"cold"] or absf(split - full * (0.5 + 0.5 * elem_per_phys)) > 0.05 or b.chill_stacks != 1:
+		return "50%% 物理轉冰霜：應打一下物理一下冰霜、合計 %.2f、疊 1 層冰冷：%s、%.2f、%d 層" % [full * (0.5 + 0.5 * elem_per_phys), types, split, b.chill_stacks]
+	_set_affixes(p, [&"cvt_cold", &"cvt_fire"], [&"bond_cold"])
+	var c := _bdummy(w, Vector2(-2, 5))
+	w.events.clear()
+	_hit(w, p, c, 20.0, &"phys", {"proc": false})
+	var amounts := _named(w.events, "entity:damaged").filter(func(e: Dictionary) -> bool: return e.target_id == c.id and e.get("damage_type", &"phys") == &"phys").map(func(e: Dictionary) -> float: return e.amount)
+	if amounts.any(func(x: float) -> bool: return x > EPS):
+		return "轉換合計 100%% 時不應有物理傷害：%s" % [amounts]
+	_note("50%% 物理轉冰霜：%.2f → %.2f（物理 + 冰霜）" % [full, split])
+	return ""

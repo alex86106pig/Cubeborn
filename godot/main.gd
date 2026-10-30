@@ -69,9 +69,11 @@ func _ready() -> void:
 	hud.weapon_test_reset.connect(_reset_training_dummies)
 	hud.main_menu.back_pressed.connect(_on_title_back)
 	hud.inventory_panel.op_requested.connect(input_collector.queue_inventory_op)
+	hud.forge_panel.op_requested.connect(input_collector.queue_inventory_op)
 	hud.relic_panel.op_requested.connect(input_collector.queue_inventory_op)
 	input_collector.relic_panel = hud.relic_panel
 	hud.inventory_full.connect(_open_inventory_for)
+	hud.forge_opened.connect(_open_inventory)
 	if args.run_seconds > 0.0:
 		hud.hints.save_path = ""   # 自動驗證（截圖、量效能）不記「看過的提示」，免得使用者自己玩時提示不跳
 		profile.save_path = ""     # 也不把自動驗證拿到的金幣算進使用者的存檔
@@ -220,14 +222,20 @@ func leave_weapon_test() -> void:
 
 # 本機玩家撿不下地上的道具：和 Tab 一樣連屬性面板一起打開背包（已經開著就不動），標出那一件與建議拿掉哪件
 func _open_inventory_for(pickup_id: int) -> void:
+	if _open_inventory():
+		hud.inventory_panel.show_full(pickup_id)
+
+
+# 和 Tab 一樣連屬性面板一起打開背包（已經開著就不動；鍛造祭壇按 F 也走這裡）；暫停或開著選單時不開，回傳 false
+func _open_inventory() -> bool:
 	if is_paused or is_menu_open:
-		return
+		return false
 	if not hud.inventory_panel.visible:
 		if not hud.is_stats_panel_open():
 			hud.toggle_stats_panel()
 		hud.inventory_panel.visible = true
 		input_collector.mouse_captured = true
-	hud.inventory_panel.show_full(pickup_id)
+	return true
 
 
 # 武器測試場換武器：換成白色的那把，技能冷卻歸零、箭袋與這關的火把補滿（2026-10-27 使用者：換完要重置技能時間）

@@ -155,7 +155,7 @@ func _initialize() -> void:
 		all.bind([LootChecks.check_run_coins, LootChecks.check_coin_drops]))
 	_check("撿道具：按 F 撿起最近的道具放進背包並生效；剛按下那一步才算；兩人同一步按 F 只有一人拿到；丟掉後道具回到地上、效果移除；附近有倒地隊友時 F 先救人；從腳邊拖進背包放到指定格子（太遠、放不下、已被撿走不動，武器不放裝備欄）；撿不下的事件帶地上道具的 id",
 		all.bind([LootChecks.check_pickups, LootChecks.check_pickup_to_cell]))
-	_check("武器掉落與詞條：小怪掉落率符合 DROP_CHANCE、Boss 必掉、稀有度符合權重；詞條數 = 稀有度順位、不重複；只有手上那把生效，X 切換後屬性跟著換",
+	_check("武器掉落與詞條：小怪掉落率符合 DROP_CHANCE、Boss 必掉、稀有度符合權重；詞條數 = 稀有度順位、不重複、都跟羈絆有關、照武器偏向；合成要留的詞條一定在；主手（含稀有度倍率）與副手（只有詞條）生效、背包不生效",
 		all.bind([LootChecks.check_weapon_drops, LootChecks.check_weapon_affixes]))
 	_check("武器的背包操作：開局長劍＋木盾；撿到的武器放背包（副手空著撿到盾才拿上）、都滿撿不起來；雙手武器把副手擠回背包、盾不能當主手、主手不能丟；換武器時鑲的道具跟著搬、武器格子只能放格子內、快照來回不變；兩把同種同稀有度合成 → 高一級、詞條重抽，不同種 / 不同稀有度 / 橘色不能合成",
 		all.bind([LootChecks.check_weapon_pickup, LootChecks.check_weapon_merge]))
@@ -176,8 +176,8 @@ func _initialize() -> void:
 	_check("寶石座技能：寶石座只放技能、技能只放能用的武器、自動擺放；數字鍵 1~4 照主手→副手的寶石座、Q 治療藥水；每個技能放得出來、進冷卻、有效果；等級加傷減冷卻、技能遺物升級；輔助道具貼著才有效（延長、火焰化、分裂）",
 		all.bind([SkillChecks.check_gem_rules, SkillChecks.check_every_skill, SkillChecks.check_skill_level, SkillChecks.check_supports]))
 	_check("羈絆：道具標的羈絆都存在、掉落池只有屬於羈絆的；件數只算鑲在兩隻手上（背包不算）、同一種只算 1 件、跨羈絆兩邊各算、拿下來就扣；階數照門檻", LootChecks.check_bonds)
-	_check("羈絆效果：物理（物理傷害、失衡、擊退撞怪、無視物理抗性、必爆擊與處決）、火焰（沒有羈絆 1 層、疊層、疊滿爆炸、死亡傳層）、冰霜（沒有羈絆 1 層、冰冷減速、疊滿凍結、碎冰加傷、冰錐、凍結中被殺沒有死亡效果）、防禦（護甲、招架回血、招架後必爆擊、衝擊波消箭、反彈）、鬼火（顆數、轉圈碰到怪、定時衝出去）",
-		all.bind([BondChecks.check_phys, BondChecks.check_fire, BondChecks.check_cold, BondChecks.check_guard, BondChecks.check_wisp]))
+	_check("羈絆效果：物理（物理傷害、失衡、擊退撞怪、無視物理抗性、必爆擊與處決）、火焰（沒有羈絆 1 層、疊層、疊滿爆炸、死亡傳層）、冰霜（沒有羈絆 1 層、冰冷減速、疊滿凍結、碎冰加傷、冰錐、凍結中被殺沒有死亡效果）、防禦（護甲、招架回血、招架後必爆擊、衝擊波消箭、反彈）、鬼火（顆數、轉圈碰到怪、定時衝出去）；武器詞條（羈絆 +1 主副手各算、燃燒 / 冰冷層數上限、凍結時間、額外鬼火、失衡累積、招架判定時間、屬性轉換）",
+		all.bind([BondChecks.check_phys, BondChecks.check_fire, BondChecks.check_cold, BondChecks.check_guard, BondChecks.check_wisp, BondChecks.check_weapon_affixes]))
 	_check("道具掉落：全部道具的效果都已接上；寶箱只開出效果都接上、屬於羈絆的道具（輔助道具也開得出來）；沒有的稀有度往下一級找", LootChecks.check_item_drop_pool)
 
 	# ───────── 畫面 ─────────
@@ -202,7 +202,7 @@ func _initialize() -> void:
 
 	# ───────── 介面 ─────────
 	_check("HUD：能建立、處理各種事件、顯示波次 / 血量 / 結算文字、暫停畫面有「離開遊戲」；別人撿到道具不跳橫幅；武器欄標示副手", ViewChecks.check_hud)
-	_check("背包介面：和屬性面板並排塞得進介面最大檔的畫面；腳邊欄只列按得到 F 的地上道具、滑鼠停著顯示說明，拖進背包撿起放在那一格、背包的拖到腳邊丟掉；撿不下時 HUD 通知打開背包、提示拿掉哪一件就放得下，關掉就清除；遺物的 N 選 1 卡片塞得進畫面、點卡片 / Esc 送出操作", all.bind([ViewChecks.check_inventory_panel, ViewChecks.check_relic_panel]))
+	_check("背包介面：和屬性面板並排塞得進介面最大檔的畫面；腳邊欄只列按得到 F 的地上道具、滑鼠停著顯示說明，拖進背包撿起放在那一格、背包的拖到腳邊丟掉；撿不下時 HUD 通知打開背包、提示拿掉哪一件就放得下，關掉就清除；遺物的 N 選 1 卡片塞得進畫面、點卡片 / Esc 送出操作；鍛造祭壇旁拖武器合成先打開挑詞條的面板、送出留下的詞條、離開祭壇就關掉", all.bind([ViewChecks.check_inventory_panel, ViewChecks.check_relic_panel, ViewChecks.check_forge_panel]))
 	_check("技能欄：劍盾格擋中左鍵換成「招架」與冷卻、法杖沒有招架格；火把準備姿態換成插火把 / 噴火、鐵鏟舉著怪換成拋出 / 埋入；CD 遮罩疊放順序 文字圖示 < 壓黑 < 秒數",
 		all.bind([ViewChecks.check_skill_bar_parry, ViewChecks.check_skill_bar_cd_mask]))
 	_check("新手提示：換武器鍵是 X；開場跳操作與挖墳；撿到東西、開背包、可合成、出口打開、隊友倒地各跳一次；看過不再跳；重設後再跳", ViewChecks.check_hints)

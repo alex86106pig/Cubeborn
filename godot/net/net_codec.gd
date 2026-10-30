@@ -27,7 +27,7 @@ const PLAYER_ANIM_DEFAULTS := {
 }
 # 數值欄位 E_X ~ E_MAX_HP 用 float32；E_VX ~ E_INVULN 只給別人的實體外推與閃白，用 half（16 位元）
 # 二進位格式（v0.35.0）用的種類與常見名稱表：在表裡的送 1 byte 索引，不在表裡的照樣送字串（表只影響大小、不影響正確性）
-const KINDS: Array[StringName] = [&"player", &"grunt", &"archer", &"boss", &"ghost", &"chest", &"pickup", &"projectile", &"coin", &"torch", &"minion", &"zombie", &"bloater", &"hound", &"gravekeeper", &"relic"]
+const KINDS: Array[StringName] = [&"player", &"grunt", &"archer", &"boss", &"ghost", &"chest", &"pickup", &"projectile", &"coin", &"torch", &"minion", &"zombie", &"bloater", &"hound", &"gravekeeper", &"relic", &"forge"]
 const NAMES: Array[StringName] = [
 	&"idle", &"move", &"chase", &"kite", &"aim", &"attack", &"swing", &"cleave", &"slam", &"charge", &"rush", &"summon",
 	&"hurt", &"stagger", &"dead", &"dormant", &"spawn", &"climb", &"jump", &"stun", &"ready", &"special", &"roll", &"dig",
@@ -284,7 +284,7 @@ static func entity_fields(e: Entity) -> Array:
 		a[E_EXTRA] = [r.tier, r.relic_kind, r.offers, r.taken.keys()]
 	elif e is ItemPickup:
 		a[E_EXTRA] = [(e as ItemPickup).item_id, WeaponDropDefs.to_array((e as ItemPickup).weapon), (e as ItemPickup).corpse_of]
-	elif e is Coin or e is Torch:
+	elif e is Coin or e is Torch or e is Forge:
 		a[E_EXTRA] = []
 	elif e is Enemy:
 		a[E_ANIM] = (e as Enemy).anim
@@ -336,6 +336,11 @@ static func create_entity(world: World, a: Array) -> Entity:
 		world.add_entity_with_id(chest, a[E_ID])
 		world.chests.append(chest)
 		e = chest
+	elif kind == &"forge":
+		var forge := Forge.new(world, at)
+		world.add_entity_with_id(forge, a[E_ID])
+		world.forges.append(forge)
+		e = forge
 	elif kind == &"relic":
 		var relic := Relic.new(world, extra[0], at, extra[1])
 		world.add_entity_with_id(relic, a[E_ID])
