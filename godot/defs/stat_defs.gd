@@ -71,17 +71,27 @@ const STATS := {
 	&"wisp_damage": {"name": "鬼火傷害", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
 	&"wisp_life_on_hit": {"name": "鬼火命中回復", "base": 0.0, "min": 0.0, "max": INF, "format": &"float", "in_use": true},
 	# 武器詞條的羈絆強化與屬性轉換（Build 改版第 8 步）：效果在 BondEffects、Combat、WeaponBehaviors 的招架
-	# optional：屬性面板只在不是基礎值時顯示（一般沒有，全部列出來面板會超出畫面）
-	&"poise_gain": {"name": "失衡值累積", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true, "optional": true},
-	&"burn_max_stacks": {"name": "燃燒層數上限", "base": 0.0, "min": 0.0, "max": INF, "round": true, "format": &"bonus_int", "in_use": true, "optional": true},   # 加在羈絆的上限上
-	&"chill_max_stacks": {"name": "冰冷層數上限", "base": 0.0, "min": 0.0, "max": INF, "round": true, "format": &"bonus_int", "in_use": true, "optional": true},
-	&"freeze_time": {"name": "凍結時間", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true, "optional": true},
-	&"parry_window": {"name": "招架判定時間", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true, "optional": true},
-	&"wisp_count": {"name": "額外鬼火", "base": 0.0, "min": 0.0, "max": INF, "round": true, "format": &"int", "in_use": true, "optional": true},
-	&"convert_fire": {"name": "物理轉火焰", "base": 0.0, "min": 0.0, "max": 1.0, "format": &"pct", "in_use": true, "optional": true},
-	&"convert_cold": {"name": "物理轉冰霜", "base": 0.0, "min": 0.0, "max": 1.0, "format": &"pct", "in_use": true, "optional": true},
+	&"poise_gain": {"name": "失衡值累積", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
+	&"burn_max_stacks": {"name": "燃燒層數上限", "base": 0.0, "min": 0.0, "max": INF, "round": true, "format": &"bonus_int", "in_use": true},   # 加在羈絆的上限上
+	&"chill_max_stacks": {"name": "冰冷層數上限", "base": 0.0, "min": 0.0, "max": INF, "round": true, "format": &"bonus_int", "in_use": true},
+	&"freeze_time": {"name": "凍結時間", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
+	&"parry_window": {"name": "招架判定時間", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
+	&"wisp_count": {"name": "額外鬼火", "base": 0.0, "min": 0.0, "max": INF, "round": true, "format": &"int", "in_use": true},
+	&"convert_fire": {"name": "物理轉火焰", "base": 0.0, "min": 0.0, "max": 1.0, "format": &"pct", "in_use": true},
+	&"convert_cold": {"name": "物理轉冰霜", "base": 0.0, "min": 0.0, "max": 1.0, "format": &"pct", "in_use": true},
 	&"relic_choices": {"name": "遺物選項數", "base": 3.0, "min": 1.0, "max": 6.0, "round": true, "format": &"int", "in_use": true},   # N 選 1（Relic）
 }
+
+# 屬性面板：PANEL_CORE 一直顯示，其他只在不是基礎值時顯示（全部列出來面板會太滿）；依 PANEL_GROUPS 由上到下分組，整組都沒顯示就連標題一起藏
+# 新增 in_use 的屬性要放進其中一組，不然面板不會列（檢查「背包介面」擋）
+const PANEL_CORE: Array[StringName] = [&"max_hp", &"armor", &"damage", &"attack_speed", &"crit_chance", &"crit_damage", &"move_speed"]
+const PANEL_GROUPS := [
+	{"name": "生存", "stats": [&"max_hp", &"hp_regen", &"armor", &"resist_all", &"dodge", &"damage_taken", &"knockback_taken", &"projectile_damage_taken", &"life_on_hit", &"lifesteal"]},
+	{"name": "攻擊", "stats": [&"damage", &"phys_damage", &"elem_damage", &"attack_speed", &"crit_chance", &"crit_damage", &"knockback", &"convert_fire", &"convert_cold"]},
+	{"name": "移動與冷卻", "stats": [&"move_speed", &"cooldown", &"roll_cooldown", &"roll_charges"]},
+	{"name": "探索", "stats": [&"vision", &"pickup_radius", &"treasure", &"soul_gain", &"chest_price", &"relic_choices"]},
+	{"name": "羈絆", "stats": [&"added_fire", &"added_cold", &"burn_damage", &"burn_max_stacks", &"chill_slow", &"chill_max_stacks", &"freeze_time", &"chilled_damage_taken", &"poise_gain", &"parry_window", &"wisp_count", &"wisp_damage", &"wisp_life_on_hit"]},
+]
 
 
 static func armor_damage_factor(armor: float) -> float:

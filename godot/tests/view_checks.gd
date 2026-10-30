@@ -1372,6 +1372,8 @@ static func check_font_coverage() -> String:
 	texts.append_array([hud_consts.CONTROLS_TEXT, hud_consts.BOSS_NAME])
 	for s: Dictionary in StatDefs.STATS.values():
 		texts.append(s.name)
+	for g: Dictionary in StatDefs.PANEL_GROUPS:
+		texts.append(g.name)
 	for item: Dictionary in ItemDefs.ITEMS.values():
 		texts.append_array([item.name, item.desc, "獲得 "])
 	texts.append(StatDefs.format_value(&"armor", 8.0) + StatDefs.format_value(&"hp_regen", 1.0))
@@ -2298,4 +2300,57 @@ static func check_hint_beside_bag() -> String:
 	cam.queue_free()
 	if r.position.x < stats.end.x or r.end.x > bag.position.x:
 		return "開背包時新手提示（%s）應在屬性面板與背包中間：提示 %s、屬性 %s、背包 %s" % [longest, r, stats, bag]
+	return ""
+
+
+# 屬性面板：使用中的屬性剛好在一組、核心屬性一直顯示；其他屬性有加成才顯示，整組都沒顯示就連標題一起藏，拿掉加成就藏回去
+static func check_stats_panel() -> String:
+	var group_of := {}
+	for g: Dictionary in StatDefs.PANEL_GROUPS:
+		for stat: StringName in g.stats:
+			if not StatDefs.STATS.has(stat):
+				return "屬性面板「%s」組的 %s 不在 StatDefs.STATS" % [g.name, stat]
+			if group_of.has(stat):
+				return "%s 同時在屬性面板的「%s」與「%s」組" % [stat, group_of[stat], g.name]
+			group_of[stat] = g.name
+	for stat: StringName in StatDefs.STATS:
+		if StatDefs.STATS[stat].in_use and not group_of.has(stat):
+			return "使用中的屬性 %s（%s）沒放進屬性面板的任何一組" % [stat, StatDefs.STATS[stat].name]
+	for stat: StringName in StatDefs.PANEL_CORE:
+		if not group_of.has(stat):
+			return "核心屬性 %s 不在屬性面板的任何一組" % stat
+	var w := _new_world(5)
+	var p := _player(w)
+	var panel := StatsPanel.new()
+	_scene_root().add_child(panel)
+	var err := _stats_panel_state(panel, p, "開局")
+	var hidden: Array = StatDefs.PANEL_GROUPS.filter(func(g: Dictionary) -> bool: return not panel.shown_groups().has(g.name))
+	if err == "" and hidden.is_empty():
+		err = "開局每一組都有顯示（%s），看不出沒加成的組會藏起來" % ", ".join(panel.shown_groups())
+	if err == "":
+		var g: Dictionary = hidden[0]
+		var stat: StringName = g.stats[0]
+		p.stats.set_source(&"check_panel", [[stat, Stats.ADD, 1.0]])
+		err = _stats_panel_state(panel, p, "%s 加 1" % StatDefs.STATS[stat].name)
+		if err == "" and not panel.shown_groups().has(g.name):
+			err = "%s 有加成後「%s」組的標題應顯示，實際顯示的組：%s" % [StatDefs.STATS[stat].name, g.name, ", ".join(panel.shown_groups())]
+		p.stats.remove_source(&"check_panel")
+		if err == "":
+			err = _stats_panel_state(panel, p, "拿掉加成")
+		if err == "" and panel.shown_groups().has(g.name):
+			err = "拿掉 %s 的加成後「%s」組應整組藏起來" % [StatDefs.STATS[stat].name, g.name]
+	panel.queue_free()
+	return err
+
+
+# 每列顯示 = 核心屬性或不是基礎值；refresh 後比對
+static func _stats_panel_state(panel: StatsPanel, p: Player, when: String) -> String:
+	panel.refresh(p)
+	for g: Dictionary in StatDefs.PANEL_GROUPS:
+		for stat: StringName in g.stats:
+			if not StatDefs.STATS[stat].in_use:
+				continue
+			var want: bool = StatDefs.PANEL_CORE.has(stat) or not is_equal_approx(p.stats.value(stat), p.stats.base(stat))
+			if panel.is_stat_shown(stat) != want:
+				return "%s：屬性面板的 %s 應%s顯示（值 %.3f、基礎 %.3f）" % [when, StatDefs.STATS[stat].name, "" if want else "不", p.stats.value(stat), p.stats.base(stat)]
 	return ""
