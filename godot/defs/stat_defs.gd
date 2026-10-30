@@ -70,6 +70,7 @@ const STATS := {
 	&"chilled_damage_taken": {"name": "受到冰冷敵人的傷害", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
 	&"wisp_damage": {"name": "鬼火傷害", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
 	&"wisp_life_on_hit": {"name": "鬼火命中回復", "base": 0.0, "min": 0.0, "max": INF, "format": &"float", "in_use": true},
+	&"relic_choices": {"name": "遺物選項數", "base": 3.0, "min": 1.0, "max": 6.0, "round": true, "format": &"int", "in_use": true},   # N 選 1（Relic）
 }
 
 

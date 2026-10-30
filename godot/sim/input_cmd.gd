@@ -20,6 +20,9 @@ const OP_DROP := 1   # [OP_DROP, uid] 丟到面前的地上
 const OP_EQUIP := 2  # [OP_EQUIP, uid, slot] 武器放進裝備欄 slot（D4）
 const OP_MERGE := 3  # [OP_MERGE, uid_a, uid_b] 把武器 a 拖到 b 上合成（D4）
 const OP_PICKUP := 4 # [OP_PICKUP, 地上道具的實體 id, x, y, rot] 撿起按得到 F 的地上道具，放到背包 (x, y)
+const OP_RELIC_PICK := 5     # [OP_RELIC_PICK, 遺物的實體 id, 第幾個] 遺物的 N 選 1（Build 改版第 6 步）
+const OP_RELIC_REROLL := 6   # [OP_RELIC_REROLL, 遺物的實體 id] 用掉 1 顆骰子重擲選項
+const OP_RELIC_CLOSE := 7    # [OP_RELIC_CLOSE] 先不選，關掉（回來再按 F 還是同一組）
 
 var tick := 0
 var move := Vector2.ZERO   # 世界 XZ 方向，長度 ≤ 1

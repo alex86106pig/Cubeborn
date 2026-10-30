@@ -24,6 +24,8 @@ const GHOST_TRANSPARENCY := 0.45
 const MINION_TINT := Color(0.55, 1.0, 0.6)   # 骷髏僕從（G6）的顏色
 const FROZEN_TINT := Color(0.35, 0.75, 1.8)   # 道具狀態（v0.33.0）：冰凍偏藍、中毒偏綠（乘在模型顏色上；場景偏暗，要染重一點才看得出來）
 const POISON_TINT := Color(0.4, 1.5, 0.3)
+const RELIC_COLOR := Color("8fd0b0")   # 遺物（第 6 步）：道具遺物的青綠（同武器格子 artifact 的輔助色）
+const RELIC_CORE := Color("f08a6a")
 const CHILL_TINT := Color(0.7, 0.95, 1.4)    # 冰冷（冰霜羈絆）：比冰凍淡的藍
 const SHADOW_MAX_DISTANCE := 70.0  # 陰影範圍（從相機算；相機距離 40，畫面最遠的地面約 60）
 const LOS_INTERVAL := 3           # 視野的牆擋判斷每隻每幾個 tick 重算一次（50 毫秒）
@@ -273,7 +275,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 		elif e is Chest:
 			var lid: Node3D = node.get_node(^"Lid")
 			lid.rotation.x = lerpf(lid.rotation.x, CHEST_LID_OPEN if (e as Chest).opened else 0.0, minf(1.0, dt * 8.0))
-		elif e is ItemPickup or e is Coin:
+		elif e is ItemPickup or e is Coin or e is Relic:
 			var gem: Node3D = node.get_node(^"Gem")
 			var t := Time.get_ticks_msec() / 1000.0 + id * 0.7
 			gem.position.y = 0.55 + 0.12 * sin(t * 2.5)
@@ -547,6 +549,53 @@ func _create_pickup(p: ItemPickup) -> Node3D:
 	beam.material_override = bm
 	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	beam.position.y = 1.2
+	root.add_child(beam)
+	return root
+
+
+# 地上的遺物（Build 改版第 6 步）：浮著轉的青綠發光方塊（Gem）＋內側一顆小寶石 ＋ 光柱；看不出裡面是什麼（打開才擲）
+func _create_relic() -> Node3D:
+	var root := Node3D.new()
+	var gem := MeshInstance3D.new()
+	gem.name = "Gem"
+	var box := BoxMesh.new()
+	box.size = Vector3(0.42, 0.42, 0.42)
+	gem.mesh = box
+	gem.rotation.x = PI / 4.0
+	var m := StandardMaterial3D.new()
+	m.albedo_color = RELIC_COLOR
+	m.emission_enabled = true
+	m.emission = RELIC_COLOR
+	m.emission_energy_multiplier = 1.4
+	gem.material_override = m
+	var core := MeshInstance3D.new()
+	var cm := BoxMesh.new()
+	cm.size = Vector3(0.2, 0.2, 0.2)
+	core.mesh = cm
+	core.position = Vector3(0.0, 0.0, 0.0)
+	var km := StandardMaterial3D.new()
+	km.albedo_color = RELIC_CORE
+	km.emission_enabled = true
+	km.emission = RELIC_CORE
+	km.emission_energy_multiplier = 2.5
+	core.material_override = km
+	core.scale = Vector3.ONE * 1.25
+	gem.add_child(core)
+	root.add_child(gem)
+	var beam := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.08
+	cyl.bottom_radius = 0.25
+	cyl.height = 3.0
+	cyl.radial_segments = 8
+	beam.mesh = cyl
+	var bm := StandardMaterial3D.new()
+	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	bm.albedo_color = Color(RELIC_COLOR, 0.25)
+	beam.material_override = bm
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	beam.position.y = 1.5
 	root.add_child(beam)
 	return root
 
@@ -883,6 +932,8 @@ func _create_view(e: Entity) -> Node3D:
 			root = _create_chest(e as Chest)
 		&"pickup":
 			root = _create_pickup(e as ItemPickup)
+		&"relic":
+			root = _create_relic()
 		&"coin":
 			root = _create_coin()
 		&"torch":

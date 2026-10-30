@@ -373,7 +373,8 @@ static func check_net_coins() -> String:
 	return ""
 
 
-# D3（Build 改版第 3 步起按 F 撿的會鑲在武器上、背包裡的沒有效果）：客戶端靠近寶箱按 F → 房主開箱扣靈魂、道具掉在地上；再按 F 撿起；拖曳搬動、丟掉、從腳邊拖回背包指定的格子。兩邊的寶箱、靈魂、背包一致
+# D3（Build 改版第 3 步起按 F 撿的會鑲在武器上、背包裡的沒有效果；第 6 步起開出遺物）：客戶端靠近寶箱按 F → 房主開箱扣靈魂、地上出現遺物；
+# 再按 F 打開自己的 N 選 1、重骰一次、選第一個（兩邊都記得選過、骰子少 1 顆）；拖曳搬動、丟掉、從腳邊拖回背包指定的格子。兩邊的寶箱、靈魂、背包一致
 static func check_net_loot() -> String:
 	var link := _Link.new(41, [1, 2], 3, 0.0, false)
 	var hw := link.host_world
@@ -391,18 +392,37 @@ static func check_net_loot() -> String:
 	idle.call(20)
 	var cw := link.client.world
 	var left: int = 30 - LootDefs.CHESTS[&"small"].price
-	if not chest.opened or hw.souls != left or hw.pickups.size() != 1:
-		return "房主：寶箱應打開、靈魂 30 → %d、地上 1 個道具：%s / %d / %d" % [left, chest.opened, hw.souls, hw.pickups.size()]
+	if not chest.opened or hw.souls != left or hw.relics.size() != 1:
+		return "房主：寶箱應打開、靈魂 30 → %d、地上 1 個遺物：%s / %d / %d" % [left, chest.opened, hw.souls, hw.relics.size()]
 	var mirror: Chest = cw.entities.get(chest.id)
-	if mirror == null or not mirror.opened or cw.souls != left or cw.pickups.size() != 1:
-		return "客戶端：寶箱 %s、靈魂 %d、地上道具 %d（應為 已開 / %d / 1）" % [mirror.opened if mirror else null, cw.souls, cw.pickups.size(), left]
+	if mirror == null or not mirror.opened or cw.souls != left or cw.relics.size() != 1:
+		return "客戶端：寶箱 %s、靈魂 %d、地上遺物 %d（應為 已開 / %d / 1）" % [mirror.opened if mirror else null, cw.souls, cw.relics.size(), left]
+	var relic: Relic = hw.relics[0]
+	hp2.pos = relic.pos + Vector2(1.0, 0)
+	idle.call(10)
 	link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO, InputCmd.BTN_INTERACT))
 	idle.call(20)
 	var me := link.client.local_player()
+	var mr: Relic = cw.entities.get(relic.id)
+	if me.relic_id != relic.id or mr == null or (mr.offers.get(2, []) as Array).size() != roundi(me.stats.value(&"relic_choices")):
+		return "客戶端按 F 應打開遺物、看得到自己的選項：打開 %d（應 %d）、選項 %s" % [me.relic_id, relic.id, mr.offers if mr else null]
+	var reroll := _cmd(Vector2.ZERO)
+	reroll.inv_ops = [[InputCmd.OP_RELIC_REROLL, relic.id]]
+	link.step(_cmd(Vector2.ZERO), reroll)
+	idle.call(20)
+	if me.dice != LootDefs.RELIC.start_dice - 1 or hp2.dice != LootDefs.RELIC.start_dice - 1:
+		return "重骰後兩邊的骰子都應剩 %d：客戶端 %d、房主 %d" % [LootDefs.RELIC.start_dice - 1, me.dice, hp2.dice]
+	var want_id: StringName = relic.offers[2][0]
+	var choose := _cmd(Vector2.ZERO)
+	choose.inv_ops = [[InputCmd.OP_RELIC_PICK, relic.id, 0]]
+	link.step(_cmd(Vector2.ZERO), choose)
+	idle.call(20)
+	if not relic.taken.has(2) or not mr.taken.has(2) or me.relic_id != 0 or relic.is_removed:
+		return "選了以後兩邊都記得 2 號選過、關掉面板，房主還沒選所以遺物還在：%s / %s / %d / 移除 %s" % [relic.taken, mr.taken, me.relic_id, relic.is_removed]
 	# 按 F 撿起：自動鑲在武器格子上、生效
-	if CheckKit._held_items(hp2).size() != 1 or CheckKit._held_items(me).size() != 1 or me.items.size() != 1 or not cw.pickups.is_empty():
-		return "撿起後：房主拿著 %d、客戶端拿著 %d、客戶端生效道具 %d、客戶端地上 %d（應為 1 / 1 / 1 / 0）" % [
-			CheckKit._held_items(hp2).size(), CheckKit._held_items(me).size(), me.items.size(), cw.pickups.size()]
+	if CheckKit._held_items(hp2).size() != 1 or CheckKit._held_items(me).size() != 1 or me.items.size() != 1 or me.items[0].id != want_id:
+		return "選了以後：房主拿著 %d、客戶端拿著 %d、客戶端生效道具 %s（應為 1 / 1 / %s）" % [
+			CheckKit._held_items(hp2).size(), CheckKit._held_items(me).size(), me.items, want_id]
 	var uid: String = CheckKit._held_items(me)[0].uid
 	var move := _cmd(Vector2.ZERO)
 	move.inv_ops = [[InputCmd.OP_MOVE, uid, 5, 3, 1]]

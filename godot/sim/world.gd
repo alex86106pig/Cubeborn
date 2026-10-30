@@ -22,6 +22,7 @@ var torches: Array[Entity] = []     # 插在地上的火把（F8，sim/torch.gd�
 var zones: Array[Dictionary] = []   # 地上的持續區域（F7 聖光圈，GroundZones）
 var chests: Array[Entity] = []       # 寶箱（D3）
 var pickups: Array[Entity] = []      # 掉在地上的道具（D3）
+var relics: Array[Entity] = []       # 地上的遺物（Build 改版第 6 步：祭壇 / 石棺、Boss 的獎勵）
 var coins: Array[Entity] = []        # 掉在地上的金幣（v0.45，sim/coin.gd）
 var souls := 0                        # 共用的靈魂（局內貨幣，D3）：殺怪賺、開祭壇 / 石棺花
 var debug_drop_all := false          # 除錯（--loot-test）：每隻怪死掉都掉武器
@@ -133,7 +134,7 @@ func _place_chests() -> void:
 	var tiers: Array[StringName] = []
 	var counts: Dictionary = map.get("chest_count", {})
 	for tier: StringName in counts:
-		for i in roundi(counts[tier] * LootDefs.player_mul(player_list.size())):
+		for i in int(counts[tier]):
 			tiers.append(tier)
 	var lim: Vector2 = half_extents - Vector2(c.edge_margin, c.edge_margin)
 	var placed: Array[Vector2] = []
@@ -243,6 +244,7 @@ func clear() -> void:
 	zones.clear()
 	chests.clear()
 	pickups.clear()
+	relics.clear()
 	coins.clear()
 	packs.clear()
 
@@ -301,7 +303,7 @@ func on_enemy_died(e: Enemy, killer_id: int = 0) -> void:
 	if e.team == &"player":
 		return   # 骷髏僕從（G6）倒下：不算擊殺、不給東西
 	stats.kills += 1
-	var g := 0 if e.no_souls else roundi(LootDefs.KILL_SOULS.get(e.type, 0) * LootDefs.player_mul(player_list.size()))
+	var g := 0 if e.no_souls else int(LootDefs.KILL_SOULS.get(e.type, 0))
 	var killer: Entity = entities.get(killer_id)
 	if g > 0 and killer is Player:
 		soul_carry += g * (ItemEffects.soul_mul(killer as Player, e) - 1.0)
@@ -351,6 +353,15 @@ func drop_weapon(inst: Dictionary, at: Vector2) -> ItemPickup:
 
 
 # 道具 / 武器掉在地上（開寶箱、殺怪、從背包丟出）；客戶端不產生（等快照）
+# 放一個遺物（tier：祭壇 small / 石棺 big 的稀有度機率）
+func drop_relic(tier: StringName, at: Vector2) -> Relic:
+	var r := Relic.new(self, tier, nav.nearest_walkable(at))
+	if is_authority:
+		add_entity(r)
+		relics.append(r)
+	return r
+
+
 func drop_item(item_id: StringName, at: Vector2, weapon: Dictionary = {}) -> ItemPickup:
 	var spot := nav.nearest_walkable(at)
 	var pickup := ItemPickup.new(self, item_id, spot, weapon)
@@ -396,7 +407,7 @@ func nearest_interactable(p: Player, list: Array[Entity]) -> Entity:
 	var best: Entity = null
 	var best_d := INF
 	for e in list:
-		if e.is_removed or (e is Chest and (e as Chest).opened) or not can_reach(p, e):
+		if e.is_removed or (e is Chest and (e as Chest).opened) or (e is Relic and (e as Relic).taken.has(p.peer_id)) or not can_reach(p, e):
 			continue
 		var d := _reach_gap(p, e)
 		if d < best_d:
@@ -423,14 +434,12 @@ func reachable_pickups(p: Player, out: Array[ItemPickup]) -> void:
 	out.sort_custom(func(a: ItemPickup, b: ItemPickup) -> bool: return _reach_gap(p, a) < _reach_gap(p, b))
 
 
-# 打倒 Boss：挖墳事件的地圖（D6）不通關，額外掉一個大寶箱機率的道具（武器與金幣照 on_enemy_died）；
+# 打倒 Boss：挖墳事件的地圖（D6）不通關，額外掉一個石棺機率的遺物（武器與金幣照 on_enemy_died）；
 # 測試場地照舊通關：其餘敵人一起倒下、敵方投射物消失，延遲後發出 game:victory
 func on_boss_defeated(boss: Enemy) -> void:
 	if DigEvent.enabled(self):
-		var pool := LootDefs.drop_pool(LootDefs.roll_rarity(&"big", rng, team_treasure()))
-		var item_id: StringName = pool[rng.randi_range(0, pool.size() - 1)]
-		drop_item(item_id, boss.pos + Vector2(LootDefs.DROP_DISTANCE, 0.0))
-		emit_event("boss:reward", {"item": String(item_id), "pos": boss.pos})
+		var relic := drop_relic(&"big", boss.pos + Vector2(LootDefs.DROP_DISTANCE, 0.0))
+		emit_event("boss:reward", {"relic_id": relic.id, "pos": boss.pos})
 		hit_stop(Config.WORLD.victory_hit_stop)
 		emit_event("camera:shake", {"amount": Config.WORLD.victory_shake, "duration": Config.WORLD.victory_shake_duration})
 		return
@@ -663,6 +672,7 @@ func _remove_dead_entities() -> void:
 		allies.assign(allies.filter(func(e: Entity) -> bool: return not e.is_removed))
 	projectiles.assign(projectiles.filter(func(e: Entity) -> bool: return not e.is_removed))
 	pickups.assign(pickups.filter(func(e: Entity) -> bool: return not e.is_removed))
+	relics.assign(relics.filter(func(e: Entity) -> bool: return not e.is_removed))
 	coins.assign(coins.filter(func(e: Entity) -> bool: return not e.is_removed))
 	torches.assign(torches.filter(func(e: Entity) -> bool: return not e.is_removed))
 	chests.assign(chests.filter(func(e: Entity) -> bool: return not e.is_removed))   # 換層時整批移除（D6）

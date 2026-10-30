@@ -282,26 +282,28 @@ static func check_soul_chests() -> String:
 	if chest.try_open(p) or chest.opened or w.souls != price - 1 or _named(w.events, "chest:denied").is_empty():
 		return "靈魂 %d < %d 應開不了並發出 chest:denied" % [price - 1, price]
 	w.souls = price + 1
-	var before := w.pickups.size()   # Boss 必掉一把武器，地上原本就有東西
-	if not chest.try_open(p) or not chest.opened or w.souls != 1 or w.pickups.size() != before + 1:
-		return "靈魂夠應打開：開了 %s、剩 %d、地上多了 %d 個" % [chest.opened, w.souls, w.pickups.size() - before]
-	var drop: ItemPickup = w.pickups.back()
-	if drop.pos.distance_to(chest.pos) > LootDefs.DROP_DISTANCE + 1.0 or not ItemDefs.ITEMS.has(drop.item_id):
-		return "道具應掉在寶箱旁：距離 %.2f" % drop.pos.distance_to(chest.pos)
-	if LootDefs.CHESTS.big.weights.get(drop.rarity(), 0.0) <= 0.0:
-		return "大寶箱不應開出 %s" % drop.rarity()
+	var before := w.relics.size()   # Boss 也掉一個遺物
+	if not chest.try_open(p) or not chest.opened or w.souls != 1 or w.relics.size() != before + 1:
+		return "靈魂夠應打開：開了 %s、剩 %d、地上多了 %d 個遺物" % [chest.opened, w.souls, w.relics.size() - before]
+	var relic: Relic = w.relics.back()
+	if relic.pos.distance_to(chest.pos) > LootDefs.DROP_DISTANCE + 1.0 or relic.tier != &"big":
+		return "石棺的遺物應在旁邊、用石棺的機率：距離 %.2f、%s" % [relic.pos.distance_to(chest.pos), relic.tier]
+	relic.open_for(p)
+	for id: StringName in relic.offers.get(p.peer_id, []):
+		if LootDefs.CHESTS.big.weights.get(ItemDefs.ITEMS[id].rarity, 0.0) <= 0.0:
+			return "石棺的遺物不應有 %s 的選項" % ItemDefs.ITEMS[id].rarity
 	w.souls = 100
 	if chest.try_open(p) or w.souls != 100:
 		return "開過的寶箱不能再開"
 	return ""
 
 
-# 寶箱的數量（× 人數倍率）與位置規則（可走、走得到出生點、離出生點 / 挖墳點 / 地圖邊緣夠遠）
+# 寶箱的數量（不跟人數變）與位置規則（可走、走得到出生點、離出生點 / 挖墳點 / 地圖邊緣夠遠）
 static func _chest_layout(w: World, players: int) -> String:
 	var c: Dictionary = LootDefs.CHEST_PLACEMENT
 	var want := {}
 	for tier: StringName in w.map.chest_count:
-		want[tier] = roundi(w.map.chest_count[tier] * LootDefs.player_mul(players))
+		want[tier] = int(w.map.chest_count[tier])   # 不跟人數變
 	var tiers := {}
 	var lim: Vector2 = w.half_extents - Vector2(c.edge_margin, c.edge_margin)
 	for e: Entity in w.chests:
@@ -317,7 +319,7 @@ static func _chest_layout(w: World, players: int) -> String:
 	return ""
 
 
-# 寶箱隨機放與靈魂平衡（v0.44.0）：不同種子位置不同、同種子相同；2 / 4 人寶箱 ×1.5 / ×2.5、殺怪靈魂也一樣；
+# 寶箱隨機放與靈魂平衡（v0.44.0）：不同種子位置不同、同種子相同；2 / 4 人寶箱數量與殺怪靈魂都和單人一樣；
 # 召喚出來的怪不給靈魂；開場怪群全清（10 個種子）賺的靈魂都買不完全部寶箱
 static func check_chest_balance() -> String:
 	var spots := func(w: World) -> Array:
@@ -349,7 +351,7 @@ static func check_chest_balance() -> String:
 			return err
 		var g := _spawn(wm, &"grunt", Vector2(0, 30))
 		g.die()
-		var want := roundi(LootDefs.KILL_SOULS[&"grunt"] * LootDefs.player_mul(players))
+		var want: int = LootDefs.KILL_SOULS[&"grunt"]
 		if wm.souls != want:
 			return "%d 人時殺一隻骷髏應得 %d 靈魂，實際 %d" % [players, want, wm.souls]
 	# 召喚詞條、Boss 召喚出來的怪不給靈魂
@@ -945,7 +947,7 @@ static func check_item_stats() -> String:
 		return "鐵皮斗篷不該減近戰傷害：%.2f / %.2f" % [p.max_hp - p.hp, plain]
 	p.clear_items()
 	# 盜墓者錢袋：擊殺者的靈魂獲得，小數累積；貪婪之手：精英怪（魔法 / 稀有）再 ×2，普通怪不變
-	var base := roundi(LootDefs.KILL_SOULS[&"grunt"] * LootDefs.player_mul(1))
+	var base: int = LootDefs.KILL_SOULS[&"grunt"]
 	var gain := _effect_value(&"grave_purse", &"soul_gain")
 	p.add_item(&"grave_purse")
 	w.souls = 0
@@ -1651,4 +1653,70 @@ static func check_bonds() -> String:
 	p.loadout.remove_item(p, dice)
 	if p.loadout.bond_counts.get(&"phys", 0) != 2:
 		return "拿掉灌鉛骰子後物理應回到 2 件，實際 %s" % p.loadout.bond_counts
+	return ""
+
+
+# 遺物（Build 改版第 6 步）：兩個玩家各自擲 N 選 1；關掉再打開還是同一組；骰子重擲；選一次；全員選過才消失；放不下掉腳邊；走遠就關掉
+static func check_relic() -> String:
+	var w := World.new(&"test_arena")
+	w.spawn_packs = false
+	w.reset(7, [World.HOST_PEER_ID, World.HOST_PEER_ID + 1] as Array[int])
+	w.spawner.finished = true
+	_worlds.append(w)
+	var a: Player = w.players[World.HOST_PEER_ID]
+	var b: Player = w.players[World.HOST_PEER_ID + 1]
+	var relic := w.drop_relic(&"big", Vector2(0, 3))
+	a.pos = relic.pos + Vector2(1.0, 0)
+	b.pos = relic.pos + Vector2(-1.0, 0)
+	relic.open_for(a)
+	relic.open_for(b)
+	var n := roundi(a.stats.value(&"relic_choices"))
+	var oa: Array = relic.offers.get(a.peer_id, [])
+	var ob: Array = relic.offers.get(b.peer_id, [])
+	if oa.size() != n or ob.size() != n or a.relic_id != relic.id:
+		return "每人應有 %d 個選項並打開：%s / %s、打開 %d" % [n, oa, ob, a.relic_id]
+	for o: Array in [oa, ob]:
+		for id: StringName in o:
+			if o.count(id) != 1 or ItemDefs.ITEMS[id].get("bonds", []).is_empty():
+				return "選項不該重複、要是掉落池裡的道具：%s" % [o]
+	# 關掉再開：同一組；重骰：骰子 −1、換一組；沒有骰子不能骰
+	a.relic_id = 0
+	relic.open_for(a)
+	if relic.offers[a.peer_id] != oa:
+		return "關掉再打開應是同一組選項"
+	var dice := a.dice
+	var tries := 0
+	while relic.offers[a.peer_id] == oa and tries < 5 and a.dice > 0:
+		relic.reroll(a)
+		tries += 1
+	if a.dice != dice - tries or relic.offers[a.peer_id] == oa:
+		return "重骰應用掉骰子並換一組：骰子 %d → %d（骰了 %d 次）" % [dice, a.dice, tries]
+	a.dice = 0
+	var before: Array = relic.offers[a.peer_id].duplicate()
+	if relic.reroll(a) or relic.offers[a.peer_id] != before:
+		return "沒有骰子不能重骰"
+	# a 選第 0 個：拿到、只能選一次、遺物還在（b 還沒選）
+	var want: StringName = relic.offers[a.peer_id][0]
+	if not relic.pick(a, 0) or relic.pick(a, 1) or relic.is_removed or a.relic_id != 0:
+		return "a 選了應只能選一次、遺物留給 b"
+	if not _held_items(a).any(func(e: Dictionary) -> bool: return e.id == want):
+		return "a 應拿到 %s" % want
+	if w.nearest_interactable(a, w.relics) != null:
+		return "選過的人按 F 不該再打開"
+	# b 武器格子與背包都塞滿：選的道具掉在腳邊；全員選過遺物消失
+	for where: int in [Loadout.MAIN, Loadout.OFF, Loadout.BAG]:
+		while b.loadout.add_item(b, &"loaded_dice", {}, 0, where) != &"":
+			pass
+	var drops := w.pickups.size()
+	relic.pick(b, 0)
+	if w.pickups.size() != drops + 1 or not relic.is_removed:
+		return "b 放不下應掉在腳邊、全員選過遺物消失：地上多 %d、移除 %s" % [w.pickups.size() - drops, relic.is_removed]
+	# 走遠就關掉
+	var r2 := w.drop_relic(&"small", Vector2(0, -6))
+	a.pos = r2.pos + Vector2(1.0, 0)
+	r2.open_for(a)
+	a.pos = r2.pos + Vector2(LootDefs.INTERACT_RANGE + 3.0, 0)
+	Relic.update_player(a)
+	if a.relic_id != 0:
+		return "走遠後應關掉遺物"
 	return ""

@@ -26,6 +26,7 @@ var enabled := true             # 關掉時（大廳、輸入框打字中）送�
 var mouse_captured := false     # 背包開著（D3）：滑鼠只給背包用，不攻擊、不格擋、瞄準點不動；WASD 照常
 var spectate := 0               # 陣亡後觀戰的隊友 peer id（main.gd 設定），跟著每筆輸入送給房主（InputCmd.spectate）
 var vote_pending := false       # 前往下一層的投票等著自己回答（main.gd 每步設定）：Enter 同意、Esc 反對（這時 Esc 不開選單）
+var relic_panel: RelicPanel     # 遺物的 N 選 1 開著時：數字鍵選、R 重骰、Esc 先不選（不給技能、重新開始、暫停）
 var _inv_ops: Array = []        # 背包介面送出的操作，下一筆輸入帶走
 
 var _latched := 0               # 兩次模擬步之間按過的按鈕，步驟執行後才清除
@@ -56,6 +57,9 @@ func _input(event: InputEvent) -> void:
 		_latched |= InputCmd.BTN_VOTE_YES if event.is_action_pressed(&"vote_yes") else InputCmd.BTN_VOTE_NO
 		get_viewport().set_input_as_handled()   # main.gd 的 Esc 開選單收不到
 		return
+	if relic_panel != null and relic_panel.visible and _relic_key(event):
+		get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed(&"attack"):
 		if not mouse_captured and not _mouse_over_button():
 			_latched |= InputCmd.BTN_ATTACK
@@ -72,6 +76,20 @@ func _input(event: InputEvent) -> void:
 		for i in InputCmd.SLOT_COUNT:
 			if event.is_action_pressed(StringName("slot_%d" % (i + 1))):
 				_latched |= InputCmd.slot_bit(i)
+
+
+func _relic_key(event: InputEvent) -> bool:
+	for i in relic_panel.choice_count:
+		if event.is_action_pressed(StringName("slot_%d" % (i + 1))):
+			relic_panel.pick(i)
+			return true
+	if event.is_action_pressed(&"restart"):
+		relic_panel.reroll()
+		return true
+	if event.is_action_pressed(&"pause"):
+		relic_panel.close()
+		return true
+	return false
 
 
 # 滑鼠在遊戲中的按鈕上（武器測試場的按鈕列）：點按鈕不算攻擊（左鍵在介面之前就收到）

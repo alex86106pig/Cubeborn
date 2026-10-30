@@ -2107,3 +2107,47 @@ static func check_inventory_panel() -> String:
 	hud.queue_free()
 	cam.queue_free()
 	return err
+
+
+# 遺物的 N 選 1（Build 改版第 6 步）：打開遺物就顯示卡片（張數 = 選項數），塞得進介面最大檔的畫面；點卡片送 OP_RELIC_PICK、Esc 送 OP_RELIC_CLOSE
+static func check_relic_panel() -> String:
+	var w := _new_world(5)
+	var cam := _test_camera()
+	var hud: Variant = load("res://ui/hud.tscn").instantiate()
+	hud.setup(w, cam)
+	_scene_root().add_child(hud)
+	var p := _player(w)
+	var relic := w.drop_relic(&"big", p.pos + Vector2(1.0, 0))
+	relic.open_for(p)
+	# 說明最長的 3 個道具，最壞情況的卡片高度
+	var ids := ItemDefs.item_ids().filter(func(id: StringName) -> bool: return not ItemDefs.ITEMS[id].get("bonds", []).is_empty())
+	ids.sort_custom(func(x: StringName, y: StringName) -> bool: return String(ItemDefs.ITEMS[x].desc).length() > String(ItemDefs.ITEMS[y].desc).length())
+	relic.offers[p.peer_id] = ids.slice(0, 3)
+	var panel: RelicPanel = hud.relic_panel
+	panel.refresh(w, p)
+	var size: Vector2 = await _settled_min_size(panel)
+	var room := _menu_room()
+	_note("遺物 3 選 1 %.0f×%.0f（介面最大檔時可用 %.0f×%.0f）" % [size.x, size.y, room.x, room.y])
+	var err := ""
+	if not panel.visible or panel.choice_count != 3:
+		err = "打開遺物應顯示 3 張卡片：顯示 %s、%d 張" % [panel.visible, panel.choice_count]
+	elif size.x > room.x or size.y + 140 > room.y * 0.6:
+		err = "遺物 3 選 1 %.0f×%.0f 太大（寬不超過 %.0f、高加上離底部 140 不超過畫面 60%%）" % [size.x, size.y, room.x]
+	if err == "":
+		var ops: Array = []
+		panel.op_requested.connect(func(op: Array) -> void: ops.append(op))
+		panel.close()
+		panel.refresh(w, p)
+		if ops != [[InputCmd.OP_RELIC_CLOSE]] or panel.visible:
+			err = "Esc 應送出 OP_RELIC_CLOSE 並先藏起來：%s、顯示 %s" % [ops, panel.visible]
+		p.relic_id = 0
+		panel.refresh(w, p)
+		relic.open_for(p)
+		panel.refresh(w, p)
+		ops.clear()
+		(panel._cards.get_child(1) as Button).pressed.emit()
+		if ops != [[InputCmd.OP_RELIC_PICK, relic.id, 1]]:
+			err = "點第 2 張卡片應送出 OP_RELIC_PICK 第 1 個：%s" % [ops]
+	hud.queue_free()
+	cam.queue_free()
+	return err

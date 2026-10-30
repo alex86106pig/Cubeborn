@@ -61,6 +61,8 @@ var riposte_timer := 0.0               # 防禦羈絆第 2 階：招架成功後
 var wisps: Array[OrbitWisp] = []       # 鬼火羈絆：繞著自己轉的鬼火（權威端，BondEffects.sync_wisps）
 var wisp_plan: Array[StringName] = []  # 該有的鬼火（每顆的屬性；BondEffects.refresh 依道具與階數算）
 var wisp_frenzy_timer := 0.0           # 噬魂燈：鬼火擊殺後這段時間鬼火傷害變高
+var dice: int = LootDefs.RELIC.start_dice   # 遺物的骰子（Build 改版第 6 步）：重擲 N 選 1 用掉 1 顆，整局通用
+var relic_id := 0                      # 打開著的遺物（權威端設定，快照送給自己；0 = 沒打開）
 var parry_timer := 0.0                 # 盾反動作剩餘秒數（畫面用）
 var is_interact_held := false          # F 按住（救援隊友）；剛按下那一步撿道具 / 開寶箱（D3）
 var view_tick := 0                     # 最近一筆輸入的畫面時間（InputCmd.view_tick；房主延遲補償用，v0.38.0）
@@ -557,13 +559,17 @@ func sync_weapon_slots(arr: Array) -> void:
 	loadout.sync_weapon_slots(self, arr)
 
 
-# 剛按下 F：附近有倒地隊友時讓給救援（動作層 Ready 處理）；否則先撿最近的道具，沒有道具才開最近的寶箱
+# 剛按下 F：附近有倒地隊友時讓給救援（動作層 Ready 處理）；否則先撿最近的道具，再來是遺物，最後才開最近的寶箱
 func _try_interact() -> void:
 	if find_revive_target() != null:
 		return
 	var pickup := world.nearest_interactable(self, world.pickups)
 	if pickup != null:
 		loadout.take_pickup(self, pickup as ItemPickup)
+		return
+	var relic := world.nearest_interactable(self, world.relics)
+	if relic != null:
+		(relic as Relic).open_for(self)
 		return
 	var chest := world.nearest_interactable(self, world.chests)
 	if chest != null:
@@ -670,6 +676,8 @@ func _tick_timers(dt: float) -> void:
 	_tick_roll_charges()
 	ItemEffects.update_player(self, dt)   # 低血、擊殺後的道具條件加成（v0.33.0）
 	BondEffects.update_player(self, dt)   # 招架後的計時、鬼火
+	if world.is_authority:
+		Relic.update_player(self)   # 打開的遺物走遠了就關掉
 	for id: StringName in buffs.keys():
 		buffs[id].remaining -= dt
 		if buffs[id].remaining <= 0.0:

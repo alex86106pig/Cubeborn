@@ -69,6 +69,8 @@ func _ready() -> void:
 	hud.weapon_test_reset.connect(_reset_training_dummies)
 	hud.main_menu.back_pressed.connect(_on_title_back)
 	hud.inventory_panel.op_requested.connect(input_collector.queue_inventory_op)
+	hud.relic_panel.op_requested.connect(input_collector.queue_inventory_op)
+	input_collector.relic_panel = hud.relic_panel
 	hud.inventory_full.connect(_open_inventory_for)
 	if args.run_seconds > 0.0:
 		hud.hints.save_path = ""   # 自動驗證（截圖、量效能）不記「看過的提示」，免得使用者自己玩時提示不跳

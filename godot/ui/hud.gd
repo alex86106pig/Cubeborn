@@ -47,6 +47,7 @@ var _souls := UiKit.label("", 18, UiKit.SOUL)
 var _coins := UiKit.label("", 18, UiKit.GOLD)   # 本局拿到的金幣（局外貨幣）
 var _world_labels := WorldLabels.new()
 var inventory_panel := InventoryPanel.new()   # Tab 開關（main.gd 接到輸入）
+var relic_panel := RelicPanel.new()           # 遺物的 N 選 1（Build 改版第 6 步；main.gd 接到輸入）
 var _wave := UiKit.label("", 22)
 var _kills := UiKit.label("", 16)
 var _time := UiKit.label("", 16)
@@ -252,11 +253,17 @@ func _init() -> void:
 	_skill_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	root.add_child(_skill_bar)
 
+	# 下方中央、技能欄上面：遺物的 N 選 1（打開時蓋在新手提示上面）
+	relic_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 140)
+	relic_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	relic_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+
 	# 下方中央、技能欄上面：新手提示（v0.31.0）
 	hints.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 150)
 	hints.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	hints.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	root.add_child(hints)
+	root.add_child(relic_panel)
 
 	# 左側中央：屬性面板（Tab 開關）
 	_stats_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_MINSIZE, 16)
@@ -407,6 +414,7 @@ func _process(delta: float) -> void:
 	if player == null:
 		return
 	_skill_bar.refresh(world, player)
+	relic_panel.refresh(world, player)
 	if not _pause.visible and not _game_over.visible and not main_menu.visible and not class_select.visible and not settings_panel.visible:   # 暫停、結算、主選單、選角、設定頁時提示不倒數、不記效能
 		hints.update(delta, world, player, inventory_panel.visible)
 		run_log.add_frame(delta, world.stats.time)
@@ -425,7 +433,7 @@ func _process(delta: float) -> void:
 	if not off.is_empty():
 		_weapon.text += "　副手：%s" % WeaponDropDefs.display_name(off)
 	_weapon.add_theme_color_override(&"font_color", ItemDefs.RARITIES[inst.rarity].color if not inst.is_empty() else Color.WHITE)
-	_souls.text = "靈魂 %d" % world.souls
+	_souls.text = "靈魂 %d · 骰子 %d" % [world.souls, player.dice]
 	_coins.text = "金幣 %d" % world.run_coins
 	var s := world.stats
 	if DigEvent.enabled(world):   # 挖墳地圖（D6）：層數與難度
@@ -546,10 +554,8 @@ func _on_event(name: String, p: Dictionary) -> void:
 			if _is_local(p.player_id):
 				_floaters.spawn(local_player(), "靈魂不足（需要 %d）" % p.price, &"dmg")
 		"chest:opened":
-			var item_name: String = ItemDefs.ITEMS[StringName(p.item)].name
-			var rarity: Dictionary = ItemDefs.RARITIES[StringName(p.rarity)]
 			if _is_local(p.player_id):
-				_show_banner("開出：%s（%s）" % [item_name, rarity.name], false, rarity.color)
+				_show_banner("開出遺物：靠近按 F 選一個道具（每個人都能選）", false, UiKit.GOLD)
 		"skill:onCooldown":
 			if _is_local(p.get("player_id", 0)):
 				_skill_bar.flash(p.key, true)

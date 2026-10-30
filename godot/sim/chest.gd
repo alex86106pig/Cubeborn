@@ -1,4 +1,5 @@
-# 祭壇 / 石棺（D3，程式裡沿用 Chest / chest；v0.45 起改名）：地圖上的固定位置，靠近按 F、共用的靈魂夠就開；開出一個道具掉在地上（ItemPickup），稀有度依 LootDefs.CHESTS
+# 祭壇 / 石棺（D3，程式裡沿用 Chest / chest；v0.45 起改名）：地圖上的固定位置，靠近按 F、共用的靈魂夠就開；
+# 開出一個遺物（Relic，Build 改版第 6 步）：每個玩家各自 N 選 1，稀有度依 LootDefs.CHESTS
 # 不擋路、不能被打；開過的寶箱留在原地（畫面顯示打開的箱蓋）
 class_name Chest
 extends Entity
@@ -37,12 +38,9 @@ func try_open(by: Player) -> bool:
 		return false
 	world.souls -= cost
 	opened = true
-	var rarity := LootDefs.roll_rarity(tier, world.rng, by.stats.value(&"treasure"))
-	var pool := LootDefs.drop_pool(rarity)
-	var item_id: StringName = pool[world.rng.randi_range(0, pool.size() - 1)]
 	var to_player := by.pos - pos
 	var dir := to_player.normalized() if to_player.length() > 1e-3 else Vector2(0.0, 1.0)
-	world.drop_item(item_id, pos + dir * LootDefs.DROP_DISTANCE)
-	world.emit_event("chest:opened", {"chest_id": id, "player_id": by.id, "item": String(item_id), "rarity": String(rarity), "pos": pos})
+	var relic := world.drop_relic(tier, pos + dir * LootDefs.DROP_DISTANCE)
+	world.emit_event("chest:opened", {"chest_id": id, "player_id": by.id, "relic_id": relic.id, "pos": pos})
 	world.emit_event("sfx:cue", {"cue": "potion", "pos": pos})
 	return true

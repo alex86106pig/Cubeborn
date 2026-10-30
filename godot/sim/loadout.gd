@@ -375,6 +375,9 @@ func apply_ops(p: Player) -> void:
 			if inv != null and inv.fits(ip.item_id, spot.cell, spot.rot):
 				take_pickup(p, ip, spot, where)
 			continue
+		if int(op[0]) in [InputCmd.OP_RELIC_PICK, InputCmd.OP_RELIC_REROLL, InputCmd.OP_RELIC_CLOSE]:
+			_relic_op(p, op)
+			continue
 		var uid := StringName(op[1])
 		match int(op[0]):
 			InputCmd.OP_MOVE:
@@ -395,6 +398,20 @@ func apply_ops(p: Player) -> void:
 			InputCmd.OP_MERGE:
 				merge(p, uid, StringName(op[2]))
 	_ops.clear()
+
+
+# 遺物的操作（Build 改版第 6 步）：只對自己打開著的那個遺物有效
+func _relic_op(p: Player, op: Array) -> void:
+	var relic := p.world.entities.get(p.relic_id) as Relic
+	if int(op[0]) == InputCmd.OP_RELIC_CLOSE or relic == null:
+		p.relic_id = 0
+		return
+	if op.size() < 2 or int(op[1]) != relic.id:
+		return
+	if int(op[0]) == InputCmd.OP_RELIC_PICK and op.size() > 2:
+		relic.pick(p, int(op[2]))
+	elif int(op[0]) == InputCmd.OP_RELIC_REROLL:
+		relic.reroll(p)
 
 
 # 道具搬到 where（背包或某隻手的武器格子）的 cell：同一個容器就是搬位置，不同容器放得下才搬；放不下就不動

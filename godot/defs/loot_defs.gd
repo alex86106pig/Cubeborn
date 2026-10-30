@@ -4,11 +4,11 @@
 # 金幣改成帶出去的局外貨幣。舊註解的「金」「錢」就是現在的靈魂
 class_name LootDefs
 
-# 殺一隻給多少靈魂（召喚出來的不給，Enemy.no_souls）；多人時乘 player_mul
+# 殺一隻給多少靈魂（召喚出來的不給，Enemy.no_souls）；多人時不變（2026-10-30 許家慶：一個遺物大家都能拿，寶箱與靈魂都不跟人數變）
 # v0.44.0 使用者試玩：錢太多（地圖 A 開場平均 155 隻怪 ×5 ≈ 775 金，寶箱總價才 160）→ 5 → 2、Boss 50 → 30，清完也開不完全部寶箱
 const KILL_SOULS := {&"grunt": 2, &"archer": 2, &"zombie": 2, &"bloater": 2, &"hound": 2, &"boss": 30, &"gravekeeper": 30}
 
-# 寶箱（v0.44.0）：開場隨機放在地圖上（有 "chest_count" 的地圖），數量乘 player_mul（四捨五入）
+# 寶箱（v0.44.0）：開場隨機放在地圖上（有 "chest_count" 的地圖），數量不跟人數變
 # 開場怪群 109~207 隻（40 個種子量測，平均 155），清完 + Boss ≈ 248~444 金（平均 340）< 寶箱總價 12×25 + 4×60 = 540
 const CHEST_PLACEMENT := {
 	"min_spawn_distance": 15.0,   # 離玩家出生點至少這麼遠
@@ -17,7 +17,6 @@ const CHEST_PLACEMENT := {
 	"edge_margin": 4.0,
 	"attempts": 400,
 }
-const PER_EXTRA_PLAYER := 0.5   # 多人每多 1 人，寶箱數量與殺怪金錢 +50%（使用者 2026-10-25 選定；2 人 ×1.5、4 人 ×2.5）
 
 # 寶箱：價格、開出的稀有度權重（加總 100）、碰撞半徑（只給互動距離與畫面用，不擋路）
 const CHESTS := {
@@ -36,12 +35,11 @@ const RUN_COINS := {
 	"collect_range": 1.2,   # 身體邊緣到金幣中心多近就撿起
 }
 
+# 遺物（Build 改版第 6 步）：開局每人幾顆骰子（重擲 N 選 1 用掉 1 顆，2026-10-30 許家慶參考 Sephiria；之後的道具與局外成長會加）
+const RELIC := {"start_dice": 3, "radius": 0.55}
+
 const INTERACT_RANGE := 1.6     # 身體邊緣到寶箱 / 道具邊緣多近才按得到 F
 const DROP_DISTANCE := 1.4      # 開箱時道具掉在寶箱往玩家方向這麼遠；從背包丟出時掉在面前這麼遠
-
-
-static func player_mul(players: int) -> float:
-	return 1.0 + PER_EXTRA_PLAYER * maxi(0, players - 1)
 
 
 # 依權重抽一個稀有度（用 world.rng 才有決定性）；treasure = 開箱者的尋寶（F1）
