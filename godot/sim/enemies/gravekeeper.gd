@@ -95,6 +95,7 @@ func _become_wolf() -> void:
 	var tr: Dictionary = def.transform
 	form = 1
 	set_stat_source(&"form", [[&"move_speed", Stats.MUL, def.wolf.move_speed / def.move_speed]])
+	set_resists(def.wolf.resists)
 	for p in world.player_list:
 		if p.is_targetable() and p.pos.distance_to(pos) <= tr.roar_radius + p.radius:
 			Combat.apply_damage(world, self, p, {"damage": tr.roar_damage * damage_mul, "knockback": tr.roar_knockback, "blockable": false, "color": def.hit_color})
@@ -289,14 +290,14 @@ class Lantern:
 					if t is Player:
 						t.invuln_timer = 0.0
 				Hitbox.strike(e.world, e, e.pos, e.facing, {"shape": &"sector", "range": f.range, "arc": f.arc}, {
-					"damage": f.damage * e.damage_mul, "knockback": 0.0, "blockable": true, "color": f.color,
+					"damage": f.damage * e.damage_mul, "knockback": 0.0, "blockable": true, "color": f.color, "damage_type": &"fire",
 				})
 			if d.phase_time >= f.duration:
 				var dir := MathUtil.dir_from_angle(e.facing)
 				for dist: float in f.embers:
 					GroundZones.add(e.world, {
 						"pos": e.world.nav.nearest_walkable(e.pos + dir * dist), "radius": f.ember_radius, "duration": f.ember_time,
-						"owner_id": e.id, "color": f.color, "damage_per_sec": f.ember_dps * e.damage_mul, "damage_type": &"phys", "visual": &"fire",
+						"owner_id": e.id, "color": f.color, "damage_per_sec": f.ember_dps * e.damage_mul, "damage_type": &"fire", "visual": &"fire",
 					})
 				d.phase = &"recovery"
 				d.phase_time = 0.0

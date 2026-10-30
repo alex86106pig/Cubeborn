@@ -106,7 +106,7 @@ class ChainLightning extends Action:
 				break
 			hit_ids[best.id] = true
 			points.append(best.pos)
-			Combat.apply_damage(world, p, best, ItemEffects.proc_hit(damage * cfg.damage_ratio, best, cfg.color))
+			Combat.apply_damage(world, p, best, ItemEffects.proc_hit(damage * cfg.damage_ratio, best, cfg.color, 0.0, &"lightning"))
 			from = best
 		if points.size() > 1:
 			world.emit_event("fx:lightning", {"pos": first.pos, "height": first.ground_height, "points": points, "color": cfg.color})
@@ -143,7 +143,7 @@ class Explode extends Action:
 		world.emit_event("sfx:cue", {"cue": "explosion", "pos": at})
 		world.emit_event("fx:explosion", {"pos": at, "height": target.ground_height, "radius": radius, "color": color})
 		for e in Combat.query_circle(at, radius, Combat.hostiles_of(world, p.team, p.id)):
-			var hit := ItemEffects.proc_hit(damage * ratio, e, color, cfg.knockback)
+			var hit := ItemEffects.proc_hit(damage * ratio, e, color, cfg.knockback, &"fire")
 			hit["origin"] = at
 			hit["is_heavy"] = true
 			Combat.apply_damage(world, p, e, hit)
@@ -229,7 +229,7 @@ class LightningStrike extends Action:
 		for e in near.slice(0, cfg.targets):
 			world.emit_event("fx:explosion", {"pos": e.pos, "height": e.ground_height, "radius": cfg.radius, "color": cfg.color})
 			var hit := ItemEffects.proc_hit(p.pct_damage(cfg.damage_pct), e, cfg.color)
-			hit["damage_type"] = &"magic"
+			hit["damage_type"] = &"lightning"
 			hit["band"] = Vector2(e.height - 1.0, e.height + e.body_height + 1.0)   # 從天上打下來：不管高低差
 			Combat.apply_damage(world, p, e, hit)
 
@@ -263,7 +263,7 @@ class Wisp extends Action:
 			var a := world.rng.randf() * TAU
 			var params := {
 				"pos": target.pos, "direction": MathUtil.dir_from_angle(a), "speed": cfg.speed, "range": cfg.speed * cfg.life,
-				"radius": cfg.radius, "damage": damage * cfg.damage_ratio, "damage_type": &"magic", "color": cfg.color,
+				"radius": cfg.radius, "damage": damage * cfg.damage_ratio, "damage_type": &"arcane", "color": cfg.color,
 				"no_stagger": true, "blockable": false, "proc": true, "homing": cfg.turn_rate,
 			}
 			WeaponBehaviors.spawn_projectile(p, params)
@@ -607,6 +607,6 @@ static func on_kill(world: World, p: Player, target: Entity, damage: float) -> v
 	_run_procs(world, p, &"kill", target, damage)
 
 
-static func proc_hit(damage: float, target: Entity, color: Color, knockback := 0.0) -> Dictionary:
+static func proc_hit(damage: float, target: Entity, color: Color, knockback := 0.0, damage_type := &"phys") -> Dictionary:
 	return {"damage": damage, "knockback": knockback, "proc": true, "no_stagger": true, "blockable": false,
-		"band": Combat.body_band(target), "color": color}
+		"band": Combat.body_band(target), "color": color, "damage_type": damage_type}

@@ -517,7 +517,8 @@ func _on_event(name: String, p: Dictionary) -> void:
 				return
 			var is_player := target is Player
 			var big: bool = p.get("is_heavy", false) or p.get("is_crit", false)
-			_floaters.spawn(target, UiKit.dmg_text(p.amount),&"player" if is_player else (&"crit" if big else &"dmg"))
+			var type_color: Color = StatDefs.DAMAGE_TYPES[StringName(p.damage_type)].color if p.has("damage_type") and not is_player else Color(0, 0, 0, 0)
+			_floaters.spawn(target, UiKit.dmg_text(p.amount), &"player" if is_player else (&"crit" if big else &"dmg"), type_color)
 			if target == local_player():
 				_flash_vignette()
 		"entity:dodged":

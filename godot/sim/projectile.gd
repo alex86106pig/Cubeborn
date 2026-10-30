@@ -17,7 +17,7 @@ var pierce := false            # 穿透（F5 長弓蓄力箭）：打中不消�
 var proc := false              # 道具效果射出的（G4 飛刀、斬波）：不爆擊、不再觸發道具
 var homing := 0.0              # 追蹤（G6 鬼火）：每秒最多轉幾弧度、轉向 PROCS.wisp.seek_range 內最近的怪；0 = 直線
 var _pierced := {}
-var damage_type := &"phys"     # 物理 / 魔法（F1）：決定看目標的護甲還是魔抗
+var damage_type := &"phys"     # StatDefs.DAMAGE_TYPES：決定看目標的護甲與哪一種抗性
 var no_stagger := false         # 打中不會讓怪物進入受擊硬直（v0.27.0：遠程武器的普攻）
 var explosion: Dictionary = {}  # { radius, damage, knockback, hit_stop, shake }；空 = 一般投射物
 var traveled := 0.0

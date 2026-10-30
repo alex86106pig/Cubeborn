@@ -109,7 +109,7 @@ const PROCS := {
 	&"reflect": {"color": Color("d0d0d0")},   # 荊棘鎖甲：反彈實際扣的血 × 道具的 ratio
 	&"hurt_explode": {"radius": 3.0, "icd": 0.5, "color": Color("ff5a3a")},   # 王墓之心：以自己為中心、扣護甲前的受傷量 × damage_ratio
 	&"ignite": {"pct_per_sec": 0.15, "duration": 3.0, "spread_interval": 1.0, "spread_range": 2.0},   # 永恆之焰：命中那一下 15% / 秒 × 3 秒（同火把）；每 1 秒傳給 2 單位內一隻
-	# 飛刀 / 斬波 / 落雷的傷害是手上武器基礎傷害的百分比（Player.pct_damage，含攻擊力與物理 / 魔法傷害）
+	# 飛刀 / 斬波 / 落雷的傷害是手上武器基礎傷害的百分比（Player.pct_damage，含攻擊力與物理 / 屬性傷害）
 	&"throw_knife": {"icd": 0.3, "damage_pct": 0.6, "speed": 18.0, "range": 10.0, "radius": 0.2, "color": Color("c8d0dc"), "visual": &"arrow", "sfx": "arrowShot"},
 	&"slash_wave": {"icd": 0.3, "spread": 0.2618, "speed": 16.0, "range": 8.0, "radius": 0.45, "color": Color("b36bff"), "visual": &"orb", "sfx": "arcaneCast"},   # 穿透；spread 0.2618 = 15°
 	&"lightning_strike": {"range": 8.0, "targets": 3, "damage_pct": 1.5, "radius": 0.8, "color": Color("9fd8ff")},
@@ -133,7 +133,7 @@ const ITEMS := {
 	&"daggers": {"kind": &"weapon", "name": "雙匕首", "rarity": &"white", "shape": &"i2", "weapon": &"daggers",
 		"desc": "左鍵五連刺（第 5 下必爆擊、擊退）、右鍵影步到怪背後背刺", "effects": []},
 	&"scepter": {"kind": &"weapon", "name": "驅魔權杖", "rarity": &"white", "shape": &"l3", "weapon": &"scepter",
-		"desc": "左鍵聖光敲擊（魔法、擊退）、右鍵聖光圈（隊友回血、亡靈受傷）", "effects": []},
+		"desc": "左鍵聖光敲擊（神聖、擊退）、右鍵聖光圈（隊友回血、亡靈受傷）", "effects": []},
 	&"torch": {"kind": &"weapon", "name": "火把", "rarity": &"white", "shape": &"i3", "weapon": &"torch",
 		"desc": "左鍵揮擊並點燃；右鍵舉起火把（準備姿態：左鍵插火把、右鍵噴火），火光全隊看得到", "effects": []},
 	&"shovel": {"kind": &"weapon", "name": "鐵鏟", "rarity": &"white", "shape": &"l4", "weapon": &"shovel",

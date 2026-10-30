@@ -27,9 +27,10 @@ func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
-func spawn(target: Entity, text: String, style: StringName) -> void:
+# color：蓋過樣式的顏色（屬性傷害的數字），alpha 0 = 照樣式
+func spawn(target: Entity, text: String, style: StringName, color := Color(0, 0, 0, 0)) -> void:
 	var s: Array = STYLES[style]
-	var node := UiKit.label(text, s[0], s[1])
+	var node := UiKit.label(text, s[0], s[1] if color.a == 0.0 else color)
 	add_child(node)
 	var height: float = HEIGHTS.get(target.kind, 2.0)
 	var at := Vector3(target.pos.x + (randf() - 0.5) * JITTER, target.height + height + HEAD_OFFSET, target.pos.y)

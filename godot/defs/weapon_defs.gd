@@ -1,5 +1,5 @@
 # 武器資料定義（照搬網頁版 legacy/src/weapons/weaponDefs.js，欄位改 snake_case）；邏輯在 sim/weapon_behaviors.gd
-# 每把武器一個 base_damage 與 damage_type（&"phys" / &"magic"），招式用 damage_pct（基礎傷害的倍率，F1）；實際傷害見 Player.move_damage
+# 每把武器一個 base_damage 與 damage_type（StatDefs.DAMAGE_TYPES），招式用 damage_pct（基礎傷害的倍率，F1）；實際傷害見 Player.move_damage
 class_name WeaponDefs
 
 const WEAPONS := {
@@ -77,14 +77,14 @@ const WEAPONS := {
 		"name": "法杖",
 		"type": &"ranged",
 		"base_damage": 8.0,
-		"damage_type": &"magic",
+		"damage_type": &"arcane",
 		"model": &"staff",
 		"idle": {"arm_r": -0.5, "arm_l": 0.0, "tilt": 0.0},
 		"attack": {
 			"behavior": &"fireBolt",
 			"sfx": "fireBolt",
 			"name": "魔彈",
-			"desc": "射出魔法彈，射程 14、不擊退。",
+			"desc": "射出秘術魔彈，射程 14、不擊退。",
 			"icon": "✦",
 			"damage_pct": 1.0,
 			"projectile_speed": 20.0,
@@ -320,14 +320,14 @@ const WEAPONS := {
 	},
 
 
-	# 驅魔權杖（F7，驅魔神官的起始武器）：魔法近戰敲擊（可擊退）；右鍵腳下聖光圈 4 秒，隊友回血、亡靈（所有怪物）受傷
+	# 驅魔權杖（F7，驅魔神官的起始武器）：神聖近戰敲擊（可擊退）；右鍵腳下聖光圈 4 秒，隊友回血、亡靈（所有怪物）受傷
 	&"scepter": {
 		"id": &"scepter",
 		"name": "驅魔權杖",
 		"type": &"melee",
 		"model": &"scepter",
 		"base_damage": 10.0,
-		"damage_type": &"magic",
+		"damage_type": &"holy",
 		"idle": {"arm_r": -0.4, "arm_l": -0.1, "tilt": 0.0},
 		"attack": {
 			"behavior": &"meleeSwing",
@@ -365,7 +365,7 @@ const WEAPONS := {
 			"behavior": &"holyCircle",
 			"sfx": "arcaneCast",
 			"name": "聖光圈",
-			"desc": "腳下放 4 秒的聖光圈（半徑 4）：隊友每秒回 4、亡靈每秒受到 60% 魔法傷害；冷卻 12 秒。",
+			"desc": "腳下放 4 秒的聖光圈（半徑 4）：隊友每秒回 4、亡靈每秒受到 60% 神聖傷害；冷卻 12 秒。",
 			"icon": "holy_circle",
 			"cooldown": 12.0,
 			"damage_pct": 0.6,         # 亡靈每秒受到 60%
@@ -390,7 +390,7 @@ const WEAPONS := {
 		"type": &"melee",
 		"model": &"torch",
 		"base_damage": 6.0,
-		"damage_type": &"magic",
+		"damage_type": &"fire",
 		"idle": {"arm_r": -0.5, "arm_l": -0.1, "tilt": 0.0},
 		"light_radius": 6.0,           # 舉著 / 插著的火把照亮的半徑
 		"slot_skill": &"plantTorch",   # 拿在手上時技能欄第一個空格放插火把（SkillDefs）

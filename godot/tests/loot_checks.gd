@@ -698,9 +698,13 @@ static func _hp_loss(e: Enemy, before: float) -> int:
 	return roundi(before - e.hp)
 
 
-# 怪受到 raw 傷害時實際扣多少（套護甲與受傷倍率，同 Entity.take_damage）
-static func _dealt(e: Enemy, raw: float) -> int:
-	return roundi(raw * StatDefs.armor_damage_factor(e.stats.value(&"armor")) * e.damage_taken_mul)
+# 怪受到 raw 傷害時實際扣多少（套護甲、抗性與受傷倍率，同 Entity.take_damage）
+static func _dealt(e: Enemy, raw: float, damage_type := &"phys") -> int:
+	return roundi(_dealt_exact(e, raw, damage_type))
+
+
+static func _dealt_exact(e: Enemy, raw: float, damage_type := &"phys") -> float:
+	return raw * StatDefs.damage_factor(e.stats, damage_type) * e.damage_taken_mul
 
 
 # 道具效果的類別（v0.42.1 重構）：ItemDefs 標成「已接上」的條件 / 觸發，和 ItemEffects 登錄的類別一一對應
@@ -829,7 +833,7 @@ static func check_item_procs() -> String:
 	if not a.anim.is_empty() and a.poison_timer <= 0.0:
 		return "命中後應中毒"
 	_run(w, idle, roundi(po.duration / DT) + 20)
-	var want_poison := _dealt(a, 10.0) + ticks * _dealt(a, 10.0 * po.total_ratio / ticks)
+	var want_poison := roundi(_dealt_exact(a, 10.0) + ticks * _dealt_exact(a, 10.0 * po.total_ratio / ticks, &"poison"))
 	if _hp_loss(a, before) != want_poison:
 		return "中毒 %.1f 秒後總共應扣 %d，實際 %d" % [po.duration, want_poison, _hp_loss(a, before)]
 	p.clear_items()

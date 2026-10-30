@@ -66,6 +66,7 @@ func _init(p_world: World, p_type: StringName, at: Vector2, mul: Dictionary, sta
 	var variance: float = d.speed_variance
 	stats.set_base(&"move_speed", d.move_speed * p_world.rng.randf_range(1.0 - variance, 1.0 + variance))
 	stats.set_base(&"knockback_taken", d.get("knockback_mul", 1.0))
+	set_resists(d.get("resists", {}))
 	stats.set_source(&"wave", [
 		[&"max_hp", Stats.MUL, mul.hp], [&"damage", Stats.MUL, mul.damage], [&"move_speed", Stats.MUL, mul.speed],
 	])
@@ -284,7 +285,7 @@ func _update_burn(dt: float) -> void:
 	var src: Entity = world.entities.get(burn_source_id)
 	if src != null:
 		var hit := ItemEffects.proc_hit(burn_tick_damage, self, BURN_COLOR)
-		hit["damage_type"] = &"magic"
+		hit["damage_type"] = &"fire"
 		Combat.apply_damage(world, src, self, hit)
 	if burn_timer <= 0.0:
 		burn_tick_damage = 0.0
@@ -352,9 +353,15 @@ func _update_poison(dt: float) -> void:
 	_poison_tick += ItemDefs.PROCS.poison.tick
 	var src: Entity = world.entities.get(poison_source_id)
 	if src != null:
-		Combat.apply_damage(world, src, self, ItemEffects.proc_hit(poison_tick_damage, self, ItemDefs.PROCS.poison.color))
+		Combat.apply_damage(world, src, self, ItemEffects.proc_hit(poison_tick_damage, self, ItemDefs.PROCS.poison.color, 0.0, &"poison"))
 	if poison_timer <= 0.0:
 		poison_tick_damage = 0.0
+
+
+# 各屬性的抗性設成基礎值（EnemyDefs 的 resists，沒寫的 0）；換型態時整組換掉
+func set_resists(resists: Dictionary) -> void:
+	for t: StringName in StatDefs.DAMAGE_TYPES:
+		stats.set_base(StatDefs.DAMAGE_TYPES[t].resist, resists.get(t, 0.0))
 
 
 # 冷卻秒數套用 action_speed（狂暴時攻擊間隔也縮短）

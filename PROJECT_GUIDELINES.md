@@ -201,7 +201,7 @@ godot/
 
 | 事件 | payload | 發出者 |
 |---|---|---|
-| `entity:damaged` | `{ target, amount, source, knockback, isCrit }`（Godot 版：`isCrit` 拆成 `is_heavy` 重擊顯示（第三段、盾反、爆炸）與 `is_crit` 屬性擲出的爆擊，見系統說明 §1；另帶 `hit_stop` 命中定格秒數，見第 4 節；目標是玩家時再帶 `source_kind`、`origin`、`lethal` 給遊玩紀錄，v0.34.0） | Combat |
+| `entity:damaged` | `{ target, amount, source, knockback, isCrit }`（Godot 版：`isCrit` 拆成 `is_heavy` 重擊顯示（第三段、盾反、爆炸）與 `is_crit` 屬性擲出的爆擊，見系統說明 §1；另帶 `hit_stop` 命中定格秒數，見第 4 節；目標是玩家時再帶 `source_kind`、`origin`、`lethal` 給遊玩紀錄，v0.34.0；不是物理時帶 `damage_type`，傷害數字依屬性上色） | Combat |
 | `entity:healed` | `{ target, amount }` | SkillBehaviors、ItemEffects |
 | `entity:dodged` | `{ target_id, source_id }`（F1：閃避率擲中，整下沒打到；HUD 飄「閃避」） | Combat |
 | `player:blocked` | `{ player_id, perfect }`（v0.18.0：格擋擋下攻擊；perfect = 招架成功（v0.41.0 起），下一步盾反） | Player.try_block |

@@ -27,7 +27,7 @@ static func hostiles_of(world: World, team: StringName, source_id: int = 0) -> A
 #      color（命中粒子顏色，只給畫面層；預設白色）、
 #      band（高度範圍 Vector2(下緣, 上緣)；預設是攻擊者的身體往腳底下延伸 HEIGHT.reach_below，見 body_band）、
 #      max_air（選填：目標腳底離自己腳下地面超過這個高度就打不到）、no_stagger（選填：不讓目標進入受擊硬直）、
-#      damage_type（選填：&"phys" / &"magic"，預設物理；怪物的攻擊都是物理，F1）、force_crit（選填：必爆擊，F6）、
+#      damage_type（選填：StatDefs.DAMAGE_TYPES 之一，預設物理）、force_crit（選填：必爆擊，F6）、
 #      projectile（選填：投射物直接命中，G1 鐵皮斗篷、爆裂箭袋看這個）、pierce_invuln（選填：目標受傷後的無敵時間不擋這一下，連段用）
 # 這裡套用攻擊者的爆擊與擊退屬性；護甲與受傷倍率在 Entity.take_damage
 # 回傳是否實際命中（高度不重疊、被格擋也算沒命中）
@@ -129,6 +129,9 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 		"knockback": knockback, "is_heavy": hit.get("is_heavy", false), "is_crit": is_crit,
 		"hit_stop": hit.get("hit_stop", 0.0), "color": hit.get("color", Color.WHITE),
 	}
+	var damage_type: StringName = hit.get("damage_type", &"phys")
+	if damage_type != &"phys":
+		ev["damage_type"] = damage_type   # 傷害數字依屬性上色；物理不帶，省頻寬
 	if target is Player:
 		# 遊玩紀錄（ui/run_log.gd，v0.34.0）：攻擊者可能這一步就消失（射手死了、投射物撞到就移除），種類與位置直接帶在事件裡；
 		# lethal：這一下讓玩家倒下 / 死亡（倒下的事件比這個事件早發出）

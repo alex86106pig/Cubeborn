@@ -27,9 +27,9 @@ const PICKED := Color("ffd84a")     # 自己選的那格的框、自己頭上的
 const CHART := [
 	[&"max_hp", "生命", 60.0, 140.0],
 	[&"phys_damage", "物攻", 0.7, 1.3],
-	[&"magic_damage", "魔攻", 0.7, 1.3],
+	[&"elem_damage", "屬攻", 0.7, 1.3],
 	[&"armor", "護甲", 0.0, 30.0],
-	[&"magic_resist", "魔抗", 0.0, 30.0],
+	[&"resist_all", "抗性", 0.0, 0.25],
 	[&"attack_speed", "攻速", 0.7, 1.3],
 	[&"move_speed", "移速", 5.5, 7.5],
 	[&"treasure", "運氣", 0.0, 0.5],

@@ -53,7 +53,7 @@ func burst() -> void:
 	var g: Dictionary = def.gas
 	GroundZones.add(world, {
 		"pos": pos, "radius": g.radius, "duration": g.duration, "owner_id": id, "color": g.color,
-		"damage_per_sec": g.damage_per_sec * damage_mul, "damage_type": &"phys", "hits_all": true, "visual": &"gas",
+		"damage_per_sec": g.damage_per_sec * damage_mul, "damage_type": &"poison", "hits_all": true, "visual": &"gas",
 	})
 
 

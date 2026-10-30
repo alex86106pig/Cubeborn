@@ -3,10 +3,12 @@
 # v0.17.0 起和網頁版刻意不同：拿掉接觸傷害（contact_*），骷髏戰士改用 swing 揮砍；blockable 標示能否被格擋（B5）
 # behavior：行為類別（Spawner.BEHAVIORS：melee / ranged / boss）；is_boss：Boss（先出場、出生位置、不套波次倍率、Boss 血條）；
 # freeze_immune：不會被道具冰凍。流程只看這些欄位，不寫死怪物種類
+# resists：屬性 → 抗性（StatDefs.DAMAGE_TYPES；負的是弱點，−0.25 = 多受 25%），數字 Claude 暫定；遊戲裡不顯示，寫在怪物圖鑑
 class_name EnemyDefs
 
 const ENEMIES := {
 	&"grunt": {
+		"resists": {&"holy": -0.25, &"poison": 0.5},
 		"visual": &"melee",
 		"behavior": &"melee",
 		"max_hp": 36.0,
@@ -40,6 +42,7 @@ const ENEMIES := {
 	},
 
 	&"archer": {
+		"resists": {&"holy": -0.25, &"poison": 0.5},
 		"visual": &"ranged",
 		"behavior": &"ranged",
 		"max_hp": 26.0,
@@ -73,6 +76,7 @@ const ENEMIES := {
 
 	# 腐屍（第 1 層主力，數值 Claude 暫定）：慢、血厚、成群；撲抱抓住後持續啃咬（sim/enemies/zombie.gd）
 	&"zombie": {
+		"resists": {&"fire": -0.25, &"holy": -0.25, &"poison": 0.5, &"shadow": 0.5},
 		"visual": &"zombie",
 		"behavior": &"zombie",
 		"max_hp": 48.0,
@@ -104,6 +108,7 @@ const ENEMIES := {
 
 	# 膨脹屍（第 1 層，數值 Claude 暫定）：走近停下脹大 → 自爆，留下腐氣；被打死也會炸（sim/enemies/bloater.gd）
 	&"bloater": {
+		"resists": {&"fire": -0.5, &"poison": 0.75},
 		"visual": &"bloater",
 		"behavior": &"bloater",
 		"max_hp": 30.0,
@@ -129,6 +134,7 @@ const ENEMIES := {
 
 	# 屍犬（第 1 層，數值 Claude 暫定）：快，繞到目標背後的視野外才撲（sim/enemies/hound.gd）
 	&"hound": {
+		"resists": {&"cold": -0.25, &"poison": 0.25},
 		"visual": &"hound",
 		"behavior": &"hound",
 		"max_hp": 22.0,
@@ -163,6 +169,7 @@ const ENEMIES := {
 
 	# 守墓人（第 1 層 Boss，數值 Claude 暫定）：開局假裝 NPC，第一型態慢、靠道具（sim/enemies/gravekeeper.gd）
 	&"gravekeeper": {
+		"resists": {&"holy": -0.25, &"fire": 0.75},
 		"name": "守墓人",
 		"visual": &"gravekeeper",
 		"behavior": &"gravekeeper",
@@ -208,6 +215,7 @@ const ENEMIES := {
 			"roar_radius": 4.0, "roar_damage": 5.0, "roar_knockback": 14.0, "shake": 0.6, "shake_duration": 0.5,
 		},
 		"wolf": {
+			"resists": {&"phys": 0.3, &"holy": -0.5},   # 變身後整組換掉
 			"move_speed": 7.5, "turn_speed": 9.0, "decide_delay": 0.2,
 			"first_cooldowns": {"leap": 1.5, "howl": 6.0, "stalk": 4.0},
 			"claw": {   # 三連爪：前兩下擋得住，第三下往前撲、擋不住
@@ -224,6 +232,7 @@ const ENEMIES := {
 	},
 
 	&"boss": {
+		"resists": {&"holy": -0.25, &"poison": 0.5, &"shadow": 0.5},
 		"name": "亡骸騎士",
 		"visual": &"boss",
 		"behavior": &"boss",

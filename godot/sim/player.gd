@@ -455,12 +455,12 @@ func active_weapon() -> Dictionary:
 	return loadout.active_weapon()
 
 
-# 招式傷害 = 武器基礎傷害 × 招式 % × 攻擊力 × 物理 / 魔法傷害（F1）
+# 招式傷害 = 武器基礎傷害 × 招式 % × 攻擊力 × 物理 / 屬性傷害
 func move_damage(move: Dictionary) -> float:
 	return pct_damage(move.damage_pct)
 
 
-# 武器基礎傷害的 pct 倍，乘上攻擊力與物理 / 魔法傷害（燃燒每秒傷害也用這個，F8）
+# 武器基礎傷害的 pct 倍，乘上攻擊力與物理 / 屬性傷害（燃燒每秒傷害也用這個，F8）
 func pct_damage(pct: float) -> float:
 	return weapon.base_damage * pct * damage_mul * stats.value(StatDefs.type_damage_stat(weapon.damage_type))
 

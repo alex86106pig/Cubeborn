@@ -516,35 +516,63 @@ static func check_enemy_speed() -> String:
 	return ""
 
 
-# F1：招式傷害 = 基礎傷害 × 招式 % × 攻擊力 × 物理 / 魔法傷害；護甲只擋物理、魔抗只擋魔法；閃避整下閃掉；尋寶加權
+# 招式傷害 = 基礎傷害 × 招式 % × 攻擊力 × 物理 / 屬性傷害；護甲只擋物理、所有抗性只擋物理以外、各屬性看自己的抗性
+# （上下限、秘術只吃一半正抗性）；怪物照 EnemyDefs 的 resists；閃避整下閃掉；尋寶加權
 static func check_damage_types() -> String:
 	for id: StringName in WeaponDefs.WEAPONS:
 		var wd: Dictionary = WeaponDefs.WEAPONS[id]
-		if wd.get("base_damage", 0.0) <= 0.0 or not wd.get("damage_type", &"") in [&"phys", &"magic"]:
-			return "%s 要有 base_damage > 0 與 damage_type（phys / magic）" % id
+		if wd.get("base_damage", 0.0) <= 0.0 or not StatDefs.DAMAGE_TYPES.has(wd.get("damage_type", &"")):
+			return "%s 要有 base_damage > 0 與 StatDefs.DAMAGE_TYPES 裡的 damage_type" % id
 		for kind in ["attack", "special"]:
 			if wd[kind].has("damage"):
 				return "%s.%s 還留著固定 damage，應改成 damage_pct" % [id, kind]
-	# 物理 / 魔法傷害只乘對應類型的武器
+	for type: StringName in StatDefs.DAMAGE_TYPES:
+		if not StatDefs.STATS.has(StatDefs.DAMAGE_TYPES[type].resist):
+			return "%s 的抗性屬性 %s 不在 StatDefs.STATS" % [type, StatDefs.DAMAGE_TYPES[type].resist]
+	for id: StringName in EnemyDefs.ENEMIES:
+		for r: Dictionary in [EnemyDefs.ENEMIES[id].get("resists", {}), EnemyDefs.ENEMIES[id].get("wolf", {}).get("resists", {})]:
+			for type: StringName in r:
+				if not StatDefs.DAMAGE_TYPES.has(type) or r[type] < StatDefs.RESIST_MIN or r[type] > StatDefs.RESIST_MAX:
+					return "%s 的抗性 %s = %.2f 不是合法的屬性或超出範圍" % [id, type, r[type]]
+	# 物理 / 屬性傷害只乘對應類型的武器
 	var w := _new_world()
 	var p := _player(w)
-	p.set_stat_source(&"test", [[&"phys_damage", Stats.PCT, 0.5], [&"magic_damage", Stats.PCT, 1.0]])
+	p.set_stat_source(&"test", [[&"phys_damage", Stats.PCT, 0.5], [&"elem_damage", Stats.PCT, 1.0]])
 	var sword: Dictionary = WeaponDefs.WEAPONS[&"swordShield"]
 	var staff: Dictionary = WeaponDefs.WEAPONS[&"staff"]
 	if absf(p.move_damage(sword.attack) - WeaponDefs.move_base_damage(sword, sword.attack) * 1.5) > EPS:
 		return "物理傷害 +50%%：劍盾普攻應 ×1.5，實際 %.2f" % p.move_damage(sword.attack)
 	p.equip_weapon(&"staff")
 	if absf(p.move_damage(staff.attack) - WeaponDefs.move_base_damage(staff, staff.attack) * 2.0) > EPS:
-		return "魔法傷害 +100%%：法杖普攻應 ×2，實際 %.2f" % p.move_damage(staff.attack)
-	# 護甲 100 / 魔抗 100 各減一半，只擋自己那一類
+		return "屬性傷害 +100%%：法杖（秘術）普攻應 ×2，實際 %.2f" % p.move_damage(staff.attack)
+	# 護甲 100 只擋物理；所有抗性 50% 只擋物理以外
 	var t := _dummy(w, Vector2(0, 3))
+	var hurt := func(type: StringName) -> float: return t.take_damage(10.0, Vector2.UP, 0.0, p.id, type)
 	t.set_stat_source(&"test", [[&"armor", Stats.ADD, 100.0]])
-	var phys := t.take_damage(10.0, Vector2.UP, 0.0, p.id, &"phys")
-	var magic := t.take_damage(10.0, Vector2.UP, 0.0, p.id, &"magic")
-	t.set_stat_source(&"test", [[&"magic_resist", Stats.ADD, 100.0]])
-	var magic2 := t.take_damage(10.0, Vector2.UP, 0.0, p.id, &"magic")
-	if absf(phys - 5.0) > EPS or absf(magic - 10.0) > EPS or absf(magic2 - 5.0) > EPS:
-		return "護甲 100 擋物理 10 → 5、不擋魔法 10；魔抗 100 擋魔法 10 → 5：實際 %.2f / %.2f / %.2f" % [phys, magic, magic2]
+	var phys: float = hurt.call(&"phys")
+	var fire: float = hurt.call(&"fire")
+	t.set_stat_source(&"test", [[&"resist_all", Stats.ADD, 0.5]])
+	var phys2: float = hurt.call(&"phys")
+	var cold: float = hurt.call(&"cold")
+	if absf(phys - 5.0) > EPS or absf(fire - 10.0) > EPS or absf(phys2 - 10.0) > EPS or absf(cold - 5.0) > EPS:
+		return "護甲 100：物理 10 → 5、火焰不擋；所有抗性 50%%：物理不擋、冰霜 10 → 5。實際 %.2f / %.2f / %.2f / %.2f" % [phys, fire, phys2, cold]
+	# 抗性上下限 −50% ~ 75%；秘術只吃一半正抗性、弱點照算
+	t.set_stat_source(&"test", [[&"resist_fire", Stats.ADD, 0.9], [&"resist_holy", Stats.ADD, -0.8], [&"resist_arcane", Stats.ADD, 0.6]])
+	var capped: float = hurt.call(&"fire")
+	var weak: float = hurt.call(&"holy")
+	var arcane: float = hurt.call(&"arcane")
+	t.set_stat_source(&"test", [[&"resist_arcane", Stats.ADD, -0.4]])
+	var arcane_weak: float = hurt.call(&"arcane")
+	if absf(capped - 2.5) > EPS or absf(weak - 15.0) > EPS or absf(arcane - 7.0) > EPS or absf(arcane_weak - 14.0) > EPS:
+		return "火焰抗性 90%% 封頂 75%% → 2.5、神聖 −80%% 封底 −50%% → 15、秘術抗性 60%% 只算一半 → 7、秘術弱點 −40%% → 14。實際 %.2f / %.2f / %.2f / %.2f" % [capped, weak, arcane, arcane_weak]
+	t.remove_stat_source(&"test")
+	# 怪物照 EnemyDefs 的 resists：腐屍怕火（10 → 12.5）、抗腐毒（10 → 5）
+	var z := _spawn(w, &"zombie", Vector2(4, 4))
+	var zr: Dictionary = EnemyDefs.ENEMIES.zombie.resists
+	var zf := z.stats.value(&"resist_fire")
+	var zp := z.stats.value(&"resist_poison")
+	if absf(zf - zr.fire) > EPS or absf(zp - zr.poison) > EPS:
+		return "腐屍的火焰 / 腐毒抗性 %.2f / %.2f，預期 %.2f / %.2f" % [zf, zp, zr.fire, zr.poison]
 	# 閃避率 0 不擲骰（不消耗 world.rng）
 	var state := w.rng.state
 	Combat.apply_damage(w, p, t, {"damage": 1.0})

@@ -5,21 +5,45 @@
 class_name StatDefs
 
 const ARMOR_SCALE := 100.0   # 受到傷害 × ARMOR_SCALE ÷ (ARMOR_SCALE + 護甲)：護甲 100 減傷 50%
+const RESIST_MIN := -0.5     # 抗性下限：弱點最多多受 50%
+const RESIST_MAX := 0.75     # 抗性上限
+const ARCANE_PIERCE := 0.5   # 秘術無視目標正抗性的比例（弱點照算）
+
+# 傷害屬性：名稱、傷害數字的顏色、對應的抗性屬性。物理先看護甲再看物理抗性；所有抗性（resist_all）只擋物理以外
+const DAMAGE_TYPES := {
+	&"phys": {"name": "物理", "color": Color.WHITE, "resist": &"resist_phys"},
+	&"fire": {"name": "火焰", "color": Color("ff8a3d"), "resist": &"resist_fire"},
+	&"cold": {"name": "冰霜", "color": Color("8fd8ff"), "resist": &"resist_cold"},
+	&"lightning": {"name": "閃電", "color": Color("ffe45c"), "resist": &"resist_lightning"},
+	&"poison": {"name": "腐毒", "color": Color("9be36b"), "resist": &"resist_poison"},
+	&"holy": {"name": "神聖", "color": Color("fff3b0"), "resist": &"resist_holy"},
+	&"shadow": {"name": "暗影", "color": Color("b48cff"), "resist": &"resist_shadow"},
+	&"arcane": {"name": "秘術", "color": Color("e47bff"), "resist": &"resist_arcane"},
+}
 
 const STATS := {
 	# 生存
 	&"max_hp": {"name": "最大生命", "base": 1.0, "min": 1.0, "max": INF, "round": true, "format": &"int", "in_use": true},
 	&"hp_regen": {"name": "生命回復", "base": 0.0, "min": 0.0, "max": INF, "format": &"regen", "in_use": true},
 	&"armor": {"name": "護甲", "base": 0.0, "min": 0.0, "max": INF, "format": &"armor", "in_use": true},
-	&"magic_resist": {"name": "魔抗", "base": 0.0, "min": 0.0, "max": INF, "format": &"armor", "in_use": true},   # 擋魔法傷害，公式同護甲（F1）
+	&"resist_all": {"name": "所有抗性", "base": 0.0, "min": -1.0, "max": 1.0, "format": &"pct", "in_use": true},
+	# 各屬性的抗性：怪物照 EnemyDefs 的 resists 設基礎值；玩家還沒有來源，面板先不顯示
+	&"resist_phys": {"name": "物理抗性", "base": 0.0, "min": -1.0, "max": 1.0, "format": &"pct", "in_use": false},
+	&"resist_fire": {"name": "火焰抗性", "base": 0.0, "min": -1.0, "max": 1.0, "format": &"pct", "in_use": false},
+	&"resist_cold": {"name": "冰霜抗性", "base": 0.0, "min": -1.0, "max": 1.0, "format": &"pct", "in_use": false},
+	&"resist_lightning": {"name": "閃電抗性", "base": 0.0, "min": -1.0, "max": 1.0, "format": &"pct", "in_use": false},
+	&"resist_poison": {"name": "腐毒抗性", "base": 0.0, "min": -1.0, "max": 1.0, "format": &"pct", "in_use": false},
+	&"resist_holy": {"name": "神聖抗性", "base": 0.0, "min": -1.0, "max": 1.0, "format": &"pct", "in_use": false},
+	&"resist_shadow": {"name": "暗影抗性", "base": 0.0, "min": -1.0, "max": 1.0, "format": &"pct", "in_use": false},
+	&"resist_arcane": {"name": "秘術抗性", "base": 0.0, "min": -1.0, "max": 1.0, "format": &"pct", "in_use": false},
 	&"dodge": {"name": "閃避率", "base": 0.0, "min": 0.0, "max": 0.75, "format": &"pct", "in_use": true},   # 完全閃掉一次攻擊（F1；上限 75% Claude 暫定）
 	&"damage_taken": {"name": "受到傷害", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
 	&"knockback_taken": {"name": "受到擊退", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
 	# 攻擊
-	# 招式傷害 = 武器基礎傷害 × 招式 % × 攻擊力 × 物理 / 魔法傷害（F1）：攻擊力是全部傷害的倍率（道具、詞條、怪物難度），物理 / 魔法只乘對應的攻擊
+	# 招式傷害 = 武器基礎傷害 × 招式 % × 攻擊力 × 物理 / 屬性傷害：攻擊力是全部傷害的倍率（道具、詞條、怪物難度），物理 / 屬性只乘對應的攻擊
 	&"damage": {"name": "攻擊力", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
 	&"phys_damage": {"name": "物理傷害", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
-	&"magic_damage": {"name": "魔法傷害", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
+	&"elem_damage": {"name": "屬性傷害", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},   # 物理以外的屬性都吃
 	&"attack_speed": {"name": "攻速", "base": 1.0, "min": 0.1, "max": INF, "format": &"pct", "in_use": true},
 	&"crit_chance": {"name": "爆擊率", "base": 0.0, "min": 0.0, "max": 1.0, "format": &"pct", "in_use": true},
 	&"crit_damage": {"name": "爆擊傷害", "base": 1.5, "min": 1.0, "max": INF, "format": &"pct", "in_use": true},
@@ -45,14 +69,23 @@ static func armor_damage_factor(armor: float) -> float:
 	return ARMOR_SCALE / (ARMOR_SCALE + maxf(armor, 0.0))
 
 
-# 攻擊類型對應的防禦屬性：魔法傷害看魔抗，其餘（物理）看護甲
-static func resist_stat(damage_type: StringName) -> StringName:
-	return &"magic_resist" if damage_type == &"magic" else &"armor"
+# 受到這種屬性的傷害時乘的倍率：物理 = 護甲 × (1 − 物理抗性)；其他 = 1 − (該屬性抗性 + 所有抗性)
+# 抗性限制在 RESIST_MIN ~ RESIST_MAX；秘術只吃一半的正抗性
+static func damage_factor(stats: Stats, damage_type: StringName) -> float:
+	var r := stats.value(DAMAGE_TYPES[damage_type].resist)
+	var f := 1.0
+	if damage_type == &"phys":
+		f = armor_damage_factor(stats.value(&"armor"))
+	else:
+		r += stats.value(&"resist_all")
+	if damage_type == &"arcane" and r > 0.0:
+		r *= 1.0 - ARCANE_PIERCE
+	return f * (1.0 - clampf(r, RESIST_MIN, RESIST_MAX))
 
 
 # 攻擊類型對應的傷害屬性
 static func type_damage_stat(damage_type: StringName) -> StringName:
-	return &"magic_damage" if damage_type == &"magic" else &"phys_damage"
+	return &"phys_damage" if damage_type == &"phys" else &"elem_damage"
 
 
 # 屬性面板用的顯示文字
