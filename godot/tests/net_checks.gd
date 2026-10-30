@@ -373,7 +373,7 @@ static func check_net_coins() -> String:
 	return ""
 
 
-# D3：客戶端靠近寶箱按 F → 房主開箱扣靈魂、道具掉在地上；再按 F 撿起；拖曳搬動、丟掉、從腳邊拖回背包指定的格子。兩邊的寶箱、靈魂、背包一致
+# D3（Build 改版第 3 步起按 F 撿的會鑲在武器上、背包裡的沒有效果）：客戶端靠近寶箱按 F → 房主開箱扣靈魂、道具掉在地上；再按 F 撿起；拖曳搬動、丟掉、從腳邊拖回背包指定的格子。兩邊的寶箱、靈魂、背包一致
 static func check_net_loot() -> String:
 	var link := _Link.new(41, [1, 2], 3, 0.0, false)
 	var hw := link.host_world
@@ -399,17 +399,18 @@ static func check_net_loot() -> String:
 	link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO, InputCmd.BTN_INTERACT))
 	idle.call(20)
 	var me := link.client.local_player()
-	if hp2.inventory.entries.size() != 1 or me.inventory.entries.size() != 1 or me.items.size() != 1 or not cw.pickups.is_empty():
-		return "撿起後：房主背包 %d、客戶端背包 %d、客戶端生效道具 %d、客戶端地上 %d（應為 1 / 1 / 1 / 0）" % [
-			hp2.inventory.entries.size(), me.inventory.entries.size(), me.items.size(), cw.pickups.size()]
-	var uid: String = me.inventory.entries[0].uid
+	# 按 F 撿起：自動鑲在武器格子上、生效
+	if CheckKit._held_items(hp2).size() != 1 or CheckKit._held_items(me).size() != 1 or me.items.size() != 1 or not cw.pickups.is_empty():
+		return "撿起後：房主拿著 %d、客戶端拿著 %d、客戶端生效道具 %d、客戶端地上 %d（應為 1 / 1 / 1 / 0）" % [
+			CheckKit._held_items(hp2).size(), CheckKit._held_items(me).size(), me.items.size(), cw.pickups.size()]
+	var uid: String = CheckKit._held_items(me)[0].uid
 	var move := _cmd(Vector2.ZERO)
 	move.inv_ops = [[InputCmd.OP_MOVE, uid, 5, 3, 1]]
 	link.step(_cmd(Vector2.ZERO), move)
 	idle.call(20)
-	var e: Dictionary = me.inventory.entries[0]
-	if e.cell != Vector2i(5, 3) or e.rot != 1 or hp2.inventory.entries[0].cell != Vector2i(5, 3):
-		return "搬到 (5, 3) 轉 90°：客戶端 %s / %d、房主 %s" % [e.cell, e.rot, hp2.inventory.entries[0].cell]
+	var e: Dictionary = me.inventory.entries[0] if not me.inventory.entries.is_empty() else {"cell": Vector2i(-1, -1), "rot": -1}
+	if me.items.size() != 0 or e.cell != Vector2i(5, 3) or e.rot != 1 or hp2.inventory.entries[0].cell != Vector2i(5, 3):
+		return "從武器格子搬進背包 (5, 3) 轉 90°（失效）：客戶端 %s / %d、生效 %d、房主 %s" % [e.cell, e.rot, me.items.size(), hp2.inventory.entries]
 	var drop := _cmd(Vector2.ZERO)
 	drop.inv_ops = [[InputCmd.OP_DROP, uid]]
 	link.step(_cmd(Vector2.ZERO), drop)
@@ -423,7 +424,7 @@ static func check_net_loot() -> String:
 	link.step(_cmd(Vector2.ZERO), pick)
 	idle.call(20)
 	if me.inventory.entries.size() != 1 or me.inventory.entries[0].cell != Vector2i(2, 4) or hp2.inventory.entries.size() != 1 \
-			or hp2.inventory.entries[0].cell != Vector2i(2, 4) or me.items.size() != 1 or not cw.pickups.is_empty():
+			or hp2.inventory.entries[0].cell != Vector2i(2, 4) or me.items.size() != 0 or not cw.pickups.is_empty():
 		return "從腳邊撿回 (2, 4)：客戶端背包 %s、房主背包 %s、客戶端生效 %d、客戶端地上 %d" % [
 			me.inventory.entries, hp2.inventory.entries, me.items.size(), cw.pickups.size()]
 	return ""

@@ -2047,6 +2047,9 @@ static func check_inventory_panel() -> String:
 			for x in ItemDefs.BAG_SIZE.x:
 				if x + y > 1:
 					p.inventory.add(StringName("d_%d_%d" % [x, y]), &"loaded_dice", Vector2i(x, y), 0)
+		for where: int in [Loadout.MAIN, Loadout.OFF]:   # 武器格子也塞滿，撿起來才會放不下
+			while p.loadout.add_item(p, &"loaded_dice", {}, 0, where) != &"":
+				pass
 		var buckler := w.drop_item(&"bone_buckler", p.pos + Vector2(0, 1.0))
 		var full_ids: Array[int] = []
 		hud.inventory_full.connect(func(id: int) -> void: full_ids.append(id))

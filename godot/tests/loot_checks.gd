@@ -224,9 +224,9 @@ static func check_inventory() -> String:
 	var w := _new_world()
 	var p := _player(w)
 	for i in ItemDefs.BAG_SIZE.x * ItemDefs.BAG_SIZE.y:
-		if p.add_item(&"loaded_dice") == &"":
+		if p.loadout.add_item(p, &"loaded_dice", {}, 0, Loadout.BAG) == &"":
 			return "第 %d 個 1 格道具應放得下" % (i + 1)
-	if p.add_item(&"loaded_dice") != &"" or _named(w.events, "inventory:full").is_empty():
+	if p.loadout.add_item(p, &"loaded_dice", {}, 0, Loadout.BAG) != &"" or _named(w.events, "inventory:full").is_empty():
 		return "背包滿了應放不下並發出 inventory:full"
 	return ""
 
@@ -510,24 +510,24 @@ static func check_pickups() -> String:
 	var press := _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_INTERACT)
 	_run(w, press, 1)
 	var one := 1.0 + _effect_value(&"whetstone", &"damage")
-	if p.inventory.entries.size() != 1 or not drop.is_removed or absf(p.stats.value(&"damage") - one) > EPS:
-		return "按 F 應撿起磨刀石並生效：背包 %d、攻擊力 %.2f" % [p.inventory.entries.size(), p.stats.value(&"damage")]
+	if _held_items(p).size() != 1 or not drop.is_removed or absf(p.stats.value(&"damage") - one) > EPS:
+		return "按 F 應撿起磨刀石（鑲在武器上）並生效：拿著 %d、攻擊力 %.2f" % [_held_items(p).size(), p.stats.value(&"damage")]
 	# 按住不放不會連撿
 	w.drop_item(&"whetstone", p.pos + Vector2(1.0, 0))
 	_run(w, press, 10)
-	if p.inventory.entries.size() != 1:
-		return "按住 F 不放不應再撿，背包 %d" % p.inventory.entries.size()
+	if _held_items(p).size() != 1:
+		return "按住 F 不放不應再撿，背包 %d" % _held_items(p).size()
 	_run(w, _cmd(Vector2.ZERO), 1)
 	_run(w, press, 1)
-	if p.inventory.entries.size() != 2:
-		return "放開再按應撿起第二個，背包 %d" % p.inventory.entries.size()
+	if _held_items(p).size() != 2:
+		return "放開再按應撿起第二個，背包 %d" % _held_items(p).size()
 	# 丟掉：回到地上、效果移除
-	var uid: StringName = p.inventory.entries[0].uid
+	var uid: StringName = _held_items(p)[0].uid
 	var drop_cmd := _cmd(Vector2.ZERO)
 	drop_cmd.inv_ops = [[InputCmd.OP_DROP, String(uid)]]
 	_run(w, drop_cmd, 1)
-	if p.inventory.entries.size() != 1 or w.pickups.size() != 1 or absf(p.stats.value(&"damage") - one) > EPS:
-		return "丟掉一個：背包 %d、地上 %d、攻擊力 %.2f（應為 1 / 1 / %.2f）" % [p.inventory.entries.size(), w.pickups.size(), p.stats.value(&"damage"), one]
+	if _held_items(p).size() != 1 or w.pickups.size() != 1 or absf(p.stats.value(&"damage") - one) > EPS:
+		return "丟掉一個：背包 %d、地上 %d、攻擊力 %.2f（應為 1 / 1 / %.2f）" % [_held_items(p).size(), w.pickups.size(), p.stats.value(&"damage"), one]
 	# 兩人同一步按 F：只有一人拿到
 	var w2 := World.new(&"test_arena")
 	w2.reset(5, [1, 2])
@@ -539,8 +539,8 @@ static func check_pickups() -> String:
 	c.pos = Vector2(1, 0)
 	w2.drop_item(&"whetstone", Vector2(0, 0))
 	w2.step({1: press, 2: press}, DT)
-	if a.inventory.entries.size() + c.inventory.entries.size() != 1:
-		return "兩人同時撿：共拿到 %d 個（應為 1）" % (a.inventory.entries.size() + c.inventory.entries.size())
+	if _held_items(a).size() + _held_items(c).size() != 1:
+		return "兩人同時撿：共拿到 %d 個（應為 1）" % (_held_items(a).size() + _held_items(c).size())
 	# 倒地隊友在旁邊：F 先救人，不撿道具
 	var w3 := World.new(&"test_arena")
 	w3.reset(5, [1, 2])
@@ -554,8 +554,8 @@ static func check_pickups() -> String:
 	d.take_damage(10.0, Vector2.RIGHT, 0.0, 0)
 	w3.drop_item(&"whetstone", Vector2(0.8, 0.5))
 	w3.step({1: press, 2: _cmd(Vector2.ZERO)}, DT)
-	if not d.is_downed or r.inventory.entries.size() != 0:
-		return "旁邊有倒地隊友時 F 應先救人：倒地 %s、撿到 %d" % [d.is_downed, r.inventory.entries.size()]
+	if not d.is_downed or _held_items(r).size() != 0:
+		return "旁邊有倒地隊友時 F 應先救人：倒地 %s、撿到 %d" % [d.is_downed, _held_items(r).size()]
 	return ""
 
 
@@ -573,9 +573,20 @@ static func check_pickup_to_cell() -> String:
 	var e: Dictionary = p.inventory.entries[0] if p.inventory.entries.size() == 1 else {}
 	if e.is_empty() or e.cell != Vector2i(3, 2) or e.rot != 1 or not stone.is_removed:
 		return "OP_PICKUP 應把磨刀石直放在 (3, 2) 並從地上移除：背包 %s、地上還在 %s" % [p.inventory.entries, not stone.is_removed]
+	if absf(p.stats.value(&"damage") - 1.0) > EPS:
+		return "背包裡的道具沒有效果：攻擊力 %.2f（應為 1.00）" % p.stats.value(&"damage")
+	# 搬到主手長劍的格子 (1, 1) 才生效，搬回背包就失效
 	var one := 1.0 + _effect_value(&"whetstone", &"damage")
-	if absf(p.stats.value(&"damage") - one) > EPS:
-		return "指定格子撿起的道具也要生效：攻擊力 %.2f（應為 %.2f）" % [p.stats.value(&"damage"), one]
+	var sock := _cmd(Vector2.ZERO)
+	sock.inv_ops = [[InputCmd.OP_MOVE, String(e.uid), 1, 1, 0, Loadout.MAIN]]
+	_run(w, sock, 1)
+	if p.loadout.find_item(e.uid).get("where", -9) != Loadout.MAIN or absf(p.stats.value(&"damage") - one) > EPS:
+		return "磨刀石搬到長劍格子 (1, 1) 應鑲上並生效：%s、攻擊力 %.2f" % [p.loadout.find_item(e.uid), p.stats.value(&"damage")]
+	var unsock := _cmd(Vector2.ZERO)
+	unsock.inv_ops = [[InputCmd.OP_MOVE, String(e.uid), 3, 2, 1]]
+	_run(w, unsock, 1)
+	if p.inventory.find(e.uid).is_empty() or absf(p.stats.value(&"damage") - 1.0) > EPS:
+		return "磨刀石搬回背包應失效：攻擊力 %.2f" % p.stats.value(&"damage")
 	pick.call(stone, Vector2i(0, 0), 0)
 	if p.inventory.entries.size() != 1:
 		return "已經撿走的不應再撿一次，背包 %d" % p.inventory.entries.size()
@@ -593,11 +604,11 @@ static func check_pickup_to_cell() -> String:
 	pick.call(staff, Vector2i(0, 4), 0)
 	if not p.weapon_slots[1].is_empty() or p.inventory.find(inst.uid).get("cell", Vector2i(-1, -1)) != Vector2i(0, 4):
 		return "武器從腳邊拖進背包應放在 (0, 4)、不放空的裝備欄：裝備欄 %s、背包 %s" % [p.weapon_slots[1], p.inventory.find(inst.uid)]
-	# 背包滿了按 F：inventory:full 帶著地上那個的 id
+	# 武器格子與背包都滿了按 F：inventory:full 帶著地上那個的 id
 	var w2 := _new_world(12345, false, &"test_arena")
 	var q := _player(w2)
-	for i in ItemDefs.BAG_SIZE.x * ItemDefs.BAG_SIZE.y:
-		q.add_item(&"loaded_dice")
+	while q.add_item(&"loaded_dice") != &"":
+		pass
 	var dice := w2.drop_item(&"loaded_dice", q.pos + Vector2(1.0, 0))
 	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_INTERACT), 1)
 	var full := _named(w2.events, "inventory:full")
@@ -845,14 +856,16 @@ static func check_item_procs() -> String:
 		return "中毒 %.1f 秒後總共應扣 %d，實際 %d" % [po.duration, want_poison, _hp_loss(a, before)]
 	p.clear_items()
 	w.clear()
-	# 霜之心疊到 100%：冰凍 duration 秒不能動，之後照常追；Boss 不會被冰凍
+	# 霜之心：一直打到觸發冰凍（武器格子放不下 10 個疊到 100%），冰凍 duration 秒不能動，之後照常追；Boss 不會被冰凍
 	var freeze_time: float = _effect(&"frost_heart").duration
 	w = _new_world()
 	p = _player(w)
-	for i in _stacks_for_sure(&"frost_heart"):
-		p.add_item(&"frost_heart")
+	p.add_item(&"frost_heart")
 	a = _item_dummy(w, Vector2(0, 6))
-	Combat.apply_damage(w, p, a, {"damage": 1.0})
+	for i in 300:
+		Combat.apply_damage(w, p, a, {"damage": 1.0})
+		if a.frozen_timer > 0.0:
+			break
 	var at := a.pos
 	var frozen_steps := roundi(freeze_time / DT) - 30
 	_run(w, idle, frozen_steps)
@@ -1201,12 +1214,12 @@ static func check_item_procs_lethal() -> String:
 	var cross_uid := p.add_item(&"resurrection_cross")
 	# 第一次：守護亡靈先用，留 1 血、無敵 invuln 秒，十字還在
 	_lethal_hit(w, foe, p)
-	if p.is_dead or p.is_downed or absf(p.hp - 1.0) > EPS or absf(p.invuln_timer - guard.invuln) > EPS or p.inventory.find(cross_uid).is_empty():
-		return "守護亡靈應先用：死 %s、生命 %.1f、無敵 %.2f、十字還在 %s" % [p.is_dead, p.hp, p.invuln_timer, not p.inventory.find(cross_uid).is_empty()]
+	if p.is_dead or p.is_downed or absf(p.hp - 1.0) > EPS or absf(p.invuln_timer - guard.invuln) > EPS or p.loadout.find_item(cross_uid).is_empty():
+		return "守護亡靈應先用：死 %s、生命 %.1f、無敵 %.2f、十字還在 %s" % [p.is_dead, p.hp, p.invuln_timer, not p.loadout.find_item(cross_uid).is_empty()]
 	# 第二次（同一層）：換復活十字，回 hp_ratio、十字碎掉空出格子
 	_lethal_hit(w, foe, p)
 	var want := roundf(p.max_hp * rev.hp_ratio)
-	if p.is_dead or absf(p.hp - want) > EPS or not p.inventory.find(cross_uid).is_empty() or p.items.any(func(it: Dictionary) -> bool: return it.uid == cross_uid):
+	if p.is_dead or absf(p.hp - want) > EPS or not p.loadout.find_item(cross_uid).is_empty() or p.items.any(func(it: Dictionary) -> bool: return it.uid == cross_uid):
 		return "同一層第二次應用復活十字並碎掉：死 %s、生命 %.1f（應 %.0f）" % [p.is_dead, p.hp, want]
 	# 第三次：都用完了，單機就死
 	_lethal_hit(w, foe, p)
@@ -1405,7 +1418,7 @@ static func check_weapon_pickup() -> String:
 		return "副手空著時撿到的盾應放副手"
 	# 背包塞滿 → 撿不起來
 	for i in ItemDefs.BAG_SIZE.x * ItemDefs.BAG_SIZE.y:
-		p.add_item(&"loaded_dice")
+		p.loadout.add_item(p, &"loaded_dice", {}, 0, Loadout.BAG)
 	w.events.clear()
 	if p.add_weapon(mk.call("c", &"staff")) or _named(w.events, "inventory:full").is_empty():
 		return "背包滿了應撿不起來並發出 inventory:full"
@@ -1430,6 +1443,21 @@ static func check_weapon_pickup() -> String:
 	op.call([[InputCmd.OP_EQUIP, "sh", Loadout.MAIN]])
 	if p.weapon_id != &"longsword+woodShield":
 		return "盾拖到主手應被拒絕：%s" % p.weapon_id
+	# 鑲嵌（Build 改版第 3 步）：鑲在長劍上的磨刀石生效；換上背包的法杖時跟著搬到法杖格子、照樣生效
+	var stone := p.loadout.add_item(p, &"whetstone", {}, 0, Loadout.MAIN)
+	var dmg := p.stats.value(&"damage")
+	if stone == &"" or p.loadout.find_item(stone).get("where", -9) != Loadout.MAIN or dmg <= 1.0:
+		return "磨刀石應鑲在長劍上並生效：攻擊力 %.2f" % dmg
+	op.call([[InputCmd.OP_EQUIP, "a", Loadout.MAIN]])
+	if p.weapon_id != &"staff" or p.loadout.find_item(stone).get("where", -9) != Loadout.MAIN or absf(p.stats.value(&"damage") - dmg) > EPS:
+		return "換上法杖後磨刀石應搬到法杖格子、照樣生效：%s、%s、攻擊力 %.2f" % [p.weapon_id, p.loadout.find_item(stone), p.stats.value(&"damage")]
+	# 武器格子只能放 mask 裡的格子；快照來回鑲的道具不變
+	var staff_inv := p.loadout.container(Loadout.MAIN)
+	if staff_inv.fits(&"loaded_dice", Vector2i(1, 0), 0):
+		return "法杖格子 (1, 0) 是空的（不是格子），不應放得下"
+	var back := WeaponDropDefs.from_array(WeaponDropDefs.to_array(p.weapon_slots[Loadout.MAIN]))
+	if back.get("sockets", []).size() != 1 or back.sockets[0].uid != stone or back.sockets[0].cell != staff_inv.find(stone).cell:
+		return "快照來回後法杖上鑲的東西應一樣：%s" % [back.get("sockets", [])]
 	return ""
 
 

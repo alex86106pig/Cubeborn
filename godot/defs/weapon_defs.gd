@@ -2,6 +2,8 @@
 # 每把武器一個 base_damage 與 damage_type（StatDefs.DAMAGE_TYPES），招式用 damage_pct（基礎傷害的倍率，F1）；實際傷害見 Player.move_damage
 # hands：&"one" 單手（可以再拿副手）、&"two" 雙手（不能拿副手）、&"off" 只能當副手；offhand = true 的單手武器也能當副手
 # 玩家手上的招式資料是主手＋副手組合出來的（def_of）：左鍵看主手，右鍵有副手時看副手
+# grid：武器格子（Build 改版第 3 步，形狀 Claude 暫定），每列一個字串、每字一格：A 攻擊部位、E 末端、D 防禦部位、H 握柄、G 寶石座、. 沒有格子；
+# 道具鑲在主手 / 副手的格子上才生效（Loadout）；部位決定發動時機在第 4 步
 class_name WeaponDefs
 
 const WEAPONS := {
@@ -14,6 +16,7 @@ const WEAPONS := {
 		"base_damage": 12.0,
 		"damage_type": &"phys",
 		"model": &"longsword",
+		"grid": ["..E..", ".AAA.", ".AAA.", ".AGA.", ".AAA.", "HHHHH", "..H..", "..G.."],
 		"idle": {"arm_r": -0.35, "arm_l": 0.0, "tilt": 0.0},
 		"attack": {
 			"behavior": &"meleeSwing",
@@ -79,6 +82,7 @@ const WEAPONS := {
 		"type": &"melee",
 		"hands": &"off",
 		"model": &"woodShield",
+		"grid": [".DDD.", "DDGDD", "DDDDD", ".DDD."],
 		"offhand_arm_l": -0.1,         # 拿在副手時左手的待機角度
 		"special": {
 			"behavior": &"shieldBlock",
@@ -121,6 +125,7 @@ const WEAPONS := {
 		"base_damage": 8.0,
 		"damage_type": &"arcane",
 		"model": &"staff",
+		"grid": ["A.A.A", "AAGAA", "AGAGA", ".AGA.", "..H..", ".HHH.", ".HHH.", "..H..", ".HHH.", "..H..", "..H.."],
 		"idle": {"arm_r": -0.5, "arm_l": 0.0, "tilt": 0.0},
 		"attack": {
 			"behavior": &"fireBolt",
@@ -176,6 +181,7 @@ const WEAPONS := {
 		"name": "短弓",
 		"type": &"ranged",
 		"model": &"shortbow",
+		"grid": [".AAAA", "AAA..", "AAG..", "HHHH.", "AAG..", "AAA..", ".AAAA"],
 		"base_damage": 6.0,
 		"damage_type": &"phys",
 		"idle": {"arm_r": -0.4, "arm_l": 0.0, "tilt": 0.0},
@@ -242,6 +248,7 @@ const WEAPONS := {
 		"name": "長弓",
 		"type": &"ranged",
 		"model": &"longbow",
+		"grid": [".AAAA", "AAA..", "AAA..", "AAG..", "HHHH.", "HHG..", "HHHH.", "AAG..", "AAA..", "AAA..", ".AAAA"],
 		"base_damage": 11.0,
 		"damage_type": &"phys",
 		"idle": {"arm_r": -0.4, "arm_l": 0.0, "tilt": 0.0},
@@ -306,6 +313,7 @@ const WEAPONS := {
 		"hands": &"one",
 		"offhand": true,               # 也能拿在副手
 		"model": &"dagger",
+		"grid": [".E.", ".A.", "AAA", "AGA", "HHH", ".H."],
 		"base_damage": 9.0,            # 2026-10-27 放慢後 5 → 9（雙持每秒傷害約 31.6 → 27.8）
 		"damage_type": &"phys",
 		"idle": {"arm_r": -0.6, "arm_l": 0.0, "tilt": 0.0},
@@ -406,6 +414,7 @@ const WEAPONS := {
 		"name": "驅魔權杖",
 		"type": &"melee",
 		"model": &"scepter",
+		"grid": ["AAAAA", "AGAGA", "AAAAA", ".HHH.", "..H..", ".HHH.", "..H..", "..H.."],
 		"base_damage": 10.0,
 		"damage_type": &"holy",
 		"idle": {"arm_r": -0.4, "arm_l": -0.1, "tilt": 0.0},
@@ -470,6 +479,7 @@ const WEAPONS := {
 		"name": "火把",
 		"type": &"melee",
 		"model": &"torch",
+		"grid": ["AAA", "AAA", "AGA", "HHH", ".H.", ".H."],
 		"base_damage": 6.0,
 		"damage_type": &"fire",
 		"idle": {"arm_r": -0.5, "arm_l": -0.1, "tilt": 0.0},
@@ -549,6 +559,7 @@ const WEAPONS := {
 		"name": "鐵鏟",
 		"type": &"melee",
 		"model": &"shovel",
+		"grid": ["AAAAA", "AAGAA", "AAAAA", ".AAA.", "..H..", "..H..", ".HHH.", "..H..", "..G.."],
 		"base_damage": 12.0,
 		"damage_type": &"phys",
 		"idle": {"arm_r": -0.4, "arm_l": -0.5, "tilt": 0.0},
@@ -683,3 +694,31 @@ static func def_of(id: StringName) -> Dictionary:
 		d.attack = main.dual_attack
 	_combos[id] = d
 	return d
+
+
+const PARTS := {"A": "攻擊部位", "E": "末端", "D": "防禦部位", "H": "握柄", "G": "寶石座"}
+static var _grids := {}   # 武器 id → { 格子 Vector2i: 部位字元 }（grid_cells 的快取）
+
+
+# 武器格子有哪些格、各是什麼部位：{ Vector2i(x, y): "A" / "E" / "D" / "H" / "G" }
+static func grid_cells(id: StringName) -> Dictionary:
+	if _grids.has(id):
+		return _grids[id]
+	var out := {}
+	var rows: Array = WEAPONS[id].grid
+	for y in rows.size():
+		var row: String = rows[y]
+		for x in row.length():
+			if row[x] != ".":
+				out[Vector2i(x, y)] = row[x]
+	_grids[id] = out
+	return out
+
+
+# 武器格子的外框大小（最寬那列 × 列數）
+static func grid_size(id: StringName) -> Vector2i:
+	var rows: Array = WEAPONS[id].grid
+	var w := 0
+	for row: String in rows:
+		w = maxi(w, row.length())
+	return Vector2i(w, rows.size())

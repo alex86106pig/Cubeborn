@@ -27,10 +27,10 @@ var loadout := Loadout.new()           # 裝備欄、背包、生效的道具（
 var weapon_slots: Array[Dictionary]:   # [主手, 副手]（Loadout.MAIN / OFF）：武器實例（WeaponDropDefs）或 {}
 	get:
 		return loadout.weapon_slots
-var items: Array[Dictionary]:          # 背包裡生效的道具實例 { uid, id }；uid 同時是屬性加成的來源名稱
+var items: Array[Dictionary]:          # 生效的道具實例 { uid, id }（鑲在主手 / 副手格子上的）；uid 同時是屬性加成的來源名稱
 	get:
 		return loadout.items
-var inventory: Inventory:              # 背包的擺放（D3）；items 與它同步
+var inventory: Inventory:              # 背包的擺放（D3）；只放東西，沒有效果
 	get:
 		return loadout.inventory
 var _applied_weapon_uid := &""
@@ -430,6 +430,7 @@ func apply_active_weapon() -> void:
 		remove_stat_source(&"offhand")
 	else:
 		set_stat_source(&"offhand", WeaponDropDefs.offhand_mods(off))
+	loadout.refresh_items(self)   # 鑲在主手 / 副手上的道具才生效
 
 
 # 只換招式資料與模型（客戶端畫別人的角色也用這個）；force 時同一種也重設連段與動作

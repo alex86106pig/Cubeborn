@@ -157,7 +157,7 @@ func _initialize() -> void:
 		all.bind([LootChecks.check_pickups, LootChecks.check_pickup_to_cell]))
 	_check("武器掉落與詞條：小怪掉落率符合 DROP_CHANCE、Boss 必掉、稀有度符合權重；詞條數 = 稀有度順位、不重複；只有手上那把生效，X 切換後屬性跟著換",
 		all.bind([LootChecks.check_weapon_drops, LootChecks.check_weapon_affixes]))
-	_check("武器的背包操作：撿武器先放裝備欄、滿了放背包、都滿撿不起來，裝備欄 ↔ 背包搬動、手上至少留一把；兩把同種同稀有度合成 → 高一級、詞條重抽，不同種 / 不同稀有度 / 橘色不能合成",
+	_check("武器的背包操作：開局長劍＋木盾；撿到的武器放背包（副手空著撿到盾才拿上）、都滿撿不起來；雙手武器把副手擠回背包、盾不能當主手、主手不能丟；換武器時鑲的道具跟著搬、武器格子只能放格子內、快照來回不變；兩把同種同稀有度合成 → 高一級、詞條重抽，不同種 / 不同稀有度 / 橘色不能合成",
 		all.bind([LootChecks.check_weapon_pickup, LootChecks.check_weapon_merge]))
 
 	# ───────── 道具（依效果種類：屬性 / 條件 / 觸發 / 能力）─────────

@@ -330,8 +330,8 @@ static func check_next_floor() -> String:
 		return "換層後應到第 2 層、基礎難度 %.0f（實際第 %d 層、%.1f）" % [per_floor, w.floor_num, w.base_difficulty]
 	if p.pos.distance_to(w.spawn_point) > EPS or p.descended:
 		return "新的一層應回到出生點"
-	if w.souls != 40 or p.inventory.entries.size() != 1:
-		return "換層後靈魂 %d、背包 %d 件，應保留 40 / 1" % [w.souls, p.inventory.entries.size()]
+	if w.souls != 40 or CheckKit._held_items(p).size() != 1:
+		return "換層後靈魂 %d、拿著的道具 %d 件，應保留 40 / 1" % [w.souls, CheckKit._held_items(p).size()]
 	var want_chests := 0
 	for n: int in w.map.chest_count.values():
 		want_chests += n

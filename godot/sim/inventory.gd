@@ -1,10 +1,24 @@
-# 格子背包（D3）：ItemDefs.BAG_SIZE（8 × 6）格，道具依 ItemDefs.SHAPES 的形狀占格、可轉 0 / 90 / 180 / 270 度
-# 只管擺放；屬性效果由 Player 依 uid 套上（放進背包才生效）。純資料，客戶端從快照整份覆蓋
+# 格子容器：背包（D3，ItemDefs.BAG_SIZE 8 × 6 格）與武器格子（Build 改版第 3 步，for_weapon：只有 mask 裡的格子能放）
+# 道具依 ItemDefs.SHAPES 的形狀占格、可轉 0 / 90 / 180 / 270 度
+# 只管擺放；屬性效果由 Loadout 依 uid 套上（鑲在主手 / 副手的格子才生效）。純資料，客戶端從快照整份覆蓋
 class_name Inventory
 extends RefCounted
 
 var size: Vector2i = ItemDefs.BAG_SIZE
 var entries: Array[Dictionary] = []   # { uid: StringName, id: StringName, cell: Vector2i, rot: int, weapon?: 武器實例（D4，放在背包的武器沒有效果） }
+var mask: Dictionary = {}            # 武器格子：能放的格子（WeaponDefs.grid_cells）；空 = size 內每一格都能放（背包）
+
+
+# 武器實例的格子：entries 直接用實例的 sockets（同一個陣列，改這裡就是改武器上鑲的東西；沒有就建一個空的）
+static func for_weapon(inst: Dictionary) -> Inventory:
+	var inv := Inventory.new()
+	var id: StringName = ItemDefs.ITEMS[inst.base].weapon
+	inv.size = WeaponDefs.grid_size(id)
+	inv.mask = WeaponDefs.grid_cells(id)
+	if not inst.has("sockets"):
+		inst["sockets"] = [] as Array[Dictionary]
+	inv.entries = inst.sockets
+	return inv
 
 
 # 道具轉 rot 次 90 度後占的格子（以左上角為 (0, 0)）
@@ -48,7 +62,7 @@ func fits(id: StringName, cell: Vector2i, rot: int, ignore: StringName = &"") ->
 func _fits_cells(taken: Dictionary, cells: Array[Vector2i], at: Vector2i) -> bool:
 	for c in cells:
 		var p := at + c
-		if p.x < 0 or p.y < 0 or p.x >= size.x or p.y >= size.y or taken.has(p):
+		if p.x < 0 or p.y < 0 or p.x >= size.x or p.y >= size.y or taken.has(p) or (not mask.is_empty() and not mask.has(p)):
 			return false
 	return true
 
@@ -106,7 +120,7 @@ func move(uid: StringName, cell: Vector2i, rot: int) -> bool:
 	return true
 
 
-# 快照用：[[uid, id, x, y, rot, 武器（WeaponDropDefs.to_array，不是武器為 []）], …]
+# 快照用：[[uid, id, x, y, rot, 武器（WeaponDropDefs.to_array，不是武器為 []）], …]（武器格子裡只有道具，用 sockets_to_array）
 func to_array() -> Array:
 	var out := []
 	for e in entries:

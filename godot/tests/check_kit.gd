@@ -51,6 +51,18 @@ static func _player(w: World) -> Player:
 
 
 # 不會動的假敵人：血多、質量大（擊退位移小），放在 world.enemies 讓玩家的攻擊打得到
+# 玩家拿著的道具（背包與主手 / 副手的武器格子；武器與屍體不算）
+static func _held_items(p: Player) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for where: int in [Loadout.MAIN, Loadout.OFF, Loadout.BAG]:
+		var inv := p.loadout.container(where)
+		if inv != null:
+			for e in inv.entries:
+				if not e.has("weapon") and e.id != &"corpse":
+					out.append(e)
+	return out
+
+
 static func _dummy(w: World, at: Vector2, hp: float = 1000.0, mass: float = 1000.0) -> Entity:
 	var e := Entity.new(w, &"test", &"enemy", 0.5, hp, mass)
 	e.pos = at

@@ -124,7 +124,8 @@ static func can_merge(a: Dictionary, b: Dictionary) -> bool:
 		and a.rarity == b.rarity and next_rarity(a.rarity) != &""
 
 
-# 快照用：[uid, base, rarity, [詞條…], 武器技能剩幾次?]；空的裝備欄是 []；次數沒用過（滿的）不送
+# 快照用：[uid, base, rarity, [詞條…], 武器技能剩幾次?, 鑲的道具?]；空的主手 / 副手是 []；
+# 次數沒用過（滿的）送 -1、沒鑲東西就不送後兩欄。鑲的道具：[[uid, id, x, y, rot], …]
 static func to_array(inst: Dictionary) -> Array:
 	if inst.is_empty():
 		return []
@@ -132,8 +133,14 @@ static func to_array(inst: Dictionary) -> Array:
 	for id: StringName in inst.affixes:
 		affixes.append(String(id))
 	var a := [String(inst.uid), String(inst.base), String(inst.rarity), affixes]
-	if inst.has("slot_charges"):
-		a.append(inst.slot_charges)
+	var sockets: Array = inst.get("sockets", [])
+	if inst.has("slot_charges") or not sockets.is_empty():
+		a.append(inst.get("slot_charges", -1))
+	if not sockets.is_empty():
+		var arr := []
+		for e: Dictionary in sockets:
+			arr.append([String(e.uid), String(e.id), e.cell.x, e.cell.y, e.rot])
+		a.append(arr)
 	return a
 
 
@@ -144,8 +151,13 @@ static func from_array(a: Array) -> Dictionary:
 	for s: String in a[3]:
 		affixes.append(StringName(s))
 	var inst := {"uid": StringName(a[0]), "base": StringName(a[1]), "rarity": StringName(a[2]), "affixes": affixes}
-	if a.size() > 4:
+	if a.size() > 4 and int(a[4]) >= 0:
 		inst["slot_charges"] = int(a[4])
+	if a.size() > 5:
+		var sockets: Array[Dictionary] = []
+		for e: Array in a[5]:
+			sockets.append({"uid": StringName(e[0]), "id": StringName(e[1]), "cell": Vector2i(e[2], e[3]), "rot": int(e[4])})
+		inst["sockets"] = sockets
 	return inst
 
 
