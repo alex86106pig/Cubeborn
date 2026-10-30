@@ -3,7 +3,7 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
-## [未發布]
+## [0.55.0] - 2026-10-31
 
 ### 新增
 - **鍛造祭壇**（Build 改版第 8 步）：每層地圖隨機放 1 座（Claude 暫定），走過去按 F 打開背包。武器只能在鍛造祭壇旁合成（免費），兩把都有詞條時會跳出面板，讓你從兩把各挑一條留下，其他重抽。
