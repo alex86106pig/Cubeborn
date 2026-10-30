@@ -1,4 +1,4 @@
-# 遺物的 N 選 1（Build 改版第 6 步）：畫面下方中間一排卡片（左邊畫物品長怎樣，右邊名稱、稀有度與羈絆、效果），遊戲不暫停
+# 遺物的 N 選 1（Build 改版第 6 步）：畫面下方中間一排卡片（左邊畫物品長怎樣，右邊名稱、羈絆、效果；稀有度看顏色），遊戲不暫停
 # 自己的角色打開了遺物（Player.relic_id，連線時看快照）就顯示，選項讀遺物上的 offers；點卡片或按數字鍵選、R 重骰、Esc 先不選
 # 鍵盤由 InputCollector 接（relic_open 時數字鍵、R、Esc 不給技能、重新開始、暫停）；操作走 op_requested → InputCmd.inv_ops，結果等權威端
 class_name RelicPanel
@@ -65,11 +65,16 @@ func _rebuild(choices: Array, me: Player) -> void:
 		if def.kind == &"skill":
 			_cards.add_child(_skill_card(i, id, me))
 			continue
+		# 稀有度看文字顏色與小圖外框，不另外寫；有羈絆才寫一行
 		var bonds: Array[String] = []
 		for b: StringName in def.get("bonds", []):
 			bonds.append(BondDefs.BONDS[b].name)
 		var rarity: Dictionary = ItemDefs.RARITIES[def.rarity]
-		var b := UiKit.button("%d　%s\n%s · %s\n%s" % [i + 1, def.name, rarity.name, "、".join(bonds) if not bonds.is_empty() else "沒有羈絆", def.desc], UiKit.BUTTON_CARD)
+		var lines: Array[String] = ["%d　%s" % [i + 1, def.name]]
+		if not bonds.is_empty():
+			lines.append("%s羈絆" % "、".join(bonds))
+		lines.append(def.desc)
+		var b := UiKit.button("\n".join(lines), UiKit.BUTTON_CARD)
 		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		b.add_theme_color_override(&"font_color", rarity.color)
 		b.add_theme_color_override(&"font_hover_color", rarity.color.lightened(0.3))
