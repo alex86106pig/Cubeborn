@@ -167,9 +167,9 @@ func _initialize() -> void:
 		all.bind([LootChecks.check_items_apply, LootChecks.check_item_stats]))
 	_check("道具條件：對滿血敵人、低於門檻生命、擊殺後一段時間、翻滾後一段時間、本層每擊殺疊一層（有上限、換層歸零）；拿掉道具就沒了",
 		all.bind([LootChecks.check_item_conditions, LootChecks.check_item_conditions_roll_kills]))
-	_check("道具觸發：擊殺（爆炸、回血、鬼火、召喚骷髏僕從）、命中（連鎖閃電、中毒、冰凍、點燃擴散）、受傷（近戰反彈、自身爆炸）、投射物命中（爆炸）、普攻出手（飛刀、斬波）、定時（落雷）、翻滾（減速）、致命傷（守護亡靈、復活十字）；機率相加、內部冷卻、上限",
+	_check("道具觸發：擊殺（爆炸、回血、鬼火、召喚骷髏僕從）、命中（連鎖閃電、中毒、冰凍、點燃擴散）、受傷（近戰反彈、自身爆炸）、投射物命中（爆炸）、普攻出手（飛刀、斬波）、定時（落雷）、翻滾（減速）、致命傷（守護亡靈、復活十字）；機率相加、內部冷卻、上限；命中 / 普攻類看鑲的部位（攻擊部位每次、末端連段最後一下、防禦部位格擋成功、握柄不發動）",
 		all.bind([LootChecks.check_item_procs, LootChecks.check_item_procs_hurt_ignite, LootChecks.check_item_procs_attack_timed,
-			LootChecks.check_item_procs_lethal, LootChecks.check_item_procs_summon]))
+			LootChecks.check_item_procs_lethal, LootChecks.check_item_procs_summon, LootChecks.check_item_part_timing]))
 	_check("道具能力：二段跳（沒有道具空中跳不了、有雙躍之靴可再跳一次、落地重置）；自動回充的護盾（先扣盾、recharge_delay 秒沒受傷才補滿）",
 		all.bind([PlayerChecks.check_double_jump, LootChecks.check_item_shield]))
 	_check("道具掉落：全部道具的效果都已接上；寶箱只開出效果都接上的道具；沒有的稀有度往下一級找", LootChecks.check_item_drop_pool)

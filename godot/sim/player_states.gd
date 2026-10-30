@@ -175,9 +175,9 @@ class TimedAction:
 	func _enter_phase(p: Player, data: Dictionary, index: int) -> void:
 		var name := PHASES[index]
 		data.behavior.phase(p, data.def, data, name)
-		# 普攻出手（G4 袖中飛刀、裂空之刃）：只算武器本身的左鍵（火把準備姿態、舉著怪時換掉的招式不算），只在權威端
+		# 普攻出手（G4 袖中飛刀、裂空之刃；末端部位只算連段最後一下）：只算武器本身的左鍵（火把準備姿態、舉著怪時換掉的招式不算），只在權威端
 		if name == &"active" and kind == &"attack" and is_same(data.def, p.weapon.attack) and p.world.is_authority:
-			ItemEffects.on_attack(p.world, p)
+			ItemEffects.on_attack(p.world, p, data.get("is_finisher", false))
 		if name == &"active":
 			var sfx: String = data.def.get("sfx_heavy", data.def.sfx) if data.get("is_finisher", false) else data.def.get("sfx", "")
 			if sfx != "":

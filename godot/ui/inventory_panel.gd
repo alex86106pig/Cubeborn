@@ -538,6 +538,9 @@ func _info_of(me: Player) -> Dictionary:
 		var info := UiKit.item_info(found.entry.id, {})
 		var part: String = WeaponDefs.PARTS[WeaponDefs.grid_cells(Loadout.weapon_of(me.weapon_slots[found.where]))[found.entry.cell + Inventory.cells_of(found.entry.id, found.entry.rot)[0]]]
 		info.title += "（鑲在%s · %s）" % ["主手" if found.where == Loadout.MAIN else "副手", part]
+		var timing := ItemDefs.timing_line(found.entry.id, (found.inv as Inventory).parts_of(found.entry))
+		if timing != "":
+			info.lines.append(timing)
 		return info
 	var e := me.inventory.find(uid)
 	if e.is_empty():

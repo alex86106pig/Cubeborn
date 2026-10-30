@@ -372,12 +372,15 @@ static func conditions_of(p: Player) -> Array[Dictionary]:
 
 
 # 觸發的動作依 do 合併：機率相加（最多 1）、沒有機率的次數相加；依道具順序（決定性）
-static func procs_of(p: Player, on: StringName) -> Array[Dictionary]:
+# part：發動時機看部位的觸發（ItemDefs.PART_TIMED_TRIGGERS）只算碰到這個部位的道具
+static func procs_of(p: Player, on: StringName, part := "") -> Array[Dictionary]:
 	var by_do := {}
 	var order: Array[Dictionary] = []
 	for x in effects_of(p, "on", on):
 		var eff: Dictionary = x.effect
 		if not ItemDefs.is_implemented(eff):
+			continue
+		if part != "" and not String(_item_of(p, x.uid).get("parts", "")).contains(part):
 			continue
 		if not by_do.has(eff.do):
 			by_do[eff.do] = {"do": eff.do, "on": on, "effect": eff, "chance": 0.0, "count": 0}
@@ -385,6 +388,13 @@ static func procs_of(p: Player, on: StringName) -> Array[Dictionary]:
 		by_do[eff.do].chance += eff.get("chance", 1.0)
 		by_do[eff.do].count += 1
 	return order
+
+
+static func _item_of(p: Player, uid: StringName) -> Dictionary:
+	for it: Dictionary in p.items:
+		if it.uid == uid:
+			return it
+	return {}
 
 
 # 沒有機率的觸發（荊棘、王墓之心、爆裂箭袋、永恆之焰）拿兩個效果相加；有機率的疊的是機率，效果只算一份
@@ -396,8 +406,8 @@ static func _rolled(world: World, proc: Dictionary) -> bool:
 	return proc.chance >= 1.0 or world.rng.randf() < proc.chance
 
 
-static func _run_procs(world: World, p: Player, on: StringName, target: Entity, damage: float) -> void:
-	for proc in procs_of(p, on):
+static func _run_procs(world: World, p: Player, on: StringName, target: Entity, damage: float, part := "") -> void:
+	for proc in procs_of(p, on, part):
 		if _rolled(world, proc):
 			(ACTIONS[proc.do] as Action).run(world, p, target, damage, proc)
 
@@ -484,8 +494,19 @@ static func absorb(p: Player, amount: float) -> float:
 
 
 # 普攻出手時（G4，TimedAction 進入 active、只在權威端）：袖中飛刀、裂空之刃
-static func on_attack(world: World, p: Player) -> void:
-	_run_procs(world, p, &"attack", null, 0.0)
+# 普攻出手（PlayerStates 進 active）：攻擊部位每次、末端只有連段最後一下
+static func on_attack(world: World, p: Player, finisher: bool) -> void:
+	_run_procs(world, p, &"attack", null, 0.0, "A")
+	if finisher:
+		_run_procs(world, p, &"attack", null, 0.0, "E")
+
+
+# 格擋 / 招架成功（Combat 在擋下之後呼叫、只在權威端）：防禦部位的命中類打向攻擊者（傷害 = 武器基礎傷害 100%）、
+# 普攻類往面向射出；attacker 是射箭的怪時一樣打它
+static func on_block(world: World, p: Player, attacker: Entity) -> void:
+	if attacker is Enemy and not attacker.is_dead and attacker.team != p.team:
+		_run_procs(world, p, &"hit", attacker, p.pct_damage(ItemDefs.BLOCK_HIT_DAMAGE_PCT), "D")
+	_run_procs(world, p, &"attack", null, 0.0, "D")
 
 
 # 生命歸零、還沒倒地時（G5，Player.die、只在權威端）：守護亡靈先用（每個道具每層一次），沒有才用復活十字；救下來回傳 true
@@ -580,10 +601,12 @@ static func soul_mul(p: Player, e: Enemy) -> float:
 
 
 # 命中時（Combat 在一般攻擊命中後呼叫）：damage 是這一下的傷害（扣護甲前）；projectile = 投射物直接命中（G3 爆裂箭袋）
-static func on_hit(world: World, p: Player, target: Entity, damage: float, projectile := false) -> void:
+static func on_hit(world: World, p: Player, target: Entity, damage: float, projectile := false, finisher := false) -> void:
 	if not target is Enemy:
 		return
-	_run_procs(world, p, &"hit", target, damage)
+	_run_procs(world, p, &"hit", target, damage, "A")
+	if finisher:
+		_run_procs(world, p, &"hit", target, damage, "E")
 	if projectile:
 		_run_procs(world, p, &"projectile_hit", target, damage)
 

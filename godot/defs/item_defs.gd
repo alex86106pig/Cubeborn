@@ -5,7 +5,7 @@
 # 效果（effects 的每一筆）有四種寫法：
 #   屬性      {"stat", "op", "value"}：放進身上就生效，以道具實例 id 為來源套進 sim/stats.gd（B6 已接上）
 #   條件屬性  {"when", "stat", "op", "value", ...}：條件成立時才生效（例如低血、翻滾後幾秒），參數見 CONDITIONS
-#   觸發      {"on", "do", "chance"?, ...}：事件發生時執行動作，參數見 TRIGGERS / ACTIONS
+#   觸發      {"on", "do", "chance"?, ...}：事件發生時執行動作，參數見 TRIGGERS / ACTIONS；命中、普攻的時機看鑲在哪個部位（PART_TIMING）
 #   能力      {"ability", ...}：新增一種能力（二段跳、護盾），參數見 ABILITIES
 # 後三種有些已接上（IMPLEMENTED_*，效果在 sim/item_effects.gd），其他的只有資料：說明加「效果尚未實作」、寶箱不開出（LootDefs.drop_pool）
 class_name ItemDefs
@@ -64,6 +64,17 @@ const TRIGGERS := {
 	&"death": {"name": "死亡時"},
 	&"interval": {"name": "每隔固定秒數", "params": ["period"]},
 }
+
+# 發動時機看鑲在哪個部位的觸發（命中、普攻出手）；其他觸發放在哪個部位都照原本的時機
+const PART_TIMED_TRIGGERS: Array[StringName] = [&"hit", &"attack"]
+# 部位（WeaponDefs.PARTS 的字元）→ 上面兩種觸發在什麼時候發動；沒列的部位（握柄、寶石座）不發動。
+# 道具跨好幾個部位時每個部位各算一次（劍尖＋刃：連段最後一下發動兩次）
+const PART_TIMING := {
+	"A": {&"hit": "命中時", &"attack": "普攻出手時"},
+	"E": {&"hit": "連段最後一下命中時", &"attack": "連段最後一下出手時"},
+	"D": {&"hit": "格擋 / 招架成功時", &"attack": "格擋 / 招架成功時"},
+}
+const BLOCK_HIT_DAMAGE_PCT := 1.0   # 防禦部位的命中類觸發沒有「那一下的傷害」：用武器基礎傷害的 100%（Player.pct_damage）
 
 # 觸發後的動作；params = 必填參數
 const ACTIONS := {
@@ -177,9 +188,9 @@ const ITEMS := {
 
 	# ---- 綠色：條件與觸發 ----
 	&"thunder_rune": {"kind": &"item", "name": "雷鳴符文", "rarity": &"green", "power": 3.0, "shape": &"l3",
-		"desc": "命中 10% 機率連鎖閃電（3 個目標）", "effects": [{"on": &"hit", "chance": 0.1, "do": &"chain_lightning", "targets": 3}]},
+		"desc": "發動時 10% 機率連鎖閃電（3 個目標）", "effects": [{"on": &"hit", "chance": 0.1, "do": &"chain_lightning", "targets": 3}]},
 	&"venom_blade": {"kind": &"item", "name": "淬毒刀刃", "rarity": &"green", "power": 3.0, "shape": &"i3",
-		"desc": "命中 15% 機率中毒（持續傷害）", "effects": [{"on": &"hit", "chance": 0.15, "do": &"poison"}]},
+		"desc": "發動時 15% 機率讓目標中毒（持續傷害）", "effects": [{"on": &"hit", "chance": 0.15, "do": &"poison"}]},
 	&"war_drum": {"kind": &"item", "name": "戰鼓", "rarity": &"green", "power": 2.5, "shape": &"l3",
 		"desc": "擊殺後 3 秒攻速 +30%", "effects": [{"when": &"after_kill", "duration": 3.0, "stat": &"attack_speed", "op": Stats.PCT, "value": 0.3}]},
 	&"berserker_charm": {"kind": &"item", "name": "狂戰士護符", "rarity": &"green", "power": 2.5, "shape": &"i3",
@@ -191,7 +202,7 @@ const ITEMS := {
 	&"bone_buckler": {"kind": &"item", "name": "骨製護盾", "rarity": &"green", "power": 3.5, "shape": &"o4",
 		"desc": "護盾為最大生命的 8%，3 秒沒受傷就自動回充", "effects": [{"ability": &"bone_shield", "ratio": 0.08, "recharge_delay": 3.0}]},
 	&"sleeve_knife": {"kind": &"item", "name": "袖中飛刀", "rarity": &"green", "power": 3.0, "shape": &"i3",
-		"desc": "普攻 20% 機率追加一把飛刀", "effects": [{"on": &"attack", "chance": 0.2, "do": &"throw_knife"}]},
+		"desc": "發動時 20% 機率追加一把飛刀", "effects": [{"on": &"attack", "chance": 0.2, "do": &"throw_knife"}]},
 	&"wisp_lantern": {"kind": &"item", "name": "鬼火燈籠", "rarity": &"green", "power": 3.5, "shape": &"t4",
 		"desc": "擊殺時放出會追蹤敵人的鬼火", "effects": [{"on": &"kill", "do": &"wisp"}]},
 	&"lockpick": {"kind": &"item", "name": "撬鎖工具", "rarity": &"green", "power": 1.5, "shape": &"i2",
@@ -203,7 +214,7 @@ const ITEMS := {
 
 	# ---- 藍色：改變打法 ----
 	&"frost_heart": {"kind": &"item", "name": "霜之心", "rarity": &"blue", "power": 5.0, "shape": &"l4",
-		"desc": "命中 10% 機率冰凍 1.5 秒", "effects": [{"on": &"hit", "chance": 0.1, "do": &"freeze", "duration": 1.5}]},
+		"desc": "發動時 10% 機率冰凍目標 1.5 秒", "effects": [{"on": &"hit", "chance": 0.1, "do": &"freeze", "duration": 1.5}]},
 	&"soul_scythe": {"kind": &"item", "name": "吸魂鐮", "rarity": &"blue", "power": 4.5, "shape": &"t4",
 		"desc": "擊殺回復 3% 最大生命", "effects": [{"on": &"kill", "do": &"heal_max_hp", "ratio": 0.03}]},
 	&"twin_leap_boots": {"kind": &"item", "name": "雙躍之靴", "rarity": &"blue", "power": 4.0, "shape": &"s4",
@@ -225,7 +236,7 @@ const ITEMS := {
 	&"resurrection_cross": {"kind": &"item", "name": "復活十字", "rarity": &"purple", "power": 9.0, "shape": &"cross6",
 		"desc": "死亡時復活一次，用完碎掉並空出格子", "effects": [{"on": &"death", "do": &"revive", "consume": true}]},
 	&"rift_blade": {"kind": &"item", "name": "裂空之刃", "rarity": &"purple", "power": 9.0, "shape": &"l6",
-		"desc": "攻擊額外射出 2 道斬波，各造成 50% 傷害", "effects": [{"on": &"attack", "do": &"slash_wave", "count": 2, "damage_ratio": 0.5}]},
+		"desc": "發動時射出 2 道斬波，各造成 50% 傷害", "effects": [{"on": &"attack", "do": &"slash_wave", "count": 2, "damage_ratio": 0.5}]},
 	&"blood_crown": {"kind": &"item", "name": "血族王冠", "rarity": &"purple", "power": 6.0, "shape": &"o4",
 		"desc": "造成傷害的 3% 轉為回復生命", "effects": [{"stat": &"lifesteal", "op": Stats.ADD, "value": 0.03}]},
 	&"hourglass": {"kind": &"item", "name": "時之沙漏", "rarity": &"purple", "power": 6.0, "shape": &"t4",
@@ -241,7 +252,7 @@ const ITEMS := {
 	&"tomb_heart": {"kind": &"item", "name": "王墓之心", "rarity": &"orange", "power": 10.0, "shape": &"r6",
 		"desc": "受傷時對周圍爆炸，傷害為受傷量的 300%", "effects": [{"on": &"hurt", "do": &"explode", "damage_ratio": 3.0}]},
 	&"eternal_flame": {"kind": &"item", "name": "永恆之焰", "rarity": &"orange", "power": 12.0, "shape": &"h7",
-		"desc": "所有攻擊都會點燃敵人，燃燒會擴散到附近敵人", "effects": [{"on": &"hit", "do": &"ignite", "spread": true}]},
+		"desc": "發動時點燃目標，燃燒會擴散到附近敵人", "effects": [{"on": &"hit", "do": &"ignite", "spread": true}]},
 	&"stasis_watch": {"kind": &"item", "name": "停滯懷錶", "rarity": &"orange", "power": 10.0, "shape": &"cross6",
 		"desc": "翻滾時周圍時間變慢 2 秒（敵人慢 70%）", "effects": [{"on": &"roll", "do": &"slow_time", "duration": 2.0, "slow": 0.7}]},
 	# 隊友的屍體（D6，kind &"corpse"）：不是道具，寶箱不會開出；背包條目 uid 是 Player.corpse_uid(死者)
@@ -287,6 +298,26 @@ static func is_implemented(effect: Dictionary) -> bool:
 	if effect.has("when") and not IMPLEMENTED_CONDITIONS.has(effect.when):
 		return false
 	return effect.has("stat") and StatDefs.STATS[effect.stat].in_use
+
+
+# 道具有沒有發動時機看部位的觸發；有的話回傳那個觸發（hit / attack），沒有回傳 &""
+static func part_timed_trigger(id: StringName) -> StringName:
+	for e: Dictionary in ITEMS[id].effects:
+		if PART_TIMED_TRIGGERS.has(e.get("on", &"")):
+			return e.on
+	return &""
+
+
+# Tab 說明的「發動」那行：parts 是道具碰到的部位字元（Inventory.parts_of）；不看部位的道具回傳 ""
+static func timing_line(id: StringName, parts: String) -> String:
+	var on := part_timed_trigger(id)
+	if on == &"":
+		return ""
+	var when: Array[String] = []
+	for part in parts:
+		if PART_TIMING.has(part) and not when.has(PART_TIMING[part][on]):
+			when.append(PART_TIMING[part][on])
+	return "發動：" + ("、".join(when) if not when.is_empty() else "不發動（鑲在攻擊部位、末端或防禦部位才會發動）")
 
 
 # 道具的效果是不是全部都接上了

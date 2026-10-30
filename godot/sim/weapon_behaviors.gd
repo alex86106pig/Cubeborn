@@ -86,7 +86,7 @@ class MeleeSwing extends Behavior:
 			"knockback": def.get("finisher_knockback", def.knockback * def.finisher_impact_mul) if fin else def.knockback,
 			"hit_stop": def.hit_stop * (def.finisher_impact_mul if fin else 1.0),
 			"shake": def.shake * (def.finisher_shake_mul if fin else 1.0),
-			"is_heavy": fin, "blockable": true, "force_crit": fin and def.get("finisher_crit", false),
+			"is_heavy": fin, "finisher": fin, "blockable": true, "force_crit": fin and def.get("finisher_crit", false),
 			"no_stagger": not fin and def.get("finisher_only_stagger", false),   # 雙匕首前 4 下不讓怪硬直
 		}, data.hit)
 		WeaponBehaviors.ignite(p, def, hits)

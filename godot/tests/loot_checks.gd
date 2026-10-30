@@ -815,20 +815,25 @@ static func check_item_procs() -> String:
 		return "爆炸應讓旁邊的怪扣 %d，實際 %d" % [_dealt(b, 40.0 * ex.damage_ratio), _hp_loss(b, b_before)]
 	p.clear_items()
 	w.clear()
-	# 雷鳴符文疊到 100%：a → b → c（每跳都在 jump_range 內），d 太遠；每跳 damage_ratio，閃電不會再觸發閃電
+	# 雷鳴符文：一直打到觸發（命中類只算碰到攻擊部位的，武器格子放不下疊到 100% 的件數）：
+	# a → b → c（每跳都在 jump_range 內），d 太遠；每跳 damage_ratio，閃電不會再觸發閃電
 	var cl: Dictionary = ItemDefs.PROCS[&"chain_lightning"]
 	var jr: float = cl.jump_range
 	w = _new_world()
 	p = _player(w)
-	for i in _stacks_for_sure(&"thunder_rune"):
-		p.add_item(&"thunder_rune")
+	p.add_item(&"thunder_rune")
 	a = _item_dummy(w, Vector2(0, 5))
 	b = _item_dummy(w, Vector2(0, 5 + jr * 0.6))
 	var c := _item_dummy(w, Vector2(0, 5 + jr * 1.4))
 	var d := _item_dummy(w, Vector2(0, 5 + jr * 5.0))
-	var hp0 := [a.hp, b.hp, c.hp, d.hp]
-	w.events.clear()
-	Combat.apply_damage(w, p, a, {"damage": 10.0})
+	var hp0 := [a.max_hp, b.max_hp, c.max_hp, d.max_hp]
+	for i in 300:
+		for e: Enemy in [a, b, c, d]:
+			e.hp = e.max_hp
+		w.events.clear()
+		Combat.apply_damage(w, p, a, {"damage": 10.0})
+		if b.hp < b.max_hp:
+			break
 	var got := [_hp_loss(a, hp0[0]), _hp_loss(b, hp0[1]), _hp_loss(c, hp0[2]), _hp_loss(d, hp0[3])]
 	var want := [_dealt(a, 10.0), _dealt(b, 10.0 * cl.damage_ratio), _dealt(c, 10.0 * cl.damage_ratio), 0]
 	if got != want:
@@ -838,17 +843,20 @@ static func check_item_procs() -> String:
 		return "應有 1 道經過 %d 點的閃電：%s" % [_effect(&"thunder_rune").targets, bolts]
 	p.clear_items()
 	w.clear()
-	# 淬毒刀刃疊到 100%：命中 10 → duration 秒共 10 × total_ratio，每 tick 秒扣一次
+	# 淬毒刀刃：一直打到中毒（同上）；中毒那一下 10 → duration 秒共 10 × total_ratio，每 tick 秒扣一次
 	var po: Dictionary = ItemDefs.PROCS[&"poison"]
 	var ticks := roundi(po.duration / po.tick)
 	w = _new_world()
 	p = _player(w)
-	for i in _stacks_for_sure(&"venom_blade"):
-		p.add_item(&"venom_blade")
+	p.add_item(&"venom_blade")
 	a = _item_dummy(w, Vector2(0, 5))
-	var before := a.hp
-	Combat.apply_damage(w, p, a, {"damage": 10.0})
-	if not a.anim.is_empty() and a.poison_timer <= 0.0:
+	var before := a.max_hp
+	for i in 300:
+		a.hp = a.max_hp
+		Combat.apply_damage(w, p, a, {"damage": 10.0})
+		if a.poison_timer > 0.0:
+			break
+	if a.poison_timer <= 0.0:
 		return "命中後應中毒"
 	_run(w, idle, roundi(po.duration / DT) + 20)
 	var want_poison := roundi(_dealt_exact(a, 10.0) + ticks * _dealt_exact(a, 10.0 * po.total_ratio / ticks, &"poison"))
@@ -1124,15 +1132,19 @@ static func check_item_procs_attack_timed() -> String:
 	var w := _new_world()
 	var p := _player(w)
 	var idle := _cmd(Vector2.ZERO)
-	# 袖中飛刀疊到 100%：劍盾普攻出手就射出 1 把（proc、武器基礎傷害 × damage_pct）；內部冷卻內再出手不射
+	# 袖中飛刀：普攻出手一直到射出 1 把（proc、武器基礎傷害 × damage_pct；武器格子放不下疊到 100% 的件數）；
+	# 內部冷卻內再出手不射。真的走狀態機出手的路徑在 check_item_part_timing
 	var kn: Dictionary = ItemDefs.PROCS.throw_knife
-	for i in _stacks_for_sure(&"sleeve_knife"):
-		p.add_item(&"sleeve_knife")
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), roundi(p.weapon.attack.windup / DT) + 2)
+	p.add_item(&"sleeve_knife")
+	p.aim_point = p.pos + Vector2(0, 5)
+	for i in 300:
+		ItemEffects.on_attack(w, p, false)
+		if not _item_projectiles(w).is_empty():
+			break
 	var knives := _item_projectiles(w)
 	if knives.size() != 1 or absf(knives[0].damage - p.pct_damage(kn.damage_pct)) > EPS or knives[0].pierce:
 		return "普攻出手應射 1 把飛刀（傷害 %.2f）：%d 把 %s" % [p.pct_damage(kn.damage_pct), knives.size(), knives.map(func(k: Projectile) -> float: return k.damage)]
-	ItemEffects.on_attack(w, p)
+	ItemEffects.on_attack(w, p, false)
 	if _item_projectiles(w).size() != 1:
 		return "飛刀內部冷卻 %.1f 秒內不該再射" % kn.icd
 	p.clear_items()
@@ -1143,7 +1155,7 @@ static func check_item_procs_attack_timed() -> String:
 	var rb := _effect(&"rift_blade")
 	p.add_item(&"rift_blade")
 	p.aim_point = p.pos + Vector2(0, 5)
-	ItemEffects.on_attack(w, p)
+	ItemEffects.on_attack(w, p, false)
 	var waves := _item_projectiles(w)
 	if waves.size() != rb.count:
 		return "裂空之刃應射出 %d 道斬波，實際 %d" % [rb.count, waves.size()]
@@ -1512,4 +1524,86 @@ static func check_weapon_merge() -> String:
 	var o2: Dictionary = mk.call("o2", &"staff", &"orange")
 	if WeaponDropDefs.can_merge(o1, o2):
 		return "橘色不能再合成"
+	return ""
+
+
+# 部位決定發動時機（Build 改版第 4 步）：命中 / 普攻類只算碰到那個部位的道具——攻擊部位每次、末端只有連段最後一下（跨兩個部位各算一次）、
+# 防禦部位格擋成功時、握柄不發動；同一隻手的格子裡搬位置會跟著改；自動擺放時觸發道具碰攻擊部位、數值道具不佔觸發部位
+static func check_item_part_timing() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	p.loadout.equip_new(p, &"longsword")
+	p.loadout.equip_offhand_new(p, &"woodShield")
+	# 長劍格子：(2, 0) 末端、第 1~4 列中間攻擊部位、第 5 列握柄（WeaponDefs.WEAPONS.longsword.grid）
+	var rune := p.loadout.add_item(p, &"thunder_rune", {"cell": Vector2i(2, 0), "rot": 0}, 0, Loadout.MAIN)
+	var it := ItemEffects._item_of(p, rune)
+	if it.get("parts", "") != "EA":
+		return "雷鳴符文鑲在劍尖 + 刃，部位應為 EA：%s" % it.get("parts", "")
+	var chance: float = _effect(&"thunder_rune").chance
+	for part in ["A", "E"]:
+		var procs := ItemEffects.procs_of(p, &"hit", part)
+		if procs.size() != 1 or absf(procs[0].chance - chance) > EPS:
+			return "鑲在 EA 的雷鳴符文在 %s 應發動（機率 %.2f）：%s" % [part, chance, procs]
+	if not ItemEffects.procs_of(p, &"hit", "D").is_empty():
+		return "劍上的雷鳴符文格擋時不該發動"
+	# 命中時擲骰次數：一般命中 1 次（攻擊部位）、連段最後一下 2 次（攻擊部位 + 末端各一次）
+	var a := _item_dummy(w, Vector2(0, 5))
+	var draws := func(finisher: bool) -> int:
+		var before: int = w.rng.state
+		ItemEffects.on_hit(w, p, a, 10.0, false, finisher)
+		var after: int = w.rng.state
+		w.rng.state = before
+		for n in 8:
+			if w.rng.state == after:
+				return n
+			w.rng.randf()
+		return -1
+	if draws.call(false) != 1 or draws.call(true) != 2:
+		return "EA 的符文：一般命中應擲 1 次、連段最後一下 2 次，實際 %d / %d" % [draws.call(false), draws.call(true)]
+	# 搬到握柄（同一隻手）：不發動
+	p.loadout._move_item(p, rune, Vector2i(2, 5), 1, Loadout.MAIN)
+	if ItemEffects._item_of(p, rune).get("parts", "") != "H" or draws.call(true) != 0:
+		return "搬到握柄後部位應為 H、命中不擲骰：%s / %d" % [ItemEffects._item_of(p, rune).get("parts", ""), draws.call(true)]
+	if ItemDefs.timing_line(&"thunder_rune", "H").find("不發動") < 0 or ItemDefs.timing_line(&"whetstone", "A") != "":
+		return "說明：握柄應寫不發動、數值道具不寫發動：%s / %s" % [ItemDefs.timing_line(&"thunder_rune", "H"), ItemDefs.timing_line(&"whetstone", "A")]
+	# 攻擊部位的裂空之刃：真的普攻出手（狀態機）就射出斬波
+	var rb := _effect(&"rift_blade")
+	var blade := p.loadout.add_item(p, &"rift_blade", {"cell": Vector2i(1, 1), "rot": 0}, 0, Loadout.MAIN)
+	if ItemEffects._item_of(p, blade).get("parts", "") != "A":
+		return "裂空之刃應只在攻擊部位：%s" % ItemEffects._item_of(p, blade).get("parts", "")
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), roundi(p.weapon.attack.windup / DT) + 2)
+	if _item_projectiles(w).size() != rb.count:
+		return "攻擊部位的裂空之刃普攻出手應射 %d 道，實際 %d" % [rb.count, _item_projectiles(w).size()]
+	# 搬到盾面（防禦部位）：普攻不射、格擋成功才射
+	p.loadout.remove_item(p, blade)
+	blade = p.loadout.add_item(p, &"rift_blade", {"cell": Vector2i(1, 0), "rot": 0}, 0, Loadout.OFF)
+	p.proc_timers.clear()
+	for e in _item_projectiles(w):
+		e.remove()
+	ItemEffects.on_attack(w, p, true)
+	if not _item_projectiles(w).is_empty():
+		return "盾面的裂空之刃普攻不該射"
+	var foe := _item_dummy(w, p.pos + Vector2(0, 2))
+	p.facing = 0.0
+	p.block_time = 0.0
+	Combat.apply_damage(w, foe, p, {"damage": 5.0, "blockable": true})
+	if _item_projectiles(w).size() != rb.count:
+		return "盾面的裂空之刃格擋成功應射 %d 道，實際 %d" % [rb.count, _item_projectiles(w).size()]
+	# 盾面的永恆之焰（命中類）：格擋成功時點燃攻擊者
+	p.loadout.remove_item(p, blade)
+	p.loadout.add_item(p, &"eternal_flame", {"cell": Vector2i(1, 0), "rot": 0}, 0, Loadout.OFF)
+	Combat.apply_damage(w, foe, p, {"damage": 5.0, "blockable": true})
+	if foe.burn_timer <= 0.0:
+		return "盾面的永恆之焰格擋成功應點燃攻擊者"
+	# 自動擺放：觸發道具碰到攻擊部位、數值道具不佔攻擊部位 / 末端 / 防禦部位
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	p2.loadout.equip_new(p2, &"longsword")
+	var auto_rune := ItemEffects._item_of(p2, p2.add_item(&"venom_blade"))
+	var auto_stone := ItemEffects._item_of(p2, p2.add_item(&"whetstone"))
+	if not String(auto_rune.get("parts", "")).contains("A"):
+		return "自動擺放的淬毒刀刃應碰到攻擊部位：%s" % auto_rune.get("parts", "")
+	for part in ["A", "E", "D"]:
+		if String(auto_stone.get("parts", "")).contains(part):
+			return "自動擺放的磨刀石不該佔 %s：%s" % [part, auto_stone.get("parts", "")]
 	return ""

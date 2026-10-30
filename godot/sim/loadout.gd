@@ -12,7 +12,7 @@ const BAG := -1    # 道具放哪裡：BAG 背包、MAIN / OFF 主手 / 副手�
 const AUTO := -2   # 自動：主手格子 → 副手格子 → 背包，第一個放得下的
 
 var weapon_slots: Array[Dictionary] = [{}, {}]   # [主手, 副手]：武器實例（WeaponDropDefs）或 {}
-var items: Array[Dictionary] = []     # 生效的道具實例 { uid, id }（鑲在主手 / 副手上的，refresh_items 同步）；uid 同時是屬性加成的來源名稱
+var items: Array[Dictionary] = []     # 生效的道具實例 { uid, id, parts }（鑲在主手 / 副手上的，refresh_items 同步）；uid 同時是屬性加成的來源名稱，parts 是碰到的部位字元（發動時機）
 var inventory := Inventory.new()       # 背包的擺放（只放東西）
 var _next_item_uid := 1
 var _ops: Array = []                   # 本步收到的背包操作（InputCmd.inv_ops），只在權威端執行
@@ -277,19 +277,23 @@ func clear_items(p: Player) -> void:
 # 生效的道具 = 鑲在主手與副手格子上的；和 items 比對，新鑲上的套屬性、拿下來的移除屬性與道具效果的狀態
 func refresh_items(p: Player) -> void:
 	var want := {}
+	var parts := {}
 	for where: int in [MAIN, OFF]:
 		var inv := container(where)
 		if inv != null:
 			for e: Dictionary in inv.entries:
 				want[e.uid] = e.id
+				parts[e.uid] = inv.parts_of(e)
 	for it: Dictionary in items.duplicate():
 		if not want.has(it.uid):
 			items.erase(it)
 			p.remove_stat_source(it.uid)
 			ItemEffects.forget_item(p, it.uid)
+		else:
+			it.parts = parts[it.uid]   # 同一隻手的格子裡搬位置、換手都會變
 	for uid: StringName in want:
 		if not items.any(func(it: Dictionary) -> bool: return it.uid == uid):
-			items.append({"uid": uid, "id": want[uid]})
+			items.append({"uid": uid, "id": want[uid], "parts": parts[uid]})
 			p.set_stat_source(uid, ItemDefs.stat_mods(want[uid]))
 
 
@@ -390,7 +394,8 @@ func _move_item(p: Player, uid: StringName, cell: Vector2i, rot: int, where: int
 	if found.is_empty() or dst == null:
 		return
 	if found.where == where:
-		dst.move(uid, cell, rot)
+		if dst.move(uid, cell, rot) and where != BAG:
+			refresh_items(p)   # 換了部位，發動時機跟著變
 		return
 	var e: Dictionary = found.entry
 	if dst.fits(e.id, cell, rot):
