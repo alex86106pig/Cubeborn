@@ -3,7 +3,7 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
-## [未發布]
+## [0.55.1] - 2026-10-31
 
 ### 修改
 - 連線時自己選過的遺物（三選一，等隊友都選完才消失）在自己的畫面上變半透明（`Config.VISION.relic_taken_alpha` 0.35），分得出自己選完沒；隊友那邊沒選的照常顯示。檢查「視野畫面」加上這項（舊寫法會失敗）。
