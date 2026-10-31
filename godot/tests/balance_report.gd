@@ -2,6 +2,7 @@
 # 平常用 `node tools/release.mjs --balance` 跑；直接跑：在 godot/ 內 <Godot> --headless --path . -s res://tests/balance_report.gd -- --out=<檔案路徑>
 # 條件：白裝、技能 1 級、沒有道具與羈絆、測試場地（不含挖墳難度倍率）；怪是假人（抗性清空、每步拉回原位、不會死）
 # 技能目標（docs/設計方向.md「技能強度」）：放一次對每隻怪的傷害 = 普攻單體每秒傷害 × 冷卻 ÷ SKILL_K；有暈眩或補血的功能型 × CONTROL_MUL
+# 單體、一群兩種站位都看：一群時算「有打到的怪平均每隻吃多少」（扇形、分裂的箭打一群時每隻只中一支，打一隻時才會好幾支都中）
 extends SceneTree
 
 const DT := 1.0 / 60.0
@@ -89,40 +90,50 @@ func _basic(lo: Array, pack: bool) -> float:
 func _move_table(lines: Array[String], basic: Dictionary) -> void:
 	lines.append("## 右鍵與寶石座技能")
 	lines.append("")
-	lines.append("目標 = 普攻單體每秒 × 冷卻 ÷ %.0f（有暈眩或補血 × %.1f）。比 = 單體實際 ÷ 目標，%.1f~%.1f 算達標。" % [SKILL_K, CONTROL_MUL, 1.0 - TOLERANCE, 1.0 + TOLERANCE])
+	lines.append("目標 = 放一次對每隻怪的傷害 = 普攻單體每秒 × 冷卻 ÷ %.0f（有暈眩或補血 × %.1f）。單體、一群都和目標比：一群看有打到的怪平均每隻吃多少；比在 %.1f~%.1f 算達標（一群只打到 1 隻的、召喚不看）。" % [SKILL_K, CONTROL_MUL, 1.0 - TOLERANCE, 1.0 + TOLERANCE])
 	lines.append("")
-	lines.append("| 招式 | 武器 | 冷卻 | 單體每次 | 目標 | 比 | 一群每次合計 | |")
-	lines.append("|---|---|---:|---:|---:|---:|---:|---|")
+	lines.append("| 招式 | 武器 | 冷卻 | 目標 | 單體每次 | 比 | 一群打到 | 一群每隻 | 比 | 一群合計 | |")
+	lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|")
 	for lo: Array in LOADOUTS:
 		# 右鍵看主手單拿時（長劍拿著木盾時右鍵是格擋，蓄力突刺要拿掉盾）；格擋、準備姿態、鏟起這類沒冷卻或不算傷害的不列
 		var sp: Dictionary = WeaponDefs.WEAPONS[lo[0]].get("special", {})
 		if sp.has("cooldown") and sp.has("damage_pct"):
 			_move_row(lines, basic, "右鍵・" + String(sp.name), lo[0], sp.cooldown, sp.has("stun") or sp.has("heal_per_sec"),
-				func(pack: bool) -> float: return _special_hit([lo[0], &""], sp, pack), KEEP.get(sp.behavior, ""))
+				func(pack: bool) -> Vector2: return _special_hit([lo[0], &""], sp, pack), KEEP.get(sp.behavior, ""))
 	for id: StringName in SkillDefs.gem_skill_ids():
 		var def: Dictionary = SkillDefs.SKILLS[id]
 		var wid: StringName = def.weapons[0]
 		if not def.has("damage_pct") and def.behavior != &"summon":
-			lines.append("| %s | %s | %.0f | 功能技能，不算傷害 | | | | |" % [ItemDefs.ITEMS[id].name, WeaponDefs.WEAPONS[wid].name, def.cooldown])
+			lines.append("| %s | %s | %.0f | 功能技能，不算傷害 | | | | | | | |" % [ItemDefs.ITEMS[id].name, WeaponDefs.WEAPONS[wid].name, def.cooldown])
 			continue
 		_move_row(lines, basic, ItemDefs.ITEMS[id].name, wid, def.cooldown, def.has("stun") or def.has("heal_ratio"),
-			func(pack: bool) -> float: return _skill_hit(id, pack))
+			func(pack: bool) -> Vector2: return _skill_hit(id, pack), "", def.behavior != &"summon")
 	lines.append("")
 
 
-func _move_row(lines: Array[String], basic: Dictionary, label: String, wid: StringName, cd: float, control: bool, hit: Callable, keep := "") -> void:
-	var single: float = hit.call(false)
-	var pack: float = hit.call(true)
+# group：要不要看一群每隻（召喚的僕從一次打一隻，打一群時平均每隻沒有意義）
+func _move_row(lines: Array[String], basic: Dictionary, label: String, wid: StringName, cd: float, control: bool, hit: Callable, keep := "", group := true) -> void:
+	var single: Vector2 = hit.call(false)   # (總傷害, 打到幾隻)
+	var pack: Vector2 = hit.call(true)
 	var target: float = basic[wid] * cd / SKILL_K * (CONTROL_MUL if control else 1.0)
-	var ratio := single / target if target > 0.0 else 0.0
-	var mark := "✓" if absf(ratio - 1.0) <= TOLERANCE else ("偏低" if ratio < 1.0 else "偏高")
-	if keep != "" and mark != "✓":
+	var ratio := single.x / target if target > 0.0 else 0.0
+	var each := pack.x / maxf(pack.y, 1.0)
+	var pack_ratio := each / target if target > 0.0 else 0.0
+	var off: Array[String] = []
+	if absf(ratio - 1.0) > TOLERANCE:
+		off.append("單體" + ("偏低" if ratio < 1.0 else "偏高"))
+	var judged := group and pack.y >= 2.0
+	if judged and absf(pack_ratio - 1.0) > TOLERANCE:
+		off.append("一群" + ("偏低" if pack_ratio < 1.0 else "偏高"))
+	var mark := "✓" if off.is_empty() else "、".join(off)
+	if keep != "" and not off.is_empty():
 		mark = "保留：" + keep
-	lines.append("| %s | %s | %.0f | %.0f | %.0f | %.2f | %.0f | %s |" % [label, WeaponDefs.WEAPONS[wid].name, cd, single, target, ratio, pack, mark])
+	lines.append("| %s | %s | %.0f | %.0f | %.0f | %.2f | %d | %.0f | %s | %.0f | %s |" % [label, WeaponDefs.WEAPONS[wid].name, cd, target, single.x, ratio,
+		pack.y, each, ("%.2f" % pack_ratio) if judged else "—", pack.x, mark])
 
 
 # 右鍵：按下（按住類的蓄滿 charge_time 再放開），量 SKILL_WINDOW 秒
-func _special_hit(lo: Array, sp: Dictionary, pack: bool) -> float:
+func _special_hit(lo: Array, sp: Dictionary, pack: bool) -> Vector2:
 	var s := _setup(lo)
 	var w: World = s[0]
 	var p: Player = s[1]
@@ -135,10 +146,10 @@ func _special_hit(lo: Array, sp: Dictionary, pack: bool) -> float:
 		_step(w, _cmd(at, held), d, spots)
 	for i in roundi(SKILL_WINDOW / DT):
 		_step(w, _cmd(at, 0), d, spots)
-	return _total(d)
+	return Vector2(_total(d), _hits(d))
 
 
-func _skill_hit(id: StringName, pack: bool) -> float:
+func _skill_hit(id: StringName, pack: bool) -> Vector2:
 	var def: Dictionary = SkillDefs.SKILLS[id]
 	var wid: StringName = def.weapons[0]
 	var lo: Array = [&"longsword", &"woodShield"] if wid == &"woodShield" else [wid, &""]
@@ -169,7 +180,7 @@ func _skill_hit(id: StringName, pack: bool) -> float:
 	_step(w, _cmd(at, InputCmd.slot_bit(idx)), d, spots)
 	for i in roundi(window / DT):
 		_step(w, _cmd(at, 0), d, spots)
-	return _total(d)
+	return Vector2(_total(d), _hits(d))
 
 
 # ───────── 怪物 ─────────
@@ -279,6 +290,11 @@ func _cmd(aim: Vector2, buttons: int) -> InputCmd:
 	c.aim = aim
 	c.buttons = buttons
 	return c
+
+
+# 有受傷的假人幾隻
+func _hits(dummies: Array) -> int:
+	return dummies.filter(func(e: Enemy) -> bool: return e.hp < 1e6).size()
 
 
 func _total(dummies: Array) -> float:

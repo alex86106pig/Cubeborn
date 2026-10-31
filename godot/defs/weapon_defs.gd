@@ -217,12 +217,12 @@ const WEAPONS := {
 			"behavior": &"arrowFan",
 			"sfx": "arrowShot",
 			"name": "散射",
-			"desc": "一次 5 支箭散開 20°，每支 120%；冷卻 5 秒。",
+			"desc": "一次 5 支箭散開 50°，每支 350%；冷卻 5 秒。",
 			"icon": "bow_fan",
 			"cooldown": 5.0,
-			"damage_pct": 1.2,
+			"damage_pct": 3.5,         # 6 單位外打一隻、打一群每隻都只中 1 支：一支就是目標；貼近時多中幾支
 			"count": 5,
-			"fan_arc": PI * 20.0 / 180.0,   # 6 單位外約中 3 支
+			"fan_arc": PI * 50.0 / 180.0,
 			"visual": &"arrow",
 			"projectile_speed": 24.0,
 			"projectile_radius": 0.2,

@@ -149,7 +149,7 @@ if (has('balance')) {
   runGodot(godot, ['--headless', '--import', '--path', '.'], IMPORT_TIMEOUT, '匯入');
   const r = runGodot(godot, ['--headless', '--path', '.', '-s', 'res://tests/balance_report.gd', '--', `--out=${out}`], CHECK_TIMEOUT, '平衡數字表');
   if (!r.ok || !r.out.includes('寫入')) fail(`平衡數字表沒有跑完\n${(r.err || r.out || '').split('\n').filter(l => /ERROR|Error/.test(l)).slice(-15).join('\n')}`);
-  const off = readFileSync(out, 'utf8').split('\n').filter(l => /\| (偏低|偏高) \|$/.test(l));
+  const off = readFileSync(out, 'utf8').split('\n').filter(l => /偏低|偏高/.test(l) && !/保留：/.test(l));
   console.log(`✔ 寫入 docs/平衡數字.md${off.length ? `；不在目標內 ${off.length} 項：\n${off.join('\n')}` : '；招式都在目標內（或標了保留）'}`);
   process.exit(0);
 }
