@@ -14,6 +14,7 @@ var hit_stop := 0.0
 var shake := 0.0
 var blockable := true           # 有方向的投射物預設能被格擋（B5）；爆炸一律不能
 var pierce := false            # 穿透（F5 長弓蓄力箭）：打中不消失，同一隻只打一次
+var pierce_left := 0           # 還能穿過幾隻（弓的普攻箭）：每穿過一隻減 1，用完後下一隻打中就消失；同一隻只打一次
 var proc := false              # 道具效果射出的（G4 飛刀、斬波）：不爆擊、不再觸發道具
 var no_status := false         # 打中不疊燃燒 / 冰冷（冰霜羈絆的冰錐，BondEffects）
 var skill_fx := {}             # 技能射出的（第 7 步）：{ def, ctx }，結束時 SkillBehaviors.projectile_end（跳電、炸開、落地一攤火）
@@ -54,6 +55,7 @@ func _init(p_world: World, p: Dictionary) -> void:
 	no_stagger = p.get("no_stagger", false)
 	damage_type = p.get("damage_type", &"phys")
 	pierce = p.get("pierce", false)
+	pierce_left = p.get("pierce_count", 0)
 	proc = p.get("proc", false)
 	no_status = p.get("no_status", false)
 	homing = p.get("homing", 0.0)
@@ -96,10 +98,13 @@ func update(dt: float) -> void:
 			continue
 		var r := radius + target.radius
 		if target.pos.distance_squared_to(pos) <= r * r:
-			if pierce:
-				if not _pierced.has(target.id):
-					_pierced[target.id] = true
-					_hit_once(target)
+			if _pierced.has(target.id):
+				continue
+			if pierce or pierce_left > 0:
+				_pierced[target.id] = true
+				if not pierce:
+					pierce_left -= 1
+				_hit_once(target)
 				continue
 			_on_hit(target)
 			return

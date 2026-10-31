@@ -13,7 +13,7 @@ const WEAPONS := {
 		"name": "長劍",
 		"type": &"melee",
 		"hands": &"one",
-		"base_damage": 7.5,         # 普攻 + 蓄力突刺打一隻每秒照近戰目標（設計方向「武器強度」），12 → 7.5
+		"base_damage": 8.0,         # 普攻 + 蓄力突刺打一隻每秒照近戰目標（設計方向「武器強度」），12 → 8
 		"damage_type": &"phys",
 		"model": &"longsword",
 		"grid": ["..E..", ".AAA.", ".AAA.", ".AGA.", ".AAA.", "HHHHH", "..H..", "..G.."],
@@ -34,7 +34,7 @@ const WEAPONS := {
 			"lunge": 3.5,
 			"move_speed_mul": 0.35,
 			"combo_window": 0.35,      # 收招後多久內再出手可接下一段
-			"finisher_mul": 1.8,       # 第三段傷害倍率
+			"finisher_mul": 1.75,      # 第三段傷害倍率（8 × 175% = 14：白裝每一下都是整數）
 			"finisher_impact_mul": 1.8,   # 第三段擊退與命中停頓倍率
 			"finisher_shake_mul": 2.5,
 			"finisher_scale": 1.25,    # 第三段範圍與角度倍率
@@ -50,13 +50,13 @@ const WEAPONS := {
 			"sfx": "swing",
 			"sfx_release": "swingHeavy",
 			"name": "蓄力突刺",
-			"desc": "按住蓄力（最多 0.8 秒）、放開往前衝 2 → 5 單位刺出 260% → 530%；冷卻 5 秒。",
+			"desc": "按住蓄力（最多 0.8 秒）、放開往前衝 2 → 5 單位刺出 250% → 525%；冷卻 5 秒。",
 			"icon": "sword_thrust",
 			"cooldown": 5.0,
 			"hold": true,
 			"roll_cancel": true,
-			"damage_pct": 2.6,         # 沒蓄力
-			"full_damage_pct": 5.3,    # 蓄滿
+			"damage_pct": 2.5,         # 沒蓄力
+			"full_damage_pct": 5.25,   # 蓄滿
 			"charge_time": 0.8,
 			"dash": 2.0,               # 衝刺距離：沒蓄力 → 蓄滿
 			"full_dash": 5.0,
@@ -102,11 +102,11 @@ const WEAPONS := {
 			"parry": {
 				"name": "招架",
 				"icon": "parry",              # 格擋中技能欄左鍵那格換成這個圖示
-				"desc": "格擋中按左鍵：0.2 秒內擋到攻擊就招架成功，盾擊 320% 並大幅擊退；冷卻 4 秒。",
+				"desc": "格擋中按左鍵：0.2 秒內擋到攻擊就招架成功，盾擊 300% 並大幅擊退；冷卻 4 秒。",
 				"window": 0.2,                # 按下左鍵後這麼久內擋到攻擊 = 招架成功（沿用原本完美格擋的 0.2 秒）
 				"cooldown": 4.0,              # 從按下左鍵開始算（沿用原本格擋的 4 秒）
 				"fail_damage_mul": 0.5,       # 判定時間結束都沒擋到：盾擊照樣打出，傷害與擊退 × 0.5（24 → 12）
-				"damage_pct": 3.2,             # 長劍 7.5 × 320% = 24（原本固定 25，F1 使用者同意 24；長劍基礎傷害調低時跟著拉高）
+				"damage_pct": 3.0,             # 長劍 8 × 300% = 24（原本固定 25，F1 使用者同意 24；長劍基礎傷害調低時跟著拉高）
 				"range": 3.5,                 # v0.23.0 使用者決定（原本 2.5 / 120°）
 				"arc": PI * 180.0 / 180.0,
 				"knockback": 14.0,
@@ -186,6 +186,7 @@ const WEAPONS := {
 		"damage_type": &"phys",
 		"idle": {"arm_r": -0.4, "arm_l": 0.0, "tilt": 0.0},
 		"attack": {
+			"pierce_count": 2,         # 穿過 2 隻（第 3 隻打中才消失）：打一群照「武器強度」3~6 倍（設計方向）
 			"behavior": &"fireBolt",
 			"sfx": "arrowShot",
 			"name": "快射",
@@ -249,10 +250,11 @@ const WEAPONS := {
 		"type": &"ranged",
 		"model": &"longbow",
 		"grid": [".AAAA", "AAA..", "AAA..", "AAG..", "HHHH.", "HHG..", "HHHH.", "AAG..", "AAA..", "AAA..", ".AAAA"],
-		"base_damage": 11.0,
+		"base_damage": 12.0,        # 11 → 12（白裝每一下都是整數）
 		"damage_type": &"phys",
 		"idle": {"arm_r": -0.4, "arm_l": 0.0, "tilt": 0.0},
 		"attack": {
+			"pierce_count": 2,         # 穿過 2 隻（第 3 隻打中才消失）：打一群照「武器強度」3~6 倍（設計方向）
 			"behavior": &"fireBolt",
 			"sfx": "arrowShot",
 			"name": "重射",
@@ -314,16 +316,16 @@ const WEAPONS := {
 		"offhand": true,               # 也能拿在副手
 		"model": &"dagger",
 		"grid": [".E.", ".A.", "AAA", "AGA", "HHH", ".H."],
-		"base_damage": 9.0,            # 2026-10-27 放慢後 5 → 9（雙持每秒傷害約 31.6 → 27.8）
+		"base_damage": 8.0,            # 2026-10-27 放慢後 5 → 9（雙持每秒傷害約 31.6 → 27.8）；2026-10-31 9 → 8（白裝每一下都是整數、打一隻照近戰目標）
 		"damage_type": &"phys",
 		"idle": {"arm_r": -0.6, "arm_l": 0.0, "tilt": 0.0},
 		"offhand_arm_l": -0.6,
-		# 單拿（Claude 暫定）：刺、刺、重刺，一刺 0.3 秒，第 3 下 120% 並擊退
+		# 單拿（Claude 暫定）：刺、刺、重刺，一刺 0.3 秒，第 3 下 125% 並擊退
 		"attack": {
 			"behavior": &"meleeSwing",
 			"sfx": "swing", "sfx_heavy": "swingHeavy",
 			"name": "三連刺",
-			"desc": "刺、刺、重刺：第 3 下 120% 並擊退。",
+			"desc": "刺、刺、重刺：第 3 下 125% 並擊退。",
 			"icon": "dagger_stab",
 			"damage_pct": 1.0,
 			"combo_count": 3,
@@ -338,7 +340,7 @@ const WEAPONS := {
 			"lunge": 1.5,
 			"move_speed_mul": 0.6,
 			"combo_window": 0.35,
-			"finisher_mul": 1.2,
+			"finisher_mul": 1.25,
 			"finisher_impact_mul": 1.2,
 			"finisher_shake_mul": 1.5,
 			"finisher_scale": 1.2,
@@ -530,11 +532,11 @@ const WEAPONS := {
 				"behavior": &"fireBreath",
 				"sfx": "explosion",
 				"name": "噴火",
-				"desc": "舉著火把時向前噴火（90°、長 5）120% 並點燃；冷卻 6 秒。",
+				"desc": "舉著火把時向前噴火（90°、長 5）125% 並點燃；冷卻 6 秒。",
 				"icon": "fire_breath",
 				"cooldown": 6.0,
 				"cd_key": "player.breath",   # 左鍵的招式但有冷卻：自己一個冷卻，不占右鍵的 player.special
-				"damage_pct": 1.2,
+				"damage_pct": 1.25,
 				"burn": {"pct_per_sec": 0.15, "duration": 3.0},
 				"range": 5.0,
 				"arc": PI * 0.5,       # 90°

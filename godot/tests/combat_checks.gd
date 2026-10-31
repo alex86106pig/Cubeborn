@@ -3,6 +3,41 @@
 class_name CombatChecks
 extends CheckKit
 
+# 白裝每一招每一下的傷害都是整數（使用者 2026-10-31：傷害不要出現 .5）：武器基礎傷害 × 每個招式倍率、寶石座技能 × 每把能用的武器；
+# 副手（木盾）沒有基礎傷害，用起始武器的；蓄力招式看沒蓄與蓄滿兩端
+const WHOLE_KEYS := [&"damage_pct", &"full_damage_pct", &"finisher_mul", &"dps_pct"]
+
+
+static func check_whole_damage() -> String:
+	var start: float = WeaponDefs.WEAPONS[Config.PLAYER.start_weapon].base_damage
+	for wid: StringName in WeaponDefs.WEAPONS:
+		var w: Dictionary = WeaponDefs.WEAPONS[wid]
+		var err := _whole_in(w, w.get("base_damage", start), String(w.name))
+		if err != "":
+			return err
+	for id: StringName in SkillDefs.gem_skill_ids():
+		var def: Dictionary = SkillDefs.SKILLS[id]
+		for wid: StringName in def.weapons:
+			var err := _whole_in(def, WeaponDefs.WEAPONS[wid].get("base_damage", start), "%s（%s）" % [ItemDefs.ITEMS[id].name, WeaponDefs.WEAPONS[wid].name])
+			if err != "":
+				return err
+	return ""
+
+
+static func _whole_in(d: Dictionary, base: float, label: String) -> String:
+	for k: Variant in d:
+		var v: Variant = d[k]
+		if v is Dictionary:
+			var err := _whole_in(v, base, label)
+			if err != "":
+				return err
+		elif WHOLE_KEYS.has(k) and (v is float or v is int):
+			var dmg: float = base * v
+			if absf(dmg - roundf(dmg)) > 1e-4:
+				return "%s 的 %s = %s：基礎 %s × 倍率 = %.2f，白裝傷害不是整數" % [label, k, v, base, dmg]
+	return ""
+
+
 static func check_weapon_defs() -> String:
 	var cues := _cue_names()
 	for id: StringName in WeaponDefs.WEAPONS:
@@ -645,6 +680,32 @@ static func _class_world(class_id: StringName) -> World:
 
 
 # F4 短弓與盜墓遊俠：快射是箭、不擊退；散射一次 5 支平均分在 50° 內、每支 80%；遊俠移動中普攻不減速、右鍵照常減速
+# 弓的普攻箭穿過 pierce_count 隻：一直線上前 pierce_count + 1 隻各中一次，後面的沒中；短弓、長弓都看
+static func check_bow_pierce() -> String:
+	for wid: StringName in [&"shortbow", &"longbow"]:
+		var w := _new_world()
+		var p := _player(w)
+		p.loadout.equip_new(p, wid)
+		var n: int = WeaponDefs.WEAPONS[wid].attack.pierce_count
+		var line: Array[Enemy] = []
+		for i in n + 2:
+			var e := LootChecks._item_dummy(w, p.pos + Vector2(0, 3.0 + i * 1.2), 100000.0)
+			e.set_resists({})
+			line.append(e)
+		var hp0 := line.map(func(e: Enemy) -> float: return e.hp)
+		_run(w, _cmd(Vector2.ZERO, p.pos + Vector2(0, 12), InputCmd.BTN_ATTACK), 1)
+		_run(w, _cmd(Vector2.ZERO, p.pos + Vector2(0, 12)), 60)
+		var hit := []
+		for i in line.size():
+			hit.append(line[i].hp < hp0[i])
+		var want := []
+		for i in line.size():
+			want.append(i <= n)
+		if hit != want:
+			return "%s 的普攻箭應穿過 %d 隻（前 %d 隻中、後面沒中）：%s" % [WeaponDefs.WEAPONS[wid].name, n, n + 1, hit]
+	return ""
+
+
 static func check_shortbow() -> String:
 	var w := _class_world(&"ranger")
 	var p := _player(w)

@@ -38,7 +38,7 @@ static func shot_params(p: Player, def: Dictionary, dir: Vector2) -> Dictionary:
 		"pos": p.pos + dir * def.spawn_offset, "direction": dir, "speed": def.projectile_speed,
 		"range": def.range * p.weapon_range_mul(), "radius": def.projectile_radius, "damage": p.move_damage(def),
 		"damage_type": p.weapon.damage_type, "knockback": def.knockback, "color": def.color, "hit_stop": def.hit_stop, "shake": def.shake,
-		"no_stagger": def.get("no_stagger", false), "visual": def.get("visual", &"orb"),
+		"no_stagger": def.get("no_stagger", false), "visual": def.get("visual", &"orb"), "pierce_count": def.get("pierce_count", 0),
 	}
 
 

@@ -12,6 +12,8 @@ const TOLERANCE := 0.2          # 實際 / 目標在 1 ± 這麼多以內算達�
 # 武器目標（docs/設計方向.md「武器強度」）：普攻每秒 + 右鍵按冷卻攤平，打一隻近戰 / 遠程各一檔；打一群是自己打一隻的幾倍
 const WEAPON_TARGET := {&"melee": 30.0, &"ranged": 22.0}
 const GROUP_BAND := Vector2(3.0, 6.0)
+# 打一群偏高但刻意保留的武器（使用者 2026-10-31：不能降傷害，同一下打到的每隻都要一樣痛，不做遞減；揮擊範圍是手感）
+const GROUP_KEEP := [&"longsword", &"torch", &"scepter", &"shovel"]
 const BASIC_TIME := 10.0        # 普攻量幾秒取平均
 const SKILL_WINDOW := 6.0       # 放一次後量幾秒（落雷延遲、火池、拖尾、燃燒都算進去）
 const MELEE_RANGE := 2.0        # 單體假人離玩家多遠：近戰武器
@@ -115,8 +117,10 @@ func _weapon_table(lines: Array[String]) -> void:
 		var off: Array[String] = []
 		if absf(ratio - 1.0) > TOLERANCE:
 			off.append("打一隻" + ("偏低" if ratio < 1.0 else "偏高"))
-		if mul < GROUP_BAND.x or mul > GROUP_BAND.y:
-			off.append("打一群" + ("偏低" if mul < GROUP_BAND.x else "偏高"))
+		if mul < GROUP_BAND.x:
+			off.append("打一群偏低")
+		elif mul > GROUP_BAND.y:
+			off.append("保留：打一群偏高（不降傷害、揮擊範圍是手感）" if GROUP_KEEP.has(wid) else "打一群偏高")
 		lines.append("| %s | %s | %.1f | %.1f | %.0f | %.2f | %.0f | %.1f | %s |" % [wpn.name, "近戰" if wpn.type == &"melee" else "遠程",
 			wpn.base_damage, single, target, ratio, pack, mul, "✓" if off.is_empty() else "、".join(off)])
 	lines.append("")
