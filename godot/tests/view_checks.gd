@@ -810,7 +810,7 @@ static func check_warm_up() -> String:
 	_scene_root().add_child(view)
 	var center := Vector3(20, 0, -15)
 	view.warm_up(center)
-	var want: Array[String] = ["player", "chest:small", "chest:big", "coin", "projectile:arrow", "projectile:orb",
+	var want: Array[String] = ["player", "chest:small", "chest:big", "coin", "projectile:arrow", "projectile:orb", "forge", "torch", "relic:item", "relic:skill",
 		"grunt:%s" % MonsterRarityDefs.MAGIC, "grunt:%s" % MonsterRarityDefs.RARE]
 	for kind: StringName in EnemyDefs.ENEMIES:
 		want.append(String(kind))
@@ -1139,6 +1139,107 @@ static func check_xray() -> String:
 			view.sync(w, 1.0, 0.016)
 		if view._xray_needed(w, e) or has_overlay.call(en):
 			err = "空地上的怪不應有剪影：判斷 %s、疊加材質 %s" % [view._xray_needed(w, e), has_overlay.call(en)]
+	view.free()
+	return err
+
+
+# 每一種實體類別（繼承 Entity、沒有子類別的 class_name；之後新增的也算）都要在開場預熱建出模型、掛上剪影，
+# 網格的材質都寫模板值（沒寫的話剪影會整片蓋在自己身上）；不要剪影的列在 WorldView.XRAY_EXEMPT 並寫原因
+static func check_xray_every_entity() -> String:
+	var base_of := {}
+	for c: Dictionary in ProjectSettings.get_global_class_list():
+		base_of[c["class"]] = c["base"]
+	var has_child := {}
+	for k: StringName in base_of:
+		has_child[base_of[k]] = true
+	var leaves: Array[StringName] = []
+	for k: StringName in base_of:
+		var b: StringName = k
+		while base_of.has(b) and b != &"Entity":
+			b = base_of[b]
+		if b == &"Entity" and k != &"Entity" and not has_child.has(k):
+			leaves.append(k)
+	var view := WorldView.new()
+	_scene_root().add_child(view)
+	view.warm_up(Vector3(20, 0, -15))
+	var err := ""
+	for k in leaves:
+		if not view.warm_classes.has(k) and not WorldView.XRAY_EXEMPT.has(k):
+			err = "實體類別 %s 沒有在開場預熱建模型（WorldView.warm_up），也沒列在 XRAY_EXEMPT：新種類要加進預熱，才驗得到剪影、也不會第一次出現時卡頓" % k
+			break
+	if err == "":
+		for i in view._warm_nodes.size():
+			var node: Node3D = view._warm_nodes[i]
+			if view.warm_keys[i].begins_with("fade:"):
+				continue
+			if not node.has_meta(&"xray"):
+				err = "%s 的模型沒有剪影" % view.warm_keys[i]
+				break
+			var bad := _xray_unwritten(node)
+			if bad != "":
+				err = "%s 的網格 %s 沒有寫模板值（材質要從共用的工廠拿：_flat_material / _glow_material / PartKit.mat）" % [view.warm_keys[i], bad]
+				break
+	_note("實體類別 %d 種：%s" % [leaves.size(), leaves])
+	view.queue_free()
+	return err
+
+
+# node 底下（跳過 XRAY_SKIP）第一個沒寫模板值的網格名稱；都有寫回傳空字串
+static func _xray_unwritten(node: Node) -> String:
+	for child in node.get_children():
+		if WorldView.XRAY_SKIP.has(child.name):
+			continue
+		if child is MeshInstance3D:
+			var m := (child as MeshInstance3D).material_override as BaseMaterial3D
+			if m == null or m.stencil_mode != BaseMaterial3D.STENCIL_MODE_CUSTOM:
+				return String(child.name)
+		var deeper := _xray_unwritten(child)
+		if deeper != "":
+			return deeper
+	return ""
+
+
+# 牆後的寶箱是金色剪影、鍛造祭壇是灰白剪影；同種寶箱共用材質；空地上的沒有剪影
+static func check_object_xray() -> String:
+	var w := _new_world(3, false, &"graveyard_a")
+	var p := _player(w)
+	# 同 check_xray：王族墓南牆北邊，玩家在 y 57 面向南，牆邊 y 60.6 和相機之間有牆
+	p.pos = MapDefs.to_world(w.map, Vector2(48, 57))
+	p.facing = 0.0
+	var chest := Chest.new(w, &"small", MapDefs.to_world(w.map, Vector2(48, 60.6)))
+	w.add_entity(chest)
+	var forge := Forge.new(w, MapDefs.to_world(w.map, Vector2(49.5, 60.6)))
+	w.add_entity(forge)
+	var open_chest := Chest.new(w, &"small", MapDefs.to_world(w.map, Vector2(46, 55)))
+	w.add_entity(open_chest)
+	var view := WorldView.new()
+	var overlay := func(node: Node3D) -> Material:
+		for mi in PartKit.mesh_instances(node):
+			if mi.material_overlay != null:
+				return mi.material_overlay
+		return null
+	view.sync(w, 1.0, 0.016)
+	var cn: Node3D = view._nodes[chest.id]
+	var fn: Node3D = view._nodes[forge.id]
+	var on: Node3D = view._nodes[open_chest.id]
+	var err := ""
+	if overlay.call(cn) != WorldView.xray_material(WorldView.XRAY_LOOT):
+		err = "牆後的寶箱應有金色剪影：判斷 %s、疊加材質 %s" % [view._xray_needed(w, chest), overlay.call(cn)]
+	elif overlay.call(fn) != WorldView.xray_material(WorldView.XRAY_OBJECT):
+		err = "牆後的鍛造祭壇應有灰白剪影：判斷 %s、疊加材質 %s" % [view._xray_needed(w, forge), overlay.call(fn)]
+	elif overlay.call(on) != null:
+		err = "空地上的寶箱不應有剪影"
+	else:
+		# 直接建兩個模型比（同步出來的剛進視野、正在淡入，材質換成半透明的那一份）
+		var x := view._create_view(chest)
+		var y := view._create_view(open_chest)
+		var drawn := func(mi: MeshInstance3D) -> bool: return not WorldView.XRAY_SKIP.has(mi.name)   # 碰撞圈（F2）不寫模板值、不必共用
+		var a: Array = PartKit.mesh_instances(x).filter(drawn).map(func(mi: MeshInstance3D) -> Material: return mi.material_override)
+		var b: Array = PartKit.mesh_instances(y).filter(drawn).map(func(mi: MeshInstance3D) -> Material: return mi.material_override)
+		if a != b:
+			err = "同種寶箱應共用材質（寫模板值的材質各一份，網頁版每份都要編一次著色器）"
+		x.free()
+		y.free()
 	view.free()
 	return err
 

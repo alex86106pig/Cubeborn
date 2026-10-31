@@ -354,6 +354,11 @@ godot/
 - 碰撞分離與投射物命中用格子切分（uniform grid，作法同 `godot/stress_test/`），集中在 `sim/physics.gd`（碰撞分離已改用格子；投射物命中目前仍逐一比對，數量變多時再改）。
 - 敵人與 Spawner 不持有 World 以外的循環參照：Spawner 不存 World（每次呼叫時傳入），敵人的 CD key 需要 id，所以在 `World.add_entity` 之後的 `on_added()` 才開始 CD。這兩段是之後改 C++ 的首選，介面要保持「輸入陣列 → 輸出陣列」，方便替換。
 - 角色用節點樹 Rig（小怪用蒙皮網格），大量相同外觀的物件用 `MultiMeshInstance3D`。
+- **新的實體種類**（2026-10-31 使用者要求：牆後的物件與獎勵也要看得到）：
+  - 平常做法：模型一律從 `WorldView._create_view` 建（它會掛牆後剪影，顏色看 `WorldView.xray_color`，沒列的歸「物件」灰白）；材質從共用的工廠拿（`_flat_material` / `_glow_material` / `_beam` / `PartKit.mat`），不要自己 `StandardMaterial3D.new()`；在 `WorldView.warm_up` 各建一個。
+  - 判斷：檢查「牆後剪影」會找出所有繼承 `Entity`、沒有子類別的 class_name，沒在預熱建過、模型沒剪影、或有網格沒寫模板值就失敗。
+  - 例外：真的不要剪影的列進 `WorldView.XRAY_EXEMPT`（class_name → 原因）；地上的圈、光柱這類子節點用 `XRAY_SKIP`。
+  - 為什麼：剪影原本是「列出來的種類才有」，後來加的寶箱、遺物、鍛造祭壇、金幣、插地火把被牆擋住就看不到，預熱也漏了遺物與火把。每個實體各自建材質的話，寫模板值後網頁版每份都要編一次著色器（系統說明 §16）。
 - 效能目標、量測方法與數字在 `docs/效能.md`；怪群的效能做法見系統說明 §14。
 
 ---

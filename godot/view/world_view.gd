@@ -40,7 +40,11 @@ const XRAY_STENCIL := 1
 const XRAY_SELF := Color(0.31, 0.64, 1.0, 0.55)
 const XRAY_ALLY := Color(0.42, 1.0, 0.48, 0.5)
 const XRAY_ENEMY := Color(1.0, 0.3, 0.3, 0.45)
-const XRAY_SKIP := [&"Hitbox", &"BlockFan", &"RarityRing"]   # 這些子節點（地上的圈、扇形）不畫剪影
+const XRAY_LOOT := Color(1.0, 0.8, 0.3, 0.5)      # 獎勵：寶箱、遺物、地上的道具 / 武器、金幣
+const XRAY_OBJECT := Color(0.85, 0.85, 0.9, 0.4)  # 其他物件（鍛造祭壇、插地火把、挖墳點）與沒列在 xray_color 的新種類
+# 每種實體預設都有剪影（_create_view 一律掛上）：不要的才列在這裡，class_name → 原因（check.gd「牆後剪影」會擋沒列也沒剪影的類別）
+const XRAY_EXEMPT := {}
+const XRAY_SKIP := [&"Hitbox", &"BlockFan", &"RarityRing", &"Beam", &"Hole", &"ExitRing"]   # 這些子節點（地上的圈、扇形、光柱）不畫剪影
 const XRAY_SHADER := """
 shader_type spatial;
 render_mode unshaded, depth_test_disabled, depth_draw_never, cull_back, blend_mix, shadows_disabled;
@@ -52,10 +56,13 @@ void fragment() {
 }
 """
 const XRAY_PROBE_STEP := 0.5   # 判斷「相機方向有沒有東西擋住」的取樣間隔（單位）
+const GRAVE_XRAY_RADIUS := 0.9   # 挖墳點判斷被擋住時從中心往相機多遠開始取樣（土堆的半徑）
 static var _xray_materials: Dictionary = {}   # 顏色 -> ShaderMaterial
 static var _orb_materials: Dictionary = {}    # 顏色 -> 魔彈的 StandardMaterial3D（_create_projectile）
+# 物件（寶箱、祭壇、道具、遺物、金幣、挖墳點）的材質依外觀共用：剪影要在材質上寫模板值，每個實體各一份的話網頁版每份都要編一次著色器
+static var _object_materials: Dictionary = {}
 static var _xray_shader: Shader
-var _xray_on: Dictionary = {}   # 怪物 id -> 剪影是否打開（只有被擋住的才畫，省繪製次數）
+var _xray_on: Dictionary = {}   # 實體 id -> 剪影是否打開（玩家一直開，其他被擋住才畫，省繪製次數）
 var _xray_dir := Vector2(sin(Config.CAMERA.azimuth), cos(Config.CAMERA.azimuth))   # 地面上往相機的方向
 var _xray_slope := tan(Config.CAMERA.elevation)   # 往相機每走 1 單位，視線升高多少
 
@@ -81,6 +88,7 @@ var created := 0                       # 這一幀新建的模型數（--perf �
 var _seen_keys: Dictionary = {}
 var _warm_nodes: Array[Node3D] = []   # 開場預熱的模型（WARM_FRAMES 幀後移除）
 var warm_keys: Array[String] = []     # 預熱過的模型種類（check.gd 確認每一種都有）
+var warm_classes: Dictionary = {}     # 預熱建過的實體類別（class_name）：check.gd 確認每一種實體類別都有模型、有剪影
 var _warm_left := 0
 var profile := false                   # main 的 --perf：各段累計耗時（微秒）放進 profile_usec
 var profile_usec: Dictionary = {}
@@ -204,6 +212,8 @@ func sync(world: World, alpha: float, dt: float) -> void:
 				continue
 			if e is Projectile:
 				_xray_on[id] = _xray_needed(world, e)   # 投射物飛得快、數量少：每個 tick 都判斷牆後剪影
+			elif not (e is Player or e is Enemy) and (not _xray_on.has(id) or (world.tick + id) % LOS_INTERVAL == 0):
+				_xray_on[id] = _xray_needed(world, e)   # 寶箱、遺物、祭壇…：剛出現就判斷，之後分批（怪物在下面視線判斷時一起算）
 			if not Vision.is_hideable(me, e):
 				continue
 			if not lights.is_empty() and Vision.lit(lights, e.pos, Vision.view_radius(e)):
@@ -520,11 +530,7 @@ func _create_forge() -> Node3D:
 	var root := Node3D.new()
 	var stone := _flat_material(Color("5d5a55"))
 	var iron := _flat_material(Color("2b2b30"))
-	var ember := StandardMaterial3D.new()
-	ember.albedo_color = Color("ff7a2a")
-	ember.emission_enabled = true
-	ember.emission = Color("ff7a2a")
-	ember.emission_energy_multiplier = 2.0
+	var ember := _glow_material(Color("ff7a2a"), 2.0)
 	root.add_child(_box(Vector3(1.3, 0.55, 1.0), Vector3(0, 0.275, 0), stone))
 	root.add_child(_box(Vector3(0.5, 0.3, 0.4), Vector3(0, 0.7, 0), iron))
 	root.add_child(_box(Vector3(0.95, 0.2, 0.45), Vector3(0, 0.95, 0), iron))
@@ -551,28 +557,9 @@ func _create_pickup(p: ItemPickup) -> Node3D:
 		mesh.radial_segments = 4
 		mesh.rings = 2
 		gem.mesh = mesh
-	var m := StandardMaterial3D.new()
-	m.albedo_color = color
-	m.emission_enabled = true
-	m.emission = color
-	m.emission_energy_multiplier = 1.6
-	gem.material_override = m
+	gem.material_override = _glow_material(color, 1.6)
 	root.add_child(gem)
-	var beam := MeshInstance3D.new()
-	var cyl := CylinderMesh.new()
-	cyl.top_radius = 0.06
-	cyl.bottom_radius = 0.2
-	cyl.height = 2.4
-	cyl.radial_segments = 8
-	beam.mesh = cyl
-	var bm := StandardMaterial3D.new()
-	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	bm.albedo_color = Color(color, 0.22)
-	beam.material_override = bm
-	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	beam.position.y = 1.2
-	root.add_child(beam)
+	root.add_child(_beam(0.06, 0.2, 2.4, Color(color, 0.22)))
 	return root
 
 
@@ -587,41 +574,17 @@ func _create_relic(kind: StringName) -> Node3D:
 	box.size = Vector3(0.42, 0.42, 0.42)
 	gem.mesh = box
 	gem.rotation.x = PI / 4.0
-	var m := StandardMaterial3D.new()
-	m.albedo_color = outer
-	m.emission_enabled = true
-	m.emission = outer
-	m.emission_energy_multiplier = 1.4
-	gem.material_override = m
+	gem.material_override = _glow_material(outer, 1.4)
 	var core := MeshInstance3D.new()
 	var cm := BoxMesh.new()
 	cm.size = Vector3(0.2, 0.2, 0.2)
 	core.mesh = cm
 	core.position = Vector3(0.0, 0.0, 0.0)
-	var km := StandardMaterial3D.new()
-	km.albedo_color = inner
-	km.emission_enabled = true
-	km.emission = inner
-	km.emission_energy_multiplier = 2.5
-	core.material_override = km
+	core.material_override = _glow_material(inner, 2.5)
 	core.scale = Vector3.ONE * 1.25
 	gem.add_child(core)
 	root.add_child(gem)
-	var beam := MeshInstance3D.new()
-	var cyl := CylinderMesh.new()
-	cyl.top_radius = 0.08
-	cyl.bottom_radius = 0.25
-	cyl.height = 3.0
-	cyl.radial_segments = 8
-	beam.mesh = cyl
-	var bm := StandardMaterial3D.new()
-	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	bm.albedo_color = Color(outer, 0.25)
-	beam.material_override = bm
-	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	beam.position.y = 1.5
-	root.add_child(beam)
+	root.add_child(_beam(0.08, 0.25, 3.0, Color(outer, 0.25)))
 	return root
 
 
@@ -646,43 +609,63 @@ func _create_coin() -> Node3D:
 	disc.radial_segments = 12
 	gem.mesh = disc
 	gem.rotation.x = PI / 2.0
-	var m := StandardMaterial3D.new()
-	m.albedo_color = UiKit.GOLD
-	m.emission_enabled = true
-	m.emission = UiKit.GOLD
-	m.emission_energy_multiplier = 1.2
-	m.metallic = 0.8
-	gem.material_override = m
+	gem.material_override = _glow_material(UiKit.GOLD, 1.2, 0.8)
 	gem.name = "Disc"
 	var spin := Node3D.new()   # Gem 的旋轉繞 y 軸；圓片本身先立起來（rotation.x）再放進會轉的節點
 	spin.name = "Gem"
 	spin.add_child(gem)
 	root.add_child(spin)
-	var beam := MeshInstance3D.new()
-	var cyl := CylinderMesh.new()
-	cyl.top_radius = 0.03
-	cyl.bottom_radius = 0.1
-	cyl.height = 1.6
-	cyl.radial_segments = 8
-	beam.mesh = cyl
-	var bm := StandardMaterial3D.new()
-	bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	bm.albedo_color = Color(UiKit.GOLD, 0.2)
-	beam.material_override = bm
-	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	beam.position.y = 0.8
-	root.add_child(beam)
+	root.add_child(_beam(0.03, 0.1, 1.6, Color(UiKit.GOLD, 0.2)))
 	return root
 
 
 static func _flat_material(color: Color) -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.albedo_color = color
-	m.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
-	m.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
-	m.roughness = 1.0
-	return m
+	var key := "flat|%s" % color.to_html()
+	if not _object_materials.has(key):
+		var m := StandardMaterial3D.new()
+		m.albedo_color = color
+		m.diffuse_mode = BaseMaterial3D.DIFFUSE_LAMBERT
+		m.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
+		m.roughness = 1.0
+		_object_materials[key] = m
+	return _object_materials[key]
+
+
+# 自發光的寶石、炭火、金幣（依外觀共用，同 _flat_material）
+static func _glow_material(color: Color, energy: float, metallic := 0.0) -> StandardMaterial3D:
+	var key := "glow|%s|%s|%s" % [color.to_html(), energy, metallic]
+	if not _object_materials.has(key):
+		var m := StandardMaterial3D.new()
+		m.albedo_color = color
+		m.emission_enabled = true
+		m.emission = color
+		m.emission_energy_multiplier = energy
+		m.metallic = metallic
+		_object_materials[key] = m
+	return _object_materials[key]
+
+
+# 地上獎勵的半透明光柱（不畫剪影：本來就高過牆）
+static func _beam(top: float, bottom: float, h: float, color: Color) -> MeshInstance3D:
+	var key := "beam|%s" % color.to_html()
+	if not _object_materials.has(key):
+		var bm := StandardMaterial3D.new()
+		bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		bm.albedo_color = color
+		_object_materials[key] = bm
+	var beam := MeshInstance3D.new()
+	beam.name = "Beam"
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = top
+	cyl.bottom_radius = bottom
+	cyl.height = h
+	cyl.radial_segments = 8
+	beam.mesh = cyl
+	beam.material_override = _object_materials[key]
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	beam.position.y = h / 2.0
+	return beam
 
 
 static func _box(size_: Vector3, at: Vector3, mat: Material) -> MeshInstance3D:
@@ -789,8 +772,9 @@ func warm_up(center: Vector3) -> void:
 	tw.spawner.finished = true
 	var c := Vector2(center.x, center.z)
 	var ents: Array[Entity] = [tw.players[World.HOST_PEER_ID]]
-	for kind: StringName in [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"gravekeeper", &"boss", &"ghost", &"minion"]:
+	for kind: StringName in [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"gravekeeper", &"boss", &"ghost"]:
 		ents.append(tw.spawner.spawn_at(tw, kind, c))
+	ents.append(Minion.new(tw, c, tw.players[World.HOST_PEER_ID]))   # 遊戲裡的僕從是 Minion 類別（召喚時才建），不是 spawn_at
 	var wolf := tw.spawner.spawn_at(tw, &"gravekeeper", c) as Gravekeeper   # 半血變身後的狼人模型
 	wolf.form = 1
 	wolf._update_anim()
@@ -803,6 +787,10 @@ func warm_up(center: Vector3) -> void:
 		ents.append(Chest.new(tw, tier, c))
 	ents.append(Forge.new(tw, c))
 	ents.append(tw.drop_coin(c))
+	for kind: StringName in [&"item", &"skill"]:
+		ents.append(Relic.new(tw, &"small", c, kind))
+	ents.append(Torch.new(tw, c))
+	ents.append(OrbitWisp.new(tw, tw.players[World.HOST_PEER_ID], &"arcane", 0, 1))
 	# 道具與武器每種稀有度都要：白色沒有發光，材質組合不同（v0.37.1：只預熱綠色時，第一把白色武器仍卡 70.8 ms）
 	var item_of := {}
 	for id: StringName in ItemDefs.ITEMS:
@@ -816,8 +804,10 @@ func warm_up(center: Vector3) -> void:
 	for visual: StringName in [&"arrow", &"orb"]:
 		ents.append(Projectile.new(tw, {"owner": ents[0], "pos": c, "direction": Vector2.UP, "speed": 0.0, "range": 0.0,
 			"radius": 0.25, "color": Color.ORANGE, "visual": visual}))
-	var colors := [XRAY_SELF, XRAY_ALLY, XRAY_ENEMY]
+	var colors := [XRAY_SELF, XRAY_ALLY, XRAY_ENEMY, XRAY_LOOT, XRAY_OBJECT]
 	var count := ents.size() * 2
+	for e in ents:
+		warm_classes[e.get_script().get_global_name()] = true
 	for i in count:
 		var e := ents[i / 2]
 		var faded := i % 2 == 1   # 每種模型再一個淡入淡出中的（半透明材質是另一組著色器，見 view/fade.gd）
@@ -840,6 +830,8 @@ func warm_up(center: Vector3) -> void:
 	_warm_left = WARM_FRAMES
 	_warm_center = center
 	effects.warm_up(center)
+	for e in ents:
+		e.detach()   # 直接 new 出來、沒加進 tw 的（寶箱、遺物、僕從…）tw.clear() 不會處理：狀態機和實體互相參照，不切斷會洩漏
 	tw.clear()
 
 
@@ -976,20 +968,30 @@ func _create_view(e: Entity) -> Node3D:
 	root.add_child(ring)
 	root.set_meta(&"entity", e.get_instance_id())
 	root.set_meta(&"model", _model_of(e))
-	if e is Player or e is Enemy or e is Projectile:
-		# 投射物（箭、魔彈）飛到牆後也畫剪影，顏色看發射的人：自己藍、隊友綠、怪物紅
-		var source: Entity = e
-		if e is Projectile and _world != null:
-			source = _world.entities.get((e as Projectile).owner_id)
-		var color := XRAY_ENEMY
-		if source is Player:
-			color = XRAY_SELF if source == local_player() else XRAY_ALLY
-		var on := e is Player   # 怪物與投射物等判斷過有東西擋住才打開（_xray_needed）
+	if not XRAY_EXEMPT.has(e.get_script().get_global_name()):
+		var color := xray_color(e)
+		var on := e is Player   # 其他判斷過有東西擋住才打開（_xray_needed）
 		root.set_meta(&"xray", color)
 		root.set_meta(&"xray_shown", on)
 		apply_xray(root, color, on)
 	add_child(root)
 	return root
+
+
+# 剪影顏色：自己藍、隊友（含骷髏僕從）綠、怪物紅；投射物（箭、魔彈）看發射的人；獎勵金色；其他（含之後新增的種類）灰白
+func xray_color(e: Entity) -> Color:
+	var source: Entity = e
+	if e is Projectile and _world != null:
+		source = _world.entities.get((e as Projectile).owner_id)
+	if source is Player:
+		return XRAY_SELF if source == local_player() else XRAY_ALLY
+	if source is Enemy:
+		return XRAY_ALLY if source.team == &"player" else XRAY_ENEMY   # 骷髏僕從是玩家方
+	if e is Projectile:
+		return XRAY_ENEMY
+	if e is Chest or e is Relic or e is ItemPickup or e is Coin:
+		return XRAY_LOOT
+	return XRAY_OBJECT
 
 
 # 角色的每個網格：自己的材質寫入模板值；on 時疊上剪影材質（換武器、怪物被擋住 / 不再被擋住時再呼叫，見 sync）
@@ -1012,10 +1014,14 @@ static func apply_xray(node: Node, color: Color, on: bool) -> void:
 # 怪物和相機之間有沒有牆或石台擋住：沿著往相機的方向取樣，地形頂面高過「腳底往相機的視線」就算擋住
 # 腳底被擋住才開剪影（被擋住的通常從腳開始）；最遠取樣到最高的牆擋得到的距離
 func _xray_needed(world: World, e: Entity) -> bool:
+	return _xray_needed_at(world, e.pos, e.height, e.radius)
+
+
+func _xray_needed_at(world: World, pos: Vector2, height: float, radius: float) -> bool:
 	var reach := MapDefs.WALL_TOP / _xray_slope
-	var d := e.radius
+	var d := radius
 	while d <= reach:
-		if world.terrain.ground_at(e.pos + _xray_dir * d) > e.height + d * _xray_slope + 0.1:
+		if world.terrain.ground_at(pos + _xray_dir * d) > height + d * _xray_slope + 0.1:
 			return true
 		d += XRAY_PROBE_STEP
 	return false
@@ -1053,6 +1059,11 @@ func _sync_grave(world: World) -> void:
 	_grave.get_node(^"Hole").visible = open
 	_grave.get_node(^"ExitRing").visible = open
 	_grave.get_node(^"Headstone").visible = not open
+	if world.tick % LOS_INTERVAL == 0 or not _grave.has_meta(&"xray_shown"):
+		var on := _xray_needed_at(world, ev.point, _grave.position.y, GRAVE_XRAY_RADIUS)
+		if not _grave.has_meta(&"xray_shown") or _grave.get_meta(&"xray_shown") != on:
+			_grave.set_meta(&"xray_shown", on)
+			apply_xray(_grave, XRAY_OBJECT, on)   # 墓碑、土堆；洞與出口的圈貼在地上（XRAY_SKIP）
 
 
 func _create_grave() -> Node3D:
