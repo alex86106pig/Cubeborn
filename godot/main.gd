@@ -72,6 +72,9 @@ func _ready() -> void:
 	hud.forge_panel.op_requested.connect(input_collector.queue_inventory_op)
 	hud.relic_panel.op_requested.connect(input_collector.queue_inventory_op)
 	input_collector.relic_panel = hud.relic_panel
+	input_collector.inventory_panel = hud.inventory_panel
+	# 背包開著時滑鼠只給介面用；遺物面板自動開關背包（HUD.set_bag_open）也跟著
+	hud.inventory_panel.visibility_changed.connect(func() -> void: input_collector.mouse_captured = hud.inventory_panel.visible)
 	hud.inventory_full.connect(_open_inventory_for)
 	hud.forge_opened.connect(_open_inventory)
 	if args.run_seconds > 0.0:

@@ -149,7 +149,7 @@ func _initialize() -> void:
 	# ───────── 背包、祭壇與武器 ─────────
 	_check("背包：大小照 BAG_SIZE；形狀旋轉後格子正確；超出邊界、重疊放不下；自動找第一個空位（不夠時會轉向）；搬動成功 / 失敗；裝滿後撿不起來並發出 inventory:full；放不下時建議拿掉哪一件（占格最少），拿掉一件也不夠就不建議",
 		all.bind([LootChecks.check_inventory, LootChecks.check_inventory_suggest]))
-	_check("祭壇與石棺：數量照地圖資料、位置可走且夠遠、殺怪靈魂照 KILL_SOULS（共用）、靈魂不夠開不了、夠了扣靈魂並開出一個遺物（選項照石棺的稀有度）、開過不能再開；隨機放（同種子相同）、多人時數量與靈魂不變、全清買不完；稀有度各抽 20000 次符合權重、不會開出武器",
+	_check("祭壇與石棺：數量照地圖資料、位置可走且夠遠、殺怪靈魂照 KILL_SOULS（共用）、靈魂不夠開不了、開的人直接打開 N 選 1、夠了扣靈魂並開出一個遺物（選項照石棺的稀有度）、開過不能再開；隨機放（同種子相同）、多人時數量與靈魂不變、全清買不完；稀有度各抽 20000 次符合權重、不會開出武器",
 		all.bind([LootChecks.check_soul_chests, LootChecks.check_chest_balance, LootChecks.check_chest_rarity]))
 	_check("局外金幣（v0.45）：過第 1 / 2 層給 5 / 10；地上的金幣走近自動撿、倒地不撿、多人只記一個數字；Profile 存檔讀得回來；掉落率符合 RUN_COINS.drop_chance（±4 個標準差）、召喚出來的不掉",
 		all.bind([LootChecks.check_run_coins, LootChecks.check_coin_drops]))
@@ -203,7 +203,7 @@ func _initialize() -> void:
 	# ───────── 介面 ─────────
 	_check("HUD：能建立、處理各種事件、顯示波次 / 血量 / 結算文字、暫停畫面有「離開遊戲」；別人撿到道具不跳橫幅；武器欄標示副手；同一目標同時跳的傷害數字往上疊、地上物件名稱重疊時往上錯開",
 		all.bind([ViewChecks.check_hud, ViewChecks.check_overlap_text]))
-	_check("背包介面：和屬性面板並排塞得進介面最大檔的畫面；腳邊欄只列按得到 F 的地上道具、滑鼠停著顯示說明，拖進背包撿起放在那一格、背包的拖到腳邊丟掉；撿不下時 HUD 通知打開背包、提示拿掉哪一件就放得下，關掉就清除；遺物的 N 選 1 卡片塞得進畫面、點卡片 / Esc 送出操作；鍛造祭壇旁開背包顯示鍛造面板：右鍵 / 拿著點格子 / 拖到同種武器上放進兩格、能合的發亮其他變暗、不能合寫原因、挑詞條按合成送出並清空、離開祭壇就關掉；開著背包時新手提示在屬性面板與背包中間；屬性面板依組列出、核心屬性一直顯示，其他屬性與整組有加成才顯示；左鍵點一下拿起、再點一下放下（拖曳照舊），右鍵 / Esc 放回、點外面丟掉；右鍵直接裝上 / 拿下來（道具照自動擺放、技能只進能用的寶石座、主手武器不拿下來）；物品依種類分畫法；羈絆欄只列收集到的；雙手武器時副手標成不能用；腳邊框不蓋到背包與技能欄（點一下拿起放進背包）", all.bind([ViewChecks.check_inventory_panel, ViewChecks.check_relic_panel, ViewChecks.check_forge_panel, ViewChecks.check_hint_beside_bag, ViewChecks.check_stats_panel, ViewChecks.check_inventory_click, ViewChecks.check_inventory_layout]))
+	_check("背包介面：和屬性面板並排塞得進介面最大檔的畫面；腳邊欄只列按得到 F 的地上道具（沒有就不顯示）、滑鼠停著顯示說明，拖進背包撿起放在那一格、背包的拖到腳邊丟掉；撿不下時 HUD 通知打開背包、提示拿掉哪一件就放得下，關掉就清除；遺物的 N 選 1 自動打開背包、卡片直排在背包左邊塞得進畫面、羈絆標籤寫目前件數、點卡片 / Esc 送出操作、自動打開的背包一起關、拿著東西時 R / Esc 不給遺物；鍛造祭壇旁開背包顯示鍛造面板：右鍵 / 拿著點格子 / 拖到同種武器上放進兩格、能合的發亮其他變暗、不能合寫原因、挑詞條按合成送出並清空、離開祭壇就關掉；開著背包時新手提示在屬性面板與背包中間；屬性面板依組列出、核心屬性一直顯示，其他屬性與整組有加成才顯示；左鍵點一下拿起、再點一下放下（拖曳照舊），右鍵 / Esc 放回、點外面丟掉；右鍵直接裝上 / 拿下來（道具照自動擺放、技能只進能用的寶石座、主手武器不拿下來）；物品依種類分畫法；羈絆欄只列收集到的；雙手武器時副手標成不能用；腳邊框不蓋到背包與技能欄（點一下拿起放進背包）", all.bind([ViewChecks.check_inventory_panel, ViewChecks.check_relic_panel, ViewChecks.check_forge_panel, ViewChecks.check_hint_beside_bag, ViewChecks.check_stats_panel, ViewChecks.check_inventory_click, ViewChecks.check_inventory_layout]))
 	_check("技能欄：劍盾格擋中左鍵換成「招架」與冷卻、法杖沒有招架格；火把準備姿態換成插火把 / 噴火、鐵鏟舉著怪換成拋出 / 埋入；CD 遮罩疊放順序 文字圖示 < 壓黑 < 秒數",
 		all.bind([ViewChecks.check_skill_bar_parry, ViewChecks.check_skill_bar_cd_mask]))
 	_check("新手提示：開場跳操作與挖墳；撿到東西、開背包、可合成、出口打開、腳邊有東西（按住 Alt 看詳細）、隊友倒地各跳一次；看過不再跳；重設後再跳", ViewChecks.check_hints)

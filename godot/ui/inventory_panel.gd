@@ -73,7 +73,7 @@ func _init() -> void:
 	visibility_changed.connect(func() -> void:
 		_cancel()
 		_full_pickup = 0
-		feet_panel.visible = visible)
+		feet_panel.visible = visible and not _feet.is_empty())   # 打開後每幀照腳邊有沒有東西更新
 
 
 # 撿不下 pickup_id 那個地上道具：腳邊標出它，提示拿掉哪件就放得下（面板要先打開，關掉就清除）
@@ -266,6 +266,7 @@ func _process(_delta: float) -> void:
 		world.reachable_pickups(me, _feet)
 		_scroll = clampf(_scroll, 0.0, maxf(0.0, _content_height(me) - _view_rect().size.y))
 	_update_suggestion(me)
+	feet_panel.visible = not _feet.is_empty()   # 腳邊沒東西就不顯示腳邊欄（2026-10-31 使用者要求）
 	_layout_feet()
 	queue_redraw()
 
@@ -329,6 +330,11 @@ func _forge_put(me: Player, uid: StringName) -> bool:
 		return false
 	forge.put(uid)
 	return true
+
+
+# 拖著或拿著東西（R 旋轉、Esc 放回；遺物面板這時不收 R / Esc）
+func is_holding() -> bool:
+	return visible and not _drag.is_empty()
 
 
 # 鍛造格子要接走手上拿著的武器（點一下拿起來的）：回傳 uid 並放回原處；沒拿著武器回傳 &""

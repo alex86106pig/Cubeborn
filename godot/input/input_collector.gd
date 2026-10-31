@@ -27,6 +27,7 @@ var mouse_captured := false     # 背包開著（D3）：滑鼠只給背包用�
 var spectate := 0               # 陣亡後觀戰的隊友 peer id（main.gd 設定），跟著每筆輸入送給房主（InputCmd.spectate）
 var vote_pending := false       # 前往下一層的投票等著自己回答（main.gd 每步設定）：Enter 同意、Esc 反對（這時 Esc 不開選單）
 var relic_panel: RelicPanel     # 遺物的 N 選 1 開著時：數字鍵選、R 重骰、Esc 先不選（不給技能、重新開始、暫停）
+var inventory_panel: InventoryPanel   # 背包手上拿著東西時 R 是旋轉、Esc 是放回，不給遺物面板
 var _inv_ops: Array = []        # 背包介面送出的操作，下一筆輸入帶走
 
 var _latched := 0               # 兩次模擬步之間按過的按鈕，步驟執行後才清除
@@ -83,6 +84,8 @@ func _relic_key(event: InputEvent) -> bool:
 		if event.is_action_pressed(StringName("slot_%d" % (i + 1))):
 			relic_panel.pick(i)
 			return true
+	if inventory_panel != null and inventory_panel.is_holding():
+		return false   # 背包拿著東西：R 旋轉、Esc 放回（InventoryPanel._input）
 	if event.is_action_pressed(&"restart"):
 		relic_panel.reroll()
 		return true

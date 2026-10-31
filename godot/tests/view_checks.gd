@@ -2079,11 +2079,14 @@ static func check_inventory_panel() -> String:
 		err = "背包 + 腳邊框 + 屬性面板 %.0f×%.0f，超出介面最大檔時的 %.0f×%.0f" % [need.x, need.y, room.x, room.y]
 	var ops: Array = []
 	panel.op_requested.connect(func(op: Array) -> void: ops.append(op))
+	panel._process(DT)
+	if err == "" and panel.feet_panel.visible:   # 2026-10-31 使用者：腳邊沒東西時不用顯示
+		err = "腳邊沒有東西時不應顯示腳邊欄"
 	var stone := w.drop_item(&"whetstone", p.pos + Vector2(1.0, 0))
 	w.drop_item(&"whetstone", p.pos + Vector2(LootDefs.INTERACT_RANGE + 3.0, 0))
 	panel._process(DT)
-	if err == "" and (panel._feet.size() != 1 or panel._feet[0] != stone):
-		err = "腳邊欄應只有按得到 F 的那一個磨刀石，實際 %d 個" % panel._feet.size()
+	if err == "" and (panel._feet.size() != 1 or panel._feet[0] != stone or not panel.feet_panel.visible):
+		err = "腳邊欄應只有按得到 F 的那一個磨刀石，實際 %d 個（顯示 %s）" % [panel._feet.size(), panel.feet_panel.visible]
 	if err == "":
 		panel._hover_pickup = stone.id
 		if not String(panel._info_of(p).get("title", "")).contains("在地上"):
@@ -2177,7 +2180,9 @@ static func check_inventory_panel() -> String:
 	return err
 
 
-# 遺物的 N 選 1（Build 改版第 6 步）：打開遺物就顯示卡片（張數 = 選項數），塞得進介面最大檔的畫面；點卡片送 OP_RELIC_PICK、Esc 送 OP_RELIC_CLOSE
+# 遺物的 N 選 1（Build 改版第 6 步；2026-10-31 卡片直排在背包左邊）：打開遺物就顯示卡片（張數 = 選項數）並自動打開背包與屬性面板，
+# 三者並排塞得進介面最大檔的畫面；卡片的羈絆標籤寫目前件數、效果的數字金色；點卡片送 OP_RELIC_PICK、Esc 送 OP_RELIC_CLOSE；
+# 選完 / 關掉時自動打開的背包一起關，原本就開著的不關；背包拿著東西時 R / Esc 不給遺物面板
 static func check_relic_panel() -> String:
 	var w := _new_world(5)
 	var cam := _test_camera()
@@ -2192,30 +2197,75 @@ static func check_relic_panel() -> String:
 	ids.sort_custom(func(x: StringName, y: StringName) -> bool: return String(ItemDefs.ITEMS[x].desc).length() > String(ItemDefs.ITEMS[y].desc).length())
 	relic.offers[p.peer_id] = ids.slice(0, 3)
 	var panel: RelicPanel = hud.relic_panel
+	var inv: InventoryPanel = hud.inventory_panel
 	panel.refresh(w, p)
 	var size: Vector2 = await _settled_min_size(panel)
+	var inv_size: Vector2 = await _settled_min_size(inv)
+	var stats_size: Vector2 = await _settled_min_size(hud._stats_panel)
 	var room := _menu_room()
-	_note("遺物 3 選 1 %.0f×%.0f（介面最大檔時可用 %.0f×%.0f）" % [size.x, size.y, room.x, room.y])
+	_note("遺物 3 選 1 %.0f×%.0f（背包 %.0f、屬性面板 %.0f 寬；介面最大檔時可用 %.0f×%.0f）" % [size.x, size.y, inv_size.x, stats_size.x, room.x, room.y])
 	var err := ""
 	if not panel.visible or panel.choice_count != 3:
 		err = "打開遺物應顯示 3 張卡片：顯示 %s、%d 張" % [panel.visible, panel.choice_count]
-	elif size.x > room.x or size.y + 140 > room.y * 0.6:
-		err = "遺物 3 選 1 %.0f×%.0f 太大（寬不超過 %.0f、高加上離底部 140 不超過畫面 60%%）" % [size.x, size.y, room.x]
+	elif not inv.visible or not hud.is_stats_panel_open():
+		err = "打開遺物應自動打開背包與屬性面板（背包 %s、屬性面板 %s）" % [inv.visible, hud.is_stats_panel_open()]
+	elif size.y + 32 > room.y or 16 + stats_size.x + 16 + size.x + 16 + inv_size.x + 24 > room.x:
+		err = "遺物 3 選 1 %.0f×%.0f 和背包、屬性面板並排塞不進 %.0f×%.0f" % [size.x, size.y, room.x, room.y]
 	if err == "":
-		var ops: Array = []
-		panel.op_requested.connect(func(op: Array) -> void: ops.append(op))
+		var bond: StringName = ItemDefs.ITEMS[ids[0]].bonds[0]
+		var chip_text := "%s %d" % [BondDefs.BONDS[bond].name, p.loadout.bond_counts.get(bond, 0)]
+		var labels: Array = panel._cards.get_child(0).find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text)
+		var bb := panel.effect_bbcode("擊殺後 3 秒攻速 +30%")
+		var gold := UiKit.GOLD.to_html(false)
+		if not labels.has(chip_text):
+			err = "卡片應有羈絆標籤「%s」（名稱 + 目前件數）：%s" % [chip_text, labels]
+		elif not bb.contains("[color=#%s]3 秒[/color]" % gold) or not bb.contains("[color=#%s]+30%%[/color]" % gold):
+			err = "效果的數字應包成金色：%s" % bb
+	var ops: Array = []
+	panel.op_requested.connect(func(op: Array) -> void: ops.append(op))
+	# 背包拿著東西時，R / Esc 不給遺物面板（R 旋轉、Esc 放回）
+	if err == "":
+		InputCollector.register_actions()
+		var collector := InputCollector.new()
+		collector.relic_panel = panel
+		collector.inventory_panel = inv
+		var r_key := InputEventAction.new()
+		r_key.action = &"restart"
+		r_key.pressed = true
+		p.add_weapon({"uid": &"rw", "base": &"longsword", "rarity": &"white", "affixes": []})
+		var occupied := p.inventory.occupied()
+		inv._start_drag(p, inv._grid_origin() + (Vector2(occupied.keys()[0]) + Vector2(0.5, 0.5)) * InventoryPanel.CELL)
+		var eaten: bool = collector._relic_key(r_key)
+		var held_ops := ops.duplicate()
+		inv._cancel()
+		var eaten_free: bool = collector._relic_key(r_key)
+		collector.free()
+		if eaten or not held_ops.is_empty():
+			err = "背包拿著東西時按 R 不應重骰（遺物面板收走了 %s、%s）" % [eaten, held_ops]
+		elif not eaten_free or ops != [[InputCmd.OP_RELIC_REROLL, relic.id]]:
+			err = "背包沒拿東西時按 R 應重骰：%s" % [ops]
+		ops.clear()
+	if err == "":
 		panel.close()
 		panel.refresh(w, p)
-		if ops != [[InputCmd.OP_RELIC_CLOSE]] or panel.visible:
-			err = "Esc 應送出 OP_RELIC_CLOSE 並先藏起來：%s、顯示 %s" % [ops, panel.visible]
+		if ops != [[InputCmd.OP_RELIC_CLOSE]] or panel.visible or inv.visible or hud.is_stats_panel_open():
+			err = "Esc 應送出 OP_RELIC_CLOSE、藏起來，自動打開的背包與屬性面板一起關：%s、顯示 %s、背包 %s" % [ops, panel.visible, inv.visible]
+	if err == "":
+		# 背包原本就開著：選完不關
 		p.relic_id = 0
 		panel.refresh(w, p)
+		hud.set_bag_open(true)
 		relic.open_for(p)
 		panel.refresh(w, p)
 		ops.clear()
-		(panel._cards.get_child(1) as Button).pressed.emit()
+		var click := InputEventMouseButton.new()
+		click.button_index = MOUSE_BUTTON_LEFT
+		click.pressed = true
+		(panel._cards.get_child(1) as Control).gui_input.emit(click)
 		if ops != [[InputCmd.OP_RELIC_PICK, relic.id, 1]]:
 			err = "點第 2 張卡片應送出 OP_RELIC_PICK 第 1 個：%s" % [ops]
+		elif panel.visible or not inv.visible:
+			err = "原本就開著的背包，選完遺物不應關掉（面板 %s、背包 %s）" % [panel.visible, inv.visible]
 	hud.queue_free()
 	cam.queue_free()
 	return err
@@ -2365,7 +2415,8 @@ static func check_hint_beside_bag() -> String:
 	var hud: Variant = load("res://ui/hud.tscn").instantiate()
 	hud.setup(w, cam)
 	_scene_root().add_child(hud)
-	_player(w)
+	var p := _player(w)
+	w.drop_item(&"whetstone", p.pos + Vector2(1.0, 0))   # 腳邊有東西才顯示腳邊框（2026-10-31）：最擠的情況
 	var hints: Hints = hud.hints
 	hints.save_path = ""
 	var longest: StringName = &""
@@ -2391,7 +2442,7 @@ static func check_hint_beside_bag() -> String:
 	var screen: Vector2 = hints.get_parent_control().size
 	if r.position.y < 0.0 or r.end.y > screen.y:
 		return "開背包時新手提示（%s）換行後超出畫面：提示 %s、畫面 %s" % [longest, r, screen]
-	if r.position.x < stats.end.x or r.end.x > bag.position.x or r.intersects(feet):
+	if r.position.x < stats.end.x or r.end.x > bag.position.x or not hud.inventory_panel.feet_panel.visible or r.intersects(feet):
 		return "開背包時新手提示（%s）應在屬性面板與背包中間、不蓋到腳邊框：提示 %s、屬性 %s、腳邊框 %s、背包 %s" % [longest, r, stats, feet, bag]
 	return ""
 

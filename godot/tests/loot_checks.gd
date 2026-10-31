@@ -294,7 +294,8 @@ static func check_soul_chests() -> String:
 	var relic: Relic = w.relics.back()
 	if relic.pos.distance_to(chest.pos) > LootDefs.DROP_DISTANCE + 1.0 or relic.tier != &"big":
 		return "石棺的遺物應在旁邊、用石棺的機率：距離 %.2f、%s" % [relic.pos.distance_to(chest.pos), relic.tier]
-	relic.open_for(p)
+	if p.relic_id != relic.id or not relic.offers.has(p.peer_id):   # 2026-10-31 使用者：開完不用再按一次 F
+		return "開石棺的人應直接打開遺物的 N 選 1（relic_id %d，遺物 %d）" % [p.relic_id, relic.id]
 	# 道具遺物的選項照石棺的稀有度；技能遺物（第 7 步，skill_chance）的選項都是技能（技能的稀有度固定白色，不看石棺的機率）
 	for id: StringName in relic.offers.get(p.peer_id, []):
 		if relic.relic_kind == &"skill":

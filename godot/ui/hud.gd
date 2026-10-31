@@ -53,6 +53,7 @@ var _world_labels := WorldLabels.new()
 var inventory_panel := InventoryPanel.new()   # Tab 開關（main.gd 接到輸入）
 var forge_panel := ForgePanel.new()           # 鍛造祭壇：站在祭壇旁開背包時，兩格放武器 → 挑詞條 → 合成（Build 改版第 8 步；放在背包左邊，main.gd 接到輸入）
 var relic_panel := RelicPanel.new()           # 遺物的 N 選 1（Build 改版第 6 步；main.gd 接到輸入）
+var _relic_bag := false                       # 背包是遺物面板自動打開的（選完 / 關掉時一起關）
 var _wave := UiKit.label("", 22)
 var _kills := UiKit.label("", 16)
 var _time := UiKit.label("", 16)
@@ -257,10 +258,8 @@ func _init() -> void:
 	_skill_bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	root.add_child(_skill_bar)
 
-	# 下方中央、技能欄上面：遺物的 N 選 1（打開時蓋在新手提示上面）
-	relic_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 140)
-	relic_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	relic_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	# 遺物的 N 選 1：打開時自動打開背包，卡片直排在背包（含腳邊框）左邊、上下置中（位置每幀算，_place_relic）
+	relic_panel.visibility_changed.connect(_on_relic_visibility)
 
 	# 下方中央、技能欄上面：新手提示（v0.31.0）
 	hints.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, int(HINT_BOTTOM))
@@ -284,6 +283,9 @@ func _init() -> void:
 	root.add_child(inventory_panel.feet_panel)   # 腳邊框：浮在背包左邊，位置由背包每幀算
 	inventory_panel.feet_avoid = _skill_bar
 	inventory_panel.forge = forge_panel
+	inventory_panel.visibility_changed.connect(func() -> void:
+		if not inventory_panel.visible:
+			_relic_bag = false)   # 玩家自己關了背包（Tab），之後選完遺物不再幫他開關
 	forge_panel.bag = inventory_panel
 	root.add_child(forge_panel)
 
@@ -387,11 +389,44 @@ func _place_hints() -> void:
 	var left := 0.0
 	var right := area.x
 	if inventory_panel.visible:
-		right = minf(inventory_panel.position.x, inventory_panel.feet_panel.position.x) - HINT_MARGIN
+		right = _bag_left() - HINT_MARGIN
 		if _stats_panel.visible:
 			left = _stats_panel.position.x + _stats_panel.size.x + HINT_MARGIN
 	hints.set_max_width(right - left)
 	hints.position = Vector2((left + right - hints.size.x) / 2.0, area.y - HINT_BOTTOM - hints.size.y)   # 換行會改變高度：下緣固定、往上長
+
+
+# 背包連同左邊的腳邊框（有東西才顯示）的左緣
+func _bag_left() -> float:
+	var x := inventory_panel.position.x
+	if inventory_panel.feet_panel.visible:
+		x = minf(x, inventory_panel.feet_panel.position.x)
+	return x
+
+
+# 遺物卡片：背包開著時直排在背包（含腳邊框）左邊、上下置中；背包沒開時在畫面中間
+func _place_relic() -> void:
+	var area := relic_panel.get_parent_control().size
+	relic_panel.size = relic_panel.get_combined_minimum_size()
+	var right := _bag_left() - 16.0 if inventory_panel.visible else (area.x + relic_panel.size.x) / 2.0
+	relic_panel.position = Vector2(right - relic_panel.size.x, maxf(16.0, (area.y - relic_panel.size.y) / 2.0))
+
+
+# 遺物面板出現時自動打開背包（看得到格子與羈絆）；選完 / 關掉時，自動打開的背包一起關（原本就開著的不關）
+func _on_relic_visibility() -> void:
+	if relic_panel.visible:
+		if not inventory_panel.visible:
+			set_bag_open(true)
+			_relic_bag = true
+	elif _relic_bag:
+		set_bag_open(false)
+		_relic_bag = false
+
+
+# 背包與屬性面板一起開關（和 Tab 一樣）；main.gd 依背包有沒有開把滑鼠交給介面
+func set_bag_open(open: bool) -> void:
+	_stats_panel.visible = open
+	inventory_panel.visible = open
 
 
 func toggle_stats_panel() -> void:
@@ -438,6 +473,8 @@ func _process(delta: float) -> void:
 		return
 	_skill_bar.refresh(world, player)
 	relic_panel.refresh(world, player)
+	if relic_panel.visible:
+		_place_relic()
 	forge_panel.refresh(world, player, inventory_panel.visible)
 	if forge_panel.visible:
 		forge_panel.position = Vector2(inventory_panel.position.x - forge_panel.size.x - 16.0, 120.0)
@@ -585,7 +622,8 @@ func _on_event(name: String, p: Dictionary) -> void:
 			if _is_local(p.player_id):
 				var r := world.entities.get(p.get("relic_id", 0)) as Relic
 				var what := "技能" if r != null and r.relic_kind == &"skill" else "道具"
-				_show_banner("開出%s遺物：靠近按 F 選一個%s（每個人都能選）" % [what, what], false, UiKit.GOLD)
+				var mates := "（隊友靠近按 F 也能選）" if world.player_list.size() > 1 else ""
+				_show_banner("開出%s遺物：選一個%s%s" % [what, what, mates], false, UiKit.GOLD)
 		"skill:leveled":
 			if _is_local(p.player_id):
 				_show_banner("%s 升到 %d 級" % [ItemDefs.ITEMS[StringName(p.skill)].name, p.level], false, UiKit.GOLD)
