@@ -5,6 +5,9 @@
 
 ## [未發布]
 
+### 修改
+- 連線時自己選過的遺物（三選一，等隊友都選完才消失）在自己的畫面上變半透明（`Config.VISION.relic_taken_alpha` 0.35），分得出自己選完沒；隊友那邊沒選的照常顯示。檢查「視野畫面」加上這項（舊寫法會失敗）。
+
 ### 修復
 - **連線玩幾分鐘房主網頁版當掉**（Console `Uncaught RuntimeError: memory access out of bounds` 或 `function signature mismatch`，隊友還能走但怪物都不動）：模型淡出時 `Fade` 記下底下的網格，隊友在視野外換了武器（`Rig.set_weapon` 刪掉舊武器的網格）再走回來，淡入時對已刪的網格做 `as MeshInstance3D`。電腦版只印 `Trying to cast a freed object.`，網頁發布版不檢查、直接讀到壞掉的記憶體。兩次當機的堆疊對照 Godot 4.7.2 原始碼都停在這個轉型（`OPCODE_CAST_TO_NATIVE`）。改成發現有已刪的網格就還原還在的、重新記一次（新武器也跟著淡），還原時跳過已刪的。檢查「視野畫面」加上淡入淡出中換武器（舊寫法會失敗：`fade.gd:105` 轉型已刪的物件）。網頁版 `--perf` 60 FPS、最差 16.67 ms。
 - `release.mjs --perf` / `--load` 開的 Chrome 加 `--mute-audio`：原本會出聲。

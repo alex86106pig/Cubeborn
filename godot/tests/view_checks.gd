@@ -958,6 +958,23 @@ static func check_vision_view() -> String:
 		if err == "" and Fade.is_fading(rig):
 			err = "淡入淡出中換武器：完全顯示後應還原"
 		rig.free()
+	# 連線時本機選過、等隊友選完的遺物：看得到時也維持半透明（relic_taken_alpha）；只有隊友選過的照常不透明
+	if err == "":
+		var relic := w.drop_relic(&"small", p.pos + MathUtil.dir_from_angle(p.facing) * 2.0)
+		relic.taken[World.HOST_PEER_ID + 1] = true
+		w.tick += 1
+		for i in 8:
+			view.sync(w, 1.0, 0.05)
+		var rn: Node3D = view._nodes[relic.id]
+		if not rn.visible or Fade.is_fading(rn):
+			err = "只有隊友選過的遺物在本機應照常不透明（顯示 %s、淡入淡出中 %s）" % [rn.visible, Fade.is_fading(rn)]
+		else:
+			relic.taken[World.HOST_PEER_ID] = true
+			for i in 8:
+				view.sync(w, 1.0, 0.05)
+			var want := Fade.level_of(Config.VISION.relic_taken_alpha) / float(Fade.LEVELS)
+			if not rn.visible or not is_equal_approx(_fade_alpha(rn), want):
+				err = "本機選過的遺物應半透明 %.2f（實際顯示 %s、透明度 %.2f）" % [want, rn.visible, _fade_alpha(rn)]
 	if err == "":
 		p.is_dead = true
 		view.sync(w, 1.0, 0.016)
