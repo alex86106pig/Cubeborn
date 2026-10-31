@@ -20,7 +20,9 @@ const STYLES := {
 	&"player": [24, UiKit.PLAYER_HURT],
 	&"heal": [24, UiKit.HEAL],
 	&"coin": [24, UiKit.GOLD],   # 撿到金幣（v0.45）
+	&"minor": [16, Color.WHITE],   # 附帶的小傷害（持續傷害的一跳、附加屬性傷害）：小字、半透明，不佔疊層
 }
+const MINOR_ALPHA := 0.7
 
 var camera: Camera3D
 var _items: Array[Dictionary] = []   # { node, world, life, target }
@@ -36,13 +38,14 @@ func spawn(target: Entity, text: String, style: StringName, color := Color(0, 0,
 	var s: Array = STYLES[style]
 	var node := UiKit.label(text, s[0], s[1] if color.a == 0.0 else color)
 	add_child(node)
-	var n := stack_count(target.id)
+	var is_minor := style == &"minor"
+	var n := 0 if is_minor else stack_count(target.id)
 	var col := floori(n / float(STACK_MAX))
 	var column := ceili(col / 2.0) * (1 if col % 2 == 1 else -1)   # 第幾欄：0、+1、-1、+2…
 	var height: float = HEIGHTS.get(target.kind, 2.0) + (n % STACK_MAX) * STACK_STEP
 	var side := camera.global_basis.x if camera != null and camera.is_inside_tree() else Vector3.RIGHT   # 螢幕的左右
 	var at := Vector3(target.pos.x + (randf() - 0.5) * JITTER, target.height + height + HEAD_OFFSET, target.pos.y) + side * column * STACK_SIDE
-	_items.append({"node": node, "world": at, "life": LIFE, "target": target.id})
+	_items.append({"node": node, "world": at, "life": LIFE, "target": target.id, "minor": is_minor})
 	_place(_items[-1])
 
 
@@ -50,7 +53,7 @@ func spawn(target: Entity, text: String, style: StringName, color := Color(0, 0,
 func stack_count(target_id: int) -> int:
 	var n := 0
 	for it in _items:
-		if it.target == target_id and it.life > LIFE - STACK_WINDOW:
+		if it.target == target_id and not it.minor and it.life > LIFE - STACK_WINDOW:
 			n += 1
 	return n
 
@@ -79,6 +82,6 @@ func _place(it: Dictionary) -> void:
 	var s := 0.8 + 0.4 * minf(1.0, (1.0 - k) * 6.0)
 	node.pivot_offset = node.size / 2.0
 	node.scale = Vector2.ONE * s
-	node.modulate.a = minf(1.0, k * 2.5)
+	node.modulate.a = minf(1.0, k * 2.5) * (MINOR_ALPHA if it.minor else 1.0)
 	if camera != null and camera.is_inside_tree():
 		node.position = camera.unproject_position(it.world) - node.size / 2.0

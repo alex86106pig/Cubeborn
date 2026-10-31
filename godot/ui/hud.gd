@@ -59,6 +59,7 @@ var _kills := UiKit.label("", 16)
 var _time := UiKit.label("", 16)
 var _fps := UiKit.label("", 12)
 var _mute := UiKit.label("", 12, Color(1, 1, 1, 0.75))
+var _top_right := VBoxContainer.new()         # 右上的層數、擊殺、時間…：背包靠右貼邊、蓋不滿，開著時藏起來（不然字從背包右緣露出來）
 var _boss_box := VBoxContainer.new()
 var _boss_name := UiKit.label("", 18)
 var _boss: Dictionary
@@ -203,7 +204,7 @@ func _init() -> void:
 	root.add_child(tl)
 
 	# 右上：波次、擊殺、時間、FPS、版號
-	var tr := VBoxContainer.new()
+	var tr := _top_right
 	tr.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 16)
 	tr.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	tr.add_theme_constant_override(&"separation", 2)
@@ -284,6 +285,7 @@ func _init() -> void:
 	inventory_panel.feet_avoid = _skill_bar
 	inventory_panel.forge = forge_panel
 	inventory_panel.visibility_changed.connect(func() -> void:
+		_top_right.visible = not inventory_panel.visible
 		if not inventory_panel.visible:
 			_relic_bag = false)   # 玩家自己關了背包（Tab），之後選完遺物不再幫他開關
 	forge_panel.bag = inventory_panel
@@ -591,7 +593,8 @@ func _on_event(name: String, p: Dictionary) -> void:
 			var is_player := target is Player
 			var big: bool = p.get("is_heavy", false) or p.get("is_crit", false)
 			var type_color: Color = StatDefs.DAMAGE_TYPES[StringName(p.damage_type)].color if p.has("damage_type") and not is_player else Color(0, 0, 0, 0)
-			_floaters.spawn(target, UiKit.dmg_text(p.amount), &"player" if is_player else (&"crit" if big else &"dmg"), type_color)
+			var style := &"player" if is_player else (&"crit" if big else (&"minor" if p.get("minor", false) else &"dmg"))
+			_floaters.spawn(target, UiKit.dmg_text(p.amount), style, type_color)
 			if target == local_player():
 				_flash_vignette()
 		"entity:dodged":

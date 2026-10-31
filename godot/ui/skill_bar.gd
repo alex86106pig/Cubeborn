@@ -53,7 +53,7 @@ func refresh(world: World, player: Player) -> void:
 		slot.cd_ratio = 1.0 - world.cooldowns.progress(player.cd(key))
 		if slot.index >= 0:
 			var data: Variant = player.slots.get_slot(player, slot.index)   # 寶石座的技能（含火把的插火把）
-			if data != null and data.def.mode == &"charges":
+			if data != null and data.def.get("mode", &"cooldown") == &"charges":   # 寶石座的技能大多只有冷卻、資料沒有 mode
 				slot.charges.text = str(data.charges)
 				slot.icon.modulate.a = 0.3 if data.charges <= 0 else 1.0
 		elif key == Player.ROLL_CD:

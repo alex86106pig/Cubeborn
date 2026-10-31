@@ -715,7 +715,9 @@ static func added_damage(world: World, p: Player, target: Entity, base: float) -
 	for x: Array in ADDED_DAMAGE:
 		var ratio := p.stats.value(x[0])
 		if ratio > 0.0 and not target.is_dead:
-			Combat.apply_damage(world, p, target, proc_hit(base * ratio, target, StatDefs.DAMAGE_TYPES[x[1]].color, 0.0, x[1]))
+			var hit := proc_hit(base * ratio, target, StatDefs.DAMAGE_TYPES[x[1]].color, 0.0, x[1])
+			hit["minor"] = true   # 每一下都跟著跳：數字畫小（HUD）
+			Combat.apply_damage(world, p, target, hit)
 
 
 const ADDED_DAMAGE := [[&"added_fire", &"fire"], [&"added_cold", &"cold"]]

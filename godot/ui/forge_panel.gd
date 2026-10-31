@@ -216,6 +216,7 @@ func _rebuild_row(i: int, inst: Dictionary) -> void:
 		var a: Dictionary = WeaponDropDefs.AFFIXES[id]
 		var b := UiKit.button(("● " if _keep[i] == id else "○ ") + a.desc, ROW)
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.size_flags_horizontal = Control.SIZE_FILL   # 說明長短不一：同一排都撐滿面板寬，左緣對齊
 		var color: Color = BondDefs.BONDS[a.bond].color
 		b.add_theme_color_override(&"font_color", color if _keep[i] == id else color.darkened(0.35))
 		b.add_theme_color_override(&"font_hover_color", color.lightened(0.3))

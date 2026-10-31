@@ -361,6 +361,27 @@ static func check_skill_bar_cd_mask() -> String:
 	return err
 
 
+# 寶石座的一般技能（資料沒有 mode、只有冷卻）：放出來後那格進冷卻，排在後面的 Q 藥水照樣顯示剩幾瓶
+static func check_skill_bar_gem_skill() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	p.add_item(&"whirlwind")
+	var bar := SkillBar.new()
+	_scene_root().add_child(bar)
+	bar.refresh(w, p)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
+	bar.refresh(w, p)
+	var gem: SkillBar.Slot = bar._slots[ActiveSlots.cd_key(0)]
+	var heal: SkillBar.Slot = bar._slots[ActiveSlots.cd_key(ActiveSlots.HEAL_INDEX)]
+	var err := ""
+	if gem.cd_ratio <= 0.0 or gem.cd_left <= 0.0:
+		err = "放旋風斬後數字鍵 1 那格應在冷卻：比例 %.2f、秒數 %.2f" % [gem.cd_ratio, gem.cd_left]
+	elif heal.charges.text != str(p.slots.heal.charges):
+		err = "鑲著技能時 Q 藥水格應顯示剩 %d 瓶，實際「%s」" % [p.slots.heal.charges, heal.charges.text]
+	bar.queue_free()
+	return err
+
+
 # 從 node 往上到 menu 都是 visible（-s 檢查裡 is_visible_in_tree 不可靠）
 static func _shown(node: Control, menu: Control) -> bool:
 	var n: Node = node
@@ -2408,6 +2429,43 @@ static func check_overlap_text() -> String:
 	return ""
 
 
+# 附帶的小傷害（燃燒的一跳、附加火焰傷害）事件標 minor、打擊本身不標；minor 的數字字比較小、不佔疊層（後面的打擊數字照樣從第 2 層開始）
+static func check_minor_numbers() -> String:
+	var w := _new_world(5)
+	var p := _player(w)
+	var e := LootChecks._item_dummy(w, p.pos + Vector2(0, 1.5), 100000.0)
+	e.add_burn(p.id, 10.0, 3.0, 1, 1)
+	var events: Array[Dictionary] = []
+	_run_collect(w, _cmd(Vector2.ZERO), roundi(1.0 / DT), events)
+	var burn := _named(events, "entity:damaged").filter(func(ev: Dictionary) -> bool: return ev.target_id == e.id)
+	if burn.is_empty() or not burn.all(func(ev: Dictionary) -> bool: return ev.get("minor", false)):
+		return "燃燒每一跳的受傷事件應標 minor：%s" % [burn]
+	w.events.clear()   # 上一步燃燒那一跳的事件還留著
+	p.stats.set_source(&"check_minor", [[&"added_fire", Stats.ADD, 0.5]])
+	Combat.apply_damage(w, p, e, {"damage": 5.0})
+	var hits := _named(w.events, "entity:damaged")
+	if hits.size() != 2 or hits[0].get("minor", false) or not hits[1].get("minor", false):
+		return "打擊本身不標 minor、跟著的附加火焰傷害要標：%s" % [hits]
+	var cam := _test_camera()
+	var floaters := Floaters.new()
+	floaters.camera = cam
+	_scene_root().add_child(floaters)
+	floaters.spawn(e, "10", &"dmg")
+	floaters.spawn(e, "3", &"minor")
+	floaters.spawn(e, "10", &"dmg")
+	var items: Array[Dictionary] = floaters._items
+	var ys: Array = items.map(func(it: Dictionary) -> float: return it.world.y - e.height)
+	var minor_font: int = (items[1].node as Label).get_theme_font_size(&"font_size")
+	var dmg_font: int = (items[0].node as Label).get_theme_font_size(&"font_size")
+	floaters.queue_free()
+	cam.queue_free()
+	if absf(ys[1] - ys[0]) > EPS or absf(ys[2] - ys[0] - Floaters.STACK_STEP) > EPS:
+		return "minor 數字應在最底層、不佔疊層（下一個打擊數字在第 2 層）：%s" % [ys]
+	if minor_font >= dmg_font:
+		return "minor 數字應比一般傷害數字小：%d / %d" % [minor_font, dmg_font]
+	return ""
+
+
 # 開著背包（連屬性面板）時，最長的新手提示放在兩個面板中間、不被蓋住（太長就換行）
 static func check_hint_beside_bag() -> String:
 	var w := _new_world(5)
@@ -2437,13 +2495,19 @@ static func check_hint_beside_bag() -> String:
 	var stats: Rect2 = hud._stats_panel.get_rect()
 	var feet: Rect2 = hud.inventory_panel.feet_panel.get_rect()
 	_note("開背包時的新手提示 %.0f×%.0f（%.0f ~ %.0f；屬性面板到 %.0f、腳邊框從 %.0f、背包從 %.0f）" % [r.size.x, r.size.y, r.position.x, r.end.x, stats.end.x, feet.position.x, bag.position.x])
+	var feet_shown: bool = hud.inventory_panel.feet_panel.visible
+	var corner_open: bool = hud._top_right.visible   # 右上的層數、擊殺：背包開著時藏起來（背包蓋不滿右緣）
+	hud.inventory_panel.visible = false   # 腳邊框跟著藏：上面先記下
+	var corner_closed: bool = hud._top_right.visible
 	hud.queue_free()
 	cam.queue_free()
 	var screen: Vector2 = hints.get_parent_control().size
 	if r.position.y < 0.0 or r.end.y > screen.y:
 		return "開背包時新手提示（%s）換行後超出畫面：提示 %s、畫面 %s" % [longest, r, screen]
-	if r.position.x < stats.end.x or r.end.x > bag.position.x or not hud.inventory_panel.feet_panel.visible or r.intersects(feet):
+	if r.position.x < stats.end.x or r.end.x > bag.position.x or not feet_shown or r.intersects(feet):
 		return "開背包時新手提示（%s）應在屬性面板與背包中間、不蓋到腳邊框：提示 %s、屬性 %s、腳邊框 %s、背包 %s" % [longest, r, stats, feet, bag]
+	if corner_open or not corner_closed:
+		return "右上的層數 / 擊殺應在背包開著時藏起來、關掉後顯示：開著 %s、關掉 %s" % [corner_open, corner_closed]
 	return ""
 
 

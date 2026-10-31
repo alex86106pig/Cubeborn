@@ -335,6 +335,7 @@ func _update_burn(dt: float) -> void:
 		var hit := ItemEffects.proc_hit(burn_tick_damage, self, BURN_COLOR)
 		hit["damage_type"] = &"fire"
 		hit["no_status"] = true   # 燒的那一下不再疊燃燒
+		hit["minor"] = true
 		Combat.apply_damage(world, src, self, hit)
 	if burn_timer <= 0.0:
 		clear_burn()
@@ -493,7 +494,9 @@ func _update_poison(dt: float) -> void:
 	_poison_tick += ItemDefs.PROCS.poison.tick
 	var src: Entity = world.entities.get(poison_source_id)
 	if src != null:
-		Combat.apply_damage(world, src, self, ItemEffects.proc_hit(poison_tick_damage, self, ItemDefs.PROCS.poison.color, 0.0, &"poison"))
+		var hit := ItemEffects.proc_hit(poison_tick_damage, self, ItemDefs.PROCS.poison.color, 0.0, &"poison")
+		hit["minor"] = true
+		Combat.apply_damage(world, src, self, hit)
 	if poison_timer <= 0.0:
 		poison_tick_damage = 0.0
 

@@ -81,5 +81,5 @@ static func _tick(world: World, z: Dictionary) -> void:
 				continue
 			Combat.apply_damage(world, owner, e, {
 				"damage": z.damage_per_sec * TICK_INTERVAL, "damage_type": z.damage_type, "proc": true, "no_stagger": true,
-				"knockback": 0.0, "origin": z.pos, "band": Vector2(-INF, INF), "color": z.color, "no_status": true,
+				"knockback": 0.0, "origin": z.pos, "band": Vector2(-INF, INF), "color": z.color, "no_status": true, "minor": true,
 			})

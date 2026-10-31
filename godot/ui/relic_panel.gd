@@ -64,7 +64,8 @@ func refresh(world: World, me: Player) -> void:
 	if key != _shown_key:
 		_shown_key = key
 		_rebuild(choices, me)
-	_footer.text = ("骰子 %d 顆 · R 重骰（用掉 1 顆）" % me.dice if me.dice > 0 else "沒有骰子了") + " · Esc 先不選"
+	# 一行塞不下卡片寬：骰子一行、Esc 一行，不讓自動換行把最後一個字擠到下一行
+	_footer.text = ("骰子 %d 顆 · R 重骰（用掉 1 顆）" % me.dice if me.dice > 0 else "沒有骰子了") + "\nEsc 先不選"
 
 
 func _rebuild(choices: Array, me: Player) -> void:

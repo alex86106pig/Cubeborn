@@ -149,6 +149,8 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 	var damage_type: StringName = hit.get("damage_type", &"phys")
 	if damage_type != &"phys":
 		ev["damage_type"] = damage_type   # 傷害數字依屬性上色；物理不帶，省頻寬
+	if hit.get("minor", false):
+		ev["minor"] = true   # 附帶的小傷害（持續傷害的一跳、附加屬性傷害）：數字畫小、不佔疊層，打一群怪時才讀得到打擊本身的數字
 	if target is Player:
 		# 遊玩紀錄（ui/run_log.gd，v0.34.0）：攻擊者可能這一步就消失（射手死了、投射物撞到就移除），種類與位置直接帶在事件裡；
 		# lethal：這一下讓玩家倒下 / 死亡（倒下的事件比這個事件早發出）
