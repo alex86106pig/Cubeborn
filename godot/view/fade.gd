@@ -49,6 +49,9 @@ static func apply(root: Node3D, a: float) -> bool:
 			return false
 		_restore(root)
 		return true
+	if root.has_meta(&"fade") and _is_stale(root.get_meta(&"fade")):
+		# 淡入淡出中換了武器（Rig.set_weapon 刪掉舊的網格）：還在的先還原，再重新記一次，新武器也跟著淡
+		_restore(root)
 	if not root.has_meta(&"fade"):
 		root.set_meta(&"fade", _collect(root))
 	var state: Dictionary = root.get_meta(&"fade")
@@ -99,13 +102,25 @@ static func _collect(root: Node) -> Dictionary:
 	return state
 
 
+# 已刪掉的網格 / 燈跳過：網頁版（發布版）對已刪掉的物件做 as 轉型不會報錯，直接讀到壞掉的記憶體當掉
+# （memory access out of bounds / function signature mismatch，2026-10-31 連線試玩房主當掉兩次）
 static func _restore(root: Node) -> void:
 	var state: Dictionary = root.get_meta(&"fade")
 	for entry: Array in state.meshes:
-		(entry[0] as MeshInstance3D).material_override = entry[1]
+		if is_instance_valid(entry[0]):
+			(entry[0] as MeshInstance3D).material_override = entry[1]
 	for entry: Array in state.lights:
-		(entry[0] as Light3D).light_energy = entry[1]
+		if is_instance_valid(entry[0]):
+			(entry[0] as Light3D).light_energy = entry[1]
 	root.remove_meta(&"fade")
+
+
+# 記下的網格或燈有已經刪掉的（淡入淡出中換了武器）
+static func _is_stale(state: Dictionary) -> bool:
+	for entry: Array in state.meshes + state.lights:
+		if not is_instance_valid(entry[0]):
+			return true
+	return false
 
 
 # 原本的材質 m 在第 level 階的半透明版本（只寫深度 → 半透明的顏色）；沒有就建一個放進快取

@@ -202,7 +202,7 @@ async function webPerf() {
   const proc = spawn(chrome, [
     `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check',
     '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows',
-    '--headless=new', '--disable-features=Translate', '--window-size=960,540', `http://localhost:${port}/${PERF_QUERY}`,
+    '--headless=new', '--mute-audio', '--disable-features=Translate', '--window-size=960,540', `http://localhost:${port}/${PERF_QUERY}`,
   ], { stdio: 'ignore' });
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const lines = [];
@@ -321,7 +321,7 @@ async function loadRun(chrome, url, profile) {
   const proc = spawn(chrome, [
     `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check',
     '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows',
-    '--headless=new', '--disable-features=Translate', '--window-size=960,540', 'about:blank',
+    '--headless=new', '--mute-audio', '--disable-features=Translate', '--window-size=960,540', 'about:blank',
   ], { stdio: 'ignore' });
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   let page = null;

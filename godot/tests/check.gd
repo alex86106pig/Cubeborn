@@ -182,7 +182,7 @@ func _initialize() -> void:
 
 	# ───────── 畫面 ─────────
 	_check("角色視野：前方扇形與 range 內看得到、身邊 near_radius 背後也看得到；牆擋視線、高台不擋；自己的投射物在背後也看得到、怪物的看不到；寶箱看中心、怪物看身體邊緣", ViewChecks.check_vision_rules)
-	_check("視野畫面：背後的模型隱藏、前方的顯示；背後的特效不畫；轉身時 fade_out / fade_in 淡出淡入；本機角色陣亡後全部看得到；變暗遮罩最先畫；挖墳中朝向與遮罩跟著滑鼠",
+	_check("視野畫面：背後的模型隱藏、前方的顯示；背後的特效不畫；轉身時 fade_out / fade_in 淡出淡入；淡入淡出中換武器不碰已刪的網格、新武器跟著淡；本機角色陣亡後全部看得到；變暗遮罩最先畫；挖墳中朝向與遮罩跟著滑鼠",
 		all.bind([ViewChecks.check_vision_view, ViewChecks.check_dig_vision]))
 	_check("觀戰：多人時本機陣亡看第一位站著的隊友、左右切換、看的人死了或走進出口就換、沒人可看就不觀戰；視野改用隊友的；房主依 InputCmd.spectate 挑快照；復活後回到自己", ViewChecks.check_spectate)
 	_check("頭頂血條：滿血不畫、受傷畫；自己與隊友綠、怪物紅；視野外、Boss、倒地、隱藏的不畫；比例 = hp / max_hp；不疊到詞條與名牌", ViewChecks.check_health_bars)

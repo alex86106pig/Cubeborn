@@ -3,6 +3,12 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
+## [未發布]
+
+### 修復
+- **連線玩幾分鐘房主網頁版當掉**（Console `Uncaught RuntimeError: memory access out of bounds` 或 `function signature mismatch`，隊友還能走但怪物都不動）：模型淡出時 `Fade` 記下底下的網格，隊友在視野外換了武器（`Rig.set_weapon` 刪掉舊武器的網格）再走回來，淡入時對已刪的網格做 `as MeshInstance3D`。電腦版只印 `Trying to cast a freed object.`，網頁發布版不檢查、直接讀到壞掉的記憶體。兩次當機的堆疊對照 Godot 4.7.2 原始碼都停在這個轉型（`OPCODE_CAST_TO_NATIVE`）。改成發現有已刪的網格就還原還在的、重新記一次（新武器也跟著淡），還原時跳過已刪的。檢查「視野畫面」加上淡入淡出中換武器（舊寫法會失敗：`fade.gd:105` 轉型已刪的物件）。網頁版 `--perf` 60 FPS、最差 16.67 ms。
+- `release.mjs --perf` / `--load` 開的 Chrome 加 `--mute-audio`：原本會出聲。
+
 ## [0.55.0] - 2026-10-31
 
 ### 新增

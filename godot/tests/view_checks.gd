@@ -936,6 +936,28 @@ static func check_vision_view() -> String:
 			if _material_state(node) != before:
 				err = "%s 淡入淡出後材質沒有還原：%s → %s" % [e.kind, before, _material_state(node)]
 				break
+	# 淡入淡出中換武器（隊友在視野外換了武器再走回來）：舊武器的網格刪掉後再淡、還原都不能碰到它，新武器也要跟著淡
+	# 網頁版對已刪掉的物件做 as 轉型直接當掉（2026-10-31 房主兩次），這裡用 Fade 有沒有回報錯誤與新武器的透明度判斷
+	if err == "":
+		var rig := DarkFantasy.player_character(p.class_id)
+		rig.set_weapon(&"longsword")
+		Fade.apply(rig, 0.5)
+		var old_weapon := rig.weapon_main
+		rig.set_weapon(&"staff")
+		old_weapon.free()   # set_weapon 是 queue_free（幀尾才刪），直接刪掉模擬下一幀
+		Fade.apply(rig, 0.25)
+		var staff_alpha := -1.0
+		for mi in PartKit.mesh_instances(rig.weapon_main):
+			var m := mi.material_override
+			if m is ShaderMaterial:
+				staff_alpha = ((m as ShaderMaterial).next_pass as BaseMaterial3D).albedo_color.a
+			break
+		if not is_equal_approx(staff_alpha, Fade.level_of(0.25) / float(Fade.LEVELS)):
+			err = "淡入淡出中換武器：新武器應跟著淡（透明度 %.2f，實際 %.2f）" % [Fade.level_of(0.25) / float(Fade.LEVELS), staff_alpha]
+		Fade.apply(rig, 1.0)
+		if err == "" and Fade.is_fading(rig):
+			err = "淡入淡出中換武器：完全顯示後應還原"
+		rig.free()
 	if err == "":
 		p.is_dead = true
 		view.sync(w, 1.0, 0.016)
