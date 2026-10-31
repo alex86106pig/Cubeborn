@@ -51,7 +51,7 @@ var _souls := UiKit.label("", 18, UiKit.SOUL)
 var _coins := UiKit.label("", 18, UiKit.GOLD)   # 本局拿到的金幣（局外貨幣）
 var _world_labels := WorldLabels.new()
 var inventory_panel := InventoryPanel.new()   # Tab 開關（main.gd 接到輸入）
-var forge_panel := ForgePanel.new()           # 鍛造祭壇合成時挑詞條（Build 改版第 8 步；放在背包左邊，main.gd 接到輸入）
+var forge_panel := ForgePanel.new()           # 鍛造祭壇：站在祭壇旁開背包時，兩格放武器 → 挑詞條 → 合成（Build 改版第 8 步；放在背包左邊，main.gd 接到輸入）
 var relic_panel := RelicPanel.new()           # 遺物的 N 選 1（Build 改版第 6 步；main.gd 接到輸入）
 var _wave := UiKit.label("", 22)
 var _kills := UiKit.label("", 16)
@@ -283,7 +283,8 @@ func _init() -> void:
 	root.add_child(inventory_panel)
 	root.add_child(inventory_panel.feet_panel)   # 腳邊框：浮在背包左邊，位置由背包每幀算
 	inventory_panel.feet_avoid = _skill_bar
-	inventory_panel.merge_choice.connect(forge_panel.open)
+	inventory_panel.forge = forge_panel
+	forge_panel.bag = inventory_panel
 	root.add_child(forge_panel)
 
 	# 橫幅（畫面 22% 高處）

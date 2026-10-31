@@ -2221,8 +2221,9 @@ static func check_relic_panel() -> String:
 	return err
 
 
-# 鍛造祭壇的合成（Build 改版第 8 步）：在祭壇旁把主手拖到背包裡同種同稀有度的武器上 → 打開挑詞條的面板（不直接送）；
-# 點另一條、按合成送出 [OP_MERGE, a, b, 留 a 的, 留 b 的]；面板和背包並排塞得進畫面；離開祭壇自動關掉
+# 鍛造祭壇（Build 改版第 8 步；2026-10-31 改成兩格放武器）：祭壇旁開背包就顯示鍛造面板；右鍵武器、拿著點格子、拖到另一把上都放進格子；
+# 放了一把後能合的武器發亮、其他變暗；不能合時寫原因、按鈕不能按；點詞條再按合成送 [OP_MERGE, a, b, 留 a, 留 b] 並清空；
+# 面板和背包並排塞得進畫面；離開祭壇就關掉、清空
 static func check_forge_panel() -> String:
 	var w := _new_world(5)
 	var cam := _test_camera()
@@ -2242,19 +2243,50 @@ static func check_forge_panel() -> String:
 	p.weapon_slots[Loadout.MAIN] = {"uid": &"fa", "base": &"longsword", "rarity": &"purple", "affixes": main_aff}
 	p.apply_active_weapon()
 	p.add_weapon({"uid": &"fb", "base": &"longsword", "rarity": &"purple", "affixes": bag_aff})
+	p.add_weapon({"uid": &"fs", "base": &"staff", "rarity": &"purple", "affixes": []})
 	var ops: Array = []
 	inv.op_requested.connect(func(op: Array) -> void: ops.append(op))
 	forge_panel.op_requested.connect(func(op: Array) -> void: ops.append(op))
+	forge_panel.refresh(w, p, true)
 	await _settled_min_size(inv)
-	var b_cell := Vector2i(-1, -1)
-	for c: Vector2i in p.inventory.occupied():
-		if p.inventory.occupied()[c] == &"fb":
-			b_cell = c
-	inv._start_drag(p, inv._slot_rect(Loadout.MAIN).get_center())
-	inv._finish_drag(p, inv._grid_origin() + (Vector2(b_cell) + Vector2(0.5, 0.5)) * InventoryPanel.CELL)
+	var cell_of := func(uid: StringName) -> Vector2:
+		for c: Vector2i in p.inventory.occupied():
+			if p.inventory.occupied()[c] == uid:
+				return inv._grid_origin() + (Vector2(c) + Vector2(0.5, 0.5)) * InventoryPanel.CELL
+		return Vector2(-1, -1)
+	var mouse := func(pos: Vector2, button: MouseButton) -> InputEventMouseButton:
+		var ev := InputEventMouseButton.new()
+		ev.button_index = button
+		ev.pressed = true
+		ev.position = pos
+		ev.global_position = pos
+		return ev
+	var fb: Dictionary = p.inventory.find(&"fb").weapon
+	var fs: Dictionary = p.inventory.find(&"fs").weapon
 	var err := ""
-	if not ops.is_empty() or not forge_panel.visible or forge_panel.uid_a != &"fa" or forge_panel.uid_b != &"fb":
-		err = "在祭壇旁把有詞條的主手拖到背包的同種武器上，應打開挑詞條的面板、先不送出：%s、顯示 %s（%s → %s）" % [ops, forge_panel.visible, forge_panel.uid_a, forge_panel.uid_b]
+	if not forge_panel.visible or forge_panel.uids != [&"", &""] or not forge_panel._ok.disabled:
+		err = "站在鍛造祭壇旁打開背包應顯示鍛造面板（兩格空的、合成不能按）：顯示 %s、%s" % [forge_panel.visible, forge_panel.uids]
+	# 右鍵主手 → 放進格子 1；同種同稀有度的 fb 發亮、法杖變暗
+	if err == "":
+		inv._gui_input(mouse.call(inv._slot_rect(Loadout.MAIN).get_center(), MOUSE_BUTTON_RIGHT))
+		if forge_panel.uids != [&"fa", &""] or not ops.is_empty():
+			err = "鍛造祭壇旁右鍵主手的武器應放進鍛造格子 1、不送操作：%s、%s" % [forge_panel.uids, ops]
+		elif not forge_panel.glow(fb) or forge_panel.dims(fb) or forge_panel.glow(fs) or not forge_panel.dims(fs):
+			err = "放了紫色長劍後，背包裡的紫色長劍應發亮、紫色法杖應變暗"
+	# 點一下拿起法杖、點格子 2 → 寫原因「要同種武器」、合成不能按；手上的放回去
+	if err == "":
+		inv._start_drag(p, cell_of.call(&"fs"))
+		inv._held = true
+		forge_panel._slot_input(mouse.call(Vector2(10, 10), MOUSE_BUTTON_LEFT), 1)
+		if forge_panel.uids != [&"fa", &"fs"] or not forge_panel.reason().begins_with("要同種武器") or not forge_panel._ok.disabled or not inv._drag.is_empty():
+			err = "拿著法杖點格子 2：應放進去、寫「要同種武器」、合成不能按（%s、「%s」、不能按 %s）" % [forge_panel.uids, forge_panel.reason(), forge_panel._ok.disabled]
+	# 點格子 2 拿出法杖；主手拖到背包的 fb 上 → 兩把都在格子裡（fa 已經在就不重複）、可以合
+	if err == "":
+		forge_panel._slot_input(mouse.call(Vector2(10, 10), MOUSE_BUTTON_LEFT), 1)
+		inv._start_drag(p, inv._slot_rect(Loadout.MAIN).get_center())
+		inv._finish_drag(p, cell_of.call(&"fb"))
+		if forge_panel.uids != [&"fa", &"fb"] or forge_panel.reason() != "" or forge_panel._ok.disabled or not ops.is_empty():
+			err = "主手拖到同種武器上應兩把都放進鍛造格子、可以合、先不送：%s、「%s」、%s" % [forge_panel.uids, forge_panel.reason(), ops]
 	var size: Vector2 = await _settled_min_size(forge_panel)
 	var inv_size: Vector2 = await _settled_min_size(inv)
 	var room := _menu_room()
@@ -2277,15 +2309,15 @@ static func check_forge_panel() -> String:
 			err = "最長的橘色武器說明 %.0f px 超出說明欄 %.0f px" % [body_h, room_h]
 	if err == "":
 		(forge_panel._rows[0].get_child(1) as Button).pressed.emit()
-		forge_panel.confirm()
-		if ops != [[InputCmd.OP_MERGE, "fa", "fb", String(main_aff[1]), String(bag_aff[0])]] or forge_panel.visible:
-			err = "點拖過來那把的第 2 條再按合成，應送出留 %s 與 %s 的 OP_MERGE 並關掉：%s" % [main_aff[1], bag_aff[0], ops]
+		forge_panel._ok.pressed.emit()
+		if ops != [[InputCmd.OP_MERGE, "fa", "fb", String(main_aff[1]), String(bag_aff[0])]] or forge_panel.uids != [&"", &""]:
+			err = "點格子 1 那把的第 2 條再按合成，應送出留 %s 與 %s 的 OP_MERGE 並清空格子：%s、%s" % [main_aff[1], bag_aff[0], ops, forge_panel.uids]
 	if err == "":
-		forge_panel.open(p.weapon_slots[Loadout.MAIN], p.inventory.find(&"fb").weapon)
+		forge_panel.put(&"fa")
 		forge.pos += Vector2(LootDefs.FORGE.range + 5.0, 0.0)
 		forge_panel.refresh(w, p, true)
-		if forge_panel.visible:
-			err = "離開鍛造祭壇後合成面板應關掉"
+		if forge_panel.visible or forge_panel.uids != [&"", &""]:
+			err = "離開鍛造祭壇後鍛造面板應關掉並清空"
 	hud.queue_free()
 	cam.queue_free()
 	return err

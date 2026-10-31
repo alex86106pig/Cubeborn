@@ -11,7 +11,6 @@ class_name InventoryPanel
 extends Control
 
 signal op_requested(op: Array)
-signal merge_choice(a: Dictionary, b: Dictionary)   # 在鍛造祭壇旁把有詞條的武器拖到另一把上：讓玩家挑要留的詞條（ForgePanel，第 8 步）
 
 const CELL := 97          # 背包一格：8 格撐滿主手＋副手＋羈絆欄的寬度（8 × 97 = 2 × 250 + 12 + 18 + 246）
 const WCELL := 50         # 武器格子一格
@@ -49,6 +48,7 @@ var world: World
 var local_peer := World.HOST_PEER_ID
 var feet_panel := FeetPanel.new()   # HUD 加進畫面；位置與大小每幀由這裡算
 var feet_avoid: Control             # 腳邊框不能蓋到的介面（HUD 給技能欄）：水平有重疊時腳邊框的下緣停在它上面
+var forge: ForgePanel               # 鍛造祭壇旁開著時：武器拖過去 / 右鍵 / 拖到另一把上 = 放進鍛造格子（HUD 設定）
 
 var _drag: Dictionary = {}   # 拖曳中 / 拿在手上：{ uid, id, rot, anchor（形狀格子的索引，對齊滑鼠所在格）, weapon（武器實例或 {}）, pickup_id（從腳邊拖的才有） }
 var _held := false           # _drag 是點一下拿起來的（下一次左鍵放下）；false = 按住拖曳中（放開就放下）
@@ -318,8 +318,26 @@ func _gui_input(event: InputEvent) -> void:
 				_finish_drag(me, event.position)
 		accept_event()
 	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed and _drag.is_empty():
-		_quick_equip(me, event.position)
+		if not _forge_put(me, _uid_at(me, event.position)):
+			_quick_equip(me, event.position)
 		accept_event()
+
+
+# 鍛造祭壇開著時，右鍵武器 = 放進鍛造格子；不是武器就照一般右鍵
+func _forge_put(me: Player, uid: StringName) -> bool:
+	if forge == null or not forge.visible or uid == &"" or ForgePanel._find(me, uid).is_empty():
+		return false
+	forge.put(uid)
+	return true
+
+
+# 鍛造格子要接走手上拿著的武器（點一下拿起來的）：回傳 uid 並放回原處；沒拿著武器回傳 &""
+func take_held_weapon() -> StringName:
+	if not _held or _drag.is_empty() or _drag.weapon.is_empty() or _drag.has("pickup_id"):
+		return &""
+	var uid: StringName = _drag.uid
+	_cancel()
+	return uid
 
 
 # 拿著東西時在 _input 搶先處理：R 旋轉（不會觸發重新開始）、右鍵 / Esc 放回原處（Esc 不開選單）、
@@ -426,12 +444,19 @@ func _finish_drag(me: Player, local: Vector2) -> void:
 		_cancel()
 		return
 	var uid := String(_drag.uid)
+	var at_global := get_global_transform() * local
+	if forge != null and forge.visible and forge.get_global_rect().has_point(at_global):
+		if not _drag.weapon.is_empty():   # 拖到鍛造面板上放開：放進格子（其他東西拖過去不動）
+			forge.drop_weapon(_drag.uid, at_global)
+		_cancel()
+		return
 	var merge := _merge_target(me, local)
 	var slot := _slot_at(local)
 	if not merge.is_empty():
-		# 兩把都有詞條、站在鍛造祭壇旁：先挑要留的詞條；白色沒得挑、不在祭壇旁直接送（權威端回「要站在鍛造祭壇旁」）
-		if not merge.affixes.is_empty() and world != null and world.near_forge(me):
-			merge_choice.emit(_drag.weapon, merge)
+		# 鍛造祭壇旁：兩把一起放進鍛造格子（挑詞條、按合成才送）；不在祭壇旁直接送（權威端回「要站在鍛造祭壇旁」）
+		if forge != null and forge.visible:
+			forge.put(_drag.uid)
+			forge.put(merge.uid)
 		else:
 			op_requested.emit([InputCmd.OP_MERGE, uid, String(merge.uid)])
 	elif slot >= 0:
@@ -592,8 +617,12 @@ func _draw_bag(font: Font, me: Player) -> void:
 		for x in bag.x:
 			draw_rect(Rect2(o + Vector2(x, y) * CELL, Vector2(CELL, CELL)).grow(-1), Color(1, 1, 1, 0.05))
 	for e: Dictionary in me.inventory.entries:
-		var dim: bool = not _drag.is_empty() and _drag.uid == e.uid
+		var dim: bool = (not _drag.is_empty() and _drag.uid == e.uid) or (forge != null and forge.dims(e.get("weapon", {})))
 		_draw_item(font, e.id, o, CELL, e.cell, e.rot, _rarity_of(e), 0.35 if dim else 1.0, e.get("weapon", {}))
+		var rects: Array[Rect2] = []
+		for c in Inventory.cells_of(e.id, e.rot):
+			rects.append(Rect2(o + Vector2(e.cell + c) * CELL, Vector2(CELL, CELL)))
+		_draw_forge_mark(font, e.get("weapon", {}), rects)
 	if _suggest != &"":
 		_draw_suggestion(me.inventory.find(_suggest))
 
@@ -605,8 +634,8 @@ func _draw_drag(font: Font, me: Player) -> void:
 	if not _merge_target(me, local).is_empty():
 		var r := _hover_rect(local)
 		draw_rect(r, Color(1, 0.85, 0.3, 0.35))
-		var forge := world != null and world.near_forge(me)
-		draw_string(font, r.position + Vector2(6, r.size.y - 8), "合成" if forge else "合成（要在鍛造祭壇旁）", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, UiKit.GOLD if forge else UiKit.ALERT)
+		var near := world != null and world.near_forge(me)
+		draw_string(font, r.position + Vector2(6, r.size.y - 8), "放進鍛造" if near else "合成（要在鍛造祭壇旁）", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, UiKit.GOLD if near else UiKit.ALERT)
 		return
 	var wc := _wcell_at(me, local) if _drag.weapon.is_empty() and _drag.id != &"corpse" else {}
 	var inv: Inventory = null
@@ -719,10 +748,11 @@ func _draw_slots(font: Font, me: Player) -> void:
 			draw_string(font, r.position + Vector2(10, r.size.y / 2.0 + 7), "（空）", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1, 1, 1, 0.3))
 			continue
 		var color: Color = ItemDefs.RARITIES[inst.rarity].color
-		var dim: bool = not _drag.is_empty() and _drag.uid == inst.uid
+		var dim: bool = (not _drag.is_empty() and _drag.uid == inst.uid) or (forge != null and forge.dims(inst))
 		draw_rect(r.grow(-3), Color(color.darkened(0.55), 0.4 if dim else 0.9))
 		draw_rect(r.grow(-3), UiKit.GOLD if main else color, false, 3.0 if main else 2.0)
-		draw_string(font, r.position + Vector2(10, 26), WeaponDropDefs.display_name(inst), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 16, 20, color)
+		draw_string(font, r.position + Vector2(10, 26), WeaponDropDefs.display_name(inst), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 16, 20, Color(color, 0.4 if dim else 1.0))
+		_draw_forge_mark(font, inst, [r])
 		var b := WeaponDropDefs.base_stats(inst)
 		var stat_text := ("攻擊力 %.1f" % b.damage) if not b.is_empty() else "副手"
 		draw_string(font, r.position + Vector2(10, 50), "%s · 詞條 %d 條" % [stat_text, inst.affixes.size()], HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(1, 1, 1, 0.7))
@@ -745,6 +775,22 @@ func _draw_slots(font: Font, me: Player) -> void:
 		for e: Dictionary in me.loadout.container(i).entries:
 			var edim: bool = not _drag.is_empty() and _drag.uid == e.uid
 			_draw_item(font, e.id, o, WCELL, e.cell, e.rot, _rarity_of(e), 0.35 if edim else 1.0)
+
+
+# 鍛造祭壇開著時：放在鍛造格子裡的武器標「鍛造 1 / 2」、能和已放的那把合成的發亮（變暗由 ForgePanel.dims 決定）
+func _draw_forge_mark(font: Font, inst: Dictionary, rects: Array[Rect2]) -> void:
+	if forge == null or inst.is_empty() or rects.is_empty():
+		return
+	var n := forge.slot_of(inst.uid)
+	var glow := n < 0 and forge.glow(inst)
+	if n < 0 and not glow:
+		return
+	for r in rects:
+		if glow:
+			draw_rect(r.grow(-2), Color(UiKit.GOLD, 0.22))
+		draw_rect(r.grow(-2), UiKit.GOLD, false, 3.0)
+	if n >= 0:
+		draw_string(font, rects[0].position + Vector2(6, rects[0].size.y - 8), "鍛造 %d" % (n + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, UiKit.GOLD)
 
 
 # 一件東西（畫法在 UiKit.draw_item，和遺物卡片共用）；滑鼠停在羈絆上時，不屬於那個羈絆的變淡
