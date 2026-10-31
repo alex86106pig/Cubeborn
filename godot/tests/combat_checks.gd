@@ -653,8 +653,9 @@ static func check_shortbow() -> String:
 	var moving_attack := p.velocity.length()
 	if w.projectiles.is_empty() or w.projectiles[0].visual != &"arrow" or w.projectiles[0].knockback_force != 0.0:
 		return "快射應射出不擊退的箭：%d 支" % w.projectiles.size()
-	if absf(w.projectiles[0].damage - p.move_damage(bow.attack)) > EPS or absf(p.move_damage(bow.attack) - 6.0 * 1.15) > EPS:
-		return "快射傷害應 = 6 × 100%% × 物理 115%% = 6.9，實際 %.2f" % w.projectiles[0].damage
+	var want: float = bow.base_damage * bow.attack.damage_pct * 1.15   # 盜墓遊俠物理 115%
+	if absf(w.projectiles[0].damage - p.move_damage(bow.attack)) > EPS or absf(p.move_damage(bow.attack) - want) > EPS:
+		return "快射傷害應 = 基礎 %.1f × %d%% × 物理 115%% = %.2f，實際 %.2f" % [bow.base_damage, roundi(bow.attack.damage_pct * 100.0), want, w.projectiles[0].damage]
 	if absf(moving_attack - p.stats.value(&"move_speed")) > 0.05:
 		return "遊俠移動中普攻不減速：速度 %.2f，移速 %.2f" % [moving_attack, p.stats.value(&"move_speed")]
 	var w2 := _class_world(&"ranger")
@@ -1090,7 +1091,7 @@ static func check_shovel() -> String:
 		else:
 			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), roundi(sv.special.hold_time / DT) + 2)
 			results[mode] = [p.held_enemy_id, g.grabbed_by]
-	var base := 12.0
+	var base: float = sv.base_damage
 	var th: Array = results[&"throw"]
 	if absf(th[0] - base * sv.grab.attack.damage_pct) > EPS or absf(th[1] - base * sv.grab.attack.path_damage_pct) > EPS or th[2] < 5.0 or th[3] != 0:
 		return "拋出：被丟的 %.0f、路上的 %.0f、飛到 z ≥ 5、手上放開：%s" % [base * sv.grab.attack.damage_pct, base * sv.grab.attack.path_damage_pct, th]

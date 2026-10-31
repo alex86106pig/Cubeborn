@@ -9,6 +9,9 @@ const DT := 1.0 / 60.0
 const SKILL_K := 3.0
 const CONTROL_MUL := 0.5
 const TOLERANCE := 0.2          # 實際 / 目標在 1 ± 這麼多以內算達標
+# 武器目標（docs/設計方向.md「武器強度」）：普攻每秒 + 右鍵按冷卻攤平，打一隻近戰 / 遠程各一檔；打一群是自己打一隻的幾倍
+const WEAPON_TARGET := {&"melee": 30.0, &"ranged": 22.0}
+const GROUP_BAND := Vector2(3.0, 6.0)
 const BASIC_TIME := 10.0        # 普攻量幾秒取平均
 const SKILL_WINDOW := 6.0       # 放一次後量幾秒（落雷延遲、火池、拖尾、燃燒都算進去）
 const MELEE_RANGE := 2.0        # 單體假人離玩家多遠：近戰武器
@@ -40,6 +43,7 @@ func _initialize() -> void:
 	lines.append("> 單體假人：近戰武器在 %.0f 單位、遠程在 %.0f 單位（以自己為中心的範圍技能放在範圍內）；一群 = 那個位置 4×3 共 12 隻（以自己為中心的換成身邊一圈 8 隻）。" % [MELEE_RANGE, RANGED_RANGE])
 	lines.append("")
 	var basic := _basic_table(lines)
+	_weapon_table(lines)
 	_move_table(lines, basic)
 	_enemy_tables(lines, basic)
 	for w in _worlds:
@@ -83,6 +87,39 @@ func _basic(lo: Array, pack: bool) -> float:
 	for i in roundi(BASIC_TIME / DT):
 		_step(w, _cmd(at, InputCmd.BTN_ATTACK), d, spots)
 	return _total(d) / BASIC_TIME
+
+
+# ───────── 武器 ─────────
+
+# 每把武器單拿（長劍的右鍵是蓄力突刺，不拿木盾）：普攻每秒 + 有傷害的右鍵按冷卻攤平
+func _weapon_table(lines: Array[String]) -> void:
+	lines.append("## 武器強度（普攻 + 右鍵）")
+	lines.append("")
+	lines.append("普攻每秒 + 右鍵每次 ÷ 冷卻（單拿這把；格擋、準備姿態、鏟起不算傷害）。打一隻目標：近戰 %.0f、遠程 %.0f（±%.0f%%）；打一群的倍數 = 一群合計 ÷ 打一隻，目標 %.0f~%.0f 倍。" % [WEAPON_TARGET.melee, WEAPON_TARGET.ranged, TOLERANCE * 100.0, GROUP_BAND.x, GROUP_BAND.y])
+	lines.append("")
+	lines.append("| 武器 | 類型 | 基礎傷害 | 打一隻每秒 | 目標 | 比 | 打一群每秒 | 倍數 | |")
+	lines.append("|---|---|---:|---:|---:|---:|---:|---:|---|")
+	for lo: Array in LOADOUTS:
+		var wid: StringName = lo[0]
+		var wpn: Dictionary = WeaponDefs.WEAPONS[wid]
+		var alone: Array = [wid, &""]
+		var single := _basic(alone, false)
+		var pack := _basic(alone, true)
+		var sp: Dictionary = wpn.get("special", {})
+		if sp.has("cooldown") and sp.has("damage_pct"):
+			single += _special_hit(alone, sp, false).x / sp.cooldown
+			pack += _special_hit(alone, sp, true).x / sp.cooldown
+		var target: float = WEAPON_TARGET[wpn.type]
+		var ratio := single / target
+		var mul := pack / single if single > 0.0 else 0.0
+		var off: Array[String] = []
+		if absf(ratio - 1.0) > TOLERANCE:
+			off.append("打一隻" + ("偏低" if ratio < 1.0 else "偏高"))
+		if mul < GROUP_BAND.x or mul > GROUP_BAND.y:
+			off.append("打一群" + ("偏低" if mul < GROUP_BAND.x else "偏高"))
+		lines.append("| %s | %s | %.1f | %.1f | %.0f | %.2f | %.0f | %.1f | %s |" % [wpn.name, "近戰" if wpn.type == &"melee" else "遠程",
+			wpn.base_damage, single, target, ratio, pack, mul, "✓" if off.is_empty() else "、".join(off)])
+	lines.append("")
 
 
 # ───────── 右鍵與技能 ─────────

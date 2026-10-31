@@ -13,7 +13,7 @@ const WEAPONS := {
 		"name": "長劍",
 		"type": &"melee",
 		"hands": &"one",
-		"base_damage": 12.0,
+		"base_damage": 7.5,         # 普攻 + 蓄力突刺打一隻每秒照近戰目標（設計方向「武器強度」），12 → 7.5
 		"damage_type": &"phys",
 		"model": &"longsword",
 		"grid": ["..E..", ".AAA.", ".AAA.", ".AGA.", ".AAA.", "HHHHH", "..H..", "..G.."],
@@ -102,11 +102,11 @@ const WEAPONS := {
 			"parry": {
 				"name": "招架",
 				"icon": "parry",              # 格擋中技能欄左鍵那格換成這個圖示
-				"desc": "格擋中按左鍵：0.2 秒內擋到攻擊就招架成功，盾擊 200% 並大幅擊退；冷卻 4 秒。",
+				"desc": "格擋中按左鍵：0.2 秒內擋到攻擊就招架成功，盾擊 320% 並大幅擊退；冷卻 4 秒。",
 				"window": 0.2,                # 按下左鍵後這麼久內擋到攻擊 = 招架成功（沿用原本完美格擋的 0.2 秒）
 				"cooldown": 4.0,              # 從按下左鍵開始算（沿用原本格擋的 4 秒）
 				"fail_damage_mul": 0.5,       # 判定時間結束都沒擋到：盾擊照樣打出，傷害與擊退 × 0.5（24 → 12）
-				"damage_pct": 2.0,             # 200% = 24（原本固定 25，F1 使用者同意）
+				"damage_pct": 3.2,             # 長劍 7.5 × 320% = 24（原本固定 25，F1 使用者同意 24；長劍基礎傷害調低時跟著拉高）
 				"range": 3.5,                 # v0.23.0 使用者決定（原本 2.5 / 120°）
 				"arc": PI * 180.0 / 180.0,
 				"knockback": 14.0,
@@ -182,7 +182,7 @@ const WEAPONS := {
 		"type": &"ranged",
 		"model": &"shortbow",
 		"grid": [".AAAA", "AAA..", "AAG..", "HHHH.", "AAG..", "AAA..", ".AAAA"],
-		"base_damage": 6.0,
+		"base_damage": 8.0,         # 普攻 + 散射打一隻每秒照遠程目標，6 → 8
 		"damage_type": &"phys",
 		"idle": {"arm_r": -0.4, "arm_l": 0.0, "tilt": 0.0},
 		"attack": {
@@ -480,7 +480,7 @@ const WEAPONS := {
 		"type": &"melee",
 		"model": &"torch",
 		"grid": ["AAA", "AAA", "AGA", "HHH", ".H.", ".H."],
-		"base_damage": 6.0,
+		"base_damage": 12.0,        # 打一隻每秒照近戰目標，6 → 12
 		"damage_type": &"fire",
 		"idle": {"arm_r": -0.5, "arm_l": -0.1, "tilt": 0.0},
 		"light_radius": 6.0,           # 舉著 / 插著的火把照亮的半徑
@@ -560,7 +560,7 @@ const WEAPONS := {
 		"type": &"melee",
 		"model": &"shovel",
 		"grid": ["AAAAA", "AAGAA", "AAAAA", ".AAA.", "..H..", "..H..", ".HHH.", "..H..", "..G.."],
-		"base_damage": 12.0,
+		"base_damage": 30.0,        # 打一隻每秒照近戰目標，12 → 30（攻速慢）
 		"damage_type": &"phys",
 		"idle": {"arm_r": -0.4, "arm_l": -0.5, "tilt": 0.0},
 		"attack": {

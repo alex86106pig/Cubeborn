@@ -120,8 +120,9 @@ static func check_friendly_fire() -> String:
 		events.append_array(w.events)
 	var hits := _named(events, "entity:damaged")
 	var err := ""
-	if hits.is_empty() or hits[0].target_id != p2.id or hits[0].amount != 12:
-		err = "P1 揮劍應打中前方的 P2 造成 12 傷害，實際 %s" % [hits]
+	var want := p1.move_damage(p1.weapon.attack)   # 第一下普攻（長劍基礎 × 100%），P2 沒有護甲
+	if hits.is_empty() or hits[0].target_id != p2.id or absf(hits[0].amount - want) > 1e-3:
+		err = "P1 揮劍應打中前方的 P2 造成 %.1f 傷害，實際 %s" % [want, hits]
 	elif hits.any(func(e: Dictionary) -> bool: return e.target_id == p1.id):
 		err = "出招者不應打到自己"
 	# 法杖魔彈：不會打到發射者，會打到前方的隊友
