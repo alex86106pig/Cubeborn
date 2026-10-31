@@ -50,13 +50,13 @@ const WEAPONS := {
 			"sfx": "swing",
 			"sfx_release": "swingHeavy",
 			"name": "蓄力突刺",
-			"desc": "按住蓄力（最多 0.8 秒）、放開往前衝 2 → 5 單位刺出 150% → 300%；冷卻 5 秒。",
+			"desc": "按住蓄力（最多 0.8 秒）、放開往前衝 2 → 5 單位刺出 260% → 530%；冷卻 5 秒。",
 			"icon": "sword_thrust",
 			"cooldown": 5.0,
 			"hold": true,
 			"roll_cancel": true,
-			"damage_pct": 1.5,         # 沒蓄力
-			"full_damage_pct": 3.0,    # 蓄滿
+			"damage_pct": 2.6,         # 沒蓄力
+			"full_damage_pct": 5.3,    # 蓄滿
 			"charge_time": 0.8,
 			"dash": 2.0,               # 衝刺距離：沒蓄力 → 蓄滿
 			"full_dash": 5.0,
@@ -217,12 +217,12 @@ const WEAPONS := {
 			"behavior": &"arrowFan",
 			"sfx": "arrowShot",
 			"name": "散射",
-			"desc": "一次 5 支箭散開 50°，每支 80%；冷卻 5 秒。",
+			"desc": "一次 5 支箭散開 20°，每支 120%；冷卻 5 秒。",
 			"icon": "bow_fan",
 			"cooldown": 5.0,
-			"damage_pct": 0.8,
+			"damage_pct": 1.2,
 			"count": 5,
-			"fan_arc": PI * 50.0 / 180.0,
+			"fan_arc": PI * 20.0 / 180.0,   # 6 單位外約中 3 支
 			"visual": &"arrow",
 			"projectile_speed": 24.0,
 			"projectile_radius": 0.2,
@@ -454,10 +454,10 @@ const WEAPONS := {
 			"behavior": &"holyCircle",
 			"sfx": "arcaneCast",
 			"name": "聖光圈",
-			"desc": "腳下放 4 秒的聖光圈（半徑 4）：隊友每秒回 4、亡靈每秒受到 60% 神聖傷害；冷卻 12 秒。",
+			"desc": "腳下放 4 秒的聖光圈（半徑 4）：隊友每秒回 4、亡靈每秒受到 120% 神聖傷害；冷卻 12 秒。",
 			"icon": "holy_circle",
 			"cooldown": 12.0,
-			"damage_pct": 0.6,         # 亡靈每秒受到 60%
+			"damage_pct": 1.2,         # 亡靈每秒受到 120%
 			"heal_per_sec": 4.0,       # 隊友（含自己）每秒回血
 			"radius": 4.0,
 			"duration": 4.0,

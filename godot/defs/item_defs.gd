@@ -310,7 +310,7 @@ const ITEMS := {
 	&"whirlwind": {"kind": &"skill", "name": "旋風斬", "rarity": &"white", "shape": &"dot", "desc": "原地轉一圈，砍四周的怪", "effects": []},
 	&"charge_slash": {"kind": &"skill", "name": "衝鋒斬", "rarity": &"white", "shape": &"dot", "desc": "往前衝 5 單位，砍到路上的怪", "effects": []},
 	&"sword_wave": {"kind": &"skill", "name": "劍氣", "rarity": &"white", "shape": &"dot", "desc": "揮劍射出一道會穿透的劍氣", "effects": []},
-	&"ambush": {"kind": &"skill", "name": "背刺突襲", "rarity": &"white", "shape": &"dot", "desc": "瞬移到 6 單位內最近的怪背後，刺一刀 250%（必爆擊）", "effects": []},
+	&"ambush": {"kind": &"skill", "name": "背刺突襲", "rarity": &"white", "shape": &"dot", "desc": "瞬移到 6 單位內最近的怪背後，刺一刀 550%（必爆擊）", "effects": []},
 	&"knife_fan": {"kind": &"skill", "name": "扇形飛刀", "rarity": &"white", "shape": &"dot", "desc": "往前方扇形射出 5 把飛刀", "effects": []},
 	&"smoke_bomb": {"kind": &"skill", "name": "煙霧彈", "rarity": &"white", "shape": &"dot", "desc": "腳下放煙霧 3 秒：裡面的怪攻擊會打偏，自己閃避 +30%", "effects": []},
 	&"fire_nova": {"kind": &"skill", "name": "火焰新星", "rarity": &"white", "shape": &"dot", "desc": "以自己為中心爆一圈火，點燃周圍的怪", "effects": []},

@@ -2,6 +2,7 @@
 //   node tools/release.mjs --check                        只跑 Godot 匯入 + check.gd（有逾時）
 //   node tools/release.mjs --web                          匯出網頁版並開本機伺服器 http://localhost:8060（--port 換埠）
 //   node tools/release.mjs --perf                         匯出網頁版，在不開視窗的 Chrome 原地轉身 30 秒量效能（--chrome <路徑> 或環境變數 CHROME；環境變數 PERF_QUERY 換網址參數）
+//   node tools/release.mjs --balance                      跑平衡數字表（武器、技能、怪物），寫進 docs/平衡數字.md
 //   node tools/release.mjs --load                         匯出網頁版，在不開視窗的 Chrome 開兩次（沒有 / 有瀏覽器快取），量開場時間軸與著色器編譯
 //   node tools/release.mjs --summary "摘要"               推送：更新（rebase）→ 決定版號 → 檢查 → commit + tag → push
 //   node tools/release.mjs --summary "摘要" --dry-run     不動 git 歷史、不推：只 fetch、算版號、改檔跑檢查，最後還原
@@ -140,6 +141,18 @@ function runChecks() {
 }
 
 if (has('check')) process.exit(runChecks() ? 0 : 1);
+
+// 平衡數字表（godot/tests/balance_report.gd）：照現在的 defs/ 實際跑模擬，寫進 docs/平衡數字.md
+if (has('balance')) {
+  const godot = godotPath();
+  const out = join(ROOT, 'docs', '平衡數字.md');
+  runGodot(godot, ['--headless', '--import', '--path', '.'], IMPORT_TIMEOUT, '匯入');
+  const r = runGodot(godot, ['--headless', '--path', '.', '-s', 'res://tests/balance_report.gd', '--', `--out=${out}`], CHECK_TIMEOUT, '平衡數字表');
+  if (!r.ok || !r.out.includes('寫入')) fail(`平衡數字表沒有跑完\n${(r.err || r.out || '').split('\n').filter(l => /ERROR|Error/.test(l)).slice(-15).join('\n')}`);
+  const off = readFileSync(out, 'utf8').split('\n').filter(l => /\| (偏低|偏高) \|$/.test(l));
+  console.log(`✔ 寫入 docs/平衡數字.md${off.length ? `；不在目標內 ${off.length} 項：\n${off.join('\n')}` : '；招式都在目標內（或標了保留）'}`);
+  process.exit(0);
+}
 
 // 匯出網頁版到 build/web；字型不做子集化（CI 才做），第一次載入比網站慢
 function exportWeb() {
