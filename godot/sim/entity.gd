@@ -123,7 +123,8 @@ func die(source_id: int = 0) -> void:
 		return
 	is_dead = true
 	velocity = Vector2.ZERO
-	world.emit_event("entity:died", {"entity_id": id, "source_id": source_id, "kind": kind})   # kind：遊玩紀錄算擊殺種類（v0.34.0）
+	# kind：遊玩紀錄算擊殺種類（v0.34.0）；pos：發聲位置（加入方只收 interest_radius 內的實體，遠處的怪不在他的世界）
+	world.emit_event("entity:died", {"entity_id": id, "source_id": source_id, "kind": kind, "pos": pos})
 	_on_died(source_id)
 
 

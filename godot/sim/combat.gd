@@ -142,7 +142,7 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 
 	# hit_stop 只放進事件：畫面層讓攻擊者與目標的模型定格這麼久（v0.18.3 起模擬時間不再放慢，多人時不影響其他人）
 	var ev := {
-		"target_id": target.id, "amount": dealt, "source_id": source.id,
+		"target_id": target.id, "pos": target.pos, "amount": dealt, "source_id": source.id,   # pos：發聲位置（加入方不一定有這個實體）
 		"knockback": knockback, "is_heavy": hit.get("is_heavy", false), "is_crit": is_crit,
 		"hit_stop": hit.get("hit_stop", 0.0), "color": hit.get("color", Color.WHITE),
 	}

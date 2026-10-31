@@ -218,7 +218,7 @@ func _initialize() -> void:
 	# ───────── 音效 ─────────
 	_check("音效素材：模擬層 sfx:cue 的名稱都在 Sound.CUE_NAMES；每個名稱都有配方與 wav（不是空的、峰值 ≤ 1）；背景音樂一般 / Boss 往前循環、長度 15.00 / 10.43 秒",
 		all.bind([ViewChecks.check_sim_cues, ViewChecks.check_sfx_files, ViewChecks.check_music_files]))
-	_check("音效播放：事件 → 音效、Boss 波換 Boss 曲、死亡停音樂；距離衰減（15 內全音量、35 外不播、中間 (1 − t)²）、sfx:cue 都帶位置、法杖普攻 −8 dB",
+	_check("音效播放：事件 → 音效、Boss 波換 Boss 曲、死亡停音樂；距離衰減（15 內全音量、35 外不播、中間 (1 − t)²）、sfx:cue 與受傷 / 死亡事件都帶位置、查不到位置的實體事件不播、「拒絕」音只給按的人、法杖普攻 −8 dB",
 		all.bind([ViewChecks.check_sound_mapping, ViewChecks.check_sound_distance]))
 	_check("結束程式不洩漏：主場景跑 3 秒（有怪、一直攻擊，音效還在播）後結束兩次，沒有 ObjectDB 洩漏、資源還在用", ViewChecks.check_quit_no_leak)
 

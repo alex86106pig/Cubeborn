@@ -27,6 +27,8 @@ const SKILL_CUES := {&"heal": "potion", &"plantTorch": "shieldBash"}
 # 個別音效的音量（dB）：v0.44.0 法杖普攻太吵（fireBolt 平均 −31.6 dB，比揮砍 swing 的 −36.1 大 4.5 dB，每 0.56 秒一發）
 const CUE_DB := {"fireBolt": -8.0}
 # 設定頁拉音效滑桿時的試聽：拖動時滑桿每格都發 changed，間隔太短會連成一串
+# 發聲位置跟著某個實體的事件（找不到位置就不播，見 event_gain）
+const ENTITY_EVENTS: Array[String] = ["entity:damaged", "hit:predicted", "entity:died", "skill:used", "player:revived"]
 const PREVIEW_CUE := "hit"
 const PREVIEW_INTERVAL := 0.15
 
@@ -137,11 +139,16 @@ static func event_pos(w: World, event_name: String, p: Dictionary) -> Variant:
 
 
 ## 這個事件的音效在本機要多大聲（0~1）：本機角色還在時依距離衰減，否則（主選單、還沒有角色）全音量
+## 跟實體有關的事件找不到位置就不播：原本當成全場音效全音量，加入方聽到遠處隊友打怪反而最大聲（2026-10-31）
 static func event_gain(w: World, listener: Player, event_name: String, p: Dictionary) -> float:
 	if listener == null:
 		return 1.0
+	if event_name == "skill:onCooldown":   # 冷卻中按技能的「拒絕」音只給按的人聽
+		return 1.0 if p.get("player_id", 0) == listener.id else 0.0
 	var at: Variant = event_pos(w, event_name, p)
-	return 1.0 if at == null else distance_gain(listener.pos.distance_to(at))
+	if at == null:
+		return 0.0 if event_name in ENTITY_EVENTS else 1.0
+	return distance_gain(listener.pos.distance_to(at))
 
 
 func toggle_mute() -> bool:

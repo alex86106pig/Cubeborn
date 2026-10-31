@@ -1631,6 +1631,22 @@ static func check_sound_distance() -> String:
 		return "25 單位外的骷髏受傷音量應 0.25，實際 %.3f" % sound_script.event_gain(w, me, "entity:damaged", {"target_id": far.id})
 	if absf(sound_script.event_gain(w, me, "wave:started", {"is_boss": false}) - 1.0) > EPS or absf(sound_script.event_gain(w, null, "entity:damaged", {"target_id": far.id}) - 1.0) > EPS:
 		return "全場音效與沒有本機角色時應全音量"
+	# 加入方只收 interest_radius 內的實體：受傷、死亡事件自己帶發聲位置，世界裡沒有這隻怪也照距離衰減；
+	# 還是查不到位置的實體事件不播（原本當全場音效全音量，遠處隊友打怪反而最大聲）；冷卻中的「拒絕」音只給按的人聽
+	var victim := _spawn(w, &"grunt", me.pos + Vector2(0, 25))
+	w.events.clear()
+	Combat.apply_damage(w, mate, victim, {"damage": 99999.0})
+	for event_name: String in ["entity:damaged", "entity:died"]:
+		var evs := _named(w.events, event_name)
+		if evs.is_empty() or not evs[0].has("pos"):
+			return "%s 事件應帶發聲位置 pos（加入方的世界不一定有這個實體）" % event_name
+		if absf(sound_script.event_gain(null, me, event_name, evs[0]) - 0.25) > EPS:
+			return "世界裡沒有這隻怪時，25 單位外的 %s 音量應 0.25，實際 %.3f" % [event_name, sound_script.event_gain(null, me, event_name, evs[0])]
+	if sound_script.event_gain(null, me, "entity:damaged", {"target_id": 99999}) != 0.0:
+		return "查不到位置的受傷事件應不播（實際音量 %.2f）" % sound_script.event_gain(null, me, "entity:damaged", {"target_id": 99999})
+	if sound_script.event_gain(w, me, "skill:onCooldown", {"key": "player.roll", "player_id": mate.id}) != 0.0 \
+			or sound_script.event_gain(w, me, "skill:onCooldown", {"key": "player.roll", "player_id": me.id}) != 1.0:
+		return "冷卻中的「拒絕」音只給按的人聽（隊友按的應 0、自己按的應 1）"
 	return ""
 
 
