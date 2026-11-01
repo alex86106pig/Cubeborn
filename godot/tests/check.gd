@@ -83,7 +83,7 @@ func _initialize() -> void:
 	_check("傷害屬性與抗性：基礎傷害 × 招式 % × 物理 / 屬性傷害；護甲只擋物理、所有抗性只擋物理以外；抗性 −50%~75%、秘術只吃一半；怪物照 resists；閃避率封頂 75% 且 0 時不擲骰；尋寶加權", CombatChecks.check_damage_types)
 	_check("法杖：魔彈從前方 spawn_offset 產生、照速度飛、命中造成武器傷害、飛滿射程消失；奧術爆裂落點限制在 min_range ~ range、半徑內才受傷；普攻按住照三段時間連發、打中骷髏不擊退不硬直",
 		all.bind([CombatChecks.check_fire_bolt, CombatChecks.check_arcane_burst, CombatChecks.check_staff_changes]))
-	_check("短弓（F4）：快射是不擊退的箭、傷害照物理加成；散射 5 支平均分在 50° 內；盜墓遊俠移動中普攻不減速、右鍵照常減速；箭袋 6 支、最後一支重箭、射空裝填 1.2 秒、翻滾瞬間補滿；短弓、長弓的普攻箭穿過 pierce_count 隻", all.bind([CombatChecks.check_shortbow, CombatChecks.check_bow_pierce]))
+	_check("短弓（F4）：快射是不擊退的箭、傷害照物理加成；散射 5 支平均分在 50° 內；盜墓遊俠移動中普攻不減速、右鍵照常減速；箭袋 6 支、最後一支重箭、射空裝填 1.2 秒、翻滾瞬間補滿；短弓的普攻箭不穿透、長弓穿過 pierce_count 隻", all.bind([CombatChecks.check_shortbow, CombatChecks.check_bow_pierce]))
 	_check("長弓（F5）：重射可擊退；按住右鍵蓄力、放開射出穿透箭（沒蓄 150%、蓄滿 400%），一直線上每隻打一次", CombatChecks.check_longbow)
 	_check("長劍與主手 / 副手：單手＋盾 / 匕首拿得動、雙手武器不能拿副手、盾不能當主手；長劍沒有副手時右鍵蓄力突刺（沒蓄 / 蓄滿衝 2 / 5 單位、150% / 300%）；守墓騎士開局長劍＋木盾", CombatChecks.check_longsword)
 	_check("匕首（F6）：雙持五連刺第 5 下 150% 必爆擊且只有它擊退、讓怪硬直；單拿三連刺第 3 下 120% 且只有它擊退；影步瞬移到怪背後背刺必爆擊、沒有怪不瞬移冷卻 1 秒；竊影者開局雙持、翻滾 2 次、翻滾後攻速 +30% 持續 1.5 秒", CombatChecks.check_daggers)

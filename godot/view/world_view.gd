@@ -330,6 +330,11 @@ func sync(world: World, alpha: float, dt: float) -> void:
 		_add_profile(&"effects", Time.get_ticks_usec() - t2)
 
 
+# 這個實體的模型現在的顯示程度（視野的淡入淡出，0~1）；還沒建立或已移除 = 0。場上文字（WorldLabels）照它淡入淡出
+func fade_level(id: int) -> float:
+	return _fade_level.get(id, 0.0)
+
+
 # 視野的淡入淡出（view/fade.gd）：顯示程度每幀往目標（看得到 1、看不到 0）靠近，0 就整個不畫；回傳這一幀要不要畫
 # 直接到位、不淡：剛建立的模型（開場、爬出來的怪）、走進出口的玩家、沒有本機角色或已陣亡（全部看得到）
 # 本機選過的遺物（等隊友選完才消失）看得到時也維持半透明（VISION.relic_taken_alpha）

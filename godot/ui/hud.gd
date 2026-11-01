@@ -118,6 +118,11 @@ func setup(p_world: World, p_camera: Camera3D) -> void:
 	inventory_panel.world = p_world
 
 
+# 場上文字跟著模型淡入淡出（WorldView.fade_level）
+func set_label_fade(fade_of: Callable) -> void:
+	_world_labels.fade_of = fade_of
+
+
 # 觀戰（本機陣亡後看隊友，0 = 沒在觀戰）：上方中央顯示看的是誰；場上文字與名牌改用他的視野
 func set_spectating(peer_id: int) -> void:
 	_world_labels.view_peer = peer_id

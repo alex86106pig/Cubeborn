@@ -14,6 +14,8 @@ const WEAPON_TARGET := {&"melee": 30.0, &"ranged": 22.0}
 const GROUP_BAND := Vector2(3.0, 6.0)
 # 打一群偏高但刻意保留的武器（使用者 2026-10-31：不能降傷害，同一下打到的每隻都要一樣痛，不做遞減；揮擊範圍是手感）
 const GROUP_KEEP := [&"longsword", &"torch", &"scepter", &"shovel"]
+# 打一隻要是全部武器裡最高的（使用者 2026-11-02：短弓專打單體、箭不穿透，打一群偏低是代價），不看類型的目標
+const SINGLE_TOP := [&"shortbow"]
 const BASIC_TIME := 10.0        # 普攻量幾秒取平均
 const SKILL_WINDOW := 6.0       # 放一次後量幾秒（落雷延遲、火池、拖尾、燃燒都算進去）
 const MELEE_RANGE := 2.0        # 單體假人離玩家多遠：近戰武器
@@ -97,32 +99,52 @@ func _basic(lo: Array, pack: bool) -> float:
 func _weapon_table(lines: Array[String]) -> void:
 	lines.append("## 武器強度（普攻 + 右鍵）")
 	lines.append("")
-	lines.append("普攻每秒 + 右鍵每次 ÷ 冷卻（單拿這把；格擋、準備姿態、鏟起不算傷害）。打一隻目標：近戰 %.0f、遠程 %.0f（±%.0f%%）；打一群的倍數 = 一群合計 ÷ 打一隻，目標 %.0f~%.0f 倍。" % [WEAPON_TARGET.melee, WEAPON_TARGET.ranged, TOLERANCE * 100.0, GROUP_BAND.x, GROUP_BAND.y])
+	lines.append("普攻每秒 + 右鍵每次 ÷ 冷卻（單拿這把；格擋、準備姿態、鏟起不算傷害）。打一隻目標：近戰 %.0f、遠程 %.0f（±%.0f%%）；打一群的倍數 = 一群合計 ÷ 打一隻，目標 %.0f~%.0f 倍。短弓打一隻要是最高（比 = 自己 ÷ 第二高）。" % [WEAPON_TARGET.melee, WEAPON_TARGET.ranged, TOLERANCE * 100.0, GROUP_BAND.x, GROUP_BAND.y])
 	lines.append("")
 	lines.append("| 武器 | 類型 | 基礎傷害 | 打一隻每秒 | 目標 | 比 | 打一群每秒 | 倍數 | |")
 	lines.append("|---|---|---:|---:|---:|---:|---:|---:|---|")
+	var singles := {}
+	var packs := {}
+	for lo: Array in LOADOUTS:
+		var wid: StringName = lo[0]
+		var alone: Array = [wid, &""]
+		singles[wid] = _basic(alone, false)
+		packs[wid] = _basic(alone, true)
+		var sp: Dictionary = WeaponDefs.WEAPONS[wid].get("special", {})
+		if sp.has("cooldown") and sp.has("damage_pct"):
+			singles[wid] += _special_hit(alone, sp, false).x / sp.cooldown
+			packs[wid] += _special_hit(alone, sp, true).x / sp.cooldown
 	for lo: Array in LOADOUTS:
 		var wid: StringName = lo[0]
 		var wpn: Dictionary = WeaponDefs.WEAPONS[wid]
-		var alone: Array = [wid, &""]
-		var single := _basic(alone, false)
-		var pack := _basic(alone, true)
-		var sp: Dictionary = wpn.get("special", {})
-		if sp.has("cooldown") and sp.has("damage_pct"):
-			single += _special_hit(alone, sp, false).x / sp.cooldown
-			pack += _special_hit(alone, sp, true).x / sp.cooldown
-		var target: float = WEAPON_TARGET[wpn.type]
-		var ratio := single / target
+		var single: float = singles[wid]
+		var pack: float = packs[wid]
 		var mul := pack / single if single > 0.0 else 0.0
 		var off: Array[String] = []
-		if absf(ratio - 1.0) > TOLERANCE:
-			off.append("打一隻" + ("偏低" if ratio < 1.0 else "偏高"))
-		if mul < GROUP_BAND.x:
-			off.append("打一群偏低")
-		elif mul > GROUP_BAND.y:
+		var target: float = WEAPON_TARGET[wpn.type]
+		var ratio := single / target
+		var target_text := "%.0f" % target
+		if SINGLE_TOP.has(wid):
+			# 要比其他武器都高：目標欄寫「最高」，比 = 自己 ÷ 第二高
+			var others := 0.0
+			for k: StringName in singles:
+				if k != wid:
+					others = maxf(others, singles[k])
+			ratio = single / others
+			target_text = "最高"
+			if ratio <= 1.0:
+				off.append("打一隻不是最高")
+			if mul < GROUP_BAND.x:
+				off.append("保留：打一群偏低（專打單體、箭不穿透）")
+		else:
+			if absf(ratio - 1.0) > TOLERANCE:
+				off.append("打一隻" + ("偏低" if ratio < 1.0 else "偏高"))
+			if mul < GROUP_BAND.x:
+				off.append("打一群偏低")
+		if mul > GROUP_BAND.y:
 			off.append("保留：打一群偏高（不降傷害、揮擊範圍是手感）" if GROUP_KEEP.has(wid) else "打一群偏高")
-		lines.append("| %s | %s | %.1f | %.1f | %.0f | %.2f | %.0f | %.1f | %s |" % [wpn.name, "近戰" if wpn.type == &"melee" else "遠程",
-			wpn.base_damage, single, target, ratio, pack, mul, "✓" if off.is_empty() else "、".join(off)])
+		lines.append("| %s | %s | %.1f | %.1f | %s | %.2f | %.0f | %.1f | %s |" % [wpn.name, "近戰" if wpn.type == &"melee" else "遠程",
+			wpn.base_damage, single, target_text, ratio, pack, mul, "✓" if off.is_empty() else "、".join(off)])
 	lines.append("")
 
 

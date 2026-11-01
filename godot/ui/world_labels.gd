@@ -28,6 +28,7 @@ var world: World
 var camera: Camera3D
 var local_peer := World.HOST_PEER_ID
 var view_peer := 0   # 觀戰中的隊友（0 = 本機）：看不看得到改用他的視野
+var fade_of := Callable()   # 實體 id → 模型的顯示程度 0~1（WorldView.fade_level）：祭壇 / 石棺的名稱跟著模型淡入淡出；沒設定就照看不看得到直接出現 / 消失
 var detail_held := false   # 按住 Alt（每幀更新）：按得到 F 的地上武器 / 道具才畫說明卡（2026-10-30 使用者）
 var warm := ""   # 開場預熱（v0.37.2）：HUD 蓋著「準備中」時設定，用同樣的字級與描邊先畫一次，字形在這時候產生
 var _placed: Array[Rect2] = []   # 這一幀已經畫的物件名稱（鍛造祭壇、寶箱、地上道具）的範圍，後畫的碰到就往上錯開
@@ -76,7 +77,10 @@ func _draw() -> void:
 		_text(font, f, CHEST_OFFSET, ("[F] 合成武器 " if f == focus else "") + "鍛造祭壇", FORGE_COLOR, 17, Vector2.ZERO, true)
 	for c: Entity in world.chests:
 		var chest := c as Chest
-		if chest.opened or not Vision.entity_visible(world, viewer, chest):
+		if chest.opened:
+			continue
+		var level: float = fade_of.call(chest.id) if fade_of.is_valid() else (1.0 if Vision.entity_visible(world, viewer, chest) else 0.0)
+		if level <= 0.0:
 			continue
 		var def: Dictionary = LootDefs.CHESTS[chest.tier]
 		var cost := chest.price_for(me)   # 撬鎖工具（G1）：顯示自己開的價格
@@ -84,7 +88,7 @@ func _draw() -> void:
 		var text := "%s  %d 靈魂" % [def.name, cost]
 		if chest == focus:
 			text = "[F] 開啟 " + text
-		_text(font, chest, CHEST_OFFSET, text, color, 17, Vector2.ZERO, true)
+		_text(font, chest, CHEST_OFFSET, text, color, 17, Vector2.ZERO, true, level)
 	for p: Entity in world.pickups:
 		var pickup := p as ItemPickup
 		if pickup == focus or pickup.is_removed or not Vision.entity_visible(world, viewer, pickup):
@@ -181,18 +185,19 @@ func _draw_card(font: Font, pickup: ItemPickup) -> void:
 
 
 # avoid：物件名稱（不會動的東西）碰到這一幀已經畫的名稱就往上錯開一行；怪物頭上的字不錯開（會跟著動、錯開會跳來跳去）
-func _text(font: Font, e: Entity, offset: float, text: String, color: Color, size := 17, shift := Vector2.ZERO, avoid := false) -> void:
-	_text_at(font, Vector3(e.pos.x, e.height + offset, e.pos.y), text, color, size, shift, avoid)
+func _text(font: Font, e: Entity, offset: float, text: String, color: Color, size := 17, shift := Vector2.ZERO, avoid := false, alpha := 1.0) -> void:
+	_text_at(font, Vector3(e.pos.x, e.height + offset, e.pos.y), text, color, size, shift, avoid, alpha)
 
 
-func _text_at(font: Font, at: Vector3, text: String, color: Color, size := 17, shift := Vector2.ZERO, avoid := false) -> void:
+# alpha：文字與描邊一起淡（跟著模型淡入淡出）
+func _text_at(font: Font, at: Vector3, text: String, color: Color, size := 17, shift := Vector2.ZERO, avoid := false, alpha := 1.0) -> void:
 	if camera.is_position_behind(at):
 		return
 	var s := camera.unproject_position(at) + Vector2(-LABEL_W / 2.0, 0) + shift
 	if avoid:
 		s.y = place_label(_placed, s.x + LABEL_W / 2.0, s.y, font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x, size)
-	draw_string_outline(font, s, text, HORIZONTAL_ALIGNMENT_CENTER, LABEL_W, size, OUTLINE, Color(0, 0, 0, 0.85))
-	draw_string(font, s, text, HORIZONTAL_ALIGNMENT_CENTER, LABEL_W, size, color)
+	draw_string_outline(font, s, text, HORIZONTAL_ALIGNMENT_CENTER, LABEL_W, size, OUTLINE, Color(0, 0, 0, 0.85 * alpha))
+	draw_string(font, s, text, HORIZONTAL_ALIGNMENT_CENTER, LABEL_W, size, Color(color, color.a * alpha))
 
 
 # 名稱的基線 y：從 y 開始，碰到 placed 裡的範圍就往上一行，最多 LABEL_TRIES 次；放好的範圍加進 placed

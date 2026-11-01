@@ -58,6 +58,7 @@ func _ready() -> void:
 	hud = HUD_SCENE.instantiate()
 	hud.setup(world, camera_rig.camera)
 	hud.health_bars.hidden_ids = world_view.hidden_ids   # 同一個字典，WorldView 每個 tick 原地更新
+	hud.set_label_fade(world_view.fade_level)
 	hud.run_log.net_info = _net_report
 	hud.run_log.frame_context = _frame_context
 	hud.quit_requested.connect(quit_game)

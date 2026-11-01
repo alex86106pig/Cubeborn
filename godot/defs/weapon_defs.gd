@@ -182,11 +182,10 @@ const WEAPONS := {
 		"type": &"ranged",
 		"model": &"shortbow",
 		"grid": [".AAAA", "AAA..", "AAG..", "HHHH.", "AAG..", "AAA..", ".AAAA"],
-		"base_damage": 8.0,         # 普攻 + 散射打一隻每秒照遠程目標，6 → 8
+		"base_damage": 12.0,        # 使用者 2026-11-02 決定：短弓打一隻每秒是全武器最高、箭不穿透（打一群靠散射）；8 → 12（14 時連珠箭 × 0.75 不是整數）
 		"damage_type": &"phys",
 		"idle": {"arm_r": -0.4, "arm_l": 0.0, "tilt": 0.0},
 		"attack": {
-			"pierce_count": 2,         # 穿過 2 隻（第 3 隻打中才消失）：打一群照「武器強度」3~6 倍（設計方向）
 			"behavior": &"fireBolt",
 			"sfx": "arrowShot",
 			"name": "快射",

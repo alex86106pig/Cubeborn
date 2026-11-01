@@ -680,13 +680,15 @@ static func _class_world(class_id: StringName) -> World:
 
 
 # F4 短弓與盜墓遊俠：快射是箭、不擊退；散射一次 5 支平均分在 50° 內、每支 80%；遊俠移動中普攻不減速、右鍵照常減速
-# 弓的普攻箭穿過 pierce_count 隻：一直線上前 pierce_count + 1 隻各中一次，後面的沒中；短弓、長弓都看
+# 弓的普攻箭穿過 pierce_count 隻：一直線上前 pierce_count + 1 隻各中一次，後面的沒中；短弓不穿透（沒寫 = 0，只中第 1 隻）、長弓穿透
 static func check_bow_pierce() -> String:
+	if WeaponDefs.WEAPONS[&"shortbow"].attack.has("pierce_count"):
+		return "短弓的普攻箭不該穿透（使用者 2026-11-02 決定）"
 	for wid: StringName in [&"shortbow", &"longbow"]:
 		var w := _new_world()
 		var p := _player(w)
 		p.loadout.equip_new(p, wid)
-		var n: int = WeaponDefs.WEAPONS[wid].attack.pierce_count
+		var n: int = WeaponDefs.WEAPONS[wid].attack.get("pierce_count", 0)
 		var line: Array[Enemy] = []
 		for i in n + 2:
 			var e := LootChecks._item_dummy(w, p.pos + Vector2(0, 3.0 + i * 1.2), 100000.0)
