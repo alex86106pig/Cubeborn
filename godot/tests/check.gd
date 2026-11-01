@@ -214,7 +214,8 @@ func _initialize() -> void:
 	_check("設定頁：主選單與暫停畫面的「設定」打開、塞得進 1920×1080、選單關掉一起關；改值存檔讀得回來（啟動參數蓋的不存）；音量套到 Music / SFX 匯流排、0% = −80 dB；陰影與光源開關套到太陽和精英怪的光（之後新建的也照設定）；--shadows / --lights", ViewChecks.check_settings)
 	_check("按鈕：ui/ 裡都用 UiKit.button（選單 / 面板 / 一排很多顆三種尺寸），不自己 Button.new()", ViewChecks.check_buttons)
 	_check("網頁版網址參數：?horde=200&perf&seconds=20 轉成 --horde=200 --perf --seconds=20；連線參數 host / join / room / net-autostart 也轉；不在開放清單的參數不轉", ViewChecks.check_url_query_args)
-	_check("遊玩紀錄：自己的擊殺依種類、受到的傷害依攻擊者、被看不見的攻擊、倒下被誰打倒；結算畫面塞得進 1920×1080；「複製遊玩紀錄」內容完整；重新開始清空", ViewChecks.check_run_log)
+	_check("遊玩紀錄：自己的擊殺依種類、受到的傷害依攻擊者、被看不見的攻擊（含身邊的攻擊者剛進視野不到 REACT 秒就打中）、倒下被誰打倒；武器掉落 / 撿起 / 第一次撿不下 / 現在的武器幾分換上；結算畫面塞得進 1920×1080；「複製遊玩紀錄」內容完整；重新開始清空",
+		all.bind([ViewChecks.check_run_log, ViewChecks.check_run_log_weapons_react]))
 	_check("字型：介面文字都在打包的 Noto Sans TC 裡（網頁版沒有系統字型），缺字的圖示改用向量圖", ViewChecks.check_font_coverage)
 
 	# ───────── 音效 ─────────

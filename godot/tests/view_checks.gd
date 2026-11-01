@@ -667,6 +667,46 @@ static func _menu_room() -> Vector2:
 	return base / (SettingsPanel.UI_SCALES.max() * SettingsPanel.BASE_UI_SCALE)
 
 
+# 遊玩紀錄的武器那一行與「來不及反應算看不見」：只用 RunLog（不建 HUD），事件直接餵
+static func check_run_log_weapons_react() -> String:
+	var w := _new_world(5)
+	var p := _player(w)
+	p.pos = Vector2.ZERO
+	p.facing = 0.0   # 面向 +Z
+	var rl := RunLog.new()
+	rl.me_id = p.id
+	w.stats.time = 30.0
+	for e: Dictionary in [
+			{"name": "weapon:dropped", "uid": "w1", "base": "longsword", "rarity": "white", "pos": Vector2.ZERO},
+			{"name": "weapon:dropped", "uid": "w2", "base": "dagger", "rarity": "blue", "pos": Vector2.ZERO},
+			{"name": "weapon:added", "player_id": p.id, "uid": "w1", "slot": -1},
+			{"name": "weapon:added", "player_id": p.id, "uid": "w0", "slot": 0},   # 不是殺怪掉的（開場、合成）不算
+			{"name": "inventory:full", "player_id": p.id, "item": "dagger", "pickup_id": 7},
+			{"name": "inventory:full", "player_id": p.id + 1, "item": "dagger", "pickup_id": 8}]:
+		rl.on_event(w, e.name, e)
+	if rl.weapon_drops != {&"white": 1, &"blue": 1} or rl.weapons_picked != 1 or rl.bag_full_at != 30.0:
+		return "武器統計：掉落 %s、撿 %d、撿不下 %.1f（應 白 1 藍 1、1、30）" % [rl.weapon_drops, rl.weapons_picked, rl.bag_full_at]
+	rl.track(w, 12.0)
+	var line := rl.weapon_text()
+	for want in ["武器掉落 2 把（普通 1 · 稀有 1）", "撿了 1 把", "背包 0:30 第一次撿不下", "現在的武器 0:12 換上"]:
+		if not line.contains(want):
+			return "武器那一行缺「%s」：%s" % [want, line]
+	# 屍犬在背後 6（看不見）→ 撲進身邊 1.5（4 以內看得到）→ 0.2 秒後打中：算看不見；前方一直看得到的腐屍 1 秒後打中：看得到
+	var dog := _spawn(w, &"hound", Vector2(0, -6))
+	var zombie := _spawn(w, &"zombie", Vector2(0, 5))
+	rl.track(w, 40.0)
+	dog.pos = Vector2(0, -1.5)
+	rl.track(w, 40.1)
+	w.stats.time = 40.3
+	rl.on_event(w, "entity:damaged", {"target_id": p.id, "source_id": dog.id, "source_kind": &"hound", "amount": 10.0})
+	rl.track(w, 41.0)
+	w.stats.time = 41.0
+	rl.on_event(w, "entity:damaged", {"target_id": p.id, "source_id": zombie.id, "source_kind": &"zombie", "amount": 8.0})
+	if rl.by_source.get(&"hound", {}).get("unseen", 0) != 1 or rl.by_source.get(&"zombie", {}).get("unseen", -1) != 0:
+		return "從背後撲進來 %.1f 秒就打中應算看不見、一直看得到的不算：%s" % [0.2, rl.by_source]
+	return ""
+
+
 static func check_run_log() -> String:
 	var w := _new_world(5)
 	var cam := _test_camera()
@@ -737,7 +777,7 @@ static func check_run_log() -> String:
 		return "結算畫面需要 %s，超出 %s" % [need, screen]
 	_note("結算畫面最多行時需要 %.0f × %.0f（畫面 %.0f × %.0f）" % [need.x, need.y, screen.x, screen.y])
 	hud._on_event("game:restart", {})
-	if rl.hits_taken != 0 or not rl.kills.is_empty() or not rl.downs.is_empty() or rl.frames != 0 or rl.result != "" or not rl.by_video.is_empty():
+	if rl.hits_taken != 0 or not rl.kills.is_empty() or not rl.downs.is_empty() or rl.frames != 0 or rl.result != "" or not rl.by_video.is_empty() or not rl.weapon_drops.is_empty() or rl.bag_full_at >= 0.0:
 		return "game:restart 後遊玩紀錄應清空"
 	hud.queue_free()
 	cam.queue_free()

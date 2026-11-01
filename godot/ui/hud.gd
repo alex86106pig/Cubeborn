@@ -490,6 +490,7 @@ func _process(delta: float) -> void:
 		if hints.visible:
 			_place_hints()
 		run_log.add_frame(delta, world.stats.time)
+		run_log.track(world, world.stats.time)
 	if _stats_panel.visible:
 		_stats_panel.refresh(player)
 

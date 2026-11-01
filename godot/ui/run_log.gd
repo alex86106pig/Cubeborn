@@ -1,6 +1,9 @@
 # 遊玩紀錄：只記本機玩家這一局的擊殺、受到的傷害（依攻擊者種類分）、被看不見的攻擊打中幾次、每次倒下被誰打倒；
 # 結算畫面顯示（ui/hud.gd）。只讀事件與模擬狀態，不修改模擬；連線時客戶端用房主送來的事件各記各的
-# 「看不見」：被打中那一刻攻擊者在不在自己的視野裡（sim/vision.gd，牆擋視線也算看不見）；攻擊者已經消失時用攻擊的出發點判斷
+# 「看不見」：被打中那一刻攻擊者不在自己的視野裡（sim/vision.gd，牆擋視線也算看不見；攻擊者已經消失時用攻擊的出發點判斷），
+#   或是身邊 TRACK_RANGE 內的攻擊者在打中前才剛進視野、連續看得到不到 REACT 秒（2026-11-02 使用者同意：屍犬在背後伏低、撲進身邊 4 單位才看得到，
+#   打中那一刻一定看得到，原本永遠算 0）。追蹤靠 track() 每幀更新；沒追蹤到的（太遠、剛出現）只看打中那一刻
+# 武器（2026-11-02 使用者要求，看掉落率合不合適）：掉了幾把（分稀有度，全隊共用的掉落）、自己撿了幾把、背包第一次撿不下的時間、現在的武器幾分換上
 # 回報：report_text() 是結算畫面「複製遊玩紀錄」的精簡文字（貼到聊天軟體），另含版本、平台、配裝、效能、連線數據
 # 效能另記顯示卡、解析度與畫面設定（2026-10-27）：一局中切換過陰影 / 光源時依設定分開統計，內顯玩一局就有對照組
 class_name RunLog
@@ -8,6 +11,9 @@ extends RefCounted
 
 const MAX_DOWNS_SHOWN := 5
 const HITCH := 0.05   # 一幀超過這麼多秒算卡頓
+const REACT := 0.4         # 攻擊者連續看得到不到這麼多秒就打中，算「看不見」（來不及反應）
+const TRACK_RANGE := 8.0   # 這麼近的怪每幀記錄看不看得到（遠的只看打中那一刻，省效能）
+const RARITY_ORDER: Array[StringName] = [&"white", &"green", &"blue", &"purple", &"orange"]
 # Boss 名字同 HUD.BOSS_NAME；不直接引用 HUD：check.gd（-s 腳本）會用到本檔，引用 HUD 會連帶要求 autoload GameEvents 而編譯失敗
 const NAMES := {
 	&"grunt": "骷髏戰士", &"archer": "骷髏弓手", &"zombie": "腐屍", &"bloater": "膨脹屍", &"hound": "屍犬", &"boss": "亡骸騎士", &"gravekeeper": "守墓人", &"ghost": "冤魂", &"minion": "骷髏僕從",
@@ -23,6 +29,13 @@ var unseen_damage := 0.0
 var by_source := {}     # 種類 → {damage, hits, unseen}
 var downs: Array[Dictionary] = []   # 每次倒下 / 死亡：{kind, unseen}
 var result := ""       # 結算標題（HUD._set_game_over）
+var weapon_drops := {}       # 稀有度 → 掉了幾把（全隊共用）
+var weapons_picked := 0      # 自己撿起殺怪掉的武器幾把
+var bag_full_at := -1.0      # 第一次有東西撿不下的時間（秒，-1 = 沒有）
+var weapon_since := 0.0      # 現在的主手武器幾秒時換上
+var _weapon_uid := ""
+var _dropped := {}           # 殺怪掉的武器 uid（撿起時才算進 weapons_picked，開場的武器不算）
+var _visible_since := {}     # 身邊的怪 id → 從幾秒開始連續看得到（看不到就移除）
 # 效能：遊戲進行中每幀的秒數（HUD 交給這裡）
 var frames := 0
 var frame_time := 0.0
@@ -46,6 +59,13 @@ func reset() -> void:
 	by_source.clear()
 	downs.clear()
 	result = ""
+	weapon_drops.clear()
+	weapons_picked = 0
+	bag_full_at = -1.0
+	weapon_since = 0.0
+	_weapon_uid = ""
+	_dropped.clear()
+	_visible_since.clear()
 	frames = 0
 	frame_time = 0.0
 	worst_frame = 0.0
@@ -70,6 +90,25 @@ func add_frame(delta: float, run_time: float) -> void:
 	v.hitches += int(delta > HITCH)
 
 
+# 每幀（HUD，和 add_frame 同時）：身邊的怪從幾秒開始看得到、主手武器換了沒
+func track(world: World, now: float) -> void:
+	var me: Player = world.entities.get(me_id) as Player if world != null else null
+	if me == null:
+		return
+	var inst := me.active_weapon()
+	var uid := String(inst.get("uid", ""))
+	if uid != _weapon_uid:
+		_weapon_uid = uid
+		weapon_since = now
+	var seen := {}
+	for e: Entity in world.enemies:
+		if e.is_dead or e.pos.distance_squared_to(me.pos) > TRACK_RANGE * TRACK_RANGE:
+			continue
+		if Vision.point_visible(world, me, e.pos, e.radius):
+			seen[e.id] = _visible_since.get(e.id, now)
+	_visible_since = seen
+
+
 func on_event(world: World, name: String, p: Dictionary) -> void:
 	match name:
 		"entity:damaged":
@@ -77,7 +116,7 @@ func on_event(world: World, name: String, p: Dictionary) -> void:
 				return
 			var kind: StringName = p.get("source_kind", &"")
 			var amount: float = p.get("amount", 0.0)
-			var unseen := not _attacker_seen(world, p)
+			var unseen := not _attacker_seen(world, p) or _too_sudden(world, p)
 			var s: Dictionary = by_source.get(kind, {"damage": 0.0, "hits": 0, "unseen": 0})
 			s.damage += amount
 			s.hits += 1
@@ -94,6 +133,17 @@ func on_event(world: World, name: String, p: Dictionary) -> void:
 			var kind: StringName = p.get("kind", &"")
 			if me_id != 0 and p.get("source_id", 0) == me_id and kind != &"player":
 				kills[kind] = kills.get(kind, 0) + 1
+		"weapon:dropped":
+			var r := StringName(p.get("rarity", ""))
+			weapon_drops[r] = weapon_drops.get(r, 0) + 1
+			_dropped[p.get("uid", "")] = true
+		"weapon:added":
+			if me_id != 0 and p.get("player_id", 0) == me_id and _dropped.has(p.get("uid", "")):
+				_dropped.erase(p.uid)
+				weapons_picked += 1
+		"inventory:full":
+			if me_id != 0 and p.get("player_id", 0) == me_id and p.get("pickup_id", 0) != 0 and bag_full_at < 0.0:
+				bag_full_at = world.stats.time if world != null else 0.0
 		"game:restart":
 			reset()
 
@@ -107,6 +157,14 @@ func _attacker_seen(world: World, p: Dictionary) -> bool:
 	if src != null and not src.is_removed and src != me:
 		return Vision.point_visible(world, me, src.pos, src.radius)
 	return Vision.point_visible(world, me, p.get("origin", me.pos))
+
+
+# 身邊的攻擊者打中前連續看得到不到 REACT 秒（屍犬從背後撲進來）；沒追蹤到的不算
+func _too_sudden(world: World, p: Dictionary) -> bool:
+	var id: int = p.get("source_id", 0)
+	if world == null or not _visible_since.has(id):
+		return false
+	return world.stats.time - _visible_since[id] < REACT
 
 
 static func name_of(kind: StringName) -> String:
@@ -180,6 +238,20 @@ static func net_text(n: Dictionary) -> String:
 	return " · ".join(PackedStringArray(parts))
 
 
+# 武器那一行：掉落（分稀有度）、撿了幾把、背包第一次撿不下、現在的武器幾分換上
+func weapon_text() -> String:
+	var n := 0
+	var parts: Array[String] = []
+	for r: StringName in RARITY_ORDER:
+		var c: int = weapon_drops.get(r, 0)
+		n += c
+		if c > 0:
+			parts.append("%s %d" % [ItemDefs.RARITIES[r].name, c])
+	var drops := "武器掉落 %d 把" % n + ("（%s）" % " · ".join(PackedStringArray(parts)) if not parts.is_empty() else "")
+	var full := "背包沒滿過" if bag_full_at < 0.0 else "背包 %s 第一次撿不下" % UiKit.format_time(bag_full_at)
+	return "%s · 撿了 %d 把 · %s · 現在的武器 %s 換上" % [drops, weapons_picked, full, UiKit.format_time(weapon_since)]
+
+
 # 結算畫面的文字（中文自動折行會斷在詞中間，每項一行）
 func summary_text() -> String:
 	var lines: Array[String] = []
@@ -187,6 +259,7 @@ func summary_text() -> String:
 	kill_kinds.sort_custom(func(a: StringName, b: StringName) -> bool: return kills[a] > kills[b])
 	var kill_parts := kill_kinds.map(func(k: StringName) -> String: return "%s %d" % [name_of(k), kills[k]])
 	lines.append("你的擊殺 %d" % total_kills() + ("：" + " · ".join(PackedStringArray(kill_parts)) if not kill_parts.is_empty() else ""))
+	lines.append(weapon_text())
 	if hits_taken == 0:
 		lines.append("沒有受到傷害")
 	else:
