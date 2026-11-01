@@ -1,11 +1,25 @@
 # 武器掉落與詞條（D4；Build 改版第 8 步詞條改成跟羈絆有關）：殺怪機率掉武器、稀有度機率、詞條清單；武器實例的建立與合成
-# 使用者決定（2026-10-23）：小怪 4%、Boss 必掉；小怪 白 60 / 綠 25 / 藍 12 / 紫 3、Boss 藍 60 / 紫 30 / 橘 10；
+# 使用者決定（2026-10-23）：小怪 4%（2026-11-01 改成照層數 1.5% / 2.5% / 4%）、Boss 必掉；小怪 白 60 / 綠 25 / 藍 12 / 紫 3、Boss 藍 60 / 紫 30 / 橘 10；
 # 白色沒有詞條、每高一級多 1 條；2026-10-30 許家慶決定詞條都跟羈絆有關（種類照武器格子 artifact，數字 Claude 暫定）
 # 主手與副手的詞條都生效；合成要在鍛造祭壇（Forge），兩把各留一條、其他重抽
 # 武器實例：{ uid, base（WeaponDefs / ItemDefs 的武器 id）, rarity, affixes: Array[StringName] }
 class_name WeaponDropDefs
 
-const DROP_CHANCE := {&"grunt": 0.04, &"archer": 0.04, &"zombie": 0.04, &"bloater": 0.04, &"hound": 0.04, &"boss": 1.0, &"gravekeeper": 1.0}
+# 小怪掉武器的機率照層數（使用者 2026-11-01 決定：原本每層都 4%，自動試玩量到第 1 層全清就掉 8~19 把、背包 48 格被武器占 28~46 格；
+# 要第 2~3 層才滿）；超過表的層用最後一層。召喚出來的怪（no_souls）不掉，同靈魂與金幣
+const MINION_DROP_BY_FLOOR := {1: 0.015, 2: 0.025, 3: 0.04}
+const MINION_TYPES := [&"grunt", &"archer", &"zombie", &"bloater", &"hound"]
+const BOSS_TYPES := [&"boss", &"gravekeeper"]   # 必掉
+
+
+# 這種怪在第 floor_num 層死掉時掉武器的機率（不在兩張表的怪不掉：冤魂、骷髏僕從）
+static func drop_chance(type: StringName, floor_num: int) -> float:
+	if type in BOSS_TYPES:
+		return 1.0
+	if not type in MINION_TYPES:
+		return 0.0
+	var last: int = MINION_DROP_BY_FLOOR.keys().max()
+	return MINION_DROP_BY_FLOOR[clampi(floor_num, 1, last)]
 
 const RARITY_WEIGHTS := {
 	&"minion": {&"white": 60.0, &"green": 25.0, &"blue": 12.0, &"purple": 3.0},

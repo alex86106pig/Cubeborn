@@ -156,7 +156,7 @@ func _initialize() -> void:
 		all.bind([LootChecks.check_run_coins, LootChecks.check_coin_drops]))
 	_check("撿道具：按 F 撿起最近的道具放進背包並生效；剛按下那一步才算；兩人同一步按 F 只有一人拿到；丟掉後道具回到地上、效果移除；附近有倒地隊友時 F 先救人；從腳邊拖進背包放到指定格子（太遠、放不下、已被撿走不動，武器不放裝備欄）；撿不下的事件帶地上道具的 id",
 		all.bind([LootChecks.check_pickups, LootChecks.check_pickup_to_cell]))
-	_check("武器掉落與詞條：小怪掉落率符合 DROP_CHANCE、Boss 必掉、稀有度符合權重；詞條數 = 稀有度順位、不重複、都跟羈絆有關、照武器偏向；合成要留的詞條一定在；主手（含稀有度倍率）與副手（只有詞條）生效、背包不生效",
+	_check("武器掉落與詞條：小怪掉落率照層數（MINION_DROP_BY_FLOOR，超過表用最後一層）、召喚出來的不掉、Boss 必掉、稀有度符合權重；詞條數 = 稀有度順位、不重複、都跟羈絆有關、照武器偏向；合成要留的詞條一定在；主手（含稀有度倍率）與副手（只有詞條）生效、背包不生效",
 		all.bind([LootChecks.check_weapon_drops, LootChecks.check_weapon_affixes]))
 	_check("武器的背包操作：開局長劍＋木盾；撿到的武器放背包（副手空著撿到盾才拿上）、都滿撿不起來；雙手武器把副手擠回背包、盾不能當主手、主手不能丟；換武器時鑲的道具跟著搬、武器格子只能放格子內、快照來回不變；兩把同種同稀有度合成 → 高一級、詞條重抽，不同種 / 不同稀有度 / 橘色不能合成",
 		all.bind([LootChecks.check_weapon_pickup, LootChecks.check_weapon_merge]))

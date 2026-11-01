@@ -652,9 +652,29 @@ static func check_weapon_drops() -> String:
 			w._remove_dead_entities()
 			w.events.clear()
 	var pct := drops * 100.0 / n
-	var want_pct: float = WeaponDropDefs.DROP_CHANCE[&"grunt"] * 100.0
+	var want_pct: float = WeaponDropDefs.drop_chance(&"grunt", w.floor_num) * 100.0
 	if absf(pct - want_pct) > 0.9:
-		return "小怪掉武器 %.2f%%，應約 %.1f%%" % [pct, want_pct]
+		return "第 %d 層小怪掉武器 %.2f%%，應約 %.1f%%" % [w.floor_num, pct, want_pct]
+	# 召喚出來的（no_souls）不掉：一般掉率下 2000 隻都沒掉
+	var summoned := 0
+	for i in 2000:
+		var s := _spawn(w, &"grunt", p.pos + Vector2(6, 0))
+		s.no_souls = true
+		var before := w.events.size()
+		s.die()
+		for k in range(before, w.events.size()):
+			if w.events[k].name == "weapon:dropped":
+				summoned += 1
+		s.remove()
+		if i % 200 == 0:
+			w._remove_dead_entities()
+			w.events.clear()
+	if summoned > 0:
+		return "召喚出來的小怪不該掉武器，2000 隻掉了 %d 把" % summoned
+	# 超過表的層用最後一層
+	var last: int = WeaponDropDefs.MINION_DROP_BY_FLOOR.keys().max()
+	if WeaponDropDefs.drop_chance(&"grunt", last + 5) != WeaponDropDefs.MINION_DROP_BY_FLOOR[last] or WeaponDropDefs.drop_chance(&"ghost", 1) != 0.0:
+		return "第 %d 層應用最後一層的掉率、冤魂不掉武器" % (last + 5)
 	var w2 := _new_world()
 	var before2 := w2.pickups.size()
 	_spawn(w2, &"boss", Vector2(6, 0)).die()

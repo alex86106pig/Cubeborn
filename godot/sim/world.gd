@@ -330,8 +330,8 @@ func on_enemy_died(e: Enemy, killer_id: int = 0) -> void:
 	var coin_chance: float = LootDefs.RUN_COINS.drop_chance.get(e.type, 0.0)
 	if not e.no_souls and coin_chance > 0.0 and coin_rng.randf() < coin_chance:
 		drop_coin(e.pos)
-	# 武器掉落（D4）：多人時也只掉一把（房主產生一個實體，先撿先得）
-	var chance: float = 1.0 if debug_drop_all else WeaponDropDefs.DROP_CHANCE.get(e.type, 0.0)
+	# 武器掉落（D4）：多人時也只掉一把（房主產生一個實體，先撿先得）；機率照層數，召喚出來的不掉（不然召喚者不死就能一直刷）
+	var chance: float = 1.0 if debug_drop_all else (0.0 if e.no_souls else WeaponDropDefs.drop_chance(e.type, floor_num))
 	if chance > 0.0 and (chance >= 1.0 or rng.randf() < chance):
 		var source := &"boss" if e.is_boss() else &"minion"
 		var bases := WeaponDropDefs.bases()
