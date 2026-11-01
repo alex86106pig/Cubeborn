@@ -125,7 +125,8 @@ const WEAPONS := {
 		"base_damage": 8.0,
 		"damage_type": &"arcane",
 		"model": &"staff",
-		"grid": ["A.A.A", "AAGAA", "AGAGA", ".AGA.", "..H..", ".HHH.", ".HHH.", "..H..", ".HHH.", "..H..", "..H.."],
+		# 杖頭連成一塊（攻擊部位 16 格、放得下 2×2）、寶石座移到握柄兩側（使用者 2026-11-02：原本攻擊部位 12 格被寶石座切碎，2×2 放不進去）
+		"grid": [".AAA.", "AAAAA", "AAAAA", ".AAA.", ".GHG.", ".HHH.", ".GHG.", ".HHH.", "..H..", "..H.."],
 		"idle": {"arm_r": -0.5, "arm_l": 0.0, "tilt": 0.0},
 		"attack": {
 			"behavior": &"fireBolt",

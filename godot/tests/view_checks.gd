@@ -2910,3 +2910,21 @@ static func check_inventory_layout() -> String:
 	hud.queue_free()
 	cam.queue_free()
 	return err
+
+
+# 部位有沒有差（使用者 2026-11-02）：說明多一行「部位有差 / 沒差」；拿著看部位的道具時格子標時機（命中 / 出手）、不看部位的整把同色、拿武器或技能不標
+static func check_part_hint() -> String:
+	for want: Array in [[&"thunder_rune", "部位有差：攻擊部位命中時"], [&"sleeve_knife", "部位有差：攻擊部位普攻出手時"], [&"whetstone", "部位沒差"]]:
+		var lines: Array = UiKit.item_info(want[0], {}).lines
+		if not lines.any(func(l: String) -> bool: return l.begins_with(want[1])):
+			return "%s 的說明應有「%s…」：%s" % [want[0], want[1], lines]
+	var cases := [[{}, &""], [{"uid": &"x", "id": &"thunder_rune", "weapon": {}}, &"hit"], [{"uid": &"x", "id": &"sleeve_knife", "weapon": {}}, &"attack"],
+		[{"uid": &"x", "id": &"whetstone", "weapon": {}}, InventoryPanel.HELD_NO_PART], [{"uid": &"x", "id": &"longsword", "weapon": {"uid": &"w1"}}, &""]]
+	for c: Array in cases:
+		if InventoryPanel.part_hint_of(c[0]) != c[1]:
+			return "拿著 %s 時格子標示應為 %s，實際 %s" % [c[0].get("id", "（空）"), c[1], InventoryPanel.part_hint_of(c[0])]
+	for part: String in ItemDefs.PART_TAGS:
+		for on: StringName in ItemDefs.PART_TAGS[part]:
+			if ItemDefs.PART_TAGS[part][on].length() > 3:
+				return "格子裡的短字最多 3 個字：%s" % ItemDefs.PART_TAGS[part][on]
+	return ""

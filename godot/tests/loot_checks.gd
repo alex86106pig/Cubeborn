@@ -1549,8 +1549,15 @@ static func check_weapon_pickup() -> String:
 		return "換上法杖後磨刀石應搬到法杖格子、照樣生效：%s、%s、攻擊力 %.2f" % [p.weapon_id, p.loadout.find_item(stone), p.stats.value(&"damage")]
 	# 武器格子只能放 mask 裡的格子；快照來回鑲的道具不變
 	var staff_inv := p.loadout.container(Loadout.MAIN)
-	if staff_inv.fits(&"loaded_dice", Vector2i(1, 0), 0):
-		return "法杖格子 (1, 0) 是空的（不是格子），不應放得下"
+	var hole := Vector2i(-1, -1)   # 法杖格子表範圍內的空格（不是格子）：從資料找，不寫死座標
+	var staff_cells := WeaponDefs.grid_cells(&"staff")
+	var staff_size := WeaponDefs.grid_size(&"staff")
+	for y in staff_size.y:
+		for x in staff_size.x:
+			if hole.x < 0 and not staff_cells.has(Vector2i(x, y)):
+				hole = Vector2i(x, y)
+	if hole.x < 0 or staff_inv.fits(&"loaded_dice", hole, 0):
+		return "法杖格子 %s 是空的（不是格子），不應放得下" % hole
 	var back := WeaponDropDefs.from_array(WeaponDropDefs.to_array(p.weapon_slots[Loadout.MAIN]))
 	if back.get("sockets", []).size() != 1 or back.sockets[0].uid != stone or back.sockets[0].cell != staff_inv.find(stone).cell:
 		return "快照來回後法杖上鑲的東西應一樣：%s" % [back.get("sockets", [])]

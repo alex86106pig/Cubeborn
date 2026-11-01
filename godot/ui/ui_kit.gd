@@ -144,6 +144,8 @@ static func item_info(id: StringName, weapon: Dictionary) -> Dictionary:
 	if def.kind == &"item":
 		desc += "　· 羈絆：" + ("、".join(bond_names) if not bond_names.is_empty() else "沒有")
 	var item_lines: Array[String] = [desc]
+	if def.kind == &"item":
+		item_lines.append(ItemDefs.part_line(id))
 	return {"title": "%s（%s）" % [def.name, r.name], "color": r.color, "lines": item_lines}
 
 

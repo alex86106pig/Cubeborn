@@ -74,6 +74,8 @@ const PART_TIMING := {
 	"E": {&"hit": "連段最後一下命中時", &"attack": "連段最後一下出手時"},
 	"D": {&"hit": "格擋 / 招架成功時", &"attack": "格擋 / 招架成功時"},
 }
+# 拿著看部位的道具時畫在武器格子裡的短字（格子 50 px，最多 3 個字）
+const PART_TAGS := {"A": {&"hit": "命中", &"attack": "出手"}, "E": {&"hit": "連段末", &"attack": "連段末"}, "D": {&"hit": "格擋", &"attack": "格擋"}}
 const BLOCK_HIT_DAMAGE_PCT := 1.0   # 防禦部位的命中類觸發沒有「那一下的傷害」：用武器基礎傷害的 100%（Player.pct_damage）
 
 # 觸發後的動作；params = 必填參數
@@ -410,6 +412,14 @@ static func timing_line(id: StringName, parts: String) -> String:
 		if PART_TIMING.has(part) and not when.has(PART_TIMING[part][on]):
 			when.append(PART_TIMING[part][on])
 	return "發動：" + ("、".join(when) if not when.is_empty() else "不發動（鑲在攻擊部位、末端或防禦部位才會發動）")
+
+
+# 說明的「部位」那一行（使用者 2026-11-02：至少要知道這件放哪個部位有沒有差）：看部位的道具列出各部位什麼時候發動，其他的寫沒差
+static func part_line(id: StringName) -> String:
+	var on := part_timed_trigger(id)
+	if on == &"":
+		return "部位沒差：鑲在哪個部位效果都一樣"
+	return "部位有差：攻擊部位%s · 末端%s · 防禦部位%s · 握柄不發動" % [PART_TIMING.A[on], PART_TIMING.E[on], PART_TIMING.D[on]]
 
 
 # 道具的效果是不是全部都接上了

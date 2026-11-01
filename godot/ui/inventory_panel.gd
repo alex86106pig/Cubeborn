@@ -42,6 +42,7 @@ const CLICK_SLOP := 6.0     # 按下到放開移動不超過這麼多像素算�
 const NOTICE_MS := 2000     # 右鍵裝不上時的提示顯示多久
 const DIM_ALPHA := 0.25                # 滑鼠停在羈絆上時，不屬於那個羈絆的東西變淡
 # 武器格子的部位顏色（WeaponDefs.PARTS）：淡淡的底色，鑲上的道具畫在上面
+const HELD_NO_PART := &"none"   # held_part_hint：拿著的道具不看部位
 const PART_COLORS := {"A": Color("5f7487"), "E": Color("9aa4ab"), "D": Color("8e6a33"), "H": Color("5e4433"), "G": Color("6a3f8f")}
 
 var world: World
@@ -764,9 +765,20 @@ func _draw_slots(font: Font, me: Player) -> void:
 		draw_string(font, r.position + Vector2(10, 50), "%s · 詞條 %d 條" % [stat_text, inst.affixes.size()], HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(1, 1, 1, 0.7))
 		var o := _wgrid_origin(me, i)
 		var cells := WeaponDefs.grid_cells(Loadout.weapon_of(inst))
+		var held := held_part_hint()
 		for c: Vector2i in cells:
 			var cr := Rect2(o + Vector2(c) * WCELL, Vector2(WCELL, WCELL)).grow(-1)
-			draw_rect(cr, Color(PART_COLORS[cells[c]], 0.45))
+			var part: String = cells[c]
+			if held == HELD_NO_PART and part != "G":
+				draw_rect(cr, Color(PART_COLORS.A, 0.45))   # 拿著不看部位的道具：部位都畫一樣的顏色（放哪裡都一樣）
+			else:
+				draw_rect(cr, Color(PART_COLORS[part], 0.45))
+			if held != &"" and held != HELD_NO_PART:   # 拿著看部位的道具：發動的部位寫上時機、不發動的變暗
+				if ItemDefs.PART_TAGS.has(part):
+					draw_rect(cr, Color(1, 1, 1, 0.12))
+					draw_string(font, cr.position + Vector2(0, cr.size.y / 2.0 + 5), ItemDefs.PART_TAGS[part][held], HORIZONTAL_ALIGNMENT_CENTER, cr.size.x, 13, Color(1, 1, 1, 0.85))
+				elif part != "G":
+					draw_rect(cr, Color(0, 0, 0, 0.5))
 			if cells[c] == "G":   # 寶石座：中間畫一個圈；拿著這把武器能用的技能時發亮
 				var fits_skill: bool = not _drag.is_empty() and ItemDefs.is_skill(_drag.id) and SkillDefs.can_socket(_drag.id, Loadout.weapon_of(inst))
 				if fits_skill:
@@ -781,6 +793,18 @@ func _draw_slots(font: Font, me: Player) -> void:
 		for e: Dictionary in me.loadout.container(i).entries:
 			var edim: bool = not _drag.is_empty() and _drag.uid == e.uid
 			_draw_item(font, e.id, o, WCELL, e.cell, e.rot, _rarity_of(e), 0.35 if edim else 1.0)
+
+
+# 手上拿著的道具看不看部位（畫武器格子用）：&"hit" / &"attack" = 看（那種觸發）、HELD_NO_PART = 不看、&"" = 沒拿道具
+func held_part_hint() -> StringName:
+	return part_hint_of(_drag)
+
+
+static func part_hint_of(drag: Dictionary) -> StringName:
+	if drag.is_empty() or not drag.get("weapon", {}).is_empty() or not ItemDefs.ITEMS.has(drag.id) or ItemDefs.ITEMS[drag.id].kind != &"item":
+		return &""
+	var on := ItemDefs.part_timed_trigger(drag.id)
+	return on if on != &"" else HELD_NO_PART
 
 
 # 鍛造祭壇開著時：放在鍛造格子裡的武器標「鍛造 1 / 2」、能和已放的那把合成的發亮（變暗由 ForgePanel.dims 決定）
