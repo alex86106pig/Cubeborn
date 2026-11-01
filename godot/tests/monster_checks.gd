@@ -791,3 +791,51 @@ static func check_net_rarity() -> String:
 	if NetCodec.encode_entity(plain)[1] != null:   # v0.35.0 起普通怪的 extra 整格不送（null）
 		return "普通怪的快照不該帶稀有度欄位"
 	return ""
+
+
+# 怪物屍體：死後擊退照樣往後滑（平地滑得開），但不滑下高台：在高台邊緣帶著往台外的擊退死掉，留在死掉時的高度（使用者回報死亡動畫掉到台下）
+static func check_corpse_ledge() -> String:
+	var kb := Vector2.RIGHT * 7.0
+	var flat := _world()
+	var z := flat.spawner.spawn_at(flat, &"zombie", Vector2(0, 6))
+	flat.step({}, DT)
+	var at := z.pos
+	z.knockback = kb
+	z.die()
+	for i in 30:
+		flat.step({}, DT)
+	if z.pos.distance_to(at) < 0.3:
+		return "平地上屍體應被擊退滑開，只移動了 %.2f" % z.pos.distance_to(at)
+	var w := _world(&"graveyard_a")
+	var spot := Vector2.INF
+	var out := Vector2.ZERO
+	for x in range(-80, 81):
+		for y in range(-80, 81):
+			var pt := Vector2(x, y) * 0.5
+			var g := w.terrain.ground_at(pt)
+			if g < 0.4 or g > Config.NAV.climb_height:
+				continue
+			for d: Vector2 in [Vector2.RIGHT, Vector2.LEFT, Vector2.UP, Vector2.DOWN]:
+				if w.terrain.ground_at(pt + d * 1.2) < g - 0.3 and w.terrain.ground_at(pt - d * 1.0) >= g - 0.01:
+					spot = pt
+					out = d
+					break
+			if spot != Vector2.INF:
+				break
+		if spot != Vector2.INF:
+			break
+	if spot == Vector2.INF:
+		return "地圖 A 找不到高台邊緣（地圖改了，檢查要換地方找）"
+	var e := w.spawner.spawn_at(w, &"zombie", spot)
+	e.pos = spot
+	e.height = w.terrain.ground_at(spot)
+	w.step({}, DT)
+	var h0 := e.height
+	e.knockback = out * kb.length()
+	e.die()
+	for i in 60:
+		w.step({}, DT)
+	CheckKit._note("屍體：高台 %s 高 %.2f 往台外擊退死掉，1 秒後高 %.2f" % [spot, h0, e.height])
+	if absf(e.height - h0) > 0.05:
+		return "高台邊緣 %s（高 %.2f）帶著往台外的擊退死掉，屍體應留在台上，1 秒後高 %.2f" % [spot, h0, e.height]
+	return ""

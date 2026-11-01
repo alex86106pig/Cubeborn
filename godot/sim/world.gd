@@ -552,7 +552,12 @@ func step(cmds: Dictionary, dt: float) -> void:
 	_bodies.append_array(enemies)
 	for b in _bodies:
 		if not b.fixed:   # 休眠的怪群速度為 0、也不會有擊退（被打就醒），不必積分（v0.30.0）
+			var before := b.pos
 			b.integrate(dt)
+			# 屍體被擊退照樣往後滑，但不滑下高台：會滑到比腳下低超過一階的地方就停在原地（使用者回報死亡動畫掉到台下）
+			if b.is_dead and terrain.ground_at(b.pos) < b.ground_height - Config.HEIGHT.step:
+				b.pos = before
+				b.knockback = Vector2.ZERO
 	SimPhysics.separate(_bodies, rng)
 	for b in _bodies:
 		# 位置和上次算過地形時一樣、站在地上的（休眠的怪群、站著出招的）已經推出牆、落地過，不必再算（D5）

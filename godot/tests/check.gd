@@ -138,6 +138,7 @@ func _initialize() -> void:
 		+ "半血轉型態（無敵 transform.time 秒 → 狼人移速、嚎叫、提燈火堆；三連爪吃滿 3 下、飛撲落地打中、狼嚎叫魔法屍犬並加速）",
 		all.bind([MonsterChecks.check_gravekeeper_npc, MonsterChecks.check_gravekeeper_moves, MonsterChecks.check_gravekeeper_transform]))
 	_check("怪物稀有度（D5）：魔法 / 稀有骷髏的生命、攻擊力、體型照倍率；詞條數照 RARITIES.affixes 不重複、稀有怪有名字；每群魔法 magic_per_pack 隻、稀有 rare_chance（±1.5%）", MonsterChecks.check_rarity)
+	_check("怪物屍體：死後擊退照樣往後滑，但不滑下高台（留在死掉時的高度）", MonsterChecks.check_corpse_ledge)
 	_check("怪物詞條（D5）：迅捷 / 強壯 / 厚皮照 mods 倍率、再生、吸血、狂暴、死亡爆炸、召喚照資料", MonsterChecks.check_affixes)
 	_check("怪群（D5）：地圖 A 散放 PACKS.count 群、每群 size 隻、距離限制、都走得到；開場休眠不播音效、不動；走近或被打整群醒來；同種子結果相同", MonsterChecks.check_packs)
 	_check("蒙皮小怪（D5 效能）：骷髏戰士 / 弓手 / 腐屍合成一個蒙皮網格（≤ 2 個網格、頂點數與原本零件相同），關節姿勢寫進骨架", MonsterChecks.check_skinned_rig)
