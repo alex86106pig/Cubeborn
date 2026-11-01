@@ -131,7 +131,8 @@ func _initialize() -> void:
 		all.bind([MonsterChecks.check_enemy_defs, MonsterChecks.check_floor_mix]))
 	_check("腐屍：撲中抓住 grab_time 秒、撲 1 下 + 每 bite_interval 咬一口；被抓時按翻滾立刻掙脫；隊友打它就鬆手；舉盾擋下不被抓、腐屍踉蹌", MonsterChecks.check_zombie)
 	_check("膨脹屍：走近停下脹大 swell_time 秒（被打不硬直）→ 自爆炸到玩家與旁邊的怪、不給靈魂；留下腐氣持續傷害玩家與怪、不畫圈只冒煙；被打死 death_delay 秒後照樣炸、給靈魂", MonsterChecks.check_bloater)
-	_check("屍犬：玩家站著不轉身時繞到背後（≥ behind_angle）才撲、patience 內做到；玩家一直轉身看著它 patience 內不撲、之後從正面撲；撲中有傷害", MonsterChecks.check_hound)
+	_check("屍犬：玩家站著不轉身時繞到背後（≥ behind_angle）才撲、patience 內做到；玩家一直轉身看著它 patience 內不撲、之後從正面撲；撲中有傷害；繞圈方向不跟著玩家小幅轉身來回換邊；撲完先沿圈退到內圈才再撲",
+		all.bind([MonsterChecks.check_hound, MonsterChecks.check_hound_steady_side, MonsterChecks.check_hound_retreat]))
 	_check("守墓人（第 1 層 Boss）：假裝 NPC（旁邊 3 秒不開打；按 F 說話先冒台詞、不開挖、reveal_time 後開打；被打或有人開挖直接開打）；" \
 		+ "四招（鐵鏟 windup 後打中；鏟土 windup + flight_time 落地、發 fx:dirt_lob；噴火每 tick 一下再被殘火燒；口哨叫不給靈魂的屍犬；不畫預警圈）；" \
 		+ "半血轉型態（無敵 transform.time 秒 → 狼人移速、嚎叫、提燈火堆；三連爪吃滿 3 下、飛撲落地打中、狼嚎叫魔法屍犬並加速）",

@@ -291,6 +291,68 @@ static func check_hound() -> String:
 	return ""
 
 
+# 屍犬繞圈不跟著玩家的小幅轉身換邊：玩家大致對著狗、每 0.1 秒亂晃 ±15°，14 秒內繞圈方向反轉不超過 2 次
+# （改之前每幀選最近的一邊，狗在正前方時兩邊一樣遠，同樣情境反轉 25 次）
+static func check_hound_steady_side() -> String:
+	var w := _world()
+	var p: Player = w.players[World.HOST_PEER_ID]
+	p.pos = Vector2.ZERO
+	p.stats.set_base(&"max_hp", 9999.0)
+	p.hp = p.max_hp
+	var h := w.spawner.spawn_at(w, &"hound", Vector2(0, 9))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var aim_dir := Vector2(0, 1)
+	var last_side := 0
+	var flips := 0
+	for i in 60 * 14:
+		if i % 6 == 0:
+			aim_dir = (h.pos - p.pos).normalized().rotated(deg_to_rad(rng.randf_range(-15.0, 15.0)))
+		var cmd := InputCmd.new()
+		cmd.aim = p.pos + aim_dir * 5.0
+		w.step({World.HOST_PEER_ID: cmd}, DT)
+		if not h.fsm.is_in(&"chase") or h.velocity.length() < 0.1:
+			continue
+		var cross := (h.pos - p.pos).cross(h.velocity)
+		var side := 1 if cross > 0.5 else (-1 if cross < -0.5 else 0)
+		if side != 0 and last_side != 0 and side != last_side:
+			flips += 1
+		if side != 0:
+			last_side = side
+	CheckKit._note("屍犬：玩家晃動滑鼠 14 秒，繞圈方向反轉 %d 次" % flips)
+	if flips > 2:
+		return "屍犬：玩家大致對著它小幅晃動，繞圈方向 14 秒內反轉 %d 次（應 ≤ 2）" % flips
+	return ""
+
+
+# 屍犬撲完先沿圈退到內圈（orbit[0]）才再撲：玩家站著不轉身，14 秒內每次伏低時的距離都接近 trigger_distance（不是貼身原地撲），而且撲得到第二次以上
+static func check_hound_retreat() -> String:
+	var hd: Dictionary = EnemyDefs.ENEMIES.hound
+	var w := _world()
+	var p: Player = w.players[World.HOST_PEER_ID]
+	p.pos = Vector2.ZERO
+	p.stats.set_base(&"max_hp", 9999.0)
+	p.hp = p.max_hp
+	var h := w.spawner.spawn_at(w, &"hound", Vector2(0, 9))
+	var starts: Array[float] = []
+	var was_pounce := false
+	for i in 60 * 14:
+		w.step({World.HOST_PEER_ID: CheckKit._cmd(Vector2.ZERO)}, DT)
+		var now := h.fsm.is_in(&"pounce")
+		if now and not was_pounce:
+			starts.append(h.pos.distance_to(p.pos))
+		was_pounce = now
+	CheckKit._note("屍犬：站著不轉身 14 秒，每次撲的距離 %s" % str(starts))
+	var low: float = hd.prowl.orbit[0] - hd.prowl.retreat_slack - hd.move_speed * (1.0 + hd.speed_variance) * DT * 2.0
+	low = minf(low, hd.pounce.trigger_distance - 0.3)
+	if starts.size() < 2:
+		return "屍犬：站著不轉身 14 秒應撲 2 次以上（撲完退開後還要再撲），實際 %d 次" % starts.size()
+	for s in starts:
+		if s < low:
+			return "屍犬：撲完應先退到 %.1f 再撲，實際在 %.2f 就撲了（每次 %s）" % [hd.prowl.orbit[0], s, str(starts)]
+	return ""
+
+
 # 守墓人（假裝 NPC）：玩家站在前面 3 秒也不開打、不打人；按 F 說話 → reveal（說台詞）→ reveal_time 後開打；
 # 被打 → 不說話直接開打；有人開挖 → 開打。開挖距離內按 F 先說話、不會同時開挖
 static func check_gravekeeper_npc() -> String:
