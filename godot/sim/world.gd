@@ -142,6 +142,9 @@ func _place_chests() -> void:
 	for i in int(map.get("forge_count", 0)):
 		tiers.append(&"forge")
 	var lim: Vector2 = half_extents - Vector2(c.edge_margin, c.edge_margin)
+	var footprint: float = LootDefs.FORGE.radius   # 底面要平的範圍：所有種類裡最大的半徑（位置先抽、種類照順序對應）
+	for tier: StringName in LootDefs.CHESTS:
+		footprint = maxf(footprint, LootDefs.CHESTS[tier].radius)
 	var placed: Array[Vector2] = []
 	for gap_mul: float in [1.0, 0.5, 0.0]:
 		for attempt in c.attempts:
@@ -150,7 +153,7 @@ func _place_chests() -> void:
 			var at := Vector2(rng.randf_range(-lim.x, lim.x), rng.randf_range(-lim.y, lim.y))
 			if at.distance_to(spawn_point) < c.min_spawn_distance or at.distance_to(event.point) < c.min_dig_distance:
 				continue
-			if not nav.is_walkable(at) or not nav.same_region(at, spawn_point):
+			if not nav.is_walkable(at) or not nav.same_region(at, spawn_point) or not _flat_at(at, footprint):
 				continue
 			if placed.any(func(o: Vector2) -> bool: return o.distance_to(at) < c.min_chest_distance * gap_mul):
 				continue
@@ -164,6 +167,16 @@ func _place_chests() -> void:
 		var chest := Chest.new(self, tiers[i], placed[i])
 		add_entity(chest)
 		chests.append(chest)
+
+
+# 以 at 為中心、半徑 r 的圓內地面都和中心同高（差不到一階）：祭壇 / 石棺不擺在台階邊緣，不然半邊懸空（使用者回報）
+func _flat_at(at: Vector2, r: float) -> bool:
+	var g := terrain.ground_at(at)
+	for k in 16:
+		for rr: float in [0.5, 1.0]:
+			if absf(terrain.ground_at(at + Vector2.from_angle(k * TAU / 16.0) * r * rr) - g) > Config.HEIGHT.step:
+				return false
+	return true
 
 
 # 目前難度（D6）：沒有挖墳事件的地圖固定 0

@@ -151,7 +151,7 @@ func _initialize() -> void:
 	# ───────── 背包、祭壇與武器 ─────────
 	_check("背包：大小照 BAG_SIZE；形狀旋轉後格子正確；超出邊界、重疊放不下；自動找第一個空位（不夠時會轉向）；搬動成功 / 失敗；裝滿後撿不起來並發出 inventory:full；放不下時建議拿掉哪一件（占格最少），拿掉一件也不夠就不建議",
 		all.bind([LootChecks.check_inventory, LootChecks.check_inventory_suggest]))
-	_check("祭壇與石棺：數量照地圖資料、位置可走且夠遠、殺怪靈魂照 KILL_SOULS（共用）、靈魂不夠開不了、開的人直接打開 N 選 1、夠了扣靈魂並開出一個遺物（選項照石棺的稀有度）、開過不能再開；隨機放（同種子相同）、多人時數量與靈魂不變、全清買不完；稀有度各抽 20000 次符合權重、不會開出武器",
+	_check("祭壇與石棺：數量照地圖資料、位置可走且夠遠、底面平的（不擺在台階邊緣）、殺怪靈魂照 KILL_SOULS（共用）、靈魂不夠開不了、開的人直接打開 N 選 1、夠了扣靈魂並開出一個遺物（選項照石棺的稀有度）、開過不能再開；隨機放（同種子相同）、多人時數量與靈魂不變、全清買不完；稀有度各抽 20000 次符合權重、不會開出武器",
 		all.bind([LootChecks.check_soul_chests, LootChecks.check_chest_balance, LootChecks.check_chest_rarity]))
 	_check("局外金幣（v0.45）：過第 1 / 2 層給 5 / 10；地上的金幣走近自動撿、倒地不撿、多人只記一個數字；Profile 存檔讀得回來；掉落率符合 RUN_COINS.drop_chance（±4 個標準差）、召喚出來的不掉",
 		all.bind([LootChecks.check_run_coins, LootChecks.check_coin_drops]))

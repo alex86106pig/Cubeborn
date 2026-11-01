@@ -265,6 +265,13 @@ static func check_inventory_suggest() -> String:
 
 
 static func check_soul_chests() -> String:
+	# 擺放規則換 20 個種子看（台階邊緣的位置約 8% 會抽到，單一種子擋不住）
+	for s in range(1, 21):
+		var ws := _new_world(s, false, &"graveyard_a")
+		var e := _chest_layout(ws, 1)
+		ws.clear()
+		if e != "":
+			return "種子 %d：%s" % [s, e]
 	var w := _new_world(12345, false, &"graveyard_a")
 	var err := _chest_layout(w, 1)
 	if err != "":
@@ -309,7 +316,7 @@ static func check_soul_chests() -> String:
 	return ""
 
 
-# 寶箱的數量（不跟人數變）與位置規則（可走、走得到出生點、離出生點 / 挖墳點 / 地圖邊緣夠遠）
+# 寶箱的數量（不跟人數變）與位置規則（可走、走得到出生點、離出生點 / 挖墳點 / 地圖邊緣夠遠、底面是平的）
 static func _chest_layout(w: World, players: int) -> String:
 	var c: Dictionary = LootDefs.CHEST_PLACEMENT
 	var want := {}
@@ -325,6 +332,14 @@ static func _chest_layout(w: World, players: int) -> String:
 			return "寶箱 %s 離出生點 %.1f、挖墳點 %.1f，太近" % [e.pos, e.pos.distance_to(w.spawn_point), e.pos.distance_to(w.event.point)]
 		if absf(e.pos.x) > lim.x or absf(e.pos.y) > lim.y:
 			return "寶箱 %s 太靠近地圖邊緣" % e.pos
+	# 底面是平的：半徑內地面都和中心差不到一階（不擺在台階邊緣半邊懸空，使用者回報）
+	for e: Entity in w.chests + w.forges:
+		var g := w.terrain.ground_at(e.pos)
+		for k in 24:
+			for rr: float in [0.3, 0.7, 1.0]:
+				var gk := w.terrain.ground_at(e.pos + Vector2.from_angle(k * TAU / 24.0) * e.radius * rr)
+				if absf(gk - g) > Config.HEIGHT.step:
+					return "%s %s 擺在高低差上：中心高 %.2f、底面有 %.2f" % [e.kind, e.pos, g, gk]
 	if tiers != want:
 		return "%d 人時地圖 A 的寶箱 %s，應為 %s" % [players, tiers, want]
 	return ""
