@@ -3,7 +3,7 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
-## [未發布]
+## [0.61.0] - 2026-11-03
 
 ### 新增
 - **第 2 層「骸骨墓窟」**（第 2 層第 1 步，YangHsu 2026-11-02 決定做第 2 層、地圖由 Claude 設計）：挖完第 1 層按 F 不再通關，換到新的地圖 `catacomb_a`（96 × 96）：3 × 3 個墓室用 6 寬的走道連成一圈，中央主墓室（出口、Boss）只開北門與西門，出生室在南；各墓室有骨堆高台、祭壇台階、石柱、棺木台、壁龕列、棺材列、小墓穴。第 2 層挖完再互動才通關（`EventDefs.DIG.last_floor` 1 → 2）。
