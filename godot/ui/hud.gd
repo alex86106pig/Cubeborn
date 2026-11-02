@@ -366,10 +366,10 @@ static func _test_button(text: String, on_pressed: Callable) -> Button:
 	return b
 
 
-# 會在遊戲中途第一次出現的字：道具名稱與說明、稀有度、怪物詞條與名字、武器詞條、新手提示、職業卡（F2）
+# 會在遊戲中途第一次出現的字：道具名稱與說明、稀有度、怪物詞條與名字、武器詞條、新手提示、職業卡（F2）、怪物名稱、每層出口事件的文字
 static func warm_text() -> String:
 	var chars := {}
-	for script: Script in [ItemDefs, MonsterRarityDefs, WeaponDropDefs, HintDefs, StatDefs, LootDefs, ClassDefs, WeaponDefs]:
+	for script: Script in [ItemDefs, MonsterRarityDefs, WeaponDropDefs, HintDefs, StatDefs, LootDefs, ClassDefs, WeaponDefs, EnemyDefs, EventDefs]:
 		_collect_chars(script.get_script_constant_map(), chars)
 	_collect_chars(UI_CHARS, chars)
 	var out := ""
@@ -568,7 +568,7 @@ func _update_dig() -> void:
 		return
 	_set_bar(_dig, ev.progress, ev.progress)
 	_dig.text.text = "%d%%" % floori(ev.progress * 100.0)
-	_dig_name.text = "挖墳進度　·　墳裡每 %d 秒噴出怪物（+%d%%）" % [roundi(EventDefs.ERUPT.interval), roundi(EventDefs.ERUPT.progress * 100.0)]
+	_dig_name.text = EventDefs.exit_style(world.floor_num).bar % [roundi(EventDefs.ERUPT.interval), roundi(EventDefs.ERUPT.progress * 100.0)]
 
 
 # 投票中：誰發起、幾人同意、剩幾秒；自己還沒同意時提示 Enter / Esc
@@ -683,13 +683,13 @@ func _on_event(name: String, p: Dictionary) -> void:
 			if world.players.size() > 1 and world.is_any_player_alive():
 				_show_banner(("你陣亡了：隊友撿起你的屍體帶到下一層，打倒冤魂就能復活" if _is_local(p.player_id) else "%s 陣亡了：撿起屍體帶到下一層" % _tag_of(p.player_id)), true)
 		"event:started":
-			_show_banner("開始挖墳！怪物開始湧出、墳裡會噴出下一層的怪物", true)
+			_show_banner(EventDefs.exit_style(world.floor_num).started, true)
 		"boss:aggro":
 			_show_banner("%s 發現你了！" % _boss_title(), true)
 		"boss:reward":
 			_show_banner("擊敗 %s！掉落獎勵" % _boss_title(), false, UiKit.GOLD)
 		"event:exit_open":
-			_show_banner("墓穴挖開了：不會再冒出怪物\n準備好再到墳墓按 F 前往下一層", false, UiKit.GOLD)
+			_show_banner(EventDefs.exit_style(world.floor_num).opened, false, UiKit.GOLD)
 		"vote:canceled":
 			_show_banner("%s 反對，取消前往下一層" % _tag_of(p.player_id), true)
 		"coins:gained":

@@ -17,6 +17,9 @@ const RARITY_GLOW_RANGE := 3.0     # 魔法 / 稀有怪身上的光（D5）
 const RARITY_GLOW_ENERGY := 1.5
 const GRAVE_SOIL := Color("4a3a2a")          # 挖墳點（D6）
 const GRAVE_STONE := Color("6a6d72")
+const COFFIN_STONE := Color("5e574c")        # 第 2 層的石棺（出口）
+const COFFIN_SEAL := Color("b070ff")         # 石棺蓋上的封印符文：撬得越多越暗
+const COFFIN_SIZE := Vector3(2.2, 0.85, 1.2)
 const EXIT_COLOR := Color("8fd0ff")
 const CHEST_LID_OPEN := -1.9                # 寶箱打開時箱蓋往後翻的角度（弧度）
 const GHOST_TINT := Color(0.55, 0.8, 1.0)   # 冤魂（D6）的顏色與透明度
@@ -81,7 +84,8 @@ var _vision_key := []                  # 上次算視野時的 tick 與觀看者
 var _los_blocked: Dictionary = {}      # entity id -> 視線被牆擋住（分批更新，見 sync）
 var _fade_level: Dictionary = {}       # entity id -> 顯示程度 0~1（視野的淡入淡出，view/fade.gd）
 var _anim_pending: Dictionary = {}     # entity id -> 還沒拿去擺姿勢的秒數（敵人動畫每秒最多 60 次）
-var _grave: Node3D = null              # 挖墳點（D6）
+var _grave: Node3D = null              # 挖墳點（D6）：外觀照這一層的 EventDefs.exit_style().look
+var _grave_look: StringName = &""
 var _hitboxes_shown := false
 var first_seen: Array[String] = []     # 這一幀第一次被畫出來的模型種類（main.gd 的卡頓紀錄取走後清空，v0.36.3）
 var created := 0                       # 這一幀新建的模型數（--perf 的卡頓紀錄，main.gd 取走後歸零）
@@ -1053,25 +1057,39 @@ static func xray_material(color: Color) -> ShaderMaterial:
 	return _xray_materials[color]
 
 
-# 挖墳點（D6）：土堆 + 墓碑，挖的進度越多土堆越矮；挖完變成發光的墓穴（出口）
+# 去下一層的定點（D6）：第 1 層土堆 + 墓碑，挖的進度越多土堆越矮；第 2 層封印的石棺，撬得越多棺蓋越往旁邊滑開、符文越暗；
+# 打開後都變成發光的洞（出口）。換層換外觀時整個重建
 func _sync_grave(world: World) -> void:
 	if not DigEvent.enabled(world):
 		if _grave != null:
 			_grave.visible = false
 		return
+	var look: StringName = EventDefs.exit_style(world.floor_num).look
+	if _grave != null and look != _grave_look:
+		_grave.queue_free()
+		_grave = null
 	if _grave == null:
-		_grave = _create_grave()
+		_grave_look = look
+		_grave = _create_sarcophagus() if look == &"sarcophagus" else _create_grave()
 		add_child(_grave)
 	_grave.visible = true
 	var ev := world.event
 	_grave.position = Vector3(ev.point.x, world.terrain.ground_at(ev.point), ev.point.y)
 	var open := ev.state == DigEvent.OPEN
-	var mound: Node3D = _grave.get_node(^"Mound")
-	mound.visible = not open
-	mound.scale.y = maxf(0.08, 1.0 - ev.progress)
 	_grave.get_node(^"Hole").visible = open
 	_grave.get_node(^"ExitRing").visible = open
-	_grave.get_node(^"Headstone").visible = not open
+	if look == &"sarcophagus":
+		var lid: Node3D = _grave.get_node(^"Lid")
+		var slide := 1.0 if open else ev.progress
+		lid.position = Vector3(COFFIN_SIZE.x * 0.55 * slide, COFFIN_SIZE.y + 0.08 - 0.5 * slide * slide, 0.0)
+		lid.rotation.z = -0.5 * slide * slide
+		var seal: MeshInstance3D = _grave.get_node(^"Lid/Seal")
+		(seal.material_override as StandardMaterial3D).emission_energy_multiplier = 2.0 * (1.0 - slide) + 0.1
+	else:
+		var mound: Node3D = _grave.get_node(^"Mound")
+		mound.visible = not open
+		mound.scale.y = maxf(0.08, 1.0 - ev.progress)
+		_grave.get_node(^"Headstone").visible = not open
 	if world.tick % LOS_INTERVAL == 0 or not _grave.has_meta(&"xray_shown"):
 		var on := _xray_needed_at(world, ev.point, _grave.position.y, GRAVE_XRAY_RADIUS)
 		if not _grave.has_meta(&"xray_shown") or _grave.get_meta(&"xray_shown") != on:
@@ -1096,6 +1114,38 @@ func _create_grave() -> Node3D:
 	var stone := _box(Vector3(0.9, 1.3, 0.25), Vector3(0.0, 0.65, -0.95), _flat_material(GRAVE_STONE))
 	stone.name = "Headstone"
 	root.add_child(stone)
+	_add_exit_parts(root, 0.0)
+	return root
+
+
+# 第 2 層的石棺：棺身 + 可以滑開的棺蓋（蓋上有發光的封印符文）；打開後棺口是洞、上面一圈出口的光
+func _create_sarcophagus() -> Node3D:
+	var root := Node3D.new()
+	root.name = "Grave"
+	var stone := _flat_material(COFFIN_STONE)
+	var s := COFFIN_SIZE
+	root.add_child(_box(Vector3(s.x + 0.3, 0.15, s.z + 0.3), Vector3(0.0, 0.075, 0.0), stone))   # 底座
+	root.add_child(_box(s, Vector3(0.0, s.y * 0.5, 0.0), stone))
+	var lid := Node3D.new()
+	lid.name = "Lid"
+	lid.add_child(_box(Vector3(s.x + 0.1, 0.16, s.z + 0.1), Vector3.ZERO, stone))
+	var seal_mat := StandardMaterial3D.new()
+	seal_mat.albedo_color = COFFIN_SEAL
+	seal_mat.emission_enabled = true
+	seal_mat.emission = COFFIN_SEAL
+	seal_mat.emission_energy_multiplier = 2.0
+	var seal := _box(Vector3(s.x * 0.8, 0.02, 0.14), Vector3(0.0, 0.09, 0.0), seal_mat)   # 一道橫的封條 + 兩道直的
+	seal.name = "Seal"
+	lid.add_child(seal)
+	for x: float in [-0.55, 0.55]:
+		seal.add_child(_box(Vector3(0.14, 0.02, s.z * 0.8), Vector3(x, 0.0, 0.0), seal_mat))
+	root.add_child(lid)
+	_add_exit_parts(root, s.y + 0.02)
+	return root
+
+
+# 出口的洞與發光環（第 1 層貼地、第 2 層在棺口的高度）：打開前隱藏
+func _add_exit_parts(root: Node3D, y: float) -> void:
 	var hole := MeshInstance3D.new()
 	hole.name = "Hole"
 	var cyl := CylinderMesh.new()
@@ -1103,7 +1153,7 @@ func _create_grave() -> Node3D:
 	cyl.bottom_radius = EventDefs.DIG.exit_radius * 0.8
 	cyl.height = 0.06
 	hole.mesh = cyl
-	hole.position.y = 0.03
+	hole.position.y = y + 0.03
 	var dark := StandardMaterial3D.new()
 	dark.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	dark.albedo_color = Color("07060a")
@@ -1116,7 +1166,7 @@ func _create_grave() -> Node3D:
 	torus.outer_radius = EventDefs.DIG.exit_radius + 0.18
 	ring.mesh = torus
 	ring.scale.y = 0.2
-	ring.position.y = 0.06
+	ring.position.y = y + 0.06
 	var glow := StandardMaterial3D.new()
 	glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	glow.albedo_color = EXIT_COLOR
@@ -1131,7 +1181,6 @@ func _create_grave() -> Node3D:
 	light.position.y = 0.8
 	light.visible = lights_on
 	ring.add_child(light)
-	return root
 
 
 # 魔法 / 稀有怪（D5）：體型（稀有 ×1.2）、身上稀有度顏色的光、腳下一圈發光環

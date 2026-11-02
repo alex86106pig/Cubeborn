@@ -187,7 +187,7 @@ func _erupt(world: World, dt: float) -> void:
 	if not _erupt_warned and erupt_timer <= c.warning:
 		_erupt_warned = true
 		if not world.spawner.finished:
-			world.emit_event("fx:erupt_warn", {"pos": point, "height": world.terrain.ground_at(point), "radius": c.radius, "life": c.warning})
+			world.emit_event("fx:erupt_warn", {"pos": point, "height": world.terrain.ground_at(point), "radius": c.radius, "life": c.warning, "look": EventDefs.exit_style(world.floor_num).look})
 	if erupt_timer > 0.0:
 		return
 	erupt_timer += c.interval

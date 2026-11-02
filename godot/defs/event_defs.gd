@@ -1,4 +1,4 @@
-# 去下一層的事件（第 1 層是挖墳，規格見 docs/系統說明.md §15）
+# 去下一層的事件（第 1 層是挖墳、第 2 層撬開石棺封印，外觀見 EXIT_STYLES；規格見 docs/系統說明.md §15、§31）
 # Boss 開局就在挖墳點巡邏；碰到墳墓開始事件：怪潮與挖墳點噴怪同時開始，挖完停怪，再到墳墓互動前往下一層
 # 難度 = 該層基礎難度 + 事件開始後的秒數 × per_second；怪物的生命與攻擊力、事件生怪的間隔與數量、魔法 / 稀有機率都跟著難度
 class_name EventDefs
@@ -13,6 +13,29 @@ const DIG := {
 
 # 每層開局就在挖墳點的 Boss（EnemyDefs 的種類）：第 1 層守墓人、第 2 層骸骨將軍；超過表的層數用最後一層的
 const BOSS_BY_FLOOR := {1: &"gravekeeper", 2: &"boss"}
+
+
+# 每層「去下一層事件」的外觀與文字（機制都一樣：碰到定點開始、定點噴下一層的怪、進度滿了再互動前往下一層）
+# look：畫面的模型（WorldView 的 _create_exit、Effects 的噴怪預警）；hold：按住 F 的提示；超過表的層數用最後一層的
+const EXIT_STYLES := {
+	1: {
+		"look": &"grave", "idle": "墓", "hold": "按住挖墳", "doing": "挖墳",
+		"bar": "挖墳進度　·　墳裡每 %d 秒噴出怪物（+%d%%）",
+		"started": "開始挖墳！怪物開始湧出、墳裡會噴出下一層的怪物",
+		"opened": "墓穴挖開了：不會再冒出怪物\n準備好再到墳墓按 F 前往下一層",
+	},
+	2: {
+		"look": &"sarcophagus", "idle": "封印的石棺", "hold": "按住撬開封印", "doing": "撬封印",
+		"bar": "封印進度　·　石棺每 %d 秒爬出怪物（+%d%%）",
+		"started": "開始撬石棺！怪物開始湧出、石棺裡會爬出下一層的怪物",
+		"opened": "封印撬開了：不會再冒出怪物\n準備好再到石棺按 F 前往下一層",
+	},
+}
+
+
+static func exit_style(floor_num: int) -> Dictionary:
+	var last: int = EXIT_STYLES.keys().max()
+	return EXIT_STYLES[clampi(floor_num, 1, last)]
 
 
 static func boss_type(floor_num: int) -> StringName:

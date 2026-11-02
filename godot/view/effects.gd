@@ -49,6 +49,9 @@ const STUN_STAR_COLOR := Color("ffe14a")
 const COFFIN_SHARD_COLOR := Color("e8f8ff")   # 冰棺的冰晶
 const TELEPORT_COLOR := Color("b36bff")
 const BONE_COLOR := Color("d8d0b8")         # 挖墳點冒出的白骨手
+const COFFIN_DUST := Color("8a8070")        # 石棺噴怪前的石屑
+const SEAL_COLOR := Color("b070ff")         # 石棺封印的紫光（同 WorldView.COFFIN_SEAL）
+const COFFIN_TOP := 0.85                    # 石棺棺口的高度（同 WorldView.COFFIN_SIZE.y）
 const DIRT_LOB_HEIGHT := 3.0                # 守墓人拋出的土塊飛多高
 const LANTERN_BLUE := Color("6ab0ff")       # 提燈噴火前燈火轉藍
 const WOLF_FUR := Color("4a4642")           # 守墓人變身：毛（同 DarkFantasy 的 wolf_fur）
@@ -364,19 +367,31 @@ func _fx_boss_teleport_warn(p: Dictionary) -> void:
 
 
 # 挖墳點噴怪前：墳土隆起、裂開，冒出白骨手，泥土一直噴（不畫圈）
+# look = sarcophagus（第 2 層的石棺）：不隆起土堆，白骨手從棺口伸出來，冒石屑與封印的紫光
 func _fx_erupt_warn(p: Dictionary) -> void:
 	var at := _at(p)
 	var radius: float = p.radius
 	var life: float = p.life
-	var mound_mesh := SphereMesh.new()
-	mound_mesh.radius = 1.0
-	mound_mesh.height = 1.0
-	var mound := _transient_mesh(mound_mesh, DUST_COLOR, 1.0)
-	mound.position = at
-	_add_transient(mound, life, func(k: float) -> void:
-		var e := MathUtil.ease_out_cubic(k)
-		var s := radius * 0.5 * maxf(e, 0.05)
-		mound.scale = Vector3(s, 0.05 + 0.45 * e + 0.04 * sin(k * 60.0), s))
+	var coffin: bool = p.get("look", &"grave") == &"sarcophagus"
+	var dust: Color = COFFIN_DUST if coffin else DUST_COLOR
+	if coffin:
+		at.y += COFFIN_TOP
+		radius *= 0.6   # 手與石屑在棺口裡
+		_add_emitter(life, func(k: float, key: String, dt: float) -> void:
+			for i in _count(key, 0.4 + 0.6 * k, dt):
+				var a := _rng.randf() * TAU
+				var r := _rng.randf_range(0.2, 1.1)
+				mote(at + Vector3(sin(a) * r, 0.0, cos(a) * r * 0.6), {"color": SEAL_COLOR, "size": 0.16, "life": 0.5, "vy": 1.6}))
+	else:
+		var mound_mesh := SphereMesh.new()
+		mound_mesh.radius = 1.0
+		mound_mesh.height = 1.0
+		var mound := _transient_mesh(mound_mesh, DUST_COLOR, 1.0)
+		mound.position = at
+		_add_transient(mound, life, func(k: float) -> void:
+			var e := MathUtil.ease_out_cubic(k)
+			var s := radius * 0.5 * maxf(e, 0.05)
+			mound.scale = Vector3(s, 0.05 + 0.45 * e + 0.04 * sin(k * 60.0), s))
 	var hand_mesh := BoxMesh.new()
 	hand_mesh.size = Vector3(0.1, 0.6, 0.1)
 	for i in ERUPT_HANDS:
@@ -394,7 +409,7 @@ func _fx_erupt_warn(p: Dictionary) -> void:
 		for i in _count(key, 0.25 + 0.5 * k, dt):
 			var a := _rng.randf() * TAU
 			var r := _rng.randf_range(0.0, radius * 0.5)
-			burst(at + Vector3(sin(a) * r, 0.2, cos(a) * r), {"color": DUST_COLOR, "count": 2, "speed": 1.5, "up": 3.0, "size": 0.15, "life": 0.4}))
+			burst(at + Vector3(sin(a) * r, 0.2, cos(a) * r), {"color": dust, "count": 2, "speed": 1.5, "up": 3.0, "size": 0.15, "life": 0.4}))
 
 
 # 怪物的毒氣 / 殘火區（膨脹屍的腐氣、守墓人的殘火）：範圍內一直冒低低的煙或火苗，不畫圈；最後 0.5 秒變稀

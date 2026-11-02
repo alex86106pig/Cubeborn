@@ -1271,6 +1271,41 @@ static func _xray_unwritten(node: Node) -> String:
 	return ""
 
 
+# 每層出口的外觀（EventDefs.EXIT_STYLES）：第 1 層土堆 + 墓碑；換到第 2 層整個換成石棺，棺蓋跟著進度往旁邊滑開，打開後棺口有洞與出口環
+static func check_exit_looks() -> String:
+	for f: int in EventDefs.EXIT_STYLES:
+		for key in ["look", "idle", "hold", "doing", "bar", "started", "opened"]:
+			if not EventDefs.exit_style(f).has(key):
+				return "第 %d 層的出口文字少了 %s" % [f, key]
+	var w := _new_world(3, false, &"graveyard_a")
+	var view := WorldView.new()
+	view.sync(w, 1.0, 0.016)
+	var err := ""
+	if view._grave == null or view._grave.get_node_or_null(^"Mound") == null:
+		err = "第 1 層的出口應是土堆"
+	else:
+		w.next_floor()
+		view.sync(w, 1.0, 0.016)
+		var lid: Node3D = view._grave.get_node_or_null(^"Lid")
+		if lid == null or view._grave.get_node_or_null(^"Mound") != null:
+			err = "第 2 層的出口應換成石棺（看外觀 %s）" % view._grave_look
+		else:
+			var x0 := lid.position.x
+			w.event.state = DigEvent.ACTIVE
+			w.event.progress = 0.5
+			view.sync(w, 1.0, 0.016)
+			var x1 := lid.position.x
+			w.event.state = DigEvent.OPEN
+			w.event.progress = 1.0
+			view.sync(w, 1.0, 0.016)
+			if not (x1 > x0 + 0.1 and lid.position.x > x1 + 0.1):
+				err = "棺蓋應跟著進度滑開：0 → %.2f、50%% → %.2f、打開 → %.2f" % [x0, x1, lid.position.x]
+			elif not (view._grave.get_node(^"Hole") as Node3D).visible or not (view._grave.get_node(^"ExitRing") as Node3D).visible:
+				err = "石棺打開後應看得到洞與出口環"
+	view.free()
+	return err
+
+
 # 牆後的寶箱是金色剪影、鍛造祭壇是灰白剪影；同種寶箱共用材質；空地上的沒有剪影
 static func check_object_xray() -> String:
 	var w := _new_world(3, false, &"graveyard_a")
@@ -1442,6 +1477,7 @@ static func check_effects_events() -> String:
 	if not _named(events, "fx:telegraph").is_empty():
 		return "法杖奧術爆裂不應畫落點圈"
 	events.append({"name": "fx:erupt_warn", "pos": Vector2(0, 8), "height": 0.0, "radius": 2.5, "life": 1.0})
+	events.append({"name": "fx:erupt_warn", "pos": Vector2(0, 8), "height": 0.0, "radius": 2.5, "life": 1.0, "look": &"sarcophagus"})
 	events.append({"name": "fx:boss_teleport_warn", "pos": Vector2(0, 8), "height": 0.0, "life": 0.6})
 	var view := Effects.new()
 	_scene_root().add_child(view)

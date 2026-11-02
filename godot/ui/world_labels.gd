@@ -147,9 +147,10 @@ func _draw_grave(font: Font, me: Player) -> void:
 		var key := "[F] " if me != null and ev.can_exit(world, me) and not ev.is_voting() else ""
 		_text_at(font, at, "出口：%s%s" % [key, dest], EXIT_COLOR)
 		return
-	var text := "挖墳 %d%%" % floori(ev.progress * 100.0) if ev.state == DigEvent.ACTIVE else "墓"
+	var style := EventDefs.exit_style(world.floor_num)
+	var text: String = "%s %d%%" % [style.doing, floori(ev.progress * 100.0)] if ev.state == DigEvent.ACTIVE else style.idle
 	if near:
-		text = "[F] 按住挖墳  " + text
+		text = "[F] %s  %s" % [style.hold, text]
 	_text_at(font, at, text, UiKit.GOLD if ev.state == DigEvent.ACTIVE else Color.WHITE)
 
 
