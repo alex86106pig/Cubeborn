@@ -261,6 +261,12 @@ static func _check_floor_map(floor_num: int, seed_value: int, note: bool, used: 
 	for e in w.enemies:
 		if (e as Enemy).pack_id >= 0 and (not w.nav.is_walkable(e.pos) or not w.nav.same_region(e.pos, w.spawn_point)):
 			return "怪群成員放在走不到的地方 %s" % e.pos
+	return _map_rules(w, note)
+
+
+# 一張地圖的規則（每層的地圖、每種小關都照這套）：大小與邊界、石台在場地內、出生點與挖墳點可走且相連、可走格連成一片、
+# 相鄰可走格高低差、牆夠高、石台網格的三角形都是正面；note：記可走格數
+static func _map_rules(w: World, note: bool) -> String:
 	var m := w.map
 	var half := w.half_extents
 	if m.size != half * 2.0:
@@ -273,7 +279,7 @@ static func _check_floor_map(floor_num: int, seed_value: int, note: bool, used: 
 	var dig := MapDefs.to_world(m, m.dig)
 	if not nav.is_walkable(spawn) or not nav.is_walkable(dig) or not nav.same_region(spawn, dig):
 		return "出生點 %s 與挖墳點 %s 應可走且相連" % [spawn, dig]
-	if _player(w).pos != spawn:
+	if not w.players.is_empty() and _player(w).pos != spawn:
 		return "玩家應出生在 %s，實際 %s" % [spawn, _player(w).pos]
 	var regions := {}
 	var walkable := 0
@@ -528,4 +534,127 @@ static func check_map_spawns() -> String:
 			count += 1
 	if count < 5:
 		return "60 秒只生了 %d 隻" % count
+	return ""
+
+
+# ───────── 小關隨機地圖（MapGen，docs/系統說明.md §35）─────────
+
+const STAGE_SEEDS := 4   # 每種小關掃幾個種子（1-5 另外在 check_map_a 跟著第 1 層掃 LAYOUT_SEEDS 個）
+
+
+# 第 stage 小關、這個種子的地圖（不放玩家）：怪群照產生的位置生
+static func _stage_world(stage: int, seed_value: int) -> World:
+	var w := World.new(&"test_arena")
+	_worlds.append(w)
+	w.run_seed = seed_value
+	w.floor_num = 1
+	w.stage_num = stage
+	w.load_map(&"graveyard")
+	return w
+
+
+# 每種小關 × STAGE_SEEDS 個種子：產生成功、地圖規則都過；出口的門 / 挖墳點 / 鐵砧 / 寶箱 / 怪群都走得到出生點；
+# 寶箱放在平的地方；兩扇門的獎勵不重複；王族墓的關有 Boss 巡邏範圍、沒有門，其他關有 STAGES 的門數、沒有挖墳事件
+static func check_stage_maps() -> String:
+	var lines: Array[String] = []
+	for stage: int in MapGenDefs.STAGES:
+		var cfg: Dictionary = MapGenDefs.STAGES[stage]
+		var routes: Array[float] = []
+		var block_counts: Array[int] = []
+		for s in STAGE_SEEDS:
+			var seed_value := 101 + s
+			var w := _stage_world(stage, seed_value)
+			var tag := "第 %d 小關種子 %d" % [stage, seed_value]
+			if int(w.map.get("stage", 0)) != stage:
+				return "%s：產生失敗（改用了 %s）" % [tag, w.map.get("name", "")]
+			var err := _map_rules(w, false)
+			if err != "":
+				return "%s：%s" % [tag, err]
+			err = _stage_reach(w, cfg)
+			if err != "":
+				return "%s：%s" % [tag, err]
+			var goal: Vector2 = MapDefs.to_world(w.map, w.map.dig)
+			var path := w.nav.find_path(w.spawn_point, goal)
+			var length := 0.0
+			for i in range(1, path.size()):
+				length += path[i - 1].distance_to(path[i])
+			routes.append(length)
+			block_counts.append(w.terrain.blocks.size())
+		lines.append("1-%d 最短路線 %.0f ~ %.0f、石台 %d ~ %d" % [stage, routes.min(), routes.max(), block_counts.min(), block_counts.max()])
+	_note("小關地圖：%d 種 × %d 個種子都過；%s" % [MapGenDefs.STAGES.size(), STAGE_SEEDS, "；".join(PackedStringArray(lines))])
+	return ""
+
+
+static func _stage_reach(w: World, cfg: Dictionary) -> String:
+	var spawn := w.spawn_point
+	var nav := w.nav
+	var at := func(p: Vector2) -> Vector2: return MapDefs.to_world(w.map, p)
+	var reachable := func(p: Vector2) -> bool: return nav.is_walkable(p) and nav.same_region(p, spawn)
+	var doors: Array = w.map.stage_doors
+	if cfg.get("boss", false):
+		if not doors.is_empty() or not w.map.dig_event or (w.map.boss_room as Array).size() != 4:
+			return "王族墓的關應有挖墳事件、Boss 範圍、沒有門（門 %d、挖墳 %s）" % [doors.size(), w.map.dig_event]
+		if not reachable.call(at.call(w.map.dig)):
+			return "挖墳點走不到"
+	else:
+		if doors.size() != int(cfg.doors) or w.map.dig_event:
+			return "應有 %d 扇門、沒有挖墳事件（%d 扇、挖墳 %s）" % [cfg.doors, doors.size(), w.map.dig_event]
+		var rewards := {}
+		for d: Dictionary in doors:
+			if not reachable.call(at.call(d.reach)):
+				return "門前 %s 走不到" % d.reach
+			rewards[d.reward] = true
+		if doors.size() == 2 and rewards.size() != 2:
+			return "兩扇門的獎勵應不同：%s" % rewards.keys()
+	if cfg.get("anvil", false) != w.map.has("anvil"):
+		return "鐵砧應%s出現" % ("" if cfg.get("anvil", false) else "不")
+	if w.map.has("anvil") and not reachable.call(at.call(w.map.anvil)):
+		return "鐵砧走不到"
+	for spot: Array in w.map.chest_spots:
+		var p: Vector2 = at.call(Vector2(spot[0], spot[1]))
+		if not reachable.call(p):
+			return "寶箱 %s 走不到" % p
+		var g := w.terrain.ground_at(p)
+		var r: float = LootDefs.CHESTS[spot[2]].radius
+		for k in 8:
+			if absf(w.terrain.ground_at(p + Vector2.from_angle(k * TAU / 8.0) * r) - g) > Config.HEIGHT.step:
+				return "寶箱 %s 擺在台階邊緣" % p
+	w.spawner.spawn_packs(w, w.floor_rng(&"packs"))
+	if w.packs.size() != (w.map.pack_spots as Array).size() or w.packs.is_empty():
+		return "怪群應照 %d 個位置生，實際 %d 群" % [(w.map.pack_spots as Array).size(), w.packs.size()]
+	for e in w.enemies:
+		if not reachable.call(e.pos):
+			return "怪群成員放在走不到的地方 %s" % e.pos
+	return ""
+
+
+# 同一個種子、同一關產生的地圖每次都一樣（客戶端照種子自己算）；換種子、換小關就不一樣
+static func check_stage_map_seed() -> String:
+	var key := func(w: World) -> Array:
+		return [w.map.size, w.map.spawn, w.map.blocks, w.map.stage_doors, w.map.chest_spots, w.map.pack_spots, w.map.get("anvil")]
+	var a: Array = key.call(_stage_world(3, 55))
+	var b: Array = key.call(_stage_world(3, 55))
+	if a != b:
+		return "同一個種子、同一關兩次產生的地圖不同"
+	if a == key.call(_stage_world(3, 56)) or a == key.call(_stage_world(4, 55)):
+		return "換種子或換小關，地圖應不同"
+	return ""
+
+
+# 產生器要讓每個平台算得一樣：原始碼（去掉註解）不能用三角函數、開根號、randf、Vector2 的長度 / 距離 / 角度
+const MAP_GEN_FORBIDDEN: Array[String] = ["sin(", "cos(", "tan(", "atan", "sqrt(", "pow(", "exp(", "log(", "randf", ".length(", "length_squared(",
+	"distance_to(", "distance_squared_to(", "angle", "normalized(", "from_angle("]
+
+
+static func check_map_gen_source() -> String:
+	var text := FileAccess.get_file_as_string("res://sim/map_gen.gd")
+	if text.is_empty():
+		return "讀不到 sim/map_gen.gd"
+	var n := 0
+	for line in text.split("\n"):
+		n += 1
+		var code := line.split("#")[0]
+		for word in MAP_GEN_FORBIDDEN:
+			if code.contains(word):
+				return "sim/map_gen.gd 第 %d 行用了 %s（客戶端照種子算地圖，不同平台會算出不同結果）" % [n, word]
 	return ""
