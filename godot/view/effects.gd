@@ -38,6 +38,7 @@ const HANDLERS := {
 	"fx:status": &"_fx_status",
 	"enemy:blocked": &"_on_enemy_blocked",
 	"enemy:guard_broken": &"_on_enemy_blocked",
+	"enemy:crashed": &"_on_enemy_crashed",
 }
 const LIGHTNING_HEIGHT := 1.1   # 連鎖閃電畫在離地多高（v0.33.0）
 const LIGHTNING_WIDTH := 0.09
@@ -250,6 +251,13 @@ func _on_enemy_blocked(p: Dictionary) -> void:
 	burst(at, {"color": SHIELD_SPARK, "count": 8, "speed": 5.0, "size": 0.08, "life": 0.25})
 	if broken:
 		burst(at, {"color": CHARGE_DUST_COLOR, "count": 14, "speed": 6.0, "up": 2.0, "size": 0.14, "life": 0.5})
+
+
+# 骨輪撞牆：碎骨與揚塵往外噴
+func _on_enemy_crashed(p: Dictionary) -> void:
+	var at := _at(p, 0.5)
+	burst(at, {"color": BONE_COLOR, "count": 14, "speed": 5.5, "up": 3.5, "size": 0.12, "life": 0.55})
+	burst(at, {"color": CHARGE_DUST_COLOR, "count": 10, "speed": 3.0, "up": 1.5, "size": 0.2, "life": 0.5})
 
 
 func _on_died(p: Dictionary) -> void:

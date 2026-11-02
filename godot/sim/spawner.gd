@@ -253,6 +253,8 @@ static func behavior_class(behavior: StringName) -> GDScript:
 			return Hound
 		&"spearman":
 			return Spearman
+		&"bone_wheel":
+			return BoneWheel
 		&"gravekeeper":
 			return Gravekeeper
 	return null

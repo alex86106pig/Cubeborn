@@ -8,7 +8,7 @@ class_name WeaponDropDefs
 # 小怪掉武器的機率照層數（使用者 2026-11-01 決定：原本每層都 4%，自動試玩量到第 1 層全清就掉 8~19 把、背包 48 格被武器占 28~46 格；
 # 要第 2~3 層才滿）；超過表的層用最後一層。召喚出來的怪（no_souls）不掉，同靈魂與金幣
 const MINION_DROP_BY_FLOOR := {1: 0.015, 2: 0.025, 3: 0.04}
-const MINION_TYPES := [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"spearman"]
+const MINION_TYPES := [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"spearman", &"bone_wheel"]
 const BOSS_TYPES := [&"boss", &"gravekeeper"]   # 必掉
 
 

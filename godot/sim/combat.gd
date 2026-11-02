@@ -29,7 +29,8 @@ static func hostiles_of(world: World, team: StringName, source_id: int = 0) -> A
 #      max_air（選填：目標腳底離自己腳下地面超過這個高度就打不到）、no_stagger（選填：不讓目標進入受擊硬直）、
 #      damage_type（選填：StatDefs.DAMAGE_TYPES 之一，預設物理）、force_crit（選填：必爆擊，F6）、
 #      projectile（選填：投射物直接命中，G1 鐵皮斗篷、爆裂箭袋看這個）、finisher（選填：連段最後一下，末端部位的道具看這個）、
-#      no_status（選填：不疊燃燒 / 冰冷 / 失衡，羈絆的爆炸、冰錐與持續傷害）、pierce_invuln（選填：目標受傷後的無敵時間不擋這一下，連段用）
+#      no_status（選填：不疊燃燒 / 冰冷 / 失衡，羈絆的爆炸、冰錐與持續傷害）、pierce_invuln（選填：目標受傷後的無敵時間不擋這一下，連段用）、
+#      push_dir（選填：擊退方向，已正規化；不照 origin → target。格擋的正面判斷照樣看 origin）
 # 這裡套用攻擊者的爆擊與擊退屬性；護甲與受傷倍率在 Entity.take_damage
 # 回傳是否實際命中（高度不重疊、被格擋也算沒命中）
 static func apply_damage(world: World, source: Entity, target: Entity, hit: Dictionary) -> bool:
@@ -96,6 +97,8 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 	if dir.length_squared() < 1e-6:
 		dir = MathUtil.dir_from_angle(source.facing)
 	dir = dir.normalized()
+	if hit.has("push_dir"):
+		dir = hit.push_dir
 
 	var damage: float = hit.damage
 	if source is Player and target is Player:

@@ -41,6 +41,8 @@ var _hound := false       # 屍犬（四足）：所有狀態都走 _pose_hound�
 var _keeper := false      # 守墓人：右手鐵鏟、左手提燈；駝背
 var _holds_bow := false   # 骷髏弓手：左手拿弓，不瞄準時照 _bow_arm_target
 var _spearman := false    # 骷髏盾槍兵：左手塔盾舉在胸前、右手長槍
+var _wheel := false       # 骨輪：所有狀態都走 _pose_wheel（整個輪子在 head 關節上）
+var _spin := 0.0          # 骨輪滾動的角度（畫面自己累加）
 var _bow_arm_target := BOW_ARM_REST
 var _dt := 0.0
 
@@ -52,6 +54,7 @@ func _init(p_rig: Node3D, e: Enemy) -> void:
 	_bloater = e.def.visual == &"bloater"
 	_hound = e.def.visual == &"hound"
 	_spearman = e.def.visual == &"spearman"
+	_wheel = e.def.visual == &"bone_wheel"
 	walk_phase = randf() * TAU   # 畫面用隨機，與模擬無關
 	if e.def.has("slam"):
 		_build_cracks(e)
@@ -83,9 +86,11 @@ func update(e: Enemy, dt: float) -> void:
 		if target != null and e.pos.distance_to(target.pos) <= def.preferred_range[1] + def.fire_reach:
 			_bow_arm_target = BOW_ARM_READY
 
-	match &"hound" if _hound else (&"keeper" if _keeper and state != &"spawn" and state != &"dead" else state):
+	match &"hound" if _hound else (&"wheel" if _wheel else (&"keeper" if _keeper and state != &"spawn" and state != &"dead" else state)):
 		&"hound":
 			_pose_hound(e, a, state, t, dt)
+		&"wheel":
+			_pose_wheel(e, state, t, dt)
 		&"keeper":
 			_pose_keeper(e, a, state, t, dt)
 		&"spawn":
@@ -247,6 +252,35 @@ func _pose_melee_swing(t: float, s: Dictionary) -> void:
 		var k := clampf((t - windup - active) / s.recovery, 0.0, 1.0)
 		arm.rotation.x = lerpf(-0.3, -0.6, k)
 		rig.body.rotation.x = lerpf(0.25, 0.0, k)
+
+
+# 骨輪：滾的時候輪子照移動距離轉（÷ 半徑）；蓄力原地喀啦晃、往後轉一點；撞牆倒下散開、最後 reform 秒立回來；
+# 死掉倒下沉入地面；爬出照一般的從地下升起
+func _pose_wheel(e: Enemy, state: StringName, t: float, dt: float) -> void:
+	var head = rig.head
+	var r := DarkFantasy.WHEEL_RADIUS
+	_spin += e.velocity.length() * dt / r
+	head.rotation = Vector3(_spin, 0.0, 0.0)
+	head.position.y = r
+	head.scale = Vector3.ONE
+	rig.position.y = 0.0
+	match state:
+		&"spawn":
+			rig.position.y = lerpf(-rig.height, 0.0, MathUtil.ease_out_cubic(clampf(t / e.def.spawn_time, 0.0, 1.0)))
+		&"windup":
+			_spin -= dt * 1.5
+			head.rotation = Vector3(_spin, 0.0, sin(t * 45.0) * 0.08)
+			head.scale = Vector3(1.0, 0.94, 0.94)
+		&"collapse", &"dead":
+			var c: Dictionary = e.def.roll
+			var fall := MathUtil.ease_out_cubic(clampf(t / 0.25, 0.0, 1.0))
+			var up := 0.0 if state == &"dead" else clampf((t - (c.collapse - c.reform)) / c.reform, 0.0, 1.0)
+			var lie := fall * (1.0 - up)
+			head.rotation = Vector3(_spin, 0.0, lerpf(0.0, PI / 2.0, lie))
+			head.position.y = lerpf(r, 0.12, lie)
+			head.scale = Vector3(1.0 + 0.3 * lie, 1.0, 1.0 + 0.3 * lie)   # 散開：攤成一圈骨堆
+			if state == &"dead":
+				rig.position.y = -CORPSE_SINK_DEPTH * clampf((t - e.def.corpse_time * CORPSE_SINK_START) / (e.def.corpse_time * (1.0 - CORPSE_SINK_START)), 0.0, 1.0)
 
 
 # 盾槍兵直刺：盾往外偏、槍收到腰間（windup）→ 往前刺到手臂打直、身體前傾（active）→ 收回舉盾（recovery）

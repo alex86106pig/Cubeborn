@@ -205,6 +205,7 @@ godot/
 | `entity:dodged` | `{ target_id, source_id }`（F1：閃避率擲中，整下沒打到；HUD 飄「閃避」） | Combat |
 | `player:blocked` | `{ player_id, perfect }`（v0.18.0：格擋擋下攻擊；perfect = 招架成功（v0.41.0 起），下一步盾反） | Player.try_block |
 | `enemy:blocked` / `enemy:guard_broken` | `{ enemy_id, pos, height, facing, broken? }`（第 2 層：盾槍兵正面舉盾擋下 / 被重攻擊破防） | Spearman.shield_blocks |
+| `enemy:crashed` | `{ enemy_id, pos, height }`（第 2 層：骨輪撞牆 / 被盾擋下，散成骨堆） | BoneWheel |
 | `entity:died` | `{ entity, source, kind }`（`kind` 給 v0.34.0 遊玩紀錄） | Entity |
 | `player:died` | `{ player }`（v0.21.0 起只代表這位玩家真的死亡；輸掉一局看 `game:defeat`） | Player |
 | `player:downed` | `{ player_id }`（v0.21.0：多人時生命歸零先倒地假死，見系統說明 §8） | Player |

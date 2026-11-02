@@ -130,6 +130,7 @@ func _initialize() -> void:
 	_check("怪物種類只看資料表：每種怪的 behavior 都對應得到行為類別、建出來的類別一致；is_boss、freeze_immune 照資料；每層挖墳事件的 Boss 是 Boss、第 2 層換成骸骨將軍；各層怪群與挖墳怪潮只有 FLOOR_MIX 這一層的怪（第 2 層起約 UPPER_SHARE 是上一層的）、挖墳點只噴下一層自己的；召喚詞條叫出同種的怪",
 		all.bind([MonsterChecks.check_enemy_defs, MonsterChecks.check_floor_mix]))
 	_check("骷髏盾槍兵：正面舉盾擋下所有攻擊（含爆炸）、背後打得到；重攻擊破防 break_time 秒、破防中打得到；直刺打得到前方細長直線、打不到旁邊，舉槍時正面打得到", MonsterChecks.check_spearman)
+	_check("骨輪：看得到目標就蓄力 roll.windup 秒再直線滾過去，撞到玩家打一次、照樣往前，撞牆（場地邊緣）散成骨堆 collapse 秒再組起來；被打不硬直；被盾擋下也算撞牆", MonsterChecks.check_bone_wheel)
 	_check("腐屍：撲中抓住 grab_time 秒、撲 1 下 + 每 bite_interval 咬一口；被抓時按翻滾立刻掙脫；隊友打它就鬆手；舉盾擋下不被抓、腐屍踉蹌", MonsterChecks.check_zombie)
 	_check("膨脹屍：走近停下脹大 swell_time 秒（被打不硬直）→ 自爆炸到玩家與旁邊的怪、不給靈魂；留下腐氣持續傷害玩家與怪、不畫圈只冒煙；被打死 death_delay 秒後照樣炸、給靈魂", MonsterChecks.check_bloater)
 	_check("屍犬：玩家站著不轉身時繞到背後（≥ behind_angle）才撲、patience 內做到；玩家一直轉身看著它 patience 內不撲、之後從正面撲；撲中有傷害；繞圈方向不跟著玩家小幅轉身來回換邊；撲完先沿圈退到內圈才再撲",

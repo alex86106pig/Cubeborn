@@ -75,6 +75,40 @@ const ENEMIES := {
 		},
 	},
 
+	# 骨輪（第 2 層，數值 Claude 暫定）：直線滾向玩家、撞牆散成骨堆暈 2 秒；不會硬直（sim/enemies/bone_wheel.gd）
+	&"bone_wheel": {
+		"name": "骨輪",
+		"resists": {&"holy": -0.25, &"poison": 0.5},
+		"visual": &"bone_wheel",
+		"behavior": &"bone_wheel",
+		"max_hp": 40.0,
+		"move_speed": 2.4,          # 沒在滾時慢慢滾近
+		"speed_variance": 0.1,
+		"turn_speed": 4.0,
+		"radius": 0.6,
+		"mass": 3.0,                # 不會硬直、很難推動
+		"hurt_time": 0.0,
+		"spawn_time": 0.7,
+		"corpse_time": 1.4,
+		"roll": {
+			"trigger_distance": 18.0,   # 這麼近、中間沒有牆才滾
+			"windup": 0.5,              # 原地喀啦晃、骨頭收緊
+			"speed": 13.0,
+			"turn_rate": PI / 3.0,      # 滾的時候每秒最多轉 60° 追著目標
+			"max_time": 4.0,            # 一直沒撞到東西就停下（不散）
+			"hit_reach": 0.25,
+			"damage": 16.0,
+			"knockback": 12.0,
+			"side_push": 0.8,           # 擊退方向往側面的比例（其餘往前）：把人撞到一邊，輪子滾過去
+			"blockable": true,          # 被盾擋下算撞牆
+			"collapse": 2.0,            # 撞牆散成骨堆暈多久（最後 reform 秒組回去，畫面用）
+			"reform": 0.5,
+			"cooldown": 2.5,            # 停下 / 組回去之後多久才再滾
+			"shake": 0.12,
+			"sfx_windup": "enemySpawn", "sfx_crash": "hitHeavy",
+		},
+	},
+
 	&"archer": {
 		"resists": {&"holy": -0.25, &"poison": 0.5},
 		"visual": &"ranged",
@@ -388,7 +422,7 @@ const ENEMIES := {
 # 超過表的層數用最後一層的表。第 2 層起怪群與怪潮另有 UPPER_SHARE 的機率改抽上一層的表（挖墳點噴的不混）
 const FLOOR_MIX := {
 	1: {&"zombie": 0.7, &"hound": 0.2, &"bloater": 0.1},
-	2: {&"grunt": 0.57, &"archer": 0.29, &"spearman": 0.14},
+	2: {&"grunt": 0.5, &"archer": 0.25, &"spearman": 0.125, &"bone_wheel": 0.125},
 }
 const UPPER_SHARE := 0.2
 

@@ -35,6 +35,12 @@ const SKELETON_JOINTS := {
 # 盾槍兵的塔盾在左手臂座標的位置（前臂外側，同騎士的 forearm_l 掛點）。直接掛在手臂上合併：
 # 掛點底下的零件不會進 to_template，蒙皮版會少掉
 const SPEARMAN_SHIELD_AT := Vector3(0.09, -0.38, 0.0)
+# 骨輪：整個輪子掛在 head 關節上（head 在輪軸的高度），滾動 = 轉 head 的 x；手腳沒有零件
+const WHEEL_RADIUS := 0.62
+const WHEEL_JOINTS := {
+	"neck": WHEEL_RADIUS, "shoulder_y": WHEEL_RADIUS, "shoulder_x": 0.0, "grip": 0.1,
+	"hip_y": WHEEL_RADIUS, "hip_x": 0.0, "height": WHEEL_RADIUS * 2.0,
+}
 const ZOMBIE_JOINTS := {
 	"neck": 1.42, "shoulder_y": 1.4, "shoulder_x": 0.3, "grip": 0.58,
 	"hip_y": 0.92, "hip_x": 0.13, "height": 1.85,
@@ -77,6 +83,8 @@ static func character(kind: StringName) -> Rig:
 			rig = bloater()
 		&"hound":
 			rig = hound()
+		&"bone_wheel":
+			rig = bone_wheel()
 		&"spearman":
 			rig = spearman()
 		&"gravekeeper":
@@ -234,6 +242,25 @@ static func spearman() -> Rig:
 	_hold(shield, {"grip": Vector3(-0.07, 0.0, 0.0)})
 	shield.position += SPEARMAN_SHIELD_AT
 	rig.arm_l.add_child(shield)
+	return rig.optimize()
+
+
+# 骨輪：骨頭圈（輪面在 YZ 平面、軸沿 X）+ 3 根肋骨輻條 + 輪軸上的頭骨（紅眼朝前）
+static func bone_wheel() -> Rig:
+	var rig := Rig.new(WHEEL_JOINTS)
+	var k := rig.kit
+	var bone := k.mat(C.bone)
+	var dark := k.mat(C.bone_dark)
+	k.add(rig.head, PartKit.torus(WHEEL_RADIUS - 0.06, 0.07, 5, 14), bone, {"rz": PI / 2.0})
+	for i in 3:
+		k.add(rig.head, PartKit.cyl(0.035, 0.035, WHEEL_RADIUS * 2.0 - 0.1, 4), dark, {"rx": PI * i / 3.0})
+	for i in 8:   # 輪圈上一節一節的脊椎骨
+		var a := TAU * i / 8.0
+		k.add(rig.head, PartKit.box(0.2, 0.09, 0.09), bone, {"y": cos(a) * WHEEL_RADIUS, "z": sin(a) * WHEEL_RADIUS, "rx": -a})
+	k.add(rig.head, PartKit.ico(0.17, 1), bone, {"sy": 1.1})
+	for s in [-1.0, 1.0]:
+		k.add(rig.head, PartKit.sphere(0.045, 5, 4), k.mat(C.socket), {"x": s * 0.065, "y": 0.03, "z": 0.13})
+		k.add(rig.head, PartKit.sphere(0.022, 4, 3), k.mat(C.eye_red, true), {"x": s * 0.065, "y": 0.03, "z": 0.16, "shadow": false})
 	return rig.optimize()
 
 

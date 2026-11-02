@@ -203,6 +203,62 @@ static func check_spearman() -> String:
 	return ""
 
 
+# 骨輪：看得到目標就蓄力 roll.windup 秒再滾過去，撞到玩家打一次（roll.damage）、照樣往前滾，撞到場地邊緣散成骨堆 collapse 秒再組起來；
+# 被打不硬直；被盾擋下也算撞牆
+static func check_bone_wheel() -> String:
+	var r: Dictionary = EnemyDefs.ENEMIES.bone_wheel.roll
+	for mode: StringName in [&"open", &"block"]:
+		var w := _world()
+		var p: Player = w.players[World.HOST_PEER_ID]
+		p.pos = Vector2(0, 0)
+		p.stats.set_base(&"max_hp", 9999.0)
+		p.hp = p.max_hp
+		var b := w.spawner.spawn_at(w, &"bone_wheel", Vector2(0, 10)) as BoneWheel
+		b.fsm.change(&"chase")
+		b.facing = PI
+		var hits := 0
+		var rolled_at := -1
+		var crashed_at := -1
+		var hurt_seen := false
+		for i in roundi((r.windup + r.max_time) / DT):
+			var cmd := InputCmd.new()
+			cmd.aim = Vector2(0, 5)
+			if mode == &"block":
+				cmd.buttons = InputCmd.BTN_SPECIAL_HELD
+			if i == 3:
+				Combat.apply_damage(w, p, b, {"damage": 1.0, "knockback": 0.0, "blockable": false})
+			w.step({World.HOST_PEER_ID: cmd}, DT)
+			if b.fsm.is_in(&"hurt"):
+				hurt_seen = true
+			if rolled_at < 0 and b.is_rolling():
+				rolled_at = i
+			for ev in w.events:
+				if ev.name == "entity:damaged" and ev.target_id == p.id and ev.source_id == b.id:
+					hits += 1
+			if b.fsm.is_in(&"collapse"):
+				crashed_at = i
+				break
+		if hurt_seen:
+			return "骨輪被打不應硬直"
+		if rolled_at < 0 or absf(rolled_at * DT - r.windup) > 0.1:
+			return "骨輪應蓄力 %.1f 秒後滾（第 %.2f 秒開始滾）" % [r.windup, rolled_at * DT]
+		if crashed_at < 0:
+			return "骨輪（%s）應散成骨堆（滾了 %.1f 秒還在 %s）" % [mode, r.max_time, b.fsm.current_name]
+		if mode == &"open":
+			if hits != 1:
+				return "骨輪滾過玩家應打中 1 次，實際 %d 次" % hits
+			if maxf(absf(b.pos.x), absf(b.pos.y)) < w.half_extents.x - 1.5:
+				return "骨輪應滾過玩家、一路滾到場地邊緣才停（滾的時候會轉向追目標；停在 %s）" % b.pos
+			if p.pos.distance_to(Vector2.ZERO) > 6.0:
+				return "骨輪應把玩家撞到旁邊滾過去，不是推著走（玩家被推到 %s）" % p.pos
+		elif hits != 0:
+			return "骨輪被盾擋下不應扣血（扣了 %d 次）" % hits
+		_step(w, roundi(r.collapse / DT) + 2, true)
+		if not b.fsm.is_in(&"chase"):
+			return "骨輪散開 %.1f 秒後應組回來（狀態 %s）" % [r.collapse, b.fsm.current_name]
+	return ""
+
+
 static func check_zombie() -> String:
 	var l: Dictionary = EnemyDefs.ENEMIES.zombie.lunge
 	var bites := roundi(l.grab_time / l.bite_interval)
@@ -854,7 +910,7 @@ static func check_packs() -> String:
 
 # 蒙皮小怪（D5 效能）：骷髏戰士 / 弓手每隻 ≤ 2 個網格、三角形數與原本的零件相同；關節寫進骨架
 static func check_skinned_rig() -> String:
-	for kind: StringName in [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"spearman"]:
+	for kind: StringName in [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"spearman", &"bone_wheel"]:
 		var old := DarkFantasy.character(kind)
 		var rig := DarkFantasy.skinned_character(kind)
 		var before := 0
