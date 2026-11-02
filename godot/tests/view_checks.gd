@@ -1143,12 +1143,11 @@ static func check_health_bars() -> String:
 	return err
 
 
-# 自己頭上的魔力條：比例 = 魔力 / 上限、滿了也畫；在血條正下方不重疊（血條滿血不畫時位置一樣）；倒地不畫
+# 自己頭上的魔力條：比例 = 魔力 / 上限、滿了不畫；在血條正下方不重疊（血條滿血不畫時位置一樣）；倒地不畫
 static func _check_mana_bar(hb: HealthBars, p: Player) -> String:
 	p.mana = p.max_mana()
-	var full := hb.mana_bar()
-	if full.is_empty() or absf(full.ratio - 1.0) > EPS:
-		return "魔力滿時也要畫自己的魔力條：%s" % [full]
+	if not hb.mana_bar().is_empty():
+		return "魔力滿時不應畫魔力條：%s" % [hb.mana_bar()]
 	p.mana = p.max_mana() * 0.4
 	var m := hb.mana_bar()
 	if absf(m.ratio - 0.4) > EPS or not (m.rect as Rect2).size.is_equal_approx(hb.MANA_SIZE):

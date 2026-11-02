@@ -1,7 +1,7 @@
 # 頭頂血條（v0.43.0）：自己與隊友綠色、怪物紅色；滿血、死亡、倒地（改顯示倒數）、視野外都不畫，Boss 用上方大血條不畫
 # 怪物的血條在魔法 / 稀有怪詞條（WorldLabels）的基線下方、頭頂上方；玩家的在 P1~P4 名牌（PlayerTags）的基線下方
 # 只畫受傷又看得到的，上百隻怪時也只是幾十個矩形，不另外建節點
-# 自己頭上另外有魔力條（mana_bar）：固定在血條的位置正下方、魔力滿了也畫（血條滿血不畫時位置不跳）；隊友的魔力不在快照裡，不畫
+# 自己頭上另外有魔力條（mana_bar）：固定在血條的位置正下方（血條滿血不畫時位置不跳）、魔力滿了不畫；隊友的魔力不在快照裡，不畫
 class_name HealthBars
 extends Control
 
@@ -42,12 +42,12 @@ func _draw() -> void:
 		draw_rect(Rect2(m.rect.position, Vector2(m.rect.size.x * m.ratio, m.rect.size.y)), UiKit.MANA_FILL)
 
 
-# 自己的魔力條：{ratio, rect}；沒有角色、死亡、倒地、下樓了回傳 {}
+# 自己的魔力條：{ratio, rect}；沒有角色、死亡、倒地、下樓了、魔力滿了回傳 {}
 func mana_bar() -> Dictionary:
 	if world == null or camera == null:
 		return {}
 	var me: Player = world.players.get(local_peer)
-	if me == null or me.is_dead or me.is_removed or me.is_downed or me.descended:
+	if me == null or me.is_dead or me.is_removed or me.is_downed or me.descended or me.mana >= me.max_mana() - FULL_EPSILON:
 		return {}
 	var s: Variant = _screen(Vector3(me.pos.x, me.height + PlayerTags.HEAD_OFFSET, me.pos.y))
 	if s == null:
