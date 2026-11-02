@@ -236,7 +236,7 @@ const ENEMIES := {
 
 	&"boss": {
 		"resists": {&"holy": -0.25, &"poison": 0.5, &"shadow": 0.5},
-		"name": "亡骸騎士",
+		"name": "骸骨將軍",
 		"visual": &"boss",
 		"behavior": &"boss",
 		"is_boss": true,
@@ -350,12 +350,13 @@ const ENEMIES := {
 }
 
 
-# 各層的小怪種類與比例（設計方向「各層怪物」）：地圖預放的怪群、挖墳怪潮用這一層的表，挖墳點噴的是下一層的表；
-# 超過表的層數用最後一層的表
+# 各層自己的小怪種類與比例（設計方向「各層怪物」）：地圖預放的怪群、挖墳怪潮用這一層的表，挖墳點噴的是下一層的表；
+# 超過表的層數用最後一層的表。第 2 層起怪群與怪潮另有 UPPER_SHARE 的機率改抽上一層的表（挖墳點噴的不混）
 const FLOOR_MIX := {
 	1: {&"zombie": 0.7, &"hound": 0.2, &"bloater": 0.1},
-	2: {&"grunt": 0.75, &"archer": 0.25},
+	2: {&"grunt": 0.67, &"archer": 0.33},
 }
+const UPPER_SHARE := 0.2
 
 
 static func is_boss(type: StringName) -> bool:
@@ -367,8 +368,10 @@ static func floor_mix(floor_num: int) -> Dictionary:
 	return FLOOR_MIX[clampi(floor_num, 1, last)]
 
 
-# 照 floor_mix 的比例抽一種（用傳入的 rng，模擬才有決定性）
-static func roll_floor_type(floor_num: int, rng: RandomNumberGenerator) -> StringName:
+# 照 floor_mix 的比例抽一種（用傳入的 rng，模擬才有決定性）；with_upper：第 2 層起 UPPER_SHARE 改抽上一層（第 1 層不多耗亂數）
+static func roll_floor_type(floor_num: int, rng: RandomNumberGenerator, with_upper := true) -> StringName:
+	if with_upper and floor_num > 1 and rng.randf() < UPPER_SHARE:
+		floor_num -= 1
 	var mix := floor_mix(floor_num)
 	var r := rng.randf()
 	var acc := 0.0

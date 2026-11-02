@@ -49,6 +49,8 @@ const BLOOD := Color("d8d2bf")        # 骷髏死亡碎骨（網頁版 colors.bl
 const BOSS_BLOOD := Color("55e0ff")   # 亡骸騎士的死亡、狂暴、召喚（網頁版 colors.bossBlood）
 
 const GROUND_COLORS: Array[Color] = [Color("2b3528"), Color("3a4431"), Color("4a4a3a")]
+const CATACOMB_GROUND: Array[Color] = [Color("2a2724"), Color("35302a"), Color("423a31")]   # 地下墓窟的石地
+const CATACOMB_ROCK: Array[Color] = [Color("2e2925"), Color("3a332c"), Color("252220")]     # 場外的岩塊
 const ROCK_COLORS: Array[Color] = [Color("55585e"), Color("6a6d72"), Color("46484d")]
 
 
@@ -577,7 +579,10 @@ static func enemy_projectile(color: Color) -> Node3D:
 # ───────── 場地 ─────────
 
 # 只負責外觀，碰撞邊界由 World 決定
-static func build_arena(half: float, rng: RandomNumberGenerator) -> Node3D:
+# theme：MapDefs 的 theme（graveyard 墓園 / catacomb 地下墓窟）
+static func build_arena(half: float, rng: RandomNumberGenerator, theme: StringName = &"graveyard") -> Node3D:
+	if theme == &"catacomb":
+		return _build_catacomb(half, rng)
 	var k := PartKit.new()
 	var group := Node3D.new()
 
@@ -617,4 +622,38 @@ static func build_arena(half: float, rng: RandomNumberGenerator) -> Node3D:
 
 	# 地面有頂點色，不參與合併
 	group.add_child(ArenaView.create_ground((half + 14.0) * 2.0, GROUND_COLORS, 1.8, 0.1, rng))
+	return group
+
+
+# 地下墓窟：場外是一塊塊岩石（沒有墓碑與樹），場內散落碎骨與頭骨堆
+static func _build_catacomb(half: float, rng: RandomNumberGenerator) -> Node3D:
+	var k := PartKit.new()
+	var group := Node3D.new()
+	var rocks: Array[StandardMaterial3D] = []
+	for c in CATACOMB_ROCK:
+		rocks.append(k.mat(c))
+	for p in ArenaView.perimeter_points(half, 1.1, 0.6):
+		var s := 0.5 + rng.randf() * 0.5
+		k.add(group, PartKit.ico(s, 0), rocks[rng.randi_range(0, 2)], {
+			"x": p.x + (rng.randf() - 0.5) * 0.4, "y": s * 0.5, "z": p.z + (rng.randf() - 0.5) * 0.4,
+			"rx": rng.randf() * 3.0, "ry": rng.randf() * 3.0, "sy": 0.8 + rng.randf() * 0.6,
+		})
+	for p in ArenaView.scatter_outside(rng, half, 40, 1.8, 11.0):
+		var s: float = (1.0 + rng.randf() * 1.4) * p.s
+		k.add(group, PartKit.ico(s, 0), rocks[rng.randi_range(0, 2)], {
+			"x": p.x, "y": s * 0.35, "z": p.z, "rx": rng.randf() * 3.0, "ry": p.ry, "sy": 0.6 + rng.randf() * 0.8,
+		})
+	var bone := k.mat(C.bone_dark)
+	var skull := k.mat(C.bone)
+	for p in ArenaView.scatter_inside(rng, half, 28):
+		k.add(group, PartKit.cyl(0.03, 0.03, 0.35, 4), bone, {"x": p.x, "y": 0.03, "z": p.z, "rz": PI / 2.0, "ry": p.ry, "shadow": false})
+	for p in ArenaView.scatter_inside(rng, half, 10):
+		for i in 3 + rng.randi_range(0, 2):   # 頭骨堆：幾顆小球疊在一起
+			var a := rng.randf() * TAU
+			var r := rng.randf() * 0.25
+			k.add(group, PartKit.sphere(0.13, 6, 4), skull, {
+				"x": p.x + cos(a) * r, "y": 0.1 + (0.12 if i >= 3 else 0.0), "z": p.z + sin(a) * r, "shadow": false,
+			})
+	k.merge_static(group, [group])
+	group.add_child(ArenaView.create_ground((half + 14.0) * 2.0, CATACOMB_GROUND, 1.8, 0.1, rng))
 	return group

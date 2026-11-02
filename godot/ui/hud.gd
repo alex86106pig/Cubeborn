@@ -22,10 +22,10 @@ const VIGNETTE_TIME := 0.45
 const GAME_OVER_DELAY := 0.7     # 死亡後幾秒顯示結算
 const HINT_MARGIN := 16.0         # 開背包時新手提示和屬性面板、背包之間留的空隙
 const HINT_BOTTOM := 150.0        # 新手提示的下緣離畫面底部多少
-const BOSS_NAME := "亡骸騎士"     # darkFantasy.js 的 names.boss
+const BOSS_NAME := "骸骨將軍"     # 第 2 層 Boss（網頁版叫亡骸騎士）
 # 介面程式碼裡寫死的中文字（橫幅、浮動文字、場上文字、連線面板、遊玩紀錄…；資料表以外的）：開場預熱用（v0.37.2）
 # check.gd 會掃 ui/ 的字串，缺字就列出來，加到這裡
-const UI_CHARS := "升級—羈絆算階鑲輪　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木總樂畫陰源・介想意反對取噴發巡邏膨脹犬守話又頭肥羊園狼原形占拿件夠直接"
+const UI_CHARS := "升級—羈絆算階鑲輪　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木總樂畫陰源・介想意反對取噴發巡邏膨脹犬守話又頭肥羊園狼原形占拿件夠直接將"
 
 const VIGNETTE_SHADER := """
 shader_type canvas_item;
@@ -539,7 +539,7 @@ func _update_fps(delta: float) -> void:
 # 目前這層 Boss 的名字（EnemyDefs 的 name）；沒有 Boss 實體（已移除）時用挖墳事件設定的那一種
 func _boss_title() -> String:
 	var boss := world.entities.get(world.boss_id) as Enemy if world != null else null
-	var type: StringName = boss.type if boss != null else EventDefs.DIG.boss_type
+	var type: StringName = boss.type if boss != null else EventDefs.boss_type(world.floor_num)
 	var def: Dictionary = EnemyDefs.ENEMIES[type]
 	if boss != null and def.has("form_names"):
 		return def.form_names[boss.anim.get("form", 0)]   # 半血轉型態：守墓人 → 墓園狼人

@@ -4,30 +4,44 @@ class_name ArenaView
 extends Node3D
 
 
-# 石台顏色（側面、頂面）：頂面較亮，看得出可以站；牆是深色石頭、墓碑是灰白、高台是土色
+# 石台顏色（側面、頂面）：頂面較亮，看得出可以站。墓園：牆是深色石頭、墓碑是灰白、高台是土色；
+# 墓窟：岩壁偏黑褐、壁龕 / 棺材是骨白、高台是舊石磚
 const BLOCK_COLORS := {
-	&"wall": [Color("3d3a35"), Color("57524a")],
-	&"tomb": [Color("7d786d"), Color("9a9487")],
-	&"platform": [Color("3b4152"), Color("596178")],
+	&"graveyard": {
+		&"wall": [Color("3d3a35"), Color("57524a")],
+		&"tomb": [Color("7d786d"), Color("9a9487")],
+		&"platform": [Color("3b4152"), Color("596178")],
+	},
+	&"catacomb": {
+		&"wall": [Color("2a2420"), Color("3d352d")],
+		&"tomb": [Color("8a8170"), Color("a89e88")],
+		&"platform": [Color("4a4238"), Color("6a5f50")],
+	},
 }
 
+var map_id: StringName   # 現在畫的是哪張地圖（main.gd 比對 World.map_id，換層換地圖就重建）
 
-# half：場地的一半大小（World.half_extents）
-func build(half: Vector2, terrain: Terrain) -> void:
+
+# half：場地的一半大小（World.half_extents）；theme：MapDefs 的 theme
+func build(half: Vector2, terrain: Terrain, theme: StringName = &"graveyard") -> void:
+	for child in get_children():
+		remove_child(child)
+		child.queue_free()
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
-	add_child(DarkFantasy.build_arena(maxf(half.x, half.y), rng))
+	add_child(DarkFantasy.build_arena(maxf(half.x, half.y), rng, theme))
 	if not terrain.blocks.is_empty():
-		add_child(create_blocks(terrain.blocks))
+		add_child(create_blocks(terrain.blocks, theme))
 
 
 # 所有地形石台合併成一個網格（每個石台 5 面：頂面 + 四個側面；頂點色），地圖上有上百個石台也只畫 1 次
-static func create_blocks(blocks: Array[Dictionary]) -> MeshInstance3D:
+static func create_blocks(blocks: Array[Dictionary], theme: StringName = &"graveyard") -> MeshInstance3D:
 	var verts := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var colors := PackedColorArray()
+	var palette: Dictionary = BLOCK_COLORS.get(theme, BLOCK_COLORS[&"graveyard"])
 	for b in blocks:
-		var c: Array = BLOCK_COLORS.get(b.kind, BLOCK_COLORS[&"platform"])
+		var c: Array = palette.get(b.kind, palette[&"platform"])
 		var x0: float = b.min.x
 		var z0: float = b.min.y
 		var x1: float = b.max.x

@@ -16,7 +16,7 @@ const TRACK_RANGE := 8.0   # 這麼近的怪每幀記錄看不看得到（遠的
 const RARITY_ORDER: Array[StringName] = [&"white", &"green", &"blue", &"purple", &"orange"]
 # Boss 名字同 HUD.BOSS_NAME；不直接引用 HUD：check.gd（-s 腳本）會用到本檔，引用 HUD 會連帶要求 autoload GameEvents 而編譯失敗
 const NAMES := {
-	&"grunt": "骷髏戰士", &"archer": "骷髏弓手", &"zombie": "腐屍", &"bloater": "膨脹屍", &"hound": "屍犬", &"boss": "亡骸騎士", &"gravekeeper": "守墓人", &"ghost": "冤魂", &"minion": "骷髏僕從",
+	&"grunt": "骷髏戰士", &"archer": "骷髏弓手", &"zombie": "腐屍", &"bloater": "膨脹屍", &"hound": "屍犬", &"boss": "骸骨將軍", &"gravekeeper": "守墓人", &"ghost": "冤魂", &"minion": "骷髏僕從",
 	&"projectile": "投射物（射手已死）",
 }
 

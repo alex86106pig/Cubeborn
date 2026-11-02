@@ -55,8 +55,10 @@ static func check_enemy_defs() -> String:
 		var immune: bool = d.get("freeze_immune", false)
 		if (e.frozen_timer > 0.0) == immune:
 			return "%s 冰凍：資料表 freeze_immune=%s，實際 frozen_timer=%.1f" % [type, immune, e.frozen_timer]
-	if not EnemyDefs.ENEMIES.has(EventDefs.DIG.boss_type) or not EnemyDefs.is_boss(EventDefs.DIG.boss_type):
-		return "挖墳事件的 boss_type 不是 Boss：%s" % EventDefs.DIG.boss_type
+	for f: int in EventDefs.BOSS_BY_FLOOR:
+		var bt: StringName = EventDefs.boss_type(f)
+		if not EnemyDefs.ENEMIES.has(bt) or not EnemyDefs.is_boss(bt):
+			return "第 %d 層挖墳事件的 Boss 不是 Boss：%s" % [f, bt]
 	return ""
 
 
@@ -543,6 +545,39 @@ static func check_floor_mix() -> String:
 		var erupt: StringName = w.event._roll_type(w, 1)
 		if not first.has(horde) or not next.has(erupt):
 			return "第 1 層怪潮抽到 %s、挖墳點噴 %s（應是 %s / %s）" % [horde, erupt, first.keys(), next.keys()]
+	# 第 2 層（墓窟）：怪群與怪潮約 UPPER_SHARE 是第 1 層的怪、其餘是第 2 層的；挖墳點噴的只有第 3 層自己的；Boss 換成這一層的
+	var wf := _world(&"graveyard_a", true, 12345, true)   # 生成器要開著才會放 Boss（挖墳地圖不跑波次）
+	wf.next_floor()
+	wf.step({}, DT)   # 第一步放 Boss
+	var boss := wf.entities.get(wf.boss_id) as Enemy
+	if boss == null or boss.type != EventDefs.boss_type(2):
+		return "第 2 層的 Boss 應是 %s，實際 %s" % [EventDefs.boss_type(2), boss.type if boss != null else &"沒有"]
+	var own: Dictionary = EnemyDefs.floor_mix(2)
+	var counts := {"own": 0, "upper": 0}
+	for e in wf.enemies:
+		if e is Enemy and (e as Enemy).pack_id >= 0:
+			var t := (e as Enemy).type
+			if own.has(t):
+				counts.own += 1
+			elif first.has(t):
+				counts.upper += 1
+			else:
+				return "第 2 層的怪群出現 %s" % t
+	for i in 2000:
+		var horde: StringName = wf.event._roll_type(wf)
+		var erupt: StringName = wf.event._roll_type(wf, 1)
+		if not EnemyDefs.floor_mix(3).has(erupt):
+			return "第 2 層挖墳點噴出 %s（應只有 %s）" % [erupt, EnemyDefs.floor_mix(3).keys()]
+		if own.has(horde):
+			counts.own += 1
+		elif first.has(horde):
+			counts.upper += 1
+		else:
+			return "第 2 層怪潮抽到 %s" % horde
+	var share := float(counts.upper) / float(counts.own + counts.upper)
+	if absf(share - EnemyDefs.UPPER_SHARE) > 0.03:
+		return "第 2 層混入上一層的比例 %.3f，應約 %.2f" % [share, EnemyDefs.UPPER_SHARE]
+	CheckKit._note("第 2 層：怪群 + 2000 次怪潮抽到上一層 %.1f%%（%d / %d）" % [share * 100.0, counts.upper, counts.own + counts.upper])
 	var w2 := _world()
 	var z := w2.spawner.spawn_at(w2, &"zombie", Vector2(0, 6))
 	z.set_rarity(MonsterRarityDefs.RARE, [&"summoner"], "")

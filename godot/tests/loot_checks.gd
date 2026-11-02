@@ -269,9 +269,12 @@ static func check_soul_chests() -> String:
 	for s in range(1, 21):
 		var ws := _new_world(s, false, &"graveyard_a")
 		var e := _chest_layout(ws, 1)
+		if e == "":
+			ws.next_floor()   # 第 2 層的地圖（墓窟）照同一套規則
+			e = _chest_layout(ws, 1)
 		ws.clear()
 		if e != "":
-			return "種子 %d：%s" % [s, e]
+			return "種子 %d 第 %d 層：%s" % [s, ws.floor_num, e]
 	var w := _new_world(12345, false, &"graveyard_a")
 	var err := _chest_layout(w, 1)
 	if err != "":

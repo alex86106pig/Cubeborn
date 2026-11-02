@@ -52,7 +52,7 @@ func _ready() -> void:
 	add_child(camera_rig)
 	add_child(world_view)
 	add_child(arena_view)
-	arena_view.build(world.half_extents, world.terrain)
+	_sync_arena()
 	input_collector.camera_rig = camera_rig
 	add_child(input_collector)
 	hud = HUD_SCENE.instantiate()
@@ -467,6 +467,16 @@ func _net_report() -> Dictionary:
 	return out
 
 
+# 場地與環境光跟著 World 的地圖：換層換地圖（房主 next_floor、客戶端 sync_floor、重新開始回第 1 層）時重建
+func _sync_arena() -> void:
+	if arena_view.map_id == world.map_id:
+		return
+	arena_view.map_id = world.map_id
+	var theme: StringName = world.map.get("theme", &"graveyard")
+	arena_view.build(world.half_extents, world.terrain, theme)
+	world_view.apply_theme(theme)
+
+
 func _use_world(w: World) -> void:
 	if w != world:
 		world.clear()
@@ -585,6 +595,7 @@ func _process(delta: float) -> void:
 		elif Input.is_action_just_pressed(&"special") or Input.is_action_just_pressed(&"move_right"):
 			step = 1
 	_update_spectate(step)
+	_sync_arena()
 	var t0 := Time.get_ticks_usec()
 	world_view.sync(world, alpha, delta)
 	if perf != null:

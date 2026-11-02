@@ -82,7 +82,7 @@ func dig_total(world: World) -> float:
 func spawn_boss(world: World) -> void:
 	if world.spawner.finished:
 		return
-	var type: StringName = EventDefs.DIG.boss_type
+	var type := EventDefs.boss_type(world.floor_num)
 	var at := world.nav_for(EnemyDefs.ENEMIES[type].radius).nearest_walkable(point)
 	var boss := world.spawner.spawn_at(world, type, at, {"initial_state": &"patrol"}) as Boss
 	var room: Array = world.map.get("boss_room", [])
@@ -175,8 +175,9 @@ func _spawn(world: World, dt: float) -> void:
 
 
 # 怪潮用這一層的怪；挖墳點噴的是下一層的（floor_offset = 1）
+# floor_offset 1 = 挖墳點噴的下一層的怪：只抽那一層自己的怪，不混上一層
 func _roll_type(world: World, floor_offset: int = 0) -> StringName:
-	return EnemyDefs.roll_floor_type(world.floor_num + floor_offset, world.rng)
+	return EnemyDefs.roll_floor_type(world.floor_num + floor_offset, world.rng, floor_offset == 0)
 
 
 # 挖墳點噴怪：倒數到 warning 秒時墳土開始隆起（fx:erupt_warn），到 0 時噴出下一層的怪、進度 +ERUPT.progress（--no-spawn 只加進度）

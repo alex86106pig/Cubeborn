@@ -8,9 +8,16 @@ const DIG := {
 	"decay": 0.0,              # 沒人挖時進度每秒掉多少（0 = 不掉）
 	"range": 2.2,              # 離挖墳點這麼近才能挖、挖完後按 F 前往下一層（中心距離）
 	"exit_radius": 1.4,        # 挖完後墓穴洞口的大小（畫面用）
-	"boss_type": &"gravekeeper",   # 開局就在挖墳點的 Boss（EnemyDefs 的種類；之後每層可以換；第 1 層是守墓人，舊的亡骸騎士等第 2 層）
-	"last_floor": 1,           # 這一層挖完再互動就通關（測試版只有一層）；之後的層照舊 World.next_floor
+	"last_floor": 2,           # 這一層挖完再互動就通關；之前的層互動走 World.next_floor
 }
+
+# 每層開局就在挖墳點的 Boss（EnemyDefs 的種類）：第 1 層守墓人、第 2 層骸骨將軍；超過表的層數用最後一層的
+const BOSS_BY_FLOOR := {1: &"gravekeeper", 2: &"boss"}
+
+
+static func boss_type(floor_num: int) -> StringName:
+	var last: int = BOSS_BY_FLOOR.keys().max()
+	return BOSS_BY_FLOOR[clampi(floor_num, 1, last)]
 
 # 挖墳點噴怪：事件進行中每 interval 秒，挖墳點的墳土先隆起、裂開、冒出白骨手（warning 秒，不畫圈），接著噴出下一層的怪，同時進度 +progress
 # 數量 = count_base + 事件開始後漲的難度 × count_per_point（無條件捨去），多人照 SPAWN.per_extra_player 放大

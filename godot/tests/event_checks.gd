@@ -293,21 +293,30 @@ static func _open(w: World) -> void:
 
 
 static func check_next_floor() -> String:
-	# 單人：挖完後走到墳墓旁不會自動走；離太遠按 F 沒用；在旁邊按 F，最後一層（last_floor）直接通關
+	# 單人：挖完後走到墳墓旁不會自動走；離太遠按 F 沒用；在旁邊按 F，不是最後一層就換層，最後一層（last_floor）直接通關
 	var w := _world()
 	var p := _p(w)
 	_open(w)
 	var f := {World.HOST_PEER_ID: _cmd(InputCmd.BTN_INTERACT)}
+	p.pos = w.event.point
+	var ev := _step(w, 1, f)
+	if w.is_over or w.floor_num != 2 or not _named(ev, "vote:started").is_empty():
+		return "單人第 1 層按 F 應直接到第 2 層、不跳投票（第 %d 層、通關 %s）" % [w.floor_num, w.is_over]
+	w = _world()
+	p = _p(w)
+	w.sync_floor(EventDefs.DIG.last_floor)
+	_open(w)
 	p.pos = w.event.point + Vector2(EventDefs.DIG.range + 0.5, 0.0)
 	_step(w, 1, f)
 	_step(w, 1)
 	p.pos = w.event.point
 	_step(w, 30)
-	if w.is_over or w.floor_num != 1 or w.event.is_voting():
+	var last: int = EventDefs.DIG.last_floor
+	if w.is_over or w.floor_num != last or w.event.is_voting():
 		return "沒在墳墓旁按 F 就通關 / 換層了"
-	var ev := _step(w, 1, f)
-	if not w.is_over or w.floor_num != 1 or w.event.is_voting() or not _named(ev, "vote:started").is_empty():
-		return "單人第 %d 層（last_floor %d）按 F 應直接通關、不跳投票（通關 %s）" % [w.floor_num, EventDefs.DIG.last_floor, w.is_over]
+	ev = _step(w, 1, f)
+	if not w.is_over or w.floor_num != last or w.event.is_voting() or not _named(ev, "vote:started").is_empty():
+		return "單人第 %d 層（last_floor %d）按 F 應直接通關、不跳投票（通關 %s）" % [w.floor_num, last, w.is_over]
 	ev = _step(w, roundi(Config.WORLD.victory_delay / DT) + 2)
 	if _named(ev, "game:victory").size() != 1:
 		return "通關後 victory_delay 秒應發出 game:victory"
@@ -328,6 +337,10 @@ static func check_next_floor() -> String:
 	var per_floor: float = EventDefs.DIFFICULTY.per_floor
 	if w.floor_num != 2 or absf(w.base_difficulty - per_floor) > EPS or _named(ev, "floor:started").is_empty():
 		return "換層後應到第 2 層、基礎難度 %.0f（實際第 %d 層、%.1f）" % [per_floor, w.floor_num, w.base_difficulty]
+	var map2: Dictionary = MapDefs.get_map(MapDefs.FLOOR_MAPS[2])
+	if w.map_id != MapDefs.FLOOR_MAPS[2] or w.spawn_point.distance_to(MapDefs.to_world(map2, map2.spawn)) > EPS \
+			or w.event.point.distance_to(MapDefs.to_world(map2, map2.dig)) > EPS:
+		return "第 2 層應換成 %s 地圖（出生點、出口跟著換），實際 %s" % [MapDefs.FLOOR_MAPS[2], w.map_id]
 	if p.pos.distance_to(w.spawn_point) > EPS or p.descended:
 		return "新的一層應回到出生點"
 	if w.souls != 40 or CheckKit._held_items(p).size() != 1:
@@ -355,9 +368,10 @@ static func check_next_floor() -> String:
 	return ""
 
 
-# 多人投票：一人在墳墓旁按 F 發起（他算同意）；別人 Esc 反對就取消；全員 Enter 同意或 VOTE.time 秒到就走；死掉的不用投
+# 多人投票：一人在墳墓旁按 F 發起（他算同意）；別人 Esc 反對就取消；全員 Enter 同意或 VOTE.time 秒到就走；死掉的不用投（在最後一層投）
 static func _check_vote() -> String:
 	var w := _world([1, 2, 3])
+	w.sync_floor(EventDefs.DIG.last_floor)   # 投票通過 = 通關，才看得出有沒有走
 	_open(w)
 	_p(w, 1).pos = w.event.point
 	var ev := _step(w, 1, {1: _cmd(InputCmd.BTN_INTERACT)})
@@ -380,6 +394,7 @@ static func _check_vote() -> String:
 		return "全員同意應前往下一層（最後一層 = 通關）"
 	# 時間到：沒人回答也走
 	var w2 := _world([1, 2])
+	w2.sync_floor(EventDefs.DIG.last_floor)   # 投票通過 = 通關，才看得出有沒有走
 	_open(w2)
 	_p(w2, 2).pos = w2.event.point
 	_step(w2, 1, {2: _cmd(InputCmd.BTN_INTERACT)})
@@ -391,6 +406,7 @@ static func _check_vote() -> String:
 		return "投票 %.0f 秒到了應前往下一層" % EventDefs.VOTE.time
 	# 死掉的不用投：另一人陣亡時，按 F 直接走
 	var w3 := _world([1, 2])
+	w3.sync_floor(EventDefs.DIG.last_floor)   # 投票通過 = 通關，才看得出有沒有走
 	_open(w3)
 	_p(w3, 2).die()
 	_p(w3, 2).die()
@@ -537,7 +553,7 @@ static func check_net_event() -> String:
 	_open(w)
 	w.event.progress = 1.0
 	w.event.time = 12.5
-	w.floor_num = 3
+	w.sync_floor(3)   # 房主照層數換地圖（next_floor 也是）：客戶端要換成同一張
 	w.base_difficulty = 20.0
 	_p(w, 1).descended = true
 	var pk := w.drop_corpse(2, Vector2(3, 3))
@@ -565,8 +581,8 @@ static func check_net_event() -> String:
 	var mc: ItemPickup = cw.entities.get(pk.id)
 	if mp == null or not mp.descended or mc == null or mc.corpse_of != 2:
 		return "客戶端的「已進出口」或屍體主人沒同步"
-	if cw.event.point.distance_to(w.event.point) > EPS:
-		return "客戶端的挖墳點不同"
+	if cw.event.point.distance_to(w.event.point) > EPS or cw.map_id != w.map_id:
+		return "客戶端的挖墳點 / 地圖不同（%s / 房主 %s）" % [cw.map_id, w.map_id]
 	# 投票（HUD 的橫幅與 Enter / Esc 提示要用）
 	w.event.vote_by = 2
 	w.event.vote_left = 7.5

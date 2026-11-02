@@ -117,9 +117,9 @@ func _initialize() -> void:
 	_check("波次資料：只有最後一波是 Boss、其他波都有小怪、敵人類型存在、成長倍率線性", MapChecks.check_wave_defs)
 	_check("生成：first_delay 後開第一波、第一波數量照資料、離玩家 min_distance 以上、第 3 波小怪套成長倍率", MapChecks.check_spawning)
 	_check("一局流程：每波依序開始、打倒 Boss 後 is_over、victory_delay 秒後 game:victory、擊殺數正確", MapChecks.check_full_run)
-	_check("地形：0.5 石台走不上去、跳得上去；從 0.5 跳上 1.0；走出邊緣會掉回地面；2.5 的牆跳不過去；起跳偵測的快速排除（Terrain.may_rise）不漏掉會起跳的地方",
+	_check("地形：0.5 石台走不上去、跳得上去；從 0.5 跳上 1.0；走出邊緣會掉回地面；2.5 的牆跳不過去；起跳偵測的快速排除（Terrain.may_rise）在測試場地、墓園、墓窟都不漏掉會起跳的地方",
 		all.bind([MapChecks.check_terrain, MapChecks.check_may_rise]))
-	_check("地圖 A（環形墓園）：大小與邊界一致、石台都在場地內、出生點與挖墳點可走且相連、可走的格子連成一片、相鄰可走格高低差 ≤ climb_height、牆比最高的地面高出跳躍高度以上；挖墳事件生的小怪都在離玩家 min ~ max_distance、走得到玩家的地方",
+	_check("每層的地圖（第 1 層環形墓園、第 2 層墓窟，用 next_floor 走到）：大小與邊界一致、石台都在場地內、出生點與挖墳點可走且相連、可走的格子連成一片、相鄰可走格高低差 ≤ climb_height、牆比最高的地面高出跳躍高度以上；挖墳事件生的小怪都在離玩家 min ~ max_distance、走得到玩家的地方",
 		all.bind([MapChecks.check_map_a, MapChecks.check_map_spawns]))
 	_check("怪物尋路：直線離牆小於 margin 不算看得到、繞北門變慢的步數 < 30；玩家在圍牆內，骷髏戰士從牆外繞到北門打到、弓手繞進來射中；離目標超過 far_distance 時降低重新判斷頻率、走進來立刻判斷",
 		all.bind([MapChecks.check_nav_clearance, MapChecks.check_enemy_pathing, MapChecks.check_far_repath]))
@@ -127,7 +127,7 @@ func _initialize() -> void:
 		all.bind([MapChecks.check_enemy_climb, MapChecks.check_archer_high_ground]))
 
 	# ───────── 怪物稀有度與挖墳事件 ─────────
-	_check("怪物種類只看資料表：每種怪的 behavior 都對應得到行為類別、建出來的類別一致；is_boss、freeze_immune 照資料；挖墳事件的 boss_type 是 Boss；各層怪群與挖墳怪潮只有 FLOOR_MIX 這一層的怪、挖墳點噴下一層的；召喚詞條叫出同種的怪",
+	_check("怪物種類只看資料表：每種怪的 behavior 都對應得到行為類別、建出來的類別一致；is_boss、freeze_immune 照資料；每層挖墳事件的 Boss 是 Boss、第 2 層換成骸骨將軍；各層怪群與挖墳怪潮只有 FLOOR_MIX 這一層的怪（第 2 層起約 UPPER_SHARE 是上一層的）、挖墳點只噴下一層自己的；召喚詞條叫出同種的怪",
 		all.bind([MonsterChecks.check_enemy_defs, MonsterChecks.check_floor_mix]))
 	_check("腐屍：撲中抓住 grab_time 秒、撲 1 下 + 每 bite_interval 咬一口；被抓時按翻滾立刻掙脫；隊友打它就鬆手；舉盾擋下不被抓、腐屍踉蹌", MonsterChecks.check_zombie)
 	_check("膨脹屍：走近停下脹大 swell_time 秒（被打不硬直）→ 自爆炸到玩家與旁邊的怪、不給靈魂；留下腐氣持續傷害玩家與怪、不畫圈只冒煙；被打死 death_delay 秒後照樣炸、給靈魂", MonsterChecks.check_bloater)

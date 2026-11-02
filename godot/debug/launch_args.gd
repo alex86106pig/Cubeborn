@@ -9,14 +9,14 @@
 #   --loot-test（旁邊擺小寶箱、第 4 秒自動開，由近到遠 6 隻 1 血必掉武器的骷髏；配 --no-spawn --items=thorn_mail 量開箱與第一次掉落的卡頓）
 #   --weapon-test（武器測試場景：不生怪；畫面右邊貼身 1 隻、往右 5 / 7 / 9 一排、上方 4 一隻木樁，不動不打、血很多）
 #   挖墳（D6）：--at-dig（開場站在挖墳點旁邊）--exit-open（開場出口就打開）--ghost（畫面上方生一隻冤魂）
-#   --player-at=x,y（開場站在地圖座標 x, y，v0.32.0）
+#   --player-at=x,y（開場站在地圖座標 x, y，v0.32.0）--floor=N（開場直接換到第 N 層，地圖與 Boss 跟著換）
 #   畫面設定（2026-10-27）：--shadows=0 / --lights=0 蓋掉設定頁的陰影 / 光源（不存檔），內顯量效能時當對照組
 # 網頁版沒有指令列：網址的查詢參數轉成同樣的 --參數，只開放 WEB_URL_ARGS
 class_name LaunchArgs
 extends RefCounted
 
 # 網頁版可以從網址帶的參數（url_query_args）；v0.36.3 加自動移動 / 攻擊，用來量「第一次出現」的卡頓
-const WEB_URL_ARGS: Array[String] = ["seconds", "horde", "perf", "elites", "player-hp", "auto-move", "auto-move-seconds", "auto-attack", "weapon", "class", "difficulty", "no-spawn", "weapon-test", "items", "shadows", "lights", "host", "join", "room", "net-autostart", "loot-test"]   # loot-test：開箱與掉落卡頓的固定場景； host / join / room / net-autostart：網頁版多人自動測試、之後的邀請連結（2026-10-27 使用者同意開放；?host&room 開房印 net room=房號，?join=房號&room 加入）；shadows / lights：內顯量效能的對照組（2026-10-27）；weapon / class / no-spawn / weapon-test：網頁版逐把看武器（2026-10-27）；difficulty：選角畫面的難度；items：帶道具量效能（G7）
+const WEB_URL_ARGS: Array[String] = ["seconds", "horde", "perf", "elites", "player-hp", "auto-move", "auto-move-seconds", "auto-attack", "weapon", "class", "difficulty", "no-spawn", "weapon-test", "items", "shadows", "lights", "floor", "host", "join", "room", "net-autostart", "loot-test"]   # loot-test：開箱與掉落卡頓的固定場景； host / join / room / net-autostart：網頁版多人自動測試、之後的邀請連結（2026-10-27 使用者同意開放；?host&room 開房印 net room=房號，?join=房號&room 加入）；shadows / lights：內顯量效能的對照組（2026-10-27）；weapon / class / no-spawn / weapon-test：網頁版逐把看武器（2026-10-27）；difficulty：選角畫面的難度；items：帶道具量效能（G7）；floor：量第 2 層以後的地圖
 
 var run_seconds := 0.0           # > 0：跑這麼多秒後印出狀態並結束（自動驗證）
 var screenshot_path := ""
@@ -46,6 +46,7 @@ var loot_test := false
 var weapon_test := false        # 武器測試場景：不生怪群與波次，玩家旁邊擺木樁（DebugTools.setup_run）
 var at_dig := false
 var player_at := Vector2.INF
+var start_floor := 1
 var exit_open := false
 var ghost := false
 var perf := false
@@ -125,6 +126,8 @@ static func parse(args: PackedStringArray) -> LaunchArgs:
 			a.at_dig = true
 		elif arg.begins_with("--player-at="):
 			a.player_at = _vec2(value)
+		elif arg.begins_with("--floor="):
+			a.start_floor = maxi(1, value.to_int())
 		elif arg == "--exit-open":
 			a.exit_open = true
 		elif arg == "--ghost":

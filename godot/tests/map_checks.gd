@@ -144,8 +144,10 @@ static func check_may_rise() -> String:
 	var lo: float = Config.HEIGHT.step
 	var hi: float = Config.NAV.climb_height
 	var tested := 0
-	for map_id: StringName in [&"test_arena", &"graveyard_a"]:
+	for map_id: StringName in [&"test_arena", &"graveyard_a", &"catacomb_a"]:
 		var w := _new_world(12345, false, map_id)
+		if MapDefs.FLOOR_MAPS.values().has(map_id):
+			w.sync_floor(MapDefs.FLOOR_MAPS.find_key(map_id))   # reset 會回到第 1 層的地圖
 		var t := w.terrain
 		var froms: Array[float] = [0.0]
 		for b in t.blocks:
@@ -176,8 +178,21 @@ static func check_may_rise() -> String:
 	return ""
 
 
+# 每一層的地圖（MapDefs.FLOOR_MAPS）都照同一套規則：用 next_floor 走到那一層，跟遊戲裡一樣
 static func check_map_a() -> String:
+	for f: int in MapDefs.FLOOR_MAPS:
+		var err := _check_floor_map(f)
+		if err != "":
+			return "%s：%s" % [MapDefs.FLOOR_MAPS[f], err]
+	return ""
+
+
+static func _check_floor_map(floor_num: int) -> String:
 	var w := _new_world(12345, false, &"graveyard_a")
+	for i in floor_num - 1:
+		w.next_floor()
+	if w.map_id != MapDefs.FLOOR_MAPS[floor_num]:
+		return "第 %d 層應是這張地圖，實際 %s" % [floor_num, w.map_id]
 	var m := w.map
 	var half := w.half_extents
 	if m.size != half * 2.0:
@@ -221,7 +236,7 @@ static func check_map_a() -> String:
 		if b.kind == MapDefs.WALL and b.top - highest < Config.JUMP.height + 0.3:
 			return "牆 %.1f 只比最高的地面 %.1f 高 %.1f，跳得上去" % [b.top, highest, b.top - highest]
 	# 畫面：所有石台合併成一個網格，每個三角形都是正面（Godot：cross(b - a, c - a) 與法線反向）
-	var mi := ArenaView.create_blocks(w.terrain.blocks)
+	var mi := ArenaView.create_blocks(w.terrain.blocks, m.get("theme", &"graveyard"))
 	var arrays := (mi.mesh as ArrayMesh).surface_get_arrays(0)
 	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 	var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
@@ -231,7 +246,7 @@ static func check_map_a() -> String:
 	for i in range(0, verts.size(), 3):
 		if (verts[i + 1] - verts[i]).cross(verts[i + 2] - verts[i]).dot(normals[i]) >= 0.0:
 			return "石台網格第 %d 個三角形是背面" % (i / 3)
-	_note("地圖 A：可走格 %d / %d、牆 %d、墓碑 %d、高台 %d" % [walkable, nav.size.x * nav.size.y, counts.get(MapDefs.WALL, 0), counts.get(MapDefs.TOMB, 0), counts.get(MapDefs.PLATFORM, 0)])
+	_note("%s：可走格 %d / %d、牆 %d、墓碑 %d、高台 %d" % [w.map_id, walkable, nav.size.x * nav.size.y, counts.get(MapDefs.WALL, 0), counts.get(MapDefs.TOMB, 0), counts.get(MapDefs.PLATFORM, 0)])
 	return ""
 
 

@@ -469,7 +469,7 @@ static func apply_world(world: World, snap: Array) -> void:
 	world.boss_id = w[W_BOSS]
 	world.is_defeated = w[W_DEFEATED]
 	world.souls = w[W_SOULS]
-	world.floor_num = w[W_FLOOR]
+	world.sync_floor(w[W_FLOOR])
 	var ev: Array = w[W_EVENT]
 	world.event.state = ev[0]
 	world.event.progress = ev[1]

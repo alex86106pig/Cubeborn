@@ -1,5 +1,5 @@
 # 除錯與自動驗證用的操作（非正式系統；2026-10-25 從 main.gd 搬出來）：
-#   開場布置（--horde、--player-at、--at-dig、--exit-open、--ghost、--elites）、F3 移速 +50%、F4 放入下一個道具、F5 清空道具
+#   開場布置（--floor、--horde、--player-at、--at-dig、--exit-open、--ghost、--elites）、F3 移速 +50%、F4 放入下一個道具、F5 清空道具
 # 這些直接改模擬狀態、不經過 InputCmd，所以只在單機（或開局前的權威端）使用
 class_name DebugTools
 extends RefCounted
@@ -13,6 +13,8 @@ var _item_index := 0
 static func setup_run(world: World, me: Player, args: LaunchArgs) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5   # 固定位置，每次量測可以比較
+	for i in args.start_floor - 1:   # 走正式的換層：地圖、Boss、怪群、寶箱都換成那一層的；之後的布置都在新的一層
+		world.next_floor()
 	if args.player_at != Vector2.INF:   # 先移動玩家，--horde 才會生在新位置周圍
 		me.pos = MapDefs.to_world(world.map, args.player_at)
 		me.prev_pos = me.pos

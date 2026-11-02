@@ -2,7 +2,7 @@
 # 世界座標 = 地圖座標 − origin（地圖中央在世界原點）。畫面是等距視角，所以地圖在畫面上轉了 45°（菱形）
 # blocks：[x, y, 寬, 深, 頂面高度, 種類]（x, y 是左上角）；tomb_rows：[x, y, 欄數, 列數, 欄距, 列距]，每個墓碑 TOMB_SIZE、高 TOMB_TOP
 # 種類：&"wall" 牆 / 陵墓（跳不上去，怪物繞路）、&"tomb" 墓碑（擋箭、玩家跳得上去，怪物繞路）、&"platform" 可以站的高台（怪物會跳上去）
-# 草圖與還沒做的 B、C、D 三張在 mockups/graveyard_map.html
+# 草圖與還沒做的 B、C、D 三張在 mockups/graveyard_map.html；theme 決定畫面的外觀（ArenaView、Config.ENVIRONMENTS）
 class_name MapDefs
 
 const WALL := &"wall"
@@ -65,8 +65,72 @@ const MAPS := {
 		"forge_count": 1,   # 鍛造祭壇（Build 改版第 8 步）
 		"packs": true,   # 開場散放怪群（D5，defs/monster_rarity_defs.gd 的 PACKS）
 		"dig_event": true,   # 挖墳事件取代波次（D6，sim/dig_event.gd）
+		"theme": &"graveyard",
+	},
+	# 第 2 層 骸骨墓窟：3 × 3 個墓室，用 6 寬的走道連成一圈；中央主墓室（石棺 = 出口、Boss）只開北門與西門，出生室在南
+	# 墓室內側：西 / 中 / 東欄 x 2~27、37~59、69~94，北 / 中 / 南列 y 同；中間 10 寬的岩壁只在走道處開口
+	&"catacomb_a": {
+		"size": Vector2(96.0, 96.0),
+		"origin": Vector2(48.0, 48.0),
+		"spawn": Vector2(48.0, 88.0),
+		"dig": Vector2(48.0, 48.0),
+		"boss_room": [39.5, 39.5, 17.0, 17.0],   # 主墓室內側留 2.5 格
+		"spawn_rule": &"around_player",
+		"blocks": [
+			# 外圍
+			[0.0, 0.0, 96.0, 2.0, WALL_TOP, WALL], [0.0, 94.0, 96.0, 2.0, WALL_TOP, WALL],
+			[0.0, 0.0, 2.0, 96.0, WALL_TOP, WALL], [94.0, 0.0, 2.0, 96.0, WALL_TOP, WALL],
+			# 西欄與中欄之間的岩壁（開口 y 13~19、45~51 主墓室西門、77~83）
+			[27.0, 2.0, 10.0, 11.0, WALL_TOP, WALL], [27.0, 19.0, 10.0, 26.0, WALL_TOP, WALL],
+			[27.0, 51.0, 10.0, 26.0, WALL_TOP, WALL], [27.0, 83.0, 10.0, 11.0, WALL_TOP, WALL],
+			# 中欄與東欄之間（開口 y 13~19、77~83；主墓室沒有東門）
+			[59.0, 2.0, 10.0, 11.0, WALL_TOP, WALL], [59.0, 19.0, 10.0, 58.0, WALL_TOP, WALL], [59.0, 83.0, 10.0, 11.0, WALL_TOP, WALL],
+			# 北列與中列之間（開口 x 12~18、45~51 主墓室北門、78~84）
+			[2.0, 27.0, 10.0, 10.0, WALL_TOP, WALL], [18.0, 27.0, 9.0, 10.0, WALL_TOP, WALL],
+			[37.0, 27.0, 8.0, 10.0, WALL_TOP, WALL], [51.0, 27.0, 8.0, 10.0, WALL_TOP, WALL],
+			[69.0, 27.0, 9.0, 10.0, WALL_TOP, WALL], [84.0, 27.0, 10.0, 10.0, WALL_TOP, WALL],
+			# 中列與南列之間（開口 x 12~18、78~84；主墓室沒有南門）
+			[2.0, 59.0, 10.0, 10.0, WALL_TOP, WALL], [18.0, 59.0, 9.0, 10.0, WALL_TOP, WALL],
+			[37.0, 59.0, 22.0, 10.0, WALL_TOP, WALL],
+			[69.0, 59.0, 9.0, 10.0, WALL_TOP, WALL], [84.0, 59.0, 10.0, 10.0, WALL_TOP, WALL],
+			# 西北：骨堆高台（0.5 外圈、1.0 頂）
+			[7.0, 7.0, 14.0, 14.0, 0.5, PLATFORM], [10.0, 10.0, 8.0, 8.0, 1.0, PLATFORM],
+			# 北廳：祭壇台階
+			[42.0, 5.0, 12.0, 8.0, 0.5, PLATFORM], [45.0, 6.0, 6.0, 5.0, 1.0, PLATFORM],
+			# 東北：石柱廳
+			[75.0, 7.0, 2.0, 2.0, WALL_TOP, WALL], [87.0, 7.0, 2.0, 2.0, WALL_TOP, WALL], [81.0, 13.0, 2.0, 2.0, WALL_TOP, WALL],
+			[75.0, 20.0, 2.0, 2.0, WALL_TOP, WALL], [87.0, 20.0, 2.0, 2.0, WALL_TOP, WALL],
+			# 西：棺木台
+			[6.0, 41.0, 7.0, 3.0, 0.5, PLATFORM], [16.0, 41.0, 7.0, 3.0, 0.5, PLATFORM],
+			[6.0, 53.0, 7.0, 3.0, 0.5, PLATFORM], [16.0, 53.0, 7.0, 3.0, 0.5, PLATFORM],
+			# 主墓室四角的矮座（石棺在正中央，周圍留空）
+			[38.0, 38.0, 4.0, 4.0, 0.5, PLATFORM], [54.0, 38.0, 4.0, 4.0, 0.5, PLATFORM],
+			[38.0, 54.0, 4.0, 4.0, 0.5, PLATFORM], [54.0, 54.0, 4.0, 4.0, 0.5, PLATFORM],
+			# 出生室兩根石柱
+			[41.0, 73.0, 2.0, 2.0, WALL_TOP, WALL], [55.0, 73.0, 2.0, 2.0, WALL_TOP, WALL],
+			# 東南：小墓穴
+			[73.0, 74.0, 5.0, 4.0, WALL_TOP, WALL], [84.0, 74.0, 5.0, 4.0, WALL_TOP, WALL],
+			[73.0, 85.0, 5.0, 4.0, WALL_TOP, WALL], [84.0, 85.0, 5.0, 4.0, WALL_TOP, WALL],
+		],
+		# 東：壁龕列；西南：棺材列（用墓碑的尺寸，擋箭）
+		"tomb_rows": [[73.0, 41.0, 7, 4, 3.0, 4.5], [6.0, 73.0, 7, 5, 3.0, 4.0]],
+		"chest_count": {&"small": 12, &"big": 4},
+		"forge_count": 1,
+		"packs": true,
+		"dig_event": true,
+		"theme": &"catacomb",
 	},
 }
+
+# 每層的地圖：從這張表裡的地圖開局，換層就換成該層的；超過表的層數用最後一層的。不在表裡的地圖（測試場地）換層也不換
+const FLOOR_MAPS := {1: &"graveyard_a", 2: &"catacomb_a"}
+
+
+static func floor_map(map_id: StringName, floor_num: int) -> StringName:
+	if not FLOOR_MAPS.values().has(map_id):
+		return map_id
+	var last: int = FLOOR_MAPS.keys().max()
+	return FLOOR_MAPS[clampi(floor_num, 1, last)]
 
 
 static func get_map(id: StringName) -> Dictionary:

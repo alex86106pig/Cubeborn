@@ -40,7 +40,7 @@ var floor_num := 1
 var base_difficulty := 0.0
 var event := DigEvent.new()
 var hit_stop_timer := 0.0            # 剩餘的整體放慢（真實秒數），由主迴圈換算成時間縮放；v0.18.3 起只有打倒 Boss 時使用（一般命中改成畫面定格）
-# 地圖（D1，defs/map_defs.gd）：場地大小、地形、尋路格子、出生點；房主與客戶端用同一張（目前固定 Config.WORLD.default_map）
+# 地圖（D1，defs/map_defs.gd）：場地大小、地形、尋路格子、出生點；每層的地圖照 MapDefs.floor_map，客戶端看快照的層數換成同一張
 var map_id: StringName
 var map: Dictionary
 var half_extents := Vector2.ZERO     # 場地的一半大小（世界原點在中央）
@@ -83,12 +83,26 @@ func load_map(p_map_id: StringName) -> void:
 	event.point = MapDefs.to_world(map, map.dig)   # 客戶端不跑 reset，挖墳點在這裡就設好（本機預測要判斷挖不挖得到）
 
 
+# 換成這一層的地圖（MapDefs.floor_map）；已經是同一張就不重建尋路格子
+func _load_floor_map(p_floor: int) -> void:
+	var id := MapDefs.floor_map(map_id, p_floor)
+	if id != map_id:
+		load_map(id)
+
+
+# 客戶端：快照的層數變了，換成同一張地圖（地圖只由層數決定，不另外同步）
+func sync_floor(p_floor: int) -> void:
+	floor_num = p_floor
+	_load_floor_map(p_floor)
+
+
 func nav_for(radius: float) -> Nav:
 	return nav_large if radius > Config.NAV.large_radius else nav
 
 
 func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 	clear()
+	_load_floor_map(1)
 	tick = 0
 	rng.seed = seed_value
 	coin_rng.seed = hash([seed_value, &"coin"])
@@ -198,6 +212,7 @@ func next_floor() -> void:
 	packs.clear()
 	delayed.clear()
 	boss_id = 0
+	_load_floor_map(floor_num)
 	for p in player_list:
 		p.arrive_floor(spawn_point, terrain.ground_at(spawn_point))
 	_populate_floor()
@@ -226,14 +241,15 @@ func corpse_carrier(peer_id: int) -> Dictionary:
 	return {}
 
 
-# 冤魂：出生點附近 GHOST.distance 內、走得到的地方
+# 冤魂：出生點附近 GHOST.distance 內、走得到的地方（抽到牆裡時就近找的空地也要在範圍內：出生的房間小時會更近）
 func _spawn_ghost(dead: Player) -> void:
 	var g: Dictionary = EventDefs.GHOST
 	var at := spawn_point
-	for attempt in 20:
+	for attempt in 40:
 		var a := rng.randf() * TAU
 		var c := nav.nearest_walkable(spawn_point + Vector2(sin(a), cos(a)) * rng.randf_range(g.distance[0], g.distance[1]))
-		if nav.is_walkable(c) and nav.same_region(c, spawn_point):
+		var d := c.distance_to(spawn_point)
+		if nav.is_walkable(c) and nav.same_region(c, spawn_point) and d >= g.distance[0] - 0.5 and d <= g.distance[1] + 0.5:
 			at = c
 			break
 	var ghost := spawner.spawn_at(self, &"ghost", at)

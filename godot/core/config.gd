@@ -70,6 +70,21 @@ const ENVIRONMENT := {
 	"hemi_sky": Color("8a9aba"),
 	"hemi_ground": Color("2a2420"),
 	"sun_color": Color("b8ceff"),
+	"ambient_energy": 0.9,
+	"sun_energy": 1.2,
+}
+
+# 每種地圖主題（MapDefs 的 theme）的環境光；graveyard = 地面的墓園（選角畫面也用），catacomb = 地下墓窟：偏暖、比較暗
+const ENVIRONMENTS := {
+	&"graveyard": ENVIRONMENT,
+	&"catacomb": {
+		"background": Color("07080b"),
+		"hemi_sky": Color("7a7280"),
+		"hemi_ground": Color("261d16"),
+		"sun_color": Color("ffd2a0"),
+		"ambient_energy": 0.75,
+		"sun_energy": 0.95,
+	},
 }
 
 # 音量（0~1，照網頁版 AUDIO）：實際音量 = master × 分類音量

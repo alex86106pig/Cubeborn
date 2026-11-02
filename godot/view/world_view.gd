@@ -95,6 +95,7 @@ var profile_usec: Dictionary = {}
 var _world: World
 var _vision_overlay := _create_vision_overlay()
 var _sun: DirectionalLight3D
+var _env: Environment
 var lights_on := true                  # 設定頁「光源」：關掉時新建的點光源也不亮
 
 
@@ -172,25 +173,32 @@ func _point_lights() -> Array[Node]:
 
 func _setup_environment() -> void:
 	var env := Environment.new()
+	_env = env
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Config.ENVIRONMENT.background
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Config.ENVIRONMENT.hemi_sky.lerp(Config.ENVIRONMENT.hemi_ground, 0.35)
-	env.ambient_light_energy = 0.9
 	var world_env := WorldEnvironment.new()
 	world_env.environment = env
 	add_child(world_env)
 
 	var sun := DirectionalLight3D.new()
 	_sun = sun
-	sun.light_color = Config.ENVIRONMENT.sun_color
-	sun.light_energy = 1.2
 	sun.shadow_enabled = true
 	# 正交等距相機看得到的深度範圍很固定，一張陰影圖就夠（預設分 4 層，每個投影物要畫 4 次；D5 效能）
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 	sun.directional_shadow_max_distance = SHADOW_MAX_DISTANCE
 	add_child(sun)
 	sun.look_at_from_position(Vector3(-10.0, 22.0, 8.0), Vector3.ZERO)
+	apply_theme(&"graveyard")
+
+
+# 地圖主題（MapDefs 的 theme）的背景、環境光與太陽：換層換地圖時 main.gd 呼叫
+func apply_theme(theme: StringName) -> void:
+	var c: Dictionary = Config.ENVIRONMENTS.get(theme, Config.ENVIRONMENT)
+	_env.background_color = c.background
+	_env.ambient_light_color = (c.hemi_sky as Color).lerp(c.hemi_ground, 0.35)
+	_env.ambient_light_energy = c.ambient_energy
+	_sun.light_color = c.sun_color
+	_sun.light_energy = c.sun_energy
 
 
 # alpha：上一步到這一步之間的補間比例（0~1）；dt：渲染幀秒數（動畫用）
