@@ -12,7 +12,7 @@ const STACK_MAX := 4          # 最多疊幾層，再多就換到旁邊一欄（
 const STACK_SIDE := 0.8       # 換欄時往左右移幾個世界單位（左右輪流）
 # 角色頭頂高度（view/rig.gd 的關節高度）
 const HEIGHTS := {
-	&"player": 2.1, &"grunt": 1.95, &"archer": 1.95, &"zombie": 1.85, &"bloater": 1.8, &"hound": 1.0, &"beetle": 0.5, &"bone_wheel": 1.4, &"spearman": 1.95, &"boss": 2.1 * 1.85, &"bone_general": 2.1 * 1.85, &"gravekeeper": 2.1 * 1.3,
+	&"player": 2.1, &"grunt": 1.95, &"archer": 1.95, &"zombie": 1.85, &"bloater": 1.8, &"hound": 1.0, &"spider": 0.9, &"beetle": 0.5, &"bone_wheel": 1.4, &"spearman": 1.95, &"boss": 2.1 * 1.85, &"bone_general": 2.1 * 1.85, &"gravekeeper": 2.1 * 1.3,
 }
 const STYLES := {
 	&"dmg": [20, Color.WHITE],

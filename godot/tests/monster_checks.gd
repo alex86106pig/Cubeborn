@@ -303,6 +303,56 @@ static func check_beetle() -> String:
 	return ""
 
 
+# 墓穴蜘蛛：吐蛛絲彈，打中玩家纏住 web.root 秒；被盾擋下在落點結網；站在網上移速 × web.slow；火焰傷害打到網上燒掉
+static func check_spider() -> String:
+	var wd: Dictionary = EnemyDefs.ENEMIES.spider.web
+	for mode: StringName in [&"stand", &"block"]:
+		var w := _world()
+		var p: Player = w.players[World.HOST_PEER_ID]
+		p.pos = Vector2.ZERO
+		p.stats.set_base(&"max_hp", 9999.0)
+		p.hp = p.max_hp
+		var s := w.spawner.spawn_at(w, &"spider", Vector2(0, 6.5))
+		s.fsm.change(&"kite")
+		var webbed := false
+		var webs := 0
+		for i in 360:
+			var cmd := InputCmd.new()
+			cmd.aim = Vector2(0, 5)
+			if mode == &"block":
+				cmd.buttons = InputCmd.BTN_SPECIAL_HELD
+			p.pos = Vector2.ZERO
+			w.step({World.HOST_PEER_ID: cmd}, DT)
+			for ev in w.events:
+				if ev.name == "fx:webbed" and ev.player_id == p.id:
+					webbed = true
+				if ev.name == "fx:web":
+					webs += 1
+			if webbed or webs > 0:
+				break
+		if mode == &"stand" and (not webbed or p.stun_timer <= 0.0):
+			return "墓穴蜘蛛：站著應被蛛絲彈纏住（纏住 %s、暈眩 %.2f）" % [webbed, p.stun_timer]
+		if mode == &"block":
+			if webbed or webs != 1:
+				return "墓穴蜘蛛：舉盾擋下應結一張網、不被纏住（纏住 %s、網 %d）" % [webbed, webs]
+			var z: Dictionary = w.zones.filter(func(z: Dictionary) -> bool: return z.has("web_id"))[0]
+			p.stun_timer = 0.0
+			p.pos = z.pos
+			p.buffs.erase(&"web")   # 網結在盾前面、玩家可能已經站在網上：先拿掉再量原本的移速
+			p.remove_stat_source(&"web")
+			var v0 := p.stats.value(&"move_speed")
+			for i in 40:
+				p.pos = z.pos
+				w.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+			if absf(p.stats.value(&"move_speed") - v0 * wd.slow) > 0.01:
+				return "墓穴蜘蛛：站在網上移速應 × %.1f（%.2f → %.2f）" % [wd.slow, v0, p.stats.value(&"move_speed")]
+			var dummy := w.spawner.spawn_at(w, &"grunt", z.pos + Vector2(0.5, 0))
+			Combat.apply_damage(w, p, dummy, {"damage": 1.0, "knockback": 0.0, "damage_type": &"fire"})
+			if w.zones.any(func(o: Dictionary) -> bool: return o.has("web_id")):
+				return "墓穴蜘蛛：火焰傷害打在網上應燒掉"
+	return ""
+
+
 static func check_zombie() -> String:
 	var l: Dictionary = EnemyDefs.ENEMIES.zombie.lunge
 	var bites := roundi(l.grab_time / l.bite_interval)
@@ -954,7 +1004,7 @@ static func check_packs() -> String:
 
 # 蒙皮小怪（D5 效能）：骷髏戰士 / 弓手每隻 ≤ 2 個網格、三角形數與原本的零件相同；關節寫進骨架
 static func check_skinned_rig() -> String:
-	for kind: StringName in [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"spearman", &"bone_wheel", &"beetle"]:
+	for kind: StringName in [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"spearman", &"bone_wheel", &"beetle", &"spider"]:
 		var old := DarkFantasy.character(kind)
 		var rig := DarkFantasy.skinned_character(kind)
 		var before := 0

@@ -259,6 +259,8 @@ godot/
 | `fx:spike_warn` | `{ pos, height, facing, lines, start, length, life }` | 萬骨聚合體骨刺陣的預兆：地面沿 lines 個方向隆起 |
 | `fx:bone_spike` | `{ pos, height }` | 一根骨刺竄出 |
 | `fx:burrow_warn` / `fx:burrow_out` | `{ pos, height, life? }` | 屍甲蟲停在腳下準備冒出（土塊跳動）/ 冒出來 |
+| `fx:web` / `fx:web_burned` | `{ web_id, pos, height, radius?, life? }` | 蜘蛛網結成（地上的白網，life 秒）/ 被火燒掉 |
+| `fx:webbed` | `{ player_id, pos, height, life }` | 玩家被蛛絲彈纏住 |
 | `fx:sweep` | `{ pos, height, radius, low }` | 萬骨聚合體多臂橫掃（低掃 / 高掃）的弧光 |
 | `fx:lightning` | `{ pos, height, points, color }` | 道具連鎖閃電（v0.33.0）：points 依序連成的閃電線 |
 | `fx:status` | `{ pos, height, color }` | 道具讓怪中毒 / 冰凍（v0.33.0）：一小團該顏色的粒子 |

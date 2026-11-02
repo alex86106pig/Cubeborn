@@ -11,6 +11,7 @@ const TICK_INTERVAL := 0.5
 # 選填 hits_all：玩家與怪都受傷（不分隊伍，不含自己）；visual：&"gas" = 畫成一團煙（不畫圈）、&"fire" = 一團火
 # 選填 smoke：煙霧彈（第 7 步），站在裡面的玩家閃避 + smoke、裡面的怪打人一半打偏（Enemy.blind_timer）
 # 選填 burn_per_sec：站在上面的怪每秒加幾層燃燒（火油罐的殘火，算放的玩家、照他的火焰羈絆，BondEffects.add_burn）
+# 選填 web_slow：蜘蛛網（add_web），站在上面的玩家移速 × web_slow；被火焰傷害打到燒掉（burn_webs）
 static func add(world: World, zone: Dictionary) -> void:
 	var z := zone.duplicate()
 	z.remaining = zone.duration
@@ -28,6 +29,26 @@ static func add(world: World, zone: Dictionary) -> void:
 		world.emit_event("fx:telegraph", at)
 
 
+# 蜘蛛網：落點 pos、web（EnemyDefs.spider.web 的 radius / time / slow）；畫面靠 fx:web（web_id 讓燒掉時找得到那張網）
+static func add_web(world: World, pos: Vector2, web: Dictionary, owner_id: int) -> void:
+	if not world.is_authority:
+		return
+	var at := world.nav.nearest_walkable(pos)
+	world.web_count += 1
+	world.zones.append({"pos": at, "radius": web.radius, "duration": web.time, "remaining": web.time, "tick_timer": 0.0, "burn_carry": 0.0,
+		"owner_id": owner_id, "web_slow": web.slow, "web_id": world.web_count, "color": Color.WHITE})
+	world.emit_event("fx:web", {"web_id": world.web_count, "pos": at, "height": world.terrain.ground_at(at), "radius": web.radius, "life": web.time})
+
+
+# 火焰傷害打在 at 附近（reach 內碰到網）：網燒掉
+static func burn_webs(world: World, at: Vector2, reach: float) -> void:
+	for i in range(world.zones.size() - 1, -1, -1):
+		var z: Dictionary = world.zones[i]
+		if z.has("web_id") and z.pos.distance_to(at) <= z.radius + reach:
+			world.emit_event("fx:web_burned", {"web_id": z.web_id, "pos": z.pos, "height": world.terrain.ground_at(z.pos)})
+			world.zones.remove_at(i)
+
+
 static func update(world: World, dt: float) -> void:
 	for i in range(world.zones.size() - 1, -1, -1):
 		var z: Dictionary = world.zones[i]
@@ -42,6 +63,10 @@ static func update(world: World, dt: float) -> void:
 
 static func _tick(world: World, z: Dictionary) -> void:
 	var owner: Entity = world.entities.get(z.owner_id)
+	if z.has("web_slow"):
+		for p in world.player_list:
+			if not p.is_dead and p.pos.distance_to(z.pos) <= z.radius + p.radius:
+				p.add_buff(&"web", TICK_INTERVAL * 2.0, {"stats": [[&"move_speed", Stats.MUL, z.web_slow]]})
 	if z.get("smoke", 0.0) > 0.0:
 		for p in world.player_list:
 			if not p.is_dead and p.pos.distance_to(z.pos) <= z.radius + p.radius:

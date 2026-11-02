@@ -59,6 +59,11 @@ const BEETLE_JOINTS := {
 	"neck": 0.22, "neck_z": 0.28, "shoulder_y": 0.18, "shoulder_x": 0.16, "shoulder_z": 0.15, "grip": 0.2,
 	"hip_y": 0.18, "hip_x": 0.16, "hip_z": -0.15, "height": 0.45,
 }
+# 墓穴蜘蛛：前腳（arm）往前、後腳（leg）往後，中間兩對腳是身體上的固定零件；腹部在後面
+const SPIDER_JOINTS := {
+	"neck": 0.42, "neck_z": 0.32, "shoulder_y": 0.38, "shoulder_x": 0.2, "shoulder_z": 0.22, "grip": 0.4,
+	"hip_y": 0.38, "hip_x": 0.2, "hip_z": -0.15, "height": 0.9,
+}
 const BOSS_SCALE := 1.85
 const KEEPER_SCALE := 1.3
 const WOLF_SCALE := 1.45
@@ -93,6 +98,8 @@ static func character(kind: StringName) -> Rig:
 			rig = bloater()
 		&"hound":
 			rig = hound()
+		&"spider":
+			rig = spider()
 		&"beetle":
 			rig = beetle()
 		&"bone_wheel":
@@ -295,6 +302,30 @@ static func beetle() -> Rig:
 		k.add(rig.head, PartKit.sphere(0.018, 4, 3), k.mat(C.rot_eye, true), {"x": s * 0.05, "y": 0.04, "z": 0.08, "shadow": false})
 	for leg in [rig.arm_r, rig.arm_l, rig.leg_r, rig.leg_l]:
 		k.add(leg, PartKit.cyl(0.018, 0.012, 0.22, 4), under, {"y": -0.1})
+	return rig.optimize()
+
+
+# 墓穴蜘蛛：灰黑的大腹部（背上骨白的花紋）、小頭胸部、一排 6 顆紅眼、8 隻細長的腳
+static func spider() -> Rig:
+	var rig := Rig.new(SPIDER_JOINTS)
+	var k := rig.kit
+	var hide := k.mat(Color("2c2830"))
+	var leg := k.mat(Color("3a3440"))
+	k.add(rig.body, PartKit.sphere(0.34, 8, 6), hide, {"y": 0.48, "z": -0.38, "sy": 0.85, "sz": 1.15})   # 腹部
+	k.add(rig.body, PartKit.box(0.14, 0.04, 0.3), k.mat(C.bone_dark), {"y": 0.77, "z": -0.38})
+	k.add(rig.body, PartKit.sphere(0.2, 7, 5), hide, {"y": 0.4, "z": 0.08, "sy": 0.7})                      # 頭胸部
+	for s in [-1.0, 1.0]:
+		for z in [0.12, -0.05]:   # 中間兩對腳：往外伸再往下
+			k.add(rig.body, PartKit.cyl(0.022, 0.016, 0.55, 4), leg, {"x": s * 0.32, "y": 0.42, "z": z, "rz": s * 1.15})
+			k.add(rig.body, PartKit.cyl(0.016, 0.01, 0.45, 4), leg, {"x": s * 0.58, "y": 0.2, "z": z, "rz": -s * 0.35})
+	k.add(rig.head, PartKit.sphere(0.11, 6, 4), hide, {"sy": 0.8})
+	for i in 6:
+		var x := (i % 3 - 1) * 0.045
+		k.add(rig.head, PartKit.sphere(0.02, 4, 3), k.mat(C.eye_red, true), {"x": x, "y": 0.04 + (i / 3) * 0.035, "z": 0.1, "shadow": false})
+	for s in [-1.0, 1.0]:
+		k.add(rig.head, PartKit.cone(0.025, 0.12, 4), k.mat(C.bone_dark), {"x": s * 0.04, "y": -0.06, "z": 0.08, "rx": PI * 0.8})
+	for limb in [rig.arm_r, rig.arm_l, rig.leg_r, rig.leg_l]:
+		k.add(limb, PartKit.cyl(0.022, 0.012, 0.42, 4), leg, {"y": -0.2})
 	return rig.optimize()
 
 

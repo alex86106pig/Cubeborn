@@ -5,6 +5,9 @@ class_name Combat
 # team 的敵對陣營中仍存活的實體；倒地的玩家不會被當成目標
 # 誤傷（Config.NET.friendly_fire）：玩家的攻擊也會打到其他玩家，但不會打到出招者自己（source_id）
 # 骷髏僕從（G6）在 world.enemies 裡但隊伍是玩家方：玩家打不到它、它不打玩家；怪的攻擊打得到它
+const WEB_BURN_REACH := 0.5   # 火焰傷害打在離蜘蛛網邊緣這麼近也燒得掉
+
+
 static func hostiles_of(world: World, team: StringName, source_id: int = 0) -> Array[Entity]:
 	var out: Array[Entity] = []
 	for e in (world.enemies if team == &"player" else world.allies):
@@ -141,6 +144,8 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 		knockback = 0.0   # 被鐵鏟埋著（F9）：打得到，但不會被擊退、不硬直（2026-10-27 使用者）
 	target.suppress_stagger = hit.get("no_stagger", false) or buried   # 遠程武器的普攻不讓怪物進入受擊硬直（v0.27.0）
 	var dealt := target.take_damage(damage, dir, knockback, source.id, hit.get("damage_type", &"phys"))
+	if hit.get("damage_type", &"phys") == &"fire" and not world.zones.is_empty():
+		GroundZones.burn_webs(world, target.pos, WEB_BURN_REACH)   # 火焰打到的地方，旁邊的蜘蛛網燒掉
 	target.suppress_stagger = false
 	if dealt < 0:
 		return false

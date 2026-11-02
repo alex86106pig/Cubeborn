@@ -951,7 +951,7 @@ func _create_view(e: Entity) -> Node3D:
 			glow.visible = false
 			rig.hand_r.add_child(glow)
 			root.set_meta(&"glow", glow)
-		&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"gravekeeper", &"boss", &"ghost", &"minion", &"spearman", &"bone_wheel", &"bone_general", &"beetle":
+		&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"gravekeeper", &"boss", &"ghost", &"minion", &"spearman", &"bone_wheel", &"bone_general", &"beetle", &"spider":
 			# 小怪用蒙皮版本（D5 效能：每隻 1~2 次繪製）；Boss 只有一隻，照舊用關節節點
 			# 冤魂（D6）：半透明的騎士（玩家的模型，不拿武器）
 			var rig: Node3D

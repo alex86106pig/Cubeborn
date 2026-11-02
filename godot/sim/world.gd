@@ -41,6 +41,7 @@ var base_difficulty := 0.0
 var event := DigEvent.new()
 var hit_stop_timer := 0.0            # 剩餘的整體放慢（真實秒數），由主迴圈換算成時間縮放；v0.18.3 起只有打倒 Boss 時使用（一般命中改成畫面定格）
 # 地圖（D1，defs/map_defs.gd）：場地大小、地形、尋路格子、出生點；每層的地圖照 MapDefs.floor_map，客戶端看快照的層數換成同一張
+var web_count := 0   # 蜘蛛網的編號（GroundZones.add_web；畫面燒掉時用來找網）
 var map_id: StringName
 var map: Dictionary
 var half_extents := Vector2.ZERO     # 場地的一半大小（世界原點在中央）

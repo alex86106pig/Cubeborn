@@ -23,6 +23,7 @@ var _pierced := {}
 var damage_type := &"phys"     # StatDefs.DAMAGE_TYPES：決定看目標的護甲與哪一種抗性
 var no_stagger := false         # 打中不會讓怪物進入受擊硬直（v0.27.0：遠程武器的普攻）
 var explosion: Dictionary = {}  # { radius, damage, knockback, hit_stop, shake }；空 = 一般投射物
+var web: Dictionary = {}        # 蜘蛛的蛛絲彈（EnemyDefs.spider.web）：打中玩家纏住 root 秒；沒打中就在落點結網（GroundZones.add_web）
 var traveled := 0.0
 var start_altitude := 0.0       # 發射時的飛行高度（height 是目前的飛行高度）
 var settle_altitude := 0.0      # 離地高度目標（settle_distance > 0 時才用）
@@ -51,6 +52,7 @@ func _init(p_world: World, p: Dictionary) -> void:
 	hit_stop = p.get("hit_stop", 0.0)
 	shake = p.get("shake", 0.0)
 	explosion = p.get("explosion", {})
+	web = p.get("web", {})
 	blockable = p.get("blockable", true)
 	no_stagger = p.get("no_stagger", false)
 	damage_type = p.get("damage_type", &"phys")
@@ -139,6 +141,12 @@ func _source() -> Entity:
 func _on_hit(target: Entity) -> void:
 	if not explosion.is_empty():
 		_explode()
+	elif not web.is_empty():
+		if _hit_once(target) and target is Player and not target.is_dead:
+			(target as Player).stun(web.root)
+			world.emit_event("fx:webbed", {"player_id": target.id, "pos": target.pos, "height": target.height, "life": web.root})
+		else:
+			GroundZones.add_web(world, pos, web, owner_id)   # 被盾擋下：網落在盾前面
 	elif not _hit_once(target):
 		_fizzle()
 	if not skill_fx.is_empty():
@@ -158,6 +166,8 @@ func _hit_once(target: Entity) -> bool:
 func _expire() -> void:
 	if not explosion.is_empty():
 		_explode()
+	elif not web.is_empty():
+		GroundZones.add_web(world, pos, web, owner_id)
 	else:
 		_fizzle()
 	if not skill_fx.is_empty():

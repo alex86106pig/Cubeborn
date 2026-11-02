@@ -41,6 +41,9 @@ const HANDLERS := {
 	"enemy:crashed": &"_on_enemy_crashed",
 	"fx:spike_warn": &"_fx_spike_warn",
 	"fx:burrow_warn": &"_fx_burrow_warn",
+	"fx:web": &"_fx_web",
+	"fx:web_burned": &"_fx_web_burned",
+	"fx:webbed": &"_fx_webbed",
 	"fx:burrow_out": &"_fx_burrow_out",
 	"fx:bone_spike": &"_fx_bone_spike",
 	"fx:sweep": &"_fx_sweep",
@@ -53,6 +56,7 @@ const LIGHTNING_LIFE := 0.22
 
 const DUST_COLOR := Color("6b4f2e")         # 骷髏爬出的泥土
 const SHIELD_SPARK := Color("ffd890")       # 怪物舉盾擋下的火花
+const WEB_COLOR := Color("e8e4dc")          # 蜘蛛網、蛛絲
 const CHARGE_DUST_COLOR := Color("8a7a5a")  # Boss 衝鋒揚塵、砸地碎石
 const WALL_DEBRIS_COLOR := Color("9a9a9a")
 const SLAM_RING_COLOR := Color("9a8a6a")
@@ -70,6 +74,7 @@ const KEEPER_COAT := Color("4a3a2a")        # 撐破的外套碎片
 const ERUPT_HANDS := 4
 const ERUPT_HANDS_FROM := 0.45              # 墳土隆起到這個進度才冒出白骨手
 
+var _burned_webs := {}   # 燒掉的蜘蛛網 web_id（網的零件在自己的 transient 裡看這個藏起來）
 var world: World                  # 由 sync 設定；事件處理時用來查實體位置
 var paused := false               # 遊戲暫停時粒子停住、不產生新的持續性粒子
 var spawned_total := 0            # 累計產生過的粒子數（檢查用）
@@ -277,6 +282,56 @@ func _fx_spike_warn(p: Dictionary) -> void:
 		node.rotation.y = a
 		_add_transient(node, life, func(k: float) -> void:
 			node.scale = Vector3(1.0, 0.1 + 0.9 * MathUtil.ease_out_cubic(k) + 0.1 * sin(k * 50.0), 1.0))
+
+
+# 蜘蛛網：地上一張半透明的白網（輻射的絲 + 兩圈），time 秒後淡掉；燒掉時（fx:web_burned）提早藏起來
+func _fx_web(p: Dictionary) -> void:
+	var at := _at(p, 0.04)
+	var radius: float = p.radius
+	var life: float = p.life
+	var key := "web|%.2f" % radius
+	if not _slash_meshes.has(key):
+		var strand := BoxMesh.new()
+		strand.size = Vector3(0.04, 0.01, radius * 2.0)
+		_slash_meshes[key] = strand
+		var ring := TorusMesh.new()
+		ring.inner_radius = radius * 0.96
+		ring.outer_radius = radius
+		_slash_meshes[key + "|ring"] = ring
+		var ring2 := TorusMesh.new()
+		ring2.inner_radius = radius * 0.5
+		ring2.outer_radius = radius * 0.53
+		_slash_meshes[key + "|ring2"] = ring2
+	var parts: Array[MeshInstance3D] = []
+	for i in 4:
+		var s := _transient_mesh(_slash_meshes[key], WEB_COLOR, 0.7)
+		s.position = at
+		s.rotation.y = PI * i / 4.0
+		parts.append(s)
+	for r in ["|ring", "|ring2"]:
+		var n := _transient_mesh(_slash_meshes[key + r], WEB_COLOR, 0.6)
+		n.position = at
+		n.scale.y = 0.05
+		parts.append(n)
+	for n in parts:
+		_add_transient(n, life, func(k: float) -> void:
+			if _burned_webs.has(p.web_id):
+				n.visible = false
+			_set_alpha(n, 0.65 * minf(1.0, (1.0 - k) * 4.0)))
+
+
+func _fx_web_burned(p: Dictionary) -> void:
+	_burned_webs[p.web_id] = true
+	var at := _at(p, 0.1)
+	burst(at, {"color": Color("ff8a30"), "count": 14, "speed": 2.5, "up": 3.0, "size": 0.16, "life": 0.5})
+	burst(at, {"color": Color("ffe070"), "count": 8, "speed": 1.5, "up": 4.0, "size": 0.1, "life": 0.4})
+
+
+# 玩家被蛛絲纏住：白色的絲往身上收
+func _fx_webbed(p: Dictionary) -> void:
+	var at := _at(p, 1.0)
+	burst(at, {"color": WEB_COLOR, "count": 12, "speed": 2.0, "up": 1.0, "size": 0.12, "life": 0.4})
+	ring(_at(p, 0.6), 0.7, {"color": WEB_COLOR, "life": p.life, "opacity": 0.6})
 
 
 # 屍甲蟲停在腳下準備冒出：一小塊土一直跳（不畫圈）

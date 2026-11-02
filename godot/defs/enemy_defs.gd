@@ -134,6 +134,43 @@ const ENEMIES := {
 		},
 	},
 
+	# 墓穴蜘蛛（第 3 層的怪，第 2 層的石棺噴出來，數值 Claude 暫定）：同弓手保持距離，吐蛛絲彈纏住玩家、沒中結成蛛網（sim/enemies/spider.gd）
+	&"spider": {
+		"name": "墓穴蜘蛛",
+		"resists": {&"fire": -0.5, &"poison": 0.5},
+		"visual": &"spider",
+		"behavior": &"spider",
+		"max_hp": 28.0,
+		"move_speed": 3.2,
+		"speed_variance": 0.15,
+		"turn_speed": 7.0,
+		"radius": 0.5,
+		"mass": 1.0,
+		"hurt_time": 0.22,
+		"spawn_time": 0.6,
+		"corpse_time": 1.2,
+		"preferred_range": [5.0, 8.0],
+		"fire_reach": 2.0,
+		"strafe_time": [1.0, 2.2],
+		"strafe_speed_mul": 0.7,
+		"aim_time": 0.6,                  # 前腳抬起、腹部翹起
+		"aim_track": 0.7,
+		"aim_turn_mul": 1.5,
+		"first_fire_delay": [0.8, 1.6],
+		"fire_interval": 3.0,
+		"fire_interval_jitter": [0.8, 1.25],
+		"projectile_speed": 8.0,
+		"projectile_damage": 4.0,
+		"projectile_radius": 0.3,
+		"projectile_range": 12.0,
+		"projectile_knockback": 0.0,
+		"projectile_offset": 0.6,
+		"projectile_color": Color("e8e4dc"),
+		"projectile_blockable": true,
+		# 蛛絲彈：打中纏住 root 秒；沒中在落點結成半徑 radius 的蛛網 time 秒，站在上面移速 × slow，火燒得掉
+		"web": {"root": 1.2, "radius": 1.5, "time": 8.0, "slow": 0.5, "overshoot": 1.5},
+	},
+
 	&"archer": {
 		"resists": {&"holy": -0.25, &"poison": 0.5},
 		"visual": &"ranged",
@@ -492,7 +529,7 @@ const ENEMIES := {
 const FLOOR_MIX := {
 	1: {&"zombie": 0.7, &"hound": 0.2, &"bloater": 0.1},
 	2: {&"grunt": 0.5, &"archer": 0.25, &"spearman": 0.125, &"bone_wheel": 0.125},
-	3: {&"beetle": 1.0},
+	3: {&"beetle": 0.71, &"spider": 0.29},   # 圖鑑 50 : 20（蟲巢還沒做）
 }
 const UPPER_SHARE := 0.2
 
