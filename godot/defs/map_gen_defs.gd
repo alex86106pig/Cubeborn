@@ -10,7 +10,7 @@ const EAT_MAX := 5           # 不規則邊緣：每塊從邊界往內吃 1 ~ EA
 const NOISE_SCALE := 9       # 吃邊雜訊的格點間距
 const ATTEMPTS := 30         # 產生失敗（拼不下、走不到）重來幾次
 const FALLBACK_MAP := &"graveyard_a"   # ATTEMPTS 次都失敗時改用的固定地圖
-const START_STAGE := 5       # 一層從第幾小關開始（小關流程做好前先用有王族墓的 1-5）
+const START_STAGE := 1       # 一層從第幾小關開始
 
 # 每個小關：main 主線塊數範圍（不含王族墓）、branch 長出支線的機率（%）、doors 出口幾扇門、anvil 起點旁有鐵砧、boss 最後是王族墓
 const STAGES := {
@@ -48,6 +48,15 @@ const DOOR_OFFSETS_TWO: Array[int] = [10, 22]   # 兩扇門在那一格外緣上
 const DOOR_REACH := 3.0      # 門前站的位置往內縮多少（走道接到這裡，檢查走不走得到也看這點）
 # 兩扇門時各抽一種下一關的獎勵（不重複）；一扇門的關卡下一關固定有鐵砧，門上不抽獎勵
 const DOOR_REWARDS: Array[StringName] = [&"relic", &"skill", &"souls", &"dice"]
+# 門上的獎勵（走進門、下一關開始時給）：relic 遺物（石棺的稀有度機率）、skill 技能遺物（同石棺）放在出生點旁 REWARD_DROP，
+# souls 全隊共用的靈魂、dice 每人的骰子；數字 Claude 暫定
+const REWARDS := {
+	&"relic": {"name": "遺物"},
+	&"skill": {"name": "技能"},
+	&"souls": {"name": "靈魂", "amount": 60},
+	&"dice": {"name": "骰子", "amount": 2},
+}
+const REWARD_DROP := Vector2(0.0, -3.0)
 
 # 擺放：怪群（每塊 2~4 群、支線 1~2 群，一群 6~10 隻）、小寶箱（打怪的塊 0~2 個）
 const PACKS := {"per_region": [2, 4], "per_branch": [1, 2], "size": [6, 10], "min_start": 16, "min_gap": 9, "margin": 4, "attempts": 60}

@@ -3,6 +3,9 @@
 # 骰子（Player.dice）用掉 1 顆把全部選項重擲。每人只能選一次，在場的玩家都選過才消失
 # 選項存在遺物上（offers），快照照送，客戶端的面板直接讀；選、重骰、關掉走背包操作（InputCmd.OP_RELIC_*），只在權威端執行
 # 技能遺物（relic_kind &"skill"，第 7 步）：選項從全部技能抽（SkillDefs.relic_pool，沒有稀有度），其中 1 個保證是手上武器能用、還沒滿級的；選到身上已經有的技能就升 1 級（Player.skill_levels）
+# 鐵砧（relic_kind &"anvil"，地圖改版第 4 步）：小關起點旁的固定設施，每人用一次、用完不消失：第一步主手武器升一個稀有度、
+# 從 N 條新詞條選 1（WeaponDropDefs.roll_affixes，不跟現有的重複）；第二步從這把武器的技能選 1（同技能遺物：已經有就升 1 級）。
+# 主手沒有武器、已經傳說、抽不到新詞條就直接到第二步
 class_name Relic
 extends Entity
 
@@ -10,6 +13,7 @@ var relic_kind: StringName = &"item"
 var tier: StringName = &"small"
 var offers := {}   # peer id → 選項（道具 id 的陣列）
 var taken := {}    # peer id → true：選過了
+var anvil_done := {}   # 鐵砧：peer id → true 已經升級過（第二步選技能）；只在權威端
 
 
 func _init(p_world: World, p_tier: StringName, at: Vector2, p_kind: StringName = &"item") -> void:
@@ -37,6 +41,21 @@ func open_for(p: Player) -> void:
 func _roll(p: Player) -> void:
 	var out: Array[StringName] = []
 	var n := maxi(1, roundi(p.stats.value(&"relic_choices")))
+	if relic_kind == &"anvil" and not anvil_done.has(p.peer_id):
+		out = _anvil_affixes(p, n)
+		if not out.is_empty():
+			offers[p.peer_id] = out
+			return
+		anvil_done[p.peer_id] = true
+	if relic_kind == &"anvil":
+		# 第二步：主手武器的技能（每種武器 3 個）；沒有武器就從全部技能抽
+		var base := Loadout.weapon_of(p.weapon_slots[Loadout.MAIN])
+		var pool := SkillDefs.relic_pool().filter(func(id: StringName) -> bool: return base == &"" or SkillDefs.can_socket(id, base))
+		for i in mini(n, pool.size()):
+			var left := pool.filter(func(id: StringName) -> bool: return not out.has(id))
+			out.append(left[world.rng.randi_range(0, left.size() - 1)])
+		offers[p.peer_id] = out
+		return
 	if relic_kind == &"skill":
 		var skills := SkillDefs.relic_pool()
 		# 保證 1 個是手上武器（主手、副手）能鑲、還沒滿級的技能；都滿級了就照舊全隨機
@@ -62,6 +81,39 @@ func _roll(p: Player) -> void:
 	offers[p.peer_id] = out
 
 
+# 鐵砧第一步的選項：主手升一級後多出的那條詞條，抽 n 條不同的（不跟現有的重複、分支最多 1 條）；不能升級回傳空的
+func _anvil_affixes(p: Player, n: int) -> Array[StringName]:
+	var inst: Dictionary = p.weapon_slots[Loadout.MAIN]
+	var out: Array[StringName] = []
+	if inst.is_empty():
+		return out
+	var next := WeaponDropDefs.next_rarity(inst.rarity)
+	if next == &"":
+		return out
+	var have: Array[StringName] = []
+	have.assign(inst.affixes)
+	var rolled := WeaponDropDefs.roll_affixes(have.size() + n, world.rng, inst.base, have, next)
+	for id in rolled.slice(have.size()):
+		out.append(id)
+	return out
+
+
+# 鐵砧第一步選好：主手升一個稀有度、加上這條詞條（印記詞條重擲印記格），接著擲第二步（技能）的選項
+func _anvil_upgrade(p: Player, affix: StringName) -> void:
+	var inst: Dictionary = p.weapon_slots[Loadout.MAIN]
+	inst.rarity = WeaponDropDefs.next_rarity(inst.rarity)
+	var list: Array[StringName] = []
+	list.assign(inst.affixes)
+	list.append(affix)
+	inst.affixes = list
+	if WeaponDropDefs.AFFIXES[affix].kind == &"imp":
+		WeaponDropDefs.roll_imprints(inst, world.rng)
+	p.apply_active_weapon()
+	anvil_done[p.peer_id] = true
+	world.emit_event("anvil:upgraded", {"relic_id": id, "player_id": p.id, "rarity": String(inst.rarity), "affix": String(affix)})
+	_roll(p)
+
+
 static func _fits_hands(p: Player, skill: StringName) -> bool:
 	for where: int in [Loadout.MAIN, Loadout.OFF]:
 		var w := Loadout.weapon_of(p.weapon_slots[where])
@@ -85,6 +137,9 @@ func pick(p: Player, index: int) -> bool:
 	var choices: Array = offers.get(p.peer_id, [])
 	if taken.has(p.peer_id) or index < 0 or index >= choices.size():
 		return false
+	if relic_kind == &"anvil" and WeaponDropDefs.AFFIXES.has(choices[index]):
+		_anvil_upgrade(p, choices[index])   # 第一步：面板保持開著，換成技能的選項
+		return true
 	taken[p.peer_id] = true
 	p.relic_id = 0
 	var item_id: StringName = choices[index]
@@ -95,7 +150,7 @@ func pick(p: Player, index: int) -> bool:
 		world.emit_event("skill:leveled", {"player_id": p.id, "skill": String(item_id), "level": lv + 1})
 	elif p.loadout.add_item(p, item_id) == &"":
 		world.drop_item(item_id, p.pos + MathUtil.dir_from_angle(p.facing) * LootDefs.DROP_DISTANCE)
-	if world.player_list.all(func(o: Player) -> bool: return taken.has(o.peer_id)):
+	if relic_kind != &"anvil" and world.player_list.all(func(o: Player) -> bool: return taken.has(o.peer_id)):
 		remove()
 	return true
 

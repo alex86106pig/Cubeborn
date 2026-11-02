@@ -594,3 +594,68 @@ static func check_net_event() -> String:
 	if cw.event.vote_by != 2 or absf(cw.event.vote_left - 7.5) > EPS or cw.event.vote_yes != [2, 1] or cw.event.awaits_vote(1):
 		return "客戶端的投票狀態沒同步（發起 %d、剩 %.1f、同意 %s）" % [cw.event.vote_by, cw.event.vote_left, cw.event.vote_yes]
 	return ""
+
+
+# 小關（地圖改版第 4 步）：墓園從 1-1 開始、沒有挖墳；站在出口的門前按 F，單人直接到下一關、拿到那扇門的獎勵、基礎難度 +per_stage、
+# 回到新地圖的出生點；多人投票走發起人那扇門；有鐵砧的關起點旁有鐵砧；1-5 有挖墳，挖完到第 2 層（不分小關）
+static func check_stage_exit() -> String:
+	var w := _world([World.HOST_PEER_ID], false, MapDefs.FLOOR_MAPS[1])
+	var p := _p(w)
+	if w.stage_num != MapGenDefs.START_STAGE or DigEvent.enabled(w) or not w.has_floors() or int(w.map.get("stage", 0)) != w.stage_num:
+		return "墓園應從 1-%d 開始、沒有挖墳事件（第 %d 小關、挖墳 %s）" % [MapGenDefs.START_STAGE, w.stage_num, DigEvent.enabled(w)]
+	var doors := DigEvent.doors(w)
+	if doors.size() != int(MapGenDefs.STAGES[w.stage_num].doors):
+		return "1-%d 應有 %d 扇門，實際 %d" % [w.stage_num, MapGenDefs.STAGES[w.stage_num].doors, doors.size()]
+	var door: Dictionary = doors[doors.size() - 1]
+	var souls := w.souls
+	var dice := p.dice
+	var key_before := w.layout_key.duplicate()
+	p.pos = MapDefs.to_world(w.map, door.reach)
+	var ev := _step(w, 1, {World.HOST_PEER_ID: _cmd(InputCmd.BTN_INTERACT)})
+	var started := _named(ev, "stage:started")
+	if w.stage_num != 2 or w.floor_num != 1 or started.is_empty() or not _named(ev, "vote:started").is_empty():
+		return "單人站在門前按 F 應直接到 1-2、不跳投票（現在 %s）" % World.level_name(w.floor_num, w.stage_num)
+	if absf(w.base_difficulty - EventDefs.DIFFICULTY.per_stage) > EPS or w.layout_key == key_before or p.pos.distance_to(w.spawn_point) > 1.0:
+		return "1-2 應換地圖、回到出生點、基礎難度 %.0f（難度 %.1f、離出生點 %.1f）" % [EventDefs.DIFFICULTY.per_stage, w.base_difficulty, p.pos.distance_to(w.spawn_point)]
+	match door.reward:
+		&"relic", &"skill":
+			var kind := &"skill" if door.reward == &"skill" else &"item"
+			if not w.relics.any(func(r: Relic) -> bool: return r.relic_kind == kind and r.pos.distance_to(w.spawn_point) < 6.0):
+				return "門的獎勵是%s，出生點旁應有%s遺物" % [MapGenDefs.REWARDS[door.reward].name, kind]
+		&"souls":
+			if w.souls != souls + int(MapGenDefs.REWARDS.souls.amount):
+				return "門的獎勵是靈魂，應 +%d（%d → %d）" % [MapGenDefs.REWARDS.souls.amount, souls, w.souls]
+		&"dice":
+			if p.dice != dice + int(MapGenDefs.REWARDS.dice.amount):
+				return "門的獎勵是骰子，應 +%d（%d → %d）" % [MapGenDefs.REWARDS.dice.amount, dice, p.dice]
+	# 往後走到 1-5：有鐵砧的關起點旁有鐵砧；1-5 沒有門、有挖墳，挖完按 F 到第 2 層
+	for stage in range(3, MapGenDefs.STAGES.size() + 1):
+		w.next_stage(&"")
+		var has_anvil := w.relics.any(func(r: Relic) -> bool: return r.relic_kind == &"anvil")
+		if has_anvil != bool(MapGenDefs.STAGES[stage].get("anvil", false)):
+			return "1-%d 的鐵砧應%s出現" % [stage, "" if MapGenDefs.STAGES[stage].get("anvil", false) else "不"]
+	if not DigEvent.enabled(w) or not DigEvent.doors(w).is_empty():
+		return "1-%d 應有挖墳事件、沒有門" % w.stage_num
+	_open(w)
+	p.pos = w.event.point
+	_step(w, 1)   # 放開 F（上一次按 F 是在 1-1 的門前，按著不放不算新的一下）
+	_step(w, 1, {World.HOST_PEER_ID: _cmd(InputCmd.BTN_INTERACT)})
+	if w.floor_num != 2 or w.stage_num != 0 or w.map_id != MapDefs.FLOOR_MAPS[2]:
+		return "1-5 挖完按 F 應到第 2 層（不分小關），實際 %s %s" % [World.level_name(w.floor_num, w.stage_num), w.map_id]
+	# 多人：P1 在第二扇門前按 F 發起投票，P2 按 Enter 同意 → 走 P1 那扇門
+	var w2 := _world([World.HOST_PEER_ID, World.HOST_PEER_ID + 1], false, MapDefs.FLOOR_MAPS[1])
+	var p1 := _p(w2)
+	var p2 := _p(w2, World.HOST_PEER_ID + 1)
+	var doors2 := DigEvent.doors(w2)
+	var pick := doors2.size() - 1
+	p1.pos = MapDefs.to_world(w2.map, doors2[pick].reach)
+	ev = _step(w2, 1, {World.HOST_PEER_ID: _cmd(InputCmd.BTN_INTERACT)})
+	if _named(ev, "vote:started").is_empty() or w2.event.vote_door != pick or w2.stage_num != 1:
+		return "多人在門前按 F 應發起投票、記下要走的門（門 %d、第 %d 小關）" % [w2.event.vote_door, w2.stage_num]
+	ev = _step(w2, 1, {World.HOST_PEER_ID + 1: _cmd(InputCmd.BTN_VOTE_YES)})
+	started = _named(ev, "stage:started")
+	if w2.stage_num != 2 or started.is_empty() or started[0].reward != String(doors2[pick].reward):
+		return "全員同意後應走發起人那扇門（第 %d 小關、獎勵 %s / %s）" % [w2.stage_num, started[0].reward if not started.is_empty() else "", doors2[pick].reward]
+	if p2.pos.distance_to(w2.spawn_point) > 1.0:
+		return "換小關後隊友也要回到出生點"
+	return ""

@@ -155,7 +155,7 @@ func _initialize() -> void:
 	_check("挖墳（D6）：DIG.range 內按住 F 開始事件並挖墳；挖墳中不能移動、跳，照樣轉向，被打不中斷不被擊退；總量 DIG.time × 活著的人數、一起挖速度相加、放手不掉（DIG.decay）、噴怪 +ERUPT.progress；挖完出口打開", EventChecks.check_dig)
 	_check("事件難度（D6）：怪物生命 × difficulty_mul；生怪間隔遞減夾在 interval_min；每批隻數隨難度與人數增加；魔法 / 稀有機率隨難度；挖墳前不冒怪、開挖就開始怪潮、難度每秒 +per_second；選的難度（簡單 / 普通 / 困難）讓上升 ×0.75 / ×1 / ×1.5、重新開始保留；挖墳點噴怪（墳土隆起預警、不畫圈、數量、下一層難度、拋物線落地）；挖完停怪、難度不漲、場上的怪留著", EventChecks.check_difficulty)
 	_check("出口與換層（D6）：挖完不會自動走；墳墓旁按 F，單人最後一層直接通關；多人投票（Esc 反對取消、全員同意或 VOTE.time 秒到就走、陣亡的不用投）；換層回出生點、基礎難度 +per_floor、保留靈魂與背包、地上與怪物清空、寶箱重放、事件歸零；每層的出口外觀照 EXIT_STYLES（第 1 層墳墓、第 2 層石棺：棺蓋跟著進度滑開，打開後是發光的洞）",
-		all.bind([EventChecks.check_next_floor, ViewChecks.check_exit_looks]))
+		all.bind([EventChecks.check_next_floor, ViewChecks.check_exit_looks, EventChecks.check_stage_exit]))
 	_check("Boss（D6）：挖墳地圖開局在 boss_room 裡巡邏、沒看到玩家不追、不出範圍；前方視野或貼近看到玩家、被打就開始追、不限範圍；打倒不通關，掉 1 把武器、1 個石棺的遺物、Boss 靈魂", EventChecks.check_boss_reward)
 	_check("屍體與冤魂（D6）：多人時死亡留下屍體、撿進背包；背著換層出現冤魂，打倒後死者在那裡復活、屍體消失；沒人帶屍體就沒有冤魂", EventChecks.check_corpse_ghost)
 
@@ -185,7 +185,9 @@ func _initialize() -> void:
 			LootChecks.check_item_procs_lethal, LootChecks.check_item_procs_summon, LootChecks.check_item_part_timing]))
 	_check("道具能力：二段跳（沒有道具空中跳不了、有雙躍之靴可再跳一次、落地重置）；自動回充的護盾（先扣盾、recharge_delay 秒沒受傷才補滿）",
 		all.bind([PlayerChecks.check_double_jump, LootChecks.check_item_shield]))
-	_check("遺物：每人各自擲 N 選 1（N = 選項數屬性、不重複）、關掉再開同一組、骰子重擲用掉 1 顆（沒有就不能骰）、每人只選一次、全員選過才消失、放不下掉在腳邊、走遠就關掉", LootChecks.check_relic)
+	_check("遺物：每人各自擲 N 選 1（N = 選項數屬性、不重複）、關掉再開同一組、骰子重擲用掉 1 顆（沒有就不能骰）、每人只選一次、全員選過才消失、放不下掉在腳邊、走遠就關掉；" \
+		+ "鐵砧：主手升一個稀有度、從 N 條新詞條選 1，再從這把武器的技能選 1，每人一次、用完不消失，傳說武器直接選技能",
+		all.bind([LootChecks.check_relic, LootChecks.check_anvil]))
 	_check("寶石座技能：寶石座只放技能、技能只放能用的武器、自動擺放；數字鍵 1~4 照主手→副手的寶石座、Q 治療藥水；每個技能放得出來、扣魔力、有效果；等級加傷減耗魔、技能遺物升級（石棺必出、祭壇不出，選項至少 1 個手上武器能用）；輔助道具貼著才有效（延長、火焰化、分裂）；魔力（開局滿、回魔、上限、不夠放不出、魔力道具與命中回魔、進快照）",
 		all.bind([SkillChecks.check_gem_rules, SkillChecks.check_every_skill, SkillChecks.check_skill_level, SkillChecks.check_supports, SkillChecks.check_mana]))
 	_check("羈絆：道具標的羈絆都存在、掉落池只有屬於羈絆的（輔助、魔力道具例外）；件數只算鑲在兩隻手上（背包不算）、同一種只算 1 件、跨羈絆兩邊各算、拿下來就扣；階數照門檻", LootChecks.check_bonds)
@@ -238,7 +240,7 @@ func _initialize() -> void:
 
 	# ───────── 連線 ─────────
 	_check("快照：房主的實體序列化後客戶端建立同樣類別、位置、血量、武器的鏡像、動畫狀態相同時數值補間；地圖 A 怪群 + 4 人、P2 被 30 隻圍住時每份快照 ≤ 4.5 KB；休眠的怪群客戶端用種子在本機生（跟房主一致、不進快照；範圍外醒了移除、範圍內醒了照快照、休眠中被移除跟著移除、檢查碼不同就不用）",
-		all.bind([NetChecks.check_codec, NetChecks.check_snapshot_size.bind(feel), NetChecks.check_local_packs]))
+		all.bind([NetChecks.check_codec, NetChecks.check_snapshot_size.bind(feel), NetChecks.check_local_packs, NetChecks.check_net_stage]))
 	_check("網頁連線配對（v0.36.0）：PeerJS 網址、房主 ID、房號（4 碼、不含易混字）、訊息格式、伺服器訊息對應的訊號；桌面版 IP 與房號兩種都能用", NetChecks.check_web_signaling)
 	_check("桌面版 WebRTC（v0.40.0）：同一程序兩條連線交換 SDP，照 NetSession 的設定建房主 / 客戶端，5 秒內連上且封包收得到；網頁版接收緩衝區至少 1024 KB", NetChecks.check_desktop_webrtc.bind(feel))
 	_check("誤傷（C2）：玩家揮劍打得到前方的隊友、打不到自己；魔彈打得到隊友、不打發射者；單機目標不含自己", NetChecks.check_friendly_fire)

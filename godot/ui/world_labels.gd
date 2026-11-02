@@ -76,6 +76,14 @@ func _draw() -> void:
 		if f.is_removed or not Vision.entity_visible(world, viewer, f):
 			continue
 		_text(font, f, CHEST_OFFSET, ("[F] 合成武器 " if f == focus else "") + "鍛造祭壇", FORGE_COLOR, 17, Vector2.ZERO, true)
+	# 鐵砧（小關起點旁）：自己還沒用過、走得到時提示 [F]
+	for r: Entity in world.relics:
+		var relic := r as Relic
+		if relic.relic_kind != &"anvil" or relic.is_removed or not Vision.entity_visible(world, viewer, relic):
+			continue
+		var used := me != null and relic.taken.has(me.peer_id)
+		var key := "[F] 升級武器 " if me != null and not used and world.can_reach(me, relic) else ""
+		_text(font, relic, CHEST_OFFSET, key + ("鐵砧（用過了）" if used else "鐵砧"), FORGE_COLOR, 17, Vector2.ZERO, true)
 	for c: Entity in world.chests:
 		var chest := c as Chest
 		if chest.opened:
@@ -117,6 +125,7 @@ func _draw() -> void:
 			_text(font, e, e.body_height + ENEMY_OFFSET, "冤魂：打倒就能復活隊友", GHOST_COLOR, 15)
 	_draw_keeper(font, me, viewer)
 	_draw_grave(font, me)
+	_draw_doors(font, me)
 	if card != null:
 		_draw_card(font, card)
 
@@ -160,6 +169,27 @@ func _draw_grave(font: Font, me: Player) -> void:
 	if near:
 		text = "[F] %s  %s" % [style.hold, text]
 	_text_at(font, at, text, UiKit.GOLD if ev.state == DigEvent.ACTIVE else Color.WHITE)
+
+
+# 小關出口的門：門上寫下一關與獎勵（一扇門的關：下一關有鐵砧），站在門前提示 [F]（投票中由 HUD 顯示）
+func _draw_doors(font: Font, me: Player) -> void:
+	var list := DigEvent.doors(world)
+	var mine := DigEvent.door_at(world, me) if me != null else -1
+	for i in list.size():
+		var d: Dictionary = list[i]
+		var p := MapDefs.to_world(world.map, d.at)
+		var at := Vector3(p.x, world.terrain.ground_at(p) + GRAVE_OFFSET, p.y)
+		var key := "[F] " if i == mine and not world.event.is_voting() else ""
+		_text_at(font, at, "%s%s" % [key, door_text(world, d)], EXIT_COLOR)
+
+
+# 「前往 1-3 · 遺物」；一扇門的關沒有獎勵、下一關有鐵砧
+static func door_text(world: World, d: Dictionary) -> String:
+	var dest := "前往 %s" % World.level_name(world.floor_num, world.stage_num + 1)
+	var reward: StringName = d.get("reward", &"")
+	if reward == &"":
+		return dest + " · 鐵砧"
+	return "%s · %s" % [dest, MapGenDefs.REWARDS[reward].name]
 
 
 # 按得到 F 的地上道具：名稱上方的道具卡，撿之前就看得到形狀、占幾格、效果 / 詞條（和背包的說明欄同一份文字）

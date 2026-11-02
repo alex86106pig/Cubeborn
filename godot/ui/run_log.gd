@@ -150,7 +150,7 @@ func on_event(world: World, name: String, p: Dictionary) -> void:
 		"game:restart":
 			reset()
 			_begin_floor(world)
-		"floor:started":
+		"floor:started", "stage:started":
 			_begin_floor(world)
 		"event:started":
 			if not floors.is_empty() and world != null:
@@ -164,7 +164,7 @@ func on_event(world: World, name: String, p: Dictionary) -> void:
 func _begin_floor(world: World) -> void:
 	if world == null:
 		return
-	floors.append({"floor": world.floor_num, "map": world.map.get("name", String(world.map_id)), "start": world.stats.time,
+	floors.append({"floor": world.floor_num, "stage": world.stage_num, "map": world.map.get("name", String(world.map_id)), "start": world.stats.time,
 		"event_start": -1.0, "event_open": -1.0, "layout": MapDefs.layout_text(world.layout)})
 
 
@@ -174,7 +174,7 @@ func floors_text(now: float) -> Array[String]:
 	for i in floors.size():
 		var f: Dictionary = floors[i]
 		var end: float = floors[i + 1].start if i + 1 < floors.size() else now
-		var line := "第 %d 層 %s %s" % [f.floor, f.map, UiKit.format_time(end - f.start)]
+		var line := "%s %s %s" % [World.level_name(f.floor, f.get("stage", 0)), f.map, UiKit.format_time(end - f.start)]
 		if f.event_start >= 0.0:
 			line += "（出口事件 %s）" % (UiKit.format_time(f.event_open - f.event_start) if f.event_open >= 0.0 else "進行中")
 		if f.layout != "":
@@ -222,7 +222,7 @@ func report_text(world: World) -> String:
 	lines.append("顯示卡：%s · %d×%d · %s" % [RenderingServer.get_video_adapter_name(), screen.x, screen.y, video])
 	var s := world.stats
 	var mode_name: String = EventDefs.MODES[world.difficulty_mode].name
-	var where := "第 %d 層 · 難度 %d（%s）" % [world.floor_num, floori(world.difficulty()), mode_name] if DigEvent.enabled(world) else "第 %d 波" % s.wave
+	var where := "%s · 難度 %d（%s）" % [World.level_name(world.floor_num, world.stage_num), floori(world.difficulty()), mode_name] if world.has_floors() else "第 %d 波" % s.wave
 	var boss: Enemy = world.entities.get(world.boss_id) as Enemy
 	if boss != null and not boss.is_dead:
 		var forms: Array = boss.def.get("form_names", [])

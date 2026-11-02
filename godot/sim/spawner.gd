@@ -27,7 +27,7 @@ func reset() -> void:
 
 
 func update(world: World, dt: float) -> void:
-	if not world.is_any_player_alive() or world.is_over or finished or DigEvent.enabled(world):   # 挖墳地圖沒有波次（D6，改由 DigEvent 生怪）
+	if not world.is_any_player_alive() or world.is_over or finished or world.has_floors():   # 挖墳地圖與小關沒有波次（D6，改由 DigEvent 生怪）
 		return
 
 	if not queue.is_empty():
@@ -128,7 +128,7 @@ func spawn_at(world: World, type: StringName, at: Vector2, extra: Dictionary = {
 # 生成倍率：挖墳地圖依目前難度、波次依第幾波；血量再乘人數；extra 蓋上去
 func spawn_mul(world: World, type: StringName, extra: Dictionary) -> Dictionary:
 	var mul: Dictionary
-	if DigEvent.enabled(world):   # 挖墳地圖（D6）：所有怪（含 Boss、怪群、冤魂）依目前難度
+	if world.has_floors():   # 挖墳地圖（D6）與小關：所有怪（含 Boss、怪群、冤魂）依目前難度
 		mul = EventDefs.difficulty_mul(extra.get("difficulty", world.difficulty()))
 	else:
 		mul = (WaveDefs.NO_SCALING if EnemyDefs.is_boss(type) else WaveDefs.wave_multipliers(wave)).duplicate()

@@ -1826,3 +1826,50 @@ static func check_relic() -> String:
 	if a.relic_id != 0:
 		return "走遠後應關掉遺物"
 	return ""
+
+
+# 鐵砧（遺物的一種，地圖改版第 4 步）：第一步主手升一個稀有度、從 N 條新詞條（不重複、不跟現有的重複）選 1，面板保持開著；
+# 第二步從主手武器的技能選 1（照技能遺物：放進格子或升級）；每人一次、用完不消失；已經傳說的武器直接選技能
+static func check_anvil() -> String:
+	var w := World.new(&"test_arena")
+	w.spawn_packs = false
+	w.reset(7)
+	w.spawner.finished = true
+	_worlds.append(w)
+	var p: Player = w.players[World.HOST_PEER_ID]
+	p.equip_weapon(&"shortbow")
+	var inst: Dictionary = p.weapon_slots[Loadout.MAIN]
+	var rarity: StringName = inst.rarity
+	var before: Array = inst.affixes.duplicate()
+	var anvil := w.drop_relic(&"small", p.pos + Vector2(1.0, 0.0), &"anvil")
+	anvil.open_for(p)
+	var n := roundi(p.stats.value(&"relic_choices"))
+	var offers: Array = anvil.offers.get(p.peer_id, [])
+	if offers.size() != n or p.relic_id != anvil.id:
+		return "鐵砧第一步應打開 %d 條詞條：%s" % [n, offers]
+	for id: StringName in offers:
+		if not WeaponDropDefs.AFFIXES.has(id) or before.has(id) or offers.count(id) != 1:
+			return "鐵砧的詞條選項要是新的、不重複：%s（原本 %s）" % [offers, before]
+	anvil.pick(p, 0)
+	inst = p.weapon_slots[Loadout.MAIN]
+	if inst.rarity != WeaponDropDefs.next_rarity(rarity) or not inst.affixes.has(offers[0]) or inst.affixes.size() != before.size() + 1:
+		return "選了詞條應升到 %s、多這一條（%s、%s）" % [WeaponDropDefs.next_rarity(rarity), inst.rarity, inst.affixes]
+	if p.relic_id != anvil.id or anvil.taken.has(p.peer_id):
+		return "第一步選完面板應保持開著、還沒算用過"
+	var skills: Array = anvil.offers.get(p.peer_id, [])
+	var weapon := Loadout.weapon_of(inst)
+	if skills.is_empty() or skills.any(func(id: StringName) -> bool: return not SkillDefs.can_socket(id, weapon)):
+		return "第二步應是這把武器（%s）的技能：%s" % [weapon, skills]
+	anvil.pick(p, 0)
+	if not anvil.taken.has(p.peer_id) or anvil.is_removed or not p.loadout.has_item(skills[0]):
+		return "選了技能應拿到 %s、算用過、鐵砧不消失" % skills[0]
+	anvil.open_for(p)
+	if p.relic_id != 0:
+		return "用過的鐵砧不能再打開"
+	inst.rarity = WeaponDropDefs.RARITY_ORDER[-1]
+	var anvil2 := w.drop_relic(&"small", p.pos + Vector2(-1.0, 0.0), &"anvil")
+	anvil2.open_for(p)
+	var direct: Array = anvil2.offers.get(p.peer_id, [])
+	if direct.is_empty() or direct.any(func(id: StringName) -> bool: return not ItemDefs.is_skill(id)):
+		return "傳說武器不能再升級，鐵砧應直接給技能選項：%s" % [direct]
+	return ""

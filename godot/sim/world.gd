@@ -143,7 +143,7 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 	rng.seed = seed_value
 	coin_rng.seed = hash([seed_value, &"coin"])
 	cooldowns.reset_all()
-	stats = {"wave": 0, "kills": 0, "time": 0.0, "floor": 1}
+	stats = {"wave": 0, "kills": 0, "time": 0.0, "floor": 1, "stage": stage_num}
 	is_over = false
 	hit_stop_timer = 0.0
 	boss_id = 0
@@ -206,11 +206,13 @@ func floor_rng(purpose: StringName) -> RandomNumberGenerator:
 # 鍛造祭壇（forge_count）排在寶箱後面、用同一套規則：寶箱的位置和沒有鍛造祭壇時一樣
 func _place_chests(prng: RandomNumberGenerator) -> void:
 	if map.has("chest_spots"):
-		# 產生的地圖（MapGen）：小寶箱在打怪的塊、支線盡頭一個大的
+		# 產生的地圖（MapGen）：小寶箱在打怪的塊、支線盡頭一個大的；有鐵砧的關在起點旁放鐵砧（遺物的一種，每人用一次）
 		for spot: Array in map.chest_spots:
 			var chest := Chest.new(self, spot[2], MapDefs.to_world(map, Vector2(spot[0], spot[1])))
 			add_entity(chest)
 			chests.append(chest)
+		if map.has("anvil"):
+			drop_relic(&"small", MapDefs.to_world(map, map.anvil), &"anvil")
 		return
 	var c: Dictionary = LootDefs.CHEST_PLACEMENT
 	var tiers: Array[StringName] = []
@@ -260,7 +262,19 @@ func _flat_at(at: Vector2, r: float) -> bool:
 
 # 目前難度（D6）：沒有挖墳事件的地圖固定 0
 func difficulty() -> float:
-	return event.difficulty(self) if DigEvent.enabled(self) else 0.0
+	if DigEvent.enabled(self):
+		return event.difficulty(self)
+	return base_difficulty if stage_num > 0 else 0.0
+
+
+# 這張地圖是一層一層往下打的（挖墳地圖或小關）：沒有波次，介面顯示層數與難度
+func has_floors() -> bool:
+	return DigEvent.enabled(self) or stage_num > 0
+
+
+# 「第 2 層」或分小關的層「1-3」
+static func level_name(p_floor: int, p_stage: int) -> String:
+	return "%d-%d" % [p_floor, p_stage] if p_stage > 0 else "第 %d 層" % p_floor
 
 
 # 全員走進出口（D6）：同一張地圖重新來過、基礎難度 +per_floor；玩家保留背包、武器、生命與共用的靈魂
@@ -268,6 +282,21 @@ func difficulty() -> float:
 func next_floor() -> void:
 	gain_coins(LootDefs.RUN_COINS.floor_clear_per_floor * floor_num, &"floor")   # 過關的金幣（v0.45）：越後面的層越多
 	floor_num += 1
+	stage_num = 0   # 新的一層：分小關的地圖從 START_STAGE 開始（load_map）
+	_change_level()
+	emit_event("floor:started", {"floor": floor_num, "stage": stage_num, "difficulty": base_difficulty})
+
+
+# 走進小關出口的門（DigEvent 投票通過）：同一層的下一小關，跟換層一樣清場、換地圖、回出生點；門上的獎勵在新一關開始時給
+func next_stage(reward: StringName) -> void:
+	stage_num += 1
+	_change_level()
+	_grant_stage_reward(reward)
+	emit_event("stage:started", {"floor": floor_num, "stage": stage_num, "difficulty": base_difficulty, "reward": String(reward)})
+
+
+# 換層與換小關共用：基礎難度、清掉玩家以外的東西、換這一層 / 這一關的地圖、回出生點、重放寶箱與怪群；背著屍體的死者變冤魂
+func _change_level() -> void:
 	base_difficulty = (floor_num - 1) * EventDefs.DIFFICULTY.per_floor
 	stats["floor"] = floor_num
 	for e: Entity in entities.values():
@@ -280,13 +309,29 @@ func next_floor() -> void:
 	delayed.clear()
 	boss_id = 0
 	_load_floor_map(floor_num)
+	if stage_num > 0:
+		base_difficulty += (stage_num - 1) * EventDefs.DIFFICULTY.per_stage
+	stats["stage"] = stage_num
 	for p in player_list:
 		p.arrive_floor(spawn_point, terrain.ground_at(spawn_point))
 	_populate_floor()
 	for p in player_list:
 		if p.is_dead and not corpse_carrier(p.peer_id).is_empty():
 			_spawn_ghost(p)
-	emit_event("floor:started", {"floor": floor_num, "difficulty": base_difficulty})
+
+
+# 門上的獎勵（MapGenDefs.REWARDS）：遺物放在出生點旁、靈魂全隊共用、骰子每人；空的（一扇門的關）不給
+func _grant_stage_reward(reward: StringName) -> void:
+	match reward:
+		&"relic", &"skill":
+			drop_relic(&"big", spawn_point + MapGenDefs.REWARD_DROP, &"skill" if reward == &"skill" else &"item")
+		&"souls":
+			var g: int = MapGenDefs.REWARDS.souls.amount
+			souls += g
+			emit_event("souls:gained", {"amount": g, "pos": spawn_point, "total": souls})
+		&"dice":
+			for p in player_list:
+				p.dice += MapGenDefs.REWARDS.dice.amount
 
 
 # 通關：延遲 victory_delay 秒後發 game:victory（測試場地打倒 Boss、挖墳地圖最後一層互動完）

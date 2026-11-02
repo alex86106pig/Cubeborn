@@ -6,7 +6,8 @@ class_name NetCodec
 
 enum { S_RUN, S_TICK, S_ACK, S_WORLD, S_ENTITIES }
 # W_PACKS：醒了的怪群（第 i 群 = 第 i 個位元）；W_LAYOUT：這一層怪群的檢查碼（0 = 這一層沒有怪群）
-enum { W_WAVE, W_KILLS, W_TIME, W_OVER, W_BOSS, W_DEFEATED, W_SOULS, W_FLOOR, W_EVENT, W_COINS, W_SEED, W_PACKS, W_LAYOUT }
+# W_STAGE：分小關的層正在第幾小關（0 = 不分）
+enum { W_WAVE, W_KILLS, W_TIME, W_OVER, W_BOSS, W_DEFEATED, W_SOULS, W_FLOOR, W_EVENT, W_COINS, W_SEED, W_PACKS, W_LAYOUT, W_STAGE }
 enum { E_ID, E_KIND, E_X, E_Z, E_H, E_FACING, E_HP, E_MAX_HP, E_VX, E_VZ, E_FLASH, E_INVULN, E_DEAD, E_ANIM, E_EXTRA }
 # 玩家的 E_EXTRA
 enum { P_PEER, P_WEAPON, P_ROLLS, P_DOWNED, P_DOWN_TIMER, P_REVIVE, P_PARRY, P_DODGE, P_INV, P_SLOTS, P_STUN, P_DESCENDED, P_DICE, P_RELIC, P_SKILL_LV, P_MANA, P_QUIVER, P_RELOAD }
@@ -74,7 +75,8 @@ static func make_snapshot(world: World, entities: Array, ack: int, peer_id: int 
 		extras.append(extra)
 	return [world.run_id, world.tick, ack, [s.wave, s.kills, s.time, world.is_over, world.boss_id, world.is_defeated, world.souls,
 		world.floor_num, [world.event.state, world.event.progress, world.event.time, world.base_difficulty, world.event.horde,
-		world.event.vote_by, world.event.vote_left, world.event.vote_yes.duplicate()], world.run_coins, world.run_seed, awake_mask(world), world.pack_digest], bytes, extras]
+		world.event.vote_by, world.event.vote_left, world.event.vote_yes.duplicate(), world.event.vote_door], world.run_coins, world.run_seed, awake_mask(world), world.pack_digest,
+		world.stage_num], bytes, extras]
 
 
 static func awake_mask(world: World) -> int:
@@ -482,7 +484,8 @@ static func apply_world(world: World, snap: Array) -> void:
 	world.boss_id = w[W_BOSS]
 	world.is_defeated = w[W_DEFEATED]
 	world.souls = w[W_SOULS]
-	world.run_seed = w[W_SEED]   # 先設種子：地形照 [地圖, 層數, 種子] 建（sync_floor）
+	world.run_seed = w[W_SEED]   # 先設種子與小關：地形照 [地圖, 層數, 小關, 種子] 建（sync_floor）
+	world.stage_num = w[W_STAGE]
 	world.sync_floor(w[W_FLOOR])
 	var ev: Array = w[W_EVENT]
 	world.event.state = ev[0]
@@ -493,4 +496,5 @@ static func apply_world(world: World, snap: Array) -> void:
 	world.event.vote_by = ev[5]
 	world.event.vote_left = ev[6]
 	world.event.vote_yes.assign(ev[7])
+	world.event.vote_door = ev[8]
 	world.run_coins = w[W_COINS]

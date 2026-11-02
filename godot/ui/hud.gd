@@ -25,7 +25,7 @@ const HINT_BOTTOM := 150.0        # 新手提示的下緣離畫面底部多少
 const BOSS_NAME := "亡骸騎士"     # 測試場地波次的 Boss（darkFantasy.js 的 names.boss）
 # 介面程式碼裡寫死的中文字（橫幅、浮動文字、場上文字、連線面板、遊玩紀錄…；資料表以外的）：開場預熱用（v0.37.2）
 # check.gd 會掃 ui/ 的字串，缺字就列出來，加到這裡
-const UI_CHARS := "升級—羈絆算階鑲輪　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木總樂畫陰源・介想意反對取噴發巡邏膨脹犬守話又頭肥羊園狼原形占拿件夠直接將群配跟事"
+const UI_CHARS := "砧升級—羈絆算階鑲輪　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木總樂畫陰源・介想意反對取噴發巡邏膨脹犬守話又頭肥羊園狼原形占拿件夠直接將群配跟事"
 
 const VIGNETTE_SHADER := """
 shader_type canvas_item;
@@ -523,8 +523,8 @@ func _process(delta: float) -> void:
 	_souls.text = "靈魂 %d · 骰子 %d" % [world.souls, player.dice]
 	_coins.text = "金幣 %d" % world.run_coins
 	var s := world.stats
-	if DigEvent.enabled(world):   # 挖墳地圖（D6）：層數與難度
-		_wave.text = "第 %d 層 · 難度 %d" % [world.floor_num, floori(world.difficulty())]
+	if world.has_floors():   # 挖墳地圖（D6）與小關：層數與難度
+		_wave.text = "%s · 難度 %d" % [World.level_name(world.floor_num, world.stage_num), floori(world.difficulty())]
 	else:
 		_wave.text = "第 %d / %d 波" % [s.wave, world.spawner.total_waves()] if s.wave > 0 else "準備中"
 	_kills.text = "擊殺 %d" % s.kills
@@ -579,7 +579,7 @@ func _update_dig() -> void:
 
 # 投票中：誰發起、幾人同意、剩幾秒；自己還沒同意時提示 Enter / Esc
 func _update_vote(ev: DigEvent) -> void:
-	_vote.visible = DigEvent.enabled(world) and ev.is_voting()
+	_vote.visible = world.has_floors() and ev.is_voting()
 	if not _vote.visible:
 		return
 	var voters := 0
@@ -589,6 +589,8 @@ func _update_vote(ev: DigEvent) -> void:
 	var by: Player = world.players.get(ev.vote_by)
 	var who := _tag_of(by.id) if by != null else "隊友"
 	var dest := "通關" if world.floor_num >= EventDefs.DIG.last_floor else "前往第 %d 層" % (world.floor_num + 1)
+	if ev.vote_door >= 0 and ev.vote_door < DigEvent.doors(world).size():
+		dest = WorldLabels.door_text(world, DigEvent.doors(world)[ev.vote_door])
 	var ask := "　[Enter] 同意　[Esc] 反對" if ev.awaits_vote(local_peer) else ""
 	_vote.text = "%s 想%s（%d / %d 同意，%d 秒）%s" % [who, dest, ev.vote_yes.size(), voters, ceili(ev.vote_left), ask]
 
@@ -703,8 +705,16 @@ func _on_event(name: String, p: Dictionary) -> void:
 				_floor_coins = p.amount
 			elif local_player() != null:   # 全員各拿一份，所以誰撿到都跳在自己頭上
 				_floaters.spawn(local_player(), "+%d 金幣" % p.amount, &"coin")
+		"stage:started":
+			var reward: String = p.get("reward", "")
+			var got := ""
+			if reward != "":
+				got = "\n獲得：%s" % MapGenDefs.REWARDS[StringName(reward)].name
+				if MapGenDefs.REWARDS[StringName(reward)].has("amount"):
+					got += " +%d" % MapGenDefs.REWARDS[StringName(reward)].amount
+			_show_banner("%s（基礎難度 %d）%s" % [World.level_name(p.floor, p.stage), p.difficulty, got], false, UiKit.GOLD)
 		"floor:started":
-			var text := "第 %d 層（基礎難度 %d）" % [p.floor, p.difficulty]
+			var text := "%s（基礎難度 %d）" % [World.level_name(p.floor, p.get("stage", 0)), p.difficulty]
 			if _floor_coins > 0:
 				text += "\n過關 +%d 金幣" % _floor_coins
 				_floor_coins = 0
@@ -713,11 +723,11 @@ func _on_event(name: String, p: Dictionary) -> void:
 			_show_banner("%s 的冤魂出現了：打倒就能復活" % _tag_of(p.player_id), true)
 		"game:defeat":
 			var s: Dictionary = p.stats
-			_set_game_over("你倒下了" if world.players.size() <= 1 else "全員倒下", ("撐到第 %d 層" % s.get("floor", 1) if DigEvent.enabled(world) else "撐到第 %d 波" % s.wave) + " · 擊殺 %d · 時間 %s" % [s.kills, UiKit.format_time(s.time)], false)
+			_set_game_over("你倒下了" if world.players.size() <= 1 else "全員倒下", ("撐到 %s" % World.level_name(s.get("floor", 1), s.get("stage", 0)) if world.has_floors() else "撐到第 %d 波" % s.wave) + " · 擊殺 %d · 時間 %s" % [s.kills, UiKit.format_time(s.time)], false)
 			_game_over_delay = GAME_OVER_DELAY
 		"game:victory":
 			var s: Dictionary = p.stats
-			var how := "通過第 %d 層" % s.get("floor", 1) if DigEvent.enabled(world) else "擊敗 %s" % _boss_title()
+			var how := "通過第 %d 層" % s.get("floor", 1) if world.has_floors() else "擊敗 %s" % _boss_title()
 			_set_game_over("勝利！", "%s · 擊殺 %d · 通關時間 %s" % [how, s.kills, UiKit.format_time(s.time)], true)
 			_game_over.visible = true
 		"game:paused":

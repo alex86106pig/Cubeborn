@@ -587,6 +587,13 @@ func _create_pickup(p: ItemPickup) -> Node3D:
 
 # 地上的遺物（Build 改版第 6 步）：浮著轉的發光方塊（Gem）＋內側一顆小寶石 ＋ 光柱；道具青綠、技能金黃（第 7 步）；看不出裡面是什麼（打開才擲）
 func _create_relic(kind: StringName) -> Node3D:
+	if kind == &"anvil":
+		# 鐵砧：同鍛造祭壇的石台＋鐵砧＋炭火；Gem 是空的節點（地上的東西都會浮動旋轉 Gem，鐵砧不動）
+		var anvil := _create_forge()
+		var still := Node3D.new()
+		still.name = "Gem"
+		anvil.add_child(still)
+		return anvil
 	var root := Node3D.new()
 	var outer: Color = RELIC_SKILL_COLOR if kind == &"skill" else RELIC_COLOR
 	var inner: Color = RELIC_SKILL_CORE if kind == &"skill" else RELIC_CORE
@@ -810,7 +817,7 @@ func warm_up(center: Vector3) -> void:
 		ents.append(Chest.new(tw, tier, c))
 	ents.append(Forge.new(tw, c))
 	ents.append(tw.drop_coin(c))
-	for kind: StringName in [&"item", &"skill"]:
+	for kind: StringName in [&"item", &"skill", &"anvil"]:
 		ents.append(Relic.new(tw, &"small", c, kind))
 	ents.append(Torch.new(tw, c))
 	ents.append(OrbitWisp.new(tw, tw.players[World.HOST_PEER_ID], &"arcane", 0, 1))

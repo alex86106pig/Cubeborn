@@ -3,6 +3,7 @@
 # 怪潮（玩家周圍冒怪）與挖墳點噴怪同時開始、難度往上加；每次噴怪進度 +10%；沒人挖時進度不掉
 # 挖完（OPEN）停止生怪、難度不再漲，場上的怪留著；再到墳墓按 F：單人直接走，多人發起投票（全員同意或時間到就走，有人反對就取消）
 # 只有地圖資料 "dig_event": true 的地圖才有（測試場地照舊用波次）；不持有 World，每次呼叫時傳入；只在權威端更新
+# 沒有挖墳的小關（MapGen 的 stage_doors）：出口是關卡盡頭的門，站在門前按 F 走同一套投票，通過就到下一小關（World.next_stage）
 class_name DigEvent
 extends RefCounted
 
@@ -23,6 +24,7 @@ var _boss_placed := false   # 這一層的 Boss 放了沒（第一步才放：--
 var vote_by := 0            # 發起投票的 peer id（0 = 沒有投票）
 var vote_left := 0.0        # 剩餘秒數
 var vote_yes: Array[int] = []   # 同意的 peer id（含發起人）
+var vote_door := -1         # 投票要走的小關出口門（stage_doors 的第幾扇；-1 = 挖墳的出口）
 
 
 func reset(world: World) -> void:
@@ -55,9 +57,25 @@ func can_dig(world: World, p: Player) -> bool:
 	return keeper == null or not (keeper.can_talk(p) or keeper.fsm.is_in(&"reveal"))   # 說台詞時也不開挖，讓他說完
 
 
-# 挖完後站在墳墓旁按 F：前往下一層（或通關）
+# 挖完後站在墳墓旁按 F：前往下一層（或通關）；小關站在出口的門前
 func can_exit(world: World, p: Player) -> bool:
-	return enabled(world) and state == OPEN and p.pos.distance_to(point) <= EventDefs.DIG.range
+	if not enabled(world):
+		return door_at(world, p) >= 0
+	return state == OPEN and p.pos.distance_to(point) <= EventDefs.DIG.range
+
+
+# 小關的出口門（沒有挖墳事件的小關才有）
+static func doors(world: World) -> Array:
+	return [] if enabled(world) else world.map.get("stage_doors", [])
+
+
+# p 站在第幾扇門前（門前站的位置 DIG.range 內，世界座標）；不在任何門前 -1
+static func door_at(world: World, p: Player) -> int:
+	var list := doors(world)
+	for i in list.size():
+		if p.pos.distance_to(MapDefs.to_world(world.map, list[i].reach)) <= EventDefs.DIG.range:
+			return i
+	return -1
 
 
 func is_voting() -> bool:
@@ -93,6 +111,8 @@ func spawn_boss(world: World) -> void:
 
 func update(world: World, dt: float) -> void:
 	if not enabled(world):
+		if not doors(world).is_empty():
+			_update_vote(world, dt)
 		return
 	if not _boss_placed:
 		_boss_placed = true
@@ -225,6 +245,7 @@ func request_exit(world: World, p: Player) -> void:
 		vote_by = p.peer_id
 		vote_left = EventDefs.VOTE.time
 		vote_yes.assign([p.peer_id])
+		vote_door = door_at(world, p) if not enabled(world) else -1
 		if world.player_list.size() > 1:   # 單人不必投票（下面立刻通過）
 			world.emit_event("vote:started", {"player_id": p.id, "peer_id": p.peer_id, "time": vote_left})
 	else:
@@ -265,15 +286,19 @@ func _check_vote(world: World) -> void:
 
 
 func _proceed(world: World) -> void:
+	var door := vote_door
 	_clear_vote()
 	world.emit_event("vote:passed", {})
-	if world.floor_num >= EventDefs.DIG.last_floor:
+	if door >= 0:
+		world.next_stage(doors(world)[door].reward)
+	elif world.floor_num >= EventDefs.DIG.last_floor:
 		world.win()
 	else:
 		world.next_floor()
 
 
 func _clear_vote() -> void:
+	vote_door = -1
 	vote_by = 0
 	vote_left = 0.0
 	vote_yes.clear()

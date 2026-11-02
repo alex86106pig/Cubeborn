@@ -599,6 +599,7 @@ static func check_codec() -> String:
 	var snap: Array = _Link._wire(host.snapshots()[2])
 	var c := NetClient.new(2)
 	_made.append(c.world)
+	c.world.load_map(w.map_id)   # 房主與客戶端要同一張地圖（同 _Link；客戶端自己的角色照本機地形預測）
 	c.receive_snapshot(snap)
 	c.step(_cmd(Vector2.ZERO), DT)
 	var err := ""
@@ -1269,4 +1270,24 @@ static func check_lobby_classes() -> String:
 		if cp == null or cp.class_id != hp.class_id or absf(cp.stats.value(&"move_speed") - hp.stats.value(&"move_speed")) > 1e-4 or cp.weapon_id != hp.weapon_id:
 			return "P%d：房主 %s / %.2f / %s，客戶端 %s" % [id, hp.class_id, hp.stats.value(&"move_speed"), hp.weapon_id,
 				"沒有" if cp == null else "%s / %.2f / %s" % [cp.class_id, cp.stats.value(&"move_speed"), cp.weapon_id]]
+	return ""
+
+
+# 小關（地圖改版第 4 步）：房主換到下一小關，客戶端照快照的小關編號換成同一張地形、怪群在本機照種子生得一樣
+static func check_net_stage() -> String:
+	var link := _Link.new(31, [1, 2], 2, 0.0, false, MapDefs.FLOOR_MAPS[1])
+	var hw := link.host_world
+	var cw := link.client.world
+	hw.spawner.finished = true
+	for i in 10:
+		link.step(InputCmd.new(), InputCmd.new())
+	hw.next_stage(&"souls")
+	for i in 20:
+		link.step(InputCmd.new(), InputCmd.new())
+	if cw.stage_num != hw.stage_num or cw.layout_key != hw.layout_key or cw.terrain.blocks.size() != hw.terrain.blocks.size():
+		return "客戶端應換到同一小關的地形（%s / %s、石台 %d / %d）" % [cw.layout_key, hw.layout_key, cw.terrain.blocks.size(), hw.terrain.blocks.size()]
+	if cw.packs.size() != hw.packs.size() or link.client.layout_mismatch != 0:
+		return "客戶端本機的怪群應跟房主一樣（%d / %d 群、配置不同 %d 次）" % [cw.packs.size(), hw.packs.size(), link.client.layout_mismatch]
+	if cw.souls != hw.souls:
+		return "門的獎勵（靈魂）客戶端應同步（%d / %d）" % [cw.souls, hw.souls]
 	return ""

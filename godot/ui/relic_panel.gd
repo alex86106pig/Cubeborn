@@ -28,6 +28,8 @@ var relic_id := 0                # 正在顯示的遺物（0 = 沒顯示）
 var choice_count := 0
 var _shown_key := []             # 目前卡片對應的選項與羈絆件數（變了才重建）
 var _dismissed := 0              # 本機已經按了選 / 關掉的遺物：等權威端關掉前先不顯示，免得閃一下
+var _affix_step := false         # 鐵砧的第一步（選項是詞條）：選了之後換成技能的選項，面板不關
+const AFFIX_KINDS := {&"bond": "羈絆 +1", &"enh": "羈絆強化", &"cvt": "屬性轉換", &"imp": "印記格", &"branch": "分支"}
 var _number := RegEx.create_from_string(NUMBER_PATTERN)
 
 
@@ -59,7 +61,15 @@ func refresh(world: World, me: Player) -> void:
 	choice_count = choices.size()
 	if not visible:
 		return
-	_title.text = "選一個%s（按數字鍵或點卡片）" % ("技能" if r.relic_kind == &"skill" else "道具")
+	_affix_step = WeaponDropDefs.AFFIXES.has(choices[0])
+	if _affix_step:
+		var inst: Dictionary = me.weapon_slots[Loadout.MAIN]
+		var next := WeaponDropDefs.next_rarity(inst.get("rarity", &""))
+		_title.text = "鐵砧：主手升到%s，選一條新詞條" % (ItemDefs.RARITIES[next].name if next != &"" else "")
+	elif r.relic_kind == &"anvil":
+		_title.text = "鐵砧：選一個這把武器的技能"
+	else:
+		_title.text = "選一個%s（按數字鍵或點卡片）" % ("技能" if r.relic_kind == &"skill" else "道具")
 	var key := [choices.duplicate(), me.loadout.bond_counts.duplicate(), me.skill_levels.duplicate()]
 	if key != _shown_key:
 		_shown_key = key
@@ -77,6 +87,8 @@ func _rebuild(choices: Array, me: Player) -> void:
 
 
 func _card(i: int, id: StringName, me: Player) -> PanelContainer:
+	if WeaponDropDefs.AFFIXES.has(id):
+		return _affix_card(i, id)
 	var def: Dictionary = ItemDefs.ITEMS[id]
 	var skill := ItemDefs.is_skill(id)
 	var color: Color = UiKit.GOLD if skill else ItemDefs.RARITIES[def.rarity].color
@@ -129,6 +141,43 @@ func _card(i: int, id: StringName, me: Player) -> PanelContainer:
 	eff.text = effect_bbcode(def.desc)
 	body.add_child(eff)
 	_ignore_mouse(row)
+	return card
+
+
+# 鐵砧的詞條卡：外框羈絆色、名稱是羈絆＋詞條種類、下面是效果
+func _affix_card(i: int, id: StringName) -> PanelContainer:
+	var def: Dictionary = WeaponDropDefs.AFFIXES[id]
+	var bond: StringName = def.get("bond", &"")
+	var color: Color = BondDefs.BONDS[bond].color if BondDefs.BONDS.has(bond) else UiKit.GOLD
+	var card := PanelContainer.new()
+	card.custom_minimum_size.x = CARD_W
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	card.add_theme_stylebox_override(&"panel", _card_box(color, CARD_BG))
+	card.mouse_entered.connect(func() -> void: card.add_theme_stylebox_override(&"panel", _card_box(color, CARD_HOVER_BG)))
+	card.mouse_exited.connect(func() -> void: card.add_theme_stylebox_override(&"panel", _card_box(color, CARD_BG)))
+	card.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			pick(i)
+			card.accept_event())
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override(&"separation", 8)
+	card.add_child(body)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override(&"separation", 10)
+	head.add_child(_key_badge(i, color))
+	var bond_name: String = BondDefs.BONDS[bond].name if BondDefs.BONDS.has(bond) else ""
+	head.add_child(UiKit.label("%s %s" % [bond_name, AFFIX_KINDS.get(def.kind, "")], NAME_FONT, color))
+	body.add_child(head)
+	var eff := RichTextLabel.new()
+	eff.bbcode_enabled = true
+	eff.fit_content = true
+	eff.scroll_active = false
+	eff.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	eff.custom_minimum_size.x = CARD_W - 36
+	eff.add_theme_font_size_override(&"normal_font_size", EFFECT_FONT)
+	eff.text = effect_bbcode(def.desc)
+	body.add_child(eff)
+	_ignore_mouse(body)
 	return card
 
 
@@ -203,7 +252,8 @@ func pick(index: int) -> void:
 	if relic_id == 0 or index < 0 or index >= choice_count:
 		return
 	op_requested.emit([InputCmd.OP_RELIC_PICK, relic_id, index])
-	_dismissed = relic_id
+	if not _affix_step:
+		_dismissed = relic_id
 	visible = false
 
 
