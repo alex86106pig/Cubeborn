@@ -259,6 +259,50 @@ static func check_bone_wheel() -> String:
 	return ""
 
 
+# 屍甲蟲：鑽在地底打不到、不能當目標；爬到目標腳下停 emerge 秒再冒出來咬（擋不住、小擊飛），目標先走開就咬不到；
+# 冒出來後在地面停 surface 秒（打得到）再鑽下去；石棺抽到牠一次噴 swarm 隻
+static func check_beetle() -> String:
+	var b: Dictionary = EnemyDefs.ENEMIES.beetle.burrow
+	for mode: StringName in [&"stand", &"dodge"]:
+		var w := _world()
+		var p: Player = w.players[World.HOST_PEER_ID]
+		p.pos = Vector2.ZERO
+		p.stats.set_base(&"max_hp", 9999.0)
+		p.hp = p.max_hp
+		var bug := w.spawner.spawn_at(w, &"beetle", Vector2(0, 5)) as Beetle
+		bug.fsm.change(&"burrow")
+		_step(w, 2, true)
+		if Combat.apply_damage(w, p, bug, {"damage": 5.0, "knockback": 0.0}) or bug.is_targetable():
+			return "屍甲蟲鑽在地底應打不到、不能當目標"
+		var emerged := -1
+		var bitten := false
+		var surfaced := -1
+		for i in 300:
+			if mode == &"dodge" and emerged >= 0 and i == emerged + 2:
+				p.pos = Vector2(3, 0)   # 土塊開始跳就走開
+			w.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+			for ev in w.events:
+				if ev.name == "entity:damaged" and ev.target_id == p.id and ev.source_id == bug.id:
+					bitten = true
+			if emerged < 0 and bug.fsm.is_in(&"emerge"):
+				emerged = i
+			if bug.fsm.is_in(&"surface"):
+				surfaced = i
+				break
+		if emerged < 0 or surfaced < 0:
+			return "屍甲蟲應爬到腳下冒出來（停下第 %d 步、冒出第 %d 步）" % [emerged, surfaced]
+		if absf((surfaced - emerged) * DT - b.emerge) > 0.05:
+			return "屍甲蟲停在腳下應 %.1f 秒才冒出（%.2f 秒）" % [b.emerge, (surfaced - emerged) * DT]
+		if bitten != (mode == &"stand"):
+			return "屍甲蟲：%s 時%s被咬（應%s）" % ["站著" if mode == &"stand" else "先走開", "有" if bitten else "沒", "被咬" if mode == &"stand" else "咬不到"]
+		if not bug.is_targetable() or not Combat.apply_damage(w, p, bug, {"damage": 1.0, "knockback": 0.0}):
+			return "屍甲蟲冒出來後應打得到"
+		_step(w, roundi(b.surface / DT) + 2, true)
+		if not bug.is_burrowed():
+			return "屍甲蟲在地面停 %.1f 秒後應再鑽下去（狀態 %s）" % [b.surface, bug.fsm.current_name]
+	return ""
+
+
 static func check_zombie() -> String:
 	var l: Dictionary = EnemyDefs.ENEMIES.zombie.lunge
 	var bites := roundi(l.grab_time / l.bite_interval)
@@ -910,7 +954,7 @@ static func check_packs() -> String:
 
 # 蒙皮小怪（D5 效能）：骷髏戰士 / 弓手每隻 ≤ 2 個網格、三角形數與原本的零件相同；關節寫進骨架
 static func check_skinned_rig() -> String:
-	for kind: StringName in [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"spearman", &"bone_wheel"]:
+	for kind: StringName in [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"spearman", &"bone_wheel", &"beetle"]:
 		var old := DarkFantasy.character(kind)
 		var rig := DarkFantasy.skinned_character(kind)
 		var before := 0

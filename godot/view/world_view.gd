@@ -17,6 +17,8 @@ const RARITY_GLOW_RANGE := 3.0     # 魔法 / 稀有怪身上的光（D5）
 const RARITY_GLOW_ENERGY := 1.5
 const GRAVE_SOIL := Color("4a3a2a")          # 挖墳點（D6）
 const GRAVE_STONE := Color("6a6d72")
+const BURROW_DIRT := Color("5a4a36")         # 屍甲蟲鑽地時冒的土
+const BURROW_DIRT_EVERY := 4                 # 每幾個模擬步冒一次
 const COFFIN_STONE := Color("5e574c")        # 第 2 層的石棺（出口）
 const COFFIN_SEAL := Color("b070ff")         # 石棺蓋上的封印符文：撬得越多越暗
 const COFFIN_SIZE := Vector3(2.2, 0.85, 1.2)
@@ -318,6 +320,9 @@ func sync(world: World, alpha: float, dt: float) -> void:
 					_anim_pending[id] = 0.0
 			if anim_dt >= 0.0:
 				_animators[id].update(e, anim_dt)
+				# 鑽在地底的屍甲蟲：地面一路冒土（看得到的才冒，視野外不洩漏位置）
+				if e is Enemy and (e as Enemy).anim.get("burrowed", false) and not hidden_ids.has(id) and (world.tick + id) % BURROW_DIRT_EVERY == 0:
+					effects.mote(Vector3(e.pos.x, e.ground_height + 0.05, e.pos.y), {"color": BURROW_DIRT, "size": 0.16, "life": 0.5, "vy": 0.8})
 			anim_usec += Time.get_ticks_usec() - ta
 			if node is SkinnedRig:
 				var a: Dictionary = (e as Enemy).anim
@@ -946,7 +951,7 @@ func _create_view(e: Entity) -> Node3D:
 			glow.visible = false
 			rig.hand_r.add_child(glow)
 			root.set_meta(&"glow", glow)
-		&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"gravekeeper", &"boss", &"ghost", &"minion", &"spearman", &"bone_wheel", &"bone_general":
+		&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"gravekeeper", &"boss", &"ghost", &"minion", &"spearman", &"bone_wheel", &"bone_general", &"beetle":
 			# 小怪用蒙皮版本（D5 效能：每隻 1~2 次繪製）；Boss 只有一隻，照舊用關節節點
 			# 冤魂（D6）：半透明的騎士（玩家的模型，不拿武器）
 			var rig: Node3D

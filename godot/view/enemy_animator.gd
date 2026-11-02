@@ -26,6 +26,7 @@ const BOW_ARM_AIM := -1.55       # 瞄準時弓手平舉
 const BOW_ARM_READY := -1.0      # 目標在射擊距離內、拉開距離時的預備高度：比瞄準低，瞄準時再舉平，玩家才看得出要射了
 const BOW_ARM_SHARPNESS := 18.0  # 弓手舉起 / 放下、射完右手放下的速度（同玩家放下弓）
 
+const BEETLE_HIDE := -0.6       # 屍甲蟲鑽地時整隻在地面下多深
 const SPEAR_ARM_GUARD := -0.9    # 盾槍兵持槍：手臂往前，槍尖朝前下方
 const SHIELD_ARM_GUARD := -1.25  # 盾槍兵舉盾：左手臂往前抬，盾擋在胸前
 var rig   # Rig（Boss）或 SkinnedRig（小怪，D5）：關節介面相同
@@ -42,6 +43,7 @@ var _keeper := false      # 守墓人：右手鐵鏟、左手提燈；駝背
 var _holds_bow := false   # 骷髏弓手：左手拿弓，不瞄準時照 _bow_arm_target
 var _spearman := false    # 骷髏盾槍兵：左手塔盾舉在胸前、右手長槍
 var _wheel := false       # 骨輪：所有狀態都走 _pose_wheel（整個輪子在 head 關節上）
+var _beetle := false      # 屍甲蟲：所有狀態都走 _pose_beetle（鑽地時整隻藏在地面下）
 var _spin := 0.0          # 骨輪滾動的角度（畫面自己累加）
 var _bow_arm_target := BOW_ARM_REST
 var _dt := 0.0
@@ -55,6 +57,7 @@ func _init(p_rig: Node3D, e: Enemy) -> void:
 	_hound = e.def.visual == &"hound"
 	_spearman = e.def.visual == &"spearman"
 	_wheel = e.def.visual == &"bone_wheel"
+	_beetle = e.def.visual == &"beetle"
 	walk_phase = randf() * TAU   # 畫面用隨機，與模擬無關
 	if e.def.has("slam"):
 		_build_cracks(e)
@@ -87,9 +90,11 @@ func update(e: Enemy, dt: float) -> void:
 			_bow_arm_target = BOW_ARM_READY
 
 	var colossus: bool = def.has("colossus") and a.get("form", 0) > 0 and state != &"dead"
-	match &"hound" if _hound else (&"wheel" if _wheel else (&"colossus" if colossus else (&"keeper" if _keeper and state != &"spawn" and state != &"dead" else state))):
+	match &"hound" if _hound else (&"wheel" if _wheel else (&"beetle" if _beetle else (&"colossus" if colossus else (&"keeper" if _keeper and state != &"spawn" and state != &"dead" else state)))):
 		&"colossus":
 			_pose_colossus(e, a, state, t, dt)
+		&"beetle":
+			_pose_beetle(e, state, t, dt)
 		&"hound":
 			_pose_hound(e, a, state, t, dt)
 		&"wheel":
@@ -294,6 +299,33 @@ func _pose_wheel(e: Enemy, state: StringName, t: float, dt: float) -> void:
 			head.scale = Vector3(1.0 + 0.3 * lie, 1.0, 1.0 + 0.3 * lie)   # 散開：攤成一圈骨堆
 			if state == &"dead":
 				rig.position.y = -CORPSE_SINK_DEPTH * clampf((t - e.def.corpse_time * CORPSE_SINK_START) / (e.def.corpse_time * (1.0 - CORPSE_SINK_START)), 0.0, 1.0)
+
+
+# 屍甲蟲：鑽地時藏在地面下（BEETLE_HIDE）；冒出前在地面下抖、露出一點殼；冒出來往上跳一下；在地面上腳一直抖；
+# 爬出照一般從地下升起；死掉翻肚
+func _pose_beetle(e: Enemy, state: StringName, t: float, dt: float) -> void:
+	rig.body.rotation = Vector3.ZERO
+	rig.position.y = 0.0
+	var scurry := sin(t * 40.0) * 0.5
+	for leg in [rig.arm_r, rig.leg_l]:
+		leg.rotation.x = scurry
+	for leg in [rig.arm_l, rig.leg_r]:
+		leg.rotation.x = -scurry
+	match state:
+		&"burrow", &"dormant":
+			rig.position.y = BEETLE_HIDE if state == &"burrow" else 0.0
+		&"emerge":
+			rig.position.y = lerpf(BEETLE_HIDE, -0.2, clampf(t / e.def.burrow.emerge, 0.0, 1.0)) + sin(t * 50.0) * 0.03
+		&"surface":
+			rig.position.y = maxf(0.0, 0.5 * sin(clampf(t / 0.3, 0.0, 1.0) * PI)) if t < 0.3 else 0.0
+		&"spawn":
+			rig.position.y = lerpf(-rig.height, 0.0, clampf(t / e.def.spawn_time, 0.0, 1.0))
+		&"dead":
+			rig.body.rotation.z = PI * MathUtil.ease_out_cubic(clampf(t / 0.3, 0.0, 1.0))
+			rig.body.position.y = 0.25
+			rig.position.y = -CORPSE_SINK_DEPTH * 0.5 * clampf((t - e.def.corpse_time * CORPSE_SINK_START) / (e.def.corpse_time * (1.0 - CORPSE_SINK_START)), 0.0, 1.0)
+	if state != &"dead":
+		rig.body.position.y = 0.0
 
 
 # 萬骨聚合體（骸骨將軍 form 1）：追擊駝背拖著走；骨刺陣雙臂高舉 → 插進地面；多臂橫掃先扭到底、低掃（彎腰）轉一圈、

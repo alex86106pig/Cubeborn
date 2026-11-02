@@ -54,6 +54,11 @@ const HOUND_JOINTS := {
 	"neck": 0.8, "neck_z": 0.48, "shoulder_y": 0.55, "shoulder_x": 0.12, "shoulder_z": 0.3, "grip": 0.5,
 	"hip_y": 0.55, "hip_x": 0.12, "hip_z": -0.3, "height": 1.0,
 }
+# 屍甲蟲：貼地的小甲蟲，前腳（arm）往前、後腳（leg）往後；中間那對腳是身體上的固定零件
+const BEETLE_JOINTS := {
+	"neck": 0.22, "neck_z": 0.28, "shoulder_y": 0.18, "shoulder_x": 0.16, "shoulder_z": 0.15, "grip": 0.2,
+	"hip_y": 0.18, "hip_x": 0.16, "hip_z": -0.15, "height": 0.45,
+}
 const BOSS_SCALE := 1.85
 const KEEPER_SCALE := 1.3
 const WOLF_SCALE := 1.45
@@ -88,6 +93,8 @@ static func character(kind: StringName) -> Rig:
 			rig = bloater()
 		&"hound":
 			rig = hound()
+		&"beetle":
+			rig = beetle()
 		&"bone_wheel":
 			rig = bone_wheel()
 		&"spearman":
@@ -268,6 +275,26 @@ static func bone_wheel() -> Rig:
 	for s in [-1.0, 1.0]:
 		k.add(rig.head, PartKit.sphere(0.045, 5, 4), k.mat(C.socket), {"x": s * 0.065, "y": 0.03, "z": 0.13})
 		k.add(rig.head, PartKit.sphere(0.022, 4, 3), k.mat(C.eye_red, true), {"x": s * 0.065, "y": 0.03, "z": 0.16, "shadow": false})
+	return rig.optimize()
+
+
+# 屍甲蟲：深色有光澤的甲殼（中間一道縫）、小頭、一對大顎、6 隻腳
+static func beetle() -> Rig:
+	var rig := Rig.new(BEETLE_JOINTS)
+	var k := rig.kit
+	var shell := k.mat(Color("2a2f26"))
+	var under := k.mat(Color("4a3a2a"))
+	k.add(rig.body, PartKit.sphere(0.24, 8, 5), shell, {"y": 0.22, "sx": 1.0, "sy": 0.55, "sz": 1.35})
+	k.add(rig.body, PartKit.box(0.015, 0.02, 0.6), k.mat(Color("15180f")), {"y": 0.35})
+	k.add(rig.body, PartKit.sphere(0.2, 6, 4), under, {"y": 0.16, "sy": 0.4, "sz": 1.2})
+	for s in [-1.0, 1.0]:   # 中間那對腳
+		k.add(rig.body, PartKit.cyl(0.018, 0.012, 0.3, 4), under, {"x": s * 0.26, "y": 0.1, "rz": s * 1.0})
+	k.add(rig.head, PartKit.sphere(0.1, 6, 4), shell, {"sy": 0.7})
+	for s in [-1.0, 1.0]:
+		k.add(rig.head, PartKit.cone(0.025, 0.16, 4), k.mat(C.bone_dark), {"x": s * 0.05, "y": -0.02, "z": 0.12, "rx": PI / 2.0, "ry": -s * 0.4})
+		k.add(rig.head, PartKit.sphere(0.018, 4, 3), k.mat(C.rot_eye, true), {"x": s * 0.05, "y": 0.04, "z": 0.08, "shadow": false})
+	for leg in [rig.arm_r, rig.arm_l, rig.leg_r, rig.leg_l]:
+		k.add(leg, PartKit.cyl(0.018, 0.012, 0.22, 4), under, {"y": -0.1})
 	return rig.optimize()
 
 

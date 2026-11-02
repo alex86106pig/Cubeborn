@@ -40,6 +40,8 @@ const HANDLERS := {
 	"enemy:guard_broken": &"_on_enemy_blocked",
 	"enemy:crashed": &"_on_enemy_crashed",
 	"fx:spike_warn": &"_fx_spike_warn",
+	"fx:burrow_warn": &"_fx_burrow_warn",
+	"fx:burrow_out": &"_fx_burrow_out",
 	"fx:bone_spike": &"_fx_bone_spike",
 	"fx:sweep": &"_fx_sweep",
 	"boss:absorbed": &"_on_boss_absorbed",
@@ -275,6 +277,18 @@ func _fx_spike_warn(p: Dictionary) -> void:
 		node.rotation.y = a
 		_add_transient(node, life, func(k: float) -> void:
 			node.scale = Vector3(1.0, 0.1 + 0.9 * MathUtil.ease_out_cubic(k) + 0.1 * sin(k * 50.0), 1.0))
+
+
+# 屍甲蟲停在腳下準備冒出：一小塊土一直跳（不畫圈）
+func _fx_burrow_warn(p: Dictionary) -> void:
+	var at := _at(p, 0.05)
+	_add_emitter(p.life, func(_k: float, key: String, dt: float) -> void:
+		for i in _count(key, 0.5, dt):
+			burst(at, {"color": DUST_COLOR, "count": 2, "speed": 1.0, "up": 3.0, "size": 0.12, "life": 0.3}))
+
+
+func _fx_burrow_out(p: Dictionary) -> void:
+	burst(_at(p, 0.1), {"color": DUST_COLOR, "count": 10, "speed": 3.0, "up": 4.0, "size": 0.15, "life": 0.45})
 
 
 # 一根骨刺竄出：白色尖錐往上刺再縮回去，噴碎石

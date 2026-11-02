@@ -200,16 +200,19 @@ func _erupt(world: World, dt: float) -> void:
 	var rise := difficulty(world) - world.base_difficulty
 	var d := difficulty(world) + EventDefs.DIFFICULTY.per_floor   # 下一層的怪
 	var n := mini(EventDefs.erupt_count(rise, world.player_list.size()), EventDefs.SPAWN.max_alive - _alive_event_enemies(world))
-	for i in n:
+	var left := n
+	while left > 0:
 		var type := _roll_type(world, 1)
-		var nav := world.nav_for(EnemyDefs.ENEMIES[type].radius)
-		var a := world.rng.randf() * TAU
-		var r: float = world.rng.randf_range(c.land_distance[0], c.land_distance[1])
-		var to := nav.nearest_walkable(point + Vector2(sin(a), cos(a)) * r)
-		var e := world.spawner.spawn_at(world, type, point, {"difficulty": d, "initial_state": &"launch"})
-		e.launch_to(to, c.flight_time)
-		e.wave_member = true
-		Spawner.roll_rarity(world, e, EventDefs.roll_rarity(d, world.rng))
+		for j in mini(int(EnemyDefs.ENEMIES[type].get("swarm", 1)), left):   # 成群的怪（屍甲蟲）一次噴好幾隻，照樣算進上限
+			left -= 1
+			var nav := world.nav_for(EnemyDefs.ENEMIES[type].radius)
+			var a := world.rng.randf() * TAU
+			var r: float = world.rng.randf_range(c.land_distance[0], c.land_distance[1])
+			var to := nav.nearest_walkable(point + Vector2(sin(a), cos(a)) * r)
+			var e := world.spawner.spawn_at(world, type, point, {"difficulty": d, "initial_state": &"launch"})
+			e.launch_to(to, c.flight_time)
+			e.wave_member = true
+			Spawner.roll_rarity(world, e, EventDefs.roll_rarity(d, world.rng))
 
 
 # ───────── 前往下一層 ─────────

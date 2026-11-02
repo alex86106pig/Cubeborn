@@ -109,6 +109,31 @@ const ENEMIES := {
 		},
 	},
 
+	# 屍甲蟲（第 3 層的怪，第 2 層的石棺噴出來，數值 Claude 暫定）：鑽地偷襲（sim/enemies/beetle.gd）
+	&"beetle": {
+		"name": "屍甲蟲",
+		"resists": {&"fire": -0.25, &"poison": 0.5},
+		"visual": &"beetle",
+		"behavior": &"beetle",
+		"max_hp": 10.0,
+		"move_speed": 4.0,
+		"speed_variance": 0.15,
+		"turn_speed": 8.0,
+		"radius": 0.3,
+		"mass": 0.5,
+		"hurt_time": 0.0,          # 不硬直（beetle.gd 沒有 hurt 狀態）
+		"spawn_time": 0.5,
+		"corpse_time": 1.0,
+		"swarm": 3,                # 挖墳點（石棺）抽到牠一次噴這麼多隻
+		"burrow": {
+			"min_time": 0.6,           # 鑽下去至少這麼久才冒出來
+			"strike_reach": 0.15,      # 爬到跟目標碰在一起（兩個半徑）再近這麼多就停下：碰撞分離會把兩個推開，不能只看中心距離
+			"emerge": 0.4,             # 停在腳下、土塊跳動（預兆）
+			"bite_radius": 0.85, "damage": 8.0, "knockback": 3.0, "knockup": 4.0,   # 冒出來咬，擋不住、小擊飛
+			"surface": 2.0,            # 咬完在地面停多久（打得到）
+		},
+	},
+
 	&"archer": {
 		"resists": {&"holy": -0.25, &"poison": 0.5},
 		"visual": &"ranged",
@@ -467,6 +492,7 @@ const ENEMIES := {
 const FLOOR_MIX := {
 	1: {&"zombie": 0.7, &"hound": 0.2, &"bloater": 0.1},
 	2: {&"grunt": 0.5, &"archer": 0.25, &"spearman": 0.125, &"bone_wheel": 0.125},
+	3: {&"beetle": 1.0},
 }
 const UPPER_SHARE := 0.2
 
