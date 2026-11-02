@@ -2,7 +2,7 @@
 # 每個選項的稀有度照 tier（祭壇 / 石棺）的機率各自擲、看那位玩家的尋寶；3 個是不同的道具。選項擲過就固定，關掉再開還是同一組
 # 骰子（Player.dice）用掉 1 顆把全部選項重擲。每人只能選一次，在場的玩家都選過才消失
 # 選項存在遺物上（offers），快照照送，客戶端的面板直接讀；選、重骰、關掉走背包操作（InputCmd.OP_RELIC_*），只在權威端執行
-# 技能遺物（relic_kind &"skill"，第 7 步）：選項從全部技能抽（SkillDefs.relic_pool，沒有稀有度）；選到身上已經有的技能就升 1 級（Player.skill_levels）
+# 技能遺物（relic_kind &"skill"，第 7 步）：選項從全部技能抽（SkillDefs.relic_pool，沒有稀有度），其中 1 個保證是手上武器能用、還沒滿級的；選到身上已經有的技能就升 1 級（Player.skill_levels）
 class_name Relic
 extends Entity
 
@@ -39,9 +39,18 @@ func _roll(p: Player) -> void:
 	var n := maxi(1, roundi(p.stats.value(&"relic_choices")))
 	if relic_kind == &"skill":
 		var skills := SkillDefs.relic_pool()
-		for i in mini(n, skills.size()):
+		# 保證 1 個是手上武器（主手、副手）能鑲、還沒滿級的技能；都滿級了就照舊全隨機
+		var own := skills.filter(func(id: StringName) -> bool: return _fits_hands(p, id) and p.skill_levels.get(id, 1) < SkillDefs.LEVEL.max)
+		if not own.is_empty():
+			out.append(own[world.rng.randi_range(0, own.size() - 1)])
+		for i in mini(n, skills.size()) - out.size():
 			var left := skills.filter(func(id: StringName) -> bool: return not out.has(id))
 			out.append(left[world.rng.randi_range(0, left.size() - 1)])
+		for i in range(out.size() - 1, 0, -1):   # 打亂順序，保證的那個不會固定在第一張
+			var j := world.rng.randi_range(0, i)
+			var t := out[i]
+			out[i] = out[j]
+			out[j] = t
 		offers[p.peer_id] = out
 		return
 	for i in n:
@@ -51,6 +60,14 @@ func _roll(p: Player) -> void:
 			pool = LootDefs.drop_pool(rarity)
 		out.append(pool[world.rng.randi_range(0, pool.size() - 1)])
 	offers[p.peer_id] = out
+
+
+static func _fits_hands(p: Player, skill: StringName) -> bool:
+	for where: int in [Loadout.MAIN, Loadout.OFF]:
+		var w := Loadout.weapon_of(p.weapon_slots[where])
+		if w != &"" and SkillDefs.can_socket(skill, w):
+			return true
+	return false
 
 
 # 用掉 1 顆骰子重擲全部選項；沒有骰子、沒打開過或選過了就不動

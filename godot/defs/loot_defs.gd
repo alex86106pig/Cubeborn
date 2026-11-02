@@ -40,8 +40,8 @@ const RUN_COINS := {
 }
 
 # 遺物（Build 改版第 6 步）：開局每人幾顆骰子（重擲 N 選 1 用掉 1 顆，2026-10-30 許家慶參考 Sephiria；之後的道具與局外成長會加）
-# skill_chance：祭壇 / 石棺開出技能遺物的機率（第 7 步，Claude 暫定；Boss 掉的固定是道具遺物）
-const RELIC := {"start_dice": 3, "radius": 0.55, "skill_chance": {&"small": 0.2, &"big": 0.35}}
+# skill_chance：祭壇 / 石棺開出技能遺物的機率（使用者決定：石棺必出技能、祭壇只出道具；Boss 掉的固定是道具遺物）
+const RELIC := {"start_dice": 3, "radius": 0.55, "skill_chance": {&"small": 0.0, &"big": 1.0}}
 
 const INTERACT_RANGE := 1.6     # 身體邊緣到寶箱 / 道具邊緣多近才按得到 F
 const DROP_DISTANCE := 1.4      # 開箱時道具掉在寶箱往玩家方向這麼遠；從背包丟出時掉在面前這麼遠

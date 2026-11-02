@@ -201,6 +201,57 @@ static func check_skill_level() -> String:
 	r2.pick(p2, (r2.offers[p2.peer_id] as Array).find(fresh))
 	if not p2.loadout.has_item(fresh) or p2.skill_levels.has(fresh):
 		return "選到沒有的技能應拿到它（1 級）"
+	return _check_skill_relic_rules()
+
+
+# 技能遺物的來源與保證：石棺必開出技能遺物、祭壇只開道具遺物；3 個選項至少 1 個是手上武器（主手或副手）能鑲、還沒滿級的技能，
+# 手上武器的技能都滿級了就照舊全隨機；保證的那個不固定在第一張
+static func _check_skill_relic_rules() -> String:
+	for tier: StringName in [&"big", &"small"]:
+		for i in 10:
+			var s := _setup(&"longsword")
+			var w: World = s[0]
+			var chest := Chest.new(w, tier, Vector2(0, 2))
+			w.add_entity(chest)
+			w.souls = 1000
+			chest.try_open(s[1])
+			var relic: Relic = w.relics.back()
+			var want := &"skill" if tier == &"big" else &"item"
+			if relic.relic_kind != want:
+				return "%s 應開出%s遺物，實際 %s" % ["石棺" if tier == &"big" else "祭壇", "技能" if want == &"skill" else "道具", relic.relic_kind]
+	var first_hits := 0
+	for loadout: Array in [[&"longsword", &"woodShield"], [&"staff", &""], [&"dagger", &"dagger"]]:
+		for i in 30:
+			var s := _setup(loadout[0])
+			var w: World = s[0]
+			var p: Player = s[1]
+			if loadout[1] != &"":
+				p.loadout.equip_offhand_new(p, loadout[1])
+			var relic := w.drop_relic(&"big", p.pos + Vector2(1, 0), &"skill")
+			relic.open_for(p)
+			var offer: Array = relic.offers[p.peer_id]
+			var own := offer.filter(func(id: StringName) -> bool: return Relic._fits_hands(p, id))
+			if own.is_empty():
+				return "%s 的技能遺物選項應至少 1 個手上武器能用：%s" % [loadout, offer]
+			var uniq := {}
+			for id: StringName in offer:
+				uniq[id] = true
+			if offer.size() != 3 or uniq.size() != 3:
+				return "技能遺物應有 3 個不重複的選項：%s" % [offer]
+			if Relic._fits_hands(p, offer[0]):
+				first_hits += 1
+	if first_hits == 90:
+		return "保證的技能每次都在第一張，應打亂順序"
+	# 手上武器的技能都滿級：不保證（照舊全隨機），選項照樣是 3 個技能
+	var s3 := _setup(&"longsword")
+	var p3: Player = s3[1]
+	for id: StringName in SkillDefs.relic_pool():
+		if Relic._fits_hands(p3, id):
+			p3.skill_levels[id] = SkillDefs.LEVEL.max
+	var r3 := (s3[0] as World).drop_relic(&"big", p3.pos + Vector2(1, 0), &"skill")
+	r3.open_for(p3)
+	if (r3.offers[p3.peer_id] as Array).size() != 3:
+		return "手上武器的技能都滿級時照樣要有 3 個選項：%s" % [r3.offers[p3.peer_id]]
 	return ""
 
 
