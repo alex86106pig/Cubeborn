@@ -17,6 +17,7 @@ const TOMB_SIZE := Vector2(1.2, 0.5)
 const MAPS := {
 	# 測試場地：32 × 32 的空場地，角落 3 個測試石台（v0.16.0）；check.gd 的大部分檢查用這張
 	&"test_arena": {
+		"name": "測試場地",
 		"size": Vector2(32.0, 32.0),
 		"origin": Vector2(16.0, 16.0),
 		"spawn": Vector2(16.0, 16.0),
@@ -31,6 +32,7 @@ const MAPS := {
 	},
 	# A 環形墓園（使用者 2026-10-23 選定）：中央是圍牆圍住的王族墓（出口、Boss）；外圈 7 格照種子抽區塊（2026-11-02），南邊是出生點
 	&"graveyard_a": {
+		"name": "墓園 A",
 		"size": Vector2(96.0, 96.0),
 		"origin": Vector2(48.0, 48.0),
 		"spawn": Vector2(48.0, 88.0),
@@ -68,6 +70,7 @@ const MAPS := {
 	# 第 2 層 骸骨墓窟：3 × 3 個墓室，用 6 寬的走道連成一圈；中央主墓室（石棺 = 出口、Boss）、南邊出生室固定，其餘 7 間照種子抽區塊（2026-11-02）
 	# 墓室內側：西 / 中 / 東欄 x 2~27、37~59、69~94，北 / 中 / 南列 y 同；中間 10 寬的岩壁只在走道處開口
 	&"catacomb_a": {
+		"name": "墓窟",
 		"size": Vector2(96.0, 96.0),
 		"origin": Vector2(48.0, 48.0),
 		"spawn": Vector2(48.0, 88.0),
@@ -223,6 +226,26 @@ static func _rotate(b: Array, turns: int) -> Array:
 		w = d
 		d = t
 	return [x, y, w, d, b[4], b[5]]
+
+
+const DOOR_NAMES := {&"N": "北", &"E": "東", &"W": "西"}
+
+
+# 這一層地形的一句話（遊玩紀錄用）：開哪幾邊的門、7 格各是哪種區塊
+static func layout_text(layout: Dictionary) -> String:
+	var parts: Array[String] = []
+	var doors: Array = layout.get("doors", [])
+	if not doors.is_empty():
+		parts.append("門 " + "、".join(PackedStringArray(doors.map(func(d: StringName) -> String: return DOOR_NAMES[d]))))
+	var zones: Array = layout.get("zones", [])
+	if not zones.is_empty():
+		var names: Array[String] = []
+		for z: Array in zones:
+			for t: Dictionary in ZONE_TEMPLATES:
+				if t.id == z[0]:
+					names.append(t.name)
+		parts.append("區塊 " + "、".join(PackedStringArray(names)))
+	return "；".join(PackedStringArray(parts))
 
 
 # 地圖有沒有照種子變的部分（分區、門）：沒有的地圖換種子不用重建地形

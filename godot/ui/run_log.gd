@@ -30,6 +30,7 @@ var unseen_damage := 0.0
 var by_source := {}     # 種類 → {damage, hits, unseen}
 var downs: Array[Dictionary] = []   # 每次倒下 / 死亡：{kind, unseen}
 var result := ""       # 結算標題（HUD._set_game_over）
+var floors: Array[Dictionary] = []   # 每層：{ floor, map, start, event_start, event_open, layout }（時間是這局第幾秒；-1 = 還沒）
 var weapon_drops := {}       # 稀有度 → 掉了幾把（全隊共用）
 var weapons_picked := 0      # 自己撿起殺怪掉的武器幾把
 var bag_full_at := -1.0      # 第一次有東西撿不下的時間（秒，-1 = 沒有）
@@ -60,6 +61,7 @@ func reset() -> void:
 	by_source.clear()
 	downs.clear()
 	result = ""
+	floors.clear()
 	weapon_drops.clear()
 	weapons_picked = 0
 	bag_full_at = -1.0
@@ -147,6 +149,38 @@ func on_event(world: World, name: String, p: Dictionary) -> void:
 				bag_full_at = world.stats.time if world != null else 0.0
 		"game:restart":
 			reset()
+			_begin_floor(world)
+		"floor:started":
+			_begin_floor(world)
+		"event:started":
+			if not floors.is_empty() and world != null:
+				floors[-1].event_start = world.stats.time
+		"event:exit_open":
+			if not floors.is_empty() and world != null:
+				floors[-1].event_open = world.stats.time
+
+
+# 新的一層（開局或換層）：記地圖、開始時間與這一層的地形（同一個種子重開也看得到，回報不必重玩就知道長怎樣）
+func _begin_floor(world: World) -> void:
+	if world == null:
+		return
+	floors.append({"floor": world.floor_num, "map": world.map.get("name", String(world.map_id)), "start": world.stats.time,
+		"event_start": -1.0, "event_open": -1.0, "layout": MapDefs.layout_text(world.layout)})
+
+
+# 「第 1 層 墓園 A 8:17（撬開 1:52）門 北；區塊 …」一層一行；最後一層算到 now
+func floors_text(now: float) -> Array[String]:
+	var out: Array[String] = []
+	for i in floors.size():
+		var f: Dictionary = floors[i]
+		var end: float = floors[i + 1].start if i + 1 < floors.size() else now
+		var line := "第 %d 層 %s %s" % [f.floor, f.map, UiKit.format_time(end - f.start)]
+		if f.event_start >= 0.0:
+			line += "（出口事件 %s）" % (UiKit.format_time(f.event_open - f.event_start) if f.event_open >= 0.0 else "進行中")
+		if f.layout != "":
+			line += " " + f.layout
+		out.append(line)
+	return out
 
 
 func _attacker_seen(world: World, p: Dictionary) -> bool:
@@ -191,8 +225,11 @@ func report_text(world: World) -> String:
 	var where := "第 %d 層 · 難度 %d（%s）" % [world.floor_num, floori(world.difficulty()), mode_name] if DigEvent.enabled(world) else "第 %d 波" % s.wave
 	var boss: Enemy = world.entities.get(world.boss_id) as Enemy
 	if boss != null and not boss.is_dead:
-		where += " · %s剩 %d%% 血" % [name_of(boss.kind), roundi(100.0 * boss.hp / boss.max_hp)]
+		var forms: Array = boss.def.get("form_names", [])
+		var boss_name: String = forms[clampi(boss.anim.get("form", 0), 0, forms.size() - 1)] if not forms.is_empty() else name_of(boss.kind)
+		where += " · %s剩 %d%% 血" % [boss_name, roundi(100.0 * boss.hp / boss.max_hp)]
 	lines.append("結果：%s · %s · %s" % [result if result != "" else "進行中", where, UiKit.format_time(s.time)])
+	lines.append_array(floors_text(s.time))
 	var me: Player = world.entities.get(me_id) as Player
 	if me != null:
 		var inst := me.active_weapon()
