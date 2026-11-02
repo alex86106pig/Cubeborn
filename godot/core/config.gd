@@ -95,11 +95,11 @@ const ROLL := {
 }
 
 # 魔力：寶石座技能、武器右鍵（含招架、噴火）不用冷卻，改成耗魔；每個職業一樣（數字 Claude 暫定）
-# 耗魔 = 原本的冷卻秒數 × per_cd_second：只放一招時跟原本冷卻一樣頻繁的耗魔是 regen ÷ per_cd_second = 2 招份，
+# 耗魔 = 原本的冷卻秒數 × per_cd_second：只放一招時跟原本冷卻一樣頻繁的耗魔是每秒 per_cd_second，回魔 regen ÷ per_cd_second = 1 招份，
 # 所以平衡表的「技能放一次的目標傷害」把耗魔 ÷ per_cd_second 當成冷卻秒數算（tests/balance_report.gd）
 const MANA := {
 	"max": 100.0,            # 最大魔力（max_mana 屬性的基礎值）
-	"regen": 10.0,           # 每秒回魔（mana_regen 屬性的基礎值），隨時都在回
+	"regen": 5.0,            # 每秒回魔（mana_regen 屬性的基礎值），隨時都在回
 	"per_cd_second": 5.0,    # 平衡用：1 秒原本的冷卻 = 多少魔力
 	"cast_gap": 0.3,         # 放完到能再放同一格的秒數（防連按；不是平衡用的冷卻）
 }
