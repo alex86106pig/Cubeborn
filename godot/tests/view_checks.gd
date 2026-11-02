@@ -1136,9 +1136,35 @@ static func check_health_bars() -> String:
 		for b: Dictionary in hb.bars():
 			if b.entity == mate or b.entity == grunt:
 				err = "倒地的隊友（改顯示倒數）、WorldView 隱藏的骷髏不應畫血條：%s" % b.entity.kind
+	if err == "":
+		err = _check_mana_bar(hb, p)
 	hb.free()
 	cam.free()
 	return err
+
+
+# 自己頭上的魔力條：比例 = 魔力 / 上限、滿了也畫；在血條正下方不重疊（血條滿血不畫時位置一樣）；倒地不畫
+static func _check_mana_bar(hb: HealthBars, p: Player) -> String:
+	p.mana = p.max_mana()
+	var full := hb.mana_bar()
+	if full.is_empty() or absf(full.ratio - 1.0) > EPS:
+		return "魔力滿時也要畫自己的魔力條：%s" % [full]
+	p.mana = p.max_mana() * 0.4
+	var m := hb.mana_bar()
+	if absf(m.ratio - 0.4) > EPS or not (m.rect as Rect2).size.is_equal_approx(hb.MANA_SIZE):
+		return "魔力條比例 %.3f、尺寸 %s（應為 0.400、%s）" % [m.ratio, m.rect.size, hb.MANA_SIZE]
+	var hp_rect: Rect2 = hb.bars().filter(func(b: Dictionary) -> bool: return b.entity == p)[0].rect
+	if m.rect.position.y < hp_rect.end.y + 1.0 or absf(m.rect.get_center().x - hp_rect.get_center().x) > 0.5:
+		return "魔力條應在血條正下方：血條 %s、魔力條 %s" % [hp_rect, m.rect]
+	p.hp = p.max_hp
+	if not (hb.mana_bar().rect as Rect2).is_equal_approx(m.rect):
+		return "滿血（血條不畫）時魔力條的位置不應跳動"
+	p.is_downed = true
+	var down := hb.mana_bar()
+	p.is_downed = false
+	if not down.is_empty():
+		return "倒地時不應畫魔力條"
+	return ""
 
 
 # 遊戲的正交等距相機：畫面上 1 世界單位 ≈ 1080 / (view_half_height × 2) px，高度乘 cos(仰角)（相機往下看）

@@ -1,11 +1,14 @@
 # 頭頂血條（v0.43.0）：自己與隊友綠色、怪物紅色；滿血、死亡、倒地（改顯示倒數）、視野外都不畫，Boss 用上方大血條不畫
 # 怪物的血條在魔法 / 稀有怪詞條（WorldLabels）的基線下方、頭頂上方；玩家的在 P1~P4 名牌（PlayerTags）的基線下方
 # 只畫受傷又看得到的，上百隻怪時也只是幾十個矩形，不另外建節點
+# 自己頭上另外有魔力條（mana_bar）：固定在血條的位置正下方、魔力滿了也畫（血條滿血不畫時位置不跳）；隊友的魔力不在快照裡，不畫
 class_name HealthBars
 extends Control
 
 const ENEMY_SIZE := Vector2(48, 5)
 const PLAYER_SIZE := Vector2(64, 6)
+const MANA_SIZE := Vector2(64, 4)
+const MANA_GAP := 2.0      # 魔力條上緣在血條下緣下方幾 px
 const ENEMY_GAP := 5.0     # 血條上緣在詞條基線（WorldLabels.ENEMY_OFFSET）下方幾 px
 const PLAYER_GAP := 6.0    # 血條上緣在名牌基線（PlayerTags.HEAD_OFFSET）下方幾 px
 const FULL_EPSILON := 0.01 # hp 差這麼一點也算滿血（客戶端快照滿血時 hp 剛好等於 max_hp）
@@ -33,6 +36,24 @@ func _draw() -> void:
 		var rect: Rect2 = b.rect
 		draw_rect(rect, BG)
 		draw_rect(Rect2(rect.position, Vector2(rect.size.x * b.ratio, rect.size.y)), b.color)
+	var m := mana_bar()
+	if not m.is_empty():
+		draw_rect(m.rect, BG)
+		draw_rect(Rect2(m.rect.position, Vector2(m.rect.size.x * m.ratio, m.rect.size.y)), UiKit.MANA_FILL)
+
+
+# 自己的魔力條：{ratio, rect}；沒有角色、死亡、倒地、下樓了回傳 {}
+func mana_bar() -> Dictionary:
+	if world == null or camera == null:
+		return {}
+	var me: Player = world.players.get(local_peer)
+	if me == null or me.is_dead or me.is_removed or me.is_downed or me.descended:
+		return {}
+	var s: Variant = _screen(Vector3(me.pos.x, me.height + PlayerTags.HEAD_OFFSET, me.pos.y))
+	if s == null:
+		return {}
+	var top: float = PLAYER_GAP + PLAYER_SIZE.y + MANA_GAP
+	return {"ratio": clampf(me.mana / maxf(me.max_mana(), 1.0), 0.0, 1.0), "rect": Rect2(s + Vector2(-MANA_SIZE.x / 2.0, top), MANA_SIZE)}
 
 
 # 這一幀要畫的血條：[{entity, ratio, color, rect（畫面座標，整條的範圍）}]

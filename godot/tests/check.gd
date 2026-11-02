@@ -187,7 +187,7 @@ func _initialize() -> void:
 	_check("視野畫面：背後的模型隱藏、前方的顯示；背後的特效不畫；轉身時 fade_out / fade_in 淡出淡入；淡入淡出中換武器不碰已刪的網格、新武器跟著淡；本機選過的遺物維持半透明；本機角色陣亡後全部看得到；變暗遮罩最先畫；挖墳中朝向與遮罩跟著滑鼠",
 		all.bind([ViewChecks.check_vision_view, ViewChecks.check_dig_vision]))
 	_check("觀戰：多人時本機陣亡看第一位站著的隊友、左右切換、看的人死了或走進出口就換、沒人可看就不觀戰；視野改用隊友的；房主依 InputCmd.spectate 挑快照；復活後回到自己", ViewChecks.check_spectate)
-	_check("頭頂血條：滿血不畫、受傷畫；自己與隊友綠、怪物紅；視野外、Boss、倒地、隱藏的不畫；比例 = hp / max_hp；不疊到詞條與名牌", ViewChecks.check_health_bars)
+	_check("頭頂血條：滿血不畫、受傷畫；自己頭上血條下方有魔力條（滿了也畫、位置不跳、倒地不畫）；自己與隊友綠、怪物紅；視野外、Boss、倒地、隱藏的不畫；比例 = hp / max_hp；不疊到詞條與名牌", ViewChecks.check_health_bars)
 	_check("開場預熱：每一種怪、魔法 / 稀有怪、玩家、寶箱、金幣、鍛造祭壇、遺物、插地火把、道具、武器、投射物、每種稀有度的武器（含淡入淡出中的版本）都在鏡頭附近畫幾幀後移除；點光源前一半關後一半開；預熱文字含所有會用到的字", ViewChecks.check_warm_up)
 	_check("牆後剪影：角色材質寫模板值；玩家一直有、怪物只有被牆擋住時才有；箭與魔彈被牆擋住時畫剪影（怪物紅、自己藍），同顏色的投射物共用材質；每一種實體類別（含之後新增的）都在預熱建模型、預設有剪影、材質都寫模板值（不要的列 XRAY_EXEMPT）；牆後的寶箱金色、鍛造祭壇灰白，同種物件共用材質",
 		all.bind([ViewChecks.check_xray, ViewChecks.check_projectile_xray, ViewChecks.check_xray_every_entity, ViewChecks.check_object_xray]))
