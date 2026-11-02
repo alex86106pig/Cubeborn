@@ -7,7 +7,7 @@
 <style>
   :root {
     --bg: #15161a; --card: #1e2026; --line: #34373f; --text: #e6e2d6; --dim: #9a978c;
-    --ground: #26282e; --start-g: #22352a; --branch-g: #3a3322; --boss-g: #3a2324;
+    --ground: #2a2c33; --start-g: #22352a; --branch-g: #3a3322; --boss-g: #3a2324; --void: #0c0d10;
     --wall: #8b8577; --tomb: #c4bda9; --low: #7d6850; --high: #a3876a;
     --start: #6fd08c; --pack: #e0625d; --chest: #e0b84a; --exit: #a97be8; --anvil: #7fc8ff; --boss: #d9534f; --route: #efe6c8;
   }
@@ -19,16 +19,17 @@
   .box { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
   .box h3 { margin: 0 0 6px; font-size: 15px; }
   .box ul, .box ol { margin: 0; padding-left: 20px; }
-  .bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 12px; }
-  .stages { display: flex; flex-wrap: wrap; gap: 6px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 10px; }
+  .group { display: flex; flex-wrap: wrap; gap: 6px; }
   button { background: #2b2e36; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 12px; font: inherit; cursor: pointer; }
   button:hover { border-color: var(--dim); }
   button.on { background: #4a3f22; border-color: var(--chest); }
   button.main { background: #3a2f5a; border-color: var(--exit); }
   input[type=number] { width: 110px; background: #111216; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: inherit; }
   label { display: inline-flex; gap: 4px; align-items: center; color: var(--dim); font-size: 14px; cursor: pointer; }
+  .tag { color: var(--dim); font-size: 14px; }
   .view { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
-  #main { display: block; width: 100%; height: auto; max-height: 78vh; background: #101114; border-radius: 6px; }
+  #main { display: block; width: 100%; height: auto; max-height: 78vh; background: var(--void); border-radius: 6px; }
   .stats { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; font-size: 14px; }
   .stats dt { color: var(--dim); }
   .stats dd { margin: 0; }
@@ -39,7 +40,7 @@
   .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
   .thumb { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 6px; cursor: pointer; }
   .thumb:hover { border-color: var(--exit); }
-  .thumb svg { display: block; width: 100%; height: 130px; background: #101114; border-radius: 4px; }
+  .thumb svg { display: block; width: 100%; height: 130px; background: var(--void); border-radius: 4px; }
   .thumb div { font-size: 12px; color: var(--dim); text-align: center; }
   .info { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin-top: 22px; }
   @media (max-width: 760px) { .view { grid-template-columns: 1fr; } }
@@ -47,10 +48,17 @@
 </head>
 <body>
 <h1>小關隨機地圖預覽（方案 B）</h1>
-<p class="sub">每按一次「重骰」換一個種子重新產生。路線形狀、每塊主題、障礙物、怪群、小寶箱都是隨機的；起點、出口的門、鐵砧、支線盡頭的祭壇 / 石棺、1-5 的王族墓是固定要素。一塊 48 × 48。這頁是 JS 寫的示意，規則選定後照搬成 Godot 的生成器。</p>
+<p class="sub">每按一次「重骰」換一個種子。路線形狀、每塊主題、障礙物、怪群、小寶箱都是隨機的；起點、出口的門、鐵砧、支線盡頭的祭壇 / 石棺、1-5 的王族墓是固定要素。「形狀」切換三種生成法，同一個種子可以直接比。這頁是 JS 寫的示意，規則選定後照搬成 Godot 的生成器。</p>
 
 <div class="bar">
-  <div class="stages" id="stages"></div>
+  <span class="tag">形狀</span>
+  <div class="group" id="modes"></div>
+</div>
+<div class="bar">
+  <span class="tag">小關</span>
+  <div class="group" id="stages"></div>
+</div>
+<div class="bar">
   <span>種子 <input type="number" id="seed" value="1"></span>
   <button class="main" id="reroll">重骰</button>
   <label><input type="checkbox" id="iso">等距視角</label>
@@ -67,37 +75,35 @@
   </div>
 </div>
 
-<h2>同一小關的其他種子（點一下放大）</h2>
+<h2>同一小關、同一形狀的其他種子（點一下放大）</h2>
 <div class="thumbs" id="thumbs"></div>
 
 <div class="info">
   <div class="box">
-    <h3>產生規則</h3>
+    <h3>三種形狀</h3>
     <ul>
-      <li><b>路線</b>：從起點塊往隨機方向走，不重疊；直走機率稍高。主線 1-1 有 3 塊，1-2~1-4 有 3~4 塊，1-5 有 2 塊加王族墓</li>
-      <li><b>支線</b>：機率長在主線中段，1 塊、死路，盡頭放祭壇 / 石棺</li>
-      <li><b>主題</b>：墓碑林、教堂廢墟、亂葬坑、陵墓列、山丘、空地，相鄰兩塊不重複；40% 再混一個副主題</li>
-      <li><b>走道</b>：每個開口到塊中央留 7 寬的走道不放牆和墓碑，所以一定走得通；高台可以放在走道上（跳得上去）</li>
-      <li><b>檢查</b>：產生完用尋路確認起點走得到門、鐵砧、祭壇 / 石棺，失敗就重產（「重產次數」）</li>
-      <li><b>怪群</b>：每塊 2~4 群（支線 1~2），一群 6~10 隻，離起點至少 16、群與群至少 9；起點塊和王族墓不放</li>
+      <li><b>方格</b>：每塊 48 × 48 正方形，接在隔壁格；塊與塊之間是直牆、留一個開口</li>
+      <li><b>拼形＋不規則邊緣（1＋2）</b>：每塊由 3~4 個 32 × 32 小格拼成（L、T、S、長條、方形，會旋轉翻面），面積 3072~4096；邊緣用雜訊往內吃 1~5 格，像崖壁、倒塌的圍牆。地形仍全是長方形，遊戲的碰撞不用改</li>
+      <li><b>洞穴（4）</b>：每個房間是半徑 20~25 的不規則一團，用細胞自動機磨過邊緣，房間之間是寬窄不一的通道；沒有牆隔開。王族墓仍是固定的方形廣場</li>
     </ul>
   </div>
   <div class="box">
-    <h3>固定要素</h3>
+    <h3>共通規則</h3>
     <ul>
-      <li>起點：第一塊中央</li>
-      <li>出口：最後一塊朝外的那面牆上，2 扇門，各標一種下一關的獎勵（技能、詞條、靈魂、遺物、骰子抽 2 種）；1-2、1-4 只有 1 扇「下一關：鐵砧」</li>
-      <li>鐵砧：1-3、1-5 的起點旁</li>
-      <li>祭壇 / 石棺：支線盡頭</li>
-      <li>1-5：最後一塊是固定的王族墓（圍牆、門對著來的方向、四角石座、中央挖墳點）</li>
+      <li><b>路線</b>：主線 1-1 有 3 塊，1-2~1-4 有 3~4 塊，1-5 有 2 塊加王族墓；支線機率長在主線中段</li>
+      <li><b>主題</b>：墓碑林、教堂廢墟、亂葬坑、陵墓列、山丘、空地，相鄰兩塊不重複；40% 再混一個副主題</li>
+      <li><b>走道</b>：開口（洞穴是房間中心之間）留 7 寬的走道，不放牆、墓碑，邊緣也不會吃到；高台可以放在走道上</li>
+      <li><b>檢查</b>：用尋路確認起點走得到門、鐵砧、祭壇 / 石棺、挖墳點，失敗就重產</li>
+      <li><b>怪群</b>：每塊 2~4 群（支線 1~2），一群 6~10 隻，離起點至少 16、群與群至少 9</li>
+      <li><b>邊界石台數</b>：地圖外圍與塊間的牆合併成幾個長方形，做進遊戲時影響碰撞查詢與繪製次數</li>
     </ul>
   </div>
   <div class="box">
     <h3>想請你看的</h3>
     <ol>
-      <li>路線形狀夠不夠多變？要不要偶爾出現兩條支線、或繞一圈的環？</li>
+      <li>三種形狀選哪一種（或混用，例如墓園用拼形、地下陵墓用洞穴）？</li>
       <li>障礙物的密度：太空、太擠，還是剛好？</li>
-      <li>一關的大小：右邊的「面積」和「最短路線」，跟現在的地圖 A 比起來你覺得怎樣？</li>
+      <li>一關的大小（右邊的「可走面積」和「最短路線」）跟現在的地圖 A 比起來怎樣？</li>
       <li>還有哪些要素要固定？</li>
     </ol>
   </div>
@@ -105,14 +111,14 @@
 
 <script>
 const NS = "http://www.w3.org/2000/svg";
-const B = 48;          // 區塊邊長
-const WALL_T = 1;      // 區塊外牆厚度（相鄰兩塊合起來 2）
-const GATE = 8;        // 區塊之間開口寬
+const B = 48;          // 方格模式的區塊邊長；也是王族墓大小
+const SUBS = { square: 24, poly: 32 };   // 小格邊長：方格 2 × 2 = 48；拼形 3~4 格 × 32
 const CORRIDOR = 3.5;  // 走道半寬
 const SPEED = 6.5;     // 玩家移動（單位/秒）
 const MAP_A_AREA = 96 * 96;
 const THEMES = { tombs: "墓碑林", ruins: "教堂廢墟", pits: "亂葬坑", mausoleums: "陵墓列", hill: "山丘", open: "空地" };
 const REWARDS = ["技能", "詞條", "靈魂", "遺物", "骰子"];
+const MODES = { square: "方格", poly: "拼形＋不規則邊緣", cave: "洞穴" };
 const STAGES = {
   "1-1": { main: [3, 3], branch: 0.5, doors: 2 },
   "1-2": { main: [3, 4], branch: 0.6, doors: 1 },
@@ -122,10 +128,14 @@ const STAGES = {
 };
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const SIDE = { "1,0": "E", "-1,0": "W", "0,1": "S", "0,-1": "N" };
-const OPP = { E: "W", W: "E", S: "N", N: "S" };
+const SHAPES = {
+  O4: [[0, 0], [1, 0], [0, 1], [1, 1]], I3: [[0, 0], [1, 0], [2, 0]], L3: [[0, 0], [1, 0], [0, 1]],
+  I4: [[0, 0], [1, 0], [2, 0], [3, 0]], L4: [[0, 0], [0, 1], [0, 2], [1, 2]], T4: [[0, 0], [1, 0], [2, 0], [1, 1]], S4: [[0, 0], [1, 0], [1, 1], [2, 1]],
+};
+const POLY_POOL = ["O4", "O4", "I3", "L3", "L3", "L4", "L4", "T4", "S4", "I4"];
 const C = n => getComputedStyle(document.documentElement).getPropertyValue("--" + n).trim();
 
-// ---------- 亂數 ----------
+// ---------- 亂數與雜訊 ----------
 function mulberry32(a) {
   return function () {
     a |= 0; a = a + 0x6D2B79F5 | 0;
@@ -141,16 +151,34 @@ class Rng {
   pick(arr) { return arr[Math.floor(this.next() * arr.length)]; }
   chance(p) { return this.next() < p; }
 }
-function hashSeed(seed, stage) {
+function hashSeed(seed, key) {
   let h = (seed ^ 0x9e3779b9) >>> 0;
-  for (const ch of stage) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+  for (const ch of key) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
   return h;
+}
+// 平滑的格點雜訊，回傳 0~1
+function makeNoise(r, scale) {
+  const N = 32, t = new Float32Array(N * N);
+  for (let i = 0; i < t.length; i++) t[i] = r.next();
+  const s = v => v * v * (3 - 2 * v);
+  const g = (i, j) => t[((j % N + N) % N) * N + ((i % N + N) % N)];
+  return (x, y) => {
+    x /= scale; y /= scale;
+    const xi = Math.floor(x), yi = Math.floor(y), fx = s(x - xi), fy = s(y - yi);
+    const a = g(xi, yi) + (g(xi + 1, yi) - g(xi, yi)) * fx, b = g(xi, yi + 1) + (g(xi + 1, yi + 1) - g(xi, yi + 1)) * fx;
+    return a + (b - a) * fy;
+  };
 }
 
 // ---------- 幾何 ----------
 function pointRectDist(px, py, o) {
   const dx = Math.max(o.x - px, 0, px - (o.x + o.w)), dy = Math.max(o.y - py, 0, py - (o.y + o.h));
   return Math.hypot(dx, dy);
+}
+function segDist(px, py, s) {
+  const dx = s[2] - s[0], dy = s[3] - s[1], L = dx * dx + dy * dy;
+  const t = L ? Math.max(0, Math.min(1, ((px - s[0]) * dx + (py - s[1]) * dy) / L)) : 0;
+  return Math.hypot(px - s[0] - t * dx, py - s[1] - t * dy);
 }
 function segRectDist(s, o) {
   const len = Math.hypot(s[2] - s[0], s[3] - s[1]), n = Math.max(1, Math.ceil(len / 0.5));
@@ -164,60 +192,52 @@ function segRectDist(s, o) {
 function overlap(a, b, m) {
   return a.x < b.x + b.w + m && b.x < a.x + a.w + m && a.y < b.y + b.h + m && b.y < a.y + a.h + m;
 }
-// 區塊某一邊上的點（區塊內座標）；inset = 往塊內縮
-function sidePoint(side, off, inset) {
-  switch (side) {
-    case "E": return [B - inset, off];
-    case "W": return [inset, off];
-    case "S": return [off, B - inset];
-    case "N": return [off, inset];
-  }
+function transformShape(cells, rot, mir) {
+  let c = cells.map(([x, y]) => [mir ? -x : x, y]);
+  for (let i = 0; i < rot; i++) c = c.map(([x, y]) => [-y, x]);
+  const mx = Math.min(...c.map(p => p[0])), my = Math.min(...c.map(p => p[1]));
+  return c.map(([x, y]) => [x - mx, y - my]);
 }
 
-// ---------- 路線 ----------
-function walk(r, n, branchP, hasBoss) {
-  for (let tries = 0; tries < 50; tries++) {
-    const cells = [[0, 0]], occ = new Set(["0,0"]);
-    let last = null, ok = true;
-    while (cells.length < n) {
-      const [x, y] = cells[cells.length - 1];
-      const opts = DIRS.filter(d => !occ.has((x + d[0]) + "," + (y + d[1])));
-      if (!opts.length) { ok = false; break; }
-      const d = last && opts.includes(last) && r.chance(0.35) ? last : r.pick(opts);
-      cells.push([x + d[0], y + d[1]]);
-      occ.add((x + d[0]) + "," + (y + d[1]));
-      last = d;
-    }
-    if (!ok) continue;
-    const links = [];
-    for (let i = 0; i + 1 < n; i++) links.push([i, i + 1]);
-    let branch = null;
-    if (r.chance(branchP)) {
-      // 長在中段（不接起點、不接最後一塊）；沒位置就不長
-      const cands = [];
-      for (let i = 1; i < n - 1; i++)
-        for (const d of DIRS) {
-          const k = (cells[i][0] + d[0]) + "," + (cells[i][1] + d[1]);
-          if (!occ.has(k)) cands.push([i, cells[i][0] + d[0], cells[i][1] + d[1]]);
-        }
-      if (cands.length) {
-        const [pi, bx, by] = r.pick(cands);
-        branch = [bx, by];
-        occ.add(bx + "," + by);
-        links.push([pi, n]);
+// ---------- 1 單位格子：id = 區域編號，-1 = 實心（牆 / 崖 / 外面） ----------
+function makeGrid(x0, y0, x1, y1) {
+  x0 = Math.floor(x0); y0 = Math.floor(y0);
+  const W = Math.ceil(x1) - x0, H = Math.ceil(y1) - y0;
+  return {
+    x0, y0, W, H, id: new Int16Array(W * H).fill(-1),
+    idx(x, y) { const gx = Math.floor(x - x0), gy = Math.floor(y - y0); return gx < 0 || gy < 0 || gx >= W || gy >= H ? -1 : gy * W + gx; },
+    get(x, y) { const i = this.idx(x, y); return i < 0 ? -1 : this.id[i]; },
+    cx(i) { return i % W + x0 + 0.5; },
+    cy(i) { return Math.floor(i / W) + y0 + 0.5; },
+  };
+}
+// 對每個「離某些線段 / 點夠近」的格子呼叫 fn
+function forCellsNear(G, segs, pts, pad, fn) {
+  for (const s of segs) {
+    const x0 = Math.min(s[0], s[2]) - CORRIDOR - pad, x1 = Math.max(s[0], s[2]) + CORRIDOR + pad;
+    const y0 = Math.min(s[1], s[3]) - CORRIDOR - pad, y1 = Math.max(s[1], s[3]) + CORRIDOR + pad;
+    for (let y = Math.floor(y0); y <= y1; y++)
+      for (let x = Math.floor(x0); x <= x1; x++) {
+        const i = G.idx(x, y);
+        if (i >= 0 && segDist(G.cx(i), G.cy(i), s) < CORRIDOR + pad) fn(i);
       }
-    }
-    return { cells, links, branch, occ };
   }
-  return null;
+  for (const p of pts)
+    for (let y = Math.floor(p.y - p.r - pad); y <= p.y + p.r + pad; y++)
+      for (let x = Math.floor(p.x - p.r - pad); x <= p.x + p.r + pad; x++) {
+        const i = G.idx(x, y);
+        if (i >= 0 && Math.hypot(G.cx(i) - p.x, G.cy(i) - p.y) < p.r + pad) fn(i);
+      }
 }
 
-// ---------- 主題：每個 fn(r, add) 用區塊內座標放東西；add 回傳有沒有放成功 ----------
+// ---------- 主題：fn(r, add, w, h) 用區域外框內的座標放東西；add 回傳有沒有放成功 ----------
 function tryN(k, maxTries, fn) { let placed = 0; for (let i = 0; i < maxTries && placed < k; i++) if (fn()) placed++; }
+const span = (r, lo, size, total) => r.float(lo, Math.max(lo, total - lo - size));
 const THEME_FN = {
-  tombs(r, add) {
+  tombs(r, add, w, h) {
     const rows = r.int(3, 6), cols = r.int(4, 9), sa = r.float(2.6, 3.6), sb = r.float(3.5, 5), vert = r.chance(0.3);
-    const a0 = r.float(4, Math.max(4, 44 - cols * sa)), b0 = r.float(4, Math.max(4, 44 - rows * sb));
+    const A = vert ? h : w, Bd = vert ? w : h;
+    const a0 = span(r, 4, cols * sa, A), b0 = span(r, 4, rows * sb, Bd);
     for (let i = 0; i < rows; i++)
       for (let j = 0; j < cols; j++) {
         if (r.chance(0.12)) continue;
@@ -225,9 +245,11 @@ const THEME_FN = {
         if (vert) add(b, a, 0.5, 1.2, 1.3, "tomb"); else add(a, b, 1.2, 0.5, 1.3, "tomb");
       }
   },
-  ruins(r, add) {
-    const w = r.float(14, 22), h = r.float(12, 20), x0 = r.float(4, 44 - w), y0 = r.float(4, 44 - h), t = 1.5;
-    const sides = [[x0, y0, w, true], [x0, y0 + h - t, w, true], [x0, y0, h, false], [x0 + w - t, y0, h, false]];
+  ruins(r, add, w, h) {
+    const rw = Math.min(r.float(14, 22), w - 8), rh = Math.min(r.float(12, 20), h - 8), t = 1.5;
+    if (rw < 8 || rh < 8) return;
+    const x0 = span(r, 4, rw, w), y0 = span(r, 4, rh, h);
+    const sides = [[x0, y0, rw, true], [x0, y0 + rh - t, rw, true], [x0, y0, rh, false], [x0 + rw - t, y0, rh, false]];
     let gaps = 0;
     sides.forEach(([sx, sy, len, horiz], k) => {
       let g = r.int(0, 2);
@@ -250,242 +272,489 @@ const THEME_FN = {
       if (len - p > 1) seg(p, len);
     });
     const k = r.int(2, 4);
-    for (let i = 0; i < k; i++) { const s = r.float(1.5, 2.5); add(x0 + r.float(2, w - 2 - s), y0 + r.float(2, h - 2 - s), s, s, 0.5, "plat"); }
+    for (let i = 0; i < k; i++) { const s = r.float(1.5, 2.5); add(x0 + r.float(2, rw - 2 - s), y0 + r.float(2, rh - 2 - s), s, s, 0.5, "plat"); }
   },
-  pits(r, add) {
-    tryN(r.int(3, 6), 20, () => {
-      const L = r.float(8, 11), vert = r.chance(0.3);
-      return add(r.float(4, 40), r.float(4, 40), vert ? 3 : L, vert ? L : 3, 0.5, "plat");
-    });
-  },
-  mausoleums(r, add) {
+  pits(r, add, w, h) {
     tryN(r.int(3, 6), 24, () => {
-      const w = r.float(5, 7), h = r.float(4, 6);
-      return add(r.float(4, 44 - w), r.float(4, 44 - h), w, h, 3, "wall");
+      const L = r.float(8, 11), vert = r.chance(0.3);
+      return add(r.float(3, w - 6), r.float(3, h - 6), vert ? 3 : L, vert ? L : 3, 0.5, "plat");
     });
   },
-  hill(r, add) {
-    const w = r.float(16, 26), h = r.float(12, 20), x0 = r.float(4, 44 - w), y0 = r.float(4, 44 - h), s = r.float(3, 6);
-    if (add(x0, y0, w, h, 0.5, "plat")) add(x0 + s, y0 + s, w - 2 * s, h - 2 * s, 1.0, "plat");
+  mausoleums(r, add, w, h) {
+    tryN(r.int(3, 6), 30, () => {
+      const mw = r.float(5, 7), mh = r.float(4, 6);
+      return add(span(r, 3, mw, w), span(r, 3, mh, h), mw, mh, 3, "wall");
+    });
   },
-  open(r, add) {
-    tryN(r.int(4, 9), 30, () => r.chance(0.5) ? add(r.float(4, 43), r.float(4, 43), 1.2, 0.5, 1.3, "tomb") : add(r.float(4, 43), r.float(4, 43), 0.5, 1.2, 1.3, "tomb"));
-    if (r.chance(0.4)) tryN(1, 10, () => add(r.float(4, 38), r.float(4, 38), r.float(5, 7), r.float(4, 6), 3, "wall"));
+  hill(r, add, w, h) {
+    const hw = Math.min(r.float(16, 26), w - 6), hh = Math.min(r.float(12, 20), h - 6), s = r.float(3, 6);
+    if (hw < 10 || hh < 10) return;
+    const x0 = span(r, 3, hw, w), y0 = span(r, 3, hh, h);
+    if (add(x0, y0, hw, hh, 0.5, "plat")) add(x0 + s, y0 + s, hw - 2 * s, hh - 2 * s, 1.0, "plat");
+  },
+  open(r, add, w, h) {
+    tryN(r.int(4, 9), 30, () => r.chance(0.5) ? add(r.float(3, w - 4), r.float(3, h - 4), 1.2, 0.5, 1.3, "tomb") : add(r.float(3, w - 4), r.float(3, h - 4), 0.5, 1.2, 1.3, "tomb"));
+    if (r.chance(0.4)) tryN(1, 10, () => add(r.float(3, w - 9), r.float(3, h - 9), r.float(5, 7), r.float(4, 6), 3, "wall"));
   },
 };
 
 // ---------- 產生 ----------
-function generate(seed, stageId) {
-  const r = new Rng(hashSeed(seed, stageId));
+function generate(seed, stageId, mode) {
+  const r = new Rng(hashSeed(seed, stageId + mode));
+  const cfg = STAGES[stageId];
   for (let attempt = 1; attempt <= 30; attempt++) {
-    const m = tryGenerate(r, STAGES[stageId]);
-    if (m) { m.attempts = attempt; m.stage = stageId; m.seed = seed; return m; }
+    const m = mode === "cave" ? caveMap(r, cfg) : gridMap(r, cfg, mode === "poly");
+    if (m && finish(m, r, cfg)) { m.attempts = attempt; return m; }
   }
   return null;
 }
+const mainCount = (r, cfg) => r.int(cfg.main[0], cfg.main[1]) + (cfg.boss ? 1 : 0);
+const roleAt = (i, n, cfg) => i === 0 ? "start" : i === n - 1 ? (cfg.boss ? "boss" : "exit") : "fight";
 
-function tryGenerate(r, cfg) {
-  const n = r.int(cfg.main[0], cfg.main[1]) + (cfg.boss ? 1 : 0);
-  const lay = walk(r, n, cfg.branch, cfg.boss);
-  if (!lay) return null;
-  const roleOf = i => i === 0 ? "start" : i === n - 1 ? (cfg.boss ? "boss" : "exit") : "fight";
-  const blocks = lay.cells.map((c, i) => ({ cx: c[0], cy: c[1], ox: c[0] * B, oy: c[1] * B, role: roleOf(i), openings: [], obs: [], themes: [] }));
-  if (lay.branch) blocks.push({ cx: lay.branch[0], cy: lay.branch[1], ox: lay.branch[0] * B, oy: lay.branch[1] * B, role: "branch", openings: [], obs: [], themes: [] });
-  for (const [a, b] of lay.links) {
-    const A = blocks[a], Bk = blocks[b];
-    const side = SIDE[(Bk.cx - A.cx) + "," + (Bk.cy - A.cy)];
-    const off = Bk.role === "boss" ? B / 2 : r.int(14, 34);
-    A.openings.push({ side, off });
-    Bk.openings.push({ side: OPP[side], off });
+// 方格 / 拼形：區域由 24 × 24 小格組成（方格 = 對齊 2 × 2 的方形）
+function gridMap(r, cfg, poly) {
+  const SUB = SUBS[poly ? "poly" : "square"];
+  const n = mainCount(r, cfg);
+  const regions = [], occ = new Map(), links = [];
+  const key = c => c[0] + "," + c[1];
+  const shapeFor = role => !poly || role === "boss" ? SHAPES.O4 : transformShape(SHAPES[r.pick(POLY_POOL)], r.int(0, 3), r.chance(0.5));
+  const put = (cells, role) => { const id = regions.length; regions.push({ id, role, sub: cells, obs: [], themes: [] }); for (const c of cells) occ.set(key(c), id); return id; };
+  const attach = (pi, role) => {
+    for (let k = 0; k < 40; k++) {
+      const shape = shapeFor(role), pr = regions[pi];
+      let cells;
+      if (!poly) {
+        const o = pr.sub[0], d = r.pick(DIRS);
+        cells = shape.map(([x, y]) => [o[0] + d[0] * 2 + x, o[1] + d[1] * 2 + y]);
+      } else {
+        const p = r.pick(pr.sub), d = r.pick(DIRS), q = [p[0] + d[0], p[1] + d[1]];
+        if (occ.has(key(q))) continue;
+        const an = r.pick(shape);
+        cells = shape.map(([x, y]) => [x - an[0] + q[0], y - an[1] + q[1]]);
+      }
+      if (cells.some(c => occ.has(key(c)))) continue;
+      links.push({ a: pi, b: put(cells, role) });
+      return true;
+    }
+    return false;
+  };
+  put(shapeFor("start"), "start");
+  for (let i = 1; i < n; i++) if (!attach(i - 1, roleAt(i, n, cfg))) return null;
+  if (n >= 3 && r.chance(cfg.branch)) attach(r.int(1, n - 2), "branch");
+
+  const cen = c => [(c[0] + 0.5) * SUB, (c[1] + 0.5) * SUB];
+  for (const reg of regions) {
+    const mx = reg.sub.reduce((s, c) => s + c[0], 0) / reg.sub.length, my = reg.sub.reduce((s, c) => s + c[1], 0) / reg.sub.length;
+    reg.hub = reg.sub.reduce((b, c) => Math.hypot(c[0] - mx, c[1] - my) < Math.hypot(b[0] - mx, b[1] - my) ? c : b);
+    const hc = cen(reg.hub);
+    reg.labelAt = [hc[0] - 10, hc[1] - 7];
   }
-  const m = { blocks, segs: [], pts: [], feats: { doors: [], chests: [], packs: [] } };
-  const W = (blk, lx, ly) => [blk.ox + lx, blk.oy + ly];
-  const center = blk => W(blk, B / 2, B / 2);
-  const reserveSeg = (p, q) => m.segs.push([p[0], p[1], q[0], q[1]]);
-
-  // 走道：每個開口到塊中央
-  for (const blk of blocks) {
-    if (blk.role === "boss") continue;
-    for (const o of blk.openings) reserveSeg(W(blk, ...sidePoint(o.side, o.off, 1)), center(blk));
+  // 區域內小格的路（BFS），走道沿著小格中心走，不會穿出區域
+  const subPath = (reg, from, to) => {
+    const inReg = new Set(reg.sub.map(key)), prev = new Map([[key(from), null]]), q = [from];
+    while (q.length) {
+      const c = q.shift();
+      if (key(c) === key(to)) break;
+      for (const d of DIRS) {
+        const nb = [c[0] + d[0], c[1] + d[1]];
+        if (inReg.has(key(nb)) && !prev.has(key(nb))) { prev.set(key(nb), c); q.push(nb); }
+      }
+    }
+    const out = [];
+    for (let c = to; c; c = prev.get(key(c))) out.push(c);
+    return out.reverse();
+  };
+  const m = { mode: poly ? "poly" : "square", regions, links, segs: [], pts: [], feats: { doors: [], chests: [], packs: [] } };
+  const corridor = (reg, cell, pt) => {
+    let last = pt;
+    for (const c of subPath(reg, cell, reg.hub)) { const p = cen(c); m.segs.push([last[0], last[1], p[0], p[1]]); last = p; }
+  };
+  // 區域之間的開口：在相鄰的小格邊上隨機挑一段
+  for (const l of links) {
+    const A = regions[l.a], Bk = regions[l.b], pairs = [];
+    for (const p of A.sub) for (const d of DIRS) { const q = [p[0] + d[0], p[1] + d[1]]; if (occ.get(key(q)) === Bk.id) pairs.push([p, q, d]); }
+    const [p, q, d] = r.pick(pairs);
+    const off = r.float(10, SUB - 10);
+    const pt = d[0] ? [(p[0] + (d[0] > 0 ? 1 : 0)) * SUB, p[1] * SUB + off] : [p[0] * SUB + off, (p[1] + (d[1] > 0 ? 1 : 0)) * SUB];
+    Object.assign(l, { pt, d });
+    m.pts.push({ x: pt[0], y: pt[1], r: 4.5 });
+    if (A.role !== "boss") corridor(A, p, pt);
+    if (Bk.role !== "boss") corridor(Bk, q, pt);
+    else {
+      // 王族墓：門對著來的方向，門的位置對齊開口
+      const ox = Math.min(...Bk.sub.map(c => c[0])) * SUB, oy = Math.min(...Bk.sub.map(c => c[1])) * SUB;
+      Bk.square = [ox, oy, SUB * 2];
+      const ra = SUB - 15;   // 圍牆在方形裡置中（30 寬）
+      Bk.gate = { side: SIDE[(-d[0]) + "," + (-d[1])], off: Math.max(ra + 5, Math.min(ra + 25, d[0] ? pt[1] - oy : pt[0] - ox)) };
+      m.segs.push([pt[0], pt[1], pt[0] + d[0] * 5, pt[1] + d[1] * 5]);
+    }
   }
   // 固定要素
-  const start = blocks[0];
-  m.feats.start = center(start);
+  const start = regions[0];
+  m.feats.start = cen(start.hub);
   m.pts.push({ x: m.feats.start[0], y: m.feats.start[1], r: 6 });
   if (cfg.anvil) {
-    const a = W(start, B / 2 + (r.chance(0.5) ? 8 : -8), B / 2);
-    m.feats.anvil = a;
-    m.pts.push({ x: a[0], y: a[1], r: 3 });
+    m.feats.anvil = [m.feats.start[0] + (r.chance(0.5) ? 8 : -8), m.feats.start[1]];
+    m.pts.push({ x: m.feats.anvil[0], y: m.feats.anvil[1], r: 3 });
   }
-  const last = blocks[n - 1];
   if (!cfg.boss) {
-    const free = ["E", "W", "S", "N"].filter(s => {
-      const d = Object.keys(SIDE).find(k => SIDE[k] === s).split(",").map(Number);
-      return !lay.occ.has((last.cx + d[0]) + "," + (last.cy + d[1]));
-    });
-    if (!free.length) return null;
-    const side = r.pick(free);
-    const offs = cfg.doors === 2 ? [16, 32] : [24];
-    const pool = REWARDS.slice();
-    for (const off of offs) {
-      const label = cfg.doors === 2 ? pool.splice(Math.floor(r.next() * pool.length), 1)[0] : "下一關：鐵砧";
-      const reach = W(last, ...sidePoint(side, off, 3));
-      m.feats.doors.push({ side, at: W(last, ...sidePoint(side, off, 0.5)), reach, label });
-      m.pts.push({ x: reach[0], y: reach[1], r: 3 });
-      reserveSeg(reach, center(last));
+    const last = regions[n - 1], inPt = links.find(l => l.b === last.id).pt, cands = [];
+    for (const c of last.sub) for (const d of DIRS) if (!occ.has(key([c[0] + d[0], c[1] + d[1]]))) {
+      const cc = cen(c);
+      cands.push({ c, d, far: Math.hypot(cc[0] - inPt[0], cc[1] - inPt[1]) });
     }
+    if (!cands.length) return null;
+    cands.sort((a, b) => b.far - a.far);
+    const { c, d } = r.pick(cands.slice(0, 3));
+    addDoors(m, r, cfg, (off, inset) => {
+      const e = d[0] ? [(c[0] + (d[0] > 0 ? 1 : 0)) * SUB, c[1] * SUB + off] : [c[0] * SUB + off, (c[1] + (d[1] > 0 ? 1 : 0)) * SUB];
+      return [e[0] - d[0] * inset, e[1] - d[1] * inset];
+    }, [SUB * 0.3, SUB * 0.7], SUB / 2, SIDE[d.join(",")], reach => corridor(last, c, reach));
   }
-  const br = blocks.find(b => b.role === "branch");
+  const br = regions.find(g => g.role === "branch");
   if (br) {
-    const far = W(br, ...sidePoint(OPP[br.openings[0].side], B / 2, 8));
-    m.feats.bigChest = far;
-    m.pts.push({ x: far[0], y: far[1], r: 4 });
-    reserveSeg(center(br), far);
+    const inPt = links.find(l => l.b === br.id).pt;
+    const far = br.sub.reduce((b, c) => { const p = cen(c), q = cen(b); return Math.hypot(p[0] - inPt[0], p[1] - inPt[1]) > Math.hypot(q[0] - inPt[0], q[1] - inPt[1]) ? c : b; });
+    m.feats.bigChest = cen(far);
+    m.pts.push({ x: m.feats.bigChest[0], y: m.feats.bigChest[1], r: 4 });
+    let last = cen(br.hub);
+    for (const c of subPath(br, br.hub, far)) { const p = cen(c); m.segs.push([last[0], last[1], p[0], p[1]]); last = p; }
   }
 
-  // 主題與障礙物
-  let prev = null, group = 0;
-  for (const blk of blocks) {
-    if (blk.role === "boss") { bossBlock(m, blk); continue; }
-    const add = (lx, ly, w, h, top, kind) => {
-      const o = { x: blk.ox + lx, y: blk.oy + ly, w, h, top, kind, grp: group };
-      if (lx < 2 || ly < 2 || lx + w > B - 2 || ly + h > B - 2) return false;
-      if (kind !== "plat") for (const s of m.segs) if (segRectDist(s, o) < CORRIDOR) return false;
-      for (const p of m.pts) if (pointRectDist(p.x, p.y, o) < p.r) return false;
-      for (const q of blk.obs) if (q.grp !== group && overlap(o, q, 0.8)) return false;
-      blk.obs.push(o);
-      return true;
-    };
-    let names;
-    if (blk.role === "start") names = ["open"];
-    else if (blk.role === "branch") names = [r.pick(["tombs", "mausoleums", "ruins"])];
-    else {
-      const main = r.pick(Object.keys(THEMES).filter(t => t !== prev && t !== "open" || (t === "open" && prev !== "open" && r.chance(0.3))));
-      names = [main];
-      if (r.chance(0.4)) names.push(r.pick(Object.keys(THEMES).filter(t => t !== main && t !== "hill")));
-      prev = main;
-    }
-    // 高台先放，牆與墓碑放在高台旁邊
-    names.sort((a, b) => (b === "hill") - (a === "hill"));
-    for (const t of names) { group++; THEME_FN[t](r, add); }
-    blk.themes = names;
-  }
-  // 區塊外牆（開口處留缺口）
-  for (const blk of blocks) {
-    for (const side of ["N", "S", "W", "E"]) {
-      const full = { N: [0, 0, B, WALL_T], S: [0, B - WALL_T, B, WALL_T], W: [0, 0, WALL_T, B], E: [B - WALL_T, 0, WALL_T, B] }[side];
-      const horiz = side === "N" || side === "S";
-      const cuts = blk.openings.filter(o => o.side === side).map(o => o.off).sort((a, b) => a - b);
-      let p = 0;
-      const seg = (a, b) => blk.obs.push(horiz
-        ? { x: blk.ox + a, y: blk.oy + full[1], w: b - a, h: WALL_T, top: 3, kind: "wall", edge: true }
-        : { x: blk.ox + full[0], y: blk.oy + a, w: WALL_T, h: b - a, top: 3, kind: "wall", edge: true });
-      for (const c of cuts) { seg(p, c - GATE / 2); p = c + GATE / 2; }
-      seg(p, B);
+  // 格子：小格填上區域編號，再從邊界往內吃（方格吃 1 格 = 牆；拼形吃 1~7 格，雜訊決定）
+  const xs = regions.flatMap(g => g.sub.map(c => c[0])), ys = regions.flatMap(g => g.sub.map(c => c[1]));
+  const G = makeGrid(Math.min(...xs) * SUB - 3, Math.min(...ys) * SUB - 3, (Math.max(...xs) + 1) * SUB + 3, (Math.max(...ys) + 1) * SUB + 3);
+  for (const reg of regions)
+    for (const c of reg.sub)
+      for (let y = c[1] * SUB; y < (c[1] + 1) * SUB; y++)
+        for (let x = c[0] * SUB; x < (c[0] + 1) * SUB; x++) G.id[G.idx(x, y)] = reg.id;
+  const protect = new Uint8Array(G.W * G.H);
+  forCellsNear(G, m.segs, m.pts, 0.6, i => protect[i] = 1);
+  const dist = new Int16Array(G.W * G.H).fill(999), q = [];
+  for (let i = 0; i < G.id.length; i++) {
+    if (G.id[i] < 0) continue;
+    const x = i % G.W, y = Math.floor(i / G.W);
+    for (const d of DIRS) {
+      const nx = x + d[0], ny = y + d[1];
+      if (nx < 0 || ny < 0 || nx >= G.W || ny >= G.H || G.id[ny * G.W + nx] !== G.id[i]) { dist[i] = 0; q.push(i); break; }
     }
   }
+  for (let h = 0; h < q.length; h++) {
+    const i = q[h], x = i % G.W, y = Math.floor(i / G.W);
+    for (const d of DIRS) {
+      const nx = x + d[0], ny = y + d[1];
+      if (nx < 0 || ny < 0 || nx >= G.W || ny >= G.H) continue;
+      const j = ny * G.W + nx;
+      if (G.id[j] === G.id[i] && dist[j] > dist[i] + 1) { dist[j] = dist[i] + 1; q.push(j); }
+    }
+  }
+  const noise = makeNoise(r, 9);
+  const eaten = G.id.slice();
+  for (let i = 0; i < G.id.length; i++) {
+    if (G.id[i] < 0 || protect[i]) continue;
+    const reg = regions[G.id[i]];
+    const depth = !poly || reg.role === "boss" ? 1 : 1 + Math.floor(noise(G.cx(i), G.cy(i)) * 5);
+    if (dist[i] < depth) eaten[i] = -1;
+  }
+  G.id = eaten;
+  m.G = G;
+  return m;
+}
 
-  // 尋路：1 單位格子，牆與墓碑往外 0.5（玩家半徑）
-  const nav = buildNav(m);
-  const sIdx = nav.idx(...m.feats.start);
-  const { dist, par } = dijkstra(nav, sIdx);
-  const reach = p => Number.isFinite(dist[nav.idx(p[0], p[1])]);
-  const goal = cfg.boss ? m.feats.dig : m.feats.doors[0].reach;
-  const targets = [goal, ...m.feats.doors.map(d => d.reach)];
-  if (m.feats.anvil) targets.push(m.feats.anvil);
-  if (m.feats.bigChest) targets.push(m.feats.bigChest);
-  if (!targets.every(reach)) return null;
-  m.routeLen = dist[nav.idx(...goal)];
-  m.route = [];
-  for (let i = nav.idx(...goal); i >= 0; i = par[i]) m.route.push(nav.pos(i));
+// 出口的門：at(off, inset) 給門在邊上的位置；2 扇用 offs2，1 扇用 off1
+function addDoors(m, r, cfg, at, offs2, off1, side, onReach) {
+  const pool = REWARDS.slice();
+  for (const off of cfg.doors === 2 ? offs2 : [off1]) {
+    const label = cfg.doors === 2 ? pool.splice(Math.floor(r.next() * pool.length), 1)[0] : "下一關：鐵砧";
+    const reach = at(off, 3), door = at(off, 0.5);
+    m.feats.doors.push({ side, at: door, reach, label });
+    m.pts.push({ x: reach[0], y: reach[1], r: 3 }, { x: door[0], y: door[1], r: 2.5 });
+    onReach(reach);
+  }
+}
 
-  // 怪群與小寶箱
-  const okSpot = (p, far) => reach(p) && Math.hypot(p[0] - m.feats.start[0], p[1] - m.feats.start[1]) >= far;
-  for (const blk of blocks) {
-    if (blk.role === "start" || blk.role === "boss") continue;
-    tryN(blk.role === "branch" ? r.int(1, 2) : r.int(2, 4), 40, () => {
-      const p = W(blk, r.float(6, 42), r.float(6, 42));
-      if (!okSpot(p, 16) || m.feats.packs.some(q => Math.hypot(q.at[0] - p[0], q.at[1] - p[1]) < 9)) return false;
-      m.feats.packs.push({ at: p, n: r.int(6, 10), seed: r.int(0, 9999) });
+// 洞穴：房間是一團不規則的圓，房間之間挖通道，細胞自動機磨邊
+function caveMap(r, cfg) {
+  const n = mainCount(r, cfg);
+  const rooms = [], links = [];
+  const clear = (c, rad) => rooms.every(o => Math.hypot(o.c[0] - c[0], o.c[1] - c[1]) >= (o.rad + rad) * 0.85);
+  const addRoom = (pi, role, angle) => {
+    for (let k = 0; k < 30; k++) {
+      const p = rooms[pi];
+      if (role === "boss") {
+        const d = r.pick(DIRS), c = [p.c[0] + d[0] * (p.rad + 34), p.c[1] + d[1] * (p.rad + 34)];
+        if (!clear(c, 34)) continue;
+        rooms.push({ c, rad: 34, role, axis: d });
+      } else {
+        const a = angle + r.float(-1.2, 1.2), dist = r.float(40, 50), rad = r.float(20, 25);
+        const c = [p.c[0] + Math.cos(a) * dist, p.c[1] + Math.sin(a) * dist];
+        if (!clear(c, rad)) continue;
+        rooms.push({ c, rad, role, angle: a });
+      }
+      links.push({ a: pi, b: rooms.length - 1 });
       return true;
-    });
-    if (blk.role === "fight") tryN(r.int(0, 2), 30, () => {
-      const p = W(blk, r.float(5, 43), r.float(5, 43));
-      if (!okSpot(p, 8) || m.feats.packs.some(q => Math.hypot(q.at[0] - p[0], q.at[1] - p[1]) < 4)) return false;
-      m.feats.chests.push(p);
-      return true;
-    });
+    }
+    return false;
+  };
+  rooms.push({ c: [0, 0], rad: r.float(20, 25), role: "start", angle: r.float(0, Math.PI * 2) });
+  for (let i = 1; i < n; i++) if (!addRoom(i - 1, roleAt(i, n, cfg), rooms[i - 1].angle)) return null;
+  if (n >= 3 && r.chance(cfg.branch)) { const pi = r.int(1, n - 2); addRoom(pi, "branch", rooms[pi].angle + (r.chance(0.5) ? 1.5 : -1.5)); }
+
+  const m = { mode: "cave", regions: rooms.map((o, id) => ({ id, role: o.role, obs: [], themes: [], room: o })), links, segs: [], pts: [], feats: { doors: [], chests: [], packs: [] } };
+  for (const l of links) {
+    const A = rooms[l.a], Bk = rooms[l.b];
+    if (Bk.role === "boss") {
+      const gate = [Bk.c[0] - Bk.axis[0] * 24, Bk.c[1] - Bk.axis[1] * 24];
+      m.segs.push([A.c[0], A.c[1], gate[0], gate[1]], [gate[0], gate[1], gate[0] + Bk.axis[0] * 5, gate[1] + Bk.axis[1] * 5]);
+      m.regions[l.b].square = [Bk.c[0] - 24, Bk.c[1] - 24, 48];
+      m.regions[l.b].gate = { side: SIDE[(-Bk.axis[0]) + "," + (-Bk.axis[1])], off: 24 };
+    } else m.segs.push([A.c[0], A.c[1], Bk.c[0], Bk.c[1]]);
+  }
+  m.feats.start = rooms[0].c.slice();
+  m.pts.push({ x: 0, y: 0, r: 6 });
+  if (cfg.anvil) {
+    m.feats.anvil = [r.chance(0.5) ? 8 : -8, 0];
+    m.pts.push({ x: m.feats.anvil[0], y: 0, r: 3 });
+  }
+  const brIdx = rooms.findIndex(o => o.role === "branch");
+  if (brIdx >= 0) {
+    const o = rooms[brIdx], p = rooms[links.find(l => l.b === brIdx).a];
+    const d = Math.hypot(o.c[0] - p.c[0], o.c[1] - p.c[1]), k = (o.rad - 8) / d;
+    m.feats.bigChest = [o.c[0] + (o.c[0] - p.c[0]) * k, o.c[1] + (o.c[1] - p.c[1]) * k];
+    m.pts.push({ x: m.feats.bigChest[0], y: m.feats.bigChest[1], r: 4 });
+    m.segs.push([o.c[0], o.c[1], m.feats.bigChest[0], m.feats.bigChest[1]]);
+  }
+
+  const G = makeGrid(Math.min(...rooms.map(o => o.c[0] - o.rad)) - 8, Math.min(...rooms.map(o => o.c[1] - o.rad)) - 8,
+    Math.max(...rooms.map(o => o.c[0] + o.rad)) + 8, Math.max(...rooms.map(o => o.c[1] + o.rad)) + 8);
+  const noise = makeNoise(r, 7), tunnel = makeNoise(r, 5);
+  const forced = new Int8Array(G.W * G.H);   // 1 = 一定是地面、-1 = 一定是實心
+  forCellsNear(G, m.segs, m.pts, 0.6, i => forced[i] = 1);
+  let floor = new Uint8Array(G.W * G.H);
+  const boss = rooms.find(o => o.role === "boss");
+  for (let i = 0; i < floor.length; i++) {
+    const x = G.cx(i), y = G.cy(i), gx = i % G.W, gy = Math.floor(i / G.W);
+    if (gx < 2 || gy < 2 || gx >= G.W - 2 || gy >= G.H - 2) { forced[i] = -1; continue; }
+    if (boss) {
+      const dx = Math.abs(x - boss.c[0]), dy = Math.abs(y - boss.c[1]);
+      if (dx < 24 && dy < 24) { forced[i] = 1; continue; }
+      if (dx < 28 && dy < 28 && forced[i] !== 1) { forced[i] = -1; continue; }
+    }
+    let f = false;
+    for (const o of rooms) {
+      if (o.role === "boss") continue;
+      const d = Math.hypot(x - o.c[0], y - o.c[1]), R = o.rad * (0.75 + 0.5 * noise(x, y));
+      if (d < R - 3) f = true;
+      else if (d < R + 3 && r.chance(0.5)) f = true;
+    }
+    for (const s of m.segs) if (segDist(x, y, s) < 4 + tunnel(x, y) * 4) f = true;
+    floor[i] = f ? 1 : 0;
+  }
+  for (let it = 0; it < 4; it++) {
+    const next = new Uint8Array(floor.length);
+    for (let i = 0; i < floor.length; i++) {
+      if (forced[i]) { next[i] = forced[i] > 0 ? 1 : 0; continue; }
+      const gx = i % G.W, gy = Math.floor(i / G.W);
+      let k = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) k += floor[(gy + dy) * G.W + gx + dx];
+      next[i] = k >= 5 ? 1 : 0;
+    }
+    floor = next;
+  }
+  // 只留跟起點連通的地面；地面分給最近的房間（王族墓的方形自己一區）
+  const seen = new Uint8Array(floor.length), q = [G.idx(0, 0)];
+  seen[q[0]] = 1;
+  for (let h = 0; h < q.length; h++) {
+    const i = q[h], gx = i % G.W, gy = Math.floor(i / G.W);
+    for (const d of DIRS) { const j = (gy + d[1]) * G.W + gx + d[0]; if (floor[j] && !seen[j]) { seen[j] = 1; q.push(j); } }
+  }
+  for (let i = 0; i < floor.length; i++) {
+    if (!seen[i]) continue;
+    const x = G.cx(i), y = G.cy(i);
+    if (boss && Math.abs(x - boss.c[0]) < 24 && Math.abs(y - boss.c[1]) < 24) { G.id[i] = rooms.indexOf(boss); continue; }
+    let best = -1, bd = Infinity;
+    rooms.forEach((o, id) => { if (o.role === "boss") return; const d = Math.hypot(x - o.c[0], y - o.c[1]) / o.rad; if (d < bd) { bd = d; best = id; } });
+    G.id[i] = best;
+  }
+  m.G = G;
+  for (const reg of m.regions) reg.labelAt = [reg.room.c[0] - 10, reg.room.c[1] - (reg.role === "boss" ? 27 : 9)];
+  // 門：從最後一個房間中心沿著「上一間 → 這間」的方向走到地面盡頭
+  if (!cfg.boss) {
+    const last = rooms[n - 1], prev = rooms[n - 2];
+    const L = Math.hypot(last.c[0] - prev.c[0], last.c[1] - prev.c[1]), dir = [(last.c[0] - prev.c[0]) / L, (last.c[1] - prev.c[1]) / L];
+    const perp = [-dir[1], dir[0]];
+    const side = Math.abs(dir[0]) > Math.abs(dir[1]) ? (dir[0] > 0 ? "E" : "W") : (dir[1] > 0 ? "S" : "N");
+    addDoors(m, r, cfg, (off, inset) => {
+      const o = [last.c[0] + perp[0] * off, last.c[1] + perp[1] * off];
+      let t = 0;
+      while (G.get(o[0] + dir[0] * (t + 0.5), o[1] + dir[1] * (t + 0.5)) === n - 1) t += 0.5;
+      return [o[0] + dir[0] * (t - inset), o[1] + dir[1] * (t - inset)];
+    }, [-5, 5], 0, side, reach => m.segs.push([last.c[0], last.c[1], reach[0], reach[1]]));
   }
   return m;
 }
 
+// 共通：主題障礙物、王族墓、尋路檢查、怪群、小寶箱
+function finish(m, r, cfg) {
+  const G = m.G;
+  for (const reg of m.regions) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i < G.id.length; i++) if (G.id[i] === reg.id) { const x = G.cx(i), y = G.cy(i); x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+    if (x0 === Infinity) return false;
+    reg.box = [x0 - 0.5, y0 - 0.5, x1 - x0 + 1, y1 - y0 + 1];
+  }
+  const onFloor = (o, id, mg) => {
+    for (let y = Math.floor(o.y - mg); y < o.y + o.h + mg; y++)
+      for (let x = Math.floor(o.x - mg); x < o.x + o.w + mg; x++) if (G.get(x + 0.5, y + 0.5) !== id) return false;
+    return true;
+  };
+  let prev = null, group = 0;
+  for (const reg of m.regions) {
+    if (reg.role === "boss") { bossRing(m, reg); continue; }
+    const [bx, by, bw, bh] = reg.box;
+    const add = (lx, ly, w, h, top, kind) => {
+      const o = { x: bx + lx, y: by + ly, w, h, top, kind, grp: group };
+      if (!onFloor(o, reg.id, kind === "plat" ? 0.5 : 1.5)) return false;
+      if (kind !== "plat") for (const s of m.segs) if (segRectDist(s, o) < CORRIDOR) return false;
+      for (const p of m.pts) if (pointRectDist(p.x, p.y, o) < p.r) return false;
+      for (const q of reg.obs) if (q.grp !== group && overlap(o, q, 0.8)) return false;
+      reg.obs.push(o);
+      return true;
+    };
+    let names;
+    if (reg.role === "start") names = ["open"];
+    else if (reg.role === "branch") names = [r.pick(["tombs", "mausoleums", "ruins"])];
+    else {
+      const main = r.pick(Object.keys(THEMES).filter(t => t !== prev && t !== "open"));
+      names = [main];
+      if (r.chance(0.4)) names.push(r.pick(Object.keys(THEMES).filter(t => t !== main && t !== "hill")));
+      prev = main;
+    }
+    names.sort((a, b) => (b === "hill") - (a === "hill"));   // 高台先放
+    for (const t of names) { group++; THEME_FN[t](r, add, bw, bh); }
+    reg.themes = names;
+  }
+
+  // 尋路：1 單位格子，實心格與牆、墓碑（往外 0.5 = 玩家半徑）擋路，高台跳得上去不擋
+  const free = new Uint8Array(G.W * G.H);
+  for (let i = 0; i < free.length; i++) free[i] = G.id[i] >= 0 ? 1 : 0;
+  for (const reg of m.regions)
+    for (const o of reg.obs) {
+      if (o.kind === "plat") continue;
+      for (let y = Math.floor(o.y - 1); y <= o.y + o.h + 1; y++)
+        for (let x = Math.floor(o.x - 1); x <= o.x + o.w + 1; x++) {
+          const i = G.idx(x, y);
+          if (i >= 0 && pointRectDist(G.cx(i), G.cy(i), o) < 0.5) free[i] = 0;
+        }
+    }
+  const { dist, par } = dijkstra(G, free, G.idx(...m.feats.start));
+  const reach = p => { const i = G.idx(p[0], p[1]); return i >= 0 && Number.isFinite(dist[i]); };
+  const goal = cfg.boss ? m.feats.dig : m.feats.doors[0].reach;
+  const targets = [goal, ...m.feats.doors.map(d => d.reach)];
+  if (m.feats.anvil) targets.push(m.feats.anvil);
+  if (m.feats.bigChest) targets.push(m.feats.bigChest);
+  if (!targets.every(reach)) return false;
+  m.routeLen = dist[G.idx(...goal)];
+  m.route = [];
+  for (let i = G.idx(...goal); i >= 0; i = par[i]) m.route.push([G.cx(i), G.cy(i)]);
+
+  const okSpot = (p, id, far) => G.get(p[0], p[1]) === id && reach(p) && Math.hypot(p[0] - m.feats.start[0], p[1] - m.feats.start[1]) >= far;
+  for (const reg of m.regions) {
+    if (reg.role === "start" || reg.role === "boss") continue;
+    const [bx, by, bw, bh] = reg.box;
+    tryN(reg.role === "branch" ? r.int(1, 2) : r.int(2, 4), 60, () => {
+      const p = [bx + r.float(4, bw - 4), by + r.float(4, bh - 4)];
+      if (!okSpot(p, reg.id, 16) || m.feats.packs.some(q => Math.hypot(q.at[0] - p[0], q.at[1] - p[1]) < 9)) return false;
+      m.feats.packs.push({ at: p, n: r.int(6, 10), seed: r.int(0, 9999) });
+      return true;
+    });
+    if (reg.role === "fight") tryN(r.int(0, 2), 40, () => {
+      const p = [bx + r.float(3, bw - 3), by + r.float(3, bh - 3)];
+      if (!okSpot(p, reg.id, 8) || m.feats.packs.some(q => Math.hypot(q.at[0] - p[0], q.at[1] - p[1]) < 4)) return false;
+      m.feats.chests.push(p);
+      return true;
+    });
+  }
+  m.floorArea = G.id.reduce((s, v) => s + (v >= 0 ? 1 : 0), 0);
+  m.edgeRects = edgeMask(G).rects.length;
+  return true;
+}
+
 // 1-5 的王族墓（固定）：圍牆 30 × 30、門對著來的方向、四角石座、中央挖墳點
-function bossBlock(m, blk) {
-  const t = 1.5, a = 9, L = 30, gate = 6, side = blk.openings[0].side;
+function bossRing(m, reg) {
+  const [ox, oy, size] = reg.square, t = 1.5, L = 30, a = (size - L) / 2, gate = 6, { side, off } = reg.gate;
   const ring = { N: [a, a, L, t, true], S: [a, a + L - t, L, t, true], W: [a, a, L, t, false], E: [a + L - t, a, L, t, false] };
   for (const s in ring) {
     const [x, y, len, th, horiz] = ring[s];
-    const parts = s === side ? [[0, (len - gate) / 2], [(len + gate) / 2, len]] : [[0, len]];
-    for (const [p, q] of parts) blk.obs.push(horiz
-      ? { x: blk.ox + x + p, y: blk.oy + y, w: q - p, h: th, top: 3, kind: "wall" }
-      : { x: blk.ox + x, y: blk.oy + y + p, w: th, h: q - p, top: 3, kind: "wall" });
+    const g = off - a;
+    const parts = s === side ? [[0, g - gate / 2], [g + gate / 2, len]] : [[0, len]];
+    for (const [p, q] of parts) if (q - p > 0.5) reg.obs.push(horiz
+      ? { x: ox + x + p, y: oy + y, w: q - p, h: th, top: 3, kind: "wall" }
+      : { x: ox + x, y: oy + y + p, w: th, h: q - p, top: 3, kind: "wall" });
   }
-  for (const [x, y] of [[12, 12], [31, 12], [12, 31], [31, 31]]) blk.obs.push({ x: blk.ox + x, y: blk.oy + y, w: 5, h: 5, top: 1, kind: "plat" });
-  m.feats.dig = [blk.ox + B / 2, blk.oy + B / 2];
-  blk.themes = ["boss"];
+  for (const [x, y] of [[3, 3], [22, 3], [3, 22], [22, 22]]) reg.obs.push({ x: ox + a + x, y: oy + a + y, w: 5, h: 5, top: 1, kind: "plat" });
+  m.feats.dig = [ox + size / 2, oy + size / 2];
+  reg.themes = ["boss"];
 }
 
-function bounds(m) {
-  const xs = m.blocks.map(b => b.ox), ys = m.blocks.map(b => b.oy);
-  return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs) + B, y1: Math.max(...ys) + B };
-}
-
-function buildNav(m) {
-  const bb = bounds(m), Wd = bb.x1 - bb.x0, Ht = bb.y1 - bb.y0;
-  const free = new Uint8Array(Wd * Ht);
-  for (const blk of m.blocks)
-    for (let y = blk.oy; y < blk.oy + B; y++)
-      for (let x = blk.ox; x < blk.ox + B; x++) free[(y - bb.y0) * Wd + (x - bb.x0)] = 1;
-  for (const blk of m.blocks)
-    for (const o of blk.obs) {
-      if (o.kind === "plat") continue;
-      const gx0 = Math.max(0, Math.floor(o.x - 0.5 - bb.x0)), gx1 = Math.min(Wd - 1, Math.ceil(o.x + o.w + 0.5 - bb.x0));
-      const gy0 = Math.max(0, Math.floor(o.y - 0.5 - bb.y0)), gy1 = Math.min(Ht - 1, Math.ceil(o.y + o.h + 0.5 - bb.y0));
-      for (let gy = gy0; gy <= gy1; gy++)
-        for (let gx = gx0; gx <= gx1; gx++)
-          if (pointRectDist(gx + 0.5 + bb.x0, gy + 0.5 + bb.y0, o) < 0.5) free[gy * Wd + gx] = 0;
-    }
-  return {
-    W: Wd, H: Ht, free,
-    idx: (x, y) => Math.floor(y - bb.y0) * Wd + Math.floor(x - bb.x0),
-    pos: i => [i % Wd + bb.x0 + 0.5, Math.floor(i / Wd) + bb.y0 + 0.5],
-  };
-}
-
-function dijkstra(nav, s) {
-  const dist = new Float64Array(nav.W * nav.H).fill(Infinity), par = new Int32Array(nav.W * nav.H).fill(-1);
-  const heap = [];
+function dijkstra(G, free, s) {
+  const N = G.W * G.H, dist = new Float64Array(N).fill(Infinity), par = new Int32Array(N).fill(-1), heap = [];
   const push = (d, i) => { heap.push([d, i]); let k = heap.length - 1; while (k > 0) { const p = (k - 1) >> 1; if (heap[p][0] <= heap[k][0]) break; [heap[p], heap[k]] = [heap[k], heap[p]]; k = p; } };
   const pop = () => { const top = heap[0], end = heap.pop(); if (heap.length) { heap[0] = end; let k = 0; for (;;) { const l = 2 * k + 1, r = l + 1; let mi = k; if (l < heap.length && heap[l][0] < heap[mi][0]) mi = l; if (r < heap.length && heap[r][0] < heap[mi][0]) mi = r; if (mi === k) break; [heap[mi], heap[k]] = [heap[k], heap[mi]]; k = mi; } } return top; };
-  if (!nav.free[s]) return { dist, par };
+  if (s < 0 || !free[s]) return { dist, par };
   dist[s] = 0; push(0, s);
   while (heap.length) {
     const [d, i] = pop();
     if (d > dist[i]) continue;
-    const x = i % nav.W, y = Math.floor(i / nav.W);
+    const x = i % G.W, y = Math.floor(i / G.W);
     for (let dy = -1; dy <= 1; dy++)
       for (let dx = -1; dx <= 1; dx++) {
         if (!dx && !dy) continue;
         const nx = x + dx, ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= nav.W || ny >= nav.H) continue;
-        const j = ny * nav.W + nx;
-        if (!nav.free[j]) continue;
-        if (dx && dy && (!nav.free[y * nav.W + nx] || !nav.free[ny * nav.W + x])) continue;   // 不切牆角
+        if (nx < 0 || ny < 0 || nx >= G.W || ny >= G.H) continue;
+        const j = ny * G.W + nx;
+        if (!free[j]) continue;
+        if (dx && dy && (!free[y * G.W + nx] || !free[ny * G.W + x])) continue;   // 不切牆角
         const nd = d + (dx && dy ? Math.SQRT2 : 1);
         if (nd < dist[j]) { dist[j] = nd; par[j] = i; push(nd, j); }
       }
   }
   return { dist, par };
+}
+
+// 格子合併成長方形（貪婪：先往右延伸、再整排往下）
+function mergeRects(G, pred) {
+  const used = new Uint8Array(G.W * G.H), out = [];
+  for (let y = 0; y < G.H; y++)
+    for (let x = 0; x < G.W; x++) {
+      const i = y * G.W + x;
+      if (used[i] || !pred(i)) continue;
+      let w = 1;
+      while (x + w < G.W && !used[i + w] && pred(i + w)) w++;
+      let h = 1;
+      outer: while (y + h < G.H) {
+        for (let k = 0; k < w; k++) { const j = (y + h) * G.W + x + k; if (used[j] || !pred(j)) break outer; }
+        h++;
+      }
+      for (let yy = 0; yy < h; yy++) for (let k = 0; k < w; k++) used[(y + yy) * G.W + x + k] = 1;
+      out.push({ x: G.x0 + x, y: G.y0 + y, w, h });
+    }
+  return out;
+}
+// 邊界牆：實心格中，貼著地面的（8 方向）
+function edgeMask(G) {
+  if (G._edge) return G._edge;
+  const edge = i => {
+    if (G.id[i] >= 0) return false;
+    const x = i % G.W, y = Math.floor(i / G.W);
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const nx = x + dx, ny = y + dy;
+      if (nx >= 0 && ny >= 0 && nx < G.W && ny < G.H && G.id[ny * G.W + nx] >= 0) return true;
+    }
+    return false;
+  };
+  G._edge = { rects: mergeRects(G, edge) };
+  return G._edge;
 }
 
 // ---------- 畫 ----------
@@ -499,23 +768,27 @@ function el(parent, tag, attrs, text) {
 
 function render(svg, m, o) {
   svg.innerHTML = "";
-  const bb = bounds(m), pad = 4, w = bb.x1 - bb.x0, h = bb.y1 - bb.y0, cx = (bb.x0 + bb.x1) / 2, cy = (bb.y0 + bb.y1) / 2;
+  const G = m.G, pad = 2, w = G.W, h = G.H, cx = G.x0 + w / 2, cy = G.y0 + h / 2;
   let g;
   if (o.iso) {
     const s = (w + h) / Math.SQRT2, k = 0.58;
     svg.setAttribute("viewBox", `${-s / 2 - pad} ${-s * k / 2 - pad} ${s + 2 * pad} ${s * k + 2 * pad}`);
     g = el(svg, "g", { transform: `scale(1,${k}) rotate(45) translate(${-cx},${-cy})` });
   } else {
-    svg.setAttribute("viewBox", `${bb.x0 - pad} ${bb.y0 - pad} ${w + 2 * pad} ${h + 2 * pad}`);
+    svg.setAttribute("viewBox", `${G.x0 - pad} ${G.y0 - pad} ${w + 2 * pad} ${h + 2 * pad}`);
     g = el(svg, "g", {});
   }
   const labels = o.names && !o.iso;
   const ground = { start: "start-g", branch: "branch-g", boss: "boss-g" };
-  for (const blk of m.blocks) el(g, "rect", { x: blk.ox, y: blk.oy, width: B, height: B, fill: C(ground[blk.role] || "ground") });
+  for (const reg of m.regions) {
+    const fill = C(ground[reg.role] || "ground");
+    for (const q of mergeRects(G, i => G.id[i] === reg.id)) el(g, "rect", { x: q.x, y: q.y, width: q.w + 0.05, height: q.h + 0.05, fill });
+  }
+  for (const q of edgeMask(G).rects) el(g, "rect", { x: q.x, y: q.y, width: q.w + 0.05, height: q.h + 0.05, fill: C("wall"), opacity: 0.75 });
   const kindCol = ob => ob.kind === "wall" ? C("wall") : ob.kind === "tomb" ? C("tomb") : ob.top >= 1 ? C("high") : C("low");
   for (const pass of ["plat", "solid"])
-    for (const blk of m.blocks)
-      for (const ob of blk.obs)
+    for (const reg of m.regions)
+      for (const ob of reg.obs)
         if ((ob.kind === "plat") === (pass === "plat"))
           el(g, "rect", { x: ob.x, y: ob.y, width: ob.w, height: ob.h, fill: kindCol(ob), stroke: "#0008", "stroke-width": 0.15 });
   if (o.route && m.route) el(g, "polyline", { points: m.route.map(p => p.join(",")).join(" "), fill: "none", stroke: C("route"), "stroke-width": 0.5, "stroke-dasharray": "1.5 1", opacity: 0.85 });
@@ -524,19 +797,20 @@ function render(svg, m, o) {
     for (let i = 0; i < p.n; i++) el(g, "circle", { cx: p.at[0] + r.float(-2.4, 2.4), cy: p.at[1] + r.float(-2.4, 2.4), r: 0.5, fill: C("pack") });
   }
   for (const c of m.feats.chests) el(g, "rect", { x: c[0] - 0.7, y: c[1] - 0.5, width: 1.4, height: 1, fill: C("chest") });
+  const tag = (x, y, text, col) => labels && el(g, "text", { x, y, "text-anchor": "middle", "font-size": 2.2, fill: col }, text);
   if (m.feats.bigChest) {
     const [x, y] = m.feats.bigChest;
     el(g, "rect", { x: x - 1.3, y: y - 1, width: 2.6, height: 2, fill: C("chest"), stroke: "#fff", "stroke-width": 0.25 });
-    if (labels) el(g, "text", { x, y: y + 3.6, "text-anchor": "middle", "font-size": 2.2, fill: C("chest") }, "祭壇 / 石棺");
+    tag(x, y + 3.6, "祭壇 / 石棺", C("chest"));
   }
   if (m.feats.anvil) {
     const [x, y] = m.feats.anvil;
     el(g, "rect", { x: x - 1.2, y: y - 0.8, width: 2.4, height: 1.6, fill: C("anvil") });
-    if (labels) el(g, "text", { x, y: y + 3.2, "text-anchor": "middle", "font-size": 2.2, fill: C("anvil") }, "鐵砧");
+    tag(x, y + 3.2, "鐵砧", C("anvil"));
   }
   const [sx, sy] = m.feats.start;
   el(g, "circle", { cx: sx, cy: sy, r: 1.3, fill: C("start") });
-  if (labels) el(g, "text", { x: sx, y: sy + 3.6, "text-anchor": "middle", "font-size": 2.2, fill: C("start") }, "起點");
+  tag(sx, sy + 3.6, "起點", C("start"));
   for (const d of m.feats.doors) {
     const horiz = d.side === "N" || d.side === "S";
     el(g, "rect", { x: d.at[0] - (horiz ? 2 : 0.9), y: d.at[1] - (horiz ? 0.9 : 2), width: horiz ? 4 : 1.8, height: horiz ? 1.8 : 4, fill: C("exit"), stroke: "#fff", "stroke-width": 0.25 });
@@ -548,42 +822,42 @@ function render(svg, m, o) {
   if (m.feats.dig) {
     const [x, y] = m.feats.dig;
     el(g, "circle", { cx: x, cy: y, r: 2, fill: "none", stroke: C("boss"), "stroke-width": 0.5 });
-    if (labels) el(g, "text", { x, y: y + 0.8, "text-anchor": "middle", "font-size": 2.2, fill: C("boss") }, "挖墳 / Boss");
+    tag(x, y + 0.8, "挖墳 / Boss", C("boss"));
   }
   if (labels)
-    for (const blk of m.blocks)
-      el(g, "text", { x: blk.ox + 2.5, y: blk.oy + 4.2, "font-size": 2.4, fill: C("dim") },
-        blk.themes.map(t => t === "boss" ? "王族墓" : THEMES[t]).join(" + ") + (blk.role === "branch" ? "（支線）" : ""));
+    for (const reg of m.regions)
+      el(g, "text", { x: reg.labelAt[0], y: reg.labelAt[1], "font-size": 2.4, fill: C("dim") },
+        reg.themes.map(t => t === "boss" ? "王族墓" : THEMES[t]).join(" + ") + (reg.role === "branch" ? "（支線）" : ""));
 }
 
 // ---------- 介面 ----------
-let stage = "1-1";
+let stage = "1-1", mode = "poly";
 const $ = id => document.getElementById(id);
 const opts = () => ({ iso: $("iso").checked, route: $("route").checked, names: $("names").checked });
 
 function show() {
   const seed = parseInt($("seed").value, 10) || 0;
-  const m = generate(seed, stage);
-  $("title").textContent = `${stage}　種子 ${seed}`;
+  const m = generate(seed, stage, mode);
+  $("title").textContent = `${stage}　${MODES[mode]}　種子 ${seed}`;
   if (!m) { $("main").innerHTML = ""; $("stats").innerHTML = "<dt>結果</dt><dd>30 次都產生失敗</dd>"; return; }
   render($("main"), m, opts());
-  const mainN = m.blocks.filter(b => b.role !== "branch").length, hasBr = m.blocks.length > mainN;
-  const area = m.blocks.length * B * B;
+  const mainN = m.regions.filter(g => g.role !== "branch").length, hasBr = m.regions.length > mainN;
   const monsters = m.feats.packs.reduce((s, p) => s + p.n, 0);
   const rows = [
     ["區塊", `主線 ${mainN}${hasBr ? " + 支線 1" : ""}`],
-    ["面積", `${area.toLocaleString()} 平方單位（地圖 A 的 ${(area / MAP_A_AREA).toFixed(2)} 倍）`],
+    ["可走面積", `${m.floorArea.toLocaleString()} 平方單位（地圖 A 整張的 ${(m.floorArea / MAP_A_AREA).toFixed(2)} 倍）`],
     ["最短路線", `${Math.round(m.routeLen)} 單位，純走路 ${(m.routeLen / SPEED).toFixed(0)} 秒`],
     ["怪群", `${m.feats.packs.length} 群、${monsters} 隻`],
     ["寶箱", `小 ${m.feats.chests.length}${m.feats.bigChest ? "、祭壇 / 石棺 1" : ""}`],
     ["出口", m.feats.doors.length ? m.feats.doors.map(d => d.label).join("、") : "Boss"],
+    ["邊界石台數", `${m.edgeRects}`],
     ["重產次數", `${m.attempts}`],
   ];
   $("stats").innerHTML = rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join("");
   const th = $("thumbs");
   th.innerHTML = "";
   for (let i = 1; i <= 8; i++) {
-    const s = seed + i * 101, mm = generate(s, stage);
+    const s = seed + i * 101, mm = generate(s, stage, mode);
     const card = document.createElement("div");
     card.className = "thumb";
     const sv = document.createElementNS(NS, "svg");
@@ -597,18 +871,24 @@ function show() {
   }
 }
 
-for (const id in STAGES) {
-  const b = document.createElement("button");
-  b.textContent = id + (STAGES[id].anvil ? " 鐵砧" : "") + (STAGES[id].boss ? "＋Boss" : "");
-  b.onclick = () => { stage = id; document.querySelectorAll("#stages button").forEach(x => x.classList.toggle("on", x === b)); show(); };
-  if (id === stage) b.classList.add("on");
-  $("stages").appendChild(b);
+function buttons(boxId, items, current, onPick) {
+  for (const id in items) {
+    const b = document.createElement("button");
+    b.textContent = items[id];
+    b.onclick = () => { $(boxId).querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); onPick(id); show(); };
+    if (id === current) b.classList.add("on");
+    $(boxId).appendChild(b);
+  }
 }
+buttons("modes", MODES, mode, id => mode = id);
+const stageNames = {};
+for (const id in STAGES) stageNames[id] = id + (STAGES[id].anvil ? " 鐵砧" : "") + (STAGES[id].boss ? "＋Boss" : "");
+buttons("stages", stageNames, stage, id => stage = id);
 $("reroll").onclick = () => { $("seed").value = Math.floor(Math.random() * 1e6); show(); };
 for (const id of ["seed", "iso", "route", "names"]) $(id).addEventListener("change", show);
 
 const legend = [["start", "起點"], ["exit", "出口的門"], ["anvil", "鐵砧"], ["chest", "寶箱 / 祭壇、石棺"], ["pack", "怪群"], ["boss", "挖墳 / Boss"],
-  ["wall", "牆 / 陵墓"], ["tomb", "墓碑"], ["low", "高台 0.5"], ["high", "高台 1.0"], ["route", "最短路線"]];
+  ["wall", "牆 / 崖 / 陵墓"], ["tomb", "墓碑"], ["low", "高台 0.5"], ["high", "高台 1.0"], ["route", "最短路線"]];
 $("legend").innerHTML = legend.map(([k, t]) => `<span><i class="sw" style="background:${C(k)}"></i>${t}</span>`).join("");
 show();
 </script>
