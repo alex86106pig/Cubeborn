@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>小關拼法對比</title>
+<style>
+  :root {
+    --bg: #15161a; --card: #1e2026; --line: #34373f; --text: #e6e2d6; --dim: #9a978c;
+    --start: #6fd08c; --fight: #8a3b38; --pack: #e0625d; --treasure: #e0b84a; --exit: #a97be8;
+    --anvil: #7fc8ff; --boss: #d9534f; --route: #efe6c8; --floor: #2a2c33;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 16px 48px; background: var(--bg); color: var(--text);
+    font: 15px/1.6 "Microsoft JhengHei", "Noto Sans TC", sans-serif; }
+  h1 { margin: 0 0 4px; font-size: 24px; }
+  .sub { color: var(--dim); margin: 0 0 16px; }
+  .info { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .box { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .box h3 { margin: 0 0 6px; font-size: 15px; }
+  .box ul { margin: 0; padding-left: 18px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+  .sw { width: 16px; height: 12px; border-radius: 2px; display: inline-block; border: 1px solid #0006; }
+  .opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 20px; align-items: start; }
+  .opt { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; min-width: 0; }
+  .opt h2 { margin: 0; font-size: 20px; }
+  .opt h2 b { color: var(--treasure); margin-right: 6px; }
+  .tag { color: var(--dim); margin: 2px 0 10px; }
+  .opt h4 { margin: 12px 0 4px; font-size: 14px; color: var(--dim); }
+  .opt svg { display: block; width: 100%; height: auto; background: #101114; border-radius: 4px; }
+  .stats { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 10px 0 6px; font-size: 14px; }
+  .stats dt { color: var(--dim); }
+  .stats dd { margin: 0; }
+  .pc { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px; }
+  .pc h4 { margin: 4px 0 2px; }
+  .pc ul { margin: 0; padding-left: 18px; }
+  .good h4 { color: var(--start); } .bad h4 { color: var(--pack); }
+  .ask { margin-top: 24px; }
+  .ask ol { margin: 4px 0 0; padding-left: 22px; }
+  @media (max-width: 440px) { .opts { grid-template-columns: 1fr; } .pc { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<h1>小關拼法：三種方案</h1>
+<p class="sub">第一大關「墓園」拆成 1-1~1-5。每張圖上面是「一個小關」的俯視示意，下面是「整個大關」的流程。數字是 Claude 估的，選定後用 <code>--playtest</code> 實際量。</p>
+
+<div class="info">
+  <div class="box">
+    <h3>三種方案共用的前提</h3>
+    <ul>
+      <li>區塊是先設計好的，一塊 32 × 32（長塊 32 × 64），依種子挑塊、拼起來</li>
+      <li>現在的地圖 A（96 × 96）切成第一批區塊：教堂廢墟、小山丘、亂葬坑、陵墓列、兩片墓碑林；王族墓當 1-5 的 Boss 塊</li>
+      <li>換小關沿用換層流程（整張重建、全員到出口）</li>
+      <li>挖墳事件只在 1-5；鐵砧在 1-3 與 Boss 前</li>
+    </ul>
+  </div>
+  <div class="box">
+    <h3>圖例</h3>
+    <div class="legend" id="legend"></div>
+  </div>
+</div>
+
+<div class="opts">
+  <div class="opt">
+    <h2><b>A</b>直線＋支線（MCD）</h2>
+    <p class="tag">主線一路走到出口，旁邊有一條死路支線藏祭壇 / 石棺；過關給一次固定的 3 選 1。</p>
+    <svg id="a-stage" viewBox="0 0 400 260"></svg>
+    <h4>整個大關</h4>
+    <svg id="a-run" viewBox="0 0 400 90"></svg>
+    <dl class="stats">
+      <dt>一關大小</dt><dd>5~6 塊（主線 4~5 + 支線 1），約 5100~6100 平方單位 ＝ 地圖 A 的 55~65%</dd>
+      <dt>主線長度</dt><dd>約 130~160 單位，純走路 20~25 秒（移動 6.5 單位/秒）</dd>
+      <dt>預估時間</dt><dd>一關 2~3 分鐘，大關含 Boss 12~15 分鐘</dd>
+      <dt>要做的</dt><dd>區塊格式、拼接器、出口；最少</dd>
+    </dl>
+    <div class="pc">
+      <div class="good"><h4>好處</h4><ul><li>最接近現在的地圖，怪群、視野、尋路都不用改</li><li>直衝 / 清全圖兩種玩法都成立</li></ul></div>
+      <div class="bad"><h4>壞處</h4><ul><li>過關獎勵沒得選，路線也沒得選</li><li>「我要往哪走」只有支線一個決定</li></ul></div>
+    </div>
+  </div>
+
+  <div class="opt">
+    <h2><b>B</b>直線＋結尾選門（MCD＋Sephiria）</h2>
+    <p class="tag">小關內跟 A 一樣；出口塊有 2 扇門，門上看得到下一關給什麼，玩家選一扇。</p>
+    <svg id="b-stage" viewBox="0 0 400 260"></svg>
+    <h4>整個大關</h4>
+    <svg id="b-run" viewBox="0 0 400 90"></svg>
+    <dl class="stats">
+      <dt>一關大小</dt><dd>同 A</dd>
+      <dt>預估時間</dt><dd>同 A；選門約多 5~10 秒</dd>
+      <dt>門的獎勵</dt><dd>技能、詞條、靈魂、遺物、骰子…兩扇抽不同種；1-2 → 1-3、1-4 → 1-5 固定接鐵砧</dd>
+      <dt>要做的</dt><dd>A 的全部＋門與獎勵圖示、過關獎勵池</dd>
+    </dl>
+    <div class="pc">
+      <div class="good"><h4>好處</h4><ul><li>玩家自己選構築方向，對應「不知道在構築什麼」的問題</li><li>小關內的地圖跟 A 共用</li></ul></div>
+      <div class="bad"><h4>壞處</h4><ul><li>多人要決定走哪扇門（投票或房主選）</li><li>獎勵池要先定（改版構想第 4 項）</li></ul></div>
+    </div>
+  </div>
+
+  <div class="opt">
+    <h2><b>C</b>房間格子（Sephiria）</h2>
+    <p class="tag">每關是 3 × 3 格上 6~7 間小房間，進房關門、清完開門；地圖上看得到每間是什麼房。</p>
+    <svg id="c-stage" viewBox="0 0 400 275"></svg>
+    <h4>整個大關</h4>
+    <svg id="c-run" viewBox="0 0 400 90"></svg>
+    <dl class="stats">
+      <dt>一關大小</dt><dd>6~7 間 24 × 24，約 3500~4000 平方單位 ＝ 地圖 A 的 40%</dd>
+      <dt>預估時間</dt><dd>一關 2~3 分鐘，每間 15~25 秒</dd>
+      <dt>要做的</dt><dd>關門房間、房間格子產生器、小地圖；地圖 A 不能直接切，要重畫房間</dd>
+    </dl>
+    <div class="pc">
+      <div class="good"><h4>好處</h4><ul><li>節奏最清楚，一間一間打</li><li>獎勵房、鐵砧房在地圖上就看得到，路線自己排</li></ul></div>
+      <div class="bad"><h4>壞處</h4><ul><li>房間小，現在一群 6~10 隻、開場 150~260 隻的怪量放不下，怪群和波次都要重調</li><li>「怪一群一群分散在地圖上」「角色視野」的設計發揮不出來</li><li>工作量最大</li></ul></div>
+    </div>
+  </div>
+</div>
+
+<div class="box ask">
+  <h3>要決定的事</h3>
+  <ol>
+    <li>選 A、B、C 哪一種（可以混，例如 B 的門加上 C 的「進塊關門」）。Claude 推薦 <b>B</b>。</li>
+    <li>過關條件：清掉出口塊的守門怪群就開門（推薦，其他怪群可以不清），還是每塊都要清完？</li>
+    <li>區塊大小 32 × 32 可以嗎？</li>
+    <li>一關 2~3 分鐘、大關 12~15 分鐘的目標可以嗎？</li>
+  </ol>
+</div>
+
+<script>
+const NS = "http://www.w3.org/2000/svg";
+const C = n => getComputedStyle(document.documentElement).getPropertyValue("--" + n).trim();
+const KIND = {
+  start: ["start", "起點"], fight: ["fight", "戰鬥塊"], treasure: ["treasure", "支線 / 祭壇、石棺"],
+  exit: ["exit", "出口"], anvil: ["anvil", "鐵砧"], boss: ["boss", "挖墳＋Boss"],
+};
+
+function el(svg, tag, attrs, text) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text !== undefined) e.textContent = text;
+  svg.appendChild(e);
+  return e;
+}
+
+// 一塊區塊：格子座標 (gx, gy)、大小 (gw, gh) 格；cell 是一格的像素
+function block(svg, o, cell, gx, gy, kind, label, gw = 1, gh = 1, inset = 4) {
+  const x = o.x + gx * cell + inset, y = o.y + gy * cell + inset;
+  const w = gw * cell - inset * 2, h = gh * cell - inset * 2;
+  const col = C(KIND[kind][0]);
+  el(svg, "rect", { x, y, width: w, height: h, rx: 4, fill: kind === "fight" ? C("floor") : col + "33", stroke: col, "stroke-width": 2 });
+  if (kind === "fight") {
+    // 怪群（固定亂數，看起來分散）
+    const seed = gx * 7 + gy * 13;
+    for (let i = 0; i < 3; i++) {
+      const px = x + w * (0.25 + ((seed + i * 37) % 50) / 100), py = y + h * (0.25 + ((seed * 3 + i * 23) % 50) / 100);
+      for (let j = 0; j < 4; j++) el(svg, "circle", { cx: px + (j % 2) * 6, cy: py + Math.floor(j / 2) * 6, r: 2.4, fill: C("pack") });
+    }
+  }
+  if (label) el(svg, "text", { x: x + w / 2, y: y + h - 7, "text-anchor": "middle", "font-size": 11, fill: C("text") }, label);
+}
+
+function path(svg, pts, dashed) {
+  el(svg, "polyline", { points: pts.map(p => p.join(",")).join(" "), fill: "none", stroke: C("route"),
+    "stroke-width": 2, "stroke-dasharray": dashed ? "5 4" : "none", opacity: 0.8 });
+}
+
+function center(o, cell, gx, gy, gw = 1, gh = 1) { return [o.x + (gx + gw / 2) * cell, o.y + (gy + gh / 2) * cell]; }
+
+function door(svg, x, y, col, label) {
+  el(svg, "rect", { x: x - 9, y: y - 12, width: 18, height: 24, rx: 9, fill: col, stroke: "#000a" });
+  el(svg, "text", { x: x + 14, y: y + 4, "font-size": 11, fill: C("text") }, label);
+}
+
+// A / B 共用的小關：起點 → 戰鬥 ×4（一塊長塊）→ 出口，戰鬥 2 旁邊一條支線
+function linearStage(svg, withDoors) {
+  const o = { x: 20, y: 10 }, cell = 70;
+  block(svg, o, cell, 0, 2, "start", "起點");
+  block(svg, o, cell, 1, 2, "fight", "");
+  block(svg, o, cell, 1, 1, "fight", "");
+  block(svg, o, cell, 2, 0, "treasure", "支線", 1, 1);
+  block(svg, o, cell, 2, 1, "fight", "長塊", 2, 1);
+  block(svg, o, cell, 4, 1, "fight", "");
+  block(svg, o, cell, 4, 0, "exit", "出口");
+  path(svg, [center(o, cell, 0, 2), center(o, cell, 1, 2), center(o, cell, 1, 1), center(o, cell, 2, 1, 2, 1), center(o, cell, 4, 1), center(o, cell, 4, 0)]);
+  path(svg, [center(o, cell, 2, 1, 2, 1), center(o, cell, 2, 0)], true);
+  const [ex, ey] = center(o, cell, 4, 0);
+  if (withDoors) {
+    door(svg, ex - 13, ey - 10, C("treasure"), "");
+    door(svg, ex + 13, ey - 10, C("anvil"), "");
+    el(svg, "text", { x: ex - 42, y: ey - 14, "text-anchor": "end", "font-size": 11, fill: C("treasure") }, "門：技能");
+    el(svg, "text", { x: ex - 42, y: ey + 2, "text-anchor": "end", "font-size": 11, fill: C("anvil") }, "門：靈魂");
+  }
+  el(svg, "text", { x: 380, y: 250, "text-anchor": "end", "font-size": 11, fill: C("dim") }, "一格 = 32 單位　虛線 = 支線　紅點 = 怪群");
+}
+
+function cStage(svg) {
+  const o = { x: 60, y: 10 }, cell = 80;
+  const rooms = [[0, 2, "start", "起點"], [1, 2, "fight", ""], [1, 1, "fight", ""], [0, 1, "treasure", "獎勵房"],
+                 [2, 1, "fight", ""], [2, 0, "fight", ""], [1, 0, "anvil", "鐵砧房"], [2, 2, "exit", "出口"]];
+  const links = [[0, 2, 1, 2], [1, 2, 1, 1], [1, 1, 0, 1], [1, 1, 2, 1], [2, 1, 2, 0], [2, 0, 1, 0], [2, 1, 2, 2]];
+  for (const [ax, ay, bx, by] of links) path(svg, [center(o, cell, ax, ay), center(o, cell, bx, by)]);
+  for (const [gx, gy, k, l] of rooms) block(svg, o, cell, gx, gy, k, l, 1, 1, 12);
+  // 關門鎖頭
+  for (const [gx, gy, k] of rooms) if (k === "fight") {
+    const [cx, cy] = center(o, cell, gx, gy);
+    el(svg, "text", { x: cx, y: cy - 14, "text-anchor": "middle", "font-size": 12, fill: C("dim") }, "🔒");
+  }
+  el(svg, "text", { x: 380, y: 268, "text-anchor": "end", "font-size": 11, fill: C("dim") }, "一格 = 24 單位房間　🔒 = 進房關門、清完才開");
+}
+
+// 整個大關：1-1 ~ 1-5
+function run(svg, mode) {
+  const xs = [30, 110, 190, 270, 360], y = 45;
+  const kinds = ["fight", "fight", "anvil", "fight", "boss"];
+  const names = ["1-1", "1-2", "1-3", "1-4", "1-5"];
+  for (let i = 0; i < 4; i++) {
+    const mx = (xs[i] + xs[i + 1]) / 2;
+    if (mode === "b" && (i === 1 || i === 3)) {
+      el(svg, "line", { x1: xs[i] + 18, y1: y, x2: xs[i + 1] - 18, y2: y, stroke: C("anvil"), opacity: 0.9 });
+      el(svg, "text", { x: mx, y: y - 8, "text-anchor": "middle", "font-size": 10, fill: C("anvil") }, "鐵砧");
+    } else if (mode === "b") {
+      el(svg, "line", { x1: xs[i] + 18, y1: y, x2: mx, y2: y - 14, stroke: C("route"), opacity: 0.7 });
+      el(svg, "line", { x1: xs[i] + 18, y1: y, x2: mx, y2: y + 14, stroke: C("route"), opacity: 0.7 });
+      el(svg, "line", { x1: mx, y1: y - 14, x2: xs[i + 1] - 18, y2: y, stroke: C("route"), opacity: 0.7 });
+      el(svg, "line", { x1: mx, y1: y + 14, x2: xs[i + 1] - 18, y2: y, stroke: C("route"), opacity: 0.7 });
+      el(svg, "text", { x: mx, y: y - 18, "text-anchor": "middle", "font-size": 10, fill: C("treasure") }, ["技能", "", "遺物", ""][i]);
+      el(svg, "text", { x: mx, y: y + 26, "text-anchor": "middle", "font-size": 10, fill: C("anvil") }, ["靈魂", "", "詞條", ""][i]);
+    } else {
+      el(svg, "line", { x1: xs[i] + 18, y1: y, x2: xs[i + 1] - 18, y2: y, stroke: C("route"), opacity: 0.7 });
+      if (mode === "a") el(svg, "text", { x: (xs[i] + xs[i + 1]) / 2, y: y - 8, "text-anchor": "middle", "font-size": 10, fill: C("treasure") }, "3 選 1");
+    }
+  }
+  for (let i = 0; i < 5; i++) {
+    const col = C(kinds[i]);
+    el(svg, "rect", { x: xs[i] - 18, y: y - 14, width: 36, height: 28, rx: 5, fill: col + "33", stroke: col, "stroke-width": 2 });
+    el(svg, "text", { x: xs[i], y: y + 5, "text-anchor": "middle", "font-size": 12, fill: C("text") }, names[i]);
+  }
+  const note = { a: "每關過完給一次固定的 3 選 1；1-3 有鐵砧", b: "每關選一扇門＝選下一關的獎勵；1-3、1-5 前固定是鐵砧",
+                 c: "獎勵在關內的獎勵房，自己排路線拿；1-3 有鐵砧房" }[mode];
+  el(svg, "text", { x: 200, y: 84, "text-anchor": "middle", "font-size": 11, fill: C("dim") }, note);
+}
+
+linearStage(document.getElementById("a-stage"), false);
+linearStage(document.getElementById("b-stage"), true);
+cStage(document.getElementById("c-stage"));
+run(document.getElementById("a-run"), "a");
+run(document.getElementById("b-run"), "b");
+run(document.getElementById("c-run"), "c");
+
+const lg = document.getElementById("legend");
+for (const k in KIND) {
+  const s = document.createElement("span");
+  s.innerHTML = `<i class="sw" style="background:${C(KIND[k][0])}"></i>${KIND[k][1]}`;
+  lg.appendChild(s);
+}
+const p = document.createElement("span");
+p.innerHTML = `<i class="sw" style="background:${C("pack")};border-radius:50%;width:10px;height:10px"></i>怪群`;
+lg.appendChild(p);
+</script>
+</body>
+</html>
