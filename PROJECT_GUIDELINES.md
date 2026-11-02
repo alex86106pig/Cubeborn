@@ -212,7 +212,7 @@ godot/
 | `player:grab_escaped` | `{ player_id }`（被腐屍、膨脹屍抓住時按翻滾掙脫） | Player.update |
 | `player:knocked_down` | `{ player_id, duration }`（受擊硬直「擊倒」級：倒地，按翻滾受身） | Player.knock_down |
 | `player:teched` | `{ player_id }`（擊倒中按翻滾受身） | Player._tech |
-| `player:buried` | `{ player_id, duration }`（被持鐵鏟的腐屍埋進地底） | ArmedMoves._scoop |
+| `player:buried` | `{ player_id, duration }`（被持鐵鏟的腐屍、守墓人鏟起埋進地底） | ArmedMoves._scoop、Player.bury |
 | `enemy:armed` | `{ enemy_id, weapon, pos }`（腐屍撿起地上的武器） | Zombie.arm |
 | `enemy:blocked` | `{ enemy_id, pos, source_id }`（劍盾腐屍舉盾擋下攻擊） | Zombie.take_damage |
 | `game:defeat` | `{ stats }`（v0.21.0：全員倒下 = 輸；單機和 `player:died` 同一步發出） | World |
@@ -237,6 +237,7 @@ godot/
 | `boss:transforming` | `{ boss_id }`（Boss 半血開始轉型態） | Gravekeeper |
 | `boss:transformed` | `{ boss_id, form, pos }`（轉型態完成：畫面層換模型、HUD 換名字與提示） | Gravekeeper |
 | `boss:revealed` | `{ boss_id, spoke }`（假裝 NPC 的守墓人露出真面目；spoke = 被說話觸發、頭上冒台詞） | Gravekeeper |
+| `boss:scoop_broken` | `{ boss_id }`（守墓人鏟起連段被隊友打斷） | Gravekeeper.Scoop |
 | `game:victory` | `{ stats }` | World（Boss 死亡後延遲發出） |
 | `game:restart` | `{}` | World.reset |
 | `game:paused` | `{ paused }` | main.gd（Esc、失去焦點） |
@@ -254,7 +255,8 @@ godot/
 | `fx:boss_wall` | `{ pos, height }` | Boss 衝鋒撞牆 |
 | `fx:boss_teleport` | `{ pos, height, to }` | 狂暴 Boss 瞬移砸地（v0.27.0）：原地與目的地的紫色煙霧 |
 | `fx:boss_teleport_warn` | `{ pos, height, life }` | 狂暴 Boss 瞬移前：目的地冒出越來越濃的紫煙（取代預警圈） |
-| `fx:dirt_lob` | `{ pos, height, targets, flight, radius, shadow_only? }` | 守墓人鏟土拋擲（shadow_only：狼人飛撲只畫影子）：土塊沿拋物線飛到每個落點、地上的影子越來越大（看影子躲，不畫圈） |
+| `fx:dirt_lob` | `{ pos, height, targets, flight, radius, shadow_only?, from_sky? }` | 守墓人落石（from_sky：從落點正上方直直掉；瘋狂鏟土、鏟起 A）、腐屍鐵鏟拋怪與狼人飛撲（shadow_only：只畫影子）：地上的影子越來越大（看影子躲，不畫圈） |
+| `fx:claw` | `{ pos, height, facing, range, arc, side, color }` | 狼人三連爪的每一下：身前 3 條紅色爪痕（side 1 右爪 / -1 左爪 / 0 雙爪） |
 | `fx:gas_cloud` | `{ pos, height, radius, color, life }` | 怪物的毒氣區（膨脹屍的腐氣，GroundZones `visual = &"gas"`）：範圍內一直冒低低的煙，不畫圈 |
 | `fx:erupt_warn` | `{ pos, height, radius, life }` | 挖墳點噴怪前：墳土隆起、裂開、冒出白骨手（取代預警圈） |
 | `fx:lightning` | `{ pos, height, points, color }` | 道具連鎖閃電（v0.33.0）：points 依序連成的閃電線 |

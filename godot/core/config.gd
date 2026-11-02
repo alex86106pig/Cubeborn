@@ -60,6 +60,8 @@ const PLAYER := {
 	"poise_regen_delay": 3.0,           # 幾秒沒被打韌性回滿
 	"tech_time": 0.6,                   # 擊倒中按翻滾受身：被擊倒後這麼久起身（已經過了就立刻起身）
 	"tech_invuln": 0.2,                 # 受身起身時的翻滾無敵
+	"bury_mash_step": 0.1,              # 被埋進土裡（守墓人鏟起）：每按一下翻滾提早這麼多秒爬出
+	"bury_mash_max": 0.3,               # 最多提早幾秒
 	"stagger_move_speed_mul": 0.4,
 	"action_buffer_time": 0.25,
 	"start_weapon": &"longsword",

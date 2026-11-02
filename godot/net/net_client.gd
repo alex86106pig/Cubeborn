@@ -291,4 +291,10 @@ func _apply_own_authority(me: Player, a: Array) -> void:
 		me.stun(absf(host_stun), -1 if grabbed else 0)
 	elif me.grabbed_by != 0 and not grabbed:
 		me.release_grab()   # 房主那邊已經掙脫、或腐屍被打鬆手
+	var host_buried: bool = (a[NetCodec.E_ANIM] as Dictionary).get("buried", false)   # 被守墓人埋進土裡（畫面只露半身）以房主為準
+	if host_buried and me.bury_mash < 0.0:
+		me.bury_mash = 0.0
+	elif not host_buried and me.bury_mash >= 0.0:
+		me.bury_mash = -1.0
+		me.stun_timer = 0.0
 	me.sync_weapon_slots(extra[NetCodec.P_SLOTS])   # 主手與副手以房主為準

@@ -135,10 +135,11 @@ func _initialize() -> void:
 	_check("膨脹屍：撲抱抱住站著的玩家、脹 hold_swell_time 秒（被打不硬直）→ 自爆炸到玩家與旁邊的怪（抱住的 +hold_bonus、擊倒）、不給靈魂、不抽死亡爆炸詞條；留下腐氣持續傷害玩家與怪、不畫圈只冒煙；被打死 death_delay 秒後照樣炸、給靈魂", MonsterChecks.check_bloater)
 	_check("屍犬：背對時在視野外就飛撲（擊倒）、patience 內做到；一直看著它正面牽制側跳、patience 內不撲、之後從正面撲；繞圈方向不跟著玩家小幅轉身來回換邊；撲完先沿圈退到內圈才再撲；" 		+ "貼近快咬（輕級）後往後跳；附近翻滾撲向翻滾終點；4 隻同時出招不超過 pack.max_attackers",
 		all.bind([MonsterChecks.check_hound, MonsterChecks.check_hound_steady_side, MonsterChecks.check_hound_retreat, MonsterChecks.check_hound_moves]))
-	_check("守墓人（第 1 層 Boss）：假裝 NPC（旁邊 3 秒不開打；按 F 說話先冒台詞、不開挖、reveal_time 後開打；被打或有人開挖直接開打）；" \
-		+ "四招（鐵鏟 windup 後打中；鏟土 windup + flight_time 落地、發 fx:dirt_lob；噴火每 tick 一下再被殘火燒；口哨叫不給靈魂的屍犬；不畫預警圈）；" \
-		+ "半血轉型態（無敵 transform.time 秒 → 狼人移速、嚎叫、提燈火堆；三連爪吃滿 3 下、飛撲落地打中、狼嚎叫魔法屍犬並加速）",
-		all.bind([MonsterChecks.check_gravekeeper_npc, MonsterChecks.check_gravekeeper_moves, MonsterChecks.check_gravekeeper_transform]))
+	_check("守墓人（第 1 層 Boss）：假裝 NPC（旁邊 3 秒不開打；按 F 說話先冒台詞、不開挖、reveal_time 後開打；被打或有人開挖直接開打）；開打 grow.time 秒內慢慢變大到 grow.size 倍；" \
+		+ "鐵鏟 windup 後打中（重級）；瘋狂鏟土落石鋪滿競技場、每人腳邊都有、看影子；噴火追著人走、最後轉一圈、留殘火；口哨叫不給靈魂的屍犬；不畫預警圈；" \
+		+ "鏟起 A 拋到背後落地擊倒、受身躲得掉後面的土；B 埋地連按翻滾提早爬出、被直噴；隊友打斷；" \
+		+ "半血轉型態（無敵 transform.time 秒 → 狼人移速、維持變大後的體型、嚎叫、提燈火堆；三連爪範圍邊緣吃滿 3 下、每下 3 條爪痕、飛撲落地擊倒、狼嚎叫魔法屍犬並加速）",
+		all.bind([MonsterChecks.check_gravekeeper_npc, MonsterChecks.check_gravekeeper_moves, MonsterChecks.check_gravekeeper_scoop, MonsterChecks.check_gravekeeper_transform]))
 	_check("怪物稀有度（D5）：魔法 / 稀有骷髏的生命、攻擊力、體型照倍率；詞條數照 RARITIES.affixes 不重複、稀有怪有名字；每群魔法 magic_per_pack 隻、稀有 rare_chance（±1.5%）", MonsterChecks.check_rarity)
 	_check("怪物屍體：死後擊退照樣往後滑，但不滑下高台（留在死掉時的高度）", MonsterChecks.check_corpse_ledge)
 	_check("怪物詞條（D5）：迅捷 / 強壯 / 厚皮照 mods 倍率、再生、吸血、狂暴、死亡爆炸、召喚照資料", MonsterChecks.check_affixes)
@@ -242,6 +243,7 @@ func _initialize() -> void:
 	_check("延遲下的手感（C3）：延遲 100 ms + 掉包 10%，按下就在本機移動、修正誤差 < 0.25、停下後與房主差 < 0.01；別人的角色每步位移平順", NetChecks.check_prediction.bind(feel))
 	_check("打中回饋與延遲補償（v0.38.0）：延遲 100 ms 時客戶端的火花 / 音效 / 閃白在出招當下出現一次，房主的同一下標 predicted；側移的怪兩邊都判定打中", NetChecks.check_hit_prediction.bind(feel))
 	_check("連線武器（D4）：客戶端拖武器上主手、拖曳合成，兩邊的裝備欄、手上武器、詞條一致；殺怪掉的武器兩邊都看得到", NetChecks.check_net_weapons)
+	_check("連線守墓人：客戶端被埋進土裡時自己的畫面也只露半身、爬出來就恢復；守墓人開打變大後，客戶端的半徑與體型跟房主一致", NetChecks.check_net_gravekeeper)
 	_check("連線稀有度（D5）：客戶端的稀有度、詞條、名字、半徑、最大生命與房主相同；普通怪的快照不帶稀有度欄位", MonsterChecks.check_net_rarity)
 	_check("連線寶箱與背包（D3）：客戶端按 F 開箱、再按 F 打開遺物、重骰一次、選第一個（兩邊骰子與選過的人一致）、拖曳搬動與丟掉、從腳邊拖回背包指定的格子；兩邊的寶箱、靈魂、背包、生效道具一致", NetChecks.check_net_loot)
 	_check("連線金幣（v0.45）：房主掉的金幣客戶端看得到；客戶端走過去撿起，兩邊本局金幣都是 1、地上都沒了", NetChecks.check_net_coins)

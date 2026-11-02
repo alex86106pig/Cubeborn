@@ -18,12 +18,13 @@ const ANIM_KEYS: Array[String] = [
 	"trail_color", "airborne", "blocking", "parry", "vz", "revive", "stunned",
 	"state", "time", "enraged", "phase_time", "origin", "torch_stance", "burning", "holding", "buried", "grabbed",
 	"shield", "running", "burst", "spoke", "form", "burn_stacks", "chill", "staggered", "coffin", "knocked",
+	"size",
 ]
 # 玩家動畫欄位的預設值：和預設值相同的欄位不送（大部分時間只剩移動層、動作層的名稱與秒數），收到時補回
 const PLAYER_ANIM_DEFAULTS := {
 	"behavior": &"", "phase": &"", "k": 0.0, "swing_dir": 1, "is_finisher": false, "trail_color": null,
 	"airborne": false, "blocking": false, "parry": 0.0, "vz": 0.0, "revive": 0.0, "stunned": false, "grabbed": false, "torch_stance": false, "holding": false,
-	"shield": 0.0, "running": false, "knocked": 0.0,
+	"shield": 0.0, "running": false, "knocked": 0.0, "buried": false,
 }
 # 數值欄位 E_X ~ E_MAX_HP 用 float32；E_VX ~ E_INVULN 只給別人的實體外推與閃白，用 half（16 位元）
 # 二進位格式（v0.35.0）用的種類與常見名稱表：在表裡的送 1 byte 索引，不在表裡的照樣送字串（表只影響大小、不影響正確性）
@@ -32,6 +33,7 @@ const NAMES: Array[StringName] = [
 	&"idle", &"move", &"chase", &"kite", &"aim", &"attack", &"swing", &"cleave", &"slam", &"charge", &"rush", &"summon",
 	&"hurt", &"stagger", &"dead", &"dormant", &"spawn", &"climb", &"jump", &"stun", &"ready", &"special", &"roll", &"dig",
 	&"downed", &"revive", &"windup", &"strike", &"recover", &"block", &"parry", &"lunge", &"bite", &"dash", &"recovery", &"swell", &"pounce", &"patrol", &"reveal", &"shovel", &"lob", &"lantern", &"whistle", &"throw", &"flame", &"transform", &"wolf_chase", &"claw", &"leap", &"stalk", &"howl", &"air",
+	&"grow", &"scoop", &"spin", &"miss", &"bury",
 ]
 enum { T_NULL, T_FALSE, T_TRUE, T_INT, T_FLOAT, T_NAME, T_SNAME, T_STRING, T_COLOR, T_VEC2, T_VARIANT }
 const NO_INDEX := 255
@@ -427,6 +429,8 @@ static func apply_entity(e: Entity, a: Array, b: Array, t: float, ahead: float =
 		en.fsm.time = anim.get("time", 0.0)
 		if en is Boss:
 			(en as Boss).is_enraged = extra[0]
+		if en is Gravekeeper:   # 開打後變大：半徑與身高照房主的體型（碰撞、命中判定、畫面）
+			(en as Gravekeeper).set_size(anim.get("size", 1.0))
 	elif e is Chest:
 		(e as Chest).opened = extra[1]
 	elif e is Relic:

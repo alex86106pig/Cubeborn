@@ -1496,11 +1496,11 @@ static func check_no_monster_telegraph() -> String:
 
 
 # Boss 每一招的預備動作兩兩不同：各招預備到一半時，手臂（前後、張開）、身體前後傾、頭的角度合計至少差 MIN_POSE_DIFF 弧度
-# 亡骸騎士：砸地、衝鋒、召喚、直劈；守墓人：鐵鏟揮擊、鏟土拋擲、提燈噴火、口哨；墓園狼人（守墓人 form 1）：三連爪、飛撲、狼嚎
+# 亡骸騎士：砸地、衝鋒、召喚、直劈；守墓人：鐵鏟揮擊、瘋狂鏟土、提燈噴火、口哨、鏟起；墓園狼人（守墓人 form 1）：三連爪、飛撲、狼嚎
 const MIN_POSE_DIFF := 1.0
 const BOSS_MOVES := {   # 模型 -> [種類, 型態, 招式資料所在（"" = 種類的最上層）, 招式]
 	&"boss": [&"boss", 0, "", [&"slam", &"charge", &"summon", &"cleave"]],
-	&"gravekeeper": [&"gravekeeper", 0, "", [&"shovel", &"lob", &"lantern", &"whistle"]],
+	&"gravekeeper": [&"gravekeeper", 0, "", [&"shovel", &"dig", &"lantern", &"whistle", &"scoop"]],
 	&"werewolf": [&"gravekeeper", 1, "wolf", [&"claw", &"leap", &"howl"]],
 }
 

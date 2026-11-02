@@ -451,6 +451,40 @@ static func check_net_loot() -> String:
 	return ""
 
 
+# 守墓人：客戶端被埋進土裡（房主判定）時自己的動畫欄位 buried 也是真的（畫面只露半身），時間到爬出來就恢復；
+# 守墓人開打變大後，客戶端鏡像的半徑、體型與動畫欄位 size 跟房主一致
+static func check_net_gravekeeper() -> String:
+	var link := _Link.new(13, [1, 2], 3, 0.0, false)
+	var hw := link.host_world
+	var hp2: Player = hw.players[2]
+	for p: Player in hw.player_list:
+		p.stats.set_base(&"max_hp", 99999.0)
+		p.hp = p.max_hp
+	var idle := func(n: int) -> void:
+		for i in n:
+			link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO))
+	idle.call(20)
+	var bury: float = EnemyDefs.ENEMIES.gravekeeper.scoop.bury.bury
+	hp2.bury(bury)
+	idle.call(12)
+	var me := link.client.local_player()
+	if me.bury_mash < 0.0 or not me.anim.get("buried", false) or me.stun_timer <= 0.0:
+		return "客戶端被埋：自己的畫面應只露半身、不能動（埋 %s、動畫 %s、暈眩 %.2f）" % [me.bury_mash >= 0.0, me.anim.get("buried"), me.stun_timer]
+	idle.call(roundi(bury / DT) + 10)
+	if me.bury_mash >= 0.0 or me.anim.get("buried", false):
+		return "客戶端：房主那邊爬出來後應恢復（埋 %s）" % (me.bury_mash >= 0.0)
+	var k := hw.spawner.spawn_at(hw, &"gravekeeper", Vector2(0, 5), {"initial_state": &"patrol"}) as Gravekeeper
+	idle.call(30)
+	k.aggro()
+	var g: Dictionary = EnemyDefs.ENEMIES.gravekeeper.grow
+	idle.call(roundi(g.time / DT) + 15)
+	var mk := link.client.world.entities.get(k.id) as Gravekeeper
+	if mk == null or absf(k.size - g.size) > 1e-3 or absf(mk.size - k.size) > 1e-3 or absf(mk.radius - k.radius) > 1e-3 \
+			or absf(mk.body_height - k.body_height) > 1e-3:
+		return "守墓人變大：房主 ×%.2f 半徑 %.2f，客戶端 %s" % [k.size, k.radius, "沒有" if mk == null else "×%.2f 半徑 %.2f" % [mk.size, mk.radius]]
+	return ""
+
+
 # D4：客戶端把背包的法杖拖到主手（長劍與木盾回背包）、拖曳合成背包裡兩把白法杖；Boss 掉的武器兩邊都看得到
 static func check_net_weapons() -> String:
 	var link := _Link.new(43, [1, 2], 3, 0.0, false)

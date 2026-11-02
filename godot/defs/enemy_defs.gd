@@ -200,58 +200,77 @@ const ENEMIES := {
 		"is_boss": true,
 		"freeze_immune": true,
 		"hit_color": Color("ff9a40"),
-		"max_hp": 700.0,
-		"move_speed": 1.8,
+		"max_hp": 1000.0,            # 使用者 2026-11-02：700 → 1000（招式全面加快加痛，就是要變難）
+		"move_speed": 3.0,
 		"speed_variance": 0.0,
 		"turn_speed": 3.5,
-		"radius": 0.7,
+		"radius": 0.7,               # NPC 時的大小；開打後照 grow.size 放大（半徑、身高、模型一起）
 		"mass": 30.0,
 		"knockback_mul": 0.12,
 		"spawn_time": 1.0,
 		"corpse_time": 3.5,
-		"decide_delay": 0.35,
-		"first_cooldowns": {"lob": 1.5, "lantern": 2.0, "whistle": 4.0},
+		"decide_delay": 0.15,
+		"first_cooldowns": {"dig": 2.0, "lantern": 1.5, "whistle": 3.0, "scoop": 1.0},
 		"npc": {
-			"speed_mul": 0.4, "pause": [2.0, 4.0],   # 掃地：慢慢走、停下來掃
+			"speed_mul": 0.27, "pause": [2.0, 4.0],  # 掃地：慢慢走（約 0.8 單位/秒）、停下來掃
 			"talk_range": 1.6,                        # 身體邊緣到身體邊緣多近能按 F 說話
 			"reveal_time": 1.5,                       # 說完「又一頭肥羊……」幾秒後開打
 		},
+		"grow": {"time": 1.0, "size": 2.0},          # 開打時 time 秒內慢慢變大到 size 倍（不出招）；狼人維持這個大小
+		# 以下距離都是從中心算（開打後半徑 1.4）
 		"shovel": {
-			"trigger_distance": 2.8, "windup": 0.9, "track": 0.5, "active": 0.1, "recovery": 0.6,
-			"range": 3.0, "arc": PI * 120.0 / 180.0, "damage": 18.0, "knockback": 9.0, "cooldown": 2.0,
+			"trigger_distance": 4.2, "windup": 0.45, "track": 0.5, "active": 0.1, "recovery": 0.45,
+			"range": 4.8, "arc": PI * 150.0 / 180.0, "damage": 27.0, "knockback": 10.0, "cooldown": 1.2, "tier": &"heavy",
 		},
-		"lob": {
-			"min_distance": 4.0, "max_distance": 14.0, "windup": 0.6, "flight_time": 0.8, "recovery": 0.4, "cooldown": 5.0,
-			"count": 3, "spread": 2.2,      # 第一坨丟目標腳下，其他兩坨在 spread 半徑內
-			"radius": 1.2, "damage": 10.0, "knockback": 4.0, "slow_mul": 0.5, "slow_time": 1.5, "color": Color("6b4f2e"),
+		# 瘋狂鏟土：彎腰 windup → 狂鏟 duration 秒，每 interval 秒在競技場（map.boss_room；Boss 不在裡面就是身邊 fallback_radius）隨機落一顆石頭，
+		# 每位玩家每 player_interval 秒必定有一顆落在腳邊 aim_jitter 內；每顆 fall_time 秒落地（地上影子越來越大），擋不住
+		"dig": {
+			"max_distance": 20.0, "windup": 0.4, "duration": 2.5, "interval": 0.08, "player_interval": 0.5, "aim_jitter": 0.8,
+			"fall_time": 1.0, "recovery": 0.5, "cooldown": 8.0, "fallback_radius": 12.0,
+			"radius": 1.5, "damage": 15.0, "knockback": 4.0, "slow_mul": 0.5, "slow_time": 1.5, "tier": &"medium", "color": Color("6b4f2e"),
 		},
+		# 提燈噴火：吸氣 windup → 邊噴邊追目標 duration 秒（移速 ×chase_mul、轉向 ×turn_mul）→ 原地轉一圈噴 spin_time 秒（每 spin_tick 一下）→ recovery
+		# 追著噴時每 ember_every 秒在火焰中段留一團殘火，轉圈時在身邊留 spin_embers 團（殘火擋不住、不硬直）
 		"lantern": {
-			"trigger_distance": 5.5, "windup": 0.8, "track": 0.6, "duration": 1.0, "tick": 0.25, "recovery": 0.6, "cooldown": 6.0,
-			"range": 6.0, "arc": PI * 60.0 / 180.0, "damage": 6.0, "color": Color("ff8a30"),
-			"embers": [2.5, 4.5], "ember_radius": 1.0, "ember_time": 2.0, "ember_dps": 5.0,   # 噴完沿噴火方向留下的殘火（擋不住）
+			"trigger_distance": 7.0, "windup": 0.55, "track": 0.6, "duration": 2.0, "tick": 0.25, "recovery": 0.5, "cooldown": 4.5,
+			"chase_mul": 0.6, "turn_mul": 0.7, "spin_time": 0.5, "spin_tick": 0.1, "spin_embers": 3,
+			"range": 7.5, "arc": PI * 80.0 / 180.0, "damage": 9.0, "tier": &"light", "color": Color("ff8a30"),
+			"ember_every": 0.5, "ember_at": 4.0, "ember_radius": 1.0, "ember_time": 2.0, "ember_dps": 5.0,
 		},
-		"whistle": {"windup": 0.6, "recovery": 0.4, "cooldown": 12.0, "count": 2, "max_alive": 2, "distance": 2.0},
+		"whistle": {"windup": 0.3, "recovery": 0.3, "cooldown": 12.0, "count": 2, "max_alive": 2, "distance": 3.0},
+		# 鏟起（怪物圖鑑備註 2）：鏟面貼地往前滑 windup → 前方 range、arc 抓第一位玩家（擋不住）→ 隨機 A / B 連段；連段中的傷害不吃受傷無敵；
+		# 連段中被抓的那位以外的人打守墓人累積 break_damage 就中斷（放開玩家）
+		"scoop": {
+			"trigger_distance": 3.2, "windup": 0.3, "track": 0.5, "slide": 0.6, "range": 3.0, "arc": PI * 60.0 / 180.0,
+			"damage": 9.0, "miss_recovery": 0.6, "cooldown": 8.0, "break_damage": 60.0, "color": Color("6b4f2e"),
+			# A 拋飛 → 鏟土：往守墓人背後拋 distance（flight 秒，落地 land_damage、擊倒）；落地 rock_delay 秒後 rocks 顆土落在落點周圍 rock_spread 內
+			"throw": {"distance": 6.0, "flight": 0.7, "land_damage": 15.0, "rock_delay": 0.4, "rocks": 3, "rock_spread": 1.5, "recovery": 0.6},
+			# B 埋地 → 噴火：埋 bury 秒（連按翻滾每下少 mash_step、最多少 mash_max）；退 step_back（step_time 秒）→ 開燈罩 open → 直噴 flame 秒
+			"bury": {"bury": 1.0, "mash_step": 0.1, "mash_max": 0.3, "step_back": 1.2, "step_time": 0.3, "open": 0.4, "flame": 0.8,
+				"tick": 0.25, "range": 7.0, "arc": PI * 30.0 / 180.0, "damage": 9.0, "recovery": 0.5},
+		},
 		# 半血轉型態（取代狂暴）：form 0 老守墓人 → 1 墓園狼人；畫面層照 form_models 換模型、HUD 照 form_names 換名字
 		"form_models": [&"gravekeeper", &"werewolf"],
 		"form_names": ["守墓人", "墓園狼人"],
 		"transform": {
 			"hp_threshold": 0.5, "time": 2.0,                       # 變身中無敵
-			"roar_radius": 4.0, "roar_damage": 5.0, "roar_knockback": 14.0, "shake": 0.6, "shake_duration": 0.5,
+			"roar_radius": 5.0, "roar_damage": 8.0, "roar_knockback": 14.0, "roar_tier": &"heavy", "shake": 0.6, "shake_duration": 0.5,
 		},
 		"wolf": {
 			"resists": {&"phys": 0.3, &"holy": -0.5},   # 變身後整組換掉
-			"move_speed": 7.5, "turn_speed": 9.0, "decide_delay": 0.2,
+			"move_speed": 7.5, "turn_speed": 9.0, "decide_delay": 0.15,
 			"first_cooldowns": {"leap": 1.5, "howl": 6.0, "stalk": 4.0},
-			"claw": {   # 三連爪：前兩下擋得住，第三下往前撲、擋不住
-				"trigger_distance": 2.2, "windup": 0.3, "interval": 0.25, "range": 2.4, "arc": PI * 100.0 / 180.0,
-				"damage": 10.0, "last_damage": 16.0, "knockback": 5.0, "lunge": 2.0, "lunge_time": 0.15, "recovery": 0.6, "cooldown": 2.0,
+			"claw": {   # 三連爪：前兩下擋得住，第三下往前撲、擋不住；每一下發 fx:claw（3 條紅色爪痕）
+				"trigger_distance": 3.4, "windup": 0.25, "interval": 0.25, "range": 4.0, "arc": PI * 140.0 / 180.0,
+				"damage": 15.0, "last_damage": 24.0, "knockback": 5.0, "lunge": 3.0, "lunge_time": 0.15, "recovery": 0.5, "cooldown": 2.0,
+				"tiers": [&"medium", &"medium", &"heavy"], "color": Color("ff2a2a"),
 			},
-			"leap": {   # 飛撲：跳到目標當時的位置，看影子躲
-				"min_distance": 4.5, "max_distance": 12.0, "windup": 0.5, "flight": 0.6, "recovery": 0.5, "cooldown": 6.0,
-				"radius": 2.5, "damage": 22.0, "knockback": 10.0, "shake": 0.5,
+			"leap": {   # 飛撲：跳到目標當時的位置；蹲低到落地只有 windup + flight 秒，要靠反應翻滾
+				"min_distance": 4.5, "max_distance": 12.0, "windup": 0.35, "flight": 0.3, "recovery": 0.5, "cooldown": 6.0,
+				"radius": 3.0, "damage": 33.0, "knockback": 10.0, "shake": 0.5, "tier": &"knockdown",
 			},
 			"stalk": {"max_distance": 10.0, "behind": 6.0, "time": 3.0, "speed_mul": 1.1, "cooldown": 10.0},   # 隱入黑暗：跑到目標背後再撲
-			"howl": {"windup": 1.0, "recovery": 0.3, "cooldown": 15.0, "count": 3, "max_alive": 3, "speed_mul": 1.2, "buff_time": 5.0},
+			"howl": {"windup": 0.8, "recovery": 0.3, "cooldown": 15.0, "count": 3, "max_alive": 3, "speed_mul": 1.2, "buff_time": 5.0},
 		},
 	},
 

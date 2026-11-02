@@ -42,6 +42,7 @@ var poise := -1.0                      # 隱藏韌性（< 0 = 還沒初始化，
 var poise_timer := 0.0                 # 上次被打後經過幾秒；到 Config.PLAYER.poise_regen_delay 韌性回滿
 var knock_time := 0.0                  # 被擊倒後經過幾秒（> 0 = 倒在地上，同暈眩；按翻滾受身）
 var grabbed_by := 0                    # 被腐屍抓住：抓住的怪 id（客戶端只知道有沒有被抓，填 -1）；同暈眩，但按翻滾立刻掙脫
+var bury_mash := -1.0                  # 被埋進土裡（守墓人鏟起）：已經靠連按翻滾提早了幾秒（< 0 = 沒被埋）；同暈眩
 var combo_step := 0
 var combo_timer := 0.0
 var buffered_action: Dictionary = {}   # { type: &"special" | &"slot" | &"roll", index?, time }；空 = 沒有緩衝
@@ -147,6 +148,16 @@ func knock_down(duration: float) -> void:
 	knock_time = 1e-4
 	if world.is_authority:
 		world.emit_event("player:knocked_down", {"player_id": id, "duration": duration})
+
+
+# 被埋進土裡（守墓人鏟起 B）：duration 秒不能動（同暈眩），連按翻滾每下提早 bury_mash_step 秒、最多 bury_mash_max 秒
+func bury(duration: float) -> void:
+	if is_dead or is_downed:
+		return
+	stun(duration)
+	bury_mash = 0.0
+	if world.is_authority:
+		world.emit_event("player:buried", {"player_id": id, "duration": duration})
 
 
 # 受身：被擊倒後 Config.PLAYER.tech_time 秒起身（已經過了就立刻），起身時有翻滾無敵
@@ -698,12 +709,17 @@ func update(dt: float) -> void:
 			release_grab()
 		elif knock_time > 0.0 and stun_timer > 0.0 and _pressed & InputCmd.BTN_ROLL and not is_dead and not is_downed:
 			_tech()
+		elif bury_mash >= 0.0 and stun_timer > 0.0 and _pressed & InputCmd.BTN_ROLL and not is_dead and not is_downed:
+			var cut := minf(Config.PLAYER.bury_mash_step, Config.PLAYER.bury_mash_max - bury_mash)
+			stun_timer -= cut
+			bury_mash += cut
 		stun_timer = maxf(0.0, stun_timer - dt)
 		if knock_time > 0.0:
 			knock_time += dt
 		if stun_timer <= 0.0:
 			grabbed_by = 0
 			knock_time = 0.0
+			bury_mash = -1.0
 		if stun_timer > 0.0:
 			move_input = Vector2.ZERO   # 暈眩時站著不動（移動層回到 idle）
 		_pressed = 0
@@ -844,9 +860,10 @@ func _update_anim() -> void:
 		"parry": parry_timer / PARRY_ANIM_TIME,   # 1 → 0（盾反剛發動到結束）
 		"vz": vz,
 		"revive": revive_progress / Config.REVIVE.revive_time,   # 倒地時被救的進度 0~1（畫面顯示用）
-		"stunned": stun_timer > 0.0 and grabbed_by == 0 and knock_time <= 0.0,
+		"stunned": stun_timer > 0.0 and grabbed_by == 0 and knock_time <= 0.0 and bury_mash < 0.0,
 		"knocked": knock_time,   # 被擊倒後經過幾秒（0 = 沒倒）：畫面躺地、起身
 		"grabbed": grabbed_by != 0,
+		"buried": bury_mash >= 0.0,   # 被守墓人埋進土裡：畫面只露半身
 		"torch_stance": torch_stance,
 		"running": running,
 		"holding": held_enemy_id != 0,   # 鐵鏟舉著怪（F9）   # 舉著火把：全隊的視野都看得到周圍（F8，Vision.lights）
