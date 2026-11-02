@@ -3,259 +3,614 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>小關拼法對比</title>
+<title>小關隨機地圖預覽</title>
 <style>
   :root {
     --bg: #15161a; --card: #1e2026; --line: #34373f; --text: #e6e2d6; --dim: #9a978c;
-    --start: #6fd08c; --fight: #8a3b38; --pack: #e0625d; --treasure: #e0b84a; --exit: #a97be8;
-    --anvil: #7fc8ff; --boss: #d9534f; --route: #efe6c8; --floor: #2a2c33;
+    --ground: #26282e; --start-g: #22352a; --branch-g: #3a3322; --boss-g: #3a2324;
+    --wall: #8b8577; --tomb: #c4bda9; --low: #7d6850; --high: #a3876a;
+    --start: #6fd08c; --pack: #e0625d; --chest: #e0b84a; --exit: #a97be8; --anvil: #7fc8ff; --boss: #d9534f; --route: #efe6c8;
   }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 24px 16px 48px; background: var(--bg); color: var(--text);
     font: 15px/1.6 "Microsoft JhengHei", "Noto Sans TC", sans-serif; }
   h1 { margin: 0 0 4px; font-size: 24px; }
-  .sub { color: var(--dim); margin: 0 0 16px; }
-  .info { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .sub { color: var(--dim); margin: 0 0 16px; max-width: 980px; }
   .box { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
   .box h3 { margin: 0 0 6px; font-size: 15px; }
-  .box ul { margin: 0; padding-left: 18px; }
-  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; }
-  .legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
-  .sw { width: 16px; height: 12px; border-radius: 2px; display: inline-block; border: 1px solid #0006; }
-  .opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 20px; align-items: start; }
-  .opt { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; min-width: 0; }
-  .opt h2 { margin: 0; font-size: 20px; }
-  .opt h2 b { color: var(--treasure); margin-right: 6px; }
-  .tag { color: var(--dim); margin: 2px 0 10px; }
-  .opt h4 { margin: 12px 0 4px; font-size: 14px; color: var(--dim); }
-  .opt svg { display: block; width: 100%; height: auto; background: #101114; border-radius: 4px; }
-  .stats { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 10px 0 6px; font-size: 14px; }
+  .box ul, .box ol { margin: 0; padding-left: 20px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 12px; }
+  .stages { display: flex; flex-wrap: wrap; gap: 6px; }
+  button { background: #2b2e36; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 12px; font: inherit; cursor: pointer; }
+  button:hover { border-color: var(--dim); }
+  button.on { background: #4a3f22; border-color: var(--chest); }
+  button.main { background: #3a2f5a; border-color: var(--exit); }
+  input[type=number] { width: 110px; background: #111216; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: inherit; }
+  label { display: inline-flex; gap: 4px; align-items: center; color: var(--dim); font-size: 14px; cursor: pointer; }
+  .view { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+  #main { display: block; width: 100%; height: auto; max-height: 78vh; background: #101114; border-radius: 6px; }
+  .stats { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; font-size: 14px; }
   .stats dt { color: var(--dim); }
   .stats dd { margin: 0; }
-  .pc { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px; }
-  .pc h4 { margin: 4px 0 2px; }
-  .pc ul { margin: 0; padding-left: 18px; }
-  .good h4 { color: var(--start); } .bad h4 { color: var(--pack); }
-  .ask { margin-top: 24px; }
-  .ask ol { margin: 4px 0 0; padding-left: 22px; }
-  @media (max-width: 440px) { .opts { grid-template-columns: 1fr; } .pc { grid-template-columns: 1fr; } }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 10px; font-size: 13px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 14px; height: 10px; border-radius: 2px; display: inline-block; border: 1px solid #0006; }
+  h2 { font-size: 17px; margin: 22px 0 8px; }
+  .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .thumb { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 6px; cursor: pointer; }
+  .thumb:hover { border-color: var(--exit); }
+  .thumb svg { display: block; width: 100%; height: 130px; background: #101114; border-radius: 4px; }
+  .thumb div { font-size: 12px; color: var(--dim); text-align: center; }
+  .info { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin-top: 22px; }
+  @media (max-width: 760px) { .view { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
-<h1>小關拼法：三種方案</h1>
-<p class="sub">第一大關「墓園」拆成 1-1~1-5。每張圖上面是「一個小關」的俯視示意，下面是「整個大關」的流程。數字是 Claude 估的，選定後用 <code>--playtest</code> 實際量。</p>
+<h1>小關隨機地圖預覽（方案 B）</h1>
+<p class="sub">每按一次「重骰」換一個種子重新產生。路線形狀、每塊主題、障礙物、怪群、小寶箱都是隨機的；起點、出口的門、鐵砧、支線盡頭的祭壇 / 石棺、1-5 的王族墓是固定要素。一塊 48 × 48。這頁是 JS 寫的示意，規則選定後照搬成 Godot 的生成器。</p>
 
-<div class="info">
+<div class="bar">
+  <div class="stages" id="stages"></div>
+  <span>種子 <input type="number" id="seed" value="1"></span>
+  <button class="main" id="reroll">重骰</button>
+  <label><input type="checkbox" id="iso">等距視角</label>
+  <label><input type="checkbox" id="route" checked>最短路線</label>
+  <label><input type="checkbox" id="names" checked>主題名稱</label>
+</div>
+
+<div class="view">
+  <svg id="main"></svg>
   <div class="box">
-    <h3>三種方案共用的前提</h3>
-    <ul>
-      <li>區塊是先設計好的，一塊 32 × 32（長塊 32 × 64），依種子挑塊、拼起來</li>
-      <li>現在的地圖 A（96 × 96）切成第一批區塊：教堂廢墟、小山丘、亂葬坑、陵墓列、兩片墓碑林；王族墓當 1-5 的 Boss 塊</li>
-      <li>換小關沿用換層流程（整張重建、全員到出口）</li>
-      <li>挖墳事件只在 1-5；鐵砧在 1-3 與 Boss 前</li>
-    </ul>
-  </div>
-  <div class="box">
-    <h3>圖例</h3>
+    <h3 id="title"></h3>
+    <dl class="stats" id="stats"></dl>
     <div class="legend" id="legend"></div>
   </div>
 </div>
 
-<div class="opts">
-  <div class="opt">
-    <h2><b>A</b>直線＋支線（MCD）</h2>
-    <p class="tag">主線一路走到出口，旁邊有一條死路支線藏祭壇 / 石棺；過關給一次固定的 3 選 1。</p>
-    <svg id="a-stage" viewBox="0 0 400 260"></svg>
-    <h4>整個大關</h4>
-    <svg id="a-run" viewBox="0 0 400 90"></svg>
-    <dl class="stats">
-      <dt>一關大小</dt><dd>5~6 塊（主線 4~5 + 支線 1），約 5100~6100 平方單位 ＝ 地圖 A 的 55~65%</dd>
-      <dt>主線長度</dt><dd>約 130~160 單位，純走路 20~25 秒（移動 6.5 單位/秒）</dd>
-      <dt>預估時間</dt><dd>一關 2~3 分鐘，大關含 Boss 12~15 分鐘</dd>
-      <dt>要做的</dt><dd>區塊格式、拼接器、出口；最少</dd>
-    </dl>
-    <div class="pc">
-      <div class="good"><h4>好處</h4><ul><li>最接近現在的地圖，怪群、視野、尋路都不用改</li><li>直衝 / 清全圖兩種玩法都成立</li></ul></div>
-      <div class="bad"><h4>壞處</h4><ul><li>過關獎勵沒得選，路線也沒得選</li><li>「我要往哪走」只有支線一個決定</li></ul></div>
-    </div>
-  </div>
+<h2>同一小關的其他種子（點一下放大）</h2>
+<div class="thumbs" id="thumbs"></div>
 
-  <div class="opt">
-    <h2><b>B</b>直線＋結尾選門（MCD＋Sephiria）</h2>
-    <p class="tag">小關內跟 A 一樣；出口塊有 2 扇門，門上看得到下一關給什麼，玩家選一扇。</p>
-    <svg id="b-stage" viewBox="0 0 400 260"></svg>
-    <h4>整個大關</h4>
-    <svg id="b-run" viewBox="0 0 400 90"></svg>
-    <dl class="stats">
-      <dt>一關大小</dt><dd>同 A</dd>
-      <dt>預估時間</dt><dd>同 A；選門約多 5~10 秒</dd>
-      <dt>門的獎勵</dt><dd>技能、詞條、靈魂、遺物、骰子…兩扇抽不同種；1-2 → 1-3、1-4 → 1-5 固定接鐵砧</dd>
-      <dt>要做的</dt><dd>A 的全部＋門與獎勵圖示、過關獎勵池</dd>
-    </dl>
-    <div class="pc">
-      <div class="good"><h4>好處</h4><ul><li>玩家自己選構築方向，對應「不知道在構築什麼」的問題</li><li>小關內的地圖跟 A 共用</li></ul></div>
-      <div class="bad"><h4>壞處</h4><ul><li>多人要決定走哪扇門（投票或房主選）</li><li>獎勵池要先定（改版構想第 4 項）</li></ul></div>
-    </div>
+<div class="info">
+  <div class="box">
+    <h3>產生規則</h3>
+    <ul>
+      <li><b>路線</b>：從起點塊往隨機方向走，不重疊；直走機率稍高。主線 1-1 有 3 塊，1-2~1-4 有 3~4 塊，1-5 有 2 塊加王族墓</li>
+      <li><b>支線</b>：機率長在主線中段，1 塊、死路，盡頭放祭壇 / 石棺</li>
+      <li><b>主題</b>：墓碑林、教堂廢墟、亂葬坑、陵墓列、山丘、空地，相鄰兩塊不重複；40% 再混一個副主題</li>
+      <li><b>走道</b>：每個開口到塊中央留 7 寬的走道不放牆和墓碑，所以一定走得通；高台可以放在走道上（跳得上去）</li>
+      <li><b>檢查</b>：產生完用尋路確認起點走得到門、鐵砧、祭壇 / 石棺，失敗就重產（「重產次數」）</li>
+      <li><b>怪群</b>：每塊 2~4 群（支線 1~2），一群 6~10 隻，離起點至少 16、群與群至少 9；起點塊和王族墓不放</li>
+    </ul>
   </div>
-
-  <div class="opt">
-    <h2><b>C</b>房間格子（Sephiria）</h2>
-    <p class="tag">每關是 3 × 3 格上 6~7 間小房間，進房關門、清完開門；地圖上看得到每間是什麼房。</p>
-    <svg id="c-stage" viewBox="0 0 400 275"></svg>
-    <h4>整個大關</h4>
-    <svg id="c-run" viewBox="0 0 400 90"></svg>
-    <dl class="stats">
-      <dt>一關大小</dt><dd>6~7 間 24 × 24，約 3500~4000 平方單位 ＝ 地圖 A 的 40%</dd>
-      <dt>預估時間</dt><dd>一關 2~3 分鐘，每間 15~25 秒</dd>
-      <dt>要做的</dt><dd>關門房間、房間格子產生器、小地圖；地圖 A 不能直接切，要重畫房間</dd>
-    </dl>
-    <div class="pc">
-      <div class="good"><h4>好處</h4><ul><li>節奏最清楚，一間一間打</li><li>獎勵房、鐵砧房在地圖上就看得到，路線自己排</li></ul></div>
-      <div class="bad"><h4>壞處</h4><ul><li>房間小，現在一群 6~10 隻、開場 150~260 隻的怪量放不下，怪群和波次都要重調</li><li>「怪一群一群分散在地圖上」「角色視野」的設計發揮不出來</li><li>工作量最大</li></ul></div>
-    </div>
+  <div class="box">
+    <h3>固定要素</h3>
+    <ul>
+      <li>起點：第一塊中央</li>
+      <li>出口：最後一塊朝外的那面牆上，2 扇門，各標一種下一關的獎勵（技能、詞條、靈魂、遺物、骰子抽 2 種）；1-2、1-4 只有 1 扇「下一關：鐵砧」</li>
+      <li>鐵砧：1-3、1-5 的起點旁</li>
+      <li>祭壇 / 石棺：支線盡頭</li>
+      <li>1-5：最後一塊是固定的王族墓（圍牆、門對著來的方向、四角石座、中央挖墳點）</li>
+    </ul>
   </div>
-</div>
-
-<div class="box ask">
-  <h3>要決定的事</h3>
-  <ol>
-    <li>選 A、B、C 哪一種（可以混，例如 B 的門加上 C 的「進塊關門」）。Claude 推薦 <b>B</b>。</li>
-    <li>過關條件：清掉出口塊的守門怪群就開門（推薦，其他怪群可以不清），還是每塊都要清完？</li>
-    <li>區塊大小 32 × 32 可以嗎？</li>
-    <li>一關 2~3 分鐘、大關 12~15 分鐘的目標可以嗎？</li>
-  </ol>
+  <div class="box">
+    <h3>想請你看的</h3>
+    <ol>
+      <li>路線形狀夠不夠多變？要不要偶爾出現兩條支線、或繞一圈的環？</li>
+      <li>障礙物的密度：太空、太擠，還是剛好？</li>
+      <li>一關的大小：右邊的「面積」和「最短路線」，跟現在的地圖 A 比起來你覺得怎樣？</li>
+      <li>還有哪些要素要固定？</li>
+    </ol>
+  </div>
 </div>
 
 <script>
 const NS = "http://www.w3.org/2000/svg";
+const B = 48;          // 區塊邊長
+const WALL_T = 1;      // 區塊外牆厚度（相鄰兩塊合起來 2）
+const GATE = 8;        // 區塊之間開口寬
+const CORRIDOR = 3.5;  // 走道半寬
+const SPEED = 6.5;     // 玩家移動（單位/秒）
+const MAP_A_AREA = 96 * 96;
+const THEMES = { tombs: "墓碑林", ruins: "教堂廢墟", pits: "亂葬坑", mausoleums: "陵墓列", hill: "山丘", open: "空地" };
+const REWARDS = ["技能", "詞條", "靈魂", "遺物", "骰子"];
+const STAGES = {
+  "1-1": { main: [3, 3], branch: 0.5, doors: 2 },
+  "1-2": { main: [3, 4], branch: 0.6, doors: 1 },
+  "1-3": { main: [3, 4], branch: 0.6, doors: 2, anvil: true },
+  "1-4": { main: [3, 4], branch: 0.7, doors: 1 },
+  "1-5": { main: [2, 2], branch: 0.5, anvil: true, boss: true },
+};
+const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const SIDE = { "1,0": "E", "-1,0": "W", "0,1": "S", "0,-1": "N" };
+const OPP = { E: "W", W: "E", S: "N", N: "S" };
 const C = n => getComputedStyle(document.documentElement).getPropertyValue("--" + n).trim();
-const KIND = {
-  start: ["start", "起點"], fight: ["fight", "戰鬥塊"], treasure: ["treasure", "支線 / 祭壇、石棺"],
-  exit: ["exit", "出口"], anvil: ["anvil", "鐵砧"], boss: ["boss", "挖墳＋Boss"],
+
+// ---------- 亂數 ----------
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+class Rng {
+  constructor(s) { this.next = mulberry32(s); }
+  float(a, b) { return a + (b - a) * this.next(); }
+  int(a, b) { return a + Math.floor(this.next() * (b - a + 1)); }
+  pick(arr) { return arr[Math.floor(this.next() * arr.length)]; }
+  chance(p) { return this.next() < p; }
+}
+function hashSeed(seed, stage) {
+  let h = (seed ^ 0x9e3779b9) >>> 0;
+  for (const ch of stage) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+  return h;
+}
+
+// ---------- 幾何 ----------
+function pointRectDist(px, py, o) {
+  const dx = Math.max(o.x - px, 0, px - (o.x + o.w)), dy = Math.max(o.y - py, 0, py - (o.y + o.h));
+  return Math.hypot(dx, dy);
+}
+function segRectDist(s, o) {
+  const len = Math.hypot(s[2] - s[0], s[3] - s[1]), n = Math.max(1, Math.ceil(len / 0.5));
+  let best = Infinity;
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    best = Math.min(best, pointRectDist(s[0] + (s[2] - s[0]) * t, s[1] + (s[3] - s[1]) * t, o));
+  }
+  return best;
+}
+function overlap(a, b, m) {
+  return a.x < b.x + b.w + m && b.x < a.x + a.w + m && a.y < b.y + b.h + m && b.y < a.y + a.h + m;
+}
+// 區塊某一邊上的點（區塊內座標）；inset = 往塊內縮
+function sidePoint(side, off, inset) {
+  switch (side) {
+    case "E": return [B - inset, off];
+    case "W": return [inset, off];
+    case "S": return [off, B - inset];
+    case "N": return [off, inset];
+  }
+}
+
+// ---------- 路線 ----------
+function walk(r, n, branchP, hasBoss) {
+  for (let tries = 0; tries < 50; tries++) {
+    const cells = [[0, 0]], occ = new Set(["0,0"]);
+    let last = null, ok = true;
+    while (cells.length < n) {
+      const [x, y] = cells[cells.length - 1];
+      const opts = DIRS.filter(d => !occ.has((x + d[0]) + "," + (y + d[1])));
+      if (!opts.length) { ok = false; break; }
+      const d = last && opts.includes(last) && r.chance(0.35) ? last : r.pick(opts);
+      cells.push([x + d[0], y + d[1]]);
+      occ.add((x + d[0]) + "," + (y + d[1]));
+      last = d;
+    }
+    if (!ok) continue;
+    const links = [];
+    for (let i = 0; i + 1 < n; i++) links.push([i, i + 1]);
+    let branch = null;
+    if (r.chance(branchP)) {
+      // 長在中段（不接起點、不接最後一塊）；沒位置就不長
+      const cands = [];
+      for (let i = 1; i < n - 1; i++)
+        for (const d of DIRS) {
+          const k = (cells[i][0] + d[0]) + "," + (cells[i][1] + d[1]);
+          if (!occ.has(k)) cands.push([i, cells[i][0] + d[0], cells[i][1] + d[1]]);
+        }
+      if (cands.length) {
+        const [pi, bx, by] = r.pick(cands);
+        branch = [bx, by];
+        occ.add(bx + "," + by);
+        links.push([pi, n]);
+      }
+    }
+    return { cells, links, branch, occ };
+  }
+  return null;
+}
+
+// ---------- 主題：每個 fn(r, add) 用區塊內座標放東西；add 回傳有沒有放成功 ----------
+function tryN(k, maxTries, fn) { let placed = 0; for (let i = 0; i < maxTries && placed < k; i++) if (fn()) placed++; }
+const THEME_FN = {
+  tombs(r, add) {
+    const rows = r.int(3, 6), cols = r.int(4, 9), sa = r.float(2.6, 3.6), sb = r.float(3.5, 5), vert = r.chance(0.3);
+    const a0 = r.float(4, Math.max(4, 44 - cols * sa)), b0 = r.float(4, Math.max(4, 44 - rows * sb));
+    for (let i = 0; i < rows; i++)
+      for (let j = 0; j < cols; j++) {
+        if (r.chance(0.12)) continue;
+        const a = a0 + j * sa, b = b0 + i * sb;
+        if (vert) add(b, a, 0.5, 1.2, 1.3, "tomb"); else add(a, b, 1.2, 0.5, 1.3, "tomb");
+      }
+  },
+  ruins(r, add) {
+    const w = r.float(14, 22), h = r.float(12, 20), x0 = r.float(4, 44 - w), y0 = r.float(4, 44 - h), t = 1.5;
+    const sides = [[x0, y0, w, true], [x0, y0 + h - t, w, true], [x0, y0, h, false], [x0 + w - t, y0, h, false]];
+    let gaps = 0;
+    sides.forEach(([sx, sy, len, horiz], k) => {
+      let g = r.int(0, 2);
+      if (k === 3 && gaps === 0) g = 1;   // 至少一個缺口進得去
+      gaps += g;
+      // 擋到走道就對半切再試，走道經過的地方自然變成缺口
+      const seg = (a, b) => {
+        if (horiz ? add(sx + a, sy, b - a, t, 3, "wall") : add(sx, sy + a, t, b - a, 3, "wall")) return;
+        if (b - a > 3) { seg(a, (a + b) / 2); seg((a + b) / 2, b); }
+      };
+      const cuts = [];
+      for (let i = 0; i < g; i++) cuts.push(r.float(3, len - 3));
+      cuts.sort((a, b) => a - b);
+      let p = 0;
+      for (const c of cuts) {
+        const gw = r.float(4, 6);
+        if (c - gw / 2 - p > 1) seg(p, c - gw / 2);
+        p = Math.max(p, c + gw / 2);
+      }
+      if (len - p > 1) seg(p, len);
+    });
+    const k = r.int(2, 4);
+    for (let i = 0; i < k; i++) { const s = r.float(1.5, 2.5); add(x0 + r.float(2, w - 2 - s), y0 + r.float(2, h - 2 - s), s, s, 0.5, "plat"); }
+  },
+  pits(r, add) {
+    tryN(r.int(3, 6), 20, () => {
+      const L = r.float(8, 11), vert = r.chance(0.3);
+      return add(r.float(4, 40), r.float(4, 40), vert ? 3 : L, vert ? L : 3, 0.5, "plat");
+    });
+  },
+  mausoleums(r, add) {
+    tryN(r.int(3, 6), 24, () => {
+      const w = r.float(5, 7), h = r.float(4, 6);
+      return add(r.float(4, 44 - w), r.float(4, 44 - h), w, h, 3, "wall");
+    });
+  },
+  hill(r, add) {
+    const w = r.float(16, 26), h = r.float(12, 20), x0 = r.float(4, 44 - w), y0 = r.float(4, 44 - h), s = r.float(3, 6);
+    if (add(x0, y0, w, h, 0.5, "plat")) add(x0 + s, y0 + s, w - 2 * s, h - 2 * s, 1.0, "plat");
+  },
+  open(r, add) {
+    tryN(r.int(4, 9), 30, () => r.chance(0.5) ? add(r.float(4, 43), r.float(4, 43), 1.2, 0.5, 1.3, "tomb") : add(r.float(4, 43), r.float(4, 43), 0.5, 1.2, 1.3, "tomb"));
+    if (r.chance(0.4)) tryN(1, 10, () => add(r.float(4, 38), r.float(4, 38), r.float(5, 7), r.float(4, 6), 3, "wall"));
+  },
 };
 
-function el(svg, tag, attrs, text) {
+// ---------- 產生 ----------
+function generate(seed, stageId) {
+  const r = new Rng(hashSeed(seed, stageId));
+  for (let attempt = 1; attempt <= 30; attempt++) {
+    const m = tryGenerate(r, STAGES[stageId]);
+    if (m) { m.attempts = attempt; m.stage = stageId; m.seed = seed; return m; }
+  }
+  return null;
+}
+
+function tryGenerate(r, cfg) {
+  const n = r.int(cfg.main[0], cfg.main[1]) + (cfg.boss ? 1 : 0);
+  const lay = walk(r, n, cfg.branch, cfg.boss);
+  if (!lay) return null;
+  const roleOf = i => i === 0 ? "start" : i === n - 1 ? (cfg.boss ? "boss" : "exit") : "fight";
+  const blocks = lay.cells.map((c, i) => ({ cx: c[0], cy: c[1], ox: c[0] * B, oy: c[1] * B, role: roleOf(i), openings: [], obs: [], themes: [] }));
+  if (lay.branch) blocks.push({ cx: lay.branch[0], cy: lay.branch[1], ox: lay.branch[0] * B, oy: lay.branch[1] * B, role: "branch", openings: [], obs: [], themes: [] });
+  for (const [a, b] of lay.links) {
+    const A = blocks[a], Bk = blocks[b];
+    const side = SIDE[(Bk.cx - A.cx) + "," + (Bk.cy - A.cy)];
+    const off = Bk.role === "boss" ? B / 2 : r.int(14, 34);
+    A.openings.push({ side, off });
+    Bk.openings.push({ side: OPP[side], off });
+  }
+  const m = { blocks, segs: [], pts: [], feats: { doors: [], chests: [], packs: [] } };
+  const W = (blk, lx, ly) => [blk.ox + lx, blk.oy + ly];
+  const center = blk => W(blk, B / 2, B / 2);
+  const reserveSeg = (p, q) => m.segs.push([p[0], p[1], q[0], q[1]]);
+
+  // 走道：每個開口到塊中央
+  for (const blk of blocks) {
+    if (blk.role === "boss") continue;
+    for (const o of blk.openings) reserveSeg(W(blk, ...sidePoint(o.side, o.off, 1)), center(blk));
+  }
+  // 固定要素
+  const start = blocks[0];
+  m.feats.start = center(start);
+  m.pts.push({ x: m.feats.start[0], y: m.feats.start[1], r: 6 });
+  if (cfg.anvil) {
+    const a = W(start, B / 2 + (r.chance(0.5) ? 8 : -8), B / 2);
+    m.feats.anvil = a;
+    m.pts.push({ x: a[0], y: a[1], r: 3 });
+  }
+  const last = blocks[n - 1];
+  if (!cfg.boss) {
+    const free = ["E", "W", "S", "N"].filter(s => {
+      const d = Object.keys(SIDE).find(k => SIDE[k] === s).split(",").map(Number);
+      return !lay.occ.has((last.cx + d[0]) + "," + (last.cy + d[1]));
+    });
+    if (!free.length) return null;
+    const side = r.pick(free);
+    const offs = cfg.doors === 2 ? [16, 32] : [24];
+    const pool = REWARDS.slice();
+    for (const off of offs) {
+      const label = cfg.doors === 2 ? pool.splice(Math.floor(r.next() * pool.length), 1)[0] : "下一關：鐵砧";
+      const reach = W(last, ...sidePoint(side, off, 3));
+      m.feats.doors.push({ side, at: W(last, ...sidePoint(side, off, 0.5)), reach, label });
+      m.pts.push({ x: reach[0], y: reach[1], r: 3 });
+      reserveSeg(reach, center(last));
+    }
+  }
+  const br = blocks.find(b => b.role === "branch");
+  if (br) {
+    const far = W(br, ...sidePoint(OPP[br.openings[0].side], B / 2, 8));
+    m.feats.bigChest = far;
+    m.pts.push({ x: far[0], y: far[1], r: 4 });
+    reserveSeg(center(br), far);
+  }
+
+  // 主題與障礙物
+  let prev = null, group = 0;
+  for (const blk of blocks) {
+    if (blk.role === "boss") { bossBlock(m, blk); continue; }
+    const add = (lx, ly, w, h, top, kind) => {
+      const o = { x: blk.ox + lx, y: blk.oy + ly, w, h, top, kind, grp: group };
+      if (lx < 2 || ly < 2 || lx + w > B - 2 || ly + h > B - 2) return false;
+      if (kind !== "plat") for (const s of m.segs) if (segRectDist(s, o) < CORRIDOR) return false;
+      for (const p of m.pts) if (pointRectDist(p.x, p.y, o) < p.r) return false;
+      for (const q of blk.obs) if (q.grp !== group && overlap(o, q, 0.8)) return false;
+      blk.obs.push(o);
+      return true;
+    };
+    let names;
+    if (blk.role === "start") names = ["open"];
+    else if (blk.role === "branch") names = [r.pick(["tombs", "mausoleums", "ruins"])];
+    else {
+      const main = r.pick(Object.keys(THEMES).filter(t => t !== prev && t !== "open" || (t === "open" && prev !== "open" && r.chance(0.3))));
+      names = [main];
+      if (r.chance(0.4)) names.push(r.pick(Object.keys(THEMES).filter(t => t !== main && t !== "hill")));
+      prev = main;
+    }
+    // 高台先放，牆與墓碑放在高台旁邊
+    names.sort((a, b) => (b === "hill") - (a === "hill"));
+    for (const t of names) { group++; THEME_FN[t](r, add); }
+    blk.themes = names;
+  }
+  // 區塊外牆（開口處留缺口）
+  for (const blk of blocks) {
+    for (const side of ["N", "S", "W", "E"]) {
+      const full = { N: [0, 0, B, WALL_T], S: [0, B - WALL_T, B, WALL_T], W: [0, 0, WALL_T, B], E: [B - WALL_T, 0, WALL_T, B] }[side];
+      const horiz = side === "N" || side === "S";
+      const cuts = blk.openings.filter(o => o.side === side).map(o => o.off).sort((a, b) => a - b);
+      let p = 0;
+      const seg = (a, b) => blk.obs.push(horiz
+        ? { x: blk.ox + a, y: blk.oy + full[1], w: b - a, h: WALL_T, top: 3, kind: "wall", edge: true }
+        : { x: blk.ox + full[0], y: blk.oy + a, w: WALL_T, h: b - a, top: 3, kind: "wall", edge: true });
+      for (const c of cuts) { seg(p, c - GATE / 2); p = c + GATE / 2; }
+      seg(p, B);
+    }
+  }
+
+  // 尋路：1 單位格子，牆與墓碑往外 0.5（玩家半徑）
+  const nav = buildNav(m);
+  const sIdx = nav.idx(...m.feats.start);
+  const { dist, par } = dijkstra(nav, sIdx);
+  const reach = p => Number.isFinite(dist[nav.idx(p[0], p[1])]);
+  const goal = cfg.boss ? m.feats.dig : m.feats.doors[0].reach;
+  const targets = [goal, ...m.feats.doors.map(d => d.reach)];
+  if (m.feats.anvil) targets.push(m.feats.anvil);
+  if (m.feats.bigChest) targets.push(m.feats.bigChest);
+  if (!targets.every(reach)) return null;
+  m.routeLen = dist[nav.idx(...goal)];
+  m.route = [];
+  for (let i = nav.idx(...goal); i >= 0; i = par[i]) m.route.push(nav.pos(i));
+
+  // 怪群與小寶箱
+  const okSpot = (p, far) => reach(p) && Math.hypot(p[0] - m.feats.start[0], p[1] - m.feats.start[1]) >= far;
+  for (const blk of blocks) {
+    if (blk.role === "start" || blk.role === "boss") continue;
+    tryN(blk.role === "branch" ? r.int(1, 2) : r.int(2, 4), 40, () => {
+      const p = W(blk, r.float(6, 42), r.float(6, 42));
+      if (!okSpot(p, 16) || m.feats.packs.some(q => Math.hypot(q.at[0] - p[0], q.at[1] - p[1]) < 9)) return false;
+      m.feats.packs.push({ at: p, n: r.int(6, 10), seed: r.int(0, 9999) });
+      return true;
+    });
+    if (blk.role === "fight") tryN(r.int(0, 2), 30, () => {
+      const p = W(blk, r.float(5, 43), r.float(5, 43));
+      if (!okSpot(p, 8) || m.feats.packs.some(q => Math.hypot(q.at[0] - p[0], q.at[1] - p[1]) < 4)) return false;
+      m.feats.chests.push(p);
+      return true;
+    });
+  }
+  return m;
+}
+
+// 1-5 的王族墓（固定）：圍牆 30 × 30、門對著來的方向、四角石座、中央挖墳點
+function bossBlock(m, blk) {
+  const t = 1.5, a = 9, L = 30, gate = 6, side = blk.openings[0].side;
+  const ring = { N: [a, a, L, t, true], S: [a, a + L - t, L, t, true], W: [a, a, L, t, false], E: [a + L - t, a, L, t, false] };
+  for (const s in ring) {
+    const [x, y, len, th, horiz] = ring[s];
+    const parts = s === side ? [[0, (len - gate) / 2], [(len + gate) / 2, len]] : [[0, len]];
+    for (const [p, q] of parts) blk.obs.push(horiz
+      ? { x: blk.ox + x + p, y: blk.oy + y, w: q - p, h: th, top: 3, kind: "wall" }
+      : { x: blk.ox + x, y: blk.oy + y + p, w: th, h: q - p, top: 3, kind: "wall" });
+  }
+  for (const [x, y] of [[12, 12], [31, 12], [12, 31], [31, 31]]) blk.obs.push({ x: blk.ox + x, y: blk.oy + y, w: 5, h: 5, top: 1, kind: "plat" });
+  m.feats.dig = [blk.ox + B / 2, blk.oy + B / 2];
+  blk.themes = ["boss"];
+}
+
+function bounds(m) {
+  const xs = m.blocks.map(b => b.ox), ys = m.blocks.map(b => b.oy);
+  return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs) + B, y1: Math.max(...ys) + B };
+}
+
+function buildNav(m) {
+  const bb = bounds(m), Wd = bb.x1 - bb.x0, Ht = bb.y1 - bb.y0;
+  const free = new Uint8Array(Wd * Ht);
+  for (const blk of m.blocks)
+    for (let y = blk.oy; y < blk.oy + B; y++)
+      for (let x = blk.ox; x < blk.ox + B; x++) free[(y - bb.y0) * Wd + (x - bb.x0)] = 1;
+  for (const blk of m.blocks)
+    for (const o of blk.obs) {
+      if (o.kind === "plat") continue;
+      const gx0 = Math.max(0, Math.floor(o.x - 0.5 - bb.x0)), gx1 = Math.min(Wd - 1, Math.ceil(o.x + o.w + 0.5 - bb.x0));
+      const gy0 = Math.max(0, Math.floor(o.y - 0.5 - bb.y0)), gy1 = Math.min(Ht - 1, Math.ceil(o.y + o.h + 0.5 - bb.y0));
+      for (let gy = gy0; gy <= gy1; gy++)
+        for (let gx = gx0; gx <= gx1; gx++)
+          if (pointRectDist(gx + 0.5 + bb.x0, gy + 0.5 + bb.y0, o) < 0.5) free[gy * Wd + gx] = 0;
+    }
+  return {
+    W: Wd, H: Ht, free,
+    idx: (x, y) => Math.floor(y - bb.y0) * Wd + Math.floor(x - bb.x0),
+    pos: i => [i % Wd + bb.x0 + 0.5, Math.floor(i / Wd) + bb.y0 + 0.5],
+  };
+}
+
+function dijkstra(nav, s) {
+  const dist = new Float64Array(nav.W * nav.H).fill(Infinity), par = new Int32Array(nav.W * nav.H).fill(-1);
+  const heap = [];
+  const push = (d, i) => { heap.push([d, i]); let k = heap.length - 1; while (k > 0) { const p = (k - 1) >> 1; if (heap[p][0] <= heap[k][0]) break; [heap[p], heap[k]] = [heap[k], heap[p]]; k = p; } };
+  const pop = () => { const top = heap[0], end = heap.pop(); if (heap.length) { heap[0] = end; let k = 0; for (;;) { const l = 2 * k + 1, r = l + 1; let mi = k; if (l < heap.length && heap[l][0] < heap[mi][0]) mi = l; if (r < heap.length && heap[r][0] < heap[mi][0]) mi = r; if (mi === k) break; [heap[mi], heap[k]] = [heap[k], heap[mi]]; k = mi; } } return top; };
+  if (!nav.free[s]) return { dist, par };
+  dist[s] = 0; push(0, s);
+  while (heap.length) {
+    const [d, i] = pop();
+    if (d > dist[i]) continue;
+    const x = i % nav.W, y = Math.floor(i / nav.W);
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy) continue;
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= nav.W || ny >= nav.H) continue;
+        const j = ny * nav.W + nx;
+        if (!nav.free[j]) continue;
+        if (dx && dy && (!nav.free[y * nav.W + nx] || !nav.free[ny * nav.W + x])) continue;   // 不切牆角
+        const nd = d + (dx && dy ? Math.SQRT2 : 1);
+        if (nd < dist[j]) { dist[j] = nd; par[j] = i; push(nd, j); }
+      }
+  }
+  return { dist, par };
+}
+
+// ---------- 畫 ----------
+function el(parent, tag, attrs, text) {
   const e = document.createElementNS(NS, tag);
   for (const k in attrs) e.setAttribute(k, attrs[k]);
   if (text !== undefined) e.textContent = text;
-  svg.appendChild(e);
+  parent.appendChild(e);
   return e;
 }
 
-// 一塊區塊：格子座標 (gx, gy)、大小 (gw, gh) 格；cell 是一格的像素
-function block(svg, o, cell, gx, gy, kind, label, gw = 1, gh = 1, inset = 4) {
-  const x = o.x + gx * cell + inset, y = o.y + gy * cell + inset;
-  const w = gw * cell - inset * 2, h = gh * cell - inset * 2;
-  const col = C(KIND[kind][0]);
-  el(svg, "rect", { x, y, width: w, height: h, rx: 4, fill: kind === "fight" ? C("floor") : col + "33", stroke: col, "stroke-width": 2 });
-  if (kind === "fight") {
-    // 怪群（固定亂數，看起來分散）
-    const seed = gx * 7 + gy * 13;
-    for (let i = 0; i < 3; i++) {
-      const px = x + w * (0.25 + ((seed + i * 37) % 50) / 100), py = y + h * (0.25 + ((seed * 3 + i * 23) % 50) / 100);
-      for (let j = 0; j < 4; j++) el(svg, "circle", { cx: px + (j % 2) * 6, cy: py + Math.floor(j / 2) * 6, r: 2.4, fill: C("pack") });
+function render(svg, m, o) {
+  svg.innerHTML = "";
+  const bb = bounds(m), pad = 4, w = bb.x1 - bb.x0, h = bb.y1 - bb.y0, cx = (bb.x0 + bb.x1) / 2, cy = (bb.y0 + bb.y1) / 2;
+  let g;
+  if (o.iso) {
+    const s = (w + h) / Math.SQRT2, k = 0.58;
+    svg.setAttribute("viewBox", `${-s / 2 - pad} ${-s * k / 2 - pad} ${s + 2 * pad} ${s * k + 2 * pad}`);
+    g = el(svg, "g", { transform: `scale(1,${k}) rotate(45) translate(${-cx},${-cy})` });
+  } else {
+    svg.setAttribute("viewBox", `${bb.x0 - pad} ${bb.y0 - pad} ${w + 2 * pad} ${h + 2 * pad}`);
+    g = el(svg, "g", {});
+  }
+  const labels = o.names && !o.iso;
+  const ground = { start: "start-g", branch: "branch-g", boss: "boss-g" };
+  for (const blk of m.blocks) el(g, "rect", { x: blk.ox, y: blk.oy, width: B, height: B, fill: C(ground[blk.role] || "ground") });
+  const kindCol = ob => ob.kind === "wall" ? C("wall") : ob.kind === "tomb" ? C("tomb") : ob.top >= 1 ? C("high") : C("low");
+  for (const pass of ["plat", "solid"])
+    for (const blk of m.blocks)
+      for (const ob of blk.obs)
+        if ((ob.kind === "plat") === (pass === "plat"))
+          el(g, "rect", { x: ob.x, y: ob.y, width: ob.w, height: ob.h, fill: kindCol(ob), stroke: "#0008", "stroke-width": 0.15 });
+  if (o.route && m.route) el(g, "polyline", { points: m.route.map(p => p.join(",")).join(" "), fill: "none", stroke: C("route"), "stroke-width": 0.5, "stroke-dasharray": "1.5 1", opacity: 0.85 });
+  for (const p of m.feats.packs) {
+    const r = new Rng(p.seed);
+    for (let i = 0; i < p.n; i++) el(g, "circle", { cx: p.at[0] + r.float(-2.4, 2.4), cy: p.at[1] + r.float(-2.4, 2.4), r: 0.5, fill: C("pack") });
+  }
+  for (const c of m.feats.chests) el(g, "rect", { x: c[0] - 0.7, y: c[1] - 0.5, width: 1.4, height: 1, fill: C("chest") });
+  if (m.feats.bigChest) {
+    const [x, y] = m.feats.bigChest;
+    el(g, "rect", { x: x - 1.3, y: y - 1, width: 2.6, height: 2, fill: C("chest"), stroke: "#fff", "stroke-width": 0.25 });
+    if (labels) el(g, "text", { x, y: y + 3.6, "text-anchor": "middle", "font-size": 2.2, fill: C("chest") }, "祭壇 / 石棺");
+  }
+  if (m.feats.anvil) {
+    const [x, y] = m.feats.anvil;
+    el(g, "rect", { x: x - 1.2, y: y - 0.8, width: 2.4, height: 1.6, fill: C("anvil") });
+    if (labels) el(g, "text", { x, y: y + 3.2, "text-anchor": "middle", "font-size": 2.2, fill: C("anvil") }, "鐵砧");
+  }
+  const [sx, sy] = m.feats.start;
+  el(g, "circle", { cx: sx, cy: sy, r: 1.3, fill: C("start") });
+  if (labels) el(g, "text", { x: sx, y: sy + 3.6, "text-anchor": "middle", "font-size": 2.2, fill: C("start") }, "起點");
+  for (const d of m.feats.doors) {
+    const horiz = d.side === "N" || d.side === "S";
+    el(g, "rect", { x: d.at[0] - (horiz ? 2 : 0.9), y: d.at[1] - (horiz ? 0.9 : 2), width: horiz ? 4 : 1.8, height: horiz ? 1.8 : 4, fill: C("exit"), stroke: "#fff", "stroke-width": 0.25 });
+    if (labels) {
+      const out = { N: [0, -3], S: [0, 4.5], W: [-2.5, 0.8], E: [2.5, 0.8] }[d.side];
+      el(g, "text", { x: d.at[0] + out[0], y: d.at[1] + out[1], "text-anchor": d.side === "W" ? "end" : d.side === "E" ? "start" : "middle", "font-size": 2.4, fill: C("exit") }, d.label);
     }
   }
-  if (label) el(svg, "text", { x: x + w / 2, y: y + h - 7, "text-anchor": "middle", "font-size": 11, fill: C("text") }, label);
-}
-
-function path(svg, pts, dashed) {
-  el(svg, "polyline", { points: pts.map(p => p.join(",")).join(" "), fill: "none", stroke: C("route"),
-    "stroke-width": 2, "stroke-dasharray": dashed ? "5 4" : "none", opacity: 0.8 });
-}
-
-function center(o, cell, gx, gy, gw = 1, gh = 1) { return [o.x + (gx + gw / 2) * cell, o.y + (gy + gh / 2) * cell]; }
-
-function door(svg, x, y, col, label) {
-  el(svg, "rect", { x: x - 9, y: y - 12, width: 18, height: 24, rx: 9, fill: col, stroke: "#000a" });
-  el(svg, "text", { x: x + 14, y: y + 4, "font-size": 11, fill: C("text") }, label);
-}
-
-// A / B 共用的小關：起點 → 戰鬥 ×4（一塊長塊）→ 出口，戰鬥 2 旁邊一條支線
-function linearStage(svg, withDoors) {
-  const o = { x: 20, y: 10 }, cell = 70;
-  block(svg, o, cell, 0, 2, "start", "起點");
-  block(svg, o, cell, 1, 2, "fight", "");
-  block(svg, o, cell, 1, 1, "fight", "");
-  block(svg, o, cell, 2, 0, "treasure", "支線", 1, 1);
-  block(svg, o, cell, 2, 1, "fight", "長塊", 2, 1);
-  block(svg, o, cell, 4, 1, "fight", "");
-  block(svg, o, cell, 4, 0, "exit", "出口");
-  path(svg, [center(o, cell, 0, 2), center(o, cell, 1, 2), center(o, cell, 1, 1), center(o, cell, 2, 1, 2, 1), center(o, cell, 4, 1), center(o, cell, 4, 0)]);
-  path(svg, [center(o, cell, 2, 1, 2, 1), center(o, cell, 2, 0)], true);
-  const [ex, ey] = center(o, cell, 4, 0);
-  if (withDoors) {
-    door(svg, ex - 13, ey - 10, C("treasure"), "");
-    door(svg, ex + 13, ey - 10, C("anvil"), "");
-    el(svg, "text", { x: ex - 42, y: ey - 14, "text-anchor": "end", "font-size": 11, fill: C("treasure") }, "門：技能");
-    el(svg, "text", { x: ex - 42, y: ey + 2, "text-anchor": "end", "font-size": 11, fill: C("anvil") }, "門：靈魂");
+  if (m.feats.dig) {
+    const [x, y] = m.feats.dig;
+    el(g, "circle", { cx: x, cy: y, r: 2, fill: "none", stroke: C("boss"), "stroke-width": 0.5 });
+    if (labels) el(g, "text", { x, y: y + 0.8, "text-anchor": "middle", "font-size": 2.2, fill: C("boss") }, "挖墳 / Boss");
   }
-  el(svg, "text", { x: 380, y: 250, "text-anchor": "end", "font-size": 11, fill: C("dim") }, "一格 = 32 單位　虛線 = 支線　紅點 = 怪群");
+  if (labels)
+    for (const blk of m.blocks)
+      el(g, "text", { x: blk.ox + 2.5, y: blk.oy + 4.2, "font-size": 2.4, fill: C("dim") },
+        blk.themes.map(t => t === "boss" ? "王族墓" : THEMES[t]).join(" + ") + (blk.role === "branch" ? "（支線）" : ""));
 }
 
-function cStage(svg) {
-  const o = { x: 60, y: 10 }, cell = 80;
-  const rooms = [[0, 2, "start", "起點"], [1, 2, "fight", ""], [1, 1, "fight", ""], [0, 1, "treasure", "獎勵房"],
-                 [2, 1, "fight", ""], [2, 0, "fight", ""], [1, 0, "anvil", "鐵砧房"], [2, 2, "exit", "出口"]];
-  const links = [[0, 2, 1, 2], [1, 2, 1, 1], [1, 1, 0, 1], [1, 1, 2, 1], [2, 1, 2, 0], [2, 0, 1, 0], [2, 1, 2, 2]];
-  for (const [ax, ay, bx, by] of links) path(svg, [center(o, cell, ax, ay), center(o, cell, bx, by)]);
-  for (const [gx, gy, k, l] of rooms) block(svg, o, cell, gx, gy, k, l, 1, 1, 12);
-  // 關門鎖頭
-  for (const [gx, gy, k] of rooms) if (k === "fight") {
-    const [cx, cy] = center(o, cell, gx, gy);
-    el(svg, "text", { x: cx, y: cy - 14, "text-anchor": "middle", "font-size": 12, fill: C("dim") }, "🔒");
+// ---------- 介面 ----------
+let stage = "1-1";
+const $ = id => document.getElementById(id);
+const opts = () => ({ iso: $("iso").checked, route: $("route").checked, names: $("names").checked });
+
+function show() {
+  const seed = parseInt($("seed").value, 10) || 0;
+  const m = generate(seed, stage);
+  $("title").textContent = `${stage}　種子 ${seed}`;
+  if (!m) { $("main").innerHTML = ""; $("stats").innerHTML = "<dt>結果</dt><dd>30 次都產生失敗</dd>"; return; }
+  render($("main"), m, opts());
+  const mainN = m.blocks.filter(b => b.role !== "branch").length, hasBr = m.blocks.length > mainN;
+  const area = m.blocks.length * B * B;
+  const monsters = m.feats.packs.reduce((s, p) => s + p.n, 0);
+  const rows = [
+    ["區塊", `主線 ${mainN}${hasBr ? " + 支線 1" : ""}`],
+    ["面積", `${area.toLocaleString()} 平方單位（地圖 A 的 ${(area / MAP_A_AREA).toFixed(2)} 倍）`],
+    ["最短路線", `${Math.round(m.routeLen)} 單位，純走路 ${(m.routeLen / SPEED).toFixed(0)} 秒`],
+    ["怪群", `${m.feats.packs.length} 群、${monsters} 隻`],
+    ["寶箱", `小 ${m.feats.chests.length}${m.feats.bigChest ? "、祭壇 / 石棺 1" : ""}`],
+    ["出口", m.feats.doors.length ? m.feats.doors.map(d => d.label).join("、") : "Boss"],
+    ["重產次數", `${m.attempts}`],
+  ];
+  $("stats").innerHTML = rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join("");
+  const th = $("thumbs");
+  th.innerHTML = "";
+  for (let i = 1; i <= 8; i++) {
+    const s = seed + i * 101, mm = generate(s, stage);
+    const card = document.createElement("div");
+    card.className = "thumb";
+    const sv = document.createElementNS(NS, "svg");
+    card.appendChild(sv);
+    const cap = document.createElement("div");
+    cap.textContent = `種子 ${s}`;
+    card.appendChild(cap);
+    card.onclick = () => { $("seed").value = s; show(); window.scrollTo({ top: 0, behavior: "smooth" }); };
+    th.appendChild(card);
+    if (mm) render(sv, mm, { iso: opts().iso, route: false, names: false });
   }
-  el(svg, "text", { x: 380, y: 268, "text-anchor": "end", "font-size": 11, fill: C("dim") }, "一格 = 24 單位房間　🔒 = 進房關門、清完才開");
 }
 
-// 整個大關：1-1 ~ 1-5
-function run(svg, mode) {
-  const xs = [30, 110, 190, 270, 360], y = 45;
-  const kinds = ["fight", "fight", "anvil", "fight", "boss"];
-  const names = ["1-1", "1-2", "1-3", "1-4", "1-5"];
-  for (let i = 0; i < 4; i++) {
-    const mx = (xs[i] + xs[i + 1]) / 2;
-    if (mode === "b" && (i === 1 || i === 3)) {
-      el(svg, "line", { x1: xs[i] + 18, y1: y, x2: xs[i + 1] - 18, y2: y, stroke: C("anvil"), opacity: 0.9 });
-      el(svg, "text", { x: mx, y: y - 8, "text-anchor": "middle", "font-size": 10, fill: C("anvil") }, "鐵砧");
-    } else if (mode === "b") {
-      el(svg, "line", { x1: xs[i] + 18, y1: y, x2: mx, y2: y - 14, stroke: C("route"), opacity: 0.7 });
-      el(svg, "line", { x1: xs[i] + 18, y1: y, x2: mx, y2: y + 14, stroke: C("route"), opacity: 0.7 });
-      el(svg, "line", { x1: mx, y1: y - 14, x2: xs[i + 1] - 18, y2: y, stroke: C("route"), opacity: 0.7 });
-      el(svg, "line", { x1: mx, y1: y + 14, x2: xs[i + 1] - 18, y2: y, stroke: C("route"), opacity: 0.7 });
-      el(svg, "text", { x: mx, y: y - 18, "text-anchor": "middle", "font-size": 10, fill: C("treasure") }, ["技能", "", "遺物", ""][i]);
-      el(svg, "text", { x: mx, y: y + 26, "text-anchor": "middle", "font-size": 10, fill: C("anvil") }, ["靈魂", "", "詞條", ""][i]);
-    } else {
-      el(svg, "line", { x1: xs[i] + 18, y1: y, x2: xs[i + 1] - 18, y2: y, stroke: C("route"), opacity: 0.7 });
-      if (mode === "a") el(svg, "text", { x: (xs[i] + xs[i + 1]) / 2, y: y - 8, "text-anchor": "middle", "font-size": 10, fill: C("treasure") }, "3 選 1");
-    }
-  }
-  for (let i = 0; i < 5; i++) {
-    const col = C(kinds[i]);
-    el(svg, "rect", { x: xs[i] - 18, y: y - 14, width: 36, height: 28, rx: 5, fill: col + "33", stroke: col, "stroke-width": 2 });
-    el(svg, "text", { x: xs[i], y: y + 5, "text-anchor": "middle", "font-size": 12, fill: C("text") }, names[i]);
-  }
-  const note = { a: "每關過完給一次固定的 3 選 1；1-3 有鐵砧", b: "每關選一扇門＝選下一關的獎勵；1-3、1-5 前固定是鐵砧",
-                 c: "獎勵在關內的獎勵房，自己排路線拿；1-3 有鐵砧房" }[mode];
-  el(svg, "text", { x: 200, y: 84, "text-anchor": "middle", "font-size": 11, fill: C("dim") }, note);
+for (const id in STAGES) {
+  const b = document.createElement("button");
+  b.textContent = id + (STAGES[id].anvil ? " 鐵砧" : "") + (STAGES[id].boss ? "＋Boss" : "");
+  b.onclick = () => { stage = id; document.querySelectorAll("#stages button").forEach(x => x.classList.toggle("on", x === b)); show(); };
+  if (id === stage) b.classList.add("on");
+  $("stages").appendChild(b);
 }
+$("reroll").onclick = () => { $("seed").value = Math.floor(Math.random() * 1e6); show(); };
+for (const id of ["seed", "iso", "route", "names"]) $(id).addEventListener("change", show);
 
-linearStage(document.getElementById("a-stage"), false);
-linearStage(document.getElementById("b-stage"), true);
-cStage(document.getElementById("c-stage"));
-run(document.getElementById("a-run"), "a");
-run(document.getElementById("b-run"), "b");
-run(document.getElementById("c-run"), "c");
-
-const lg = document.getElementById("legend");
-for (const k in KIND) {
-  const s = document.createElement("span");
-  s.innerHTML = `<i class="sw" style="background:${C(KIND[k][0])}"></i>${KIND[k][1]}`;
-  lg.appendChild(s);
-}
-const p = document.createElement("span");
-p.innerHTML = `<i class="sw" style="background:${C("pack")};border-radius:50%;width:10px;height:10px"></i>怪群`;
-lg.appendChild(p);
+const legend = [["start", "起點"], ["exit", "出口的門"], ["anvil", "鐵砧"], ["chest", "寶箱 / 祭壇、石棺"], ["pack", "怪群"], ["boss", "挖墳 / Boss"],
+  ["wall", "牆 / 陵墓"], ["tomb", "墓碑"], ["low", "高台 0.5"], ["high", "高台 1.0"], ["route", "最短路線"]];
+$("legend").innerHTML = legend.map(([k, t]) => `<span><i class="sw" style="background:${C(k)}"></i>${t}</span>`).join("");
+show();
 </script>
 </body>
 </html>
