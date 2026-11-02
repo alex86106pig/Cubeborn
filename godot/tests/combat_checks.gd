@@ -721,6 +721,14 @@ static func check_shortbow() -> String:
 		return "快射傷害應 = 基礎 %.1f × %d%% × 物理 115%% = %.2f，實際 %.2f" % [bow.base_damage, roundi(bow.attack.damage_pct * 100.0), want, w.projectiles[0].damage]
 	if absf(moving_attack - p.stats.value(&"move_speed")) > 0.05:
 		return "遊俠移動中普攻不減速：速度 %.2f，移速 %.2f" % [moving_attack, p.stats.value(&"move_speed")]
+	# 遊俠裝填中照樣減速（使用者 2026-11-02）：射最後一支後的收招也算
+	var steps := 0
+	while p.quiver > 0 and steps < 600:
+		_run(w, _cmd(Vector2(0, 1), Vector2(0, 8), InputCmd.BTN_ATTACK), 1)
+		steps += 1
+	_run(w, _cmd(Vector2(0, 1), Vector2(0, 8), InputCmd.BTN_ATTACK), 2)
+	if p.reload_timer <= 0.0 or absf(p.velocity.length() - p.stats.value(&"move_speed") * bow.attack.reload_move_mul) > 0.05:
+		return "遊俠裝填中也要減速 ×%.1f：裝填 %.2f、速度 %.2f" % [bow.attack.reload_move_mul, p.reload_timer, p.velocity.length()]
 	var w2 := _class_world(&"ranger")
 	var p2 := _player(w2)
 	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), 1)
@@ -897,6 +905,7 @@ static func check_daggers() -> String:
 	var staggered := []
 	for step in 130:
 		pg.hp = pg.max_hp
+		pg.invuln_timer = 1.0   # 骷髏會回砍：中級硬直 0.45 秒會打斷連刺（這裡只看匕首讓怪硬直）
 		_run(wg, _cmd(Vector2.ZERO, g.pos, InputCmd.BTN_ATTACK), 1)
 		for e in wg.events:
 			if e.name == "entity:damaged" and e.target_id == g.id:

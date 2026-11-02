@@ -140,7 +140,7 @@ func receive_events(run: int, tick: int, events: Array) -> void:
 			continue
 		# 自己被打：受擊硬直與無敵在本機立刻反應（傷害與擊退以房主為準，位置由修正跟上）
 		if me != null and ev.name == "entity:damaged" and ev.target_id == me.id:
-			me.net_hurt()
+			me.net_hurt(StringName(ev.get("tier", "")), ev.get("amount", 0.0))
 		# 自己打中、本機已經預測播過火花、音效與閃白：標 predicted（畫面層只顯示傷害數字）；順序照房主，跟其他事件一起排到畫面時間
 		if me != null and ev.name == "entity:damaged" and ev.get("source_id", 0) == me.id and _take_prediction(ev.target_id):
 			ev["predicted"] = true
@@ -335,4 +335,10 @@ func _apply_own_authority(me: Player, a: Array) -> void:
 		me.stun(absf(host_stun), -1 if grabbed else 0)
 	elif me.grabbed_by != 0 and not grabbed:
 		me.release_grab()   # 房主那邊已經掙脫、或腐屍被打鬆手
+	var host_buried: bool = (a[NetCodec.E_ANIM] as Dictionary).get("buried", false)   # 被守墓人埋進土裡（畫面只露半身）以房主為準
+	if host_buried and me.bury_mash < 0.0:
+		me.bury_mash = 0.0
+	elif not host_buried and me.bury_mash >= 0.0:
+		me.bury_mash = -1.0
+		me.stun_timer = 0.0
 	me.sync_weapon_slots(extra[NetCodec.P_SLOTS])   # 主手與副手以房主為準

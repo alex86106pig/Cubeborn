@@ -212,7 +212,12 @@ godot/
 | `player:downed` | `{ player_id }`（v0.21.0：多人時生命歸零先倒地假死，見系統說明 §8） | Player |
 | `player:revived` | `{ player_id }`（v0.21.0：被隊友救起） | Player.revive |
 | `player:stunned` | `{ player_id, duration, grabbed }`（v0.27.0：被 Boss 衝鋒撞到暈眩；grabbed = 被腐屍抓住） | Player.stun |
-| `player:grab_escaped` | `{ player_id }`（被腐屍抓住時按翻滾掙脫） | Player.update |
+| `player:grab_escaped` | `{ player_id }`（被腐屍、膨脹屍抓住時按翻滾掙脫） | Player.update |
+| `player:knocked_down` | `{ player_id, duration }`（受擊硬直「擊倒」級：倒地，按翻滾受身） | Player.knock_down |
+| `player:teched` | `{ player_id }`（擊倒中按翻滾受身） | Player._tech |
+| `player:buried` | `{ player_id, duration }`（被持鐵鏟的腐屍、守墓人鏟起埋進地底） | ArmedMoves._scoop、Player.bury |
+| `enemy:armed` | `{ enemy_id, weapon, pos }`（腐屍撿起地上的武器） | Zombie.arm |
+| `enemy:blocked` | `{ enemy_id, pos, source_id }`（劍盾腐屍舉盾擋下攻擊） | Zombie.take_damage |
 | `game:defeat` | `{ stats }`（v0.21.0：全員倒下 = 輸；單機和 `player:died` 同一步發出） | World |
 | `item:added` | `{ player_id, item, uid }`（v0.19.0：道具放進身上；item = 物品 id，uid = 實例 id，武器為空字串） | Player.add_item |
 | `inventory:full` | `{ player_id, item, pickup_id }`（v0.25.0：背包放不下；pickup_id = 地上道具的實體 id，不是從地上撿的為 0） | Loadout.add_item / add_weapon / add_corpse |
@@ -237,6 +242,7 @@ godot/
 | `boss:absorbed` | `{ boss_id, from, height, pos }`（骸骨將軍脫甲 / 萬骨聚合體吞屍：一具骷髏被吸過去） | BoneGeneral |
 | `boss:devoured` | `{ boss_id, count, pos }`（萬骨聚合體吞屍回血） | BoneGeneral |
 | `boss:revealed` | `{ boss_id, spoke }`（假裝 NPC 的守墓人露出真面目；spoke = 被說話觸發、頭上冒台詞） | Gravekeeper |
+| `boss:scoop_broken` | `{ boss_id }`（守墓人鏟起連段被隊友打斷） | Gravekeeper.Scoop |
 | `game:victory` | `{ stats }` | World（Boss 死亡後延遲發出） |
 | `game:restart` | `{}` | World.reset |
 | `game:paused` | `{ paused }` | main.gd（Esc、失去焦點） |
@@ -254,7 +260,8 @@ godot/
 | `fx:boss_wall` | `{ pos, height }` | Boss 衝鋒撞牆 |
 | `fx:boss_teleport` | `{ pos, height, to }` | 狂暴 Boss 瞬移砸地（v0.27.0）：原地與目的地的紫色煙霧 |
 | `fx:boss_teleport_warn` | `{ pos, height, life }` | 狂暴 Boss 瞬移前：目的地冒出越來越濃的紫煙（取代預警圈） |
-| `fx:dirt_lob` | `{ pos, height, targets, flight, radius, shadow_only? }` | 守墓人鏟土拋擲（shadow_only：狼人飛撲只畫影子）：土塊沿拋物線飛到每個落點、地上的影子越來越大（看影子躲，不畫圈） |
+| `fx:dirt_lob` | `{ pos, height, targets, flight, radius, shadow_only?, from_sky? }` | 守墓人落石（from_sky：從落點正上方直直掉；瘋狂鏟土、鏟起 A）、腐屍鐵鏟拋怪與狼人飛撲（shadow_only：只畫影子）：地上的影子越來越大（看影子躲，不畫圈） |
+| `fx:claw` | `{ pos, height, facing, range, arc, side, color }` | 狼人三連爪的每一下：身前 3 條紅色爪痕（side 1 右爪 / -1 左爪 / 0 雙爪） |
 | `fx:gas_cloud` | `{ pos, height, radius, color, life }` | 怪物的毒氣區（膨脹屍的腐氣，GroundZones `visual = &"gas"`）：範圍內一直冒低低的煙，不畫圈 |
 | `fx:erupt_warn` | `{ pos, height, radius, life, look }` | 挖墳點噴怪前：墳土隆起、裂開、冒出白骨手（取代預警圈）；look = sarcophagus 是第 2 層的石棺 |
 | `fx:spike_warn` | `{ pos, height, facing, lines, start, length, life }` | 萬骨聚合體骨刺陣的預兆：地面沿 lines 個方向隆起 |

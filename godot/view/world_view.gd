@@ -288,8 +288,8 @@ func sync(world: World, alpha: float, dt: float) -> void:
 		# 位置與朝向一次寫入（分兩次寫會更新兩次子節點的變換，D5 效能）
 		node.transform = Transform3D(Basis(Vector3.UP, lerp_angle(e.prev_facing, e.facing, alpha)),
 			Vector3(p.x, lerpf(e.prev_height, e.height, alpha), p.y))
-		if e is Enemy and (e as Enemy).anim.has("buried"):
-			node.position.y -= BURIED_DEPTH    # 被鐵鏟埋進土裡（F9）：只露半身
+		if (e is Enemy and (e as Enemy).anim.has("buried")) or (e is Player and (e as Player).anim.get("buried", false)):
+			node.position.y -= BURIED_DEPTH    # 被鐵鏟埋進土裡（F9；玩家被守墓人鏟起 B）：只露半身
 		elif e is Enemy and (e as Enemy).anim.has("grabbed"):
 			grabbed.append(id)   # 被鐵鏟舉著（F9）：等玩家的手臂姿勢算好，迴圈後放到鏟面上
 		if e is Player:

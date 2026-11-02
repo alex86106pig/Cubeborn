@@ -256,7 +256,7 @@ static func roll_rarity(world: World, e: Enemy, rarity: StringName, rng: RandomN
 	if rarity == MonsterRarityDefs.NORMAL:
 		return
 	var r := rng if rng != null else world.rng
-	var affixes := MonsterRarityDefs.roll_affixes(MonsterRarityDefs.affix_count(rarity, r), r)
+	var affixes := MonsterRarityDefs.roll_affixes(MonsterRarityDefs.affix_count(rarity, r), r, e.def.get("no_affixes", []))
 	var name := MonsterRarityDefs.roll_rare_name(r) if rarity == MonsterRarityDefs.RARE else ""
 	e.set_rarity(rarity, affixes, name)
 	e.apply_rarity_stats()

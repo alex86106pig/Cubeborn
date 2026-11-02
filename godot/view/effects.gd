@@ -34,6 +34,7 @@ const HANDLERS := {
 	"fx:erupt_warn": &"_fx_erupt_warn",
 	"fx:gas_cloud": &"_fx_gas_cloud",
 	"fx:dirt_lob": &"_fx_dirt_lob",
+	"fx:claw": &"_fx_claw",
 	"fx:lightning": &"_fx_lightning",
 	"fx:status": &"_fx_status",
 	"enemy:blocked": &"_on_enemy_blocked",
@@ -68,6 +69,12 @@ const COFFIN_DUST := Color("8a8070")        # 石棺噴怪前的石屑
 const SEAL_COLOR := Color("b070ff")         # 石棺封印的紫光（同 WorldView.COFFIN_SEAL）
 const COFFIN_TOP := 0.85                    # 石棺棺口的高度（同 WorldView.COFFIN_SIZE.y）
 const DIRT_LOB_HEIGHT := 3.0                # 守墓人拋出的土塊飛多高
+const ROCK_FALL_HEIGHT := 14.0              # 瘋狂鏟土的落石從多高掉下來
+const CLAW_MARKS := 3                       # 狼人每一爪的爪痕條數
+const CLAW_MARK_WIDTH := 0.16
+const CLAW_MARK_GAP := 0.42                 # 爪痕之間的間距
+const CLAW_MARK_TILT := 0.55                # 爪痕斜的角度（弧度；左右爪方向相反）
+const CLAW_MARK_LIFE := 0.5
 const LANTERN_BLUE := Color("6ab0ff")       # 提燈噴火前燈火轉藍
 const WOLF_FUR := Color("4a4642")           # 守墓人變身：毛（同 DarkFantasy 的 wolf_fur）
 const KEEPER_COAT := Color("4a3a2a")        # 撐破的外套碎片
@@ -598,6 +605,9 @@ func _fx_dirt_lob(p: Dictionary) -> void:
 	var clod_mesh := BoxMesh.new()
 	clod_mesh.size = Vector3(0.35, 0.3, 0.35)
 	var shadow_only: bool = p.get("shadow_only", false)   # 狼人飛撲：只畫落點的影子（跳的是狼人本身）
+	var from_sky: bool = p.get("from_sky", false)         # 瘋狂鏟土的落石：從落點正上方直直掉下來（石頭比較大）
+	if from_sky:
+		clod_mesh.size = Vector3(0.7, 0.55, 0.7)
 	for target: Vector2 in p.targets:
 		var to := Vector3(target.x, world.terrain.ground_at(target) if world != null else 0.0, target.y)
 		var shadow := _transient_mesh(_disc_mesh, Color.BLACK, 0.0)
@@ -610,14 +620,40 @@ func _fx_dirt_lob(p: Dictionary) -> void:
 			continue
 		var clod := _transient_mesh(clod_mesh, DUST_COLOR, 1.0)
 		var landed := [false]
+		var start := to + Vector3(0, ROCK_FALL_HEIGHT, 0) if from_sky else from
 		_add_transient(clod, flight, func(k: float) -> void:
-			var pos := from.lerp(to, k)
-			pos.y += 4.0 * DIRT_LOB_HEIGHT * k * (1.0 - k)
+			var pos := start.lerp(to, k * k) if from_sky else start.lerp(to, k)   # 落石：越掉越快
+			if not from_sky:
+				pos.y += 4.0 * DIRT_LOB_HEIGHT * k * (1.0 - k)
 			clod.position = pos
 			clod.rotation = Vector3(k * 9.0, k * 6.0, 0.0)
 			if k > 0.97 and not landed[0]:
 				landed[0] = true
 				burst(to + Vector3(0, 0.2, 0), {"color": DUST_COLOR, "count": 14, "speed": 4.0, "up": 4.0, "size": 0.2}))
+
+
+# 狼人爪擊：身前空中 CLAW_MARKS 條平行的紅色爪痕（橫過身前的細長條、斜著排），一下子劃出來再淡掉
+# side：1 = 右爪、-1 = 左爪（斜的方向相反）、0 = 雙爪（橫的、比較長）
+func _fx_claw(p: Dictionary) -> void:
+	var facing: float = p.facing
+	var reach: float = p.range
+	var side: float = p.side
+	var length := reach * (1.1 if side == 0.0 else 0.85)
+	var tilt := CLAW_MARK_TILT * side
+	var fwd := Vector3(sin(facing), 0.0, cos(facing))
+	var center := _at(p, 1.4) + fwd * reach * 0.5
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(CLAW_MARK_WIDTH, CLAW_MARK_WIDTH * 0.6, length)
+	for i in CLAW_MARKS:
+		var off := (i - (CLAW_MARKS - 1) / 2.0) * CLAW_MARK_GAP
+		var node := _transient_mesh(mesh, p.color, 1.0)
+		node.position = center + Vector3(0, off, 0) + fwd * off * 0.2
+		node.rotation = Vector3(tilt, facing + PI / 2.0, 0.0)   # 長邊橫過身前，再往上 / 下斜
+		_add_transient(node, CLAW_MARK_LIFE, func(k: float) -> void:
+			var grow := minf(1.0, k * 6.0)   # 前 1/6 時間劃出來
+			node.scale = Vector3(1.0, 1.0, maxf(grow, 0.05))
+			_set_alpha(node, 1.0 - k * k))
+	burst(center, {"color": p.color, "count": 8, "speed": 4.0, "up": 1.5, "size": 0.1, "life": 0.25})
 
 
 func _fx_boss_wall(p: Dictionary) -> void:

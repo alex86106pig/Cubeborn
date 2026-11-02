@@ -1138,6 +1138,8 @@ static func check_health_bars() -> String:
 				err = "倒地的隊友（改顯示倒數）、WorldView 隱藏的骷髏不應畫血條：%s" % b.entity.kind
 	if err == "":
 		err = _check_mana_bar(hb, p)
+	if err == "":
+		err = _check_reload_ring(hb, p)
 	hb.free()
 	cam.free()
 	return err
@@ -1163,6 +1165,29 @@ static func _check_mana_bar(hb: HealthBars, p: Player) -> String:
 	p.is_downed = false
 	if not down.is_empty():
 		return "倒地時不應畫魔力條"
+	return ""
+
+
+# 自己的弓裝填圓圈：只在有箭袋的弓裝填中畫、比例 = 已裝的時間 / 裝填時間、在血條右邊不重疊；倒地不畫
+static func _check_reload_ring(hb: HealthBars, p: Player) -> String:
+	p.equip_weapon(&"shortbow")
+	if not hb.reload_ring().is_empty():
+		return "沒在裝填不應畫裝填圓圈"
+	var atk: Dictionary = p.weapon.attack
+	p.reload_timer = atk.reload_time * 0.25
+	var r := hb.reload_ring()
+	if r.is_empty() or absf(r.ratio - 0.75) > EPS:
+		return "裝填剩 25%% 時圓圈應畫 0.75：%s" % [r]
+	p.hp = p.max_hp * 0.5
+	var hp_rect: Rect2 = hb.bars().filter(func(b: Dictionary) -> bool: return b.entity == p)[0].rect
+	if r.center.x - hb.RING_RADIUS < hp_rect.end.x + 1.0 or absf(r.center.y - hp_rect.get_center().y) > 0.5:
+		return "裝填圓圈應在血條右邊：血條 %s、圓心 %s" % [hp_rect, r.center]
+	p.is_downed = true
+	var down := hb.reload_ring()
+	p.is_downed = false
+	p.reload_timer = 0.0
+	if not down.is_empty():
+		return "倒地時不應畫裝填圓圈"
 	return ""
 
 
@@ -1507,11 +1532,11 @@ static func check_no_monster_telegraph() -> String:
 
 
 # Boss 每一招的預備動作兩兩不同：各招預備到一半時，手臂（前後、張開）、身體前後傾、頭的角度合計至少差 MIN_POSE_DIFF 弧度
-# 亡骸騎士：砸地、衝鋒、召喚、直劈；守墓人：鐵鏟揮擊、鏟土拋擲、提燈噴火、口哨；墓園狼人（守墓人 form 1）：三連爪、飛撲、狼嚎
+# 亡骸騎士：砸地、衝鋒、召喚、直劈；守墓人：鐵鏟揮擊、瘋狂鏟土、提燈噴火、口哨、鏟起；墓園狼人（守墓人 form 1）：三連爪、飛撲、狼嚎
 const MIN_POSE_DIFF := 1.0
 const BOSS_MOVES := {   # 模型 -> [種類, 型態, 招式資料所在（"" = 種類的最上層）, 招式]
 	&"boss": [&"boss", 0, "", [&"slam", &"charge", &"summon", &"cleave"]],
-	&"gravekeeper": [&"gravekeeper", 0, "", [&"shovel", &"lob", &"lantern", &"whistle"]],
+	&"gravekeeper": [&"gravekeeper", 0, "", [&"shovel", &"dig", &"lantern", &"whistle", &"scoop"]],
 	&"werewolf": [&"gravekeeper", 1, "wolf", [&"claw", &"leap", &"howl"]],
 }
 

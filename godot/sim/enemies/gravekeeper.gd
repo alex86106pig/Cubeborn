@@ -1,16 +1,22 @@
 # 守墓人（第 1 層 Boss）：開局假裝友善的 NPC（狀態名沿用 patrol：HUD 不顯示 Boss 血條、頭上是綠色血條）
 #   在王族墓附近慢慢掃地，看到玩家也不追。玩家按 F 說話（talk）→ 頭上冒「又一頭肥羊……」reveal 秒後開打；
 #   被打、或有人開挖墳墓 → 不說話直接開打（Boss.aggro）。多人一人觸發全隊開打（Boss 只有一隻）
-# 第一型態「老守墓人」（慢、靠道具）：鐵鏟揮擊、鏟土拋擲（看地上的影子）、提燈噴火（留下殘火）、口哨叫屍犬
+# 開打時 grow.time 秒內慢慢變大到 grow.size 倍（半徑、身高、模型；不出招），狼人維持這個大小
+# 第一型態「老守墓人」：鐵鏟揮擊、瘋狂鏟土（整個競技場落石，看地上的影子）、提燈噴火（追著噴、最後轉一圈，留下殘火）、
+#   口哨叫屍犬、鏟起連段（A 拋飛 → 落石；B 埋地 → 噴火）
 # 半血轉型態（取代狂暴，設計方向「Boss 半血轉型態」）：transform 狀態無敵 transform.time 秒 → form = 1「墓園狼人」：
 #   嚎叫震退身邊的玩家、提燈掉在地上變成火堆（Torch：照亮的範圍全隊看得到）、移速 wolf.move_speed
-#   狼人：三連爪、飛撲（看影子）、隱入黑暗（跑到目標背後再撲）、狼嚎（叫魔法屍犬、自己加速）
+#   狼人：三連爪（每下 3 條紅色爪痕）、飛撲（看影子、要靠反應翻滾）、隱入黑暗（跑到目標背後再撲）、狼嚎（叫魔法屍犬、自己加速）
 class_name Gravekeeper
 extends Boss
 
 var spoke := false   # 這次揭穿是被說話觸發的（畫面層顯示台詞）
 var form := 0        # 0 = 老守墓人、1 = 墓園狼人（動畫欄位 form，畫面層換模型）
 var howl_left := 0.0 # 狼嚎加速剩幾秒（到了拿掉移速來源 &"howl"）
+var size := 1.0      # 體型倍率（NPC = 1，開打後長到 grow.size；動畫欄位 size，客戶端照這個設半徑與身高）
+var rocks: Array[Dictionary] = []   # 還在空中的石頭：{ at, left, hit }（瘋狂鏟土、鏟起 A；換狀態照樣落地）
+var _base_radius := 0.0
+var _base_body := 0.0
 
 
 func update(dt: float) -> void:
@@ -18,13 +24,14 @@ func update(dt: float) -> void:
 		howl_left -= dt
 		if howl_left <= 0.0:
 			remove_stat_source(&"howl")
+	_update_rocks(dt)
 	super(dt)
 
 
 func _init(p_world: World, p_type: StringName, at: Vector2, mul: Dictionary) -> void:
 	super(p_world, p_type, at, mul, {
-		&"patrol": Npc.new(), &"reveal": Reveal.new(), &"chase": KeeperChase.new(),
-		&"shovel": Shovel.new(), &"lob": Lob.new(), &"lantern": Lantern.new(), &"whistle": Whistle.new(),
+		&"patrol": Npc.new(), &"reveal": Reveal.new(), &"grow": Grow.new(), &"chase": KeeperChase.new(),
+		&"shovel": Shovel.new(), &"dig": Dig.new(), &"lantern": Lantern.new(), &"whistle": Whistle.new(), &"scoop": Scoop.new(),
 		&"transform": Transform.new(), &"wolf_chase": WolfChase.new(), &"claw": Claw.new(), &"leap": Leap.new(),
 		&"stalk": Stalk.new(), &"howl": Howl.new(),
 	})
@@ -34,11 +41,23 @@ func _anim_extra(a: Dictionary) -> void:
 	var d := fsm.data
 	if form > 0:
 		a["form"] = form
+	if size != 1.0:
+		a["size"] = size
 	if fsm.is_in(&"reveal") and spoke:
 		a["spoke"] = true
-	if fsm.is_in(&"lob") or fsm.is_in(&"lantern") or fsm.is_in(&"leap"):
+	if fsm.is_in(&"dig") or fsm.is_in(&"lantern") or fsm.is_in(&"leap") or fsm.is_in(&"scoop"):
 		a["phase"] = d.phase
 		a["phase_time"] = d.phase_time
+
+
+# 體型倍率：半徑與身高跟著變（客戶端的鏡像收到動畫欄位 size 也呼叫這個）
+func set_size(s: float) -> void:
+	if _base_radius == 0.0:
+		_base_radius = radius
+		_base_body = body_height
+	size = s
+	radius = _base_radius * s
+	body_height = _base_body * s
 
 
 func on_added() -> void:
@@ -73,19 +92,21 @@ func talk() -> void:
 	world.emit_event("boss:revealed", {"boss_id": id, "spoke": true})
 
 
-# 被打、開挖墳墓、說完話：開打（NPC 狀態才有作用）。被打時不說話，直接開打
+# 被打、開挖墳墓、說完話：開打（NPC 狀態才有作用）。被打時不說話，直接開打；先變大再追
 func aggro() -> void:
 	if is_dead or not (is_npc() or fsm.is_in(&"reveal")):
 		return
 	if is_npc():
 		world.emit_event("boss:revealed", {"boss_id": id, "spoke": false})
 	on_added()
-	fsm.change(&"chase")
+	fsm.change(&"grow" if size < def.grow.size else &"chase")
 	world.emit_event("boss:aggro", {"boss_id": id, "pos": pos})
 
 
-func _on_damaged(_amount: float, _source_id: int) -> void:
+func _on_damaged(amount: float, source_id: int) -> void:
 	aggro()
+	if fsm.is_in(&"scoop"):
+		Scoop.new().on_damaged(self, amount, source_id, fsm)
 	if form == 0 and not is_dead and not fsm.is_in(&"transform") and hp / max_hp <= def.transform.hp_threshold:
 		fsm.change(&"transform")
 
@@ -98,9 +119,10 @@ func _become_wolf() -> void:
 	set_resists(def.wolf.resists)
 	for p in world.player_list:
 		if p.is_targetable() and p.pos.distance_to(pos) <= tr.roar_radius + p.radius:
-			Combat.apply_damage(world, self, p, {"damage": tr.roar_damage * damage_mul, "knockback": tr.roar_knockback, "blockable": false, "color": def.hit_color})
+			Combat.apply_damage(world, self, p, {"damage": tr.roar_damage * damage_mul, "knockback": tr.roar_knockback, "blockable": false,
+				"color": def.hit_color, "tier": tr.roar_tier})
 	if world.is_authority:
-		var lamp := Torch.new(world, world.nav.nearest_walkable(pos + MathUtil.dir_from_angle(facing + PI * 0.75) * 1.2))
+		var lamp := Torch.new(world, world.nav.nearest_walkable(pos + MathUtil.dir_from_angle(facing + PI * 0.75) * (radius + 0.5)))
 		world.add_entity(lamp)
 		world.torches.append(lamp)
 	world.emit_event("boss:transformed", {"boss_id": id, "form": form, "pos": pos})
@@ -110,16 +132,50 @@ func _become_wolf() -> void:
 	resume()
 
 
-# 半徑內（含旁邊的高台）的玩家受到地面衝擊：鏟土落地
+# 丟一批石頭：每顆 fall 秒後落地；hit 是落地時的傷害資料（_land）。發一個 fx:dirt_lob（from_sky：從天上直直掉、地上影子越來越大）
+func drop_rocks(targets: Array, fall: float, hit: Dictionary) -> void:
+	if targets.is_empty():
+		return
+	for at: Vector2 in targets:
+		rocks.append({"at": at, "left": fall, "hit": hit})
+	world.emit_event("fx:dirt_lob", {"pos": pos, "height": height, "targets": targets.duplicate(), "flight": fall,
+		"radius": hit.radius, "from_sky": true})
+
+
+func _update_rocks(dt: float) -> void:
+	for i in range(rocks.size() - 1, -1, -1):
+		var r: Dictionary = rocks[i]
+		r.left -= dt
+		if r.left <= 0.0:
+			rocks.remove_at(i)
+			_land(r.at, r.hit)
+
+
+# 半徑內（含旁邊的高台）的玩家受到地面衝擊：石頭落地。hit：radius、damage、knockback、slow_mul、slow_time、tier、color、pierce_invuln?
 func _land(at: Vector2, l: Dictionary) -> void:
-	var band := Vector2(world.terrain.ground_at(at) - Config.HEIGHT.reach_below, world.terrain.ground_at(at) + Config.HEIGHT.slam_height)
+	var ground := world.terrain.ground_at(at)
+	var band := Vector2(ground - Config.HEIGHT.reach_below, ground + Config.HEIGHT.slam_height)
 	var hits := Hitbox.strike(world, self, at, facing, {"shape": &"circle", "radius": l.radius}, {
 		"damage": l.damage * damage_mul, "knockback": l.knockback, "origin": at, "band": band, "blockable": false, "color": l.color,
+		"tier": l.tier, "pierce_invuln": l.get("pierce_invuln", false),
 	})
 	for t in hits:
 		if t is Player:
 			(t as Player).add_buff(&"dirt_slow", l.slow_time, {"stats": [[&"move_speed", Stats.MUL, l.slow_mul]]})
 	world.emit_event("sfx:cue", {"cue": "hit", "pos": at})
+
+
+# 瘋狂鏟土的落點：競技場（巡邏範圍，Boss 在裡面時）裡隨機一點；Boss 跑出去了就是身邊 fallback_radius 內
+func random_arena_point(l: Dictionary) -> Vector2:
+	var rng := world.rng
+	if patrol_rect.has_area() and patrol_rect.has_point(pos):
+		return patrol_rect.position + Vector2(rng.randf() * patrol_rect.size.x, rng.randf() * patrol_rect.size.y)
+	return pos + MathUtil.dir_from_angle(rng.randf() * TAU) * l.fallback_radius * sqrt(rng.randf())
+
+
+# 往目標轉（每秒最多 rate 弧度）
+func face_towards(at: Vector2, rate: float, dt: float) -> void:
+	facing = MathUtil.turn_towards(facing, MathUtil.angle_to(pos, at), rate * dt)
 
 
 class Npc:
@@ -155,9 +211,28 @@ class Reveal:
 		e.velocity = Vector2.ZERO
 		var target := e.nearest_player()
 		if target != null:
-			e.facing = MathUtil.turn_towards(e.facing, MathUtil.angle_to(e.pos, target.pos), e.def.turn_speed * dt)
+			e.face_towards(target.pos, e.def.turn_speed, dt)
 		if fsm.time >= e.def.npc.reveal_time:
 			e.aggro()
+
+
+# 變大：站著轉向最近的玩家，grow.time 秒內體型從現在長到 grow.size（不出招）
+class Grow:
+	func enter(e: Gravekeeper, data: Dictionary, _fsm: StateMachine) -> void:
+		e.velocity = Vector2.ZERO
+		data.from = e.size
+		e.world.emit_event("sfx:cue", {"cue": "bossSummon", "pos": e.pos})
+
+	func update(e: Gravekeeper, dt: float, fsm: StateMachine) -> void:
+		var g: Dictionary = e.def.grow
+		e.velocity = Vector2.ZERO
+		var target := e.nearest_player()
+		if target != null:
+			e.face_towards(target.pos, e.def.turn_speed, dt)
+		var k := clampf(fsm.time / g.time, 0.0, 1.0)
+		e.set_size(lerpf(fsm.data.from, g.size, MathUtil.ease_out_cubic(k)))
+		if k >= 1.0:
+			fsm.change(&"chase")
 
 
 class KeeperChase:
@@ -170,6 +245,9 @@ class KeeperChase:
 		var dist := e.pos.distance_to(target.pos)
 		var cds := e.world.cooldowns
 		if fsm.time > d.decide_delay:
+			if dist <= d.scoop.trigger_distance and cds.is_ready(e.cd("scoop")):
+				fsm.change(&"scoop")
+				return
 			if dist <= d.shovel.trigger_distance and cds.is_ready(e.cd("shovel")):
 				fsm.change(&"shovel")
 				return
@@ -179,8 +257,8 @@ class KeeperChase:
 			if cds.is_ready(e.cd("whistle")) and _hounds(e) < d.whistle.max_alive:
 				fsm.change(&"whistle")
 				return
-			if dist >= d.lob.min_distance and dist <= d.lob.max_distance and cds.is_ready(e.cd("lob")):
-				fsm.change(&"lob")
+			if dist <= d.dig.max_distance and cds.is_ready(e.cd("dig")):
+				fsm.change(&"dig")
 				return
 		var aim := e.steer_point(target.pos)
 		e.facing = MathUtil.turn_towards(e.facing, MathUtil.angle_to(e.pos, aim), d.turn_speed * dt)
@@ -207,50 +285,54 @@ class Shovel:
 		e.velocity = Vector2.ZERO
 		var target := e.nearest_player()
 		if t < s.windup * s.track and target != null:
-			e.facing = MathUtil.turn_towards(e.facing, MathUtil.angle_to(e.pos, target.pos), e.def.turn_speed * dt)
+			e.face_towards(target.pos, e.def.turn_speed, dt)
 		if t >= s.windup and t < s.windup + s.active:
 			Hitbox.strike(e.world, e, e.pos, e.facing, {"shape": &"sector", "range": s.range, "arc": s.arc}, {
 				"damage": s.damage * e.damage_mul, "knockback": s.knockback, "blockable": true, "is_heavy": true, "color": e.def.hit_color,
+				"tier": s.tier,
 			}, fsm.data.hit)
 		if t >= s.windup + s.active + s.recovery:
 			fsm.change(&"chase")
 
 
-# 鏟土拋擲：windup（鏟子插地、往後撬）→ throw：往目標附近丟 count 坨土（發 fx:dirt_lob，畫面畫土塊與影子）
-# → 每坨 flight_time 秒後落地（_land）→ 全部落地後 recovery
-class Lob:
+# 瘋狂鏟土：windup（彎腰把鏟子插進地裡）→ dig：狂鏟 duration 秒，每 interval 秒在競技場隨機落一顆石頭、
+# 每位玩家每 player_interval 秒腳邊必定落一顆（drop_rocks，fall_time 秒落地）→ recovery
+class Dig:
 	func enter(e: Gravekeeper, data: Dictionary, _fsm: StateMachine) -> void:
 		e.velocity = Vector2.ZERO
-		e.world.cooldowns.start(e.cd("lob"), e.def.lob.cooldown)
+		e.world.cooldowns.start(e.cd("dig"), e.def.dig.cooldown)
 		data.phase = &"windup"
 		data.phase_time = 0.0
-		data.targets = []
+		data.spawned = 0
+		data.aimed = 0
 
 	func update(e: Gravekeeper, dt: float, fsm: StateMachine) -> void:
-		var l: Dictionary = e.def.lob
+		var l: Dictionary = e.def.dig
 		var d := fsm.data
 		d.phase_time += dt
 		e.velocity = Vector2.ZERO
-		var target := e.nearest_player()
 		if d.phase == &"windup":
+			var target := e.nearest_player()
 			if target != null:
-				e.facing = MathUtil.turn_towards(e.facing, MathUtil.angle_to(e.pos, target.pos), e.def.turn_speed * dt)
+				e.face_towards(target.pos, e.def.turn_speed, dt)
 			if d.phase_time >= l.windup:
-				d.phase = &"throw"
+				d.phase = &"dig"
 				d.phase_time = 0.0
-				var center: Vector2 = target.pos if target != null else e.pos + MathUtil.dir_from_angle(e.facing) * 6.0
-				var nav := e.world.nav
-				for i in l.count:
-					var off := Vector2.ZERO if i == 0 else MathUtil.dir_from_angle(e.world.rng.randf() * TAU) * e.world.rng.randf_range(l.spread * 0.5, l.spread)
-					d.targets.append(nav.nearest_walkable(center + off))
-				e.world.emit_event("fx:dirt_lob", {"pos": e.pos, "height": e.height + 1.6, "targets": d.targets.duplicate(),
-					"flight": l.flight_time, "radius": l.radius})
 				e.world.emit_event("sfx:cue", {"cue": "bossSlamWindup", "pos": e.pos})
 			return
-		if d.phase == &"throw":
-			if d.phase_time >= l.flight_time:
-				for at: Vector2 in d.targets:
-					e._land(at, l)
+		if d.phase == &"dig":
+			var targets := []
+			var t: float = minf(d.phase_time, l.duration)
+			while d.spawned < floori(t / l.interval + 1e-6):
+				d.spawned += 1
+				targets.append(e.random_arena_point(l))
+			while d.aimed < floori(t / l.player_interval + 1e-6) + 1:   # 一開始就先砸一顆在每個人腳邊
+				d.aimed += 1
+				for p in e.world.player_list:
+					if p.is_targetable():
+						targets.append(p.pos + MathUtil.dir_from_angle(e.world.rng.randf() * TAU) * l.aim_jitter * e.world.rng.randf())
+			e.drop_rocks(targets, l.fall_time, l)
+			if d.phase_time >= l.duration:
 				d.phase = &"recovery"
 				d.phase_time = 0.0
 			return
@@ -258,8 +340,8 @@ class Lob:
 			fsm.change(&"chase")
 
 
-# 提燈噴火：windup（打開燈罩、燈火轉藍、吸氣；前 track 比例轉向）→ flame：前方扇形每 tick 秒打一次（擋得住）
-# → 結束時沿噴火方向留下 embers 團殘火（擋不住）→ recovery
+# 提燈噴火：windup（打開燈罩、燈火轉藍、吸氣；前 track 比例轉向）→ flame：邊噴邊追目標 duration 秒（前方扇形每 tick 一下，擋得住；
+# 每 ember_every 秒在火焰中段留一團殘火）→ spin：原地轉一圈噴 spin_time 秒（每 spin_tick 一下），身邊留 spin_embers 團殘火 → recovery
 class Lantern:
 	func enter(e: Gravekeeper, data: Dictionary, _fsm: StateMachine) -> void:
 		e.velocity = Vector2.ZERO
@@ -267,6 +349,7 @@ class Lantern:
 		data.phase = &"windup"
 		data.phase_time = 0.0
 		data.ticks = 0
+		data.embers = 0
 		e.world.emit_event("sfx:cue", {"cue": "bossChargeWindup", "pos": e.pos})
 
 	func update(e: Gravekeeper, dt: float, fsm: StateMachine) -> void:
@@ -274,36 +357,62 @@ class Lantern:
 		var d := fsm.data
 		d.phase_time += dt
 		e.velocity = Vector2.ZERO
+		var target := e.nearest_player()
 		if d.phase == &"windup":
-			var target := e.nearest_player()
 			if d.phase_time < f.windup * f.track and target != null:
-				e.facing = MathUtil.turn_towards(e.facing, MathUtil.angle_to(e.pos, target.pos), e.def.turn_speed * dt)
+				e.face_towards(target.pos, e.def.turn_speed, dt)
 			if d.phase_time >= f.windup:
 				d.phase = &"flame"
 				d.phase_time = 0.0
 			return
 		if d.phase == &"flame":
-			while d.ticks < floori((d.phase_time + 1e-6) / f.tick) and d.ticks < roundi(f.duration / f.tick):
+			if target != null:   # 追著噴：轉得比平常慢，繞到側面躲得掉
+				var aim := e.steer_point(target.pos)
+				e.face_towards(aim, e.def.turn_speed * f.turn_mul, dt)
+				if e.pos.distance_to(target.pos) > e.radius + target.radius + 0.5:
+					e.velocity = MathUtil.dir_from_angle(e.facing) * e.speed * f.chase_mul
+			while d.ticks < floori((minf(d.phase_time, f.duration) + 1e-6) / f.tick):
 				d.ticks += 1
-				# 一直站在火裡就一直被燒：火焰範圍內的玩家不吃受傷後的無敵時間（同腐屍的啃咬）
-				for t in Hitbox.query(e.world, e.team, e.pos, e.facing, {"shape": &"sector", "range": f.range, "arc": f.arc}, e.id):
-					if t is Player:
-						t.invuln_timer = 0.0
-				Hitbox.strike(e.world, e, e.pos, e.facing, {"shape": &"sector", "range": f.range, "arc": f.arc}, {
-					"damage": f.damage * e.damage_mul, "knockback": 0.0, "blockable": true, "color": f.color, "damage_type": &"fire",
-				})
+				_burn(e, f)
+			while d.embers < floori((minf(d.phase_time, f.duration) + 1e-6) / f.ember_every):
+				d.embers += 1
+				_ember(e, f, e.pos + MathUtil.dir_from_angle(e.facing) * f.ember_at)
 			if d.phase_time >= f.duration:
-				var dir := MathUtil.dir_from_angle(e.facing)
-				for dist: float in f.embers:
-					GroundZones.add(e.world, {
-						"pos": e.world.nav.nearest_walkable(e.pos + dir * dist), "radius": f.ember_radius, "duration": f.ember_time,
-						"owner_id": e.id, "color": f.color, "damage_per_sec": f.ember_dps * e.damage_mul, "damage_type": &"fire", "visual": &"fire",
-					})
+				d.phase = &"spin"
+				d.phase_time = 0.0
+				d.ticks = 0
+				d.start_facing = e.facing
+			return
+		if d.phase == &"spin":
+			var k := clampf(d.phase_time / f.spin_time, 0.0, 1.0)
+			e.facing = wrapf(d.start_facing + TAU * k, -PI, PI)
+			while d.ticks < floori((minf(d.phase_time, f.spin_time) + 1e-6) / f.spin_tick):
+				d.ticks += 1
+				_burn(e, f)
+			if d.phase_time >= f.spin_time:
+				for i in f.spin_embers:
+					_ember(e, f, e.pos + MathUtil.dir_from_angle(d.start_facing + TAU * i / f.spin_embers) * f.ember_at * 0.6)
 				d.phase = &"recovery"
 				d.phase_time = 0.0
 			return
 		if d.phase_time >= f.recovery:
 			fsm.change(&"chase")
+
+	# 前方扇形噴一下：一直站在火裡就一直被燒，火焰範圍內的玩家不吃受傷後的無敵時間（同腐屍的啃咬）
+	func _burn(e: Gravekeeper, f: Dictionary) -> void:
+		var shape := {"shape": &"sector", "range": f.range, "arc": f.arc}
+		for t in Hitbox.query(e.world, e.team, e.pos, e.facing, shape, e.id):
+			if t is Player:
+				t.invuln_timer = 0.0
+		Hitbox.strike(e.world, e, e.pos, e.facing, shape, {
+			"damage": f.damage * e.damage_mul, "knockback": 0.0, "blockable": true, "color": f.color, "damage_type": &"fire", "tier": f.tier,
+		})
+
+	func _ember(e: Gravekeeper, f: Dictionary, at: Vector2) -> void:
+		GroundZones.add(e.world, {
+			"pos": e.world.nav.nearest_walkable(at), "radius": f.ember_radius, "duration": f.ember_time,
+			"owner_id": e.id, "color": f.color, "damage_per_sec": f.ember_dps * e.damage_mul, "damage_type": &"fire", "visual": &"fire",
+		})
 
 
 # 口哨：windup 後在身邊叫 count 隻屍犬（不給靈魂、算守墓人叫的）
@@ -328,12 +437,154 @@ class Whistle:
 			fsm.change(&"chase")
 
 
+# 鏟起（怪物圖鑑備註 2）：windup（鏟面貼地往前滑 slide）→ 前方扇形抓最近的一位玩家（擋不住）→ 隨機一種連段：
+#   A（throw）：往守墓人背後拋 distance（flight 秒、暈眩中）→ 落地 land_damage、擊倒（受身躲得掉後面的土）→ rock_delay 秒後 rocks 顆土落在落點周圍
+#   B（bury）：Player.bury 埋 bury 秒（連按翻滾提早）→ 守墓人退一步（step）→ 開燈罩（open）→ 直噴 flame 秒（窄扇形，擋得住）
+# 連段中的傷害不吃受傷無敵；被抓的人以外的人打守墓人累積 break_damage → 中斷（埋著的立刻爬出）
+class Scoop:
+	func enter(e: Gravekeeper, data: Dictionary, _fsm: StateMachine) -> void:
+		e.velocity = Vector2.ZERO
+		e.world.cooldowns.start(e.cd("scoop"), e.def.scoop.cooldown)
+		data.phase = &"windup"
+		data.phase_time = 0.0
+		data.victim = 0
+		data.taken = 0.0
+		data.ticks = 0
+
+	func exit(e: Gravekeeper, fsm: StateMachine) -> void:
+		_release(e, fsm.data)
+
+	func update(e: Gravekeeper, dt: float, fsm: StateMachine) -> void:
+		var s: Dictionary = e.def.scoop
+		var d := fsm.data
+		d.phase_time += dt
+		e.velocity = Vector2.ZERO
+		match d.phase:
+			&"windup":
+				var target := e.nearest_player()
+				if d.phase_time < s.windup * s.track and target != null:
+					e.face_towards(target.pos, e.def.turn_speed, dt)
+				e.velocity = MathUtil.dir_from_angle(e.facing) * (s.slide / s.windup)   # 鏟面貼地往前滑一步
+				if d.phase_time >= s.windup:
+					_grab(e, s, d)
+			&"miss":
+				if d.phase_time >= s.miss_recovery:
+					fsm.change(&"chase")
+			&"throw":
+				_update_throw(e, s.throw, d, fsm)
+			&"bury":
+				_update_bury(e, s, d, dt, fsm)
+
+	func _grab(e: Gravekeeper, s: Dictionary, d: Dictionary) -> void:
+		var best: Player = null
+		for t in Hitbox.query(e.world, e.team, e.pos, e.facing, {"shape": &"sector", "range": s.range, "arc": s.arc}, e.id):
+			if t is Player and (t as Player).is_targetable() and (best == null or e.pos.distance_squared_to(t.pos) < e.pos.distance_squared_to(best.pos)):
+				best = t
+		d.phase_time = 0.0
+		if best == null or not Combat.apply_damage(e.world, e, best, {"damage": s.damage * e.damage_mul, "knockback": 0.0, "blockable": false,
+				"color": s.color, "tier": &"none", "pierce_invuln": true}):
+			d.phase = &"miss"
+			return
+		d.victim = best.id
+		e.world.emit_event("sfx:cue", {"cue": "hit", "pos": best.pos})
+		if e.world.rng.randf() < 0.5:
+			var th: Dictionary = s.throw
+			d.phase = &"throw"
+			d.from = best.pos
+			d.to = _throw_end(e, best.pos, th.distance)
+			d.landed = false
+			best.stun(th.flight)
+			best.knockback = Vector2.ZERO
+			best.vz = Entity.gravity() * th.flight / 2.0   # 剛好 flight 秒落回地面
+		else:
+			d.phase = &"bury"
+			d.phase_time = 0.0
+			best.bury(s.bury.bury)
+
+	# 拋到哪裡：從被抓的位置往守墓人背後 distance；中間有牆就停在牆前（找得到的最遠可走點）
+	func _throw_end(e: Gravekeeper, from: Vector2, distance: float) -> Vector2:
+		var dir := MathUtil.dir_from_angle(e.facing + PI)
+		var nav := e.world.nav
+		var step := distance
+		while step > 0.5:
+			var to := from + dir * step
+			if nav.has_los(from, to):
+				return nav.nearest_walkable(to)
+			step -= 0.5
+		return from
+
+	func _update_throw(e: Gravekeeper, th: Dictionary, d: Dictionary, fsm: StateMachine) -> void:
+		var p := e.world.entities.get(d.victim) as Player
+		if not d.landed:
+			if p != null and not p.is_dead and not p.is_downed:
+				var k := clampf(d.phase_time / th.flight, 0.0, 1.0)
+				p.pos = (d.from as Vector2).lerp(d.to, k)   # 直接帶著飛（穿過守墓人的身體，不被推開）
+				p.knockback = Vector2.ZERO
+			if d.phase_time >= th.flight:
+				d.landed = true
+				d.phase_time = 0.0
+				if p != null and p.is_targetable():
+					Combat.apply_damage(e.world, e, p, {"damage": th.land_damage * e.damage_mul, "knockback": 0.0, "blockable": false,
+						"color": e.def.scoop.color, "tier": &"knockdown", "pierce_invuln": true})
+				var targets := [d.to]
+				for i in th.rocks - 1:
+					targets.append((d.to as Vector2) + MathUtil.dir_from_angle(TAU * i / (th.rocks - 1) + e.world.rng.randf() * 0.5) * th.rock_spread)
+				var hit: Dictionary = e.def.dig.duplicate()
+				hit.pierce_invuln = true
+				e.drop_rocks(targets, th.rock_delay, hit)
+			return
+		if d.phase_time >= th.rock_delay + th.recovery:
+			fsm.change(&"chase")
+
+	func _update_bury(e: Gravekeeper, s: Dictionary, d: Dictionary, dt: float, fsm: StateMachine) -> void:
+		var b: Dictionary = s.bury
+		var p := e.world.entities.get(d.victim) as Player
+		var t: float = d.phase_time
+		if p != null:
+			e.face_towards(p.pos, e.def.turn_speed, dt)
+		if t < b.step_time:
+			e.velocity = -MathUtil.dir_from_angle(e.facing) * (b.step_back / b.step_time)   # 退一步
+			return
+		var flame_at: float = b.step_time + b.open
+		if t >= flame_at:
+			while d.ticks < mini(floori((t - flame_at + 1e-6) / b.tick) + 1, roundi(b.flame / b.tick)):
+				d.ticks += 1
+				var shape := {"shape": &"sector", "range": b.range, "arc": b.arc}
+				for x in Hitbox.query(e.world, e.team, e.pos, e.facing, shape, e.id):
+					if x is Player:
+						x.invuln_timer = 0.0
+				Hitbox.strike(e.world, e, e.pos, e.facing, shape, {
+					"damage": b.damage * e.damage_mul, "knockback": 0.0, "blockable": true, "color": e.def.lantern.color,
+					"damage_type": &"fire", "tier": &"light", "pierce_invuln": true,
+				})
+		if t >= flame_at + b.flame + b.recovery:
+			fsm.change(&"chase")
+
+	# 被抓的人以外的人打守墓人：累積 break_damage 就中斷連段
+	func on_damaged(e: Gravekeeper, amount: float, source_id: int, fsm: StateMachine) -> void:
+		var d := fsm.data
+		if d.victim == 0 or source_id == d.victim:
+			return
+		d.taken += amount
+		if d.taken >= e.def.scoop.break_damage:
+			e.world.emit_event("boss:scoop_broken", {"boss_id": e.id})
+			fsm.change(&"chase")
+
+	# 結束（中斷、變身）時埋著的人立刻爬出
+	func _release(e: Gravekeeper, d: Dictionary) -> void:
+		var p := e.world.entities.get(d.get("victim", 0)) as Player
+		if p != null and p.bury_mash >= 0.0:
+			p.stun_timer = 0.0
+			p.bury_mash = -1.0
+
+
 # ───────── 第二型態：墓園狼人 ─────────
 
 # 變身：站著不動、無敵 transform.time 秒（畫面層：抖動、撐破衣服）→ _become_wolf
 class Transform:
 	func enter(e: Gravekeeper, _data: Dictionary, _fsm: StateMachine) -> void:
 		e.velocity = Vector2.ZERO
+		e.set_size(e.def.grow.size)   # 還在變大中就被打到半血：直接長滿
 		e.world.emit_event("boss:transforming", {"boss_id": e.id})
 		e.invuln_timer = 0.1   # 進入的那一下就無敵（同一步後面的攻擊打不動）
 
@@ -374,7 +625,7 @@ class WolfChase:
 		return KeeperChase.new()._hounds(e)
 
 
-# 三連爪：雙爪往後拉 windup（轉向）→ 每 interval 秒抓一下（扇形），第三下往前撲 lunge（擋不住）→ recovery
+# 三連爪：雙爪往後拉 windup（轉向）→ 每 interval 秒抓一下（扇形，發 fx:claw 畫 3 條紅色爪痕），第三下往前撲 lunge（擋不住）→ recovery
 class Claw:
 	func enter(e: Gravekeeper, data: Dictionary, _fsm: StateMachine) -> void:
 		e.velocity = Vector2.ZERO
@@ -395,8 +646,11 @@ class Claw:
 			var last: bool = d.swipes == 3
 			Hitbox.strike(e.world, e, e.pos, e.facing, {"shape": &"sector", "range": c.range, "arc": c.arc}, {
 				"damage": (c.last_damage if last else c.damage) * e.damage_mul, "knockback": c.knockback * (2.0 if last else 1.0),
-				"blockable": not last, "is_heavy": last, "color": e.def.hit_color, "pierce_invuln": d.swipes > 1,
+				"blockable": not last, "is_heavy": last, "color": e.def.hit_color, "pierce_invuln": d.swipes > 1, "tier": c.tiers[d.swipes - 1],
 			})
+			# 爪痕：第一下右爪、第二下左爪（斜的方向相反），第三下雙爪一起（side 0）
+			e.world.emit_event("fx:claw", {"pos": e.pos, "height": e.height, "facing": e.facing, "range": c.range, "arc": c.arc,
+				"side": [1, -1, 0][d.swipes - 1], "color": c.color})
 		var last_at: float = c.windup + c.interval * 2.0
 		if t >= last_at and t < last_at + c.lunge_time:
 			e.velocity = MathUtil.dir_from_angle(e.facing) * (c.lunge / c.lunge_time)   # 第三下往前撲
@@ -404,7 +658,7 @@ class Claw:
 			e.resume()
 
 
-# 飛撲：四肢著地蹲低 windup（轉向）→ 跳到目標當時的位置（flight 秒，fx:dirt_lob 只畫影子）→ 落地範圍傷害（擋不住）→ recovery
+# 飛撲：四肢著地蹲低 windup（轉向）→ 跳到目標當時的位置（flight 秒，fx:dirt_lob 只畫影子）→ 落地範圍傷害（擋不住、擊倒）→ recovery
 class Leap:
 	func enter(e: Gravekeeper, data: Dictionary, _fsm: StateMachine) -> void:
 		e.velocity = Vector2.ZERO
@@ -440,7 +694,7 @@ class Leap:
 				var band := Vector2(e.ground_height - Config.HEIGHT.reach_below, e.ground_height + Config.HEIGHT.slam_height)
 				Hitbox.strike(e.world, e, e.pos, e.facing, {"shape": &"circle", "radius": l.radius}, {
 					"damage": l.damage * e.damage_mul, "knockback": l.knockback, "band": band, "blockable": false,
-					"is_heavy": true, "color": e.def.hit_color,
+					"is_heavy": true, "color": e.def.hit_color, "tier": l.tier,
 				})
 				e.world.emit_event("camera:shake", {"amount": l.shake, "duration": 0.25})
 				e.world.emit_event("fx:boss_slam", {"pos": e.pos, "height": e.height, "radius": l.radius})
@@ -489,7 +743,7 @@ class Howl:
 			var nav := e.world.nav_for(EnemyDefs.ENEMIES.hound.radius)
 			for i in h.count:
 				var a: float = e.facing + PI + (i - (h.count - 1) / 2.0) * 0.8
-				var dog := e.world.spawner.spawn_at(e.world, &"hound", nav.nearest_walkable(e.pos + MathUtil.dir_from_angle(a) * 2.5))
+				var dog := e.world.spawner.spawn_at(e.world, &"hound", nav.nearest_walkable(e.pos + MathUtil.dir_from_angle(a) * (e.radius + 1.5)))
 				Spawner.roll_rarity(e.world, dog, MonsterRarityDefs.MAGIC)
 				dog.no_souls = true
 				dog.summoner_id = e.id

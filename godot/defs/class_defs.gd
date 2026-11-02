@@ -7,6 +7,7 @@
 # passive.revive_speed / revive_hp_ratio：救隊友的速度倍率、救起後的血量比例（World._update_downed）
 # passive.vision_add / near_radius：視野距離加多少、身邊一圈的半徑（Vision.view_range / near_radius）
 # passive.dig_speed / dig_damage_taken：挖墳速度倍率（DigEvent）、挖墳中受到傷害的倍率（Combat）
+# poise：隱藏韌性（怪物圖鑑通則，8~30；輕級攻擊先削韌性，削破才硬直；Player.max_poise）
 # colors：模型配色（DarkFantasy.player_character）：armor 盔甲、trim 腰甲、cape 披風
 # locked / unlock：還沒解鎖（選角畫面顯示鎖頭與解鎖條件、選不到；目前都解鎖了，之後成就解鎖用）
 class_name ClassDefs
@@ -17,6 +18,7 @@ const ORDER: Array[StringName] = [&"guardian", &"arcanist", &"ranger", &"gravedi
 
 const CLASSES := {
 	&"guardian": {
+		"poise": 30.0,
 		"name": "守墓騎士",
 		"weapon": &"longsword",
 		"offhand": &"woodShield",
@@ -30,6 +32,7 @@ const CLASSES := {
 		"colors": {"armor": Color("8a93a3"), "trim": Color("4a505c"), "cape": Color("6b1d24")},
 	},
 	&"arcanist": {
+		"poise": 10.0,
 		"name": "祕術師",
 		"weapon": &"staff",
 		"pitch": "玻璃大砲：普攻慢，靠技能爆發，被摸到就很危險。",
@@ -41,6 +44,7 @@ const CLASSES := {
 		"colors": {"armor": Color("5a4a8a"), "trim": Color("2e2550"), "cape": Color("b9a7ff")},
 	},
 	&"ranger": {
+		"poise": 12.0,
 		"name": "盜墓遊俠",
 		"weapon": &"shortbow",
 		"pitch": "邊跑邊射的放風箏玩法。",
@@ -52,6 +56,7 @@ const CLASSES := {
 		"colors": {"armor": Color("4d6b45"), "trim": Color("2c3d27"), "cape": Color("b8d49a")},
 	},
 	&"shadow": {
+		"poise": 8.0,
 		"name": "竊影者",
 		"weapon": &"dagger",
 		"offhand": &"dagger",
@@ -66,6 +71,7 @@ const CLASSES := {
 		"colors": {"armor": Color("3a3f4a"), "trim": Color("22252c"), "cape": Color("9aa3b5")},
 	},
 	&"priest": {
+		"poise": 16.0,
 		"name": "驅魔神官",
 		"weapon": &"scepter",
 		"pitch": "揮著權杖把亡靈逼退，順便替隊友補血。",
@@ -78,6 +84,7 @@ const CLASSES := {
 		"colors": {"armor": Color("8a7a4a"), "trim": Color("4a4028"), "cape": Color("fff0b0")},
 	},
 	&"mercenary": {
+		"poise": 24.0,
 		"name": "火把傭兵",
 		"weapon": &"torch",
 		"pitch": "插火把替全隊照亮戰場，必要時吹出一片火。",
@@ -90,6 +97,7 @@ const CLASSES := {
 		"colors": {"armor": Color("8a4a3a"), "trim": Color("4a2a20"), "cape": Color("ffb070")},
 	},
 	&"gravedigger": {
+		"poise": 22.0,
 		"name": "掘墓人",
 		"weapon": &"shovel",
 		"pitch": "把怪鏟起來，丟出去砸別隻，或埋進土裡。",

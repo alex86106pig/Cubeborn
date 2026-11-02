@@ -23,6 +23,7 @@ const UPRIGHT_MODELS: Array[StringName] = [&"staff", &"torch", &"scepter"]   # �
 const WALK_SHARPNESS := 12.0
 const IDLE_SHARPNESS := 18.0
 const DEATH_FALL_TIME := 0.45
+const KNOCK_FALL_TIME := 0.25   # 被擊倒往後倒的秒數
 const BLINK_RATE := 20.0      # 無敵時間每秒閃爍次數
 const GEM_SPIN := 3.0         # 法杖寶石自轉（弧度/秒；網頁版每幀 0.05 × 60）
 const ROLL_CENTER := 0.4      # 翻滾的旋轉中心（角色高度的比例）
@@ -48,6 +49,9 @@ func update(p: Player, dt: float) -> void:
 	rig.body.position.z = 0.0   # 只有翻滾會移動 body 的前後位置
 	_pose_locomotion(p, a, dt)
 	var is_down: bool = a.loco == &"dead" or a.loco == &"downed"   # 倒地假死（C4）和死亡同一個躺地姿勢
+	if a.get("knocked", 0.0) > 0.0 and not is_down:
+		_pose_knocked(a.knocked, dt)
+		is_down = true
 	if a.airborne and not is_down:
 		_pose_airborne(a)
 	if not is_down:
@@ -111,6 +115,17 @@ func _pose_locomotion(p: Player, a: Dictionary, dt: float) -> void:
 			rig.body.position.y = 0.13 * k
 			rig.arm_r.rotation.x = _step_lerp(rig.arm_r.rotation.x, -2.6, 0.2, dt)
 			rig.arm_l.rotation.x = _step_lerp(rig.arm_l.rotation.x, -2.6, 0.2, dt)
+
+
+# 被擊倒（怪物圖鑑通則）：往後倒成躺姿（同死亡的倒法），起身交給移動層回正
+func _pose_knocked(t: float, dt: float) -> void:
+	var k := _ease(t / KNOCK_FALL_TIME)
+	rig.body.rotation.x = lerpf(0.0, -PI / 2.0, k)
+	rig.body.position.y = 0.13 * k
+	rig.arm_r.rotation.x = _step_lerp(rig.arm_r.rotation.x, 2.4, 0.25, dt)
+	rig.arm_l.rotation.x = _step_lerp(rig.arm_l.rotation.x, 2.4, 0.25, dt)
+	rig.leg_r.rotation.x = 0.3 * k
+	rig.leg_l.rotation.x = -0.2 * k
 
 
 func _pose_legs() -> void:

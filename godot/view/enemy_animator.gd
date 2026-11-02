@@ -91,6 +91,11 @@ func update(e: Enemy, dt: float) -> void:
 		if target != null and e.pos.distance_to(target.pos) <= def.preferred_range[1] + def.fire_reach:
 			_bow_arm_target = BOW_ARM_READY
 
+	if _zombie and rig is SkinnedRig:   # 持武器的腐屍：手上拿撿到的武器
+		var base: StringName = StringName(a.get("weapon", ""))
+		var kit: Dictionary = EnemyDefs.armed_kit(base) if base != &"" else {}
+		(rig as SkinnedRig).set_held_weapon(kit.get("model", &""), kit.get("offhand_model", &""))
+
 	var colossus: bool = def.has("colossus") and a.get("form", 0) > 0 and state != &"dead"
 	match &"hound" if _hound else (&"wheel" if _wheel else (&"beetle" if _beetle else (&"spider" if _spider else (&"colossus" if colossus else (&"keeper" if _keeper and state != &"spawn" and state != &"dead" else state))))):
 		&"colossus":
@@ -125,7 +130,7 @@ func update(e: Enemy, dt: float) -> void:
 			rig.position.y = -CORPSE_SINK_DEPTH * clampf((t - sink_start) / (corpse - sink_start), 0.0, 1.0)
 			# 死亡爆炸詞條：爆開前屍體一下一下脹大、閃白（不畫預警圈）
 			var swell := volatile_swell(e, t)
-			rig.body.scale = _base_body_scale * (1.0 + swell)
+			rig.body.scale = _sized_scale(a) * (1.0 + swell)
 		&"launch":
 			# 從挖墳點噴出來：雙手往上甩、腿縮起來
 			rig.arm_r.rotation.x = -2.4 + 0.3 * sin(t * 18.0)
@@ -188,10 +193,42 @@ func update(e: Enemy, dt: float) -> void:
 			_pose_rush(a, dt, def.rush)
 		&"lunge":
 			_pose_lunge(a, def.lunge)
+		&"fetch":
+			# 撿武器：走過去照常走路；彎腰伸手往地上撿
+			if a.get("phase", &"walk") == &"bend":
+				var k := MathUtil.ease_out_cubic(clampf(a.get("phase_time", 0.0) / def.pickup.bend, 0.0, 1.0))
+				_pose_walk(0.0, lerpf(-0.6, -0.3, k), -0.4)
+				rig.body.rotation.x = lerpf(0.1, 0.8, k)
+				rig.head.rotation.x = 0.3 * k
+			else:
+				walk_phase += dt * e.velocity.length() * 2.0
+				_pose_walk(1.0 if moving else 0.0, -1.35, -1.45)
+		&"armed_move":
+			_pose_armed(a, dt)
 		&"swell":
-			# 膨脹屍脹大：站定、雙手抱著肚子、身體往後仰抖動（放大與閃白在下面 bloater_swell）
-			_pose_walk(0.0, -0.7, -0.7)
-			rig.body.rotation.x = -0.15 + sin(t * 30.0) * 0.04
+			# 膨脹屍脹大：站定、雙手抱著肚子、身體往後仰抖動（放大與閃白在下面 bloater_swell）；抱住玩家時雙手往前環抱
+			if a.get("hugging", false):
+				_pose_walk(0.0, -1.3, -1.3)
+				rig.body.rotation.x = 0.1 + sin(t * 30.0) * 0.04
+			else:
+				_pose_walk(0.0, -0.7, -0.7)
+				rig.body.rotation.x = -0.15 + sin(t * 30.0) * 0.04
+		&"hug":
+			# 膨脹屍撲抱：挺肚子（後仰）、雙手往兩側張開 → 撲出去雙手往前合抱
+			var h: Dictionary = def.hug
+			var pt: float = a.get("phase_time", 0.0)
+			if a.get("phase", &"windup") == &"windup":
+				var k := MathUtil.ease_out_cubic(clampf(pt / h.windup, 0.0, 1.0))
+				_pose_arms(lerpf(-0.6, -1.4, k), lerpf(0.2, 1.0, k))
+				rig.body.rotation.x = lerpf(0.0, -0.3, k)
+			else:
+				_pose_walk(0.0, -1.5, -1.5)
+				rig.body.rotation.x = 0.25
+		&"fallen":
+			# 撲抱被擋下：往後倒坐在地上
+			var k := MathUtil.ease_out_cubic(clampf(t / 0.2, 0.0, 1.0))
+			rig.body.rotation.x = lerpf(0.0, -0.9, k) if t < def.hug.blocked_fall - 0.15 else lerpf(-0.9, 0.0, (t - def.hug.blocked_fall + 0.15) / 0.15)
+			_pose_arms(-0.4)
 		&"bite":
 			# 啃咬：雙手抓著往前、頭一下一下咬下去
 			_pose_walk(0.0, -1.2 + sin(t * 20.0) * 0.08, -1.25 - sin(t * 20.0) * 0.08)
@@ -233,6 +270,11 @@ func update(e: Enemy, dt: float) -> void:
 	rig.set_flash(flash)
 	if rig is SkinnedRig:
 		rig.flush()
+
+
+# 身體大小：稀有度放大後 × 守墓人開打後的體型（動畫欄位 size）
+func _sized_scale(a: Dictionary) -> Vector3:
+	return _base_body_scale * float(a.get("size", 1.0))
 
 
 func _pose_walk(amount: float, arm_r: float, arm_l: float) -> void:
@@ -472,13 +514,20 @@ func _pose_keeper(e: Enemy, a: Dictionary, state: StringName, t: float, dt: floa
 	var def := e.def
 	var pt: float = a.get("phase_time", 0.0)
 	rig.body.rotation.y = 0.0
+	rig.body.scale = _sized_scale(a)
 	match state:
 		&"transform":
 			# 變身：彎腰咳嗽、全身抖、身體一下一下脹大（結束時換成狼人模型）
 			var k := clampf(t / def.transform.time, 0.0, 1.0)
 			rig.body.rotation.x = 0.6 * minf(1.0, k * 3.0) + sin(t * 40.0) * 0.05
 			_pose_arms(-0.4 - 0.6 * k + sin(t * 30.0) * 0.1, 0.6 * k)
-			rig.body.scale = _base_body_scale * (1.0 + 0.15 * k * (0.7 + 0.3 * sin(t * 18.0)))
+			rig.body.scale = _sized_scale(a) * (1.0 + 0.15 * k * (0.7 + 0.3 * sin(t * 18.0)))
+		&"grow":
+			# 變大：挺直、雙臂往兩側撐開、仰頭，全身抖（大小照 size 慢慢放大）
+			var k := MathUtil.ease_out_cubic(clampf(t / def.grow.time, 0.0, 1.0))
+			_pose_arms(lerpf(-0.5, -0.9, k) + sin(t * 30.0) * 0.08, lerpf(0.0, 0.9, k))
+			rig.body.rotation.x = lerpf(0.3, -0.2, k)
+			rig.head.rotation.x = lerpf(0.0, -0.35, k)
 		&"patrol":
 			# 掃地：走的時候駝背慢走，停下來時鏟子左右掃地
 			var moving := e.velocity.length_squared() > 0.01
@@ -509,22 +558,53 @@ func _pose_keeper(e: Enemy, a: Dictionary, state: StringName, t: float, dt: floa
 				rig.body.rotation.y = lerpf(-0.5, 0.5, k)
 			rig.arm_l.rotation = Vector3(-0.5, 0.0, 0.0)
 			rig.body.rotation.x = 0.15
-		&"lob":
-			var l: Dictionary = def.lob
+		&"dig":
+			# 瘋狂鏟土：彎腰把鏟子插進地裡（windup）→ 鏟子一下一下往後狂甩土、身體跟著上下 → 收招
+			var l: Dictionary = def.dig
 			match a.get("phase", &"windup"):
 				&"windup":
 					var k := MathUtil.ease_out_cubic(clampf(pt / l.windup, 0.0, 1.0))
-					rig.body.rotation.x = lerpf(0.25, 0.6, k)
-					rig.arm_r.rotation = Vector3(lerpf(-0.6, 0.1, k), 0.0, 0.0)
-					rig.arm_l.rotation = Vector3(lerpf(-0.5, 0.0, k), 0.0, 0.0)
-				&"throw":
-					var k := clampf(pt / 0.15, 0.0, 1.0)
-					rig.body.rotation.x = lerpf(0.6, -0.15, k)
-					rig.arm_r.rotation = Vector3(lerpf(0.1, -2.8, k), 0.0, 0.0)
+					rig.body.rotation.x = lerpf(0.25, 0.7, k)
+					rig.arm_r.rotation = Vector3(lerpf(-0.6, 0.2, k), 0.0, 0.0)
+					rig.arm_l.rotation = Vector3(lerpf(-0.5, 0.1, k), 0.0, 0.0)
+				&"dig":
+					var s := sin(pt * 22.0)   # 一秒約 3.5 下
+					rig.body.rotation.x = 0.55 + 0.2 * s
+					rig.arm_r.rotation = Vector3(lerpf(0.2, -2.4, 0.5 + 0.5 * s), 0.3 * s, 0.0)
+					rig.arm_l.rotation = Vector3(lerpf(0.1, -1.6, 0.5 + 0.5 * s), -0.2, 0.0)
+					rig.head.rotation.x = 0.2
 				_:
 					var k := clampf(pt / l.recovery, 0.0, 1.0)
-					rig.body.rotation.x = lerpf(-0.15, 0.25, k)
-					rig.arm_r.rotation = Vector3(lerpf(-2.8, -0.6, k), 0.0, 0.0)
+					rig.body.rotation.x = lerpf(0.55, 0.25, k)
+					rig.arm_r.rotation = Vector3(lerpf(-1.2, -0.6, k), 0.0, 0.0)
+		&"scoop":
+			# 鏟起：鏟面貼地往前滑（彎腰、鏟子平伸）→ 拋飛：鏟子往後上方甩 → 埋地：鏟子往下壓、再退一步舉燈 → 直噴
+			var s: Dictionary = def.scoop
+			match a.get("phase", &"windup"):
+				&"windup":
+					var k := MathUtil.ease_out_cubic(clampf(pt / s.windup, 0.0, 1.0))
+					rig.body.rotation.x = lerpf(0.25, 0.8, k)
+					rig.arm_r.rotation = Vector3(lerpf(-0.6, -1.1, k), lerpf(0.0, -0.5, k), 0.0)
+					rig.arm_l.rotation = Vector3(lerpf(-0.5, -1.0, k), lerpf(0.0, 0.4, k), 0.0)
+					rig.head.rotation.x = 0.3 * k
+				&"throw":
+					var k := MathUtil.ease_out_cubic(clampf(pt / 0.25, 0.0, 1.0))
+					rig.body.rotation.x = lerpf(0.8, -0.3, k)
+					_pose_arms(lerpf(-1.1, -3.0, k), 0.2)
+				&"bury":
+					var b: Dictionary = s.bury
+					if pt < b.step_time:
+						var k := clampf(pt / b.step_time, 0.0, 1.0)
+						rig.body.rotation.x = lerpf(0.8, 0.4, k)
+						rig.arm_r.rotation = Vector3(lerpf(-1.1, 0.1, k), 0.0, 0.0)
+					else:
+						var k := MathUtil.ease_out_cubic(clampf((pt - b.step_time) / b.open, 0.0, 1.0))
+						rig.arm_l.rotation = Vector3(lerpf(-0.5, -1.5, k), lerpf(0.0, -0.4, k), 0.0)
+						rig.arm_r.rotation = Vector3(-0.4, 0.0, 0.0)
+						rig.body.rotation.x = lerpf(0.4, 0.15, k)
+				_:
+					rig.body.rotation.x = lerpf(0.8, 0.25, clampf(pt / s.miss_recovery, 0.0, 1.0))
+					rig.arm_r.rotation = Vector3(-0.8, 0.0, 0.0)
 		&"lantern":
 			var f: Dictionary = def.lantern
 			match a.get("phase", &"windup"):
@@ -533,8 +613,11 @@ func _pose_keeper(e: Enemy, a: Dictionary, state: StringName, t: float, dt: floa
 					rig.arm_l.rotation = Vector3(lerpf(-0.5, -1.5, k), lerpf(0.0, -0.4, k), 0.0)
 					rig.body.rotation.x = lerpf(0.25, -0.2, k)
 					rig.head.rotation.x = lerpf(0.0, -0.2, k)
-				&"flame":
-					rig.arm_l.rotation = Vector3(-1.5, -0.4, 0.0)
+				&"flame", &"spin":
+					# 追著噴：腳照常走；轉圈時提燈往外伸
+					walk_phase += dt * e.velocity.length() * 2.0
+					_pose_walk(1.0 if e.velocity.length_squared() > 0.01 else 0.0, -0.4, -1.5)
+					rig.arm_l.rotation = Vector3(-1.5, -0.9 if a.get("phase") == &"spin" else -0.4, 0.0)
 					rig.body.rotation.x = 0.2
 					rig.head.rotation.x = 0.1
 				_:
@@ -556,6 +639,7 @@ func _pose_wolf(e: Enemy, a: Dictionary, state: StringName, t: float, dt: float)
 	var w: Dictionary = e.def.wolf
 	var pt: float = a.get("phase_time", 0.0)
 	rig.body.rotation.y = 0.0
+	rig.body.scale = _sized_scale(a)
 	match state:
 		&"wolf_chase", &"stalk":
 			walk_phase += dt * e.velocity.length() * 1.6
@@ -642,6 +726,25 @@ func _pose_hound(e: Enemy, a: Dictionary, state: StringName, t: float, dt: float
 					rig.body.rotation.x = lerpf(-0.1, 0.0, k)
 					rig.head.rotation.x = lerpf(-0.2, 0.0, k)
 					legs = Vector4(-1.1, -1.1, 1.1, 1.1) * (1.0 - k)
+		&"snap":   # 快咬：低頭、齜牙（頭壓低往前）→ 往前竄、張嘴咬
+			var c: Dictionary = def.snap
+			var pt: float = a.get("phase_time", 0.0)
+			if a.get("phase", &"windup") == &"windup":
+				var k := MathUtil.ease_out_cubic(clampf(pt / c.windup, 0.0, 1.0))
+				rig.body.rotation.x = 0.1 * k
+				rig.head.rotation.x = 0.45 * k
+				legs = Vector4(-0.3, -0.3, 0.2, 0.2) * k
+			else:
+				rig.body.rotation.x = -0.05
+				rig.head.rotation.x = -0.35
+				legs = Vector4(-0.8, -0.6, 0.7, 0.5)
+		&"hop":   # 側跳、往後跳：四腳收起
+			rig.body.rotation.x = 0.0
+			rig.head.rotation.x = 0.1
+			legs = Vector4(0.6, 0.6, -0.6, -0.6)
+		&"dazed":   # 被盾擋下：甩頭
+			rig.head.rotation.x = 0.2
+			rig.body.rotation.z = 0.15 * sin(t * 18.0)
 		&"hurt":
 			rig.body.rotation.z = 0.25 * sin(clampf(t / def.hurt_time, 0.0, 1.0) * PI)
 		&"dead":
@@ -654,6 +757,46 @@ func _pose_hound(e: Enemy, a: Dictionary, state: StringName, t: float, dt: float
 	rig.arm_l.rotation = Vector3(legs.y, 0.0, 0.0)
 	rig.leg_r.rotation = Vector3(legs.z, 0.0, 0.0)
 	rig.leg_l.rotation = Vector3(legs.w, 0.0, 0.0)
+
+
+# 持武器的腐屍出招（各招式的預兆不重複）：
+# 揮擊 = 右手舉過頭後拉；射擊 = 雙手往前拉弓 / 法杖平舉；舉盾 = 左臂盾擋在胸前；爆裂 = 法杖舉到最高；
+# 影步 = 蹲低；治療 = 雙臂張開仰頭；噴火 = 火把往前推、身體後仰；鏟起 = 彎腰鏟面貼地
+func _pose_armed(a: Dictionary, _dt: float) -> void:
+	var pt: float = a.get("phase_time", 0.0)
+	var winding: bool = a.get("phase", &"windup") == &"windup"
+	var k := MathUtil.ease_out_cubic(clampf(pt / 0.4, 0.0, 1.0))
+	var active: bool = a.get("phase", &"") == &"active"
+	match a.get("move_type", &"melee"):
+		&"melee":
+			if winding:
+				_pose_walk(0.0, lerpf(-1.2, -2.8, k), -0.6)
+				rig.body.rotation.x = lerpf(0.0, -0.2, k)
+			else:
+				_pose_walk(0.0, -0.7, -0.6)
+				rig.body.rotation.x = 0.25 if active else 0.1
+		&"shot":
+			_pose_walk(0.0, -1.55, -1.5)
+			rig.body.rotation.x = -0.1 * k if winding else 0.0
+		&"shield":
+			_pose_walk(0.0, -0.8, lerpf(-0.6, -1.5, k))
+			rig.arm_l.rotation.y = 0.5 * k
+			rig.body.rotation.x = 0.15 * k
+		&"burst":
+			_pose_walk(0.0, lerpf(-1.2, -3.1, k) if winding else -1.0, -0.4)
+			rig.head.rotation.x = -0.3 * k if winding else 0.0
+		&"blink":
+			_pose_walk(0.0, -0.4, -0.4)
+			rig.body.rotation.x = 0.5 * k
+		&"heal":
+			_pose_arms(-1.3, lerpf(0.3, 1.2, k))
+			rig.head.rotation.x = -0.35 * k
+		&"breath":
+			_pose_walk(0.0, -1.7, -0.5)
+			rig.body.rotation.x = -0.25 * k if winding else -0.1
+		&"scoop":
+			_pose_walk(0.0, lerpf(-0.6, -0.2, k), lerpf(-0.6, -0.3, k))
+			rig.body.rotation.x = lerpf(0.0, 0.6, k) if winding else -0.2
 
 
 # 腐屍撲抱：windup 雙手舉高、身體後仰（看得出要撲）→ dash 雙手往前抓、身體前撲 → recovery 慢慢收回
@@ -727,7 +870,7 @@ static func bloater_swell(e: Enemy, state: StringName, t: float) -> float:
 	var b: Dictionary = e.def.burst
 	match state:
 		&"swell":
-			return clampf(t / b.swell_time, 0.0, 1.0)
+			return clampf(t / e.anim.get("swell_time", b.swell_time), 0.0, 1.0)
 		&"dead":
 			return 0.0 if e.anim.get("burst", false) else clampf(t / b.death_delay, 0.0, 1.0)
 	return 0.0

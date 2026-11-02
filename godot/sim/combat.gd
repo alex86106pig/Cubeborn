@@ -25,6 +25,15 @@ static func hostiles_of(world: World, team: StringName, source_id: int = 0) -> A
 	return out
 
 
+# 玩家這一下的受擊硬直級別：hit.tier；沒寫的話持續傷害（minor）不硬直、怪打的算中級、玩家打的 &""（舊的固定硬直）
+static func hurt_tier(source: Entity, hit: Dictionary) -> StringName:
+	if hit.has("tier"):
+		return hit.tier
+	if hit.get("minor", false):
+		return &"none"
+	return &"medium" if source is Enemy else &""
+
+
 # hit：damage（已含攻擊者的攻擊力，由發動招式的一方計算）、knockback、origin（預設 source.pos，擊退方向為 origin → target）、
 #      hit_stop（命中定格秒數，只給畫面層）、shake、is_heavy（重擊：第三段、盾反、爆炸，只影響顯示與音效）、blockable（能不能被格擋）、
 #      color（命中粒子顏色，只給畫面層；預設白色）、
@@ -34,6 +43,7 @@ static func hostiles_of(world: World, team: StringName, source_id: int = 0) -> A
 #      projectile（選填：投射物直接命中，G1 鐵皮斗篷、爆裂箭袋看這個）、finisher（選填：連段最後一下，末端部位的道具看這個）、
 #      no_status（選填：不疊燃燒 / 冰冷 / 失衡，羈絆的爆炸、冰錐與持續傷害）、pierce_invuln（選填：目標受傷後的無敵時間不擋這一下，連段用）、
 #      push_dir（選填：擊退方向，已正規化；不照 origin → target。格擋的正面判斷照樣看 origin）
+#      tier（選填：玩家的受擊硬直級別 none / light / medium / heavy / knockdown，Config.PLAYER.hurt_tiers；怪打玩家沒寫 = medium、minor = none）
 # 這裡套用攻擊者的爆擊與擊退屬性；護甲與受傷倍率在 Entity.take_damage
 # 回傳是否實際命中（高度不重疊、被格擋也算沒命中）
 static func apply_damage(world: World, source: Entity, target: Entity, hit: Dictionary) -> bool:
@@ -143,6 +153,8 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 	if buried:
 		knockback = 0.0   # 被鐵鏟埋著（F9）：打得到，但不會被擊退、不硬直（2026-10-27 使用者）
 	target.suppress_stagger = hit.get("no_stagger", false) or buried   # 遠程武器的普攻不讓怪物進入受擊硬直（v0.27.0）
+	if target is Player:
+		(target as Player).hurt_tier = hurt_tier(source, hit)
 	var dealt := target.take_damage(damage, dir, knockback, source.id, hit.get("damage_type", &"phys"))
 	if hit.get("damage_type", &"phys") == &"fire" and not world.zones.is_empty():
 		GroundZones.burn_webs(world, target.pos, WEB_BURN_REACH)   # 火焰打到的地方，旁邊的蜘蛛網燒掉
@@ -170,6 +182,7 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 		ev["source_kind"] = source.kind
 		ev["origin"] = origin
 		ev["lethal"] = target.hp <= 0.0
+		ev["tier"] = hurt_tier(source, hit)   # 客戶端自己被打時照這個級別硬直（Player.net_hurt）
 	world.emit_event("entity:damaged", ev)
 	var shake: float = hit.get("shake", 0.0)
 	if shake > 0.0 and should_shake(source):

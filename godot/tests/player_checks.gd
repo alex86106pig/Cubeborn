@@ -304,6 +304,74 @@ static func check_stagger() -> String:
 	return ""
 
 
+# 受擊硬直分五級（怪物圖鑑通則）：持續傷害不硬直、不給無敵；輕級先削韌性、削破才硬直 0.2 並回滿；中級 0.45；
+# 擊倒倒地 1.2 秒、按翻滾受身在 tech_time 起身並有翻滾無敵；poise_regen_delay 秒沒被打韌性回滿；職業韌性照 ClassDefs
+static func check_hurt_tiers() -> String:
+	var cfg := Config.PLAYER
+	var w := _new_world()
+	var p := _player(w)
+	p.stats.set_base(&"max_hp", 9999.0)
+	p.hp = p.max_hp
+	var src := w.spawner.spawn_at(w, &"grunt", Vector2(0, 30))
+	src.main_state = &"train"
+	_run(w, _cmd(Vector2.ZERO), 1)
+	var hit := func(tier: StringName, dmg: float, extra := {}) -> void:
+		p.invuln_timer = 0.0
+		var h := {"damage": dmg, "knockback": 0.0}
+		if tier != &"":
+			h["tier"] = tier
+		h.merge(extra, true)
+		Combat.apply_damage(w, src, p, h)
+	hit.call(&"", 3.0, {"minor": true})
+	if p.action.is_in(&"stagger") or p.invuln_timer > 0.0:
+		return "持續傷害（minor）不應硬直、不給無敵：%s、無敵 %.2f" % [p.action.current_name, p.invuln_timer]
+	var poise := p.max_poise()
+	hit.call(&"light", poise * 0.6)
+	if p.action.is_in(&"stagger"):
+		return "輕級沒削破韌性（%.0f / %.0f）不應硬直" % [poise * 0.6, poise]
+	hit.call(&"light", poise * 0.6)
+	if not p.action.is_in(&"stagger") or absf(p.action.data.get("time", 0.0) - cfg.hurt_tiers.light) > EPS or absf(p.poise - poise) > EPS:
+		return "輕級削破韌性應硬直 %.2f 秒並回滿：%s %.2f、韌性 %.1f" % [cfg.hurt_tiers.light, p.action.current_name, p.action.data.get("time", 0.0), p.poise]
+	_run(w, _cmd(Vector2.ZERO), ceili(cfg.hurt_tiers.light / DT) + 1)
+	hit.call(&"medium", 1.0)
+	if absf(p.invuln_timer - cfg.invuln_time) > EPS:
+		return "受擊無敵應 %.2f 秒：%.3f" % [cfg.invuln_time, p.invuln_timer]
+	_run(w, _cmd(Vector2.ZERO), floori(cfg.hurt_tiers.medium / DT) - 1)
+	if not p.action.is_in(&"stagger"):
+		return "中級應硬直 %.2f 秒，提早結束" % cfg.hurt_tiers.medium
+	_run(w, _cmd(Vector2.ZERO), 3)
+	if not p.action.is_in(&"ready"):
+		return "中級 %.2f 秒後應回到 ready：%s" % [cfg.hurt_tiers.medium, p.action.current_name]
+	# 擊倒：不按就躺滿 knockdown 秒；按翻滾受身在 tech_time 起身、起身時翻滾無敵
+	for tech: bool in [false, true]:
+		hit.call(&"knockdown", 1.0)
+		if p.knock_time <= 0.0 or absf(p.stun_timer - cfg.hurt_tiers.knockdown) > EPS:
+			return "擊倒應倒地 %.1f 秒：倒地 %.3f、暈眩 %.3f" % [cfg.hurt_tiers.knockdown, p.knock_time, p.stun_timer]
+		_run(w, _cmd(Vector2.ZERO), 6)
+		if tech:
+			_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ROLL), 1)
+		var steps := 0
+		while p.stun_timer > 0.0 and steps < 200:
+			_run(w, _cmd(Vector2.ZERO), 1)
+			steps += 1
+		var up := (7 + steps) * DT if tech else (6 + steps) * DT
+		var want: float = cfg.tech_time if tech else cfg.hurt_tiers.knockdown
+		if absf(up - want) > DT * 2.5 or p.knock_time > 0.0:
+			return "擊倒%s應 %.2f 秒起身：%.3f 秒" % ["後受身" if tech else "", want, up]
+		if tech and not p.is_dodging():
+			return "受身起身時應有翻滾無敵"
+		_run(w, _cmd(Vector2.ZERO), 30)
+	# 韌性 poise_regen_delay 秒回滿；職業韌性
+	hit.call(&"light", poise * 0.5)
+	_run(w, _cmd(Vector2.ZERO), ceili(cfg.poise_regen_delay / DT) + 1)
+	if absf(p.poise - poise) > EPS:
+		return "%.0f 秒沒被打韌性應回滿：%.1f / %.1f" % [cfg.poise_regen_delay, p.poise, poise]
+	p.apply_class(&"guardian")
+	if absf(p.max_poise() - ClassDefs.CLASSES.guardian.poise) > EPS:
+		return "職業韌性應照 ClassDefs：%.1f" % p.max_poise()
+	return ""
+
+
 static func check_buffer() -> String:
 	# 劍盾：前搖中按右鍵 → 後搖第一步取消 → 下一步接格擋（不等攻擊自然結束的第 23 步）
 	var w := _new_world()
