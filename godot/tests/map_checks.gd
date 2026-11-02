@@ -606,6 +606,16 @@ static func _stage_reach(w: World, cfg: Dictionary) -> String:
 			rewards[d.reward] = true
 		if doors.size() == 2 and rewards.size() != 2:
 			return "兩扇門的獎勵應不同：%s" % rewards.keys()
+		# 畫面：每扇門一座拱門（兩根柱子、橫樑、門洞）
+		var list := []
+		for d: Dictionary in doors:
+			list.append({"pos": at.call(d.at), "side": d.side})
+		var gates := ArenaView.create_doors(list)
+		var parts := gates.get_child(0).get_child_count() if gates.get_child_count() > 0 else 0
+		var count := gates.get_child_count()
+		gates.free()
+		if count != doors.size() or parts != 4:
+			return "每扇門應畫一座拱門（%d 扇、畫了 %d 座、每座 %d 個零件）" % [doors.size(), count, parts]
 	if cfg.get("anvil", false) != w.map.has("anvil"):
 		return "鐵砧應%s出現" % ("" if cfg.get("anvil", false) else "不")
 	if w.map.has("anvil") and not reachable.call(at.call(w.map.anvil)):

@@ -123,7 +123,7 @@ func _initialize() -> void:
 		all.bind([MapChecks.check_terrain, MapChecks.check_may_rise]))
 	_check("每層的地圖（第 1 層環形墓園、第 2 層墓窟，用 next_floor 走到；門與分區照種子抽，換 LAYOUT_SEEDS 個種子都要過、每種區塊與每邊的門都抽得到、怪群放得下）：大小與邊界一致、石台都在場地內、出生點與挖墳點可走且相連、可走的格子連成一片、相鄰可走格高低差 ≤ climb_height、牆比最高的地面高出跳躍高度以上；挖墳事件生的小怪都在離玩家 min ~ max_distance、走得到玩家的地方；每層的怪群與寶箱只看種子（第 1 層打法不同第 2 層照樣一樣）",
 		all.bind([MapChecks.check_map_a, MapChecks.check_map_spawns, MapChecks.check_floor_seed]))
-	_check("小關隨機地圖（MapGen）：每種小關掃 STAGE_SEEDS 個種子都產生得出來、符合地圖規則；門 / 挖墳點 / 鐵砧 / 寶箱 / 怪群都走得到出生點、寶箱放在平地、兩扇門獎勵不同；同種子同一關每次一樣、換種子或小關就不同；產生器不用三角函數、開根號、randf",
+	_check("小關隨機地圖（MapGen）：每種小關掃 STAGE_SEEDS 個種子都產生得出來、符合地圖規則；門 / 挖墳點 / 鐵砧 / 寶箱 / 怪群都走得到出生點、寶箱放在平地、兩扇門獎勵不同、每扇門畫一座拱門；同種子同一關每次一樣、換種子或小關就不同；產生器不用三角函數、開根號、randf",
 		all.bind([MapChecks.check_stage_maps, MapChecks.check_stage_map_seed, MapChecks.check_map_gen_source]))
 	_check("怪物尋路：直線離牆小於 margin 不算看得到、繞到門口變慢的步數 < 30；玩家在圍牆內，骷髏戰士從牆外繞到這一局開的門打到、弓手繞進來射中；離目標超過 far_distance 時降低重新判斷頻率、走進來立刻判斷",
 		all.bind([MapChecks.check_nav_clearance, MapChecks.check_enemy_pathing, MapChecks.check_far_repath]))

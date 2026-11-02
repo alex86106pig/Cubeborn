@@ -476,7 +476,10 @@ func _sync_arena() -> void:
 		return
 	arena_view.layout_key = world.layout_key
 	var theme: StringName = world.map.get("theme", &"graveyard")
-	arena_view.build(world.half_extents, world.terrain, theme)
+	var doors := []
+	for d: Dictionary in DigEvent.doors(world):
+		doors.append({"pos": MapDefs.to_world(world.map, d.at), "side": d.side})
+	arena_view.build(world.half_extents, world.terrain, theme, doors)
 	world_view.apply_theme(theme)
 
 

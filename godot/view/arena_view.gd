@@ -21,9 +21,16 @@ const BLOCK_COLORS := {
 
 var layout_key := []   # 現在畫的是哪份地形（main.gd 比對 World.layout_key：換層、換種子就重建）
 
+# 小關出口的門：兩根石柱＋橫樑＋發光的門洞（顏色同出口的字 WorldLabels.EXIT_COLOR）
+const DOOR_STONE := Color("6b6e75")
+const DOOR_GLOW := Color("8fd0ff")
+const DOOR_WIDTH := 4.4
+const DOOR_HEIGHT := 3.2
+
 
 # half：場地的一半大小（World.half_extents）；theme：MapDefs 的 theme
-func build(half: Vector2, terrain: Terrain, theme: StringName = &"graveyard") -> void:
+# doors：小關出口的門 [{ pos: 世界座標, side: N / E / S / W }]（DigEvent.doors，main.gd 換算）
+func build(half: Vector2, terrain: Terrain, theme: StringName = &"graveyard", doors: Array = []) -> void:
 	for child in get_children():
 		remove_child(child)
 		child.queue_free()
@@ -32,6 +39,27 @@ func build(half: Vector2, terrain: Terrain, theme: StringName = &"graveyard") ->
 	add_child(DarkFantasy.build_arena(maxf(half.x, half.y), rng, theme))
 	if not terrain.blocks.is_empty():
 		add_child(create_blocks(terrain.blocks, theme))
+	if not doors.is_empty():
+		add_child(create_doors(doors))
+
+
+# 出口的門貼著關卡邊緣的崖壁：門洞寬沿著那一邊（北 / 南沿 x、東 / 西沿 z）
+static func create_doors(doors: Array) -> Node3D:
+	var k := PartKit.new()
+	var group := Node3D.new()
+	var stone := k.mat(DOOR_STONE)
+	var glow := k.mat(DOOR_GLOW, true)
+	var half := DOOR_WIDTH / 2.0
+	for d: Dictionary in doors:
+		var gate := Node3D.new()
+		gate.position = Vector3(d.pos.x, 0.0, d.pos.y)
+		gate.rotation.y = 0.0 if d.side == &"N" or d.side == &"S" else PI / 2.0
+		k.add(gate, PartKit.box(0.7, DOOR_HEIGHT, 0.7), stone, {"x": -half, "y": DOOR_HEIGHT / 2.0})
+		k.add(gate, PartKit.box(0.7, DOOR_HEIGHT, 0.7), stone, {"x": half, "y": DOOR_HEIGHT / 2.0})
+		k.add(gate, PartKit.box(DOOR_WIDTH + 1.0, 0.6, 0.8), stone, {"y": DOOR_HEIGHT + 0.1})
+		k.add(gate, PartKit.box(DOOR_WIDTH - 0.7, DOOR_HEIGHT - 0.3, 0.08), glow, {"y": (DOOR_HEIGHT - 0.3) / 2.0, "shadow": false})
+		group.add_child(gate)
+	return group
 
 
 # 所有地形石台合併成一個網格（每個石台 5 面：頂面 + 四個側面；頂點色），地圖上有上百個石台也只畫 1 次
