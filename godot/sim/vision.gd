@@ -53,7 +53,7 @@ static func in_view_cone(viewer: Player, p: Vector2, target_radius: float = 0.0)
 	if dist > near_radius(viewer) + target_radius:
 		# 身體邊緣進入扇形就算看得到（不會半個身子在視野內卻整隻消失）
 		var allowance: float = view_angle(viewer) / 2.0 + (asin(minf(1.0, target_radius / dist)) if dist > 1e-4 else 0.0)
-		if absf(MathUtil.wrap_angle(atan2(d.x, d.y) - viewer.facing)) > allowance:
+		if absf(MathUtil.wrap_angle(atan2(d.x, d.y) - viewer.view_facing())) > allowance:
 			return false
 	return true
 

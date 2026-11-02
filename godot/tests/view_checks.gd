@@ -3021,3 +3021,86 @@ static func check_part_hint() -> String:
 			if ItemDefs.PART_TAGS[part][on].length() > 3:
 				return "格子裡的短字最多 3 個字：%s" % ItemDefs.PART_TAGS[part][on]
 	return ""
+
+
+# 視野看滑鼠的方向：翻滾時身體轉向翻滾方向，前方（滑鼠那邊）照樣看得到、翻滾的方向（側面）照樣看不到；畫面的扇形遮罩用同一個方向
+static func check_vision_aim() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	p.pos = Vector2.ZERO
+	var front := Vector2(0.0, 10.0)
+	var side := Vector2(10.0, 0.0)
+	var roll := _cmd(Vector2(1.0, 0.0), front, InputCmd.BTN_ROLL)
+	_run(w, _cmd(Vector2.ZERO, front), 30)
+	_run(w, roll, 3)
+	if not p.action.is_in(&"roll") or absf(MathUtil.wrap_angle(p.facing - PI / 2.0)) > 0.3:
+		return "往 +X 翻滾時身體應朝 +X（動作 %s、朝向 %.2f）" % [p.action.current_name, p.facing]
+	var eye := p.pos + front
+	if not Vision.point_visible(w, p, eye) or Vision.point_visible(w, p, p.pos + side):
+		return "翻滾中視野應照滑鼠方向（前方 %s、翻滾那邊 %s）" % [Vision.point_visible(w, p, eye), Vision.point_visible(w, p, p.pos + side)]
+	if absf(MathUtil.wrap_angle(p.view_facing() - MathUtil.angle_to(p.pos, front))) > 1e-3:
+		return "view_facing 應是滑鼠的方向"
+	return ""
+
+
+# 在介面上按下的滑鼠鍵放開前不算攻擊：點遺物卡片（背包開著）選完、背包自動關掉時左鍵還按著，不能接著普攻；放開再按就照常
+static func check_ui_click_blocks_attack() -> String:
+	InputCollector.register_actions()
+	var c := InputCollector.new()
+	_scene_root().add_child(c)
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	var release := InputEventMouseButton.new()
+	release.button_index = MOUSE_BUTTON_LEFT
+	release.pressed = false
+	var err := ""
+	c.mouse_captured = true
+	Input.action_press(&"attack")
+	c._input(press)
+	c.mouse_captured = false   # 選完遺物：面板和自動打開的背包一起關
+	if c._held_buttons() & InputCmd.BTN_ATTACK != 0 or c._latched & InputCmd.BTN_ATTACK != 0:
+		err = "在背包上按下的左鍵，背包關掉後還按著不應算普攻"
+	Input.action_release(&"attack")
+	c._input(release)
+	if err == "":
+		Input.action_press(&"attack")
+		c._input(press)
+		if c._held_buttons() & InputCmd.BTN_ATTACK == 0 or c._latched & InputCmd.BTN_ATTACK == 0:
+			err = "放開再按（不在介面上）應照常普攻"
+		Input.action_release(&"attack")
+		c._input(release)
+	c.queue_free()
+	return err
+
+
+# 遺物卡片寫出拿過沒：同一種道具已經鑲著（羈絆不會重複算）、只在背包裡；沒有的不寫
+static func check_relic_owned() -> String:
+	var w := _new_world(5)
+	var cam := _test_camera()
+	var hud: Variant = load("res://ui/hud.tscn").instantiate()
+	hud.setup(w, cam)
+	_scene_root().add_child(hud)
+	var p := _player(w)
+	var ids := ItemDefs.item_ids().filter(func(id: StringName) -> bool: return not ItemDefs.ITEMS[id].get("bonds", []).is_empty() and ItemDefs.ITEMS[id].shape == &"dot")
+	var err := ""
+	p.loadout.add_item(p, ids[0])
+	p.loadout.add_item(p, ids[1], {"cell": Vector2i(0, 0), "rot": 0}, 0, Loadout.BAG)
+	if not p.loadout.items.any(func(it: Dictionary) -> bool: return it.id == ids[0]):
+		err = "前置：%s 應自動鑲上" % ids[0]
+	var relic := w.drop_relic(&"big", p.pos + Vector2(1.0, 0))
+	relic.open_for(p)
+	relic.offers[p.peer_id] = ids.slice(0, 3)
+	var panel: RelicPanel = hud.relic_panel
+	panel.refresh(w, p)
+	if err == "":
+		var texts := func(i: int) -> Array: return panel._cards.get_child(i).find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text)
+		if not texts.call(0).has(RelicPanel.OWNED_ACTIVE):
+			err = "已經鑲著的道具卡片應寫「%s」：%s" % [RelicPanel.OWNED_ACTIVE, texts.call(0)]
+		elif not texts.call(1).has(RelicPanel.OWNED_BAG):
+			err = "背包裡有的道具卡片應寫「%s」：%s" % [RelicPanel.OWNED_BAG, texts.call(1)]
+		elif texts.call(2).has(RelicPanel.OWNED_ACTIVE) or texts.call(2).has(RelicPanel.OWNED_BAG):
+			err = "沒拿過的道具卡片不應寫拿過：%s" % [texts.call(2)]
+	hud.queue_free()
+	cam.queue_free()
+	return err

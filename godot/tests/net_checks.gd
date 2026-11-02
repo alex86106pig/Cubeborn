@@ -1291,3 +1291,25 @@ static func check_net_stage() -> String:
 	if cw.souls != hw.souls:
 		return "門的獎勵（靈魂）客戶端應同步（%d / %d）" % [cw.souls, hw.souls]
 	return ""
+
+
+# 觀戰隊友看隊友的視野：房主的玩家往旁邊翻滾、滑鼠朝前，客戶端那邊他的視野方向（快照 P_VIEW）是滑鼠的方向、不是翻滾的方向
+static func check_net_view() -> String:
+	var link := _Link.new(41, [1, 2], 0, 0.0, false)
+	var hp: Player = link.host_world.players[1]
+	var front := hp.pos + Vector2(0.0, 10.0)
+	for i in 20:
+		link.step(_cmd(Vector2.ZERO, 0, front), _cmd(Vector2.ZERO))
+	link.step(_cmd(Vector2(1.0, 0.0), InputCmd.BTN_ROLL, front), _cmd(Vector2.ZERO))
+	for i in 6:
+		link.step(_cmd(Vector2(1.0, 0.0), InputCmd.BTN_ROLL, front), _cmd(Vector2.ZERO))
+	var mirror: Player = link.client.world.players.get(1)
+	if mirror == null:
+		return "客戶端沒有房主玩家的鏡像"
+	var want := hp.view_facing()
+	if absf(MathUtil.wrap_angle(hp.facing - want)) < 0.5:
+		return "前置：房主玩家翻滾時身體應轉向翻滾方向（朝向 %.2f、視野 %.2f）" % [hp.facing, want]
+	# 快照晚幾步、玩家翻滾時一直側移，朝同一點的方向跟著變（約 0.1）；要分的是滑鼠方向（約 0）和身體方向（π / 2）
+	if mirror.has_aim or absf(MathUtil.wrap_angle(mirror.view_facing() - want)) > 0.25:
+		return "客戶端的隊友視野方向應照快照（%.2f），實際 %.2f（身體 %.2f）" % [want, mirror.view_facing(), mirror.facing]
+	return ""

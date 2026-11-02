@@ -10,6 +10,8 @@ const HELD_REACH := 0.9   # 鐵鏟舉著的怪離身體邊緣多遠：放在鏟�
 var peer_id := 0
 var move_input := Vector2.ZERO
 var aim_point := Vector2(0.0, 5.0)
+var has_aim := false                   # aim_point 是這位玩家的輸入給的（房主的每位玩家、客戶端自己）；客戶端的隊友沒有（快照不送瞄準點）
+var synced_view := NAN                 # 客戶端的隊友：快照帶來的視野方向（NetCodec.P_VIEW，觀戰時用）
 var is_attack_held := false
 var is_special_held := false           # 右鍵按住（劍盾按住格擋，v0.41.0）
 var attack_pressed := false            # 本步剛按下左鍵（格擋中按左鍵 = 招架）
@@ -477,10 +479,21 @@ func consume_roll_charge() -> void:
 		world.cooldowns.start(cd(ROLL_CD), roll_cooldown())
 
 
+# 視野看的方向（Vision）：滑鼠瞄準的方向，翻滾、攻擊時身體轉向不影響；客戶端的隊友用快照帶來的（觀戰時看隊友的視野）；
+# 都沒有或滑鼠在腳下時照身體朝向
+func view_facing() -> float:
+	if has_aim and pos.distance_squared_to(aim_point) > 0.01:
+		return MathUtil.angle_to(pos, aim_point)
+	if not is_nan(synced_view):
+		return synced_view
+	return facing
+
+
 # 權威端不信任輸入：移動向量長度一律限制在 1 以內
 func apply_cmd(cmd: InputCmd) -> void:
 	move_input = cmd.move.limit_length(1.0)
 	aim_point = cmd.aim
+	has_aim = true
 	is_attack_held = cmd.has(InputCmd.BTN_ATTACK)
 	is_special_held = cmd.has(InputCmd.BTN_SPECIAL_HELD)
 	is_interact_held = cmd.has(InputCmd.BTN_INTERACT)

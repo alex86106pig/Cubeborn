@@ -31,6 +31,8 @@ var inventory_panel: InventoryPanel   # 背包手上拿著東西時 R 是旋轉�
 var _inv_ops: Array = []        # 背包介面送出的操作，下一筆輸入帶走
 
 var _latched := 0               # 兩次模擬步之間按過的按鈕，步驟執行後才清除
+# 在介面上按下的滑鼠鍵（BTN_ATTACK / BTN_SPECIAL）：放開前不算攻擊、特殊技（點遺物卡片選完後面板與自動打開的背包一起關掉，左鍵還按著）
+var _ui_press := 0
 var _aim := Vector2(0.0, 5.0)
 
 
@@ -61,11 +63,19 @@ func _input(event: InputEvent) -> void:
 	if relic_panel != null and relic_panel.visible and _relic_key(event):
 		get_viewport().set_input_as_handled()
 		return
+	if event.is_action_released(&"attack"):
+		_ui_press &= ~InputCmd.BTN_ATTACK
+	elif event.is_action_released(&"special"):
+		_ui_press &= ~InputCmd.BTN_SPECIAL
 	if event.is_action_pressed(&"attack"):
-		if not mouse_captured and not _mouse_over_button():
+		if _mouse_on_ui():
+			_ui_press |= InputCmd.BTN_ATTACK
+		else:
 			_latched |= InputCmd.BTN_ATTACK
 	elif event.is_action_pressed(&"special"):
-		if not mouse_captured and not _mouse_over_button():
+		if _mouse_on_ui():
+			_ui_press |= InputCmd.BTN_SPECIAL
+		else:
 			_latched |= InputCmd.BTN_SPECIAL
 	elif event.is_action_pressed(&"roll"):
 		_latched |= InputCmd.BTN_ROLL
@@ -100,9 +110,32 @@ func _mouse_over_button() -> bool:
 	return get_viewport().gui_get_hovered_control() is BaseButton
 
 
+# 滑鼠按下去是給介面的：背包開著、在按鈕上、在遺物的卡片上（背包被 Tab 關掉時遺物面板照樣開著）
+func _mouse_on_ui() -> bool:
+	if mouse_captured or _mouse_over_button():
+		return true
+	var hovered := get_viewport().gui_get_hovered_control()
+	return hovered != null and relic_panel != null and relic_panel.visible and relic_panel.is_ancestor_of(hovered)
+
+
 # 背包介面的操作（InputCmd.OP_*），隨下一筆輸入送出
 func queue_inventory_op(op: Array) -> void:
 	_inv_ops.append(op)
+
+
+# 按住的滑鼠鍵（普攻、右鍵按住）：背包開著、在按鈕上、在介面上按下還沒放開的不算
+func _held_buttons() -> int:
+	var out := 0
+	var over_button := _mouse_over_button()
+	if not Input.is_action_pressed(&"attack"):
+		_ui_press &= ~InputCmd.BTN_ATTACK   # 放開的事件沒收到（視窗失焦）也解開
+	if not Input.is_action_pressed(&"special"):
+		_ui_press &= ~InputCmd.BTN_SPECIAL
+	if auto_attack or (Input.is_action_pressed(&"attack") and not mouse_captured and not over_button and _ui_press & InputCmd.BTN_ATTACK == 0):
+		out |= InputCmd.BTN_ATTACK
+	if Input.is_action_pressed(&"special") and not mouse_captured and not over_button and _ui_press & InputCmd.BTN_SPECIAL == 0:
+		out |= InputCmd.BTN_SPECIAL_HELD
+	return out
 
 
 func build_cmd(tick: int) -> InputCmd:
@@ -124,11 +157,7 @@ func build_cmd(tick: int) -> InputCmd:
 
 	cmd.buttons = _latched
 	cmd.inv_ops = _inv_ops.duplicate()
-	var over_button := _mouse_over_button()
-	if auto_attack or (Input.is_action_pressed(&"attack") and not mouse_captured and not over_button):
-		cmd.buttons |= InputCmd.BTN_ATTACK
-	if Input.is_action_pressed(&"special") and not mouse_captured and not over_button:
-		cmd.buttons |= InputCmd.BTN_SPECIAL_HELD
+	cmd.buttons |= _held_buttons()
 	if auto_special:
 		if _auto_special_steps % roundi(AUTO_SPECIAL_INTERVAL / Config.FIXED_DT) == 0:
 			cmd.buttons |= InputCmd.BTN_SPECIAL

@@ -505,14 +505,14 @@ func _create_vision_overlay() -> MeshInstance3D:
 	return mi
 
 
-# 跟著本機角色畫面上的（補間後）位置與朝向；沒有角色或已陣亡時不蓋
+# 跟著本機角色畫面上的（補間後）位置與視野方向；沒有角色或已陣亡時不蓋
 func _sync_vision_overlay(me: Player) -> void:
 	var node: Node3D = _nodes.get(me.id) if me != null else null
 	_vision_overlay.visible = node != null and not me.is_dead
 	if _vision_overlay.visible:
 		var mat: ShaderMaterial = _vision_overlay.material_override
 		mat.set_shader_parameter(&"viewer", Vector2(node.position.x, node.position.z))
-		mat.set_shader_parameter(&"facing", node.rotation.y)
+		mat.set_shader_parameter(&"facing", me.view_facing())   # 同 Vision 判斷看不看得到的方向（滑鼠方向，翻滾時不跟著身體轉）
 		mat.set_shader_parameter(&"range", Vision.view_range(me))          # 火把傭兵被動（F8）、守夜蠟燭（G1）
 		mat.set_shader_parameter(&"half_angle", Vision.view_angle(me) / 2.0)
 		mat.set_shader_parameter(&"near_radius", Vision.near_radius(me))

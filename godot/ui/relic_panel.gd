@@ -29,6 +29,8 @@ var choice_count := 0
 var _shown_key := []             # 目前卡片對應的選項與羈絆件數（變了才重建）
 var _dismissed := 0              # 本機已經按了選 / 關掉的遺物：等權威端關掉前先不顯示，免得閃一下
 var _affix_step := false         # 鐵砧的第一步（選項是詞條）：選了之後換成技能的選項，面板不關
+const OWNED_ACTIVE := "已經鑲著：羈絆不會重複算"
+const OWNED_BAG := "背包裡有（沒鑲上）"
 const AFFIX_KINDS := {&"bond": "羈絆 +1", &"enh": "羈絆強化", &"cvt": "屬性轉換", &"imp": "印記格", &"branch": "分支"}
 var _number := RegEx.create_from_string(NUMBER_PATTERN)
 
@@ -70,7 +72,8 @@ func refresh(world: World, me: Player) -> void:
 		_title.text = "鐵砧：選一個這把武器的技能"
 	else:
 		_title.text = "選一個%s（按數字鍵或點卡片）" % ("技能" if r.relic_kind == &"skill" else "道具")
-	var key := [choices.duplicate(), me.loadout.bond_counts.duplicate(), me.skill_levels.duplicate()]
+	var key := [choices.duplicate(), me.loadout.bond_counts.duplicate(), me.skill_levels.duplicate(),
+		me.loadout.items.map(func(it: Dictionary) -> StringName: return it.id), me.inventory.entries.map(func(e: Dictionary) -> StringName: return e.id)]
 	if key != _shown_key:
 		_shown_key = key
 		_rebuild(choices, me)
@@ -123,6 +126,19 @@ func _card(i: int, id: StringName, me: Player) -> PanelContainer:
 	body.add_child(head)
 	if skill:
 		body.add_child(UiKit.label(UiKit.skill_line(id), CHIP_FONT, Color(1, 1, 1, 0.6)))
+	else:
+		# 拿過了嗎：羈絆的件數同一種道具只算一次（Loadout.refresh_items），鑲著的再拿一個不會多算
+		var owned := ""
+		var owned_color := Color(1, 1, 1, 0.7)
+		if me.loadout.items.any(func(it: Dictionary) -> bool: return it.id == id):
+			owned = OWNED_ACTIVE
+			owned_color = UiKit.ALERT
+		elif me.loadout.has_item(id):
+			owned = OWNED_BAG
+		if owned != "":
+			var row_owned := HBoxContainer.new()
+			row_owned.add_child(_chip(owned, owned_color))
+			body.add_child(row_owned)
 	var bonds: Array = def.get("bonds", [])
 	if not bonds.is_empty():
 		var chips := HFlowContainer.new()
