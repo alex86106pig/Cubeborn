@@ -1,4 +1,4 @@
-# 技能欄（照搬網頁版 HUD 的 skillbar）：左鍵、右鍵、Shift 翻滾（Godot 版新增）、數字鍵 1~4（寶石座的技能）與 Q（治療藥水）；CD 扇形遮罩與秒數、剩餘次數、閃爍回饋
+# 技能欄（照搬網頁版 HUD 的 skillbar）：左鍵、右鍵、Shift 翻滾（Godot 版新增）、數字鍵 1~4（寶石座的技能）與 Q（治療藥水）；CD 扇形遮罩與秒數、剩餘次數、耗魔（魔力不夠變暗）、閃爍回饋
 class_name SkillBar
 extends HBoxContainer
 
@@ -53,9 +53,13 @@ func refresh(world: World, player: Player) -> void:
 		slot.cd_ratio = 1.0 - world.cooldowns.progress(player.cd(key))
 		if slot.index >= 0:
 			var data: Variant = player.slots.get_slot(player, slot.index)   # 寶石座的技能（含火把的插火把）
-			if data != null and data.def.get("mode", &"cooldown") == &"charges":   # 寶石座的技能大多只有冷卻、資料沒有 mode
+			if data != null and data.def.get("mode", &"") == &"charges":   # 藥水、插火把：次數制
 				slot.charges.text = str(data.charges)
 				slot.icon.modulate.a = 0.3 if data.charges <= 0 else 1.0
+			elif data != null and data.def.has("mana"):
+				_show_cost(slot, player, ActiveSlots.mana_cost(player, data))
+		elif not slot.mana_def.is_empty():   # 耗魔的右鍵、招架、噴火
+			_show_cost(slot, player, player.mana_cost_of(slot.mana_def))
 		elif key == Player.ROLL_CD:
 			# 翻滾：顯示剩餘次數；還有次數時不蓋遮罩（回充秒數照樣顯示）
 			slot.charges.text = str(player.roll_charges)
@@ -66,7 +70,13 @@ func refresh(world: World, player: Player) -> void:
 		slot.mask.queue_redraw()
 
 
-# 火把舉著時（左鍵噴火 + 冷卻；右鍵格照舊是舉火把）、鐵鏟舉著怪（左鍵拋出、右鍵埋入）時換成那兩格
+# 右下角寫耗魔，魔力不夠時圖示變暗
+func _show_cost(slot: Slot, player: Player, cost: float) -> void:
+	slot.cost.text = str(roundi(cost))
+	slot.icon.modulate.a = 1.0 if player.has_mana(cost) else 0.3
+
+
+# 火把舉著時（左鍵噴火 + 耗魔；右鍵格照舊是舉火把）、鐵鏟舉著怪（左鍵拋出、右鍵埋入）時換成那兩格
 func _refresh_alt(player: Player) -> void:
 	var w := player.weapon
 	var stance: bool = player.torch_stance and w.has("stance")
@@ -94,13 +104,16 @@ func _build(player: Player) -> void:
 	if w.special.has("parry") and w.special.parry.has("name"):
 		_parry_slot = _add_slot("player.parry", w.special.parry.get("icon", w.special.parry.name), "左鍵", -1, false)
 		_parry_slot.visible = false
+		_parry_slot.set_mana_def(w.special.parry)
 	var alt: Dictionary = w.get("stance", w.get("grab", {}))
 	_alt_left = null
 	_alt_right = null
 	if not alt.is_empty():
-		_alt_left = _add_slot(alt.attack.get("cd_key", ""), alt.attack.icon, "左鍵", -1, false)   # 噴火的冷卻照一般格子更新
+		_alt_left = _add_slot(alt.attack.get("cd_key", ""), alt.attack.icon, "左鍵", -1, false)   # 噴火的耗魔照一般格子更新
 		_alt_left.visible = false
+		_alt_left.set_mana_def(alt.attack)
 	_special_slot = _add_slot("player.special", w.special.icon, "右鍵", -1, false)
+	_special_slot.set_mana_def(w.special)
 	if alt.has("special"):   # 火把舉著時只換左鍵（右鍵就是按住的舉火把）
 		_alt_right = _add_slot("", alt.special.icon, "右鍵", -1, false)
 		_alt_right.visible = false
@@ -131,6 +144,8 @@ class Slot extends Control:
 	var drawn_icon := ""        # SkillIcons 畫得出來時由 _draw 畫，icon 文字留空
 	var mask: Control           # CD 扇形遮罩；子節點會畫在格子的 _draw 上面，獨立一層才能蓋住文字圖示、又墊在秒數底下
 	var charges: Label
+	var cost: Label             # 右下角的耗魔
+	var mana_def: Dictionary = {}   # 不是寶石座的格子（右鍵、招架、噴火）：耗魔的招式資料
 	var cd_text: Label
 	var cd_left := 0.0
 	var cd_ratio := 0.0         # 0~1，尚未冷卻完成的比例（扇形遮罩）
@@ -155,9 +170,18 @@ class Slot extends Control:
 		charges = UiKit.label("", 13, UiKit.CHARGES, 1)
 		charges.position = Vector2(SLOT_SIZE - 16, -1)
 		add_child(charges)
+		cost = UiKit.label("", 13, UiKit.MANA_FILL.lightened(0.35), 1)
+		cost.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		cost.size = Vector2(SLOT_SIZE - 4, 18)
+		cost.position = Vector2(0, SLOT_SIZE - 19)
+		add_child(cost)
 		var key := UiKit.label(key_label, 11, Color(1, 1, 1, 0.8), 1)
 		key.position = Vector2(4, SLOT_SIZE - 18)
 		add_child(key)
+
+	# 只有耗魔的招式才記（右下角寫耗魔）
+	func set_mana_def(def: Dictionary) -> void:
+		mana_def = def if def.has("mana") else {}
 
 	# 換圖示（火把準備姿態的左鍵在插火 / 揮擊之間換）
 	func set_icon(p_icon: String) -> void:

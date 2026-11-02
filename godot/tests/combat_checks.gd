@@ -764,10 +764,12 @@ static func check_longbow() -> String:
 		for d in dummies:
 			amounts.append(_damage_amounts(events, d.id))
 		results.append(amounts)
-	# 冷卻中再按住右鍵：不射（按住類也要看冷卻）
+	# 魔力只夠一支時再按住右鍵：不射（按住類也要看魔力）
 	var wc := _new_world()
 	var pc := _player(wc)
 	pc.equip_weapon(&"longbow")
+	pc.set_stat_source(&"test", [[&"mana_regen", Stats.MUL, 0.0]])
+	pc.mana = pc.mana_cost_of(bow.special) * 1.5
 	var hold := InputCmd.BTN_SPECIAL | InputCmd.BTN_SPECIAL_HELD
 	var seen := {}   # 射出過的箭（飛完射程就會消失，所以記 id）
 	var plan := [[hold, 1], [0, 20]]
@@ -779,7 +781,7 @@ static func check_longbow() -> String:
 			for pr in wc.projectiles:
 				seen[pr.id] = true
 	if seen.size() != 1:
-		return "穿透箭冷卻 %.0f 秒內再按不應再射：共射出 %d 支" % [bow.special.cooldown, seen.size()]
+		return "魔力只夠射一支穿透箭（耗魔 %.0f），再按不應再射：共射出 %d 支" % [bow.special.mana, seen.size()]
 	var base := WeaponDefs.move_base_damage(WeaponDefs.WEAPONS[&"longbow"], bow.special)
 	var tap: Array = results[0]
 	var full: Array = results[1]
@@ -936,9 +938,11 @@ static func check_daggers() -> String:
 	var w3 := _new_world()
 	var p3 := _player(w3)
 	_equip_dual(p3)
+	p3.set_stat_source(&"test", [[&"mana_regen", Stats.MUL, 0.0]])
+	var mana3 := p3.mana
 	_run(w3, _cmd(Vector2.ZERO, Vector2(0, 4), InputCmd.BTN_SPECIAL), 2)
-	if p3.pos.length() > 0.01 or absf(w3.cooldowns.remaining(p3.cd("player.special")) - dg.special.miss_cooldown) > 3 * DT:
-		return "沒有怪不瞬移、冷卻 %.1f 秒：位置 %s、冷卻 %.2f" % [dg.special.miss_cooldown, p3.pos, w3.cooldowns.remaining(p3.cd("player.special"))]
+	if p3.pos.length() > 0.01 or absf(mana3 - p3.mana - dg.special.miss_mana) > 1e-3:
+		return "沒有怪不瞬移、只扣 %.0f 魔力：位置 %s、扣了 %.2f" % [dg.special.miss_mana, p3.pos, mana3 - p3.mana]
 	# 竊影者：翻滾 2 次、翻滾後攻速 +30%
 	var w4 := _class_world(&"shadow")
 	var p4 := _player(w4)
@@ -1038,22 +1042,27 @@ static func check_torch() -> String:
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 1)
 	if p.torch_stance:
 		return "放開右鍵應放下火把"
-	# 噴火：舉著時左鍵，前方的怪受到 120% 魔法；冷卻中再按不出招
+	# 噴火：舉著時左鍵，前方的怪受到 120% 魔法、扣噴火的魔力（舉火把本身不耗魔）；魔力不夠再按不出招
 	var front := _dummy(w, Vector2(0, 3))
 	var events: Array[Dictionary] = []
+	p.set_stat_source(&"test", [[&"mana_regen", Stats.MUL, 0.0]])
+	var mana0 := p.mana
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL | held), 1)
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), held), 20)
 	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), held | InputCmd.BTN_ATTACK), 30, events)
 	var got := _damage_amounts(events, front.id)
 	if got.size() != 1 or absf(got[0] - WeaponDefs.move_base_damage(tw, tw.stance.attack)) > EPS:
-		return "舉著火把左鍵噴火應打中前方一次 %.1f（按住 0.5 秒、冷卻 6 秒）：%s" % [WeaponDefs.move_base_damage(tw, tw.stance.attack), got]
-	if not p.torch_stance or w.cooldowns.is_ready(p.cd(tw.stance.attack.cd_key)) or not w.cooldowns.is_ready(p.cd("player.special")):
-		return "噴火後應還舉著火把、冷卻算在 %s（不占右鍵）" % tw.stance.attack.cd_key
+		return "舉著火把左鍵噴火應打中前方一次 %.1f（按住 0.5 秒）：%s" % [WeaponDefs.move_base_damage(tw, tw.stance.attack), got]
+	if not p.torch_stance or absf(mana0 - p.mana - p.mana_cost_of(tw.stance.attack)) > 1e-3 or not w.cooldowns.is_ready(p.cd("player.special")):
+		return "噴火後應還舉著火把、只扣噴火的 %.0f 魔力（實際 %.1f）、不占右鍵" % [p.mana_cost_of(tw.stance.attack), mana0 - p.mana]
 	events.clear()
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), held), 20)   # 等噴火收招
+	p.mana = p.mana_cost_of(tw.stance.attack) - 1.0
 	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), held | InputCmd.BTN_ATTACK), 1, events)
 	if _named(events, "skill:onCooldown").is_empty() or not p.action.is_in(&"ready"):
-		return "噴火冷卻中按左鍵應提示、不出招：%s" % p.action.current_name
+		return "魔力不夠時噴火按左鍵應提示、不出招：%s" % p.action.current_name
+	p.remove_stat_source(&"test")
+	p.mana = p.max_mana()
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 1)
 	# 插火把：火把出廠就鑲在寶石座、是數字鍵 1；背後 10 單位的怪本來看不到，火把插在它旁邊後看得到
 	var idx := 0
@@ -1164,15 +1173,17 @@ static func check_shovel() -> String:
 		return "埋入：%.1f 傷害、埋 %.1f 秒、手上放開：%s" % [base * sv.grab.special.damage_pct, bury_time, bu]
 	if results[&"free"] != [0, 0]:
 		return "2 秒沒按應掙脫：%s" % [results[&"free"]]
-	# Boss 抓不起來、沒抓到冷卻 2 秒
+	# Boss 抓不起來、沒抓到只扣 miss_mana
 	var w2 := _new_world()
 	var p2 := _player(w2)
 	p2.equip_weapon(&"shovel")
+	p2.set_stat_source(&"test", [[&"mana_regen", Stats.MUL, 0.0]])
+	var mana2 := p2.mana
 	_spawn(w2, &"boss", Vector2(0, 2.5))
 	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), 1)
 	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 8)), 12)
-	if p2.held_enemy_id != 0 or w2.cooldowns.remaining(p2.cd("player.special")) > sv.special.miss_cooldown:
-		return "Boss 抓不起來、沒抓到冷卻 %.0f 秒：舉著 %d、冷卻 %.2f" % [sv.special.miss_cooldown, p2.held_enemy_id, w2.cooldowns.remaining(p2.cd("player.special"))]
+	if p2.held_enemy_id != 0 or absf(mana2 - p2.mana - sv.special.miss_mana) > 1e-3:
+		return "Boss 抓不起來、沒抓到只扣 %.0f 魔力：舉著 %d、扣了 %.2f" % [sv.special.miss_mana, p2.held_enemy_id, mana2 - p2.mana]
 	# 掘墓人：挖墳中受傷 −25%
 	var w3 := _class_world(&"gravedigger")
 	var gd := _player(w3)

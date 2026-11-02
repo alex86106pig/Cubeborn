@@ -46,6 +46,7 @@ var class_select := ClassSelect.new()   # 選角畫面（2026-10-27）：主選�
 
 var _hp: Dictionary
 var _hp_ghost := 1.0
+var _mana: Dictionary   # 血條下面的魔力條
 var _weapon := UiKit.label("", 16)
 var _souls := UiKit.label("", 18, UiKit.SOUL)
 var _coins := UiKit.label("", 18, UiKit.GOLD)   # 本局拿到的金幣（局外貨幣）
@@ -202,6 +203,10 @@ func _init() -> void:
 	tl.add_theme_constant_override(&"separation", 8)
 	_hp = UiKit.bar(Vector2(280, 26), UiKit.HP_BG, UiKit.HP_FILL, 3)
 	tl.add_child(_hp.root)
+	_mana = UiKit.bar(Vector2(280, 18), UiKit.MANA_BG, UiKit.MANA_FILL, 3)
+	_mana.ghost.visible = false
+	_mana.root.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	tl.add_child(_mana.root)
 	tl.add_child(_weapon)
 	tl.add_child(_souls)
 	tl.add_child(_coins)
@@ -500,6 +505,9 @@ func _process(delta: float) -> void:
 	_hp.text.text = "%s / %s" % [UiKit.hp_text(player.hp), UiKit.hp_text(player.max_hp)]
 	if player.shield >= 0.5:   # 骨製護盾（G4）：先用文字顯示
 		_hp.text.text += "  盾 %s" % UiKit.hp_text(player.shield)
+	var mana_max := maxf(player.max_mana(), 1.0)
+	_set_bar(_mana, player.mana / mana_max, 0.0)
+	_mana.text.text = "%d / %d" % [floori(player.mana + 1e-4), roundi(player.max_mana())]
 	var inst := player.active_weapon()
 	var off: Dictionary = player.weapon_slots[Loadout.OFF]
 	_weapon.text = "武器：" + (WeaponDropDefs.display_name(inst) if not inst.is_empty() else player.weapon.name)

@@ -349,19 +349,19 @@ static func check_skill_bar_cd_mask() -> String:
 	_scene_root().add_child(bar)
 	bar.refresh(w, p)
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL | InputCmd.BTN_SPECIAL_HELD), 1)
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 30)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), roundi(Config.MANA.cast_gap / DT / 2.0))
 	bar.refresh(w, p)
 	var s: SkillBar.Slot = bar._slots["player.special"]
 	var err := ""
 	if s.cd_ratio <= 0.0 or s.cd_left <= 0.0:
-		err = "短弓散射後右鍵格應在冷卻：比例 %.2f、秒數 %.2f" % [s.cd_ratio, s.cd_left]
+		err = "短弓散射後右鍵格應在防連按間隔裡：比例 %.2f、秒數 %.2f" % [s.cd_ratio, s.cd_left]
 	elif not (s.icon.get_index() < s.mask.get_index() and s.mask.get_index() < s.cd_text.get_index()):
 		err = "疊放順序應為 圖示 < 遮罩 < 秒數：%d / %d / %d" % [s.icon.get_index(), s.mask.get_index(), s.cd_text.get_index()]
 	bar.queue_free()
 	return err
 
 
-# 寶石座的一般技能（資料沒有 mode、只有冷卻）：放出來後那格進冷卻，排在後面的 Q 藥水照樣顯示剩幾瓶
+# 寶石座的一般技能（耗魔、資料沒有 mode）：右下寫耗魔、魔力不夠圖示變暗；右鍵格也寫耗魔；排在後面的 Q 藥水照樣顯示剩幾瓶
 static func check_skill_bar_gem_skill() -> String:
 	var w := _new_world()
 	var p := _player(w)
@@ -369,15 +369,22 @@ static func check_skill_bar_gem_skill() -> String:
 	var bar := SkillBar.new()
 	_scene_root().add_child(bar)
 	bar.refresh(w, p)
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
-	bar.refresh(w, p)
 	var gem: SkillBar.Slot = bar._slots[ActiveSlots.cd_key(0)]
 	var heal: SkillBar.Slot = bar._slots[ActiveSlots.cd_key(ActiveSlots.HEAL_INDEX)]
+	var special: SkillBar.Slot = bar._slots["player.special"]
+	var cost := roundi(ActiveSlots.mana_cost(p, p.slots.get_slot(p, 0)))
 	var err := ""
-	if gem.cd_ratio <= 0.0 or gem.cd_left <= 0.0:
-		err = "放旋風斬後數字鍵 1 那格應在冷卻：比例 %.2f、秒數 %.2f" % [gem.cd_ratio, gem.cd_left]
-	elif heal.charges.text != str(p.slots.heal.charges):
-		err = "鑲著技能時 Q 藥水格應顯示剩 %d 瓶，實際「%s」" % [p.slots.heal.charges, heal.charges.text]
+	if gem.cost.text != str(cost) or gem.icon.modulate.a < 1.0:
+		err = "旋風斬那格應寫耗魔 %d、魔力夠時不變暗：「%s」、%.2f" % [cost, gem.cost.text, gem.icon.modulate.a]
+	elif special.cost.text != (str(roundi(p.mana_cost_of(p.weapon.special))) if p.weapon.special.has("mana") else ""):
+		err = "右鍵格應寫耗魔（%s），實際「%s」" % [p.weapon.special.get("mana", "不耗魔"), special.cost.text]
+	elif heal.charges.text != str(p.slots.heal.charges) or heal.cost.text != "":
+		err = "鑲著技能時 Q 藥水格應顯示剩 %d 瓶、不寫耗魔，實際「%s」「%s」" % [p.slots.heal.charges, heal.charges.text, heal.cost.text]
+	if err == "":
+		p.mana = cost - 1.0
+		bar.refresh(w, p)
+		if gem.icon.modulate.a >= 1.0:
+			err = "魔力不夠放旋風斬時那格應變暗"
 	bar.queue_free()
 	return err
 

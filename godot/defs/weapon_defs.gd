@@ -50,9 +50,9 @@ const WEAPONS := {
 			"sfx": "swing",
 			"sfx_release": "swingHeavy",
 			"name": "蓄力突刺",
-			"desc": "按住蓄力（最多 0.8 秒）、放開往前衝 2 → 5 單位刺出 250% → 525%；冷卻 5 秒。",
+			"desc": "按住蓄力（最多 0.8 秒）、放開往前衝 2 → 5 單位刺出 250% → 525%；耗魔 25。",
 			"icon": "sword_thrust",
-			"cooldown": 5.0,
+			"mana": 25,
 			"hold": true,
 			"roll_cancel": true,
 			"damage_pct": 2.5,         # 沒蓄力
@@ -75,7 +75,7 @@ const WEAPONS := {
 	},
 
 	# 木盾（副手）：右鍵格擋、格擋中左鍵招架；招架的傷害用主手的基礎傷害（def_of 把 special 換進主手的招式）
-	# 格擋與招架（v0.41.0 使用者決定）：按住右鍵格擋、放開就放下，沒有冷卻；格擋中按左鍵招架（有冷卻），判定時間內擋到攻擊 = 全額盾反，沒擋到 = 盾擊傷害減半
+	# 格擋與招架（v0.41.0 使用者決定）：按住右鍵格擋、放開就放下，沒有冷卻；格擋中按左鍵招架（耗魔），判定時間內擋到攻擊 = 全額盾反，沒擋到 = 盾擊傷害減半
 	&"woodShield": {
 		"id": &"woodShield",
 		"name": "木盾",
@@ -102,9 +102,9 @@ const WEAPONS := {
 			"parry": {
 				"name": "招架",
 				"icon": "parry",              # 格擋中技能欄左鍵那格換成這個圖示
-				"desc": "格擋中按左鍵：0.2 秒內擋到攻擊就招架成功，盾擊 300% 並大幅擊退；冷卻 4 秒。",
+				"desc": "格擋中按左鍵：0.2 秒內擋到攻擊就招架成功，盾擊 300% 並大幅擊退；耗魔 20。",
 				"window": 0.2,                # 按下左鍵後這麼久內擋到攻擊 = 招架成功（沿用原本完美格擋的 0.2 秒）
-				"cooldown": 4.0,              # 從按下左鍵開始算（沿用原本格擋的 4 秒）
+				"mana": 20,              # 按下左鍵開始招架時扣
 				"fail_damage_mul": 0.5,       # 判定時間結束都沒擋到：盾擊照樣打出，傷害與擊退 × 0.5（24 → 12）
 				"damage_pct": 3.0,             # 長劍 8 × 300% = 24（原本固定 25，F1 使用者同意 24；長劍基礎傷害調低時跟著拉高）
 				"range": 3.5,                 # v0.23.0 使用者決定（原本 2.5 / 120°）
@@ -154,9 +154,9 @@ const WEAPONS := {
 			"behavior": &"arcaneBurst",
 			"sfx": "arcaneCast",
 			"name": "奧術爆裂",
-			"desc": "往準星丟出法球，落地爆炸（半徑 3.2）造成 350% 並擊退；冷卻 5 秒。",
+			"desc": "往準星丟出法球，落地爆炸（半徑 3.2）造成 350% 並擊退；耗魔 25。",
 			"icon": "✺",
-			"cooldown": 5.0,
+			"mana": 25,
 			"projectile_speed": 16.0,
 			"projectile_radius": 0.45,
 			"spawn_offset": 0.6,
@@ -218,9 +218,9 @@ const WEAPONS := {
 			"behavior": &"arrowFan",
 			"sfx": "arrowShot",
 			"name": "散射",
-			"desc": "一次 5 支箭散開 50°，每支 350%；冷卻 5 秒。",
+			"desc": "一次 5 支箭散開 50°，每支 350%；耗魔 25。",
 			"icon": "bow_fan",
-			"cooldown": 5.0,
+			"mana": 25,
 			"damage_pct": 3.5,         # 6 單位外打一隻、打一群每隻都只中 1 支：一支就是目標；貼近時多中幾支
 			"count": 5,
 			"fan_arc": PI * 50.0 / 180.0,
@@ -280,9 +280,9 @@ const WEAPONS := {
 			"sfx": "bowDraw",
 			"sfx_release": "arrowShot",
 			"name": "穿透箭",
-			"desc": "按住蓄力、放開射出：150% → 400%（蓄滿 1 秒），穿過路上所有敵人；冷卻 6 秒。",
+			"desc": "按住蓄力、放開射出：150% → 400%（蓄滿 1 秒），穿過路上所有敵人；耗魔 30。",
 			"icon": "bow_pierce",
-			"cooldown": 6.0,
+			"mana": 30,
 			"hold": true,              # 按住右鍵蓄力（同格擋的按住機制），放開射出
 			"roll_cancel": true,
 			"damage_pct": 1.5,         # 沒蓄力
@@ -391,10 +391,10 @@ const WEAPONS := {
 			"behavior": &"shadowStep",
 			"sfx": "swingHeavy",
 			"name": "影步",
-			"desc": "瞬移到準星附近敵人的背後（6 單位內），背刺 300% 必爆擊；冷卻 5 秒。",
+			"desc": "瞬移到準星附近敵人的背後（6 單位內），背刺 300% 必爆擊；耗魔 25。",
 			"icon": "shadow_step",
-			"cooldown": 5.0,
-			"miss_cooldown": 1.0,      # 6 單位內沒有怪：不瞬移，冷卻只算這麼久
+			"mana": 25,
+			"miss_mana": 5,      # 沒有發動（沒怪 / 沒抓到）：只扣這麼多魔力，其他退回
 			"damage_pct": 3.0,         # 背刺必爆擊
 			"range": 6.0,
 			"knockback": 0.0,
@@ -456,9 +456,9 @@ const WEAPONS := {
 			"behavior": &"holyCircle",
 			"sfx": "arcaneCast",
 			"name": "聖光圈",
-			"desc": "腳下放 4 秒的聖光圈（半徑 4）：隊友每秒回 4、亡靈每秒受到 120% 神聖傷害；冷卻 12 秒。",
+			"desc": "腳下放 4 秒的聖光圈（半徑 4）：隊友每秒回 4、亡靈每秒受到 120% 神聖傷害；耗魔 60。",
 			"icon": "holy_circle",
-			"cooldown": 12.0,
+			"mana": 60,
 			"damage_pct": 1.2,         # 亡靈每秒受到 120%
 			"heal_per_sec": 4.0,       # 隊友（含自己）每秒回血
 			"radius": 4.0,
@@ -532,10 +532,10 @@ const WEAPONS := {
 				"behavior": &"fireBreath",
 				"sfx": "explosion",
 				"name": "噴火",
-				"desc": "舉著火把時向前噴火（90°、長 5）125% 並點燃；冷卻 6 秒。",
+				"desc": "舉著火把時向前噴火（90°、長 5）125% 並點燃；耗魔 30。",
 				"icon": "fire_breath",
-				"cooldown": 6.0,
-				"cd_key": "player.breath",   # 左鍵的招式但有冷卻：自己一個冷卻，不占右鍵的 player.special
+				"mana": 30,
+				"cd_key": "player.breath",   # 左鍵的招式但耗魔：自己一格防連按間隔，不占右鍵的 player.special
 				"damage_pct": 1.25,
 				"burn": {"pct_per_sec": 0.15, "duration": 3.0},
 				"range": 5.0,
@@ -596,10 +596,10 @@ const WEAPONS := {
 			"behavior": &"shovelGrab",
 			"sfx": "shieldBash",
 			"name": "鏟起",
-			"desc": "把面前一隻怪（Boss 除外）鏟起來舉 2 秒，之後左鍵拋出、右鍵埋入；冷卻 10 秒。",
+			"desc": "把面前一隻怪（Boss 除外）鏟起來舉 2 秒，之後左鍵拋出、右鍵埋入；耗魔 50。",
 			"icon": "shovel_grab",
-			"cooldown": 10.0,
-			"miss_cooldown": 2.0,      # 沒抓到：冷卻只算這麼久
+			"mana": 50,
+			"miss_mana": 10,      # 沒有發動（沒怪 / 沒抓到）：只扣這麼多魔力，其他退回
 			"reach": 1.4,              # 抓取距離（自己身體邊緣到怪身體邊緣）
 			"hold_time": 2.0,          # 舉著這麼久沒按就掙脫
 			"windup": 0.12,

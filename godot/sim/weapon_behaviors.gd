@@ -23,6 +23,12 @@ static func forward(p: Player) -> Vector2:
 	return MathUtil.dir_from_angle(p.facing)
 
 
+# 招式沒發動（影步沒有怪、鏟子沒抓到）：扣掉的魔力只留 miss_mana，其他退回
+static func refund_miss(p: Player, def: Dictionary, data: Dictionary) -> void:
+	var keep: float = def.get("miss_mana", 0.0) * p.stats.value(&"mana_cost")
+	p.gain_mana(maxf(0.0, data.get("mana_spent", 0.0) - keep))
+
+
 # 瞄準點太靠近（0.5 單位內）時沿用目前朝向
 static func aim_direction(p: Player) -> Vector2:
 	var v := p.aim_point - p.pos
@@ -107,7 +113,7 @@ class MeleeSwing extends Behavior:
 
 
 # 格擋（v0.41.0）：按住右鍵就格擋（TimedAction 依 def.hold 停在 active），可以移動與轉向；放開進入收招、放下盾
-# 格擋中按左鍵招架：開始冷卻與 parry.window 秒的判定；判定中擋下由 Player.try_block 標記成功（下一步全額盾反），
+# 格擋中按左鍵招架：扣 parry.mana、開始 parry.window 秒的判定；判定中擋下由 Player.try_block 標記成功（下一步全額盾反），
 # 判定時間結束都沒擋到就打出傷害減半的盾擊
 class ShieldBlock extends Behavior:
 	func enter(p: Player, _def: Dictionary, _data: Dictionary) -> void:
@@ -131,8 +137,9 @@ class ShieldBlock extends Behavior:
 				p._parry(false)
 		elif p.attack_pressed:
 			var key := p.cd("player.parry")
-			if p.world.cooldowns.is_ready(key):
-				p.world.cooldowns.start(key, pr.cooldown * p.stats.value(&"cooldown"))
+			if p.action_ready(pr, "player.parry"):
+				p.spend_mana(p.mana_cost_of(pr))
+				p.world.cooldowns.start(key, Config.MANA.cast_gap)
 				p.world.emit_event("skill:used", {"key": "player.parry", "player_id": p.id})
 				p.parry_time = 0.0
 			else:
@@ -271,7 +278,7 @@ class ChargedThrust extends Behavior:
 
 
 # 影步（F6 雙匕首右鍵）：瞬移到 range 內離準星最近那隻怪的背後（背後是牆就繞著怪找空位），背刺一下必爆擊；
-# 沒有怪就不瞬移，冷卻改成 miss_cooldown
+# 沒有怪就不瞬移，只扣 miss_mana
 class ShadowStep extends Behavior:
 	func enter(p: Player, def: Dictionary, data: Dictionary) -> void:
 		data.lock_facing = true
@@ -285,7 +292,7 @@ class ShadowStep extends Behavior:
 				best = d
 				data.target_id = e.id
 		if data.target_id == 0:
-			p.world.cooldowns.start(p.cd("player.special"), def.miss_cooldown * p.stats.value(&"cooldown"))
+			WeaponBehaviors.refund_miss(p, def, data)
 
 	func phase(p: Player, def: Dictionary, data: Dictionary, name: StringName) -> void:
 		var target: Entity = p.world.entities.get(data.target_id)
@@ -348,9 +355,9 @@ class FireBreath extends Behavior:
 		WeaponBehaviors.ignite(p, def, hits)
 
 
-# 鏟起（F9 鐵鏟右鍵）：抓起面前 reach 內最近的一隻非 Boss 敵人，舉著 hold_time 秒（Player.grab_enemy）；沒抓到冷卻改成 miss_cooldown
+# 鏟起（F9 鐵鏟右鍵）：抓起面前 reach 內最近的一隻非 Boss 敵人，舉著 hold_time 秒（Player.grab_enemy）；沒抓到只扣 miss_mana
 class ShovelGrab extends Behavior:
-	func phase(p: Player, def: Dictionary, _data: Dictionary, name: StringName) -> void:
+	func phase(p: Player, def: Dictionary, data: Dictionary, name: StringName) -> void:
 		if name != &"active":
 			return
 		var best: Enemy = null
@@ -365,7 +372,7 @@ class ShovelGrab extends Behavior:
 				best_d = d
 				best = en
 		if best == null:
-			p.world.cooldowns.start(p.cd("player.special"), def.miss_cooldown * p.stats.value(&"cooldown"))
+			WeaponBehaviors.refund_miss(p, def, data)
 			return
 		p.grab_enemy(best, def.hold_time)
 

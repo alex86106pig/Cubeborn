@@ -5,6 +5,8 @@ const SHADOW := Color(0, 0, 0, 1)
 const HP_BG := Color("2a1414")
 const HP_FILL := Color("e0443e")
 const GHOST := Color("f5d36b")
+const MANA_BG := Color("101a2e")
+const MANA_FILL := Color("4a8dff")   # 魔力條、技能欄的耗魔數字、魔力詞條
 const BORDER := Color("111111")
 const BOSS_BG := Color("1a0a0a")
 const BOSS_FILL := Color("8f3ad8")
@@ -149,7 +151,7 @@ static func item_info(id: StringName, weapon: Dictionary) -> Dictionary:
 	return {"title": "%s（%s）" % [def.name, r.name], "color": r.color, "lines": item_lines}
 
 
-# 技能的第二行：能用的武器、標籤、冷卻（第 7 步）
+# 技能的第二行：能用的武器、標籤、耗魔（插火把這種次數制的寫次數）
 static func skill_line(id: StringName) -> String:
 	var sk: Dictionary = SkillDefs.SKILLS[id]
 	var weapons: Array[String] = []
@@ -158,7 +160,8 @@ static func skill_line(id: StringName) -> String:
 	var tags: Array[String] = []
 	for t: StringName in sk.tags:
 		tags.append(SkillDefs.TAGS[t])
-	return "鑲在%s的寶石座 · %s · 冷卻 %.0f 秒" % ["、".join(weapons), "、".join(tags) if not tags.is_empty() else "—", sk.cooldown]
+	var cost := "耗魔 %d" % roundi(sk.mana) if sk.has("mana") else "每層 %d 次" % sk.get("charges", 0)
+	return "鑲在%s的寶石座 · %s · %s" % ["、".join(weapons), "、".join(tags) if not tags.is_empty() else "—", cost]
 
 
 # 道具形狀的小圖（不轉向）：每格 cell px，左上角在 at

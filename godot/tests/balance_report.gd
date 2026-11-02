@@ -1,7 +1,7 @@
 # 平衡數字表：照現在的資料表實際跑模擬，量武器普攻、右鍵、寶石座技能的傷害，與怪物的威脅，寫成 docs/平衡數字.md
 # 平常用 `node tools/release.mjs --balance` 跑；直接跑：在 godot/ 內 <Godot> --headless --path . -s res://tests/balance_report.gd -- --out=<檔案路徑>
 # 條件：白裝、技能 1 級、沒有道具與羈絆、測試場地（不含挖墳難度倍率）；怪是假人（抗性清空、每步拉回原位、不會死）
-# 技能目標（docs/設計方向.md「技能強度」）：放一次對每隻怪的傷害 = 普攻單體每秒傷害 × 冷卻 ÷ SKILL_K；有暈眩或補血的功能型 × CONTROL_MUL
+# 技能目標（docs/設計方向.md「技能強度」）：放一次對每隻怪的傷害 = 普攻單體每秒傷害 ×（耗魔 ÷ Config.MANA.per_cd_second）÷ SKILL_K；有暈眩或補血的功能型 × CONTROL_MUL
 # 單體、一群兩種站位都看：一群時算「有打到的怪平均每隻吃多少」（扇形、分裂的箭打一群時每隻只中一支，打一隻時才會好幾支都中）
 extends SceneTree
 
@@ -9,7 +9,7 @@ const DT := 1.0 / 60.0
 const SKILL_K := 3.0
 const CONTROL_MUL := 0.5
 const TOLERANCE := 0.2          # 實際 / 目標在 1 ± 這麼多以內算達標
-# 武器目標（docs/設計方向.md「武器強度」）：普攻每秒 + 右鍵按冷卻攤平，打一隻近戰 / 遠程各一檔；打一群是自己打一隻的幾倍
+# 武器目標（docs/設計方向.md「武器強度」）：普攻每秒 + 右鍵按耗魔攤平（耗魔 ÷ per_cd_second 當冷卻秒數），打一隻近戰 / 遠程各一檔；打一群是自己打一隻的幾倍
 const WEAPON_TARGET := {&"melee": 30.0, &"ranged": 22.0}
 const GROUP_BAND := Vector2(3.0, 6.0)
 # 打一群偏高但刻意保留的武器（使用者 2026-10-31：不能降傷害，同一下打到的每隻都要一樣痛，不做遞減；揮擊範圍是手感）
@@ -99,7 +99,7 @@ func _basic(lo: Array, pack: bool) -> float:
 func _weapon_table(lines: Array[String]) -> void:
 	lines.append("## 武器強度（普攻 + 右鍵）")
 	lines.append("")
-	lines.append("普攻每秒 + 右鍵每次 ÷ 冷卻（單拿這把；格擋、準備姿態、鏟起不算傷害）。打一隻目標：近戰 %.0f、遠程 %.0f（±%.0f%%）；打一群的倍數 = 一群合計 ÷ 打一隻，目標 %.0f~%.0f 倍。短弓打一隻要是最高（比 = 自己 ÷ 第二高）。" % [WEAPON_TARGET.melee, WEAPON_TARGET.ranged, TOLERANCE * 100.0, GROUP_BAND.x, GROUP_BAND.y])
+	lines.append("普攻每秒 + 右鍵每次 ÷（耗魔 ÷ %.0f）（單拿這把；格擋、準備姿態、鏟起不算傷害）。打一隻目標：近戰 %.0f、遠程 %.0f（±%.0f%%）；打一群的倍數 = 一群合計 ÷ 打一隻，目標 %.0f~%.0f 倍。短弓打一隻要是最高（比 = 自己 ÷ 第二高）。" % [Config.MANA.per_cd_second, WEAPON_TARGET.melee, WEAPON_TARGET.ranged, TOLERANCE * 100.0, GROUP_BAND.x, GROUP_BAND.y])
 	lines.append("")
 	lines.append("| 武器 | 類型 | 基礎傷害 | 打一隻每秒 | 目標 | 比 | 打一群每秒 | 倍數 | |")
 	lines.append("|---|---|---:|---:|---:|---:|---:|---:|---|")
@@ -111,9 +111,9 @@ func _weapon_table(lines: Array[String]) -> void:
 		singles[wid] = _basic(alone, false)
 		packs[wid] = _basic(alone, true)
 		var sp: Dictionary = WeaponDefs.WEAPONS[wid].get("special", {})
-		if sp.has("cooldown") and sp.has("damage_pct"):
-			singles[wid] += _special_hit(alone, sp, false).x / sp.cooldown
-			packs[wid] += _special_hit(alone, sp, true).x / sp.cooldown
+		if sp.has("mana") and sp.has("damage_pct"):
+			singles[wid] += _special_hit(alone, sp, false).x / _cd_of(sp)
+			packs[wid] += _special_hit(alone, sp, true).x / _cd_of(sp)
 	for lo: Array in LOADOUTS:
 		var wid: StringName = lo[0]
 		var wpn: Dictionary = WeaponDefs.WEAPONS[wid]
@@ -153,32 +153,33 @@ func _weapon_table(lines: Array[String]) -> void:
 func _move_table(lines: Array[String], basic: Dictionary) -> void:
 	lines.append("## 右鍵與寶石座技能")
 	lines.append("")
-	lines.append("目標 = 放一次對每隻怪的傷害 = 普攻單體每秒 × 冷卻 ÷ %.0f（有暈眩或補血 × %.1f）。單體、一群都和目標比：一群看有打到的怪平均每隻吃多少；比在 %.1f~%.1f 算達標（一群只打到 1 隻的、召喚不看）。" % [SKILL_K, CONTROL_MUL, 1.0 - TOLERANCE, 1.0 + TOLERANCE])
+	lines.append("目標 = 放一次對每隻怪的傷害 = 普攻單體每秒 ×（耗魔 ÷ %.0f）÷ %.0f（有暈眩或補血 × %.1f）。單體、一群都和目標比：一群看有打到的怪平均每隻吃多少；比在 %.1f~%.1f 算達標（一群只打到 1 隻的、召喚不看）。" % [Config.MANA.per_cd_second, SKILL_K, CONTROL_MUL, 1.0 - TOLERANCE, 1.0 + TOLERANCE])
 	lines.append("")
-	lines.append("| 招式 | 武器 | 冷卻 | 目標 | 單體每次 | 比 | 一群打到 | 一群每隻 | 比 | 一群合計 | |")
+	lines.append("| 招式 | 武器 | 耗魔 | 目標 | 單體每次 | 比 | 一群打到 | 一群每隻 | 比 | 一群合計 | |")
 	lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|")
 	for lo: Array in LOADOUTS:
 		# 右鍵看主手單拿時（長劍拿著木盾時右鍵是格擋，蓄力突刺要拿掉盾）；格擋、準備姿態、鏟起這類沒冷卻或不算傷害的不列
 		var sp: Dictionary = WeaponDefs.WEAPONS[lo[0]].get("special", {})
-		if sp.has("cooldown") and sp.has("damage_pct"):
-			_move_row(lines, basic, "右鍵・" + String(sp.name), lo[0], sp.cooldown, sp.has("stun") or sp.has("heal_per_sec"),
+		if sp.has("mana") and sp.has("damage_pct"):
+			_move_row(lines, basic, "右鍵・" + String(sp.name), lo[0], sp.mana, sp.has("stun") or sp.has("heal_per_sec"),
 				func(pack: bool) -> Vector2: return _special_hit([lo[0], &""], sp, pack), KEEP.get(sp.behavior, ""))
 	for id: StringName in SkillDefs.gem_skill_ids():
 		var def: Dictionary = SkillDefs.SKILLS[id]
 		var wid: StringName = def.weapons[0]
 		if not def.has("damage_pct") and def.behavior != &"summon":
-			lines.append("| %s | %s | %.0f | 功能技能，不算傷害 | | | | | | | |" % [ItemDefs.ITEMS[id].name, WeaponDefs.WEAPONS[wid].name, def.cooldown])
+			var cost: String = ("%.0f" % def.mana) if def.has("mana") else "次數制"   # 插火把：每層幾次、不耗魔
+			lines.append("| %s | %s | %s | 功能技能，不算傷害 | | | | | | | |" % [ItemDefs.ITEMS[id].name, WeaponDefs.WEAPONS[wid].name, cost])
 			continue
-		_move_row(lines, basic, ItemDefs.ITEMS[id].name, wid, def.cooldown, def.has("stun") or def.has("heal_ratio"),
+		_move_row(lines, basic, ItemDefs.ITEMS[id].name, wid, def.mana, def.has("stun") or def.has("heal_ratio"),
 			func(pack: bool) -> Vector2: return _skill_hit(id, pack), "", def.behavior != &"summon")
 	lines.append("")
 
 
 # group：要不要看一群每隻（召喚的僕從一次打一隻，打一群時平均每隻沒有意義）
-func _move_row(lines: Array[String], basic: Dictionary, label: String, wid: StringName, cd: float, control: bool, hit: Callable, keep := "", group := true) -> void:
+func _move_row(lines: Array[String], basic: Dictionary, label: String, wid: StringName, mana: float, control: bool, hit: Callable, keep := "", group := true) -> void:
 	var single: Vector2 = hit.call(false)   # (總傷害, 打到幾隻)
 	var pack: Vector2 = hit.call(true)
-	var target: float = basic[wid] * cd / SKILL_K * (CONTROL_MUL if control else 1.0)
+	var target: float = basic[wid] * mana / Config.MANA.per_cd_second / SKILL_K * (CONTROL_MUL if control else 1.0)
 	var ratio := single.x / target if target > 0.0 else 0.0
 	var each := pack.x / maxf(pack.y, 1.0)
 	var pack_ratio := each / target if target > 0.0 else 0.0
@@ -191,8 +192,13 @@ func _move_row(lines: Array[String], basic: Dictionary, label: String, wid: Stri
 	var mark := "✓" if off.is_empty() else "、".join(off)
 	if keep != "" and not off.is_empty():
 		mark = "保留：" + keep
-	lines.append("| %s | %s | %.0f | %.0f | %.0f | %.2f | %d | %.0f | %s | %.0f | %s |" % [label, WeaponDefs.WEAPONS[wid].name, cd, target, single.x, ratio,
+	lines.append("| %s | %s | %.0f | %.0f | %.0f | %.2f | %d | %.0f | %s | %.0f | %s |" % [label, WeaponDefs.WEAPONS[wid].name, mana, target, single.x, ratio,
 		pack.y, each, ("%.2f" % pack_ratio) if judged else "—", pack.x, mark])
+
+
+# 耗魔換算成原本的冷卻秒數（Config.MANA.per_cd_second）：右鍵攤平、技能目標都用這個
+func _cd_of(def: Dictionary) -> float:
+	return def.mana / Config.MANA.per_cd_second
 
 
 # 右鍵：按下（按住類的蓄滿 charge_time 再放開），量 SKILL_WINDOW 秒

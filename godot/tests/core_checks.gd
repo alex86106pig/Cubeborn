@@ -286,10 +286,10 @@ static func check_stats_formula() -> String:
 	s.remove_source(&"boots_a")
 	if absf(s.value(&"move_speed") - 6.5 * 1.08) > EPS:
 		return "移除來源後應剩 ×1.08，實際 %.3f" % s.value(&"move_speed")
-	s.set_source(&"wormwood", [[&"cooldown", Stats.MUL, 0.94]])
-	s.set_source(&"hourglass", [[&"cooldown", Stats.MUL, 0.75]])
-	if absf(s.value(&"cooldown") - 0.705) > EPS:
-		return "冷卻縮減應相乘為 0.705，實際 %.4f" % s.value(&"cooldown")
+	s.set_source(&"arcanist", [[&"mana_cost", Stats.MUL, 0.94]])
+	s.set_source(&"hourglass", [[&"mana_cost", Stats.MUL, 0.75]])
+	if absf(s.value(&"mana_cost") - 0.705) > EPS:
+		return "耗魔縮減應相乘為 0.705，實際 %.4f" % s.value(&"mana_cost")
 	s.set_source(&"dice", [[&"crit_chance", Stats.ADD, 1.5]])
 	if s.value(&"crit_chance") != 1.0:
 		return "爆擊率上限應為 100%%，實際 %.3f" % s.value(&"crit_chance")
@@ -297,8 +297,8 @@ static func check_stats_formula() -> String:
 	hp.set_source(&"wave", [[&"max_hp", Stats.MUL, 1.3]])
 	if hp.value(&"max_hp") != 47.0:
 		return "最大生命 36 × 1.3 應取整為 47，實際 %.2f" % hp.value(&"max_hp")
-	if StatDefs.format_value(&"armor", 8.0) != "8（減傷 7.4%）" or StatDefs.format_value(&"cooldown", 0.705) != "70.5%":
-		return "顯示格式錯誤：%s / %s" % [StatDefs.format_value(&"armor", 8.0), StatDefs.format_value(&"cooldown", 0.705)]
+	if StatDefs.format_value(&"armor", 8.0) != "8（減傷 7.4%）" or StatDefs.format_value(&"mana_cost", 0.705) != "70.5%":
+		return "顯示格式錯誤：%s / %s" % [StatDefs.format_value(&"armor", 8.0), StatDefs.format_value(&"mana_cost", 0.705)]
 	return ""
 
 
@@ -376,15 +376,15 @@ static func check_stats_hooks() -> String:
 		return "攻速 ×2 普攻應從 %d 步變約 %d 步，實際 %d 步" % [normal, normal / 2, fast]
 	p.remove_stat_source(&"test")
 
-	# 劍盾格擋 v0.41.0 起沒有冷卻，改用法杖的奧術爆裂
+	# 耗魔屬性：法杖的奧術爆裂（劍盾格擋不耗魔）；回魔先關掉，扣多少就看得出來
 	p.equip_weapon(&"staff")
-	p.set_stat_source(&"test", [[&"cooldown", Stats.MUL, 0.5]])
+	p.set_stat_source(&"test", [[&"mana_cost", Stats.MUL, 0.5], [&"mana_regen", Stats.MUL, 0.0]])
 	_run(w, _cmd(Vector2.ZERO), 120)
+	p.mana = p.max_mana()
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 1)
-	var expected: float = p.weapon.special.cooldown * 0.5
-	var remaining := w.cooldowns.remaining(_player(w).cd("player.special"))
-	if absf(remaining - expected) > DT * 2.0:
-		return "冷卻 ×0.5：特殊技冷卻應約 %.2f 秒，實際 %.2f" % [expected, remaining]
+	var expected: float = p.max_mana() - p.weapon.special.mana * 0.5
+	if absf(p.mana - expected) > 1e-3:
+		return "耗魔 ×0.5：放奧術爆裂後魔力應剩 %.1f，實際 %.1f" % [expected, p.mana]
 	p.remove_stat_source(&"test")
 
 	var w2 := _new_world()

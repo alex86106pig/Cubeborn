@@ -118,7 +118,7 @@ const PRESS_HOLD := InputCmd.BTN_SPECIAL | InputCmd.BTN_SPECIAL_HELD   # 右鍵�
 
 
 # 操作（v0.41.0）：按住才格擋、放開就放下、沒有冷卻與時間上限、可移動轉向、翻滾可提前結束；
-# 格擋中按左鍵招架（冷卻 parry.cooldown，冷卻中按發 skill:onCooldown），判定時間結束都沒擋到 = 盾擊傷害 × fail_damage_mul
+# 格擋中按左鍵招架（耗魔 parry.mana，魔力不夠按發 skill:onCooldown），判定時間結束都沒擋到 = 盾擊傷害 × fail_damage_mul
 static func _block_controls() -> String:
 	var w := _new_world()
 	var p := _player(w)
@@ -167,21 +167,23 @@ static func _block_controls() -> String:
 	return _parry_controls(sp)
 
 
-# 招架：格擋中按左鍵、冷卻、判定時間內沒擋到 → 傷害減半的盾擊；放開右鍵也等判定結束；沒格擋時左鍵照常普攻
+# 招架：格擋中按左鍵、扣魔、判定時間內沒擋到 → 傷害減半的盾擊；放開右鍵也等判定結束；魔力不夠不招架
 static func _parry_controls(sp: Dictionary) -> String:
 	var pr: Dictionary = sp.parry
 	var w := _new_world()
 	var p := _player(w)
 	p.facing = 0.0
+	p.set_stat_source(&"test", [[&"mana_regen", Stats.MUL, 0.0]])   # 不回魔：扣多少看得出來
 	var dummy := _dummy(w, Vector2(0, 2.0))
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), PRESS_HOLD), 5)
+	var mana0 := p.mana
 	var events: Array[Dictionary] = []
 	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), HOLD | InputCmd.BTN_ATTACK), 1, events)
 	var used := _named(events, "skill:used").filter(func(e: Dictionary) -> bool: return e.key == "player.parry")
 	if p.parry_time < 0.0 or used.size() != 1 or not p.action.is_in(&"special"):
 		return "格擋中按左鍵應開始招架（skill:used player.parry、還在格擋）：parry_time %.2f、%s、%s" % [p.parry_time, used, p.action.current_name]
-	if absf(w.cooldowns.remaining(p.cd("player.parry")) - pr.cooldown) > DT * 1.5:
-		return "招架冷卻應約 %.1f 秒，實際 %.3f" % [pr.cooldown, w.cooldowns.remaining(p.cd("player.parry"))]
+	if absf(mana0 - p.mana - p.mana_cost_of(pr)) > 1e-3:
+		return "招架應扣 %.0f 魔力，實際扣 %.2f" % [p.mana_cost_of(pr), mana0 - p.mana]
 	# 判定中放開右鍵：等判定結束才打出盾擊；沒擋到攻擊 → 傷害 24 × 0.5 = 12（保留小數，v0.41.0）
 	var hp0 := dummy.hp
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), ceili(pr.window / DT) + 1)
@@ -191,18 +193,20 @@ static func _parry_controls(sp: Dictionary) -> String:
 		return "招架沒擋到攻擊應打出 %.1f 傷害（%.0f × %.1f），實際 %.4f" % [want, full, pr.fail_damage_mul, hp0 - dummy.hp]
 	if p.parry_time >= 0.0 or p.block_time >= 0.0:
 		return "判定結束、右鍵已放開後應放下盾"
-	# 冷卻中再招架：發 skill:onCooldown、不招架
+	# 魔力不夠再招架：發 skill:onCooldown、不招架
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), ceili(sp.recovery / DT) + 1)
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), PRESS_HOLD), 3)
+	p.mana = p.mana_cost_of(pr) - 1.0
 	var ev2: Array[Dictionary] = []
 	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), HOLD | InputCmd.BTN_ATTACK), 1, ev2)
 	var cd_ev := _named(ev2, "skill:onCooldown").filter(func(e: Dictionary) -> bool: return e.key == "player.parry")
 	if cd_ev.size() != 1 or p.parry_time >= 0.0:
-		return "招架冷卻中按左鍵應發 skill:onCooldown 且不招架：%s、parry_time %.2f" % [cd_ev, p.parry_time]
-	# 一直按住左鍵不會連續招架（只有剛按下那一步算）：冷卻好了也要再按一次
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), HOLD | InputCmd.BTN_ATTACK), roundi(pr.cooldown / DT) + 2)
+		return "魔力不夠時按左鍵應發 skill:onCooldown 且不招架：%s、parry_time %.2f" % [cd_ev, p.parry_time]
+	# 一直按住左鍵不會連續招架（只有剛按下那一步算）：魔力回滿也要再按一次
+	p.mana = p.max_mana()
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), HOLD | InputCmd.BTN_ATTACK), roundi(Config.MANA.cast_gap / DT) + 2)
 	if p.parry_time >= 0.0 or not w.cooldowns.is_ready(p.cd("player.parry")):
-		return "按住左鍵不放不應在冷卻好後自動招架"
+		return "按住左鍵不放不應在魔力夠了以後自動招架"
 	return ""
 
 

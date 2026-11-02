@@ -323,6 +323,15 @@ class HealMaxHp extends Action:
 			world.emit_event("entity:healed", {"target_id": p.id, "amount": healed})
 
 
+# 吸魂鐮：擊殺回復 amount 魔力
+class RestoreMana extends Action:
+	func triggers() -> Array[StringName]:
+		return [&"kill"]
+
+	func run(_world: World, p: Player, _target: Entity, _damage: float, proc: Dictionary) -> void:
+		p.gain_mana(proc.effect.amount * proc.count)
+
+
 # ── 羈絆道具（Build 改版第 5 步）：層數照 BondEffects（沒有那個羈絆最多 1 層）──
 
 # 焚香爐：目標周圍 radius 內的怪（含目標）各疊 stacks 層燃燒
@@ -402,6 +411,7 @@ static var ACTIONS := {
 	&"freeze": Freeze.new(),
 	&"explode": Explode.new(),
 	&"heal_max_hp": HealMaxHp.new(),
+	&"restore_mana": RestoreMana.new(),
 	&"reflect": Reflect.new(),
 	&"ignite": Ignite.new(),
 	&"throw_knife": ThrowKnife.new(),
@@ -652,8 +662,11 @@ static func icd_ready(p: Player, key: StringName) -> bool:
 	return true
 
 
-# 玩家方的一般攻擊實際扣了 dealt 血之後（G1）：命中回復（有內部冷卻）+ 吸血；打隊友不算
+# 玩家方的一般攻擊實際扣了 dealt 血之後（G1）：命中回復、命中回魔（有內部冷卻）+ 吸血；打隊友不算
 static func on_dealt(world: World, p: Player, dealt: float) -> void:
+	var mana_hit := p.stats.value(&"mana_on_hit")
+	if mana_hit > 0.0 and icd_ready(p, &"mana_on_hit"):
+		p.gain_mana(mana_hit)
 	var amount := dealt * p.stats.value(&"lifesteal")
 	var per_hit := p.stats.value(&"life_on_hit")
 	if per_hit > 0.0 and icd_ready(p, &"life_on_hit"):

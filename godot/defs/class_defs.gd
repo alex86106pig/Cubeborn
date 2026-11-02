@@ -35,8 +35,8 @@ const CLASSES := {
 		"pitch": "玻璃大砲：普攻慢，靠技能爆發，被摸到就很危險。",
 		"stats": {&"max_hp": 80.0, &"resist_all": 0.2, &"phys_damage": 0.9, &"elem_damage": 1.2, &"hp_regen": 0.3},
 		"passive": {
-			"desc": "技能冷卻 −10%",
-			"mods": [[&"cooldown", Stats.MUL, 0.9]],
+			"desc": "耗魔 −10%",
+			"mods": [[&"mana_cost", Stats.MUL, 0.9]],
 		},
 		"colors": {"armor": Color("5a4a8a"), "trim": Color("2e2550"), "cape": Color("b9a7ff")},
 	},

@@ -48,9 +48,12 @@ const STATS := {
 	&"crit_chance": {"name": "爆擊率", "base": 0.0, "min": 0.0, "max": 1.0, "format": &"pct", "in_use": true},
 	&"crit_damage": {"name": "爆擊傷害", "base": 1.5, "min": 1.0, "max": INF, "format": &"pct", "in_use": true},
 	&"knockback": {"name": "擊退", "base": 1.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},
-	# 移動與冷卻（冷卻縮減的道具用 mul，疊再多也不會到 0）
+	# 移動、翻滾與魔力（縮減類用 mul，疊再多也不會到 0）
 	&"move_speed": {"name": "移速", "base": 1.0, "min": 0.0, "max": INF, "format": &"float", "in_use": true},
-	&"cooldown": {"name": "技能冷卻", "base": 1.0, "min": 0.05, "max": INF, "format": &"pct", "in_use": true},
+	&"max_mana": {"name": "最大魔力", "base": 0.0, "min": 0.0, "max": INF, "round": true, "format": &"int", "in_use": true},   # 基礎值 Config.MANA.max（Player._init）
+	&"mana_regen": {"name": "回魔", "base": 0.0, "min": 0.0, "max": INF, "format": &"regen", "in_use": true},   # 基礎值 Config.MANA.regen
+	&"mana_cost": {"name": "耗魔", "base": 1.0, "min": 0.05, "max": INF, "format": &"pct", "in_use": true},   # 技能與右鍵的耗魔倍率（縮減用 mul）
+	&"mana_on_hit": {"name": "命中回魔", "base": 0.0, "min": 0.0, "max": INF, "format": &"float", "in_use": true},
 	&"roll_cooldown": {"name": "翻滾冷卻", "base": 1.0, "min": 0.05, "max": INF, "format": &"pct", "in_use": true},
 	&"roll_charges": {"name": "翻滾次數", "base": 1.0, "min": 1.0, "max": INF, "round": true, "format": &"int", "in_use": true},
 	&"treasure": {"name": "尋寶", "base": 0.0, "min": 0.0, "max": INF, "format": &"pct", "in_use": true},   # 開祭壇 / 石棺、掉武器時，比最低一級稀有的權重 × (1 + 尋寶)（F1）
@@ -88,7 +91,8 @@ const PANEL_CORE: Array[StringName] = [&"max_hp", &"armor", &"damage", &"attack_
 const PANEL_GROUPS := [
 	{"name": "生存", "stats": [&"max_hp", &"hp_regen", &"armor", &"resist_all", &"dodge", &"damage_taken", &"knockback_taken", &"projectile_damage_taken", &"life_on_hit", &"lifesteal"]},
 	{"name": "攻擊", "stats": [&"damage", &"phys_damage", &"elem_damage", &"attack_speed", &"crit_chance", &"crit_damage", &"knockback", &"convert_fire", &"convert_cold"]},
-	{"name": "移動與冷卻", "stats": [&"move_speed", &"cooldown", &"roll_cooldown", &"roll_charges"]},
+	{"name": "魔力", "stats": [&"max_mana", &"mana_regen", &"mana_cost", &"mana_on_hit"]},
+	{"name": "移動", "stats": [&"move_speed", &"roll_cooldown", &"roll_charges"]},
 	{"name": "探索", "stats": [&"vision", &"pickup_radius", &"treasure", &"soul_gain", &"chest_price", &"relic_choices"]},
 	{"name": "羈絆", "stats": [&"added_fire", &"added_cold", &"burn_damage", &"burn_max_stacks", &"chill_slow", &"chill_max_stacks", &"freeze_time", &"chilled_damage_taken", &"poise_gain", &"parry_window", &"wisp_count", &"wisp_damage", &"wisp_life_on_hit"]},
 ]

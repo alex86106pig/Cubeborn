@@ -100,7 +100,66 @@ static func check_every_skill() -> String:
 	return ""
 
 
-# 等級：技能遺物選到身上已經有的技能就升 1 級（最高 LEVEL.max）；每級傷害 +LEVEL.damage、冷卻 −LEVEL.cooldown
+# 魔力：開局滿、每秒回 mana_regen、不超過上限；魔力不夠放不出技能（發 skill:onCooldown、不扣魔）；
+# 魔力道具（回魔、耗魔縮減、命中回魔有內部冷卻）照資料生效、會掉落；魔力進快照
+static func check_mana() -> String:
+	var s := _setup(&"longsword")
+	var w: World = s[0]
+	var p: Player = s[1]
+	if absf(p.mana - Config.MANA.max) > 1e-3 or absf(p.max_mana() - Config.MANA.max) > 1e-3:
+		return "開局魔力應是滿的 %.0f：%.1f / %.1f" % [Config.MANA.max, p.mana, p.max_mana()]
+	p.mana = 0.0
+	_run(w, _cmd(Vector2.ZERO), roundi(1.0 / DT))
+	if absf(p.mana - Config.MANA.regen) > 0.2:
+		return "1 秒應回 %.1f 魔力，實際 %.2f" % [Config.MANA.regen, p.mana]
+	_run(w, _cmd(Vector2.ZERO), roundi(20.0 / DT))
+	if absf(p.mana - p.max_mana()) > 1e-3:
+		return "回滿後應停在上限 %.0f，實際 %.2f" % [p.max_mana(), p.mana]
+	# 魔力不夠：放不出旋風斬
+	p.add_item(&"whirlwind")
+	var e := LootChecks._item_dummy(w, Vector2(0, 1.5), 100000.0)
+	var cost := ActiveSlots.mana_cost(p, p.slots.get_slot(p, 0))
+	p.set_stat_source(&"test", [[&"mana_regen", Stats.MUL, 0.0]])
+	p.mana = cost - 1.0
+	var events: Array[Dictionary] = []
+	var hp0 := e.hp
+	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1, events)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 20)
+	if e.hp != hp0 or absf(p.mana - (cost - 1.0)) > 1e-3 or _named(events, "skill:onCooldown").is_empty():
+		return "魔力 %.0f 不夠放旋風斬（%.0f）：不應出招、不扣魔、要提示（傷害 %.1f、魔力 %.1f、提示 %d）" % [cost - 1.0, cost, hp0 - e.hp, p.mana, _named(events, "skill:onCooldown").size()]
+	p.remove_stat_source(&"test")
+	# 魔力道具
+	var regen0 := p.stats.value(&"mana_regen")
+	p.add_item(&"wormwood")
+	p.add_item(&"hourglass")
+	var want_regen: float = regen0 + LootChecks._effect_value(&"wormwood", &"mana_regen")
+	var want_cost: float = SkillDefs.SKILLS.whirlwind.mana * LootChecks._effect_value(&"hourglass", &"mana_cost")
+	if absf(p.stats.value(&"mana_regen") - want_regen) > 1e-3 or absf(ActiveSlots.mana_cost(p, p.slots.get_slot(p, 0)) - want_cost) > 1e-3:
+		return "苦艾酒回魔應 %.1f、時之沙漏後旋風斬耗魔應 %.1f：%.2f / %.2f" % [want_regen, want_cost, p.stats.value(&"mana_regen"), ActiveSlots.mana_cost(p, p.slots.get_slot(p, 0))]
+	for id: StringName in [&"wormwood", &"soul_scythe", &"hourglass"]:
+		if not LootDefs.drop_pool(ItemDefs.ITEMS[id].rarity).has(id):
+			return "魔力道具 %s 應在掉落池" % id
+	# 命中回魔：每 ItemDefs.PROCS.mana_on_hit.icd 秒最多一次
+	p.set_stat_source(&"test", [[&"mana_regen", Stats.MUL, 0.0], [&"mana_on_hit", Stats.ADD, 1.0]])
+	p.mana = 0.0
+	ItemEffects.on_dealt(w, p, 5.0)
+	ItemEffects.on_dealt(w, p, 5.0)
+	if absf(p.mana - 1.0) > 1e-3:
+		return "命中回魔同一瞬間打兩下應只回 1，實際 %.2f" % p.mana
+	_run(w, _cmd(Vector2.ZERO), ceili(ItemDefs.PROCS.mana_on_hit.icd / DT) + 1)
+	ItemEffects.on_dealt(w, p, 5.0)
+	if absf(p.mana - 2.0) > 1e-3:
+		return "內部冷卻過後命中應再回 1，實際 %.2f" % p.mana
+	# 快照帶魔力（客戶端的魔力條、技能欄以房主為準）
+	p.mana = 37.0
+	var extra: Array = NetCodec.entity_fields(p)[NetCodec.E_EXTRA]
+	if absf(extra[NetCodec.P_MANA] - 37.0) > 0.05:
+		return "快照的魔力應是 37，實際 %s" % [extra[NetCodec.P_MANA]]
+	_note("魔力 %.0f、每秒回 %.0f；旋風斬耗魔 %.0f" % [Config.MANA.max, Config.MANA.regen, SkillDefs.SKILLS.whirlwind.mana])
+	return ""
+
+
+# 等級：技能遺物選到身上已經有的技能就升 1 級（最高 LEVEL.max）；每級傷害 +LEVEL.damage、耗魔 −LEVEL.mana
 static func check_skill_level() -> String:
 	var dealt := []
 	for lv in [1, 3]:
@@ -109,14 +168,16 @@ static func check_skill_level() -> String:
 		var p: Player = s[1]
 		p.add_item(&"whirlwind")
 		p.skill_levels[&"whirlwind"] = lv
+		p.set_stat_source(&"test", [[&"mana_regen", Stats.MUL, 0.0]])
 		var e := LootChecks._item_dummy(w, Vector2(0, 1.5), 100000.0)
 		e.set_resists({})
 		var hp0 := e.hp
+		var mana0 := p.mana
 		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
 		dealt.append(hp0 - e.hp)
-		var cd: float = SkillDefs.SKILLS.whirlwind.cooldown * (1.0 - SkillDefs.LEVEL.cooldown * (lv - 1))
-		if absf(w.cooldowns.remaining(p.cd(ActiveSlots.cd_key(0))) - cd) > 0.05:
-			return "%d 級冷卻應 %.2f 秒，實際 %.2f" % [lv, cd, w.cooldowns.remaining(p.cd(ActiveSlots.cd_key(0)))]
+		var cost: float = SkillDefs.SKILLS.whirlwind.mana * (1.0 - SkillDefs.LEVEL.mana * (lv - 1))
+		if absf(mana0 - p.mana - cost) > 1e-3:
+			return "%d 級應扣 %.1f 魔力，實際 %.2f" % [lv, cost, mana0 - p.mana]
 	var want: float = (1.0 + SkillDefs.LEVEL.damage * 2) / 1.0
 	if dealt[0] <= 0.0 or absf(dealt[1] / dealt[0] - want) > 0.02:
 		return "3 級傷害應是 1 級的 %.2f 倍：%s" % [want, dealt]

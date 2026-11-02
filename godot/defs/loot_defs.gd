@@ -94,7 +94,7 @@ static func drop_pool(rarity: StringName) -> Array[StringName]:
 	for i in range(order.find(rarity), -1, -1):
 		var out: Array[StringName] = []
 		for id in items_of(order[i]):
-			if ItemDefs.item_implemented(id) and (not ItemDefs.ITEMS[id].get("bonds", []).is_empty() or not ItemDefs.support_of(id).is_empty()):   # 不屬於任何羈絆的先不掉（輔助道具照掉）
+			if ItemDefs.item_implemented(id) and (not ItemDefs.ITEMS[id].get("bonds", []).is_empty() or not ItemDefs.support_of(id).is_empty() or ItemDefs.is_mana_item(id)):   # 不屬於任何羈絆的先不掉（輔助道具、魔力道具照掉）
 				out.append(id)
 		if not out.is_empty():
 			return out

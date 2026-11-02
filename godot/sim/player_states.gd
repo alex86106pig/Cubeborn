@@ -77,8 +77,8 @@ class Ready:
 		# 按住類的特殊技（劍盾格擋，v0.41.0）：右鍵按著就舉盾，沒有冷卻；按鍵緩衝不用
 		var sdef := p.action_def(&"special")
 		var hold: bool = sdef.get("hold", false)
-		var special_ready: bool = not sdef.has("cooldown") or p.world.cooldowns.is_ready(p.cd("player.special"))
-		# 按住類有冷卻的（長弓蓄力）冷卻中不進招式（2026-10-27 網頁版實測：原本按一次射一支，冷卻被繞過）
+		var special_ready := p.action_ready(sdef, "player.special")
+		# 按住類耗魔的（長弓蓄力）魔力不夠不進招式（按住時每步都會再試，不能繞過）
 		if hold and p.is_special_held and special_ready:
 			if p.buffered_action.get("type") == &"special":
 				p.buffered_action = {}
@@ -101,8 +101,8 @@ class Ready:
 				p.slots.notify_blocked(p, buffered.index)
 		if p.is_attack_held and p.can_attack():   # 短弓裝填中不能射
 			var adef := p.action_def(&"attack")
-			if adef.has("cd_key") and not p.world.cooldowns.is_ready(p.cd(adef.cd_key)):
-				if p.attack_pressed:   # 有冷卻的左鍵招式（舉著火把的噴火）冷卻中：按下那一步提示，不出招
+			if adef.has("cd_key") and not p.action_ready(adef, adef.cd_key):
+				if p.attack_pressed:   # 耗魔的左鍵招式（舉著火把的噴火）魔力不夠：按下那一步提示，不出招
 					p.world.emit_event("skill:onCooldown", {"key": adef.cd_key, "player_id": p.id})
 			else:
 				fsm.change(&"attack")
@@ -125,13 +125,19 @@ class TimedAction:
 		data.k = 0.0
 		data.move_speed_mul = def.get("move_speed_mul", 1.0)
 		data.lock_facing = false
-		if def.has("cooldown") and (kind == &"special" or def.has("cd_key")):   # 按住格擋沒有冷卻（v0.41.0）；噴火是有冷卻的左鍵
+		var limited: bool = def.has("mana") or def.has("cooldown")
+		if limited and (kind == &"special" or def.has("cd_key")):   # 按住格擋不耗魔；噴火是耗魔的左鍵
 			var cd_key: String = def.get("cd_key", "player.special")
-			p.world.cooldowns.start(p.cd(cd_key), def.cooldown * p.stats.value(&"cooldown"))
+			if def.has("mana"):
+				data.mana_spent = p.mana_cost_of(def)   # 沒發動時（影步沒怪、鏟子沒抓到）照這個退回（WeaponBehaviors.refund_miss）
+				p.spend_mana(data.mana_spent)
+				p.world.cooldowns.start(p.cd(cd_key), Config.MANA.cast_gap)
+			else:
+				p.world.cooldowns.start(p.cd(cd_key), def.cooldown)
 			p.world.emit_event("skill:used", {"key": cd_key, "player_id": p.id})
 		data.behavior.enter(p, def, data)
-		# 攻速只影響普攻三個階段（在武器行為調整終結技後搖之後套用）；特殊技與有冷卻的左鍵招式由冷卻限制
-		if kind == &"attack" and not def.has("cooldown"):
+		# 攻速只影響普攻三個階段（在武器行為調整終結技後搖之後套用）；特殊技與耗魔的左鍵招式由魔力限制
+		if kind == &"attack" and not limited:
 			var attack_speed := p.stats.value(&"attack_speed")
 			for i in data.durations.size():
 				data.durations[i] /= attack_speed

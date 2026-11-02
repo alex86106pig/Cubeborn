@@ -45,6 +45,7 @@ const RARITY_BASE := {
 #   imp 印記格（藍以上，第 8b 步）：武器上 IMPRINT.cells 格標記，鑲在上面、屬於那個羈絆的道具效果 × IMPRINT.mul（Loadout.refresh_items）；
 #       格子位置在實例的 imprints（make 時擲）
 #   branch 分支（紫橘，第 8c 步）：改寫一個羈絆的規則，一把最多 1 條（roll_affixes）；有沒有在 Loadout.branches，效果在 BondEffects / Player
+#   mana 魔力：唯一不屬於羈絆的種類（bond 空的，不受武器偏向影響），合計權重 MANA_AFFIX_W
 # mods 格式同 ItemDefs 的屬性效果；w 是抽中的權重（每個羈絆的強化合計 1）；min 是最低稀有度（沒寫 = 綠）
 const AFFIXES := {
 	&"bond_phys": {"kind": &"bond", "bond": &"phys", "desc": "算 1 件物理羈絆", "w": 1.0, "mods": []},
@@ -62,6 +63,10 @@ const AFFIXES := {
 	&"enh_armor": {"kind": &"enh", "bond": &"guard", "desc": "護甲 +15", "w": 0.5, "mods": [[&"armor", Stats.ADD, 15.0]]},
 	&"enh_wisp_count": {"kind": &"enh", "bond": &"wisp", "desc": "鬼火 +1 顆（秘術）", "w": 0.5, "mods": [[&"wisp_count", Stats.ADD, 1.0]]},
 	&"enh_wisp_damage": {"kind": &"enh", "bond": &"wisp", "desc": "鬼火傷害 +25%", "w": 0.5, "mods": [[&"wisp_damage", Stats.PCT, 0.25]]},
+	&"mana_max": {"kind": &"mana", "bond": &"", "desc": "最大魔力 +30", "w": 0.5, "mods": [[&"max_mana", Stats.ADD, 30.0]]},
+	&"mana_regen": {"kind": &"mana", "bond": &"", "desc": "每秒回魔 +2", "w": 0.5, "mods": [[&"mana_regen", Stats.ADD, 2.0]]},
+	&"mana_cost": {"kind": &"mana", "bond": &"", "desc": "耗魔 −10%", "w": 0.5, "mods": [[&"mana_cost", Stats.MUL, 0.9]]},
+	&"mana_hit": {"kind": &"mana", "bond": &"", "desc": "命中回復 1 魔力（每 0.3 秒最多一次）", "w": 0.5, "mods": [[&"mana_on_hit", Stats.ADD, 1.0]]},
 	&"cvt_fire": {"kind": &"cvt", "bond": &"fire", "desc": "50% 物理傷害轉成火焰", "w": 1.0, "mods": [[&"convert_fire", Stats.ADD, 0.5]]},
 	&"cvt_cold": {"kind": &"cvt", "bond": &"cold", "desc": "50% 物理傷害轉成冰霜", "w": 1.0, "mods": [[&"convert_cold", Stats.ADD, 0.5]]},
 	&"imp_phys": {"kind": &"imp", "bond": &"phys", "desc": "物理印記格：鑲在上面的物理道具效果 ×1.5", "w": 0.6, "min": &"blue", "mods": []},

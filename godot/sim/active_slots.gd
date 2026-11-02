@@ -1,5 +1,5 @@
 # 技能欄（Build 改版第 7 步）：數字鍵 1~4 = 主手、副手寶石座上的技能（主手先、由上到下、由左到右），Q = 治療藥水
-# 使用條件（CD、次數、技能自訂條件）與觸發；技能的等級（Player.skill_levels）與相鄰的輔助道具在這裡算好，交給 SkillBehaviors
+# 使用條件（魔力、次數、防連按間隔、技能自訂條件）與觸發；技能的等級（Player.skill_levels）與相鄰的輔助道具在這裡算好，交給 SkillBehaviors
 # 不持有玩家（避免循環參照），每次呼叫時傳入
 class_name ActiveSlots
 extends RefCounted
@@ -59,6 +59,8 @@ func can_use(owner: Player, index: int) -> bool:
 		return false
 	if not owner.world.cooldowns.is_ready(owner.cd(cd_key(index))):
 		return false
+	if slot.def.has("mana") and not owner.has_mana(mana_cost(owner, slot)):
+		return false
 	return SkillBehaviors.BEHAVIORS[slot.def.behavior].can_use(owner, slot.def)
 
 
@@ -73,10 +75,18 @@ func use(owner: Player, index: int) -> bool:
 	elif index == HEAL_INDEX:
 		heal.charges -= 1
 	var key := cd_key(index)
-	var cd: float = slot.def.cooldown * owner.stats.value(&"cooldown") * (1.0 - SkillDefs.LEVEL.cooldown * (slot.get("level", 1) - 1))
-	owner.world.cooldowns.start(owner.cd(key), cd)
+	if slot.def.has("mana"):
+		owner.spend_mana(mana_cost(owner, slot))
+		owner.world.cooldowns.start(owner.cd(key), Config.MANA.cast_gap)
+	else:
+		owner.world.cooldowns.start(owner.cd(key), slot.def.cooldown)   # 藥水、插火把：次數制，冷卻只是防連按
 	owner.world.emit_event("skill:used", {"key": key, "player_id": owner.id})
 	return true
+
+
+# 這一格放一次要多少魔力（含等級、耗魔屬性）；不耗魔的是 0
+static func mana_cost(owner: Player, slot: Dictionary) -> float:
+	return owner.mana_cost_of(slot.def, slot.get("level", 1))
 
 
 # 這次施放的參數：等級的傷害倍率、相鄰輔助道具（標籤相符的才算）的效果

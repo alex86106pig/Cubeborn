@@ -87,6 +87,7 @@ const ACTIONS := {
 	&"ignite": {"name": "點燃", "params": []},
 	&"reflect": {"name": "反彈傷害", "params": ["ratio"]},
 	&"heal_max_hp": {"name": "回復最大生命的比例", "params": ["ratio"]},
+	&"restore_mana": {"name": "回復魔力", "params": ["amount"]},
 	&"throw_knife": {"name": "追加飛刀", "params": []},
 	&"wisp": {"name": "放出追蹤鬼火", "params": []},
 	&"slash_wave": {"name": "射出斬波", "params": ["count", "damage_ratio"]},
@@ -113,7 +114,7 @@ const ABILITIES := {
 
 # 已接上的條件、觸發 + 動作（v0.33.0 第一批 8 個道具、G 第二批，sim/item_effects.gd）
 const IMPLEMENTED_CONDITIONS: Array[StringName] = [&"target_full_hp", &"hp_below", &"after_kill", &"after_roll", &"per_kill_stack", &"from_elite"]
-const IMPLEMENTED_TRIGGERS: Array[String] = ["kill|explode", "kill|heal_max_hp", "hit|chain_lightning", "hit|poison", "hit|freeze",
+const IMPLEMENTED_TRIGGERS: Array[String] = ["kill|explode", "kill|heal_max_hp", "kill|restore_mana", "hit|chain_lightning", "hit|poison", "hit|freeze",
 	"hurt_melee|reflect", "hurt|explode", "projectile_hit|explode", "hit|ignite",
 	"attack|throw_knife", "attack|slash_wave", "interval|lightning_strike", "roll|slow_time",
 	"lethal|cheat_death", "death|revive", "kill|wisp", "kill|summon_skeleton",
@@ -129,6 +130,7 @@ const PROCS := {
 	&"freeze": {"color": Color("a8e6ff")},   # 冰凍時不能動、不出招（Boss 不會被冰凍）
 	# ---- 第二批（G，2026-10-27 Claude 暫定）；icd = 內部冷卻秒數（快速武器不會觸發過頻，ItemEffects.icd_ready）----
 	&"life_on_hit": {"icd": 0.3},   # 蝙蝠牙：命中回復每 0.3 秒最多一次
+	&"mana_on_hit": {"icd": 0.3},   # 武器詞條「命中回魔」：同上
 	&"reflect": {"color": Color("d0d0d0")},   # 荊棘鎖甲：反彈實際扣的血 × 道具的 ratio
 	&"hurt_explode": {"radius": 3.0, "icd": 0.5, "color": Color("ff5a3a")},   # 王墓之心：以自己為中心、扣護甲前的受傷量 × damage_ratio
 	&"ignite": {"pct_per_sec": 0.15, "duration": 3.0, "spread_interval": 1.0, "spread_range": 2.0},   # 永恆之焰：命中那一下 15% / 秒 × 3 秒（同火把）；每 1 秒傳給 2 單位內一隻
@@ -191,7 +193,7 @@ const ITEMS := {
 	&"lead_weight": {"kind": &"item", "name": "鉛墜", "rarity": &"white", "power": 0.8, "shape": &"dot", "bonds": [&"phys"],
 		"desc": "擊退 +20%", "effects": [{"stat": &"knockback", "op": Stats.PCT, "value": 0.2}]},
 	&"wormwood": {"kind": &"item", "name": "苦艾酒", "rarity": &"white", "power": 0.8, "shape": &"dot", "bonds": [],
-		"desc": "技能冷卻 −6%", "effects": [{"stat": &"cooldown", "op": Stats.MUL, "value": 0.94}]},
+		"desc": "每秒回魔 +1.5", "effects": [{"stat": &"mana_regen", "op": Stats.ADD, "value": 1.5}]},
 	&"powder_pouch": {"kind": &"item", "name": "火藥包", "rarity": &"white", "power": 1.2, "shape": &"dot", "bonds": [&"fire"],
 		"desc": "擊殺時 10% 機率小爆炸", "effects": [{"on": &"kill", "chance": 0.1, "do": &"explode"}]},
 	&"hound_collar": {"kind": &"item", "name": "獵犬項圈", "rarity": &"white", "power": 1.0, "shape": &"dot", "bonds": [&"phys"],
@@ -229,7 +231,7 @@ const ITEMS := {
 	&"frost_heart": {"kind": &"item", "name": "霜之心", "rarity": &"blue", "power": 5.0, "shape": &"l3", "bonds": [&"cold"],
 		"desc": "發動時 10% 機率冰凍目標 1.5 秒", "effects": [{"on": &"hit", "chance": 0.1, "do": &"freeze", "duration": 1.5}]},
 	&"soul_scythe": {"kind": &"item", "name": "吸魂鐮", "rarity": &"blue", "power": 4.5, "shape": &"l3", "bonds": [],
-		"desc": "擊殺回復 3% 最大生命", "effects": [{"on": &"kill", "do": &"heal_max_hp", "ratio": 0.03}]},
+		"desc": "擊殺回復 4 魔力", "effects": [{"on": &"kill", "do": &"restore_mana", "amount": 4.0}]},
 	&"twin_leap_boots": {"kind": &"item", "name": "雙躍之靴", "rarity": &"blue", "power": 4.0, "shape": &"i3", "bonds": [],
 		"desc": "可以二段跳", "effects": [{"ability": &"double_jump"}]},
 	&"blast_quiver": {"kind": &"item", "name": "爆裂箭袋", "rarity": &"blue", "power": 5.0, "shape": &"i3", "bonds": [&"fire"],
@@ -253,7 +255,7 @@ const ITEMS := {
 	&"blood_crown": {"kind": &"item", "name": "血族王冠", "rarity": &"purple", "power": 6.0, "shape": &"o4", "bonds": [],
 		"desc": "造成傷害的 3% 轉為回復生命", "effects": [{"stat": &"lifesteal", "op": Stats.ADD, "value": 0.03}]},
 	&"hourglass": {"kind": &"item", "name": "時之沙漏", "rarity": &"purple", "power": 6.0, "shape": &"t4", "bonds": [],
-		"desc": "技能冷卻 −25%", "effects": [{"stat": &"cooldown", "op": Stats.MUL, "value": 0.75}]},
+		"desc": "耗魔 −25%", "effects": [{"stat": &"mana_cost", "op": Stats.MUL, "value": 0.75}]},
 	&"obsidian_skin": {"kind": &"item", "name": "黑曜石皮膚", "rarity": &"purple", "power": 7.5, "shape": &"s4", "bonds": [&"guard"],
 		"desc": "受到傷害 −20%，但移速 −5%", "effects": [
 			{"stat": &"damage_taken", "op": Stats.MUL, "value": 0.8},
@@ -425,6 +427,14 @@ static func part_line(id: StringName) -> String:
 # 道具的效果是不是全部都接上了
 static func item_implemented(id: StringName) -> bool:
 	return ITEMS[id].effects.all(is_implemented)
+
+
+# 魔力道具：效果是魔力屬性或回復魔力（不屬於羈絆也會掉，LootDefs.drop_pool）
+const MANA_STATS: Array[StringName] = [&"max_mana", &"mana_regen", &"mana_cost", &"mana_on_hit"]
+
+
+static func is_mana_item(id: StringName) -> bool:
+	return ITEMS[id].effects.any(func(e: Dictionary) -> bool: return MANA_STATS.has(e.get("stat", &"")) or e.get("do", &"") == &"restore_mana")
 
 
 # 輔助道具（skill_support 能力）：回傳那筆效果，不是回傳 {}

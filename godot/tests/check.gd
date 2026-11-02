@@ -55,7 +55,7 @@ func _initialize() -> void:
 	_check("決定性：有敵人與波次時，同種子、同輸入的兩個 World 結果相同（實體位置、朝向、亂數狀態）", CoreChecks.check_determinism_with_enemies)
 	_check("記憶體：reset 與移除實體後舊實體會被釋放（切斷與 World 的循環參照）；敵人移除後 CD 清除",
 		all.bind([CoreChecks.check_entity_release, CoreChecks.check_enemy_release]))
-	_check("屬性系統：同類百分比相加、暫時效果與冷卻縮減相乘、取整、上下限、來源可移除、顯示格式；接上遊戲：攻速 ×2 普攻時間減半、冷卻 ×0.5、最大生命增加時目前生命同步增加、每秒回血、受傷後暫停回血、除錯移速加成",
+	_check("屬性系統：同類百分比相加、暫時效果與耗魔縮減相乘、取整、上下限、來源可移除、顯示格式；接上遊戲：攻速 ×2 普攻時間減半、耗魔 ×0.5、最大生命增加時目前生命同步增加、每秒回血、受傷後暫停回血、除錯移速加成",
 		all.bind([CoreChecks.check_stats_formula, CoreChecks.check_stats_hooks]))
 	_check("傷害公式：護甲 100 減傷 50%、護甲 8 減傷 7.4%；爆擊率 100% 時乘爆擊傷害、0% 不消耗亂數；傷害保留小數（12.5 實際扣 12.5），數字四捨五入、血量無條件進位",
 		all.bind([CoreChecks.check_stats_armor_crit, CoreChecks.check_fractional_damage]))
@@ -65,7 +65,7 @@ func _initialize() -> void:
 		all.bind([PlayerChecks.check_player_move, PlayerChecks.check_facing, PlayerChecks.check_arena_clamp]))
 	_check("劍盾普攻與連段：三段時間合計 windup + active + recovery、期間移速照 move_speed_mul；前兩段照基礎傷害、第三段乘 finisher_mul 且後搖乘 finisher_recovery_mul、重擊與音效只有第三段、同一目標每次出手只中一次",
 		all.bind([PlayerChecks.check_attack_timing, PlayerChecks.check_combo]))
-	_check("格擋與招架（v0.41.0）：按住右鍵才格擋、放開就放下、沒有冷卻與時間上限、可移動轉向、翻滾提前放下；格擋中按左鍵招架（冷卻、按住不連發），判定內擋下 = 全額盾反，沒擋到 = 盾擊；正面擋得下揮砍與箭、背後擋不住；Boss 衝鋒擋得住但全額推退；Boss 砸地擋不住", PlayerChecks.check_block)
+	_check("格擋與招架（v0.41.0）：按住右鍵才格擋、放開就放下、沒有冷卻與時間上限、可移動轉向、翻滾提前放下；格擋中按左鍵招架（耗魔、魔力不夠不招架、按住不連發），判定內擋下 = 全額盾反，沒擋到 = 盾擊；正面擋得下揮砍與箭、背後擋不住；Boss 衝鋒擋得住但全額推退；Boss 砸地擋不住", PlayerChecks.check_block)
 	_check("受擊：扣血後進入 stagger（移速照 stagger_move_speed_mul、持續 stagger_time）、無敵 invuln_time、畫面震動", PlayerChecks.check_stagger)
 	_check("輸入緩衝：攻擊中按右鍵會在後搖取消並接特殊技；緩衝過期後不會被消化", PlayerChecks.check_buffer)
 	_check("死亡：發出 player:died、移動層進入 dead、不再接受輸入", PlayerChecks.check_player_death)
@@ -86,10 +86,10 @@ func _initialize() -> void:
 	_check("短弓（F4）：快射是不擊退的箭、傷害照物理加成；散射 5 支平均分在 50° 內；盜墓遊俠移動中普攻不減速、右鍵照常減速；箭袋 6 支、最後一支重箭、射空裝填 1.2 秒、翻滾瞬間補滿；短弓的普攻箭不穿透、長弓穿過 pierce_count 隻", all.bind([CombatChecks.check_shortbow, CombatChecks.check_bow_pierce]))
 	_check("長弓（F5）：重射可擊退；按住右鍵蓄力、放開射出穿透箭（沒蓄 150%、蓄滿 400%），一直線上每隻打一次", CombatChecks.check_longbow)
 	_check("長劍與主手 / 副手：單手＋盾 / 匕首拿得動、雙手武器不能拿副手、盾不能當主手；長劍沒有副手時右鍵蓄力突刺（沒蓄 / 蓄滿衝 2 / 5 單位、150% / 300%）；守墓騎士開局長劍＋木盾", CombatChecks.check_longsword)
-	_check("匕首（F6）：雙持五連刺第 5 下 150% 必爆擊且只有它擊退、讓怪硬直；單拿三連刺第 3 下 120% 且只有它擊退；影步瞬移到怪背後背刺必爆擊、沒有怪不瞬移冷卻 1 秒；竊影者開局雙持、翻滾 2 次、翻滾後攻速 +30% 持續 1.5 秒", CombatChecks.check_daggers)
+	_check("匕首（F6）：雙持五連刺第 5 下 150% 必爆擊且只有它擊退、讓怪硬直；單拿三連刺第 3 下 120% 且只有它擊退；影步瞬移到怪背後背刺必爆擊、沒有怪不瞬移只扣 miss_mana；竊影者開局雙持、翻滾 2 次、翻滾後攻速 +30% 持續 1.5 秒", CombatChecks.check_daggers)
 	_check("驅魔權杖（F7）：敲擊是魔法、可擊退；聖光圈 4 秒每 0.5 秒對範圍內敵人持續傷害（不爆擊）、隊友回血；神官救人快 50%、救起回 50% 生命", CombatChecks.check_scepter)
-	_check("火把（F8）：按住右鍵舉火把（移速 ×0.6）、放開放下；舉著左鍵噴火 120%（冷卻 6 秒、不占右鍵）；插火把在技能欄第一個空格（冷卻 1 秒、3 次記在武器上、換層補滿）；翻滾放下；火把旁不管視野都看得到；揮擊點燃；傭兵視野 +3、身邊 6", CombatChecks.check_torch)
-	_check("鐵鏟（F9）：鏟起面前的怪舉 2 秒（移速 ×0.7、不能跳），左鍵拋出（落地 200%、路上 150%）、右鍵埋入（80%、2 秒）、沒按就掙脫；Boss 抓不起來、沒抓到冷卻 2 秒；掘墓人挖墳中受傷 −25%；埋著打得到、不被擊退", CombatChecks.check_shovel)
+	_check("火把（F8）：按住右鍵舉火把（移速 ×0.6）、放開放下；舉著左鍵噴火 120%（耗魔、不占右鍵，魔力不夠不出招）；插火把在技能欄第一個空格（冷卻 1 秒、3 次記在武器上、換層補滿）；翻滾放下；火把旁不管視野都看得到；揮擊點燃；傭兵視野 +3、身邊 6", CombatChecks.check_torch)
+	_check("鐵鏟（F9）：鏟起面前的怪舉 2 秒（移速 ×0.7、不能跳），左鍵拋出（落地 200%、路上 150%）、右鍵埋入（80%、2 秒）、沒按就掙脫；Boss 抓不起來、沒抓到只扣 miss_mana；掘墓人挖墳中受傷 −25%；埋著打得到、不被擊退", CombatChecks.check_shovel)
 	_check("武器測試木樁（--weapon-test）：爬出後站著不動、不打人；鐵鏟抓得起、埋得下，埋完回到站著", CombatChecks.check_training_dummies)
 
 	# ───────── 小怪與戰鬥判定 ─────────
@@ -157,7 +157,7 @@ func _initialize() -> void:
 		all.bind([LootChecks.check_run_coins, LootChecks.check_coin_drops]))
 	_check("撿道具：按 F 撿起最近的道具放進背包並生效；剛按下那一步才算；兩人同一步按 F 只有一人拿到；丟掉後道具回到地上、效果移除；附近有倒地隊友時 F 先救人；從腳邊拖進背包放到指定格子（太遠、放不下、已被撿走不動，武器不放裝備欄）；撿不下的事件帶地上道具的 id",
 		all.bind([LootChecks.check_pickups, LootChecks.check_pickup_to_cell]))
-	_check("武器掉落與詞條：小怪掉落率照層數（MINION_DROP_BY_FLOOR，超過表用最後一層）、召喚出來的不掉、Boss 必掉、稀有度符合權重；詞條數 = 稀有度順位、不重複、都跟羈絆有關、照武器偏向；合成要留的詞條一定在；主手（含稀有度倍率）與副手（只有詞條）生效、背包不生效",
+	_check("武器掉落與詞條：小怪掉落率照層數（MINION_DROP_BY_FLOOR，超過表用最後一層）、召喚出來的不掉、Boss 必掉、稀有度符合權重；詞條數 = 稀有度順位、不重複、魔力詞條以外都跟羈絆有關、照武器偏向；合成要留的詞條一定在；主手（含稀有度倍率）與副手（只有詞條）生效、背包不生效",
 		all.bind([LootChecks.check_weapon_drops, LootChecks.check_weapon_affixes]))
 	_check("武器的背包操作：開局長劍＋木盾；撿到的武器放背包（副手空著撿到盾才拿上）、都滿撿不起來；雙手武器把副手擠回背包、盾不能當主手、主手不能丟；換武器時鑲的道具跟著搬、武器格子只能放格子內、快照來回不變；兩把同種同稀有度合成 → 高一級、詞條重抽，不同種 / 不同稀有度 / 橘色不能合成",
 		all.bind([LootChecks.check_weapon_pickup, LootChecks.check_weapon_merge]))
@@ -175,12 +175,12 @@ func _initialize() -> void:
 	_check("道具能力：二段跳（沒有道具空中跳不了、有雙躍之靴可再跳一次、落地重置）；自動回充的護盾（先扣盾、recharge_delay 秒沒受傷才補滿）",
 		all.bind([PlayerChecks.check_double_jump, LootChecks.check_item_shield]))
 	_check("遺物：每人各自擲 N 選 1（N = 選項數屬性、不重複）、關掉再開同一組、骰子重擲用掉 1 顆（沒有就不能骰）、每人只選一次、全員選過才消失、放不下掉在腳邊、走遠就關掉", LootChecks.check_relic)
-	_check("寶石座技能：寶石座只放技能、技能只放能用的武器、自動擺放；數字鍵 1~4 照主手→副手的寶石座、Q 治療藥水；每個技能放得出來、進冷卻、有效果；等級加傷減冷卻、技能遺物升級；輔助道具貼著才有效（延長、火焰化、分裂）",
-		all.bind([SkillChecks.check_gem_rules, SkillChecks.check_every_skill, SkillChecks.check_skill_level, SkillChecks.check_supports]))
-	_check("羈絆：道具標的羈絆都存在、掉落池只有屬於羈絆的；件數只算鑲在兩隻手上（背包不算）、同一種只算 1 件、跨羈絆兩邊各算、拿下來就扣；階數照門檻", LootChecks.check_bonds)
+	_check("寶石座技能：寶石座只放技能、技能只放能用的武器、自動擺放；數字鍵 1~4 照主手→副手的寶石座、Q 治療藥水；每個技能放得出來、扣魔力、有效果；等級加傷減耗魔、技能遺物升級；輔助道具貼著才有效（延長、火焰化、分裂）；魔力（開局滿、回魔、上限、不夠放不出、魔力道具與命中回魔、進快照）",
+		all.bind([SkillChecks.check_gem_rules, SkillChecks.check_every_skill, SkillChecks.check_skill_level, SkillChecks.check_supports, SkillChecks.check_mana]))
+	_check("羈絆：道具標的羈絆都存在、掉落池只有屬於羈絆的（輔助、魔力道具例外）；件數只算鑲在兩隻手上（背包不算）、同一種只算 1 件、跨羈絆兩邊各算、拿下來就扣；階數照門檻", LootChecks.check_bonds)
 	_check("羈絆效果：物理（物理傷害、失衡、擊退撞怪、無視物理抗性、必爆擊與處決）、火焰（沒有羈絆 1 層、疊層、疊滿爆炸、死亡傳層）、冰霜（沒有羈絆 1 層、冰冷減速、疊滿凍結、碎冰加傷、冰錐、凍結中被殺沒有死亡效果）、防禦（護甲、招架回血、招架後必爆擊、衝擊波消箭、反彈）、鬼火（顆數、轉圈碰到怪、定時衝出去）；武器詞條（羈絆 +1 主副手各算、燃燒 / 冰冷層數上限、凍結時間、額外鬼火、失衡累積、招架判定時間、屬性轉換、印記格 ×1.5、分支：沉重 / 爆燃 / 冰棺（畫面染冰白、一般凍結染藍） / 反擊架勢 / 星位）",
 		all.bind([BondChecks.check_phys, BondChecks.check_fire, BondChecks.check_cold, BondChecks.check_guard, BondChecks.check_wisp, BondChecks.check_weapon_affixes]))
-	_check("道具掉落：全部道具的效果都已接上；寶箱只開出效果都接上、屬於羈絆的道具（輔助道具也開得出來）；沒有的稀有度往下一級找", LootChecks.check_item_drop_pool)
+	_check("道具掉落：全部道具的效果都已接上；寶箱只開出效果都接上、屬於羈絆的道具（輔助、魔力道具也開得出來）；沒有的稀有度往下一級找", LootChecks.check_item_drop_pool)
 
 	# ───────── 畫面 ─────────
 	_check("角色視野：前方扇形與 range 內看得到、身邊 near_radius 背後也看得到；牆擋視線、高台不擋；自己的投射物在背後也看得到、怪物的看不到；寶箱看中心、怪物看身體邊緣", ViewChecks.check_vision_rules)
@@ -206,7 +206,7 @@ func _initialize() -> void:
 	_check("HUD：能建立、處理各種事件、顯示波次 / 血量 / 結算文字、暫停畫面有「離開遊戲」；別人撿到道具不跳橫幅；武器欄標示副手；同一目標同時跳的傷害數字往上疊、地上物件名稱重疊時往上錯開；附帶的小傷害（燃燒 / 中毒 / 地面區域的一跳、附加屬性傷害）數字畫小、不佔疊層",
 		all.bind([ViewChecks.check_hud, ViewChecks.check_overlap_text, ViewChecks.check_minor_numbers]))
 	_check("背包介面：和屬性面板並排塞得進介面最大檔的畫面；腳邊欄只列按得到 F 的地上道具（沒有就不顯示）、滑鼠停著顯示說明，拖進背包撿起放在那一格、背包的拖到腳邊丟掉；撿不下時 HUD 通知打開背包、提示拿掉哪一件就放得下，關掉就清除；遺物的 N 選 1 自動打開背包、卡片直排在背包左邊塞得進畫面、羈絆標籤寫目前件數、點卡片 / Esc 送出操作、自動打開的背包一起關、拿著東西時 R / Esc 不給遺物；鍛造祭壇旁開背包顯示鍛造面板：右鍵 / 拿著點格子 / 拖到同種武器上放進兩格、能合的發亮其他變暗、不能合寫原因、挑詞條按合成送出並清空、離開祭壇就關掉；開著背包時新手提示在屬性面板與背包中間、右上的層數與擊殺藏起來；屬性面板依組列出、核心屬性一直顯示，其他屬性與整組有加成才顯示；左鍵點一下拿起、再點一下放下（拖曳照舊），右鍵 / Esc 放回、點外面丟掉；右鍵直接裝上 / 拿下來（道具照自動擺放、技能只進能用的寶石座、主手武器不拿下來）；物品依種類分畫法；羈絆欄只列收集到的；雙手武器時副手標成不能用；腳邊框不蓋到背包與技能欄（點一下拿起放進背包）", all.bind([ViewChecks.check_inventory_panel, ViewChecks.check_part_hint, ViewChecks.check_relic_panel, ViewChecks.check_forge_panel, ViewChecks.check_hint_beside_bag, ViewChecks.check_stats_panel, ViewChecks.check_inventory_click, ViewChecks.check_inventory_layout]))
-	_check("技能欄：劍盾格擋中左鍵換成「招架」與冷卻、法杖沒有招架格；火把準備姿態換成插火把 / 噴火、鐵鏟舉著怪換成拋出 / 埋入；CD 遮罩疊放順序 文字圖示 < 壓黑 < 秒數；寶石座的一般技能放出來進冷卻、後面的 Q 藥水照樣顯示瓶數",
+	_check("技能欄：劍盾格擋中左鍵換成「招架」與耗魔、法杖沒有招架格；火把準備姿態換成插火把 / 噴火、鐵鏟舉著怪換成拋出 / 埋入；CD 遮罩疊放順序 文字圖示 < 壓黑 < 秒數（插火把的防連按間隔）；寶石座的一般技能顯示耗魔、魔力不夠變暗、後面的 Q 藥水照樣顯示瓶數",
 		all.bind([ViewChecks.check_skill_bar_parry, ViewChecks.check_skill_bar_cd_mask, ViewChecks.check_skill_bar_gem_skill]))
 	_check("新手提示：開場跳操作與挖墳；撿到東西、開背包、可合成、出口打開、腳邊有東西（按住 Alt 看詳細）、隊友倒地各跳一次；看過不再跳；重設後再跳", ViewChecks.check_hints)
 	_check("挖墳進度條：事件進行中所有人上方中央都看得到進度與說明，出口打開後收起；Boss 血條排在它下面、寬度塞得進 1920", ViewChecks.check_dig_bar)

@@ -726,10 +726,11 @@ static func check_weapon_affixes() -> String:
 			if inst.affixes.size() != WeaponDropDefs.RARITY_ORDER.find(r) or uniq.size() != inst.affixes.size() \
 					or not inst.affixes.all(func(a: StringName) -> bool: return WeaponDropDefs.AFFIXES.has(a)):
 				return "%s 應有 %d 條不重複詞條，實際 %s" % [r, WeaponDropDefs.RARITY_ORDER.find(r), inst.affixes]
-	# 每條詞條都跟第一版的羈絆有關（Build 改版第 8 步）、屬性都存在
+	# 魔力詞條以外，每條詞條都跟第一版的羈絆有關（Build 改版第 8 步）；屬性都存在
 	for id: StringName in WeaponDropDefs.AFFIXES:
 		var a: Dictionary = WeaponDropDefs.AFFIXES[id]
-		if not BondDefs.BONDS.has(a.bond) or not a.mods.all(func(m: Array) -> bool: return StatDefs.STATS.has(m[0])):
+		var bond_ok: bool = BondDefs.BONDS.has(a.bond) if a.kind != &"mana" else a.bond == &""
+		if not bond_ok or not a.mods.all(func(m: Array) -> bool: return StatDefs.STATS.has(m[0])):
 			return "詞條 %s 的羈絆或屬性不存在" % id
 	# 武器偏向：法杖偏鬼火、火焰、冰霜，抽到那些羈絆的比例照權重（±3%）
 	var favored: Array = WeaponDropDefs.BIAS[&"staff"]
@@ -863,16 +864,16 @@ static func check_item_conditions() -> String:
 	if absf(p.stats.value(&"damage") - 1.0) > EPS:
 		return "滿血時不應有狂戰士加成：%.3f" % p.stats.value(&"damage")
 	p.clear_items()
-	# 戰鼓：擊殺後一段時間攻速加成；吸魂鐮：擊殺回復最大生命的比例
+	# 戰鼓：擊殺後一段時間攻速加成；吸魂鐮：擊殺回復魔力
 	var drum := _effect(&"war_drum")
-	var heal_hp: float = 50.0 + p.max_hp * _effect(&"soul_scythe").ratio
+	var want_mana: float = 50.0 + _effect(&"soul_scythe").amount
 	p.add_item(&"war_drum")
 	p.add_item(&"soul_scythe")
-	p.hp = 50.0
+	p.mana = 50.0
 	var b := _item_dummy(w, Vector2(0, 3), 1.0)
 	Combat.apply_damage(w, p, b, {"damage": 10.0})
-	if not b.is_dead or absf(p.hp - heal_hp) > EPS:
-		return "擊殺後生命應為 %.1f，實際 %.1f（怪死了 %s）" % [heal_hp, p.hp, b.is_dead]
+	if not b.is_dead or absf(p.mana - want_mana) > EPS:
+		return "擊殺後魔力應為 %.1f，實際 %.1f（怪死了 %s）" % [want_mana, p.mana, b.is_dead]
 	_run(w, idle, 1)
 	if absf(p.stats.value(&"attack_speed") - (1.0 + drum.value)) > EPS:
 		return "擊殺後攻速應為 %.2f，實際 %.3f" % [1.0 + drum.value, p.stats.value(&"attack_speed")]
@@ -1478,10 +1479,10 @@ static func check_item_drop_pool() -> String:
 				return "%s 的掉落裡有還沒實作的 %s" % [r, id]
 		# 這個稀有度有實作好的道具就全部都在掉落裡；一個都沒有就往下一級找
 		var done := LootDefs.items_of(r).filter(func(id: StringName) -> bool:
-			return ItemDefs.item_implemented(id) and (not ItemDefs.ITEMS[id].get("bonds", []).is_empty() or not ItemDefs.support_of(id).is_empty()))
+			return ItemDefs.item_implemented(id) and (not ItemDefs.ITEMS[id].get("bonds", []).is_empty() or not ItemDefs.support_of(id).is_empty() or ItemDefs.is_mana_item(id)))
 		if not done.is_empty():
 			if pool != done:
-				return "%s 的掉落應為實作好、屬於羈絆的 %s，實際 %s" % [r, done, pool]
+				return "%s 的掉落應為實作好、屬於羈絆（或輔助、魔力道具）的 %s，實際 %s" % [r, done, pool]
 		elif order.find(ItemDefs.ITEMS[pool[0]].rarity) >= order.find(r):
 			return "%s 都還沒實作，應改掉較低的稀有度，實際掉 %s" % [r, ItemDefs.ITEMS[pool[0]].rarity]
 	return ""
@@ -1717,7 +1718,7 @@ static func check_item_part_timing() -> String:
 	return ""
 
 
-# 羈絆（Build 改版第 5 步）：道具標的羈絆都存在、掉落池只有屬於羈絆的；件數只算鑲在兩隻手上的、同一種只算 1 件、
+# 羈絆（Build 改版第 5 步）：道具標的羈絆都存在、掉落池只有屬於羈絆的（輔助、魔力道具例外）；件數只算鑲在兩隻手上的、同一種只算 1 件、
 # 跨羈絆的兩邊各算；拿下來就扣；階數照門檻
 static func check_bonds() -> String:
 	for id: StringName in ItemDefs.ITEMS:
@@ -1726,8 +1727,8 @@ static func check_bonds() -> String:
 				return "%s 的羈絆不存在：%s" % [id, bond]
 	for r: StringName in ItemDefs.RARITIES:
 		for id in LootDefs.drop_pool(r):
-			if ItemDefs.ITEMS[id].get("bonds", []).is_empty() and ItemDefs.support_of(id).is_empty():
-				return "%s 不屬於任何羈絆（也不是輔助道具），不該在掉落池" % id
+			if ItemDefs.ITEMS[id].get("bonds", []).is_empty() and ItemDefs.support_of(id).is_empty() and not ItemDefs.is_mana_item(id):
+				return "%s 不屬於任何羈絆（也不是輔助、魔力道具），不該在掉落池" % id
 	for bond: StringName in BondDefs.BONDS:
 		var th: Array = BondDefs.BONDS[bond].thresholds
 		if BondDefs.BONDS[bond].tiers.size() != th.size():

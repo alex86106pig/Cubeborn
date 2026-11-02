@@ -62,6 +62,7 @@ var wisps: Array[OrbitWisp] = []       # 鬼火羈絆：繞著自己轉的鬼火
 var wisp_plan: Array[StringName] = []  # 該有的鬼火（每顆的屬性；BondEffects.refresh 依道具與階數算）
 var wisp_frenzy_timer := 0.0           # 噬魂燈：鬼火擊殺後這段時間鬼火傷害變高
 var wisp_anchor := Vector2.INF         # 分支・星位（第 8c 步）：上次翻滾的位置，鬼火繞著這裡轉；INF = 跟著自己（權威端）
+var mana := 0.0                        # 目前魔力（上限 max_mana 屬性，每秒回 mana_regen；技能與右鍵耗魔，權威端為準）
 var dice: int = LootDefs.RELIC.start_dice   # 遺物的骰子（Build 改版第 6 步）：重擲 N 選 1 用掉 1 顆，整局通用
 var relic_id := 0                      # 打開著的遺物（權威端設定，快照送給自己；0 = 沒打開）
 var skill_levels := {}                 # 技能 id → 等級（Build 改版第 7 步：技能遺物選到已經有的就升 1 級；沒記的是 1 級）
@@ -87,6 +88,9 @@ var _pressed := 0   # 本步按下的按鈕；讀過就清除，沒收到新輸�
 func _init(p_world: World, p_peer_id: int) -> void:
 	super(p_world, &"player", &"player", Config.PLAYER.radius, Config.PLAYER.max_hp, Config.PLAYER.mass)
 	stats.set_base(&"move_speed", Config.PLAYER.move_speed)
+	stats.set_base(&"max_mana", Config.MANA.max)
+	stats.set_base(&"mana_regen", Config.MANA.regen)
+	mana = Config.MANA.max
 	peer_id = p_peer_id
 	locomotion = StateMachine.new(self, PlayerStates.locomotion_states(), &"idle")
 	action = StateMachine.new(self, PlayerStates.action_states())
@@ -393,6 +397,38 @@ func roll_cooldown() -> float:
 	return Config.ROLL.cooldown * stats.value(&"roll_cooldown")
 
 
+# ───────── 魔力 ─────────
+
+func max_mana() -> float:
+	return stats.value(&"max_mana")
+
+
+# 招式 / 技能（資料有 mana）這次要扣多少：× 耗魔屬性 × 等級的縮減
+func mana_cost_of(def: Dictionary, level := 1) -> float:
+	return def.get("mana", 0.0) * stats.value(&"mana_cost") * (1.0 - SkillDefs.LEVEL.mana * (level - 1))
+
+
+func has_mana(cost: float) -> bool:
+	return mana >= cost - 1e-6
+
+
+func spend_mana(cost: float) -> void:
+	mana = maxf(0.0, mana - cost)
+
+
+func gain_mana(amount: float) -> void:
+	mana = minf(max_mana(), mana + amount)
+
+
+# 魔力夠不夠放這個招式；不耗魔的、或 cd_key 的防連按間隔還沒過都照原本的冷卻判斷
+func action_ready(def: Dictionary, cd_key: String) -> bool:
+	if def.has("mana") and not has_mana(mana_cost_of(def)):
+		return false
+	if def.has("mana") or def.has("cooldown"):
+		return world.cooldowns.is_ready(cd(cd_key))
+	return true
+
+
 # 消耗 1 次充能；沒有在回充時開始回充
 func consume_roll_charge() -> void:
 	roll_charges -= 1
@@ -424,6 +460,7 @@ func apply_class(id: StringName) -> void:
 	equip_weapon(c.weapon)
 	loadout.equip_offhand_new(self, c.get("offhand", &""))
 	hp = max_hp
+	mana = max_mana()
 	roll_charges = roll_max()
 
 
@@ -706,6 +743,8 @@ func _tick_timers(dt: float) -> void:
 	dodge_timer = maxf(0.0, dodge_timer - dt)
 	parry_timer = maxf(0.0, parry_timer - dt)
 	_tick_roll_charges()
+	if not is_dead:
+		mana = minf(max_mana(), mana + stats.value(&"mana_regen") * dt)
 	ItemEffects.update_player(self, dt)   # 低血、擊殺後的道具條件加成（v0.33.0）
 	BondEffects.update_player(self, dt)   # 招架後的計時、鬼火
 	SkillBehaviors.update_player(self, dt)   # 衝刺類技能打面前
