@@ -187,6 +187,42 @@ static func check_map_a() -> String:
 	return ""
 
 
+# 種子：每層的怪群與寶箱只看種子（World.floor_rng），第 1 層打法不同（world.rng 用掉的量不同）第 2 層照樣一樣；換種子就不一樣
+static func check_floor_seed() -> String:
+	var layouts := []
+	for case: Array in [[77, 0], [77, 500], [78, 0]]:
+		var w := World.new(&"graveyard_a")
+		w.reset(case[0])
+		w.spawner.finished = true
+		_worlds.append(w)
+		var first := _layout(w)
+		for i in int(case[1]):
+			w.rng.randf()   # 當成第 1 層打了一場（爆擊、閃避、AI 都用 world.rng）
+		w.next_floor()
+		layouts.append([first, _layout(w)])
+	if layouts[0][0] != layouts[1][0] or layouts[0][1] != layouts[1][1]:
+		return "同一個種子，第 1 層打法不同，第 2 層的怪群 / 寶箱配置應相同"
+	if layouts[0][0] == layouts[2][0] or layouts[0][1] == layouts[2][1]:
+		return "不同種子的配置應不同"
+	CheckKit._note("種子：第 2 層怪群 %d 隻、寶箱 %d 個，同種子兩局一致" % [(layouts[0][1][0] as Array).size(), (layouts[0][1][1] as Array).size()])
+	return ""
+
+
+# 這一層的配置：怪群成員（種類、位置、稀有度、詞條）、寶箱與鍛造祭壇（種類、位置），位置取到 0.001
+static func _layout(w: World) -> Array:
+	var packs := []
+	for e in w.enemies:
+		var en := e as Enemy
+		if en != null and en.pack_id >= 0:
+			packs.append([en.type, snappedf(en.pos.x, 0.001), snappedf(en.pos.y, 0.001), en.rarity, en.affixes.duplicate()])
+	var chests := []
+	for c in w.chests:
+		chests.append([(c as Chest).tier, snappedf(c.pos.x, 0.001), snappedf(c.pos.y, 0.001)])
+	for f in w.forges:
+		chests.append([&"forge", snappedf(f.pos.x, 0.001), snappedf(f.pos.y, 0.001)])
+	return [packs, chests]
+
+
 static func _check_floor_map(floor_num: int) -> String:
 	var w := _new_world(12345, false, &"graveyard_a")
 	for i in floor_num - 1:

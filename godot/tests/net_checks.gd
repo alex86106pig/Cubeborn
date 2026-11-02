@@ -15,7 +15,7 @@ static func cleanup() -> void:
 
 # 假的網路：房主 World + NetHost ⇄ NetClient，單程延遲 latency 步、unreliable 掉包比例 loss（reliable 不掉）
 class _Link:
-	var host_world := World.new(&"test_arena")
+	var host_world: World
 	var host: NetHost
 	var client: NetClient
 	var latency := 0
@@ -29,15 +29,17 @@ class _Link:
 	var _to_host: Array = []     # [送達步, 輸入陣列]
 	var _to_client: Array = []   # [送達步, &"snap" | &"events", 資料]
 
-	func _init(seed_value: int, peers: Array[int], p_latency: int, p_loss: float, spawn: bool) -> void:
+	# map_id：預設測試場地（沒有怪群）；墓園 A 有怪群（休眠的怪客戶端本機生）
+	func _init(seed_value: int, peers: Array[int], p_latency: int, p_loss: float, spawn: bool, map_id: StringName = &"test_arena") -> void:
 		latency = p_latency
 		loss = p_loss
 		rng.seed = seed_value
+		host_world = World.new(map_id)
 		host_world.reset(seed_value, peers)
 		host_world.spawner.finished = not spawn
 		host = NetHost.new(host_world)
 		client = NetClient.new(peers[1])
-		client.world.load_map(&"test_arena")   # 房主與客戶端要同一張地圖
+		client.world.load_map(map_id)   # 房主與客戶端要同一張地圖
 		NetChecks._made.append_array([host_world, client.world])
 		host_events.append_array(host_world.events)   # reset 的 game:restart
 		_send_events()
@@ -750,6 +752,84 @@ static func check_snapshot_size(feel: Array[String]) -> String:
 		return "最大一份快照 %d bytes，超過 %d：%s；被 120 隻圍住時 %d bytes" % [worst, SNAPSHOT_MAX_BYTES, parts, crowd_bytes]
 	if crowd_bytes > SNAPSHOT_CROWD_MAX_BYTES:
 		return "P2 被 120 隻圍住時快照 %d bytes，超過 %d" % [crowd_bytes, SNAPSHOT_CROWD_MAX_BYTES]
+	return ""
+
+
+# 休眠的怪群客戶端本機生（種子）：id / 種類 / 位置 / 稀有度跟房主相同、快照不送休眠的、檢查碼一致；
+# 在別人附近（我的範圍外）醒了 → 我這邊那群移除；在我附近醒了 → 照快照同步同一隻；休眠中被移除 → 我這邊也移除；
+# 檢查碼對不上 → 不用本機的休眠怪
+static func check_local_packs() -> String:
+	var link := _Link.new(21, [1, 2], 2, 0.0, false, &"graveyard_a")
+	var hw := link.host_world
+	var cw := link.client.world
+	for i in 30:
+		link.step(InputCmd.new(), InputCmd.new())
+	var host_packs := {}
+	for e: Entity in hw.enemies:
+		if (e as Enemy).pack_id >= 0:
+			host_packs[e.id] = [(e as Enemy).type, e.pos, (e as Enemy).rarity, (e as Enemy).affixes]
+	var local := 0
+	for id: int in host_packs:
+		if not (hw.entities[id] as Enemy).dormant:
+			continue   # 已經醒了（玩家走近）：照快照同步，另外檢查
+		var c: Enemy = cw.entities.get(id) as Enemy
+		if c == null or not c.net_local or [c.type, c.pos, c.rarity, c.affixes] != host_packs[id]:
+			return "客戶端本機的怪群 id %d 應跟房主相同（房主 %s、客戶端 %s）" % [id, host_packs[id], [c.type, c.pos, c.rarity, c.affixes] if c != null else "沒有"]
+		local += 1
+	if local == 0 or link.client.layout_mismatch != 0:
+		return "客戶端應在本機生出怪群（%d 隻、檢查碼不同 %d 次）" % [local, link.client.layout_mismatch]
+	var snap: Array = NetCodec.decode_snapshot(link.host.snapshots()[2].duplicate(true))
+	for a: Array in snap[NetCodec.S_ENTITIES]:
+		var he := hw.entities.get(a[NetCodec.E_ID]) as Enemy
+		if he != null and he.dormant:
+			return "快照不應送休眠的怪群成員（%d）" % a[NetCodec.E_ID]
+	# 範圍外（P1 在那邊）醒了：P2 這邊那群移除；範圍內醒了：同一隻照快照同步
+	var p2: Player = hw.players[2]
+	var r: float = Config.NET.interest_radius
+	var far := -1
+	var near := -1
+	for i in hw.packs.size():
+		var d: float = (hw.packs[i].center as Vector2).distance_to(p2.pos)
+		if far < 0 and d > r + MonsterRarityDefs.PACKS.spread + 2.0:
+			far = i
+		if near < 0 and d < r - MonsterRarityDefs.PACKS.spread - 2.0:
+			near = i
+	if far < 0 or near < 0:
+		return "種子 21 找不到 P2 範圍內外各一群（換一個種子）"
+	hw.players[1].pos = hw.packs[far].center   # 別的玩家走過去叫醒
+	hw.wake_pack(far)
+	hw.wake_pack(near)
+	for i in 20:
+		hw.players[1].pos = hw.packs[far].center
+		link.step(InputCmd.new(), InputCmd.new())
+	for id: int in hw.packs[far].ids:
+		if cw.entities.has(id):
+			return "範圍外醒了的那群，客戶端這邊應移除（%d 還在）" % id
+	for id: int in hw.packs[near].ids:
+		var c: Entity = cw.entities.get(id)
+		var h: Entity = hw.entities.get(id)
+		if h != null and link.host.in_interest(h, p2) and (c == null or c.net_local):
+			return "範圍內醒了的那群應照快照同步同一隻（%d：%s）" % [id, "沒有" if c == null else "還是本機的"]
+	# 休眠中被移除（例如被吞掉）：房主發 pack:culled
+	var sleeping := -1
+	for i in hw.packs.size():
+		if not hw.packs[i].awake:
+			sleeping = i
+			break
+	var victim: int = hw.packs[sleeping].ids[0]
+	(hw.entities[victim] as Entity).remove()
+	for i in 10:
+		link.step(InputCmd.new(), InputCmd.new())
+	if cw.entities.has(victim):
+		return "休眠中被移除的怪，客戶端也應移除"
+	# 檢查碼對不上：不用本機的休眠怪（等醒了照快照）
+	var bad: Array = NetCodec.decode_snapshot(link.host.snapshots()[2].duplicate(true))
+	bad[NetCodec.S_WORLD][NetCodec.W_LAYOUT] = (bad[NetCodec.S_WORLD][NetCodec.W_LAYOUT] + 1) & 0x7fffffff
+	link.client._packs_key = []
+	link.client._sync_local_packs(bad)
+	if link.client.layout_mismatch != 1 or cw.entities.values().any(func(e: Entity) -> bool: return e.net_local):
+		return "檢查碼對不上應不用本機的休眠怪（不同 %d 次）" % link.client.layout_mismatch
+	CheckKit._note("本機怪群：%d 隻跟房主一致；範圍外醒了的那群移除、範圍內的照快照同步" % local)
 	return ""
 
 

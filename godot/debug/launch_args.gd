@@ -10,6 +10,7 @@
 #   --weapon-test（武器測試場景：不生怪；畫面右邊貼身 1 隻、往右 5 / 7 / 9 一排、上方 4 一隻木樁，不動不打、血很多）
 #   挖墳（D6）：--at-dig（開場站在挖墳點旁邊）--exit-open（開場出口就打開）--ghost（畫面上方生一隻冤魂）
 #   --player-at=x,y（開場站在地圖座標 x, y，v0.32.0）--floor=N（開場直接換到第 N 層，地圖與 Boss 跟著換）
+#   --seed=N（這一局的種子：每層的怪群與寶箱配置照它，開局印 seed=N；不給網址參數用）
 #   畫面設定（2026-10-27）：--shadows=0 / --lights=0 蓋掉設定頁的陰影 / 光源（不存檔），內顯量效能時當對照組
 # 網頁版沒有指令列：網址的查詢參數轉成同樣的 --參數，只開放 WEB_URL_ARGS
 class_name LaunchArgs
@@ -47,6 +48,7 @@ var weapon_test := false        # 武器測試場景：不生怪群與波次，�
 var at_dig := false
 var player_at := Vector2.INF
 var start_floor := 1
+var run_seed := -1               # --seed=N：這一局的種子（-1 = 隨機）；只給開發重現配置，不開放網址參數
 var exit_open := false
 var ghost := false
 var perf := false
@@ -126,6 +128,8 @@ static func parse(args: PackedStringArray) -> LaunchArgs:
 			a.at_dig = true
 		elif arg.begins_with("--player-at="):
 			a.player_at = _vec2(value)
+		elif arg.begins_with("--seed="):
+			a.run_seed = value.to_int()
 		elif arg.begins_with("--floor="):
 			a.start_floor = maxi(1, value.to_int())
 		elif arg == "--exit-open":

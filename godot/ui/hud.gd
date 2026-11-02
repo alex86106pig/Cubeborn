@@ -25,7 +25,7 @@ const HINT_BOTTOM := 150.0        # 新手提示的下緣離畫面底部多少
 const BOSS_NAME := "亡骸騎士"     # 測試場地波次的 Boss（darkFantasy.js 的 names.boss）
 # 介面程式碼裡寫死的中文字（橫幅、浮動文字、場上文字、連線面板、遊玩紀錄…；資料表以外的）：開場預熱用（v0.37.2）
 # check.gd 會掃 ui/ 的字串，缺字就列出來，加到這裡
-const UI_CHARS := "升級—羈絆算階鑲輪　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木總樂畫陰源・介想意反對取噴發巡邏膨脹犬守話又頭肥羊園狼原形占拿件夠直接將"
+const UI_CHARS := "升級—羈絆算階鑲輪　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木總樂畫陰源・介想意反對取噴發巡邏膨脹犬守話又頭肥羊園狼原形占拿件夠直接將群配跟"
 
 const VIGNETTE_SHADER := """
 shader_type canvas_item;
@@ -88,6 +88,7 @@ var _floor_coins := 0               # 剛過關拿到的金幣：同一步的 fl
 var _pause := ColorRect.new()
 var _pause_title := UiKit.label("已暫停", UiKit.FONT_TITLE, Color.WHITE, 3)
 var _pause_hint := UiKit.label("按 Esc 繼續", UiKit.FONT_NOTE)
+var _pause_seed := UiKit.label("", UiKit.FONT_NOTE, Color(0.72, 0.75, 0.82))   # 這一局的種子（回報 bug 時對配置用）
 var _quit_button := UiKit.button("離開遊戲")
 var _title_button := UiKit.button("回主選單")
 var weapon_test_bar := HBoxContainer.new()   # 武器測試場：上方的武器按鈕列（只有在測試場才顯示）
@@ -146,10 +147,15 @@ func local_player() -> Player:
 	return world.players.get(local_peer) if world != null else null
 
 
+static func seed_text(w: World) -> String:
+	return "種子 %d" % w.run_seed if w != null else ""
+
+
 # 選單（Esc）：單機時是暫停畫面；連線時遊戲不會停，標題改成「選單」
 func show_menu(visible_: bool, title: String = "已暫停", hint: String = "按 Esc 繼續") -> void:
 	_reset_hints_button.text = "重新顯示提示"
 	_pause_title.text = title
+	_pause_seed.text = seed_text(world)
 	_pause_hint.text = hint
 	if not visible_:
 		settings_panel.close()   # 連線時選單關掉（Esc 已被設定頁吃掉，這裡是別的原因關選單）；先關，關的時候會把暫停畫面叫回來
@@ -325,7 +331,7 @@ func _init() -> void:
 		hints.reset_seen()
 		_reset_hints_button.text = "提示已重設")
 	_settings_button.pressed.connect(_open_settings.bind(_pause))
-	_build_overlay(_pause, UiKit.MENU_DIM, [_pause_title, _pause_hint, pause_controls, _pause_net_slot, _settings_button, _reset_hints_button, _title_button, _quit_button])
+	_build_overlay(_pause, UiKit.MENU_DIM, [_pause_title, _pause_hint, _pause_seed, pause_controls, _pause_net_slot, _settings_button, _reset_hints_button, _title_button, _quit_button])
 	_pause.mouse_filter = Control.MOUSE_FILTER_STOP   # 選單的按鈕與輸入框要能點
 	root.add_child(_pause)
 	main_menu.visible = false
@@ -747,7 +753,7 @@ func _tag_of(player_id: int) -> String:
 func _set_game_over(title: String, stats: String, victory: bool) -> void:
 	_game_over_title.text = title
 	_game_over_title.add_theme_color_override(&"font_color", UiKit.GOLD if victory else UiKit.ALERT)
-	_game_over_stats.text = stats + "\n" + coins_summary()
+	_game_over_stats.text = stats + "\n" + coins_summary() + "\n" + seed_text(world)
 	_game_over_log.text = run_log.summary_text()
 	run_log.result = title
 	_game_over.color = Color(40 / 255.0, 30 / 255.0, 0, 0.5) if victory else Color(40 / 255.0, 0, 0, 0.55)

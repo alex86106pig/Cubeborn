@@ -581,8 +581,8 @@ static func check_net_event() -> String:
 	var mc: ItemPickup = cw.entities.get(pk.id)
 	if mp == null or not mp.descended or mc == null or mc.corpse_of != 2:
 		return "客戶端的「已進出口」或屍體主人沒同步"
-	if cw.event.point.distance_to(w.event.point) > EPS or cw.map_id != w.map_id:
-		return "客戶端的挖墳點 / 地圖不同（%s / 房主 %s）" % [cw.map_id, w.map_id]
+	if cw.event.point.distance_to(w.event.point) > EPS or cw.map_id != w.map_id or cw.run_seed != w.run_seed:
+		return "客戶端的挖墳點 / 地圖 / 種子不同（%s 種子 %d / 房主 %s 種子 %d）" % [cw.map_id, cw.run_seed, w.map_id, w.run_seed]
 	# 投票（HUD 的橫幅與 Enter / Esc 提示要用）
 	w.event.vote_by = 2
 	w.event.vote_left = 7.5

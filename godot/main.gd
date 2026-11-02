@@ -154,7 +154,9 @@ func restart() -> void:
 		world.player_classes[World.HOST_PEER_ID] = args.start_class
 	if EventDefs.MODES.has(args.difficulty):
 		world.difficulty_mode = args.difficulty
-	world.reset(randi(), peers)
+	var seed_value := args.run_seed if args.run_seed >= 0 else randi()
+	world.reset(seed_value, peers)
+	print("seed=%d" % seed_value)
 	world.spawner.finished = no_spawn
 	var me := local_player()
 	if args.start_weapon != &"":
@@ -462,6 +464,7 @@ func _net_report() -> Dictionary:
 	if net_client != null:
 		out.rtt_ms = net_client.rtt_ms
 		out.snapshot_gap_max_ms = net_client.snapshot_gap_max_ms
+		out.layout_mismatch = net_client.layout_mismatch
 	if net_host != null:
 		out.input_gap_max_ms = net_host.input_gap_max_ms
 	return out

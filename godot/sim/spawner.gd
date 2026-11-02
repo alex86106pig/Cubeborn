@@ -1,5 +1,5 @@
 # 分波生成（照搬網頁版 Spawner.js）：依 wave_defs 逐隻從遠離玩家的位置生成；場上清空後倒數進入下一波
-# 不持有 World（避免循環參照），每次呼叫時傳入；隨機一律用 world.rng
+# 不持有 World（避免循環參照），每次呼叫時傳入；隨機用 world.rng，地圖預放的怪群用這一層的配置亂數（World.floor_rng）
 class_name Spawner
 extends RefCounted
 
@@ -118,7 +118,15 @@ static func _around_player(world: World, type: StringName, p: Vector2) -> Vector
 
 
 # extra 併進 mul（例如 dormant = true、initial_state，見 Enemy._init）；difficulty 指定挖墳地圖用的難度（挖墳點噴出的下一層怪）
-func spawn_at(world: World, type: StringName, at: Vector2, extra: Dictionary = {}) -> Enemy:
+# p_id：指定實體 id（怪群用 World.pack_entity_id，房主與客戶端各自生出來 id 才對得上）；0 = 照順序給
+func spawn_at(world: World, type: StringName, at: Vector2, extra: Dictionary = {}, p_id: int = 0) -> Enemy:
+	var enemy := create(world, type, at, spawn_mul(world, type, extra))
+	world.add_enemy(enemy, p_id)
+	return enemy
+
+
+# 生成倍率：挖墳地圖依目前難度、波次依第幾波；血量再乘人數；extra 蓋上去
+func spawn_mul(world: World, type: StringName, extra: Dictionary) -> Dictionary:
 	var mul: Dictionary
 	if DigEvent.enabled(world):   # 挖墳地圖（D6）：所有怪（含 Boss、怪群、冤魂）依目前難度
 		mul = EventDefs.difficulty_mul(extra.get("difficulty", world.difficulty()))
@@ -126,9 +134,7 @@ func spawn_at(world: World, type: StringName, at: Vector2, extra: Dictionary = {
 		mul = (WaveDefs.NO_SCALING if EnemyDefs.is_boss(type) else WaveDefs.wave_multipliers(wave)).duplicate()
 	mul.hp *= player_count_hp_mul(world.players.size())
 	mul.merge(extra)
-	var enemy := create(world, type, at, mul)
-	world.add_enemy(enemy)
-	return enemy
+	return mul
 
 
 # ───────── 武器測試場景（--weapon-test，2026-10-27）──────────
@@ -156,59 +162,83 @@ static func spawn_training_dummies(world: World, center: Vector2) -> Array[Enemy
 # ───────── 怪群（D5）：開場在地圖上散放，休眠到玩家靠近（World._update_packs）──────────
 
 # 群中心：離出生點 min_spawn_distance 以上、可走而且走得到出生點、群與群之間 min_pack_distance 以上
-func spawn_packs(world: World) -> void:
+# rng：這一層的配置亂數（World.floor_rng）：群的位置、成員的種類、位置、朝向、稀有度、詞條都用它，同一個種子每層都一樣
+# 客戶端用同一個種子在本機算出同一份怪群（休眠的怪不進快照，見 NetHost）：不同平台（Windows / Mac / 網頁）要算出一模一樣的結果，
+# 所以位置只用整數亂數取 1 / PACK_GRID 的格點（二進位剛好表示得出來，加減乘都沒有捨入誤差），距離一律比平方，不用三角函數、開根號、
+# randf_range（引擎內部的乘加在不同編譯器可能合併成一次運算，最後一位不同）
+const PACK_GRID := 8
+
+
+func spawn_packs(world: World, rng: RandomNumberGenerator) -> void:
 	var c: Dictionary = MonsterRarityDefs.PACKS
-	var rng := world.rng
 	var lim: Vector2 = world.half_extents - Vector2(c.edge_margin, c.edge_margin)
 	var want := rng.randi_range(c.count[0], c.count[1])
 	var centers: Array[Vector2] = []
+	var spawn_gap2: float = c.min_spawn_distance * c.min_spawn_distance
+	var pack_gap2: float = c.min_pack_distance * c.min_pack_distance
 	for attempt in c.attempts:
 		if centers.size() >= want:
 			break
-		var at := Vector2(rng.randf_range(-lim.x, lim.x), rng.randf_range(-lim.y, lim.y))
-		if at.distance_to(world.spawn_point) < c.min_spawn_distance:
+		var at := Vector2(_grid(rng, lim.x), _grid(rng, lim.y))
+		if at.distance_squared_to(world.spawn_point) < spawn_gap2:
 			continue
 		if not world.nav.is_walkable(at) or not world.nav.same_region(at, world.spawn_point):
 			continue
 		var apart := true
 		for o in centers:
-			if o.distance_to(at) < c.min_pack_distance:
+			if o.distance_squared_to(at) < pack_gap2:
 				apart = false
 				break
 		if apart:
 			centers.append(at)
+	var layout := []
 	for center in centers:
-		_spawn_pack(world, center)
+		_spawn_pack(world, center, rng, layout)
+	world.pack_digest = hash(layout) & 0x7fffffff
 
 
-func _spawn_pack(world: World, center: Vector2) -> void:
+# −limit ~ limit 之間的格點（1 / PACK_GRID 單位）
+static func _grid(rng: RandomNumberGenerator, limit: float) -> float:
+	var n := floori(limit * PACK_GRID)
+	return float(rng.randi_range(-n, n)) / PACK_GRID
+
+
+# layout：每隻生出來的 [id, 種類, x, y, 稀有度, 詞條]（檢查碼用生成的值算，不看場上實體現在的位置：醒了的會走動）
+# 客戶端：這個 id 已經有快照建的鏡像（那群已經醒了）就不再生一隻蓋掉它，但亂數照樣抽（後面的成員才對得上）
+func _spawn_pack(world: World, center: Vector2, rng: RandomNumberGenerator, layout: Array) -> void:
 	var c: Dictionary = MonsterRarityDefs.PACKS
-	var rng := world.rng
 	var pack_id := world.packs.size()
 	var ids: Array[int] = []
 	var placed: Array[Vector2] = []
 	for r in MonsterRarityDefs.roll_pack_rarities(rng.randi_range(c.size[0], c.size[1]), rng):
 		var type := EnemyDefs.roll_floor_type(world.floor_num, rng)
-		var at := _pack_member_spot(world, center, placed)
+		var at := _pack_member_spot(world, center, placed, rng, EnemyDefs.ENEMIES[type].radius)
 		placed.append(at)
-		var e := spawn_at(world, type, at, {"dormant": true})
+		var id := World.pack_entity_id(world.floor_num, world.pack_member_count() + ids.size())
+		var mirrored := world.entities.has(id)
+		var e := create(world, type, at, spawn_mul(world, type, {"dormant": true})) if mirrored else spawn_at(world, type, at, {"dormant": true}, id)
 		e.pack_id = pack_id
-		e.facing = rng.randf() * TAU
-		roll_rarity(world, e, r)
-		ids.append(e.id)
+		e.facing = float(rng.randi_range(0, 4095)) * TAU / 4096.0
+		roll_rarity(world, e, r, rng)
+		layout.append([id, type, at.x, at.y, e.rarity, e.affixes.duplicate()])
+		if mirrored:
+			e.detach()   # 只是用來抽亂數的暫時實體，沒有加進 World
+		ids.append(id)
 	world.packs.append({"center": center, "ids": ids, "awake": false})
 
 
-# 群中心 spread 內、可走、和已放的成員至少 member_gap；找不到就放在群中心附近最近的空地（碰撞分離會推開）
-static func _pack_member_spot(world: World, center: Vector2, placed: Array[Vector2]) -> Vector2:
+# 群中心 spread 內（正方形裡抽、超出圓就重抽）、可走、身體不碰到牆（不然房主每步會把它推出牆、跟客戶端本機的位置不同）、
+# 和已放的成員至少 member_gap；找不到就放在群中心附近最近的空地（休眠中固定不動，醒了碰撞分離才推開）
+static func _pack_member_spot(world: World, center: Vector2, placed: Array[Vector2], rng: RandomNumberGenerator, radius: float) -> Vector2:
 	var c: Dictionary = MonsterRarityDefs.PACKS
-	var rng := world.rng
 	var gap2: float = c.member_gap * c.member_gap
+	var spread2: float = c.spread * c.spread
 	for attempt in 12:
-		var a := rng.randf() * TAU
-		var r: float = sqrt(rng.randf()) * c.spread
-		var at := center + Vector2(sin(a), cos(a)) * r
-		if not world.nav.is_walkable(at) or not world.nav.same_region(at, center):
+		var off := Vector2(_grid(rng, c.spread), _grid(rng, c.spread))
+		if off.length_squared() > spread2:
+			continue
+		var at := center + off
+		if not world.nav.is_walkable(at) or not world.nav.same_region(at, center) or not world.terrain.clear_at(at, radius):
 			continue
 		var free := true
 		for p in placed:
@@ -221,11 +251,13 @@ static func _pack_member_spot(world: World, center: Vector2, placed: Array[Vecto
 
 
 # 抽詞條與名字並套上稀有度（普通不抽、不耗亂數）
-static func roll_rarity(world: World, e: Enemy, rarity: StringName) -> void:
+# rng：怪群用這一層的配置亂數；沒給（挖墳事件、波次）用 world.rng
+static func roll_rarity(world: World, e: Enemy, rarity: StringName, rng: RandomNumberGenerator = null) -> void:
 	if rarity == MonsterRarityDefs.NORMAL:
 		return
-	var affixes := MonsterRarityDefs.roll_affixes(MonsterRarityDefs.affix_count(rarity, world.rng), world.rng)
-	var name := MonsterRarityDefs.roll_rare_name(world.rng) if rarity == MonsterRarityDefs.RARE else ""
+	var r := rng if rng != null else world.rng
+	var affixes := MonsterRarityDefs.roll_affixes(MonsterRarityDefs.affix_count(rarity, r), r)
+	var name := MonsterRarityDefs.roll_rare_name(r) if rarity == MonsterRarityDefs.RARE else ""
 	e.set_rarity(rarity, affixes, name)
 	e.apply_rarity_stats()
 

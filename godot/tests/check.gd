@@ -120,8 +120,8 @@ func _initialize() -> void:
 	_check("一局流程：每波依序開始、打倒 Boss 後 is_over、victory_delay 秒後 game:victory、擊殺數正確", MapChecks.check_full_run)
 	_check("地形：0.5 石台走不上去、跳得上去；從 0.5 跳上 1.0；走出邊緣會掉回地面；2.5 的牆跳不過去；起跳偵測的快速排除（Terrain.may_rise）在測試場地、墓園、墓窟都不漏掉會起跳的地方",
 		all.bind([MapChecks.check_terrain, MapChecks.check_may_rise]))
-	_check("每層的地圖（第 1 層環形墓園、第 2 層墓窟，用 next_floor 走到）：大小與邊界一致、石台都在場地內、出生點與挖墳點可走且相連、可走的格子連成一片、相鄰可走格高低差 ≤ climb_height、牆比最高的地面高出跳躍高度以上；挖墳事件生的小怪都在離玩家 min ~ max_distance、走得到玩家的地方",
-		all.bind([MapChecks.check_map_a, MapChecks.check_map_spawns]))
+	_check("每層的地圖（第 1 層環形墓園、第 2 層墓窟，用 next_floor 走到）：大小與邊界一致、石台都在場地內、出生點與挖墳點可走且相連、可走的格子連成一片、相鄰可走格高低差 ≤ climb_height、牆比最高的地面高出跳躍高度以上；挖墳事件生的小怪都在離玩家 min ~ max_distance、走得到玩家的地方；每層的怪群與寶箱只看種子（第 1 層打法不同第 2 層照樣一樣）",
+		all.bind([MapChecks.check_map_a, MapChecks.check_map_spawns, MapChecks.check_floor_seed]))
 	_check("怪物尋路：直線離牆小於 margin 不算看得到、繞北門變慢的步數 < 30；玩家在圍牆內，骷髏戰士從牆外繞到北門打到、弓手繞進來射中；離目標超過 far_distance 時降低重新判斷頻率、走進來立刻判斷",
 		all.bind([MapChecks.check_nav_clearance, MapChecks.check_enemy_pathing, MapChecks.check_far_repath]))
 	_check("高台：骷髏戰士先蹲 jump_windup 再跳，經 0.5 跳上 1.0 打到玩家、Boss 也跳得上去；弓手射得到高台上的玩家、被牆擋住先移動不對牆射",
@@ -232,8 +232,8 @@ func _initialize() -> void:
 	_check("結束程式不洩漏：主場景跑 3 秒（有怪、一直攻擊，音效還在播）後結束兩次，沒有 ObjectDB 洩漏、資源還在用", ViewChecks.check_quit_no_leak)
 
 	# ───────── 連線 ─────────
-	_check("快照：房主的實體序列化後客戶端建立同樣類別、位置、血量、武器的鏡像、動畫狀態相同時數值補間；地圖 A 怪群 + 4 人、P2 被 30 隻圍住時每份快照 ≤ 4.5 KB",
-		all.bind([NetChecks.check_codec, NetChecks.check_snapshot_size.bind(feel)]))
+	_check("快照：房主的實體序列化後客戶端建立同樣類別、位置、血量、武器的鏡像、動畫狀態相同時數值補間；地圖 A 怪群 + 4 人、P2 被 30 隻圍住時每份快照 ≤ 4.5 KB；休眠的怪群客戶端用種子在本機生（跟房主一致、不進快照；範圍外醒了移除、範圍內醒了照快照、休眠中被移除跟著移除、檢查碼不同就不用）",
+		all.bind([NetChecks.check_codec, NetChecks.check_snapshot_size.bind(feel), NetChecks.check_local_packs]))
 	_check("網頁連線配對（v0.36.0）：PeerJS 網址、房主 ID、房號（4 碼、不含易混字）、訊息格式、伺服器訊息對應的訊號；桌面版 IP 與房號兩種都能用", NetChecks.check_web_signaling)
 	_check("桌面版 WebRTC（v0.40.0）：同一程序兩條連線交換 SDP，照 NetSession 的設定建房主 / 客戶端，5 秒內連上且封包收得到；網頁版接收緩衝區至少 1024 KB", NetChecks.check_desktop_webrtc.bind(feel))
 	_check("誤傷（C2）：玩家揮劍打得到前方的隊友、打不到自己；魔彈打得到隊友、不打發射者；單機目標不含自己", NetChecks.check_friendly_fire)

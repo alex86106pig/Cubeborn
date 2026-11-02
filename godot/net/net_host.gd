@@ -61,13 +61,14 @@ func take_cmds() -> Dictionary:
 
 # 每位客戶端各一份：只送該玩家附近（NET.interest_radius）的實體，玩家與 Boss 一律送（v0.35.0，網頁 WebRTC 單則訊息有大小上限）
 # 每個實體只編碼一次，再依玩家挑選；附近以外的怪客戶端本來就看不到（視野 18），離開範圍就從鏡像移除、回來再建立
+# 休眠的怪群成員不送（local_dormant）：客戶端自己生，快照的 W_PACKS 告訴它哪幾群醒了
 func snapshots() -> Dictionary:
 	var entities := NetCodec.encode_entities(world)
 	var out := {}
 	for peer_id: int in world.players:
 		if peer_id != World.HOST_PEER_ID:
 			var viewer := viewer_of(peer_id)
-			var picked := entities.filter(func(rec: Array) -> bool: return in_interest(rec[2], viewer))
+			var picked := entities.filter(func(rec: Array) -> bool: return in_interest(rec[2], viewer) and not local_dormant(rec[2]))
 			out[peer_id] = NetCodec.make_snapshot(world, picked, acks.get(peer_id, 0), peer_id)
 	return out
 
@@ -77,6 +78,11 @@ func viewer_of(peer_id: int) -> Player:
 	var me: Player = world.players.get(peer_id)
 	var target: Player = world.players.get(spectating.get(peer_id, 0))
 	return target if me != null and me.is_dead and target != null else me
+
+
+# 休眠的怪群成員不送：客戶端用種子在本機生同一份（NetClient._sync_local_packs）；醒了才開始送
+func local_dormant(e: Entity) -> bool:
+	return e is Enemy and (e as Enemy).dormant and (e as Enemy).pack_id >= 0 and e.id >= World.PACK_ID_BASE and not e.is_dead
 
 
 func in_interest(e: Entity, viewer: Player) -> bool:

@@ -27,6 +27,8 @@ var _client_tick := 0
 var _last_ack := 0
 var _predicted: Dictionary = {}  # 目標 id -> [預測打中時的客戶端 tick, ...]（v0.38.0：房主的同一下到了就標 predicted）
 var _flash: Dictionary = {}      # 目標 id -> 預測打中的閃白剩幾秒（快照的閃白還沒到，先在本機閃）
+var _packs_key := []             # 本機的休眠怪群是哪一局、哪一層、哪個種子生的（變了就重生）
+var layout_mismatch := 0         # 本機算的怪群檢查碼跟房主不同的次數（不同就不用本機的休眠怪，等醒了照快照）
 
 
 func _init(p_peer_id: int) -> void:
@@ -62,7 +64,11 @@ func step(cmd: InputCmd, dt: float) -> Array[Dictionary]:
 	else:
 		world.tick += 1
 	while not _events.is_empty() and _events[0][0] <= render_tick:
-		out.append_array(_events.pop_front()[1])
+		var evs: Array = _events.pop_front()[1]
+		for ev: Dictionary in evs:
+			if ev.name == "pack:culled":   # 休眠中被移除的怪群成員（本機生的，快照不會告訴我）
+				world.remove_entity_now(ev.entity_id)
+		out.append_array(evs)
 	return out
 
 
@@ -154,6 +160,7 @@ func _reset_mirror(run: int) -> void:
 	_predicted.clear()
 	_flash.clear()
 	render_tick = -1.0
+	_packs_key = []
 
 
 # 畫面時間追著「估計的房主 tick - interp_delay_ticks」走：每步 +1，再很慢地修正偏差（速度最多差 5%，畫面才平順）；
@@ -204,6 +211,8 @@ func _apply_interpolated() -> void:
 		var id: int = arr[NetCodec.E_ID]
 		seen[id] = true
 		var e: Entity = world.entities.get(id)
+		if e != null:
+			e.net_local = false   # 怪群醒了、房主開始送：之後照快照同步
 		if NetCodec.is_player_of(arr, peer_id):
 			if e == null:
 				NetCodec.create_entity(world, arr)
@@ -213,9 +222,44 @@ func _apply_interpolated() -> void:
 			continue
 		NetCodec.apply_entity(e, arr, b_by_id.get(id, []), t, ahead)
 	for id: int in world.entities.keys():
-		if not seen.has(id):
+		if not seen.has(id) and not world.entities[id].net_local:
 			world.remove_entity_now(id)
 	NetCodec.apply_world(world, a)
+	_sync_local_packs(a)
+
+
+# 休眠的怪群房主不送：換層（或新的一局）時用快照的種子在本機生同一份，檢查碼不同就不用；
+# 醒了的群（W_PACKS）房主開始送附近的成員，沒送到的（醒了但不在我附近、被別的玩家帶走）本機那隻移除
+func _sync_local_packs(snap: Array) -> void:
+	var w: Array = snap[NetCodec.S_WORLD]
+	var key := [_run_id, world.floor_num, world.run_seed]
+	if key != _packs_key:
+		_packs_key = key
+		for e: Entity in world.entities.values():
+			if e.net_local:
+				world.remove_entity_now(e.id)
+		world.packs.clear()
+		if w[NetCodec.W_LAYOUT] != 0 and world.map.get("packs", false):
+			world.spawner.spawn_packs(world, world.floor_rng(&"packs"))
+			for pk: Dictionary in world.packs:
+				for id: int in pk.ids:
+					if world.entities.has(id):
+						world.entities[id].net_local = true
+			if world.pack_digest != w[NetCodec.W_LAYOUT]:
+				layout_mismatch += 1
+				push_warning("怪群檢查碼不同（本機 %d、房主 %d）：不用本機的休眠怪" % [world.pack_digest, w[NetCodec.W_LAYOUT]])
+				for e: Entity in world.entities.values():
+					if e.net_local:
+						world.remove_entity_now(e.id)
+				world.packs.clear()
+	var mask: int = w[NetCodec.W_PACKS]
+	for i in world.packs.size():
+		if mask & (1 << i) == 0:
+			continue
+		for id: int in world.packs[i].ids:
+			var e: Entity = world.entities.get(id)
+			if e != null and e.net_local:
+				world.remove_entity_now(id)
 
 
 # 依 ack 修正自己的角色：房主套用到第 ack 筆輸入後的位置 − 當時本機預測的位置 = 誤差，

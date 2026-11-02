@@ -137,6 +137,20 @@ static func _segment_hits_rect(a: Vector2, b: Vector2, lo: Vector2, hi: Vector2)
 	return true
 
 
+# 半徑 radius 的圓站在 p（腳底在那裡的地面）不會被 push_out 推動：怪群擺位置用（只比平方，沒有捨入誤差）
+func clear_at(p: Vector2, radius: float) -> bool:
+	var step: float = Config.HEIGHT.step
+	var h := ground_at(p)
+	for i in _near(p):
+		var b := blocks[i]
+		if h >= b.top - step:
+			continue
+		var closest := Vector2(clampf(p.x, b.min.x, b.max.x), clampf(p.y, b.min.y, b.max.y))
+		if (p - closest).length_squared() < radius * radius:
+			return false
+	return true
+
+
 # 腳底低於頂面的石台當牆：圓與長方形重疊時，沿最近點方向推出去
 func push_out(e: Entity) -> void:
 	var step: float = Config.HEIGHT.step

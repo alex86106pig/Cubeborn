@@ -41,6 +41,11 @@ var base_difficulty := 0.0
 var event := DigEvent.new()
 var hit_stop_timer := 0.0            # 剩餘的整體放慢（真實秒數），由主迴圈換算成時間縮放；v0.18.3 起只有打倒 Boss 時使用（一般命中改成畫面定格）
 # 地圖（D1，defs/map_defs.gd）：場地大小、地形、尋路格子、出生點；每層的地圖照 MapDefs.floor_map，客戶端看快照的層數換成同一張
+const PACK_ID_BASE := 1 << 30   # 怪群成員的 id 從這裡開始（每層 PACK_ID_STRIDE 個），不跟照順序給的 id 撞
+const PACK_ID_STRIDE := 1024
+var _changing_floor := false
+var pack_digest := 0   # 這一層怪群的檢查碼（Spawner.spawn_packs 用生成的值算）：房主放進快照，客戶端比對本機算出來的
+var run_seed := 0   # 這一局的種子（reset 傳入）：每層的配置（怪群、寶箱）用 floor_rng 從它算出來，客戶端從快照拿來顯示
 var web_count := 0   # 蜘蛛網的編號（GroundZones.add_web；畫面燒掉時用來找網）
 var map_id: StringName
 var map: Dictionary
@@ -105,6 +110,7 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 	clear()
 	_load_floor_map(1)
 	tick = 0
+	run_seed = seed_value
 	rng.seed = seed_value
 	coin_rng.seed = hash([seed_value, &"coin"])
 	cooldowns.reset_all()
@@ -137,17 +143,38 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 
 
 # 一層開始時的地圖內容：寶箱、怪群、挖墳事件歸零
+# 配置用這一層自己的亂數（floor_rng）：同一個種子每層的怪群與寶箱都一樣，不管前面打了什麼（world.rng 被戰鬥用掉多少）
 func _populate_floor() -> void:
 	event.reset(self)   # 先歸零：怪群的難度倍率要用這一層的基礎難度；Boss 在這一層的第一步才放（見 DigEvent.update）
+	pack_digest = 0
 	if spawn_packs and map.get("packs", false):
-		spawner.spawn_packs(self)
-	_place_chests()   # 放在怪群之後：寶箱用掉的亂數不改變怪群的位置
+		spawner.spawn_packs(self, floor_rng(&"packs"))
+	_place_chests(floor_rng(&"chests"))
+
+
+# 怪群成員的 id：第 floor_num 層第 index 隻（房主與客戶端都用這個，各自生出來才對得上）
+static func pack_entity_id(p_floor: int, index: int) -> int:
+	return PACK_ID_BASE + p_floor * PACK_ID_STRIDE + index
+
+
+func pack_member_count() -> int:
+	var n := 0
+	for pk: Dictionary in packs:
+		n += (pk.ids as Array).size()
+	return n
+
+
+# 這一層某種配置用的亂數：由 run_seed、層數、用途算出來，每種用途各一條（互不影響）
+func floor_rng(purpose: StringName) -> RandomNumberGenerator:
+	var r := RandomNumberGenerator.new()
+	r.seed = hash([run_seed, floor_num, purpose])
+	return r
 
 
 # 寶箱（v0.44.0 隨機放）：每種數量 × 人數倍率；可走、走得到出生點、離出生點 / 挖墳點 / 地圖邊緣 / 其他寶箱夠遠
 # 找不到夠遠的位置時，寶箱之間的距離逐步放寬（× 0.5、× 0）
 # 鍛造祭壇（forge_count）排在寶箱後面、用同一套規則：寶箱的位置和沒有鍛造祭壇時一樣
-func _place_chests() -> void:
+func _place_chests(prng: RandomNumberGenerator) -> void:
 	var c: Dictionary = LootDefs.CHEST_PLACEMENT
 	var tiers: Array[StringName] = []
 	var counts: Dictionary = map.get("chest_count", {})
@@ -165,7 +192,7 @@ func _place_chests() -> void:
 		for attempt in c.attempts:
 			if placed.size() >= tiers.size():
 				break
-			var at := Vector2(rng.randf_range(-lim.x, lim.x), rng.randf_range(-lim.y, lim.y))
+			var at := Vector2(prng.randf_range(-lim.x, lim.x), prng.randf_range(-lim.y, lim.y))
 			if at.distance_to(spawn_point) < c.min_spawn_distance or at.distance_to(event.point) < c.min_dig_distance:
 				continue
 			if not nav.is_walkable(at) or not nav.same_region(at, spawn_point) or not _flat_at(at, footprint):
@@ -209,7 +236,9 @@ func next_floor() -> void:
 	for e: Entity in entities.values():
 		if not e is Player:
 			e.remove()
+	_changing_floor = true   # 整層清掉：客戶端換層時自己清，不必一隻一隻通知
 	_remove_dead_entities()
+	_changing_floor = false
 	packs.clear()
 	delayed.clear()
 	boss_id = 0
@@ -719,6 +748,9 @@ func _remove_dead_entities() -> void:
 	for id: int in entities.keys():
 		var e: Entity = entities[id]
 		if e.is_removed:
+			# 休眠中被移除（例如被吞掉）：客戶端的休眠怪是本機生的、不在快照裡，要另外通知
+			if e is Enemy and (e as Enemy).dormant and (e as Enemy).pack_id >= 0 and is_authority and not _changing_floor:
+				emit_event("pack:culled", {"entity_id": id})
 			e.detach()
 			entities.erase(id)
 			if e is Player:

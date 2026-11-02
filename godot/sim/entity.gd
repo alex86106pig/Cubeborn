@@ -6,6 +6,7 @@ var world: World
 var id := 0
 var kind: StringName       # 畫面層依此選模型，例如 &"player"
 var team: StringName       # &"player" | &"enemy"
+var net_local := false     # 客戶端：本機用種子生的休眠怪群成員（房主不送）；第一次出現在快照後就照快照同步
 var radius := 0.5
 var mass := 1.0
 var stats: Stats

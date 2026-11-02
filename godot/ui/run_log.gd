@@ -183,7 +183,7 @@ func total_kills() -> int:
 func report_text(world: World) -> String:
 	var lines: Array[String] = []
 	var platform := "網頁版" if OS.has_feature("web") else "%s（%s）" % [OS.get_name(), RenderingServer.get_current_rendering_method()]
-	lines.append("Cubeborn v%s · %s · %s" % [GameVersion.VERSION, platform, Time.get_datetime_string_from_system(false, true)])
+	lines.append("Cubeborn v%s · %s · %s · 種子 %d" % [GameVersion.VERSION, platform, Time.get_datetime_string_from_system(false, true), world.run_seed])
 	var screen := DisplayServer.window_get_size()
 	lines.append("顯示卡：%s · %d×%d · %s" % [RenderingServer.get_video_adapter_name(), screen.x, screen.y, video])
 	var s := world.stats
@@ -220,6 +220,8 @@ func report_text(world: World) -> String:
 
 static func net_text(n: Dictionary) -> String:
 	var parts: Array[String] = ["連線：%s · %d 人" % [n.role, n.players]]
+	if n.get("layout_mismatch", 0) > 0:
+		parts.append("怪群配置跟房主不同 %d 次" % n.layout_mismatch)
 	var rtt: Array = n.get("rtt_ms", []).duplicate()
 	if not rtt.is_empty():
 		rtt.sort()

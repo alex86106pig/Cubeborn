@@ -27,7 +27,7 @@ InputCollector ──► InputCmd ──► World.step(cmds, dt) ──► 快�
 ```
 - **模擬層（`sim/`）**：遊戲的全部規則（移動、狀態機、命中、傷害、CD、生成、勝敗）。只用 `RefCounted` 類別與資料，**不繼承 Node、不碰場景樹**。
   - 禁止使用：`Input`、`get_node` / `$`、任何 `Node` 型別、`Engine.time_scale`、全域 `randf()` / `randi()`、`Time.get_ticks_*`、讀檔。`tests/check.gd` 會掃描 `sim/` 擋住這些字。
-  - 時間只來自 `step()` 傳入的 `dt`；隨機只用 `world.rng`（`RandomNumberGenerator`，種子由權威端決定）。
+  - 時間只來自 `step()` 傳入的 `dt`；隨機用 `world.rng`（`RandomNumberGenerator`，種子由權威端決定），每層開場的配置（怪群、寶箱）用 `World.floor_rng(用途)`（同一個種子每層都一樣，見 `docs/系統說明.md` §32）。客戶端會自己算的配置（怪群）只用整數亂數與格點、不用三角函數 / 開根號 / `randf_range`，不同平台才算得一樣。
   - 輸出只有兩種：可讀取的狀態（實體列表、CD、波次）與本步的事件列表 `world.events`。
 - **輸入層（`input/`）**：把 Godot 的 `InputMap` 動作轉成一筆 `InputCmd`。螢幕方向的 WASD 在這裡轉成世界 XZ 向量、滑鼠在這裡投射到地面得到瞄準點，模擬層只看到世界座標。`InputCmd` 本身放在 `sim/`：它是模擬層的輸入格式（連線時原樣傳送），`input/` 只負責產生它。
 - **畫面層（`view/`、`ui/`、`audio/`）**：依實體 id 建立 / 移除模型，每個渲染幀讀模擬狀態擺位置與姿勢；消化事件來播特效、音效、更新 HUD。**畫面層不得修改模擬狀態**。
@@ -206,6 +206,7 @@ godot/
 | `player:blocked` | `{ player_id, perfect }`（v0.18.0：格擋擋下攻擊；perfect = 招架成功（v0.41.0 起），下一步盾反） | Player.try_block |
 | `enemy:blocked` / `enemy:guard_broken` | `{ enemy_id, pos, height, facing, broken? }`（第 2 層：盾槍兵正面舉盾擋下 / 被重攻擊破防） | Spearman.shield_blocks |
 | `enemy:crashed` | `{ enemy_id, pos, height }`（第 2 層：骨輪撞牆 / 被盾擋下，散成骨堆） | BoneWheel |
+| `pack:culled` | `{ entity_id }`（休眠的怪群成員沒醒就被移除：客戶端的休眠怪是本機生的，要另外移除） | World._remove_dead_entities |
 | `entity:died` | `{ entity, source, kind }`（`kind` 給 v0.34.0 遊玩紀錄） | Entity |
 | `player:died` | `{ player }`（v0.21.0 起只代表這位玩家真的死亡；輸掉一局看 `game:defeat`） | Player |
 | `player:downed` | `{ player_id }`（v0.21.0：多人時生命歸零先倒地假死，見系統說明 §8） | Player |
