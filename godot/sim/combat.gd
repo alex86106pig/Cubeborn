@@ -63,6 +63,8 @@ static func _predict_hit(world: World, source: Entity, target: Entity, hit: Dict
 		return
 	if target is Player and (target as Player).block_time >= 0.0:
 		return   # 對方在格擋：結果不確定，等房主
+	if target is Enemy and (target as Enemy).def.has("shield"):
+		return   # 持盾的怪：擋不擋得下看房主
 	world.emit_event("hit:predicted", {"source_id": source.id, "target_id": target.id,
 		"is_heavy": hit.get("is_heavy", false), "color": hit.get("color", Color.WHITE)})
 
@@ -75,6 +77,9 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 	if hit.has("max_air") and target.height - target.ground_height > hit.max_air + 1e-4:
 		return false
 	var origin: Vector2 = hit.get("origin", source.pos)
+	# 怪物舉盾（盾槍兵）：正面的攻擊不管 blockable 都擋下；重攻擊破防的那一下照樣往下算
+	if target is Enemy and (target as Enemy).shield_blocks(origin, hit):
+		return false
 	# 格擋：只對 blockable 的攻擊（揮砍、箭）；砸地、衝鋒、爆炸擋不住
 	if hit.get("blockable", false) and target.try_block(origin, hit):
 		if target is Player:

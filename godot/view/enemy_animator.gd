@@ -26,6 +26,8 @@ const BOW_ARM_AIM := -1.55       # 瞄準時弓手平舉
 const BOW_ARM_READY := -1.0      # 目標在射擊距離內、拉開距離時的預備高度：比瞄準低，瞄準時再舉平，玩家才看得出要射了
 const BOW_ARM_SHARPNESS := 18.0  # 弓手舉起 / 放下、射完右手放下的速度（同玩家放下弓）
 
+const SPEAR_ARM_GUARD := -0.9    # 盾槍兵持槍：手臂往前，槍尖朝前下方
+const SHIELD_ARM_GUARD := -1.25  # 盾槍兵舉盾：左手臂往前抬，盾擋在胸前
 var rig   # Rig（Boss）或 SkinnedRig（小怪，D5）：關節介面相同
 var walk_phase := 0.0
 var _prev_state: StringName = &""
@@ -38,6 +40,7 @@ var _bloater := false     # 膨脹屍：脹大時身體放大、閃白，炸開�
 var _hound := false       # 屍犬（四足）：所有狀態都走 _pose_hound（arm = 前腳、leg = 後腳）
 var _keeper := false      # 守墓人：右手鐵鏟、左手提燈；駝背
 var _holds_bow := false   # 骷髏弓手：左手拿弓，不瞄準時照 _bow_arm_target
+var _spearman := false    # 骷髏盾槍兵：左手塔盾舉在胸前、右手長槍
 var _bow_arm_target := BOW_ARM_REST
 var _dt := 0.0
 
@@ -48,6 +51,7 @@ func _init(p_rig: Node3D, e: Enemy) -> void:
 	_zombie = e.def.visual == &"zombie" or e.def.visual == &"bloater"
 	_bloater = e.def.visual == &"bloater"
 	_hound = e.def.visual == &"hound"
+	_spearman = e.def.visual == &"spearman"
 	walk_phase = randf() * TAU   # 畫面用隨機，與模擬無關
 	if e.def.has("slam"):
 		_build_cracks(e)
@@ -115,6 +119,10 @@ func update(e: Enemy, dt: float) -> void:
 			if e.is_boss():
 				walk_phase += dt * e.velocity.length() * 1.6
 				_pose_walk(1.0 if moving else 0.0, -0.5, -0.3)
+			elif _spearman:
+				walk_phase += dt * e.velocity.length() * 1.8
+				_pose_walk(0.6 if moving else 0.0, SPEAR_ARM_GUARD, SHIELD_ARM_GUARD)
+				rig.arm_l.rotation.y = 0.35   # 盾往身體正前方收
 			elif _zombie:
 				walk_phase += dt * e.velocity.length() * 2.6
 				_pose_walk(0.6 if moving else 0.0, -1.35, -1.45)
@@ -125,6 +133,18 @@ func update(e: Enemy, dt: float) -> void:
 		&"swing":
 			_pose_walk(0.0, -0.6, -0.3)
 			_pose_melee_swing(t, def.swing)
+		&"thrust":
+			_pose_walk(0.0, SPEAR_ARM_GUARD, SHIELD_ARM_GUARD)
+			_pose_thrust(t, def.thrust)
+		&"guard_broken":
+			# 破防：盾甩到外側、身體往後仰，break_time 內慢慢收回
+			var k := clampf(t / def.shield.break_time, 0.0, 1.0)
+			var out := 1.0 - MathUtil.ease_out_cubic(k)
+			_pose_walk(0.0, -0.4, -0.3)
+			rig.arm_l.rotation.y = -1.1 * out
+			rig.arm_l.rotation.x = lerpf(SHIELD_ARM_GUARD, -0.4, out)
+			rig.body.rotation.x = -0.28 * out
+			rig.head.rotation.x = -0.3 * out
 		&"kite":
 			walk_phase += dt * e.velocity.length() * 2.2
 			_pose_walk(1.0 if moving else 0.0, -0.2, -0.5)
@@ -227,6 +247,27 @@ func _pose_melee_swing(t: float, s: Dictionary) -> void:
 		var k := clampf((t - windup - active) / s.recovery, 0.0, 1.0)
 		arm.rotation.x = lerpf(-0.3, -0.6, k)
 		rig.body.rotation.x = lerpf(0.25, 0.0, k)
+
+
+# 盾槍兵直刺：盾往外偏、槍收到腰間（windup）→ 往前刺到手臂打直、身體前傾（active）→ 收回舉盾（recovery）
+func _pose_thrust(t: float, s: Dictionary) -> void:
+	var windup: float = s.windup
+	var active: float = s.active
+	if t < windup:
+		var k := MathUtil.ease_out_cubic(t / windup)
+		rig.arm_r.rotation.x = lerpf(SPEAR_ARM_GUARD, -0.15, k)
+		rig.arm_l.rotation.y = lerpf(0.35, -0.7, k)
+		rig.body.rotation.x = lerpf(0.0, -0.12, k)
+	elif t < windup + active:
+		var k := (t - windup) / active
+		rig.arm_r.rotation.x = lerpf(-0.15, -1.65, k)
+		rig.arm_l.rotation.y = -0.7
+		rig.body.rotation.x = lerpf(-0.12, 0.22, k)
+	else:
+		var k := clampf((t - windup - active) / s.recovery, 0.0, 1.0)
+		rig.arm_r.rotation.x = lerpf(-1.65, SPEAR_ARM_GUARD, k)
+		rig.arm_l.rotation.y = lerpf(-0.7, 0.35, k)
+		rig.body.rotation.x = lerpf(0.22, 0.0, k)
 
 
 # 砸地：warn（狂暴瞬移前，低頭蓄力）→ windup（雙手合握、筆直高舉）→ impact（蹲低、把劍插進地裡）

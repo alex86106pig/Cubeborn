@@ -41,6 +41,40 @@ const ENEMIES := {
 		},
 	},
 
+	# 骷髏盾槍兵（第 2 層，數值 Claude 暫定）：正面舉盾擋下所有攻擊、重攻擊破防；直刺時正面打得到（sim/enemies/spearman.gd）
+	&"spearman": {
+		"name": "骷髏盾槍兵",
+		"resists": {&"holy": -0.25, &"poison": 0.5},
+		"visual": &"spearman",
+		"behavior": &"spearman",
+		"max_hp": 55.0,
+		"move_speed": 2.0,
+		"speed_variance": 0.15,
+		"turn_speed": 3.0,          # 舉盾時轉得慢：繞到側面就打得到
+		"radius": 0.5,
+		"mass": 1.6,
+		"hurt_time": 0.22,
+		"spawn_time": 0.7,
+		"corpse_time": 1.4,
+		"shield": {
+			"arc": PI * 120.0 / 180.0,   # 正面這個角度內的攻擊全部擋下
+			"push_mul": 0.3,             # 擋下時被推退的比例
+			"break_time": 1.5,           # 重攻擊（is_heavy：連段最後一下、盾反、爆炸、蓄力）打盾破防
+			"sfx_block": "shieldBash", "sfx_break": "hitHeavy",
+		},
+		"thrust": {
+			"trigger_distance": 3.0,
+			"windup": 0.5, "track": 0.5,   # 盾往旁邊偏、槍收到腰間；前一半轉向目標
+			"active": 0.12,
+			"recovery": 0.6,
+			"range": 3.5, "width": 0.35,   # 前方 3.5 的細長直線（窄扇形）
+			"damage": 14.0,
+			"knockback": 8.0,
+			"cooldown": 2.2,
+			"blockable": true,
+		},
+	},
+
 	&"archer": {
 		"resists": {&"holy": -0.25, &"poison": 0.5},
 		"visual": &"ranged",
@@ -354,7 +388,7 @@ const ENEMIES := {
 # 超過表的層數用最後一層的表。第 2 層起怪群與怪潮另有 UPPER_SHARE 的機率改抽上一層的表（挖墳點噴的不混）
 const FLOOR_MIX := {
 	1: {&"zombie": 0.7, &"hound": 0.2, &"bloater": 0.1},
-	2: {&"grunt": 0.67, &"archer": 0.33},
+	2: {&"grunt": 0.57, &"archer": 0.29, &"spearman": 0.14},
 }
 const UPPER_SHARE := 0.2
 

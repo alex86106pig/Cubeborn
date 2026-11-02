@@ -29,7 +29,7 @@ const KEEP := {
 	&"arcaneBurst": "350% 是使用者同意的數字（系統說明 §1）",
 	&"chargedShot": "量的是蓄滿：要站著蓄 1 秒、移速減半，蓄滿高一點是代價",
 }
-const ENEMIES := [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"gravekeeper", &"boss"]
+const ENEMIES := [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"spearman", &"gravekeeper", &"boss"]
 
 var _worlds: Array[World] = []
 

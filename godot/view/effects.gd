@@ -36,12 +36,15 @@ const HANDLERS := {
 	"fx:dirt_lob": &"_fx_dirt_lob",
 	"fx:lightning": &"_fx_lightning",
 	"fx:status": &"_fx_status",
+	"enemy:blocked": &"_on_enemy_blocked",
+	"enemy:guard_broken": &"_on_enemy_blocked",
 }
 const LIGHTNING_HEIGHT := 1.1   # 連鎖閃電畫在離地多高（v0.33.0）
 const LIGHTNING_WIDTH := 0.09
 const LIGHTNING_LIFE := 0.22
 
 const DUST_COLOR := Color("6b4f2e")         # 骷髏爬出的泥土
+const SHIELD_SPARK := Color("ffd890")       # 怪物舉盾擋下的火花
 const CHARGE_DUST_COLOR := Color("8a7a5a")  # Boss 衝鋒揚塵、砸地碎石
 const WALL_DEBRIS_COLOR := Color("9a9a9a")
 const SLAM_RING_COLOR := Color("9a8a6a")
@@ -238,6 +241,15 @@ func _on_damaged(p: Dictionary) -> void:
 		return
 	var heavy: bool = p.get("is_heavy", false) or p.get("is_crit", false)
 	burst(_entity_at(target, 1.1), {"color": p.get("color", Color.WHITE), "count": 12 if heavy else 6, "speed": 6.0 if heavy else 4.0})
+
+
+# 怪物舉盾擋下（盾槍兵）：盾面上噴火花；破防噴得更大、多一圈碎屑
+func _on_enemy_blocked(p: Dictionary) -> void:
+	var at := _at(p, 1.05) + Vector3(sin(p.facing), 0.0, cos(p.facing)) * 0.55
+	var broken: bool = p.get("broken", false)
+	burst(at, {"color": SHIELD_SPARK, "count": 8, "speed": 5.0, "size": 0.08, "life": 0.25})
+	if broken:
+		burst(at, {"color": CHARGE_DUST_COLOR, "count": 14, "speed": 6.0, "up": 2.0, "size": 0.14, "life": 0.5})
 
 
 func _on_died(p: Dictionary) -> void:

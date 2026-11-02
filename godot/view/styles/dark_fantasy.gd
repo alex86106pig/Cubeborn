@@ -32,6 +32,9 @@ const SKELETON_JOINTS := {
 	"neck": 1.5, "shoulder_y": 1.45, "shoulder_x": 0.3, "grip": 0.65,
 	"hip_y": 0.92, "hip_x": 0.12, "height": 1.95,
 }
+# 盾槍兵的塔盾在左手臂座標的位置（前臂外側，同騎士的 forearm_l 掛點）。直接掛在手臂上合併：
+# 掛點底下的零件不會進 to_template，蒙皮版會少掉
+const SPEARMAN_SHIELD_AT := Vector3(0.09, -0.38, 0.0)
 const ZOMBIE_JOINTS := {
 	"neck": 1.42, "shoulder_y": 1.4, "shoulder_x": 0.3, "grip": 0.58,
 	"hip_y": 0.92, "hip_x": 0.13, "height": 1.85,
@@ -74,6 +77,8 @@ static func character(kind: StringName) -> Rig:
 			rig = bloater()
 		&"hound":
 			rig = hound()
+		&"spearman":
+			rig = spearman()
 		&"gravekeeper":
 			rig = gravekeeper()
 		&"werewolf":
@@ -207,6 +212,28 @@ static func skeleton() -> Rig:
 	var rig := Rig.new(SKELETON_JOINTS)
 	_skeleton_base(rig)
 	rig.hand_r.add_child(_long_sword(rig.kit, C.rust, C.iron, 0.8))
+	return rig.optimize()
+
+
+# 骷髏盾槍兵：右手長槍（槍身沿手臂往前）、左前臂鏽鐵塔盾
+static func spearman() -> Rig:
+	var rig := Rig.new(SKELETON_JOINTS)
+	_skeleton_base(rig)
+	var k := rig.kit
+	var spear := Node3D.new()
+	k.add(spear, PartKit.cyl(0.025, 0.025, 2.0, 5), k.mat(C.wood), {"y": 0.45})
+	k.add(spear, PartKit.cone(0.06, 0.28, 4), k.mat(C.steel_dark), {"y": 1.59})
+	k.add(spear, PartKit.box(0.16, 0.04, 0.04), k.mat(C.iron), {"y": 1.43})
+	spear.rotation.x = 2.8
+	rig.hand_r.add_child(_hold(spear, {"grip": Vector3.ZERO}))
+	var shield := Node3D.new()
+	k.add(shield, PartKit.box(0.06, 0.78, 0.5), k.mat(C.rust), {"y": 0.05})
+	k.add(shield, PartKit.box(0.08, 0.8, 0.06), k.mat(C.iron), {"y": 0.05})
+	k.add(shield, PartKit.box(0.08, 0.06, 0.52), k.mat(C.iron), {"y": 0.3})
+	k.add(shield, PartKit.ico(0.06), k.mat(C.bone_dark), {"x": 0.05, "y": 0.1})
+	_hold(shield, {"grip": Vector3(-0.07, 0.0, 0.0)})
+	shield.position += SPEARMAN_SHIELD_AT
+	rig.arm_l.add_child(shield)
 	return rig.optimize()
 
 

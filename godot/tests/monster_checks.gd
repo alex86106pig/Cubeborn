@@ -129,6 +129,80 @@ static func check_rarity() -> String:
 
 # 腐屍：站著不動被撲中 → 抓住 grab_time 秒、撲 1 下 + 每 bite_interval 咬一口；被抓時按翻滾立刻掙脫；
 # 隊友打它就鬆手；舉盾擋下撲抱 → 不被抓、腐屍踉蹌 blocked_stagger 秒
+# 盾槍兵：正面 shield.arc 內擋下（含擋不住的爆炸）、背後打得到；重攻擊破防 break_time 秒（那一下照樣打到）、破防中正面打得到；
+# 直刺：前方 range 的細長直線打得到、旁邊打不到，舉槍時盾偏開、正面打得到
+static func check_spearman() -> String:
+	var d: Dictionary = EnemyDefs.ENEMIES.spearman
+	var w := _world()
+	var p: Player = w.players[World.HOST_PEER_ID]
+	p.pos = Vector2.ZERO
+	p.stats.set_base(&"max_hp", 9999.0)
+	p.hp = p.max_hp
+	var s := w.spawner.spawn_at(w, &"spearman", Vector2(0, 3)) as Spearman
+	s.fsm.change(&"chase")
+	s.facing = PI   # 面向玩家（往 −y）
+	w.cooldowns.start(s.cd("thrust"), 99.0)
+	var hp0 := s.hp
+	w.events.clear()
+	Combat.apply_damage(w, p, s, {"damage": 10.0, "knockback": 5.0, "blockable": true})
+	Combat.apply_damage(w, p, s, {"damage": 10.0, "knockback": 0.0, "blockable": false, "origin": Vector2(0, 1.5)})   # 正面的爆炸
+	if absf(s.hp - hp0) > EPS or w.events.filter(func(e: Dictionary) -> bool: return e.name == "enemy:blocked").size() != 2:
+		return "盾槍兵：正面的揮砍與爆炸都應擋下（扣血 %.1f）" % (hp0 - s.hp)
+	p.pos = Vector2(0, 6)   # 背後
+	Combat.apply_damage(w, p, s, {"damage": 10.0, "knockback": 0.0, "blockable": true})
+	if absf(hp0 - s.hp) < EPS:
+		return "盾槍兵：從背後應打得到"
+	p.pos = Vector2(0, 0)
+	_step(w, roundi(d.hurt_time / DT) + 2, true)   # 背後被打會受傷硬直（不舉盾），等它回到舉盾
+	s.facing = PI
+	if not s.is_guarding():
+		return "盾槍兵：受傷硬直 %.2f 秒後應回到舉盾（狀態 %s）" % [d.hurt_time, s.fsm.current_name]
+	var hp1 := s.hp
+	Combat.apply_damage(w, p, s, {"damage": 10.0, "knockback": 0.0, "blockable": true, "is_heavy": true})
+	if not s.fsm.is_in(&"guard_broken") or absf(hp1 - s.hp) < EPS:
+		return "盾槍兵：正面重攻擊應破防並打到（狀態 %s、扣血 %.1f）" % [s.fsm.current_name, hp1 - s.hp]
+	var hp2 := s.hp
+	Combat.apply_damage(w, p, s, {"damage": 10.0, "knockback": 0.0, "blockable": true})
+	if absf(hp2 - s.hp) < EPS:
+		return "盾槍兵：破防中正面應打得到"
+	_step(w, roundi(d.shield.break_time / DT) + 2, true)
+	if s.fsm.current_name != &"chase" or not s.is_guarding():
+		return "盾槍兵：破防 %.1f 秒後應回到舉盾（狀態 %s）" % [d.shield.break_time, s.fsm.current_name]
+	# 直刺：正前方 range − 0.3 打得到；鎖定方向（windup × track）後往旁邊閃開 1.2 就打不到；舉槍時正面打得到
+	var t: Dictionary = d.thrust
+	for case: Array in [[Vector2(0, 3.0 - (t.range - 0.3)), true], [Vector2(0, 3.0 - t.range * 0.6), false]]:
+		var w2 := _world()
+		var p2: Player = w2.players[World.HOST_PEER_ID]
+		p2.stats.set_base(&"max_hp", 9999.0)
+		p2.hp = p2.max_hp
+		p2.pos = case[0]
+		var s2 := w2.spawner.spawn_at(w2, &"spearman", Vector2(0, 3)) as Spearman
+		s2.fsm.change(&"thrust")
+		s2.facing = PI
+		var hit := false
+		for i in roundi((t.windup + t.active) / DT) + 2:
+			if not case[1] and i == roundi(t.windup * t.track / DT) + 2:
+				p2.pos += Vector2(1.2, 0.0)   # 鎖定之後往旁邊閃
+			w2.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+			for ev in w2.events:
+				if ev.name == "entity:damaged" and ev.target_id == p2.id and ev.source_id == s2.id:
+					hit = true
+		if hit != case[1]:
+			return "盾槍兵直刺：玩家在 %s %s（應%s）" % [case[0], "被刺中" if hit else "沒被刺中", "刺中" if case[1] else "刺不到"]
+	# 舉槍時盾偏開：正面打得到（被打會受傷硬直、打斷直刺，同骷髏戰士）
+	var w3 := _world()
+	var p3: Player = w3.players[World.HOST_PEER_ID]
+	var s3 := w3.spawner.spawn_at(w3, &"spearman", Vector2(0, 3)) as Spearman
+	s3.fsm.change(&"thrust")
+	s3.facing = PI
+	_step(w3, roundi(t.windup * 0.6 / DT))
+	var h0 := s3.hp
+	Combat.apply_damage(w3, p3, s3, {"damage": 5.0, "knockback": 0.0, "blockable": true, "origin": Vector2(0, 0)})
+	if s3.hp >= h0:
+		return "盾槍兵舉槍時盾偏開，正面應打得到"
+	return ""
+
+
 static func check_zombie() -> String:
 	var l: Dictionary = EnemyDefs.ENEMIES.zombie.lunge
 	var bites := roundi(l.grab_time / l.bite_interval)
@@ -780,7 +854,7 @@ static func check_packs() -> String:
 
 # 蒙皮小怪（D5 效能）：骷髏戰士 / 弓手每隻 ≤ 2 個網格、三角形數與原本的零件相同；關節寫進骨架
 static func check_skinned_rig() -> String:
-	for kind: StringName in [&"grunt", &"archer", &"zombie", &"bloater", &"hound"]:
+	for kind: StringName in [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"spearman"]:
 		var old := DarkFantasy.character(kind)
 		var rig := DarkFantasy.skinned_character(kind)
 		var before := 0

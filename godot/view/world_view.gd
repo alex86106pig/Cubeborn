@@ -789,8 +789,9 @@ func warm_up(center: Vector3) -> void:
 	tw.spawner.finished = true
 	var c := Vector2(center.x, center.z)
 	var ents: Array[Entity] = [tw.players[World.HOST_PEER_ID]]
-	for kind: StringName in [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"gravekeeper", &"boss", &"ghost"]:
-		ents.append(tw.spawner.spawn_at(tw, kind, c))
+	for kind: StringName in EnemyDefs.ENEMIES:   # 每一種怪（新加的種類自動算進來）；僕從另外建
+		if kind != &"minion":
+			ents.append(tw.spawner.spawn_at(tw, kind, c))
 	ents.append(Minion.new(tw, c, tw.players[World.HOST_PEER_ID]))   # 遊戲裡的僕從是 Minion 類別（召喚時才建），不是 spawn_at
 	var wolf := tw.spawner.spawn_at(tw, &"gravekeeper", c) as Gravekeeper   # 半血變身後的狼人模型
 	wolf.form = 1
@@ -945,7 +946,7 @@ func _create_view(e: Entity) -> Node3D:
 			glow.visible = false
 			rig.hand_r.add_child(glow)
 			root.set_meta(&"glow", glow)
-		&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"gravekeeper", &"boss", &"ghost", &"minion":
+		&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"gravekeeper", &"boss", &"ghost", &"minion", &"spearman":
 			# 小怪用蒙皮版本（D5 效能：每隻 1~2 次繪製）；Boss 只有一隻，照舊用關節節點
 			# 冤魂（D6）：半透明的騎士（玩家的模型，不拿武器）
 			var rig: Node3D

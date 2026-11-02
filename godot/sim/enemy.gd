@@ -646,6 +646,11 @@ func _anim_extra(_a: Dictionary) -> void:
 	pass
 
 
+# 持盾的怪（Spearman）覆寫：正面擋下就回傳 true（Combat._apply_damage 在格擋與閃避之前問，擋下不扣血）
+func shield_blocks(_origin: Vector2, _hit: Dictionary) -> bool:
+	return false
+
+
 func _on_damaged(_amount: float, _source_id: int) -> void:
 	if pack_id >= 0 and dormant:
 		world.wake_pack(pack_id)   # 被打（例如遠距離魔彈）整群醒來
