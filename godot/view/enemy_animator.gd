@@ -86,7 +86,10 @@ func update(e: Enemy, dt: float) -> void:
 		if target != null and e.pos.distance_to(target.pos) <= def.preferred_range[1] + def.fire_reach:
 			_bow_arm_target = BOW_ARM_READY
 
-	match &"hound" if _hound else (&"wheel" if _wheel else (&"keeper" if _keeper and state != &"spawn" and state != &"dead" else state)):
+	var colossus: bool = def.has("colossus") and a.get("form", 0) > 0 and state != &"dead"
+	match &"hound" if _hound else (&"wheel" if _wheel else (&"colossus" if colossus else (&"keeper" if _keeper and state != &"spawn" and state != &"dead" else state))):
+		&"colossus":
+			_pose_colossus(e, a, state, t, dt)
 		&"hound":
 			_pose_hound(e, a, state, t, dt)
 		&"wheel":
@@ -190,6 +193,16 @@ func update(e: Enemy, dt: float) -> void:
 			var k := clampf(t / def.lunge.blocked_stagger, 0.0, 1.0)
 			rig.body.rotation.x = -0.35 * sin(k * PI)
 			_pose_arms(-0.8 + sin(t * 18.0) * 0.4)
+		&"transform":
+			if def.has("colossus"):
+				# 骸骨將軍脫甲：跪下、低頭、雙手撐地，盔甲碎片往外飛（特效）
+				var k := MathUtil.ease_out_cubic(clampf(t / 0.4, 0.0, 1.0))
+				rig.body.position.y = -0.35 * k
+				rig.body.rotation.x = 0.45 * k + sin(t * 25.0) * 0.03
+				rig.head.rotation.x = 0.4 * k
+				_pose_arms(lerpf(-0.3, -0.9, k), 0.2)
+				rig.leg_r.rotation.x = -1.3 * k
+				rig.leg_l.rotation.x = 0.5 * k
 		&"summon":
 			# 召喚：雙臂往兩側張開、身體後仰、抬頭看天（和砸地的雙手高舉分開）
 			var k := MathUtil.ease_out_cubic(clampf(t / def.summon.windup, 0.0, 1.0))
@@ -281,6 +294,65 @@ func _pose_wheel(e: Enemy, state: StringName, t: float, dt: float) -> void:
 			head.scale = Vector3(1.0 + 0.3 * lie, 1.0, 1.0 + 0.3 * lie)   # 散開：攤成一圈骨堆
 			if state == &"dead":
 				rig.position.y = -CORPSE_SINK_DEPTH * clampf((t - e.def.corpse_time * CORPSE_SINK_START) / (e.def.corpse_time * (1.0 - CORPSE_SINK_START)), 0.0, 1.0)
+
+
+# 萬骨聚合體（骸骨將軍 form 1）：追擊駝背拖著走；骨刺陣雙臂高舉 → 插進地面；多臂橫掃先扭到底、低掃（彎腰）轉一圈、
+# 高掃（挺胸）再轉一圈；巨骨輪蜷成球、滾的時候晃；撞牆暈倒仰躺；吞屍雙臂張開、胸口往前挺
+func _pose_colossus(e: Enemy, a: Dictionary, state: StringName, t: float, dt: float) -> void:
+	var c: Dictionary = e.def.colossus
+	rig.body.position.y = 0.0
+	rig.body.rotation = Vector3(0.25, 0.0, 0.0)
+	rig.leg_r.rotation.x = 0.0
+	rig.leg_l.rotation.x = 0.0
+	match state:
+		&"spikes":
+			var w: float = c.spikes.windup
+			var k := MathUtil.ease_out_cubic(clampf(t / w, 0.0, 1.0))
+			if t < w:
+				_pose_arms(lerpf(-0.5, -2.9, k), 0.25)
+				rig.body.rotation.x = lerpf(0.25, -0.2, k)
+			else:
+				var d := MathUtil.ease_out_cubic(clampf((t - w) / 0.12, 0.0, 1.0))
+				_pose_arms(lerpf(-2.9, -0.35, d), 0.25)
+				rig.body.rotation.x = lerpf(-0.2, 0.6, d)
+		&"sweep":
+			var s: Dictionary = c.sweep
+			var pt: float = a.get("phase_time", t)
+			match a.get("phase", &"windup"):
+				&"windup":
+					var k := MathUtil.ease_out_cubic(clampf(pt / s.windup, 0.0, 1.0))
+					rig.body.rotation.y = -1.3 * k
+					_pose_arms(-1.2, lerpf(0.3, 1.4, k))
+				&"low":
+					rig.body.rotation = Vector3(0.55, -1.3 + TAU * clampf(pt / s.gap, 0.0, 1.0), 0.0)
+					_pose_arms(-0.9, 1.5)
+				&"high":
+					rig.body.rotation = Vector3(-0.15, -1.3 + TAU * clampf(pt / 0.3, 0.0, 1.0), 0.0)
+					_pose_arms(-1.6, 1.5)
+		&"wheel":
+			_pose_arms(-2.4, 0.4)
+			rig.leg_r.rotation.x = -1.2
+			rig.leg_l.rotation.x = -1.2
+			rig.body.position.y = -0.2
+			rig.body.rotation.x = 1.0
+			rig.head.rotation.x = 0.6
+			if a.get("phase", &"windup") == &"roll":
+				rig.body.rotation.z = sin(t * 22.0) * 0.15
+				rig.body.position.y = -0.2 + absf(sin(t * 11.0)) * 0.15
+		&"wheel_stun":
+			rig.body.rotation.x = -0.55
+			rig.body.position.y = -0.3
+			_pose_arms(-0.3, 1.2)
+			rig.head.rotation.x = -0.4 + sin(t * 3.0) * 0.1
+		&"devour":
+			var k := MathUtil.ease_out_cubic(clampf(t / c.devour.windup, 0.0, 1.0))
+			_pose_arms(lerpf(-0.6, -1.4, k), lerpf(0.3, 1.4, k))
+			rig.body.rotation.x = lerpf(0.25, -0.35, k)
+			rig.head.rotation.x = lerpf(0.0, -0.4, k)
+		_:
+			walk_phase += dt * e.velocity.length() * 1.3
+			_pose_walk(1.0 if e.velocity.length_squared() > 0.01 else 0.0, -0.4, -0.4)
+			rig.body.rotation.x = 0.25
 
 
 # 盾槍兵直刺：盾往外偏、槍收到腰間（windup）→ 往前刺到手臂打直、身體前傾（active）→ 收回舉盾（recovery）

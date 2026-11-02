@@ -81,7 +81,7 @@ var _poison_tick := 0.0
 
 # mul：波次倍率 { hp, damage, speed }；選填 dormant = true 時以休眠狀態出生（怪群，不播爬出動畫與音效）
 func _init(p_world: World, p_type: StringName, at: Vector2, mul: Dictionary, states: Dictionary) -> void:
-	var d: Dictionary = EnemyDefs.ENEMIES[p_type]
+	var d: Dictionary = EnemyDefs.def_of(p_type)
 	super(p_world, p_type, &"enemy", d.radius, d.max_hp, d.mass)
 	def = d
 	type = p_type

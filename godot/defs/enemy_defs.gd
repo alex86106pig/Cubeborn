@@ -304,7 +304,7 @@ const ENEMIES := {
 
 	&"boss": {
 		"resists": {&"holy": -0.25, &"poison": 0.5, &"shadow": 0.5},
-		"name": "骸骨將軍",
+		"name": "亡骸騎士",
 		"visual": &"boss",
 		"behavior": &"boss",
 		"is_boss": true,
@@ -360,6 +360,50 @@ const ENEMIES := {
 			"charge_count": 3, "charge_rewindup": 0.3,   # 連衝之間重新瞄準的秒數
 			"teleport_warn": 0.6, "teleport_windup": 0.3,   # 玩家腳下預警幾秒後瞬移過去、再過幾秒砸下
 			"shake": 0.5, "shake_duration": 0.4,
+		},
+	},
+
+	# 骸骨將軍（第 2 層 Boss，sim/enemies/bone_general.gd）：第一型態 = 亡骸騎士（inherits：沒寫的欄位照 boss，EnemyDefs.def_of 合併）；
+	# 半血轉型態（取代狂暴）：脫甲 → 萬骨聚合體（colossus，數值 Claude 暫定）。測試場地的波次照舊用 boss（亡骸騎士，會狂暴）
+	&"bone_general": {
+		"inherits": &"boss",
+		"name": "骸骨將軍",
+		"visual": &"boss",
+		"behavior": &"bone_general",
+		"is_boss": true,
+		"freeze_immune": true,
+		"radius": 1.0,
+		"max_hp": 900.0,
+		"form_models": [&"boss", &"bone_colossus"],
+		"form_names": ["骸骨將軍", "萬骨聚合體"],
+		# 脫甲：跪地 time 秒無敵，盔甲碎片往外飛（有傷害、擋得住），場上的骷髏屍體全部被吸過來
+		"transform": {
+			"hp_threshold": 0.5, "time": 1.5,
+			"shards": 8, "shard_speed": 9.0, "shard_range": 6.0, "shard_damage": 10.0, "shard_knockback": 6.0, "shard_color": Color("8a93a3"),
+			"shake": 0.6, "shake_duration": 0.5,
+		},
+		"colossus": {
+			"scale": 1.5,               # 只放大模型（碰撞照舊 radius：要過得了 6 寬的走道與墓室的門）
+			"damage_taken": 1.3,        # 受到的傷害 +30%
+			"move_speed": 2.4, "turn_speed": 3.0, "decide_delay": 0.35,
+			"first_cooldowns": {"spikes": 1.0, "sweep": 2.0, "wheel": 4.0, "devour": 6.0},
+			# 骨刺陣：骨臂插地（windup，地面沿 lines 個方向隆起）→ 從身邊往外一根根竄出骨刺（每 step 一根、每根晚 delay_per 秒），擋不住
+			"spikes": {
+				"windup": 0.6, "lines": 6, "start": 1.5, "length": 10.0, "step": 1.5, "delay_per": 0.07,
+				"radius": 0.8, "damage": 18.0, "knockback": 4.0, "knockup": 6.0, "recovery": 0.7, "cooldown": 5.0,
+			},
+			# 多臂橫掃：身體扭到底（windup）→ 低掃一圈（跳起來躲，擋不住）→ gap 秒後高掃一圈（翻滾或格擋）
+			"sweep": {
+				"trigger_distance": 4.0, "windup": 0.7, "gap": 0.5, "range": 4.2, "low_damage": 16.0, "low_max_air": 0.3,
+				"high_damage": 18.0, "knockback": 10.0, "recovery": 0.7, "cooldown": 4.0,
+			},
+			# 巨骨輪：蜷成球（windup）→ 同骨輪追著目標滾，撞牆 / 被盾擋下暈 stun 秒
+			"wheel": {
+				"min_distance": 5.0, "windup": 0.8, "speed": 11.0, "turn_rate": PI / 4.0, "max_time": 4.0, "hit_reach": 0.4,
+				"damage": 24.0, "knockback": 14.0, "side_push": 0.8, "blockable": true, "stun": 3.0, "cooldown": 9.0, "shake": 0.5,
+			},
+			# 吞屍：胸腔打開（windup），radius 內的骷髏屍體與活著的骷髏都被吸進去，每具回 heal_per 最大生命
+			"devour": {"radius": 8.0, "windup": 0.8, "recovery": 0.5, "heal_per": 0.02, "cooldown": 10.0, "min_bodies": 1},
 		},
 	},
 
@@ -426,9 +470,24 @@ const FLOOR_MIX := {
 }
 const UPPER_SHARE := 0.2
 
+# 骷髏類（萬骨聚合體吞得掉的屍體）
+const SKELETONS: Array[StringName] = [&"grunt", &"archer", &"spearman", &"bone_wheel", &"minion"]
+
+static var _merged := {}   # def_of 合併過的資料（inherits）
+
+
+# 這種怪的完整資料：有 inherits 的先拿被繼承的那種，再蓋上自己寫的欄位（同一層字典整個換掉）
+static func def_of(type: StringName) -> Dictionary:
+	var d: Dictionary = ENEMIES[type]
+	if not d.has("inherits"):
+		return d
+	if not _merged.has(type):
+		_merged[type] = def_of(d.inherits).merged(d, true)
+	return _merged[type]
+
 
 static func is_boss(type: StringName) -> bool:
-	return ENEMIES[type].get("is_boss", false)
+	return def_of(type).get("is_boss", false)
 
 
 static func floor_mix(floor_num: int) -> Dictionary:

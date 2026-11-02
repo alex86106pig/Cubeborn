@@ -39,6 +39,11 @@ const HANDLERS := {
 	"enemy:blocked": &"_on_enemy_blocked",
 	"enemy:guard_broken": &"_on_enemy_blocked",
 	"enemy:crashed": &"_on_enemy_crashed",
+	"fx:spike_warn": &"_fx_spike_warn",
+	"fx:bone_spike": &"_fx_bone_spike",
+	"fx:sweep": &"_fx_sweep",
+	"boss:absorbed": &"_on_boss_absorbed",
+	"boss:devoured": &"_on_boss_devoured",
 }
 const LIGHTNING_HEIGHT := 1.1   # 連鎖閃電畫在離地多高（v0.33.0）
 const LIGHTNING_WIDTH := 0.09
@@ -253,6 +258,67 @@ func _on_enemy_blocked(p: Dictionary) -> void:
 		burst(at, {"color": CHARGE_DUST_COLOR, "count": 14, "speed": 6.0, "up": 2.0, "size": 0.14, "life": 0.5})
 
 
+# 萬骨聚合體骨刺陣的預兆：地面沿 lines 個方向一路隆起（低低的土石條，不畫圈），windup 結束時消失
+func _fx_spike_warn(p: Dictionary) -> void:
+	var at := _at(p, 0.02)
+	var life: float = p.life
+	var lines: int = p.lines
+	var start: float = p.start
+	var length: float = p.length
+	var ridge := BoxMesh.new()
+	ridge.size = Vector3(0.5, 0.25, length - start)
+	for i in lines:
+		var a: float = p.facing + TAU * i / lines
+		var dir := Vector3(sin(a), 0.0, cos(a))
+		var node := _transient_mesh(ridge, CHARGE_DUST_COLOR, 0.9)
+		node.position = at + dir * (start + (length - start) * 0.5)
+		node.rotation.y = a
+		_add_transient(node, life, func(k: float) -> void:
+			node.scale = Vector3(1.0, 0.1 + 0.9 * MathUtil.ease_out_cubic(k) + 0.1 * sin(k * 50.0), 1.0))
+
+
+# 一根骨刺竄出：白色尖錐往上刺再縮回去，噴碎石
+func _fx_bone_spike(p: Dictionary) -> void:
+	var at := _at(p)
+	if not _slash_meshes.has("bone_spike"):
+		var cone := CylinderMesh.new()
+		cone.top_radius = 0.0
+		cone.bottom_radius = 0.35
+		cone.height = 1.6
+		cone.radial_segments = 5
+		_slash_meshes["bone_spike"] = cone
+	var node := _transient_mesh(_slash_meshes["bone_spike"], BONE_COLOR, 1.0)
+	node.position = at
+	_add_transient(node, 0.45, func(k: float) -> void:
+		var up := minf(1.0, k * 6.0) * (1.0 - maxf(0.0, (k - 0.6) / 0.4))
+		node.position.y = at.y + 0.8 * up - 0.4
+		node.scale = Vector3(1.0, maxf(0.05, up), 1.0))
+	burst(at + Vector3(0, 0.2, 0), {"color": CHARGE_DUST_COLOR, "count": 3, "speed": 2.5, "up": 3.0, "size": 0.12, "life": 0.35})
+
+
+# 多臂橫掃：低掃貼地一圈弧光（土色）、高掃齊胸一圈（白色）
+func _fx_sweep(p: Dictionary) -> void:
+	var low: bool = p.low
+	var at := _at(p, 0.15 if low else 1.4)
+	ring(at, p.radius, {"color": CHARGE_DUST_COLOR if low else Color.WHITE, "life": 0.3, "opacity": 0.7})
+	slash(at, 0.0, p.radius, TAU * 0.98, {"color": CHARGE_DUST_COLOR if low else Color.WHITE, "opacity": 0.5, "life": 0.25})
+
+
+# 骷髏屍體被萬骨聚合體吸過去：一串白點從屍體飛到 Boss 身上
+func _on_boss_absorbed(p: Dictionary) -> void:
+	var from := Vector3((p.from as Vector2).x, p.get("height", 0.0) + 0.5, (p.from as Vector2).y)
+	var to := Vector3((p.pos as Vector2).x, p.get("height", 0.0) + 1.5, (p.pos as Vector2).y)
+	for i in 8:
+		var k := i / 8.0
+		mote(from.lerp(to, k) + Vector3(0, sin(k * PI) * 1.2, 0), {"color": BONE_COLOR, "size": 0.14, "life": 0.3 + k * 0.4, "vy": 0.5})
+
+
+func _on_boss_devoured(p: Dictionary) -> void:
+	var e := _entity(p.boss_id)
+	if e != null:
+		burst(_entity_at(e, 1.6), {"color": Color("7cc48c"), "count": 10 + 3 * int(p.count), "speed": 2.5, "up": 3.0, "size": 0.16})
+
+
 # 骨輪撞牆：碎骨與揚塵往外噴
 func _on_enemy_crashed(p: Dictionary) -> void:
 	var at := _at(p, 0.5)
@@ -283,6 +349,11 @@ func _on_transformed(p: Dictionary) -> void:
 	if e == null:
 		return
 	var at := _entity_at(e, 0.0)
+	if (e as Enemy).def.has("colossus"):   # 骸骨將軍 → 萬骨聚合體：骨頭往上噴、一圈白光
+		ring(at, 3.0, {"color": BONE_COLOR, "life": 0.5})
+		burst(at + Vector3(0, 1.5, 0), {"color": BONE_COLOR, "count": 30, "speed": 6.0, "up": 5.0, "size": 0.2})
+		burst(at + Vector3(0, 2.0, 0), {"color": Color("55e0ff"), "count": 12, "speed": 3.0, "up": 3.0, "size": 0.12})
+		return
 	var roar: float = (e as Enemy).def.transform.roar_radius
 	ring(at, roar, {"color": Color.WHITE, "life": 0.4})
 	ring(at, roar * 1.3, {"color": WOLF_FUR, "life": 0.6, "opacity": 0.5})

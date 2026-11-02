@@ -380,3 +380,136 @@ static func check_boss_high_ground() -> String:
 			return "Boss 砸地，玩家在 1.0 石台上%s：%s" % ["跳起來" if jump else "站著", "被打到" if hurt else "沒被打到"]
 	_note("Boss：%.1f 秒跳上石座、%.1f 秒打到石座上的玩家" % [up * DT, hit * DT])
 	return ""
+
+
+# 骸骨將軍（第 2 層）：半血脫甲（無敵 transform.time 秒、碎片往外飛、吸掉場上的骷髏屍體）→ 萬骨聚合體（受傷 × damage_taken）；
+# 骨刺陣打得到線上的、打不到兩條線中間的；低掃跳起來躲得過、高掃打得到跳起來的；巨骨輪撞牆暈 stun 秒；吞屍吃掉附近的骷髏回血
+static func check_bone_general() -> String:
+	var d: Dictionary = EnemyDefs.def_of(&"bone_general")
+	var c: Dictionary = d.colossus
+	var w := _new_world(3)
+	var p := _player(w)
+	p.stats.set_base(&"max_hp", 99999.0)
+	p.hp = p.max_hp
+	p.pos = Vector2(0, -6)
+	var b := _spawn(w, &"bone_general", Vector2.ZERO) as BoneGeneral
+	b.fsm.change(&"chase")
+	var corpse := _spawn(w, &"grunt", Vector2(8, 8))
+	corpse.die()
+	w.events.clear()
+	b.hp = b.max_hp * 0.55
+	Combat.apply_damage(w, p, b, {"damage": b.max_hp * 0.1, "knockback": 0.0})
+	if not b.fsm.is_in(&"transform"):
+		return "骸骨將軍：血量 %.0f%% 應開始脫甲（狀態 %s）" % [b.hp / b.max_hp * 100.0, b.fsm.current_name]
+	var shards := w.projectiles.filter(func(e: Entity) -> bool: return (e as Projectile).owner_id == b.id).size()
+	if shards != int(d.transform.shards) or not corpse.is_removed:
+		return "脫甲應射出 %d 片碎片（%d）、吸掉骷髏屍體（移除了 %s）" % [d.transform.shards, shards, corpse.is_removed]
+	var hp0 := b.hp
+	_step_n(w, 3)
+	Combat.apply_damage(w, p, b, {"damage": 50.0, "knockback": 0.0})
+	if b.hp < hp0 - EPS:
+		return "脫甲中應無敵（扣了 %.1f）" % (hp0 - b.hp)
+	_step_n(w, roundi(d.transform.time / DT) + 2)
+	if b.form != 1 or not b.fsm.is_in(&"colossus_chase"):
+		return "脫甲 %.1f 秒後應變成萬骨聚合體（form %d、狀態 %s）" % [d.transform.time, b.form, b.fsm.current_name]
+	b.invuln_timer = 0.0
+	var hp1 := b.hp
+	var dealt := b.take_damage(10.0, Vector2.UP, 0.0, p.id)
+	if absf(dealt - 10.0 * c.damage_taken * StatDefs.damage_factor(b.stats, &"phys")) > 0.05:
+		return "萬骨聚合體受到的傷害應 × %.1f（10 → %.2f）" % [c.damage_taken, dealt]
+	b.hp = hp1
+	# 骨刺陣：出招時對準目標（玩家在 +y）定下 6 條線；線上 4.5 打得到；之後走到兩條線中間（30°）3.0 打不到
+	for case: Array in [[Vector2(0, 4.5), true], [MathUtil.dir_from_angle(PI / 6.0) * 3.0, false]]:
+		var w2 := _new_world(3)
+		var p2 := _player(w2)
+		p2.stats.set_base(&"max_hp", 99999.0)
+		p2.hp = p2.max_hp
+		p2.pos = Vector2(0, 4.5)
+		var b2 := _spawn(w2, &"bone_general", Vector2.ZERO) as BoneGeneral
+		b2.form = 1
+		b2.fsm.change(&"spikes")
+		var hit := false
+		for i in roundi((c.spikes.windup + 1.0) / DT):
+			p2.pos = case[0]
+			w2.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+			for ev in w2.events:
+				if ev.name == "entity:damaged" and ev.target_id == p2.id and ev.source_id == b2.id:
+					hit = true
+		if hit != case[1]:
+			return "骨刺陣：玩家在 %s %s（應%s）" % [case[0], "被刺中" if hit else "沒被刺中", "刺中" if case[1] else "刺不到"]
+	# 多臂橫掃：跳起來（離地 1.0）躲得過低掃、被高掃打到；站著被低掃打到
+	for jump: bool in [false, true]:
+		var w3 := _new_world(3)
+		var p3 := _player(w3)
+		p3.stats.set_base(&"max_hp", 99999.0)
+		p3.hp = p3.max_hp
+		p3.pos = Vector2(0, 2.5)
+		var b3 := _spawn(w3, &"bone_general", Vector2.ZERO) as BoneGeneral
+		b3.form = 1
+		b3.fsm.change(&"sweep")
+		var low_hit := false
+		var high_hit := false
+		for i in roundi((c.sweep.windup + c.sweep.gap + 0.1) / DT):
+			if jump:
+				p3.height = 1.0
+				p3.vz = 0.0
+			p3.pos = Vector2(0, 2.5)
+			w3.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+			for ev in w3.events:
+				if ev.name == "entity:damaged" and ev.target_id == p3.id and ev.source_id == b3.id:
+					if b3.fsm.data.get("phase", &"") == &"low":
+						low_hit = true
+					else:
+						high_hit = true
+		if jump and (low_hit or not high_hit):
+			return "多臂橫掃：跳起來應躲過低掃、被高掃打到（低 %s、高 %s）" % [low_hit, high_hit]
+		if not jump and not low_hit:
+			return "多臂橫掃：站著應被低掃打到"
+	# 巨骨輪：滾到場地邊緣撞牆，暈 stun 秒再回來追
+	var w4 := _new_world(3)
+	var p4 := _player(w4)
+	p4.stats.set_base(&"max_hp", 99999.0)
+	p4.hp = p4.max_hp
+	p4.pos = Vector2(0, 12)
+	var b4 := _spawn(w4, &"bone_general", Vector2(0, 0)) as BoneGeneral
+	b4.form = 1
+	b4.fsm.change(&"wheel")
+	var stunned_at := -1
+	for i in roundi((c.wheel.windup + c.wheel.max_time + 0.5) / DT):
+		p4.hp = p4.max_hp
+		w4.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+		if b4.fsm.is_in(&"wheel_stun"):
+			stunned_at = i
+			break
+	if stunned_at < 0:
+		return "巨骨輪應滾到撞牆暈眩（狀態 %s、位置 %s）" % [b4.fsm.current_name, b4.pos]
+	_step_n(w4, roundi(c.wheel.stun / DT) + 2)
+	if not b4.fsm.is_in(&"colossus_chase"):
+		return "巨骨輪撞牆暈 %.1f 秒後應回來追（狀態 %s）" % [c.wheel.stun, b4.fsm.current_name]
+	# 吞屍：radius 內 3 隻活的骷髏 + 1 具屍體被吃掉，每具回 heal_per
+	var w5 := _new_world(3)
+	_player(w5).pos = Vector2(0, -15)
+	var b5 := _spawn(w5, &"bone_general", Vector2.ZERO) as BoneGeneral
+	b5.form = 1
+	b5.hp = b5.max_hp * 0.5
+	var eaten: Array[Entity] = []
+	for at: Vector2 in [Vector2(3, 0), Vector2(-3, 2), Vector2(0, 5)]:
+		eaten.append(_spawn(w5, &"grunt", at))
+	var dead := _spawn(w5, &"archer", Vector2(2, -2))
+	dead.die()
+	eaten.append(dead)
+	var far := _spawn(w5, &"grunt", Vector2(0, c.devour.radius + 4.0))
+	b5.fsm.change(&"devour")
+	_step_n(w5, roundi((c.devour.windup + 0.05) / DT))
+	var gone := eaten.filter(func(e: Entity) -> bool: return not w5.entities.has(e.id)).size()
+	var want: float = 0.5 + c.devour.heal_per * 4.0
+	if gone != 4 or not w5.entities.has(far.id) or absf(b5.hp / b5.max_hp - want) > 0.005:
+		return "吞屍：應吃掉 radius 內 4 具（%d）、不吃遠的（還在 %s）、血量 %.0f%% → %.0f%%（%.1f%%）" % [gone, w5.entities.has(far.id), 50.0, want * 100.0, b5.hp / b5.max_hp * 100.0]
+	return ""
+
+
+static func _step_n(w: World, n: int) -> void:
+	var p := _player(w)
+	for i in n:
+		p.hp = p.max_hp
+		w.step({World.HOST_PEER_ID: InputCmd.new()}, DT)

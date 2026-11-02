@@ -12,7 +12,7 @@ const DIG := {
 }
 
 # 每層開局就在挖墳點的 Boss（EnemyDefs 的種類）：第 1 層守墓人、第 2 層骸骨將軍；超過表的層數用最後一層的
-const BOSS_BY_FLOOR := {1: &"gravekeeper", 2: &"boss"}
+const BOSS_BY_FLOOR := {1: &"gravekeeper", 2: &"bone_general"}
 
 
 # 每層「去下一層事件」的外觀與文字（機制都一樣：碰到定點開始、定點噴下一層的怪、進度滿了再互動前往下一層）

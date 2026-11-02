@@ -9,7 +9,7 @@ class_name WeaponDropDefs
 # 要第 2~3 層才滿）；超過表的層用最後一層。召喚出來的怪（no_souls）不掉，同靈魂與金幣
 const MINION_DROP_BY_FLOOR := {1: 0.015, 2: 0.025, 3: 0.04}
 const MINION_TYPES := [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"spearman", &"bone_wheel"]
-const BOSS_TYPES := [&"boss", &"gravekeeper"]   # 必掉
+const BOSS_TYPES := [&"boss", &"gravekeeper", &"bone_general"]   # 必掉
 
 
 # 這種怪在第 floor_num 層死掉時掉武器的機率（不在兩張表的怪不掉：冤魂、骷髏僕從）

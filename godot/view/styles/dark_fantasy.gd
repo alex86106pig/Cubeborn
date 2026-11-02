@@ -41,6 +41,11 @@ const WHEEL_JOINTS := {
 	"neck": WHEEL_RADIUS, "shoulder_y": WHEEL_RADIUS, "shoulder_x": 0.0, "grip": 0.1,
 	"hip_y": WHEEL_RADIUS, "hip_x": 0.0, "height": WHEEL_RADIUS * 2.0,
 }
+# 萬骨聚合體：駝背、手長腿短（肩膀到拳頭 1.0、髖關節只有 0.45 高）
+const COLOSSUS_JOINTS := {
+	"neck": 1.4, "shoulder_y": 1.3, "shoulder_x": 0.5, "grip": 1.0,
+	"hip_y": 0.45, "hip_x": 0.22, "height": 1.7,
+}
 const ZOMBIE_JOINTS := {
 	"neck": 1.42, "shoulder_y": 1.4, "shoulder_x": 0.3, "grip": 0.58,
 	"hip_y": 0.92, "hip_x": 0.13, "height": 1.85,
@@ -93,6 +98,8 @@ static func character(kind: StringName) -> Rig:
 			rig = werewolf()
 		&"boss":
 			rig = death_knight()
+		&"bone_colossus":
+			rig = bone_colossus()
 		_:
 			rig = knight()
 	_templates[kind] = rig.to_template()
@@ -415,6 +422,46 @@ static func death_knight() -> Rig:
 	var rig := Rig.new(j)
 	_armored_body(rig, C.death_armor, C.iron, Color("1c1a22"), C.death_eye, true)
 	rig.hand_r.add_child(_long_sword(rig.kit, Color("9aa4b4"), C.iron, 1.35, Color("7fe8ff")))
+	return rig.optimize()
+
+
+# 萬骨聚合體（骸骨將軍的第二型態）：矮壯的骨堆巨人。骨盆是一堆骨球、胸口一圈圈肋骨嵌著小頭骨、背上多兩對骨臂；
+# 大頭骨的眼睛是將軍的青光。比例照 COLOSSUS_JOINTS（駝背、手長腿短），整隻 × BOSS_SCALE × colossus.scale
+static func bone_colossus() -> Rig:
+	var j := COLOSSUS_JOINTS.duplicate()
+	j["scale"] = BOSS_SCALE * float(EnemyDefs.ENEMIES.bone_general.colossus.scale) * 0.8
+	var rig := Rig.new(j)
+	var k := rig.kit
+	var bone := k.mat(C.bone)
+	var dark := k.mat(C.bone_dark)
+	var eye := k.mat(C.death_eye, true)
+	for i in 7:   # 骨盆：一堆骨球
+		var a := TAU * i / 7.0
+		k.add(rig.body, PartKit.ico(0.2 + 0.05 * (i % 3), 0), bone if i % 2 == 0 else dark, {"x": cos(a) * 0.28, "y": 0.62 + 0.06 * (i % 2), "z": sin(a) * 0.22})
+	k.add(rig.body, PartKit.cyl(0.07, 0.07, 0.7, 5), dark, {"y": 1.0})   # 脊椎
+	for i in 4:
+		k.add(rig.body, PartKit.torus(0.42 - i * 0.04, 0.04, 4, 10), bone, {"y": 0.92 + i * 0.12, "rx": PI / 2.0, "sy": 0.75})
+	for p in [[-0.18, 1.02], [0.2, 1.1], [0.0, 1.22]]:   # 胸口嵌著的小頭骨
+		k.add(rig.body, PartKit.ico(0.1, 1), bone, {"x": p[0], "y": p[1], "z": 0.3})
+		k.add(rig.body, PartKit.sphere(0.02, 4, 3), eye, {"x": p[0], "y": p[1] + 0.02, "z": 0.39, "shadow": false})
+	for s in [-1.0, 1.0]:   # 背上多出來的兩對骨臂（固定的，往外張開）
+		for h in [0.95, 1.15]:
+			k.add(rig.body, PartKit.cyl(0.04, 0.03, 0.75, 4), dark, {"x": s * 0.55, "y": h, "z": -0.2, "rz": s * 1.1, "rx": 0.4})
+	k.add(rig.head, PartKit.ico(0.26, 1), bone, {"y": 0.16, "sy": 1.05})
+	k.add(rig.head, PartKit.box(0.26, 0.09, 0.2), dark, {"y": -0.04, "z": 0.06})
+	for s in [-1.0, 1.0]:
+		k.add(rig.head, PartKit.sphere(0.07, 5, 4), k.mat(C.socket), {"x": s * 0.1, "y": 0.2, "z": 0.2})
+		k.add(rig.head, PartKit.sphere(0.04, 4, 3), eye, {"x": s * 0.1, "y": 0.2, "z": 0.25, "shadow": false})
+	for arm in [rig.arm_r, rig.arm_l]:
+		k.add(arm, PartKit.cyl(0.07, 0.06, 0.45, 5), bone, {"y": -0.24})
+		k.add(arm, PartKit.ico(0.08, 0), dark, {"y": -0.5})
+		k.add(arm, PartKit.cyl(0.06, 0.05, 0.45, 5), bone, {"y": -0.75})
+	for hand in [rig.hand_r, rig.hand_l]:
+		for c in 3:   # 爪子
+			k.add(hand, PartKit.cone(0.03, 0.22, 4), bone, {"x": (c - 1) * 0.06, "y": -0.12, "rx": PI})
+	for leg in [rig.leg_r, rig.leg_l]:
+		k.add(leg, PartKit.cyl(0.08, 0.07, 0.32, 5), bone, {"y": -0.18})
+		k.add(leg, PartKit.box(0.16, 0.08, 0.26), dark, {"y": -0.4, "z": 0.05})
 	return rig.optimize()
 
 

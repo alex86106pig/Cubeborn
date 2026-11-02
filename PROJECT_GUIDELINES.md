@@ -231,8 +231,10 @@ godot/
 | `skill:onCooldown` | `{ key }` | PlayerStates / ActiveSlots |
 | `wave:started` | `{ wave, total, isBoss }` | Spawner |
 | `boss:enraged` | `{ boss }` | Boss |
-| `boss:transforming` | `{ boss_id }`（Boss 半血開始轉型態） | Gravekeeper |
-| `boss:transformed` | `{ boss_id, form, pos }`（轉型態完成：畫面層換模型、HUD 換名字與提示） | Gravekeeper |
+| `boss:transforming` | `{ boss_id }`（Boss 半血開始轉型態） | Gravekeeper、BoneGeneral |
+| `boss:transformed` | `{ boss_id, form, pos }`（轉型態完成：畫面層換模型、HUD 換名字與提示） | Gravekeeper、BoneGeneral |
+| `boss:absorbed` | `{ boss_id, from, height, pos }`（骸骨將軍脫甲 / 萬骨聚合體吞屍：一具骷髏被吸過去） | BoneGeneral |
+| `boss:devoured` | `{ boss_id, count, pos }`（萬骨聚合體吞屍回血） | BoneGeneral |
 | `boss:revealed` | `{ boss_id, spoke }`（假裝 NPC 的守墓人露出真面目；spoke = 被說話觸發、頭上冒台詞） | Gravekeeper |
 | `game:victory` | `{ stats }` | World（Boss 死亡後延遲發出） |
 | `game:restart` | `{}` | World.reset |
@@ -253,7 +255,10 @@ godot/
 | `fx:boss_teleport_warn` | `{ pos, height, life }` | 狂暴 Boss 瞬移前：目的地冒出越來越濃的紫煙（取代預警圈） |
 | `fx:dirt_lob` | `{ pos, height, targets, flight, radius, shadow_only? }` | 守墓人鏟土拋擲（shadow_only：狼人飛撲只畫影子）：土塊沿拋物線飛到每個落點、地上的影子越來越大（看影子躲，不畫圈） |
 | `fx:gas_cloud` | `{ pos, height, radius, color, life }` | 怪物的毒氣區（膨脹屍的腐氣，GroundZones `visual = &"gas"`）：範圍內一直冒低低的煙，不畫圈 |
-| `fx:erupt_warn` | `{ pos, height, radius, life }` | 挖墳點噴怪前：墳土隆起、裂開、冒出白骨手（取代預警圈） |
+| `fx:erupt_warn` | `{ pos, height, radius, life, look }` | 挖墳點噴怪前：墳土隆起、裂開、冒出白骨手（取代預警圈）；look = sarcophagus 是第 2 層的石棺 |
+| `fx:spike_warn` | `{ pos, height, facing, lines, start, length, life }` | 萬骨聚合體骨刺陣的預兆：地面沿 lines 個方向隆起 |
+| `fx:bone_spike` | `{ pos, height }` | 一根骨刺竄出 |
+| `fx:sweep` | `{ pos, height, radius, low }` | 萬骨聚合體多臂橫掃（低掃 / 高掃）的弧光 |
 | `fx:lightning` | `{ pos, height, points, color }` | 道具連鎖閃電（v0.33.0）：points 依序連成的閃電線 |
 | `fx:status` | `{ pos, height, color }` | 道具讓怪中毒 / 冰凍（v0.33.0）：一小團該顏色的粒子 |
 

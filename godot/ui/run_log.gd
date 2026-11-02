@@ -16,11 +16,12 @@ const TRACK_RANGE := 8.0   # 這麼近的怪每幀記錄看不看得到（遠的
 const RARITY_ORDER: Array[StringName] = [&"white", &"green", &"blue", &"purple", &"orange"]
 # Boss 名字同 HUD.BOSS_NAME；不直接引用 HUD：check.gd（-s 腳本）會用到本檔，引用 HUD 會連帶要求 autoload GameEvents 而編譯失敗
 const NAMES := {
-	&"grunt": "骷髏戰士", &"archer": "骷髏弓手", &"zombie": "腐屍", &"bloater": "膨脹屍", &"hound": "屍犬", &"bone_wheel": "骨輪", &"spearman": "骷髏盾槍兵", &"boss": "骸骨將軍", &"gravekeeper": "守墓人", &"ghost": "冤魂", &"minion": "骷髏僕從",
+	&"grunt": "骷髏戰士", &"archer": "骷髏弓手", &"zombie": "腐屍", &"bloater": "膨脹屍", &"hound": "屍犬", &"bone_wheel": "骨輪", &"spearman": "骷髏盾槍兵", &"boss": "亡骸騎士", &"bone_general": "骸骨將軍", &"gravekeeper": "守墓人", &"ghost": "冤魂", &"minion": "骷髏僕從",
 	&"projectile": "投射物（射手已死）",
 }
 
 var me_id := 0          # 本機玩家的實體 id（HUD 每次有角色時更新；倒下 / 陣亡後角色還在，id 不變）
+const KILLS_PER_LINE := 6   # 擊殺一行最多幾種
 var kills := {}         # 種類 → 隻數（只算自己打死的）
 var damage_taken := 0.0
 var hits_taken := 0
@@ -258,7 +259,12 @@ func summary_text() -> String:
 	var kill_kinds := kills.keys()
 	kill_kinds.sort_custom(func(a: StringName, b: StringName) -> bool: return kills[a] > kills[b])
 	var kill_parts := kill_kinds.map(func(k: StringName) -> String: return "%s %d" % [name_of(k), kills[k]])
-	lines.append("你的擊殺 %d" % total_kills() + ("：" + " · ".join(PackedStringArray(kill_parts)) if not kill_parts.is_empty() else ""))
+	var head := "你的擊殺 %d" % total_kills()
+	if kill_parts.is_empty():
+		lines.append(head)
+	for i in range(0, kill_parts.size(), KILLS_PER_LINE):   # 種類多時換行（結算畫面寬度有限）
+		var row := " · ".join(PackedStringArray(kill_parts.slice(i, i + KILLS_PER_LINE)))
+		lines.append((head + "：" if i == 0 else "　　") + row)
 	lines.append(weapon_text())
 	if hits_taken == 0:
 		lines.append("沒有受到傷害")
