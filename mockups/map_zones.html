@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>地圖分區區塊</title>
+<style>
+  :root {
+    --bg: #15161a; --card: #1e2026; --line: #34373f; --text: #e6e2d6; --dim: #9a978c;
+    --wall: #8b8577; --tomb: #c4bda9; --low: #a3876a; --high: #d8b07e;
+    --spawn: #6fd08c; --dig: #a97be8; --slot: #3a4a6a; --free: #22252c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 16px 48px; background: var(--bg); color: var(--text);
+    font: 15px/1.6 "Microsoft JhengHei", "Noto Sans TC", sans-serif; }
+  h1 { margin: 0 0 4px; font-size: 24px; }
+  h2 { margin: 28px 0 8px; font-size: 20px; }
+  .sub { color: var(--dim); margin: 0 0 16px; max-width: 900px; }
+  .box { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-bottom: 16px; max-width: 900px; }
+  .box ul { margin: 0; padding-left: 18px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 6px 0 0; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+  .sw { width: 16px; height: 12px; border-radius: 2px; display: inline-block; border: 1px solid #0006; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+  .card h3 { margin: 0; font-size: 16px; }
+  .card h3 b { color: var(--high); margin-right: 4px; }
+  .card p { margin: 2px 0 6px; color: var(--dim); font-size: 13px; }
+  .card svg { display: block; width: 100%; height: auto; background: #101114; border-radius: 4px; }
+  .card label { display: flex; gap: 6px; align-items: center; font-size: 13px; margin-top: 6px; cursor: pointer; }
+  .maps { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+  .map { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; max-width: 100%; }
+  .map h3 { margin: 0 0 6px; font-size: 18px; }
+  .map svg { display: block; width: 100%; max-width: 480px; height: auto; background: #101114; border-radius: 4px; }
+  .map .roll { color: var(--dim); font-size: 13px; margin-top: 6px; max-width: 480px; }
+  button { background: #2c3240; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px 16px; font: inherit; cursor: pointer; }
+  button:hover { background: #38405a; }
+</style>
+</head>
+<body>
+<h1>地圖分區：區塊候選</h1>
+<p class="sub">墓園 A 與第 2 層墓窟各 7 格，每格開局照種子抽一種區塊、隨機轉 0 / 90 / 180 / 270°。外框、出生點、出口（王族墓 / 主墓室）、走道固定。勾選要的區塊，按「換一組」看整張地圖抽起來的樣子。</p>
+
+<div class="box">
+  <ul>
+    <li>每格是 22 × 22 的方框：外圈 2 與中間十字 4 寬一律留空（任何門、走道都連得通），東西只放在四角 7 × 7 的口袋裡。</li>
+    <li>高台只用 0.5 / 1.0（怪物跳得上去）；牆高 3（跳不上去、擋視線）；墓碑 1.3（擋箭、玩家跳得上去）。</li>
+    <li>遊戲裡同一種區塊在墓園、墓窟顏色不同（墓窟的牆是岩壁、墓碑是壁龕 / 棺材），形狀一樣。</li>
+  </ul>
+  <div class="legend">
+    <span><i class="sw" style="background:var(--wall)"></i>牆 3（擋視線）</span>
+    <span><i class="sw" style="background:var(--tomb)"></i>墓碑 1.3（擋箭）</span>
+    <span><i class="sw" style="background:var(--low)"></i>高台 0.5</span>
+    <span><i class="sw" style="background:var(--high)"></i>高台 1.0</span>
+    <span><i class="sw" style="background:var(--free)"></i>留空的走道</span>
+    <span><i class="sw" style="background:var(--spawn)"></i>出生點</span>
+    <span><i class="sw" style="background:var(--dig)"></i>出口 / Boss</span>
+  </div>
+</div>
+
+<h2>區塊</h2>
+<div class="cards" id="cards"></div>
+
+<h2>整張地圖預覽 <button id="reroll">換一組</button></h2>
+<div class="maps">
+  <div class="map"><h3>第 1 層 墓園 A</h3><svg id="map_a" viewBox="0 0 96 96"></svg><div class="roll" id="roll_a"></div></div>
+  <div class="map"><h3>第 2 層 墓窟</h3><svg id="map_c" viewBox="0 0 96 96"></svg><div class="roll" id="roll_c"></div></div>
+</div>
+
+<script>
+// 口袋：方框座標（0~22）裡四個 7×7 的角落
+const P = [[2, 2], [13, 2], [2, 13], [13, 13]];
+const W = 3, TB = 1.3;
+const wall = (x, y, w, d) => [x, y, w, d, W, "wall"];
+const plat = (x, y, w, d, h) => [x, y, w, d, h, "platform"];
+const tomb = (x, y) => [x, y, 1.2, 0.5, TB, "tomb"];
+const each = f => P.flatMap(([x, y], i) => f(x, y, i));
+
+// 區塊：方框座標裡的石台 [x, y, 寬, 深, 頂面, 種類]
+const TEMPLATES = [
+  { name: "墓碑林", feat: "每個口袋 6 塊墓碑：擋箭，近戰要繞，弓手打不到後排",
+    blocks: each((x, y) => [0.5, 3, 5.5].flatMap(dx => [1, 4.5].map(dy => tomb(x + dx, y + dy)))) },
+  { name: "對角高台", feat: "兩個口袋是 0.5 + 1.0 的高台，另外兩個各兩塊墓碑：搶高地",
+    blocks: each((x, y, i) => i === 0 || i === 3 ? [plat(x, y, 7, 7, 0.5), plat(x + 1.5, y + 1.5, 4, 4, 1.0)] : [tomb(x + 1, y + 3), tomb(x + 4.5, y + 3)]) },
+  { name: "棺木台", feat: "每個口袋兩條 0.5 的棺木：跳上去躲近戰，怪物會跟著跳",
+    blocks: each((x, y) => [plat(x, y + 0.5, 6.5, 2, 0.5), plat(x, y + 4.5, 6.5, 2, 0.5)]) },
+  { name: "石柱廳", feat: "四根 2.5 × 2.5 的柱子：擋視線、繞柱子甩開怪",
+    blocks: each((x, y) => [wall(x + 2.25, y + 2.25, 2.5, 2.5)]) },
+  { name: "小墓穴", feat: "四間 5 × 4 的小墓穴：大塊擋視線，轉角容易被偷襲",
+    blocks: each((x, y) => [wall(x + 1, y + 1.5, 5, 4)]) },
+  { name: "廢墟牆", feat: "四個 L 形斷牆開口朝內：半封閉的小角落，可以守也會被包",
+    blocks: each((x, y, i) => {
+      const left = i % 2 === 0, top = i < 2;
+      const hx = left ? x : x + 1, vx = left ? x : x + 6;
+      const hy = top ? y : y + 6, vy = top ? y : y + 1;
+      return [wall(hx, hy, 6, 1), wall(vx, vy, 1, 6)];
+    }) },
+  { name: "亂葬坑", feat: "散亂的 0.5 土堆：地面高低不平，翻滾、跳躍會撞到",
+    blocks: each((x, y) => [plat(x, y, 2.5, 2.5, 0.5), plat(x + 4, y + 0.5, 3, 2, 0.5), plat(x + 1, y + 4.5, 2, 2.5, 0.5), plat(x + 4.5, y + 4, 2.5, 3, 0.5)]) },
+  { name: "空地", feat: "每個口袋只有一塊墓碑：大怪群打起來最寬，喘口氣的地方",
+    blocks: each((x, y) => [tomb(x + 2.9, y + 3.25)]) },
+  { name: "骨堆丘", feat: "四個口袋都是 0.5 高台、一角 1.0：整格墊高，十字走道在下面",
+    blocks: each((x, y, i) => [plat(x, y, 7, 7, 0.5), plat(x + (i % 2 ? 4 : 0), y + (i < 2 ? 0 : 4), 3, 3, 1.0)]) },
+  { name: "墓碑高台", feat: "對角兩個口袋墓碑、另外兩個 0.5 高台：一邊擋箭一邊搶高",
+    blocks: each((x, y, i) => i === 0 || i === 3 ? [1, 4.5].flatMap(dy => [0.5, 3, 5.5].map(dx => tomb(x + dx, y + dy))) : [plat(x, y, 7, 7, 0.5)]) },
+];
+
+const COLORS = { wall: "var(--wall)", tomb: "var(--tomb)", "platform0.5": "var(--low)", "platform1": "var(--high)" };
+const fill = b => b[5] === "platform" ? (b[4] >= 1 ? COLORS.platform1 : COLORS["platform0.5"]) : COLORS[b[5]];
+const rect = (b, ox = 0, oy = 0) => `<rect x="${ox + b[0]}" y="${oy + b[1]}" width="${b[2]}" height="${b[3]}" fill="${fill(b)}" stroke="#0007" stroke-width="0.15"/>`;
+
+// 方框裡轉 90° × k（順時針）
+function rotate(b, k) {
+  let [x, y, w, d, t, kind] = b;
+  for (let i = 0; i < k; i++) [x, y, w, d] = [22 - y - d, x, d, w];
+  return [x, y, w, d, t, kind];
+}
+
+// 方框的留空範圍（外圈 2、中間十字 4）
+const freeArea = (ox, oy) =>
+  `<rect x="${ox}" y="${oy}" width="22" height="22" fill="var(--free)"/>` +
+  P.map(([x, y]) => `<rect x="${ox + x}" y="${oy + y}" width="7" height="7" fill="#2b3040"/>`).join("");
+
+// 區塊卡片
+const cards = document.getElementById("cards");
+TEMPLATES.forEach((t, i) => {
+  t.on = true;
+  const el = document.createElement("div");
+  el.className = "card";
+  el.innerHTML = `<h3><b>${i + 1}</b>${t.name}</h3><p>${t.feat}</p>
+    <svg viewBox="-1 -1 24 24">${freeArea(0, 0)}${t.blocks.map(b => rect(b)).join("")}</svg>
+    <label><input type="checkbox" checked> 要這種</label>`;
+  el.querySelector("input").addEventListener("change", e => { t.on = e.target.checked; roll(); });
+  cards.appendChild(el);
+});
+
+// 墓園 A：外框、王族墓（北門 45~51）與四角石座、出生點；7 格 24 × 24（方框置中）
+const GRAVE = {
+  fixed: [
+    wall(0, 0, 96, 2), wall(0, 94, 96, 2), wall(0, 0, 2, 96), wall(94, 0, 2, 96),
+    wall(33, 33, 12, 1.5), wall(51, 33, 12, 1.5), wall(33, 61.5, 30, 1.5), wall(33, 33, 1.5, 30), wall(61.5, 33, 1.5, 30),
+    plat(36, 37, 5, 5, 1), plat(55, 37, 5, 5, 1), plat(36, 55, 5, 5, 1), plat(55, 55, 5, 5, 1),
+  ],
+  slots: [[5, 5], [36, 5], [67, 5], [5, 36], [67, 36], [5, 67], [67, 67]].map(([x, y]) => [x + 1, y + 1]),
+  spawn: [48, 88], exit: [48, 50],
+};
+// 墓窟：外框、岩壁與走道、主墓室與出生室；7 間墓室（方框在墓室正中）
+const ROOMS = [[2, 27], [37, 59], [69, 94]];
+const CATA = {
+  fixed: [
+    wall(0, 0, 96, 2), wall(0, 94, 96, 2), wall(0, 0, 2, 96), wall(94, 0, 2, 96),
+    wall(27, 2, 10, 11), wall(27, 19, 10, 26), wall(27, 51, 10, 26), wall(27, 83, 10, 11),
+    wall(59, 2, 10, 11), wall(59, 19, 10, 58), wall(59, 83, 10, 11),
+    wall(2, 27, 10, 10), wall(18, 27, 9, 10), wall(37, 27, 8, 10), wall(51, 27, 8, 10), wall(69, 27, 9, 10), wall(84, 27, 10, 10),
+    wall(2, 59, 10, 10), wall(18, 59, 9, 10), wall(37, 59, 22, 10), wall(69, 59, 9, 10), wall(84, 59, 10, 10),
+    plat(38, 38, 4, 4, 0.5), plat(54, 38, 4, 4, 0.5), plat(38, 54, 4, 4, 0.5), plat(54, 54, 4, 4, 0.5),
+    wall(41, 73, 2, 2), wall(55, 73, 2, 2),
+  ],
+  slots: [[0, 0], [1, 0], [2, 0], [0, 1], [2, 1], [0, 2], [2, 2]].map(([c, r]) => {
+    const [x0, x1] = ROOMS[c], [y0, y1] = ROOMS[r];
+    return [(x0 + x1) / 2 - 11, (y0 + y1) / 2 - 11];
+  }),
+  spawn: [48, 88], exit: [48, 48],
+};
+
+function drawMap(svgId, rollId, m) {
+  const pool = TEMPLATES.filter(t => t.on);
+  let out = m.fixed.map(b => rect(b)).join("");
+  const picks = [];
+  for (const [ox, oy] of m.slots) {
+    out += `<rect x="${ox}" y="${oy}" width="22" height="22" fill="none" stroke="var(--slot)" stroke-width="0.3" stroke-dasharray="1 1"/>`;
+    if (!pool.length) continue;
+    const t = pool[Math.floor(Math.random() * pool.length)];
+    const k = Math.floor(Math.random() * 4);
+    out += t.blocks.map(b => rect(rotate(b, k), ox, oy)).join("");
+    picks.push(`${TEMPLATES.indexOf(t) + 1} ${t.name}${k ? `（轉 ${k * 90}°）` : ""}`);
+  }
+  out += `<circle cx="${m.spawn[0]}" cy="${m.spawn[1]}" r="1.6" fill="var(--spawn)"/>`;
+  out += `<circle cx="${m.exit[0]}" cy="${m.exit[1]}" r="2" fill="var(--dig)"/>`;
+  document.getElementById(svgId).innerHTML = out;
+  document.getElementById(rollId).textContent = pool.length ? "這一組：" + picks.join("、") : "沒有勾選任何區塊";
+}
+
+function roll() {
+  drawMap("map_a", "roll_a", GRAVE);
+  drawMap("map_c", "roll_c", CATA);
+}
+document.getElementById("reroll").addEventListener("click", roll);
+roll();
+</script>
+</body>
+</html>
