@@ -134,7 +134,7 @@ func receive_events(run: int, tick: int, events: Array) -> void:
 			continue
 		# 自己被打：受擊硬直與無敵在本機立刻反應（傷害與擊退以房主為準，位置由修正跟上）
 		if me != null and ev.name == "entity:damaged" and ev.target_id == me.id:
-			me.net_hurt()
+			me.net_hurt(StringName(ev.get("tier", "")), ev.get("amount", 0.0))
 		# 自己打中、本機已經預測播過火花、音效與閃白：標 predicted（畫面層只顯示傷害數字）；順序照房主，跟其他事件一起排到畫面時間
 		if me != null and ev.name == "entity:damaged" and ev.get("source_id", 0) == me.id and _take_prediction(ev.target_id):
 			ev["predicted"] = true

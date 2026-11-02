@@ -12,6 +12,7 @@ const CARD_PAD := 8
 const CARD_CELL := 10.0     # 道具卡形狀小圖每格的大小
 const CARD_GAP := 24        # 道具卡底部離名稱那一行的距離
 const GHOST_COLOR := Color("8fd0ff")
+const ARMED_COLOR := Color("d8d2bf")   # 持武器腐屍的名字
 const EXIT_COLOR := Color("8fd0ff")
 const FORGE_COLOR := Color("ffb070")   # 鍛造祭壇的名稱（Build 改版第 8 步）
 const NPC_COLOR := Color("5fd27a")      # 假裝 NPC 的守墓人：名字與頭上的綠色血條
@@ -104,6 +105,13 @@ func _draw() -> void:
 		if en.rare_name != "":
 			_text(font, en, offset, en.rare_name, color, 18, Vector2(0, -18))
 		_text(font, en, offset, MonsterRarityDefs.affix_names(en.affixes), color, 14)
+	# 撿到武器的腐屍：頭上「持〇腐屍」（客戶端看動畫欄位 weapon），魔法 / 稀有怪疊在詞條與名字上面
+	for e: Entity in world.enemies:
+		var en := e as Enemy
+		if en == null or en.is_dead or not en.anim.has("weapon") or not Vision.entity_visible(world, viewer, en):
+			continue
+		var lift := 0.0 if en.rarity == MonsterRarityDefs.NORMAL else (-36.0 if en.rare_name != "" else -18.0)
+		_text(font, en, en.body_height + ENEMY_OFFSET, "持%s腐屍" % EnemyDefs.armed_kit(StringName(en.anim.weapon)).name, ARMED_COLOR, 14, Vector2(0, lift))
 	for e: Entity in world.enemies:
 		if e is Enemy and (e as Enemy).ghost_of != 0 and not e.is_dead and Vision.entity_visible(world, viewer, e):
 			_text(font, e, e.body_height + ENEMY_OFFSET, "冤魂：打倒就能復活隊友", GHOST_COLOR, 15)

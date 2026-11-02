@@ -198,6 +198,9 @@ static func check_bloater() -> String:
 	var swell_at := -1
 	var burst_at := -1
 	var stagger_tested := false
+	var grabbed := false                      # 脹大開始時玩家被抱住了（撲抱撲中）
+	var knocked := false
+	var burst_damage := 0.0
 	var hurt := {p.id: 0, dummy.id: 0}       # 爆炸那一步的傷害次數
 	var gassed := {p.id: 0, dummy.id: 0}     # 之後腐氣的傷害次數
 	var all_events: Array[Dictionary] = []
@@ -206,6 +209,7 @@ static func check_bloater() -> String:
 		all_events.append_array(w.events)
 		if swell_at < 0 and bl.fsm.is_in(&"swell"):
 			swell_at = i
+			grabbed = p.grabbed_by == bl.id
 		if swell_at >= 0 and not stagger_tested and i == swell_at + 10:
 			stagger_tested = true
 			Combat.apply_damage(w, p, bl, {"damage": 1.0, "knockback": 0.0})
@@ -219,15 +223,23 @@ static func check_bloater() -> String:
 					gassed[ev.target_id] += 1
 		if burst_at < 0 and (bl as Bloater).has_burst:
 			burst_at = i
+			knocked = p.knock_time > 0.0
 			for ev in w.events:
 				if ev.name == "entity:damaged" and ev.source_id == bl.id and hurt.has(ev.target_id):
 					hurt[ev.target_id] = 1
+					if ev.target_id == p.id:
+						burst_damage = ev.amount
 		if burst_at >= 0 and i > burst_at + roundi(EnemyDefs.ENEMIES.bloater.gas.duration / DT) + 5:
 			break
 	if swell_at < 0 or burst_at < 0:
 		return "膨脹屍：10 秒內沒有脹大自爆（脹大第 %d 步、爆炸第 %d 步）" % [swell_at, burst_at]
-	if absf((burst_at - swell_at) * DT - b.swell_time) > DT * 2.5:
-		return "膨脹屍：脹大 %.3f 秒才炸，預期 %.2f" % [(burst_at - swell_at) * DT, b.swell_time]
+	# 站著不動的玩家會被撲抱抱住：抱住時脹 hold_swell_time 就炸、多受 hold_bonus、擊倒（怪物圖鑑）
+	if not grabbed:
+		return "膨脹屍：站著不動的玩家應被撲抱抱住（脹大開始時 grabbed_by = %d）" % p.grabbed_by
+	if absf((burst_at - swell_at) * DT - b.hold_swell_time) > DT * 2.5:
+		return "膨脹屍：抱住後脹大 %.3f 秒才炸，預期 %.2f" % [(burst_at - swell_at) * DT, b.hold_swell_time]
+	if absf(burst_damage - (b.damage + b.hold_bonus)) > 0.01 or not knocked:
+		return "膨脹屍：抱住的玩家應受 %.0f 傷害並被擊倒：%.1f、擊倒 %s" % [b.damage + b.hold_bonus, burst_damage, knocked]
 	if hurt[p.id] < 1 or hurt[dummy.id] < 1:
 		return "膨脹屍：爆炸應炸到玩家與旁邊的怪（玩家 %d 次、怪 %d 次）" % [hurt[p.id], hurt[dummy.id]]
 	if gassed[p.id] < 3 or gassed[dummy.id] < 3:
@@ -250,11 +262,18 @@ static func check_bloater() -> String:
 	var delay := (w2.tick - died_tick) * DT
 	if not (bl2 as Bloater).has_burst or absf(delay - b.death_delay) > DT * 2.5 or bl2.no_souls:
 		return "膨脹屍：被打死後應 %.1f 秒炸（實際 %.3f、炸了 %s）、給靈魂（no_souls %s）" % [b.death_delay, delay, (bl2 as Bloater).has_burst, bl2.no_souls]
+	# 魔法 / 稀有膨脹屍不抽死亡爆炸（自己就會炸，抽到會炸兩次）
+	for i in 200:
+		var bl3 := w2.spawner.spawn_at(w2, &"bloater", Vector2(0, 20))
+		Spawner.roll_rarity(w2, bl3, MonsterRarityDefs.RARE)
+		if bl3.has_affix(&"volatile"):
+			return "膨脹屍不應抽到死亡爆炸詞條"
+		bl3.remove()
 	return ""
 
 
-# 屍犬：玩家站著不轉身 → 繞到背後（相對朝向 ≥ behind_angle）才撲，patience 秒內做到；
-# 玩家一直轉身看著它 → patience 秒內都不撲，之後才從正面撲；撲中有傷害
+# 屍犬：玩家背對它 → 在視野外（含側面）就飛撲，patience 秒內做到；
+# 玩家一直轉身看著它 → 正面牽制（側跳）、patience 秒內都不撲，之後才從正面撲；飛撲撲中擊倒
 static func check_hound() -> String:
 	var hd: Dictionary = EnemyDefs.ENEMIES.hound
 	var start: float = hd.spawn_time + hd.prowl.patience
@@ -268,26 +287,178 @@ static func check_hound() -> String:
 		var pounce_at := -1
 		var bearing := 0.0
 		var hit := false
+		var hopped := false
+		var knocked := false
 		for i in 60 * 12:
 			var cmd := InputCmd.new()
-			cmd.aim = h.pos if watch else Vector2(0, 5)
+			cmd.aim = h.pos if watch else Vector2(0, -5)
 			w.step({World.HOST_PEER_ID: cmd}, DT)
+			hopped = hopped or h.fsm.is_in(&"hop")
 			if pounce_at < 0 and h.fsm.is_in(&"pounce"):
 				pounce_at = i
 				bearing = Hound.bearing_from(p, h.pos)
 			for ev in w.events:
-				if ev.name == "entity:damaged" and ev.target_id == p.id and ev.source_id == h.id:
+				if ev.name == "entity:damaged" and ev.target_id == p.id and ev.source_id == h.id and h.fsm.is_in(&"pounce"):
 					hit = true
+					knocked = p.knock_time > 0.0
 			if hit:
 				break
-		var label := "一直轉身看著它" if watch else "站著不轉身"
+		var label := "一直轉身看著它" if watch else "背對它"
 		if pounce_at < 0 or not hit:
 			return "屍犬（%s）：12 秒內沒有撲中（撲第 %d 步）" % [label, pounce_at]
+		if not knocked:
+			return "屍犬（%s）：飛撲撲中應擊倒" % label
 		var at := pounce_at * DT
-		if not watch and (bearing < hd.prowl.behind_angle - 0.05 or at > start):
-			return "屍犬（站著不轉身）：應在 %.1f 秒內繞到背後才撲，實際 %.2f 秒、相對朝向 %.0f°" % [start, at, rad_to_deg(bearing)]
-		if watch and at < start - DT * 2:
-			return "屍犬（一直轉身看著它）：%.1f 秒前不該撲，實際 %.2f 秒就撲了（相對朝向 %.0f°）" % [start, at, rad_to_deg(bearing)]
+		if not watch and (bearing <= Config.VISION.angle / 2.0 or at > start):
+			return "屍犬（背對它）：在視野外應在 %.1f 秒內就撲，實際 %.2f 秒、相對朝向 %.0f°" % [start, at, rad_to_deg(bearing)]
+		if watch and (at < start - DT * 2 or not hopped):
+			return "屍犬（一直轉身看著它）：%.1f 秒前不該撲、牽制時要側跳：實際 %.2f 秒就撲（相對朝向 %.0f°）、側跳 %s" % [start, at, rad_to_deg(bearing), hopped]
+	return ""
+
+
+# 屍犬的其他招式：貼近時快咬（輕級）後往後跳；在 roll_punish.radius 內翻滾 → 撲向翻滾終點；4 隻圍著時同時出招不超過 pack.max_attackers
+static func check_hound_moves() -> String:
+	var hd: Dictionary = EnemyDefs.ENEMIES.hound
+	# 快咬
+	var w := _world()
+	var p: Player = w.players[World.HOST_PEER_ID]
+	p.pos = Vector2.ZERO
+	p.stats.set_base(&"max_hp", 9999.0)
+	p.hp = p.max_hp
+	var h := w.spawner.spawn_at(w, &"hound", Vector2(0, 1.5)) as Hound
+	var tier := &""
+	var hopped_away := false
+	for i in 120:
+		var cmd := InputCmd.new()
+		cmd.aim = h.pos
+		w.step({World.HOST_PEER_ID: cmd}, DT)
+		for ev in w.events:
+			if ev.name == "entity:damaged" and ev.target_id == p.id and ev.source_id == h.id and tier == &"":
+				tier = StringName(ev.get("tier", ""))
+		if tier != &"" and h.fsm.is_in(&"hop") and h.velocity.dot(h.pos - p.pos) > 0.0:
+			hopped_away = true
+			break
+	if tier != &"light" or not hopped_away:
+		return "屍犬：貼近應快咬（輕級）後往後跳：級別 %s、後跳 %s" % [tier, hopped_away]
+	# 抓翻滾：被看著（不會一般飛撲）時玩家在 3 內翻滾 → 撲向翻滾終點
+	w = _world()
+	p = w.players[World.HOST_PEER_ID]
+	p.pos = Vector2.ZERO
+	p.stats.set_base(&"max_hp", 9999.0)
+	h = w.spawner.spawn_at(w, &"hound", Vector2(0, 2.7)) as Hound
+	_step(w, roundi(hd.spawn_time / DT) + 1, true)
+	var end := Vector2.INF
+	var rolled_at := -1
+	var roll_from := Vector2.ZERO
+	for i in 180:
+		var cmd := InputCmd.new()
+		cmd.aim = h.pos
+		# 等狗站在地上（側跳中不能出招）、在 radius 內才翻滾
+		if rolled_at < 0 and h.fsm.is_in(&"chase") and h.pos.distance_to(p.pos) <= hd.roll_punish.radius - 0.2:
+			rolled_at = i
+			roll_from = p.pos
+			cmd.buttons = InputCmd.BTN_ROLL
+		if rolled_at >= 0 and i < rolled_at + 20:
+			cmd.move = Vector2(1, 0)
+		w.step({World.HOST_PEER_ID: cmd}, DT)
+		p.hp = p.max_hp
+		if h.fsm.is_in(&"pounce") and h.fsm.data.has("at"):
+			end = h.fsm.data.at
+			break
+	var roll_end := roll_from + Vector2(Config.ROLL.distance, 0.0)
+	if end == Vector2.INF or end.distance_to(roll_end) > 0.6:
+		return "屍犬：%.0f 內有玩家翻滾應撲向翻滾終點 %s：%s" % [hd.roll_punish.radius, roll_end, end]
+	# 群體：4 隻圍著背對的玩家，同時出招不超過 max_attackers
+	w = _world()
+	p = w.players[World.HOST_PEER_ID]
+	p.pos = Vector2.ZERO
+	p.stats.set_base(&"max_hp", 99999.0)
+	p.hp = p.max_hp
+	var dogs: Array[Hound] = []
+	for k in 4:
+		dogs.append(w.spawner.spawn_at(w, &"hound", Vector2.from_angle(PI * 0.25 + k * 0.4) * 5.0) as Hound)
+	var most := 0
+	for i in 60 * 6:
+		var cmd := InputCmd.new()
+		cmd.aim = Vector2(0, -5)
+		w.step({World.HOST_PEER_ID: cmd}, DT)
+		p.hp = p.max_hp
+		most = maxi(most, dogs.filter(func(d: Hound) -> bool: return d.is_attacking()).size())
+	if most > hd.pack.max_attackers or most == 0:
+		return "屍犬：4 隻同時出招最多應 %d 隻：%d" % [hd.pack.max_attackers, most]
+	return ""
+
+
+# 持武器的腐屍：4 內地上有武器就走過去彎腰撿（地上的武器消失、改拿那把、名字變持〇腐屍、不再撲抱）；彎腰中被打中斷；
+# 死掉時武器原樣掉回地上；劍盾舉盾時正面擋下、背後打得到；每種武器的招式 8 秒內打得到站在旁邊的玩家
+static func check_armed_zombie() -> String:
+	var w := _world()
+	var p: Player = w.players[World.HOST_PEER_ID]
+	p.pos = Vector2(0, 30)
+	var rng := RandomNumberGenerator.new()
+	var inst := WeaponDropDefs.make(&"w_test", &"longsword", &"white", rng)
+	var ip := w.drop_item(&"longsword", Vector2(2.5, 0), inst)
+	var z := w.spawner.spawn_at(w, &"zombie", Vector2.ZERO) as Zombie
+	var bent := false
+	for i in 60 * 4:
+		_step(w, 1, true)
+		bent = bent or (z.fsm.is_in(&"fetch") and z.fsm.data.phase == &"bend")
+		if z.is_armed():
+			break
+	if not z.is_armed() or not ip.is_removed or not bent or z.display_name() != "持劍盾腐屍" or z.armed_weapon.uid != &"w_test":
+		return "腐屍應走過去彎腰撿起 4 內的武器：拿到 %s、地上消失 %s、彎腰 %s、名字 %s" % [z.armed_weapon.get("base", "無"), ip.is_removed, bent, z.display_name()]
+	# 舉盾：正面擋下、背後打得到
+	z.shielding = true
+	z.facing = 0.0
+	var hp := z.hp
+	Combat.apply_damage(w, p, z, {"damage": 5.0, "knockback": 0.0, "origin": z.pos + Vector2(0, 3)})
+	var front := z.hp
+	Combat.apply_damage(w, p, z, {"damage": 5.0, "knockback": 0.0, "origin": z.pos + Vector2(0, -3)})
+	z.shielding = false
+	if front != hp or z.hp >= front:
+		return "劍盾腐屍舉盾：正面應擋下（%.1f → %.1f）、背後打得到（→ %.1f）" % [hp, front, z.hp]
+	# 死掉：武器原樣掉回地上
+	Combat.apply_damage(w, p, z, {"damage": 9999.0, "knockback": 0.0})
+	var back := w.pickups.filter(func(e: Entity) -> bool: return not e.is_removed and (e as ItemPickup).weapon.get("uid", &"") == &"w_test")
+	if back.size() != 1:
+		return "持武器的腐屍死掉應把同一把武器掉回地上：%d 把" % back.size()
+	# 彎腰中被打：中斷、沒拿到
+	var w2 := _world()
+	w2.players[World.HOST_PEER_ID].pos = Vector2(0, 30)
+	var ip2 := w2.drop_item(&"staff", Vector2(1.0, 0), WeaponDropDefs.make(&"w2", &"staff", &"white", rng))
+	var z2 := w2.spawner.spawn_at(w2, &"zombie", Vector2.ZERO) as Zombie
+	var interrupted := false
+	for i in 60 * 3:
+		_step(w2, 1, true)
+		if z2.fsm.is_in(&"fetch") and z2.fsm.data.phase == &"bend" and not interrupted:
+			Combat.apply_damage(w2, w2.players[World.HOST_PEER_ID], z2, {"damage": 1.0, "knockback": 0.0})
+			interrupted = true
+			if z2.is_armed() or ip2.is_removed:
+				return "彎腰中被打應中斷"
+			break
+	if not interrupted:
+		return "腐屍應去撿 1 單位外的法杖"
+	# 每種武器：站在 2 單位外的玩家 8 秒內被打到
+	for base: StringName in EnemyDefs.ARMED_ZOMBIE:
+		var w3 := _world()
+		var p3: Player = w3.players[World.HOST_PEER_ID]
+		p3.pos = Vector2.ZERO
+		p3.stats.set_base(&"max_hp", 99999.0)
+		p3.hp = p3.max_hp
+		var z3 := w3.spawner.spawn_at(w3, &"zombie", Vector2(0, 2.0)) as Zombie
+		z3.armed_weapon = WeaponDropDefs.make(&"w3", base, &"white", rng)
+		var hurt := false
+		var lunged := false
+		for i in 60 * 8:
+			_step(w3, 1, true)
+			lunged = lunged or z3.fsm.is_in(&"lunge")
+			for ev in w3.events:
+				if ev.name == "entity:damaged" and ev.target_id == p3.id and ev.source_id == z3.id:
+					hurt = true
+			if hurt:
+				break
+		if not hurt or lunged:
+			return "持%s腐屍：8 秒內應用武器打到旁邊的玩家、不再撲抱（打到 %s、撲抱 %s）" % [EnemyDefs.armed_kit(base).name, hurt, lunged]
 	return ""
 
 
@@ -325,7 +496,7 @@ static func check_hound_steady_side() -> String:
 	return ""
 
 
-# 屍犬撲完先沿圈退到內圈（orbit[0]）才再撲：玩家站著不轉身，14 秒內每次伏低時的距離都接近 trigger_distance（不是貼身原地撲），而且撲得到第二次以上
+# 屍犬撲完先沿圈退到內圈（orbit[0]）才再撲：玩家站著不動，14 秒內每兩次撲之間都退到 orbit[0] 附近，而且撲得到第二次以上
 static func check_hound_retreat() -> String:
 	var hd: Dictionary = EnemyDefs.ENEMIES.hound
 	var w := _world()
@@ -334,22 +505,27 @@ static func check_hound_retreat() -> String:
 	p.stats.set_base(&"max_hp", 9999.0)
 	p.hp = p.max_hp
 	var h := w.spawner.spawn_at(w, &"hound", Vector2(0, 9))
-	var starts: Array[float] = []
+	var gaps: Array[float] = []   # 每兩次撲之間離玩家最遠的距離
+	var farthest := -1.0          # < 0 = 還沒撲過
 	var was_pounce := false
 	for i in 60 * 14:
 		w.step({World.HOST_PEER_ID: CheckKit._cmd(Vector2.ZERO)}, DT)
+		p.hp = p.max_hp
 		var now := h.fsm.is_in(&"pounce")
-		if now and not was_pounce:
-			starts.append(h.pos.distance_to(p.pos))
+		if now and not was_pounce and farthest >= 0.0:
+			gaps.append(farthest)
+		if now:
+			farthest = 0.0
+		elif farthest >= 0.0:
+			farthest = maxf(farthest, h.pos.distance_to(p.pos))
 		was_pounce = now
-	CheckKit._note("屍犬：站著不轉身 14 秒，每次撲的距離 %s" % str(starts))
+	CheckKit._note("屍犬：站著不動 14 秒，每兩次撲之間退到的最遠距離 %s" % str(gaps))
 	var low: float = hd.prowl.orbit[0] - hd.prowl.retreat_slack - hd.move_speed * (1.0 + hd.speed_variance) * DT * 2.0
-	low = minf(low, hd.pounce.trigger_distance - 0.3)
-	if starts.size() < 2:
-		return "屍犬：站著不轉身 14 秒應撲 2 次以上（撲完退開後還要再撲），實際 %d 次" % starts.size()
-	for s in starts:
-		if s < low:
-			return "屍犬：撲完應先退到 %.1f 再撲，實際在 %.2f 就撲了（每次 %s）" % [hd.prowl.orbit[0], s, str(starts)]
+	if gaps.is_empty():
+		return "屍犬：站著不動 14 秒應撲 2 次以上（撲完退開後還要再撲），實際 %d 次" % (gaps.size() + (1 if farthest >= 0.0 else 0))
+	for g in gaps:
+		if g < low:
+			return "屍犬：撲完應先退到 %.1f 再撲，實際只退到 %.2f（每次 %s）" % [hd.prowl.orbit[0], g, str(gaps)]
 	return ""
 
 

@@ -79,6 +79,11 @@ func update(e: Enemy, dt: float) -> void:
 		if target != null and e.pos.distance_to(target.pos) <= def.preferred_range[1] + def.fire_reach:
 			_bow_arm_target = BOW_ARM_READY
 
+	if _zombie and rig is SkinnedRig:   # 持武器的腐屍：手上拿撿到的武器
+		var base: StringName = StringName(a.get("weapon", ""))
+		var kit: Dictionary = EnemyDefs.armed_kit(base) if base != &"" else {}
+		(rig as SkinnedRig).set_held_weapon(kit.get("model", &""), kit.get("offhand_model", &""))
+
 	match &"hound" if _hound else (&"keeper" if _keeper and state != &"spawn" and state != &"dead" else state):
 		&"hound":
 			_pose_hound(e, a, state, t, dt)
@@ -151,10 +156,42 @@ func update(e: Enemy, dt: float) -> void:
 			_pose_rush(a, dt, def.rush)
 		&"lunge":
 			_pose_lunge(a, def.lunge)
+		&"fetch":
+			# 撿武器：走過去照常走路；彎腰伸手往地上撿
+			if a.get("phase", &"walk") == &"bend":
+				var k := MathUtil.ease_out_cubic(clampf(a.get("phase_time", 0.0) / def.pickup.bend, 0.0, 1.0))
+				_pose_walk(0.0, lerpf(-0.6, -0.3, k), -0.4)
+				rig.body.rotation.x = lerpf(0.1, 0.8, k)
+				rig.head.rotation.x = 0.3 * k
+			else:
+				walk_phase += dt * e.velocity.length() * 2.0
+				_pose_walk(1.0 if moving else 0.0, -1.35, -1.45)
+		&"armed_move":
+			_pose_armed(a, dt)
 		&"swell":
-			# 膨脹屍脹大：站定、雙手抱著肚子、身體往後仰抖動（放大與閃白在下面 bloater_swell）
-			_pose_walk(0.0, -0.7, -0.7)
-			rig.body.rotation.x = -0.15 + sin(t * 30.0) * 0.04
+			# 膨脹屍脹大：站定、雙手抱著肚子、身體往後仰抖動（放大與閃白在下面 bloater_swell）；抱住玩家時雙手往前環抱
+			if a.get("hugging", false):
+				_pose_walk(0.0, -1.3, -1.3)
+				rig.body.rotation.x = 0.1 + sin(t * 30.0) * 0.04
+			else:
+				_pose_walk(0.0, -0.7, -0.7)
+				rig.body.rotation.x = -0.15 + sin(t * 30.0) * 0.04
+		&"hug":
+			# 膨脹屍撲抱：挺肚子（後仰）、雙手往兩側張開 → 撲出去雙手往前合抱
+			var h: Dictionary = def.hug
+			var pt: float = a.get("phase_time", 0.0)
+			if a.get("phase", &"windup") == &"windup":
+				var k := MathUtil.ease_out_cubic(clampf(pt / h.windup, 0.0, 1.0))
+				_pose_arms(lerpf(-0.6, -1.4, k), lerpf(0.2, 1.0, k))
+				rig.body.rotation.x = lerpf(0.0, -0.3, k)
+			else:
+				_pose_walk(0.0, -1.5, -1.5)
+				rig.body.rotation.x = 0.25
+		&"fallen":
+			# 撲抱被擋下：往後倒坐在地上
+			var k := MathUtil.ease_out_cubic(clampf(t / 0.2, 0.0, 1.0))
+			rig.body.rotation.x = lerpf(0.0, -0.9, k) if t < def.hug.blocked_fall - 0.15 else lerpf(-0.9, 0.0, (t - def.hug.blocked_fall + 0.15) / 0.15)
+			_pose_arms(-0.4)
 		&"bite":
 			# 啃咬：雙手抓著往前、頭一下一下咬下去
 			_pose_walk(0.0, -1.2 + sin(t * 20.0) * 0.08, -1.25 - sin(t * 20.0) * 0.08)
@@ -427,6 +464,25 @@ func _pose_hound(e: Enemy, a: Dictionary, state: StringName, t: float, dt: float
 					rig.body.rotation.x = lerpf(-0.1, 0.0, k)
 					rig.head.rotation.x = lerpf(-0.2, 0.0, k)
 					legs = Vector4(-1.1, -1.1, 1.1, 1.1) * (1.0 - k)
+		&"snap":   # 快咬：低頭、齜牙（頭壓低往前）→ 往前竄、張嘴咬
+			var c: Dictionary = def.snap
+			var pt: float = a.get("phase_time", 0.0)
+			if a.get("phase", &"windup") == &"windup":
+				var k := MathUtil.ease_out_cubic(clampf(pt / c.windup, 0.0, 1.0))
+				rig.body.rotation.x = 0.1 * k
+				rig.head.rotation.x = 0.45 * k
+				legs = Vector4(-0.3, -0.3, 0.2, 0.2) * k
+			else:
+				rig.body.rotation.x = -0.05
+				rig.head.rotation.x = -0.35
+				legs = Vector4(-0.8, -0.6, 0.7, 0.5)
+		&"hop":   # 側跳、往後跳：四腳收起
+			rig.body.rotation.x = 0.0
+			rig.head.rotation.x = 0.1
+			legs = Vector4(0.6, 0.6, -0.6, -0.6)
+		&"dazed":   # 被盾擋下：甩頭
+			rig.head.rotation.x = 0.2
+			rig.body.rotation.z = 0.15 * sin(t * 18.0)
 		&"hurt":
 			rig.body.rotation.z = 0.25 * sin(clampf(t / def.hurt_time, 0.0, 1.0) * PI)
 		&"dead":
@@ -439,6 +495,46 @@ func _pose_hound(e: Enemy, a: Dictionary, state: StringName, t: float, dt: float
 	rig.arm_l.rotation = Vector3(legs.y, 0.0, 0.0)
 	rig.leg_r.rotation = Vector3(legs.z, 0.0, 0.0)
 	rig.leg_l.rotation = Vector3(legs.w, 0.0, 0.0)
+
+
+# 持武器的腐屍出招（各招式的預兆不重複）：
+# 揮擊 = 右手舉過頭後拉；射擊 = 雙手往前拉弓 / 法杖平舉；舉盾 = 左臂盾擋在胸前；爆裂 = 法杖舉到最高；
+# 影步 = 蹲低；治療 = 雙臂張開仰頭；噴火 = 火把往前推、身體後仰；鏟起 = 彎腰鏟面貼地
+func _pose_armed(a: Dictionary, _dt: float) -> void:
+	var pt: float = a.get("phase_time", 0.0)
+	var winding: bool = a.get("phase", &"windup") == &"windup"
+	var k := MathUtil.ease_out_cubic(clampf(pt / 0.4, 0.0, 1.0))
+	var active: bool = a.get("phase", &"") == &"active"
+	match a.get("move_type", &"melee"):
+		&"melee":
+			if winding:
+				_pose_walk(0.0, lerpf(-1.2, -2.8, k), -0.6)
+				rig.body.rotation.x = lerpf(0.0, -0.2, k)
+			else:
+				_pose_walk(0.0, -0.7, -0.6)
+				rig.body.rotation.x = 0.25 if active else 0.1
+		&"shot":
+			_pose_walk(0.0, -1.55, -1.5)
+			rig.body.rotation.x = -0.1 * k if winding else 0.0
+		&"shield":
+			_pose_walk(0.0, -0.8, lerpf(-0.6, -1.5, k))
+			rig.arm_l.rotation.y = 0.5 * k
+			rig.body.rotation.x = 0.15 * k
+		&"burst":
+			_pose_walk(0.0, lerpf(-1.2, -3.1, k) if winding else -1.0, -0.4)
+			rig.head.rotation.x = -0.3 * k if winding else 0.0
+		&"blink":
+			_pose_walk(0.0, -0.4, -0.4)
+			rig.body.rotation.x = 0.5 * k
+		&"heal":
+			_pose_arms(-1.3, lerpf(0.3, 1.2, k))
+			rig.head.rotation.x = -0.35 * k
+		&"breath":
+			_pose_walk(0.0, -1.7, -0.5)
+			rig.body.rotation.x = -0.25 * k if winding else -0.1
+		&"scoop":
+			_pose_walk(0.0, lerpf(-0.6, -0.2, k), lerpf(-0.6, -0.3, k))
+			rig.body.rotation.x = lerpf(0.0, 0.6, k) if winding else -0.2
 
 
 # 腐屍撲抱：windup 雙手舉高、身體後仰（看得出要撲）→ dash 雙手往前抓、身體前撲 → recovery 慢慢收回
@@ -512,7 +608,7 @@ static func bloater_swell(e: Enemy, state: StringName, t: float) -> float:
 	var b: Dictionary = e.def.burst
 	match state:
 		&"swell":
-			return clampf(t / b.swell_time, 0.0, 1.0)
+			return clampf(t / e.anim.get("swell_time", b.swell_time), 0.0, 1.0)
 		&"dead":
 			return 0.0 if e.anim.get("burst", false) else clampf(t / b.death_delay, 0.0, 1.0)
 	return 0.0

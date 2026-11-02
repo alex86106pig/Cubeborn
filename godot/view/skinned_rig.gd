@@ -26,6 +26,8 @@ var _lit_material: StandardMaterial3D
 var _flash := 0.0
 var _base_tint := Color.WHITE     # 冤魂的底色（set_ghost）
 var _status_tint := Color.WHITE   # 冰凍 / 中毒的染色（set_status_tint）
+var _held_model := &""                # 手上拿的武器（set_held_weapon）
+var _held_nodes: Array[Node3D] = []
 
 static var _built: Dictionary = {}   # 種類 -> { meshes, skin }（同種只合成一次）
 
@@ -124,6 +126,33 @@ func set_ghost(tint: Color, transparency: float) -> void:
 	for mi in PartKit.mesh_instances(self):
 		mi.transparency = transparency
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+# 手上拿的武器（持武器的腐屍）：主手掛右手骨頭、副手盾掛左臂骨頭；model = &"" 拿掉
+func set_held_weapon(model: StringName, off_model: StringName = &"") -> void:
+	if model == _held_model:
+		return
+	_held_model = model
+	for n in _held_nodes:
+		n.queue_free()
+	_held_nodes.clear()
+	if model == &"":
+		return
+	var w := DarkFantasy.weapon(model)
+	_attach(w.get("main"), "hand_r")
+	_attach(w.get("left"), "hand_l")
+	if off_model != &"":
+		_attach(DarkFantasy.offhand(off_model).get("offhand"), "arm_l")
+
+
+func _attach(node: Variant, bone: String) -> void:
+	if node == null:
+		return
+	var ba := BoneAttachment3D.new()
+	ba.bone_name = bone
+	skeleton.add_child(ba)
+	ba.add_child(node as Node3D)
+	_held_nodes.append(ba)
 
 
 func mesh_count() -> int:

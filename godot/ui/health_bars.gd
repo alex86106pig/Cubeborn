@@ -2,6 +2,7 @@
 # 怪物的血條在魔法 / 稀有怪詞條（WorldLabels）的基線下方、頭頂上方；玩家的在 P1~P4 名牌（PlayerTags）的基線下方
 # 只畫受傷又看得到的，上百隻怪時也只是幾十個矩形，不另外建節點
 # 自己頭上另外有魔力條（mana_bar）：固定在血條的位置正下方（血條滿血不畫時位置不跳）、魔力滿了不畫；隊友的魔力不在快照裡，不畫
+# 有箭袋的弓裝填中，自己的血條右邊畫一個圓圈（reload_ring）：從正上方順時針畫，畫滿一圈 = 裝填完；隊友的裝填不在快照裡，不畫
 class_name HealthBars
 extends Control
 
@@ -11,6 +12,10 @@ const MANA_SIZE := Vector2(64, 4)
 const MANA_GAP := 2.0      # 魔力條上緣在血條下緣下方幾 px
 const ENEMY_GAP := 5.0     # 血條上緣在詞條基線（WorldLabels.ENEMY_OFFSET）下方幾 px
 const PLAYER_GAP := 6.0    # 血條上緣在名牌基線（PlayerTags.HEAD_OFFSET）下方幾 px
+const RING_RADIUS := 8.0
+const RING_WIDTH := 2.0
+const RING_GAP := 6.0      # 圓圈左緣在血條右緣右邊幾 px
+const RING_COLOR := Color("e8d9a8")
 const FULL_EPSILON := 0.01 # hp 差這麼一點也算滿血（客戶端快照滿血時 hp 剛好等於 max_hp）
 const BG := Color(0, 0, 0, 0.6)
 const PLAYER_FILL := Color("4ade80")
@@ -40,6 +45,10 @@ func _draw() -> void:
 	if not m.is_empty():
 		draw_rect(m.rect, BG)
 		draw_rect(Rect2(m.rect.position, Vector2(m.rect.size.x * m.ratio, m.rect.size.y)), UiKit.MANA_FILL)
+	var r := reload_ring()
+	if not r.is_empty():
+		draw_arc(r.center, RING_RADIUS, 0.0, TAU, 32, BG, RING_WIDTH + 2.0, true)
+		draw_arc(r.center, RING_RADIUS, -PI / 2.0, -PI / 2.0 + TAU * r.ratio, 32, RING_COLOR, RING_WIDTH, true)
 
 
 # 自己的魔力條：{ratio, rect}；沒有角色、死亡、倒地、下樓了、魔力滿了回傳 {}
@@ -54,6 +63,23 @@ func mana_bar() -> Dictionary:
 		return {}
 	var top: float = PLAYER_GAP + PLAYER_SIZE.y + MANA_GAP
 	return {"ratio": clampf(me.mana / maxf(me.max_mana(), 1.0), 0.0, 1.0), "rect": Rect2(s + Vector2(-MANA_SIZE.x / 2.0, top), MANA_SIZE)}
+
+
+# 自己的弓裝填圓圈：{ratio（0 剛開始 → 1 裝好）, center}；不在裝填、倒地、死亡、下樓了回傳 {}
+func reload_ring() -> Dictionary:
+	if world == null or camera == null:
+		return {}
+	var me: Player = world.players.get(local_peer)
+	if me == null or me.is_dead or me.is_removed or me.is_downed or me.descended or me.reload_timer <= 0.0:
+		return {}
+	var atk: Dictionary = me.weapon.attack
+	if not atk.has("quiver"):
+		return {}
+	var s: Variant = _screen(Vector3(me.pos.x, me.height + PlayerTags.HEAD_OFFSET, me.pos.y))
+	if s == null:
+		return {}
+	var center: Vector2 = s + Vector2(PLAYER_SIZE.x / 2.0 + RING_GAP + RING_RADIUS, PLAYER_GAP + PLAYER_SIZE.y / 2.0)
+	return {"ratio": clampf(1.0 - me.reload_timer / atk.reload_time, 0.0, 1.0), "center": center}
 
 
 # 這一幀要畫的血條：[{entity, ratio, color, rect（畫面座標，整條的範圍）}]

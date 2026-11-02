@@ -66,7 +66,8 @@ func _initialize() -> void:
 	_check("劍盾普攻與連段：三段時間合計 windup + active + recovery、期間移速照 move_speed_mul；前兩段照基礎傷害、第三段乘 finisher_mul 且後搖乘 finisher_recovery_mul、重擊與音效只有第三段、同一目標每次出手只中一次",
 		all.bind([PlayerChecks.check_attack_timing, PlayerChecks.check_combo]))
 	_check("格擋與招架（v0.41.0）：按住右鍵才格擋、放開就放下、沒有冷卻與時間上限、可移動轉向、翻滾提前放下；格擋中按左鍵招架（耗魔、魔力不夠不招架、按住不連發），判定內擋下 = 全額盾反，沒擋到 = 盾擊；正面擋得下揮砍與箭、背後擋不住；Boss 衝鋒擋得住但全額推退；Boss 砸地擋不住", PlayerChecks.check_block)
-	_check("受擊：扣血後進入 stagger（移速照 stagger_move_speed_mul、持續 stagger_time）、無敵 invuln_time、畫面震動", PlayerChecks.check_stagger)
+	_check("受擊：扣血後進入 stagger（移速照 stagger_move_speed_mul、持續 stagger_time）、無敵 invuln_time、畫面震動；硬直分級（持續傷害不硬直不給無敵、輕級先削韌性、中級 0.45、擊倒倒地按翻滾受身、韌性回滿、職業韌性）",
+		all.bind([PlayerChecks.check_stagger, PlayerChecks.check_hurt_tiers]))
 	_check("輸入緩衝：攻擊中按右鍵會在後搖取消並接特殊技；緩衝過期後不會被消化", PlayerChecks.check_buffer)
 	_check("死亡：發出 player:died、移動層進入 dead、不再接受輸入", PlayerChecks.check_player_death)
 	_check("數字鍵欄位：治療藥水（次數、不超過上限、滿血不能用、冷卻、用完不能用）；攻擊中按 1 會在後搖取消並使用、空欄位不提示；Ctrl 切換跑步（×1.4，跳躍翻滾不取消，攻擊、技能欄、硬直取消）",
@@ -83,7 +84,7 @@ func _initialize() -> void:
 	_check("傷害屬性與抗性：基礎傷害 × 招式 % × 物理 / 屬性傷害；護甲只擋物理、所有抗性只擋物理以外；抗性 −50%~75%、秘術只吃一半；怪物照 resists；閃避率封頂 75% 且 0 時不擲骰；尋寶加權", CombatChecks.check_damage_types)
 	_check("法杖：魔彈從前方 spawn_offset 產生、照速度飛、命中造成武器傷害、飛滿射程消失；奧術爆裂落點限制在 min_range ~ range、半徑內才受傷；普攻按住照三段時間連發、打中骷髏不擊退不硬直",
 		all.bind([CombatChecks.check_fire_bolt, CombatChecks.check_arcane_burst, CombatChecks.check_staff_changes]))
-	_check("短弓（F4）：快射是不擊退的箭、傷害照物理加成；散射 5 支平均分在 50° 內；盜墓遊俠移動中普攻不減速、右鍵照常減速；箭袋 6 支、最後一支重箭、射空裝填 1.2 秒、翻滾瞬間補滿；短弓的普攻箭不穿透、長弓穿過 pierce_count 隻", all.bind([CombatChecks.check_shortbow, CombatChecks.check_bow_pierce]))
+	_check("短弓（F4）：快射是不擊退的箭、傷害照物理加成；散射 5 支平均分在 50° 內；盜墓遊俠移動中普攻不減速、右鍵與裝填照常減速；箭袋 6 支、最後一支重箭、射空裝填 1.2 秒、翻滾瞬間補滿；短弓的普攻箭不穿透、長弓穿過 pierce_count 隻", all.bind([CombatChecks.check_shortbow, CombatChecks.check_bow_pierce]))
 	_check("長弓（F5）：重射可擊退；按住右鍵蓄力、放開射出穿透箭（沒蓄 150%、蓄滿 400%），一直線上每隻打一次", CombatChecks.check_longbow)
 	_check("長劍與主手 / 副手：單手＋盾 / 匕首拿得動、雙手武器不能拿副手、盾不能當主手；長劍沒有副手時右鍵蓄力突刺（沒蓄 / 蓄滿衝 2 / 5 單位、150% / 300%）；守墓騎士開局長劍＋木盾", CombatChecks.check_longsword)
 	_check("匕首（F6）：雙持五連刺第 5 下 150% 必爆擊且只有它擊退、讓怪硬直；單拿三連刺第 3 下 120% 且只有它擊退；影步瞬移到怪背後背刺必爆擊、沒有怪不瞬移只扣 miss_mana；竊影者開局雙持、翻滾 2 次、翻滾後攻速 +30% 持續 1.5 秒", CombatChecks.check_daggers)
@@ -129,10 +130,11 @@ func _initialize() -> void:
 	# ───────── 怪物稀有度與挖墳事件 ─────────
 	_check("怪物種類只看資料表：每種怪的 behavior 都對應得到行為類別、建出來的類別一致；is_boss、freeze_immune 照資料；挖墳事件的 boss_type 是 Boss；各層怪群與挖墳怪潮只有 FLOOR_MIX 這一層的怪、挖墳點噴下一層的；召喚詞條叫出同種的怪",
 		all.bind([MonsterChecks.check_enemy_defs, MonsterChecks.check_floor_mix]))
-	_check("腐屍：撲中抓住 grab_time 秒、撲 1 下 + 每 bite_interval 咬一口；被抓時按翻滾立刻掙脫；隊友打它就鬆手；舉盾擋下不被抓、腐屍踉蹌", MonsterChecks.check_zombie)
-	_check("膨脹屍：走近停下脹大 swell_time 秒（被打不硬直）→ 自爆炸到玩家與旁邊的怪、不給靈魂；留下腐氣持續傷害玩家與怪、不畫圈只冒煙；被打死 death_delay 秒後照樣炸、給靈魂", MonsterChecks.check_bloater)
-	_check("屍犬：玩家站著不轉身時繞到背後（≥ behind_angle）才撲、patience 內做到；玩家一直轉身看著它 patience 內不撲、之後從正面撲；撲中有傷害；繞圈方向不跟著玩家小幅轉身來回換邊；撲完先沿圈退到內圈才再撲",
-		all.bind([MonsterChecks.check_hound, MonsterChecks.check_hound_steady_side, MonsterChecks.check_hound_retreat]))
+	_check("腐屍：撲中抓住 grab_time 秒、撲 1 下 + 每 bite_interval 咬一口；被抓時按翻滾立刻掙脫；隊友打它就鬆手；舉盾擋下不被抓、腐屍踉蹌；" 		+ "撿武器（走過去彎腰撿、地上消失、名字持〇腐屍、彎腰被打中斷、死掉掉回同一把；劍盾正面擋下背後打得到；8 種武器都打得到玩家、不再撲抱）",
+		all.bind([MonsterChecks.check_zombie, MonsterChecks.check_armed_zombie]))
+	_check("膨脹屍：撲抱抱住站著的玩家、脹 hold_swell_time 秒（被打不硬直）→ 自爆炸到玩家與旁邊的怪（抱住的 +hold_bonus、擊倒）、不給靈魂、不抽死亡爆炸詞條；留下腐氣持續傷害玩家與怪、不畫圈只冒煙；被打死 death_delay 秒後照樣炸、給靈魂", MonsterChecks.check_bloater)
+	_check("屍犬：背對時在視野外就飛撲（擊倒）、patience 內做到；一直看著它正面牽制側跳、patience 內不撲、之後從正面撲；繞圈方向不跟著玩家小幅轉身來回換邊；撲完先沿圈退到內圈才再撲；" 		+ "貼近快咬（輕級）後往後跳；附近翻滾撲向翻滾終點；4 隻同時出招不超過 pack.max_attackers",
+		all.bind([MonsterChecks.check_hound, MonsterChecks.check_hound_steady_side, MonsterChecks.check_hound_retreat, MonsterChecks.check_hound_moves]))
 	_check("守墓人（第 1 層 Boss）：假裝 NPC（旁邊 3 秒不開打；按 F 說話先冒台詞、不開挖、reveal_time 後開打；被打或有人開挖直接開打）；" \
 		+ "四招（鐵鏟 windup 後打中；鏟土 windup + flight_time 落地、發 fx:dirt_lob；噴火每 tick 一下再被殘火燒；口哨叫不給靈魂的屍犬；不畫預警圈）；" \
 		+ "半血轉型態（無敵 transform.time 秒 → 狼人移速、嚎叫、提燈火堆；三連爪吃滿 3 下、飛撲落地打中、狼嚎叫魔法屍犬並加速）",
@@ -187,7 +189,7 @@ func _initialize() -> void:
 	_check("視野畫面：背後的模型隱藏、前方的顯示；背後的特效不畫；轉身時 fade_out / fade_in 淡出淡入；淡入淡出中換武器不碰已刪的網格、新武器跟著淡；本機選過的遺物維持半透明；本機角色陣亡後全部看得到；變暗遮罩最先畫；挖墳中朝向與遮罩跟著滑鼠",
 		all.bind([ViewChecks.check_vision_view, ViewChecks.check_dig_vision]))
 	_check("觀戰：多人時本機陣亡看第一位站著的隊友、左右切換、看的人死了或走進出口就換、沒人可看就不觀戰；視野改用隊友的；房主依 InputCmd.spectate 挑快照；復活後回到自己", ViewChecks.check_spectate)
-	_check("頭頂血條：滿血不畫、受傷畫；自己頭上血條下方有魔力條（滿了不畫、位置不跳、倒地不畫）；自己與隊友綠、怪物紅；視野外、Boss、倒地、隱藏的不畫；比例 = hp / max_hp；不疊到詞條與名牌", ViewChecks.check_health_bars)
+	_check("頭頂血條：滿血不畫、受傷畫；自己頭上血條下方有魔力條（滿了不畫、位置不跳、倒地不畫）；弓裝填中血條右邊畫裝填圓圈（比例 = 已裝時間、倒地不畫）；自己與隊友綠、怪物紅；視野外、Boss、倒地、隱藏的不畫；比例 = hp / max_hp；不疊到詞條與名牌", ViewChecks.check_health_bars)
 	_check("開場預熱：每一種怪、魔法 / 稀有怪、玩家、寶箱、金幣、鍛造祭壇、遺物、插地火把、道具、武器、投射物、每種稀有度的武器（含淡入淡出中的版本）都在鏡頭附近畫幾幀後移除；點光源前一半關後一半開；預熱文字含所有會用到的字", ViewChecks.check_warm_up)
 	_check("牆後剪影：角色材質寫模板值；玩家一直有、怪物只有被牆擋住時才有；箭與魔彈被牆擋住時畫剪影（怪物紅、自己藍），同顏色的投射物共用材質；每一種實體類別（含之後新增的）都在預熱建模型、預設有剪影、材質都寫模板值（不要的列 XRAY_EXEMPT）；牆後的寶箱金色、鍛造祭壇灰白，同種物件共用材質",
 		all.bind([ViewChecks.check_xray, ViewChecks.check_projectile_xray, ViewChecks.check_xray_every_entity, ViewChecks.check_object_xray]))

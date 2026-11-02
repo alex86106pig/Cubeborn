@@ -37,6 +37,10 @@ var _applied_weapon_uid := &""
 var _air_jumps_used := 0               # 這次離地後用掉的空中跳躍（落地歸零）
 var descended := false                 # 已離開這一層、等其他人（不見、不能被打）；換層改成墳墓互動 + 投票後沒有地方設成 true，畫面與快照仍支援
 var stun_timer := 0.0                  # 暈眩剩餘秒數（v0.27.0：Boss 衝鋒撞到）：不能移動、出招、翻滾、跳
+var hurt_tier := &""                   # 這一下的受擊硬直級別（Combat.apply_damage 在扣血前設好，_on_damaged 讀）
+var poise := -1.0                      # 隱藏韌性（< 0 = 還沒初始化，用到時補滿 max_poise）：輕級攻擊先削，削破才硬直
+var poise_timer := 0.0                 # 上次被打後經過幾秒；到 Config.PLAYER.poise_regen_delay 韌性回滿
+var knock_time := 0.0                  # 被擊倒後經過幾秒（> 0 = 倒在地上，同暈眩；按翻滾受身）
 var grabbed_by := 0                    # 被腐屍抓住：抓住的怪 id（客戶端只知道有沒有被抓，填 -1）；同暈眩，但按翻滾立刻掙脫
 var combo_step := 0
 var combo_timer := 0.0
@@ -133,6 +137,31 @@ func stun(duration: float, p_grabbed_by: int = 0) -> void:
 		action.change(&"ready")
 	buffered_action = {}
 	world.emit_event("player:stunned", {"player_id": id, "duration": duration, "grabbed": p_grabbed_by != 0})
+
+
+# 擊倒（怪物圖鑑通則）：倒地 duration 秒，同暈眩；按翻滾受身（_tech）提早起身
+func knock_down(duration: float) -> void:
+	if is_dead or is_downed:
+		return
+	stun(duration)
+	knock_time = 1e-4
+	if world.is_authority:
+		world.emit_event("player:knocked_down", {"player_id": id, "duration": duration})
+
+
+# 受身：被擊倒後 Config.PLAYER.tech_time 秒起身（已經過了就立刻），起身時有翻滾無敵
+func _tech() -> void:
+	var rest := maxf(0.0, Config.PLAYER.tech_time - knock_time)
+	stun_timer = minf(stun_timer, rest)
+	dodge_timer = maxf(dodge_timer, rest + Config.PLAYER.tech_invuln)
+	if world.is_authority:
+		world.emit_event("player:teched", {"player_id": id})
+
+
+func max_poise() -> float:
+	if class_id == ClassDefs.NONE:
+		return Config.PLAYER.poise
+	return ClassDefs.CLASSES[class_id].get("poise", Config.PLAYER.poise)
 
 
 # 從抓住中放開（掙脫、腐屍被打或時間到）：暈眩一起結束
@@ -365,13 +394,14 @@ func net_sync_life(dead: bool, downed: bool, p_down_timer: float, p_revive: floa
 
 
 # 客戶端自己的角色被房主判定打中：受擊硬直與無敵在本機立刻反應（同 _on_damaged，但不扣血、不發事件）
-func net_hurt() -> void:
+func net_hurt(tier: StringName = &"", amount: float = 0.0) -> void:
 	if is_dead or is_downed:
 		return
 	flash_timer = Config.COMBAT.flash_time
+	if tier == &"none":
+		return
 	invuln_timer = Config.PLAYER.invuln_time
-	if not action.is_in(&"special"):
-		action.change(&"stagger")
+	_hurt_reaction(tier, amount)
 
 
 func is_dodging() -> bool:
@@ -666,9 +696,14 @@ func update(dt: float) -> void:
 			if not is_dead and not is_downed:
 				world.emit_event("player:grab_escaped", {"player_id": id})   # 被抓住時按翻滾：立刻掙脫（這一步不翻滾）
 			release_grab()
+		elif knock_time > 0.0 and stun_timer > 0.0 and _pressed & InputCmd.BTN_ROLL and not is_dead and not is_downed:
+			_tech()
 		stun_timer = maxf(0.0, stun_timer - dt)
+		if knock_time > 0.0:
+			knock_time += dt
 		if stun_timer <= 0.0:
 			grabbed_by = 0
+			knock_time = 0.0
 		if stun_timer > 0.0:
 			move_input = Vector2.ZERO   # 暈眩時站著不動（移動層回到 idle）
 		_pressed = 0
@@ -740,6 +775,9 @@ func update(dt: float) -> void:
 
 func _tick_timers(dt: float) -> void:
 	combo_timer = maxf(0.0, combo_timer - dt)
+	poise_timer += dt
+	if poise_timer >= Config.PLAYER.poise_regen_delay:
+		poise = max_poise()
 	dodge_timer = maxf(0.0, dodge_timer - dt)
 	parry_timer = maxf(0.0, parry_timer - dt)
 	_tick_roll_charges()
@@ -806,7 +844,8 @@ func _update_anim() -> void:
 		"parry": parry_timer / PARRY_ANIM_TIME,   # 1 → 0（盾反剛發動到結束）
 		"vz": vz,
 		"revive": revive_progress / Config.REVIVE.revive_time,   # 倒地時被救的進度 0~1（畫面顯示用）
-		"stunned": stun_timer > 0.0 and grabbed_by == 0,
+		"stunned": stun_timer > 0.0 and grabbed_by == 0 and knock_time <= 0.0,
+		"knocked": knock_time,   # 被擊倒後經過幾秒（0 = 沒倒）：畫面躺地、起身
 		"grabbed": grabbed_by != 0,
 		"torch_stance": torch_stance,
 		"running": running,
@@ -822,13 +861,34 @@ func _absorb(amount: float) -> float:
 func _on_damaged(amount: float, _source_id: int) -> void:
 	if is_dead or amount <= 0:
 		return
-	invuln_timer = Config.PLAYER.invuln_time
+	var tier := hurt_tier
+	hurt_tier = &""
 	regen_block_timer = Config.PLAYER.regen_delay
+	if tier == &"none":
+		return   # 持續傷害：只閃紅，不硬直、不削韌性、不給無敵（每一跳都扣得到）
+	invuln_timer = Config.PLAYER.invuln_time
 	# player_id：多人時只有被打的那位玩家的畫面震動
 	world.emit_event("camera:shake", {"amount": Config.PLAYER.hurt_shake, "duration": Config.PLAYER.hurt_shake_duration, "player_id": id})
+	_hurt_reaction(tier, amount)
+
+
+# 照硬直級別反應：輕級先削韌性、削破才硬直；中、重必定硬直；擊倒倒地（客戶端的本機預測 net_hurt 也走這裡）
+func _hurt_reaction(tier: StringName, amount: float) -> void:
+	if poise < 0.0:
+		poise = max_poise()
+	poise_timer = 0.0
+	if tier == &"knockdown":
+		if not action.is_in(&"dig"):
+			knock_down(Config.PLAYER.hurt_tiers.knockdown)
+		return
+	if tier == &"light":
+		poise -= amount
+		if poise > 0.0:
+			return
+		poise = max_poise()
 	# 特殊技期間（含按住格擋）有霸體，不會被打斷；挖墳被打也不中斷（D6）
 	if not action.is_in(&"special") and not action.is_in(&"dig"):
-		action.change(&"stagger")
+		action.change(&"stagger", {"time": Config.PLAYER.hurt_tiers.get(tier, Config.PLAYER.stagger_time)})
 
 
 # 狀態機的 ctx 指回玩家，也要切斷

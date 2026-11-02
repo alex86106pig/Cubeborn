@@ -224,7 +224,7 @@ static func _pack_member_spot(world: World, center: Vector2, placed: Array[Vecto
 static func roll_rarity(world: World, e: Enemy, rarity: StringName) -> void:
 	if rarity == MonsterRarityDefs.NORMAL:
 		return
-	var affixes := MonsterRarityDefs.roll_affixes(MonsterRarityDefs.affix_count(rarity, world.rng), world.rng)
+	var affixes := MonsterRarityDefs.roll_affixes(MonsterRarityDefs.affix_count(rarity, world.rng), world.rng, e.def.get("no_affixes", []))
 	var name := MonsterRarityDefs.roll_rare_name(world.rng) if rarity == MonsterRarityDefs.RARE else ""
 	e.set_rarity(rarity, affixes, name)
 	e.apply_rarity_stats()

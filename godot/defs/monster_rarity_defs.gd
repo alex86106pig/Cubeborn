@@ -52,11 +52,12 @@ static func affix_count(rarity: StringName, rng: RandomNumberGenerator) -> int:
 	return rng.randi_range(r[0], r[1])
 
 
-# 不重複地抽 count 條詞條（依 AFFIXES 順序做部分洗牌，用 world.rng 才有決定性）
-static func roll_affixes(count: int, rng: RandomNumberGenerator) -> Array[StringName]:
+# 不重複地抽 count 條詞條（依 AFFIXES 順序做部分洗牌，用 world.rng 才有決定性）；exclude 裡的不抽（膨脹屍不抽死亡爆炸，見 EnemyDefs no_affixes）
+static func roll_affixes(count: int, rng: RandomNumberGenerator, exclude: Array = []) -> Array[StringName]:
 	var pool: Array[StringName] = []
 	for id: StringName in AFFIXES:
-		pool.append(id)
+		if not exclude.has(id):
+			pool.append(id)
 	var out: Array[StringName] = []
 	for i in mini(count, pool.size()):
 		var j := rng.randi_range(i, pool.size() - 1)

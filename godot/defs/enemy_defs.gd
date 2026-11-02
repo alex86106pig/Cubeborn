@@ -80,8 +80,8 @@ const ENEMIES := {
 		"visual": &"zombie",
 		"behavior": &"zombie",
 		"max_hp": 48.0,
-		"move_speed": 1.8,
-		"speed_variance": 0.12,
+		"move_speed": 5.6,           # 使用者 2026-11-02：要比攻擊中的玩家快（法杖、短弓邊打邊走 6.5 × 0.8 = 5.2），比純跑 6.5 慢
+		"speed_variance": 0.05,
 		"turn_speed": 5.0,
 		"radius": 0.45,
 		"mass": 1.2,
@@ -89,11 +89,11 @@ const ENEMIES := {
 		"spawn_time": 0.9,
 		"corpse_time": 1.4,
 		"lunge": {
-			"trigger_distance": 1.4,   # 與目標中心距離在這以內、冷卻好時開始舉手
-			"windup": 0.6,             # 舉手後仰：前 track 比例的時間轉向目標，之後鎖定方向
+			"trigger_distance": 2.6,   # 與目標中心距離在這以內、冷卻好時開始舉手（怪物圖鑑）
+			"windup": 0.4,             # 舉手後仰：前 track 比例的時間轉向目標，之後鎖定方向
 			"track": 0.6,
-			"distance": 1.2,           # 往前撲多遠（duration 秒內）
-			"duration": 0.18,
+			"distance": 2.2,           # 往前撲多遠（duration 秒內）
+			"duration": 0.15,
 			"hit_reach": 0.35,         # 撲的判定：身體外擴這麼多的圓，只打一次
 			"recovery": 0.6,
 			"damage": 6.0,
@@ -104,6 +104,9 @@ const ENEMIES := {
 			"bite_interval": 0.2,
 			"bite_damage": 4.0,        # 每口；抓滿 0.8 秒咬 4 口
 		},
+		# 撿武器（怪物圖鑑）：每 scan_interval 秒找 radius 內地上的武器，走到 reach 內彎腰 bend 秒撿起（被打中斷）；走 give_up 秒還沒到就放棄
+		"pickup": {"radius": 4.0, "scan_interval": 0.5, "reach": 0.6, "bend": 0.8, "give_up": 4.0},
+		"armed_damage": 6.0,       # 持武器的招式傷害 = damage_pct × 這個（ARMED_ZOMBIE）
 	},
 
 	# 膨脹屍（第 1 層，數值 Claude 暫定）：走近停下脹大 → 自爆，留下腐氣；被打死也會炸（sim/enemies/bloater.gd）
@@ -112,20 +115,26 @@ const ENEMIES := {
 		"visual": &"bloater",
 		"behavior": &"bloater",
 		"max_hp": 30.0,
-		"move_speed": 1.5,
-		"speed_variance": 0.1,
+		"move_speed": 5.4,           # 使用者 2026-11-02：同腐屍，要比攻擊中的玩家快
+		"speed_variance": 0.03,
 		"turn_speed": 4.0,
 		"radius": 0.55,
 		"mass": 2.0,
 		"hurt_time": 0.22,
 		"spawn_time": 0.9,
 		"corpse_time": 4.0,          # 要比 death_delay + 腐氣持續時間長：腐氣的傷害來源是屍體
+		"no_affixes": [&"volatile"],  # 自己就會死後爆炸，不抽死亡爆炸（會炸兩次）
+		# 撲抱（只用一次）：挺肚子張手 windup → 往前撲 distance；撲中抱住並開始脹（burst.hold_swell_time），被盾擋下倒地 blocked_fall
+		"hug": {"trigger_distance": 3.5, "windup": 0.5, "track": 0.6, "distance": 2.5, "duration": 0.25, "hit_reach": 0.3, "recovery": 0.4, "blocked_fall": 0.5},
 		"burst": {
 			"trigger_distance": 2.0,  # 與目標中心距離在這以內就停下脹大
 			"swell_time": 1.0,
+			"hold_swell_time": 0.7,   # 抱住時脹這麼久就炸
 			"death_delay": 0.5,       # 被打死後幾秒炸
 			"radius": 2.5,
-			"damage": 22.0,
+			"damage": 35.0,           # 怪物圖鑑：35、抱住的那位 +10、擊倒並彈起
+			"hold_bonus": 10.0,
+			"knockup": 6.0,
 			"knockback": 10.0,
 			"color": Color("8fbf4a"),
 		},
@@ -138,26 +147,35 @@ const ENEMIES := {
 		"visual": &"hound",
 		"behavior": &"hound",
 		"max_hp": 22.0,
-		"move_speed": 4.5,
+		"move_speed": 7.0,           # 使用者 2026-11-02：腐屍加速到 5.6 後，狗要明顯更快
 		"speed_variance": 0.1,
 		"turn_speed": 10.0,
 		"radius": 0.4,
 		"mass": 0.8,
-		"hurt_time": 0.2,
+		"hurt_time": 0.35,
 		"spawn_time": 0.7,
 		"corpse_time": 1.4,
 		"prowl": {
 			"orbit": [5.0, 7.0],               # 繞圈的半徑範圍；被看著時退到外圈
 			"step": 0.7,                       # 每次往目標背後轉多少弧度（決定繞圈的目標點）
 			"behind_angle": deg_to_rad(110.0), # 相對目標朝向超過這個角度算在背後（視野是前方 ±60°）
-			"patience": 6.0,                   # 繞這麼久還到不了背後就從正面撲
+			"patience": 2.5,                   # 繞 / 牽制這麼久還沒出招就從正面撲（怪物圖鑑）
 			"reverse_margin": deg_to_rad(45.0),# 照目前方向要繞超過 180° + 這個角度才換邊（玩家小幅轉身不會讓狗來回）
 			"radius_speed": 2.0,               # 要繞的半徑每秒最多變多少（被看著 / 沒被看著切換時不跳）
 			"retreat_slack": 0.3,              # 撲完退到 orbit[0] - 這個距離就算退開了，可以再撲（要大於離目標點 0.2 就停下的距離，否則停在半路退不完）
 		},
+		# 正面牽制（被目標看著的最近那隻）：逼近到 range、每 hop_interval 秒左右側跳 hop_distance
+		"pin": {"range": [2.5, 4.0], "hop_interval": [0.5, 0.8], "hop_distance": 1.8, "hop_time": 0.22, "hop_vz": 2.5},
+		"pack": {"max_attackers": 2},   # 同時最多幾隻在出招（快咬、飛撲）
+		# 快咬（輕）：低頭齜牙 windup → 往前竄 distance → 往後跳 back_hop；擋下自己暈 blocked_daze
+		"snap": {
+			"trigger_distance": 1.8, "windup": 0.2, "track": 0.5, "distance": 1.2, "duration": 0.12, "hit_reach": 0.3,
+			"damage": 6.0, "cooldown": 1.2, "blockable": true, "blocked_daze": 0.6, "back_hop": 2.5, "back_hop_time": 0.25,
+		},
+		# 飛撲（擊倒）：在目標視野外（含側面）、trigger_distance 內才撲；低吼前腳壓低 windup（鎖定方向）→ 直線 distance
 		"pounce": {
-			"trigger_distance": 4.5,
-			"windup": 0.4,      # 伏低（鎖定方向）
+			"trigger_distance": 6.0,
+			"windup": 0.3,
 			"distance": 4.0,
 			"duration": 0.3,
 			"leap_vz": 3.5,     # 撲的時候跳起來
@@ -167,7 +185,10 @@ const ENEMIES := {
 			"knockback": 7.0,
 			"cooldown": 2.5,    # 從伏低開始算
 			"blockable": true,
+			"blocked_daze": 0.6,
 		},
+		# 抓翻滾：目標在 radius 內翻滾 → 飛撲到翻滾終點（跟飛撲共用冷卻與傷害）
+		"roll_punish": {"radius": 3.0, "windup": 0.15, "max_distance": 5.0},
 	},
 
 	# 守墓人（第 1 層 Boss，數值 Claude 暫定）：開局假裝 NPC，第一型態慢、靠道具（sim/enemies/gravekeeper.gd）
@@ -352,10 +373,92 @@ const ENEMIES := {
 
 # 各層的小怪種類與比例（設計方向「各層怪物」）：地圖預放的怪群、挖墳怪潮用這一層的表，挖墳點噴的是下一層的表；
 # 超過表的層數用最後一層的表
+# 持武器的腐屍（怪物圖鑑備註 1，數值 Claude 暫定）：武器種類 → 招式。技能冷卻好就用（冷卻 = 玩家耗魔 ÷ 5 的 2 倍，armed_skill_cooldown），
+# 冷卻中用普攻；預兆（windup）至少 0.4 秒；傷害 = damage_pct × zombie.armed_damage（6）。招式的 type 決定做法（sim/enemies/armed_moves.gd）：
+#   melee 揮擊：hits 每下 {range, arc, damage_pct, tier}，間隔 interval；shot 射擊：count 支、間隔 interval 或扇形 fan_arc；
+#   shield 舉盾（正面 arc 擋下、結束時盾擊 bash）；burst 原地爆開；blink 黑煙後閃到背後；heal 治療周圍腐屍；breath 前方噴火；scoop 鏟起
+# reach：目標在這以內才出這招；keep：遠程武器保持的距離 [近, 遠]；move_mul：移速倍率
+const ARMED_ZOMBIE := {
+	&"longsword": {
+		"name": "劍盾", "model": &"longsword", "offhand_model": &"woodShield",
+		"attack": {"type": &"melee", "reach": 1.9, "windup": 0.45, "recovery": 0.5, "cooldown": 1.3,
+			"hits": [{"range": 2.1, "arc": PI * 100.0 / 180.0, "damage_pct": 1.0, "tier": &"light"}]},
+		"skill": {"type": &"shield", "reach": 7.0, "windup": 0.4, "duration": 2.5, "recovery": 0.3, "arc": PI * 100.0 / 180.0, "block_push": 0.3,
+			"bash": {"range": 2.0, "arc": PI * 120.0 / 180.0, "damage_pct": 1.0, "knockback": 9.0, "tier": &"medium"}},
+	},
+	&"staff": {
+		"name": "法杖", "model": &"staff", "keep": [5.0, 9.0],
+		"attack": {"type": &"shot", "reach": 10.0, "windup": 0.5, "recovery": 0.5, "cooldown": 1.8, "count": 1, "speed": 7.0, "range": 12.0,
+			"damage_pct": 1.2, "visual": &"orb", "damage_type": &"arcane", "color": Color("b98cff")},
+		"skill": {"type": &"burst", "reach": 2.5, "windup": 0.8, "recovery": 0.6, "radius": 2.5, "damage_pct": 2.5, "damage_type": &"arcane",
+			"tier": &"heavy", "knockback": 8.0, "color": Color("b98cff")},
+	},
+	&"shortbow": {
+		"name": "短弓", "model": &"shortbow", "keep": [5.0, 9.0],
+		"attack": {"type": &"shot", "reach": 10.0, "windup": 0.4, "recovery": 0.4, "cooldown": 1.6, "count": 3, "interval": 0.4, "speed": 14.0,
+			"range": 14.0, "damage_pct": 0.6, "visual": &"arrow", "tier": &"light", "color": Color("e8d9a8")},
+		"skill": {"type": &"shot", "reach": 9.0, "windup": 0.5, "recovery": 0.4, "count": 5, "fan_arc": PI * 50.0 / 180.0, "speed": 14.0,
+			"range": 12.0, "damage_pct": 0.8, "visual": &"arrow", "tier": &"light", "color": Color("e8d9a8")},
+	},
+	&"longbow": {
+		"name": "長弓", "model": &"longbow", "keep": [6.0, 11.0],
+		"attack": {"type": &"shot", "reach": 12.0, "windup": 1.2, "recovery": 0.5, "cooldown": 2.5, "count": 1, "speed": 18.0, "range": 18.0,
+			"damage_pct": 2.5, "knockback": 6.0, "visual": &"arrow", "tier": &"heavy", "color": Color("e8d9a8")},
+		"skill": {"type": &"shot", "reach": 12.0, "windup": 0.8, "recovery": 0.5, "count": 1, "speed": 22.0, "range": 20.0, "pierce": true,
+			"damage_pct": 2.5, "visual": &"arrow", "tier": &"heavy", "color": Color("ffd36b")},
+	},
+	&"dagger": {
+		"name": "雙匕首", "model": &"dagger", "move_mul": 1.4,
+		"attack": {"type": &"melee", "reach": 1.5, "windup": 0.4, "recovery": 0.4, "cooldown": 1.4, "interval": 0.15,
+			"hits": [{"range": 1.7, "arc": PI * 70.0 / 180.0, "damage_pct": 0.4, "tier": &"light"}, {"range": 1.7, "arc": PI * 70.0 / 180.0, "damage_pct": 0.4, "tier": &"light"},
+				{"range": 1.7, "arc": PI * 70.0 / 180.0, "damage_pct": 0.4, "tier": &"light"}, {"range": 1.7, "arc": PI * 70.0 / 180.0, "damage_pct": 0.4, "tier": &"light"},
+				{"range": 1.7, "arc": PI * 70.0 / 180.0, "damage_pct": 0.4, "tier": &"light"}]},
+		"skill": {"type": &"blink", "reach": 8.0, "windup": 0.5, "recovery": 0.2, "behind": 1.2},
+	},
+	&"scepter": {
+		"name": "驅魔權杖", "model": &"scepter",
+		"attack": {"type": &"melee", "reach": 1.9, "windup": 0.5, "recovery": 0.5, "cooldown": 1.6, "interval": 0.35, "damage_type": &"holy",
+			"hits": [{"range": 2.1, "arc": PI * 110.0 / 180.0, "damage_pct": 1.0, "tier": &"medium"}, {"range": 2.1, "arc": PI * 110.0 / 180.0, "damage_pct": 1.0, "tier": &"medium"}]},
+		"skill": {"type": &"heal", "reach": 99.0, "windup": 0.6, "recovery": 0.4, "radius": 5.0, "heal_ratio": 0.25, "below": 0.7, "color": Color("9be07a")},
+	},
+	&"torch": {
+		"name": "火把", "model": &"torch",
+		"attack": {"type": &"melee", "reach": 1.9, "windup": 0.4, "recovery": 0.5, "cooldown": 1.3, "damage_type": &"fire",
+			"hits": [{"range": 2.1, "arc": PI * 100.0 / 180.0, "damage_pct": 1.0, "tier": &"light"}]},
+		"skill": {"type": &"breath", "reach": 4.0, "windup": 0.5, "recovery": 0.5, "duration": 1.0, "tick": 0.25, "range": 4.0, "arc": PI * 60.0 / 180.0,
+			"damage_pct": 0.6, "damage_type": &"fire", "tier": &"light", "color": Color("ff8a30")},
+	},
+	&"shovel": {
+		"name": "鐵鏟", "model": &"shovel",
+		"attack": {"type": &"melee", "reach": 3.2, "windup": 0.5, "recovery": 0.6, "cooldown": 1.6,
+			"hits": [{"range": 3.6, "arc": PI * 25.0 / 180.0, "damage_pct": 1.2, "tier": &"medium"}]},
+		# 鏟起：grab_range 內有別的怪 → 拋向玩家（膨脹屍優先、落地 bloater_fuse 秒就炸；其他怪落地 land_radius 內擊倒）；
+		# 玩家在 player_range 內 → 鏟玩家，隨機拋飛（擊倒）或埋進地底 bury 秒
+		"skill": {"type": &"scoop", "reach": 6.0, "windup": 0.4, "recovery": 0.5, "grab_range": 4.0, "player_range": 2.0, "flight": 0.6,
+			"land_radius": 1.2, "land_pct": 1.5, "bloater_fuse": 0.3, "damage_pct": 1.0, "launch": 7.0, "bury": 1.0},
+	},
+}
+
+
 const FLOOR_MIX := {
 	1: {&"zombie": 0.7, &"hound": 0.2, &"bloater": 0.1},
 	2: {&"grunt": 0.75, &"archer": 0.25},
 }
+
+
+# 持武器腐屍的招式（副手盾 woodShield 撿起來也算劍盾）
+static func armed_kit(base: StringName) -> Dictionary:
+	return ARMED_ZOMBIE[&"longsword" if base == &"woodShield" else base]
+
+
+static func has_armed_kit(base: StringName) -> bool:
+	return base == &"woodShield" or ARMED_ZOMBIE.has(base)
+
+
+# 持武器腐屍的技能冷卻：玩家用這把武器右鍵的「耗魔 ÷ 5」秒的 2 倍（怪物圖鑑備註 1）
+static func armed_skill_cooldown(base: StringName) -> float:
+	var special: Dictionary = WeaponDefs.WEAPONS.get(base, {}).get("special", {})
+	return 2.0 * special.get("mana", 25) / 5.0
 
 
 static func is_boss(type: StringName) -> bool:

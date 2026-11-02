@@ -274,10 +274,11 @@ class Dig:
 		p.mass = fsm.data.mass
 
 
+# 受擊硬直：data.time = 這一下的硬直秒數（Config.PLAYER.hurt_tiers；沒給用 stagger_time）
 class Stagger:
 	func enter(_p: Player, data: Dictionary, _fsm: StateMachine) -> void:
 		data.move_speed_mul = Config.PLAYER.stagger_move_speed_mul
 
 	func update(_p: Player, _dt: float, fsm: StateMachine) -> void:
-		if fsm.time >= Config.PLAYER.stagger_time:
+		if fsm.time >= fsm.data.get("time", Config.PLAYER.stagger_time):
 			fsm.change(&"ready")
