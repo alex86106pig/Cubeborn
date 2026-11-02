@@ -67,6 +67,16 @@ const MAPS := {
 		"dig_event": true,   # 挖墳事件取代波次（D6，sim/dig_event.gd）
 		"theme": &"graveyard",
 	},
+	# 墓園（地圖改版）：每一小關照種子產生（sim/map_gen.gd、defs/map_gen_defs.gd），這裡只寫不會變的部分；
+	# size、origin、spawn、dig、boss_room、blocks 與寶箱 / 怪群的位置由 MapGen.build_map 填上
+	&"graveyard": {
+		"name": "墓園",
+		"generator": &"stage",
+		"spawn_rule": &"around_player",
+		"forge_count": 0,
+		"packs": true,
+		"theme": &"graveyard",
+	},
 	# 第 2 層 骸骨墓窟：3 × 3 個墓室，用 6 寬的走道連成一圈；中央主墓室（石棺 = 出口、Boss）、南邊出生室固定，其餘 7 間照種子抽區塊（2026-11-02）
 	# 墓室內側：西 / 中 / 東欄 x 2~27、37~59、69~94，北 / 中 / 南列 y 同；中間 10 寬的岩壁只在走道處開口
 	&"catacomb_a": {
@@ -234,6 +244,11 @@ const DOOR_NAMES := {&"N": "北", &"E": "東", &"W": "西"}
 # 這一層地形的一句話（遊玩紀錄用）：開哪幾邊的門、7 格各是哪種區塊
 static func layout_text(layout: Dictionary) -> String:
 	var parts: Array[String] = []
+	if layout.has("stage"):
+		var names: Array[String] = []
+		for themes: Array in layout.themes:
+			names.append("＋".join(PackedStringArray(themes.map(func(t: StringName) -> String: return MapGenDefs.THEME_NAMES.get(t, String(t))))))
+		parts.append("第 %d 小關 %s" % [layout.stage, "、".join(PackedStringArray(names))])
 	var doors: Array = layout.get("doors", [])
 	if not doors.is_empty():
 		parts.append("門 " + "、".join(PackedStringArray(doors.map(func(d: StringName) -> String: return DOOR_NAMES[d]))))
@@ -250,11 +265,11 @@ static func layout_text(layout: Dictionary) -> String:
 
 # 地圖有沒有照種子變的部分（分區、門）：沒有的地圖換種子不用重建地形
 static func has_layout(m: Dictionary) -> bool:
-	return m.has("exit_doors") or not (m.get("zone_slots", []) as Array).is_empty()
+	return m.has("generator") or m.has("exit_doors") or not (m.get("zone_slots", []) as Array).is_empty()
 
 
 # 每層的地圖：從這張表裡的地圖開局，換層就換成該層的；超過表的層數用最後一層的。不在表裡的地圖（測試場地）換層也不換
-const FLOOR_MAPS := {1: &"graveyard_a", 2: &"catacomb_a"}
+const FLOOR_MAPS := {1: &"graveyard", 2: &"catacomb_a"}
 
 
 static func floor_map(map_id: StringName, floor_num: int) -> StringName:

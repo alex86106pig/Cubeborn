@@ -13,9 +13,9 @@ static func cleanup() -> void:
 	_made.clear()
 
 
-# 地圖 A（不放怪群）；spawn = false 時事件不生怪（只測挖墳本身）
-static func _world(peers: Array[int] = [World.HOST_PEER_ID], spawn := false) -> World:
-	var w := World.new(&"graveyard_a")
+# 地圖 A（不放怪群）；spawn = false 時事件不生怪（只測挖墳本身）；map_id：換層的檢查用遊戲第 1 層的地圖（MapDefs.FLOOR_MAPS）
+static func _world(peers: Array[int] = [World.HOST_PEER_ID], spawn := false, map_id: StringName = &"graveyard_a") -> World:
+	var w := World.new(map_id)
 	w.spawn_packs = false
 	w.reset(12345, peers)
 	w.spawner.finished = not spawn
@@ -323,14 +323,15 @@ static func check_next_floor() -> String:
 	var vote_err := _check_vote()
 	if vote_err != "":
 		return vote_err
-	# 換層本身（不是最後一層時由投票通過呼叫 World.next_floor）
-	w = _world()
+	# 換層本身（不是最後一層時由投票通過呼叫 World.next_floor）：從遊戲第 1 層的地圖開局，換層才會換成第 2 層的
+	w = _world([World.HOST_PEER_ID], false, MapDefs.FLOOR_MAPS[1])
 	p = _p(w)
 	w.souls = 40
 	p.add_item(&"whetstone")
 	_open(w)
 	w.drop_item(&"worn_boots", w.event.point + Vector2(5, 5))
-	(w.chests[0] as Chest).opened = true
+	if not w.chests.is_empty():
+		(w.chests[0] as Chest).opened = true
 	p.pos = w.event.point
 	w.next_floor()
 	ev = w.events.duplicate()   # 不跑下一步：下一步會放新一層的 Boss

@@ -171,6 +171,13 @@ const PACK_GRID := 8
 
 func spawn_packs(world: World, rng: RandomNumberGenerator) -> void:
 	var c: Dictionary = MonsterRarityDefs.PACKS
+	var layout := []
+	if world.map.has("pack_spots"):
+		# 產生的地圖（MapGen）已經挑好群的位置與隻數
+		for spot: Array in world.map.pack_spots:
+			_spawn_pack(world, Vector2(spot[0], spot[1]) - world.map.origin, rng, layout, spot[2])
+		world.pack_digest = hash(layout) & 0x7fffffff
+		return
 	var lim: Vector2 = world.half_extents - Vector2(c.edge_margin, c.edge_margin)
 	var want := rng.randi_range(c.count[0], c.count[1])
 	var centers: Array[Vector2] = []
@@ -191,7 +198,6 @@ func spawn_packs(world: World, rng: RandomNumberGenerator) -> void:
 				break
 		if apart:
 			centers.append(at)
-	var layout := []
 	for center in centers:
 		_spawn_pack(world, center, rng, layout)
 	world.pack_digest = hash(layout) & 0x7fffffff
@@ -205,16 +211,19 @@ static func _grid(rng: RandomNumberGenerator, limit: float) -> float:
 
 # layout：每隻生出來的 [id, 種類, x, y, 稀有度, 詞條]（檢查碼用生成的值算，不看場上實體現在的位置：醒了的會走動）
 # 客戶端：這個 id 已經有快照建的鏡像（那群已經醒了）就不再生一隻蓋掉它，但亂數照樣抽（後面的成員才對得上）
-func _spawn_pack(world: World, center: Vector2, rng: RandomNumberGenerator, layout: Array) -> void:
+# count：幾隻（0 = 照 PACKS.size 抽）
+func _spawn_pack(world: World, center: Vector2, rng: RandomNumberGenerator, layout: Array, count: int = 0) -> void:
 	var c: Dictionary = MonsterRarityDefs.PACKS
 	var pack_id := world.packs.size()
 	var ids: Array[int] = []
 	var placed: Array[Vector2] = []
-	for r in MonsterRarityDefs.roll_pack_rarities(rng.randi_range(c.size[0], c.size[1]), rng):
+	if count <= 0:
+		count = rng.randi_range(c.size[0], c.size[1])
+	for r in MonsterRarityDefs.roll_pack_rarities(count, rng):
 		var type := EnemyDefs.roll_floor_type(world.floor_num, rng)
 		var at := _pack_member_spot(world, center, placed, rng, EnemyDefs.ENEMIES[type].radius)
 		placed.append(at)
-		var id := World.pack_entity_id(world.floor_num, world.pack_member_count() + ids.size())
+		var id := World.pack_entity_id(world.floor_num, world.stage_num, world.pack_member_count() + ids.size())
 		var mirrored := world.entities.has(id)
 		var e := create(world, type, at, spawn_mul(world, type, {"dormant": true})) if mirrored else spawn_at(world, type, at, {"dormant": true}, id)
 		e.pack_id = pack_id

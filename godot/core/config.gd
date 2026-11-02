@@ -7,7 +7,7 @@ const HIT_STOP_TIME_SCALE := 0.05
 
 const WORLD := {
 	"arena_half_size": 16.0,        # 測試場地（MapDefs 的 test_arena）的一半邊長；正式地圖的大小在 defs/map_defs.gd
-	"default_map": &"graveyard_a",  # 遊戲用的地圖（D1）；check.gd 大部分檢查用 test_arena
+	"default_map": &"graveyard",  # 遊戲用的地圖（D1；墓園每小關照種子產生）；check.gd 大部分檢查用 test_arena
 	"physics_cell": 2.0,          # 碰撞分離的格子邊長（≥ 任兩個實體半徑相加的最大值：Boss 1.0 + 1.0）
 	"victory_delay": 2.2,         # 打倒 Boss 後幾秒發出 game:victory
 	"victory_hit_stop": 0.25,

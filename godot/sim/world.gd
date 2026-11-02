@@ -37,12 +37,15 @@ var stats := {"wave": 0, "kills": 0, "time": 0.0}
 var is_over := false                 # 通關後為 true（挖墳事件的地圖沒有通關，一層一層往下）
 # 挖墳事件與層數（D6，sim/dig_event.gd）：每層基礎難度 = (層數 − 1) × DIFFICULTY.per_floor
 var floor_num := 1
+# 小關（地圖改版，sim/map_gen.gd）：產生地圖的這一層正在第幾小關（1 ~ MapGenDefs.STAGES 的最後一關）；0 = 這層的地圖不分小關
+var stage_num := 0
 var base_difficulty := 0.0
 var event := DigEvent.new()
 var hit_stop_timer := 0.0            # 剩餘的整體放慢（真實秒數），由主迴圈換算成時間縮放；v0.18.3 起只有打倒 Boss 時使用（一般命中改成畫面定格）
 # 地圖（D1，defs/map_defs.gd）：場地大小、地形、尋路格子、出生點；每層的地圖照 MapDefs.floor_map，客戶端看快照的層數換成同一張
-const PACK_ID_BASE := 1 << 30   # 怪群成員的 id 從這裡開始（每層 PACK_ID_STRIDE 個），不跟照順序給的 id 撞
+const PACK_ID_BASE := 1 << 30   # 怪群成員的 id 從這裡開始（每層每小關 PACK_ID_STRIDE 個），不跟照順序給的 id 撞
 const PACK_ID_STRIDE := 1024
+const PACK_ID_STAGES := 8       # 每層留幾個小關的 id 區段
 var _changing_floor := false
 var layout: Dictionary = {}   # 這一局這一層的地形（MapDefs.layout）：blocks、開的門 doors、每格的區塊 zones
 var layout_key := []          # 地形是照什麼建的（_layout_key_for）：畫面層比對它決定要不要重建場地
@@ -81,10 +84,24 @@ func _init(p_map_id: StringName = Config.WORLD.default_map) -> void:
 
 
 # 地形 = 地圖的固定部分 + 這一局這一層照種子抽的門與分區（MapDefs.layout，用 floor_rng(&"layout")）：要先設好 run_seed 與 floor_num
+# 產生的地圖（generator）：照種子拼出第 stage_num 小關（MapGen），拼不出來就用 FALLBACK_MAP 那張固定的
 func load_map(p_map_id: StringName) -> void:
 	map_id = p_map_id
 	map = MapDefs.get_map(p_map_id)
+	if map.has("generator"):
+		if stage_num == 0:
+			stage_num = MapGenDefs.START_STAGE
+		var built := MapGen.build_map(map, stage_num, floor_rng(&"layout"))
+		if built.is_empty():
+			push_warning("第 %d 層第 %d 小關（種子 %d）產生失敗，改用 %s" % [floor_num, stage_num, run_seed, MapGenDefs.FALLBACK_MAP])
+			built = MapDefs.get_map(MapGenDefs.FALLBACK_MAP)
+		map = built
+	else:
+		stage_num = 0
 	layout = MapDefs.layout(map, floor_rng(&"layout"))
+	if map.has("stage"):
+		layout.stage = map.stage
+		layout.themes = (map.regions as Array).map(func(r: Dictionary) -> Array: return r.themes)
 	layout_key = _layout_key_for(p_map_id)
 	half_extents = (map.size as Vector2) / 2.0
 	terrain = Terrain.new(MapDefs.world_blocks(map, layout.blocks))
@@ -101,9 +118,9 @@ func _load_floor_map(p_floor: int) -> void:
 		load_map(id)
 
 
-# 地形由什麼決定：有分區 / 門的地圖看 [地圖, 層數, 種子]，其餘（測試場地）只看地圖
+# 地形由什麼決定：有分區 / 門 / 產生的地圖看 [地圖, 層數, 小關, 種子]，其餘（測試場地）只看地圖
 func _layout_key_for(id: StringName) -> Array:
-	return [id, floor_num, run_seed] if MapDefs.has_layout(MapDefs.get_map(id)) else [id]
+	return [id, floor_num, stage_num, run_seed] if MapDefs.has_layout(MapDefs.get_map(id)) else [id]
 
 
 # 客戶端：快照的層數或種子變了，換成同一張地圖、同一份地形（只由地圖、層數、種子決定，不另外同步；種子要先設好）
@@ -120,6 +137,7 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 	clear()
 	run_seed = seed_value
 	floor_num = 1
+	stage_num = 0
 	_load_floor_map(1)
 	tick = 0
 	rng.seed = seed_value
@@ -163,9 +181,9 @@ func _populate_floor() -> void:
 	_place_chests(floor_rng(&"chests"))
 
 
-# 怪群成員的 id：第 floor_num 層第 index 隻（房主與客戶端都用這個，各自生出來才對得上）
-static func pack_entity_id(p_floor: int, index: int) -> int:
-	return PACK_ID_BASE + p_floor * PACK_ID_STRIDE + index
+# 怪群成員的 id：第 floor_num 層第 stage 小關第 index 隻（房主與客戶端都用這個，各自生出來才對得上）
+static func pack_entity_id(p_floor: int, p_stage: int, index: int) -> int:
+	return PACK_ID_BASE + (p_floor * PACK_ID_STAGES + p_stage) * PACK_ID_STRIDE + index
 
 
 func pack_member_count() -> int:
@@ -176,9 +194,10 @@ func pack_member_count() -> int:
 
 
 # 這一層某種配置用的亂數：由 run_seed、層數、用途算出來，每種用途各一條（互不影響）
+# 分小關的層每一關各一條（stage_num 進 hash）；不分小關的層照舊
 func floor_rng(purpose: StringName) -> RandomNumberGenerator:
 	var r := RandomNumberGenerator.new()
-	r.seed = hash([run_seed, floor_num, purpose])
+	r.seed = hash([run_seed, floor_num, purpose]) if stage_num == 0 else hash([run_seed, floor_num, stage_num, purpose])
 	return r
 
 
@@ -186,6 +205,13 @@ func floor_rng(purpose: StringName) -> RandomNumberGenerator:
 # 找不到夠遠的位置時，寶箱之間的距離逐步放寬（× 0.5、× 0）
 # 鍛造祭壇（forge_count）排在寶箱後面、用同一套規則：寶箱的位置和沒有鍛造祭壇時一樣
 func _place_chests(prng: RandomNumberGenerator) -> void:
+	if map.has("chest_spots"):
+		# 產生的地圖（MapGen）：小寶箱在打怪的塊、支線盡頭一個大的
+		for spot: Array in map.chest_spots:
+			var chest := Chest.new(self, spot[2], MapDefs.to_world(map, Vector2(spot[0], spot[1])))
+			add_entity(chest)
+			chests.append(chest)
+		return
 	var c: Dictionary = LootDefs.CHEST_PLACEMENT
 	var tiers: Array[StringName] = []
 	var counts: Dictionary = map.get("chest_count", {})
