@@ -19,7 +19,7 @@ const BLOCK_COLORS := {
 	},
 }
 
-var map_id: StringName   # 現在畫的是哪張地圖（main.gd 比對 World.map_id，換層換地圖就重建）
+var layout_key := []   # 現在畫的是哪份地形（main.gd 比對 World.layout_key：換層、換種子就重建）
 
 
 # half：場地的一半大小（World.half_extents）；theme：MapDefs 的 theme

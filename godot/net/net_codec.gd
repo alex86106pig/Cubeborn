@@ -478,6 +478,7 @@ static func apply_world(world: World, snap: Array) -> void:
 	world.boss_id = w[W_BOSS]
 	world.is_defeated = w[W_DEFEATED]
 	world.souls = w[W_SOULS]
+	world.run_seed = w[W_SEED]   # 先設種子：地形照 [地圖, 層數, 種子] 建（sync_floor）
 	world.sync_floor(w[W_FLOOR])
 	var ev: Array = w[W_EVENT]
 	world.event.state = ev[0]
@@ -489,4 +490,3 @@ static func apply_world(world: World, snap: Array) -> void:
 	world.event.vote_left = ev[6]
 	world.event.vote_yes.assign(ev[7])
 	world.run_coins = w[W_COINS]
-	world.run_seed = w[W_SEED]   # 只給畫面顯示（客戶端的配置照快照，不自己算）

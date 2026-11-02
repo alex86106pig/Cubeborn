@@ -120,9 +120,9 @@ func _initialize() -> void:
 	_check("一局流程：每波依序開始、打倒 Boss 後 is_over、victory_delay 秒後 game:victory、擊殺數正確", MapChecks.check_full_run)
 	_check("地形：0.5 石台走不上去、跳得上去；從 0.5 跳上 1.0；走出邊緣會掉回地面；2.5 的牆跳不過去；起跳偵測的快速排除（Terrain.may_rise）在測試場地、墓園、墓窟都不漏掉會起跳的地方",
 		all.bind([MapChecks.check_terrain, MapChecks.check_may_rise]))
-	_check("每層的地圖（第 1 層環形墓園、第 2 層墓窟，用 next_floor 走到）：大小與邊界一致、石台都在場地內、出生點與挖墳點可走且相連、可走的格子連成一片、相鄰可走格高低差 ≤ climb_height、牆比最高的地面高出跳躍高度以上；挖墳事件生的小怪都在離玩家 min ~ max_distance、走得到玩家的地方；每層的怪群與寶箱只看種子（第 1 層打法不同第 2 層照樣一樣）",
+	_check("每層的地圖（第 1 層環形墓園、第 2 層墓窟，用 next_floor 走到；門與分區照種子抽，換 LAYOUT_SEEDS 個種子都要過、每種區塊與每邊的門都抽得到、怪群放得下）：大小與邊界一致、石台都在場地內、出生點與挖墳點可走且相連、可走的格子連成一片、相鄰可走格高低差 ≤ climb_height、牆比最高的地面高出跳躍高度以上；挖墳事件生的小怪都在離玩家 min ~ max_distance、走得到玩家的地方；每層的怪群與寶箱只看種子（第 1 層打法不同第 2 層照樣一樣）",
 		all.bind([MapChecks.check_map_a, MapChecks.check_map_spawns, MapChecks.check_floor_seed]))
-	_check("怪物尋路：直線離牆小於 margin 不算看得到、繞北門變慢的步數 < 30；玩家在圍牆內，骷髏戰士從牆外繞到北門打到、弓手繞進來射中；離目標超過 far_distance 時降低重新判斷頻率、走進來立刻判斷",
+	_check("怪物尋路：直線離牆小於 margin 不算看得到、繞到門口變慢的步數 < 30；玩家在圍牆內，骷髏戰士從牆外繞到這一局開的門打到、弓手繞進來射中；離目標超過 far_distance 時降低重新判斷頻率、走進來立刻判斷",
 		all.bind([MapChecks.check_nav_clearance, MapChecks.check_enemy_pathing, MapChecks.check_far_repath]))
 	_check("高台：骷髏戰士先蹲 jump_windup 再跳，經 0.5 跳上 1.0 打到玩家、Boss 也跳得上去；弓手射得到高台上的玩家、被牆擋住先移動不對牆射",
 		all.bind([MapChecks.check_enemy_climb, MapChecks.check_archer_high_ground]))

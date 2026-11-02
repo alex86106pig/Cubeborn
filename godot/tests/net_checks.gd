@@ -764,6 +764,8 @@ static func check_local_packs() -> String:
 	var cw := link.client.world
 	for i in 30:
 		link.step(InputCmd.new(), InputCmd.new())
+	if cw.layout.doors != hw.layout.doors or cw.layout.zones != hw.layout.zones or cw.terrain.blocks.size() != hw.terrain.blocks.size():
+		return "客戶端照種子算的地形應跟房主相同（門 %s / %s、分區 %s / %s）" % [cw.layout.doors, hw.layout.doors, cw.layout.zones, hw.layout.zones]
 	var host_packs := {}
 	for e: Entity in hw.enemies:
 		if (e as Enemy).pack_id >= 0:

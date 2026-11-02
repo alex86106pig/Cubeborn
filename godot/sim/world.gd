@@ -44,6 +44,8 @@ var hit_stop_timer := 0.0            # 剩餘的整體放慢（真實秒數）�
 const PACK_ID_BASE := 1 << 30   # 怪群成員的 id 從這裡開始（每層 PACK_ID_STRIDE 個），不跟照順序給的 id 撞
 const PACK_ID_STRIDE := 1024
 var _changing_floor := false
+var layout: Dictionary = {}   # 這一局這一層的地形（MapDefs.layout）：blocks、開的門 doors、每格的區塊 zones
+var layout_key := []          # 地形是照什麼建的（_layout_key_for）：畫面層比對它決定要不要重建場地
 var pack_digest := 0   # 這一層怪群的檢查碼（Spawner.spawn_packs 用生成的值算）：房主放進快照，客戶端比對本機算出來的
 var run_seed := 0   # 這一局的種子（reset 傳入）：每層的配置（怪群、寶箱）用 floor_rng 從它算出來，客戶端從快照拿來顯示
 var web_count := 0   # 蜘蛛網的編號（GroundZones.add_web；畫面燒掉時用來找網）
@@ -78,25 +80,33 @@ func _init(p_map_id: StringName = Config.WORLD.default_map) -> void:
 	load_map(p_map_id)
 
 
+# 地形 = 地圖的固定部分 + 這一局這一層照種子抽的門與分區（MapDefs.layout，用 floor_rng(&"layout")）：要先設好 run_seed 與 floor_num
 func load_map(p_map_id: StringName) -> void:
 	map_id = p_map_id
 	map = MapDefs.get_map(p_map_id)
+	layout = MapDefs.layout(map, floor_rng(&"layout"))
+	layout_key = _layout_key_for(p_map_id)
 	half_extents = (map.size as Vector2) / 2.0
-	terrain = Terrain.new(MapDefs.world_blocks(map))
+	terrain = Terrain.new(MapDefs.world_blocks(map, layout.blocks))
 	nav = Nav.new(terrain, half_extents, Config.NAV.margin)
 	nav_large = Nav.new(terrain, half_extents, Config.NAV.margin_large)
 	spawn_point = MapDefs.to_world(map, map.spawn)
 	event.point = MapDefs.to_world(map, map.dig)   # 客戶端不跑 reset，挖墳點在這裡就設好（本機預測要判斷挖不挖得到）
 
 
-# 換成這一層的地圖（MapDefs.floor_map）；已經是同一張就不重建尋路格子
+# 換成這一層的地圖（MapDefs.floor_map）與這個種子的地形；地圖、層數、種子都一樣就不重建尋路格子
 func _load_floor_map(p_floor: int) -> void:
 	var id := MapDefs.floor_map(map_id, p_floor)
-	if id != map_id:
+	if _layout_key_for(id) != layout_key:
 		load_map(id)
 
 
-# 客戶端：快照的層數變了，換成同一張地圖（地圖只由層數決定，不另外同步）
+# 地形由什麼決定：有分區 / 門的地圖看 [地圖, 層數, 種子]，其餘（測試場地）只看地圖
+func _layout_key_for(id: StringName) -> Array:
+	return [id, floor_num, run_seed] if MapDefs.has_layout(MapDefs.get_map(id)) else [id]
+
+
+# 客戶端：快照的層數或種子變了，換成同一張地圖、同一份地形（只由地圖、層數、種子決定，不另外同步；種子要先設好）
 func sync_floor(p_floor: int) -> void:
 	floor_num = p_floor
 	_load_floor_map(p_floor)
@@ -108,9 +118,10 @@ func nav_for(radius: float) -> Nav:
 
 func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 	clear()
+	run_seed = seed_value
+	floor_num = 1
 	_load_floor_map(1)
 	tick = 0
-	run_seed = seed_value
 	rng.seed = seed_value
 	coin_rng.seed = hash([seed_value, &"coin"])
 	cooldowns.reset_all()

@@ -470,11 +470,11 @@ func _net_report() -> Dictionary:
 	return out
 
 
-# 場地與環境光跟著 World 的地圖：換層換地圖（房主 next_floor、客戶端 sync_floor、重新開始回第 1 層）時重建
+# 場地與環境光跟著 World 的地形：換層、換種子（房主 next_floor / reset、客戶端 sync_floor）時重建
 func _sync_arena() -> void:
-	if arena_view.map_id == world.map_id:
+	if arena_view.layout_key == world.layout_key:
 		return
-	arena_view.map_id = world.map_id
+	arena_view.layout_key = world.layout_key
 	var theme: StringName = world.map.get("theme", &"graveyard")
 	arena_view.build(world.half_extents, world.terrain, theme)
 	world_view.apply_theme(theme)

@@ -179,11 +179,24 @@ static func check_may_rise() -> String:
 
 
 # 每一層的地圖（MapDefs.FLOOR_MAPS）都照同一套規則：用 next_floor 走到那一層，跟遊戲裡一樣
+# 每層的地形照種子抽門與區塊：換 LAYOUT_SEEDS 個種子都要符合同一套規則、怪群放得下；所有區塊與門的方向都抽得到
+const LAYOUT_SEEDS := 16
+
 static func check_map_a() -> String:
-	for f: int in MapDefs.FLOOR_MAPS:
-		var err := _check_floor_map(f)
-		if err != "":
-			return "%s：%s" % [MapDefs.FLOOR_MAPS[f], err]
+	var used := {}
+	for s in range(0, LAYOUT_SEEDS + 1):
+		var seed_value := 12345 if s == 0 else s
+		for f: int in MapDefs.FLOOR_MAPS:
+			var err := _check_floor_map(f, seed_value, s == 0, used)
+			if err != "":
+				return "%s 種子 %d：%s" % [MapDefs.FLOOR_MAPS[f], seed_value, err]
+	for t: Dictionary in MapDefs.ZONE_TEMPLATES:
+		if not used.has(t.id):
+			return "%d 個種子都沒抽到區塊 %s" % [LAYOUT_SEEDS + 1, t.name]
+	for side: StringName in MapDefs.DOOR_SIDES:
+		if not used.has(side):
+			return "%d 個種子都沒開過 %s 邊的門" % [LAYOUT_SEEDS + 1, side]
+	_note("地形：%d 個種子 × %d 層都符合規則，%d 種區塊、%d 個方向的門都抽到" % [LAYOUT_SEEDS + 1, MapDefs.FLOOR_MAPS.size(), MapDefs.ZONE_TEMPLATES.size(), MapDefs.DOOR_SIDES.size()])
 	return ""
 
 
@@ -220,15 +233,31 @@ static func _layout(w: World) -> Array:
 		chests.append([(c as Chest).tier, snappedf(c.pos.x, 0.001), snappedf(c.pos.y, 0.001)])
 	for f in w.forges:
 		chests.append([&"forge", snappedf(f.pos.x, 0.001), snappedf(f.pos.y, 0.001)])
-	return [packs, chests]
+	return [packs, chests, w.layout.doors.duplicate(), w.layout.zones.duplicate(true)]
 
 
-static func _check_floor_map(floor_num: int) -> String:
-	var w := _new_world(12345, false, &"graveyard_a")
+# note：記可走格數（只記一個種子）；used：記抽到的區塊 id 與門的方向
+static func _check_floor_map(floor_num: int, seed_value: int, note: bool, used: Dictionary) -> String:
+	var w := World.new(&"graveyard_a")
+	w.reset(seed_value)
+	w.spawner.finished = true
+	_worlds.append(w)
 	for i in floor_num - 1:
 		w.next_floor()
 	if w.map_id != MapDefs.FLOOR_MAPS[floor_num]:
 		return "第 %d 層應是這張地圖，實際 %s" % [floor_num, w.map_id]
+	for z: Array in w.layout.zones:
+		used[z[0]] = true
+	for side: StringName in w.layout.doors:
+		used[side] = true
+	if w.layout.doors.size() != int(w.map.exit_doors.count):
+		return "出口應開 %d 個門，實際 %s" % [w.map.exit_doors.count, w.layout.doors]
+	var pc: Dictionary = MonsterRarityDefs.PACKS
+	if w.packs.size() < pc.count[0]:
+		return "怪群只放得下 %d 群（至少 %d）" % [w.packs.size(), pc.count[0]]
+	for e in w.enemies:
+		if (e as Enemy).pack_id >= 0 and (not w.nav.is_walkable(e.pos) or not w.nav.same_region(e.pos, w.spawn_point)):
+			return "怪群成員放在走不到的地方 %s" % e.pos
 	var m := w.map
 	var half := w.half_extents
 	if m.size != half * 2.0:
@@ -282,7 +311,8 @@ static func _check_floor_map(floor_num: int) -> String:
 	for i in range(0, verts.size(), 3):
 		if (verts[i + 1] - verts[i]).cross(verts[i + 2] - verts[i]).dot(normals[i]) >= 0.0:
 			return "石台網格第 %d 個三角形是背面" % (i / 3)
-	_note("%s：可走格 %d / %d、牆 %d、墓碑 %d、高台 %d" % [w.map_id, walkable, nav.size.x * nav.size.y, counts.get(MapDefs.WALL, 0), counts.get(MapDefs.TOMB, 0), counts.get(MapDefs.PLATFORM, 0)])
+	if note:
+		_note("%s：可走格 %d / %d、牆 %d、墓碑 %d、高台 %d" % [w.map_id, walkable, nav.size.x * nav.size.y, counts.get(MapDefs.WALL, 0), counts.get(MapDefs.TOMB, 0), counts.get(MapDefs.PLATFORM, 0)])
 	return ""
 
 
@@ -303,13 +333,15 @@ static func check_enemy_pathing() -> String:
 	var w := _new_world(12345, false, &"graveyard_a")
 	var p := _player(w)
 	p.pos = MapDefs.to_world(w.map, w.map.dig)
-	var g := _spawn(w, &"grunt", Vector2(0, 22))   # 圍牆南邊外面
-	var north := [INF]
-	var t := _run_until_hurt(w, 90 * 60, func() -> void: north[0] = minf(north[0], g.pos.y))
+	var g := _spawn(w, &"grunt", Vector2(0, 22))   # 圍牆南邊外面（南邊不開門）
+	var side: StringName = w.layout.doors[0]   # 門照種子開在北 / 東 / 西其中一邊
+	var door := MapDefs.to_world(w.map, w.map.exit_doors.sides[side].at)
+	var closest := [INF]
+	var t := _run_until_hurt(w, 90 * 60, func() -> void: closest[0] = minf(closest[0], g.pos.distance_to(door)))
 	if t < 0:
 		return "骷髏戰士 90 秒內沒打到玩家（停在 %s）" % g.pos
-	if north[0] > -15.0:
-		return "骷髏戰士應繞到北門（z < -15）進來，最北只到 z %.1f" % north[0]
+	if closest[0] > 2.5:
+		return "骷髏戰士應繞到門口（%s 門 %s）進來，最近只到 %.1f" % [side, door, closest[0]]
 	var w2 := _new_world(12345, false, &"graveyard_a")
 	var p2 := _player(w2)
 	p2.pos = p.pos
@@ -317,7 +349,7 @@ static func check_enemy_pathing() -> String:
 	var t2 := _run_until_hurt(w2, 90 * 60)
 	if t2 < 0:
 		return "弓手 90 秒內沒射中玩家（停在 %s）" % a.pos
-	_note("繞北門：骷髏戰士 %.1f 秒打到玩家（最北 z %.1f）、弓手 %.1f 秒射中" % [t * DT, north[0], t2 * DT])
+	_note("繞到 %s 門：骷髏戰士 %.1f 秒打到玩家（離門口最近 %.1f）、弓手 %.1f 秒射中" % [side, t * DT, closest[0], t2 * DT])
 	return ""
 
 
@@ -457,8 +489,8 @@ static func check_nav_clearance() -> String:
 		if g.pos.distance_to(p.pos) < 1.6:
 			break
 	if slowed >= 30:
-		return "繞北門時被牆擋住變慢 %d 步（應 < 30）" % slowed
-	_note("繞北門被牆擋住變慢 %d 步（v0.22.0 為 154 步）" % slowed)
+		return "繞到門口時被牆擋住變慢 %d 步（應 < 30）" % slowed
+	_note("繞到門口被牆擋住變慢 %d 步（v0.22.0 為 154 步）" % slowed)
 	return ""
 
 
