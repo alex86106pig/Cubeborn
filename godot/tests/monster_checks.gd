@@ -353,6 +353,7 @@ static func check_hound_moves() -> String:
 	for i in 180:
 		var cmd := InputCmd.new()
 		cmd.aim = h.pos
+		# 被看著的狗牽制在 pin.range（2.5~4）、側跳會往外飄，站著等不到它進 radius：玩家先走近，
 		# 等狗站在地上（側跳中不能出招）、在 radius 內才翻滾
 		if rolled_at < 0 and h.fsm.is_in(&"chase") and h.pos.distance_to(p.pos) <= hd.roll_punish.radius - 0.2:
 			rolled_at = i
@@ -360,6 +361,8 @@ static func check_hound_moves() -> String:
 			cmd.buttons = InputCmd.BTN_ROLL
 		if rolled_at >= 0 and i < rolled_at + 20:
 			cmd.move = Vector2(1, 0)
+		elif rolled_at < 0:
+			cmd.move = (h.pos - p.pos).normalized()
 		w.step({World.HOST_PEER_ID: cmd}, DT)
 		p.hp = p.max_hp
 		if h.fsm.is_in(&"pounce") and h.fsm.data.has("at"):
