@@ -188,3 +188,9 @@ Godot 4（GDScript）等距視角 Roguelike 動作遊戲（暫定名 Cubeborn）
 - `-s` 腳本開的小視窗沒有焦點，單機會自動暫停，腳本裡要 `set_paused(false)`。
 - 要讓 Boss 在模擬步裡自己出招；從外面硬切狀態時，enter 發的事件會在下一步開頭被清掉，畫面收不到。
 - 為什麼：都踩過；原本記在 `docs/進度.md`，屬於通則所以搬來這裡（2026-10-25）。
+
+### 5.4 寫檔再 commit 的指令要用 `&&` 串、腳本寫成檔案
+- 平常做法：「改檔案（Python / sed）→ 檢查 → commit」放在同一個 Bash 指令時，每一段用 `&&` 串起來，前一段失敗就不會 commit；含大量中文或多行字串的 Python 寫成檔案再 `python3 檔案` 執行，不用 heredoc。
+- 判斷：只要指令裡有 `git commit` 而前面有會失敗的步驟（字串比對的取代、assert）就算。
+- 例外：只讀取、不 commit 的指令。
+- 為什麼：2026-11-02 兩次都是 heredoc 裡的 Python 失敗（找不到要取代的字、編碼錯誤），後面換行接的 `git commit` 照跑，commit 只帶到一半的改動，事後才補 `--amend`。
