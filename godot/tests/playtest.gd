@@ -8,6 +8,7 @@
 #       --pick=smart|random（3 選 1：smart 照技能 / 羈絆挑、沒得挑就用骰子重擲；random 隨機選、不用骰子，確認隨機的 Build 也打得完，預設 smart）
 #       --death=revive|real（revive：倒下記一次、原地滿血救起，一定打完，比「哪幾招最痛」；real：真的會死，全員倒下這場就結束，看撐到哪，預設 revive）
 #       --trace=1（倒下時印出之前最後 10 下：時間、哪一招、多少、剩多少血、在做什麼、翻滾充能、身邊 3 內幾隻怪）
+#       --real-from=N（第 1 層第 N 小關起才真的會死，之前倒下原地救起、配裝照正常打過來；進那一關補滿血。--real-from=5 量帶著正常配裝的 Boss 戰）
 #       --start=N（直接從第 1 層第 N 小關開始，跳過的每一關給一個技能遺物；--start=5 只量 Boss 戰）
 #       --crowd=N（近戰身邊 2.5 內醒著的怪到 N 隻就往外退，預設 0 = 不退；做實驗用）
 # 血量照遊戲的規則走（自然回血、吸血、藥水、生命低於 X% 的道具都會發動）；revive 救起時有 REVIVE.revive_invuln 秒無敵
@@ -28,7 +29,7 @@ func _initialize() -> void:
 	for c in String(opts.get("class", "guardian")).split(","):
 		classes.append(StringName(c))
 	var how := "玩法 %s（反應 %s 秒）、3 選 1 %s、%s" % [opts.get("play", "smart"), opts.get("react", "0.25"), opts.get("pick", "smart"),
-		"真的會死" if opts.get("death", "revive") == "real" else "倒下原地救起"]
+		"真的會死" if opts.get("death", "revive") == "real" else ("第 %s 小關起真的會死" % opts["real-from"] if opts.has("real-from") else "倒下原地救起")]
 	var lines: Array[String] = ["# 自動試玩", "", "職業 %s、打法 %s、%s、%d 層、種子 %s；背包 %d × %d = %d 格" % [",".join(PackedStringArray(classes)),
 		opts.get("style", "full"), how, floors, str(seeds), ItemDefs.BAG_SIZE.x, ItemDefs.BAG_SIZE.y, ItemDefs.BAG_SIZE.x * ItemDefs.BAG_SIZE.y], "",
 		"| 種子 | 層 | 時間 | 殺怪（怪群 / 事件 / Boss / 召喚） | 掉武器（白綠藍紫橘） | 撿到 | 背包武器格 | 背包滿的時間 | 地上沒撿 | 靈魂 賺到 / 花掉（開幾箱） | 技能（等級）· 放幾次 | 羈絆 | 翻滾 / 跳 / 擋 / 喝藥 / 換武器 / 丟 / 搬上武器 / 重擲 / 救人 | 受傷 / 倒下（最多被哪招） | 結果 | 最痛的招 |",
@@ -42,7 +43,7 @@ func _initialize() -> void:
 		if not rows.any(func(r: String) -> bool: return r.contains("死在")):
 			cleared += 1
 	lines.append("")
-	if opts.get("death", "revive") == "real":
+	if opts.get("death", "revive") == "real" or opts.has("real-from"):
 		lines.append("打完 %d 層：%d / %d 場" % [floors, cleared, total])
 	lines.append("背包武器格 = 這層結束時背包裡武器占的格數（不含裝備中的）；背包滿的時間 = 第一次有武器撿不下（— = 沒滿過）；組隊時殺怪、掉落、靈魂是全隊的")
 	var text := "\n".join(lines)

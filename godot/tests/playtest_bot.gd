@@ -20,6 +20,8 @@ const COMMIT_TIME := 0.6               # 躲完之後這麼久只躲 Boss 的招
 const CONE_HUG_MAX := 4.5              # 持續的扇形招：離中心這麼近就貼身繞到背後，更遠就往外跑出射程
 const CONE_STEP := 0.9                 # 貼身繞的時候每次往前繞這麼多弧度的點走
 const CONE_BEHIND := 0.6               # 在牠背後 ±這麼多弧度內就算繞到了
+const ATTACK_LOCK := 0.0               # 揮刀中盾舉不起來的時間也算進「來不及」（Boss 的招預兆 < 反應 + ROLL_LEAD + 這個就先舉盾）：試過 0.3（含鏟擊、提燈），提燈 7.5 格外就一直舉盾、幾乎不出手，死時 Boss 剩 42% → 75%
+const PREBLOCK_EARLY := 0.5            # 那招的冷卻剩這麼多秒就不再出手、先舉盾（長劍一刀 0.36~0.48 秒，揮到一半冷卻好了牠 0.15 秒就出招）
 const PREBLOCK_PAD := 0.5              # 來不及反應的招：離牠這招的發動距離（trigger_distance）+ 這麼多以內、冷卻好了就先舉盾
 const EVADE_MAX := 1.2                 # 躲過一招後最多退這麼久就回去打（慢動作、連續出招的 Boss 不會一直退）
 const ROCK_WARN := 0.5                 # 從天上落下的石頭（守墓人鏟土）：這麼多秒內會落地、我在範圍內就走開（影子看得到）
@@ -37,6 +39,7 @@ const STUCK_TIME := 25.0               # 追同一個目標這麼久、血都沒
 const LOOT_RANGE := INF                # 多遠的武器都去撿（量「全撿」的上限；身邊沒怪才去）
 const SAFE_RANGE := 5.0                # 身邊這麼近有怪就先打怪
 const DIG_GUARD := 3.5                 # 挖墳時身邊這麼近有怪就停下來打
+const MINION_CLOSE := 3.0              # Boss 叫出來的小怪貼到這麼近、又比 Boss 近，就先打掉
 const SUMMONER_RANGE := 15.0           # 這麼近有帶召喚詞條的怪就先打它（不然叫出來的打不完）
 const RANGED := [&"staff", &"shortbow", &"longbow"]
 const RANGED_STANDOFF := 0.7           # 遠程離目標的距離 = 普攻射程 × 這個比例（夾在 5~9）
@@ -63,6 +66,8 @@ var taken := 0.0                       # 受到的傷害
 var acts := {"roll": 0, "jump": 0, "block": 0, "potion": 0, "swap": 0, "drop": 0, "socket": 0, "reroll": 0, "rescue": 0}
 var hit_by := {}                       # 「怪物·招式」→ 受到的傷害
 var full_seen := false                 # 有武器撿不下
+var real_from := 0                     # --real-from=N：第 1 層第 N 小關起（第 2 層起全部）才真的會死，之前照 revive；進那一關時補滿血
+var _real_now := false
 var died_at := ""                      # real_death 真的死掉：「層-小關 時間（招式）」
 var is_out := false                    # real_death 死掉了：之後不再出輸入
 
@@ -90,6 +95,7 @@ var _evade_time := 0.0                 # 這次已經退了幾秒
 var _evade_side := 1.0                 # 往哪一邊偏（跟翻滾同一邊）
 var _commit := 0.0                     # 躲完後先打的剩餘秒數
 var _moves := {}                       # 「怪物種類·狀態」→ 資料裡那一招的表（{} = 查不到），查過就記著
+var _forms := {}                       # 怪物 id → 上次認出的形態（資料子表名稱，例 wolf）
 var _fast_moves := {}                  # 「怪物種類·形態」→ 來不及反應的招 [[名稱, 表]]（預兆 ≤ 反應 + ROLL_LEAD），查過就記著
 var _unblockable := {}                 # 舉盾還被打到的「怪物種類·狀態」：之後這招改滾（每個種子重新學）
 var _hands := ["", ""]                 # 主手 / 副手武器的 uid：變了就是換過武器
@@ -112,6 +118,7 @@ func _init(p_world: World, p_player: Player, opts: Dictionary, seed_value: int) 
 	smart_pick = String(opts.get("pick", "smart")) != "random"
 	react = float(opts.get("react", "0.25"))
 	real_death = String(opts.get("death", "revive")) == "real"
+	real_from = int(opts.get("real-from", "0"))
 	style = String(opts.get("style", "full"))
 	trace = opts.has("trace")
 	crowd_max = int(opts.get("crowd", str(CROWD_MAX)))
@@ -202,9 +209,13 @@ func after_step(t: float) -> void:
 			print("— %s 第 %d-%d 倒下前：\n  %s" % [ClassDefs.CLASSES[p.class_id].name, w.floor_num, w.stage_num, "\n  ".join(PackedStringArray(_recent))])
 			_recent.clear()
 	_was_down = down
+	if real_from > 0 and not _real_now and (w.floor_num > 1 or w.stage_num >= real_from):
+		_real_now = true
+		p.hp = p.max_hp   # 進真的會死的那一關：補滿血、藥水補回整局的量（之前是倒下就救起的量法，機器人在那幾關快死時就把藥喝光了，
+		p.slots.heal.charges = int(SkillDefs.SKILLS.heal.charges)   # 真人打過來時血掉得少、藥水通常還在；8 場量到進 Boss 關時 7 場 0 瓶）
 	if not down:
 		return
-	if not real_death:
+	if not (real_death or _real_now):
 		if p.is_dead:
 			p.resurrect(p.pos, 1.0)
 		else:
@@ -227,6 +238,8 @@ func _move_name(ev: Dictionary) -> String:
 	var src := w.entities.get(ev.get("source_id", 0)) as Enemy
 	if src == null or src.fsm == null:
 		return who
+	if ev.get("minor", false):
+		return "%s·地上的火 / 毒" % who   # 持續傷害（殘火、腐氣）：來源怪物當下的狀態不是打出這一下的招
 	return "%s·%s" % [who, "射出的" if src.fsm.current_name in SAFE_STATES and not src.is_dead else String(src.fsm.current_name)]
 
 
@@ -260,7 +273,9 @@ func decide() -> InputCmd:
 	if near != null and not (digging_phase and p.pos.distance_to(near.pos) > DIG_GUARD):
 		# Boss 叫出來的小怪（不給靈魂）：Boss 醒著就直接打 Boss，不然 Boss 一直叫、小怪打不完
 		if near.no_souls and near.summoner_id == 0 and boss != null and _boss_awake(boss):
-			return _fight(cmd, boss)
+			# smart：貼在身邊（MINION_CLOSE 內）、比 Boss 近的先打掉（屍犬撲咬會硬直，接著狼人爪就擋不了也滾不了）；其他照舊直接打 Boss
+			if not (smart_play and p.pos.distance_to(near.pos) <= MINION_CLOSE and p.pos.distance_to(near.pos) < p.pos.distance_to(boss.pos)):
+				return _fight(cmd, boss)
 		return _fight(cmd, _summoner_of(near))
 	var awake := _nearest_awake() if smart_play else null
 	if awake != null and p.pos.distance_to(awake.pos) < AWAKE_FIRST:
@@ -345,7 +360,9 @@ func _fight(cmd: InputCmd, e: Entity) -> InputCmd:
 		var to := (e.pos - p.pos).normalized()
 		cmd.move = to.orthogonal() * _evade_side
 		return cmd
-	cmd.buttons |= InputCmd.BTN_ATTACK
+	# 近戰走近的路上不按普攻（揮空的這一刀做完前盾舉不起來，狼人爪剛好打在揮空的時候）；遠程照樣邊走邊射
+	if reach > KITE_DIST or p.pos.distance_to(e.pos) <= reach + e.radius + 0.5:
+		cmd.buttons |= InputCmd.BTN_ATTACK
 	_cast(cmd, e)
 	return cmd
 
@@ -357,6 +374,8 @@ func _cast(cmd: InputCmd, e: Entity) -> void:
 		var slot: Variant = p.slots.get_slot(p, i)
 		if slot == null or not slot.def.has("mana") or not p.slots.can_use(p, i):
 			continue
+		if smart_play and slot.def.get("behavior", &"") in [&"dash", &"ambush", &"leap_shot"] and _fast_move_soon(e as Enemy):
+			continue   # Boss 來不及反應的招快好了：不要衝進去（狼人爪 0.25 秒，衝過去剛好吃滿三爪）
 		if d <= _skill_range(slot.def) and not (smart_play and _skill_hits_ally(slot.def, e.pos)):
 			cmd.buttons |= InputCmd.slot_bit(i)
 			return
@@ -407,13 +426,23 @@ func _guard(cmd: InputCmd) -> bool:
 		if _commit > 0.0 and e.no_souls and not e.is_boss():
 			continue   # 召喚出來的（Boss 叫的屍犬）輪流撲：躲完先打一輪，不然一直滾打不到 Boss
 		var state := e.fsm.current_name
-		if _reacted.get(e.id, &"") == state or (e.fsm.time < react and not e.is_dead):
+		var foreseen := has_shield and e.is_boss() and _is_fast_move(e)   # 先舉盾等著的那一招：一出來就接著擋，不用再等反應時間
+		if _reacted.get(e.id, &"") == state or (e.fsm.time < react and not e.is_dead and not foreseen):
 			continue   # 死後會爆的不用等反應：知道牠會炸，一死就跑
 		var move := _move_def(e)
 		var cone: bool = move.has("arc") and move.has("range") and not e.is_dead
 		if p.pos.distance_to(e.pos) - e.radius - p.radius > threat or (cone and not _in_cone(e, move)):
 			continue
 		var hit_at: float = move.get("windup", -1.0)
+		if move.has("flight") and move.has("windup") and not e.is_dead:
+			# 跳起來砸下的招（狼人飛撲：預兆 + 空中 flight 秒後落地一圈）：落地的判定只打腳底在地面 + slam_height 以下的，
+			# 落地那一刻起跳就躲得掉，不用翻滾（翻滾充能常常剛用在第三爪上）
+			if e.fsm.time < hit_at + float(move.flight) - JUMP_LEAD * e.action_speed:   # fsm.time 已經乘過 action_speed
+				continue
+			_reacted[e.id] = state
+			cmd.buttons |= InputCmd.BTN_JUMP
+			acts.jump += 1
+			return true
 		if move.has("low_max_air"):
 			if not _jumped.has(e.id):
 				if e.fsm.time < hit_at - JUMP_LEAD * e.action_speed:   # fsm.time 已經乘過 action_speed
@@ -424,7 +453,8 @@ func _guard(cmd: InputCmd) -> bool:
 				return true
 			hit_at += float(move.get("gap", 0.0))   # 第二下（高掃）在 gap 秒後
 		var lunge := _is_lunge(e, move)
-		var can_block := has_shield and not e.is_dead and not lunge and not _unblockable.has(_move_key(e))
+		var blast := e.type == &"bloater" or e.has_affix(&"volatile")   # 爆炸一律擋不住（Combat）：膨脹屍脹大、死亡爆炸詞條的不擋
+		var can_block := has_shield and not e.is_dead and not lunge and not blast and not _unblockable.has(_move_key(e))
 		if not can_block and e.fsm.time < hit_at - ROLL_LEAD * e.action_speed:
 			continue   # 看到了，等快打下來才滾（舉盾不用等，早舉沒損失）
 		_reacted[e.id] = state
@@ -440,6 +470,8 @@ func _guard(cmd: InputCmd) -> bool:
 			_roll(cmd, away, PI / 2.0 if lunge else DODGE_ANGLE)
 		else:
 			cmd.move = away.rotated(DODGE_ANGLE * _evade_side)
+		return true
+	if _avoid_transform(cmd):
 		return true
 	if has_shield and _preblock(cmd):
 		return true
@@ -501,7 +533,7 @@ func _keep_evading(cmd: InputCmd) -> bool:
 		if behind or not _in_cone(e, move):
 			cmd.buttons |= InputCmd.BTN_ATTACK   # 繞出來了就打，站位跟著牠的背後
 		return true
-	if _evade_time > _evade_limit(move):
+	if _move_over(e, move):
 		return false
 	if p.pos.distance_to(e.pos) - e.radius - p.radius > _threat_reach(e) + 1.0:
 		return false
@@ -535,7 +567,8 @@ func _threat_reach(e: Enemy) -> float:
 	if state in SAFE_STATES:
 		return -1.0
 	var move := _move_def(e)
-	var data_reach := maxf(float(move.get("range", 0.0)), float(move.get("radius", 0.0))) - e.radius   # 資料的範圍從怪物中心算
+	# 資料的範圍從怪物中心算；最後一下會往前撲的（lunge：狼人第三爪往前 3）再加上撲的距離
+	var data_reach := maxf(float(move.get("range", 0.0)), float(move.get("radius", 0.0))) + float(move.get("lunge", 0.0)) - e.radius
 	return maxf(data_reach, (LUNGE_REACH if _is_lunge(e, move) else THREAT_REACH) + (BOSS_EXTRA if e.is_boss() else 0.0))
 
 
@@ -543,6 +576,24 @@ func _threat_reach(e: Enemy) -> float:
 # 不看 distance：很多招都有這個欄位，全當衝刺類的話反應範圍變 8、一直滾，翻滾充能留不到屍犬撲過來（16 種子打到 1-5 從 12 掉到 7）
 func _is_lunge(e: Enemy, move: Dictionary) -> bool:
 	return e.fsm.current_name in LUNGE_STATES or move.has("slide")
+
+
+# 怪物在變身（transform：守墓人 50% 血變狼人、骸骨將軍脫甲）：變身中無敵、打了沒用，結束時吼叫 / 噴碎片（資料的 roar_radius / shard_range）。
+# 先退到那個範圍外 + 1，不出手；吼完再回去（吼叫是重硬直 0.8 秒，吃到的話狼人第一輪爪子全擋不了）
+func _avoid_transform(cmd: InputCmd) -> bool:
+	for x in w.enemies:
+		var e := x as Enemy
+		if e == null or e.is_dead or e.fsm == null or e.fsm.current_name != &"transform":
+			continue
+		var t: Dictionary = e.def.get("transform", {})
+		var keep := float(t.get("roar_radius", t.get("shard_range", 5.0))) + p.radius + 1.0
+		var to_me := p.pos - e.pos
+		if to_me.length() >= keep:
+			continue
+		cmd.aim = e.pos
+		_walk(cmd, e.pos + _safe_dir(to_me.normalized() if to_me.length_squared() > 1e-4 else Vector2(0, 1)) * (keep + 0.5))
+		return true
+	return false
 
 
 # 多段招（資料有 interval 與 tiers：狼人的三連爪）：第 i 下在 windup + i × interval
@@ -554,7 +605,7 @@ static func _last_hit_at(move: Dictionary) -> float:
 	return float(move.windup) + float(move.interval) * ((move.tiers as Array).size() - 1)
 
 
-# 來不及反應的招（預兆 < 反應時間 + ROLL_LEAD，例：狼人爪 0.25 秒；衝刺類不算，要滾）：Boss 沒在出招、我在那招的發動距離 + PREBLOCK_PAD 內、
+# 來不及反應的招（預兆 < 反應時間 + ROLL_LEAD + ATTACK_LOCK：狼人爪 0.25、鏟擊 0.45、提燈 0.55 秒；衝刺類不算，要滾）：Boss 沒在出招、我在那招的發動距離 + PREBLOCK_PAD 內、
 # 那招冷卻好了（看得出牠隨時會出）就先舉盾、不出手；冷卻中就是出手的空檔。變身後的招（資料子表，例 wolf）只在狀態名稱含那個形態時算
 func _preblock(cmd: InputCmd) -> bool:
 	for x in w.enemies:
@@ -566,25 +617,44 @@ func _preblock(cmd: InputCmd) -> bool:
 			continue
 		for entry: Array in _fast_moves_of(e):
 			var move: Dictionary = entry[1]
-			if d <= float(move.trigger_distance) + PREBLOCK_PAD and w.cooldowns.is_ready(e.cd(entry[0])):
+			if d <= float(move.trigger_distance) + PREBLOCK_PAD and w.cooldowns.remaining(e.cd(entry[0])) <= PREBLOCK_EARLY:
 				cmd.aim = e.pos
 				_hold_shield(cmd)
 				return true
 	return false
 
 
+# 這隻 Boss 有沒有來不及反應的招、冷卻快好了（PREBLOCK_EARLY 內）
+func _fast_move_soon(e: Enemy) -> bool:
+	if e == null or not e.is_boss() or e.fsm == null:
+		return false
+	for entry: Array in _fast_moves_of(e):
+		if w.cooldowns.remaining(e.cd(entry[0])) <= PREBLOCK_EARLY:
+			return true
+	return false
+
+
+# 現在這一招是不是來不及反應的招（_fast_moves_of 的其中一個）
+func _is_fast_move(e: Enemy) -> bool:
+	for entry: Array in _fast_moves_of(e):
+		if StringName(entry[0]) == e.fsm.current_name:
+			return true
+	return false
+
+
 func _fast_moves_of(e: Enemy) -> Array:
-	var form := ""
+	var form: String = _forms.get(e.id, "")   # 出招時的狀態名稱（claw）看不出形態，沿用上次從 wolf_chase 這類名稱認出的
 	for k: String in e.def:
 		if e.def[k] is Dictionary and String(e.fsm.current_name).contains(k):
 			form = k
+	_forms[e.id] = form
 	var key := "%s·%s" % [e.type, form]
 	if not _fast_moves.has(key):
 		var out := []
 		for t: Dictionary in ([e.def] + ([e.def[form]] if form != "" else [])):
 			for name: String in t:
 				var m: Variant = t[name]
-				if m is Dictionary and (m as Dictionary).has("windup") and (m as Dictionary).has("trigger_distance") and float(m.windup) < react + ROLL_LEAD \
+				if m is Dictionary and (m as Dictionary).has("windup") and (m as Dictionary).has("trigger_distance") and float(m.windup) < react + ROLL_LEAD + ATTACK_LOCK \
 						and not (StringName(name) in LUNGE_STATES) and not (m as Dictionary).has("slide"):
 					out.append([name, m])
 		_fast_moves[key] = out
@@ -597,11 +667,14 @@ static func _sustained_cone(move: Dictionary) -> bool:
 	return move.has("arc") and move.has("range") and move.has("duration")
 
 
-# 這招最多躲 / 擋多久：資料有 duration 的照「預兆 + 持續 + 最後轉圈（spin_time）+ 0.3」，沒有就 EVADE_MAX
-static func _evade_limit(move: Dictionary) -> float:
+# 這招躲 / 擋到什麼時候：資料寫得出長度的（持續：預兆 + duration + 最後轉圈 spin_time；多段：最後一下）照怪物自己的時間（fsm.time）+ 0.3 算，
+# 冰冷、減速會讓牠的時間變慢（Enemy.fsm.update 乘 chill_mul），用真實秒數會在第三爪前就放掉；寫不出長度的最多 EVADE_MAX 秒
+func _move_over(e: Enemy, move: Dictionary) -> bool:
 	if move.has("duration"):
-		return float(move.get("windup", 0.0)) + float(move.duration) + float(move.get("spin_time", 0.0)) + 0.3
-	return EVADE_MAX
+		return e.fsm.time > float(move.get("windup", 0.0)) + float(move.duration) + float(move.get("spin_time", 0.0)) + 0.3
+	if _multi_hit(move):
+		return e.fsm.time > _last_hit_at(move) + 0.3
+	return _evade_time > EVADE_MAX
 
 
 # 扇形的招（資料有 arc 與 range，例：守墓人的提燈噴火）：我在牠面前的扇形裡（多留 0.3 弧度、1 格）
@@ -626,6 +699,9 @@ func _shield_faces(from: Vector2) -> bool:
 # 連按會變成「擋 → 盾擊 → 放下 → 再舉」，中間的空檔一直被打（守墓人的提燈每 0.25 秒一下），還每次扣 20 魔力
 func _hold_shield(cmd: InputCmd) -> void:
 	cmd.buttons |= InputCmd.BTN_SPECIAL_HELD
+	var exit := _zone_exit()
+	if exit != Vector2.ZERO:   # 舉著盾也能走（移速減半）：站在殘火裡就邊擋邊走出去（提燈轉圈留的殘火剛好在貼身的距離）
+		cmd.move = exit
 
 
 # 這招在怪物資料裡的表：資料（含變身後的子表，一層）裡跟狀態同名的那一項；查不到回傳 {}（沒有 windup 就照反應時間滾）
@@ -684,6 +760,15 @@ func _leave_zone(cmd: InputCmd) -> bool:
 			var dir := out.normalized() if out.length_squared() > 1e-4 else Vector2(0, 1)
 			_walk(cmd, r.at + dir * (radius + p.radius + 1.0))
 			return true
+	var exit := _zone_exit()
+	if exit != Vector2.ZERO:
+		_walk(cmd, p.pos + exit * 2.0)
+		return true
+	return false
+
+
+# 站在怪物的地面效果裡（會扣血的、蜘蛛網）：往外走的方向（從圈心往外），沒站在裡面回傳 ZERO
+func _zone_exit() -> Vector2:
 	for z: Dictionary in w.zones:
 		var hurts: bool = z.get("damage_per_sec", 0.0) > 0.0 or z.has("web_slow")
 		if not hurts or z.get("remaining", 0.0) < 0.3:
@@ -694,10 +779,8 @@ func _leave_zone(cmd: InputCmd) -> bool:
 		var out: Vector2 = p.pos - z.pos
 		if out.length() > z.radius + p.radius:
 			continue
-		var dir := out.normalized() if out.length_squared() > 1e-4 else Vector2(0, 1)
-		_walk(cmd, z.pos + dir * (z.radius + p.radius + 1.0))
-		return true
-	return false
+		return out.normalized() if out.length_squared() > 1e-4 else Vector2(0, 1)
+	return Vector2.ZERO
 
 
 # 隊友倒地：自己與隊友身邊 SAFE_RANGE 內都沒有怪才走過去按住 F 救（救要 REVIVE.revive_time 秒、不能動；有怪就照常先打，倒地能撐 down_time 秒）
@@ -851,7 +934,10 @@ func _ally_in_line(target: Vector2, area: float = 0.0) -> bool:
 
 # 生命低於 POTION_AT、藥水還有次數又不在冷卻就按 Q；正在擋 / 躲的時候不喝（喝藥會放下盾），快死了（POTION_URGENT 以下）才硬喝
 func _drink(cmd: InputCmd) -> void:
-	if p.hp >= p.max_hp * POTION_AT or p.slots.heal.charges <= 0:
+	# 藥水整局只有 SkillDefs.heal.charges 瓶、不會補（ActiveSlots.heal）：Boss 醒著才照 POTION_AT 喝，平常留到快死（POTION_URGENT）才喝
+	var boss := _boss()
+	var at := POTION_AT if boss != null and _boss_awake(boss) else POTION_URGENT
+	if p.hp >= p.max_hp * at or p.slots.heal.charges <= 0:
 		return
 	if (_block_id != 0 or _evade_id != 0 or _block_time > 0.0) and p.hp >= p.max_hp * POTION_URGENT:
 		return
@@ -1074,6 +1160,8 @@ func _nearest_awake() -> Enemy:
 # 被召喚出來的怪：召喚者還活著就去打召喚者（只打送上門的會打不完，召喚者每隔幾秒又叫一批）
 func _summoner_of(e: Enemy) -> Enemy:
 	var s := w.entities.get(e.summoner_id) as Enemy if e.summoner_id != 0 else null
+	if s != null and s.is_boss() and smart_play and p.pos.distance_to(e.pos) <= MINION_CLOSE and p.pos.distance_to(e.pos) < p.pos.distance_to(s.pos):
+		return e   # Boss 叫的小怪貼在身邊、比 Boss 近：先打掉（屍犬撲咬的硬直會讓狼人爪擋不了）
 	return s if s != null and not s.is_dead and not _skip.has(s.id) else e
 
 
