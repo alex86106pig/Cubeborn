@@ -4,6 +4,7 @@
 # 挖完（OPEN）停止生怪、難度不再漲，場上的怪留著；再到墳墓按 F：單人直接走，多人發起投票（全員同意或時間到就走，有人反對就取消）
 # 只有地圖資料 "dig_event": true 的地圖才有（測試場地照舊用波次）；不持有 World，每次呼叫時傳入；只在權威端更新
 # 沒有挖墳的小關（MapGen 的 stage_doors）：出口是關卡盡頭的門，站在門前按 F 走同一套投票，通過就到下一小關（World.next_stage）
+# 投票通過先發 level:leaving、等 EventDefs.LEAVE.cover 秒（畫面收圈蓋住）才真的換小關 / 換層；通關（最後一層）不等
 class_name DigEvent
 extends RefCounted
 
@@ -25,6 +26,8 @@ var vote_by := 0            # 發起投票的 peer id（0 = 沒有投票）
 var vote_left := 0.0        # 剩餘秒數
 var vote_yes: Array[int] = []   # 同意的 peer id（含發起人）
 var vote_door := -1         # 投票要走的小關出口門（stage_doors 的第幾扇；-1 = 挖墳的出口）
+var leave_left := 0.0       # > 0：投票通過、等過場蓋住才換關的剩餘秒數
+var leave_door := -1        # 要走的門（同 vote_door；-1 = 挖墳的出口 → 下一層）
 
 
 func reset(world: World) -> void:
@@ -37,6 +40,8 @@ func reset(world: World) -> void:
 	_erupt_warned = false
 	_boss_placed = false
 	_clear_vote()
+	leave_left = 0.0
+	leave_door = -1
 	point = MapDefs.to_world(world.map, world.map.dig)
 
 
@@ -59,6 +64,8 @@ func can_dig(world: World, p: Player) -> bool:
 
 # 挖完後站在墳墓旁按 F：前往下一層（或通關）；小關站在出口的門前
 func can_exit(world: World, p: Player) -> bool:
+	if is_leaving():
+		return false
 	if not enabled(world):
 		return door_at(world, p) >= 0
 	return state == OPEN and p.pos.distance_to(point) <= EventDefs.DIG.range
@@ -76,6 +83,30 @@ static func door_at(world: World, p: Player) -> int:
 		if p.pos.distance_to(MapDefs.to_world(world.map, list[i].reach)) <= EventDefs.DIG.range:
 			return i
 	return -1
+
+
+func is_leaving() -> bool:
+	return leave_left > 0.0
+
+
+# 投票通過（或 --stage-hop）：開始過場，cover 秒後換到 door 那扇門的下一小關（-1 = 下一層）
+func leave(world: World, door: int) -> void:
+	leave_left = EventDefs.LEAVE.cover
+	leave_door = door
+	world.emit_event("level:leaving", {"cover": leave_left, "door": door})
+
+
+func _update_leave(world: World, dt: float) -> void:
+	leave_left -= dt
+	if leave_left > 0.0:
+		return
+	var door := leave_door
+	leave_left = 0.0
+	leave_door = -1
+	if door >= 0:
+		world.next_stage(doors(world)[door].reward)
+	else:
+		world.next_floor()
 
 
 func is_voting() -> bool:
@@ -110,6 +141,9 @@ func spawn_boss(world: World) -> void:
 
 
 func update(world: World, dt: float) -> void:
+	if is_leaving():   # 過場中：場上照常跑，只等時間到換關（換關時 reset 會清掉）
+		_update_leave(world, dt)
+		return
 	if not enabled(world):
 		if not doors(world).is_empty():
 			_update_vote(world, dt)
@@ -289,12 +323,10 @@ func _proceed(world: World) -> void:
 	var door := vote_door
 	_clear_vote()
 	world.emit_event("vote:passed", {})
-	if door >= 0:
-		world.next_stage(doors(world)[door].reward)
-	elif world.floor_num >= EventDefs.DIG.last_floor:
+	if door < 0 and world.floor_num >= EventDefs.DIG.last_floor:
 		world.win()
 	else:
-		world.next_floor()
+		leave(world, door)
 
 
 func _clear_vote() -> void:

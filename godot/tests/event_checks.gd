@@ -300,8 +300,19 @@ static func check_next_floor() -> String:
 	var f := {World.HOST_PEER_ID: _cmd(InputCmd.BTN_INTERACT)}
 	p.pos = w.event.point
 	var ev := _step(w, 1, f)
-	if w.is_over or w.floor_num != 2 or not _named(ev, "vote:started").is_empty():
-		return "單人第 1 層按 F 應直接到第 2 層、不跳投票（第 %d 層、通關 %s）" % [w.floor_num, w.is_over]
+	# 投票通過先過場（畫面收圈蓋住）：發 level:leaving、還在這一層、不能再按一次；EventDefs.LEAVE.cover 秒後才換層
+	var leaving := _named(ev, "level:leaving")
+	if w.is_over or w.floor_num != 1 or not _named(ev, "vote:started").is_empty() or leaving.size() != 1 or not w.event.is_leaving():
+		return "單人第 1 層按 F 應不跳投票、先過場（第 %d 層、通關 %s、level:leaving %d 個）" % [w.floor_num, w.is_over, leaving.size()]
+	if not is_equal_approx(float(leaving[0].cover), EventDefs.LEAVE.cover) or w.event.can_exit(w, p):
+		return "過場應是 LEAVE.cover 秒、過場中不能再走出口：%s" % [leaving[0]]
+	var cover_steps := ceili(EventDefs.LEAVE.cover / DT)
+	ev = _step(w, cover_steps - 2, f)
+	if w.floor_num != 1 or not _named(ev, "level:leaving").is_empty():
+		return "過場還沒結束就換層了，或又發了一次 level:leaving（第 %d 層）" % w.floor_num
+	ev = _step(w, 3)
+	if w.is_over or w.floor_num != 2 or _named(ev, "floor:started").size() != 1 or w.event.is_leaving():
+		return "過場 %.2f 秒後應到第 2 層（第 %d 層、通關 %s）" % [EventDefs.LEAVE.cover, w.floor_num, w.is_over]
 	w = _world()
 	p = _p(w)
 	w.sync_floor(EventDefs.DIG.last_floor)
@@ -598,6 +609,11 @@ static func check_net_event() -> String:
 
 # 小關（地圖改版第 4 步）：墓園從 1-1 開始、沒有挖墳；站在出口的門前按 F，單人直接到下一關、拿到那扇門的獎勵、基礎難度 +per_stage、
 # 回到新地圖的出生點；多人投票走發起人那扇門；有鐵砧的關起點旁有鐵砧；1-5 有挖墳，挖完到第 2 層（不分小關）
+# 投票通過後的過場（DigEvent.leave）跑完要幾步
+static func _leave_steps() -> int:
+	return ceili(EventDefs.LEAVE.cover / DT) + 1
+
+
 static func check_stage_exit() -> String:
 	var w := _world([World.HOST_PEER_ID], false, MapDefs.FLOOR_MAPS[1])
 	var p := _p(w)
@@ -612,6 +628,9 @@ static func check_stage_exit() -> String:
 	var key_before := w.layout_key.duplicate()
 	p.pos = MapDefs.to_world(w.map, door.reach)
 	var ev := _step(w, 1, {World.HOST_PEER_ID: _cmd(InputCmd.BTN_INTERACT)})
+	if w.stage_num != 1 or _named(ev, "level:leaving").size() != 1:   # 先過場，LEAVE.cover 秒後才換關
+		return "按 F 應先過場（level:leaving）、還在 1-1（現在 %s）" % World.level_name(w.floor_num, w.stage_num)
+	ev.append_array(_step(w, _leave_steps()))
 	var started := _named(ev, "stage:started")
 	if w.stage_num != 2 or w.floor_num != 1 or started.is_empty() or not _named(ev, "vote:started").is_empty():
 		return "單人站在門前按 F 應直接到 1-2、不跳投票（現在 %s）" % World.level_name(w.floor_num, w.stage_num)
@@ -640,6 +659,7 @@ static func check_stage_exit() -> String:
 	p.pos = w.event.point
 	_step(w, 1)   # 放開 F（上一次按 F 是在 1-1 的門前，按著不放不算新的一下）
 	_step(w, 1, {World.HOST_PEER_ID: _cmd(InputCmd.BTN_INTERACT)})
+	_step(w, _leave_steps())
 	if w.floor_num != 2 or w.stage_num != 0 or w.map_id != MapDefs.FLOOR_MAPS[2]:
 		return "1-5 挖完按 F 應到第 2 層（不分小關），實際 %s %s" % [World.level_name(w.floor_num, w.stage_num), w.map_id]
 	# 多人：P1 在第二扇門前按 F 發起投票，P2 按 Enter 同意 → 走 P1 那扇門
@@ -653,6 +673,7 @@ static func check_stage_exit() -> String:
 	if _named(ev, "vote:started").is_empty() or w2.event.vote_door != pick or w2.stage_num != 1:
 		return "多人在門前按 F 應發起投票、記下要走的門（門 %d、第 %d 小關）" % [w2.event.vote_door, w2.stage_num]
 	ev = _step(w2, 1, {World.HOST_PEER_ID + 1: _cmd(InputCmd.BTN_VOTE_YES)})
+	ev.append_array(_step(w2, _leave_steps()))
 	started = _named(ev, "stage:started")
 	if w2.stage_num != 2 or started.is_empty() or started[0].reward != String(doors2[pick].reward):
 		return "全員同意後應走發起人那扇門（第 %d 小關、獎勵 %s / %s）" % [w2.stage_num, started[0].reward if not started.is_empty() else "", doors2[pick].reward]

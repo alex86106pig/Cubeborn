@@ -483,7 +483,7 @@ func _sync_arena() -> void:
 		doors.append({"pos": MapDefs.to_world(world.map, d.at), "side": d.side})
 	arena_view.build(world.half_extents, world.terrain, theme, doors)
 	world_view.apply_theme(theme)
-	if perf != null:   # 換小關 / 換層的卡頓拆成模擬（perf stage_hop 的 sim_ms）與這裡的場地重建
+	if perf != null:   # 換小關 / 換層的卡頓拆成模擬（換關那一步，perf hitch 的 logic）與這裡的場地重建
 		print("perf arena_build t=%.2f ms=%.1f blocks=%d" % [world.stats.time, (Time.get_ticks_usec() - t0) / 1000.0, world.terrain.blocks.size()])
 
 

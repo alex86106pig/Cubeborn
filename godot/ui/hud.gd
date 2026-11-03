@@ -83,6 +83,7 @@ var _copy_button := UiKit.button("複製遊玩紀錄")   # 複製遊玩紀錄（
 var _copy_note := UiKit.label("", 16, UiKit.GOLD)
 var last_report := ""              # 上次複製的文字（測試用）
 var run_log := RunLog.new()
+var level_transition := LevelTransition.new()   # 換小關 / 換層的收圈過場
 var _frame_clock := FrameClock.new()   # 遊玩紀錄的幀時間用實際間隔（delta 遇到慢幀會失真）
 var profile: Profile                # 局外存檔（v0.45，main.gd 給）：結算畫面顯示累計金幣；null = 不顯示累計
 var _floor_coins := 0               # 剛過關拿到的金幣：同一步的 floor:started 橫幅一起顯示
@@ -316,6 +317,7 @@ func _init() -> void:
 	_banner.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_banner.modulate.a = 0.0
 	root.add_child(_banner)
+	root.add_child(level_transition)   # 蓋在場上的介面與橫幅上面、結算與選單下面
 
 	_copy_button.pressed.connect(copy_report)
 	_build_overlay(_game_over, Color(40 / 255.0, 0, 0, 0.55), [_game_over_title, _game_over_stats, _game_over_log, _copy_button, _copy_note, _pulse(UiKit.label("按 R 重新開始", 20))])
@@ -481,6 +483,8 @@ func _pulse(l: Label) -> Label:
 
 func _process(delta: float) -> void:
 	var frame_seconds := _frame_clock.tick(delta)
+	if level_transition.is_active():
+		level_transition.update(delta, world, _transition_center())
 	_update_fps(delta)
 	if _game_over_delay >= 0.0:
 		_game_over_delay -= delta
@@ -707,7 +711,10 @@ func _on_event(name: String, p: Dictionary) -> void:
 				_floor_coins = p.amount
 			elif local_player() != null:   # 全員各拿一份，所以誰撿到都跳在自己頭上
 				_floaters.spawn(local_player(), "+%d 金幣" % p.amount, &"coin")
+		"level:leaving":
+			level_transition.start(p.cover, world)
 		"stage:started":
+			level_transition.set_card(world, p.floor, p.stage, p.difficulty, p.get("reward", ""))
 			var reward: String = p.get("reward", "")
 			var got := ""
 			if reward != "":
@@ -716,6 +723,7 @@ func _on_event(name: String, p: Dictionary) -> void:
 					got += " +%d" % MapGenDefs.REWARDS[StringName(reward)].amount
 			_show_banner("%s（基礎難度 %d）%s" % [World.level_name(p.floor, p.stage), p.difficulty, got], false, UiKit.GOLD)
 		"floor:started":
+			level_transition.set_card(world, p.floor, p.get("stage", 0), p.difficulty, "")
 			var text := "%s（基礎難度 %d）" % [World.level_name(p.floor, p.get("stage", 0)), p.difficulty]
 			if _floor_coins > 0:
 				text += "\n過關 +%d 金幣" % _floor_coins
@@ -737,6 +745,7 @@ func _on_event(name: String, p: Dictionary) -> void:
 		"audio:muted":
 			_mute.text = "靜音（M）" if p.muted else ""
 		"game:restart":
+			level_transition.cancel()
 			_game_over_delay = -1.0
 			_game_over.visible = false
 			_copy_note.text = ""
@@ -787,6 +796,18 @@ func copy_report() -> void:
 
 
 # 網頁版 @keyframes banner：0~15% 由 1.3 倍縮回並淡入，75% 後淡出
+# 過場圓圈的圓心：自己的角色在畫面上的位置；沒有角色、相機不在場景樹裡（檢查）就用畫面中央
+func _transition_center() -> Vector2:
+	var me := local_player()
+	var size := level_transition.size
+	if me == null or camera == null or not camera.is_inside_tree():
+		return size / 2.0
+	var at := Vector3(me.pos.x, me.height + 0.8, me.pos.y)
+	if camera.is_position_behind(at):
+		return size / 2.0
+	return camera.unproject_position(at)
+
+
 func _show_banner(text: String, alert: bool, color := Color.WHITE) -> void:
 	_banner.text = text
 	_banner.add_theme_color_override(&"font_color", UiKit.ALERT if alert else color)

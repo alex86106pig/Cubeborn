@@ -62,6 +62,11 @@ const VOTE := {
 	"time": 15.0,
 }
 
+# 投票通過到真的換關（換小關 / 換層）：畫面在這段收圈蓋住（ui/level_transition.gd），換地圖的卡頓才看不到
+const LEAVE := {
+	"cover": 0.36,
+}
+
 const DIFFICULTY := {
 	"per_second": 1.0,         # 挖墳事件開始後每秒 +1（挖完就停）
 	"per_floor": 10.0,         # 每層基礎難度（第 1 層 0、第 2 層 10…）

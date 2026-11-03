@@ -1315,6 +1315,62 @@ static func _xray_unwritten(node: Node) -> String:
 
 
 # 每層出口的外觀（EventDefs.EXIT_STYLES）：第 1 層土堆 + 墓碑；換到第 2 層整個換成石棺，棺蓋跟著進度往旁邊滑開，打開後棺口有洞與出口環
+# 換關過場（ui/level_transition.gd）：收圈在模擬換關（LEAVE.cover 秒）之前就全黑；地形沒換就一直黑著、不顯示卡片；
+# 換了才出卡片（關卡名、基礎難度、門的獎勵、這關有鐵砧），至少停 HOLD 秒再打開；地形一直沒換 GIVE_UP 秒後也會打開
+static func check_level_transition() -> String:
+	var w := World.new(&"test_arena")
+	_worlds.append(w)
+	w.run_seed = 7
+	w.floor_num = 1
+	w.stage_num = 2
+	w.load_map(&"graveyard")
+	var lt := LevelTransition.new()
+	lt.size = Vector2(1920, 1080)
+	var dt := 1.0 / 60.0
+	var center := Vector2(1200, 500)
+	lt.start(EventDefs.LEAVE.cover, w)
+	var t := 0.0
+	while t < EventDefs.LEAVE.cover - dt * 1.5:
+		lt.update(dt, w, center)
+		t += dt
+	if not lt.is_black():
+		lt.free()
+		return "模擬換關（%.2f 秒）之前畫面應已全黑（%.2f 秒時還沒）" % [EventDefs.LEAVE.cover, t]
+	for i in 60:
+		lt.update(dt, w, center)
+	if not lt.is_black() or lt.card_text() != "":
+		lt.free()
+		return "地形還沒換應一直黑著、不顯示卡片"
+	w.next_stage(&"skill")   # 1-2 → 1-3：門的獎勵是技能、1-3 有鐵砧
+	lt.set_card(w, w.floor_num, w.stage_num, roundi(w.base_difficulty), "skill")
+	lt.update(dt, w, center)
+	var want := "1-3 墓園\n基礎難度 %d\n獲得：技能\n這關有鐵砧" % roundi(w.base_difficulty)
+	if lt.card_text() != want or not w.map.has("anvil"):
+		var got := lt.card_text()
+		lt.free()
+		return "卡片應寫「%s」，實際「%s」" % [want.replace("\n", " / "), got.replace("\n", " / ")]
+	t = dt
+	while t < LevelTransition.HOLD - dt * 1.5:
+		lt.update(dt, w, center)
+		t += dt
+	if not lt.is_black():
+		lt.free()
+		return "卡片應至少停 %.2f 秒" % LevelTransition.HOLD
+	for i in ceili((LevelTransition.OPEN + 0.1) / dt) + 2:
+		lt.update(dt, w, center)
+	if lt.is_active() or lt.visible:
+		lt.free()
+		return "打開後過場應結束"
+	lt.start(EventDefs.LEAVE.cover, w)   # 地形一直沒換（例如連線斷了）
+	for i in ceili((EventDefs.LEAVE.cover + LevelTransition.GIVE_UP + LevelTransition.OPEN + 0.2) / dt):
+		lt.update(dt, w, center)
+	var stuck := lt.is_active()
+	lt.free()
+	if stuck:
+		return "地形沒換 %.1f 秒後也應打開" % LevelTransition.GIVE_UP
+	return ""
+
+
 static func check_exit_looks() -> String:
 	for f: int in EventDefs.EXIT_STYLES:
 		for key in ["look", "idle", "hold", "doing", "bar", "started", "opened"]:
