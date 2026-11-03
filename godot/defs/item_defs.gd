@@ -339,6 +339,18 @@ const ITEMS := {
 	&"dirt_toss": {"kind": &"skill", "name": "甩土", "rarity": &"white", "shape": &"dot", "desc": "甩出一團土塊，炸開後周圍的怪短暫暈眩", "effects": []},
 	&"burrow": {"kind": &"skill", "name": "掘地", "rarity": &"white", "shape": &"dot", "desc": "鑽進土裡無敵 1 秒、往前移動 6 單位，出土時震開周圍的怪", "effects": []},
 
+	# ---- 魔力道具：回魔與最大魔力（不屬於羈絆，照 is_mana_item 掉；數字 Claude 暫定：基礎回魔 5、最大 100）----
+	&"mana_shard": {"kind": &"item", "name": "藍晶碎片", "rarity": &"white", "power": 0.8, "shape": &"dot", "bonds": [],
+		"desc": "最大魔力 +20", "effects": [{"stat": &"max_mana", "op": Stats.ADD, "value": 20.0}]},
+	&"prayer_beads": {"kind": &"item", "name": "冥想念珠", "rarity": &"green", "power": 2.0, "shape": &"i2", "bonds": [],
+		"desc": "每秒回魔 +3", "effects": [{"stat": &"mana_regen", "op": Stats.ADD, "value": 3.0}]},
+	&"mana_crystal": {"kind": &"item", "name": "魔力水晶", "rarity": &"green", "power": 2.0, "shape": &"i2", "bonds": [],
+		"desc": "最大魔力 +40", "effects": [{"stat": &"max_mana", "op": Stats.ADD, "value": 40.0}]},
+	&"mage_heart": {"kind": &"item", "name": "法師之心", "rarity": &"blue", "power": 4.0, "shape": &"l3", "bonds": [],
+		"desc": "最大魔力 +60、每秒回魔 +1", "effects": [{"stat": &"max_mana", "op": Stats.ADD, "value": 60.0}, {"stat": &"mana_regen", "op": Stats.ADD, "value": 1.0}]},
+	&"abyss_chalice": {"kind": &"item", "name": "深淵之杯", "rarity": &"purple", "power": 6.0, "shape": &"t4", "bonds": [],
+		"desc": "最大魔力 +30%、每秒回魔 +2", "effects": [{"stat": &"max_mana", "op": Stats.PCT, "value": 0.3}, {"stat": &"mana_regen", "op": Stats.ADD, "value": 2.0}]},
+
 	# ---- 輔助道具（Build 改版第 7 步）：鑲在寶石座上下左右才有效，只對標籤相符的技能（SkillDefs.TAGS）----
 	&"split_support": {"kind": &"item", "name": "分裂", "rarity": &"green", "power": 3.0, "shape": &"i2", "bonds": [],
 		"desc": "輔助：相鄰的範圍 / 投射技能 0.25 秒後再放一次（傷害 60%）", "effects": [{"ability": &"skill_support", "mode": &"split", "tags": [&"area", &"projectile"]}]},

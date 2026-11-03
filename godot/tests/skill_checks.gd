@@ -136,9 +136,16 @@ static func check_mana() -> String:
 	var want_cost: float = SkillDefs.SKILLS.whirlwind.mana * LootChecks._effect_value(&"hourglass", &"mana_cost")
 	if absf(p.stats.value(&"mana_regen") - want_regen) > 1e-3 or absf(ActiveSlots.mana_cost(p, p.slots.get_slot(p, 0)) - want_cost) > 1e-3:
 		return "苦艾酒回魔應 %.1f、時之沙漏後旋風斬耗魔應 %.1f：%.2f / %.2f" % [want_regen, want_cost, p.stats.value(&"mana_regen"), ActiveSlots.mana_cost(p, p.slots.get_slot(p, 0))]
-	for id: StringName in [&"wormwood", &"soul_scythe", &"hourglass"]:
+	for id: StringName in [&"wormwood", &"soul_scythe", &"hourglass", &"mana_shard", &"prayer_beads", &"mana_crystal", &"mage_heart", &"abyss_chalice"]:
 		if not LootDefs.drop_pool(ItemDefs.ITEMS[id].rarity).has(id):
 			return "魔力道具 %s 應在掉落池" % id
+	# 最大魔力：(基礎 + 加的) × (1 + 百分比)；法師之心 +60 與回魔 +1、深淵之杯 +30% 與回魔 +2
+	var regen1 := p.stats.value(&"mana_regen")
+	p.add_item(&"mage_heart")
+	p.add_item(&"abyss_chalice")
+	var want_max := (Config.MANA.max + 60.0) * 1.3
+	if absf(p.max_mana() - want_max) > 1e-3 or absf(p.stats.value(&"mana_regen") - regen1 - 3.0) > 1e-3:
+		return "法師之心 + 深淵之杯：最大魔力應 %.0f、回魔 +3，實際 %.1f / +%.2f" % [want_max, p.max_mana(), p.stats.value(&"mana_regen") - regen1]
 	# 命中回魔：每 ItemDefs.PROCS.mana_on_hit.icd 秒最多一次
 	p.set_stat_source(&"test", [[&"mana_regen", Stats.MUL, 0.0], [&"mana_on_hit", Stats.ADD, 1.0]])
 	p.mana = 0.0
