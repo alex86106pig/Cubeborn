@@ -42,7 +42,8 @@ const SAFE_RANGE := 5.0                # 身邊這麼近有怪就先打怪
 const DIG_FLEE := 6.0                  # 挖墳開始後，身邊這麼近有醒著的怪就不挖、繞圈跑給怪追（_flee_dig）
 const KITE_RING := 9.0                 # 繞圈的半徑（從挖墳點算）
 const KITE_STEP := 0.6                 # 每次往圈上前方這麼多弧度的點走
-const KITE_BLOCK := 2.5                # 前方這麼近有 2 隻以上就掉頭
+const KITE_BLOCK := 2.5
+const HIT_RUN := 3.0                   # 挖墳繞圈時，這麼近只有 1 隻就停下來打（打帶跑），2 隻以上繼續跑                # 前方這麼近有 2 隻以上就掉頭
 const DIG_GUARD := 3.5                 # 挖墳時身邊這麼近有怪就停下來打
 const MINION_CLOSE := 3.0              # Boss 叫出來的小怪貼到這麼近、又比 Boss 近，就先打掉
 const REST_UNTIL := 0.9                # 挖墳前生命低於這個比例、身邊沒醒著的怪就站著回血（最多 REST_MAX 秒）；挖墳要撐 40~100 秒的怪潮
@@ -1226,6 +1227,14 @@ func _flee_dig(cmd: InputCmd) -> bool:
 			close_d = d
 			close = e
 	if close == null:
+		return false
+	# 打帶跑（使用者：「打帶跑啊」）：跑到只剩 1 隻追上來（HIT_RUN 內只有牠）就回頭打掉，2 隻以上貼著才繼續跑
+	var near := 0
+	for x in w.enemies:
+		var e := x as Enemy
+		if e != null and not e.is_dead and e.team != &"player" and not e.dormant and e.pos.distance_to(p.pos) <= HIT_RUN:
+			near += 1
+	if near <= 1:
 		return false
 	var center: Vector2 = w.event.point
 	var rel := p.pos - center
