@@ -264,6 +264,89 @@ static func check_inventory_suggest() -> String:
 	return ""
 
 
+# 互換：放到只被 1 件東西佔住的位置就兩件互換（被換走的回到原位、放不下找空位），換不回去就都不動並發 inventory:denied；
+# 拿著的武器放到背包的武器上 = 那把換上、換下來的放回那把原本的位置；主手的武器放到背包空格不動（主手不能空著）；
+# 背包介面的預覽（Loadout.swap_partner）跟實際結果一致
+static func check_inventory_swap() -> String:
+	var w := _new_world(3)
+	var p := _player(w)
+	var lo := p.loadout
+	var apply := func(op: Array) -> void:
+		lo.queue_ops([op])
+		lo.apply_ops(p)
+	# 主手武器 ↔ 背包的武器（同種不同稀有度：不是合成）
+	var main_uid: StringName = p.weapon_slots[Loadout.MAIN].uid
+	lo.add_weapon(p, WeaponDropDefs.make(&"bag_w", p.weapon_slots[Loadout.MAIN].base, &"blue", w.rng))
+	var bag_cell: Vector2i = p.inventory.find(&"bag_w").cell
+	if lo.swap_partner(main_uid, Loadout.BAG, bag_cell, 0) != &"bag_w":
+		return "預覽：主手武器拖到背包的武器上應顯示換上那把"
+	apply.call([InputCmd.OP_MOVE, String(main_uid), bag_cell.x, bag_cell.y, 0])
+	if p.weapon_slots[Loadout.MAIN].get("uid", &"") != &"bag_w" or p.inventory.find(main_uid).get("cell", Vector2i(-1, -1)) != bag_cell:
+		return "主手武器拖到背包的武器上應互換（那把換上、原本的放回 %s）：主手 %s、原本那把 %s" % [bag_cell, p.weapon_slots[Loadout.MAIN].get("uid"), p.inventory.find(main_uid)]
+	w.events.clear()
+	var main_now: StringName = p.weapon_slots[Loadout.MAIN].uid
+	apply.call([InputCmd.OP_MOVE, String(main_now), 6, 4, 0])
+	var denied := _named(w.events, "inventory:denied")
+	if p.weapon_slots[Loadout.MAIN].get("uid", &"") != main_now or denied.is_empty() or denied[0].reason != "main_empty":
+		return "主手武器拖到背包空格應不動並發 inventory:denied（main_empty）：%s" % [denied]
+	# 武器格子的道具 ↔ 背包的道具（兩個方向），效果跟著換
+	var sock := lo.add_item(p, &"whetstone", {}, 0, Loadout.MAIN)
+	var bag_item := lo.add_item(p, &"worn_boots", {}, 0, Loadout.BAG)
+	var s_cell: Vector2i = lo.find_item(sock).entry.cell
+	var b_cell: Vector2i = lo.find_item(bag_item).entry.cell
+	if lo.swap_partner(bag_item, Loadout.MAIN, s_cell, 0) != sock:
+		return "預覽：背包的道具拖到武器格子的道具上應顯示互換"
+	apply.call([InputCmd.OP_MOVE, String(bag_item), s_cell.x, s_cell.y, 0, Loadout.MAIN])
+	var a := lo.find_item(bag_item)
+	var b := lo.find_item(sock)
+	if a.get("where", -9) != Loadout.MAIN or a.entry.cell != s_cell or b.get("where", -9) != Loadout.BAG or b.entry.cell != b_cell:
+		return "背包的道具拖到武器格子的道具上應互換位置：%s / %s" % [a, b]
+	if not lo.items.any(func(it: Dictionary) -> bool: return it.id == &"worn_boots") or lo.items.any(func(it: Dictionary) -> bool: return it.id == &"whetstone"):
+		return "互換後生效的應是換進武器格子的那件"
+	apply.call([InputCmd.OP_MOVE, String(sock), s_cell.x, s_cell.y, 0, Loadout.MAIN])
+	if lo.find_item(sock).get("where", -9) != Loadout.MAIN or lo.find_item(bag_item).get("where", -9) != Loadout.BAG:
+		return "武器格子的道具拖回去（背包 → 格子上的那件）應再換回來"
+	# 背包裡兩件互換（同一個容器）
+	var dice := lo.add_item(p, &"loaded_dice", {}, 0, Loadout.BAG)
+	var d_cell: Vector2i = lo.find_item(dice).entry.cell
+	b_cell = lo.find_item(bag_item).entry.cell
+	apply.call([InputCmd.OP_MOVE, String(dice), b_cell.x, b_cell.y, 0])
+	if lo.find_item(dice).entry.cell != b_cell or lo.find_item(bag_item).entry.cell != d_cell:
+		return "背包裡兩件應互換位置：骰子 %s、皮靴 %s" % [lo.find_item(dice).entry.cell, lo.find_item(bag_item).entry.cell]
+	# 武器不會被換進武器格子：格子的道具拖到背包的武器上不動
+	w.events.clear()
+	var weapon_cell: Vector2i = p.inventory.find(main_uid).cell
+	apply.call([InputCmd.OP_MOVE, String(sock), weapon_cell.x, weapon_cell.y, 0])
+	if lo.find_item(sock).get("where", -9) != Loadout.MAIN or p.inventory.find(main_uid).cell != weapon_cell or _named(w.events, "inventory:denied").is_empty():
+		return "武器格子的道具拖到背包的武器上應不動（武器不進武器格子）並發 inventory:denied"
+	# 換不回去：背包只剩骰子那一格，格子裡 2 格長的道具換不進背包 → 都不動
+	var w2 := _new_world(4)
+	var p2 := _player(w2)
+	var lo2 := p2.loadout
+	var long := lo2.add_item(p2, _shaped(&"i2"), {}, 0, Loadout.MAIN)
+	var l_entry: Dictionary = lo2.find_item(long).entry
+	var l_cell: Vector2i = l_entry.cell
+	var l_rot: int = l_entry.rot
+	var x := lo2.add_item(p2, &"loaded_dice", {}, 0, Loadout.BAG)
+	var x_cell: Vector2i = lo2.find_item(x).entry.cell
+	var n := 0
+	for yy in p2.inventory.size.y:
+		for xx in p2.inventory.size.x:
+			if p2.inventory.fits(&"loaded_dice", Vector2i(xx, yy), 0):
+				p2.inventory.add(StringName("fill%d" % n), &"loaded_dice", Vector2i(xx, yy), 0)
+				n += 1
+	var before := [p2.inventory.entries.size(), lo2.container(Loadout.MAIN).entries.size()]
+	if lo2.swap_partner(x, Loadout.MAIN, l_cell, 0) != &"":
+		return "預覽：換不回去時不應顯示互換"
+	lo2.queue_ops([[InputCmd.OP_MOVE, String(x), l_cell.x, l_cell.y, 0, Loadout.MAIN]])
+	lo2.apply_ops(p2)
+	var xe := lo2.find_item(x)
+	var le := lo2.find_item(long)
+	if xe.get("where", -9) != Loadout.BAG or xe.entry.cell != x_cell or le.get("where", -9) != Loadout.MAIN or le.entry.cell != l_cell or le.entry.rot != l_rot \
+			or [p2.inventory.entries.size(), lo2.container(Loadout.MAIN).entries.size()] != before or _named(w2.events, "inventory:denied").is_empty():
+		return "背包滿了換不回去時應兩件都不動、發 inventory:denied：骰子 %s、長的 %s" % [xe, le]
+	return ""
+
 static func check_soul_chests() -> String:
 	# 擺放規則換 20 個種子看（台階邊緣的位置約 8% 會抽到，單一種子擋不住）
 	for s in range(1, 21):

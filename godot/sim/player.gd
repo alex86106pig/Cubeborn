@@ -456,7 +456,7 @@ func max_mana() -> float:
 
 # 招式 / 技能（資料有 mana）這次要扣多少：× 耗魔屬性 × 等級的縮減
 func mana_cost_of(def: Dictionary, level := 1) -> float:
-	return def.get("mana", 0.0) * stats.value(&"mana_cost") * (1.0 - SkillDefs.LEVEL.mana * (level - 1))
+	return def.get("mana", 0.0) * stats.value(&"mana_cost") * SkillDefs.level_mana_mul(level)
 
 
 func has_mana(cost: float) -> bool:

@@ -122,7 +122,7 @@ const HANDS_TEXT := {&"one": "單手", &"two": "雙手", &"off": "副手"}
 
 # 道具 / 武器的說明（地上的道具卡、背包的說明欄共用）：{ title, color, lines }
 # weapon 是武器實例（WeaponDropDefs）時顯示拿法、基本數值與詞條，否則顯示道具效果
-static func item_info(id: StringName, weapon: Dictionary) -> Dictionary:
+static func item_info(id: StringName, weapon: Dictionary, level := 1) -> Dictionary:
 	if not weapon.is_empty():
 		var b := WeaponDropDefs.base_stats(weapon)
 		var affixes: Array[String] = []
@@ -136,7 +136,8 @@ static func item_info(id: StringName, weapon: Dictionary) -> Dictionary:
 	var def: Dictionary = ItemDefs.ITEMS[id]
 	var r: Dictionary = ItemDefs.RARITIES[def.rarity]
 	if def.kind == &"skill":
-		return {"title": "%s（技能）" % def.name, "color": GOLD, "lines": [def.desc, skill_line(id)] as Array[String]}
+		var title := "%s（技能 · %d 級）" % [def.name, level] if level > 1 else "%s（技能）" % def.name
+		return {"title": title, "color": GOLD, "lines": [def.desc, skill_line(id, level)] as Array[String]}
 	var desc: String = def.get("desc", "")
 	if not def.get("effects", []).all(ItemDefs.is_implemented):
 		desc += "（效果尚未實作）"
@@ -151,8 +152,8 @@ static func item_info(id: StringName, weapon: Dictionary) -> Dictionary:
 	return {"title": "%s（%s）" % [def.name, r.name], "color": r.color, "lines": item_lines}
 
 
-# 技能的第二行：能用的武器、標籤、耗魔（插火把這種次數制的寫次數）
-static func skill_line(id: StringName) -> String:
+# 技能的第二行：能用的武器、標籤、耗魔（插火把這種次數制的寫次數）；level 2 級以上加「傷害 ×1.2」，耗魔照等級算
+static func skill_line(id: StringName, level := 1) -> String:
 	var sk: Dictionary = SkillDefs.SKILLS[id]
 	var weapons: Array[String] = []
 	for w: StringName in sk.weapons:
@@ -160,8 +161,26 @@ static func skill_line(id: StringName) -> String:
 	var tags: Array[String] = []
 	for t: StringName in sk.tags:
 		tags.append(SkillDefs.TAGS[t])
-	var cost := "耗魔 %d" % roundi(sk.mana) if sk.has("mana") else "每層 %d 次" % sk.get("charges", 0)
+	var cost := "耗魔 %d" % roundi(sk.mana * SkillDefs.level_mana_mul(level)) if sk.has("mana") else "每層 %d 次" % sk.get("charges", 0)
+	if level > 1 and sk.has("damage_pct"):
+		cost = "傷害 ×%s · %s" % [level_mul_text(SkillDefs.level_damage_mul(level)), cost]
 	return "鑲在%s的寶石座 · %s · %s" % ["、".join(weapons), "、".join(tags) if not tags.is_empty() else "—", cost]
+
+
+# 遺物卡的升級預覽：「升級：傷害 ×1.2 → ×1.4 · 耗魔 27 → 24」（沒傷害的技能只寫耗魔）
+static func skill_upgrade_line(id: StringName, level: int) -> String:
+	var sk: Dictionary = SkillDefs.SKILLS[id]
+	var parts: Array[String] = []
+	if sk.has("damage_pct"):
+		parts.append("傷害 ×%s → ×%s" % [level_mul_text(SkillDefs.level_damage_mul(level)), level_mul_text(SkillDefs.level_damage_mul(level + 1))])
+	if sk.has("mana"):
+		parts.append("耗魔 %d → %d" % [roundi(sk.mana * SkillDefs.level_mana_mul(level)), roundi(sk.mana * SkillDefs.level_mana_mul(level + 1))])
+	return "升級：" + " · ".join(parts)
+
+
+# 倍率的字：1.2、1.4、2（不寫多餘的 0）
+static func level_mul_text(mul: float) -> String:
+	return String.num(snappedf(mul, 0.01))
 
 
 # 道具形狀的小圖（不轉向）：每格 cell px，左上角在 at

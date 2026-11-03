@@ -222,6 +222,7 @@ godot/
 | `game:defeat` | `{ stats }`（v0.21.0：全員倒下 = 輸；單機和 `player:died` 同一步發出） | World |
 | `item:added` | `{ player_id, item, uid }`（v0.19.0：道具放進身上；item = 物品 id，uid = 實例 id，武器為空字串） | Player.add_item |
 | `inventory:full` | `{ player_id, item, pickup_id }`（v0.25.0：背包放不下；pickup_id = 地上道具的實體 id，不是從地上撿的為 0） | Loadout.add_item / add_weapon / add_corpse |
+| `inventory:denied` | `{ player_id, reason }`（背包 / 武器格子的搬動、互換沒做成；reason：`no_room` 放不下、`main_empty` 主手不能空著） | Loadout.apply_ops |
 | `weapon:dropped` | `{ uid, base, rarity, pos }`（v0.26.0：殺怪掉武器） | World.on_enemy_died |
 | `weapon:added` | `{ player_id, uid, slot }`（v0.26.0：撿到武器；slot = 主手 0 / 副手 1（Loadout.MAIN / OFF），-1 = 背包） | Player.add_weapon |
 | `weapon:merged` | `{ player_id, uid, base, rarity }`（v0.26.0：合成成功） | Loadout |

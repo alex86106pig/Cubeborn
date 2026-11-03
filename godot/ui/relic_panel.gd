@@ -1,6 +1,6 @@
 # 遺物的 N 選 1（Build 改版第 6 步）：卡片直排在背包左邊（打開時 HUD 自動打開背包，看得到格子與羈絆欄），遊戲不暫停
 # 卡片（2026-10-31 使用者從對比頁 mockups/relic-cards.html 選 A）：左邊畫物品長怎樣；右邊名稱（稀有度色、大字）→ 羈絆標籤（羈絆色 + 目前件數）→ 效果（數字金色）
-# 技能卡：名稱後面「升到 N 級」標籤（已經有時）、第二行鑲在哪 / 範圍 / 耗魔；外框是稀有度色（技能是金色）
+# 技能卡：名稱後面「升到 N 級」標籤（已經有時）、第二行鑲在哪 / 範圍 / 耗魔（照現在的等級）、要升級時第三行升級前後的傷害與耗魔；外框是稀有度色（技能是金色）
 # 自己的角色打開了遺物（Player.relic_id，連線時看快照）就顯示，選項讀遺物上的 offers；點卡片或按數字鍵選、R 重骰、Esc 先不選
 # 鍵盤由 InputCollector 接（relic_open 時數字鍵、R、Esc 不給技能、重新開始、暫停）；操作走 op_requested → InputCmd.inv_ops，結果等權威端
 class_name RelicPanel
@@ -121,11 +121,14 @@ func _card(i: int, id: StringName, me: Player) -> PanelContainer:
 	head.add_child(_key_badge(i, color))
 	head.add_child(UiKit.label(def.name, NAME_FONT, color))
 	var lv: int = me.skill_levels.get(id, 1)
-	if skill and me.loadout.has_item(id) and lv < SkillDefs.LEVEL.max:
+	var upgrade: bool = skill and me.loadout.has_item(id) and lv < SkillDefs.LEVEL.max
+	if upgrade:
 		head.add_child(_chip("升到 %d 級" % (lv + 1), UiKit.GOLD, true))
 	body.add_child(head)
 	if skill:
-		body.add_child(UiKit.label(UiKit.skill_line(id), CHIP_FONT, Color(1, 1, 1, 0.6)))
+		body.add_child(UiKit.label(UiKit.skill_line(id, lv if me.loadout.has_item(id) else 1), CHIP_FONT, Color(1, 1, 1, 0.6)))
+	if upgrade:
+		body.add_child(UiKit.label(UiKit.skill_upgrade_line(id, lv), CHIP_FONT, UiKit.GOLD))
 	else:
 		# 拿過了嗎：羈絆的件數同一種道具只算一次（Loadout.refresh_items），鑲著的再拿一個不會多算
 		var owned := ""

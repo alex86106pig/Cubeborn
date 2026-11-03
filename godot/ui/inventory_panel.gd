@@ -3,6 +3,7 @@
 # → 滑鼠停著的說明（固定在底部）。腳邊（按得到 F 的地上道具）是另一個浮在背包左邊的框（FeetPanel），內容與操作都在這裡處理
 # 左鍵點一下拿起、再點一下放下（按住拖曳也可以）；拿著時按 R 旋轉、右鍵或 Esc 放回原處，放到腳邊或面板外面丟在地上；
 # 道具放到武器格子 = 鑲上、放到背包 = 拿下來；武器放到主手 / 副手的名稱框就換上（拿不動的由權威端拒絕），放到同種同稀有度的武器上合成；
+# 放到只被 1 件東西佔住的位置 = 互換（拿著的武器放到背包的武器上 = 那把換上；預覽金色），沒做成時 HUD 跳原因（inventory:denied）；
 # 腳邊的放進背包或武器格子 = 撿起放在那一格。右鍵點一下 = 直接裝上 / 拿下來（_quick_equip）
 # 物品的畫法（UiKit.draw_item）：底色看種類、外框看稀有度、道具畫羈絆色點；滑鼠停在羈絆上時只亮那個羈絆的東西
 # 撿不下時（show_full）標出那一件、建議拿掉背包裡哪件就放得下
@@ -665,9 +666,15 @@ func _draw_drag(font: Font, me: Player) -> void:
 		_draw_item(font, _drag.id, local - (Vector2(anchor) + Vector2(0.5, 0.5)) * CELL, CELL, Vector2i.ZERO, _drag.rot, _drag_rarity(), 0.85, _drag.weapon)
 		return
 	var ok := inv.fits(_drag.id, at, _drag.rot, _drag.uid)
+	# 放不下但蓋住的只有 1 件、那件換得回去：金色 + 「互換」（規則在 Loadout.swap_partner，跟權威端同一套）
+	var partner := &"" if ok or _drag.has("pickup_id") else me.loadout.swap_partner(_drag.uid, wc.hand if not wc.is_empty() else Loadout.BAG, at, _drag.rot)
+	var tint := Color(0.3, 1, 0.4, 0.35) if ok else (Color(1, 0.85, 0.3, 0.35) if partner != &"" else Color(1, 0.3, 0.3, 0.35))
 	for c in Inventory.cells_of(_drag.id, _drag.rot):
-		draw_rect(Rect2(o + Vector2(at + c) * cell_px, Vector2(cell_px, cell_px)).grow(-2), Color(0.3, 1, 0.4, 0.35) if ok else Color(1, 0.3, 0.3, 0.35))
+		draw_rect(Rect2(o + Vector2(at + c) * cell_px, Vector2(cell_px, cell_px)).grow(-2), tint)
 	_draw_item(font, _drag.id, o, cell_px, at, _drag.rot, _drag_rarity(), 0.85, _drag.weapon)
+	if partner != &"":
+		var swap_text := "換上" if not _drag.weapon.is_empty() and me.inventory.find(_drag.uid).is_empty() else "互換"
+		draw_string(font, o + Vector2(at) * cell_px + Vector2(6, 24), swap_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, UiKit.GOLD)
 
 
 # 撿不下時取代操作說明的那一行
@@ -860,7 +867,7 @@ func _info_of(me: Player) -> Dictionary:
 			return UiKit.item_info(s.base, s)
 	var found := me.loadout.find_item(uid)
 	if not found.is_empty() and found.where != Loadout.BAG:
-		var info := UiKit.item_info(found.entry.id, {})
+		var info := UiKit.item_info(found.entry.id, {}, me.skill_levels.get(found.entry.id, 1))
 		var part: String = WeaponDefs.PARTS[WeaponDefs.grid_cells(Loadout.weapon_of(me.weapon_slots[found.where]))[found.entry.cell + Inventory.cells_of(found.entry.id, found.entry.rot)[0]]]
 		info.title += "（鑲在%s · %s）" % ["主手" if found.where == Loadout.MAIN else "副手", part]
 		var timing := ItemDefs.timing_line(found.entry.id, (found.inv as Inventory).parts_of(found.entry))
@@ -872,7 +879,7 @@ func _info_of(me: Player) -> Dictionary:
 	var e := me.inventory.find(uid)
 	if e.is_empty():
 		return {}
-	var bag_info := UiKit.item_info(e.id, e.get("weapon", {}))
+	var bag_info := UiKit.item_info(e.id, e.get("weapon", {}), me.skill_levels.get(e.id, 1))
 	bag_info.title += "（在背包裡不生效）"
 	return bag_info
 

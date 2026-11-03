@@ -122,5 +122,14 @@ static func relic_pool() -> Array[StringName]:
 	return gem_skill_ids().filter(func(id: StringName) -> bool: return not SKILLS[id].get("no_relic", false))
 
 
+# 等級的傷害倍率與耗魔倍率（施放、技能欄、說明框共用）
+static func level_damage_mul(level: int) -> float:
+	return 1.0 + LEVEL.damage * (level - 1)
+
+
+static func level_mana_mul(level: int) -> float:
+	return 1.0 - LEVEL.mana * (level - 1)
+
+
 static func can_socket(skill: StringName, weapon: StringName) -> bool:
 	return SKILLS.has(skill) and (SKILLS[skill].get("weapons", []) as Array).has(weapon)

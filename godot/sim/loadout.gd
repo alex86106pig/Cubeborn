@@ -157,7 +157,8 @@ func _equip_from(p: Player, uid: StringName, slot: int) -> bool:
 		inventory.remove(uid)
 	var placed: Array[StringName] = []
 	for w in displaced:
-		var spot := inventory.find_spot(w.base)
+		# 從背包換上：換下來的那把先試背包那把原本的位置（看起來是兩把互換），放不下再找空位
+		var spot := {"cell": src.bag.cell, "rot": src.bag.rot} if src.has("bag") and placed.is_empty() and inventory.fits(w.base, src.bag.cell, src.bag.rot) else inventory.find_spot(w.base)
 		if spot.is_empty():
 			for u in placed:
 				inventory.remove(u)
@@ -384,7 +385,8 @@ func clear_ops() -> void:
 
 
 # 背包操作（InputCmd.inv_ops）：
-#   [OP_MOVE, uid, x, y, rot, where?] 搬到 where（BAG 背包、MAIN / OFF 武器格子；沒寫 = 背包）的 (x, y)；武器只能進背包（副手的可以，主手不行）
+#   [OP_MOVE, uid, x, y, rot, where?] 搬到 where（BAG 背包、MAIN / OFF 武器格子；沒寫 = 背包）的 (x, y)；武器只能進背包（副手的可以，主手不行）；
+#     那裡被 1 件東西佔住就互換（_swap_into），拿著的武器放到背包的武器上 = 那把換上（_move_hand_weapon）；沒做成發 inventory:denied
 #   [OP_DROP, uid] 丟到面前的地上；[OP_EQUIP, uid, slot] 武器放進主手 / 副手（_equip_from）；[OP_MERGE, uid_a, uid_b, 留 a 的詞條?, 留 b 的詞條?] 把 a 拖到 b 上合成（鍛造祭壇旁）
 #   [OP_PICKUP, 地上道具 id, x, y, rot, where?] 撿起按得到 F 的地上道具放到 where 的 (x, y)（已被撿走、太遠、放不下就不動；武器與屍體只能進背包）
 func apply_ops(p: Player) -> void:
@@ -406,15 +408,15 @@ func apply_ops(p: Player) -> void:
 		match int(op[0]):
 			InputCmd.OP_MOVE:
 				var w := _find_weapon(uid)
+				var cell := Vector2i(op[2], op[3])
 				if w.has("slot"):
-					if w.slot == OFF and inventory.fits(w.inst.base, Vector2i(op[2], op[3]), op[4]):
-						weapon_slots[w.slot] = {}
-						inventory.add(uid, w.inst.base, Vector2i(op[2], op[3]), op[4], w.inst)
-						p.apply_active_weapon()
+					_move_hand_weapon(p, w, cell, int(op[4]))
 				elif not w.is_empty() or find_item(uid).is_empty():
-					inventory.move(uid, Vector2i(op[2], op[3]), op[4])   # 背包裡的武器、屍體
+					# 背包裡的武器、屍體：放到別的東西上就互換
+					if not inventory.move(uid, cell, op[4]) and not _swap_into(inventory.find(uid), inventory, BAG, inventory, cell, posmod(int(op[4]), 4)):
+						_deny(p, &"no_room")
 				else:
-					_move_item(p, uid, Vector2i(op[2], op[3]), posmod(int(op[4]), 4), where)
+					_move_item(p, uid, cell, posmod(int(op[4]), 4), where)
 			InputCmd.OP_DROP:
 				_drop(p, uid)
 			InputCmd.OP_EQUIP:
@@ -454,7 +456,10 @@ func _move_item(p: Player, uid: StringName, cell: Vector2i, rot: int, where: int
 	if found.is_empty() or dst == null:
 		return
 	if found.where == where:
-		if dst.move(uid, cell, rot) and where != BAG:
+		var moved := dst.move(uid, cell, rot) or _swap_into(found.entry, dst, where, dst, cell, rot)
+		if not moved:
+			_deny(p, &"no_room")
+		elif where != BAG:
 			refresh_items(p)   # 換了部位，發動時機跟著變
 		return
 	var e: Dictionary = found.entry
@@ -462,6 +467,94 @@ func _move_item(p: Player, uid: StringName, cell: Vector2i, rot: int, where: int
 		(found.inv as Inventory).remove(uid)
 		dst.add(uid, e.id, cell, rot)
 		refresh_items(p)
+	elif _swap_into(e, found.inv, found.where, dst, cell, rot):
+		refresh_items(p)
+	else:
+		_deny(p, &"no_room")
+
+
+# 拿著的武器拖進背包：拖到背包的武器上 = 那把換上這隻手（_equip_from）；副手的放到空位 = 拿下來；主手不能空著
+func _move_hand_weapon(p: Player, w: Dictionary, cell: Vector2i, rot: int) -> void:
+	var under: StringName = inventory.occupied().get(cell, &"")
+	var bag_weapon := inventory.find(under) if under != &"" else {}
+	if bag_weapon.has("weapon"):
+		if not _equip_from(p, under, w.slot):
+			_deny(p, &"no_room")
+	elif w.slot == OFF and inventory.fits(w.inst.base, cell, rot):
+		weapon_slots[w.slot] = {}
+		inventory.add(w.inst.uid, w.inst.base, cell, rot, w.inst)
+		p.apply_active_weapon()
+	else:
+		_deny(p, &"main_empty" if w.slot == MAIN else &"no_room")
+
+
+# 放到只被 1 件東西佔住的位置：兩件互換（e 放上去，被換走的那件先試 e 原本的位置、放不下找空位）；任何一件放不下就都不動
+func _swap_into(e: Dictionary, src: Inventory, src_where: int, dst: Inventory, cell: Vector2i, rot: int) -> bool:
+	var plan := swap_plan(e, src, src_where, dst, cell, rot)
+	if plan.is_empty():
+		return false
+	var other: Dictionary = plan.other
+	src.entries.erase(e)
+	dst.entries.erase(other)
+	e.cell = cell
+	e.rot = rot
+	dst.entries.append(e)
+	other.cell = plan.spot.cell
+	other.rot = plan.spot.rot
+	src.entries.append(other)
+	return true
+
+
+# 互換的計畫（不改任何東西，背包介面拖曳時也用來畫預覽）：{ other: 被換走的那件, spot: 它換到 src 的哪裡 }；換不了回傳 {}
+# src / dst 可以是同一個容器；武器與屍體只能待在背包，不會被換進武器格子
+func swap_plan(e: Dictionary, src: Inventory, src_where: int, dst: Inventory, cell: Vector2i, rot: int) -> Dictionary:
+	if e.is_empty() or src == null or dst == null:
+		return {}
+	var taken := dst.occupied(e.uid)
+	var under := {}
+	for c in Inventory.cells_of(e.id, rot):
+		if taken.has(cell + c):
+			under[taken[cell + c]] = true
+	if under.size() != 1:
+		return {}
+	var other := dst.find(under.keys()[0])
+	if src_where != BAG and (other.has("weapon") or other.id == &"corpse"):
+		return {}
+	# 暫時拿掉兩件、e 的替身放到新位置算得下算不下，算完原地還原（武器格子的 entries 就是武器的 sockets）
+	var src_before := src.entries.duplicate()
+	var dst_before := dst.entries.duplicate()
+	src.entries.erase(e)
+	dst.entries.erase(other)
+	var spot := {}
+	if dst.fits(e.id, cell, rot):
+		var moved := e.duplicate()
+		moved.cell = cell
+		moved.rot = rot
+		dst.entries.append(moved)
+		spot = {"cell": e.cell, "rot": other.rot}
+		if not src.fits(other.id, spot.cell, spot.rot):
+			spot = src.find_spot(other.id)
+	src.entries.assign(src_before)
+	dst.entries.assign(dst_before)
+	return {"other": other, "spot": spot} if not spot.is_empty() else {}
+
+
+# 背包介面拖曳的預覽：uid 放到 where 的 cell 會跟誰互換（拿著的武器放到背包的武器上 = 那把換上）；不會互換回傳 &""
+func swap_partner(uid: StringName, where: int, cell: Vector2i, rot: int) -> StringName:
+	var w := _find_weapon(uid)
+	if w.has("slot"):
+		var under: StringName = inventory.occupied().get(cell, &"") if where == BAG else &""
+		return under if inventory.find(under).has("weapon") else &""
+	if not w.is_empty() or find_item(uid).is_empty():
+		var e := inventory.find(uid)
+		return swap_plan(e, inventory, BAG, inventory, cell, rot).get("other", {}).get("uid", &"") if where == BAG else &""
+	var found := find_item(uid)
+	return swap_plan(found.entry, found.inv, found.where, container(where), cell, rot).get("other", {}).get("uid", &"")
+
+
+# 背包操作沒做成：讓本機玩家看得到原因（HUD 跳字）
+func _deny(p: Player, reason: StringName) -> void:
+	p.world.emit_event("inventory:denied", {"player_id": p.id, "reason": String(reason)})
 
 
 # 丟到面前的地上：道具移除效果；主手的武器不能丟（主手一定要有武器）

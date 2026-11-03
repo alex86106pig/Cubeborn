@@ -103,7 +103,7 @@ static func support_mana_mul(owner: Player, gem: Dictionary) -> float:
 
 # 這次施放的參數：等級的傷害倍率、相鄰輔助道具（標籤相符的才算）的效果
 static func cast_context(owner: Player, slot: Dictionary) -> Dictionary:
-	var ctx := {"mul": 1.0 + SkillDefs.LEVEL.damage * (slot.get("level", 1) - 1), "area": 1.0, "type": slot.def.get("damage_type", &"phys"), "split": false}
+	var ctx := {"mul": SkillDefs.level_damage_mul(slot.get("level", 1)), "area": 1.0, "type": slot.def.get("damage_type", &"phys"), "split": false}
 	if slot.has("gem"):
 		for sup: Dictionary in supports_of(owner, slot.gem):
 			match sup.mode:

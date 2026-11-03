@@ -211,6 +211,36 @@ static func check_skill_level() -> String:
 	return _check_skill_relic_rules()
 
 
+
+# 等級看得到：說明框標題寫幾級、第二行的傷害倍率與耗魔照等級算（沒傷害的技能不寫傷害）、遺物卡寫升級前後；技能欄 2 級以上左上角寫等級
+static func check_level_text() -> String:
+	var sk: Dictionary = SkillDefs.SKILLS.whirlwind
+	var lv1 := UiKit.item_info(&"whirlwind", {}, 1)
+	var lv3 := UiKit.item_info(&"whirlwind", {}, 3)
+	var want_cost := "耗魔 %d" % roundi(sk.mana * SkillDefs.level_mana_mul(3))
+	var want_mul := "傷害 ×%s" % UiKit.level_mul_text(SkillDefs.level_damage_mul(3))
+	if lv1.title.contains("級") or (lv1.lines[1] as String).contains("傷害 ×"):
+		return "1 級不應寫等級與傷害倍率：%s" % [lv1]
+	if not lv3.title.contains("3 級") or not (lv3.lines[1] as String).contains(want_cost) or not (lv3.lines[1] as String).contains(want_mul):
+		return "3 級說明框應寫「3 級」「%s」「%s」：%s" % [want_mul, want_cost, lv3]
+	var no_damage: StringName = SkillDefs.gem_skill_ids().filter(func(id: StringName) -> bool: return SkillDefs.SKILLS[id].has("mana") and not SkillDefs.SKILLS[id].has("damage_pct"))[0]
+	if UiKit.skill_line(no_damage, 3).contains("傷害 ×") or UiKit.skill_upgrade_line(no_damage, 2).contains("傷害"):
+		return "沒傷害的技能（%s）不應寫傷害倍率" % no_damage
+	var up := UiKit.skill_upgrade_line(&"whirlwind", 2)
+	for want in ["傷害 ×%s → ×%s" % [UiKit.level_mul_text(SkillDefs.level_damage_mul(2)), UiKit.level_mul_text(SkillDefs.level_damage_mul(3))],
+			"耗魔 %d → %d" % [roundi(sk.mana * SkillDefs.level_mana_mul(2)), roundi(sk.mana * SkillDefs.level_mana_mul(3))]]:
+		if not up.contains(want):
+			return "遺物卡的升級預覽缺「%s」：%s" % [want, up]
+	var slot := SkillBar.Slot.new("", "1", 0)
+	slot.show_level(1)
+	var t1 := slot.level.text
+	slot.show_level(2)
+	var t2 := slot.level.text
+	slot.free()
+	if t1 != "" or not t2.contains("2"):
+		return "技能欄：1 級不寫、2 級寫等級，實際「%s」「%s」" % [t1, t2]
+	return ""
+
 # 技能遺物的來源與保證：石棺必開出技能遺物、祭壇只開道具遺物；3 個選項至少 1 個是手上武器（主手或副手）能鑲、還沒滿級的技能，
 # 手上武器的技能都滿級了就照舊全隨機；保證的那個不固定在第一張
 static func _check_skill_relic_rules() -> String:

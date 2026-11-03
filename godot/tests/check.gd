@@ -161,8 +161,8 @@ func _initialize() -> void:
 	_check("屍體與冤魂（D6）：多人時死亡留下屍體、撿進背包；背著換層出現冤魂，打倒後死者在那裡復活、屍體消失；沒人帶屍體就沒有冤魂", EventChecks.check_corpse_ghost)
 
 	# ───────── 背包、祭壇與武器 ─────────
-	_check("背包：大小照 BAG_SIZE；形狀旋轉後格子正確；超出邊界、重疊放不下；自動找第一個空位（不夠時會轉向）；搬動成功 / 失敗；裝滿後撿不起來並發出 inventory:full；放不下時建議拿掉哪一件（占格最少），拿掉一件也不夠就不建議",
-		all.bind([LootChecks.check_inventory, LootChecks.check_inventory_suggest]))
+	_check("背包：大小照 BAG_SIZE；形狀旋轉後格子正確；超出邊界、重疊放不下；自動找第一個空位（不夠時會轉向）；搬動成功 / 失敗；裝滿後撿不起來並發出 inventory:full；放不下時建議拿掉哪一件（占格最少），拿掉一件也不夠就不建議；放到只被 1 件佔住的位置就互換（武器格子 ↔ 背包、背包裡兩件；換不回去都不動、發 inventory:denied），拿著的武器放到背包的武器上 = 那把換上、主手放到空格不動，預覽跟結果一致",
+		all.bind([LootChecks.check_inventory, LootChecks.check_inventory_suggest, LootChecks.check_inventory_swap]))
 	_check("祭壇與石棺：數量照地圖資料、位置可走且夠遠、底面平的（不擺在台階邊緣）、殺怪靈魂照 KILL_SOULS（共用）、靈魂不夠開不了、開的人直接打開 N 選 1、夠了扣靈魂並開出一個遺物（選項照石棺的稀有度）、開過不能再開；隨機放（同種子相同）、多人時數量與靈魂不變、全清買不完；稀有度各抽 20000 次符合權重、不會開出武器",
 		all.bind([LootChecks.check_soul_chests, LootChecks.check_chest_balance, LootChecks.check_chest_rarity]))
 	_check("局外金幣（v0.45）：過第 1 / 2 層給 5 / 10；地上的金幣走近自動撿、倒地不撿、多人只記一個數字；Profile 存檔讀得回來；掉落率符合 RUN_COINS.drop_chance（±4 個標準差）、召喚出來的不掉",
@@ -189,8 +189,8 @@ func _initialize() -> void:
 	_check("遺物：每人各自擲 N 選 1（N = 選項數屬性、不重複）、關掉再開同一組、骰子重擲用掉 1 顆（沒有就不能骰）、每人只選一次、全員選過才消失、放不下掉在腳邊、走遠就關掉；" \
 		+ "鐵砧：主手升一個稀有度、從 N 條新詞條選 1，再從這把武器的技能選 1，每人一次、用完不消失，傳說武器直接選技能",
 		all.bind([LootChecks.check_relic, LootChecks.check_anvil]))
-	_check("寶石座技能：寶石座只放技能、技能只放能用的武器、自動擺放；數字鍵 1~4 照主手→副手的寶石座、Q 治療藥水；每個技能放得出來、扣魔力、有效果；等級加傷減耗魔、技能遺物升級（石棺必出、祭壇不出，選項至少 1 個手上武器能用）；輔助道具貼著才有效（延長、火焰化、分裂）、每顆照強度加耗魔、節能減耗魔；魔力（開局滿、回魔、上限、不夠放不出、魔力道具與命中回魔、進快照）",
-		all.bind([SkillChecks.check_gem_rules, SkillChecks.check_every_skill, SkillChecks.check_skill_level, SkillChecks.check_supports, SkillChecks.check_mana]))
+	_check("寶石座技能：寶石座只放技能、技能只放能用的武器、自動擺放；數字鍵 1~4 照主手→副手的寶石座、Q 治療藥水；每個技能放得出來、扣魔力、有效果；等級加傷減耗魔、看得到等級（說明框、遺物卡升級前後、技能欄）、技能遺物升級（石棺必出、祭壇不出，選項至少 1 個手上武器能用）；輔助道具貼著才有效（延長、火焰化、分裂）、每顆照強度加耗魔、節能減耗魔；魔力（開局滿、回魔、上限、不夠放不出、魔力道具與命中回魔、進快照）",
+		all.bind([SkillChecks.check_gem_rules, SkillChecks.check_every_skill, SkillChecks.check_skill_level, SkillChecks.check_level_text, SkillChecks.check_supports, SkillChecks.check_mana]))
 	_check("羈絆：道具標的羈絆都存在、掉落池只有屬於羈絆的（輔助、魔力道具例外）；件數只算鑲在兩隻手上（背包不算）、同一種只算 1 件、跨羈絆兩邊各算、拿下來就扣；階數照門檻", LootChecks.check_bonds)
 	_check("羈絆效果：物理（物理傷害、失衡、擊退撞怪、無視物理抗性、必爆擊與處決）、火焰（沒有羈絆 1 層、疊層、疊滿爆炸、死亡傳層）、冰霜（沒有羈絆 1 層、冰冷減速、疊滿凍結、碎冰加傷、冰錐、凍結中被殺沒有死亡效果）、防禦（護甲、招架回血、招架後必爆擊、衝擊波消箭、反彈）、鬼火（顆數、轉圈碰到怪、定時衝出去）；武器詞條（羈絆 +1 主副手各算、燃燒 / 冰冷層數上限、凍結時間、額外鬼火、失衡累積、招架判定時間、屬性轉換、印記格 ×1.5、分支：沉重 / 爆燃 / 冰棺（畫面染冰白、一般凍結染藍） / 反擊架勢 / 星位）",
 		all.bind([BondChecks.check_phys, BondChecks.check_fire, BondChecks.check_cold, BondChecks.check_guard, BondChecks.check_wisp, BondChecks.check_weapon_affixes]))

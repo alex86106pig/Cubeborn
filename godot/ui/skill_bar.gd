@@ -1,4 +1,4 @@
-# 技能欄（照搬網頁版 HUD 的 skillbar）：左鍵、右鍵、Shift 翻滾（Godot 版新增）、數字鍵 1~4（寶石座的技能）與 Q（治療藥水）；CD 扇形遮罩與秒數、剩餘次數、耗魔（魔力不夠變暗）、閃爍回饋
+# 技能欄（照搬網頁版 HUD 的 skillbar）：左鍵、右鍵、Shift 翻滾（Godot 版新增）、數字鍵 1~4（寶石座的技能）與 Q（治療藥水）；CD 扇形遮罩與秒數、剩餘次數、耗魔（魔力不夠變暗）、技能等級（2 級以上）、閃爍回饋
 class_name SkillBar
 extends HBoxContainer
 
@@ -58,6 +58,7 @@ func refresh(world: World, player: Player) -> void:
 				slot.icon.modulate.a = 0.3 if data.charges <= 0 else 1.0
 			elif data != null and data.def.has("mana"):
 				_show_cost(slot, player, ActiveSlots.mana_cost(player, data))
+			slot.show_level(data.get("level", 1) if data != null else 1)
 		elif not slot.mana_def.is_empty():   # 耗魔的右鍵、招架、噴火
 			_show_cost(slot, player, player.mana_cost_of(slot.mana_def))
 		elif key == Player.ROLL_CD:
@@ -145,6 +146,8 @@ class Slot extends Control:
 	var mask: Control           # CD 扇形遮罩；子節點會畫在格子的 _draw 上面，獨立一層才能蓋住文字圖示、又墊在秒數底下
 	var charges: Label
 	var cost: Label             # 右下角的耗魔
+	var level: Label            # 左上角的技能等級（2 級以上才寫）
+	var _shown_level := 1
 	var mana_def: Dictionary = {}   # 不是寶石座的格子（右鍵、招架、噴火）：耗魔的招式資料
 	var cd_text: Label
 	var cd_left := 0.0
@@ -175,9 +178,18 @@ class Slot extends Control:
 		cost.size = Vector2(SLOT_SIZE - 4, 18)
 		cost.position = Vector2(0, SLOT_SIZE - 19)
 		add_child(cost)
+		level = UiKit.label("", 13, UiKit.GOLD, 1)
+		level.position = Vector2(3, -1)
+		add_child(level)
 		var key := UiKit.label(key_label, 11, Color(1, 1, 1, 0.8), 1)
 		key.position = Vector2(4, SLOT_SIZE - 18)
 		add_child(key)
+
+	# 等級變了才換字（每幀呼叫，不重新產生字串）
+	func show_level(lv: int) -> void:
+		if lv != _shown_level:
+			_shown_level = lv
+			level.text = "%d級" % lv if lv > 1 else ""
 
 	# 只有耗魔的招式才記（右下角寫耗魔）
 	func set_mana_def(def: Dictionary) -> void:
