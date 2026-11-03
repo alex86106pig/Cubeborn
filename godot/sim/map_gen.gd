@@ -92,7 +92,7 @@ static func _try_n(k: int, max_tries: int, fn: Callable) -> void:
 
 func _shape_for(role: StringName) -> Array[Vector2i]:
 	if role == &"boss":
-		return _cells(MapGenDefs.SHAPES[&"O4"])
+		return _cells(MapGenDefs.SHAPES[MapGenDefs.BOSS.shape])
 	var base: Array = MapGenDefs.SHAPES[_pick(MapGenDefs.SHAPE_POOL)]
 	var rot := _int(0, 3)
 	var mirror := _chance(50)
@@ -246,7 +246,7 @@ func _build_regions() -> bool:
 					pairs.append([p, p + d, d])
 		var pair: Array = _pick(pairs)
 		var d: Vector2i = pair[2]
-		var pt := _edge_point(pair[0], d, _int(10, s - 10))
+		var pt := _edge_point(pair[0], d, _int(MapGenDefs.OPENING_MARGIN, s - MapGenDefs.OPENING_MARGIN))
 		l.pt = pt
 		_keep(pt, MapGenDefs.KEEP.opening)
 		if a.role != &"boss":
@@ -260,7 +260,7 @@ func _build_regions() -> bool:
 			for c: Vector2i in b.sub:
 				ox = mini(ox, c.x * s)
 				oy = mini(oy, c.y * s)
-			var size := s * 2
+			var size: int = s * MapGenDefs.BOSS.cells
 			var ring: float = MapGenDefs.BOSS.ring
 			var inset := (size - ring) / 2.0
 			b.square = [ox, oy, size]
@@ -621,8 +621,8 @@ func _theme(t: StringName, reg: Dictionary, g: int) -> void:
 	var ts: Vector2 = MapDefs.TOMB_SIZE
 	match t:
 		&"tombs":
-			var rows := _int(3, 6)
-			var cols := _int(4, 9)
+			var rows := _int(2, 4)
+			var cols := _int(3, 6)
 			var sa := _q(2.6, 3.6)
 			var sb := _q(3.5, 5.0)
 			var vert := _chance(30)
@@ -639,8 +639,8 @@ func _theme(t: StringName, reg: Dictionary, g: int) -> void:
 					else:
 						add.call(a, b, ts.x, ts.y, tomb_top, &"tomb")
 		&"ruins":
-			var rw := minf(_q(14.0, 22.0), w - 8.0)
-			var rh := minf(_q(12.0, 20.0), h - 8.0)
+			var rw := minf(_q(10.0, 16.0), w - 8.0)
+			var rh := minf(_q(9.0, 14.0), h - 8.0)
 			var th: float = MapGenDefs.RUIN_WALL
 			if rw < 8.0 or rh < 8.0:
 				return
@@ -666,37 +666,37 @@ func _theme(t: StringName, reg: Dictionary, g: int) -> void:
 					p = maxf(p, c + gap / 2.0)
 				if side[2] - p > 1.0:
 					_ruin_wall(add, side, p, side[2], th, wall_top)
-			for i in _int(2, 4):
+			for i in _int(1, 2):
 				var s := _q(1.5, 2.5)
 				var px := x0 + _q(2.0, rw - 2.0 - s)
 				var py := y0 + _q(2.0, rh - 2.0 - s)
 				add.call(px, py, s, s, 0.5, &"plat")
 		&"pits":
-			_try_n(_int(3, 6), 24, func() -> bool:
-				var length := _q(8.0, 11.0)
+			_try_n(_int(2, 3), 24, func() -> bool:
+				var length := _q(6.0, 9.0)
 				var vert := _chance(30)
 				var px := _q(3.0, w - 6.0)
 				var py := _q(3.0, h - 6.0)
 				return add.call(px, py, 3.0 if vert else length, length if vert else 3.0, 0.5, &"plat"))
 		&"mausoleums":
-			_try_n(_int(3, 6), 30, func() -> bool:
+			_try_n(_int(2, 3), 30, func() -> bool:
 				var mw := _q(5.0, 7.0)
 				var mh := _q(4.0, 6.0)
 				var px := _span(3.0, mw, w)
 				var py := _span(3.0, mh, h)
 				return add.call(px, py, mw, mh, wall_top, &"wall"))
 		&"hill":
-			var hw := minf(_q(16.0, 26.0), w - 6.0)
-			var hh := minf(_q(12.0, 20.0), h - 6.0)
-			var s := _q(3.0, 6.0)
-			if hw < 10.0 or hh < 10.0:
+			var hw := minf(_q(12.0, 18.0), w - 6.0)
+			var hh := minf(_q(10.0, 14.0), h - 6.0)
+			var s := _q(2.5, 4.0)
+			if hw < 8.0 or hh < 8.0:
 				return
 			var x0 := _span(3.0, hw, w)
 			var y0 := _span(3.0, hh, h)
 			if add.call(x0, y0, hw, hh, 0.5, &"plat"):
 				add.call(x0 + s, y0 + s, hw - 2.0 * s, hh - 2.0 * s, 1.0, &"plat")
 		&"open":
-			_try_n(_int(4, 9), 30, func() -> bool:
+			_try_n(_int(2, 5), 30, func() -> bool:
 				var flat := _chance(50)
 				var px := _q(3.0, w - 4.0)
 				var py := _q(3.0, h - 4.0)

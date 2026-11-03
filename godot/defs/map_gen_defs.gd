@@ -3,11 +3,12 @@
 # 數字都是 Claude 暫定；客戶端照種子自己算同一張地圖，改規則時只用整數亂數（見 MapGen 的開頭）
 class_name MapGenDefs
 
-const SUB := 32              # 小格邊長（單位）
+const SUB := 16              # 小格邊長（單位）：一塊 3~4 格 = 768~1024，約 32 × 32
 const CORRIDOR := 3.5        # 走道半寬：走道上不放牆、墓碑（高台可以），邊緣也不吃進來
+const OPENING_MARGIN := 5    # 塊與塊之間的開口離小格角落至少多遠（走道要整條在格子裡）
 const EDGE_PAD := 3          # 地圖外框比區域多留的格數（外面一圈實心）
-const EAT_MAX := 5           # 不規則邊緣：每塊從邊界往內吃 1 ~ EAT_MAX 格（雜訊決定）；王族墓那塊只吃 1 格
-const NOISE_SCALE := 9       # 吃邊雜訊的格點間距
+const EAT_MAX := 3           # 不規則邊緣：每塊從邊界往內吃 1 ~ EAT_MAX 格（雜訊決定）；王族墓那塊只吃 1 格；長條只有 SUB 寬，吃太多會變走道
+const NOISE_SCALE := 6       # 吃邊雜訊的格點間距
 const ATTEMPTS := 30         # 產生失敗（拼不下、走不到）重來幾次
 const FALLBACK_MAP := &"graveyard_a"   # ATTEMPTS 次都失敗時改用的固定地圖
 const START_STAGE := 1       # 一層從第幾小關開始
@@ -26,6 +27,7 @@ const SHAPES := {
 	&"O4": [[0, 0], [1, 0], [0, 1], [1, 1]], &"I3": [[0, 0], [1, 0], [2, 0]], &"L3": [[0, 0], [1, 0], [0, 1]],
 	&"I4": [[0, 0], [1, 0], [2, 0], [3, 0]], &"L4": [[0, 0], [0, 1], [0, 2], [1, 2]], &"T4": [[0, 0], [1, 0], [2, 0], [1, 1]],
 	&"S4": [[0, 0], [1, 0], [1, 1], [2, 1]],
+	&"O9": [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1], [0, 2], [1, 2], [2, 2]],   # 王族墓專用（BOSS.cells）
 }
 const SHAPE_POOL: Array[StringName] = [&"O4", &"O4", &"I3", &"L3", &"L3", &"L4", &"L4", &"T4", &"S4", &"I4"]
 
@@ -39,12 +41,12 @@ const SECOND_THEME := 40
 const OBSTACLE_TOP := {&"tomb": MapDefs.TOMB_TOP, &"wall": MapDefs.WALL_TOP}
 const RUIN_WALL := 1.5       # 教堂廢墟、王族墓圍牆的厚度
 
-# 王族墓（1-5 最後一塊，固定）：2 × 2 小格的方形，中間 RING × RING 的圍牆、門 GATE 寬對著來的方向；四角石座；中央挖墳點
-const BOSS := {"ring": 30.0, "gate": 6.0, "corner": 5.0, "corner_inset": 3.0, "corner_top": 1.0, "patrol_margin": 2.0}
+# 王族墓（1-5 最後一塊，固定）：cells × cells 小格的方形（48 × 48，守墓人開打會變 2 倍大），中間 RING × RING 的圍牆、門 GATE 寬對著來的方向；四角石座；中央挖墳點
+const BOSS := {"cells": 3, "shape": &"O9", "ring": 30.0, "gate": 6.0, "corner": 5.0, "corner_inset": 3.0, "corner_top": 1.0, "patrol_margin": 2.0}
 
 # 固定要素：鐵砧在起點左或右 ANVIL_OFFSET；出口的門在最後一塊離入口最遠的外緣（前 3 名抽一個）
-const ANVIL_OFFSET := 8
-const DOOR_OFFSETS_TWO: Array[int] = [10, 22]   # 兩扇門在那一格外緣上的位置（0 ~ SUB）
+const ANVIL_OFFSET := 5
+const DOOR_OFFSETS_TWO: Array[int] = [4, 12]   # 兩扇門在那一格外緣上的位置（0 ~ SUB；門寬 ArenaView.DOOR_WIDTH 4.4）
 const DOOR_REACH := 3.0      # 門前站的位置往內縮多少（走道接到這裡，檢查走不走得到也看這點）
 # 兩扇門時各抽一種下一關的獎勵（不重複）；一扇門的關卡下一關固定有鐵砧，門上不抽獎勵
 const DOOR_REWARDS: Array[StringName] = [&"relic", &"skill", &"souls", &"dice"]
@@ -58,9 +60,9 @@ const REWARDS := {
 }
 const REWARD_DROP := Vector2(0.0, -3.0)
 
-# 擺放：怪群（每塊 2~4 群、支線 1~2 群，一群 6~10 隻）、小寶箱（打怪的塊 0~2 個）
-const PACKS := {"per_region": [2, 4], "per_branch": [1, 2], "size": [6, 10], "min_start": 16, "min_gap": 9, "margin": 4, "attempts": 60}
-const CHESTS := {"per_region": [0, 2], "min_start": 8, "min_pack": 4, "margin": 3, "attempts": 40}
+# 擺放：怪群（每塊 1~3 群、支線 1 群，一群 6~10 隻）、小寶箱（打怪的塊 0~1 個）
+const PACKS := {"per_region": [1, 3], "per_branch": [1, 1], "size": [6, 10], "min_start": 14, "min_gap": 8, "margin": 4, "attempts": 60}
+const CHESTS := {"per_region": [0, 1], "min_start": 8, "min_pack": 4, "margin": 3, "attempts": 40}
 
 # 保留空間：這些點周圍不放障礙物（半徑），也不吃邊
 const KEEP := {"start": 6.0, "opening": 4.5, "anvil": 3.0, "big_chest": 4.0, "door_reach": 3.0, "door": 2.5}
