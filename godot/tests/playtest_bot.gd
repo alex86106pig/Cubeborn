@@ -40,6 +40,8 @@ const LOOT_RANGE := INF                # 多遠的武器都去撿（量「全撿
 const SAFE_RANGE := 5.0                # 身邊這麼近有怪就先打怪
 const DIG_GUARD := 3.5                 # 挖墳時身邊這麼近有怪就停下來打
 const MINION_CLOSE := 3.0              # Boss 叫出來的小怪貼到這麼近、又比 Boss 近，就先打掉
+const REST_UNTIL := 0.6                # 挖墳前生命低於這個比例、身邊沒醒著的怪就站著回血（最多 REST_MAX 秒）
+const REST_MAX := 90.0
 const SUMMONER_RANGE := 15.0           # 這麼近有帶召喚詞條的怪就先打它（不然叫出來的打不完）
 const RANGED := [&"staff", &"shortbow", &"longbow"]
 const RANGED_STANDOFF := 0.7           # 遠程離目標的距離 = 普攻射程 × 這個比例（夾在 5~9）
@@ -108,6 +110,8 @@ var _recent: Array[String] = []
 const TRACE_N := 10
 var _socket_tried := {}                # 試過搬上武器格的道具 uid（搬不上去的不一直試）
 var _was_reviving := false
+var _rested := 0.0                     # 這一關挖墳前站著回血了幾秒
+var _rest_stage := -1
 
 
 func _init(p_world: World, p_player: Player, opts: Dictionary, seed_value: int) -> void:
@@ -151,6 +155,7 @@ func begin_floor() -> void:
 	_block_time = 0.0
 	_evade_id = 0
 	_commit = 0.0
+	_rested = 0.0
 
 
 # 步完：讀這一步的事件記統計；換武器看手上的 uid；倒下照模式處理（救起或記下死在哪）
@@ -307,6 +312,12 @@ func decide() -> InputCmd:
 			return _fight(cmd, _summoner_of(e))
 	if w.event.state == DigEvent.OPEN:
 		return cmd
+	if _rest_stage != w.stage_num:
+		_rest_stage = w.stage_num
+		_rested = 0.0
+	if smart_play and w.event.state == DigEvent.IDLE and p.hp < p.max_hp * REST_UNTIL and _rested < REST_MAX and _nearest_awake() == null:
+		_rested += DT   # 挖墳前先回血：挖的時候一直噴下一層的怪，打完 Boss 剩一點血就去挖會被噴出來的怪打死（20 場打倒 Boss 13 場都死在這）
+		return cmd
 	var point := w.event.point
 	if p.pos.distance_to(point) > EventDefs.DIG.range * 0.6:
 		_walk(cmd, point)
@@ -418,6 +429,8 @@ func _guard(cmd: InputCmd) -> bool:
 		var e := x as Enemy
 		if e == null or e.team == &"player" or e.fsm == null:
 			continue
+		if e.is_boss():
+			_fast_moves_of(e)   # 每步更新 Boss 的形態（wolf_chase 認得出是狼人，出爪的 claw 認不出），沒盾的也要
 		var threat := _threat_reach(e)
 		if threat < 0.0:
 			_reacted.erase(e.id)
@@ -426,7 +439,8 @@ func _guard(cmd: InputCmd) -> bool:
 		if _commit > 0.0 and e.no_souls and not e.is_boss():
 			continue   # 召喚出來的（Boss 叫的屍犬）輪流撲：躲完先打一輪，不然一直滾打不到 Boss
 		var state := e.fsm.current_name
-		var foreseen := has_shield and e.is_boss() and _is_fast_move(e)   # 先舉盾等著的那一招：一出來就接著擋，不用再等反應時間
+		# Boss 來不及反應的招（狼人爪）：看牠靠近、冷卻快好就知道要來了，一出來就接著擋（有盾）或抓時機滾（沒盾），不用再等反應時間
+		var foreseen := e.is_boss() and _is_fast_move(e)
 		if _reacted.get(e.id, &"") == state or (e.fsm.time < react and not e.is_dead and not foreseen):
 			continue   # 死後會爆的不用等反應：知道牠會炸，一死就跑
 		var move := _move_def(e)
@@ -437,7 +451,7 @@ func _guard(cmd: InputCmd) -> bool:
 		if move.has("flight") and move.has("windup") and not e.is_dead:
 			# 跳起來砸下的招（狼人飛撲：預兆 + 空中 flight 秒後落地一圈）：落地的判定只打腳底在地面 + slam_height 以下的，
 			# 落地那一刻起跳就躲得掉，不用翻滾（翻滾充能常常剛用在第三爪上）
-			if e.fsm.time < hit_at + float(move.flight) - JUMP_LEAD * e.action_speed:   # fsm.time 已經乘過 action_speed
+			if e.fsm.time < hit_at + float(move.flight) - JUMP_LEAD * _rate(e):   # 真實秒數換成怪物的時間
 				continue
 			_reacted[e.id] = state
 			cmd.buttons |= InputCmd.BTN_JUMP
@@ -445,7 +459,7 @@ func _guard(cmd: InputCmd) -> bool:
 			return true
 		if move.has("low_max_air"):
 			if not _jumped.has(e.id):
-				if e.fsm.time < hit_at - JUMP_LEAD * e.action_speed:   # fsm.time 已經乘過 action_speed
+				if e.fsm.time < hit_at - JUMP_LEAD * _rate(e):   # 真實秒數換成怪物的時間
 					continue
 				_jumped[e.id] = true
 				cmd.buttons |= InputCmd.BTN_JUMP
@@ -455,7 +469,7 @@ func _guard(cmd: InputCmd) -> bool:
 		var lunge := _is_lunge(e, move)
 		var blast := e.type == &"bloater" or e.has_affix(&"volatile")   # 爆炸一律擋不住（Combat）：膨脹屍脹大、死亡爆炸詞條的不擋
 		var can_block := has_shield and not e.is_dead and not lunge and not blast and not _unblockable.has(_move_key(e))
-		if not can_block and e.fsm.time < hit_at - ROLL_LEAD * e.action_speed:
+		if not can_block and e.fsm.time < hit_at - ROLL_LEAD * _rate(e):
 			continue   # 看到了，等快打下來才滾（舉盾不用等，早舉沒損失）
 		_reacted[e.id] = state
 		_evade_id = e.id
@@ -541,7 +555,7 @@ func _keep_evading(cmd: InputCmd) -> bool:
 	cmd.aim = e.pos
 	if _block_id == e.id:
 		var multi := _multi_hit(move)
-		if multi and e.fsm.time >= _last_hit_at(move) - ROLL_LEAD * e.action_speed and p.roll_charges > 0:
+		if multi and e.fsm.time >= _last_hit_at(move) - ROLL_LEAD * _rate(e) and p.roll_charges > 0:
 			_block_id = 0   # 多段招的最後一下擋不住（狼人第三爪往前撲）：前幾下擋完，最後一下前滾開
 			_roll(cmd, away, PI / 2.0)
 			return true
@@ -720,6 +734,12 @@ func _move_def(e: Enemy) -> Dictionary:
 				break
 		_moves[key] = found
 	return _moves[key]
+
+
+# 怪物的狀態機時間跑多快（Enemy：fsm.update(dt × action_speed × slow_mul × chill_mul)）：提早幾秒（真實）要乘這個才是牠的時間；
+# 只乘 action_speed 的話被冰冷 / 減速時會太早滾，翻滾的無敵（0.2 秒）在第三爪打下來前就過了
+static func _rate(e: Enemy) -> float:
+	return e.action_speed * e.slow_mul * e.chill_mul
 
 
 func _move_key(e: Enemy) -> String:
