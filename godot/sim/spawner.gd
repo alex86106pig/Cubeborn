@@ -128,8 +128,8 @@ func spawn_at(world: World, type: StringName, at: Vector2, extra: Dictionary = {
 # 生成倍率：挖墳地圖依目前難度、波次依第幾波；血量再乘人數；extra 蓋上去
 func spawn_mul(world: World, type: StringName, extra: Dictionary) -> Dictionary:
 	var mul: Dictionary
-	if world.has_floors():   # 挖墳地圖（D6）與小關：所有怪（含 Boss、怪群、冤魂）依目前難度
-		mul = EventDefs.difficulty_mul(extra.get("difficulty", world.difficulty()))
+	if world.has_floors():   # 挖墳地圖（D6）與小關：所有怪（含 Boss、怪群、冤魂）依目前難度與過了幾個小關
+		mul = EventDefs.difficulty_mul(extra.get("difficulty", world.difficulty()), world.stages_cleared())
 	else:
 		mul = (WaveDefs.NO_SCALING if EnemyDefs.is_boss(type) else WaveDefs.wave_multipliers(wave)).duplicate()
 	mul.hp *= player_count_hp_mul(world.players.size())

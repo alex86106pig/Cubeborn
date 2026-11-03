@@ -655,6 +655,13 @@ static func check_stage_exit() -> String:
 			return "1-%d 的鐵砧應%s出現" % [stage, "" if MapGenDefs.STAGES[stage].get("anvil", false) else "不"]
 	if not DigEvent.enabled(w) or not DigEvent.doors(w).is_empty():
 		return "1-%d 應有挖墳事件、沒有門" % w.stage_num
+	var stage_hp := func(cleared: int) -> float:
+		return roundf(EnemyDefs.ENEMIES.grunt.max_hp * EventDefs.difficulty_mul(w.difficulty(), cleared).hp)
+	var g5 := w.spawner.spawn_at(w, &"grunt", w.spawn_point)
+	var want5: float = stage_hp.call(MapGenDefs.STAGES.size() - 1)
+	if w.stages_cleared() != MapGenDefs.STAGES.size() - 1 or absf(g5.max_hp - want5) > EPS:
+		return "1-5 已過 %d 關（應 %d）、骷髏生命 %.0f（應 %.0f，小關成長 +%.0f%% / 關）" % [w.stages_cleared(), MapGenDefs.STAGES.size() - 1, g5.max_hp, want5, EventDefs.DIFFICULTY.stage_hp * 100.0]
+	CheckKit._note("小關成長：骷髏戰士生命 1-1 %.0f → 1-5 %.0f（攻擊 ×%.2f）" % [EnemyDefs.ENEMIES.grunt.max_hp, g5.max_hp, EventDefs.difficulty_mul(w.difficulty(), MapGenDefs.STAGES.size() - 1).damage])
 	_open(w)
 	p.pos = w.event.point
 	_step(w, 1)   # 放開 F（上一次按 F 是在 1-1 的門前，按著不放不算新的一下）
@@ -662,6 +669,8 @@ static func check_stage_exit() -> String:
 	_step(w, _leave_steps())
 	if w.floor_num != 2 or w.stage_num != 0 or w.map_id != MapDefs.FLOOR_MAPS[2]:
 		return "1-5 挖完按 F 應到第 2 層（不分小關），實際 %s %s" % [World.level_name(w.floor_num, w.stage_num), w.map_id]
+	if w.stages_cleared() != MapGenDefs.STAGES.size():
+		return "第 2 層應算過完第 1 層的 %d 關，實際 %d" % [MapGenDefs.STAGES.size(), w.stages_cleared()]
 	# 多人：P1 在第二扇門前按 F 發起投票，P2 按 Enter 同意 → 走 P1 那扇門
 	var w2 := _world([World.HOST_PEER_ID, World.HOST_PEER_ID + 1], false, MapDefs.FLOOR_MAPS[1])
 	var p1 := _p(w2)

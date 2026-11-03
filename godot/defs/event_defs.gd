@@ -72,6 +72,9 @@ const DIFFICULTY := {
 	"per_floor": 10.0,         # 每層基礎難度（第 1 層 0、第 2 層 10…）
 	"per_stage": 2.0,          # 分小關的層每過一關 +2（1-1 0 … 1-5 8，第 2 層從 10 開始；Claude 暫定）
 	"stat_per_point": 0.005,   # 怪物生命與攻擊力每點 +0.5%（30 點 +15%）
+	# 每過一個小關怪物另外加強（跟難度相乘；後面的層照前面的層過了幾關算，第 2 層 = 過完 1-1~1-5）：1-5 生命 ×1.8、攻擊 ×1.48
+	"stage_hp": 0.2,
+	"stage_damage": 0.12,
 }
 
 # 選角畫面選的難度（2026-10-27 使用者決定）：只改怪潮開始後難度上升的速度（per_second 的倍率），其他都不動
@@ -104,9 +107,9 @@ const GHOST := {
 }
 
 
-static func difficulty_mul(difficulty: float) -> Dictionary:
+static func difficulty_mul(difficulty: float, stages_cleared := 0) -> Dictionary:
 	var k := 1.0 + DIFFICULTY.stat_per_point * difficulty
-	return {"hp": k, "damage": k, "speed": 1.0}
+	return {"hp": k * (1.0 + DIFFICULTY.stage_hp * stages_cleared), "damage": k * (1.0 + DIFFICULTY.stage_damage * stages_cleared), "speed": 1.0}
 
 
 static func spawn_interval(difficulty: float) -> float:

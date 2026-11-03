@@ -269,6 +269,15 @@ func difficulty() -> float:
 	return base_difficulty if stage_num > 0 else 0.0
 
 
+# 這一局已經過了幾個小關（怪物的小關成長，EventDefs.DIFFICULTY.stage_hp）：這一層前面的小關 + 前面每個分小關的層 STAGES 個
+func stages_cleared() -> int:
+	var n := maxi(stage_num - 1, 0)
+	for f in range(1, floor_num):
+		if MapDefs.get_map(MapDefs.floor_map(map_id, f)).has("generator"):
+			n += MapGenDefs.STAGES.size()
+	return n
+
+
 # 這張地圖是一層一層往下打的（挖墳地圖或小關）：沒有波次，介面顯示層數與難度
 func has_floors() -> bool:
 	return DigEvent.enabled(self) or stage_num > 0
