@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>背包拼圖預覽</title>
+<style>
+  :root {
+    --bg: #15161a; --card: #1e2026; --line: #34373f; --text: #e6e2d6; --dim: #9a978c;
+    --cell: #24262d; --cell-lock: #3a3322; --gold: #e0b84a; --ok: #6fd08c; --bad: #e0625d;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 16px 48px; background: var(--bg); color: var(--text);
+    font: 15px/1.6 "Microsoft JhengHei", "Noto Sans TC", sans-serif; }
+  h1 { margin: 0 0 4px; font-size: 24px; }
+  h2 { margin: 24px 0 8px; font-size: 18px; }
+  .sub { color: var(--dim); margin: 0 0 16px; max-width: 980px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; max-width: 1200px; }
+  .box { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .box h3 { margin: 0 0 6px; font-size: 15px; }
+  .box ul { margin: 0; padding-left: 20px; }
+  .box .why { color: var(--dim); font-size: 14px; margin-top: 6px; }
+  .badge { display: inline-block; min-width: 22px; padding: 0 6px; border-radius: 4px; background: #3a2f5a; margin-right: 6px; text-align: center; }
+  .play { display: grid; grid-template-columns: minmax(0, auto) 340px; gap: 16px; align-items: start; max-width: 1200px; }
+  @media (max-width: 860px) { .play { grid-template-columns: 1fr; } }
+  #bag { display: block; background: #0f1013; border-radius: 6px; max-width: 100%; height: auto; user-select: none; }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+  button { background: #2b2e36; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 5px 12px; font: inherit; cursor: pointer; }
+  button:hover { border-color: var(--dim); }
+  button.main { background: #4a3f22; border-color: var(--gold); }
+  button:disabled { opacity: .4; cursor: default; }
+  .hint { color: var(--dim); font-size: 14px; }
+  #storage { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .st { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 8px; background: var(--card); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .st:hover { border-color: var(--dim); }
+  .st.hand { border-color: var(--gold); background: #2e2a1e; }
+  .panel h3 { margin: 0 0 6px; font-size: 15px; }
+  .panel .box + .box { margin-top: 10px; }
+  .row { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
+  .off { color: var(--dim); }
+  .on { color: var(--ok); }
+  .lv { color: var(--gold); }
+  #log { color: var(--gold); min-height: 1.6em; font-size: 14px; }
+  .sw { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+<h1>背包拼圖預覽：A 消行鍛合 + C 同色區塊 + D 星位</h1>
+<p class="sub">武器不再當格子，道具和技能放進背包就生效；背包的擺法決定加成。下面的試玩區可以實際擺擺看。道具名稱、效果、數字都是示意，不是遊戲裡的資料。</p>
+
+<div class="cards">
+  <div class="box">
+    <h3><span class="badge">A</span>消行鍛合</h3>
+    <ul>
+      <li>道具放上就有效果。</li>
+      <li>某一行填滿 → 可以按「鍛合」：碰到那幾行的道具升級，然後<b>整個道具鎖住、不能再移動</b>。</li>
+      <li>一次鍛合越多行越划算：1 行 +1 級、2 行 +2、3 行 +3、4 行 +5。</li>
+      <li>每鍛合 1 行，背包往下多 1 行（最多 9 行）。</li>
+      <li>填不滿時用「碎石」（殺怪掉的 1~2 格填充塊，沒有效果）。</li>
+    </ul>
+    <div class="why">動腦的地方：現在就鎖住升級，還是保留空位，等更好的道具一次鍛合多行？</div>
+  </div>
+  <div class="box">
+    <h3><span class="badge">C</span>同色區塊（取代羈絆件數）</h3>
+    <ul>
+      <li>每個道具的格子有羈絆顏色：火焰、冰霜、物理、毒。碎石沒有顏色。</li>
+      <li>同色格子上下左右<b>連成一塊</b>，看最大那塊有幾格：4 格 Lv1、8 格 Lv2、12 格 Lv3。</li>
+      <li>不同道具只要顏色一樣、格子貼在一起就算同一塊。</li>
+    </ul>
+    <div class="why">動腦的地方：形狀要剛好拼得起來，同色才連得上；別的顏色會擋路。構築方向一看背包就知道。</div>
+  </div>
+  <div class="box">
+    <h3><span class="badge">D</span>星位</h3>
+    <ul>
+      <li>每個道具旁邊標著 1 個星位（★），寫著要碰到哪種顏色。</li>
+      <li>星位那一格放了對的顏色（別的道具） → 啟動那個道具的額外效果。</li>
+      <li>星位指到背包外面就永遠啟動不了。</li>
+    </ul>
+    <div class="why">動腦的地方：想要的組合不一定形狀合得來；星位要的顏色常常跟 C 想連的顏色衝突。</div>
+  </div>
+</div>
+
+<h2>試玩區</h2>
+<div class="play">
+  <div>
+    <div class="bar">
+      <button id="btnForge" class="main" disabled>鍛合</button>
+      <button id="btnRot">旋轉手上的道具（R / 右鍵）</button>
+      <button id="btnBack">放回倉庫（Esc）</button>
+      <button id="btnDemo">範例擺法</button>
+      <button id="btnReset">全部重來</button>
+    </div>
+    <div class="hint">點倉庫的道具拿到手上 → 移到背包上點一下放下；點背包裡的道具拿起來（鎖住的不能拿）。</div>
+    <div id="log"></div>
+    <svg id="bag"></svg>
+    <h3 style="margin:14px 0 0;font-size:15px">倉庫（不限數量、不生效）</h3>
+    <div id="storage"></div>
+  </div>
+  <div class="panel">
+    <div class="box"><h3>C 羈絆（最大同色區塊）</h3><div id="bonds"></div></div>
+    <div class="box"><h3>生效中的道具</h3><div id="items"></div></div>
+    <div class="box"><h3>要決定的事</h3>
+      <ul class="hint" style="padding-left:18px;margin:0">
+        <li>背包寬度（現在 8）、起始高度（5）、最多長到幾行。</li>
+        <li>鍛合的升級數字；鎖住後要不要有「拆掉重來」的代價道具。</li>
+        <li>碎石從哪裡來：殺怪掉、商店買、還是門的獎勵。</li>
+        <li>每個道具都要有星位，還是只有部分道具有。</li>
+        <li>多人不能暫停：整理背包集中在換關、選門投票、鐵砧的時候，還是戰鬥中也能開。</li>
+        <li>技能（寶石）也放同一個背包、一起算顏色嗎？</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+const C = 56, W = 8, START_H = 5, MAX_H = 9;
+const FORGE_BONUS = [0, 1, 2, 3, 5];
+const COLORS = {
+  fire:   { name: "火焰", fill: "#c8553d" },
+  ice:    { name: "冰霜", fill: "#4f8fc0" },
+  phys:   { name: "物理", fill: "#a3967c" },
+  poison: { name: "毒",   fill: "#6aa84f" },
+  stone:  { name: "碎石", fill: "#5a5650" },
+};
+const BONDS = {
+  fire:   ["點燃傷害 +20%", "點燃會擴散到旁邊的怪", "點燃的怪死亡時爆炸"],
+  ice:    ["冰緩 +15%", "冰緩疊滿凍結 1 秒", "凍結的怪受傷 +30%"],
+  phys:   ["攻擊 +10%", "爆擊率 +10%", "爆擊傷害 +50%"],
+  poison: ["毒傷 +20%", "毒層數上限 +3", "中毒的怪死亡時噴毒霧"],
+};
+const TIERS = [4, 8, 12];
+const DEFS = {
+  torch:  { name: "火把",     color: "fire",   cells: [[0,0],[1,0],[2,0],[1,1]], star: [3,0, "fire"],   eff: lv => `普攻點燃 ${1 + lv} 秒`,         starEff: "點燃傷害 +50%" },
+  ember:  { name: "餘燼戒指", color: "fire",   cells: [[0,0],[1,0],[0,1],[1,1]], star: [0,2, "ice"],    eff: lv => `火焰傷害 +${10 * lv}%`,        starEff: "冰緩的怪受火焰傷害 ×2" },
+  frost:  { name: "霜晶",     color: "ice",    cells: [[0,0],[1,0],[2,0],[3,0]], star: [4,0, "fire"],   eff: lv => `技能附加冰緩 ${10 * lv}%`,     starEff: "冰緩的怪被點燃時碎裂" },
+  iarmor: { name: "冰甲",     color: "ice",    cells: [[0,0],[0,1],[0,2],[1,2]], star: [1,1, "ice"],    eff: lv => `受到傷害 -${5 * lv}%`,         starEff: "受傷時冰緩周圍的怪" },
+  bone:   { name: "骨刃",     color: "phys",   cells: [[1,0],[2,0],[0,1],[1,1]], star: [0,0, "poison"], eff: lv => `攻擊 +${8 * lv}%`,             starEff: "爆擊附加 2 層毒" },
+  shield: { name: "鐵盾",     color: "phys",   cells: [[1,0],[1,1],[1,2],[0,2]], star: [0,1, "phys"],   eff: lv => `格擋 +${6 * lv}%`,             starEff: "格擋後下一擊必爆擊" },
+  sac:    { name: "毒囊",     color: "poison", cells: [[0,0],[1,0],[1,1],[2,1]], star: [2,0, "fire"],   eff: lv => `毒層數上限 +${lv}`,            starEff: "毒層數滿時引爆" },
+  claw:   { name: "腐爪",     color: "poison", cells: [[0,0],[1,0],[0,1]],       star: [1,1, "poison"], eff: lv => `普攻中毒 ${lv} 層`,            starEff: "毒傷 +30%" },
+  whet:   { name: "磨刀石",   color: "phys",   cells: [[0,0],[1,0]],             star: [0,1, "phys"],   eff: lv => `普攻 +${3 * lv}%`,             starEff: "普攻 +10%" },
+  rock1:  { name: "碎石",     color: "stone",  cells: [[0,0]],                   star: null,            eff: () => "沒有效果（填充用）",            starEff: "" },
+  rock2:  { name: "碎石條",   color: "stone",  cells: [[0,0],[1,0]],             star: null,            eff: () => "沒有效果（填充用）",            starEff: "" },
+};
+const START = ["torch","ember","frost","iarmor","bone","shield","sac","claw","whet","rock1","rock1","rock1","rock1","rock2"];
+
+let pieces, H, lockedRows, hand, hover, nextUid;
+
+function make(defId) {
+  const d = DEFS[defId];
+  return { uid: nextUid++, def: defId, cells: d.cells.map(c => [...c]),
+    star: d.star ? [d.star[0], d.star[1]] : null, want: d.star ? d.star[2] : null,
+    x: 0, y: 0, placed: false, level: 1, locked: false };
+}
+function reset() {
+  nextUid = 1; H = START_H; lockedRows = new Set(); hand = null; hover = null;
+  pieces = START.map(make);
+  say("");
+  render();
+}
+function rotate(p) {
+  const rot = ([x, y]) => [-y, x];
+  p.cells = p.cells.map(rot);
+  if (p.star) p.star = rot(p.star);
+  const mx = Math.min(...p.cells.map(c => c[0])), my = Math.min(...p.cells.map(c => c[1]));
+  p.cells = p.cells.map(([x, y]) => [x - mx, y - my]);
+  if (p.star) p.star = [p.star[0] - mx, p.star[1] - my];
+}
+function byUid(u) { return pieces.find(p => p.uid === u); }
+function occupancy() {
+  const occ = Array.from({ length: H }, () => Array(W).fill(null));
+  for (const p of pieces) if (p.placed) for (const [cx, cy] of p.cells) occ[p.y + cy][p.x + cx] = p.uid;
+  return occ;
+}
+function canPlace(p, x, y, occ) {
+  return p.cells.every(([cx, cy]) => {
+    const gx = x + cx, gy = y + cy;
+    return gx >= 0 && gx < W && gy >= 0 && gy < H && occ[gy][gx] === null;
+  });
+}
+function forgeableRows(occ) {
+  const rows = [];
+  for (let y = 0; y < H; y++) if (!lockedRows.has(y) && occ[y].every(v => v !== null)) rows.push(y);
+  return rows;
+}
+// C：同色連通區塊
+function regions(occ) {
+  const id = Array.from({ length: H }, () => Array(W).fill(-1));
+  const sizes = [], colorOf = [];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (occ[y][x] === null || id[y][x] >= 0) continue;
+    const col = DEFS[byUid(occ[y][x]).def].color;
+    if (col === "stone") continue;
+    const r = sizes.length, stack = [[x, y]]; let n = 0;
+    id[y][x] = r;
+    while (stack.length) {
+      const [cx, cy] = stack.pop(); n++;
+      for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+        const nx = cx + dx, ny = cy + dy;
+        if (nx < 0 || nx >= W || ny < 0 || ny >= H || id[ny][nx] >= 0 || occ[ny][nx] === null) continue;
+        if (DEFS[byUid(occ[ny][nx]).def].color !== col) continue;
+        id[ny][nx] = r; stack.push([nx, ny]);
+      }
+    }
+    sizes.push(n); colorOf.push(col);
+  }
+  return { id, sizes, colorOf };
+}
+function tierOf(n) { let t = 0; for (const need of TIERS) if (n >= need) t++; return t; }
+// D：星位
+function starState(p, occ) {
+  if (!p.star) return null;
+  const gx = p.x + p.star[0], gy = p.y + p.star[1];
+  const inside = gx >= 0 && gx < W && gy >= 0 && gy < H;
+  const other = inside ? occ[gy][gx] : null;
+  const ok = other !== null && other !== p.uid && DEFS[byUid(other).def].color === p.want;
+  return { gx, gy, inside, ok };
+}
+
+function say(t) { document.getElementById("log").textContent = t; }
+function forge() {
+  const occ = occupancy(), rows = forgeableRows(occ);
+  if (!rows.length) return;
+  const bonus = FORGE_BONUS[Math.min(rows.length, 4)];
+  const touched = new Set();
+  for (const y of rows) for (const u of occ[y]) touched.add(u);
+  for (const u of touched) { const p = byUid(u); p.level += bonus; p.locked = true; }
+  rows.forEach(y => lockedRows.add(y));
+  const grow = Math.min(rows.length, MAX_H - H);
+  H += grow;
+  say(`鍛合 ${rows.length} 行：${touched.size} 個道具 +${bonus} 級並鎖住${grow ? `，背包多 ${grow} 行` : ""}。`);
+  render();
+}
+
+const svg = document.getElementById("bag");
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent, text) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text !== undefined) e.textContent = text;
+  parent.appendChild(e); return e;
+}
+
+function render() {
+  const occ = occupancy(), reg = regions(occ), rows = forgeableRows(occ);
+  svg.setAttribute("width", W * C); svg.setAttribute("height", H * C);
+  svg.setAttribute("viewBox", `0 0 ${W * C} ${H * C}`);
+  svg.innerHTML = "";
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const fill = lockedRows.has(y) ? "var(--cell-lock)" : rows.includes(y) ? "#2c3a2e" : "var(--cell)";
+    el("rect", { x: x * C + 1, y: y * C + 1, width: C - 2, height: C - 2, rx: 4, fill }, svg);
+  }
+  // 道具格子：在達到 Lv1 的同色區塊裡的格子畫亮，其他畫暗
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const u = occ[y][x]; if (u === null) continue;
+    const p = byUid(u), col = DEFS[p.def].color, r = reg.id[y][x];
+    const lit = r >= 0 && tierOf(reg.sizes[r]) > 0;
+    el("rect", { x: x * C + 3, y: y * C + 3, width: C - 6, height: C - 6, rx: 3,
+      fill: COLORS[col].fill, "fill-opacity": col === "stone" ? 1 : lit ? 1 : 0.5 }, svg);
+  }
+  // 道具外框（不同道具之間畫線）
+  for (const p of pieces) if (p.placed) {
+    const own = new Set(p.cells.map(([cx, cy]) => `${p.x + cx},${p.y + cy}`));
+    const stroke = p.locked ? "var(--gold)" : "#e6e2d6";
+    for (const [cx, cy] of p.cells) {
+      const gx = p.x + cx, gy = p.y + cy, X = gx * C, Y = gy * C;
+      const edge = (nx, ny, x1, y1, x2, y2) => { if (!own.has(`${nx},${ny}`)) el("line", { x1, y1, x2, y2, stroke, "stroke-width": 2.5, "stroke-dasharray": p.locked ? "5 3" : "" }, svg); };
+      edge(gx, gy - 1, X + 2, Y + 2, X + C - 2, Y + 2);
+      edge(gx, gy + 1, X + 2, Y + C - 2, X + C - 2, Y + C - 2);
+      edge(gx - 1, gy, X + 2, Y + 2, X + 2, Y + C - 2);
+      edge(gx + 1, gy, X + C - 2, Y + 2, X + C - 2, Y + C - 2);
+    }
+    const [fx, fy] = p.cells[0];
+    el("text", { x: (p.x + fx) * C + 6, y: (p.y + fy) * C + 18, fill: "#fff", "font-size": 12, "font-weight": 700 }, svg, DEFS[p.def].name);
+    if (DEFS[p.def].color !== "stone") {
+      const [lx, ly] = p.cells[p.cells.length - 1];
+      el("text", { x: (p.x + lx) * C + C - 6, y: (p.y + ly) * C + C - 8, fill: "#ffe9a8", "font-size": 12, "text-anchor": "end", "font-weight": 700 }, svg, `Lv${p.level}`);
+    }
+  }
+  // 星位
+  for (const p of pieces) if (p.placed) {
+    const s = starState(p, occ); if (!s || !s.inside) continue;
+    el("text", { x: s.gx * C + C - 14, y: s.gy * C + 20, "font-size": 16, "text-anchor": "middle",
+      fill: s.ok ? "var(--gold)" : "none", stroke: s.ok ? "#5a4410" : COLORS[p.want].fill, "stroke-width": 1.2 }, svg, "★");
+  }
+  // 手上的道具預覽
+  if (hand !== null && hover) {
+    const p = byUid(hand), ok = canPlace(p, hover[0], hover[1], occ);
+    for (const [cx, cy] of p.cells) {
+      el("rect", { x: (hover[0] + cx) * C + 3, y: (hover[1] + cy) * C + 3, width: C - 6, height: C - 6, rx: 3,
+        fill: COLORS[DEFS[p.def].color].fill, "fill-opacity": 0.55, stroke: ok ? "var(--ok)" : "var(--bad)", "stroke-width": 2 }, svg);
+    }
+    if (p.star) el("text", { x: (hover[0] + p.star[0]) * C + C / 2, y: (hover[1] + p.star[1]) * C + C / 2 + 6,
+      "font-size": 18, "text-anchor": "middle", fill: "none", stroke: COLORS[p.want].fill, "stroke-width": 1.5 }, svg, "★");
+  }
+
+  const fb = document.getElementById("btnForge");
+  fb.disabled = !rows.length;
+  fb.textContent = rows.length ? `鍛合 ${rows.length} 行（+${FORGE_BONUS[Math.min(rows.length, 4)]} 級）` : "鍛合（還沒有填滿的行）";
+
+  // 羈絆
+  let bh = "";
+  for (const col of ["fire", "ice", "phys", "poison"]) {
+    let best = 0;
+    reg.sizes.forEach((n, i) => { if (reg.colorOf[i] === col) best = Math.max(best, n); });
+    const t = tierOf(best);
+    const next = t < TIERS.length ? `（下一級 ${TIERS[t]} 格）` : "";
+    bh += `<div class="row"><span><span class="sw" style="background:${COLORS[col].fill}"></span>${COLORS[col].name} ${best} 格${next}</span><span class="${t ? "on" : "off"}">${t ? "Lv" + t : "未啟動"}</span></div>`;
+    if (t) bh += `<div class="hint" style="margin:0 0 4px 18px">${BONDS[col].slice(0, t).join("、")}</div>`;
+  }
+  document.getElementById("bonds").innerHTML = bh;
+
+  // 道具
+  let ih = "";
+  for (const p of pieces) if (p.placed && DEFS[p.def].color !== "stone") {
+    const d = DEFS[p.def], s = starState(p, occ);
+    ih += `<div class="row"><span><span class="sw" style="background:${COLORS[d.color].fill}"></span>${d.name} <span class="lv">Lv${p.level}</span>${p.locked ? " 🔒" : ""}</span><span>${d.eff(p.level)}</span></div>`;
+    if (s) ih += `<div class="hint ${s.ok ? "on" : ""}" style="margin:0 0 4px 18px">★ 碰到${COLORS[p.want].name}：${d.starEff}${s.ok ? "（啟動）" : s.inside ? "" : "（星位在背包外）"}</div>`;
+  }
+  document.getElementById("items").innerHTML = ih || `<div class="hint">背包是空的。</div>`;
+
+  // 倉庫
+  const st = document.getElementById("storage");
+  st.innerHTML = "";
+  for (const p of pieces) if (!p.placed) {
+    const d = DEFS[p.def], b = document.createElement("div");
+    b.className = "st" + (p.uid === hand ? " hand" : "");
+    const mw = Math.max(...p.cells.map(c => c[0])) + 1, mh = Math.max(...p.cells.map(c => c[1])) + 1, m = 12;
+    let s = `<svg width="${mw * m}" height="${mh * m}">`;
+    for (const [cx, cy] of p.cells) s += `<rect x="${cx * m + 1}" y="${cy * m + 1}" width="${m - 2}" height="${m - 2}" fill="${COLORS[d.color].fill}"/>`;
+    b.innerHTML = s + `</svg><span>${d.name}${p.uid === hand ? "（手上）" : ""}</span>`;
+    b.onclick = () => { hand = p.uid === hand ? null : p.uid; render(); };
+    st.appendChild(b);
+  }
+}
+
+function cellAt(ev) {
+  const r = svg.getBoundingClientRect();
+  const x = Math.floor((ev.clientX - r.left) / r.width * W), y = Math.floor((ev.clientY - r.top) / r.height * H);
+  return [x, y];
+}
+svg.addEventListener("mousemove", ev => { if (hand === null) return; hover = cellAt(ev); render(); });
+svg.addEventListener("mouseleave", () => { hover = null; render(); });
+svg.addEventListener("contextmenu", ev => { ev.preventDefault(); if (hand !== null) { rotate(byUid(hand)); render(); } });
+svg.addEventListener("click", ev => {
+  const [x, y] = cellAt(ev), occ = occupancy();
+  if (hand !== null) {
+    const p = byUid(hand);
+    if (!canPlace(p, x, y, occ)) { say("放不下：超出背包或跟別的道具重疊。"); return; }
+    p.x = x; p.y = y; p.placed = true; hand = null; hover = null; say(""); render();
+    return;
+  }
+  const u = occ[y] ? occ[y][x] : null;
+  if (u === null || u === undefined) return;
+  const p = byUid(u);
+  if (p.locked) { say(`${DEFS[p.def].name} 已經鍛合鎖住，不能移動。`); return; }
+  p.placed = false; hand = u; hover = [p.x, p.y]; say(""); render();
+});
+document.addEventListener("keydown", ev => {
+  if (hand === null) return;
+  if (ev.key === "r" || ev.key === "R") { rotate(byUid(hand)); render(); }
+  if (ev.key === "Escape") { hand = null; hover = null; render(); }
+});
+document.getElementById("btnForge").onclick = forge;
+document.getElementById("btnRot").onclick = () => { if (hand !== null) { rotate(byUid(hand)); render(); } };
+document.getElementById("btnBack").onclick = () => { hand = null; hover = null; render(); };
+document.getElementById("btnReset").onclick = reset;
+// 範例：第 1 行填滿可以鍛合、冰霜連成 8 格（Lv2）、霜晶的星位碰到火焰
+document.getElementById("btnDemo").onclick = () => {
+  reset();
+  const place = (def, x, y, rots = 0) => {
+    const p = pieces.find(q => q.def === def && !q.placed);
+    for (let i = 0; i < rots; i++) rotate(p);
+    p.x = x; p.y = y; p.placed = true;
+  };
+  place("frost", 0, 0);
+  place("ember", 4, 0);
+  place("whet", 6, 0);
+  place("iarmor", 0, 1);
+  place("shield", 6, 1);
+  place("bone", 2, 2);
+  render();
+  say("範例：第 1 行滿了可以鍛合；冰霜 8 格到 Lv2；霜晶的星位碰到餘燼戒指（火焰）。試著再把毒囊、碎石塞進去湊下一行。");
+};
+reset();
+</script>
+</body>
+</html>
