@@ -550,7 +550,9 @@ func _finish() -> bool:
 		if reg.role == &"start":
 			names = [&"open"]
 		elif reg.role == &"branch":
-			names = [_pick(MapGenDefs.BRANCH_THEMES)]
+			# 支線接在主線中間某塊旁邊：避開那塊的主題（主、副都算），BRANCH_THEMES 3 種扣掉最多 2 種還剩得下
+			var beside: Array = regions[_link_into(reg.id).a].themes
+			names = [_pick(MapGenDefs.BRANCH_THEMES.filter(func(t: StringName) -> bool: return not beside.has(t)))]
 		else:
 			var main_pool := MapGenDefs.THEMES.filter(func(t: StringName) -> bool: return t != prev and t != &"open")
 			var main: StringName = _pick(main_pool)
@@ -926,7 +928,8 @@ func _output(base: Dictionary, attempt: int) -> Dictionary:
 	for reg in regions:
 		for o: Dictionary in reg.obs:
 			blocks.append([o.x + shift.x, o.y + shift.y, o.w, o.h, o.top, kinds[o.kind]])
-		region_info.append({"role": reg.role, "themes": reg.themes})
+		var from := -1 if reg.id == 0 else int(_link_into(reg.id).a)
+		region_info.append({"role": reg.role, "themes": reg.themes, "from": from})
 	var m := base.duplicate()
 	m.erase("generator")
 	var size := Vector2(gw, gh)

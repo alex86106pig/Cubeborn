@@ -554,7 +554,7 @@ static func _stage_world(stage: int, seed_value: int) -> World:
 
 
 # 每種小關 × STAGE_SEEDS 個種子：產生成功、地圖規則都過；出口的門 / 挖墳點 / 鐵砧 / 寶箱 / 怪群都走得到出生點；
-# 寶箱放在平的地方；兩扇門的獎勵不重複；王族墓的關有 Boss 巡邏範圍、沒有門，其他關有 STAGES 的門數、沒有挖墳事件
+# 寶箱放在平的地方；兩扇門的獎勵不重複；相鄰兩塊主題不重複；王族墓的關有 Boss 巡邏範圍、沒有門，其他關有 STAGES 的門數、沒有挖墳事件
 static func check_stage_maps() -> String:
 	var lines: Array[String] = []
 	for stage: int in MapGenDefs.STAGES:
@@ -573,6 +573,9 @@ static func check_stage_maps() -> String:
 			err = _stage_reach(w, cfg)
 			if err != "":
 				return "%s：%s" % [tag, err]
+			err = _stage_themes(w.map.regions)
+			if err != "":
+				return "%s：%s" % [tag, err]
 			var goal: Vector2 = MapDefs.to_world(w.map, w.map.dig)
 			var path := w.nav.find_path(w.spawn_point, goal)
 			var length := 0.0
@@ -582,6 +585,18 @@ static func check_stage_maps() -> String:
 			block_counts.append(w.terrain.blocks.size())
 		lines.append("1-%d 最短路線 %.0f ~ %.0f、石台 %d ~ %d" % [stage, routes.min(), routes.max(), block_counts.min(), block_counts.max()])
 	_note("小關地圖：%d 種 × %d 個種子都過；%s" % [MapGenDefs.STAGES.size(), STAGE_SEEDS, "；".join(PackedStringArray(lines))])
+	return ""
+
+
+# 相鄰兩塊主題不重複：主線比主主題；支線跟它接著的那塊的主、副主題都不重複（王族墓固定，不比）
+static func _stage_themes(regions: Array) -> String:
+	for reg: Dictionary in regions:
+		if reg.from < 0 or reg.role == &"boss":
+			continue
+		var beside: Array = regions[reg.from].themes
+		var same: bool = reg.themes.any(func(t: StringName) -> bool: return beside.has(t)) if reg.role == &"branch" else beside[0] == reg.themes[0]
+		if same:
+			return "%s %s 接在 %s 旁邊，主題重複" % [reg.role, reg.themes, beside]
 	return ""
 
 

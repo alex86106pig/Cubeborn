@@ -623,7 +623,11 @@ function finish(m, r, cfg) {
     };
     let names;
     if (reg.role === "start") names = ["open"];
-    else if (reg.role === "branch") names = [r.pick(["tombs", "mausoleums", "ruins"])];
+    else if (reg.role === "branch") {
+      // 避開它接著的那塊的主題（主、副都算）
+      const beside = m.regions[m.links.find(l => l.b === reg.id).a].themes;
+      names = [r.pick(["tombs", "mausoleums", "ruins"].filter(t => !beside.includes(t)))];
+    }
     else {
       const main = r.pick(Object.keys(THEMES).filter(t => t !== prev && t !== "open"));
       names = [main];

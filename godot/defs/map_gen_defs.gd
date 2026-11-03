@@ -29,7 +29,7 @@ const SHAPES := {
 }
 const SHAPE_POOL: Array[StringName] = [&"O4", &"O4", &"I3", &"L3", &"L3", &"L4", &"L4", &"T4", &"S4", &"I4"]
 
-# 主題：每塊抽一個（相鄰兩塊不重複），SECOND_THEME % 再混一個副主題；起點固定空地、支線從 BRANCH_THEMES 抽
+# 主題：每塊抽一個（相鄰兩塊不重複），SECOND_THEME % 再混一個副主題；起點固定空地、支線從 BRANCH_THEMES 抽（避開它接著的那塊）
 const THEMES: Array[StringName] = [&"tombs", &"ruins", &"pits", &"mausoleums", &"hill", &"open"]
 const THEME_NAMES := {&"tombs": "墓碑林", &"ruins": "教堂廢墟", &"pits": "亂葬坑", &"mausoleums": "陵墓列", &"hill": "山丘", &"open": "空地", &"boss": "王族墓"}
 const BRANCH_THEMES: Array[StringName] = [&"tombs", &"mausoleums", &"ruins"]
