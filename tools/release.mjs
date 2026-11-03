@@ -3,7 +3,7 @@
 //   node tools/release.mjs --web                          匯出網頁版並開本機伺服器 http://localhost:8060（--port 換埠）
 //   node tools/release.mjs --perf                         匯出網頁版，在不開視窗的 Chrome 原地轉身 30 秒量效能（--chrome <路徑> 或環境變數 CHROME；環境變數 PERF_QUERY 換網址參數）
 //   node tools/release.mjs --balance                      跑平衡數字表（武器、技能、怪物），寫進 docs/平衡數字.md
-//   node tools/release.mjs --playtest                     自動試玩：機器人照真實地圖玩一層，印出殺怪、武器掉落、背包佔用（可加 --floors=N --seeds=1,2,3 --class=guardian --style=full|rush --out=檔案）
+//   node tools/release.mjs --playtest                     自動試玩：機器人照真實地圖玩一層，印出殺怪、武器掉落、背包佔用（可加 --floors=N --seeds=1,2,3 --class=guardian --style=full|rush --play=smart|dumb --react=秒 --pick=smart|random --out=檔案）
 //   node tools/release.mjs --load                         匯出網頁版，在不開視窗的 Chrome 開兩次（沒有 / 有瀏覽器快取），量開場時間軸與著色器編譯
 //   node tools/release.mjs --summary "摘要"               推送：更新（rebase）→ 決定版號 → 檢查 → commit + tag → push
 //   node tools/release.mjs --summary "摘要" --dry-run     不動 git 歷史、不推：只 fetch、算版號、改檔跑檢查，最後還原
@@ -156,12 +156,12 @@ if (has('balance')) {
   process.exit(0);
 }
 
-// 自動試玩（godot/tests/playtest.gd）：headless 機器人照真實地圖玩，量殺怪數、武器掉落、背包佔用；--floors / --seeds / --class / --style / --out 原樣傳給腳本
+// 自動試玩（godot/tests/playtest.gd）：headless 機器人照真實地圖玩，量殺怪數、武器掉落、背包佔用、會倒幾次；--floors / --seeds / --class / --style / --play / --react / --pick / --out 原樣傳給腳本
 // 一場一層約 10 秒（2026-11-01 M5，打法 full）
 if (has('playtest')) {
   const godot = godotPath();
   runGodot(godot, ['--headless', '--import', '--path', '.'], IMPORT_TIMEOUT, '匯入');
-  const pass = args.filter(a => /^--(floors|seeds|class|style|out)=/.test(a));
+  const pass = args.filter(a => /^--(floors|seeds|class|style|play|react|pick|out)=/.test(a));
   const r = runGodot(godot, ['--headless', '--path', '.', '-s', 'res://tests/playtest.gd', '--', ...pass], PLAYTEST_TIMEOUT, '自動試玩');
   if (!r.ok || !r.out.includes('# 自動試玩')) fail(`自動試玩沒有跑完\n${(r.err || r.out || '').split('\n').filter(l => /ERROR|Error|強制停止/.test(l)).slice(-15).join('\n')}`);
   console.log(r.out.split('\n').filter(l => /^(\||職業|背包武器格|寫入)/.test(l)).join('\n'));
