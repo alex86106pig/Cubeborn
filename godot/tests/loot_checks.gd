@@ -133,6 +133,48 @@ static func check_item_defs() -> String:
 	return ""
 
 
+# 觸發袋的分類（BagDefs）：道具與技能都分得出放主袋還是袋子；觸發道具都對到一個效果與一種袋子；
+# 致命傷 / 死亡的觸發留在主袋；每個效果都有道具改寫過來；袋子接的邊都存在、每個觸發時機只屬於一種袋子
+static func check_bag_roles() -> String:
+	for kind: StringName in BagDefs.BAGS:
+		var bag: Dictionary = BagDefs.BAGS[kind]
+		if (bag.sides as Array).is_empty():
+			return "袋子 %s 沒寫能接哪一邊" % kind
+		for side: StringName in bag.sides:
+			if not BagDefs.SIDES.has(side):
+				return "袋子 %s 接的邊不存在：%s" % [kind, side]
+		for on: StringName in bag.on:
+			if BagDefs.bag_for_trigger(on) != kind:
+				return "觸發時機 %s 同時屬於好幾種袋子" % on
+	var used := {}
+	for id: StringName in ItemDefs.ITEMS:
+		var kind: StringName = ItemDefs.ITEMS[id].kind
+		var role := ItemDefs.role_of(id)
+		if kind in [&"item", &"skill"] and role == &"":
+			return "%s 沒有分類" % id
+		if kind not in [&"item", &"skill"] and role != &"":
+			return "%s（%s）不該放進袋子" % [id, kind]
+		for e: Dictionary in ItemDefs.ITEMS[id].effects:
+			if not e.has("on"):
+				continue
+			if BagDefs.MAIN_TRIGGERS.has(e.on):
+				if role != ItemDefs.ROLE_STAT:
+					return "%s 的觸發 %s 應留在主袋" % [id, e.on]
+			elif role != ItemDefs.ROLE_EFFECT or BagDefs.bag_for_trigger(e.on) == &"":
+				return "觸發道具 %s（%s）沒有對到效果或袋子" % [id, e.on]
+		if role == ItemDefs.ROLE_EFFECT:
+			var effect := ItemDefs.effect_of(id)
+			if not BagDefs.EFFECTS.has(effect):
+				return "%s 改寫成的效果 %s 不在 BagDefs.EFFECTS" % [id, effect]
+			if not BagDefs.BAGS.has(ItemDefs.default_bag_of(id)):
+				return "%s 沒有預設的袋子" % id
+			used[effect] = true
+	for effect: StringName in BagDefs.EFFECTS:
+		if not used.has(effect):
+			return "效果 %s 沒有道具改寫過來" % effect
+	return ""
+
+
 # 道具資料裡某個屬性效果的數值（第一筆）
 static func _effect_value(item_id: StringName, stat: StringName) -> float:
 	for e: Dictionary in ItemDefs.ITEMS[item_id].effects:

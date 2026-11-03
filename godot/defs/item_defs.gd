@@ -462,3 +462,41 @@ static func support_of(id: StringName) -> Dictionary:
 
 static func is_skill(id: StringName) -> bool:
 	return ITEMS.has(id) and ITEMS[id].kind == &"skill"
+
+
+# 觸發袋的分類（BagDefs）：數值放主袋；效果、技能、修飾放袋子。武器與屍體不放袋子，回傳 &""
+const ROLE_STAT := &"stat"
+const ROLE_EFFECT := &"effect"
+const ROLE_SKILL := &"skill"
+const ROLE_MOD := &"mod"
+
+
+static func role_of(id: StringName) -> StringName:
+	match ITEMS[id].kind:
+		&"skill":
+			return ROLE_SKILL
+		&"item":
+			if not support_of(id).is_empty():
+				return ROLE_MOD
+			return ROLE_EFFECT if effect_of(id) != &"" else ROLE_STAT
+	return &""
+
+
+# 觸發道具改寫成的效果（BagDefs.EFFECTS）；不是效果的回傳 &""
+static func effect_of(id: StringName) -> StringName:
+	if BagDefs.EFFECT_ITEMS.has(id):
+		return BagDefs.EFFECT_ITEMS[id][0]
+	for e: Dictionary in ITEMS[id].effects:
+		if e.has("on") and not BagDefs.MAIN_TRIGGERS.has(e.on):
+			return BagDefs.effect_of_action(e.do)
+	return &""
+
+
+# 觸發道具原本的時機對到哪種袋子（自動擺放與說明的預設）；不是觸發道具的回傳 &""
+static func default_bag_of(id: StringName) -> StringName:
+	if BagDefs.EFFECT_ITEMS.has(id):
+		return BagDefs.EFFECT_ITEMS[id][1]
+	for e: Dictionary in ITEMS[id].effects:
+		if e.has("on"):
+			return BagDefs.bag_for_trigger(e.on)
+	return &""

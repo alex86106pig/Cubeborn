@@ -177,7 +177,7 @@ func _initialize() -> void:
 		all.bind([LootChecks.check_weapon_pickup, LootChecks.check_weapon_merge]))
 
 	# ───────── 道具（依效果種類：屬性 / 條件 / 觸發 / 能力）─────────
-	_check("物品資料：每個稀有度都有道具，名稱不重複、欄位完整、形狀合法、格數看稀有度、技能 1 格且寫明能用的武器、效果都對應到存在的屬性 / 條件 / 觸發 / 能力", LootChecks.check_item_defs)
+	_check("物品資料：每個稀有度都有道具，名稱不重複、欄位完整、形狀合法、格數看稀有度、技能 1 格且寫明能用的武器、效果都對應到存在的屬性 / 條件 / 觸發 / 能力；觸發袋的分類：道具與技能都分得出放主袋或袋子、觸發道具都對到一個效果與一種袋子、致命傷與死亡留在主袋、每個效果都有道具改寫過來", all.bind([LootChecks.check_item_defs, LootChecks.check_bag_roles]))
 	_check("道具效果的類別：ItemDefs 標成已接上的條件與觸發，和 ItemEffects 的條件 / 動作類別一一對應", LootChecks.check_item_effect_registry)
 	_check("道具屬性：放進身上照資料生效（百分比同類相加、最大生命與目前生命一起加、移除後回到原值、武器道具直接換武器）；命中回復有內部冷卻、吸血看實際扣血、投射物減傷、靈魂看擊殺者（小數累積）與精英倍率、祭壇價格看開的人、撿取範圍、視野距離與角度",
 		all.bind([LootChecks.check_items_apply, LootChecks.check_item_stats]))
