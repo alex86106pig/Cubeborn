@@ -475,12 +475,15 @@ func _sync_arena() -> void:
 	if arena_view.layout_key == world.layout_key:
 		return
 	arena_view.layout_key = world.layout_key
+	var t0 := Time.get_ticks_usec()
 	var theme: StringName = world.map.get("theme", &"graveyard")
 	var doors := []
 	for d: Dictionary in DigEvent.doors(world):
 		doors.append({"pos": MapDefs.to_world(world.map, d.at), "side": d.side})
 	arena_view.build(world.half_extents, world.terrain, theme, doors)
 	world_view.apply_theme(theme)
+	if perf != null:   # 換小關 / 換層的卡頓拆成模擬（perf stage_hop 的 sim_ms）與這裡的場地重建
+		print("perf arena_build t=%.2f ms=%.1f blocks=%d" % [world.stats.time, (Time.get_ticks_usec() - t0) / 1000.0, world.terrain.blocks.size()])
 
 
 func _use_world(w: World) -> void:
@@ -559,6 +562,8 @@ func _authority_physics() -> void:
 		world.step(cmds, Config.FIXED_DT)
 		if args.loot_test:
 			DebugTools.loot_test_step(world, local_player())
+		if args.stage_hop > 0.0:
+			DebugTools.stage_hop_step(world, args.stage_hop)
 		var t1 := Time.get_ticks_usec()
 		input_collector.consume_latched()
 		GameEvents.emit_all(world.events)

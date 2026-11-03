@@ -69,6 +69,28 @@ static func loot_test_step(world: World, me: Player) -> void:
 		world.drop_coin(me.pos + Vector2(0.0, 2.0))   # 金幣平常掉率 0.3%，第一次出現也要量
 
 
+# --stage-hop=秒：每隔 every 秒當作投票通過、走第一扇門（DigEvent._proceed 同一條路：小關走 next_stage、沒有門的層走 next_floor），
+# 最後一層不再換；在 world.step 之後呼叫、事件照常送出。用來量換小關 / 換層那一下的卡頓（網頁版 ?perf&stage-hop=6）
+static func stage_hop_step(world: World, every: float) -> void:
+	var n := roundi(every / Config.FIXED_DT)
+	if n <= 0 or world.tick % n != 0:
+		return
+	var doors: Array = world.map.get("stage_doors", [])
+	var t: float = world.stats.time
+	var t0 := Time.get_ticks_usec()
+	var to := ""
+	if not doors.is_empty():
+		to = "%d-%d" % [world.floor_num, world.stage_num + 1]
+		world.next_stage(doors[0].reward)
+	elif world.floor_num < EventDefs.DIG.last_floor:
+		to = "第 %d 層" % (world.floor_num + 1)
+		world.next_floor()
+	else:
+		return
+	# 模擬那一半（產生地圖、尋路格子、怪群、寶箱）；畫面重建在這一幀的畫面層，算在下一幀的卡頓裡
+	print("perf stage_hop t=%.2f → %s sim_ms=%.1f" % [t, to, (Time.get_ticks_usec() - t0) / 1000.0])
+
+
 # F4：依道具清單順序，每按一次放一個道具進背包（循環；放不下就提示背包滿了）
 func add_next_item(world: World, player: Player) -> void:
 	if player == null or player.is_dead:
