@@ -25,6 +25,7 @@ const PREBLOCK_EARLY := 0.5            # 那招的冷卻剩這麼多秒就不再
 const PREBLOCK_PAD := 0.5              # 來不及反應的招：離牠這招的發動距離（trigger_distance）+ 這麼多以內、冷卻好了就先舉盾
 const EVADE_MAX := 1.2                 # 躲過一招後最多退這麼久就回去打（慢動作、連續出招的 Boss 不會一直退）
 const ROCK_WARN := 0.5                 # 從天上落下的石頭（守墓人鏟土）：這麼多秒內會落地、我在範圍內就走開（影子看得到）
+const ZONE_MARGIN := 0.0               # 地面效果：離邊緣這麼近也算在裡面（試過 0.4：守墓騎士貼著 Boss 打時一直在躲殘火，20 場打倒 9 → 4）
 const DEATH_BLAST := 1.0               # 死後會爆的怪：死後這麼多秒內都算威脅（膨脹屍 0.5、死亡爆炸詞條 0.8 秒後爆）
 const KITE_DIST := 3.5                 # 遠程職業：怪貼到這麼近就往後退
 const CROWD_MAX := 0                   # 近戰：身邊 CROWD_RANGE 內醒著的怪到這麼多就往外退（0 = 不退；16 種子實測退不退差不多、門檻 5 反而更差，預設關，--crowd 做實驗）
@@ -38,10 +39,11 @@ const PATH_REFRESH := 0.5              # 每隔幾秒重新找路
 const STUCK_TIME := 25.0               # 追同一個目標這麼久、血都沒掉（打不到）就放棄它；有在掉血就繼續打（Boss 血多，25 秒打不完）
 const LOOT_RANGE := INF                # 多遠的武器都去撿（量「全撿」的上限；身邊沒怪才去）
 const SAFE_RANGE := 5.0                # 身邊這麼近有怪就先打怪
+const DIG_FLEE := 6.0                  # 挖墳開始後，近戰身邊這麼近有 2 隻以上醒著的怪就先跑（_flee_dig）
 const DIG_GUARD := 3.5                 # 挖墳時身邊這麼近有怪就停下來打
 const MINION_CLOSE := 3.0              # Boss 叫出來的小怪貼到這麼近、又比 Boss 近，就先打掉
-const REST_UNTIL := 0.6                # 挖墳前生命低於這個比例、身邊沒醒著的怪就站著回血（最多 REST_MAX 秒）
-const REST_MAX := 90.0
+const REST_UNTIL := 0.9                # 挖墳前生命低於這個比例、身邊沒醒著的怪就站著回血（最多 REST_MAX 秒）；挖墳要撐 40~100 秒的怪潮
+const REST_MAX := 180.0
 const SUMMONER_RANGE := 15.0           # 這麼近有帶召喚詞條的怪就先打它（不然叫出來的打不完）
 const RANGED := [&"staff", &"shortbow", &"longbow"]
 const RANGED_STANDOFF := 0.7           # 遠程離目標的距離 = 普攻射程 × 這個比例（夾在 5~9）
@@ -56,6 +58,8 @@ var react := 0.25
 var real_death := false                # true：倒下就真的倒下（單人就是這場結束）；false：倒下記一次、原地滿血救起
 var reach := 1.4
 var crowd_max := CROWD_MAX
+var opts_flee_ranged := false          # --dig-flee 有寫的話遠程也照跑（實驗用）
+var dig_flee := DIG_FLEE               # --dig-flee=距離：挖墳開始後這麼近有 2 隻以上就跑（0 = 不跑，照舊邊挖邊打）
 var style := "full"
 
 # 這一層的統計（begin_floor 歸零）
@@ -127,6 +131,8 @@ func _init(p_world: World, p_player: Player, opts: Dictionary, seed_value: int) 
 	style = String(opts.get("style", "full"))
 	trace = opts.has("trace")
 	crowd_max = int(opts.get("crowd", str(CROWD_MAX)))
+	dig_flee = float(opts.get("dig-flee", str(DIG_FLEE)))
+	opts_flee_ranged = opts.has("dig-flee")
 	reach = 1.4
 	var wid: StringName = ClassDefs.CLASSES[p.class_id].weapon
 	if wid in RANGED:   # 遠程站在普攻射程的 70%（5~9）：站得比守墓人提燈的發動距離（7）遠，不會一直被噴
@@ -232,6 +238,8 @@ func after_step(t: float) -> void:
 		is_out = true
 		var boss := w.entities.get(w.boss_id) as Enemy
 		var left := "、Boss 剩 %d%%" % roundi(100.0 * boss.hp / boss.max_hp) if boss != null and not boss.is_dead and _boss_awake(boss) else ""
+		if w.event.state == DigEvent.ACTIVE:
+			left += "、挖墳 %d%%、挖了 %d 秒" % [roundi(100.0 * w.event.progress), roundi(w.event.time)]
 		died_at = "%d-%d %s（%s%s）" % [w.floor_num, w.stage_num, _mmss(t), _last_hit, left]
 
 
@@ -287,6 +295,8 @@ func decide() -> InputCmd:
 	var summoner := _nearest_summoner()
 	if summoner != null:
 		return _fight(cmd, summoner)
+	if smart_play and w.event.state == DigEvent.ACTIVE and dig_flee > 0.0 and (reach <= KITE_DIST or opts_flee_ranged) and _flee_dig(cmd):
+		return cmd
 	var near := _nearest_enemy(SAFE_RANGE, false)
 	var digging_phase := style == "rush" or (_nearest_enemy(INF, false) == null and _boss() == null)
 	var boss := _boss()
@@ -802,8 +812,11 @@ func _leave_zone(cmd: InputCmd) -> bool:
 	return false
 
 
-# 站在怪物的地面效果裡（會扣血的、蜘蛛網）：往外走的方向（從圈心往外），沒站在裡面回傳 ZERO
+# 站在（或貼著，ZONE_MARGIN 內）怪物的地面效果裡（會扣血的、蜘蛛網）：往外走的方向，沒有回傳 ZERO
+# 幾團重疊時（一群膨脹屍死後的腐氣）把每一團的「從圈心往外」加起來，只看第一團會從這團走進旁邊那團
 func _zone_exit() -> Vector2:
+	var sum := Vector2.ZERO
+	var inside := false
 	for z: Dictionary in w.zones:
 		var hurts: bool = z.get("damage_per_sec", 0.0) > 0.0 or z.has("web_slow")
 		if not hurts or z.get("remaining", 0.0) < 0.3:
@@ -812,10 +825,14 @@ func _zone_exit() -> Vector2:
 		if owner != null and owner.team == p.team and not z.get("hits_all", false):
 			continue
 		var out: Vector2 = p.pos - z.pos
-		if out.length() > z.radius + p.radius:
+		var edge: float = z.radius + p.radius + ZONE_MARGIN
+		if out.length() > edge:
 			continue
-		return out.normalized() if out.length_squared() > 1e-4 else Vector2(0, 1)
-	return Vector2.ZERO
+		inside = true
+		sum += (out.normalized() if out.length_squared() > 1e-4 else Vector2(0, 1)) * (edge - out.length() + 0.1)
+	if not inside:
+		return Vector2.ZERO
+	return sum.normalized() if sum.length_squared() > 1e-6 else Vector2(0, 1)
 
 
 # 隊友倒地：自己與隊友身邊 SAFE_RANGE 內都沒有怪才走過去按住 F 救（救要 REVIVE.revive_time 秒、不能動；有怪就照常先打，倒地能撐 down_time 秒）
@@ -1190,6 +1207,27 @@ func _nearest_awake() -> Enemy:
 			best_d = d
 			best = e
 	return best
+
+
+# 挖墳開始後（DigEvent.ACTIVE）：沒人挖進度也不會掉（DIG.decay 0），每次噴發還 +10%（ERUPT.progress）。近戰身邊 DIG_FLEE 內有 2 隻以上
+# 醒著的怪就不去挖、往怪少的地方跑，等噴發把進度補滿（使用者 2026-11-03：往外跑、等 10% 10% 的就好）；只有 1 隻就照常打掉
+func _flee_dig(cmd: InputCmd) -> bool:
+	var n := 0
+	for x in w.enemies:
+		var e := x as Enemy
+		if e != null and not e.is_dead and e.team != &"player" and not e.dormant and e.pos.distance_to(p.pos) <= dig_flee:
+			n += 1
+	if n < 2:
+		return false
+	var away := _away_from_crowd(dig_flee)
+	var nav := w.nav_for(p.radius)
+	for a: float in [0.0, 0.6, -0.6, 1.2, -1.2, PI / 2.0, -PI / 2.0]:
+		var d := away.rotated(a)
+		if nav.has_los(p.pos, p.pos + d * 4.0):
+			away = d
+			break
+	_walk(cmd, p.pos + away * 4.0)
+	return true
 
 
 # 被召喚出來的怪：召喚者還活著就去打召喚者（只打送上門的會打不完，召喚者每隔幾秒又叫一批）
