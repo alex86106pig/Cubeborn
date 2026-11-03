@@ -3,7 +3,7 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
-## [未發布]
+## [0.66.0] - 2026-11-04
 
 ### 新增
 - **觸發袋（Build 第二次改版第 2~6 步，YangHsu 2026-11-04 決定；規則 `docs/設計方向.md`「觸發袋」、細節 `docs/系統說明.md` §36）**：武器不再是格子。背包 = 主袋（8 × 6，放數值道具就生效）+ 接在主袋四邊的觸發袋 + 倉庫（不生效）。
