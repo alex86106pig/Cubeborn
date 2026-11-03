@@ -14,6 +14,7 @@ var tier: StringName = &"small"
 var offers := {}   # peer id → 選項（道具 id 的陣列）
 var taken := {}    # peer id → true：選過了
 var anvil_done := {}   # 鐵砧：peer id → true 已經升級過（第二步選技能）；只在權威端
+var spotted := false   # 隊上有人看到過（World._spot_relics，權威端判斷、進快照）：小地圖不管自己走過沒有都畫
 
 
 func _init(p_world: World, p_tier: StringName, at: Vector2, p_kind: StringName = &"item") -> void:

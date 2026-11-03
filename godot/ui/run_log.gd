@@ -19,8 +19,9 @@ const RARITY_ORDER: Array[StringName] = [&"white", &"green", &"blue", &"purple",
 # Boss 名字同 HUD.BOSS_NAME；不直接引用 HUD：check.gd（-s 腳本）會用到本檔，引用 HUD 會連帶要求 autoload GameEvents 而編譯失敗
 const NAMES := {
 	&"grunt": "骷髏戰士", &"archer": "骷髏弓手", &"zombie": "腐屍", &"bloater": "膨脹屍", &"hound": "屍犬", &"spider": "墓穴蜘蛛", &"beetle": "屍甲蟲", &"bone_wheel": "骨輪", &"spearman": "骷髏盾槍兵", &"boss": "亡骸騎士", &"bone_general": "骸骨將軍", &"gravekeeper": "守墓人", &"ghost": "冤魂", &"minion": "骷髏僕從",
-	&"projectile": "投射物（射手已死）",
+	&"projectile": "投射物（射手已死）", &"player": "隊友（誤傷）",
 }
+const ALLY_PREFIX := "ally:"   # 隊友誤傷依隊友當時拿的武器分開記：種類寫成「ally:長劍＋木盾」
 
 var me_id := 0          # 本機玩家的實體 id（HUD 每次有角色時更新；倒下 / 陣亡後角色還在，id 不變）
 const KILLS_PER_LINE := 6   # 擊殺一行最多幾種
@@ -144,6 +145,10 @@ func on_event(world: World, name: String, p: Dictionary) -> void:
 			if me_id == 0 or p.get("target_id", 0) != me_id:
 				return
 			var kind: StringName = p.get("source_kind", &"")
+			if kind == &"player":
+				var ally := world.entities.get(p.get("source_id", 0)) as Player if world != null else null
+				if ally != null and ally.weapon.has("name"):
+					kind = StringName(ALLY_PREFIX + String(ally.weapon.name))
 			var amount: float = p.get("amount", 0.0)
 			var unseen := not _attacker_seen(world, p) or _too_sudden(world, p)
 			var s: Dictionary = by_source.get(kind, {"damage": 0.0, "hits": 0, "unseen": 0})
@@ -229,6 +234,8 @@ func _too_sudden(world: World, p: Dictionary) -> bool:
 
 
 static func name_of(kind: StringName) -> String:
+	if String(kind).begins_with(ALLY_PREFIX):
+		return "%s · %s" % [NAMES[&"player"], String(kind).trim_prefix(ALLY_PREFIX)]
 	return NAMES.get(kind, String(kind) if kind != &"" else "不明")
 
 

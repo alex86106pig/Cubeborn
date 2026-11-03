@@ -717,6 +717,39 @@ static func _menu_room() -> Vector2:
 	return base / (SettingsPanel.UI_SCALES.max() * SettingsPanel.BASE_UI_SCALE)
 
 
+# 遊玩紀錄的隊友誤傷：兩人世界 P1 揮劍真的打中 P2，P2 的紀錄寫「隊友（誤傷） · 武器名」，不出現內部代號 player；打的人自己的紀錄沒有
+static func check_run_log_friendly() -> String:
+	var w := World.new(&"test_arena")
+	w.spawn_packs = false
+	w.reset(7, [1, 2])
+	w.spawner.finished = true
+	_worlds.append(w)
+	var p1: Player = w.players[1]
+	var p2: Player = w.players[2]
+	p1.pos = Vector2.ZERO
+	p2.pos = Vector2(0, 1.2)
+	var hit_log := RunLog.new()
+	hit_log.me_id = p2.id
+	var self_log := RunLog.new()
+	self_log.me_id = p1.id
+	for i in 30:
+		var attack := InputCmd.new()
+		attack.aim = Vector2(0, 5)
+		attack.buttons = InputCmd.BTN_ATTACK
+		var idle := InputCmd.new()
+		idle.aim = Vector2(0, 5)
+		w.step({1: attack, 2: idle}, Config.FIXED_DT)
+		for e: Dictionary in w.events:
+			hit_log.on_event(w, e.name, e)
+			self_log.on_event(w, e.name, e)
+	var text := hit_log.summary_text()
+	var want := "%s · %s：" % [RunLog.NAMES[&"player"], p1.weapon.name]
+	if hit_log.hits_taken == 0 or not text.contains(want) or text.contains("player"):
+		return "被隊友打中應寫「%s」、不寫 player：%s" % [want, text]
+	if self_log.hits_taken != 0:
+		return "出招的人自己不應記到被打"
+	return ""
+
 # 遊玩紀錄的武器那一行與「來不及反應算看不見」：只用 RunLog（不建 HUD），事件直接餵
 static func check_run_log_weapons_react() -> String:
 	var w := _new_world(5)
@@ -2782,7 +2815,7 @@ static func check_forge_panel() -> String:
 
 # 疊在一起的字：同一個目標同時跳的傷害數字（屬性轉換、冰棺分傷害）一個比一個高、別的目標不受影響；
 # 地上物件的名稱碰到這一幀已經畫的就往上錯開一行，沒碰到的留在原位
-# 小地圖：只畫走過看過的（視野距離內），實心格標成實心；換小關清掉走過的紀錄、改用新地圖的大小
+# 小地圖：只畫走過看過的（視野距離內），實心格標成實心；場地外框一開始就畫（淡色）；換小關清掉走過的紀錄、改用新地圖的大小
 static func check_minimap() -> String:
 	var w := _new_world(5, false, &"graveyard")
 	var p := _player(w)
@@ -2796,6 +2829,17 @@ static func check_minimap() -> String:
 	var seen_far := mm.is_seen(far)
 	var seen_here := mm.is_seen(p.pos)
 	var solid := mm._base[0]   # 左上角在地圖外框（EDGE_PAD 一圈實心）
+	# 場地外框：一開始就畫成淡色（沒走過也看得到），每一格都在場地外、貼著場地 EDGE_CELLS 格以內
+	var edges := mm._edge.count(1)
+	var edge_err := ""
+	for i in mm._edge.size():
+		if mm._edge[i] and (mm._base[i] != 1 or mm._img.get_pixel(i % mm._size.x, i / mm._size.x).a <= 0.0) and not mm._seen[i]:
+			edge_err = "外框第 %d 格不是實心或沒畫出來" % i
+			break
+	var t_build := Time.get_ticks_usec()
+	mm._rebuild()
+	_note("小地圖換地圖重算一次 %.1f ms（%s）" % [(Time.get_ticks_usec() - t_build) / 1000.0, mm._size])
+	mm.refresh(0.0)
 	var old_size := mm._size
 	w.next_stage(&"")
 	mm.refresh(0.0)
@@ -2806,6 +2850,8 @@ static func check_minimap() -> String:
 		return "出生點應看過、%.0f 外不應看過（%s / %s）" % [r + 3.0, seen_here, seen_far]
 	if solid != 1:
 		return "地圖外框應標成實心，實際種類 %d" % solid
+	if edges == 0 or edge_err != "":
+		return "場地外框應一開始就畫出來（%d 格）：%s" % [edges, edge_err]
 	if not reset_ok:
 		return "換小關後應照新地圖重畫（舊 %s、新 %s、地圖 %s），只看過出生點附近" % [old_size, mm._size, w.half_extents * 2.0]
 	if shown > ceili(PI * (r + 1.0) * (r + 1.0)):

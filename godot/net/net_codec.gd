@@ -295,7 +295,7 @@ static func entity_fields(e: Entity) -> Array:
 		a[E_EXTRA] = [(e as Chest).tier, (e as Chest).opened]
 	elif e is Relic:
 		var r := e as Relic
-		a[E_EXTRA] = [r.tier, r.relic_kind, r.offers, r.taken.keys()]
+		a[E_EXTRA] = [r.tier, r.relic_kind, r.offers, r.taken.keys(), r.spotted]
 	elif e is ItemPickup:
 		a[E_EXTRA] = [(e as ItemPickup).item_id, WeaponDropDefs.to_array((e as ItemPickup).weapon), (e as ItemPickup).corpse_of]
 	elif e is Coin or e is Torch or e is Forge:
@@ -452,6 +452,7 @@ static func apply_entity(e: Entity, a: Array, b: Array, t: float, ahead: float =
 		r.taken.clear()
 		for peer: int in extra[3]:
 			r.taken[peer] = true
+		r.spotted = extra[4]
 
 
 # 血量與最大生命（客戶端自己的角色也用這個：血量一律以房主為準）

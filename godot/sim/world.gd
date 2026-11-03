@@ -44,6 +44,7 @@ var event := DigEvent.new()
 var hit_stop_timer := 0.0            # 剩餘的整體放慢（真實秒數），由主迴圈換算成時間縮放；v0.18.3 起只有打倒 Boss 時使用（一般命中改成畫面定格）
 # 地圖（D1，defs/map_defs.gd）：場地大小、地形、尋路格子、出生點；每層的地圖照 MapDefs.floor_map，客戶端看快照的層數換成同一張
 const PACK_ID_BASE := 1 << 30   # 怪群成員的 id 從這裡開始（每層每小關 PACK_ID_STRIDE 個），不跟照順序給的 id 撞
+const RELIC_SPOT_TICKS := 12     # 每幾步看一次遺物有沒有被人看到（_spot_relics，只給小地圖）
 const PACK_ID_STRIDE := 1024
 const PACK_ID_STAGES := 8       # 每層留幾個小關的 id 區段
 var _changing_floor := false
@@ -552,6 +553,20 @@ func gain_coins(amount: int, reason: StringName, at := Vector2.ZERO) -> void:
 	emit_event("coins:gained", {"amount": amount, "total": run_coins, "reason": String(reason), "floor": floor_num, "pos": at})
 
 
+# 遺物 / 鐵砧有沒有被隊上任何人看到過（只給小地圖用，不影響規則）：每 RELIC_SPOT_TICKS 步看一次，看過就不再看
+func _spot_relics() -> void:
+	if tick % RELIC_SPOT_TICKS != 0:
+		return
+	for r: Entity in relics:
+		var relic := r as Relic
+		if relic.spotted or relic.is_removed:
+			continue
+		for p: Player in player_list:
+			if not p.is_dead and not p.descended and Vision.point_visible(self, p, relic.pos, relic.radius):
+				relic.spotted = true
+				break
+
+
 # 活著、沒倒地、還沒走進出口的玩家走近就撿起（不用按 F）
 func _collect_coins() -> void:
 	for c in coins:
@@ -723,6 +738,7 @@ func step(cmds: Dictionary, dt: float) -> void:
 
 	_update_downed(dt)
 	_collect_coins()
+	_spot_relics()
 	spawner.update(self, dt)
 	event.update(self, dt)
 	_remove_dead_entities()

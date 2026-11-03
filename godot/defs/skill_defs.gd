@@ -35,7 +35,7 @@ const SKILLS := {
 		"distance": 5.0, "time": 0.3, "width": 1.4, "damage_pct": 7.0, "knockback": 5.0, "damage_type": &"phys", "color": Color("d8e4ff"), "sfx": "swingHeavy"},
 	&"sword_wave": {"icon": "氣", "mana": 25, "behavior": &"shoot", "weapons": [&"longsword"], "tags": [&"projectile"],
 		"count": 1, "spread": 0.0, "speed": 16.0, "range": 10.0, "radius": 0.6, "pierce": true, "damage_pct": 5.0, "damage_type": &"phys",
-		"color": Color("b8d0ff"), "visual": &"orb", "sfx": "arcaneCast"},
+		"color": Color("b8d0ff"), "visual": &"crescent", "sfx": "arcaneCast"},
 	# ---- 匕首 ----
 	&"ambush": {"icon": "襲", "mana": 40, "behavior": &"ambush", "weapons": [&"dagger"], "tags": [&"move", &"melee"],
 		"range": 6.0, "damage_pct": 5.5, "damage_type": &"phys", "color": Color("b36bff"), "sfx": "swing"},

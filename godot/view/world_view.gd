@@ -64,6 +64,12 @@ const XRAY_PROBE_STEP := 0.5   # 判斷「相機方向有沒有東西擋住」�
 const GRAVE_XRAY_RADIUS := 0.9   # 挖墳點判斷被擋住時從中心往相機多遠開始取樣（土堆的半徑）
 static var _xray_materials: Dictionary = {}   # 顏色 -> ShaderMaterial
 static var _orb_materials: Dictionary = {}    # 顏色 -> 魔彈的 StandardMaterial3D（_create_projectile）
+static var _crescent_materials: Dictionary = {}   # 顏色 -> 劍氣的材質（_create_crescent，同顏色共用，不然每發各編一次著色器）
+static var _crescent_mesh: ArrayMesh            # 劍氣的彎月網格（半徑 1，依投射物的 radius 縮放）
+const CRESCENT_ARC := 1.25       # 彎月兩端各往側邊張開幾弧度（約 72°）
+const CRESCENT_THICK := 0.32     # 中間最厚處（佔半徑的比例），往兩端變尖
+const CRESCENT_SEGMENTS := 14
+const CRESCENT_WIDTH_MUL := 1.4  # 彎月的弦長 ≈ 判定直徑 × 這個（看起來比球大一點，但不會差太多讓人誤判範圍）
 # 物件（寶箱、祭壇、道具、遺物、金幣、挖墳點）的材質依外觀共用：剪影要在材質上寫模板值，每個實體各一份的話網頁版每份都要編一次著色器
 static var _object_materials: Dictionary = {}
 static var _xray_shader: Shader
@@ -841,7 +847,7 @@ func warm_up(center: Vector3) -> void:
 		if item_of.has(rarity):
 			ents.append(tw.drop_item(item_of[rarity], c))
 		ents.append(tw.drop_weapon(WeaponDropDefs.make(tw.new_weapon_uid(), WeaponDefs.WEAPONS.keys()[0], rarity, tw.rng), c))
-	for visual: StringName in [&"arrow", &"orb"]:
+	for visual: StringName in [&"arrow", &"orb", &"crescent"]:
 		ents.append(Projectile.new(tw, {"owner": ents[0], "pos": c, "direction": Vector2.UP, "speed": 0.0, "range": 0.0,
 			"radius": 0.25, "color": Color.ORANGE, "visual": visual}))
 	var colors := [XRAY_SELF, XRAY_ALLY, XRAY_ENEMY, XRAY_LOOT, XRAY_OBJECT]
@@ -987,7 +993,13 @@ func _create_view(e: Entity) -> Node3D:
 			_add_rarity_marks(rig, e as Enemy)
 		&"projectile":
 			var proj := e as Projectile
-			root = _create_arrow(proj) if proj.visual == &"arrow" else _create_projectile(proj)
+			match proj.visual:
+				&"arrow":
+					root = _create_arrow(proj)
+				&"crescent":
+					root = _create_crescent(proj)
+				_:
+					root = _create_projectile(proj)
 		&"chest":
 			root = _create_chest(e as Chest)
 		&"forge":
@@ -1259,6 +1271,59 @@ func _create_projectile(e: Projectile) -> Node3D:
 	ball.material_override = _orb_materials[e.color]
 	root.add_child(ball)
 	return root
+
+
+# 劍氣：平放的彎月（凸的一邊朝飛行方向 +Z），前緣最亮、往後與兩端淡出；不受光、不投影、兩面都畫
+func _create_crescent(e: Projectile) -> Node3D:
+	if _crescent_mesh == null:
+		_crescent_mesh = _build_crescent_mesh()
+	if not _crescent_materials.has(e.color):
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		mat.vertex_color_use_as_albedo = true
+		mat.albedo_color = e.color.lightened(0.25)
+		_crescent_materials[e.color] = mat
+	var root := Node3D.new()
+	var blade := MeshInstance3D.new()
+	blade.mesh = _crescent_mesh
+	blade.material_override = _crescent_materials[e.color]
+	blade.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var r := e.radius * CRESCENT_WIDTH_MUL / sin(CRESCENT_ARC)
+	blade.scale = Vector3(r, 1.0, r)
+	root.add_child(blade)
+	return root
+
+
+# 半徑 1 的彎月：外緣是圓弧、內緣是往前縮的圓弧，中間厚兩端尖；外緣頂點白、內緣透明（加法混色看起來是一道光）
+static func _build_crescent_mesh() -> ArrayMesh:
+	var verts := PackedVector3Array()
+	var colors := PackedColorArray()
+	var back := 0.55   # 圓心往後移，彎月的最前緣剛好在原點前 0.45
+	for i in CRESCENT_SEGMENTS + 1:
+		var u := float(i) / CRESCENT_SEGMENTS
+		var a := lerpf(-CRESCENT_ARC, CRESCENT_ARC, u)
+		var taper := sin(u * PI)              # 0（兩端）→ 1（中間）
+		var outer := Vector3(sin(a), 0.0, cos(a) - back)
+		var inner := Vector3(sin(a), 0.0, cos(a) - back) * (1.0 - CRESCENT_THICK * taper) + Vector3(0, 0, -back * CRESCENT_THICK * taper)
+		verts.append(outer)
+		colors.append(Color(1, 1, 1, 0.95 * taper + 0.05))
+		verts.append(inner)
+		colors.append(Color(1, 1, 1, 0.0))
+	var idx := PackedInt32Array()
+	for i in CRESCENT_SEGMENTS:
+		var o := i * 2
+		idx.append_array([o, o + 2, o + 1, o + 1, o + 2, o + 3])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = idx
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
 
 
 # 敵人箭矢：細長箭身沿 +Z、發光箭頭（DarkFantasy.enemy_projectile）；飛行高度由模擬層決定（HEIGHT.arrow_altitude）

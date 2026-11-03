@@ -1913,6 +1913,35 @@ static func check_relic() -> String:
 
 # 鐵砧（遺物的一種，地圖改版第 4 步）：第一步主手升一個稀有度、從 N 條新詞條（不重複、不跟現有的重複）選 1，面板保持開著；
 # 第二步從主手武器的技能選 1（照技能遺物：放進格子或升級）；每人一次、用完不消失；已經傳說的武器直接選技能
+# 遺物的「有人看過」（小地圖用）：兩人都面向 +Z，前方的遺物幾步內算看過、背後遠處的沒人看到；快照帶過去
+static func check_relic_spotted() -> String:
+	var w := World.new(&"test_arena")
+	w.spawn_packs = false
+	w.reset(7, [1, 2])
+	w.spawner.finished = true
+	_worlds.append(w)
+	for p: Player in w.player_list:
+		p.pos = Vector2(p.peer_id * 1.5, 0)
+	var front := w.drop_relic(&"small", Vector2(1.5, 5), &"item")
+	var behind := w.drop_relic(&"small", Vector2(1.5, -18), &"item")
+	for i in World.RELIC_SPOT_TICKS * 2 + 1:
+		var cmds := {}
+		for p: Player in w.player_list:
+			var c := InputCmd.new()
+			c.aim = Vector2(0, 5)
+			cmds[p.peer_id] = c
+		w.step(cmds, Config.FIXED_DT)
+	if not front.spotted or behind.spotted:
+		return "前方的遺物應算看過、背後 18 的沒人看到：前 %s、後 %s" % [front.spotted, behind.spotted]
+	var mirror := World.new(&"test_arena")
+	var copy := NetCodec.create_entity(mirror, NetCodec.entity_fields(front)) as Relic
+	var spotted := copy != null and copy.spotted
+	mirror.clear()
+	if not spotted:
+		return "客戶端的遺物鏡像應帶「有人看過」"
+	return ""
+
+
 static func check_anvil() -> String:
 	var w := World.new(&"test_arena")
 	w.spawn_packs = false

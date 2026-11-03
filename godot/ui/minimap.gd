@@ -1,6 +1,8 @@
 # 右上角的小地圖：只畫本機玩家走過、看過的地方（視野距離內一圈，不管牆），轉 45° 跟畫面的方向一致；
-# 地形一格 1 單位畫成一個像素（地面 / 牆與實心 / 墓碑 / 高台），上面標自己（含面向）、隊友、出口的門 / 挖墳點、遺物（含鐵砧）、沒開的寶箱
+# 地形一格 1 單位畫成一個像素（地面 / 牆與實心 / 墓碑 / 高台），上面標自己（含面向）、隊友（倒地的閃紅點 + 剩幾秒）、出口的門 / 挖墳點、
+# 遺物 / 鐵砧（自己還沒選的白框菱形、選過的半透明；隊上有人看過就畫，自己沒走過的地方也畫）、沒開的寶箱
 # 地圖放得進框就整張置中，放不進就以自己為中心（框外裁掉）；換地圖（World.layout_key 變了）清掉走過的紀錄
+# 場地的外框（貼著場地外的 EDGE_CELLS 格）一開始就畫成淡色、走過變亮：看得出哪裡還沒走過
 class_name Minimap
 extends Control
 
@@ -13,12 +15,17 @@ const FLOOR := Color(0.42, 0.44, 0.48, 0.85)
 const SOLID := Color(0.12, 0.12, 0.14, 0.9)
 const TOMB := Color(0.62, 0.6, 0.56, 0.95)
 const PLATFORM := Color(0.55, 0.5, 0.4, 0.9)
+const EDGE := Color(0.85, 0.9, 1.0, 0.95)       # 走過的場地外框
+const EDGE_DIM := Color(0.7, 0.78, 0.95, 0.4)   # 還沒走過的場地外框
+const EDGE_CELLS := 2           # 外框幾格粗（每格 MIN_SCALE 像素以上）
 const SELF := Color("ffffff")
 const ALLY := Color("7fe3ff")
 const DOOR := Color("8fd0ff")
 const DIG := Color("ffd84a")
 const RELIC := Color("c88cff")
 const CHEST := Color("e0b050")
+const DOWNED := Color("ff4a4a")
+const BLINK_HZ := 3.0           # 倒地隊友的紅點每秒閃幾次
 
 var world: World
 var local_player: Callable   # 回傳 Player（可能是 null），HUD 給
@@ -27,6 +34,7 @@ var _key := []
 var _size := Vector2i.ZERO
 var _base := PackedByteArray()   # 每格的地形種類：0 地面、1 實心、2 墓碑、3 高台
 var _seen := PackedByteArray()
+var _edge := PackedByteArray()   # 1 = 場地外框的格子（_mark_edges）
 var _img: Image
 var _tex: ImageTexture
 var _timer := 0.0
@@ -79,8 +87,64 @@ func _rebuild() -> void:
 				_base[y * _size.x + x] = kind
 	_img = Image.create_empty(maxi(_size.x, 1), maxi(_size.y, 1), false, Image.FORMAT_RGBA8)
 	_img.fill(Color(0, 0, 0, 0))
+	_mark_edges()
 	_tex = ImageTexture.create_from_image(_img)
 	_timer = 0.0
+
+
+# 場地外 = 從圖的四邊往裡走得到的實心格（中間的牆不算）；外框 = 場地外裡離場地 EDGE_CELLS 格以內的（4 方向），先畫成淡色
+func _mark_edges() -> void:
+	var w := _size.x
+	var n := _size.x * _size.y
+	var outside := PackedByteArray()
+	outside.resize(n)
+	outside.fill(0)
+	var queue := PackedInt32Array()
+	for x in w:
+		for y: int in [0, _size.y - 1]:
+			queue.append(y * w + x)
+	for y in _size.y:
+		for x: int in [0, w - 1]:
+			queue.append(y * w + x)
+	# 往裡填實心格；碰到不是實心的鄰居（場地）時，這一格就是外框的第 1 圈
+	var ring := PackedInt32Array()
+	var border := queue.size()
+	var head := 0
+	while head < queue.size():
+		var i := queue[head]
+		head += 1
+		if outside[i] or _base[i] != 1:
+			if head <= border and _base[i] != 1:
+				ring.append(i)   # 場地碰到圖的邊：那一格自己就是外框
+			continue
+		outside[i] = 1
+		var x := i % w
+		var touches := false
+		for j: int in [i - 1 if x > 0 else -1, i + 1 if x < w - 1 else -1, i - w, i + w]:
+			if j < 0 or j >= n:
+				continue
+			if _base[j] != 1:
+				touches = true
+			elif not outside[j]:
+				queue.append(j)
+		if touches:
+			ring.append(i)
+	_edge.resize(n)
+	_edge.fill(0)
+	for step in EDGE_CELLS:
+		var next := PackedInt32Array()
+		for i in ring:
+			if _edge[i]:
+				continue
+			_edge[i] = 1
+			_img.set_pixel(i % w, i / w, EDGE_DIM)
+			if step + 1 < EDGE_CELLS:
+				for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+					var nx := i % w + d.x
+					var ny := i / w + d.y
+					if nx >= 0 and ny >= 0 and nx < w and ny < _size.y and outside[ny * w + nx] and not _edge[ny * w + nx]:
+						next.append(ny * w + nx)
+		ring = next
 
 
 func _cell(p: Vector2) -> Vector2i:
@@ -99,7 +163,7 @@ func _reveal(center: Vector2, r: float) -> bool:
 			if _seen[i] or float((x - c.x) * (x - c.x) + (y - c.y) * (y - c.y)) > r2:
 				continue
 			_seen[i] = 1
-			_img.set_pixel(x, y, [FLOOR, SOLID, TOMB, PLATFORM][_base[i]])
+			_img.set_pixel(x, y, EDGE if _edge[i] else [FLOOR, SOLID, TOMB, PLATFORM][_base[i]])
 			changed = true
 	return changed
 
@@ -141,14 +205,31 @@ func _draw() -> void:
 	if DigEvent.enabled(world) and is_seen(ev.point):
 		_draw_cross(_to_view(ev.point, focus, scale_), DIG)
 	for r in world.relics:
-		if not r.is_removed and is_seen(r.pos):
-			_draw_diamond(_to_view(r.pos, focus, scale_), 5.0, RELIC)
+		var relic := r as Relic
+		if relic.is_removed or not (relic.spotted or is_seen(relic.pos)):
+			continue
+		var rv := _to_view(relic.pos, focus, scale_)
+		if me != null and relic.taken.has(me.peer_id):
+			_draw_diamond(rv, 5.0, Color(RELIC, 0.35))
+		else:
+			_draw_diamond(rv, 7.5, Color.WHITE)
+			_draw_diamond(rv, 5.5, RELIC)
 	for c in world.chests:
 		if not c.is_removed and not (c as Chest).opened and is_seen(c.pos):
 			draw_circle(_to_view(c.pos, focus, scale_), 3.0, CHEST)
+	var blink_on := fmod(Time.get_ticks_msec() * 0.001 * BLINK_HZ, 1.0) < 0.6
 	for p in world.player_list:
-		if p != me and not p.is_dead:
-			draw_circle(_to_view(p.pos, focus, scale_), 4.0, ALLY)
+		if p == me or p.is_dead:
+			continue
+		var av := _to_view(p.pos, focus, scale_)
+		if p.is_downed:
+			draw_circle(av, 6.0 if blink_on else 4.5, DOWNED if blink_on else Color(DOWNED, 0.45))
+			var font := get_theme_default_font()
+			var secs := str(ceili(p.down_timer))
+			draw_string_outline(font, av + Vector2(8, 5), secs, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, 4, Color(0, 0, 0, 0.85))
+			draw_string(font, av + Vector2(8, 5), secs, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, DOWNED)
+		else:
+			draw_circle(av, 4.0, ALLY)
 	if me != null:
 		var v := _to_view(me.pos, focus, scale_)
 		var f := MathUtil.dir_from_angle(me.view_facing())
