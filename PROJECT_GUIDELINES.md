@@ -75,6 +75,7 @@ godot/
 - **時間**：秒。所有速度、CD、持續時間都以秒為單位。
 - **主迴圈**：模擬固定每秒 60 步，用 Godot 內建 `_physics_process`（`physics_ticks_per_second=60`、`max_physics_steps_per_frame=5`；等於預設值的設定 Godot 存檔時會從 `project.godot` 刪掉，看不到是正常的）。不使用 Godot 的物理引擎與物理節點，只借用它的固定步長。
 - `main.gd` 在 `_physics_process` 收集輸入 → `world.step()` → 分送事件；畫面在 `_process` 以 `Engine.get_physics_interpolation_fraction()` 在上一步與這一步的位置之間補間。
+  - 跟著實體畫在畫面上的介面（頭頂血條、名牌、詞條）位置一律用 `WorldView.render_pos(實體, 高度)`，跟模型取同一個補間點；直接用 `pos` 在畫面更新比模擬快（120Hz）時每隔一幀差半步，看起來在閃。檢查「頭頂血條」會擋。
 - **更新順序**（`World.step`）：CD → 玩家 → 敵人 → 投射物 → 位移積分 → 碰撞分離 → 場地與地形限制 → 垂直移動 → 生成器 / 事件 → 清除已移除物件。
 - **輸入**：「本步按下」由 `InputCollector` 鎖存：兩次 `step` 之間按過就算，送出後才清除，高更新率螢幕也不漏按。
 - **命中定格**（v0.18.3 使用者決定，取代網頁版的整體放慢）：模擬時間照常走，`entity:damaged` 帶 `hit_stop` 秒數，畫面層（`world_view.gd`）讓攻擊者與目標的模型停住、之後跟上。只是畫面效果。**v0.19.1 起預設關閉**（`Config.FEEL.hit_freeze = false`），事件仍帶 `hit_stop`，要加回來只改開關。

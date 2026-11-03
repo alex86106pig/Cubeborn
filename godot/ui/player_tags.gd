@@ -31,7 +31,7 @@ func _draw() -> void:
 		var p: Player = world.players[peer_id]
 		if p.descended or not Vision.entity_visible(world, world.players.get(view_peer if view_peer != 0 else local_peer), p):   # 視野外、已走進出口（D6）的隊友連名牌都看不到（D2）；觀戰時用隊友的視野
 			continue
-		var at := Vector3(p.pos.x, p.height + HEAD_OFFSET, p.pos.y)
+		var at := WorldView.render_pos(p, HEAD_OFFSET)
 		if camera.is_position_behind(at):
 			continue
 		var s := camera.unproject_position(at)

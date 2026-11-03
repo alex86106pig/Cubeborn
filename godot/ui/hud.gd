@@ -444,6 +444,15 @@ func _on_relic_visibility() -> void:
 
 
 # 背包與屬性面板一起開關（和 Tab 一樣）；main.gd 依背包有沒有開把滑鼠交給介面
+# 自己被打到（不算持續傷害的一跳）：3 選 1 先不選（同 Esc，回去按 F 還是同一組）、背包與屬性面板關掉（同 Tab），手馬上回到戰鬥
+# 持續傷害不關：中毒、燃燒的一跳一跳會讓背包在狀態結束前都打不開
+func close_panels_on_hit() -> void:
+	relic_panel.close()
+	_relic_bag = false
+	if inventory_panel.visible or _stats_panel.visible:
+		set_bag_open(false)
+
+
 func set_bag_open(open: bool) -> void:
 	_stats_panel.visible = open
 	inventory_panel.visible = open
@@ -627,6 +636,8 @@ func _on_event(name: String, p: Dictionary) -> void:
 			_floaters.spawn(target, UiKit.dmg_text(p.amount), style, type_color)
 			if target == local_player():
 				_flash_vignette()
+				if not p.get("minor", false) and p.amount > 0.0:
+					close_panels_on_hit()
 		"entity:dodged":
 			var target: Entity = world.entities.get(p.target_id) if world else null
 			if target != null and Vision.entity_visible(world, local_player(), target):

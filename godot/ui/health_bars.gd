@@ -58,7 +58,7 @@ func mana_bar() -> Dictionary:
 	var me: Player = world.players.get(local_peer)
 	if me == null or me.is_dead or me.is_removed or me.is_downed or me.descended or me.mana >= me.max_mana() - FULL_EPSILON:
 		return {}
-	var s: Variant = _screen(Vector3(me.pos.x, me.height + PlayerTags.HEAD_OFFSET, me.pos.y))
+	var s: Variant = _screen(WorldView.render_pos(me, PlayerTags.HEAD_OFFSET))
 	if s == null:
 		return {}
 	var top: float = PLAYER_GAP + PLAYER_SIZE.y + MANA_GAP
@@ -75,7 +75,7 @@ func reload_ring() -> Dictionary:
 	var atk: Dictionary = me.weapon.attack
 	if not atk.has("quiver"):
 		return {}
-	var s: Variant = _screen(Vector3(me.pos.x, me.height + PlayerTags.HEAD_OFFSET, me.pos.y))
+	var s: Variant = _screen(WorldView.render_pos(me, PlayerTags.HEAD_OFFSET))
 	if s == null:
 		return {}
 	var center: Vector2 = s + Vector2(PLAYER_SIZE.x / 2.0 + RING_GAP + RING_RADIUS, PLAYER_GAP + PLAYER_SIZE.y / 2.0)
@@ -102,7 +102,7 @@ func bars() -> Array[Dictionary]:
 func _add(out: Array[Dictionary], me: Player, e: Entity, offset: float, gap: float, size: Vector2, color: Color) -> void:
 	if e.is_dead or e.is_removed or e.hp >= e.max_hp - FULL_EPSILON or not _visible(me, e):
 		return
-	var s: Variant = _screen(Vector3(e.pos.x, e.height + offset, e.pos.y))
+	var s: Variant = _screen(WorldView.render_pos(e, offset))
 	if s == null:
 		return
 	out.append({"entity": e, "ratio": clampf(e.hp / e.max_hp, 0.0, 1.0), "color": color,

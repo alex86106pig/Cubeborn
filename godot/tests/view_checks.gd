@@ -1201,9 +1201,29 @@ static func check_health_bars() -> String:
 		err = _check_mana_bar(hb, p)
 	if err == "":
 		err = _check_reload_ring(hb, p)
+	if err == "":
+		err = _check_bar_follows_model(hb, rare)
 	hb.free()
 	cam.free()
 	return err
+
+
+# 血條畫在模型的位置（WorldView.render_pos，同 sync 的補間）：上一步在旁邊 2 格、補間一半時，血條的中心在兩者正中間，不在模擬位置
+static func _check_bar_follows_model(hb: HealthBars, e: Entity) -> String:
+	var saved_prev := e.prev_pos
+	e.prev_pos = e.pos + Vector2(2, 0)
+	WorldView.render_alpha = 0.5
+	var want: Vector2 = hb._screen(WorldView.render_pos(e, e.body_height + WorldLabels.ENEMY_OFFSET))
+	var sim: Vector2 = hb._screen(Vector3(e.pos.x, e.height + e.body_height + WorldLabels.ENEMY_OFFSET, e.pos.y))
+	var bar := hb.bars().filter(func(b: Dictionary) -> bool: return b.entity == e)
+	WorldView.render_alpha = 1.0
+	e.prev_pos = saved_prev
+	if bar.is_empty():
+		return "補間檢查：稀有怪沒有血條"
+	var x: float = (bar[0].rect as Rect2).get_center().x
+	if absf(x - want.x) > 0.5 or absf(want.x - sim.x) < 1.0:
+		return "血條中心 x %.1f 應跟著模型的補間位置 %.1f（模擬位置 %.1f）" % [x, want.x, sim.x]
+	return ""
 
 
 # 自己頭上的魔力條：比例 = 魔力 / 上限、滿了不畫；在血條正下方不重疊（血條滿血不畫時位置一樣）；倒地不畫
@@ -2638,6 +2658,21 @@ static func check_relic_panel() -> String:
 			err = "點第 2 張卡片應送出 OP_RELIC_PICK 第 1 個：%s" % [ops]
 		elif panel.visible or not inv.visible:
 			err = "原本就開著的背包，選完遺物不應關掉（面板 %s、背包 %s）" % [panel.visible, inv.visible]
+	if err == "":
+		# 被打到：3 選 1 先不選、背包與屬性面板關掉；持續傷害的一跳不關
+		p.relic_id = 0
+		panel.refresh(w, p)
+		relic.open_for(p)
+		panel.refresh(w, p)
+		ops.clear()
+		hud._on_event("entity:damaged", {"target_id": p.id, "pos": p.pos, "amount": 3.0, "minor": true})
+		var after_tick: bool = panel.visible and inv.visible
+		hud._on_event("entity:damaged", {"target_id": p.id, "pos": p.pos, "amount": 12.0})
+		panel.refresh(w, p)
+		if not after_tick:
+			err = "持續傷害的一跳不應關掉 3 選 1 與背包"
+		elif ops != [[InputCmd.OP_RELIC_CLOSE]] or panel.visible or inv.visible or hud.is_stats_panel_open():
+			err = "被打到應送出 OP_RELIC_CLOSE、關掉 3 選 1、背包與屬性面板：%s、面板 %s、背包 %s、屬性面板 %s" % [ops, panel.visible, inv.visible, hud.is_stats_panel_open()]
 	hud.queue_free()
 	cam.queue_free()
 	return err

@@ -82,6 +82,9 @@ var _last_strike_tick := -1
 var local_peer := World.HOST_PEER_ID
 var spectate_peer := 0                 # 本機陣亡後觀戰的隊友（0 = 不觀戰，由 main.gd 決定）：視野改用他的
 var hidden_ids: Dictionary = {}        # 這一幀看不到的實體 id（Effects 的持續性粒子也跳過）
+# 這一幀模型畫在上一步與這一步之間的哪裡（sync 的 alpha）；頭頂的血條、名牌、詞條用 render_pos 跟模型畫在同一點，
+# 直接用模擬位置的話畫面更新比模擬快（120Hz）時會每幀跟模型差半步、看起來在閃。沒呼叫過 sync（檢查）時是 1 = 模擬位置
+static var render_alpha := 1.0
 var _vision_key := []                  # 上次算視野時的 tick 與觀看者狀態（沒變就沿用 hidden_ids）
 var _los_blocked: Dictionary = {}      # entity id -> 視線被牆擋住（分批更新，見 sync）
 var _fade_level: Dictionary = {}       # entity id -> 顯示程度 0~1（視野的淡入淡出，view/fade.gd）
@@ -207,9 +210,16 @@ func apply_theme(theme: StringName) -> void:
 	_sun.light_energy = c.sun_energy
 
 
+# 實體這一幀畫在哪（同 sync 擺模型的補間）：x / z 是地面位置，y 是腳底高度 + up
+static func render_pos(e: Entity, up: float = 0.0) -> Vector3:
+	var at := e.prev_pos.lerp(e.pos, render_alpha)
+	return Vector3(at.x, lerpf(e.prev_height, e.height, render_alpha) + up, at.y)
+
+
 # alpha：上一步到這一步之間的補間比例（0~1）；dt：渲染幀秒數（動畫用）
 func sync(world: World, alpha: float, dt: float) -> void:
 	_world = world
+	render_alpha = alpha
 	_tick_warm_up()
 	var me := viewer()
 	# 視野只依模擬層的位置與朝向決定：同一個 tick 不必重算（D5：200 隻怪時每幀做視線判斷太慢）

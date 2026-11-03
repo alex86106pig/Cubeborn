@@ -143,7 +143,7 @@ func _draw_keeper(font: Font, me: Player, viewer: Player) -> void:
 		if me != null and keeper.can_talk(me):
 			label = "[F] 對話  " + label
 		_text(font, keeper, top + 0.5, label, NPC_COLOR, 17, Vector2(0, -12))
-		var at := Vector3(keeper.pos.x, keeper.height + top, keeper.pos.y)
+		var at := WorldView.render_pos(keeper, top)
 		if not camera.is_position_behind(at):
 			var s := camera.unproject_position(at) + Vector2(-NPC_BAR.x / 2.0, 0)
 			draw_rect(Rect2(s, NPC_BAR), Color(0, 0, 0, 0.7))
@@ -225,7 +225,7 @@ func _draw_card(font: Font, pickup: ItemPickup) -> void:
 
 # avoid：物件名稱（不會動的東西）碰到這一幀已經畫的名稱就往上錯開一行；怪物頭上的字不錯開（會跟著動、錯開會跳來跳去）
 func _text(font: Font, e: Entity, offset: float, text: String, color: Color, size := 17, shift := Vector2.ZERO, avoid := false, alpha := 1.0) -> void:
-	_text_at(font, Vector3(e.pos.x, e.height + offset, e.pos.y), text, color, size, shift, avoid, alpha)
+	_text_at(font, WorldView.render_pos(e, offset), text, color, size, shift, avoid, alpha)
 
 
 # alpha：文字與描邊一起淡（跟著模型淡入淡出）
