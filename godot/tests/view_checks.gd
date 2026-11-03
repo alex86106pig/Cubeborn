@@ -2704,6 +2704,37 @@ static func check_forge_panel() -> String:
 
 # 疊在一起的字：同一個目標同時跳的傷害數字（屬性轉換、冰棺分傷害）一個比一個高、別的目標不受影響；
 # 地上物件的名稱碰到這一幀已經畫的就往上錯開一行，沒碰到的留在原位
+# 小地圖：只畫走過看過的（視野距離內），實心格標成實心；換小關清掉走過的紀錄、改用新地圖的大小
+static func check_minimap() -> String:
+	var w := _new_world(5, false, &"graveyard")
+	var p := _player(w)
+	var mm := Minimap.new()
+	mm.world = w
+	mm.local_player = func() -> Player: return p
+	_scene_root().add_child(mm)
+	mm.refresh(0.0)
+	var r := Vision.view_range(p)
+	var far := p.pos + Vector2(r + 3.0, 0.0)
+	var seen_far := mm.is_seen(far)
+	var seen_here := mm.is_seen(p.pos)
+	var solid := mm._base[0]   # 左上角在地圖外框（EDGE_PAD 一圈實心）
+	var old_size := mm._size
+	w.next_stage(&"")
+	mm.refresh(0.0)
+	var reset_ok: bool = mm._size == Vector2i((w.half_extents * 2.0).ceil()) and mm.is_seen(p.pos) and not mm.is_seen(far)
+	var shown := mm._seen.count(1)
+	mm.queue_free()
+	if not seen_here or seen_far:
+		return "出生點應看過、%.0f 外不應看過（%s / %s）" % [r + 3.0, seen_here, seen_far]
+	if solid != 1:
+		return "地圖外框應標成實心，實際種類 %d" % solid
+	if not reset_ok:
+		return "換小關後應照新地圖重畫（舊 %s、新 %s、地圖 %s），只看過出生點附近" % [old_size, mm._size, w.half_extents * 2.0]
+	if shown > ceili(PI * (r + 1.0) * (r + 1.0)):
+		return "換小關後看過的格子應只有視野一圈，實際 %d 格" % shown
+	return ""
+
+
 static func check_overlap_text() -> String:
 	var w := _new_world(5)
 	var cam := _test_camera()

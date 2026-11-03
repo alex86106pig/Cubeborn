@@ -60,7 +60,8 @@ var _kills := UiKit.label("", 16)
 var _time := UiKit.label("", 16)
 var _fps := UiKit.label("", 12)
 var _mute := UiKit.label("", 12, Color(1, 1, 1, 0.75))
-var _top_right := VBoxContainer.new()         # 右上的層數、擊殺、時間…：背包靠右貼邊、蓋不滿，開著時藏起來（不然字從背包右緣露出來）
+var _top_right := VBoxContainer.new()         # 右上的小地圖、層數、擊殺、時間…：背包靠右貼邊、蓋不滿，開著時藏起來（不然字從背包右緣露出來）
+var minimap := Minimap.new()
 var _boss_box := VBoxContainer.new()
 var _boss_name := UiKit.label("", 18)
 var _boss: Dictionary
@@ -120,6 +121,7 @@ func setup(p_world: World, p_camera: Camera3D) -> void:
 	_world_labels.world = p_world
 	_world_labels.camera = p_camera
 	inventory_panel.world = p_world
+	minimap.world = p_world
 
 
 # 場上文字跟著模型淡入淡出（WorldView.fade_level）
@@ -227,6 +229,9 @@ func _init() -> void:
 	tr.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	tr.add_theme_constant_override(&"separation", 2)
 	var version := UiKit.label("v" + GameVersion.VERSION, 12, Color(1, 1, 1, 0.6), 1)
+	minimap.local_player = local_player
+	minimap.size_flags_horizontal = Control.SIZE_SHRINK_END
+	tr.add_child(minimap)
 	for l: Label in [_wave, _kills, _time, _fps, version, _mute]:
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		tr.add_child(l)
