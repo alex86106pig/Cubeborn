@@ -9,6 +9,8 @@ var spectating: Dictionary = {} # peer_id -> 陣亡後觀戰的隊友 peer id（
 var _queues: Dictionary = {}    # peer_id -> Array[InputCmd]（依 tick 遞增）
 var input_gap_max_ms: Dictionary = {}   # peer_id -> 兩次收到輸入最長隔多久（遊玩紀錄；以房主的模擬步換算毫秒）
 var _last_input_tick: Dictionary = {}   # peer_id -> 上次收到輸入時的 world.tick
+var _loadout_sig: Dictionary = {}       # 玩家實體 id -> 背包 / 主副手 / 技能等級的雜湊（_loadout_unchanged）
+var _loadout_changed: Dictionary = {}   # 玩家實體 id -> 上次變動的 world.tick
 
 
 func _init(p_world: World) -> void:
@@ -64,12 +66,28 @@ func take_cmds() -> Dictionary:
 # 休眠的怪群成員不送（local_dormant）：客戶端自己生，快照的 W_PACKS 告訴它哪幾群醒了
 func snapshots() -> Dictionary:
 	var entities := NetCodec.encode_entities(world)
+	var skip_loadout := _loadout_unchanged()
 	var out := {}
 	for peer_id: int in world.players:
 		if peer_id != World.HOST_PEER_ID:
 			var viewer := viewer_of(peer_id)
 			var picked := entities.filter(func(rec: Array) -> bool: return in_interest(rec[2], viewer) and not local_dormant(rec[2]))
-			out[peer_id] = NetCodec.make_snapshot(world, picked, acks.get(peer_id, 0), peer_id)
+			out[peer_id] = NetCodec.make_snapshot(world, picked, acks.get(peer_id, 0), peer_id, skip_loadout)
+	return out
+
+
+# 背包、主副手、技能等級很少變卻佔快照大半：變了之後 loadout_repeat_ticks 內每份都帶，之後每 loadout_refresh_ticks 才帶一次
+# 回傳這一份可以不帶的玩家 id
+func _loadout_unchanged() -> Dictionary:
+	var out := {}
+	var refresh: bool = world.tick % Config.NET.loadout_refresh_ticks < Config.NET.snapshot_interval
+	for p in world.player_list:
+		var sig := [p.inventory.to_array(), p.weapon_slots.map(WeaponDropDefs.to_array), p.skill_levels].hash()
+		if _loadout_sig.get(p.id, null) != sig or world.tick < _loadout_changed[p.id]:   # 重新開始時 tick 歸零
+			_loadout_sig[p.id] = sig
+			_loadout_changed[p.id] = world.tick
+		if not refresh and world.tick - _loadout_changed[p.id] > Config.NET.loadout_repeat_ticks:
+			out[p.id] = true
 	return out
 
 

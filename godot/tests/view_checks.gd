@@ -372,12 +372,12 @@ static func check_skill_bar_parry() -> String:
 		var free_key := ActiveSlots.cd_key(0)
 		if bar._slots[free_key].icon_id != "" or p.slots.get_slot(p, 0) != null:
 			err = "換成鐵鏟後插火把的格子應空出來：%s" % bar._slots[free_key].icon_id
-		p.held_enemy_id = -1
+		p.held_id = -1
 		bar.refresh(w, p)
 		var gr: Dictionary = WeaponDefs.WEAPONS[&"shovel"].grab
 		if not bar._alt_left.visible or bar._alt_left.icon_id != gr.attack.icon or bar._alt_right.icon_id != gr.special.icon:
 			err = "舉著怪時左右鍵應換成「%s」/「%s」" % [gr.attack.icon, gr.special.icon]
-		p.held_enemy_id = 0
+		p.held_id = 0
 	bar.queue_free()
 	return err
 
@@ -749,6 +749,26 @@ static func check_run_log_friendly() -> String:
 	if self_log.hits_taken != 0:
 		return "出招的人自己不應記到被打"
 	return ""
+
+
+# 遊玩紀錄的連線卡住時間點（另起一行）；客戶端換小關的事件比鏡像先到時，等鏡像換好才記那一關（地形不是上一關的）
+static func check_run_log_net() -> String:
+	var nt := RunLog.net_text({"role": "客戶端", "players": 2, "rtt_ms": [80], "snapshot_gap_max_ms": 1383,
+		"stalls": [{"at": 268.0, "stage": "1-3", "what": "快照斷", "ms": 1383}, {"at": 300.0, "stage": "1-3", "what": "回應", "ms": 2367}], "stall_count": 5})
+	if not nt.ends_with("\n  卡住的時間點：4:28 1-3 快照斷 1383 ms、5:00 1-3 回應 2367 ms…等共 5 次"):
+		return "卡住的時間點那行不對：%s" % nt
+	var w := _new_world(5)
+	var rl := RunLog.new()
+	rl.me_id = _player(w).id
+	rl.on_event(w, "stage:started", {"floor": w.floor_num, "stage": w.stage_num + 1})
+	if not rl.floors.is_empty():
+		return "鏡像還在上一關時不應記下新的一關：%s" % [rl.floors]
+	w.stage_num += 1
+	rl.track(w, 1.0)
+	if rl.floors.size() != 1 or rl.floors[0].stage != w.stage_num:
+		return "鏡像換到 1-%d 後應記下那一關：%s" % [w.stage_num, rl.floors]
+	return ""
+
 
 # 遊玩紀錄的武器那一行與「來不及反應算看不見」：只用 RunLog（不建 HUD），事件直接餵
 static func check_run_log_weapons_react() -> String:
@@ -1142,6 +1162,35 @@ static func check_vision_view() -> String:
 		view.sync(w, 1.0, 0.016)
 		if not front_node.visible or _fade_alpha(front_node) != 1.0:
 			err = "本機角色陣亡後應立刻全部看得到（不淡入）"
+	view.free()
+	return err
+
+
+# 留在地上的特效（聖光圈、腐氣、蜘蛛網）在背後放的也建立、先藏著，轉身看到時顯示；短的預警圈在背後照樣不畫
+static func check_lingering_fx() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	p.facing = 0.0
+	var view := WorldView.new()
+	view.sync(w, 1.0, 0.016)
+	var fx := view.effects
+	var err := ""
+	var before := fx._transients.size()
+	view.on_event("fx:telegraph", {"pos": Vector2(0, -8), "height": 0.0, "radius": 1.0, "color": Color.WHITE, "life": WorldView.LINGER_MIN * 0.5})
+	if fx._transients.size() != before:
+		err = "背後的短預警圈不應畫"
+	var made: Array = []
+	if err == "":
+		view.on_event("fx:telegraph", {"pos": Vector2(0, -12), "height": 0.0, "radius": 4.0, "color": Color.WHITE, "life": WorldView.LINGER_MIN * 4.0, "fill": true})
+		made = fx._transients.slice(before)
+		if made.is_empty() or made.any(func(t: Dictionary) -> bool: return t.node.visible):
+			err = "背後放的聖光圈應建立但藏著：%d 個零件、顯示 %s" % [made.size(), made.map(func(t: Dictionary) -> bool: return t.node.visible)]
+	if err == "":
+		p.facing = PI
+		w.tick += 1
+		view.sync(w, 1.0, 0.1)
+		if made.any(func(t: Dictionary) -> bool: return not t.node.visible):
+			err = "轉身看到後聖光圈應顯示"
 	view.free()
 	return err
 

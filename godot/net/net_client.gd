@@ -15,6 +15,13 @@ const RTT_MAX_SAMPLES := 20000
 var rtt_ms: Array[int] = []      # 回應時間：送出一筆輸入到房主的快照確認套用（ack）之間（含網路來回、排隊、快照間隔）
 var snapshot_gap_max_ms := 0     # 兩份快照之間最長隔多久（房主卡住、切到背景時會很大）
 var _last_snapshot_tick := -1    # 收到上一份快照時的客戶端 tick
+# 連線卡住的時間點（遊玩紀錄）：回應超過 STALL_RTT_MS、或快照斷超過 STALL_GAP_MS；STALL_MERGE 秒內的併成一筆取最大
+const STALL_RTT_MS := 500
+const STALL_GAP_MS := 300
+const STALL_MERGE := 2.0
+const STALL_MAX := 30
+var stalls: Array[Dictionary] = []   # {at: 本局秒數, stage: 小關, what: "回應" | "快照斷", ms}
+var stall_count := 0                 # 併過之後的總筆數（超過 STALL_MAX 的只算數）
 
 var _run_id := -1
 var _snapshots: Array = []       # 依 tick 遞增
@@ -122,9 +129,22 @@ func receive_snapshot(snap: Array) -> void:
 	_latest_tick = tick
 	_since_snapshot = 0
 	if _last_snapshot_tick >= 0:
-		snapshot_gap_max_ms = maxi(snapshot_gap_max_ms, _ticks_to_ms(_client_tick - _last_snapshot_tick))
+		var gap := _ticks_to_ms(_client_tick - _last_snapshot_tick)
+		snapshot_gap_max_ms = maxi(snapshot_gap_max_ms, gap)
+		if gap > STALL_GAP_MS:
+			_note_stall("快照斷", gap)
 	_last_snapshot_tick = _client_tick
 	_reconcile(snap)
+
+
+func _note_stall(what: String, ms: int) -> void:
+	var at: float = world.stats.time
+	if not stalls.is_empty() and at - stalls[-1].at <= STALL_MERGE and stalls[-1].what == what:
+		stalls[-1].ms = maxi(stalls[-1].ms, ms)
+		return
+	stall_count += 1
+	if stalls.size() < STALL_MAX:
+		stalls.append({"at": at, "stage": "%d-%d" % [world.floor_num, world.stage_num], "what": what, "ms": ms})
 
 
 # 房主的事件（reliable）：丟掉標了自己為行動者的（本機預測時已經播過），其餘排到畫面時間再播
@@ -274,12 +294,15 @@ func _reconcile(snap: Array) -> void:
 	if is_new_ack:
 		_last_ack = ack
 		if ack <= _client_tick and rtt_ms.size() < RTT_MAX_SAMPLES:
-			rtt_ms.append(_ticks_to_ms(_client_tick - ack))
+			var rtt := _ticks_to_ms(_client_tick - ack)
+			rtt_ms.append(rtt)
+			if rtt > STALL_RTT_MS:
+				_note_stall("回應", rtt)
 		while not _pending.is_empty() and _pending[0].tick <= ack:
 			_pending.pop_front()
 	_apply_own_authority(me, a)
-	if me.is_dead or me.is_downed or me.descended:
-		# 倒地 / 死亡 / 已走進出口時不預測：位置直接用房主的（可能被怪推動、換層時搬到出生點）
+	if me.is_dead or me.is_downed or me.descended or me.grabbed_by != 0:
+		# 倒地 / 死亡 / 已走進出口 / 被抓住時不預測：位置直接用房主的（可能被怪推動、被隊友用鐵鏟舉著走、換層時搬到出生點）
 		_history.clear()
 		me.pos = Vector2(a[NetCodec.E_X], a[NetCodec.E_Z])
 		me.height = a[NetCodec.E_H]
@@ -321,13 +344,15 @@ func _apply_own_authority(me: Player, a: Array) -> void:
 	me.descended = extra[NetCodec.P_DESCENDED]
 	me.dice = extra[NetCodec.P_DICE]
 	me.relic_id = extra[NetCodec.P_RELIC]
-	me.skill_levels = extra[NetCodec.P_SKILL_LV]
+	if extra[NetCodec.P_SKILL_LV] != null:   # 背包 / 主副手 / 技能等級 null = 這份沒帶（沒變，NetHost._loadout_unchanged）
+		me.skill_levels = extra[NetCodec.P_SKILL_LV]
 	me.mana = extra[NetCodec.P_MANA]   # 魔力以房主為準：本機預測放了招，下一筆快照就對齊
 	me.shield = (a[NetCodec.E_ANIM] as Dictionary).get("shield", 0.0) * me.max_hp   # 護盾以房主為準（G4）
 	if extra.size() > NetCodec.P_RELOAD:   # 箭袋以房主為準（只有拿著短弓才送）
 		me.quiver = extra[NetCodec.P_QUIVER]
 		me.reload_timer = extra[NetCodec.P_RELOAD]
-	me.sync_inventory(extra[NetCodec.P_INV])   # 背包以房主為準（D3：撿、丟、搬動都在房主執行）
+	if extra[NetCodec.P_INV] != null:
+		me.sync_inventory(extra[NetCodec.P_INV])   # 背包以房主為準（D3：撿、丟、搬動都在房主執行）
 	# 被房主判定暈眩（v0.27.0）：本機預測也立刻站住；負數 = 被腐屍抓住（本機不知道是哪隻，grabbed_by 填 -1）
 	var host_stun: float = extra[NetCodec.P_STUN]
 	var grabbed := host_stun < 0.0
@@ -341,4 +366,5 @@ func _apply_own_authority(me: Player, a: Array) -> void:
 	elif not host_buried and me.bury_mash >= 0.0:
 		me.bury_mash = -1.0
 		me.stun_timer = 0.0
-	me.sync_weapon_slots(extra[NetCodec.P_SLOTS])   # 主手與副手以房主為準
+	if extra[NetCodec.P_SLOTS] != null:
+		me.sync_weapon_slots(extra[NetCodec.P_SLOTS])   # 主手與副手以房主為準

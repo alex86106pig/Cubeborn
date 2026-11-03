@@ -1141,8 +1141,8 @@ static func check_shovel() -> String:
 		var other := _dummy(w, Vector2(0, 5.0))
 		_run(w, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), 1)
 		_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), 20)
-		if p.held_enemy_id != g.id or g.grabbed_by != p.id:
-			return "鏟起應抓住面前的骷髏：舉著 %d、骷髏 %d" % [p.held_enemy_id, g.id]
+		if p.held_id != g.id or g.grabbed_by != p.id:
+			return "鏟起應抓住面前的骷髏：舉著 %d、骷髏 %d" % [p.held_id, g.id]
 		if mode == &"throw":
 			_run(w, _cmd(Vector2(1, 0), Vector2(0, 8)), 3)
 			if absf(p.velocity.length() - p.stats.value(&"move_speed") * sv.grab.move_speed_mul) > 0.05 or p.try_jump():
@@ -1156,12 +1156,12 @@ static func check_shovel() -> String:
 			if not g.is_launching() or g.height - g.ground_height < 0.3 or g.pos.y > 7.0 or absf(hp_g - g.hp) > EPS:
 				return "拋出飛到一半應還在空中（%.1f 秒飛完）：飛行中 %s、離地 %.2f、z %.2f、扣血 %.1f" % [ta.flight_time, g.is_launching(), g.height - g.ground_height, g.pos.y, hp_g - g.hp]
 			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), roundi(ta.flight_time * 0.5 / DT) + 20)
-			results[mode] = [hp_g - g.hp, hp_o - other.hp, g.pos.y, p.held_enemy_id]
+			results[mode] = [hp_g - g.hp, hp_o - other.hp, g.pos.y, p.held_id]
 		elif mode == &"bury":
 			var hp_g := g.hp
 			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), 1)
 			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), 20)
-			results[mode] = [hp_g - g.hp, g.buried_timer, p.held_enemy_id]
+			results[mode] = [hp_g - g.hp, g.buried_timer, p.held_id]
 			# 埋著打得到、但不會被擊退（2026-10-27 使用者）
 			var hp_b := g.hp
 			var at := g.pos
@@ -1171,7 +1171,7 @@ static func check_shovel() -> String:
 				return "埋著的怪應打得到（扣 5）、不被擊退：扣 %.2f、移動 %.2f" % [hp_b - g.hp, g.pos.distance_to(at)]
 		else:
 			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), roundi(sv.special.hold_time / DT) + 2)
-			results[mode] = [p.held_enemy_id, g.grabbed_by]
+			results[mode] = [p.held_id, g.grabbed_by]
 	var base: float = sv.base_damage
 	var th: Array = results[&"throw"]
 	if absf(th[0] - base * sv.grab.attack.damage_pct) > EPS or absf(th[1] - base * sv.grab.attack.path_damage_pct) > EPS or th[2] < 5.0 or th[3] != 0:
@@ -1191,8 +1191,8 @@ static func check_shovel() -> String:
 	_spawn(w2, &"boss", Vector2(0, 2.5))
 	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), 1)
 	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 8)), 12)
-	if p2.held_enemy_id != 0 or absf(mana2 - p2.mana - sv.special.miss_mana) > 1e-3:
-		return "Boss 抓不起來、沒抓到只扣 %.0f 魔力：舉著 %d、扣了 %.2f" % [sv.special.miss_mana, p2.held_enemy_id, mana2 - p2.mana]
+	if p2.held_id != 0 or absf(mana2 - p2.mana - sv.special.miss_mana) > 1e-3:
+		return "Boss 抓不起來、沒抓到只扣 %.0f 魔力：舉著 %d、扣了 %.2f" % [sv.special.miss_mana, p2.held_id, mana2 - p2.mana]
 	# 掘墓人：挖墳中受傷 −25%
 	var w3 := _class_world(&"gravedigger")
 	var gd := _player(w3)
@@ -1203,6 +1203,71 @@ static func check_shovel() -> String:
 	var want: float = 20.0 * 0.75 * StatDefs.armor_damage_factor(gd.stats.value(&"armor"))
 	if absf((before - gd.hp) - want) > EPS:
 		return "掘墓人挖墳中受到 20 應扣 %.2f（−25%% 再算護甲），實際 %.2f" % [want, before - gd.hp]
+	return ""
+
+
+# 鏟起搆得到正在正面牽制的屍犬（牽制距離的內緣），比抓取距離遠一點的抓不到
+static func check_shovel_reach() -> String:
+	var sv: Dictionary = WeaponDefs.WEAPONS[&"shovel"]
+	var pin_near: float = EnemyDefs.ENEMIES[&"hound"].pin.range[0]
+	var results := []
+	for dist: float in [pin_near + 0.05, 0.0]:
+		var w := _new_world()
+		var p := _player(w)
+		p.equip_weapon(&"shovel")
+		var dog := _spawn(w, &"hound", Vector2.ZERO)
+		if dist == 0.0:
+			dist = sv.special.reach + p.radius + dog.radius + 0.3
+		dog.pos = Vector2(0, dist)
+		dog.stun(5.0)
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), 1)
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), 12)
+		results.append(p.held_id == dog.id)
+	if results != [true, false]:
+		return "屍犬在牽制距離 %.2f 應抓得到、超過抓取距離 %.1f 抓不到：%s" % [pin_near + 0.05, sv.special.reach, results]
+	return ""
+
+
+# 鏟起隊友（誤傷開著時）：舉著時隊友停住、按翻滾掙脫；拋出不扣血、被推到前方；埋入不扣血、定住
+static func check_shovel_teammate() -> String:
+	var sv: Dictionary = WeaponDefs.WEAPONS[&"shovel"]
+	var mate_peer := World.HOST_PEER_ID + 1
+	for mode: StringName in [&"throw", &"bury", &"escape"]:
+		var w := World.new(&"test_arena")
+		w.spawn_packs = false
+		w.reset(12345, [World.HOST_PEER_ID, mate_peer])
+		w.spawner.finished = true
+		_worlds.append(w)
+		var p := _player(w)
+		var mate: Player = w.players[mate_peer]
+		p.equip_weapon(&"shovel")
+		p.pos = Vector2.ZERO
+		mate.pos = Vector2(0, 1.4)
+		var idle := _cmd(Vector2.ZERO)
+		w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), mate_peer: idle}, DT)
+		for i in 20:
+			w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO, Vector2(0, 8)), mate_peer: idle}, DT)
+		if p.held_id != mate.id or mate.grabbed_by != p.id:
+			return "鏟起應抓住面前的隊友：舉著 %d、隊友 %d、被抓 %d" % [p.held_id, mate.id, mate.grabbed_by]
+		var hp := mate.hp
+		match mode:
+			&"throw":
+				w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_ATTACK), mate_peer: idle}, DT)
+				for i in 90:
+					w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO, Vector2(0, 8)), mate_peer: idle}, DT)
+				if absf(mate.hp - hp) > EPS or mate.pos.y < 1.4 + sv.grab.attack.distance * 0.6 or p.held_id != 0 or mate.grabbed_by != 0:
+					return "拋出隊友應不扣血、推到前方約 %.0f：扣 %.1f、z %.2f、舉著 %d、被抓 %d" % [sv.grab.attack.distance, hp - mate.hp, mate.pos.y, p.held_id, mate.grabbed_by]
+			&"bury":
+				w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), mate_peer: idle}, DT)
+				for i in 20:
+					w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO, Vector2(0, 8)), mate_peer: idle}, DT)
+				if absf(mate.hp - hp) > EPS or mate.stun_timer <= 0.0 or mate.bury_mash < 0.0 or p.held_id != 0:
+					return "埋入隊友應不扣血、埋著定住：扣 %.1f、暈 %.2f、埋 %.2f、舉著 %d" % [hp - mate.hp, mate.stun_timer, mate.bury_mash, p.held_id]
+			&"escape":
+				w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO, Vector2(0, 8)), mate_peer: _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ROLL)}, DT)
+				w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO, Vector2(0, 8)), mate_peer: idle}, DT)
+				if p.held_id != 0 or mate.grabbed_by != 0 or mate.stun_timer > 0.0:
+					return "被舉著的隊友按翻滾應掙脫：舉著 %d、被抓 %d、暈 %.2f" % [p.held_id, mate.grabbed_by, mate.stun_timer]
 	return ""
 
 
@@ -1265,8 +1330,8 @@ static func check_training_dummies() -> String:
 	var aim := p.pos + (near.pos - p.pos) * 3.0
 	_run(w, _cmd(Vector2.ZERO, aim, InputCmd.BTN_SPECIAL), 1)
 	_run(w, _cmd(Vector2.ZERO, aim), 20)
-	if p.held_enemy_id != near.id:
-		return "鐵鏟應抓起貼身的木樁：舉著 %d、木樁 %d" % [p.held_enemy_id, near.id]
+	if p.held_id != near.id:
+		return "鐵鏟應抓起貼身的木樁：舉著 %d、木樁 %d" % [p.held_id, near.id]
 	_run(w, _cmd(Vector2.ZERO, aim, InputCmd.BTN_SPECIAL), 1)
 	_run(w, _cmd(Vector2.ZERO, aim), 20)
 	if near.buried_timer <= 0.0 or near.grabbed_by != 0:

@@ -23,8 +23,8 @@ var torch_stance := false              # 火把準備姿態（F8）：按住右�
 var running := false                   # 跑步（Ctrl 切換）：跳躍、翻滾、開寶箱不取消；進入待機與翻滾以外的動作就取消
 var quiver := 6                        # 箭袋裡剩幾支（短弓，F4 回饋）：射完自動裝填
 var reload_timer := 0.0                # 裝填剩餘秒數；> 0 時不能射、移速變慢
-var held_enemy_id := 0                # 鐵鏟舉著的怪（F9）；0 = 沒有
-var hold_timer := 0.0                  # 舉著的剩餘秒數，到 0 怪掙脫
+var held_id := 0                # 鐵鏟舉著的怪或隊友（F9）；0 = 沒有
+var hold_timer := 0.0                  # 舉著的剩餘秒數，到 0 對方掙脫
 var loadout := Loadout.new()           # 裝備欄、背包、生效的道具（sim/loadout.gd）
 var weapon_slots: Array[Dictionary]:   # [主手, 副手]（Loadout.MAIN / OFF）：武器實例（WeaponDropDefs）或 {}
 	get:
@@ -109,7 +109,7 @@ func _init(p_world: World, p_peer_id: int) -> void:
 
 # 跳躍：站在地面上隨時可以跳（攻擊、翻滾中也行），受擊硬直與倒地時不行；只有一段跳
 func try_jump() -> bool:
-	if is_dead or is_downed or held_enemy_id != 0 or action.is_in(&"stagger") or action.is_in(&"revive") or action.is_in(&"dig"):
+	if is_dead or is_downed or held_id != 0 or action.is_in(&"stagger") or action.is_in(&"revive") or action.is_in(&"dig"):
 		return false
 	if not is_grounded():
 		# 二段跳（道具能力 double_jump，v0.27.0）：空中可以再跳一次，高度同第一段（從目前高度往上 JUMP.height）
@@ -364,8 +364,8 @@ func _go_down() -> void:
 	is_downed = true
 	torch_stance = false
 	running = false
-	if held_enemy_id != 0:
-		release_enemy()
+	if held_id != 0:
+		release_held()
 	hp = 0.0
 	down_timer = Config.REVIVE.down_time
 	revive_progress = 0.0
@@ -576,8 +576,8 @@ func show_weapon(id: StringName, force := false) -> void:
 	torch_stance = false
 	reload_timer = 0.0   # 換到有箭袋的弓就是滿的（換武器本身就要花時間；翻滾也能瞬間補滿）
 	quiver = weapon.attack.get("quiver", 0)
-	if held_enemy_id != 0:
-		release_enemy()
+	if held_id != 0:
+		release_held()
 	combo_step = 0
 	combo_timer = 0.0
 	action.change(&"ready")
@@ -600,7 +600,7 @@ func pct_damage(pct: float) -> float:
 
 # 動作層要用的招式資料：火把準備姿態中換成 stance 的左右鍵（F8），其餘就是武器的 attack / special
 func action_def(kind: StringName) -> Dictionary:
-	if held_enemy_id != 0 and weapon.has("grab"):
+	if held_id != 0 and weapon.has("grab"):
 		return weapon.grab[kind]   # 鐵鏟舉著怪：左鍵拋出、右鍵埋入（F9）
 	if torch_stance and weapon.has("stance") and weapon.stance.has(kind):
 		return weapon.stance[kind]   # 舉著火把：左鍵噴火
@@ -626,28 +626,37 @@ func refill_quiver() -> void:
 		reload_timer = 0.0
 
 
-# 鐵鏟舉起一隻怪（F9）：怪停住、跟在面前，seconds 秒內沒拋出 / 埋入就掙脫
-func grab_enemy(e: Enemy, seconds: float) -> void:
-	held_enemy_id = e.id
+# 鐵鏟舉起一隻怪或一位隊友（F9）：對方停住、跟在面前，seconds 秒內沒拋出 / 埋入就掙脫
+# 隊友同被腐屍抓住（stun 帶 grabbed_by）：按翻滾立刻掙脫
+func grab_target(e: Entity, seconds: float) -> void:
+	held_id = e.id
 	hold_timer = seconds
-	e.grabbed_by = id
+	if e is Player:
+		(e as Player).stun(seconds, id)
+	else:
+		(e as Enemy).grabbed_by = id
 	_follow_held()
 
 
-# 放開舉著的怪（拋出、埋入、掙脫、換武器、倒地），回傳那隻怪（已經不在了回傳 null）
-func release_enemy() -> Enemy:
-	var e: Enemy = world.entities.get(held_enemy_id) as Enemy
-	held_enemy_id = 0
+# 放開舉著的怪或隊友（拋出、埋入、掙脫、換武器、倒地），回傳對方（已經不在了、隊友自己掙脫了回傳 null）
+func release_held() -> Entity:
+	var e: Entity = world.entities.get(held_id)
+	held_id = 0
 	hold_timer = 0.0
-	if e != null:
-		e.grabbed_by = 0
+	if e is Player:
+		var mate := e as Player
+		if mate.grabbed_by != id:
+			return null
+		mate.release_grab()
+	elif e is Enemy:
+		(e as Enemy).grabbed_by = 0
 	return e
 
 
 func _follow_held() -> void:
-	var e: Enemy = world.entities.get(held_enemy_id) as Enemy
-	if e == null or e.is_dead:
-		release_enemy()
+	var e: Entity = world.entities.get(held_id)
+	if e == null or e.is_dead or (e is Player and ((e as Player).grabbed_by != id or not (e as Player).is_targetable())):
+		release_held()
 		return
 	e.pos = pos + MathUtil.dir_from_angle(facing) * (radius + e.radius + HELD_REACH)
 	e.velocity = Vector2.ZERO
@@ -777,10 +786,10 @@ func update(dt: float) -> void:
 		reload_timer -= dt
 		if reload_timer <= 1e-6:
 			refill_quiver()
-	if held_enemy_id != 0:   # 鐵鏟舉著怪（F9）：倒數到 0 掙脫，期間怪跟在面前
+	if held_id != 0:   # 鐵鏟舉著怪（F9）：倒數到 0 掙脫，期間怪跟在面前
 		hold_timer -= dt
 		if hold_timer <= 1e-6:
-			release_enemy()
+			release_held()
 		else:
 			_follow_held()
 	var data := action.data
@@ -794,7 +803,7 @@ func update(dt: float) -> void:
 			slow *= Config.PLAYER.run_speed_mul
 		if torch_stance and action.is_in(&"ready"):
 			slow *= weapon.stance.move_speed_mul   # 火把準備姿態（F8）
-		if held_enemy_id != 0 and action.is_in(&"ready"):
+		if held_id != 0 and action.is_in(&"ready"):
 			slow *= weapon.grab.move_speed_mul     # 舉著怪（F9）
 		if reload_timer > 0.0 and weapon.attack.has("quiver"):
 			slow *= weapon.attack.reload_move_mul  # 短弓裝填中
@@ -885,7 +894,7 @@ func _update_anim() -> void:
 		"buried": bury_mash >= 0.0,   # 被守墓人埋進土裡：畫面只露半身
 		"torch_stance": torch_stance,
 		"running": running,
-		"holding": held_enemy_id != 0,   # 鐵鏟舉著怪（F9）   # 舉著火把：全隊的視野都看得到周圍（F8，Vision.lights）
+		"holding": held_id != 0,   # 鐵鏟舉著怪（F9）   # 舉著火把：全隊的視野都看得到周圍（F8，Vision.lights）
 		"shield": shield / max_hp if max_hp > 0.0 else 0.0,   # 護盾占最大生命的比例（G4；0 不進快照）
 	}
 

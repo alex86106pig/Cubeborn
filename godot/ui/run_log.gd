@@ -41,6 +41,7 @@ var weapon_since := 0.0      # 現在的主手武器幾秒時換上
 var _weapon_uid := ""
 var _dropped := {}           # 殺怪掉的武器 uid（撿起時才算進 weapons_picked，開場的武器不算）
 var _visible_since := {}     # 身邊的怪 id → 從幾秒開始連續看得到（看不到就移除）
+var _pending_floor := {}     # 客戶端：已收到換層 / 換小關事件、鏡像還沒換好（floor、stage）
 # 效能：遊戲進行中每幀的秒數（HUD 交給這裡）
 var frames := 0
 var frame_time := 0.0
@@ -73,6 +74,7 @@ func reset() -> void:
 	_weapon_uid = ""
 	_dropped.clear()
 	_visible_since.clear()
+	_pending_floor = {}
 	frames = 0
 	frame_time = 0.0
 	worst_frame = 0.0
@@ -122,6 +124,8 @@ func hitch_text() -> String:
 
 # 每幀（HUD，和 add_frame 同時）：身邊的怪從幾秒開始看得到、主手武器換了沒
 func track(world: World, now: float) -> void:
+	if not _pending_floor.is_empty() and world != null and world.floor_num == _pending_floor.floor and world.stage_num == _pending_floor.stage:
+		_begin_floor(world, _pending_floor)
 	var me: Player = world.entities.get(me_id) as Player if world != null else null
 	if me == null:
 		return
@@ -182,7 +186,7 @@ func on_event(world: World, name: String, p: Dictionary) -> void:
 			reset()
 			_begin_floor(world)
 		"floor:started", "stage:started":
-			_begin_floor(world)
+			_begin_floor(world, p)
 		"event:started":
 			if not floors.is_empty() and world != null:
 				floors[-1].event_start = world.stats.time
@@ -192,8 +196,13 @@ func on_event(world: World, name: String, p: Dictionary) -> void:
 
 
 # 新的一層（開局或換層）：記地圖、開始時間與這一層的地形（同一個種子重開也看得到，回報不必重玩就知道長怎樣）
-func _begin_floor(world: World) -> void:
+# p：事件內容（floor、stage）。客戶端的事件可能比快照先到，鏡像還是上一關：先記著，等 track 看到換好了再記
+func _begin_floor(world: World, p: Dictionary = {}) -> void:
 	if world == null:
+		return
+	_pending_floor = {}
+	if p.get("floor", world.floor_num) != world.floor_num or p.get("stage", world.stage_num) != world.stage_num:
+		_pending_floor = {"floor": p.floor, "stage": p.stage}
 		return
 	floors.append({"floor": world.floor_num, "stage": world.stage_num, "map": world.map.get("name", String(world.map_id)), "start": world.stats.time,
 		"event_start": -1.0, "event_open": -1.0, "layout": MapDefs.layout_text(world.layout)})
@@ -310,7 +319,16 @@ static func net_text(n: Dictionary) -> String:
 		for peer: int in gaps:
 			g.append("%d ms" % gaps[peer])
 		parts.append("隊友輸入最長間隔 " + "、".join(PackedStringArray(g)))
-	return " · ".join(PackedStringArray(parts))
+	var text := " · ".join(PackedStringArray(parts))
+	# 「卡住的時間點：4:28 1-3 快照斷 1383 ms、…」另起一行（NetClient.stalls）
+	var stalls: Array = n.get("stalls", [])
+	if not stalls.is_empty():
+		var s: Array[String] = []
+		for x: Dictionary in stalls:
+			s.append("%s %s %s %d ms" % [UiKit.format_time(x.at), x.stage, x.what, x.ms])
+		var count: int = n.get("stall_count", stalls.size())
+		text += "\n  卡住的時間點：" + "、".join(PackedStringArray(s)) + ("…等共 %d 次" % count if count > stalls.size() else "")
+	return text
 
 
 # 武器那一行：掉落（分稀有度）、撿了幾把、背包第一次撿不下、現在的武器幾分換上

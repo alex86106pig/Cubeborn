@@ -316,8 +316,8 @@ func _reset_training_dummies() -> void:
 	var me := local_player()
 	if not in_weapon_test or me == null:
 		return
-	if me.held_enemy_id != 0:
-		me.release_enemy()
+	if me.held_id != 0:
+		me.release_held()
 	for e in world.enemies:
 		if (e as Enemy).main_state == &"train":
 			e.remove()   # World 下一步清掉已移除的實體
@@ -518,6 +518,8 @@ func _net_report() -> Dictionary:
 		out.rtt_ms = net_client.rtt_ms
 		out.snapshot_gap_max_ms = net_client.snapshot_gap_max_ms
 		out.layout_mismatch = net_client.layout_mismatch
+		out.stalls = net_client.stalls
+		out.stall_count = net_client.stall_count
 	if net_host != null:
 		out.input_gap_max_ms = net_host.input_gap_max_ms
 	return out

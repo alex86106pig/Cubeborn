@@ -90,7 +90,9 @@ func _initialize() -> void:
 	_check("匕首（F6）：雙持五連刺第 5 下 150% 必爆擊且只有它擊退、讓怪硬直；單拿三連刺第 3 下 120% 且只有它擊退；影步瞬移到怪背後背刺必爆擊、沒有怪不瞬移只扣 miss_mana；竊影者開局雙持、翻滾 2 次、翻滾後攻速 +30% 持續 1.5 秒", CombatChecks.check_daggers)
 	_check("驅魔權杖（F7）：敲擊是魔法、可擊退；聖光圈 4 秒每 0.5 秒對範圍內敵人持續傷害（不爆擊）、隊友回血；神官救人快 50%、救起回 50% 生命", CombatChecks.check_scepter)
 	_check("火把（F8）：按住右鍵舉火把（移速 ×0.6）、放開放下；舉著左鍵噴火 120%（耗魔、不占右鍵，魔力不夠不出招）；插火把在技能欄第一個空格（冷卻 1 秒、3 次記在武器上、換層補滿）；翻滾放下；火把旁不管視野都看得到；揮擊點燃；傭兵視野 +3、身邊 6", CombatChecks.check_torch)
-	_check("鐵鏟（F9）：鏟起面前的怪舉 2 秒（移速 ×0.7、不能跳），左鍵拋出（落地 200%、路上 150%）、右鍵埋入（80%、2 秒）、沒按就掙脫；Boss 抓不起來、沒抓到只扣 miss_mana；掘墓人挖墳中受傷 −25%；埋著打得到、不被擊退", CombatChecks.check_shovel)
+	_check("鐵鏟（F9）：鏟起面前的怪舉 2 秒（移速 ×0.7、不能跳），左鍵拋出（落地 200%、路上 150%）、右鍵埋入（80%、2 秒）、沒按就掙脫；Boss 抓不起來、沒抓到只扣 miss_mana；掘墓人挖墳中受傷 −25%；埋著打得到、不被擊退；搆得到正面牽制的屍犬；"
+		+ "鏟得起隊友（翻滾掙脫、拋出不扣血被推走、埋入不扣血定住）",
+		CheckKit.all_of.bind([CombatChecks.check_shovel, CombatChecks.check_shovel_reach, CombatChecks.check_shovel_teammate]))
 	_check("武器測試場（--weapon-test）：木樁爬出後站著不動、不打人，鐵鏟抓得起、埋得下，埋完回到站著；測試面板做的武器照指定稀有度與詞條、背包滿了掉腳邊、怪物停手不打人放開照打、死了不結算、立即復活滿血滿魔、清除怪物；地圖是 64 × 64 的空地、重新開始不換掉",
 		all.bind([CombatChecks.check_training_dummies, CombatChecks.check_practice]))
 
@@ -199,8 +201,8 @@ func _initialize() -> void:
 	# ───────── 畫面 ─────────
 	_check("角色視野：前方扇形與 range 內看得到、身邊 near_radius 背後也看得到；牆擋視線、高台不擋；自己的投射物在背後也看得到、怪物的看不到；寶箱看中心、怪物看身體邊緣；方向看滑鼠（翻滾時身體轉向不影響；客戶端觀戰隊友照快照帶的隊友視野方向）",
 		all.bind([ViewChecks.check_vision_rules, ViewChecks.check_vision_aim, NetChecks.check_net_view]))
-	_check("視野畫面：背後的模型隱藏、前方的顯示；背後的特效不畫；轉身時 fade_out / fade_in 淡出淡入；淡入淡出中換武器不碰已刪的網格、新武器跟著淡；本機選過的遺物維持半透明；本機角色陣亡後全部看得到；變暗遮罩最先畫；挖墳中朝向與遮罩跟著滑鼠",
-		all.bind([ViewChecks.check_vision_view, ViewChecks.check_dig_vision]))
+	_check("視野畫面：背後的模型隱藏、前方的顯示；背後的特效不畫，留在地上的（聖光圈）先藏著、轉身看到再顯示；轉身時 fade_out / fade_in 淡出淡入；淡入淡出中換武器不碰已刪的網格、新武器跟著淡；本機選過的遺物維持半透明；本機角色陣亡後全部看得到；變暗遮罩最先畫；挖墳中朝向與遮罩跟著滑鼠",
+		all.bind([ViewChecks.check_vision_view, ViewChecks.check_lingering_fx, ViewChecks.check_dig_vision]))
 	_check("觀戰：多人時本機陣亡看第一位站著的隊友、左右切換、看的人死了或走進出口就換、沒人可看就不觀戰；視野改用隊友的；房主依 InputCmd.spectate 挑快照；復活後回到自己", ViewChecks.check_spectate)
 	_check("頭頂血條：滿血不畫、受傷畫；自己頭上血條下方有魔力條（滿了不畫、位置不跳、倒地不畫）；弓裝填中血條右邊畫裝填圓圈（比例 = 已裝時間、倒地不畫）；自己與隊友綠、怪物紅；視野外、Boss、倒地、隱藏的不畫；比例 = hp / max_hp；不疊到詞條與名牌；畫在模型補間的位置（WorldView.render_pos）", ViewChecks.check_health_bars)
 	_check("開場預熱：每一種怪、魔法 / 稀有怪、玩家、寶箱、金幣、鍛造祭壇、遺物、插地火把、道具、武器、投射物、每種稀有度的武器（含淡入淡出中的版本）都在鏡頭附近畫幾幀後移除；點光源前一半關後一半開；預熱文字含所有會用到的字", ViewChecks.check_warm_up)
@@ -229,8 +231,8 @@ func _initialize() -> void:
 	_check("設定頁：主選單與暫停畫面的「設定」打開、塞得進 1920×1080、選單關掉一起關；改值存檔讀得回來（啟動參數蓋的不存）；音量套到 Music / SFX 匯流排、0% = −80 dB；陰影與光源開關套到太陽和精英怪的光（之後新建的也照設定）；--shadows / --lights", ViewChecks.check_settings)
 	_check("按鈕：ui/ 裡都用 UiKit.button（選單 / 面板 / 一排很多顆三種尺寸），不自己 Button.new()", ViewChecks.check_buttons)
 	_check("網頁版網址參數：?horde=200&perf&seconds=20 轉成 --horde=200 --perf --seconds=20；連線參數 host / join / room / net-autostart 也轉；不在開放清單的參數不轉", ViewChecks.check_url_query_args)
-	_check("遊玩紀錄：自己的擊殺依種類、受到的傷害依攻擊者、被看不見的攻擊（含身邊的攻擊者剛進視野不到 REACT 秒就打中）、倒下被誰打倒；隊友誤傷寫「隊友（誤傷） · 武器名」；武器掉落 / 撿起 / 第一次撿不下 / 現在的武器幾分換上；結算畫面塞得進 1920×1080；「複製遊玩紀錄」內容完整；重新開始清空",
-		all.bind([ViewChecks.check_run_log, ViewChecks.check_run_log_weapons_react, ViewChecks.check_run_log_friendly]))
+	_check("遊玩紀錄：自己的擊殺依種類、受到的傷害依攻擊者、被看不見的攻擊（含身邊的攻擊者剛進視野不到 REACT 秒就打中）、倒下被誰打倒；隊友誤傷寫「隊友（誤傷） · 武器名」；武器掉落 / 撿起 / 第一次撿不下 / 現在的武器幾分換上；結算畫面塞得進 1920×1080；「複製遊玩紀錄」內容完整；重新開始清空；連線卡住的時間點另起一行；客戶端換小關等鏡像換好才記",
+		all.bind([ViewChecks.check_run_log, ViewChecks.check_run_log_weapons_react, ViewChecks.check_run_log_friendly, ViewChecks.check_run_log_net]))
 	_check("字型：介面文字都在打包的 Noto Sans TC 裡（網頁版沒有系統字型），缺字的圖示改用向量圖", ViewChecks.check_font_coverage)
 
 	# ───────── 音效 ─────────
@@ -241,11 +243,12 @@ func _initialize() -> void:
 	_check("結束程式不洩漏：主場景跑 3 秒（有怪、一直攻擊，音效還在播）後結束兩次，沒有 ObjectDB 洩漏、資源還在用", ViewChecks.check_quit_no_leak)
 
 	# ───────── 連線 ─────────
-	_check("快照：房主的實體序列化後客戶端建立同樣類別、位置、血量、武器的鏡像、動畫狀態相同時數值補間；地圖 A 怪群 + 4 人、P2 被 30 隻圍住時每份快照 ≤ 4.5 KB；休眠的怪群客戶端用種子在本機生（跟房主一致、不進快照；範圍外醒了移除、範圍內醒了照快照、休眠中被移除跟著移除、檢查碼不同就不用）",
-		all.bind([NetChecks.check_codec, NetChecks.check_snapshot_size.bind(feel), NetChecks.check_local_packs, NetChecks.check_net_stage]))
+	_check("快照：房主的實體序列化後客戶端建立同樣類別、位置、血量、武器的鏡像、動畫狀態相同時數值補間；地圖 A 怪群 + 4 人、P2 被 30 隻圍住時每份快照 ≤ 4.5 KB；背包 / 主副手 / 技能等級變了才連送、沒變只定期帶；休眠的怪群客戶端用種子在本機生（跟房主一致、不進快照；範圍外醒了移除、範圍內醒了照快照、休眠中被移除跟著移除、檢查碼不同就不用）",
+		all.bind([NetChecks.check_codec, NetChecks.check_snapshot_size.bind(feel), NetChecks.check_snapshot_loadout, NetChecks.check_local_packs, NetChecks.check_net_stage]))
 	_check("網頁連線配對（v0.36.0）：PeerJS 網址、房主 ID、房號（4 碼、不含易混字）、訊息格式、伺服器訊息對應的訊號；桌面版 IP 與房號兩種都能用", NetChecks.check_web_signaling)
 	_check("桌面版 WebRTC（v0.40.0）：同一程序兩條連線交換 SDP，照 NetSession 的設定建房主 / 客戶端，5 秒內連上且封包收得到；網頁版接收緩衝區至少 1024 KB", NetChecks.check_desktop_webrtc.bind(feel))
-	_check("誤傷（C2）：玩家揮劍打得到前方的隊友、打不到自己；魔彈打得到隊友、不打發射者；單機目標不含自己", NetChecks.check_friendly_fire)
+	_check("誤傷（C2）：玩家揮劍打得到前方的隊友、打不到自己；魔彈打得到隊友、不打發射者；單機目標不含自己；幫隊友回血的技能（聖光柱）只回血不打隊友",
+		CheckKit.all_of.bind([NetChecks.check_friendly_fire, NetChecks.check_heal_skill_spares_mates]))
 	_check("人數調整（C3）：敵人數量不變、血量每多 1 人 +50%（Boss 也是）", NetChecks.check_player_count_scaling)
 	_check("倒下與救援（C4）：多人時生命歸零先倒地假死、down_time 秒沒人救才死亡、最後一人倒下 game:defeat、單機直接死亡；範圍內按住 F 累積 revive_time 秒救起、期間不能動但會轉向、放開進度衰退、救起 revive_hp_ratio 的血",
 		all.bind([NetChecks.check_downed, NetChecks.check_revive]))

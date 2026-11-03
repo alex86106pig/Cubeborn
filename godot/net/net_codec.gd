@@ -61,7 +61,8 @@ static func encode_entities(world: World) -> Array:
 
 # entities：encode_entities 的紀錄（可以只挑一部分）；peer_id：收件人（別人的背包不送；0 = 全送）
 # 網路格式：[run, tick, ack, world, 所有實體接在一起的 PackedByteArray, 有 extra 的實體的 extra（照順序）]；收到後 decode_snapshot 展開成 E_* 陣列
-static func make_snapshot(world: World, entities: Array, ack: int, peer_id: int = 0) -> Array:
+# skip_loadout：這一份不帶背包 / 主副手 / 技能等級的玩家 id（填 null，客戶端沿用上次收到的；NetHost._loadout_unchanged）
+static func make_snapshot(world: World, entities: Array, ack: int, peer_id: int = 0, skip_loadout: Dictionary = {}) -> Array:
 	var s := world.stats
 	var bytes := PackedByteArray()
 	var extras := []
@@ -70,9 +71,15 @@ static func make_snapshot(world: World, entities: Array, ack: int, peer_id: int 
 		var extra: Variant = rec[1]
 		if extra == null:
 			continue
-		if peer_id != 0 and rec[2] is Player and (rec[2] as Player).peer_id != peer_id:
-			extra = (extra as Array).duplicate()
-			extra[P_INV] = []   # 別人的背包客戶端用不到（只有自己的背包面板要看）
+		if rec[2] is Player:
+			var other := peer_id != 0 and (rec[2] as Player).peer_id != peer_id
+			var skip := skip_loadout.has((rec[2] as Entity).id)
+			if other or skip:
+				extra = (extra as Array).duplicate()
+				extra[P_INV] = null if skip else []   # 別人的背包客戶端用不到（只有自己的背包面板要看）
+				if skip:
+					extra[P_SLOTS] = null
+					extra[P_SKILL_LV] = null
 		extras.append(extra)
 	return [world.run_id, world.tick, ack, [s.wave, s.kills, s.time, world.is_over, world.boss_id, world.is_defeated, world.souls,
 		world.floor_num, [world.event.state, world.event.progress, world.event.time, world.base_difficulty, world.event.horde,
@@ -424,8 +431,9 @@ static func apply_entity(e: Entity, a: Array, b: Array, t: float, ahead: float =
 		var pl := e as Player
 		pl.anim = anim
 		pl.show_weapon(extra[P_WEAPON])   # 別人的角色只需要招式資料與模型
-		for i in pl.weapon_slots.size():   # 主手與副手只給畫面（武器稀有度的光），不套屬性
-			pl.weapon_slots[i] = WeaponDropDefs.from_array(extra[P_SLOTS][i])
+		if extra[P_SLOTS] != null:   # null = 這份沒帶（沒變，NetHost._loadout_unchanged）
+			for i in pl.weapon_slots.size():   # 主手與副手只給畫面（武器稀有度的光），不套屬性
+				pl.weapon_slots[i] = WeaponDropDefs.from_array(extra[P_SLOTS][i])
 		pl.roll_charges = extra[P_ROLLS]
 		pl.is_downed = extra[P_DOWNED]
 		pl.down_timer = extra[P_DOWN_TIMER]

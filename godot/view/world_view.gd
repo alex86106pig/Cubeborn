@@ -8,6 +8,7 @@ const STRIKE_PLAYER_COLOR := Color(1.0, 0.93, 0.0)   # F2：玩家攻擊判定
 const STRIKE_ENEMY_COLOR := Color(1.0, 0.25, 0.2)    # F2：怪物攻擊判定
 const STRIKE_FADE := 0.3                             # 判定形狀顯示後淡出的秒數
 const STRIKE_ALPHA := 0.45
+const LINGER_MIN := 1.0                               # 特效的 life 到這麼多秒算「留在地上」：視野外放的也建立，看得到時才顯示
 const BLOCK_FAN_COLOR := Color("ffd36b")   # 格擋範圍（v0.23.0）：腳下前方的金色扇形，角度 = 盾的 block_arc
 const BLOCK_FAN_RANGE := 2.2
 const BLOCK_FAN_ALPHA := 0.32
@@ -118,6 +119,7 @@ func _init() -> void:
 	add_child(effects)   # 建立時就掛上，WorldView 沒進場景樹就被釋放時也會一起釋放
 	add_child(_vision_overlay)
 	effects.hidden_ids = hidden_ids
+	effects.visible_at = _area_visible
 
 
 func _ready() -> void:
@@ -139,13 +141,23 @@ func clear_views() -> void:
 func on_event(name: String, p: Dictionary) -> void:
 	if name == "game:restart":
 		effects.clear()
-	# 視野外的特效（怪物的攻擊、命中粒子、預警圈…）不畫
+	# 視野外的特效（怪物的攻擊、命中粒子、預警圈…）不畫；留在地上 LINGER_MIN 秒以上的（聖光圈、腐氣、蜘蛛網）照樣建立，
+	# 每幀照視野決定顯不顯示（Effects.visible_at），在視野外放的、轉頭回來還看得到
 	if name.begins_with("fx:") and p.has("pos"):
+		if p.get("life", 0.0) >= LINGER_MIN:
+			effects.on_event(name, p, true)
+			return
 		var me := viewer()
 		if me != null and not me.is_dead and not Vision.point_visible(_world, me, p.pos):
 			return
 	effects.on_event(name, p)
 	_freeze_on_hit(name, p)
+
+
+# 持續性地面特效（中心 pos、半徑 radius）這一幀看不看得到
+func _area_visible(pos: Vector2, radius: float) -> bool:
+	var me := viewer()
+	return _world == null or me == null or me.is_dead or Vision.point_visible(_world, me, pos, radius)
 
 
 # 命中定格（v0.18.3，取代模擬時間放慢）：打中時攻擊者與目標的模型停住 hit_stop 秒，期間不更新位置與姿勢，之後跟上實際狀態

@@ -274,10 +274,15 @@ static func hit_of(owner: Player, def: Dictionary, ctx: Dictionary) -> Dictionar
 		"is_heavy": true, "blockable": false, "color": def.color, "band": Vector2(-INF, INF)}
 
 
+# 會幫隊友回血的招式（heal_ratio）不打隊友：誤傷開著時其他招式照打
 static func area_hit(owner: Player, def: Dictionary, ctx: Dictionary, at: Vector2, shape: Dictionary) -> void:
 	var hit := hit_of(owner, def, ctx)
 	hit["origin"] = at
-	_after_hits(owner, def, ctx, Hitbox.strike(owner.world, owner, at, owner.facing, shape, hit))
+	var skip := {}
+	if def.has("heal_ratio"):
+		for p in owner.world.player_list:
+			skip[p.id] = true
+	_after_hits(owner, def, ctx, Hitbox.strike(owner.world, owner, at, owner.facing, shape, hit, skip))
 
 
 # 打中之後：暈眩、燃燒、冰冷（層數照羈絆，BondEffects）

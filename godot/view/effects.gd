@@ -87,6 +87,8 @@ var paused := false               # 遊戲暫停時粒子停住、不產生新�
 var spawned_total := 0            # 累計產生過的粒子數（檢查用）
 var hidden_ids: Dictionary = {}   # 本機玩家看不到的實體 id（WorldView 每幀更新）：不產生它們的持續性粒子（D2）
 var first_seen: Array[String] = []   # 這一幀第一次出現的特效種類（main.gd 的卡頓紀錄取走後清空）
+var visible_at: Callable             # (pos: Vector2, radius: float) -> bool；WorldView 設定，持續性地面特效每幀照它顯示 / 隱藏
+var _gate: Array = []                # 處理 gated 事件時：[pos, radius]，這段期間建立的零件與持續粒子都掛上它
 var _seen_fx: Dictionary = {}
 var _rng := RandomNumberGenerator.new()
 var _particles: Array[Dictionary] = []
@@ -233,13 +235,20 @@ func telegraph(pos: Vector3, radius: float, o: Dictionary = {}) -> void:
 
 # ───────── 事件 ─────────
 
-func on_event(name: String, p: Dictionary) -> void:
+# gated：持續性地面特效，零件與持續粒子只在 visible_at 看得到時顯示 / 產生
+func on_event(name: String, p: Dictionary, gated := false) -> void:
 	var handler: StringName = HANDLERS.get(name, &"")
 	if handler != &"":
 		if not _seen_fx.has(name):   # --perf 的卡頓紀錄：這種特效第一次出現（v0.36.3）
 			_seen_fx[name] = true
 			first_seen.append(name)
+		_gate = [p.pos, p.get("radius", 0.0)] if gated else []
 		call(handler, p)
+		_gate = []
+
+
+func _gate_open(gate: Array) -> bool:
+	return gate.is_empty() or not visible_at.is_valid() or visible_at.call(gate[0], gate[1])
 
 
 static func _at(p: Dictionary, y_offset: float = 0.0) -> Vector3:
@@ -832,7 +841,7 @@ func _emit_lantern(e: Enemy, a: Dictionary, key: String, dt: float) -> void:
 
 func _add_emitter(life: float, tick: Callable) -> void:
 	_emitter_serial += 1
-	_emitters.append({"key": "em%d" % _emitter_serial, "life": life, "max_life": life, "tick": tick})
+	_emitters.append({"key": "em%d" % _emitter_serial, "life": life, "max_life": life, "tick": tick, "gate": _gate})
 
 
 func _update_emitters(dt: float) -> void:
@@ -842,7 +851,8 @@ func _update_emitters(dt: float) -> void:
 		if em.life <= 0.0:
 			_emitters.remove_at(i)
 			continue
-		em.tick.call(1.0 - em.life / em.max_life, em.key, dt)
+		if _gate_open(em.gate):
+			em.tick.call(1.0 - em.life / em.max_life, em.key, dt)
 
 
 func _update_particles(dt: float) -> void:
@@ -874,6 +884,8 @@ func _update_transients(dt: float) -> void:
 			t.node.queue_free()
 			_transients.remove_at(i)
 			continue
+		if not t.gate.is_empty():
+			t.node.visible = _gate_open(t.gate)
 		t.update.call(1.0 - t.life / t.max_life)
 
 
@@ -884,8 +896,10 @@ func _add_transient(node: MeshInstance3D, life: float, update: Callable) -> void
 		_transients[0].node.queue_free()
 		_transients.remove_at(0)
 	add_child(node)
+	if not _gate.is_empty():
+		node.visible = _gate_open(_gate)
 	update.call(0.0)
-	_transients.append({"node": node, "life": life, "max_life": life, "update": update})
+	_transients.append({"node": node, "life": life, "max_life": life, "update": update, "gate": _gate})
 
 
 func _transient_mesh(mesh: Mesh, color: Color, opacity: float) -> MeshInstance3D:

@@ -155,6 +155,38 @@ static func check_friendly_fire() -> String:
 	return err
 
 
+# 會幫隊友回血的技能（聖光柱）不打隊友：隊友在圈內只回血、不扣血；圈內的怪照打
+static func check_heal_skill_spares_mates() -> String:
+	var def: Dictionary = SkillDefs.SKILLS[&"holy_pillar"]
+	var w := _world([1, 2])
+	var a: Player = w.players[1]
+	var b: Player = w.players[2]
+	a.equip_weapon(&"scepter")
+	a.pos = Vector2.ZERO
+	b.pos = Vector2(0, 4)
+	b.hp = b.max_hp * 0.5
+	var foe := Entity.new(w, &"test", &"enemy", 0.5, 1000.0, 1000.0)
+	foe.pos = Vector2(0.8, 4)
+	w.add_entity(foe)
+	w.enemies.append(foe)
+	a.aim_point = b.pos
+	SkillBehaviors.cast(a, def, {"mul": 1.0, "area": 1.0, "type": def.damage_type, "split": false})
+	var events: Array[Dictionary] = []
+	for i in roundi(def.delay / DT) + 5:
+		w.step({1: _cmd(Vector2.ZERO, 0, Vector2(0, 4)), 2: _cmd(Vector2.ZERO)}, DT)
+		events.append_array(w.events)
+	var hits := _named(events, "entity:damaged")
+	var err := ""
+	if hits.any(func(e: Dictionary) -> bool: return e.target_id == b.id):
+		err = "聖光柱不應打到圈內的隊友：%s" % [hits]
+	elif not hits.any(func(e: Dictionary) -> bool: return e.target_id == foe.id):
+		err = "聖光柱應打到圈內的怪"
+	elif b.hp < b.max_hp * (0.5 + def.heal_ratio) - 1e-3:
+		err = "圈內的隊友應回 %.0f%% 生命：%.1f / %.1f" % [def.heal_ratio * 100.0, b.hp, b.max_hp]
+	w.clear()
+	return err
+
+
 static func check_player_count_scaling() -> String:
 	var out: Array[String] = []
 	for n: int in [1, 2, 4]:
@@ -1271,6 +1303,51 @@ static func check_lobby_classes() -> String:
 			return "P%d：房主 %s / %.2f / %s，客戶端 %s" % [id, hp.class_id, hp.stats.value(&"move_speed"), hp.weapon_id,
 				"沒有" if cp == null else "%s / %.2f / %s" % [cp.class_id, cp.stats.value(&"move_speed"), cp.weapon_id]]
 	return ""
+
+
+# 背包 / 主副手 / 技能等級：變了之後 loadout_repeat_ticks 內每份快照都帶，之後只有每 loadout_refresh_ticks 帶一次（其他填 null）；
+# 客戶端收到 null 沿用上次的背包；房主改了背包，下一份快照就帶新的
+static func check_snapshot_loadout() -> String:
+	var w := _world([1, 2])
+	var host := NetHost.new(w)
+	var client := NetClient.new(2)
+	_made.append(client.world)
+	var net: Dictionary = Config.NET
+	var steps_to := func(pred: Callable) -> Array:
+		for i in net.loadout_refresh_ticks * 2:
+			w.step({}, DT)
+			if w.tick % net.snapshot_interval != 0:
+				continue
+			var snap: Array = bytes_to_var(var_to_bytes(host.snapshots()[2]))
+			client.receive_snapshot(snap)
+			client.step(InputCmd.new(), DT)
+			var extra: Array = NetCodec.find_player(snap, 2)[NetCodec.E_EXTRA]
+			if pred.call(extra):
+				return extra
+		return []
+	if steps_to.call(func(x: Array) -> bool: return x[NetCodec.P_INV] != null).is_empty():
+		return "開局的快照應帶背包"
+	var omitted: Array = steps_to.call(func(x: Array) -> bool: return x[NetCodec.P_INV] == null)
+	if omitted.is_empty() or omitted[NetCodec.P_SLOTS] != null or omitted[NetCodec.P_SKILL_LV] != null:
+		return "背包沒變時應有快照不帶背包 / 主副手 / 技能等級：%s" % [omitted.slice(NetCodec.P_INV, NetCodec.P_SLOTS + 1)]
+	var cp: Player = client.world.players.get(2)
+	var hp: Player = w.players[2]
+	if cp == null or cp.inventory.to_array() != hp.inventory.to_array() or cp.weapon_slots.size() != hp.weapon_slots.size():
+		return "客戶端收到不帶背包的快照後應沿用上次的背包"
+	hp.add_item(_first_item())
+	w.step({}, DT)
+	var tick_changed := w.tick
+	var sent: Array = steps_to.call(func(x: Array) -> bool: return x[NetCodec.P_INV] != null)
+	if sent.is_empty() or w.tick - tick_changed > net.snapshot_interval or cp.inventory.to_array() != hp.inventory.to_array():
+		return "房主改了背包，下一份快照應帶新的（隔了 %d 步）、客戶端跟著換" % [w.tick - tick_changed]
+	return ""
+
+
+static func _first_item() -> StringName:
+	for id: StringName in ItemDefs.ITEMS:
+		if ItemDefs.ITEMS[id].kind == &"item":
+			return id
+	return &""
 
 
 # 小關（地圖改版第 4 步）：房主換到下一小關，客戶端照快照的小關編號換成同一張地形、怪群在本機照種子生得一樣

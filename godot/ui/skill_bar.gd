@@ -81,7 +81,7 @@ func _show_cost(slot: Slot, player: Player, cost: float) -> void:
 func _refresh_alt(player: Player) -> void:
 	var w := player.weapon
 	var stance: bool = player.torch_stance and w.has("stance")
-	var holding: bool = w.has("grab") and (player.held_enemy_id != 0 or player.anim.get("holding", false))
+	var holding: bool = w.has("grab") and (player.held_id != 0 or player.anim.get("holding", false))
 	var on: bool = stance or holding
 	_alt_left.visible = on
 	_attack_slot.visible = not on and (_parry_slot == null or not _parry_slot.visible)

@@ -355,49 +355,61 @@ class FireBreath extends Behavior:
 		WeaponBehaviors.ignite(p, def, hits)
 
 
-# 鏟起（F9 鐵鏟右鍵）：抓起面前 reach 內最近的一隻非 Boss 敵人，舉著 hold_time 秒（Player.grab_enemy）；沒抓到只扣 miss_mana
+# 鏟起（F9 鐵鏟右鍵）：抓起面前 reach 內最近的一隻非 Boss 敵人或一位隊友（誤傷開著時），舉著 hold_time 秒（Player.grab_target）；沒抓到只扣 miss_mana
 class ShovelGrab extends Behavior:
 	func phase(p: Player, def: Dictionary, data: Dictionary, name: StringName) -> void:
 		if name != &"active":
 			return
-		var best: Enemy = null
-		var best_d := INF
+		var candidates: Array[Entity] = []
 		for e in p.world.enemies:
 			var en := e as Enemy
-			if en == null or en.is_dead or en.team == p.team or en.is_boss() or en.grabbed_by != 0 or en.buried_timer > 0.0:
-				continue
-			var d := en.pos.distance_to(p.pos) - en.radius - p.radius
-			var ahead := WeaponBehaviors.forward(p).dot((en.pos - p.pos).normalized()) > 0.3
+			if en != null and not en.is_dead and en.team != p.team and not en.is_boss() and en.grabbed_by == 0 and en.buried_timer <= 0.0:
+				candidates.append(en)
+		if Config.NET.friendly_fire:
+			for mate in p.world.player_list:
+				if mate != p and mate.is_targetable() and mate.grabbed_by == 0 and mate.held_id == 0 and mate.stun_timer <= 0.0:
+					candidates.append(mate)
+		var best: Entity = null
+		var best_d := INF
+		for e in candidates:
+			var d := e.pos.distance_to(p.pos) - e.radius - p.radius
+			var ahead := WeaponBehaviors.forward(p).dot((e.pos - p.pos).normalized()) > 0.3
 			if d <= def.reach and ahead and d < best_d:
 				best_d = d
-				best = en
+				best = e
 		if best == null:
 			WeaponBehaviors.refund_miss(p, def, data)
 			return
-		p.grab_enemy(best, def.hold_time)
+		p.grab_target(best, def.hold_time)
 
 
 # 拋出（F9，舉著怪時的左鍵）：往前丟 distance（撞牆就停在牆前），花 flight_time 秒沿拋物線飛過去（Enemy.throw_to）；
 # 路上撞到的怪受 path_damage_pct、被丟的怪落地受 damage_pct，都可擊退。冰凍中的怪狀態機停住飛不動，直接落在落點
+# 丟隊友不扣血、路上不撞怪：往落點推過去並跳起來（當位移工具）
 class ShovelThrow extends Behavior:
 	func phase(p: Player, def: Dictionary, _data: Dictionary, name: StringName) -> void:
 		if name != &"active":
 			return
-		var held := p.release_enemy()
-		if held == null:
+		var target := p.release_held()
+		if target == null:
 			return
 		var dir := WeaponBehaviors.aim_direction(p)
 		p.facing = atan2(dir.x, dir.y)
-		var start := held.pos
+		var start := target.pos
 		var land := start
 		var step := 0.5
 		var travel := 0.0
 		while travel + step <= def.distance:
 			var nxt := start + dir * (travel + step)
-			if p.world.terrain.blocks_nav(nxt, held.radius) or absf(nxt.x) > p.world.half_extents.x - held.radius or absf(nxt.y) > p.world.half_extents.y - held.radius:
+			if p.world.terrain.blocks_nav(nxt, target.radius) or absf(nxt.x) > p.world.half_extents.x - target.radius or absf(nxt.y) > p.world.half_extents.y - target.radius:
 				break
 			travel += step
 			land = nxt
+		if target is Player:
+			SkillBehaviors.push(target as Player, land - start)
+			(target as Player).knock_up(Entity.gravity() * def.flight_time / 2.0)
+			return
+		var held := target as Enemy
 		var path_hit := {"damage": p.pct_damage(def.path_damage_pct), "damage_type": p.weapon.damage_type,
 			"knockback": def.knockback, "is_heavy": true, "color": def.color}
 		var land_hit := {"damage": p.move_damage(def), "damage_type": p.weapon.damage_type,
@@ -411,13 +423,18 @@ class ShovelThrow extends Behavior:
 
 
 # 埋入（F9，舉著怪時的右鍵）：埋進土裡只露半身，暈 stun 秒再花 crawl 秒爬出（Enemy.bury），受到 damage_pct
+# 埋隊友不扣血，同被守墓人埋進土裡（Player.bury：連按翻滾提早爬出）
 class ShovelBury extends Behavior:
 	func phase(p: Player, def: Dictionary, _data: Dictionary, name: StringName) -> void:
 		if name != &"active":
 			return
-		var held := p.release_enemy()
-		if held == null:
+		var target := p.release_held()
+		if target == null:
 			return
+		if target is Player:
+			(target as Player).bury(def.stun + def.crawl)
+			return
+		var held := target as Enemy
 		Combat.apply_damage(p.world, p, held, {"damage": p.move_damage(def), "damage_type": p.weapon.damage_type,
 			"knockback": 0.0, "no_stagger": true, "hit_stop": def.hit_stop, "shake": def.shake, "is_heavy": true, "color": def.color})
 		held.bury(def.stun + def.crawl)
