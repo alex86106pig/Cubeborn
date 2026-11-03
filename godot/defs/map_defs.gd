@@ -30,6 +30,18 @@ const MAPS := {
 		],
 		"tomb_rows": [],
 	},
+	# 武器測試場：64 × 64 的方形空地（沒有石台、怪群、挖墳），出生點在正中央
+	&"practice": {
+		"name": "武器測試場",
+		"size": Vector2(64.0, 64.0),
+		"origin": Vector2(32.0, 32.0),
+		"spawn": Vector2(32.0, 32.0),
+		"dig": Vector2(32.0, 32.0),
+		"spawn_rule": &"arena",
+		"blocks": [],
+		"tomb_rows": [],
+		"theme": &"graveyard",
+	},
 	# A 環形墓園（使用者 2026-10-23 選定）：中央是圍牆圍住的王族墓（出口、Boss）；外圈 7 格照種子抽區塊（2026-11-02），南邊是出生點
 	&"graveyard_a": {
 		"name": "墓園 A",
@@ -270,6 +282,7 @@ static func has_layout(m: Dictionary) -> bool:
 
 # 每層的地圖：從這張表裡的地圖開局，換層就換成該層的；超過表的層數用最後一層的。不在表裡的地圖（測試場地）換層也不換
 const FLOOR_MAPS := {1: &"graveyard", 2: &"catacomb_a"}
+const PRACTICE_MAP := &"practice"   # 武器測試場（main._set_practice）
 
 
 static func floor_map(map_id: StringName, floor_num: int) -> StringName:

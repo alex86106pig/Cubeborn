@@ -93,7 +93,8 @@ var _pause_hint := UiKit.label("按 Esc 繼續", UiKit.FONT_NOTE)
 var _pause_seed := UiKit.label("", UiKit.FONT_NOTE, Color(0.72, 0.75, 0.82))   # 這一局的種子（回報 bug 時對配置用）
 var _quit_button := UiKit.button("離開遊戲")
 var _title_button := UiKit.button("回主選單")
-var test_panel := TestPanel.new()   # 武器測試場：上方中央的測試面板（只有在測試場才顯示，main.gd 接訊號）
+var test_panel := TestPanel.new()   # 武器測試場：左上的測試面板（在測試場、背包沒開才顯示，main.gd 接訊號）
+var _top_left := VBoxContainer.new()   # 左上的血條、魔力條、武器、靈魂、金幣（測試面板接在它下面）
 var revive_button := UiKit.button("立即復活")   # 武器測試場：自己倒地 / 死掉時畫面中央出現（main.gd 每幀設顯示）
 var _pause_net_slot := VBoxContainer.new()   # 暫停畫面放連線面板的位置（連線中顯示人數與離開連線）
 var _reset_hints_button := UiKit.button("重新顯示提示")
@@ -208,7 +209,7 @@ func _init() -> void:
 	root.add_child(_floaters)
 
 	# 左上：血條、武器、靈魂、金幣（操作說明只在暫停畫面）
-	var tl := VBoxContainer.new()
+	var tl := _top_left
 	tl.position = Vector2(16, 16)
 	tl.add_theme_constant_override(&"separation", 8)
 	_hp = UiKit.bar(Vector2(280, 26), UiKit.HP_BG, UiKit.HP_FILL, 3)
@@ -265,9 +266,8 @@ func _init() -> void:
 	top.add_child(_boss_box)
 	root.add_child(top)
 
-	# 上方中央、Boss 血條下面：武器測試場的測試面板（Esc 回主選單）；畫面中央的立即復活
-	test_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 130)
-	test_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	# 左上、血條與武器名稱下面：武器測試場的測試面板（Esc 回主選單）；畫面中央的立即復活
+	test_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT, Control.PRESET_MODE_MINSIZE, 16)
 	test_panel.visible = false
 	root.add_child(test_panel)
 	revive_button.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
@@ -485,6 +485,9 @@ func _process(delta: float) -> void:
 	if level_transition.is_active():
 		level_transition.update(delta, world, _transition_center())
 	_update_fps(delta)
+	test_panel.visible = test_panel.active and not inventory_panel.visible   # 開背包時讓位給左邊的屬性面板
+	if test_panel.visible:
+		test_panel.position.y = _top_left.position.y + _top_left.size.y + 12.0
 	if _game_over_delay >= 0.0:
 		_game_over_delay -= delta
 		if _game_over_delay < 0.0:

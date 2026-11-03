@@ -225,11 +225,16 @@ func leave_weapon_test() -> void:
 	show_title(&"home")
 
 
+# 進出武器測試場：換成方形空地 / 換回正式地圖（World.reset 照目前的地圖開局，不在 FLOOR_MAPS 的地圖不會被換掉）
 func _set_practice(on: bool) -> void:
 	in_weapon_test = on
+	var want: StringName = MapDefs.PRACTICE_MAP if on else Config.WORLD.default_map
+	if on != (world.map_id == MapDefs.PRACTICE_MAP):
+		world.load_map(want)
 	world.practice = on
 	world.enemies_hold = false
-	hud.test_panel.visible = on
+	hud.test_panel.active = on
+	hud.test_panel.set_collapsed(true)
 	hud.test_panel.set_hold(false)
 	hud.revive_button.visible = false
 

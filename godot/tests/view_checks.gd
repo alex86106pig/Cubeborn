@@ -283,11 +283,35 @@ static func _check_test_panel(hud: Variant) -> String:
 	tp._request_weapon()
 	if got.size() != 1 or got[0][0] != &"staff" or got[0][1] != &"green" or got[0][2] != [picks[0]]:
 		return "放進背包應送出 法杖 / 綠 / %s，實際 %s" % [[picks[0]], got]
+	# 平常收起（只剩分頁與工具列）；點分頁展開、再點同一頁收起
+	tp.set_collapsed(true)
+	if tp._body.visible:
+		return "測試面板應預設收起"
+	tp.show_tab(&"item")
+	var opened: bool = tp._body.visible and tp.pages[&"item"].visible
+	tp.show_tab(&"item")
+	if not opened or tp._body.visible:
+		return "點分頁應展開、再點同一頁應收起（展開 %s、收起後 %s）" % [opened, tp._body.visible]
+	# 在左上、血條下面：右緣離畫面中央（角色）至少 200，展開時塞得進 1080 高
+	tp.active = true
+	hud._process(DT)
+	var top: float = hud._top_left.position.y + hud._top_left.get_combined_minimum_size().y + 12.0
 	for t: StringName in TestPanel.TABS:
 		tp.show_tab(t)
 		var size := tp.get_combined_minimum_size()
-		if size.x > 1920.0 or 130.0 + size.y > 1080.0:
-			return "測試面板（%s 分頁）%.0f × %.0f，從 y 130 起超出 1920 × 1080" % [TestPanel.TAB_NAMES[t], size.x, size.y]
+		if tp.position.x + size.x > 960.0 - 200.0 or top + size.y > 1080.0:
+			return "測試面板（%s 分頁）%.0f × %.0f、左上 (%.0f, %.0f)：右緣要離畫面中央 200 以上、下緣塞得進 1080" % [TestPanel.TAB_NAMES[t], size.x, size.y, tp.position.x, top]
+	# 開背包時藏起來（讓位給左邊的屬性面板），關掉再出現
+	hud.inventory_panel.visible = true
+	hud._process(DT)
+	var hidden_with_bag: bool = not tp.visible
+	hud.inventory_panel.visible = false
+	hud._process(DT)
+	var back: bool = tp.visible
+	tp.active = false
+	hud._process(DT)
+	if not hidden_with_bag or not back:
+		return "開背包時測試面板應藏起來、關掉再出現（藏 %s、回來 %s）" % [hidden_with_bag, back]
 	return ""
 
 

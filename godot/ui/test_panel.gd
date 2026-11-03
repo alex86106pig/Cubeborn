@@ -1,4 +1,4 @@
-# 武器測試場的測試面板（上方中央，可以收起）：分頁選職業、做武器（稀有度 + 詞條）、道具、技能、怪物；
+# 武器測試場的測試面板（左上，平常收起只剩分頁與工具列；開背包時 HUD 把它藏起來）：分頁選職業、做武器（稀有度 + 詞條）、道具、技能、怪物；
 # 按鈕只發訊號，main.gd 交給 Practice 改模擬狀態。怪物停手 / 攻擊也可以按 T
 class_name TestPanel
 extends PanelContainer
@@ -11,15 +11,15 @@ signal hold_toggled
 signal clear_enemies
 signal reset_dummies
 
-const WIDTH := 1000.0
+const WIDTH := 660.0           # 放在左上，畫面中央留給角色
 const LIST_HEIGHT := 380.0
-const AFFIX_SIZE := Vector2(320, 44)
+const AFFIX_SIZE := Vector2(310, 44)   # 一排 2 顆
 const TABS: Array[StringName] = [&"class", &"weapon", &"item", &"skill", &"enemy"]
 const TAB_NAMES := {&"class": "職業", &"weapon": "武器", &"item": "道具", &"skill": "技能", &"enemy": "怪物"}
 
 var hold_button := UiKit.button("怪物：攻擊中（T）", UiKit.BUTTON_M)
 var note := UiKit.label("", UiKit.FONT_NOTE, UiKit.GOLD)
-var collapse_button := UiKit.button("收起", UiKit.BUTTON_S)
+var active := false        # 在武器測試場（main.gd 設）；HUD 照它與背包開沒開決定顯示
 var tab_buttons := {}      # 分頁 → Button
 var pages := {}            # 分頁 → Control
 var weapon_base := &""
@@ -50,29 +50,28 @@ func _init() -> void:
 		b.pressed.connect(show_tab.bind(t))
 		tab_buttons[t] = b
 		head.add_child(b)
-	head.add_child(collapse_button)
-	collapse_button.pressed.connect(func() -> void: set_collapsed(_body.visible))
-	head.add_child(UiKit.label("Esc 回主選單", UiKit.FONT_NOTE, Color(1, 1, 1, 0.8)))
 	root.add_child(head)
 	var tools := HBoxContainer.new()
 	tools.add_theme_constant_override(&"separation", 8)
 	hold_button.pressed.connect(hold_toggled.emit)
 	tools.add_child(hold_button)
-	tools.add_child(_action("清除怪物", clear_enemies.emit))
-	tools.add_child(_action("重置木樁", reset_dummies.emit))
-	tools.add_child(note)
-	_body.add_child(tools)
+	tools.add_child(_action("清除怪物", clear_enemies.emit, UiKit.BUTTON_S))
+	tools.add_child(_action("重置木樁", reset_dummies.emit, UiKit.BUTTON_S))
+	tools.add_child(UiKit.label("Esc 回主選單", UiKit.FONT_NOTE, Color(1, 1, 1, 0.8)))
+	root.add_child(tools)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	root.add_child(note)
 	_build_class_page()
 	_build_weapon_page()
 	_build_list_page(&"item", _ids_of(&"item"), func(id: StringName) -> void: item_requested.emit(id))
 	_build_list_page(&"skill", _ids_of(&"skill"), func(id: StringName) -> void: item_requested.emit(id))
 	_build_enemy_page()
 	root.add_child(_body)
-	show_tab(&"weapon")
+	set_collapsed(true)
 
 
-static func _action(text: String, fn: Callable) -> Button:
-	var b := UiKit.button(text, UiKit.BUTTON_M)
+static func _action(text: String, fn: Callable, kind: Dictionary = UiKit.BUTTON_M) -> Button:
+	var b := UiKit.button(text, kind)
 	b.pressed.connect(fn)
 	return b
 
@@ -85,16 +84,22 @@ static func _ids_of(kind: StringName) -> Array[StringName]:
 	return out
 
 
+# 點分頁展開那一頁；點開著的那一頁收起（只剩分頁與工具列）
 func show_tab(t: StringName) -> void:
+	if _body.visible and pages[t].visible:
+		set_collapsed(true)
+		return
 	for k: StringName in pages:
 		pages[k].visible = k == t
 		tab_buttons[k].set_pressed_no_signal(k == t)
-	set_collapsed(false)
+	_body.visible = true
 
 
 func set_collapsed(on: bool) -> void:
 	_body.visible = not on
-	collapse_button.text = "展開" if on else "收起"
+	if on:
+		for k: StringName in tab_buttons:
+			tab_buttons[k].set_pressed_no_signal(false)
 
 
 func set_hold(on: bool) -> void:

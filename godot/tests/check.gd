@@ -91,7 +91,7 @@ func _initialize() -> void:
 	_check("驅魔權杖（F7）：敲擊是魔法、可擊退；聖光圈 4 秒每 0.5 秒對範圍內敵人持續傷害（不爆擊）、隊友回血；神官救人快 50%、救起回 50% 生命", CombatChecks.check_scepter)
 	_check("火把（F8）：按住右鍵舉火把（移速 ×0.6）、放開放下；舉著左鍵噴火 120%（耗魔、不占右鍵，魔力不夠不出招）；插火把在技能欄第一個空格（冷卻 1 秒、3 次記在武器上、換層補滿）；翻滾放下；火把旁不管視野都看得到；揮擊點燃；傭兵視野 +3、身邊 6", CombatChecks.check_torch)
 	_check("鐵鏟（F9）：鏟起面前的怪舉 2 秒（移速 ×0.7、不能跳），左鍵拋出（落地 200%、路上 150%）、右鍵埋入（80%、2 秒）、沒按就掙脫；Boss 抓不起來、沒抓到只扣 miss_mana；掘墓人挖墳中受傷 −25%；埋著打得到、不被擊退", CombatChecks.check_shovel)
-	_check("武器測試場（--weapon-test）：木樁爬出後站著不動、不打人，鐵鏟抓得起、埋得下，埋完回到站著；測試面板做的武器照指定稀有度與詞條、背包滿了掉腳邊、怪物停手不打人放開照打、死了不結算、立即復活滿血滿魔、清除怪物",
+	_check("武器測試場（--weapon-test）：木樁爬出後站著不動、不打人，鐵鏟抓得起、埋得下，埋完回到站著；測試面板做的武器照指定稀有度與詞條、背包滿了掉腳邊、怪物停手不打人放開照打、死了不結算、立即復活滿血滿魔、清除怪物；地圖是 64 × 64 的空地、重新開始不換掉",
 		all.bind([CombatChecks.check_training_dummies, CombatChecks.check_practice]))
 
 	# ───────── 小怪與戰鬥判定 ─────────
@@ -225,7 +225,7 @@ func _initialize() -> void:
 		all.bind([ViewChecks.check_skill_bar_parry, ViewChecks.check_skill_bar_cd_mask, ViewChecks.check_skill_bar_gem_skill]))
 	_check("新手提示：開場跳操作與挖墳；撿到東西、開背包、可合成、出口打開、腳邊有東西（按住 Alt 看詳細）、隊友倒地各跳一次；看過不再跳；重設後再跳", ViewChecks.check_hints)
 	_check("挖墳進度條：事件進行中所有人上方中央都看得到進度與說明，出口打開後收起；Boss 血條排在它下面、寬度塞得進 1920", ViewChecks.check_dig_bar)
-	_check("主選單：首頁有單人 / 多人 / 離開遊戲（網頁版不顯示離開）、桌面版先選房號 / IP、多人頁放連線面板與返回、塞得進 1920×1080；暫停畫面有「回主選單」；選角畫面（點職業只是選、按開始才開局帶難度、佔位選不到、數值條照職業、塞得進）；武器測試場入口與測試面板（分頁、武器照選的稀有度與詞條、詞條超過上限擋下、塞得進）", ViewChecks.check_main_menu)
+	_check("主選單：首頁有單人 / 多人 / 離開遊戲（網頁版不顯示離開）、桌面版先選房號 / IP、多人頁放連線面板與返回、塞得進 1920×1080；暫停畫面有「回主選單」；選角畫面（點職業只是選、按開始才開局帶難度、佔位選不到、數值條照職業、塞得進）；武器測試場入口與測試面板（左上、預設收起、點分頁展開再點收起、開背包時藏起來、右緣離畫面中央 200 以上；武器照選的稀有度與詞條、詞條超過上限擋下）", ViewChecks.check_main_menu)
 	_check("設定頁：主選單與暫停畫面的「設定」打開、塞得進 1920×1080、選單關掉一起關；改值存檔讀得回來（啟動參數蓋的不存）；音量套到 Music / SFX 匯流排、0% = −80 dB；陰影與光源開關套到太陽和精英怪的光（之後新建的也照設定）；--shadows / --lights", ViewChecks.check_settings)
 	_check("按鈕：ui/ 裡都用 UiKit.button（選單 / 面板 / 一排很多顆三種尺寸），不自己 Button.new()", ViewChecks.check_buttons)
 	_check("網頁版網址參數：?horde=200&perf&seconds=20 轉成 --horde=200 --perf --seconds=20；連線參數 host / join / room / net-autostart 也轉；不在開放清單的參數不轉", ViewChecks.check_url_query_args)

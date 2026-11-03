@@ -1318,4 +1318,9 @@ static func check_practice() -> String:
 	_run(w, _cmd(Vector2.ZERO), 1)
 	if w.enemies.any(func(x: Entity) -> bool: return x.team == &"enemy"):
 		return "清除怪物後場上應沒有怪"
+	# 測試場的地圖：64 × 64 的空地，重新開始（換職業）也不會被換回正式地圖
+	var pw := _new_world(5, false, MapDefs.PRACTICE_MAP)
+	pw.reset(9)
+	if pw.map_id != MapDefs.PRACTICE_MAP or pw.map.size != Vector2(64, 64) or not pw.terrain.blocks.is_empty() or pw.has_floors():
+		return "測試場重新開始後應還是 64 × 64 的空地：地圖 %s、大小 %s、石台 %d" % [pw.map_id, pw.map.size, pw.terrain.blocks.size()]
 	return ""
