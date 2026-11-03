@@ -97,6 +97,7 @@ var _evade_time := 0.0                 # 這次已經退了幾秒
 var _evade_side := 1.0                 # 往哪一邊偏（跟翻滾同一邊）
 var _commit := 0.0                     # 躲完後先打的剩餘秒數
 var _moves := {}                       # 「怪物種類·狀態」→ 資料裡那一招的表（{} = 查不到），查過就記著
+var _seen_t := {}                      # 怪物 id → 上一步看到的狀態機時間（變小 = 換了狀態，_track_states）
 var _forms := {}                       # 怪物 id → 上次認出的形態（資料子表名稱，例 wolf）
 var _fast_moves := {}                  # 「怪物種類·形態」→ 來不及反應的招 [[名稱, 表]]（預兆 ≤ 反應 + ROLL_LEAD），查過就記著
 var _unblockable := {}                 # 舉盾還被打到的「怪物種類·狀態」：之後這招改滾（每個種子重新學）
@@ -252,8 +253,22 @@ static func _mmss(t: float) -> String:
 	return "%d:%02d" % [int(t) / 60, int(t) % 60]
 
 
+# 怪物重新進入狀態（狀態機時間變小）就清掉「這招已經反應過」：同一招連出兩次（狼人爪 → 追 → 爪）時，
+# 中間那段沒輪到清（_guard 先處理別的就 return），第二爪會被當成反應過的那一招而不擋
+func _track_states() -> void:
+	for x in w.enemies:
+		var e := x as Enemy
+		if e == null or e.fsm == null:
+			continue
+		if e.fsm.time < _seen_t.get(e.id, INF) - 1e-4:
+			_reacted.erase(e.id)
+			_jumped.erase(e.id)
+		_seen_t[e.id] = e.fsm.time
+
+
 # 這一步要做什麼：身邊有怪先打 → 附近有武器去撿 → 照打法找下一個目標（怪群 → Boss → 挖墳）
 func decide() -> InputCmd:
+	_track_states()
 	var cmd := InputCmd.new()
 	cmd.aim = p.pos + Vector2(0, 1)
 	_tap = not _tap
