@@ -2,8 +2,9 @@
 # 平常用 `node tools/release.mjs --playtest` 跑；直接跑：在 godot/ 內 <Godot> --headless --path . -s res://tests/playtest.gd -- 參數
 # 參數：--floors=N（幾層，預設 1）、--seeds=1,2,3（每個種子各玩一場，預設 1,2,3）、--class=guardian（職業，預設守墓騎士）、
 #       --style=full|rush（full：清完怪群 → 打 Boss → 挖墳；rush：直接挖墳，只打靠近的怪，預設 full）、--out=檔案（另存 Markdown）
-# 機器人不會死（每步補滿血），量的是「打完一層會拿到多少東西」，不是難度；武器全撿（背包放不下才留在地上），不開祭壇 / 石棺（靈魂另外列）
-# 遺物與鐵砧會去選（優先主手武器能鑲的技能，已經有就升級），打怪時魔力夠、目標在範圍內就放技能與耗魔的右鍵
+# 機器人不會死（每步補滿血），量的是「打完一層會拿到多少東西」；難度看「會倒幾次」：另外扣一條虛擬血（最大生命），照受到的傷害扣到 0 就記一次、補滿再扣
+# 機器人不閃不擋、不喝藥水，比真人容易倒，當成「不會玩的人」的上限看。武器全撿（背包放不下才留在地上）
+# 靈魂夠就開祭壇 / 石棺（石棺優先），開出來的 3 選 1 跟地上的遺物、鐵砧一樣去選（優先主手武器能鑲的技能，已經有就升級），打怪時魔力夠、目標在範圍內就放技能與耗魔的右鍵
 extends SceneTree
 
 const DT := 1.0 / 60.0
@@ -31,6 +32,12 @@ var _casts := 0                       # 這一層放了幾次技能（數字鍵�
 var _relic_skip: Dictionary = {}      # 走不到的遺物 id
 var _relic_time := 0.0
 var _relic_target := 0
+var _spent := 0                       # 這一層開寶箱花掉的靈魂
+var _opened := 0                      # 這一層開了幾個寶箱
+var _vhp := 0.0                       # 虛擬血：照受到的傷害扣，到 0 記一次「會倒」
+var _downs := 0
+var _down_by := {}                    # 打出最後一下的種類 → 次數
+var _taken := 0.0                     # 這一層受到的傷害
 
 
 func _initialize() -> void:
@@ -42,7 +49,7 @@ func _initialize() -> void:
 	var cls := StringName(opts.get("class", "guardian"))
 	var style := String(opts.get("style", "full"))
 	var lines: Array[String] = ["# 自動試玩", "", "職業 %s、打法 %s、%d 層、種子 %s；背包 %d × %d = %d 格" % [cls, style, floors, str(seeds), ItemDefs.BAG_SIZE.x, ItemDefs.BAG_SIZE.y, ItemDefs.BAG_SIZE.x * ItemDefs.BAG_SIZE.y], "",
-		"| 種子 | 層 | 時間 | 殺怪（怪群 / 事件 / Boss / 召喚） | 掉武器（白綠藍紫橘） | 撿到 | 背包武器格 | 背包滿的時間 | 地上沒撿 | 靈魂 | 技能（等級）· 放幾次 |", "|---|---|---|---|---|---|---|---|---|---|---|"]
+		"| 種子 | 層 | 時間 | 殺怪（怪群 / 事件 / Boss / 召喚） | 掉武器（白綠藍紫橘） | 撿到 | 背包武器格 | 背包滿的時間 | 地上沒撿 | 靈魂 賺到 / 花掉（開幾箱） | 技能（等級）· 放幾次 | 受傷 / 會倒幾次（最多被誰） |", "|---|---|---|---|---|---|---|---|---|---|---|---|"]
 	for s in seeds:
 		lines.append_array(_play(int(s), floors, cls, style))
 	lines.append("")
@@ -103,6 +110,12 @@ func _play_floor(seed_value: int, style: String, reach: float) -> String:
 	_target_id = 0
 	_full_seen = false
 	_casts = 0
+	_spent = 0
+	_opened = 0
+	_vhp = _p.max_hp
+	_downs = 0
+	_down_by.clear()
+	_taken = 0.0
 	while t < MAX_FLOOR_TIME:
 		var cmd := _decide(style, reach)
 		_p.hp = _p.max_hp   # 不會死：量的是拿到多少東西
@@ -116,6 +129,20 @@ func _play_floor(seed_value: int, style: String, reach: float) -> String:
 						kills["boss" if e.is_boss() else ("summon" if e.no_souls else ("event" if e.wave_member else "pack"))] += 1
 				"weapon:dropped":
 					drops[StringName(ev.rarity)] += 1
+				"entity:damaged":
+					if ev.get("target_id", 0) == _p.id:
+						_taken += ev.amount
+						_vhp -= ev.amount
+						if _vhp <= 0.0:
+							_downs += 1
+							var k: String = RunLog.name_of(ev.get("source_kind", &""))
+							_down_by[k] = _down_by.get(k, 0) + 1
+							_vhp = _p.max_hp
+				"chest:opened":
+					var c := _w.entities.get(ev.get("chest_id", 0)) as Chest
+					if ev.get("player_id", 0) == _p.id and c != null:
+						_spent += c.price_for(_p)
+						_opened += 1
 				"skill:used":
 					if ev.get("player_id", 0) == _p.id and ev.get("key", "") != ActiveSlots.cd_key(ActiveSlots.HEAL_INDEX):
 						_casts += 1
@@ -139,9 +166,17 @@ func _play_floor(seed_value: int, style: String, reach: float) -> String:
 		if g.def.has("mana"):
 			gems.append("%s %d" % [ItemDefs.ITEMS[g.id].name, _p.skill_levels.get(g.id, 1)])
 	var skills := "%s · %d" % ["、".join(PackedStringArray(gems)) if not gems.is_empty() else "無", _casts]
-	return "| %d | %d | %s%s | %d（%d / %d / %d / %d） | %s | %d | %d | %s | %d | %d | %s |" % [seed_value, _w.floor_num, _mmss(t), timeout,
+	var souls := "%d / %d（%d）" % [_w.souls - souls_start + _spent, _spent, _opened]
+	var top := ""
+	var top_n := 0
+	for k: String in _down_by:
+		if _down_by[k] > top_n:
+			top = k
+			top_n = _down_by[k]
+	var downs := "%d / %d%s" % [roundi(_taken), _downs, "（%s %d）" % [top, top_n] if top_n > 0 else ""]
+	return "| %d | %d | %s%s | %d（%d / %d / %d / %d） | %s | %d | %d | %s | %d | %s | %s | %s |" % [seed_value, _w.floor_num, _mmss(t), timeout,
 		kills.pack + kills.event + kills.boss + kills.summon, kills.pack, kills.event, kills.boss, kills.summon, rarity, picked, cells,
-		"—" if full_at < 0.0 else _mmss(full_at), left, _w.souls - souls_start, skills]
+		"—" if full_at < 0.0 else _mmss(full_at), left, souls, skills, downs]
 
 
 func _mmss(t: float) -> String:
@@ -177,6 +212,12 @@ func _decide(style: String, reach: float) -> InputCmd:
 	var relic := _next_relic()
 	if relic != null:
 		return _use_relic(cmd, relic)
+	var chest := _next_chest()
+	if chest != null:
+		_walk(cmd, chest.pos)
+		if _w.can_reach(_p, chest) and _tap:
+			cmd.buttons |= InputCmd.BTN_INTERACT
+		return cmd
 	if boss != null and _boss_awake(boss):
 		return _fight(cmd, boss, reach)   # Boss 醒了先打它（不然它一直叫小怪，機器人會打不完）
 	if not digging_phase:
@@ -246,6 +287,28 @@ static func _skill_range(def: Dictionary, reach: float) -> float:
 		if def.has(k):
 			return maxf(float(def[k]) * 0.9, reach)
 	return reach + 1.0
+
+
+# 靈魂買得起、還沒開的寶箱：石棺優先（3 選 1 的稀有度比較高），同種取最近的；走 STUCK_TIME 秒到不了就放棄
+func _next_chest() -> Chest:
+	var best: Chest = null
+	var best_score := INF
+	for x in _w.chests:
+		var c := x as Chest
+		if c == null or c.is_removed or c.opened or _relic_skip.has(c.id) or _w.souls < c.price_for(_p):
+			continue
+		var score := _p.pos.distance_to(c.pos) - (1000.0 if c.tier == &"big" else 0.0)
+		if score < best_score:
+			best_score = score
+			best = c
+	if best != null:
+		if best.id != _relic_target:
+			_relic_target = best.id
+			_relic_time = 0.0
+		_relic_time += DT
+		if _relic_time > STUCK_TIME:
+			_relic_skip[best.id] = true
+	return best
 
 
 # 還沒選過的遺物 / 鐵砧（最近的、走得到的）
