@@ -20,6 +20,10 @@ const COMMIT_TIME := 0.6               # 躲完之後這麼久只躲 Boss 的招
 const EVADE_MAX := 1.2                 # 躲過一招後最多退這麼久就回去打（慢動作、連續出招的 Boss 不會一直退）
 const DEATH_BLAST := 1.0               # 死後會爆的怪：死後這麼多秒內都算威脅（膨脹屍 0.5、死亡爆炸詞條 0.8 秒後爆）
 const KITE_DIST := 3.5                 # 遠程職業：怪貼到這麼近就往後退
+const CROWD_MAX := 0                   # 近戰：身邊 CROWD_RANGE 內醒著的怪到這麼多就往外退（0 = 不退；16 種子實測退不退差不多、門檻 5 反而更差，預設關，--crowd 做實驗）
+const CROWD_RANGE := 2.5
+const AWAKE_FIRST := 15.0              # 這麼近有醒著的怪就先打完，不去撿東西、開寶箱（路上可能吵醒下一群）
+const PACK_AVOID := 3.0                # 往外退的方向避開休眠怪群：離群中心 wake_distance + 這麼多以內的會把方向推開
 const POTION_AT := 0.4                 # 生命低於最大生命的這個比例就喝藥水
 const REROLL_BELOW := 0.5              # 3 選 1 最好的選項分數低於這個、還有骰子就重擲
 const PATH_REFRESH := 0.5              # 每隔幾秒重新找路
@@ -39,6 +43,7 @@ var smart_pick := true
 var react := 0.25
 var real_death := false                # true：倒下就真的倒下（單人就是這場結束）；false：倒下記一次、原地滿血救起
 var reach := 1.4
+var crowd_max := CROWD_MAX
 var style := "full"
 
 # 這一層的統計（begin_floor 歸零）
@@ -84,6 +89,9 @@ var _was_down := false
 var _last_hit := "不明"                # 最後打中自己的「怪物·招式」（倒下時記這個）
 var _blocked_loot: ItemPickup = null   # 背包放不下、稀有度最高的地上武器
 var _dropped := {}                     # 自己丟掉的武器 uid：不再撿回來
+var trace := false                     # --trace=1：倒下時印出之前最後 TRACE_N 下是怎麼被打的
+var _recent: Array[String] = []
+const TRACE_N := 10
 var _socket_tried := {}                # 試過搬上武器格的道具 uid（搬不上去的不一直試）
 var _was_reviving := false
 
@@ -97,6 +105,8 @@ func _init(p_world: World, p_player: Player, opts: Dictionary, seed_value: int) 
 	react = float(opts.get("react", "0.25"))
 	real_death = String(opts.get("death", "revive")) == "real"
 	style = String(opts.get("style", "full"))
+	trace = opts.has("trace")
+	crowd_max = int(opts.get("crowd", str(CROWD_MAX)))
 	reach = 6.0 if ClassDefs.CLASSES[p.class_id].weapon in RANGED else 1.4
 	_rng.seed = hash([seed_value, peer])
 	_hands = [p.weapon_slots[Loadout.MAIN].get("uid", ""), p.weapon_slots[Loadout.OFF].get("uid", "")]
@@ -145,6 +155,11 @@ func after_step(t: float) -> void:
 						_block_broken = true
 					_last_hit = _move_name(ev)
 					hit_by[_last_hit] = hit_by.get(_last_hit, 0.0) + ev.amount
+					if trace:
+						_recent.append("%s %s %d（剩 %d 血、%s、翻滾 %d、身邊 3 內 %d 隻）" % [_mmss(t), _last_hit, roundi(ev.amount), roundi(p.hp),
+							p.action.current_name, p.roll_charges, _crowd(3.0)])
+						if _recent.size() > TRACE_N:
+							_recent.pop_front()
 			"chest:opened":
 				var c := w.entities.get(ev.get("chest_id", 0)) as Chest
 				if mine and c != null:
@@ -171,6 +186,9 @@ func after_step(t: float) -> void:
 	if down and not _was_down:
 		downs += 1
 		down_by[_last_hit] = down_by.get(_last_hit, 0) + 1
+		if trace:
+			print("— %s 第 %d-%d 倒下前：\n  %s" % [ClassDefs.CLASSES[p.class_id].name, w.floor_num, w.stage_num, "\n  ".join(PackedStringArray(_recent))])
+			_recent.clear()
 	_was_down = down
 	if not down:
 		return
@@ -230,6 +248,9 @@ func decide() -> InputCmd:
 		if near.no_souls and near.summoner_id == 0 and boss != null and _boss_awake(boss):
 			return _fight(cmd, boss)
 		return _fight(cmd, _summoner_of(near))
+	var awake := _nearest_awake() if smart_play else null
+	if awake != null and p.pos.distance_to(awake.pos) < AWAKE_FIRST:
+		return _fight(cmd, _summoner_of(awake))   # 一次只打一群：醒著的先打完再去撿東西
 	var loot := nearest_loot()
 	if loot != null:
 		_walk(cmd, loot.pos)
@@ -248,7 +269,9 @@ func decide() -> InputCmd:
 	if boss != null and _boss_awake(boss):
 		return _fight(cmd, boss)   # Boss 醒了先打它（不然它一直叫小怪，機器人會打不完）
 	if not digging_phase:
-		var e := _nearest_enemy(INF, false)
+		var e := _nearest_awake()   # 一次只打一群：還有醒著的就先打完，不去吵醒下一群
+		if e == null:
+			e = _nearest_enemy(INF, false)
 		if e == null:
 			e = _boss()
 		if e != null:
@@ -296,8 +319,11 @@ func _fight(cmd: InputCmd, e: Entity) -> InputCmd:
 	if close != null and (close.dormant or not w.nav_for(p.radius).has_los(p.pos, close.pos)):
 		close = null   # 休眠的、隔著牆的不退：不然走向目標途中經過牠旁邊會來回打轉
 	if close != null:   # 遠程：怪貼上來就往後退著打（瞄準不變）
-		var away := (p.pos - close.pos).normalized()
+		var away := _safe_dir((p.pos - close.pos).normalized())
 		_walk(cmd, p.pos + away * 4.0)
+		cmd.aim = e.pos
+	elif smart_play and crowd_max > 0 and reach <= KITE_DIST and _crowd(CROWD_RANGE) >= crowd_max:
+		_walk(cmd, p.pos + _away_from_crowd(CROWD_RANGE + 2.0) * 3.0)   # 被包圍：往怪少的那邊退著打，把一群拉成一條線
 		cmd.aim = e.pos
 	elif p.pos.distance_to(e.pos) > reach + e.radius:
 		_walk(cmd, e.pos)
@@ -363,11 +389,11 @@ func _guard(cmd: InputCmd) -> bool:
 			_reacted.erase(e.id)
 			_jumped.erase(e.id)
 			continue
-		if _commit > 0.0 and not e.is_boss():
-			continue
+		if _commit > 0.0 and e.no_souls and not e.is_boss():
+			continue   # 召喚出來的（Boss 叫的屍犬）輪流撲：躲完先打一輪，不然一直滾打不到 Boss
 		var state := e.fsm.current_name
-		if _reacted.get(e.id, &"") == state or e.fsm.time < react:
-			continue
+		if _reacted.get(e.id, &"") == state or (e.fsm.time < react and not e.is_dead):
+			continue   # 死後會爆的不用等反應：知道牠會炸，一死就跑
 		var move := _move_def(e)
 		var cone: bool = move.has("arc") and move.has("range") and not e.is_dead
 		if p.pos.distance_to(e.pos) - e.radius - p.radius > threat or (cone and not _in_cone(e, move)):
@@ -451,7 +477,7 @@ func _keep_evading(cmd: InputCmd) -> bool:
 		if p.roll_charges > 0:
 			_roll(cmd, away, DODGE_ANGLE)
 			return true
-	_walk(cmd, p.pos + away.rotated(DODGE_ANGLE * _evade_side) * 3.0)   # 斜著退：直直往後退會順著放射狀的招（骨刺陣）一路被打
+	_walk(cmd, p.pos + _safe_dir(away.rotated(DODGE_ANGLE * _evade_side)) * 3.0)   # 斜著退：直直往後退會順著放射狀的招（骨刺陣）一路被打
 	cmd.aim = e.pos
 	return true
 
@@ -605,6 +631,42 @@ func _clear_target(radius: float) -> Enemy:
 			best_d = d
 			best = e
 	return best
+
+
+# 離開身邊 radius 內醒著的怪的方向（從牠們的重心往外），再避開休眠的怪群（_safe_dir）
+func _away_from_crowd(radius: float) -> Vector2:
+	var sum := Vector2.ZERO
+	for x in w.enemies:
+		var e := x as Enemy
+		if e != null and not e.is_dead and e.team != &"player" and not e.dormant and e.pos.distance_to(p.pos) <= radius:
+			sum += (p.pos - e.pos).normalized()
+	return _safe_dir(sum.normalized() if sum.length_squared() > 1e-4 else Vector2(0, 1))
+
+
+# 往 dir 退會不會吵醒休眠的怪群（World._update_packs：走到群中心 wake_distance 內整群醒）：
+# 附近的休眠群把方向往外推，越近推得越用力；一次只引一群
+func _safe_dir(dir: Vector2) -> Vector2:
+	var limit: float = MonsterRarityDefs.PACKS.wake_distance + PACK_AVOID
+	var push := Vector2.ZERO
+	for pk: Dictionary in w.packs:
+		if pk.awake:
+			continue
+		var rel: Vector2 = p.pos - pk.center
+		var d := rel.length()
+		if d < limit and d > 1e-3:
+			push += rel / d * (limit - d) / PACK_AVOID
+	var out := dir + push
+	return out.normalized() if out.length_squared() > 1e-4 else dir
+
+
+# 身邊 radius 內醒著的怪有幾隻
+func _crowd(radius: float) -> int:
+	var n := 0
+	for x in w.enemies:
+		var e := x as Enemy
+		if e != null and not e.is_dead and e.team != &"player" and not e.dormant and e.pos.distance_to(p.pos) <= radius:
+			n += 1
+	return n
 
 
 func _enemy_near(at: Vector2, radius: float) -> bool:
@@ -835,6 +897,20 @@ func _nearest_enemy(radius: float, include_boss: bool) -> Enemy:
 	for x in w.enemies:
 		var e := x as Enemy
 		if e == null or e.is_dead or e.team == &"player" or _skip.has(e.id) or (e.is_boss() and not include_boss):
+			continue
+		var d := p.pos.distance_to(e.pos)
+		if d < best_d:
+			best_d = d
+			best = e
+	return best
+
+
+func _nearest_awake() -> Enemy:
+	var best: Enemy = null
+	var best_d := INF
+	for x in w.enemies:
+		var e := x as Enemy
+		if e == null or e.is_dead or e.dormant or e.team == &"player" or _skip.has(e.id) or e.is_boss():
 			continue
 		var d := p.pos.distance_to(e.pos)
 		if d < best_d:

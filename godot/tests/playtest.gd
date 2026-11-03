@@ -7,6 +7,8 @@
 #       --react=秒（smart 看到怪物出招後最快多久反應，預設 0.25；高手 0.15、新手 0.4）
 #       --pick=smart|random（3 選 1：smart 照技能 / 羈絆挑、沒得挑就用骰子重擲；random 隨機選、不用骰子，確認隨機的 Build 也打得完，預設 smart）
 #       --death=revive|real（revive：倒下記一次、原地滿血救起，一定打完，比「哪幾招最痛」；real：真的會死，全員倒下這場就結束，看撐到哪，預設 revive）
+#       --trace=1（倒下時印出之前最後 10 下：時間、哪一招、多少、剩多少血、在做什麼、翻滾充能、身邊 3 內幾隻怪）
+#       --crowd=N（近戰身邊 2.5 內醒著的怪到 N 隻就往外退，預設 0 = 不退；做實驗用）
 # 血量照遊戲的規則走（自然回血、吸血、藥水、生命低於 X% 的道具都會發動）；revive 救起時有 REVIVE.revive_invuln 秒無敵
 extends SceneTree
 
