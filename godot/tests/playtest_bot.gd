@@ -30,6 +30,7 @@ const CROWD_RANGE := 2.5
 const AWAKE_FIRST := 15.0              # 這麼近有醒著的怪就先打完，不去撿東西、開寶箱（路上可能吵醒下一群）
 const PACK_AVOID := 3.0                # 往外退的方向避開休眠怪群：離群中心 wake_distance + 這麼多以內的會把方向推開
 const POTION_AT := 0.4                 # 生命低於最大生命的這個比例就喝藥水
+const POTION_URGENT := 0.2             # 正在擋 / 躲時，低於這個比例才喝
 const REROLL_BELOW := 0.5              # 3 選 1 最好的選項分數低於這個、還有骰子就重擲
 const PATH_REFRESH := 0.5              # 每隔幾秒重新找路
 const STUCK_TIME := 25.0               # 追同一個目標這麼久、血都沒掉（打不到）就放棄它；有在掉血就繼續打（Boss 血多，25 秒打不完）
@@ -848,9 +849,11 @@ func _ally_in_line(target: Vector2, area: float = 0.0) -> bool:
 	return false
 
 
-# 生命低於 POTION_AT、藥水還有次數又不在冷卻就按 Q
+# 生命低於 POTION_AT、藥水還有次數又不在冷卻就按 Q；正在擋 / 躲的時候不喝（喝藥會放下盾），快死了（POTION_URGENT 以下）才硬喝
 func _drink(cmd: InputCmd) -> void:
 	if p.hp >= p.max_hp * POTION_AT or p.slots.heal.charges <= 0:
+		return
+	if (_block_id != 0 or _evade_id != 0 or _block_time > 0.0) and p.hp >= p.max_hp * POTION_URGENT:
 		return
 	if w.cooldowns.is_ready(p.cd(ActiveSlots.cd_key(ActiveSlots.HEAL_INDEX))):
 		cmd.buttons |= InputCmd.slot_bit(ActiveSlots.HEAL_INDEX)
