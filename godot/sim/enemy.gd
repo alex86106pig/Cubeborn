@@ -264,9 +264,21 @@ func update(dt: float) -> void:
 		return
 	_nav_timer -= dt
 	_update_affixes(dt)
+	_apply_hold()
 	fsm.update(dt * action_speed * slow_mul * chill_mul)
 	_update_jump(dt)
 	_update_anim()
+
+
+# 武器測試場的怪物停手（World.enemies_hold）：回到主狀態（追人、選招）時改成站著（train），放開後回主狀態；
+# 只換主狀態，出到一半的招式、受擊、型態轉換照常做完
+func _apply_hold() -> void:
+	if main_state == &"train" or is_dead:
+		return
+	if world.enemies_hold and fsm.current_name == main_state:
+		fsm.change(&"train")
+	elif not world.enemies_hold and fsm.current_name == &"train":
+		fsm.change(main_state)
 
 
 # 中毒（v0.33.0）：再中毒重新計時，每次扣的傷害取較高的

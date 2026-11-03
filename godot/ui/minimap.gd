@@ -151,7 +151,7 @@ func _draw() -> void:
 			draw_circle(_to_view(p.pos, focus, scale_), 4.0, ALLY)
 	if me != null:
 		var v := _to_view(me.pos, focus, scale_)
-		var f := Vector2.from_angle(me.view_facing())
+		var f := MathUtil.dir_from_angle(me.view_facing())
 		var fwd := Vector2(f.x - f.y, f.x + f.y).normalized()
 		var side := Vector2(-fwd.y, fwd.x)
 		draw_colored_polygon(PackedVector2Array([v + fwd * 8.0, v - fwd * 5.0 + side * 5.0, v - fwd * 5.0 - side * 5.0]), SELF)

@@ -67,14 +67,14 @@ func _ready() -> void:
 	hud.title_requested.connect(return_to_title)
 	hud.class_select.start_pressed.connect(start_single)
 	hud.main_menu.weapon_test_pressed.connect(start_weapon_test)
-	hud.weapon_test_equip.connect(_weapon_test_equip)
-	hud.weapon_test_reset.connect(_reset_training_dummies)
+	_connect_test_panel()
 	hud.main_menu.back_pressed.connect(_on_title_back)
 	hud.inventory_panel.op_requested.connect(input_collector.queue_inventory_op)
 	hud.forge_panel.op_requested.connect(input_collector.queue_inventory_op)
 	hud.relic_panel.op_requested.connect(input_collector.queue_inventory_op)
 	input_collector.relic_panel = hud.relic_panel
 	input_collector.inventory_panel = hud.inventory_panel
+	input_collector.test_panel = hud.test_panel
 	# 背包開著時滑鼠只給介面用；遺物面板自動開關背包（HUD.set_bag_open）也跟著
 	hud.inventory_panel.visibility_changed.connect(func() -> void: input_collector.mouse_captured = hud.inventory_panel.visible)
 	hud.inventory_full.connect(_open_inventory_for)
@@ -210,21 +210,82 @@ func _leave_title() -> void:
 	hud.show_title(false)
 
 
-# 武器測試場（2026-10-27，主選單入口）：沒有怪群與波次，玩家旁邊擺木樁；上方按鈕列換武器、重置木樁，Esc 回主選單
+# 武器測試場（主選單入口）：沒有怪群與波次，玩家旁邊擺木樁；上方的測試面板選職業、做武器、拿道具與技能、生怪（Practice），Esc 回主選單
 func start_weapon_test() -> void:
 	_net_message = ""
-	in_weapon_test = true
+	_set_practice(true)
 	world.player_classes.erase(World.HOST_PEER_ID)   # 共用基準數值，看武器本身
 	restart()
 	_leave_title()
-	hud.weapon_test_bar.visible = true
 
 
 func leave_weapon_test() -> void:
-	in_weapon_test = false
-	hud.weapon_test_bar.visible = false
+	_set_practice(false)
 	restart()
 	show_title(&"home")
+
+
+func _set_practice(on: bool) -> void:
+	in_weapon_test = on
+	world.practice = on
+	world.enemies_hold = false
+	hud.test_panel.visible = on
+	hud.test_panel.set_hold(false)
+	hud.revive_button.visible = false
+
+
+func _connect_test_panel() -> void:
+	var tp := hud.test_panel
+	tp.class_chosen.connect(_practice_class)
+	tp.weapon_requested.connect(func(base: StringName, rarity: StringName, affixes: Array[StringName]) -> void:
+		_practice(func(me: Player) -> String:
+			var inst := Practice.make_weapon(world, base, rarity, affixes)
+			var name := WeaponDropDefs.display_name(inst)
+			return ("拿到 " if Practice.give_weapon(world, me, inst) else "背包滿了，放在腳邊：") + name))
+	tp.item_requested.connect(func(id: StringName) -> void:
+		_practice(func(me: Player) -> String:
+			return ("拿到 " if Practice.give_item(world, me, id) else "背包滿了，放在腳邊：") + ItemDefs.ITEMS[id].name))
+	tp.enemy_requested.connect(func(type: StringName) -> void:
+		_practice(func(me: Player) -> String:
+			Practice.spawn_enemy(world, me, type)
+			return "生出 " + EnemyDefs.def_of(type).get("name", String(type))))
+	tp.hold_toggled.connect(_toggle_enemies_hold)
+	tp.clear_enemies.connect(func() -> void: _practice(func(_me: Player) -> String:
+		Practice.clear_enemies(world)
+		return "怪物都清掉了"))
+	tp.reset_dummies.connect(_reset_training_dummies)
+	hud.practice_revive.connect(func() -> void: _practice(func(me: Player) -> String:
+		Practice.revive(world, me)
+		return "復活了"))
+
+
+# 測試面板的操作：只在武器測試場、本機玩家在的時候做；fn 回傳面板上要顯示的一句話
+func _practice(fn: Callable) -> void:
+	var me := local_player()
+	if not in_weapon_test or me == null:
+		return
+	var before := world.events.size()   # 上一步的事件已經送過，只送這次新增的
+	hud.test_panel.set_note(fn.call(me))
+	GameEvents.emit_all(world.events.slice(before))
+
+
+# 換職業：重新開始測試場（基礎數值、起始武器照職業）
+func _practice_class(id: StringName) -> void:
+	if not in_weapon_test:
+		return
+	if id == ClassDefs.NONE:
+		world.player_classes.erase(World.HOST_PEER_ID)
+	else:
+		world.player_classes[World.HOST_PEER_ID] = id
+	restart()
+	hud.test_panel.set_note("職業：" + (ClassDefs.CLASSES[id].name if id != ClassDefs.NONE else "無職業"))
+
+
+func _toggle_enemies_hold() -> void:
+	if not in_weapon_test:
+		return
+	world.enemies_hold = not world.enemies_hold
+	hud.test_panel.set_hold(world.enemies_hold)
 
 
 # 本機玩家撿不下地上的道具：和 Tab 一樣連屬性面板一起打開背包（已經開著就不動），標出那一件與建議拿掉哪件
@@ -245,19 +306,6 @@ func _open_inventory() -> bool:
 	return true
 
 
-# 武器測試場換武器：換成白色的那把，技能冷卻歸零、箭袋與這關的火把補滿（2026-10-27 使用者：換完要重置技能時間）
-func _weapon_test_equip(id: StringName) -> void:
-	var me := local_player()
-	if not in_weapon_test or me == null:
-		return
-	me.equip_weapon(id)   # 新的一把：插火把的次數也是滿的（記在武器上）
-	var keys := ["player.special", "player.parry", "player.breath"]
-	for i in ActiveSlots.SLOT_COUNT:
-		keys.append(ActiveSlots.cd_key(i))
-	for key: String in keys:
-		world.cooldowns.reset(me.cd(key))
-
-
 # 木樁被打飛、埋掉後擺回原位：清掉場上的木樁，在玩家旁邊重擺
 func _reset_training_dummies() -> void:
 	var me := local_player()
@@ -274,8 +322,7 @@ func _reset_training_dummies() -> void:
 # 選角畫面按「開始」：開一局新的單人遊戲（F2）
 func start_single(class_id: StringName, difficulty: StringName) -> void:
 	_net_message = ""
-	in_weapon_test = false
-	hud.weapon_test_bar.visible = false
+	_set_practice(false)
 	world.player_classes[World.HOST_PEER_ID] = class_id
 	world.difficulty_mode = difficulty
 	restart()
@@ -608,6 +655,8 @@ func _process(delta: float) -> void:
 		elif Input.is_action_just_pressed(&"special") or Input.is_action_just_pressed(&"move_right"):
 			step = 1
 	_update_spectate(step)
+	var me := local_player()
+	hud.revive_button.visible = in_weapon_test and me != null and (me.is_dead or me.is_downed)
 	_sync_arena()
 	var t0 := Time.get_ticks_usec()
 	world_view.sync(world, alpha, delta)
@@ -676,6 +725,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		input_collector.mouse_captured = hud.inventory_panel.visible
 	elif mode != Mode.SINGLE:
 		return   # 以下除錯鍵直接改模擬狀態、不經過 InputCmd，單機才有
+	elif event.is_action_pressed(&"practice_hold"):
+		_toggle_enemies_hold()
 	elif event.is_action_pressed(&"debug_speed"):
 		DebugTools.toggle_speed(local_player())
 	elif event.is_action_pressed(&"debug_item"):

@@ -1275,3 +1275,47 @@ static func check_training_dummies() -> String:
 	if near.buried_timer > 0.0 or not near.fsm.is_in(&"train"):
 		return "埋完應回到站著：埋 %.2f、狀態 %s" % [near.buried_timer, near.fsm.current_name]
 	return ""
+
+
+# 武器測試場的測試面板（Practice）：武器照指定的稀有度與詞條、背包滿了掉腳邊；怪物停手時站著不打人、放開後照常打；
+# 死了不結算（World.practice），立即復活滿血滿魔
+static func check_practice() -> String:
+	var w := _new_world()
+	w.practice = true
+	var p := _player(w)
+	var affixes: Array[StringName] = [Practice.affixes_for(&"purple")[0], Practice.affixes_for(&"purple")[1]]
+	var inst := Practice.make_weapon(w, &"longsword", &"purple", affixes)
+	if inst.rarity != &"purple" or inst.affixes != affixes or not Practice.give_weapon(w, p, inst):
+		return "做出來的武器應是紫色、詞條 %s 並放進背包：%s" % [affixes, inst]
+	if Practice.affix_error(&"blue", Practice.affixes_for(&"blue").slice(0, 3)) == "" or Practice.affix_error(&"blue", affixes.slice(0, 1)) != "":
+		return "藍色 3 條應擋下、1 條可以"
+	var given := 0
+	while Practice.give_item(w, p, &"wormwood") and given < 200:
+		given += 1
+	if w.pickups.is_empty():
+		return "背包滿了應掉在腳邊（放進 %d 個後）" % given
+	var e := Practice.spawn_enemy(w, p, &"grunt")
+	w.enemies_hold = true
+	e.pos = p.pos + Vector2(1.2, 0.0)
+	var hp0 := p.hp
+	_run(w, _cmd(Vector2.ZERO), 300)
+	if p.hp != hp0 or not e.fsm.is_in(&"train"):
+		return "怪物停手時應站著不打人：血 %.0f → %.0f、狀態 %s" % [hp0, p.hp, e.fsm.current_name]
+	w.enemies_hold = false
+	_run(w, _cmd(Vector2.ZERO), 300)
+	if p.hp >= hp0:
+		return "放開後怪物應照常打人（10 秒內沒受傷）"
+	p.die()
+	_run(w, _cmd(Vector2.ZERO), 60)
+	var defeated := w.is_defeated or w.events.any(func(ev: Dictionary) -> bool: return ev.name == "game:defeat")
+	if not p.is_dead or defeated:
+		return "測試場死了應不結算：死 %s、結算 %s" % [p.is_dead, defeated]
+	p.mana = 0.0
+	Practice.revive(w, p)
+	if p.is_dead or p.hp != p.max_hp or p.mana != p.max_mana():
+		return "立即復活應滿血滿魔：死 %s、血 %.0f / %.0f、魔 %.0f" % [p.is_dead, p.hp, p.max_hp, p.mana]
+	Practice.clear_enemies(w)
+	_run(w, _cmd(Vector2.ZERO), 1)
+	if w.enemies.any(func(x: Entity) -> bool: return x.team == &"enemy"):
+		return "清除怪物後場上應沒有怪"
+	return ""

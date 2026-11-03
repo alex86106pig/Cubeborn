@@ -12,6 +12,7 @@ const ACTIONS := {
 	&"stats_panel": KEY_TAB,
 	&"debug_hitbox": KEY_F2, &"debug_speed": KEY_F3,
 	&"debug_item": KEY_F4, &"debug_clear_items": KEY_F5,
+	&"practice_hold": KEY_T,   # 武器測試場：怪物停手 / 攻擊
 }
 const MOUSE_ACTIONS: Array[StringName] = [&"attack", &"special"]
 
@@ -28,6 +29,7 @@ var spectate := 0               # 陣亡後觀戰的隊友 peer id（main.gd 設
 var vote_pending := false       # 前往下一層的投票等著自己回答（main.gd 每步設定）：Enter 同意、Esc 反對（這時 Esc 不開選單）
 var relic_panel: RelicPanel     # 遺物的 N 選 1 開著時：數字鍵選、R 重骰、Esc 先不選（不給技能、重新開始、暫停）
 var inventory_panel: InventoryPanel   # 背包手上拿著東西時 R 是旋轉、Esc 是放回，不給遺物面板
+var test_panel: Control         # 武器測試場的測試面板：點在面板上（含按鈕之間的空白）不普攻
 var _inv_ops: Array = []        # 背包介面送出的操作，下一筆輸入帶走
 
 var _latched := 0               # 兩次模擬步之間按過的按鈕，步驟執行後才清除
@@ -115,7 +117,12 @@ func _mouse_on_ui() -> bool:
 	if mouse_captured or _mouse_over_button():
 		return true
 	var hovered := get_viewport().gui_get_hovered_control()
-	return hovered != null and relic_panel != null and relic_panel.visible and relic_panel.is_ancestor_of(hovered)
+	if hovered == null:
+		return false
+	for panel: Control in [relic_panel, test_panel]:
+		if panel != null and panel.visible and (panel == hovered or panel.is_ancestor_of(hovered)):
+			return true
+	return false
 
 
 # 背包介面的操作（InputCmd.OP_*），隨下一筆輸入送出

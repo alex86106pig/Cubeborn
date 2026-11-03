@@ -5,8 +5,7 @@ extends CanvasLayer
 
 signal quit_requested   # 暫停畫面或主選單按下「離開遊戲」
 signal title_requested  # 暫停畫面按下「回主選單」
-signal weapon_test_equip(weapon_id: StringName)   # 武器測試場：換武器（2026-10-27）
-signal weapon_test_reset                          # 武器測試場：木樁擺回原位
+signal practice_revive   # 武器測試場：按「立即復活」
 signal inventory_full(pickup_id: int)             # 本機玩家撿不下地上的道具：打開背包標出它（main.gd 接）
 signal forge_opened                               # 本機玩家在鍛造祭壇按 F：打開背包（main.gd 接，Build 改版第 8 步）
 
@@ -94,7 +93,8 @@ var _pause_hint := UiKit.label("按 Esc 繼續", UiKit.FONT_NOTE)
 var _pause_seed := UiKit.label("", UiKit.FONT_NOTE, Color(0.72, 0.75, 0.82))   # 這一局的種子（回報 bug 時對配置用）
 var _quit_button := UiKit.button("離開遊戲")
 var _title_button := UiKit.button("回主選單")
-var weapon_test_bar := HBoxContainer.new()   # 武器測試場：上方的武器按鈕列（只有在測試場才顯示）
+var test_panel := TestPanel.new()   # 武器測試場：上方中央的測試面板（只有在測試場才顯示，main.gd 接訊號）
+var revive_button := UiKit.button("立即復活")   # 武器測試場：自己倒地 / 死掉時畫面中央出現（main.gd 每幀設顯示）
 var _pause_net_slot := VBoxContainer.new()   # 暫停畫面放連線面板的位置（連線中顯示人數與離開連線）
 var _reset_hints_button := UiKit.button("重新顯示提示")
 var _settings_button := UiKit.button("設定")
@@ -265,16 +265,17 @@ func _init() -> void:
 	top.add_child(_boss_box)
 	root.add_child(top)
 
-	# 上方中央、標題列下面：武器測試場的按鈕列（每把武器一顆 + 重置木樁；Esc 回主選單）
-	weapon_test_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 90)
-	weapon_test_bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	weapon_test_bar.add_theme_constant_override(&"separation", 8)
-	for id: StringName in WeaponDefs.WEAPONS:
-		weapon_test_bar.add_child(_test_button(WeaponDefs.WEAPONS[id].name, weapon_test_equip.emit.bind(id)))
-	weapon_test_bar.add_child(_test_button("重置木樁", weapon_test_reset.emit))
-	weapon_test_bar.add_child(UiKit.label("Esc 回主選單", 20, Color(1, 1, 1, 0.8)))
-	weapon_test_bar.visible = false
-	root.add_child(weapon_test_bar)
+	# 上方中央、Boss 血條下面：武器測試場的測試面板（Esc 回主選單）；畫面中央的立即復活
+	test_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 130)
+	test_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	test_panel.visible = false
+	root.add_child(test_panel)
+	revive_button.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
+	revive_button.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	revive_button.grow_vertical = Control.GROW_DIRECTION_BOTH
+	revive_button.pressed.connect(practice_revive.emit)
+	revive_button.visible = false
+	root.add_child(revive_button)
 
 	# 下方中央：技能欄
 	_skill_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 20)
@@ -371,13 +372,6 @@ func set_loading(on: bool) -> void:
 		_loading.add_child(box)
 	_loading.visible = on
 	_world_labels.warm = warm_text() if on else ""   # 場上文字是描邊字，字形另外快取，用它自己的畫法預熱
-
-
-# 武器測試場的按鈕（2026-10-27 使用者：原本 16 號字、高 36 太小不好點、底色淡得像文字）
-static func _test_button(text: String, on_pressed: Callable) -> Button:
-	var b := UiKit.button(text, UiKit.BUTTON_S)
-	b.pressed.connect(on_pressed)
-	return b
 
 
 # 會在遊戲中途第一次出現的字：道具名稱與說明、稀有度、怪物詞條與名字、武器詞條、新手提示、職業卡（F2）、怪物名稱、每層出口事件的文字

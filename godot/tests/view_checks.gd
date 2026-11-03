@@ -170,7 +170,7 @@ static func check_main_menu() -> String:
 	if err == "":
 		err = await _check_class_select(hud)
 	if err == "":
-		err = _check_weapon_test_bar(hud)
+		err = _check_test_panel(hud)
 	hud.queue_free()
 	cam.queue_free()
 	return err
@@ -253,22 +253,41 @@ static func _check_class_select(hud: Variant) -> String:
 	return ""
 
 
-# 武器測試場的按鈕列（2026-10-27）：預設隱藏；每把武器一顆（按下發 weapon_test_equip）+ 重置木樁；寬度塞得進 1920
-static func _check_weapon_test_bar(hud: Variant) -> String:
-	var bar: HBoxContainer = hud.weapon_test_bar
-	if bar.visible:
-		return "武器測試場的按鈕列平常應隱藏"
-	var buttons := bar.get_children().filter(func(c: Node) -> bool: return c is Button)
-	if buttons.size() != WeaponDefs.WEAPONS.size() + 1:
-		return "按鈕列應有 %d 把武器 + 重置木樁，實際 %d 顆" % [WeaponDefs.WEAPONS.size(), buttons.size()]
-	var got: Array[StringName] = []
-	hud.weapon_test_equip.connect(func(id: StringName) -> void: got.append(id))
-	for i in WeaponDefs.WEAPONS.size():
-		(buttons[i] as Button).pressed.emit()
-	if got != WeaponDefs.WEAPONS.keys():
-		return "武器按鈕應依序發出 %s，實際 %s" % [WeaponDefs.WEAPONS.keys(), got]
-	if bar.get_combined_minimum_size().x > 1920.0:
-		return "按鈕列寬 %.0f，超出 1920" % bar.get_combined_minimum_size().x
+# 武器測試場的測試面板：預設隱藏；五個分頁、道具 / 技能每個一顆；選武器 + 稀有度 + 詞條按「放進背包」照選的發出，詞條超過上限擋下；
+# 怪物分頁每種一顆（不含冤魂、僕從）；整個面板（從 y 130 起）塞得進 1920 × 1080
+static func _check_test_panel(hud: Variant) -> String:
+	var tp: TestPanel = hud.test_panel
+	if tp.visible or hud.revive_button.visible:
+		return "測試面板與立即復活平常應隱藏"
+	if tp.pages.size() != TestPanel.TABS.size():
+		return "測試面板應有 %d 個分頁，實際 %d" % [TestPanel.TABS.size(), tp.pages.size()]
+	var count := func(t: StringName) -> int:
+		return (tp.pages[t] as ScrollContainer).get_child(0).find_children("*", "Button", true, false).size()
+	var items := TestPanel._ids_of(&"item").size()
+	var skills := TestPanel._ids_of(&"skill").size()
+	if count.call(&"item") != items or count.call(&"skill") != skills or count.call(&"enemy") != Practice.enemy_types().size():
+		return "道具 / 技能 / 怪物按鈕應有 %d / %d / %d 顆，實際 %d / %d / %d" % [items, skills, Practice.enemy_types().size(), count.call(&"item"), count.call(&"skill"), count.call(&"enemy")]
+	var got := []
+	tp.weapon_requested.connect(func(base: StringName, rarity: StringName, affixes: Array[StringName]) -> void: got.append([base, rarity, affixes]))
+	tp._pick_base(&"staff")
+	tp._pick_rarity(&"green")
+	var picks: Array[StringName] = []
+	for id: StringName in tp._affix_buttons:
+		if tp._affix_buttons[id].visible and WeaponDropDefs.AFFIXES[id].kind != &"branch" and picks.size() < 2:
+			tp._affix_buttons[id].button_pressed = true
+			picks.append(id)
+	tp._request_weapon()   # 綠色 1 條，選了 2 條：擋下
+	if not got.is_empty() or not tp.note.text.contains("最多 1"):
+		return "綠色選 2 條詞條應擋下並提示，實際送出 %s、提示「%s」" % [got, tp.note.text]
+	tp._affix_buttons[picks[1]].button_pressed = false
+	tp._request_weapon()
+	if got.size() != 1 or got[0][0] != &"staff" or got[0][1] != &"green" or got[0][2] != [picks[0]]:
+		return "放進背包應送出 法杖 / 綠 / %s，實際 %s" % [[picks[0]], got]
+	for t: StringName in TestPanel.TABS:
+		tp.show_tab(t)
+		var size := tp.get_combined_minimum_size()
+		if size.x > 1920.0 or 130.0 + size.y > 1080.0:
+			return "測試面板（%s 分頁）%.0f × %.0f，從 y 130 起超出 1920 × 1080" % [TestPanel.TAB_NAMES[t], size.x, size.y]
 	return ""
 
 
