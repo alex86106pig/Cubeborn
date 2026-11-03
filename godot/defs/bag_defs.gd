@@ -1,9 +1,10 @@
 # 觸發袋資料：背包 = 主袋 + 接在四邊的袋子（規則在 docs/設計方向.md「觸發袋」，數字 Claude 暫定）
 # 主袋放數值道具；袋子放效果、技能、修飾，接在哪一邊決定按鍵（SIDES），袋子的種類決定時機（BAGS）
 # 觸發道具改寫成效果：拿掉時機與機率，道具原本的動作（ItemDefs 效果的 do）對到 EFFECTS，重複的合併（對照在 docs/道具清單.md）
+# 袋子的格子：x 沿著接的那一邊、y 往外（length × depth），換邊時內容不用轉；畫面與同色區塊照 Loadout.board_cell 換成主袋座標
 class_name BagDefs
 
-const MAIN_SIZE := Vector2i(6, 4)   # 主袋
+const MAIN_SIZE := Vector2i(8, 6)   # 主袋：左右邊長 6（接得下兩個小袋）、上下邊長 8（接得下 4 個按鍵袋）
 
 # 邊：source 是哪個動作會觸發接在這一邊的袋子（primary 普攻、secondary 右鍵招式、key 數字鍵、空 = 不分按鍵）
 const SIDES := {
@@ -12,21 +13,55 @@ const SIDES := {
 	&"bottom": {"name": "不分按鍵", "source": &""},
 	&"top": {"name": "數字鍵", "source": &"key"},
 }
+const SIDE_ORDER: Array[StringName] = [&"top", &"left", &"right", &"bottom"]
 
-# 袋子種類：sides 能接哪幾邊；on 是道具資料原本的觸發時機（ItemDefs 效果的 on），H1 用來把觸發道具對到袋子
-# icd：同一袋多久最多發動一次（秒）；period：計時袋的間隔；max：最多幾個（按鍵袋 = 數字鍵 1~4）
+# 袋子種類：item 是掉落與倉庫用的物品 id（ItemDefs kind bag）；sides 能接哪幾邊；
+# on 是道具資料原本的觸發時機（ItemDefs 效果的 on），用來把觸發道具對到袋子；icd：同一袋多久最多發動一次（秒）；
+# period：計時袋的間隔；max：最多接幾個（按鍵袋 = 數字鍵 1~4）；length：這種袋子的長度（沒寫照 TIERS；按鍵袋短一格，上方才放得下 4 個）
 const BAGS := {
-	&"cast": {"name": "出手袋", "sides": [&"left", &"right"], "on": [&"attack"], "desc": "每次出手時發動"},
-	&"hit": {"name": "命中袋", "sides": [&"left", &"right"], "on": [&"hit", &"projectile_hit"], "icd": 0.3, "desc": "打中東西時，從命中點發動"},
-	&"kill": {"name": "擊殺袋", "sides": [&"left", &"right"], "on": [&"kill"], "desc": "打死怪時，從怪死的位置發動"},
-	&"hurt": {"name": "受傷袋", "sides": [&"bottom"], "on": [&"hurt", &"hurt_melee"], "desc": "自己被打中時發動"},
-	&"roll": {"name": "翻滾袋", "sides": [&"bottom"], "on": [&"roll"], "desc": "翻滾時發動"},
-	&"timer": {"name": "計時袋", "sides": [&"bottom"], "on": [&"interval"], "period": 3.0, "desc": "每隔一段時間發動"},
-	&"key": {"name": "按鍵袋", "sides": [&"top"], "on": [], "max": 4, "desc": "按數字鍵發動"},
+	&"cast": {"name": "出手袋", "item": &"bag_cast", "sides": [&"left", &"right"], "on": [&"attack"], "desc": "出手時發動"},
+	&"hit": {"name": "命中袋", "item": &"bag_hit", "sides": [&"left", &"right"], "on": [&"hit", &"projectile_hit"], "icd": 0.3, "desc": "打中東西時，從命中點發動（同一袋 0.3 秒最多一次）"},
+	&"kill": {"name": "擊殺袋", "item": &"bag_kill", "sides": [&"left", &"right"], "on": [&"kill"], "desc": "打死怪時，從怪死的位置發動"},
+	&"hurt": {"name": "受傷袋", "item": &"bag_hurt", "sides": [&"bottom"], "on": [&"hurt", &"hurt_melee"], "icd": 0.5, "desc": "自己被打中時發動（同一袋 0.5 秒最多一次）"},
+	&"roll": {"name": "翻滾袋", "item": &"bag_roll", "sides": [&"bottom"], "on": [&"roll"], "desc": "翻滾時發動"},
+	&"timer": {"name": "計時袋", "item": &"bag_timer", "sides": [&"bottom"], "on": [&"interval"], "period": 3.0, "desc": "每 3 秒發動一次"},
+	&"key": {"name": "按鍵袋", "item": &"bag_key", "sides": [&"top"], "on": [], "max": 4, "length": 2, "desc": "按數字鍵發動（由左到右是 1~4）"},
 }
 
 # 留在主袋的觸發：致命傷、死亡（守護亡靈、復活十字）不是攻擊的時機，當成常駐能力
 const MAIN_TRIGGERS: Array[StringName] = [&"lethal", &"death"]
+
+# 袋子的大小與特性（袋子實例的 tier）：mul 是裡面的效果與技能的傷害倍率；curse 是接著時角色多的缺點（屬性來源 &"curse:<uid>"）
+const TIERS := {
+# 小袋 3 × 2 放得下最大的效果道具（4 格的 L、S、T 形）
+	&"small": {"name": "", "length": 3, "depth": 2, "mul": 1.0},
+	&"big": {"name": "大", "length": 4, "depth": 2, "mul": 1.0},
+	&"strong": {"name": "強化", "length": 3, "depth": 2, "mul": 1.5},
+	&"cursed": {"name": "詛咒", "length": 5, "depth": 2, "mul": 1.0, "curse": [[&"damage_taken", Stats.MUL, 1.2]], "curse_desc": "接著時受到傷害 +20%"},
+}
+
+# 袋子裡的效果每發動一次耗魔 = 道具強度 power × 這個值（技能照技能自己的耗魔）
+const EFFECT_MANA_PER_POWER := 1.0
+# 效果沒有目標時（計時、翻滾、出手、按鍵）找身邊這麼遠內最近的怪；觸發的那一下沒有傷害時用武器基礎傷害的 100% 當基準
+const AUTO_TARGET_RANGE := 8.0
+
+# 開局（Player.apply_class）：按鍵袋 1 裝著起始技能，加一個職業的小觸發袋（[種類, 接哪一邊]）；沒選職業只有空的按鍵袋
+const START := {
+	&"guardian": {"skill": &"shield_slam", "bag": [&"hit", &"right"]},
+	&"arcanist": {"skill": &"frost_nova", "bag": [&"timer", &"bottom"]},
+	&"ranger": {"skill": &"volley", "bag": [&"hit", &"left"]},
+	&"shadow": {"skill": &"knife_fan", "bag": [&"kill", &"left"]},
+	&"priest": {"skill": &"holy_pillar", "bag": [&"hurt", &"bottom"]},
+	&"mercenary": {"skill": &"plantTorch", "bag": [&"hit", &"left"]},
+	&"gravedigger": {"skill": &"ground_slam", "bag": [&"hit", &"right"]},
+}
+
+# 取得：菁英怪（魔法 / 稀有）死掉時掉袋子的機率；掉哪種看怪的種類（沒列的隨機）
+const ELITE_DROP := {&"magic": 0.25, &"rare": 0.6}
+const ELITE_BAG := {&"bloater": &"kill", &"hound": &"roll", &"archer": &"hit", &"zombie": &"hurt", &"spider": &"timer", &"beetle": &"roll",
+	&"spearman": &"hurt", &"bone_wheel": &"cast", &"grunt": &"hit"}
+const CURSED_CHANCE := {&"small": 0.0, &"big": 0.15}   # 祭壇 / 石棺開出的遺物有這個機率把一個選項換成詛咒袋
+const ANVIL := {"mul_step": 0.25, "max_mul": 2.0}   # 鐵砧：強化一次倍率 +0.25，最多 ×2
 
 # 效果（觸發道具改寫）：顏色看道具本身的 bonds，空的是無色格
 const EFFECTS := {
@@ -67,3 +102,48 @@ static func bag_for_trigger(on: StringName) -> StringName:
 
 static func effect_of_action(action: StringName) -> StringName:
 	return EFFECT_OF_ACTION.get(action, action)
+
+
+# 物品 id → 袋子種類；不是袋子回傳 &""
+static func kind_of_item(id: StringName) -> StringName:
+	for kind: StringName in BAGS:
+		if BAGS[kind].item == id:
+			return kind
+	return &""
+
+
+# 主袋一邊的長度（袋子沿著這邊排，offset + length 不能超過）
+static func edge_length(side: StringName) -> int:
+	return MAIN_SIZE.y if side in [&"left", &"right"] else MAIN_SIZE.x
+
+
+# 新的袋子實例（沒接上：side 空的）；uid 由 Loadout 給
+static func make(uid: StringName, kind: StringName, tier: StringName = &"small") -> Dictionary:
+	var t: Dictionary = TIERS[tier]
+	var length: int = BAGS[kind].get("length", t.length) + (t.length - TIERS.small.length if BAGS[kind].has("length") else 0)
+	return {"uid": uid, "kind": kind, "tier": tier, "length": length, "depth": t.depth, "mul": t.mul,
+		"side": &"", "offset": 0, "entries": [] as Array[Dictionary]}
+
+
+# 袋子的顯示名稱（「大命中袋」「詛咒計時袋」）
+static func bag_name(bag: Dictionary) -> String:
+	return TIERS[bag.tier].name + BAGS[bag.kind].name
+
+
+# 快照：[uid, kind, tier, side, offset, length, depth, mul, [[uid, id, x, y, rot, charges], …]]
+static func to_array(bag: Dictionary) -> Array:
+	var entries := []
+	for e: Dictionary in bag.entries:
+		entries.append([String(e.uid), String(e.id), e.cell.x, e.cell.y, e.rot, e.get("charges", -1)])
+	return [String(bag.uid), String(bag.kind), String(bag.tier), String(bag.side), bag.offset, bag.length, bag.depth, bag.mul, entries]
+
+
+static func from_array(a: Array) -> Dictionary:
+	var entries: Array[Dictionary] = []
+	for x: Array in a[8]:
+		var e := {"uid": StringName(x[0]), "id": StringName(x[1]), "cell": Vector2i(x[2], x[3]), "rot": int(x[4])}
+		if int(x[5]) >= 0:
+			e["charges"] = int(x[5])
+		entries.append(e)
+	return {"uid": StringName(a[0]), "kind": StringName(a[1]), "tier": StringName(a[2]), "side": StringName(a[3]), "offset": int(a[4]),
+		"length": int(a[5]), "depth": int(a[6]), "mul": float(a[7]), "entries": entries}

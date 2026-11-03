@@ -270,7 +270,7 @@ static func update_player(p: Player, dt: float) -> void:
 # ── 共用 ──
 
 static func hit_of(owner: Player, def: Dictionary, ctx: Dictionary) -> Dictionary:
-	return {"damage": owner.pct_damage(def.get("damage_pct", 0.0)) * ctx.mul, "damage_type": ctx.type, "knockback": def.get("knockback", 0.0),
+	return {"damage": owner.pct_damage(def.get("damage_pct", 0.0)) * ctx.mul, "damage_type": ctx.type, "knockback": def.get("knockback", 0.0), "attack": &"skill",
 		"is_heavy": true, "blockable": false, "color": def.color, "band": Vector2(-INF, INF)}
 
 
@@ -364,7 +364,7 @@ static func fire_one(owner: Player, def: Dictionary, ctx: Dictionary, dir: Vecto
 		"color": StatDefs.DAMAGE_TYPES[ctx.type].color if ctx.type != def.get("damage_type", &"phys") else def.color,
 		"visual": def.visual, "pierce": def.pierce, "blockable": false, "no_stagger": false,
 		"altitude": owner.height + Config.HEIGHT.bolt_altitude, "settle_altitude": Config.HEIGHT.bolt_altitude,
-		"settle_distance": Config.HEIGHT.bolt_settle_distance,
+		"settle_distance": Config.HEIGHT.bolt_settle_distance, "attack": &"skill",
 	})
 	pr.skill_fx = {"def": def, "ctx": ctx}
 	owner.world.spawn_projectile(pr)

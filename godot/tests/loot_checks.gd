@@ -105,12 +105,12 @@ static func check_item_defs() -> String:
 					return "%s 占 %d 格，%s 應占 %d 格" % [id, ItemDefs.cell_count(id),
 						ItemDefs.RARITIES[def.rarity].name, ItemDefs.expected_cells(id)]
 				counts[def.rarity] = counts.get(def.rarity, 0) + 1
-			&"skill":   # 技能（Build 改版第 7 步）：1 格、SkillDefs 有同 id 的資料、寫明能用的武器
+			&"skill":   # 技能：1 格、SkillDefs 有同 id 的資料；weapons 是動作照哪種武器做（不限制能用的武器）
 				if ItemDefs.cell_count(id) != 1 or not SkillDefs.SKILLS.has(id) or (SkillDefs.SKILLS[id].get("weapons", []) as Array).is_empty():
-					return "技能 %s 應占 1 格、SkillDefs 有資料並寫明能用的武器" % id
-				for wid: StringName in SkillDefs.SKILLS[id].weapons:
-					if not WeaponDefs.WEAPONS.has(wid) or not WeaponDefs.grid_cells(wid).values().has("G"):
-						return "技能 %s 的武器 %s 不存在或沒有寶石座" % [id, wid]
+					return "技能 %s 應占 1 格、SkillDefs 有資料並寫明動作照哪種武器" % id
+			&"bag":   # 觸發袋：BagDefs.BAGS 有對到、沒有效果
+				if BagDefs.kind_of_item(id) == &"" or not def.effects.is_empty():
+					return "袋子 %s 應對到 BagDefs.BAGS、沒有效果" % id
 			&"corpse":   # 隊友的屍體（D6）：2 × 3 格、沒有效果，不算在 45 個道具裡
 				if ItemDefs.cell_count(id) != 6 or not def.effects.is_empty():
 					return "屍體應占 6 格、沒有效果"
@@ -187,11 +187,6 @@ static func _effect_value(item_id: StringName, stat: StringName) -> float:
 # 道具資料的第一筆效果
 static func _effect(item_id: StringName) -> Dictionary:
 	return ItemDefs.ITEMS[item_id].effects[0]
-
-
-# 機率觸發的道具要放幾個才會 100% 觸發（同種動作機率相加）
-static func _stacks_for_sure(item_id: StringName) -> int:
-	return ceili(1.0 / _effect(item_id).chance - EPS)
 
 
 static func check_items_apply() -> String:
@@ -307,7 +302,7 @@ static func check_inventory_suggest() -> String:
 
 
 # 互換：放到只被 1 件東西佔住的位置就兩件互換（被換走的回到原位、放不下找空位），換不回去就都不動並發 inventory:denied；
-# 拿著的武器放到背包的武器上 = 那把換上、換下來的放回那把原本的位置；主手的武器放到背包空格不動（主手不能空著）；
+# 拿著的武器放到倉庫的武器上 = 那把換上、換下來的放回那把原本的位置；主手的武器放到倉庫空格不動（主手不能空著）；主袋 ↔ 倉庫的道具互換；
 # 背包介面的預覽（Loadout.swap_partner）跟實際結果一致
 static func check_inventory_swap() -> String:
 	var w := _new_world(3)
@@ -331,23 +326,23 @@ static func check_inventory_swap() -> String:
 	var denied := _named(w.events, "inventory:denied")
 	if p.weapon_slots[Loadout.MAIN].get("uid", &"") != main_now or denied.is_empty() or denied[0].reason != "main_empty":
 		return "主手武器拖到背包空格應不動並發 inventory:denied（main_empty）：%s" % [denied]
-	# 武器格子的道具 ↔ 背包的道具（兩個方向），效果跟著換
-	var sock := lo.add_item(p, &"whetstone", {}, 0, Loadout.MAIN)
+	# 主袋的道具 ↔ 背包的道具（兩個方向），效果跟著換
+	var sock := lo.add_item(p, &"whetstone", {}, 0, Loadout.CORE)
 	var bag_item := lo.add_item(p, &"worn_boots", {}, 0, Loadout.BAG)
 	var s_cell: Vector2i = lo.find_item(sock).entry.cell
 	var b_cell: Vector2i = lo.find_item(bag_item).entry.cell
-	if lo.swap_partner(bag_item, Loadout.MAIN, s_cell, 0) != sock:
-		return "預覽：背包的道具拖到武器格子的道具上應顯示互換"
-	apply.call([InputCmd.OP_MOVE, String(bag_item), s_cell.x, s_cell.y, 0, Loadout.MAIN])
+	if lo.swap_partner(bag_item, Loadout.CORE, s_cell, 0) != sock:
+		return "預覽：背包的道具拖到主袋的道具上應顯示互換"
+	apply.call([InputCmd.OP_MOVE, String(bag_item), s_cell.x, s_cell.y, 0, Loadout.CORE])
 	var a := lo.find_item(bag_item)
 	var b := lo.find_item(sock)
-	if a.get("where", -9) != Loadout.MAIN or a.entry.cell != s_cell or b.get("where", -9) != Loadout.BAG or b.entry.cell != b_cell:
-		return "背包的道具拖到武器格子的道具上應互換位置：%s / %s" % [a, b]
+	if a.get("where", -9) != Loadout.CORE or a.entry.cell != s_cell or b.get("where", -9) != Loadout.BAG or b.entry.cell != b_cell:
+		return "背包的道具拖到主袋的道具上應互換位置：%s / %s" % [a, b]
 	if not lo.items.any(func(it: Dictionary) -> bool: return it.id == &"worn_boots") or lo.items.any(func(it: Dictionary) -> bool: return it.id == &"whetstone"):
-		return "互換後生效的應是換進武器格子的那件"
-	apply.call([InputCmd.OP_MOVE, String(sock), s_cell.x, s_cell.y, 0, Loadout.MAIN])
-	if lo.find_item(sock).get("where", -9) != Loadout.MAIN or lo.find_item(bag_item).get("where", -9) != Loadout.BAG:
-		return "武器格子的道具拖回去（背包 → 格子上的那件）應再換回來"
+		return "互換後生效的應是換進主袋的那件"
+	apply.call([InputCmd.OP_MOVE, String(sock), s_cell.x, s_cell.y, 0, Loadout.CORE])
+	if lo.find_item(sock).get("where", -9) != Loadout.CORE or lo.find_item(bag_item).get("where", -9) != Loadout.BAG:
+		return "主袋的道具拖回去（背包 → 格子上的那件）應再換回來"
 	# 背包裡兩件互換（同一個容器）
 	var dice := lo.add_item(p, &"loaded_dice", {}, 0, Loadout.BAG)
 	var d_cell: Vector2i = lo.find_item(dice).entry.cell
@@ -355,17 +350,17 @@ static func check_inventory_swap() -> String:
 	apply.call([InputCmd.OP_MOVE, String(dice), b_cell.x, b_cell.y, 0])
 	if lo.find_item(dice).entry.cell != b_cell or lo.find_item(bag_item).entry.cell != d_cell:
 		return "背包裡兩件應互換位置：骰子 %s、皮靴 %s" % [lo.find_item(dice).entry.cell, lo.find_item(bag_item).entry.cell]
-	# 武器不會被換進武器格子：格子的道具拖到背包的武器上不動
+	# 武器不會被換進主袋：主袋的道具拖到背包的武器上不動
 	w.events.clear()
 	var weapon_cell: Vector2i = p.inventory.find(main_uid).cell
 	apply.call([InputCmd.OP_MOVE, String(sock), weapon_cell.x, weapon_cell.y, 0])
-	if lo.find_item(sock).get("where", -9) != Loadout.MAIN or p.inventory.find(main_uid).cell != weapon_cell or _named(w.events, "inventory:denied").is_empty():
-		return "武器格子的道具拖到背包的武器上應不動（武器不進武器格子）並發 inventory:denied"
+	if lo.find_item(sock).get("where", -9) != Loadout.CORE or p.inventory.find(main_uid).cell != weapon_cell or _named(w.events, "inventory:denied").is_empty():
+		return "主袋的道具拖到背包的武器上應不動（武器只在倉庫）並發 inventory:denied"
 	# 換不回去：背包只剩骰子那一格，格子裡 2 格長的道具換不進背包 → 都不動
 	var w2 := _new_world(4)
 	var p2 := _player(w2)
 	var lo2 := p2.loadout
-	var long := lo2.add_item(p2, _shaped(&"i2"), {}, 0, Loadout.MAIN)
+	var long := lo2.add_item(p2, _shaped(&"i2"), {}, 0, Loadout.CORE)
 	var l_entry: Dictionary = lo2.find_item(long).entry
 	var l_cell: Vector2i = l_entry.cell
 	var l_rot: int = l_entry.rot
@@ -377,15 +372,15 @@ static func check_inventory_swap() -> String:
 			if p2.inventory.fits(&"loaded_dice", Vector2i(xx, yy), 0):
 				p2.inventory.add(StringName("fill%d" % n), &"loaded_dice", Vector2i(xx, yy), 0)
 				n += 1
-	var before := [p2.inventory.entries.size(), lo2.container(Loadout.MAIN).entries.size()]
-	if lo2.swap_partner(x, Loadout.MAIN, l_cell, 0) != &"":
+	var before := [p2.inventory.entries.size(), lo2.container(Loadout.CORE).entries.size()]
+	if lo2.swap_partner(x, Loadout.CORE, l_cell, 0) != &"":
 		return "預覽：換不回去時不應顯示互換"
-	lo2.queue_ops([[InputCmd.OP_MOVE, String(x), l_cell.x, l_cell.y, 0, Loadout.MAIN]])
+	lo2.queue_ops([[InputCmd.OP_MOVE, String(x), l_cell.x, l_cell.y, 0, Loadout.CORE]])
 	lo2.apply_ops(p2)
 	var xe := lo2.find_item(x)
 	var le := lo2.find_item(long)
-	if xe.get("where", -9) != Loadout.BAG or xe.entry.cell != x_cell or le.get("where", -9) != Loadout.MAIN or le.entry.cell != l_cell or le.entry.rot != l_rot \
-			or [p2.inventory.entries.size(), lo2.container(Loadout.MAIN).entries.size()] != before or _named(w2.events, "inventory:denied").is_empty():
+	if xe.get("where", -9) != Loadout.BAG or xe.entry.cell != x_cell or le.get("where", -9) != Loadout.CORE or le.entry.cell != l_cell or le.entry.rot != l_rot \
+			or [p2.inventory.entries.size(), lo2.container(Loadout.CORE).entries.size()] != before or _named(w2.events, "inventory:denied").is_empty():
 		return "背包滿了換不回去時應兩件都不動、發 inventory:denied：骰子 %s、長的 %s" % [xe, le]
 	return ""
 
@@ -734,13 +729,13 @@ static func check_pickup_to_cell() -> String:
 		return "OP_PICKUP 應把磨刀石直放在 (3, 2) 並從地上移除：背包 %s、地上還在 %s" % [p.inventory.entries, not stone.is_removed]
 	if absf(p.stats.value(&"damage") - 1.0) > EPS:
 		return "背包裡的道具沒有效果：攻擊力 %.2f（應為 1.00）" % p.stats.value(&"damage")
-	# 搬到主手長劍的格子 (1, 1) 才生效，搬回背包就失效
+	# 搬到主袋 (1, 1) 才生效，搬回倉庫就失效
 	var one := 1.0 + _effect_value(&"whetstone", &"damage")
 	var sock := _cmd(Vector2.ZERO)
-	sock.inv_ops = [[InputCmd.OP_MOVE, String(e.uid), 1, 1, 0, Loadout.MAIN]]
+	sock.inv_ops = [[InputCmd.OP_MOVE, String(e.uid), 1, 1, 0, Loadout.CORE]]
 	_run(w, sock, 1)
-	if p.loadout.find_item(e.uid).get("where", -9) != Loadout.MAIN or absf(p.stats.value(&"damage") - one) > EPS:
-		return "磨刀石搬到長劍格子 (1, 1) 應鑲上並生效：%s、攻擊力 %.2f" % [p.loadout.find_item(e.uid), p.stats.value(&"damage")]
+	if p.loadout.find_item(e.uid).get("where", -9) != Loadout.CORE or absf(p.stats.value(&"damage") - one) > EPS:
+		return "磨刀石搬到主袋 (1, 1) 應生效：%s、攻擊力 %.2f" % [p.loadout.find_item(e.uid), p.stats.value(&"damage")]
 	var unsock := _cmd(Vector2.ZERO)
 	unsock.inv_ops = [[InputCmd.OP_MOVE, String(e.uid), 3, 2, 1]]
 	_run(w, unsock, 1)
@@ -842,77 +837,32 @@ static func check_weapon_drops() -> String:
 	return ""
 
 
+# 觸發袋改版後武器沒有詞條：每種稀有度做出來都沒有；撿到時在倉庫不生效；主手照稀有度套基礎倍率；副手沒有數值
 static func check_weapon_affixes() -> String:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 3
 	for r in WeaponDropDefs.RARITY_ORDER:
-		for i in 50:
-			var inst := WeaponDropDefs.make(&"x", &"staff", r, rng)
-			var uniq := {}
-			for a in inst.affixes:
-				uniq[a] = true
-			if inst.affixes.size() != WeaponDropDefs.RARITY_ORDER.find(r) or uniq.size() != inst.affixes.size() \
-					or not inst.affixes.all(func(a: StringName) -> bool: return WeaponDropDefs.AFFIXES.has(a)):
-				return "%s 應有 %d 條不重複詞條，實際 %s" % [r, WeaponDropDefs.RARITY_ORDER.find(r), inst.affixes]
-	# 魔力詞條以外，每條詞條都跟第一版的羈絆有關（Build 改版第 8 步）；屬性都存在
-	for id: StringName in WeaponDropDefs.AFFIXES:
-		var a: Dictionary = WeaponDropDefs.AFFIXES[id]
-		var bond_ok: bool = BondDefs.BONDS.has(a.bond) if a.kind != &"mana" else a.bond == &""
-		if not bond_ok or not a.mods.all(func(m: Array) -> bool: return StatDefs.STATS.has(m[0])):
-			return "詞條 %s 的羈絆或屬性不存在" % id
-	# 武器偏向：法杖偏鬼火、火焰、冰霜，抽到那些羈絆的比例照權重（±3%）
-	var favored: Array = WeaponDropDefs.BIAS[&"staff"]
-	var total := 0.0
-	var fav := 0.0
-	for id: StringName in WeaponDropDefs.AFFIXES:
-		var a: Dictionary = WeaponDropDefs.AFFIXES[id]
-		var wt: float = a.w * (WeaponDropDefs.BIAS_MUL if favored.has(a.bond) else 1.0)
-		total += wt
-		if favored.has(a.bond):
-			fav += wt
-	var hits := 0
-	for i in 4000:
-		var one := WeaponDropDefs.roll_affixes(1, rng, &"staff")
-		if favored.has(WeaponDropDefs.AFFIXES[one[0]].bond):
-			hits += 1
-	var want := fav / total * 100.0
-	var got := hits * 100.0 / 4000.0
-	if absf(got - want) > 3.0:
-		return "法杖抽到偏向羈絆的詞條應約 %.1f%%，實際 %.1f%%" % [want, got]
-	_note("法杖的詞條偏向鬼火 / 火焰 / 冰霜：%.1f%%（權重 %.1f%%）" % [got, want])
-	# 合成要留的詞條一定在、不重複
-	var kept := WeaponDropDefs.roll_affixes(3, rng, &"staff", [&"cvt_fire", &"enh_armor", &"cvt_fire"] as Array[StringName])
-	if kept.size() != 3 or kept.slice(0, 2) != [&"cvt_fire", &"enh_armor"] or kept.count(&"cvt_fire") != 1:
-		return "要留的詞條應排在前面、不重複：%s" % [kept]
-	# 主手：稀有度倍率 + 詞條都生效；撿到的時候在背包、不生效
+		var inst := WeaponDropDefs.make(&"x", &"staff", r, rng)
+		if not inst.affixes.is_empty() or inst.has("sockets") or inst.has("imprints"):
+			return "%s 法杖不應有詞條、寶石座或印記格：%s" % [r, inst]
 	var w := _new_world()
 	var p := _player(w)
-	var aff: Array[StringName] = [&"enh_burn_damage", &"cvt_fire"]
-	p.add_weapon({"uid": &"blue", "base": &"staff", "rarity": &"blue", "affixes": aff})
-	if p.inventory.find(&"blue").is_empty() or absf(p.stats.value(&"damage") - 1.0) > EPS or p.stats.value(&"convert_fire") > 0.0:
-		return "撿到的法杖應放背包、詞條不生效：攻擊力 %.2f、轉火焰 %.2f" % [p.stats.value(&"damage"), p.stats.value(&"convert_fire")]
+	p.add_weapon({"uid": &"blue", "base": &"staff", "rarity": &"blue", "affixes": [] as Array[StringName]})
+	if p.inventory.find(&"blue").is_empty() or absf(p.stats.value(&"damage") - 1.0) > EPS:
+		return "撿到的法杖應放倉庫、不生效：攻擊力 %.2f" % p.stats.value(&"damage")
 	var equip := _cmd(Vector2.ZERO)
 	equip.inv_ops = [[InputCmd.OP_EQUIP, "blue", Loadout.MAIN]]
 	_run(w, equip, 1)
-	# 稀有度有基礎倍率（v0.27.0）：藍色攻擊力 ×1.4、攻速 ×1.10；詞條：燃燒傷害 +25%、50% 物理轉火焰
 	var want_dmg: float = WeaponDropDefs.RARITY_BASE.blue.damage
 	var want_spd: float = WeaponDropDefs.RARITY_BASE.blue.attack_speed
-	if p.weapon_id != &"staff" or absf(p.stats.value(&"damage") - want_dmg) > EPS or absf(p.stats.value(&"attack_speed") - want_spd) > EPS \
-			or absf(p.stats.value(&"burn_damage") - 1.25) > EPS or absf(p.stats.value(&"convert_fire") - 0.5) > EPS:
-		return "藍法杖裝上主手後攻擊力 / 攻速應為 %.2f / %.2f、燃燒傷害 125%%、轉火焰 50%%：%s、%.2f / %.2f、%.2f、%.2f" % [want_dmg, want_spd, p.weapon_id,
-			p.stats.value(&"damage"), p.stats.value(&"attack_speed"), p.stats.value(&"burn_damage"), p.stats.value(&"convert_fire")]
-	# 副手只有詞條生效（稀有度倍率只算主手）；「算 1 件防禦羈絆」算進件數
+	if p.weapon_id != &"staff" or absf(p.stats.value(&"damage") - want_dmg) > EPS or absf(p.stats.value(&"attack_speed") - want_spd) > EPS:
+		return "藍法杖裝上主手後攻擊力 / 攻速應為 %.2f / %.2f：%s、%.2f / %.2f" % [want_dmg, want_spd, p.weapon_id, p.stats.value(&"damage"), p.stats.value(&"attack_speed")]
 	var w2 := _new_world()
 	var p2 := _player(w2)
-	var aff2: Array[StringName] = [&"enh_armor", &"bond_guard"]
-	p2.weapon_slots[Loadout.OFF] = {"uid": &"gs", "base": &"woodShield", "rarity": &"green", "affixes": aff2}
+	p2.weapon_slots[Loadout.OFF] = {"uid": &"gs", "base": &"woodShield", "rarity": &"orange", "affixes": [] as Array[StringName]}
 	p2.apply_active_weapon()
-	if absf(p2.stats.value(&"armor") - 15.0) > EPS or absf(p2.stats.value(&"damage") - 1.0) > EPS or p2.loadout.bond_counts.get(&"guard", 0) != 1:
-		return "綠木盾（護甲 +15、算 1 件防禦）當副手：護甲 15、攻擊力 1.00、防禦 1 件，實際 %.1f、%.2f、%d 件" % [p2.stats.value(&"armor"), p2.stats.value(&"damage"), p2.loadout.bond_counts.get(&"guard", 0)]
-	p2.weapon_slots[Loadout.OFF] = {}
-	p2.apply_active_weapon()
-	if absf(p2.stats.value(&"armor")) > EPS or p2.loadout.bond_counts.get(&"guard", 0) != 0:
-		return "拿掉副手後詞條應移除：護甲 %.1f、防禦 %d 件" % [p2.stats.value(&"armor"), p2.loadout.bond_counts.get(&"guard", 0)]
+	if absf(p2.stats.value(&"armor")) > EPS or absf(p2.stats.value(&"damage") - 1.0) > EPS:
+		return "橘木盾當副手不應加數值：護甲 %.1f、攻擊力 %.2f" % [p2.stats.value(&"armor"), p2.stats.value(&"damage")]
 	return ""
 
 # 生一隻血很多、站在 at 的骷髏（道具檢查用）
@@ -996,10 +946,11 @@ static func check_item_conditions() -> String:
 	var drum := _effect(&"war_drum")
 	var want_mana: float = 50.0 + _effect(&"soul_scythe").amount
 	p.add_item(&"war_drum")
-	p.add_item(&"soul_scythe")
+	_put(p, _bag(p, &"kill", &"left"), &"soul_scythe")   # 吸魂鐮是效果：放左邊的擊殺袋、普攻打死才發動（扣掉自己的耗魔）
 	p.mana = 50.0
+	want_mana -= BagTriggers.effect_mana(&"soul_scythe")
 	var b := _item_dummy(w, Vector2(0, 3), 1.0)
-	Combat.apply_damage(w, p, b, {"damage": 10.0})
+	Combat.apply_damage(w, p, b, {"damage": 10.0, "attack": &"primary"})
 	if not b.is_dead or absf(p.mana - want_mana) > EPS:
 		return "擊殺後魔力應為 %.1f，實際 %.1f（怪死了 %s）" % [want_mana, p.mana, b.is_dead]
 	_run(w, idle, 1)
@@ -1015,25 +966,29 @@ static func check_item_procs() -> String:
 	var w := _new_world()
 	var p := _player(w)
 	var idle := _cmd(Vector2.ZERO)
-	# 火藥包疊到 100%：擊殺時爆炸，旁邊的怪受那一下的 damage_ratio
+	# 火藥包放左邊的擊殺袋：普攻打死怪時爆炸，旁邊的怪受那一下的 damage_ratio；右鍵、技能打死的不發動左邊的袋子
 	var ex: Dictionary = ItemDefs.PROCS[&"explode"]
-	for i in _stacks_for_sure(&"powder_pouch"):
-		p.add_item(&"powder_pouch")
+	_put(p, _bag(p, &"kill", &"left"), &"powder_pouch")
 	var a := _item_dummy(w, Vector2(0, 4), 1.0)
 	var b := _item_dummy(w, Vector2(minf(1.0, ex.radius * 0.5), 4))
 	var b_before := b.hp
-	Combat.apply_damage(w, p, a, {"damage": 40.0})
+	Combat.apply_damage(w, p, a, {"damage": 40.0, "attack": &"primary"})
 	if _hp_loss(b, b_before) != _dealt(b, 40.0 * ex.damage_ratio):
 		return "爆炸應讓旁邊的怪扣 %d，實際 %d" % [_dealt(b, 40.0 * ex.damage_ratio), _hp_loss(b, b_before)]
+	for tag: StringName in [&"secondary", &"skill"]:
+		b_before = b.hp
+		Combat.apply_damage(w, p, _item_dummy(w, Vector2(0, 4), 1.0), {"damage": 40.0, "attack": tag})
+		if _hp_loss(b, b_before) != 0:
+			return "%s 打死的不應發動左邊的擊殺袋（旁邊的怪扣了 %d）" % [tag, _hp_loss(b, b_before)]
 	p.clear_items()
 	w.clear()
-	# 雷鳴符文：一直打到觸發（命中類只算碰到攻擊部位的，武器格子放不下疊到 100% 的件數）：
+	# 雷鳴符文（左邊的命中袋，普攻打中就發動）：
 	# a → b → c（每跳都在 jump_range 內），d 太遠；每跳 damage_ratio，閃電不會再觸發閃電
 	var cl: Dictionary = ItemDefs.PROCS[&"chain_lightning"]
 	var jr: float = cl.jump_range
 	w = _new_world()
 	p = _player(w)
-	p.add_item(&"thunder_rune")
+	_put(p, _bag(p, &"hit", &"left"), &"thunder_rune")
 	a = _item_dummy(w, Vector2(0, 5))
 	b = _item_dummy(w, Vector2(0, 5 + jr * 0.6))
 	var c := _item_dummy(w, Vector2(0, 5 + jr * 1.4))
@@ -1043,7 +998,7 @@ static func check_item_procs() -> String:
 		for e: Enemy in [a, b, c, d]:
 			e.hp = e.max_hp
 		w.events.clear()
-		Combat.apply_damage(w, p, a, {"damage": 10.0})
+		Combat.apply_damage(w, p, a, {"damage": 10.0, "attack": &"primary"})
 		if b.hp < b.max_hp:
 			break
 	var got := [_hp_loss(a, hp0[0]), _hp_loss(b, hp0[1]), _hp_loss(c, hp0[2]), _hp_loss(d, hp0[3])]
@@ -1055,17 +1010,17 @@ static func check_item_procs() -> String:
 		return "應有 1 道經過 %d 點的閃電：%s" % [_effect(&"thunder_rune").targets, bolts]
 	p.clear_items()
 	w.clear()
-	# 淬毒刀刃：一直打到中毒（同上）；中毒那一下 10 → duration 秒共 10 × total_ratio，每 tick 秒扣一次
+	# 淬毒刀刃（左邊的命中袋）：中毒那一下 10 → duration 秒共 10 × total_ratio，每 tick 秒扣一次
 	var po: Dictionary = ItemDefs.PROCS[&"poison"]
 	var ticks := roundi(po.duration / po.tick)
 	w = _new_world()
 	p = _player(w)
-	p.add_item(&"venom_blade")
+	_put(p, _bag(p, &"hit", &"left"), &"venom_blade")
 	a = _item_dummy(w, Vector2(0, 5))
 	var before := a.max_hp
 	for i in 300:
 		a.hp = a.max_hp
-		Combat.apply_damage(w, p, a, {"damage": 10.0})
+		Combat.apply_damage(w, p, a, {"damage": 10.0, "attack": &"primary"})
 		if a.poison_timer > 0.0:
 			break
 	if a.poison_timer <= 0.0:
@@ -1076,14 +1031,14 @@ static func check_item_procs() -> String:
 		return "中毒 %.1f 秒後總共應扣 %d，實際 %d" % [po.duration, want_poison, _hp_loss(a, before)]
 	p.clear_items()
 	w.clear()
-	# 霜之心：一直打到觸發冰凍（武器格子放不下 10 個疊到 100%），冰凍 duration 秒不能動，之後照常追；Boss 不會被冰凍
+	# 霜之心（左邊的命中袋）：冰凍 duration 秒不能動，之後照常追；Boss 不會被冰凍
 	var freeze_time: float = _effect(&"frost_heart").duration
 	w = _new_world()
 	p = _player(w)
-	p.add_item(&"frost_heart")
+	_put(p, _bag(p, &"hit", &"left"), &"frost_heart")
 	a = _item_dummy(w, Vector2(0, 6))
 	for i in 300:
-		Combat.apply_damage(w, p, a, {"damage": 1.0})
+		Combat.apply_damage(w, p, a, {"damage": 1.0, "attack": &"primary"})
 		if a.frozen_timer > 0.0:
 			break
 	var at := a.pos
@@ -1107,17 +1062,17 @@ static func check_item_stats() -> String:
 	var w := _new_world()
 	var p := _player(w)
 	var idle := _cmd(Vector2.ZERO)
-	# 蝙蝠牙：同一步打兩下只回一次（內部冷卻），冷卻過了再回
+	# 蝙蝠牙（左邊命中袋的回血效果）：普攻同一步打兩下只回一次（命中袋的內部冷卻），冷卻過了再回
 	var loh := _effect_value(&"bat_fang", &"life_on_hit")
-	p.add_item(&"bat_fang")
+	_put(p, _bag(p, &"hit", &"left"), &"bat_fang")
 	p.hp = 50.0
 	var a := _item_dummy(w, Vector2(0, 3))
-	Combat.apply_damage(w, p, a, {"damage": 10.0})
-	Combat.apply_damage(w, p, a, {"damage": 10.0})
+	Combat.apply_damage(w, p, a, {"damage": 10.0, "attack": &"primary"})
+	Combat.apply_damage(w, p, a, {"damage": 10.0, "attack": &"primary"})
 	if absf(p.hp - (50.0 + loh)) > EPS:
 		return "蝙蝠牙同一步打兩下應只回 %.0f：生命 %.1f" % [loh, p.hp]
-	_run(w, idle, ceili(ItemDefs.PROCS.life_on_hit.icd / DT) + 1)
-	Combat.apply_damage(w, p, a, {"damage": 10.0})
+	_run(w, idle, ceili(BagDefs.BAGS.hit.icd / DT) + 1)
+	Combat.apply_damage(w, p, a, {"damage": 10.0, "attack": &"primary"})
 	if absf(p.hp - (50.0 + loh * 2.0)) > EPS:
 		return "蝙蝠牙冷卻過後應再回 %.0f：生命 %.1f" % [loh, p.hp]
 	p.clear_items()
@@ -1251,16 +1206,17 @@ static func check_item_conditions_roll_kills() -> String:
 	return ""
 
 
-# 觸發（第二批）：受到近戰傷害反彈、受傷爆炸（內部冷卻）、投射物命中爆炸、點燃並擴散
+# 受傷袋（下方）：反彈、自身爆炸（同一袋的內部冷卻）；命中袋：投射物命中爆炸、點燃並擴散
 static func check_item_procs_hurt_ignite() -> String:
 	var w := _new_world()
 	var p := _player(w)
 	var idle := _cmd(Vector2.ZERO)
 	p.stats.set_base(&"max_hp", 100000.0)
 	p.hp = p.max_hp
-	# 荊棘鎖甲：近戰扣的血 × ratio 打回攻擊者；投射物不反彈
+	# 荊棘鎖甲（受傷袋）：扣的血 × ratio 打回攻擊者；投射物打到也算受傷（內部冷卻過了再打）
 	var thorn := _effect(&"thorn_mail")
-	p.add_item(&"thorn_mail")
+	var hurt_bag := _bag(p, &"hurt", &"bottom")
+	_put(p, hurt_bag, &"thorn_mail")
 	var a := _item_dummy(w, Vector2(0, 2))
 	var hp_p := p.hp
 	var hp_a := a.hp
@@ -1269,15 +1225,17 @@ static func check_item_procs_hurt_ignite() -> String:
 	if _hp_loss(a, hp_a) != _dealt(a, taken * thorn.ratio):
 		return "荊棘鎖甲：受到 %.1f 應反彈讓攻擊者扣 %d，實際 %d" % [taken, _dealt(a, taken * thorn.ratio), _hp_loss(a, hp_a)]
 	hp_a = a.hp
+	_run(w, idle, ceili(BagDefs.BAGS.hurt.icd / DT) + 1)
 	p.invuln_timer = 0.0
 	Combat.apply_damage(w, a, p, {"damage": 40.0, "projectile": true})
-	if _hp_loss(a, hp_a) != 0:
-		return "荊棘鎖甲不該反彈投射物：攻擊者扣 %d" % _hp_loss(a, hp_a)
+	if _hp_loss(a, hp_a) == 0:
+		return "受傷袋：投射物打到也應反彈"
 	p.clear_items()
-	# 王墓之心：以自己為中心、扣護甲前的受傷量 × damage_ratio；內部冷卻內再被打不炸
+	_run(w, idle, ceili(BagDefs.BAGS.hurt.icd / DT) + 1)
+	# 王墓之心（受傷袋）：在打到自己的怪那裡炸、實際扣的血 × damage_ratio；同一袋內部冷卻內再被打不炸
 	var heart := _effect(&"tomb_heart")
-	var hx: Dictionary = ItemDefs.PROCS.hurt_explode
-	p.add_item(&"tomb_heart")
+	var hx := {"icd": BagDefs.BAGS.hurt.icd, "radius": ItemDefs.PROCS.hurt_explode.radius}
+	_put(p, hurt_bag, &"tomb_heart")
 	var b := _item_dummy(w, Vector2(minf(1.5, hx.radius * 0.5), 0))
 	var hp_b := b.hp
 	p.invuln_timer = 0.0
@@ -1297,32 +1255,33 @@ static func check_item_procs_hurt_ignite() -> String:
 		return "王墓之心冷卻過後應再炸"
 	p.clear_items()
 	w.clear()
-	# 爆裂箭袋：投射物直接命中時以被打中的怪為中心爆炸（該下 × explode.damage_ratio）；近戰不炸
+	# 爆裂箭袋（左邊的命中袋）：普攻打中時以被打中的怪為中心爆炸（該下 × explode.damage_ratio）；右鍵打中不發動左邊的袋子
 	w = _new_world()
 	p = _player(w)
 	var ex: Dictionary = ItemDefs.PROCS.explode
-	p.add_item(&"blast_quiver")
+	_put(p, _bag(p, &"hit", &"left"), &"blast_quiver")
 	a = _item_dummy(w, Vector2(0, 5))
 	b = _item_dummy(w, Vector2(minf(1.0, ex.radius * 0.5), 5))
 	hp_b = b.hp
-	Combat.apply_damage(w, p, a, {"damage": 20.0, "projectile": true})
+	Combat.apply_damage(w, p, a, {"damage": 20.0, "projectile": true, "attack": &"primary"})
 	if _hp_loss(b, hp_b) != _dealt(b, 20.0 * ex.damage_ratio):
 		return "爆裂箭袋：旁邊的怪應扣 %d，實際 %d" % [_dealt(b, 20.0 * ex.damage_ratio), _hp_loss(b, hp_b)]
+	_run(w, _cmd(Vector2.ZERO), ceili(BagDefs.BAGS.hit.icd / DT) + 1)
 	hp_b = b.hp
-	Combat.apply_damage(w, p, a, {"damage": 20.0})
+	Combat.apply_damage(w, p, a, {"damage": 20.0, "projectile": true, "attack": &"secondary"})
 	if _hp_loss(b, hp_b) != 0:
-		return "爆裂箭袋：近戰命中不該爆炸"
+		return "爆裂箭袋：右鍵打中不該發動左邊的命中袋"
 	p.clear_items()
 	w.clear()
 	# 永恆之焰：命中就點燃；燒著的怪 spread_interval 秒後傳給 spread_range 內一隻，太遠的不會
 	w = _new_world()
 	p = _player(w)
 	var ig: Dictionary = ItemDefs.PROCS.ignite
-	p.add_item(&"eternal_flame")
+	_put(p, _bag(p, &"hit", &"left"), &"eternal_flame")
 	a = _item_dummy(w, Vector2(0, 5))
 	b = _item_dummy(w, Vector2(a.radius * 2.0 + ig.spread_range * 0.5, 5))
 	var c := _item_dummy(w, Vector2(-8, 5))
-	Combat.apply_damage(w, p, a, {"damage": 20.0})
+	Combat.apply_damage(w, p, a, {"damage": 20.0, "attack": &"primary"})
 	if a.burn_timer <= 0.0 or not a.burn_spread:
 		return "永恆之焰：命中應點燃（會擴散）"
 	_run(w, idle, ceili(ig.spread_interval / DT) + 2)
@@ -1339,24 +1298,23 @@ static func _item_projectiles(w: World) -> Array[Projectile]:
 	return out
 
 
-# 觸發（第二批）：普攻追加飛刀 / 斬波（內部冷卻）、每隔幾秒落雷、翻滾減速周圍的怪
+# 出手袋（左邊）：普攻追加飛刀 / 斬波（效果自己的內部冷卻）；計時袋：每隔幾秒落雷；翻滾袋：減速周圍的怪
 static func check_item_procs_attack_timed() -> String:
 	var w := _new_world()
 	var p := _player(w)
 	var idle := _cmd(Vector2.ZERO)
-	# 袖中飛刀：普攻出手一直到射出 1 把（proc、武器基礎傷害 × damage_pct；武器格子放不下疊到 100% 的件數）；
-	# 內部冷卻內再出手不射。真的走狀態機出手的路徑在 check_item_part_timing
+	# 袖中飛刀（左邊的出手袋）：普攻出手射 1 把（proc、武器基礎傷害 × damage_pct）；內部冷卻內再出手不射
 	var kn: Dictionary = ItemDefs.PROCS.throw_knife
-	p.add_item(&"sleeve_knife")
+	_put(p, _bag(p, &"cast", &"left"), &"sleeve_knife")
 	p.aim_point = p.pos + Vector2(0, 5)
 	for i in 300:
-		ItemEffects.on_attack(w, p, false)
+		ItemEffects.on_attack(w, p, &"primary")
 		if not _item_projectiles(w).is_empty():
 			break
 	var knives := _item_projectiles(w)
 	if knives.size() != 1 or absf(knives[0].damage - p.pct_damage(kn.damage_pct)) > EPS or knives[0].pierce:
 		return "普攻出手應射 1 把飛刀（傷害 %.2f）：%d 把 %s" % [p.pct_damage(kn.damage_pct), knives.size(), knives.map(func(k: Projectile) -> float: return k.damage)]
-	ItemEffects.on_attack(w, p, false)
+	ItemEffects.on_attack(w, p, &"primary")
 	if _item_projectiles(w).size() != 1:
 		return "飛刀內部冷卻 %.1f 秒內不該再射" % kn.icd
 	p.clear_items()
@@ -1365,9 +1323,9 @@ static func check_item_procs_attack_timed() -> String:
 	w = _new_world()
 	p = _player(w)
 	var rb := _effect(&"rift_blade")
-	p.add_item(&"rift_blade")
+	_put(p, _bag(p, &"cast", &"left"), &"rift_blade")
 	p.aim_point = p.pos + Vector2(0, 5)
-	ItemEffects.on_attack(w, p, false)
+	ItemEffects.on_attack(w, p, &"primary")
 	var waves := _item_projectiles(w)
 	if waves.size() != rb.count:
 		return "裂空之刃應射出 %d 道斬波，實際 %d" % [rb.count, waves.size()]
@@ -1377,12 +1335,12 @@ static func check_item_procs_attack_timed() -> String:
 		if not wv.pierce or absf(wv.damage - p.pct_damage(rb.damage_ratio)) > EPS or absf(off - sw.spread) > 0.01:
 			return "斬波應穿透、傷害 %.2f、偏 ±%.2f：穿透 %s、%.2f、偏 %.2f" % [p.pct_damage(rb.damage_ratio), sw.spread, wv.pierce, wv.damage, off]
 	w.clear()
-	# 雷霆鈴：每 period 秒打 range 內最近的 targets 隻，再遠的、第 targets + 1 近的不打
+	# 雷霆鈴（計時袋）：每 period 秒（計時袋的間隔）打 range 內最近的 targets 隻，再遠的、第 targets + 1 近的不打
 	w = _new_world()
 	p = _player(w)
-	var bell := _effect(&"thunder_bell")
+	var bell := {"period": BagDefs.BAGS.timer.period}
 	var ls: Dictionary = ItemDefs.PROCS.lightning_strike
-	p.add_item(&"thunder_bell")
+	_put(p, _bag(p, &"timer", &"bottom"), &"thunder_bell")
 	var foes: Array[Enemy] = []
 	for i in ls.targets + 1:
 		foes.append(_item_dummy(w, Vector2(0, 2.0 + i)))
@@ -1406,7 +1364,7 @@ static func check_item_procs_attack_timed() -> String:
 	p = _player(w)
 	var watch := _effect(&"stasis_watch")
 	var st: Dictionary = ItemDefs.PROCS.slow_time
-	p.add_item(&"stasis_watch")
+	_put(p, _bag(p, &"roll", &"bottom"), &"stasis_watch")
 	var near := _item_dummy(w, Vector2(0, st.radius * 0.5))
 	var away := _item_dummy(w, Vector2(0, -(st.radius + 4.0)))
 	var spd_near := near.speed
@@ -1481,17 +1439,17 @@ static func check_item_procs_lethal() -> String:
 	return ""
 
 
-# 觸發（第二批）：擊殺放追蹤鬼火、擊殺召喚玩家方的骷髏僕從
+# 擊殺袋（左邊）：普攻打死放追蹤鬼火、召喚玩家方的骷髏僕從
 static func check_item_procs_summon() -> String:
 	var w := _new_world()
 	var p := _player(w)
 	var idle := _cmd(Vector2.ZERO)
 	# 鬼火燈籠：擊殺時從屍體飛出 1 顆（擊殺那一下 × damage_ratio），會轉彎打到旁邊的怪；同時最多 max 顆
 	var wp: Dictionary = ItemDefs.PROCS.wisp
-	p.add_item(&"wisp_lantern")
+	_put(p, _bag(p, &"kill", &"left"), &"wisp_lantern")
 	var b := _item_dummy(w, Vector2(4, 6))
 	b.dormant = true
-	Combat.apply_damage(w, p, _item_dummy(w, Vector2(0, 6), 1.0), {"damage": 20.0})
+	Combat.apply_damage(w, p, _item_dummy(w, Vector2(0, 6), 1.0), {"damage": 20.0, "attack": &"primary"})
 	var wisps := _item_projectiles(w).filter(func(x: Projectile) -> bool: return x.homing > 0.0)
 	if wisps.size() != 1 or absf(wisps[0].damage - 20.0 * wp.damage_ratio) > EPS:
 		return "擊殺應放出 1 顆鬼火（傷害 %.1f）：%s" % [20.0 * wp.damage_ratio, wisps.map(func(x: Projectile) -> float: return x.damage)]
@@ -1499,19 +1457,18 @@ static func check_item_procs_summon() -> String:
 	if b.hp >= b.max_hp:
 		return "鬼火應追到旁邊的怪"
 	for i in wp.max + 4:
-		Combat.apply_damage(w, p, _item_dummy(w, Vector2(-8, -8), 1.0), {"damage": 20.0})
+		Combat.apply_damage(w, p, _item_dummy(w, Vector2(-8, -8), 1.0), {"damage": 20.0, "attack": &"primary"})
 	var alive := _item_projectiles(w).filter(func(x: Projectile) -> bool: return x.homing > 0.0).size()
 	if alive != wp.max:
 		return "鬼火同時最多 %d 顆，實際 %d" % [wp.max, alive]
 	w.clear()
-	# 亡者大軍疊到 100%：擊殺召喚 1 隻玩家方的僕從；玩家打不到它、它打不到玩家、怪打得到它；會去打怪；最多 max 隻；life 秒後倒下、不給靈魂
+	# 亡者大軍：普攻打死召喚 1 隻玩家方的僕從；玩家打不到它、它打不到玩家、怪打得到它；會去打怪；最多 max 隻；life 秒後倒下、不給靈魂
 	w = _new_world()
 	p = _player(w)
 	var army := _effect(&"army_of_dead")
 	var md: Dictionary = EnemyDefs.ENEMIES.minion
-	for i in _stacks_for_sure(&"army_of_dead"):
-		p.add_item(&"army_of_dead")
-	Combat.apply_damage(w, p, _item_dummy(w, Vector2(0, 3), 1.0), {"damage": 20.0})
+	_put(p, _bag(p, &"kill", &"left"), &"army_of_dead")
+	Combat.apply_damage(w, p, _item_dummy(w, Vector2(0, 3), 1.0), {"damage": 20.0, "attack": &"primary"})
 	if w.allies.size() != 1 or not w.allies[0] is Minion or w.allies[0].team != &"player":
 		return "擊殺應召喚 1 隻玩家方的骷髏僕從：%d" % w.allies.size()
 	var m := w.allies[0] as Minion
@@ -1533,7 +1490,7 @@ static func check_item_procs_summon() -> String:
 	if foe.hp >= foe.max_hp:
 		return "僕從 5 秒內應去打旁邊的怪（離 %.1f）" % m.pos.distance_to(foe.pos)
 	for i in army.max + 3:
-		Combat.apply_damage(w, p, _item_dummy(w, Vector2(-6, -6), 1.0), {"damage": 20.0})
+		Combat.apply_damage(w, p, _item_dummy(w, Vector2(-6, -6), 1.0), {"damage": 20.0, "attack": &"primary"})
 	var minions := w.allies.filter(func(e: Entity) -> bool: return not e.is_dead).size()
 	if minions != army.max:
 		return "僕從同時最多 %d 隻，實際 %d" % [army.max, minions]
@@ -1668,28 +1625,17 @@ static func check_weapon_pickup() -> String:
 	op.call([[InputCmd.OP_EQUIP, "sh", Loadout.MAIN]])
 	if p.weapon_id != &"longsword+woodShield":
 		return "盾拖到主手應被拒絕：%s" % p.weapon_id
-	# 鑲嵌（Build 改版第 3 步）：鑲在長劍上的磨刀石生效；換上背包的法杖時跟著搬到法杖格子、照樣生效
-	var stone := p.loadout.add_item(p, &"whetstone", {}, 0, Loadout.MAIN)
+	# 主袋的道具不跟著武器：主袋的磨刀石生效；換上倉庫的法杖後照樣在主袋、照樣生效；武器快照沒有鑲的東西
+	var stone := p.loadout.add_item(p, &"whetstone", {}, 0, Loadout.CORE)
 	var dmg := p.stats.value(&"damage")
-	if stone == &"" or p.loadout.find_item(stone).get("where", -9) != Loadout.MAIN or dmg <= 1.0:
-		return "磨刀石應鑲在長劍上並生效：攻擊力 %.2f" % dmg
+	if stone == &"" or p.loadout.find_item(stone).get("where", -9) != Loadout.CORE or dmg <= 1.0:
+		return "磨刀石應在主袋並生效：攻擊力 %.2f" % dmg
 	op.call([[InputCmd.OP_EQUIP, "a", Loadout.MAIN]])
-	if p.weapon_id != &"staff" or p.loadout.find_item(stone).get("where", -9) != Loadout.MAIN or absf(p.stats.value(&"damage") - dmg) > EPS:
-		return "換上法杖後磨刀石應搬到法杖格子、照樣生效：%s、%s、攻擊力 %.2f" % [p.weapon_id, p.loadout.find_item(stone), p.stats.value(&"damage")]
-	# 武器格子只能放 mask 裡的格子；快照來回鑲的道具不變
-	var staff_inv := p.loadout.container(Loadout.MAIN)
-	var hole := Vector2i(-1, -1)   # 法杖格子表範圍內的空格（不是格子）：從資料找，不寫死座標
-	var staff_cells := WeaponDefs.grid_cells(&"staff")
-	var staff_size := WeaponDefs.grid_size(&"staff")
-	for y in staff_size.y:
-		for x in staff_size.x:
-			if hole.x < 0 and not staff_cells.has(Vector2i(x, y)):
-				hole = Vector2i(x, y)
-	if hole.x < 0 or staff_inv.fits(&"loaded_dice", hole, 0):
-		return "法杖格子 %s 是空的（不是格子），不應放得下" % hole
+	if p.weapon_id != &"staff" or p.loadout.find_item(stone).get("where", -9) != Loadout.CORE or absf(p.stats.value(&"damage") - dmg) > EPS:
+		return "換上法杖後磨刀石應還在主袋、照樣生效：%s、%s、攻擊力 %.2f" % [p.weapon_id, p.loadout.find_item(stone), p.stats.value(&"damage")]
 	var back := WeaponDropDefs.from_array(WeaponDropDefs.to_array(p.weapon_slots[Loadout.MAIN]))
-	if back.get("sockets", []).size() != 1 or back.sockets[0].uid != stone or back.sockets[0].cell != staff_inv.find(stone).cell:
-		return "快照來回後法杖上鑲的東西應一樣：%s" % [back.get("sockets", [])]
+	if back.has("sockets") or back.base != &"staff":
+		return "武器快照來回應只有種類與稀有度：%s" % [back]
 	return ""
 
 
@@ -1714,15 +1660,13 @@ static func check_weapon_merge() -> String:
 	if denied.is_empty() or denied[0].get("reason", "") != "forge" or p.inventory.find(&"s3").is_empty():
 		return "不在鍛造祭壇旁應不能合成（reason = forge）：%s" % [denied]
 	var forge := _forge_near(w, p)
-	# 背包的白長劍拖到主手的白長劍 → 綠色、1 條詞條、留在主手、立刻生效
+	# 倉庫的白長劍拖到主手的白長劍 → 綠色（沒有詞條）、留在主手、立刻生效
 	merge.call("s3", String(start_uid))
 	var m: Dictionary = p.weapon_slots[0]
-	if m.rarity != &"green" or m.affixes.size() != 1 or not p.inventory.find(&"s3").is_empty() or _named(w.events, "weapon:merged").is_empty():
-		return "合成應得到綠色 1 條詞條、在主手：%s" % [m]
-	var mods := WeaponDropDefs.stat_mods(m)
-	var stat: StringName = mods[0][0]
-	if is_equal_approx(p.stats.value(stat), p.stats.base(stat)):
-		return "合成後手上的詞條（%s）應立刻生效" % stat
+	if m.rarity != &"green" or not m.affixes.is_empty() or not p.inventory.find(&"s3").is_empty() or _named(w.events, "weapon:merged").is_empty():
+		return "合成應得到綠色、沒有詞條、在主手：%s" % [m]
+	if absf(p.stats.value(&"damage") - WeaponDropDefs.RARITY_BASE.green.damage) > EPS:
+		return "合成後手上綠長劍的攻擊力倍率應立刻生效：%.2f" % p.stats.value(&"damage")
 	# 不同種、不同稀有度不能合成
 	merge.call("st", "s2")
 	if _named(w.events, "weapon:merge_denied").is_empty() or p.inventory.find(&"st").is_empty():
@@ -1730,17 +1674,11 @@ static func check_weapon_merge() -> String:
 	merge.call("s2", "g1")
 	if _named(w.events, "weapon:merge_denied").is_empty() or p.inventory.find(&"s2").is_empty():
 		return "白色拖到綠色上不應合成"
-	# 主手的綠長劍拖到背包的綠長劍 → 藍色留在主手（主手不能沒有武器），背包那把消失；兩把各挑的詞條都留下
-	var keep_a: StringName = m.affixes[0]
-	var keep_b: StringName = &"cvt_cold" if keep_a != &"cvt_cold" else &"cvt_fire"
-	var ga: Array[StringName] = [keep_b]
-	p.inventory.find(&"g1").weapon.affixes = ga
-	merge.call(String(start_uid), "g1", String(keep_a), String(keep_b))
+	# 主手的綠長劍拖到倉庫的綠長劍 → 藍色留在主手（主手不能沒有武器），倉庫那把消失
+	merge.call(String(start_uid), "g1")
 	var g: Dictionary = p.weapon_slots[Loadout.MAIN]
 	if g.get("rarity", &"") != &"blue" or not p.inventory.find(&"g1").is_empty() or p.weapon_id != &"longsword+woodShield":
-		return "主手的綠 + 背包的綠應在主手得到藍色：%s" % [g]
-	if g.affixes.size() != 2 or not g.affixes.has(keep_a) or not g.affixes.has(keep_b):
-		return "合成應留下兩把各挑的詞條（%s、%s）：%s" % [keep_a, keep_b, g.affixes]
+		return "主手的綠 + 倉庫的綠應在主手得到藍色：%s" % [g]
 	# 走遠就不能合成
 	forge.pos += Vector2(LootDefs.FORGE.range + 5.0, 0.0)
 	if w.near_forge(p):
@@ -1764,90 +1702,8 @@ static func check_weapon_merge() -> String:
 	return ""
 
 
-# 部位決定發動時機（Build 改版第 4 步）：命中 / 普攻類只算碰到那個部位的道具——攻擊部位每次、末端只有連段最後一下（跨兩個部位各算一次）、
-# 防禦部位格擋成功時、握柄不發動；同一隻手的格子裡搬位置會跟著改；自動擺放時觸發道具碰攻擊部位、數值道具不佔觸發部位
-static func check_item_part_timing() -> String:
-	var w := _new_world()
-	var p := _player(w)
-	p.loadout.equip_new(p, &"longsword")
-	p.loadout.equip_offhand_new(p, &"woodShield")
-	# 長劍格子：(2, 0) 末端、第 1~4 列中間攻擊部位、第 5 列握柄（WeaponDefs.WEAPONS.longsword.grid）
-	var rune := p.loadout.add_item(p, &"thunder_rune", {"cell": Vector2i(2, 0), "rot": 1}, 0, Loadout.MAIN)
-	var it := ItemEffects._item_of(p, rune)
-	if it.get("parts", "") != "EA":
-		return "雷鳴符文鑲在劍尖 + 刃，部位應為 EA：%s" % it.get("parts", "")
-	var chance: float = _effect(&"thunder_rune").chance
-	for part in ["A", "E"]:
-		var procs := ItemEffects.procs_of(p, &"hit", part)
-		if procs.size() != 1 or absf(procs[0].chance - chance) > EPS:
-			return "鑲在 EA 的雷鳴符文在 %s 應發動（機率 %.2f）：%s" % [part, chance, procs]
-	if not ItemEffects.procs_of(p, &"hit", "D").is_empty():
-		return "劍上的雷鳴符文格擋時不該發動"
-	# 命中時擲骰次數：一般命中 1 次（攻擊部位）、連段最後一下 2 次（攻擊部位 + 末端各一次）
-	var a := _item_dummy(w, Vector2(0, 5))
-	var draws := func(finisher: bool) -> int:
-		var before: int = w.rng.state
-		ItemEffects.on_hit(w, p, a, 10.0, false, finisher)
-		var after: int = w.rng.state
-		w.rng.state = before
-		for n in 8:
-			if w.rng.state == after:
-				return n
-			w.rng.randf()
-		return -1
-	if draws.call(false) != 1 or draws.call(true) != 2:
-		return "EA 的符文：一般命中應擲 1 次、連段最後一下 2 次，實際 %d / %d" % [draws.call(false), draws.call(true)]
-	# 搬到握柄（同一隻手）：不發動
-	p.loadout._move_item(p, rune, Vector2i(2, 5), 1, Loadout.MAIN)
-	if ItemEffects._item_of(p, rune).get("parts", "") != "H" or draws.call(true) != 0:
-		return "搬到握柄後部位應為 H、命中不擲骰：%s / %d" % [ItemEffects._item_of(p, rune).get("parts", ""), draws.call(true)]
-	if ItemDefs.timing_line(&"thunder_rune", "H").find("不發動") < 0 or ItemDefs.timing_line(&"whetstone", "A") != "":
-		return "說明：握柄應寫不發動、數值道具不寫發動：%s / %s" % [ItemDefs.timing_line(&"thunder_rune", "H"), ItemDefs.timing_line(&"whetstone", "A")]
-	# 攻擊部位的裂空之刃：真的普攻出手（狀態機）就射出斬波
-	var rb := _effect(&"rift_blade")
-	var blade := p.loadout.add_item(p, &"rift_blade", {"cell": Vector2i(1, 2), "rot": 0}, 0, Loadout.MAIN)
-	if ItemEffects._item_of(p, blade).get("parts", "") != "A":
-		return "裂空之刃應只在攻擊部位：%s" % ItemEffects._item_of(p, blade).get("parts", "")
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), roundi(p.weapon.attack.windup / DT) + 2)
-	if _item_projectiles(w).size() != rb.count:
-		return "攻擊部位的裂空之刃普攻出手應射 %d 道，實際 %d" % [rb.count, _item_projectiles(w).size()]
-	# 搬到盾面（防禦部位）：普攻不射、格擋成功才射
-	p.loadout.remove_item(p, blade)
-	blade = p.loadout.add_item(p, &"rift_blade", {"cell": Vector2i(1, 0), "rot": 0}, 0, Loadout.OFF)
-	p.proc_timers.clear()
-	for e in _item_projectiles(w):
-		e.remove()
-	ItemEffects.on_attack(w, p, true)
-	if not _item_projectiles(w).is_empty():
-		return "盾面的裂空之刃普攻不該射"
-	var foe := _item_dummy(w, p.pos + Vector2(0, 2))
-	p.facing = 0.0
-	p.block_time = 0.0
-	Combat.apply_damage(w, foe, p, {"damage": 5.0, "blockable": true})
-	if _item_projectiles(w).size() != rb.count:
-		return "盾面的裂空之刃格擋成功應射 %d 道，實際 %d" % [rb.count, _item_projectiles(w).size()]
-	# 盾面的永恆之焰（命中類）：格擋成功時點燃攻擊者
-	p.loadout.remove_item(p, blade)
-	p.loadout.add_item(p, &"eternal_flame", {"cell": Vector2i(1, 0), "rot": 0}, 0, Loadout.OFF)
-	Combat.apply_damage(w, foe, p, {"damage": 5.0, "blockable": true})
-	if foe.burn_timer <= 0.0:
-		return "盾面的永恆之焰格擋成功應點燃攻擊者"
-	# 自動擺放：觸發道具碰到攻擊部位、數值道具不佔攻擊部位 / 末端 / 防禦部位
-	var w2 := _new_world()
-	var p2 := _player(w2)
-	p2.loadout.equip_new(p2, &"longsword")
-	var auto_rune := ItemEffects._item_of(p2, p2.add_item(&"venom_blade"))
-	var auto_stone := ItemEffects._item_of(p2, p2.add_item(&"whetstone"))
-	if not String(auto_rune.get("parts", "")).contains("A"):
-		return "自動擺放的淬毒刀刃應碰到攻擊部位：%s" % auto_rune.get("parts", "")
-	for part in ["A", "E", "D"]:
-		if String(auto_stone.get("parts", "")).contains(part):
-			return "自動擺放的磨刀石不該佔 %s：%s" % [part, auto_stone.get("parts", "")]
-	return ""
-
-
-# 羈絆（Build 改版第 5 步）：道具標的羈絆都存在、掉落池只有屬於羈絆的（輔助、魔力道具例外）；件數只算鑲在兩隻手上的、同一種只算 1 件、
-# 跨羈絆的兩邊各算；拿下來就扣；階數照門檻
+# 羈絆：道具標的羈絆都存在、掉落池只有屬於羈絆的（修飾、魔力道具例外）；格數 = 最大同色區塊（主袋與袋子一起、跨袋子也連、
+# 斜的不算、倉庫裡的不算、同一種拿兩個照格數算、跨羈絆的道具兩種都算）；拿掉就扣；階數照門檻
 static func check_bonds() -> String:
 	for id: StringName in ItemDefs.ITEMS:
 		for bond: StringName in ItemDefs.ITEMS[id].get("bonds", []):
@@ -1856,7 +1712,7 @@ static func check_bonds() -> String:
 	for r: StringName in ItemDefs.RARITIES:
 		for id in LootDefs.drop_pool(r):
 			if ItemDefs.ITEMS[id].get("bonds", []).is_empty() and ItemDefs.support_of(id).is_empty() and not ItemDefs.is_mana_item(id):
-				return "%s 不屬於任何羈絆（也不是輔助、魔力道具），不該在掉落池" % id
+				return "%s 不屬於任何羈絆（也不是修飾、魔力道具），不該在掉落池" % id
 	for bond: StringName in BondDefs.BONDS:
 		var th: Array = BondDefs.BONDS[bond].thresholds
 		if BondDefs.BONDS[bond].tiers.size() != th.size():
@@ -1866,24 +1722,167 @@ static func check_bonds() -> String:
 			return "%s 的階數計算不對" % bond
 	var w := _new_world()
 	var p := _player(w)
-	p.loadout.equip_new(p, &"longsword")
-	p.loadout.equip_offhand_new(p, &"woodShield")
-	p.add_item(&"whetstone")
-	p.add_item(&"whetstone")   # 同一種只算 1 件
-	p.add_item(&"light_gloves")
-	var dice := p.loadout.add_item(p, &"loaded_dice", {}, 0, Loadout.BAG)   # 背包裡的不算
-	p.add_item(&"tomb_heart")   # 防禦 + 火焰
-	var want := {&"phys": 2, &"guard": 1, &"fire": 1}
-	if p.loadout.bond_counts != want:
-		return "件數應為 %s，實際 %s" % [want, p.loadout.bond_counts]
-	if BondDefs.tier(&"phys", p.loadout.bond_counts[&"phys"]) != 1:
-		return "物理 2 件應啟動第 1 階"
-	p.loadout._move_item(p, dice, Vector2i(2, 0), 0, Loadout.MAIN)
-	if p.loadout.bond_counts.get(&"phys", 0) != 3:
-		return "灌鉛骰子鑲上後物理應 3 件，實際 %s" % p.loadout.bond_counts
-	p.loadout.remove_item(p, dice)
-	if p.loadout.bond_counts.get(&"phys", 0) != 2:
-		return "拿掉灌鉛骰子後物理應回到 2 件，實際 %s" % p.loadout.bond_counts
+	var lo := p.loadout
+	var put := func(id: StringName, cell: Vector2i) -> StringName: return lo.add_item(p, id, {"cell": cell, "rot": 0}, 0, Loadout.CORE)
+	put.call(&"whetstone", Vector2i(0, 0))
+	put.call(&"whetstone", Vector2i(1, 0))   # 同一種拿兩個照格數算
+	var diag: StringName = put.call(&"loaded_dice", Vector2i(2, 1))   # 只碰到斜角：不連
+	lo.add_item(p, &"loaded_dice", {}, 0, Loadout.BAG)   # 倉庫裡的不算
+	if lo.bond_counts.get(&"phys", 0) != 2:
+		return "兩顆磨刀石相連、斜角的骰子不連、倉庫不算：物理應 2 格，實際 %s" % lo.bond_counts
+	lo.queue_ops([[InputCmd.OP_MOVE, String(diag), 2, 0, 0, Loadout.CORE]])
+	lo.apply_ops(p)
+	if lo.bond_counts.get(&"phys", 0) != 3:
+		return "骰子搬到貼著的 (2, 0) 後物理應 3 格，實際 %s" % lo.bond_counts
+	var heart: StringName = put.call(&"tomb_heart", Vector2i(4, 0))   # 防禦 + 火焰，2 × 2：沒貼著物理那塊
+	if lo.bond_counts.get(&"guard", 0) != 4 or lo.bond_counts.get(&"fire", 0) != 4 or lo.bond_counts.get(&"phys", 0) != 3:
+		return "王墓之心（防禦 + 火焰 4 格）兩種都算、不連到物理：%s" % lo.bond_counts
+	if BondDefs.tier(&"guard", lo.bond_counts[&"guard"]) != 1:
+		return "防禦 4 格應啟動第 1 階"
+	# 跨袋子：上方按鍵袋貼著主袋 (0, 0)、(1, 0) 的那兩格放冰霜效果，主袋下面放霜晶 → 冰霜只算相連的那塊
+	var key: Dictionary = lo.key_bags()[0]
+	lo.add_item(p, &"ice_coffin_nail", {"cell": Vector2i(0, 0), "rot": 0}, 0, lo.bags.find(key))
+	put.call(&"frost_crystal", Vector2i(0, 1))
+	if lo.bond_counts.get(&"cold", 0) != 2:
+		return "冰棺釘（2 格）在按鍵袋、霜晶在主袋 (0, 1) 中間隔著磨刀石：冰霜最大一塊應 2 格，實際 %s" % lo.bond_counts
+	lo.remove_item(p, heart)
+	if lo.bond_counts.get(&"guard", 0) != 0 or lo.bond_counts.get(&"fire", 0) != 0:
+		return "拿掉王墓之心後防禦、火焰應歸零：%s" % lo.bond_counts
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	p2.loadout.add_item(p2, &"frost_crystal", {"cell": Vector2i(0, 0), "rot": 0}, 0, Loadout.CORE)
+	p2.loadout.add_item(p2, &"ice_coffin_nail", {"cell": Vector2i(0, 0), "rot": 0}, 0, 0)   # 按鍵袋貼著主袋 (0, 0) 的那一格
+	if p2.loadout.bond_counts.get(&"cold", 0) != 3:
+		return "主袋 (0, 0) 的霜晶和上方按鍵袋貼著的冰棺釘（2 格）應連成 3 格，實際 %s" % p2.loadout.bond_counts
+	return ""
+
+
+# 觸發袋的擺放：接哪幾邊看種類、在邊長內、同一邊不重疊、按鍵袋最多 4 個；撿到的袋子自動接、接不下進倉庫；
+# OP_BAG 換邊 / 滑動 / 拿下來放倉庫（內容跟著、拿下來就不生效）、接不下拒絕；袋子不能丟；詛咒袋接著時套缺點；快照來回一樣
+static func check_bag_layout() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var lo := p.loadout
+	var hit := BagDefs.make(&"t1", &"hit")
+	if lo.bag_fits(hit, &"top", 0) or lo.bag_fits(hit, &"bottom", 0) or not lo.bag_fits(hit, &"left", 0) or lo.bag_fits(hit, &"left", BagDefs.edge_length(&"left") - 1):
+		return "命中袋只能接左右、不能超出邊長"
+	var uid := lo.add_bag(p, &"hit")
+	var b := lo.find_bag(uid)
+	if b.get("side", &"") != &"left" or b.offset != 0:
+		return "撿到的命中袋應自動接在左邊 0：%s" % [b]
+	if lo.bag_fits(BagDefs.make(&"t2", &"kill"), &"left", 1):
+		return "同一邊重疊的位置不能接"
+	var rune := _put(p, b, &"thunder_rune")
+	var op := func(o: Array) -> void:
+		lo.queue_ops([o])
+		lo.apply_ops(p)
+	op.call([InputCmd.OP_BAG, String(uid), "right", 1])
+	if b.side != &"right" or b.offset != 1 or lo.find_item(rune).get("where", -9) != lo.bags.find(b):
+		return "OP_BAG 應把命中袋換到右邊 1、裡面的東西跟著：%s、%s" % [b, lo.find_item(rune)]
+	w.events.clear()
+	op.call([InputCmd.OP_BAG, String(uid), "bottom", 0])
+	if b.side != &"right" or _named(w.events, "inventory:denied").is_empty():
+		return "命中袋不能接下方，應拒絕"
+	op.call([InputCmd.OP_BAG, String(uid), "", 0, 0, 0, 0])
+	var stored := p.inventory.find(uid)
+	if stored.is_empty() or lo.bags.has(b) or not lo.find_item(rune).is_empty() and lo.find_item(rune).where != Loadout.BAG:
+		return "拿下來應放進倉庫 (0, 0)、不再接著：倉庫 %s" % [stored]
+	op.call([InputCmd.OP_BAG, String(uid), "left", 2])
+	if b.side != &"left" or b.offset != 2 or not p.inventory.find(uid).is_empty():
+		return "倉庫的袋子 OP_BAG 應接回左邊 2：%s" % [b]
+	w.events.clear()
+	op.call([InputCmd.OP_DROP, String(uid)])
+	if not lo.bags.has(b) or _named(w.events, "inventory:denied").is_empty():
+		return "袋子不能丟在地上"
+	for i in 3:
+		lo.add_bag(p, &"key")
+	if lo.key_bags().size() != BagDefs.BAGS.key.max:
+		return "按鍵袋應接滿 %d 個，實際 %d" % [BagDefs.BAGS.key.max, lo.key_bags().size()]
+	var extra := lo.add_bag(p, &"key")
+	if p.inventory.find(extra).is_empty():
+		return "第 %d 個按鍵袋應放進倉庫" % (BagDefs.BAGS.key.max + 1)
+	var taken0 := p.stats.value(&"damage_taken")
+	var cursed := lo.add_bag(p, &"timer", &"cursed")
+	if lo.find_bag(cursed).get("side", &"") != &"bottom" or absf(p.stats.value(&"damage_taken") - taken0 * 1.2) > EPS:
+		return "詛咒計時袋接著時受到傷害應 ×1.2：%.2f" % p.stats.value(&"damage_taken")
+	op.call([InputCmd.OP_BAG, String(cursed), "", 0])
+	if absf(p.stats.value(&"damage_taken") - taken0) > EPS:
+		return "詛咒袋拿下來後缺點應移除：%.2f" % p.stats.value(&"damage_taken")
+	var arr := lo.bags_to_array()
+	var copy := Loadout.new()
+	copy.sync_inventory(p, arr)
+	if copy.bags_to_array() != arr:
+		return "倉庫、主袋、袋子的快照來回應一樣"
+	lo.sync_inventory(p, arr)
+	return ""
+
+
+# 觸發袋的發動：左邊只被普攻觸發、右邊只被右鍵；效果各自耗魔（強度 × EFFECT_MANA_PER_POWER），不夠的跳過、由左到右先放；
+# 按鍵袋按數字鍵一起放；觸發袋裡的技能自動放；袋子放出來的傷害不再觸發袋子；計時袋照間隔；強化袋的倍率
+static func check_bag_triggers() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	p.set_stat_source(&"test", [[&"mana_regen", Stats.MUL, 0.0]])
+	var left := _bag(p, &"hit", &"left")
+	var right := _bag(p, &"hit", &"right")
+	_put(p, left, &"ice_coffin_nail")   # 寒氣：目標疊冰冷
+	var a := _item_dummy(w, Vector2(0, 3))
+	Combat.apply_damage(w, p, a, {"damage": 5.0, "attack": &"secondary"})
+	if a.chill_stacks > 0:
+		return "右鍵打中不應發動左邊的命中袋"
+	var mana0 := p.mana
+	Combat.apply_damage(w, p, a, {"damage": 5.0, "attack": &"primary"})
+	if a.chill_stacks <= 0 or absf(mana0 - p.mana - BagTriggers.effect_mana(&"ice_coffin_nail")) > EPS:
+		return "普攻打中應發動左邊的命中袋並耗魔 %.1f：冰冷 %d、耗魔 %.2f" % [BagTriggers.effect_mana(&"ice_coffin_nail"), a.chill_stacks, mana0 - p.mana]
+	# 魔力不夠：由左到右先放，放不起的跳過
+	_put(p, right, &"venom_blade")
+	_put(p, right, &"frost_heart")
+	var b := _item_dummy(w, Vector2(0, -3))
+	_run(w, _cmd(Vector2.ZERO), ceili(BagDefs.BAGS.hit.icd / DT) + 1)   # 上面右鍵打中時右邊的袋子開始了內部冷卻（空的也算）
+	p.mana = BagTriggers.effect_mana(&"venom_blade") + 0.01
+	Combat.apply_damage(w, p, b, {"damage": 5.0, "attack": &"secondary"})
+	var first_left: bool = BagTriggers.contents(right)[0].id == &"venom_blade"
+	if (b.poison_timer > 0.0) != first_left or (b.frozen_timer > 0.0) == first_left:
+		return "魔力只夠一個時應放左邊那個（%s）：中毒 %.2f、冰凍 %.2f" % [BagTriggers.contents(right)[0].id, b.poison_timer, b.frozen_timer]
+	p.mana = p.max_mana()
+	# 不連鎖：袋子放出來的傷害（proc）、技能的傷害不觸發命中袋
+	var c := _item_dummy(w, Vector2(3, 0))
+	var chill0 := c.chill_stacks
+	Combat.apply_damage(w, p, c, ItemEffects.proc_hit(5.0, c, Color.WHITE))
+	Combat.apply_damage(w, p, c, {"damage": 5.0, "attack": &"skill"})
+	if c.chill_stacks != chill0:
+		return "道具效果、技能的傷害不應觸發命中袋"
+	# 按鍵袋：數字鍵把裡面的效果與技能一起放
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	var key: Dictionary = p2.loadout.key_bags()[0]
+	_put(p2, key, &"whirlwind")
+	_put(p2, key, &"frost_bell")   # 寒氣：周圍疊冰冷
+	var d := _item_dummy(w2, Vector2(0, 1.5), 100000.0)
+	var hp0 := d.hp
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
+	if d.hp >= hp0 or d.chill_stacks <= 0:
+		return "按 1 應同時放旋風斬與寒氣：扣血 %.1f、冰冷 %d" % [hp0 - d.hp, d.chill_stacks]
+	# 觸發袋裡的技能：左邊的命中袋放旋風斬，普攻打中時自動放
+	var w3 := _new_world()
+	var p3 := _player(w3)
+	_put(p3, _bag(p3, &"hit", &"left"), &"whirlwind")
+	var e3 := _item_dummy(w3, Vector2(0, 1.5), 100000.0)
+	var m3 := p3.mana
+	Combat.apply_damage(w3, p3, e3, {"damage": 1.0, "attack": &"primary"})
+	if absf(m3 - p3.mana - ActiveSlots.mana_cost(p3, ActiveSlots.slot_of(p3, p3.loadout.bags[1], p3.loadout.bags[1].entries[0]))) > EPS:
+		return "命中袋裡的旋風斬應在普攻打中時自動放（扣魔）：%.1f → %.1f" % [m3, p3.mana]
+	# 計時袋：間隔到了自己發動；強化袋（×1.5）裡的效果傷害跟著變
+	var w4 := _new_world()
+	var p4 := _player(w4)
+	_put(p4, _bag(p4, &"timer", &"bottom", &"strong"), &"thunder_bell")
+	var f := _item_dummy(w4, Vector2(0, 2))
+	f.dormant = true
+	var hp_f := f.hp
+	_run(w4, _cmd(Vector2.ZERO), roundi(BagDefs.BAGS.timer.period / DT) + 2)
+	var want := _dealt(f, p4.pct_damage(ItemDefs.PROCS.lightning_strike.damage_pct) * BagDefs.TIERS.strong.mul)
+	if _hp_loss(f, hp_f) != want:
+		return "強化計時袋的落雷 %.0f 秒後應打 %d（×%.1f），實際 %d" % [BagDefs.BAGS.timer.period, want, BagDefs.TIERS.strong.mul, _hp_loss(f, hp_f)]
 	return ""
 
 
@@ -1908,7 +1907,9 @@ static func check_relic() -> String:
 		return "每人應有 %d 個選項並打開：%s / %s、打開 %d" % [n, oa, ob, a.relic_id]
 	for o: Array in [oa, ob]:
 		for id: StringName in o:
-			if o.count(id) != 1 or not LootDefs.drop_pool(ItemDefs.ITEMS[id].rarity).has(id):   # 掉落池含魔力、輔助道具（不屬於羈絆）
+			if not Relic.bag_choice(id).is_empty():
+				continue   # 石棺偶爾把一個換成詛咒袋（BagDefs.CURSED_CHANCE）
+			if o.count(id) != 1 or not LootDefs.drop_pool(ItemDefs.ITEMS[id].rarity).has(id):   # 掉落池含魔力、修飾道具（不屬於羈絆）
 				return "選項不該重複、要是掉落池裡的道具：%s" % [o]
 	# 關掉再開：同一組；重骰：骰子 −1、換一組；沒有骰子不能骰
 	a.relic_id = 0
@@ -1927,19 +1928,20 @@ static func check_relic() -> String:
 	if relic.reroll(a) or relic.offers[a.peer_id] != before:
 		return "沒有骰子不能重骰"
 	# a 選第 0 個：拿到、只能選一次、遺物還在（b 還沒選）
-	var want: StringName = relic.offers[a.peer_id][0]
-	if not relic.pick(a, 0) or relic.pick(a, 1) or relic.is_removed or a.relic_id != 0:
+	var pick_i: int = (relic.offers[a.peer_id] as Array).find_custom(func(id: StringName) -> bool: return Relic.bag_choice(id).is_empty())
+	var want: StringName = relic.offers[a.peer_id][pick_i]
+	if not relic.pick(a, pick_i) or relic.pick(a, 1) or relic.is_removed or a.relic_id != 0:
 		return "a 選了應只能選一次、遺物留給 b"
 	if not _held_items(a).any(func(e: Dictionary) -> bool: return e.id == want):
 		return "a 應拿到 %s" % want
 	if w.nearest_interactable(a, w.relics) != null:
 		return "選過的人按 F 不該再打開"
-	# b 武器格子與背包都塞滿：選的道具掉在腳邊；全員選過遺物消失
-	for where: int in [Loadout.MAIN, Loadout.OFF, Loadout.BAG]:
+	# b 主袋、袋子、倉庫都塞滿：選的道具掉在腳邊；全員選過遺物消失
+	for where: int in b.loadout.active_wheres() + [Loadout.BAG]:
 		while b.loadout.add_item(b, &"loaded_dice", {}, 0, where) != &"":
 			pass
 	var drops := w.pickups.size()
-	relic.pick(b, 0)
+	relic.pick(b, (relic.offers[b.peer_id] as Array).find_custom(func(id: StringName) -> bool: return Relic.bag_choice(id).is_empty()))
 	if w.pickups.size() != drops + 1 or not relic.is_removed:
 		return "b 放不下應掉在腳邊、全員選過遺物消失：地上多 %d、移除 %s" % [w.pickups.size() - drops, relic.is_removed]
 	# 走遠就關掉
@@ -1953,8 +1955,6 @@ static func check_relic() -> String:
 	return ""
 
 
-# 鐵砧（遺物的一種，地圖改版第 4 步）：第一步主手升一個稀有度、從 N 條新詞條（不重複、不跟現有的重複）選 1，面板保持開著；
-# 第二步從主手武器的技能選 1（照技能遺物：放進格子或升級）；每人一次、用完不消失；已經傳說的武器直接選技能
 # 遺物的「有人看過」（小地圖用）：兩人都面向 +Z，前方的遺物幾步內算看過、背後遠處的沒人看到；快照帶過去
 static func check_relic_spotted() -> String:
 	var w := World.new(&"test_arena")
@@ -1984,6 +1984,8 @@ static func check_relic_spotted() -> String:
 	return ""
 
 
+# 鐵砧（遺物的一種）：選項是改造自己接著的袋子（加大一格要接得下、強化倍率 +0.25 到上限、換成同一邊能接的別種），不重複；
+# 選了套在那個袋子上、每人一次、用完不消失；身上沒有能改的袋子時改給新袋子；門的「袋子」獎勵是小袋 N 選 1、Boss 的是大袋或強化袋
 static func check_anvil() -> String:
 	var w := World.new(&"test_arena")
 	w.spawn_packs = false
@@ -1991,39 +1993,60 @@ static func check_anvil() -> String:
 	w.spawner.finished = true
 	_worlds.append(w)
 	var p: Player = w.players[World.HOST_PEER_ID]
-	p.equip_weapon(&"shortbow")
-	var inst: Dictionary = p.weapon_slots[Loadout.MAIN]
-	var rarity: StringName = inst.rarity
-	var before: Array = inst.affixes.duplicate()
+	var hit := _bag(p, &"hit", &"left")
 	var anvil := w.drop_relic(&"small", p.pos + Vector2(1.0, 0.0), &"anvil")
 	anvil.open_for(p)
 	var n := roundi(p.stats.value(&"relic_choices"))
 	var offers: Array = anvil.offers.get(p.peer_id, [])
 	if offers.size() != n or p.relic_id != anvil.id:
-		return "鐵砧第一步應打開 %d 條詞條：%s" % [n, offers]
+		return "鐵砧應打開 %d 個改造選項：%s" % [n, offers]
 	for id: StringName in offers:
-		if not WeaponDropDefs.AFFIXES.has(id) or before.has(id) or offers.count(id) != 1:
-			return "鐵砧的詞條選項要是新的、不重複：%s（原本 %s）" % [offers, before]
-	anvil.pick(p, 0)
-	inst = p.weapon_slots[Loadout.MAIN]
-	if inst.rarity != WeaponDropDefs.next_rarity(rarity) or not inst.affixes.has(offers[0]) or inst.affixes.size() != before.size() + 1:
-		return "選了詞條應升到 %s、多這一條（%s、%s）" % [WeaponDropDefs.next_rarity(rarity), inst.rarity, inst.affixes]
-	if p.relic_id != anvil.id or anvil.taken.has(p.peer_id):
-		return "第一步選完面板應保持開著、還沒算用過"
-	var skills: Array = anvil.offers.get(p.peer_id, [])
-	var weapon := Loadout.weapon_of(inst)
-	if skills.is_empty() or skills.any(func(id: StringName) -> bool: return not SkillDefs.can_socket(id, weapon)):
-		return "第二步應是這把武器（%s）的技能：%s" % [weapon, skills]
-	anvil.pick(p, 0)
-	if not anvil.taken.has(p.peer_id) or anvil.is_removed or not p.loadout.has_item(skills[0]):
-		return "選了技能應拿到 %s、算用過、鐵砧不消失" % skills[0]
+		var c := Relic.anvil_choice(id)
+		if c.is_empty() or offers.count(id) != 1 or p.loadout.find_bag(c.uid).is_empty():
+			return "鐵砧的選項要是改自己接著的袋子、不重複：%s" % [offers]
+	var grow_i := offers.find_custom(func(id: StringName) -> bool: return Relic.anvil_choice(id).action == &"grow" and Relic.anvil_choice(id).uid == hit.uid)
+	if grow_i < 0:
+		return "左邊 0 的命中袋接得下加大，應有加大的選項：%s" % [offers]
+	var length0: int = hit.length
+	anvil.pick(p, grow_i)
+	if hit.length != length0 + 1 or not anvil.taken.has(p.peer_id) or anvil.is_removed:
+		return "選加大後命中袋應長 %d、算用過、鐵砧不消失：長 %d" % [length0 + 1, hit.length]
 	anvil.open_for(p)
 	if p.relic_id != 0:
 		return "用過的鐵砧不能再打開"
-	inst.rarity = WeaponDropDefs.RARITY_ORDER[-1]
-	var anvil2 := w.drop_relic(&"small", p.pos + Vector2(-1.0, 0.0), &"anvil")
-	anvil2.open_for(p)
-	var direct: Array = anvil2.offers.get(p.peer_id, [])
-	if direct.is_empty() or direct.any(func(id: StringName) -> bool: return not ItemDefs.is_skill(id)):
-		return "傳說武器不能再升級，鐵砧應直接給技能選項：%s" % [direct]
+	# 強化與換種類直接套用
+	var r2 := w.drop_relic(&"small", p.pos + Vector2(-1.0, 0.0), &"anvil")
+	r2._anvil_apply(p, Relic.anvil_choice(StringName("anvil:mul:%s" % hit.uid)))
+	r2._anvil_apply(p, Relic.anvil_choice(StringName("anvil:kind:%s:kill" % hit.uid)))
+	if absf(hit.mul - (1.0 + BagDefs.ANVIL.mul_step)) > EPS or hit.kind != &"kill":
+		return "強化後倍率應 ×%.2f、換種類後是擊殺袋：×%.2f、%s" % [1.0 + BagDefs.ANVIL.mul_step, hit.mul, hit.kind]
+	# 沒有能改的袋子（只有接滿的按鍵袋也算能改）：開一個全新的玩家，拿掉所有袋子
+	var w3 := _new_world()
+	var p3 := _player(w3)
+	p3.loadout.bags.clear()
+	var r3 := w3.drop_relic(&"small", p3.pos + Vector2(1.0, 0.0), &"anvil")
+	r3.open_for(p3)
+	var fresh: Array = r3.offers.get(p3.peer_id, [])
+	if fresh.is_empty() or fresh.any(func(id: StringName) -> bool: return Relic.bag_choice(id).is_empty()):
+		return "沒有袋子時鐵砧應改給新袋子的選項：%s" % [fresh]
+	# 門的「袋子」獎勵：小袋、種類不重複；Boss 的是大袋或強化袋；選了就接上
+	var door := w3.drop_relic(&"big", p3.pos + Vector2(-1.0, 0.0), &"bag")
+	door.open_for(p3)
+	var bag_offers: Array = door.offers[p3.peer_id]
+	var kinds := {}
+	for id: StringName in bag_offers:
+		var bc := Relic.bag_choice(id)
+		if bc.is_empty() or bc.tier != &"small":
+			return "門的袋子獎勵應都是小袋：%s" % [bag_offers]
+		kinds[bc.kind] = true
+	if kinds.size() != bag_offers.size():
+		return "袋子的種類不該重複：%s" % [bag_offers]
+	var boss := w3.drop_relic(&"big", p3.pos + Vector2(0.0, 1.0), &"bag_big")
+	boss.open_for(p3)
+	if (boss.offers[p3.peer_id] as Array).any(func(id: StringName) -> bool: return not (Relic.bag_choice(id).get("tier", &"") in [&"big", &"strong"])):
+		return "Boss 的袋子應是大袋或強化袋：%s" % [boss.offers[p3.peer_id]]
+	var bc0 := Relic.bag_choice(boss.offers[p3.peer_id][0])
+	boss.pick(p3, 0)
+	if not p3.loadout.bags.any(func(b: Dictionary) -> bool: return b.kind == bc0.kind and b.tier == bc0.tier) and not p3.inventory.entries.any(func(e: Dictionary) -> bool: return e.has("bag")):
+		return "選了 Boss 的袋子應接上或放進倉庫：%s" % [bc0]
 	return ""

@@ -1015,22 +1015,27 @@ func _swap(cmd: InputCmd) -> void:
 				return
 
 
-# 整理背包（一步一件）：背包裡的道具搬得上主手 / 副手的格子就搬上去（同一種已經鑲著的不搬，不多算羈絆）；
-# 地上有更稀有的武器撿不下 → 丟掉背包裡最差的那把（丟掉的不再撿回來）
+# 整理背包（一步一件）：倉庫的袋子接得上就接上；倉庫的道具照自動擺放搬進主袋或袋子（Loadout.auto_place）；
+# 地上有更稀有的武器撿不下 → 丟掉倉庫裡最差的那把（丟掉的不再撿回來）
 func _organize(cmd: InputCmd) -> void:
 	for x in p.inventory.entries:
-		if x.has("weapon") or _socket_tried.has(x.uid) or not ItemDefs.ITEMS.has(x.id) or not (ItemDefs.ITEMS[x.id].get("kind") in [&"item", &"skill"]):
+		if x.has("weapon") or _socket_tried.has(x.uid) or not ItemDefs.ITEMS.has(x.id):
 			continue
 		_socket_tried[x.uid] = true
-		if p.loadout.items.any(func(it: Dictionary) -> bool: return it.id == x.id):
-			continue
-		for where: int in [Loadout.MAIN, Loadout.OFF]:
-			var inv := p.loadout.container(where)
-			var spot := inv.find_spot(x.id) if inv != null else {}
-			if not spot.is_empty():
-				cmd.inv_ops.append([InputCmd.OP_MOVE, x.uid, spot.cell.x, spot.cell.y, spot.rot, where])
+		if x.has("bag"):
+			var at := p.loadout.attach_spot(x.bag)
+			if not at.is_empty():
+				cmd.inv_ops.append([InputCmd.OP_BAG, x.uid, String(at.side), at.offset])
 				acts.socket += 1
 				return
+			continue
+		if not (ItemDefs.ITEMS[x.id].get("kind") in [&"item", &"skill"]):
+			continue
+		var found := p.loadout.auto_place(x.id)
+		if not found.is_empty():
+			cmd.inv_ops.append([InputCmd.OP_MOVE, x.uid, found.spot.cell.x, found.spot.cell.y, found.spot.rot, found.where])
+			acts.socket += 1
+			return
 	if _blocked_loot == null or _blocked_loot.is_removed or _blocked_loot.is_dead:
 		_blocked_loot = null
 		return
@@ -1126,21 +1131,18 @@ func _relic_choice(opts: Array) -> int:
 
 
 # 3 選 1 每個選項的分數（越高越想要，< 0 = 拿了沒用）：
-#   技能：已經有、還沒滿級（再選一次升級）10；手上武器能鑲、還沒有 9；其他（鑲不上、滿級）-1
-#   道具：每個羈絆 1 + 現有件數（在走的羈絆優先），補上這件剛好湊到下一階再 +3；同一種已經鑲著（不多算羈絆）-1；沒有羈絆 0.1
-#   鐵砧第一步的詞條：「羈絆 +1」照道具的算法，其他詞條 0.2
+#   技能：已經有、還沒滿級（再選一次升級）10；還沒有 9；滿級 -1。袋子 8（詛咒袋 2）；鐵砧的改造 5
+#   道具：每個羈絆 1 + 現有格數（在走的羈絆優先），補上這件剛好湊到下一階再 +3；沒有羈絆 0.1
 func _choice_score(id: StringName) -> float:
-	if WeaponDropDefs.AFFIXES.has(id):
-		var a: Dictionary = WeaponDropDefs.AFFIXES[id]
-		return _bond_score(a.bond) if a.kind == &"bond" else 0.2
+	var bag := Relic.bag_choice(id)
+	if not bag.is_empty():
+		return 2.0 if bag.tier == &"cursed" else 8.0
+	if not Relic.anvil_choice(id).is_empty():
+		return 5.0
 	if ItemDefs.is_skill(id):
 		if p.skill_levels.get(id, 1) >= SkillDefs.LEVEL.max:
 			return -1.0
-		if p.loadout.has_item(id):
-			return 10.0
-		return 9.0 if _fits_hands(id) else -1.0
-	if p.loadout.items.any(func(it: Dictionary) -> bool: return it.id == id):
-		return -1.0
+		return 10.0 if p.loadout.has_item(id) else 9.0
 	var bonds: Array = ItemDefs.ITEMS.get(id, {}).get("bonds", [])
 	if bonds.is_empty():
 		return 0.1
@@ -1152,15 +1154,7 @@ func _choice_score(id: StringName) -> float:
 
 func _bond_score(bond: StringName) -> float:
 	var have: int = p.loadout.bond_counts.get(bond, 0)
-	return 1.0 + have + (3.0 if BondDefs.next_threshold(bond, have) == have + 1 else 0.0)
-
-
-func _fits_hands(skill: StringName) -> bool:
-	for i in Loadout.OFF + 1:
-		var wid := Loadout.weapon_of(p.weapon_slots[i])
-		if wid != &"" and SkillDefs.can_socket(skill, wid):
-			return true
-	return false
+	return 1.0 + have + (3.0 if BondDefs.next_threshold(bond, have) - have <= 2 else 0.0)
 
 
 func _walk(cmd: InputCmd, goal: Vector2) -> void:

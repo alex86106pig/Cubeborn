@@ -1,7 +1,8 @@
 # 道具的條件加成與觸發效果（v0.33.0 第一批）：只在權威端結算傷害（Combat 已檢查），數值在 ItemDefs.PROCS
 #   條件（"when"）：CONDITIONS 的類別。每步判斷的（自己低血、擊殺後幾秒，Player 每步呼叫 update_player）成立時套上屬性；
 #     每一下攻擊判斷的（對滿血敵人，Combat 呼叫 target_damage_pct）回傳這一下額外的百分比
-#   觸發（"on" + "do"）：ACTIONS 的類別。命中時（連鎖閃電、中毒、冰凍）、擊殺時（小爆炸、回血）
+#   效果（"do"）：ACTIONS 的類別，放在觸發袋裡才會發動（時機看袋子、不看道具資料的 on，BagTriggers）；
+#     這裡的 on_attack / on_hit / on_hurt / on_kill / on_roll 是 Combat 與 PlayerStates 的進入點，轉給 BagTriggers.fire
 #   新增一種條件 / 動作：在這裡加一個類別並登錄，再把名稱加進 ItemDefs.IMPLEMENTED_*（檢查會比對兩邊一致）
 # 道具效果造成的傷害標記 proc：不爆擊、不再觸發命中效果（避免閃電觸發閃電），但打死怪照樣算擊殺
 class_name ItemEffects
@@ -72,7 +73,7 @@ class FromElite extends Condition:
 		return false
 
 
-# 觸發的動作：proc = procs_of 合併後的 { do, effect, chance, count }；damage 是觸發那一下的傷害（扣護甲前）
+# 效果的動作（觸發袋發動，BagTriggers.run_effect）：proc = { do, on, effect（道具資料那一筆）, count }；damage 是觸發那一下的傷害（扣護甲前）
 class Action:
 	# 這個動作接在哪些觸發上（對應 ItemDefs.IMPLEMENTED_TRIGGERS 的「on|do」）
 	func triggers() -> Array[StringName]:
@@ -451,29 +452,6 @@ static func conditions_of(p: Player) -> Array[Dictionary]:
 	return out
 
 
-# 觸發的動作依 do 合併：機率相加（最多 1）、沒有機率的次數相加；依道具順序（決定性）
-# part：發動時機看部位的觸發（ItemDefs.PART_TIMED_TRIGGERS）只算碰到這個部位的道具
-static func procs_of(p: Player, on: StringName, part := "") -> Array[Dictionary]:
-	var by_do := {}
-	var order: Array[Dictionary] = []
-	for x in effects_of(p, "on", on):
-		var eff: Dictionary = x.effect
-		if not ItemDefs.is_implemented(eff):
-			continue
-		if part != "" and not String(_item_of(p, x.uid).get("parts", "")).contains(part):
-			continue
-		if not by_do.has(eff.do):
-			by_do[eff.do] = {"do": eff.do, "on": on, "effect": eff, "chance": 0.0, "count": 0}
-			order.append(by_do[eff.do])
-		# 印記格（第 8b 步）：有機率的觸發機率 × 倍率；沒有機率的不變（次數照算）
-		var chance: float = eff.get("chance", 1.0)
-		if eff.has("chance"):
-			chance *= _item_of(p, x.uid).get("mul", 1.0)
-		by_do[eff.do].chance += chance
-		by_do[eff.do].count += 1
-	return order
-
-
 static func _item_of(p: Player, uid: StringName) -> Dictionary:
 	for it: Dictionary in p.items:
 		if it.uid == uid:
@@ -481,19 +459,9 @@ static func _item_of(p: Player, uid: StringName) -> Dictionary:
 	return {}
 
 
-# 沒有機率的觸發（荊棘、王墓之心、爆裂箭袋、永恆之焰）拿兩個效果相加；有機率的疊的是機率，效果只算一份
+# 同一個效果拿兩個時效果相加（觸發袋裡每個道具各放一次，count 都是 1）
 static func stacks(proc: Dictionary) -> int:
-	return 1 if proc.effect.has("chance") else proc.count
-
-
-static func _rolled(world: World, proc: Dictionary) -> bool:
-	return proc.chance >= 1.0 or world.rng.randf() < proc.chance
-
-
-static func _run_procs(world: World, p: Player, on: StringName, target: Entity, damage: float, part := "") -> void:
-	for proc in procs_of(p, on, part):
-		if _rolled(world, proc):
-			(ACTIONS[proc.do] as Action).run(world, p, target, damage, proc)
+	return proc.get("count", 1)
 
 
 # 這一下攻擊額外的攻擊力百分比（對滿血敵人）
@@ -512,7 +480,7 @@ static func update_player(p: Player, dt: float) -> void:
 	_tick(p.roll_timers, dt)
 	_tick(p.proc_timers, dt)
 	if p.world.is_authority and not p.is_dead and not p.is_downed:
-		_update_intervals(p, dt)
+		BagTriggers.update_timers(p, dt)
 		_update_shield(p, dt)
 	for x in conditions_of(p):
 		var cond: Condition = x.condition
@@ -530,20 +498,6 @@ static func update_player(p: Player, dt: float) -> void:
 			p.cond_values.erase(source)
 
 
-# 每隔固定秒數的觸發（G4 雷霆鈴）：每個道具自己一個計時（拿兩個 = 兩個各自打）；只在權威端
-static func _update_intervals(p: Player, dt: float) -> void:
-	for x in effects_of(p, "on", &"interval"):
-		var eff: Dictionary = x.effect
-		if not ItemDefs.is_implemented(eff):
-			continue
-		var t: float = p.interval_timers.get(x.uid, eff.period) - dt
-		if t <= 0.0:
-			t += eff.period
-			(ACTIONS[eff.do] as Action).run(p.world, p, null, 0.0, {"do": eff.do, "on": &"interval", "effect": eff, "chance": 1.0, "count": 1})
-		p.interval_timers[x.uid] = t
-
-
-# 自動回充的護盾（G4 骨製護盾）：盾量 = 最大生命 × 比例（拿兩個相加）；recharge_delay 秒沒受傷就一次補滿。只在權威端
 static func shield_info(p: Player) -> Vector2:
 	var ratio := 0.0
 	var delay := 0.0
@@ -577,20 +531,15 @@ static func absorb(p: Player, amount: float) -> float:
 	return amount - used
 
 
-# 普攻出手時（G4，TimedAction 進入 active、只在權威端）：袖中飛刀、裂空之刃
-# 普攻出手（PlayerStates 進 active）：攻擊部位每次、末端只有連段最後一下
-static func on_attack(world: World, p: Player, finisher: bool) -> void:
-	_run_procs(world, p, &"attack", null, 0.0, "A")
-	if finisher:
-		_run_procs(world, p, &"attack", null, 0.0, "E")
+# 普攻 / 右鍵招式出手（PlayerStates 進 active、只在權威端）：接在左 / 右邊的出手袋
+static func on_attack(world: World, p: Player, source: StringName) -> void:
+	BagTriggers.fire(world, p, &"cast", source, null, 0.0)
 
 
-# 格擋 / 招架成功（Combat 在擋下之後呼叫、只在權威端）：防禦部位的命中類打向攻擊者（傷害 = 武器基礎傷害 100%）、
-# 普攻類往面向射出；attacker 是射箭的怪時一樣打它
+# 格擋 / 招架成功（Combat 在擋下之後呼叫、只在權威端）：算右鍵命中，右邊的命中袋打向攻擊者（傷害 = 武器基礎傷害 100%）
 static func on_block(world: World, p: Player, attacker: Entity) -> void:
 	if attacker is Enemy and not attacker.is_dead and attacker.team != p.team:
-		_run_procs(world, p, &"hit", attacker, p.pct_damage(ItemDefs.BLOCK_HIT_DAMAGE_PCT), "D")
-	_run_procs(world, p, &"attack", null, 0.0, "D")
+		BagTriggers.fire(world, p, &"hit", &"secondary", attacker, p.pct_damage(ItemDefs.BLOCK_HIT_DAMAGE_PCT))
 
 
 # 生命歸零、還沒倒地時（G5，Player.die、只在權威端）：守護亡靈先用（每個道具每層一次），沒有才用復活十字；救下來回傳 true
@@ -623,9 +572,9 @@ static func _saved(world: World, p: Player, item: StringName) -> void:
 	world.emit_event("sfx:cue", {"cue": "potion", "pos": p.pos})
 
 
-# 翻滾開始時（G4，Roll.enter、只在權威端）：停滯懷錶
+# 翻滾開始時（Roll.enter、只在權威端）：下方的翻滾袋
 static func on_roll(world: World, p: Player) -> void:
-	_run_procs(world, p, &"roll", p, 0.0)
+	BagTriggers.fire(world, p, &"roll", &"", null, 0.0)
 
 
 # 計時表：每個 key 剩下的秒數，到 0 就移除
@@ -687,34 +636,25 @@ static func soul_mul(p: Player, e: Enemy) -> float:
 	return mul
 
 
-# 命中時（Combat 在一般攻擊命中後呼叫）：damage 是這一下的傷害（扣護甲前）；projectile = 投射物直接命中（G3 爆裂箭袋）
-static func on_hit(world: World, p: Player, target: Entity, damage: float, projectile := false, finisher := false) -> void:
-	if not target is Enemy:
-		return
-	_run_procs(world, p, &"hit", target, damage, "A")
-	if finisher:
-		_run_procs(world, p, &"hit", target, damage, "E")
-	if projectile:
-		_run_procs(world, p, &"projectile_hit", target, damage)
+# 命中時（Combat 在一般攻擊命中後呼叫）：damage 是這一下的傷害（扣護甲前）；source 是哪個動作打的（Combat 的 hit.attack）
+# 普攻打的觸發左邊的命中袋、右鍵招式打的觸發右邊的；技能與道具效果打的不觸發
+static func on_hit(world: World, p: Player, target: Entity, damage: float, source: StringName) -> void:
+	if target is Enemy and source in [&"primary", &"secondary"]:
+		BagTriggers.fire(world, p, &"hit", source, target, damage)
 
 
-# 玩家被怪打到時（G3，Combat 在扣血之後呼叫）：damage 是扣護甲前、dealt 是實際扣的
-# 近戰（不是投射物）→ 荊棘鎖甲反彈給攻擊者；任何傷害 → 王墓之心以自己為中心爆炸（內部冷卻 hurt_explode.icd）
-static func on_hurt(world: World, p: Player, attacker: Entity, damage: float, dealt: float, projectile: bool) -> void:
-	if not projectile:
-		_run_procs(world, p, &"hurt_melee", attacker, dealt)
-	var procs := procs_of(p, &"hurt")
-	if not procs.is_empty() and icd_ready(p, &"hurt_explode"):
-		for proc in procs:
-			(ACTIONS[proc.do] as Action).run(world, p, p, damage, proc)
+# 玩家被怪打到時（Combat 在扣血之後呼叫）：下方的受傷袋，目標是打到自己的怪；dealt 是實際扣的
+static func on_hurt(world: World, p: Player, attacker: Entity, _damage: float, dealt: float, _projectile: bool) -> void:
+	BagTriggers.fire(world, p, &"hurt", &"", attacker, dealt)
 
 
-# 擊殺時（Combat 在玩家方的傷害打死怪之後呼叫，含道具效果打死的）
-static func on_kill(world: World, p: Player, target: Entity, damage: float) -> void:
+# 擊殺時（Combat 在玩家方的傷害打死怪之後呼叫，含道具效果打死的）：擊殺計數與條件；普攻 / 右鍵打死的觸發那一邊的擊殺袋
+static func on_kill(world: World, p: Player, target: Entity, damage: float, source: StringName) -> void:
 	p.floor_kills += 1
 	for x in conditions_of(p):
 		(x.condition as Condition).on_kill(p, x.uid, x.effect)
-	_run_procs(world, p, &"kill", target, damage)
+	if source in [&"primary", &"secondary"]:
+		BagTriggers.fire(world, p, &"kill", source, target, damage)
 
 
 static func proc_hit(damage: float, target: Entity, color: Color, knockback := 0.0, damage_type := &"phys") -> Dictionary:
@@ -736,7 +676,7 @@ static func added_damage(world: World, p: Player, target: Entity, base: float) -
 const ADDED_DAMAGE := [[&"added_fire", &"fire"], [&"added_cold", &"cold"]]
 
 
-# 鬼火打中怪（OrbitWisp）：冥燈回血；鬼火羈絆第 3 階也觸發攻擊部位的命中類道具，機率 × proc_chance_mul
+# 鬼火打中怪（OrbitWisp）：冥燈回血；鬼火羈絆第 3 階有 proc_chance_mul 的機率發動左邊的命中袋（同普攻打中）
 static func on_wisp_hit(world: World, p: Player, target: Entity, damage: float) -> void:
 	var heal := p.stats.value(&"wisp_life_on_hit")
 	if heal > 0.0:
@@ -745,10 +685,8 @@ static func on_wisp_hit(world: World, p: Player, target: Entity, damage: float) 
 			world.emit_event("entity:healed", {"target_id": p.id, "amount": healed})
 	if BondEffects.tier(p, &"wisp") < 3 or target.is_dead:
 		return
-	var mul: float = BondDefs.BONDS.wisp.params.proc_chance_mul
-	for proc in procs_of(p, &"hit", "A"):
-		if proc.chance * mul >= 1.0 or world.rng.randf() < proc.chance * mul:
-			(ACTIONS[proc.do] as Action).run(world, p, target, damage, proc)
+	if world.rng.randf() < BondDefs.BONDS.wisp.params.proc_chance_mul:
+		BagTriggers.fire(world, p, &"hit", &"primary", target, damage)
 
 
 # 鬼火打死怪：噬魂燈讓鬼火傷害變高一段時間

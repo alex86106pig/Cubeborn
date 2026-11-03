@@ -335,8 +335,8 @@ func _change_level() -> void:
 # 門上的獎勵（MapGenDefs.REWARDS）：遺物放在出生點旁、靈魂全隊共用、骰子每人；空的（一扇門的關）不給
 func _grant_stage_reward(reward: StringName) -> void:
 	match reward:
-		&"relic", &"skill":
-			drop_relic(&"big", spawn_point + MapGenDefs.REWARD_DROP, &"skill" if reward == &"skill" else &"item")
+		&"relic", &"skill", &"bag":
+			drop_relic(&"big", spawn_point + MapGenDefs.REWARD_DROP, &"item" if reward == &"relic" else reward)
 		&"souls":
 			var g: int = MapGenDefs.REWARDS.souls.amount
 			souls += g
@@ -483,6 +483,12 @@ func on_enemy_died(e: Enemy, killer_id: int = 0) -> void:
 	var coin_chance: float = LootDefs.RUN_COINS.drop_chance.get(e.type, 0.0)
 	if not e.no_souls and coin_chance > 0.0 and coin_rng.randf() < coin_chance:
 		drop_coin(e.pos)
+	# 菁英怪（魔法 / 稀有）掉觸發袋：種類看怪（BagDefs.ELITE_BAG，沒列的隨機），召喚出來的不掉
+	var bag_chance: float = BagDefs.ELITE_DROP.get(e.rarity, 0.0)
+	if not e.no_souls and bag_chance > 0.0 and rng.randf() < bag_chance:
+		var kinds: Array = BagDefs.BAGS.keys()
+		var kind: StringName = BagDefs.ELITE_BAG.get(e.type, kinds[rng.randi_range(0, kinds.size() - 1)])
+		drop_item(BagDefs.BAGS[kind].item, e.pos)
 	# 武器掉落（D4）：多人時也只掉一把（房主產生一個實體，先撿先得）；機率照層數，召喚出來的不掉（不然召喚者不死就能一直刷）
 	var chance: float = 1.0 if debug_drop_all else (0.0 if e.no_souls else WeaponDropDefs.drop_chance(e.type, floor_num))
 	if chance > 0.0 and (chance >= 1.0 or rng.randf() < chance):
@@ -519,7 +525,7 @@ func drop_weapon(inst: Dictionary, at: Vector2) -> ItemPickup:
 
 
 # 道具 / 武器掉在地上（開寶箱、殺怪、從背包丟出）；客戶端不產生（等快照）
-# 放一個遺物（tier：祭壇 small / 石棺 big 的稀有度機率；kind：&"item" 道具 / &"skill" 技能）
+# 放一個遺物（tier：祭壇 small / 石棺 big 的稀有度機率；kind 見 Relic 的 relic_kind）
 func drop_relic(tier: StringName, at: Vector2, kind: StringName = &"item") -> Relic:
 	var r := Relic.new(self, tier, nav.nearest_walkable(at), kind)
 	if is_authority:
@@ -627,6 +633,7 @@ func reachable_pickups(p: Player, out: Array[ItemPickup]) -> void:
 func on_boss_defeated(boss: Enemy) -> void:
 	if DigEvent.enabled(self):
 		var relic := drop_relic(&"big", boss.pos + Vector2(LootDefs.DROP_DISTANCE, 0.0))
+		drop_relic(&"big", boss.pos - Vector2(LootDefs.DROP_DISTANCE, 0.0), &"bag_big")   # 大袋或強化袋 N 選 1（觸發袋）
 		emit_event("boss:reward", {"relic_id": relic.id, "pos": boss.pos})
 		hit_stop(Config.WORLD.victory_hit_stop)
 		emit_event("camera:shake", {"amount": Config.WORLD.victory_shake, "duration": Config.WORLD.victory_shake_duration})

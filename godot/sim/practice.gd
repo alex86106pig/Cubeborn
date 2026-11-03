@@ -42,9 +42,7 @@ static func affix_error(rarity: StringName, affixes: Array[StringName]) -> Strin
 
 # 照指定的稀有度與詞條做一把武器（不補隨機詞條）；印記格照常隨機、自帶技能照常鑲上
 static func make_weapon(world: World, base: StringName, rarity: StringName, affixes: Array[StringName]) -> Dictionary:
-	var inst := {"uid": world.new_weapon_uid(), "base": base, "rarity": rarity, "affixes": affixes.duplicate()}
-	WeaponDropDefs.roll_imprints(inst, world.rng)
-	return WeaponDropDefs.add_builtin_skill(inst)
+	return {"uid": world.new_weapon_uid(), "base": base, "rarity": rarity, "affixes": affixes.duplicate()}
 
 
 # 武器放進背包（主手空著就拿在手上，同撿到）；放不下掉在腳邊。回傳 true = 進了背包或手上

@@ -178,10 +178,9 @@ static func allowed(id: StringName, rarity: StringName) -> bool:
 	return RARITY_ORDER.find(rarity) >= RARITY_ORDER.find(AFFIXES[id].get("min", &"green"))
 
 
-static func make(uid: StringName, base: StringName, rarity: StringName, rng: RandomNumberGenerator, keep: Array[StringName] = []) -> Dictionary:
-	var inst := {"uid": uid, "base": base, "rarity": rarity, "affixes": roll_affixes(affix_count(rarity), rng, base, keep, rarity)}
-	roll_imprints(inst, rng)
-	return add_builtin_skill(inst)
+# 觸發袋改版後武器沒有詞條、印記格與寶石座：只有種類與稀有度（稀有度決定基礎數值，RARITY_BASE）
+static func make(uid: StringName, base: StringName, rarity: StringName, _rng: RandomNumberGenerator = null, _keep: Array[StringName] = []) -> Dictionary:
+	return {"uid": uid, "base": base, "rarity": rarity, "affixes": [] as Array[StringName]}
 
 
 # 印記詞條的格子：每條從武器格子裡（不含寶石座、不和別條重疊）隨機挑 IMPRINT.cells 格，寫進 inst.imprints [{ bond, cell }]

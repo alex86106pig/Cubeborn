@@ -1,11 +1,11 @@
-# 羈絆（Build 改版第 5 步）：道具的 bonds 列出它屬於哪些羈絆（跨羈絆的道具兩邊各算 1 件）
-# 只算鑲在主手 / 副手格子上的道具，同一種道具鑲好幾個只算 1 件；件數湊到門檻就啟動那一階（Loadout.bond_counts）
+# 羈絆：道具的 bonds 列出它屬於哪些羈絆（顏色；跨羈絆的道具兩種都算）
+# 觸發袋改版起看「最大同色區塊」：主袋與接著的袋子裡同色的格子上下左右連成一塊、跨袋子也算，最大那塊幾格（Loadout.bond_blocks）湊到門檻就啟動那一階
 # 第一版 5 個羈絆；門檻、每階效果與數字 Claude 暫定（武器格子 artifact），效果在 sim/bond_effects.gd
 # 火焰 / 冰霜的層數：沒有那個羈絆時最多 1 層（火把、焚香爐照樣點得著），第 1 階起才會疊
 class_name BondDefs
 
 const BONDS := {
-	&"phys": {"name": "物理", "color": Color("d8d8d8"), "thresholds": [2, 4, 6, 8, 10], "tiers": [
+	&"phys": {"name": "物理", "color": Color("d8d8d8"), "thresholds": [4, 6, 8, 10, 12], "tiers": [
 		"物理傷害 +10%",
 		"命中累積失衡值（連段最後一下更多）；失衡的怪 1.5 秒不能動、受到傷害 +30%",
 		"擊退 +50%；被擊退的怪撞到其他怪時，兩隻都受那一下 50% 的物理傷害",
@@ -22,7 +22,7 @@ const BONDS := {
 		"resist_pierce": 0.3,               # 第 4 階：無視 30% 物理抗性（只減正的抗性）
 		"execute_hp": 0.15,                 # 第 5 階
 	}},
-	&"fire": {"name": "火焰", "color": Color("ff8a3d"), "thresholds": [3, 5, 7], "tiers": [
+	&"fire": {"name": "火焰", "color": Color("ff8a3d"), "thresholds": [4, 8, 12], "tiers": [
 		"火焰命中疊燃燒：每層每秒武器攻擊 10%，持續 4 秒，最多 5 層",
 		"疊滿 5 層時爆炸（半徑 3），清空層數",
 		"燃燒中的怪死亡時，把層數全部傳給 4 單位內最近的 2 隻怪",
@@ -31,7 +31,7 @@ const BONDS := {
 		"burst_radius": 3.0, "burst_pct": 1.0,                 # 第 2 階：爆炸傷害 = 武器基礎傷害 100%
 		"spread_range": 4.0, "spread_count": 2,
 	}},
-	&"cold": {"name": "冰霜", "color": Color("8fd8ff"), "thresholds": [3, 5, 7], "tiers": [
+	&"cold": {"name": "冰霜", "color": Color("8fd8ff"), "thresholds": [4, 8, 12], "tiers": [
 		"冰霜命中疊冰冷：每層減速 10%，最多 5 層",
 		"冰冷滿 5 層凍結 2 秒；打凍結的怪傷害 +50% 並碎冰（解除凍結）",
 		"碎冰時噴出 6 片冰錐；凍結中被殺的怪不會觸發死亡效果",
@@ -40,7 +40,7 @@ const BONDS := {
 		"freeze_time": 2.0, "shatter_mul": 1.5,
 		"shards": 6, "shard_pct": 0.5, "shard_speed": 14.0, "shard_range": 6.0,   # 冰錐每片武器基礎傷害 50%
 	}},
-	&"guard": {"name": "防禦", "color": Color("c9a25a"), "thresholds": [3, 6, 9], "tiers": [
+	&"guard": {"name": "防禦", "color": Color("c9a25a"), "thresholds": [4, 8, 12], "tiers": [
 		"護甲 +20%；招架成功回復 3% 最大生命",
 		"招架成功後 2 秒內，下一擊必定暴擊、傷害 +80%",
 		"招架成功時放出衝擊波，消掉範圍內的投射物；受到的傷害 20% 反彈給攻擊者",
@@ -49,10 +49,10 @@ const BONDS := {
 		"riposte_time": 2.0, "riposte_mul": 1.8,
 		"wave_radius": 3.0, "reflect": 0.2,
 	}},
-	&"wisp": {"name": "鬼火", "color": Color("b48cff"), "thresholds": [3, 6, 9], "tiers": [
+	&"wisp": {"name": "鬼火", "color": Color("b48cff"), "thresholds": [4, 8, 12], "tiers": [
 		"沒有自帶鬼火的鬼火道具也各帶 1 顆鬼火（鬼火燈本來就有），鬼火碰到怪造成武器攻擊 25%",
 		"鬼火每 2 秒自動飛向最近的怪攻擊，再飛回來",
-		"鬼火數量加倍；鬼火的命中也會觸發武器上看部位的道具（機率減半）",
+		"鬼火數量加倍；鬼火打中時有一半機率發動左邊的命中袋",
 	], "params": {
 		"pct": 0.25, "orbit_radius": 1.6, "orbit_speed": 2.4, "radius": 0.3, "hit_interval": 0.5,   # 轉速：弧度 / 秒
 		"dash_interval": 2.0, "dash_range": 6.0, "dash_speed": 16.0,

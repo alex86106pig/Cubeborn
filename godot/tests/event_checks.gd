@@ -447,9 +447,10 @@ static func check_boss_reward() -> String:
 			items += 1
 	if w.is_over or not _named(ev, "game:victory").is_empty():
 		return "挖墳地圖打倒 Boss 不該通關"
-	var relics := w.relics.filter(func(r: Entity) -> bool: return (r as Relic).tier == &"big").size()
-	if weapons != 1 or items != 0 or relics != 1 or w.souls != souls + LootDefs.KILL_SOULS.boss:   # v0.44.0 Boss 靈魂 50 → 30
-		return "Boss 應掉 1 把武器、1 個石棺的遺物、%d 靈魂（實際 %d / 遺物 %d、道具 %d / %d）" % [LootDefs.KILL_SOULS.boss, weapons, relics, items, w.souls - souls]
+	var relics := w.relics.filter(func(r: Entity) -> bool: return (r as Relic).tier == &"big" and (r as Relic).relic_kind == &"item").size()
+	var bag_relics := w.relics.filter(func(r: Entity) -> bool: return (r as Relic).relic_kind == &"bag_big").size()
+	if weapons != 1 or items != 0 or relics != 1 or bag_relics != 1 or w.souls != souls + LootDefs.KILL_SOULS.boss:   # v0.44.0 Boss 靈魂 50 → 30
+		return "Boss 應掉 1 把武器、1 個石棺的遺物、1 個袋子的 N 選 1、%d 靈魂（實際 %d / 遺物 %d、袋子 %d、道具 %d / %d）" % [LootDefs.KILL_SOULS.boss, weapons, relics, bag_relics, items, w.souls - souls]
 	return _check_boss_patrol()
 
 

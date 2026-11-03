@@ -34,7 +34,8 @@ const BUTTON_L := {"size": Vector2(280, 60), "font": FONT_BODY}   # 選單：主
 const BUTTON_M := {"size": Vector2(200, 52), "font": 24}          # 面板裡的操作：連線面板（開房、加入、選職業、準備）
 const BUTTON_S := {"size": Vector2(120, 44), "font": FONT_NOTE}   # 一排很多顆的：武器測試場的武器列
 const ITEM_WEAPON_FILL := Color("4a4f57")   # 物品畫法（draw_item）：武器的底色（鐵灰）
-const ITEM_SKILL_FILL := Color("6a3f8f")    # 技能、輔助的底色（和寶石座同色）
+const ITEM_SKILL_FILL := Color("6a3f8f")    # 技能、修飾的底色
+const ITEM_BAG_FILL := Color("6b5236")      # 倉庫裡的觸發袋（皮革色）
 const ITEM_BIG_CELL := 64.0                 # 格子這麼大以上字大一級（背包）
 const ITEM_TEXT_CELL := 40.0                # 格子這麼大以上才寫名稱（遺物卡片的小圖不寫，卡片右邊有字）
 const BUTTON_CARD := {"size": Vector2(440, 230), "font": 24}   # 卡片：遺物的 N 選 1（RelicPanel；3 張約 1344 寬）
@@ -125,13 +126,10 @@ const HANDS_TEXT := {&"one": "單手", &"two": "雙手", &"off": "副手"}
 static func item_info(id: StringName, weapon: Dictionary, level := 1) -> Dictionary:
 	if not weapon.is_empty():
 		var b := WeaponDropDefs.base_stats(weapon)
-		var affixes: Array[String] = []
-		for a: StringName in weapon.affixes:
-			affixes.append(WeaponDropDefs.AFFIXES[a].desc)
 		var wd: Dictionary = WeaponDefs.WEAPONS[ItemDefs.ITEMS[weapon.base].weapon]
 		var hands: String = HANDS_TEXT[wd.hands] + ("，也能當副手" if wd.get("offhand", false) else "")
 		var stats_line: String = ("%s · 攻擊力 %.1f · 攻速 %.2f 次/秒 · 範圍 %.1f" % [hands, b.damage, b.attack_speed, b.range]) if not b.is_empty() else hands + " · " + wd.special.name
-		var lines: Array[String] = [stats_line, "沒有詞條" if affixes.is_empty() else "詞條：" + " · ".join(affixes)]
+		var lines: Array[String] = [stats_line, "普攻 %s · 右鍵 %s" % [wd.attack.get("name", "—"), wd.special.get("name", "—")] if wd.has("attack") else wd.special.get("name", "")]
 		return {"title": WeaponDropDefs.display_name(weapon), "color": ItemDefs.RARITIES[weapon.rarity].color, "lines": lines}
 	var def: Dictionary = ItemDefs.ITEMS[id]
 	var r: Dictionary = ItemDefs.RARITIES[def.rarity]
@@ -148,23 +146,31 @@ static func item_info(id: StringName, weapon: Dictionary, level := 1) -> Diction
 		desc += "　· 羈絆：" + ("、".join(bond_names) if not bond_names.is_empty() else "沒有")
 	var item_lines: Array[String] = [desc]
 	if def.kind == &"item":
-		item_lines.append(ItemDefs.part_line(id))
+		item_lines.append(role_line(id))
 	return {"title": "%s（%s）" % [def.name, r.name], "color": r.color, "lines": item_lines}
 
 
-# 技能的第二行：能用的武器、標籤、耗魔（插火把這種次數制的寫次數）；level 2 級以上加「傷害 ×1.2」，耗魔照等級算
+# 道具放哪裡（觸發袋的分類，ItemDefs.role_of）：數值放主袋；效果放觸發袋（寫原本的時機當建議、耗魔）；修飾放跟技能同一袋
+static func role_line(id: StringName) -> String:
+	match ItemDefs.role_of(id):
+		ItemDefs.ROLE_EFFECT:
+			var bag := ItemDefs.default_bag_of(id)
+			return "效果：放進觸發袋，時機到了發動（適合%s）· 每次耗魔 %d" % [BagDefs.BAGS[bag].name if bag != &"" else "任何袋子", roundi(BagTriggers.effect_mana(id))]
+		ItemDefs.ROLE_MOD:
+			return "修飾：放進技能所在的袋子，作用在同一袋的技能"
+	return "數值：放進主袋就生效"
+
+
+# 技能的第二行：怎麼用、標籤、耗魔（插火把這種次數制的寫次數）；level 2 級以上加「傷害 ×1.2」，耗魔照等級算
 static func skill_line(id: StringName, level := 1) -> String:
 	var sk: Dictionary = SkillDefs.SKILLS[id]
-	var weapons: Array[String] = []
-	for w: StringName in sk.weapons:
-		weapons.append(WeaponDefs.WEAPONS[w].name)
 	var tags: Array[String] = []
 	for t: StringName in sk.tags:
 		tags.append(SkillDefs.TAGS[t])
 	var cost := "耗魔 %d" % roundi(sk.mana * SkillDefs.level_mana_mul(level)) if sk.has("mana") else "每層 %d 次" % sk.get("charges", 0)
 	if level > 1 and sk.has("damage_pct"):
 		cost = "傷害 ×%s · %s" % [level_mul_text(SkillDefs.level_damage_mul(level)), cost]
-	return "鑲在%s的寶石座 · %s · %s" % ["、".join(weapons), "、".join(tags) if not tags.is_empty() else "—", cost]
+	return "按鍵袋按數字鍵放、觸發袋自動放 · %s · %s" % ["、".join(tags) if not tags.is_empty() else "—", cost]
 
 
 # 遺物卡的升級預覽：「升級：傷害 ×1.2 → ×1.4 · 耗魔 27 → 24」（沒傷害的技能只寫耗魔）
@@ -199,16 +205,28 @@ static func draw_item(ci: CanvasItem, font: Font, id: StringName, at: Vector2, c
 	var color: Color = ItemDefs.RARITIES[rarity].color
 	var kind := item_kind(id)
 	var bonds := item_bonds(id, weapon)
-	var fill: Color = {&"weapon": ITEM_WEAPON_FILL, &"skill": ITEM_SKILL_FILL, &"support": ITEM_SKILL_FILL.darkened(0.4)}.get(kind, color.darkened(0.55))
-	var cells := Inventory.cells_of(id, rot)
-	for c in cells:
-		var r := Rect2(at + Vector2(c) * cell_px, Vector2(cell_px, cell_px)).grow(-3)
+	var rects: Array[Rect2] = []
+	for c in Inventory.cells_of(id, rot):
+		rects.append(Rect2(at + Vector2(c) * cell_px, Vector2(cell_px, cell_px)))
+	draw_item_cells(ci, font, id, rects, rarity, alpha, weapon, hover_bond)
+
+
+# 同上，但每一格的位置自己給（rects，第一格寫字）：接在主袋側邊的袋子是轉過的，格子不一定照形狀排
+static func draw_item_cells(ci: CanvasItem, font: Font, id: StringName, rects: Array[Rect2], rarity: StringName, alpha: float, weapon: Dictionary = {}, hover_bond: StringName = &"") -> void:
+	var def: Dictionary = ItemDefs.ITEMS[id]
+	var color: Color = ItemDefs.RARITIES[rarity].color
+	var kind := item_kind(id)
+	var bonds := item_bonds(id, weapon)
+	var cell_px := rects[0].size.x
+	var fill: Color = {&"weapon": ITEM_WEAPON_FILL, &"skill": ITEM_SKILL_FILL, &"support": ITEM_SKILL_FILL.darkened(0.4), &"bag": ITEM_BAG_FILL}.get(kind, color.darkened(0.55))
+	for cr in rects:
+		var r := cr.grow(-3)
 		ci.draw_rect(r, Color(fill, 0.9 * alpha))
 		if kind == &"support":
 			draw_dashed_rect(ci, r, Color(color, alpha))
 		else:
 			ci.draw_rect(r, Color(color, alpha), false, 2.0)
-	var first: Vector2 = at + Vector2(cells[0]) * cell_px
+	var first: Vector2 = rects[0].position
 	var big := cell_px >= ITEM_BIG_CELL
 	if kind == &"skill":
 		var center := first + Vector2(cell_px, cell_px) / 2.0
@@ -217,15 +235,15 @@ static func draw_item(ci: CanvasItem, font: Font, id: StringName, at: Vector2, c
 				HORIZONTAL_ALIGNMENT_CENTER, cell_px, 34 if big else 20, Color(1, 1, 1, alpha))
 	elif cell_px >= ITEM_TEXT_CELL:
 		ci.draw_string(font, first + Vector2(6, cell_px * 0.36), String(def.name).substr(0, 4 if big else 2), HORIZONTAL_ALIGNMENT_LEFT, cell_px - 8, 22 if big else 15, Color(1, 1, 1, alpha))
-	if (kind == &"weapon" or kind == &"support") and cell_px >= ITEM_TEXT_CELL:
-		ci.draw_string(font, first + Vector2(6, cell_px - 9), "武器" if kind == &"weapon" else "輔助", HORIZONTAL_ALIGNMENT_LEFT, -1, 16 if big else 11, Color(1, 1, 1, 0.6 * alpha))
+	if kind in [&"weapon", &"support", &"bag"] and cell_px >= ITEM_TEXT_CELL:
+		ci.draw_string(font, first + Vector2(6, cell_px - 9), {&"weapon": "武器", &"support": "修飾", &"bag": "袋子"}[kind], HORIZONTAL_ALIGNMENT_LEFT, -1, 16 if big else 11, Color(1, 1, 1, 0.6 * alpha))
 	var dot_scale := 1.5 if big else 1.0
 	for i in bonds.size():
 		var dot_r := (5.0 if bonds[i] == hover_bond else 3.5) * dot_scale
 		ci.draw_circle(first + Vector2(cell_px - 9.0 * dot_scale * (i + 1), 9.0 * dot_scale), dot_r, Color(BondDefs.BONDS[bonds[i]].color, alpha))
 
 
-# 畫法用的種類：weapon / skill / support（輔助道具是 kind item、有 skill_support 能力）/ item / corpse
+# 畫法用的種類：weapon / skill / support（修飾是 kind item、有 skill_support 能力）/ item / bag / corpse
 static func item_kind(id: StringName) -> StringName:
 	var kind: StringName = ItemDefs.ITEMS[id].kind
 	if kind == &"item" and not ItemDefs.support_of(id).is_empty():
@@ -233,9 +251,9 @@ static func item_kind(id: StringName) -> StringName:
 	return kind
 
 
-# 物品屬於哪些羈絆：武器看「羈絆 +1」詞條，其他看道具資料
+# 物品屬於哪些羈絆（道具資料；武器沒有）
 static func item_bonds(id: StringName, weapon: Dictionary = {}) -> Array:
-	return WeaponDropDefs.bonds_of(weapon) if not weapon.is_empty() else ItemDefs.ITEMS[id].get("bonds", [])
+	return [] if not weapon.is_empty() else ItemDefs.ITEMS[id].get("bonds", [])
 
 
 static func draw_dashed_rect(ci: CanvasItem, r: Rect2, color: Color) -> void:

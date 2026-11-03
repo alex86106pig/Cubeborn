@@ -5,12 +5,13 @@
 # 效果（effects 的每一筆）有四種寫法：
 #   屬性      {"stat", "op", "value"}：放進身上就生效，以道具實例 id 為來源套進 sim/stats.gd（B6 已接上）
 #   條件屬性  {"when", "stat", "op", "value", ...}：條件成立時才生效（例如低血、翻滾後幾秒），參數見 CONDITIONS
-#   觸發      {"on", "do", "chance"?, ...}：事件發生時執行動作，參數見 TRIGGERS / ACTIONS；命中、普攻的時機看鑲在哪個部位（PART_TIMING）
+#   觸發      {"on", "do", "chance"?, ...}：放進觸發袋的效果（BagTriggers）：do 是動作、參數見 ACTIONS；on 只用來對到預設的袋子，chance 不看
 #   能力      {"ability", ...}：新增一種能力（二段跳、護盾），參數見 ABILITIES
 # 後三種有些已接上（IMPLEMENTED_*，效果在 sim/item_effects.gd），其他的只有資料：說明加「效果尚未實作」、寶箱不開出（LootDefs.drop_pool）
 class_name ItemDefs
 
 const BAG_SIZE := Vector2i(8, 6)   # 背包 8 × 6 格（暫定）
+const BLOCK_HIT_DAMAGE_PCT := 1.0   # 招架成功算右鍵命中：沒有「那一下的傷害」，右邊命中袋用武器基礎傷害的 100%（Player.pct_damage）
 
 # cells：道具占幾格（Build 改版第 5 步，要放得進武器格子）；同稀有度的形狀可以不同
 const RARITIES := {
@@ -64,19 +65,6 @@ const TRIGGERS := {
 	&"death": {"name": "死亡時"},
 	&"interval": {"name": "每隔固定秒數", "params": ["period"]},
 }
-
-# 發動時機看鑲在哪個部位的觸發（命中、普攻出手）；其他觸發放在哪個部位都照原本的時機
-const PART_TIMED_TRIGGERS: Array[StringName] = [&"hit", &"attack"]
-# 部位（WeaponDefs.PARTS 的字元）→ 上面兩種觸發在什麼時候發動；沒列的部位（握柄、寶石座）不發動。
-# 道具跨好幾個部位時每個部位各算一次（劍尖＋刃：連段最後一下發動兩次）
-const PART_TIMING := {
-	"A": {&"hit": "命中時", &"attack": "普攻出手時"},
-	"E": {&"hit": "連段最後一下命中時", &"attack": "連段最後一下出手時"},
-	"D": {&"hit": "格擋 / 招架成功時", &"attack": "格擋 / 招架成功時"},
-}
-# 拿著看部位的道具時畫在武器格子裡的短字（格子 50 px，最多 3 個字）
-const PART_TAGS := {"A": {&"hit": "命中", &"attack": "出手"}, "E": {&"hit": "連段末", &"attack": "連段末"}, "D": {&"hit": "格擋", &"attack": "格擋"}}
-const BLOCK_HIT_DAMAGE_PCT := 1.0   # 防禦部位的命中類觸發沒有「那一下的傷害」：用武器基礎傷害的 100%（Player.pct_damage）
 
 # 觸發後的動作；params = 必填參數
 const ACTIONS := {
@@ -149,6 +137,15 @@ const PROCS := {
 # kind：&"item" 道具 / &"weapon" 武器（weapon 對應 WeaponDefs，數值在那邊，這裡只放背包用的欄位）/ &"skill" 技能（只能鑲在寶石座，SkillDefs 同 id）
 # power 只有道具需要；武器的格數之後和背包一起定
 const ITEMS := {
+	# ---- 觸發袋（kind bag，BagDefs.BAGS）：掉在地上、放倉庫、遺物的選項；撿起來是 BagDefs.make 的袋子實例，倉庫裡占 2 格 ----
+	&"bag_cast": {"kind": &"bag", "name": "出手袋", "rarity": &"green", "shape": &"i2", "bonds": [], "desc": "接在左 / 右邊：普攻 / 右鍵出手時發動裡面的東西", "effects": []},
+	&"bag_hit": {"kind": &"bag", "name": "命中袋", "rarity": &"green", "shape": &"i2", "bonds": [], "desc": "接在左 / 右邊：普攻 / 右鍵打中時發動裡面的東西", "effects": []},
+	&"bag_kill": {"kind": &"bag", "name": "擊殺袋", "rarity": &"green", "shape": &"i2", "bonds": [], "desc": "接在左 / 右邊：普攻 / 右鍵打死怪時發動裡面的東西", "effects": []},
+	&"bag_hurt": {"kind": &"bag", "name": "受傷袋", "rarity": &"green", "shape": &"i2", "bonds": [], "desc": "接在下方：自己被打中時發動裡面的東西", "effects": []},
+	&"bag_roll": {"kind": &"bag", "name": "翻滾袋", "rarity": &"green", "shape": &"i2", "bonds": [], "desc": "接在下方：翻滾時發動裡面的東西", "effects": []},
+	&"bag_timer": {"kind": &"bag", "name": "計時袋", "rarity": &"green", "shape": &"i2", "bonds": [], "desc": "接在下方：每 3 秒發動裡面的東西", "effects": []},
+	&"bag_key": {"kind": &"bag", "name": "按鍵袋", "rarity": &"green", "shape": &"i2", "bonds": [], "desc": "接在上方：按數字鍵發動裡面的東西（由左到右是 1~4）", "effects": []},
+
 	# ---- 武器 ----
 	&"longsword": {"kind": &"weapon", "name": "長劍", "rarity": &"white", "shape": &"i3", "weapon": &"longsword",
 		"desc": "單手。左鍵三段斬擊；沒有副手時按住右鍵蓄力突刺", "effects": []},
@@ -409,34 +406,6 @@ static func is_implemented(effect: Dictionary) -> bool:
 	if effect.has("when") and not IMPLEMENTED_CONDITIONS.has(effect.when):
 		return false
 	return effect.has("stat") and StatDefs.STATS[effect.stat].in_use
-
-
-# 道具有沒有發動時機看部位的觸發；有的話回傳那個觸發（hit / attack），沒有回傳 &""
-static func part_timed_trigger(id: StringName) -> StringName:
-	for e: Dictionary in ITEMS[id].effects:
-		if PART_TIMED_TRIGGERS.has(e.get("on", &"")):
-			return e.on
-	return &""
-
-
-# Tab 說明的「發動」那行：parts 是道具碰到的部位字元（Inventory.parts_of）；不看部位的道具回傳 ""
-static func timing_line(id: StringName, parts: String) -> String:
-	var on := part_timed_trigger(id)
-	if on == &"":
-		return ""
-	var when: Array[String] = []
-	for part in parts:
-		if PART_TIMING.has(part) and not when.has(PART_TIMING[part][on]):
-			when.append(PART_TIMING[part][on])
-	return "發動：" + ("、".join(when) if not when.is_empty() else "不發動（鑲在攻擊部位、末端或防禦部位才會發動）")
-
-
-# 說明的「部位」那一行（使用者 2026-11-02：至少要知道這件放哪個部位有沒有差）：看部位的道具列出各部位什麼時候發動，其他的寫沒差
-static func part_line(id: StringName) -> String:
-	var on := part_timed_trigger(id)
-	if on == &"":
-		return "部位沒差：鑲在哪個部位效果都一樣"
-	return "部位有差：攻擊部位%s · 末端%s · 防禦部位%s · 握柄不發動" % [PART_TIMING.A[on], PART_TIMING.E[on], PART_TIMING.D[on]]
 
 
 # 道具的效果是不是全部都接上了

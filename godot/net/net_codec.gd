@@ -294,7 +294,7 @@ static func entity_fields(e: Entity) -> Array:
 	if e is Player:
 		var p := e as Player
 		a[E_ANIM] = p.anim
-		a[E_EXTRA] = [p.peer_id, p.weapon_id, p.roll_charges, p.is_downed, p.down_timer, p.revive_progress, p.parry_timer, p.dodge_timer, p.inventory.to_array(),
+		a[E_EXTRA] = [p.peer_id, p.weapon_id, p.roll_charges, p.is_downed, p.down_timer, p.revive_progress, p.parry_timer, p.dodge_timer, p.loadout.bags_to_array(),
 			p.weapon_slots.map(WeaponDropDefs.to_array), -p.stun_timer if p.grabbed_by != 0 else p.stun_timer, p.descended, p.dice, p.relic_id, p.skill_levels, snappedf(p.mana, 0.1), snappedf(p.view_facing(), 0.01)]
 		if p.weapon.attack.has("quiver"):   # 箭袋（短弓）：拿著有箭袋的弓才送，快照才不會變大
 			a[E_EXTRA].append_array([p.quiver, p.reload_timer])

@@ -1,4 +1,4 @@
-# 寶石座技能的檢查（Build 改版第 7 步）：鑲嵌規則、數字鍵順序、每個技能放得出來而且有效果、等級、輔助道具、技能遺物
+# 技能的檢查：按鍵袋（數字鍵順序、放置規則）、每個技能放得出來而且有效果、等級、同一袋的修飾、技能遺物
 class_name SkillChecks
 extends CheckKit
 
@@ -28,34 +28,36 @@ static func _targets(w: World) -> Array[Enemy]:
 	return out
 
 
-# 鑲嵌規則：寶石座只放技能、技能只放寶石座、只能鑲在能用的武器上；自動擺放先找主手、副手的寶石座，鑲不上進背包
+# 放置規則：主袋不放技能、袋子收技能與效果、倉庫什麼都收；自動擺放先找按鍵袋、滿了找別的袋子、都滿進倉庫；
+# 數字鍵 = 按鍵袋由左到右（袋子裡第一個技能），Q 是治療藥水；技能不算生效的數值道具
 static func check_gem_rules() -> String:
 	var s := _setup(&"longsword")
 	var p: Player = s[1]
-	p.loadout.equip_offhand_new(p, &"woodShield")
-	var main := p.loadout.container(Loadout.MAIN)
-	var gems: Array = main.mask.keys().filter(func(c: Vector2i) -> bool: return main.mask[c] == "G")
-	var plain: Array = main.mask.keys().filter(func(c: Vector2i) -> bool: return main.mask[c] == "A")
-	if not main.fits(&"whirlwind", gems[0], 0) or main.fits(&"whirlwind", plain[0], 0):
-		return "長劍的技能應只放得進寶石座"
-	if main.fits(&"whetstone", gems[0], 0) or main.fits(&"meteor", gems[0], 0):
-		return "寶石座不放一般道具、長劍的寶石座不放法杖的技能"
-	if not p.inventory.fits(&"meteor", Vector2i(0, 0), 0):
-		return "背包什麼技能都放得下"
+	var key: Dictionary = p.loadout.key_bags()[0]
+	if p.loadout.core.fits(&"whirlwind", Vector2i.ZERO, 0) or not Inventory.for_bag(key).fits(&"meteor", Vector2i.ZERO, 0) \
+			or Inventory.for_bag(key).fits(&"whetstone", Vector2i.ZERO, 0) or not p.inventory.fits(&"meteor", Vector2i.ZERO, 0):
+		return "主袋不放技能、袋子放技能不放數值道具、倉庫都放得下"
 	var a := p.add_item(&"whirlwind")
-	var b := p.add_item(&"shield_slam")
-	var c := p.add_item(&"meteor")
-	if p.loadout.find_item(a).where != Loadout.MAIN or p.loadout.find_item(b).where != Loadout.OFF or p.loadout.find_item(c).where != Loadout.BAG:
-		return "自動擺放：長劍的技能進主手、盾的進副手、用不了的進背包：%s / %s / %s" % [p.loadout.find_item(a).where, p.loadout.find_item(b).where, p.loadout.find_item(c).where]
-	# 數字鍵：主手的寶石座先，再來副手；Q 是治療藥水
-	if _slot_of(p, &"whirlwind") != 0 or _slot_of(p, &"shield_slam") != 1 or p.slots.get_slot(p, ActiveSlots.HEAL_INDEX).def.behavior != &"heal":
-		return "數字鍵順序：1 主手的技能、2 副手的技能、Q 治療藥水：%d / %d" % [_slot_of(p, &"whirlwind"), _slot_of(p, &"shield_slam")]
+	if p.loadout.find_item(a).get("where", -9) != 0:
+		return "技能應自動放進按鍵袋：%s" % [p.loadout.find_item(a)]
+	var key2 := _bag(p, &"key", &"top")
+	var b := _put(p, key2, &"shield_slam")
+	if b == &"" or _slot_of(p, &"whirlwind") != 0 or _slot_of(p, &"shield_slam") != 1 or p.slots.get_slot(p, ActiveSlots.HEAL_INDEX).def.behavior != &"heal":
+		return "數字鍵順序：1 左邊的按鍵袋、2 右邊的、Q 治療藥水：%d / %d" % [_slot_of(p, &"whirlwind"), _slot_of(p, &"shield_slam")]
+	key2.offset = 4
+	key.offset = 6
+	if _slot_of(p, &"whirlwind") != 1 or _slot_of(p, &"shield_slam") != 0:
+		return "按鍵袋換位置後數字鍵跟著換：%d / %d" % [_slot_of(p, &"whirlwind"), _slot_of(p, &"shield_slam")]
+	for id: StringName in [&"meteor", &"chain_bolt", &"volley", &"snipe", &"taunt", &"blessing", &"ambush"]:
+		p.add_item(id)
+	if not p.inventory.entries.any(func(e: Dictionary) -> bool: return ItemDefs.is_skill(e.id)):
+		return "兩個按鍵袋都滿了，技能應放進倉庫"
 	if p.items.any(func(it: Dictionary) -> bool: return ItemDefs.is_skill(it.id)):
-		return "寶石座的技能不算生效的道具"
+		return "技能不算生效的數值道具"
 	return ""
 
 
-# 每個技能：鑲在第一種能用的武器上，按數字鍵放出來，2.5 秒內打到旁邊的怪，或者有它自己的效果（煙、嘲諷、召喚、祝福、火把）
+# 每個技能：放進按鍵袋 1（不綁武器；照資料寫的武器拿著，動作才對），按數字鍵放出來，2.5 秒內打到旁邊的怪，或者有它自己的效果（煙、嘲諷、召喚、祝福、火把）
 static func check_every_skill() -> String:
 	for id: StringName in SkillDefs.gem_skill_ids():
 		var def: Dictionary = SkillDefs.SKILLS[id]
@@ -65,12 +67,8 @@ static func check_every_skill() -> String:
 		var p: Player = s[1]
 		if weapon == &"woodShield":
 			p.loadout.equip_offhand_new(p, &"woodShield")
-		if _slot_of(p, id) < 0:
-			for g: Dictionary in p.slots.gems(p).duplicate():   # 火把只有一個寶石座、出廠鑲著插火把：先拿下來
-				p.loadout.remove_item(p, g.entry.uid)
-			var uid := p.add_item(id)
-			if p.loadout.find_item(uid).get("where", Loadout.BAG) == Loadout.BAG:
-				return "%s 鑲不上 %s 的寶石座" % [ItemDefs.ITEMS[id].name, weapon]
+		if p.loadout.find_item(p.add_item(id)).get("where", -9) != 0:
+			return "%s 應放進按鍵袋" % ItemDefs.ITEMS[id].name
 		var targets := _targets(w)
 		var hp0 := targets.map(func(e: Enemy) -> float: return e.hp)
 		var torches := w.torches.size()
@@ -241,8 +239,8 @@ static func check_level_text() -> String:
 		return "技能欄：1 級不寫、2 級寫等級，實際「%s」「%s」" % [t1, t2]
 	return ""
 
-# 技能遺物的來源與保證：石棺必開出技能遺物、祭壇只開道具遺物；3 個選項至少 1 個是手上武器（主手或副手）能鑲、還沒滿級的技能，
-# 手上武器的技能都滿級了就照舊全隨機；保證的那個不固定在第一張
+# 技能遺物的來源與保證：石棺必開出技能遺物、祭壇只開道具遺物；身上有還沒滿級的技能時，3 個選項至少 1 個是它（升級）、
+# 不固定在第一張；都滿級了就照舊全隨機，選項照樣 3 個不重複
 static func _check_skill_relic_rules() -> String:
 	for tier: StringName in [&"big", &"small"]:
 		for i in 10:
@@ -257,42 +255,35 @@ static func _check_skill_relic_rules() -> String:
 			if relic.relic_kind != want:
 				return "%s 應開出%s遺物，實際 %s" % ["石棺" if tier == &"big" else "祭壇", "技能" if want == &"skill" else "道具", relic.relic_kind]
 	var first_hits := 0
-	for loadout: Array in [[&"longsword", &"woodShield"], [&"staff", &""], [&"dagger", &"dagger"]]:
-		for i in 30:
-			var s := _setup(loadout[0])
-			var w: World = s[0]
-			var p: Player = s[1]
-			if loadout[1] != &"":
-				p.loadout.equip_offhand_new(p, loadout[1])
-			var relic := w.drop_relic(&"big", p.pos + Vector2(1, 0), &"skill")
-			relic.open_for(p)
-			var offer: Array = relic.offers[p.peer_id]
-			var own := offer.filter(func(id: StringName) -> bool: return Relic._fits_hands(p, id))
-			if own.is_empty():
-				return "%s 的技能遺物選項應至少 1 個手上武器能用：%s" % [loadout, offer]
-			var uniq := {}
-			for id: StringName in offer:
-				uniq[id] = true
-			if offer.size() != 3 or uniq.size() != 3:
-				return "技能遺物應有 3 個不重複的選項：%s" % [offer]
-			if Relic._fits_hands(p, offer[0]):
-				first_hits += 1
-	if first_hits == 90:
+	for i in 30:
+		var s := _setup(&"longsword")
+		var w: World = s[0]
+		var p: Player = s[1]
+		p.add_item(&"whirlwind")
+		var relic := w.drop_relic(&"big", p.pos + Vector2(1, 0), &"skill")
+		relic.open_for(p)
+		var offer: Array = relic.offers[p.peer_id]
+		var uniq := {}
+		for id: StringName in offer:
+			uniq[id] = true
+		if not offer.has(&"whirlwind") or offer.size() != 3 or uniq.size() != 3:
+			return "有還沒滿級的旋風斬時，技能遺物應有 3 個不重複的選項、其中一個是旋風斬：%s" % [offer]
+		if offer[0] == &"whirlwind":
+			first_hits += 1
+	if first_hits == 30:
 		return "保證的技能每次都在第一張，應打亂順序"
-	# 手上武器的技能都滿級：不保證（照舊全隨機），選項照樣是 3 個技能
 	var s3 := _setup(&"longsword")
 	var p3: Player = s3[1]
-	for id: StringName in SkillDefs.relic_pool():
-		if Relic._fits_hands(p3, id):
-			p3.skill_levels[id] = SkillDefs.LEVEL.max
+	p3.add_item(&"whirlwind")
+	p3.skill_levels[&"whirlwind"] = SkillDefs.LEVEL.max
 	var r3 := (s3[0] as World).drop_relic(&"big", p3.pos + Vector2(1, 0), &"skill")
 	r3.open_for(p3)
 	if (r3.offers[p3.peer_id] as Array).size() != 3:
-		return "手上武器的技能都滿級時照樣要有 3 個選項：%s" % [r3.offers[p3.peer_id]]
+		return "技能都滿級時照樣要有 3 個選項：%s" % [r3.offers[p3.peer_id]]
 	return ""
 
 
-# 輔助道具：貼著寶石座、標籤相符才有效——延長讓範圍變大、火焰化改成火焰、分裂再放一次；隔開一格或標籤不符沒效
+# 修飾：跟技能放在同一袋、標籤相符才有效——延長讓範圍變大、火焰化改成火焰、分裂再放一次；放在別的袋子沒效
 static func check_supports() -> String:
 	var r: float = SkillDefs.SKILLS.whirlwind.radius
 	var far_d := r * 1.3
@@ -301,39 +292,37 @@ static func check_supports() -> String:
 		var s := _setup(&"longsword")
 		var w: World = s[0]
 		var p: Player = s[1]
-		var gem := _gem_cell(p, Loadout.MAIN)
-		p.loadout.add_item(p, &"whirlwind", {"cell": gem, "rot": 0}, 0, Loadout.MAIN)
+		var key: Dictionary = p.loadout.key_bags()[0]
+		_put(p, key, &"whirlwind")
 		if with_support:
-			p.loadout.add_item(p, &"extend_support", {"cell": gem + Vector2i(-1, 0), "rot": 0}, 0, Loadout.MAIN)
+			_put(p, key, &"extend_support")
 		var e := LootChecks._item_dummy(w, Vector2(0, far_d), 100000.0)
 		var hp0 := e.hp
 		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
 		if (e.hp < hp0) != with_support:
-			return "延長%s時 %.1f 單位的怪%s打到" % ["貼著" if with_support else "沒有", far_d, "應" if with_support else "不該"]
-	# 火焰化：傷害改成火焰；不貼著（隔一格）就沒效
-	for adjacent in [true, false]:
+			return "延長%s時 %.1f 單位的怪%s打到" % ["同一袋" if with_support else "沒有", far_d, "應" if with_support else "不該"]
+	# 火焰化：傷害改成火焰；放在另一個袋子就沒效
+	for same_bag in [true, false]:
 		var s := _setup(&"longsword")
 		var w: World = s[0]
 		var p: Player = s[1]
-		var gem := _gem_cell(p, Loadout.MAIN)
-		p.loadout.add_item(p, &"whirlwind", {"cell": gem, "rot": 0}, 0, Loadout.MAIN)
-		var spot := gem + Vector2i(0, 1) if adjacent else Vector2i(1, 1)   # 正下方（橫放）貼著；第 1 列離寶石座兩格
-		if not p.loadout.container(Loadout.MAIN).fits(&"fire_support", spot, 0):
-			return "火焰化放不進長劍 %s" % spot
-		p.loadout.add_item(p, &"fire_support", {"cell": spot, "rot": 0}, 0, Loadout.MAIN)
+		var key: Dictionary = p.loadout.key_bags()[0]
+		_put(p, key, &"whirlwind")
+		if _put(p, key if same_bag else _bag(p, &"key", &"top"), &"fire_support") == &"":
+			return "火焰化放不進按鍵袋"
 		LootChecks._item_dummy(w, Vector2(0, 1.5), 100000.0)
 		var events: Array[Dictionary] = []
-		_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1, events)
+		_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(_slot_of(p, &"whirlwind"))), 1, events)
 		var fire := _named(events, "entity:damaged").any(func(ev: Dictionary) -> bool: return ev.get("damage_type", &"phys") == &"fire")
-		if fire != adjacent:
-			return "火焰化%s時旋風斬%s是火焰傷害" % ["貼著" if adjacent else "沒貼著", "應" if adjacent else "不該"]
-	# 分裂：SPLIT_DELAY 秒後再打一次（傷害 SPLIT_MUL）；嘲諷（防禦標籤）旁邊放分裂沒效
+		if fire != same_bag:
+			return "火焰化%s時旋風斬%s是火焰傷害" % ["同一袋" if same_bag else "在別的袋子", "應" if same_bag else "不該"]
+	# 分裂：SPLIT_DELAY 秒後再打一次（傷害 SPLIT_MUL）
 	var s3 := _setup(&"longsword")
 	var w3: World = s3[0]
 	var p3: Player = s3[1]
-	var g3 := _gem_cell(p3, Loadout.MAIN)
-	p3.loadout.add_item(p3, &"whirlwind", {"cell": g3, "rot": 0}, 0, Loadout.MAIN)
-	p3.loadout.add_item(p3, &"split_support", {"cell": g3 + Vector2i(-1, 0), "rot": 1}, 0, Loadout.MAIN)   # 左邊直放
+	var k3: Dictionary = p3.loadout.key_bags()[0]
+	_put(p3, k3, &"whirlwind")
+	_put(p3, k3, &"split_support")
 	var e3 := LootChecks._item_dummy(w3, Vector2(0, 1.5), 100000.0)
 	e3.set_resists({})
 	var ev3: Array[Dictionary] = []
@@ -342,33 +331,24 @@ static func check_supports() -> String:
 	var hits := _named(ev3, "entity:damaged").filter(func(ev: Dictionary) -> bool: return ev.target_id == e3.id)
 	if hits.size() != 2 or absf(hits[1].amount / hits[0].amount - SkillBehaviors.SPLIT_MUL) > 0.02:
 		return "分裂：應打 2 次、第二次 ×%.1f：%s" % [SkillBehaviors.SPLIT_MUL, hits.map(func(ev: Dictionary) -> float: return ev.amount)]
-	# 耗魔：一般輔助每顆 × (1 + 強度 × SUPPORT_MANA)，節能 × mana_mul；技能欄顯示與實際扣的一樣
+	# 耗魔：一般修飾每顆 × (1 + 強度 × SUPPORT_MANA)，節能 × mana_mul；技能欄顯示與實際扣的一樣
 	var s4 := _setup(&"longsword")
 	var w4: World = s4[0]
 	var p4: Player = s4[1]
-	var g4 := _gem_cell(p4, Loadout.MAIN)
-	p4.loadout.add_item(p4, &"whirlwind", {"cell": g4, "rot": 0}, 0, Loadout.MAIN)
+	var k4: Dictionary = p4.loadout.key_bags()[0]
+	_put(p4, k4, &"whirlwind")
 	var base_cost := ActiveSlots.mana_cost(p4, p4.slots.get_slot(p4, 0))
-	p4.loadout.add_item(p4, &"extend_support", {"cell": g4 + Vector2i(-1, 0), "rot": 0}, 0, Loadout.MAIN)
+	_put(p4, k4, &"extend_support")
 	var with_extend := ActiveSlots.mana_cost(p4, p4.slots.get_slot(p4, 0))
 	var want_extend: float = base_cost * (1.0 + ItemDefs.ITEMS.extend_support.power * SkillDefs.SUPPORT_MANA)
-	if not p4.loadout.container(Loadout.MAIN).fits(&"conserve_support", g4 + Vector2i(0, 1), 0):
-		return "節能放不進長劍寶石座正下方"
-	p4.loadout.add_item(p4, &"conserve_support", {"cell": g4 + Vector2i(0, 1), "rot": 0}, 0, Loadout.MAIN)
+	if _put(p4, k4, &"conserve_support") == &"":
+		return "節能放不進按鍵袋"
 	var both := ActiveSlots.mana_cost(p4, p4.slots.get_slot(p4, 0))
 	var want_both: float = want_extend * ItemDefs.support_of(&"conserve_support").mana_mul
 	p4.set_stat_source(&"test", [[&"mana_regen", Stats.MUL, 0.0]])
 	var m0 := p4.mana
 	_run(w4, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
 	if absf(with_extend - want_extend) > 1e-3 or absf(both - want_both) > 1e-3 or absf(m0 - p4.mana - want_both) > 1e-3:
-		return "輔助耗魔：旋風斬 %.1f，加延長應 %.2f（%.2f）、再加節能應 %.2f（%.2f）、實際扣 %.2f" % [base_cost, want_extend, with_extend, want_both, both, m0 - p4.mana]
-	_note("輔助耗魔：旋風斬 %.1f → 延長 %.2f → 延長 + 節能 %.2f" % [base_cost, with_extend, both])
+		return "修飾耗魔：旋風斬 %.1f，加延長應 %.2f（%.2f）、再加節能應 %.2f（%.2f）、實際扣 %.2f" % [base_cost, want_extend, with_extend, want_both, both, m0 - p4.mana]
+	_note("修飾耗魔：旋風斬 %.1f → 延長 %.2f → 延長 + 節能 %.2f" % [base_cost, with_extend, both])
 	return ""
-
-
-# 那隻手武器的第一個寶石座（由上到下）
-static func _gem_cell(p: Player, where: int) -> Vector2i:
-	var inv := p.loadout.container(where)
-	var gems: Array = inv.mask.keys().filter(func(c: Vector2i) -> bool: return inv.mask[c] == "G")
-	gems.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y or (a.y == b.y and a.x < b.x))
-	return gems[0]

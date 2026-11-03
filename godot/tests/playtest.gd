@@ -32,7 +32,7 @@ func _initialize() -> void:
 		"真的會死" if opts.get("death", "revive") == "real" else ("第 %s 小關起真的會死" % opts["real-from"] if opts.has("real-from") else "倒下原地救起")]
 	var lines: Array[String] = ["# 自動試玩", "", "職業 %s、打法 %s、%s、%d 層、種子 %s；背包 %d × %d = %d 格" % [",".join(PackedStringArray(classes)),
 		opts.get("style", "full"), how, floors, str(seeds), ItemDefs.BAG_SIZE.x, ItemDefs.BAG_SIZE.y, ItemDefs.BAG_SIZE.x * ItemDefs.BAG_SIZE.y], "",
-		"| 種子 | 層 | 時間 | 殺怪（怪群 / 事件 / Boss / 召喚） | 掉武器（白綠藍紫橘） | 撿到 | 背包武器格 | 背包滿的時間 | 地上沒撿 | 靈魂 賺到 / 花掉（開幾箱） | 技能（等級）· 放幾次 | 羈絆 | 翻滾 / 跳 / 擋 / 喝藥 / 換武器 / 丟 / 搬上武器 / 重擲 / 救人 | 受傷 / 倒下（最多被哪招） | 結果 | 最痛的招 |",
+		"| 種子 | 層 | 時間 | 殺怪（怪群 / 事件 / Boss / 召喚） | 掉武器（白綠藍紫橘） | 撿到 | 背包武器格 | 背包滿的時間 | 地上沒撿 | 靈魂 賺到 / 花掉（開幾箱） | 技能（等級）· 放幾次 | 羈絆 | 翻滾 / 跳 / 擋 / 喝藥 / 換武器 / 丟 / 搬進袋子 / 重擲 / 救人 | 受傷 / 倒下（最多被哪招） | 結果 | 最痛的招 |",
 		"|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
 	var cleared := 0
 	var total := 0
@@ -149,9 +149,10 @@ func _row(w: World, b: Variant, seed_value: int, t: float, timeout: String, kill
 			picked += 1
 			cells += Inventory.cells_of(x.id, x.rot).size()
 	var gems: Array[String] = []
-	for g in p.slots.gems(p):
-		if g.def.has("mana"):
-			gems.append("%s %d" % [ItemDefs.ITEMS[g.id].name, p.skill_levels.get(g.id, 1)])
+	for key in p.loadout.key_bags():
+		for e in key.entries:
+			if ItemDefs.is_skill(e.id) and SkillDefs.SKILLS[e.id].has("mana"):
+				gems.append("%s %d" % [ItemDefs.ITEMS[e.id].name, p.skill_levels.get(e.id, 1)])
 	var skills := "%s · %d" % ["、".join(PackedStringArray(gems)) if not gems.is_empty() else "無", b.casts]
 	var top := ""
 	var top_n := 0

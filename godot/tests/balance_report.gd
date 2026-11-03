@@ -226,11 +226,9 @@ func _skill_hit(id: StringName, pack: bool) -> Vector2:
 	var w: World = s[0]
 	var p: Player = s[1]
 	if _slot_of(p, id) < 0:
-		for g: Dictionary in p.slots.gems(p).duplicate():   # 火把出廠鑲著插火把：先拿下來
-			p.loadout.remove_item(p, g.entry.uid)
-		p.add_item(id)
+		p.add_item(id)   # 放進按鍵袋 1
 	var idx := _slot_of(p, id)
-	assert(idx >= 0, "%s 鑲不上 %s" % [id, wid])
+	assert(idx >= 0, "%s 放不進按鍵袋" % id)
 	var self_centered: bool = def.behavior in [&"nova", &"cone"]
 	var dist := _range_of(wid)
 	match def.behavior:

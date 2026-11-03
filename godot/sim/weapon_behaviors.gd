@@ -50,6 +50,8 @@ static func shot_params(p: Player, def: Dictionary, dir: Vector2) -> Dictionary:
 
 static func spawn_projectile(p: Player, params: Dictionary) -> void:
 	params["owner"] = p
+	if not params.has("attack"):
+		params["attack"] = p.attack_tag()   # 飛到才打中：出手時記下是普攻還是右鍵（觸發袋分左右）
 	params["altitude"] = p.height + Config.HEIGHT.bolt_altitude
 	params["settle_altitude"] = Config.HEIGHT.bolt_altitude
 	params["settle_distance"] = Config.HEIGHT.bolt_settle_distance

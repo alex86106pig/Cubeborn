@@ -29,13 +29,14 @@ var loadout := Loadout.new()           # 裝備欄、背包、生效的道具（
 var weapon_slots: Array[Dictionary]:   # [主手, 副手]（Loadout.MAIN / OFF）：武器實例（WeaponDropDefs）或 {}
 	get:
 		return loadout.weapon_slots
-var items: Array[Dictionary]:          # 生效的道具實例 { uid, id }（鑲在主手 / 副手格子上的）；uid 同時是屬性加成的來源名稱
+var items: Array[Dictionary]:          # 生效的數值道具 { uid, id }（主袋裡的）；uid 同時是屬性加成的來源名稱
 	get:
 		return loadout.items
-var inventory: Inventory:              # 背包的擺放（D3）；只放東西，沒有效果
+var inventory: Inventory:              # 倉庫（只放東西，沒有效果）；主袋與袋子在 loadout.core / bags
 	get:
 		return loadout.inventory
 var _applied_weapon_uid := &""
+var cursed_sources: Array[StringName] = []   # 接著的詛咒袋套上的缺點（屬性來源 curse:<袋子 uid>，Loadout._refresh_curses）
 var _air_jumps_used := 0               # 這次離地後用掉的空中跳躍（落地歸零）
 var descended := false                 # 已離開這一層、等其他人（不見、不能被打）；換層改成墳墓互動 + 投票後沒有地方設成 true，畫面與快照仍支援
 var stun_timer := 0.0                  # 暈眩剩餘秒數（v0.27.0：Boss 衝鋒撞到）：不能移動、出招、翻滾、跳
@@ -103,6 +104,7 @@ func _init(p_world: World, p_peer_id: int) -> void:
 	action = StateMachine.new(self, PlayerStates.action_states())
 	equip_weapon(Config.PLAYER.start_weapon)
 	loadout.equip_offhand_new(self, Config.PLAYER.start_offhand)
+	loadout.setup_start_bags(self, ClassDefs.NONE)
 	roll_charges = roll_max()
 	_update_anim()
 
@@ -510,7 +512,7 @@ func apply_cmd(cmd: InputCmd) -> void:
 	view_tick = cmd.view_tick
 
 
-# 套用職業（F2）：基礎數值、起始武器、被動（屬性來源 &"class"）；開局時 World.reset 呼叫，NONE 不改
+# 套用職業（F2）：基礎數值、起始武器、起始的袋子與技能、被動（屬性來源 &"class"）；開局時 World.reset 呼叫，NONE 不改
 func apply_class(id: StringName) -> void:
 	class_id = id
 	if id == ClassDefs.NONE:
@@ -521,6 +523,7 @@ func apply_class(id: StringName) -> void:
 	set_stat_source(&"class", c.passive.get("mods", []))
 	equip_weapon(c.weapon)
 	loadout.equip_offhand_new(self, c.get("offhand", &""))
+	loadout.setup_start_bags(self, id)   # 按鍵袋 1 裝著起始技能 + 職業的小觸發袋（BagDefs.START）
 	hp = max_hp
 	mana = max_mana()
 	roll_charges = roll_max()
@@ -564,7 +567,6 @@ func apply_active_weapon() -> void:
 		remove_stat_source(&"offhand")
 	else:
 		set_stat_source(&"offhand", WeaponDropDefs.offhand_mods(off))
-	loadout.refresh_items(self)   # 鑲在主手 / 副手上的道具才生效
 
 
 # 只換招式資料與模型（客戶端畫別人的角色也用這個）；force 時同一種也重設連段與動作
@@ -581,6 +583,15 @@ func show_weapon(id: StringName, force := false) -> void:
 	combo_step = 0
 	combo_timer = 0.0
 	action.change(&"ready")
+
+
+# 現在的攻擊算哪一邊（觸發袋）：普攻 &"primary"、右鍵招式 &"secondary"、其他（技能、翻滾、待機）&""
+func attack_tag() -> StringName:
+	if action.is_in(&"attack"):
+		return &"primary"
+	if action.is_in(&"special"):
+		return &"secondary"
+	return &""
 
 
 # 主手的武器實例（稀有度光、HUD 的武器名稱）

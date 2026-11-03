@@ -568,9 +568,9 @@ static func check_net_items() -> String:
 	var hp2: Player = hw.players[2]
 	hp1.pos = Vector2(0, 0)
 	hp2.pos = Vector2(2, 0)
-	for i in 5:
-		hp1.add_item(&"army_of_dead")   # 20% × 5 = 一定召喚
-	hp1.add_item(&"wisp_lantern")
+	var kill_bag := CheckKit._bag(hp1, &"kill", &"left")   # 普攻打死就召喚、放鬼火（觸發袋沒有機率）
+	CheckKit._put(hp1, kill_bag, &"army_of_dead")
+	CheckKit._put(hp1, kill_bag, &"wisp_lantern")
 	hp2.add_item(&"bone_buckler")
 	hp2.add_item(&"guardian_spirit")
 	var idle := func(n: int) -> void:
@@ -584,7 +584,7 @@ static func check_net_items() -> String:
 	var prey: Enemy = hw.spawner.spawn_at(hw, &"grunt", Vector2(0, 3))
 	prey.stats.set_base(&"max_hp", 1.0)
 	prey.hp = 1.0
-	Combat.apply_damage(hw, hp1, prey, {"damage": 20.0})
+	Combat.apply_damage(hw, hp1, prey, {"damage": 20.0, "attack": &"primary"})
 	var wisps := hw.projectiles.filter(func(e: Entity) -> bool: return (e as Projectile).homing > 0.0)
 	if hw.allies.size() != 1 or wisps.size() != 1:
 		return "房主擊殺應召喚 1 隻僕從、放 1 顆鬼火：%d / %d" % [hw.allies.size(), wisps.size()]

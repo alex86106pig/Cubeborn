@@ -1,21 +1,25 @@
-# 玩家的裝備與背包（2026-10-25 從 Player 拆出來）：主手與副手（Build 改版）、背包擺放（D3，Inventory）、生效的道具、
-# 背包操作（InputCmd.inv_ops）、撿起武器 / 道具 / 屍體、合成、丟棄
-# 規則：主手一定有武器；單手武器可以再拿副手，雙手武器不行（WeaponDefs.can_hold）；主手與副手的詞條都生效；
-# 道具鑲在主手 / 副手的格子上才生效（Build 改版第 3 步），鑲的道具跟著武器實例走（inst.sockets）；背包只放東西，沒有效果
+# 玩家的裝備與背包：主手與副手、倉庫（inventory，不生效）、主袋（core，數值道具生效）、接在主袋四邊的觸發袋（bags）、
+# 背包操作（InputCmd.inv_ops）、撿起武器 / 道具 / 袋子 / 屍體、合成、丟棄（規則在 docs/設計方向.md「觸發袋」）
+# 規則：主手一定有武器；單手武器可以再拿副手，雙手武器不行（WeaponDefs.can_hold）；武器只放倉庫或拿在手上
+# 放東西的地方用 where 表示：BAG 倉庫、CORE 主袋、0 以上是 bags 的第幾個（接著的觸發袋）
+# 袋子的效果怎麼發動在 BagTriggers；這裡只管擺放、生效的數值道具與羈絆（最大同色區塊）
 # 不存 Player（Player 持有 Loadout，反過來存會變成循環參照）：要發事件、套屬性、換招式時由呼叫端傳入 p
 class_name Loadout
 extends RefCounted
 
-const MAIN := 0
+const MAIN := 0    # weapon_slots 的主手 / 副手
 const OFF := 1
-const BAG := -1    # 道具放哪裡：BAG 背包、MAIN / OFF 主手 / 副手的武器格子
-const AUTO := -2   # 自動：主手格子 → 副手格子 → 背包，第一個放得下的
+const BAG := -1    # 倉庫
+const AUTO := -2   # 自動：照分類找主袋或袋子，放不下進倉庫
+const CORE := -3   # 主袋
 
 var weapon_slots: Array[Dictionary] = [{}, {}]   # [主手, 副手]：武器實例（WeaponDropDefs）或 {}
-var branches := {}                     # 手上武器的分支詞條（WeaponDropDefs kind branch，第 8c 步）：id → true，refresh_items 同步
-var bond_counts := {}                  # 羈絆 → 件數（BondDefs；鑲在兩隻手上、同一種只算 1 件，refresh_items 同步）
-var items: Array[Dictionary] = []     # 生效的道具實例 { uid, id, parts, mul }（鑲在主手 / 副手上的，refresh_items 同步）；uid 同時是屬性加成的來源名稱，parts 是碰到的部位字元（發動時機）、mul 是印記格倍率
-var inventory := Inventory.new()       # 背包的擺放（只放東西）
+var branches := {}                     # 武器的分支詞條（觸發袋改版後沒有詞條，留空給 BondEffects.has_branch）
+var bond_counts := {}                  # 羈絆 → 最大同色區塊的格數（主袋與袋子一起算，refresh_items 同步）
+var items: Array[Dictionary] = []     # 生效的數值道具 { uid, id }（主袋裡的）；uid 同時是屬性加成的來源名稱
+var inventory := Inventory.new()       # 倉庫（只放東西）
+var core := Inventory.core()           # 主袋
+var bags: Array[Dictionary] = []       # 接著的觸發袋（BagDefs.make 的實例，side 不是空的）
 var _next_item_uid := 1
 var _ops: Array = []                   # 本步收到的背包操作（InputCmd.inv_ops），只在權威端執行
 
@@ -39,18 +43,16 @@ func equipped_count() -> int:
 	return weapon_slots.filter(func(s: Dictionary) -> bool: return not s.is_empty()).size()
 
 
-# 換層：裝備欄與背包裡武器的技能次數補滿（火把的插火把；掉在地上的不補）
+# 換關：袋子裡次數制的技能（插火把）補滿
 func refill_slot_charges() -> void:
-	for inst in weapon_slots:
-		inst.erase("slot_charges")
-	for e in inventory.entries:
-		if e.has("weapon"):
-			e.weapon.erase("slot_charges")
+	for bag in bags:
+		for e: Dictionary in bag.entries:
+			e.erase("charges")
 
 
 func _new_white(p: Player, id: StringName) -> Dictionary:
 	assert(WeaponDefs.WEAPONS.has(id), "Unknown weapon: %s" % id)
-	return WeaponDropDefs.add_builtin_skill({"uid": p.world.new_weapon_uid(), "base": id, "rarity": &"white", "affixes": [] as Array[StringName]})
+	return {"uid": p.world.new_weapon_uid(), "base": id, "rarity": &"white", "affixes": [] as Array[StringName]}
 
 
 # 換上一把新的白色武器（開場、--weapon、武器測試場、測試與除錯用；正式取得武器走 add_weapon）：
@@ -72,14 +74,154 @@ func equip_offhand_new(p: Player, id: StringName) -> void:
 	p.apply_active_weapon()
 
 
-# 撿起地上的道具 / 武器 / 屍體，放進去就移除地上那個；spot（{ cell, rot }）空 = 自動放，否則放到背包的 spot（呼叫端先確認放得下）
-# where：道具放哪（AUTO / BAG / MAIN / OFF，見 add_item）；武器與屍體只會進背包
+# ── 袋子 ──
+
+func new_uid(prefix: String) -> StringName:
+	var uid := StringName("%s_%d" % [prefix, _next_item_uid])
+	_next_item_uid += 1
+	return uid
+
+
+# 開局的袋子（Player.apply_class / 沒選職業）：清空主袋與袋子，接上按鍵袋 1（裝著起始技能）與職業的小觸發袋
+func setup_start_bags(p: Player, class_id: StringName) -> void:
+	core.entries.clear()
+	bags.clear()
+	var start: Dictionary = BagDefs.START.get(class_id, {})
+	var key := BagDefs.make(new_uid("bag"), &"key")
+	_attach(key, &"top", 0)
+	if start.has("skill"):
+		Inventory.for_bag(key).add(new_uid("item"), start.skill, Vector2i.ZERO, 0)
+	if start.has("bag"):
+		var b := BagDefs.make(new_uid("bag"), start.bag[0])
+		var spot := attach_spot(b, start.bag[1])
+		if not spot.is_empty():
+			_attach(b, spot.side, spot.offset)
+	refresh_items(p)
+
+
+# 袋子 b 能不能接在 side 的 offset（ignore：當作那個袋子不在，搬自己的位置用）：邊對、在邊長內、不跟同一邊別的袋子重疊、按鍵袋不超過上限
+func bag_fits(b: Dictionary, side: StringName, offset: int, ignore := &"") -> bool:
+	if not (BagDefs.BAGS[b.kind].sides as Array).has(side) or offset < 0 or offset + b.length > BagDefs.edge_length(side):
+		return false
+	var same_kind := 0
+	for o in bags:
+		if o.uid == ignore or o.uid == b.uid:
+			continue
+		if o.kind == b.kind:
+			same_kind += 1
+		if o.side == side and offset < o.offset + o.length and o.offset < offset + b.length:
+			return false
+	return same_kind < BagDefs.BAGS[b.kind].get("max", 1 << 20)
+
+
+# 第一個接得下的位置（side 空 = 照 BagDefs.SIDE_ORDER 試這種袋子能接的每一邊）：{ side, offset }；接不下回傳 {}
+func attach_spot(b: Dictionary, side := &"") -> Dictionary:
+	var sides: Array = [side] if side != &"" else BagDefs.SIDE_ORDER.filter(func(s: StringName) -> bool: return (BagDefs.BAGS[b.kind].sides as Array).has(s))
+	for s: StringName in sides:
+		for off in BagDefs.edge_length(s) - b.length + 1:
+			if bag_fits(b, s, off):
+				return {"side": s, "offset": off}
+	return {}
+
+
+func _attach(b: Dictionary, side: StringName, offset: int) -> void:
+	b.side = side
+	b.offset = offset
+	if not bags.has(b):
+		bags.append(b)
+
+
+func find_bag(uid: StringName) -> Dictionary:
+	for b in bags:
+		if b.uid == uid:
+			return b
+	var e := inventory.find(uid)
+	return e.bag if e.has("bag") else {}
+
+
+# 撿到一個新的袋子：接得上就接（照 SIDE_ORDER 找第一個空位），不然放倉庫；都放不下回傳 &""、發出 inventory:full
+func add_bag(p: Player, kind: StringName, tier: StringName = &"small", spot: Dictionary = {}, pickup_id := 0) -> StringName:
+	var b := BagDefs.make(new_uid("bag"), kind, tier)
+	var where := attach_spot(b) if spot.is_empty() else {}
+	if not where.is_empty():
+		_attach(b, where.side, where.offset)
+	else:
+		if spot.is_empty():
+			spot = inventory.find_spot(BagDefs.BAGS[kind].item)
+		if spot.is_empty():
+			_emit_full(p, BagDefs.BAGS[kind].item, pickup_id)
+			return &""
+		b.side = &""
+		inventory.add(b.uid, BagDefs.BAGS[kind].item, spot.cell, spot.rot, {"bag": b})
+	refresh_items(p)
+	p.world.emit_event("item:added", {"player_id": p.id, "item": String(BagDefs.BAGS[kind].item), "uid": String(b.uid)})
+	return b.uid
+
+
+# 袋子搬到 side 的 offset（從倉庫接上、或沿著邊滑動 / 換邊）；side 空 = 拿下來放倉庫（cell / rot 是倉庫的位置，沒給就找空位）
+func _place_bag(p: Player, uid: StringName, side: StringName, offset: int, cell := Vector2i(-1, -1), rot := 0) -> bool:
+	var stored := inventory.find(uid)
+	var b: Dictionary = stored.bag if stored.has("bag") else {}
+	var attached := b.is_empty()
+	if attached:
+		for o in bags:
+			if o.uid == uid:
+				b = o
+	if b.is_empty():
+		return false
+	if side == &"":
+		if not attached:
+			return cell.x >= 0 and inventory.move(uid, cell, rot)
+		var item: StringName = BagDefs.BAGS[b.kind].item
+		var spot := {"cell": cell, "rot": rot} if cell.x >= 0 and inventory.fits(item, cell, rot) else inventory.find_spot(item)
+		if spot.is_empty():
+			return false
+		bags.erase(b)
+		b.side = &""
+		inventory.add(uid, item, spot.cell, spot.rot, {"bag": b})
+	else:
+		if not bag_fits(b, side, offset, uid):
+			return false
+		if not attached:
+			inventory.remove(uid)
+		_attach(b, side, offset)
+	refresh_items(p)
+	return true
+
+
+# 接著的按鍵袋，由左到右（數字鍵 1~4）
+func key_bags() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for b in bags:
+		if b.kind == &"key":
+			out.append(b)
+	out.sort_custom(func(a: Dictionary, c: Dictionary) -> bool: return a.offset < c.offset)
+	return out
+
+
+# 袋子格子 c 在整張盤上的座標（主袋左上角 (0, 0)；同色區塊與畫面用）
+static func board_cell(b: Dictionary, c: Vector2i) -> Vector2i:
+	match b.side:
+		&"top":
+			return Vector2i(b.offset + c.x, -1 - c.y)
+		&"bottom":
+			return Vector2i(b.offset + c.x, BagDefs.MAIN_SIZE.y + c.y)
+		&"left":
+			return Vector2i(-1 - c.y, b.offset + c.x)
+	return Vector2i(BagDefs.MAIN_SIZE.x + c.y, b.offset + c.x)
+
+
+# ── 撿東西 ──
+
+# 撿起地上的道具 / 武器 / 袋子 / 屍體，放進去就移除地上那個；spot（{ cell, rot }）空 = 自動放，否則放到 where 的 spot（呼叫端先確認放得下）
 func take_pickup(p: Player, ip: ItemPickup, spot: Dictionary = {}, where := AUTO) -> bool:
 	var taken: bool
 	if ip.corpse_of != 0:
 		taken = add_corpse(p, ip.corpse_of, spot, ip.id)
 	elif ip.is_weapon():
 		taken = add_weapon(p, ip.weapon, spot, ip.id)
+	elif ItemDefs.ITEMS[ip.item_id].kind == &"bag":
+		taken = add_bag(p, BagDefs.kind_of_item(ip.item_id), &"small", spot, ip.id) != &""
 	else:
 		taken = add_item(p, ip.item_id, spot, ip.id, BAG if where == AUTO and not spot.is_empty() else where) != &""
 	if taken:
@@ -92,8 +234,8 @@ func _emit_full(p: Player, item: StringName, pickup_id: int) -> void:
 	p.world.emit_event("inventory:full", {"player_id": p.id, "item": String(item), "pickup_id": pickup_id})
 
 
-# 撿到武器（D4）：主手空著放主手；副手空著、撿到的是盾而且拿得動放副手（單手武器不自動放副手，免得右鍵突然變了）；
-# 其他放背包；都放不下回傳 false、發出 inventory:full。指定 spot 時直接放到背包的那一格（背包介面從「腳邊」拖進來）
+# 撿到武器：主手空著放主手；副手空著、撿到的是盾而且拿得動放副手（單手武器不自動放副手，免得右鍵突然變了）；
+# 其他放倉庫；都放不下回傳 false、發出 inventory:full。指定 spot 時直接放到倉庫的那一格（背包介面從「腳邊」拖進來）
 func add_weapon(p: Player, inst: Dictionary, spot: Dictionary = {}, pickup_id := 0) -> bool:
 	if spot.is_empty():
 		var id := weapon_of(inst)
@@ -111,12 +253,12 @@ func add_weapon(p: Player, inst: Dictionary, spot: Dictionary = {}, pickup_id :=
 	if spot.is_empty():
 		_emit_full(p, inst.base, pickup_id)
 		return false
-	inventory.add(inst.uid, inst.base, spot.cell, spot.rot, inst)
+	inventory.add(inst.uid, inst.base, spot.cell, spot.rot, {"weapon": inst})
 	p.world.emit_event("weapon:added", {"player_id": p.id, "uid": String(inst.uid), "slot": -1})
 	return true
 
 
-# 依 uid 找武器在哪：{ slot: MAIN / OFF } 或 { bag: 背包條目 }；找不到回傳 {}
+# 依 uid 找武器在哪：{ slot: MAIN / OFF } 或 { bag: 倉庫條目 }；找不到回傳 {}
 func _find_weapon(uid: StringName) -> Dictionary:
 	for i in weapon_slots.size():
 		if not weapon_slots[i].is_empty() and weapon_slots[i].uid == uid:
@@ -134,8 +276,8 @@ func _take_weapon(where: Dictionary) -> void:
 		inventory.remove(where.bag.uid)
 
 
-# 武器放進主手 / 副手（slot）：主手與副手互換；從背包來時換下來的那把放回背包。
-# 換完拿不動的（雙手武器配副手、副手放了不能當副手的）也放回背包；主手不能變空、背包放不下就整個不換
+# 武器放進主手 / 副手（slot）：主手與副手互換；從倉庫來時換下來的那把放回倉庫。
+# 換完拿不動的（雙手武器配副手、副手放了不能當副手的）也放回倉庫；主手不能變空、倉庫放不下就整個不換
 func _equip_from(p: Player, uid: StringName, slot: int) -> bool:
 	var src := _find_weapon(uid)
 	if src.is_empty() or slot < MAIN or slot > OFF or src.get("slot", -1) == slot:
@@ -157,114 +299,105 @@ func _equip_from(p: Player, uid: StringName, slot: int) -> bool:
 		inventory.remove(uid)
 	var placed: Array[StringName] = []
 	for w in displaced:
-		# 從背包換上：換下來的那把先試背包那把原本的位置（看起來是兩把互換），放不下再找空位
+		# 從倉庫換上：換下來的那把先試倉庫那把原本的位置（看起來是兩把互換），放不下再找空位
 		var spot := {"cell": src.bag.cell, "rot": src.bag.rot} if src.has("bag") and placed.is_empty() and inventory.fits(w.base, src.bag.cell, src.bag.rot) else inventory.find_spot(w.base)
 		if spot.is_empty():
 			for u in placed:
 				inventory.remove(u)
 			if src.has("bag"):
-				inventory.add(uid, src.bag.id, src.bag.cell, src.bag.rot, src.inst)
+				inventory.add(uid, src.bag.id, src.bag.cell, src.bag.rot, {"weapon": src.inst})
 			return false
-		inventory.add(w.uid, w.base, spot.cell, spot.rot, w)
+		inventory.add(w.uid, w.base, spot.cell, spot.rot, {"weapon": w})
 		placed.append(w.uid)
 	weapon_slots[MAIN] = hands[MAIN]
 	weapon_slots[OFF] = hands[OFF]
-	for w in displaced:   # 換下來的武器上鑲的道具：搬到現在手上的武器，放不下進背包，再放不下留在原本的武器上
-		_move_sockets(w, [weapon_slots[MAIN], weapon_slots[OFF]])
 	p.apply_active_weapon()
 	return true
 
 
-# 把武器 a 拖到 b 上面合成（D4）：同種、同稀有度才行；b 的位置換成高一級、詞條重新抽的新武器，a 消失
-# 合成（Build 改版第 8 步起要站在鍛造祭壇旁，World.near_forge）：keep_a / keep_b 是兩把各挑要留的詞條（不是那把的就不算），
-# 其他重抽（WeaponDropDefs.roll_affixes 的 keep）
-func merge(p: Player, uid_a: StringName, uid_b: StringName, keep_a := &"", keep_b := &"") -> bool:
-	var a := _find_weapon(uid_a)
-	var b := _find_weapon(uid_b)
-	if a.is_empty() or b.is_empty() or not WeaponDropDefs.can_merge(a.inst, b.inst):
-		p.world.emit_event("weapon:merge_denied", {"player_id": p.id})
-		return false
-	if not p.world.near_forge(p):
-		p.world.emit_event("weapon:merge_denied", {"player_id": p.id, "reason": "forge"})
-		return false
-	var keep: Array[StringName] = []
-	for x: Array in [[keep_a, a.inst], [keep_b, b.inst]]:
-		if x[1].affixes.has(x[0]):
-			keep.append(x[0])
-	var merged := WeaponDropDefs.make(b.inst.uid, b.inst.base, WeaponDropDefs.next_rarity(b.inst.rarity), p.world.rng, keep)   # 印記格重擲
-	if b.inst.has("sockets"):
-		merged["sockets"] = b.inst.sockets   # 鑲的道具：b 的留著，a 的搬到合成結果、放不下進背包、再不下掉在地上
-	_move_sockets(a.inst, [merged], p)
-	if a.has("slot") and b.has("slot"):
-		# 主副手兩把（雙持匕首）合成：結果拿在主手、副手空出來
-		weapon_slots[MAIN] = merged
-		weapon_slots[OFF] = {}
-	elif a.has("slot"):
-		# 手上的拖到背包的武器上：結果留在手上（主手不能沒有武器），背包那把消失
-		inventory.remove(b.bag.uid)
-		weapon_slots[a.slot] = merged
-	elif b.has("slot"):
-		_take_weapon(a)
-		weapon_slots[b.slot] = merged
-	else:
-		_take_weapon(a)
-		b.bag.weapon = merged
-	p.apply_active_weapon()
-	p.world.emit_event("weapon:merged", {"player_id": p.id, "uid": String(merged.uid), "base": String(merged.base), "rarity": String(merged.rarity)})
-	return true
+# ── 道具 ──
 
-
-# 放道具的容器：BAG 背包、MAIN / OFF 那隻手武器的格子（手上沒武器回傳 null）
+# 放東西的容器：BAG 倉庫、CORE 主袋、0 以上是第幾個接著的袋子（不存在回傳 null）
 func container(where: int) -> Inventory:
 	if where == BAG:
 		return inventory
-	return null if weapon_slots[where].is_empty() else Inventory.for_weapon(weapon_slots[where])
+	if where == CORE:
+		return core
+	return Inventory.for_bag(bags[where]) if where >= 0 and where < bags.size() else null
 
 
-# 道具在哪：{ where, inv, entry }；找不到（或是背包裡的武器 / 屍體）回傳 {}
+# 有效果的容器：主袋 + 每個接著的袋子
+func active_wheres() -> Array[int]:
+	var out: Array[int] = [CORE]
+	for i in bags.size():
+		out.append(i)
+	return out
+
+
+# 道具在哪：{ where, inv, entry }；找不到（或是倉庫裡的武器 / 袋子 / 屍體）回傳 {}
 func find_item(uid: StringName) -> Dictionary:
-	for where: int in [MAIN, OFF, BAG]:
+	for where: int in active_wheres() + [BAG]:
 		var inv := container(where)
-		if inv == null:
-			continue
 		var e := inv.find(uid)
-		if not e.is_empty() and not e.has("weapon") and e.id != &"corpse":
+		if not e.is_empty() and not e.has("weapon") and not e.has("bag") and e.id != &"corpse":
 			return {"where": where, "inv": inv, "entry": e}
 	return {}
 
 
-# 道具放進去：where = AUTO 時依序試主手格子、副手格子、背包；指定 where 與 spot 時直接放那裡（呼叫端先確認放得下）
-# 同一個道具拿兩個就是兩個實例。都放不下回傳 &""、發出 inventory:full；武器道具（kind = weapon）直接換上
+# 道具自動放哪：數值 → 主袋；效果 → 原本時機的那種袋子優先、再來其他袋子（技能先找按鍵袋）；都放不下回傳 { }，呼叫端改放倉庫
+func auto_place(id: StringName) -> Dictionary:
+	var role := ItemDefs.role_of(id)
+	var order: Array[int] = []
+	if role == ItemDefs.ROLE_STAT:
+		order.append(CORE)
+	else:
+		var prefer: StringName = &"key" if role == ItemDefs.ROLE_SKILL else ItemDefs.default_bag_of(id)
+		for i in bags.size():
+			if bags[i].kind == prefer:
+				order.append(i)
+		for i in bags.size():
+			if not order.has(i):
+				order.append(i)
+	for where in order:
+		var spot := container(where).find_spot(id)
+		if not spot.is_empty():
+			return {"where": where, "spot": spot}
+	return {}
+
+
+# 道具放進去：where = AUTO 時照分類找主袋或袋子、放不下進倉庫；指定 where 與 spot 時直接放那裡（呼叫端先確認放得下）
+# 同一個道具拿兩個就是兩個實例。都放不下回傳 &""、發出 inventory:full；武器道具（kind = weapon）直接換上、袋子接上
 func add_item(p: Player, item_id: StringName, spot: Dictionary = {}, pickup_id := 0, where := AUTO) -> StringName:
 	assert(ItemDefs.ITEMS.has(item_id), "Unknown item: %s" % item_id)
 	var def: Dictionary = ItemDefs.ITEMS[item_id]
+	if def.kind == &"bag":
+		return add_bag(p, BagDefs.kind_of_item(item_id), &"small", spot if where == BAG else {}, pickup_id)
 	var uid := &""
 	if def.kind == &"weapon":
 		equip_new(p, def.weapon)
 	else:
-		var inv: Inventory = null
 		if where == AUTO:
-			for w: int in [MAIN, OFF, BAG]:
-				inv = container(w)
-				spot = inv.find_spot(item_id) if inv != null else {}
-				if not spot.is_empty():
-					break
-		else:
-			inv = container(where)
-			if inv != null and spot.is_empty():
-				spot = inv.find_spot(item_id)
+			var auto := auto_place(item_id)
+			if not auto.is_empty():
+				where = auto.where
+				spot = auto.spot
+			else:
+				where = BAG
+				spot = inventory.find_spot(item_id)
+		var inv := container(where)
+		if inv != null and spot.is_empty():
+			spot = inv.find_spot(item_id)
 		if inv == null or spot.is_empty():
 			_emit_full(p, item_id, pickup_id)
 			return &""
-		uid = StringName("item_%d" % _next_item_uid)
-		_next_item_uid += 1
+		uid = new_uid("item")
 		inv.add(uid, item_id, spot.cell, spot.rot)
 		refresh_items(p)
 	p.world.emit_event("item:added", {"player_id": p.id, "item": String(item_id), "uid": String(uid)})
 	return uid
 
 
-# 拿掉道具（背包或武器格子裡的）；背包裡的屍體也走這裡
+# 拿掉道具（主袋、袋子或倉庫裡的）；倉庫裡的屍體也走這裡
 func remove_item(p: Player, uid: StringName) -> void:
 	var found := find_item(uid)
 	if found.is_empty():
@@ -274,83 +407,86 @@ func remove_item(p: Player, uid: StringName) -> void:
 	refresh_items(p)
 
 
-# 拿掉所有道具（背包與武器格子裡的；武器、屍體不動）：測試與除錯 F5
+# 拿掉所有道具（主袋、袋子、倉庫裡的；武器、袋子本身、屍體不動）：測試與除錯 F5
 func clear_items(p: Player) -> void:
-	for where: int in [MAIN, OFF, BAG]:
+	for where: int in active_wheres() + [BAG]:
 		var inv := container(where)
-		if inv == null:
-			continue
 		for e: Dictionary in inv.entries.duplicate():
-			if not e.has("weapon") and e.id != &"corpse":
+			if not e.has("weapon") and not e.has("bag") and e.id != &"corpse":
 				inv.remove(e.uid)
 	refresh_items(p)
 
 
-# 生效的道具 = 鑲在主手與副手格子上的；和 items 比對，新鑲上的套屬性、拿下來的移除屬性與道具效果的狀態
+# 生效的數值道具 = 主袋裡的；和 items 比對，新放進來的套屬性、拿出去的移除屬性與條件。詛咒袋接著時套它的缺點。羈絆重算
 func refresh_items(p: Player) -> void:
 	var want := {}
-	var parts := {}
-	var muls := {}
-	for where: int in [MAIN, OFF]:
-		var inv := container(where)
-		if inv != null:
-			for e: Dictionary in inv.entries:
-				if ItemDefs.is_skill(e.id):
-					continue   # 寶石座的技能不是生效的道具（ActiveSlots 直接讀格子）
-				want[e.uid] = e.id
-				parts[e.uid] = inv.parts_of(e)
-				muls[e.uid] = WeaponDropDefs.imprint_mul(weapon_slots[where], e)   # 印記格（第 8b 步）
+	for e: Dictionary in core.entries:
+		want[e.uid] = e.id
 	for it: Dictionary in items.duplicate():
 		if not want.has(it.uid):
 			items.erase(it)
 			p.remove_stat_source(it.uid)
 			ItemEffects.forget_item(p, it.uid)
-		else:
-			it.parts = parts[it.uid]   # 同一隻手的格子裡搬位置、換手都會變
-			if it.mul != muls[it.uid]:   # 搬上 / 搬離印記格
-				it.mul = muls[it.uid]
-				p.set_stat_source(it.uid, ItemDefs.stat_mods(it.id, it.mul))
 	for uid: StringName in want:
 		if not items.any(func(it: Dictionary) -> bool: return it.uid == uid):
-			items.append({"uid": uid, "id": want[uid], "parts": parts[uid], "mul": muls[uid]})
-			p.set_stat_source(uid, ItemDefs.stat_mods(want[uid], muls[uid]))
-	bond_counts.clear()
-	var seen := {}
-	for it: Dictionary in items:
-		if seen.has(it.id):
-			continue
-		seen[it.id] = true
-		for bond: StringName in ItemDefs.ITEMS[it.id].get("bonds", []):
-			bond_counts[bond] = bond_counts.get(bond, 0) + 1
-	branches.clear()
-	for w: Dictionary in weapon_slots:   # 武器詞條的「羈絆 +1」（第 8 步）：每把各算 1 件
-		for bond: StringName in WeaponDropDefs.bonds_of(w):
-			bond_counts[bond] = bond_counts.get(bond, 0) + 1
-		for id: StringName in w.get("affixes", []):
-			if WeaponDropDefs.AFFIXES[id].kind == &"branch":
-				branches[id] = true
+			items.append({"uid": uid, "id": want[uid]})
+			p.set_stat_source(uid, ItemDefs.stat_mods(want[uid]))
+	_refresh_curses(p)
+	bond_counts = bond_blocks()
 	BondEffects.refresh(p)   # 羈絆的屬性加成、該有的鬼火
 
 
-# 把 from 武器上鑲的道具搬走（換下來的武器）：依序試 targets 裡武器的格子、背包；都放不下的留在原本的武器上
-# p 不是 null 時，哪裡都放不下的掉在腳下（合成時被吃掉的那把）
-func _move_sockets(from: Dictionary, targets: Array[Dictionary], p: Player = null) -> void:
-	if from.get("sockets", []).is_empty():
-		return
-	var src := Inventory.for_weapon(from)
-	for e: Dictionary in src.entries.duplicate():
-		for inv: Inventory in targets.filter(func(t: Dictionary) -> bool: return not t.is_empty()).map(Inventory.for_weapon) + [inventory]:
-			var spot := inv.find_spot(e.id)
-			if not spot.is_empty():
-				src.remove(e.uid)
-				inv.add(e.uid, e.id, spot.cell, spot.rot)
-				break
-		if p != null and not src.find(e.uid).is_empty():
-			src.remove(e.uid)
-			p.world.drop_item(e.id, p.pos)
+# 詛咒袋（BagDefs.TIERS.cursed）：接著時以「curse:<uid>」為來源套上缺點；拿下來就移除
+func _refresh_curses(p: Player) -> void:
+	var want := {}
+	for b in bags:
+		var curse: Array = BagDefs.TIERS[b.tier].get("curse", [])
+		if not curse.is_empty():
+			want[StringName("curse:%s" % b.uid)] = curse
+	for source: StringName in p.cursed_sources.duplicate():
+		if not want.has(source):
+			p.remove_stat_source(source)
+			p.cursed_sources.erase(source)
+	for source: StringName in want:
+		if not p.cursed_sources.has(source):
+			p.set_stat_source(source, want[source])
+			p.cursed_sources.append(source)
 
 
-# 撿起隊友的屍體放進背包（占 corpse 形狀的格子、沒有效果）；放不下回傳 false 並發出 inventory:full
+# 羈絆 = 最大同色區塊（C）：主袋與接著的袋子裡每一格的顏色是那個道具的羈絆（跨羈絆的道具兩種都算），
+# 同色上下左右連成一塊、跨袋子也算（袋子的格子照 board_cell 換成盤上座標）；回傳 羈絆 → 最大那塊的格數
+func bond_blocks() -> Dictionary:
+	var colors := {}   # 盤上座標 → 這格的羈絆
+	for e: Dictionary in core.entries:
+		for c in Inventory.cells_of(e.id, e.rot):
+			colors[e.cell + c] = ItemDefs.ITEMS[e.id].get("bonds", [])
+	for b in bags:
+		for e: Dictionary in b.entries:
+			for c in Inventory.cells_of(e.id, e.rot):
+				colors[board_cell(b, e.cell + c)] = ItemDefs.ITEMS[e.id].get("bonds", [])
+	var out := {}
+	for bond: StringName in BondDefs.BONDS:
+		var seen := {}
+		for start: Vector2i in colors:
+			if seen.has(start) or not (colors[start] as Array).has(bond):
+				continue
+			var size := 0
+			var stack: Array[Vector2i] = [start]
+			seen[start] = true
+			while not stack.is_empty():
+				var c: Vector2i = stack.pop_back()
+				size += 1
+				for d: Vector2i in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+					var n := c + d
+					if not seen.has(n) and colors.has(n) and (colors[n] as Array).has(bond):
+						seen[n] = true
+						stack.append(n)
+			if size > out.get(bond, 0):
+				out[bond] = size
+	return out
+
+
+# 撿起隊友的屍體放進倉庫（占 corpse 形狀的格子、沒有效果）；放不下回傳 false 並發出 inventory:full
 func add_corpse(p: Player, owner_peer: int, spot: Dictionary = {}, pickup_id := 0) -> bool:
 	if spot.is_empty():
 		spot = inventory.find_spot(&"corpse")
@@ -362,11 +498,19 @@ func add_corpse(p: Player, owner_peer: int, spot: Dictionary = {}, pickup_id := 
 	return true
 
 
-# 客戶端：背包以房主的快照為準（[[uid, id, x, y, rot, 武器], …]）；生效的道具看武器格子，在 sync_weapon_slots 之後同步
-func sync_inventory(_p: Player, arr: Array) -> void:
-	inventory.entries.clear()
-	for a: Array in arr:
-		inventory.add(StringName(a[0]), StringName(a[1]), Vector2i(a[2], a[3]), a[4], WeaponDropDefs.from_array(a[5]))
+# 快照：[倉庫, 主袋, [袋子…]]（Inventory.to_array / BagDefs.to_array）
+func bags_to_array() -> Array:
+	return [inventory.to_array(), core.to_array(), bags.map(BagDefs.to_array)]
+
+
+# 客戶端：倉庫、主袋、袋子以房主的快照為準（bags_to_array），同步完重算生效的道具與羈絆
+func sync_inventory(p: Player, arr: Array) -> void:
+	inventory.sync_from(arr[0])
+	core.sync_from(arr[1])
+	bags.clear()
+	for a: Array in arr[2]:
+		bags.append(BagDefs.from_array(a))
+	refresh_items(p)
 
 
 # 客戶端：主手與副手以房主的快照為準（[主手, 副手]，見 WeaponDropDefs.to_array）
@@ -385,17 +529,21 @@ func clear_ops() -> void:
 
 
 # 背包操作（InputCmd.inv_ops）：
-#   [OP_MOVE, uid, x, y, rot, where?] 搬到 where（BAG 背包、MAIN / OFF 武器格子；沒寫 = 背包）的 (x, y)；武器只能進背包（副手的可以，主手不行）；
-#     那裡被 1 件東西佔住就互換（_swap_into），拿著的武器放到背包的武器上 = 那把換上（_move_hand_weapon）；沒做成發 inventory:denied
-#   [OP_DROP, uid] 丟到面前的地上；[OP_EQUIP, uid, slot] 武器放進主手 / 副手（_equip_from）；[OP_MERGE, uid_a, uid_b, 留 a 的詞條?, 留 b 的詞條?] 把 a 拖到 b 上合成（鍛造祭壇旁）
-#   [OP_PICKUP, 地上道具 id, x, y, rot, where?] 撿起按得到 F 的地上道具放到 where 的 (x, y)（已被撿走、太遠、放不下就不動；武器與屍體只能進背包）
+#   [OP_MOVE, uid, x, y, rot, where?] 搬到 where（BAG 倉庫、CORE 主袋、0 以上第幾個袋子；沒寫 = 倉庫）的 (x, y)；
+#     武器、袋子、屍體只在倉庫裡搬；那裡被 1 件東西佔住就互換（_swap_into），拿著的武器放到倉庫的武器上 = 那把換上；沒做成發 inventory:denied
+#   [OP_BAG, uid, side, offset, x?, y?, rot?] 袋子接到 side 的 offset（從倉庫接上、或沿著邊滑動 / 換邊）；side 空字串 = 拿下來放倉庫的 (x, y)
+#   [OP_DROP, uid] 丟到面前的地上（袋子不能丟）；[OP_EQUIP, uid, slot] 武器放進主手 / 副手；[OP_MERGE, uid_a, uid_b] 把 a 拖到 b 上合成（鍛造祭壇旁）
+#   [OP_PICKUP, 地上道具 id, x, y, rot, where?] 撿起按得到 F 的地上道具放到 where 的 (x, y)（已被撿走、太遠、放不下就不動；武器、袋子、屍體只能進倉庫）
 func apply_ops(p: Player) -> void:
 	for op: Array in _ops:
 		var where: int = int(op[5]) if op.size() > 5 else BAG
 		if int(op[0]) == InputCmd.OP_PICKUP:
 			var ip := p.world.entities.get(int(op[1])) as ItemPickup
 			var spot := {"cell": Vector2i(op[2], op[3]), "rot": posmod(int(op[4]), 4)}
-			if ip == null or ip.is_removed or not p.world.can_reach(p, ip) or (where != BAG and (ip.is_weapon() or ip.corpse_of != 0)):
+			if ip == null or ip.is_removed or not p.world.can_reach(p, ip):
+				continue
+			var stored_only: bool = ip.is_weapon() or ip.corpse_of != 0 or ItemDefs.ITEMS[ip.item_id].kind == &"bag"
+			if stored_only and where != BAG:
 				continue
 			var inv := container(where)
 			if inv != null and inv.fits(ip.item_id, spot.cell, spot.rot):
@@ -412,30 +560,33 @@ func apply_ops(p: Player) -> void:
 				if w.has("slot"):
 					_move_hand_weapon(p, w, cell, int(op[4]))
 				elif not w.is_empty() or find_item(uid).is_empty():
-					# 背包裡的武器、屍體：放到別的東西上就互換
-					if not inventory.move(uid, cell, op[4]) and not _swap_into(inventory.find(uid), inventory, BAG, inventory, cell, posmod(int(op[4]), 4)):
+					# 倉庫裡的武器、袋子、屍體：只在倉庫裡搬，放到別的東西上就互換
+					if where != BAG or (not inventory.move(uid, cell, op[4]) and not _swap_into(inventory.find(uid), inventory, inventory, cell, posmod(int(op[4]), 4))):
 						_deny(p, &"no_room")
 				else:
 					_move_item(p, uid, cell, posmod(int(op[4]), 4), where)
+			InputCmd.OP_BAG:
+				var cell := Vector2i(int(op[4]), int(op[5])) if op.size() > 5 else Vector2i(-1, -1)
+				if not _place_bag(p, uid, StringName(op[2]), int(op[3]), cell, int(op[6]) if op.size() > 6 else 0):
+					_deny(p, &"no_room")
 			InputCmd.OP_DROP:
 				_drop(p, uid)
 			InputCmd.OP_EQUIP:
 				_equip_from(p, uid, int(op[2]))
 			InputCmd.OP_MERGE:
-				merge(p, uid, StringName(op[2]), StringName(op[3]) if op.size() > 3 else &"", StringName(op[4]) if op.size() > 4 else &"")
+				merge(p, uid, StringName(op[2]))
 	_ops.clear()
 
 
-# 武器格子（兩隻手）或背包裡有沒有這個道具 / 技能
+# 主袋、袋子或倉庫裡有沒有這個道具 / 技能
 func has_item(item_id: StringName) -> bool:
-	for where: int in [MAIN, OFF, BAG]:
-		var inv := container(where)
-		if inv != null and inv.entries.any(func(e: Dictionary) -> bool: return e.id == item_id):
+	for where: int in active_wheres() + [BAG]:
+		if container(where).entries.any(func(e: Dictionary) -> bool: return e.id == item_id):
 			return true
 	return false
 
 
-# 遺物的操作（Build 改版第 6 步）：只對自己打開著的那個遺物有效
+# 遺物的操作：只對自己打開著的那個遺物有效
 func _relic_op(p: Player, op: Array) -> void:
 	var relic := p.world.entities.get(p.relic_id) as Relic
 	if int(op[0]) == InputCmd.OP_RELIC_CLOSE or relic == null:
@@ -449,31 +600,30 @@ func _relic_op(p: Player, op: Array) -> void:
 		relic.reroll(p)
 
 
-# 道具搬到 where（背包或某隻手的武器格子）的 cell：同一個容器就是搬位置，不同容器放得下才搬；放不下就不動
+# 道具搬到 where 的 cell：同一個容器就是搬位置，不同容器放得下（而且收這種東西）才搬；放不下就不動
 func _move_item(p: Player, uid: StringName, cell: Vector2i, rot: int, where: int) -> void:
 	var found := find_item(uid)
 	var dst := container(where)
 	if found.is_empty() or dst == null:
 		return
 	if found.where == where:
-		var moved := dst.move(uid, cell, rot) or _swap_into(found.entry, dst, where, dst, cell, rot)
-		if not moved:
+		if not (dst.move(uid, cell, rot) or _swap_into(found.entry, dst, dst, cell, rot)):
 			_deny(p, &"no_room")
 		elif where != BAG:
-			refresh_items(p)   # 換了部位，發動時機跟著變
+			refresh_items(p)   # 位置變了，同色區塊跟著變
 		return
 	var e: Dictionary = found.entry
 	if dst.fits(e.id, cell, rot):
 		(found.inv as Inventory).remove(uid)
 		dst.add(uid, e.id, cell, rot)
 		refresh_items(p)
-	elif _swap_into(e, found.inv, found.where, dst, cell, rot):
+	elif _swap_into(e, found.inv, dst, cell, rot):
 		refresh_items(p)
 	else:
-		_deny(p, &"no_room")
+		_deny(p, &"no_room" if dst.accepts(e.id) else &"wrong_bag")
 
 
-# 拿著的武器拖進背包：拖到背包的武器上 = 那把換上這隻手（_equip_from）；副手的放到空位 = 拿下來；主手不能空著
+# 拿著的武器拖進倉庫：拖到倉庫的武器上 = 那把換上這隻手（_equip_from）；副手的放到空位 = 拿下來；主手不能空著
 func _move_hand_weapon(p: Player, w: Dictionary, cell: Vector2i, rot: int) -> void:
 	var under: StringName = inventory.occupied().get(cell, &"")
 	var bag_weapon := inventory.find(under) if under != &"" else {}
@@ -482,15 +632,15 @@ func _move_hand_weapon(p: Player, w: Dictionary, cell: Vector2i, rot: int) -> vo
 			_deny(p, &"no_room")
 	elif w.slot == OFF and inventory.fits(w.inst.base, cell, rot):
 		weapon_slots[w.slot] = {}
-		inventory.add(w.inst.uid, w.inst.base, cell, rot, w.inst)
+		inventory.add(w.inst.uid, w.inst.base, cell, rot, {"weapon": w.inst})
 		p.apply_active_weapon()
 	else:
 		_deny(p, &"main_empty" if w.slot == MAIN else &"no_room")
 
 
 # 放到只被 1 件東西佔住的位置：兩件互換（e 放上去，被換走的那件先試 e 原本的位置、放不下找空位）；任何一件放不下就都不動
-func _swap_into(e: Dictionary, src: Inventory, src_where: int, dst: Inventory, cell: Vector2i, rot: int) -> bool:
-	var plan := swap_plan(e, src, src_where, dst, cell, rot)
+func _swap_into(e: Dictionary, src: Inventory, dst: Inventory, cell: Vector2i, rot: int) -> bool:
+	var plan := swap_plan(e, src, dst, cell, rot)
 	if plan.is_empty():
 		return false
 	var other: Dictionary = plan.other
@@ -506,8 +656,8 @@ func _swap_into(e: Dictionary, src: Inventory, src_where: int, dst: Inventory, c
 
 
 # 互換的計畫（不改任何東西，背包介面拖曳時也用來畫預覽）：{ other: 被換走的那件, spot: 它換到 src 的哪裡 }；換不了回傳 {}
-# src / dst 可以是同一個容器；武器與屍體只能待在背包，不會被換進武器格子
-func swap_plan(e: Dictionary, src: Inventory, src_where: int, dst: Inventory, cell: Vector2i, rot: int) -> Dictionary:
+# src / dst 可以是同一個容器；兩邊都要收對方的東西（主袋只收數值、袋子只收效果技能修飾，Inventory.accepts）
+func swap_plan(e: Dictionary, src: Inventory, dst: Inventory, cell: Vector2i, rot: int) -> Dictionary:
 	if e.is_empty() or src == null or dst == null:
 		return {}
 	var taken := dst.occupied(e.uid)
@@ -518,9 +668,9 @@ func swap_plan(e: Dictionary, src: Inventory, src_where: int, dst: Inventory, ce
 	if under.size() != 1:
 		return {}
 	var other := dst.find(under.keys()[0])
-	if src_where != BAG and (other.has("weapon") or other.id == &"corpse"):
+	if src != dst and (other.has("weapon") or other.has("bag") or other.id == &"corpse"):
 		return {}
-	# 暫時拿掉兩件、e 的替身放到新位置算得下算不下，算完原地還原（武器格子的 entries 就是武器的 sockets）
+	# 暫時拿掉兩件、e 的替身放到新位置算得下算不下，算完原地還原（袋子的 entries 就是袋子實例的 entries）
 	var src_before := src.entries.duplicate()
 	var dst_before := dst.entries.duplicate()
 	src.entries.erase(e)
@@ -539,17 +689,18 @@ func swap_plan(e: Dictionary, src: Inventory, src_where: int, dst: Inventory, ce
 	return {"other": other, "spot": spot} if not spot.is_empty() else {}
 
 
-# 背包介面拖曳的預覽：uid 放到 where 的 cell 會跟誰互換（拿著的武器放到背包的武器上 = 那把換上）；不會互換回傳 &""
+# 背包介面拖曳的預覽：uid 放到 where 的 cell 會跟誰互換（拿著的武器放到倉庫的武器上 = 那把換上）；不會互換回傳 &""
 func swap_partner(uid: StringName, where: int, cell: Vector2i, rot: int) -> StringName:
 	var w := _find_weapon(uid)
 	if w.has("slot"):
 		var under: StringName = inventory.occupied().get(cell, &"") if where == BAG else &""
 		return under if inventory.find(under).has("weapon") else &""
-	if not w.is_empty() or find_item(uid).is_empty():
-		var e := inventory.find(uid)
-		return swap_plan(e, inventory, BAG, inventory, cell, rot).get("other", {}).get("uid", &"") if where == BAG else &""
 	var found := find_item(uid)
-	return swap_plan(found.entry, found.inv, found.where, container(where), cell, rot).get("other", {}).get("uid", &"")
+	if found.is_empty():
+		var e := inventory.find(uid)
+		return swap_plan(e, inventory, inventory, cell, rot).get("other", {}).get("uid", &"") if where == BAG else &""
+	var dst := container(where)
+	return swap_plan(found.entry, found.inv, dst, cell, rot).get("other", {}).get("uid", &"") if dst != null else &""
 
 
 # 背包操作沒做成：讓本機玩家看得到原因（HUD 跳字）
@@ -557,7 +708,35 @@ func _deny(p: Player, reason: StringName) -> void:
 	p.world.emit_event("inventory:denied", {"player_id": p.id, "reason": String(reason)})
 
 
-# 丟到面前的地上：道具移除效果；主手的武器不能丟（主手一定要有武器）
+# 把武器 a 拖到 b 上面合成：同種、同稀有度才行，要站在鍛造祭壇旁；b 的位置換成高一級的新武器，a 消失
+func merge(p: Player, uid_a: StringName, uid_b: StringName) -> bool:
+	var a := _find_weapon(uid_a)
+	var b := _find_weapon(uid_b)
+	if a.is_empty() or b.is_empty() or not WeaponDropDefs.can_merge(a.inst, b.inst):
+		p.world.emit_event("weapon:merge_denied", {"player_id": p.id})
+		return false
+	if not p.world.near_forge(p):
+		p.world.emit_event("weapon:merge_denied", {"player_id": p.id, "reason": "forge"})
+		return false
+	var merged := WeaponDropDefs.make(b.inst.uid, b.inst.base, WeaponDropDefs.next_rarity(b.inst.rarity), p.world.rng)
+	if a.has("slot") and b.has("slot"):
+		weapon_slots[MAIN] = merged   # 主副手兩把（雙持匕首）合成：結果拿在主手、副手空出來
+		weapon_slots[OFF] = {}
+	elif a.has("slot"):
+		inventory.remove(b.bag.uid)   # 手上的拖到倉庫的武器上：結果留在手上（主手不能沒有武器）
+		weapon_slots[a.slot] = merged
+	elif b.has("slot"):
+		_take_weapon(a)
+		weapon_slots[b.slot] = merged
+	else:
+		_take_weapon(a)
+		b.bag.weapon = merged
+	p.apply_active_weapon()
+	p.world.emit_event("weapon:merged", {"player_id": p.id, "uid": String(merged.uid), "base": String(merged.base), "rarity": String(merged.rarity)})
+	return true
+
+
+# 丟到面前的地上：道具移除效果；主手的武器、袋子不能丟（主手一定要有武器；袋子只能拿下來放倉庫）
 func _drop(p: Player, uid: StringName) -> void:
 	var at := p.pos + MathUtil.dir_from_angle(p.facing) * LootDefs.DROP_DISTANCE
 	var w := _find_weapon(uid)
@@ -567,6 +746,9 @@ func _drop(p: Player, uid: StringName) -> void:
 		_take_weapon(w)
 		p.apply_active_weapon()
 		p.world.drop_weapon(w.inst, at)
+		return
+	if not find_bag(uid).is_empty():
+		_deny(p, &"bag_drop")
 		return
 	var found := find_item(uid)
 	var entry: Dictionary = found.get("entry", inventory.find(uid))

@@ -1073,19 +1073,21 @@ static func check_torch() -> String:
 	p.remove_stat_source(&"test")
 	p.mana = p.max_mana()
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 1)
-	# 插火把：火把出廠就鑲在寶石座、是數字鍵 1；背後 10 單位的怪本來看不到，火把插在它旁邊後看得到
+	# 插火把（火把傭兵的起始技能）：放進按鍵袋 1 就是數字鍵 1；背後 10 單位的怪本來看不到，火把插在它旁邊後看得到
 	var idx := 0
+	p.add_item(tw.slot_skill)
 	var first: Variant = p.slots.get_slot(p, idx)
 	if first == null or first.id != tw.slot_skill:
-		return "插火把應鑲在火把的寶石座、是數字鍵 1：%s" % [first]
+		return "插火把放進按鍵袋 1 應是數字鍵 1：%s" % [first]
+	var charges := func() -> int: return p.slots.get_slot(p, idx).charges
 	var behind := _dummy(w, Vector2(0, -10))
 	if Vision.point_visible(w, p, behind.pos):
 		return "背後的怪本來應看不到"
 	p.pos = Vector2(0, -6)
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(idx)), 1)
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 20)
-	if w.torches.size() != 1 or WeaponDropDefs.slot_charges(p.active_weapon()) != plant.charges - 1:
-		return "按技能欄應插 1 支火把：%d 支、武器上剩 %d" % [w.torches.size(), WeaponDropDefs.slot_charges(p.active_weapon())]
+	if w.torches.size() != 1 or charges.call() != plant.charges - 1:
+		return "按技能欄應插 1 支火把：%d 支、剩 %d 次" % [w.torches.size(), charges.call()]
 	p.pos = Vector2.ZERO
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 1)
 	if not Vision.point_visible(w, p, behind.pos):
@@ -1093,15 +1095,15 @@ static func check_torch() -> String:
 	for i in 6:   # 再按 6 次：冷卻 1 秒、最多 3 次
 		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(idx)), 1)
 		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 70)
-	if w.torches.size() != plant.charges or WeaponDropDefs.slot_charges(p.active_weapon()) != 0:
-		return "插火把最多 %d 次：%d 支、剩 %d" % [plant.charges, w.torches.size(), WeaponDropDefs.slot_charges(p.active_weapon())]
-	# 次數跟著武器：快照來回後還在；換一把新的火把是滿的；換層補滿
-	var used := p.active_weapon()
-	if WeaponDropDefs.slot_charges(WeaponDropDefs.from_array(WeaponDropDefs.to_array(used))) != 0:
-		return "插火把次數應跟著武器實例同步"
+	if w.torches.size() != plant.charges or charges.call() != 0:
+		return "插火把最多 %d 次：%d 支、剩 %d" % [plant.charges, w.torches.size(), charges.call()]
+	# 次數記在袋子裡的那一格：快照來回後還在；換層補滿
+	var key: Dictionary = p.loadout.key_bags()[0]
+	if (BagDefs.from_array(BagDefs.to_array(key)).entries[0] as Dictionary).get("charges", -1) != 0:
+		return "插火把次數應跟著袋子的快照同步"
 	p.loadout.refill_slot_charges()
-	if WeaponDropDefs.slot_charges(used) != plant.charges:
-		return "換層應補滿插火把次數：%d" % WeaponDropDefs.slot_charges(used)
+	if charges.call() != plant.charges:
+		return "換層應補滿插火把次數：%d" % charges.call()
 	# 翻滾取消舉火把（就算右鍵還按著）
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL | held), 1)
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), held), 20)

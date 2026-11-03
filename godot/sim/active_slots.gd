@@ -1,6 +1,7 @@
-# 技能欄（Build 改版第 7 步）：數字鍵 1~4 = 主手、副手寶石座上的技能（主手先、由上到下、由左到右），Q = 治療藥水
-# 使用條件（魔力、次數、防連按間隔、技能自訂條件）與觸發；技能的等級（Player.skill_levels）與相鄰的輔助道具在這裡算好，交給 SkillBehaviors
-# 不持有玩家（避免循環參照），每次呼叫時傳入
+# 技能欄：數字鍵 1~4 = 接在主袋上方的按鍵袋（由左到右，Loadout.key_bags），Q = 治療藥水
+# 按下數字鍵：那個按鍵袋裡的效果與技能一起放（BagTriggers.run_bag）；技能欄顯示袋子裡第一個技能
+# 技能的使用條件（魔力、次數、技能自訂條件）、等級（Player.skill_levels）、同一袋修飾的效果與耗魔在這裡算，交給 SkillBehaviors
+# 觸發袋裡的技能也走這裡（BagTriggers.cast_skill）。不持有玩家（避免循環參照），每次呼叫時傳入
 class_name ActiveSlots
 extends RefCounted
 
@@ -10,136 +11,160 @@ const HEAL_INDEX := GEM_SLOTS          # Q
 const KEY_LABELS: Array[String] = ["1", "2", "3", "4", "Q"]
 
 var heal := {"def": SkillDefs.SKILLS.heal, "charges": SkillDefs.SKILLS.heal.charges}
-var _gems: Array[Dictionary] = []      # gems() 的結果（每次重算，重複用同一個陣列）
 
 
 static func cd_key(index: int) -> String:
 	return "player.slot%d" % (index + 1)
 
 
-# 寶石座上的技能，依順序：[{ id, def, where, inst, entry }]
-func gems(owner: Player) -> Array[Dictionary]:
-	_gems.clear()
-	for where: int in [Loadout.MAIN, Loadout.OFF]:
-		var inst: Dictionary = owner.weapon_slots[where]
-		if inst.is_empty():
-			continue
-		var list: Array = inst.get("sockets", []).filter(func(e: Dictionary) -> bool: return ItemDefs.is_skill(e.id))
-		list.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.cell.y < b.cell.y or (a.cell.y == b.cell.y and a.cell.x < b.cell.x))
-		for e: Dictionary in list:
-			_gems.append({"id": e.id, "def": SkillDefs.SKILLS[e.id], "where": where, "inst": inst, "entry": e})
-	return _gems
+# 袋子裡的一個技能：{ def, id, level, bag, entry, charges }（charges = -1 不限次數；次數制的技能次數記在袋子條目上，換關補滿）
+static func slot_of(owner: Player, b: Dictionary, e: Dictionary) -> Dictionary:
+	var def: Dictionary = SkillDefs.SKILLS[e.id]
+	var charges: int = e.get("charges", def.charges) if def.get("mode", &"") == &"charges" else -1
+	return {"def": def, "id": e.id, "level": owner.skill_levels.get(e.id, 1), "bag": b, "entry": e, "charges": charges}
 
 
-# 第 index 格目前的內容：null 或 { def, charges, id?, level? }（charges = -1 表示不限次數）
+# 第 index 格目前的內容：null（沒有那個按鍵袋）或 { def, charges, id?, level?, bag }；技能欄畫袋子裡第一個技能，
+# 只有效果的袋子畫第一個效果（def 是 { icon, name }）
 func get_slot(owner: Player, index: int) -> Variant:
 	if index == HEAL_INDEX:
 		return heal
-	var list := gems(owner)
-	if index >= list.size():
+	var keys := owner.loadout.key_bags()
+	if index >= keys.size():
 		return null
-	var g: Dictionary = list[index]
-	var charges := -1
-	if g.def.get("weapon_charges", false):
-		charges = WeaponDropDefs.slot_charges(g.inst)
-	return {"def": g.def, "charges": charges, "id": g.id, "level": owner.skill_levels.get(g.id, 1), "gem": g}
+	var b: Dictionary = keys[index]
+	var list := BagTriggers.contents(b)
+	for e in list:
+		if ItemDefs.is_skill(e.id):
+			return slot_of(owner, b, e)
+	for e in list:
+		if ItemDefs.role_of(e.id) == ItemDefs.ROLE_EFFECT:
+			return {"def": {"icon": "✦", "name": ItemDefs.ITEMS[e.id].name}, "charges": -1, "bag": b, "id": e.id, "effect": e.id}
+	return null
 
 
 # 技能欄的內容有沒有變（技能欄介面重建用）
 func signature(owner: Player) -> String:
 	var ids := []
-	for g in gems(owner):
-		ids.append(g.id)
+	for b in owner.loadout.key_bags():
+		ids.append(String(b.uid))
+		for e in BagTriggers.contents(b):
+			ids.append(String(e.id))
 	return ",".join(ids)
 
 
+# 能不能按：藥水照次數；按鍵袋要有至少一個放得出來的東西（技能照條件、效果看魔力）
 func can_use(owner: Player, index: int) -> bool:
 	var slot: Variant = get_slot(owner, index)
 	if slot == null or slot.charges == 0:
 		return false
 	if not owner.world.cooldowns.is_ready(owner.cd(cd_key(index))):
 		return false
-	if slot.def.has("mana") and not owner.has_mana(mana_cost(owner, slot)):
-		return false
-	return SkillBehaviors.BEHAVIORS[slot.def.behavior].can_use(owner, slot.def)
+	if index == HEAL_INDEX:
+		return SkillBehaviors.BEHAVIORS[slot.def.behavior].can_use(owner, slot.def)
+	for e in BagTriggers.contents(slot.bag):
+		if ItemDefs.is_skill(e.id) and can_cast(owner, slot_of(owner, slot.bag, e)):
+			return true
+		if ItemDefs.role_of(e.id) == ItemDefs.ROLE_EFFECT and owner.has_mana(BagTriggers.effect_mana(e.id)):
+			return true
+	return false
 
 
 func use(owner: Player, index: int) -> bool:
 	if not can_use(owner, index):
 		return false
 	var slot: Dictionary = get_slot(owner, index)
-	var ctx := cast_context(owner, slot)
-	SkillBehaviors.cast(owner, slot.def, ctx)
-	if slot.def.get("weapon_charges", false):
-		slot.gem.inst["slot_charges"] = slot.charges - 1   # 次數跟著武器（丟掉、給隊友都帶著）
-	elif index == HEAL_INDEX:
-		heal.charges -= 1
 	var key := cd_key(index)
-	if slot.def.has("mana"):
-		owner.spend_mana(mana_cost(owner, slot))
-		owner.world.cooldowns.start(owner.cd(key), Config.MANA.cast_gap)
+	if index == HEAL_INDEX:
+		SkillBehaviors.cast(owner, slot.def, {"mul": 1.0, "area": 1.0, "type": &"phys", "split": false})
+		heal.charges -= 1
+		owner.world.cooldowns.start(owner.cd(key), slot.def.cooldown)   # 藥水：次數制，冷卻只是防連按
 	else:
-		owner.world.cooldowns.start(owner.cd(key), slot.def.cooldown)   # 藥水、插火把：次數制，冷卻只是防連按
+		if owner.world.is_authority:
+			BagTriggers.run_bag(owner.world, owner, slot.bag, null, 0.0)
+		else:
+			_predict(owner, slot.bag)
+		owner.world.cooldowns.start(owner.cd(key), Config.MANA.cast_gap)
 	owner.world.emit_event("skill:used", {"key": key, "player_id": owner.id})
 	return true
 
 
-# 這一格放一次要多少魔力（含等級、耗魔屬性）；不耗魔的是 0
+# 客戶端的本機預測：只放技能的位移（衝刺、瞬移、後跳）與耗魔，效果與傷害等房主
+func _predict(owner: Player, b: Dictionary) -> void:
+	for e in BagTriggers.contents(b):
+		if ItemDefs.is_skill(e.id):
+			var slot := slot_of(owner, b, e)
+			if can_cast(owner, slot):
+				cast(owner, slot)
+
+
+static func can_cast(owner: Player, slot: Dictionary) -> bool:
+	if slot.charges == 0:
+		return false
+	if slot.def.has("mana") and not owner.has_mana(mana_cost(owner, slot)):
+		return false
+	return SkillBehaviors.BEHAVIORS[slot.def.behavior].can_use(owner, slot.def)
+
+
+# 放一個技能（呼叫端先確認 can_cast）：扣魔力、次數
+static func cast(owner: Player, slot: Dictionary) -> void:
+	SkillBehaviors.cast(owner, slot.def, cast_context(owner, slot))
+	if slot.charges > 0:
+		slot.entry["charges"] = slot.charges - 1
+	if slot.def.has("mana"):
+		owner.spend_mana(mana_cost(owner, slot))
+
+
+# 這個技能放一次要多少魔力（含等級、耗魔屬性、同一袋的修飾）；不耗魔的是 0
 static func mana_cost(owner: Player, slot: Dictionary) -> float:
 	var cost := owner.mana_cost_of(slot.def, slot.get("level", 1))
-	if slot.has("gem"):
-		cost *= support_mana_mul(owner, slot.gem)
+	if slot.has("bag"):
+		cost *= support_mana_mul(slot)
 	return cost
 
 
-# 相鄰輔助道具的耗魔倍率（相乘）：一般輔助每顆 × (1 + 道具強度 power × SkillDefs.SUPPORT_MANA)，有 mana_mul 的（節能）× mana_mul
-static func support_mana_mul(owner: Player, gem: Dictionary) -> float:
+# 同一袋修飾的耗魔倍率（相乘）：一般修飾每顆 × (1 + 道具強度 power × SkillDefs.SUPPORT_MANA)，有 mana_mul 的（節能）× mana_mul
+static func support_mana_mul(slot: Dictionary) -> float:
 	var mul := 1.0
-	for id in support_ids(owner, gem):
+	for id in support_ids(slot):
 		var sup := ItemDefs.support_of(id)
 		mul *= sup.mana_mul if sup.has("mana_mul") else 1.0 + ItemDefs.ITEMS[id].power * SkillDefs.SUPPORT_MANA
 	return mul
 
 
-# 這次施放的參數：等級的傷害倍率、相鄰輔助道具（標籤相符的才算）的效果
-static func cast_context(owner: Player, slot: Dictionary) -> Dictionary:
-	var ctx := {"mul": SkillDefs.level_damage_mul(slot.get("level", 1)), "area": 1.0, "type": slot.def.get("damage_type", &"phys"), "split": false}
-	if slot.has("gem"):
-		for sup: Dictionary in supports_of(owner, slot.gem):
-			match sup.mode:
-				&"split":
-					ctx.split = true
-				&"extend":
-					ctx.area = 1.5
-				&"fire", &"cold":
-					ctx.type = sup.mode
+# 這次施放的參數：等級的傷害倍率 × 袋子倍率、同一袋的修飾（標籤相符的才算）的效果
+static func cast_context(_owner: Player, slot: Dictionary) -> Dictionary:
+	var ctx := {"mul": SkillDefs.level_damage_mul(slot.get("level", 1)) * slot.get("bag", {}).get("mul", 1.0), "area": 1.0,
+		"type": slot.def.get("damage_type", &"phys"), "split": false}
+	for sup: Dictionary in supports_of(slot):
+		match sup.mode:
+			&"split":
+				ctx.split = true
+			&"extend":
+				ctx.area = 1.5
+			&"fire", &"cold":
+				ctx.type = sup.mode
 	return ctx
 
 
-# 貼著這個寶石座（上下左右）、標籤和技能相符的輔助道具效果
-static func supports_of(owner: Player, gem: Dictionary) -> Array[Dictionary]:
+# 同一袋、標籤和技能相符的修飾效果
+static func supports_of(slot: Dictionary) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
-	for id in support_ids(owner, gem):
+	for id in support_ids(slot):
 		out.append(ItemDefs.support_of(id))
 	return out
 
 
 # 同上，回傳道具 id（一顆一筆）
-static func support_ids(owner: Player, gem: Dictionary) -> Array[StringName]:
+static func support_ids(slot: Dictionary) -> Array[StringName]:
 	var out: Array[StringName] = []
-	var tags: Array = gem.def.get("tags", [])
-	var cell: Vector2i = gem.entry.cell
-	var inv := owner.loadout.container(gem.where)
-	if inv == null:
+	if not slot.has("bag"):
 		return out
-	for e: Dictionary in inv.entries:
+	var tags: Array = slot.def.get("tags", [])
+	for e: Dictionary in slot.bag.entries:
 		var sup := ItemDefs.support_of(e.id)
-		if sup.is_empty() or not (sup.tags as Array).any(func(t: StringName) -> bool: return tags.has(t)):
-			continue
-		for c in Inventory.cells_of(e.id, e.rot):
-			if (e.cell + c - cell).abs().x + (e.cell + c - cell).abs().y == 1:
-				out.append(e.id)
-				break
+		if not sup.is_empty() and (sup.tags as Array).any(func(t: StringName) -> bool: return tags.has(t)):
+			out.append(e.id)
 	return out
 
 

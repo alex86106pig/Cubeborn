@@ -82,7 +82,7 @@ func _loadout_unchanged() -> Dictionary:
 	var out := {}
 	var refresh: bool = world.tick % Config.NET.loadout_refresh_ticks < Config.NET.snapshot_interval
 	for p in world.player_list:
-		var sig := [p.inventory.to_array(), p.weapon_slots.map(WeaponDropDefs.to_array), p.skill_levels].hash()
+		var sig := [p.loadout.bags_to_array(), p.weapon_slots.map(WeaponDropDefs.to_array), p.skill_levels].hash()
 		if _loadout_sig.get(p.id, null) != sig or world.tick < _loadout_changed[p.id]:   # 重新開始時 tick 歸零
 			_loadout_sig[p.id] = sig
 			_loadout_changed[p.id] = world.tick

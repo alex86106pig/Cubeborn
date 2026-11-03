@@ -47,10 +47,12 @@ static func _run(w: World, cmd: InputCmd, steps: int) -> void:
 
 
 # 第一個是這個形狀的道具（形狀看稀有度，測試要某種形狀時用這個找，不寫死道具）
+# 某個形狀的道具：先找數值道具（主袋與倉庫都放得下），沒有才找其他的
 static func _shaped(shape: StringName) -> StringName:
-	for id: StringName in ItemDefs.ITEMS:
-		if ItemDefs.ITEMS[id].kind == &"item" and ItemDefs.ITEMS[id].shape == shape:
-			return id
+	for stat_only: bool in [true, false]:
+		for id: StringName in ItemDefs.ITEMS:
+			if ItemDefs.ITEMS[id].kind == &"item" and ItemDefs.ITEMS[id].shape == shape and (not stat_only or ItemDefs.role_of(id) == ItemDefs.ROLE_STAT):
+				return id
 	assert(false, "沒有 %s 形狀的道具" % shape)
 	return &""
 
@@ -71,13 +73,33 @@ static func _forge_near(w: World, p: Player) -> Forge:
 # 玩家拿著的道具（背包與主手 / 副手的武器格子；武器與屍體不算）
 static func _held_items(p: Player) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
-	for where: int in [Loadout.MAIN, Loadout.OFF, Loadout.BAG]:
-		var inv := p.loadout.container(where)
-		if inv != null:
-			for e in inv.entries:
-				if not e.has("weapon") and e.id != &"corpse":
-					out.append(e)
+	for where: int in p.loadout.active_wheres() + [Loadout.BAG]:
+		for e in p.loadout.container(where).entries:
+			if not e.has("weapon") and not e.has("bag") and e.id != &"corpse":
+				out.append(e)
 	return out
+
+
+# 接上一個新的觸發袋（side 空 = 照 SIDE_ORDER 找第一個空位）；回傳袋子實例，接不下回傳 {}
+static func _bag(p: Player, kind: StringName, side := &"", tier := &"small") -> Dictionary:
+	var b := BagDefs.make(p.loadout.new_uid("bag"), kind, tier)
+	var spot := p.loadout.attach_spot(b, side)
+	if spot.is_empty():
+		return {}
+	b.side = spot.side
+	b.offset = spot.offset
+	p.loadout.bags.append(b)
+	p.loadout.refresh_items(p)
+	return b
+
+
+# 把道具放進袋子 b（第一個空位）；放不下回傳 &""
+static func _put(p: Player, b: Dictionary, id: StringName) -> StringName:
+	var where := p.loadout.bags.find(b)
+	var spot := p.loadout.container(where).find_spot(id)
+	if spot.is_empty():
+		return &""
+	return p.loadout.add_item(p, id, spot, 0, where)
 
 
 static func _dummy(w: World, at: Vector2, hp: float = 1000.0, mass: float = 1000.0) -> Entity:

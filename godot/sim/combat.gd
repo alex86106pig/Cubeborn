@@ -123,6 +123,8 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 	if target is Player and source is Enemy and (source as Enemy).chill_stacks > 0:
 		damage *= target.stats.value(&"chilled_damage_taken")   # 寒鐵護符：冰冷的怪打人比較不痛
 	var is_proc: bool = hit.get("proc", false)   # 道具效果造成的傷害（v0.33.0）：不爆擊、不再觸發命中效果
+	# 哪個動作打的（觸發袋分左右）：hit 有寫就照寫的（投射物出手時記下、技能是 skill），沒寫看玩家現在在普攻還是右鍵招式
+	var attack_tag: StringName = hit.get("attack", (source as Player).attack_tag() if source is Player and not is_proc else &"")
 	# 屬性轉換（武器詞條，Build 改版第 8 步）：玩家的非道具物理傷害有一部分改成別的屬性，這一下只打剩下的物理，轉換的部分在後面另外打
 	var converted := 0.0
 	if source is Player and not is_proc and hit.get("damage_type", &"phys") == &"phys":
@@ -196,12 +198,12 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 		# 道具的命中 / 擊殺效果（v0.33.0）：放在事件之後，連鎖閃電、爆炸的傷害事件排在這一下後面
 		if not is_proc:
 			ItemEffects.on_dealt(world, source as Player, dealt)   # 命中回復、吸血（G1）
-			ItemEffects.on_hit(world, source as Player, target, damage, hit.get("projectile", false), hit.get("finisher", false))
+			ItemEffects.on_hit(world, source as Player, target, damage, attack_tag)
 			ItemEffects.added_damage(world, source as Player, target, hit.damage)   # 附加火焰 / 冰霜傷害（羈絆道具）
 			if converted > 0.0:
 				_converted_damage(world, source as Player, target, hit.damage, is_crit)
 		if target.is_dead:
-			ItemEffects.on_kill(world, source as Player, target, damage)
+			ItemEffects.on_kill(world, source as Player, target, damage, attack_tag)
 	return true
 
 

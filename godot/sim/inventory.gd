@@ -1,26 +1,42 @@
-# 格子容器：背包（D3，ItemDefs.BAG_SIZE 8 × 6 格）與武器格子（Build 改版第 3 步，for_weapon：只有 mask 裡的格子能放）
-# 道具依 ItemDefs.SHAPES 的形狀占格、可轉 0 / 90 / 180 / 270 度
-# 只管擺放；屬性效果由 Loadout 依 uid 套上（鑲在主手 / 副手的格子才生效）。純資料，客戶端從快照整份覆蓋
+# 格子容器：倉庫（ItemDefs.BAG_SIZE 8 × 6，什麼都放、沒有效果）、主袋（BagDefs.MAIN_SIZE，只放數值道具）、
+# 觸發袋（for_bag：袋子實例的 length × depth，只放效果、技能、修飾）
+# 道具依 ItemDefs.SHAPES 的形狀占格、可轉 0 / 90 / 180 / 270 度。只管擺放；效果由 Loadout 依 uid 套上。純資料，客戶端從快照整份覆蓋
 class_name Inventory
 extends RefCounted
 
+const STORAGE := &"storage"
+const CORE := &"core"
+const BAG := &"bag"
+
 var size: Vector2i = ItemDefs.BAG_SIZE
-var entries: Array[Dictionary] = []   # { uid: StringName, id: StringName, cell: Vector2i, rot: int, weapon?: 武器實例（D4，放在背包的武器沒有效果） }
-var mask: Dictionary = {}            # 武器格子：能放的格子（WeaponDefs.grid_cells）；空 = size 內每一格都能放（背包）
-var weapon_id: StringName = &""      # 武器格子是哪種武器的（技能只能鑲在它能用的武器上）
+var entries: Array[Dictionary] = []   # { uid: StringName, id: StringName, cell: Vector2i, rot: int, weapon?: 武器實例, bag?: 袋子實例, charges?: int }
+var mode: StringName = STORAGE
 
 
-# 武器實例的格子：entries 直接用實例的 sockets（同一個陣列，改這裡就是改武器上鑲的東西；沒有就建一個空的）
-static func for_weapon(inst: Dictionary) -> Inventory:
+static func core() -> Inventory:
 	var inv := Inventory.new()
-	var id: StringName = ItemDefs.ITEMS[inst.base].weapon
-	inv.size = WeaponDefs.grid_size(id)
-	inv.mask = WeaponDefs.grid_cells(id)
-	inv.weapon_id = id
-	if not inst.has("sockets"):
-		inst["sockets"] = [] as Array[Dictionary]
-	inv.entries = inst.sockets
+	inv.size = BagDefs.MAIN_SIZE
+	inv.mode = CORE
 	return inv
+
+
+# 袋子實例的格子：entries 直接用實例的 entries（同一個陣列，改這裡就是改袋子裡的東西）
+static func for_bag(bag: Dictionary) -> Inventory:
+	var inv := Inventory.new()
+	inv.size = Vector2i(bag.length, bag.depth)
+	inv.mode = BAG
+	inv.entries = bag.entries
+	return inv
+
+
+# 這種容器收不收這個東西：主袋只收數值道具；袋子只收效果、技能、修飾；倉庫都收
+func accepts(id: StringName) -> bool:
+	match mode:
+		CORE:
+			return ItemDefs.role_of(id) == ItemDefs.ROLE_STAT
+		BAG:
+			return ItemDefs.role_of(id) in [ItemDefs.ROLE_EFFECT, ItemDefs.ROLE_SKILL, ItemDefs.ROLE_MOD]
+	return true
 
 
 # 道具轉 rot 次 90 度後占的格子（以左上角為 (0, 0)）
@@ -36,16 +52,6 @@ static func cells_of(id: StringName, rot: int) -> Array[Vector2i]:
 		lo = Vector2i(mini(lo.x, p.x), mini(lo.y, p.y))
 	for i in out.size():
 		out[i] -= lo
-	return out
-
-
-# 道具碰到的武器部位（WeaponDefs.PARTS 的字元，不重複，依道具格子的順序）；背包沒有部位，回傳 ""
-func parts_of(e: Dictionary) -> String:
-	var out := ""
-	for c in cells_of(e.id, e.rot):
-		var part: String = mask.get(e.cell + c, "")
-		if part != "" and not out.contains(part):
-			out += part
 	return out
 
 
@@ -68,58 +74,37 @@ func occupied(ignore: StringName = &"") -> Dictionary:
 
 
 func fits(id: StringName, cell: Vector2i, rot: int, ignore: StringName = &"") -> bool:
-	return _fits_cells(occupied(ignore), cells_of(id, rot), cell, id)
+	return accepts(id) and _fits_cells(occupied(ignore), cells_of(id, rot), cell)
 
 
-# 武器格子另外的規則（Build 改版第 7 步）：寶石座只放技能、技能只放寶石座，而且要是這把武器能用的技能
-func _fits_cells(taken: Dictionary, cells: Array[Vector2i], at: Vector2i, id: StringName = &"") -> bool:
-	var skill := ItemDefs.is_skill(id)
-	if skill and not mask.is_empty() and not SkillDefs.can_socket(id, weapon_id):
-		return false
+func _fits_cells(taken: Dictionary, cells: Array[Vector2i], at: Vector2i) -> bool:
 	for c in cells:
 		var p := at + c
-		if p.x < 0 or p.y < 0 or p.x >= size.x or p.y >= size.y or taken.has(p) or (not mask.is_empty() and not mask.has(p)):
-			return false
-		if not mask.is_empty() and id != &"" and (mask[p] == "G") != skill:
+		if p.x < 0 or p.y < 0 or p.x >= size.x or p.y >= size.y or taken.has(p):
 			return false
 	return true
 
 
-# 第一個放得下的位置：由上到下、由左到右，每格先試不轉、再依序轉 90 / 180 / 270；武器格子先找合部位偏好的（_preferred）；放不下回傳 {}
-# ignore：當作那一件不在背包裡（算「拿掉它放不放得下」）。占用表與四個方向的形狀只算一次（suggest_removal 會連叫很多次）
+# 第一個放得下的位置：由上到下、由左到右，每格先試不轉、再依序轉 90 / 180 / 270；放不下（或不收這種東西）回傳 {}
+# ignore：當作那一件不在裡面（算「拿掉它放不放得下」）。占用表與四個方向的形狀只算一次（suggest_removal 會連叫很多次）
 func find_spot(id: StringName, ignore: StringName = &"") -> Dictionary:
+	if not accepts(id):
+		return {}
 	var taken := occupied(ignore)
 	var shapes: Array[Array] = []
 	for rot in 4:
 		shapes.append(cells_of(id, rot))
-	var fallback := {}
 	for y in size.y:
 		for x in size.x:
 			for rot in 4:
-				if _fits_cells(taken, shapes[rot], Vector2i(x, y), id):
-					if mask.is_empty() or _preferred(id, shapes[rot], Vector2i(x, y)):
-						return {"cell": Vector2i(x, y), "rot": rot}
-					if fallback.is_empty():
-						fallback = {"cell": Vector2i(x, y), "rot": rot}
-	return fallback
-
-
-# 武器格子的自動擺放偏好：看部位發動的道具要碰到攻擊部位（每次命中都發動）；
-# 其他道具不佔攻擊部位、末端、防禦部位（留給觸發道具）。沒有合偏好的位置時 find_spot 用第一個放得下的
-func _preferred(id: StringName, cells: Array, at: Vector2i) -> bool:
-	var is_trigger := ItemDefs.part_timed_trigger(id) != &""
-	for c: Vector2i in cells:
-		var part: String = mask[at + c]
-		if is_trigger and part == "A":
-			return true
-		if not is_trigger and part in ["A", "E", "D"]:
-			return false
-	return not is_trigger
+				if _fits_cells(taken, shapes[rot], Vector2i(x, y)):
+					return {"cell": Vector2i(x, y), "rot": rot}
+	return {}
 
 
 # 放不下 id 時，拿掉哪一件就放得下（有好幾件時挑占格最少的）；本來就放得下、或拿掉一件也不夠時回傳 &""
 func suggest_removal(id: StringName) -> StringName:
-	if not find_spot(id).is_empty():
+	if not accepts(id) or not find_spot(id).is_empty():
 		return &""
 	var best := &""
 	var best_cells := 1 << 20
@@ -131,11 +116,11 @@ func suggest_removal(id: StringName) -> StringName:
 	return best
 
 
-func add(uid: StringName, id: StringName, cell: Vector2i, rot: int, weapon: Dictionary = {}) -> void:
+func add(uid: StringName, id: StringName, cell: Vector2i, rot: int, extra: Dictionary = {}) -> Dictionary:
 	var e := {"uid": uid, "id": id, "cell": cell, "rot": posmod(rot, 4)}
-	if not weapon.is_empty():
-		e["weapon"] = weapon
+	e.merge(extra)
 	entries.append(e)
+	return e
 
 
 func remove(uid: StringName) -> void:
@@ -155,9 +140,22 @@ func move(uid: StringName, cell: Vector2i, rot: int) -> bool:
 	return true
 
 
-# 快照用：[[uid, id, x, y, rot, 武器（WeaponDropDefs.to_array，不是武器為 []）], …]（武器格子裡只有道具，用 sockets_to_array）
+# 快照用：[[uid, id, x, y, rot, 武器（WeaponDropDefs.to_array，不是武器為 []）, 袋子（BagDefs.to_array，不是袋子為 []）], …]
 func to_array() -> Array:
 	var out := []
 	for e in entries:
-		out.append([String(e.uid), String(e.id), e.cell.x, e.cell.y, e.rot, WeaponDropDefs.to_array(e.get("weapon", {}))])
+		out.append([String(e.uid), String(e.id), e.cell.x, e.cell.y, e.rot, WeaponDropDefs.to_array(e.get("weapon", {})),
+			BagDefs.to_array(e.bag) if e.has("bag") else []])
 	return out
+
+
+func sync_from(arr: Array) -> void:
+	entries.clear()
+	for a: Array in arr:
+		var extra := {}
+		var w := WeaponDropDefs.from_array(a[5])
+		if not w.is_empty():
+			extra["weapon"] = w
+		if a.size() > 6 and not (a[6] as Array).is_empty():
+			extra["bag"] = BagDefs.from_array(a[6])
+		add(StringName(a[0]), StringName(a[1]), Vector2i(a[2], a[3]), a[4], extra)

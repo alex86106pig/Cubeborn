@@ -352,7 +352,7 @@ func _apply_own_authority(me: Player, a: Array) -> void:
 		me.quiver = extra[NetCodec.P_QUIVER]
 		me.reload_timer = extra[NetCodec.P_RELOAD]
 	if extra[NetCodec.P_INV] != null:
-		me.sync_inventory(extra[NetCodec.P_INV])   # 背包以房主為準（D3：撿、丟、搬動都在房主執行）
+		me.sync_inventory(extra[NetCodec.P_INV])   # 倉庫、主袋、袋子以房主為準（撿、丟、搬動都在房主執行）
 	# 被房主判定暈眩（v0.27.0）：本機預測也立刻站住；負數 = 被腐屍抓住（本機不知道是哪隻，grabbed_by 填 -1）
 	var host_stun: float = extra[NetCodec.P_STUN]
 	var grabbed := host_stun < 0.0

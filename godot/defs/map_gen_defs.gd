@@ -49,12 +49,13 @@ const ANVIL_OFFSET := 5
 const DOOR_OFFSETS_TWO: Array[int] = [4, 12]   # 兩扇門在那一格外緣上的位置（0 ~ SUB；門寬 ArenaView.DOOR_WIDTH 4.4）
 const DOOR_REACH := 3.0      # 門前站的位置往內縮多少（走道接到這裡，檢查走不走得到也看這點）
 # 兩扇門時各抽一種下一關的獎勵（不重複）；一扇門的關卡下一關固定有鐵砧，門上不抽獎勵
-const DOOR_REWARDS: Array[StringName] = [&"relic", &"skill", &"souls", &"dice"]
-# 門上的獎勵（走進門、下一關開始時給）：relic 遺物（石棺的稀有度機率）、skill 技能遺物（同石棺）放在出生點旁 REWARD_DROP，
+const DOOR_REWARDS: Array[StringName] = [&"relic", &"skill", &"bag", &"souls", &"dice"]
+# 門上的獎勵（走進門、下一關開始時給）：relic 遺物（石棺的稀有度機率）、skill 技能遺物（同石棺）、bag 觸發袋 N 選 1 放在出生點旁 REWARD_DROP，
 # souls 全隊共用的靈魂、dice 每人的骰子；數字 Claude 暫定
 const REWARDS := {
 	&"relic": {"name": "遺物"},
 	&"skill": {"name": "技能"},
+	&"bag": {"name": "袋子"},
 	&"souls": {"name": "靈魂", "amount": 60},
 	&"dice": {"name": "骰子", "amount": 2},
 }

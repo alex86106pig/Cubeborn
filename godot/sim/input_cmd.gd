@@ -15,14 +15,15 @@ const BTN_VOTE_YES := 1 << 13    # Enter：同意前往下一層（本步按下�
 const BTN_VOTE_NO := 1 << 14     # Esc：反對前往下一層（本步按下；只在投票中送出，這時 Esc 不開選單）
 const HELD_BUTTONS := BTN_ATTACK | BTN_INTERACT | BTN_SPECIAL_HELD   # 按住類的按鈕：沿用上一筆輸入時保留，其餘「本步按下」的不重複觸發
 
-const OP_MOVE := 0   # 背包操作（D3）：[OP_MOVE, uid, x, y, rot] 搬到 (x, y)、轉 rot 次 90 度
+const OP_MOVE := 0   # 背包操作：[OP_MOVE, uid, x, y, rot, where] 搬到 where（Loadout.BAG 倉庫 / CORE 主袋 / 第幾個袋子）的 (x, y)、轉 rot 次 90 度
 const OP_DROP := 1   # [OP_DROP, uid] 丟到面前的地上
 const OP_EQUIP := 2  # [OP_EQUIP, uid, slot] 武器放進裝備欄 slot（D4）
-const OP_MERGE := 3  # [OP_MERGE, uid_a, uid_b, 留 a 的詞條?, 留 b 的詞條?] 把武器 a 拖到 b 上合成（D4；第 8 步起要在鍛造祭壇旁）
+const OP_MERGE := 3  # [OP_MERGE, uid_a, uid_b] 把武器 a 拖到 b 上合成（要在鍛造祭壇旁）
 const OP_PICKUP := 4 # [OP_PICKUP, 地上道具的實體 id, x, y, rot] 撿起按得到 F 的地上道具，放到背包 (x, y)
 const OP_RELIC_PICK := 5     # [OP_RELIC_PICK, 遺物的實體 id, 第幾個] 遺物的 N 選 1（Build 改版第 6 步）
 const OP_RELIC_REROLL := 6   # [OP_RELIC_REROLL, 遺物的實體 id] 用掉 1 顆骰子重擲選項
 const OP_RELIC_CLOSE := 7    # [OP_RELIC_CLOSE] 先不選，關掉（回來再按 F 還是同一組）
+const OP_BAG := 8   # [OP_BAG, 袋子 uid, side, offset, x?, y?, rot?] 袋子接到主袋的 side 邊、offset 位置；side 空字串 = 拿下來放倉庫 (x, y)
 
 var tick := 0
 var move := Vector2.ZERO   # 世界 XZ 方向，長度 ≤ 1
