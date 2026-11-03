@@ -39,7 +39,10 @@ const PATH_REFRESH := 0.5              # 每隔幾秒重新找路
 const STUCK_TIME := 25.0               # 追同一個目標這麼久、血都沒掉（打不到）就放棄它；有在掉血就繼續打（Boss 血多，25 秒打不完）
 const LOOT_RANGE := INF                # 多遠的武器都去撿（量「全撿」的上限；身邊沒怪才去）
 const SAFE_RANGE := 5.0                # 身邊這麼近有怪就先打怪
-const DIG_FLEE := 6.0                  # 挖墳開始後，近戰身邊這麼近有 2 隻以上醒著的怪就先跑（_flee_dig）
+const DIG_FLEE := 6.0                  # 挖墳開始後，身邊這麼近有醒著的怪就不挖、繞圈跑給怪追（_flee_dig）
+const KITE_RING := 9.0                 # 繞圈的半徑（從挖墳點算）
+const KITE_STEP := 0.6                 # 每次往圈上前方這麼多弧度的點走
+const KITE_BLOCK := 2.5                # 前方這麼近有 2 隻以上就掉頭
 const DIG_GUARD := 3.5                 # 挖墳時身邊這麼近有怪就停下來打
 const MINION_CLOSE := 3.0              # Boss 叫出來的小怪貼到這麼近、又比 Boss 近，就先打掉
 const REST_UNTIL := 0.9                # 挖墳前生命低於這個比例、身邊沒醒著的怪就站著回血（最多 REST_MAX 秒）；挖墳要撐 40~100 秒的怪潮
@@ -58,7 +61,6 @@ var react := 0.25
 var real_death := false                # true：倒下就真的倒下（單人就是這場結束）；false：倒下記一次、原地滿血救起
 var reach := 1.4
 var crowd_max := CROWD_MAX
-var opts_flee_ranged := false          # --dig-flee 有寫的話遠程也照跑（實驗用）
 var dig_flee := DIG_FLEE               # --dig-flee=距離：挖墳開始後這麼近有 2 隻以上就跑（0 = 不跑，照舊邊挖邊打）
 var style := "full"
 
@@ -117,6 +119,7 @@ var _socket_tried := {}                # 試過搬上武器格的道具 uid（�
 var _was_reviving := false
 var _rested := 0.0                     # 這一關挖墳前站著回血了幾秒
 var _rest_stage := -1
+var _kite_dir := 1.0                   # 挖墳繞圈的方向（1 / -1）
 
 
 func _init(p_world: World, p_player: Player, opts: Dictionary, seed_value: int) -> void:
@@ -132,7 +135,6 @@ func _init(p_world: World, p_player: Player, opts: Dictionary, seed_value: int) 
 	trace = opts.has("trace")
 	crowd_max = int(opts.get("crowd", str(CROWD_MAX)))
 	dig_flee = float(opts.get("dig-flee", str(DIG_FLEE)))
-	opts_flee_ranged = opts.has("dig-flee")
 	reach = 1.4
 	var wid: StringName = ClassDefs.CLASSES[p.class_id].weapon
 	if wid in RANGED:   # 遠程站在普攻射程的 70%（5~9）：站得比守墓人提燈的發動距離（7）遠，不會一直被噴
@@ -295,7 +297,7 @@ func decide() -> InputCmd:
 	var summoner := _nearest_summoner()
 	if summoner != null:
 		return _fight(cmd, summoner)
-	if smart_play and w.event.state == DigEvent.ACTIVE and dig_flee > 0.0 and (reach <= KITE_DIST or opts_flee_ranged) and _flee_dig(cmd):
+	if smart_play and w.event.state == DigEvent.ACTIVE and dig_flee > 0.0 and _flee_dig(cmd):
 		return cmd
 	var near := _nearest_enemy(SAFE_RANGE, false)
 	var digging_phase := style == "rush" or (_nearest_enemy(INF, false) == null and _boss() == null)
@@ -1209,25 +1211,49 @@ func _nearest_awake() -> Enemy:
 	return best
 
 
-# 挖墳開始後（DigEvent.ACTIVE）：沒人挖進度也不會掉（DIG.decay 0），每次噴發還 +10%（ERUPT.progress）。近戰身邊 DIG_FLEE 內有 2 隻以上
-# 醒著的怪就不去挖、往怪少的地方跑，等噴發把進度補滿（使用者 2026-11-03：往外跑、等 10% 10% 的就好）；只有 1 隻就照常打掉
+# 挖墳開始後（DigEvent.ACTIVE）：沒人挖進度也不會掉（DIG.decay 0），每 10 秒噴發還 +10%（ERUPT.progress）。身邊 dig_flee 內有醒著的怪
+# 就不挖，繞著挖墳點跑圈給怪追（使用者 2026-11-03：「你可以跑給怪追啊」）：圈的半徑 KITE_RING（噴出來的怪落在 3~6 外），固定一個方向，
+# 前面被怪堵住（KITE_BLOCK 內 2 隻以上）就掉頭；近戰邊跑不出手，遠程邊跑邊射最近的。身邊沒怪才回去挖（自己挖比較快）
 func _flee_dig(cmd: InputCmd) -> bool:
-	var n := 0
+	var close: Enemy = null
+	var close_d := dig_flee
 	for x in w.enemies:
 		var e := x as Enemy
-		if e != null and not e.is_dead and e.team != &"player" and not e.dormant and e.pos.distance_to(p.pos) <= dig_flee:
-			n += 1
-	if n < 2:
+		if e == null or e.is_dead or e.team == &"player" or e.dormant:
+			continue
+		var d := e.pos.distance_to(p.pos)
+		if d <= close_d:
+			close_d = d
+			close = e
+	if close == null:
 		return false
-	var away := _away_from_crowd(dig_flee)
-	var nav := w.nav_for(p.radius)
-	for a: float in [0.0, 0.6, -0.6, 1.2, -1.2, PI / 2.0, -PI / 2.0]:
-		var d := away.rotated(a)
-		if nav.has_los(p.pos, p.pos + d * 4.0):
-			away = d
-			break
-	_walk(cmd, p.pos + away * 4.0)
+	var center: Vector2 = w.event.point
+	var rel := p.pos - center
+	if rel.length_squared() < 1e-4:
+		rel = Vector2(0, 1)
+	var goal := _ring_goal(center, rel, _kite_dir)
+	var ahead := (goal - p.pos).normalized()
+	var blocked := 0
+	for x in w.enemies:
+		var e := x as Enemy
+		if e != null and not e.is_dead and e.team != &"player" and not e.dormant:
+			var to := e.pos - p.pos
+			if to.length() < KITE_BLOCK and to.normalized().dot(ahead) > 0.3:
+				blocked += 1
+	if blocked >= 2:
+		_kite_dir = -_kite_dir
+		goal = _ring_goal(center, rel, _kite_dir)
+	_walk(cmd, goal)
+	if reach > KITE_DIST:
+		cmd.aim = close.pos
+		cmd.buttons |= InputCmd.BTN_ATTACK
 	return true
+
+
+# 圈上往 dir 方向前進一段的點（牆裡的點換成最近走得到的）
+func _ring_goal(center: Vector2, rel: Vector2, dir: float) -> Vector2:
+	var at := center + rel.normalized().rotated(KITE_STEP * dir) * KITE_RING
+	return w.nav.nearest_walkable(at)
 
 
 # 被召喚出來的怪：召喚者還活著就去打召喚者（只打送上門的會打不完，召喚者每隔幾秒又叫一批）
