@@ -1254,9 +1254,24 @@ func _flee_dig(cmd: InputCmd) -> bool:
 		goal = _ring_goal(center, rel, _kite_dir)
 	_walk(cmd, goal)
 	if reach > KITE_DIST:
-		cmd.aim = close.pos
+		var shoot := _nearest_of(&"archer", reach)   # 遠程先射骷髏弓手（一箭 21，挖墳時遊俠最多被牠打死）
+		cmd.aim = (shoot if shoot != null else close).pos
 		cmd.buttons |= InputCmd.BTN_ATTACK
 	return true
+
+
+func _nearest_of(type: StringName, radius: float) -> Enemy:
+	var best: Enemy = null
+	var best_d := radius
+	for x in w.enemies:
+		var e := x as Enemy
+		if e == null or e.is_dead or e.type != type or e.dormant:
+			continue
+		var d := p.pos.distance_to(e.pos)
+		if d < best_d:
+			best_d = d
+			best = e
+	return best
 
 
 # 圈上往 dir 方向前進一段的點（牆裡的點換成最近走得到的）
