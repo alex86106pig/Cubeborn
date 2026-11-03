@@ -11,6 +11,8 @@ extends RefCounted
 
 const MAX_DOWNS_SHOWN := 5
 const HITCH := 0.05   # 一幀超過這麼多秒算卡頓
+const HITCH_AFTER_CHANGE := 1.0   # 換小關 / 換層 / 開局後這麼多秒內的卡頓算在那一下（換地圖那一步之後的下一幀才量到）
+const MAX_HITCHES_SHOWN := 20     # 回報列出前幾次卡頓的時間點
 const REACT := 0.4         # 攻擊者連續看得到不到這麼多秒就打中，算「看不見」（來不及反應）
 const TRACK_RANGE := 8.0   # 這麼近的怪每幀記錄看不看得到（遠的只看打中那一刻，省效能）
 const RARITY_ORDER: Array[StringName] = [&"white", &"green", &"blue", &"purple", &"orange"]
@@ -44,6 +46,7 @@ var frame_time := 0.0
 var worst_frame := 0.0
 var worst_at := 0.0     # 最慢那一幀在這局第幾秒
 var hitches := 0
+var hitch_list: Array[Dictionary] = []   # 每次卡頓：{at: 這局第幾秒, ms, phase: 開局 / 換小關 / 換層 / 一般}（只存前 MAX_HITCHES_SHOWN 次）
 var video := ""         # 目前的畫面設定（設定頁 video_text，main.gd 每次改動時設定）
 var by_video := {}      # 畫面設定 → {frames, time, hitches}
 var worst_context := "" # 最慢那一幀當時的畫面狀況（frame_context 回傳）
@@ -74,6 +77,7 @@ func reset() -> void:
 	worst_frame = 0.0
 	worst_at = 0.0
 	hitches = 0
+	hitch_list.clear()
 	by_video.clear()
 	worst_context = ""
 
@@ -87,10 +91,32 @@ func add_frame(delta: float, run_time: float) -> void:
 		worst_context = frame_context.call() if frame_context.is_valid() else ""
 	if delta > HITCH:
 		hitches += 1
+		if hitch_list.size() < MAX_HITCHES_SHOWN:
+			hitch_list.append({"at": run_time, "ms": roundi(delta * 1000.0), "phase": _hitch_phase(run_time)})
 	var v: Dictionary = by_video.get_or_add(video, {"frames": 0, "time": 0.0, "hitches": 0})
 	v.frames += 1
 	v.time += delta
 	v.hitches += int(delta > HITCH)
+
+
+# 卡頓當時在做什麼：這一層 / 這一小關開始後 HITCH_AFTER_CHANGE 秒內 → 開局（第一筆）/ 換層 / 換小關，其他算一般
+func _hitch_phase(run_time: float) -> String:
+	if floors.is_empty() or run_time - floors[-1].start > HITCH_AFTER_CHANGE:
+		return "一般"
+	if floors.size() == 1:
+		return "開局"
+	return "換層" if floors[-1].floor != floors[-2].floor else "換小關"
+
+
+# 「卡頓的時間點：1:05 換小關 190 ms、…」；沒卡頓回傳空字串
+func hitch_text() -> String:
+	if hitch_list.is_empty():
+		return ""
+	var parts: Array[String] = []
+	for h in hitch_list:
+		parts.append("%s %s %d ms" % [UiKit.format_time(h.at), h.phase, h.ms])
+	var more := "…等共 %d 次" % hitches if hitches > hitch_list.size() else ""
+	return "卡頓的時間點：%s%s" % ["、".join(PackedStringArray(parts)), more]
 
 
 # 每幀（HUD，和 add_frame 同時）：身邊的怪從幾秒開始看得到、主手武器換了沒
@@ -244,6 +270,8 @@ func report_text(world: World) -> String:
 		var at := UiKit.format_time(worst_at) + ("，" + worst_context if worst_context != "" else "")
 		lines.append("效能：平均 %d FPS · 最慢一幀 %d ms（%s）· 卡頓（超過 %d ms）%d 次" % [
 			roundi(frames / maxf(frame_time, 1e-6)), roundi(worst_frame * 1000.0), at, roundi(HITCH * 1000.0), hitches])
+		if not hitch_list.is_empty():
+			lines.append("  " + hitch_text())
 		if by_video.size() > 1:   # 一局中切換過畫面設定：各設定分開列，就是對照組
 			for key: String in by_video:
 				var v: Dictionary = by_video[key]

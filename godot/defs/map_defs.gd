@@ -248,7 +248,7 @@ static func layout_text(layout: Dictionary) -> String:
 		var names: Array[String] = []
 		for themes: Array in layout.themes:
 			names.append("＋".join(PackedStringArray(themes.map(func(t: StringName) -> String: return MapGenDefs.THEME_NAMES.get(t, String(t))))))
-		parts.append("第 %d 小關 %s" % [layout.stage, "、".join(PackedStringArray(names))])
+		parts.append("、".join(PackedStringArray(names)))   # 小關編號遊玩紀錄每層那行開頭已經有（World.level_name 的「1-3」），這裡只寫每塊的主題
 	var doors: Array = layout.get("doors", [])
 	if not doors.is_empty():
 		parts.append("門 " + "、".join(PackedStringArray(doors.map(func(d: StringName) -> String: return DOOR_NAMES[d]))))

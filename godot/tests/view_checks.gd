@@ -761,7 +761,8 @@ static func check_run_log() -> String:
 	hud._copy_button.pressed.emit()
 	var report: String = hud.last_report
 	for want in ["Cubeborn v%s" % GameVersion.VERSION, "結果：你倒下了", "武器：", "你的擊殺 1", "被打中 3 次", "最慢一幀 120 ms（1:05，光 3 盞、怪 20 隻）", "卡頓（超過 50 ms）1 次",
-			"顯示卡：", "· 陰影關・光源開", "  陰影開・光源開：平均 63 FPS · 卡頓 0 次", "  陰影關・光源開：平均 8 FPS · 卡頓 1 次"]:
+			"顯示卡：", "· 陰影關・光源開", "  陰影開・光源開：平均 63 FPS · 卡頓 0 次", "  陰影關・光源開：平均 8 FPS · 卡頓 1 次",
+			"  卡頓的時間點：1:05 一般 120 ms"]:
 		if not report.contains(want):
 			return "回報文字缺「%s」：\n%s" % [want, report]
 	if report.contains("連線："):
@@ -784,8 +785,25 @@ static func check_run_log() -> String:
 		return "結算畫面需要 %s，超出 %s" % [need, screen]
 	_note("結算畫面最多行時需要 %.0f × %.0f（畫面 %.0f × %.0f）" % [need.x, need.y, screen.x, screen.y])
 	hud._on_event("game:restart", {})
-	if rl.hits_taken != 0 or not rl.kills.is_empty() or not rl.downs.is_empty() or rl.frames != 0 or rl.result != "" or not rl.by_video.is_empty() or not rl.weapon_drops.is_empty() or rl.bag_full_at >= 0.0:
+	if rl.hits_taken != 0 or not rl.kills.is_empty() or not rl.downs.is_empty() or rl.frames != 0 or rl.result != "" or not rl.by_video.is_empty() or not rl.weapon_drops.is_empty() or rl.bag_full_at >= 0.0 or not rl.hitch_list.is_empty():
 		return "game:restart 後遊玩紀錄應清空"
+	# 卡頓記時間點與當時在做什麼：換小關 / 換層 / 開局後 1 秒內算那一下，其他算一般；每層那行不重複小關編號
+	var rl2 := RunLog.new()
+	var layout := MapDefs.layout_text({"stage": 2, "themes": [[&"open"], [&"tombs", &"ruins"]]})
+	rl2.floors.append({"floor": 1, "stage": 1, "map": "墓園", "start": 0.0, "event_start": -1.0, "event_open": -1.0, "layout": ""})
+	rl2.add_frame(0.08, 0.2)
+	rl2.add_frame(0.08, 30.0)
+	rl2.floors.append({"floor": 1, "stage": 2, "map": "墓園", "start": 100.0, "event_start": -1.0, "event_open": -1.0, "layout": layout})
+	rl2.add_frame(0.19, 100.1)
+	rl2.add_frame(0.016, 100.2)
+	rl2.floors.append({"floor": 2, "stage": 0, "map": "墓窟", "start": 200.0, "event_start": -1.0, "event_open": -1.0, "layout": ""})
+	rl2.add_frame(0.09, 200.05)
+	var want_hitch := "卡頓的時間點：0:00 開局 80 ms、0:30 一般 80 ms、1:40 換小關 190 ms、3:20 換層 90 ms"
+	if rl2.hitches != 4 or rl2.hitch_text() != want_hitch:
+		return "卡頓的時間點不對（%d 次）：%s" % [rl2.hitches, rl2.hitch_text()]
+	var stage_line: String = rl2.floors_text(150.0)[1]
+	if stage_line != "1-2 墓園 1:40 空地、墓碑林＋教堂廢墟":
+		return "每層那行不該重複小關編號：%s" % stage_line
 	hud.queue_free()
 	cam.queue_free()
 	return ""
