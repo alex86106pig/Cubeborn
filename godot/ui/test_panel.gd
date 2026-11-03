@@ -27,7 +27,6 @@ var weapon_rarity := &"white"
 var _body := VBoxContainer.new()
 var _weapon_buttons := {}
 var _rarity_buttons := {}
-var _affix_box := HFlowContainer.new()
 var _affix_buttons := {}   # 詞條 id → Button（切換鈕）
 
 
@@ -164,8 +163,8 @@ func _build_weapon_page() -> void:
 		rarities.add_child(b)
 	rarities.add_child(_action("放進背包", _request_weapon))
 	box.add_child(rarities)
-	_affix_box = _flow()
-	box.add_child(_affix_box)
+	var affix_box := _flow()
+	box.add_child(affix_box)
 	for id: StringName in WeaponDropDefs.AFFIXES:
 		var b := UiKit.button(WeaponDropDefs.AFFIXES[id].desc, {"size": AFFIX_SIZE, "font": 16})
 		b.toggle_mode = true
@@ -173,7 +172,7 @@ func _build_weapon_page() -> void:
 		b.tooltip_text = WeaponDropDefs.AFFIXES[id].desc
 		b.toggled.connect(func(_on: bool) -> void: _refresh_affix_note())
 		_affix_buttons[id] = b
-		_affix_box.add_child(b)
+		affix_box.add_child(b)
 	_scroll_page(&"weapon", box)
 	_pick_base(_ids_of(&"weapon")[0])
 	_pick_rarity(&"white")

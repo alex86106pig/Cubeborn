@@ -1783,7 +1783,7 @@ static func check_relic() -> String:
 		return "每人應有 %d 個選項並打開：%s / %s、打開 %d" % [n, oa, ob, a.relic_id]
 	for o: Array in [oa, ob]:
 		for id: StringName in o:
-			if o.count(id) != 1 or ItemDefs.ITEMS[id].get("bonds", []).is_empty():
+			if o.count(id) != 1 or not LootDefs.drop_pool(ItemDefs.ITEMS[id].rarity).has(id):   # 掉落池含魔力、輔助道具（不屬於羈絆）
 				return "選項不該重複、要是掉落池裡的道具：%s" % [o]
 	# 關掉再開：同一組；重骰：骰子 −1、換一組；沒有骰子不能骰
 	a.relic_id = 0
