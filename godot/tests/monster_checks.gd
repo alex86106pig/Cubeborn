@@ -356,7 +356,7 @@ static func check_spider() -> String:
 static func check_zombie() -> String:
 	var l: Dictionary = EnemyDefs.ENEMIES.zombie.lunge
 	var bites := roundi(l.grab_time / l.bite_interval)
-	for mode: StringName in [&"stand", &"roll", &"teammate", &"block"]:
+	for mode: StringName in [&"stand", &"roll", &"teammate", &"block", &"knocked"]:
 		var w := _world()
 		var p: Player = w.players[World.HOST_PEER_ID]
 		p.pos = Vector2.ZERO
@@ -375,7 +375,9 @@ static func check_zombie() -> String:
 			if grabbed_at >= 0 and released_at < 0:
 				if mode == &"roll" and i == grabbed_at + 3:
 					cmd.buttons = InputCmd.BTN_ROLL
-				if mode == &"teammate" and i == grabbed_at + 3:
+				if mode == &"knocked" and i == grabbed_at + 2:
+					p.knock_down(Config.PLAYER.hurt_tiers.knockdown)   # 被抓著時又被擊倒（中、重級的攻擊）
+				if mode in [&"teammate", &"knocked"] and i == grabbed_at + 3:
 					Combat.apply_damage(w, p, z, {"damage": 1.0, "knockback": 0.0})   # 當成隊友打它（傷害來源是玩家）
 			w.step({World.HOST_PEER_ID: cmd}, DT)
 			for ev in w.events:
@@ -402,6 +404,11 @@ static func check_zombie() -> String:
 			&"roll", &"teammate":
 				if grabbed_at < 0 or released_at != grabbed_at + 3 or p.stun_timer > 0.0:
 					return "腐屍：%s 應在第 %d 步放開（實際 %d、剩暈眩 %.2f）" % ["按翻滾" if mode == &"roll" else "隊友打它", grabbed_at + 3, released_at, p.stun_timer]
+			&"knocked":
+				# 腐屍在玩家的 update 外面鬆手：倒地時間也要清掉，不然畫面一直畫躺地姿勢
+				w.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+				if released_at != grabbed_at + 3 or p.knock_time > 0.0 or p.anim.get("knocked", 0.0) > 0.0:
+					return "腐屍：抓著時被擊倒、腐屍被打鬆手後應站起來（第 %d 步放開、倒地時間 %.2f）" % [released_at - grabbed_at, p.knock_time]
 			&"block":
 				if grabbed_at >= 0 or not staggered:
 					return "腐屍：舉盾擋下撲抱應不被抓、腐屍踉蹌（被抓 %s、踉蹌 %s）" % [grabbed_at >= 0, staggered]

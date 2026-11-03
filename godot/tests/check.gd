@@ -138,7 +138,7 @@ func _initialize() -> void:
 	_check("骨輪：看得到目標就蓄力 roll.windup 秒再直線滾過去，撞到玩家打一次、照樣往前，撞牆（場地邊緣）散成骨堆 collapse 秒再組起來；被打不硬直；被盾擋下也算撞牆", MonsterChecks.check_bone_wheel)
 	_check("屍甲蟲：鑽在地底打不到、不能當目標；爬到腳下停 emerge 秒才冒出來咬，先走開就咬不到；冒出來後在地面停 surface 秒打得到再鑽下去", MonsterChecks.check_beetle)
 	_check("墓穴蜘蛛：吐蛛絲彈打中纏住 web.root 秒；被盾擋下在落點結網；站在網上移速 × web.slow；火焰傷害打到網上燒掉", MonsterChecks.check_spider)
-	_check("腐屍：撲中抓住 grab_time 秒、撲 1 下 + 每 bite_interval 咬一口；被抓時按翻滾立刻掙脫；隊友打它就鬆手；舉盾擋下不被抓、腐屍踉蹌；" 		+ "撿武器（走過去彎腰撿、地上消失、名字持〇腐屍、彎腰被打中斷、死掉掉回同一把；劍盾正面擋下背後打得到；8 種武器都打得到玩家、不再撲抱）",
+	_check("腐屍：撲中抓住 grab_time 秒、撲 1 下 + 每 bite_interval 咬一口；被抓時按翻滾立刻掙脫；隊友打它就鬆手（抓著時被擊倒，鬆手後照樣站起來）；舉盾擋下不被抓、腐屍踉蹌；" 		+ "撿武器（走過去彎腰撿、地上消失、名字持〇腐屍、彎腰被打中斷、死掉掉回同一把；劍盾正面擋下背後打得到；8 種武器都打得到玩家、不再撲抱）",
 		all.bind([MonsterChecks.check_zombie, MonsterChecks.check_armed_zombie]))
 	_check("膨脹屍：撲抱抱住站著的玩家、脹 hold_swell_time 秒（被打不硬直）→ 自爆炸到玩家與旁邊的怪（抱住的 +hold_bonus、擊倒）、不給靈魂、不抽死亡爆炸詞條；留下腐氣持續傷害玩家與怪、不畫圈只冒煙；被打死 death_delay 秒後照樣炸、給靈魂", MonsterChecks.check_bloater)
 	_check("屍犬：背對時在視野外就飛撲（擊倒）、patience 內做到；一直看著它正面牽制側跳、patience 內不撲、之後從正面撲；繞圈方向不跟著玩家小幅轉身來回換邊；撲完先沿圈退到內圈才再撲；" 		+ "貼近快咬（輕級）後往後跳；附近翻滾撲向翻滾終點；4 隻同時出招不超過 pack.max_attackers",

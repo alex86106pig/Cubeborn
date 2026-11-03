@@ -181,8 +181,16 @@ func max_poise() -> float:
 func release_grab() -> void:
 	if grabbed_by == 0:
 		return
-	grabbed_by = 0
+	_end_stun()
+
+
+# 暈眩結束：抓住、擊倒、埋土一起清掉。腐屍在玩家的 update 外面鬆手時也走這裡，
+# 不然下一步暈眩已經是 0、update 跳過整段，倒地時間留著，畫面會一直畫躺地姿勢
+func _end_stun() -> void:
 	stun_timer = 0.0
+	grabbed_by = 0
+	knock_time = 0.0
+	bury_mash = -1.0
 
 
 # 空中還能跳幾次：背包裡每個有 double_jump 能力的道具 +1（同一種拿兩個也只算 1 次）
@@ -730,9 +738,7 @@ func update(dt: float) -> void:
 		if knock_time > 0.0:
 			knock_time += dt
 		if stun_timer <= 0.0:
-			grabbed_by = 0
-			knock_time = 0.0
-			bury_mash = -1.0
+			_end_stun()
 		if stun_timer > 0.0:
 			move_input = Vector2.ZERO   # 暈眩時站著不動（移動層回到 idle）
 		_pressed = 0
