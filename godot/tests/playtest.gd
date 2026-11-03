@@ -3,6 +3,7 @@
 # 參數：--floors=N（幾層，預設 1）、--seeds=1,2,3（每個種子各玩一場，預設 1,2,3）、--class=guardian（職業，預設守墓騎士）、
 #       --style=full|rush（full：清完怪群 → 打 Boss → 挖墳；rush：直接挖墳，只打靠近的怪，預設 full）、--out=檔案（另存 Markdown）
 # 機器人不會死（每步補滿血），量的是「打完一層會拿到多少東西」，不是難度；武器全撿（背包放不下才留在地上），不開祭壇 / 石棺（靈魂另外列）
+# 遺物與鐵砧會去選（優先主手武器能鑲的技能，已經有就升級），打怪時魔力夠、目標在範圍內就放技能與耗魔的右鍵
 extends SceneTree
 
 const DT := 1.0 / 60.0
@@ -26,6 +27,10 @@ var _target_hp := 0.0                 # 這次開始計時時目標的血
 var _skip: Dictionary = {}            # 放棄的目標 id
 var _tap := false                     # F 要放開再按才算「剛按下」
 var _full_seen := false               # 附近有武器但背包放不下
+var _casts := 0                       # 這一層放了幾次技能（數字鍵）與耗魔的右鍵
+var _relic_skip: Dictionary = {}      # 走不到的遺物 id
+var _relic_time := 0.0
+var _relic_target := 0
 
 
 func _initialize() -> void:
@@ -37,7 +42,7 @@ func _initialize() -> void:
 	var cls := StringName(opts.get("class", "guardian"))
 	var style := String(opts.get("style", "full"))
 	var lines: Array[String] = ["# 自動試玩", "", "職業 %s、打法 %s、%d 層、種子 %s；背包 %d × %d = %d 格" % [cls, style, floors, str(seeds), ItemDefs.BAG_SIZE.x, ItemDefs.BAG_SIZE.y, ItemDefs.BAG_SIZE.x * ItemDefs.BAG_SIZE.y], "",
-		"| 種子 | 層 | 時間 | 殺怪（怪群 / 事件 / Boss / 召喚） | 掉武器（白綠藍紫橘） | 撿到 | 背包武器格 | 背包滿的時間 | 地上沒撿 | 靈魂 |", "|---|---|---|---|---|---|---|---|---|---|"]
+		"| 種子 | 層 | 時間 | 殺怪（怪群 / 事件 / Boss / 召喚） | 掉武器（白綠藍紫橘） | 撿到 | 背包武器格 | 背包滿的時間 | 地上沒撿 | 靈魂 | 技能（等級）· 放幾次 |", "|---|---|---|---|---|---|---|---|---|---|---|"]
 	for s in seeds:
 		lines.append_array(_play(int(s), floors, cls, style))
 	lines.append("")
@@ -75,6 +80,8 @@ func _play(seed_value: int, floors: int, cls: StringName, style: String) -> Arra
 	_skip.clear()
 	_tap = false
 	_full_seen = false
+	_relic_skip.clear()
+	_relic_target = 0
 	var reach: float = 6.0 if ClassDefs.CLASSES[cls].weapon in RANGED else 1.4
 	var rows: Array[String] = []
 	for f in floors:
@@ -95,6 +102,7 @@ func _play_floor(seed_value: int, style: String, reach: float) -> String:
 	_skip.clear()
 	_target_id = 0
 	_full_seen = false
+	_casts = 0
 	while t < MAX_FLOOR_TIME:
 		var cmd := _decide(style, reach)
 		_p.hp = _p.max_hp   # 不會死：量的是拿到多少東西
@@ -108,6 +116,9 @@ func _play_floor(seed_value: int, style: String, reach: float) -> String:
 						kills["boss" if e.is_boss() else ("summon" if e.no_souls else ("event" if e.wave_member else "pack"))] += 1
 				"weapon:dropped":
 					drops[StringName(ev.rarity)] += 1
+				"skill:used":
+					if ev.get("player_id", 0) == _p.id and ev.get("key", "") != ActiveSlots.cd_key(ActiveSlots.HEAL_INDEX):
+						_casts += 1
 		if full_at < 0.0 and _full_seen:
 			full_at = t
 		picked = _p.inventory.entries.filter(func(x: Dictionary) -> bool: return not x.get("weapon", {}).is_empty()).size()
@@ -123,9 +134,14 @@ func _play_floor(seed_value: int, style: String, reach: float) -> String:
 	var rarity := "%d（%s）" % [total, " ".join(drops.values().map(func(v: int) -> String: return str(v)))]
 	var timeout := " 逾時" if t >= MAX_FLOOR_TIME else ""
 	var left := _w.pickups.filter(func(x: Entity) -> bool: return not x.is_dead and not (x as ItemPickup).weapon.is_empty()).size()
-	return "| %d | %d | %s%s | %d（%d / %d / %d / %d） | %s | %d | %d | %s | %d | %d |" % [seed_value, _w.floor_num, _mmss(t), timeout,
+	var gems: Array[String] = []
+	for g in _p.slots.gems(_p):
+		if g.def.has("mana"):
+			gems.append("%s %d" % [ItemDefs.ITEMS[g.id].name, _p.skill_levels.get(g.id, 1)])
+	var skills := "%s · %d" % ["、".join(PackedStringArray(gems)) if not gems.is_empty() else "無", _casts]
+	return "| %d | %d | %s%s | %d（%d / %d / %d / %d） | %s | %d | %d | %s | %d | %d | %s |" % [seed_value, _w.floor_num, _mmss(t), timeout,
 		kills.pack + kills.event + kills.boss + kills.summon, kills.pack, kills.event, kills.boss, kills.summon, rarity, picked, cells,
-		"—" if full_at < 0.0 else _mmss(full_at), left, _w.souls - souls_start]
+		"—" if full_at < 0.0 else _mmss(full_at), left, _w.souls - souls_start, skills]
 
 
 func _mmss(t: float) -> String:
@@ -158,6 +174,9 @@ func _decide(style: String, reach: float) -> InputCmd:
 		if _w.can_reach(_p, loot) and _tap:
 			cmd.buttons |= InputCmd.BTN_INTERACT
 		return cmd
+	var relic := _next_relic()
+	if relic != null:
+		return _use_relic(cmd, relic)
 	if boss != null and _boss_awake(boss):
 		return _fight(cmd, boss, reach)   # Boss 醒了先打它（不然它一直叫小怪，機器人會打不完）
 	if not digging_phase:
@@ -202,7 +221,77 @@ func _fight(cmd: InputCmd, e: Entity, reach: float) -> InputCmd:
 	if _p.pos.distance_to(e.pos) > reach + e.radius:
 		_walk(cmd, e.pos)
 	cmd.buttons |= InputCmd.BTN_ATTACK
+	_cast(cmd, e, reach)
 	return cmd
+
+
+# 數字鍵 1~4 的技能：放得出來（魔力、冷卻、次數）、目標在技能的範圍內就放（一步放一個）；再看耗魔的右鍵
+func _cast(cmd: InputCmd, e: Entity, reach: float) -> void:
+	var d := _p.pos.distance_to(e.pos) - e.radius
+	for i in ActiveSlots.GEM_SLOTS:
+		var slot: Variant = _p.slots.get_slot(_p, i)
+		if slot == null or not slot.def.has("mana") or not _p.slots.can_use(_p, i):
+			continue
+		if d <= _skill_range(slot.def, reach):
+			cmd.buttons |= InputCmd.slot_bit(i)
+			return
+	var special: Dictionary = _p.weapon.get("special", {})
+	if special.has("mana") and _p.has_mana(_p.mana_cost_of(special)) and d <= _skill_range(special, reach):
+		cmd.buttons |= InputCmd.BTN_SPECIAL
+
+
+# 技能打得到多遠：資料的 range（射出去）/ distance（衝刺）/ radius（身邊一圈），都沒有就用普攻距離
+static func _skill_range(def: Dictionary, reach: float) -> float:
+	for k in ["range", "distance", "radius"]:
+		if def.has(k):
+			return maxf(float(def[k]) * 0.9, reach)
+	return reach + 1.0
+
+
+# 還沒選過的遺物 / 鐵砧（最近的、走得到的）
+func _next_relic() -> Relic:
+	var best: Relic = null
+	var best_d := INF
+	for x in _w.relics:
+		var r := x as Relic
+		if r == null or r.is_removed or r.taken.has(_p.peer_id) or _relic_skip.has(r.id):
+			continue
+		var d := _p.pos.distance_to(r.pos)
+		if d < best_d:
+			best_d = d
+			best = r
+	return best
+
+
+# 走過去按 F 打開，打開了就選：鐵砧第一步的詞條選第一個；技能優先選主手武器能鑲的（已經有就是升級），沒有就選第一個
+func _use_relic(cmd: InputCmd, r: Relic) -> InputCmd:
+	if r.id != _relic_target:
+		_relic_target = r.id
+		_relic_time = 0.0
+	_relic_time += DT
+	if _relic_time > STUCK_TIME:
+		_relic_skip[r.id] = true
+	if _p.relic_id == r.id:
+		cmd.inv_ops.append([InputCmd.OP_RELIC_PICK, r.id, _relic_choice(r)])
+		return cmd
+	_walk(cmd, r.pos)
+	if _w.can_reach(_p, r) and _tap:
+		cmd.buttons |= InputCmd.BTN_INTERACT
+	return cmd
+
+
+func _relic_choice(r: Relic) -> int:
+	var opts: Array = r.offers.get(_p.peer_id, [])
+	var base := Loadout.weapon_of(_p.weapon_slots[Loadout.MAIN])
+	var fallback := 0
+	for i in opts.size():
+		var id: StringName = opts[i]
+		if not ItemDefs.is_skill(id):
+			continue
+		if SkillDefs.can_socket(id, base) and _p.skill_levels.get(id, 1) < SkillDefs.LEVEL.max:
+			return i
+		fallback = i if fallback == 0 else fallback
+	return fallback
 
 
 func _walk(cmd: InputCmd, goal: Vector2) -> void:
