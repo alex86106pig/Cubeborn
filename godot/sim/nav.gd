@@ -26,14 +26,42 @@ func _init(p_terrain: Terrain, half: Vector2, p_margin: float) -> void:
 	astar.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
 	astar.default_estimate_heuristic = AStarGrid2D.HEURISTIC_OCTILE
 	astar.update()
-	for x in size.x:
-		for y in size.y:
-			var c := cell_center(Vector2i(x, y))
-			# 場地邊緣一圈也當障礙（實體會被限制在場地內）
-			var edge := absf(c.x) > half.x - margin or absf(c.y) > half.y - margin
-			if edge or terrain.blocks_nav(c, margin):
-				astar.set_point_solid(Vector2i(x, y))
-	_build_regions()
+	# 障礙格 = 格子中心落在 [min − margin, max + margin] 裡（同 Terrain.blocks_nav）：每個石台換算成格子範圍一次填，不逐格查
+	# 石台座標是 1/4 單位、格子中心是 0.5 的倍數、margin 不是 1/4 的倍數，邊界不會剛好壓在格子中心上，換算沒有誤差
+	var solid := PackedByteArray()
+	solid.resize(size.x * size.y)
+	# 場地邊緣一圈也當障礙（實體會被限制在場地內）：|中心| > half − margin
+	var ex := _first_center_above(half.x - margin, origin.x)
+	var ey := _first_center_above(half.y - margin, origin.y)
+	var wx := ceili((-(half.x - margin) - origin.x) / cell - 0.5)   # 中心 < −(half − margin) 的格數（從 0 開始）
+	var wy := ceili((-(half.y - margin) - origin.y) / cell - 0.5)
+	_fill(solid, Rect2i(0, 0, wx, size.y))
+	_fill(solid, Rect2i(0, 0, size.x, wy))
+	_fill(solid, Rect2i(ex, 0, size.x - ex, size.y))
+	_fill(solid, Rect2i(0, ey, size.x, size.y - ey))
+	for b in terrain.blocks:
+		if b.kind == MapDefs.PLATFORM:
+			continue
+		var lo := Vector2i(ceili((b.min.x - margin - origin.x) / cell - 0.5), ceili((b.min.y - margin - origin.y) / cell - 0.5))
+		var hi := Vector2i(floori((b.max.x + margin - origin.x) / cell - 0.5), floori((b.max.y + margin - origin.y) / cell - 0.5))
+		_fill(solid, Rect2i(lo, hi - lo + Vector2i.ONE))
+	_build_regions(solid)
+
+
+# 中心座標 > limit 的第一格（往正方向）：格子中心 = origin + (i + 0.5) × cell
+func _first_center_above(limit: float, o: float) -> int:
+	return floori((limit - o) / cell - 0.5) + 1
+
+
+func _fill(solid: PackedByteArray, r: Rect2i) -> void:
+	r = r.intersection(Rect2i(Vector2i.ZERO, size))
+	if r.size.x <= 0 or r.size.y <= 0:
+		return
+	astar.fill_solid_region(r, true)
+	for y in range(r.position.y, r.end.y):
+		var row := y * size.x
+		for x in range(r.position.x, r.end.x):
+			solid[row + x] = 1
 
 
 func to_cell(p: Vector2) -> Vector2i:
@@ -122,22 +150,33 @@ func find_path(a: Vector2, b: Vector2) -> PackedVector2Array:
 	return out
 
 
-func _build_regions() -> void:
-	region.resize(size.x * size.y)
+# 連通區塊（四方向）：照障礙格的 byte 陣列做，不逐格呼叫 astar；格子用一維索引
+func _build_regions(solid: PackedByteArray) -> void:
+	var w := size.x
+	var n := size.x * size.y
+	region.resize(n)
 	region.fill(-1)
 	var next := 0
-	for y in size.y:
-		for x in size.x:
-			var start := Vector2i(x, y)
-			if region[y * size.x + x] != -1 or not is_walkable_cell(start):
-				continue
-			var stack: Array[Vector2i] = [start]
-			region[y * size.x + x] = next
-			while not stack.is_empty():
-				var c: Vector2i = stack.pop_back()
-				for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-					var q := c + d
-					if is_walkable_cell(q) and region[q.y * size.x + q.x] == -1:
-						region[q.y * size.x + q.x] = next
-						stack.append(q)
-			next += 1
+	var stack := PackedInt32Array()
+	for start in n:
+		if region[start] != -1 or solid[start] != 0:
+			continue
+		region[start] = next
+		stack.append(start)
+		while not stack.is_empty():
+			var i: int = stack[stack.size() - 1]
+			stack.resize(stack.size() - 1)
+			var x := i % w
+			if x + 1 < w and solid[i + 1] == 0 and region[i + 1] == -1:
+				region[i + 1] = next
+				stack.append(i + 1)
+			if x > 0 and solid[i - 1] == 0 and region[i - 1] == -1:
+				region[i - 1] = next
+				stack.append(i - 1)
+			if i + w < n and solid[i + w] == 0 and region[i + w] == -1:
+				region[i + w] = next
+				stack.append(i + w)
+			if i >= w and solid[i - w] == 0 and region[i - w] == -1:
+				region[i - w] = next
+				stack.append(i - w)
+		next += 1

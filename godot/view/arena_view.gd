@@ -36,7 +36,7 @@ func build(half: Vector2, terrain: Terrain, theme: StringName = &"graveyard", do
 		child.queue_free()
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
-	add_child(DarkFantasy.build_arena(maxf(half.x, half.y), rng, theme))
+	add_child(DarkFantasy.build_arena(half, rng, theme))
 	if not terrain.blocks.is_empty():
 		add_child(create_blocks(terrain.blocks, theme))
 	if not doors.is_empty():
@@ -115,31 +115,46 @@ static func soft_noise(x: float, z: float) -> float:
 		+ 0.25 * sin((x + z) * 0.15 + 2.1)
 
 
-## 每個三角形單色的低多邊形地面：依雜訊在 colors 間漸變，並帶 ±jitter 的隨機深淺
-static func create_ground(size: float, colors: Array[Color], cell: float, jitter: float, rng: RandomNumberGenerator) -> MeshInstance3D:
-	var segs := maxi(1, roundi(size / cell))
-	var step := size / segs
-	var h := size / 2.0
+## 每個三角形單色的低多邊形地面（size：寬 x 深）：依雜訊在 colors 間漸變，並帶 ±jitter 的隨機深淺
+static func create_ground(size: Vector2, colors: Array[Color], cell: float, jitter: float, rng: RandomNumberGenerator) -> MeshInstance3D:
+	var segs_x := maxi(1, roundi(size.x / cell))
+	var segs_z := maxi(1, roundi(size.y / cell))
+	var step_x := size.x / segs_x
+	var step_z := size.y / segs_z
+	# 每格兩個三角形、各 3 個頂點：先配置好再照索引寫（地面有幾萬個三角形，逐個 append 與建暫時陣列太慢）
+	var count := segs_x * segs_z * 6
 	var verts := PackedVector3Array()
+	verts.resize(count)
 	var normals := PackedVector3Array()
+	normals.resize(count)
+	normals.fill(Vector3.UP)
 	var vcolors := PackedColorArray()
-	for iz in segs:
-		for ix in segs:
-			var x0 := -h + ix * step
-			var z0 := -h + iz * step
+	vcolors.resize(count)
+	var i := 0
+	for iz in segs_z:
+		for ix in segs_x:
+			var x0 := -size.x / 2.0 + ix * step_x
+			var z0 := -size.y / 2.0 + iz * step_z
 			var p00 := Vector3(x0, 0.0, z0)
-			var p10 := Vector3(x0 + step, 0.0, z0)
-			var p01 := Vector3(x0, 0.0, z0 + step)
-			var p11 := Vector3(x0 + step, 0.0, z0 + step)
-			for tri in [[p00, p10, p01], [p10, p11, p01]]:   # 順時針（Godot 正面朝上）
-				var center: Vector3 = (tri[0] + tri[1] + tri[2]) / 3.0
-				var color := _pick(colors, soft_noise(center.x, center.z))
-				var shade := 1.0 + (rng.randf() - 0.5) * 2.0 * jitter
-				color = Color(color.r * shade, color.g * shade, color.b * shade)
-				for v: Vector3 in tri:
-					verts.append(v)
-					normals.append(Vector3.UP)
-					vcolors.append(color)
+			var p10 := Vector3(x0 + step_x, 0.0, z0)
+			var p01 := Vector3(x0, 0.0, z0 + step_z)
+			var p11 := Vector3(x0 + step_x, 0.0, z0 + step_z)
+			# 順時針（Godot 正面朝上）：[p00, p10, p01]、[p10, p11, p01]；顏色看三角形中心
+			var ca := _ground_color(colors, x0 + step_x / 3.0, z0 + step_z / 3.0, jitter, rng)
+			var cb := _ground_color(colors, x0 + step_x * 2.0 / 3.0, z0 + step_z * 2.0 / 3.0, jitter, rng)
+			verts[i] = p00
+			verts[i + 1] = p10
+			verts[i + 2] = p01
+			verts[i + 3] = p10
+			verts[i + 4] = p11
+			verts[i + 5] = p01
+			vcolors[i] = ca
+			vcolors[i + 1] = ca
+			vcolors[i + 2] = ca
+			vcolors[i + 3] = cb
+			vcolors[i + 4] = cb
+			vcolors[i + 5] = cb
+			i += 6
 	var mi := MeshInstance3D.new()
 	mi.mesh = PartKit.array_mesh(verts, normals, vcolors)
 	var m := StandardMaterial3D.new()
@@ -153,45 +168,55 @@ static func create_ground(size: float, colors: Array[Color], cell: float, jitter
 	return mi
 
 
+static func _ground_color(colors: Array[Color], x: float, z: float, jitter: float, rng: RandomNumberGenerator) -> Color:
+	var color := _pick(colors, soft_noise(x, z))
+	var shade := 1.0 + (rng.randf() - 0.5) * 2.0 * jitter
+	return Color(color.r * shade, color.g * shade, color.b * shade)
+
+
 static func _pick(colors: Array[Color], t: float) -> Color:
 	var scaled := clampf(t, 0.0, 0.999) * (colors.size() - 1)
 	var i := floori(scaled)
 	return colors[i].lerp(colors[mini(i + 1, colors.size() - 1)], scaled - i)
 
 
-# 沿著正方形場地邊界的等距點位（offset 為離邊界向外的距離）
-static func perimeter_points(half: float, spacing: float, offset := 0.5) -> Array[Dictionary]:
+# 沿著長方形場地邊界（half：寬、深的一半）的等距點位（offset 為離邊界向外的距離）
+static func perimeter_points(half: Vector2, spacing: float, offset := 0.5) -> Array[Dictionary]:
 	var points: Array[Dictionary] = []
-	var e := half + offset
-	var count := maxi(1, roundi(e * 2.0 / spacing))
-	for i in count:
-		var t := lerpf(-e, e, float(i) / count)
-		points.append({"x": t, "z": -e, "ry": 0.0})
-		points.append({"x": e, "z": t, "ry": PI / 2.0})
-		points.append({"x": -t, "z": e, "ry": PI})
-		points.append({"x": -e, "z": -t, "ry": -PI / 2.0})
+	var ex := half.x + offset
+	var ez := half.y + offset
+	var count_x := maxi(1, roundi(ex * 2.0 / spacing))
+	var count_z := maxi(1, roundi(ez * 2.0 / spacing))
+	for i in count_x:
+		var t := lerpf(-ex, ex, float(i) / count_x)
+		points.append({"x": t, "z": -ez, "ry": 0.0})
+		points.append({"x": -t, "z": ez, "ry": PI})
+	for i in count_z:
+		var t := lerpf(-ez, ez, float(i) / count_z)
+		points.append({"x": ex, "z": t, "ry": PI / 2.0})
+		points.append({"x": -ex, "z": -t, "ry": -PI / 2.0})
 	return points
 
 
 # 場地外圍環帶中的隨機點位（inner 為離邊界最近距離，outer 為最遠）
-static func scatter_outside(rng: RandomNumberGenerator, half: float, count: int, inner := 1.5, outer := 9.0) -> Array[Dictionary]:
+static func scatter_outside(rng: RandomNumberGenerator, half: Vector2, count: int, inner := 1.5, outer := 9.0) -> Array[Dictionary]:
 	var points: Array[Dictionary] = []
 	while points.size() < count:
-		var x := (rng.randf() * 2.0 - 1.0) * (half + outer)
-		var z := (rng.randf() * 2.0 - 1.0) * (half + outer)
-		if maxf(absf(x), absf(z)) < half + inner:
+		var x := (rng.randf() * 2.0 - 1.0) * (half.x + outer)
+		var z := (rng.randf() * 2.0 - 1.0) * (half.y + outer)
+		if absf(x) < half.x + inner and absf(z) < half.y + inner:
 			continue
 		points.append({"x": x, "z": z, "ry": rng.randf() * TAU, "s": 0.7 + rng.randf() * 0.6})
 	return points
 
 
 # 場地內的少量裝飾點位（不影響碰撞，只放小東西）
-static func scatter_inside(rng: RandomNumberGenerator, half: float, count: int, margin := 1.5) -> Array[Dictionary]:
+static func scatter_inside(rng: RandomNumberGenerator, half: Vector2, count: int, margin := 1.5) -> Array[Dictionary]:
 	var points: Array[Dictionary] = []
 	for i in count:
 		points.append({
-			"x": (rng.randf() * 2.0 - 1.0) * (half - margin),
-			"z": (rng.randf() * 2.0 - 1.0) * (half - margin),
+			"x": (rng.randf() * 2.0 - 1.0) * (half.x - margin),
+			"z": (rng.randf() * 2.0 - 1.0) * (half.y - margin),
 			"ry": rng.randf() * TAU,
 			"s": 0.6 + rng.randf() * 0.6,
 		})

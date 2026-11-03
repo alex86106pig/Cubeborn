@@ -739,7 +739,7 @@ static func enemy_projectile(color: Color) -> Node3D:
 
 # 只負責外觀，碰撞邊界由 World 決定
 # theme：MapDefs 的 theme（graveyard 墓園 / catacomb 地下墓窟）
-static func build_arena(half: float, rng: RandomNumberGenerator, theme: StringName = &"graveyard") -> Node3D:
+static func build_arena(half: Vector2, rng: RandomNumberGenerator, theme: StringName = &"graveyard") -> Node3D:
 	if theme == &"catacomb":
 		return _build_catacomb(half, rng)
 	var k := PartKit.new()
@@ -748,12 +748,7 @@ static func build_arena(half: float, rng: RandomNumberGenerator, theme: StringNa
 	var rocks: Array[StandardMaterial3D] = []
 	for c in ROCK_COLORS:
 		rocks.append(k.mat(c))
-	for p in ArenaView.perimeter_points(half, 1.1, 0.6):
-		var s := 0.45 + rng.randf() * 0.45
-		k.add(group, PartKit.ico(s, 0), rocks[rng.randi_range(0, 2)], {
-			"x": p.x + (rng.randf() - 0.5) * 0.4, "y": s * 0.5, "z": p.z + (rng.randf() - 0.5) * 0.4,
-			"rx": rng.randf() * 3.0, "ry": rng.randf() * 3.0, "sy": 0.8 + rng.randf() * 0.6,
-		})
+	_perimeter_rocks(group, half, rng, rocks, 0.45, 0.45)
 
 	var stone := k.mat(Color("6b6e75"))
 	for p in ArenaView.scatter_outside(rng, half, 26, 1.8, 9.0):
@@ -780,23 +775,52 @@ static func build_arena(half: float, rng: RandomNumberGenerator, theme: StringNa
 	k.merge_static(group, [group])
 
 	# 地面有頂點色，不參與合併
-	group.add_child(ArenaView.create_ground((half + 14.0) * 2.0, GROUND_COLORS, 1.8, 0.1, rng))
+	group.add_child(ArenaView.create_ground((half + Vector2(14.0, 14.0)) * 2.0, GROUND_COLORS, 1.8, 0.1, rng))
 	return group
 
 
+# 沿著場地邊界一圈石頭（半徑 size_min ~ size_min + size_range、壓扁 / 拉高 0.8~1.4 倍、隨機轉向）：
+# 一種顏色一個 MultiMesh（同一份平面法線的單位二十面體），邊界上上千顆也不用逐顆建節點再合併
+static var _rock_mesh: ArrayMesh
+
+
+static func _perimeter_rocks(group: Node3D, half: Vector2, rng: RandomNumberGenerator, mats: Array[StandardMaterial3D], size_min: float, size_range: float) -> void:
+	if _rock_mesh == null:
+		_rock_mesh = PartKit.flat_mesh(PartKit.ico(1.0, 0), Transform3D.IDENTITY)
+	var per_mat: Array[Array] = []
+	for m in mats:
+		per_mat.append([])
+	for p in ArenaView.perimeter_points(half, 1.1, 0.6):
+		var s := size_min + rng.randf() * size_range
+		var which := rng.randi_range(0, mats.size() - 1)
+		var pos := Vector3(p.x + (rng.randf() - 0.5) * 0.4, s * 0.5, p.z + (rng.randf() - 0.5) * 0.4)
+		var rot := Vector3(rng.randf() * 3.0, rng.randf() * 3.0, 0.0)
+		var basis := Basis.from_euler(rot, EULER_ORDER_XYZ) * Basis.from_scale(Vector3(s, s * (0.8 + rng.randf() * 0.6), s))
+		per_mat[which].append(Transform3D(basis, pos))
+	for i in mats.size():
+		var list: Array = per_mat[i]
+		if list.is_empty():
+			continue
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = _rock_mesh
+		mm.instance_count = list.size()
+		for j in list.size():
+			mm.set_instance_transform(j, list[j])
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		mmi.material_override = mats[i]
+		group.add_child(mmi)
+
+
 # 地下墓窟：場外是一塊塊岩石（沒有墓碑與樹），場內散落碎骨與頭骨堆
-static func _build_catacomb(half: float, rng: RandomNumberGenerator) -> Node3D:
+static func _build_catacomb(half: Vector2, rng: RandomNumberGenerator) -> Node3D:
 	var k := PartKit.new()
 	var group := Node3D.new()
 	var rocks: Array[StandardMaterial3D] = []
 	for c in CATACOMB_ROCK:
 		rocks.append(k.mat(c))
-	for p in ArenaView.perimeter_points(half, 1.1, 0.6):
-		var s := 0.5 + rng.randf() * 0.5
-		k.add(group, PartKit.ico(s, 0), rocks[rng.randi_range(0, 2)], {
-			"x": p.x + (rng.randf() - 0.5) * 0.4, "y": s * 0.5, "z": p.z + (rng.randf() - 0.5) * 0.4,
-			"rx": rng.randf() * 3.0, "ry": rng.randf() * 3.0, "sy": 0.8 + rng.randf() * 0.6,
-		})
+	_perimeter_rocks(group, half, rng, rocks, 0.5, 0.5)
 	for p in ArenaView.scatter_outside(rng, half, 40, 1.8, 11.0):
 		var s: float = (1.0 + rng.randf() * 1.4) * p.s
 		k.add(group, PartKit.ico(s, 0), rocks[rng.randi_range(0, 2)], {
@@ -814,5 +838,5 @@ static func _build_catacomb(half: float, rng: RandomNumberGenerator) -> Node3D:
 				"x": p.x + cos(a) * r, "y": 0.1 + (0.12 if i >= 3 else 0.0), "z": p.z + sin(a) * r, "shadow": false,
 			})
 	k.merge_static(group, [group])
-	group.add_child(ArenaView.create_ground((half + 14.0) * 2.0, CATACOMB_GROUND, 1.8, 0.1, rng))
+	group.add_child(ArenaView.create_ground((half + Vector2(14.0, 14.0)) * 2.0, CATACOMB_GROUND, 1.8, 0.1, rng))
 	return group

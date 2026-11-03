@@ -1954,7 +1954,7 @@ static func check_mesh_counts() -> String:
 		if err != "":
 			return err
 	var rng := RandomNumberGenerator.new()
-	var arena := DarkFantasy.build_arena(Config.WORLD.arena_half_size, rng)
+	var arena := DarkFantasy.build_arena(Vector2.ONE * Config.WORLD.arena_half_size, rng)
 	var n := PartKit.mesh_instances(arena).size()
 	arena.free()
 	if n > 12:

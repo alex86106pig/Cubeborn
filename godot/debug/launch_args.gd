@@ -17,7 +17,7 @@ class_name LaunchArgs
 extends RefCounted
 
 # 網頁版可以從網址帶的參數（url_query_args）；v0.36.3 加自動移動 / 攻擊，用來量「第一次出現」的卡頓
-const WEB_URL_ARGS: Array[String] = ["seconds", "horde", "perf", "elites", "player-hp", "auto-move", "auto-move-seconds", "auto-attack", "weapon", "class", "difficulty", "no-spawn", "weapon-test", "items", "shadows", "lights", "floor", "host", "join", "room", "net-autostart", "loot-test", "stage-hop"]   # loot-test：開箱與掉落卡頓的固定場景；stage-hop：量換小關 / 換層的卡頓（2026-11-03）； host / join / room / net-autostart：網頁版多人自動測試、之後的邀請連結（2026-10-27 使用者同意開放；?host&room 開房印 net room=房號，?join=房號&room 加入）；shadows / lights：內顯量效能的對照組（2026-10-27）；weapon / class / no-spawn / weapon-test：網頁版逐把看武器（2026-10-27）；difficulty：選角畫面的難度；items：帶道具量效能（G7）；floor：量第 2 層以後的地圖
+const WEB_URL_ARGS: Array[String] = ["seconds", "horde", "perf", "elites", "player-hp", "auto-move", "auto-move-seconds", "auto-attack", "weapon", "class", "difficulty", "no-spawn", "weapon-test", "items", "shadows", "lights", "floor", "host", "join", "room", "net-autostart", "loot-test", "stage-hop"]   # loot-test：開箱與掉落卡頓的固定場景；stage-hop：量換小關 / 換層的卡頓； host / join / room / net-autostart：網頁版多人自動測試、之後的邀請連結（2026-10-27 使用者同意開放；?host&room 開房印 net room=房號，?join=房號&room 加入）；shadows / lights：內顯量效能的對照組（2026-10-27）；weapon / class / no-spawn / weapon-test：網頁版逐把看武器（2026-10-27）；difficulty：選角畫面的難度；items：帶道具量效能（G7）；floor：量第 2 層以後的地圖
 
 var run_seconds := 0.0           # > 0：跑這麼多秒後印出狀態並結束（自動驗證）
 var screenshot_path := ""

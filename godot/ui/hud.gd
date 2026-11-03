@@ -83,6 +83,7 @@ var _copy_button := UiKit.button("複製遊玩紀錄")   # 複製遊玩紀錄（
 var _copy_note := UiKit.label("", 16, UiKit.GOLD)
 var last_report := ""              # 上次複製的文字（測試用）
 var run_log := RunLog.new()
+var _frame_clock := FrameClock.new()   # 遊玩紀錄的幀時間用實際間隔（delta 遇到慢幀會失真）
 var profile: Profile                # 局外存檔（v0.45，main.gd 給）：結算畫面顯示累計金幣；null = 不顯示累計
 var _floor_coins := 0               # 剛過關拿到的金幣：同一步的 floor:started 橫幅一起顯示
 var _pause := ColorRect.new()
@@ -479,6 +480,7 @@ func _pulse(l: Label) -> Label:
 
 
 func _process(delta: float) -> void:
+	var frame_seconds := _frame_clock.tick(delta)
 	_update_fps(delta)
 	if _game_over_delay >= 0.0:
 		_game_over_delay -= delta
@@ -500,7 +502,7 @@ func _process(delta: float) -> void:
 		hints.update(delta, world, player, inventory_panel.visible)
 		if hints.visible:
 			_place_hints()
-		run_log.add_frame(delta, world.stats.time)
+		run_log.add_frame(frame_seconds, world.stats.time)
 		run_log.track(world, world.stats.time)
 	if _stats_panel.visible:
 		_stats_panel.refresh(player)

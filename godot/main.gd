@@ -26,6 +26,7 @@ var net_client: NetClient
 var hud: HUD
 var args: LaunchArgs          # 啟動參數（正常遊玩全部是預設值）
 var perf: PerfMeter           # --perf 才有
+var _frame_clock := FrameClock.new()   # --perf 的幀時間用實際間隔（delta 遇到慢幀會失真）
 var in_weapon_test := false   # 在武器測試場裡（主選單入口，2026-10-27）
 var debug_tools := DebugTools.new()
 var profile := Profile.new()  # 局外存檔（v0.45）：累計金幣
@@ -596,8 +597,9 @@ func _client_physics() -> void:
 
 
 func _process(delta: float) -> void:
+	var frame_seconds := _frame_clock.tick(delta)
 	if perf != null:
-		perf.log_hitch(delta, _elapsed, _warming)
+		perf.log_hitch(frame_seconds, _elapsed, _warming)
 	var alpha := Engine.get_physics_interpolation_fraction() if _stepped_this_tick else 1.0
 	var step := 0
 	if _spectate != 0 and not is_menu_open and not hud.is_stats_panel_open():
@@ -623,7 +625,7 @@ func _process(delta: float) -> void:
 		if perf != null:
 			perf.mark("warm_done")
 	if perf != null:
-		perf.add_frame(delta, Time.get_ticks_usec() - t0, _elapsed)
+		perf.add_frame(frame_seconds, Time.get_ticks_usec() - t0, _elapsed)
 	world_view.profile = perf != null and perf.recording(_elapsed)
 	camera_rig.follow(_player_view_position(alpha), delta)
 	_check_auto_quit(delta)

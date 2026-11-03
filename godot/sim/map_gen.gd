@@ -368,11 +368,14 @@ func _build_grid() -> void:
 	gh = (hi.y + 1) * s + MapGenDefs.EDGE_PAD - gy0
 	grid.resize(gw * gh)
 	grid.fill(-1)
+	# 下面幾個逐格的迴圈（地圖最大好幾萬格）直接算一維索引、不呼叫 _cell，換小關才不會卡；算出來的格子跟逐格呼叫一樣
 	for reg in regions:
+		var rid: int = reg.id
 		for c: Vector2i in reg.sub:
 			for y in range(c.y * s, (c.y + 1) * s):
+				var row := (y - gy0) * gw - gx0
 				for x in range(c.x * s, (c.x + 1) * s):
-					grid[_cell(x, y)] = reg.id
+					grid[row + x] = rid
 	# 走道與保留點附近不吃
 	var protect := PackedByteArray()
 	protect.resize(gw * gh)
@@ -398,43 +401,50 @@ func _build_grid() -> void:
 	dist.resize(gw * gh)
 	dist.fill(999)
 	var queue := PackedInt32Array()
-	for i in grid.size():
-		if grid[i] < 0:
+	var n := gw * gh
+	for i in n:
+		var g := grid[i]
+		if g < 0:
 			continue
 		var x := i % gw
-		var y := i / gw
-		for d in DIRS:
-			var nx := x + d.x
-			var ny := y + d.y
-			if nx < 0 or ny < 0 or nx >= gw or ny >= gh or grid[ny * gw + nx] != grid[i]:
-				dist[i] = 0
-				queue.append(i)
-				break
+		if x == gw - 1 or grid[i + 1] != g or x == 0 or grid[i - 1] != g or i + gw >= n or grid[i + gw] != g or i < gw or grid[i - gw] != g:
+			dist[i] = 0
+			queue.append(i)
+	# 四個方向照 DIRS 的順序（右、左、下、上）
 	var head := 0
 	while head < queue.size():
 		var i := queue[head]
 		head += 1
 		var x := i % gw
-		var y := i / gw
-		for d in DIRS:
-			var nx := x + d.x
-			var ny := y + d.y
-			if nx < 0 or ny < 0 or nx >= gw or ny >= gh:
-				continue
-			var j := ny * gw + nx
-			if grid[j] == grid[i] and dist[j] > dist[i] + 1:
-				dist[j] = dist[i] + 1
-				queue.append(j)
+		var g := grid[i]
+		var nd := dist[i] + 1
+		if x + 1 < gw and grid[i + 1] == g and dist[i + 1] > nd:
+			dist[i + 1] = nd
+			queue.append(i + 1)
+		if x > 0 and grid[i - 1] == g and dist[i - 1] > nd:
+			dist[i - 1] = nd
+			queue.append(i - 1)
+		if i + gw < n and grid[i + gw] == g and dist[i + gw] > nd:
+			dist[i + gw] = nd
+			queue.append(i + gw)
+		if i >= gw and grid[i - gw] == g and dist[i - gw] > nd:
+			dist[i - gw] = nd
+			queue.append(i - gw)
 	var table := PackedInt32Array()
 	table.resize(NOISE_N * NOISE_N)
 	for i in table.size():
 		table[i] = rng.randi_range(0, 1023)
+	# 吃的深度 1 ~ EAT_MAX（雜訊 < 1）：離邊界 0 格一定吃、≥ EAT_MAX 格一定不吃，只有中間的才要算雜訊
 	var eaten := grid.duplicate()
-	for i in grid.size():
-		if grid[i] < 0 or protect[i]:
+	var is_boss := PackedByteArray()
+	for reg in regions:
+		is_boss.append(1 if reg.role == &"boss" else 0)
+	for i in n:
+		var g := grid[i]
+		if g < 0 or protect[i] or dist[i] >= MapGenDefs.EAT_MAX:
 			continue
 		var depth := 1
-		if regions[grid[i]].role != &"boss":
+		if dist[i] > 0 and not is_boss[g]:
 			depth = 1 + floori(_noise(table, gx0 + i % gw, gy0 + i / gw) * MapGenDefs.EAT_MAX)
 		if dist[i] < depth:
 			eaten[i] = -1
@@ -780,21 +790,19 @@ func _check_paths() -> bool:
 # 每格在尋路眼中能不能走：是地面、不貼著實心格（八方向，邊長 1 > margin 的一半以上）、離牆與墓碑的外框超過 margin
 func _nav_free() -> PackedByteArray:
 	var m: float = Config.NAV.margin
-	var free := PackedByteArray()
-	free.resize(gw * gh)
-	for i in grid.size():
-		if grid[i] < 0:
-			continue
+	# 3 × 3 都是地面（超出邊界算實心）：先算每格左中右都是地面（row），再看上中下三排的 row
+	var n := gw * gh
+	var row := PackedByteArray()
+	row.resize(n)
+	for i in n:
 		var x := i % gw
-		var y := i / gw
-		var ok := true
-		for dy in range(-1, 2):
-			for dx in range(-1, 2):
-				var nx := x + dx
-				var ny := y + dy
-				if nx < 0 or ny < 0 or nx >= gw or ny >= gh or grid[ny * gw + nx] < 0:
-					ok = false
-		free[i] = 1 if ok else 0
+		if grid[i] >= 0 and x > 0 and x < gw - 1 and grid[i - 1] >= 0 and grid[i + 1] >= 0:
+			row[i] = 1
+	var free := PackedByteArray()
+	free.resize(n)
+	for i in range(gw, n - gw):
+		if row[i] and row[i - gw] and row[i + gw]:
+			free[i] = 1
 	for reg in regions:
 		for o: Dictionary in reg.obs:
 			if o.kind == &"plat":
@@ -814,21 +822,24 @@ func _flood(free: PackedByteArray, s0: int) -> void:
 	reach.fill(0)
 	reach[s0] = 1
 	var queue := PackedInt32Array([s0])
+	var n := gw * gh
 	var head := 0
 	while head < queue.size():
 		var i := queue[head]
 		head += 1
 		var x := i % gw
-		var y := i / gw
-		for d in DIRS:
-			var nx := x + d.x
-			var ny := y + d.y
-			if nx < 0 or ny < 0 or nx >= gw or ny >= gh:
-				continue
-			var j := ny * gw + nx
-			if free[j] and not reach[j]:
-				reach[j] = 1
-				queue.append(j)
+		if x + 1 < gw and free[i + 1] and not reach[i + 1]:
+			reach[i + 1] = 1
+			queue.append(i + 1)
+		if x > 0 and free[i - 1] and not reach[i - 1]:
+			reach[i - 1] = 1
+			queue.append(i - 1)
+		if i + gw < n and free[i + gw] and not reach[i + gw]:
+			reach[i + gw] = 1
+			queue.append(i + gw)
+		if i >= gw and free[i - gw] and not reach[i - gw]:
+			reach[i - gw] = 1
+			queue.append(i - gw)
 
 
 func _reachable(p: Vector2) -> bool:
