@@ -8,14 +8,12 @@ extends SceneTree
 const DT := 1.0 / 60.0
 const MAX_FLOOR_TIME := 30.0 * 60.0   # 一層最多模擬這麼久（卡住時不會一直跑）
 const PATH_REFRESH := 0.5             # 每隔幾秒重新找路
-const STUCK_TIME := 25.0              # 追同一個目標這麼久還沒解決就放棄它
+const STUCK_TIME := 25.0              # 追同一個目標這麼久、血都沒掉（打不到）就放棄它；有在掉血就繼續打（Boss 血多，25 秒打不完）
 const LOOT_RANGE := INF               # 多遠的武器都去撿（量「全撿」的上限；身邊沒怪才去）
 const SAFE_RANGE := 5.0               # 身邊這麼近有怪就先打怪
 const DIG_GUARD := 3.5                # 挖墳時身邊這麼近有怪就停下來打
 const SUMMONER_RANGE := 15.0          # 這麼近有帶召喚詞條的怪就先打它（不然叫出來的打不完）
 const RANGED := [&"staff", &"shortbow", &"longbow"]
-const JUMP_LOOK := 0.6                # 前方這麼遠的地面比腳底高出一個台階（高台）就跳
-const STILL_JUMP := 0.3               # 有在走但這麼久都沒動（卡在邊緣）也跳一下
 
 var _w: World
 var _p: Player
@@ -24,11 +22,10 @@ var _path_goal := Vector2.INF
 var _path_timer := 0.0
 var _target_id := 0
 var _target_time := 0.0
+var _target_hp := 0.0                 # 這次開始計時時目標的血
 var _skip: Dictionary = {}            # 放棄的目標 id
 var _tap := false                     # F 要放開再按才算「剛按下」
 var _full_seen := false               # 附近有武器但背包放不下
-var _last_pos := Vector2.INF
-var _still_time := 0.0
 
 
 func _initialize() -> void:
@@ -69,6 +66,15 @@ func _play(seed_value: int, floors: int, cls: StringName, style: String) -> Arra
 	_w.player_classes[World.HOST_PEER_ID] = cls
 	_w.reset(seed_value)
 	_p = _w.players[World.HOST_PEER_ID]
+	# 每場從乾淨的機器人狀態開始（同一個程序連跑好幾個種子）
+	_path = PackedVector2Array()
+	_path_goal = Vector2.INF
+	_path_timer = 0.0
+	_target_id = 0
+	_target_time = 0.0
+	_skip.clear()
+	_tap = false
+	_full_seen = false
 	var reach: float = 6.0 if ClassDefs.CLASSES[cls].weapon in RANGED else 1.4
 	var rows: Array[String] = []
 	for f in floors:
@@ -131,20 +137,27 @@ func _decide(style: String, reach: float) -> InputCmd:
 	var cmd := InputCmd.new()
 	cmd.aim = _p.pos + Vector2(0, 1)
 	_tap = not _tap
+	if _p.grabbed_by != 0:   # 被腐屍抓住：照畫面的提示按翻滾掙脫（不然一直被抓著不能打，又不會死）
+		if _tap:
+			cmd.buttons |= InputCmd.BTN_ROLL
+		return cmd
 	var summoner := _nearest_summoner()
 	if summoner != null:
 		return _fight(cmd, summoner, reach)
 	var near := _nearest_enemy(SAFE_RANGE, false)
 	var digging_phase := style == "rush" or (_nearest_enemy(INF, false) == null and _boss_done())
+	var boss := _boss()
 	if near != null and not (digging_phase and _p.pos.distance_to(near.pos) > DIG_GUARD):
-		return _fight(cmd, near, reach)
+		# Boss 叫出來的小怪（不給靈魂）：Boss 醒著就直接打 Boss，不然 Boss 一直叫、小怪打不完
+		if near.no_souls and near.summoner_id == 0 and boss != null and _boss_awake(boss):
+			return _fight(cmd, boss, reach)
+		return _fight(cmd, _summoner_of(near), reach)
 	var loot := _nearest_loot()
 	if loot != null:
 		_walk(cmd, loot.pos)
 		if _w.can_reach(_p, loot) and _tap:
 			cmd.buttons |= InputCmd.BTN_INTERACT
 		return cmd
-	var boss := _boss()
 	if boss != null and _boss_awake(boss):
 		return _fight(cmd, boss, reach)   # Boss 醒了先打它（不然它一直叫小怪，機器人會打不完）
 	if not digging_phase:
@@ -152,7 +165,7 @@ func _decide(style: String, reach: float) -> InputCmd:
 		if e == null:
 			e = _boss()
 		if e != null:
-			return _fight(cmd, e, reach)
+			return _fight(cmd, _summoner_of(e), reach)
 	if _w.event.state == DigEvent.OPEN:
 		return cmd
 	var point := _w.event.point
@@ -167,10 +180,25 @@ func _fight(cmd: InputCmd, e: Entity, reach: float) -> InputCmd:
 	if e.id != _target_id:
 		_target_id = e.id
 		_target_time = 0.0
+		_target_hp = e.hp
 	_target_time += DT
 	if _target_time > STUCK_TIME:
-		_skip[e.id] = true
+		if e.hp < _target_hp - 0.5:   # 有在掉血：重新計時
+			_target_time = 0.0
+			_target_hp = e.hp
+		else:
+			_skip[e.id] = true
 	cmd.aim = e.pos
+	# 舉盾的盾槍兵：正面 shield.arc 內全部擋下、舉盾時轉身慢，站在正面就先往牠身側繞（不出手），繞出盾的範圍再打
+	var sp := e as Spearman
+	if sp != null and sp.is_guarding():
+		var to_me := _p.pos - sp.pos
+		if absf(angle_difference(sp.facing, atan2(to_me.x, to_me.y))) <= sp.def.shield.arc / 2.0 + 0.2:
+			var front := Vector2(sin(sp.facing), cos(sp.facing))
+			var side := front.orthogonal() * (1.0 if front.orthogonal().dot(to_me) >= 0.0 else -1.0)
+			_walk(cmd, sp.pos + side * (reach + sp.radius + 0.5) - front * 0.5)
+			cmd.aim = sp.pos
+			return cmd
 	if _p.pos.distance_to(e.pos) > reach + e.radius:
 		_walk(cmd, e.pos)
 	cmd.buttons |= InputCmd.BTN_ATTACK
@@ -188,14 +216,12 @@ func _walk(cmd: InputCmd, goal: Vector2) -> void:
 		_path.remove_at(0)
 	var to := goal if _path.is_empty() else _path[0]
 	cmd.move = (to - _p.pos).normalized()
-	# 高台：尋路把它當可走（怪物會跳上去），玩家要按跳；前面高起來、或走了一陣子都沒動就跳
-	var moved := _last_pos != Vector2.INF and _p.pos.distance_to(_last_pos) > 0.01
-	_still_time = 0.0 if moved else _still_time + DT
-	_last_pos = _p.pos
-	var ahead := _w.terrain.ground_at(_p.pos + cmd.move * JUMP_LOOK)
-	if _p.is_grounded() and (ahead > _p.height + Config.HEIGHT.step or _still_time > STILL_JUMP):
+	# 高台：尋路的格子把高台當可走（怪物會跳上去），路線會經過高台，玩家要自己跳。照怪物的規則（Enemy._update_jump）看地圖：
+	# 沿著要走的方向、身體邊緣再往前 jump_lookahead 的地面比腳下高出一個台階、又不超過 climb_height（墓碑太高不跳）就起跳
+	var ahead := _p.pos + cmd.move * (_p.radius + Config.NAV.jump_lookahead)
+	var rise := _w.terrain.ground_at(ahead) - _p.ground_height
+	if _p.is_grounded() and rise > Config.HEIGHT.step and rise <= Config.NAV.climb_height:
 		cmd.buttons |= InputCmd.BTN_JUMP
-		_still_time = 0.0
 	if cmd.aim.distance_to(_p.pos + Vector2(0, 1)) < 0.01:
 		cmd.aim = _p.pos + cmd.move * 5.0
 
@@ -212,6 +238,12 @@ func _nearest_enemy(radius: float, include_boss: bool) -> Enemy:
 			best_d = d
 			best = e
 	return best
+
+
+# 被召喚出來的怪：召喚者還活著就去打召喚者（只打送上門的會打不完，召喚者每隔幾秒又叫一批）
+func _summoner_of(e: Enemy) -> Enemy:
+	var s := _w.entities.get(e.summoner_id) as Enemy if e.summoner_id != 0 else null
+	return s if s != null and not s.is_dead and not _skip.has(s.id) else e
 
 
 func _nearest_summoner() -> Enemy:
@@ -260,6 +292,7 @@ func _nearest_loot() -> ItemPickup:
 		if best.id != _target_id:
 			_target_id = best.id
 			_target_time = 0.0
+			_target_hp = 0.0
 		_target_time += DT
 		if _target_time > STUCK_TIME:
 			_skip[best.id] = true
