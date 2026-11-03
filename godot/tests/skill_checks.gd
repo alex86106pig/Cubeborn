@@ -312,6 +312,27 @@ static func check_supports() -> String:
 	var hits := _named(ev3, "entity:damaged").filter(func(ev: Dictionary) -> bool: return ev.target_id == e3.id)
 	if hits.size() != 2 or absf(hits[1].amount / hits[0].amount - SkillBehaviors.SPLIT_MUL) > 0.02:
 		return "分裂：應打 2 次、第二次 ×%.1f：%s" % [SkillBehaviors.SPLIT_MUL, hits.map(func(ev: Dictionary) -> float: return ev.amount)]
+	# 耗魔：一般輔助每顆 × (1 + 強度 × SUPPORT_MANA)，節能 × mana_mul；技能欄顯示與實際扣的一樣
+	var s4 := _setup(&"longsword")
+	var w4: World = s4[0]
+	var p4: Player = s4[1]
+	var g4 := _gem_cell(p4, Loadout.MAIN)
+	p4.loadout.add_item(p4, &"whirlwind", {"cell": g4, "rot": 0}, 0, Loadout.MAIN)
+	var base_cost := ActiveSlots.mana_cost(p4, p4.slots.get_slot(p4, 0))
+	p4.loadout.add_item(p4, &"extend_support", {"cell": g4 + Vector2i(-1, 0), "rot": 0}, 0, Loadout.MAIN)
+	var with_extend := ActiveSlots.mana_cost(p4, p4.slots.get_slot(p4, 0))
+	var want_extend: float = base_cost * (1.0 + ItemDefs.ITEMS.extend_support.power * SkillDefs.SUPPORT_MANA)
+	if not p4.loadout.container(Loadout.MAIN).fits(&"conserve_support", g4 + Vector2i(0, 1), 0):
+		return "節能放不進長劍寶石座正下方"
+	p4.loadout.add_item(p4, &"conserve_support", {"cell": g4 + Vector2i(0, 1), "rot": 0}, 0, Loadout.MAIN)
+	var both := ActiveSlots.mana_cost(p4, p4.slots.get_slot(p4, 0))
+	var want_both: float = want_extend * ItemDefs.support_of(&"conserve_support").mana_mul
+	p4.set_stat_source(&"test", [[&"mana_regen", Stats.MUL, 0.0]])
+	var m0 := p4.mana
+	_run(w4, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
+	if absf(with_extend - want_extend) > 1e-3 or absf(both - want_both) > 1e-3 or absf(m0 - p4.mana - want_both) > 1e-3:
+		return "輔助耗魔：旋風斬 %.1f，加延長應 %.2f（%.2f）、再加節能應 %.2f（%.2f）、實際扣 %.2f" % [base_cost, want_extend, with_extend, want_both, both, m0 - p4.mana]
+	_note("輔助耗魔：旋風斬 %.1f → 延長 %.2f → 延長 + 節能 %.2f" % [base_cost, with_extend, both])
 	return ""
 
 

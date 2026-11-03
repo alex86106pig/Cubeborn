@@ -86,7 +86,19 @@ func use(owner: Player, index: int) -> bool:
 
 # 這一格放一次要多少魔力（含等級、耗魔屬性）；不耗魔的是 0
 static func mana_cost(owner: Player, slot: Dictionary) -> float:
-	return owner.mana_cost_of(slot.def, slot.get("level", 1))
+	var cost := owner.mana_cost_of(slot.def, slot.get("level", 1))
+	if slot.has("gem"):
+		cost *= support_mana_mul(owner, slot.gem)
+	return cost
+
+
+# 相鄰輔助道具的耗魔倍率（相乘）：一般輔助每顆 × (1 + 道具強度 power × SkillDefs.SUPPORT_MANA)，有 mana_mul 的（節能）× mana_mul
+static func support_mana_mul(owner: Player, gem: Dictionary) -> float:
+	var mul := 1.0
+	for id in support_ids(owner, gem):
+		var sup := ItemDefs.support_of(id)
+		mul *= sup.mana_mul if sup.has("mana_mul") else 1.0 + ItemDefs.ITEMS[id].power * SkillDefs.SUPPORT_MANA
+	return mul
 
 
 # 這次施放的參數：等級的傷害倍率、相鄰輔助道具（標籤相符的才算）的效果
@@ -107,6 +119,14 @@ static func cast_context(owner: Player, slot: Dictionary) -> Dictionary:
 # 貼著這個寶石座（上下左右）、標籤和技能相符的輔助道具效果
 static func supports_of(owner: Player, gem: Dictionary) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
+	for id in support_ids(owner, gem):
+		out.append(ItemDefs.support_of(id))
+	return out
+
+
+# 同上，回傳道具 id（一顆一筆）
+static func support_ids(owner: Player, gem: Dictionary) -> Array[StringName]:
+	var out: Array[StringName] = []
 	var tags: Array = gem.def.get("tags", [])
 	var cell: Vector2i = gem.entry.cell
 	var inv := owner.loadout.container(gem.where)
@@ -118,7 +138,7 @@ static func supports_of(owner: Player, gem: Dictionary) -> Array[Dictionary]:
 			continue
 		for c in Inventory.cells_of(e.id, e.rot):
 			if (e.cell + c - cell).abs().x + (e.cell + c - cell).abs().y == 1:
-				out.append(sup)
+				out.append(e.id)
 				break
 	return out
 

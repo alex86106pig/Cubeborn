@@ -352,14 +352,17 @@ const ITEMS := {
 		"desc": "最大魔力 +30%、每秒回魔 +2", "effects": [{"stat": &"max_mana", "op": Stats.PCT, "value": 0.3}, {"stat": &"mana_regen", "op": Stats.ADD, "value": 2.0}]},
 
 	# ---- 輔助道具（Build 改版第 7 步）：鑲在寶石座上下左右才有效，只對標籤相符的技能（SkillDefs.TAGS）----
+	# 一般輔助讓相鄰技能耗魔 +power × 10%（SkillDefs.SUPPORT_MANA，寫在 desc 最後）；節能只減不加
 	&"split_support": {"kind": &"item", "name": "分裂", "rarity": &"green", "power": 3.0, "shape": &"i2", "bonds": [],
-		"desc": "輔助：相鄰的範圍 / 投射技能 0.25 秒後再放一次（傷害 60%）", "effects": [{"ability": &"skill_support", "mode": &"split", "tags": [&"area", &"projectile"]}]},
+		"desc": "輔助：相鄰的範圍 / 投射技能 0.25 秒後再放一次（傷害 60%）；耗魔 +30%", "effects": [{"ability": &"skill_support", "mode": &"split", "tags": [&"area", &"projectile"]}]},
 	&"extend_support": {"kind": &"item", "name": "延長", "rarity": &"white", "power": 1.5, "shape": &"dot", "bonds": [],
-		"desc": "輔助：相鄰的範圍 / 投射 / 移動技能範圍與距離 +50%", "effects": [{"ability": &"skill_support", "mode": &"extend", "tags": [&"area", &"projectile", &"move"]}]},
+		"desc": "輔助：相鄰的範圍 / 投射 / 移動技能範圍與距離 +50%；耗魔 +15%", "effects": [{"ability": &"skill_support", "mode": &"extend", "tags": [&"area", &"projectile", &"move"]}]},
 	&"fire_support": {"kind": &"item", "name": "火焰化", "rarity": &"green", "power": 3.0, "shape": &"i2", "bonds": [&"fire"],
-		"desc": "輔助：相鄰的範圍 / 投射 / 近戰技能改成火焰傷害", "effects": [{"ability": &"skill_support", "mode": &"fire", "tags": [&"area", &"projectile", &"melee"]}]},
+		"desc": "輔助：相鄰的範圍 / 投射 / 近戰技能改成火焰傷害；耗魔 +30%", "effects": [{"ability": &"skill_support", "mode": &"fire", "tags": [&"area", &"projectile", &"melee"]}]},
 	&"cold_support": {"kind": &"item", "name": "霜化", "rarity": &"green", "power": 3.0, "shape": &"i2", "bonds": [&"cold"],
-		"desc": "輔助：相鄰的範圍 / 投射 / 近戰技能改成冰霜傷害", "effects": [{"ability": &"skill_support", "mode": &"cold", "tags": [&"area", &"projectile", &"melee"]}]},
+		"desc": "輔助：相鄰的範圍 / 投射 / 近戰技能改成冰霜傷害；耗魔 +30%", "effects": [{"ability": &"skill_support", "mode": &"cold", "tags": [&"area", &"projectile", &"melee"]}]},
+	&"conserve_support": {"kind": &"item", "name": "節能", "rarity": &"green", "power": 3.0, "shape": &"i2", "bonds": [],
+		"desc": "輔助：相鄰的技能耗魔 −30%（所有技能都能輔助）", "effects": [{"ability": &"skill_support", "mode": &"conserve", "mana_mul": 0.7, "tags": [&"area", &"projectile", &"move", &"melee", &"guard", &"summon", &"buff"]}]},
 	# 隊友的屍體（D6，kind &"corpse"）：不是道具，寶箱不會開出；背包條目 uid 是 Player.corpse_uid(死者)
 	&"corpse": {"kind": &"corpse", "name": "隊友的屍體", "rarity": &"white", "shape": &"r6",
 		"desc": "帶到下一層，死者會變成冤魂；打倒冤魂就能復活", "effects": []},

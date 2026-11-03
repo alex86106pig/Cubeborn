@@ -10,6 +10,7 @@ class_name SkillDefs
 
 const TAGS := {&"area": "範圍", &"projectile": "投射", &"move": "移動", &"melee": "近戰", &"guard": "防禦", &"summon": "召喚", &"buff": "增益"}
 const LEVEL := {"max": 5, "damage": 0.2, "mana": 0.1}
+const SUPPORT_MANA := 0.1   # 相鄰的輔助道具每點強度（ItemDefs power）耗魔 +10%（ActiveSlots.support_mana_mul；節能的 mana_mul 另外算）
 
 const SKILLS := {
 	&"heal": {
