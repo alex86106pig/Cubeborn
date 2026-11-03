@@ -14,6 +14,8 @@ const SAFE_RANGE := 5.0               # 身邊這麼近有怪就先打怪
 const DIG_GUARD := 3.5                # 挖墳時身邊這麼近有怪就停下來打
 const SUMMONER_RANGE := 15.0          # 這麼近有帶召喚詞條的怪就先打它（不然叫出來的打不完）
 const RANGED := [&"staff", &"shortbow", &"longbow"]
+const JUMP_LOOK := 0.6                # 前方這麼遠的地面比腳底高出一個台階（高台）就跳
+const STILL_JUMP := 0.3               # 有在走但這麼久都沒動（卡在邊緣）也跳一下
 
 var _w: World
 var _p: Player
@@ -25,6 +27,8 @@ var _target_time := 0.0
 var _skip: Dictionary = {}            # 放棄的目標 id
 var _tap := false                     # F 要放開再按才算「剛按下」
 var _full_seen := false               # 附近有武器但背包放不下
+var _last_pos := Vector2.INF
+var _still_time := 0.0
 
 
 func _initialize() -> void:
@@ -184,6 +188,14 @@ func _walk(cmd: InputCmd, goal: Vector2) -> void:
 		_path.remove_at(0)
 	var to := goal if _path.is_empty() else _path[0]
 	cmd.move = (to - _p.pos).normalized()
+	# 高台：尋路把它當可走（怪物會跳上去），玩家要按跳；前面高起來、或走了一陣子都沒動就跳
+	var moved := _last_pos != Vector2.INF and _p.pos.distance_to(_last_pos) > 0.01
+	_still_time = 0.0 if moved else _still_time + DT
+	_last_pos = _p.pos
+	var ahead := _w.terrain.ground_at(_p.pos + cmd.move * JUMP_LOOK)
+	if _p.is_grounded() and (ahead > _p.height + Config.HEIGHT.step or _still_time > STILL_JUMP):
+		cmd.buttons |= InputCmd.BTN_JUMP
+		_still_time = 0.0
 	if cmd.aim.distance_to(_p.pos + Vector2(0, 1)) < 0.01:
 		cmd.aim = _p.pos + cmd.move * 5.0
 
