@@ -26,7 +26,7 @@ ul { margin:10px 0 0; padding-left:18px; color:var(--dim); font-size:14px; }
 <body>
 <main>
 <h1>背包外觀對比（製作計畫 I 第 1 項）</h1>
-<p class="lead">每個方案都是同一批東西。要能一眼分出種類（數值、技能、小技能、修飾、武器、袋子）和稀有度，也不能蓋掉羈絆色點。道具、擺法、袋子大小都是示意；還沒有美術，只用形狀、顏色和小圖示。</p>
+<p class="lead">每個方案都是同一批東西。要能一眼分出種類（數值、技能、修飾、武器、袋子）和稀有度，也不能蓋掉羈絆色點。道具、擺法、袋子大小都是示意；還沒有美術，只用形狀、顏色和小圖示。</p>
 <div class="grid" id="grid"></div>
 <div class="pick"><b>挑法：</b>回覆編號就好，也可以混搭，例如「A 的形狀 + D 的光暈」。挑完才做進遊戲，這頁到時刪掉。</div>
 </main>
@@ -36,7 +36,7 @@ const RARITY = { white:"#d8d8d8", green:"#5fd35f", blue:"#4fa3ff", purple:"#b36b
 const RNAME = { white:"普通", green:"優良", blue:"稀有", purple:"史詩", orange:"傳說" };
 const BOND = { fire:"#ff8a3d", cold:"#6fc8ff", phys:"#e05c5c", guard:"#c9b37a", wisp:"#b48cff" };
 const KIND_FILL = { stat:"#3b5a78", skill:"#6a3f8f", effect:"#6a3f8f", mod:"#2f6f68", weapon:"#4a4f57", bag:"#6b5236" };
-const KNAME = { stat:"數值", skill:"技能", effect:"小技能", mod:"修飾", weapon:"武器", bag:"袋子" };
+const KNAME = { stat:"數值", skill:"技能", mod:"修飾", weapon:"武器", bag:"袋子" };   // effect 是占多格的技能，外觀算同一種，對照表不另列
 const SHAPE = {
   dot:[[0,0]], i2:[[0,0],[1,0]], i3:[[0,0],[1,0],[2,0]], l3:[[0,0],[0,1],[1,1]],
   o4:[[0,0],[1,0],[0,1],[1,1]], t4:[[0,0],[1,0],[2,0],[1,1]]
@@ -73,7 +73,7 @@ const STORE = [
   { n:"翻滾袋", k:"bag", r:"blue", s:"dot" },
   { n:"旋風斬", k:"skill", r:"green", s:"dot" },
 ];
-const SAMPLE = { stat:"皮靴", skill:"旋風", effect:"雷符", mod:"分裂", weapon:"長劍", bag:"命中袋" };
+const SAMPLE = { stat:"皮靴", skill:"旋風", mod:"分裂", weapon:"長劍", bag:"命中袋" };
 
 const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");
 const hexA = (hex,a) => hex + Math.round(a*255).toString(16).padStart(2,"0");
@@ -83,8 +83,8 @@ function kindIcon(k, cx, cy, size, color) {
   const h = size/2, st = `stroke="${color}" fill="none" stroke-width="1.6"`;
   switch (k) {
     case "stat": return `<rect x="${cx-h}" y="${cy-h}" width="${size}" height="${size}" fill="${color}"/>`;
-    case "skill": return `<circle cx="${cx}" cy="${cy}" r="${h}" ${st}/><circle cx="${cx}" cy="${cy}" r="${h*.45}" fill="${color}"/>`;
-    case "effect": return `<circle cx="${cx}" cy="${cy}" r="${h}" ${st}/>`;
+    case "skill":
+    case "effect": return `<circle cx="${cx}" cy="${cy}" r="${h}" ${st}/><circle cx="${cx}" cy="${cy}" r="${h*.45}" fill="${color}"/>`;
     case "mod": return `<path d="M${cx} ${cy-h}L${cx+h} ${cy}L${cx} ${cy+h}L${cx-h} ${cy}Z" ${st} stroke-dasharray="2.5 2"/>`;
     case "weapon": return `<path d="M${cx-h} ${cy+h}L${cx+h} ${cy-h}M${cx-h*.5} ${cy-h*.1}L${cx+h*.1} ${cy+h*.5}" ${st}/>`;
     case "bag": return `<rect x="${cx-h}" y="${cy-h}" width="${size}" height="${size}" ${st}/><rect x="${cx-h}" y="${cy-h}" width="${size}" height="${size*.32}" fill="${color}"/>`;
@@ -237,7 +237,7 @@ function matrixSvg(style) {
 
 const OPTIONS = [
   { id:"now", tag:"現況", name:"目前遊戲的畫法", pitch:"給你當基準：數值道具底色是稀有度，技能全部同一種紫，修飾和武器靠小字分。",
-    points:["技能、小技能看不出稀有度差別，只剩細框","武器、袋子要讀字才知道是什麼"] },
+    points:["技能看不出稀有度差別，只剩細框","武器、袋子要讀字才知道是什麼"] },
   { id:"a", tag:"A", name:"外形分種類", pitch:"每種東西一種外形：數值方塊、技能圓形、修飾虛線、武器畫圖、袋子有標題條；稀有度統一看顏色。",
     points:["種類和稀有度各走一條線，不互相搶","羈絆色點最清楚，同色區塊好找","拼起來的整塊顏色比較淡"] },
   { id:"b", tag:"B", name:"整塊稀有度色", pitch:"底色直接是稀有度，左上角的小圖示分種類，最接近一般 ARPG 的倉庫。",
