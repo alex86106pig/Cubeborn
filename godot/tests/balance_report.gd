@@ -1,4 +1,4 @@
-# 平衡數字表：照現在的資料表實際跑模擬，量武器普攻、右鍵、寶石座技能的傷害，與怪物的威脅，寫成 docs/平衡數字.md
+# 平衡數字表：照現在的資料表實際跑模擬，量武器普攻、右鍵、技能的傷害，怪物的威脅，與第 1 層的經濟（祭壇、靈魂、主袋填滿率），寫成 docs/平衡數字.md
 # 平常用 `node tools/release.mjs --balance` 跑；直接跑：在 godot/ 內 <Godot> --headless --path . -s res://tests/balance_report.gd -- --out=<檔案路徑>
 # 條件：白裝、技能 1 級、沒有道具與羈絆、測試場地（不含挖墳難度倍率）；怪是假人（抗性清空、每步拉回原位、不會死）
 # 技能目標（docs/設計方向.md「技能強度」）：放一次對每隻怪的傷害 = 普攻單體每秒傷害 ×（耗魔 ÷ Config.MANA.per_cd_second）÷ SKILL_K；有暈眩或補血的功能型 × CONTROL_MUL
@@ -9,6 +9,10 @@ const DT := 1.0 / 60.0
 const SKILL_K := 3.0
 const CONTROL_MUL := 0.5
 const TOLERANCE := 0.2          # 實際 / 目標在 1 ± 這麼多以內算達標
+# 經濟目標（docs/設計方向.md「經濟目標」）：x = 目標、y = 容差；照真實地圖算，不跑機器人
+const ECON_SEEDS := 20
+const ECON_TARGET := {&"fill": Vector2(0.6, 0.1), &"pressure": Vector2(1.4, 0.2)}
+const ECON_MIN_CHESTS := 1      # 每小關至少幾個祭壇或石棺
 # 武器目標（docs/設計方向.md「武器強度」）：普攻每秒 + 右鍵按耗魔攤平（耗魔 ÷ per_cd_second 當冷卻秒數），打一隻近戰 / 遠程各一檔；打一群是自己打一隻的幾倍
 const WEAPON_TARGET := {&"melee": 30.0, &"ranged": 22.0}
 const GROUP_BAND := Vector2(3.0, 6.0)
@@ -50,6 +54,7 @@ func _initialize() -> void:
 	_weapon_table(lines)
 	_move_table(lines, basic)
 	_enemy_tables(lines, basic)
+	_economy_table(lines)
 	for w in _worlds:
 		w.clear()
 	var text := "\n".join(lines) + "\n"
@@ -61,6 +66,85 @@ func _initialize() -> void:
 	else:
 		print(text)
 	quit()
+
+
+# ───────── 經濟 ─────────
+
+# 第 1 層：每小關的祭壇、石棺與開場的怪能賺的靈魂（ECON_SEEDS 個種子平均），和目標比
+# 填滿率 = 祭壇數 × 祭壇平均格數 ÷ 主袋格數（全開、全部放主袋的上限）；靈魂壓力 = 全開要的靈魂 ÷ 全清賺的靈魂（不含怪潮）
+func _economy_table(lines: Array[String]) -> void:
+	var stages := 5   # 第 1 層 1-1 ~ 1-5
+	var altars: Array[float] = []
+	var coffins: Array[float] = []
+	var souls: Array[float] = []
+	altars.resize(stages)
+	coffins.resize(stages)
+	souls.resize(stages)
+	var fewest := 1 << 20
+	for seed_value in range(1, ECON_SEEDS + 1):
+		var w := World.new()
+		w.reset(seed_value)
+		for st in stages:
+			var n := 0
+			for c in w.chests:
+				n += 1
+				if (c as Chest).tier == &"small":
+					altars[st] += 1.0
+				else:
+					coffins[st] += 1.0
+			fewest = mini(fewest, n)
+			var boss_seen := false
+			for e in w.enemies:
+				if not (e as Enemy).no_souls and not e.is_dead:
+					souls[st] += LootDefs.KILL_SOULS.get((e as Enemy).type, 0)
+					boss_seen = boss_seen or (e as Enemy).is_boss()
+			if w.map.has("boss_room") and not boss_seen:   # Boss 開打才生，開場的怪裡沒有
+				souls[st] += LootDefs.KILL_SOULS.boss
+			if st < stages - 1:
+				w.next_stage(&"")
+		w.clear()
+	lines.append("")
+	lines.append("## 經濟（第 1 層）")
+	lines.append("")
+	lines.append("> 照真實地圖算 %d 個種子的平均，不跑機器人。全清靈魂只算開場的怪與 Boss，不含怪潮與挖墳噴的怪。填滿率假設祭壇全開、全部放主袋，是上限；實際拿到多少看 `--playtest`。" % ECON_SEEDS)
+	lines.append("")
+	lines.append("| 小關 | 祭壇 | 石棺 | 全清靈魂 |")
+	lines.append("|---|---|---|---|")
+	var total := {&"altar": 0.0, &"coffin": 0.0, &"souls": 0.0}
+	for st in stages:
+		var a := altars[st] / ECON_SEEDS
+		var c := coffins[st] / ECON_SEEDS
+		var s := souls[st] / ECON_SEEDS
+		total.altar += a
+		total.coffin += c
+		total.souls += s
+		lines.append("| 1-%d | %.1f | %.1f | %.0f |" % [st + 1, a, c, s])
+	lines.append("| **整層** | **%.1f** | **%.1f** | **%.0f** |" % [total.altar, total.coffin, total.souls])
+	var weights: Dictionary = LootDefs.CHESTS.small.weights
+	var cells := 0.0
+	var weight_sum := 0.0
+	for r: StringName in weights:
+		cells += weights[r] * ItemDefs.RARITIES[r].cells
+		weight_sum += weights[r]
+	cells /= weight_sum
+	var main_cells := BagDefs.MAIN_SIZE.x * BagDefs.MAIN_SIZE.y
+	var cost: float = total.altar * LootDefs.CHESTS.small.price + total.coffin * LootDefs.CHESTS.big.price
+	var fill: float = total.altar * cells / main_cells
+	var pressure: float = cost / maxf(total.souls, 1.0)
+	lines.append("")
+	lines.append("每個祭壇平均 %.2f 格、主袋 %d 格；全開要 %.0f 靈魂。" % [cells, main_cells, cost])
+	lines.append("")
+	lines.append("| 指標 | 目標 | 實際 | |")
+	lines.append("|---|---|---|---|")
+	lines.append("| 主袋填滿率（全開上限） | %.0f%% ± %.0f%% | %.0f%% | %s |" % [ECON_TARGET.fill.x * 100.0, ECON_TARGET.fill.y * 100.0, fill * 100.0, _econ_mark(fill, ECON_TARGET.fill)])
+	lines.append("| 靈魂壓力（全開 ÷ 全清） | %.1f ± %.1f | %.2f | %s |" % [ECON_TARGET.pressure.x, ECON_TARGET.pressure.y, pressure, _econ_mark(pressure, ECON_TARGET.pressure)])
+	lines.append("| 每小關最少的祭壇和石棺 | 至少 %d | %d | %s |" % [ECON_MIN_CHESTS, fewest, "達標" if fewest >= ECON_MIN_CHESTS else "**偏低**"])
+
+
+func _econ_mark(value: float, target: Vector2) -> String:
+	if value < target.x - target.y:
+		return "**偏低**"
+	return "**偏高**" if value > target.x + target.y else "達標"
 
 
 # ───────── 普攻 ─────────
@@ -151,7 +235,7 @@ func _weapon_table(lines: Array[String]) -> void:
 # ───────── 右鍵與技能 ─────────
 
 func _move_table(lines: Array[String], basic: Dictionary) -> void:
-	lines.append("## 右鍵與寶石座技能")
+	lines.append("## 右鍵與技能")
 	lines.append("")
 	lines.append("目標 = 放一次對每隻怪的傷害 = 普攻單體每秒 ×（耗魔 ÷ %.0f）÷ %.0f（有暈眩或補血 × %.1f）。單體、一群都和目標比：一群看有打到的怪平均每隻吃多少；比在 %.1f~%.1f 算達標（一群只打到 1 隻的、召喚不看）。" % [Config.MANA.per_cd_second, SKILL_K, CONTROL_MUL, 1.0 - TOLERANCE, 1.0 + TOLERANCE])
 	lines.append("")

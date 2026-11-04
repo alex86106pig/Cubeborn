@@ -1,4 +1,4 @@
-# 自動試玩：headless 的機器人（tests/playtest_bot.gd）照真實地圖玩一層或好幾層，量殺怪數、武器掉落、背包、靈魂、受傷與倒下，給調掉落 / 怪量 / 難度當依據
+# 自動試玩：headless 的機器人（tests/playtest_bot.gd）照真實地圖玩一層或好幾層，量殺怪數、武器掉落、背包、每小關結束的主袋與袋子填滿率、靈魂、受傷與倒下，給調掉落 / 怪量 / 難度 / 經濟當依據
 # 平常用 `node tools/release.mjs --playtest` 跑；直接跑：在 godot/ 內 <Godot> --headless --path . -s res://tests/playtest.gd -- 參數
 # 參數：--floors=N（幾層，預設 1）、--seeds=1,2,3（每個種子各玩一場，預設 1,2,3）、--out=檔案（另存 Markdown）
 #       --class=guardian（職業，預設守墓騎士；逗號分隔就是組隊，一個職業一個機器人，例：guardian,arcanist）
@@ -32,8 +32,8 @@ func _initialize() -> void:
 		"真的會死" if opts.get("death", "revive") == "real" else ("第 %s 小關起真的會死" % opts["real-from"] if opts.has("real-from") else "倒下原地救起")]
 	var lines: Array[String] = ["# 自動試玩", "", "職業 %s、打法 %s、%s、%d 層、種子 %s；背包 %d × %d = %d 格" % [",".join(PackedStringArray(classes)),
 		opts.get("style", "full"), how, floors, str(seeds), ItemDefs.BAG_SIZE.x, ItemDefs.BAG_SIZE.y, ItemDefs.BAG_SIZE.x * ItemDefs.BAG_SIZE.y], "",
-		"| 種子 | 層 | 時間 | 殺怪（怪群 / 事件 / Boss / 召喚） | 掉武器（白綠藍紫橘） | 撿到 | 背包武器格 | 背包滿的時間 | 地上沒撿 | 靈魂 賺到 / 花掉（開幾箱） | 技能（等級）· 放幾次 | 羈絆 | 翻滾 / 跳 / 擋 / 喝藥 / 換武器 / 丟 / 搬進袋子 / 重擲 / 救人 | 受傷 / 倒下（最多被哪招） | 結果 | 最痛的招 |",
-		"|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+		"| 種子 | 層 | 時間 | 殺怪（怪群 / 事件 / Boss / 召喚） | 掉武器（白綠藍紫橘） | 撿到 | 背包武器格 | 背包滿的時間 | 地上沒撿 | 靈魂 賺到 / 花掉（開幾箱） | 主袋 / 袋子填滿率（每小關結束） | 技能（等級）· 放幾次 | 羈絆 | 翻滾 / 跳 / 擋 / 喝藥 / 換武器 / 丟 / 搬進袋子 / 重擲 / 救人 | 受傷 / 倒下（最多被哪招） | 結果 | 最痛的招 |",
+		"|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
 	var cleared := 0
 	var total := 0
 	for s in seeds:
@@ -94,6 +94,8 @@ func _play_floor(w: World, bots: Array, seed_value: int) -> Array[String]:
 	var kills := {"pack": 0, "event": 0, "boss": 0, "summon": 0}
 	var drops := {&"white": 0, &"green": 0, &"blue": 0, &"purple": 0, &"orange": 0}
 	var full_at := {}
+	var fills := {}   # peer → 每小關結束時的「小關 主袋 / 袋子」
+	var last_stage := w.stage_num
 	var souls_start := w.souls
 	var t := 0.0
 	for b in bots:
@@ -104,6 +106,10 @@ func _play_floor(w: World, bots: Array, seed_value: int) -> Array[String]:
 			cmds[b.peer] = b.decide()
 		w.step(cmds, DT)
 		t += DT
+		if w.stage_num != last_stage:
+			for b in bots:
+				_note_fill(fills, b, w.floor_num, last_stage)
+			last_stage = w.stage_num
 		for ev in w.events:
 			match ev.name:
 				"entity:died":
@@ -120,6 +126,8 @@ func _play_floor(w: World, bots: Array, seed_value: int) -> Array[String]:
 			break
 		if w.event.state == DigEvent.OPEN and bots.all(func(b: Variant) -> bool: return b.is_out or b.nearest_loot() == null):
 			break
+	for b in bots:
+		_note_fill(fills, b, w.floor_num, last_stage)
 	var total := 0
 	for r in drops:
 		total += drops[r]
@@ -135,12 +143,27 @@ func _play_floor(w: World, bots: Array, seed_value: int) -> Array[String]:
 	var souls := "%d / %d（%d）" % [w.souls - souls_start + spent_all, spent_all, opened_all]
 	var rows: Array[String] = []
 	for b in bots:
-		rows.append(_row(w, b, seed_value, t, timeout, kills, rarity, left, souls, full_at, bots.size() > 1))
+		rows.append(_row(w, b, seed_value, t, timeout, kills, rarity, left, souls, full_at, bots.size() > 1, " ".join(PackedStringArray(fills.get(b.peer, [])))))
 	return rows
 
 
+# 記下這個機器人現在的主袋與袋子填滿率（佔了幾成）
+func _note_fill(fills: Dictionary, b: Variant, floor_num: int, stage: int) -> void:
+	var lo: Loadout = b.p.loadout
+	var core_used := lo.core.occupied().size()
+	var core_size := BagDefs.MAIN_SIZE.x * BagDefs.MAIN_SIZE.y
+	var bag_used := 0
+	var bag_size := 0
+	for bag in lo.bags:
+		bag_used += Inventory.for_bag(bag).occupied().size()
+		bag_size += bag.length * bag.depth
+	var list: Array = fills.get(b.peer, [])
+	list.append("%d-%d %d%%/%d%%" % [floor_num, stage, roundi(100.0 * core_used / core_size), roundi(100.0 * bag_used / maxi(bag_size, 1))])
+	fills[b.peer] = list
+
+
 func _row(w: World, b: Variant, seed_value: int, t: float, timeout: String, kills: Dictionary, rarity: String, left: int, souls: String,
-		full_at: Dictionary, team: bool) -> String:
+		full_at: Dictionary, team: bool, fill_text: String) -> String:
 	var p: Player = b.p
 	var picked := 0
 	var cells := 0
@@ -173,7 +196,7 @@ func _row(w: World, b: Variant, seed_value: int, t: float, timeout: String, kill
 		worst.append("%s %d" % [m, roundi(b.hit_by[m])])
 	var result: String = "死在 " + b.died_at if b.died_at != "" else ("逾時" if timeout != "" else "打完")
 	var who := "%d" % seed_value if not team else "%d %s" % [seed_value, ClassDefs.CLASSES[p.class_id].name]
-	return "| %s | %d | %s%s | %d（%d / %d / %d / %d） | %s | %d | %d | %s | %d | %s | %s | %s | %s | %s | %s | %s |" % [who, w.floor_num,
+	return "| %s | %d | %s%s | %d（%d / %d / %d / %d） | %s | %d | %d | %s | %d | %s | %s | %s | %s | %s | %s | %s | %s |" % [who, w.floor_num,
 		Bot._mmss(t), timeout, kills.pack + kills.event + kills.boss + kills.summon, kills.pack, kills.event, kills.boss, kills.summon, rarity,
-		picked, cells, Bot._mmss(full_at[p.peer_id]) if full_at.has(p.peer_id) else "—", left, souls, skills,
+		picked, cells, Bot._mmss(full_at[p.peer_id]) if full_at.has(p.peer_id) else "—", left, souls, fill_text, skills,
 		"、".join(PackedStringArray(bonds)) if not bonds.is_empty() else "無", acts, downs, result, "、".join(PackedStringArray(worst))]
