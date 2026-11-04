@@ -613,6 +613,12 @@ func _pose_keeper(e: Enemy, a: Dictionary, state: StringName, t: float, dt: floa
 					rig.arm_l.rotation = Vector3(lerpf(-0.5, -1.5, k), lerpf(0.0, -0.4, k), 0.0)
 					rig.body.rotation.x = lerpf(0.25, -0.2, k)
 					rig.head.rotation.x = lerpf(0.0, -0.2, k)
+				&"spin_windup":
+					# 轉圈前的預備：提燈往回收、身體後仰，看得出下一下要掃一圈
+					var k := MathUtil.ease_out_cubic(clampf(pt / f.spin_windup, 0.0, 1.0))
+					rig.arm_l.rotation = Vector3(-1.5, lerpf(-0.4, 0.8, k), 0.0)
+					rig.body.rotation.x = lerpf(0.2, -0.25, k)
+					rig.head.rotation.x = lerpf(0.1, -0.2, k)
 				&"flame", &"spin":
 					# 追著噴：腳照常走；轉圈時提燈往外伸
 					walk_phase += dt * e.velocity.length() * 2.0

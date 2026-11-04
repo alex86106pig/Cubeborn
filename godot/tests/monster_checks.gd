@@ -922,6 +922,9 @@ static func check_gravekeeper_moves() -> String:
 				var embers := events.filter(func(ev: Dictionary) -> bool: return ev.name == "fx:gas_cloud" and ev.get("fire", false)).size()
 				if embers != roundi(f.duration / f.ember_every) + f.spin_embers:
 					return "守墓人噴火：應留 %d 團殘火，實際 %d" % [roundi(f.duration / f.ember_every) + f.spin_embers, embers]
+				var spin_err := _check_lantern_spin(f)
+				if spin_err != "":
+					return spin_err
 			&"whistle":
 				var dogs := w.enemies.filter(func(e: Entity) -> bool: return e is Hound and (e as Enemy).summoner_id == k.id and (e as Enemy).no_souls)
 				if dogs.size() != d.whistle.count:
@@ -1456,4 +1459,39 @@ static func check_corpse_ledge() -> String:
 	CheckKit._note("屍體：高台 %s 高 %.2f 往台外擊退死掉，1 秒後高 %.2f" % [spot, h0, e.height])
 	if absf(e.height - h0) > 0.05:
 		return "高台邊緣 %s（高 %.2f）帶著往台外的擊退死掉，屍體應留在台上，1 秒後高 %.2f" % [spot, h0, e.height]
+	return ""
+
+
+# 噴火最後的轉圈：預備動作的時間照資料、預備時不打人；貼身會中、站在 spin_range 外不會中
+static func _check_lantern_spin(f: Dictionary) -> String:
+	for reach_case: Array in [[3.0, true], [5.5, false]]:
+		var setup := _keeper_world(reach_case[0])
+		var w: World = setup[0]
+		var p: Player = setup[1]
+		var k: Gravekeeper = setup[2]
+		p.pos = k.pos + Vector2(0.0, reach_case[0])
+		var pinned := p.pos
+		k.fsm.change(&"lantern")
+		k.fsm.data.phase = &"spin_windup"
+		k.fsm.data.phase_time = 0.0
+		var hits := 0
+		var windup_steps := 0
+		for i in 120:
+			var in_windup: bool = k.fsm.is_in(&"lantern") and k.fsm.data.phase == &"spin_windup"
+			if in_windup:
+				windup_steps += 1
+			w.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+			for ev in w.events:
+				if ev.name == "entity:damaged" and ev.target_id == p.id and ev.source_id == k.id:
+					if in_windup:
+						return "守墓人噴火：轉圈的預備動作不應打人"
+					hits += 1
+			p.pos = pinned
+			p.hp = p.max_hp
+			if not k.fsm.is_in(&"lantern"):
+				break
+		if absf(windup_steps * DT - f.spin_windup) > DT * 2.5:
+			return "守墓人噴火：轉圈預備應 %.2f 秒，實際 %.2f" % [f.spin_windup, windup_steps * DT]
+		if (hits > 0) != reach_case[1]:
+			return "守墓人噴火：站在 %.1f 單位時轉圈應%s，實際中 %d 下" % [reach_case[0], "打中" if reach_case[1] else "打不到", hits]
 	return ""

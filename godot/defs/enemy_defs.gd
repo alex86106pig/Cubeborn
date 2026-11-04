@@ -359,11 +359,11 @@ const ENEMIES := {
 			"fall_time": 1.0, "recovery": 0.5, "cooldown": 8.0, "fallback_radius": 12.0,
 			"radius": 1.5, "damage": 15.0, "knockback": 4.0, "slow_mul": 0.5, "slow_time": 1.5, "tier": &"medium", "color": Color("6b4f2e"),
 		},
-		# 提燈噴火：吸氣 windup → 邊噴邊追目標 duration 秒（移速 ×chase_mul、轉向 ×turn_mul）→ 原地轉一圈噴 spin_time 秒（每 spin_tick 一下）→ recovery
+		# 提燈噴火：吸氣 windup → 邊噴邊追目標 duration 秒（移速 ×chase_mul、轉向 ×turn_mul）→ 預備 spin_windup 秒（只有動作，不畫圈）→ 原地轉一圈噴 spin_time 秒（每 spin_tick 一下，範圍 spin_range）→ recovery
 		# 追著噴時每 ember_every 秒在火焰中段留一團殘火，轉圈時在身邊留 spin_embers 團（殘火擋不住、不硬直）
 		"lantern": {
 			"trigger_distance": 7.0, "windup": 0.55, "track": 0.6, "duration": 2.0, "tick": 0.25, "recovery": 0.5, "cooldown": 4.5,
-			"chase_mul": 0.6, "turn_mul": 0.7, "spin_time": 0.5, "spin_tick": 0.1, "spin_embers": 3,
+			"chase_mul": 0.6, "turn_mul": 0.5, "spin_windup": 0.4, "spin_range": 4.0, "spin_time": 0.5, "spin_tick": 0.1, "spin_embers": 3,
 			"range": 7.5, "arc": PI * 80.0 / 180.0, "damage": 9.0, "tier": &"light", "color": Color("ff8a30"),
 			"ember_every": 0.5, "ember_at": 4.0, "ember_radius": 1.0, "ember_time": 2.0, "ember_dps": 5.0,
 		},

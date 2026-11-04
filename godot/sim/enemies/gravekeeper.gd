@@ -341,7 +341,7 @@ class Dig:
 
 
 # 提燈噴火：windup（打開燈罩、燈火轉藍、吸氣；前 track 比例轉向）→ flame：邊噴邊追目標 duration 秒（前方扇形每 tick 一下，擋得住；
-# 每 ember_every 秒在火焰中段留一團殘火）→ spin：原地轉一圈噴 spin_time 秒（每 spin_tick 一下），身邊留 spin_embers 團殘火 → recovery
+# 每 ember_every 秒在火焰中段留一團殘火）→ spin_windup：預備動作，來得及翻滾或跑開 → spin：原地轉一圈噴 spin_time 秒（每 spin_tick 一下，範圍 spin_range），身邊留 spin_embers 團殘火 → recovery
 class Lantern:
 	func enter(e: Gravekeeper, data: Dictionary, _fsm: StateMachine) -> void:
 		e.velocity = Vector2.ZERO
@@ -373,11 +373,16 @@ class Lantern:
 					e.velocity = MathUtil.dir_from_angle(e.facing) * e.speed * f.chase_mul
 			while d.ticks < floori((minf(d.phase_time, f.duration) + 1e-6) / f.tick):
 				d.ticks += 1
-				_burn(e, f)
+				_burn(e, f, f.range)
 			while d.embers < floori((minf(d.phase_time, f.duration) + 1e-6) / f.ember_every):
 				d.embers += 1
 				_ember(e, f, e.pos + MathUtil.dir_from_angle(e.facing) * f.ember_at)
 			if d.phase_time >= f.duration:
+				d.phase = &"spin_windup"
+				d.phase_time = 0.0
+			return
+		if d.phase == &"spin_windup":
+			if d.phase_time >= f.spin_windup:
 				d.phase = &"spin"
 				d.phase_time = 0.0
 				d.ticks = 0
@@ -388,7 +393,7 @@ class Lantern:
 			e.facing = wrapf(d.start_facing + TAU * k, -PI, PI)
 			while d.ticks < floori((minf(d.phase_time, f.spin_time) + 1e-6) / f.spin_tick):
 				d.ticks += 1
-				_burn(e, f)
+				_burn(e, f, f.spin_range)
 			if d.phase_time >= f.spin_time:
 				for i in f.spin_embers:
 					_ember(e, f, e.pos + MathUtil.dir_from_angle(d.start_facing + TAU * i / f.spin_embers) * f.ember_at * 0.6)
@@ -399,8 +404,8 @@ class Lantern:
 			fsm.change(&"chase")
 
 	# 前方扇形噴一下：一直站在火裡就一直被燒，火焰範圍內的玩家不吃受傷後的無敵時間（同腐屍的啃咬）
-	func _burn(e: Gravekeeper, f: Dictionary) -> void:
-		var shape := {"shape": &"sector", "range": f.range, "arc": f.arc}
+	func _burn(e: Gravekeeper, f: Dictionary, reach: float) -> void:
+		var shape := {"shape": &"sector", "range": reach, "arc": f.arc}
 		for t in Hitbox.query(e.world, e.team, e.pos, e.facing, shape, e.id):
 			if t is Player:
 				t.invuln_timer = 0.0

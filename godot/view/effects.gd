@@ -826,7 +826,7 @@ func _emit_lantern(e: Enemy, a: Dictionary, key: String, dt: float) -> void:
 	var lamp := e.pos + fwd * 0.7 - side * 0.4
 	var lamp_y := e.height + 1.9
 	match a.get("phase", &""):
-		&"windup":
+		&"windup", &"spin_windup":
 			for i in _count(key, 0.8, dt):
 				mote(Vector3(lamp.x + _rng.randf_range(-0.3, 0.3), lamp_y + _rng.randf_range(-0.2, 0.3), lamp.y + _rng.randf_range(-0.3, 0.3)),
 					{"color": LANTERN_BLUE, "size": 0.12, "life": 0.3, "vy": 0.2})

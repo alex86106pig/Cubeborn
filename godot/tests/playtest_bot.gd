@@ -713,7 +713,7 @@ static func _sustained_cone(move: Dictionary) -> bool:
 # 冰冷、減速會讓牠的時間變慢（Enemy.fsm.update 乘 chill_mul），用真實秒數會在第三爪前就放掉；寫不出長度的最多 EVADE_MAX 秒
 func _move_over(e: Enemy, move: Dictionary) -> bool:
 	if move.has("duration"):
-		return e.fsm.time > float(move.get("windup", 0.0)) + float(move.duration) + float(move.get("spin_time", 0.0)) + 0.3
+		return e.fsm.time > float(move.get("windup", 0.0)) + float(move.duration) + float(move.get("spin_windup", 0.0)) + float(move.get("spin_time", 0.0)) + 0.3
 	if _multi_hit(move):
 		return e.fsm.time > _last_hit_at(move) + 0.3
 	return _evade_time > EVADE_MAX
