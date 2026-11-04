@@ -16,7 +16,7 @@ const CORE := -3   # 主袋
 var weapon_slots: Array[Dictionary] = [{}, {}]   # [主手, 副手]：武器實例（WeaponDropDefs）或 {}
 var branches := {}                     # 武器的分支詞條（觸發袋改版後沒有詞條，留空給 BondEffects.has_branch）
 var bond_counts := {}                  # 羈絆 → 最大同色區塊的格數（主袋與袋子一起算，refresh_items 同步）
-var items: Array[Dictionary] = []     # 生效的數值道具 { uid, id }（主袋裡的）；uid 同時是屬性加成的來源名稱
+var items: Array[Dictionary] = []     # 生效的數值道具 { uid, id }（主袋與接著的袋子裡的）；uid 同時是屬性加成的來源名稱
 var inventory := Inventory.new()       # 倉庫（只放東西）
 var core := Inventory.core()           # 主袋
 var bags: Array[Dictionary] = []       # 接著的觸發袋（BagDefs.make 的實例，side 不是空的）
@@ -344,7 +344,7 @@ func find_item(uid: StringName) -> Dictionary:
 	return {}
 
 
-# 道具自動放哪：數值 → 主袋；效果 → 原本時機的那種袋子優先、再來其他袋子（技能先找按鍵袋）；都放不下回傳 { }，呼叫端改放倉庫
+# 道具自動放哪：數值 → 只放主袋（放袋子由玩家手動決定）；效果 → 原本時機的那種袋子優先、再來其他袋子（技能先找按鍵袋）；都放不下回傳 { }，呼叫端改放倉庫
 func auto_place(id: StringName) -> Dictionary:
 	var role := ItemDefs.role_of(id)
 	var order: Array[int] = []
@@ -417,7 +417,7 @@ func clear_items(p: Player) -> void:
 	refresh_items(p)
 
 
-# 生效的數值道具 = 主袋裡的；和 items 比對，新放進來的套屬性、拿出去的移除屬性與條件。詛咒袋接著時套它的缺點。羈絆重算
+# 生效的數值道具 = 主袋與接著的袋子裡的；和 items 比對，新放進來的套屬性、拿出去的移除屬性與條件。詛咒袋接著時套它的缺點。羈絆重算
 # 數值道具在主袋與接著的袋子裡都生效（第 8 步 a，YangHsu 2026-11-04）；袋子裡的效果、技能、修飾不算屬性
 func refresh_items(p: Player) -> void:
 	var want := {}

@@ -3416,6 +3416,16 @@ static func check_inventory_board() -> String:
 		panel._hover_uid = &""
 		if not focus_ok or item_title.contains("不分按鍵") or not item_title.contains("翻滾時"):
 			err = "停在標題條上應以那個袋子為焦點（%s）；袋子裡東西的說明應寫「翻滾時」、不寫方位：%s" % [focus_ok, item_title]
+		# 數值放袋子：說明寫生效中、不寫發動；「一起放」只列放得出來的（數值與修飾不算）
+		var boots := _put(p, roll, &"worn_boots")
+		var split := _put(p, roll, &"split_support")
+		panel._hover_uid = boots
+		var boots_info: Dictionary = panel._info_of(p)
+		panel._hover_uid = &""
+		var boots_text := "%s %s" % [boots_info.title, boots_info.lines]
+		var said := InventoryPanel.fire_sentence(roll)
+		if err == "" and (split == &"" or not boots_text.contains("生效中") or boots_text.contains("發動") or said.contains("磨損皮靴") or said.contains("分裂") or not said.contains(String(ItemDefs.ITEMS[&"smoke_bomb"].name))):
+			err = "袋子裡的數值道具說明應寫生效中、不寫發動：%s；「一起放」只列效果與技能：%s" % [boots_text, said]
 	# 倉庫不管形狀：4 格長的法杖放在倉庫最後一格，拖動時落點就是滑鼠那一格
 	if err == "":
 		var staff_uid := StringName("board_staff")

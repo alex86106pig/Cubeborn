@@ -1,5 +1,5 @@
 # 格子容器：倉庫（ItemDefs.BAG_SIZE，什麼都放、沒有效果、每格一件不管形狀）、主袋（BagDefs.MAIN_SIZE，只放數值道具）、
-# 觸發袋（for_bag：袋子實例的 length × depth，只放效果、技能、修飾）
+# 觸發袋（for_bag：袋子實例的 length × depth，放道具與技能；裡面的數值道具一樣生效）
 # 主袋與袋子裡的道具依 ItemDefs.SHAPES 的形狀占格、可轉 0 / 90 / 180 / 270 度。只管擺放；效果由 Loadout 依 uid 套上。純資料，客戶端從快照整份覆蓋
 class_name Inventory
 extends RefCounted
@@ -30,7 +30,7 @@ static func for_bag(bag: Dictionary) -> Inventory:
 	return inv
 
 
-# 這種容器收不收這個東西：主袋只收數值道具；袋子只收效果、技能、修飾；倉庫都收
+# 這種容器收不收這個東西：主袋只收數值道具；袋子收數值、效果、技能、修飾；倉庫都收（武器、袋子、屍體只進倉庫）
 func accepts(id: StringName) -> bool:
 	match mode:
 		CORE:

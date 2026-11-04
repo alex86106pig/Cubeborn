@@ -657,7 +657,7 @@ func _quick_equip(me: Player, local: Vector2) -> void:
 		return
 	var found := me.loadout.auto_place(e.id)
 	if found.is_empty():
-		_say(("主袋放不下「%s」" if ItemDefs.role_of(e.id) == ItemDefs.ROLE_STAT else "沒有袋子放得下「%s」") % ItemDefs.ITEMS[e.id].name)
+		_say(("主袋放不下「%s」：可以拖到袋子" if ItemDefs.role_of(e.id) == ItemDefs.ROLE_STAT else "沒有袋子放得下「%s」") % ItemDefs.ITEMS[e.id].name)
 		return
 	op_requested.emit([InputCmd.OP_MOVE, String(e.uid), found.spot.cell.x, found.spot.cell.y, found.spot.rot, found.where])
 
@@ -973,7 +973,7 @@ func _draw_drag(font: Font, me: Player) -> void:
 		var swap_text := "換上" if not _drag.weapon.is_empty() and me.inventory.find(_drag.uid).is_empty() else "互換"
 		draw_string(font, rects[0].position + Vector2(6, 24), swap_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, UiKit.GOLD)
 	elif not ok and not inv.accepts(_drag.id):
-		draw_string(font, rects[0].position + Vector2(6, 24), "主袋只放數值" if t.where == Loadout.CORE else "袋子放技能", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, UiKit.DENY)
+		draw_string(font, rects[0].position + Vector2(6, 24), "主袋只放數值" if t.where == Loadout.CORE else "袋子不放武器", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, UiKit.DENY)
 
 
 # 撿不下時取代操作說明的那一行
@@ -1139,8 +1139,11 @@ func _info_of(me: Player) -> Dictionary:
 			info.title += "（在主袋 · 生效中）"
 		else:
 			var b: Dictionary = me.loadout.bags[found.where]
-			info.title += "（在%s · %s發動）" % [BagDefs.bag_name(b), head_text(b) if b.kind != &"key" else "按數字鍵"]
-			info.lines.append("發動：%s" % when_text(b))
+			if ItemDefs.role_of(found.entry.id) == ItemDefs.ROLE_STAT:
+				info.title += "（在%s · 生效中）" % BagDefs.bag_name(b)
+			else:
+				info.title += "（在%s · %s發動）" % [BagDefs.bag_name(b), head_text(b) if b.kind != &"key" else "按數字鍵"]
+				info.lines.append("發動：%s" % when_text(b))
 		return info
 	var e := me.inventory.find(uid)
 	if e.is_empty():
@@ -1192,7 +1195,8 @@ static func fire_sentence(b: Dictionary) -> String:
 	var where: String = {&"hit": "在那隻怪身上", &"kill": "在怪死的位置", &"hurt": "在打你的怪身上"}.get(b.kind, "")
 	var names: Array[String] = []
 	for e: Dictionary in BagTriggers.contents(b):
-		names.append(String(ItemDefs.ITEMS[e.id].name))
+		if ItemDefs.role_of(e.id) in [ItemDefs.ROLE_EFFECT, ItemDefs.ROLE_SKILL]:   # 數值與修飾不會被放出來
+			names.append(String(ItemDefs.ITEMS[e.id].name))
 	if names.is_empty():
 		return "%s，%s放裡面的東西（還沒放東西）。" % [when, where]
 	return "%s，%s一起放：%s。" % [when, where, "、".join(names)]
