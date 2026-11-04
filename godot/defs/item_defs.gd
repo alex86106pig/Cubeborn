@@ -248,7 +248,7 @@ const ITEMS := {
 	&"resurrection_cross": {"kind": &"item", "name": "復活十字", "rarity": &"purple", "power": 9.0, "shape": &"t4", "bonds": [&"guard"],
 		"desc": "死亡時復活一次，用完碎掉並空出格子", "effects": [{"on": &"death", "do": &"revive", "consume": true}]},
 	&"rift_blade": {"kind": &"item", "name": "裂空之刃", "rarity": &"purple", "power": 9.0, "shape": &"l4", "bonds": [&"phys"],
-		"desc": "射出 2 道斬波，各造成 50% 傷害", "effects": [{"on": &"attack", "do": &"slash_wave", "count": 2, "damage_ratio": 0.5}]},
+		"desc": "射出 2 道會穿透的斬波", "effects": [{"on": &"attack", "do": &"slash_wave", "count": 2, "damage_ratio": 0.5}]},
 	&"blood_crown": {"kind": &"item", "name": "血族王冠", "rarity": &"purple", "power": 6.0, "shape": &"o4", "bonds": [],
 		"desc": "造成傷害的 3% 轉為回復生命", "effects": [{"stat": &"lifesteal", "op": Stats.ADD, "value": 0.03}]},
 	&"hourglass": {"kind": &"item", "name": "時之沙漏", "rarity": &"purple", "power": 6.0, "shape": &"t4", "bonds": [],
@@ -262,7 +262,7 @@ const ITEMS := {
 
 	# ---- 橘色：改變整個 build ----
 	&"tomb_heart": {"kind": &"item", "name": "王墓之心", "rarity": &"orange", "power": 10.0, "shape": &"o4", "bonds": [&"guard", &"fire"],
-		"desc": "對周圍爆炸，傷害為那一下傷害的 300%", "effects": [{"on": &"hurt", "do": &"explode", "damage_ratio": 3.0}]},
+		"desc": "對周圍爆炸", "effects": [{"on": &"hurt", "do": &"explode", "damage_ratio": 3.0}]},
 	&"eternal_flame": {"kind": &"item", "name": "永恆之焰", "rarity": &"orange", "power": 12.0, "shape": &"s4", "bonds": [&"fire"],
 		"desc": "點燃目標，燃燒會擴散到附近敵人", "effects": [{"on": &"hit", "do": &"ignite", "spread": true}]},
 	&"stasis_watch": {"kind": &"item", "name": "停滯懷錶", "rarity": &"orange", "power": 10.0, "shape": &"t4", "bonds": [&"cold"],

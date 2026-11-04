@@ -1889,8 +1889,8 @@ static func check_font_coverage() -> String:
 		texts.append(s.name)
 	for g: Dictionary in StatDefs.PANEL_GROUPS:
 		texts.append(g.name)
-	for item: Dictionary in ItemDefs.ITEMS.values():
-		texts.append_array([item.name, item.desc, "獲得 "])
+	for id: StringName in ItemDefs.ITEMS:
+		texts.append_array([ItemDefs.ITEMS[id].name, ItemDefs.ITEMS[id].desc, "獲得 ", UiKit.effect_damage_line(id)])
 	texts.append(StatDefs.format_value(&"armor", 8.0) + StatDefs.format_value(&"hp_regen", 1.0))
 	# HUD 程式裡的字串常值（標題、橫幅、結算、按鍵名稱）
 	var re := RegEx.create_from_string("\"([^\"\\\\]*)\"")

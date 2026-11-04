@@ -228,6 +228,15 @@ static func check_level_text() -> String:
 		var d := UiKit.skill_damage_line(id)
 		if SkillDefs.SKILLS[id].has("damage_pct") != d.contains("%"):
 			return "技能 %s 的傷害 %% 應%s寫出來：「%s」" % [id, "" if SkillDefs.SKILLS[id].has("damage_pct") else "不", d]
+	# 效果型技能：動作會打傷害的（爆炸、閃電、中毒、點燃、鬼火、反彈、飛刀、斬波、落雷）說明框都寫 %
+	var damage_actions: Array[StringName] = [&"explode", &"chain_lightning", &"poison", &"ignite", &"wisp", &"reflect", &"throw_knife", &"slash_wave", &"lightning_strike"]
+	for id: StringName in ItemDefs.ITEMS:
+		if ItemDefs.role_of(id) != ItemDefs.ROLE_EFFECT:
+			continue
+		var hurts: bool = (ItemDefs.ITEMS[id].effects as Array).any(func(e: Dictionary) -> bool: return damage_actions.has(e.get("do", &"")))
+		var line := UiKit.effect_damage_line(id)
+		if hurts != line.contains("%") or (hurts and not UiKit.item_info(id, {}).lines.has(line)):
+			return "效果型技能 %s 的傷害 %% 應%s寫出來：%s" % [id, "" if hurts else "不", UiKit.item_info(id, {}).lines]
 	var no_damage: StringName = SkillDefs.gem_skill_ids().filter(func(id: StringName) -> bool: return SkillDefs.SKILLS[id].has("mana") and not SkillDefs.SKILLS[id].has("damage_pct"))[0]
 	if UiKit.item_info(no_damage, {}, 3).lines.size() != 2 or UiKit.skill_upgrade_line(no_damage, 2).contains("傷害"):
 		return "沒傷害的技能（%s）不應寫傷害" % no_damage

@@ -149,6 +149,9 @@ static func item_info(id: StringName, weapon: Dictionary, level := 1) -> Diction
 	if def.kind == &"item":
 		desc += "　· 羈絆：" + ("、".join(bond_names) if not bond_names.is_empty() else "沒有")
 	var item_lines: Array[String] = [desc]
+	var damage := effect_damage_line(id)
+	if damage != "":
+		item_lines.append(damage)
 	if def.kind == &"item":
 		item_lines.append(role_line(id))
 	var kind_name := "技能 · " if ItemDefs.role_of(id) == ItemDefs.ROLE_EFFECT else ""
@@ -200,6 +203,35 @@ static func skill_damage_line(id: StringName, level := 1) -> String:
 	if sk.has("trail"):
 		text += "，火痕每秒 %s（%s 秒）" % [pct_text(sk.trail.dps_pct * mul), String.num(sk.trail.duration)]
 	return text
+
+
+# 效果型技能（觸發道具改寫，ItemDefs.ROLE_EFFECT）的傷害：照道具資料與 ItemDefs.PROCS 組字，沒傷害的（冰冷、回血、回魔…）回空字串
+# 「觸發那一下」= 命中 / 擊殺袋是那一下的傷害、受傷袋是受到的傷害；計時、翻滾、出手、按鍵袋沒有那一下，用武器傷害 100%（BagTriggers.run_effect）
+static func effect_damage_line(id: StringName) -> String:
+	if ItemDefs.role_of(id) != ItemDefs.ROLE_EFFECT:
+		return ""
+	for e: Dictionary in ItemDefs.ITEMS[id].effects:
+		var p: Dictionary = ItemDefs.PROCS.get(e.get("do", &""), {})
+		match e.get("do", &""):
+			&"explode":
+				return "傷害：觸發那一下的 %s（半徑 %s）" % [pct_text(e.get("damage_ratio", p.damage_ratio)), String.num(p.radius)]
+			&"chain_lightning":
+				return "傷害：觸發那一下的 %s，跳 %d 隻" % [pct_text(p.damage_ratio), e.targets]
+			&"poison":
+				return "傷害：%s 秒共觸發那一下的 %s" % [String.num(p.duration), pct_text(p.total_ratio)]
+			&"ignite":
+				return "傷害：每秒觸發那一下的 %s，%s 秒" % [pct_text(p.pct_per_sec), String.num(p.duration)]
+			&"wisp":
+				return "傷害：觸發那一下的 %s" % pct_text(p.damage_ratio)
+			&"reflect":
+				return "傷害：受到傷害的 %s" % pct_text(e.ratio)
+			&"throw_knife":
+				return "傷害：武器傷害 %s" % pct_text(p.damage_pct)
+			&"slash_wave":
+				return "傷害：武器傷害 %s × %d 道" % [pct_text(e.damage_ratio), e.count]
+			&"lightning_strike":
+				return "傷害：武器傷害 %s，最多 %d 隻" % [pct_text(p.damage_pct), p.targets]
+	return ""
 
 
 # 遺物卡的升級預覽：「升級：傷害 600% → 720% · 耗魔 27 → 24」（傷害寫主段；沒傷害的技能只寫耗魔）

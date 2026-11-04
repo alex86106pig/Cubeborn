@@ -158,7 +158,8 @@ func _card(i: int, id: StringName, me: Player) -> PanelContainer:
 	eff.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	eff.custom_minimum_size.x = CARD_W - PREVIEW_W - 16 - 36
 	eff.add_theme_font_size_override(&"normal_font_size", EFFECT_FONT)
-	eff.text = effect_bbcode(def.desc)
+	var damage := UiKit.effect_damage_line(id)
+	eff.text = effect_bbcode(def.desc + ("\n" + damage if damage != "" else ""))
 	body.add_child(eff)
 	_ignore_mouse(row)
 	return card
