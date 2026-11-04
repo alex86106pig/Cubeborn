@@ -14,6 +14,7 @@ const WEAPONS := {
 		"type": &"melee",
 		"hands": &"one",
 		"base_damage": 8.0,         # 普攻 + 蓄力突刺打一隻每秒照近戰目標（設計方向「武器強度」），12 → 8
+		"max_mana": 120.0, "mana_regen": 5,   # 魔力照武器（許家慶 2026-11-04）：最大魔力與回魔 = 基準（基礎傷害 8：120、每秒 5）× 8 ÷ 白裝基礎傷害，技能的長時間輸出與爆發跟武器無關
 		"damage_type": &"phys",
 		"model": &"longsword",
 		"grid": ["..E..", ".AAA.", ".AAA.", ".AGA.", ".AAA.", "HHHHH", "..H..", "..G.."],
@@ -123,6 +124,7 @@ const WEAPONS := {
 		"name": "法杖",
 		"type": &"ranged",
 		"base_damage": 8.0,
+		"max_mana": 120.0, "mana_regen": 5,   # 魔力照武器（許家慶 2026-11-04）：最大魔力與回魔 = 基準（基礎傷害 8：120、每秒 5）× 8 ÷ 白裝基礎傷害，技能的長時間輸出與爆發跟武器無關
 		"damage_type": &"arcane",
 		"model": &"staff",
 		# 杖頭連成一塊（攻擊部位 16 格、放得下 2×2）、寶石座移到握柄兩側（使用者 2026-11-02：原本攻擊部位 12 格被寶石座切碎，2×2 放不進去）
@@ -184,6 +186,7 @@ const WEAPONS := {
 		"model": &"shortbow",
 		"grid": [".AAAA", "AAA..", "AAG..", "HHHH.", "AAG..", "AAA..", ".AAAA"],
 		"base_damage": 12.0,        # 使用者 2026-11-02 決定：短弓打一隻每秒是全武器最高、箭不穿透（打一群靠散射）；8 → 12（14 時連珠箭 × 0.75 不是整數）
+		"max_mana": 80.0, "mana_regen": 3.33,   # 魔力照武器（許家慶 2026-11-04）：最大魔力與回魔 = 基準（基礎傷害 8：120、每秒 5）× 8 ÷ 白裝基礎傷害，技能的長時間輸出與爆發跟武器無關
 		"damage_type": &"phys",
 		"idle": {"arm_r": -0.4, "arm_l": 0.0, "tilt": 0.0},
 		"attack": {
@@ -220,7 +223,7 @@ const WEAPONS := {
 			"name": "散射",
 			"desc": "一次 5 支箭散開 50°，每支 350%；耗魔 25。",
 			"icon": "bow_fan",
-			"mana": 25,
+			"mana": 17,   # 照魔力倍率 × 8 ÷ 基礎傷害（原本 25）
 			"damage_pct": 3.5,         # 6 單位外打一隻、打一群每隻都只中 1 支：一支就是目標；貼近時多中幾支
 			"count": 5,
 			"fan_arc": PI * 50.0 / 180.0,
@@ -251,6 +254,7 @@ const WEAPONS := {
 		"model": &"longbow",
 		"grid": [".AAAA", "AAA..", "AAA..", "AAG..", "HHHH.", "HHG..", "HHHH.", "AAG..", "AAA..", "AAA..", ".AAAA"],
 		"base_damage": 12.0,        # 11 → 12（白裝每一下都是整數）
+		"max_mana": 80.0, "mana_regen": 3.33,   # 魔力照武器（許家慶 2026-11-04）：最大魔力與回魔 = 基準（基礎傷害 8：120、每秒 5）× 8 ÷ 白裝基礎傷害，技能的長時間輸出與爆發跟武器無關
 		"damage_type": &"phys",
 		"idle": {"arm_r": -0.4, "arm_l": 0.0, "tilt": 0.0},
 		"attack": {
@@ -282,7 +286,7 @@ const WEAPONS := {
 			"name": "穿透箭",
 			"desc": "按住蓄力、放開射出：150% → 400%（蓄滿 1 秒），穿過路上所有敵人；耗魔 30。",
 			"icon": "bow_pierce",
-			"mana": 30,
+			"mana": 20,   # 照魔力倍率 × 8 ÷ 基礎傷害（原本 30）
 			"hold": true,              # 按住右鍵蓄力（同格擋的按住機制），放開射出
 			"roll_cancel": true,
 			"damage_pct": 1.5,         # 沒蓄力
@@ -317,6 +321,7 @@ const WEAPONS := {
 		"model": &"dagger",
 		"grid": [".E.", ".A.", "AAA", "AGA", "HHH", ".H."],
 		"base_damage": 8.0,            # 2026-10-27 放慢後 5 → 9（雙持每秒傷害約 31.6 → 27.8）；2026-10-31 9 → 8（白裝每一下都是整數、打一隻照近戰目標）
+		"max_mana": 120.0, "mana_regen": 5,   # 魔力照武器（許家慶 2026-11-04）：最大魔力與回魔 = 基準（基礎傷害 8：120、每秒 5）× 8 ÷ 白裝基礎傷害，技能的長時間輸出與爆發跟武器無關
 		"damage_type": &"phys",
 		"idle": {"arm_r": -0.6, "arm_l": 0.0, "tilt": 0.0},
 		"offhand_arm_l": -0.6,
@@ -418,6 +423,7 @@ const WEAPONS := {
 		"model": &"scepter",
 		"grid": ["AAAAA", "AGAGA", "AAAAA", ".HHH.", "..H..", ".HHH.", "..H..", "..H.."],
 		"base_damage": 10.0,
+		"max_mana": 96.0, "mana_regen": 4,   # 魔力照武器（許家慶 2026-11-04）：最大魔力與回魔 = 基準（基礎傷害 8：120、每秒 5）× 8 ÷ 白裝基礎傷害，技能的長時間輸出與爆發跟武器無關
 		"damage_type": &"holy",
 		"idle": {"arm_r": -0.4, "arm_l": -0.1, "tilt": 0.0},
 		"attack": {
@@ -458,7 +464,7 @@ const WEAPONS := {
 			"name": "聖光圈",
 			"desc": "腳下放 4 秒的聖光圈（半徑 4）：隊友每秒回 4、亡靈每秒受到 120% 神聖傷害；耗魔 60。",
 			"icon": "holy_circle",
-			"mana": 60,
+			"mana": 48,   # 照魔力倍率 × 8 ÷ 基礎傷害（原本 60）
 			"damage_pct": 1.2,         # 亡靈每秒受到 120%
 			"heal_per_sec": 4.0,       # 隊友（含自己）每秒回血
 			"radius": 4.0,
@@ -483,6 +489,7 @@ const WEAPONS := {
 		"model": &"torch",
 		"grid": ["AAA", "AAA", "AGA", "HHH", ".H.", ".H."],
 		"base_damage": 12.0,        # 打一隻每秒照近戰目標，6 → 12
+		"max_mana": 80.0, "mana_regen": 3.33,   # 魔力照武器（許家慶 2026-11-04）：最大魔力與回魔 = 基準（基礎傷害 8：120、每秒 5）× 8 ÷ 白裝基礎傷害，技能的長時間輸出與爆發跟武器無關
 		"damage_type": &"fire",
 		"idle": {"arm_r": -0.5, "arm_l": -0.1, "tilt": 0.0},
 		"light_radius": 6.0,           # 舉著 / 插著的火把照亮的半徑
@@ -534,7 +541,7 @@ const WEAPONS := {
 				"name": "噴火",
 				"desc": "舉著火把時向前噴火（90°、長 5）125% 並點燃；耗魔 30。",
 				"icon": "fire_breath",
-				"mana": 30,
+				"mana": 20,   # 照魔力倍率 × 8 ÷ 基礎傷害（原本 30）
 				"cd_key": "player.breath",   # 左鍵的招式但耗魔：自己一格防連按間隔，不占右鍵的 player.special
 				"damage_pct": 1.25,
 				"burn": {"pct_per_sec": 0.15, "duration": 3.0},
@@ -563,6 +570,7 @@ const WEAPONS := {
 		"model": &"shovel",
 		"grid": ["AAAAA", "AAGAA", "AAAAA", ".AAA.", "..H..", "..H..", ".HHH.", "..H..", "..G.."],
 		"base_damage": 30.0,        # 打一隻每秒照近戰目標，12 → 30（攻速慢）
+		"max_mana": 32.0, "mana_regen": 1.33,   # 魔力照武器（許家慶 2026-11-04）：最大魔力與回魔 = 基準（基礎傷害 8：120、每秒 5）× 8 ÷ 白裝基礎傷害，技能的長時間輸出與爆發跟武器無關
 		"damage_type": &"phys",
 		"idle": {"arm_r": -0.4, "arm_l": -0.5, "tilt": 0.0},
 		"attack": {
@@ -598,7 +606,7 @@ const WEAPONS := {
 			"name": "鏟起",
 			"desc": "把面前一隻怪（Boss 除外）鏟起來舉 2 秒，之後左鍵拋出、右鍵埋入；耗魔 50。",
 			"icon": "shovel_grab",
-			"mana": 50,
+			"mana": 13,   # 照魔力倍率 × 8 ÷ 基礎傷害（原本 50）
 			"miss_mana": 10,      # 沒有發動（沒怪 / 沒抓到）：只扣這麼多魔力，其他退回
 			"reach": 2.0,              # 抓取距離（自己身體邊緣到怪身體邊緣）；屍犬牽制時停在中心距離 2.5 外，要搆得到
 			"hold_time": 2.0,          # 舉著這麼久沒按就掙脫

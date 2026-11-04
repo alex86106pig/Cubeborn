@@ -970,7 +970,7 @@ static func check_item_conditions() -> String:
 	p.clear_items()
 	# 戰鼓：擊殺後一段時間攻速加成；吸魂鐮：擊殺回復魔力
 	var drum := _effect(&"war_drum")
-	var want_mana: float = 50.0 + _effect(&"soul_scythe").amount
+	var want_mana: float = 50.0 + p.max_mana() * _effect(&"soul_scythe").ratio
 	p.add_item(&"war_drum")
 	_put(p, _bag(p, &"kill", &"left"), &"soul_scythe")   # 吸魂鐮是效果：放左邊的擊殺袋、普攻打死才發動（扣掉自己的耗魔）
 	p.mana = 50.0

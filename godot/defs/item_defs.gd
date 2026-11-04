@@ -75,7 +75,7 @@ const ACTIONS := {
 	&"ignite": {"name": "點燃", "params": []},
 	&"reflect": {"name": "反彈傷害", "params": ["ratio"]},
 	&"heal_max_hp": {"name": "回復最大生命的比例", "params": ["ratio"]},
-	&"restore_mana": {"name": "回復魔力", "params": ["amount"]},
+	&"restore_mana": {"name": "回復魔力", "params": ["ratio"]},   # ratio = 最大魔力的比例
 	&"throw_knife": {"name": "追加飛刀", "params": []},
 	&"wisp": {"name": "放出追蹤鬼火", "params": []},
 	&"slash_wave": {"name": "射出斬波", "params": ["count", "damage_ratio"]},
@@ -190,7 +190,7 @@ const ITEMS := {
 	&"lead_weight": {"kind": &"item", "name": "鉛墜", "rarity": &"white", "power": 0.8, "shape": &"dot", "bonds": [&"phys"],
 		"desc": "擊退 +20%", "effects": [{"stat": &"knockback", "op": Stats.PCT, "value": 0.2}]},
 	&"wormwood": {"kind": &"item", "name": "苦艾酒", "rarity": &"white", "power": 0.8, "shape": &"dot", "bonds": [],
-		"desc": "每秒回魔 +1.5", "effects": [{"stat": &"mana_regen", "op": Stats.ADD, "value": 1.5}]},
+		"desc": "回魔 +30%", "effects": [{"stat": &"mana_regen", "op": Stats.PCT, "value": 0.3}]},
 	&"powder_pouch": {"kind": &"item", "name": "火藥包", "rarity": &"white", "power": 1.2, "shape": &"dot", "bonds": [&"fire"],
 		"desc": "小爆炸", "effects": [{"on": &"kill", "chance": 0.1, "do": &"explode"}]},
 	&"hound_collar": {"kind": &"item", "name": "獵犬項圈", "rarity": &"white", "power": 1.0, "shape": &"dot", "bonds": [&"phys"],
@@ -228,7 +228,7 @@ const ITEMS := {
 	&"frost_heart": {"kind": &"item", "name": "霜之心", "rarity": &"blue", "power": 5.0, "shape": &"l3", "bonds": [&"cold"],
 		"desc": "冰凍目標 1.5 秒", "effects": [{"on": &"hit", "chance": 0.1, "do": &"freeze", "duration": 1.5}]},
 	&"soul_scythe": {"kind": &"item", "name": "吸魂鐮", "rarity": &"blue", "power": 4.5, "shape": &"l3", "bonds": [],
-		"desc": "回復 4 魔力", "effects": [{"on": &"kill", "do": &"restore_mana", "amount": 4.0}]},
+		"desc": "回復 15% 最大魔力", "effects": [{"on": &"kill", "do": &"restore_mana", "ratio": 0.15}]},
 	&"twin_leap_boots": {"kind": &"item", "name": "雙躍之靴", "rarity": &"blue", "power": 4.0, "shape": &"i3", "bonds": [],
 		"desc": "可以二段跳", "effects": [{"ability": &"double_jump"}]},
 	&"blast_quiver": {"kind": &"item", "name": "爆裂箭袋", "rarity": &"blue", "power": 5.0, "shape": &"i3", "bonds": [&"fire"],
@@ -336,17 +336,17 @@ const ITEMS := {
 	&"dirt_toss": {"kind": &"skill", "name": "甩土", "rarity": &"white", "shape": &"dot", "desc": "甩出一團土塊，炸開後周圍的怪短暫暈眩", "effects": []},
 	&"burrow": {"kind": &"skill", "name": "掘地", "rarity": &"white", "shape": &"dot", "desc": "鑽進土裡無敵 1 秒、往前移動 6 單位，出土時震開周圍的怪", "effects": []},
 
-	# ---- 魔力道具：回魔與最大魔力（不屬於羈絆，照 is_mana_item 掉；數字 Claude 暫定：基礎回魔 5、最大 100）----
+	# ---- 魔力道具：回魔與最大魔力（照 is_mana_item 掉）；魔力照武器之後一律寫 %（固定加值放在魔力少的武器上會變很強，許家慶 2026-11-04）----
 	&"mana_shard": {"kind": &"item", "name": "藍晶碎片", "rarity": &"white", "power": 0.8, "shape": &"dot", "bonds": [],
-		"desc": "最大魔力 +20", "effects": [{"stat": &"max_mana", "op": Stats.ADD, "value": 20.0}]},
+		"desc": "最大魔力 +15%", "effects": [{"stat": &"max_mana", "op": Stats.PCT, "value": 0.15}]},
 	&"prayer_beads": {"kind": &"item", "name": "冥想念珠", "rarity": &"green", "power": 2.0, "shape": &"i2", "bonds": [],
-		"desc": "每秒回魔 +3", "effects": [{"stat": &"mana_regen", "op": Stats.ADD, "value": 3.0}]},
+		"desc": "回魔 +60%", "effects": [{"stat": &"mana_regen", "op": Stats.PCT, "value": 0.6}]},
 	&"mana_crystal": {"kind": &"item", "name": "魔力水晶", "rarity": &"green", "power": 2.0, "shape": &"i2", "bonds": [],
-		"desc": "最大魔力 +40", "effects": [{"stat": &"max_mana", "op": Stats.ADD, "value": 40.0}]},
+		"desc": "最大魔力 +30%", "effects": [{"stat": &"max_mana", "op": Stats.PCT, "value": 0.3}]},
 	&"mage_heart": {"kind": &"item", "name": "法師之心", "rarity": &"blue", "power": 4.0, "shape": &"l3", "bonds": [],
-		"desc": "最大魔力 +60、每秒回魔 +1", "effects": [{"stat": &"max_mana", "op": Stats.ADD, "value": 60.0}, {"stat": &"mana_regen", "op": Stats.ADD, "value": 1.0}]},
+		"desc": "最大魔力 +50%、回魔 +20%", "effects": [{"stat": &"max_mana", "op": Stats.PCT, "value": 0.5}, {"stat": &"mana_regen", "op": Stats.PCT, "value": 0.2}]},
 	&"abyss_chalice": {"kind": &"item", "name": "深淵之杯", "rarity": &"purple", "power": 6.0, "shape": &"t4", "bonds": [],
-		"desc": "最大魔力 +30%、每秒回魔 +2", "effects": [{"stat": &"max_mana", "op": Stats.PCT, "value": 0.3}, {"stat": &"mana_regen", "op": Stats.ADD, "value": 2.0}]},
+		"desc": "最大魔力 +30%、回魔 +40%", "effects": [{"stat": &"max_mana", "op": Stats.PCT, "value": 0.3}, {"stat": &"mana_regen", "op": Stats.PCT, "value": 0.4}]},
 
 	# ---- 輔助道具（Build 改版第 7 步）：鑲在寶石座上下左右才有效，只對標籤相符的技能（SkillDefs.TAGS）----
 	# 一般輔助讓相鄰技能耗魔 +power × 10%（SkillDefs.SUPPORT_MANA，寫在 desc 最後）；節能只減不加

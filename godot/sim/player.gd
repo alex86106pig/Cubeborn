@@ -563,6 +563,12 @@ func apply_active_weapon() -> void:
 	show_weapon(WeaponDefs.combo_id(Loadout.weapon_of(main), Loadout.weapon_of(off)), uids != _applied_weapon_uid)
 	_applied_weapon_uid = uids
 	set_stat_source(&"weapon", WeaponDropDefs.stat_mods(main))
+	# 魔力照主手武器（WeaponDefs 的 max_mana / mana_regen，沒寫的用 Config.MANA）；換武器時目前魔力照比例縮放
+	var wd: Dictionary = WeaponDefs.WEAPONS[Loadout.weapon_of(main)]
+	var ratio := clampf(mana / max_mana(), 0.0, 1.0) if max_mana() > 0.0 else 1.0
+	stats.set_base(&"max_mana", wd.get("max_mana", Config.MANA.max))
+	stats.set_base(&"mana_regen", wd.get("mana_regen", Config.MANA.regen))
+	mana = max_mana() * ratio
 	if off.is_empty():
 		remove_stat_source(&"offhand")
 	else:

@@ -330,7 +330,7 @@ class RestoreMana extends Action:
 		return [&"kill"]
 
 	func run(_world: World, p: Player, _target: Entity, _damage: float, proc: Dictionary) -> void:
-		p.gain_mana(proc.effect.amount * proc.count)
+		p.gain_mana(p.max_mana() * proc.effect.ratio * proc.count)   # 最大魔力的比例（魔力照武器）
 
 
 # ── 羈絆道具（Build 改版第 5 步）：層數照 BondEffects（沒有那個羈絆最多 1 層）──
