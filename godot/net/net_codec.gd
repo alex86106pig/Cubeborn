@@ -304,7 +304,8 @@ static func entity_fields(e: Entity) -> Array:
 		var r := e as Relic
 		a[E_EXTRA] = [r.tier, r.relic_kind, r.offers, r.taken.keys(), r.spotted]
 	elif e is ItemPickup:
-		a[E_EXTRA] = [(e as ItemPickup).item_id, WeaponDropDefs.to_array((e as ItemPickup).weapon), (e as ItemPickup).corpse_of]
+		var bag_arr := BagDefs.to_array((e as ItemPickup).bag) if not (e as ItemPickup).bag.is_empty() else []
+		a[E_EXTRA] = [(e as ItemPickup).item_id, WeaponDropDefs.to_array((e as ItemPickup).weapon), (e as ItemPickup).corpse_of, bag_arr]
 	elif e is Coin or e is Torch or e is Forge:
 		a[E_EXTRA] = []
 	elif e is Enemy:
@@ -370,6 +371,8 @@ static func create_entity(world: World, a: Array) -> Entity:
 	elif kind == &"pickup":
 		var pickup := ItemPickup.new(world, extra[0], at, WeaponDropDefs.from_array(extra[1]))
 		pickup.corpse_of = extra[2]
+		if extra.size() > 3 and not (extra[3] as Array).is_empty():
+			pickup.bag = BagDefs.from_array(extra[3])
 		world.add_entity_with_id(pickup, a[E_ID])
 		world.pickups.append(pickup)
 		e = pickup

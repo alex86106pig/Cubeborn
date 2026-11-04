@@ -583,7 +583,7 @@ func _finish_drag(me: Player, local: Vector2) -> void:
 			else:
 				op_requested.emit([InputCmd.OP_MOVE, uid, cell.x, cell.y, _drag.rot, Loadout.BAG])
 		elif _feet_rect().has_point(local) or not Rect2(Vector2.ZERO, size).has_point(local):
-			op_requested.emit([InputCmd.OP_DROP, uid])   # 權威端拒絕（袋子不能丟），HUD 跳原因
+			op_requested.emit([InputCmd.OP_DROP, uid])   # 連同裡面的東西一起丟
 		_cancel()
 		return
 	var at_global := get_global_transform() * local
@@ -718,7 +718,7 @@ func _hint_text() -> String:
 	if _drag.is_empty():
 		return HINT
 	if _drag.has("bag"):
-		return "放到亮起的位置就接上 · 放回倉庫 · 放到腳邊丟掉（袋子不能丟）"
+		return "放到亮起的位置就接上 · 放回倉庫 · 放到腳邊連同裡面的東西一起丟"
 	return "放到沒變暗的地方 · 拿著按 R 旋轉（倉庫不管形狀）· 放到腳邊丟掉"
 
 

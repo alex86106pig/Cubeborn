@@ -1780,7 +1780,7 @@ static func check_bonds() -> String:
 
 
 # 觸發袋的擺放：接哪幾邊看種類、在邊長內、同一邊不重疊、按鍵袋最多 4 個；撿到的袋子自動接、接不下進倉庫；
-# OP_BAG 換邊 / 滑動 / 拿下來放倉庫（內容跟著、拿下來就不生效）、接不下拒絕；袋子不能丟；詛咒袋接著時套缺點；快照來回一樣
+# OP_BAG 換邊 / 滑動 / 拿下來放倉庫（內容跟著、拿下來就不生效）、接不下拒絕；袋子連同內容丟在地上、撿回來照原樣（詛咒袋還是詛咒袋）；詛咒袋接著時套缺點；快照來回一樣
 static func check_bag_layout() -> String:
 	var w := _new_world()
 	var p := _player(w)
@@ -1821,10 +1821,16 @@ static func check_bag_layout() -> String:
 	op.call([InputCmd.OP_BAG, String(uid), "left", 2])
 	if b.side != &"left" or b.offset != 2 or not p.inventory.find(uid).is_empty():
 		return "倉庫的袋子 OP_BAG 應接回左邊 2：%s" % [b]
-	w.events.clear()
+	# 丟袋子：連同內容一起丟、裡面的數值失效；撿回來照原樣接上、再生效（uid 換新的）
+	var dmg_on := p.stats.value(&"damage")
 	op.call([InputCmd.OP_DROP, String(uid)])
-	if not lo.bags.has(b) or _named(w.events, "inventory:denied").is_empty():
-		return "袋子不能丟在地上"
+	var ground: Array = w.pickups.filter(func(e: Entity) -> bool: return not (e as ItemPickup).bag.is_empty())
+	if lo.bags.has(b) or ground.size() != 1 or (ground[0] as ItemPickup).bag.entries.size() != 2 or not is_equal_approx(p.stats.value(&"damage"), dmg_before):
+		return "丟袋子：應離開背包、地上 1 個帶 2 件內容的袋子、磨刀石失效：接著 %s、地上 %d、攻擊力 %s（應為 %s）" % [lo.bags.has(b), ground.size(), p.stats.value(&"damage"), dmg_before]
+	lo.take_pickup(p, ground[0])
+	var back := lo.bags.filter(func(o: Dictionary) -> bool: return o.kind == &"hit")
+	if back.size() != 1 or (back[0] as Dictionary).entries.size() != 2 or (back[0] as Dictionary).uid == uid or not is_equal_approx(p.stats.value(&"damage"), dmg_on):
+		return "撿回丟掉的袋子應照原樣接上（內容 2 件、新 uid）、磨刀石再生效：%s、攻擊力 %s（應為 %s）" % [back, p.stats.value(&"damage"), dmg_on]
 	for i in 3:
 		lo.add_bag(p, &"key")
 	if lo.key_bags().size() != BagDefs.BAGS.key.max:
@@ -1839,6 +1845,15 @@ static func check_bag_layout() -> String:
 	op.call([InputCmd.OP_BAG, String(cursed), "", 0])
 	if absf(p.stats.value(&"damage_taken") - taken0) > EPS:
 		return "詛咒袋拿下來後缺點應移除：%.2f" % p.stats.value(&"damage_taken")
+	# 詛咒袋丟掉再撿回來還是詛咒袋（大小不會變回小袋）
+	op.call([InputCmd.OP_DROP, String(cursed)])
+	var cursed_ground: Array = w.pickups.filter(func(e: Entity) -> bool: return (e as ItemPickup).bag.get("tier", &"") == &"cursed")
+	if cursed_ground.size() != 1 or not p.inventory.find(cursed).is_empty() or (cursed_ground[0] as ItemPickup).display_name() != "詛咒計時袋":
+		return "倉庫的詛咒袋應丟在地上、名稱「詛咒計時袋」：地上 %d" % cursed_ground.size()
+	var cursed2 := lo.add_bag(p, &"timer", &"small", {}, 0, (cursed_ground[0] as ItemPickup).bag)
+	if lo.find_bag(cursed2).get("tier", &"") != &"cursed" or lo.find_bag(cursed2).get("length", 0) != BagDefs.TIERS.cursed.length:
+		return "撿回的詛咒袋應保留大小：%s" % [lo.find_bag(cursed2)]
+	op.call([InputCmd.OP_BAG, String(cursed2), "", 0])
 	var arr := lo.bags_to_array()
 	var copy := Loadout.new()
 	copy.sync_inventory(p, arr)

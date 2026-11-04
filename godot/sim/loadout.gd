@@ -140,8 +140,9 @@ func find_bag(uid: StringName) -> Dictionary:
 
 
 # 撿到一個新的袋子：接得上就接（照 SIDE_ORDER 找第一個空位），不然放倉庫；都放不下回傳 &""、發出 inventory:full
-func add_bag(p: Player, kind: StringName, tier: StringName = &"small", spot: Dictionary = {}, pickup_id := 0) -> StringName:
-	var b := BagDefs.make(new_uid("bag"), kind, tier)
+# existing：地上撿回來的袋子（別人或自己丟的），大小、倍率、內容照舊，袋子與裡面道具的 uid 換成自己的（不跟身上的撞號）
+func add_bag(p: Player, kind: StringName, tier: StringName = &"small", spot: Dictionary = {}, pickup_id := 0, existing: Dictionary = {}) -> StringName:
+	var b := BagDefs.make(new_uid("bag"), kind, tier) if existing.is_empty() else _adopt_bag(existing)
 	var where := attach_spot(b) if spot.is_empty() else {}
 	if not where.is_empty():
 		_attach(b, where.side, where.offset)
@@ -156,6 +157,16 @@ func add_bag(p: Player, kind: StringName, tier: StringName = &"small", spot: Dic
 	refresh_items(p)
 	p.world.emit_event("item:added", {"player_id": p.id, "item": String(BagDefs.BAGS[kind].item), "uid": String(b.uid)})
 	return b.uid
+
+
+func _adopt_bag(src: Dictionary) -> Dictionary:
+	var b := BagDefs.from_array(BagDefs.to_array(src))   # 深拷貝，地上那份不跟著變
+	b.uid = new_uid("bag")
+	b.side = &""
+	b.offset = 0
+	for e: Dictionary in b.entries:
+		e.uid = new_uid("item")
+	return b
 
 
 # 袋子搬到 side 的 offset（從倉庫接上、或沿著邊滑動 / 換邊）；side 空 = 拿下來放倉庫（cell / rot 是倉庫的位置，沒給就找空位）
@@ -221,7 +232,7 @@ func take_pickup(p: Player, ip: ItemPickup, spot: Dictionary = {}, where := AUTO
 	elif ip.is_weapon():
 		taken = add_weapon(p, ip.weapon, spot, ip.id)
 	elif ItemDefs.ITEMS[ip.item_id].kind == &"bag":
-		taken = add_bag(p, BagDefs.kind_of_item(ip.item_id), &"small", spot, ip.id) != &""
+		taken = add_bag(p, BagDefs.kind_of_item(ip.item_id), &"small", spot, ip.id, ip.bag) != &""
 	else:
 		taken = add_item(p, ip.item_id, spot, ip.id, BAG if where == AUTO and not spot.is_empty() else where) != &""
 	if taken:
@@ -537,7 +548,7 @@ func clear_ops() -> void:
 #   [OP_MOVE, uid, x, y, rot, where?] 搬到 where（BAG 倉庫、CORE 主袋、0 以上第幾個袋子；沒寫 = 倉庫）的 (x, y)；
 #     武器、袋子、屍體只在倉庫裡搬；那裡被 1 件東西佔住就互換（_swap_into），拿著的武器放到倉庫的武器上 = 那把換上；沒做成發 inventory:denied
 #   [OP_BAG, uid, side, offset, x?, y?, rot?] 袋子接到 side 的 offset（從倉庫接上、或沿著邊滑動 / 換邊）；side 空字串 = 拿下來放倉庫的 (x, y)
-#   [OP_DROP, uid] 丟到面前的地上（袋子不能丟）；[OP_EQUIP, uid, slot] 武器放進主手 / 副手；[OP_MERGE, uid_a, uid_b] 把 a 拖到 b 上合成（鍛造祭壇旁）
+#   [OP_DROP, uid] 丟到面前的地上（袋子連同內容）；[OP_EQUIP, uid, slot] 武器放進主手 / 副手；[OP_MERGE, uid_a, uid_b] 把 a 拖到 b 上合成（鍛造祭壇旁）
 #   [OP_PICKUP, 地上道具 id, x, y, rot, where?] 撿起按得到 F 的地上道具放到 where 的 (x, y)（已被撿走、太遠、放不下就不動；武器、袋子、屍體只能進倉庫）
 func apply_ops(p: Player) -> void:
 	for op: Array in _ops:
@@ -741,7 +752,7 @@ func merge(p: Player, uid_a: StringName, uid_b: StringName) -> bool:
 	return true
 
 
-# 丟到面前的地上：道具移除效果；主手的武器、袋子不能丟（主手一定要有武器；袋子只能拿下來放倉庫）
+# 丟到面前的地上：道具移除效果；主手的武器不能丟（主手一定要有武器）；袋子連同裡面的東西一起丟（大小、倍率、內容都記在地上的袋子，撿回來照原樣）
 func _drop(p: Player, uid: StringName) -> void:
 	var at := p.pos + MathUtil.dir_from_angle(p.facing) * LootDefs.DROP_DISTANCE
 	var w := _find_weapon(uid)
@@ -752,8 +763,16 @@ func _drop(p: Player, uid: StringName) -> void:
 		p.apply_active_weapon()
 		p.world.drop_weapon(w.inst, at)
 		return
-	if not find_bag(uid).is_empty():
-		_deny(p, &"bag_drop")
+	var b := find_bag(uid)
+	if not b.is_empty():
+		if bags.has(b):
+			bags.erase(b)
+		else:
+			inventory.remove(uid)
+		b.side = &""
+		b.offset = 0
+		refresh_items(p)
+		p.world.drop_item(BagDefs.BAGS[b.kind].item, at).bag = b
 		return
 	var found := find_item(uid)
 	var entry: Dictionary = found.get("entry", inventory.find(uid))

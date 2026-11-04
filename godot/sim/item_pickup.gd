@@ -8,6 +8,7 @@ const RADIUS := 0.4
 var item_id: StringName          # 道具 id；武器時是武器種類（ItemDefs 的武器 id）
 var weapon: Dictionary = {}      # 武器實例（WeaponDropDefs）；空 = 一般道具
 var corpse_of := 0               # 屍體（D6，item_id = &"corpse"）：死者的 peer id
+var bag: Dictionary = {}         # 從背包丟出來的袋子（BagDefs.make 的格式，含大小、倍率、內容）；空 = 新的小袋
 
 
 func _init(p_world: World, p_item_id: StringName, at: Vector2, p_weapon: Dictionary = {}) -> void:
@@ -31,4 +32,6 @@ func rarity() -> StringName:
 
 
 func display_name() -> String:
-	return WeaponDropDefs.display_name(weapon) if is_weapon() else ItemDefs.ITEMS[item_id].name
+	if is_weapon():
+		return WeaponDropDefs.display_name(weapon)
+	return BagDefs.bag_name(bag) if not bag.is_empty() else ItemDefs.ITEMS[item_id].name
