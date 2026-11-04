@@ -355,7 +355,8 @@ func find_item(uid: StringName) -> Dictionary:
 	return {}
 
 
-# 道具自動放哪：數值 → 只放主袋（放袋子由玩家手動決定）；效果 → 原本時機的那種袋子優先、再來其他袋子（技能先找按鍵袋）；都放不下回傳 { }，呼叫端改放倉庫
+# 道具自動放哪：數值 → 只放主袋（放袋子由玩家手動決定）；效果 → 原本時機的那種袋子優先、再來其他袋子（技能先找按鍵袋）；
+# 修飾 → 先找透明格蓋得到有作用的技能的位置、沒有就照順序找空位；都放不下回傳 { }，呼叫端改放倉庫
 func auto_place(id: StringName) -> Dictionary:
 	var role := ItemDefs.role_of(id)
 	var order: Array[int] = []
@@ -369,6 +370,11 @@ func auto_place(id: StringName) -> Dictionary:
 		for i in bags.size():
 			if not order.has(i):
 				order.append(i)
+	if role == ItemDefs.ROLE_MOD:   # 修飾先找蓋得到、而且有作用的技能（第 8 步 f）
+		for where in order:
+			var cover := container(where).find_cover_spot(id, func(skill: StringName) -> bool: return ItemDefs.mod_applies(id, skill))
+			if not cover.is_empty():
+				return {"where": where, "spot": cover}
 	for where in order:
 		var spot := container(where).find_spot(id)
 		if not spot.is_empty():
@@ -477,8 +483,9 @@ func bond_blocks() -> Dictionary:
 		for c in Inventory.cells_of(e.id, e.rot):
 			colors[e.cell + c] = ItemDefs.ITEMS[e.id].get("bonds", [])
 	for b in bags:
+		var inv := Inventory.for_bag(b)
 		for e: Dictionary in b.entries:
-			for c in Inventory.cells_of(e.id, e.rot):
+			for c in inv.solid_cells(e.id, e.rot):   # 修飾的透明格不算羈絆（第 8 步 f）
 				colors[board_cell(b, e.cell + c)] = ItemDefs.ITEMS[e.id].get("bonds", [])
 	var out := {}
 	for bond: StringName in BondDefs.BONDS:

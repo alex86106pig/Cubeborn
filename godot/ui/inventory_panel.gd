@@ -873,13 +873,13 @@ func _draw_bag_spots(me: Player) -> void:
 					draw_rect(r.grow(-1), Color(OK_TINT, 0.1))
 
 
-# 這個袋子放一次全部要多少魔力（技能含同一袋修飾的倍率）
+# 這個袋子放一次全部要多少魔力（含蓋在技能上的修飾的倍率）
 static func _bag_mana(me: Player, b: Dictionary) -> int:
 	var total := 0.0
 	for e: Dictionary in b.entries:
 		match ItemDefs.role_of(e.id):
 			ItemDefs.ROLE_EFFECT:
-				total += BagTriggers.effect_mana(e.id)
+				total += BagTriggers.effect_cost(b, e)
 			ItemDefs.ROLE_SKILL:
 				total += ActiveSlots.mana_cost(me, ActiveSlots.slot_of(me, b, e))
 	return roundi(total)

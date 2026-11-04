@@ -85,6 +85,16 @@ const EFFECTS := {
 	&"reflect": {"name": "反彈"},
 }
 
+# 效果的標籤（修飾蓋上去時照這個過濾，ItemDefs.mod_applies；Claude 暫定，2026-11-04 許家慶同意）：有範圍的算 area、會飛的算 projectile
+const EFFECT_TAGS := {
+	&"explode": [&"area"], &"frost": [&"area"], &"ignite_area": [&"area"], &"fire_pool": [&"area"], &"lightning_strike": [&"area"],
+	&"chain_lightning": [&"projectile"], &"throw_knife": [&"projectile"], &"slash_wave": [&"projectile"], &"wisp": [&"projectile"],
+	&"heal": [&"buff"], &"restore_mana": [&"buff"], &"slow_time": [&"buff"], &"wisp_rally": [&"buff"], &"summon_skeleton": [&"summon"],
+	&"reflect": [&"melee"],
+}
+# 會打出一下傷害的效果：火焰化 / 霜化只對這些有作用（中毒、點燃、冰凍、殘火這類狀態效果不換屬性）
+const EFFECT_TYPED: Array[StringName] = [&"explode", &"chain_lightning", &"reflect", &"lightning_strike", &"throw_knife", &"slash_wave", &"wisp"]
+
 # 道具原本的動作 → 效果（沒列的同名）；寒氣合併「目標疊冰冷」與「周圍疊冰冷」
 const EFFECT_OF_ACTION := {&"chill": &"frost", &"frost_nova": &"frost"}
 

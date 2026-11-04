@@ -1,7 +1,7 @@
 # 觸發袋的發動（規則在 docs/設計方向.md「觸發袋」）：時機到了，接在對應那一邊的那種袋子把裡面的效果與技能一起放出來
 #   左邊的袋子只被普攻觸發、右邊的只被右鍵招式觸發（Combat 的 hit.attack / Player.attack_tag）；下方的不分按鍵；上方的按鍵袋由 ActiveSlots 按數字鍵發動
 #   同一袋裡沒有順序，由左到右、由上到下依序放；每個效果耗魔（道具強度 × BagDefs.EFFECT_MANA_PER_POWER）、技能照自己的耗魔，魔力不夠的跳過
-#   效果的數字照道具資料（ItemDefs 的 on / do 那筆），時機與機率不看；修飾作用在同一袋的技能（ActiveSlots.cast_context）
+#   效果的數字照道具資料（ItemDefs 的 on / do 那筆），時機與機率不看；修飾作用在透明格蓋住的技能與效果（ActiveSlots.cast_context、run_effect 的 mods）
 #   有目標的時機（命中、擊殺、受傷、招架）效果與技能都在目標身上發動（技能怎麼算在 SkillBehaviors.aim_at）；沒有目標的照舊
 #   袋子放出來的效果是道具效果（proc，不觸發命中）、技能的傷害沒有 attack 標記：都不會再觸發袋子，不會連鎖
 # 只在權威端執行
@@ -50,7 +50,7 @@ static func run_bag(world: World, p: Player, b: Dictionary, target: Entity, dama
 	for e in contents(b):
 		match ItemDefs.role_of(e.id):
 			ItemDefs.ROLE_EFFECT:
-				if run_effect(world, p, e.id, target, damage * b.mul):
+				if run_effect(world, p, e.id, target, damage * b.mul, ActiveSlots.mod_ids_on(b, e), b.mul):
 					count += 1
 			ItemDefs.ROLE_SKILL:
 				if cast_skill(p, b, e, target):
@@ -72,34 +72,72 @@ static func effect_mana(id: StringName) -> float:
 	return ItemDefs.ITEMS[id].power * BagDefs.EFFECT_MANA_PER_POWER
 
 
+# 袋子 b 裡的效果 e 放一次要多少魔力（含蓋在上面的修飾）
+static func effect_cost(b: Dictionary, e: Dictionary) -> float:
+	return effect_mana(e.id) * ActiveSlots.mods_mana_mul(ActiveSlots.mod_ids_on(b, e))
+
+
 # 放一個效果：魔力不夠、需要怪當目標卻找不到就不放（回傳 false）
-static func run_effect(world: World, p: Player, id: StringName, target: Entity, damage: float) -> bool:
+# mods：蓋在上面、有作用的修飾（第 8 步 f）：耗魔相乘；延長 → proc.area、火焰化 / 霜化 → proc.type、分裂 → SPLIT_DELAY 秒後用 SPLIT_MUL 再放一次
+static func run_effect(world: World, p: Player, id: StringName, target: Entity, damage: float, mods: Array[StringName] = [], bag_mul := 1.0) -> bool:
 	var eff := effect_data(id)
-	var cost := effect_mana(id)
+	var cost := effect_mana(id) * ActiveSlots.mods_mana_mul(mods)
 	if eff.is_empty() or not p.has_mana(cost):
 		return false
-	var effect := ItemDefs.effect_of(id)
-	# 沒有目標（計時、翻滾、出手、按鍵）找最近的怪；打死的怪照樣是位置（爆炸、召喚在那裡），只有一定要活怪的效果才換一隻
-	if target == null or target.is_removed or (ENEMY_TARGET.has(effect) and target is Enemy and target.is_dead):
-		target = _nearest_enemy(world, p)
-	if target == null and ENEMY_TARGET.has(effect):
-		return false
+	target = _effect_target(world, p, id, target)
 	if target == null:
-		target = p
+		return false
 	if damage <= 0.0:
 		damage = p.pct_damage(1.0)
 	p.spend_mana(cost)
-	if effect == &"heal":
-		var healed := p.heal(eff.value)
-		if healed >= 0.5:
-			world.emit_event("entity:healed", {"target_id": p.id, "amount": healed})
-		return true
-	var proc := {"do": eff.do, "on": eff.get("on", &""), "effect": eff, "chance": 1.0, "count": 1, "item": id}
-	(ItemEffects.ACTIONS[eff.do] as ItemEffects.Action).run(world, p, target, damage, proc)
+	var proc := {"do": eff.get("do", &""), "on": eff.get("on", &""), "effect": eff, "chance": 1.0, "count": 1, "item": id, "area": 1.0}
+	var split := false
+	for m in mods:
+		var sup := ItemDefs.support_of(m)
+		match sup.mode:
+			&"extend":
+				proc.area = 1.5
+			&"fire", &"cold":
+				proc.type = sup.mode
+			&"split":
+				split = true
+	_do_effect(world, p, id, eff, target, damage, proc)
+	if split:
+		var first := target
+		var again := proc.duplicate()
+		again["again"] = true   # 飛刀、斬波的內部冷卻不擋分裂的第二次
+		SkillBehaviors.later(p, SkillBehaviors.SPLIT_DELAY, func() -> void:
+			var t := _effect_target(world, p, id, first)
+			if t == null or p.is_dead:
+				return
+			# 用武器基礎傷害算的效果（飛刀、斬波、落雷）靠攻擊力屬性：暫時乘上分裂與袋子倍率
+			p.set_stat_source(&"split_mul", [[&"damage", Stats.MUL, SkillBehaviors.SPLIT_MUL * bag_mul]])
+			_do_effect(world, p, id, eff, t, damage * SkillBehaviors.SPLIT_MUL, again)
+			p.remove_stat_source(&"split_mul"))
 	return true
 
 
-# 放袋子裡的一個技能：有目標就在目標身上放，沒有就照按鍵的放法；照技能自己的條件與耗魔，加上同一袋的修飾與袋子倍率
+# 效果的目標：沒有目標（計時、翻滾、出手、按鍵）找最近的怪；打死的怪照樣是位置（爆炸、召喚在那裡），只有一定要活怪的效果才換一隻；
+# 一定要怪卻找不到回傳 null，其他找不到就以自己為中心
+static func _effect_target(world: World, p: Player, id: StringName, target: Entity) -> Entity:
+	var effect := ItemDefs.effect_of(id)
+	if target == null or target.is_removed or (ENEMY_TARGET.has(effect) and target is Enemy and target.is_dead):
+		target = _nearest_enemy(world, p)
+	if target == null and not ENEMY_TARGET.has(effect):
+		target = p
+	return target
+
+
+static func _do_effect(world: World, p: Player, id: StringName, eff: Dictionary, target: Entity, damage: float, proc: Dictionary) -> void:
+	if ItemDefs.effect_of(id) == &"heal":
+		var healed := p.heal(eff.value)
+		if healed >= 0.5:
+			world.emit_event("entity:healed", {"target_id": p.id, "amount": healed})
+		return
+	(ItemEffects.ACTIONS[eff.do] as ItemEffects.Action).run(world, p, target, damage, proc)
+
+
+# 放袋子裡的一個技能：有目標就在目標身上放，沒有就照按鍵的放法；照技能自己的條件與耗魔，加上蓋在上面的修飾與袋子倍率
 static func cast_skill(p: Player, b: Dictionary, e: Dictionary, target: Entity = null) -> bool:
 	var at: Entity = null if target == null or target.is_removed else target
 	var slot := ActiveSlots.slot_of(p, b, e)

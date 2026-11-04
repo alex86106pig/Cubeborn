@@ -333,46 +333,46 @@ static func _check_skill_relic_rules() -> String:
 	return ""
 
 
-# 修飾：跟技能放在同一袋、標籤相符才有效——延長讓範圍變大、火焰化改成火焰、分裂再放一次；放在別的袋子沒效
+# 修飾：透明格蓋在技能上、標籤相符才有效（第 8 步 f）——延長讓範圍變大、火焰化改成火焰、分裂再放一次；同一袋沒蓋到沒效
 static func check_supports() -> String:
 	var r: float = SkillDefs.SKILLS.whirlwind.radius
 	var far_d := r * 1.3
-	# 延長：本來打不到的距離打得到
+	# 延長：本來打不到的距離打得到（1 格的修飾整件透明，蓋在旋風斬那格）
 	for with_support in [false, true]:
 		var s := _setup(&"longsword")
 		var w: World = s[0]
 		var p: Player = s[1]
 		var key: Dictionary = p.loadout.key_bags()[0]
-		_put(p, key, &"whirlwind")
-		if with_support:
-			_put(p, key, &"extend_support")
+		_put_at(p, key, &"whirlwind", Vector2i.ZERO)
+		if with_support and _put_at(p, key, &"extend_support", Vector2i.ZERO) == &"":
+			return "延長（透明格）應蓋得上旋風斬那格"
 		var e := LootChecks._item_dummy(w, Vector2(0, far_d), 100000.0)
 		var hp0 := e.hp
 		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
 		if (e.hp < hp0) != with_support:
-			return "延長%s時 %.1f 單位的怪%s打到" % ["同一袋" if with_support else "沒有", far_d, "應" if with_support else "不該"]
-	# 火焰化：傷害改成火焰；放在另一個袋子就沒效
-	for same_bag in [true, false]:
+			return "延長%s時 %.1f 單位的怪%s打到" % ["蓋著" if with_support else "沒有", far_d, "應" if with_support else "不該"]
+	# 火焰化：透明格蓋住才改成火焰；同一袋但透明格沒蓋到技能就沒效
+	for covered in [true, false]:
 		var s := _setup(&"longsword")
 		var w: World = s[0]
 		var p: Player = s[1]
 		var key: Dictionary = p.loadout.key_bags()[0]
-		_put(p, key, &"whirlwind")
-		if _put(p, key if same_bag else _bag(p, &"key", &"top"), &"fire_support") == &"":
-			return "火焰化放不進按鍵袋"
+		_put_at(p, key, &"whirlwind", Vector2i.ZERO)
+		if _put_at(p, key, &"fire_support", Vector2i(0, 0 if covered else 1)) == &"":
+			return "火焰化放不進按鍵袋（%s）" % ("蓋住" if covered else "下一排")
 		LootChecks._item_dummy(w, Vector2(0, 1.5), 100000.0)
 		var events: Array[Dictionary] = []
 		_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(_slot_of(p, &"whirlwind"))), 1, events)
 		var fire := _named(events, "entity:damaged").any(func(ev: Dictionary) -> bool: return ev.get("damage_type", &"phys") == &"fire")
-		if fire != same_bag:
-			return "火焰化%s時旋風斬%s是火焰傷害" % ["同一袋" if same_bag else "在別的袋子", "應" if same_bag else "不該"]
+		if fire != covered:
+			return "火焰化%s時旋風斬%s是火焰傷害" % ["蓋住" if covered else "同一袋沒蓋到", "應" if covered else "不該"]
 	# 分裂：SPLIT_DELAY 秒後再打一次（傷害 SPLIT_MUL）
 	var s3 := _setup(&"longsword")
 	var w3: World = s3[0]
 	var p3: Player = s3[1]
 	var k3: Dictionary = p3.loadout.key_bags()[0]
-	_put(p3, k3, &"whirlwind")
-	_put(p3, k3, &"split_support")
+	_put_at(p3, k3, &"whirlwind", Vector2i.ZERO)
+	_put_at(p3, k3, &"split_support", Vector2i.ZERO)
 	var e3 := LootChecks._item_dummy(w3, Vector2(0, 1.5), 100000.0)
 	e3.set_resists({})
 	var ev3: Array[Dictionary] = []
@@ -381,24 +381,87 @@ static func check_supports() -> String:
 	var hits := _named(ev3, "entity:damaged").filter(func(ev: Dictionary) -> bool: return ev.target_id == e3.id)
 	if hits.size() != 2 or absf(hits[1].amount / hits[0].amount - SkillBehaviors.SPLIT_MUL) > 0.02:
 		return "分裂：應打 2 次、第二次 ×%.1f：%s" % [SkillBehaviors.SPLIT_MUL, hits.map(func(ev: Dictionary) -> float: return ev.amount)]
-	# 耗魔：一般修飾每顆 × (1 + 強度 × SUPPORT_MANA)，節能 × mana_mul；技能欄顯示與實際扣的一樣
+	# 耗魔：一般修飾每顆 × (1 + 強度 × SUPPORT_MANA)，節能 × mana_mul；技能欄顯示與實際扣的一樣（1 格的技能只蓋得下一個透明格，相乘在下面的效果驗）
 	var s4 := _setup(&"longsword")
 	var w4: World = s4[0]
 	var p4: Player = s4[1]
 	var k4: Dictionary = p4.loadout.key_bags()[0]
-	_put(p4, k4, &"whirlwind")
+	_put_at(p4, k4, &"whirlwind", Vector2i.ZERO)
 	var base_cost := ActiveSlots.mana_cost(p4, p4.slots.get_slot(p4, 0))
-	_put(p4, k4, &"extend_support")
+	var ext := _put_at(p4, k4, &"extend_support", Vector2i.ZERO)
 	var with_extend := ActiveSlots.mana_cost(p4, p4.slots.get_slot(p4, 0))
 	var want_extend: float = base_cost * (1.0 + ItemDefs.ITEMS.extend_support.power * SkillDefs.SUPPORT_MANA)
-	if _put(p4, k4, &"conserve_support") == &"":
+	p4.loadout.remove_item(p4, ext)
+	if _put_at(p4, k4, &"conserve_support", Vector2i.ZERO) == &"":
 		return "節能放不進按鍵袋"
-	var both := ActiveSlots.mana_cost(p4, p4.slots.get_slot(p4, 0))
-	var want_both: float = want_extend * ItemDefs.support_of(&"conserve_support").mana_mul
+	var cons := ActiveSlots.mana_cost(p4, p4.slots.get_slot(p4, 0))
+	var want_cons: float = base_cost * ItemDefs.support_of(&"conserve_support").mana_mul
 	p4.set_stat_source(&"test", [[&"mana_regen", Stats.MUL, 0.0]])
 	var m0 := p4.mana
 	_run(w4, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
-	if absf(with_extend - want_extend) > 1e-3 or absf(both - want_both) > 1e-3 or absf(m0 - p4.mana - want_both) > 1e-3:
-		return "修飾耗魔：旋風斬 %.1f，加延長應 %.2f（%.2f）、再加節能應 %.2f（%.2f）、實際扣 %.2f" % [base_cost, want_extend, with_extend, want_both, both, m0 - p4.mana]
-	_note("修飾耗魔：旋風斬 %.1f → 延長 %.2f → 延長 + 節能 %.2f" % [base_cost, with_extend, both])
+	if absf(with_extend - want_extend) > 1e-3 or absf(cons - want_cons) > 1e-3 or absf(m0 - p4.mana - want_cons) > 1e-3:
+		return "修飾耗魔：旋風斬 %.1f，蓋延長應 %.2f（%.2f）、換成節能應 %.2f（%.2f）、實際扣 %.2f" % [base_cost, want_extend, with_extend, want_cons, cons, m0 - p4.mana]
+	_note("修飾耗魔：旋風斬 %.1f → 延長 %.2f、節能 %.2f" % [base_cost, with_extend, cons])
+	return _check_clear_cells()
+
+
+# 透明格（第 8 步 f）：擺放（透明格可以蓋技能或放空格、不跟透明格疊、底下不能放非技能）、蓋住多格技能的效果（延長、霜化、耗魔相乘）、
+# 羈絆只算實心格、同一袋沒蓋到沒效、自動擺放先找蓋得到的技能
+static func _check_clear_cells() -> String:
+	var s := _setup(&"longsword")
+	var w: World = s[0]
+	var p: Player = s[1]
+	var b := _bag(p, &"hit", &"left")
+	var inv := Inventory.for_bag(b)
+	var quiver := _put_at(p, b, &"blast_quiver", Vector2i.ZERO)   # 爆裂箭袋：i3 的爆炸，占 (0~2, 0)
+	if quiver == &"":
+		return "爆裂箭袋放不進命中袋"
+	if not inv.fits(&"whetstone", Vector2i(1, 1), 0) or _put_at(p, b, &"extend_support", Vector2i(1, 1)) == &"":
+		return "1 格的修飾應放得進空格"
+	if inv.fits(&"whetstone", Vector2i(1, 1), 0):
+		return "透明格底下不能放數值道具"
+	if inv.fits(&"split_support", Vector2i(1, 1), 1) or inv.fits(&"split_support", Vector2i(1, 0), 0):
+		return "透明格不能疊透明格、實心格不能放在技能上"
+	var stray := inv.find_spot(&"whetstone")
+	if stray.is_empty():
+		return "還有空格時數值道具應放得進"
+	p.loadout.remove_item(p, inv.find(inv.occupied().get(Vector2i(1, 1), &"")).get("uid", &""))
+	# 延長蓋 (0, 0)、霜化直放蓋 (1, 0)（透明格在上、實心格在下）：兩個都蓋住箭袋
+	var ext := _put_at(p, b, &"extend_support", Vector2i.ZERO)
+	var cold := _put_at(p, b, &"cold_support", Vector2i(1, 0), 1)
+	if ext == &"" or cold == &"":
+		return "延長、霜化應蓋得上爆裂箭袋（%s、%s）" % [ext, cold]
+	var on := ActiveSlots.mod_ids_on(b, inv.find(quiver))
+	if on.size() != 2:
+		return "爆裂箭袋上應有 2 個有作用的修飾：%s" % [on]
+	var want_cost := BagTriggers.effect_mana(&"blast_quiver") * (1.0 + ItemDefs.ITEMS.extend_support.power * SkillDefs.SUPPORT_MANA) * (1.0 + ItemDefs.ITEMS.cold_support.power * SkillDefs.SUPPORT_MANA)
+	if absf(BagTriggers.effect_cost(b, inv.find(quiver)) - want_cost) > 1e-3:
+		return "蓋兩個修飾的耗魔應相乘 %.2f，實際 %.2f" % [want_cost, BagTriggers.effect_cost(b, inv.find(quiver))]
+	if p.loadout.bond_counts.get(&"cold", 0) != 1:
+		return "霜化只有實心格算冰霜羈絆，應 1 格：%s" % [p.loadout.bond_counts]
+	# 放一次：爆炸半徑 × 1.5（原本打不到的打得到）、改成冰霜傷害、耗魔照相乘
+	var radius: float = ItemDefs.PROCS.explode.radius
+	var center := LootChecks._item_dummy(w, Vector2(0, 3), 100000.0)
+	var far := LootChecks._item_dummy(w, Vector2(0, 3 + radius * 1.3), 100000.0)
+	var far_hp := far.hp
+	p.mana = p.max_mana()
+	var m0 := p.mana
+	w.events.clear()
+	BagTriggers.run_bag(w, p, b, center, 10.0)
+	var cold_hit := _named(w.events, "entity:damaged").any(func(ev: Dictionary) -> bool: return ev.get("damage_type", &"") == &"cold")
+	if far.hp >= far_hp or not cold_hit or absf(m0 - p.mana - want_cost) > 1e-3:
+		return "延長 + 霜化的爆炸：%.1f 外的怪%s打到、冰霜傷害 %s、耗魔 %.2f（應 %.2f）" % [radius * 1.3, "有" if far.hp < far_hp else "沒", cold_hit, m0 - p.mana, want_cost]
+	# 箭袋搬走：修飾留在原地、失效
+	p.loadout.remove_item(p, quiver)
+	if inv.find(ext).is_empty() or not inv.covered_by(inv.find(ext)).is_empty():
+		return "技能拿走後修飾應留在原地、不再蓋到東西"
+	# 自動擺放：修飾先找蓋得到、有作用的技能
+	var s2 := _setup(&"longsword")
+	var p2: Player = s2[1]
+	var k2: Dictionary = p2.loadout.key_bags()[0]
+	_put_at(p2, k2, &"whirlwind", Vector2i(1, 1))
+	var auto := p2.loadout.auto_place(&"extend_support")
+	if auto.get("where", -9) != p2.loadout.bags.find(k2) or auto.get("spot", {}).get("cell", Vector2i(-1, -1)) != Vector2i(1, 1):
+		return "延長自動擺放應蓋在按鍵袋 (1, 1) 的旋風斬上：%s" % [auto]
+	_note("透明格：爆裂箭袋蓋延長 + 霜化 耗魔 %.2f → %.2f" % [BagTriggers.effect_mana(&"blast_quiver"), want_cost])
 	return ""

@@ -74,6 +74,15 @@ class FromElite extends Condition:
 
 
 # 效果的動作（觸發袋發動，BagTriggers.run_effect）：proc = { do, on, effect（道具資料那一筆）, count }；damage 是觸發那一下的傷害（扣護甲前）
+# 蓋在效果上的修飾（第 8 步 f，BagTriggers.run_effect 放進 proc）：area 延長的範圍 / 距離倍率、type 火焰化 / 霜化後的屬性
+static func area(proc: Dictionary) -> float:
+	return proc.get("area", 1.0)
+
+
+static func dtype(proc: Dictionary, base: StringName) -> StringName:
+	return proc.get("type", base)
+
+
 class Action:
 	# 這個動作接在哪些觸發上（對應 ItemDefs.IMPLEMENTED_TRIGGERS 的「on|do」）
 	func triggers() -> Array[StringName]:
@@ -95,7 +104,8 @@ class ChainLightning extends Action:
 		var from := first
 		for i in proc.effect.targets:
 			var best: Entity = null
-			var best_d: float = cfg.jump_range * cfg.jump_range
+			var jump: float = cfg.jump_range * ItemEffects.area(proc)
+			var best_d: float = jump * jump
 			for e in world.enemies:
 				if e.is_dead or e.team == p.team or hit_ids.has(e.id):
 					continue
@@ -107,7 +117,7 @@ class ChainLightning extends Action:
 				break
 			hit_ids[best.id] = true
 			points.append(best.pos)
-			Combat.apply_damage(world, p, best, ItemEffects.proc_hit(damage * cfg.damage_ratio, best, cfg.color, 0.0, &"lightning"))
+			Combat.apply_damage(world, p, best, ItemEffects.proc_hit(damage * cfg.damage_ratio, best, cfg.color, 0.0, ItemEffects.dtype(proc, &"lightning")))
 			from = best
 		if points.size() > 1:
 			world.emit_event("fx:lightning", {"pos": first.pos, "height": first.ground_height, "points": points, "color": cfg.color})
@@ -138,14 +148,14 @@ class Explode extends Action:
 
 	func run(world: World, p: Player, target: Entity, damage: float, proc: Dictionary) -> void:
 		var cfg: Dictionary = ItemDefs.PROCS.explode
-		var radius: float = ItemDefs.PROCS.hurt_explode.radius if proc.on == &"hurt" else cfg.radius
+		var radius: float = (ItemDefs.PROCS.hurt_explode.radius if proc.on == &"hurt" else cfg.radius) * ItemEffects.area(proc)
 		var color: Color = ItemDefs.PROCS.hurt_explode.color if proc.on == &"hurt" else cfg.color
 		var ratio: float = proc.effect.get("damage_ratio", cfg.damage_ratio) * ItemEffects.stacks(proc)
 		var at := target.pos
 		world.emit_event("sfx:cue", {"cue": "explosion", "pos": at})
 		world.emit_event("fx:explosion", {"pos": at, "height": target.ground_height, "radius": radius, "color": color})
 		for e in Combat.query_circle(at, radius, Combat.hostiles_of(world, p.team, p.id)):
-			var hit := ItemEffects.proc_hit(damage * ratio, e, color, cfg.knockback, &"fire")
+			var hit := ItemEffects.proc_hit(damage * ratio, e, color, cfg.knockback, ItemEffects.dtype(proc, &"fire"))
 			hit["origin"] = at
 			hit["is_heavy"] = true
 			Combat.apply_damage(world, p, e, hit)
@@ -159,7 +169,7 @@ class Reflect extends Action:
 	func run(world: World, p: Player, attacker: Entity, dealt: float, proc: Dictionary) -> void:
 		if not attacker is Enemy or attacker.is_dead:
 			return
-		var hit := ItemEffects.proc_hit(dealt * proc.effect.ratio * ItemEffects.stacks(proc), attacker, ItemDefs.PROCS.reflect.color)
+		var hit := ItemEffects.proc_hit(dealt * proc.effect.ratio * ItemEffects.stacks(proc), attacker, ItemDefs.PROCS.reflect.color, 0.0, ItemEffects.dtype(proc, &"phys"))
 		hit["origin"] = p.pos
 		Combat.apply_damage(world, p, attacker, hit)
 
@@ -175,14 +185,14 @@ class Ignite extends Action:
 
 
 # 普攻時追加的投射物（G4 袖中飛刀、裂空之刃）：傷害是手上武器基礎傷害的百分比、proc（不爆擊、不觸發命中效果）；內部冷卻 icd
-static func _spawn_extra(world: World, p: Player, cfg: Dictionary, damage_pct: float, angles: Array[float], pierce: bool) -> void:
+static func _spawn_extra(world: World, p: Player, cfg: Dictionary, damage_pct: float, angles: Array[float], pierce: bool, proc: Dictionary = {}) -> void:
 	var dir := WeaponBehaviors.aim_direction(p)
 	var base := atan2(dir.x, dir.y)
 	for off in angles:
 		var d := MathUtil.dir_from_angle(base + off)
 		WeaponBehaviors.spawn_projectile(p, {
-			"pos": p.pos + d * 0.6, "direction": d, "speed": cfg.speed, "range": cfg.range, "radius": cfg.radius,
-			"damage": p.pct_damage(damage_pct), "damage_type": p.weapon.damage_type, "color": cfg.color,
+			"pos": p.pos + d * 0.6, "direction": d, "speed": cfg.speed, "range": cfg.range * ItemEffects.area(proc), "radius": cfg.radius,
+			"damage": p.pct_damage(damage_pct), "damage_type": ItemEffects.dtype(proc, p.weapon.damage_type), "color": cfg.color,
 			"visual": cfg.visual, "no_stagger": true, "blockable": false, "pierce": pierce, "proc": true,
 		})
 	world.emit_event("sfx:cue", {"cue": cfg.sfx, "pos": p.pos})
@@ -192,10 +202,10 @@ class ThrowKnife extends Action:
 	func triggers() -> Array[StringName]:
 		return [&"attack"]
 
-	func run(world: World, p: Player, _target: Entity, _damage: float, _proc: Dictionary) -> void:
-		if ItemEffects.icd_ready(p, &"throw_knife"):
+	func run(world: World, p: Player, _target: Entity, _damage: float, proc: Dictionary) -> void:
+		if proc.get("again", false) or ItemEffects.icd_ready(p, &"throw_knife"):   # 分裂的第二次不看內部冷卻
 			var cfg: Dictionary = ItemDefs.PROCS.throw_knife
-			ItemEffects._spawn_extra(world, p, cfg, cfg.damage_pct, [0.0], false)
+			ItemEffects._spawn_extra(world, p, cfg, cfg.damage_pct, [0.0], false, proc)
 
 
 class SlashWave extends Action:
@@ -203,14 +213,14 @@ class SlashWave extends Action:
 		return [&"attack"]
 
 	func run(world: World, p: Player, _target: Entity, _damage: float, proc: Dictionary) -> void:
-		if not ItemEffects.icd_ready(p, &"slash_wave"):
+		if not proc.get("again", false) and not ItemEffects.icd_ready(p, &"slash_wave"):
 			return
 		var cfg: Dictionary = ItemDefs.PROCS.slash_wave
 		var n: int = proc.effect.count * proc.count
 		var angles: Array[float] = []
 		for i in n:   # 左右對稱：2 道 = ±spread，4 道 = ±spread、±2 spread
 			angles.append(cfg.spread * (floori(i / 2.0) + 1) * (1 if i % 2 == 0 else -1))
-		ItemEffects._spawn_extra(world, p, cfg, proc.effect.damage_ratio, angles, true)
+		ItemEffects._spawn_extra(world, p, cfg, proc.effect.damage_ratio, angles, true, proc)
 
 
 # 每隔固定秒數（G4 雷霆鈴）：打 range 內最近的 targets 隻
@@ -218,10 +228,10 @@ class LightningStrike extends Action:
 	func triggers() -> Array[StringName]:
 		return [&"interval"]
 
-	func run(world: World, p: Player, _target: Entity, _damage: float, _proc: Dictionary) -> void:
+	func run(world: World, p: Player, _target: Entity, _damage: float, proc: Dictionary) -> void:
 		var cfg: Dictionary = ItemDefs.PROCS.lightning_strike
 		var near: Array[Entity] = []
-		for e in Combat.query_circle(p.pos, cfg.range, Combat.hostiles_of(world, p.team, p.id)):
+		for e in Combat.query_circle(p.pos, cfg.range * ItemEffects.area(proc), Combat.hostiles_of(world, p.team, p.id)):
 			if e is Enemy:   # 不打隊友
 				near.append(e)
 		near.sort_custom(func(a: Entity, b: Entity) -> bool: return a.pos.distance_squared_to(p.pos) < b.pos.distance_squared_to(p.pos))
@@ -231,7 +241,7 @@ class LightningStrike extends Action:
 		for e in near.slice(0, cfg.targets):
 			world.emit_event("fx:explosion", {"pos": e.pos, "height": e.ground_height, "radius": cfg.radius, "color": cfg.color})
 			var hit := ItemEffects.proc_hit(p.pct_damage(cfg.damage_pct), e, cfg.color)
-			hit["damage_type"] = &"lightning"
+			hit["damage_type"] = ItemEffects.dtype(proc, &"lightning")
 			hit["band"] = Vector2(e.height - 1.0, e.height + e.body_height + 1.0)   # 從天上打下來：不管高低差
 			Combat.apply_damage(world, p, e, hit)
 
@@ -264,8 +274,8 @@ class Wisp extends Action:
 		for i in mini(ItemEffects.stacks(proc), cfg.max - alive):
 			var a := world.rng.randf() * TAU
 			var params := {
-				"pos": target.pos, "direction": MathUtil.dir_from_angle(a), "speed": cfg.speed, "range": cfg.speed * cfg.life,
-				"radius": cfg.radius, "damage": damage * cfg.damage_ratio, "damage_type": &"arcane", "color": cfg.color,
+				"pos": target.pos, "direction": MathUtil.dir_from_angle(a), "speed": cfg.speed, "range": cfg.speed * cfg.life * ItemEffects.area(proc),
+				"radius": cfg.radius, "damage": damage * cfg.damage_ratio, "damage_type": ItemEffects.dtype(proc, &"arcane"), "color": cfg.color,
 				"no_stagger": true, "blockable": false, "proc": true, "homing": cfg.turn_rate,
 			}
 			WeaponBehaviors.spawn_projectile(p, params)
@@ -341,7 +351,7 @@ class IgniteArea extends Action:
 		return [&"hit"]
 
 	func run(world: World, p: Player, target: Entity, _damage: float, proc: Dictionary) -> void:
-		for e in ItemEffects._enemies_near(world, p, target.pos, proc.effect.radius):
+		for e in ItemEffects._enemies_near(world, p, target.pos, proc.effect.radius * ItemEffects.area(proc)):
 			BondEffects.add_burn(world, p, e, proc.effect.stacks)
 
 
@@ -352,7 +362,7 @@ class FirePool extends Action:
 
 	func run(world: World, p: Player, target: Entity, _damage: float, proc: Dictionary) -> void:
 		GroundZones.add(world, {
-			"pos": target.pos, "radius": proc.effect.radius, "duration": proc.effect.duration, "owner_id": p.id,
+			"pos": target.pos, "radius": proc.effect.radius * ItemEffects.area(proc), "duration": proc.effect.duration, "owner_id": p.id,
 			"color": Enemy.BURN_COLOR, "visual": &"fire", "burn_per_sec": proc.effect.burn_per_sec,
 		})
 
@@ -372,12 +382,13 @@ class FrostNova extends Action:
 		return [&"interval", &"roll"]
 
 	func run(world: World, p: Player, _target: Entity, _damage: float, proc: Dictionary) -> void:
-		var near := ItemEffects._enemies_near(world, p, p.pos, proc.effect.radius)
+		var radius: float = proc.effect.radius * ItemEffects.area(proc)
+		var near := ItemEffects._enemies_near(world, p, p.pos, radius)
 		if near.is_empty():
 			return
 		for e in near:
 			BondEffects.add_chill(world, p, e, proc.effect.stacks)
-		world.emit_event("fx:explosion", {"pos": p.pos, "height": p.ground_height, "radius": proc.effect.radius, "color": Enemy.CHILL_COLOR})
+		world.emit_event("fx:explosion", {"pos": p.pos, "height": p.ground_height, "radius": radius, "color": Enemy.CHILL_COLOR})
 
 
 # 招魂幡：所有鬼火衝向最近的怪

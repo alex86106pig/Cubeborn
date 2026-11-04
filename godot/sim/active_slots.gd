@@ -65,7 +65,7 @@ func can_use(owner: Player, index: int) -> bool:
 	for e in BagTriggers.contents(slot.bag):
 		if ItemDefs.is_skill(e.id) and can_cast(owner, slot_of(owner, slot.bag, e)):
 			return true
-		if ItemDefs.role_of(e.id) == ItemDefs.ROLE_EFFECT and owner.has_mana(BagTriggers.effect_mana(e.id)):
+		if ItemDefs.role_of(e.id) == ItemDefs.ROLE_EFFECT and owner.has_mana(BagTriggers.effect_cost(slot.bag, e)):
 			return true
 	return false
 
@@ -128,16 +128,21 @@ static func mana_cost(owner: Player, slot: Dictionary) -> float:
 	return cost
 
 
-# 同一袋修飾的耗魔倍率（相乘）：一般修飾每顆 × (1 + 道具強度 power × SkillDefs.SUPPORT_MANA)，有 mana_mul 的（節能）× mana_mul
+# 蓋在技能上的修飾的耗魔倍率（相乘）：一般修飾每顆 × (1 + 道具強度 power × SkillDefs.SUPPORT_MANA)，有 mana_mul 的（節能）× mana_mul
 static func support_mana_mul(slot: Dictionary) -> float:
+	return mods_mana_mul(support_ids(slot))
+
+
+# 一串修飾的耗魔倍率（相乘；技能與效果共用）
+static func mods_mana_mul(ids: Array[StringName]) -> float:
 	var mul := 1.0
-	for id in support_ids(slot):
+	for id in ids:
 		var sup := ItemDefs.support_of(id)
 		mul *= sup.mana_mul if sup.has("mana_mul") else 1.0 + ItemDefs.ITEMS[id].power * SkillDefs.SUPPORT_MANA
 	return mul
 
 
-# 這次施放的參數：等級的傷害倍率 × 袋子倍率、同一袋的修飾（標籤相符的才算）的效果
+# 這次施放的參數：等級的傷害倍率 × 袋子倍率、蓋在技能上的修飾（標籤相符的才算）的效果
 static func cast_context(_owner: Player, slot: Dictionary) -> Dictionary:
 	var ctx := {"mul": SkillDefs.level_damage_mul(slot.get("level", 1)) * slot.get("bag", {}).get("mul", 1.0), "area": 1.0,
 		"type": slot.def.get("damage_type", &"phys"), "split": false}
@@ -152,7 +157,7 @@ static func cast_context(_owner: Player, slot: Dictionary) -> Dictionary:
 	return ctx
 
 
-# 同一袋、標籤和技能相符的修飾效果
+# 蓋在這個技能上、標籤相符的修飾效果
 static func supports_of(slot: Dictionary) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	for id in support_ids(slot):
@@ -160,16 +165,20 @@ static func supports_of(slot: Dictionary) -> Array[Dictionary]:
 	return out
 
 
-# 同上，回傳道具 id（一顆一筆）
+# 同上，回傳道具 id（一顆一筆）：透明格蓋在這個技能上、而且對它有作用的修飾（ItemDefs.mod_applies；第 8 步 f 取代「同一袋」）
 static func support_ids(slot: Dictionary) -> Array[StringName]:
 	var out: Array[StringName] = []
-	if not slot.has("bag"):
+	if not slot.has("bag") or not slot.has("entry"):
 		return out
-	var tags: Array = slot.def.get("tags", [])
-	for e: Dictionary in slot.bag.entries:
-		var sup := ItemDefs.support_of(e.id)
-		if not sup.is_empty() and (sup.tags as Array).any(func(t: StringName) -> bool: return tags.has(t)):
-			out.append(e.id)
+	return mod_ids_on(slot.bag, slot.entry)
+
+
+# 袋子 b 裡蓋在條目 e（技能或效果）上、對它有作用的修飾 id
+static func mod_ids_on(b: Dictionary, e: Dictionary) -> Array[StringName]:
+	var out: Array[StringName] = []
+	for m in Inventory.for_bag(b).mods_on(e):
+		if ItemDefs.mod_applies(m.id, e.id):
+			out.append(m.id)
 	return out
 
 

@@ -440,6 +440,40 @@ const ROLE_SKILL := &"skill"
 const ROLE_MOD := &"mod"
 
 
+# 修飾的透明格（第 8 步 f）：形狀的第一格（SHAPES 的第 0 個）是透明格、其他是實心；1 格的修飾整件都是透明格。
+# 透明格可以蓋在技能（技能與原本的效果）上，只強化蓋住的那個技能；不佔空位以外的東西、不算羈絆
+const MOD_CLEAR_INDEX := 0
+
+
+static func is_mod(id: StringName) -> bool:
+	return ITEMS.has(id) and role_of(id) == ROLE_MOD
+
+
+# 修飾蓋得了的東西：技能與原本的效果（道具只有數值、技能、修飾三類）
+static func is_coverable(id: StringName) -> bool:
+	return ITEMS.has(id) and role_of(id) in [ROLE_SKILL, ROLE_EFFECT]
+
+
+# 技能的標籤（修飾照這個過濾）：技能看 SkillDefs，效果看 BagDefs.EFFECT_TAGS
+static func skill_tags(id: StringName) -> Array:
+	if is_skill(id):
+		return SkillDefs.SKILLS[id].get("tags", [])
+	return BagDefs.EFFECT_TAGS.get(effect_of(id), [])
+
+
+# 修飾 mod_id 對技能 skill_id 有沒有作用：節能每種都有；火焰化 / 霜化對效果只算有傷害的（BagDefs.EFFECT_TYPED）；其他看標籤
+static func mod_applies(mod_id: StringName, skill_id: StringName) -> bool:
+	var sup := support_of(mod_id)
+	if sup.is_empty() or not is_coverable(skill_id):
+		return false
+	if sup.mode == &"conserve":
+		return true
+	if sup.mode in [&"fire", &"cold"] and not is_skill(skill_id) and not BagDefs.EFFECT_TYPED.has(effect_of(skill_id)):
+		return false
+	var tags := skill_tags(skill_id)
+	return (sup.tags as Array).any(func(t: StringName) -> bool: return tags.has(t))
+
+
 static func role_of(id: StringName) -> StringName:
 	match ITEMS[id].kind:
 		&"skill":

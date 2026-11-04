@@ -102,6 +102,14 @@ static func _put(p: Player, b: Dictionary, id: StringName) -> StringName:
 	return p.loadout.add_item(p, id, spot, 0, where)
 
 
+# 把道具放進袋子 b 的指定格子與方向；放不下回傳 &""
+static func _put_at(p: Player, b: Dictionary, id: StringName, cell: Vector2i, rot := 0) -> StringName:
+	var where := p.loadout.bags.find(b)
+	if not p.loadout.container(where).fits(id, cell, rot):
+		return &""
+	return p.loadout.add_item(p, id, {"cell": cell, "rot": rot}, 0, where)
+
+
 static func _dummy(w: World, at: Vector2, hp: float = 1000.0, mass: float = 1000.0) -> Entity:
 	var e := Entity.new(w, &"test", &"enemy", 0.5, hp, mass)
 	e.pos = at

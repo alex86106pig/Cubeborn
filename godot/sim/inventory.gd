@@ -61,6 +61,19 @@ func cells(id: StringName, rot: int) -> Array[Vector2i]:
 	return ONE_CELL if mode == STORAGE else cells_of(id, rot)
 
 
+# 修飾的透明格（ItemDefs.MOD_CLEAR_INDEX，只在袋子裡算；倉庫一格、主袋不收修飾）：可以和技能疊在同一格
+func clear_cells(id: StringName, rot: int) -> Array[Vector2i]:
+	if mode != BAG or not ItemDefs.is_mod(id):
+		return []
+	return [cells_of(id, rot)[ItemDefs.MOD_CLEAR_INDEX]]
+
+
+# 實心格（羈絆只算這些）
+func solid_cells(id: StringName, rot: int) -> Array[Vector2i]:
+	var clear := clear_cells(id, rot)
+	return cells(id, rot).filter(func(c: Vector2i) -> bool: return not clear.has(c))
+
+
 func find(uid: StringName) -> Dictionary:
 	for e in entries:
 		if e.uid == uid:
@@ -68,27 +81,96 @@ func find(uid: StringName) -> Dictionary:
 	return {}
 
 
-# 每一格被哪個 uid 占用（ignore 的不算）
+# 每一格被哪個 uid 占用（ignore 的不算；透明格和技能疊著時算技能）
 func occupied(ignore: StringName = &"") -> Dictionary:
-	var out := {}
-	for e in entries:
-		if e.uid == ignore:
-			continue
-		for c in cells(e.id, e.rot):
-			out[e.cell + c] = e.uid
+	var l := _layers(ignore)
+	var out: Dictionary = l.clear.duplicate()
+	out.merge(l.solid, true)
 	return out
 
 
+# 占用分層：solid 實心格 → uid、clear 透明格 → uid、skill 實心格是技能的格子
+func _layers(ignore: StringName) -> Dictionary:
+	var solid := {}
+	var clear := {}
+	var skill := {}
+	for e in entries:
+		if e.uid == ignore:
+			continue
+		var cl := clear_cells(e.id, e.rot)
+		var sk := mode == BAG and ItemDefs.is_coverable(e.id)
+		for c in cells(e.id, e.rot):
+			var p: Vector2i = e.cell + c
+			if cl.has(c):
+				clear[p] = e.uid
+			else:
+				solid[p] = e.uid
+				if sk:
+					skill[p] = true
+	return {"solid": solid, "clear": clear, "skill": skill}
+
+
 func fits(id: StringName, cell: Vector2i, rot: int, ignore: StringName = &"") -> bool:
-	return accepts(id) and _fits_cells(occupied(ignore), cells(id, rot), cell)
+	return accepts(id) and _fits_at(_layers(ignore), cells(id, rot), clear_cells(id, rot), mode == BAG and ItemDefs.is_coverable(id), cell)
 
 
-func _fits_cells(taken: Dictionary, cells: Array[Vector2i], at: Vector2i) -> bool:
-	for c in cells:
+# 放得下：每一格在範圍內；透明格只能放在空格或技能上（不跟別的透明格疊）；實心格要空著，技能可以放在透明格底下
+func _fits_at(l: Dictionary, cs: Array[Vector2i], cl: Array[Vector2i], is_skill: bool, at: Vector2i) -> bool:
+	for c in cs:
 		var p := at + c
-		if p.x < 0 or p.y < 0 or p.x >= size.x or p.y >= size.y or taken.has(p):
+		if p.x < 0 or p.y < 0 or p.x >= size.x or p.y >= size.y:
+			return false
+		if cl.has(c):
+			if l.clear.has(p) or (l.solid.has(p) and not l.skill.has(p)):
+				return false
+		elif l.solid.has(p) or (l.clear.has(p) and not is_skill):
 			return false
 	return true
+
+
+# 蓋在這個技能上的修飾（任何一個透明格落在技能的格子上）
+func mods_on(skill: Dictionary) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	if mode != BAG:
+		return out
+	var mine := {}
+	for c in cells(skill.id, skill.rot):
+		mine[skill.cell + c] = true
+	for e in entries:
+		for c in clear_cells(e.id, e.rot):
+			if mine.has(e.cell + c):
+				out.append(e)
+				break
+	return out
+
+
+# 這個修飾蓋住的技能（沒蓋到回傳 {}）
+func covered_by(mod: Dictionary) -> Dictionary:
+	var l := _layers(mod.uid)
+	for c in clear_cells(mod.id, mod.rot):
+		var p: Vector2i = mod.cell + c
+		if l.skill.has(p):
+			return find(l.solid[p])
+	return {}
+
+
+# 修飾放得下、而且透明格蓋在 wants(技能 id) 為 true 的技能上的第一個位置；沒有回傳 {}
+func find_cover_spot(id: StringName, wants: Callable) -> Dictionary:
+	if not accepts(id) or mode != BAG:
+		return {}
+	var l := _layers(&"")
+	for y in size.y:
+		for x in size.x:
+			for rot in 4:
+				var at := Vector2i(x, y)
+				var cl := clear_cells(id, rot)
+				if not _fits_at(l, cells(id, rot), cl, false, at):
+					continue
+				for c in cl:
+					var p := at + c
+					if l.skill.has(p) and wants.call(find(l.solid[p]).id):
+						return {"cell": at, "rot": rot}
+	return {}
 
 
 # 第一個放得下的位置：由上到下、由左到右，每格先試不轉、再依序轉 90 / 180 / 270；放不下（或不收這種東西）回傳 {}
@@ -96,14 +178,17 @@ func _fits_cells(taken: Dictionary, cells: Array[Vector2i], at: Vector2i) -> boo
 func find_spot(id: StringName, ignore: StringName = &"") -> Dictionary:
 	if not accepts(id):
 		return {}
-	var taken := occupied(ignore)
+	var l := _layers(ignore)
 	var shapes: Array[Array] = []
+	var clears: Array[Array] = []
 	for rot in 4:
 		shapes.append(cells(id, rot))
+		clears.append(clear_cells(id, rot))
+	var sk := mode == BAG and ItemDefs.is_coverable(id)
 	for y in size.y:
 		for x in size.x:
 			for rot in 4:
-				if _fits_cells(taken, shapes[rot], Vector2i(x, y)):
+				if _fits_at(l, shapes[rot], clears[rot], sk, Vector2i(x, y)):
 					return {"cell": Vector2i(x, y), "rot": rot}
 	return {}
 
