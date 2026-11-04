@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>背包外觀對比</title>
+<style>
+:root { --bg:#16171b; --panel:#212228; --line:#3a3c45; --text:#e8e6df; --dim:#a4a39b; --gold:#e8c26a; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:15px/1.55 "PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif; }
+main { max-width:1560px; margin:0 auto; padding:24px 16px 48px; }
+h1 { margin:0 0 6px; font-size:26px; }
+.lead { margin:0 0 20px; color:var(--dim); max-width:80ch; }
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,470px),1fr)); gap:16px; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; min-width:0; }
+.card.now { border-style:dashed; }
+.card h2 { margin:0; font-size:19px; }
+.tag { color:var(--gold); margin-right:6px; }
+.pitch { margin:4px 0 12px; color:var(--dim); min-height:3em; }
+svg { display:block; width:100%; height:auto; }
+.label { margin:14px 0 6px; font-size:13px; color:var(--dim); }
+ul { margin:10px 0 0; padding-left:18px; color:var(--dim); font-size:14px; }
+.pick { margin-top:20px; padding:14px 16px; border-left:3px solid var(--gold); background:var(--panel); }
+</style>
+</head>
+<body>
+<main>
+<h1>背包外觀對比（製作計畫 I 第 1 項）</h1>
+<p class="lead">每個方案都是同一批東西。要能一眼分出種類（數值、技能、小技能、修飾、武器、袋子）和稀有度，也不能蓋掉羈絆色點。道具、擺法、袋子大小都是示意；還沒有美術，只用形狀、顏色和小圖示。</p>
+<div class="grid" id="grid"></div>
+<div class="pick"><b>挑法：</b>回覆編號就好，也可以混搭，例如「A 的形狀 + D 的光暈」。挑完才做進遊戲，這頁到時刪掉。</div>
+</main>
+
+<script>
+const RARITY = { white:"#d8d8d8", green:"#5fd35f", blue:"#4fa3ff", purple:"#b36bff", orange:"#ff9a2e" };
+const RNAME = { white:"普通", green:"優良", blue:"稀有", purple:"史詩", orange:"傳說" };
+const BOND = { fire:"#ff8a3d", cold:"#6fc8ff", phys:"#e05c5c", guard:"#c9b37a", wisp:"#b48cff" };
+const KIND_FILL = { stat:"#3b5a78", skill:"#6a3f8f", effect:"#6a3f8f", mod:"#2f6f68", weapon:"#4a4f57", bag:"#6b5236" };
+const KNAME = { stat:"數值", skill:"技能", effect:"小技能", mod:"修飾", weapon:"武器", bag:"袋子" };
+const SHAPE = {
+  dot:[[0,0]], i2:[[0,0],[1,0]], i3:[[0,0],[1,0],[2,0]], l3:[[0,0],[0,1],[1,1]],
+  o4:[[0,0],[1,0],[0,1],[1,1]], t4:[[0,0],[1,0],[2,0],[1,1]]
+};
+const CELL = 44;
+
+// 同一批東西：x, y 是盤面上的格子座標
+const BOARD = [
+  { n:"血族王冠", k:"stat", r:"purple", s:"o4", x:0, y:0 },
+  { n:"霜之心", k:"stat", r:"blue", s:"l3", x:2, y:0, b:["cold"] },
+  { n:"戰鼓", k:"stat", r:"green", s:"i2", x:3, y:0, b:["phys"] },
+  { n:"磨刀石", k:"stat", r:"white", s:"dot", x:5, y:0, b:["phys"] },
+  { n:"皮靴", k:"stat", r:"white", s:"dot", x:4, y:1 },
+  { n:"王墓之心", k:"stat", r:"orange", s:"o4", x:0, y:2, b:["guard","fire"] },
+  { n:"麵包", k:"stat", r:"white", s:"dot", x:2, y:2, b:["guard"] },
+  { n:"懷錶", k:"stat", r:"orange", s:"t4", x:3, y:3, b:["cold"] },
+];
+const SIDE = [
+  { n:"旋風斬", k:"skill", r:"white", s:"dot", x:0, y:0 },
+  { n:"火衝", k:"skill", r:"blue", s:"dot", x:1, y:0 },
+  { n:"雷符", k:"effect", r:"green", s:"i2", x:0, y:1 },
+  { n:"分裂", k:"mod", r:"green", s:"dot", x:0, y:2 },
+];
+const BOTTOM = [
+  { n:"隕石", k:"skill", r:"purple", s:"dot", x:0, y:0 },
+  { n:"延長", k:"mod", r:"blue", s:"dot", x:1, y:0 },
+  { n:"爆袋", k:"effect", r:"blue", s:"i3", x:0, y:1 },
+];
+const STORE = [
+  { n:"長劍", k:"weapon", r:"white", s:"dot", g:"sword" },
+  { n:"法杖", k:"weapon", r:"blue", s:"dot", g:"staff" },
+  { n:"短弓", k:"weapon", r:"purple", s:"dot", g:"bow" },
+  { n:"命中袋", k:"bag", r:"green", s:"dot" },
+  { n:"翻滾袋", k:"bag", r:"blue", s:"dot" },
+  { n:"旋風斬", k:"skill", r:"green", s:"dot" },
+];
+const SAMPLE = { stat:"皮靴", skill:"旋風", effect:"雷符", mod:"分裂", weapon:"長劍", bag:"命中袋" };
+
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;");
+const hexA = (hex,a) => hex + Math.round(a*255).toString(16).padStart(2,"0");
+
+// 種類小圖示：各畫在 (cx, cy)，大小約 size
+function kindIcon(k, cx, cy, size, color) {
+  const h = size/2, st = `stroke="${color}" fill="none" stroke-width="1.6"`;
+  switch (k) {
+    case "stat": return `<rect x="${cx-h}" y="${cy-h}" width="${size}" height="${size}" fill="${color}"/>`;
+    case "skill": return `<circle cx="${cx}" cy="${cy}" r="${h}" ${st}/><circle cx="${cx}" cy="${cy}" r="${h*.45}" fill="${color}"/>`;
+    case "effect": return `<circle cx="${cx}" cy="${cy}" r="${h}" ${st}/>`;
+    case "mod": return `<path d="M${cx} ${cy-h}L${cx+h} ${cy}L${cx} ${cy+h}L${cx-h} ${cy}Z" ${st} stroke-dasharray="2.5 2"/>`;
+    case "weapon": return `<path d="M${cx-h} ${cy+h}L${cx+h} ${cy-h}M${cx-h*.5} ${cy-h*.1}L${cx+h*.1} ${cy+h*.5}" ${st}/>`;
+    case "bag": return `<rect x="${cx-h}" y="${cy-h}" width="${size}" height="${size}" ${st}/><rect x="${cx-h}" y="${cy-h}" width="${size}" height="${size*.32}" fill="${color}"/>`;
+  }
+  return "";
+}
+
+// 武器剪影：畫在一格 (x, y, c) 裡
+function weaponGlyph(g, x, y, c, color) {
+  const a = v => x + v*c, b = v => y + v*c, st = `stroke="${color}" fill="none" stroke-linecap="round"`;
+  if (g === "staff") return `<path d="M${a(.24)} ${b(.8)}L${a(.72)} ${b(.3)}" ${st} stroke-width="3"/><circle cx="${a(.74)}" cy="${b(.26)}" r="${c*.11}" fill="${color}"/>`;
+  if (g === "bow") return `<path d="M${a(.3)} ${b(.16)}Q${a(.86)} ${b(.5)} ${a(.3)} ${b(.84)}" ${st} stroke-width="3"/><path d="M${a(.3)} ${b(.16)}L${a(.3)} ${b(.84)}" ${st} stroke-width="1.2"/>`;
+  return `<path d="M${a(.22)} ${b(.8)}L${a(.78)} ${b(.22)}" ${st} stroke-width="4"/><path d="M${a(.2)} ${b(.58)}L${a(.44)} ${b(.82)}" ${st} stroke-width="3"/>`;
+}
+
+function outline(cells, ox, oy, c) {
+  const has = (x,y) => cells.some(p => p[0]===x && p[1]===y);
+  const d = [];
+  for (const [x,y] of cells) {
+    const l=ox+x*c, t=oy+y*c, r=l+c, b=t+c;
+    if (!has(x,y-1)) d.push(`M${l} ${t}L${r} ${t}`);
+    if (!has(x+1,y)) d.push(`M${r} ${t}L${r} ${b}`);
+    if (!has(x,y+1)) d.push(`M${l} ${b}L${r} ${b}`);
+    if (!has(x-1,y)) d.push(`M${l} ${t}L${l} ${b}`);
+  }
+  return d.join("");
+}
+
+function dots(it, ox, oy, c) {
+  return (it.b||[]).map((b,i) => `<circle cx="${ox+c-8-i*11}" cy="${oy+c-8}" r="4" fill="${BOND[b]}" stroke="#111" stroke-width="1"/>`).join("");
+}
+
+function nameText(it, ox, oy, c, color="#fff") {
+  return `<text x="${ox+4}" y="${oy+15}" font-size="11.5" fill="${color}">${esc(it.n.slice(0,3))}</text>`;
+}
+
+// 共用：每格填色與外框，radius 給圓角感（只在整塊外圍畫線，相鄰的格子不留縫）
+function block(cells, ox, oy, c, fill, line, width, dash) {
+  const body = cells.map(([x,y]) => `<rect x="${ox+x*c+1}" y="${oy+y*c+1}" width="${c-2}" height="${c-2}" fill="${fill}"/><rect x="${ox+x*c}" y="${oy+y*c}" width="${c}" height="${c}" fill="${fill}"/>`).join("");
+  return body + `<path d="${outline(cells,ox,oy,c)}" stroke="${line}" stroke-width="${width}" fill="none" ${dash?'stroke-dasharray="5 4"':''}/>`;
+}
+
+const STYLES = {
+  // 現況：照 ui_kit.gd 的 draw_item_cells
+  now(it, ox, oy, c) {
+    const cells = SHAPE[it.s], col = RARITY[it.r];
+    const fill = { weapon:KIND_FILL.weapon, skill:KIND_FILL.skill, effect:KIND_FILL.skill, mod:"#402655", bag:KIND_FILL.bag }[it.k] || hexMix(col, .45);
+    let out = block(cells, ox, oy, c, fill, col, 2, it.k === "mod");
+    if (it.k === "skill" || it.k === "effect") {
+      out += `<circle cx="${ox+c/2}" cy="${oy+c/2}" r="${c*.34}" fill="none" stroke="#ffffff73" stroke-width="1.5"/><text x="${ox+c/2}" y="${oy+c/2+5}" font-size="14" fill="#fff" text-anchor="middle">${esc(it.n[0])}</text>`;
+    } else {
+      out += nameText(it, ox, oy, c);
+      if (["weapon","mod","bag"].includes(it.k)) out += `<text x="${ox+4}" y="${oy+c-6}" font-size="10" fill="#ffffff99">${KNAME[it.k]}</text>`;
+    }
+    return out + dots(it, ox, oy, c);
+  },
+  // A：外形分種類，稀有度只看顏色
+  a(it, ox, oy, c) {
+    const cells = SHAPE[it.s], col = RARITY[it.r], tint = hexMix(col, .3);
+    let out = "";
+    if (it.k === "skill") {
+      out += `<circle cx="${ox+c/2}" cy="${oy+c/2}" r="${c/2-2}" fill="${tint}" stroke="${col}" stroke-width="2.5"/><text x="${ox+c/2}" y="${oy+c/2+5}" font-size="14" fill="#fff" text-anchor="middle">${esc(it.n[0])}</text>`;
+    } else if (it.k === "effect") {
+      out += block(cells, ox, oy, c, tint, col, 2);
+      out += `<circle cx="${ox+c/2}" cy="${oy+c/2}" r="${c*.32}" fill="#00000055" stroke="${col}" stroke-width="2"/><text x="${ox+c/2}" y="${oy+c/2+5}" font-size="13" fill="#fff" text-anchor="middle">${esc(it.n[0])}</text>`;
+    } else if (it.k === "mod") {
+      out += block(cells, ox, oy, c, "#00000040", col, 2, true) + `<text x="${ox+c/2}" y="${oy+c/2+5}" font-size="13" fill="${col}" text-anchor="middle">${esc(it.n[0])}</text>`;
+    } else if (it.k === "weapon") {
+      out += block(cells, ox, oy, c, "#2b2d33", col, 2) + weaponGlyph(it.g, ox, oy, c, col);
+    } else if (it.k === "bag") {
+      out += block(cells, ox, oy, c, tint, col, 2) + `<rect x="${ox}" y="${oy}" width="${c}" height="${c*.3}" fill="${col}"/><text x="${ox+c/2}" y="${oy+c*.72}" font-size="11.5" fill="#fff" text-anchor="middle">${esc(it.n.slice(0,2))}</text>`;
+    } else {
+      out += block(cells, ox, oy, c, tint, col, 2) + nameText(it, ox, oy, c);
+    }
+    return out + dots(it, ox, oy, c);
+  },
+  // B：整塊底色就是稀有度，種類看左上角的小圖示
+  b(it, ox, oy, c) {
+    const cells = SHAPE[it.s], col = RARITY[it.r];
+    let out = block(cells, ox, oy, c, hexMix(col, .68), "#0d0d0d", 1.5, it.k === "mod");
+    out += `<rect x="${ox+2}" y="${oy+2}" width="16" height="16" fill="#000000b0"/>` + kindIcon(it.k, ox+10, oy+10, 9, "#fff");
+    if (it.k === "weapon") out += weaponGlyph(it.g, ox, oy, c, "#fff");
+    else out += `<text x="${ox+c/2}" y="${oy+c-7}" font-size="11.5" fill="#fff" text-anchor="middle">${esc(it.n.slice(0,3))}</text>`;
+    return out + (it.b ? (it.b||[]).map((b,i) => `<circle cx="${ox+c-8-i*11}" cy="${oy+9}" r="4" fill="${BOND[b]}" stroke="#111" stroke-width="1"/>`).join("") : "");
+  },
+  // C：底色分種類，稀有度看粗框
+  c(it, ox, oy, c) {
+    const cells = SHAPE[it.s], col = RARITY[it.r];
+    let out = block(cells, ox, oy, c, KIND_FILL[it.k], col, 3.5, it.k === "mod");
+    if (it.k === "weapon") out += weaponGlyph(it.g, ox, oy, c, "#ffffffd0");
+    else out += nameText(it, ox+1, oy+1, c);
+    return out + dots(it, ox, oy, c);
+  },
+  // D：暗底加大圖示，稀有度看外發光
+  d(it, ox, oy, c) {
+    const cells = SHAPE[it.s], col = RARITY[it.r];
+    const glowW = { white:0, green:4, blue:6, purple:8, orange:11 }[it.r];
+    let out = "";
+    if (glowW) out += `<path d="${outline(cells,ox,oy,c)}" stroke="${hexA(col,.3)}" stroke-width="${glowW}" fill="none"/>`;
+    out += block(cells, ox, oy, c, "#1a1b20", it.r === "white" ? "#8d8d8d" : col, 1.6, it.k === "mod");
+    if (it.k === "weapon") out += weaponGlyph(it.g, ox, oy, c, col);
+    else out += kindIcon(it.k, ox+c/2, oy+c/2-4, c*.36, col) + `<text x="${ox+c/2}" y="${oy+c-5}" font-size="10.5" fill="#ffffffd0" text-anchor="middle">${esc(it.n.slice(0,3))}</text>`;
+    return out + (it.b ? it.b.map((b,i) => `<circle cx="${ox+c-7-i*10}" cy="${oy+7}" r="3.5" fill="${BOND[b]}" stroke="#111" stroke-width="1"/>`).join("") : "");
+  },
+};
+
+function hexMix(hex, k) { // 和暗底混色：k 越大越接近原色
+  const n = parseInt(hex.slice(1),16), bg=[28,29,34];
+  const v = [n>>16&255, n>>8&255, n&255].map((x,i) => Math.round(bg[i]+(x-bg[i])*k));
+  return "#" + v.map(x => x.toString(16).padStart(2,"0")).join("");
+}
+
+function gridBox(x, y, w, h, c) {
+  let s = `<rect x="${x}" y="${y}" width="${w*c}" height="${h*c}" fill="#17181c" stroke="#55575f"/>`;
+  for (let i=1;i<w;i++) s += `<path d="M${x+i*c} ${y}V${y+h*c}" stroke="#2c2e35"/>`;
+  for (let j=1;j<h;j++) s += `<path d="M${x} ${y+j*c}H${x+w*c}" stroke="#2c2e35"/>`;
+  return s;
+}
+
+function head(x, y, w, text) {
+  return `<rect x="${x}" y="${y}" width="${w}" height="20" fill="#34363e"/><text x="${x+w/2}" y="${y+14}" font-size="11.5" fill="#e8e6df" text-anchor="middle">${esc(text)}</text>`;
+}
+
+function boardSvg(style) {
+  const c = CELL, draw = STYLES[style], mx = 8, my = 8, sideX = mx + 6*c + 4, botY = my + 6*c + 4;
+  let s = `<svg viewBox="0 0 ${sideX + 2*c + 8} ${botY + 2*c + 20 + 22 + c + 8}" role="img" aria-label="背包示意">`;
+  s += gridBox(mx, my, 6, 6, c);
+  BOARD.forEach(it => s += draw(it, mx+it.x*c, my+it.y*c, c));
+  s += gridBox(sideX, my+20, 2, 3, c) + head(sideX, my, 2*c, "右鍵打中時");
+  SIDE.forEach(it => s += draw(it, sideX+it.x*c, my+20+it.y*c, c));
+  s += gridBox(mx, botY, 3, 2, c) + head(mx, botY+2*c, 3*c, "翻滾時");
+  BOTTOM.forEach(it => s += draw(it, mx+it.x*c, botY+it.y*c, c));
+  const storeY = botY + 2*c + 20 + 22;
+  s += `<text x="${mx}" y="${storeY-6}" font-size="12" fill="#a4a39b">倉庫</text>` + gridBox(mx, storeY, 6, 1, c);
+  STORE.forEach((it,i) => s += draw(it, mx+i*c, storeY, c));
+  return s + "</svg>";
+}
+
+function matrixSvg(style) {
+  const c = CELL, draw = STYLES[style], left = 48, top = 18, kinds = Object.keys(KNAME), rs = Object.keys(RARITY);
+  let s = `<svg viewBox="0 0 ${left + rs.length*(c+8)} ${top + kinds.length*(c+6)}" role="img" aria-label="種類與稀有度對照">`;
+  rs.forEach((r,i) => s += `<text x="${left+i*(c+8)+c/2}" y="12" font-size="11.5" fill="${RARITY[r]}" text-anchor="middle">${RNAME[r]}</text>`);
+  kinds.forEach((k,j) => {
+    const y = top + j*(c+6);
+    s += `<text x="0" y="${y+c/2+4}" font-size="12" fill="#a4a39b">${KNAME[k]}</text>`;
+    rs.forEach((r,i) => s += draw({ n:SAMPLE[k], k, r, s:"dot", g:["sword","staff","bow"][i%3] }, left+i*(c+8), y, c));
+  });
+  return s + "</svg>";
+}
+
+const OPTIONS = [
+  { id:"now", tag:"現況", name:"目前遊戲的畫法", pitch:"給你當基準：數值道具底色是稀有度，技能全部同一種紫，修飾和武器靠小字分。",
+    points:["技能、小技能看不出稀有度差別，只剩細框","武器、袋子要讀字才知道是什麼"] },
+  { id:"a", tag:"A", name:"外形分種類", pitch:"每種東西一種外形：數值方塊、技能圓形、修飾虛線、武器畫圖、袋子有標題條；稀有度統一看顏色。",
+    points:["種類和稀有度各走一條線，不互相搶","羈絆色點最清楚，同色區塊好找","拼起來的整塊顏色比較淡"] },
+  { id:"b", tag:"B", name:"整塊稀有度色", pitch:"底色直接是稀有度，左上角的小圖示分種類，最接近一般 ARPG 的倉庫。",
+    points:["稀有度最醒目，掃一眼就看到橘和紫","種類要看小圖示，比 A 慢","底色和羈絆色點相近時容易混（紫 / 鬼火、橘 / 火焰）"] },
+  { id:"c", tag:"C", name:"種類底色 + 稀有度粗框", pitch:"底色分種類（數值藍灰、技能紫、修飾青、武器鐵灰、袋子皮革），外框粗細一致但顏色是稀有度。",
+    points:["一眼看出盤面上哪些是技能、哪些是數值","畫面顏色最多，稀有度只剩外框","拼在一起時外框會擠在一起"] },
+  { id:"d", tag:"D", name:"暗底光暈", pitch:"全部暗底，中間放種類大圖示，稀有度用外發光，越稀有光越粗；和 I 第 3 項的武器光暈一致。",
+    points:["最有質感，傳說會自己跳出來","白色和綠色的差別最小","遊戲裡要真的發光才有效果，這頁的光暈是示意"] },
+];
+
+document.getElementById("grid").innerHTML = OPTIONS.map(o => `
+  <section class="card ${o.id === "now" ? "now" : ""}">
+    <h2><span class="tag">${o.tag}</span>${o.name}</h2>
+    <p class="pitch">${o.pitch}</p>
+    <div class="label">實際擺起來</div>${boardSvg(o.id)}
+    <div class="label">種類 × 稀有度</div>${matrixSvg(o.id)}
+    <ul>${o.points.map(p => `<li>${p}</li>`).join("")}</ul>
+  </section>`).join("");
+</script>
+</body>
+</html>
