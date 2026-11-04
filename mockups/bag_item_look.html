@@ -20,6 +20,8 @@ h1 { margin:0 0 6px; font-size:26px; }
 svg { display:block; width:100%; height:auto; }
 .label { margin:14px 0 6px; font-size:13px; color:var(--dim); }
 ul { margin:10px 0 0; padding-left:18px; color:var(--dim); font-size:14px; }
+.grid.bonds { grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr)); }
+.section { margin:28px 0 4px; font-size:20px; }
 .pick { margin-top:20px; padding:14px 16px; border-left:3px solid var(--gold); background:var(--panel); }
 </style>
 </head>
@@ -28,7 +30,10 @@ ul { margin:10px 0 0; padding-left:18px; color:var(--dim); font-size:14px; }
 <h1>背包外觀對比（製作計畫 I 第 1 項）</h1>
 <p class="lead">每個方案都是同一批東西。要能一眼分出種類（數值、技能、修飾、武器、袋子）和稀有度，也不能蓋掉羈絆色點。道具、擺法、袋子大小都是示意；還沒有美術，只用形狀、顏色和小圖示。修飾的透明格（淡色虛線那格，蓋在技能上才有效）遊戲裡還沒做，五個方案都先照定案規則畫。</p>
 <div class="grid" id="grid"></div>
-<div class="pick"><b>挑法：</b>回覆編號就好，也可以混搭，例如「A 的形狀 + D 的光暈」。挑完才做進遊戲，這頁到時刪掉。</div>
+<h2 class="section">羈絆標記怎麼畫（另外挑，和上面的方案可以任意搭）</h2>
+<p class="lead">羈絆靠同色區塊算，玩家要能一眼找到相同羈絆的道具。下面都用方案 A 的底、同一批道具，特別放了最容易混的組合：橘色道具配火焰、白框道具配物理。</p>
+<div class="grid bonds" id="bondGrid"></div>
+<div class="pick"><b>挑法：</b>上面回覆 A~D，這裡回覆 1~5，例如「A + 5」；也可以混搭，例如「A 的形狀 + D 的光暈」。挑完才做進遊戲，這頁到時刪掉。</div>
 </main>
 
 <script>
@@ -320,6 +325,56 @@ const OPTIONS = [
   { id:"d", tag:"D", name:"暗底光暈", pitch:"全部暗底，中間放種類大圖示，稀有度用外發光，越稀有光越粗；和 I 第 3 項的武器光暈一致。",
     points:["最有質感，傳說會自己跳出來","白色和綠色的差別最小","遊戲裡要真的發光才有效果，這頁的光暈是示意"] },
 ];
+
+// 羈絆圖示：畫在 (cx, cy)，大小約 r
+function bondGlyph(b, cx, cy, r, color) {
+  const st = `stroke="${color}" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"`;
+  switch (b) {
+    case "phys": return `<path d="M${cx-r} ${cy+r}L${cx+r} ${cy-r}M${cx-r*.7} ${cy-r*.1}L${cx+r*.1} ${cy+r*.7}" ${st}/>`;
+    case "fire": return `<path d="M${cx} ${cy-r}C${cx+r*1.1} ${cy-r*.1} ${cx+r*.8} ${cy+r} ${cx} ${cy+r}C${cx-r*.8} ${cy+r} ${cx-r*1.1} ${cy-r*.1} ${cx} ${cy-r}Z" fill="${color}"/>`;
+    case "cold": return `<path d="M${cx} ${cy-r}V${cy+r}M${cx-r*.87} ${cy-r*.5}L${cx+r*.87} ${cy+r*.5}M${cx-r*.87} ${cy+r*.5}L${cx+r*.87} ${cy-r*.5}" ${st}/>`;
+    case "guard": return `<path d="M${cx-r} ${cy-r*.8}H${cx+r}V${cy}Q${cx+r} ${cy+r*.7} ${cx} ${cy+r}Q${cx-r} ${cy+r*.7} ${cx-r} ${cy}Z" fill="${color}"/>`;
+    case "wisp": return `<circle cx="${cx}" cy="${cy}" r="${r}" ${st}/><circle cx="${cx}" cy="${cy}" r="${r*.35}" fill="${color}"/>`;
+  }
+  return "";
+}
+
+const BOND_ITEMS = [
+  { n:"磨刀石", k:"stat", r:"white", s:"dot", x:0, y:0, b:["phys"] },
+  { n:"戰鼓", k:"stat", r:"green", s:"i2", x:1, y:0, b:["phys"] },
+  { n:"王墓之心", k:"stat", r:"orange", s:"o4", x:3, y:0, b:["guard","fire"] },
+  { n:"麵包", k:"stat", r:"white", s:"dot", x:5, y:0, b:["guard"] },
+  { n:"霜之心", k:"stat", r:"blue", s:"dot", x:0, y:1, b:["cold"] },
+  { n:"永恆", k:"stat", r:"orange", s:"dot", x:1, y:1, b:["fire"] },
+  { n:"鬼火", k:"stat", r:"purple", s:"dot", x:2, y:1, b:["wisp"] },
+  { n:"皮靴", k:"stat", r:"white", s:"dot", x:5, y:1 },
+];
+
+const BOND_MARKS = [
+  { id:1, name:"現在的小圓點", pitch:"半徑 4，只靠顏色。橘配火焰、白配物理都會融進去。",
+    draw:(it,x,y,c) => (it.b||[]).map((b,i) => `<circle cx="${x+c-8-i*11}" cy="${y+c-8}" r="4" fill="${BOND[b]}" stroke="#111"/>`).join("") },
+  { id:2, name:"大圓點加黑邊", pitch:"改動最小，半徑放大、加粗黑邊，撞色時靠黑邊撐住。",
+    draw:(it,x,y,c) => (it.b||[]).map((b,i) => `<circle cx="${x+c-10-i*15}" cy="${y+c-10}" r="6.5" fill="${BOND[b]}" stroke="#000" stroke-width="2.5"/>`).join("") },
+  { id:3, name:"角落三角", pitch:"右下角整塊染色，面積大、掃得到；兩個羈絆就並排兩塊。",
+    draw:(it,x,y,c) => (it.b||[]).map((b,i) => { const r=x+c-1-i*18, t=y+c-1; return `<path d="M${r} ${t}H${r-20}L${r} ${t-20}Z" fill="${BOND[b]}" stroke="#000" stroke-width="1"/>`; }).join("") },
+  { id:4, name:"底邊色條", pitch:"每一格底部一條色帶，整塊道具都帶羈絆色，同色區塊最容易連起來看；蓋掉的名稱空間最少。",
+    draw:(it,x,y,c) => { const bs = it.b||[]; if (!bs.length) return ""; const h=7; return SHAPE[it.s].map(([cx,cy]) => bs.map((b,i) => `<rect x="${x+cx*c+2+i*(c-4)/bs.length}" y="${y+cy*c+c-h-2}" width="${(c-4)/bs.length}" height="${h}" fill="${BOND[b]}" stroke="#000" stroke-width="1"/>`).join("")).join(""); } },
+  { id:5, name:"圖示徽章", pitch:"黑底圓徽章裡放羈絆圖示（劍、火、雪、盾、鬼火）。不只看顏色，撞色和色盲都不怕；格子小時圖示會比較擠。",
+    draw:(it,x,y,c) => (it.b||[]).map((b,i) => { const cx=x+c-11-i*19, cy=y+c-11; return `<circle cx="${cx}" cy="${cy}" r="9.5" fill="#000000d8"/>` + bondGlyph(b, cx, cy, 5.5, BOND[b]); }).join("") },
+];
+
+function bondSvg(mark) {
+  const c = CELL, x0 = 4, y0 = 4;
+  let s = `<svg viewBox="0 0 ${6*c+8} ${2*c+8}" role="img" aria-label="${mark.name}">` + gridBox(x0, y0, 6, 2, c);
+  BOND_ITEMS.forEach(it => {
+    const x = x0+it.x*c, y = y0+it.y*c;
+    s += STYLES.a({ ...it, b:undefined }, x, y, c) + mark.draw(it, x, y, c);
+  });
+  return s + "</svg>";
+}
+
+document.getElementById("bondGrid").innerHTML = BOND_MARKS.map(m => `
+  <section class="card"><h2><span class="tag">${m.id}</span>${m.name}</h2><p class="pitch">${m.pitch}</p>${bondSvg(m)}</section>`).join("");
 
 document.getElementById("grid").innerHTML = OPTIONS.map(o => `
   <section class="card ${o.id === "now" ? "now" : ""}">
