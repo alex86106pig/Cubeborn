@@ -26,7 +26,7 @@ ul { margin:10px 0 0; padding-left:18px; color:var(--dim); font-size:14px; }
 <body>
 <main>
 <h1>背包外觀對比（製作計畫 I 第 1 項）</h1>
-<p class="lead">每個方案都是同一批東西。要能一眼分出種類（數值、技能、修飾、武器、袋子）和稀有度，也不能蓋掉羈絆色點。道具、擺法、袋子大小都是示意；還沒有美術，只用形狀、顏色和小圖示。</p>
+<p class="lead">每個方案都是同一批東西。要能一眼分出種類（數值、技能、修飾、武器、袋子）和稀有度，也不能蓋掉羈絆色點。道具、擺法、袋子大小都是示意；還沒有美術，只用形狀、顏色和小圖示。修飾的透明格（淡色虛線那格，蓋在技能上才有效）遊戲裡還沒做，五個方案都先照定案規則畫。</p>
 <div class="grid" id="grid"></div>
 <div class="pick"><b>挑法：</b>回覆編號就好，也可以混搭，例如「A 的形狀 + D 的光暈」。挑完才做進遊戲，這頁到時刪掉。</div>
 </main>
@@ -54,16 +54,19 @@ const BOARD = [
   { n:"麵包", k:"stat", r:"white", s:"dot", x:2, y:2, b:["guard"] },
   { n:"懷錶", k:"stat", r:"orange", s:"t4", x:3, y:3, b:["cold"] },
 ];
+// 修飾的 t = 第幾格是透明格（照 SHAPE 的順序）；技能的 cover = 被幾個透明格蓋住
 const SIDE = [
-  { n:"旋風斬", k:"skill", r:"white", s:"dot", x:0, y:0 },
-  { n:"火衝", k:"skill", r:"blue", s:"dot", x:1, y:0 },
-  { n:"雷符", k:"effect", r:"green", s:"i2", x:0, y:1 },
-  { n:"分裂", k:"mod", r:"green", s:"dot", x:0, y:2 },
+  { n:"旋風斬", k:"skill", r:"white", s:"dot", x:0, y:0, cover:1 },
+  { n:"火衝", k:"skill", r:"blue", s:"dot", x:0, y:1, cover:1 },
+  { n:"雷符", k:"effect", r:"green", s:"i2", x:0, y:2 },
+  { n:"分裂", k:"mod", r:"green", s:"i2", x:0, y:0, t:[0] },
+  { n:"延長", k:"mod", r:"white", s:"dot", x:0, y:1, t:[0] },
 ];
 const BOTTOM = [
-  { n:"隕石", k:"skill", r:"purple", s:"dot", x:0, y:0 },
-  { n:"延長", k:"mod", r:"blue", s:"dot", x:1, y:0 },
+  { n:"隕石", k:"skill", r:"purple", s:"dot", x:0, y:0, cover:2 },
   { n:"爆袋", k:"effect", r:"blue", s:"i3", x:0, y:1 },
+  { n:"延長", k:"mod", r:"blue", s:"i3", x:0, y:0, t:[0] },
+  { n:"分裂", k:"mod", r:"white", s:"dot", x:0, y:0, t:[0] },
 ];
 const STORE = [
   { n:"長劍", k:"weapon", r:"white", s:"dot", g:"sword" },
@@ -192,6 +195,48 @@ const STYLES = {
   },
 };
 
+// 修飾統一走這裡：實心格照各方案的畫法，透明格是淡色加虛線，底下的技能看得到
+function drawMod(style, it, ox, oy, c) {
+  const cells = SHAPE[it.s], col = RARITY[it.r], t = it.t || [];
+  const solidFill = { now:"#402655", a:hexMix(col,.18), b:hexMix(col,.68), c:KIND_FILL.mod, d:"#1a1b20" }[style];
+  const clearFill = { now:hexA(col,.12), a:hexA(col,.14), b:hexA(col,.28), c:hexA(KIND_FILL.mod,.4), d:hexA(col,.08) }[style];
+  const line = style === "b" ? "#ffffffc0" : col, width = style === "c" ? 3.5 : 2;
+  let out = "";
+  if (style === "d" && it.r !== "white") out += `<path d="${outline(cells,ox,oy,c)}" stroke="${hexA(col,.3)}" stroke-width="${{ green:4, blue:6, purple:8, orange:11 }[it.r]}" fill="none"/>`;
+  cells.forEach(([x,y], i) => {
+    const clear = t.includes(i);
+    out += `<rect x="${ox+x*c}" y="${oy+y*c}" width="${c}" height="${c}" fill="${clear ? clearFill : solidFill}"/>`;
+    if (clear) out += `<rect x="${ox+x*c+3}" y="${oy+y*c+3}" width="${c-6}" height="${c-6}" fill="none" stroke="${line}" stroke-width="1" stroke-dasharray="3 3"/>`;
+  });
+  out += `<path d="${outline(cells,ox,oy,c)}" stroke="${line}" stroke-width="${width}" fill="none" stroke-dasharray="5 4"/>`;
+  const firstSolid = cells.findIndex((_, i) => !t.includes(i));
+  if (firstSolid < 0) return out + kindIcon("mod", ox+11, oy+c-11, 10, line);   // 整件透明：只留小記號，不蓋住技能
+  const sx = ox + cells[firstSolid][0]*c, sy = oy + cells[firstSolid][1]*c;
+  if (style === "a") out += `<text x="${sx+c/2}" y="${sy+c/2+5}" font-size="13" fill="${col}" text-anchor="middle">${esc(it.n[0])}</text>`;
+  else if (style === "b") out += `<rect x="${sx+2}" y="${sy+2}" width="16" height="16" fill="#000000b0"/>` + kindIcon("mod", sx+10, sy+10, 9, "#fff") + `<text x="${sx+c/2}" y="${sy+c-7}" font-size="11.5" fill="#fff" text-anchor="middle">${esc(it.n)}</text>`;
+  else if (style === "d") out += kindIcon("mod", sx+c/2, sy+c/2-4, c*.36, col) + `<text x="${sx+c/2}" y="${sy+c-5}" font-size="10.5" fill="#ffffffd0" text-anchor="middle">${esc(it.n)}</text>`;
+  else out += nameText(it, sx, sy, c) + (style === "now" ? `<text x="${sx+4}" y="${sy+c-6}" font-size="10" fill="#ffffff99">修飾</text>` : "");
+  return out;
+}
+
+function coverBadge(n, ox, oy, c) {
+  return `<circle cx="${ox+c-9}" cy="${oy+9}" r="8" fill="#e8c26a" stroke="#111"/><text x="${ox+c-9}" y="${oy+13}" font-size="11" font-weight="700" fill="#111" text-anchor="middle">${n}</text>`;
+}
+
+// 先畫技能和道具，再蓋修飾，最後才寫角落的數字（不被修飾蓋住）
+function drawList(list, x, y, c, draw) {
+  let s = "";
+  list.filter(it => it.k !== "mod").forEach(it => s += draw(it, x+it.x*c, y+it.y*c, c));
+  list.filter(it => it.k === "mod").forEach(it => s += draw(it, x+it.x*c, y+it.y*c, c));
+  list.filter(it => it.cover).forEach(it => s += coverBadge(it.cover, x+it.x*c, y+it.y*c, c));
+  return s;
+}
+
+Object.keys(STYLES).forEach(name => {
+  const base = STYLES[name];
+  STYLES[name] = (it, ox, oy, c) => it.k === "mod" ? drawMod(name, it, ox, oy, c) : base(it, ox, oy, c);
+});
+
 function hexMix(hex, k) { // 和暗底混色：k 越大越接近原色
   const n = parseInt(hex.slice(1),16), bg=[28,29,34];
   const v = [n>>16&255, n>>8&255, n&255].map((x,i) => Math.round(bg[i]+(x-bg[i])*k));
@@ -215,9 +260,9 @@ function boardSvg(style) {
   s += gridBox(mx, my, 6, 6, c);
   BOARD.forEach(it => s += draw(it, mx+it.x*c, my+it.y*c, c));
   s += gridBox(sideX, my+20, 2, 3, c) + head(sideX, my, 2*c, "右鍵打中時");
-  SIDE.forEach(it => s += draw(it, sideX+it.x*c, my+20+it.y*c, c));
+  s += drawList(SIDE, sideX, my+20, c, draw);
   s += gridBox(mx, botY, 3, 2, c) + head(mx, botY+2*c, 3*c, "翻滾時");
-  BOTTOM.forEach(it => s += draw(it, mx+it.x*c, botY+it.y*c, c));
+  s += drawList(BOTTOM, mx, botY, c, draw);
   const storeY = botY + 2*c + 20 + 22;
   s += `<text x="${mx}" y="${storeY-6}" font-size="12" fill="#a4a39b">倉庫</text>` + gridBox(mx, storeY, 6, 1, c);
   STORE.forEach((it,i) => s += draw(it, mx+i*c, storeY, c));
@@ -231,7 +276,34 @@ function matrixSvg(style) {
   kinds.forEach((k,j) => {
     const y = top + j*(c+6);
     s += `<text x="0" y="${y+c/2+4}" font-size="12" fill="#a4a39b">${KNAME[k]}</text>`;
-    rs.forEach((r,i) => s += draw({ n:SAMPLE[k], k, r, s:"dot", g:["sword","staff","bow"][i%3] }, left+i*(c+8), y, c));
+    rs.forEach((r,i) => s += draw({ n:SAMPLE[k], k, r, s:"dot", t:[0], g:["sword","staff","bow"][i%3] }, left+i*(c+8), y, c));
+  });
+  return s + "</svg>";
+}
+
+// 透明格的每種情況：每個情境是一個 2 × 1 的袋子
+function modSvg(style) {
+  const c = CELL, draw = STYLES[style], gap = 14, w = 2*c + gap;
+  const skill = { n:"旋風斬", k:"skill", r:"blue", s:"dot", x:0, y:0 };
+  const one = { n:"延長", k:"mod", r:"white", s:"dot", x:0, y:0, t:[0] };
+  const two = { n:"分裂", k:"mod", r:"green", s:"i2", x:0, y:0, t:[0] };
+  const scenes = [
+    { cap:["1 格修飾","整件透明，不佔位"], list:[{ ...skill, cover:1 }, one] },
+    { cap:["2 格修飾","1 透明 + 1 實心"], list:[{ ...skill, cover:1 }, two] },
+    { cap:["蓋兩個","角落寫 2、耗魔相乘"], list:[{ ...skill, cover:2 }, one, two] },
+    { cap:["技能搬走","修飾留著、失效"], list:[two], dim:true },
+    { cap:["拿起修飾時","蓋得到的技能亮"], list:[skill, { n:"皮靴", k:"stat", r:"white", s:"dot", x:1, y:0 }], lift:true },
+  ];
+  let s = `<svg viewBox="0 0 ${scenes.length*w} ${c + 42}" role="img" aria-label="修飾透明格的各種情況">`;
+  scenes.forEach((sc, i) => {
+    const x = i*w + 2, y = 2;
+    s += gridBox(x, y, 2, 1, c);
+    if (sc.dim) s += `<g opacity=".45">${drawList(sc.list, x, y, c, draw)}</g>`;
+    else if (sc.lift) {
+      s += draw(sc.list[0], x, y, c) + `<g opacity=".3">${draw(sc.list[1], x+c, y, c)}</g>`;
+      s += `<rect x="${x-1}" y="${y-1}" width="${c+2}" height="${c+2}" fill="none" stroke="#e8c26a" stroke-width="3"/>`;
+    } else s += drawList(sc.list, x, y, c, draw);
+    sc.cap.forEach((t, j) => s += `<text x="${x}" y="${y+c+16+j*15}" font-size="${j ? 10 : 11.5}" fill="${j ? "#a4a39b" : "#e8e6df"}">${esc(t)}</text>`);
   });
   return s + "</svg>";
 }
@@ -254,7 +326,8 @@ document.getElementById("grid").innerHTML = OPTIONS.map(o => `
     <h2><span class="tag">${o.tag}</span>${o.name}</h2>
     <p class="pitch">${o.pitch}</p>
     <div class="label">實際擺起來</div>${boardSvg(o.id)}
-    <div class="label">種類 × 稀有度</div>${matrixSvg(o.id)}
+    <div class="label">修飾蓋在技能上</div>${modSvg(o.id)}
+    <div class="label">種類 × 稀有度（修飾這列是 1 格、整件透明）</div>${matrixSvg(o.id)}
     <ul>${o.points.map(p => `<li>${p}</li>`).join("")}</ul>
   </section>`).join("");
 </script>
