@@ -33,6 +33,11 @@ const MENU_DIM := Color(5 / 255.0, 8 / 255.0, 16 / 255.0, 0.8)
 const BUTTON_L := {"size": Vector2(280, 60), "font": FONT_BODY}   # 選單：主選單、暫停畫面、設定頁、結算畫面
 const BUTTON_M := {"size": Vector2(200, 52), "font": 24}          # 面板裡的操作：連線面板（開房、加入、選職業、準備）
 const BUTTON_S := {"size": Vector2(120, 44), "font": FONT_NOTE}   # 一排很多顆的：武器測試場的武器列
+const RICH_TYPES := {"閃電": Color("e8e06a"), "中毒": Color("8fd35f")}   # 說明文字染色：不是羈絆的傷害類型（羈絆名稱用 BondDefs 的顏色）
+const RICH_ATTRS: Array[String] = ["移速", "攻速", "攻擊力", "最大生命", "生命", "最大魔力", "回魔", "魔力", "耗魔", "傷害", "爆擊", "閃避", "範圍"]
+const RICH_ATTR_COLOR := Color("9fd8c8")
+static var _rich_re: RegEx
+static var _rich_colors := {}
 const ITEM_WEAPON_FILL := Color("2b2d33")   # 物品畫法（draw_item）：武器的底色，剪影才看得清楚
 const ITEM_TINT_DARK := 0.65                # 數值、技能、袋子的底色：稀有度色壓暗這麼多
 const ITEM_MOD_DARK := 0.82                 # 修飾的底色比較暗，虛線才明顯
@@ -122,7 +127,70 @@ static func format_time(seconds: float) -> String:
 const HANDS_TEXT := {&"one": "單手", &"two": "雙手", &"off": "副手"}
 
 
-# 道具 / 武器的說明（地上的道具卡、背包的說明欄共用）：{ title, color, lines }
+# 一段文字裡要染色的字：數字（金色）、羈絆與傷害類型（各自的顏色）、屬性（淺青）；回傳 [[文字, 顏色], ...]
+static func rich_runs(text: String, base: Color) -> Array:
+	if _rich_re == null:
+		for bond: StringName in BondDefs.BONDS:
+			_rich_colors[String(BondDefs.BONDS[bond].name)] = BondDefs.BONDS[bond].color
+		_rich_colors.merge(RICH_TYPES)
+		for word: String in RICH_ATTRS:
+			_rich_colors[word] = RICH_ATTR_COLOR
+		var words: Array = _rich_colors.keys()
+		words.sort_custom(func(a: String, b: String) -> bool: return a.length() > b.length())   # 長的先比：「最大生命」不會被拆成「生命」
+		_rich_re = RegEx.create_from_string("[+\\-−×]?\\d+(?:\\.\\d+)?%?|" + "|".join(words))
+	var runs: Array = []
+	var from := 0
+	for m in _rich_re.search_all(text):
+		if m.get_start() > from:
+			runs.append([text.substr(from, m.get_start() - from), base])
+		runs.append([m.get_string(), _rich_colors.get(m.get_string(), GOLD)])
+		from = m.get_end()
+	if from < text.length():
+		runs.append([text.substr(from), base])
+	return runs
+
+
+# 畫染色的多行文字（中文可以在任何字換行），at 是左上角；ci 給 null 時只量高度。回傳總高度
+static func draw_rich_lines(ci: CanvasItem, font: Font, at: Vector2, lines: Array, width: float, font_size: int, base := Color(1, 1, 1, 0.88)) -> float:
+	var line_h := font.get_height(font_size)
+	var y := 0.0
+	for line: String in "\n".join(lines).split("\n"):
+		var x := 0.0
+		y += line_h
+		for run: Array in rich_runs(line, base):
+			var rest: String = run[0]
+			while rest != "":
+				var n := _fit_chars(font, rest, width - x, font_size)
+				if n == 0 and x > 0.0:
+					x = 0.0
+					y += line_h
+					continue
+				n = maxi(n, 1)
+				var part := rest.substr(0, n)
+				if ci != null:
+					ci.draw_string(font, at + Vector2(x, y - font.get_descent(font_size)), part, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, run[1])
+				x += font.get_string_size(part, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+				rest = rest.substr(n)
+				if rest != "":
+					x = 0.0
+					y += line_h
+	return y
+
+
+# room 寬度放得下 text 的前幾個字
+static func _fit_chars(font: Font, text: String, room: float, font_size: int) -> int:
+	var low := 0
+	var high := text.length()
+	while low < high:
+		var mid := (low + high + 1) / 2
+		if font.get_string_size(text.substr(0, mid), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x <= room:
+			low = mid
+		else:
+			high = mid - 1
+	return low
+
+
+# 道具 / 武器的說明（地上的道具卡、背包的浮動說明共用）：{ title, color, lines }；標題 = 名稱（種類 · 稀有度）
 # weapon 是武器實例（WeaponDropDefs）時顯示拿法、基本數值與詞條，否則顯示道具效果
 static func item_info(id: StringName, weapon: Dictionary, level := 1) -> Dictionary:
 	if not weapon.is_empty():
@@ -131,16 +199,16 @@ static func item_info(id: StringName, weapon: Dictionary, level := 1) -> Diction
 		var hands: String = HANDS_TEXT[wd.hands] + ("，也能當副手" if wd.get("offhand", false) else "")
 		var stats_line: String = ("%s · 攻擊力 %.1f · 攻速 %.2f 次/秒 · 範圍 %.1f" % [hands, b.damage, b.attack_speed, b.range]) if not b.is_empty() else hands + " · " + wd.special.name
 		var lines: Array[String] = [stats_line, "普攻 %s · 右鍵 %s" % [wd.attack.get("name", "—"), wd.special.get("name", "—")] if wd.has("attack") else wd.special.get("name", "")]
-		return {"title": WeaponDropDefs.display_name(weapon), "color": ItemDefs.RARITIES[weapon.rarity].color, "lines": lines}
+		return {"title": "%s（武器 · %s）" % [WeaponDropDefs.display_name(weapon), ItemDefs.RARITIES[weapon.rarity].name], "color": ItemDefs.RARITIES[weapon.rarity].color, "lines": lines}
 	var def: Dictionary = ItemDefs.ITEMS[id]
 	var r: Dictionary = ItemDefs.RARITIES[def.rarity]
 	if def.kind == &"skill":
-		var title := "%s（技能 · %d 級）" % [def.name, level] if level > 1 else "%s（技能）" % def.name
+		var title := "%s（技能 · %s · %d 級）" % [def.name, r.name, level] if level > 1 else "%s（技能 · %s）" % [def.name, r.name]
 		var lines: Array[String] = [def.desc]
 		if SkillDefs.SKILLS[id].has("damage_pct"):
 			lines.append(skill_damage_line(id, level))
 		lines.append(skill_line(id, level))
-		return {"title": title, "color": GOLD, "lines": lines}
+		return {"title": title, "color": r.color, "lines": lines}
 	var desc: String = def.get("desc", "")
 	if not def.get("effects", []).all(ItemDefs.is_implemented):
 		desc += "（效果尚未實作）"
@@ -155,7 +223,7 @@ static func item_info(id: StringName, weapon: Dictionary, level := 1) -> Diction
 		item_lines.append(damage)
 	if def.kind == &"item":
 		item_lines.append(role_line(id))
-	var kind_name := "技能 · " if ItemDefs.role_of(id) == ItemDefs.ROLE_EFFECT else ""
+	var kind_name: String = {ItemDefs.ROLE_STAT: "數值 · ", ItemDefs.ROLE_EFFECT: "技能 · ", ItemDefs.ROLE_MOD: "修飾 · "}.get(ItemDefs.role_of(id), "袋子 · " if def.kind == &"bag" else "")
 	return {"title": "%s（%s%s）" % [def.name, kind_name, r.name], "color": r.color, "lines": item_lines}
 
 

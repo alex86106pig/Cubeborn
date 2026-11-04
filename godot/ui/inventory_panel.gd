@@ -21,10 +21,12 @@ const HEAD_W := 174       # 主手 / 副手的名稱框
 const HAND_GAP := 12      # 兩隻手之間
 const PAD := 18
 const TITLE_H := 64       # 標題 + 一行操作說明（固定在上面）
-const INFO_H := 150       # 說明（固定在下面）
-const INFO_FONT := 17     # 說明的內文字級；標題在 INFO_TITLE_Y、內文從 INFO_TITLE_Y + INFO_BODY_DY 的基線開始（檢查「背包介面」量最長的說明塞不塞得下）
-const INFO_TITLE_Y := 30
-const INFO_BODY_DY := 28
+const TIP_W := 420.0              # 浮動說明的寬度（檢查「背包介面」量最長的說明塞不塞得進畫面）
+const TIP_PAD := 12.0
+const TIP_FONT := 17
+const TIP_TITLE_FONT := 20
+const TIP_MARGIN := 8.0           # 離畫面邊緣至少這麼遠
+const TIP_OFFSET := Vector2(18, 18)   # 離滑鼠的距離，不蓋住指著的東西
 const LABEL_H := 24
 const HEAD_H := 62        # 主手 / 副手的名稱框（拖武器到這裡換上）
 const SLOT_NAMES: Array[String] = ["主手", "副手"]
@@ -61,6 +63,7 @@ var _held := false           # _drag 是點一下拿起來的（下一次左鍵�
 var _press_at := Vector2.ZERO
 var _notice := ""
 var _notice_until := 0
+var _tip_layer := Control.new()
 var _hover_uid := &""
 var _hover_pickup := 0
 var _hover_bond := &""
@@ -74,7 +77,11 @@ var _scroll := 0.0                  # 中間捲動區往下捲了多少
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	clip_contents = true
-	custom_minimum_size = Vector2(_side_x() + BOND_W + PAD, PAD * 2 + TITLE_H + MIN_VIEW_H + INFO_H)
+	custom_minimum_size = Vector2(_side_x() + BOND_W + PAD, PAD * 2 + TITLE_H + MIN_VIEW_H)
+	_tip_layer.top_level = true   # 面板要裁掉捲動內容，浮動說明卻要能超出面板，所以畫在不受裁切的子節點上
+	_tip_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tip_layer.draw.connect(_draw_tip)
+	add_child(_tip_layer)
 	feet_panel.bag = self
 	visibility_changed.connect(func() -> void:
 		_cancel()
@@ -95,7 +102,7 @@ func _player() -> Player:
 # ── 版面（面板座標；中間區塊往上捲 _scroll） ──
 
 func _view_rect() -> Rect2:
-	return Rect2(Vector2(0, PAD + TITLE_H), Vector2(size.x, size.y - PAD * 2 - TITLE_H - INFO_H))
+	return Rect2(Vector2(0, PAD + TITLE_H), Vector2(size.x, size.y - PAD * 2 - TITLE_H))
 
 
 func _content_top() -> float:
@@ -690,11 +697,12 @@ func _draw() -> void:
 		_draw_drag(font, me)
 	# 固定的上下兩塊蓋在捲動區上面
 	draw_rect(Rect2(Vector2.ZERO, Vector2(size.x, PAD + TITLE_H)), UiKit.SLOT_BG)
-	draw_rect(Rect2(Vector2(0, size.y - PAD - INFO_H), Vector2(size.x, PAD + INFO_H)), UiKit.SLOT_BG)
+	draw_rect(Rect2(Vector2(0, size.y - PAD), Vector2(size.x, PAD)), UiKit.SLOT_BG)
 	draw_line(Vector2(PAD, PAD + TITLE_H - 2), Vector2(size.x - PAD, PAD + TITLE_H - 2), UiKit.SLOT_OUTLINE)
-	draw_line(Vector2(PAD, size.y - PAD - INFO_H + 2), Vector2(size.x - PAD, size.y - PAD - INFO_H + 2), UiKit.SLOT_OUTLINE)
 	draw_rect(Rect2(Vector2.ZERO, size), UiKit.SLOT_OUTLINE, false, 1.0)
 	draw_string(font, Vector2(PAD, PAD + 26), "背包（遊戲不暫停）", HORIZONTAL_ALIGNMENT_LEFT, -1, 24)
+	if me != null:
+		draw_string(font, Vector2(PAD, PAD + 24), "主袋生效 %d 件 · 袋子 %d 個 · 倉庫 %d 件" % [me.items.size(), me.loadout.bags.size(), me.inventory.entries.size()], HORIZONTAL_ALIGNMENT_RIGHT, size.x - PAD * 2, 16, Color(1, 1, 1, 0.6))
 	if full != null:
 		draw_string(font, Vector2(PAD, PAD + 52), _full_text(me, full), HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 17, UiKit.DENY)
 	elif Time.get_ticks_msec() < _notice_until:
@@ -703,7 +711,7 @@ func _draw() -> void:
 		draw_string(font, Vector2(PAD, PAD + 52), _hint_text(), HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 15, Color(1, 1, 1, 0.6))
 	if me != null:
 		_draw_scrollbar(me)
-		_draw_info(font, me)
+	_tip_layer.queue_redraw()
 
 
 func _hint_text() -> String:
@@ -1093,15 +1101,34 @@ func _draw_item(font: Font, id: StringName, rects: Array[Rect2], rarity: StringN
 	UiKit.draw_item_cells(self, font, id, rects, rarity, alpha, weapon, _hover_bond if _drag.is_empty() else &"")
 
 
-# 下方說明（固定）：滑鼠停著（或拖著）的東西：道具的效果與放在哪、袋子的時機、武器的數值（腳邊的道具也一樣）
-func _draw_info(font: Font, me: Player) -> void:
-	var y := size.y - PAD - INFO_H + INFO_TITLE_Y
+# 浮動說明：跟著滑鼠，寫滑鼠停著（或拖著）的東西：道具的效果與放在哪、袋子的時機、武器的數值（腳邊的道具也一樣）
+func _draw_tip() -> void:
+	var me := _player()
+	if me == null:
+		return
 	var info := _info_of(me)
 	if info.is_empty():
-		draw_string(font, Vector2(PAD, y), "主袋生效 %d 件 · 袋子 %d 個 · 倉庫 %d 件" % [me.items.size(), me.loadout.bags.size(), me.inventory.entries.size()], HORIZONTAL_ALIGNMENT_LEFT, -1, INFO_FONT, Color(1, 1, 1, 0.6))
 		return
-	draw_string(font, Vector2(PAD, y), info.title, HORIZONTAL_ALIGNMENT_LEFT, -1, 21, info.color)
-	draw_multiline_string(font, Vector2(PAD, y + INFO_BODY_DY), "\n".join(info.lines), HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, INFO_FONT, -1, Color(1, 1, 1, 0.85))
+	var font := get_theme_default_font()
+	var text_w := TIP_W - TIP_PAD * 2.0
+	var title_h := font.get_multiline_string_size(info.title, HORIZONTAL_ALIGNMENT_LEFT, text_w, TIP_TITLE_FONT).y
+	var body_h := UiKit.draw_rich_lines(null, font, Vector2.ZERO, info.lines, text_w, TIP_FONT)
+	var tip_size := Vector2(TIP_W, TIP_PAD * 2.0 + title_h + 6.0 + body_h)
+	var box := tip_rect(get_global_mouse_position(), tip_size, get_viewport_rect().size)
+	_tip_layer.draw_rect(box, Color(0.04, 0.05, 0.08, 0.96))
+	_tip_layer.draw_rect(box, Color(info.color, 0.8), false, 1.5)
+	var inner := box.position + Vector2(TIP_PAD, TIP_PAD)
+	_tip_layer.draw_multiline_string(font, inner + Vector2(0, font.get_ascent(TIP_TITLE_FONT)), info.title, HORIZONTAL_ALIGNMENT_LEFT, text_w, TIP_TITLE_FONT, -1, info.color)
+	UiKit.draw_rich_lines(_tip_layer, font, inner + Vector2(0, title_h + 6.0), info.lines, text_w, TIP_FONT)
+
+
+# 浮動說明放哪（畫面座標）：預設在滑鼠右下，右邊放不下翻到左邊，下面放不下往上推，不超出畫面
+static func tip_rect(mouse: Vector2, tip_size: Vector2, screen: Vector2) -> Rect2:
+	var p := mouse + TIP_OFFSET
+	if p.x + tip_size.x > screen.x - TIP_MARGIN:
+		p.x = mouse.x - TIP_OFFSET.x - tip_size.x
+	p.y = minf(p.y, screen.y - TIP_MARGIN - tip_size.y)
+	return Rect2(p.clamp(Vector2(TIP_MARGIN, TIP_MARGIN), screen - tip_size - Vector2(TIP_MARGIN, TIP_MARGIN)), tip_size)
 
 
 func _info_of(me: Player) -> Dictionary:

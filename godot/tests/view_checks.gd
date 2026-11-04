@@ -2831,7 +2831,7 @@ static func check_forge_panel() -> String:
 	_note("合成面板 %.0f×%.0f（背包 %.0f 寬；介面最大檔時可用 %.0f×%.0f）" % [size.x, size.y, inv_size.x, room.x, room.y])
 	if err == "" and (size.x + 16 + inv_size.x + 24 > room.x or size.y + 120 > room.y):
 		err = "合成面板 %.0f×%.0f 放在背包左邊塞不進 %.0f×%.0f" % [size.x, size.y, room.x, room.y]
-	# 背包下方的說明欄：最長的 4 條詞條（含分支）的橘色武器也要塞得進 INFO_H
+	# 背包的浮動說明：最長的 4 條詞條（含分支）的橘色武器也要塞得進畫面；滑鼠在哪都不超出畫面、會換行；數字與羈絆有染色
 	if err == "":
 		var long_ids: Array = WeaponDropDefs.AFFIXES.keys().filter(func(id: StringName) -> bool: return WeaponDropDefs.AFFIXES[id].kind != &"branch")
 		long_ids.sort_custom(func(x: StringName, y: StringName) -> bool: return String(WeaponDropDefs.AFFIXES[x].desc).length() > String(WeaponDropDefs.AFFIXES[y].desc).length())
@@ -2840,11 +2840,34 @@ static func check_forge_panel() -> String:
 		var worst: Array[StringName] = [branches[0], long_ids[0], long_ids[1], long_ids[2]]
 		var info := UiKit.item_info(&"staff", {"uid": &"wi", "base": &"staff", "rarity": &"orange", "affixes": worst})
 		var font: Font = inv.get_theme_default_font()
-		var body_h := font.get_multiline_string_size("\n".join(info.lines), HORIZONTAL_ALIGNMENT_LEFT, inv.size.x - InventoryPanel.PAD * 2, InventoryPanel.INFO_FONT).y
-		var room_h := InventoryPanel.INFO_H - InventoryPanel.INFO_TITLE_Y - InventoryPanel.INFO_BODY_DY + InventoryPanel.INFO_FONT   # 內文從標題下 INFO_BODY_DY 的基線開始（_draw_info）
-		_note("說明欄：最長的橘色武器 %.0f px（可用 %.0f）" % [body_h, room_h])
+		var text_w := InventoryPanel.TIP_W - InventoryPanel.TIP_PAD * 2.0
+		var body_h := UiKit.draw_rich_lines(null, font, Vector2.ZERO, info.lines, text_w, InventoryPanel.TIP_FONT)
+		var screen := Vector2(1920, 1080)
+		var room_h := screen.y - InventoryPanel.TIP_MARGIN * 2.0 - InventoryPanel.TIP_PAD * 2.0 - 60.0   # 60：標題最多兩行加間距
+		_note("浮動說明：最長的橘色武器 %.0f px（可用 %.0f）" % [body_h, room_h])
 		if body_h > room_h:
-			err = "最長的橘色武器說明 %.0f px 超出說明欄 %.0f px" % [body_h, room_h]
+			err = "最長的橘色武器說明 %.0f px 超出畫面可用的 %.0f px" % [body_h, room_h]
+		var tip := Vector2(InventoryPanel.TIP_W, 300)
+		for pointer: Vector2 in [Vector2.ZERO, Vector2(960, 540), Vector2(1920, 0), Vector2(0, 1080), screen]:
+			var box := InventoryPanel.tip_rect(pointer, tip, screen)
+			if err == "" and not Rect2(Vector2.ZERO, screen).encloses(box):
+				err = "滑鼠在 %s 時浮動說明 %s 超出畫面" % [pointer, box]
+			if err == "" and box.has_point(pointer):
+				err = "滑鼠在 %s 時浮動說明 %s 蓋住滑鼠" % [pointer, box]
+		if err == "" and (not inv._tip_layer.top_level or inv._tip_layer.get_parent() != inv):
+			err = "浮動說明要畫在 top_level 的子節點上，否則會被面板的 clip_contents 裁掉"
+		var line_h := font.get_height(InventoryPanel.TIP_FONT)
+		var wrapped := UiKit.draw_rich_lines(null, font, Vector2.ZERO, ["很長的說明文字".repeat(12)], 200.0, InventoryPanel.TIP_FONT)
+		if err == "" and wrapped < line_h * 2.0:
+			err = "長文字應換行：高度 %.0f" % wrapped
+		var runs := UiKit.rich_runs("移速 +8% · 火焰傷害 300%", Color.WHITE)
+		var colors := {}
+		for run: Array in runs:
+			colors[run[0]] = run[1]
+		if err == "" and (colors.get("+8%") != UiKit.GOLD or colors.get("300%") != UiKit.GOLD or colors.get("火焰") != BondDefs.BONDS[&"fire"].color or colors.get("移速") != UiKit.RICH_ATTR_COLOR):
+			err = "說明文字的數字、羈絆、屬性應染色：%s" % [runs]
+		if err == "" and not String(UiKit.item_info(&"worn_boots", {}).title).contains("數值 · 普通"):
+			err = "標題應寫種類與稀有度：%s" % UiKit.item_info(&"worn_boots", {}).title
 	if err == "":
 		(forge_panel._rows[0].get_child(1) as Button).pressed.emit()
 		forge_panel._ok.pressed.emit()

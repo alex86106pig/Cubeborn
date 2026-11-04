@@ -207,9 +207,8 @@ func _draw_card(font: Font, pickup: ItemPickup) -> void:
 	var info := UiKit.item_info(pickup.item_id, pickup.weapon)
 	var color: Color = info.color
 	var shape := UiKit.shape_size(pickup.item_id, CARD_CELL)
-	var body := "\n".join(info.lines)
 	var text_w := CARD_W - CARD_PAD * 2
-	var body_h := font.get_multiline_string_size(body, HORIZONTAL_ALIGNMENT_LEFT, text_w, 14).y
+	var body_h := UiKit.draw_rich_lines(null, font, Vector2.ZERO, info.lines, text_w, 14)
 	var head_h := maxf(shape.y, 40.0)
 	var h := CARD_PAD * 2 + head_h + 6 + body_h
 	var r := Rect2(camera.unproject_position(at) + Vector2(-CARD_W / 2.0, -CARD_GAP - h), Vector2(CARD_W, h))
@@ -220,7 +219,7 @@ func _draw_card(font: Font, pickup: ItemPickup) -> void:
 	var tx := p.x + shape.x + 10
 	draw_string(font, Vector2(tx, p.y + 17), info.title, HORIZONTAL_ALIGNMENT_LEFT, r.end.x - CARD_PAD - tx, 16, color)
 	draw_string(font, Vector2(tx, p.y + 37), "占 %d 格" % Inventory.cells_of(pickup.item_id, 0).size(), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1, 1, 1, 0.7))
-	draw_multiline_string(font, Vector2(p.x, p.y + head_h + 6 + 14), body, HORIZONTAL_ALIGNMENT_LEFT, text_w, 14, -1, Color(1, 1, 1, 0.9))
+	UiKit.draw_rich_lines(self, font, Vector2(p.x, p.y + head_h + 6), info.lines, text_w, 14)
 
 
 # avoid：物件名稱（不會動的東西）碰到這一幀已經畫的名稱就往上錯開一行；怪物頭上的字不錯開（會跟著動、錯開會跳來跳去）
