@@ -71,7 +71,7 @@ func _initialize() -> void:
 # ───────── 經濟 ─────────
 
 # 第 1 層：每小關的祭壇、石棺與開場的怪能賺的靈魂（ECON_SEEDS 個種子平均），和目標比
-# 填滿率 = 祭壇數 × 祭壇平均格數 ÷ 主袋格數（全開、全部放主袋的上限）；靈魂壓力 = 全開要的靈魂 ÷ 全清賺的靈魂（不含怪潮）
+# 主袋填滿率 = 祭壇數 × 祭壇平均開出的數值道具格數 ÷ 主袋格數（全開的上限，同稀有度每件機率一樣）；小技能與修飾放袋子，另外列；靈魂壓力 = 全開要的靈魂 ÷ 全清賺的靈魂（不含怪潮）
 func _economy_table(lines: Array[String]) -> void:
 	var stages := 5   # 第 1 層 1-1 ~ 1-5
 	var altars: Array[float] = []
@@ -110,7 +110,7 @@ func _economy_table(lines: Array[String]) -> void:
 	lines.append("")
 	lines.append("## 經濟（第 1 層）")
 	lines.append("")
-	lines.append("> 照真實地圖算 %d 個種子的平均，不跑機器人。全清靈魂只算開場的怪與 Boss，不含怪潮與挖墳噴的怪。填滿率假設祭壇全開、全部放主袋，是上限；實際拿到多少看 `--playtest`。" % ECON_SEEDS)
+	lines.append("> 照真實地圖算 %d 個種子的平均，不跑機器人。全清靈魂只算開場的怪與 Boss，不含怪潮與挖墳噴的怪。主袋填滿率假設祭壇全開、同稀有度每件機率一樣、沒算 Boss 掉的道具與 3 選 1 的取捨；實際拿到多少看 `--playtest`。" % ECON_SEEDS)
 	lines.append("")
 	lines.append("| 小關 | 祭壇 | 石棺 | 全清靈魂 |")
 	lines.append("|---|---|---|---|")
@@ -125,18 +125,31 @@ func _economy_table(lines: Array[String]) -> void:
 		lines.append("| 1-%d | %.1f | %.1f | %.0f |" % [st + 1, a, c, s])
 	lines.append("| **整層** | **%.1f** | **%.1f** | **%.0f** |" % [total.altar, total.coffin, total.souls])
 	var weights: Dictionary = LootDefs.CHESTS.small.weights
-	var cells := 0.0
+	var cells := 0.0        # 每個祭壇平均幾格放主袋（數值）
+	var bag_cells := 0.0    # 每個祭壇平均幾格放袋子（小技能、修飾）
 	var weight_sum := 0.0
 	for r: StringName in weights:
-		cells += weights[r] * ItemDefs.RARITIES[r].cells
+		var stat := 0
+		var other := 0
+		var count := 0
+		for id: StringName in ItemDefs.ITEMS:
+			if ItemDefs.ITEMS[id].kind == &"item" and ItemDefs.ITEMS[id].rarity == r:
+				count += 1
+				if ItemDefs.role_of(id) == ItemDefs.ROLE_STAT:
+					stat += Inventory.cells_of(id, 0).size()
+				else:
+					other += Inventory.cells_of(id, 0).size()
+		cells += weights[r] * stat / maxf(count, 1.0)
+		bag_cells += weights[r] * other / maxf(count, 1.0)
 		weight_sum += weights[r]
 	cells /= weight_sum
+	bag_cells /= weight_sum
 	var main_cells := BagDefs.MAIN_SIZE.x * BagDefs.MAIN_SIZE.y
 	var cost: float = total.altar * LootDefs.CHESTS.small.price + total.coffin * LootDefs.CHESTS.big.price
 	var fill: float = total.altar * cells / main_cells
 	var pressure: float = cost / maxf(total.souls, 1.0)
 	lines.append("")
-	lines.append("每個祭壇平均 %.2f 格、主袋 %d 格；全開要 %.0f 靈魂。" % [cells, main_cells, cost])
+	lines.append("每個祭壇平均開出 %.2f 格放主袋（數值）、%.2f 格放袋子（小技能、修飾）；主袋 %d 格。全開要 %.0f 靈魂，放袋子的共 %.1f 格，另有 %.1f 個石棺的技能。" % [cells, bag_cells, main_cells, cost, total.altar * bag_cells, total.coffin])
 	lines.append("")
 	lines.append("| 指標 | 目標 | 實際 | |")
 	lines.append("|---|---|---|---|")

@@ -973,7 +973,7 @@ func _draw_drag(font: Font, me: Player) -> void:
 		var swap_text := "換上" if not _drag.weapon.is_empty() and me.inventory.find(_drag.uid).is_empty() else "互換"
 		draw_string(font, rects[0].position + Vector2(6, 24), swap_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, UiKit.GOLD)
 	elif not ok and not inv.accepts(_drag.id):
-		draw_string(font, rects[0].position + Vector2(6, 24), "主袋只放數值" if t.where == Loadout.CORE else "袋子放效果、技能", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, UiKit.DENY)
+		draw_string(font, rects[0].position + Vector2(6, 24), "主袋只放數值" if t.where == Loadout.CORE else "袋子放技能", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, UiKit.DENY)
 
 
 # 撿不下時取代操作說明的那一行

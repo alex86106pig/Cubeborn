@@ -183,7 +183,7 @@ static func option_info(p: Player, choice: StringName) -> Dictionary:
 		&"grow":
 			return {"title": "加大：%s%s" % [bag_name, where], "desc": "長度 +1 格（%d → %d）" % [b.get("length", 0), b.get("length", 0) + 1]}
 		&"mul":
-			return {"title": "強化：%s%s" % [bag_name, where], "desc": "裡面的效果與技能傷害 ×%s → ×%s" % [str(b.get("mul", 1.0)), str(minf(b.get("mul", 1.0) + BagDefs.ANVIL.mul_step, BagDefs.ANVIL.max_mul))]}
+			return {"title": "強化：%s%s" % [bag_name, where], "desc": "裡面的技能傷害 ×%s → ×%s" % [str(b.get("mul", 1.0)), str(minf(b.get("mul", 1.0) + BagDefs.ANVIL.mul_step, BagDefs.ANVIL.max_mul))]}
 	return {"title": "改成%s：%s%s" % [BagDefs.BAGS[ac.kind].name, bag_name, where], "desc": "%s。裡面的東西留著" % BagDefs.BAGS[ac.kind].desc}
 
 

@@ -147,7 +147,8 @@ static func item_info(id: StringName, weapon: Dictionary, level := 1) -> Diction
 	var item_lines: Array[String] = [desc]
 	if def.kind == &"item":
 		item_lines.append(role_line(id))
-	return {"title": "%s（%s）" % [def.name, r.name], "color": r.color, "lines": item_lines}
+	var kind_name := "技能 · " if ItemDefs.role_of(id) == ItemDefs.ROLE_EFFECT else ""
+	return {"title": "%s（%s%s）" % [def.name, kind_name, r.name], "color": r.color, "lines": item_lines}
 
 
 # 道具放哪裡（觸發袋的分類，ItemDefs.role_of）：數值放主袋；效果放觸發袋（寫原本的時機當建議、耗魔）；修飾放跟技能同一袋
@@ -155,7 +156,7 @@ static func role_line(id: StringName) -> String:
 	match ItemDefs.role_of(id):
 		ItemDefs.ROLE_EFFECT:
 			var bag := ItemDefs.default_bag_of(id)
-			return "效果：放進觸發袋，時機到了發動（適合%s）· 每次耗魔 %d" % [BagDefs.BAGS[bag].name if bag != &"" else "任何袋子", roundi(BagTriggers.effect_mana(id))]
+			return "技能：放進袋子，時機到了發動（適合%s）· 每次耗魔 %d" % [BagDefs.BAGS[bag].name if bag != &"" else "任何袋子", roundi(BagTriggers.effect_mana(id))]
 		ItemDefs.ROLE_MOD:
 			return "修飾：放進技能所在的袋子，作用在同一袋的技能"
 	return "數值：放進主袋就生效"
@@ -218,12 +219,13 @@ static func draw_item_cells(ci: CanvasItem, font: Font, id: StringName, rects: A
 	var kind := item_kind(id)
 	var bonds := item_bonds(id, weapon)
 	var cell_px := rects[0].size.x
-	var fill: Color = {&"weapon": ITEM_WEAPON_FILL, &"skill": ITEM_SKILL_FILL, &"support": ITEM_SKILL_FILL.darkened(0.4), &"bag": ITEM_BAG_FILL}.get(kind, color.darkened(0.55))
+	var round_mark := kind == &"skill" or ItemDefs.role_of(id) == ItemDefs.ROLE_EFFECT   # 大技能、小技能（原本的效果）都畫圓框：有圓框的放袋子
+	var fill: Color = {&"weapon": ITEM_WEAPON_FILL, &"skill": ITEM_SKILL_FILL, &"support": ITEM_SKILL_FILL.darkened(0.4), &"bag": ITEM_BAG_FILL}.get(kind, ITEM_SKILL_FILL if round_mark else color.darkened(0.55))
 	for cr in rects:
 		_draw_item_cell(ci, cr, rects, Color(fill, 0.9 * alpha), Color(color, alpha), kind == &"support")
 	var first: Vector2 = rects[0].position
 	var big := cell_px >= ITEM_BIG_CELL
-	if kind == &"skill":
+	if round_mark:
 		var center := first + Vector2(cell_px, cell_px) / 2.0
 		ci.draw_arc(center, cell_px * 0.34, 0.0, TAU, 20, Color(1, 1, 1, 0.45 * alpha), 1.5)
 		ci.draw_string(font, first + Vector2(0, cell_px / 2.0 + (12 if big else 7)), SkillDefs.SKILLS.get(id, {}).get("icon", String(def.name).substr(0, 1)),
