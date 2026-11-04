@@ -741,6 +741,7 @@ func _draw_bonds(font: Font, me: Player) -> void:
 		draw_rect(r, Color(def.color, 0.22 if on else 0.08))
 		draw_rect(r, Color(def.color, 0.9 if on else 0.45), false, 2.0 if on or bond == _hover_bond else 1.0)
 		draw_string(font, r.position + Vector2(10, 23), "%s %d 格" % [def.name, count], HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 16, 19, Color(def.color, 1.0 if on else 0.75))
+		UiKit.draw_bond_mark(self, bond, Vector2(r.end.x - 18.0, r.position.y + 18.0), 12.0, 1.0 if on else 0.75)
 		var x := r.position.x + 10
 		for need: int in def.thresholds:
 			var t := str(need)

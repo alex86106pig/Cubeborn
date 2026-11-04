@@ -33,9 +33,10 @@ const MENU_DIM := Color(5 / 255.0, 8 / 255.0, 16 / 255.0, 0.8)
 const BUTTON_L := {"size": Vector2(280, 60), "font": FONT_BODY}   # 選單：主選單、暫停畫面、設定頁、結算畫面
 const BUTTON_M := {"size": Vector2(200, 52), "font": 24}          # 面板裡的操作：連線面板（開房、加入、選職業、準備）
 const BUTTON_S := {"size": Vector2(120, 44), "font": FONT_NOTE}   # 一排很多顆的：武器測試場的武器列
-const ITEM_WEAPON_FILL := Color("4a4f57")   # 物品畫法（draw_item）：武器的底色（鐵灰）
-const ITEM_SKILL_FILL := Color("6a3f8f")    # 技能、修飾的底色
-const ITEM_BAG_FILL := Color("6b5236")      # 倉庫裡的觸發袋（皮革色）
+const ITEM_WEAPON_FILL := Color("2b2d33")   # 物品畫法（draw_item）：武器的底色，剪影才看得清楚
+const ITEM_TINT_DARK := 0.65                # 數值、技能、袋子的底色：稀有度色壓暗這麼多
+const ITEM_MOD_DARK := 0.82                 # 修飾的底色比較暗，虛線才明顯
+const ITEM_FADE_BG := Color("17181c")       # 技能變淡時混向的底色（圓和線會重疊，不能用半透明）
 const ITEM_BIG_CELL := 60.0                 # 格子這麼大以上字大一級（背包）
 const ITEM_TEXT_CELL := 40.0                # 格子這麼大以上才寫名稱（遺物卡片的小圖不寫，卡片右邊有字）
 const BUTTON_CARD := {"size": Vector2(440, 230), "font": 24}   # 卡片：遺物的 N 選 1（RelicPanel；3 張約 1344 寬）
@@ -259,8 +260,8 @@ static func draw_shape(ci: CanvasItem, id: StringName, at: Vector2, cell: float,
 
 
 # 一件物品（背包、武器格子、遺物卡片共用）：at = 形狀外框的左上角，rot 轉向
-# 底色看種類（武器鐵灰＋「武器」、技能紫色寶石＋圖示字、輔助深紫虛線框＋「輔助」、道具稀有度色）、外框看稀有度；
-# 道具與有「羈絆 +1」詞條的武器在右上角畫羈絆色點（hover_bond 那個畫大一點）；格子 ≥ ITEM_BIG_CELL 時字大一級
+# 外形看種類（數值方塊、技能圓形或膠囊、修飾虛線、武器剪影、袋子標題條）、顏色看稀有度；
+# 道具在右下角畫羈絆徽章（hover_bond 那個畫大一點）；格子 ≥ ITEM_BIG_CELL 時字大一級
 static func draw_item(ci: CanvasItem, font: Font, id: StringName, at: Vector2, cell_px: float, rot: int, rarity: StringName, alpha: float, weapon: Dictionary = {}, hover_bond: StringName = &"") -> void:
 	var def: Dictionary = ItemDefs.ITEMS[id]
 	var color: Color = ItemDefs.RARITIES[rarity].color
@@ -279,27 +280,110 @@ static func draw_item_cells(ci: CanvasItem, font: Font, id: StringName, rects: A
 	var kind := item_kind(id)
 	var bonds := item_bonds(id, weapon)
 	var cell_px := rects[0].size.x
-	var round_mark := kind == &"skill" or ItemDefs.role_of(id) == ItemDefs.ROLE_EFFECT   # 大技能、小技能（原本的效果）都畫圓框：有圓框的放袋子
-	var fill: Color = {&"weapon": ITEM_WEAPON_FILL, &"skill": ITEM_SKILL_FILL, &"support": ITEM_SKILL_FILL.darkened(0.4), &"bag": ITEM_BAG_FILL}.get(kind, ITEM_SKILL_FILL if round_mark else color.darkened(0.55))
-	for cr in rects:
-		_draw_item_cell(ci, cr, rects, Color(fill, 0.9 * alpha), Color(color, alpha), kind == &"support")
 	var first: Vector2 = rects[0].position
 	var big := cell_px >= ITEM_BIG_CELL
-	if round_mark:
-		var center := first + Vector2(cell_px, cell_px) / 2.0
-		ci.draw_arc(center, cell_px * 0.34, 0.0, TAU, 20, Color(1, 1, 1, 0.45 * alpha), 1.5)
+	var line := Color(color, alpha)
+	var text_color := Color(1, 1, 1, alpha)
+	var tint := color.darkened(ITEM_TINT_DARK)
+	if kind == &"skill" or ItemDefs.role_of(id) == ItemDefs.ROLE_EFFECT:
+		_draw_skill_shape(ci, rects, color, tint, alpha)
 		ci.draw_string(font, first + Vector2(0, cell_px / 2.0 + (12 if big else 7)), SkillDefs.SKILLS.get(id, {}).get("icon", String(def.name).substr(0, 1)),
-				HORIZONTAL_ALIGNMENT_CENTER, cell_px, 34 if big else 20, Color(1, 1, 1, alpha))
-	elif cell_px >= ITEM_TEXT_CELL:
-		var label_text := String(def.name).substr(0, 4 if big else 2)
-		ci.draw_string(font, first + Vector2(5, cell_px * 0.36), label_text, HORIZONTAL_ALIGNMENT_LEFT, cell_px - 6, 13 if big else 15, Color(1, 1, 1, alpha))   # 大格的字級放得下 4 個字，每件都一樣大
-	if kind in [&"weapon", &"support", &"bag"] and cell_px >= ITEM_TEXT_CELL:
-		ci.draw_string(font, first + Vector2(6, cell_px - 9), {&"weapon": "武器", &"support": "修飾", &"bag": "袋子"}[kind], HORIZONTAL_ALIGNMENT_LEFT, -1, 13 if big else 11, Color(1, 1, 1, 0.6 * alpha))
-	var dot_scale := 1.5 if big else 1.0
+				HORIZONTAL_ALIGNMENT_CENTER, cell_px, 34 if big else 20, text_color)
+	elif kind == &"support":
+		for cr in rects:
+			_draw_item_cell(ci, cr, rects, Color(color.darkened(ITEM_MOD_DARK), 0.9 * alpha), line, true)
+		ci.draw_string(font, first + Vector2(0, cell_px / 2.0 + (9 if big else 6)), String(def.name).substr(0, 1), HORIZONTAL_ALIGNMENT_CENTER, cell_px, 26 if big else 16, line)
+	elif kind == &"weapon":
+		for cr in rects:
+			_draw_item_cell(ci, cr, rects, Color(ITEM_WEAPON_FILL, 0.9 * alpha), line, false)
+		draw_weapon_mark(ci, id, rects[0], line)
+	elif kind == &"bag":
+		for cr in rects:
+			_draw_item_cell(ci, cr, rects, Color(tint, 0.9 * alpha), line, false)
+		ci.draw_rect(Rect2(first + Vector2(3, 3), Vector2(cell_px - 6.0, cell_px * 0.28)), line)
+		if cell_px >= ITEM_TEXT_CELL:
+			ci.draw_string(font, first + Vector2(0, cell_px * 0.8), String(def.name).substr(0, 2), HORIZONTAL_ALIGNMENT_CENTER, cell_px, 18 if big else 13, text_color)
+	else:
+		for cr in rects:
+			_draw_item_cell(ci, cr, rects, Color(tint, 0.9 * alpha), line, false)
+		if cell_px >= ITEM_TEXT_CELL:
+			var label_text := String(def.name).substr(0, 4 if big else 2)
+			ci.draw_string(font, first + Vector2(5, cell_px * 0.36), label_text, HORIZONTAL_ALIGNMENT_LEFT, cell_px - 6, 13 if big else 15, text_color)   # 大格的字級放得下 4 個字，每件都一樣大
+	var badge_r := clampf(cell_px * 0.16, 5.0, 10.0)
 	for i in bonds.size():
-		var dot_r := (5.0 if bonds[i] == hover_bond else 3.5) * dot_scale
-		var dot_y := cell_px - 9.0 * dot_scale if big else 9.0 * dot_scale   # 大格的名稱佔滿上面一行，色點放下面
-		ci.draw_circle(first + Vector2(cell_px - 9.0 * dot_scale * (i + 1), dot_y), dot_r, Color(BondDefs.BONDS[bonds[i]].color, alpha))
+		var center := first + Vector2(cell_px - badge_r - 3.0 - i * badge_r * 2.1, cell_px - badge_r - 3.0)
+		draw_bond_mark(ci, bonds[i], center, badge_r * 1.25 if bonds[i] == hover_bond else badge_r, alpha)
+
+
+# 技能的外形：單格是圓，占多格時沿著格子中心連成膠囊。圓和線會重疊，變淡時改混底色，不用半透明
+static func _draw_skill_shape(ci: CanvasItem, rects: Array[Rect2], color: Color, tint: Color, alpha: float) -> void:
+	var step := rects[0].size.x
+	var layers: Array = [[color.lerp(ITEM_FADE_BG, 1.0 - alpha), step - 4.0], [tint.lerp(ITEM_FADE_BG, 1.0 - alpha), step - 9.0]]
+	for layer: Array in layers:
+		for i in rects.size():
+			ci.draw_circle(rects[i].get_center(), layer[1] / 2.0, layer[0])
+			for j in range(i + 1, rects.size()):
+				if is_equal_approx(rects[i].position.distance_to(rects[j].position), step):
+					ci.draw_line(rects[i].get_center(), rects[j].get_center(), layer[0], layer[1])
+
+
+# 羈絆徽章：黑底圓加圖示，形狀不同，顏色和稀有度撞色時還分得出來（背包格子與羈絆欄共用）
+static func draw_bond_mark(ci: CanvasItem, bond: StringName, center: Vector2, r: float, alpha: float) -> void:
+	var color := Color(BondDefs.BONDS[bond].color, alpha)
+	var s := r * 0.6
+	var width := maxf(1.0, r * 0.2)
+	ci.draw_circle(center, r, Color(0, 0, 0, 0.85 * alpha))
+	match bond:
+		&"phys":
+			ci.draw_line(center + Vector2(-s, s), center + Vector2(s, -s), color, width)
+			ci.draw_line(center + Vector2(-s * 0.7, -s * 0.1), center + Vector2(s * 0.1, s * 0.7), color, width)
+		&"fire":
+			ci.draw_colored_polygon(PackedVector2Array([center + Vector2(0, -s), center + Vector2(s * 0.5, -s * 0.2), center + Vector2(s * 0.8, s * 0.4), center + Vector2(s * 0.4, s), center + Vector2(-s * 0.4, s), center + Vector2(-s * 0.8, s * 0.4), center + Vector2(-s * 0.5, -s * 0.2)]), color)
+		&"cold":
+			for a: float in [PI / 2.0, PI / 6.0, -PI / 6.0]:
+				var d := Vector2.from_angle(a) * s
+				ci.draw_line(center - d, center + d, color, width)
+		&"guard":
+			ci.draw_colored_polygon(PackedVector2Array([center + Vector2(-s, -s * 0.8), center + Vector2(s, -s * 0.8), center + Vector2(s, s * 0.1), center + Vector2(0, s), center + Vector2(-s, s * 0.1)]), color)
+		&"wisp":
+			ci.draw_arc(center, s, 0.0, TAU, 16, color, width)
+			ci.draw_circle(center, s * 0.35, color)
+
+
+# 武器的 2D 剪影，畫在一格 r 裡；座標是格子寬的比例（沒畫過的武器畫成長劍）
+static func draw_weapon_mark(ci: CanvasItem, id: StringName, r: Rect2, color: Color) -> void:
+	var c := r.size.x
+	var at := func(x: float, y: float) -> Vector2: return r.position + Vector2(x, y) * c
+	var thin := maxf(1.5, c * 0.06)
+	var thick := maxf(2.0, c * 0.09)
+	match id:
+		&"dagger":
+			ci.draw_line(at.call(0.32, 0.7), at.call(0.68, 0.34), color, thick)
+			ci.draw_line(at.call(0.26, 0.54), at.call(0.48, 0.76), color, thin)
+		&"woodShield":
+			ci.draw_colored_polygon(PackedVector2Array([at.call(0.24, 0.24), at.call(0.76, 0.24), at.call(0.76, 0.54), at.call(0.5, 0.82), at.call(0.24, 0.54)]), color)
+		&"staff":
+			ci.draw_line(at.call(0.24, 0.8), at.call(0.7, 0.32), color, thin)
+			ci.draw_circle(at.call(0.74, 0.26), c * 0.11, color)
+		&"scepter":
+			ci.draw_line(at.call(0.26, 0.78), at.call(0.66, 0.38), color, thin)
+			ci.draw_line(at.call(0.58, 0.28), at.call(0.84, 0.28), color, thick)
+			ci.draw_line(at.call(0.71, 0.15), at.call(0.71, 0.41), color, thick)
+		&"shortbow":
+			ci.draw_arc(at.call(0.28, 0.5), c * 0.3, -PI / 2.0, PI / 2.0, 14, color, thick)
+			ci.draw_line(at.call(0.28, 0.2), at.call(0.28, 0.8), color, 1.0)
+		&"longbow":
+			ci.draw_arc(at.call(0.2, 0.5), c * 0.38, -PI / 2.0, PI / 2.0, 16, color, thick)
+			ci.draw_line(at.call(0.2, 0.12), at.call(0.2, 0.88), color, 1.0)
+		&"torch":
+			ci.draw_line(at.call(0.3, 0.84), at.call(0.54, 0.46), color, thick)
+			ci.draw_colored_polygon(PackedVector2Array([at.call(0.68, 0.14), at.call(0.76, 0.34), at.call(0.66, 0.5), at.call(0.5, 0.44), at.call(0.5, 0.28)]), color)
+		&"shovel":
+			ci.draw_line(at.call(0.22, 0.2), at.call(0.56, 0.58), color, thin)
+			ci.draw_colored_polygon(PackedVector2Array([at.call(0.5, 0.56), at.call(0.66, 0.44), at.call(0.84, 0.76), at.call(0.8, 0.84), at.call(0.68, 0.82)]), color)
+		_:
+			ci.draw_line(at.call(0.22, 0.8), at.call(0.78, 0.22), color, thick)
+			ci.draw_line(at.call(0.2, 0.58), at.call(0.44, 0.82), color, thin)
 
 
 # 物品的一格：相鄰的邊不留縫、外圈才描邊，多格物品看起來是一整塊
