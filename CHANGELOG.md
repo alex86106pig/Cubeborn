@@ -3,7 +3,7 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
-## [未發布]
+## [0.66.7] - 2026-11-04
 
 ### 修改
 - **遺物卡的說明和背包用同一套染色**：原本只有數字是金色，現在羈絆與傷害類型、屬性也染色（製作計畫 I 第 2 項收尾）。
