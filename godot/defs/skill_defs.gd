@@ -117,9 +117,26 @@ static func gem_skill_ids() -> Array[StringName]:
 	return out
 
 
+# 技能遺物每個技能被抽到的權重：越稀有越少（10 白 / 7 綠 / 7 藍 / 3 紫時約 50% / 28% / 17.5% / 4.5%）
+const RELIC_WEIGHTS := {&"white": 10, &"green": 8, &"blue": 5, &"purple": 3, &"orange": 1}
+
+
 # 技能遺物抽得到的
 static func relic_pool() -> Array[StringName]:
 	return gem_skill_ids().filter(func(id: StringName) -> bool: return not SKILLS[id].get("no_relic", false))
+
+
+# 從 pool 照稀有度權重抽一個技能（權重是每個技能各自的，RELIC_WEIGHTS）
+static func pick_relic(pool: Array, rng: RandomNumberGenerator) -> StringName:
+	var total := 0
+	for id: StringName in pool:
+		total += RELIC_WEIGHTS[ItemDefs.ITEMS[id].rarity]
+	var roll := rng.randi_range(1, total)
+	for id: StringName in pool:
+		roll -= RELIC_WEIGHTS[ItemDefs.ITEMS[id].rarity]
+		if roll <= 0:
+			return id
+	return pool[-1]
 
 
 # 等級的傷害倍率與耗魔倍率（施放、技能欄、說明框共用）

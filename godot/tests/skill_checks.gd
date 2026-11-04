@@ -269,6 +269,29 @@ static func check_level_text() -> String:
 # 技能遺物的來源與保證：石棺必開出技能遺物、祭壇只開道具遺物；身上有還沒滿級的技能時，3 個選項至少 1 個是它（升級）、
 # 不固定在第一張；都滿級了就照舊全隨機，選項照樣 3 個不重複
 static func _check_skill_relic_rules() -> String:
+	# 技能稀有度：分級的數量與定案相同、實際抽到的比例接近權重算出來的（±5 個百分點）
+	var counts := {}
+	var pool := SkillDefs.relic_pool()
+	for id: StringName in pool:
+		var r: StringName = ItemDefs.ITEMS[id].rarity
+		counts[r] = counts.get(r, 0) + 1
+	if counts != {&"white": 10, &"green": 7, &"blue": 7, &"purple": 3}:
+		return "技能稀有度的數量應是白 10、綠 7、藍 7、紫 3：%s" % [counts]
+	var drawn := {}
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 42
+	const DRAWS := 4000
+	for i in DRAWS:
+		var r: StringName = ItemDefs.ITEMS[SkillDefs.pick_relic(pool, rng)].rarity
+		drawn[r] = drawn.get(r, 0) + 1
+	var total_weight := 0.0
+	for r: StringName in counts:
+		total_weight += counts[r] * SkillDefs.RELIC_WEIGHTS[r]
+	for r: StringName in counts:
+		var want: float = counts[r] * SkillDefs.RELIC_WEIGHTS[r] / total_weight
+		var got: float = drawn.get(r, 0) / float(DRAWS)
+		if absf(got - want) > 0.05:
+			return "技能稀有度 %s 抽到 %.3f，權重算出來 %.3f" % [r, got, want]
 	for tier: StringName in [&"big", &"small"]:
 		for i in 10:
 			var s := _setup(&"longsword")

@@ -72,7 +72,7 @@ func _skill_options(p: Player, n: int) -> Array[StringName]:
 		out.append(own[world.rng.randi_range(0, own.size() - 1)])
 	for i in mini(n, skills.size()) - out.size():
 		var left := skills.filter(func(id: StringName) -> bool: return not out.has(id))
-		out.append(left[world.rng.randi_range(0, left.size() - 1)])
+		out.append(SkillDefs.pick_relic(left, world.rng))
 	_shuffle(out)   # 保證的那個不會固定在第一張
 	return out
 
