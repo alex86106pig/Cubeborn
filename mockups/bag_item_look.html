@@ -145,11 +145,12 @@ const STYLES = {
   a(it, ox, oy, c) {
     const cells = SHAPE[it.s], col = RARITY[it.r], tint = hexMix(col, .3);
     let out = "";
-    if (it.k === "skill") {
-      out += `<circle cx="${ox+c/2}" cy="${oy+c/2}" r="${c/2-2}" fill="${tint}" stroke="${col}" stroke-width="2.5"/><text x="${ox+c/2}" y="${oy+c/2+5}" font-size="14" fill="#fff" text-anchor="middle">${esc(it.n[0])}</text>`;
-    } else if (it.k === "effect") {
-      out += block(cells, ox, oy, c, tint, col, 2);
-      out += `<circle cx="${ox+c/2}" cy="${oy+c/2}" r="${c*.32}" fill="#00000055" stroke="${col}" stroke-width="2"/><text x="${ox+c/2}" y="${oy+c/2+5}" font-size="13" fill="#fff" text-anchor="middle">${esc(it.n[0])}</text>`;
+    if (it.k === "skill" || it.k === "effect") {
+      // 技能一律圓形：占多格時沿著格子中心拉長成膠囊，外框和底色與單格相同
+      const d = cells.map(([x,y], i) => `${i ? "L" : "M"}${ox+x*c+c/2} ${oy+y*c+c/2}`).join("") + (cells.length === 1 ? `L${ox+c/2} ${oy+c/2}` : "");
+      out += `<path d="${d}" fill="none" stroke="${col}" stroke-width="${c-4}" stroke-linecap="round" stroke-linejoin="round"/>`;
+      out += `<path d="${d}" fill="none" stroke="${tint}" stroke-width="${c-9}" stroke-linecap="round" stroke-linejoin="round"/>`;
+      out += `<text x="${ox+c/2}" y="${oy+c/2+5}" font-size="14" fill="#fff" text-anchor="middle">${esc(it.n[0])}</text>`;
     } else if (it.k === "mod") {
       out += block(cells, ox, oy, c, "#00000040", col, 2, true) + `<text x="${ox+c/2}" y="${oy+c/2+5}" font-size="13" fill="${col}" text-anchor="middle">${esc(it.n[0])}</text>`;
     } else if (it.k === "weapon") {
