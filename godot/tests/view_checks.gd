@@ -1882,7 +1882,7 @@ static func check_font_coverage() -> String:
 	for s: Dictionary in SkillDefs.SKILLS.values():
 		texts.append_array([s.get("name", ""), s.icon, s.get("desc", "")])
 	for id: StringName in SkillDefs.gem_skill_ids():   # 技能的名稱與說明在物品資料；技能欄、遺物卡片的那一行
-		texts.append_array([ItemDefs.ITEMS[id].name, ItemDefs.ITEMS[id].desc, UiKit.skill_line(id)])
+		texts.append_array([ItemDefs.ITEMS[id].name, ItemDefs.ITEMS[id].desc, UiKit.skill_line(id), UiKit.skill_damage_line(id), UiKit.skill_upgrade_line(id, 1)])
 	var hud_consts: Dictionary = load("res://ui/hud.gd").get_script_constant_map()
 	texts.append_array([hud_consts.CONTROLS_TEXT, hud_consts.BOSS_NAME])
 	for s: Dictionary in StatDefs.STATS.values():

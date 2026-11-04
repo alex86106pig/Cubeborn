@@ -120,6 +120,9 @@ func _card(i: int, id: StringName, me: Player) -> PanelContainer:
 		head.add_child(_chip("升到 %d 級" % (lv + 1), UiKit.GOLD, true))
 	body.add_child(head)
 	if skill:
+		var damage := UiKit.skill_damage_line(id, lv if me.loadout.has_item(id) else 1)
+		if damage != "":
+			body.add_child(UiKit.label(damage, CHIP_FONT, Color(1, 1, 1, 0.85)))
 		body.add_child(UiKit.label(UiKit.skill_line(id, lv if me.loadout.has_item(id) else 1), CHIP_FONT, Color(1, 1, 1, 0.6)))
 	if upgrade:
 		body.add_child(UiKit.label(UiKit.skill_upgrade_line(id, lv), CHIP_FONT, UiKit.GOLD))

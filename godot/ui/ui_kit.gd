@@ -135,7 +135,11 @@ static func item_info(id: StringName, weapon: Dictionary, level := 1) -> Diction
 	var r: Dictionary = ItemDefs.RARITIES[def.rarity]
 	if def.kind == &"skill":
 		var title := "%s（技能 · %d 級）" % [def.name, level] if level > 1 else "%s（技能）" % def.name
-		return {"title": title, "color": GOLD, "lines": [def.desc, skill_line(id, level)] as Array[String]}
+		var lines: Array[String] = [def.desc]
+		if SkillDefs.SKILLS[id].has("damage_pct"):
+			lines.append(skill_damage_line(id, level))
+		lines.append(skill_line(id, level))
+		return {"title": title, "color": GOLD, "lines": lines}
 	var desc: String = def.get("desc", "")
 	if not def.get("effects", []).all(ItemDefs.is_implemented):
 		desc += "（效果尚未實作）"
@@ -162,32 +166,56 @@ static func role_line(id: StringName) -> String:
 	return "數值：放進主袋就生效"
 
 
-# 技能的第二行：怎麼用、標籤、耗魔（插火把這種次數制的寫次數）；level 2 級以上加「傷害 ×1.2」，耗魔照等級算
+# 技能的一行：怎麼用、標籤、耗魔（插火把這種次數制的寫次數），耗魔照等級算
 static func skill_line(id: StringName, level := 1) -> String:
 	var sk: Dictionary = SkillDefs.SKILLS[id]
 	var tags: Array[String] = []
 	for t: StringName in sk.tags:
 		tags.append(SkillDefs.TAGS[t])
 	var cost := "耗魔 %d" % roundi(sk.mana * SkillDefs.level_mana_mul(level)) if sk.has("mana") else "每層 %d 次" % sk.get("charges", 0)
-	if level > 1 and sk.has("damage_pct"):
-		cost = "傷害 ×%s · %s" % [level_mul_text(SkillDefs.level_damage_mul(level)), cost]
 	return "按鍵袋按數字鍵放、觸發袋自動放 · %s · %s" % ["、".join(tags) if not tags.is_empty() else "—", cost]
 
 
-# 遺物卡的升級預覽：「升級：傷害 ×1.2 → ×1.4 · 耗魔 27 → 24」（沒傷害的技能只寫耗魔）
+# 技能的傷害倍率（武器傷害的 %，已乘等級；袋子的強化另外乘）：照 SkillDefs 的資料組字，沒傷害的技能回空字串
+# 例：「傷害：武器傷害 175% × 5 發」「傷害：武器傷害 150%，火堆每秒 100%（4 秒）」
+static func skill_damage_line(id: StringName, level := 1) -> String:
+	var sk: Dictionary = SkillDefs.SKILLS[id]
+	if not sk.has("damage_pct"):
+		return ""
+	var mul := SkillDefs.level_damage_mul(level)
+	var main := pct_text(sk.damage_pct * mul)
+	var text := "傷害：武器傷害 " + main
+	match sk.behavior:
+		&"rain":
+			text = "傷害：每 %s 秒武器傷害 %s，共 %d 次" % [String.num(sk.tick), main, roundi(sk.duration / sk.tick)]
+		&"chain":
+			text = "傷害：武器傷害 %s，最多打 %d 隻" % [main, sk.jumps + 1]
+		_:
+			if sk.get("count", 1) > 1:
+				text += " × %d 發" % sk.count
+	if sk.has("chain"):
+		text += "，再電 %d 隻各 %s" % [sk.chain.jumps, pct_text(sk.damage_pct * mul * sk.chain.ratio)]
+	if sk.has("pool"):
+		text += "，火堆每秒 %s（%s 秒）" % [pct_text(sk.pool.dps_pct * mul), String.num(sk.pool.duration)]
+	if sk.has("trail"):
+		text += "，火痕每秒 %s（%s 秒）" % [pct_text(sk.trail.dps_pct * mul), String.num(sk.trail.duration)]
+	return text
+
+
+# 遺物卡的升級預覽：「升級：傷害 600% → 720% · 耗魔 27 → 24」（傷害寫主段；沒傷害的技能只寫耗魔）
 static func skill_upgrade_line(id: StringName, level: int) -> String:
 	var sk: Dictionary = SkillDefs.SKILLS[id]
 	var parts: Array[String] = []
 	if sk.has("damage_pct"):
-		parts.append("傷害 ×%s → ×%s" % [level_mul_text(SkillDefs.level_damage_mul(level)), level_mul_text(SkillDefs.level_damage_mul(level + 1))])
+		parts.append("傷害 %s → %s" % [pct_text(sk.damage_pct * SkillDefs.level_damage_mul(level)), pct_text(sk.damage_pct * SkillDefs.level_damage_mul(level + 1))])
 	if sk.has("mana"):
 		parts.append("耗魔 %d → %d" % [roundi(sk.mana * SkillDefs.level_mana_mul(level)), roundi(sk.mana * SkillDefs.level_mana_mul(level + 1))])
 	return "升級：" + " · ".join(parts)
 
 
-# 倍率的字：1.2、1.4、2（不寫多餘的 0）
-static func level_mul_text(mul: float) -> String:
-	return String.num(snappedf(mul, 0.01))
+# 倍數寫成 %：6.0 → 600%、3.375 → 337.5%（不寫多餘的 0）
+static func pct_text(ratio: float) -> String:
+	return String.num(snappedf(ratio * 100.0, 0.1)) + "%"
 
 
 # 道具形狀的小圖（不轉向）：每格 cell px，左上角在 at

@@ -210,22 +210,29 @@ static func check_skill_level() -> String:
 
 
 
-# 等級看得到：說明框標題寫幾級、第二行的傷害倍率與耗魔照等級算（沒傷害的技能不寫傷害）、遺物卡寫升級前後；技能欄 2 級以上左上角寫等級
+# 等級看得到：說明框標題寫幾級、傷害 % 與耗魔照等級算（每個有傷害的技能都寫 %、沒傷害的不寫）、遺物卡寫升級前後；技能欄 2 級以上左上角寫等級
 static func check_level_text() -> String:
 	var sk: Dictionary = SkillDefs.SKILLS.whirlwind
 	var lv1 := UiKit.item_info(&"whirlwind", {}, 1)
 	var lv3 := UiKit.item_info(&"whirlwind", {}, 3)
 	var want_cost := "耗魔 %d" % roundi(sk.mana * SkillDefs.level_mana_mul(3))
-	var want_mul := "傷害 ×%s" % UiKit.level_mul_text(SkillDefs.level_damage_mul(3))
-	if lv1.title.contains("級") or (lv1.lines[1] as String).contains("傷害 ×"):
-		return "1 級不應寫等級與傷害倍率：%s" % [lv1]
-	if not lv3.title.contains("3 級") or not (lv3.lines[1] as String).contains(want_cost) or not (lv3.lines[1] as String).contains(want_mul):
-		return "3 級說明框應寫「3 級」「%s」「%s」：%s" % [want_mul, want_cost, lv3]
+	var want_pct1 := UiKit.pct_text(sk.damage_pct)
+	var want_pct3 := UiKit.pct_text(sk.damage_pct * SkillDefs.level_damage_mul(3))
+	var lines1 := "\n".join(lv1.lines)
+	var lines3 := "\n".join(lv3.lines)
+	if lv1.title.contains("級") or not lines1.contains(want_pct1):
+		return "1 級不應寫等級、應寫傷害 %s：%s" % [want_pct1, lv1]
+	if not lv3.title.contains("3 級") or not lines3.contains(want_cost) or not lines3.contains(want_pct3):
+		return "3 級說明框應寫「3 級」「%s」「%s」：%s" % [want_pct3, want_cost, lv3]
+	for id: StringName in SkillDefs.gem_skill_ids():
+		var d := UiKit.skill_damage_line(id)
+		if SkillDefs.SKILLS[id].has("damage_pct") != d.contains("%"):
+			return "技能 %s 的傷害 %% 應%s寫出來：「%s」" % [id, "" if SkillDefs.SKILLS[id].has("damage_pct") else "不", d]
 	var no_damage: StringName = SkillDefs.gem_skill_ids().filter(func(id: StringName) -> bool: return SkillDefs.SKILLS[id].has("mana") and not SkillDefs.SKILLS[id].has("damage_pct"))[0]
-	if UiKit.skill_line(no_damage, 3).contains("傷害 ×") or UiKit.skill_upgrade_line(no_damage, 2).contains("傷害"):
-		return "沒傷害的技能（%s）不應寫傷害倍率" % no_damage
+	if UiKit.item_info(no_damage, {}, 3).lines.size() != 2 or UiKit.skill_upgrade_line(no_damage, 2).contains("傷害"):
+		return "沒傷害的技能（%s）不應寫傷害" % no_damage
 	var up := UiKit.skill_upgrade_line(&"whirlwind", 2)
-	for want in ["傷害 ×%s → ×%s" % [UiKit.level_mul_text(SkillDefs.level_damage_mul(2)), UiKit.level_mul_text(SkillDefs.level_damage_mul(3))],
+	for want in ["傷害 %s → %s" % [UiKit.pct_text(sk.damage_pct * SkillDefs.level_damage_mul(2)), want_pct3],
 			"耗魔 %d → %d" % [roundi(sk.mana * SkillDefs.level_mana_mul(2)), roundi(sk.mana * SkillDefs.level_mana_mul(3))]]:
 		if not up.contains(want):
 			return "遺物卡的升級預覽缺「%s」：%s" % [want, up]
