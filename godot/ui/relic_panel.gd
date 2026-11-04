@@ -18,8 +18,6 @@ const CHIP_FONT := 18
 const EFFECT_FONT := 21
 const CARD_BG := Color(0.11, 0.12, 0.16, 0.95)
 const CARD_HOVER_BG := Color(0.17, 0.19, 0.25, 0.97)
-# 效果文字裡的數字（含單位）用金色
-const NUMBER_PATTERN := "([+\\-]?\\d+(?:\\.\\d+)?\\s*(?:%|秒|格|倍|層|次|點|件)?)"
 
 var _cards := VBoxContainer.new()
 var _title := UiKit.label("", UiKit.FONT_BODY, UiKit.GOLD)
@@ -30,7 +28,6 @@ var _shown_key := []             # 目前卡片對應的選項與羈絆件數（
 var _dismissed := 0              # 本機已經按了選 / 關掉的遺物：等權威端關掉前先不顯示，免得閃一下
 const OWNED_ACTIVE := "已經放在主袋或袋子裡"
 const OWNED_BAG := "倉庫裡有（沒放上去）"
-var _number := RegEx.create_from_string(NUMBER_PATTERN)
 
 
 func _init() -> void:
@@ -201,7 +198,11 @@ func _text_card(i: int, option: Dictionary) -> PanelContainer:
 
 # 效果文字：數字（含單位）包成金色
 func effect_bbcode(desc: String) -> String:
-	return _number.sub(desc.replace("[", "[lb]"), "[color=#%s]$1[/color]" % UiKit.GOLD.to_html(false), true)
+	var plain := Color.WHITE
+	var out := ""
+	for run: Array in UiKit.rich_runs(desc.replace("[", "[lb]"), plain):
+		out += run[0] if run[1] == plain else "[color=#%s]%s[/color]" % [(run[1] as Color).to_html(false), run[0]]
+	return out
 
 
 static func _card_box(border: Color, bg: Color) -> StyleBoxFlat:

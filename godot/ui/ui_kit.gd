@@ -39,7 +39,8 @@ const RICH_ATTR_COLOR := Color("9fd8c8")
 static var _rich_re: RegEx
 static var _rich_colors := {}
 const ITEM_WEAPON_FILL := Color("2b2d33")   # 物品畫法（draw_item）：武器的底色，剪影才看得清楚
-const ITEM_TINT_DARK := 0.65                # 數值、技能、袋子的底色：稀有度色壓暗這麼多
+const WEAPON_GLOW := {&"green": 3.0, &"blue": 4.0, &"purple": 5.0, &"orange": 7.0}   # 武器外圈光暈的粗細：越稀有越粗，白色不發光
+const ITEM_TINT_DARK := 0.65               # 數值、技能、袋子的底色：稀有度色壓暗這麼多
 const ITEM_MOD_DARK := 0.82                 # 修飾的底色比較暗，虛線才明顯
 const ITEM_FADE_BG := Color("17181c")       # 技能變淡時混向的底色（圓和線會重疊，不能用半透明）
 const ITEM_BIG_CELL := 60.0                 # 格子這麼大以上字大一級（背包）
@@ -137,7 +138,7 @@ static func rich_runs(text: String, base: Color) -> Array:
 			_rich_colors[word] = RICH_ATTR_COLOR
 		var words: Array = _rich_colors.keys()
 		words.sort_custom(func(a: String, b: String) -> bool: return a.length() > b.length())   # 長的先比：「最大生命」不會被拆成「生命」
-		_rich_re = RegEx.create_from_string("[+\\-−×]?\\d+(?:\\.\\d+)?%?|" + "|".join(words))
+		_rich_re = RegEx.create_from_string("[+\\-−×]?\\d+(?:\\.\\d+)?\\s*(?:%|秒|格|倍|層|次|點|件)?|" + "|".join(words))   # 單位跟著數字一起染
 	var runs: Array = []
 	var from := 0
 	for m in _rich_re.search_all(text):
@@ -362,6 +363,10 @@ static func draw_item_cells(ci: CanvasItem, font: Font, id: StringName, rects: A
 			_draw_item_cell(ci, cr, rects, Color(color.darkened(ITEM_MOD_DARK), 0.9 * alpha), line, true)
 		ci.draw_string(font, first + Vector2(0, cell_px / 2.0 + (9 if big else 6)), String(def.name).substr(0, 1), HORIZONTAL_ALIGNMENT_CENTER, cell_px, 26 if big else 16, line)
 	elif kind == &"weapon":
+		var glow: float = WEAPON_GLOW.get(rarity, 0.0)
+		if glow > 0.0:
+			for cr in rects:
+				ci.draw_rect(cr.grow(1.0), Color(color, 0.3 * alpha), false, glow)
 		for cr in rects:
 			_draw_item_cell(ci, cr, rects, Color(ITEM_WEAPON_FILL, 0.9 * alpha), line, false)
 		draw_weapon_mark(ci, id, rects[0], line)
