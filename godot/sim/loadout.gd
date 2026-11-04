@@ -189,7 +189,7 @@ func _place_bag(p: Player, uid: StringName, side: StringName, offset: int, cell 
 	return true
 
 
-# 接著的按鍵袋，由左到右（數字鍵 1~4）
+# 接著的按鍵袋，由左到右（數字鍵）
 func key_bags() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	for b in bags:
@@ -486,7 +486,7 @@ func bond_blocks() -> Dictionary:
 	return out
 
 
-# 撿起隊友的屍體放進倉庫（占 corpse 形狀的格子、沒有效果）；放不下回傳 false 並發出 inventory:full
+# 撿起隊友的屍體放進倉庫（佔一格、沒有效果）；放不下回傳 false 並發出 inventory:full
 func add_corpse(p: Player, owner_peer: int, spot: Dictionary = {}, pickup_id := 0) -> bool:
 	if spot.is_empty():
 		spot = inventory.find_spot(&"corpse")
@@ -662,7 +662,7 @@ func swap_plan(e: Dictionary, src: Inventory, dst: Inventory, cell: Vector2i, ro
 		return {}
 	var taken := dst.occupied(e.uid)
 	var under := {}
-	for c in Inventory.cells_of(e.id, rot):
+	for c in dst.cells(e.id, rot):
 		if taken.has(cell + c):
 			under[taken[cell + c]] = true
 	if under.size() != 1:

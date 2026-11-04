@@ -1,6 +1,7 @@
 # 技能行為：Q 的治療藥水、寶石座的技能（Build 改版第 7 步，數字在 SkillDefs）
 # cast 由 ActiveSlots.use 呼叫（本機預測時也會跑）：位移（衝刺、瞬移、後跳）兩邊都做，傷害、投射物、召喚、地面區域只在權威端
 # ctx（ActiveSlots.cast_context）：mul 等級的傷害倍率、area 延長的範圍倍率、type 火焰化 / 霜化後的屬性、split 分裂（0.25 秒後再放一次 60%）
+#   觸發袋有目標時再加上 at / dir / facing / target_id / target_radius（aim_at）：範圍與落點改在目標身上、投射物從目標身上沿原方向往外射、位移朝目標；祝福、召喚、插火把仍在自己身上
 # 晚一點才發生的（隕石、箭雨、連珠箭、狙擊、分裂）用 later 排進 World.delayed，只在權威端
 class_name SkillBehaviors
 
@@ -11,6 +12,10 @@ const SPLIT_MUL := 0.6
 class Behavior:
 	func can_use(_owner: Player, _def: Dictionary) -> bool:
 		return true
+
+	# 觸發袋有目標時能不能放；沒特別條件的照 can_use
+	func can_use_on(owner: Player, def: Dictionary, _target: Entity) -> bool:
+		return can_use(owner, def)
 
 	func activate(_owner: Player, _def: Dictionary, _ctx: Dictionary) -> void:
 		pass
@@ -39,23 +44,26 @@ class PlantTorch extends Behavior:
 class Nova extends Behavior:
 	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
 		var r: float = def.radius * ctx.area
-		SkillBehaviors.area_hit(owner, def, ctx, owner.pos, {"shape": &"circle", "radius": r})
-		owner.world.emit_event("fx:explosion", {"pos": owner.pos, "height": owner.ground_height, "radius": r, "color": def.color})
+		var at := SkillBehaviors.origin(owner, ctx)
+		SkillBehaviors.area_hit(owner, def, ctx, at, {"shape": &"circle", "radius": r})
+		owner.world.emit_event("fx:explosion", {"pos": at, "height": SkillBehaviors.origin_ground(owner, ctx), "radius": r, "color": def.color})
 
 
 # 面前扇形：震地
 class Cone extends Behavior:
 	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
-		SkillBehaviors.face_aim(owner)
+		if not ctx.has("at"):
+			SkillBehaviors.face_aim(owner)
 		var shape := {"shape": &"sector", "range": def.range * ctx.area, "arc": def.arc}
-		SkillBehaviors.area_hit(owner, def, ctx, owner.pos, shape)
-		owner.world.emit_event("fx:slash", {"pos": owner.pos, "height": owner.height, "facing": owner.facing, "range": shape.range, "arc": def.arc, "color": def.color, "swing_dir": 1})
+		var at := SkillBehaviors.origin(owner, ctx)
+		SkillBehaviors.area_hit(owner, def, ctx, at, shape)
+		owner.world.emit_event("fx:slash", {"pos": at, "height": SkillBehaviors.origin_ground(owner, ctx) if ctx.has("at") else owner.height, "facing": ctx.get("facing", owner.facing), "range": shape.range, "arc": def.arc, "color": def.color, "swing_dir": 1})
 
 
 # 往準星衝刺，衝的這段時間打面前（每隻一次）：衝鋒斬、火焰衝刺（沿路留火）、盾衝（暈眩）
 class Dash extends Behavior:
 	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
-		var dir := SkillBehaviors.face_aim(owner)
+		var dir := SkillBehaviors.turn_to(owner, ctx)
 		var dist: float = def.distance * ctx.area
 		SkillBehaviors.push(owner, dir * dist)
 		owner.skill_dash = {"left": def.time, "def": def, "ctx": ctx, "hit": {}}
@@ -73,7 +81,9 @@ class Ambush extends Behavior:
 		return SkillBehaviors.nearest_enemy(owner, owner.pos, def.range) != null
 
 	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
-		var e := SkillBehaviors.nearest_enemy(owner, owner.pos, def.range * ctx.area)
+		var e := SkillBehaviors.target_of(owner, ctx)
+		if e == null or e.pos.distance_to(owner.pos) > def.range * ctx.area:
+			e = SkillBehaviors.nearest_enemy(owner, owner.pos, def.range * ctx.area)
 		if e == null:
 			return
 		var back := MathUtil.dir_from_angle(e.facing)
@@ -90,13 +100,13 @@ class Ambush extends Behavior:
 # 投射物結束時的效果（chain 跳電、burst 炸開疊冰冷 / 暈眩、pool 落地一攤火）在 Projectile.skill_fx
 class Shoot extends Behavior:
 	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
-		var dir := SkillBehaviors.face_aim(owner)
+		var dir: Vector2 = ctx.dir if ctx.has("dir") else SkillBehaviors.face_aim(owner)
 		var delay: float = def.get("windup", 0.0)
 		if delay > 0.0:
-			SkillBehaviors.later(owner, delay, func() -> void: SkillBehaviors.fire_fan(owner, def, ctx, SkillBehaviors.face_aim(owner)))
+			SkillBehaviors.later(owner, delay, func() -> void: SkillBehaviors.fire_fan(owner, def, ctx, ctx.dir if ctx.has("dir") else SkillBehaviors.face_aim(owner)))
 		elif def.get("interval", 0.0) > 0.0:
 			for i in def.count:
-				SkillBehaviors.later(owner, def.interval * i, func() -> void: SkillBehaviors.fire_one(owner, def, ctx, SkillBehaviors.face_aim(owner)))
+				SkillBehaviors.later(owner, def.interval * i, func() -> void: SkillBehaviors.fire_one(owner, def, ctx, ctx.dir if ctx.has("dir") else SkillBehaviors.face_aim(owner)))
 		else:
 			SkillBehaviors.fire_fan(owner, def, ctx, dir)
 
@@ -104,15 +114,17 @@ class Shoot extends Behavior:
 # 往後跳開，同時往準星扇形射箭
 class LeapShot extends Behavior:
 	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
-		var dir := SkillBehaviors.face_aim(owner)
+		var dir := SkillBehaviors.turn_to(owner, ctx)
 		SkillBehaviors.push(owner, -dir * def.distance * ctx.area)
-		SkillBehaviors.fire_fan(owner, def, ctx, dir)
+		var from_self := ctx.duplicate()   # 位移技能：箭從自己身上射向目標，不從目標身上出發
+		from_self.erase("at")
+		SkillBehaviors.fire_fan(owner, def, from_self, dir)
 
 
 # 準星的位置延遲 delay 秒後打一圈：隕石、聖光柱（隊友回血）
 class Strike extends Behavior:
 	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
-		var at := SkillBehaviors.aim_point(owner, def.max_range)
+		var at: Vector2 = ctx.at if ctx.has("at") else SkillBehaviors.aim_point(owner, def.max_range)
 		var r: float = def.radius * ctx.area
 		owner.world.emit_event("fx:telegraph", {"pos": at, "height": owner.world.terrain.ground_at(at), "radius": r, "color": def.color, "life": def.delay})
 		SkillBehaviors.later(owner, def.delay, func() -> void:
@@ -129,7 +141,7 @@ class Strike extends Behavior:
 # 準星的位置下一陣箭雨：duration 秒內每 tick 秒打一次
 class Rain extends Behavior:
 	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
-		var at := SkillBehaviors.aim_point(owner, def.max_range)
+		var at: Vector2 = ctx.at if ctx.has("at") else SkillBehaviors.aim_point(owner, def.max_range)
 		var r: float = def.radius * ctx.area
 		owner.world.emit_event("fx:telegraph", {"pos": at, "height": owner.world.terrain.ground_at(at), "radius": r, "color": def.color, "life": def.duration})
 		for i in roundi(def.duration / def.tick):
@@ -142,29 +154,40 @@ class Chain extends Behavior:
 	func can_use(owner: Player, def: Dictionary) -> bool:
 		return SkillBehaviors.nearest_enemy(owner, SkillBehaviors.aim_point(owner, def.range), def.range) != null
 
+	# 目標活著就打它；打死了（擊殺袋）打它旁邊最近的
+	func can_use_on(owner: Player, def: Dictionary, target: Entity) -> bool:
+		return SkillBehaviors.nearest_enemy(owner, target.pos, def.range) != null
+
 	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
-		SkillBehaviors.face_aim(owner)
-		var first := SkillBehaviors.nearest_enemy(owner, SkillBehaviors.aim_point(owner, def.range * ctx.area), def.range * ctx.area)
+		var first: Enemy = null
+		if ctx.has("at"):
+			first = SkillBehaviors.target_of(owner, ctx)
+			if first == null:
+				first = SkillBehaviors.nearest_enemy(owner, ctx.at, def.range * ctx.area)
+		else:
+			SkillBehaviors.face_aim(owner)
+			first = SkillBehaviors.nearest_enemy(owner, SkillBehaviors.aim_point(owner, def.range * ctx.area), def.range * ctx.area)
 		if first != null:
-			SkillBehaviors.chain(owner, first, def.jumps, def.jump_range * ctx.area, SkillBehaviors.hit_of(owner, def, ctx), def.color, owner.pos)
+			SkillBehaviors.chain(owner, first, def.jumps, def.jump_range * ctx.area, SkillBehaviors.hit_of(owner, def, ctx), def.color, SkillBehaviors.origin(owner, ctx))
 
 
 # 煙霧彈：腳下一團煙（GroundZones 的 smoke）
 class Smoke extends Behavior:
 	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
-		GroundZones.add(owner.world, {"pos": owner.pos, "radius": def.radius * ctx.area, "duration": def.duration, "owner_id": owner.id,
+		GroundZones.add(owner.world, {"pos": SkillBehaviors.origin(owner, ctx), "radius": def.radius * ctx.area, "duration": def.duration, "owner_id": owner.id,
 			"color": def.color, "visual": &"gas", "smoke": def.dodge})
 
 
 # 嘲諷：周圍的怪（Boss 不會）這段時間改打自己；自己受到的傷害變少
 class Taunt extends Behavior:
 	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
+		var at := SkillBehaviors.origin(owner, ctx)
 		for e in owner.world.enemies:
-			if not e.is_dead and e.team != owner.team and not (e as Enemy).is_boss() and e.pos.distance_to(owner.pos) <= def.radius * ctx.area:
+			if not e.is_dead and e.team != owner.team and not (e as Enemy).is_boss() and e.pos.distance_to(at) <= def.radius * ctx.area:
 				(e as Enemy).taunt_id = owner.id
 				(e as Enemy).taunt_timer = def.duration
 		owner.add_buff(&"taunt", def.duration, {"stats": [[&"damage_taken", Stats.MUL, def.damage_taken]]})
-		owner.world.emit_event("fx:explosion", {"pos": owner.pos, "height": owner.ground_height, "radius": def.radius * ctx.area, "color": def.color})
+		owner.world.emit_event("fx:explosion", {"pos": at, "height": SkillBehaviors.origin_ground(owner, ctx), "radius": def.radius * ctx.area, "color": def.color})
 
 
 # 召喚骷髏僕從（同亡者大軍的僕從），存在 life 秒
@@ -192,7 +215,7 @@ class Bless extends Behavior:
 # 掘地：鑽進土裡無敵 time 秒、往準星移動，出土時震開周圍
 class Burrow extends Behavior:
 	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
-		var dir := SkillBehaviors.face_aim(owner)
+		var dir := SkillBehaviors.turn_to(owner, ctx)
 		owner.invuln_timer = maxf(owner.invuln_timer, def.time)
 		SkillBehaviors.push(owner, dir * def.distance * ctx.area)
 		owner.world.emit_event("fx:explosion", {"pos": owner.pos, "height": owner.ground_height, "radius": 1.2, "color": def.color})
@@ -282,7 +305,7 @@ static func area_hit(owner: Player, def: Dictionary, ctx: Dictionary, at: Vector
 	if def.has("heal_ratio"):
 		for p in owner.world.player_list:
 			skip[p.id] = true
-	_after_hits(owner, def, ctx, Hitbox.strike(owner.world, owner, at, owner.facing, shape, hit, skip))
+	_after_hits(owner, def, ctx, Hitbox.strike(owner.world, owner, at, ctx.get("facing", owner.facing), shape, hit, skip))
 
 
 # 打中之後：暈眩、燃燒、冰冷（層數照羈絆，BondEffects）
@@ -298,6 +321,40 @@ static func _after_hits(owner: Player, def: Dictionary, _ctx: Dictionary, hits: 
 			BondEffects.add_burn(owner.world, owner, e as Enemy, def.burn)
 		if def.has("chill"):
 			BondEffects.add_chill(owner.world, owner, e as Enemy, def.chill)
+
+
+# 觸發袋有目標（命中、擊殺、受傷、招架）：技能改在目標身上放。方向 = 自己 → 目標；目標跟自己疊在一起時用準星的方向
+static func aim_at(owner: Player, ctx: Dictionary, target: Entity) -> void:
+	var d := target.pos - owner.pos
+	var dir := d.normalized() if d.length_squared() > 1e-6 else WeaponBehaviors.aim_direction(owner)
+	ctx["at"] = target.pos
+	ctx["dir"] = dir
+	ctx["facing"] = atan2(dir.x, dir.y)
+	ctx["target_id"] = target.id
+	ctx["target_radius"] = target.radius
+
+
+# 技能以哪裡為中心：有目標在目標身上，沒有在自己身上
+static func origin(owner: Player, ctx: Dictionary) -> Vector2:
+	return ctx.at if ctx.has("at") else owner.pos
+
+
+static func origin_ground(owner: Player, ctx: Dictionary) -> float:
+	return owner.world.terrain.ground_at(ctx.at) if ctx.has("at") else owner.ground_height
+
+
+# 觸發袋的目標（還活著、打得到才算）；沒有回傳 null
+static func target_of(owner: Player, ctx: Dictionary) -> Enemy:
+	var e := owner.world.entities.get(ctx.get("target_id", -1)) as Enemy
+	return e if e != null and not e.is_dead and e.can_be_hit() else null
+
+
+# 位移技能的方向：有目標朝目標（自己也轉過去），沒有朝準星
+static func turn_to(owner: Player, ctx: Dictionary) -> Vector2:
+	if not ctx.has("dir"):
+		return face_aim(owner)
+	owner.facing = ctx.facing
+	return ctx.dir
 
 
 static func face_aim(owner: Player) -> Vector2:
@@ -358,8 +415,10 @@ static func fire_fan(owner: Player, def: Dictionary, ctx: Dictionary, dir: Vecto
 static func fire_one(owner: Player, def: Dictionary, ctx: Dictionary, dir: Vector2) -> void:
 	if not owner.world.is_authority:
 		return
+	# 從目標身上出發：生在目標身體外面，才不會立刻打中它自己，打的是後面的怪
+	var from: Vector2 = ctx.at + dir * (ctx.target_radius + def.radius + 0.1) if ctx.has("at") else owner.pos + dir * 0.4
 	var pr := Projectile.new(owner.world, {
-		"owner": owner, "pos": owner.pos + dir * 0.4, "direction": dir, "speed": def.speed, "range": def.range * ctx.area,
+		"owner": owner, "pos": from, "direction": dir, "speed": def.speed, "range": def.range * ctx.area,
 		"radius": def.radius, "damage": owner.pct_damage(def.damage_pct) * ctx.mul, "damage_type": ctx.type,
 		"color": StatDefs.DAMAGE_TYPES[ctx.type].color if ctx.type != def.get("damage_type", &"phys") else def.color,
 		"visual": def.visual, "pierce": def.pierce, "blockable": false, "no_stagger": false,

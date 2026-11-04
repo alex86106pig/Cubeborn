@@ -18,9 +18,9 @@ static func _shape_error(cells: Array) -> String:
 	if min_cell != Vector2i.ZERO:
 		return "沒有從 (0, 0) 開始（最小 %s）" % min_cell
 	var size := max_cell + Vector2i.ONE
-	var bag := ItemDefs.BAG_SIZE
+	var bag := BagDefs.MAIN_SIZE
 	if not ((size.x <= bag.x and size.y <= bag.y) or (size.y <= bag.x and size.x <= bag.y)):
-		return "%d×%d 放不進背包" % [size.x, size.y]
+		return "%d×%d 放不進主袋" % [size.x, size.y]
 	# 上下左右相連
 	var stack: Array = [cells[0]]
 	var reached := {cells[0]: true}
@@ -236,30 +236,47 @@ static func check_items_apply() -> String:
 
 
 static func check_inventory() -> String:
-	var inv := Inventory.new()
+	# 倉庫：大小照 BAG_SIZE，每格放一件，不管形狀與方向
+	var store := Inventory.new()
+	if store.size != ItemDefs.BAG_SIZE:
+		return "倉庫大小 %s，預期 %s" % [store.size, ItemDefs.BAG_SIZE]
+	var last := ItemDefs.BAG_SIZE - Vector2i.ONE
+	if not store.fits(&"staff", last, 1) or store.fits(&"staff", last + Vector2i(1, 0), 0):
+		return "倉庫最後一格應放得下 4 格長的法杖、超出邊界的不行"
+	store.add(&"w", &"staff", Vector2i.ZERO, 0)
+	if store.occupied().size() != 1 or store.fits(&"loaded_dice", Vector2i.ZERO, 0) or not store.fits(&"staff", Vector2i(1, 0), 0):
+		return "倉庫的法杖應只佔一格：佔 %d 格" % store.occupied().size()
+	var free_spot := store.find_spot(&"staff")
+	if free_spot.cell != Vector2i(1, 0) or free_spot.rot != 0:
+		return "倉庫的第一個空位應為 (1, 0) 不轉，實際 %s" % [free_spot]
+	# 主袋與袋子：照形狀占格、會轉向
 	var i2 := _shaped(&"i2")
-	if inv.size != ItemDefs.BAG_SIZE:
-		return "背包大小 %s，預期 %s" % [inv.size, ItemDefs.BAG_SIZE]
+	var long_id := _shaped(&"i3")
 	# l3：(0,0) (0,1) (1,1)；轉 90° → (-y, x) 再平移：(1,0) (0,0) (0,1)
 	var r1 := Inventory.cells_of(_shaped(&"l3"), 1)
 	r1.sort()
 	var expect: Array[Vector2i] = [Vector2i(0, 0), Vector2i(0, 1), Vector2i(1, 0)]
 	if r1 != expect:
 		return "l3 轉 90° 應為 (0,0) (0,1) (1,0)，實際 %s" % [r1]
-	# i4 橫放在 (5, 0) 超出邊界，(4, 0) 剛好；直放（轉 90°）在 (0, 3) 超出、(0, 2) 剛好
-	if inv.fits(&"staff", Vector2i(5, 0), 0) or not inv.fits(&"staff", Vector2i(4, 0), 0) \
-			or inv.fits(&"staff", Vector2i(0, 3), 1) or not inv.fits(&"staff", Vector2i(0, 2), 1):
-		return "i4 的邊界判斷錯誤"
+	var long_box := Inventory.core()
+	if ItemDefs.role_of(long_id) != ItemDefs.ROLE_STAT:
+		long_box.mode = Inventory.BAG
+	var m := BagDefs.MAIN_SIZE
+	# 3 格長的橫放貼右邊剛好、再往右超出；直放（轉 90°）貼下面剛好、再往下超出
+	if long_box.fits(long_id, Vector2i(m.x - 2, 0), 0) or not long_box.fits(long_id, Vector2i(m.x - 3, 0), 0) \
+			or long_box.fits(long_id, Vector2i(0, m.y - 2), 1) or not long_box.fits(long_id, Vector2i(0, m.y - 3), 1):
+		return "主袋裡 3 格長的邊界判斷錯誤"
+	var inv := Inventory.core()
 	inv.add(&"a", i2, Vector2i(0, 0), 0)   # i2：(0,0) (1,0)
 	if inv.fits(&"loaded_dice", Vector2i(1, 0), 0) or not inv.fits(&"loaded_dice", Vector2i(2, 0), 0):
 		return "重疊判斷錯誤"
 	var spot := inv.find_spot(i2)
 	if spot.cell != Vector2i(2, 0) or spot.rot != 0:
 		return "第一個空位應為 (2, 0) 不轉，實際 %s" % [spot]
-	if not inv.move(&"a", Vector2i(7, 4), 1) or inv.find(&"a").cell != Vector2i(7, 4) or inv.move(&"a", Vector2i(7, 5), 1):
-		return "搬動：(7, 4) 直放應成功、(7, 5) 直放應失敗"
+	if not inv.move(&"a", Vector2i(m.x - 1, m.y - 2), 1) or inv.find(&"a").cell != Vector2i(m.x - 1, m.y - 2) or inv.move(&"a", Vector2i(m.x - 1, m.y - 1), 1):
+		return "搬動：右下角直放應成功、再往下直放應失敗"
 	# 只剩直的一行空位時會轉 90° 放進去
-	var inv2 := Inventory.new()
+	var inv2 := Inventory.core()
 	inv2.size = Vector2i(1, 3)
 	var s2 := inv2.find_spot(i2)
 	if s2.is_empty() or s2.rot % 2 != 1:
@@ -275,12 +292,11 @@ static func check_inventory() -> String:
 	return ""
 
 
-# 放不下時建議拿掉哪一件：4 × 2 的背包，左上磨刀石（2 格）、右下骰子（1 格），2 × 2 的骨製護盾哪裡都放不下；
-# 放不下時建議拿掉哪一件：4 × 2 的背包，左上 2 格道具、右下骰子（1 格），2 × 2 的道具哪裡都放不下；
+# 放不下時建議拿掉哪一件：4 × 2 的主袋，左上 2 格道具、右下骰子（1 格），2 × 2 的道具哪裡都放不下；
 # 拿掉任一件都放得下時挑占格少的骰子；本來就放得下、拿掉一件也不夠時沒有建議
 static func check_inventory_suggest() -> String:
 	var big := _shaped(&"o4")
-	var inv := Inventory.new()
+	var inv := Inventory.core()
 	inv.size = Vector2i(4, 2)
 	inv.add(&"a", _shaped(&"i2"), Vector2i(0, 0), 0)
 	inv.add(&"b", &"loaded_dice", Vector2i(3, 1), 0)
@@ -292,7 +308,12 @@ static func check_inventory_suggest() -> String:
 		return "應建議拿掉占格少的骰子，實際「%s」" % inv.suggest_removal(big)
 	if inv.suggest_removal(&"loaded_dice") != &"":
 		return "本來就放得下時不應有建議"
-	var tight := Inventory.new()
+	var full_store := Inventory.new()
+	for i in ItemDefs.BAG_SIZE.x:
+		full_store.add(StringName("s%d" % i), &"loaded_dice", Vector2i(i, 0), 0)
+	if full_store.suggest_removal(&"staff") == &"":
+		return "倉庫滿了時應建議拿掉一件（拿掉哪件都放得下法杖）"
+	var tight := Inventory.core()
 	tight.size = Vector2i(2, 2)
 	tight.add(&"a", &"loaded_dice", Vector2i(0, 0), 0)
 	tight.add(&"b", &"loaded_dice", Vector2i(1, 1), 0)
@@ -322,7 +343,7 @@ static func check_inventory_swap() -> String:
 		return "主手武器拖到背包的武器上應互換（那把換上、原本的放回 %s）：主手 %s、原本那把 %s" % [bag_cell, p.weapon_slots[Loadout.MAIN].get("uid"), p.inventory.find(main_uid)]
 	w.events.clear()
 	var main_now: StringName = p.weapon_slots[Loadout.MAIN].uid
-	apply.call([InputCmd.OP_MOVE, String(main_now), 6, 4, 0])
+	apply.call([InputCmd.OP_MOVE, String(main_now), ItemDefs.BAG_SIZE.x - 1, 0, 0])
 	var denied := _named(w.events, "inventory:denied")
 	if p.weapon_slots[Loadout.MAIN].get("uid", &"") != main_now or denied.is_empty() or denied[0].reason != "main_empty":
 		return "主手武器拖到背包空格應不動並發 inventory:denied（main_empty）：%s" % [denied]
@@ -356,32 +377,37 @@ static func check_inventory_swap() -> String:
 	apply.call([InputCmd.OP_MOVE, String(sock), weapon_cell.x, weapon_cell.y, 0])
 	if lo.find_item(sock).get("where", -9) != Loadout.CORE or p.inventory.find(main_uid).cell != weapon_cell or _named(w.events, "inventory:denied").is_empty():
 		return "主袋的道具拖到背包的武器上應不動（武器只在倉庫）並發 inventory:denied"
-	# 換不回去：背包只剩骰子那一格，格子裡 2 格長的道具換不進背包 → 都不動
+	# 倉庫不管形狀：滿了也換得回去（2 格長的主袋道具換進骰子那一格）
 	var w2 := _new_world(4)
 	var p2 := _player(w2)
 	var lo2 := p2.loadout
-	var long := lo2.add_item(p2, _shaped(&"i2"), {}, 0, Loadout.CORE)
-	var l_entry: Dictionary = lo2.find_item(long).entry
-	var l_cell: Vector2i = l_entry.cell
-	var l_rot: int = l_entry.rot
+	var long := lo2.add_item(p2, _shaped(&"i2"), {"cell": Vector2i(0, 0), "rot": 0}, 0, Loadout.CORE)
 	var x := lo2.add_item(p2, &"loaded_dice", {}, 0, Loadout.BAG)
 	var x_cell: Vector2i = lo2.find_item(x).entry.cell
 	var n := 0
-	for yy in p2.inventory.size.y:
-		for xx in p2.inventory.size.x:
-			if p2.inventory.fits(&"loaded_dice", Vector2i(xx, yy), 0):
-				p2.inventory.add(StringName("fill%d" % n), &"loaded_dice", Vector2i(xx, yy), 0)
-				n += 1
-	var before := [p2.inventory.entries.size(), lo2.container(Loadout.CORE).entries.size()]
-	if lo2.swap_partner(x, Loadout.CORE, l_cell, 0) != &"":
-		return "預覽：換不回去時不應顯示互換"
-	lo2.queue_ops([[InputCmd.OP_MOVE, String(x), l_cell.x, l_cell.y, 0, Loadout.CORE]])
+	for xx in p2.inventory.size.x:
+		if p2.inventory.fits(&"loaded_dice", Vector2i(xx, 0), 0):
+			p2.inventory.add(StringName("fill%d" % n), &"loaded_dice", Vector2i(xx, 0), 0)
+			n += 1
+	lo2.queue_ops([[InputCmd.OP_MOVE, String(x), 0, 0, 0, Loadout.CORE]])
 	lo2.apply_ops(p2)
 	var xe := lo2.find_item(x)
 	var le := lo2.find_item(long)
-	if xe.get("where", -9) != Loadout.BAG or xe.entry.cell != x_cell or le.get("where", -9) != Loadout.CORE or le.entry.cell != l_cell or le.entry.rot != l_rot \
-			or [p2.inventory.entries.size(), lo2.container(Loadout.CORE).entries.size()] != before or _named(w2.events, "inventory:denied").is_empty():
-		return "背包滿了換不回去時應兩件都不動、發 inventory:denied：骰子 %s、長的 %s" % [xe, le]
+	if xe.get("where", -9) != Loadout.CORE or le.get("where", -9) != Loadout.BAG or le.entry.cell != x_cell:
+		return "倉庫滿了也應換得回去（倉庫每格一件）：骰子 %s、長的 %s" % [xe, le]
+	# 換不過去：倉庫的長道具放到主袋最右邊的骰子上，蓋住 1 件但超出邊界 → 都不動
+	var w3 := _new_world(4)
+	var p3 := _player(w3)
+	var lo3 := p3.loadout
+	var edge := Vector2i(BagDefs.MAIN_SIZE.x - 1, 0)
+	var dice3 := lo3.add_item(p3, &"loaded_dice", {"cell": edge, "rot": 0}, 0, Loadout.CORE)
+	var long3 := lo3.add_item(p3, _shaped(&"i2"), {}, 0, Loadout.BAG)
+	if lo3.swap_partner(long3, Loadout.CORE, edge, 0) != &"":
+		return "預覽：換不過去時不應顯示互換"
+	lo3.queue_ops([[InputCmd.OP_MOVE, String(long3), edge.x, edge.y, 0, Loadout.CORE]])
+	lo3.apply_ops(p3)
+	if lo3.find_item(long3).get("where", -9) != Loadout.BAG or lo3.find_item(dice3).get("where", -9) != Loadout.CORE or _named(w3.events, "inventory:denied").is_empty():
+		return "超出主袋邊界換不過去時應兩件都不動、發 inventory:denied：%s / %s" % [lo3.find_item(long3), lo3.find_item(dice3)]
 	return ""
 
 static func check_soul_chests() -> String:
@@ -723,10 +749,10 @@ static func check_pickup_to_cell() -> String:
 		cmd.inv_ops = [[InputCmd.OP_PICKUP, ip.id, cell.x, cell.y, rot]]
 		_run(w, cmd, 1)
 	var stone := w.drop_item(&"whetstone", p.pos + Vector2(1.0, 0))
-	pick.call(stone, Vector2i(3, 2), 1)
+	pick.call(stone, Vector2i(3, 0), 1)
 	var e: Dictionary = p.inventory.entries[0] if p.inventory.entries.size() == 1 else {}
-	if e.is_empty() or e.cell != Vector2i(3, 2) or e.rot != 1 or not stone.is_removed:
-		return "OP_PICKUP 應把磨刀石直放在 (3, 2) 並從地上移除：背包 %s、地上還在 %s" % [p.inventory.entries, not stone.is_removed]
+	if e.is_empty() or e.cell != Vector2i(3, 0) or e.rot != 1 or not stone.is_removed:
+		return "OP_PICKUP 應把磨刀石放在倉庫 (3, 0) 並從地上移除：背包 %s、地上還在 %s" % [p.inventory.entries, not stone.is_removed]
 	if absf(p.stats.value(&"damage") - 1.0) > EPS:
 		return "背包裡的道具沒有效果：攻擊力 %.2f（應為 1.00）" % p.stats.value(&"damage")
 	# 搬到主袋 (1, 1) 才生效，搬回倉庫就失效
@@ -737,7 +763,7 @@ static func check_pickup_to_cell() -> String:
 	if p.loadout.find_item(e.uid).get("where", -9) != Loadout.CORE or absf(p.stats.value(&"damage") - one) > EPS:
 		return "磨刀石搬到主袋 (1, 1) 應生效：%s、攻擊力 %.2f" % [p.loadout.find_item(e.uid), p.stats.value(&"damage")]
 	var unsock := _cmd(Vector2.ZERO)
-	unsock.inv_ops = [[InputCmd.OP_MOVE, String(e.uid), 3, 2, 1]]
+	unsock.inv_ops = [[InputCmd.OP_MOVE, String(e.uid), 3, 0, 1]]
 	_run(w, unsock, 1)
 	if p.inventory.find(e.uid).is_empty() or absf(p.stats.value(&"damage") - 1.0) > EPS:
 		return "磨刀石搬回背包應失效：攻擊力 %.2f" % p.stats.value(&"damage")
@@ -749,15 +775,15 @@ static func check_pickup_to_cell() -> String:
 	if p.inventory.entries.size() != 1 or far.is_removed:
 		return "按不到 F 的距離不應撿得到"
 	var near := w.drop_item(&"whetstone", p.pos + Vector2(1.0, 0))
-	pick.call(near, Vector2i(3, 2), 0)   # (3, 2) 被磨刀石占著
+	pick.call(near, Vector2i(3, 0), 0)   # (3, 0) 被磨刀石占著
 	if p.inventory.entries.size() != 1 or near.is_removed:
 		return "放不下的格子不應撿起"
 	p.weapon_slots[1] = {}
 	var inst := {"uid": w.new_weapon_uid(), "base": &"staff", "rarity": &"white", "affixes": [] as Array[StringName]}
 	var staff := w.drop_weapon(inst, p.pos + Vector2(1.0, 0))
-	pick.call(staff, Vector2i(0, 4), 0)
-	if not p.weapon_slots[1].is_empty() or p.inventory.find(inst.uid).get("cell", Vector2i(-1, -1)) != Vector2i(0, 4):
-		return "武器從腳邊拖進背包應放在 (0, 4)、不放空的裝備欄：裝備欄 %s、背包 %s" % [p.weapon_slots[1], p.inventory.find(inst.uid)]
+	pick.call(staff, Vector2i(5, 0), 0)
+	if not p.weapon_slots[1].is_empty() or p.inventory.find(inst.uid).get("cell", Vector2i(-1, -1)) != Vector2i(5, 0):
+		return "武器從腳邊拖進倉庫應放在 (5, 0)、不放空的裝備欄：裝備欄 %s、倉庫 %s" % [p.weapon_slots[1], p.inventory.find(inst.uid)]
 	# 武器格子與背包都滿了按 F：inventory:full 帶著地上那個的 id
 	var w2 := _new_world(12345, false, &"test_arena")
 	var q := _player(w2)
@@ -1592,7 +1618,7 @@ static func check_weapon_pickup() -> String:
 	if p.inventory.find(&"a").is_empty() or p.weapon_id != &"longsword+woodShield":
 		return "撿起的法杖應放背包、不換手上：%s" % p.weapon_id
 	# 副手空著時撿到盾：直接拿上副手
-	op.call([[InputCmd.OP_MOVE, String(shield), 6, 0, 0]])
+	op.call([[InputCmd.OP_MOVE, String(shield), 5, 0, 0]])
 	if not p.weapon_slots[Loadout.OFF].is_empty() or p.weapon_id != &"longsword" or p.weapon.special.behavior != &"chargedThrust":
 		return "副手的盾搬進背包後應只拿長劍、右鍵蓄力突刺：%s" % p.weapon_id
 	p.add_weapon(mk.call("sh", &"woodShield"))
@@ -1819,6 +1845,108 @@ static func check_bag_layout() -> String:
 
 # 觸發袋的發動：左邊只被普攻觸發、右邊只被右鍵；效果各自耗魔（強度 × EFFECT_MANA_PER_POWER），不夠的跳過、由左到右先放；
 # 按鍵袋按數字鍵一起放；觸發袋裡的技能自動放；袋子放出來的傷害不再觸發袋子；計時袋照間隔；強化袋的倍率
+# 觸發袋的技能放在哪：有目標（命中、擊殺、受傷）在目標身上，沒有目標的照舊（計時袋從自己身上、隕石落在準星）
+static func check_bag_skill_target() -> String:
+	var fx_at := func(w: World, name: String, at: Vector2) -> bool:
+		return _named(w.events, name).any(func(ev: Dictionary) -> bool: return (ev.pos as Vector2).distance_to(at) < 0.01)
+	var setup := func(item: StringName, kind: StringName, side: StringName) -> Array:
+		var w := _new_world()
+		var p := _player(w)
+		p.mana = p.max_mana()
+		_put(p, _bag(p, kind, side), item)
+		return [w, p]
+	# 範圍：冰霜新星以目標為中心，目標旁邊的怪中、自己旁邊的怪不中
+	var nova: Array = setup.call(&"frost_nova", &"hit", &"right")
+	var w1: World = nova[0]
+	var p1: Player = nova[1]
+	var far := _item_dummy(w1, p1.pos + Vector2(0, 8), 100000.0)
+	var by_target := _item_dummy(w1, far.pos + Vector2(1.5, 0), 100000.0)
+	var by_self := _item_dummy(w1, p1.pos + Vector2(-1.5, 0), 100000.0)
+	var hp_t := by_target.hp
+	var hp_s := by_self.hp
+	w1.events.clear()
+	Combat.apply_damage(w1, p1, far, {"damage": 1.0, "attack": &"secondary"})
+	if not fx_at.call(w1, "fx:explosion", far.pos) or by_target.hp >= hp_t or by_self.hp < hp_s:
+		return "右鍵打中時冰霜新星應在目標身上爆：爆炸在目標 %s、目標旁扣 %.1f、自己旁扣 %.1f" % [fx_at.call(w1, "fx:explosion", far.pos), hp_t - by_target.hp, hp_s - by_self.hp]
+	# 落點：隕石落在目標身上，不看準星
+	var met: Array = setup.call(&"meteor", &"hit", &"right")
+	var w2: World = met[0]
+	var p2: Player = met[1]
+	p2.aim_point = p2.pos + Vector2(-6, 0)
+	var t2 := _item_dummy(w2, p2.pos + Vector2(0, 8), 100000.0)
+	w2.events.clear()
+	Combat.apply_damage(w2, p2, t2, {"damage": 1.0, "attack": &"secondary"})
+	if not fx_at.call(w2, "fx:telegraph", t2.pos):
+		return "命中袋的隕石應落在目標身上（準星在別處）：%s" % [_named(w2.events, "fx:telegraph")]
+	# 連鎖：第一跳就是目標，準星附近沒有怪也放得出來
+	var ch: Array = setup.call(&"chain_bolt", &"hit", &"right")
+	var w3: World = ch[0]
+	var p3: Player = ch[1]
+	p3.aim_point = p3.pos + Vector2(-20, 0)
+	var t3 := _item_dummy(w3, p3.pos + Vector2(0, 9), 100000.0)
+	var hp3 := t3.hp
+	Combat.apply_damage(w3, p3, t3, {"damage": 1.0, "attack": &"secondary"})
+	if hp3 - t3.hp <= 1.0 + EPS:
+		return "命中袋的閃電鏈應打到目標：只扣 %.1f" % (hp3 - t3.hp)
+	# 投射物：從目標身上沿原方向往外射，生在目標身體外面
+	var sh: Array = setup.call(&"sword_wave", &"hit", &"right")
+	var w4: World = sh[0]
+	var p4: Player = sh[1]
+	var t4 := _item_dummy(w4, p4.pos + Vector2(0, 8), 100000.0)
+	Combat.apply_damage(w4, p4, t4, {"damage": 1.0, "attack": &"secondary"})
+	var shots: Array = w4.projectiles.filter(func(x: Projectile) -> bool: return x.attack == &"skill")
+	if shots.size() != 1 or shots[0].pos.distance_to(t4.pos) <= t4.radius or shots[0].pos.y <= t4.pos.y or shots[0].direction.distance_to(Vector2(0, 1)) > 0.01:
+		return "命中袋的投射物應從目標身上往外射（離目標 %s、方向 %s）" % [shots[0].pos.distance_to(t4.pos) if not shots.is_empty() else -1.0, shots[0].direction if not shots.is_empty() else Vector2.ZERO]
+	# 位移：自己朝目標移動，不會瞬移到目標身上
+	var da: Array = setup.call(&"charge_slash", &"hit", &"right")
+	var w5: World = da[0]
+	var p5: Player = da[1]
+	p5.aim_point = p5.pos + Vector2(-6, 0)
+	var t5 := _item_dummy(w5, p5.pos + Vector2(0, 12), 100000.0)
+	var y0 := p5.pos.y
+	var x0 := p5.pos.x
+	Combat.apply_damage(w5, p5, t5, {"damage": 1.0, "attack": &"secondary"})
+	_run(w5, _cmd(Vector2.ZERO), 20)
+	if p5.pos.y - y0 < 1.0 or absf(p5.pos.x - x0) > 0.5:
+		return "命中袋的衝鋒應朝目標移動（準星在別處）：位移 %s" % [p5.pos - Vector2(x0, y0)]
+	# 擊殺袋：在怪死的位置放；受傷袋：在打你的怪身上放
+	var ki: Array = setup.call(&"frost_nova", &"kill", &"right")
+	var w6: World = ki[0]
+	var p6: Player = ki[1]
+	var t6 := _item_dummy(w6, p6.pos + Vector2(0, 8), 1.0)
+	w6.events.clear()
+	Combat.apply_damage(w6, p6, t6, {"damage": 100.0, "attack": &"secondary"})
+	if not t6.is_dead or not fx_at.call(w6, "fx:explosion", t6.pos):
+		return "擊殺袋的冰霜新星應在怪死的位置爆"
+	var hu: Array = setup.call(&"frost_nova", &"hurt", &"bottom")
+	var w7: World = hu[0]
+	var p7: Player = hu[1]
+	var t7 := _item_dummy(w7, p7.pos + Vector2(0, 6), 100000.0)
+	w7.events.clear()
+	ItemEffects.on_hurt(w7, p7, t7, 1.0, 1.0, false)
+	if not fx_at.call(w7, "fx:explosion", t7.pos):
+		return "受傷袋的冰霜新星應在打你的怪身上爆"
+	# 祝福、召喚留在自己身上；計時袋沒有目標，新星在自己身上
+	var bl: Array = setup.call(&"blessing", &"hit", &"right")
+	var w8: World = bl[0]
+	var p8: Player = bl[1]
+	var t8 := _item_dummy(w8, p8.pos + Vector2(0, 8), 100000.0)
+	w8.events.clear()
+	Combat.apply_damage(w8, p8, t8, {"damage": 1.0, "attack": &"secondary"})
+	if not fx_at.call(w8, "fx:heal", p8.pos):
+		return "命中袋的祝福應留在自己身上：%s" % [_named(w8.events, "fx:heal")]
+	var ti: Array = setup.call(&"frost_nova", &"timer", &"bottom")
+	var w9: World = ti[0]
+	var p9: Player = ti[1]
+	var at_self := false
+	for i in roundi(BagDefs.BAGS.timer.period / DT) + 2:
+		w9.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO)}, DT)
+		at_self = at_self or fx_at.call(w9, "fx:explosion", p9.pos)
+	if not at_self:
+		return "計時袋沒有目標，冰霜新星應在自己身上爆"
+	return ""
+
+
 static func check_bag_triggers() -> String:
 	var w := _new_world()
 	var p := _player(w)

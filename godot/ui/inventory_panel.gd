@@ -1,8 +1,9 @@
 # 背包介面（Tab 開關：畫面右半邊、中間可以用滑鼠滾輪捲動；規則在 docs/設計方向.md「觸發袋」）
-# 由上到下：標題與操作說明（固定）→ 主手、副手的名稱框，右邊並排羈絆欄 → 盤（主袋在中間，四邊接觸發袋：上 = 數字鍵、左 = 普攻、
-# 右 = 右鍵、下 = 不分按鍵）→ 8 × 6 倉庫（只放東西）→ 滑鼠停著的說明（固定在底部）。腳邊（按得到 F 的地上道具）是另一個浮在左邊的框（FeetPanel）
+# 左邊是盤（主袋在中間，四邊接觸發袋，袋子外側的標題條寫什麼時候發動）；右欄由上到下是主手、副手的名稱框、羈絆欄、倉庫（每格一件，不管形狀）
+# 上面的標題與操作說明、下面滑鼠停著的說明都固定不捲。腳邊（按得到 F 的地上道具）是另一個浮在左邊的框（FeetPanel）
+# 空的邊平常不畫：拿起袋子才亮出能接的位置並預覽標題；拿起道具時放不下的地方變暗
 # 左鍵點一下拿起、再點一下放下（按住拖曳也可以）；拿著時按 R 旋轉、右鍵或 Esc 放回原處，放到腳邊或面板外面丟在地上；
-# 數值道具放主袋、效果 / 技能 / 修飾放袋子才生效，放到倉庫 = 拿下來；抓住袋子的空格拖到主袋的另一邊或另一個位置 = 換邊 / 滑動，拖到倉庫 = 拿下來；
+# 數值道具放主袋、效果 / 技能 / 修飾放袋子才生效，放到倉庫 = 拿下來；抓住袋子的標題條或空格拖到主袋的另一邊或另一個位置 = 換邊 / 滑動，拖到倉庫 = 拿下來；
 # 武器放到主手 / 副手的名稱框就換上，放到同種同稀有度的武器上合成；放到只被 1 件東西佔住的位置 = 互換；沒做成時 HUD 跳原因（inventory:denied）
 # 接在側邊的袋子是轉過的：袋子的格子 x 沿著邊、y 往外（BagDefs），畫在盤上的位置照 Loadout.board_cell
 # 只送操作（op_requested → InputCollector → InputCmd.inv_ops），實際擺放由權威端決定，畫面照本機玩家的狀態畫
@@ -11,10 +12,12 @@ extends Control
 
 signal op_requested(op: Array)
 
-const CELL := 64          # 倉庫一格
-const BCELL := 44         # 盤上一格（主袋與袋子）
+const CELL := 60          # 倉庫一格
+const BCELL := 60         # 盤上一格（主袋與袋子）
+const BAG_HEAD := 26      # 袋子外側的標題條寬度（盤的四邊各留這麼多）
+const SIDE_GAP := 24      # 盤和右欄之間
 const DEPTH := 2          # 盤的四邊留給袋子的格數（BagDefs.TIERS 的 depth 都是 2）
-const HEAD_W := 250       # 主手 / 副手的名稱框
+const HEAD_W := 174       # 主手 / 副手的名稱框
 const HAND_GAP := 12      # 兩隻手之間
 const PAD := 18
 const TITLE_H := 64       # 標題 + 一行操作說明（固定在上面）
@@ -25,7 +28,7 @@ const INFO_BODY_DY := 28
 const LABEL_H := 24
 const HEAD_H := 62        # 主手 / 副手的名稱框（拖武器到這裡換上）
 const SLOT_NAMES: Array[String] = ["主手", "副手"]
-const BOND_W := 246       # 右邊的羈絆欄；只列有的（格數 > 0）
+const BOND_W := 360       # 右欄的寬度（羈絆欄、倉庫 6 格）；只列有的（格數 > 0）
 const BOND_H := 56        # 羈絆一格：名稱與格數、各階門檻
 const BOND_GAP := 8
 const FEET_W := 280       # 腳邊框（FeetPanel）的寬度
@@ -36,11 +39,14 @@ const FEET_MAX_ROWS := 6  # 腳邊框最多列幾件（再多的走近一點才�
 const FEET_GAP := 16      # 腳邊框和背包之間的空隙（貼齊背包下緣）
 const SCROLL_STEP := 72.0
 const MIN_VIEW_H := 420.0   # 捲動區至少這麼高（最小尺寸用）
-const HINT := "左鍵拿起 / 放下 · 右鍵直接裝上 / 拿下來 · 拿著按 R 旋轉 · 抓袋子的空格換邊 · 放到腳邊丟掉 · 滾輪捲動"
+const HINT := "左鍵拿起 / 放下 · 右鍵直接裝上 / 拿下來 · 拿著按 R 旋轉 · 抓袋子的標題換位置 · 放到腳邊丟掉"
 const CLICK_SLOP := 6.0     # 按下到放開移動不超過這麼多像素算「點一下」（拿在手上），超過算拖曳
 const NOTICE_MS := 2000     # 右鍵裝不上時的提示顯示多久
 const DIM_ALPHA := 0.25                # 滑鼠停在羈絆上時，不屬於那個羈絆的東西變淡
-const SIDE_COLORS := {&"top": Color("6a3f8f"), &"left": Color("3f6a8f"), &"right": Color("8f5a3f"), &"bottom": Color("4f7a4f")}
+const SIDE_COLORS := {&"top": Color("6a3f8f"), &"left": Color("3f6a8f"), &"right": Color("8f5a3f"), &"bottom": Color("4f7a4f")}   # 袋子的標題條
+const SIDE_FILLS := {&"top": Color("2a2140"), &"left": Color("1d2d42"), &"right": Color("3a2a24"), &"bottom": Color("22332a")}    # 袋子的底色（不透明，背後的東西才不會透出來）
+const SHADE := Color(0.05, 0.07, 0.11, 0.68)   # 放不下的地方、滑鼠沒停著的袋子蓋上這層
+const OK_TINT := Color(0.49, 1.0, 0.6)        # 拿著袋子時亮起來的位置
 
 var world: World
 var local_peer := World.HOST_PEER_ID
@@ -68,7 +74,7 @@ var _scroll := 0.0                  # 中間捲動區往下捲了多少
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	clip_contents = true
-	custom_minimum_size = Vector2(PAD * 3 + HEAD_W * 2 + HAND_GAP + BOND_W, PAD * 2 + TITLE_H + MIN_VIEW_H + INFO_H)
+	custom_minimum_size = Vector2(_side_x() + BOND_W + PAD, PAD * 2 + TITLE_H + MIN_VIEW_H + INFO_H)
 	feet_panel.bag = self
 	visibility_changed.connect(func() -> void:
 		_cancel()
@@ -100,8 +106,13 @@ func _in_view(local: Vector2) -> bool:
 	return _view_rect().has_point(local)
 
 
+# 右欄（主手 / 副手、羈絆、倉庫）的左邊
+func _side_x() -> float:
+	return PAD + _board_size().x + BAG_HEAD * 2 + SIDE_GAP
+
+
 func _hand_x(i: int) -> float:
-	return PAD + i * (HEAD_W + HAND_GAP)
+	return _side_x() + i * (HEAD_W + HAND_GAP)
 
 
 func _slot_rect(i: int) -> Rect2:
@@ -109,12 +120,12 @@ func _slot_rect(i: int) -> Rect2:
 
 
 func _board_top() -> float:
-	return _content_top() + LABEL_H + HEAD_H + 12 + LABEL_H
+	return _content_top() + 4
 
 
 # 主袋左上角（盤座標 (0, 0)）
 func _core_origin() -> Vector2:
-	return Vector2(PAD + DEPTH * BCELL, _board_top() + DEPTH * BCELL)
+	return Vector2(PAD + BAG_HEAD + DEPTH * BCELL, _board_top() + BAG_HEAD + DEPTH * BCELL)
 
 
 func _board_size() -> Vector2:
@@ -122,7 +133,7 @@ func _board_size() -> Vector2:
 
 
 func _board_rect() -> Rect2:
-	return Rect2(Vector2(PAD, _board_top()), _board_size())
+	return Rect2(_core_origin() - Vector2(DEPTH, DEPTH) * BCELL, _board_size())
 
 
 # 盤上一格的畫面範圍
@@ -130,9 +141,9 @@ func _bcell_rect(bc: Vector2i) -> Rect2:
 	return Rect2(_core_origin() + Vector2(bc) * BCELL, Vector2(BCELL, BCELL))
 
 
-# 右邊的羈絆欄：和主手 / 副手的名稱框同高開始，由上往下
+# 羈絆欄：右欄裡主手 / 副手的名稱框下面，由上往下
 func _bonds_origin() -> Vector2:
-	return Vector2(PAD * 2 + HEAD_W * 2 + HAND_GAP, _content_top() + LABEL_H)
+	return Vector2(_side_x(), _content_top() + LABEL_H + HEAD_H + 12 + LABEL_H)
 
 
 func _bond_rect(i: int) -> Rect2:
@@ -160,19 +171,17 @@ func _bond_at(local: Vector2) -> StringName:
 	return &""
 
 
-# 名稱框 + 盤與羈絆欄那一塊的高度（取兩邊較高的）
-func _top_height(me: Player) -> float:
-	var hands := LABEL_H + HEAD_H + 12 + LABEL_H + _board_size().y
-	var bonds := LABEL_H + maxi(1, _shown_bonds(me).size()) * (BOND_H + BOND_GAP)
-	return maxf(hands, bonds)
+# 盤（含標題條）的高度；右欄的倉庫貼齊盤的下緣
+func _top_height() -> float:
+	return _board_top() - _content_top() + _board_size().y + BAG_HEAD * 2
 
 
 func _grid_origin() -> Vector2:
-	return Vector2(PAD, _content_top() + _top_height(_player()) + 22 + LABEL_H)
+	return Vector2(_side_x(), _content_top() + _top_height() - ItemDefs.BAG_SIZE.y * CELL)
 
 
-func _content_height(me: Player) -> float:
-	return _grid_origin().y - _content_top() + ItemDefs.BAG_SIZE.y * CELL + PAD
+func _content_height(_me: Player) -> float:
+	return _top_height() + PAD
 
 
 func _slot_at(local: Vector2) -> int:
@@ -427,11 +436,42 @@ func _cancel() -> void:
 	_held = false
 
 
-# 滑鼠下面是哪個東西（主手 / 副手的武器、主袋與袋子裡的道具、袋子本身（空格）、倉庫的條目）
+# 袋子在畫面上的範圍（不含標題條）
+func _bag_area(b: Dictionary) -> Rect2:
+	return _bcell_rect(Loadout.board_cell(b, Vector2i.ZERO)).merge(_bcell_rect(Loadout.board_cell(b, Vector2i(b.length - 1, b.depth - 1))))
+
+
+# 袋子的標題條：貼在袋子外側
+func _bag_head_rect(b: Dictionary) -> Rect2:
+	var a := _bag_area(b)
+	match b.side:
+		&"top":
+			return Rect2(a.position - Vector2(0, BAG_HEAD), Vector2(a.size.x, BAG_HEAD))
+		&"bottom":
+			return Rect2(Vector2(a.position.x, a.end.y), Vector2(a.size.x, BAG_HEAD))
+		&"left":
+			return Rect2(a.position - Vector2(BAG_HEAD, 0), Vector2(BAG_HEAD, a.size.y))
+	return Rect2(Vector2(a.end.x, a.position.y), Vector2(BAG_HEAD, a.size.y))
+
+
+# 滑鼠在第幾個接著的袋子的標題條上；不在回傳 -1
+func _head_at(me: Player, local: Vector2) -> int:
+	if not _in_view(local):
+		return -1
+	for i in me.loadout.bags.size():
+		if _bag_head_rect(me.loadout.bags[i]).has_point(local):
+			return i
+	return -1
+
+
+# 滑鼠下面是哪個東西（主手 / 副手的武器、主袋與袋子裡的道具、袋子本身（空格或標題條）、倉庫的條目）
 func _uid_at(me: Player, local: Vector2) -> StringName:
 	var slot := _slot_at(local)
 	if slot >= 0:
 		return me.weapon_slots[slot].get("uid", &"")
+	var head := _head_at(me, local)
+	if head >= 0:
+		return me.loadout.bags[head].uid
 	var t := _target_at(me, local)
 	if t.is_empty():
 		return &""
@@ -453,6 +493,13 @@ func _start_drag(me: Player, local: Vector2) -> void:
 		if not inst.is_empty():
 			_drag = {"uid": inst.uid, "id": inst.base, "rot": 0, "anchor": 0, "weapon": inst}
 		return
+	var head := _head_at(me, local)
+	if head >= 0:   # 標題條：拿起整個袋子（裝滿的袋子沒有空格可以抓）
+		var held: Dictionary = me.loadout.bags[head]
+		var area := _bag_area(held)
+		var along := (local.x - area.position.x) if held.side in [&"top", &"bottom"] else (local.y - area.position.y)
+		_drag = {"uid": held.uid, "id": BagDefs.BAGS[held.kind].item, "rot": 0, "anchor": 0, "weapon": {}, "bag": held, "bag_anchor": clampi(int(along / BCELL), 0, held.length - 1)}
+		return
 	var t := _target_at(me, local)
 	if t.is_empty():
 		return
@@ -471,14 +518,19 @@ func _start_drag(me: Player, local: Vector2) -> void:
 		_drag["bag_anchor"] = 0
 
 
-# 拖著的東西左上角要放在哪一格（滑鼠所在格對齊抓住的那一格）
-func _drag_cell(at: Vector2i) -> Vector2i:
+# 拖著的東西左上角要放在哪一格（滑鼠所在格對齊抓住的那一格；倉庫不管形狀，就是滑鼠所在格）
+func _drag_cell(at: Vector2i, where: int) -> Vector2i:
+	if where == Loadout.BAG:
+		return at
 	var cells := Inventory.cells_of(_drag.id, _drag.rot)
 	return at - cells[mini(_drag.anchor, cells.size() - 1)]
 
 
 # 拖著的袋子放在滑鼠這裡會接到哪：{ side, offset }；不在主袋的邊上回傳 {}
 func _bag_drop(local: Vector2) -> Dictionary:
+	var board := _board_rect()
+	if board.grow(BAG_HEAD).has_point(local):   # 標題條也算那一邊
+		local = local.clamp(board.position, board.end - Vector2.ONE)
 	var bc: Variant = _bcell_at(local)
 	if bc == null:
 		return {}
@@ -508,7 +560,7 @@ func _finish_drag(me: Player, local: Vector2) -> void:
 	var t := _target_at(me, local)
 	if _drag.has("pickup_id"):   # 從腳邊拖進來 = 撿起放在那一格；放在別處就留在地上
 		if not t.is_empty():
-			var at := _drag_cell(t.cell)
+			var at := _drag_cell(t.cell, t.where)
 			op_requested.emit([InputCmd.OP_PICKUP, _drag.pickup_id, at.x, at.y, _drag.rot, t.where])
 		_cancel()
 		return
@@ -518,7 +570,7 @@ func _finish_drag(me: Player, local: Vector2) -> void:
 		if not spot.is_empty():
 			op_requested.emit([InputCmd.OP_BAG, uid, String(spot.side), spot.offset])
 		elif _in_grid(local):
-			var cell := _drag_cell(_cell_at(local))
+			var cell := _cell_at(local)
 			if _drag.bag.side != &"":
 				op_requested.emit([InputCmd.OP_BAG, uid, "", 0, cell.x, cell.y, _drag.rot])
 			else:
@@ -546,7 +598,7 @@ func _finish_drag(me: Player, local: Vector2) -> void:
 		if not _drag.weapon.is_empty():
 			op_requested.emit([InputCmd.OP_EQUIP, uid, slot])
 	elif not t.is_empty():
-		var at := _drag_cell(t.cell)
+		var at := _drag_cell(t.cell, t.where)
 		op_requested.emit([InputCmd.OP_MOVE, uid, at.x, at.y, _drag.rot, t.where])
 	elif _feet_rect().has_point(local) or not Rect2(Vector2.ZERO, size).has_point(local):
 		op_requested.emit([InputCmd.OP_DROP, uid])
@@ -574,6 +626,10 @@ func _quick_equip(me: Player, local: Vector2) -> void:
 			_say("主手不能空著：在倉庫的武器上按右鍵換上")
 		elif not inst.is_empty():
 			_to_storage(me, inst.uid, inst.base, WeaponDropDefs.display_name(inst))
+		return
+	var head := _head_at(me, local)
+	if head >= 0:
+		op_requested.emit([InputCmd.OP_BAG, String(me.loadout.bags[head].uid), "", 0])
 		return
 	var t := _target_at(me, local)
 	if t.is_empty():
@@ -644,10 +700,18 @@ func _draw() -> void:
 	elif Time.get_ticks_msec() < _notice_until:
 		draw_string(font, Vector2(PAD, PAD + 52), _notice, HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 17, UiKit.ALERT)
 	else:
-		draw_string(font, Vector2(PAD, PAD + 52), HINT, HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 15, Color(1, 1, 1, 0.6))
+		draw_string(font, Vector2(PAD, PAD + 52), _hint_text(), HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 15, Color(1, 1, 1, 0.6))
 	if me != null:
 		_draw_scrollbar(me)
 		_draw_info(font, me)
+
+
+func _hint_text() -> String:
+	if _drag.is_empty():
+		return HINT
+	if _drag.has("bag"):
+		return "放到亮起的位置就接上 · 放回倉庫 · 放到腳邊丟掉（袋子不能丟）"
+	return "放到沒變暗的地方 · 拿著按 R 旋轉（倉庫不管形狀）· 放到腳邊丟掉"
 
 
 func _draw_scrollbar(me: Player) -> void:
@@ -686,48 +750,149 @@ func _draw_bonds(font: Font, me: Player) -> void:
 
 # 盤：四邊的空地（寫是哪個按鍵）、接著的袋子（邊的顏色、名稱、按鍵袋寫數字）、主袋，再畫裡面的東西
 func _draw_board(font: Font, me: Player) -> void:
-	var top := _board_top()
-	draw_string(font, Vector2(PAD, top - 6), "主袋放數值、四邊的袋子放效果與技能（上 = 數字鍵、左 = 普攻、右 = 右鍵、下 = 不分）", HORIZONTAL_ALIGNMENT_LEFT, _board_size().x + BOND_W, 15, Color(1, 1, 1, 0.6))
 	var m := BagDefs.MAIN_SIZE
-	for side: StringName in BagDefs.SIDE_ORDER:
-		var along := BagDefs.edge_length(side)
-		var probe := {"side": side, "offset": 0, "length": along, "depth": DEPTH}
-		var r0 := _bcell_rect(Loadout.board_cell(probe, Vector2i.ZERO))
-		var r1 := _bcell_rect(Loadout.board_cell(probe, Vector2i(along - 1, DEPTH - 1)))
-		var area := r0.merge(r1)
-		draw_rect(area, Color(SIDE_COLORS[side], 0.08))
-		draw_string(font, area.get_center() + Vector2(-40, 6), BagDefs.SIDES[side].name, HORIZONTAL_ALIGNMENT_CENTER, 80, 15, Color(1, 1, 1, 0.25))
+	if _drag.has("bag"):
+		_draw_bag_spots(me)
 	var core := Rect2(_core_origin(), Vector2(m) * BCELL)
-	draw_rect(core, Color(1, 1, 1, 0.06))
+	draw_rect(core, Color(0.11, 0.13, 0.19))
 	for y in m.y:
 		for x in m.x:
 			draw_rect(_bcell_rect(Vector2i(x, y)).grow(-1), Color(1, 1, 1, 0.05))
 	draw_rect(core, UiKit.GOLD, false, 2.0)
-	var keys := me.loadout.key_bags()
-	for b in me.loadout.bags:
-		var dragged: bool = not _drag.is_empty() and _drag.uid == b.uid
-		var color: Color = SIDE_COLORS[b.side]
-		var rects: Array[Rect2] = []
-		for y in b.depth:
-			for x in b.length:
-				var r := _bcell_rect(Loadout.board_cell(b, Vector2i(x, y)))
-				rects.append(r)
-				draw_rect(r.grow(-1), Color(color, 0.12 if dragged else 0.3))
-		var area := rects[0]
-		for r in rects:
-			area = area.merge(r)
-		draw_rect(area, Color(color.lightened(0.3), 0.4 if dragged else 0.9), false, 2.0)
-		var label := BagDefs.bag_name(b)
-		if b.kind == &"key":
-			label = "%d %s" % [keys.find(b) + 1, label]
-		if b.mul != 1.0:
-			label += " ×%s" % str(b.mul)
-		draw_string(font, area.position + Vector2(3, 13), label, HORIZONTAL_ALIGNMENT_LEFT, area.size.x - 4, 12, Color(1, 1, 1, 0.75))
 	for e: Dictionary in me.loadout.core.entries:
 		_draw_entry(font, me, Loadout.CORE, e)
-	for i in me.loadout.bags.size():
-		for e: Dictionary in me.loadout.bags[i].entries:
-			_draw_entry(font, me, i, e)
+	var keys := me.loadout.key_bags()
+	var focus := _focus_bag(me)
+	for b in me.loadout.bags:
+		_draw_bag(font, me, b, keys, b == focus)
+	# 拿著道具時放不下的地方變暗；滑鼠停在袋子上時其他的變暗
+	if _drag.has("bag"):
+		draw_rect(core, SHADE)
+		for b in me.loadout.bags:
+			draw_rect(_bag_area(b).merge(_bag_head_rect(b)), SHADE)
+	elif not _drag.is_empty():
+		var bag_ok := ItemDefs.role_of(_drag.id) in [ItemDefs.ROLE_EFFECT, ItemDefs.ROLE_SKILL, ItemDefs.ROLE_MOD]
+		if not me.loadout.core.accepts(_drag.id):
+			draw_rect(core, SHADE)
+			if bag_ok:
+				draw_string(font, core.position + Vector2(0, core.size.y / 2.0 + 8), "主袋只放數值道具", HORIZONTAL_ALIGNMENT_CENTER, core.size.x, 22, Color(1, 1, 1, 0.8))
+		if not bag_ok:
+			for b in me.loadout.bags:
+				draw_rect(_bag_area(b).merge(_bag_head_rect(b)), SHADE)
+	elif not focus.is_empty():
+		draw_rect(core, SHADE)
+		for b in me.loadout.bags:
+			if b != focus:
+				draw_rect(_bag_area(b).merge(_bag_head_rect(b)), SHADE)
+
+
+# 滑鼠停著的那個接著的袋子（停在空格或標題條上）；沒有回傳 {}
+func _focus_bag(me: Player) -> Dictionary:
+	if not _drag.is_empty() or _hover_uid == &"":
+		return {}
+	for b in me.loadout.bags:
+		if b.uid == _hover_uid:
+			return b
+	return {}
+
+
+# 一個接著的袋子：不透明的底、格線、裡面的東西、外側的標題條
+func _draw_bag(font: Font, me: Player, b: Dictionary, keys: Array, focused: bool) -> void:
+	var dragged: bool = not _drag.is_empty() and _drag.uid == b.uid
+	var area := _bag_area(b)
+	var head := _bag_head_rect(b)
+	draw_rect(area, SIDE_FILLS[b.side])
+	for y in b.depth:
+		for x in b.length:
+			draw_rect(_bcell_rect(Loadout.board_cell(b, Vector2i(x, y))).grow(-1), Color(1, 1, 1, 0.04))
+	var where: int = me.loadout.bags.find(b)
+	for e: Dictionary in b.entries:
+		_draw_entry(font, me, where, e)
+	draw_rect(head, SIDE_COLORS[b.side])
+	_draw_bag_head(font, b, head, keys.find(b) + 1, _bag_mana(me, b))
+	var outline: Color = UiKit.ALERT if BagDefs.TIERS[b.tier].has("curse_desc") else SIDE_COLORS[b.side].lightened(0.3)
+	draw_rect(area.merge(head), UiKit.GOLD if focused else outline, false, 3.0 if focused else 1.5)
+	if dragged:
+		draw_rect(area.merge(head), SHADE)
+
+
+# 標題條的字：一句話講什麼時候發動；左右兩邊的直著寫，下面照魔力與倍率
+func _draw_bag_head(font: Font, b: Dictionary, head: Rect2, key_number: int, mana: int) -> void:
+	var tail := ""
+	if b.mul != 1.0:
+		tail = "×%s" % str(b.mul)
+	var mana_text := "魔 %d" % mana if mana > 0 else ""
+	if b.side in [&"top", &"bottom"]:
+		var x := head.position.x + 8
+		var y := head.position.y + 19
+		if b.kind == &"key":
+			draw_string(font, Vector2(x, y), "按", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color.WHITE)
+			var cap := Rect2(x + 19, head.position.y + 4, 19, 18)
+			draw_rect(cap, Color(0.07, 0.05, 0.11))
+			draw_rect(cap, Color(1, 1, 1, 0.7), false, 1.0)
+			draw_string(font, Vector2(cap.position.x, y), str(key_number), HORIZONTAL_ALIGNMENT_CENTER, cap.size.x, 14, Color.WHITE)
+		else:
+			draw_string(font, Vector2(x, y), head_text(b) + (" " + tail if tail != "" else ""), HORIZONTAL_ALIGNMENT_LEFT, head.size.x - 60, 15, Color.WHITE)
+		draw_string(font, Vector2(head.position.x, y), mana_text, HORIZONTAL_ALIGNMENT_RIGHT, head.size.x - 7, 12, Color(1, 1, 1, 0.75))
+		return
+	var cy := head.position.y + 20
+	for ch in head_text(b):
+		draw_string(font, Vector2(head.position.x, cy), ch, HORIZONTAL_ALIGNMENT_CENTER, head.size.x, 15, Color.WHITE)
+		cy += 17.0
+	var bottom := head.end.y - 7
+	if mana > 0:
+		draw_string(font, Vector2(head.position.x, bottom), str(mana), HORIZONTAL_ALIGNMENT_CENTER, head.size.x, 12, Color(1, 1, 1, 0.75))
+		draw_string(font, Vector2(head.position.x, bottom - 14), "魔", HORIZONTAL_ALIGNMENT_CENTER, head.size.x, 12, Color(1, 1, 1, 0.75))
+		bottom -= 30
+	if tail != "":
+		draw_string(font, Vector2(head.position.x, bottom), tail, HORIZONTAL_ALIGNMENT_CENTER, head.size.x, 11, UiKit.GOLD)
+
+
+# 拿著袋子：這種袋子能接的邊上，放得下的位置都亮起來（不能接的邊不亮）；滑鼠指著的位置在 _draw_drag 畫
+func _draw_bag_spots(me: Player) -> void:
+	var b: Dictionary = _drag.bag
+	for side: StringName in BagDefs.BAGS[b.kind].sides:
+		var probe: Dictionary = b.duplicate()
+		probe.side = side
+		for offset in BagDefs.edge_length(side) - b.length + 1:
+			probe.offset = offset
+			if not me.loadout.bag_fits(probe, side, offset, b.uid):
+				continue
+			for y in b.depth:
+				for x in b.length:
+					var r := _bcell_rect(Loadout.board_cell(probe, Vector2i(x, y)))
+					draw_rect(r.grow(-1), Color(OK_TINT, 0.1))
+
+
+# 這個袋子放一次全部要多少魔力（技能含同一袋修飾的倍率）
+static func _bag_mana(me: Player, b: Dictionary) -> int:
+	var total := 0.0
+	for e: Dictionary in b.entries:
+		match ItemDefs.role_of(e.id):
+			ItemDefs.ROLE_EFFECT:
+				total += BagTriggers.effect_mana(e.id)
+			ItemDefs.ROLE_SKILL:
+				total += ActiveSlots.mana_cost(me, ActiveSlots.slot_of(me, b, e))
+	return roundi(total)
+
+
+# 袋子的標題：一句話講什麼時候發動（按鍵袋的數字鍵另外畫）
+static func head_text(b: Dictionary) -> String:
+	var who: String = {&"left": "左鍵", &"right": "右鍵"}.get(b.side, "")
+	match b.kind:
+		&"cast":
+			return "%s出手時" % who
+		&"hit":
+			return "%s打中時" % who
+		&"kill":
+			return "%s擊殺時" % who
+		&"hurt":
+			return "受傷時"
+		&"roll":
+			return "翻滾時"
+		&"timer":
+			return "每 %d 秒" % int(BagDefs.BAGS.timer.period)
+	return "按鍵"
 
 
 func _draw_entry(font: Font, me: Player, where: int, e: Dictionary) -> void:
@@ -740,19 +905,17 @@ func _draw_entry(font: Font, me: Player, where: int, e: Dictionary) -> void:
 
 func _draw_storage(font: Font, me: Player) -> void:
 	var o := _grid_origin()
-	draw_string(font, o + Vector2(0, -6), "倉庫（只放東西，沒有效果）", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.6))
 	var bag: Vector2i = ItemDefs.BAG_SIZE
+	draw_string(font, o + Vector2(0, -6), "倉庫 %d / %d（每格一件，不生效）" % [me.inventory.entries.size(), bag.x * bag.y], HORIZONTAL_ALIGNMENT_LEFT, BOND_W, 16, Color(1, 1, 1, 0.6))
 	for y in bag.y:
 		for x in bag.x:
-			draw_rect(Rect2(o + Vector2(x, y) * CELL, Vector2(CELL, CELL)).grow(-1), Color(1, 1, 1, 0.05))
+			var cell := Rect2(o + Vector2(x, y) * CELL, Vector2(CELL, CELL)).grow(-1)
+			draw_rect(cell, Color(1, 1, 1, 0.05))
+			draw_rect(cell, Color(1, 1, 1, 0.12), false, 1.0)
 	for e: Dictionary in me.inventory.entries:
 		var dim: bool = (not _drag.is_empty() and _drag.uid == e.uid) or (forge != null and forge.dims(e.get("weapon", {})))
-		var rects: Array[Rect2] = []
-		for c in Inventory.cells_of(e.id, e.rot):
-			rects.append(Rect2(o + Vector2(e.cell + c) * CELL, Vector2(CELL, CELL)))
+		var rects: Array[Rect2] = [Rect2(o + Vector2(e.cell) * CELL, Vector2(CELL, CELL))]
 		_draw_item(font, e.id, rects, _rarity_of(e), 0.35 if dim else 1.0, e.get("weapon", {}))
-		if e.has("bag"):
-			draw_string(font, rects[0].position + Vector2(5, 15), BagDefs.bag_name(e.bag), HORIZONTAL_ALIGNMENT_LEFT, CELL * 2 - 8, 13, Color(1, 1, 1, 0.8))
 		_draw_forge_mark(font, e.get("weapon", {}), rects)
 	if _suggest != &"":
 		_draw_suggestion(me.inventory.find(_suggest))
@@ -777,7 +940,12 @@ func _draw_drag(font: Font, me: Player) -> void:
 			var ok := me.loadout.bag_fits(probe, spot.side, spot.offset, _drag.uid)
 			for y in probe.depth:
 				for x in probe.length:
-					draw_rect(_bcell_rect(Loadout.board_cell(probe, Vector2i(x, y))).grow(-2), Color(0.3, 1, 0.4, 0.35) if ok else Color(1, 0.3, 0.3, 0.35))
+					draw_rect(_bcell_rect(Loadout.board_cell(probe, Vector2i(x, y))).grow(-2), Color(OK_TINT, 0.4) if ok else Color(1, 0.3, 0.3, 0.35))
+			if ok:   # 預覽接上後的標題
+				var head := _bag_head_rect(probe)
+				draw_rect(head, Color(0.11, 0.23, 0.16))
+				draw_rect(head, OK_TINT, false, 2.0)
+				_draw_bag_head(font, probe, head, me.loadout.key_bags().size() + 1, 0)
 			return
 	var t := _target_at(me, local)
 	if t.is_empty() or _drag.has("bag") and t.where != Loadout.BAG:   # 不在格子上：東西跟著滑鼠（抓住的那一格在滑鼠下）
@@ -790,17 +958,17 @@ func _draw_drag(font: Font, me: Player) -> void:
 		_draw_item(font, _drag.id, rects, _drag_rarity(), 0.85, _drag.weapon)
 		return
 	var inv := me.loadout.container(t.where)
-	var at := _drag_cell(t.cell)
+	var at := _drag_cell(t.cell, t.where)
 	var ok := inv.fits(_drag.id, at, _drag.rot, _drag.uid)
 	# 放不下但蓋住的只有 1 件、那件換得回去：金色 + 「互換」（規則在 Loadout.swap_partner，跟權威端同一套）
 	var partner := &"" if ok or _drag.has("pickup_id") else me.loadout.swap_partner(_drag.uid, t.where, at, _drag.rot)
 	var tint := Color(0.3, 1, 0.4, 0.35) if ok else (Color(1, 0.85, 0.3, 0.35) if partner != &"" else Color(1, 0.3, 0.3, 0.35))
 	var rects: Array[Rect2] = []
-	for c in Inventory.cells_of(_drag.id, _drag.rot):
-		var r := _cell_rect(me, t.where, at + c)
-		rects.append(r)
-		draw_rect(r.grow(-2), tint)
+	for c in inv.cells(_drag.id, _drag.rot):
+		rects.append(_cell_rect(me, t.where, at + c))
 	_draw_item(font, _drag.id, rects, _drag_rarity(), 0.85, _drag.weapon)
+	for r in rects:   # 畫在物品上面：放得下（綠）、互換（金）、放不下（紅）才看得出來
+		draw_rect(r.grow(-2), tint)
 	if partner != &"":
 		var swap_text := "換上" if not _drag.weapon.is_empty() and me.inventory.find(_drag.uid).is_empty() else "互換"
 		draw_string(font, rects[0].position + Vector2(6, 24), swap_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, UiKit.GOLD)
@@ -822,8 +990,7 @@ func _draw_suggestion(e: Dictionary) -> void:
 	if e.is_empty():
 		return
 	var color := Color(UiKit.DENY, 0.6 + 0.4 * sin(Time.get_ticks_msec() * 0.008))
-	for c in Inventory.cells_of(e.id, e.rot):
-		UiKit.draw_dashed_rect(self, Rect2(_grid_origin() + Vector2(e.cell + c) * CELL, Vector2(CELL, CELL)).grow(-1), color)
+	UiKit.draw_dashed_rect(self, Rect2(_grid_origin() + Vector2(e.cell) * CELL, Vector2(CELL, CELL)).grow(-1), color)
 
 
 # 腳邊框（FeetPanel._draw 叫）：按得到 F 的地上道具，撿不下的那一件金框；座標是腳邊框自己的
@@ -886,7 +1053,7 @@ func _draw_slots(font: Font, me: Player) -> void:
 				var b := r.position + Vector2(maxf(0.0, k - r.size.y), minf(k, r.size.y))
 				draw_line(a, b, Color(1, 1, 1, 0.1), 2.0)
 				k += step
-			draw_string(font, r.position + Vector2(10, r.size.y / 2.0 + 7), "雙手武器：不能拿副手", HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 16, 17, Color(1, 1, 1, 0.55))
+			draw_string(font, r.position + Vector2(10, r.size.y / 2.0 + 7), "雙手武器：不能拿副手", HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 16, 15, Color(1, 1, 1, 0.55))
 			continue
 		draw_rect(r, Color(1, 1, 1, 0.05))
 		if inst.is_empty():
@@ -950,12 +1117,21 @@ func _info_of(me: Player) -> Dictionary:
 	var uid: StringName = _drag.uid if not _drag.is_empty() else _hover_uid
 	if uid == &"":
 		return {}
+	if _drag.has("bag"):
+		var spot := _bag_drop(get_local_mouse_position())
+		if not spot.is_empty() and me.loadout.bag_fits(_drag.bag, spot.side, spot.offset, _drag.uid):
+			var probe: Dictionary = _drag.bag.duplicate()
+			probe.side = spot.side
+			probe.offset = spot.offset
+			var preview := bag_info(probe, me)
+			preview.title = "放這裡 → %s" % preview.title
+			return preview
 	for s in me.weapon_slots:
 		if s.get("uid", &"") == uid:
 			return UiKit.item_info(s.base, s)
 	var bag := me.loadout.find_bag(uid)
 	if not bag.is_empty():
-		return bag_info(bag)
+		return bag_info(bag, me)
 	var found := me.loadout.find_item(uid)
 	if not found.is_empty() and found.where != Loadout.BAG:
 		var info := UiKit.item_info(found.entry.id, {}, me.skill_levels.get(found.entry.id, 1))
@@ -963,7 +1139,7 @@ func _info_of(me: Player) -> Dictionary:
 			info.title += "（在主袋 · 生效中）"
 		else:
 			var b: Dictionary = me.loadout.bags[found.where]
-			info.title += "（在%s · %s）" % [BagDefs.bag_name(b), BagDefs.SIDES[b.side].name]
+			info.title += "（在%s · %s發動）" % [BagDefs.bag_name(b), head_text(b) if b.kind != &"key" else "按數字鍵"]
 			info.lines.append("發動：%s" % when_text(b))
 		return info
 	var e := me.inventory.find(uid)
@@ -989,19 +1165,37 @@ static func when_text(b: Dictionary) -> String:
 	return BagDefs.BAGS[b.kind].desc
 
 
-# 袋子的說明：名稱、接在哪、什麼時候發動、大小與倍率、詛咒
-static func bag_info(b: Dictionary) -> Dictionary:
-	var lines: Array[String] = []
-	lines.append("發動：%s · 裡面的效果與技能一起放、各自耗魔" % (when_text(b) if b.side != &"" else BagDefs.BAGS[b.kind].desc))
-	var size_line := "%d × %d 格 · 裝了 %d 件" % [b.length, b.depth, b.entries.size()]
+# 袋子的說明：什麼時候、在哪裡、放什麼（完整一句話），下一行大小、耗魔、內部冷卻與倍率，詛咒另一行
+static func bag_info(b: Dictionary, me: Player = null) -> Dictionary:
+	var lines: Array[String] = [fire_sentence(b)]
+	var size_line := "%d × %d 格" % [b.length, b.depth]
+	if me != null and not b.entries.is_empty():
+		size_line += " · 每次耗魔 %d" % _bag_mana(me, b)
+	var icd: float = BagDefs.BAGS[b.kind].get("icd", 0.0)
+	if icd > 0.0:
+		size_line += " · 同一袋 %s 秒最多一次" % str(icd)
 	if b.mul != 1.0:
 		size_line += " · 傷害 ×%s" % str(b.mul)
 	lines.append(size_line)
 	var t: Dictionary = BagDefs.TIERS[b.tier]
 	if t.has("curse_desc"):
 		lines.append("詛咒：%s" % t.curse_desc)
-	var where := "接在%s" % BagDefs.SIDES[b.side].name if b.side != &"" else "在倉庫裡不生效"
-	return {"title": "%s（%s）" % [BagDefs.bag_name(b), where], "color": SIDE_COLORS.get(b.side, UiKit.GOLD).lightened(0.4), "lines": lines}
+	var title := "%s · %s" % [head_text(b) if b.kind != &"key" else "按數字鍵", BagDefs.bag_name(b)] if b.side != &"" else "%s（在倉庫裡不生效）" % BagDefs.bag_name(b)
+	return {"title": title, "color": SIDE_COLORS.get(b.side, UiKit.GOLD).lightened(0.4), "lines": lines}
+
+
+# 一句話講這個袋子怎麼發動：「右鍵招式打中怪時，在那隻怪身上一起放：雷霆鈴、閃電鏈。」
+static func fire_sentence(b: Dictionary) -> String:
+	if b.side == &"":
+		return "接上主袋才會發動：%s。" % String(BagDefs.BAGS[b.kind].desc).get_slice("（", 0)
+	var when := when_text(b).get_slice("（", 0)
+	var where: String = {&"hit": "在那隻怪身上", &"kill": "在怪死的位置", &"hurt": "在打你的怪身上"}.get(b.kind, "")
+	var names: Array[String] = []
+	for e: Dictionary in BagTriggers.contents(b):
+		names.append(String(ItemDefs.ITEMS[e.id].name))
+	if names.is_empty():
+		return "%s，%s放裡面的東西（還沒放東西）。" % [when, where]
+	return "%s，%s一起放：%s。" % [when, where, "、".join(names)]
 
 
 # 滑鼠停在羈絆上：現在第幾階、已啟動的那一階與下一階的效果

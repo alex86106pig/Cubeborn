@@ -163,7 +163,7 @@ func _initialize() -> void:
 	_check("屍體與冤魂（D6）：多人時死亡留下屍體、撿進背包；背著換層出現冤魂，打倒後死者在那裡復活、屍體消失；沒人帶屍體就沒有冤魂", EventChecks.check_corpse_ghost)
 
 	# ───────── 背包、祭壇與武器 ─────────
-	_check("背包：倉庫大小照 BAG_SIZE；形狀旋轉後格子正確；超出邊界、重疊放不下；自動找第一個空位（不夠時會轉向）；搬動成功 / 失敗；裝滿後撿不起來並發出 inventory:full；放不下時建議拿掉哪一件（占格最少），拿掉一件也不夠就不建議；放到只被 1 件佔住的位置就互換（主袋 ↔ 倉庫、倉庫裡兩件；換不回去都不動、發 inventory:denied），拿著的武器放到倉庫的武器上 = 那把換上、主手放到空格不動，預覽跟結果一致",
+	_check("背包：倉庫大小照 BAG_SIZE、每格一件不管形狀；主袋與袋子照形狀，旋轉後格子正確；超出邊界、重疊放不下；自動找第一個空位（不夠時會轉向）；搬動成功 / 失敗；裝滿後撿不起來並發出 inventory:full；放不下時建議拿掉哪一件（占格最少），拿掉一件也不夠就不建議；放到只被 1 件佔住的位置就互換（主袋 ↔ 倉庫、倉庫裡兩件；換不回去都不動、發 inventory:denied），拿著的武器放到倉庫的武器上 = 那把換上、主手放到空格不動，預覽跟結果一致",
 		all.bind([LootChecks.check_inventory, LootChecks.check_inventory_suggest, LootChecks.check_inventory_swap]))
 	_check("祭壇與石棺：數量照地圖資料、位置可走且夠遠、底面平的（不擺在台階邊緣）、殺怪靈魂照 KILL_SOULS（共用）、靈魂不夠開不了、開的人直接打開 N 選 1、夠了扣靈魂並開出一個遺物（選項照石棺的稀有度）、開過不能再開；隨機放（同種子相同）、多人時數量與靈魂不變、全清買不完；稀有度各抽 20000 次符合權重、不會開出武器",
 		all.bind([LootChecks.check_soul_chests, LootChecks.check_chest_balance, LootChecks.check_chest_rarity]))
@@ -191,11 +191,11 @@ func _initialize() -> void:
 	_check("遺物：每人各自擲 N 選 1（N = 選項數屬性、不重複，石棺偶爾一個換成詛咒袋）、關掉再開同一組、骰子重擲用掉 1 顆（沒有就不能骰）、每人只選一次、全員選過才消失、放不下掉在腳邊、走遠就關掉；鐵砧：改造自己接著的袋子（加大、強化、換觸發），每人一次、用完不消失，沒有袋子改給新袋子；門與 Boss 的袋子 N 選 1；隊上有人看到過就記下（小地圖用、進快照）" \
 		+ "鐵砧：主手升一個稀有度、從 N 條新詞條選 1，再從這把武器的技能選 1，每人一次、用完不消失，傳說武器直接選技能；隊上有人看到過就記下（小地圖用、進快照）",
 		all.bind([LootChecks.check_relic, LootChecks.check_anvil, LootChecks.check_relic_spotted]))
-	_check("技能與按鍵袋：主袋不放技能、技能自動進按鍵袋；數字鍵 1~4 = 按鍵袋由左到右、Q 治療藥水；每個技能放得出來、扣魔力、有效果（不綁武器）；等級加傷減耗魔、看得到等級（說明框、遺物卡升級前後、技能欄）、技能遺物（石棺必出、祭壇不出，有還沒滿級的技能時保證一個升級）；修飾放同一袋才有效（延長、火焰化、分裂）、每顆照強度加耗魔、節能減耗魔；魔力（開局滿、回魔、上限、不夠放不出、魔力道具與命中回魔、進快照）",
+	_check("技能與按鍵袋：主袋不放技能、技能自動進按鍵袋；數字鍵 = 按鍵袋由左到右、Q 治療藥水；每個技能放得出來、扣魔力、有效果（不綁武器）；等級加傷減耗魔、看得到等級（說明框、遺物卡升級前後、技能欄）、技能遺物（石棺必出、祭壇不出，有還沒滿級的技能時保證一個升級）；修飾放同一袋才有效（延長、火焰化、分裂）、每顆照強度加耗魔、節能減耗魔；魔力（開局滿、回魔、上限、不夠放不出、魔力道具與命中回魔、進快照）",
 		all.bind([SkillChecks.check_gem_rules, SkillChecks.check_every_skill, SkillChecks.check_skill_level, SkillChecks.check_level_text, SkillChecks.check_supports, SkillChecks.check_mana]))
 	_check("羈絆：道具標的羈絆都存在、掉落池只有屬於羈絆的（修飾、魔力道具例外）；格數 = 最大同色區塊（主袋與袋子一起、跨袋子也連、斜的不算、倉庫不算、跨羈絆兩種都算）；拿掉就扣；階數照門檻", LootChecks.check_bonds)
 	_check("觸發袋的擺放：接哪幾邊看種類、在邊長內、同一邊不重疊、按鍵袋最多 4 個；撿到的袋子自動接、接不下進倉庫；換邊 / 滑動 / 拿下來（內容跟著）、接不下拒絕；袋子不能丟；詛咒袋接著時套缺點；快照來回一樣", LootChecks.check_bag_layout)
-	_check("觸發袋的發動：左邊只被普攻、右邊只被右鍵觸發；效果各自耗魔、不夠由左到右先放；按鍵袋一起放；觸發袋裡的技能自動放；袋子放出來的與技能的傷害不再觸發袋子；計時袋照間隔、強化袋的倍率", LootChecks.check_bag_triggers)
+	_check("觸發袋的發動：左邊只被普攻、右邊只被右鍵觸發；效果各自耗魔、不夠由左到右先放；按鍵袋一起放；觸發袋裡的技能自動放；袋子放出來的與技能的傷害不再觸發袋子；計時袋照間隔、強化袋的倍率；有目標的袋子（命中、擊殺、受傷）技能在目標身上放：範圍與落點在目標、投射物從目標往外射、位移朝目標、祝福留在自己身上，沒有目標的照舊", all.bind([LootChecks.check_bag_triggers, LootChecks.check_bag_skill_target]))
 	_check("羈絆效果：物理（物理傷害、失衡、擊退撞怪、無視物理抗性、必爆擊與處決）、火焰（沒有羈絆 1 層、疊層、疊滿爆炸、死亡傳層）、冰霜（沒有羈絆 1 層、冰冷減速、疊滿凍結、碎冰加傷、冰錐、凍結中被殺沒有死亡效果）、防禦（護甲、招架回血、招架後必爆擊、衝擊波消箭、反彈）、鬼火（顆數、轉圈碰到怪、定時衝出去）",
 		all.bind([BondChecks.check_phys, BondChecks.check_fire, BondChecks.check_cold, BondChecks.check_guard, BondChecks.check_wisp]))
 	_check("道具掉落：全部道具的效果都已接上；寶箱只開出效果都接上、屬於羈絆的道具（修飾、魔力道具也開得出來）；沒有的稀有度往下一級找", LootChecks.check_item_drop_pool)
@@ -222,7 +222,7 @@ func _initialize() -> void:
 		all.bind([ViewChecks.check_effects_events, ViewChecks.check_effects_limits]))
 
 	# ───────── 介面 ─────────
-	_check("HUD：能建立、處理各種事件、顯示波次 / 血量 / 結算文字、暫停畫面有「離開遊戲」；別人撿到道具不跳橫幅；武器欄標示副手；同一目標同時跳的傷害數字往上疊、地上物件名稱重疊時往上錯開；附帶的小傷害（燃燒 / 中毒 / 地面區域的一跳、附加屬性傷害）數字畫小、不佔疊層；小地圖只畫看過的地方、場地外框一開始就畫、換小關重畫",
+	_check("HUD：能建立、處理各種事件、顯示波次 / 血量 / 結算文字、暫停畫面有「離開遊戲」；別人撿到道具不跳橫幅；武器欄標示副手；同一目標同時跳的傷害數字往上疊、地上物件名稱重疊時往上錯開；附帶的小傷害（燃燒 / 中毒 / 地面區域的一跳、附加屬性傷害）數字畫小、不佔疊層；小地圖只畫探索過的地方（牆擋視線、牆本身看得到、外框看過才亮）、換小關重畫",
 		all.bind([ViewChecks.check_hud, ViewChecks.check_overlap_text, ViewChecks.check_minor_numbers, ViewChecks.check_minimap]))
 	_check("背包介面：和屬性面板並排塞得進介面最大檔的畫面；腳邊欄只列按得到 F 的地上道具（沒有就不顯示）、滑鼠停著顯示說明，拖進背包撿起放在那一格、背包的拖到腳邊丟掉；撿不下時 HUD 通知打開背包、提示拿掉哪一件就放得下，關掉就清除；遺物的 N 選 1 自動打開背包、卡片寫出拿過沒（已經放上去 / 倉庫裡有）、在介面上按下的左鍵放開前不普攻、卡片直排在背包左邊塞得進畫面、羈絆標籤寫目前格數、點卡片 / Esc 送出操作、自動打開的背包一起關、被打到（持續傷害不算）3 選 1 先不選並關掉背包、拿著東西時 R / Esc 不給遺物；鍛造祭壇旁開背包顯示鍛造面板：右鍵 / 拿著點格子 / 拖到同種武器上放進兩格、能合的發亮其他變暗、不能合寫原因、挑詞條按合成送出並清空、離開祭壇就關掉；開著背包時新手提示在屬性面板與背包中間、右上的層數與擊殺藏起來；屬性面板依組列出、核心屬性一直顯示，其他屬性與整組有加成才顯示；左鍵點一下拿起、再點一下放下（拖曳照舊），右鍵 / Esc 放回、點外面丟掉；右鍵直接裝上 / 拿下來（數值進主袋、技能進按鍵袋、主袋與袋子裡的回倉庫、主手武器不拿下來）；物品依種類分畫法；羈絆欄只列收集到的；雙手武器時副手標成不能用；腳邊框不蓋到背包與技能欄（點一下拿起放進背包）", all.bind([ViewChecks.check_inventory_panel, ViewChecks.check_inventory_board, ViewChecks.check_relic_panel, ViewChecks.check_forge_panel, ViewChecks.check_hint_beside_bag, ViewChecks.check_stats_panel, ViewChecks.check_inventory_click, ViewChecks.check_inventory_layout, ViewChecks.check_ui_click_blocks_attack, ViewChecks.check_relic_owned]))
 	_check("技能欄：劍盾格擋中左鍵換成「招架」與耗魔、法杖沒有招架格；火把準備姿態換成插火把 / 噴火、鐵鏟舉著怪換成拋出 / 埋入；CD 遮罩疊放順序 文字圖示 < 壓黑 < 秒數（插火把的防連按間隔）；按鍵袋的技能顯示耗魔、魔力不夠變暗、後面的 Q 藥水照樣顯示瓶數",

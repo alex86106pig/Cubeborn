@@ -2,6 +2,7 @@
 #   左邊的袋子只被普攻觸發、右邊的只被右鍵招式觸發（Combat 的 hit.attack / Player.attack_tag）；下方的不分按鍵；上方的按鍵袋由 ActiveSlots 按數字鍵發動
 #   同一袋裡沒有順序，由左到右、由上到下依序放；每個效果耗魔（道具強度 × BagDefs.EFFECT_MANA_PER_POWER）、技能照自己的耗魔，魔力不夠的跳過
 #   效果的數字照道具資料（ItemDefs 的 on / do 那筆），時機與機率不看；修飾作用在同一袋的技能（ActiveSlots.cast_context）
+#   有目標的時機（命中、擊殺、受傷、招架）效果與技能都在目標身上發動（技能怎麼算在 SkillBehaviors.aim_at）；沒有目標的照舊
 #   袋子放出來的效果是道具效果（proc，不觸發命中）、技能的傷害沒有 attack 標記：都不會再觸發袋子，不會連鎖
 # 只在權威端執行
 class_name BagTriggers
@@ -52,7 +53,7 @@ static func run_bag(world: World, p: Player, b: Dictionary, target: Entity, dama
 				if run_effect(world, p, e.id, target, damage * b.mul):
 					count += 1
 			ItemDefs.ROLE_SKILL:
-				if cast_skill(p, b, e):
+				if cast_skill(p, b, e, target):
 					count += 1
 	if scaled:
 		p.remove_stat_source(&"bag_mul")
@@ -98,12 +99,13 @@ static func run_effect(world: World, p: Player, id: StringName, target: Entity, 
 	return true
 
 
-# 放袋子裡的一個技能（從自己身上、朝面對的方向）：照技能自己的條件與耗魔，加上同一袋的修飾與袋子倍率
-static func cast_skill(p: Player, b: Dictionary, e: Dictionary) -> bool:
+# 放袋子裡的一個技能：有目標就在目標身上放，沒有就照按鍵的放法；照技能自己的條件與耗魔，加上同一袋的修飾與袋子倍率
+static func cast_skill(p: Player, b: Dictionary, e: Dictionary, target: Entity = null) -> bool:
+	var at: Entity = null if target == null or target.is_removed else target
 	var slot := ActiveSlots.slot_of(p, b, e)
-	if not ActiveSlots.can_cast(p, slot):
+	if not ActiveSlots.can_cast(p, slot, at):
 		return false
-	ActiveSlots.cast(p, slot)
+	ActiveSlots.cast(p, slot, at)
 	return true
 
 

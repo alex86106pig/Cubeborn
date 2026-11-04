@@ -1,8 +1,8 @@
-# 右上角的小地圖：只畫本機玩家走過、看過的地方（視野距離內一圈，不管牆），轉 45° 跟畫面的方向一致；
+# 右上角的小地圖：只畫本機玩家探索過的地方（視野距離內、視線沒被牆擋住的，牆本身看得到），轉 45° 跟畫面的方向一致；
 # 地形一格 1 單位畫成一個像素（地面 / 牆與實心 / 墓碑 / 高台），上面標自己（含面向）、隊友（倒地的閃紅點 + 剩幾秒）、出口的門 / 挖墳點、
 # 遺物 / 鐵砧（自己還沒選的白框菱形、選過的半透明；隊上有人看過就畫，自己沒走過的地方也畫）、沒開的寶箱
 # 地圖放得進框就整張置中，放不進就以自己為中心（框外裁掉）；換地圖（World.layout_key 變了）清掉走過的紀錄
-# 場地的外框（貼著場地外的 EDGE_CELLS 格）一開始就畫成淡色、走過變亮：看得出哪裡還沒走過
+# 看過的場地外框（貼著場地外的 EDGE_CELLS 格）畫成亮色：地面接到亮邊是到底了，接到空白是還沒探索
 class_name Minimap
 extends Control
 
@@ -15,9 +15,12 @@ const FLOOR := Color(0.42, 0.44, 0.48, 0.85)
 const SOLID := Color(0.12, 0.12, 0.14, 0.9)
 const TOMB := Color(0.62, 0.6, 0.56, 0.95)
 const PLATFORM := Color(0.55, 0.5, 0.4, 0.9)
-const EDGE := Color(0.85, 0.9, 1.0, 0.95)       # 走過的場地外框
-const EDGE_DIM := Color(0.7, 0.78, 0.95, 0.4)   # 還沒走過的場地外框
+const EDGE := Color(0.85, 0.9, 1.0, 0.95)       # 看過的場地外框
 const EDGE_CELLS := 2           # 外框幾格粗（每格 MIN_SCALE 像素以上）
+const KIND_COLORS: Array[Color] = [FLOOR, SOLID, TOMB, PLATFORM]   # 照 _base 的種類
+const RAY_STEP := 0.6           # 視線每次往前走幾格（小於 1 才不會跳過牆）
+const RAYS_PER_CELL := 1.5      # 視野最外圈每格幾條視線
+const DOOR_SEEN_CELLS := 3      # 門嵌在牆裡：看到門旁邊這麼近的格子就算看到門
 const SELF := Color("ffffff")
 const ALLY := Color("7fe3ff")
 const DOOR := Color("8fd0ff")
@@ -38,6 +41,8 @@ var _edge := PackedByteArray()   # 1 = 場地外框的格子（_mark_edges）
 var _img: Image
 var _tex: ImageTexture
 var _timer := 0.0
+var _reveal_cell := Vector2i(-1, -1)   # 上次掃視線時站的格子與視野距離，沒變就不用重掃
+var _reveal_range := 0.0
 
 
 func _init() -> void:
@@ -52,7 +57,7 @@ func _process(delta: float) -> void:
 		queue_redraw()
 
 
-# 換地圖就重畫、每 REVEAL_INTERVAL 秒把本機玩家視野距離內標成看過
+# 換地圖就重畫、每 REVEAL_INTERVAL 秒把本機玩家看得到的格子標成看過
 func refresh(delta: float) -> void:
 	if world == null:
 		return
@@ -62,8 +67,14 @@ func refresh(delta: float) -> void:
 	if _timer <= 0.0:
 		_timer = REVEAL_INTERVAL
 		var me: Player = local_player.call()
-		if me != null and _reveal(me.pos, Vision.view_range(me)):
+		if me == null:
+			return
+		var cell := _cell(me.pos)
+		var r := Vision.view_range(me)
+		if (cell != _reveal_cell or r != _reveal_range) and _reveal(me.pos, r):
 			_tex.update(_img)
+		_reveal_cell = cell
+		_reveal_range = r
 
 
 # 地形畫成每單位一格：先全部是地面，石台蓋上去（實心 = 牆高的石台與場地外，墓碑、高台照種類）
@@ -90,9 +101,10 @@ func _rebuild() -> void:
 	_mark_edges()
 	_tex = ImageTexture.create_from_image(_img)
 	_timer = 0.0
+	_reveal_cell = Vector2i(-1, -1)
 
 
-# 場地外 = 從圖的四邊往裡走得到的實心格（中間的牆不算）；外框 = 場地外裡離場地 EDGE_CELLS 格以內的（4 方向），先畫成淡色
+# 場地外 = 從圖的四邊往裡走得到的實心格（中間的牆不算）；外框 = 場地外裡離場地 EDGE_CELLS 格以內的（4 方向），看過才畫（_reveal）
 func _mark_edges() -> void:
 	var w := _size.x
 	var n := _size.x * _size.y
@@ -137,7 +149,6 @@ func _mark_edges() -> void:
 			if _edge[i]:
 				continue
 			_edge[i] = 1
-			_img.set_pixel(i % w, i / w, EDGE_DIM)
 			if step + 1 < EDGE_CELLS:
 				for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 					var nx := i % w + d.x
@@ -151,26 +162,52 @@ func _cell(p: Vector2) -> Vector2i:
 	return Vector2i(floori(p.x + world.half_extents.x), floori(p.y + world.half_extents.y))
 
 
-# 把 center 周圍 r 內的格子標成看過、畫進圖；有新的格子回傳 true
+# 從 center 往四周掃視線，把看得到的格子標成看過、畫進圖；有新的格子回傳 true
+# 跟 Terrain.sight_blocked 一樣只有牆擋（墓碑、高台不擋）。牆看得到、牆後面看不到；牆有兩格厚時多畫一格，外框才不會只有一條細線
 func _reveal(center: Vector2, r: float) -> bool:
-	var c := _cell(center)
-	var ri := ceili(r)
-	var r2 := r * r
+	var rays := ceili(TAU * r * RAYS_PER_CELL)
+	var steps := ceili(r / RAY_STEP)
+	var start := center + world.half_extents
 	var changed := false
-	for y in range(maxi(c.y - ri, 0), mini(c.y + ri, _size.y - 1) + 1):
-		for x in range(maxi(c.x - ri, 0), mini(c.x + ri, _size.x - 1) + 1):
+	for a in rays:
+		var angle := TAU * a / rays
+		var d := Vector2(cos(angle), sin(angle)) * RAY_STEP
+		var p := start
+		var wall := -1   # 視線碰到的第一格牆
+		for s in steps + 1:
+			var x := floori(p.x)
+			var y := floori(p.y)
+			p += d
+			if x < 0 or y < 0 or x >= _size.x or y >= _size.y:
+				break
 			var i := y * _size.x + x
-			if _seen[i] or float((x - c.x) * (x - c.x) + (y - c.y) * (y - c.y)) > r2:
+			if i == wall:
 				continue
-			_seen[i] = 1
-			_img.set_pixel(x, y, EDGE if _edge[i] else [FLOOR, SOLID, TOMB, PLATFORM][_base[i]])
-			changed = true
+			var is_wall := _base[i] == 1 and s > 0
+			if not _seen[i] and (wall < 0 or is_wall):
+				_seen[i] = 1
+				_img.set_pixel(x, y, EDGE if _edge[i] else KIND_COLORS[_base[i]])
+				changed = true
+			if wall >= 0:
+				break
+			if is_wall:
+				wall = i
 	return changed
 
 
 func is_seen(p: Vector2) -> bool:
 	var c := _cell(p)
 	return c.x >= 0 and c.y >= 0 and c.x < _size.x and c.y < _size.y and _seen[c.y * _size.x + c.x] == 1
+
+
+# p 周圍 cells 格內有沒有看過的格子（門嵌在牆裡，視線到不了門本身）
+func is_seen_near(p: Vector2, cells: int) -> bool:
+	var c := _cell(p)
+	for y in range(maxi(c.y - cells, 0), mini(c.y + cells, _size.y - 1) + 1):
+		for x in range(maxi(c.x - cells, 0), mini(c.x + cells, _size.x - 1) + 1):
+			if _seen[y * _size.x + x] == 1:
+				return true
+	return false
 
 
 # 世界座標（模擬層的 x, y）→ 框內座標：轉 45°（相機從 +X+Z 看過去，畫面的右邊是 +x −y）
@@ -199,7 +236,7 @@ func _draw() -> void:
 	var doors := DigEvent.doors(world)
 	for d: Dictionary in doors:
 		var at := MapDefs.to_world(world.map, d.at)
-		if is_seen(at):
+		if is_seen_near(at, DOOR_SEEN_CELLS):
 			var v := _to_view(at, focus, scale_)
 			draw_rect(Rect2(v - Vector2(4, 4), Vector2(8, 8)), DOOR)
 	if DigEvent.enabled(world) and is_seen(ev.point):

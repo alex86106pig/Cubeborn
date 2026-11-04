@@ -2569,19 +2569,19 @@ static func check_inventory_panel() -> String:
 	var cell_at := func(c: Vector2i) -> Vector2: return panel._grid_origin() + (Vector2(c) + Vector2(0.5, 0.5)) * InventoryPanel.CELL
 	if err == "":
 		panel._start_drag(p, panel._feet_row_rect(0).get_center())
-		panel._finish_drag(p, cell_at.call(Vector2i(2, 1)))
-		if ops != [[InputCmd.OP_PICKUP, stone.id, 2, 1, 0, Loadout.BAG]]:
-			err = "從腳邊拖到背包 (2, 1) 應送出 OP_PICKUP，實際 %s" % [ops]
+		panel._finish_drag(p, cell_at.call(Vector2i(2, 0)))
+		if ops != [[InputCmd.OP_PICKUP, stone.id, 2, 0, 0, Loadout.BAG]]:
+			err = "從腳邊拖到倉庫 (2, 0) 應送出 OP_PICKUP，實際 %s" % [ops]
 	if err == "":
 		var cmd := _cmd(Vector2.ZERO)
 		cmd.inv_ops = ops.duplicate()
 		ops.clear()
 		_run(w, cmd, 1)
-		if p.inventory.entries.size() != 1 or p.inventory.entries[0].cell != Vector2i(2, 1):
-			err = "送出的 OP_PICKUP 應把磨刀石放在 (2, 1)：%s" % [p.inventory.entries]
+		if p.inventory.entries.size() != 1 or p.inventory.entries[0].cell != Vector2i(2, 0):
+			err = "送出的 OP_PICKUP 應把磨刀石放在 (2, 0)：%s" % [p.inventory.entries]
 	if err == "":
 		var uid: StringName = p.inventory.entries[0].uid
-		panel._start_drag(p, cell_at.call(Vector2i(2, 1)))
+		panel._start_drag(p, cell_at.call(Vector2i(2, 0)))
 		panel._finish_drag(p, panel._feet_rect().get_center())
 		if ops != [[InputCmd.OP_DROP, String(uid)]]:
 			err = "背包的東西拖到腳邊應送出 OP_DROP，實際 %s" % [ops]
@@ -2605,13 +2605,12 @@ static func check_inventory_panel() -> String:
 			panel._hover_uid = &""
 			if not title.contains("在主袋"):
 				err = "主袋 (1, 1) 的磨刀石說明應寫「在主袋」：%s" % title
-	# 撿不下：背包只空 (0, 0) (1, 0) (0, 1)，(1, 1) 的骰子拿掉就放得下 2 × 2 的道具
+	# 撿不下：倉庫 6 格全滿、主袋也塞滿，倉庫每格一件，拿掉任何一件就放得下 2 × 2 的道具（建議第一件）
 	if err == "":
 		p.clear_items()
 		for y in ItemDefs.BAG_SIZE.y:
 			for x in ItemDefs.BAG_SIZE.x:
-				if x + y > 1:
-					p.inventory.add(StringName("d_%d_%d" % [x, y]), &"loaded_dice", Vector2i(x, y), 0)
+				p.inventory.add(StringName("d_%d_%d" % [x, y]), &"loaded_dice", Vector2i(x, y), 0)
 		while p.loadout.add_item(p, &"loaded_dice", {}, 0, Loadout.CORE) != &"":   # 主袋也塞滿，撿起來才會放不下
 			pass
 		var buckler := w.drop_item(_shaped(&"o4"), p.pos + Vector2(0, 1.0))
@@ -2627,8 +2626,8 @@ static func check_inventory_panel() -> String:
 			panel.show_full(buckler.id)
 			panel._process(DT)
 			var text := panel._full_text(p, buckler)
-			if panel._full_target() != buckler or panel._suggest != &"d_1_1" or not text.contains("拿掉") or not text.contains(ItemDefs.ITEMS[&"loaded_dice"].name):
-				err = "撿不下時應標出那件道具、建議拿掉 (1, 1) 的骰子：目標 %s、建議 %s、文字 %s" % [panel._full_target(), panel._suggest, text]
+			if panel._full_target() != buckler or panel._suggest != &"d_0_0" or not text.contains("拿掉") or not text.contains(ItemDefs.ITEMS[&"loaded_dice"].name):
+				err = "撿不下時應標出那件道具、建議拿掉第一格的骰子：目標 %s、建議 %s、文字 %s" % [panel._full_target(), panel._suggest, text]
 			panel.visible = false
 			if err == "" and panel._full_pickup != 0:
 				err = "關掉背包後應清除撿不下的提示"
@@ -2862,7 +2861,7 @@ static func check_forge_panel() -> String:
 
 # 疊在一起的字：同一個目標同時跳的傷害數字（屬性轉換、冰棺分傷害）一個比一個高、別的目標不受影響；
 # 地上物件的名稱碰到這一幀已經畫的就往上錯開一行，沒碰到的留在原位
-# 小地圖：只畫走過看過的（視野距離內），實心格標成實心；場地外框一開始就畫（淡色）；換小關清掉走過的紀錄、改用新地圖的大小
+# 小地圖：只畫探索過的（視野距離內、牆擋住就看不到，牆本身看得到）；還沒看過的格子全部透明（場地外框也一樣，看過才亮）；換小關清掉走過的紀錄、改用新地圖的大小
 static func check_minimap() -> String:
 	var w := _new_world(5, false, &"graveyard")
 	var p := _player(w)
@@ -2876,33 +2875,87 @@ static func check_minimap() -> String:
 	var seen_far := mm.is_seen(far)
 	var seen_here := mm.is_seen(p.pos)
 	var solid := mm._base[0]   # 左上角在地圖外框（EDGE_PAD 一圈實心）
-	# 場地外框：一開始就畫成淡色（沒走過也看得到），每一格都在場地外、貼著場地 EDGE_CELLS 格以內
+	# 開局：沒看過的格子一格都不畫（外框也不例外），看過的才有顏色
 	var edges := mm._edge.count(1)
-	var edge_err := ""
-	for i in mm._edge.size():
-		if mm._edge[i] and (mm._base[i] != 1 or mm._img.get_pixel(i % mm._size.x, i / mm._size.x).a <= 0.0) and not mm._seen[i]:
-			edge_err = "外框第 %d 格不是實心或沒畫出來" % i
+	var paint_err := ""
+	for i in mm._seen.size():
+		var painted := mm._img.get_pixel(i % mm._size.x, i / mm._size.x).a > 0.0
+		if painted != (mm._seen[i] == 1):
+			paint_err = "第 %d 格看過 %d、畫了 %s" % [i, mm._seen[i], painted]
 			break
+	var seen_edge := -1
+	for i in mm._edge.size():
+		if mm._edge[i] and mm._seen[i]:
+			seen_edge = i
+			break
+	var edge_pixel := mm._img.get_pixel(seen_edge % mm._size.x, seen_edge / mm._size.x) if seen_edge >= 0 else Minimap.EDGE
+	var edge_bright := absf(edge_pixel.r - Minimap.EDGE.r) + absf(edge_pixel.g - Minimap.EDGE.g) + absf(edge_pixel.b - Minimap.EDGE.b) < 0.02   # 圖是 8 位元，不會剛好相等
+	# 門嵌在牆裡：站在門前要算看到門
+	var door_ok := true
+	var doors := DigEvent.doors(w)
+	var door_err := ""
+	if not doors.is_empty():
+		var door: Dictionary = doors[0]
+		var stand := p.pos
+		p.pos = MapDefs.to_world(w.map, door.reach)
+		mm._timer = 0.0
+		mm.refresh(0.0)
+		door_ok = mm.is_seen_near(MapDefs.to_world(w.map, door.at), Minimap.DOOR_SEEN_CELLS)
+		door_err = "站在門前 %s 應看得到門 %s" % [door.reach, door.at]
+		p.pos = stand
 	var t_build := Time.get_ticks_usec()
 	mm._rebuild()
 	_note("小地圖換地圖重算一次 %.1f ms（%s）" % [(Time.get_ticks_usec() - t_build) / 1000.0, mm._size])
+	var t_reveal := Time.get_ticks_usec()
+	mm._reveal(p.pos, r)
+	_note("小地圖掃一次視線 %.2f ms（視野 %.0f，換格子才掃）" % [(Time.get_ticks_usec() - t_reveal) / 1000.0, r])
 	mm.refresh(0.0)
 	var old_size := mm._size
 	w.next_stage(&"")
+	mm._timer = 0.0
 	mm.refresh(0.0)
 	var reset_ok: bool = mm._size == Vector2i((w.half_extents * 2.0).ceil()) and mm.is_seen(p.pos) and not mm.is_seen(far)
 	var shown := mm._seen.count(1)
 	mm.queue_free()
+	# 牆擋視線：自己前方 4 單位一道 2 厚的長牆，牆看得到、牆後面看不到；墓碑不擋
+	var w2 := _new_world(5)
+	var p2 := _player(w2)
+	var front := p2.pos + Vector2(4.0, -30.0)
+	var blocks: Array[Dictionary] = [{"min": front, "max": front + Vector2(2.0, 60.0), "top": 3.0, "kind": MapDefs.WALL}]
+	w2.terrain = Terrain.new(blocks)
+	w2.layout_key = ["牆擋視線"]
+	var mm2 := Minimap.new()
+	mm2.world = w2
+	mm2.local_player = func() -> Player: return p2
+	_scene_root().add_child(mm2)
+	mm2.refresh(0.0)
+	var wall_seen := mm2.is_seen(p2.pos + Vector2(4.5, 0.0))
+	var behind_seen := mm2.is_seen(p2.pos + Vector2(8.0, 0.0))
+	var open_seen := mm2.is_seen(p2.pos + Vector2(-8.0, 0.0))
+	w2.terrain = Terrain.new([{"min": front, "max": front + Vector2(2.0, 60.0), "top": 1.3, "kind": MapDefs.TOMB}] as Array[Dictionary])
+	w2.layout_key = ["墓碑不擋"]
+	mm2._timer = 0.0
+	mm2.refresh(0.0)
+	var tomb_behind := mm2.is_seen(p2.pos + Vector2(8.0, 0.0))
+	mm2.queue_free()
 	if not seen_here or seen_far:
 		return "出生點應看過、%.0f 外不應看過（%s / %s）" % [r + 3.0, seen_here, seen_far]
 	if solid != 1:
 		return "地圖外框應標成實心，實際種類 %d" % solid
-	if edges == 0 or edge_err != "":
-		return "場地外框應一開始就畫出來（%d 格）：%s" % [edges, edge_err]
+	if edges == 0 or paint_err != "":
+		return "開局只畫看過的格子（外框 %d 格）：%s" % [edges, paint_err]
+	if not edge_bright:
+		return "看過的場地外框應畫成亮色"
+	if not door_ok:
+		return door_err
 	if not reset_ok:
 		return "換小關後應照新地圖重畫（舊 %s、新 %s、地圖 %s），只看過出生點附近" % [old_size, mm._size, w.half_extents * 2.0]
 	if shown > ceili(PI * (r + 1.0) * (r + 1.0)):
 		return "換小關後看過的格子應只有視野一圈，實際 %d 格" % shown
+	if not wall_seen or behind_seen or not open_seen:
+		return "牆應看得到、牆後面看不到、沒牆的方向看得到：牆 %s、牆後 %s、開闊 %s" % [wall_seen, behind_seen, open_seen]
+	if not tomb_behind:
+		return "墓碑不擋視線：墓碑後面應看得到"
 	return ""
 
 
@@ -3113,9 +3166,9 @@ static func check_inventory_click() -> String:
 	if not panel._held or panel._drag.get("uid", &"") != stone or not ops.is_empty():
 		err = "左鍵點一下背包的磨刀石應拿在手上、還不送操作：held %s、拿著 %s、操作 %s" % [panel._held, panel._drag, ops]
 	if err == "":
-		panel._gui_input(mouse.call(cell_at.call(Vector2i(3, 2)), MOUSE_BUTTON_LEFT, true))
-		if ops != [[InputCmd.OP_MOVE, String(stone), 3, 2, 0, Loadout.BAG]] or not panel._drag.is_empty() or panel._held:
-			err = "拿著時左鍵點 (3, 2) 應放下（OP_MOVE 到 (3, 2)），實際 %s、手上 %s" % [ops, panel._drag]
+		panel._gui_input(mouse.call(cell_at.call(Vector2i(3, 0)), MOUSE_BUTTON_LEFT, true))
+		if ops != [[InputCmd.OP_MOVE, String(stone), 3, 0, 0, Loadout.BAG]] or not panel._drag.is_empty() or panel._held:
+			err = "拿著時左鍵點 (3, 0) 應放下（OP_MOVE 到 (3, 0)），實際 %s、手上 %s" % [ops, panel._drag]
 	ops.clear()
 	if err == "":
 		click.call(cell_at.call(Vector2i(0, 0)))
@@ -3130,9 +3183,9 @@ static func check_inventory_click() -> String:
 			err = "拿著時右鍵、Esc 都應放回原處、不送操作：右鍵後 %s、Esc 後 %s、操作 %s" % [after_right, panel._drag, ops]
 	if err == "":
 		panel._gui_input(mouse.call(cell_at.call(Vector2i(0, 0)), MOUSE_BUTTON_LEFT, true))
-		panel._gui_input(mouse.call(cell_at.call(Vector2i(5, 3)), MOUSE_BUTTON_LEFT, false))
-		if ops != [[InputCmd.OP_MOVE, String(stone), 5, 3, 0, Loadout.BAG]]:
-			err = "按住拖到 (5, 3) 放開應照舊送 OP_MOVE，實際 %s" % [ops]
+		panel._gui_input(mouse.call(cell_at.call(Vector2i(5, 0)), MOUSE_BUTTON_LEFT, false))
+		if ops != [[InputCmd.OP_MOVE, String(stone), 5, 0, 0, Loadout.BAG]]:
+			err = "按住拖到 (5, 0) 放開應照舊送 OP_MOVE，實際 %s" % [ops]
 	ops.clear()
 	if err == "":
 		click.call(cell_at.call(Vector2i(0, 0)))
@@ -3166,8 +3219,8 @@ static func check_inventory_click() -> String:
 			err = "右鍵主手的武器不應送操作（主手不能空著）、要提示：操作 %s、提示「%s」" % [ops, panel._notice]
 	# 技能：倉庫的旋風斬右鍵 → 按鍵袋（第 0 個袋子）
 	if err == "":
-		var whirl := p.loadout.add_item(p, &"whirlwind", {"cell": Vector2i(6, 5), "rot": 0}, 0, Loadout.BAG)
-		panel._gui_input(mouse.call(cell_at.call(Vector2i(6, 5)), MOUSE_BUTTON_RIGHT, true))
+		var whirl := p.loadout.add_item(p, &"whirlwind", {"cell": Vector2i(5, 0), "rot": 0}, 0, Loadout.BAG)
+		panel._gui_input(mouse.call(cell_at.call(Vector2i(5, 0)), MOUSE_BUTTON_RIGHT, true))
 		var key := p.loadout.auto_place(&"whirlwind")
 		if key.get("where", -9) != 0 or ops != [[InputCmd.OP_MOVE, String(whirl), key.spot.cell.x, key.spot.cell.y, key.spot.rot, 0]]:
 			err = "右鍵旋風斬應放進按鍵袋 %s，實際 %s" % [key, ops]
@@ -3257,14 +3310,14 @@ static func check_inventory_layout() -> String:
 			if row < 0 or not panel._held or panel._drag.get("pickup_id", 0) != stone.id:
 				err = "在腳邊框上點一下應拿起地上的磨刀石：手上 %s" % [panel._drag]
 			else:
-				var cell := Vector2i(7, 5)
+				var cell := Vector2i(5, 0)
 				var press := InputEventMouseButton.new()
 				press.button_index = MOUSE_BUTTON_LEFT
 				press.pressed = true
 				press.position = panel._grid_origin() + (Vector2(cell) + Vector2(0.5, 0.5)) * InventoryPanel.CELL
 				panel._gui_input(press)
 				if ops != [[InputCmd.OP_PICKUP, stone.id, cell.x, cell.y, 0, Loadout.BAG]]:
-					err = "拿著腳邊的磨刀石點背包 (7, 5) 應送出 OP_PICKUP，實際 %s" % [ops]
+					err = "拿著腳邊的磨刀石點倉庫 (5, 0) 應送出 OP_PICKUP，實際 %s" % [ops]
 	panel.visible = false
 	if err == "" and panel.feet_panel.visible:
 		err = "背包關掉時腳邊框也要關掉"
@@ -3273,8 +3326,8 @@ static func check_inventory_layout() -> String:
 	return err
 
 
-# 盤（觸發袋）：盤座標與袋子座標換算來回一致（四個邊）；空的邊算得出接哪一邊、沿邊第幾格；抓袋子的空格拿起整個袋子，
-# 拖到另一邊送 OP_BAG（接上），拖到倉庫送拿下來；拖東西到袋子送帶袋子編號的 OP_MOVE
+# 盤（觸發袋）：盤座標與袋子座標換算來回一致（四個邊）；空的邊算得出接哪一邊、沿邊第幾格；抓袋子的空格或標題條拿起整個袋子，
+# 拖到另一邊送 OP_BAG（接上），拖到倉庫送拿下來；拖東西到袋子送帶袋子編號的 OP_MOVE；標題與說明是一句話，倉庫拖放不管形狀
 static func check_inventory_board() -> String:
 	var w := _new_world(5)
 	var p := _player(w)
@@ -3324,6 +3377,51 @@ static func check_inventory_board() -> String:
 		panel._finish_drag(p, panel._bcell_rect(Loadout.board_cell(hit, Vector2i(1, 1))).get_center())
 		if ops != [[InputCmd.OP_MOVE, String(rune), 1, 1, 0, hit_i]]:
 			err = "雷鳴符文拖到命中袋 (1, 1) 應送帶袋子編號的 OP_MOVE：%s" % [ops]
+	ops.clear()
+	# 標題條：停著算那個袋子、抓著拿起整個袋子（裝滿的袋子沒有空格可抓）、右鍵拿下來
+	if err == "":
+		var head_at: Vector2 = panel._bag_head_rect(hit).get_center()
+		if panel._uid_at(p, head_at) != hit.uid:
+			err = "滑鼠停在標題條上應算那個袋子：%s" % panel._uid_at(p, head_at)
+		else:
+			panel._start_drag(p, head_at)
+			var held_bag: bool = panel._drag.get("uid", &"") == hit.uid and panel._drag.has("bag")
+			panel._cancel()
+			var right := InputEventMouseButton.new()
+			right.button_index = MOUSE_BUTTON_RIGHT
+			right.pressed = true
+			right.position = head_at
+			panel._gui_input(right)
+			if not held_bag or ops != [[InputCmd.OP_BAG, String(hit.uid), "", 0]]:
+				err = "抓標題條應拿起整個袋子（%s）、右鍵應拿下來：%s" % [held_bag, ops]
+	ops.clear()
+	# 標題與說明：一句話講時機，下方的袋子不寫方位
+	if err == "":
+		var bottom := {"kind": &"roll", "side": &"bottom", "tier": &"small", "mul": 1.0, "length": 3, "depth": 2, "entries": []}
+		var right_hit: Dictionary = hit.duplicate()
+		right_hit.side = &"right"
+		var sentence: String = InventoryPanel.bag_info(right_hit, p).lines[0]
+		if InventoryPanel.head_text(bottom) != "翻滾時" or InventoryPanel.head_text(right_hit) != "右鍵打中時" or not sentence.contains("在那隻怪身上"):
+			err = "袋子的標題應寫時機：%s / %s、說明「%s」" % [InventoryPanel.head_text(bottom), InventoryPanel.head_text(right_hit), sentence]
+	# 滑鼠停在袋子的標題條上：這個袋子是焦點、說明框寫它；停在下方袋子裡的東西上，標題不寫「不分按鍵」
+	if err == "":
+		var roll := _bag(p, &"roll", &"bottom")
+		var smoke := _put(p, roll, &"smoke_bomb")
+		panel._hover_uid = panel._uid_at(p, panel._bag_head_rect(roll).get_center())
+		var focus_ok: bool = panel._focus_bag(p) == roll and String(panel._info_of(p).title).contains("翻滾時")
+		panel._hover_uid = smoke
+		var item_title := String(panel._info_of(p).title)
+		panel._hover_uid = &""
+		if not focus_ok or item_title.contains("不分按鍵") or not item_title.contains("翻滾時"):
+			err = "停在標題條上應以那個袋子為焦點（%s）；袋子裡東西的說明應寫「翻滾時」、不寫方位：%s" % [focus_ok, item_title]
+	# 倉庫不管形狀：4 格長的法杖放在倉庫最後一格，拖動時落點就是滑鼠那一格
+	if err == "":
+		var staff_uid := StringName("board_staff")
+		p.loadout.inventory.add(staff_uid, &"staff", Vector2i(5, 0), 0, {"weapon": WeaponDropDefs.make(staff_uid, &"staff", &"white", w.rng)})
+		panel._start_drag(p, panel._grid_origin() + (Vector2(5, 0) + Vector2(0.5, 0.5)) * InventoryPanel.CELL)
+		panel._finish_drag(p, panel._grid_origin() + (Vector2(4, 0) + Vector2(0.5, 0.5)) * InventoryPanel.CELL)
+		if ops != [[InputCmd.OP_MOVE, String(staff_uid), 4, 0, 0, Loadout.BAG]]:
+			err = "倉庫的法杖拖到 (4, 0) 應送 OP_MOVE 到 (4, 0)：%s" % [ops]
 	hud.queue_free()
 	cam.queue_free()
 	return err

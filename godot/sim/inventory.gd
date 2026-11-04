@@ -1,12 +1,13 @@
-# 格子容器：倉庫（ItemDefs.BAG_SIZE 8 × 6，什麼都放、沒有效果）、主袋（BagDefs.MAIN_SIZE，只放數值道具）、
+# 格子容器：倉庫（ItemDefs.BAG_SIZE，什麼都放、沒有效果、每格一件不管形狀）、主袋（BagDefs.MAIN_SIZE，只放數值道具）、
 # 觸發袋（for_bag：袋子實例的 length × depth，只放效果、技能、修飾）
-# 道具依 ItemDefs.SHAPES 的形狀占格、可轉 0 / 90 / 180 / 270 度。只管擺放；效果由 Loadout 依 uid 套上。純資料，客戶端從快照整份覆蓋
+# 主袋與袋子裡的道具依 ItemDefs.SHAPES 的形狀占格、可轉 0 / 90 / 180 / 270 度。只管擺放；效果由 Loadout 依 uid 套上。純資料，客戶端從快照整份覆蓋
 class_name Inventory
 extends RefCounted
 
 const STORAGE := &"storage"
 const CORE := &"core"
 const BAG := &"bag"
+const ONE_CELL: Array[Vector2i] = [Vector2i.ZERO]
 
 var size: Vector2i = ItemDefs.BAG_SIZE
 var entries: Array[Dictionary] = []   # { uid: StringName, id: StringName, cell: Vector2i, rot: int, weapon?: 武器實例, bag?: 袋子實例, charges?: int }
@@ -55,6 +56,11 @@ static func cells_of(id: StringName, rot: int) -> Array[Vector2i]:
 	return out
 
 
+# 在這個容器裡占的格子：倉庫一律一格，其他照形狀
+func cells(id: StringName, rot: int) -> Array[Vector2i]:
+	return ONE_CELL if mode == STORAGE else cells_of(id, rot)
+
+
 func find(uid: StringName) -> Dictionary:
 	for e in entries:
 		if e.uid == uid:
@@ -68,13 +74,13 @@ func occupied(ignore: StringName = &"") -> Dictionary:
 	for e in entries:
 		if e.uid == ignore:
 			continue
-		for c in cells_of(e.id, e.rot):
+		for c in cells(e.id, e.rot):
 			out[e.cell + c] = e.uid
 	return out
 
 
 func fits(id: StringName, cell: Vector2i, rot: int, ignore: StringName = &"") -> bool:
-	return accepts(id) and _fits_cells(occupied(ignore), cells_of(id, rot), cell)
+	return accepts(id) and _fits_cells(occupied(ignore), cells(id, rot), cell)
 
 
 func _fits_cells(taken: Dictionary, cells: Array[Vector2i], at: Vector2i) -> bool:
@@ -93,7 +99,7 @@ func find_spot(id: StringName, ignore: StringName = &"") -> Dictionary:
 	var taken := occupied(ignore)
 	var shapes: Array[Array] = []
 	for rot in 4:
-		shapes.append(cells_of(id, rot))
+		shapes.append(cells(id, rot))
 	for y in size.y:
 		for x in size.x:
 			for rot in 4:
@@ -109,7 +115,7 @@ func suggest_removal(id: StringName) -> StringName:
 	var best := &""
 	var best_cells := 1 << 20
 	for e in entries:
-		var n := cells_of(e.id, e.rot).size()
+		var n := cells(e.id, e.rot).size()
 		if n < best_cells and not find_spot(id, e.uid).is_empty():
 			best = e.uid
 			best_cells = n

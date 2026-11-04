@@ -10,7 +10,7 @@
 # 後三種有些已接上（IMPLEMENTED_*，效果在 sim/item_effects.gd），其他的只有資料：說明加「效果尚未實作」、寶箱不開出（LootDefs.drop_pool）
 class_name ItemDefs
 
-const BAG_SIZE := Vector2i(8, 6)   # 背包 8 × 6 格（暫定）
+const BAG_SIZE := Vector2i(6, 1)   # 倉庫 6 格，每格放一件東西（不管形狀，Inventory.cells）
 const BLOCK_HIT_DAMAGE_PCT := 1.0   # 招架成功算右鍵命中：沒有「那一下的傷害」，右邊命中袋用武器基礎傷害的 100%（Player.pct_damage）
 
 # cells：道具占幾格（Build 改版第 5 步，要放得進武器格子）；同稀有度的形狀可以不同
@@ -144,7 +144,7 @@ const ITEMS := {
 	&"bag_hurt": {"kind": &"bag", "name": "受傷袋", "rarity": &"green", "shape": &"i2", "bonds": [], "desc": "接在下方：自己被打中時發動裡面的東西", "effects": []},
 	&"bag_roll": {"kind": &"bag", "name": "翻滾袋", "rarity": &"green", "shape": &"i2", "bonds": [], "desc": "接在下方：翻滾時發動裡面的東西", "effects": []},
 	&"bag_timer": {"kind": &"bag", "name": "計時袋", "rarity": &"green", "shape": &"i2", "bonds": [], "desc": "接在下方：每 3 秒發動裡面的東西", "effects": []},
-	&"bag_key": {"kind": &"bag", "name": "按鍵袋", "rarity": &"green", "shape": &"i2", "bonds": [], "desc": "接在上方：按數字鍵發動裡面的東西（由左到右是 1~4）", "effects": []},
+	&"bag_key": {"kind": &"bag", "name": "按鍵袋", "rarity": &"green", "shape": &"i2", "bonds": [], "desc": "接在上方：按數字鍵發動裡面的東西（由左到右是 1~3）", "effects": []},
 
 	# ---- 武器 ----
 	&"longsword": {"kind": &"weapon", "name": "長劍", "rarity": &"white", "shape": &"i3", "weapon": &"longsword",

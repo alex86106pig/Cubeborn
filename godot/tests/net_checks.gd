@@ -460,12 +460,12 @@ static func check_net_loot() -> String:
 			CheckKit._held_items(hp2).size(), CheckKit._held_items(me).size(), me.items, want_id]
 	var uid: String = CheckKit._held_items(me)[0].uid
 	var move := _cmd(Vector2.ZERO)
-	move.inv_ops = [[InputCmd.OP_MOVE, uid, 5, 3, 1]]
+	move.inv_ops = [[InputCmd.OP_MOVE, uid, 5, 0, 1]]
 	link.step(_cmd(Vector2.ZERO), move)
 	idle.call(20)
 	var e: Dictionary = me.inventory.entries[0] if not me.inventory.entries.is_empty() else {"cell": Vector2i(-1, -1), "rot": -1}
-	if me.items.size() != 0 or e.cell != Vector2i(5, 3) or e.rot != 1 or hp2.inventory.entries[0].cell != Vector2i(5, 3):
-		return "從武器格子搬進背包 (5, 3) 轉 90°（失效）：客戶端 %s / %d、生效 %d、房主 %s" % [e.cell, e.rot, me.items.size(), hp2.inventory.entries]
+	if me.items.size() != 0 or e.cell != Vector2i(5, 0) or e.rot != 1 or hp2.inventory.entries[0].cell != Vector2i(5, 0):
+		return "從主袋搬進倉庫 (5, 0) 轉 90°（失效）：客戶端 %s / %d、生效 %d、房主 %s" % [e.cell, e.rot, me.items.size(), hp2.inventory.entries]
 	var drop := _cmd(Vector2.ZERO)
 	drop.inv_ops = [[InputCmd.OP_DROP, uid]]
 	link.step(_cmd(Vector2.ZERO), drop)
@@ -473,14 +473,14 @@ static func check_net_loot() -> String:
 	if not me.inventory.entries.is_empty() or not me.items.is_empty() or cw.pickups.size() != 1 or hw.pickups.size() != 1:
 		return "丟掉後：客戶端背包 %d、生效 %d、地上 客戶端 %d / 房主 %d（應為 0 / 0 / 1 / 1）" % [
 			me.inventory.entries.size(), me.items.size(), cw.pickups.size(), hw.pickups.size()]
-	# 從背包介面的「腳邊」拖回背包 (2, 4)：用客戶端看到的地上道具 id
+	# 從背包介面的「腳邊」拖回倉庫 (2, 0)：用客戶端看到的地上道具 id
 	var pick := _cmd(Vector2.ZERO)
-	pick.inv_ops = [[InputCmd.OP_PICKUP, cw.pickups[0].id, 2, 4, 0]]
+	pick.inv_ops = [[InputCmd.OP_PICKUP, cw.pickups[0].id, 2, 0, 0]]
 	link.step(_cmd(Vector2.ZERO), pick)
 	idle.call(20)
-	if me.inventory.entries.size() != 1 or me.inventory.entries[0].cell != Vector2i(2, 4) or hp2.inventory.entries.size() != 1 \
-			or hp2.inventory.entries[0].cell != Vector2i(2, 4) or me.items.size() != 0 or not cw.pickups.is_empty():
-		return "從腳邊撿回 (2, 4)：客戶端背包 %s、房主背包 %s、客戶端生效 %d、客戶端地上 %d" % [
+	if me.inventory.entries.size() != 1 or me.inventory.entries[0].cell != Vector2i(2, 0) or hp2.inventory.entries.size() != 1 \
+			or hp2.inventory.entries[0].cell != Vector2i(2, 0) or me.items.size() != 0 or not cw.pickups.is_empty():
+		return "從腳邊撿回 (2, 0)：客戶端背包 %s、房主背包 %s、客戶端生效 %d、客戶端地上 %d" % [
 			me.inventory.entries, hp2.inventory.entries, me.items.size(), cw.pickups.size()]
 	return ""
 

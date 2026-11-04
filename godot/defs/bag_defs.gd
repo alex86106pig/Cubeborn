@@ -4,7 +4,7 @@
 # 袋子的格子：x 沿著接的那一邊、y 往外（length × depth），換邊時內容不用轉；畫面與同色區塊照 Loadout.board_cell 換成主袋座標
 class_name BagDefs
 
-const MAIN_SIZE := Vector2i(8, 6)   # 主袋：左右邊長 6（接得下兩個小袋）、上下邊長 8（接得下 4 個按鍵袋）
+const MAIN_SIZE := Vector2i(6, 6)   # 主袋：四邊邊長都是 6（接得下兩個小袋、3 個按鍵袋）
 
 # 邊：source 是哪個動作會觸發接在這一邊的袋子（primary 普攻、secondary 右鍵招式、key 數字鍵、空 = 不分按鍵）
 const SIDES := {
@@ -17,7 +17,7 @@ const SIDE_ORDER: Array[StringName] = [&"top", &"left", &"right", &"bottom"]
 
 # 袋子種類：item 是掉落與倉庫用的物品 id（ItemDefs kind bag）；sides 能接哪幾邊；
 # on 是道具資料原本的觸發時機（ItemDefs 效果的 on），用來把觸發道具對到袋子；icd：同一袋多久最多發動一次（秒）；
-# period：計時袋的間隔；max：最多接幾個（按鍵袋 = 數字鍵 1~4）；length：這種袋子的長度（沒寫照 TIERS；按鍵袋短一格，上方才放得下 4 個）
+# period：計時袋的間隔；max：最多接幾個（按鍵袋 = 數字鍵，上方邊長 6 接得下 3 個）；length：這種袋子的長度（沒寫照 TIERS；按鍵袋短一格）
 const BAGS := {
 	&"cast": {"name": "出手袋", "item": &"bag_cast", "sides": [&"left", &"right"], "on": [&"attack"], "desc": "出手時發動"},
 	&"hit": {"name": "命中袋", "item": &"bag_hit", "sides": [&"left", &"right"], "on": [&"hit", &"projectile_hit"], "icd": 0.3, "desc": "打中東西時，從命中點發動（同一袋 0.3 秒最多一次）"},
@@ -25,7 +25,7 @@ const BAGS := {
 	&"hurt": {"name": "受傷袋", "item": &"bag_hurt", "sides": [&"bottom"], "on": [&"hurt", &"hurt_melee"], "icd": 0.5, "desc": "自己被打中時發動（同一袋 0.5 秒最多一次）"},
 	&"roll": {"name": "翻滾袋", "item": &"bag_roll", "sides": [&"bottom"], "on": [&"roll"], "desc": "翻滾時發動"},
 	&"timer": {"name": "計時袋", "item": &"bag_timer", "sides": [&"bottom"], "on": [&"interval"], "period": 3.0, "desc": "每 3 秒發動一次"},
-	&"key": {"name": "按鍵袋", "item": &"bag_key", "sides": [&"top"], "on": [], "max": 4, "length": 2, "desc": "按數字鍵發動（由左到右是 1~4）"},
+	&"key": {"name": "按鍵袋", "item": &"bag_key", "sides": [&"top"], "on": [], "max": 3, "length": 2, "desc": "按數字鍵發動（由左到右是 1~3）"},
 }
 
 # 留在主袋的觸發：致命傷、死亡（守護亡靈、復活十字）不是攻擊的時機，當成常駐能力

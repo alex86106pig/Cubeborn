@@ -36,7 +36,7 @@ const BUTTON_S := {"size": Vector2(120, 44), "font": FONT_NOTE}   # 一排很多
 const ITEM_WEAPON_FILL := Color("4a4f57")   # 物品畫法（draw_item）：武器的底色（鐵灰）
 const ITEM_SKILL_FILL := Color("6a3f8f")    # 技能、修飾的底色
 const ITEM_BAG_FILL := Color("6b5236")      # 倉庫裡的觸發袋（皮革色）
-const ITEM_BIG_CELL := 64.0                 # 格子這麼大以上字大一級（背包）
+const ITEM_BIG_CELL := 60.0                 # 格子這麼大以上字大一級（背包）
 const ITEM_TEXT_CELL := 40.0                # 格子這麼大以上才寫名稱（遺物卡片的小圖不寫，卡片右邊有字）
 const BUTTON_CARD := {"size": Vector2(440, 230), "font": 24}   # 卡片：遺物的 N 選 1（RelicPanel；3 張約 1344 寬）
 const BUTTON_BG := {&"normal": Color(0.12, 0.14, 0.2, 0.85), &"hover": Color(0.22, 0.26, 0.36, 0.95),
@@ -220,12 +220,7 @@ static func draw_item_cells(ci: CanvasItem, font: Font, id: StringName, rects: A
 	var cell_px := rects[0].size.x
 	var fill: Color = {&"weapon": ITEM_WEAPON_FILL, &"skill": ITEM_SKILL_FILL, &"support": ITEM_SKILL_FILL.darkened(0.4), &"bag": ITEM_BAG_FILL}.get(kind, color.darkened(0.55))
 	for cr in rects:
-		var r := cr.grow(-3)
-		ci.draw_rect(r, Color(fill, 0.9 * alpha))
-		if kind == &"support":
-			draw_dashed_rect(ci, r, Color(color, alpha))
-		else:
-			ci.draw_rect(r, Color(color, alpha), false, 2.0)
+		_draw_item_cell(ci, cr, rects, Color(fill, 0.9 * alpha), Color(color, alpha), kind == &"support")
 	var first: Vector2 = rects[0].position
 	var big := cell_px >= ITEM_BIG_CELL
 	if kind == &"skill":
@@ -234,13 +229,42 @@ static func draw_item_cells(ci: CanvasItem, font: Font, id: StringName, rects: A
 		ci.draw_string(font, first + Vector2(0, cell_px / 2.0 + (12 if big else 7)), SkillDefs.SKILLS.get(id, {}).get("icon", String(def.name).substr(0, 1)),
 				HORIZONTAL_ALIGNMENT_CENTER, cell_px, 34 if big else 20, Color(1, 1, 1, alpha))
 	elif cell_px >= ITEM_TEXT_CELL:
-		ci.draw_string(font, first + Vector2(6, cell_px * 0.36), String(def.name).substr(0, 4 if big else 2), HORIZONTAL_ALIGNMENT_LEFT, cell_px - 8, 22 if big else 15, Color(1, 1, 1, alpha))
+		var label_text := String(def.name).substr(0, 4 if big else 2)
+		ci.draw_string(font, first + Vector2(5, cell_px * 0.36), label_text, HORIZONTAL_ALIGNMENT_LEFT, cell_px - 6, 13 if big else 15, Color(1, 1, 1, alpha))   # 大格的字級放得下 4 個字，每件都一樣大
 	if kind in [&"weapon", &"support", &"bag"] and cell_px >= ITEM_TEXT_CELL:
-		ci.draw_string(font, first + Vector2(6, cell_px - 9), {&"weapon": "武器", &"support": "修飾", &"bag": "袋子"}[kind], HORIZONTAL_ALIGNMENT_LEFT, -1, 16 if big else 11, Color(1, 1, 1, 0.6 * alpha))
+		ci.draw_string(font, first + Vector2(6, cell_px - 9), {&"weapon": "武器", &"support": "修飾", &"bag": "袋子"}[kind], HORIZONTAL_ALIGNMENT_LEFT, -1, 13 if big else 11, Color(1, 1, 1, 0.6 * alpha))
 	var dot_scale := 1.5 if big else 1.0
 	for i in bonds.size():
 		var dot_r := (5.0 if bonds[i] == hover_bond else 3.5) * dot_scale
-		ci.draw_circle(first + Vector2(cell_px - 9.0 * dot_scale * (i + 1), 9.0 * dot_scale), dot_r, Color(BondDefs.BONDS[bonds[i]].color, alpha))
+		var dot_y := cell_px - 9.0 * dot_scale if big else 9.0 * dot_scale   # 大格的名稱佔滿上面一行，色點放下面
+		ci.draw_circle(first + Vector2(cell_px - 9.0 * dot_scale * (i + 1), dot_y), dot_r, Color(BondDefs.BONDS[bonds[i]].color, alpha))
+
+
+# 物品的一格：相鄰的邊不留縫、外圈才描邊，多格物品看起來是一整塊
+static func _draw_item_cell(ci: CanvasItem, cr: Rect2, rects: Array[Rect2], fill: Color, line: Color, dashed: bool) -> void:
+	const INSET := 3.0
+	var step := cr.size.x
+	var l := 0.0 if _has_cell(rects, cr.position - Vector2(step, 0)) else INSET
+	var r := 0.0 if _has_cell(rects, cr.position + Vector2(step, 0)) else INSET
+	var t := 0.0 if _has_cell(rects, cr.position - Vector2(0, step)) else INSET
+	var b := 0.0 if _has_cell(rects, cr.position + Vector2(0, step)) else INSET
+	var body := Rect2(cr.position + Vector2(l, t), cr.size - Vector2(l + r, t + b))
+	ci.draw_rect(body, fill)
+	var corners: Array[Vector2] = [body.position, Vector2(body.end.x, body.position.y), body.end, Vector2(body.position.x, body.end.y)]
+	for side: int in [0, 1, 2, 3]:
+		if [t, r, b, l][side] <= 0.0:
+			continue
+		if dashed:
+			ci.draw_dashed_line(corners[side], corners[(side + 1) % 4], line, 2.0, 6.0)
+		else:
+			ci.draw_line(corners[side], corners[(side + 1) % 4], line, 2.0)
+
+
+static func _has_cell(rects: Array[Rect2], at: Vector2) -> bool:
+	for x in rects:
+		if x.position.is_equal_approx(at):
+			return true
+	return false
 
 
 # 畫法用的種類：weapon / skill / support（修飾是 kind item、有 skill_support 能力）/ item / bag / corpse

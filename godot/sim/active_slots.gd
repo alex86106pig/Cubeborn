@@ -1,4 +1,4 @@
-# 技能欄：數字鍵 1~4 = 接在主袋上方的按鍵袋（由左到右，Loadout.key_bags），Q = 治療藥水
+# 技能欄：數字鍵 = 接在主袋上方的按鍵袋（由左到右，Loadout.key_bags；最多 BagDefs.BAGS.key.max 個），Q = 治療藥水
 # 按下數字鍵：那個按鍵袋裡的效果與技能一起放（BagTriggers.run_bag）；技能欄顯示袋子裡第一個技能
 # 技能的使用條件（魔力、次數、技能自訂條件）、等級（Player.skill_levels）、同一袋修飾的效果與耗魔在這裡算，交給 SkillBehaviors
 # 觸發袋裡的技能也走這裡（BagTriggers.cast_skill）。不持有玩家（避免循環參照），每次呼叫時傳入
@@ -98,17 +98,22 @@ func _predict(owner: Player, b: Dictionary) -> void:
 				cast(owner, slot)
 
 
-static func can_cast(owner: Player, slot: Dictionary) -> bool:
+# target：觸發袋的目標（命中、擊殺、受傷）；按鍵與沒有目標的袋子是 null
+static func can_cast(owner: Player, slot: Dictionary, target: Entity = null) -> bool:
 	if slot.charges == 0:
 		return false
 	if slot.def.has("mana") and not owner.has_mana(mana_cost(owner, slot)):
 		return false
-	return SkillBehaviors.BEHAVIORS[slot.def.behavior].can_use(owner, slot.def)
+	var behavior: SkillBehaviors.Behavior = SkillBehaviors.BEHAVIORS[slot.def.behavior]
+	return behavior.can_use(owner, slot.def) if target == null else behavior.can_use_on(owner, slot.def, target)
 
 
 # 放一個技能（呼叫端先確認 can_cast）：扣魔力、次數
-static func cast(owner: Player, slot: Dictionary) -> void:
-	SkillBehaviors.cast(owner, slot.def, cast_context(owner, slot))
+static func cast(owner: Player, slot: Dictionary, target: Entity = null) -> void:
+	var ctx := cast_context(owner, slot)
+	if target != null:
+		SkillBehaviors.aim_at(owner, ctx, target)
+	SkillBehaviors.cast(owner, slot.def, ctx)
 	if slot.charges > 0:
 		slot.entry["charges"] = slot.charges - 1
 	if slot.def.has("mana"):
