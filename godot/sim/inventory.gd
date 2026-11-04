@@ -36,7 +36,7 @@ func accepts(id: StringName) -> bool:
 		CORE:
 			return ItemDefs.role_of(id) == ItemDefs.ROLE_STAT
 		BAG:
-			return ItemDefs.role_of(id) in [ItemDefs.ROLE_EFFECT, ItemDefs.ROLE_SKILL, ItemDefs.ROLE_MOD]
+			return ItemDefs.role_of(id) in [ItemDefs.ROLE_STAT, ItemDefs.ROLE_EFFECT, ItemDefs.ROLE_SKILL, ItemDefs.ROLE_MOD]   # 數值放袋子也生效（第 8 步 a）
 	return true
 
 

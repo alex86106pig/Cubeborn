@@ -418,10 +418,15 @@ func clear_items(p: Player) -> void:
 
 
 # 生效的數值道具 = 主袋裡的；和 items 比對，新放進來的套屬性、拿出去的移除屬性與條件。詛咒袋接著時套它的缺點。羈絆重算
+# 數值道具在主袋與接著的袋子裡都生效（第 8 步 a，YangHsu 2026-11-04）；袋子裡的效果、技能、修飾不算屬性
 func refresh_items(p: Player) -> void:
 	var want := {}
 	for e: Dictionary in core.entries:
 		want[e.uid] = e.id
+	for b in bags:
+		for e: Dictionary in b.entries:
+			if ItemDefs.role_of(e.id) == ItemDefs.ROLE_STAT:
+				want[e.uid] = e.id
 	for it: Dictionary in items.duplicate():
 		if not want.has(it.uid):
 			items.erase(it)

@@ -1590,10 +1590,10 @@ static func check_item_drop_pool() -> String:
 				return "%s 的掉落裡有還沒實作的 %s" % [r, id]
 		# 這個稀有度有實作好的道具就全部都在掉落裡；一個都沒有就往下一級找
 		var done := LootDefs.items_of(r).filter(func(id: StringName) -> bool:
-			return ItemDefs.item_implemented(id) and (not ItemDefs.ITEMS[id].get("bonds", []).is_empty() or not ItemDefs.support_of(id).is_empty() or ItemDefs.is_mana_item(id)))
+			return ItemDefs.item_implemented(id))
 		if not done.is_empty():
 			if pool != done:
-				return "%s 的掉落應為實作好、屬於羈絆（或輔助、魔力道具）的 %s，實際 %s" % [r, done, pool]
+				return "%s 的掉落應為實作好的 %s（沒有羈絆的也掉），實際 %s" % [r, done, pool]
 		elif order.find(ItemDefs.ITEMS[pool[0]].rarity) >= order.find(r):
 			return "%s 都還沒實作，應改掉較低的稀有度，實際掉 %s" % [r, ItemDefs.ITEMS[pool[0]].rarity]
 	return ""
@@ -1735,10 +1735,6 @@ static func check_bonds() -> String:
 		for bond: StringName in ItemDefs.ITEMS[id].get("bonds", []):
 			if not BondDefs.BONDS.has(bond):
 				return "%s 的羈絆不存在：%s" % [id, bond]
-	for r: StringName in ItemDefs.RARITIES:
-		for id in LootDefs.drop_pool(r):
-			if ItemDefs.ITEMS[id].get("bonds", []).is_empty() and ItemDefs.support_of(id).is_empty() and not ItemDefs.is_mana_item(id):
-				return "%s 不屬於任何羈絆（也不是修飾、魔力道具），不該在掉落池" % id
 	for bond: StringName in BondDefs.BONDS:
 		var th: Array = BondDefs.BONDS[bond].thresholds
 		if BondDefs.BONDS[bond].tiers.size() != th.size():
@@ -1799,6 +1795,13 @@ static func check_bag_layout() -> String:
 	if lo.bag_fits(BagDefs.make(&"t2", &"kill"), &"left", 1):
 		return "同一邊重疊的位置不能接"
 	var rune := _put(p, b, &"thunder_rune")
+	# 數值道具放袋子也生效（第 8 步 a）；自動擺放只放主袋
+	var dmg_before := p.stats.value(&"damage")
+	var stone := _put(p, b, &"whetstone")
+	if stone == &"" or p.stats.value(&"damage") <= dmg_before:
+		return "磨刀石放進接著的命中袋應生效：攻擊力 %s → %s" % [dmg_before, p.stats.value(&"damage")]
+	if lo.auto_place(&"whetstone").get("where", -9) != Loadout.CORE:
+		return "數值道具自動擺放應只放主袋：%s" % [lo.auto_place(&"whetstone")]
 	var op := func(o: Array) -> void:
 		lo.queue_ops([o])
 		lo.apply_ops(p)
@@ -1813,6 +1816,8 @@ static func check_bag_layout() -> String:
 	var stored := p.inventory.find(uid)
 	if stored.is_empty() or lo.bags.has(b) or not lo.find_item(rune).is_empty() and lo.find_item(rune).where != Loadout.BAG:
 		return "拿下來應放進倉庫 (0, 0)、不再接著：倉庫 %s" % [stored]
+	if not is_equal_approx(p.stats.value(&"damage"), dmg_before):
+		return "袋子拿下來，裡面的磨刀石應失效：攻擊力 %s，應為 %s" % [p.stats.value(&"damage"), dmg_before]
 	op.call([InputCmd.OP_BAG, String(uid), "left", 2])
 	if b.side != &"left" or b.offset != 2 or not p.inventory.find(uid).is_empty():
 		return "倉庫的袋子 OP_BAG 應接回左邊 2：%s" % [b]

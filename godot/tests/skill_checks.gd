@@ -28,15 +28,15 @@ static func _targets(w: World) -> Array[Enemy]:
 	return out
 
 
-# 放置規則：主袋不放技能、袋子收技能與效果、倉庫什麼都收；自動擺放先找按鍵袋、滿了找別的袋子、都滿進倉庫；
+# 放置規則：主袋不放技能、袋子收技能、效果與數值道具（第 8 步 a）、倉庫什麼都收；自動擺放先找按鍵袋、滿了找別的袋子、都滿進倉庫；
 # 數字鍵 = 按鍵袋由左到右（袋子裡第一個技能），Q 是治療藥水；技能不算生效的數值道具
 static func check_gem_rules() -> String:
 	var s := _setup(&"longsword")
 	var p: Player = s[1]
 	var key: Dictionary = p.loadout.key_bags()[0]
 	if p.loadout.core.fits(&"whirlwind", Vector2i.ZERO, 0) or not Inventory.for_bag(key).fits(&"meteor", Vector2i.ZERO, 0) \
-			or Inventory.for_bag(key).fits(&"whetstone", Vector2i.ZERO, 0) or not p.inventory.fits(&"meteor", Vector2i.ZERO, 0):
-		return "主袋不放技能、袋子放技能不放數值道具、倉庫都放得下"
+			or not Inventory.for_bag(key).fits(&"whetstone", Vector2i.ZERO, 0) or not p.inventory.fits(&"meteor", Vector2i.ZERO, 0):
+		return "主袋不放技能、袋子放得下技能與數值道具、倉庫都放得下"
 	var a := p.add_item(&"whirlwind")
 	if p.loadout.find_item(a).get("where", -9) != 0:
 		return "技能應自動放進按鍵袋：%s" % [p.loadout.find_item(a)]

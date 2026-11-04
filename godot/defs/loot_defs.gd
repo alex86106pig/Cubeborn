@@ -87,14 +87,14 @@ static func items_of(rarity: StringName) -> Array[StringName]:
 	return out
 
 
-# 寶箱 / Boss 獎勵實際抽的道具：只抽效果都接上的（v0.33.0 使用者決定，還沒做的先不開出來）；
+# 寶箱 / Boss 獎勵實際抽的道具：只抽效果都接上的（v0.33.0 使用者決定，還沒做的先不開出來）；沒有羈絆的也掉（許家慶 2026-11-04：無色格）；
 # 那個稀有度一個都沒有（目前的橘色）就往下一級找
 static func drop_pool(rarity: StringName) -> Array[StringName]:
 	var order: Array = ItemDefs.RARITIES.keys()
 	for i in range(order.find(rarity), -1, -1):
 		var out: Array[StringName] = []
 		for id in items_of(order[i]):
-			if ItemDefs.item_implemented(id) and (not ItemDefs.ITEMS[id].get("bonds", []).is_empty() or not ItemDefs.support_of(id).is_empty() or ItemDefs.is_mana_item(id)):   # 不屬於任何羈絆的先不掉（輔助道具、魔力道具照掉）
+			if ItemDefs.item_implemented(id):
 				out.append(id)
 		if not out.is_empty():
 			return out

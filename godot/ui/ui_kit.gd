@@ -166,7 +166,7 @@ static func role_line(id: StringName) -> String:
 			return "技能：放進袋子，時機到了發動（適合%s）· 每次耗魔 %d" % [BagDefs.BAGS[bag].name if bag != &"" else "任何袋子", roundi(BagTriggers.effect_mana(id))]
 		ItemDefs.ROLE_MOD:
 			return "修飾：放進技能所在的袋子，作用在同一袋的技能"
-	return "數值：放進主袋就生效"
+	return "數值：放進主袋或袋子都生效"
 
 
 # 技能的一行：怎麼用、標籤、耗魔（插火把這種次數制的寫次數），耗魔照等級算

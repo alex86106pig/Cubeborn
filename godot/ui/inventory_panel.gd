@@ -771,7 +771,7 @@ func _draw_board(font: Font, me: Player) -> void:
 		for b in me.loadout.bags:
 			draw_rect(_bag_area(b).merge(_bag_head_rect(b)), SHADE)
 	elif not _drag.is_empty():
-		var bag_ok := ItemDefs.role_of(_drag.id) in [ItemDefs.ROLE_EFFECT, ItemDefs.ROLE_SKILL, ItemDefs.ROLE_MOD]
+		var bag_ok := ItemDefs.role_of(_drag.id) in [ItemDefs.ROLE_STAT, ItemDefs.ROLE_EFFECT, ItemDefs.ROLE_SKILL, ItemDefs.ROLE_MOD]
 		if not me.loadout.core.accepts(_drag.id):
 			draw_rect(core, SHADE)
 			if bag_ok:
