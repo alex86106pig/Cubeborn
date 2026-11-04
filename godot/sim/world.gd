@@ -94,7 +94,9 @@ func load_map(p_map_id: StringName) -> void:
 	if map.has("generator"):
 		if stage_num == 0:
 			stage_num = MapGenDefs.START_STAGE
-		var built := MapGen.build_map(map, stage_num, floor_rng(&"layout"))
+		var plan_rng := RandomNumberGenerator.new()
+		plan_rng.seed = hash([run_seed, floor_num, &"chest_plan"])   # 整層共用一份分配：不看小關，每小關算出來都一樣
+		var built := MapGen.build_map(map, stage_num, floor_rng(&"layout"), MapGen.chest_plan(plan_rng).get(stage_num, {}))
 		if built.is_empty():
 			push_warning("第 %d 層第 %d 小關（種子 %d）產生失敗，改用 %s" % [floor_num, stage_num, run_seed, MapGenDefs.FALLBACK_MAP])
 			built = MapDefs.get_map(MapGenDefs.FALLBACK_MAP)
@@ -209,7 +211,7 @@ func floor_rng(purpose: StringName) -> RandomNumberGenerator:
 # 鍛造祭壇（forge_count）排在寶箱後面、用同一套規則：寶箱的位置和沒有鍛造祭壇時一樣
 func _place_chests(prng: RandomNumberGenerator) -> void:
 	if map.has("chest_spots"):
-		# 產生的地圖（MapGen）：小寶箱在打怪的塊、支線盡頭一個大的；有鐵砧的關在起點旁放鐵砧（遺物的一種，每人用一次）
+		# 產生的地圖（MapGen）：祭壇與石棺照整層的分配擺；有鐵砧的關在起點旁放鐵砧（遺物的一種，每人用一次）
 		for spot: Array in map.chest_spots:
 			var chest := Chest.new(self, spot[2], MapDefs.to_world(map, Vector2(spot[0], spot[1])))
 			add_entity(chest)

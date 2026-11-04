@@ -637,6 +637,10 @@ static func _stage_reach(w: World, cfg: Dictionary) -> String:
 		return "鐵砧走不到"
 	if (w.map.chest_spots as Array).is_empty():
 		return "每小關至少要有一個祭壇或石棺"
+	for spot_a: Array in w.map.chest_spots:
+		for spot_b: Array in w.map.chest_spots:
+			if spot_a != spot_b and Vector2(spot_a[0], spot_a[1]).distance_to(Vector2(spot_b[0], spot_b[1])) < MapGenDefs.CHESTS.min_gap - 0.01:
+				return "祭壇與石棺彼此至少 %.0f：%s、%s" % [MapGenDefs.CHESTS.min_gap, spot_a, spot_b]
 	for spot: Array in w.map.chest_spots:
 		var p: Vector2 = at.call(Vector2(spot[0], spot[1]))
 		if not reachable.call(p):
@@ -665,6 +669,45 @@ static func check_stage_map_seed() -> String:
 		return "同一個種子、同一關兩次產生的地圖不同"
 	if a == key.call(_stage_world(3, 56)) or a == key.call(_stage_world(4, 55)):
 		return "換種子或換小關，地圖應不同"
+	return ""
+
+
+# 祭壇與石棺先定整層總數：分配加起來等於 FLOOR_CHESTS、同種子一樣、換種子會變；實際地圖照分配擺（放不下的記在 chest_short），不是每局差很多
+static func check_floor_chests() -> String:
+	var fc: Dictionary = MapGenDefs.FLOOR_CHESTS
+	var plan_of := func(seed_value: int) -> Dictionary:
+		var r := RandomNumberGenerator.new()
+		r.seed = seed_value
+		return MapGen.chest_plan(r)
+	var changed := false
+	for seed_value in range(1, 11):
+		var plan: Dictionary = plan_of.call(seed_value)
+		if plan != plan_of.call(seed_value):
+			return "同一個種子的分配應該一樣"
+		changed = changed or plan != plan_of.call(1)
+		var altars := 0
+		var coffins := 0
+		for st: int in plan:
+			altars += plan[st].altars
+			coffins += plan[st].coffins
+			if MapGenDefs.STAGES[st].get("boss", false) and plan[st].altars != fc.boss_altars:
+				return "Boss 那關應分到 %d 個祭壇，實際 %d" % [fc.boss_altars, plan[st].altars]
+		if altars != fc.altars or coffins != fc.coffins:
+			return "分配加起來應是 %d 祭壇 %d 石棺，實際 %d / %d" % [fc.altars, fc.coffins, altars, coffins]
+	if not changed:
+		return "換種子分配應該會變"
+	for seed_value in [1, 2, 3]:
+		var w := _new_world(seed_value, false, &"graveyard")
+		var total := {&"small": 0, &"big": 0}
+		var short := 0
+		for st in MapGenDefs.STAGES.size():
+			short += w.map.get("chest_short", 0)
+			for c in w.chests:
+				total[(c as Chest).tier] += 1
+			if st < MapGenDefs.STAGES.size() - 1:
+				w.next_stage(&"")
+		if total.small + total.big + short != fc.altars + fc.coffins or total.big > fc.coffins or short > 1:
+			return "種子 %d 整層應有 %d 祭壇 %d 石棺：實際 %d / %d、少放 %d" % [seed_value, fc.altars, fc.coffins, total.small, total.big, short]
 	return ""
 
 

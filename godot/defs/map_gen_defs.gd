@@ -61,9 +61,13 @@ const REWARDS := {
 }
 const REWARD_DROP := Vector2(0.0, -3.0)
 
-# 擺放：怪群（每塊 1~3 群、支線 1 群，一群 6~10 隻）、祭壇（打怪的塊 1~2 個）
+# 祭壇與石棺：先定這一層的總數，開局照種子分給各小關（MapGen.chest_plan），各小關再找位置擺
+# Boss 那關打怪的塊比較少，固定分 boss_altars 個，其他平均；石棺抽不同的小關各一個（第 1 層的經濟目標見 docs/設計方向.md）
+const FLOOR_CHESTS := {"altars": 16, "coffins": 3, "boss_altars": 2}
+
+# 擺放：怪群（每塊 1~3 群、支線 1 群，一群 6~10 隻）、祭壇與石棺的位置（min_gap：彼此至少多遠，才不會全擠在同一塊）
 const PACKS := {"per_region": [1, 3], "per_branch": [1, 1], "size": [6, 10], "min_start": 14, "min_gap": 8, "margin": 4, "attempts": 60}
-const CHESTS := {"per_region": [1, 2], "min_start": 8, "min_pack": 4, "margin": 3, "attempts": 40}
+const CHESTS := {"min_start": 8, "min_pack": 4, "min_gap": 5, "margin": 3, "attempts": 40}
 
 # 保留空間：這些點周圍不放障礙物（半徑），也不吃邊
 const KEEP := {"start": 6.0, "opening": 4.5, "anvil": 3.0, "big_chest": 4.0, "door_reach": 3.0, "door": 2.5}

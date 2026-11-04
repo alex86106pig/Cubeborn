@@ -26,7 +26,10 @@ var big_chest := Vector2.INF
 var dig := Vector2.INF
 var boss_room: Array = []
 var doors: Array[Dictionary] = []      # { side, at: 門, reach: 門前站的位置, reward }
-var chests: Array[Vector2] = []
+var chests: Array[Vector2] = []        # 祭壇
+var coffins: Array[Vector2] = []       # 石棺
+var chest_quota := {}                  # 這一小關分到的 { altars, coffins }（chest_plan）
+var chest_short := 0                   # 放不下、少放了幾個
 var packs: Array[Array] = []           # [x, y, 隻數]
 # 1 單位格子：區域 id，-1 = 實心（崖壁、外面）
 var gx0 := 0
@@ -37,16 +40,50 @@ var grid := PackedInt32Array()
 var reach := PackedByteArray()         # 從起點走得到的格子
 
 
-func _init(p_stage: int, p_rng: RandomNumberGenerator) -> void:
+func _init(p_stage: int, p_rng: RandomNumberGenerator, p_quota: Dictionary = {}) -> void:
 	stage = p_stage
 	rng = p_rng
 	cfg = MapGenDefs.STAGES[p_stage]
+	chest_quota = p_quota
 
 
 # 第 stage 小關的地圖：base 是 MapDefs 裡 generator 地圖的資料（名稱、主題、怪群 / 挖墳開關），這裡蓋上產生的部分；ATTEMPTS 次都失敗回傳空的
-static func build_map(base: Dictionary, p_stage: int, p_rng: RandomNumberGenerator) -> Dictionary:
+# 整層的祭壇與石棺分給各小關：{ 小關: { altars, coffins } }。同一個 rng 種子算出來一樣（房主與客戶端各算各的）
+static func chest_plan(p_rng: RandomNumberGenerator) -> Dictionary:
+	var fc: Dictionary = MapGenDefs.FLOOR_CHESTS
+	var plan := {}
+	var normal: Array[int] = []
+	var left: int = fc.altars
+	for st: int in MapGenDefs.STAGES:
+		var boss: bool = MapGenDefs.STAGES[st].get("boss", false)
+		plan[st] = {"altars": fc.boss_altars if boss else 0, "coffins": 0}
+		if boss:
+			left -= fc.boss_altars
+		else:
+			normal.append(st)
+	_shuffle(normal, p_rng)
+	for i in normal.size():   # 平均分，多的給洗牌後前面的小關
+		plan[normal[i]].altars = left / normal.size() + (1 if i < left % normal.size() else 0)
+	var order: Array[int] = []
+	order.assign(MapGenDefs.STAGES.keys())
+	_shuffle(order, p_rng)
+	for i in mini(fc.coffins, order.size()):
+		plan[order[i]].coffins = 1
+	return plan
+
+
+# 只用整數亂數洗牌（見檔案開頭：客戶端要算出一樣的結果）
+static func _shuffle(arr: Array[int], p_rng: RandomNumberGenerator) -> void:
+	for i in range(arr.size() - 1, 0, -1):
+		var j := p_rng.randi_range(0, i)
+		var t := arr[i]
+		arr[i] = arr[j]
+		arr[j] = t
+
+
+static func build_map(base: Dictionary, p_stage: int, p_rng: RandomNumberGenerator, p_quota: Dictionary = {}) -> Dictionary:
 	for attempt in range(1, MapGenDefs.ATTEMPTS + 1):
-		var g := MapGen.new(p_stage, p_rng)
+		var g := MapGen.new(p_stage, p_rng, p_quota)
 		if g._build_regions() and g._finish():
 			return g._output(base, attempt)
 	return {}
@@ -860,7 +897,6 @@ func _near_obstacle(reg: Dictionary, p: Vector2, r: float) -> bool:
 
 func _place_packs_and_chests() -> void:
 	var pc: Dictionary = MapGenDefs.PACKS
-	var cc: Dictionary = MapGenDefs.CHESTS
 	for reg in regions:
 		if reg.role == &"start" or reg.role == &"boss":
 			continue
@@ -877,19 +913,62 @@ func _place_packs_and_chests() -> void:
 					return false
 			packs.append([p.x, p.y, _int(pc.size[0], pc.size[1])])
 			return true)
-		if reg.role != &"fight":
-			continue
-		_try_n(_int(cc.per_region[0], cc.per_region[1]), cc.attempts, func() -> bool:
-			var px: float = box[0] + _q(cc.margin, box[2] - cc.margin)
-			var py: float = box[1] + _q(cc.margin, box[3] - cc.margin)
-			var p := Vector2(px, py)
-			if not _ok_spot(p, reg.id, cc.min_start) or _near_obstacle(reg, p, 1.0):
-				return false
-			for q: Array in packs:
-				if _dist2(Vector2(q[0], q[1]), p) < cc.min_pack * cc.min_pack:
-					return false
+	_place_chests()
+
+
+# 照這一小關分到的數量擺：支線盡頭一定有獎勵（分到石棺放石棺，沒有就放一個祭壇）；其他的輪流放打怪的塊，放不下才放出口與支線，都放不下記進 chest_short
+func _place_chests() -> void:
+	var altars: int = chest_quota.get("altars", 0)
+	var coffin_n: int = chest_quota.get("coffins", 0)
+	if big_chest != Vector2.INF:
+		if coffin_n > 0:
+			coffins.append(big_chest)
+			coffin_n -= 1
+		elif altars > 0:
+			chests.append(big_chest)
+			altars -= 1
+	var fights: Array = regions.filter(func(r: Dictionary) -> bool: return r.role == &"fight")
+	var spare: Array = regions.filter(func(r: Dictionary) -> bool: return r.role == &"exit" or r.role == &"branch")
+	var cursor := 0
+	for i in coffin_n + altars:
+		var p := Vector2.INF
+		for j in fights.size():
+			p = _chest_spot(fights[(cursor + j) % fights.size()])
+			if p != Vector2.INF:
+				cursor = (cursor + j + 1) % fights.size()
+				break
+		if p == Vector2.INF:
+			for reg in spare:
+				p = _chest_spot(reg)
+				if p != Vector2.INF:
+					break
+		if p == Vector2.INF:
+			chest_short += 1
+		elif i < coffin_n:
+			coffins.append(p)
+		else:
 			chests.append(p)
-			return true)
+
+
+# 這一塊裡找一個能放祭壇或石棺的位置；找不到回傳 Vector2.INF
+func _chest_spot(reg: Dictionary) -> Vector2:
+	var cc: Dictionary = MapGenDefs.CHESTS
+	var box: Array = reg.box
+	for t in cc.attempts:
+		var p := Vector2(box[0] + _q(cc.margin, box[2] - cc.margin), box[1] + _q(cc.margin, box[3] - cc.margin))
+		if not _ok_spot(p, reg.id, cc.min_start) or _near_obstacle(reg, p, 1.0):
+			continue
+		var clear := true
+		for q: Array in packs:
+			if _dist2(Vector2(q[0], q[1]), p) < cc.min_pack * cc.min_pack:
+				clear = false
+				break
+		for q: Vector2 in chests + coffins:
+			if clear and _dist2(q, p) < cc.min_gap * cc.min_gap:
+				clear = false
+		if clear:
+			return p
+	return Vector2.INF
 
 
 # ---------- 輸出 ----------
@@ -966,9 +1045,10 @@ func _output(base: Dictionary, attempt: int) -> Dictionary:
 	var spots := []
 	for p in chests:
 		spots.append([p.x + shift.x, p.y + shift.y, &"small"])
-	if big_chest != Vector2.INF:
-		spots.append([big_chest.x + shift.x, big_chest.y + shift.y, &"big"])
+	for p in coffins:
+		spots.append([p.x + shift.x, p.y + shift.y, &"big"])
 	m.chest_spots = spots
+	m.chest_short = chest_short
 	var pack_spots := []
 	for pk in packs:
 		pack_spots.append([pk[0] + shift.x, pk[1] + shift.y, pk[2]])

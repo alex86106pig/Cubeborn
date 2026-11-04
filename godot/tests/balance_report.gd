@@ -81,10 +81,13 @@ func _economy_table(lines: Array[String]) -> void:
 	coffins.resize(stages)
 	souls.resize(stages)
 	var fewest := 1 << 20
+	var short_most := 0
 	for seed_value in range(1, ECON_SEEDS + 1):
 		var w := World.new()
 		w.reset(seed_value)
+		var short := 0
 		for st in stages:
+			short += w.map.get("chest_short", 0)
 			var n := 0
 			for c in w.chests:
 				n += 1
@@ -102,6 +105,7 @@ func _economy_table(lines: Array[String]) -> void:
 				souls[st] += LootDefs.KILL_SOULS.boss
 			if st < stages - 1:
 				w.next_stage(&"")
+		short_most = maxi(short_most, short)
 		w.clear()
 	lines.append("")
 	lines.append("## 經濟（第 1 層）")
@@ -139,6 +143,7 @@ func _economy_table(lines: Array[String]) -> void:
 	lines.append("| 主袋填滿率（全開上限） | %.0f%% ± %.0f%% | %.0f%% | %s |" % [ECON_TARGET.fill.x * 100.0, ECON_TARGET.fill.y * 100.0, fill * 100.0, _econ_mark(fill, ECON_TARGET.fill)])
 	lines.append("| 靈魂壓力（全開 ÷ 全清） | %.1f ± %.1f | %.2f | %s |" % [ECON_TARGET.pressure.x, ECON_TARGET.pressure.y, pressure, _econ_mark(pressure, ECON_TARGET.pressure)])
 	lines.append("| 每小關最少的祭壇和石棺 | 至少 %d | %d | %s |" % [ECON_MIN_CHESTS, fewest, "達標" if fewest >= ECON_MIN_CHESTS else "**偏低**"])
+	lines.append("| 放不下少放的（最多的一局） | 0 | %d | %s |" % [short_most, "達標" if short_most == 0 else "**偏高**"])
 
 
 func _econ_mark(value: float, target: Vector2) -> String:
