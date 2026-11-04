@@ -97,7 +97,7 @@ const ABILITIES := {
 	&"bone_shield": {"name": "自動回充的護盾", "params": ["ratio", "recharge_delay"]},
 	&"wisp_orb": {"name": "繞著自己轉的鬼火", "params": ["count", "damage_type"]},   # BondEffects.wisp_plan
 	&"wisp_frenzy": {"name": "鬼火擊殺後鬼火傷害變高", "params": []},
-	&"skill_support": {"name": "輔助相鄰的技能", "params": ["mode", "tags"]},        # ActiveSlots.supports_of                 # 數值在 PROCS.wisp_frenzy
+	&"skill_support": {"name": "修飾蓋住的技能", "params": ["mode", "tags"]},        # ActiveSlots.supports_of                 # 數值在 PROCS.wisp_frenzy
 }
 
 # 已接上的條件、觸發 + 動作（v0.33.0 第一批 8 個道具、G 第二批，sim/item_effects.gd）
@@ -351,15 +351,15 @@ const ITEMS := {
 	# ---- 輔助道具（Build 改版第 7 步）：鑲在寶石座上下左右才有效，只對標籤相符的技能（SkillDefs.TAGS）----
 	# 一般輔助讓相鄰技能耗魔 +power × 10%（SkillDefs.SUPPORT_MANA，寫在 desc 最後）；節能只減不加
 	&"split_support": {"kind": &"item", "name": "分裂", "rarity": &"green", "power": 3.0, "shape": &"i2", "bonds": [],
-		"desc": "輔助：相鄰的範圍 / 投射技能 0.25 秒後再放一次（傷害 60%）；耗魔 +30%", "effects": [{"ability": &"skill_support", "mode": &"split", "tags": [&"area", &"projectile"]}]},
+		"desc": "修飾：蓋住的範圍 / 投射技能 0.25 秒後再放一次（傷害 60%）；耗魔 +30%", "effects": [{"ability": &"skill_support", "mode": &"split", "tags": [&"area", &"projectile"]}]},
 	&"extend_support": {"kind": &"item", "name": "延長", "rarity": &"white", "power": 1.5, "shape": &"dot", "bonds": [],
-		"desc": "輔助：相鄰的範圍 / 投射 / 移動技能範圍與距離 +50%；耗魔 +15%", "effects": [{"ability": &"skill_support", "mode": &"extend", "tags": [&"area", &"projectile", &"move"]}]},
+		"desc": "修飾：蓋住的範圍 / 投射 / 移動技能範圍與距離 +50%；耗魔 +15%", "effects": [{"ability": &"skill_support", "mode": &"extend", "tags": [&"area", &"projectile", &"move"]}]},
 	&"fire_support": {"kind": &"item", "name": "火焰化", "rarity": &"green", "power": 3.0, "shape": &"i2", "bonds": [&"fire"],
-		"desc": "輔助：相鄰的範圍 / 投射 / 近戰技能改成火焰傷害；耗魔 +30%", "effects": [{"ability": &"skill_support", "mode": &"fire", "tags": [&"area", &"projectile", &"melee"]}]},
+		"desc": "修飾：蓋住的範圍 / 投射 / 近戰技能改成火焰傷害；耗魔 +30%", "effects": [{"ability": &"skill_support", "mode": &"fire", "tags": [&"area", &"projectile", &"melee"]}]},
 	&"cold_support": {"kind": &"item", "name": "霜化", "rarity": &"green", "power": 3.0, "shape": &"i2", "bonds": [&"cold"],
-		"desc": "輔助：相鄰的範圍 / 投射 / 近戰技能改成冰霜傷害；耗魔 +30%", "effects": [{"ability": &"skill_support", "mode": &"cold", "tags": [&"area", &"projectile", &"melee"]}]},
+		"desc": "修飾：蓋住的範圍 / 投射 / 近戰技能改成冰霜傷害；耗魔 +30%", "effects": [{"ability": &"skill_support", "mode": &"cold", "tags": [&"area", &"projectile", &"melee"]}]},
 	&"conserve_support": {"kind": &"item", "name": "節能", "rarity": &"green", "power": 3.0, "shape": &"i2", "bonds": [],
-		"desc": "輔助：相鄰的技能耗魔 −30%（所有技能都能輔助）", "effects": [{"ability": &"skill_support", "mode": &"conserve", "mana_mul": 0.7, "tags": [&"area", &"projectile", &"move", &"melee", &"guard", &"summon", &"buff"]}]},
+		"desc": "修飾：蓋住的技能耗魔 −30%（所有技能都有效）", "effects": [{"ability": &"skill_support", "mode": &"conserve", "mana_mul": 0.7, "tags": [&"area", &"projectile", &"move", &"melee", &"guard", &"summon", &"buff"]}]},
 	# 隊友的屍體（D6，kind &"corpse"）：不是道具，寶箱不會開出；背包條目 uid 是 Player.corpse_uid(死者)
 	&"corpse": {"kind": &"corpse", "name": "隊友的屍體", "rarity": &"white", "shape": &"r6",
 		"desc": "帶到下一層，死者會變成冤魂；打倒冤魂就能復活", "effects": []},

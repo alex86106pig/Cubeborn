@@ -228,14 +228,14 @@ static func item_info(id: StringName, weapon: Dictionary, level := 1) -> Diction
 	return {"title": "%s（%s%s）" % [def.name, kind_name, r.name], "color": r.color, "lines": item_lines}
 
 
-# 道具放哪裡（觸發袋的分類，ItemDefs.role_of）：數值放主袋；效果放觸發袋（寫原本的時機當建議、耗魔）；修飾放跟技能同一袋
+# 道具放哪裡（觸發袋的分類，ItemDefs.role_of）：數值放主袋；效果放觸發袋（寫原本的時機當建議、耗魔）；修飾的透明格蓋在技能上
 static func role_line(id: StringName) -> String:
 	match ItemDefs.role_of(id):
 		ItemDefs.ROLE_EFFECT:
 			var bag := ItemDefs.default_bag_of(id)
 			return "技能：放進袋子，時機到了發動（適合%s）· 每次耗魔 %d" % [BagDefs.BAGS[bag].name if bag != &"" else "任何袋子", roundi(BagTriggers.effect_mana(id))]
 		ItemDefs.ROLE_MOD:
-			return "修飾：放進技能所在的袋子，作用在同一袋的技能"
+			return "修飾：%s蓋在技能上，只強化蓋住的那個（拿起來時亮起的技能蓋得到）" % ("整件是透明格，" if Inventory.cells_of(id, 0).size() == 1 else "左上角有三角的那格是透明格，")
 	return "數值：放進主袋或袋子都生效"
 
 
@@ -359,9 +359,17 @@ static func draw_item_cells(ci: CanvasItem, font: Font, id: StringName, rects: A
 		ci.draw_string(font, first + Vector2(0, cell_px / 2.0 + (12 if big else 7)), SkillDefs.SKILLS.get(id, {}).get("icon", String(def.name).substr(0, 1)),
 				HORIZONTAL_ALIGNMENT_CENTER, cell_px, 34 if big else 20, text_color)
 	elif kind == &"support":
-		for cr in rects:
-			_draw_item_cell(ci, cr, rects, Color(color.darkened(ITEM_MOD_DARK), 0.9 * alpha), line, true)
-		ci.draw_string(font, first + Vector2(0, cell_px / 2.0 + (9 if big else 6)), String(def.name).substr(0, 1), HORIZONTAL_ALIGNMENT_CENTER, cell_px, 26 if big else 16, line)
+		# 透明格（ItemDefs.MOD_CLEAR_INDEX）只畫虛線框和角落的小三角，底下的技能看得到；實心格照舊有底色
+		for i in rects.size():
+			var clear := i == ItemDefs.MOD_CLEAR_INDEX
+			_draw_item_cell(ci, rects[i], rects, Color(color.darkened(ITEM_MOD_DARK), (0.12 if clear else 0.9) * alpha), line, true)
+			if clear:
+				var r := rects[i]
+				var k := cell_px * 0.22
+				ci.draw_colored_polygon(PackedVector2Array([r.position + Vector2(3, 3), r.position + Vector2(3 + k, 3), r.position + Vector2(3, 3 + k)]), line)
+		var letter_at := first if rects.size() == 1 else rects[(ItemDefs.MOD_CLEAR_INDEX + 1) % rects.size()].position   # 字寫在實心格，不蓋住底下的技能
+		var small := rects.size() == 1
+		ci.draw_string(font, letter_at + Vector2(0, cell_px * (0.85 if small else 0.5) + (9 if big else 6) * (0.0 if small else 1.0)), String(def.name).substr(0, 1), HORIZONTAL_ALIGNMENT_CENTER if not small else HORIZONTAL_ALIGNMENT_RIGHT, cell_px - (4.0 if small else 0.0), (16 if big else 12) if small else (26 if big else 16), line)
 	elif kind == &"weapon":
 		var glow: float = WEAPON_GLOW.get(rarity, 0.0)
 		if glow > 0.0:

@@ -815,7 +815,15 @@ func _draw_bag(font: Font, me: Player, b: Dictionary, keys: Array, focused: bool
 		for x in b.length:
 			draw_rect(_bcell_rect(Loadout.board_cell(b, Vector2i(x, y))).grow(-1), Color(1, 1, 1, 0.04))
 	var where: int = me.loadout.bags.find(b)
+	# 修飾最後畫：透明格蓋在技能上面才看得到虛線（第 8 步 f）
+	var mods: Array[Dictionary] = []
 	for e: Dictionary in b.entries:
+		if ItemDefs.is_mod(e.id):
+			mods.append(e)
+		else:
+			_draw_entry(font, me, where, e)
+	_draw_skill_marks(font, me, where, b)
+	for e in mods:
 		_draw_entry(font, me, where, e)
 	draw_rect(head, SIDE_COLORS[b.side])
 	_draw_bag_head(font, b, head, keys.find(b) + 1, _bag_mana(me, b))
@@ -823,6 +831,27 @@ func _draw_bag(font: Font, me: Player, b: Dictionary, keys: Array, focused: bool
 	draw_rect(area.merge(head), UiKit.GOLD if focused else outline, false, 3.0 if focused else 1.5)
 	if dragged:
 		draw_rect(area.merge(head), SHADE)
+
+
+# 袋子裡的技能（含原本的效果）：右上角寫蓋了幾個有作用的修飾；拿著修飾時，它有作用的技能亮金框（蓋得到）
+func _draw_skill_marks(font: Font, me: Player, where: int, b: Dictionary) -> void:
+	var holding_mod := not _drag.is_empty() and ItemDefs.is_mod(_drag.id)
+	for e: Dictionary in b.entries:
+		if not ItemDefs.is_coverable(e.id):
+			continue
+		var rects: Array[Rect2] = []
+		for c in Inventory.cells_of(e.id, e.rot):
+			rects.append(_cell_rect(me, where, e.cell + c))
+		if holding_mod and ItemDefs.mod_applies(_drag.id, e.id):
+			var pulse := 0.6 + 0.4 * sin(Time.get_ticks_msec() * 0.008)
+			for r in rects:
+				draw_rect(r.grow(-2), Color(UiKit.GOLD, 0.18 * pulse))
+				draw_rect(r.grow(-2), Color(UiKit.GOLD, pulse), false, 2.0)
+		var n := ActiveSlots.mod_ids_on(b, e).size()
+		if n > 0:
+			var corner := rects[0].position + Vector2(rects[0].size.x - 15.0, 3.0)
+			draw_circle(corner + Vector2(6, 8), 8.0, Color(0, 0, 0, 0.8))
+			draw_string(font, corner + Vector2(0, 14), str(n), HORIZONTAL_ALIGNMENT_CENTER, 12, 14, UiKit.GOLD)
 
 
 # 標題條的字：一句話講什麼時候發動；左右兩邊的直著寫，下面照魔力與倍率

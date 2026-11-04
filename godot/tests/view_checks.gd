@@ -3449,6 +3449,13 @@ static func check_inventory_board() -> String:
 		var said := InventoryPanel.fire_sentence(roll)
 		if err == "" and (split == &"" or not boots_text.contains("生效中") or boots_text.contains("發動") or said.contains("磨損皮靴") or said.contains("分裂") or not said.contains(String(ItemDefs.ITEMS[&"smoke_bomb"].name))):
 			err = "袋子裡的數值道具說明應寫生效中、不寫發動：%s；「一起放」只列效果與技能：%s" % [boots_text, said]
+		# 修飾的說明寫透明格要蓋在技能上（第 8 步 f），不再寫「同一袋」
+		if err == "":
+			panel._hover_uid = split
+			var split_text := "%s" % [panel._info_of(p).lines]
+			panel._hover_uid = &""
+			if not split_text.contains("透明格") or split_text.contains("同一袋"):
+				err = "修飾的說明應寫透明格蓋在技能上：%s" % split_text
 	# 倉庫不管形狀：4 格長的法杖放在倉庫最後一格，拖動時落點就是滑鼠那一格
 	if err == "":
 		var staff_uid := StringName("board_staff")
