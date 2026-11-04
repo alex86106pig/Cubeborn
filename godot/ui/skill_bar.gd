@@ -1,4 +1,4 @@
-# 技能欄（照搬網頁版 HUD 的 skillbar）：左鍵、右鍵、Shift 翻滾（Godot 版新增）、數字鍵 1~4（寶石座的技能）與 Q（治療藥水）；CD 扇形遮罩與秒數、剩餘次數、耗魔（魔力不夠變暗）、技能等級（2 級以上）、閃爍回饋
+# 技能欄（照搬網頁版 HUD 的 skillbar）：左鍵、右鍵、Shift 翻滾（Godot 版新增）、數字鍵 1~3（按鍵袋的技能）與 Q（治療藥水）；CD 扇形遮罩與秒數、剩餘次數、耗魔（魔力不夠變暗）、技能等級（2 級以上）、閃爍回饋
 class_name SkillBar
 extends HBoxContainer
 
@@ -123,6 +123,8 @@ func _build(player: Player) -> void:
 	divider.size_flags_vertical = Control.SIZE_SHRINK_END
 	add_child(divider)
 	for i in ActiveSlots.SLOT_COUNT:
+		if i >= BagDefs.BAGS.key.max and i != ActiveSlots.HEAL_INDEX:   # 按鍵袋接不到的數字鍵不畫（按鍵編號不動，連線格式不變）
+			continue
 		var data: Variant = player.slots.get_slot(player, i)
 		_add_slot(ActiveSlots.cd_key(i), data.def.icon if data != null else "", ActiveSlots.KEY_LABELS[i], i, data == null)
 	_weapon_id = player.weapon_id

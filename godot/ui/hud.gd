@@ -10,7 +10,7 @@ signal inventory_full(pickup_id: int)             # 本機玩家撿不下地上�
 signal forge_opened                               # 本機玩家在鍛造祭壇按 F：打開背包（main.gd 接，Build 改版第 8 步）
 
 # 暫停畫面的操作說明，依類別分行（手動分行：中文自動折行會斷在詞中間）
-const CONTROLS_TEXT := "移動　WASD 移動 · 滑鼠瞄準 · 空白鍵 跳躍 · Shift 翻滾 · Ctrl 跑步（切換）\n戰鬥　左鍵攻擊 · 右鍵特殊技（拿盾時按住格擋，格擋中左鍵招架） · 1~4 寶石座的技能 · Q 治療藥水\n互動　F 撿道具 / 開祭壇與石棺 / 遺物（R 重骰） / 按住救援隊友 · Tab 背包與屬性（左鍵拿起 / 放下、右鍵直接裝上）\n其他　Esc 選單 · M 靜音 · R 重新開始 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具（F3~F5 單機才有）"
+const CONTROLS_TEXT := "移動　WASD 移動 · 滑鼠瞄準 · 空白鍵 跳躍 · Shift 翻滾 · Ctrl 跑步（切換）\n戰鬥　左鍵攻擊 · 右鍵特殊技（拿盾時按住格擋，格擋中左鍵招架） · 1~3 按鍵袋的技能 · Q 治療藥水\n互動　F 撿道具 / 開祭壇與石棺 / 遺物（R 重骰） / 按住救援隊友 · Tab 背包與屬性（左鍵拿起 / 放下、右鍵直接裝上）\n其他　Esc 選單 · M 靜音 · R 重新開始 · F2 顯示判定 · F3 除錯移速 +50% · F4 放入下一個道具 · F5 清空道具（F3~F5 單機才有）"
 const PAUSE_CONTROLS_FONT := 24   # 介於 FONT_NOTE 與 FONT_BODY：最長一行在最大檔仍塞得進 1920 寬（檢查「主選單」量暫停畫面）
 const FPS_INTERVAL := 0.5
 const HP_GHOST_SPEED := 0.5      # 殘影每秒縮短的比例

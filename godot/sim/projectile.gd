@@ -76,6 +76,11 @@ func band() -> Vector2:
 	return Combat.band_around(height, Config.HEIGHT.projectile_half)
 
 
+# 這隻打不到（扇形技能從命中點出發時，只有中間那支打得到目標）
+func ignore_target(id: int) -> void:
+	_pierced[id] = true
+
+
 func update(dt: float) -> void:
 	if is_removed:
 		return

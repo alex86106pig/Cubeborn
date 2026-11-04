@@ -195,7 +195,7 @@ func _initialize() -> void:
 		all.bind([SkillChecks.check_gem_rules, SkillChecks.check_every_skill, SkillChecks.check_skill_level, SkillChecks.check_level_text, SkillChecks.check_supports, SkillChecks.check_mana]))
 	_check("羈絆：道具標的羈絆都存在、掉落池只有屬於羈絆的（修飾、魔力道具例外）；格數 = 最大同色區塊（主袋與袋子一起、跨袋子也連、斜的不算、倉庫不算、跨羈絆兩種都算）；拿掉就扣；階數照門檻", LootChecks.check_bonds)
 	_check("觸發袋的擺放：接哪幾邊看種類、在邊長內、同一邊不重疊、按鍵袋最多 4 個；撿到的袋子自動接、接不下進倉庫；換邊 / 滑動 / 拿下來（內容跟著）、接不下拒絕；袋子不能丟；詛咒袋接著時套缺點；快照來回一樣", LootChecks.check_bag_layout)
-	_check("觸發袋的發動：左邊只被普攻、右邊只被右鍵觸發；效果各自耗魔、不夠由左到右先放；按鍵袋一起放；觸發袋裡的技能自動放；袋子放出來的與技能的傷害不再觸發袋子；計時袋照間隔、強化袋的倍率；有目標的袋子（命中、擊殺、受傷）技能在目標身上放：範圍與落點在目標、投射物從目標往外射、位移朝目標、祝福留在自己身上，沒有目標的照舊", all.bind([LootChecks.check_bag_triggers, LootChecks.check_bag_skill_target]))
+	_check("觸發袋的發動：左邊只被普攻、右邊只被右鍵觸發；效果各自耗魔、不夠由左到右先放；按鍵袋一起放；觸發袋裡的技能自動放；袋子放出來的與技能的傷害不再觸發袋子；計時袋照間隔、強化袋的倍率；有目標的袋子（命中、擊殺、受傷）技能在目標身上放：範圍與落點在目標、投射物從命中點射出、扇形只有中間那支打得到目標、位移朝目標、祝福留在自己身上，沒有目標的照舊", all.bind([LootChecks.check_bag_triggers, LootChecks.check_bag_skill_target]))
 	_check("羈絆效果：物理（物理傷害、失衡、擊退撞怪、無視物理抗性、必爆擊與處決）、火焰（沒有羈絆 1 層、疊層、疊滿爆炸、死亡傳層）、冰霜（沒有羈絆 1 層、冰冷減速、疊滿凍結、碎冰加傷、冰錐、凍結中被殺沒有死亡效果）、防禦（護甲、招架回血、招架後必爆擊、衝擊波消箭、反彈）、鬼火（顆數、轉圈碰到怪、定時衝出去）",
 		all.bind([BondChecks.check_phys, BondChecks.check_fire, BondChecks.check_cold, BondChecks.check_guard, BondChecks.check_wisp]))
 	_check("道具掉落：全部道具的效果都已接上；寶箱只開出效果都接上、屬於羈絆的道具（修飾、魔力道具也開得出來）；沒有的稀有度往下一級找", LootChecks.check_item_drop_pool)

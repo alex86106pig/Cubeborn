@@ -635,6 +635,8 @@ static func _stage_reach(w: World, cfg: Dictionary) -> String:
 		return "鐵砧應%s出現" % ("" if cfg.get("anvil", false) else "不")
 	if w.map.has("anvil") and not reachable.call(at.call(w.map.anvil)):
 		return "鐵砧走不到"
+	if (w.map.chest_spots as Array).is_empty():
+		return "每小關至少要有一個祭壇或石棺"
 	for spot: Array in w.map.chest_spots:
 		var p: Vector2 = at.call(Vector2(spot[0], spot[1]))
 		if not reachable.call(p):

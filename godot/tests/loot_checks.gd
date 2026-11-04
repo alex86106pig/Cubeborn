@@ -1888,15 +1888,32 @@ static func check_bag_skill_target() -> String:
 	Combat.apply_damage(w3, p3, t3, {"damage": 1.0, "attack": &"secondary"})
 	if hp3 - t3.hp <= 1.0 + EPS:
 		return "命中袋的閃電鏈應打到目標：只扣 %.1f" % (hp3 - t3.hp)
-	# 投射物：從目標身上沿原方向往外射，生在目標身體外面
+	# 投射物：從命中點沿原方向射出，先打目標，穿透的再打後面的怪
 	var sh: Array = setup.call(&"sword_wave", &"hit", &"right")
 	var w4: World = sh[0]
 	var p4: Player = sh[1]
 	var t4 := _item_dummy(w4, p4.pos + Vector2(0, 8), 100000.0)
 	Combat.apply_damage(w4, p4, t4, {"damage": 1.0, "attack": &"secondary"})
 	var shots: Array = w4.projectiles.filter(func(x: Projectile) -> bool: return x.attack == &"skill")
-	if shots.size() != 1 or shots[0].pos.distance_to(t4.pos) <= t4.radius or shots[0].pos.y <= t4.pos.y or shots[0].direction.distance_to(Vector2(0, 1)) > 0.01:
-		return "命中袋的投射物應從目標身上往外射（離目標 %s、方向 %s）" % [shots[0].pos.distance_to(t4.pos) if not shots.is_empty() else -1.0, shots[0].direction if not shots.is_empty() else Vector2.ZERO]
+	if shots.size() != 1 or shots[0].pos.distance_to(t4.pos) > 0.01 or shots[0].direction.distance_to(Vector2(0, 1)) > 0.01:
+		return "命中袋的投射物應從命中點沿原方向射出（離目標 %s、方向 %s）" % [shots[0].pos.distance_to(t4.pos) if not shots.is_empty() else -1.0, shots[0].direction if not shots.is_empty() else Vector2.ZERO]
+	var behind := _item_dummy(w4, t4.pos + Vector2(0, 3), 100000.0)
+	var hp_t4 := t4.hp
+	var hp_b4 := behind.hp
+	_run(w4, _cmd(Vector2.ZERO), 30)
+	if _hp_loss(t4, hp_t4) <= 0 or _hp_loss(behind, hp_b4) <= 0:
+		return "穿透的投射物應先打目標、再打後面的怪：目標扣 %d、後面扣 %d" % [_hp_loss(t4, hp_t4), _hp_loss(behind, hp_b4)]
+	# 扇形：同時射出的只有中間那支打得到目標
+	var fan: Array = setup.call(&"knife_fan", &"hit", &"right")
+	var w_f: World = fan[0]
+	var p_f: Player = fan[1]
+	var t_f := _item_dummy(w_f, p_f.pos + Vector2(0, 8), 100000.0)
+	Combat.apply_damage(w_f, p_f, t_f, {"damage": 1.0, "attack": &"secondary"})
+	var hp_f := t_f.hp
+	_run(w_f, _cmd(Vector2.ZERO), 30)
+	var one_knife := _dealt(t_f, p_f.pct_damage(SkillDefs.SKILLS.knife_fan.damage_pct))
+	if _hp_loss(t_f, hp_f) != one_knife:
+		return "扇形技能只有中間那支打得到目標：應扣 %d（一支），實際 %d" % [one_knife, _hp_loss(t_f, hp_f)]
 	# 位移：自己朝目標移動，不會瞬移到目標身上
 	var da: Array = setup.call(&"charge_slash", &"hit", &"right")
 	var w5: World = da[0]

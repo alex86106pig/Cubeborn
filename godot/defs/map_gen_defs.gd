@@ -63,7 +63,7 @@ const REWARD_DROP := Vector2(0.0, -3.0)
 
 # 擺放：怪群（每塊 1~3 群、支線 1 群，一群 6~10 隻）、小寶箱（打怪的塊 0~1 個）
 const PACKS := {"per_region": [1, 3], "per_branch": [1, 1], "size": [6, 10], "min_start": 14, "min_gap": 8, "margin": 4, "attempts": 60}
-const CHESTS := {"per_region": [0, 1], "min_start": 8, "min_pack": 4, "margin": 3, "attempts": 40}
+const CHESTS := {"per_region": [1, 2], "min_start": 8, "min_pack": 4, "margin": 3, "attempts": 40}
 
 # 保留空間：這些點周圍不放障礙物（半徑），也不吃邊
 const KEEP := {"start": 6.0, "opening": 4.5, "anvil": 3.0, "big_chest": 4.0, "door_reach": 3.0, "door": 2.5}

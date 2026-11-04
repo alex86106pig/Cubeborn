@@ -1,7 +1,7 @@
 # 技能行為：Q 的治療藥水、寶石座的技能（Build 改版第 7 步，數字在 SkillDefs）
 # cast 由 ActiveSlots.use 呼叫（本機預測時也會跑）：位移（衝刺、瞬移、後跳）兩邊都做，傷害、投射物、召喚、地面區域只在權威端
 # ctx（ActiveSlots.cast_context）：mul 等級的傷害倍率、area 延長的範圍倍率、type 火焰化 / 霜化後的屬性、split 分裂（0.25 秒後再放一次 60%）
-#   觸發袋有目標時再加上 at / dir / facing / target_id / target_radius（aim_at）：範圍與落點改在目標身上、投射物從目標身上沿原方向往外射、位移朝目標；祝福、召喚、插火把仍在自己身上
+#   觸發袋有目標時再加上 at / dir / facing / target_id（aim_at）：範圍與落點改在目標身上、投射物從命中點沿原方向射出、位移朝目標；祝福、召喚、插火把仍在自己身上
 # 晚一點才發生的（隕石、箭雨、連珠箭、狙擊、分裂）用 later 排進 World.delayed，只在權威端
 class_name SkillBehaviors
 
@@ -331,7 +331,6 @@ static func aim_at(owner: Player, ctx: Dictionary, target: Entity) -> void:
 	ctx["dir"] = dir
 	ctx["facing"] = atan2(dir.x, dir.y)
 	ctx["target_id"] = target.id
-	ctx["target_radius"] = target.radius
 
 
 # 技能以哪裡為中心：有目標在目標身上，沒有在自己身上
@@ -409,14 +408,16 @@ static func fire_fan(owner: Player, def: Dictionary, ctx: Dictionary, dir: Vecto
 		var a := base
 		if def.count > 1:
 			a += lerpf(-def.spread / 2.0, def.spread / 2.0, float(i) / (def.count - 1))
-		fire_one(owner, def, ctx, MathUtil.dir_from_angle(a))
+		# 同時射出的扇形：從命中點出發時只有中間那支打得到目標（一群時每隻只中一支）
+		var side_arrow: bool = ctx.has("at") and def.count > 1 and def.spread > 0.0 and i != def.count / 2
+		fire_one(owner, def, ctx, MathUtil.dir_from_angle(a), side_arrow)
 
 
-static func fire_one(owner: Player, def: Dictionary, ctx: Dictionary, dir: Vector2) -> void:
+static func fire_one(owner: Player, def: Dictionary, ctx: Dictionary, dir: Vector2, skip_target := false) -> void:
 	if not owner.world.is_authority:
 		return
-	# 從目標身上出發：生在目標身體外面，才不會立刻打中它自己，打的是後面的怪
-	var from: Vector2 = ctx.at + dir * (ctx.target_radius + def.radius + 0.1) if ctx.has("at") else owner.pos + dir * 0.4
+	# 有目標時從命中點出發：先打目標，能穿透的再打後面的怪
+	var from: Vector2 = ctx.at if ctx.has("at") else owner.pos + dir * 0.4
 	var pr := Projectile.new(owner.world, {
 		"owner": owner, "pos": from, "direction": dir, "speed": def.speed, "range": def.range * ctx.area,
 		"radius": def.radius, "damage": owner.pct_damage(def.damage_pct) * ctx.mul, "damage_type": ctx.type,
@@ -426,6 +427,8 @@ static func fire_one(owner: Player, def: Dictionary, ctx: Dictionary, dir: Vecto
 		"settle_distance": Config.HEIGHT.bolt_settle_distance, "attack": &"skill",
 	})
 	pr.skill_fx = {"def": def, "ctx": ctx}
+	if skip_target:
+		pr.ignore_target(ctx.target_id)
 	owner.world.spawn_projectile(pr)
 
 

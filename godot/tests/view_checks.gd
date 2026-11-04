@@ -417,6 +417,8 @@ static func check_skill_bar_gem_skill() -> String:
 	var special: SkillBar.Slot = bar._slots["player.special"]
 	var cost := roundi(ActiveSlots.mana_cost(p, p.slots.get_slot(p, 0)))
 	var err := ""
+	if bar._slots.has(ActiveSlots.cd_key(BagDefs.BAGS.key.max)) or not bar._slots.has(ActiveSlots.cd_key(BagDefs.BAGS.key.max - 1)):
+		err = "技能欄的數字鍵應跟按鍵袋上限一樣多（%d 格）" % BagDefs.BAGS.key.max
 	if gem.cost.text != str(cost) or gem.icon.modulate.a < 1.0:
 		err = "旋風斬那格應寫耗魔 %d、魔力夠時不變暗：「%s」、%.2f" % [cost, gem.cost.text, gem.icon.modulate.a]
 	elif special.cost.text != (str(roundi(p.mana_cost_of(p.weapon.special))) if p.weapon.special.has("mana") else ""):
