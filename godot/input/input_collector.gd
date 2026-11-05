@@ -130,7 +130,7 @@ func queue_inventory_op(op: Array) -> void:
 	_inv_ops.append(op)
 
 
-# 按住的滑鼠鍵（普攻、右鍵按住）：背包開著、在按鈕上、在介面上按下還沒放開的不算
+# 按住的按鍵（普攻、右鍵按住、空白鍵按住）：滑鼠鍵在背包開著、在按鈕上、在介面上按下還沒放開的不算
 func _held_buttons() -> int:
 	var out := 0
 	var over_button := _mouse_over_button()
@@ -142,6 +142,8 @@ func _held_buttons() -> int:
 		out |= InputCmd.BTN_ATTACK
 	if Input.is_action_pressed(&"special") and not mouse_captured and not over_button and _ui_press & InputCmd.BTN_SPECIAL == 0:
 		out |= InputCmd.BTN_SPECIAL_HELD
+	if Input.is_action_pressed(&"jump"):
+		out |= InputCmd.BTN_JUMP_HELD
 	return out
 
 

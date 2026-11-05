@@ -13,7 +13,8 @@ const BTN_SPECIAL_HELD := 1 << 11  # 右鍵（按住）：劍盾按住格擋（v
 const BTN_RUN := 1 << 12         # Ctrl 切換跑步（本步按下；2026-10-27 取代數字鍵 2 的疾跑）
 const BTN_VOTE_YES := 1 << 13    # Enter：同意前往下一層（本步按下；只在投票中送出）
 const BTN_VOTE_NO := 1 << 14     # Esc：反對前往下一層（本步按下；只在投票中送出，這時 Esc 不開選單）
-const HELD_BUTTONS := BTN_ATTACK | BTN_INTERACT | BTN_SPECIAL_HELD   # 按住類的按鈕：沿用上一筆輸入時保留，其餘「本步按下」的不重複觸發
+const BTN_JUMP_HELD := 1 << 15    # 空白鍵（按住）：站在地上就再跳；空中的二段跳仍要重新按（BTN_JUMP）
+const HELD_BUTTONS := BTN_ATTACK | BTN_INTERACT | BTN_SPECIAL_HELD | BTN_JUMP_HELD   # 按住類的按鈕：沿用上一筆輸入時保留，其餘「本步按下」的不重複觸發
 
 const OP_MOVE := 0   # 背包操作：[OP_MOVE, uid, x, y, rot, where] 搬到 where（Loadout.BAG 倉庫 / CORE 主袋 / 第幾個袋子）的 (x, y)、轉 rot 次 90 度
 const OP_DROP := 1   # [OP_DROP, uid] 丟到面前的地上

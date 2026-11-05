@@ -81,7 +81,8 @@ var relic_id := 0                      # 打開著的遺物（權威端設定，
 var skill_levels := {}                 # 技能 id → 等級（Build 改版第 7 步：技能遺物選到已經有的就升 1 級；沒記的是 1 級）
 var skill_dash := {}                   # 衝刺類技能進行中：{ left, def, ctx, hit }（SkillBehaviors.update_player）
 var parry_timer := 0.0                 # 盾反動作剩餘秒數（畫面用）
-var is_interact_held := false          # F 按住（救援隊友）；剛按下那一步撿道具 / 開寶箱（D3）
+var is_jump_held := false              # 空白鍵按住：站在地上就再跳（連續跳躍）
+var is_interact_held := false       # F 按住（救援隊友）；剛按下那一步撿道具 / 開寶箱（D3）
 var view_tick := 0                     # 最近一筆輸入的畫面時間（InputCmd.view_tick；房主延遲補償用，v0.38.0）
 var _interact_was_held := false
 var is_downed := false                 # 倒地假死（C4）：倒數 down_timer 秒，隊友救起前不能動
@@ -549,6 +550,7 @@ func apply_cmd(cmd: InputCmd) -> void:
 	is_attack_held = cmd.has(InputCmd.BTN_ATTACK)
 	is_special_held = cmd.has(InputCmd.BTN_SPECIAL_HELD)
 	is_interact_held = cmd.has(InputCmd.BTN_INTERACT)
+	is_jump_held = cmd.has(InputCmd.BTN_JUMP_HELD)
 	_pressed |= cmd.buttons
 	loadout.queue_ops(cmd.inv_ops)
 	view_tick = cmd.view_tick
@@ -905,6 +907,8 @@ func _read_input() -> void:
 		buffered_action = {"type": &"roll", "time": buffer_time}
 	if _pressed & InputCmd.BTN_JUMP:
 		try_jump()
+	elif is_jump_held and is_grounded():
+		try_jump()   # 按住只接地面的跳：空中不自動用掉二段跳
 	if _pressed & InputCmd.BTN_RUN:
 		running = not running
 	for i in ActiveSlots.SLOT_COUNT:

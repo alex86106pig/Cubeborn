@@ -751,6 +751,41 @@ static func _block_ranges() -> String:
 	return ""
 
 
+# 按住空白鍵連續跳：落地馬上再起跳、放開就停；按住不會在空中自動用掉二段跳
+static func check_jump_hold() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	if p.add_item(&"twin_leap_boots") == &"":
+		return "雙躍之靴應放得進背包"
+	var steps := roundi(Config.JUMP.air_time / DT) * 3 + 10
+	var takeoffs := 0
+	var top := 0.0
+	var was_grounded := true
+	var ground_steps := 0
+	var max_ground_steps := 0
+	for i in steps:
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), (InputCmd.BTN_JUMP if i == 0 else 0) | InputCmd.BTN_JUMP_HELD), 1)
+		var grounded := p.is_grounded()
+		if was_grounded and not grounded:
+			takeoffs += 1
+		ground_steps = ground_steps + 1 if grounded and takeoffs > 0 else 0
+		max_ground_steps = maxi(max_ground_steps, ground_steps)
+		top = maxf(top, p.height)
+		was_grounded = grounded
+	if takeoffs < 3:
+		return "按住空白鍵 %d 步應連跳至少 3 次，實際 %d 次" % [steps, takeoffs]
+	if max_ground_steps > 1:
+		return "按住空白鍵落地後應馬上再跳，實際在地上停了 %d 步" % max_ground_steps
+	if top > Config.JUMP.height + 0.01:
+		return "按住不應在空中自動二段跳（最高 %.2f）" % top
+	while not p.is_grounded():
+		_run(w, _cmd(Vector2.ZERO), 1)
+	_run(w, _cmd(Vector2.ZERO), 30)
+	if p.height > 0.0:
+		return "放開空白鍵後不應再跳（高度 %.2f）" % p.height
+	return ""
+
+
 static func check_double_jump() -> String:
 	var w := _new_world()
 	var p := _player(w)

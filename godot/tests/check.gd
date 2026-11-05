@@ -74,7 +74,8 @@ func _initialize() -> void:
 		all.bind([PlayerChecks.check_heal_slot, PlayerChecks.check_run, PlayerChecks.check_slot_buffer]))
 	_check("翻滾：duration 秒翻 distance 單位、移速 +50% 翻 1.5 倍遠、冷卻吃 roll_cooldown、次數 +1 可連翻兩次；開始後 invuln_time 內打不到、投射物穿過；普攻前後搖可取消，揮下去、特殊技、硬直中先緩衝",
 		all.bind([PlayerChecks.check_roll_motion, PlayerChecks.check_roll_invuln, PlayerChecks.check_roll_cancel]))
-	_check("跳躍：空中時間一半時到最高 JUMP.height、air_time 落地；空中不能再跳；攻擊中可以跳、硬直中不行；空中翻滾照常下墜且一樣遠", PlayerChecks.check_jump_motion)
+	_check("跳躍：空中時間一半時到最高 JUMP.height、air_time 落地；空中不能再跳；攻擊中可以跳、硬直中不行；空中翻滾照常下墜且一樣遠；按住空白鍵落地馬上再跳、放開就停、不自動用掉二段跳",
+		all.bind([PlayerChecks.check_jump_motion, PlayerChecks.check_jump_hold]))
 	_check("動作手感：擊退總位移符合阻尼公式、轉身 180° 的步數符合 turn_speed、普攻與第三段前衝距離、連段窗口內接下一段、超過就重來", PlayerChecks.check_motion_feel)
 
 	# ───────── 職業與武器 ─────────
