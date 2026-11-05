@@ -284,21 +284,21 @@ const WEAPONS := {
 			"behavior": &"meleeSwing",
 			"sfx": "swing", "sfx_heavy": "swingHeavy",
 			"name": "五連刺",
-			"desc": "刺刺、停、刺刺、停、重擊：第 5 下 150% 必爆擊並擊退。",
+			"desc": "刺刺、停、刺刺、停、重擊：每刺 125%，第 5 下 187.5% 必爆擊並擊退。",
 			"icon": "dagger_combo",
-			"damage_pct": 1.0,
+			"damage_pct": 1.25,        # 許家慶 2026-11-05：高風險高傷害、打一隻可以比短弓高；100% → 125%（白裝 8 → 10，技能照基礎傷害 8 算不受影響）
 			"combo_count": 5,          # 第 combo_count 下是終結技
 			"range": 1.6,
 			"arc": PI * 0.5,           # 90°
-			# 節奏「刺刺─停─刺刺─停─重擊」（使用者 2026-10-27：原本 0.18 秒一下太快、沒節奏）：一刺 0.3 秒，
-			# 第 2、4 刺後多停 beat_pause；第 5 下前搖 finisher_windup（蓄一下）、收招 finisher_recovery，一輪約 2.0 秒
-			"windup": 0.1,
-			"active": 0.05,
-			"recovery": 0.15,
-			"beat_pause": 0.12,
+			# 節奏「刺刺─停─刺刺─停─重擊」（使用者 2026-10-27：原本 0.18 秒一下太快、沒節奏）；許家慶 2026-11-05 嫌慢，保留節奏、整體加快：
+			# 一刺 0.3 → 0.22 秒，第 2、4 刺後多停 beat_pause 0.12 → 0.08；第 5 下前搖 finisher_windup 0.18 → 0.13、收招 finisher_recovery 0.35 → 0.25
+			"windup": 0.07,
+			"active": 0.04,
+			"recovery": 0.11,
+			"beat_pause": 0.08,
 			"beat_steps": [1, 3],      # combo_step（0 起算）：第 2、4 刺
-			"finisher_windup": 0.18,
-			"finisher_recovery": 0.35,
+			"finisher_windup": 0.13,
+			"finisher_recovery": 0.25,
 			"knockback": 0.0,          # 前 4 下不擊退
 			"finisher_knockback": 9.0, # 第 5 下可擊退
 			"finisher_only_stagger": true,   # 前 4 下也不讓怪受擊硬直（2026-10-27 使用者：停下後仰看起來像被擊退）

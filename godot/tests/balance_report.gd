@@ -19,8 +19,9 @@ const WEAPON_TARGET := {&"melee": 30.0, &"ranged": 22.0}
 const GROUP_BAND := Vector2(3.0, 6.0)
 # 打一群偏高但刻意保留的武器（使用者 2026-10-31：不能降傷害，同一下打到的每隻都要一樣痛，不做遞減；揮擊範圍是手感）
 const GROUP_KEEP := [&"swordShield", &"torch", &"scepter", &"shovel"]
-# 打一隻要是全部武器裡最高的（使用者 2026-11-02：短弓專打單體、箭不穿透，打一群偏低是代價），不看類型的目標
-const SINGLE_TOP := [&"shortbow"]
+# 打一隻要比這些武器都高（不看類型的目標）：雙匕首是全部最高（許家慶 2026-11-05：高風險高傷害，近身比短弓痛）；
+# 短弓是遠程最高（使用者 2026-11-02：專打單體、箭不穿透，打一群偏低是代價；2026-11-05 起只跟遠程比）
+const SINGLE_TOP := {&"dagger": &"", &"shortbow": &"ranged"}   # 武器 → 跟哪種類型比（空 = 全部）
 const BASIC_TIME := 10.0        # 普攻量幾秒取平均
 const SKILL_WINDOW := 6.0       # 放一次後量幾秒（落雷延遲、火池、拖尾、燃燒都算進去）
 const MELEE_RANGE := 2.0        # 單體假人離玩家多遠：近戰武器
@@ -202,7 +203,7 @@ func _basic(lo: Array, pack: bool) -> float:
 func _weapon_table(lines: Array[String]) -> void:
 	lines.append("## 武器強度（普攻 + 右鍵）")
 	lines.append("")
-	lines.append("普攻每秒 + 右鍵每次 ÷（耗魔 ÷ 那把武器的回魔）（單拿這把；格擋、準備姿態、鏟起不算傷害）。打一隻目標：近戰 %.0f、遠程 %.0f（±%.0f%%）；打一群的倍數 = 一群合計 ÷ 打一隻，目標 %.0f~%.0f 倍。短弓打一隻要是最高（比 = 自己 ÷ 第二高）。" % [WEAPON_TARGET.melee, WEAPON_TARGET.ranged, TOLERANCE * 100.0, GROUP_BAND.x, GROUP_BAND.y])
+	lines.append("普攻每秒 + 右鍵每次 ÷（耗魔 ÷ 那把武器的回魔）（單拿這把；格擋、準備姿態、鏟起不算傷害）。打一隻目標：近戰 %.0f、遠程 %.0f（±%.0f%%）；打一群的倍數 = 一群合計 ÷ 打一隻，目標 %.0f~%.0f 倍。雙匕首打一隻要是全部最高、短弓是遠程最高（比 = 自己 ÷ 組裡第二高）。" % [WEAPON_TARGET.melee, WEAPON_TARGET.ranged, TOLERANCE * 100.0, GROUP_BAND.x, GROUP_BAND.y])
 	lines.append("")
 	lines.append("| 武器 | 類型 | 基礎傷害 | 打一隻每秒 | 目標 | 比 | 打一群每秒 | 倍數 | |")
 	lines.append("|---|---|---:|---:|---:|---:|---:|---:|---|")
@@ -228,17 +229,18 @@ func _weapon_table(lines: Array[String]) -> void:
 		var ratio := single / target
 		var target_text := "%.0f" % target
 		if SINGLE_TOP.has(wid):
-			# 要比其他武器都高：目標欄寫「最高」，比 = 自己 ÷ 第二高
+			# 要比同一組的其他武器都高：目標欄寫「最高」或「遠程最高」，比 = 自己 ÷ 組裡第二高
+			var among: StringName = SINGLE_TOP[wid]
 			var others := 0.0
 			for k: StringName in singles:
-				if k != wid:
+				if k != wid and (among == &"" or WeaponDefs.WEAPONS[k].type == among):
 					others = maxf(others, singles[k])
 			ratio = single / others
-			target_text = "最高"
+			target_text = "最高" if among == &"" else "遠程最高"
 			if ratio <= 1.0:
 				off.append("打一隻不是最高")
 			if mul < GROUP_BAND.x:
-				off.append("保留：打一群偏低（專打單體、箭不穿透）")
+				off.append("保留：打一群偏低（%s）" % ("專打單體、箭不穿透" if wid == &"shortbow" else "貼身單殺，範圍窄"))
 		else:
 			if absf(ratio - 1.0) > TOLERANCE:
 				off.append("打一隻" + ("偏低" if ratio < 1.0 else "偏高"))
