@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>背包合併</title>
+<style>
+:root {
+  --bg: #f4f2ec; --panel: #fff; --line: #d8d3c6; --ink: #24221d; --dim: #6c675b;
+  --stat: #8a6a3a; --l: #c4581c; --r: #2f63c4; --b: #6a6f78; --key: #a03ab8; --good: #2f7a45; --bad: #b0402a; --lock: #cfcabd; --edge: #e0a020;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15161a; --panel: #1e2026; --line: #34373f; --ink: #e6e2d6; --dim: #9a978c;
+  --stat: #d8b070; --l: #ff9a5c; --r: #7fb0ff; --b: #b8bec8; --key: #e47bff; --good: #6fd08c; --bad: #ff8a70; --lock: #3a3c42; --edge: #ffc84a; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.65 "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; padding: 28px 16px 60px; }
+main { max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+h1 { margin: 0; font-size: 28px; } h2 { margin: 0 0 8px; font-size: 20px; } h3 { margin: 6px 0; font-size: 16px; }
+.note { color: var(--dim); font-size: 13px; }
+.status { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--stat); border-radius: 6px; padding: 10px 14px; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; }
+ul { margin: 0; padding-left: 1.3em; } li { margin: 3px 0; }
+.fig { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; margin-top: 12px; }
+figure { margin: 0; text-align: center; } figcaption { color: var(--dim); font-size: 13px; margin-top: 4px; max-width: 340px; }
+svg { max-width: 100%; height: auto; }
+.tw { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+th { color: var(--dim); font-weight: 500; font-size: 13px; white-space: nowrap; }
+.good { color: var(--good); font-weight: 700; } .bad { color: var(--bad); font-weight: 700; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--dim); justify-content: center; margin-top: 8px; }
+.sw { display: inline-block; width: 12px; height: 12px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>背包合併</h1>
+    <p class="note">許家慶 2026-11-05 的構想（討論中，<b>還沒做進遊戲</b>）。接在 <a href="觸發格綁武器.html">觸發格綁武器</a> 之後想的；數字標「暫定」的是 Claude 提的、要量。</p>
+  </header>
+
+  <div class="status">一句話：<b>背包和所有袋子合成一整塊</b>，袋子不再是道具；背包固定分成中央（數值）與四周的觸發區，大部分格子鎖著，<b>一局用同一個背包、局內開格長大</b>。</div>
+
+  <section>
+    <h2>已決定（許家慶 2026-11-05）</h2>
+    <ul>
+      <li><b>背包分區</b>：中央 6 × 6 放數值道具（<b>只能放中央</b>）；四周的觸發區放技能、效果、修飾，區域就是觸發時機。</li>
+      <li><b>一局用同一個背包</b>，不掉落、不更換；靠<b>開格</b>長大。之後可以當局外成長（升級起始背包）。</li>
+      <li><b>開格兩種</b>：<b>隨機</b>（整個背包裡隨機開一格）、<b>手動挑</b>（機會比較少）。</li>
+      <li><b>開格來源</b>：過小關隨機 1 格、門的獎勵隨機 1 格、Boss 自選 1 格、鐵砧自選 1 格。</li>
+      <li><b>數字區保留</b>，開局給 1 格。</li>
+      <li><b>羈絆的同色連塊可以跨區</b>。</li>
+      <li><b>開局（灰色破舊背包）</b>：中央開 3 × 3、職業的觸發區開 2 格（等於現在的職業袋縮小，裝著起始技能）、數字區 1 格（空的）。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>分區</h2>
+    <p>沿用現在「主袋 + 四邊」的樣子。每一塊觸發區的時機、按鍵、傷害倍率照現在的袋子規則（左鍵命中每 N 下發動、觸發少的比較痛…）。</p>
+    <div class="fig"><figure><svg id="full" viewBox="0 0 376 350" width="400" role="img" aria-label="全部打開的背包分區"></svg><figcaption>全部打開：中央 36 + 觸發區 9 塊 × 6 + 數字 3 = 93 格（暫定）</figcaption></figure></div>
+    <div class="legend"><span><i class="sw" style="background:var(--stat)"></i>中央（數值）</span><span><i class="sw" style="background:var(--l)"></i>左鍵</span><span><i class="sw" style="background:var(--r)"></i>右鍵</span><span><i class="sw" style="background:var(--b)"></i>不分按鍵</span><span><i class="sw" style="background:var(--key)"></i>數字鍵</span></div>
+  </section>
+
+  <section>
+    <h2>開局 → 第 1 層結束</h2>
+    <div class="fig">
+      <figure><svg id="start" viewBox="0 0 376 350" width="320" role="img" aria-label="開局的背包"></svg><figcaption>開局（守墓騎士）：中央 3 × 3、右鍵命中 2 格（震盾）、數字區 1 格，共 12 格</figcaption></figure>
+      <figure><svg id="later" viewBox="0 0 376 350" width="320" role="img" aria-label="第 1 層結束的背包"></svg><figcaption>第 1 層結束的一種可能（全背包隨機開，黃框是這層新開的）：約多開 10~12 格</figcaption></figure>
+    </div>
+    <p class="note">第 1 層的開格估計（暫定）：小關 1-1~1-5 過 4 次 × 2（小關 + 門）≈ 8、Boss 1、鐵砧（1-3、1-5）2 ≈ 11 格。</p>
+  </section>
+
+  <section>
+    <h2>鎖住的格子怎麼畫（還沒選）</h2>
+    <div class="fig">
+      <figure><svg id="lockA" viewBox="0 0 150 150" width="170" role="img" aria-label="壓暗"></svg><figcaption>A 壓暗：鎖住的只是暗一點</figcaption></figure>
+      <figure><svg id="lockB" viewBox="0 0 150 150" width="170" role="img" aria-label="鎖頭"></svg><figcaption>B 鎖頭：每個鎖格都畫鎖</figcaption></figure>
+      <figure><svg id="lockC" viewBox="0 0 150 150" width="170" role="img" aria-label="只標下一圈"></svg><figcaption>C 壓暗 + 只在貼著已開格的那一圈標鎖（Claude 建議）</figcaption></figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>跟其他做法比</h2>
+    <div class="tw"><table>
+      <tr><th></th><th>現在：觸發袋</th><th>觸發格綁武器</th><th>背包合併</th></tr>
+      <tr><td>觸發時機從哪來</td><td>撿到的袋子接在哪一邊</td><td>武器上的區塊</td><td>背包的固定分區</td></tr>
+      <tr><td>怎麼變強</td><td>撿袋子、換大袋、鐵砧改袋子</td><td>撿稀有度高、格子分布好的武器</td><td>開格（隨機 / 自選）</td></tr>
+      <tr><td>換武器</td><td>左右兩邊的袋子跟著武器走</td><td>整套搬到新武器</td><td>不影響，背包是角色的</td></tr>
+      <tr><td>要學的</td><td>7 種袋子 × 4 種大小、哪種接哪邊</td><td>9 個區塊、鎖格、搬家規則</td><td>9 個分區、鎖格</td></tr>
+      <tr><td>擺放的拼圖感</td><td class="good">高（袋子自己擺）</td><td>中</td><td>中（區內擺、往哪區開）</td></tr>
+    </table></div>
+    <div class="fig" style="justify-content:flex-start;gap:30px">
+      <div style="flex:1;min-width:260px"><p class="good">好處</p><ul>
+        <li>一塊背包就是全部，不用管袋子種類、大小、接哪邊。</li>
+        <li>換武器不用搬家，武器回到手感與數值（I-5 的隨機數值）。</li>
+        <li>成長看得見：背包一格一格長大，局外也能升級起始背包。</li>
+        <li>掉落變單純：地上只有武器、道具、技能。</li>
+      </ul></div>
+      <div style="flex:1;min-width:260px"><p class="bad">缺點與風險</p><ul>
+        <li><b>隨機開在整個背包</b>：常常開在不連在一起的地方，多格的效果、修飾的透明格放不進去（之後可改成只開貼著已開格的）。</li>
+        <li>分區是固定的，跟 YangHsu 2026-11-04 否決的「背包分區（區域由武器決定）」很像；差別是這次分區屬於背包、會長大，要請 YangHsu 判斷。</li>
+        <li>少了「撿到好袋子」的驚喜，驚喜改由武器、技能、開格承擔。</li>
+        <li>要拆：袋子掉落、詛咒袋、強化袋、鐵砧改袋子、背包四邊接袋子的介面、袋子的連線同步。</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Claude 的其他建議（還沒採用，留著參考）</h2>
+    <ul>
+      <li><b>觸發符文</b>（另一種決定時機的方法）：時機是 1 格的「符文」道具，貼著符文的技能在那個時機發動；保留拼圖感，但要教「貼著」的規則。這次先選分區。</li>
+      <li><b>只開貼著已開格的那一圈</b>：開出來的格子會連成一塊，多格的東西放得進去；隨機也從那一圈裡抽。</li>
+      <li><b>開格是每人各自的</b>：不用共用的靈魂，多人時不會搶。</li>
+      <li><b>局外升級</b>（用局外金幣）：起始多開幾格、指定某一區先開、解鎖不同形狀的背包（方的、長條、L 形），開局像選職業一樣挑。</li>
+      <li><b>菁英怪</b>原本掉袋子：改成小機率隨機開 1 格，或改掉武器（武器變重要了）。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>還沒決定</h2>
+    <ul>
+      <li>鎖格的畫法（上面 A / B / C）。</li>
+      <li>各區大小要不要不一樣（例如計時區小一點）；全部打開的總格數。</li>
+      <li>菁英怪、門、鐵砧原本跟袋子有關的獎勵改成什麼；鐵砧其他選項。</li>
+      <li>局外升級的內容與價格。</li>
+      <li>開格的頻率要用自動試玩量過再定。</li>
+    </ul>
+  </section>
+</main>
+<script>
+const C = 26, G = 3, S = C + G;
+// 區塊：[名稱, 顏色變數, x, y, 寬, 高]（格子座標）；中央 6×6 在 (3,1)
+const R = [
+  ["數字", "key", 4.8, 0, 3, 1],
+  ["中央", "stat", 3.3, 1.6, 6, 6],
+  ["左命中", "l", 0, 1.6, 3, 2], ["左擊殺", "l", 0, 4.2, 3, 2], ["左出手", "l", 0, 6.8, 3, 2],
+  ["右命中", "r", 9.6, 1.6, 3, 2], ["右擊殺", "r", 9.6, 4.2, 3, 2], ["右出手", "r", 9.6, 6.8, 3, 2],
+  ["受傷", "b", 1.5, 9.4, 3, 2], ["翻滾", "b", 4.8, 9.4, 3, 2], ["計時", "b", 8.1, 9.4, 3, 2],
+];
+function cells() {
+  const out = [];
+  R.forEach((r, ri) => { for (let y = 0; y < r[5]; y++) for (let x = 0; x < r[4]; x++) out.push({ r: ri, x: r[2] + x, y: r[3] + y, lx: x, ly: y }); });
+  return out;
+}
+const lockIcon = (px, py) => `<path d="M${px + 9} ${py + 13} v-3 a4 4 0 0 1 8 0 v3" fill="none" stroke="var(--dim)" stroke-width="1.6"/><rect x="${px + 7.5}" y="${py + 13}" width="11" height="8" rx="1.5" fill="var(--dim)"/>`;
+// open(c) -> 0 鎖、1 開、2 這層新開
+function draw(id, open, labels = true) {
+  let s = "";
+  for (const c of cells()) {
+    const px = 6 + c.x * S, py = 16 + c.y * S, st = open(c);
+    const col = `var(--${R[c.r][1]})`;
+    s += `<rect x="${px}" y="${py}" width="${C}" height="${C}" rx="4" fill="${st ? col : "var(--lock)"}" opacity="${st ? 0.85 : 0.5}"${st === 2 ? ' stroke="var(--edge)" stroke-width="3"' : ""}/>`;
+  }
+  if (labels) R.forEach(r => { s += `<text x="${6 + (r[2] + r[4] / 2) * S}" y="${16 + r[3] * S - 3}" font-size="11" text-anchor="middle" fill="var(--${r[1]})">${r[0]}</text>`; });
+  document.getElementById(id).innerHTML = s;
+}
+const inStart = c => (c.r === 1 && c.lx >= 1 && c.lx <= 3 && c.ly >= 1 && c.ly <= 3) || (c.r === 5 && c.ly === 0 && c.lx < 2) || (c.r === 0 && c.lx === 0);
+draw("full", () => 1);
+draw("start", c => inStart(c) ? 1 : 0);
+// 隨機（固定種子）多開 11 格
+let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const all = cells(), extra = new Set();
+while (extra.size < 11) { const i = Math.floor(rnd() * all.length); if (!inStart(all[i])) extra.add(i); }
+draw("later", c => inStart(c) ? 1 : (extra.has(all.indexOf(all.find(a => a.x === c.x && a.y === c.y))) ? 2 : 0));
+// 鎖格的三種畫法：5×5，中間 3×2 開
+function lockDemo(id, mode) {
+  let s = "";
+  const open = (x, y) => x >= 1 && x <= 3 && y >= 1 && y <= 2;
+  const near = (x, y) => !open(x, y) && [[1,0],[-1,0],[0,1],[0,-1]].some(([dx, dy]) => open(x + dx, y + dy));
+  for (let y = 0; y < 5; y++) for (let x = 0; x < 5; x++) {
+    const px = 2 + x * S, py = 2 + y * S;
+    if (open(x, y)) { s += `<rect x="${px}" y="${py}" width="${C}" height="${C}" rx="4" fill="var(--stat)" opacity="0.85"/>`; continue; }
+    s += `<rect x="${px}" y="${py}" width="${C}" height="${C}" rx="4" fill="var(--lock)" opacity="${mode === "B" ? 0.8 : 0.35}"${mode === "C" && near(x, y) ? ' stroke="var(--edge)" stroke-width="1.5"' : ""}/>`;
+    if (mode === "B" || (mode === "C" && near(x, y))) s += lockIcon(px, py);
+  }
+  document.getElementById(id).innerHTML = s;
+}
+lockDemo("lockA", "A"); lockDemo("lockB", "B"); lockDemo("lockC", "C");
+</script>
+</body>
+</html>
