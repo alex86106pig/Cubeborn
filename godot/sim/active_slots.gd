@@ -144,7 +144,8 @@ static func mods_mana_mul(ids: Array[StringName]) -> float:
 
 # 這次施放的參數：等級的傷害倍率 × 袋子倍率、蓋在技能上的修飾（標籤相符的才算）的效果
 static func cast_context(_owner: Player, slot: Dictionary) -> Dictionary:
-	var ctx := {"mul": SkillDefs.level_damage_mul(slot.get("level", 1)) * slot.get("bag", {}).get("mul", 1.0), "area": 1.0,
+	var bag: Dictionary = slot.get("bag", {})
+	var ctx := {"mul": SkillDefs.level_damage_mul(slot.get("level", 1)) * (BagDefs.power_of(bag) if not bag.is_empty() else 1.0), "area": 1.0,
 		"type": slot.def.get("damage_type", &"phys"), "split": false}
 	for sup: Dictionary in supports_of(slot):
 		match sup.mode:

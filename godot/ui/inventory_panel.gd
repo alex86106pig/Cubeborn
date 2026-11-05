@@ -845,8 +845,8 @@ func _draw_skill_marks(font: Font, me: Player, where: int, b: Dictionary) -> voi
 # 標題條的字：一句話講什麼時候發動；左右兩邊的直著寫，下面照魔力與倍率
 func _draw_bag_head(font: Font, b: Dictionary, head: Rect2, key_number: int, mana: int) -> void:
 	var tail := ""
-	if b.mul != 1.0:
-		tail = "×%s" % str(b.mul)
+	if BagDefs.power_of(b) != 1.0:
+		tail = "×%s" % str(BagDefs.power_of(b))
 	var mana_text := "魔 %d" % mana if mana > 0 else ""
 	if b.side in [&"top", &"bottom"]:
 		var x := head.position.x + 8
@@ -1206,8 +1206,8 @@ static func bag_info(b: Dictionary, me: Player = null) -> Dictionary:
 	var icd: float = BagDefs.BAGS[b.kind].get("icd", 0.0)
 	if icd > 0.0:
 		size_line += " · 同一袋 %s 秒最多一次" % str(icd)
-	if b.mul != 1.0:
-		size_line += " · 傷害 ×%s" % str(b.mul)
+	if BagDefs.power_of(b) != 1.0:
+		size_line += " · 傷害 ×%s" % str(BagDefs.power_of(b))
 	lines.append(size_line)
 	var t: Dictionary = BagDefs.TIERS[b.tier]
 	if t.has("curse_desc"):

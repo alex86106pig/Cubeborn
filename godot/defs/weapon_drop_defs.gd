@@ -270,7 +270,8 @@ static func can_merge(a: Dictionary, b: Dictionary) -> bool:
 		and a.rarity == b.rarity and next_rarity(a.rarity) != &""
 
 
-# 快照用：[uid, base, rarity, [詞條…], 武器技能剩幾次?, 鑲的道具?, 印記格?]；空的主手 / 副手是 []；
+# 快照用：[uid, base, rarity, [詞條…], 武器技能剩幾次?, 鑲的道具?, 印記格?, 掛著的袋子?]；空的是 []；
+# 掛著的袋子（倉庫 / 地上的武器帶著的左右鍵袋子，Loadout.WEAPON_SIDES）是 BagDefs.to_array 的陣列，有才送（前面幾欄補空的）；
 # 次數沒用過（滿的）送 -1、沒鑲東西也沒印記格就不送後面幾欄。鑲的道具：[[uid, id, x, y, rot], …]；印記格：[[羈絆, x, y], …]
 static func to_array(inst: Dictionary) -> Array:
 	if inst.is_empty():
@@ -281,15 +282,18 @@ static func to_array(inst: Dictionary) -> Array:
 	var a := [String(inst.uid), String(inst.base), String(inst.rarity), affixes]
 	var sockets: Array = inst.get("sockets", [])
 	var imprints: Array = inst.get("imprints", [])
-	if inst.has("slot_charges") or not sockets.is_empty() or not imprints.is_empty():
+	var bags: Array = inst.get("bags", [])
+	if inst.has("slot_charges") or not sockets.is_empty() or not imprints.is_empty() or not bags.is_empty():
 		a.append(inst.get("slot_charges", -1))
-	if not sockets.is_empty() or not imprints.is_empty():
+	if not sockets.is_empty() or not imprints.is_empty() or not bags.is_empty():
 		var arr := []
 		for e: Dictionary in sockets:
 			arr.append([String(e.uid), String(e.id), e.cell.x, e.cell.y, e.rot])
 		a.append(arr)
-	if not imprints.is_empty():
+	if not imprints.is_empty() or not bags.is_empty():
 		a.append(imprints.map(func(im: Dictionary) -> Array: return [String(im.bond), im.cell.x, im.cell.y]))
+	if not bags.is_empty():
+		a.append(bags.map(BagDefs.to_array))
 	return a
 
 
@@ -302,16 +306,18 @@ static func from_array(a: Array) -> Dictionary:
 	var inst := {"uid": StringName(a[0]), "base": StringName(a[1]), "rarity": StringName(a[2]), "affixes": affixes}
 	if a.size() > 4 and int(a[4]) >= 0:
 		inst["slot_charges"] = int(a[4])
-	if a.size() > 5:
+	if a.size() > 5 and not (a[5] as Array).is_empty():
 		var sockets: Array[Dictionary] = []
 		for e: Array in a[5]:
 			sockets.append({"uid": StringName(e[0]), "id": StringName(e[1]), "cell": Vector2i(e[2], e[3]), "rot": int(e[4])})
 		inst["sockets"] = sockets
-	if a.size() > 6:
+	if a.size() > 6 and not (a[6] as Array).is_empty():
 		var imprints: Array[Dictionary] = []
 		for im: Array in a[6]:
 			imprints.append({"bond": StringName(im[0]), "cell": Vector2i(im[1], im[2])})
 		inst["imprints"] = imprints
+	if a.size() > 7:
+		inst["bags"] = (a[7] as Array).map(BagDefs.from_array)
 	return inst
 
 

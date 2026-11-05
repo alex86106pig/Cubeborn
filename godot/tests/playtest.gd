@@ -18,6 +18,9 @@ const Bot := preload("res://tests/playtest_bot.gd")
 const DT := 1.0 / 60.0
 const MAX_FLOOR_TIME := 30.0 * 60.0   # 一層最多模擬這麼久（卡住時不會一直跑）
 
+var _moments := {}          # 觸發袋的時機（Player.trigger_moments 的「種類:按鍵」）全部場次加總
+var _moment_time := 0.0     # 這些時機量了幾秒（每個機器人各算一份）
+
 
 func _initialize() -> void:
 	var opts := _args()
@@ -45,6 +48,7 @@ func _initialize() -> void:
 	lines.append("")
 	if opts.get("death", "revive") == "real" or opts.has("real-from"):
 		lines.append("打完 %d 層：%d / %d 場" % [floors, cleared, total])
+	lines.append("觸發袋的時機每分鐘幾次（不管有沒有那種袋子、同一步算一次；全部場次與機器人平均，共 %.0f 秒）：%s" % [_moment_time, _moment_text()])
 	lines.append("背包武器格 = 這層結束時背包裡武器占的格數（不含裝備中的）；背包滿的時間 = 第一次有武器撿不下（— = 沒滿過）；組隊時殺怪、掉落、靈魂是全隊的")
 	var text := "\n".join(lines)
 	print(text)
@@ -86,8 +90,19 @@ func _play(seed_value: int, floors: int, classes: Array[StringName], opts: Dicti
 			break
 		if f < floors - 1:
 			w.next_floor()
+	for b in bots:
+		for k: StringName in b.p.trigger_moments:
+			if not String(k).begins_with("tick:"):
+				_moments[k] = _moments.get(k, 0) + b.p.trigger_moments[k]
+		_moment_time += w.tick * DT
 	w.clear()
 	return rows
+
+
+func _moment_text() -> String:
+	var keys := _moments.keys()
+	keys.sort()
+	return "、".join(PackedStringArray(keys.map(func(k: StringName) -> String: return "%s %.1f" % [k, _moments[k] / maxf(_moment_time, 1.0) * 60.0])))
 
 
 func _play_floor(w: World, bots: Array, seed_value: int) -> Array[String]:

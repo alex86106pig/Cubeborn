@@ -93,6 +93,12 @@ static func _bag(p: Player, kind: StringName, side := &"", tier := &"small") -> 
 	return b
 
 
+# 效果檢查只看效果本身：手上武器的 trigger_every 當 1（左鍵每打中 / 出手一下就發動；每 N 下的規則在 LootChecks.check_bag_triggers）
+static func _every_hit(p: Player) -> void:
+	p.weapon = p.weapon.duplicate()
+	p.weapon.trigger_every = 1
+
+
 # 把道具放進袋子 b（第一個空位）；放不下回傳 &""
 static func _put(p: Player, b: Dictionary, id: StringName) -> StringName:
 	var where := p.loadout.bags.find(b)

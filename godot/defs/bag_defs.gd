@@ -19,14 +19,31 @@ const SIDE_ORDER: Array[StringName] = [&"top", &"left", &"right", &"bottom"]
 # on 是道具資料原本的觸發時機（ItemDefs 效果的 on），用來把觸發道具對到袋子；icd：同一袋多久最多發動一次（秒）；
 # period：計時袋的間隔；max：最多接幾個（按鍵袋 = 數字鍵，上方邊長 6 接得下 3 個）；length：這種袋子的長度（沒寫照 TIERS；按鍵袋短一格）
 const BAGS := {
-	&"cast": {"name": "出手袋", "item": &"bag_cast", "sides": [&"left", &"right"], "on": [&"attack"], "desc": "出手時發動"},
-	&"hit": {"name": "命中袋", "item": &"bag_hit", "sides": [&"left", &"right"], "on": [&"hit", &"projectile_hit"], "icd": 0.3, "desc": "打中東西時，從命中點發動（同一袋 0.3 秒最多一次）"},
+	&"cast": {"name": "出手袋", "item": &"bag_cast", "sides": [&"left", &"right"], "on": [&"attack"], "desc": "出手時發動（左鍵每出手 N 下一次，N 看武器）"},
+	&"hit": {"name": "命中袋", "item": &"bag_hit", "sides": [&"left", &"right"], "on": [&"hit", &"projectile_hit"], "icd": 0.3, "desc": "打中東西時，從命中點發動（左鍵每打中 N 下一次，N 看武器；右鍵同一袋 0.3 秒最多一次）"},
 	&"kill": {"name": "擊殺袋", "item": &"bag_kill", "sides": [&"left", &"right"], "on": [&"kill"], "desc": "打死怪時，從怪死的位置發動"},
 	&"hurt": {"name": "受傷袋", "item": &"bag_hurt", "sides": [&"bottom"], "on": [&"hurt", &"hurt_melee"], "icd": 0.5, "desc": "自己被打中時發動（同一袋 0.5 秒最多一次）"},
 	&"roll": {"name": "翻滾袋", "item": &"bag_roll", "sides": [&"bottom"], "on": [&"roll"], "desc": "翻滾時發動"},
 	&"timer": {"name": "計時袋", "item": &"bag_timer", "sides": [&"bottom"], "on": [&"interval"], "period": 3.0, "desc": "每 3 秒發動一次"},
 	&"key": {"name": "按鍵袋", "item": &"bag_key", "sides": [&"top"], "on": [], "max": 3, "length": 2, "desc": "按數字鍵發動（由左到右是 1~3）"},
 }
+
+# 每種袋子（接在哪一邊）放出來的傷害倍率：觸發得少的痛、觸發得多的輕，讓每種袋子每分鐘的總輸出差不多（許家慶 2026-11-05：命中袋比擊殺袋好觸發太多）
+# 數字 = 左鍵命中袋每分鐘發動次數 ÷ 這種袋子的，夾在 0.6~2.5（Claude 照自動試玩算：守墓騎士、竊影者、祕術師、盜墓遊俠各 2 場第 1 層的平均，每分鐘
+# 左鍵命中 24.5 ÷ N ≈ 12、左鍵出手 ≈ 17、擊殺 4.5、受傷 4.2、翻滾 9.1、計時 20、右鍵命中 / 出手約 2.5；按鍵袋自己按，不調）；耗魔不變，所以觸發得少的也比較省魔
+const POWER := {
+	&"hit": {&"left": 1.0, &"right": 2.5}, &"cast": {&"left": 0.75, &"right": 2.5}, &"kill": {&"left": 2.5, &"right": 2.5},
+	&"hurt": {&"bottom": 2.5}, &"roll": {&"bottom": 1.25}, &"timer": {&"bottom": 0.6}, &"key": {&"top": 1.0},
+}
+
+
+# 袋子放出來的傷害倍率 = 大小的倍率（強化袋、鐵砧）× 種類與邊的倍率（POWER）
+static func power_of(bag: Dictionary) -> float:
+	return bag.mul * POWER.get(bag.kind, {}).get(bag.side, 1.0)
+
+
+# 左鍵（普攻）觸發的這幾種袋子數下數：每 N 下發動一次，N = 武器的 trigger_every（BagTriggers._ready）；右鍵照 icd
+const COUNTED: Array[StringName] = [&"hit", &"cast"]
 
 # 留在主袋的觸發：致命傷、死亡（守護亡靈、復活十字）不是攻擊的時機，當成常駐能力
 const MAIN_TRIGGERS: Array[StringName] = [&"lethal", &"death"]

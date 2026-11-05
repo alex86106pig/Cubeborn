@@ -985,16 +985,19 @@ static func check_item_conditions() -> String:
 static func check_item_procs() -> String:
 	var w := _new_world()
 	var p := _player(w)
+	_every_hit(p)
 	var idle := _cmd(Vector2.ZERO)
 	# 火藥包放左邊的擊殺袋：普攻打死怪時爆炸，旁邊的怪受那一下的 damage_ratio；右鍵、技能打死的不發動左邊的袋子
 	var ex: Dictionary = ItemDefs.PROCS[&"explode"]
-	_put(p, _bag(p, &"kill", &"left"), &"powder_pouch")
+	var kill_bag := _bag(p, &"kill", &"left")
+	_put(p, kill_bag, &"powder_pouch")
+	var kill_mul := BagDefs.power_of(kill_bag)   # 擊殺袋觸發得少、放出來的傷害比較高（BagDefs.POWER）
 	var a := _item_dummy(w, Vector2(0, 4), 1.0)
 	var b := _item_dummy(w, Vector2(minf(1.0, ex.radius * 0.5), 4))
 	var b_before := b.hp
 	Combat.apply_damage(w, p, a, {"damage": 40.0, "attack": &"primary"})
-	if _hp_loss(b, b_before) != _dealt(b, 40.0 * ex.damage_ratio):
-		return "爆炸應讓旁邊的怪扣 %d，實際 %d" % [_dealt(b, 40.0 * ex.damage_ratio), _hp_loss(b, b_before)]
+	if _hp_loss(b, b_before) != _dealt(b, 40.0 * kill_mul * ex.damage_ratio):
+		return "爆炸應讓旁邊的怪扣 %d（擊殺袋 ×%s），實際 %d" % [_dealt(b, 40.0 * kill_mul * ex.damage_ratio), str(kill_mul), _hp_loss(b, b_before)]
 	for tag: StringName in [&"secondary", &"skill"]:
 		b_before = b.hp
 		Combat.apply_damage(w, p, _item_dummy(w, Vector2(0, 4), 1.0), {"damage": 40.0, "attack": tag})
@@ -1008,6 +1011,7 @@ static func check_item_procs() -> String:
 	var jr: float = cl.jump_range
 	w = _new_world()
 	p = _player(w)
+	_every_hit(p)
 	_put(p, _bag(p, &"hit", &"left"), &"thunder_rune")
 	a = _item_dummy(w, Vector2(0, 5))
 	b = _item_dummy(w, Vector2(0, 5 + jr * 0.6))
@@ -1035,6 +1039,7 @@ static func check_item_procs() -> String:
 	var ticks := roundi(po.duration / po.tick)
 	w = _new_world()
 	p = _player(w)
+	_every_hit(p)
 	_put(p, _bag(p, &"hit", &"left"), &"venom_blade")
 	a = _item_dummy(w, Vector2(0, 5))
 	var before := a.max_hp
@@ -1055,6 +1060,7 @@ static func check_item_procs() -> String:
 	var freeze_time: float = _effect(&"frost_heart").duration
 	w = _new_world()
 	p = _player(w)
+	_every_hit(p)
 	_put(p, _bag(p, &"hit", &"left"), &"frost_heart")
 	a = _item_dummy(w, Vector2(0, 6))
 	for i in 300:
@@ -1082,6 +1088,7 @@ static func check_item_stats() -> String:
 	var w := _new_world()
 	var p := _player(w)
 	var idle := _cmd(Vector2.ZERO)
+	_every_hit(p)
 	# 蝙蝠牙（左邊命中袋的回血效果）：普攻同一步打兩下只回一次（命中袋的內部冷卻），冷卻過了再回
 	var loh := _effect_value(&"bat_fang", &"life_on_hit")
 	_put(p, _bag(p, &"hit", &"left"), &"bat_fang")
@@ -1230,6 +1237,7 @@ static func check_item_conditions_roll_kills() -> String:
 static func check_item_procs_hurt_ignite() -> String:
 	var w := _new_world()
 	var p := _player(w)
+	_every_hit(p)
 	var idle := _cmd(Vector2.ZERO)
 	p.stats.set_base(&"max_hp", 100000.0)
 	p.hp = p.max_hp
@@ -1242,8 +1250,9 @@ static func check_item_procs_hurt_ignite() -> String:
 	var hp_a := a.hp
 	Combat.apply_damage(w, a, p, {"damage": 40.0})
 	var taken := hp_p - p.hp
-	if _hp_loss(a, hp_a) != _dealt(a, taken * thorn.ratio):
-		return "荊棘鎖甲：受到 %.1f 應反彈讓攻擊者扣 %d，實際 %d" % [taken, _dealt(a, taken * thorn.ratio), _hp_loss(a, hp_a)]
+	var hurt_mul := BagDefs.power_of(hurt_bag)   # 受傷袋觸發得少、放出來的傷害比較高（BagDefs.POWER）
+	if _hp_loss(a, hp_a) != _dealt(a, taken * hurt_mul * thorn.ratio):
+		return "荊棘鎖甲：受到 %.1f 應反彈讓攻擊者扣 %d（受傷袋 ×%s），實際 %d" % [taken, _dealt(a, taken * hurt_mul * thorn.ratio), str(hurt_mul), _hp_loss(a, hp_a)]
 	hp_a = a.hp
 	_run(w, idle, ceili(BagDefs.BAGS.hurt.icd / DT) + 1)
 	p.invuln_timer = 0.0
@@ -1260,8 +1269,8 @@ static func check_item_procs_hurt_ignite() -> String:
 	var hp_b := b.hp
 	p.invuln_timer = 0.0
 	Combat.apply_damage(w, a, p, {"damage": 20.0})
-	if _hp_loss(b, hp_b) != _dealt(b, 20.0 * heart.damage_ratio):
-		return "王墓之心：旁邊的怪應扣 %d，實際 %d" % [_dealt(b, 20.0 * heart.damage_ratio), _hp_loss(b, hp_b)]
+	if _hp_loss(b, hp_b) != _dealt(b, 20.0 * hurt_mul * heart.damage_ratio):
+		return "王墓之心：旁邊的怪應扣 %d（受傷袋 ×%s），實際 %d" % [_dealt(b, 20.0 * hurt_mul * heart.damage_ratio), str(hurt_mul), _hp_loss(b, hp_b)]
 	hp_b = b.hp
 	p.invuln_timer = 0.0
 	Combat.apply_damage(w, a, p, {"damage": 20.0})
@@ -1278,6 +1287,7 @@ static func check_item_procs_hurt_ignite() -> String:
 	# 爆裂箭袋（左邊的命中袋）：普攻打中時以被打中的怪為中心爆炸（該下 × explode.damage_ratio）；右鍵打中不發動左邊的袋子
 	w = _new_world()
 	p = _player(w)
+	_every_hit(p)
 	var ex: Dictionary = ItemDefs.PROCS.explode
 	_put(p, _bag(p, &"hit", &"left"), &"blast_quiver")
 	a = _item_dummy(w, Vector2(0, 5))
@@ -1296,6 +1306,7 @@ static func check_item_procs_hurt_ignite() -> String:
 	# 永恆之焰：命中就點燃；燒著的怪 spread_interval 秒後傳給 spread_range 內一隻，太遠的不會
 	w = _new_world()
 	p = _player(w)
+	_every_hit(p)
 	var ig: Dictionary = ItemDefs.PROCS.ignite
 	_put(p, _bag(p, &"hit", &"left"), &"eternal_flame")
 	a = _item_dummy(w, Vector2(0, 5))
@@ -1322,18 +1333,21 @@ static func _item_projectiles(w: World) -> Array[Projectile]:
 static func check_item_procs_attack_timed() -> String:
 	var w := _new_world()
 	var p := _player(w)
+	_every_hit(p)
 	var idle := _cmd(Vector2.ZERO)
 	# 袖中飛刀（左邊的出手袋）：普攻出手射 1 把（proc、武器基礎傷害 × damage_pct）；內部冷卻內再出手不射
 	var kn: Dictionary = ItemDefs.PROCS.throw_knife
-	_put(p, _bag(p, &"cast", &"left"), &"sleeve_knife")
+	var cast_bag := _bag(p, &"cast", &"left")
+	_put(p, cast_bag, &"sleeve_knife")
+	var cast_mul := BagDefs.power_of(cast_bag)   # 左邊的出手袋觸發得多、放出來的傷害比較輕（BagDefs.POWER）
 	p.aim_point = p.pos + Vector2(0, 5)
 	for i in 300:
 		ItemEffects.on_attack(w, p, &"primary")
 		if not _item_projectiles(w).is_empty():
 			break
 	var knives := _item_projectiles(w)
-	if knives.size() != 1 or absf(knives[0].damage - p.pct_damage(kn.damage_pct)) > EPS or knives[0].pierce:
-		return "普攻出手應射 1 把飛刀（傷害 %.2f）：%d 把 %s" % [p.pct_damage(kn.damage_pct), knives.size(), knives.map(func(k: Projectile) -> float: return k.damage)]
+	if knives.size() != 1 or absf(knives[0].damage - p.pct_damage(kn.damage_pct) * cast_mul) > EPS or knives[0].pierce:
+		return "普攻出手應射 1 把飛刀（傷害 %.2f）：%d 把 %s" % [p.pct_damage(kn.damage_pct) * cast_mul, knives.size(), knives.map(func(k: Projectile) -> float: return k.damage)]
 	ItemEffects.on_attack(w, p, &"primary")
 	if _item_projectiles(w).size() != 1:
 		return "飛刀內部冷卻 %.1f 秒內不該再射" % kn.icd
@@ -1342,8 +1356,10 @@ static func check_item_procs_attack_timed() -> String:
 	# 裂空之刃：左右對稱 count 道穿透斬波，各 damage_ratio
 	w = _new_world()
 	p = _player(w)
+	_every_hit(p)
 	var rb := _effect(&"rift_blade")
-	_put(p, _bag(p, &"cast", &"left"), &"rift_blade")
+	var wave_bag := _bag(p, &"cast", &"left")
+	_put(p, wave_bag, &"rift_blade")
 	p.aim_point = p.pos + Vector2(0, 5)
 	ItemEffects.on_attack(w, p, &"primary")
 	var waves := _item_projectiles(w)
@@ -1352,12 +1368,13 @@ static func check_item_procs_attack_timed() -> String:
 	var sw: Dictionary = ItemDefs.PROCS.slash_wave
 	for wv in waves:
 		var off := absf(MathUtil.wrap_angle(wv.facing - 0.0))
-		if not wv.pierce or absf(wv.damage - p.pct_damage(rb.damage_ratio)) > EPS or absf(off - sw.spread) > 0.01:
-			return "斬波應穿透、傷害 %.2f、偏 ±%.2f：穿透 %s、%.2f、偏 %.2f" % [p.pct_damage(rb.damage_ratio), sw.spread, wv.pierce, wv.damage, off]
+		if not wv.pierce or absf(wv.damage - p.pct_damage(rb.damage_ratio) * BagDefs.power_of(wave_bag)) > EPS or absf(off - sw.spread) > 0.01:
+			return "斬波應穿透、傷害 %.2f、偏 ±%.2f：穿透 %s、%.2f、偏 %.2f" % [p.pct_damage(rb.damage_ratio) * BagDefs.power_of(wave_bag), sw.spread, wv.pierce, wv.damage, off]
 	w.clear()
 	# 雷霆鈴（計時袋）：每 period 秒（計時袋的間隔）打 range 內最近的 targets 隻，再遠的、第 targets + 1 近的不打
 	w = _new_world()
 	p = _player(w)
+	_every_hit(p)
 	var bell := {"period": BagDefs.BAGS.timer.period}
 	var ls: Dictionary = ItemDefs.PROCS.lightning_strike
 	_put(p, _bag(p, &"timer", &"bottom"), &"thunder_bell")
@@ -1382,6 +1399,7 @@ static func check_item_procs_attack_timed() -> String:
 	# 停滯懷錶：翻滾時 radius 內的怪移速 × (1 − slow)、duration 秒後恢復；範圍外的不變
 	w = _new_world()
 	p = _player(w)
+	_every_hit(p)
 	var watch := _effect(&"stasis_watch")
 	var st: Dictionary = ItemDefs.PROCS.slow_time
 	_put(p, _bag(p, &"roll", &"bottom"), &"stasis_watch")
@@ -1466,13 +1484,15 @@ static func check_item_procs_summon() -> String:
 	var idle := _cmd(Vector2.ZERO)
 	# 鬼火燈籠：擊殺時從屍體飛出 1 顆（擊殺那一下 × damage_ratio），會轉彎打到旁邊的怪；同時最多 max 顆
 	var wp: Dictionary = ItemDefs.PROCS.wisp
-	_put(p, _bag(p, &"kill", &"left"), &"wisp_lantern")
+	var wisp_bag := _bag(p, &"kill", &"left")
+	_put(p, wisp_bag, &"wisp_lantern")
+	var kill_mul := BagDefs.power_of(wisp_bag)   # 擊殺袋 ×BagDefs.POWER
 	var b := _item_dummy(w, Vector2(4, 6))
 	b.dormant = true
 	Combat.apply_damage(w, p, _item_dummy(w, Vector2(0, 6), 1.0), {"damage": 20.0, "attack": &"primary"})
 	var wisps := _item_projectiles(w).filter(func(x: Projectile) -> bool: return x.homing > 0.0)
-	if wisps.size() != 1 or absf(wisps[0].damage - 20.0 * wp.damage_ratio) > EPS:
-		return "擊殺應放出 1 顆鬼火（傷害 %.1f）：%s" % [20.0 * wp.damage_ratio, wisps.map(func(x: Projectile) -> float: return x.damage)]
+	if wisps.size() != 1 or absf(wisps[0].damage - 20.0 * kill_mul * wp.damage_ratio) > EPS:
+		return "擊殺應放出 1 顆鬼火（傷害 %.1f）：%s" % [20.0 * kill_mul * wp.damage_ratio, wisps.map(func(x: Projectile) -> float: return x.damage)]
 	_run(w, idle, roundi(wp.life / DT))
 	if b.hp >= b.max_hp:
 		return "鬼火應追到旁邊的怪"
@@ -1753,6 +1773,57 @@ static func check_bonds() -> String:
 
 # 觸發袋的擺放：接哪幾邊看種類、在邊長內、同一邊不重疊、按鍵袋最多 4 個；撿到的袋子自動接、接不下進倉庫；
 # OP_BAG 換邊 / 滑動 / 拿下來放倉庫（內容跟著、拿下來就不生效）、接不下拒絕；袋子連同內容丟在地上、撿回來照原樣（詛咒袋還是詛咒袋）；詛咒袋接著時套缺點；快照來回一樣
+# 左右鍵的袋子掛在武器上（許家慶 2026-11-05）：換武器時左右邊的袋子跟著舊的那把進倉庫、按鍵袋留著；換回來接回原本的位置、內容照舊；
+# 倉庫的武器快照帶著袋子；丟在地上再撿回來，袋子換成自己的 uid、位置照舊；說明框寫掛著什麼
+static func check_weapon_bags() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var left := _bag(p, &"hit", &"left")
+	_put(p, left, &"ice_coffin_nail")
+	var left_uid: StringName = left.uid
+	var key: Dictionary = p.loadout.key_bags()[0]
+	var sword: StringName = p.weapon_slots[Loadout.MAIN].uid
+	p.add_weapon({"uid": &"st", "base": &"staff", "rarity": &"white", "affixes": [] as Array[StringName]})
+	var equip := func(uid: String) -> void:
+		var c := _cmd(Vector2.ZERO)
+		c.inv_ops = [[InputCmd.OP_EQUIP, uid, Loadout.MAIN]]
+		_run(w, c, 1)
+	equip.call("st")
+	var stored: Dictionary = p.inventory.find(sword).get("weapon", {})
+	if p.weapon_id != &"staff" or p.loadout.find_bag(left_uid).size() > 0 or not p.loadout.bags.has(key) or Loadout.weapon_bags(stored).size() != 1:
+		return "換上法杖：左邊的命中袋應跟著劍盾進倉庫、按鍵袋留著：手上 %s、袋子 %s、劍盾掛著 %d 個" % [p.weapon_id, p.loadout.bags.map(func(b: Dictionary) -> StringName: return b.kind), Loadout.weapon_bags(stored).size()]
+	var info: Dictionary = UiKit.item_info(stored.base, stored)
+	if not "\n".join(info.lines).contains("掛著：命中袋（左鍵）"):
+		return "倉庫的劍盾說明應寫掛著命中袋：%s" % [info.lines]
+	var arr := WeaponDropDefs.to_array(stored)
+	var back_inst := WeaponDropDefs.from_array(arr)
+	if Loadout.weapon_bags(back_inst).size() != 1 or Loadout.weapon_bags(back_inst)[0].uid != left_uid or WeaponDropDefs.to_array(back_inst) != arr:
+		return "武器快照應帶著掛著的袋子：%s" % [arr]
+	equip.call(String(sword))
+	var back := p.loadout.find_bag(left_uid)
+	if p.weapon_id != &"swordShield" or back.get("side", &"") != &"left" or back.offset != left.offset or back.entries.size() != 1 \
+			or not Loadout.weapon_bags(p.inventory.find(&"st").weapon).is_empty() or not p.loadout.bags.has(key):
+		return "換回劍盾：命中袋應接回左邊 %d、內容照舊：%s" % [left.offset, back]
+	# 丟在地上、撿回來：袋子換成自己的 uid、位置照舊（這次劍盾在倉庫）
+	equip.call("st")
+	var c := _cmd(Vector2.ZERO)
+	c.inv_ops = [[InputCmd.OP_DROP, String(sword)]]
+	_run(w, c, 1)
+	var ground: ItemPickup = null
+	for e in w.pickups:
+		if (e as ItemPickup).is_weapon() and (e as ItemPickup).weapon.uid == sword:
+			ground = e
+	if ground == null or Loadout.weapon_bags(ground.weapon).size() != 1:
+		return "丟在地上的劍盾應帶著命中袋"
+	ground.pos = p.pos + Vector2(0.5, 0.0)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_INTERACT), 1)
+	var picked: Dictionary = p.inventory.find(sword).get("weapon", {})
+	var hung: Array = Loadout.weapon_bags(picked)
+	if hung.size() != 1 or hung[0].uid == left_uid or hung[0].side != &"left" or hung[0].entries.size() != 1:
+		return "撿回來的劍盾應帶著命中袋（uid 換新、位置與內容照舊）：%s" % [hung]
+	return ""
+
+
 static func check_bag_layout() -> String:
 	var w := _new_world()
 	var p := _player(w)
@@ -1903,7 +1974,8 @@ static func check_bag_skill_target() -> String:
 	Combat.apply_damage(w_f, p_f, t_f, {"damage": 1.0, "attack": &"secondary"})
 	var hp_f := t_f.hp
 	_run(w_f, _cmd(Vector2.ZERO), 30)
-	var one_knife := _dealt(t_f, p_f.pct_damage(SkillDefs.SKILLS.knife_fan.damage_pct))
+	var fan_bag: Dictionary = p_f.loadout.bags.filter(func(x: Dictionary) -> bool: return x.kind == &"hit" and x.side == &"right")[0]
+	var one_knife := _dealt(t_f, p_f.pct_damage(SkillDefs.SKILLS.knife_fan.damage_pct) * BagDefs.power_of(fan_bag))   # 右鍵命中袋 ×BagDefs.POWER
 	if _hp_loss(t_f, hp_f) != one_knife:
 		return "扇形技能只有中間那支打得到目標：應扣 %d（一支），實際 %d" % [one_knife, _hp_loss(t_f, hp_f)]
 	# 位移：自己朝目標移動，不會瞬移到目標身上
@@ -1967,10 +2039,20 @@ static func check_bag_triggers() -> String:
 	Combat.apply_damage(w, p, a, {"damage": 5.0, "attack": &"secondary"})
 	if a.chill_stacks > 0:
 		return "右鍵打中不應發動左邊的命中袋"
+	# 左鍵每打中 N 下發動一次（N = 武器的 trigger_every）；同一步打到好幾下只算一下
+	var n: int = p.weapon.trigger_every
+	if n < 2:
+		return "這項檢查要 trigger_every ≥ 2 的武器（開局 %s 是 %d）" % [p.weapon_id, n]
+	for i in n - 1:
+		Combat.apply_damage(w, p, a, {"damage": 5.0, "attack": &"primary"})
+		Combat.apply_damage(w, p, a, {"damage": 5.0, "attack": &"primary"})   # 同一步第二下不算
+		_run(w, _cmd(Vector2.ZERO), 1)
+	if a.chill_stacks > 0 or p.bag_counts.get(left.uid, 0) != n - 1:
+		return "左鍵打中 %d 下（每步打 2 下只算 1）還不應發動：冰冷 %d、累積 %d" % [n - 1, a.chill_stacks, p.bag_counts.get(left.uid, 0)]
 	var mana0 := p.mana
 	Combat.apply_damage(w, p, a, {"damage": 5.0, "attack": &"primary"})
-	if a.chill_stacks <= 0 or absf(mana0 - p.mana - BagTriggers.effect_mana(&"ice_coffin_nail")) > EPS:
-		return "普攻打中應發動左邊的命中袋並耗魔 %.1f：冰冷 %d、耗魔 %.2f" % [BagTriggers.effect_mana(&"ice_coffin_nail"), a.chill_stacks, mana0 - p.mana]
+	if a.chill_stacks <= 0 or absf(mana0 - p.mana - BagTriggers.effect_mana(&"ice_coffin_nail")) > EPS or p.bag_counts.get(left.uid, -1) != 0:
+		return "左鍵打中第 %d 下應發動左邊的命中袋並耗魔 %.1f、累積歸零：冰冷 %d、耗魔 %.2f、累積 %d" % [n, BagTriggers.effect_mana(&"ice_coffin_nail"), a.chill_stacks, mana0 - p.mana, p.bag_counts.get(left.uid, -1)]
 	# 魔力不夠：由左到右先放，放不起的跳過
 	_put(p, right, &"venom_blade")
 	_put(p, right, &"frost_heart")
@@ -2003,23 +2085,25 @@ static func check_bag_triggers() -> String:
 	# 觸發袋裡的技能：左邊的命中袋放旋風斬，普攻打中時自動放
 	var w3 := _new_world()
 	var p3 := _player(w3)
+	_every_hit(p3)
 	_put(p3, _bag(p3, &"hit", &"left"), &"whirlwind")
 	var e3 := _item_dummy(w3, Vector2(0, 1.5), 100000.0)
 	var m3 := p3.mana
 	Combat.apply_damage(w3, p3, e3, {"damage": 1.0, "attack": &"primary"})
 	if absf(m3 - p3.mana - ActiveSlots.mana_cost(p3, ActiveSlots.slot_of(p3, p3.loadout.bags[1], p3.loadout.bags[1].entries[0]))) > EPS:
 		return "命中袋裡的旋風斬應在普攻打中時自動放（扣魔）：%.1f → %.1f" % [m3, p3.mana]
-	# 計時袋：間隔到了自己發動；強化袋（×1.5）裡的效果傷害跟著變
+	# 計時袋：間隔到了自己發動；強化袋（×1.5）裡的效果傷害跟著變，再乘計時袋的種類倍率（BagDefs.POWER，觸發得多所以輕）
 	var w4 := _new_world()
 	var p4 := _player(w4)
-	_put(p4, _bag(p4, &"timer", &"bottom", &"strong"), &"thunder_bell")
+	var timer_bag := _bag(p4, &"timer", &"bottom", &"strong")
+	_put(p4, timer_bag, &"thunder_bell")
 	var f := _item_dummy(w4, Vector2(0, 2))
 	f.dormant = true
 	var hp_f := f.hp
 	_run(w4, _cmd(Vector2.ZERO), roundi(BagDefs.BAGS.timer.period / DT) + 2)
-	var want := _dealt(f, p4.pct_damage(ItemDefs.PROCS.lightning_strike.damage_pct) * BagDefs.TIERS.strong.mul)
-	if _hp_loss(f, hp_f) != want:
-		return "強化計時袋的落雷 %.0f 秒後應打 %d（×%.1f），實際 %d" % [BagDefs.BAGS.timer.period, want, BagDefs.TIERS.strong.mul, _hp_loss(f, hp_f)]
+	var want := _dealt(f, p4.pct_damage(ItemDefs.PROCS.lightning_strike.damage_pct) * BagDefs.power_of(timer_bag))
+	if _hp_loss(f, hp_f) != want or absf(BagDefs.power_of(timer_bag) - BagDefs.TIERS.strong.mul * BagDefs.POWER.timer.bottom) > EPS:
+		return "強化計時袋的落雷 %.0f 秒後應打 %d（強化 ×%.1f × 計時袋 ×%s），實際 %d" % [BagDefs.BAGS.timer.period, want, BagDefs.TIERS.strong.mul, str(BagDefs.POWER.timer.bottom), _hp_loss(f, hp_f)]
 	return ""
 
 

@@ -1,5 +1,6 @@
 # 觸發袋的發動（規則在 docs/設計方向.md「觸發袋」）：時機到了，接在對應那一邊的那種袋子把裡面的效果與技能一起放出來
 #   左邊的袋子只被普攻觸發、右邊的只被右鍵招式觸發（Combat 的 hit.attack / Player.attack_tag）；下方的不分按鍵；上方的按鍵袋由 ActiveSlots 按數字鍵發動
+#   左邊的命中袋、出手袋每打 / 出手 N 下才發動一次（N = 武器的 trigger_every，許家慶 2026-11-05：取代機率，打得快的武器 N 大）；
 #   同一袋裡沒有順序，由左到右、由上到下依序放；每個效果耗魔（道具強度 × BagDefs.EFFECT_MANA_PER_POWER）、技能照自己的耗魔，魔力不夠的跳過
 #   效果的數字照道具資料（ItemDefs 的 on / do 那筆），時機與機率不看；修飾作用在透明格蓋住的技能與效果（ActiveSlots.cast_context、run_effect 的 mods）
 #   有目標的時機（命中、擊殺、受傷、招架）效果與技能都在目標身上發動（技能怎麼算在 SkillBehaviors.aim_at）；沒有目標的照舊
@@ -24,9 +25,32 @@ static func contents(b: Dictionary) -> Array[Dictionary]:
 static func fire(world: World, p: Player, kind: StringName, source: StringName, target: Entity, damage: float) -> void:
 	if not world.is_authority or p.is_dead or p.is_downed:
 		return
+	_count_moment(world, p, StringName("%s:%s" % [kind, source]))
 	for b in p.loadout.bags:
-		if b.kind == kind and BagDefs.SIDES[b.side].source == source and _icd_ready(p, b):
+		if b.kind == kind and BagDefs.SIDES[b.side].source == source and _ready(world, p, b, source):
 			run_bag(world, p, b, target, damage)
+
+
+# 時機發生幾次（不管有沒有袋子；同一步打到好幾隻算一次）：自動試玩與平衡表量各種袋子的觸發頻率
+static func _count_moment(world: World, p: Player, key: StringName) -> void:
+	var tick_key := StringName("tick:" + String(key))
+	if p.trigger_moments.get(tick_key, -1) == world.tick:
+		return
+	p.trigger_moments[tick_key] = world.tick
+	p.trigger_moments[key] = p.trigger_moments.get(key, 0) + 1
+
+
+# 這一袋這次發不發動：左邊的命中袋、出手袋數到武器的 trigger_every 下才發動（同一步打到好幾隻只算一下）；其他照內部冷卻
+static func _ready(world: World, p: Player, b: Dictionary, source: StringName) -> bool:
+	if source != &"primary" or not BagDefs.COUNTED.has(b.kind):
+		return _icd_ready(p, b)
+	if p.bag_count_tick.get(b.uid, -1) == world.tick:
+		return false
+	p.bag_count_tick[b.uid] = world.tick
+	var n: int = maxi(1, p.weapon.get("trigger_every", 1))
+	var c: int = p.bag_counts.get(b.uid, 0) + 1
+	p.bag_counts[b.uid] = 0 if c >= n else c
+	return c >= n
 
 
 # 同一袋的內部冷卻（BagDefs.BAGS 的 icd）：好了回傳 true 並開始計時
@@ -44,19 +68,23 @@ static func _icd_ready(p: Player, b: Dictionary) -> bool:
 # 發動一個袋子：裡面的效果與技能依序放；回傳放出了幾個
 static func run_bag(world: World, p: Player, b: Dictionary, target: Entity, damage: float) -> int:
 	var count := 0
-	var scaled: bool = b.mul != 1.0
-	if scaled:
-		p.set_stat_source(&"bag_mul", [[&"damage", Stats.MUL, b.mul]])   # 效果用武器基礎傷害算的部分（飛刀、落雷…）
+	var mul := BagDefs.power_of(b)   # 大小倍率 × 種類與邊的倍率
+	var fired := StringName("fired:" + String(b.kind))
+	p.trigger_moments[fired] = p.trigger_moments.get(fired, 0) + 1   # 發動了幾次（檢查與自動試玩用）
+	var scaled: bool = mul != 1.0
 	for e in contents(b):
 		match ItemDefs.role_of(e.id):
 			ItemDefs.ROLE_EFFECT:
-				if run_effect(world, p, e.id, target, damage * b.mul, ActiveSlots.mod_ids_on(b, e), b.mul):
+				# 效果用武器基礎傷害算的部分（飛刀、落雷…）靠攻擊力屬性乘上倍率；技能的倍率在 ActiveSlots.cast_context（原本兩邊都乘，技能吃到兩次）
+				if scaled:
+					p.set_stat_source(&"bag_mul", [[&"damage", Stats.MUL, mul]])
+				if run_effect(world, p, e.id, target, damage * mul, ActiveSlots.mod_ids_on(b, e), mul):
 					count += 1
+				if scaled:
+					p.remove_stat_source(&"bag_mul")
 			ItemDefs.ROLE_SKILL:
 				if cast_skill(p, b, e, target):
 					count += 1
-	if scaled:
-		p.remove_stat_source(&"bag_mul")
 	return count
 
 

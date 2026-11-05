@@ -21,6 +21,7 @@ const GROUP_BAND := Vector2(3.0, 6.0)
 const GROUP_KEEP := [&"swordShield", &"torch", &"scepter", &"shovel"]
 # 打一隻要比這些武器都高（不看類型的目標）：雙匕首是全部最高（許家慶 2026-11-05：高風險高傷害，近身比短弓痛）；
 # 短弓是遠程最高（使用者 2026-11-02：專打單體、箭不穿透，打一群偏低是代價；2026-11-05 起只跟遠程比）
+const TRIGGER_TARGET := 1.0   # 左鍵的命中袋 / 出手袋每秒發動約幾次（_trigger_table）
 const SINGLE_TOP := {&"dagger": &"", &"shortbow": &"ranged"}   # 武器 → 跟哪種類型比（空 = 全部）
 const BASIC_TIME := 10.0        # 普攻量幾秒取平均
 const SKILL_WINDOW := 6.0       # 放一次後量幾秒（落雷延遲、火池、拖尾、燃燒都算進去）
@@ -54,6 +55,7 @@ func _initialize() -> void:
 	lines.append("")
 	var basic := _basic_table(lines)
 	_weapon_table(lines)
+	_trigger_table(lines)
 	_move_table(lines, basic)
 	_cross_table(lines)
 	_enemy_tables(lines, basic)
@@ -250,6 +252,36 @@ func _weapon_table(lines: Array[String]) -> void:
 			off.append("保留：打一群偏高（不降傷害、揮擊範圍是手感）" if GROUP_KEEP.has(wid) else "打一群偏高")
 		lines.append("| %s | %s | %.1f | %.1f | %s | %.2f | %.0f | %.1f | %s |" % [wpn.name, "近戰" if wpn.type == &"melee" else "遠程",
 			wpn.base_damage, single, target_text, ratio, pack, mul, "✓" if off.is_empty() else "、".join(off)])
+	lines.append("")
+
+
+# ───────── 左鍵的觸發袋 ─────────
+
+# 每把武器一直普攻一隻：每秒打中幾下、出手幾下（同一步打到好幾隻算一下），除以 trigger_every = 命中袋 / 出手袋每秒發動幾次
+# 目標約每秒 1 次（許家慶 2026-11-05：取代機率，打得快的武器 N 大）
+func _trigger_table(lines: Array[String]) -> void:
+	lines.append("## 左鍵的命中袋 / 出手袋")
+	lines.append("")
+	lines.append("一直普攻一隻假人 %.0f 秒：每秒打中 / 出手幾下（同一步打到好幾隻算一下）；N = 武器的 trigger_every（每 N 下發動一次）；目標每秒約 %.1f 次（±%.0f%%）。" % [BASIC_TIME, TRIGGER_TARGET, TOLERANCE * 100.0])
+	lines.append("")
+	lines.append("| 武器 | 每秒打中 | 每秒出手 | N | 命中袋每秒 | 出手袋每秒 | |")
+	lines.append("|---|---:|---:|---:|---:|---:|---|")
+	for lo: Array in LOADOUTS:
+		var s := _setup(lo)
+		var w: World = s[0]
+		var p: Player = s[1]
+		var at := p.pos + Vector2(0, _range_of(lo[0]))
+		var d := _dummies(w, [at])
+		for i in roundi(BASIC_TIME / DT):
+			_step(w, _cmd(at, InputCmd.BTN_ATTACK), d, [at])
+		var hits: float = p.trigger_moments.get(&"hit:primary", 0) / BASIC_TIME
+		var casts: float = p.trigger_moments.get(&"cast:primary", 0) / BASIC_TIME
+		var n: int = maxi(1, WeaponDefs.WEAPONS[lo[0]].get("trigger_every", 1))
+		var off: Array[String] = []
+		for x: Array in [["命中袋", hits / n], ["出手袋", casts / n]]:
+			if absf(x[1] / TRIGGER_TARGET - 1.0) > TOLERANCE:
+				off.append(x[0] + ("偏低" if x[1] < TRIGGER_TARGET else "偏高"))
+		lines.append("| %s | %.2f | %.2f | %d | %.2f | %.2f | %s |" % [_loadout_name(lo), hits, casts, n, hits / n, casts / n, "✓" if off.is_empty() else "、".join(off)])
 	lines.append("")
 
 

@@ -1,6 +1,8 @@
 # 玩家的裝備與背包：手上的武器、倉庫（inventory，不生效）、主袋（core，數值道具生效）、接在主袋四邊的觸發袋（bags）、
 # 背包操作（InputCmd.inv_ops）、撿起武器 / 道具 / 袋子 / 屍體、合成、丟棄（規則在 docs/設計方向.md「觸發袋」）
 # 規則：一次拿一把武器（許家慶 2026-11-05 拿掉主副手），手上一定有武器；武器只放倉庫或拿在手上
+# 左鍵、右鍵的袋子掛在武器上（許家慶 2026-11-05）：接在主袋左右兩邊的袋子屬於手上那把，換武器時跟著舊的那把走（存在武器實例的 bags），
+#   新的那把掛著的接上來；上方的按鍵袋、下方的袋子屬於角色，不跟著換
 # 放東西的地方用 where 表示：BAG 倉庫、CORE 主袋、0 以上是 bags 的第幾個（接著的觸發袋）
 # 袋子的效果怎麼發動在 BagTriggers；這裡只管擺放、生效的數值道具與羈絆（最大同色區塊）
 # 不存 Player（Player 持有 Loadout，反過來存會變成循環參照）：要發事件、套屬性、換招式時由呼叫端傳入 p
@@ -11,6 +13,7 @@ const MAIN := 0    # weapon_slots 的手上那把（只有一格；保留陣列�
 const BAG := -1    # 倉庫
 const AUTO := -2   # 自動：照分類找主袋或袋子，放不下進倉庫
 const CORE := -3   # 主袋
+const WEAPON_SIDES: Array[StringName] = [&"left", &"right"]   # 掛在武器上的袋子接在這兩邊
 
 var weapon_slots: Array[Dictionary] = [{}]   # [手上]：武器實例（WeaponDropDefs）或 {}
 var branches := {}                     # 武器的分支詞條（觸發袋改版後沒有詞條，留空給 BondEffects.has_branch）
@@ -233,10 +236,17 @@ func _emit_full(p: Player, item: StringName, pickup_id: int) -> void:
 
 # 撿到武器：手上空著就拿起來，其他放倉庫；都放不下回傳 false、發出 inventory:full。指定 spot 時直接放到倉庫的那一格（背包介面從「腳邊」拖進來）
 func add_weapon(p: Player, inst: Dictionary, spot: Dictionary = {}, pickup_id := 0) -> bool:
+	if inst.has("bags"):
+		var own: Array = []
+		for b: Dictionary in inst.bags:
+			var nb := _adopt_bag(b)
+			nb.side = b.side
+			nb.offset = b.offset
+			own.append(nb)
+		inst.bags = own
 	if spot.is_empty():
 		if main_weapon().is_empty():
-			weapon_slots[MAIN] = inst
-			p.apply_active_weapon()
+			_set_hand(p, inst)
 			p.world.emit_event("weapon:added", {"player_id": p.id, "uid": String(inst.uid), "slot": MAIN})
 			return true
 		spot = inventory.find_spot(inst.base)
@@ -279,9 +289,52 @@ func _equip_from(p: Player, uid: StringName, slot: int) -> bool:
 			inventory.add(uid, src.bag.id, src.bag.cell, src.bag.rot, {"weapon": src.inst})
 			return false
 		inventory.add(old.uid, old.base, spot.cell, spot.rot, {"weapon": old})
-	weapon_slots[MAIN] = src.inst
-	p.apply_active_weapon()
+	_set_hand(p, src.inst)
 	return true
+
+
+# 換上手：原本那把帶走接在左右邊的袋子（存進它的 bags），新的那把掛著的袋子接上來（接不下的進倉庫、倉庫滿了掉在腳邊）
+func _set_hand(p: Player, inst: Dictionary) -> void:
+	var old := main_weapon()
+	if not old.is_empty() and (inst.is_empty() or old.uid != inst.uid):
+		var carried: Array = []
+		for b in bags.duplicate():
+			if WEAPON_SIDES.has(b.side):
+				bags.erase(b)
+				carried.append(b)
+		if carried.is_empty():
+			old.erase("bags")
+		else:
+			old["bags"] = carried
+	weapon_slots[MAIN] = inst
+	if not inst.is_empty():
+		var extra: Array = []
+		for b: Dictionary in inst.get("bags", []):
+			if bag_fits(b, b.side, b.offset):
+				bags.append(b)
+			else:
+				extra.append(b)
+		inst.erase("bags")
+		_stash_bags(p, extra)
+	refresh_items(p)
+	p.apply_active_weapon()
+
+
+# 放不回武器上的袋子：連同內容放進倉庫，倉庫滿了掉在腳邊（合成時被吃掉那把掛著的、接不下的）
+func _stash_bags(p: Player, list: Array) -> void:
+	for b: Dictionary in list:
+		b.side = &""
+		var item: StringName = BagDefs.BAGS[b.kind].item
+		var spot := inventory.find_spot(item)
+		if not spot.is_empty():
+			inventory.add(b.uid, item, spot.cell, spot.rot, {"bag": b})
+		else:
+			p.world.drop_item(item, p.pos + MathUtil.dir_from_angle(p.facing) * LootDefs.DROP_DISTANCE).bag = b
+
+
+# 武器掛著的袋子（倉庫或地上的武器；手上那把的就是接在左右邊的）
+static func weapon_bags(inst: Dictionary) -> Array:
+	return inst.get("bags", [])
 
 
 # ── 道具 ──
@@ -695,15 +748,22 @@ func merge(p: Player, uid_a: StringName, uid_b: StringName) -> bool:
 		p.world.emit_event("weapon:merge_denied", {"player_id": p.id, "reason": "forge"})
 		return false
 	var merged := WeaponDropDefs.make(b.inst.uid, b.inst.base, WeaponDropDefs.next_rarity(b.inst.rarity), p.world.rng)
+	# 掛著的袋子：結果留在手上時手上的照舊接著；兩把都在倉庫時留 b 的；被吃掉那把的進倉庫（滿了掉腳邊）
 	if a.has("slot"):
 		inventory.remove(b.bag.uid)   # 手上的拖到倉庫的武器上：結果留在手上（手上不能沒有武器）
 		weapon_slots[a.slot] = merged
+		_stash_bags(p, weapon_bags(b.inst))
 	elif b.has("slot"):
 		_take_weapon(a)
 		weapon_slots[b.slot] = merged
+		_stash_bags(p, weapon_bags(a.inst))
 	else:
 		_take_weapon(a)
+		if not weapon_bags(b.inst).is_empty():
+			merged["bags"] = weapon_bags(b.inst)
 		b.bag.weapon = merged
+		_stash_bags(p, weapon_bags(a.inst))
+	refresh_items(p)
 	p.apply_active_weapon()
 	p.world.emit_event("weapon:merged", {"player_id": p.id, "uid": String(merged.uid), "base": String(merged.base), "rarity": String(merged.rarity)})
 	return true
