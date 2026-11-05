@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>觸發格綁武器</title>
+<style>
+:root {
+  --bg: #f4f2ec; --panel: #fff; --line: #d8d3c6; --ink: #24221d; --dim: #6c675b;
+  --open: #6aa36f; --lock: #b9b4a8; --hit: #c4581c; --kill: #a03ab8; --cast: #2f63c4; --body: #6a6f78; --good: #2f7a45; --bad: #b0402a;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #15161a; --panel: #1e2026; --line: #34373f; --ink: #e6e2d6; --dim: #9a978c;
+  --open: #7cc584; --lock: #4a4c52; --hit: #ff9a5c; --kill: #e47bff; --cast: #7fb0ff; --body: #b8bec8; --good: #6fd08c; --bad: #ff8a70; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.65 "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; padding: 28px 16px 60px; }
+main { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+h1 { margin: 0; font-size: 28px; } h2 { margin: 0 0 8px; font-size: 20px; }
+.note { color: var(--dim); font-size: 13px; }
+.status { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--dim); border-radius: 6px; padding: 10px 14px; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; }
+ul { margin: 0; padding-left: 1.3em; } li { margin: 3px 0; }
+.fig { display: flex; flex-wrap: wrap; gap: 18px; justify-content: center; margin-top: 12px; }
+.fig figure { margin: 0; text-align: center; } figcaption { color: var(--dim); font-size: 13px; margin-top: 4px; }
+svg { max-width: 100%; height: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+th { color: var(--dim); font-weight: 500; font-size: 13px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 700px) { .two { grid-template-columns: 1fr; } }
+.good { color: var(--good); font-weight: 700; } .bad { color: var(--bad); font-weight: 700; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>觸發格綁武器</h1>
+    <p class="note">許家慶 2026-11-05 的構想，整理後保留參考。<b>沒有採用、也沒有做進遊戲</b>；同一天改往「背包本身有鎖住的格子、可以升級」的方向想。數字都是隨口舉例或 Claude 暫定。</p>
+  </header>
+
+  <div class="status">一句話：<b>袋子不再是道具，觸發格長在武器上</b>；每把武器有固定的觸發區塊，大部分格子鎖著，稀有度決定開幾格、開在哪個區塊是隨機的。</div>
+
+  <section>
+    <h2>機制</h2>
+    <ul>
+      <li><b>武器有 9 個觸發區塊</b>：左鍵的命中 / 擊殺 / 出手、右鍵的命中 / 擊殺 / 出手、不分按鍵的受傷 / 翻滾 / 計時（之後可能移到防具）。每區最多 3 × 3 = 9 格。</li>
+      <li><b>大部分格子鎖著</b>：稀有度決定總共開幾格，分到哪些區塊完全隨機。同樣是綠劍盾，可能只有左鍵命中，也可能是右鍵擊殺 + 翻滾。</li>
+      <li><b>技能、效果、修飾放在武器的格子裡</b>；背包只放數值道具，<b>羈絆只看背包</b>。</li>
+      <li><b>數字鍵廢掉</b>：技能都靠觸發，技能欄只剩 Q 治療藥水。</li>
+      <li><b>換武器</b>：裝著的東西自動搬到新武器的空格 → 不夠放倉庫 → 再不夠掉在地上。要能不換武器就比較身上與地上的武器。</li>
+      <li><b>成長</b>：鐵砧升稀有度時自動隨機開格子；另外有方式讓玩家自己挑要開的格子（方式待討論）。</li>
+    </ul>
+    <div class="fig">
+      <figure>
+        <svg viewBox="0 0 420 240" width="420" role="img" aria-label="一把綠色劍盾的觸發區塊">
+          <g font-size="12" fill="currentColor">
+            <text x="105" y="18" text-anchor="middle">左鍵</text><text x="315" y="18" text-anchor="middle">右鍵</text>
+          </g>
+          <g id="zones"></g>
+        </svg>
+        <figcaption>一把綠劍盾（開 7 格）：綠格可以用、灰格鎖著</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>同一種武器、同一個稀有度，格子都不一樣</h2>
+    <div class="fig" id="compare"></div>
+  </section>
+
+  <section>
+    <h2>數字（Claude 暫定，要量）</h2>
+    <table>
+      <tr><th>稀有度</th><th>灰（起始）</th><th>白</th><th>綠</th><th>藍</th><th>紫</th><th>橘</th></tr>
+      <tr><td>開幾格</td><td>4（照職業固定）</td><td>5~6</td><td>7~8</td><td>9~10</td><td>11~12</td><td>13~15</td></tr>
+    </table>
+    <p class="note">對照：現在第 1 層結束時身上約有按鍵袋 4 格 + 2~3 個觸發袋（每個 6 格），合計 16~22 格。區塊內建議照固定順序開格（不然多格的效果、修飾的透明格放不進去）。</p>
+  </section>
+
+  <section>
+    <h2>跟現在的觸發袋比</h2>
+    <div class="two">
+      <div>
+        <p class="good">好處</p>
+        <ul>
+          <li>撿武器變刺激：每把都是獨特的構築骨架，配上 I-5 的隨機數值，有刷寶感。</li>
+          <li>換武器 = 換整套出招與觸發，不用解釋「左右袋子跟武器走」。</li>
+          <li>東西變少：袋子不是道具，背包只有數值。</li>
+          <li>成長目標好懂：「把左鍵命中開滿」。</li>
+        </ul>
+      </div>
+      <div>
+        <p class="bad">缺點與風險</p>
+        <ul>
+          <li>格子太散：白色 5~6 格分到 9 區，常常每區只有 1 格，什麼都放不下。</li>
+          <li>換武器要搬整套，可能讓人懶得換。</li>
+          <li>比較武器變難：數值之外還要看 9 區的分布，需要並排比較的介面。</li>
+          <li>少了拼形狀、跨袋子連色塊的玩法。</li>
+          <li>YangHsu 2026-11-04 否決過很像的「背包分區 = 觸發時機（區域由武器決定）」，覺得太無聊；以前的「武器格子」也因為規則說不清楚被換掉。</li>
+          <li>要拆：袋子掉落、詛咒 / 強化袋、鐵砧改袋子、按鍵袋、背包四邊的袋子介面。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>連帶要改的</h2>
+    <ul>
+      <li><b>武器掉落變重要</b>：現在第 1 層小怪 1.5%（以前 4% 時全清掉 8~19 把、背包塞爆才降的）。建議原本給袋子的來源改給武器：菁英怪掉袋子 → 掉武器、門的「袋子」獎勵 → 武器；倉庫 6 格可能不夠。</li>
+      <li><b>比較武器</b>：站在地上的武器旁按住 Alt，並排顯示手上與地上的武器面板（數值差、格子），換上時預覽東西怎麼搬。</li>
+      <li><b>自動搬的順序</b>（建議）：同一區塊 → 同一邊的其他區塊 → 任何空格 → 倉庫 → 地上。</li>
+    </ul>
+  </section>
+</main>
+<script>
+const ZONES = [["命中", "hit"], ["擊殺", "kill"], ["出手", "cast"]];
+const BODY = [["受傷", "body"], ["翻滾", "body"], ["計時", "body"]];
+const C = 18, G = 3;
+function zone(x, y, label, kind, open) {
+  let s = `<text x="${x + 31}" y="${y - 4}" font-size="11" text-anchor="middle" fill="var(--${kind})">${label}</text>`;
+  for (let i = 0; i < 9; i++) {
+    const cx = x + (i % 3) * (C + G), cy = y + Math.floor(i / 3) * (C + G);
+    const on = i < open;
+    s += `<rect x="${cx}" y="${cy}" width="${C}" height="${C}" rx="3" fill="${on ? "var(--open)" : "var(--lock)"}" opacity="${on ? 1 : 0.55}"/>`;
+    if (!on) s += `<path d="M${cx + 6} ${cy + 9} v-2 a3 3 0 0 1 6 0 v2" fill="none" stroke="var(--panel)" stroke-width="1.4"/><rect x="${cx + 5}" y="${cy + 9}" width="8" height="6" rx="1" fill="var(--panel)"/>`;
+  }
+  return s;
+}
+// 一把綠劍盾：7 格 → 左鍵命中 4、右鍵擊殺 2、翻滾 1
+function weapon(open, ox = 0, oy = 0) {
+  let s = "";
+  ZONES.forEach((z, i) => { s += zone(ox + 20 + i * 64, oy + 40, z[0], z[1], open["L" + z[1]] || 0); s += zone(ox + 230 + i * 64, oy + 40, z[0], z[1], open["R" + z[1]] || 0); });
+  s += `<text x="${ox + 210}" y="${oy + 148}" font-size="12" text-anchor="middle" fill="currentColor">不分按鍵</text>`;
+  BODY.forEach((z, i) => { s += zone(ox + 115 + i * 64, oy + 170, z[0], z[1], open["B" + i] || 0); });
+  return s;
+}
+document.getElementById("zones").innerHTML = weapon({Lhit: 4, Rkill: 2, B1: 1});
+const samples = [
+  ["綠劍盾 A：全集中在左鍵命中", {Lhit: 7}],
+  ["綠劍盾 B：右鍵擊殺 + 受傷 + 翻滾", {Rkill: 3, B0: 2, B1: 2}],
+  ["綠劍盾 C：太分散（每區 1 格）", {Lhit: 1, Lkill: 1, Lcast: 1, Rhit: 1, Rkill: 1, B0: 1, B2: 1}],
+];
+document.getElementById("compare").innerHTML = samples.map(([cap, open]) =>
+  `<figure><svg viewBox="0 0 420 240" width="300" role="img" aria-label="${cap}"><g font-size="12" fill="currentColor"><text x="105" y="18" text-anchor="middle">左鍵</text><text x="315" y="18" text-anchor="middle">右鍵</text></g>${weapon(open)}</svg><figcaption>${cap}</figcaption></figure>`).join("");
+</script>
+</body>
+</html>
