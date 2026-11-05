@@ -51,6 +51,10 @@ static func setup_run(world: World, me: Player, args: LaunchArgs) -> void:
 		for i in 6:
 			var g := world.spawner.spawn_at(world, &"grunt", world.nav.nearest_walkable(me.pos + Vector2(-5.0 - i * 6.0, 0.0)))
 			g.hp = 1.0
+	# --flame-test：畫面上方 5 單位放一隻開打的守墓人（flame_test_step 讓它一直噴火）
+	if args.flame_test:
+		var gk := world.spawner.spawn_at(world, &"gravekeeper", world.nav.nearest_walkable(me.pos + Vector2(-1.0, -1.0).normalized() * 5.0))
+		(gk as Gravekeeper).aggro()
 	if args.elites:
 		var up := Vector2(-1.0, -1.0).normalized()   # 等距相機的畫面上方
 		var side := Vector2(1.0, -1.0).normalized()
@@ -69,6 +73,24 @@ static func loot_test_step(world: World, me: Player) -> void:
 			(chest as Chest).try_open(me)
 	if me != null and world.tick == roundi((LOOT_TEST_OPEN + 2.0) / Config.FIXED_DT):
 		world.drop_coin(me.pos + Vector2(0.0, 2.0))   # 金幣平常掉率 0.3%，第一次出現也要量
+
+
+# --flame-test：每步把守墓人的提燈冷卻歸零、其他招式壓著不用，玩家在 trigger_distance 內它就一直噴（含轉圈）；在 world.step 之後呼叫
+# 每 10 秒印一次累計噴火（flame / spin 段）的秒數，確認量測期間真的在噴
+static var _flame_steps := 0
+
+
+static func flame_test_step(world: World) -> void:
+	for e in world.enemies:
+		if e is Gravekeeper and not e.is_dead:
+			var gk := e as Gravekeeper
+			if gk.fsm.is_in(&"lantern") and gk.fsm.data.get("phase", &"") in [&"flame", &"spin"]:
+				_flame_steps += 1
+			if world.tick % roundi(10.0 / Config.FIXED_DT) == 0:
+				print("perf flame t=%.1f flame_s=%.1f" % [world.tick * Config.FIXED_DT, _flame_steps * Config.FIXED_DT])
+			world.cooldowns.start(gk.cd("lantern"), 0.0)
+			for other: String in ["dig", "whistle", "scoop", "shovel"]:
+				world.cooldowns.start(gk.cd(other), 99.0)
 
 
 # --stage-hop=秒：每隔 every 秒當作投票通過、走第一扇門（同 DigEvent._proceed：先過場 EventDefs.LEAVE.cover 秒再換關；

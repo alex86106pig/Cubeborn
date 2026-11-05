@@ -1847,6 +1847,63 @@ static func check_effects_limits() -> String:
 	return ""
 
 
+# 守墓人噴火的火舌：追著噴時是 lantern.range × arc 的扇形、轉圈時是 spin_range 一整圈、鏟起連段 B 直噴是 bury.range × arc，跟著朝向；
+# 噴的時候有噴流粒子；噴完（recovery）就拿掉；開場預熱有畫過火舌的材質
+static func check_flame_fx() -> String:
+	var setup := MonsterChecks._keeper_world(4.0)
+	var w: World = setup[0]
+	var p: Player = setup[1]
+	var k: Gravekeeper = setup[2]
+	var f: Dictionary = k.def.lantern
+	var view := Effects.new()
+	_scene_root().add_child(view)
+	view.warm_up(Vector3.ZERO)
+	var warmed := view.get_children().any(func(n: Node) -> bool: return n is MeshInstance3D and (n as MeshInstance3D).material_override == view._flame_mat)
+	var err := "" if warmed else "開場預熱沒有畫火舌的材質"
+	k.fsm.change(&"lantern")
+	var seen := {}
+	var jet_before := view.spawned_total
+	for i in roundi((f.windup + f.duration + f.spin_windup + f.spin_time + f.recovery) / DT) + 5:
+		if err != "":
+			break
+		p.hp = p.max_hp
+		w.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+		view.sync(w, DT)
+		var phase: StringName = k.fsm.data.get("phase", &"") if k.fsm.is_in(&"lantern") else &""
+		var node: MeshInstance3D = view._flames.get(k.id)
+		match phase:
+			&"flame":
+				if node == null or node.mesh != view._flame_mesh(f.range, f.arc) or absf(angle_difference(node.rotation.y, k.facing)) > 1e-3:
+					err = "追著噴時應有 %.1f × %.0f° 的火舌、跟著朝向" % [f.range, rad_to_deg(f.arc)]
+			&"spin":
+				if node == null or node.mesh != view._flame_mesh(f.spin_range, TAU):
+					err = "轉圈時應有半徑 %.1f 的一整圈火舌" % f.spin_range
+			&"windup", &"spin_windup":
+				if node != null:
+					err = "%s（預備）時不應有火舌" % phase
+			_:
+				if node != null and not k.fsm.is_in(&"lantern"):
+					err = "噴完應拿掉火舌"
+		seen[phase] = true
+	var jets := view.spawned_total - jet_before
+	if err == "" and (not seen.has(&"flame") or not seen.has(&"spin")):
+		err = "沒有跑到追著噴與轉圈：%s" % [seen.keys()]
+	if err == "" and jets < roundi((f.duration + f.spin_time) * Effects.FLAME_JET * Effects.STEPS_PER_SECOND * 0.9):
+		err = "噴火期間噴流粒子太少：%d 顆" % jets
+	# 鏟起連段 B 的直噴：畫面只看動畫欄位
+	var b: Dictionary = k.def.scoop.bury
+	k.fsm.change(&"chase")
+	view.sync(w, DT)
+	k.anim = {"state": &"scoop", "phase": &"bury", "phase_time": b.step_time + b.open + b.flame * 0.5}
+	view.sync(w, DT)
+	if err == "" and (not view._flames.has(k.id) or (view._flames[k.id] as MeshInstance3D).mesh != view._flame_mesh(b.range, b.arc)):
+		err = "鏟起連段 B 直噴時應有 %.1f × %.0f° 的火舌" % [b.range, rad_to_deg(b.arc)]
+	view.queue_free()
+	if err == "":
+		_note("噴火特效：噴流粒子 %d 顆（%.1f 秒）" % [jets, f.duration + f.spin_time])
+	return err
+
+
 static func check_flash_no_shader_switch() -> String:
 	var kit := PartKit.new()
 	var m := kit.mat(Color("8899aa"))

@@ -76,6 +76,16 @@ const CLAW_MARK_GAP := 0.42                 # 爪痕之間的間距
 const CLAW_MARK_TILT := 0.55                # 爪痕斜的角度（弧度；左右爪方向相反）
 const CLAW_MARK_LIFE := 0.5
 const LANTERN_BLUE := Color("6ab0ff")       # 提燈噴火前燈火轉藍
+# 守墓人噴火的火舌（_flame）：跟判定一樣大的扇形，中心亮黃 → 外圈橘紅，最外緣 FLAME_RIM 那一圈較亮，看得出噴到哪裡
+const FLAME_Y := 0.7                        # 火舌離地多高（等距視角下看得出是噴出來的火，不像地上的圈）
+const FLAME_INNER := 0.5
+const FLAME_RIM := 0.06                     # 外緣亮邊占範圍的比例
+const FLAME_COLORS := [Color(1.0, 0.95, 0.6, 0.7), Color(1.0, 0.62, 0.2, 0.5), Color(0.95, 0.32, 0.1, 0.4)]   # 內 → 外
+const FLAME_RIM_COLOR := Color(1.0, 0.55, 0.15, 0.85)
+const FLAME_FLICKER := Vector2(0.0, 0.25)   # 每幀整片透明度在這之間隨機（閃爍）
+const FLAME_JET := 5.0                      # 噴流粒子：每步幾顆（每秒 × 60）
+const FLAME_JET_LIFE := 0.3                 # 粒子飛到範圍盡頭花幾秒
+const FLAME_JET_SIZE := 0.35
 const WOLF_FUR := Color("4a4642")           # 守墓人變身：毛（同 DarkFantasy 的 wolf_fur）
 const KEEPER_COAT := Color("4a3a2a")        # 撐破的外套碎片
 const ERUPT_HANDS := 4
@@ -98,6 +108,10 @@ var _ring_mesh: ArrayMesh
 var _disc_mesh: Mesh                 # telegraph 的填色圓（半徑 1，用 scale 放大）
 const FILL_ALPHA := 0.18
 var _slash_meshes: Dictionary = {}   # "range|arc" -> ArrayMesh
+var _flame_meshes: Dictionary = {}   # "range|arc" -> ArrayMesh（火舌，頂點顏色）
+var _flames: Dictionary = {}         # 實體 id -> 正在噴的火舌節點（每幀沒噴的就拿掉，_retire_flames）
+var _flame_seen: Dictionary = {}
+var _flame_mat: StandardMaterial3D   # 所有火舌共用（開場預熱）
 var _emitters: Array[Dictionary] = []   # 一段時間內持續冒粒子的特效（事件觸發）：{ key, life, max_life, tick: Callable(k, key, dt) }
 var _emitter_serial := 0
 var _carry: Dictionary = {}          # 持續性粒子的小數累積：產生源 key -> 不滿一顆的部分
@@ -131,6 +145,12 @@ func _init() -> void:
 	disc.radial_segments = 32
 	disc.rings = 1
 	_disc_mesh = disc
+	_flame_mat = StandardMaterial3D.new()
+	_flame_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_flame_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_flame_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	_flame_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_flame_mat.vertex_color_use_as_albedo = true
 
 
 # 開場先各畫一次（透明度 0），讓粒子與半透明材質的著色器在載入時就編譯，避免第一次出現時卡頓
@@ -140,11 +160,18 @@ func warm_up(pos: Vector3) -> void:
 	ring(pos, 1.0, {"life": 0.1, "opacity": 0.0})
 	slash(pos, 0.0, 1.0, 1.0, {"life": 0.1, "opacity": 0.0})
 	telegraph(pos, 1.0, {"life": 0.1, "opacity": 0.0})
+	var flame := _flame_node(_flame_mesh(1.0, 1.0))   # 火舌的材質（加亮混合 + 頂點顏色）
+	flame.position = pos
+	flame.transparency = 0.99
+	_add_transient(flame, 0.1, func(_k: float) -> void: pass)
 
 
 func clear() -> void:
 	_particles.clear()
 	_multimesh.visible_instance_count = 0
+	for id: int in _flames:
+		(_flames[id] as Node).queue_free()
+	_flames.clear()
 	for t in _transients:
 		t.node.queue_free()
 	_transients.clear()
@@ -696,6 +723,7 @@ func _jitter(e: Entity, spread: float, y: float) -> Vector3:
 
 func _emit_continuous(dt: float) -> void:
 	_next_carry = {}
+	_flame_seen.clear()
 	for e: Entity in world.entities.values():
 		if e.is_removed or hidden_ids.has(e.id):
 			continue
@@ -709,6 +737,17 @@ func _emit_continuous(dt: float) -> void:
 			_emit_enemy(e, dt)
 	_update_emitters(dt)   # 要在 _carry 換成這一幀的之前（不滿一顆的小數才留得下來）
 	_carry = _next_carry
+	_retire_flames()
+
+
+# 這一幀沒在噴的（噴完、看不到、死了、移除了）火舌拿掉
+func _retire_flames() -> void:
+	if _flames.size() == _flame_seen.size():
+		return
+	for id: int in _flames.keys():
+		if not _flame_seen.has(id):
+			(_flames[id] as Node).queue_free()
+			_flames.erase(id)
 
 
 func _emit_player(p: Player, dt: float) -> void:
@@ -751,6 +790,13 @@ func _emit_enemy(e: Enemy, dt: float) -> void:
 			_emit_slam_pebbles(e, a, key, dt)
 		&"lantern":
 			_emit_lantern(e, a, key, dt)
+		&"scoop":
+			# 鏟起連段 B：退一步、開燈罩後直噴（窄扇形）
+			var b: Dictionary = e.def.scoop.bury
+			var t: float = a.get("phase_time", 0.0) - b.step_time - b.open
+			if a.get("phase", &"") == &"bury" and t >= 0.0 and t < b.flame:
+				_flame(e, b.range, b.arc)
+				_flame_jet(e, b.range, b.arc, key, dt)
 		&"transform":
 			# 守墓人變身中：身上一直冒黑毛
 			for i in _count(key, 0.8, dt):
@@ -818,25 +864,84 @@ func _emit_slam_pebbles(e: Enemy, a: Dictionary, key: String, dt: float) -> void
 				{"color": CHARGE_DUST_COLOR, "count": 1, "speed": 0.4, "up": 2.5, "size": 0.13, "life": 0.35})
 
 
-# 守墓人提燈：windup 時燈火轉藍、往提燈聚（吸氣）；flame 時前方扇形一直噴火
+# 守墓人提燈：windup 時燈火轉藍、往提燈聚（吸氣）；spin_windup 藍火繞著身體轉（下一下要掃一圈）；
+# flame 時前方扇形的火舌 + 從提燈往外噴的粒子；spin 時身邊一整圈
 func _emit_lantern(e: Enemy, a: Dictionary, key: String, dt: float) -> void:
 	var f: Dictionary = e.def.lantern
+	var lamp := _lamp_at(e)
+	match a.get("phase", &""):
+		&"windup":
+			for i in _count(key, 2.0, dt):
+				mote(Vector3(lamp.x + _rng.randf_range(-0.35, 0.35), lamp.y + _rng.randf_range(-0.2, 0.3), lamp.z + _rng.randf_range(-0.35, 0.35)),
+					{"color": LANTERN_BLUE, "size": 0.18, "life": 0.3, "vy": 0.2})
+		&"spin_windup":
+			for i in _count(key, 2.0, dt):
+				var ang := _rng.randf() * TAU
+				mote(Vector3(e.pos.x + sin(ang) * 1.2, e.height + _rng.randf_range(0.4, 1.6), e.pos.y + cos(ang) * 1.2),
+					{"color": LANTERN_BLUE, "size": 0.2, "life": 0.3, "vy": 0.6})
+		&"flame":
+			_flame(e, f.range, f.arc)
+			_flame_jet(e, f.range, f.arc, key, dt)
+		&"spin":
+			_flame(e, f.spin_range, TAU)
+			_flame_jet(e, f.spin_range, TAU, key, dt)
+
+
+# 提燈的位置（守墓人左手前方、肩膀高度）
+func _lamp_at(e: Enemy) -> Vector3:
 	var fwd := MathUtil.dir_from_angle(e.facing)
 	var side := Vector2(fwd.y, -fwd.x)
 	var lamp := e.pos + fwd * 0.7 - side * 0.4
-	var lamp_y := e.height + 1.9
-	match a.get("phase", &""):
-		&"windup", &"spin_windup":
-			for i in _count(key, 0.8, dt):
-				mote(Vector3(lamp.x + _rng.randf_range(-0.3, 0.3), lamp_y + _rng.randf_range(-0.2, 0.3), lamp.y + _rng.randf_range(-0.3, 0.3)),
-					{"color": LANTERN_BLUE, "size": 0.12, "life": 0.3, "vy": 0.2})
-		&"flame":
-			for i in _count(key, 2.5, dt):
-				var ang: float = e.facing + _rng.randf_range(-f.arc / 2.0, f.arc / 2.0)
-				var r: float = _rng.randf_range(0.5, f.range)
-				var at := e.pos + MathUtil.dir_from_angle(ang) * r
-				mote(Vector3(at.x, e.height + lerpf(1.7, 0.5, r / f.range), at.y),
-					{"color": f.color.lerp(Color("ffe070"), _rng.randf()), "size": 0.24, "life": 0.3, "vy": 1.2})
+	return Vector3(lamp.x, e.height + 1.9, lamp.y)
+
+
+# 火舌：這隻怪前方 reach、arc 的扇形（TAU = 一整圈），跟著它的位置與朝向；每幀閃一下
+func _flame(e: Enemy, reach: float, arc: float) -> void:
+	var mesh := _flame_mesh(reach, arc)
+	var node: MeshInstance3D = _flames.get(e.id)
+	if node == null:
+		node = _flame_node(mesh)
+		add_child(node)
+		_flames[e.id] = node
+	elif node.mesh != mesh:
+		node.mesh = mesh
+	node.position = Vector3(e.pos.x, e.ground_height + FLAME_Y, e.pos.y)
+	node.rotation.y = e.facing
+	node.transparency = _rng.randf_range(FLAME_FLICKER.x, FLAME_FLICKER.y)
+	_flame_seen[e.id] = true
+
+
+func _flame_node(mesh: Mesh) -> MeshInstance3D:
+	var node := MeshInstance3D.new()
+	node.mesh = mesh
+	node.material_override = _flame_mat
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return node
+
+
+# 噴流：粒子從提燈（一整圈時從身體）出發，往扇形裡的方向飛，FLAME_JET_LIFE 秒後剛好到範圍的 70%~100% 才消失；開頭大、越飛越小
+func _flame_jet(e: Enemy, reach: float, arc: float, key: String, dt: float) -> void:
+	var from := _lamp_at(e) if arc < TAU else Vector3(e.pos.x, e.height + 1.2, e.pos.y)
+	var color: Color = e.def.lantern.color
+	for i in _count(key + ":jet", FLAME_JET, dt):
+		if _particles.size() >= MAX_PARTICLES:
+			return
+		var ang := e.facing + _rng.randf_range(-arc / 2.0, arc / 2.0)
+		var r := reach * _rng.randf_range(0.7, 1.0)
+		var to := Vector3(e.pos.x + sin(ang) * r, e.ground_height + FLAME_Y * _rng.randf_range(0.5, 1.5), e.pos.y + cos(ang) * r)
+		spawned_total += 1
+		_particles.append({
+			"pos": from, "vel": (to - from) / FLAME_JET_LIFE, "rot": Vector2(_rng.randf() * 3.0, _rng.randf() * 3.0), "gravity": 0.0,
+			"color": color.lerp(Color("ffe070"), _rng.randf()), "size": FLAME_JET_SIZE * _rng.randf_range(0.8, 1.2),
+			"life": FLAME_JET_LIFE, "max_life": FLAME_JET_LIFE,
+		})
+
+
+func _flame_mesh(reach: float, arc: float) -> ArrayMesh:
+	var key := "%.2f|%.2f" % [reach, arc]
+	if not _flame_meshes.has(key):
+		_flame_meshes[key] = _make_flame_mesh(reach, arc)
+	return _flame_meshes[key]
 
 
 func _add_emitter(life: float, tick: Callable) -> void:
@@ -923,6 +1028,39 @@ static func _set_alpha(node: MeshInstance3D, alpha: float) -> void:
 # 平放的圓環（內徑 0.85、外徑 1），縮放 = 半徑
 static func _make_ring_mesh() -> ArrayMesh:
 	return _make_sector_mesh(RING_INNER, 1.0, TAU, RING_SEGMENTS)
+
+
+# 火舌的網格：平放的扇形（中心線朝 +Z），FLAME_INNER 到 reach 分成幾圈、照 FLAME_COLORS 由內到外漸變，最外緣 FLAME_RIM 一圈較亮
+static func _make_flame_mesh(reach: float, arc: float, segments: int = SLASH_SEGMENTS) -> ArrayMesh:
+	var rim_at := reach * (1.0 - FLAME_RIM)
+	var radii: Array[float] = [FLAME_INNER, lerpf(FLAME_INNER, rim_at, 0.5), rim_at, reach]
+	var colors: Array[Color] = [FLAME_COLORS[0], FLAME_COLORS[1], FLAME_COLORS[2], FLAME_RIM_COLOR]
+	var verts := PackedVector3Array()
+	var cols := PackedColorArray()
+	var segs := segments * 2 if arc >= TAU else segments
+	for i in segs:
+		var a0 := -arc / 2.0 + arc * i / segs
+		var a1 := -arc / 2.0 + arc * (i + 1) / segs
+		var d0 := Vector3(sin(a0), 0.0, cos(a0))
+		var d1 := Vector3(sin(a1), 0.0, cos(a1))
+		for j in radii.size() - 1:
+			var c_in: Color = colors[j] if j < 2 else FLAME_RIM_COLOR   # 亮邊那一圈整圈都亮
+			var c_out: Color = colors[j + 1]
+			var r0: float = radii[j]
+			var r1: float = radii[j + 1]
+			verts.append_array([d0 * r0, d0 * r1, d1 * r1, d0 * r0, d1 * r1, d1 * r0])
+			cols.append_array([c_in, c_out, c_out, c_in, c_out, c_in])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_COLOR] = cols
+	var normals := PackedVector3Array()
+	normals.resize(verts.size())
+	normals.fill(Vector3.UP)
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
 
 
 # 平放的扇環：中心線朝 +Z（facing = 0），角度 arc、內徑 inner、外徑 outer

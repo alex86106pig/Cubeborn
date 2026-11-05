@@ -219,8 +219,9 @@ func _initialize() -> void:
 		+ "弓不拉弓時平放（弓梢連線水平、弓背朝下、弦在上）；骷髏弓手瞄準時舉平、射完右手平滑放下、目標在射擊距離內左手停在預備高度、離開射擊距離才平滑放回垂直",
 		all.bind([ViewChecks.check_weapon_grip, ViewChecks.check_bow_rest, ViewChecks.check_archer_bow_arm]))
 	_check("受擊閃白：只改自發光顏色、不切換 emission_enabled（切換會在第一次命中即時編譯著色器而卡頓）", ViewChecks.check_flash_no_shader_switch)
-	_check("特效：模擬層發出的每個 fx:* 都有畫面處理、也列在 PROJECT_GUIDELINES 第 9 節，餵給 Effects 會產生粒子；粒子與弧光環有上限、拖尾 30 / 144 FPS 每秒粒子數相同、暫停時不產生",
-		all.bind([ViewChecks.check_effects_events, ViewChecks.check_effects_limits]))
+	_check("特效：模擬層發出的每個 fx:* 都有畫面處理、也列在 PROJECT_GUIDELINES 第 9 節，餵給 Effects 會產生粒子；粒子與弧光環有上限、拖尾 30 / 144 FPS 每秒粒子數相同、暫停時不產生；" \
+		+ "守墓人噴火的火舌跟判定一樣大（追著噴的扇形、轉圈的一整圈、鏟起 B 的直噴）、有噴流粒子、噴完拿掉、開場預熱過",
+		all.bind([ViewChecks.check_effects_events, ViewChecks.check_effects_limits, ViewChecks.check_flame_fx]))
 
 	# ───────── 介面 ─────────
 	_check("HUD：能建立、處理各種事件、顯示波次 / 血量 / 結算文字、暫停畫面有「離開遊戲」；別人撿到道具不跳橫幅；武器欄只寫手上那把；同一目標同時跳的傷害數字往上疊、地上物件名稱重疊時往上錯開；附帶的小傷害（燃燒 / 中毒 / 地面區域的一跳、附加屬性傷害）數字畫小、不佔疊層；小地圖只畫探索過的地方（牆擋視線、牆本身看得到、外框看過才亮）、換小關重畫",

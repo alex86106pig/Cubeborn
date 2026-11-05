@@ -622,6 +622,8 @@ func _authority_physics() -> void:
 		world.step(cmds, Config.FIXED_DT)
 		if args.loot_test:
 			DebugTools.loot_test_step(world, local_player())
+		if args.flame_test:
+			DebugTools.flame_test_step(world)
 		if args.stage_hop > 0.0:
 			DebugTools.stage_hop_step(world, args.stage_hop)
 		var t1 := Time.get_ticks_usec()
