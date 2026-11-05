@@ -162,7 +162,7 @@ static func _do_effect(world: World, p: Player, id: StringName, eff: Dictionary,
 		if healed >= 0.5:
 			world.emit_event("entity:healed", {"target_id": p.id, "amount": healed})
 		return
-	(ItemEffects.ACTIONS[eff.do] as ItemEffects.Action).run(world, p, target, damage, proc)
+	Combat.scoped("i:" + String(id), func() -> void: (ItemEffects.ACTIONS[eff.do] as ItemEffects.Action).run(world, p, target, damage, proc))
 
 
 # 放袋子裡的一個技能：有目標就在目標身上放，沒有就照按鍵的放法；照技能自己的條件與耗魔，加上蓋在上面的修飾與袋子倍率

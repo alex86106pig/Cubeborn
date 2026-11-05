@@ -113,7 +113,7 @@ static func cast(owner: Player, slot: Dictionary, target: Entity = null) -> void
 	var ctx := cast_context(owner, slot)
 	if target != null:
 		SkillBehaviors.aim_at(owner, ctx, target)
-	SkillBehaviors.cast(owner, slot.def, ctx)
+	Combat.scoped(ctx.credit, func() -> void: SkillBehaviors.cast(owner, slot.def, ctx))
 	if slot.charges > 0:
 		slot.entry["charges"] = slot.charges - 1
 	if slot.def.has("mana"):
@@ -146,7 +146,8 @@ static func mods_mana_mul(ids: Array[StringName]) -> float:
 static func cast_context(_owner: Player, slot: Dictionary) -> Dictionary:
 	var bag: Dictionary = slot.get("bag", {})
 	var ctx := {"mul": SkillDefs.damage_mul(slot.id, slot.get("level", 1)) * (BagDefs.power_of(bag) if not bag.is_empty() else 1.0), "area": 1.0,
-		"type": slot.def.get("damage_type", &"phys"), "split": false}
+		"type": slot.def.get("damage_type", &"phys"), "split": false,
+		"credit": "k:" + String(slot.id)}   # 傷害來源（Combat.credit_scope）：持續的招式（衝刺）每步打的也算這個技能
 	for sup: Dictionary in supports_of(slot):
 		match sup.mode:
 			&"split":

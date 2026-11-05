@@ -260,7 +260,7 @@ static func cast(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
 # 權威端：seconds 秒後執行 fn（World.delayed；換層、重新開始時清掉）；放的人不見了就不執行
 static func later(owner: Player, seconds: float, fn: Callable) -> void:
 	if owner.world.is_authority:
-		owner.world.delayed.append({"t": seconds, "owner_id": owner.id, "fn": fn})
+		owner.world.delayed.append({"t": seconds, "owner_id": owner.id, "fn": fn, "credit": Combat.credit_scope})
 
 
 static func update_world(world: World, dt: float) -> void:
@@ -274,7 +274,7 @@ static func update_world(world: World, dt: float) -> void:
 		world.delayed.remove_at(i)
 		var owner := world.entities.get(d.owner_id) as Player
 		if owner != null and not owner.is_dead:
-			(d.fn as Callable).call()
+			Combat.scoped(d.get("credit", ""), d.fn)   # 排程當下的傷害來源（分裂、晚一點落下的招式）
 
 
 # 每步（Player._tick_timers）：衝刺中打面前，每隻怪一次
@@ -293,7 +293,7 @@ static func update_player(p: Player, dt: float) -> void:
 # ── 共用 ──
 
 static func hit_of(owner: Player, def: Dictionary, ctx: Dictionary) -> Dictionary:
-	return {"damage": owner.pct_damage(def.get("damage_pct", 0.0)) * ctx.mul, "damage_type": ctx.type, "knockback": def.get("knockback", 0.0), "attack": &"skill",
+	return {"damage": owner.pct_damage(def.get("damage_pct", 0.0)) * ctx.mul, "damage_type": ctx.type, "knockback": def.get("knockback", 0.0), "attack": &"skill", "credit": ctx.get("credit", ""),
 		"is_heavy": true, "blockable": false, "color": def.color, "band": Vector2(-INF, INF)}
 
 

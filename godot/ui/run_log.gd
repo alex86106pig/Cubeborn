@@ -31,6 +31,10 @@ var hits_taken := 0
 var unseen_hits := 0
 var unseen_damage := 0.0
 var by_source := {}     # 種類 → {damage, hits, unseen}
+const DEALT_ROWS := 6   # 結算畫面「你造成的傷害」最多列幾項，其餘併成「其他」（畫面高度有限）
+const DEALT_PER_LINE := 2
+var damage_dealt := 0.0
+var by_credit := {}     # 傷害來源（Combat.credit_scope 的代號；左右鍵另帶武器名「p|劍盾」）→ {damage, hits}
 var downs: Array[Dictionary] = []   # 每次倒下 / 死亡：{kind, unseen}
 var result := ""       # 結算標題（HUD._set_game_over）
 var floors: Array[Dictionary] = []   # 每層：{ floor, map, start, event_start, event_open, layout }（時間是這局第幾秒；-1 = 還沒）
@@ -64,6 +68,8 @@ func reset() -> void:
 	unseen_hits = 0
 	unseen_damage = 0.0
 	by_source.clear()
+	damage_dealt = 0.0
+	by_credit.clear()
 	downs.clear()
 	result = ""
 	floors.clear()
@@ -146,6 +152,8 @@ func track(world: World, now: float) -> void:
 func on_event(world: World, name: String, p: Dictionary) -> void:
 	match name:
 		"entity:damaged":
+			if me_id != 0 and p.has("credit") and p.get("by", p.get("source_id", 0)) == me_id:
+				_add_dealt(world, String(p.credit), p.get("amount", 0.0))
 			if me_id == 0 or p.get("target_id", 0) != me_id:
 				return
 			var kind: StringName = p.get("source_kind", &"")
@@ -332,6 +340,79 @@ static func net_text(n: Dictionary) -> String:
 
 
 # 武器那一行：掉落（分稀有度）、撿了幾把、背包第一次撿不下、現在的武器幾分換上
+# 自己打出的一下：左右鍵依當時的武器分開記
+func _add_dealt(world: World, credit: String, amount: float) -> void:
+	if credit == "p" or credit == "s":
+		var me: Player = world.entities.get(me_id) as Player if world != null else null
+		if me != null and me.weapon.has("name"):
+			credit += "|" + String(me.weapon.name)
+	var s: Dictionary = by_credit.get(credit, {"damage": 0.0, "hits": 0})
+	s.damage += amount
+	s.hits += 1
+	by_credit[credit] = s
+	damage_dealt += amount
+
+
+# 結算的「你造成的傷害」：依傷害高到低，前 DEALT_ROWS 項各一行，其餘併成「其他」
+func dealt_lines() -> Array[String]:
+	var lines: Array[String] = []
+	if damage_dealt <= 0.0:
+		return lines
+	var keys := by_credit.keys().filter(func(k: String) -> bool: return k != "?")   # 認不出來源的併進「其他」
+	keys.sort_custom(func(a: String, b: String) -> bool: return by_credit[a].damage > by_credit[b].damage)
+	var rest: Dictionary = by_credit.get("?", {"damage": 0.0, "hits": 0}).duplicate()
+	var parts: Array[String] = []
+	for i in keys.size():
+		var s: Dictionary = by_credit[keys[i]]
+		if i < DEALT_ROWS or (keys.size() == DEALT_ROWS + 1 and rest.hits == 0):
+			parts.append(_dealt_part(credit_name(keys[i]), s))
+		else:
+			rest.damage += s.damage
+			rest.hits += s.hits
+	if rest.hits > 0:
+		parts.append(_dealt_part("其他", rest))
+	for i in range(0, parts.size(), DEALT_PER_LINE):   # 一行兩項（結算畫面高度有限）
+		var row := "　".join(PackedStringArray(parts.slice(i, i + DEALT_PER_LINE)))
+		lines.append(("你造成的傷害 %s：" % UiKit.dmg_text(damage_dealt) if i == 0 else "　　") + row)
+	return lines
+
+
+func _dealt_part(label: String, s: Dictionary) -> String:
+	return "%s %s（%d%%，%d 次）" % [label, UiKit.dmg_text(s.damage), roundi(100.0 * s.damage / damage_dealt), s.hits]
+
+
+# 傷害來源代號（Combat.credit_scope 的說明）→ 結算畫面的名稱
+static func credit_name(credit: String) -> String:
+	var parts := credit.split("|")
+	var weapon := "（%s）" % parts[1] if parts.size() > 1 else ""
+	var key := parts[0]
+	var id := StringName(key.get_slice(":", 1))
+	match key.get_slice(":", 0):
+		"p":
+			return "左鍵" + weapon
+		"s":
+			return "右鍵" + weapon
+		"k":
+			return "技能 " + String(ItemDefs.ITEMS[id].name) if ItemDefs.ITEMS.has(id) else "技能"
+		"i":
+			return String(ItemDefs.ITEMS[id].name) if ItemDefs.ITEMS.has(id) else "道具"
+		"b":
+			return "羈絆 " + String(BondDefs.BONDS[id].name) if BondDefs.BONDS.has(id) else "羈絆"
+		"add":
+			return "附加%s傷害" % StatDefs.DAMAGE_TYPES[id].name if StatDefs.DAMAGE_TYPES.has(id) else "附加傷害"
+		"burn":
+			return "燃燒"
+		"poison":
+			return "中毒"
+		"wisp":
+			return "鬼火"
+		"minion":
+			return "骷髏僕從"
+		"parry":
+			return "招架"
+	return "其他"
+
+
 func weapon_text() -> String:
 	var n := 0
 	var parts: Array[String] = []
@@ -358,6 +439,7 @@ func summary_text() -> String:
 		var row := " · ".join(PackedStringArray(kill_parts.slice(i, i + KILLS_PER_LINE)))
 		lines.append((head + "：" if i == 0 else "　　") + row)
 	lines.append(weapon_text())
+	lines.append_array(dealt_lines())
 	if hits_taken == 0:
 		lines.append("沒有受到傷害")
 	else:

@@ -69,6 +69,7 @@ static func _burn_rush(world: World, p: Player, e: Enemy) -> void:
 		var rest := e.burn_tick_damage * e.burn_timer / Enemy.BURN_TICK
 		e.clear_burn()
 		var hit := ItemEffects.proc_hit(rest, e, Enemy.BURN_COLOR, 0.0, &"fire")
+		hit["credit"] = "b:fire"
 		hit["no_status"] = true
 		Combat.apply_damage(world, p, e, hit)
 		if e.is_dead:
@@ -95,6 +96,7 @@ static func _fire_burst(world: World, p: Player, e: Enemy) -> void:
 		if t.is_dead or t.team == p.team or t.pos.distance_to(e.pos) > c.burst_radius + t.radius:
 			continue
 		var hit := ItemEffects.proc_hit(damage, t, Enemy.BURN_COLOR, 4.0, &"fire")
+		hit["credit"] = "b:fire"
 		hit["no_status"] = true
 		hit["origin"] = e.pos
 		Combat.apply_damage(world, p, t, hit)
@@ -194,6 +196,7 @@ static func _coffin_share(world: World, p: Player, e: Enemy, dealt: float) -> vo
 		var hit := ItemEffects.proc_hit(dealt * b.coffin_share, near[i], Enemy.CHILL_COLOR, 0.0, &"cold")
 		hit["no_status"] = true
 		hit["coffin_share"] = true
+		hit["credit"] = "b:cold"
 		hit["origin"] = e.pos
 		Combat.apply_damage(world, p, near[i], hit)
 
@@ -258,6 +261,7 @@ static func on_hurt(world: World, p: Player, attacker: Entity, dealt: float) -> 
 	if dealt <= 0.0 or not attacker is Enemy or attacker.is_dead or tier(p, &"guard") < 3:
 		return
 	var hit := ItemEffects.proc_hit(dealt * _p(&"guard").reflect, attacker, Color("d0d0d0"))
+	hit["credit"] = "b:guard"
 	hit["no_status"] = true
 	Combat.apply_damage(world, p, attacker, hit)
 

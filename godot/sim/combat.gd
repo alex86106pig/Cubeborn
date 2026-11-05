@@ -8,6 +8,12 @@ class_name Combat
 # 冤魂（world.ghosts）是怪物方的玩家角色：玩家打得到它、它打玩家（怪物不打它）
 const WEB_BURN_REACH := 0.5   # 火焰傷害打在離蜘蛛網邊緣這麼近也燒得掉
 
+# 傷害來源（結算畫面的「你造成的傷害」，ui/run_log.gd）：玩家打出的每一下帶在 entity:damaged 的 credit
+#   "p" 左鍵、"s" 右鍵、"k:技能 id"、"i:道具 id"、"b:羈絆 id"、"add:屬性"（附加屬性傷害）、"burn"、"poison"、"wisp"、"minion"、"parry"
+# 決定順序：hit.credit → credit_scope（正在發動的技能 / 道具效果，Combat.scoped 設）→ 僕從 → 左右鍵（attack_tag）
+# 晚一點才打的（投射物、地面區域、SkillBehaviors.later、僕從）在建立時記下當時的 credit_scope
+static var credit_scope := ""
+
 
 static func hostiles_of(world: World, team: StringName, source_id: int = 0) -> Array[Entity]:
 	var out: Array[Entity] = []
@@ -182,6 +188,14 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 		ev["damage_type"] = damage_type   # 傷害數字依屬性上色；物理不帶，省頻寬
 	if hit.get("minor", false):
 		ev["minor"] = true   # 附帶的小傷害（持續傷害的一跳、附加屬性傷害）：數字畫小、不佔疊層，打一群怪時才讀得到打擊本身的數字
+	var credit := ""
+	var by := source.id if source is Player else (source as Minion).owner_id if source is Minion else 0
+	if by != 0 and target.team != source.team:
+		credit = credit_of(source, hit, attack_tag)
+		if dealt > 0.0:
+			ev["credit"] = credit
+			if by != source.id:
+				ev["by"] = by   # 僕從打的算召喚者的
 	if target is Player:
 		# 遊玩紀錄（ui/run_log.gd，v0.34.0）：攻擊者可能這一步就消失（射手死了、投射物撞到就移除），種類與位置直接帶在事件裡；
 		# lethal：這一下讓玩家倒下 / 死亡（倒下的事件比這個事件早發出）
@@ -198,18 +212,51 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 		ItemEffects.on_hurt(world, target as Player, source, damage, dealt, hit.get("projectile", false))
 		BondEffects.on_hurt(world, target as Player, source, dealt)
 	if source is Player and target.team != source.team:   # 打怪，或玩家與冤魂互打（誤傷的隊友不算）
-		if target is Enemy:   # 羈絆的狀態（燃燒、冰冷、失衡）只有怪物有
-			BondEffects.on_hit(world, source as Player, target as Enemy, hit, dealt, knockback, is_proc, shatter)
-		# 道具的命中 / 擊殺效果（v0.33.0）：放在事件之後，連鎖閃電、爆炸的傷害事件排在這一下後面
-		if not is_proc:
-			ItemEffects.on_dealt(world, source as Player, dealt)   # 命中回復、吸血（G1）
-			ItemEffects.on_hit(world, source as Player, target, damage, attack_tag)
-			ItemEffects.added_damage(world, source as Player, target, hit.damage)   # 附加火焰 / 冰霜傷害（羈絆道具）
-			if converted > 0.0:
-				_converted_damage(world, source as Player, target, hit.damage, is_crit)
-		if target.is_dead:
-			ItemEffects.on_kill(world, source as Player, target, damage, attack_tag)
+		var prev_scope := credit_scope
+		credit_scope = credit   # 這一下引發的屬性轉換、沒另外標來源的效果算這一下的
+		_after_player_hit(world, source as Player, target, hit, damage, dealt, knockback, is_proc, shatter, attack_tag, converted, is_crit)
+		credit_scope = prev_scope
 	return true
+
+
+# 這一下傷害來源的代號（見 credit_scope 的說明）
+static func credit_of(source: Entity, hit: Dictionary, attack_tag: StringName) -> String:
+	var c: String = hit.get("credit", "")
+	if c != "":
+		return c
+	if credit_scope != "":
+		return credit_scope
+	if source is Minion:
+		return (source as Minion).credit if (source as Minion).credit != "" else "minion"
+	match attack_tag:
+		&"primary":
+			return "p"
+		&"secondary":
+			return "s"
+	return "?"
+
+
+# 跑一段效果，期間打出的傷害沒另外標來源的都算 credit 的（例如 "i:" + 道具 id）
+static func scoped(credit: String, fn: Callable) -> void:
+	var prev := credit_scope
+	credit_scope = credit
+	fn.call()
+	credit_scope = prev
+
+
+static func _after_player_hit(world: World, source: Player, target: Entity, hit: Dictionary, damage: float, dealt: float, knockback: float,
+		is_proc: bool, shatter: bool, attack_tag: StringName, converted: float, is_crit: bool) -> void:
+	if target is Enemy:   # 羈絆的狀態（燃燒、冰冷、失衡）只有怪物有
+		BondEffects.on_hit(world, source, target as Enemy, hit, dealt, knockback, is_proc, shatter)
+	# 道具的命中 / 擊殺效果（v0.33.0）：放在事件之後，連鎖閃電、爆炸的傷害事件排在這一下後面
+	if not is_proc:
+		ItemEffects.on_dealt(world, source, dealt)   # 命中回復、吸血（G1）
+		ItemEffects.on_hit(world, source, target, damage, attack_tag)
+		ItemEffects.added_damage(world, source, target, hit.damage)   # 附加火焰 / 冰霜傷害（羈絆道具）
+		if converted > 0.0:
+			_converted_damage(world, source, target, hit.damage, is_crit)
+	if target.is_dead:
+		ItemEffects.on_kill(world, source, target, damage, attack_tag)
 
 
 # 屬性轉換合計（WeaponDropDefs.CONVERSIONS，最多 100%）

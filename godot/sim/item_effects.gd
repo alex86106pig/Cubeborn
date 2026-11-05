@@ -681,6 +681,7 @@ static func added_damage(world: World, p: Player, target: Entity, base: float) -
 		if ratio > 0.0 and not target.is_dead:
 			var hit := proc_hit(base * ratio, target, StatDefs.DAMAGE_TYPES[x[1]].color, 0.0, x[1])
 			hit["minor"] = true   # 每一下都跟著跳：數字畫小（HUD）
+			hit["credit"] = "add:" + String(x[1])
 			Combat.apply_damage(world, p, target, hit)
 
 

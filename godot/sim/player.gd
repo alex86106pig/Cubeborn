@@ -308,7 +308,7 @@ func _do_parry(success: bool = true) -> void:
 	var mul: float = 1.0 if success else pr.fail_damage_mul
 	Hitbox.strike(world, self, pos, facing, {"shape": &"sector", "range": pr.range, "arc": pr.arc}, {
 		"damage": move_damage(pr) * mul, "damage_type": weapon.damage_type, "knockback": pr.knockback * mul, "hit_stop": pr.hit_stop,
-		"shake": pr.shake * mul, "is_heavy": success, "blockable": false, "color": pr.color,
+		"shake": pr.shake * mul, "is_heavy": success, "blockable": false, "color": pr.color, "credit": "parry",
 	})
 	world.emit_event("fx:parry", {"pos": pos, "height": height, "radius": pr.range, "facing": facing, "arc": pr.arc, "color": pr.color})
 	parry_timer = PARRY_ANIM_TIME

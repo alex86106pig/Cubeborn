@@ -754,6 +754,59 @@ static func check_run_log_friendly() -> String:
 	return ""
 
 
+# 你造成的傷害：左鍵、技能、觸發袋的道具效果、燃燒各記一項（名稱寫得出來），每一下都有來源（沒有「其他」），
+# 合計 = 假人實際扣的血；僕從打的算召喚者的
+static func check_run_log_dealt() -> String:
+	var w := _new_world(5)
+	var p := _player(w)
+	p.loadout.equip_new(p, &"swordShield")
+	p.pos = Vector2.ZERO
+	p.facing = 0.0
+	var dummies := SkillChecks._targets(w)
+	var rl := RunLog.new()
+	rl.me_id = p.id
+	var feed := func() -> void:
+		for e: Dictionary in w.events:
+			rl.on_event(w, e.name, e)
+		w.events.clear()
+	if p.loadout.find_item(p.add_item(&"whirlwind")).get("where", -9) != 0:
+		return "旋風斬應放進按鍵袋"
+	var slot_cmd := _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(SkillChecks._slot_of(p, &"whirlwind")))
+	for i in 100:
+		var cmd := slot_cmd if i == 0 else _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK if i >= 30 and i < 70 else 0)
+		_run(w, cmd, 1)
+		feed.call()
+	p.mana = p.max_mana()
+	if not BagTriggers.run_effect(w, p, &"thunder_rune", dummies[0], 50.0):
+		return "雷鳴符文的連鎖閃電應發動得了"
+	feed.call()
+	dummies[1].add_burn(p.id, 5.0, 2.0, 1, 1)
+	for i in 150:
+		_run(w, _cmd(Vector2.ZERO), 1)
+		feed.call()
+	var lost := 0.0
+	for e in dummies:
+		lost += e.max_hp - e.hp
+	var weapon_key := "p|" + String(p.weapon.name)
+	for key in [weapon_key, "k:whirlwind", "i:thunder_rune", "burn"]:
+		if rl.by_credit.get(key, {}).get("damage", 0.0) <= 0.0:
+			return "你造成的傷害應有「%s」：%s（旋風斬在第 %d 格、魔力 %.0f、狀態 %s）" % [key, rl.by_credit, SkillChecks._slot_of(p, &"whirlwind"), p.mana, p.action.current_name]
+	if rl.by_credit.has("?"):
+		return "每一下都應有來源，不應有「其他」：%s" % [rl.by_credit]
+	if absf(rl.damage_dealt - lost) > 0.01:
+		return "你造成的傷害合計 %.2f，假人實際扣 %.2f" % [rl.damage_dealt, lost]
+	var text := "\n".join(PackedStringArray(rl.dealt_lines()))
+	for want in ["你造成的傷害 %s：" % UiKit.dmg_text(lost), "左鍵（%s） " % p.weapon.name, "技能 %s " % ItemDefs.ITEMS.whirlwind.name, "%s " % ItemDefs.ITEMS.thunder_rune.name, "燃燒 "]:
+		if not text.contains(want):
+			return "結算的傷害來源缺「%s」：\n%s" % [want, text]
+	# 僕從打的：事件帶 by = 召喚者，算進召喚者的紀錄
+	rl.on_event(w, "entity:damaged", {"target_id": dummies[0].id, "source_id": p.id + 999, "by": p.id, "credit": "k:bone_guard", "amount": 12.0})
+	if rl.by_credit.get("k:bone_guard", {}).get("damage", 0.0) != 12.0:
+		return "僕從打的（by = 自己）應算自己的：%s" % [rl.by_credit]
+	_note("你造成的傷害：\n" + text)
+	return ""
+
+
 # 遊玩紀錄的連線卡住時間點（另起一行）；客戶端換小關的事件比鏡像先到時，等鏡像換好才記那一關（地形不是上一關的）
 static func check_run_log_net() -> String:
 	var nt := RunLog.net_text({"role": "客戶端", "players": 2, "rtt_ms": [80], "snapshot_gap_max_ms": 1383,
@@ -876,6 +929,9 @@ static func check_run_log() -> String:
 		rl.kills[kind] = 9999
 	for i in RunLog.MAX_DOWNS_SHOWN + 3:
 		rl.downs.append({"kind": &"projectile", "unseen": true})
+	for id: StringName in SkillDefs.SKILLS:   # 傷害來源比顯示上限多：最長的名稱、併成「其他」那行都要塞得進
+		rl._add_dealt(w, "k:" + String(id), 99999.0)
+	rl._add_dealt(w, "p", 999999.0)
 	hud._on_event("game:defeat", {"stats": w.stats.duplicate()})
 	var box: Control = hud._game_over_log.get_parent()
 	var need: Vector2 = box.get_combined_minimum_size()
@@ -884,7 +940,7 @@ static func check_run_log() -> String:
 		return "結算畫面需要 %s，超出 %s" % [need, screen]
 	_note("結算畫面最多行時需要 %.0f × %.0f（畫面 %.0f × %.0f）" % [need.x, need.y, screen.x, screen.y])
 	hud._on_event("game:restart", {})
-	if rl.hits_taken != 0 or not rl.kills.is_empty() or not rl.downs.is_empty() or rl.frames != 0 or rl.result != "" or not rl.by_video.is_empty() or not rl.weapon_drops.is_empty() or rl.bag_full_at >= 0.0 or not rl.hitch_list.is_empty():
+	if rl.hits_taken != 0 or rl.damage_dealt != 0.0 or not rl.by_credit.is_empty() or not rl.kills.is_empty() or not rl.downs.is_empty() or rl.frames != 0 or rl.result != "" or not rl.by_video.is_empty() or not rl.weapon_drops.is_empty() or rl.bag_full_at >= 0.0 or not rl.hitch_list.is_empty():
 		return "game:restart 後遊玩紀錄應清空"
 	# 卡頓記時間點與當時在做什麼：換小關 / 換層 / 開局後 1 秒內算那一下，其他算一般；每層那行不重複小關編號
 	var rl2 := RunLog.new()

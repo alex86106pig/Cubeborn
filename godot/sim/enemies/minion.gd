@@ -6,6 +6,7 @@ class_name Minion
 extends MeleeEnemy
 
 var owner_id := 0      # 召喚者（玩家實體 id）
+var credit := ""       # 召喚它的技能 / 道具（Combat.credit_scope）：它打的傷害算那一項
 var life := 0.0
 
 
@@ -13,6 +14,7 @@ func _init(p_world: World, at: Vector2, summoner: Player) -> void:
 	super(p_world, &"minion", at, WaveDefs.NO_SCALING.duplicate())
 	team = &"player"
 	owner_id = summoner.id
+	credit = Combat.credit_scope
 	no_souls = true
 	life = def.life
 	fsm.states[&"chase"] = MinionChase.new()

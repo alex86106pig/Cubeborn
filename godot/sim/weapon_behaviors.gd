@@ -281,7 +281,7 @@ class HolyCircle extends Behavior:
 			return
 		GroundZones.add(p.world, {
 			"pos": p.pos, "radius": def.radius, "duration": def.duration, "owner_id": p.id, "color": def.color,
-			"heal_per_sec": def.heal_per_sec, "damage_per_sec": p.move_damage(def), "damage_type": p.weapon.damage_type,
+			"heal_per_sec": def.heal_per_sec, "damage_per_sec": p.move_damage(def), "damage_type": p.weapon.damage_type, "credit": "s",
 		})
 
 
@@ -376,9 +376,9 @@ class ShovelThrow extends Behavior:
 			(target as Player).knock_up(Entity.gravity() * def.flight_time / 2.0)
 			return
 		var held := target as Enemy
-		var path_hit := {"damage": p.pct_damage(def.path_damage_pct), "damage_type": p.weapon.damage_type,
+		var path_hit := {"damage": p.pct_damage(def.path_damage_pct), "damage_type": p.weapon.damage_type, "credit": "p",
 			"knockback": def.knockback, "is_heavy": true, "color": def.color}
-		var land_hit := {"damage": p.move_damage(def), "damage_type": p.weapon.damage_type,
+		var land_hit := {"damage": p.move_damage(def), "damage_type": p.weapon.damage_type, "credit": "p",
 			"knockback": def.knockback, "hit_stop": def.hit_stop, "shake": def.shake, "is_heavy": true, "color": def.color}
 		if held.frozen_timer > 0.0 or travel <= 0.0:
 			held.pos = land

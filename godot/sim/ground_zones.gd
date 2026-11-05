@@ -14,6 +14,8 @@ const TICK_INTERVAL := 0.5
 # 選填 web_slow：蜘蛛網（add_web），站在上面的玩家移速 × web_slow；被火焰傷害打到燒掉（burn_webs）
 static func add(world: World, zone: Dictionary) -> void:
 	var z := zone.duplicate()
+	if not z.has("credit"):
+		z["credit"] = Combat.credit_scope   # 放下這攤的技能 / 道具（之後每跳的傷害算它的）
 	z.remaining = zone.duration
 	z.tick_timer = TICK_INTERVAL
 	z.burn_carry = 0.0
@@ -109,5 +111,5 @@ static func _tick(world: World, z: Dictionary) -> void:
 				continue
 			Combat.apply_damage(world, owner, e, {
 				"damage": z.damage_per_sec * TICK_INTERVAL, "damage_type": z.damage_type, "proc": true, "no_stagger": true,
-				"knockback": 0.0, "origin": z.pos, "band": Vector2(-INF, INF), "color": z.color, "no_status": true, "minor": true,
+				"knockback": 0.0, "origin": z.pos, "band": Vector2(-INF, INF), "color": z.color, "no_status": true, "minor": true, "credit": z.get("credit", ""),
 			})

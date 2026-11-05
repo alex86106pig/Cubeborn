@@ -109,6 +109,7 @@ func _touch(p: Player, c: Dictionary) -> void:
 		if p.wisp_frenzy_timer > 0.0:
 			dmg *= ItemDefs.PROCS.wisp_frenzy.damage_mul
 		var hit := ItemEffects.proc_hit(dmg, e, color, 0.0, damage_type)
+		hit["credit"] = "wisp"
 		if Combat.apply_damage(world, p, e, hit):
 			ItemEffects.on_wisp_hit(world, p, e, dmg)
 			if e.is_dead:
