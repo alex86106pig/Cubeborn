@@ -15,7 +15,7 @@ const HITCH_AFTER_CHANGE := 1.0   # 換小關 / 換層 / 開局後這麼多秒�
 const MAX_HITCHES_SHOWN := 20     # 回報列出前幾次卡頓的時間點
 const REACT := 0.4         # 攻擊者連續看得到不到這麼多秒就打中，算「看不見」（來不及反應）
 const TRACK_RANGE := 8.0   # 這麼近的怪每幀記錄看不看得到（遠的只看打中那一刻，省效能）
-const RARITY_ORDER: Array[StringName] = [&"white", &"green", &"blue", &"purple", &"orange"]
+const RARITY_ORDER: Array[StringName] = [&"gray", &"white", &"green", &"blue", &"purple", &"orange"]
 # Boss 名字同 HUD.BOSS_NAME；不直接引用 HUD：check.gd（-s 腳本）會用到本檔，引用 HUD 會連帶要求 autoload GameEvents 而編譯失敗
 const NAMES := {
 	&"grunt": "骷髏戰士", &"archer": "骷髏弓手", &"zombie": "腐屍", &"bloater": "膨脹屍", &"hound": "屍犬", &"spider": "墓穴蜘蛛", &"beetle": "屍甲蟲", &"bone_wheel": "骨輪", &"spearman": "骷髏盾槍兵", &"boss": "亡骸騎士", &"bone_general": "骸骨將軍", &"gravekeeper": "守墓人", &"ghost": "冤魂", &"minion": "骷髏僕從",

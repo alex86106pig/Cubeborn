@@ -199,7 +199,10 @@ static func item_info(id: StringName, weapon: Dictionary, level := 1) -> Diction
 		var wd: Dictionary = WeaponDefs.WEAPONS[ItemDefs.ITEMS[weapon.base].weapon]
 		var hands: String = WEAPON_TYPE_TEXT.get(wd.get("type", &""), "武器")
 		var stats_line: String = ("%s · 攻擊力 %.1f · 攻速 %.2f 次/秒 · 範圍 %.1f" % [hands, b.damage, b.attack_speed, b.range]) if not b.is_empty() else hands + " · " + wd.special.name
-		var lines: Array[String] = [stats_line, "普攻 %s · 右鍵 %s" % [wd.attack.get("name", "—"), wd.special.get("name", "—")] if wd.has("attack") else wd.special.get("name", "")]
+		var lines: Array[String] = [stats_line]
+		if not b.is_empty():
+			lines.append("最大魔力 %d · 回魔 %.1f/秒" % [roundi(b.max_mana), b.mana_regen])
+		lines.append("普攻 %s · 右鍵 %s" % [wd.attack.get("name", "—"), wd.special.get("name", "—")] if wd.has("attack") else wd.special.get("name", ""))
 		lines.append("左鍵每 %d 下觸發一次命中 / 出手袋" % wd.get("trigger_every", 1))
 		var hung: Array = Loadout.weapon_bags(weapon)
 		if not hung.is_empty():   # 倉庫 / 地上的武器帶著的左右鍵袋子：換上時接回左右兩邊

@@ -15,6 +15,7 @@ const BLOCK_HIT_DAMAGE_PCT := 1.0   # 招架成功算右鍵命中：沒有「那
 
 # cells：道具占幾格（Build 改版第 5 步，要放得進武器格子）；同稀有度的形狀可以不同
 const RARITIES := {
+	&"gray": {"name": "粗糙", "color": Color("8c8c8c"), "cells": 1, "weapon_only": true},   # 只有起始武器（WeaponDropDefs.START_RARITY），沒有道具
 	&"white": {"name": "普通", "color": Color("d8d8d8"), "cells": 1},
 	&"green": {"name": "優良", "color": Color("5fd35f"), "cells": 2},
 	&"blue": {"name": "稀有", "color": Color("4fa3ff"), "cells": 3},
@@ -372,6 +373,15 @@ static func item_ids() -> Array[StringName]:
 		if ITEMS[id].kind == &"item":
 			ids.append(id)
 	return ids
+
+
+# 道具會用到的稀有度（不含只給武器的灰色）
+static func item_rarities() -> Array[StringName]:
+	var out: Array[StringName] = []
+	for r: StringName in RARITIES:
+		if not RARITIES[r].get("weapon_only", false):
+			out.append(r)
+	return out
 
 
 static func cell_count(id: StringName) -> int:

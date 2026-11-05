@@ -324,7 +324,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 			_sync_block_fan(node.get_node(^"BlockFan"), e as Player)
 			var glow: OmniLight3D = node.get_meta(&"glow")
 			var inst := (e as Player).active_weapon()
-			glow.visible = lights_on and not inst.is_empty() and inst.rarity != &"white"
+			glow.visible = lights_on and not inst.is_empty() and not inst.rarity in [&"white", WeaponDropDefs.START_RARITY]
 			if glow.visible:
 				glow.light_color = ItemDefs.RARITIES[inst.rarity].color
 		elif e is Chest:

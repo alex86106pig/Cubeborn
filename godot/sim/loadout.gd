@@ -35,10 +35,10 @@ static func weapon_of(inst: Dictionary) -> StringName:
 	return &"" if inst.is_empty() else ItemDefs.ITEMS[inst.base].weapon
 
 
-# 手上武器稀有度的範圍倍率（揮砍距離、魔彈射程）
+# 手上武器的範圍倍率（揮砍距離、魔彈射程；稀有度與擲出來的數值，WeaponDropDefs.mul）
 func weapon_range_mul() -> float:
 	var inst := main_weapon()
-	return WeaponDropDefs.RARITY_BASE[inst.rarity].range if not inst.is_empty() else 1.0
+	return WeaponDropDefs.mul(inst, "range") if not inst.is_empty() else 1.0
 
 
 func equipped_count() -> int:
@@ -52,14 +52,15 @@ func refill_slot_charges() -> void:
 			e.erase("charges")
 
 
-func _new_white(p: Player, id: StringName) -> Dictionary:
+# 起始武器：灰色、數值固定（WeaponDropDefs.START_RARITY）
+func _new_start(p: Player, id: StringName) -> Dictionary:
 	assert(WeaponDefs.WEAPONS.has(id), "Unknown weapon: %s" % id)
-	return {"uid": p.world.new_weapon_uid(), "base": id, "rarity": &"white", "affixes": [] as Array[StringName]}
+	return WeaponDropDefs.make(p.world.new_weapon_uid(), id, WeaponDropDefs.START_RARITY)
 
 
-# 換上一把新的白色武器（開場、--weapon、武器測試場、測試與除錯用；正式取得武器走 add_weapon）
+# 換上一把新的灰色起始武器（開場、--weapon、武器測試場、測試與除錯用；正式取得武器走 add_weapon）
 func equip_new(p: Player, id: StringName) -> void:
-	weapon_slots[MAIN] = _new_white(p, id)
+	weapon_slots[MAIN] = _new_start(p, id)
 	p.apply_active_weapon()
 
 

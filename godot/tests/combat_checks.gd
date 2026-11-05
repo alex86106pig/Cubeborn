@@ -293,6 +293,57 @@ static func check_weapon_base_stats() -> String:
 	var slash := _named(events, "fx:slash")
 	if slash.is_empty() or absf(slash[0].range - a.range * green.range) > EPS:
 		return "綠劍盾揮砍距離應為 %.3f" % (a.range * green.range)
+	return _check_weapon_rolls()
+
+
+# I-5：起始武器是灰色、數值 = 武器資料；掉落的每項倍率在 平均 × (1 ± 寬度) 內、平均接近稀有度平均、攻擊力與最大魔力取整數；
+# 擲出來的數值裝上手會生效、快照來回不變、灰色不能合成
+static func _check_weapon_rolls() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var start: Dictionary = p.weapon_slots[Loadout.MAIN]
+	var sd: Dictionary = WeaponDefs.WEAPONS[Loadout.weapon_of(start)]
+	if start.rarity != WeaponDropDefs.START_RARITY or start.has("roll") or absf(p.stats.value(&"damage") - 1.0) > EPS \
+			or absf(p.max_mana() - sd.get("max_mana", Config.MANA.max)) > EPS:
+		return "起始武器應是灰色、沒有擲數值、攻擊力倍率 1、魔力 = 武器資料：%s、%.2f、%.1f" % [start, p.stats.value(&"damage"), p.max_mana()]
+	if WeaponDropDefs.can_merge(start, WeaponDropDefs.make(&"g2", start.base, WeaponDropDefs.START_RARITY)):
+		return "灰色武器不應能合成"
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	const N := 2000
+	for base: StringName in [&"swordShield", &"shortbow", &"longbow"]:
+		var wd: Dictionary = WeaponDefs.WEAPONS[ItemDefs.ITEMS[base].weapon]
+		var mx: float = wd.get("max_mana", Config.MANA.max)
+		for r: StringName in WeaponDropDefs.RARITY_ORDER:
+			var sums := {}
+			for i in N:
+				var roll: Dictionary = WeaponDropDefs.make(&"x", base, r, rng).roll
+				for key in WeaponDropDefs.ROLL_KEYS:
+					var mean: float = WeaponDropDefs.RARITY_BASE[r][key]
+					var s: float = WeaponDropDefs.ROLL_SPREAD[key]
+					var slack: float = 0.5 / wd.base_damage if key == "damage" else (0.5 / mx if key == "max_mana" else 0.005)
+					if roll[key] < mean * (1.0 - s) - slack - EPS or roll[key] > mean * (1.0 + s) + slack + EPS:
+						return "%s %s 的 %s 倍率 %.3f 超出 %.3f~%.3f" % [r, base, key, roll[key], mean * (1.0 - s), mean * (1.0 + s)]
+					sums[key] = sums.get(key, 0.0) + roll[key]
+				if absf(wd.base_damage * roll.damage - roundf(wd.base_damage * roll.damage)) > EPS or absf(mx * roll.max_mana - roundf(mx * roll.max_mana)) > EPS:
+					return "%s %s 的攻擊力 / 最大魔力應是整數：%.3f / %.3f" % [r, base, wd.base_damage * roll.damage, mx * roll.max_mana]
+			for key in WeaponDropDefs.ROLL_KEYS:
+				var mean: float = WeaponDropDefs.RARITY_BASE[r][key]
+				if absf(sums[key] / N / mean - 1.0) > 0.03:
+					return "%s %s 的 %s 平均 %.3f，應接近 %.3f" % [r, base, key, sums[key] / N, mean]
+	# 擲出來的數值裝上手生效（攻擊力、攻速、範圍、魔力），快照來回不變
+	var inst := WeaponDropDefs.make(&"rolled", &"swordShield", &"blue", rng)
+	var back := WeaponDropDefs.from_array(WeaponDropDefs.to_array(inst))
+	if back.get("roll", {}) != inst.roll or WeaponDropDefs.to_array(back) != WeaponDropDefs.to_array(inst):
+		return "擲出來的數值快照來回應不變：%s → %s" % [inst.roll, back.get("roll")]
+	p.weapon_slots[Loadout.MAIN] = inst
+	p.apply_active_weapon()
+	var want_mana: float = WeaponDefs.WEAPONS[&"swordShield"].get("max_mana", Config.MANA.max) * inst.roll.max_mana
+	if absf(p.stats.value(&"damage") - inst.roll.damage) > EPS or absf(p.stats.value(&"attack_speed") - inst.roll.attack_speed) > EPS \
+			or absf(p.weapon_range_mul() - inst.roll.range) > EPS or absf(p.max_mana() - want_mana) > EPS:
+		return "藍劍盾裝上手應照擲出來的數值 %s：攻擊力 %.3f、攻速 %.3f、範圍 %.3f、魔力 %.1f（應 %.1f）" % [inst.roll,
+			p.stats.value(&"damage"), p.stats.value(&"attack_speed"), p.weapon_range_mul(), p.max_mana(), want_mana]
+	_note("I-5 武器數值：藍劍盾擲到 %s" % [inst.roll])
 	return ""
 
 

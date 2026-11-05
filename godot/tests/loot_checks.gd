@@ -124,7 +124,7 @@ static func check_item_defs() -> String:
 		if not ItemDefs.ITEMS.has(id) or ItemDefs.ITEMS[id].kind != &"weapon":
 			return "武器 %s 沒有物品資料" % id
 	var total := 0
-	for r: StringName in ItemDefs.RARITIES:
+	for r: StringName in ItemDefs.item_rarities():   # 灰色只給起始武器，沒有道具
 		if counts.get(r, 0) == 0:
 			return "稀有度 %s 沒有道具：%s" % [r, counts]
 		total += counts[r]
@@ -1595,7 +1595,7 @@ static func check_item_drop_pool() -> String:
 		if not ItemDefs.item_implemented(id):
 			return "%s 還有效果沒接上" % id
 	var order: Array = ItemDefs.RARITIES.keys()
-	for r: StringName in ItemDefs.RARITIES:
+	for r: StringName in ItemDefs.item_rarities():   # 灰色只給起始武器，不開道具
 		var pool := LootDefs.drop_pool(r)
 		if pool.is_empty():
 			return "%s 沒有可以掉的道具" % r
@@ -1656,12 +1656,14 @@ static func check_weapon_pickup() -> String:
 		return "劍盾換回手上、法杖回背包：%s" % p.weapon_id
 	# 主袋的道具不跟著武器：主袋的磨刀石生效；換上倉庫的法杖後照樣在主袋、照樣生效；武器快照沒有鑲的東西
 	var stone := p.loadout.add_item(p, &"whetstone", {}, 0, Loadout.CORE)
-	var dmg := p.stats.value(&"damage")
+	# 攻擊力扣掉手上這把的倍率（I-5：起始劍盾灰色 1.0、撿到的法杖照稀有度）後比，剩下的是道具的部分
+	var dmg := p.stats.value(&"damage") / WeaponDropDefs.mul(p.weapon_slots[Loadout.MAIN], "damage")
 	if stone == &"" or p.loadout.find_item(stone).get("where", -9) != Loadout.CORE or dmg <= 1.0:
 		return "磨刀石應在主袋並生效：攻擊力 %.2f" % dmg
 	op.call([[InputCmd.OP_EQUIP, "a", Loadout.MAIN]])
-	if p.weapon_id != &"staff" or p.loadout.find_item(stone).get("where", -9) != Loadout.CORE or absf(p.stats.value(&"damage") - dmg) > EPS:
-		return "換上法杖後磨刀石應還在主袋、照樣生效：%s、%s、攻擊力 %.2f" % [p.weapon_id, p.loadout.find_item(stone), p.stats.value(&"damage")]
+	var dmg2 := p.stats.value(&"damage") / WeaponDropDefs.mul(p.weapon_slots[Loadout.MAIN], "damage")
+	if p.weapon_id != &"staff" or p.loadout.find_item(stone).get("where", -9) != Loadout.CORE or absf(dmg2 - dmg) > EPS:
+		return "換上法杖後磨刀石應還在主袋、照樣生效：%s、%s、攻擊力（扣掉武器倍率）%.2f → %.2f" % [p.weapon_id, p.loadout.find_item(stone), dmg, dmg2]
 	var back := WeaponDropDefs.from_array(WeaponDropDefs.to_array(p.weapon_slots[Loadout.MAIN]))
 	if back.has("sockets") or back.base != &"staff":
 		return "武器快照來回應只有種類與稀有度：%s" % [back]
@@ -1673,6 +1675,9 @@ static func check_weapon_merge() -> String:
 	var p := _player(w)
 	var mk := func(uid: String, base: StringName, rarity: StringName) -> Dictionary:
 		return {"uid": StringName(uid), "base": base, "rarity": rarity, "affixes": [] as Array[StringName]}
+	# 開局的是灰色（不能合成，I-5 在 combat_checks 驗）：手上換成白劍盾，驗白 + 白 → 綠
+	p.weapon_slots[0] = mk.call("s1", &"swordShield", &"white")
+	p.apply_active_weapon()
 	var start_uid: StringName = p.weapon_slots[0].uid
 	p.add_weapon(mk.call("s2", &"swordShield", &"white"))   # 背包（手上有武器時都放背包）
 	p.add_weapon(mk.call("s3", &"swordShield", &"white"))   # 背包
@@ -1694,7 +1699,7 @@ static func check_weapon_merge() -> String:
 	var m: Dictionary = p.weapon_slots[0]
 	if m.rarity != &"green" or not m.affixes.is_empty() or not p.inventory.find(&"s3").is_empty() or _named(w.events, "weapon:merged").is_empty():
 		return "合成應得到綠色、沒有詞條、在手上：%s" % [m]
-	if absf(p.stats.value(&"damage") - WeaponDropDefs.RARITY_BASE.green.damage) > EPS:
+	if absf(p.stats.value(&"damage") - WeaponDropDefs.mul(m, "damage")) > EPS:
 		return "合成後手上綠劍盾的攻擊力倍率應立刻生效：%.2f" % p.stats.value(&"damage")
 	# 不同種、不同稀有度不能合成
 	merge.call("st", "s2")

@@ -26,17 +26,26 @@ const RARITY_WEIGHTS := {
 	&"boss": {&"blue": 60.0, &"purple": 30.0, &"orange": 10.0},
 }
 
-const RARITY_ORDER: Array[StringName] = [&"white", &"green", &"blue", &"purple", &"orange"]
+const RARITY_ORDER: Array[StringName] = [&"white", &"green", &"blue", &"purple", &"orange"]   # 掉落的稀有度（低 → 高）
 
-# 武器基礎數值依稀有度提高（v0.27.0 使用者決定：要看得到「白色攻擊力 10、綠色 12」這種實際數字）
-# 倍率是 Claude 暫定：攻擊力每級 +20%（白 10 → 綠 12），攻速與範圍每級 +5%
+# 起始武器的稀有度（許家慶 2026-11-05 決定）：灰色，數值固定 = 武器資料本身（--balance 量的就是這個），比白色低；
+# 不在 RARITY_ORDER 裡（find 是 -1，比所有掉落的都低）、不掉落、不能合成
+const START_RARITY := &"gray"
+
+# 武器基礎數值的倍率依稀有度提高（v0.27.0 使用者決定：要看得到實際數字）；這裡是每個稀有度的平均（I-5，許家慶 2026-11-05：
+# 灰色 = 原本的白色、掉落的往上推）：攻擊力 白 1.1、每級 +0.2，攻速、範圍、最大魔力、回魔每級 +5%
 const RARITY_BASE := {
-	&"white": {"damage": 1.0, "attack_speed": 1.0, "range": 1.0},
-	&"green": {"damage": 1.2, "attack_speed": 1.05, "range": 1.05},
-	&"blue": {"damage": 1.4, "attack_speed": 1.10, "range": 1.10},
-	&"purple": {"damage": 1.6, "attack_speed": 1.15, "range": 1.15},
-	&"orange": {"damage": 1.8, "attack_speed": 1.20, "range": 1.20},
+	&"gray": {"damage": 1.0, "attack_speed": 1.0, "range": 1.0, "max_mana": 1.0, "mana_regen": 1.0},
+	&"white": {"damage": 1.1, "attack_speed": 1.05, "range": 1.05, "max_mana": 1.05, "mana_regen": 1.05},
+	&"green": {"damage": 1.3, "attack_speed": 1.10, "range": 1.10, "max_mana": 1.10, "mana_regen": 1.10},
+	&"blue": {"damage": 1.5, "attack_speed": 1.15, "range": 1.15, "max_mana": 1.15, "mana_regen": 1.15},
+	&"purple": {"damage": 1.7, "attack_speed": 1.20, "range": 1.20, "max_mana": 1.20, "mana_regen": 1.20},
+	&"orange": {"damage": 1.9, "attack_speed": 1.25, "range": 1.25, "max_mana": 1.25, "mana_regen": 1.25},
 }
+# 掉落的武器每項倍率 = 平均 × (1 ± 寬度)，均勻分布、每項各擲一次（I-5，許家慶 2026-11-05 選「寬」：同稀有度差很多，爛的綠會輸好的白）；
+# 攻擊力擲完取整數（武器資料的 base_damage × 倍率四捨五入，至少 1），最大魔力也取整數，其他取到 0.01
+const ROLL_KEYS: Array[String] = ["damage", "attack_speed", "range", "max_mana", "mana_regen"]
+const ROLL_SPREAD := {"damage": 0.2, "attack_speed": 0.1, "range": 0.1, "max_mana": 0.25, "mana_regen": 0.25}
 
 # 詞條（Build 改版第 8 步，數字 Claude 暫定）：kind 決定種類，bond 是相關的羈絆（偏向與介面顏色用）
 #   bond 羈絆 +1：這把武器本身算那個羈絆 1 件（Loadout.refresh_items）
@@ -178,9 +187,46 @@ static func allowed(id: StringName, rarity: StringName) -> bool:
 	return RARITY_ORDER.find(rarity) >= RARITY_ORDER.find(AFFIXES[id].get("min", &"green"))
 
 
-# 觸發袋改版後武器沒有詞條、印記格與寶石座：只有種類與稀有度（稀有度決定基礎數值，RARITY_BASE）
-static func make(uid: StringName, base: StringName, rarity: StringName, _rng: RandomNumberGenerator = null, _keep: Array[StringName] = []) -> Dictionary:
-	return {"uid": uid, "base": base, "rarity": rarity, "affixes": [] as Array[StringName]}
+# 觸發袋改版後武器沒有詞條、印記格與寶石座：只有種類、稀有度與數值；給 rng 時照稀有度擲隨機數值（inst.roll，灰色不擲），
+# 沒給（武器測試場、檢查手做的）就用平均
+static func make(uid: StringName, base: StringName, rarity: StringName, rng: RandomNumberGenerator = null, _keep: Array[StringName] = []) -> Dictionary:
+	var inst := {"uid": uid, "base": base, "rarity": rarity, "affixes": [] as Array[StringName]}
+	if rng != null and rarity != START_RARITY:
+		inst["roll"] = roll_stats(base, rarity, rng)
+	return inst
+
+
+# 擲一把武器的各項倍率（ROLL_KEYS → 倍率）
+static func roll_stats(base: StringName, rarity: StringName, rng: RandomNumberGenerator) -> Dictionary:
+	var wd: Dictionary = WeaponDefs.WEAPONS[ItemDefs.ITEMS[base].weapon]
+	var out := {}
+	for key in ROLL_KEYS:
+		var spread: float = ROLL_SPREAD[key]
+		var m: float = RARITY_BASE[rarity][key] * (1.0 + rng.randf_range(-spread, spread))
+		match key:
+			"damage":
+				var bd: float = wd.base_damage
+				m = maxf(1.0, roundf(bd * m)) / bd
+			"max_mana":
+				var mx: float = wd.get("max_mana", Config.MANA.max)
+				m = maxf(1.0, roundf(mx * m)) / mx
+			_:
+				m = snappedf(m, 0.01)
+		out[key] = m
+	return out
+
+
+# 這把武器某一項（ROLL_KEYS）的倍率：擲過的照擲出來的，沒擲過的用稀有度平均
+static func mul(inst: Dictionary, key: String) -> float:
+	var roll: Dictionary = inst.get("roll", {})
+	return roll[key] if roll.has(key) else RARITY_BASE[inst.rarity][key]
+
+
+# 這把武器的最大魔力與回魔（魔力照武器：WeaponDefs 的 max_mana / mana_regen，沒寫的用 Config.MANA；乘稀有度倍率）
+static func mana_base(inst: Dictionary) -> Dictionary:
+	var wd: Dictionary = WeaponDefs.WEAPONS[ItemDefs.ITEMS[inst.base].weapon]
+	return {"max_mana": wd.get("max_mana", Config.MANA.max) * mul(inst, "max_mana"),
+		"mana_regen": wd.get("mana_regen", Config.MANA.regen) * mul(inst, "mana_regen")}
 
 
 # 印記詞條的格子：每條從武器格子裡（不含寶石座、不和別條重疊）隨機挑 IMPRINT.cells 格，寫進 inst.imprints [{ bond, cell }]
@@ -227,29 +273,31 @@ static func add_builtin_skill(inst: Dictionary) -> Dictionary:
 	return inst
 
 
-# 武器的基礎數值（介面顯示用的實際數字）：攻擊力 = 普攻傷害、攻速 = 每秒普攻次數、範圍 = 揮砍距離或魔彈射程，都乘上稀有度倍率；
-# 只能當副手的（盾）沒有普攻，回傳 {}
+# 武器的基礎數值（介面顯示用的實際數字）：攻擊力 = 普攻傷害、攻速 = 每秒普攻次數、範圍 = 揮砍距離或魔彈射程、最大魔力、回魔，
+# 都乘上這把的倍率（mul）；只能當副手的（盾）沒有普攻，回傳 {}
 static func base_stats(inst: Dictionary) -> Dictionary:
 	var wd: Dictionary = WeaponDefs.WEAPONS[ItemDefs.ITEMS[inst.base].weapon]
 	if not wd.has("attack"):
 		return {}
 	var atk: Dictionary = wd.attack
-	var m: Dictionary = RARITY_BASE[inst.rarity]
-	return {
-		"damage": WeaponDefs.move_base_damage(wd, atk) * m.damage,
-		"attack_speed": m.attack_speed / (atk.windup + atk.active + atk.recovery),
-		"range": atk.range * m.range,
+	var out := {
+		"damage": WeaponDefs.move_base_damage(wd, atk) * mul(inst, "damage"),
+		"attack_speed": mul(inst, "attack_speed") / (atk.windup + atk.active + atk.recovery),
+		"range": atk.range * mul(inst, "range"),
 	}
+	out.merge(mana_base(inst))
+	return out
 
 
-# 手上這把生效的屬性：稀有度的基礎倍率（攻擊力、攻速）＋詞條；範圍由 Player.weapon_range_mul 直接乘
+# 手上這把生效的屬性：這把的倍率（攻擊力、攻速）＋詞條；範圍由 Player.weapon_range_mul 直接乘、魔力由 Player.apply_active_weapon 設基礎值
 static func stat_mods(inst: Dictionary) -> Array:
-	var m: Dictionary = RARITY_BASE[inst.rarity]
 	var mods := []
-	if m.damage != 1.0:
-		mods.append([&"damage", Stats.MUL, m.damage])
-	if m.attack_speed != 1.0:
-		mods.append([&"attack_speed", Stats.MUL, m.attack_speed])
+	var dmg := mul(inst, "damage")
+	var spd := mul(inst, "attack_speed")
+	if dmg != 1.0:
+		mods.append([&"damage", Stats.MUL, dmg])
+	if spd != 1.0:
+		mods.append([&"attack_speed", Stats.MUL, spd])
 	for id: StringName in inst.affixes:
 		mods.append_array(AFFIXES[id].mods)
 	return mods
@@ -264,15 +312,16 @@ static func bonds_of(inst: Dictionary) -> Array[StringName]:
 	return out
 
 
-# 能不能合成：同種、同稀有度、不是同一把、還沒到最高（橘色）
+# 能不能合成：同種、同稀有度、不是同一把、還沒到最高（橘色）；灰色不在 RARITY_ORDER，next_rarity 是空的 → 不能合
 static func can_merge(a: Dictionary, b: Dictionary) -> bool:
 	return not a.is_empty() and not b.is_empty() and a.uid != b.uid and a.base == b.base \
 		and a.rarity == b.rarity and next_rarity(a.rarity) != &""
 
 
-# 快照用：[uid, base, rarity, [詞條…], 武器技能剩幾次?, 鑲的道具?, 印記格?, 掛著的袋子?]；空的是 []；
-# 掛著的袋子（倉庫 / 地上的武器帶著的左右鍵袋子，Loadout.WEAPON_SIDES）是 BagDefs.to_array 的陣列，有才送（前面幾欄補空的）；
-# 次數沒用過（滿的）送 -1、沒鑲東西也沒印記格就不送後面幾欄。鑲的道具：[[uid, id, x, y, rot], …]；印記格：[[羈絆, x, y], …]
+# 快照用：[uid, base, rarity, [詞條…], 武器技能剩幾次?, 鑲的道具?, 印記格?, 掛著的袋子?, 擲出來的倍率?]；空的是 []；
+# 後面幾欄有才送：最後一個有內容的之前補空的（次數沒用過送 -1、其他送 []）。鑲的道具：[[uid, id, x, y, rot], …]；
+# 印記格：[[羈絆, x, y], …]；掛著的袋子（倉庫 / 地上的武器帶著的左右鍵袋子，Loadout.WEAPON_SIDES）是 BagDefs.to_array 的陣列；
+# 倍率照 ROLL_KEYS 的順序
 static func to_array(inst: Dictionary) -> Array:
 	if inst.is_empty():
 		return []
@@ -280,20 +329,18 @@ static func to_array(inst: Dictionary) -> Array:
 	for id: StringName in inst.affixes:
 		affixes.append(String(id))
 	var a := [String(inst.uid), String(inst.base), String(inst.rarity), affixes]
-	var sockets: Array = inst.get("sockets", [])
-	var imprints: Array = inst.get("imprints", [])
-	var bags: Array = inst.get("bags", [])
-	if inst.has("slot_charges") or not sockets.is_empty() or not imprints.is_empty() or not bags.is_empty():
-		a.append(inst.get("slot_charges", -1))
-	if not sockets.is_empty() or not imprints.is_empty() or not bags.is_empty():
-		var arr := []
-		for e: Dictionary in sockets:
-			arr.append([String(e.uid), String(e.id), e.cell.x, e.cell.y, e.rot])
-		a.append(arr)
-	if not imprints.is_empty() or not bags.is_empty():
-		a.append(imprints.map(func(im: Dictionary) -> Array: return [String(im.bond), im.cell.x, im.cell.y]))
-	if not bags.is_empty():
-		a.append(bags.map(BagDefs.to_array))
+	var sockets := []
+	for e: Dictionary in inst.get("sockets", []):
+		sockets.append([String(e.uid), String(e.id), e.cell.x, e.cell.y, e.rot])
+	var roll: Dictionary = inst.get("roll", {})
+	var tail := [inst.get("slot_charges", -1), sockets,
+		inst.get("imprints", []).map(func(im: Dictionary) -> Array: return [String(im.bond), im.cell.x, im.cell.y]),
+		inst.get("bags", []).map(BagDefs.to_array),
+		[] if roll.is_empty() else ROLL_KEYS.map(func(k: String) -> float: return roll[k])]
+	var last := tail.size() - 1
+	while last >= 0 and (tail[last] is int and tail[last] == -1 or tail[last] is Array and (tail[last] as Array).is_empty()):
+		last -= 1
+	a.append_array(tail.slice(0, last + 1))
 	return a
 
 
@@ -316,8 +363,13 @@ static func from_array(a: Array) -> Dictionary:
 		for im: Array in a[6]:
 			imprints.append({"bond": StringName(im[0]), "cell": Vector2i(im[1], im[2])})
 		inst["imprints"] = imprints
-	if a.size() > 7:
+	if a.size() > 7 and not (a[7] as Array).is_empty():
 		inst["bags"] = (a[7] as Array).map(BagDefs.from_array)
+	if a.size() > 8 and not (a[8] as Array).is_empty():
+		var roll := {}
+		for i in ROLL_KEYS.size():
+			roll[ROLL_KEYS[i]] = float(a[8][i])
+		inst["roll"] = roll
 	return inst
 
 
