@@ -1,4 +1,6 @@
 # 武器掉落與詞條（D4；Build 改版第 8 步詞條改成跟羈絆有關）：殺怪機率掉武器、稀有度機率、詞條清單；武器實例的建立與合成
+# 【詞條目前沒使用】觸發袋改版後 make 做出來的武器都沒有詞條；AFFIXES / BRANCH / IMPRINT / CONVERSIONS / BIAS、roll_affixes、roll_imprints、
+# affix_count、allowed 先留著（許家慶 2026-11-05：之後可能再用），只有武器測試場的詞條按鈕還做得出帶詞條的武器。下面 2~4 行是當時的規則
 # 使用者決定（2026-10-23）：小怪 4%（2026-11-01 改成照層數 1.5% / 2.5% / 4%）、Boss 必掉；小怪 白 60 / 綠 25 / 藍 12 / 紫 3、Boss 藍 60 / 紫 30 / 橘 10；
 # 白色沒有詞條、每高一級多 1 條；2026-10-30 許家慶決定詞條都跟羈絆有關（種類照武器格子 artifact，數字 Claude 暫定）
 # 主手與副手的詞條都生效；合成要在鍛造祭壇（Forge），兩把各留一條、其他重抽
@@ -47,7 +49,7 @@ const RARITY_BASE := {
 const ROLL_KEYS: Array[String] = ["damage", "attack_speed", "range", "max_mana", "mana_regen"]
 const ROLL_SPREAD := {"damage": 0.2, "attack_speed": 0.1, "range": 0.1, "max_mana": 0.25, "mana_regen": 0.25}
 
-# 詞條（Build 改版第 8 步，數字 Claude 暫定）：kind 決定種類，bond 是相關的羈絆（偏向與介面顏色用）
+# 【目前沒使用，見檔案開頭】詞條（Build 改版第 8 步，數字 Claude 暫定）：kind 決定種類，bond 是相關的羈絆（偏向與介面顏色用）
 #   bond 羈絆 +1：這把武器本身算那個羈絆 1 件（Loadout.refresh_items）
 #   enh 羈絆強化：那個羈絆專屬的數值（屬性，效果在 BondEffects）
 #   cvt 屬性轉換：玩家的非道具物理傷害有 value 比例改成那個屬性（Combat，轉換的部分會疊狀態）
@@ -137,7 +139,7 @@ static func roll_rarity(source: StringName, rng: RandomNumberGenerator, treasure
 	return LootDefs.pick_rarity(LootDefs.treasure_weights(RARITY_WEIGHTS[source], treasure), rng)
 
 
-# 不重複地抽 count 條詞條：依 AFFIXES 的權重（武器偏向的羈絆 × BIAS_MUL）一條一條抽，用 world.rng 才有決定性；
+# 【目前沒使用】不重複地抽 count 條詞條：依 AFFIXES 的權重（武器偏向的羈絆 × BIAS_MUL）一條一條抽，用 world.rng 才有決定性；
 # keep 是一定要留的（合成時兩把各挑的那條），先放進去、不重複；rarity 低於詞條的 min 就不抽（keep 也一樣）
 static func roll_affixes(count: int, rng: RandomNumberGenerator, base := &"", keep: Array[StringName] = [], rarity := &"orange") -> Array[StringName]:
 	var out: Array[StringName] = []
@@ -229,7 +231,7 @@ static func mana_base(inst: Dictionary) -> Dictionary:
 		"mana_regen": wd.get("mana_regen", Config.MANA.regen) * mul(inst, "mana_regen")}
 
 
-# 印記詞條的格子：每條從武器格子裡（不含寶石座、不和別條重疊）隨機挑 IMPRINT.cells 格，寫進 inst.imprints [{ bond, cell }]
+# 【目前沒使用】印記詞條的格子：每條從武器格子裡（不含寶石座、不和別條重疊）隨機挑 IMPRINT.cells 格，寫進 inst.imprints [{ bond, cell }]
 static func roll_imprints(inst: Dictionary, rng: RandomNumberGenerator) -> void:
 	inst.erase("imprints")
 	var cells := WeaponDefs.grid_cells(ItemDefs.ITEMS[inst.base].weapon)
@@ -298,7 +300,7 @@ static func stat_mods(inst: Dictionary) -> Array:
 		mods.append([&"damage", Stats.MUL, dmg])
 	if spd != 1.0:
 		mods.append([&"attack_speed", Stats.MUL, spd])
-	for id: StringName in inst.affixes:
+	for id: StringName in inst.affixes:   # 詞條目前沒使用：只有武器測試場做的武器會有
 		mods.append_array(AFFIXES[id].mods)
 	return mods
 

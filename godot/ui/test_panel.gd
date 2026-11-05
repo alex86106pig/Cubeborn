@@ -168,6 +168,7 @@ func _build_weapon_page() -> void:
 		rarities.add_child(b)
 	rarities.add_child(_action("放進背包", _request_weapon))
 	box.add_child(rarities)
+	# 詞條按鈕：詞條目前沒使用（正式遊戲的武器都沒有，WeaponDropDefs 開頭），先留著給測試用
 	var affix_box := _flow()
 	box.add_child(affix_box)
 	for id: StringName in WeaponDropDefs.AFFIXES:
