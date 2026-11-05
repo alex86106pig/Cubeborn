@@ -151,6 +151,9 @@ func restart() -> void:
 	if mode == Mode.HOST:
 		world.player_classes = net.classes()   # 大廳選的職業（F3）
 		world.difficulty_mode = net.difficulty()
+		world.friendly_fire = net.lobby_friendly_fire
+	else:
+		world.friendly_fire = Config.NET.friendly_fire   # 單機沒有隊友；從連線回到單機時不留著房主選的
 	if args.start_class != &"":
 		world.player_classes[World.HOST_PEER_ID] = args.start_class
 	if EventDefs.MODES.has(args.difficulty):
@@ -377,6 +380,7 @@ func _connect_net() -> void:
 	hud.class_select.class_chosen.connect(func(id: StringName) -> void: net.set_choice(id, net.is_ready(net.local_peer_id())))
 	hud.class_select.ready_toggled.connect(func(on: bool) -> void: net.set_choice(net.class_of(net.local_peer_id()), on))
 	hud.class_select.difficulty_chosen.connect(net.set_difficulty)
+	hud.class_select.friendly_fire_chosen.connect(net.set_friendly_fire)
 	hud.class_select.net_start_pressed.connect(start_net_game)
 	hud.class_select.leave_pressed.connect(leave_net.bind(""))
 
@@ -430,6 +434,7 @@ func _on_game_started(_peers: Array) -> void:
 	net_client = NetClient.new(_local_peer)
 	net_client.world.player_classes = net.classes()   # 快照建立角色時套用職業（F3）
 	net_client.world.difficulty_mode = net.difficulty()   # HUD 的「難度 D」與回報文字在客戶端自己算
+	net_client.world.friendly_fire = net.lobby_friendly_fire   # 客戶端預測打中回饋時也照房主選的
 	_use_world(net_client.world)
 	is_in_lobby = false
 	_elapsed = 0.0
@@ -585,7 +590,7 @@ func _refresh_net_panel() -> void:
 	if state == &"lobby_host" or state == &"lobby_client":
 		var room := "房號 %s" % net.room_code if hud.net_panel.method == &"room" else "區網"
 		var code := net.room_code if hud.net_panel.method == &"room" else ""
-		hud.class_select.show_lobby(state, peers, net.local_peer_id(), net.lobby_choices, net.difficulty(), "%s（%d / %d 人）" % [room, peers.size(), Config.NET.max_players], code)
+		hud.class_select.show_lobby(state, peers, net.local_peer_id(), net.lobby_choices, net.difficulty(), "%s（%d / %d 人）" % [room, peers.size(), Config.NET.max_players], code, net.lobby_friendly_fire)
 	elif hud.class_select.mode != &"single":
 		hud.class_select.close()
 
@@ -596,7 +601,7 @@ func _physics_process(_delta: float) -> void:
 	_stepped_this_tick = false
 	input_collector.enabled = not (is_at_title or is_menu_open or is_paused or hud.net_panel.is_typing())
 	var shown := net_client.world if mode == Mode.CLIENT and net_client != null else world
-	input_collector.vote_pending = input_collector.enabled and shown.event.awaits_vote(_local_peer)
+	input_collector.vote_pending = input_collector.enabled and shown.event.in_vote(shown, _local_peer)
 	if mode == Mode.CLIENT:
 		_client_physics()
 	else:

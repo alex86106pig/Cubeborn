@@ -723,6 +723,7 @@ static func _menu_room() -> Vector2:
 static func check_run_log_friendly() -> String:
 	var w := World.new(&"test_arena")
 	w.spawn_packs = false
+	w.friendly_fire = true   # 大廳的誤傷開關（預設關）
 	w.reset(7, [1, 2])
 	w.spawner.finished = true
 	_worlds.append(w)

@@ -202,7 +202,7 @@ const NET := {
 	"input_queue_max": 3,            # 房主端某玩家累積的輸入超過這麼多筆就合併兩筆（避免延遲越積越多）
 	"snap_distance": 2.5,            # 本機預測與房主位置差超過這麼多就直接跳過去（不平滑）
 	"correction_epsilon": 0.001,     # 差距小於這個就不修正
-	"friendly_fire": true,           # 誤傷（使用者 2026-10-23 決定）：玩家的攻擊也會打到其他玩家（不會打到自己）
+	"friendly_fire": false,          # 誤傷的預設（大廳房主可切，World.friendly_fire）：開著時玩家的攻擊也會打到其他玩家（不會打到自己）；2026-10-23 決定開，2026-11-05 許家慶改成大廳開關、預設關
 	"enemy_hp_per_extra_player": 0.5,   # 每多 1 位玩家，敵人血量 +50%（2 人 ×1.5、4 人 ×2.5）
 	"debug_latency_ms": 0,           # 模擬延遲（單程，毫秒），--net-latency=100 設定
 	"debug_loss": 0.0,               # 模擬掉包比例（只對 unreliable），--net-loss=0.1 設定

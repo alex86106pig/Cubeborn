@@ -380,7 +380,7 @@ static func check_next_floor() -> String:
 	return ""
 
 
-# 多人投票：一人在墳墓旁按 F 發起（他算同意）；別人 Esc 反對就取消；全員 Enter 同意或 VOTE.time 秒到就走；死掉的不用投（在最後一層投）
+# 多人投票：一人在墳墓旁按 F 發起（他算同意）；別人 Esc 反對就取消，發起人自己 Esc 也取消；全員 Enter 同意或 VOTE.time 秒到就走；死掉的不用投（在最後一層投）
 static func _check_vote() -> String:
 	var w := _world([1, 2, 3])
 	w.sync_floor(EventDefs.DIG.last_floor)   # 投票通過 = 通關，才看得出有沒有走
@@ -395,6 +395,15 @@ static func _check_vote() -> String:
 	ev = _step(w, 1, {3: _cmd(InputCmd.BTN_VOTE_NO)})
 	if w.event.is_voting() or w.is_over or _named(ev, "vote:canceled").size() != 1:
 		return "有人按 Esc 反對應取消投票（投票中 %s、通關 %s）" % [w.event.is_voting(), w.is_over]
+	# 發起人自己按 Esc 也能取消（原本已經算同意，Esc 被忽略）；同意過再按 Enter 不重複算
+	_step(w, 1)
+	_step(w, 1, {1: _cmd(InputCmd.BTN_INTERACT)})
+	_step(w, 1, {1: _cmd(InputCmd.BTN_VOTE_YES)})
+	if w.event.vote_yes != [1] or not w.event.in_vote(w, 1):
+		return "發起人再按 Enter 不應重複算同意（同意 %s）、發起人也算在投票中" % [w.event.vote_yes]
+	ev = _step(w, 1, {1: _cmd(InputCmd.BTN_VOTE_NO)})
+	if w.event.is_voting() or w.is_over or _named(ev, "vote:canceled").size() != 1:
+		return "發起人按 Esc 應取消投票（投票中 %s、通關 %s）" % [w.event.is_voting(), w.is_over]
 	# 再發起：全員同意就走
 	_step(w, 1)
 	_step(w, 1, {1: _cmd(InputCmd.BTN_INTERACT)})

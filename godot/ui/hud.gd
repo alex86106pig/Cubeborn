@@ -594,7 +594,7 @@ func _update_dig() -> void:
 	_dig_name.text = EventDefs.exit_style(world.floor_num).bar % [roundi(EventDefs.ERUPT.interval), roundi(EventDefs.ERUPT.progress * 100.0)]
 
 
-# 投票中：誰發起、幾人同意、剩幾秒；自己還沒同意時提示 Enter / Esc
+# 投票中：誰發起、幾人同意、剩幾秒；自己還沒同意時提示 Enter / Esc，同意過的提示 Esc 取消
 func _update_vote(ev: DigEvent) -> void:
 	_vote.visible = world.has_floors() and ev.is_voting()
 	if not _vote.visible:
@@ -608,7 +608,11 @@ func _update_vote(ev: DigEvent) -> void:
 	var dest := "通關" if world.floor_num >= EventDefs.DIG.last_floor else "前往第 %d 層" % (world.floor_num + 1)
 	if ev.vote_door >= 0 and ev.vote_door < DigEvent.doors(world).size():
 		dest = WorldLabels.door_text(world, DigEvent.doors(world)[ev.vote_door])
-	var ask := "　[Enter] 同意　[Esc] 反對" if ev.awaits_vote(local_peer) else ""
+	var ask := ""
+	if ev.awaits_vote(local_peer):
+		ask = "　[Enter] 同意　[Esc] 反對"
+	elif ev.in_vote(world, local_peer):
+		ask = "　[Esc] 取消"   # 同意過的（含發起人）也能反悔
 	_vote.text = "%s 想%s（%d / %d 同意，%d 秒）%s" % [who, dest, ev.vote_yes.size(), voters, ceili(ev.vote_left), ask]
 
 

@@ -51,7 +51,7 @@ const REST_MAX := 180.0
 const SUMMONER_RANGE := 15.0           # 這麼近有帶召喚詞條的怪就先打它（不然叫出來的打不完）
 const RANGED := [&"staff", &"shortbow", &"longbow"]
 const RANGED_STANDOFF := 0.7           # 遠程離目標的距離 = 普攻射程 × 這個比例（夾在 5~9）
-const SPLASH := 2.0                    # 組隊：隊友離目標這麼近，遠程的爆炸 / 範圍招會一起打到（Config.NET.friendly_fire）
+const SPLASH := 2.0                    # 組隊：隊友離目標這麼近，遠程的爆炸 / 範圍招會一起打到（World.friendly_fire）
 
 var w: World
 var p: Player

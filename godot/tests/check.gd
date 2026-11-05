@@ -157,7 +157,7 @@ func _initialize() -> void:
 	_check("蒙皮小怪（D5 效能）：骷髏戰士 / 弓手 / 腐屍合成一個蒙皮網格（≤ 2 個網格、頂點數與原本零件相同），關節姿勢寫進骨架", MonsterChecks.check_skinned_rig)
 	_check("挖墳（D6）：DIG.range 內按住 F 開始事件並挖墳；挖墳中不能移動、跳，照樣轉向，被打不中斷不被擊退；總量 DIG.time × 活著的人數、一起挖速度相加、放手不掉（DIG.decay）、噴怪 +ERUPT.progress；挖完出口打開", EventChecks.check_dig)
 	_check("事件難度（D6）：怪物生命 × difficulty_mul；生怪間隔遞減夾在 interval_min；每批隻數隨難度與人數增加；魔法 / 稀有機率隨難度；挖墳前不冒怪、開挖就開始怪潮、難度每秒 +per_second；選的難度（簡單 / 普通 / 困難）讓上升 ×0.75 / ×1 / ×1.5、重新開始保留；挖墳點噴怪（墳土隆起預警、不畫圈、數量、下一層難度、拋物線落地）；挖完停怪、難度不漲、場上的怪留著", EventChecks.check_difficulty)
-	_check("出口與換層（D6）：挖完不會自動走；墳墓旁按 F，單人最後一層直接通關；換關先過場（level:leaving、LEAVE.cover 秒後才換，收圈在那之前全黑、地形換了才出關卡卡片與獎勵 / 鐵砧再打開）；多人投票（Esc 反對取消、全員同意或 VOTE.time 秒到就走、陣亡的不用投）；換層回出生點、基礎難度 +per_floor、保留靈魂與背包、地上與怪物清空、寶箱重放、事件歸零；每層的出口外觀照 EXIT_STYLES（第 1 層墳墓、第 2 層石棺：棺蓋跟著進度滑開，打開後是發光的洞）；每過一個小關怪物生命 +stage_hp、第 2 層算過完第 1 層的小關",
+	_check("出口與換層（D6）：挖完不會自動走；墳墓旁按 F，單人最後一層直接通關；換關先過場（level:leaving、LEAVE.cover 秒後才換，收圈在那之前全黑、地形換了才出關卡卡片與獎勵 / 鐵砧再打開）；多人投票（Esc 反對取消、發起人也能 Esc 取消、全員同意或 VOTE.time 秒到就走、陣亡的不用投）；換層回出生點、基礎難度 +per_floor、保留靈魂與背包、地上與怪物清空、寶箱重放、事件歸零；每層的出口外觀照 EXIT_STYLES（第 1 層墳墓、第 2 層石棺：棺蓋跟著進度滑開，打開後是發光的洞）；每過一個小關怪物生命 +stage_hp、第 2 層算過完第 1 層的小關",
 		all.bind([EventChecks.check_next_floor, ViewChecks.check_exit_looks, EventChecks.check_stage_exit, ViewChecks.check_level_transition]))
 	_check("Boss（D6）：挖墳地圖開局在 boss_room 裡巡邏、沒看到玩家不追、不出範圍；前方視野或貼近看到玩家、被打就開始追、不限範圍；打倒不通關，掉 1 把武器、1 個石棺的遺物、Boss 靈魂", EventChecks.check_boss_reward)
 	_check("屍體與冤魂（D6）：多人時死亡留下屍體、撿進背包；背著換層出現冤魂，打倒後死者在那裡復活、屍體消失；沒人帶屍體就沒有冤魂", EventChecks.check_corpse_ghost)
@@ -249,7 +249,7 @@ func _initialize() -> void:
 		all.bind([NetChecks.check_codec, NetChecks.check_snapshot_size.bind(feel), NetChecks.check_snapshot_loadout, NetChecks.check_local_packs, NetChecks.check_net_stage]))
 	_check("網頁連線配對（v0.36.0）：PeerJS 網址、房主 ID、房號（4 碼、不含易混字）、訊息格式、伺服器訊息對應的訊號；桌面版 IP 與房號兩種都能用", NetChecks.check_web_signaling)
 	_check("桌面版 WebRTC（v0.40.0）：同一程序兩條連線交換 SDP，照 NetSession 的設定建房主 / 客戶端，5 秒內連上且封包收得到；網頁版接收緩衝區至少 1024 KB", NetChecks.check_desktop_webrtc.bind(feel))
-	_check("誤傷（C2）：玩家揮劍打得到前方的隊友、打不到自己；魔彈打得到隊友、不打發射者；單機目標不含自己；幫隊友回血的技能（聖光柱）只回血不打隊友",
+	_check("誤傷（C2）：大廳開關關著（預設）打不到隊友；開著時玩家揮劍打得到前方的隊友、打不到自己；魔彈打得到隊友、不打發射者；單機目標不含自己；幫隊友回血的技能（聖光柱）只回血不打隊友",
 		CheckKit.all_of.bind([NetChecks.check_friendly_fire, NetChecks.check_heal_skill_spares_mates]))
 	_check("人數調整（C3）：敵人數量不變、血量每多 1 人 +50%（Boss 也是）", NetChecks.check_player_count_scaling)
 	_check("倒下與救援（C4）：多人時生命歸零先倒地假死、down_time 秒沒人救才死亡、最後一人倒下 game:defeat、單機直接死亡；範圍內按住 F 累積 revive_time 秒救起、期間不能動但會轉向、放開進度衰退、救起 revive_hp_ratio 的血",

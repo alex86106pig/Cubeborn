@@ -367,7 +367,7 @@ class ShovelGrab extends Behavior:
 			var en := e as Enemy
 			if en != null and not en.is_dead and en.team != p.team and not en.is_boss() and en.grabbed_by == 0 and en.buried_timer <= 0.0:
 				candidates.append(en)
-		if Config.NET.friendly_fire:
+		if p.world.friendly_fire:
 			for mate in p.world.player_list:
 				if mate != p and mate.is_targetable() and mate.grabbed_by == 0 and mate.held_id == 0 and mate.stun_timer <= 0.0:
 					candidates.append(mate)

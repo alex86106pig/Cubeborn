@@ -1237,6 +1237,7 @@ static func check_shovel_teammate() -> String:
 	for mode: StringName in [&"throw", &"bury", &"escape"]:
 		var w := World.new(&"test_arena")
 		w.spawn_packs = false
+		w.friendly_fire = true   # 大廳的誤傷開關（預設關）
 		w.reset(12345, [World.HOST_PEER_ID, mate_peer])
 		w.spawner.finished = true
 		_worlds.append(w)

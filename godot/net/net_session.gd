@@ -24,6 +24,7 @@ var is_started := false
 var lobby_peers: Array[int] = []
 var lobby_choices: Dictionary = {}   # 大廳選擇（F3）：peer id → [職業 id（String）, 準備好了]；房主決定、廣播給所有人
 var lobby_difficulty := String(EventDefs.DEFAULT_MODE)   # 大廳的難度（EventDefs.MODES）：房主選、跟名單一起廣播
+var lobby_friendly_fire: bool = Config.NET.friendly_fire   # 大廳的誤傷開關（World.friendly_fire）：房主選、跟名單一起廣播
 var latency_ms: int = Config.NET.debug_latency_ms
 var loss: float = Config.NET.debug_loss
 
@@ -86,6 +87,7 @@ func host(port: int = Config.NET.port) -> Error:
 	lobby_peers = [World.HOST_PEER_ID]
 	lobby_choices = {World.HOST_PEER_ID: default_choice(true)}
 	lobby_difficulty = String(EventDefs.DEFAULT_MODE)
+	lobby_friendly_fire = Config.NET.friendly_fire
 	lobby_changed.emit(lobby_peers.duplicate())
 	return OK
 
@@ -101,6 +103,7 @@ func join(address: String, port: int = Config.NET.port) -> Error:
 	lobby_peers = []
 	lobby_choices = {}
 	lobby_difficulty = String(EventDefs.DEFAULT_MODE)
+	lobby_friendly_fire = Config.NET.friendly_fire
 	return OK
 
 
@@ -112,6 +115,7 @@ func host_room() -> Error:
 	lobby_peers = [World.HOST_PEER_ID]
 	lobby_choices = {World.HOST_PEER_ID: default_choice(true)}
 	lobby_difficulty = String(EventDefs.DEFAULT_MODE)
+	lobby_friendly_fire = Config.NET.friendly_fire
 	_room_tries = 0
 	return _open_room()
 
@@ -241,6 +245,7 @@ func close() -> void:
 	lobby_peers = []
 	lobby_choices = {}
 	lobby_difficulty = String(EventDefs.DEFAULT_MODE)
+	lobby_friendly_fire = Config.NET.friendly_fire
 	_outbox.clear()
 
 
@@ -250,7 +255,7 @@ func start_game() -> void:
 	if _signal != null:
 		_signal.close()
 		_signal = null
-	_send(func() -> void: _rpc_start.rpc(lobby_peers, lobby_choices, lobby_difficulty), false)
+	_send(func() -> void: _rpc_start.rpc(lobby_peers, lobby_choices, lobby_difficulty, lobby_friendly_fire), false)
 
 
 func send_inputs(arrays: Array) -> void:
@@ -317,7 +322,7 @@ func _on_connected() -> void:
 
 func _broadcast_lobby() -> void:
 	lobby_changed.emit(lobby_peers.duplicate())
-	_send(func() -> void: _rpc_lobby.rpc(lobby_peers, lobby_choices, lobby_difficulty), false)
+	_send(func() -> void: _rpc_lobby.rpc(lobby_peers, lobby_choices, lobby_difficulty, lobby_friendly_fire), false)
 
 
 # ───────── 大廳選職業與準備（F3） ─────────
@@ -388,20 +393,33 @@ func difficulty() -> StringName:
 	return m if EventDefs.MODES.has(m) else EventDefs.DEFAULT_MODE
 
 
+# 房主切誤傷：跟難度一樣，所有客戶端的「準備好了」重設
+func set_friendly_fire(on: bool) -> void:
+	if not is_host or is_started or on == lobby_friendly_fire:
+		return
+	lobby_friendly_fire = on
+	for id: int in lobby_choices:
+		if id != World.HOST_PEER_ID:
+			lobby_choices[id][1] = false
+	_broadcast_lobby()
+
+
 @rpc("authority", "call_remote", "reliable", CHANNEL_RELIABLE)
-func _rpc_lobby(peers: Array, choices: Dictionary, p_difficulty: String) -> void:
+func _rpc_lobby(peers: Array, choices: Dictionary, p_difficulty: String, p_friendly_fire: bool) -> void:
 	lobby_peers.assign(peers)
 	lobby_choices = choices
 	lobby_difficulty = p_difficulty
+	lobby_friendly_fire = p_friendly_fire
 	lobby_changed.emit(peers)
 
 
 @rpc("authority", "call_remote", "reliable", CHANNEL_RELIABLE)
-func _rpc_start(peers: Array, choices: Dictionary, p_difficulty: String) -> void:
+func _rpc_start(peers: Array, choices: Dictionary, p_difficulty: String, p_friendly_fire: bool) -> void:
 	is_started = true
 	lobby_peers.assign(peers)
 	lobby_choices = choices
 	lobby_difficulty = p_difficulty
+	lobby_friendly_fire = p_friendly_fire
 	game_started.emit(peers)
 
 

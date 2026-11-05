@@ -14,6 +14,7 @@ var entities: Dictionary = {}        # id -> Entity
 var players: Dictionary = {}         # peer_id -> Player
 var player_classes: Dictionary = {}  # peer id → 職業（F2，ClassDefs）；reset 不清，重新開始照舊
 var difficulty_mode: StringName = EventDefs.DEFAULT_MODE   # 選角畫面選的難度（EventDefs.MODES）；reset 不清，重新開始照舊
+var friendly_fire: bool = Config.NET.friendly_fire   # 誤傷：大廳房主選（NetSession.lobby_friendly_fire）；reset 不清
 var player_list: Array[Player] = []  # 同 players.values()（加入順序），每步大量查詢時不必每次配置新陣列（D5）
 var enemies: Array[Entity] = []
 var allies: Array[Entity] = []       # enemies 裡隊伍是玩家方的（G6 骷髏僕從）：怪的攻擊只要多看這幾隻，不必掃全部 enemies

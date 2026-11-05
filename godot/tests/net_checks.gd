@@ -111,7 +111,20 @@ static func _named(events: Array[Dictionary], name: String) -> Array[Dictionary]
 # ───────── C2：誤傷、人數血量 ─────────
 
 static func check_friendly_fire() -> String:
+	# 大廳的誤傷開關關著（預設）：揮劍打不到前方的隊友、目標不含隊友
+	var off := _world([1, 2])
+	off.players[2].pos = Vector2(0, 1.2)
+	var off_events: Array[Dictionary] = []
+	for i in 20:
+		off.step({1: _cmd(Vector2.ZERO, InputCmd.BTN_ATTACK, Vector2(0, 5)), 2: _cmd(Vector2.ZERO)}, DT)
+		off_events.append_array(off.events)
+	var off_hit := _named(off_events, "entity:damaged").size()
+	var off_targets := Combat.hostiles_of(off, &"player", off.players[1].id).size()
+	off.clear()
+	if off.friendly_fire or off_hit != 0 or off_targets != 0:
+		return "誤傷關著（預設 %s）時不應打到隊友：打中 %d 下、目標 %d 個" % [off.friendly_fire, off_hit, off_targets]
 	var w := _world([1, 2])
+	w.friendly_fire = true
 	var p1: Player = w.players[1]
 	var p2: Player = w.players[2]
 	p1.pos = Vector2(0, 0)
@@ -130,6 +143,7 @@ static func check_friendly_fire() -> String:
 	# 法杖魔彈：不會打到發射者，會打到前方的隊友
 	if err == "":
 		var w2 := _world([1, 2])
+		w2.friendly_fire = true
 		var a: Player = w2.players[1]
 		var b: Player = w2.players[2]
 		a.equip_weapon(&"staff")
@@ -1251,10 +1265,12 @@ static func check_lobby_classes() -> String:
 	cs.show_lobby(&"lobby_host", [1, 2, 3], 1, choices, &"normal", "")
 	var can_start: bool = cs.start_button.visible and not cs.start_button.disabled and cs.class_buttons[ClassDefs.ORDER[0]].button_pressed
 	# 客戶端：準備鈕、看不到開始鈕、難度不能改（只有房主選的那檔能按）；自己選的職業按下去、站中間
-	cs.show_lobby(&"lobby_client", [1, 2, 3], 2, choices, &"hard", "")
+	var host_ff_ok: bool = cs.friendly_fire_button.visible and not cs.friendly_fire_button.disabled and cs.friendly_fire_button.text == "誤傷隊友：關"
+	cs.show_lobby(&"lobby_client", [1, 2, 3], 2, choices, &"hard", "", "", true)
 	var client_ok: bool = cs.ready_button.visible and cs.ready_button.text == "取消準備" and not cs.start_button.visible \
 		and cs.class_buttons[&"arcanist"].button_pressed and cs._lineup[0][0] == &"arcanist" \
-		and cs.difficulty_buttons[&"easy"].disabled and cs.difficulty_buttons[&"hard"].button_pressed
+		and cs.difficulty_buttons[&"easy"].disabled and cs.difficulty_buttons[&"hard"].button_pressed \
+		and host_ff_ok and cs.friendly_fire_button.disabled and cs.friendly_fire_button.text == "誤傷隊友：開"
 	# 預選即時更新：房主收到別人換職業（還沒準備）再刷新，舞台上那個人跟著換，其他人的模型不重建
 	cs.show_lobby(&"lobby_host", [1, 2, 3], 1, choices, &"normal", "")
 	var rigs_before: Array = cs._rigs.duplicate()
@@ -1274,6 +1290,10 @@ static func check_lobby_classes() -> String:
 	var reset_ok: bool = s2.difficulty() == &"hard" and not s2.lobby_choices[2][1] and s2.lobby_choices[1][1]
 	s2.lobby_difficulty = "nonsense"
 	var bad_falls_back: bool = s2.difficulty() == EventDefs.DEFAULT_MODE
+	# 房主切誤傷：跟難度一樣重設客戶端的準備
+	s2.lobby_choices[2][1] = true
+	s2.set_friendly_fire(true)
+	reset_ok = reset_ok and s2.lobby_friendly_fire and not s2.lobby_choices[2][1]
 	s2.free()
 	var locked_ok := true
 	for id: StringName in ClassDefs.PLACEHOLDERS:
@@ -1281,7 +1301,7 @@ static func check_lobby_classes() -> String:
 	for id: StringName in ClassDefs.ORDER:
 		locked_ok = locked_ok and ClassDefs.is_pickable(id) != ClassDefs.CLASSES[id].get("locked", false)
 	if not reset_ok or not bad_falls_back or not locked_ok:
-		return "房主改難度應重設客戶端準備 %s、不認得的難度當預設 %s、佔位與鎖住的職業不能選 %s" % [reset_ok, bad_falls_back, locked_ok]
+		return "房主改難度 / 誤傷應重設客戶端準備 %s、不認得的難度當預設 %s、佔位與鎖住的職業不能選 %s" % [reset_ok, bad_falls_back, locked_ok]
 	# 開局：房主 World 照職業建角色；客戶端從快照建的角色也套用（自己的移動預測用同樣的移速）
 	var w := World.new(&"test_arena")
 	_made.append(w)

@@ -884,7 +884,7 @@ static func check_classes() -> String:
 		w.reset(2)
 		if _player(w).class_id != id:
 			return "重新開始應保留職業"
-	# 騎士被隊友從背後打到減半、正面照常（誤傷，Config.NET.friendly_fire）
+	# 騎士被隊友從背後打到減半、正面照常（誤傷，World.friendly_fire）
 	var g: Dictionary = ClassDefs.CLASSES[&"guardian"]
 	var kw := _new_world()
 	var knight := Player.new(kw, 7)

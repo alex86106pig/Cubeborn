@@ -113,9 +113,15 @@ func is_voting() -> bool:
 	return vote_by != 0
 
 
-# 投票中、這位玩家還沒同意（畫面顯示 Enter / Esc 提示、輸入攔下 Esc 用）
+# 投票中、這位玩家還沒同意（畫面顯示 Enter / Esc 提示）
 func awaits_vote(peer_id: int) -> bool:
 	return is_voting() and not vote_yes.has(peer_id)
+
+
+# 投票中、這位玩家還活著：Enter / Esc 算投票（輸入攔下 Esc 不開選單）；同意過的（含發起人）也能按 Esc 取消
+func in_vote(world: World, peer_id: int) -> bool:
+	var p: Player = world.players.get(peer_id)
+	return is_voting() and p != null and not p.is_dead
 
 
 # 挖完一層要的總量：每位活著（含倒地）的玩家 DIG.time 秒
@@ -288,13 +294,15 @@ func request_exit(world: World, p: Player) -> void:
 	_check_vote(world)
 
 
-# Enter 同意 / Esc 反對（權威端）；不在投票中、已經同意過的不算
+# Enter 同意 / Esc 反對（權威端）；不在投票中、死掉的不算；同意過的（含發起人）按 Esc 也能取消，再按 Enter 不重複算
 func cast_vote(world: World, p: Player, agree: bool) -> void:
-	if not is_voting() or p.is_dead or vote_yes.has(p.peer_id):
+	if not is_voting() or p.is_dead:
 		return
 	if not agree:
 		world.emit_event("vote:canceled", {"player_id": p.id, "peer_id": p.peer_id})
 		_clear_vote()
+		return
+	if vote_yes.has(p.peer_id):
 		return
 	vote_yes.append(p.peer_id)
 	world.emit_event("vote:agreed", {"player_id": p.id, "peer_id": p.peer_id})

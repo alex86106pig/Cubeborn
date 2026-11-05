@@ -10,6 +10,7 @@ signal start_pressed(class_id: StringName, difficulty: StringName)   # 單人「
 signal back_pressed                                 # 單人「返回」
 signal class_chosen(class_id: StringName)           # 大廳：選職業
 signal difficulty_chosen(mode: StringName)          # 大廳：房主選難度
+signal friendly_fire_chosen(on: bool)               # 大廳：房主切誤傷隊友
 signal ready_toggled(ready: bool)                   # 大廳：客戶端「準備好了」/「取消準備」
 signal net_start_pressed                            # 大廳：房主「開始遊戲」
 signal leave_pressed                                # 大廳：「離開」
@@ -67,6 +68,8 @@ var tags: Array[Label] = []          # 角色頭上的「P1 守墓騎士」
 var drag_hint := UiKit.label("↔ 拖動旋轉", UiKit.FONT_NOTE, Color(1, 1, 1, 0.45), 1)
 var _skills := VBoxContainer.new()
 var _diff_note := UiKit.label("房主選", UiKit.FONT_NOTE, Color(1, 1, 1, 0.6), 1)
+var friendly_fire := Config.NET.friendly_fire
+var friendly_fire_button := UiKit.button("", UiKit.BUTTON_M)   # 大廳才顯示：誤傷隊友開 / 關（房主切，客戶端只看）
 var _ready := false
 var _lineup: Array = []              # 舞台上要站的人：[職業, 標籤文字]，第一個是自己
 var _sim_world: World = null         # 預覽用的 Player 要有 World（換武器拿 uid）；只建一次，不碰遊戲的 World
@@ -137,6 +140,14 @@ func _init() -> void:
 		bottom.add_child(b)
 	_diff_note.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	bottom.add_child(_diff_note)
+	friendly_fire_button.custom_minimum_size.x = 230
+	friendly_fire_button.toggle_mode = true
+	friendly_fire_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	friendly_fire_button.pressed.connect(func() -> void:
+		if mode == &"lobby_host":
+			friendly_fire_chosen.emit(not friendly_fire)   # 等房主廣播回來才更新（show_lobby）
+		_refresh())
+	bottom.add_child(friendly_fire_button)
 	var fill_bottom := Control.new()
 	fill_bottom.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bottom.add_child(fill_bottom)
@@ -179,9 +190,11 @@ func open_single() -> void:
 
 # 大廳（main.gd 每次名單變動都呼叫）：choices = NetSession.lobby_choices（peer id → [職業, 準備好了]）
 # copy_text：「複製房號」放進剪貼簿的文字（區網連線沒有房號就是空的，按鈕不顯示）
-func show_lobby(p_mode: StringName, peers: Array, local_peer: int, choices: Dictionary, p_difficulty: StringName, room_text: String, copy_text: String = "") -> void:
+# p_friendly_fire：誤傷隊友（NetSession.lobby_friendly_fire）
+func show_lobby(p_mode: StringName, peers: Array, local_peer: int, choices: Dictionary, p_difficulty: StringName, room_text: String, copy_text: String = "", p_friendly_fire: bool = Config.NET.friendly_fire) -> void:
 	mode = p_mode
 	difficulty = p_difficulty
+	friendly_fire = p_friendly_fire
 	room_label.text = room_text
 	_copy_text = copy_text
 	var mine: Array = choices.get(local_peer, NetSession.default_choice(local_peer == World.HOST_PEER_ID))
@@ -269,6 +282,10 @@ func _refresh() -> void:
 	ready_button.visible = mode == &"lobby_client"
 	roster.visible = not single
 	_diff_note.visible = not single
+	friendly_fire_button.visible = not single
+	friendly_fire_button.text = "誤傷隊友：%s" % ("開" if friendly_fire else "關")
+	friendly_fire_button.set_pressed_no_signal(friendly_fire)
+	friendly_fire_button.disabled = mode == &"lobby_client"
 	for m: StringName in difficulty_buttons:
 		var b: Button = difficulty_buttons[m]
 		b.set_pressed_no_signal(m == difficulty)
