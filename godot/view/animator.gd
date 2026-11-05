@@ -9,7 +9,6 @@ const POSE_OF := {
 	&"arrowFan": &"bow",
 	&"chargedShot": &"bowCharge",
 	&"shadowStep": &"thrust",
-	&"chargedThrust": &"thrust",   # 蓄力時手往後拉、放開往前刺
 	&"holyCircle": &"arcaneBurst",
 	&"torchStance": &"torchRaise",
 	&"fireBreath": &"arcaneBurst",
@@ -228,7 +227,7 @@ func _pose_for(behavior: StringName) -> StringName:
 # 刺（雙匕首、影步）：swing_dir 1 右手、-1 左手輪流往前刺；終結技雙手一起刺、身體前傾
 func _pose_thrust(idle: Dictionary, a: Dictionary, e: float) -> void:
 	var fin: bool = a.get("is_finisher", false)
-	# 左手沒拿匕首（單拿一把、長劍突刺）就一律右手刺
+	# 左手沒拿匕首就一律右手刺
 	var has_left := rig.weapon_left != null
 	var right: bool = fin or a.get("swing_dir", 1) >= 0 or not has_left
 	var left: bool = has_left and (fin or a.get("swing_dir", 1) < 0)

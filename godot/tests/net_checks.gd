@@ -135,7 +135,7 @@ static func check_friendly_fire() -> String:
 		events.append_array(w.events)
 	var hits := _named(events, "entity:damaged")
 	var err := ""
-	var want := p1.move_damage(p1.weapon.attack)   # 第一下普攻（長劍基礎 × 100%），P2 沒有護甲
+	var want := p1.move_damage(p1.weapon.attack)   # 第一下普攻（劍盾基礎 × 100%），P2 沒有護甲
 	if hits.is_empty() or hits[0].target_id != p2.id or absf(hits[0].amount - want) > 1e-3:
 		err = "P1 揮劍應打中前方的 P2 造成 %.1f 傷害，實際 %s" % [want, hits]
 	elif hits.any(func(e: Dictionary) -> bool: return e.target_id == p1.id):
@@ -344,7 +344,7 @@ static func check_hit_prediction(feel: Array[String]) -> String:
 	var idle := _cmd(Vector2.ZERO)
 	var press := _cmd(Vector2.ZERO, InputCmd.BTN_ATTACK)
 	# 單機出招到打中幾步（基準）
-	var a: Dictionary = WeaponDefs.WEAPONS[&"longsword"].attack
+	var a: Dictionary = WeaponDefs.WEAPONS[&"swordShield"].attack
 	var solo := ceili(a.windup / DT) + 1
 	var s: Array = setup.call(6)
 	var link: _Link = s[0]
@@ -533,7 +533,7 @@ static func check_net_gravekeeper() -> String:
 	return ""
 
 
-# D4：客戶端把背包的法杖拖到主手（長劍與木盾回背包）、拖曳合成背包裡兩把白法杖；Boss 掉的武器兩邊都看得到
+# D4：客戶端把背包的法杖換上手（劍盾回背包）、拖曳合成背包裡兩把白法杖；Boss 掉的武器兩邊都看得到
 static func check_net_weapons() -> String:
 	var link := _Link.new(43, [1, 2], 3, 0.0, false)
 	var hw := link.host_world
@@ -552,8 +552,8 @@ static func check_net_weapons() -> String:
 	link.step(_cmd(Vector2.ZERO), equip)
 	idle.call(20)
 	var me := link.client.local_player()
-	if me.weapon_id != &"staff" or hp2.weapon_id != &"staff" or not me.weapon_slots[Loadout.OFF].is_empty() or me.inventory.find(&"x").size() > 0:
-		return "法杖拖到主手後兩邊都應拿法杖、副手空：房主 %s、客戶端 %s %s" % [hp2.weapon_id, me.weapon_id, me.weapon_slots]
+	if me.weapon_id != &"staff" or hp2.weapon_id != &"staff" or me.weapon_slots.size() != 1 or me.inventory.find(&"x").size() > 0:
+		return "法杖換上手後兩邊都應拿法杖、武器欄 1 格：房主 %s、客戶端 %s %s" % [hp2.weapon_id, me.weapon_id, me.weapon_slots]
 	CheckKit._forge_near(hw, hp2)   # 合成要在鍛造祭壇旁（第 8 步）；客戶端從快照建出來
 	var merge := _cmd(Vector2.ZERO)
 	merge.inv_ops = [[InputCmd.OP_MERGE, "m1", "m2"]]
@@ -1325,7 +1325,7 @@ static func check_lobby_classes() -> String:
 	return ""
 
 
-# 背包 / 主副手 / 技能等級：變了之後 loadout_repeat_ticks 內每份快照都帶，之後只有每 loadout_refresh_ticks 帶一次（其他填 null）；
+# 背包 / 手上的武器 / 技能等級：變了之後 loadout_repeat_ticks 內每份快照都帶，之後只有每 loadout_refresh_ticks 帶一次（其他填 null）；
 # 客戶端收到 null 沿用上次的背包；房主改了背包，下一份快照就帶新的
 static func check_snapshot_loadout() -> String:
 	var w := _world([1, 2])
@@ -1349,7 +1349,7 @@ static func check_snapshot_loadout() -> String:
 		return "開局的快照應帶背包"
 	var omitted: Array = steps_to.call(func(x: Array) -> bool: return x[NetCodec.P_INV] == null)
 	if omitted.is_empty() or omitted[NetCodec.P_SLOTS] != null or omitted[NetCodec.P_SKILL_LV] != null:
-		return "背包沒變時應有快照不帶背包 / 主副手 / 技能等級：%s" % [omitted.slice(NetCodec.P_INV, NetCodec.P_SLOTS + 1)]
+		return "背包沒變時應有快照不帶背包 / 手上的武器 / 技能等級：%s" % [omitted.slice(NetCodec.P_INV, NetCodec.P_SLOTS + 1)]
 	var cp: Player = client.world.players.get(2)
 	var hp: Player = w.players[2]
 	if cp == null or cp.inventory.to_array() != hp.inventory.to_array() or cp.weapon_slots.size() != hp.weapon_slots.size():

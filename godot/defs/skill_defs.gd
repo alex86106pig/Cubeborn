@@ -2,7 +2,7 @@
 # 寶石座的技能也是 ItemDefs 的條目（kind &"skill"，同一個 id：名稱、說明、形狀在那邊），這裡放動作與數字
 # 寶石座的技能耗魔（mana，Player.mana_cost_of；放完同一格 Config.MANA.cast_gap 秒內不能再放）、沒有冷卻；
 # 藥水與插火把是 mode &"charges"：有使用次數，cooldown 是防連按間隔
-# weapons：能鑲在哪幾種武器上（寶石座在那把武器的格子裡）；tags：輔助道具看這個（TAGS）
+# weapons：寶石座時代的「能鑲在哪把武器」，觸發袋改版後技能不限武器；現在有這欄 = 是技能（gem_skill_ids），第一把是平衡表量傷害時拿的武器；tags：修飾看這個（TAGS）
 # 傷害 damage_pct 是手上武器基礎傷害的倍數（Player.pct_damage，含攻擊力與物理 / 屬性傷害）；等級每升 1 級傷害 +LEVEL.damage、耗魔 −LEVEL.mana
 # 耗魔 = 強度：照 docs/設計方向.md「技能強度」，耗魔 ÷ 武器的回魔當作冷卻秒數去算傷害目標（許家慶 2026-11-04：耗魔 ÷ 3、倍率 ÷ 2）
 # 數字都是 Claude 暫定（2026-10-30 許家慶照表同意技能清單），試玩後再調；傷害照 docs/設計方向.md「技能強度」的目標，調完跑 `node tools/release.mjs --balance` 看 docs/平衡數字.md
@@ -28,15 +28,18 @@ const SKILLS := {
 	&"plantTorch": {"icon": "torch_plant", "mode": &"charges", "charges": 3, "weapon_charges": true, "cooldown": 1.0,
 		"behavior": &"plantTorch", "weapons": [&"torch"], "tags": [], "no_relic": true},
 
-	# ---- 長劍 ----
-	&"whirlwind": {"icon": "旋", "mana": 10, "behavior": &"nova", "weapons": [&"longsword"], "tags": [&"area", &"melee"],
+	# ---- 劍盾（原本長劍的） ----
+	&"whirlwind": {"icon": "旋", "mana": 10, "behavior": &"nova", "weapons": [&"swordShield"], "tags": [&"area", &"melee"],
 		"radius": 2.6, "damage_pct": 3, "knockback": 6.0, "damage_type": &"phys", "color": Color("d8e4ff"), "sfx": "swingHeavy"},
-	&"charge_slash": {"icon": "衝", "mana": 12, "behavior": &"dash", "weapons": [&"longsword"], "tags": [&"move", &"melee"],
+	&"charge_slash": {"icon": "衝", "mana": 12, "behavior": &"dash", "weapons": [&"swordShield"], "tags": [&"move", &"melee"],
 		"distance": 5.0, "time": 0.3, "width": 1.4, "damage_pct": 3.5, "knockback": 5.0, "damage_type": &"phys", "color": Color("d8e4ff"), "sfx": "swingHeavy"},
-	&"sword_wave": {"icon": "氣", "mana": 8, "behavior": &"shoot", "weapons": [&"longsword"], "tags": [&"projectile"],
+	&"sword_wave": {"icon": "氣", "mana": 8, "behavior": &"shoot", "weapons": [&"swordShield"], "tags": [&"projectile"],
 		"count": 1, "spread": 0.0, "speed": 16.0, "range": 10.0, "radius": 0.6, "pierce": true, "damage_pct": 2.5, "damage_type": &"phys",
 		"color": Color("b8d0ff"), "visual": &"crescent", "sfx": "arcaneCast"},
-	# ---- 匕首 ----
+	# 突刺（原本長劍按住右鍵的蓄力突刺，許家慶 2026-11-05 改成技能；袋子觸發沒辦法按住蓄力，改成一放就衝）：比衝鋒斬短、窄、快、擊退大，傷害同衝鋒斬（4.5 時平衡表偏高 25%，Claude 暫定）
+	&"thrust": {"icon": "sword_thrust", "mana": 12, "behavior": &"dash", "weapons": [&"swordShield"], "tags": [&"move", &"melee"],
+		"distance": 3.0, "time": 0.18, "width": 1.0, "damage_pct": 3.5, "knockback": 8.0, "damage_type": &"phys", "color": Color("ffe27a"), "sfx": "swingHeavy"},
+	# ---- 雙匕首 ----
 	&"ambush": {"icon": "襲", "mana": 13, "behavior": &"ambush", "weapons": [&"dagger"], "tags": [&"move", &"melee"],
 		"range": 6.0, "damage_pct": 2.75, "damage_type": &"phys", "color": Color("b36bff"), "sfx": "swing"},
 	&"knife_fan": {"icon": "扇", "mana": 8, "behavior": &"shoot", "weapons": [&"dagger"], "tags": [&"projectile"],
@@ -54,13 +57,13 @@ const SKILLS := {
 	&"flame_dash": {"icon": "奔", "mana": 14, "behavior": &"dash", "weapons": [&"torch"], "tags": [&"move"],
 		"distance": 6.0, "time": 0.35, "width": 1.2, "damage_pct": 1.25, "knockback": 2.0, "damage_type": &"fire", "color": Color("ff8a3d"), "sfx": "swing",
 		"trail": {"radius": 1.0, "duration": 3.0, "dps_pct": 0.75, "every": 1.2}},
-	# ---- 木盾 ----
-	&"shield_charge": {"icon": "撞", "mana": 13, "behavior": &"dash", "weapons": [&"woodShield"], "tags": [&"move", &"melee"],
+	# ---- 劍盾（原本木盾的） ----
+	&"shield_charge": {"icon": "撞", "mana": 13, "behavior": &"dash", "weapons": [&"swordShield"], "tags": [&"move", &"melee"],
 		"distance": 5.0, "time": 0.35, "width": 1.6, "damage_pct": 2, "knockback": 10.0, "damage_type": &"phys", "stun": 0.8,
 		"color": Color("d8b070"), "sfx": "shieldBash"},
-	&"taunt": {"icon": "吼", "mana": 47, "behavior": &"taunt", "weapons": [&"woodShield"], "tags": [&"guard"],
+	&"taunt": {"icon": "吼", "mana": 47, "behavior": &"taunt", "weapons": [&"swordShield"], "tags": [&"guard"],
 		"radius": 6.0, "duration": 3.0, "damage_taken": 0.67, "color": Color("ff6b4a")},   # 受到的傷害 −33%
-	&"shield_slam": {"icon": "震", "mana": 15, "behavior": &"nova", "weapons": [&"woodShield"], "tags": [&"area"],
+	&"shield_slam": {"icon": "震", "mana": 15, "behavior": &"nova", "weapons": [&"swordShield"], "tags": [&"area"],
 		"radius": 3.0, "damage_pct": 2.25, "knockback": 9.0, "damage_type": &"phys", "stun": 0.5, "color": Color("d8b070"), "sfx": "shieldBash"},
 	# ---- 法杖 ----
 	&"frost_nova": {"icon": "霜", "mana": 13, "behavior": &"nova", "weapons": [&"staff"], "tags": [&"area"],
@@ -146,7 +149,3 @@ static func level_damage_mul(level: int) -> float:
 
 static func level_mana_mul(level: int) -> float:
 	return 1.0 - LEVEL.mana * (level - 1)
-
-
-static func can_socket(skill: StringName, weapon: StringName) -> bool:
-	return SKILLS.has(skill) and (SKILLS[skill].get("weapons", []) as Array).has(weapon)

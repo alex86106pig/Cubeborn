@@ -134,10 +134,10 @@ static func check_hud() -> String:
 	hud._on_event("item:added", {"player_id": p.id + 1000, "item": "whetstone", "uid": "x"})
 	if hud._banner.text != "":
 		return "別人撿到道具不應跳橫幅：%s" % hud._banner.text
-	# 武器欄：主手名稱後面接副手
+	# 武器欄：手上那把的名稱（沒有副手）
 	hud._process(DT)
-	if not hud._weapon.text.contains("副手：" + WeaponDropDefs.display_name(p.weapon_slots[Loadout.OFF])):
-		return "武器欄應標示副手：%s" % hud._weapon.text
+	if hud._weapon.text != "武器：" + WeaponDropDefs.display_name(p.weapon_slots[Loadout.MAIN]):
+		return "武器欄應只寫手上那把：%s" % hud._weapon.text
 	for name in ["game:paused", "player:died", "game:defeat", "game:victory", "game:restart"]:
 		var payload := {"paused": true, "stats": w.stats.duplicate()}
 		hud._on_event(name, payload)
@@ -330,7 +330,7 @@ static func check_skill_bar_parry() -> String:
 		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL_HELD | InputCmd.BTN_ATTACK), 1)
 		bar.refresh(w, p)
 		var cd_left: float = bar._slots["player.parry"].cd_left
-		if not bar._parry_slot.visible or bar._attack_slot.visible or bar._parry_slot.icon_id != WeaponDefs.WEAPONS.woodShield.special.parry.icon or cd_left <= 0.0:
+		if not bar._parry_slot.visible or bar._attack_slot.visible or bar._parry_slot.icon_id != WeaponDefs.WEAPONS.swordShield.special.parry.icon or cd_left <= 0.0:
 			err = "格擋中左鍵應換成「招架」並顯示冷卻：顯示 %s、文字 %s、冷卻 %.2f" % [bar._parry_slot.visible, bar._parry_slot.icon_id, cd_left]
 	if err == "":
 		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 30)
@@ -783,7 +783,7 @@ static func check_run_log_weapons_react() -> String:
 	rl.me_id = p.id
 	w.stats.time = 30.0
 	for e: Dictionary in [
-			{"name": "weapon:dropped", "uid": "w1", "base": "longsword", "rarity": "white", "pos": Vector2.ZERO},
+			{"name": "weapon:dropped", "uid": "w1", "base": "swordShield", "rarity": "white", "pos": Vector2.ZERO},
 			{"name": "weapon:dropped", "uid": "w2", "base": "dagger", "rarity": "blue", "pos": Vector2.ZERO},
 			{"name": "weapon:added", "player_id": p.id, "uid": "w1", "slot": -1},
 			{"name": "weapon:added", "player_id": p.id, "uid": "w0", "slot": 0},   # 不是殺怪掉的（開場、合成）不算
@@ -1619,7 +1619,7 @@ static func check_hints() -> String:
 		return "開場應依序跳操作、挖墳：%s" % [shown]
 	# 撿到第 2 把同種同色武器：背包提示與合成提示
 	var mk := func(uid: String) -> Dictionary:
-		return {"uid": StringName(uid), "base": &"longsword", "rarity": &"white", "affixes": [] as Array[StringName]}
+		return {"uid": StringName(uid), "base": &"swordShield", "rarity": &"white", "affixes": [] as Array[StringName]}
 	p.weapon_slots[0] = mk.call("w1")
 	p.add_weapon(mk.call("w2"))
 	tick.call(20.0)
@@ -1706,7 +1706,7 @@ static func check_effects_events() -> String:
 		_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1, events)
 		_run_collect(w, _cmd(Vector2.ZERO), 30, events)
 	var slashes := _named(events, "fx:slash")
-	if slashes.size() != 3 or slashes[2].color != WeaponDefs.WEAPONS.longsword.attack.slash_finisher_color or slashes[1].swing_dir != -1:
+	if slashes.size() != 3 or slashes[2].color != WeaponDefs.WEAPONS.swordShield.attack.slash_finisher_color or slashes[1].swing_dir != -1:
 		return "三段揮砍應發出 3 次 fx:slash（第二段反手、第三段金色），實際 %s" % [slashes]
 	var w2 := _new_world()
 	_player(w2).equip_weapon(&"staff")
@@ -1869,7 +1869,7 @@ static func check_font_coverage() -> String:
 	var texts: Array[String] = []
 	for w: Dictionary in WeaponDefs.WEAPONS.values():
 		texts.append_array([w.name, w.special.name, w.special.icon, w.special.get("desc", "")])
-		for kind: String in ["attack", "dual_attack"]:   # 盾沒有左鍵；匕首多一招雙持
+		for kind: String in ["attack"]:
 			if w.has(kind):
 				texts.append_array([w[kind].name, w[kind].icon, w[kind].get("desc", "")])
 		for alt: Dictionary in [w.get("stance", {}), w.get("grab", {})]:
@@ -2706,7 +2706,7 @@ static func check_relic_panel() -> String:
 		var r_key := InputEventAction.new()
 		r_key.action = &"restart"
 		r_key.pressed = true
-		p.add_weapon({"uid": &"rw", "base": &"longsword", "rarity": &"white", "affixes": []})
+		p.add_weapon({"uid": &"rw", "base": &"swordShield", "rarity": &"white", "affixes": []})
 		var occupied := p.inventory.occupied()
 		inv._start_drag(p, inv._grid_origin() + (Vector2(occupied.keys()[0]) + Vector2(0.5, 0.5)) * InventoryPanel.CELL)
 		var eaten: bool = collector._relic_key(r_key)
@@ -2779,9 +2779,9 @@ static func check_forge_panel() -> String:
 	ids.sort_custom(func(x: StringName, y: StringName) -> bool: return String(WeaponDropDefs.AFFIXES[x].desc).length() > String(WeaponDropDefs.AFFIXES[y].desc).length())
 	var main_aff: Array[StringName] = [ids[0], ids[1], ids[2], ids[3]]
 	var bag_aff: Array[StringName] = [ids[4], ids[5], ids[6], ids[7]]
-	p.weapon_slots[Loadout.MAIN] = {"uid": &"fa", "base": &"longsword", "rarity": &"purple", "affixes": main_aff}
+	p.weapon_slots[Loadout.MAIN] = {"uid": &"fa", "base": &"swordShield", "rarity": &"purple", "affixes": main_aff}
 	p.apply_active_weapon()
-	p.add_weapon({"uid": &"fb", "base": &"longsword", "rarity": &"purple", "affixes": bag_aff})
+	p.add_weapon({"uid": &"fb", "base": &"swordShield", "rarity": &"purple", "affixes": bag_aff})
 	p.add_weapon({"uid": &"fs", "base": &"staff", "rarity": &"purple", "affixes": []})
 	var ops: Array = []
 	inv.op_requested.connect(func(op: Array) -> void: ops.append(op))
@@ -2811,7 +2811,7 @@ static func check_forge_panel() -> String:
 		if forge_panel.uids != [&"fa", &""] or not ops.is_empty():
 			err = "鍛造祭壇旁右鍵主手的武器應放進鍛造格子 1、不送操作：%s、%s" % [forge_panel.uids, ops]
 		elif not forge_panel.glow(fb) or forge_panel.dims(fb) or forge_panel.glow(fs) or not forge_panel.dims(fs):
-			err = "放了紫色長劍後，背包裡的紫色長劍應發亮、紫色法杖應變暗"
+			err = "放了紫色劍盾後，背包裡的紫色劍盾應發亮、紫色法杖應變暗"
 	# 點一下拿起法杖、點格子 2 → 寫原因「要同種武器」、合成不能按；手上的放回去
 	if err == "":
 		inv._start_drag(p, cell_of.call(&"fs"))
@@ -3280,7 +3280,7 @@ static func check_inventory_click() -> String:
 	return err
 
 
-# 背包版面的規則（對齊與位置是 UI，由使用者看，不檢查）：羈絆欄只列收集到的（沒有就不列）；主手拿雙手武器時副手標成不能用；
+# 背包版面的規則（對齊與位置是 UI，由使用者看，不檢查）：羈絆欄只列收集到的（沒有就不列）；
 # 腳邊框不蓋到背包與技能欄，在腳邊框上點一下拿起、再點背包的格子 = 撿起放在那一格
 static func check_inventory_layout() -> String:
 	var w := _new_world(5)
@@ -3306,13 +3306,6 @@ static func check_inventory_layout() -> String:
 				want.append(bond)
 		if want.is_empty() or panel._shown_bonds(p) != want:
 			err = "鑲上磨刀石後羈絆欄應只列件數 > 0 的 %s，實際 %s" % [want, panel._shown_bonds(p)]
-	if err == "" and panel._offhand_blocked(p):
-		err = "拿長劍時副手不應標成不能用"
-	if err == "":
-		p.equip_weapon(&"staff")
-		if not panel._offhand_blocked(p):
-			err = "主手拿雙手的法杖時副手應標成不能用"
-		p.equip_weapon(&"longsword")
 	if err == "":
 		var stone := w.drop_item(&"whetstone", p.pos + Vector2(1.0, 0))
 		panel._process(DT)

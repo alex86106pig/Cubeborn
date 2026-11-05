@@ -435,7 +435,7 @@ static func apply_entity(e: Entity, a: Array, b: Array, t: float, ahead: float =
 		pl.anim = anim
 		pl.show_weapon(extra[P_WEAPON])   # 別人的角色只需要招式資料與模型
 		if extra[P_SLOTS] != null:   # null = 這份沒帶（沒變，NetHost._loadout_unchanged）
-			for i in pl.weapon_slots.size():   # 主手與副手只給畫面（武器稀有度的光），不套屬性
+			for i in pl.weapon_slots.size():   # 手上的武器只給畫面（武器稀有度的光），不套屬性
 				pl.weapon_slots[i] = WeaponDropDefs.from_array(extra[P_SLOTS][i])
 		pl.roll_charges = extra[P_ROLLS]
 		pl.is_downed = extra[P_DOWNED]

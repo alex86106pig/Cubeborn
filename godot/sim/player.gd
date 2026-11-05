@@ -16,8 +16,8 @@ var is_attack_held := false
 var is_special_held := false           # 右鍵按住（劍盾按住格擋，v0.41.0）
 var attack_pressed := false            # 本步剛按下左鍵（格擋中按左鍵 = 招架）
 var _attack_was_held := false
-var weapon: Dictionary = {}            # 手上的招式資料：主手＋副手組合出來的（WeaponDefs.def_of）
-var weapon_id: StringName = &""        # 組合 id（WeaponDefs.combo_id：「主手」或「主手+副手」），快照的 P_WEAPON
+var weapon: Dictionary = {}            # 手上武器的招式資料（WeaponDefs.def_of）
+var weapon_id: StringName = &""        # 手上武器的 WeaponDefs id，快照的 P_WEAPON
 var class_id := ClassDefs.NONE        # 職業（F2，ClassDefs）；NONE = 共用基準數值
 var torch_stance := false              # 火把準備姿態（F8）：按住右鍵舉著，左鍵換成噴火
 var running := false                   # 跑步（Ctrl 切換）：跳躍、翻滾、開寶箱不取消；進入待機與翻滾以外的動作就取消
@@ -26,7 +26,7 @@ var reload_timer := 0.0                # 裝填剩餘秒數；> 0 時不能射�
 var held_id := 0                # 鐵鏟舉著的怪或隊友（F9）；0 = 沒有
 var hold_timer := 0.0                  # 舉著的剩餘秒數，到 0 對方掙脫
 var loadout := Loadout.new()           # 裝備欄、背包、生效的道具（sim/loadout.gd）
-var weapon_slots: Array[Dictionary]:   # [主手, 副手]（Loadout.MAIN / OFF）：武器實例（WeaponDropDefs）或 {}
+var weapon_slots: Array[Dictionary]:   # [手上]（Loadout.MAIN）：武器實例（WeaponDropDefs）或 {}
 	get:
 		return loadout.weapon_slots
 var items: Array[Dictionary]:          # 生效的數值道具 { uid, id }（主袋裡的）；uid 同時是屬性加成的來源名稱
@@ -103,7 +103,6 @@ func _init(p_world: World, p_peer_id: int) -> void:
 	locomotion = StateMachine.new(self, PlayerStates.locomotion_states(), &"idle")
 	action = StateMachine.new(self, PlayerStates.action_states())
 	equip_weapon(Config.PLAYER.start_weapon)
-	loadout.equip_offhand_new(self, Config.PLAYER.start_offhand)
 	loadout.setup_start_bags(self, ClassDefs.NONE)
 	roll_charges = roll_max()
 	_update_anim()
@@ -234,14 +233,14 @@ func _try_counter(from: Vector2) -> bool:
 	if not BondEffects.has_branch(self, &"br_counter") or weapon.special.has("parry") or not action.is_in(&"attack"):
 		return false
 	var b: Dictionary = WeaponDropDefs.BRANCH
-	var window: float = WeaponDefs.WEAPONS[&"woodShield"].special.parry.window * b.counter_window_mul * stats.value(&"parry_window")
+	var window: float = WeaponDefs.WEAPONS[&"swordShield"].special.parry.window * b.counter_window_mul * stats.value(&"parry_window")
 	if action.time > window + 1e-6:
 		return false
 	var to_source := from - pos
 	if to_source.length_squared() > 1e-6 and absf(angle_difference(facing, atan2(to_source.x, to_source.y))) > b.counter_arc / 2.0:
 		return false
 	world.emit_event("player:blocked", {"player_id": id, "perfect": true})
-	world.emit_event("sfx:cue", {"cue": WeaponDefs.WEAPONS[&"woodShield"].special.sfx_parry, "pos": pos})
+	world.emit_event("sfx:cue", {"cue": WeaponDefs.WEAPONS[&"swordShield"].special.sfx_parry, "pos": pos})
 	BondEffects.on_parry(world, self)
 	return true
 
@@ -522,7 +521,6 @@ func apply_class(id: StringName) -> void:
 		stats.set_base(stat, c.stats[stat])
 	set_stat_source(&"class", c.passive.get("mods", []))
 	equip_weapon(c.weapon)
-	loadout.equip_offhand_new(self, c.get("offhand", &""))
 	loadout.setup_start_bags(self, id)   # 按鍵袋 1 裝著起始技能 + 職業的小觸發袋（BagDefs.START）
 	hp = max_hp
 	mana = max_mana()
@@ -547,32 +545,27 @@ func friendly_back_mul(from: Vector2) -> float:
 	return mul if absf(MathUtil.wrap_angle(atan2(d.x, d.y) - facing)) > PI / 2.0 else 1.0
 
 
-# 換上一把新的白色武器（Loadout.equip_new：盾放副手，其他放主手）
+# 換上一把新的白色武器（Loadout.equip_new）
 func equip_weapon(id: StringName) -> void:
 	loadout.equip_new(self, id)
 
 
-# 套用主手與副手：組合招式資料（WeaponDefs.def_of）與詞條（屬性來源 &"weapon" 主手、&"offhand" 副手）；Loadout 換了武器就呼叫
+# 套用手上的武器：招式資料（WeaponDefs.def_of）與詞條（屬性來源 &"weapon"）；Loadout 換了武器就呼叫
 func apply_active_weapon() -> void:
 	var main: Dictionary = weapon_slots[Loadout.MAIN]
 	if main.is_empty():
 		return
-	var off: Dictionary = weapon_slots[Loadout.OFF]
-	var uids := StringName(String(main.uid) + "/" + String(off.get("uid", "")))
-	# 主手或副手換了一把（uid 不同）才重設連段與動作；只是合成 / 搬動別的武器時不打斷手上的動作
-	show_weapon(WeaponDefs.combo_id(Loadout.weapon_of(main), Loadout.weapon_of(off)), uids != _applied_weapon_uid)
-	_applied_weapon_uid = uids
+	var uid := StringName(main.uid)
+	# 換了一把（uid 不同）才重設連段與動作；只是合成 / 搬動別的武器時不打斷手上的動作
+	show_weapon(Loadout.weapon_of(main), uid != _applied_weapon_uid)
+	_applied_weapon_uid = uid
 	set_stat_source(&"weapon", WeaponDropDefs.stat_mods(main))
-	# 魔力照主手武器（WeaponDefs 的 max_mana / mana_regen，沒寫的用 Config.MANA）；換武器時目前魔力照比例縮放
+	# 魔力照手上的武器（WeaponDefs 的 max_mana / mana_regen，沒寫的用 Config.MANA）；換武器時目前魔力照比例縮放
 	var wd: Dictionary = WeaponDefs.WEAPONS[Loadout.weapon_of(main)]
 	var ratio := clampf(mana / max_mana(), 0.0, 1.0) if max_mana() > 0.0 else 1.0
 	stats.set_base(&"max_mana", wd.get("max_mana", Config.MANA.max))
 	stats.set_base(&"mana_regen", wd.get("mana_regen", Config.MANA.regen))
 	mana = max_mana() * ratio
-	if off.is_empty():
-		remove_stat_source(&"offhand")
-	else:
-		set_stat_source(&"offhand", WeaponDropDefs.offhand_mods(off))
 
 
 # 只換招式資料與模型（客戶端畫別人的角色也用這個）；force 時同一種也重設連段與動作
@@ -600,7 +593,7 @@ func attack_tag() -> StringName:
 	return &""
 
 
-# 主手的武器實例（稀有度光、HUD 的武器名稱）
+# 手上的武器實例（稀有度光、HUD 的武器名稱）
 func active_weapon() -> Dictionary:
 	return loadout.main_weapon()
 

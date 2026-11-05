@@ -1,19 +1,18 @@
-# 玩家的裝備與背包：主手與副手、倉庫（inventory，不生效）、主袋（core，數值道具生效）、接在主袋四邊的觸發袋（bags）、
+# 玩家的裝備與背包：手上的武器、倉庫（inventory，不生效）、主袋（core，數值道具生效）、接在主袋四邊的觸發袋（bags）、
 # 背包操作（InputCmd.inv_ops）、撿起武器 / 道具 / 袋子 / 屍體、合成、丟棄（規則在 docs/設計方向.md「觸發袋」）
-# 規則：主手一定有武器；單手武器可以再拿副手，雙手武器不行（WeaponDefs.can_hold）；武器只放倉庫或拿在手上
+# 規則：一次拿一把武器（許家慶 2026-11-05 拿掉主副手），手上一定有武器；武器只放倉庫或拿在手上
 # 放東西的地方用 where 表示：BAG 倉庫、CORE 主袋、0 以上是 bags 的第幾個（接著的觸發袋）
 # 袋子的效果怎麼發動在 BagTriggers；這裡只管擺放、生效的數值道具與羈絆（最大同色區塊）
 # 不存 Player（Player 持有 Loadout，反過來存會變成循環參照）：要發事件、套屬性、換招式時由呼叫端傳入 p
 class_name Loadout
 extends RefCounted
 
-const MAIN := 0    # weapon_slots 的主手 / 副手
-const OFF := 1
+const MAIN := 0    # weapon_slots 的手上那把（只有一格；保留陣列給快照與畫面）
 const BAG := -1    # 倉庫
 const AUTO := -2   # 自動：照分類找主袋或袋子，放不下進倉庫
 const CORE := -3   # 主袋
 
-var weapon_slots: Array[Dictionary] = [{}, {}]   # [主手, 副手]：武器實例（WeaponDropDefs）或 {}
+var weapon_slots: Array[Dictionary] = [{}]   # [手上]：武器實例（WeaponDropDefs）或 {}
 var branches := {}                     # 武器的分支詞條（觸發袋改版後沒有詞條，留空給 BondEffects.has_branch）
 var bond_counts := {}                  # 羈絆 → 最大同色區塊的格數（主袋與袋子一起算，refresh_items 同步）
 var items: Array[Dictionary] = []     # 生效的數值道具 { uid, id }（主袋與接著的袋子裡的）；uid 同時是屬性加成的來源名稱
@@ -33,7 +32,7 @@ static func weapon_of(inst: Dictionary) -> StringName:
 	return &"" if inst.is_empty() else ItemDefs.ITEMS[inst.base].weapon
 
 
-# 主手稀有度的範圍倍率（揮砍距離、魔彈射程）
+# 手上武器稀有度的範圍倍率（揮砍距離、魔彈射程）
 func weapon_range_mul() -> float:
 	var inst := main_weapon()
 	return WeaponDropDefs.RARITY_BASE[inst.rarity].range if not inst.is_empty() else 1.0
@@ -55,22 +54,9 @@ func _new_white(p: Player, id: StringName) -> Dictionary:
 	return {"uid": p.world.new_weapon_uid(), "base": id, "rarity": &"white", "affixes": [] as Array[StringName]}
 
 
-# 換上一把新的白色武器（開場、--weapon、武器測試場、測試與除錯用；正式取得武器走 add_weapon）：
-# 一般武器放主手、副手清空（武器測試場按一把就只拿那一把，才看得到它自己的右鍵）；只能當副手的（盾）放副手，主手是雙手武器時主手換成起始武器
+# 換上一把新的白色武器（開場、--weapon、武器測試場、測試與除錯用；正式取得武器走 add_weapon）
 func equip_new(p: Player, id: StringName) -> void:
-	if WeaponDefs.WEAPONS[id].hands == &"off":
-		if not WeaponDefs.can_hold(weapon_of(main_weapon()), id):
-			weapon_slots[MAIN] = _new_white(p, Config.PLAYER.start_weapon)
-		weapon_slots[OFF] = _new_white(p, id)
-	else:
-		weapon_slots[MAIN] = _new_white(p, id)
-		weapon_slots[OFF] = {}
-	p.apply_active_weapon()
-
-
-# 副手換成一把新的白色武器（開場的職業起始副手）；id 空 = 空手。拿不動（主手是雙手）就清空
-func equip_offhand_new(p: Player, id: StringName) -> void:
-	weapon_slots[OFF] = _new_white(p, id) if id != &"" and WeaponDefs.can_hold(weapon_of(main_weapon()), id) else {}
+	weapon_slots[MAIN] = _new_white(p, id)
 	p.apply_active_weapon()
 
 
@@ -245,20 +231,13 @@ func _emit_full(p: Player, item: StringName, pickup_id: int) -> void:
 	p.world.emit_event("inventory:full", {"player_id": p.id, "item": String(item), "pickup_id": pickup_id})
 
 
-# 撿到武器：主手空著放主手；副手空著、撿到的是盾而且拿得動放副手（單手武器不自動放副手，免得右鍵突然變了）；
-# 其他放倉庫；都放不下回傳 false、發出 inventory:full。指定 spot 時直接放到倉庫的那一格（背包介面從「腳邊」拖進來）
+# 撿到武器：手上空著就拿起來，其他放倉庫；都放不下回傳 false、發出 inventory:full。指定 spot 時直接放到倉庫的那一格（背包介面從「腳邊」拖進來）
 func add_weapon(p: Player, inst: Dictionary, spot: Dictionary = {}, pickup_id := 0) -> bool:
 	if spot.is_empty():
-		var id := weapon_of(inst)
-		var slot := -1
-		if main_weapon().is_empty() and WeaponDefs.WEAPONS[id].hands != &"off":
-			slot = MAIN
-		elif weapon_slots[OFF].is_empty() and WeaponDefs.WEAPONS[id].hands == &"off" and WeaponDefs.can_hold(weapon_of(main_weapon()), id):
-			slot = OFF
-		if slot >= 0:
-			weapon_slots[slot] = inst
+		if main_weapon().is_empty():
+			weapon_slots[MAIN] = inst
 			p.apply_active_weapon()
-			p.world.emit_event("weapon:added", {"player_id": p.id, "uid": String(inst.uid), "slot": slot})
+			p.world.emit_event("weapon:added", {"player_id": p.id, "uid": String(inst.uid), "slot": MAIN})
 			return true
 		spot = inventory.find_spot(inst.base)
 	if spot.is_empty():
@@ -269,7 +248,7 @@ func add_weapon(p: Player, inst: Dictionary, spot: Dictionary = {}, pickup_id :=
 	return true
 
 
-# 依 uid 找武器在哪：{ slot: MAIN / OFF } 或 { bag: 倉庫條目 }；找不到回傳 {}
+# 依 uid 找武器在哪：{ slot: MAIN } 或 { bag: 倉庫條目 }；找不到回傳 {}
 func _find_weapon(uid: StringName) -> Dictionary:
 	for i in weapon_slots.size():
 		if not weapon_slots[i].is_empty() and weapon_slots[i].uid == uid:
@@ -287,41 +266,20 @@ func _take_weapon(where: Dictionary) -> void:
 		inventory.remove(where.bag.uid)
 
 
-# 武器放進主手 / 副手（slot）：主手與副手互換；從倉庫來時換下來的那把放回倉庫。
-# 換完拿不動的（雙手武器配副手、副手放了不能當副手的）也放回倉庫；主手不能變空、倉庫放不下就整個不換
+# 倉庫的武器換上手（slot 只有 MAIN）：換下來的那把放回倉庫（先試換上那把原本的位置，看起來是兩把互換，放不下再找空位）；倉庫放不下就不換
 func _equip_from(p: Player, uid: StringName, slot: int) -> bool:
 	var src := _find_weapon(uid)
-	if src.is_empty() or slot < MAIN or slot > OFF or src.get("slot", -1) == slot:
+	if src.is_empty() or slot != MAIN or not src.has("bag"):
 		return false
-	var hands: Array[Dictionary] = [weapon_slots[MAIN], weapon_slots[OFF]]
-	var displaced: Array[Dictionary] = []
-	var other := OFF if slot == MAIN else MAIN
-	if src.has("slot"):
-		hands[other] = hands[slot]   # 主副手互換
-	elif not hands[slot].is_empty():
-		displaced.append(hands[slot])
-	hands[slot] = src.inst
-	if not hands[OFF].is_empty() and not WeaponDefs.can_hold(weapon_of(hands[MAIN]), weapon_of(hands[OFF])):
-		displaced.append(hands[OFF])
-		hands[OFF] = {}
-	if hands[MAIN].is_empty() or not WeaponDefs.can_hold(weapon_of(hands[MAIN]), weapon_of(hands[OFF])):
-		return false
-	if src.has("bag"):
-		inventory.remove(uid)
-	var placed: Array[StringName] = []
-	for w in displaced:
-		# 從倉庫換上：換下來的那把先試倉庫那把原本的位置（看起來是兩把互換），放不下再找空位
-		var spot := {"cell": src.bag.cell, "rot": src.bag.rot} if src.has("bag") and placed.is_empty() and inventory.fits(w.base, src.bag.cell, src.bag.rot) else inventory.find_spot(w.base)
+	var old := main_weapon()
+	inventory.remove(uid)
+	if not old.is_empty():
+		var spot := {"cell": src.bag.cell, "rot": src.bag.rot} if inventory.fits(old.base, src.bag.cell, src.bag.rot) else inventory.find_spot(old.base)
 		if spot.is_empty():
-			for u in placed:
-				inventory.remove(u)
-			if src.has("bag"):
-				inventory.add(uid, src.bag.id, src.bag.cell, src.bag.rot, {"weapon": src.inst})
+			inventory.add(uid, src.bag.id, src.bag.cell, src.bag.rot, {"weapon": src.inst})
 			return false
-		inventory.add(w.uid, w.base, spot.cell, spot.rot, {"weapon": w})
-		placed.append(w.uid)
-	weapon_slots[MAIN] = hands[MAIN]
-	weapon_slots[OFF] = hands[OFF]
+		inventory.add(old.uid, old.base, spot.cell, spot.rot, {"weapon": old})
+	weapon_slots[MAIN] = src.inst
 	p.apply_active_weapon()
 	return true
 
@@ -536,7 +494,7 @@ func sync_inventory(p: Player, arr: Array) -> void:
 	refresh_items(p)
 
 
-# 客戶端：主手與副手以房主的快照為準（[主手, 副手]，見 WeaponDropDefs.to_array）
+# 客戶端：手上的武器以房主的快照為準（[手上]，見 WeaponDropDefs.to_array）
 func sync_weapon_slots(p: Player, arr: Array) -> void:
 	for i in weapon_slots.size():
 		weapon_slots[i] = WeaponDropDefs.from_array(arr[i])
@@ -555,7 +513,7 @@ func clear_ops() -> void:
 #   [OP_MOVE, uid, x, y, rot, where?] 搬到 where（BAG 倉庫、CORE 主袋、0 以上第幾個袋子；沒寫 = 倉庫）的 (x, y)；
 #     武器、袋子、屍體只在倉庫裡搬；那裡被 1 件東西佔住就互換（_swap_into），拿著的武器放到倉庫的武器上 = 那把換上；沒做成發 inventory:denied
 #   [OP_BAG, uid, side, offset, x?, y?, rot?] 袋子接到 side 的 offset（從倉庫接上、或沿著邊滑動 / 換邊）；side 空字串 = 拿下來放倉庫的 (x, y)
-#   [OP_DROP, uid] 丟到面前的地上（袋子連同內容）；[OP_EQUIP, uid, slot] 武器放進主手 / 副手；[OP_MERGE, uid_a, uid_b] 把 a 拖到 b 上合成（鍛造祭壇旁）
+#   [OP_DROP, uid] 丟到面前的地上（袋子連同內容）；[OP_EQUIP, uid, slot] 倉庫的武器換上手（slot 只有 MAIN）；[OP_MERGE, uid_a, uid_b] 把 a 拖到 b 上合成（鍛造祭壇旁）
 #   [OP_PICKUP, 地上道具 id, x, y, rot, where?] 撿起按得到 F 的地上道具放到 where 的 (x, y)（已被撿走、太遠、放不下就不動；武器、袋子、屍體只能進倉庫）
 func apply_ops(p: Player) -> void:
 	for op: Array in _ops:
@@ -646,19 +604,14 @@ func _move_item(p: Player, uid: StringName, cell: Vector2i, rot: int, where: int
 		_deny(p, &"no_room" if dst.accepts(e.id) else &"wrong_bag")
 
 
-# 拿著的武器拖進倉庫：拖到倉庫的武器上 = 那把換上這隻手（_equip_from）；副手的放到空位 = 拿下來；主手不能空著
-func _move_hand_weapon(p: Player, w: Dictionary, cell: Vector2i, rot: int) -> void:
+# 拿著的武器拖進倉庫：拖到倉庫的武器上 = 那把換上手（_equip_from）；放到空位不行（手上一定要有武器）
+func _move_hand_weapon(p: Player, w: Dictionary, cell: Vector2i, _rot: int) -> void:
 	var under: StringName = inventory.occupied().get(cell, &"")
-	var bag_weapon := inventory.find(under) if under != &"" else {}
-	if bag_weapon.has("weapon"):
+	if under != &"" and inventory.find(under).has("weapon"):
 		if not _equip_from(p, under, w.slot):
 			_deny(p, &"no_room")
-	elif w.slot == OFF and inventory.fits(w.inst.base, cell, rot):
-		weapon_slots[w.slot] = {}
-		inventory.add(w.inst.uid, w.inst.base, cell, rot, {"weapon": w.inst})
-		p.apply_active_weapon()
 	else:
-		_deny(p, &"main_empty" if w.slot == MAIN else &"no_room")
+		_deny(p, &"main_empty")
 
 
 # 放到只被 1 件東西佔住的位置：兩件互換（e 放上去，被換走的那件先試 e 原本的位置、放不下找空位）；任何一件放不下就都不動
@@ -742,11 +695,8 @@ func merge(p: Player, uid_a: StringName, uid_b: StringName) -> bool:
 		p.world.emit_event("weapon:merge_denied", {"player_id": p.id, "reason": "forge"})
 		return false
 	var merged := WeaponDropDefs.make(b.inst.uid, b.inst.base, WeaponDropDefs.next_rarity(b.inst.rarity), p.world.rng)
-	if a.has("slot") and b.has("slot"):
-		weapon_slots[MAIN] = merged   # 主副手兩把（雙持匕首）合成：結果拿在主手、副手空出來
-		weapon_slots[OFF] = {}
-	elif a.has("slot"):
-		inventory.remove(b.bag.uid)   # 手上的拖到倉庫的武器上：結果留在手上（主手不能沒有武器）
+	if a.has("slot"):
+		inventory.remove(b.bag.uid)   # 手上的拖到倉庫的武器上：結果留在手上（手上不能沒有武器）
 		weapon_slots[a.slot] = merged
 	elif b.has("slot"):
 		_take_weapon(a)
@@ -759,7 +709,7 @@ func merge(p: Player, uid_a: StringName, uid_b: StringName) -> bool:
 	return true
 
 
-# 丟到面前的地上：道具移除效果；主手的武器不能丟（主手一定要有武器）；袋子連同裡面的東西一起丟（大小、倍率、內容都記在地上的袋子，撿回來照原樣）
+# 丟到面前的地上：道具移除效果；手上的武器不能丟（手上一定要有武器）；袋子連同裡面的東西一起丟（大小、倍率、內容都記在地上的袋子，撿回來照原樣）
 func _drop(p: Player, uid: StringName) -> void:
 	var at := p.pos + MathUtil.dir_from_angle(p.facing) * LootDefs.DROP_DISTANCE
 	var w := _find_weapon(uid)

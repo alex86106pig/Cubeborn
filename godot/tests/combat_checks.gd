@@ -4,7 +4,7 @@ class_name CombatChecks
 extends CheckKit
 
 # 白裝每一招每一下的傷害都是整數（使用者 2026-10-31：傷害不要出現 .5）：武器基礎傷害 × 每個招式倍率、寶石座技能 × 每把能用的武器；
-# 副手（木盾）沒有基礎傷害，用起始武器的；蓄力招式看沒蓄與蓄滿兩端
+# 蓄力招式看沒蓄與蓄滿兩端
 const WHOLE_KEYS := [&"damage_pct", &"full_damage_pct", &"finisher_mul", &"dps_pct"]
 
 
@@ -42,8 +42,8 @@ static func check_weapon_defs() -> String:
 	var cues := _cue_names()
 	for id: StringName in WeaponDefs.WEAPONS:
 		var w: Dictionary = WeaponDefs.WEAPONS[id]
-		for kind in ["attack", "special", "dual_attack"]:
-			if not w.has(kind):   # 盾（只能當副手）沒有左鍵；只有匕首有雙持招式
+		for kind in ["attack", "special"]:
+			if not w.has(kind):
 				continue
 			var def: Dictionary = w[kind]
 			if not WeaponBehaviors.BEHAVIORS.has(def.behavior):
@@ -94,7 +94,7 @@ static func check_fire_bolt() -> String:
 	for wid: StringName in WeaponDefs.WEAPONS:
 		var wd: Dictionary = WeaponDefs.WEAPONS[wid]
 		var moves: Array = [wd.special]
-		for kind: String in ["attack", "dual_attack"]:   # 盾沒有左鍵；匕首多一招雙持
+		for kind: String in ["attack"]:
 			if wd.has(kind):
 				moves.append(wd[kind])
 		for alt: Dictionary in [wd.get("stance", {}), wd.get("grab", {})]:
@@ -273,18 +273,18 @@ static func check_staff_changes() -> String:
 
 static func check_weapon_base_stats() -> String:
 	# 武器面板數值 = 武器資料 × 稀有度倍率（攻速 = 倍率 ÷ 一刀的秒數）
-	var a: Dictionary = WeaponDefs.WEAPONS[&"longsword"].attack
+	var a: Dictionary = WeaponDefs.WEAPONS[&"swordShield"].attack
 	var swing_time: float = a.windup + a.active + a.recovery
 	for r: StringName in [&"white", &"green"]:
-		var got := WeaponDropDefs.base_stats({"base": &"longsword", "rarity": r})
+		var got := WeaponDropDefs.base_stats({"base": &"swordShield", "rarity": r})
 		var m: Dictionary = WeaponDropDefs.RARITY_BASE[r]
-		var want := [WeaponDefs.move_base_damage(WeaponDefs.WEAPONS[&"longsword"], a) * m.damage, m.attack_speed / swing_time, a.range * m.range]
+		var want := [WeaponDefs.move_base_damage(WeaponDefs.WEAPONS[&"swordShield"], a) * m.damage, m.attack_speed / swing_time, a.range * m.range]
 		if absf(got.damage - want[0]) > EPS or absf(got.attack_speed - want[1]) > 0.01 or absf(got.range - want[2]) > EPS:
 			return "%s 劍盾應為 %.2f / %.2f / %.2f，實際 %.2f / %.2f / %.2f" % [r, want[0], want[1], want[2], got.damage, got.attack_speed, got.range]
 	var green: Dictionary = WeaponDropDefs.RARITY_BASE[&"green"]
 	var w := _new_world()
 	var p := _player(w)
-	p.weapon_slots[0] = {"uid": &"g", "base": &"longsword", "rarity": &"green", "affixes": [] as Array[StringName]}
+	p.weapon_slots[0] = {"uid": &"g", "base": &"swordShield", "rarity": &"green", "affixes": [] as Array[StringName]}
 	p.apply_active_weapon()
 	if absf(p.stats.value(&"damage") - green.damage) > EPS or absf(p.weapon_range_mul() - green.range) > EPS:
 		return "裝上綠劍盾：攻擊力 %.2f（應 %.2f）、範圍倍率 %.2f（應 %.2f）" % [p.stats.value(&"damage"), green.damage, p.weapon_range_mul(), green.range]
@@ -437,7 +437,7 @@ static func check_grunt_swing() -> String:
 
 static func check_hit_feel() -> String:
 	# 玩家揮砍打中：不震動、不放慢，事件帶武器資料的 hit_stop
-	var want_stop: float = WeaponDefs.WEAPONS[&"longsword"].attack.hit_stop
+	var want_stop: float = WeaponDefs.WEAPONS[&"swordShield"].attack.hit_stop
 	var w := _new_world()
 	var p := _player(w)
 	var g := _spawn(w, &"grunt", Vector2(0, 1.5))
@@ -562,8 +562,6 @@ static func check_enemy_speed() -> String:
 static func check_damage_types() -> String:
 	for id: StringName in WeaponDefs.WEAPONS:
 		var wd: Dictionary = WeaponDefs.WEAPONS[id]
-		if wd.hands == &"off":   # 只能當副手（盾）：招式傷害用主手的基礎傷害
-			continue
 		if wd.get("base_damage", 0.0) <= 0.0 or not StatDefs.DAMAGE_TYPES.has(wd.get("damage_type", &"")):
 			return "%s 要有 base_damage > 0 與 StatDefs.DAMAGE_TYPES 裡的 damage_type" % id
 		for kind in ["attack", "special"]:
@@ -581,7 +579,7 @@ static func check_damage_types() -> String:
 	var w := _new_world()
 	var p := _player(w)
 	p.set_stat_source(&"test", [[&"phys_damage", Stats.PCT, 0.5], [&"elem_damage", Stats.PCT, 1.0]])
-	var sword: Dictionary = WeaponDefs.WEAPONS[&"longsword"]
+	var sword: Dictionary = WeaponDefs.WEAPONS[&"swordShield"]
 	var staff: Dictionary = WeaponDefs.WEAPONS[&"staff"]
 	if absf(p.move_damage(sword.attack) - WeaponDefs.move_base_damage(sword, sword.attack) * 1.5) > EPS:
 		return "物理傷害 +50%%：劍盾普攻應 ×1.5，實際 %.2f" % p.move_damage(sword.attack)
@@ -643,18 +641,17 @@ static func check_damage_types() -> String:
 	return ""
 
 
-# 每把武器都有道具資料（才會掉落、進背包）、模型（主手 DarkFantasy.weapon、能當副手的 DarkFantasy.offhand）；
-# 職業的起始主手、副手都存在而且拿得動（F4 起，併在 check_weapon_defs）
+# 每把武器都有道具資料（才會掉落、進背包）、模型（右手 DarkFantasy.weapon、左手也拿東西的 offhand_model 用 DarkFantasy.offhand）；
+# 職業的起始武器都存在（F4 起，併在 check_weapon_defs）
 static func _weapon_catalog() -> String:
 	for id: StringName in WeaponDefs.WEAPONS:
 		if not ItemDefs.ITEMS.has(id) or ItemDefs.ITEMS[id].weapon != id:
 			return "%s 沒有對應的 ItemDefs 武器資料" % id
 		var wd: Dictionary = WeaponDefs.WEAPONS[id]
 		var models: Array[Dictionary] = []
-		if wd.hands != &"off":
-			models.append(DarkFantasy.weapon(wd.model))
-		if wd.hands == &"off" or wd.get("offhand", false):
-			models.append(DarkFantasy.offhand(wd.model))
+		models.append(DarkFantasy.weapon(wd.model))
+		if wd.has("offhand_model"):
+			models.append(DarkFantasy.offhand(wd.offhand_model))
 		for model in models:
 			if model.is_empty():
 				return "%s 的模型 %s 沒有在 DarkFantasy.weapon / offhand 做" % [id, wd.model]
@@ -663,8 +660,8 @@ static func _weapon_catalog() -> String:
 					(model[key] as Node).free()
 	for id: StringName in ClassDefs.CLASSES:
 		var c: Dictionary = ClassDefs.CLASSES[id]
-		if not WeaponDefs.WEAPONS.has(c.weapon) or not WeaponDefs.WEAPONS.has(c.get("offhand", c.weapon)) or not WeaponDefs.can_hold(c.weapon, c.get("offhand", &"")):
-			return "職業 %s 的起始武器 %s ＋ %s 不存在或拿不動" % [id, c.weapon, c.get("offhand", "")]
+		if not WeaponDefs.WEAPONS.has(c.weapon) or c.has("offhand"):
+			return "職業 %s 的起始武器 %s 不存在（或還留著副手 %s）" % [id, c.weapon, c.get("offhand", "")]
 	return ""
 
 
@@ -800,67 +797,65 @@ static func check_longbow() -> String:
 	return ""
 
 
-# 長劍與主手 / 副手（Build 改版）：拿得動的組合（WeaponDefs.can_hold）；長劍沒有副手時右鍵蓄力突刺，
-# 沒蓄 / 蓄滿各往前衝 dash / full_dash、打到的怪各一次 damage_pct / full_damage_pct；守墓騎士開局長劍＋木盾（右鍵格擋）
-static func check_longsword() -> String:
-	for c: Array in [[&"longsword", &"woodShield", true], [&"longsword", &"dagger", true], [&"dagger", &"dagger", true], [&"torch", &"woodShield", true],
-			[&"staff", &"woodShield", false], [&"woodShield", &"", false], [&"longsword", &"staff", false], [&"longsword", &"longsword", false]]:
-		if WeaponDefs.can_hold(c[0], c[1]) != c[2]:
-			return "can_hold(%s, %s) 應為 %s" % c
-	var sd: Dictionary = WeaponDefs.WEAPONS.longsword.special
-	var base := WeaponDefs.move_base_damage(WeaponDefs.WEAPONS.longsword, sd)
-	var held := InputCmd.BTN_SPECIAL | InputCmd.BTN_SPECIAL_HELD
-	for full: bool in [false, true]:
-		var hold_steps := roundi(sd.windup / DT) + (roundi(sd.charge_time / DT) + 5 if full else 0)
-		# 衝刺距離（前面沒有東西擋）
-		var w := _new_world()
-		var p := _player(w)
-		p.loadout.equip_offhand_new(p, &"")
-		if p.weapon.special != sd:
-			return "長劍沒有副手時右鍵應是蓄力突刺：%s" % p.weapon_id
-		_run(w, _cmd(Vector2.ZERO, Vector2(0, 20), held), 1)
-		_run(w, _cmd(Vector2.ZERO, Vector2(0, 20), InputCmd.BTN_SPECIAL_HELD), hold_steps)
-		var start := p.pos
-		_run(w, _cmd(Vector2.ZERO, Vector2(0, 20)), 60)
-		var moved := p.pos.distance_to(start)
-		var want_dist: float = sd.full_dash if full else sd.dash
-		_note("蓄力突刺（%s）衝 %.2f 單位" % ["蓄滿" if full else "沒蓄", moved])
-		if absf(moved - want_dist) > 0.3 or p.pos.x > 0.05 or p.pos.y < start.y:
-			return "蓄力突刺%s應往準星方向衝 %.1f，實際 %.2f（%s → %s）" % ["蓄滿" if full else "沒蓄", want_dist, moved, start, p.pos]
-		# 傷害：面前的怪打一次
-		var w2 := _new_world()
-		var p2 := _player(w2)
-		p2.loadout.equip_offhand_new(p2, &"")
-		var target := _dummy(w2, Vector2(0, 1.4))
-		_run(w2, _cmd(Vector2.ZERO, Vector2(0, 20), held), 1)
-		_run(w2, _cmd(Vector2.ZERO, Vector2(0, 20), InputCmd.BTN_SPECIAL_HELD), hold_steps)
-		var events: Array[Dictionary] = []
-		_run_collect(w2, _cmd(Vector2.ZERO, Vector2(0, 20)), 40, events)
-		var got := _damage_amounts(events, target.id)
-		var want: float = base * (sd.full_damage_pct / sd.damage_pct if full else 1.0)
-		# 沒蓄：前搖結束到放開之間可能多蓄 1 步，容許 1 步的蓄力量
-		var tol: float = EPS if full else base * (sd.full_damage_pct / sd.damage_pct - 1.0) * DT / sd.charge_time + EPS
-		if got.size() != 1 or got[0] < want - EPS or got[0] > want + tol:
-			return "蓄力突刺%s應打面前的怪一次 %.1f，實際 %s" % ["蓄滿" if full else "沒蓄", want, got]
-	# 守墓騎士開局長劍＋木盾：左鍵斬擊、右鍵格擋
+# 一次拿一把武器（許家慶 2026-11-05 拿掉主副手與長劍）：武器資料沒有單手 / 雙手 / 副手，只有一格武器欄；
+# 劍盾左鍵斬擊、右鍵格擋（左手畫盾）；長劍與木盾都拿掉了（蓄力突刺改成技能「突刺」：往前衝 distance、打到的怪各一次 damage_pct）；守墓騎士開局劍盾
+static func check_sword_shield() -> String:
+	for id: StringName in WeaponDefs.WEAPONS:
+		var wd: Dictionary = WeaponDefs.WEAPONS[id]
+		if wd.has("hands") or wd.has("offhand") or wd.has("dual_attack") or wd.has("offhand_arm_l"):
+			return "%s 還留著主副手的欄位（hands / offhand / dual_attack / offhand_arm_l）" % id
+	for gone: StringName in [&"longsword", &"woodShield"]:
+		if WeaponDefs.WEAPONS.has(gone) or ItemDefs.ITEMS.has(gone):
+			return "%s 應該拿掉了（武器與道具資料都不留）" % gone
+	var ss: Dictionary = WeaponDefs.WEAPONS.swordShield
+	if ss.attack.behavior != &"meleeSwing" or ss.special.behavior != &"shieldBlock" or ss.get("offhand_model", &"") != &"woodShield":
+		return "劍盾應是左鍵斬擊、右鍵格擋、左手畫木盾：%s / %s / %s" % [ss.attack.behavior, ss.special.behavior, ss.get("offhand_model", "")]
+	var w := _new_world()
+	var p := _player(w)
+	if p.weapon_slots.size() != 1 or p.weapon_id != Config.PLAYER.start_weapon:
+		return "武器欄應只有 1 格、開局拿 %s：%d 格、%s" % [Config.PLAYER.start_weapon, p.weapon_slots.size(), p.weapon_id]
+	# 突刺：往準星方向衝 distance、面前的怪打一次 damage_pct
+	var td: Dictionary = SkillDefs.SKILLS[&"thrust"]
+	p.add_item(&"thrust")
+	var idx := SkillChecks._slot_of(p, &"thrust")
+	if idx < 0:
+		return "突刺應放進按鍵袋"
+	var target := _dummy(w, Vector2(0, 1.6))
+	target.stats.set_base(&"max_hp", 99999.0)
+	target.hp = 99999.0
+	var events: Array[Dictionary] = []
+	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 20), InputCmd.slot_bit(idx)), 1, events)
+	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 20)), 60, events)
+	var got := _damage_amounts(events, target.id)
+	var want := p.pct_damage(td.damage_pct)
+	_note("突刺衝到 %.2f、打中 %s" % [p.pos.y, got])
+	if got.size() != 1 or absf(got[0] - want) > 0.01:
+		return "突刺應打面前的怪一次 %.2f，實際 %s" % [want, got]
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	p2.add_item(&"thrust")
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 20), InputCmd.slot_bit(SkillChecks._slot_of(p2, &"thrust"))), 1)
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 20)), 60)
+	if absf(p2.pos.y - td.distance) > 0.3 or absf(p2.pos.x) > 0.05:
+		return "突刺應往準星方向衝 %.1f，實際 %s" % [td.distance, p2.pos]
+	# 守墓騎士開局劍盾：右鍵格擋
 	var pk := _player(_class_world(&"guardian"))
-	if pk.weapon_id != &"longsword+woodShield" or pk.weapon.special.behavior != &"shieldBlock":
-		return "守墓騎士開局應是長劍＋木盾（右鍵格擋），實際 %s" % pk.weapon_id
+	if pk.weapon_id != &"swordShield" or pk.weapon.special.behavior != &"shieldBlock":
+		return "守墓騎士開局應是劍盾（右鍵格擋），實際 %s" % pk.weapon_id
 	return ""
 
 
-# 主手、副手都拿匕首（雙持）
+# 雙匕首（一律雙持）
 static func _equip_dual(p: Player) -> void:
 	p.equip_weapon(&"dagger")
-	p.loadout.equip_offhand_new(p, &"dagger")
 
 
-# F6 匕首與竊影者：雙持五連刺第 5 下 150% 必爆擊、只有第 5 下擊退；單拿三連刺第 3 下 120% 且只有它擊退；
+# F6 雙匕首與竊影者：五連刺第 5 下 150% 必爆擊、只有第 5 下擊退（單拿的三連刺拿掉了，許家慶 2026-11-05）；
 # 影步瞬移到怪背後背刺 300% 必爆擊，沒有怪不瞬移、冷卻 1 秒；竊影者開局雙持、翻滾次數 2、翻滾後攻速 +30%
 static func check_daggers() -> String:
-	var dg: Dictionary = WeaponDefs.def_of(&"dagger+dagger")
-	if dg.attack != WeaponDefs.WEAPONS.dagger.dual_attack or dg.special != WeaponDefs.WEAPONS.dagger.special:
-		return "雙持匕首應是左鍵五連刺、右鍵影步"
+	var dg: Dictionary = WeaponDefs.def_of(&"dagger")
+	if dg.attack.get("combo_count", 0) != 5 or dg.special.behavior != &"shadowStep" or dg.get("offhand_model", &"") != &"dagger":
+		return "雙匕首應是左鍵五連刺、右鍵影步、左手也畫一把"
 	var w := _new_world()
 	var p := _player(w)
 	_equip_dual(p)
@@ -912,26 +907,6 @@ static func check_daggers() -> String:
 				staggered.append(g.fsm.current_name == &"hurt")
 	if staggered.size() < 5 or staggered.slice(0, 5) != [false, false, false, false, true]:
 		return "雙匕首只有第 5 下讓怪硬直：%s" % [staggered]
-	# 單拿一把：三連刺，第 3 下 finisher_mul 倍且只有它擊退
-	var ws := _new_world()
-	var ps := _player(ws)
-	ps.equip_weapon(&"dagger")
-	ps.loadout.equip_offhand_new(ps, &"")
-	var single: Dictionary = WeaponDefs.WEAPONS.dagger
-	if ps.weapon_id != &"dagger" or ps.weapon.attack != single.attack or ps.weapon.special != single.special:
-		return "單拿匕首應是左鍵三連刺、右鍵影步：%s" % ps.weapon_id
-	var dummy_s := _dummy(ws, Vector2(0, 1.2))
-	var ev_s: Array[Dictionary] = []
-	_run_collect(ws, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 90, ev_s)
-	var hits_s := _named(ev_s, "entity:damaged").filter(func(e: Dictionary) -> bool: return e.target_id == dummy_s.id)
-	var base_s := WeaponDefs.move_base_damage(single, single.attack)
-	if hits_s.size() < 4:
-		return "三連刺 90 步內應打完一輪再接下一刺，實際 %d 下" % hits_s.size()
-	for i in 3:
-		var fin_s := i == 2
-		var want_s: float = base_s * (single.attack.finisher_mul if fin_s else 1.0)
-		if absf(hits_s[i].amount - want_s) > EPS or (hits_s[i].knockback > 0.0) != fin_s:
-			return "三連刺第 %d 下應 %.2f、擊退 %s：%s" % [i + 1, want_s, fin_s, hits_s[i]]
 	# 影步
 	var w2 := _new_world()
 	var p2 := _player(w2)
@@ -956,8 +931,8 @@ static func check_daggers() -> String:
 	var w4 := _class_world(&"shadow")
 	var p4 := _player(w4)
 	var aspd0 := p4.stats.value(&"attack_speed")
-	if p4.weapon_id != &"dagger+dagger":
-		return "竊影者開局應雙持匕首，實際 %s" % p4.weapon_id
+	if p4.weapon_id != &"dagger":
+		return "竊影者開局應拿雙匕首，實際 %s" % p4.weapon_id
 	if p4.roll_charges != 2:
 		return "竊影者翻滾次數應 2，實際 %d" % p4.roll_charges
 	_run(w4, _cmd(Vector2(1, 0), Vector2(0, 5), InputCmd.BTN_ROLL), 1)
@@ -1352,7 +1327,7 @@ static func check_practice() -> String:
 	w.practice = true
 	var p := _player(w)
 	var affixes: Array[StringName] = [Practice.affixes_for(&"purple")[0], Practice.affixes_for(&"purple")[1]]
-	var inst := Practice.make_weapon(w, &"longsword", &"purple", affixes)
+	var inst := Practice.make_weapon(w, &"swordShield", &"purple", affixes)
 	if inst.rarity != &"purple" or inst.affixes != affixes or not Practice.give_weapon(w, p, inst):
 		return "做出來的武器應是紫色、詞條 %s 並放進背包：%s" % [affixes, inst]
 	if Practice.affix_error(&"blue", Practice.affixes_for(&"blue").slice(0, 3)) == "" or Practice.affix_error(&"blue", affixes.slice(0, 1)) != "":

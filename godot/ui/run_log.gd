@@ -21,7 +21,7 @@ const NAMES := {
 	&"grunt": "骷髏戰士", &"archer": "骷髏弓手", &"zombie": "腐屍", &"bloater": "膨脹屍", &"hound": "屍犬", &"spider": "墓穴蜘蛛", &"beetle": "屍甲蟲", &"bone_wheel": "骨輪", &"spearman": "骷髏盾槍兵", &"boss": "亡骸騎士", &"bone_general": "骸骨將軍", &"gravekeeper": "守墓人", &"ghost": "冤魂", &"minion": "骷髏僕從",
 	&"projectile": "投射物（射手已死）", &"player": "隊友（誤傷）",
 }
-const ALLY_PREFIX := "ally:"   # 隊友誤傷依隊友當時拿的武器分開記：種類寫成「ally:長劍＋木盾」
+const ALLY_PREFIX := "ally:"   # 隊友誤傷依隊友當時拿的武器分開記：種類寫成「ally:劍盾」
 
 var me_id := 0          # 本機玩家的實體 id（HUD 每次有角色時更新；倒下 / 陣亡後角色還在，id 不變）
 const KILLS_PER_LINE := 6   # 擊殺一行最多幾種

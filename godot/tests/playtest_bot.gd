@@ -21,7 +21,7 @@ const CONE_HUG_MAX := 4.5              # 持續的扇形招：離中心這麼近
 const CONE_STEP := 0.9                 # 貼身繞的時候每次往前繞這麼多弧度的點走
 const CONE_BEHIND := 0.6               # 在牠背後 ±這麼多弧度內就算繞到了
 const ATTACK_LOCK := 0.0               # 揮刀中盾舉不起來的時間也算進「來不及」（Boss 的招預兆 < 反應 + ROLL_LEAD + 這個就先舉盾）：試過 0.3（含鏟擊、提燈），提燈 7.5 格外就一直舉盾、幾乎不出手，死時 Boss 剩 42% → 75%
-const PREBLOCK_EARLY := 0.5            # 那招的冷卻剩這麼多秒就不再出手、先舉盾（長劍一刀 0.36~0.48 秒，揮到一半冷卻好了牠 0.15 秒就出招）
+const PREBLOCK_EARLY := 0.5            # 那招的冷卻剩這麼多秒就不再出手、先舉盾（劍盾一刀 0.36~0.48 秒，揮到一半冷卻好了牠 0.15 秒就出招）
 const PREBLOCK_PAD := 0.5              # 來不及反應的招：離牠這招的發動距離（trigger_distance）+ 這麼多以內、冷卻好了就先舉盾
 const EVADE_MAX := 1.2                 # 躲過一招後最多退這麼久就回去打（慢動作、連續出招的 Boss 不會一直退）
 const ROCK_WARN := 0.5                 # 從天上落下的石頭（守墓人鏟土）：這麼多秒內會落地、我在範圍內就走開（影子看得到）
@@ -108,7 +108,7 @@ var _seen_t := {}                      # 怪物 id → 上一步看到的狀態�
 var _forms := {}                       # 怪物 id → 上次認出的形態（資料子表名稱，例 wolf）
 var _fast_moves := {}                  # 「怪物種類·形態」→ 來不及反應的招 [[名稱, 表]]（預兆 ≤ 反應 + ROLL_LEAD），查過就記著
 var _unblockable := {}                 # 舉盾還被打到的「怪物種類·狀態」：之後這招改滾（每個種子重新學）
-var _hands := ["", ""]                 # 主手 / 副手武器的 uid：變了就是換過武器
+var _hands := [""]                     # 手上武器的 uid：變了就是換過武器
 var _was_down := false
 var _last_hit := "不明"                # 最後打中自己的「怪物·招式」（倒下時記這個）
 var _blocked_loot: ItemPickup = null   # 背包放不下、稀有度最高的地上武器
@@ -141,7 +141,7 @@ func _init(p_world: World, p_player: Player, opts: Dictionary, seed_value: int) 
 	if wid in RANGED:   # 遠程站在普攻射程的 70%（5~9）：站得比守墓人提燈的發動距離（7）遠，不會一直被噴
 		reach = clampf(float(WeaponDefs.WEAPONS[wid].attack.get("range", 8.0)) * RANGED_STANDOFF, 5.0, 9.0)
 	_rng.seed = hash([seed_value, peer])
-	_hands = [p.weapon_slots[Loadout.MAIN].get("uid", ""), p.weapon_slots[Loadout.OFF].get("uid", "")]
+	_hands = [p.weapon_slots[Loadout.MAIN].get("uid", "")]
 
 
 func begin_floor() -> void:
@@ -170,7 +170,7 @@ func begin_floor() -> void:
 
 # 步完：讀這一步的事件記統計；換武器看手上的 uid；倒下照模式處理（救起或記下死在哪）
 func after_step(t: float) -> void:
-	for i in Loadout.OFF + 1:
+	for i in p.weapon_slots.size():
 		var uid: Variant = p.weapon_slots[i].get("uid", "")
 		if uid != _hands[i]:
 			_hands[i] = uid
@@ -1000,13 +1000,13 @@ func _drink(cmd: InputCmd) -> void:
 		cmd.buttons |= InputCmd.slot_bit(ActiveSlots.HEAL_INDEX)
 
 
-# 背包裡有跟主手 / 副手同一種、稀有度更高的武器就換上（鑲的道具由 Loadout 搬過去）；一步換一把
+# 背包裡有跟手上同一種、稀有度更高的武器就換上（鑲的道具由 Loadout 搬過去）；一步換一把
 func _swap(cmd: InputCmd) -> void:
 	for x in p.inventory.entries:
 		var inst: Dictionary = x.get("weapon", {})
 		if inst.is_empty():
 			continue
-		for i in Loadout.OFF + 1:
+		for i in p.weapon_slots.size():
 			var hand: Dictionary = p.weapon_slots[i]
 			if hand.is_empty() or Loadout.weapon_of(hand) != Loadout.weapon_of(inst):
 				continue

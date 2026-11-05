@@ -10,12 +10,11 @@ static func _bdummy(w: World, at: Vector2, hp: float = 1000.0) -> Enemy:
 	return e
 
 
-# 長劍＋木盾，依序鑲上 ids（自動擺放）；有一件沒鑲上武器就回傳錯誤
+# 劍盾，依序鑲上 ids（自動擺放）；有一件沒鑲上武器就回傳錯誤
 static func _setup(ids: Array) -> Array:
 	var w := _new_world()
 	var p := _player(w)
-	p.loadout.equip_new(p, &"longsword")
-	p.loadout.equip_offhand_new(p, &"woodShield")
+	p.loadout.equip_new(p, &"swordShield")
 	for id: StringName in ids:
 		var uid := p.add_item(id)
 		if uid == &"" or p.loadout.find_item(uid).get("where", Loadout.BAG) == Loadout.BAG:

@@ -632,8 +632,8 @@ static func check_armed_zombie() -> String:
 	var p: Player = w.players[World.HOST_PEER_ID]
 	p.pos = Vector2(0, 30)
 	var rng := RandomNumberGenerator.new()
-	var inst := WeaponDropDefs.make(&"w_test", &"longsword", &"white", rng)
-	var ip := w.drop_item(&"longsword", Vector2(2.5, 0), inst)
+	var inst := WeaponDropDefs.make(&"w_test", &"swordShield", &"white", rng)
+	var ip := w.drop_item(&"swordShield", Vector2(2.5, 0), inst)
 	var z := w.spawner.spawn_at(w, &"zombie", Vector2.ZERO) as Zombie
 	var bent := false
 	for i in 60 * 4:

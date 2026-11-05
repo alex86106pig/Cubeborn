@@ -572,7 +572,7 @@ const ENEMIES := {
 #   shield 舉盾（正面 arc 擋下、結束時盾擊 bash）；burst 原地爆開；blink 黑煙後閃到背後；heal 治療周圍腐屍；breath 前方噴火；scoop 鏟起
 # reach：目標在這以內才出這招；keep：遠程武器保持的距離 [近, 遠]；move_mul：移速倍率
 const ARMED_ZOMBIE := {
-	&"longsword": {
+	&"swordShield": {
 		"name": "劍盾", "model": &"longsword", "offhand_model": &"woodShield",
 		"attack": {"type": &"melee", "reach": 1.9, "windup": 0.45, "recovery": 0.5, "cooldown": 1.3,
 			"hits": [{"range": 2.1, "arc": PI * 100.0 / 180.0, "damage_pct": 1.0, "tier": &"light"}]},
@@ -656,13 +656,13 @@ static func def_of(type: StringName) -> Dictionary:
 	return _merged[type]
 
 
-# 持武器腐屍的招式（副手盾 woodShield 撿起來也算劍盾）
+# 持武器腐屍的招式（ARMED_ZOMBIE 的 key 就是武器 id）
 static func armed_kit(base: StringName) -> Dictionary:
-	return ARMED_ZOMBIE[&"longsword" if base == &"woodShield" else base]
+	return ARMED_ZOMBIE[base]
 
 
 static func has_armed_kit(base: StringName) -> bool:
-	return base == &"woodShield" or ARMED_ZOMBIE.has(base)
+	return ARMED_ZOMBIE.has(base)
 
 
 # 持武器腐屍的技能冷卻：玩家用這把武器右鍵的「耗魔 ÷ 5」秒的 2 倍（怪物圖鑑備註 1）

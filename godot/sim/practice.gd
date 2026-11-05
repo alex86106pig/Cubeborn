@@ -45,7 +45,7 @@ static func make_weapon(world: World, base: StringName, rarity: StringName, affi
 	return {"uid": world.new_weapon_uid(), "base": base, "rarity": rarity, "affixes": affixes.duplicate()}
 
 
-# 武器放進背包（主手空著就拿在手上，同撿到）；放不下掉在腳邊。回傳 true = 進了背包或手上
+# 武器放進背包（手上空著就拿起來，同撿到）；放不下掉在腳邊。回傳 true = 進了背包或手上
 static func give_weapon(world: World, p: Player, inst: Dictionary) -> bool:
 	if p.add_weapon(inst):
 		return true

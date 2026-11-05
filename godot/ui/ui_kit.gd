@@ -125,7 +125,7 @@ static func format_time(seconds: float) -> String:
 	return "%d:%02d" % [floori(seconds / 60.0), floori(fmod(seconds, 60.0))]
 
 
-const HANDS_TEXT := {&"one": "單手", &"two": "雙手", &"off": "副手"}
+const WEAPON_TYPE_TEXT := {&"melee": "近戰", &"ranged": "遠程"}   # 武器說明的第一欄（一次拿一把，沒有單手 / 雙手）
 
 
 # 一段文字裡要染色的字：數字（金色）、羈絆與傷害類型（各自的顏色）、屬性（淺青）；回傳 [[文字, 顏色], ...]
@@ -192,12 +192,12 @@ static func _fit_chars(font: Font, text: String, room: float, font_size: int) ->
 
 
 # 道具 / 武器的說明（地上的道具卡、背包的浮動說明共用）：{ title, color, lines }；標題 = 名稱（種類 · 稀有度）
-# weapon 是武器實例（WeaponDropDefs）時顯示拿法、基本數值與詞條，否則顯示道具效果
+# weapon 是武器實例（WeaponDropDefs）時顯示近戰 / 遠程、基本數值與詞條，否則顯示道具效果
 static func item_info(id: StringName, weapon: Dictionary, level := 1) -> Dictionary:
 	if not weapon.is_empty():
 		var b := WeaponDropDefs.base_stats(weapon)
 		var wd: Dictionary = WeaponDefs.WEAPONS[ItemDefs.ITEMS[weapon.base].weapon]
-		var hands: String = HANDS_TEXT[wd.hands] + ("，也能當副手" if wd.get("offhand", false) else "")
+		var hands: String = WEAPON_TYPE_TEXT.get(wd.get("type", &""), "武器")
 		var stats_line: String = ("%s · 攻擊力 %.1f · 攻速 %.2f 次/秒 · 範圍 %.1f" % [hands, b.damage, b.attack_speed, b.range]) if not b.is_empty() else hands + " · " + wd.special.name
 		var lines: Array[String] = [stats_line, "普攻 %s · 右鍵 %s" % [wd.attack.get("name", "—"), wd.special.get("name", "—")] if wd.has("attack") else wd.special.get("name", "")]
 		return {"title": "%s（武器 · %s）" % [WeaponDropDefs.display_name(weapon), ItemDefs.RARITIES[weapon.rarity].name], "color": ItemDefs.RARITIES[weapon.rarity].color, "lines": lines}
@@ -431,18 +431,22 @@ static func draw_bond_mark(ci: CanvasItem, bond: StringName, center: Vector2, r:
 			ci.draw_circle(center, s * 0.35, color)
 
 
-# 武器的 2D 剪影，畫在一格 r 裡；座標是格子寬的比例（沒畫過的武器畫成長劍）
+# 武器的 2D 剪影，畫在一格 r 裡；座標是格子寬的比例（沒畫過的武器畫成一把劍）
 static func draw_weapon_mark(ci: CanvasItem, id: StringName, r: Rect2, color: Color) -> void:
 	var c := r.size.x
 	var at := func(x: float, y: float) -> Vector2: return r.position + Vector2(x, y) * c
 	var thin := maxf(1.5, c * 0.06)
 	var thick := maxf(2.0, c * 0.09)
 	match id:
-		&"dagger":
-			ci.draw_line(at.call(0.32, 0.7), at.call(0.68, 0.34), color, thick)
-			ci.draw_line(at.call(0.26, 0.54), at.call(0.48, 0.76), color, thin)
-		&"woodShield":
-			ci.draw_colored_polygon(PackedVector2Array([at.call(0.24, 0.24), at.call(0.76, 0.24), at.call(0.76, 0.54), at.call(0.5, 0.82), at.call(0.24, 0.54)]), color)
+		&"dagger":   # 雙匕首：交叉的兩把
+			ci.draw_line(at.call(0.26, 0.74), at.call(0.66, 0.3), color, thick)
+			ci.draw_line(at.call(0.74, 0.74), at.call(0.34, 0.3), color, thick)
+			ci.draw_line(at.call(0.2, 0.6), at.call(0.38, 0.8), color, thin)
+			ci.draw_line(at.call(0.8, 0.6), at.call(0.62, 0.8), color, thin)
+		&"swordShield":   # 劍盾：右上斜的劍 + 左下的盾
+			ci.draw_line(at.call(0.38, 0.62), at.call(0.84, 0.16), color, thick)
+			ci.draw_line(at.call(0.48, 0.42), at.call(0.62, 0.56), color, thin)
+			ci.draw_colored_polygon(PackedVector2Array([at.call(0.14, 0.4), at.call(0.5, 0.4), at.call(0.5, 0.62), at.call(0.32, 0.86), at.call(0.14, 0.62)]), color)
 		&"staff":
 			ci.draw_line(at.call(0.24, 0.8), at.call(0.7, 0.32), color, thin)
 			ci.draw_circle(at.call(0.74, 0.26), c * 0.11, color)

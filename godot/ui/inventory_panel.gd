@@ -1,10 +1,10 @@
 # 背包介面（Tab 開關：畫面右半邊、中間可以用滑鼠滾輪捲動；規則在 docs/設計方向.md「觸發袋」）
-# 左邊是盤（主袋在中間，四邊接觸發袋，袋子外側的標題條寫什麼時候發動）；右欄由上到下是主手、副手的名稱框、羈絆欄、倉庫（每格一件，不管形狀）
+# 左邊是盤（主袋在中間，四邊接觸發袋，袋子外側的標題條寫什麼時候發動）；右欄由上到下是武器框（手上那把）、羈絆欄、倉庫（每格一件，不管形狀）
 # 上面的標題與操作說明、下面滑鼠停著的說明都固定不捲。腳邊（按得到 F 的地上道具）是另一個浮在左邊的框（FeetPanel）
 # 空的邊平常不畫：拿起袋子才亮出能接的位置並預覽標題；拿起道具時放不下的地方變暗
 # 左鍵點一下拿起、再點一下放下（按住拖曳也可以）；拿著時按 R 旋轉、右鍵或 Esc 放回原處，放到腳邊或面板外面丟在地上；
 # 數值道具放主袋、效果 / 技能 / 修飾放袋子才生效，放到倉庫 = 拿下來；抓住袋子的標題條或空格拖到主袋的另一邊或另一個位置 = 換邊 / 滑動，拖到倉庫 = 拿下來；
-# 武器放到主手 / 副手的名稱框就換上，放到同種同稀有度的武器上合成；放到只被 1 件東西佔住的位置 = 互換；沒做成時 HUD 跳原因（inventory:denied）
+# 武器放到武器框就換上，放到同種同稀有度的武器上合成；放到只被 1 件東西佔住的位置 = 互換；沒做成時 HUD 跳原因（inventory:denied）
 # 接在側邊的袋子是轉過的：袋子的格子 x 沿著邊、y 往外（BagDefs），畫在盤上的位置照 Loadout.board_cell
 # 只送操作（op_requested → InputCollector → InputCmd.inv_ops），實際擺放由權威端決定，畫面照本機玩家的狀態畫
 class_name InventoryPanel
@@ -17,8 +17,7 @@ const BCELL := 60         # 盤上一格（主袋與袋子）
 const BAG_HEAD := 26      # 袋子外側的標題條寬度（盤的四邊各留這麼多）
 const SIDE_GAP := 24      # 盤和右欄之間
 const DEPTH := 2          # 盤的四邊留給袋子的格數（BagDefs.TIERS 的 depth 都是 2）
-const HEAD_W := 174       # 主手 / 副手的名稱框
-const HAND_GAP := 12      # 兩隻手之間
+const HEAD_W := 360       # 武器框（一次拿一把，許家慶 2026-11-05 拿掉主副手；寬度 = 原本兩個名稱框 174 × 2 + 間隔 12）
 const PAD := 18
 const TITLE_H := 64       # 標題 + 一行操作說明（固定在上面）
 const TIP_W := 420.0              # 浮動說明的寬度（檢查「背包介面」量最長的說明塞不塞得進畫面）
@@ -28,8 +27,7 @@ const TIP_TITLE_FONT := 20
 const TIP_MARGIN := 8.0           # 離畫面邊緣至少這麼遠
 const TIP_OFFSET := Vector2(18, 18)   # 離滑鼠的距離，不蓋住指著的東西
 const LABEL_H := 24
-const HEAD_H := 62        # 主手 / 副手的名稱框（拖武器到這裡換上）
-const SLOT_NAMES: Array[String] = ["主手", "副手"]
+const HEAD_H := 62        # 武器框（拖武器到這裡換上）
 const BOND_W := 360       # 右欄的寬度（羈絆欄、倉庫 6 格）；只列有的（格數 > 0）
 const BOND_H := 56        # 羈絆一格：名稱與格數、各階門檻
 const BOND_GAP := 8
@@ -113,17 +111,14 @@ func _in_view(local: Vector2) -> bool:
 	return _view_rect().has_point(local)
 
 
-# 右欄（主手 / 副手、羈絆、倉庫）的左邊
+# 右欄（武器框、羈絆、倉庫）的左邊
 func _side_x() -> float:
 	return PAD + _board_size().x + BAG_HEAD * 2 + SIDE_GAP
 
 
-func _hand_x(i: int) -> float:
-	return _side_x() + i * (HEAD_W + HAND_GAP)
-
-
-func _slot_rect(i: int) -> Rect2:
-	return Rect2(Vector2(_hand_x(i), _content_top() + LABEL_H), Vector2(HEAD_W, HEAD_H))
+# 武器框（i 只有 Loadout.MAIN）
+func _slot_rect(_i: int) -> Rect2:
+	return Rect2(Vector2(_side_x(), _content_top() + LABEL_H), Vector2(HEAD_W, HEAD_H))
 
 
 func _board_top() -> float:
@@ -148,7 +143,7 @@ func _bcell_rect(bc: Vector2i) -> Rect2:
 	return Rect2(_core_origin() + Vector2(bc) * BCELL, Vector2(BCELL, BCELL))
 
 
-# 羈絆欄：右欄裡主手 / 副手的名稱框下面，由上往下
+# 羈絆欄：右欄裡武器框下面，由上往下
 func _bonds_origin() -> Vector2:
 	return Vector2(_side_x(), _content_top() + LABEL_H + HEAD_H + 12 + LABEL_H)
 
@@ -194,10 +189,7 @@ func _content_height(_me: Player) -> float:
 func _slot_at(local: Vector2) -> int:
 	if not _in_view(local):
 		return -1
-	for i in 2:
-		if _slot_rect(i).has_point(local):
-			return i
-	return -1
+	return Loadout.MAIN if _slot_rect(Loadout.MAIN).has_point(local) else -1
 
 
 # 滑鼠下面是盤上哪一格（盤座標）；不在盤上回傳 null
@@ -471,7 +463,7 @@ func _head_at(me: Player, local: Vector2) -> int:
 	return -1
 
 
-# 滑鼠下面是哪個東西（主手 / 副手的武器、主袋與袋子裡的道具、袋子本身（空格或標題條）、倉庫的條目）
+# 滑鼠下面是哪個東西（手上的武器、主袋與袋子裡的道具、袋子本身（空格或標題條）、倉庫的條目）
 func _uid_at(me: Player, local: Vector2) -> StringName:
 	var slot := _slot_at(local)
 	if slot >= 0:
@@ -549,7 +541,7 @@ func _bag_drop(local: Vector2) -> Dictionary:
 	return {"side": s.side, "offset": offset}
 
 
-# 放開滑鼠時：拖到武器上 = 合成、拖到主手 / 副手 = 換上；道具拖到主袋 / 袋子 / 倉庫 = 搬動；袋子拖到主袋的邊 = 接上；拖到腳邊或面板外 = 丟掉
+# 放開滑鼠時：拖到武器上 = 合成、拖到武器框 = 換上；道具拖到主袋 / 袋子 / 倉庫 = 搬動；袋子拖到主袋的邊 = 接上；拖到腳邊或面板外 = 丟掉
 func _merge_target(me: Player, local: Vector2) -> Dictionary:
 	if _drag.weapon.is_empty() or _drag.has("pickup_id"):
 		return {}
@@ -628,11 +620,8 @@ func _quick_equip(me: Player, local: Vector2) -> void:
 		return
 	var slot := _slot_at(local)
 	if slot >= 0:
-		var inst: Dictionary = me.weapon_slots[slot]
-		if slot == Loadout.MAIN and not inst.is_empty():
-			_say("主手不能空著：在倉庫的武器上按右鍵換上")
-		elif not inst.is_empty():
-			_to_storage(me, inst.uid, inst.base, WeaponDropDefs.display_name(inst))
+		if not me.weapon_slots[slot].is_empty():
+			_say("手上不能沒有武器：在倉庫的武器上按右鍵換上")
 		return
 	var head := _head_at(me, local)
 	if head >= 0:
@@ -652,8 +641,7 @@ func _quick_equip(me: Player, local: Vector2) -> void:
 	if e.is_empty() or e.id == &"corpse":
 		return
 	if not e.get("weapon", {}).is_empty():
-		var off: bool = WeaponDefs.WEAPONS[Loadout.weapon_of(e.weapon)].hands == &"off"
-		op_requested.emit([InputCmd.OP_EQUIP, String(e.uid), Loadout.OFF if off else Loadout.MAIN])
+		op_requested.emit([InputCmd.OP_EQUIP, String(e.uid), Loadout.MAIN])
 		return
 	if e.has("bag"):
 		var at := me.loadout.attach_spot(e.bag)
@@ -1053,12 +1041,6 @@ func draw_feet(canvas: Control) -> void:
 		canvas.draw_string(font, row.position + Vector2(56, row.size.y / 2.0 + 7), ip.display_name(), HORIZONTAL_ALIGNMENT_LEFT, row.size.x - 62, 18, Color(color, alpha))
 
 
-# 主手拿雙手武器：副手不能拿東西
-func _offhand_blocked(me: Player) -> bool:
-	var main: Dictionary = me.weapon_slots[Loadout.MAIN]
-	return not main.is_empty() and WeaponDefs.WEAPONS[Loadout.weapon_of(main)].hands == &"two"
-
-
 func _rarity_of(e: Dictionary) -> StringName:
 	return e.weapon.rarity if e.has("weapon") else ItemDefs.ITEMS[e.id].rarity
 
@@ -1067,7 +1049,7 @@ func _drag_rarity() -> StringName:
 	return _drag.weapon.rarity if not _drag.weapon.is_empty() else ItemDefs.ITEMS[_drag.id].rarity
 
 
-# 合成提示框：滑鼠下面那個武器所在的名稱框或倉庫格
+# 合成提示框：滑鼠下面那個武器所在的武器框或倉庫格
 func _hover_rect(local: Vector2) -> Rect2:
 	var slot := _slot_at(local)
 	if slot >= 0:
@@ -1075,36 +1057,26 @@ func _hover_rect(local: Vector2) -> Rect2:
 	return Rect2(_grid_origin() + Vector2(_cell_at(local)) * CELL, Vector2(CELL, CELL))
 
 
-# 主手 / 副手的名稱框（拖武器到這裡換上）
+# 武器框（拖武器到這裡換上）：上面寫「武器」，框裡是名稱、攻擊力，右邊畫武器剪影
 func _draw_slots(font: Font, me: Player) -> void:
-	for i in 2:
-		var r := _slot_rect(i)
-		var inst: Dictionary = me.weapon_slots[i]
-		var main := i == Loadout.MAIN and not inst.is_empty()
-		draw_string(font, r.position + Vector2(0, -6), SLOT_NAMES[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 16, UiKit.GOLD if main else Color(1, 1, 1, 0.6))
-		if i == Loadout.OFF and _offhand_blocked(me):   # 主手是雙手武器：副手畫成斜線、寫明不能拿（看起來不像空格）
-			draw_rect(r, Color(0, 0, 0, 0.35))
-			var step := 14.0
-			var k := 0.0
-			while k < r.size.x + r.size.y:
-				var a := r.position + Vector2(minf(k, r.size.x), maxf(0.0, k - r.size.x))
-				var b := r.position + Vector2(maxf(0.0, k - r.size.y), minf(k, r.size.y))
-				draw_line(a, b, Color(1, 1, 1, 0.1), 2.0)
-				k += step
-			draw_string(font, r.position + Vector2(10, r.size.y / 2.0 + 7), "雙手武器：不能拿副手", HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 16, 15, Color(1, 1, 1, 0.55))
-			continue
-		draw_rect(r, Color(1, 1, 1, 0.05))
-		if inst.is_empty():
-			draw_string(font, r.position + Vector2(10, r.size.y / 2.0 + 7), "（空）", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1, 1, 1, 0.3))
-			continue
-		var color: Color = ItemDefs.RARITIES[inst.rarity].color
-		var dim: bool = (not _drag.is_empty() and _drag.uid == inst.uid) or (forge != null and forge.dims(inst))
-		draw_rect(r.grow(-3), Color(color.darkened(0.55), 0.4 if dim else 0.9))
-		draw_rect(r.grow(-3), UiKit.GOLD if main else color, false, 3.0 if main else 2.0)
-		draw_string(font, r.position + Vector2(10, 26), WeaponDropDefs.display_name(inst), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 16, 20, Color(color, 0.4 if dim else 1.0))
-		_draw_forge_mark(font, inst, [r])
-		var b := WeaponDropDefs.base_stats(inst)
-		draw_string(font, r.position + Vector2(10, 50), ("攻擊力 %.1f" % b.damage) if not b.is_empty() else "副手", HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(1, 1, 1, 0.7))
+	var r := _slot_rect(Loadout.MAIN)
+	var inst: Dictionary = me.weapon_slots[Loadout.MAIN]
+	draw_string(font, r.position + Vector2(0, -6), "武器", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, UiKit.GOLD if not inst.is_empty() else Color(1, 1, 1, 0.6))
+	draw_rect(r, Color(1, 1, 1, 0.05))
+	if inst.is_empty():
+		draw_string(font, r.position + Vector2(10, r.size.y / 2.0 + 7), "（空）", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1, 1, 1, 0.3))
+		return
+	var color: Color = ItemDefs.RARITIES[inst.rarity].color
+	var dim: bool = (not _drag.is_empty() and _drag.uid == inst.uid) or (forge != null and forge.dims(inst))
+	draw_rect(r.grow(-3), Color(color.darkened(0.55), 0.4 if dim else 0.9))
+	draw_rect(r.grow(-3), UiKit.GOLD, false, 3.0)
+	var mark := Rect2(r.end - Vector2(r.size.y, r.size.y), Vector2(r.size.y, r.size.y)).grow(-8)
+	UiKit.draw_weapon_mark(self, Loadout.weapon_of(inst), mark, Color(color, 0.4 if dim else 0.85))
+	draw_string(font, r.position + Vector2(10, 26), WeaponDropDefs.display_name(inst), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - r.size.y - 16, 20, Color(color, 0.4 if dim else 1.0))
+	_draw_forge_mark(font, inst, [r])
+	var b := WeaponDropDefs.base_stats(inst)
+	if not b.is_empty():
+		draw_string(font, r.position + Vector2(10, 50), "攻擊力 %.1f" % b.damage, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(1, 1, 1, 0.7))
 
 
 # 鍛造祭壇開著時：放在鍛造格子裡的武器標「鍛造 1 / 2」、能和已放的那把合成的發亮（變暗由 ForgePanel.dims 決定）

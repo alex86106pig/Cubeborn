@@ -31,7 +31,7 @@ static func _targets(w: World) -> Array[Enemy]:
 # 放置規則：主袋不放技能、袋子收技能、效果與數值道具（第 8 步 a）、倉庫什麼都收；自動擺放先找按鍵袋、滿了找別的袋子、都滿進倉庫；
 # 數字鍵 = 按鍵袋由左到右（袋子裡第一個技能），Q 是治療藥水；技能不算生效的數值道具
 static func check_gem_rules() -> String:
-	var s := _setup(&"longsword")
+	var s := _setup(&"swordShield")
 	var p: Player = s[1]
 	var key: Dictionary = p.loadout.key_bags()[0]
 	if p.loadout.core.fits(&"whirlwind", Vector2i.ZERO, 0) or not Inventory.for_bag(key).fits(&"meteor", Vector2i.ZERO, 0) \
@@ -62,11 +62,9 @@ static func check_every_skill() -> String:
 	for id: StringName in SkillDefs.gem_skill_ids():
 		var def: Dictionary = SkillDefs.SKILLS[id]
 		var weapon: StringName = def.weapons[0]
-		var s := _setup(&"longsword" if weapon == &"woodShield" else weapon)
+		var s := _setup(weapon)
 		var w: World = s[0]
 		var p: Player = s[1]
-		if weapon == &"woodShield":
-			p.loadout.equip_offhand_new(p, &"woodShield")
 		if p.loadout.find_item(p.add_item(id)).get("where", -9) != 0:
 			return "%s 應放進按鍵袋" % ItemDefs.ITEMS[id].name
 		var targets := _targets(w)
@@ -101,7 +99,7 @@ static func check_every_skill() -> String:
 # 魔力：開局滿、每秒回 mana_regen、不超過上限；魔力不夠放不出技能（發 skill:onCooldown、不扣魔）；
 # 魔力道具（回魔、耗魔縮減、命中回魔有內部冷卻）照資料生效、會掉落；魔力進快照
 static func check_mana() -> String:
-	var s := _setup(&"longsword")
+	var s := _setup(&"swordShield")
 	var w: World = s[0]
 	var p: Player = s[1]
 	if absf(p.mana - Config.MANA.max) > 1e-3 or absf(p.max_mana() - Config.MANA.max) > 1e-3:
@@ -113,15 +111,15 @@ static func check_mana() -> String:
 	_run(w, _cmd(Vector2.ZERO), roundi((p.max_mana() / Config.MANA.regen + 1.0) / DT))
 	if absf(p.mana - p.max_mana()) > 1e-3:
 		return "回滿後應停在上限 %.0f，實際 %.2f" % [p.max_mana(), p.mana]
-	# 魔力照主手武器（WeaponDefs 的 max_mana / mana_regen）；換武器時目前魔力照比例縮放
+	# 魔力照手上的武器（WeaponDefs 的 max_mana / mana_regen）；換武器時目前魔力照比例縮放
 	p.mana = p.max_mana() * 0.5
 	p.equip_weapon(&"shovel")
 	var sd: Dictionary = WeaponDefs.WEAPONS.shovel
 	if absf(p.max_mana() - sd.max_mana) > 1e-3 or absf(p.stats.value(&"mana_regen") - sd.mana_regen) > 1e-3 or absf(p.mana - sd.max_mana * 0.5) > 1e-3:
 		return "換鐵鏟：魔力應 %.0f / %.0f、回魔 %.2f，實際 %.1f / %.1f、%.2f" % [sd.max_mana * 0.5, sd.max_mana, sd.mana_regen, p.mana, p.max_mana(), p.stats.value(&"mana_regen")]
-	p.equip_weapon(&"longsword")
+	p.equip_weapon(&"swordShield")
 	if absf(p.max_mana() - Config.MANA.max) > 1e-3 or absf(p.mana - Config.MANA.max * 0.5) > 1e-3:
-		return "換回長劍：魔力應 %.0f / %.0f，實際 %.1f / %.1f" % [Config.MANA.max * 0.5, Config.MANA.max, p.mana, p.max_mana()]
+		return "換回劍盾：魔力應 %.0f / %.0f，實際 %.1f / %.1f" % [Config.MANA.max * 0.5, Config.MANA.max, p.mana, p.max_mana()]
 	p.mana = p.max_mana()
 	# 魔力不夠：放不出旋風斬
 	p.add_item(&"whirlwind")
@@ -179,7 +177,7 @@ static func check_mana() -> String:
 static func check_skill_level() -> String:
 	var dealt := []
 	for lv in [1, 3]:
-		var s := _setup(&"longsword")
+		var s := _setup(&"swordShield")
 		var w: World = s[0]
 		var p: Player = s[1]
 		p.add_item(&"whirlwind")
@@ -198,7 +196,7 @@ static func check_skill_level() -> String:
 	if dealt[0] <= 0.0 or absf(dealt[1] / dealt[0] - want) > 0.02:
 		return "3 級傷害應是 1 級的 %.2f 倍：%s" % [want, dealt]
 	# 技能遺物：選項都是技能；選到已經有的升 1 級、沒有的拿到技能
-	var s2 := _setup(&"longsword")
+	var s2 := _setup(&"swordShield")
 	var w2: World = s2[0]
 	var p2: Player = s2[1]
 	var relic := w2.drop_relic(&"small", p2.pos + Vector2(1, 0), &"skill")
@@ -275,8 +273,9 @@ static func _check_skill_relic_rules() -> String:
 	for id: StringName in pool:
 		var r: StringName = ItemDefs.ITEMS[id].rarity
 		counts[r] = counts.get(r, 0) + 1
-	if counts != {&"white": 10, &"green": 7, &"blue": 7, &"purple": 3}:
-		return "技能稀有度的數量應是白 10、綠 7、藍 7、紫 3：%s" % [counts]
+	# 使用者 2026-11-04 的分級（docs/製作計畫.md I），綠多一個突刺（2026-11-05 長劍的蓄力突刺改成技能，Claude 暫定綠）
+	if counts != {&"white": 10, &"green": 8, &"blue": 7, &"purple": 3}:
+		return "技能稀有度的數量應是白 10、綠 8、藍 7、紫 3：%s" % [counts]
 	var drawn := {}
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 42
@@ -294,7 +293,7 @@ static func _check_skill_relic_rules() -> String:
 			return "技能稀有度 %s 抽到 %.3f，權重算出來 %.3f" % [r, got, want]
 	for tier: StringName in [&"big", &"small"]:
 		for i in 10:
-			var s := _setup(&"longsword")
+			var s := _setup(&"swordShield")
 			var w: World = s[0]
 			var chest := Chest.new(w, tier, Vector2(0, 2))
 			w.add_entity(chest)
@@ -306,7 +305,7 @@ static func _check_skill_relic_rules() -> String:
 				return "%s 應開出%s遺物，實際 %s" % ["石棺" if tier == &"big" else "祭壇", "技能" if want == &"skill" else "道具", relic.relic_kind]
 	var first_hits := 0
 	for i in 30:
-		var s := _setup(&"longsword")
+		var s := _setup(&"swordShield")
 		var w: World = s[0]
 		var p: Player = s[1]
 		p.add_item(&"whirlwind")
@@ -322,7 +321,7 @@ static func _check_skill_relic_rules() -> String:
 			first_hits += 1
 	if first_hits == 30:
 		return "保證的技能每次都在第一張，應打亂順序"
-	var s3 := _setup(&"longsword")
+	var s3 := _setup(&"swordShield")
 	var p3: Player = s3[1]
 	p3.add_item(&"whirlwind")
 	p3.skill_levels[&"whirlwind"] = SkillDefs.LEVEL.max
@@ -339,7 +338,7 @@ static func check_supports() -> String:
 	var far_d := r * 1.3
 	# 延長：本來打不到的距離打得到（1 格的修飾整件透明，蓋在旋風斬那格）
 	for with_support in [false, true]:
-		var s := _setup(&"longsword")
+		var s := _setup(&"swordShield")
 		var w: World = s[0]
 		var p: Player = s[1]
 		var key: Dictionary = p.loadout.key_bags()[0]
@@ -353,7 +352,7 @@ static func check_supports() -> String:
 			return "延長%s時 %.1f 單位的怪%s打到" % ["蓋著" if with_support else "沒有", far_d, "應" if with_support else "不該"]
 	# 火焰化：透明格蓋住才改成火焰；同一袋但透明格沒蓋到技能就沒效
 	for covered in [true, false]:
-		var s := _setup(&"longsword")
+		var s := _setup(&"swordShield")
 		var w: World = s[0]
 		var p: Player = s[1]
 		var key: Dictionary = p.loadout.key_bags()[0]
@@ -367,7 +366,7 @@ static func check_supports() -> String:
 		if fire != covered:
 			return "火焰化%s時旋風斬%s是火焰傷害" % ["蓋住" if covered else "同一袋沒蓋到", "應" if covered else "不該"]
 	# 分裂：SPLIT_DELAY 秒後再打一次（傷害 SPLIT_MUL）
-	var s3 := _setup(&"longsword")
+	var s3 := _setup(&"swordShield")
 	var w3: World = s3[0]
 	var p3: Player = s3[1]
 	var k3: Dictionary = p3.loadout.key_bags()[0]
@@ -382,7 +381,7 @@ static func check_supports() -> String:
 	if hits.size() != 2 or absf(hits[1].amount / hits[0].amount - SkillBehaviors.SPLIT_MUL) > 0.02:
 		return "分裂：應打 2 次、第二次 ×%.1f：%s" % [SkillBehaviors.SPLIT_MUL, hits.map(func(ev: Dictionary) -> float: return ev.amount)]
 	# 耗魔：一般修飾每顆 × (1 + 強度 × SUPPORT_MANA)，節能 × mana_mul；技能欄顯示與實際扣的一樣（1 格的技能只蓋得下一個透明格，相乘在下面的效果驗）
-	var s4 := _setup(&"longsword")
+	var s4 := _setup(&"swordShield")
 	var w4: World = s4[0]
 	var p4: Player = s4[1]
 	var k4: Dictionary = p4.loadout.key_bags()[0]
@@ -408,7 +407,7 @@ static func check_supports() -> String:
 # 透明格（第 8 步 f）：擺放（透明格可以蓋技能或放空格、不跟透明格疊、底下不能放非技能）、蓋住多格技能的效果（延長、霜化、耗魔相乘）、
 # 羈絆只算實心格、同一袋沒蓋到沒效、自動擺放先找蓋得到的技能
 static func _check_clear_cells() -> String:
-	var s := _setup(&"longsword")
+	var s := _setup(&"swordShield")
 	var w: World = s[0]
 	var p: Player = s[1]
 	var b := _bag(p, &"hit", &"left")
@@ -456,7 +455,7 @@ static func _check_clear_cells() -> String:
 	if inv.find(ext).is_empty() or not inv.covered_by(inv.find(ext)).is_empty():
 		return "技能拿走後修飾應留在原地、不再蓋到東西"
 	# 自動擺放：修飾先找蓋得到、有作用的技能
-	var s2 := _setup(&"longsword")
+	var s2 := _setup(&"swordShield")
 	var p2: Player = s2[1]
 	var k2: Dictionary = p2.loadout.key_bags()[0]
 	_put_at(p2, k2, &"whirlwind", Vector2i(1, 1))

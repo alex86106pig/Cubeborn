@@ -99,7 +99,7 @@ const CONVERSIONS := [[&"convert_fire", &"fire"], [&"convert_cold", &"cold"]]
 # 武器偏向（artifact 的表，Claude 暫定）：這些羈絆的詞條權重 × BIAS_MUL；第一版只有 5 個羈絆，表上其他的（暗影、神聖…）之後再加
 const BIAS_MUL := 3.0
 const BIAS := {
-	&"longsword": [&"phys", &"guard"], &"woodShield": [&"guard", &"phys"], &"dagger": [&"phys"],
+	&"swordShield": [&"phys", &"guard"], &"dagger": [&"phys"],
 	&"torch": [&"fire"], &"staff": [&"wisp", &"fire", &"cold"], &"scepter": [&"wisp", &"guard"],
 	&"shortbow": [&"phys"], &"longbow": [&"phys", &"cold"], &"shovel": [&"phys", &"guard"],
 }
@@ -250,13 +250,6 @@ static func stat_mods(inst: Dictionary) -> Array:
 		mods.append([&"damage", Stats.MUL, m.damage])
 	if m.attack_speed != 1.0:
 		mods.append([&"attack_speed", Stats.MUL, m.attack_speed])
-	mods.append_array(offhand_mods(inst))
-	return mods
-
-
-# 副手生效的屬性：只有詞條（稀有度的攻擊力、攻速倍率只算主手，Claude 暫定）
-static func offhand_mods(inst: Dictionary) -> Array:
-	var mods := []
 	for id: StringName in inst.affixes:
 		mods.append_array(AFFIXES[id].mods)
 	return mods

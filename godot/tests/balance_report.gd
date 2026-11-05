@@ -18,7 +18,7 @@ const ECON_MIN_CHESTS := 1      # 每小關至少幾個祭壇或石棺
 const WEAPON_TARGET := {&"melee": 30.0, &"ranged": 22.0}
 const GROUP_BAND := Vector2(3.0, 6.0)
 # 打一群偏高但刻意保留的武器（使用者 2026-10-31：不能降傷害，同一下打到的每隻都要一樣痛，不做遞減；揮擊範圍是手感）
-const GROUP_KEEP := [&"longsword", &"torch", &"scepter", &"shovel"]
+const GROUP_KEEP := [&"swordShield", &"torch", &"scepter", &"shovel"]
 # 打一隻要是全部武器裡最高的（使用者 2026-11-02：短弓專打單體、箭不穿透，打一群偏低是代價），不看類型的目標
 const SINGLE_TOP := [&"shortbow"]
 const BASIC_TIME := 10.0        # 普攻量幾秒取平均
@@ -26,8 +26,8 @@ const SKILL_WINDOW := 6.0       # 放一次後量幾秒（落雷延遲、火池�
 const MELEE_RANGE := 2.0        # 單體假人離玩家多遠：近戰武器
 const RANGED_RANGE := 6.0       # 遠程武器
 const DANGER_TIME := 20.0       # 怪打站著不動的玩家量幾秒
-# 武器（主手 + 副手）與它的普攻；木盾的技能用長劍＋木盾的普攻比
-const LOADOUTS := [[&"longsword", &"woodShield"], [&"dagger", &""], [&"torch", &""], [&"staff", &""], [&"scepter", &""],
+# 武器與它的普攻（[武器 id, &""]：第二欄是原本的副手，拿掉主副手後一律空的）
+const LOADOUTS := [[&"swordShield", &""], [&"dagger", &""], [&"torch", &""], [&"staff", &""], [&"scepter", &""],
 	[&"shortbow", &""], [&"longbow", &""], [&"shovel", &""]]
 # 刻意不照目標的招式（行為名稱 → 原因），表上標「保留」
 const KEEP := {
@@ -180,7 +180,6 @@ func _basic_table(lines: Array[String]) -> Dictionary:
 		var pack := _basic(lo, true)
 		out[lo[0]] = single
 		lines.append("| %s | %.1f | %.1f |" % [_loadout_name(lo), single, pack])
-	out[&"woodShield"] = out[&"longsword"]
 	lines.append("")
 	return out
 
@@ -199,7 +198,7 @@ func _basic(lo: Array, pack: bool) -> float:
 
 # ───────── 武器 ─────────
 
-# 每把武器單拿（長劍的右鍵是蓄力突刺，不拿木盾）：普攻每秒 + 有傷害的右鍵按冷卻攤平
+# 每把武器：普攻每秒 + 有傷害的右鍵按冷卻攤平
 func _weapon_table(lines: Array[String]) -> void:
 	lines.append("## 武器強度（普攻 + 右鍵）")
 	lines.append("")
@@ -262,7 +261,7 @@ func _move_table(lines: Array[String], basic: Dictionary) -> void:
 	lines.append("| 招式 | 武器 | 耗魔 | 目標 | 單體每次 | 比 | 一群打到 | 一群每隻 | 比 | 一群合計 | |")
 	lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|")
 	for lo: Array in LOADOUTS:
-		# 右鍵看主手單拿時（長劍拿著木盾時右鍵是格擋，蓄力突刺要拿掉盾）；格擋、準備姿態、鏟起這類沒冷卻或不算傷害的不列
+		# 右鍵：格擋、準備姿態、鏟起這類沒冷卻或不算傷害的不列
 		var sp: Dictionary = WeaponDefs.WEAPONS[lo[0]].get("special", {})
 		if sp.has("mana") and sp.has("damage_pct"):
 			_move_row(lines, basic, "右鍵・" + String(sp.name), lo[0], sp.mana, sp.has("stun") or sp.has("heal_per_sec"),
@@ -305,7 +304,7 @@ func _cd_of(def: Dictionary, wid: StringName) -> float:
 	return def.mana / _regen(wid)
 
 
-# 武器的回魔（魔力照武器，WeaponDefs 的 mana_regen；副手與沒寫的用 Config.MANA.regen）
+# 武器的回魔（魔力照武器，WeaponDefs 的 mana_regen；沒寫的用 Config.MANA.regen）
 func _regen(wid: StringName) -> float:
 	return WeaponDefs.WEAPONS[wid].get("mana_regen", Config.MANA.regen)
 
@@ -315,7 +314,7 @@ const CROSS_SKILLS: Array[StringName] = [&"whirlwind", &"frost_nova", &"sword_wa
 func _cross_table(lines: Array[String]) -> void:
 	lines.append("## 技能 × 武器（魔力照武器）")
 	lines.append("")
-	lines.append("同一個技能換不同武器放：每次傷害 = 基礎傷害 × 倍率；每秒 = 每次 × 回魔 ÷ 耗魔（長時間一直放）；爆發 = 每次 × 滿魔力放得出幾次。每秒與爆發各武器應該差不多（比 = 自己 ÷ 長劍）。")
+	lines.append("同一個技能換不同武器放：每次傷害 = 基礎傷害 × 倍率；每秒 = 每次 × 回魔 ÷ 耗魔（長時間一直放）；爆發 = 每次 × 滿魔力放得出幾次。每秒與爆發各武器應該差不多（比 = 自己 ÷ 劍盾）。")
 	lines.append("")
 	lines.append("| 技能 | 武器 | 最大魔力 | 回魔 | 每次 | 每秒 | 比 | 爆發 | 比 |")
 	lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|")
@@ -355,7 +354,7 @@ func _special_hit(lo: Array, sp: Dictionary, pack: bool) -> Vector2:
 func _skill_hit(id: StringName, pack: bool, with_weapon: StringName = &"") -> Vector2:
 	var def: Dictionary = SkillDefs.SKILLS[id]
 	var wid: StringName = def.weapons[0] if with_weapon == &"" else with_weapon
-	var lo: Array = [&"longsword", &"woodShield"] if wid == &"woodShield" else [wid, &""]
+	var lo: Array = [wid, &""]
 	var s := _setup(lo)
 	var w: World = s[0]
 	var p: Player = s[1]
@@ -409,7 +408,7 @@ func _enemy_tables(lines: Array[String], basic: Dictionary) -> void:
 	lines.append("")
 	lines.append("## 怪物打玩家")
 	lines.append("")
-	lines.append("一隻怪對站著不動的玩家（長劍＋木盾、不格擋）打 %.0f 秒的平均每秒傷害；「幾秒打死」= 玩家基礎生命 %.0f ÷ 每秒。0 = 這段時間沒出手（Boss、守墓人要先觸發）。" % [DANGER_TIME, Config.PLAYER.max_hp])
+	lines.append("一隻怪對站著不動的玩家（劍盾、不格擋）打 %.0f 秒的平均每秒傷害；「幾秒打死」= 玩家基礎生命 %.0f ÷ 每秒。0 = 這段時間沒出手（Boss、守墓人要先觸發）。" % [DANGER_TIME, Config.PLAYER.max_hp])
 	lines.append("")
 	lines.append("| 怪物 | 每秒傷害 | 幾秒打死 |")
 	lines.append("|---|---:|---:|")
@@ -420,7 +419,7 @@ func _enemy_tables(lines: Array[String], basic: Dictionary) -> void:
 
 
 func _danger(kind: StringName) -> float:
-	var s := _setup([&"longsword", &"woodShield"])
+	var s := _setup([&"swordShield", &""])
 	var w: World = s[0]
 	var p: Player = s[1]
 	var e: Enemy = w.spawner.spawn_at(w, kind, p.pos + Vector2(0, 3.0))
@@ -442,8 +441,6 @@ func _setup(lo: Array) -> Array:
 	_worlds.append(w)
 	var p: Player = w.players[World.HOST_PEER_ID]
 	p.loadout.equip_new(p, lo[0])
-	if lo[1] != &"":
-		p.loadout.equip_offhand_new(p, lo[1])
 	return [w, p]
 
 
@@ -514,5 +511,4 @@ func _slot_of(p: Player, id: StringName) -> int:
 
 
 func _loadout_name(lo: Array) -> String:
-	var n: String = WeaponDefs.WEAPONS[lo[0]].name
-	return n + ("＋" + WeaponDefs.WEAPONS[lo[1]].name if lo[1] != &"" else "")
+	return WeaponDefs.WEAPONS[lo[0]].name

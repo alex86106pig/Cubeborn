@@ -86,8 +86,8 @@ func _initialize() -> void:
 		all.bind([CombatChecks.check_fire_bolt, CombatChecks.check_arcane_burst, CombatChecks.check_staff_changes]))
 	_check("短弓（F4）：快射是不擊退的箭、傷害照物理加成；散射 5 支平均分在 50° 內；盜墓遊俠移動中普攻不減速、右鍵與裝填照常減速；箭袋 6 支、最後一支重箭、射空裝填 1.2 秒、翻滾瞬間補滿；短弓的普攻箭不穿透、長弓穿過 pierce_count 隻", all.bind([CombatChecks.check_shortbow, CombatChecks.check_bow_pierce]))
 	_check("長弓（F5）：重射可擊退；按住右鍵蓄力、放開射出穿透箭（沒蓄 150%、蓄滿 400%），一直線上每隻打一次", CombatChecks.check_longbow)
-	_check("長劍與主手 / 副手：單手＋盾 / 匕首拿得動、雙手武器不能拿副手、盾不能當主手；長劍沒有副手時右鍵蓄力突刺（沒蓄 / 蓄滿衝 2 / 5 單位、150% / 300%）；守墓騎士開局長劍＋木盾", CombatChecks.check_longsword)
-	_check("匕首（F6）：雙持五連刺第 5 下 150% 必爆擊且只有它擊退、讓怪硬直；單拿三連刺第 3 下 120% 且只有它擊退；影步瞬移到怪背後背刺必爆擊、沒有怪不瞬移只扣 miss_mana；竊影者開局雙持、翻滾 2 次、翻滾後攻速 +30% 持續 1.5 秒", CombatChecks.check_daggers)
+	_check("一次拿一把武器：武器資料沒有主副手欄位、長劍與木盾拿掉、武器欄 1 格；劍盾左鍵斬擊右鍵格擋；突刺技能往前衝 distance 打一次 damage_pct；守墓騎士開局劍盾", CombatChecks.check_sword_shield)
+	_check("雙匕首（F6）：五連刺第 5 下 150% 必爆擊且只有它擊退、讓怪硬直；影步瞬移到怪背後背刺必爆擊、沒有怪不瞬移只扣 miss_mana；竊影者開局雙持、翻滾 2 次、翻滾後攻速 +30% 持續 1.5 秒", CombatChecks.check_daggers)
 	_check("驅魔權杖（F7）：敲擊是魔法、可擊退；聖光圈 4 秒每 0.5 秒對範圍內敵人持續傷害（不爆擊）、隊友回血；神官救人快 50%、救起回 50% 生命", CombatChecks.check_scepter)
 	_check("火把（F8）：按住右鍵舉火把（移速 ×0.6）、放開放下；舉著左鍵噴火 120%（耗魔、不占右鍵，魔力不夠不出招）；插火把放在按鍵袋（冷卻 1 秒、3 次記在袋子那一格、換層補滿）；翻滾放下；火把旁不管視野都看得到；揮擊點燃；傭兵視野 +3、身邊 6", CombatChecks.check_torch)
 	_check("鐵鏟（F9）：鏟起面前的怪舉 2 秒（移速 ×0.7、不能跳），左鍵拋出（落地 200%、路上 150%）、右鍵埋入（80%、2 秒）、沒按就掙脫；Boss 抓不起來、沒抓到只扣 miss_mana；掘墓人挖墳中受傷 −25%；埋著打得到、不被擊退；搆得到正面牽制的屍犬；"
@@ -163,7 +163,7 @@ func _initialize() -> void:
 	_check("屍體與冤魂（D6）：多人時死亡留下屍體、撿進背包；背著換層出現冤魂，打倒後死者在那裡復活、屍體消失；沒人帶屍體就沒有冤魂", EventChecks.check_corpse_ghost)
 
 	# ───────── 背包、祭壇與武器 ─────────
-	_check("背包：倉庫大小照 BAG_SIZE、每格一件不管形狀；主袋與袋子照形狀，旋轉後格子正確；超出邊界、重疊放不下；自動找第一個空位（不夠時會轉向）；搬動成功 / 失敗；裝滿後撿不起來並發出 inventory:full；放不下時建議拿掉哪一件（占格最少），拿掉一件也不夠就不建議；放到只被 1 件佔住的位置就互換（主袋 ↔ 倉庫、倉庫裡兩件；換不回去都不動、發 inventory:denied），拿著的武器放到倉庫的武器上 = 那把換上、主手放到空格不動，預覽跟結果一致",
+	_check("背包：倉庫大小照 BAG_SIZE、每格一件不管形狀；主袋與袋子照形狀，旋轉後格子正確；超出邊界、重疊放不下；自動找第一個空位（不夠時會轉向）；搬動成功 / 失敗；裝滿後撿不起來並發出 inventory:full；放不下時建議拿掉哪一件（占格最少），拿掉一件也不夠就不建議；放到只被 1 件佔住的位置就互換（主袋 ↔ 倉庫、倉庫裡兩件；換不回去都不動、發 inventory:denied），拿著的武器放到倉庫的武器上 = 那把換上、手上的放到空格不動，預覽跟結果一致",
 		all.bind([LootChecks.check_inventory, LootChecks.check_inventory_suggest, LootChecks.check_inventory_swap]))
 	_check("祭壇與石棺：數量照地圖資料、位置可走且夠遠、底面平的（不擺在台階邊緣）、殺怪靈魂照 KILL_SOULS（共用）、靈魂不夠開不了、開的人直接打開 N 選 1、夠了扣靈魂並開出一個遺物（選項照石棺的稀有度）、開過不能再開；隨機放（同種子相同）、多人時數量與靈魂不變、全清買不完；稀有度各抽 20000 次符合權重、不會開出武器",
 		all.bind([LootChecks.check_soul_chests, LootChecks.check_chest_balance, LootChecks.check_chest_rarity]))
@@ -171,9 +171,9 @@ func _initialize() -> void:
 		all.bind([LootChecks.check_run_coins, LootChecks.check_coin_drops]))
 	_check("撿道具：按 F 撿起最近的道具，數值放主袋生效、效果放對應的袋子；剛按下那一步才算；兩人同一步按 F 只有一人拿到；丟掉後道具回到地上、效果移除；附近有倒地隊友時 F 先救人；從腳邊拖進主袋 / 倉庫放到指定格子（太遠、放不下、已被撿走不動，武器不放裝備欄）；撿不下的事件帶地上道具的 id",
 		all.bind([LootChecks.check_pickups, LootChecks.check_pickup_to_cell]))
-	_check("武器掉落：小怪掉落率照層數（MINION_DROP_BY_FLOOR，超過表用最後一層）、召喚出來的不掉、Boss 必掉、稀有度符合權重；武器沒有詞條、寶石座、印記格；主手照稀有度套基礎倍率、副手沒有數值、倉庫不生效",
+	_check("武器掉落：小怪掉落率照層數（MINION_DROP_BY_FLOOR，超過表用最後一層）、召喚出來的不掉、Boss 必掉、稀有度符合權重；武器沒有詞條、寶石座、印記格；手上的照稀有度套基礎倍率、倉庫不生效",
 		all.bind([LootChecks.check_weapon_drops, LootChecks.check_weapon_affixes]))
-	_check("武器的背包操作：開局長劍＋木盾；撿到的武器放倉庫（副手空著撿到盾才拿上）、都滿撿不起來；雙手武器把副手擠回倉庫、盾不能當主手、主手不能丟；換武器時主袋的道具照樣生效、武器快照只有種類與稀有度；兩把同種同稀有度在鍛造祭壇旁合成 → 高一級，不同種 / 不同稀有度 / 橘色不能合成",
+	_check("武器的背包操作：開局劍盾；撿到的武器放倉庫、都滿撿不起來；倉庫的武器換上手、換下來的回那把原本的位置、武器欄只有 1 格、手上的不能丟；換武器時主袋的道具照樣生效、武器快照只有種類與稀有度；兩把同種同稀有度在鍛造祭壇旁合成 → 高一級，不同種 / 不同稀有度 / 橘色不能合成",
 		all.bind([LootChecks.check_weapon_pickup, LootChecks.check_weapon_merge]))
 
 	# ───────── 道具（依效果種類：屬性 / 條件 / 觸發 / 能力）─────────
@@ -189,7 +189,7 @@ func _initialize() -> void:
 	_check("道具能力：二段跳（沒有道具空中跳不了、有雙躍之靴可再跳一次、落地重置）；自動回充的護盾（先扣盾、recharge_delay 秒沒受傷才補滿）",
 		all.bind([PlayerChecks.check_double_jump, LootChecks.check_item_shield]))
 	_check("遺物：每人各自擲 N 選 1（N = 選項數屬性、不重複，石棺偶爾一個換成詛咒袋）、關掉再開同一組、骰子重擲用掉 1 顆（沒有就不能骰）、每人只選一次、全員選過才消失、放不下掉在腳邊、走遠就關掉；鐵砧：改造自己接著的袋子（加大、強化、換觸發），每人一次、用完不消失，沒有袋子改給新袋子；門與 Boss 的袋子 N 選 1；隊上有人看到過就記下（小地圖用、進快照）" \
-		+ "鐵砧：主手升一個稀有度、從 N 條新詞條選 1，再從這把武器的技能選 1，每人一次、用完不消失，傳說武器直接選技能；隊上有人看到過就記下（小地圖用、進快照）",
+		+ "鐵砧：手上的武器升一個稀有度、從 N 條新詞條選 1，再從這把武器的技能選 1，每人一次、用完不消失，傳說武器直接選技能；隊上有人看到過就記下（小地圖用、進快照）",
 		all.bind([LootChecks.check_relic, LootChecks.check_anvil, LootChecks.check_relic_spotted]))
 	_check("技能與按鍵袋：主袋不放技能、技能自動進按鍵袋；數字鍵 = 按鍵袋由左到右、Q 治療藥水；每個技能放得出來、扣魔力、有效果（不綁武器）；等級加傷減耗魔、看得到等級（說明框、遺物卡升級前後、技能欄）、技能遺物（石棺必出、祭壇不出，有還沒滿級的技能時保證一個升級）；修飾的透明格蓋在技能上才有效（延長、火焰化、分裂；同一袋沒蓋到沒效）、每顆照強度加耗魔、節能減耗魔；透明格（擺放規則、蓋多格技能的延長 / 霜化 / 耗魔相乘、羈絆只算實心格、技能搬走修飾留著失效、自動擺放先蓋技能）；魔力（開局滿、回魔、上限、不夠放不出、魔力道具與命中回魔、進快照）",
 		all.bind([SkillChecks.check_gem_rules, SkillChecks.check_every_skill, SkillChecks.check_skill_level, SkillChecks.check_level_text, SkillChecks.check_supports, SkillChecks.check_mana]))
@@ -222,9 +222,9 @@ func _initialize() -> void:
 		all.bind([ViewChecks.check_effects_events, ViewChecks.check_effects_limits]))
 
 	# ───────── 介面 ─────────
-	_check("HUD：能建立、處理各種事件、顯示波次 / 血量 / 結算文字、暫停畫面有「離開遊戲」；別人撿到道具不跳橫幅；武器欄標示副手；同一目標同時跳的傷害數字往上疊、地上物件名稱重疊時往上錯開；附帶的小傷害（燃燒 / 中毒 / 地面區域的一跳、附加屬性傷害）數字畫小、不佔疊層；小地圖只畫探索過的地方（牆擋視線、牆本身看得到、外框看過才亮）、換小關重畫",
+	_check("HUD：能建立、處理各種事件、顯示波次 / 血量 / 結算文字、暫停畫面有「離開遊戲」；別人撿到道具不跳橫幅；武器欄只寫手上那把；同一目標同時跳的傷害數字往上疊、地上物件名稱重疊時往上錯開；附帶的小傷害（燃燒 / 中毒 / 地面區域的一跳、附加屬性傷害）數字畫小、不佔疊層；小地圖只畫探索過的地方（牆擋視線、牆本身看得到、外框看過才亮）、換小關重畫",
 		all.bind([ViewChecks.check_hud, ViewChecks.check_overlap_text, ViewChecks.check_minor_numbers, ViewChecks.check_minimap]))
-	_check("背包介面：和屬性面板並排塞得進介面最大檔的畫面；腳邊欄只列按得到 F 的地上道具（沒有就不顯示）、滑鼠停著顯示說明，拖進背包撿起放在那一格、背包的拖到腳邊丟掉；撿不下時 HUD 通知打開背包、提示拿掉哪一件就放得下，關掉就清除；遺物的 N 選 1 自動打開背包、卡片寫出拿過沒（已經放上去 / 倉庫裡有）、在介面上按下的左鍵放開前不普攻、卡片直排在背包左邊塞得進畫面、羈絆標籤寫目前格數、點卡片 / Esc 送出操作、自動打開的背包一起關、被打到（持續傷害不算）3 選 1 先不選並關掉背包、拿著東西時 R / Esc 不給遺物；鍛造祭壇旁開背包顯示鍛造面板：右鍵 / 拿著點格子 / 拖到同種武器上放進兩格、能合的發亮其他變暗、不能合寫原因、挑詞條按合成送出並清空、離開祭壇就關掉；開著背包時新手提示在屬性面板與背包中間、右上的層數與擊殺藏起來；屬性面板依組列出、核心屬性一直顯示，其他屬性與整組有加成才顯示；左鍵點一下拿起、再點一下放下（拖曳照舊），右鍵 / Esc 放回、點外面丟掉；右鍵直接裝上 / 拿下來（數值進主袋、技能進按鍵袋、主袋與袋子裡的回倉庫、主手武器不拿下來）；物品依種類分畫法；羈絆欄只列收集到的；雙手武器時副手標成不能用；腳邊框不蓋到背包與技能欄（點一下拿起放進背包）", all.bind([ViewChecks.check_inventory_panel, ViewChecks.check_inventory_board, ViewChecks.check_relic_panel, ViewChecks.check_forge_panel, ViewChecks.check_hint_beside_bag, ViewChecks.check_stats_panel, ViewChecks.check_inventory_click, ViewChecks.check_inventory_layout, ViewChecks.check_ui_click_blocks_attack, ViewChecks.check_relic_owned]))
+	_check("背包介面：和屬性面板並排塞得進介面最大檔的畫面；腳邊欄只列按得到 F 的地上道具（沒有就不顯示）、滑鼠停著顯示說明，拖進背包撿起放在那一格、背包的拖到腳邊丟掉；撿不下時 HUD 通知打開背包、提示拿掉哪一件就放得下，關掉就清除；遺物的 N 選 1 自動打開背包、卡片寫出拿過沒（已經放上去 / 倉庫裡有）、在介面上按下的左鍵放開前不普攻、卡片直排在背包左邊塞得進畫面、羈絆標籤寫目前格數、點卡片 / Esc 送出操作、自動打開的背包一起關、被打到（持續傷害不算）3 選 1 先不選並關掉背包、拿著東西時 R / Esc 不給遺物；鍛造祭壇旁開背包顯示鍛造面板：右鍵 / 拿著點格子 / 拖到同種武器上放進兩格、能合的發亮其他變暗、不能合寫原因、挑詞條按合成送出並清空、離開祭壇就關掉；開著背包時新手提示在屬性面板與背包中間、右上的層數與擊殺藏起來；屬性面板依組列出、核心屬性一直顯示，其他屬性與整組有加成才顯示；左鍵點一下拿起、再點一下放下（拖曳照舊），右鍵 / Esc 放回、點外面丟掉；右鍵直接裝上 / 拿下來（數值進主袋、技能進按鍵袋、主袋與袋子裡的回倉庫、手上的武器不拿下來）；物品依種類分畫法；羈絆欄只列收集到的；腳邊框不蓋到背包與技能欄（點一下拿起放進背包）", all.bind([ViewChecks.check_inventory_panel, ViewChecks.check_inventory_board, ViewChecks.check_relic_panel, ViewChecks.check_forge_panel, ViewChecks.check_hint_beside_bag, ViewChecks.check_stats_panel, ViewChecks.check_inventory_click, ViewChecks.check_inventory_layout, ViewChecks.check_ui_click_blocks_attack, ViewChecks.check_relic_owned]))
 	_check("技能欄：劍盾格擋中左鍵換成「招架」與耗魔、法杖沒有招架格；火把準備姿態換成插火把 / 噴火、鐵鏟舉著怪換成拋出 / 埋入；CD 遮罩疊放順序 文字圖示 < 壓黑 < 秒數（插火把的防連按間隔）；按鍵袋的技能顯示耗魔、魔力不夠變暗、後面的 Q 藥水照樣顯示瓶數",
 		all.bind([ViewChecks.check_skill_bar_parry, ViewChecks.check_skill_bar_cd_mask, ViewChecks.check_skill_bar_gem_skill]))
 	_check("新手提示：開場跳操作與挖墳；撿到東西、開背包、可合成、出口打開、腳邊有東西（按住 Alt 看詳細）、隊友倒地各跳一次；看過不再跳；重設後再跳", ViewChecks.check_hints)
@@ -245,7 +245,7 @@ func _initialize() -> void:
 	_check("結束程式不洩漏：主場景跑 3 秒（有怪、一直攻擊，音效還在播）後結束兩次，沒有 ObjectDB 洩漏、資源還在用", ViewChecks.check_quit_no_leak)
 
 	# ───────── 連線 ─────────
-	_check("快照：房主的實體序列化後客戶端建立同樣類別、位置、血量、武器的鏡像、動畫狀態相同時數值補間；地圖 A 怪群 + 4 人、P2 被 30 隻圍住時每份快照 ≤ 4.5 KB；背包 / 主副手 / 技能等級變了才連送、沒變只定期帶；休眠的怪群客戶端用種子在本機生（跟房主一致、不進快照；範圍外醒了移除、範圍內醒了照快照、休眠中被移除跟著移除、檢查碼不同就不用）",
+	_check("快照：房主的實體序列化後客戶端建立同樣類別、位置、血量、武器的鏡像、動畫狀態相同時數值補間；地圖 A 怪群 + 4 人、P2 被 30 隻圍住時每份快照 ≤ 4.5 KB；背包 / 手上的武器 / 技能等級變了才連送、沒變只定期帶；休眠的怪群客戶端用種子在本機生（跟房主一致、不進快照；範圍外醒了移除、範圍內醒了照快照、休眠中被移除跟著移除、檢查碼不同就不用）",
 		all.bind([NetChecks.check_codec, NetChecks.check_snapshot_size.bind(feel), NetChecks.check_snapshot_loadout, NetChecks.check_local_packs, NetChecks.check_net_stage]))
 	_check("網頁連線配對（v0.36.0）：PeerJS 網址、房主 ID、房號（4 碼、不含易混字）、訊息格式、伺服器訊息對應的訊號；桌面版 IP 與房號兩種都能用", NetChecks.check_web_signaling)
 	_check("桌面版 WebRTC（v0.40.0）：同一程序兩條連線交換 SDP，照 NetSession 的設定建房主 / 客戶端，5 秒內連上且封包收得到；網頁版接收緩衝區至少 1024 KB", NetChecks.check_desktop_webrtc.bind(feel))
@@ -259,7 +259,7 @@ func _initialize() -> void:
 	_check("遊玩紀錄的連線數據：延遲 100 ms 時回應時間在「來回 + 快照間隔」內、快照最長間隔約 snapshot_interval 步、房主收輸入最長間隔約 1 步", NetChecks.check_net_stats.bind(feel))
 	_check("延遲下的手感（C3）：延遲 100 ms + 掉包 10%，按下就在本機移動、修正誤差 < 0.25、停下後與房主差 < 0.01；別人的角色每步位移平順", NetChecks.check_prediction.bind(feel))
 	_check("打中回饋與延遲補償（v0.38.0）：延遲 100 ms 時客戶端的火花 / 音效 / 閃白在出招當下出現一次，房主的同一下標 predicted；側移的怪兩邊都判定打中", NetChecks.check_hit_prediction.bind(feel))
-	_check("連線武器（D4）：客戶端拖武器上主手、拖曳合成，兩邊的裝備欄、手上武器、詞條一致；殺怪掉的武器兩邊都看得到", NetChecks.check_net_weapons)
+	_check("連線武器（D4）：客戶端把倉庫的武器換上手、拖曳合成，兩邊的裝備欄、手上武器、詞條一致；殺怪掉的武器兩邊都看得到", NetChecks.check_net_weapons)
 	_check("連線守墓人：客戶端被埋進土裡時自己的畫面也只露半身、爬出來就恢復；守墓人開打變大後，客戶端的半徑與體型跟房主一致", NetChecks.check_net_gravekeeper)
 	_check("連線稀有度（D5）：客戶端的稀有度、詞條、名字、半徑、最大生命與房主相同；普通怪的快照不帶稀有度欄位", MonsterChecks.check_net_rarity)
 	_check("連線寶箱與背包（D3）：客戶端按 F 開箱、再按 F 打開遺物、重骰一次、選第一個（兩邊骰子與選過的人一致）、拖曳搬動與丟掉、從腳邊拖回背包指定的格子；兩邊的寶箱、靈魂、背包、生效道具一致", NetChecks.check_net_loot)

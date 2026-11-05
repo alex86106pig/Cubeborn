@@ -64,8 +64,7 @@ const PLAYER := {
 	"bury_mash_max": 0.3,               # 最多提早幾秒
 	"stagger_move_speed_mul": 0.4,
 	"action_buffer_time": 0.25,
-	"start_weapon": &"longsword",
-	"start_offhand": &"woodShield",   # 沒選職業時的起始副手（測試與自動驗證）
+	"start_weapon": &"swordShield",   # 沒選職業時的起始武器（測試與自動驗證）
 	"run_speed_mul": 1.4,               # Ctrl 切換跑步的移速倍率（2026-10-27 使用者，取代疾跑）
 	"use_item_time": 0.18,              # 使用道具的動作秒數
 	"hurt_shake": 0.25,                 # 受傷時畫面震動強度與秒數

@@ -70,7 +70,7 @@ static func _forge_near(w: World, p: Player) -> Forge:
 
 
 # 不會動的假敵人：血多、質量大（擊退位移小），放在 world.enemies 讓玩家的攻擊打得到
-# 玩家拿著的道具（背包與主手 / 副手的武器格子；武器與屍體不算）
+# 玩家拿著的道具（背包、主袋與袋子；武器與屍體不算）
 static func _held_items(p: Player) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	for where: int in p.loadout.active_wheres() + [Loadout.BAG]:
