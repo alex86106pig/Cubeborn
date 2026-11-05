@@ -251,7 +251,7 @@ class ShadowStep extends Behavior:
 		data.target_id = 0
 		var best := INF
 		for e in Combat.hostiles_of(p.world, p.team, p.id):
-			if e is Player or e.pos.distance_to(p.pos) > def.range + e.radius:
+			if e.team == p.team or e.pos.distance_to(p.pos) > def.range + e.radius:   # 誤傷的隊友不當目標；冤魂與玩家互相可以
 				continue
 			var d := e.pos.distance_squared_to(p.aim_point)
 			if d < best:

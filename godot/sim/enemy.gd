@@ -33,7 +33,6 @@ var wave_member := false             # 波次生成的：場上的波次怪都�
 var action_speed := 1.0              # 狀態機時間的倍率（狂暴詞條 1.4：舉刀、瞄準、收招與冷卻都變快）
 var summoner_id := 0                 # 召喚詞條叫出來的：召喚者的 id
 var no_souls := false                 # 召喚出來的（召喚詞條、Boss 召喚）：死了不給靈魂（v0.44.0，避免刷錢）
-var ghost_of := 0                    # 冤魂（D6）：死去玩家的 peer id，打倒後那位玩家復活
 var _frenzied := false
 var _exploded := false
 var _summon_timer := 0.0
@@ -675,8 +674,6 @@ func _on_died(source_id: int) -> void:
 	BondEffects.on_enemy_died(world, self)   # 燃燒傳給旁邊的怪、凍結中被殺沒有死亡效果（羈絆）
 	fsm.change(&"dead")
 	world.on_enemy_died(self, source_id)
-	if ghost_of != 0:
-		world.on_ghost_defeated(self)
 
 
 # 死亡爆炸詞條：死後 delay 秒在屍體位置爆炸（擋不住；傷害含稀有度與詞條的攻擊力）

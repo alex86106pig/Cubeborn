@@ -131,7 +131,7 @@ class Strike extends Behavior:
 			SkillBehaviors.area_hit(owner, def, ctx, at, {"shape": &"circle", "radius": r})
 			owner.world.emit_event("fx:explosion", {"pos": at, "height": owner.world.terrain.ground_at(at), "radius": r, "color": def.color})
 			if def.has("heal_ratio"):
-				for o in owner.world.player_list:
+				for o in owner.friends():
 					if not o.is_dead and not o.is_downed and o.pos.distance_to(at) <= r + o.radius:
 						var healed := o.heal(o.max_hp * def.heal_ratio)
 						if healed > 0.0:
@@ -159,7 +159,7 @@ class Chain extends Behavior:
 		return SkillBehaviors.nearest_enemy(owner, target.pos, def.range) != null
 
 	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
-		var first: Enemy = null
+		var first: Entity = null
 		if ctx.has("at"):
 			first = SkillBehaviors.target_of(owner, ctx)
 			if first == null:
@@ -193,7 +193,7 @@ class Taunt extends Behavior:
 # 召喚骷髏僕從（同亡者大軍的僕從），存在 life 秒
 class Summon extends Behavior:
 	func activate(owner: Player, def: Dictionary, _ctx: Dictionary) -> void:
-		if not owner.world.is_authority:
+		if not owner.world.is_authority or owner.is_ghost():   # 僕從是玩家方的：冤魂召不出來
 			return
 		for i in def.count:
 			var at := owner.world.nav.nearest_walkable(owner.pos + MathUtil.dir_from_angle(owner.facing + TAU * i / def.count) * 1.5)
@@ -206,7 +206,7 @@ class Summon extends Behavior:
 # 祝福：自己與附近隊友攻速變快一段時間
 class Bless extends Behavior:
 	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
-		for o in owner.world.player_list:
+		for o in owner.friends():
 			if not o.is_dead and o.pos.distance_to(owner.pos) <= def.radius * ctx.area:
 				o.add_buff(&"blessing", def.duration, {"stats": [[&"attack_speed", Stats.PCT, def.attack_speed]]})
 		owner.world.emit_event("fx:heal", {"pos": owner.pos, "height": owner.height, "color": def.color})
@@ -303,7 +303,7 @@ static func area_hit(owner: Player, def: Dictionary, ctx: Dictionary, at: Vector
 	hit["origin"] = at
 	var skip := {}
 	if def.has("heal_ratio"):
-		for p in owner.world.player_list:
+		for p in owner.friends():
 			skip[p.id] = true
 	_after_hits(owner, def, ctx, Hitbox.strike(owner.world, owner, at, ctx.get("facing", owner.facing), shape, hit, skip))
 
@@ -343,9 +343,9 @@ static func origin_ground(owner: Player, ctx: Dictionary) -> float:
 
 
 # 觸發袋的目標（還活著、打得到才算）；沒有回傳 null
-static func target_of(owner: Player, ctx: Dictionary) -> Enemy:
-	var e := owner.world.entities.get(ctx.get("target_id", -1)) as Enemy
-	return e if e != null and not e.is_dead and e.can_be_hit() else null
+static func target_of(owner: Player, ctx: Dictionary) -> Entity:
+	var e := owner.world.entities.get(ctx.get("target_id", -1)) as Entity
+	return e if e != null and not e.is_dead and e.team != owner.team and e.can_be_hit() else null
 
 
 # 位移技能的方向：有目標朝目標（自己也轉過去），沒有朝準星
@@ -374,21 +374,22 @@ static func push(owner: Player, offset: Vector2) -> void:
 	owner.knockback += offset * per_unit
 
 
-static func nearest_enemy(owner: Player, at: Vector2, r: float, skip: Dictionary = {}) -> Enemy:
-	var best: Enemy = null
+# 敵對陣營裡離 at 最近的（玩家的技能找怪與冤魂、冤魂的技能找玩家；Combat.hostiles_of，不含誤傷的隊友）
+static func nearest_enemy(owner: Player, at: Vector2, r: float, skip: Dictionary = {}) -> Entity:
+	var best: Entity = null
 	var best_d := r * r
-	for e in owner.world.enemies:
-		if e.is_dead or e.team == owner.team or skip.has(e.id) or not e.can_be_hit():
+	for e in Combat.hostiles_of(owner.world, owner.team):
+		if skip.has(e.id) or not e.can_be_hit():
 			continue
 		var d := e.pos.distance_squared_to(at)
 		if d < best_d:
 			best_d = d
-			best = e as Enemy
+			best = e
 	return best
 
 
 # 從 first 開始打，再跳 jumps 次（不打同一隻兩次）；畫一道閃電
-static func chain(owner: Player, first: Enemy, jumps: int, jump_range: float, hit: Dictionary, color: Color, from: Vector2) -> void:
+static func chain(owner: Player, first: Entity, jumps: int, jump_range: float, hit: Dictionary, color: Color, from: Vector2) -> void:
 	var points := [from]
 	var hitted := {}
 	var e := first
@@ -439,7 +440,7 @@ static func projectile_end(pr: Projectile, target: Entity) -> void:
 		return
 	var def: Dictionary = pr.skill_fx.def
 	var ctx: Dictionary = pr.skill_fx.ctx
-	if def.has("chain") and target is Enemy:
+	if def.has("chain") and target != null and target.team != owner.team:
 		var c: Dictionary = def.chain
 		var hit := hit_of(owner, def, ctx)
 		hit.damage *= c.ratio
@@ -450,8 +451,8 @@ static func projectile_end(pr: Projectile, target: Entity) -> void:
 		var b: Dictionary = def.burst
 		var r: float = b.radius * ctx.area
 		pr.world.emit_event("fx:explosion", {"pos": pr.pos, "height": pr.world.terrain.ground_at(pr.pos), "radius": r, "color": def.color})
-		for e in pr.world.enemies:
-			if e.is_dead or e.team == owner.team or e.pos.distance_to(pr.pos) > r + e.radius:
+		for e in pr.world.enemies:   # 暈眩、冰冷只有怪物有（冤魂、玩家不吃）
+			if e.is_dead or e.team == owner.team or not e is Enemy or e.pos.distance_to(pr.pos) > r + e.radius:
 				continue
 			if b.has("stun"):
 				(e as Enemy).stun(b.stun)

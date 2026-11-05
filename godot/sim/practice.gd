@@ -3,8 +3,8 @@
 class_name Practice
 
 const SPAWN_AHEAD := 6.0   # 生怪在面前多遠
-# 測試面板列的怪物：冤魂（綁著死掉的玩家）與骷髏僕從（玩家方）不列
-const HIDDEN_ENEMIES: Array[StringName] = [&"ghost", &"minion"]
+# 測試面板列的怪物：骷髏僕從（玩家方）不列
+const HIDDEN_ENEMIES: Array[StringName] = [&"minion"]
 
 
 static func enemy_types() -> Array[StringName]:

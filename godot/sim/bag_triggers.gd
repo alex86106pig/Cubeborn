@@ -149,7 +149,7 @@ static func run_effect(world: World, p: Player, id: StringName, target: Entity, 
 # 一定要怪卻找不到回傳 null，其他找不到就以自己為中心
 static func _effect_target(world: World, p: Player, id: StringName, target: Entity) -> Entity:
 	var effect := ItemDefs.effect_of(id)
-	if target == null or target.is_removed or (ENEMY_TARGET.has(effect) and target is Enemy and target.is_dead):
+	if target == null or target.is_removed or (ENEMY_TARGET.has(effect) and target.team != p.team and target.is_dead):
 		target = _nearest_enemy(world, p)
 	if target == null and not ENEMY_TARGET.has(effect):
 		target = p
@@ -175,12 +175,12 @@ static func cast_skill(p: Player, b: Dictionary, e: Dictionary, target: Entity =
 	return true
 
 
-static func _nearest_enemy(world: World, p: Player) -> Enemy:
-	var best: Enemy = null
+# 敵對陣營裡最近的（玩家找怪與冤魂、冤魂找玩家）
+static func _nearest_enemy(world: World, p: Player) -> Entity:
+	var best: Entity = null
 	var best_d := BagDefs.AUTO_TARGET_RANGE * BagDefs.AUTO_TARGET_RANGE
-	for x in world.enemies:
-		var e := x as Enemy
-		if e == null or e.is_dead or e.is_removed or e.team == p.team:
+	for e in Combat.hostiles_of(world, p.team):
+		if e.is_removed:
 			continue
 		var d := e.pos.distance_squared_to(p.pos)
 		if d < best_d:

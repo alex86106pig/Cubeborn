@@ -142,6 +142,22 @@ func set_weapon(model: StringName, off_model: StringName = &"") -> void:
 		(mount_nodes.get(&"forearm_l", arm_l) as Node3D).add_child(weapon_offhand)
 	if weapon_left != null:
 		hand_l.add_child(weapon_left)
+	if _ghost_overlay != null:
+		set_ghost(_ghost_overlay, _ghost_transparency)   # 新的武器零件也要半透明
+
+
+# 冤魂（Player.is_ghost）：整隻半透明、蓋一層顏色、不投影。材質是同種角色共用的，所以顏色用每個零件自己的 material_overlay
+var _ghost_overlay: Material = null
+var _ghost_transparency := 0.0
+
+
+func set_ghost(overlay: Material, transparency: float) -> void:
+	_ghost_overlay = overlay
+	_ghost_transparency = transparency
+	for mi in PartKit.mesh_instances(self):
+		mi.transparency = transparency
+		mi.material_overlay = overlay
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
 # 武器掛點（DarkFantasy._hold 記的 mounts，例如 grip、string）的世界座標；model 要在場景樹裡

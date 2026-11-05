@@ -47,8 +47,7 @@ func resume() -> void:
 
 
 static func is_skeleton(e: Entity) -> bool:
-	return e is Enemy and EnemyDefs.SKELETONS.has((e as Enemy).type) and (e as Enemy).ghost_of == 0
-
+	return e is Enemy and EnemyDefs.SKELETONS.has((e as Enemy).type)
 
 # 吸掉骷髏：屍體（死了還沒移除的）全部算；include_alive = 連活著的骷髏也吸（吞屍）。回傳吸了幾具
 func absorb_skeletons(radius: float, include_alive: bool) -> int:

@@ -7,7 +7,9 @@ const ROLL_CD := "player.roll"
 const PARRY_ANIM_TIME := 0.2
 const HELD_REACH := 0.9   # 鐵鏟舉著的怪離身體邊緣多遠：放在鏟面上（2026-10-27 網頁版實測：原本 0.2，怪浮在手邊、鏟面在牠下方的地上）
 
-var peer_id := 0
+var peer_id := 0                      # 冤魂是 -死者的 peer id（冷卻的 key 不跟別人撞）
+var ghost_of := 0                      # 冤魂：死者的 peer id（0 = 一般玩家）；怪物方、不在 world.players，打倒後死者復活（World.on_ghost_defeated）
+var ghost_brain: GhostBrain = null     # 冤魂的操作（只在權威端）
 var move_input := Vector2.ZERO
 var aim_point := Vector2(0.0, 5.0)
 var has_aim := false                   # aim_point 是這位玩家的輸入給的（房主的每位玩家、客戶端自己）；客戶端的隊友沒有（快照不送瞄準點）
@@ -109,6 +111,41 @@ func _init(p_world: World, p_peer_id: int) -> void:
 	loadout.setup_start_bags(self, ClassDefs.NONE)
 	roll_charges = roll_max()
 	_update_anim()
+
+
+# 冤魂：死者的職業、手上的武器、主袋與袋子（含技能）、技能等級的複製，怪物方、滿血滿魔、電腦操作；死者的東西不動
+static func make_ghost(p_world: World, dead: Player) -> Player:
+	var g := Player.new(p_world, -dead.peer_id)
+	g.become_ghost(dead.peer_id)
+	g.apply_class(dead.class_id)
+	g.loadout.sync_inventory(g, dead.loadout.bags_to_array())
+	g.loadout.sync_weapon_slots(g, dead.weapon_slots.map(WeaponDropDefs.to_array))
+	g.skill_levels = dead.skill_levels.duplicate()
+	g.hp = g.max_hp
+	g.mana = g.max_mana()
+	g.roll_charges = g.roll_max()
+	if p_world.is_authority:
+		g.ghost_brain = GhostBrain.new()
+	return g
+
+
+# 冤魂的標記（客戶端建鏡像時也用）
+func become_ghost(dead_peer: int) -> void:
+	ghost_of = dead_peer
+	team = &"enemy"
+	kind = &"ghost"
+
+
+func is_ghost() -> bool:
+	return ghost_of != 0
+
+
+# 自己這邊的玩家（補血、祝福、煙霧的對象）：一般玩家是全隊，冤魂只有自己
+func friends() -> Array[Player]:
+	if is_ghost():
+		var only: Array[Player] = [self]
+		return only
+	return world.player_list
 
 
 # 跳躍：站在地面上隨時可以跳（攻擊、翻滾中也行），受擊硬直與倒地時不行；只有一段跳
@@ -355,6 +392,9 @@ func find_revive_target() -> Player:
 # 守護亡靈、復活十字（G5）在倒地 / 單機死亡之前攔下；已經倒地後倒數結束的死亡不攔
 func die(source_id: int = 0) -> void:
 	if is_dead:
+		return
+	if is_ghost():   # 冤魂不倒地、不吃守護亡靈 / 復活十字，直接倒下
+		super(source_id)
 		return
 	if not is_downed and world.is_authority and ItemEffects.on_lethal(world, self):
 		return
@@ -965,6 +1005,12 @@ func _on_died(_source_id: int) -> void:
 	locomotion.change(&"dead")
 	if was_downed:
 		locomotion.time = Config.REVIVE.down_time   # 已經躺在地上：倒地動畫直接播完，不會先站起來再倒一次
+	if is_ghost():   # 冤魂被打倒：消失，死者在這裡復活
+		world.emit_event("ghost:defeated", {"entity_id": id, "pos": pos})
+		if world.is_authority:
+			world.on_ghost_defeated(self)
+			remove()
+		return
 	world.emit_event("player:died", {"player_id": id})
 	# 多人時留下屍體（D6）：隊友撿進背包帶到下一層，就會在那裡變成冤魂
 	if world.is_authority and world.players.size() > 1:

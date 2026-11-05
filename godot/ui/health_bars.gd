@@ -96,6 +96,8 @@ func bars() -> Array[Dictionary]:
 		if e is Boss:
 			continue
 		_add(out, me, e, e.body_height + WorldLabels.ENEMY_OFFSET, ENEMY_GAP, ENEMY_SIZE, PLAYER_FILL if e.team == &"player" else ENEMY_FILL)   # 骷髏僕從（G6）綠色
+	for g: Player in world.ghosts:   # 冤魂：玩家的位置、怪物的顏色
+		_add(out, me, g, PlayerTags.HEAD_OFFSET, PLAYER_GAP, PLAYER_SIZE, ENEMY_FILL)
 	return out
 
 

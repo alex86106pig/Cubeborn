@@ -5,6 +5,7 @@ class_name Combat
 # team 的敵對陣營中仍存活的實體；倒地的玩家不會被當成目標
 # 誤傷（world.friendly_fire，大廳房主選）：玩家的攻擊也會打到其他玩家，但不會打到出招者自己（source_id）
 # 骷髏僕從（G6）在 world.enemies 裡但隊伍是玩家方：玩家打不到它、它不打玩家；怪的攻擊打得到它
+# 冤魂（world.ghosts）是怪物方的玩家角色：玩家打得到它、它打玩家（怪物不打它）
 const WEB_BURN_REACH := 0.5   # 火焰傷害打在離蜘蛛網邊緣這麼近也燒得掉
 
 
@@ -14,6 +15,9 @@ static func hostiles_of(world: World, team: StringName, source_id: int = 0) -> A
 		if not e.is_dead and e.team != team:
 			out.append(e)
 	if team == &"player":
+		for g in world.ghosts:   # 冤魂是怪物方的玩家角色
+			if not g.is_dead:
+				out.append(g)
 		if world.friendly_fire and world.entities.get(source_id) is Player:
 			for p in world.player_list:
 				if p.id != source_id and p.is_targetable():
@@ -165,7 +169,7 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 		return false
 	if source is Enemy:
 		(source as Enemy).on_dealt_damage(dealt)   # 吸血詞條（D5）
-	var hurt_by_enemy := source is Enemy and target is Player and not is_proc and dealt > 0.0
+	var hurt_by_enemy := target is Player and source.team != target.team and not is_proc and dealt > 0.0   # 怪或冤魂打的（誤傷的隊友不算）
 
 	# hit_stop 只放進事件：畫面層讓攻擊者與目標的模型定格這麼久（v0.18.3 起模擬時間不再放慢，多人時不影響其他人）
 	var ev := {
@@ -193,8 +197,9 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 		# 道具的受傷效果（G3 荊棘鎖甲、王墓之心）：同樣放在事件之後
 		ItemEffects.on_hurt(world, target as Player, source, damage, dealt, hit.get("projectile", false))
 		BondEffects.on_hurt(world, target as Player, source, dealt)
-	if source is Player and target is Enemy:
-		BondEffects.on_hit(world, source as Player, target as Enemy, hit, dealt, knockback, is_proc, shatter)
+	if source is Player and target.team != source.team:   # 打怪，或玩家與冤魂互打（誤傷的隊友不算）
+		if target is Enemy:   # 羈絆的狀態（燃燒、冰冷、失衡）只有怪物有
+			BondEffects.on_hit(world, source as Player, target as Enemy, hit, dealt, knockback, is_proc, shatter)
 		# 道具的命中 / 擊殺效果（v0.33.0）：放在事件之後，連鎖閃電、爆炸的傷害事件排在這一下後面
 		if not is_proc:
 			ItemEffects.on_dealt(world, source as Player, dealt)   # 命中回復、吸血（G1）

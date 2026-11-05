@@ -538,24 +538,34 @@ static func check_corpse_ghost() -> String:
 	var cells: int = ItemDefs.SHAPES[ItemDefs.ITEMS.corpse.shape].size()
 	if entry.is_empty() or Inventory.cells_of(entry.id, entry.rot).size() != cells or not a.items.is_empty():
 		return "撿起屍體應放進背包占 %d 格、不算生效道具" % cells
-	# 換層：出現冤魂（離出生點 GHOST.distance）
+	# 換層：出現冤魂（離出生點 GHOST.distance）：死者手上武器、主袋與袋子、職業的複製，生命 = 死者最大生命，怪物方、不算隊友
+	var b_weapon := WeaponDropDefs.to_array(b.weapon_slots[Loadout.MAIN])
+	var b_bags := b.loadout.bags_to_array()
 	w.next_floor()
-	var ghost: Enemy = null
-	for e in w.enemies:
-		if (e as Enemy).ghost_of == 2:
-			ghost = e
-	if w.floor_num != 2 or ghost == null or ghost.kind != &"ghost":
-		return "背著屍體換層後應出現冤魂"
+	var ghost: Player = w.ghosts[0] if w.ghosts.size() == 1 else null
+	if w.floor_num != 2 or ghost == null or ghost.ghost_of != 2 or ghost.kind != &"ghost":
+		return "背著屍體換層後應出現一隻 P2 的冤魂：%s" % [w.ghosts]
+	if ghost.team != &"enemy" or w.players.size() != 2 or w.player_list.has(ghost) or w.enemies.has(ghost):
+		return "冤魂應是怪物方、不在 players / player_list / enemies 裡"
+	if WeaponDropDefs.to_array(ghost.weapon_slots[Loadout.MAIN]) != b_weapon or ghost.loadout.bags_to_array()[1] != b_bags[1] \
+			or ghost.loadout.bags_to_array()[2] != b_bags[2] or ghost.class_id != b.class_id:
+		return "冤魂應帶死者的武器、主袋、袋子與職業"
+	if absf(ghost.max_hp - b.max_hp) > EPS or absf(ghost.hp - ghost.max_hp) > EPS:
+		return "冤魂生命應 = 死者最大生命 %.0f、滿血：%.0f / %.0f" % [b.max_hp, ghost.hp, ghost.max_hp]
 	var d := ghost.pos.distance_to(w.spawn_point)
 	if d < EventDefs.GHOST.distance[0] - 1.0 or d > EventDefs.GHOST.distance[1] + 1.0:
 		return "冤魂離出生點 %.1f，預期 %.0f~%.0f" % [d, EventDefs.GHOST.distance[0], EventDefs.GHOST.distance[1]]
-	# 打倒冤魂：在那裡復活 revive_hp_ratio 的血、屍體從背包消失
+	# 打倒冤魂：冤魂消失、死者在那裡復活 revive_hp_ratio 的血、裝備照舊、屍體從背包消失
 	var at := ghost.pos
 	ghost.take_damage(1e6, Vector2(1, 0), 0.0, a.id)
 	_step(w, 1, {}, false)
 	var ratio: float = EventDefs.GHOST.revive_hp_ratio
 	if b.is_dead or absf(b.hp - roundf(b.max_hp * ratio)) > EPS or b.pos.distance_to(at) > 0.5:
 		return "打倒冤魂後應在冤魂位置復活、%.0f%% 血（死亡 %s、血 %.0f）" % [ratio * 100.0, b.is_dead, b.hp]
+	if not w.ghosts.is_empty() or w.entities.has(ghost.id):
+		return "打倒的冤魂應消失"
+	if WeaponDropDefs.to_array(b.weapon_slots[Loadout.MAIN]) != b_weapon or b.loadout.bags_to_array()[2] != b_bags[2]:
+		return "復活後死者的武器與袋子應照舊"
 	if not a.inventory.find(Player.corpse_uid(2)).is_empty():
 		return "復活後屍體應從背包消失"
 	# 沒人帶屍體：下一層沒有冤魂
@@ -563,9 +573,85 @@ static func check_corpse_ghost() -> String:
 	_p(w2, 2).die()
 	_p(w2, 2).die()
 	w2.next_floor()
-	for e in w2.enemies:
-		if (e as Enemy).ghost_of != 0:
-			return "沒人帶屍體也出現冤魂"
+	if not w2.ghosts.is_empty():
+		return "沒人帶屍體也出現冤魂"
+	return ""
+
+
+# 冤魂自己會打（GhostBrain）：走向活著的玩家、用死者的武器打到人，不按 Q 喝藥水；玩家打得到它；怪物不打它；換關沒打倒就清掉
+static func check_ghost_fights() -> String:
+	for weapon: StringName in [&"swordShield", &"shortbow"]:   # 近戰貼上去、遠程保持距離射
+		var err := _ghost_fights(weapon)
+		if err != "":
+			return "%s：%s" % [weapon, err]
+	return ""
+
+
+static func _ghost_fights(weapon: StringName) -> String:
+	var w := _world([1, 2])
+	var a := _p(w, 1)
+	var b := _p(w, 2)
+	b.equip_weapon(weapon)
+	b.die()
+	b.die()
+	var g := Player.make_ghost(w, b)
+	g.pos = w.nav.nearest_walkable(a.pos + Vector2(6, 0))
+	g.height = w.terrain.ground_at(g.pos)
+	w.add_ghost(g)
+	var start_d := g.pos.distance_to(a.pos)
+	var hurt := false
+	var drank := false
+	var min_d := start_d
+	for i in roundi(8.0 / DT):
+		var cmd := g.ghost_brain.decide(g, 0.0)   # 只看它會按什麼（decide 的計時用 0 秒，不影響下面真正的一步）
+		drank = drank or cmd.has(InputCmd.slot_bit(ActiveSlots.HEAL_INDEX))
+		var ev := _step(w, 1, {}, false)
+		min_d = minf(min_d, g.pos.distance_to(a.pos))
+		for e: Dictionary in _named(ev, "entity:damaged"):
+			if e.target_id == a.id and e.source_id == g.id:
+				hurt = true
+		a.hp = a.max_hp
+		if hurt:
+			break
+	if not hurt or drank:
+		return "冤魂應走過來（%.1f → 最近 %.1f）用武器打到玩家、不喝藥水：打到 %s、喝藥 %s" % [start_d, min_d, hurt, drank]
+	var hp := g.hp
+	Combat.apply_damage(w, a, g, {"damage": 5.0, "knockback": 0.0, "band": Vector2(-INF, INF)})
+	if g.hp >= hp:
+		return "玩家應打得到冤魂"
+	if Combat.hostiles_of(w, &"enemy").has(g) or not Combat.hostiles_of(w, &"player").has(g):
+		return "怪物不應把冤魂當目標、玩家要"
+	w.next_stage(&"")
+	if not w.ghosts.is_empty() or w.entities.has(g.id):
+		return "換關時沒打倒的冤魂應清掉"
+	CheckKit._note("%s 冤魂從 %.1f 走到 %.1f 打到玩家" % [weapon, start_d, min_d])
+	return ""
+
+
+# 連線：冤魂用玩家的格式送，客戶端建成冤魂（不算隊友、不在 players）、拿著同一把武器
+static func check_net_ghost() -> String:
+	var w := _world([1, 2])
+	var b := _p(w, 2)
+	b.die()
+	b.die()
+	var g := Player.make_ghost(w, b)
+	g.pos = Vector2(4, 4)
+	w.add_ghost(g)
+	var snap: Array = bytes_to_var(var_to_bytes(NetCodec.make_snapshot(w, NetCodec.encode_entities(w), 0, 1)))
+	NetCodec.decode_snapshot(snap)
+	var cw := World.new(&"graveyard_a")
+	cw.is_authority = false
+	_made.append(cw)
+	NetCodec.apply_world(cw, snap)
+	for rec: Array in snap[NetCodec.S_ENTITIES]:
+		NetCodec.create_entity(cw, rec)
+	var cg: Player = cw.entities.get(g.id) as Player
+	if cg == null or not cg.is_ghost() or cg.ghost_of != 2 or not cw.ghosts.has(cg) or cw.players.size() != 2 or cg.team != &"enemy":
+		return "客戶端應有 P2 的冤魂（怪物方、不在 players）：%s、players %d" % [cg, cw.players.size()]
+	if cg.weapon_id != g.weapon_id or cg.pos.distance_to(g.pos) > EPS or cg.ghost_brain != null:
+		return "客戶端的冤魂武器 %s（應 %s）、位置、不跑操作" % [cg.weapon_id, g.weapon_id]
+	if NetCodec.find_player(snap, 2).is_empty() or NetCodec.find_player(snap, 2)[NetCodec.E_ID] == g.id:
+		return "找玩家 2 的快照不應找到冤魂"
 	return ""
 
 

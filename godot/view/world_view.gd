@@ -27,6 +27,7 @@ const EXIT_COLOR := Color("8fd0ff")
 const CHEST_LID_OPEN := -1.9                # 寶箱打開時箱蓋往後翻的角度（弧度）
 const GHOST_TINT := Color(0.55, 0.8, 1.0)   # 冤魂（D6）的顏色與透明度
 const GHOST_TRANSPARENCY := 0.45
+const GHOST_OVERLAY_ALPHA := 0.35   # 冤魂身上疊加的藍色有多亮
 const MINION_TINT := Color(0.55, 1.0, 0.6)   # 骷髏僕從（G6）的顏色
 const FROZEN_TINT := Color(0.35, 0.75, 1.8)   # 道具狀態（v0.33.0）：冰凍偏藍、中毒偏綠（乘在模型顏色上；場景偏暗，要染重一點才看得出來）
 const POISON_TINT := Color(0.4, 1.5, 0.3)
@@ -958,8 +959,22 @@ static func _view_key(e: Entity) -> String:
 	if e is Projectile:
 		return "projectile:%s" % (e as Projectile).visual
 	if e is Player and (e as Player).class_id != ClassDefs.NONE:
-		return "player:%s" % (e as Player).class_id
+		return "%s:%s" % [e.kind, (e as Player).class_id]
 	return String(e.kind)
+
+
+# 冤魂身上蓋的一層顏色（所有冤魂共用一個材質）
+var _ghost_mat: StandardMaterial3D = null
+
+
+func _ghost_overlay() -> Material:
+	if _ghost_mat == null:
+		_ghost_mat = StandardMaterial3D.new()
+		_ghost_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_ghost_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_ghost_mat.albedo_color = Color(GHOST_TINT, GHOST_OVERLAY_ALPHA)
+		_ghost_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	return _ghost_mat
 
 
 # 這個實體用哪一種模型：有 form_models 的 Boss 照型態換（守墓人 → 狼人），其餘就是種類
@@ -973,7 +988,7 @@ static func _model_of(e: Entity) -> StringName:
 func _create_view(e: Entity) -> Node3D:
 	var root: Node3D
 	match e.kind:
-		&"player":
+		&"player", &"ghost":   # 冤魂（Player.is_ghost）：死者職業的模型與武器，半透明偏藍（_set_ghost_look）
 			var rig := DarkFantasy.player_character((e as Player).class_id)
 			_animators[e.id] = Animator.new(rig)
 			root = rig
@@ -986,15 +1001,13 @@ func _create_view(e: Entity) -> Node3D:
 			glow.visible = false
 			rig.hand_r.add_child(glow)
 			root.set_meta(&"glow", glow)
-		&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"gravekeeper", &"boss", &"ghost", &"minion", &"spearman", &"bone_wheel", &"bone_general", &"beetle", &"spider":
+			if (e as Player).is_ghost():
+				rig.set_ghost(_ghost_overlay(), GHOST_TRANSPARENCY)
+		&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"gravekeeper", &"boss", &"minion", &"spearman", &"bone_wheel", &"bone_general", &"beetle", &"spider":
 			# 小怪用蒙皮版本（D5 效能：每隻 1~2 次繪製）；Boss 只有一隻，照舊用關節節點
-			# 冤魂（D6）：半透明的騎士（玩家的模型，不拿武器）
 			var rig: Node3D
 			if (e as Enemy).is_boss():
 				rig = DarkFantasy.character(_model_of(e))
-			elif e.kind == &"ghost":
-				rig = DarkFantasy.skinned_character(&"player")
-				(rig as SkinnedRig).set_ghost(GHOST_TINT, GHOST_TRANSPARENCY)
 			elif e.kind == &"minion":   # 骷髏僕從（G6）：染綠的骷髏戰士（不透明）
 				rig = DarkFantasy.skinned_character(&"grunt")
 				(rig as SkinnedRig).set_ghost(MINION_TINT, 0.0)

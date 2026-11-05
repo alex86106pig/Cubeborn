@@ -14,7 +14,9 @@ enum { E_ID, E_KIND, E_X, E_Z, E_H, E_FACING, E_HP, E_MAX_HP, E_VX, E_VZ, E_FLAS
 enum { P_PEER, P_WEAPON, P_ROLLS, P_DOWNED, P_DOWN_TIMER, P_REVIVE, P_PARRY, P_DODGE, P_INV, P_SLOTS, P_STUN, P_DESCENDED, P_DICE, P_RELIC, P_SKILL_LV, P_MANA, P_VIEW, P_QUIVER, P_RELOAD }
 # 寶箱的 E_EXTRA：[tier, opened]；地上道具：[item_id, 武器（WeaponDropDefs.to_array，不是武器為 []）, 屍體的主人 peer id]（D3 / D4 / D6）
 
-const ENEMY_KINDS: Array[StringName] = [&"grunt", &"archer", &"boss", &"ghost", &"minion", &"zombie", &"bloater", &"hound", &"gravekeeper", &"spearman", &"bone_wheel", &"bone_general", &"beetle", &"spider"]
+# 用玩家格式（Player 的 E_EXTRA）送的種類：冤魂（Player.is_ghost）的 P_PEER 是死者的 peer id，客戶端建成冤魂、不當成隊友
+const PLAYER_KINDS: Array[StringName] = [&"player", &"ghost"]
+const ENEMY_KINDS: Array[StringName] = [&"grunt", &"archer", &"boss", &"minion", &"zombie", &"bloater", &"hound", &"gravekeeper", &"spearman", &"bone_wheel", &"bone_general", &"beetle", &"spider"]
 # 動畫欄位名稱 → 索引（Player._update_anim、Enemy._update_anim、Boss._anim_extra）；不在表裡的照樣用字串送
 const ANIM_KEYS: Array[String] = [
 	"loco", "loco_time", "action", "action_time", "behavior", "phase", "k", "swing_dir", "is_finisher",
@@ -137,7 +139,7 @@ static func encode_entity(e: Entity) -> Array:
 	if not flags & F_NO_TIMERS:
 		b.put_half(a[E_FLASH])
 		b.put_half(a[E_INVULN])
-	var pairs := pack_anim(a[E_ANIM], PLAYER_ANIM_DEFAULTS if a[E_KIND] == &"player" else {})
+	var pairs := pack_anim(a[E_ANIM], PLAYER_ANIM_DEFAULTS if a[E_KIND] in PLAYER_KINDS else {})
 	b.put_u8(pairs.size() / 2)
 	for i in range(0, pairs.size(), 2):
 		if pairs[i] is int:
@@ -200,7 +202,7 @@ static func _read_entity(b: StreamPeerBuffer, extras: Array) -> Array:
 		var k := b.get_u8()
 		pairs.append(k if k != NO_INDEX else b.get_utf8_string())
 		pairs.append(_get_value(b))
-	a.append(unpack_anim(pairs, PLAYER_ANIM_DEFAULTS if kind == &"player" else {}))
+	a.append(unpack_anim(pairs, PLAYER_ANIM_DEFAULTS if kind in PLAYER_KINDS else {}))
 	a.append(extras.pop_back() if flags & F_EXTRA else NORMAL_ENEMY_EXTRA.duplicate())
 	return a
 
@@ -294,7 +296,7 @@ static func entity_fields(e: Entity) -> Array:
 	if e is Player:
 		var p := e as Player
 		a[E_ANIM] = p.anim
-		a[E_EXTRA] = [p.peer_id, p.weapon_id, p.roll_charges, p.is_downed, p.down_timer, p.revive_progress, p.parry_timer, p.dodge_timer, p.loadout.bags_to_array(),
+		a[E_EXTRA] = [p.ghost_of if p.is_ghost() else p.peer_id, p.weapon_id, p.roll_charges, p.is_downed, p.down_timer, p.revive_progress, p.parry_timer, p.dodge_timer, p.loadout.bags_to_array(),
 			p.weapon_slots.map(WeaponDropDefs.to_array), -p.stun_timer if p.grabbed_by != 0 else p.stun_timer, p.descended, p.dice, p.relic_id, p.skill_levels, snappedf(p.mana, 0.1), snappedf(p.view_facing(), 0.01)]
 		if p.weapon.attack.has("quiver"):   # 箭袋（短弓）：拿著有箭袋的弓才送，快照才不會變大
 			a[E_EXTRA].append_array([p.quiver, p.reload_timer])
@@ -322,7 +324,7 @@ static func entity_fields(e: Entity) -> Array:
 	return a
 
 
-static func is_player_of(a: Array, peer_id: int) -> bool:
+static func is_player_of(a: Array, peer_id: int) -> bool:   # 只認真的玩家（冤魂的種類是 ghost）
 	return a[E_KIND] == &"player" and a[E_EXTRA][P_PEER] == peer_id
 
 
@@ -344,6 +346,13 @@ static func create_entity(world: World, a: Array) -> Entity:
 		(e as Player).apply_class(world.player_classes.get(extra[P_PEER], ClassDefs.NONE))   # 開局時大廳給的職業（F3）
 		e.pos = at
 		world.add_entity_with_id(e, a[E_ID])
+	elif kind == &"ghost":   # 冤魂：死者的模型（職業）與武器，不跑操作，位置、動畫照快照
+		var g := Player.new(world, -int(extra[P_PEER]))
+		g.become_ghost(extra[P_PEER])
+		g.apply_class(world.player_classes.get(extra[P_PEER], ClassDefs.NONE))
+		g.pos = at
+		world.add_ghost(g, a[E_ID])
+		e = g
 	elif kind in ENEMY_KINDS:
 		var enemy := Spawner.create(world, kind, at, WaveDefs.NO_SCALING)
 		enemy.stats.remove_source(&"wave")   # 最大生命直接用快照的數字

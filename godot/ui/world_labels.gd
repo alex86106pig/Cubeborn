@@ -120,9 +120,9 @@ func _draw() -> void:
 			continue
 		var lift := 0.0 if en.rarity == MonsterRarityDefs.NORMAL else (-36.0 if en.rare_name != "" else -18.0)
 		_text(font, en, en.body_height + ENEMY_OFFSET, "持%s腐屍" % EnemyDefs.armed_kit(StringName(en.anim.weapon)).name, ARMED_COLOR, 14, Vector2(0, lift))
-	for e: Entity in world.enemies:
-		if e is Enemy and (e as Enemy).ghost_of != 0 and not e.is_dead and Vision.entity_visible(world, viewer, e):
-			_text(font, e, e.body_height + ENEMY_OFFSET, "冤魂：打倒就能復活隊友", GHOST_COLOR, 15)
+	for g: Player in world.ghosts:
+		if not g.is_dead and Vision.entity_visible(world, viewer, g):
+			_text(font, g, g.body_height + ENEMY_OFFSET, ghost_label(world, g), GHOST_COLOR, 15)
 	_draw_keeper(font, me, viewer)
 	_draw_grave(font, me)
 	_draw_doors(font, me)
@@ -181,6 +181,14 @@ func _draw_doors(font: Font, me: Player) -> void:
 		var at := Vector3(p.x, world.terrain.ground_at(p) + GRAVE_OFFSET, p.y)
 		var key := "[F] " if i == mine and not world.event.is_voting() else ""
 		_text_at(font, at, "%s%s" % [key, door_text(world, d)], EXIT_COLOR)
+
+
+# 冤魂頭上的字：「P2 的冤魂：打倒就能復活」（P 幾照 peer id 排序，同 PlayerTags）
+static func ghost_label(world: World, g: Player) -> String:
+	var peers: Array = world.players.keys()
+	peers.sort()
+	var i := peers.find(g.ghost_of)
+	return "%s的冤魂：打倒就能復活" % ("P%d " % (i + 1) if i >= 0 else "隊友")
 
 
 # 「前往 1-3 · 遺物」；一扇門的關沒有獎勵、下一關有鐵砧

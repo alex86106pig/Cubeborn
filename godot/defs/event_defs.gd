@@ -101,9 +101,23 @@ const SPAWN := {
 }
 
 # 冤魂（屍體帶到下一層）：出現在出生點附近，打倒就在那裡復活
+# 冤魂：死者裝備的複製（Player.make_ghost），生命 = 死者最大生命、不喝藥水（許家慶 2026-11-05）；打倒後死者照 revive_hp_ratio 復活
 const GHOST := {
 	"distance": [10.0, 14.0],
 	"revive_hp_ratio": 0.3,
+}
+
+# 冤魂的操作（GhostBrain，Claude 暫定）：sight 內找玩家；近戰走到普攻距離 × melee_keep 內；遠程保持在射程 × ranged_keep（最多 ranged_max_keep）
+# ± ranged_band；對方出招、在 defend_range 內時：有盾舉盾（block_chance、舉 block_time 秒），否則每 roll_cooldown 秒有 roll_chance 翻滾
+const GHOST_BRAIN := {
+	"sight": 30.0,
+	"melee_keep": 0.7,
+	"ranged_keep": 0.6, "ranged_max_keep": 8.0, "ranged_band": 1.5,
+	"strafe_switch": 2.0,
+	"defend_range": 3.0, "block_chance": 0.6, "block_time": 0.6,
+	"roll_cooldown": 1.5, "roll_chance": 0.4,
+	"path_refresh": 0.5,
+	"skip_specials": [&"shovelGrab"],   # 鐵鏟的鏟起只抓得到怪：冤魂按了也是白扣魔
 }
 
 

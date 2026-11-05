@@ -160,7 +160,8 @@ func _initialize() -> void:
 	_check("出口與換層（D6）：挖完不會自動走；墳墓旁按 F，單人最後一層直接通關；換關先過場（level:leaving、LEAVE.cover 秒後才換，收圈在那之前全黑、地形換了才出關卡卡片與獎勵 / 鐵砧再打開）；多人投票（Esc 反對取消、發起人也能 Esc 取消、全員同意或 VOTE.time 秒到就走、陣亡的不用投）；換層回出生點、基礎難度 +per_floor、保留靈魂與背包、地上與怪物清空、寶箱重放、事件歸零；每層的出口外觀照 EXIT_STYLES（第 1 層墳墓、第 2 層石棺：棺蓋跟著進度滑開，打開後是發光的洞）；每過一個小關怪物生命 +stage_hp、第 2 層算過完第 1 層的小關",
 		all.bind([EventChecks.check_next_floor, ViewChecks.check_exit_looks, EventChecks.check_stage_exit, ViewChecks.check_level_transition]))
 	_check("Boss（D6）：挖墳地圖開局在 boss_room 裡巡邏、沒看到玩家不追、不出範圍；前方視野或貼近看到玩家、被打就開始追、不限範圍；打倒不通關，掉 1 把武器、1 個石棺的遺物、Boss 靈魂", EventChecks.check_boss_reward)
-	_check("屍體與冤魂（D6）：多人時死亡留下屍體、撿進背包；背著換層出現冤魂，打倒後死者在那裡復活、屍體消失；沒人帶屍體就沒有冤魂", EventChecks.check_corpse_ghost)
+	_check("屍體與冤魂（D6）：多人時死亡留下屍體、撿進背包；背著換層出現冤魂（死者的武器、袋子、職業、最大生命，怪物方、不算隊友），打倒後冤魂消失、死者在那裡復活、裝備照舊、屍體消失；沒人帶屍體就沒有冤魂；冤魂自己走過來用武器打玩家、不喝藥水，玩家打得到、怪不打它，換關沒打倒就清掉；連線時客戶端建成冤魂",
+		all.bind([EventChecks.check_corpse_ghost, EventChecks.check_ghost_fights, EventChecks.check_net_ghost]))
 
 	# ───────── 背包、祭壇與武器 ─────────
 	_check("背包：倉庫大小照 BAG_SIZE、每格一件不管形狀；主袋與袋子照形狀，旋轉後格子正確；超出邊界、重疊放不下；自動找第一個空位（不夠時會轉向）；搬動成功 / 失敗；裝滿後撿不起來並發出 inventory:full；放不下時建議拿掉哪一件（占格最少），拿掉一件也不夠就不建議；放到只被 1 件佔住的位置就互換（主袋 ↔ 倉庫、倉庫裡兩件；換不回去都不動、發 inventory:denied），拿著的武器放到倉庫的武器上 = 那把換上、手上的放到空格不動，預覽跟結果一致",

@@ -18,6 +18,7 @@ var friendly_fire: bool = Config.NET.friendly_fire   # 誤傷：大廳房主選�
 var player_list: Array[Player] = []  # 同 players.values()（加入順序），每步大量查詢時不必每次配置新陣列（D5）
 var enemies: Array[Entity] = []
 var allies: Array[Entity] = []       # enemies 裡隊伍是玩家方的（G6 骷髏僕從）：怪的攻擊只要多看這幾隻，不必掃全部 enemies
+var ghosts: Array[Player] = []       # 冤魂（死者裝備的複製、怪物方、電腦操作，GhostBrain）：不在 players / enemies 裡，Combat.hostiles_of 另外加
 var projectiles: Array[Entity] = []
 var torches: Array[Entity] = []     # 插在地上的火把（F8，sim/torch.gd）
 var zones: Array[Dictionary] = []   # 地上的持續區域（F7 聖光圈，GroundZones）
@@ -315,7 +316,7 @@ func _change_level() -> void:
 	base_difficulty = (floor_num - 1) * EventDefs.DIFFICULTY.per_floor
 	stats["floor"] = floor_num
 	for e: Entity in entities.values():
-		if not e is Player:
+		if not e is Player or (e as Player).is_ghost():   # 沒打倒的冤魂也清掉：死者還背在隊友身上，下一關再出現
 			e.remove()
 	_changing_floor = true   # 整層清掉：客戶端換層時自己清，不必一隻一隻通知
 	_remove_dead_entities()
@@ -379,13 +380,23 @@ func _spawn_ghost(dead: Player) -> void:
 		if nav.is_walkable(c) and nav.same_region(c, spawn_point) and d >= g.distance[0] - 0.5 and d <= g.distance[1] + 0.5:
 			at = c
 			break
-	var ghost := spawner.spawn_at(self, &"ghost", at)
-	ghost.ghost_of = dead.peer_id
-	emit_event("ghost:spawned", {"player_id": dead.id, "pos": at})
+	var ghost := Player.make_ghost(self, dead)
+	ghost.pos = at
+	ghost.height = terrain.ground_at(at)
+	ghost.facing = atan2(spawn_point.x - at.x, spawn_point.y - at.y)   # 面向出生點（玩家那邊）
+	add_ghost(ghost)
+	emit_event("ghost:spawned", {"player_id": dead.id, "ghost_id": ghost.id, "pos": at})
 
 
-# 冤魂被打倒：死者在冤魂的位置復活，背包裡的屍體消失
-func on_ghost_defeated(ghost: Enemy) -> void:
+# 加入冤魂（客戶端沿用房主的 id）
+func add_ghost(g: Player, p_id: int = 0) -> Player:
+	add_entity_with_id(g, p_id if p_id > 0 else _next_id)
+	ghosts.append(g)
+	return g
+
+
+# 冤魂被打倒：死者在冤魂的位置復活（裝備照舊，冤魂只是複製），背包裡的屍體消失
+func on_ghost_defeated(ghost: Player) -> void:
 	var dead: Player = players.get(ghost.ghost_of)
 	if dead == null or not dead.is_dead:
 		return
@@ -404,6 +415,7 @@ func clear() -> void:
 	entities.clear()
 	players.clear()
 	player_list.clear()
+	ghosts.clear()
 	enemies.clear()
 	allies.clear()
 	projectiles.clear()
@@ -430,7 +442,7 @@ func add_entity_with_id(e: Entity, p_id: int) -> Entity:
 	e.prev_facing = e.facing
 	e.prev_height = e.height
 	entities[e.id] = e
-	if e is Player:
+	if e is Player and not (e as Player).is_ghost():
 		players[e.peer_id] = e
 		player_list.assign(players.values())
 	elif e is Enemy:
@@ -715,6 +727,10 @@ func step(cmds: Dictionary, dt: float) -> void:
 		rewind_tick = 0
 		event_actor = 0
 	_update_packs()
+	for g in ghosts:
+		if not g.is_dead:
+			g.apply_cmd(g.ghost_brain.decide(g, dt))
+		g.update(dt)
 	for e in enemies:
 		e.update(dt)
 	for e in projectiles:
@@ -726,6 +742,7 @@ func step(cmds: Dictionary, dt: float) -> void:
 	for p in player_list:
 		if not p.descended:   # 已走進出口的不擋路（D6）
 			_bodies.append(p)
+	_bodies.append_array(ghosts)
 	_bodies.append_array(enemies)
 	for b in _bodies:
 		if not b.fixed:   # 休眠的怪群速度為 0、也不會有擊退（被打就醒），不必積分（v0.30.0）
@@ -872,9 +889,11 @@ func _remove_dead_entities() -> void:
 				emit_event("pack:culled", {"entity_id": id})
 			e.detach()
 			entities.erase(id)
-			if e is Player:
+			if e is Player and not (e as Player).is_ghost():
 				players.erase(e.peer_id)
 				player_list.erase(e)
+	if not ghosts.is_empty():
+		ghosts.assign(ghosts.filter(func(g: Player) -> bool: return not g.is_removed))
 	enemies.assign(enemies.filter(func(e: Entity) -> bool: return not e.is_removed))
 	if not allies.is_empty():
 		allies.assign(allies.filter(func(e: Entity) -> bool: return not e.is_removed))

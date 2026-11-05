@@ -33,8 +33,10 @@ static func setup_run(world: World, me: Player, args: LaunchArgs) -> void:
 		world.event.horde = false
 		world.event.progress = 1.0
 	if args.ghost:
-		var g := world.spawner.spawn_at(world, &"ghost", world.nav.nearest_walkable(me.pos + Vector2(-1.0, -1.0).normalized() * 5.0))
-		g.ghost_of = -1
+		var g := Player.make_ghost(world, me)   # 自己裝備的冤魂（打倒不會復活誰：自己沒死）
+		g.pos = world.nav.nearest_walkable(me.pos + Vector2(-1.0, -1.0).normalized() * 5.0)
+		g.height = world.terrain.ground_at(g.pos)
+		world.add_ghost(g)
 	if args.weapon_test:
 		Spawner.spawn_training_dummies(world, me.pos)
 	# --loot-test：開箱與第一次掉落的卡頓（2026-10-27）。玩家站著不動，小寶箱在旁邊、靈魂夠開，第 LOOT_TEST_OPEN 秒自動開（loot_test_step）；

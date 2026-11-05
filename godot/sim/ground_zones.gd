@@ -63,16 +63,18 @@ static func update(world: World, dt: float) -> void:
 
 static func _tick(world: World, z: Dictionary) -> void:
 	var owner: Entity = world.entities.get(z.owner_id)
+	var ghost_owner := owner is Player and (owner as Player).is_ghost()   # 冤魂放的：補血、煙霧只給它自己，傷害打玩家
+	var friends: Array[Player] = (owner as Player).friends() if owner is Player else world.player_list
 	if z.has("web_slow"):
 		for p in world.player_list:
 			if not p.is_dead and p.pos.distance_to(z.pos) <= z.radius + p.radius:
 				p.add_buff(&"web", TICK_INTERVAL * 2.0, {"stats": [[&"move_speed", Stats.MUL, z.web_slow]]})
 	if z.get("smoke", 0.0) > 0.0:
-		for p in world.player_list:
+		for p in friends:
 			if not p.is_dead and p.pos.distance_to(z.pos) <= z.radius + p.radius:
 				p.add_buff(&"smoke", TICK_INTERVAL * 2.0, {"stats": [[&"dodge", Stats.ADD, z.smoke]]})
 		for e in world.enemies:
-			if not e.is_dead and e.team != &"player" and e.pos.distance_to(z.pos) <= z.radius + e.radius:
+			if not ghost_owner and not e.is_dead and e.team != &"player" and e.pos.distance_to(z.pos) <= z.radius + e.radius:
 				(e as Enemy).blind_timer = TICK_INTERVAL * 2.0
 	if z.get("burn_per_sec", 0.0) > 0.0 and owner is Player:
 		z.burn_carry += z.burn_per_sec * TICK_INTERVAL
@@ -80,10 +82,10 @@ static func _tick(world: World, z: Dictionary) -> void:
 		if stacks > 0:
 			z.burn_carry -= stacks
 			for e in world.enemies.duplicate():
-				if not e.is_dead and e.team != owner.team and e.pos.distance_to(z.pos) <= z.radius + e.radius:
+				if e is Enemy and not e.is_dead and e.team != owner.team and e.pos.distance_to(z.pos) <= z.radius + e.radius:
 					BondEffects.add_burn(world, owner as Player, e as Enemy, stacks)
 	if z.get("heal_per_sec", 0.0) > 0.0:
-		for p in world.player_list:
+		for p in friends:
 			if p.is_dead or p.is_downed or p.pos.distance_to(z.pos) > z.radius + p.radius:
 				continue
 			var healed := p.heal(z.heal_per_sec * TICK_INTERVAL)
@@ -96,7 +98,8 @@ static func _tick(world: World, z: Dictionary) -> void:
 			targets.append_array(world.player_list)
 			targets.append_array(world.enemies)
 		elif owner.team == &"player":
-			targets.append_array(world.enemies)   # 玩家放的只打怪（不誤傷隊友）
+			targets.append_array(world.enemies)   # 玩家放的只打怪與冤魂（不誤傷隊友）
+			targets.append_array(world.ghosts)
 		else:
 			targets.append_array(world.player_list)   # 怪放的（守墓人的殘火）只打玩家
 		for e in targets:
