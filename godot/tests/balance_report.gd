@@ -290,7 +290,7 @@ func _trigger_table(lines: Array[String]) -> void:
 func _move_table(lines: Array[String], basic: Dictionary) -> void:
 	lines.append("## 右鍵與技能")
 	lines.append("")
-	lines.append("目標 = 放一次對每隻怪的傷害 = 普攻單體每秒 ×（耗魔 ÷ 那把武器的回魔）÷ %.0f（右鍵 ÷ %.0f；有暈眩或補血 × %.1f）。單體、一群都和目標比：一群看有打到的怪平均每隻吃多少；比在 %.1f~%.1f 算達標（一群只打到 1 隻的、召喚不看）。" % [SKILL_K, SPECIAL_K, CONTROL_MUL, 1.0 - TOLERANCE, 1.0 + TOLERANCE])
+	lines.append("目標 = 放一次對每隻怪的傷害 = 普攻單體每秒 ×（耗魔 ÷ 那把武器的回魔）÷ %.0f（右鍵 ÷ %.0f；有暈眩或補血 × %.1f）× 技能稀有度的強度預算（%s）。單體、一群都和目標比：一群看有打到的怪平均每隻吃多少；比在 %.1f~%.1f 算達標（一群只打到 1 隻的、召喚不看）。" % [SKILL_K, SPECIAL_K, CONTROL_MUL, " / ".join(SkillDefs.RARITY_BUDGET.keys().map(func(r: StringName) -> String: return "%s %.2f" % [ItemDefs.RARITIES[r].name, SkillDefs.RARITY_BUDGET[r]])), 1.0 - TOLERANCE, 1.0 + TOLERANCE])
 	lines.append("")
 	lines.append("| 招式 | 武器 | 耗魔 | 目標 | 單體每次 | 比 | 一群打到 | 一群每隻 | 比 | 一群合計 | |")
 	lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|")
@@ -307,16 +307,17 @@ func _move_table(lines: Array[String], basic: Dictionary) -> void:
 			var cost: String = ("%.0f" % def.mana) if def.has("mana") else "次數制"   # 插火把：每層幾次、不耗魔
 			lines.append("| %s | %s | %s | 功能技能，不算傷害 | | | | | | | |" % [ItemDefs.ITEMS[id].name, WeaponDefs.WEAPONS[wid].name, cost])
 			continue
-		_move_row(lines, basic, ItemDefs.ITEMS[id].name, wid, def.mana, def.has("stun") or def.has("heal_ratio"),
-			func(pack: bool) -> Vector2: return _skill_hit(id, pack), "", def.behavior != &"summon")
+		_move_row(lines, basic, "%s（%s）" % [ItemDefs.ITEMS[id].name, ItemDefs.RARITIES[ItemDefs.ITEMS[id].rarity].name], wid, def.mana, def.has("stun") or def.has("heal_ratio"),
+			func(pack: bool) -> Vector2: return _skill_hit(id, pack), "", def.behavior != &"summon", SKILL_K, SkillDefs.budget(id))
 	lines.append("")
 
 
 # group：要不要看一群每隻（召喚的僕從一次打一隻，打一群時平均每隻沒有意義）
-func _move_row(lines: Array[String], basic: Dictionary, label: String, wid: StringName, mana: float, control: bool, hit: Callable, keep := "", group := true, k := SKILL_K) -> void:
+# budget：技能稀有度的強度預算（SkillDefs.RARITY_BUDGET），目標跟著乘；右鍵是 1
+func _move_row(lines: Array[String], basic: Dictionary, label: String, wid: StringName, mana: float, control: bool, hit: Callable, keep := "", group := true, k := SKILL_K, budget := 1.0) -> void:
 	var single: Vector2 = hit.call(false)   # (總傷害, 打到幾隻)
 	var pack: Vector2 = hit.call(true)
-	var target: float = basic[wid] * mana / _regen(wid) / k * (CONTROL_MUL if control else 1.0)
+	var target: float = basic[wid] * mana / _regen(wid) / k * (CONTROL_MUL if control else 1.0) * budget
 	var ratio := single.x / target if target > 0.0 else 0.0
 	var each := pack.x / maxf(pack.y, 1.0)
 	var pack_ratio := each / target if target > 0.0 else 0.0

@@ -264,6 +264,31 @@ static func check_level_text() -> String:
 		return "技能欄：1 級不寫、2 級寫等級，實際「%s」「%s」" % [t1, t2]
 	return ""
 
+# 技能稀有度的強度預算（SkillDefs.RARITY_BUDGET）：施放的傷害倍率 = 等級 × 預算（同等級、沒袋子倍率時就是預算），
+# 說明框與遺物卡的傷害 % 也乘；每個稀有度都有預算、越稀有越高
+static func check_skill_budget() -> String:
+	var prev := 0.0
+	for r: StringName in WeaponDropDefs.RARITY_ORDER:
+		if not SkillDefs.RARITY_BUDGET.has(r) or SkillDefs.RARITY_BUDGET[r] <= prev:
+			return "技能預算應每個稀有度都有、越稀有越高：%s" % [SkillDefs.RARITY_BUDGET]
+		prev = SkillDefs.RARITY_BUDGET[r]
+	var s := _setup(&"swordShield")
+	var p: Player = s[1]
+	for id: StringName in SkillDefs.gem_skill_ids():
+		var def: Dictionary = SkillDefs.SKILLS[id]
+		if not def.has("damage_pct"):
+			continue
+		for level in [1, 3]:
+			var ctx := ActiveSlots.cast_context(p, {"def": def, "id": id, "level": level, "bag": {}})
+			var want := SkillDefs.level_damage_mul(level) * SkillDefs.budget(id)
+			if absf(ctx.mul - want) > 1e-6:
+				return "%s（%s）%d 級的傷害倍率應 %.3f，實際 %.3f" % [id, ItemDefs.ITEMS[id].rarity, level, want, ctx.mul]
+		var line := UiKit.skill_damage_line(id)
+		if not line.contains(UiKit.pct_text(def.damage_pct * SkillDefs.budget(id))):
+			return "%s 的說明框傷害應乘稀有度 %.2f：%s" % [id, SkillDefs.budget(id), line]
+	return ""
+
+
 # 技能遺物的來源與保證：石棺必開出技能遺物、祭壇只開道具遺物；身上有還沒滿級的技能時，3 個選項至少 1 個是它（升級）、
 # 不固定在第一張；都滿級了就照舊全隨機，選項照樣 3 個不重複
 static func _check_skill_relic_rules() -> String:

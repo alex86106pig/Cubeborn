@@ -256,13 +256,13 @@ static func skill_line(id: StringName, level := 1) -> String:
 	return "按鍵袋按數字鍵放、觸發袋自動放 · %s · %s" % ["、".join(tags) if not tags.is_empty() else "—", cost]
 
 
-# 技能的傷害倍率（武器傷害的 %，已乘等級；袋子的強化另外乘）：照 SkillDefs 的資料組字，沒傷害的技能回空字串
+# 技能的傷害倍率（武器傷害的 %，已乘等級與稀有度；袋子的強化另外乘）：照 SkillDefs 的資料組字，沒傷害的技能回空字串
 # 例：「傷害：武器傷害 175% × 5 發」「傷害：武器傷害 150%，火堆每秒 100%（4 秒）」
 static func skill_damage_line(id: StringName, level := 1) -> String:
 	var sk: Dictionary = SkillDefs.SKILLS[id]
 	if not sk.has("damage_pct"):
 		return ""
-	var mul := SkillDefs.level_damage_mul(level)
+	var mul := SkillDefs.damage_mul(id, level)
 	var main := pct_text(sk.damage_pct * mul)
 	var text := "傷害：武器傷害 " + main
 	match sk.behavior:
@@ -316,7 +316,7 @@ static func skill_upgrade_line(id: StringName, level: int) -> String:
 	var sk: Dictionary = SkillDefs.SKILLS[id]
 	var parts: Array[String] = []
 	if sk.has("damage_pct"):
-		parts.append("傷害 %s → %s" % [pct_text(sk.damage_pct * SkillDefs.level_damage_mul(level)), pct_text(sk.damage_pct * SkillDefs.level_damage_mul(level + 1))])
+		parts.append("傷害 %s → %s" % [pct_text(sk.damage_pct * SkillDefs.damage_mul(id, level)), pct_text(sk.damage_pct * SkillDefs.damage_mul(id, level + 1))])
 	if sk.has("mana"):
 		parts.append("耗魔 %d → %d" % [roundi(sk.mana * SkillDefs.level_mana_mul(level)), roundi(sk.mana * SkillDefs.level_mana_mul(level + 1))])
 	return "升級：" + " · ".join(parts)

@@ -878,7 +878,7 @@ static func check_sword_shield() -> String:
 	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 20), InputCmd.slot_bit(idx)), 1, events)
 	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 20)), 60, events)
 	var got := _damage_amounts(events, target.id)
-	var want := p.pct_damage(td.damage_pct)
+	var want := p.pct_damage(td.damage_pct) * SkillDefs.budget(&"thrust")   # 技能照稀有度乘強度預算
 	_note("突刺衝到 %.2f、打中 %s" % [p.pos.y, got])
 	if got.size() != 1 or absf(got[0] - want) > 0.01:
 		return "突刺應打面前的怪一次 %.2f，實際 %s" % [want, got]

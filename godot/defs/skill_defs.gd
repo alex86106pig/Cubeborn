@@ -46,7 +46,7 @@ const SKILLS := {
 		"count": 5, "spread": 0.7, "speed": 18.0, "range": 9.0, "radius": 0.2, "pierce": false, "damage_pct": 0.875, "damage_type": &"phys",
 		"color": Color("c8d0dc"), "visual": &"arrow", "sfx": "arrowShot"},
 	&"smoke_bomb": {"icon": "煙", "mana": 40, "behavior": &"smoke", "weapons": [&"dagger"], "tags": [&"area"],
-		"radius": 3.0, "duration": 3.0, "dodge": 0.3, "color": Color("8a8a9a")},
+		"radius": 3.0, "duration": 3.0, "dodge": 0.35, "color": Color("8a8a9a")},   # 閃避 30% × 綠 1.15 ≈ 35%（RARITY_BUDGET）
 	# ---- 火把 ----
 	&"fire_nova": {"icon": "焰", "mana": 12, "behavior": &"nova", "weapons": [&"torch"], "tags": [&"area"],
 		"radius": 3.5, "damage_pct": 4, "knockback": 3.0, "damage_type": &"fire", "burn": 1, "color": Color("ff8a3d"), "sfx": "explosion"},
@@ -62,7 +62,7 @@ const SKILLS := {
 		"distance": 5.0, "time": 0.35, "width": 1.6, "damage_pct": 2, "knockback": 10.0, "damage_type": &"phys", "stun": 0.8,
 		"color": Color("d8b070"), "sfx": "shieldBash"},
 	&"taunt": {"icon": "吼", "mana": 47, "behavior": &"taunt", "weapons": [&"swordShield"], "tags": [&"guard"],
-		"radius": 6.0, "duration": 3.0, "damage_taken": 0.67, "color": Color("ff6b4a")},   # 受到的傷害 −33%
+		"radius": 6.0, "duration": 3.9, "damage_taken": 0.67, "color": Color("ff6b4a")},   # 受到的傷害 −33%；持續 3 秒 × 藍 1.3（RARITY_BUDGET）
 	&"shield_slam": {"icon": "震", "mana": 15, "behavior": &"nova", "weapons": [&"swordShield"], "tags": [&"area"],
 		"radius": 3.0, "damage_pct": 2.25, "knockback": 9.0, "damage_type": &"phys", "stun": 0.5, "color": Color("d8b070"), "sfx": "shieldBash"},
 	# ---- 法杖 ----
@@ -78,9 +78,9 @@ const SKILLS := {
 		"delay": 0.4, "max_range": 10.0, "radius": 2.5, "damage_pct": 2.3, "knockback": 3.0, "damage_type": &"holy", "heal_ratio": 0.1,
 		"color": Color("fff3b0"), "sfx": "arcaneCast"},
 	&"bone_guard": {"icon": "骸", "mana": 33, "behavior": &"summon", "weapons": [&"scepter"], "tags": [&"summon"],
-		"count": 2, "life": 5.0, "color": Color("d8d0b8")},
+		"count": 2, "life": 7.5, "color": Color("d8d0b8")},   # 存在 5 秒 × 紫 1.5（RARITY_BUDGET）
 	&"blessing": {"icon": "祝", "mana": 50, "behavior": &"bless", "weapons": [&"scepter"], "tags": [&"buff"],
-		"radius": 6.0, "duration": 5.0, "attack_speed": 0.25, "color": Color("fff3b0")},
+		"radius": 6.0, "duration": 5.0, "attack_speed": 0.375, "color": Color("fff3b0")},   # 攻速 +25% × 紫 1.5（RARITY_BUDGET）
 	# ---- 短弓 ----
 	&"volley": {"icon": "連", "mana": 9, "behavior": &"shoot", "weapons": [&"shortbow"], "tags": [&"projectile"],
 		"count": 5, "spread": 0.0, "interval": 0.08, "speed": 22.0, "range": 12.0, "radius": 0.2, "pierce": false, "damage_pct": 0.5,
@@ -140,6 +140,20 @@ static func pick_relic(pool: Array, rng: RandomNumberGenerator) -> StringName:
 		if roll <= 0:
 			return id
 	return pool[-1]
+
+
+# 稀有度的強度預算（製作計畫 I「技能稀有度」，使用者 2026-11-04 定）：同耗魔換到的傷害 / 功能。傷害照 damage_mul 在施放時乘；
+# 沒有傷害的功能型（煙霧彈、嘲諷、祝福、骸骨衛士）把係數直接乘進資料的效果數值（許家慶 2026-11-05 同意），說明文字跟著寫
+const RARITY_BUDGET := {&"white": 1.0, &"green": 1.15, &"blue": 1.3, &"purple": 1.5, &"orange": 1.75}
+
+
+static func budget(id: StringName) -> float:
+	return RARITY_BUDGET[ItemDefs.ITEMS[id].rarity]
+
+
+# 技能這一級的傷害倍率 = 等級 × 稀有度的強度預算（施放、說明框、遺物卡共用；袋子的倍率另外乘）
+static func damage_mul(id: StringName, level: int) -> float:
+	return level_damage_mul(level) * budget(id)
 
 
 # 等級的傷害倍率與耗魔倍率（施放、技能欄、說明框共用）
