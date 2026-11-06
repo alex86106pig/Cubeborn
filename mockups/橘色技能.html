@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>橘色技能候選</title>
+<style>
+/* 版面：最上面講共同規則與數字怎麼算，下面 4 個方案各一塊（編號 + 一句特色 + 4 張技能卡），最後比較表 */
+:root {
+  --bg: #f2efe9; --panel: #fffdf9; --line: #ddd5c6; --ink: #22201b; --dim: #6c665a;
+  --orange: #c46a10; --orange-soft: #f6e3cc; --hit: #c23a26; --hit-soft: rgba(194, 58, 38, .16); --cold: #2a7fb0; --soul: #6a3f8f;
+  --display: "Noto Serif TC", "Songti TC", serif;
+  --body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #15140f; --panel: #1f1d17; --line: #38342a; --ink: #e8e3d6; --dim: #a39d8e;
+  --orange: #ffad55; --orange-soft: #3b2a14; --hit: #ff6b4f; --hit-soft: rgba(255, 107, 79, .2); --cold: #8fd8ff; --soul: #d59cff; color-scheme: dark } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.65 var(--body); padding: 28px 16px 60px; }
+main { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 26px; }
+h1, h2, h3 { font-family: var(--display); margin: 0; line-height: 1.3; }
+h1 { font-size: 30px; font-weight: 900; }
+h2 { font-size: 21px; font-weight: 900; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+h2 .no { color: var(--orange); font-size: 28px; }
+h2 .tag { font-family: var(--body); font-size: 14px; font-weight: 500; color: var(--dim); }
+h3 { font-size: 16px; color: var(--orange); }
+p { margin: 0; }
+.note { color: var(--dim); font-size: 13px; }
+.box { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+ul { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 3px; }
+section { display: flex; flex-direction: column; gap: 12px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 12px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-top: 3px solid var(--orange); border-radius: 6px; padding: 12px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.card .hd { display: flex; gap: 10px; align-items: center; }
+.card svg { flex: none; width: 64px; height: 64px; background: var(--bg); border-radius: 6px; }
+.card .meta { font-size: 12px; color: var(--dim); }
+.card .num { font-variant-numeric: tabular-nums; font-weight: 700; }
+.card .bag { font-size: 12.5px; border-top: 1px dashed var(--line); padding-top: 6px; }
+.pro { font-size: 13px; } .pro b { color: var(--orange); }
+.tw { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 720px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; color: var(--dim); font-weight: 500; }
+tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 700; white-space: nowrap; }
+</style>
+</head>
+<body>
+<main>
+  <header style="display:flex;flex-direction:column;gap:6px">
+    <h1>橘色技能候選</h1>
+    <p class="note">製作計畫 I「技能稀有度」：白綠藍紫已有 29 個，橘（傳說）還沒做。四個方向給你挑，可以只選一個，也可以混搭（例如 1 號兩招 + 4 號兩招）。所有數字 Claude 暫定。</p>
+  </header>
+
+  <div class="box">
+    <h3>共同規則（四個方案都一樣）</h3>
+    <ul>
+      <li>橘色是 1 格的技能，跟其他技能一樣放在按鍵袋或觸發袋，不限武器；技能遺物照稀有度權重抽，出現機率最低。</li>
+      <li>強度照「技能強度」：放一次對每隻怪 = 普攻單體每秒 × 耗魔 ÷ 回魔 ÷ 2，再乘橘色預算 <b>1.75</b>。換成武器傷害 %：<b>每 1 點耗魔 ≈ 52.5%</b>（白色是 30%：旋風斬 10 魔 300%）。有暈眩、補血的減半。</li>
+      <li>袋子倍率照舊相乘（例：放在擊殺袋 ×2.5）；升級照舊每級傷害 +20%、耗魔 −10%。</li>
+      <li>下面卡片上的 % 是 1 級、乘過預算的數字；例子用劍盾（基礎傷害 8）算。</li>
+    </ul>
+  </div>
+
+  <!-- ── 方案 1 ── -->
+  <section>
+    <h2><span class="no">1</span>大招型<span class="tag">一招就是全場最大的爆發，特色是「範圍更大、更好看」，規則跟白紫一樣</span></h2>
+    <div class="cards">
+      <div class="card"><div class="hd"><svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="24" fill="var(--hit-soft)" stroke="var(--hit)"/><circle cx="32" cy="32" r="12" fill="none" stroke="var(--soul)" stroke-width="3"/><path d="M32 20v24M20 32h24" stroke="var(--soul)" stroke-width="2"/></svg><div><h3>冥府之門</h3><span class="meta">範圍 · 耗魔 <span class="num">24</span></span></div></div>
+        <p>準星的位置裂開一道門，1.2 秒後把半徑 4 內的怪拖進去。</p><p class="num">1260%（劍盾約 101）</p>
+        <p class="bag">放在命中袋：門開在被打中的怪腳下。</p></div>
+      <div class="card"><div class="hd"><svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="22" fill="none" stroke="var(--hit)" stroke-width="6" stroke-opacity=".35"/><path d="M32 10l4 10M54 32l-10 4M32 54l-4-10M10 32l10-4" stroke="var(--ink)" stroke-width="3"/><circle cx="32" cy="32" r="5" fill="var(--ink)"/></svg><div><h3>千刃風暴</h3><span class="meta">範圍、近戰 · 耗魔 <span class="num">20</span></span></div></div>
+        <p>3 秒內一直轉、可以走動，身邊 2.5 每 0.25 秒砍一下（共 12 下）。</p><p class="num">每下 87.5%，合計 1050%</p>
+        <p class="bag">放在翻滾袋：滾完接著轉。</p></div>
+      <div class="card"><div class="hd"><svg viewBox="0 0 64 64"><rect x="28" y="6" width="8" height="46" fill="var(--hit-soft)" stroke="var(--hit)"/><path d="M30 12l4 6-4 6 4 6-4 6 4 6" fill="none" stroke="var(--ink)" stroke-width="1.6"/><circle cx="32" cy="56" r="5" fill="var(--ink)"/></svg><div><h3>裂地斬</h3><span class="meta">範圍 · 耗魔 <span class="num">18</span></span></div></div>
+        <p>往前劈出一道 12 長的地裂，路上的怪全部擊飛。</p><p class="num">945%（劍盾約 76）</p>
+        <p class="bag">放在出手袋：每 N 下普攻劈一道。</p></div>
+      <div class="card"><div class="hd"><svg viewBox="0 0 64 64"><path d="M14 6l-4 14h6l-4 14M34 6l-4 14h6l-4 14M54 6l-4 14h6l-4 14" fill="none" stroke="var(--cold)" stroke-width="2.4"/><circle cx="12" cy="46" r="6" fill="var(--hit-soft)" stroke="var(--hit)"/><circle cx="32" cy="46" r="6" fill="var(--hit-soft)" stroke="var(--hit)"/><circle cx="52" cy="46" r="6" fill="var(--hit-soft)" stroke="var(--hit)"/></svg><div><h3>天譴</h3><span class="meta">範圍 · 耗魔 <span class="num">22</span></span></div></div>
+        <p>8 內最近的 4 隻怪各落一道雷（Boss 只被打一道）。</p><p class="num">每隻 1155%</p>
+        <p class="bag">放在計時袋：每 3 秒 4 道雷（×0.6）。</p></div>
+    </div>
+    <p class="pro"><b>好處</b>：好懂、好做（都是現有技能行為放大），拿到馬上有感。<b>缺點</b>：跟紫色只差在「更大更痛」，沒有改變玩法；耗魔 18~24，按鍵袋放一次就用掉一大半魔力（劍盾最大 120、鐵鏟只有 32）。</p>
+  </section>
+
+  <!-- ── 方案 2 ── -->
+  <section>
+    <h2><span class="no">2</span>改寫袋子型<span class="tag">本身沒有傷害，改變「放它的那個袋子」怎麼運作，像 POE 的傳奇裝</span></h2>
+    <div class="cards">
+      <div class="card"><div class="hd"><svg viewBox="0 0 64 64"><rect x="8" y="20" width="22" height="22" rx="3" fill="none" stroke="var(--ink)" stroke-width="2"/><rect x="34" y="20" width="22" height="22" rx="3" fill="none" stroke="var(--orange)" stroke-width="2" stroke-dasharray="4 3"/><path d="M30 31h4" stroke="var(--orange)" stroke-width="2"/></svg><div><h3>回響</h3><span class="meta">增益 · 耗魔 <span class="num">0</span></span></div></div>
+        <p>同一袋的其他技能放完 0.5 秒後再放一次，第二次傷害 ×0.6、耗魔照扣一半。</p><p class="num">等於袋子強度 ×1.6</p>
+        <p class="bag">放在哪一袋都一樣：越貴的袋子越賺。</p></div>
+      <div class="card"><div class="hd"><svg viewBox="0 0 64 64"><path d="M32 8c10 14 14 22 14 30a14 14 0 0 1-28 0c0-8 4-16 14-30z" fill="none" stroke="var(--cold)" stroke-width="2.4"/><path d="M26 40h12M32 34v12" stroke="var(--cold)" stroke-width="2"/></svg><div><h3>魂泉</h3><span class="meta">增益 · 耗魔 <span class="num">20</span></span></div></div>
+        <p>放出後 5 秒內所有袋子耗魔 −50%（不能疊）。</p><p class="num">5 秒內約省 30~60 魔</p>
+        <p class="bag">放在受傷袋：被打就回本。</p></div>
+      <div class="card"><div class="hd"><svg viewBox="0 0 64 64"><rect x="6" y="22" width="16" height="20" rx="2" fill="none" stroke="var(--ink)" stroke-width="2"/><rect x="24" y="22" width="16" height="20" rx="2" fill="none" stroke="var(--orange)" stroke-width="2"/><rect x="42" y="22" width="16" height="20" rx="2" fill="none" stroke="var(--ink)" stroke-width="2"/><path d="M18 14q14-10 28 0" fill="none" stroke="var(--orange)" stroke-width="2"/><path d="M44 10l2 4-4 1" fill="none" stroke="var(--orange)" stroke-width="2"/></svg><div><h3>共鳴</h3><span class="meta">增益 · 耗魔 <span class="num">8</span></span></div></div>
+        <p>這一袋發動時，同一邊相鄰的袋子也跟著發動一次（被帶動的不再帶動別的）。</p><p class="num">兩袋一起放</p>
+        <p class="bag">放在左邊命中袋：旁邊的擊殺袋每 N 下也放一次。</p></div>
+      <div class="card"><div class="hd"><svg viewBox="0 0 64 64"><path d="M32 54s-20-12-20-28a10 10 0 0 1 20-4 10 10 0 0 1 20 4c0 16-20 28-20 28z" fill="var(--hit-soft)" stroke="var(--hit)" stroke-width="2"/></svg><div><h3>血契</h3><span class="meta">增益 · 耗魔 <span class="num">0</span></span></div></div>
+        <p>這一袋的技能與效果不扣魔力，改扣生命（每點魔力 = 0.5% 最大生命），傷害 +25%。</p><p class="num">一袋 30 魔 = 扣 15% 生命</p>
+        <p class="bag">放在按鍵袋：沒魔也能放大招。</p></div>
+    </div>
+    <p class="pro"><b>好處</b>：直接回應「一直沒魔」（魂泉、血契）、讓擺袋子更有拼圖感（共鳴看相鄰）；不會讓數字膨脹。<b>缺點</b>：要多寫新的袋子規則，說明比較難懂；共鳴在背包合併模式裡相鄰關係固定，兩種模式要各想一次；回響容易跟修飾的「分裂」重疊。</p>
+  </section>
+
+  <!-- ── 方案 3 ── -->
+  <section>
+    <h2><span class="no">3</span>成長型<span class="tag">一開始普通，這一層用越多越強，鼓勵整局圍繞它打</span></h2>
+    <div class="cards">
+      <div class="card"><div class="hd"><svg viewBox="0 0 64 64"><path d="M14 50L46 18" stroke="var(--ink)" stroke-width="5" stroke-linecap="round"/><path d="M46 18l8-8" stroke="var(--soul)" stroke-width="5" stroke-linecap="round"/><circle cx="50" cy="44" r="3" fill="var(--soul)"/><circle cx="42" cy="52" r="2" fill="var(--soul)"/></svg><div><h3>噬魂刃</h3><span class="meta">近戰 · 耗魔 <span class="num">14</span></span></div></div>
+        <p>往前斬一刀；用它打死一隻怪，這一層它的傷害永久 +3%（最多 +90%，換層歸零）。</p><p class="num">490% → 最多 931%</p>
+        <p class="bag">放在擊殺袋：自己養自己。</p></div>
+      <div class="card"><div class="hd"><svg viewBox="0 0 64 64"><circle cx="20" cy="26" r="6" fill="none" stroke="var(--ink)" stroke-width="2"/><circle cx="44" cy="26" r="6" fill="none" stroke="var(--ink)" stroke-width="2"/><circle cx="32" cy="44" r="6" fill="none" stroke="var(--ink)" stroke-width="2"/><path d="M8 58h48" stroke="var(--dim)" stroke-width="2"/><path d="M14 54l4-4M46 54l4-4" stroke="var(--dim)" stroke-width="2"/></svg><div><h3>亡者軍勢</h3><span class="meta">召喚 · 耗魔 <span class="num">30</span></span></div></div>
+        <p>8 內每具怪物屍體起來一隻骷髏僕從（最多 6 隻），存在 8 秒。</p><p class="num">每隻約骸骨衛士 ×1.17</p>
+        <p class="bag">放在擊殺袋：殺越多叫越多。</p></div>
+      <div class="card"><div class="hd"><svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="8" fill="var(--hit)"/><circle cx="32" cy="32" r="16" fill="none" stroke="var(--hit)" stroke-dasharray="3 3"/><circle cx="32" cy="32" r="24" fill="none" stroke="var(--hit)" stroke-opacity=".5" stroke-dasharray="2 4"/></svg><div><h3>積怨</h3><span class="meta">範圍 · 耗魔 <span class="num">16</span></span></div></div>
+        <p>記住上次放出之後受到的傷害，放出時把它 ×3 炸向身邊 4（至少 420%）。</p><p class="num">被打越多越痛</p>
+        <p class="bag">放在受傷袋：每次被打都放一次、不太會累積；按鍵袋要等。</p></div>
+      <div class="card"><div class="hd"><svg viewBox="0 0 64 64"><path d="M32 10l18 32H14z" fill="var(--hit-soft)" stroke="var(--hit)"/><circle cx="32" cy="10" r="4" fill="var(--orange)"/><circle cx="50" cy="42" r="4" fill="var(--orange)"/><circle cx="14" cy="42" r="4" fill="var(--orange)"/></svg><div><h3>星位</h3><span class="meta">範圍 · 耗魔 <span class="num">10</span></span></div></div>
+        <p>腳下留一顆星（最多 3 顆、各 20 秒）；有 3 顆時圍成的三角形裡每秒打 175%。</p><p class="num">單顆星本身 0，三角形每秒 175%</p>
+        <p class="bag">放在翻滾袋：滾三次就布好陣。</p></div>
+    </div>
+    <p class="pro"><b>好處</b>：拿到之後整局會想圍繞它配裝，最有「傳說」的感覺；星位、亡者軍勢跟走位與屍體互動。<b>缺點</b>：強度起伏大、平衡表很難量（看打法）；積怨和守墓騎士的受傷袋組合可能太強；連線要多同步層數與星的位置。</p>
+  </section>
+
+  <!-- ── 方案 4 ── -->
+  <section>
+    <h2><span class="no">4</span>看袋子變招<span class="tag">同一個技能放在不同袋子做不同的事，讓「放哪一袋」本身是選擇</span></h2>
+    <div class="cards">
+      <div class="card"><div class="hd"><svg viewBox="0 0 64 64"><path d="M20 50L44 14M32 52L32 12M44 50L20 14" stroke="var(--ink)" stroke-width="3"/><circle cx="32" cy="32" r="22" fill="none" stroke="var(--orange)" stroke-dasharray="4 3"/></svg><div><h3>劍舞</h3><span class="meta">近戰、投射 · 耗魔 <span class="num">16</span></span></div></div>
+        <p>按鍵：往前突進連斬 5 下（每下 168%）· 命中：目標周圍落 3 把劍（各 280%）· 受傷：3 把劍繞身 2 秒擋投射物 · 計時：朝最近的怪丟一把（840%）。</p><p class="num">各種放法合計都約 840%</p></div>
+      <div class="card"><div class="hd"><svg viewBox="0 0 64 64"><path d="M32 8v48M12 20l40 24M12 44l40-24" stroke="var(--cold)" stroke-width="3"/><circle cx="32" cy="32" r="6" fill="var(--cold)"/></svg><div><h3>霜魂</h3><span class="meta">範圍 · 耗魔 <span class="num">16</span></span></div></div>
+        <p>按鍵：面前豎起冰牆 4 秒 · 命中：目標直接凍結（Boss 改冰冷 5 層）· 翻滾：滾過的地方留冰道減速 · 擊殺：屍體炸出 6 片冰錐（各 140%）。</p><p class="num">功能型為主，傷害約 840%</p></div>
+      <div class="card"><div class="hd"><svg viewBox="0 0 64 64"><path d="M34 6l-14 28h12l-4 24 18-32H34z" fill="var(--orange-soft)" stroke="var(--orange)" stroke-width="2"/></svg><div><h3>雷鳴之心</h3><span class="meta">投射 · 耗魔 <span class="num">14</span></span></div></div>
+        <p>按鍵：射一道貫穿的雷槍（735%）· 命中 / 出手：閃電鏈跳 5 隻（各 245%）· 計時：身上帶電 3 秒，碰到的怪各被電一次（735%）。</p><p class="num">約 735%</p></div>
+      <div class="card"><div class="hd"><svg viewBox="0 0 64 64"><path d="M32 54c-12 0-18-10-14-20 2 6 6 8 8 6-4-10 2-20 10-26-2 10 6 14 6 22 2-2 3-5 2-8 6 6 6 26-12 26z" fill="var(--hit-soft)" stroke="var(--hit)" stroke-width="2"/></svg><div><h3>冥火</h3><span class="meta">範圍 · 耗魔 <span class="num">18</span></span></div></div>
+        <p>按鍵：前方噴 1.5 秒冥火 · 擊殺：屍體燒成火池 4 秒 · 受傷：身邊爆火圈並擊退 · 翻滾：留下一條火痕。全部都疊燃燒。</p><p class="num">約 945%</p></div>
+    </div>
+    <p class="pro"><b>好處</b>：最貼合觸發袋的核心（時機 = 袋子）；同一顆技能撿到後要想放哪裡，背包合併模式也一樣能用（看區塊）。<b>缺點</b>：每個技能要做 3~4 種行為，工作量最大（4 招約等於 12~16 個技能）；說明要寫清楚每一袋做什麼。</p>
+  </section>
+
+  <section>
+    <h2>比較</h2>
+    <div class="tw"><table>
+      <thead><tr><th></th><th>拿到時的感覺</th><th>跟「一直沒魔」的關係</th><th>兩種背包模式</th><th>工作量（4 招）</th><th>平衡難度</th></tr></thead>
+      <tbody>
+        <tr><td>1 大招型</td><td>馬上更痛、更好看</td><td>更吃魔（18~24）</td><td>都一樣</td><td>小（約 4 個技能）</td><td>低：照公式</td></tr>
+        <tr><td>2 改寫袋子型</td><td>配裝方式改變</td><td>直接解決（魂泉、血契）</td><td>共鳴要分開想</td><td>中：新規則 + 介面說明</td><td>中</td></tr>
+        <tr><td>3 成長型</td><td>整局圍繞它打</td><td>沒有直接關係</td><td>都一樣</td><td>中：要同步層數、星位</td><td>高：看打法</td></tr>
+        <tr><td>4 看袋子變招</td><td>每次撿到都要想放哪</td><td>沒有直接關係</td><td>都一樣（看區塊）</td><td>大（約 12~16 個行為）</td><td>中：每袋照公式</td></tr>
+      </tbody>
+    </table></div>
+    <p class="note">Claude 的建議：先做 <b>2 號的魂泉、血契</b>（回應試玩時的「一直沒魔」）加 <b>4 號的劍舞、冥火</b>（最能表現觸發袋的特色）；1 號工作量最小，可以當作補數量用。</p>
+  </section>
+</main>
+</body>
+</html>
