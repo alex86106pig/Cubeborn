@@ -29,6 +29,7 @@ var auto_interact := false
 var start_weapon: StringName = &""
 var start_class: StringName = &""
 var difficulty: StringName = &""   # --difficulty=easy|normal|hard（選角畫面的難度，EventDefs.MODES）
+var bag_mode: StringName = &""     # --bag-mode=bags|merged（背包模式，蓋過設定頁；BagDefs.MODE_*）
 var start_wave := 0
 var start_hp := 0.0
 var start_items: Array[StringName] = []
@@ -87,6 +88,8 @@ static func parse(args: PackedStringArray) -> LaunchArgs:
 			a.start_class = StringName(value)
 		elif arg.begins_with("--difficulty="):
 			a.difficulty = StringName(value)
+		elif arg.begins_with("--bag-mode="):
+			a.bag_mode = StringName(value)
 		elif arg.begins_with("--weapon="):
 			a.start_weapon = StringName(value)
 		elif arg.begins_with("--wave="):

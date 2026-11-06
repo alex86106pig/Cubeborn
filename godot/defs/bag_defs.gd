@@ -73,6 +73,24 @@ const START := {
 	&"gravedigger": {"skill": &"ground_slam", "bag": [&"hit", &"right"]},
 }
 
+# ── 背包合併模式（mockups/背包合併.html，許家慶 2026-11-05 提出、2026-11-06 選定細節；跟袋子分開的模式並存、測試後留一種）──
+# 主袋與四周的觸發區固定接好、不能拿下來，大部分格子鎖著，一局靠開格長大；換武器不搬袋子
+# 區塊：[種類, 接哪一邊, offset, 沿著邊的長度, 往外的深度]；觸發區每塊 2 × 3 = 6 格、數字區一鍵 1 格（技能都是 1 格）
+# 全部打開 = 主袋 36 + 觸發區 9 × 6 + 數字 3 = 93 格（Claude 暫定）
+const MODE_BAGS := &"bags"       # 袋子分開（原本的觸發袋）
+const MODE_MERGED := &"merged"   # 背包合併
+const MERGED_ZONES: Array[Array] = [
+	[&"hit", &"left", 0, 2, 3], [&"kill", &"left", 2, 2, 3], [&"cast", &"left", 4, 2, 3],
+	[&"hit", &"right", 0, 2, 3], [&"kill", &"right", 2, 2, 3], [&"cast", &"right", 4, 2, 3],
+	[&"hurt", &"bottom", 0, 2, 3], [&"roll", &"bottom", 2, 2, 3], [&"timer", &"bottom", 4, 2, 3],
+	[&"key", &"top", 1, 1, 1], [&"key", &"top", 2, 1, 1], [&"key", &"top", 3, 1, 1],
+]
+const MERGED_START_CORE := Rect2i(1, 1, 3, 3)   # 開局主袋開的格子（主袋座標）
+const MERGED_START_CLASS := 2                   # 職業那一區開幾格（貼著主袋的那一排，裝著起始技能）
+const MERGED_START_KEYS := 1                    # 數字區開幾格（空的）
+# 開格（許家慶 2026-11-06）：過小關、門的「袋子」獎勵隨機開 1 格（整個背包隨機）；Boss 與鐵砧給自選 1 格；
+# 菁英怪原本掉袋子的改掉武器（機率照 ELITE_DROP，World.on_enemy_died）
+
 # 取得：菁英怪（魔法 / 稀有）死掉時掉袋子的機率；掉哪種看怪的種類（沒列的隨機）
 const ELITE_DROP := {&"magic": 0.25, &"rare": 0.6}
 const ELITE_BAG := {&"bloater": &"kill", &"hound": &"roll", &"archer": &"hit", &"zombie": &"hurt", &"spider": &"timer", &"beetle": &"roll",
@@ -157,12 +175,29 @@ static func bag_name(bag: Dictionary) -> String:
 	return TIERS[bag.tier].name + BAGS[bag.kind].name
 
 
-# 快照：[uid, kind, tier, side, offset, length, depth, mul, [[uid, id, x, y, rot, charges], …]]
+# 快照：[uid, kind, tier, side, offset, length, depth, mul, [[uid, id, x, y, rot, charges], …], 鎖著的格子 [x, y, x, y…]（背包合併）]
 static func to_array(bag: Dictionary) -> Array:
 	var entries := []
 	for e: Dictionary in bag.entries:
 		entries.append([String(e.uid), String(e.id), e.cell.x, e.cell.y, e.rot, e.get("charges", -1)])
-	return [String(bag.uid), String(bag.kind), String(bag.tier), String(bag.side), bag.offset, bag.length, bag.depth, bag.mul, entries]
+	return [String(bag.uid), String(bag.kind), String(bag.tier), String(bag.side), bag.offset, bag.length, bag.depth, bag.mul, entries,
+		cells_to_array(bag.get("locked", {}))]
+
+
+# 鎖著的格子（cell → true）壓成 [x, y, x, y…] 給快照；反過來 cells_from_array
+static func cells_to_array(cells: Dictionary) -> Array:
+	var out := []
+	for c: Vector2i in cells:
+		out.append(c.x)
+		out.append(c.y)
+	return out
+
+
+static func cells_from_array(a: Array) -> Dictionary:
+	var out := {}
+	for i in range(0, a.size() - 1, 2):
+		out[Vector2i(int(a[i]), int(a[i + 1]))] = true
+	return out
 
 
 static func from_array(a: Array) -> Dictionary:
@@ -172,5 +207,8 @@ static func from_array(a: Array) -> Dictionary:
 		if int(x[5]) >= 0:
 			e["charges"] = int(x[5])
 		entries.append(e)
-	return {"uid": StringName(a[0]), "kind": StringName(a[1]), "tier": StringName(a[2]), "side": StringName(a[3]), "offset": int(a[4]),
+	var b := {"uid": StringName(a[0]), "kind": StringName(a[1]), "tier": StringName(a[2]), "side": StringName(a[3]), "offset": int(a[4]),
 		"length": int(a[5]), "depth": int(a[6]), "mul": float(a[7]), "entries": entries}
+	if a.size() > 9 and not (a[9] as Array).is_empty():
+		b["locked"] = cells_from_array(a[9])
+	return b

@@ -158,6 +158,10 @@ func restart() -> void:
 		world.player_classes[World.HOST_PEER_ID] = args.start_class
 	if EventDefs.MODES.has(args.difficulty):
 		world.difficulty_mode = args.difficulty
+	# 背包模式：單機與房主照設定頁（--bag-mode 蓋過），客戶端從房主的快照拿
+	world.bag_mode = BagDefs.MODE_MERGED if hud.settings_panel.values.get("merged_bag", false) else BagDefs.MODE_BAGS
+	if args.bag_mode in [BagDefs.MODE_BAGS, BagDefs.MODE_MERGED]:
+		world.bag_mode = args.bag_mode
 	var seed_value := args.run_seed if args.run_seed >= 0 else randi()
 	world.reset(seed_value, peers)
 	print("seed=%d" % seed_value)

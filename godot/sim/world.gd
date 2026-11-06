@@ -15,6 +15,7 @@ var players: Dictionary = {}         # peer_id -> Player
 var player_classes: Dictionary = {}  # peer id → 職業（F2，ClassDefs）；reset 不清，重新開始照舊
 var difficulty_mode: StringName = EventDefs.DEFAULT_MODE   # 選角畫面選的難度（EventDefs.MODES）；reset 不清，重新開始照舊
 var friendly_fire: bool = Config.NET.friendly_fire   # 誤傷：大廳房主選（NetSession.lobby_friendly_fire）；reset 不清
+var bag_mode: StringName = BagDefs.MODE_BAGS   # 背包模式（袋子分開 / 背包合併）：設定頁或 --bag-mode 決定，房主的為準；客戶端從快照的背包拿，不用這個；reset 不清
 var player_list: Array[Player] = []  # 同 players.values()（加入順序），每步大量查詢時不必每次配置新陣列（D5）
 var enemies: Array[Entity] = []
 var allies: Array[Entity] = []       # enemies 裡隊伍是玩家方的（G6 骷髏僕從）：怪的攻擊只要多看這幾隻，不必掃全部 enemies
@@ -52,6 +53,7 @@ const PACK_ID_STAGES := 8       # 每層留幾個小關的 id 區段
 var _changing_floor := false
 var layout: Dictionary = {}   # 這一局這一層的地形（MapDefs.layout）：blocks、開的門 doors、每格的區塊 zones
 var layout_key := []          # 地形是照什麼建的（_layout_key_for）：畫面層比對它決定要不要重建場地
+var _prebuilt: Dictionary = {}     # 先拼好的下一小關（prebuild_stage）：{ key: [地圖, 層, 小關, 種子], map }；load_map 用掉就清
 var pack_digest := 0   # 這一層怪群的檢查碼（Spawner.spawn_packs 用生成的值算）：房主放進快照，客戶端比對本機算出來的
 var run_seed := 0   # 這一局的種子（reset 傳入）：每層的配置（怪群、寶箱）用 floor_rng 從它算出來，客戶端從快照拿來顯示
 var web_count := 0   # 蜘蛛網的編號（GroundZones.add_web；畫面燒掉時用來找網）
@@ -96,9 +98,8 @@ func load_map(p_map_id: StringName) -> void:
 	if map.has("generator"):
 		if stage_num == 0:
 			stage_num = MapGenDefs.START_STAGE
-		var plan_rng := RandomNumberGenerator.new()
-		plan_rng.seed = hash([run_seed, floor_num, &"chest_plan"])   # 整層共用一份分配：不看小關，每小關算出來都一樣
-		var built := MapGen.build_map(map, stage_num, floor_rng(&"layout"), MapGen.chest_plan(plan_rng).get(stage_num, {}))
+		var built: Dictionary = _prebuilt.map if _prebuilt.get("key", []) == [p_map_id, floor_num, stage_num, run_seed] else _build_stage(map, stage_num)
+		_prebuilt = {}
 		if built.is_empty():
 			push_warning("第 %d 層第 %d 小關（種子 %d）產生失敗，改用 %s" % [floor_num, stage_num, run_seed, MapGenDefs.FALLBACK_MAP])
 			built = MapDefs.get_map(MapGenDefs.FALLBACK_MAP)
@@ -119,6 +120,26 @@ func load_map(p_map_id: StringName) -> void:
 
 
 # 換成這一層的地圖（MapDefs.floor_map）與這個種子的地形；地圖、層數、種子都一樣就不重建尋路格子
+# 照種子拼出這一層第 stage 小關（跟 floor_rng 同一套種子，先算好或當下算結果一樣）
+func _build_stage(base: Dictionary, stage: int) -> Dictionary:
+	var plan_rng := RandomNumberGenerator.new()
+	plan_rng.seed = hash([run_seed, floor_num, &"chest_plan"])   # 整層共用一份分配：不看小關，每小關算出來都一樣
+	var layout_rng := RandomNumberGenerator.new()
+	layout_rng.seed = hash([run_seed, floor_num, stage, &"layout"])   # 同 floor_rng(&"layout")（stage_num 不是 0）
+	return MapGen.build_map(base, stage, layout_rng, MapGen.chest_plan(plan_rng).get(stage, {}))
+
+
+# 換小關的過場全黑之後、真的換關之前（DigEvent，EventDefs.LEAVE.prebuild_left）先拼好下一小關的地圖：
+# 換關那一步只剩地形、尋路格子與怪群，產生地圖的時間分到前面幾步（畫面一樣是黑的）。只在權威端；客戶端照舊收到換關才算
+func prebuild_stage(stage: int) -> void:
+	var id := MapDefs.floor_map(map_id, floor_num)
+	var base := MapDefs.get_map(id)
+	var key := [id, floor_num, stage, run_seed]
+	if not base.has("generator") or _prebuilt.get("key", []) == key:
+		return
+	_prebuilt = {"key": key, "map": _build_stage(base, stage)}
+
+
 func _load_floor_map(p_floor: int) -> void:
 	var id := MapDefs.floor_map(map_id, p_floor)
 	if _layout_key_for(id) != layout_key:
@@ -307,6 +328,9 @@ func next_floor() -> void:
 func next_stage(reward: StringName) -> void:
 	stage_num += 1
 	_change_level()
+	if bag_mode == BagDefs.MODE_MERGED:   # 背包合併：過小關每人隨機開 1 格
+		for p in player_list:
+			p.loadout.unlock_random(p, rng)
 	_grant_stage_reward(reward)
 	emit_event("stage:started", {"floor": floor_num, "stage": stage_num, "difficulty": base_difficulty, "reward": String(reward)})
 
@@ -499,13 +523,18 @@ func on_enemy_died(e: Enemy, killer_id: int = 0) -> void:
 	if not e.no_souls and coin_chance > 0.0 and coin_rng.randf() < coin_chance:
 		drop_coin(e.pos)
 	# 菁英怪（魔法 / 稀有）掉觸發袋：種類看怪（BagDefs.ELITE_BAG，沒列的隨機），召喚出來的不掉
+	# 背包合併模式沒有袋子掉落：同樣的機率改掉一把武器（許家慶 2026-11-06）
 	var bag_chance: float = BagDefs.ELITE_DROP.get(e.rarity, 0.0)
+	var elite_weapon := false
 	if not e.no_souls and bag_chance > 0.0 and rng.randf() < bag_chance:
-		var kinds: Array = BagDefs.BAGS.keys()
-		var kind: StringName = BagDefs.ELITE_BAG.get(e.type, kinds[rng.randi_range(0, kinds.size() - 1)])
-		drop_item(BagDefs.BAGS[kind].item, e.pos)
+		if bag_mode == BagDefs.MODE_MERGED:
+			elite_weapon = true
+		else:
+			var kinds: Array = BagDefs.BAGS.keys()
+			var kind: StringName = BagDefs.ELITE_BAG.get(e.type, kinds[rng.randi_range(0, kinds.size() - 1)])
+			drop_item(BagDefs.BAGS[kind].item, e.pos)
 	# 武器掉落（D4）：多人時也只掉一把（房主產生一個實體，先撿先得）；機率照層數，召喚出來的不掉（不然召喚者不死就能一直刷）
-	var chance: float = 1.0 if debug_drop_all else (0.0 if e.no_souls else WeaponDropDefs.drop_chance(e.type, floor_num))
+	var chance: float = 1.0 if debug_drop_all or elite_weapon else (0.0 if e.no_souls else WeaponDropDefs.drop_chance(e.type, floor_num))
 	if chance > 0.0 and (chance >= 1.0 or rng.randf() < chance):
 		var source := &"boss" if e.is_boss() else &"minion"
 		var bases := WeaponDropDefs.bases()

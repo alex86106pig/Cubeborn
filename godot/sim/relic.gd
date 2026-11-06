@@ -10,6 +10,8 @@ class_name Relic
 extends Entity
 
 const ANVIL_PREFIX := "anvil:"
+const UNLOCK_RANDOM := &"unlock:random"   # 背包合併：隨機開 1 格
+const UNLOCK_PICK := &"unlock:pick"       # 背包合併：自選開 1 格（Loadout.unlock_picks +1，到背包點鎖著的格子）
 
 var relic_kind: StringName = &"item"
 var tier: StringName = &"small"
@@ -43,6 +45,10 @@ func open_for(p: Player) -> void:
 func _roll(p: Player) -> void:
 	var n := maxi(1, roundi(p.stats.value(&"relic_choices")))
 	var out: Array[StringName] = []
+	if p.loadout.merged and relic_kind in [&"bag", &"bag_big", &"anvil"]:
+		# 背包合併沒有袋子：門的袋子獎勵隨機開 1 格，Boss 與鐵砧自選開 1 格（只有一個選項）
+		offers[p.peer_id] = [UNLOCK_RANDOM if relic_kind == &"bag" else UNLOCK_PICK] as Array[StringName]
+		return
 	match relic_kind:
 		&"anvil":
 			out = _anvil_options(p, n)
@@ -59,7 +65,7 @@ func _roll(p: Player) -> void:
 				if pool.is_empty():
 					pool = LootDefs.drop_pool(rarity)
 				out.append(pool[world.rng.randi_range(0, pool.size() - 1)])
-			if world.rng.randf() < BagDefs.CURSED_CHANCE.get(tier, 0.0):
+			if not p.loadout.merged and world.rng.randf() < BagDefs.CURSED_CHANCE.get(tier, 0.0):
 				out[out.size() - 1] = _bag_option(_random_kind([]), &"cursed")
 	offers[p.peer_id] = out
 
@@ -164,6 +170,10 @@ func _anvil_apply(p: Player, c: Dictionary) -> void:
 
 # 介面用：選項的標題、說明、是不是詛咒（道具與技能由面板照物品資料畫，這裡處理袋子與鐵砧）；都不是回傳 {}
 static func option_info(p: Player, choice: StringName) -> Dictionary:
+	if choice == UNLOCK_RANDOM:
+		return {"title": "開格：隨機 1 格", "desc": "背包裡隨機一格鎖著的格子打開"}
+	if choice == UNLOCK_PICK:
+		return {"title": "開格：自選 1 格", "desc": "打開背包（Tab），點一格鎖著的格子打開"}
 	var bc := bag_choice(choice)
 	if not bc.is_empty():
 		var t: Dictionary = BagDefs.TIERS[bc.tier]
@@ -209,7 +219,12 @@ func pick(p: Player, index: int) -> bool:
 	var at := p.pos + MathUtil.dir_from_angle(p.facing) * LootDefs.DROP_DISTANCE
 	var ac := anvil_choice(choice)
 	var bc := bag_choice(choice)
-	if not ac.is_empty():
+	if choice == UNLOCK_RANDOM:
+		p.loadout.unlock_random(p, world.rng)
+		p.loadout.refresh_items(p)
+	elif choice == UNLOCK_PICK:
+		p.loadout.unlock_picks += 1
+	elif not ac.is_empty():
 		_anvil_apply(p, ac)
 	elif not bc.is_empty():
 		if p.loadout.add_bag(p, bc.kind, bc.tier) == &"":

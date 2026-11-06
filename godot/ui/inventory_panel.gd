@@ -14,9 +14,11 @@ signal op_requested(op: Array)
 
 const CELL := 60          # 倉庫一格
 const BCELL := 60         # 盤上一格（主袋與袋子）
+const LOCK_FILL := Color(0.03, 0.03, 0.05, 0.82)   # 背包合併的鎖格
 const BAG_HEAD := 26      # 袋子外側的標題條寬度（盤的四邊各留這麼多）
 const SIDE_GAP := 24      # 盤和右欄之間
 const DEPTH := 2          # 盤的四邊留給袋子的格數（BagDefs.TIERS 的 depth 都是 2）
+const DEPTH_MERGED := 3   # 背包合併的觸發區往外 3 格（BagDefs.MERGED_ZONES）
 const HEAD_W := 360       # 武器框（一次拿一把，許家慶 2026-11-05 拿掉主副手；寬度 = 原本兩個名稱框 174 × 2 + 間隔 12）
 const PAD := 18
 const TITLE_H := 64       # 標題 + 一行操作說明（固定在上面）
@@ -40,6 +42,7 @@ const FEET_GAP := 16      # 腳邊框和背包之間的空隙（貼齊背包下�
 const SCROLL_STEP := 72.0
 const MIN_VIEW_H := 420.0   # 捲動區至少這麼高（最小尺寸用）
 const HINT := "左鍵拿起 / 放下 · 右鍵直接裝上 / 拿下來 · 拿著按 R 旋轉 · 抓袋子的標題換位置 · 放到腳邊丟掉"
+const HINT_MERGED := "背包合併：觸發區固定、鎖頭的格子還沒開 · 左鍵拿起 / 放下 · 右鍵直接裝上 / 拿下來 · 拿著按 R 旋轉"
 const CLICK_SLOP := 6.0     # 按下到放開移動不超過這麼多像素算「點一下」（拿在手上），超過算拖曳
 const NOTICE_MS := 2000     # 右鍵裝不上時的提示顯示多久
 const DIM_ALPHA := 0.25                # 滑鼠停在羈絆上時，不屬於那個羈絆的東西變淡
@@ -125,17 +128,23 @@ func _board_top() -> float:
 	return _content_top() + 4
 
 
+# 盤的四邊留幾格給袋子：背包合併的觸發區比較深
+func _depth() -> int:
+	var me := _player()
+	return DEPTH_MERGED if me != null and me.loadout.merged else DEPTH
+
+
 # 主袋左上角（盤座標 (0, 0)）
 func _core_origin() -> Vector2:
-	return Vector2(PAD + BAG_HEAD + DEPTH * BCELL, _board_top() + BAG_HEAD + DEPTH * BCELL)
+	return Vector2(PAD + BAG_HEAD + _depth() * BCELL, _board_top() + BAG_HEAD + _depth() * BCELL)
 
 
 func _board_size() -> Vector2:
-	return Vector2(BagDefs.MAIN_SIZE + Vector2i(DEPTH, DEPTH) * 2) * BCELL
+	return Vector2(BagDefs.MAIN_SIZE + Vector2i(_depth(), _depth()) * 2) * BCELL
 
 
 func _board_rect() -> Rect2:
-	return Rect2(_core_origin() - Vector2(DEPTH, DEPTH) * BCELL, _board_size())
+	return Rect2(_core_origin() - Vector2(_depth(), _depth()) * BCELL, _board_size())
 
 
 # 盤上一格的畫面範圍
@@ -322,6 +331,9 @@ func _process(_delta: float) -> void:
 		return
 	var me := _player()
 	_feet.clear()
+	var want_w := _side_x() + BOND_W + PAD   # 背包合併的盤比較寬（_depth）：面板跟著變寬
+	if custom_minimum_size.x != want_w:
+		custom_minimum_size.x = want_w
 	if me != null:
 		world.reachable_pickups(me, _feet)
 		_scroll = clampf(_scroll, 0.0, maxf(0.0, _content_height(me) - _view_rect().size.y))
@@ -493,6 +505,16 @@ func _start_drag(me: Player, local: Vector2) -> void:
 			_drag = {"uid": inst.uid, "id": inst.base, "rot": 0, "anchor": 0, "weapon": inst}
 		return
 	var head := _head_at(me, local)
+	if me.loadout.merged:   # 背包合併：觸發區不能拿起來；有自選開格時點鎖著的格子 = 開那一格
+		var lt := _target_at(me, local)
+		if not lt.is_empty() and lt.where != Loadout.BAG and _is_locked(me, lt.where, lt.cell):
+			if me.loadout.unlock_picks > 0:
+				op_requested.emit([InputCmd.OP_UNLOCK, lt.where, lt.cell.x, lt.cell.y])
+			else:
+				_say("這格鎖著：過小關、門的「開格」獎勵、Boss、鐵砧會開格")
+			return
+		if head >= 0:
+			return
 	if head >= 0:   # 標題條：拿起整個袋子（裝滿的袋子沒有空格可以抓）
 		var held: Dictionary = me.loadout.bags[head]
 		var area := _bag_area(held)
@@ -505,7 +527,7 @@ func _start_drag(me: Player, local: Vector2) -> void:
 	var inv := me.loadout.container(t.where)
 	var uid: StringName = inv.occupied().get(t.cell, &"")
 	if uid == &"":
-		if t.where >= 0:   # 袋子的空格：拿起整個袋子
+		if t.where >= 0 and not me.loadout.merged:   # 袋子的空格：拿起整個袋子
 			var b: Dictionary = me.loadout.bags[t.where]
 			_drag = {"uid": b.uid, "id": BagDefs.BAGS[b.kind].item, "rot": 0, "anchor": 0, "weapon": {}, "bag": b, "bag_anchor": t.cell.x}
 		return
@@ -690,7 +712,10 @@ func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), UiKit.SLOT_OUTLINE, false, 1.0)
 	draw_string(font, Vector2(PAD, PAD + 26), "背包（遊戲不暫停）", HORIZONTAL_ALIGNMENT_LEFT, -1, 24)
 	if me != null:
-		draw_string(font, Vector2(PAD, PAD + 24), "主袋生效 %d 件 · 袋子 %d 個 · 倉庫 %d 件" % [me.items.size(), me.loadout.bags.size(), me.inventory.entries.size()], HORIZONTAL_ALIGNMENT_RIGHT, size.x - PAD * 2, 16, Color(1, 1, 1, 0.6))
+		var counts := "主袋生效 %d 件 · 袋子 %d 個 · 倉庫 %d 件" % [me.items.size(), me.loadout.bags.size(), me.inventory.entries.size()]
+		if me.loadout.merged:
+			counts = "背包合併 · 還鎖著 %d 格 · 倉庫 %d 件" % [me.loadout.locked_spots().size(), me.inventory.entries.size()]
+		draw_string(font, Vector2(PAD, PAD + 24), counts, HORIZONTAL_ALIGNMENT_RIGHT, size.x - PAD * 2, 16, Color(1, 1, 1, 0.6))
 	if full != null:
 		draw_string(font, Vector2(PAD, PAD + 52), _full_text(me, full), HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 17, UiKit.DENY)
 	elif Time.get_ticks_msec() < _notice_until:
@@ -703,6 +728,11 @@ func _draw() -> void:
 
 
 func _hint_text() -> String:
+	var me := _player()
+	if _drag.is_empty() and me != null and me.loadout.merged:
+		if me.loadout.unlock_picks > 0:
+			return "還能自選開 %d 格：點一格鎖著的格子打開" % me.loadout.unlock_picks
+		return HINT_MERGED
 	if _drag.is_empty():
 		return HINT
 	if _drag.has("bag"):
@@ -758,6 +788,7 @@ func _draw_board(font: Font, me: Player) -> void:
 	draw_rect(core, UiKit.GOLD, false, 2.0)
 	for e: Dictionary in me.loadout.core.entries:
 		_draw_entry(font, me, Loadout.CORE, e)
+	_draw_locks(me, Loadout.CORE, me.loadout.core.locked)
 	var keys := me.loadout.key_bags()
 	var focus := _focus_bag(me)
 	for b in me.loadout.bags:
@@ -814,6 +845,7 @@ func _draw_bag(font: Font, me: Player, b: Dictionary, keys: Array, focused: bool
 	for e in mods:
 		_draw_entry(font, me, where, e)
 	_draw_mana_marks(font, me, where, b)
+	_draw_locks(me, where, b.get("locked", {}))
 	draw_rect(head, SIDE_COLORS[b.side])
 	_draw_bag_head(font, b, head, keys.find(b) + 1, _bag_mana(me, b), me.max_mana())
 	var outline: Color = UiKit.ALERT if BagDefs.TIERS[b.tier].has("curse_desc") else SIDE_COLORS[b.side].lightened(0.3)
@@ -841,6 +873,26 @@ func _draw_skill_marks(font: Font, me: Player, where: int, b: Dictionary) -> voi
 			var corner := rects[0].position + Vector2(rects[0].size.x - 15.0, 3.0)
 			draw_circle(corner + Vector2(6, 8), 8.0, Color(0, 0, 0, 0.8))
 			draw_string(font, corner + Vector2(0, 14), str(n), HORIZONTAL_ALIGNMENT_CENTER, 12, 14, UiKit.GOLD)
+
+
+# 背包合併的鎖格（許家慶 2026-11-06 選 B：每格都畫鎖）：蓋暗、中間畫一個鎖頭；有自選開格時框線閃金色
+func _draw_locks(me: Player, where: int, locked: Dictionary) -> void:
+	if locked.is_empty():
+		return
+	var picking := me.loadout.unlock_picks > 0
+	var pulse := 0.55 + 0.45 * sin(Time.get_ticks_msec() * 0.008)
+	for c: Vector2i in locked:
+		var r := _cell_rect(me, where, c).grow(-1)
+		draw_rect(r, LOCK_FILL)
+		UiKit.draw_lock(self, r.get_center(), r.size.x * 0.22, Color(1, 1, 1, 0.45))
+		if picking:
+			draw_rect(r.grow(-1), Color(UiKit.GOLD, pulse), false, 2.0)
+
+
+func _is_locked(me: Player, where: int, cell: Vector2i) -> bool:
+	if where == Loadout.CORE:
+		return me.loadout.core.locked.has(cell)
+	return where >= 0 and where < me.loadout.bags.size() and me.loadout.bags[where].get("locked", {}).has(cell)
 
 
 # 滿魔力放一次也輪不到的技能 / 效果（照放的順序累加耗魔，超過最大魔力的那幾個）：蓋紅色、右下角寫「魔」
@@ -894,14 +946,15 @@ func _draw_bag_head(font: Font, b: Dictionary, head: Rect2, key_number: int, man
 			draw_string(font, Vector2(cap.position.x, y), str(key_number), HORIZONTAL_ALIGNMENT_CENTER, cap.size.x, 14, Color.WHITE)
 		else:
 			draw_string(font, Vector2(x, y), head_text(b) + (" " + tail if tail != "" else ""), HORIZONTAL_ALIGNMENT_LEFT, head.size.x - 60, 15, Color.WHITE)
-		draw_string(font, Vector2(head.position.x, y), mana_text, HORIZONTAL_ALIGNMENT_RIGHT, head.size.x - 7, 12, mana_color)
+		if head.size.x >= BCELL * 2:   # 背包合併的數字區一鍵一格，寬度只夠寫按鍵
+			draw_string(font, Vector2(head.position.x, y), mana_text, HORIZONTAL_ALIGNMENT_RIGHT, head.size.x - 7, 12, mana_color)
 		return
 	var cy := head.position.y + 20
 	for ch in head_text(b):
 		draw_string(font, Vector2(head.position.x, cy), ch, HORIZONTAL_ALIGNMENT_CENTER, head.size.x, 15, Color.WHITE)
 		cy += 17.0
 	var bottom := head.end.y - 7
-	if mana > 0:
+	if mana > 0 and head.size.y >= BCELL * 3:   # 背包合併的觸發區只有 2 格長：直排的字之外只放得下倍率，耗魔看說明
 		draw_string(font, Vector2(head.position.x, bottom), str(mana), HORIZONTAL_ALIGNMENT_CENTER, head.size.x, 12, mana_color)
 		draw_string(font, Vector2(head.position.x, bottom - 14), "魔", HORIZONTAL_ALIGNMENT_CENTER, head.size.x, 12, mana_color)
 		bottom -= 30

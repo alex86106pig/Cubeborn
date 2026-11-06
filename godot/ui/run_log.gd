@@ -332,7 +332,8 @@ static func bags_text(me: Player) -> String:
 				names.append(String(ItemDefs.ITEMS[e.id].name))
 		if not names.is_empty():
 			parts.append("%s（%s）" % [InventoryPanel.head_text(b), "、".join(PackedStringArray(names))])
-	return "袋子：" + (" · ".join(PackedStringArray(parts)) if not parts.is_empty() else "沒有放技能或效果")
+	var head := "袋子（背包合併，還鎖著 %d 格）：" % me.loadout.locked_spots().size() if me.loadout.merged else "袋子："
+	return head + (" · ".join(PackedStringArray(parts)) if not parts.is_empty() else "沒有放技能或效果")
 
 
 # 「魔力：最大 120 · 見底（低於 10%）共 1:23，第一次 2:05；放出 / 魔力不夠：旋風斬 40 / 12 …」；放出次數只有房主與單機記得到

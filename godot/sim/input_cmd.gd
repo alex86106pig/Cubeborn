@@ -25,6 +25,7 @@ const OP_RELIC_PICK := 5     # [OP_RELIC_PICK, 遺物的實體 id, 第幾個] �
 const OP_RELIC_REROLL := 6   # [OP_RELIC_REROLL, 遺物的實體 id] 用掉 1 顆骰子重擲選項
 const OP_RELIC_CLOSE := 7    # [OP_RELIC_CLOSE] 先不選，關掉（回來再按 F 還是同一組）
 const OP_BAG := 8   # [OP_BAG, 袋子 uid, side, offset, x?, y?, rot?] 袋子接到主袋的 side 邊、offset 位置；side 空字串 = 拿下來放倉庫 (x, y)
+const OP_UNLOCK := 9   # [OP_UNLOCK, where, x, y] 背包合併：用掉 1 次自選開格，開 where（Loadout.CORE 主袋 / 第幾個袋子）的 (x, y)
 
 var tick := 0
 var move := Vector2.ZERO   # 世界 XZ 方向，長度 ≤ 1

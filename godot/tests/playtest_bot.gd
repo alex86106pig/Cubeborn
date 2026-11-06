@@ -289,6 +289,7 @@ func decide() -> InputCmd:
 		if _tap:
 			cmd.buttons |= InputCmd.BTN_ROLL
 		return cmd
+	_spend_unlock(cmd)
 	if smart_play:
 		_drink(cmd)
 		_swap(cmd)
@@ -1133,7 +1134,27 @@ func _relic_choice(opts: Array) -> int:
 # 3 選 1 每個選項的分數（越高越想要，< 0 = 拿了沒用）：
 #   技能：已經有、還沒滿級（再選一次升級）10；還沒有 9；滿級 -1。袋子 8（詛咒袋 2）；鐵砧的改造 5
 #   道具：每個羈絆 1 + 現有格數（在走的羈絆優先），補上這件剛好湊到下一階再 +3；沒有羈絆 0.1
+# 背包合併的自選開格：先開主袋（數值道具最多），貼著已開格的優先，沒有就第一格
+func _spend_unlock(cmd: InputCmd) -> void:
+	if p.loadout.unlock_picks <= 0 or not cmd.inv_ops.is_empty():
+		return
+	var spots := p.loadout.locked_spots()
+	if spots.is_empty():
+		return
+	var pick: Dictionary = spots[0]
+	for s in spots:
+		var locked: Dictionary = p.loadout.core.locked if s.where == Loadout.CORE else p.loadout.bags[s.where].locked
+		if s.where == Loadout.CORE and [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN].any(func(d: Vector2i) -> bool:
+				var n: Vector2i = s.cell + d
+				return Rect2i(Vector2i.ZERO, BagDefs.MAIN_SIZE).has_point(n) and not locked.has(n)):
+			pick = s
+			break
+	cmd.inv_ops.append([InputCmd.OP_UNLOCK, pick.where, pick.cell.x, pick.cell.y])
+
+
 func _choice_score(id: StringName) -> float:
+	if String(id).begins_with("unlock:"):
+		return 8.0
 	var bag := Relic.bag_choice(id)
 	if not bag.is_empty():
 		return 2.0 if bag.tier == &"cursed" else 8.0

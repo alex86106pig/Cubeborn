@@ -416,6 +416,21 @@ static func _draw_skill_shape(ci: CanvasItem, rects: Array[Rect2], color: Color,
 
 
 # 羈絆徽章：黑底圓加圖示，形狀不同，顏色和稀有度撞色時還分得出來（背包格子與羈絆欄共用）
+# 門的獎勵名稱（MapGenDefs.REWARDS）：背包合併模式沒有袋子，「袋子」寫成「開格」（Relic 給隨機開 1 格）
+static func reward_name(world: World, reward: StringName) -> String:
+	if reward == &"bag" and world != null and world.player_list.any(func(p: Player) -> bool: return p.loadout.merged):
+		return "開格"
+	return MapGenDefs.REWARDS[reward].name
+
+
+# 鎖頭圖示（背包合併的鎖格；字型沒有鎖的字，用向量畫）：r 是鎖身半寬
+static func draw_lock(ci: CanvasItem, center: Vector2, r: float, color: Color) -> void:
+	var body := Rect2(center + Vector2(-r, -r * 0.2), Vector2(r * 2.0, r * 1.5))
+	ci.draw_arc(center + Vector2(0, -r * 0.2), r * 0.62, PI, TAU, 12, color, maxf(2.0, r * 0.22))
+	ci.draw_rect(body, color)
+	ci.draw_circle(body.get_center() + Vector2(0, -r * 0.1), r * 0.2, Color(0, 0, 0, 0.7))
+
+
 static func draw_bond_mark(ci: CanvasItem, bond: StringName, center: Vector2, r: float, alpha: float) -> void:
 	var color := Color(BondDefs.BONDS[bond].color, alpha)
 	var s := r * 0.6

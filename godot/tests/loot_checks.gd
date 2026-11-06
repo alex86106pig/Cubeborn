@@ -2276,3 +2276,114 @@ static func check_anvil() -> String:
 	if not p3.loadout.bags.any(func(b: Dictionary) -> bool: return b.kind == bc0.kind and b.tier == bc0.tier) and not p3.inventory.entries.any(func(e: Dictionary) -> bool: return e.has("bag")):
 		return "選了 Boss 的袋子應接上或放進倉庫：%s" % [bc0]
 	return ""
+
+
+# 背包合併模式的世界（bag_mode 要在玩家建立前設好）
+static func _merged_world(seed_value := 12345) -> World:
+	var w := World.new(&"test_arena")
+	w.spawn_packs = false
+	w.bag_mode = BagDefs.MODE_MERGED
+	w.reset(seed_value)
+	w.spawner.finished = true
+	_worlds.append(w)
+	return w
+
+
+# 背包合併（BagDefs.MERGED_ZONES）：開局只開主袋中間、職業那一區 2 格（起始技能）與數字區 1 格；鎖格放不進去；
+# 隨機開格、自選開格（OP_UNLOCK 用掉次數，沒次數不開）；觸發區不能搬、不能丟；換武器袋子不動；快照帶著鎖格與次數；
+# 門的袋子獎勵 = 隨機開 1 格、Boss 與鐵砧 = 自選 1 格、石棺不出詛咒袋；菁英怪改掉武器、不掉袋子；袋子分開的模式照舊
+static func check_merged_bag() -> String:
+	var w := _merged_world()
+	var p := _player(w)
+	p.apply_class(&"guardian")
+	var lo := p.loadout
+	if not lo.merged or lo.bags.size() != BagDefs.MERGED_ZONES.size():
+		return "背包合併應接好 %d 塊區：%d" % [BagDefs.MERGED_ZONES.size(), lo.bags.size()]
+	var total := BagDefs.MAIN_SIZE.x * BagDefs.MAIN_SIZE.y
+	for z: Array in BagDefs.MERGED_ZONES:
+		total += int(z[3]) * int(z[4])
+	var open_want := BagDefs.MERGED_START_CORE.get_area() + BagDefs.MERGED_START_CLASS + BagDefs.MERGED_START_KEYS
+	if lo.locked_spots().size() != total - open_want:
+		return "開局應開 %d 格（共 %d）：還鎖著 %d" % [open_want, total, lo.locked_spots().size()]
+	var start: Dictionary = BagDefs.START.guardian
+	var zone := lo.bags.filter(func(b: Dictionary) -> bool: return b.kind == start.bag[0] and b.side == start.bag[1])
+	if zone.size() != 1 or zone[0].entries.size() != 1 or zone[0].entries[0].id != start.skill or zone[0].locked.has(Vector2i.ZERO) or zone[0].locked.has(Vector2i(1, 0)):
+		return "守墓騎士的右鍵命中區應開 2 格、裝著 %s：%s" % [start.skill, zone]
+	# 鎖格放不進去、開著的放得進去
+	var stat := _shaped(&"dot")
+	if lo.core.fits(stat, Vector2i.ZERO, 0) or not lo.core.fits(stat, BagDefs.MERGED_START_CORE.position, 0):
+		return "主袋的 (0, 0) 鎖著應放不進去、中間開著的放得進去"
+	if p.add_item(stat) == &"" or lo.find_item(lo.core.entries[-1].uid).is_empty():
+		return "數值道具應自動放進主袋開著的格子"
+	# 隨機開格
+	var before := lo.locked_spots().size()
+	if not lo.unlock_random(p, w.rng) or lo.locked_spots().size() != before - 1:
+		return "隨機開格應少 1 格鎖著：%d → %d" % [before, lo.locked_spots().size()]
+	# 自選開格：沒次數不開；有次數開指定的那格、用掉 1 次
+	var cmd := func(ops: Array) -> void:
+		var c := _cmd(Vector2.ZERO)
+		c.inv_ops = ops
+		_run(w, c, 1)
+	cmd.call([[InputCmd.OP_UNLOCK, Loadout.CORE, 0, 0]])
+	if not lo.core.locked.has(Vector2i.ZERO):
+		return "沒有自選次數時不應開格"
+	lo.unlock_picks = 1
+	cmd.call([[InputCmd.OP_UNLOCK, Loadout.CORE, 0, 0]])
+	if lo.core.locked.has(Vector2i.ZERO) or lo.unlock_picks != 0:
+		return "自選開 (0, 0) 應打開並用掉次數：鎖著 %s、次數 %d" % [lo.core.locked.has(Vector2i.ZERO), lo.unlock_picks]
+	# 觸發區不能搬、不能丟
+	var key: Dictionary = lo.key_bags()[0]
+	cmd.call([[InputCmd.OP_BAG, String(key.uid), "", 0, 0, 0, 0], [InputCmd.OP_DROP, String(key.uid)]])
+	if not lo.bags.has(key) or key.side != &"top":
+		return "背包合併的觸發區不應能拿下來或丟掉"
+	# 換武器袋子不動
+	var right_zone: Dictionary = zone[0]
+	p.add_weapon({"uid": &"st", "base": &"staff", "rarity": &"white", "affixes": [] as Array[StringName]})
+	cmd.call([[InputCmd.OP_EQUIP, "st", Loadout.MAIN]])
+	if p.weapon_id != &"staff" or not lo.bags.has(right_zone) or lo.bags.size() != BagDefs.MERGED_ZONES.size():
+		return "背包合併換武器：袋子應留在背包上：手上 %s、%d 塊" % [p.weapon_id, lo.bags.size()]
+	# 快照來回：鎖格、模式、次數
+	lo.unlock_picks = 2
+	var q := Player.new(w, 99)
+	w.add_entity(q)   # 加進 World：結束時才會切斷循環參照
+	q.loadout.sync_inventory(q, lo.bags_to_array())
+	if not q.loadout.merged or q.loadout.unlock_picks != 2 or q.loadout.locked_spots().size() != lo.locked_spots().size() or q.loadout.bags_to_array() != lo.bags_to_array():
+		return "快照應帶著背包合併、鎖格與自選次數"
+	q.loadout.bags.clear()
+	# 遺物：門的袋子 = 隨機開 1 格；Boss 的大袋與鐵砧 = 自選 1 格；選了才生效
+	for kind: StringName in [&"bag", &"bag_big", &"anvil"]:
+		var r := w.drop_relic(&"big", p.pos, kind)
+		r.open_for(p)
+		var want: StringName = Relic.UNLOCK_RANDOM if kind == &"bag" else Relic.UNLOCK_PICK
+		if r.offers[p.peer_id] != [want] or Relic.option_info(p, want).is_empty():
+			return "%s 的選項應只有 %s：%s" % [kind, want, r.offers[p.peer_id]]
+		var locked_before := lo.locked_spots().size()
+		var picks_before := lo.unlock_picks
+		r.pick(p, 0)
+		if kind == &"bag" and lo.locked_spots().size() != locked_before - 1:
+			return "門的袋子獎勵應隨機開 1 格"
+		if kind != &"bag" and lo.unlock_picks != picks_before + 1:
+			return "%s 應給 1 次自選開格" % kind
+	# 菁英怪：掉武器、不掉袋子
+	var bags_dropped := 0
+	var weapons := 0
+	for i in 12:
+		var elite := _item_dummy(w, p.pos + Vector2(3, 0), 1.0)
+		elite.set_rarity(MonsterRarityDefs.RARE, [])
+		Combat.apply_damage(w, p, elite, {"damage": 10.0})
+	for e in w.pickups:
+		if e.is_removed:
+			continue
+		if (e as ItemPickup).is_weapon():
+			weapons += 1
+		elif ItemDefs.ITEMS[(e as ItemPickup).item_id].kind == &"bag":
+			bags_dropped += 1
+	if bags_dropped > 0 or weapons == 0:
+		return "背包合併的稀有怪應掉武器、不掉袋子：武器 %d、袋子 %d" % [weapons, bags_dropped]
+	# 袋子分開的模式照舊：沒有鎖格、不是合併
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	if p2.loadout.merged or not p2.loadout.locked_spots().is_empty():
+		return "袋子分開的模式不應有鎖格"
+	_note("背包合併：全部 %d 格、開局開 %d 格" % [total, open_want])
+	return ""

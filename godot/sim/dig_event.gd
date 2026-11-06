@@ -99,6 +99,8 @@ func leave(world: World, door: int) -> void:
 func _update_leave(world: World, dt: float) -> void:
 	leave_left -= dt
 	if leave_left > 0.0:
+		if leave_door >= 0 and leave_left <= EventDefs.LEAVE.prebuild_left:
+			world.prebuild_stage(world.stage_num + 1)
 		return
 	var door := leave_door
 	leave_left = 0.0

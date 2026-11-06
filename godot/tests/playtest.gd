@@ -8,6 +8,7 @@
 #       --pick=smart|random（3 選 1：smart 照技能 / 羈絆挑、沒得挑就用骰子重擲；random 隨機選、不用骰子，確認隨機的 Build 也打得完，預設 smart）
 #       --death=revive|real（revive：倒下記一次、原地滿血救起，一定打完，比「哪幾招最痛」；real：真的會死，全員倒下這場就結束，看撐到哪，預設 revive）
 #       --trace=1（倒下時印出之前最後 10 下：時間、哪一招、多少、剩多少血、在做什麼、翻滾充能、身邊 3 內幾隻怪）
+#       --bag-mode=merged（背包合併模式：袋子不掉、過關與獎勵開格）
 #       --real-from=N（第 1 層第 N 小關起才真的會死，之前倒下原地救起、配裝照正常打過來；進那一關補滿血。--real-from=5 量帶著正常配裝的 Boss 戰）
 #       --start=N（直接從第 1 層第 N 小關開始，跳過的每一關給一個技能遺物；--start=5 只量 Boss 戰）
 #       --crowd=N（近戰身邊 2.5 內醒著的怪到 N 隻就往外退，預設 0 = 不退；做實驗用）
@@ -76,6 +77,8 @@ func _play(seed_value: int, floors: int, classes: Array[StringName], opts: Dicti
 		var peer := World.HOST_PEER_ID + i
 		peers.append(peer)
 		w.player_classes[peer] = classes[i]
+	if opts.get("bag-mode", "") == String(BagDefs.MODE_MERGED):
+		w.bag_mode = BagDefs.MODE_MERGED
 	w.reset(seed_value, peers)
 	var start := int(opts.get("start", "0"))
 	while start > 0 and w.stage_num < start:   # 直接跳到第 1 層第 start 小關（量 Boss 戰用）：每跳過一關給一個技能遺物，接近正常打過來的配裝
@@ -173,7 +176,10 @@ func _note_fill(fills: Dictionary, b: Variant, floor_num: int, stage: int) -> vo
 		bag_used += Inventory.for_bag(bag).occupied().size()
 		bag_size += bag.length * bag.depth
 	var list: Array = fills.get(b.peer, [])
-	list.append("%d-%d %d%%/%d%%" % [floor_num, stage, roundi(100.0 * core_used / core_size), roundi(100.0 * bag_used / maxi(bag_size, 1))])
+	var opened := ""   # 背包合併：這時開了幾格（全部 - 鎖著）
+	if lo.merged:
+		opened = " 開%d" % (core_size + bag_size - lo.locked_spots().size())
+	list.append("%d-%d %d%%/%d%%%s" % [floor_num, stage, roundi(100.0 * core_used / core_size), roundi(100.0 * bag_used / maxi(bag_size, 1)), opened])
 	fills[b.peer] = list
 
 
@@ -187,11 +193,15 @@ func _row(w: World, b: Variant, seed_value: int, t: float, timeout: String, kill
 			picked += 1
 			cells += Inventory.cells_of(x.id, x.rot).size()
 	var gems: Array[String] = []
-	for key in p.loadout.key_bags():
-		for e in key.entries:
+	var casts := 0   # 袋子裡的技能實際放出幾次（按鍵袋與觸發袋都算，Player.cast_log）
+	for bag in p.loadout.bags:
+		for e in bag.entries:
 			if ItemDefs.is_skill(e.id) and SkillDefs.SKILLS[e.id].has("mana"):
 				gems.append("%s %d" % [ItemDefs.ITEMS[e.id].name, p.skill_levels.get(e.id, 1)])
-	var skills := "%s · %d" % ["、".join(PackedStringArray(gems)) if not gems.is_empty() else "無", b.casts]
+	for id: StringName in p.cast_log:
+		if ItemDefs.is_skill(id):
+			casts += p.cast_log[id][0]
+	var skills := "%s · %d" % ["、".join(PackedStringArray(gems)) if not gems.is_empty() else "無", casts]
 	var top := ""
 	var top_n := 0
 	for k: String in b.down_by:

@@ -7,8 +7,10 @@ extends ColorRect
 signal changed(key: String, value: Variant)
 signal closed   # 返回、Esc、選單被關掉（hud 把底下的選單叫回來）
 
-const DEFAULTS := {"shadows": true, "lights": true, "ui_scale": 1.0, "master": 1.0, "music": 1.0, "sfx": 1.0}
-const SECTION := {"shadows": "video", "lights": "video", "ui_scale": "video", "master": "audio", "music": "audio", "sfx": "audio"}
+const DEFAULTS := {"shadows": true, "lights": true, "ui_scale": 1.0, "master": 1.0, "music": 1.0, "sfx": 1.0, "merged_bag": false}
+const SECTION := {"shadows": "video", "lights": "video", "ui_scale": "video", "master": "audio", "music": "audio", "sfx": "audio", "merged_bag": "game"}
+# 玩法的開關（測試用，兩種玩法交叉試玩後留一種）：下一局開始才生效（main.gd restart 讀）
+const GAME_TOGGLES := {"merged_bag": "背包合併（下一局生效）"}
 # 介面大小的檔位（2026-10-27 使用者：先限制幾個檔位、用滑桿拉）：乘在視窗縮放上（專案是 canvas_items 縮放、以 1920×1080 為基準）
 # 顯示的 100% 實際是 BASE_UI_SCALE 倍（2026-10-27 使用者：原本的 100% 角色畫面太滿，改拿 90% 當 100%）
 const UI_SCALES: Array[float] = [0.8, 0.9, 1.0, 1.1]
@@ -73,8 +75,20 @@ func _init() -> void:
 		sliders[key] = sl
 		_percent[key] = pct
 		rows.add_child(_slider_row(VOLUME_NAMES[key], sl, pct))
+	rows.add_child(_centered(UiKit.label("玩法（測試）", UiKit.FONT_HEADING, UiKit.GOLD, 2)))
+	for key: String in GAME_TOGGLES:
+		var t := CheckButton.new()
+		t.text = GAME_TOGGLES[key]
+		t.add_theme_font_size_override(&"font_size", UiKit.FONT_BODY)
+		t.custom_minimum_size = Vector2(ROW_WIDTH, 56)
+		t.focus_mode = Control.FOCUS_NONE
+		_custom_switch(t)
+		t.toggled.connect(func(on: bool) -> void: set_value(key, on))
+		toggles[key] = t
+		rows.add_child(t)
 	box.add_child(rows)
 	box.add_child(_centered(UiKit.label("光源 = 精英怪、稀有武器、出口的光；內顯畫面卡頓時可以關掉陰影或光源試試", UiKit.FONT_NOTE, Color(1, 1, 1, 0.7), 1)))
+	box.add_child(_centered(UiKit.label("背包合併：袋子不掉落，背包固定分區、靠開格長大；連線時照房主的設定", UiKit.FONT_NOTE, Color(1, 1, 1, 0.7), 1)))
 	back_button.pressed.connect(close)
 	box.add_child(back_button)
 	add_child(box)

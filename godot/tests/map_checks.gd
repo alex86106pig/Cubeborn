@@ -669,6 +669,15 @@ static func check_stage_map_seed() -> String:
 		return "同一個種子、同一關兩次產生的地圖不同"
 	if a == key.call(_stage_world(3, 56)) or a == key.call(_stage_world(4, 55)):
 		return "換種子或換小關，地圖應不同"
+	# 過場時先拼好下一關（World.prebuild_stage）：換關後的地圖跟當下才算的一樣，用掉就清
+	var pre := _stage_world(2, 55)
+	pre.prebuild_stage(3)
+	if pre._prebuilt.is_empty():
+		return "prebuild_stage 應先拼好第 3 關"
+	pre.stage_num = 3
+	pre.load_map(&"graveyard")
+	if key.call(pre) != a or not pre._prebuilt.is_empty():
+		return "先拼好的第 3 關應跟當下算的一樣、用掉就清"
 	return ""
 
 

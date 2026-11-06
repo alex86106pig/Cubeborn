@@ -197,7 +197,7 @@ static func door_text(world: World, d: Dictionary) -> String:
 	var reward: StringName = d.get("reward", &"")
 	if reward == &"":
 		return dest + " · 鐵砧"
-	return "%s · %s" % [dest, MapGenDefs.REWARDS[reward].name]
+	return "%s · %s" % [dest, UiKit.reward_name(world, reward)]
 
 
 # 按得到 F 的地上道具：名稱上方的道具卡，撿之前就看得到形狀、占幾格、效果 / 詞條（和背包的說明欄同一份文字）

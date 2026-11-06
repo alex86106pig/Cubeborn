@@ -22,6 +22,8 @@ var items: Array[Dictionary] = []     # 生效的數值道具 { uid, id }（主�
 var inventory := Inventory.new()       # 倉庫（只放東西）
 var core := Inventory.core()           # 主袋
 var bags: Array[Dictionary] = []       # 接著的觸發袋（BagDefs.make 的實例，side 不是空的）
+var merged := false                    # 背包合併模式（BagDefs.MODE_MERGED；開局照 World.bag_mode 決定，快照帶給客戶端）
+var unlock_picks := 0                  # 背包合併：還能自選開幾格（Boss、鐵砧給）
 var _next_item_uid := 1
 var _ops: Array = []                   # 本步收到的背包操作（InputCmd.inv_ops），只在權威端執行
 
@@ -75,8 +77,14 @@ func new_uid(prefix: String) -> StringName:
 # 開局的袋子（Player.apply_class / 沒選職業）：清空主袋與袋子，接上按鍵袋 1（裝著起始技能）與職業的小觸發袋
 func setup_start_bags(p: Player, class_id: StringName) -> void:
 	core.entries.clear()
+	core.locked = {}
 	bags.clear()
+	unlock_picks = 0
+	merged = p.world != null and p.world.bag_mode == BagDefs.MODE_MERGED
 	var start: Dictionary = BagDefs.START.get(class_id, {})
+	if merged:
+		_setup_merged(p, start)
+		return
 	var key := BagDefs.make(new_uid("bag"), &"key")
 	_attach(key, &"top", 0)
 	if start.has("skill"):
@@ -87,6 +95,81 @@ func setup_start_bags(p: Player, class_id: StringName) -> void:
 		if not spot.is_empty():
 			_attach(b, spot.side, spot.offset)
 	refresh_items(p)
+
+
+# ── 背包合併（BagDefs.MERGED_ZONES）──
+
+# 開局：主袋與每一塊觸發區都接好、全部鎖著，再開主袋中間 3 × 3、職業那一區貼著主袋的 2 格（裝著起始技能）、數字區 1 格
+func _setup_merged(p: Player, start: Dictionary) -> void:
+	for y in BagDefs.MAIN_SIZE.y:
+		for x in BagDefs.MAIN_SIZE.x:
+			if not BagDefs.MERGED_START_CORE.has_point(Vector2i(x, y)):
+				core.locked[Vector2i(x, y)] = true
+	var keys_open := 0
+	var class_zone: Array = start.get("bag", [])
+	for z: Array in BagDefs.MERGED_ZONES:
+		var b := BagDefs.make(new_uid("bag"), z[0])
+		b.length = z[3]
+		b.depth = z[4]
+		var locked := {}
+		for y in b.depth:
+			for x in b.length:
+				locked[Vector2i(x, y)] = true
+		if z[0] == &"key" and keys_open < BagDefs.MERGED_START_KEYS:
+			keys_open += 1
+			locked.erase(Vector2i.ZERO)
+		elif not class_zone.is_empty() and z[0] == class_zone[0] and z[1] == class_zone[1]:
+			for x in mini(BagDefs.MERGED_START_CLASS, b.length):
+				locked.erase(Vector2i(x, 0))
+			class_zone = []
+			if start.has("skill"):
+				b.entries.append({"uid": new_uid("item"), "id": start.skill, "cell": Vector2i.ZERO, "rot": 0})
+		b["locked"] = locked
+		_attach(b, z[1], z[2])
+	if start.has("skill") and not class_zone.is_empty():   # 職業的區塊不在表上（不會發生）：技能放數字區
+		for b in key_bags():
+			if not b.locked.has(Vector2i.ZERO):
+				b.entries.append({"uid": new_uid("item"), "id": start.skill, "cell": Vector2i.ZERO, "rot": 0})
+				break
+	refresh_items(p)
+
+
+# 還鎖著的格子：[{ where: CORE 或第幾個袋子, cell }]，照主袋、袋子的順序
+func locked_spots() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for c: Vector2i in core.locked:
+		out.append({"where": CORE, "cell": c})
+	for i in bags.size():
+		for c: Vector2i in bags[i].get("locked", {}):
+			out.append({"where": i, "cell": c})
+	return out
+
+
+# 開一格（where 的 cell 要是鎖著的）；回傳有沒有開
+func unlock_cell(p: Player, where: int, cell: Vector2i) -> bool:
+	var locked: Dictionary = core.locked if where == CORE else (bags[where].get("locked", {}) if where >= 0 and where < bags.size() else {})
+	if not locked.has(cell):
+		return false
+	locked.erase(cell)
+	p.world.emit_event("bag:unlocked", {"player_id": p.id, "where": where, "x": cell.x, "y": cell.y})
+	return true
+
+
+# 隨機開 1 格（整個背包裡隨機，許家慶 2026-11-06 選「全隨機」）；全開了回傳 false
+func unlock_random(p: Player, rng: RandomNumberGenerator) -> bool:
+	var spots := locked_spots()
+	if spots.is_empty():
+		return false
+	var s: Dictionary = spots[rng.randi_range(0, spots.size() - 1)]
+	return unlock_cell(p, s.where, s.cell)
+
+
+# 自選開格（背包操作 OP_UNLOCK）：用掉 1 次機會
+func _unlock_pick(p: Player, where: int, cell: Vector2i) -> void:
+	if unlock_picks <= 0 or not unlock_cell(p, where, cell):
+		_deny(p, &"no_pick")
+		return
+	unlock_picks -= 1
 
 
 # 袋子 b 能不能接在 side 的 offset（ignore：當作那個袋子不在，搬自己的位置用）：邊對、在邊長內、不跟同一邊別的袋子重疊、按鍵袋不超過上限
@@ -163,6 +246,8 @@ func _adopt_bag(src: Dictionary) -> Dictionary:
 func _place_bag(p: Player, uid: StringName, side: StringName, offset: int, cell := Vector2i(-1, -1), rot := 0) -> bool:
 	var stored := inventory.find(uid)
 	var b: Dictionary = stored.bag if stored.has("bag") else {}
+	if merged:
+		return false   # 背包合併：觸發區固定，不能接、搬、拿下來
 	var attached := b.is_empty()
 	if attached:
 		for o in bags:
@@ -297,6 +382,11 @@ func _equip_from(p: Player, uid: StringName, slot: int) -> bool:
 # 換上手：原本那把帶走接在左右邊的袋子（存進它的 bags），新的那把掛著的袋子接上來（接不下的進倉庫、倉庫滿了掉在腳邊）
 func _set_hand(p: Player, inst: Dictionary) -> void:
 	var old := main_weapon()
+	if merged:   # 背包合併：袋子屬於背包，換武器不搬
+		weapon_slots[MAIN] = inst
+		refresh_items(p)
+		p.apply_active_weapon()
+		return
 	if not old.is_empty() and (inst.is_empty() or old.uid != inst.uid):
 		var carried: Array = []
 		for b in bags.duplicate():
@@ -533,9 +623,9 @@ func add_corpse(p: Player, owner_peer: int, spot: Dictionary = {}, pickup_id := 
 	return true
 
 
-# 快照：[倉庫, 主袋, [袋子…]]（Inventory.to_array / BagDefs.to_array）
+# 快照：[倉庫, 主袋, [袋子…], [背包合併?, 主袋鎖著的格子, 自選開格的次數]]（Inventory.to_array / BagDefs.to_array）
 func bags_to_array() -> Array:
-	return [inventory.to_array(), core.to_array(), bags.map(BagDefs.to_array)]
+	return [inventory.to_array(), core.to_array(), bags.map(BagDefs.to_array), [merged, BagDefs.cells_to_array(core.locked), unlock_picks]]
 
 
 # 客戶端：倉庫、主袋、袋子以房主的快照為準（bags_to_array），同步完重算生效的道具與羈絆
@@ -545,6 +635,10 @@ func sync_inventory(p: Player, arr: Array) -> void:
 	bags.clear()
 	for a: Array in arr[2]:
 		bags.append(BagDefs.from_array(a))
+	var m: Array = arr[3] if arr.size() > 3 else [false, [], 0]
+	merged = m[0]
+	core.locked = BagDefs.cells_from_array(m[1])
+	unlock_picks = int(m[2])
 	refresh_items(p)
 
 
@@ -586,6 +680,10 @@ func apply_ops(p: Player) -> void:
 			continue
 		if int(op[0]) in [InputCmd.OP_RELIC_PICK, InputCmd.OP_RELIC_REROLL, InputCmd.OP_RELIC_CLOSE]:
 			_relic_op(p, op)
+			continue
+		if int(op[0]) == InputCmd.OP_UNLOCK:
+			if op.size() > 3:
+				_unlock_pick(p, int(op[1]), Vector2i(int(op[2]), int(op[3])))
 			continue
 		var uid := StringName(op[1])
 		match int(op[0]):
@@ -783,6 +881,8 @@ func _drop(p: Player, uid: StringName) -> void:
 		return
 	var b := find_bag(uid)
 	if not b.is_empty():
+		if merged and bags.has(b):
+			return   # 背包合併：觸發區固定在背包上，不能丟
 		if bags.has(b):
 			bags.erase(b)
 		else:

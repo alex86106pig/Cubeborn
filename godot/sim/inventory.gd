@@ -12,6 +12,7 @@ const ONE_CELL: Array[Vector2i] = [Vector2i.ZERO]
 var size: Vector2i = ItemDefs.BAG_SIZE
 var entries: Array[Dictionary] = []   # { uid: StringName, id: StringName, cell: Vector2i, rot: int, weapon?: 武器實例, bag?: 袋子實例, charges?: int }
 var mode: StringName = STORAGE
+var locked: Dictionary = {}   # 鎖著的格子 cell → true（背包合併模式；放不進去）。袋子的就是袋子實例的 locked（同一個字典）
 
 
 static func core() -> Inventory:
@@ -27,6 +28,8 @@ static func for_bag(bag: Dictionary) -> Inventory:
 	inv.size = Vector2i(bag.length, bag.depth)
 	inv.mode = BAG
 	inv.entries = bag.entries
+	if bag.has("locked"):
+		inv.locked = bag.locked
 	return inv
 
 
@@ -118,7 +121,7 @@ func fits(id: StringName, cell: Vector2i, rot: int, ignore: StringName = &"") ->
 func _fits_at(l: Dictionary, cs: Array[Vector2i], cl: Array[Vector2i], is_skill: bool, at: Vector2i) -> bool:
 	for c in cs:
 		var p := at + c
-		if p.x < 0 or p.y < 0 or p.x >= size.x or p.y >= size.y:
+		if p.x < 0 or p.y < 0 or p.x >= size.x or p.y >= size.y or locked.has(p):
 			return false
 		if cl.has(c):
 			if l.clear.has(p) or (l.solid.has(p) and not l.skill.has(p)):

@@ -65,6 +65,7 @@ const VOTE := {
 # 投票通過到真的換關（換小關 / 換層）：畫面在這段收圈蓋住（ui/level_transition.gd），換地圖的卡頓才看不到
 const LEAVE := {
 	"cover": 0.36,
+	"prebuild_left": 0.07,   # 剩這麼多秒時先拼好下一小關的地圖（World.prebuild_stage）：畫面在 cover × 0.75 = 0.27 秒全黑，之後才算
 }
 
 const DIFFICULTY := {
