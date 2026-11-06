@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>技能銜接方案</title>
+<style>
+/* 版面：問題 → 共同的例子 → 5 個方案（編號 + 一句特色 + 時間軸 + 場上示意 + 規則與代價）→ 比較表 */
+:root {
+  --bg: #eef0f2; --panel: #fbfcfd; --line: #d2d8de; --ink: #1c2126; --dim: #5e6872;
+  --frost: #2a7fb0; --bolt: #b88a00; --meteor: #c4501c; --hit: #c23a26; --ok: #2f7a45; --mana: #2f63c4; --accent: #6a3f8f;
+  --display: "Noto Serif TC", "Songti TC", serif;
+  --body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #12161a; --panel: #1b2025; --line: #2f363d; --ink: #e2e7ec; --dim: #97a2ad;
+  --frost: #8fd8ff; --bolt: #ffe45c; --meteor: #ff8a5c; --hit: #ff6b4f; --ok: #7cc48c; --mana: #7fb0ff; --accent: #c9a0f0; color-scheme: dark } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.65 var(--body); padding: 28px 16px 60px; }
+main { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 26px; }
+h1, h2, h3 { font-family: var(--display); margin: 0; line-height: 1.3; }
+h1 { font-size: 30px; font-weight: 900; }
+h2 { font-size: 21px; font-weight: 900; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+h2 .no { color: var(--accent); font-size: 28px; }
+h2 .tag { font-family: var(--body); font-size: 14px; font-weight: 500; color: var(--dim); }
+h3 { font-size: 15px; }
+p { margin: 0; }
+.note { color: var(--dim); font-size: 13px; }
+.box { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+section.opt { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.figs { display: flex; flex-wrap: wrap; gap: 14px; }
+.figs figure { margin: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--dim); min-width: 0; flex: 1 1 300px; }
+.figs svg { width: 100%; height: auto; background: var(--bg); border-radius: 6px; }
+ul { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 3px; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 10px; font-size: 13px; }
+.cols b { color: var(--accent); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; }
+.sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 4px; }
+.tw { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 760px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; color: var(--dim); font-weight: 500; }
+tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 700; white-space: nowrap; }
+</style>
+</head>
+<body>
+<main>
+  <header style="display:flex;flex-direction:column;gap:6px">
+    <h1>技能銜接方案</h1>
+    <p class="note">許家慶 2026-11-06：「技能都沒有施放順序，放上去、成功觸發就全部一起發生，沒有連鎖反應的爽感。」五個方案給你挑，可以疊著用（例如 1 + 2 + 3）。數字 Claude 暫定。</p>
+  </header>
+
+  <div class="box">
+    <h3>現在的樣子與限制</h3>
+    <ul>
+      <li>現在：袋子發動時，<code>BagTriggers.run_bag</code> 在同一步由左到右把裡面的東西全部放完，三招同時出現；每招各自找目標，彼此沒有關係。</li>
+      <li>限制：11-04 否決過 Noita 法術線與導管式，原因是「跟背包是兩套平行的拼圖、連結規則太亂」。所以下面的方案都<b>只用袋子現有的「由左到右、由上到下」順序</b>，不加連接道具、不畫線。</li>
+      <li>共同的例子：左鍵命中袋（3 × 2）放 <span style="color:var(--frost)">冰霜新星</span> → <span style="color:var(--bolt)">閃電鏈</span> → <span style="color:var(--meteor)">隕石</span>，普攻打中怪 A，旁邊還有 B、C、D。</li>
+    </ul>
+    <div class="legend"><span><span class="sw" style="background:var(--frost)"></span>冰霜新星（13 魔）</span><span><span class="sw" style="background:var(--bolt)"></span>閃電鏈（10 魔）</span><span><span class="sw" style="background:var(--meteor)"></span>隕石（17 魔）</span><span>● 怪　○ 玩家</span></div>
+  </div>
+
+  <section class="opt" id="o0" style="border-left-color:var(--dim)">
+    <h2><span class="no" style="color:var(--dim)">0</span>現在<span class="tag">三招同一步出現、各打各的</span></h2>
+    <div class="figs">
+      <figure><svg id="t0" viewBox="0 0 420 120" role="img" aria-label="現在的時間軸"></svg><figcaption>時間軸：0 秒三招一起</figcaption></figure>
+      <figure><svg id="f0" viewBox="0 0 300 160" role="img" aria-label="現在的場上"></svg><figcaption>場上：冰霜在 A、閃電鏈從 A 跳、隕石落在 A（同時）</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="opt" id="o1">
+    <h2><span class="no">1</span>依序施放<span class="tag">同一袋由左到右一招一招放，間隔 0.15 秒；規則不變，只是有節奏</span></h2>
+    <div class="figs">
+      <figure><svg id="t1" viewBox="0 0 420 120" role="img" aria-label="依序施放的時間軸"></svg><figcaption>時間軸：0 / 0.15 / 0.30 秒</figcaption></figure>
+      <figure><svg id="f1" viewBox="0 0 300 160" role="img" aria-label="依序施放的場上"></svg><figcaption>場上：位置跟現在一樣，只是一下接一下（音效、閃光有連發感）</figcaption></figure>
+    </div>
+    <div class="cols">
+      <p><b>規則</b>：放的順序 = 袋子裡由左到右、由上到下；間隔 0.15 秒（Claude 暫定）。耗魔在輪到那一招時才扣。</p>
+      <p><b>代價</b>：一袋的輸出晚 0.15 × (招數 − 1) 秒；怪在中間死掉時後面的會換目標。改動小（排進 <code>World.delayed</code>）。</p>
+    </div>
+  </section>
+
+  <section class="opt" id="o2">
+    <h2><span class="no">2</span>接力目標<span class="tag">後一招從前一招「最後打到的地方」放，傷害一路往外傳</span></h2>
+    <div class="figs">
+      <figure><svg id="t2" viewBox="0 0 420 120" role="img" aria-label="接力目標的時間軸"></svg><figcaption>時間軸：依序（含方案 1），每招的起點是上一招的終點</figcaption></figure>
+      <figure><svg id="f2" viewBox="0 0 300 160" role="img" aria-label="接力目標的場上"></svg><figcaption>場上：冰霜在 A → 閃電鏈從 A 跳到 B、C、D → 隕石落在 D（最後被電到的）</figcaption></figure>
+    </div>
+    <div class="cols">
+      <p><b>規則</b>：每一招結束時記下「最後打到的怪」（閃電鏈 = 最後一跳、投射物 = 停下的那隻、範圍 = 離中心最遠的），下一招當作目標放。打不到就沿用上一個目標。</p>
+      <p><b>代價</b>：要每種行為回報「最後打到誰」（投射物要等飛到，所以必定要搭配 1）；範圍技能選「最遠的」可能跟直覺不同，要試。連鎖感最強。</p>
+    </div>
+  </section>
+
+  <section class="opt" id="o3">
+    <h2><span class="no">3</span>成功才接下一招<span class="tag">前一招有打到怪才放下一招，沒打到就斷；擺放順序變成選擇</span></h2>
+    <div class="figs">
+      <figure><svg id="t3" viewBox="0 0 420 120" role="img" aria-label="成功才接的時間軸"></svg><figcaption>上排：都打到，三招都放；下排：閃電鏈沒怪可跳，隕石不放（不扣魔）</figcaption></figure>
+      <figure><svg id="f3" viewBox="0 0 300 160" role="img" aria-label="成功才接的場上"></svg><figcaption>場上：只有 A 一隻時，冰霜打到 → 閃電鏈只打到 A（算成功）→ 隕石照放</figcaption></figure>
+    </div>
+    <div class="cols">
+      <p><b>規則</b>：打到至少 1 隻（或增益、召喚放出來）算成功；失敗就停，後面的不放、不扣魔。可以加一條「打死怪才接」當作某些道具或羈絆的強化版。</p>
+      <p><b>代價</b>：便宜好中的放前面當起手、貴的大招放後面；順便處理「一直沒魔」（沒中就不白扣）。但前面放錯會整袋放不出來，新手可能覺得「袋子壞了」，介面要標出斷在哪一格。</p>
+    </div>
+  </section>
+
+  <section class="opt" id="o4">
+    <h2><span class="no">4</span>前招留狀態、後招吃加成<span class="tag">冰霜讓怪冰冷，下一招打到冰冷的怪就變形，像元素反應</span></h2>
+    <div class="figs">
+      <figure><svg id="t4" viewBox="0 0 420 120" role="img" aria-label="元素反應的時間軸"></svg><figcaption>時間軸：閃電打到冰冷的怪 → 碎冰擴散；隕石打到感電的怪 → 爆炸變大</figcaption></figure>
+      <figure><svg id="f4" viewBox="0 0 300 160" role="img" aria-label="元素反應的場上"></svg><figcaption>場上：冰冷（藍圈）的怪被閃電打中，噴出冰錐打到旁邊的怪</figcaption></figure>
+    </div>
+    <div class="cols">
+      <p><b>規則</b>：狀態 × 屬性的反應表，例：冰冷 + 閃電 = 碎冰（周圍 50%）、燃燒 + 冰霜 = 蒸汽（致盲）、失衡 + 火焰 = 引爆燃燒層。同一袋依序放時，前一招留下的狀態給後一招用。</p>
+      <p><b>代價</b>：要設計反應表、跟羈絆的狀態整合（現在狀態要湊羈絆才有）；工作量最大、要教玩家。爽感高，但跟「順序」關係間接，不一定要同一袋。</p>
+    </div>
+  </section>
+
+  <section class="opt" id="o5">
+    <h2><span class="no">5</span>連段計數<span class="tag">同一袋每多接成功一招，下一招 +20% 傷害；整袋放完給一個小獎勵</span></h2>
+    <div class="figs">
+      <figure><svg id="t5" viewBox="0 0 420 120" role="img" aria-label="連段計數的時間軸"></svg><figcaption>時間軸：×1.0 → ×1.2 → ×1.4，放完回 5 魔</figcaption></figure>
+      <figure><svg id="f5" viewBox="0 0 300 160" role="img" aria-label="連段計數的場上"></svg><figcaption>場上：頭上跳出 1 連、2 連、3 連（數字變大變亮）</figcaption></figure>
+    </div>
+    <div class="cols">
+      <p><b>規則</b>：搭配 3（斷了歸零）。第 n 招傷害 × (1 + 0.2 × (n − 1))；整袋都成功回 5 魔或下一袋耗魔 −20%（Claude 暫定）。</p>
+      <p><b>代價</b>：鼓勵塞滿長袋，跟袋子大小的平衡一起看；數字膨脹要重算平衡表。回饋最直接（連段數字）。</p>
+    </div>
+  </section>
+
+  <section style="display:flex;flex-direction:column;gap:10px">
+    <h2>比較</h2>
+    <div class="tw"><table>
+      <thead><tr><th></th><th>連鎖的爽感</th><th>擺放要不要想</th><th>魔力</th><th>改動</th><th>兩種背包模式</th></tr></thead>
+      <tbody>
+        <tr><td>1 依序施放</td><td>中：有節奏</td><td>不用</td><td>不變</td><td>小</td><td>一樣</td></tr>
+        <tr><td>2 接力目標</td><td>高：傷害一路傳</td><td>一點（誰先誰後）</td><td>不變</td><td>中（每種行為回報終點）</td><td>一樣</td></tr>
+        <tr><td>3 成功才接</td><td>中：斷 / 接有張力</td><td>要（起手放前面）</td><td>沒中不扣，省魔</td><td>小～中（介面標斷點）</td><td>一樣</td></tr>
+        <tr><td>4 狀態反應</td><td>高：會變招</td><td>要（屬性搭配）</td><td>不變</td><td>大（反應表、教學）</td><td>一樣</td></tr>
+        <tr><td>5 連段計數</td><td>高：數字回饋</td><td>要（塞滿長袋）</td><td>放完回魔</td><td>小（要重算平衡）</td><td>一樣</td></tr>
+      </tbody>
+    </table></div>
+    <p class="note">Claude 的建議：<b>1 + 2 + 3</b> 當觸發袋的基本規則（依序、接力、斷了就停），先做這三個試玩；5 可以之後加成某個羈絆或橘色技能的效果，4 等狀態系統（閃電、腐毒羈絆）做出來再一起想。這是觸發袋的核心規則，做之前最好也問 YangHsu。</p>
+  </section>
+</main>
+
+<script>
+// 時間軸：每列 [顏色變數, 開始秒, 名稱, 有沒有放（false = 斷掉，畫虛框）, 標記文字]
+const T0 = 30, SCALE = 600, ROW = 24;   // 0 秒的 x、每秒幾像素
+function timeline(id, rows, opts = {}) {
+  const svg = document.getElementById(id);
+  let s = `<line x1="${T0}" y1="104" x2="410" y2="104" stroke="var(--dim)" stroke-width="1"/>`;
+  for (let t = 0; t <= 0.6; t += 0.15) s += `<line x1="${T0 + t * SCALE}" y1="100" x2="${T0 + t * SCALE}" y2="108" stroke="var(--dim)"/><text x="${T0 + t * SCALE}" y="118" font-size="9" fill="var(--dim)" text-anchor="middle">${t.toFixed(2)}</text>`;
+  rows.forEach(([c, t, name, on, mark], i) => {
+    const y = 10 + i * ROW + (opts.y0 || 0), x = T0 + t * SCALE;
+    s += on ? `<rect x="${x}" y="${y}" width="70" height="18" rx="3" fill="var(${c})" opacity=".85"/>`
+            : `<rect x="${x}" y="${y}" width="70" height="18" rx="3" fill="none" stroke="var(${c})" stroke-dasharray="3 2"/>`;
+    s += `<text x="${x + 5}" y="${y + 13}" font-size="11" fill="${on ? "var(--panel)" : "var(--dim)"}">${name}</text>`;
+    if (mark) s += `<text x="${x + 76}" y="${y + 13}" font-size="11" fill="var(--ink)">${mark}</text>`;
+    if (opts.arrows && i > 0) s += `<path d="M${T0 + rows[i - 1][1] * SCALE + 35} ${y - 6}V${y}" stroke="var(--ink)" stroke-width="1.2"/>`;
+  });
+  svg.innerHTML = s + (opts.extra || "");
+}
+const F = { 冰: "--frost", 電: "--bolt", 隕: "--meteor" };
+timeline("t0", [[F.冰, 0, "冰霜新星", true], [F.電, 0, "閃電鏈", true], [F.隕, 0, "隕石", true]]);
+timeline("t1", [[F.冰, 0, "冰霜新星", true], [F.電, 0.15, "閃電鏈", true], [F.隕, 0.30, "隕石", true]], { arrows: true });
+timeline("t2", [[F.冰, 0, "冰霜新星", true, "→ 停在 A"], [F.電, 0.15, "閃電鏈", true, "A→B→C→D"], [F.隕, 0.30, "隕石", true, "落在 D"]], { arrows: true });
+timeline("t3", [[F.冰, 0, "冰霜新星", true, "打到 ✓"], [F.電, 0.15, "閃電鏈", true, "打到 ✓"], [F.隕, 0.30, "隕石", true, "放"]], { arrows: true,
+  extra: `<text x="${T0}" y="93" font-size="10" fill="var(--dim)">打空時：</text>` });
+timeline("t4", [[F.冰, 0, "冰霜新星", true, "怪冰冷"], [F.電, 0.15, "閃電鏈", true, "碎冰擴散 ✦"], [F.隕, 0.30, "隕石", true, "引爆感電 ✦"]], { arrows: true });
+timeline("t5", [[F.冰, 0, "冰霜新星", true, "1 連 ×1.0"], [F.電, 0.15, "閃電鏈", true, "2 連 ×1.2"], [F.隕, 0.30, "隕石", true, "3 連 ×1.4 · 回 5 魔"]], { arrows: true });
+// 方案 3 的失敗例：閃電鏈打空、隕石虛框
+document.getElementById("t3").insertAdjacentHTML("beforeend",
+  `<rect x="${T0 + 0.15 * SCALE}" y="82" width="70" height="14" rx="3" fill="none" stroke="var(--bolt)" stroke-dasharray="3 2"/><text x="${T0 + 0.15 * SCALE + 4}" y="93" font-size="10" fill="var(--hit)">閃電鏈 打空 ✗</text>` +
+  `<rect x="${T0 + 0.3 * SCALE}" y="82" width="70" height="14" rx="3" fill="none" stroke="var(--meteor)" stroke-dasharray="3 2"/><text x="${T0 + 0.3 * SCALE + 4}" y="93" font-size="10" fill="var(--dim)">隕石 不放</text>`);
+
+// 場上：玩家 P、怪 A~D
+const POS = { P: [40, 120], A: [110, 90], B: [170, 60], C: [220, 100], D: [265, 50] };
+const mob = k => `<circle cx="${POS[k][0]}" cy="${POS[k][1]}" r="7" fill="var(--ink)"/><text x="${POS[k][0]}" y="${POS[k][1] - 11}" font-size="11" fill="var(--ink)" text-anchor="middle">${k}</text>`;
+const base = () => `<circle cx="${POS.P[0]}" cy="${POS.P[1]}" r="7" fill="none" stroke="var(--dim)" stroke-width="2"/>` + ["A", "B", "C", "D"].map(mob).join("");
+const ring = (k, r, c, dash = "") => `<circle cx="${POS[k][0]}" cy="${POS[k][1]}" r="${r}" fill="var(${c})" fill-opacity=".18" stroke="var(${c})" ${dash ? `stroke-dasharray="${dash}"` : ""}/>`;
+const bolt = (keys, c = "--bolt") => `<polyline points="${keys.map(k => POS[k].join(",")).join(" ")}" fill="none" stroke="var(${c})" stroke-width="2.5"/>`;
+const num = (k, t, c = "--ink") => `<text x="${POS[k][0] + 12}" y="${POS[k][1] + 18}" font-size="12" font-weight="700" fill="var(${c})">${t}</text>`;
+function field(id, s) { document.getElementById(id).innerHTML = s + base(); }
+field("f0", ring("A", 34, "--frost") + bolt(["A", "B", "C", "D"]) + ring("A", 26, "--meteor"));
+field("f1", ring("A", 34, "--frost") + bolt(["A", "B", "C", "D"]) + ring("A", 26, "--meteor") + num("A", "①②③"));
+field("f2", ring("A", 30, "--frost") + bolt(["A", "B", "C", "D"]) + ring("D", 30, "--meteor") + num("A", "①") + num("C", "②") + num("D", "③", "--meteor"));
+field("f3", ring("A", 30, "--frost") + `<circle cx="${POS.A[0]}" cy="${POS.A[1]}" r="12" fill="none" stroke="var(--bolt)" stroke-width="2.5"/>` + ring("A", 24, "--meteor") + num("A", "✓ ✓ 放", "--ok"));
+field("f4", ring("A", 30, "--frost") + ring("B", 12, "--frost", "2 2") + ring("C", 12, "--frost", "2 2") + bolt(["A", "B"]) +
+  [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([dx, dy]) => `<path d="M${POS.B[0]} ${POS.B[1]}l${dx * 18} ${dy * 18}" stroke="var(--frost)" stroke-width="2"/>`).join("") + num("B", "碎冰 ✦", "--frost"));
+field("f5", ring("A", 30, "--frost") + bolt(["A", "B", "C", "D"]) + ring("A", 26, "--meteor") +
+  `<text x="100" y="30" font-size="13" font-weight="700" fill="var(--dim)">1 連</text><text x="150" y="26" font-size="16" font-weight="700" fill="var(--bolt)">2 連</text><text x="205" y="24" font-size="20" font-weight="900" fill="var(--meteor)">3 連!</text>`);
+</script>
+</body>
+</html>
