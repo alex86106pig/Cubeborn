@@ -578,6 +578,56 @@ static func check_corpse_ghost() -> String:
 	return ""
 
 
+# 道具效果與鬼火也算冤魂：玩家的連鎖閃電、落雷、鬼火打得到冤魂，冤魂的也打得到玩家；中毒、冰凍、點燃、冰冷對冤魂不發動（狀態只有怪有），不會出錯
+static func check_ghost_procs() -> String:
+	var w := _world([1, 2, 3])
+	var a := _p(w, 1)
+	var b := _p(w, 2)
+	var c := _p(w, 3)
+	b.die()
+	b.die()
+	var g := Player.make_ghost(w, b)
+	g.pos = a.pos + Vector2(2, 0)
+	g.height = a.height
+	w.add_ghost(g)
+	c.pos = a.pos + Vector2(-1.5, 0)
+	a.mana = a.max_mana()
+	g.mana = g.max_mana()
+	# 連鎖閃電從第一個目標跳到旁邊的：玩家的從怪跳到冤魂、冤魂的從玩家 a 跳到玩家 c
+	var grunt := CheckKit._spawn(w, &"grunt", g.pos + Vector2(1, 0))
+	var hp := g.hp
+	if not BagTriggers.run_effect(w, a, &"thunder_rune", grunt, 30.0) or g.hp >= hp:
+		return "玩家的連鎖閃電應從怪跳到冤魂（%.1f → %.1f）" % [hp, g.hp]
+	grunt.remove()
+	var c_hp := c.hp
+	if not BagTriggers.run_effect(w, g, &"thunder_rune", a, 30.0) or c.hp >= c_hp:
+		return "冤魂的連鎖閃電應從玩家跳到另一個玩家（%.1f → %.1f）" % [c_hp, c.hp]
+	for id: StringName in ItemDefs.ITEMS:
+		if ItemDefs.role_of(id) == ItemDefs.ROLE_EFFECT and ItemDefs.effect_of(id) in [&"poison", &"freeze", &"ignite", &"frost"]:
+			a.mana = a.max_mana()
+			BagTriggers.run_effect(w, a, id, g, 30.0)   # 不應出錯
+	g.invuln_timer = 0.0   # 冤魂是玩家角色：被打之後有無敵時間
+	hp = g.hp
+	var strike := ItemEffects.ACTIONS[&"lightning_strike"] as ItemEffects.Action
+	strike.run(w, a, null, 30.0, {"effect": {"targets": 1}, "area": 1.0, "item": &"thunder_bell", "chance": 1.0, "count": 1})
+	if g.hp >= hp:
+		return "玩家的落雷應打得到身邊的冤魂"
+	# 鬼火：玩家身邊的鬼火碰到冤魂會打
+	a.wisp_plan.assign([&"phys"] as Array[StringName])   # 場上的鬼火每步照 wisp_plan 補（BondEffects.sync_wisps）
+	BondEffects.sync_wisps(a)
+	var wisp: OrbitWisp = a.wisps[0]
+	g.invuln_timer = 0.0
+	hp = g.hp
+	for i in 120:
+		wisp.pos = g.pos
+		_step(w, 1)
+		if g.hp < hp:
+			break
+	if g.hp >= hp:
+		return "鬼火碰到冤魂應打它"
+	return ""
+
+
 # 冤魂自己會打（GhostBrain）：走向活著的玩家、用死者的武器打到人，不按 Q 喝藥水；玩家打得到它；怪物不打它；換關沒打倒就清掉
 static func check_ghost_fights() -> String:
 	for weapon: StringName in [&"swordShield", &"shortbow"]:   # 近戰貼上去、遠程保持距離射

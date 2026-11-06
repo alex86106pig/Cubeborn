@@ -106,8 +106,8 @@ class ChainLightning extends Action:
 			var best: Entity = null
 			var jump: float = cfg.jump_range * ItemEffects.area(proc)
 			var best_d: float = jump * jump
-			for e in world.enemies:
-				if e.is_dead or e.team == p.team or hit_ids.has(e.id):
+			for e in Combat.hostiles_of(world, p.team):   # 怪與冤魂（冤魂放的找玩家）
+				if hit_ids.has(e.id):
 					continue
 				var d := e.pos.distance_squared_to(from.pos)
 				if d <= best_d:
@@ -128,6 +128,8 @@ class Poison extends Action:
 		return [&"hit"]
 
 	func run(_world: World, p: Player, target: Entity, damage: float, _proc: Dictionary) -> void:
+		if not target is Enemy:   # 狀態只有怪物有（冤魂、玩家不吃）
+			return
 		(target as Enemy).apply_poison(p.id, damage * ItemDefs.PROCS.poison.total_ratio)
 
 
@@ -136,6 +138,8 @@ class Freeze extends Action:
 		return [&"hit"]
 
 	func run(_world: World, p: Player, target: Entity, _damage: float, proc: Dictionary) -> void:
+		if not target is Enemy:
+			return
 		(target as Enemy).apply_freeze(proc.effect.duration)
 		(target as Enemy).freeze_source_id = p.id   # 冰霜羈絆第 3 階：凍結中被殺沒有死亡效果
 
@@ -181,6 +185,8 @@ class Ignite extends Action:
 
 	func run(_world: World, p: Player, target: Entity, damage: float, proc: Dictionary) -> void:
 		var cfg: Dictionary = ItemDefs.PROCS.ignite
+		if not target is Enemy:
+			return
 		(target as Enemy).apply_burn(p.id, damage * cfg.pct_per_sec * ItemEffects.stacks(proc), cfg.duration, proc.effect.get("spread", false))
 
 
@@ -232,7 +238,7 @@ class LightningStrike extends Action:
 		var cfg: Dictionary = ItemDefs.PROCS.lightning_strike
 		var near: Array[Entity] = []
 		for e in Combat.query_circle(p.pos, cfg.range * ItemEffects.area(proc), Combat.hostiles_of(world, p.team, p.id)):
-			if e is Enemy:   # 不打隊友
+			if not e is Player or (e as Player).is_ghost():   # 不打隊友（誤傷開著也不打）；冤魂打
 				near.append(e)
 		near.sort_custom(func(a: Entity, b: Entity) -> bool: return a.pos.distance_squared_to(p.pos) < b.pos.distance_squared_to(p.pos))
 		if near.is_empty():
@@ -373,7 +379,8 @@ class Chill extends Action:
 		return [&"hit"]
 
 	func run(world: World, p: Player, target: Entity, _damage: float, proc: Dictionary) -> void:
-		BondEffects.add_chill(world, p, target as Enemy, proc.effect.stacks)
+		if target is Enemy:
+			BondEffects.add_chill(world, p, target as Enemy, proc.effect.stacks)
 
 
 # 寒霜鈴（每隔幾秒）、霜行靴（翻滾時）：以自己為中心 radius 內的怪各疊 stacks 層冰冷

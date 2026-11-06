@@ -58,7 +58,7 @@ func update(dt: float) -> void:
 					_target_id = t.id
 					state = DASH
 		DASH:
-			var t := world.entities.get(_target_id) as Enemy
+			var t := world.entities.get(_target_id) as Entity
 			if t == null or t.is_dead:
 				state = BACK
 			else:
@@ -82,22 +82,21 @@ func _move_to(to: Vector2, step: float) -> bool:
 	return false
 
 
-func _nearest(r: float) -> Enemy:
-	var best: Enemy = null
+# 敵對陣營裡最近的（玩家的鬼火找怪與冤魂、冤魂的鬼火找玩家；Combat.hostiles_of）
+func _nearest(r: float) -> Entity:
+	var best: Entity = null
 	var best_d := r * r
-	for e in world.enemies:
-		if e.is_dead or e.team == team:
-			continue
+	for e in Combat.hostiles_of(world, team):
 		var d := e.pos.distance_squared_to(pos)
 		if d < best_d:
 			best_d = d
-			best = e as Enemy
+			best = e
 	return best
 
 
 func _touch(p: Player, c: Dictionary) -> void:
-	for e in world.enemies:
-		if e.is_dead or e.team == team or _hit_cd.has(e.id):
+	for e in Combat.hostiles_of(world, team):
+		if _hit_cd.has(e.id):
 			continue
 		var r := radius + e.radius
 		if e.pos.distance_squared_to(pos) > r * r:
