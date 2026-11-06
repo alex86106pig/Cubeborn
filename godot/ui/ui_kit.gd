@@ -270,6 +270,16 @@ static func skill_damage_line(id: StringName, level := 1) -> String:
 			text = "傷害：每 %s 秒武器傷害 %s，共 %d 次" % [String.num(sk.tick), main, roundi(sk.duration / sk.tick)]
 		&"chain":
 			text = "傷害：武器傷害 %s，最多打 %d 隻" % [main, sk.jumps + 1]
+		&"storm":
+			text = "傷害：每 %s 秒武器傷害 %s，共 %d 次" % [String.num(sk.tick), main, roundi(sk.duration / sk.tick)]
+		&"smite":
+			text = "傷害：每隻武器傷害 %s，最多 %d 隻" % [main, sk.targets]
+		&"star":
+			text = "傷害：3 顆星的三角形裡每 %s 秒武器傷害 %s" % [String.num(sk.tick), main]
+		&"reaver":
+			text = "傷害：武器傷害 %s（這一層每殺一隻 +%d%%，最多 %s）" % [main, roundi(sk.per_kill * 100.0), pct_text(sk.damage_pct * mul * (1.0 + sk.per_kill * sk.max_stacks))]
+		&"grudge":
+			text = "傷害：武器傷害 %s 起，或受到傷害的 %s 倍（取大的）" % [main, String.num(snappedf(sk.grudge_mul * mul, 0.1))]
 		_:
 			if sk.get("count", 1) > 1:
 				text += " × %d 發" % sk.count

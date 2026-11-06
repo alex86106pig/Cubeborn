@@ -35,6 +35,9 @@ const LOADOUTS := [[&"swordShield", &""], [&"dagger", &""], [&"torch", &""], [&"
 const KEEP := {
 	&"arcaneBurst": "350% 是使用者同意的數字（系統說明 §1）",
 	&"chargedShot": "量的是蓄滿：要站著蓄 1 秒、移速減半，蓄滿高一點是代價",
+	&"soul_reaver": "成長型：量的是 0 層（目標 × 0.65），這一層殺 30 隻後 × 1.9 ≈ 目標 × 1.2（mockups/橘色技能.html 方案 3）",
+	&"grudge": "成長型：量的是沒受傷時的保底（目標 × 0.5），受到的傷害 × 1.7 × 預算加上去，被打越多越痛",
+	&"star_sign": "要放 3 顆才有傷害：量一次放是 0；3 顆的三角形每秒打 175%、最多 20 秒",
 }
 const ENEMIES := [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"spearman", &"bone_wheel", &"beetle", &"spider", &"gravekeeper", &"boss", &"bone_general"]
 
@@ -308,7 +311,7 @@ func _move_table(lines: Array[String], basic: Dictionary) -> void:
 			lines.append("| %s | %s | %s | 功能技能，不算傷害 | | | | | | | |" % [ItemDefs.ITEMS[id].name, WeaponDefs.WEAPONS[wid].name, cost])
 			continue
 		_move_row(lines, basic, "%s（%s）" % [ItemDefs.ITEMS[id].name, ItemDefs.RARITIES[ItemDefs.ITEMS[id].rarity].name], wid, def.mana, def.has("stun") or def.has("heal_ratio"),
-			func(pack: bool) -> Vector2: return _skill_hit(id, pack), "", def.behavior != &"summon", SKILL_K, SkillDefs.budget(id))
+			func(pack: bool) -> Vector2: return _skill_hit(id, pack), KEEP.get(id, ""), def.behavior != &"summon", SKILL_K, SkillDefs.budget(id))
 	lines.append("")
 
 

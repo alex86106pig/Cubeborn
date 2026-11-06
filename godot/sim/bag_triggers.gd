@@ -66,9 +66,15 @@ static func _icd_ready(p: Player, b: Dictionary) -> bool:
 
 
 # 發動一個袋子：裡面的效果與技能依序放；回傳放出了幾個
-static func run_bag(world: World, p: Player, b: Dictionary, target: Entity, damage: float) -> int:
+# 橘色的袋子規則（SkillDefs 的 bag_rule）：血契 = 這一袋扣生命、傷害 ×power（在 BagDefs.power_of）；回響 = 放完 delay 秒後技能再放一次；
+# 共鳴 = 同一邊緊鄰的袋子也發動一次（resonating = 被帶動的，不再帶動別的）
+static func run_bag(world: World, p: Player, b: Dictionary, target: Entity, damage: float, resonating := false) -> int:
 	var count := 0
-	var mul := BagDefs.power_of(b)   # 大小倍率 × 種類與邊的倍率
+	var mul := BagDefs.power_of(b)   # 大小倍率 × 種類與邊的倍率（× 血契）
+	var pact := BagDefs.has_rule(b, &"blood_pact")
+	var was_paying := p.pay_with_hp
+	p.pay_with_hp = pact
+	var fired_skills: Array[Dictionary] = []
 	var fired := StringName("fired:" + String(b.kind))
 	p.trigger_moments[fired] = p.trigger_moments.get(fired, 0) + 1   # 發動了幾次（檢查與自動試玩用）
 	var scaled: bool = mul != 1.0
@@ -86,13 +92,63 @@ static func run_bag(world: World, p: Player, b: Dictionary, target: Entity, dama
 					p.remove_stat_source(&"bag_mul")
 				_log_cast(p, e.id, ok, short)
 			ItemDefs.ROLE_SKILL:
+				if SkillDefs.SKILLS[e.id].behavior == &"bag_rule":
+					continue
 				var slot := ActiveSlots.slot_of(p, b, e)
 				var short: bool = slot.def.has("mana") and not p.has_mana(ActiveSlots.mana_cost(p, slot))
 				var ok := cast_skill(p, b, e, target)
 				if ok:
 					count += 1
+					fired_skills.append(e)
 				_log_cast(p, e.id, ok, short)
+	if BagDefs.has_rule(b, &"echo") and not fired_skills.is_empty():
+		_echo(p, b, fired_skills, target)
+	if BagDefs.has_rule(b, &"resonance") and not resonating:
+		count += _resonate(world, p, b, target, damage)
+	p.pay_with_hp = was_paying
 	return count
+
+
+# 回響：delay 秒後把這一袋剛放出的技能再放一次（傷害 × mul、耗魔 × mana_share；那時放不出來的跳過）
+static func _echo(p: Player, b: Dictionary, entries: Array[Dictionary], target: Entity) -> void:
+	var rule: Dictionary = SkillDefs.SKILLS.echo
+	var target_id := target.id if target != null else 0
+	SkillBehaviors.later(p, rule.delay, func() -> void:
+		var was_paying := p.pay_with_hp
+		p.pay_with_hp = BagDefs.has_rule(b, &"blood_pact")
+		var t := p.world.entities.get(target_id) as Entity
+		for e in entries:
+			if not b.entries.has(e):
+				continue
+			var slot := ActiveSlots.slot_of(p, b, e)
+			var cost: float = ActiveSlots.mana_cost(p, slot) * rule.mana_share
+			var behavior: SkillBehaviors.Behavior = SkillBehaviors.BEHAVIORS[slot.def.behavior]
+			var alive: Entity = t if t != null and not t.is_removed else null
+			if slot.charges == 0 or not p.has_mana(cost) or not (behavior.can_use(p, slot.def) if alive == null else behavior.can_use_on(p, slot.def, alive)):
+				continue
+			var ctx := ActiveSlots.cast_context(p, slot)
+			ctx.mul *= rule.mul
+			if alive != null:
+				SkillBehaviors.aim_at(p, ctx, alive)
+			Combat.scoped(ctx.credit, func() -> void: SkillBehaviors.cast(p, slot.def, ctx))
+			p.spend_mana(cost)
+			_log_cast(p, e.id, true, false)
+		p.pay_with_hp = was_paying)
+
+
+# 共鳴：扣共鳴的耗魔，帶動同一邊緊鄰（offset 剛好接著）的袋子各發動一次；回傳帶動的袋子放出了幾個
+static func _resonate(world: World, p: Player, b: Dictionary, target: Entity, damage: float) -> int:
+	var cost := p.mana_cost_of(SkillDefs.SKILLS.resonance)
+	if not p.has_mana(cost):
+		_log_cast(p, &"resonance", false, true)
+		return 0
+	p.spend_mana(cost)
+	_log_cast(p, &"resonance", true, false)
+	var n := 0
+	for o in p.loadout.bags.duplicate():
+		if o != b and o.side == b.side and (o.offset == b.offset + b.length or o.offset + o.length == b.offset):
+			n += run_bag(world, p, o, target, damage, true)
+	return n
 
 
 # 遊玩紀錄：放出幾次、魔力不夠跳過幾次（其他原因沒放的，例如沒有目標、次數用完，不記）

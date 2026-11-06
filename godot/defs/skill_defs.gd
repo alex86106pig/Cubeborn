@@ -108,6 +108,35 @@ const SKILLS := {
 		"damage_type": &"phys", "color": Color("8a6a40"), "visual": &"orb", "sfx": "swingHeavy", "burst": {"radius": 2.2, "stun": 0.6}},
 	&"burrow": {"icon": "掘", "mana": 17, "behavior": &"burrow", "weapons": [&"shovel"], "tags": [&"move", &"area"],
 		"distance": 6.0, "time": 1.0, "radius": 3.0, "damage_pct": 6.2, "knockback": 8.0, "damage_type": &"phys", "color": Color("8a6a40"), "sfx": "explosion"},
+
+	# ---- 橘色（傳說；mockups/橘色技能.html 方案 1 大招型、2 改寫袋子型、3 成長型，許家慶 2026-11-06 選；數字 Claude 暫定）----
+	# 傷害照「技能強度」：白色每 1 點耗魔 ≈ 0.3 倍武器傷害（旋風斬 10 魔 3），施放時再乘橘色預算 1.75；× 8（劍盾）取整數
+	&"hell_gate": {"icon": "冥", "mana": 24, "behavior": &"strike", "weapons": [&"swordShield"], "tags": [&"area"],
+		"delay": 1.2, "max_range": 12.0, "radius": 4.0, "damage_pct": 7.25, "knockback": 0.0, "damage_type": &"shadow", "color": Color("b48cff"), "sfx": "explosion"},
+	&"blade_storm": {"icon": "刃", "mana": 20, "behavior": &"storm", "weapons": [&"swordShield"], "tags": [&"area", &"melee"],
+		"duration": 3.0, "tick": 0.25, "radius": 2.5, "damage_pct": 0.5, "knockback": 2.0, "damage_type": &"phys", "color": Color("d8e4ff"), "sfx": "swingHeavy"},
+	&"fissure": {"icon": "裂", "mana": 18, "behavior": &"line", "weapons": [&"swordShield"], "tags": [&"area"],
+		"length": 12.0, "width": 1.6, "damage_pct": 5.375, "knockback": 6.0, "knockup": 6.0, "damage_type": &"phys", "color": Color("c8a070"), "sfx": "explosion"},
+	&"judgment": {"icon": "譴", "mana": 22, "behavior": &"smite", "weapons": [&"swordShield"], "tags": [&"area"],
+		"range": 8.0, "targets": 4, "delay": 0.4, "radius": 1.2, "damage_pct": 6.625, "knockback": 3.0, "damage_type": &"lightning", "color": Color("ffe45c"), "sfx": "explosion"},
+	# 改寫袋子：bag_rule 的技能不會自己放、不耗魔（回響、共鳴、血契），規則在 BagTriggers.run_bag；共鳴發動時才扣 mana
+	&"echo": {"icon": "響", "behavior": &"bag_rule", "weapons": [&"swordShield"], "tags": [&"buff"], "rule": &"echo",
+		"delay": 0.5, "mul": 0.6, "mana_share": 0.5, "color": Color("ffb060")},
+	&"soul_spring": {"icon": "泉", "mana": 20, "behavior": &"mana_buff", "weapons": [&"swordShield"], "tags": [&"buff"],
+		"duration": 5.0, "mana_cost": 0.5, "color": Color("7fb0ff")},
+	&"resonance": {"icon": "鳴", "mana": 8, "behavior": &"bag_rule", "weapons": [&"swordShield"], "tags": [&"buff"], "rule": &"resonance", "color": Color("ffb060")},
+	&"blood_pact": {"icon": "契", "behavior": &"bag_rule", "weapons": [&"swordShield"], "tags": [&"buff"], "rule": &"blood_pact",
+		"hp_per_mana": 0.005, "power": 1.25, "color": Color("ff5a5a")},
+	# 成長型
+	&"soul_reaver": {"icon": "噬", "mana": 14, "behavior": &"reaver", "weapons": [&"swordShield"], "tags": [&"melee"],
+		"range": 3.0, "arc": 1.6, "damage_pct": 2.75, "knockback": 5.0, "damage_type": &"shadow", "per_kill": 0.03, "max_stacks": 30,
+		"color": Color("b48cff"), "sfx": "swingHeavy"},
+	&"legion": {"icon": "軍", "mana": 30, "behavior": &"legion", "weapons": [&"scepter"], "tags": [&"summon"],
+		"radius": 8.0, "max": 6, "life": 8.0, "color": Color("d8d0b8")},
+	&"grudge": {"icon": "怨", "mana": 16, "behavior": &"grudge", "weapons": [&"swordShield"], "tags": [&"area"],
+		"radius": 4.0, "damage_pct": 2.375, "grudge_mul": 1.7, "knockback": 8.0, "damage_type": &"shadow", "color": Color("ff5a5a"), "sfx": "explosion"},
+	&"star_sign": {"icon": "星", "mana": 10, "behavior": &"star", "weapons": [&"swordShield"], "tags": [&"area"],
+		"max": 3, "life": 20.0, "tick": 1.0, "damage_pct": 1.0, "damage_type": &"holy", "color": Color("ffd27a"), "sfx": "arcaneCast"},
 }
 
 

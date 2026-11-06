@@ -911,6 +911,8 @@ func _draw_mana_marks(font: Font, me: Player, where: int, b: Dictionary) -> void
 # 袋子裡照放的順序，累加耗魔超過最大魔力的技能 / 效果（滿魔力放一次也放不出來）
 static func starved_entries(me: Player, b: Dictionary) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
+	if BagDefs.has_rule(b, &"blood_pact"):   # 血契的袋子扣生命，不看魔力
+		return out
 	var total := 0.0
 	var cap := me.max_mana()
 	for e in BagTriggers.contents(b):

@@ -663,6 +663,7 @@ static func on_hit(world: World, p: Player, target: Entity, damage: float, sourc
 
 # 玩家被怪打到時（Combat 在扣血之後呼叫）：下方的受傷袋，目標是打到自己的怪；dealt 是實際扣的
 static func on_hurt(world: World, p: Player, attacker: Entity, _damage: float, dealt: float, _projectile: bool) -> void:
+	p.grudge_taken += dealt   # 積怨（SkillDefs.grudge）記著受到的傷害
 	BagTriggers.fire(world, p, &"hurt", &"", attacker, dealt)
 
 

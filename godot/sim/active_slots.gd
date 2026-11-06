@@ -35,7 +35,7 @@ func get_slot(owner: Player, index: int) -> Variant:
 	var b: Dictionary = keys[index]
 	var list := BagTriggers.contents(b)
 	for e in list:
-		if ItemDefs.is_skill(e.id):
+		if ItemDefs.is_skill(e.id) and SkillDefs.SKILLS[e.id].behavior != &"bag_rule":   # 回響、共鳴、血契不畫在技能欄
 			return slot_of(owner, b, e)
 	for e in list:
 		if ItemDefs.role_of(e.id) == ItemDefs.ROLE_EFFECT:
@@ -62,12 +62,18 @@ func can_use(owner: Player, index: int) -> bool:
 		return false
 	if index == HEAL_INDEX:
 		return SkillBehaviors.BEHAVIORS[slot.def.behavior].can_use(owner, slot.def)
+	var was_paying := owner.pay_with_hp
+	owner.pay_with_hp = BagDefs.has_rule(slot.bag, &"blood_pact")   # 血契的袋子看生命夠不夠
+	var ok := false
 	for e in BagTriggers.contents(slot.bag):
 		if ItemDefs.is_skill(e.id) and can_cast(owner, slot_of(owner, slot.bag, e)):
-			return true
-		if ItemDefs.role_of(e.id) == ItemDefs.ROLE_EFFECT and owner.has_mana(BagTriggers.effect_cost(slot.bag, e)):
-			return true
-	return false
+			ok = true
+		elif ItemDefs.role_of(e.id) == ItemDefs.ROLE_EFFECT and owner.has_mana(BagTriggers.effect_cost(slot.bag, e)):
+			ok = true
+		if ok:
+			break
+	owner.pay_with_hp = was_paying
+	return ok
 
 
 func use(owner: Player, index: int) -> bool:

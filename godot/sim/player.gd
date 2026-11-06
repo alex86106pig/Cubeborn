@@ -80,6 +80,11 @@ var mana := 0.0                        # 目前魔力（上限 max_mana 屬性�
 var dice: int = LootDefs.RELIC.start_dice   # 遺物的骰子（Build 改版第 6 步）：重擲 N 選 1 用掉 1 顆，整局通用
 var relic_id := 0                      # 打開著的遺物（權威端設定，快照送給自己；0 = 沒打開）
 var skill_levels := {}                 # 技能 id → 等級（Build 改版第 7 步：技能遺物選到已經有的就升 1 級；沒記的是 1 級）
+var reaver_stacks := 0                 # 噬魂刃這一層殺了幾隻（SkillDefs.soul_reaver，換層歸零；只在權威端）
+var grudge_taken := 0.0                # 積怨：上次放出之後受到的傷害（只在權威端）
+var stars: Array[Dictionary] = []      # 星位：{ pos, t, ctx }（SkillBehaviors.update_stars；只在權威端）
+var star_timer := 0.0
+var pay_with_hp := false               # 血契：正在放的袋子改扣生命（BagTriggers.run_bag、ActiveSlots.can_use 暫時打開）
 var skill_dash := {}                   # 衝刺類技能進行中：{ left, def, ctx, hit }（SkillBehaviors.update_player）
 var parry_timer := 0.0                 # 盾反動作剩餘秒數（畫面用）
 var is_jump_held := false              # 空白鍵按住：站在地上就再跳（連續跳躍）
@@ -347,6 +352,8 @@ func arrive_floor(at: Vector2, ground: float) -> void:
 	descended = false
 	loadout.refill_slot_charges()   # 新的一關：身上武器的技能次數補滿（火把的插火把，F8）
 	floor_kills = 0   # 亡者之契的疊層只算本層（G2）
+	reaver_stacks = 0   # 噬魂刃只算本層
+	stars.clear()
 	guardian_uses = 0   # 守護亡靈每層一次（G5）
 	pos = at
 	prev_pos = at
@@ -506,10 +513,15 @@ func mana_cost_of(def: Dictionary, level := 1) -> float:
 
 
 func has_mana(cost: float) -> bool:
+	if pay_with_hp:   # 血契：扣生命，不會扣到死（要留 1）
+		return hp - cost * SkillDefs.SKILLS.blood_pact.hp_per_mana * max_hp >= 1.0
 	return mana >= cost - 1e-6
 
 
 func spend_mana(cost: float) -> void:
+	if pay_with_hp:
+		hp = maxf(1.0, hp - cost * SkillDefs.SKILLS.blood_pact.hp_per_mana * max_hp)
+		return
 	mana = maxf(0.0, mana - cost)
 
 
@@ -886,6 +898,8 @@ func _tick_timers(dt: float) -> void:
 	ItemEffects.update_player(self, dt)   # 低血、擊殺後的道具條件加成（v0.33.0）
 	BondEffects.update_player(self, dt)   # 招架後的計時、鬼火
 	SkillBehaviors.update_player(self, dt)   # 衝刺類技能打面前
+	if world.is_authority:
+		SkillBehaviors.update_stars(self, dt)
 	if world.is_authority:
 		Relic.update_player(self)   # 打開的遺物走遠了就關掉
 	for id: StringName in buffs.keys():

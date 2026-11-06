@@ -335,6 +335,19 @@ const ITEMS := {
 	&"ground_slam": {"kind": &"skill", "name": "震地", "rarity": &"white", "shape": &"dot", "desc": "往地上一砸，前方扇形的怪被擊退並暈眩 0.5 秒", "effects": []},
 	&"dirt_toss": {"kind": &"skill", "name": "甩土", "rarity": &"white", "shape": &"dot", "desc": "甩出一團土塊，炸開後周圍的怪短暫暈眩", "effects": []},
 	&"burrow": {"kind": &"skill", "name": "掘地", "rarity": &"blue", "shape": &"dot", "desc": "鑽進土裡無敵 1 秒、往前移動 6 單位，出土時震開周圍的怪", "effects": []},
+	# ---- 橘色（傳說，mockups/橘色技能.html 方案 1~3，許家慶 2026-11-06 選）----
+	&"hell_gate": {"kind": &"skill", "name": "冥府之門", "rarity": &"orange", "shape": &"dot", "desc": "準星的位置裂開一道門，1.2 秒後把半徑 4 內的怪拖進去（暗影傷害）", "effects": []},
+	&"blade_storm": {"kind": &"skill", "name": "千刃風暴", "rarity": &"orange", "shape": &"dot", "desc": "3 秒內一直轉、可以走動，每 0.25 秒砍一次身邊 2.5 內的怪", "effects": []},
+	&"fissure": {"kind": &"skill", "name": "裂地斬", "rarity": &"orange", "shape": &"dot", "desc": "往前劈出一道 12 長的地裂，路上的怪全部擊飛", "effects": []},
+	&"judgment": {"kind": &"skill", "name": "天譴", "rarity": &"orange", "shape": &"dot", "desc": "8 內最近的 4 隻怪各落一道雷", "effects": []},
+	&"echo": {"kind": &"skill", "name": "回響", "rarity": &"orange", "shape": &"dot", "desc": "放在袋子裡：同一袋的其他技能放完 0.5 秒後再放一次，傷害 ×0.6、耗魔扣一半。本身不耗魔、不會自己放", "effects": []},
+	&"soul_spring": {"kind": &"skill", "name": "魂泉", "rarity": &"orange", "shape": &"dot", "desc": "5 秒內技能耗魔 −50%（不能疊）", "effects": []},
+	&"resonance": {"kind": &"skill", "name": "共鳴", "rarity": &"orange", "shape": &"dot", "desc": "放在袋子裡：這一袋發動時，同一邊緊鄰的袋子也跟著發動一次（被帶動的不再帶動別的）", "effects": []},
+	&"blood_pact": {"kind": &"skill", "name": "血契", "rarity": &"orange", "shape": &"dot", "desc": "放在袋子裡：這一袋的技能與效果改扣生命（每點魔力 0.5% 最大生命，不會扣到死），傷害 +25%。本身不會自己放", "effects": []},
+	&"soul_reaver": {"kind": &"skill", "name": "噬魂刃", "rarity": &"orange", "shape": &"dot", "desc": "往前斬一刀；用它打死一隻怪，這一層它的傷害 +3%（最多 +90%，換層歸零）", "effects": []},
+	&"legion": {"kind": &"skill", "name": "亡者軍勢", "rarity": &"orange", "shape": &"dot", "desc": "8 內每具怪物屍體起來一隻骷髏僕從（最多 6 隻），存在 8 秒", "effects": []},
+	&"grudge": {"kind": &"skill", "name": "積怨", "rarity": &"orange", "shape": &"dot", "desc": "記住上次放出之後受到的傷害，放出時把它約 3 倍炸向身邊 4（至少武器傷害 416%）", "effects": []},
+	&"star_sign": {"kind": &"skill", "name": "星位", "rarity": &"orange", "shape": &"dot", "desc": "腳下留一顆星（最多 3 顆、各 20 秒）；3 顆圍成的三角形裡每秒打一次", "effects": []},
 
 	# ---- 魔力道具：回魔與最大魔力（照 is_mana_item 掉）；魔力照武器之後一律寫 %（固定加值放在魔力少的武器上會變很強，許家慶 2026-11-04）----
 	&"mana_shard": {"kind": &"item", "name": "藍晶碎片", "rarity": &"white", "power": 0.8, "shape": &"dot", "bonds": [],

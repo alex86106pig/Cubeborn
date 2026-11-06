@@ -61,6 +61,8 @@ static func check_gem_rules() -> String:
 static func check_every_skill() -> String:
 	for id: StringName in SkillDefs.gem_skill_ids():
 		var def: Dictionary = SkillDefs.SKILLS[id]
+		if def.behavior == &"bag_rule":   # 回響、共鳴、血契不會自己放，在「橘色技能」另外驗
+			continue
 		var weapon: StringName = def.weapons[0]
 		var s := _setup(weapon)
 		var w: World = s[0]
@@ -68,6 +70,8 @@ static func check_every_skill() -> String:
 		if p.loadout.find_item(p.add_item(id)).get("where", -9) != 0:
 			return "%s 應放進按鍵袋" % ItemDefs.ITEMS[id].name
 		var targets := _targets(w)
+		if def.behavior == &"legion":   # 亡者軍勢要有屍體：先打死一隻
+			Combat.apply_damage(w, p, targets[-1], {"damage": 1e6, "band": Vector2(-INF, INF)})
 		var hp0 := targets.map(func(e: Enemy) -> float: return e.hp)
 		var torches := w.torches.size()
 		var allies := w.allies.size()
@@ -91,6 +95,12 @@ static func check_every_skill() -> String:
 				effect = p.buffs.has(&"blessing") or ready == false
 			&"plantTorch":
 				effect = w.torches.size() == torches + 1
+			&"mana_buff":
+				effect = p.buffs.has(&"soul_spring")
+			&"legion":
+				effect = w.allies.size() > allies
+			&"star":
+				effect = p.stars.size() == 1
 		if ready or not effect:
 			return "%s（%s）：按數字鍵 %d 應放出來（進冷卻）並有效果：冷卻 %s、效果 %s" % [ItemDefs.ITEMS[id].name, weapon, idx + 1, not ready, effect]
 	return ""
@@ -298,9 +308,9 @@ static func _check_skill_relic_rules() -> String:
 	for id: StringName in pool:
 		var r: StringName = ItemDefs.ITEMS[id].rarity
 		counts[r] = counts.get(r, 0) + 1
-	# 使用者 2026-11-04 的分級（docs/製作計畫.md I），綠多一個突刺（2026-11-05 長劍的蓄力突刺改成技能，Claude 暫定綠）
-	if counts != {&"white": 10, &"green": 8, &"blue": 7, &"purple": 3}:
-		return "技能稀有度的數量應是白 10、綠 8、藍 7、紫 3：%s" % [counts]
+	# 使用者 2026-11-04 的分級（docs/製作計畫.md I），綠多一個突刺（2026-11-05 長劍的蓄力突刺改成技能，Claude 暫定綠）；橘 12 個（許家慶 2026-11-06 選方案 1~3）
+	if counts != {&"white": 10, &"green": 8, &"blue": 7, &"purple": 3, &"orange": 12}:
+		return "技能稀有度的數量應是白 10、綠 8、藍 7、紫 3、橘 12：%s" % [counts]
 	var drawn := {}
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 42
@@ -488,4 +498,159 @@ static func _check_clear_cells() -> String:
 	if auto.get("where", -9) != p2.loadout.bags.find(k2) or auto.get("spot", {}).get("cell", Vector2i(-1, -1)) != Vector2i(1, 1):
 		return "延長自動擺放應蓋在按鍵袋 (1, 1) 的旋風斬上：%s" % [auto]
 	_note("透明格：爆裂箭袋蓋延長 + 霜化 耗魔 %.2f → %.2f" % [BagTriggers.effect_mana(&"blast_quiver"), want_cost])
+	return ""
+
+
+# 橘色技能（mockups/橘色技能.html 方案 1~3）的規則：
+# 傷害照預算（裂地斬打直線上的、旁邊的不打；天譴最多 targets 隻）；魂泉讓技能耗魔 × mana_cost；
+# 回響 = 同一袋的技能 delay 秒後再放一次（耗魔 × mana_share）；共鳴 = 緊鄰的袋子也發動；血契 = 扣生命不扣魔、傷害 × power、不會扣到死；
+# 噬魂刃用它打死怪疊層、換層歸零；積怨的傷害跟著受到的傷害變大、放完歸零；星位 3 顆時三角形裡的怪受傷、外面的不受傷
+static func check_orange_skills() -> String:
+	for id: StringName in [&"hell_gate", &"blade_storm", &"fissure", &"judgment", &"echo", &"soul_spring", &"resonance", &"blood_pact", &"soul_reaver", &"legion", &"grudge", &"star_sign"]:
+		if ItemDefs.ITEMS[id].rarity != &"orange" or SkillDefs.damage_mul(id, 1) != SkillDefs.RARITY_BUDGET.orange:
+			return "%s 應是橘色、傷害乘 %.2f" % [id, SkillDefs.RARITY_BUDGET.orange]
+	# 裂地斬：前方直線上的打到、旁邊的沒打到
+	var s := _setup(&"swordShield")
+	var w: World = s[0]
+	var p: Player = s[1]
+	var on_line := LootChecks._item_dummy(w, Vector2(0, 6), 100000.0)
+	var off_line := LootChecks._item_dummy(w, Vector2(4, 6), 100000.0)
+	var h_on := on_line.hp
+	var h_off := off_line.hp
+	p.facing = 0.0
+	p.aim_point = Vector2(0, 10)
+	ActiveSlots.cast(p, {"def": SkillDefs.SKILLS.fissure, "id": &"fissure", "level": 1, "charges": -1})
+	if on_line.hp >= h_on or off_line.hp < h_off:
+		return "裂地斬應打到直線上的、不打旁邊的：%.0f → %.0f / %.0f → %.0f" % [h_on, on_line.hp, h_off, off_line.hp]
+	# 天譴：6 隻怪最多打 targets 隻
+	var s2 := _setup(&"swordShield")
+	var w2: World = s2[0]
+	var p2: Player = s2[1]
+	var mobs: Array[Enemy] = []
+	for i in 6:
+		mobs.append(LootChecks._item_dummy(w2, Vector2(cos(i) * 3.0, sin(i) * 3.0), 100000.0))
+	ActiveSlots.cast(p2, {"def": SkillDefs.SKILLS.judgment, "id": &"judgment", "level": 1, "charges": -1})
+	_run(w2, _cmd(Vector2.ZERO), roundi(1.0 / DT))
+	var struck := mobs.filter(func(e: Enemy) -> bool: return e.hp < e.max_hp).size()
+	if struck != SkillDefs.SKILLS.judgment.targets:
+		return "天譴應打 %d 隻：%d" % [SkillDefs.SKILLS.judgment.targets, struck]
+	# 魂泉：技能耗魔 × mana_cost
+	var whirl := {"def": SkillDefs.SKILLS.whirlwind, "id": &"whirlwind", "level": 1}
+	var before := ActiveSlots.mana_cost(p2, whirl)
+	ActiveSlots.cast(p2, {"def": SkillDefs.SKILLS.soul_spring, "id": &"soul_spring", "level": 1, "charges": -1})
+	if absf(ActiveSlots.mana_cost(p2, whirl) - before * SkillDefs.SKILLS.soul_spring.mana_cost) > 1e-3:
+		return "魂泉應讓耗魔 × %.1f：%.1f → %.1f" % [SkillDefs.SKILLS.soul_spring.mana_cost, before, ActiveSlots.mana_cost(p2, whirl)]
+	var err := _check_bag_rules()
+	if err != "":
+		return err
+	return _check_growth_skills()
+
+
+static func _check_bag_rules() -> String:
+	# 回響：同一袋的旋風斬放兩次、第二次耗魔一半
+	var s := _setup(&"swordShield")
+	var w: World = s[0]
+	var p: Player = s[1]
+	_targets(w)
+	var key: Dictionary = p.loadout.key_bags()[0]
+	Inventory.for_bag(key).add(&"t_w", &"whirlwind", Vector2(0, 0), 0)
+	Inventory.for_bag(key).add(&"t_e", &"echo", Vector2(1, 0), 0)
+	p.mana = p.max_mana()
+	var cost: float = ActiveSlots.mana_cost(p, ActiveSlots.slot_of(p, key, key.entries[0]))
+	BagTriggers.run_bag(w, p, key, null, 0.0)
+	_run(w, _cmd(Vector2.ZERO), roundi((SkillDefs.SKILLS.echo.delay + 0.1) / DT))
+	var spent := p.max_mana() - p.mana + p.stats.value(&"mana_regen") * (SkillDefs.SKILLS.echo.delay + 0.1)
+	if p.cast_log.get(&"whirlwind", [0])[0] != 2 or absf(spent - cost * (1.0 + SkillDefs.SKILLS.echo.mana_share)) > 0.5:
+		return "回響：旋風斬應放 2 次、共耗魔 %.1f：%s 次、%.1f" % [cost * (1.0 + SkillDefs.SKILLS.echo.mana_share), p.cast_log.get(&"whirlwind", []), spent]
+	# 共鳴：左邊命中袋發動時，緊鄰的擊殺袋也發動
+	var s2 := _setup(&"swordShield")
+	var w2: World = s2[0]
+	var p2: Player = s2[1]
+	_targets(w2)
+	var hit := BagDefs.make(&"t_hit", &"hit")
+	var kill := BagDefs.make(&"t_kill", &"kill")
+	p2.loadout._attach(hit, &"left", 0)
+	p2.loadout._attach(kill, &"left", hit.length)
+	Inventory.for_bag(hit).add(&"t_r", &"resonance", Vector2(0, 0), 0)
+	Inventory.for_bag(kill).add(&"t_n", &"frost_nova", Vector2(0, 0), 0)
+	p2.mana = p2.max_mana()
+	BagTriggers.run_bag(w2, p2, hit, null, 0.0)
+	if p2.cast_log.get(&"frost_nova", [0])[0] != 1 or p2.cast_log.get(&"resonance", [0])[0] != 1:
+		return "共鳴：緊鄰的擊殺袋應跟著發動一次：%s" % [p2.cast_log]
+	# 血契：扣生命不扣魔、傷害 × power、不會扣到死
+	var s3 := _setup(&"swordShield")
+	var w3: World = s3[0]
+	var p3: Player = s3[1]
+	_targets(w3)
+	var kb: Dictionary = p3.loadout.key_bags()[0]
+	Inventory.for_bag(kb).add(&"t_w2", &"whirlwind", Vector2(0, 0), 0)
+	Inventory.for_bag(kb).add(&"t_b", &"blood_pact", Vector2(1, 0), 0)
+	if absf(BagDefs.power_of(kb) - SkillDefs.SKILLS.blood_pact.power) > 1e-6:
+		return "血契的袋子倍率應 × %.2f：%.2f" % [SkillDefs.SKILLS.blood_pact.power, BagDefs.power_of(kb)]
+	p3.mana = 0.0
+	p3.hp = p3.max_hp
+	BagTriggers.run_bag(w3, p3, kb, null, 0.0)
+	var want := p3.mana_cost_of(SkillDefs.SKILLS.whirlwind) * SkillDefs.SKILLS.blood_pact.hp_per_mana * p3.max_hp
+	if p3.cast_log.get(&"whirlwind", [0])[0] != 1 or absf(p3.max_hp - p3.hp - want) > 0.01 or p3.mana != 0.0 or p3.pay_with_hp:
+		return "血契：沒魔也放得出、扣 %.2f 生命：放 %s、扣 %.2f、魔 %.1f" % [want, p3.cast_log.get(&"whirlwind", []), p3.max_hp - p3.hp, p3.mana]
+	p3.hp = 1.0
+	BagTriggers.run_bag(w3, p3, kb, null, 0.0)
+	if p3.hp != 1.0 or p3.cast_log.whirlwind[0] != 1:
+		return "血契：生命不夠時不放、不會扣到死"
+	return ""
+
+
+static func _check_growth_skills() -> String:
+	# 噬魂刃：打死怪疊層，傷害跟著變大；換層歸零
+	var s := _setup(&"swordShield")
+	var w: World = s[0]
+	var p: Player = s[1]
+	p.facing = 0.0
+	p.aim_point = Vector2(0, 5)
+	var slot := {"def": SkillDefs.SKILLS.soul_reaver, "id": &"soul_reaver", "level": 1, "charges": -1}
+	var weak := LootChecks._item_dummy(w, Vector2(0, 1.5), 1.0)
+	ActiveSlots.cast(p, slot)
+	if not weak.is_dead or p.reaver_stacks != 1:
+		return "噬魂刃打死怪應疊 1 層：%d" % p.reaver_stacks
+	var tough := LootChecks._item_dummy(w, Vector2(0, 1.5), 100000.0)
+	tough.set_resists({})
+	var h := tough.hp
+	ActiveSlots.cast(p, slot)
+	var d1 := h - tough.hp
+	p.reaver_stacks = 10
+	h = tough.hp
+	ActiveSlots.cast(p, slot)
+	var d2 := h - tough.hp
+	if absf(d2 / maxf(d1, 0.001) - (1.0 + 10 * SkillDefs.SKILLS.soul_reaver.per_kill) / (1.0 + SkillDefs.SKILLS.soul_reaver.per_kill)) > 0.05:
+		return "噬魂刃 10 層的傷害應是 1 層的 %.2f 倍：%.1f / %.1f" % [(1.0 + 10 * SkillDefs.SKILLS.soul_reaver.per_kill) / (1.0 + SkillDefs.SKILLS.soul_reaver.per_kill), d2, d1]
+	p.arrive_floor(p.pos, 0.0)
+	if p.reaver_stacks != 0:
+		return "換層後噬魂刃的層數應歸零"
+	# 積怨：受到的傷害越多越痛、放完歸零
+	var g_slot := {"def": SkillDefs.SKILLS.grudge, "id": &"grudge", "level": 1, "charges": -1}
+	h = tough.hp
+	p.grudge_taken = 0.0
+	ActiveSlots.cast(p, g_slot)
+	var base_dmg := h - tough.hp
+	p.grudge_taken = 500.0
+	h = tough.hp
+	ActiveSlots.cast(p, g_slot)
+	if h - tough.hp <= base_dmg * 1.5 or p.grudge_taken != 0.0:
+		return "積怨：受過 500 傷害後應比沒受傷痛很多、放完歸零：%.1f vs %.1f" % [h - tough.hp, base_dmg]
+	# 星位：3 顆圍成三角形，裡面的怪受傷、外面的不受傷
+	var s2 := _setup(&"swordShield")
+	var w2: World = s2[0]
+	var p2: Player = s2[1]
+	var inside := LootChecks._item_dummy(w2, Vector2(0, 2), 100000.0)
+	var outside := LootChecks._item_dummy(w2, Vector2(8, 8), 100000.0)
+	var star := {"def": SkillDefs.SKILLS.star_sign, "id": &"star_sign", "level": 1, "charges": -1}
+	for at: Vector2 in [Vector2(-3, 0), Vector2(3, 0), Vector2(0, 5)]:
+		p2.pos = at
+		ActiveSlots.cast(p2, star)
+	p2.pos = Vector2(0, -6)
+	var hi := inside.hp
+	var ho := outside.hp
+	_run(w2, _cmd(Vector2.ZERO), roundi(1.5 / DT))
+	if p2.stars.size() != 3 or inside.hp >= hi or outside.hp < ho:
+		return "星位 3 顆：三角形裡的怪應受傷、外面的不受傷：星 %d、裡 %.0f → %.0f、外 %.0f → %.0f" % [p2.stars.size(), hi, inside.hp, ho, outside.hp]
 	return ""

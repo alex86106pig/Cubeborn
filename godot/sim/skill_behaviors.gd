@@ -225,6 +225,150 @@ class Burrow extends Behavior:
 			owner.world.emit_event("fx:explosion", {"pos": owner.pos, "height": owner.ground_height, "radius": r, "color": def.color}))
 
 
+# ── 橘色技能（mockups/橘色技能.html 方案 1~3）──
+
+# 千刃風暴：duration 秒內每 tick 秒砍一次身邊（跟著自己走）
+class Storm extends Behavior:
+	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
+		var r: float = def.radius * ctx.area
+		for i in roundi(def.duration / def.tick):
+			SkillBehaviors.later(owner, def.tick * i, func() -> void:
+				SkillBehaviors.area_hit(owner, def, ctx, owner.pos, {"shape": &"circle", "radius": r})
+				owner.world.emit_event("fx:sweep", {"pos": owner.pos, "height": owner.ground_height, "radius": r, "low": i % 2 == 0}))
+
+
+# 裂地斬：往準星劈一道 length 長、width 寬的直線，路上的怪各打一次並擊飛
+class Line extends Behavior:
+	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
+		var dir := SkillBehaviors.turn_to(owner, ctx)
+		var from := owner.pos if not ctx.has("at") else (ctx.at as Vector2) - dir * 1.0
+		var length: float = def.length * ctx.area
+		if not owner.world.is_authority:
+			return
+		var hit := SkillBehaviors.hit_of(owner, def, ctx)
+		hit["origin"] = from
+		var hits: Array[Entity] = []
+		for e in Combat.hostiles_of(owner.world, owner.team, owner.id):
+			if not e.can_be_hit():
+				continue
+			var along := (e.pos - from).dot(dir)
+			if along < 0.0 or along > length:
+				continue
+			if absf((e.pos - from).cross(dir)) <= def.width * 0.5 + e.radius and Combat.apply_damage(owner.world, owner, e, hit):
+				hits.append(e)
+				if e is Enemy and not (e as Enemy).is_boss():
+					e.vz = maxf(e.vz, def.get("knockup", 0.0))   # 擊飛（Boss 不會）
+		SkillBehaviors._after_hits(owner, def, ctx, hits)
+		var points := []
+		for k in 7:
+			points.append(from + dir * length * k / 6.0)
+		owner.world.emit_event("fx:lightning", {"pos": from, "height": owner.ground_height, "points": points, "color": def.color})
+
+
+# 天譴：range 內最近的 targets 隻各落一道雷（delay 秒後；每隻一次）
+class Smite extends Behavior:
+	func can_use(owner: Player, def: Dictionary) -> bool:
+		return SkillBehaviors.nearest_enemy(owner, owner.pos, def.range) != null
+
+	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
+		var center := SkillBehaviors.origin(owner, ctx)
+		var picked := {}
+		var targets: Array[Entity] = []
+		for i in def.targets:
+			var e := SkillBehaviors.nearest_enemy(owner, center, def.range * ctx.area, picked)
+			if e == null:
+				break
+			picked[e.id] = true
+			targets.append(e)
+		for e in targets:
+			var at := e.pos
+			owner.world.emit_event("fx:telegraph", {"pos": at, "height": owner.world.terrain.ground_at(at), "radius": def.radius, "color": def.color, "life": def.delay})
+			var id := e.id
+			SkillBehaviors.later(owner, def.delay, func() -> void:
+				var t := owner.world.entities.get(id) as Entity
+				if t == null or t.is_dead:
+					return
+				var hit := SkillBehaviors.hit_of(owner, def, ctx)
+				hit["origin"] = t.pos
+				if Combat.apply_damage(owner.world, owner, t, hit):
+					SkillBehaviors._after_hits(owner, def, ctx, [t] as Array[Entity])
+				owner.world.emit_event("fx:explosion", {"pos": t.pos, "height": t.ground_height, "radius": def.radius, "color": def.color}))
+
+
+# 魂泉：duration 秒內技能耗魔 × mana_cost（同一個增益，重放只刷新時間）
+class ManaBuff extends Behavior:
+	func activate(owner: Player, def: Dictionary, _ctx: Dictionary) -> void:
+		owner.add_buff(&"soul_spring", def.duration, {"stats": [[&"mana_cost", Stats.MUL, def.mana_cost]]})
+		owner.world.emit_event("fx:heal", {"pos": owner.pos, "height": owner.height, "color": def.color})
+
+
+# 回響、共鳴、血契：改寫放它的那個袋子（BagTriggers.run_bag），自己不會放
+class BagRule extends Behavior:
+	func can_use(_owner: Player, _def: Dictionary) -> bool:
+		return false
+
+
+# 噬魂刃：面前扇形一刀；用它打死的怪讓這一層的傷害 +per_kill（最多 max_stacks 層，Player.reaver_stacks，換層歸零）
+class Reaver extends Behavior:
+	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
+		if not ctx.has("at"):
+			SkillBehaviors.face_aim(owner)
+		var grown := ctx.duplicate()
+		grown.mul = ctx.mul * (1.0 + def.per_kill * owner.reaver_stacks)
+		var at := SkillBehaviors.origin(owner, ctx)
+		var shape := {"shape": &"sector", "range": def.range * ctx.area, "arc": def.arc}
+		var hit := SkillBehaviors.hit_of(owner, def, grown)
+		hit["origin"] = at
+		var hits := Hitbox.strike(owner.world, owner, at, ctx.get("facing", owner.facing), shape, hit)
+		for e in hits:
+			if e.is_dead and e is Enemy:
+				owner.reaver_stacks = mini(def.max_stacks, owner.reaver_stacks + 1)
+		owner.world.emit_event("fx:slash", {"pos": at, "height": owner.height, "facing": ctx.get("facing", owner.facing), "range": shape.range, "arc": def.arc, "color": def.color, "swing_dir": 1})
+
+
+# 亡者軍勢：radius 內每具怪物屍體（死了還沒移除的）起來一隻骷髏僕從，最多 max 隻；屍體用掉（不再有死亡效果）
+class Legion extends Behavior:
+	func can_use(owner: Player, def: Dictionary) -> bool:
+		return not SkillBehaviors.corpses_near(owner, owner.pos, def.radius).is_empty()
+
+	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
+		if not owner.world.is_authority or owner.is_ghost():   # 僕從是玩家方的：冤魂召不出來
+			return
+		var at := SkillBehaviors.origin(owner, ctx)
+		var bodies := SkillBehaviors.corpses_near(owner, at, def.radius * ctx.area)
+		for i in mini(def.max, bodies.size()):
+			var c: Enemy = bodies[i]
+			var m := Minion.new(owner.world, owner.world.nav.nearest_walkable(c.pos), owner)
+			m.life = def.life
+			owner.world.add_enemy(m)
+			c.no_death_effect = true
+			c.remove()
+		owner.world.emit_event("sfx:cue", {"cue": "enemySpawn", "pos": at})
+
+
+# 積怨：把上次放出之後受到的傷害（Player.grudge_taken）× grudge_mul 炸向身邊，至少 damage_pct；放完歸零
+class Grudge extends Behavior:
+	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
+		var r: float = def.radius * ctx.area
+		var hit := SkillBehaviors.hit_of(owner, def, ctx)
+		hit.damage = maxf(hit.damage, owner.grudge_taken * def.grudge_mul * ctx.mul)
+		hit["origin"] = owner.pos
+		owner.grudge_taken = 0.0
+		SkillBehaviors._after_hits(owner, def, ctx, Hitbox.strike(owner.world, owner, owner.pos, owner.facing, {"shape": &"circle", "radius": r}, hit))
+		owner.world.emit_event("fx:explosion", {"pos": owner.pos, "height": owner.ground_height, "radius": r, "color": def.color})
+
+
+# 星位：腳下留一顆星（Player.stars，最多 max 顆、各 life 秒，多的頂掉最舊的）；3 顆圍成的三角形每 tick 秒打一次（update_player）
+class Star extends Behavior:
+	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
+		if not owner.world.is_authority:
+			return
+		owner.stars.append({"pos": owner.pos, "t": def.life, "ctx": ctx})
+		while owner.stars.size() > def.max:
+			owner.stars.pop_front()
+		owner.world.emit_event("fx:telegraph", {"pos": owner.pos, "height": owner.ground_height, "radius": 0.6, "color": def.color, "life": def.life})
+
+
 static var BEHAVIORS := {
 	&"heal": Heal.new(),
 	&"plantTorch": PlantTorch.new(),
@@ -242,7 +386,54 @@ static var BEHAVIORS := {
 	&"summon": Summon.new(),
 	&"bless": Bless.new(),
 	&"burrow": Burrow.new(),
+	&"storm": Storm.new(),
+	&"line": Line.new(),
+	&"smite": Smite.new(),
+	&"mana_buff": ManaBuff.new(),
+	&"bag_rule": BagRule.new(),
+	&"reaver": Reaver.new(),
+	&"legion": Legion.new(),
+	&"grudge": Grudge.new(),
+	&"star": Star.new(),
 }
+
+
+# 星位的三角形（每步，權威端）：星倒數、過期移除；有 3 顆時每 tick 秒打三角形裡的怪一次，畫三條連線
+static func update_stars(p: Player, dt: float) -> void:
+	if p.stars.is_empty():
+		return
+	var def: Dictionary = SkillDefs.SKILLS.star_sign
+	for s: Dictionary in p.stars:
+		s.t -= dt
+	p.stars = p.stars.filter(func(s: Dictionary) -> bool: return s.t > 0.0)
+	if p.stars.size() < 3:
+		p.star_timer = 0.0
+		return
+	p.star_timer -= dt
+	if p.star_timer > 0.0:
+		return
+	p.star_timer = def.tick
+	var a: Vector2 = p.stars[0].pos
+	var b: Vector2 = p.stars[1].pos
+	var c: Vector2 = p.stars[2].pos
+	var ctx: Dictionary = p.stars[-1].ctx
+	var hit := hit_of(p, def, ctx)
+	hit["origin"] = (a + b + c) / 3.0
+	Combat.scoped("k:star_sign", func() -> void:
+		for e in Combat.hostiles_of(p.world, p.team, p.id):
+			if e.can_be_hit() and Geometry2D.point_is_inside_triangle(e.pos, a, b, c):
+				Combat.apply_damage(p.world, p, e, hit))
+	p.world.emit_event("fx:lightning", {"pos": a, "height": p.ground_height, "points": [a, b, c, a], "color": def.color})
+
+
+# 怪物屍體（死了還沒移除、不是 Boss）：離 at 近的排前面
+static func corpses_near(owner: Player, at: Vector2, r: float) -> Array[Enemy]:
+	var out: Array[Enemy] = []
+	for e in owner.world.enemies:
+		if e.is_dead and not e.is_removed and e is Enemy and not (e as Enemy).is_boss() and e.team != owner.team and e.pos.distance_to(at) <= r:
+			out.append(e as Enemy)
+	out.sort_custom(func(x: Enemy, y: Enemy) -> bool: return x.pos.distance_squared_to(at) < y.pos.distance_squared_to(at))
+	return out
 
 
 # 放技能：照行為做，有分裂（標籤相符才會在 ctx 裡）就 SPLIT_DELAY 秒後用 SPLIT_MUL 的傷害再放一次

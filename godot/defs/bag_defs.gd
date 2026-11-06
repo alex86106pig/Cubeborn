@@ -39,7 +39,19 @@ const POWER := {
 
 # 袋子放出來的傷害倍率 = 大小的倍率（強化袋、鐵砧）× 種類與邊的倍率（POWER）
 static func power_of(bag: Dictionary) -> float:
-	return bag.mul * POWER.get(bag.kind, {}).get(bag.side, 1.0)
+	var p: float = bag.mul * POWER.get(bag.kind, {}).get(bag.side, 1.0)
+	if has_rule(bag, &"blood_pact"):   # 橘色技能「血契」：這一袋傷害 × power
+		p *= SkillDefs.SKILLS.blood_pact.power
+	return p
+
+
+# 袋子裡有沒有某個橘色的袋子規則（SkillDefs 的 rule：echo / resonance / blood_pact）
+static func has_rule(bag: Dictionary, rule: StringName) -> bool:
+	for e: Dictionary in bag.get("entries", []):
+		var d: Dictionary = SkillDefs.SKILLS.get(e.id, {})
+		if d.get("rule", &"") == rule:
+			return true
+	return false
 
 
 # 左鍵（普攻）觸發的這幾種袋子數下數：每 N 下發動一次，N = 武器的 trigger_every（BagTriggers._ready）；右鍵照 icd
