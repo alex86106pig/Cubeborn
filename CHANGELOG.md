@@ -3,7 +3,7 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
-## [未發布]
+## [0.70.0] - 2026-11-06
 
 ### 新增
 - **12 個橘色（傳說）技能**（許家慶選 `mockups/橘色技能.html` 方案 1~3，數字 Claude 暫定；`docs/系統說明.md` §42）：傷害照技能強度 × 預算 1.75，技能遺物抽得到（約 5.5%）。
