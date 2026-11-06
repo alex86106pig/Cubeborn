@@ -485,7 +485,8 @@ const ENEMIES := {
 			"shake": 0.6, "shake_duration": 0.5,
 		},
 		"colossus": {
-			"scale": 1.5,               # 只放大模型（碰撞照舊 radius：要過得了 6 寬的走道與墓室的門）
+			"scale": 1.5,               # 模型放大的倍數
+			"radius": 1.15,             # 碰撞半徑 1.0 → 1.15：跟著模型大一點，但不超過大隻怪的尋路格子（Config.NAV.margin_large），過得了 6 寬的走道與墓室的門
 			"damage_taken": 1.3,        # 受到的傷害 +30%
 			"move_speed": 2.4, "turn_speed": 3.0, "decide_delay": 0.35,
 			"first_cooldowns": {"spikes": 1.0, "sweep": 2.0, "wheel": 4.0, "devour": 6.0},

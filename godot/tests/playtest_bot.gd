@@ -1011,9 +1011,16 @@ func _swap(cmd: InputCmd) -> void:
 			var hand: Dictionary = p.weapon_slots[i]
 			if hand.is_empty() or Loadout.weapon_of(hand) != Loadout.weapon_of(inst):
 				continue
-			if WeaponDropDefs.RARITY_ORDER.find(inst.rarity) > WeaponDropDefs.RARITY_ORDER.find(hand.rarity):
+			if weapon_score(inst) > weapon_score(hand) + 1e-6:
 				cmd.inv_ops.append([InputCmd.OP_EQUIP, x.uid, i])
 				return
+
+
+# 武器好不好：擲出來的攻擊力 × 攻速（每秒輸出的倍率，WeaponDropDefs.mul；範圍與魔力不算）。原本只比稀有度，寬範圍下會撿到比手上差的
+static func weapon_score(inst: Dictionary) -> float:
+	if inst.is_empty():
+		return 0.0
+	return WeaponDropDefs.mul(inst, "damage") * WeaponDropDefs.mul(inst, "attack_speed")
 
 
 # 整理背包（一步一件）：倉庫的袋子接得上就接上；倉庫的道具照自動擺放搬進主袋或袋子（Loadout.auto_place）；
@@ -1040,14 +1047,14 @@ func _organize(cmd: InputCmd) -> void:
 	if _blocked_loot == null or _blocked_loot.is_removed or _blocked_loot.is_dead:
 		_blocked_loot = null
 		return
-	var want := WeaponDropDefs.RARITY_ORDER.find(_blocked_loot.weapon.get("rarity", &"white"))
+	var want := weapon_score(_blocked_loot.weapon)
 	var worst: Dictionary = {}
 	var worst_r := want
 	for x in p.inventory.entries:
 		var inst: Dictionary = x.get("weapon", {})
 		if inst.is_empty():
 			continue
-		var r := WeaponDropDefs.RARITY_ORDER.find(inst.rarity)
+		var r := weapon_score(inst)
 		if r < worst_r:
 			worst_r = r
 			worst = x
@@ -1337,7 +1344,7 @@ func nearest_loot() -> ItemPickup:
 		var d := p.pos.distance_to(ip.pos)
 		if p.inventory.find_spot(ip.item_id).is_empty():
 			full_seen = true
-			if _blocked_loot == null or WeaponDropDefs.RARITY_ORDER.find(ip.weapon.rarity) > WeaponDropDefs.RARITY_ORDER.find(_blocked_loot.weapon.rarity):
+			if _blocked_loot == null or weapon_score(ip.weapon) > weapon_score(_blocked_loot.weapon):
 				_blocked_loot = ip
 			continue
 		if d < best_d:

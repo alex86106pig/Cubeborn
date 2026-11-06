@@ -67,6 +67,7 @@ func absorb_skeletons(radius: float, include_alive: bool) -> int:
 func _become_colossus() -> void:
 	var c: Dictionary = def.colossus
 	form = 1
+	radius = c.radius
 	set_stat_source(&"form", [[&"move_speed", Stats.MUL, c.move_speed / def.move_speed], [&"damage_taken", Stats.MUL, c.damage_taken]])
 	world.emit_event("boss:transformed", {"boss_id": id, "form": form, "pos": pos})
 	world.emit_event("sfx:cue", {"cue": "enrage", "pos": pos})

@@ -412,6 +412,8 @@ static func check_bone_general() -> String:
 	_step_n(w, roundi(d.transform.time / DT) + 2)
 	if b.form != 1 or not b.fsm.is_in(&"colossus_chase"):
 		return "脫甲 %.1f 秒後應變成萬骨聚合體（form %d、狀態 %s）" % [d.transform.time, b.form, b.fsm.current_name]
+	if b.radius != c.radius or c.radius > Config.NAV.margin_large + 1e-6:
+		return "萬骨聚合體的碰撞半徑應是 %.2f、不超過大隻怪的尋路格子 %.2f：%.2f" % [c.radius, Config.NAV.margin_large, b.radius]
 	b.invuln_timer = 0.0
 	var hp1 := b.hp
 	var dealt := b.take_damage(10.0, Vector2.UP, 0.0, p.id)
