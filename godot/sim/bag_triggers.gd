@@ -1,7 +1,7 @@
-# 觸發袋的發動（規則在 docs/設計方向.md「觸發袋」）：時機到了，接在對應那一邊的那種袋子把裡面的效果與技能一起放出來
+# 觸發袋的發動（規則在 docs/設計方向.md「觸發袋」）：時機到了，接在對應那一邊的那種袋子把裡面的效果與技能一招接一招放出來
 #   左邊的袋子只被普攻觸發、右邊的只被右鍵招式觸發（Combat 的 hit.attack / Player.attack_tag）；下方的不分按鍵；上方的按鍵袋由 ActiveSlots 按數字鍵發動
 #   左邊的命中袋、出手袋每打 / 出手 N 下才發動一次（N = 武器的 trigger_every，許家慶 2026-11-05：取代機率，打得快的武器 N 大）；
-#   同一袋裡沒有順序，由左到右、由上到下依序放；每個效果耗魔（道具強度 × BagDefs.EFFECT_MANA_PER_POWER）、技能照自己的耗魔，魔力不夠的跳過
+#   同一袋由左到右、由上到下一招接一招放（技能銜接，CHAIN_GAP）；每個效果耗魔（道具強度 × BagDefs.EFFECT_MANA_PER_POWER）、技能照自己的耗魔，放不出來或打空就停
 #   效果的數字照道具資料（ItemDefs 的 on / do 那筆），時機與機率不看；修飾作用在透明格蓋住的技能與效果（ActiveSlots.cast_context、run_effect 的 mods）
 #   有目標的時機（命中、擊殺、受傷、招架）效果與技能都在目標身上發動（技能怎麼算在 SkillBehaviors.aim_at）；沒有目標的照舊
 #   袋子放出來的效果是道具效果（proc，不觸發命中）、技能的傷害沒有 attack 標記：都不會再觸發袋子，不會連鎖
@@ -12,11 +12,23 @@ class_name BagTriggers
 const ENEMY_TARGET: Array[StringName] = [&"poison", &"freeze", &"ignite", &"chill", &"chain_lightning", &"reflect"]
 
 
-# 袋子裡的東西，依放的順序（由左到右、由上到下）
+# 袋子裡的東西，依放的順序：照畫面上的位置左上 → 右下（一列一列，同一列由左到右；許家慶 2026-11-06）
+# 左右兩邊的袋子在畫面上是轉過的，所以用盤上座標（Loadout.board_cell）排，不用袋子自己的格子座標；多格的用它最左上那一格
 static func contents(b: Dictionary) -> Array[Dictionary]:
 	var list: Array[Dictionary] = []
 	list.assign(b.entries)
-	list.sort_custom(func(a: Dictionary, c: Dictionary) -> bool: return a.cell.x < c.cell.x or (a.cell.x == c.cell.x and a.cell.y < c.cell.y))
+	var key := {}
+	for e: Dictionary in list:
+		var best := Vector2i(1 << 20, 1 << 20)
+		for c in Inventory.cells_of(e.id, e.rot):
+			var bc := Loadout.board_cell(b, e.cell + c)
+			if bc.y < best.y or (bc.y == best.y and bc.x < best.x):
+				best = bc
+		key[e] = best
+	list.sort_custom(func(a: Dictionary, c: Dictionary) -> bool:
+		var ka: Vector2i = key[a]
+		var kc: Vector2i = key[c]
+		return ka.y < kc.y or (ka.y == kc.y and ka.x < kc.x))
 	return list
 
 
@@ -65,48 +77,96 @@ static func _icd_ready(p: Player, b: Dictionary) -> bool:
 	return true
 
 
-# 發動一個袋子：裡面的效果與技能依序放；回傳放出了幾個
-# 橘色的袋子規則（SkillDefs 的 bag_rule）：血契 = 這一袋扣生命、傷害 ×power（在 BagDefs.power_of）；回響 = 放完 delay 秒後技能再放一次；
+# 技能銜接（許家慶 2026-11-06，mockups/技能銜接.html 方案 1 + 2 + 3）：同一袋由左到右一招一招放，間隔 CHAIN_GAP 秒；
+#   每一招從前一招最後打到的地方放（打到的目標裡離這一招中心最遠的那隻）；前一招放不出來（魔力不夠、條件不符）或打空就停，後面的不放、不扣魔
+#   「打空」只看當下就知道結果的招式（INSTANT_HIT 的技能、有打出傷害的效果）；投射物、晚一點落下的、增益、召喚、衝刺放出來就算成功，下一招沿用原本的目標
+const CHAIN_GAP := 0.15
+const INSTANT_HIT: Array[StringName] = [&"nova", &"cone", &"chain", &"ambush", &"line", &"reaver", &"grudge"]
+
+
+# 發動一個袋子：第一招這一步放，後面的照技能銜接排進 World.delayed；回傳這一步放出了幾個（含共鳴帶動的）
+# 橘色的袋子規則（SkillDefs 的 bag_rule）：血契 = 這一袋扣生命、傷害 ×power（在 BagDefs.power_of）；回響 = 整串放完 delay 秒後技能再放一次；
 # 共鳴 = 同一邊緊鄰的袋子也發動一次（resonating = 被帶動的，不再帶動別的）
 static func run_bag(world: World, p: Player, b: Dictionary, target: Entity, damage: float, resonating := false) -> int:
-	var count := 0
-	var mul := BagDefs.power_of(b)   # 大小倍率 × 種類與邊的倍率（× 血契）
-	var pact := BagDefs.has_rule(b, &"blood_pact")
-	var was_paying := p.pay_with_hp
-	p.pay_with_hp = pact
-	var fired_skills: Array[Dictionary] = []
 	var fired := StringName("fired:" + String(b.kind))
 	p.trigger_moments[fired] = p.trigger_moments.get(fired, 0) + 1   # 發動了幾次（檢查與自動試玩用）
-	var scaled: bool = mul != 1.0
+	var steps: Array[Dictionary] = []
 	for e in contents(b):
-		match ItemDefs.role_of(e.id):
-			ItemDefs.ROLE_EFFECT:
-				var short := not p.has_mana(effect_cost(b, e))
-				# 效果用武器基礎傷害算的部分（飛刀、落雷…）靠攻擊力屬性乘上倍率；技能的倍率在 ActiveSlots.cast_context（原本兩邊都乘，技能吃到兩次）
-				if scaled:
-					p.set_stat_source(&"bag_mul", [[&"damage", Stats.MUL, mul]])
-				var ok := run_effect(world, p, e.id, target, damage * mul, ActiveSlots.mod_ids_on(b, e), mul)
-				if ok:
-					count += 1
-				if scaled:
-					p.remove_stat_source(&"bag_mul")
-				_log_cast(p, e.id, ok, short)
-			ItemDefs.ROLE_SKILL:
-				if SkillDefs.SKILLS[e.id].behavior == &"bag_rule":
-					continue
-				var slot := ActiveSlots.slot_of(p, b, e)
-				var short: bool = slot.def.has("mana") and not p.has_mana(ActiveSlots.mana_cost(p, slot))
-				var ok := cast_skill(p, b, e, target)
-				if ok:
-					count += 1
-					fired_skills.append(e)
-				_log_cast(p, e.id, ok, short)
-	if BagDefs.has_rule(b, &"echo") and not fired_skills.is_empty():
-		_echo(p, b, fired_skills, target)
+		var role := ItemDefs.role_of(e.id)
+		if role == ItemDefs.ROLE_EFFECT or (role == ItemDefs.ROLE_SKILL and SkillDefs.SKILLS[e.id].behavior != &"bag_rule"):
+			steps.append(e)
+	var chain := {"b": b, "steps": steps, "i": 0, "target_id": target.id if target != null else 0, "damage": damage, "fired": [] as Array[Dictionary]}
+	var count := _chain_step(world, p, chain)
 	if BagDefs.has_rule(b, &"resonance") and not resonating:
 		count += _resonate(world, p, b, target, damage)
-	p.pay_with_hp = was_paying
 	return count
+
+
+# 放這一串的下一招；成功而且還有下一招就 CHAIN_GAP 秒後再來；回傳這一次放出了幾個（0 或 1）
+static func _chain_step(world: World, p: Player, chain: Dictionary) -> int:
+	var b: Dictionary = chain.b
+	var steps: Array[Dictionary] = chain.steps
+	if chain.i >= steps.size():
+		_chain_end(p, chain)
+		return 0
+	var e: Dictionary = steps[chain.i]
+	chain.i += 1
+	if not b.entries.has(e):   # 中間被拿出袋子了：跳過、照樣往下
+		return _chain_step(world, p, chain)
+	var target := world.entities.get(chain.target_id) as Entity
+	if target != null and target.is_removed:
+		target = null
+	var was_paying := p.pay_with_hp
+	p.pay_with_hp = BagDefs.has_rule(b, &"blood_pact")
+	Combat.begin_record()
+	var result := _run_entry(world, p, b, e, target, chain.damage)
+	var hits := Combat.end_record()
+	p.pay_with_hp = was_paying
+	if not result.ok or (result.instant and hits.is_empty()):
+		_chain_end(p, chain)   # 斷了：後面的不放
+		return 1 if result.ok else 0
+	if result.skill:
+		chain.fired.append(e)
+	if not hits.is_empty():   # 接力：下一招從這一招打到的、離中心最遠的那隻放
+		var center: Vector2 = target.pos if target != null else p.pos
+		var far: Entity = hits[0]
+		for h in hits:
+			if h.pos.distance_squared_to(center) > far.pos.distance_squared_to(center):
+				far = h
+		chain.target_id = far.id
+	if chain.i >= steps.size():
+		_chain_end(p, chain)
+	else:
+		SkillBehaviors.later(p, CHAIN_GAP, func() -> void: _chain_step(world, p, chain))
+	return 1
+
+
+# 一串放完（或斷了）：有回響就把放出的技能再放一次
+static func _chain_end(p: Player, chain: Dictionary) -> void:
+	var fired: Array[Dictionary] = chain.fired
+	if BagDefs.has_rule(chain.b, &"echo") and not fired.is_empty():
+		_echo(p, chain.b, fired, p.world.entities.get(chain.target_id) as Entity)
+	chain.fired = [] as Array[Dictionary]
+
+
+# 放袋子裡的一個東西（效果或技能）：{ ok 放出來了, instant 當下就知道有沒有打到（打空算斷）, skill 是技能 }
+static func _run_entry(world: World, p: Player, b: Dictionary, e: Dictionary, target: Entity, damage: float) -> Dictionary:
+	var mul := BagDefs.power_of(b)   # 大小倍率 × 種類與邊的倍率（× 血契）
+	if ItemDefs.role_of(e.id) == ItemDefs.ROLE_EFFECT:
+		var short := not p.has_mana(effect_cost(b, e))
+		# 效果用武器基礎傷害算的部分（飛刀、落雷…）靠攻擊力屬性乘上倍率；技能的倍率在 ActiveSlots.cast_context（原本兩邊都乘，技能吃到兩次）
+		if mul != 1.0:
+			p.set_stat_source(&"bag_mul", [[&"damage", Stats.MUL, mul]])
+		var ok := run_effect(world, p, e.id, target, damage * mul, ActiveSlots.mod_ids_on(b, e), mul)
+		if mul != 1.0:
+			p.remove_stat_source(&"bag_mul")
+		_log_cast(p, e.id, ok, short)
+		return {"ok": ok, "instant": false, "skill": false}
+	var slot := ActiveSlots.slot_of(p, b, e)
+	var short: bool = slot.def.has("mana") and not p.has_mana(ActiveSlots.mana_cost(p, slot))
+	var ok := cast_skill(p, b, e, target)
+	_log_cast(p, e.id, ok, short)
+	return {"ok": ok, "instant": slot.def.has("damage_pct") and INSTANT_HIT.has(slot.def.behavior), "skill": true}
 
 
 # 回響：delay 秒後把這一袋剛放出的技能再放一次（傷害 × mul、耗魔 × mana_share；那時放不出來的跳過）

@@ -2076,7 +2076,7 @@ static func check_bag_triggers() -> String:
 	Combat.apply_damage(w, p, c, {"damage": 5.0, "attack": &"skill"})
 	if c.chill_stacks != chill0:
 		return "道具效果、技能的傷害不應觸發命中袋"
-	# 按鍵袋：數字鍵把裡面的效果與技能一起放
+	# 按鍵袋：數字鍵把裡面的東西由左到右一招接一招放（技能銜接，BagTriggers.CHAIN_GAP 秒一招）
 	var w2 := _new_world()
 	var p2 := _player(w2)
 	var key: Dictionary = p2.loadout.key_bags()[0]
@@ -2085,8 +2085,11 @@ static func check_bag_triggers() -> String:
 	var d := _item_dummy(w2, Vector2(0, 1.5), 100000.0)
 	var hp0 := d.hp
 	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
-	if d.hp >= hp0 or d.chill_stacks <= 0:
-		return "按 1 應同時放旋風斬與寒氣：扣血 %.1f、冰冷 %d" % [hp0 - d.hp, d.chill_stacks]
+	var whirl_first: bool = BagTriggers.contents(key)[0].id == &"whirlwind"
+	var chill_now := d.chill_stacks
+	_run(w2, _cmd(Vector2.ZERO), ceili(BagTriggers.CHAIN_GAP / DT) + 1)
+	if d.hp >= hp0 or d.chill_stacks <= 0 or (whirl_first and chill_now > 0):
+		return "按 1 應先放旋風斬、%.2f 秒後接寒氣：扣血 %.1f、當下冰冷 %d、之後 %d" % [BagTriggers.CHAIN_GAP, hp0 - d.hp, chill_now, d.chill_stacks]
 	# 觸發袋裡的技能：左邊的命中袋放旋風斬，普攻打中時自動放
 	var w3 := _new_world()
 	var p3 := _player(w3)
@@ -2386,4 +2389,56 @@ static func check_merged_bag() -> String:
 	if p2.loadout.merged or not p2.loadout.locked_spots().is_empty():
 		return "袋子分開的模式不應有鎖格"
 	_note("背包合併：全部 %d 格、開局開 %d 格" % [total, open_want])
+	return ""
+
+
+# 技能銜接（mockups/技能銜接.html 方案 1 + 2 + 3）：同一袋一招接一招放（CHAIN_GAP 秒）；
+# 後一招從前一招打到的、離中心最遠的那隻放（隕石落在旋風斬打到的怪身上，不是準星）；當下就知道結果的招式打空就停，後面的不放、不扣魔
+static func check_bag_chain() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	p.pos = Vector2.ZERO
+	var key: Dictionary = p.loadout.key_bags()[0]
+	_put(p, key, &"whirlwind")
+	_put(p, key, &"meteor")
+	if BagTriggers.contents(key)[0].id != &"whirlwind":
+		return "按鍵袋第一格應是旋風斬：%s" % [BagTriggers.contents(key)]
+	var near := _item_dummy(w, Vector2(2.2, 0.0), 100000.0)
+	p.aim_point = Vector2(0, 8)
+	p.mana = p.max_mana()
+	w.events.clear()
+	BagTriggers.run_bag(w, p, key, null, 0.0)
+	if p.cast_log.get(&"whirlwind", [0])[0] != 1 or p.cast_log.has(&"meteor"):
+		return "第一步應只放旋風斬：%s" % [p.cast_log]
+	var tele: Array[Dictionary] = []
+	for i in ceili(BagTriggers.CHAIN_GAP / DT) + 1:
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), 1)
+		for ev: Dictionary in w.events:
+			if ev.name == "fx:telegraph":
+				tele.append(ev)
+	if p.cast_log.get(&"meteor", [0])[0] != 1 or tele.is_empty() or (tele[0].pos as Vector2).distance_to(near.pos) > 0.5:
+		return "%.2f 秒後隕石應落在旋風斬打到的怪身上 %s：放 %s、落點 %s" % [BagTriggers.CHAIN_GAP, near.pos, p.cast_log.get(&"meteor", []), tele.map(func(e: Dictionary) -> Vector2: return e.pos)]
+	# 打空就停：旋風斬身邊沒有怪，隕石不放、不扣魔
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	var key2: Dictionary = p2.loadout.key_bags()[0]
+	_put(p2, key2, &"whirlwind")
+	_put(p2, key2, &"meteor")
+	_item_dummy(w2, Vector2(0, 10), 100000.0)
+	p2.mana = p2.max_mana()
+	BagTriggers.run_bag(w2, p2, key2, null, 0.0)
+	var after_first := p2.mana
+	_run(w2, _cmd(Vector2.ZERO), ceili(BagTriggers.CHAIN_GAP / DT) + 2)
+	if p2.cast_log.has(&"meteor") or p2.mana < after_first:
+		return "旋風斬打空時隕石不應放、不扣魔：%s、魔 %.1f → %.1f" % [p2.cast_log, after_first, p2.mana]
+	# 順序照畫面左上 → 右下：左邊的袋子在畫面上是轉過的（袋子的 y 往外 = 畫面往左），同一列最左邊（最外側）的先放
+	var left := BagDefs.make(&"t_left", &"hit")
+	left.side = &"left"
+	left.offset = 0
+	Inventory.for_bag(left).add(&"a", &"whirlwind", Vector2i(0, 0), 0)   # 盤上 (-1, 0)
+	Inventory.for_bag(left).add(&"b", &"meteor", Vector2i(0, 1), 0)      # 盤上 (-2, 0)：同一列、比較左
+	Inventory.for_bag(left).add(&"c", &"frost_nova", Vector2i(1, 0), 0)  # 盤上 (-1, 1)：下一列
+	var order := BagTriggers.contents(left).map(func(e: Dictionary) -> StringName: return e.uid)
+	if order != [&"b", &"a", &"c"]:
+		return "左邊袋子應照畫面左上 → 右下放（b、a、c）：%s" % [order]
 	return ""

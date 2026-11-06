@@ -71,7 +71,26 @@ static func apply_damage(world: World, source: Entity, target: Entity, hit: Dict
 	world.event_actor = 0
 	var landed := _apply_damage(world, source, target, hit)
 	world.event_actor = actor
+	if landed and recording:
+		hit_record.append(target)
 	return landed
+
+
+# 記下這段期間實際打到的目標（BagTriggers 的技能銜接：前一招打到誰、最後打到哪一隻）；begin_record / end_record 包住
+static var recording := false
+static var hit_record: Array[Entity] = []
+
+
+static func begin_record() -> void:
+	recording = true
+	hit_record.clear()
+
+
+static func end_record() -> Array[Entity]:
+	recording = false
+	var out := hit_record.duplicate()
+	hit_record.clear()
+	return out
 
 
 # 客戶端預測自己的攻擊打中（v0.38.0）：只發 hit:predicted 給畫面層先播火花、音效、閃白，不扣血；

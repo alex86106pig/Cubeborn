@@ -599,6 +599,7 @@ static func check_net_items() -> String:
 	prey.stats.set_base(&"max_hp", 1.0)
 	prey.hp = 1.0
 	Combat.apply_damage(hw, hp1, prey, {"damage": 20.0, "attack": &"primary"})
+	idle.call(ceili(BagTriggers.CHAIN_GAP / DT) + 1)   # 同一袋一招接一招放（技能銜接）：第二個效果晚一招的間隔
 	var wisps := hw.projectiles.filter(func(e: Entity) -> bool: return (e as Projectile).homing > 0.0)
 	if hw.allies.size() != 1 or wisps.size() != 1:
 		return "房主擊殺應召喚 1 隻僕從、放 1 顆鬼火：%d / %d" % [hw.allies.size(), wisps.size()]
