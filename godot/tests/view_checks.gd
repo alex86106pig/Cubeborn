@@ -265,24 +265,30 @@ static func _check_test_panel(hud: Variant) -> String:
 		return (tp.pages[t] as ScrollContainer).get_child(0).find_children("*", "Button", true, false).size()
 	var items := TestPanel._ids_of(&"item").size()
 	var skills := TestPanel._ids_of(&"skill").size()
-	if count.call(&"item") != items or count.call(&"skill") != skills or count.call(&"enemy") != Practice.enemy_types().size():
-		return "道具 / 技能 / 怪物按鈕應有 %d / %d / %d 顆，實際 %d / %d / %d" % [items, skills, Practice.enemy_types().size(), count.call(&"item"), count.call(&"skill"), count.call(&"enemy")]
+	var enemies := Practice.enemy_types().size() + MonsterRarityDefs.RARITIES.size()   # 怪物分頁另有稀有度按鈕
+	if count.call(&"item") != items or count.call(&"skill") != skills or count.call(&"enemy") != enemies:
+		return "道具 / 技能 / 怪物按鈕應有 %d / %d / %d 顆，實際 %d / %d / %d" % [items, skills, enemies, count.call(&"item"), count.call(&"skill"), count.call(&"enemy")]
 	var got := []
-	tp.weapon_requested.connect(func(base: StringName, rarity: StringName, affixes: Array[StringName]) -> void: got.append([base, rarity, affixes]))
+	tp.weapon_requested.connect(func(base: StringName, rarity: StringName) -> void: got.append([base, rarity]))
 	tp._pick_base(&"staff")
 	tp._pick_rarity(&"green")
-	var picks: Array[StringName] = []
-	for id: StringName in tp._affix_buttons:
-		if tp._affix_buttons[id].visible and WeaponDropDefs.AFFIXES[id].kind != &"branch" and picks.size() < 2:
-			tp._affix_buttons[id].button_pressed = true
-			picks.append(id)
-	tp._request_weapon()   # 綠色 1 條，選了 2 條：擋下
-	if not got.is_empty() or not tp.note.text.contains("最多 1"):
-		return "綠色選 2 條詞條應擋下並提示，實際送出 %s、提示「%s」" % [got, tp.note.text]
-	tp._affix_buttons[picks[1]].button_pressed = false
 	tp._request_weapon()
-	if got.size() != 1 or got[0][0] != &"staff" or got[0][1] != &"green" or got[0][2] != [picks[0]]:
-		return "放進背包應送出 法杖 / 綠 / %s，實際 %s" % [[picks[0]], got]
+	if got != [[&"staff", &"green"]] or not tp._rarity_buttons.has(WeaponDropDefs.START_RARITY) or "_affix_buttons" in tp:
+		return "放進背包應送出 法杖 / 綠，稀有度有灰色、沒有詞條按鈕：%s" % [got]
+	# 袋子分頁：袋子分開列每種袋子 × 大小；背包合併換成三顆開格按鈕
+	tp.set_bag_mode(false)
+	var bag_buttons: int = tp._bag_page.find_children("*", "Button", true, false).size()
+	tp.set_bag_mode(true)
+	var unlock_buttons: int = tp._bag_page.find_children("*", "Button", true, false).size()
+	tp.set_bag_mode(false)
+	if bag_buttons != BagDefs.BAGS.size() * BagDefs.TIERS.size() or unlock_buttons != 3:
+		return "袋子分頁應有 %d 顆袋子、合併時 3 顆開格：%d / %d" % [BagDefs.BAGS.size() * BagDefs.TIERS.size(), bag_buttons, unlock_buttons]
+	var spawned := []
+	tp.enemy_requested.connect(func(type: StringName, rarity: StringName) -> void: spawned.append([type, rarity]))
+	tp._pick_enemy_rarity(MonsterRarityDefs.MAGIC)
+	tp.enemy_requested.emit(&"grunt", tp.enemy_rarity)
+	if spawned != [[&"grunt", MonsterRarityDefs.MAGIC]]:
+		return "生怪應帶選的稀有度：%s" % [spawned]
 	# 平常收起（只剩分頁與工具列）；點分頁展開、再點同一頁收起
 	tp.set_collapsed(true)
 	if tp._body.visible:

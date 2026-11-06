@@ -1371,20 +1371,53 @@ static func check_training_dummies() -> String:
 	return ""
 
 
-# 武器測試場的測試面板（Practice）：武器照指定的稀有度與詞條、背包滿了掉腳邊；怪物停手時站著不打人、放開後照常打；
-# 死了不結算（World.practice），立即復活滿血滿魔
+# 武器測試場的測試面板（Practice）：規則跟正式遊戲同一套——武器照掉落的規則擲數值（灰色 = 起始武器、數值固定）、
+# 有了的技能升 1 級（同遺物）、袋子照撿到的規則接上、背包合併時開格；生得出魔法 / 稀有怪（照正式的詞條抽）；背包滿了掉腳邊；
+# 怪物停手時站著不打人、放開後照常打；死了不結算（World.practice），立即復活滿血滿魔
 static func check_practice() -> String:
 	var w := _new_world()
 	w.practice = true
 	var p := _player(w)
-	var affixes: Array[StringName] = [Practice.affixes_for(&"purple")[0], Practice.affixes_for(&"purple")[1]]
-	var inst := Practice.make_weapon(w, &"swordShield", &"purple", affixes)
-	if inst.rarity != &"purple" or inst.affixes != affixes or not Practice.give_weapon(w, p, inst):
-		return "做出來的武器應是紫色、詞條 %s 並放進背包：%s" % [affixes, inst]
-	if Practice.affix_error(&"blue", Practice.affixes_for(&"blue").slice(0, 3)) == "" or Practice.affix_error(&"blue", affixes.slice(0, 1)) != "":
-		return "藍色 3 條應擋下、1 條可以"
+	var inst := Practice.make_weapon(w, &"swordShield", &"purple")
+	if inst.rarity != &"purple" or not inst.has("roll") or not Practice.give_weapon(w, p, inst):
+		return "做出來的紫色武器應照掉落的規則擲數值並放進背包：%s" % [inst]
+	var gray := Practice.make_weapon(w, &"swordShield", WeaponDropDefs.START_RARITY)
+	if gray.has("roll") or WeaponDropDefs.mul(gray, "damage") != 1.0:
+		return "灰色應是起始武器、數值固定：%s" % [gray]
+	# 技能：第一次拿到、第二次升 1 級（同遺物）
+	var skill := &"whirlwind"
+	Practice.give_item(w, p, skill)
+	var note := Practice.give_item(w, p, skill)
+	if p.skill_levels.get(skill, 1) != 2 or not note.contains("2 級"):
+		return "技能拿第二次應升到 2 級：%d、「%s」" % [p.skill_levels.get(skill, 1), note]
+	# 袋子（袋子分開）：照撿到的規則接上
+	var before := p.loadout.bags.size()
+	Practice.give_bag(w, p, &"kill", &"strong")
+	if p.loadout.bags.size() != before + 1 or not p.loadout.bags.any(func(b: Dictionary) -> bool: return b.kind == &"kill" and b.tier == &"strong"):
+		return "強化擊殺袋應接上"
+	if Practice.unlock(w, p, &"random") != "袋子分開的模式沒有鎖格":
+		return "袋子分開的模式不應開格"
+	# 背包合併：沒有袋子、開格三種
+	var mw := LootChecks._merged_world()
+	var mp := _player(mw)
+	mw.practice = true
+	if not Practice.give_bag(mw, mp, &"kill", &"small").contains("沒有袋子") or mp.loadout.bags.size() != BagDefs.MERGED_ZONES.size():
+		return "背包合併不應給袋子"
+	var locked := mp.loadout.locked_spots().size()
+	Practice.unlock(mw, mp, &"random")
+	Practice.unlock(mw, mp, &"pick")
+	if mp.loadout.locked_spots().size() != locked - 1 or mp.loadout.unlock_picks != 1:
+		return "開格：隨機應少 1 格、自選 +1 次"
+	Practice.unlock(mw, mp, &"all")
+	if not mp.loadout.locked_spots().is_empty():
+		return "全部打開後不應有鎖格"
+	# 魔法 / 稀有怪：詞條照正式遊戲抽
+	var rare := Practice.spawn_enemy(w, p, &"grunt", MonsterRarityDefs.RARE)
+	if rare.rarity != MonsterRarityDefs.RARE or rare.affixes.is_empty():
+		return "稀有怪應帶詞條：%s %s" % [rare.rarity, rare.affixes]
+	rare.remove()
 	var given := 0
-	while Practice.give_item(w, p, &"wormwood") and given < 200:
+	while not Practice.give_item(w, p, &"wormwood").contains("腳邊") and given < 200:
 		given += 1
 	if w.pickups.is_empty():
 		return "背包滿了應掉在腳邊（放進 %d 個後）" % given

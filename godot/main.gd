@@ -162,6 +162,7 @@ func restart() -> void:
 	world.bag_mode = BagDefs.MODE_MERGED if hud.settings_panel.values.get("merged_bag", false) else BagDefs.MODE_BAGS
 	if args.bag_mode in [BagDefs.MODE_BAGS, BagDefs.MODE_MERGED]:
 		world.bag_mode = args.bag_mode
+	hud.test_panel.set_bag_mode(world.bag_mode == BagDefs.MODE_MERGED)
 	var seed_value := args.run_seed if args.run_seed >= 0 else randi()
 	world.reset(seed_value, peers)
 	print("seed=%d" % seed_value)
@@ -249,18 +250,23 @@ func _set_practice(on: bool) -> void:
 func _connect_test_panel() -> void:
 	var tp := hud.test_panel
 	tp.class_chosen.connect(_practice_class)
-	tp.weapon_requested.connect(func(base: StringName, rarity: StringName, affixes: Array[StringName]) -> void:
+	tp.weapon_requested.connect(func(base: StringName, rarity: StringName) -> void:
 		_practice(func(me: Player) -> String:
-			var inst := Practice.make_weapon(world, base, rarity, affixes)
+			var inst := Practice.make_weapon(world, base, rarity)
 			var name := WeaponDropDefs.display_name(inst)
 			return ("拿到 " if Practice.give_weapon(world, me, inst) else "背包滿了，放在腳邊：") + name))
 	tp.item_requested.connect(func(id: StringName) -> void:
+		_practice(func(me: Player) -> String: return Practice.give_item(world, me, id)))
+	tp.bag_requested.connect(func(kind: StringName, tier: StringName) -> void:
+		_practice(func(me: Player) -> String: return Practice.give_bag(world, me, kind, tier)))
+	tp.unlock_requested.connect(func(action: StringName) -> void:
+		_practice(func(me: Player) -> String: return Practice.unlock(world, me, action)))
+	tp.bag_mode_toggled.connect(_practice_bag_mode)
+	tp.enemy_requested.connect(func(type: StringName, rarity: StringName) -> void:
 		_practice(func(me: Player) -> String:
-			return ("拿到 " if Practice.give_item(world, me, id) else "背包滿了，放在腳邊：") + ItemDefs.ITEMS[id].name))
-	tp.enemy_requested.connect(func(type: StringName) -> void:
-		_practice(func(me: Player) -> String:
-			Practice.spawn_enemy(world, me, type)
-			return "生出 " + EnemyDefs.def_of(type).get("name", String(type))))
+			var e := Practice.spawn_enemy(world, me, type, rarity)
+			var tag := "" if e == null or e.rarity == MonsterRarityDefs.NORMAL else "（%s）" % MonsterRarityDefs.RARITIES[e.rarity].name
+			return "生出 " + EnemyDefs.def_of(type).get("name", String(type)) + tag))
 	tp.hold_toggled.connect(_toggle_enemies_hold)
 	tp.clear_enemies.connect(func() -> void: _practice(func(_me: Player) -> String:
 		Practice.clear_enemies(world)
@@ -291,6 +297,15 @@ func _practice_class(id: StringName) -> void:
 		world.player_classes[World.HOST_PEER_ID] = id
 	restart()
 	hud.test_panel.set_note("職業：" + (ClassDefs.CLASSES[id].name if id != ClassDefs.NONE else "無職業"))
+
+
+# 測試場換背包模式：照設定頁同一個開關（存檔），重新開始測試場
+func _practice_bag_mode() -> void:
+	if not in_weapon_test:
+		return
+	hud.settings_panel.set_value("merged_bag", not hud.settings_panel.values.get("merged_bag", false))
+	restart()
+	hud.test_panel.set_note("背包：" + ("合併" if world.bag_mode == BagDefs.MODE_MERGED else "袋子分開"))
 
 
 func _toggle_enemies_hold() -> void:

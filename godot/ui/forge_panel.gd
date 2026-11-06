@@ -1,7 +1,8 @@
 # 鍛造祭壇的合成（Build 改版第 8 步，2026-10-30 許家慶決定：兩把各挑一條詞條留下、其他重抽；2026-10-31 使用者要求改成兩格放武器）
 # 站在祭壇旁、背包開著時顯示在背包左邊：兩個武器格 → 結果。放進格子：背包裡拖過來、拿著點格子、對武器按右鍵、把武器拖到另一把上（兩把一起放）；
 # 點格子拿出來。放了一把後背包裡能和它合的武器發亮、其他變暗（InventoryPanel 讀 glow / dims）。
-# 兩把同種、同稀有度、不是橘色才能合：上面寫合成成什麼，兩把各點一條詞條留下，按「合成」送 [OP_MERGE, a, b, 留 a 的, 留 b 的]；結果等權威端
+# 兩把同種、同稀有度、不是橘色才能合：上面寫合成成什麼（數值重擲），按「合成」送 [OP_MERGE, a, b, …]；結果等權威端。
+# 詞條留哪一條的按鈕只有武器帶詞條時才出現（觸發袋改版後武器沒有詞條，平常不會出現）
 # 條件不符時寫原因、按鈕不能按；離開祭壇、背包關掉就清空
 class_name ForgePanel
 extends PanelContainer
@@ -198,13 +199,14 @@ func _update() -> void:
 	_result.visible = ok
 	if ok:
 		var to: Dictionary = ItemDefs.RARITIES[WeaponDropDefs.next_rarity(b.rarity)]
-		_result.text = "→ 合成成%s %s：兩把各點一條詞條留下，其他重抽" % [to.name, ItemDefs.ITEMS[b.base].name]
+		_result.text = "→ 合成成%s %s（數值照掉落的規則重擲）" % [to.name, ItemDefs.ITEMS[b.base].name]
 		_result.add_theme_color_override(&"font_color", to.color)
 	for i in 2:
 		var inst: Dictionary = [a, b][i]
-		_heads[i].visible = ok
-		_heads[i].text = "%s 留哪一條：%s" % [SLOT_NAMES[i], "" if inst.is_empty() or not inst.affixes.is_empty() else "（沒有詞條）"]
-		_rebuild_row(i, inst if ok else {})
+		var has_affixes: bool = ok and not inst.get("affixes", []).is_empty()   # 武器現在沒有詞條（§36）：沒有就不畫「留哪一條」
+		_heads[i].visible = has_affixes
+		_heads[i].text = "%s 留哪一條：" % SLOT_NAMES[i]
+		_rebuild_row(i, inst if has_affixes else {})
 
 
 func _rebuild_row(i: int, inst: Dictionary) -> void:
