@@ -813,8 +813,9 @@ func _draw_bag(font: Font, me: Player, b: Dictionary, keys: Array, focused: bool
 	_draw_skill_marks(font, me, where, b)
 	for e in mods:
 		_draw_entry(font, me, where, e)
+	_draw_mana_marks(font, me, where, b)
 	draw_rect(head, SIDE_COLORS[b.side])
-	_draw_bag_head(font, b, head, keys.find(b) + 1, _bag_mana(me, b))
+	_draw_bag_head(font, b, head, keys.find(b) + 1, _bag_mana(me, b), me.max_mana())
 	var outline: Color = UiKit.ALERT if BagDefs.TIERS[b.tier].has("curse_desc") else SIDE_COLORS[b.side].lightened(0.3)
 	draw_rect(area.merge(head), UiKit.GOLD if focused else outline, false, 3.0 if focused else 1.5)
 	if dragged:
@@ -842,12 +843,46 @@ func _draw_skill_marks(font: Font, me: Player, where: int, b: Dictionary) -> voi
 			draw_string(font, corner + Vector2(0, 14), str(n), HORIZONTAL_ALIGNMENT_CENTER, 12, 14, UiKit.GOLD)
 
 
-# 標題條的字：一句話講什麼時候發動；左右兩邊的直著寫，下面照魔力與倍率
-func _draw_bag_head(font: Font, b: Dictionary, head: Rect2, key_number: int, mana: int) -> void:
+# 滿魔力放一次也輪不到的技能 / 效果（照放的順序累加耗魔，超過最大魔力的那幾個）：蓋紅色、右下角寫「魔」
+func _draw_mana_marks(font: Font, me: Player, where: int, b: Dictionary) -> void:
+	for e in starved_entries(me, b):
+		var rects: Array[Rect2] = []
+		for c in Inventory.cells_of(e.id, e.rot):
+			rects.append(_cell_rect(me, where, e.cell + c))
+		for r in rects:
+			draw_rect(r.grow(-2), Color(UiKit.ALERT, 0.28))
+			draw_rect(r.grow(-2), UiKit.ALERT, false, 2.0)
+		var corner := rects[-1].end - Vector2(17, 6)
+		draw_string(font, corner, "魔", HORIZONTAL_ALIGNMENT_CENTER, 16, 13, UiKit.ALERT)
+
+
+# 袋子裡照放的順序，累加耗魔超過最大魔力的技能 / 效果（滿魔力放一次也放不出來）
+static func starved_entries(me: Player, b: Dictionary) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var total := 0.0
+	var cap := me.max_mana()
+	for e in BagTriggers.contents(b):
+		var cost := 0.0
+		match ItemDefs.role_of(e.id):
+			ItemDefs.ROLE_EFFECT:
+				cost = BagTriggers.effect_cost(b, e)
+			ItemDefs.ROLE_SKILL:
+				cost = ActiveSlots.mana_cost(me, ActiveSlots.slot_of(me, b, e))
+			_:
+				continue
+		total += cost
+		if cost > 0.0 and total > cap + 1e-6:
+			out.append(e)
+	return out
+
+
+# 標題條的字：一句話講什麼時候發動；左右兩邊的直著寫，下面照魔力與倍率（一袋耗魔超過最大魔力時寫紅字）
+func _draw_bag_head(font: Font, b: Dictionary, head: Rect2, key_number: int, mana: int, max_mana: float) -> void:
 	var tail := ""
 	if BagDefs.power_of(b) != 1.0:
 		tail = "×%s" % str(BagDefs.power_of(b))
 	var mana_text := "魔 %d" % mana if mana > 0 else ""
+	var mana_color := UiKit.ALERT.lightened(0.3) if mana > max_mana + 0.5 else Color(1, 1, 1, 0.75)
 	if b.side in [&"top", &"bottom"]:
 		var x := head.position.x + 8
 		var y := head.position.y + 19
@@ -859,7 +894,7 @@ func _draw_bag_head(font: Font, b: Dictionary, head: Rect2, key_number: int, man
 			draw_string(font, Vector2(cap.position.x, y), str(key_number), HORIZONTAL_ALIGNMENT_CENTER, cap.size.x, 14, Color.WHITE)
 		else:
 			draw_string(font, Vector2(x, y), head_text(b) + (" " + tail if tail != "" else ""), HORIZONTAL_ALIGNMENT_LEFT, head.size.x - 60, 15, Color.WHITE)
-		draw_string(font, Vector2(head.position.x, y), mana_text, HORIZONTAL_ALIGNMENT_RIGHT, head.size.x - 7, 12, Color(1, 1, 1, 0.75))
+		draw_string(font, Vector2(head.position.x, y), mana_text, HORIZONTAL_ALIGNMENT_RIGHT, head.size.x - 7, 12, mana_color)
 		return
 	var cy := head.position.y + 20
 	for ch in head_text(b):
@@ -867,8 +902,8 @@ func _draw_bag_head(font: Font, b: Dictionary, head: Rect2, key_number: int, man
 		cy += 17.0
 	var bottom := head.end.y - 7
 	if mana > 0:
-		draw_string(font, Vector2(head.position.x, bottom), str(mana), HORIZONTAL_ALIGNMENT_CENTER, head.size.x, 12, Color(1, 1, 1, 0.75))
-		draw_string(font, Vector2(head.position.x, bottom - 14), "魔", HORIZONTAL_ALIGNMENT_CENTER, head.size.x, 12, Color(1, 1, 1, 0.75))
+		draw_string(font, Vector2(head.position.x, bottom), str(mana), HORIZONTAL_ALIGNMENT_CENTER, head.size.x, 12, mana_color)
+		draw_string(font, Vector2(head.position.x, bottom - 14), "魔", HORIZONTAL_ALIGNMENT_CENTER, head.size.x, 12, mana_color)
 		bottom -= 30
 	if tail != "":
 		draw_string(font, Vector2(head.position.x, bottom), tail, HORIZONTAL_ALIGNMENT_CENTER, head.size.x, 11, UiKit.GOLD)
@@ -971,7 +1006,7 @@ func _draw_drag(font: Font, me: Player) -> void:
 				var head := _bag_head_rect(probe)
 				draw_rect(head, Color(0.11, 0.23, 0.16))
 				draw_rect(head, OK_TINT, false, 2.0)
-				_draw_bag_head(font, probe, head, me.loadout.key_bags().size() + 1, 0)
+				_draw_bag_head(font, probe, head, me.loadout.key_bags().size() + 1, 0, me.max_mana())
 			return
 	var t := _target_at(me, local)
 	if t.is_empty() or _drag.has("bag") and t.where != Loadout.BAG:   # 不在格子上：東西跟著滑鼠（抓住的那一格在滑鼠下）
@@ -1203,6 +1238,9 @@ static func bag_info(b: Dictionary, me: Player = null) -> Dictionary:
 	var size_line := "%d × %d 格" % [b.length, b.depth]
 	if me != null and not b.entries.is_empty():
 		size_line += " · 每次耗魔 %d" % _bag_mana(me, b)
+		var starved := starved_entries(me, b).size()
+		if starved > 0:
+			size_line += "（最大魔力 %d，滿魔也有 %d 個放不出來）" % [roundi(me.max_mana()), starved]
 	var icd: float = BagDefs.BAGS[b.kind].get("icd", 0.0)
 	if icd > 0.0:
 		size_line += " · 同一袋 %s 秒最多一次" % str(icd)

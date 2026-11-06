@@ -62,6 +62,7 @@ var interval_timers: Dictionary = {}   # 道具 uid -> 下次「每隔固定秒�
 var bag_counts: Dictionary = {}        # 袋子 uid -> 左鍵命中 / 出手累積幾下（滿武器的 trigger_every 發動，BagTriggers）；只在權威端
 var bag_count_tick: Dictionary = {}    # 袋子 uid -> 上次累積是第幾步（同一步打到好幾隻只算一下）
 var trigger_moments: Dictionary = {}   # 「種類:按鍵」-> 時機發生幾次（不管有沒有袋子、同一步只算一次；自動試玩與平衡表量觸發頻率用，不同步）
+var cast_log: Dictionary = {}          # 袋子裡的技能 / 效果 id -> [放出幾次, 魔力不夠跳過幾次]（BagTriggers.run_bag；遊玩紀錄用，只在權威端、不同步）
 var shield := 0.0                      # 護盾剩多少（G4 骨製護盾，房主算；客戶端看快照的 anim.shield）
 var shield_delay := 0.0                # 還要幾秒沒受傷才回充
 var guardian_uses := 0                 # 這一層用掉幾次守護亡靈（G5；每個道具每層一次）

@@ -75,17 +75,32 @@ static func run_bag(world: World, p: Player, b: Dictionary, target: Entity, dama
 	for e in contents(b):
 		match ItemDefs.role_of(e.id):
 			ItemDefs.ROLE_EFFECT:
+				var short := not p.has_mana(effect_cost(b, e))
 				# 效果用武器基礎傷害算的部分（飛刀、落雷…）靠攻擊力屬性乘上倍率；技能的倍率在 ActiveSlots.cast_context（原本兩邊都乘，技能吃到兩次）
 				if scaled:
 					p.set_stat_source(&"bag_mul", [[&"damage", Stats.MUL, mul]])
-				if run_effect(world, p, e.id, target, damage * mul, ActiveSlots.mod_ids_on(b, e), mul):
+				var ok := run_effect(world, p, e.id, target, damage * mul, ActiveSlots.mod_ids_on(b, e), mul)
+				if ok:
 					count += 1
 				if scaled:
 					p.remove_stat_source(&"bag_mul")
+				_log_cast(p, e.id, ok, short)
 			ItemDefs.ROLE_SKILL:
-				if cast_skill(p, b, e, target):
+				var slot := ActiveSlots.slot_of(p, b, e)
+				var short: bool = slot.def.has("mana") and not p.has_mana(ActiveSlots.mana_cost(p, slot))
+				var ok := cast_skill(p, b, e, target)
+				if ok:
 					count += 1
+				_log_cast(p, e.id, ok, short)
 	return count
+
+
+# 遊玩紀錄：放出幾次、魔力不夠跳過幾次（其他原因沒放的，例如沒有目標、次數用完，不記）
+static func _log_cast(p: Player, id: StringName, ok: bool, short: bool) -> void:
+	if not ok and not short:
+		return
+	var rec: Array = p.cast_log.get_or_add(id, [0, 0])
+	rec[0 if ok else 1] += 1
 
 
 # 效果的道具資料那一筆（時機與機率不看）：觸發道具是 on / do 那筆；數值改成的效果（蝙蝠牙）是那筆屬性

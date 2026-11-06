@@ -807,6 +807,43 @@ static func check_run_log_dealt() -> String:
 	return ""
 
 
+# 遊玩紀錄的魔力與袋子：袋子裡的技能放出 / 魔力不夠各記一次、魔力見底的累計秒數、回報有袋子與魔力那兩行；
+# 背包的「滿魔也放不出來」：照放的順序累加耗魔超過最大魔力的才算
+static func check_run_log_mana() -> String:
+	var w := _new_world(5)
+	var p := _player(w)
+	p.loadout.equip_new(p, &"swordShield")
+	SkillChecks._targets(w)
+	if p.loadout.find_item(p.add_item(&"whirlwind")).get("where", -9) != 0:
+		return "旋風斬應放進按鍵袋"
+	var bag: Dictionary = p.loadout.key_bags()[0]
+	p.mana = p.max_mana()
+	BagTriggers.run_bag(w, p, bag, null, 0.0)
+	p.mana = 0.0
+	BagTriggers.run_bag(w, p, bag, null, 0.0)
+	var rec: Array = p.cast_log.get(&"whirlwind", [])
+	if rec != [1, 1]:
+		return "旋風斬應記放出 1、魔力不夠 1：%s" % [rec]
+	var rl := RunLog.new()
+	rl.me_id = p.id
+	for i in 31:
+		rl.track(w, i * 0.1)
+	if absf(rl.mana_low_time - 3.0) > 0.05 or rl.mana_low_first != 0.0:
+		return "魔力 0 追 3 秒應記見底 3 秒、第一次 0:00：%.2f / %.2f" % [rl.mana_low_time, rl.mana_low_first]
+	var text := rl.report_text(w)
+	for want in ["袋子：按鍵（%s）" % ItemDefs.ITEMS.whirlwind.name, "魔力：最大 %d" % roundi(p.max_mana()), "%s 1 / 1" % ItemDefs.ITEMS.whirlwind.name]:
+		if not text.contains(want):
+			return "回報缺「%s」：\n%s" % [want, text]
+	if not InventoryPanel.starved_entries(p, bag).is_empty():
+		return "最大魔力放得下旋風斬時不應標放不出來"
+	p.set_stat_source(&"test_low", [[&"max_mana", Stats.MUL, 0.01]])
+	var starved := InventoryPanel.starved_entries(p, bag)
+	p.remove_stat_source(&"test_low")
+	if starved.size() != 1 or starved[0].id != &"whirlwind":
+		return "最大魔力比旋風斬耗魔少時應標它放不出來：%s" % [starved]
+	return ""
+
+
 # 遊玩紀錄的連線卡住時間點（另起一行）；客戶端換小關的事件比鏡像先到時，等鏡像換好才記那一關（地形不是上一關的）
 static func check_run_log_net() -> String:
 	var nt := RunLog.net_text({"role": "客戶端", "players": 2, "rtt_ms": [80], "snapshot_gap_max_ms": 1383,

@@ -43,6 +43,10 @@ var weapons_picked := 0      # 自己撿起殺怪掉的武器幾把
 var bag_full_at := -1.0      # 第一次有東西撿不下的時間（秒，-1 = 沒有）
 var weapon_since := 0.0      # 現在的主手武器幾秒時換上
 var _weapon_uid := ""
+const MANA_LOW := 0.1        # 魔力低於最大值的這個比例算「見底」
+var mana_low_time := 0.0     # 這局魔力見底的累計秒數（每幀看本機玩家的魔力，客戶端用快照的）
+var mana_low_first := -1.0   # 第一次見底是第幾秒（-1 = 沒有）
+var _last_track := -1.0
 var _dropped := {}           # 殺怪掉的武器 uid（撿起時才算進 weapons_picked，開場的武器不算）
 var _visible_since := {}     # 身邊的怪 id → 從幾秒開始連續看得到（看不到就移除）
 var _pending_floor := {}     # 客戶端：已收到換層 / 換小關事件、鏡像還沒換好（floor、stage）
@@ -78,6 +82,9 @@ func reset() -> void:
 	bag_full_at = -1.0
 	weapon_since = 0.0
 	_weapon_uid = ""
+	mana_low_time = 0.0
+	mana_low_first = -1.0
+	_last_track = -1.0
 	_dropped.clear()
 	_visible_since.clear()
 	_pending_floor = {}
@@ -140,6 +147,12 @@ func track(world: World, now: float) -> void:
 	if uid != _weapon_uid:
 		_weapon_uid = uid
 		weapon_since = now
+	var dt := now - _last_track if _last_track >= 0.0 else 0.0
+	_last_track = now
+	if not me.is_dead and not me.is_downed and me.max_mana() > 0.0 and me.mana < me.max_mana() * MANA_LOW:
+		mana_low_time += maxf(0.0, dt)
+		if mana_low_first < 0.0:
+			mana_low_first = now
 	var seen := {}
 	for e: Entity in world.enemies:
 		if e.is_dead or e.pos.distance_squared_to(me.pos) > TRACK_RANGE * TRACK_RANGE:
@@ -288,6 +301,8 @@ func report_text(world: World) -> String:
 			items.append(ItemDefs.ITEMS[it.id].name)
 		lines.append("武器：%s；道具：%s；靈魂 %d；本局金幣 %d" % [WeaponDropDefs.display_name(inst) if not inst.is_empty() else me.weapon.name,
 			"、".join(PackedStringArray(items)) if not items.is_empty() else "無", world.souls, world.run_coins])
+		lines.append(bags_text(me))
+		lines.append(mana_text(me, world.is_authority))
 	lines.append_array(summary_text().split("
 "))
 	if frames > 0:
@@ -305,6 +320,35 @@ func report_text(world: World) -> String:
 		lines.append(net_text(n))
 	return "
 ".join(lines)
+
+
+# 「袋子：左鍵打中時（旋風斬、雷鳴符文）· 按鍵 1（冰霜新星）…」：每個接著的袋子和裡面的技能 / 效果
+static func bags_text(me: Player) -> String:
+	var parts: Array[String] = []
+	for b in me.loadout.bags:
+		var names: Array[String] = []
+		for e in BagTriggers.contents(b):
+			if ItemDefs.role_of(e.id) in [ItemDefs.ROLE_SKILL, ItemDefs.ROLE_EFFECT]:
+				names.append(String(ItemDefs.ITEMS[e.id].name))
+		if not names.is_empty():
+			parts.append("%s（%s）" % [InventoryPanel.head_text(b), "、".join(PackedStringArray(names))])
+	return "袋子：" + (" · ".join(PackedStringArray(parts)) if not parts.is_empty() else "沒有放技能或效果")
+
+
+# 「魔力：最大 120 · 見底（低於 10%）共 1:23，第一次 2:05；放出 / 魔力不夠：旋風斬 40 / 12 …」；放出次數只有房主與單機記得到
+func mana_text(me: Player, is_authority: bool) -> String:
+	var low := "沒有見底過" if mana_low_first < 0.0 else "見底（低於 %d%%）共 %s，第一次 %s" % [roundi(MANA_LOW * 100.0), UiKit.format_time(mana_low_time), UiKit.format_time(mana_low_first)]
+	var text := "魔力：最大 %d · %s" % [roundi(me.max_mana()), low]
+	if not is_authority:
+		return text + "（放出次數只有房主看得到）"
+	var ids := me.cast_log.keys()
+	ids.sort_custom(func(a: StringName, b: StringName) -> bool: return me.cast_log[a][0] > me.cast_log[b][0])
+	var parts: Array[String] = []
+	for id: StringName in ids:
+		parts.append("%s %d / %d" % [ItemDefs.ITEMS[id].name, me.cast_log[id][0], me.cast_log[id][1]])
+	if not parts.is_empty():
+		text += "；放出 / 魔力不夠：" + "、".join(PackedStringArray(parts))
+	return text
 
 
 static func net_text(n: Dictionary) -> String:
