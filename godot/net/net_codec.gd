@@ -21,14 +21,14 @@ const ENEMY_KINDS: Array[StringName] = [&"grunt", &"archer", &"boss", &"minion",
 const ANIM_KEYS: Array[String] = [
 	"loco", "loco_time", "action", "action_time", "behavior", "phase", "k", "swing_dir", "is_finisher",
 	"trail_color", "airborne", "blocking", "parry", "vz", "revive", "stunned",
-	"state", "time", "enraged", "phase_time", "origin", "torch_stance", "burning", "holding", "buried", "grabbed",
+	"state", "time", "enraged", "phase_time", "origin", "burning", "buried", "grabbed",
 	"shield", "running", "burst", "spoke", "form", "burn_stacks", "chill", "staggered", "coffin", "burrowed", "knocked",
 	"size",
 ]
 # 玩家動畫欄位的預設值：和預設值相同的欄位不送（大部分時間只剩移動層、動作層的名稱與秒數），收到時補回
 const PLAYER_ANIM_DEFAULTS := {
 	"behavior": &"", "phase": &"", "k": 0.0, "swing_dir": 1, "is_finisher": false, "trail_color": null,
-	"airborne": false, "blocking": false, "parry": 0.0, "vz": 0.0, "revive": 0.0, "stunned": false, "grabbed": false, "torch_stance": false, "holding": false,
+	"airborne": false, "blocking": false, "parry": 0.0, "vz": 0.0, "revive": 0.0, "stunned": false, "grabbed": false,
 	"shield": 0.0, "running": false, "knocked": 0.0, "buried": false,
 }
 # 數值欄位 E_X ~ E_MAX_HP 用 float32；E_VX ~ E_INVULN 只給別人的實體外推與閃白，用 half（16 位元）

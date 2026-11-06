@@ -261,20 +261,6 @@ static func imprint_mul(inst: Dictionary, e: Dictionary) -> float:
 	return 1.0
 
 
-# 武器自帶的技能（WeaponDefs 的 slot_skill，火把的插火把）：出廠就鑲在第一個寶石座；之後可以拿下來
-static func add_builtin_skill(inst: Dictionary) -> Dictionary:
-	var w: Dictionary = WeaponDefs.WEAPONS[ItemDefs.ITEMS[inst.base].weapon]
-	if not w.has("slot_skill"):
-		return inst
-	var cells := WeaponDefs.grid_cells(ItemDefs.ITEMS[inst.base].weapon)
-	var gems: Array = cells.keys().filter(func(c: Vector2i) -> bool: return cells[c] == "G")
-	gems.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y or (a.y == b.y and a.x < b.x))
-	if not gems.is_empty():
-		var sockets: Array[Dictionary] = [{"uid": StringName("%s_skill" % inst.uid), "id": w.slot_skill, "cell": gems[0], "rot": 0}]
-		inst["sockets"] = sockets
-	return inst
-
-
 # 武器的基礎數值（介面顯示用的實際數字）：攻擊力 = 普攻傷害、攻速 = 每秒普攻次數、範圍 = 揮砍距離或魔彈射程、最大魔力、回魔，
 # 都乘上這把的倍率（mul）；只能當副手的（盾）沒有普攻，回傳 {}
 static func base_stats(inst: Dictionary) -> Dictionary:
@@ -335,7 +321,7 @@ static func to_array(inst: Dictionary) -> Array:
 	for e: Dictionary in inst.get("sockets", []):
 		sockets.append([String(e.uid), String(e.id), e.cell.x, e.cell.y, e.rot])
 	var roll: Dictionary = inst.get("roll", {})
-	var tail := [inst.get("slot_charges", -1), sockets,
+	var tail := [-1, sockets,   # 第 4 欄原本是插火把的次數（許家慶 2026-11-06 拿掉），位置保留
 		inst.get("imprints", []).map(func(im: Dictionary) -> Array: return [String(im.bond), im.cell.x, im.cell.y]),
 		inst.get("bags", []).map(BagDefs.to_array),
 		[] if roll.is_empty() else ROLL_KEYS.map(func(k: String) -> float: return roll[k])]
@@ -353,8 +339,6 @@ static func from_array(a: Array) -> Dictionary:
 	for s: String in a[3]:
 		affixes.append(StringName(s))
 	var inst := {"uid": StringName(a[0]), "base": StringName(a[1]), "rarity": StringName(a[2]), "affixes": affixes}
-	if a.size() > 4 and int(a[4]) >= 0:
-		inst["slot_charges"] = int(a[4])
 	if a.size() > 5 and not (a[5] as Array).is_empty():
 		var sockets: Array[Dictionary] = []
 		for e: Array in a[5]:
@@ -375,19 +359,6 @@ static func from_array(a: Array) -> Dictionary:
 	return inst
 
 
-# 次數記在武器上的技能（插火把，weapon_charges）還剩幾次：記在鑲著它的武器實例的 slot_charges，沒有就是滿的；沒鑲這種技能回傳 -1
-static func slot_charges(inst: Dictionary) -> int:
-	if inst.is_empty():
-		return -1
-	for e: Dictionary in inst.get("sockets", []):
-		var def: Dictionary = SkillDefs.SKILLS.get(e.id, {})
-		if def.get("weapon_charges", false):
-			return inst.get("slot_charges", def.charges)
-	return -1
-
-
-# 名稱；有武器技能次數的接在後面括號（「白色 火把（2）」）
+# 名稱（「白色 火把」）
 static func display_name(inst: Dictionary) -> String:
-	var text := "%s %s" % [ItemDefs.RARITIES[inst.rarity].name, ItemDefs.ITEMS[inst.base].name]
-	var n := slot_charges(inst)
-	return text + ("（%d）" % n if n >= 0 else "")
+	return "%s %s" % [ItemDefs.RARITIES[inst.rarity].name, ItemDefs.ITEMS[inst.base].name]

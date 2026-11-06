@@ -10,11 +10,8 @@ const POSE_OF := {
 	&"chargedShot": &"bowCharge",
 	&"shadowStep": &"thrust",
 	&"holyCircle": &"arcaneBurst",
-	&"torchStance": &"torchRaise",
 	&"fireBreath": &"arcaneBurst",
-	&"shovelGrab": &"scoop",
-	&"shovelThrow": &"fling",
-	&"shovelBury": &"slam",
+	&"shovelFling": &"fling",
 }
 const BOW_MODELS: Array[StringName] = [&"shortbow", &"longbow"]
 const UPRIGHT_MODELS: Array[StringName] = [&"staff", &"torch", &"scepter"]   # 右手掌跟著 weapon_tilt 轉、武器保持直立（不隨手臂轉）
@@ -150,16 +147,12 @@ func _pose_action(p: Player, a: Dictionary, dt: float) -> void:
 	match a.action:
 		&"ready":
 			_pose_idle_upper_body(idle, dt)
-			if a.get("holding", false):
-				_pose_holding(dt)        # 鐵鏟舉著怪
-			elif a.get("torch_stance", false):
-				_pose_torch_raised(dt)   # 火把準備姿態
 		&"attack", &"special":
 			var e := _ease(a.k)
 			match _pose_for(a.behavior):
 				&"meleeSwing":
 					_pose_melee_swing(idle, a, e, dt)
-				&"shieldBlock":
+				&"shieldBash":
 					_pose_shield_block(a, e, dt)
 				&"arcaneBurst":
 					_pose_arcane_burst(idle, a, e)
@@ -169,26 +162,17 @@ func _pose_action(p: Player, a: Dictionary, dt: float) -> void:
 					_pose_scoop(idle, a, e)
 				&"fling":
 					_pose_overhead(idle, a, e, -1.0, 0.1)
-				&"slam":
-					_pose_overhead(idle, a, e, -0.15, 0.45)
 				&"mace":
 					_pose_mace(idle, a, e, dt)
 				&"bow":
 					_pose_bow(idle, a, e, false)
 				&"bowCharge":
 					_pose_bow(idle, a, e, true)
-				&"torchRaise":
-					_pose_torch_raise(idle, a, e)
 				_:
 					_pose_fire_bolt(idle, a, e)
 		&"useItem":
 			var k := clampf(a.action_time / Config.PLAYER.use_item_time, 0.0, 1.0)
-			if a.behavior == &"plantTorch":   # 插火把（技能欄）：彎腰把火把往面前的地上插
-				var s := sin(k * PI)
-				rig.arm_r.rotation = Vector3(lerpf(idle.arm_r, -0.6, s), 0.0, 0.0)
-				rig.body.rotation.x = 0.45 * s
-			else:
-				rig.arm_l.rotation.x = lerpf(0.0, -2.4, sin(k * PI))
+			rig.arm_l.rotation.x = lerpf(0.0, -2.4, sin(k * PI))
 		&"stagger":
 			var k := clampf(a.action_time / Config.PLAYER.stagger_time, 0.0, 1.0)
 			rig.body.rotation.x = -0.3 * sin(k * PI)
@@ -216,7 +200,7 @@ func _pose_for(behavior: StringName) -> StringName:
 			return &"meleeSwing"
 		&"fireBolt":
 			return &"bow" if rig.weapon_model in BOW_MODELS else &"fireBolt"
-		&"shieldBlock", &"arcaneBurst":
+		&"shieldBash", &"arcaneBurst":
 			return behavior
 	return POSE_OF.get(behavior, &"fireBolt")
 
@@ -285,14 +269,6 @@ func _pose_overhead(idle: Dictionary, a: Dictionary, e: float, to: float, lean: 
 	rig.arm_r.rotation = Vector3(x, 0.0, 0.0)
 	rig.arm_l.rotation = Vector3(x, 0.3, 0.0)
 	rig.body.rotation.x = body
-
-
-# 舉著怪（鐵鏟）：雙手把鏟子往前上抬到鏟面約肩膀高，身體後仰撐住（怪放在鏟上的托舉點，2026-10-27 原本 -1.15 鏟面貼地、怪像被推著）
-func _pose_holding(dt: float) -> void:
-	rig.arm_r.rotation.x = _step_lerp(rig.arm_r.rotation.x, -1.8, 0.3, dt)
-	rig.arm_l.rotation.x = _step_lerp(rig.arm_l.rotation.x, -1.65, 0.3, dt)
-	rig.arm_l.rotation.y = _step_lerp(rig.arm_l.rotation.y, 0.35, 0.3, dt)
-	rig.body.rotation.x = _step_lerp(rig.body.rotation.x, -0.2, 0.3, dt)
 
 
 # 權杖：第 1 下橫掃（頭朝前），第 2 下（終結技）舉過頭往下砸
@@ -453,21 +429,6 @@ func _arm_toward(arm: Node3D, target: Vector3) -> Vector2:
 	return Vector2(-acos(clampf(-d.y, -1.0, 1.0)), atan2(d.x, d.z))
 
 
-# 舉起火把（進入準備姿態）
-func _pose_torch_raise(idle: Dictionary, a: Dictionary, e: float) -> void:
-	var k := e if a.phase == &"windup" else 1.0
-	rig.arm_r.rotation = Vector3(lerpf(idle.arm_r, -2.7, k), 0.0, 0.0)
-	weapon_tilt = 0.0
-
-
-# 準備姿態中：火把舉過頭（全隊看得到的火光）
-func _pose_torch_raised(dt: float) -> void:
-	rig.arm_r.rotation.x = _step_lerp(rig.arm_r.rotation.x, -2.7, 0.3, dt)
-	rig.arm_r.rotation.y = 0.0
-	weapon_tilt = 0.0
-
-
-# 插火把：蹲下、手往下把火把插進地裡
 # 翻滾：繞身體中心往前翻一圈（body 樞紐在腳底，所以同時位移讓中心不動），四肢縮起
 func _pose_roll(k: float) -> void:
 	var angle := TAU * smoothstep(0.0, 1.0, k)
@@ -516,7 +477,7 @@ func _pose_melee_swing(idle: Dictionary, a: Dictionary, e: float, dt: float) -> 
 			body.rotation.y = lerpf(0.35 * s, 0.0, e)
 
 
-# 格擋：盾舉到身前、劍收在身側、身體微蹲前傾；收招時放下（腿照常隨移動擺動）
+# 盾擊：盾舉到身前推出去、劍收在身側、身體微蹲前傾（推盾的 active 期間都在格擋）；收招時放下（腿照常隨移動擺動）
 func _pose_shield_block(a: Dictionary, e: float, dt: float) -> void:
 	match a.phase:
 		&"windup":

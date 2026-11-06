@@ -38,7 +38,7 @@ static func separate(entities: Array[Entity], rng: RandomNumberGenerator) -> voi
 		px[i] = e.pos.x
 		pz[i] = e.pos.y
 		rad[i] = e.radius
-		mass[i] = -1.0 if e.is_dead else e.mass   # 質量 < 0 = 已死亡，不參與
+		mass[i] = -1.0 if e.is_dead or e.passes_through() else e.mass   # 質量 < 0 = 已死亡或被鐵鏟拋在空中，不參與
 		fix[i] = 1 if e.fixed else 0
 		low[i] = e.height
 		high[i] = e.height + e.body_height
@@ -138,10 +138,10 @@ static func _resolve(a: Entity, b: Entity, rng: RandomNumberGenerator) -> void:
 static func separate_brute_force(entities: Array[Entity], rng: RandomNumberGenerator) -> void:
 	var n := entities.size()
 	for i in n:
-		if entities[i].is_dead or entities[i].fixed:
+		if entities[i].is_dead or entities[i].fixed or entities[i].passes_through():
 			continue
 		for j in n:
-			if j != i and (j > i or entities[j].fixed) and not entities[j].is_dead:
+			if j != i and (j > i or entities[j].fixed) and not entities[j].is_dead and not entities[j].passes_through():
 				_resolve(entities[i], entities[j], rng)
 
 

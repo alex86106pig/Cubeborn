@@ -29,6 +29,7 @@ var world: World
 var camera: Camera3D
 var local_peer := World.HOST_PEER_ID
 var view_peer := 0   # 觀戰中的隊友（0 = 本機）：看不看得到改用他的視野
+var interact_list: InteractList   # 互動列表選中的那個加「[F]」提示（沒接就照最近的，Interactables.options 的第一個）
 var fade_of := Callable()   # 實體 id → 模型的顯示程度 0~1（WorldView.fade_level）：祭壇 / 石棺的名稱跟著模型淡入淡出；沒設定就照看不看得到直接出現 / 消失
 var detail_held := false   # 按住 Alt（每幀更新）：按得到 F 的地上武器 / 道具才畫說明卡（2026-10-30 使用者）
 var warm := ""   # 開場預熱（v0.37.2）：HUD 蓋著「準備中」時設定，用同樣的字級與描邊先畫一次，字形在這時候產生
@@ -56,13 +57,8 @@ func _draw() -> void:
 		return
 	var me: Player = world.players.get(local_peer)
 	var viewer: Player = world.players.get(view_peer if view_peer != 0 else local_peer)   # 看不看得到以他為準（觀戰時是隊友）
-	var focus: Entity = null
-	if me != null and not me.is_dead and not me.is_downed:
-		focus = world.nearest_interactable(me, world.pickups)
-		if focus == null:
-			focus = world.nearest_interactable(me, world.chests)
-		if focus == null:
-			focus = world.nearest_interactable(me, world.forges)
+	var focus_id := _focus_id(me)
+	var focus: Entity = world.entities.get(focus_id) if focus_id > 0 else null
 	var font := get_theme_default_font()
 	_placed.clear()
 	# 按得到 F 的地上道具先畫（名稱留在原位，其他名稱讓開）；說明卡最後畫，蓋在所有名稱上面
@@ -82,7 +78,7 @@ func _draw() -> void:
 		if relic.relic_kind != &"anvil" or relic.is_removed or not Vision.entity_visible(world, viewer, relic):
 			continue
 		var used := me != null and relic.taken.has(me.peer_id)
-		var key := "[F] 升級武器 " if me != null and not used and world.can_reach(me, relic) else ""
+		var key := "[F] 升級武器 " if relic == focus else ""
 		_text(font, relic, CHEST_OFFSET, key + ("鐵砧（用過了）" if used else "鐵砧"), FORGE_COLOR, 17, Vector2.ZERO, true)
 	for c: Entity in world.chests:
 		var chest := c as Chest
@@ -123,16 +119,16 @@ func _draw() -> void:
 	for g: Player in world.ghosts:
 		if not g.is_dead and Vision.entity_visible(world, viewer, g):
 			_text(font, g, g.body_height + ENEMY_OFFSET, ghost_label(world, g), GHOST_COLOR, 15)
-	_draw_keeper(font, me, viewer)
-	_draw_grave(font, me)
-	_draw_doors(font, me)
+	_draw_keeper(font, me, viewer, focus_id)
+	_draw_grave(font, me, focus_id)
+	_draw_doors(font, me, focus_id)
 	if card != null:
 		_draw_card(font, card)
 
 
 # 假裝 NPC 的守墓人：頭上名字 + 綠色血條（之後換成畫面上方的 Boss 血條），靠近時「[F] 對話」；
 # 被說話揭穿時頭上冒台詞（被打或開挖揭穿的不說話）
-func _draw_keeper(font: Font, me: Player, viewer: Player) -> void:
+func _draw_keeper(font: Font, me: Player, viewer: Player, focus_id: int) -> void:
 	var keeper := world.entities.get(world.boss_id) as Gravekeeper
 	if keeper == null or keeper.is_dead or not Vision.entity_visible(world, viewer, keeper):
 		return
@@ -140,7 +136,7 @@ func _draw_keeper(font: Font, me: Player, viewer: Player) -> void:
 	var state: StringName = keeper.anim.get("state", &"")
 	if state == &"patrol":
 		var label := "守墓人"
-		if me != null and keeper.can_talk(me):
+		if focus_id == keeper.id:
 			label = "[F] 對話  " + label
 		_text(font, keeper, top + 0.5, label, NPC_COLOR, 17, Vector2(0, -12))
 		var at := WorldView.render_pos(keeper, top)
@@ -153,15 +149,15 @@ func _draw_keeper(font: Font, me: Player, viewer: Player) -> void:
 
 
 # 挖墳點（D6）：沒開始時提示、挖的時候顯示進度、挖完提示按 F 前往下一層（投票中由 HUD 顯示）
-func _draw_grave(font: Font, me: Player) -> void:
+func _draw_grave(font: Font, me: Player, focus_id: int) -> void:
 	if not DigEvent.enabled(world):
 		return
 	var ev := world.event
 	var at := Vector3(ev.point.x, world.terrain.ground_at(ev.point) + GRAVE_OFFSET, ev.point.y)
-	var near := me != null and ev.can_dig(world, me) and not me.is_digging()
+	var near := focus_id == Interactables.DIG
 	if ev.state == DigEvent.OPEN:
 		var dest := "通關" if world.floor_num >= EventDefs.DIG.last_floor else "前往第 %d 層" % (world.floor_num + 1)
-		var key := "[F] " if me != null and ev.can_exit(world, me) and not ev.is_voting() else ""
+		var key := "[F] " if focus_id == Interactables.EXIT else ""
 		_text_at(font, at, "出口：%s%s" % [key, dest], EXIT_COLOR)
 		return
 	var style := EventDefs.exit_style(world.floor_num)
@@ -172,15 +168,26 @@ func _draw_grave(font: Font, me: Player) -> void:
 
 
 # 小關出口的門：門上寫下一關與獎勵（一扇門的關：下一關有鐵砧），站在門前提示 [F]（投票中由 HUD 顯示）
-func _draw_doors(font: Font, me: Player) -> void:
+func _draw_doors(font: Font, me: Player, focus_id: int) -> void:
 	var list := DigEvent.doors(world)
 	var mine := DigEvent.door_at(world, me) if me != null else -1
 	for i in list.size():
 		var d: Dictionary = list[i]
 		var p := MapDefs.to_world(world.map, d.at)
 		var at := Vector3(p.x, world.terrain.ground_at(p) + GRAVE_OFFSET, p.y)
-		var key := "[F] " if i == mine and not world.event.is_voting() else ""
+		var key := "[F] " if i == mine and focus_id == Interactables.EXIT else ""
 		_text_at(font, at, "%s%s" % [key, door_text(world, d)], EXIT_COLOR)
+
+
+# 按 F 會跟誰互動：互動列表選中的那個；沒接列表就是最近的（Interactables.options 的第一個）；沒有回傳 0
+func _focus_id(me: Player) -> int:
+	if me == null or me.is_dead or me.is_downed:
+		return 0
+	if interact_list != null and interact_list.world == world:
+		interact_list.refresh()
+		return interact_list.selected_id
+	var opts := Interactables.options(world, me)
+	return opts[0].id if not opts.is_empty() else 0
 
 
 # 冤魂頭上的字：「P2 的冤魂：打倒就能復活」（P 幾照 peer id 排序，同 PlayerTags）

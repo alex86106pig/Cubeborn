@@ -23,7 +23,7 @@ func _on_damaged(amount: float, source_id: int) -> void:
 func is_guarding() -> bool:
 	if is_dead or not (fsm.is_in(&"chase") or fsm.is_in(&"dormant")):
 		return false
-	return stun_timer <= 0.0 and frozen_timer <= 0.0 and stagger_timer <= 0.0 and buried_timer <= 0.0 and grabbed_by == 0
+	return stun_timer <= 0.0 and frozen_timer <= 0.0 and stagger_timer <= 0.0 and buried_timer <= 0.0
 
 
 # Combat._apply_damage 在格擋與閃避之前問：擋下回傳 true（不扣血、不疊狀態）。以自己為中心的範圍攻擊（origin 在身上）不算正面

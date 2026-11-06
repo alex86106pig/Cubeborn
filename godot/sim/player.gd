@@ -5,7 +5,6 @@ extends Entity
 
 const ROLL_CD := "player.roll"
 const PARRY_ANIM_TIME := 0.2
-const HELD_REACH := 0.9   # 鐵鏟舉著的怪離身體邊緣多遠：放在鏟面上（2026-10-27 網頁版實測：原本 0.2，怪浮在手邊、鏟面在牠下方的地上）
 
 var peer_id := 0                      # 冤魂是 -死者的 peer id（冷卻的 key 不跟別人撞）
 var ghost_of := 0                      # 冤魂：死者的 peer id（0 = 一般玩家）；怪物方、不在 world.players，打倒後死者復活（World.on_ghost_defeated）
@@ -21,12 +20,9 @@ var _attack_was_held := false
 var weapon: Dictionary = {}            # 手上武器的招式資料（WeaponDefs.def_of）
 var weapon_id: StringName = &""        # 手上武器的 WeaponDefs id，快照的 P_WEAPON
 var class_id := ClassDefs.NONE        # 職業（F2，ClassDefs）；NONE = 共用基準數值
-var torch_stance := false              # 火把準備姿態（F8）：按住右鍵舉著，左鍵換成噴火
 var running := false                   # 跑步（Ctrl 切換）：跳躍、翻滾、開寶箱不取消；進入待機與翻滾以外的動作就取消
 var quiver := 6                        # 箭袋裡剩幾支（短弓，F4 回饋）：射完自動裝填
 var reload_timer := 0.0                # 裝填剩餘秒數；> 0 時不能射、移速變慢
-var held_id := 0                # 鐵鏟舉著的怪或隊友（F9）；0 = 沒有
-var hold_timer := 0.0                  # 舉著的剩餘秒數，到 0 對方掙脫
 var loadout := Loadout.new()           # 裝備欄、背包、生效的道具（sim/loadout.gd）
 var weapon_slots: Array[Dictionary]:   # [手上]（Loadout.MAIN）：武器實例（WeaponDropDefs）或 {}
 	get:
@@ -91,6 +87,8 @@ var is_jump_held := false              # 空白鍵按住：站在地上就再跳
 var is_interact_held := false       # F 按住（救援隊友）；剛按下那一步撿道具 / 開寶箱（D3）
 var view_tick := 0                     # 最近一筆輸入的畫面時間（InputCmd.view_tick；房主延遲補償用，v0.38.0）
 var _interact_was_held := false
+var interact_choice := 0              # 這次按 F 要互動的（畫面的互動列表挑的，InputCmd.OP_INTERACT；Interactables 的 id）；0 = 照最近的
+var interact_used := false             # 這次按下 F 已經互動過（撿東西、開箱…）：放開前不開挖（同一下按鍵不會又撿又挖）
 var is_downed := false                 # 倒地假死（C4）：倒數 down_timer 秒，隊友救起前不能動
 var down_timer := 0.0
 var revive_progress := 0.0             # 隊友已累積的救援秒數（到 REVIVE.revive_time 救起）
@@ -157,7 +155,7 @@ func friends() -> Array[Player]:
 
 # 跳躍：站在地面上隨時可以跳（攻擊、翻滾中也行），受擊硬直與倒地時不行；只有一段跳
 func try_jump() -> bool:
-	if is_dead or is_downed or held_id != 0 or action.is_in(&"stagger") or action.is_in(&"revive") or action.is_in(&"dig"):
+	if is_dead or is_downed or action.is_in(&"stagger") or action.is_in(&"revive") or action.is_in(&"dig"):
 		return false
 	if not is_grounded():
 		# 二段跳（道具能力 double_jump，v0.27.0）：空中可以再跳一次，高度同第一段（從目前高度往上 JUMP.height）
@@ -165,7 +163,6 @@ func try_jump() -> bool:
 			return false
 		_air_jumps_used += 1
 	vz = 4.0 * Config.JUMP.height / Config.JUMP.air_time
-	torch_stance = false   # 跳躍取消火把準備姿態（F8）
 	return true
 
 
@@ -251,7 +248,7 @@ func air_jumps() -> int:
 
 
 # 由 Combat.apply_damage 對能格擋的攻擊呼叫：格擋中、攻擊來自正前方 block_arc 內就擋下（不扣血、自己被推退一點）
-# from 是攻擊來的位置（近戰為攻擊者、投射物為飛來的方向）；招架判定中（parry_time）擋下 = 招架成功，下一步全額盾反（v0.41.0）
+# from 是攻擊來的位置（近戰為攻擊者、投射物為飛來的方向）；盾擊推盾期間（parry_time）擋下的第一下 = 盾反，下一步打出
 func try_block(from: Vector2, hit: Dictionary) -> bool:
 	if block_time < 0.0:
 		return _try_counter(from)
@@ -299,22 +296,20 @@ func wisp_center() -> Vector2:
 	return pos
 
 
-# 盾反：招架成功時全額、判定時間內沒擋到時傷害 × fail_damage_mul（v0.41.0）；之後右鍵還按著就繼續格擋
-# 招架成功由房主的格擋判定觸發、客戶端沒辦法預測，事件不標行動者（客戶端照常播）
-func _parry(success: bool) -> void:
+# 盾反：盾擊推盾的期間擋下攻擊（Player.try_block）的下一步打出（許家慶 2026-11-06：右鍵改成盾擊，盾反沿用原本招架成功的 300%）
+# 由房主的格擋判定觸發、客戶端沒辦法預測，事件不標行動者（客戶端照常播）
+func _parry() -> void:
 	var actor := world.event_actor
-	if success:
-		world.event_actor = 0
-	_do_parry(success)
+	world.event_actor = 0
+	_do_parry()
 	world.event_actor = actor
 
 
-func _do_parry(success: bool = true) -> void:
+func _do_parry() -> void:
 	var pr: Dictionary = weapon.special.parry
-	var mul: float = 1.0 if success else pr.fail_damage_mul
 	Hitbox.strike(world, self, pos, facing, {"shape": &"sector", "range": pr.range, "arc": pr.arc}, {
-		"damage": move_damage(pr) * mul, "damage_type": weapon.damage_type, "knockback": pr.knockback * mul, "hit_stop": pr.hit_stop,
-		"shake": pr.shake * mul, "is_heavy": success, "blockable": false, "color": pr.color, "credit": "parry",
+		"damage": move_damage(pr), "damage_type": weapon.damage_type, "knockback": pr.knockback, "hit_stop": pr.hit_stop,
+		"shake": pr.shake, "is_heavy": true, "blockable": false, "color": pr.color, "credit": "parry",
 	})
 	world.emit_event("fx:parry", {"pos": pos, "height": height, "radius": pr.range, "facing": facing, "arc": pr.arc, "color": pr.color})
 	parry_timer = PARRY_ANIM_TIME
@@ -350,7 +345,6 @@ func is_digging() -> bool:
 # 新的一層：回到出生點（死者也搬過去，等冤魂被打倒才在冤魂的位置站起來）
 func arrive_floor(at: Vector2, ground: float) -> void:
 	descended = false
-	loadout.refill_slot_charges()   # 新的一關：身上武器的技能次數補滿（火把的插火把，F8）
 	floor_kills = 0   # 亡者之契的疊層只算本層（G2）
 	reaver_stacks = 0   # 噬魂刃只算本層
 	stars.clear()
@@ -415,10 +409,7 @@ func die(source_id: int = 0) -> void:
 
 func _go_down() -> void:
 	is_downed = true
-	torch_stance = false
 	running = false
-	if held_id != 0:
-		release_held()
 	hp = 0.0
 	down_timer = Config.REVIVE.down_time
 	revive_progress = 0.0
@@ -565,7 +556,10 @@ func apply_cmd(cmd: InputCmd) -> void:
 	is_interact_held = cmd.has(InputCmd.BTN_INTERACT)
 	is_jump_held = cmd.has(InputCmd.BTN_JUMP_HELD)
 	_pressed |= cmd.buttons
-	loadout.queue_ops(cmd.inv_ops)
+	for op: Array in cmd.inv_ops:
+		if not op.is_empty() and int(op[0]) == InputCmd.OP_INTERACT and op.size() > 1:
+			interact_choice = int(op[1])
+	loadout.queue_ops(cmd.inv_ops.filter(func(op: Array) -> bool: return op.is_empty() or int(op[0]) != InputCmd.OP_INTERACT))
 	view_tick = cmd.view_tick
 
 
@@ -632,11 +626,8 @@ func show_weapon(id: StringName, force := false) -> void:
 		return
 	weapon = WeaponDefs.def_of(id)
 	weapon_id = id
-	torch_stance = false
 	reload_timer = 0.0   # 換到有箭袋的弓就是滿的（換武器本身就要花時間；翻滾也能瞬間補滿）
 	quiver = weapon.attack.get("quiver", 0)
-	if held_id != 0:
-		release_held()
 	combo_step = 0
 	combo_timer = 0.0
 	action.change(&"ready")
@@ -666,12 +657,8 @@ func pct_damage(pct: float) -> float:
 	return weapon.base_damage * pct * damage_mul * stats.value(StatDefs.type_damage_stat(weapon.damage_type))
 
 
-# 動作層要用的招式資料：火把準備姿態中換成 stance 的左右鍵（F8），其餘就是武器的 attack / special
+# 動作層要用的招式資料：武器的 attack / special（許家慶 2026-11-06 拿掉火把姿態、鐵鏟舉著時換招）
 func action_def(kind: StringName) -> Dictionary:
-	if held_id != 0 and weapon.has("grab"):
-		return weapon.grab[kind]   # 鐵鏟舉著怪：左鍵拋出、右鍵埋入（F9）
-	if torch_stance and weapon.has("stance") and weapon.stance.has(kind):
-		return weapon.stance[kind]   # 舉著火把：左鍵噴火
 	return weapon[kind]
 
 
@@ -692,42 +679,6 @@ func refill_quiver() -> void:
 	if weapon.attack.has("quiver"):
 		quiver = weapon.attack.quiver
 		reload_timer = 0.0
-
-
-# 鐵鏟舉起一隻怪或一位隊友（F9）：對方停住、跟在面前，seconds 秒內沒拋出 / 埋入就掙脫
-# 隊友同被腐屍抓住（stun 帶 grabbed_by）：按翻滾立刻掙脫
-func grab_target(e: Entity, seconds: float) -> void:
-	held_id = e.id
-	hold_timer = seconds
-	if e is Player:
-		(e as Player).stun(seconds, id)
-	else:
-		(e as Enemy).grabbed_by = id
-	_follow_held()
-
-
-# 放開舉著的怪或隊友（拋出、埋入、掙脫、換武器、倒地），回傳對方（已經不在了、隊友自己掙脫了回傳 null）
-func release_held() -> Entity:
-	var e: Entity = world.entities.get(held_id)
-	held_id = 0
-	hold_timer = 0.0
-	if e is Player:
-		var mate := e as Player
-		if mate.grabbed_by != id:
-			return null
-		mate.release_grab()
-	elif e is Enemy:
-		(e as Enemy).grabbed_by = 0
-	return e
-
-
-func _follow_held() -> void:
-	var e: Entity = world.entities.get(held_id)
-	if e == null or e.is_dead or (e is Player and ((e as Player).grabbed_by != id or not (e as Player).is_targetable())):
-		release_held()
-		return
-	e.pos = pos + MathUtil.dir_from_angle(facing) * (radius + e.radius + HELD_REACH)
-	e.velocity = Vector2.ZERO
 
 
 func weapon_range_mul() -> float:
@@ -763,32 +714,40 @@ func sync_weapon_slots(arr: Array) -> void:
 	loadout.sync_weapon_slots(self, arr)
 
 
-# 剛按下 F：附近有倒地隊友時讓給救援（動作層 Ready 處理）；否則先撿最近的道具，再來是遺物，最後才開最近的寶箱
-func _try_interact() -> void:
+# 剛按下 F：附近有倒地隊友時讓給救援（動作層 Ready 處理）；畫面的互動列表挑了一個（interact_choice）就跟那個互動；
+# 沒挑（自動試玩、只有一個）就照原本的順序：最近的道具 → 遺物 → 寶箱 → 鍛造祭壇 → 守墓人 → 出口。有互動到回傳 true（這次按著不開挖）
+func _try_interact() -> bool:
 	if find_revive_target() != null:
-		return
+		return false
+	if interact_choice != 0:
+		if interact_choice == Interactables.DIG:
+			return false   # 挑了挖墳：按著就開挖（動作層 Ready）
+		if Interactables.use(world, self, interact_choice):
+			return true
 	var pickup := world.nearest_interactable(self, world.pickups)
 	if pickup != null:
 		loadout.take_pickup(self, pickup as ItemPickup)
-		return
+		return true
 	var relic := world.nearest_interactable(self, world.relics)
 	if relic != null:
 		(relic as Relic).open_for(self)
-		return
+		return true
 	var chest := world.nearest_interactable(self, world.chests)
 	if chest != null:
 		(chest as Chest).try_open(self)
-		return
+		return true
 	var forge := world.nearest_interactable(self, world.forges)
 	if forge != null:
 		world.emit_event("forge:opened", {"player_id": id, "forge_id": forge.id})   # 本機玩家的畫面打開背包（main.gd）
-		return
+		return true
 	var keeper := world.entities.get(world.boss_id) as Gravekeeper
 	if keeper != null and keeper.can_talk(self):
 		keeper.talk()   # 跟假裝 NPC 的守墓人說話（比挖墳優先）
-		return
+		return true
 	if world.event.can_exit(world, self):
 		world.event.request_exit(world, self)
+		return true
+	return false
 
 
 func clear_items() -> void:
@@ -833,33 +792,28 @@ func update(dt: float) -> void:
 	# 撿道具、開寶箱、整理背包只在權威端（客戶端本機預測不做，等快照）
 	if world.is_authority:
 		if is_interact_held and not _interact_was_held:
-			_try_interact()
+			interact_used = _try_interact()
 		loadout.apply_ops(self)
 	else:
 		loadout.clear_ops()
+	if not is_interact_held:
+		interact_used = false
+	interact_choice = 0
 	_interact_was_held = is_interact_held
 	attack_pressed = is_attack_held and not _attack_was_held
 	_attack_was_held = is_attack_held
 	if pending_parry:
 		pending_parry = false
 		if block_time >= 0.0:
-			_parry(true)
+			_parry()
 	action.update(dt)
 	if running and not (action.is_in(&"ready") or action.is_in(&"roll")):
 		running = false   # 攻擊、技能、道具、救人、挖墳、受擊硬直都打斷跑步
-	if torch_stance and not is_special_held:
-		torch_stance = false   # 放開右鍵就放下火把（2026-10-27 使用者）
 
 	if reload_timer > 0.0:   # 短弓裝填（F4 回饋）
 		reload_timer -= dt
 		if reload_timer <= 1e-6:
 			refill_quiver()
-	if held_id != 0:   # 鐵鏟舉著怪（F9）：倒數到 0 掙脫，期間怪跟在面前
-		hold_timer -= dt
-		if hold_timer <= 1e-6:
-			release_held()
-		else:
-			_follow_held()
 	var data := action.data
 	if has_forced_velocity:
 		velocity = forced_velocity
@@ -869,10 +823,6 @@ func update(dt: float) -> void:
 			slow = 1.0   # 盜墓遊俠被動：移動中普攻不減速（F4）
 		if running:
 			slow *= Config.PLAYER.run_speed_mul
-		if torch_stance and action.is_in(&"ready"):
-			slow *= weapon.stance.move_speed_mul   # 火把準備姿態（F8）
-		if held_id != 0 and action.is_in(&"ready"):
-			slow *= weapon.grab.move_speed_mul     # 舉著怪（F9）
 		if reload_timer > 0.0 and weapon.attack.has("quiver"):
 			slow *= weapon.attack.reload_move_mul  # 短弓裝填中
 		velocity = move_input * (stats.value(&"move_speed") * slow)
@@ -964,9 +914,7 @@ func _update_anim() -> void:
 		"knocked": knock_time,   # 被擊倒後經過幾秒（0 = 沒倒）：畫面躺地、起身
 		"grabbed": grabbed_by != 0,
 		"buried": bury_mash >= 0.0,   # 被守墓人埋進土裡：畫面只露半身
-		"torch_stance": torch_stance,
 		"running": running,
-		"holding": held_id != 0,   # 鐵鏟舉著怪（F9）   # 舉著火把：全隊的視野都看得到周圍（F8，Vision.lights）
 		"shield": shield / max_hp if max_hp > 0.0 else 0.0,   # 護盾占最大生命的比例（G4；0 不進快照）
 	}
 

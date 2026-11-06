@@ -70,10 +70,13 @@ static func check_every_skill() -> String:
 		if p.loadout.find_item(p.add_item(id)).get("where", -9) != 0:
 			return "%s 應放進按鍵袋" % ItemDefs.ITEMS[id].name
 		var targets := _targets(w)
+		if def.behavior == &"bury":   # 活埋只埋面前 reach 內的
+			var near := LootChecks._item_dummy(w, Vector2(0, p.radius + def.reach * 0.5 + 0.5), 100000.0)
+			near.set_resists({})
+			targets.append(near)
 		if def.behavior == &"legion":   # 亡者軍勢要有屍體：先打死一隻
 			Combat.apply_damage(w, p, targets[-1], {"damage": 1e6, "band": Vector2(-INF, INF)})
 		var hp0 := targets.map(func(e: Enemy) -> float: return e.hp)
-		var torches := w.torches.size()
 		var allies := w.allies.size()
 		var idx := _slot_of(p, id)
 		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(idx)), 1)
@@ -93,8 +96,6 @@ static func check_every_skill() -> String:
 				effect = w.allies.size() >= allies + def.count
 			&"bless":
 				effect = p.buffs.has(&"blessing") or ready == false
-			&"plantTorch":
-				effect = w.torches.size() == torches + 1
 			&"mana_buff":
 				effect = p.buffs.has(&"soul_spring")
 			&"legion":
@@ -309,8 +310,8 @@ static func _check_skill_relic_rules() -> String:
 		var r: StringName = ItemDefs.ITEMS[id].rarity
 		counts[r] = counts.get(r, 0) + 1
 	# 使用者 2026-11-04 的分級（docs/製作計畫.md I），綠多一個突刺（2026-11-05 長劍的蓄力突刺改成技能，Claude 暫定綠）；橘 12 個（許家慶 2026-11-06 選方案 1~3）
-	if counts != {&"white": 10, &"green": 8, &"blue": 7, &"purple": 3, &"orange": 12}:
-		return "技能稀有度的數量應是白 10、綠 8、藍 7、紫 3、橘 12：%s" % [counts]
+	if counts != {&"white": 11, &"green": 8, &"blue": 7, &"purple": 3, &"orange": 12}:
+		return "技能稀有度的數量應是白 11、綠 8、藍 7、紫 3、橘 12：%s" % [counts]
 	var drawn := {}
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 42

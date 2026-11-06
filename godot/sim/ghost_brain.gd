@@ -68,18 +68,20 @@ func _reach(g: Player) -> float:
 	return float(atk.get("range", 2.0)) * g.weapon_range_mul()
 
 
-# 對方在出招、離得近：有盾（按住右鍵的格擋）舉盾，否則照機率往側面翻滾；有動作回傳 true
+# 對方在出招、離得近：有盾（盾擊，推盾期間格擋）照機率推盾，block_time 秒內不再試；否則照機率往側面翻滾；有動作回傳 true
 func _defend(g: Player, cmd: InputCmd, e: Entity, d: float) -> bool:
 	_block_timer -= DT
 	var attacking := e is Player and (e as Player).action.current_name != &"ready" and not (e as Player).is_dead
 	if not attacking or d > T.defend_range:
 		return false
 	var special: Dictionary = g.weapon.get("special", {})
-	if special.get("behavior", &"") == &"shieldBlock":
-		if _block_timer <= 0.0 and g.world.rng.randf() < T.block_chance:
-			_block_timer = T.block_time
-		if _block_timer > 0.0:
-			cmd.buttons |= InputCmd.BTN_SPECIAL_HELD
+	if special.get("behavior", &"") == &"shieldBash":
+		if _block_timer > 0.0 or not g.has_mana(g.mana_cost_of(special)):
+			return false
+		_block_timer = T.block_time
+		if g.world.rng.randf() < T.block_chance:
+			cmd.aim = e.pos
+			cmd.buttons |= InputCmd.BTN_SPECIAL
 			cmd.buttons &= ~InputCmd.BTN_ATTACK
 			return true
 		return false
@@ -92,7 +94,7 @@ func _defend(g: Player, cmd: InputCmd, e: Entity, d: float) -> bool:
 	return false
 
 
-# 數字鍵的技能：放得出來、目標在技能範圍內就放（一步一個）；再看耗魔的右鍵（按住類、鐵鏟的抓取不用）
+# 數字鍵的技能：放得出來、目標在技能範圍內就放（一步一個）；再看耗魔的右鍵（按住類、鐵鏟的鏟拋不用）
 func _cast(g: Player, cmd: InputCmd, d: float) -> void:
 	for i in ActiveSlots.GEM_SLOTS:
 		var slot: Variant = g.slots.get_slot(g, i)

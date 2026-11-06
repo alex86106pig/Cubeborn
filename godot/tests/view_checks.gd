@@ -95,6 +95,49 @@ static func check_dig_bar() -> String:
 	return err
 
 
+# 互動列表（ui/interact_list.gd）：按得到 F 的只有一個不開、兩個以上才開；滾輪 / 上下鍵（cycle）頭尾接起來換；每列有字；
+# 選中的那個離開範圍就回到最近的；場上的「[F]」提示跟著選中的（WorldLabels._focus_id）
+static func check_interact_list() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var list := InteractList.new()
+	list.world = w
+	var labels := WorldLabels.new()
+	labels.world = w
+	labels.interact_list = list
+	var a := w.drop_item(&"whetstone", p.pos + Vector2(0.6, 0))
+	list.refresh()
+	var err := ""
+	if list.is_open() or list.selected_id != a.id:
+		err = "只有一個按得到時不應開列表、選的是它：開 %s、選 %d" % [list.is_open(), list.selected_id]
+	var b := w.drop_item(&"bone_charm" if ItemDefs.ITEMS.has(&"bone_charm") else &"whetstone", p.pos + Vector2(-1.0, 0))
+	list.refresh()
+	if err == "" and (not list.is_open() or list.selected_id != a.id):
+		err = "兩個以上應開列表、原本選的不被搶走：開 %s、選 %d" % [list.is_open(), list.selected_id]
+	if err == "":
+		list.cycle(1)
+		var second := list.selected_id
+		list.cycle(1)
+		if second != b.id or list.selected_id != a.id:
+			err = "往下換應選到第二個、再往下回到第一個：%d → %d" % [second, list.selected_id]
+	if err == "":
+		for o: Dictionary in list.options:
+			if InteractList.label(w, p, o) == "":
+				err = "每一列都要有字：%s" % [o]
+	if err == "":
+		list.cycle(1)
+		if labels._focus_id(p) != b.id:
+			err = "場上的 [F] 提示應跟著列表選中的那個：%d / %d" % [labels._focus_id(p), b.id]
+	if err == "":
+		b.pos = p.pos + Vector2(LootDefs.INTERACT_RANGE + 5.0, 0)
+		list.refresh()
+		if list.selected_id != a.id or list.is_open():
+			err = "選中的那個離開範圍應回到最近的、只剩一個就收起：選 %d、開 %s" % [list.selected_id, list.is_open()]
+	list.free()
+	labels.free()
+	return err
+
+
 static func check_hud() -> String:
 	var w := _new_world(5, true)
 	var cam := _test_camera()
@@ -209,8 +252,8 @@ static func _check_class_select(hud: Variant) -> String:
 		if not is_equal_approx(cs.chart.values[0][1], ClassDefs.CLASSES[id].stats.max_hp):
 			p.detach()
 			return "%s 的生命條應是職業資料的 %s" % [ClassDefs.CLASSES[id].name, ClassDefs.CLASSES[id].stats.max_hp]
-		# 被動 / 左鍵 / 右鍵 / 翻滾，武器帶技能欄技能（火把的插火把）的多一格
-		var want_rows := 5 if WeaponDefs.WEAPONS[ClassDefs.CLASSES[id].weapon].has("slot_skill") else 4
+		# 被動 / 左鍵 / 右鍵 / 翻滾
+		var want_rows := 4
 		if cs._skills.get_child_count() != want_rows or cs.name_label.text != ClassDefs.CLASSES[id].name:
 			p.detach()
 			return "%s：技能應有 %d 格（%d）、名稱「%s」" % [ClassDefs.CLASSES[id].name, want_rows, cs._skills.get_child_count(), cs.name_label.text]
@@ -321,69 +364,24 @@ static func _check_test_panel(hud: Variant) -> String:
 	return ""
 
 
-# 技能欄（v0.41.0）：劍盾格擋中左鍵那格換成「招架」並顯示招架冷卻，放下盾換回普攻；法杖沒有招架格
+# 技能欄的左右鍵（許家慶 2026-11-06 右鍵統一成「按一下放一招、耗魔」）：每把武器只有左鍵普攻、右鍵招式兩格，右鍵顯示耗魔；
+# 沒有招架、火把準備姿態、鐵鏟舉著怪這類換招的格子
 static func check_skill_bar_parry() -> String:
 	var w := _new_world()
 	var p := _player(w)
 	var bar := SkillBar.new()
 	_scene_root().add_child(bar)
 	var err := ""
-	bar.refresh(w, p)
-	if bar._parry_slot == null or bar._parry_slot.visible or not bar._attack_slot.visible:
-		err = "沒格擋時左鍵應顯示普攻、招架格隱藏"
-	if err == "":
-		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL | InputCmd.BTN_SPECIAL_HELD), 3)
-		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL_HELD | InputCmd.BTN_ATTACK), 1)
+	for wid: StringName in WeaponDefs.WEAPONS:
+		p.equip_weapon(wid)
 		bar.refresh(w, p)
-		var cd_left: float = bar._slots["player.parry"].cd_left
-		if not bar._parry_slot.visible or bar._attack_slot.visible or bar._parry_slot.icon_id != WeaponDefs.WEAPONS.swordShield.special.parry.icon or cd_left <= 0.0:
-			err = "格擋中左鍵應換成「招架」並顯示冷卻：顯示 %s、文字 %s、冷卻 %.2f" % [bar._parry_slot.visible, bar._parry_slot.icon_id, cd_left]
-	if err == "":
-		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 30)
-		bar.refresh(w, p)
-		if bar._parry_slot.visible or not bar._attack_slot.visible:
-			err = "放下盾後左鍵應換回普攻"
-	if err == "":
-		p.equip_weapon(&"staff")
-		bar.refresh(w, p)
-		if bar._parry_slot != null:
-			err = "法杖不應有招架格"
-	if err == "":
-		# 火把：舉著時只有左鍵換成噴火（右鍵格不變）；插火把放在按鍵袋 1 就是技能欄第一格、顯示袋子那一格記的次數
-		p.equip_weapon(&"torch")
-		var tw: Dictionary = WeaponDefs.WEAPONS[&"torch"]
-		var plant: Dictionary = SkillDefs.SKILLS[tw.slot_skill]
-		var plant_uid := p.add_item(tw.slot_skill)
-		bar.refresh(w, p)
-		var plant_slot: SkillBar.Slot = bar._slots.get(ActiveSlots.cd_key(0))
-		if plant_slot == null or plant_slot.icon_id != plant.icon or plant_slot.charges.text != str(plant.charges):
-			err = "插火把放在按鍵袋 1 應是技能欄第一格、顯示 %d 次：%s / %s" % [plant.charges,
-				plant_slot.icon_id if plant_slot else "-", plant_slot.charges.text if plant_slot else "-"]
-		p.loadout.find_item(plant_uid).entry["charges"] = 1
-		bar.refresh(w, p)
-		if err == "" and plant_slot.charges.text != "1":
-			err = "插火把次數應照袋子那一格記的（剩 1）：%s" % plant_slot.charges.text
-		p.torch_stance = true
-		bar.refresh(w, p)
-		if err == "" and (not bar._alt_left.visible or bar._attack_slot.visible or not bar._special_slot.visible \
-				or bar._alt_left.icon_id != tw.stance.attack.icon):
-			err = "舉著火把時左鍵應換成「%s」、右鍵不變：%s / 右鍵 %s" % [tw.stance.attack.icon, bar._alt_left.icon_id, bar._special_slot.visible]
-		p.torch_stance = false
-		bar.refresh(w, p)
-		if err == "" and (bar._alt_left.visible or not bar._attack_slot.visible):
-			err = "放下火把應換回平常的左鍵"
-	if err == "":
-		# 鐵鏟舉著怪：左右鍵換成拋出 / 埋入
-		p.equip_weapon(&"shovel")
-		bar.refresh(w, p)
-		if p.slots.get_slot(p, 0) == null:
-			err = "技能不綁武器：換成鐵鏟後按鍵袋 1 的插火把應還在"
-		p.held_id = -1
-		bar.refresh(w, p)
-		var gr: Dictionary = WeaponDefs.WEAPONS[&"shovel"].grab
-		if not bar._alt_left.visible or bar._alt_left.icon_id != gr.attack.icon or bar._alt_right.icon_id != gr.special.icon:
-			err = "舉著怪時左右鍵應換成「%s」/「%s」" % [gr.attack.icon, gr.special.icon]
-		p.held_id = 0
+		var wd: Dictionary = WeaponDefs.WEAPONS[wid]
+		if bar._attack_slot.icon_id != wd.attack.icon or bar._special_slot.icon_id != wd.special.icon or bar._special_slot.mana_def != wd.special:
+			err = "%s：技能欄左鍵應是 %s、右鍵 %s（帶耗魔）：%s / %s" % [wid, wd.attack.icon, wd.special.icon, bar._attack_slot.icon_id, bar._special_slot.icon_id]
+		elif bar._slots.has("player.parry") or bar._slots.has("player.breath"):
+			err = "%s：技能欄不應有招架或噴火的換招格：%s" % [wid, bar._slots.keys()]
+		if err != "":
+			break
 	bar.queue_free()
 	return err
 

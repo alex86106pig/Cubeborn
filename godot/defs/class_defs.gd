@@ -85,7 +85,7 @@ const CLASSES := {
 		"poise": 24.0,
 		"name": "火把傭兵",
 		"weapon": &"torch",
-		"pitch": "插火把替全隊照亮戰場，必要時吹出一片火。",
+		"pitch": "揮著火把點燃怪群，右鍵往前噴出一片火。",
 		"stats": {&"max_hp": 100.0, &"armor": 10.0, &"resist_all": 0.09, &"elem_damage": 1.1, &"hp_regen": 0.4, &"crit_damage": 1.6, &"move_speed": 6.8},
 		"passive": {
 			"desc": "視野 +3 單位；身邊看得到的範圍 4 → 6",
@@ -98,7 +98,7 @@ const CLASSES := {
 		"poise": 22.0,
 		"name": "掘墓人",
 		"weapon": &"shovel",
-		"pitch": "把怪鏟起來，丟出去砸別隻，或埋進土裡。",
+		"pitch": "把怪鏟起來丟出去砸別隻。",
 		"stats": {&"max_hp": 120.0, &"armor": 15.0, &"resist_all": 0.05, &"phys_damage": 1.1, &"elem_damage": 0.9, &"attack_speed": 0.9,
 			&"hp_regen": 0.6, &"treasure": 0.2, &"move_speed": 6.2},
 		"passive": {

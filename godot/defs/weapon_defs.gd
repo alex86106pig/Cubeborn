@@ -46,29 +46,32 @@ const WEAPONS := {
 			"slash_color": Color.WHITE,                  # 揮砍弧光（網頁版 effects.slash）
 			"slash_finisher_color": Color("ffe27a"),     # 第三段弧光
 		},
-		# 格擋與招架（原本木盾的右鍵，v0.41.0 使用者決定）：按住右鍵格擋、放開就放下，沒有冷卻；格擋中按左鍵招架（耗魔），判定時間內擋到攻擊 = 全額盾反，沒擋到 = 盾擊傷害減半
+		# 盾擊（許家慶 2026-11-06，取代按住格擋 + 左鍵招架：右鍵統一成「按一下放一招、耗魔、有傷害」）：
+		# 往前推盾打 damage_pct；推盾的 active 期間（block_window 秒，× 招架判定時間）正面 block_arc 內的攻擊擋下 = 盾反（parry）
 		"special": {
-			"behavior": &"shieldBlock",
-			"name": "格擋",
-			"desc": "按住舉盾，擋下正前方 120° 的攻擊；格擋中移速減半。",
+			"behavior": &"shieldBash",
+			"name": "盾擊",
+			"desc": "往前推盾 150%；推盾的 0.4 秒內擋下正面的攻擊就盾反 300% 並大幅擊退；耗魔 13。",
 			"icon": "🛡",
-			"hold": true,              # 按住右鍵維持（InputCmd.BTN_SPECIAL_HELD）：active 期間右鍵按著或招架中就停在 active
-			"windup": 0.05,            # 舉盾；按下就開始格擋
-			"active": 0.0,             # 放開右鍵就進入收招
-			"recovery": 0.15,
-			"move_speed_mul": 0.5,     # 格擋時移速減半
+			"mana": 13,                # 平衡表照功能型（格擋 + 盾反）算目標 × 0.5：12 時比 1.25、13 約 1.1（Claude 暫定；原本招架 20）
+			"damage_pct": 1.5,         # 劍盾 8 × 150% = 12（原本招架沒擋到的盾擊）
+			"range": 2.6,
+			"arc": PI * 120.0 / 180.0,
+			"knockback": 6.0,
+			"windup": 0.05,
+			"active": 0.4,             # = 格擋判定時間（block_window）；擋下一次盾反後照樣舉到結束（之後擋下的不再盾反）
+			"block_window": 0.4,
+			"recovery": 0.25,
+			"move_speed_mul": 0.5,     # 推盾時移速減半
 			"roll_cancel": true,       # 可以用翻滾提前結束
+			"hit_stop": 0.05,
+			"shake": 0.1,
 			"block_arc": PI * 120.0 / 180.0,  # 正前方合計 120°（左右各 60°；v0.23.0 使用者決定，原本 75°）
 			"block_knockback_mul": 0.3,   # 擋下時自己被推退的比例（不扣血）
 			"sfx_block": "shieldBash",
 			"sfx_parry": "hitHeavy",
 			"parry": {
-				"name": "招架",
-				"icon": "parry",              # 格擋中技能欄左鍵那格換成這個圖示
-				"desc": "格擋中按左鍵：0.2 秒內擋到攻擊就招架成功，盾擊 300% 並大幅擊退；耗魔 20。",
-				"window": 0.2,                # 按下左鍵後這麼久內擋到攻擊 = 招架成功（沿用原本完美格擋的 0.2 秒）
-				"mana": 20,              # 按下左鍵開始招架時扣
-				"fail_damage_mul": 0.5,       # 判定時間結束都沒擋到：盾擊照樣打出，傷害與擊退 × 0.5（24 → 12）
+				"window": 0.2,                # 反擊架勢分支（Player._try_counter）用的判定時間
 				"damage_pct": 3.0,             # 劍盾 8 × 300% = 24（原本固定 25，F1 使用者同意 24；基礎傷害調低時跟著拉高）
 				"range": 3.5,                 # v0.23.0 使用者決定（原本 2.5 / 120°）
 				"arc": PI * 180.0 / 180.0,
@@ -408,9 +411,7 @@ const WEAPONS := {
 	},
 
 
-	# 火把（F8，火把傭兵的起始武器）：功能型，普攻刻意偏低、打中點燃；按住右鍵舉起火把（放開、翻滾、跳躍就放下），
-	# 舉著時左鍵換成 stance 的噴火；插火把是技能欄的技能（slot_skill，放第一個空格，次數記在武器上）。
-	# 舉著的與插著的火把都照亮周圍、全隊看得到（Vision.lights）。2026-10-27 使用者改：原本右鍵按一下進入姿態、姿態中左鍵插火把、右鍵噴火
+	# 火把（F8，火把傭兵的起始武器）：功能型，普攻刻意偏低、打中點燃；右鍵直接往前噴火（許家慶 2026-11-06：拿掉準備姿態與插火把）
 	&"torch": {
 		"id": &"torch",
 		"name": "火把",
@@ -422,8 +423,7 @@ const WEAPONS := {
 		"max_mana": 80.0, "mana_regen": 3.33,   # 魔力照武器（許家慶 2026-11-04）：最大魔力與回魔 = 基準（基礎傷害 8：120、每秒 5）× 8 ÷ 白裝基礎傷害，技能的長時間輸出與爆發跟武器無關
 		"damage_type": &"fire",
 		"idle": {"arm_r": -0.5, "arm_l": -0.1, "tilt": 0.0},
-		"light_radius": 6.0,           # 舉著 / 插著的火把照亮的半徑
-		"slot_skill": &"plantTorch",   # 自帶的技能：出廠就鑲在第一個寶石座（WeaponDropDefs.add_builtin_skill）
+		"light_radius": 6.0,           # 地上的火把（守墓人的提燈）照亮的半徑（Vision.lights）
 		"attack": {
 			"behavior": &"meleeSwing",
 			"sfx": "swing", "sfx_heavy": "swing",
@@ -453,45 +453,30 @@ const WEAPONS := {
 			"slash_finisher_color": Color("ffb040"),
 		},
 		"special": {
-			"behavior": &"torchStance",
-			"sfx": "arcaneCast",
-			"name": "準備姿態",
-			"desc": "按住舉起火把（移速 ×0.6），放開放下；舉著時左鍵噴火。",
-			"icon": "torch_raise",
-			"windup": 0.1,
-			"active": 0.02,
-			"recovery": 0.1,
-			"move_speed_mul": 0.6,
-		},
-		"stance": {
-			"move_speed_mul": 0.6,     # 舉著火把時的移速
-			"attack": {
-				"behavior": &"fireBreath",
-				"sfx": "explosion",
-				"name": "噴火",
-				"desc": "舉著火把時向前噴火（90°、長 5）125% 並點燃；耗魔 30。",
-				"icon": "fire_breath",
-				"mana": 20,   # 照魔力倍率 × 8 ÷ 基礎傷害（原本 30）
-				"cd_key": "player.breath",   # 左鍵的招式但耗魔：自己一格防連按間隔，不占右鍵的 player.special
-				"damage_pct": 1.25,
-				"burn": {"pct_per_sec": 0.15, "duration": 3.0},
-				"range": 5.0,
-				"arc": PI * 0.5,       # 90°
-				"knockback": 0.0,
-				"windup": 0.2,
-				"active": 0.1,
-				"recovery": 0.25,
-				"move_speed_mul": 0.3,
-				"color": Color("ff8a30"),
-				"hit_stop": 0.04,
-				"shake": 0.2,
-			},
+			"behavior": &"fireBreath",
+			"sfx": "explosion",
+			"name": "噴火",
+			"desc": "向前噴火（90°、長 5）125% 並點燃；耗魔 10。",
+			"icon": "fire_breath",
+			"mana": 10,   # 原本舉著時左鍵 125%、耗魔 20；改成右鍵後耗魔減半，傷害不加（火把普攻已到近戰目標，噴火再痛打一隻會超過雙匕首，平衡表的 KEEP）
+			"damage_pct": 1.25,
+			"burn": {"pct_per_sec": 0.15, "duration": 3.0},
+			"range": 5.0,
+			"arc": PI * 0.5,       # 90°
+			"knockback": 0.0,
+			"windup": 0.2,
+			"active": 0.1,
+			"recovery": 0.25,
+			"move_speed_mul": 0.3,
+			"color": Color("ff8a30"),
+			"hit_stop": 0.04,
+			"shake": 0.2,
 		},
 	},
 
 
-	# 鐵鏟（F9，掘墓人的起始武器）：技能型，普攻慢又窄；右鍵鏟起貼在面前的一隻非 Boss 敵人舉著 2 秒（不用一直按），
-	# 舉著時左右鍵換成 grab 的招式：左鍵拋出（被丟的怪與路上撞到的怪受傷、可擊退）、右鍵埋進土裡（暈 1.5 秒 + 0.5 秒爬出）；2 秒內都沒按就掙脫
+	# 鐵鏟（F9，掘墓人的起始武器）：技能型，普攻慢又窄；右鍵鏟拋（許家慶 2026-11-06，取代「鏟起舉 2 秒、再選左鍵拋出 / 右鍵埋入」）：
+	# 鏟起面前一隻非 Boss 敵人直接往準星拋出，被丟的怪與路上撞到的怪受傷、可擊退；埋入改成技能「活埋」（SkillDefs bury）
 	&"shovel": {
 		"id": &"shovel",
 		"name": "鐵鏟",
@@ -531,59 +516,27 @@ const WEAPONS := {
 			"slash_finisher_color": Color("b89a6a"),
 		},
 		"special": {
-			"behavior": &"shovelGrab",
-			"sfx": "shieldBash",
-			"name": "鏟起",
-			"desc": "把面前一隻怪（Boss 除外）鏟起來舉 2 秒，之後左鍵拋出、右鍵埋入；耗魔 50。",
-			"icon": "shovel_grab",
-			"mana": 13,   # 照魔力倍率 × 8 ÷ 基礎傷害（原本 50）
-			"miss_mana": 10,      # 沒有發動（沒怪 / 沒抓到）：只扣這麼多魔力，其他退回
+			"behavior": &"shovelFling",
+			"sfx": "swingHeavy",
+			"name": "鏟拋",
+			"desc": "把面前一隻怪（Boss 除外）鏟起來往準星丟出 7 單位：路上的怪 150%、被丟的怪落地 200%；耗魔 9。",
+			"icon": "shovel_throw",
+			"mana": 9,   # 鏟起 + 拋出合成一招後照平衡表的右鍵目標調（13 時比 0.68）
+			"miss_mana": 5,      # 沒有發動（沒怪 / 沒抓到）：只扣這麼多魔力，其他退回
 			"reach": 2.0,              # 抓取距離（自己身體邊緣到怪身體邊緣）；屍犬牽制時停在中心距離 2.5 外，要搆得到
-			"hold_time": 2.0,          # 舉著這麼久沒按就掙脫
-			"windup": 0.12,
+			"damage_pct": 2.0,     # 被丟的怪落地
+			"path_damage_pct": 1.5,   # 路上撞到的怪
+			"distance": 7.0,
+			"flight_time": 0.6,    # 被丟的怪飛到落點的秒數（拋物線）；路上的怪在飛過時才被撞到
+			"path_width": 0.8,
+			"knockback": 10.0,
+			"windup": 0.15,
 			"active": 0.05,
-			"recovery": 0.15,
+			"recovery": 0.3,
 			"move_speed_mul": 0.3,
-		},
-		"grab": {
-			"move_speed_mul": 0.7,     # 舉著怪時的移速
-			"attack": {
-				"behavior": &"shovelThrow",
-				"sfx": "swingHeavy",
-				"name": "拋出",
-				"desc": "把舉著的怪往準星丟出 7 單位：路上的怪 150%、被丟的怪落地 200%。",
-				"icon": "shovel_throw",
-				"damage_pct": 2.0,     # 被丟的怪落地
-				"path_damage_pct": 1.5,   # 路上撞到的怪
-				"distance": 7.0,
-				"flight_time": 0.6,    # 被丟的怪飛到落點的秒數（拋物線）；路上的怪在飛過時才被撞到
-				"path_width": 0.8,
-				"knockback": 10.0,
-				"windup": 0.12,
-				"active": 0.05,
-				"recovery": 0.25,
-				"move_speed_mul": 0.3,
-				"color": Color("b89a6a"),
-				"hit_stop": 0.06,
-				"shake": 0.3,
-			},
-			"special": {
-				"behavior": &"shovelBury",
-				"sfx": "bossSlam",
-				"name": "埋入",
-				"desc": "把舉著的怪埋進土裡 80%，2 秒不能動也不能出招。",
-				"icon": "shovel_bury",
-				"damage_pct": 0.8,
-				"stun": 1.5,
-				"crawl": 0.5,
-				"windup": 0.15,
-				"active": 0.05,
-				"recovery": 0.25,
-				"move_speed_mul": 0.0,
-				"color": Color("6a5236"),
-				"hit_stop": 0.06,
-				"shake": 0.25,
-			},
+			"color": Color("b89a6a"),
+			"hit_stop": 0.06,
+			"shake": 0.3,
 		},
 	},
 

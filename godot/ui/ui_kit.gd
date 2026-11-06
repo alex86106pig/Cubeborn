@@ -246,7 +246,7 @@ static func role_line(id: StringName) -> String:
 	return "數值：放進主袋或袋子都生效"
 
 
-# 技能的一行：怎麼用、標籤、耗魔（插火把這種次數制的寫次數），耗魔照等級算
+# 技能的一行：怎麼用、標籤、耗魔（次數制的寫次數），耗魔照等級算
 static func skill_line(id: StringName, level := 1) -> String:
 	var sk: Dictionary = SkillDefs.SKILLS[id]
 	var tags: Array[String] = []

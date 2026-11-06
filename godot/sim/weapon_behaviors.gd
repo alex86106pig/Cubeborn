@@ -114,38 +114,30 @@ class MeleeSwing extends Behavior:
 		p.combo_timer = def.combo_window
 
 
-# 格擋（v0.41.0）：按住右鍵就格擋（TimedAction 依 def.hold 停在 active），可以移動與轉向；放開進入收招、放下盾
-# 格擋中按左鍵招架：扣 parry.mana、開始 parry.window 秒的判定；判定中擋下由 Player.try_block 標記成功（下一步全額盾反），
-# 判定時間結束都沒擋到就打出傷害減半的盾擊
-class ShieldBlock extends Behavior:
-	func enter(p: Player, _def: Dictionary, _data: Dictionary) -> void:
+# 盾擊（許家慶 2026-11-06，取代按住格擋 + 左鍵招架）：按一下往前推盾，active 一開始打出盾擊（damage_pct）；
+# 從出手到 active 結束都在格擋（Player.try_block），這段期間（active = block_window × 招架判定時間）擋下的第一下 = 盾反（下一步全額盾反）
+class ShieldBash extends Behavior:
+	func enter(p: Player, def: Dictionary, data: Dictionary) -> void:
+		data.durations[1] = def.block_window * p.stats.value(&"parry_window")   # 招架判定時間（stat）拉長推盾的格擋時間
 		p.block_time = 0.0
-		p.parry_time = -1.0
+		p.parry_time = 0.0
 
-	func phase(p: Player, _def: Dictionary, _data: Dictionary, name: StringName) -> void:
-		if name == &"recovery":
+	func phase(p: Player, def: Dictionary, data: Dictionary, name: StringName) -> void:
+		if name == &"active":
+			data.lock_facing = true
+			p.world.emit_event("fx:slash", {"pos": p.pos, "height": p.height, "facing": p.facing, "range": def.range, "arc": def.arc,
+				"color": def.parry.color, "swing_dir": 1})
+			Hitbox.strike(p.world, p, p.pos, p.facing, {"shape": &"sector", "range": def.range, "arc": def.arc}, {
+				"damage": p.move_damage(def), "damage_type": p.weapon.damage_type, "knockback": def.knockback,
+				"hit_stop": def.hit_stop, "shake": def.shake, "blockable": true, "color": def.parry.color,
+			})
+		elif name == &"recovery":
 			p.block_time = -1.0
 			p.parry_time = -1.0
 
-	func update(p: Player, def: Dictionary, _data: Dictionary, name: StringName, _k: float, dt: float) -> void:
-		if name == &"recovery":
-			return
-		p.block_time += dt
-		var pr: Dictionary = def.parry
-		if p.parry_time >= 0.0:
-			p.parry_time += dt
-			if p.parry_time >= pr.window * p.stats.value(&"parry_window") - 1e-6:   # 武器詞條的招架判定時間
-				p.parry_time = -1.0
-				p._parry(false)
-		elif p.attack_pressed:
-			var key := p.cd("player.parry")
-			if p.action_ready(pr, "player.parry"):
-				p.spend_mana(p.mana_cost_of(pr))
-				p.world.cooldowns.start(key, Config.MANA.cast_gap)
-				p.world.emit_event("skill:used", {"key": "player.parry", "player_id": p.id})
-				p.parry_time = 0.0
-			else:
-				p.world.emit_event("skill:onCooldown", {"key": "player.parry", "player_id": p.id})
+	func update(p: Player, _def: Dictionary, _data: Dictionary, name: StringName, _k: float, dt: float) -> void:
+		if name != &"recovery":
+			p.block_time += dt
 
 	func exit(p: Player, _def: Dictionary, _data: Dictionary) -> void:
 		p.block_time = -1.0
@@ -294,14 +286,7 @@ static func ignite(p: Player, def: Dictionary, hits: Array[Entity]) -> void:
 			(t as Enemy).apply_burn(p.id, p.pct_damage(def.burn.pct_per_sec), def.burn.duration)
 
 
-# 火把準備姿態（F8）：舉起後左鍵換成 stance 的噴火（Player.action_def）；放開右鍵（Player.update）、翻滾、跳躍、換武器、倒地就放下
-class TorchStance extends Behavior:
-	func phase(p: Player, _def: Dictionary, _data: Dictionary, name: StringName) -> void:
-		if name == &"active":
-			p.torch_stance = true
-
-
-# 噴火（F8，舉著火把時的左鍵）：前方扇形大範圍傷害 + 點燃
+# 噴火（F8 火把右鍵；許家慶 2026-11-06 拿掉準備姿態，按右鍵直接噴）：前方扇形大範圍傷害 + 點燃
 class FireBreath extends Behavior:
 	func phase(p: Player, def: Dictionary, data: Dictionary, name: StringName) -> void:
 		if name == &"windup":
@@ -321,43 +306,17 @@ class FireBreath extends Behavior:
 		WeaponBehaviors.ignite(p, def, hits)
 
 
-# 鏟起（F9 鐵鏟右鍵）：抓起面前 reach 內最近的一隻非 Boss 敵人或一位隊友（誤傷開著時），舉著 hold_time 秒（Player.grab_target）；沒抓到只扣 miss_mana
-class ShovelGrab extends Behavior:
+# 鏟拋（F9 鐵鏟右鍵；許家慶 2026-11-06 取代「鏟起舉 2 秒、再選拋出 / 埋入」）：鏟起面前 reach 內最近的一隻非 Boss 敵人
+# （誤傷開著時也可以是隊友），直接往準星丟 distance（撞牆就停在牆前），花 flight_time 秒沿拋物線飛過去（Enemy.throw_to）；
+# 路上撞到的怪受 path_damage_pct、被丟的怪落地受 damage_pct，都可擊退，都算右鍵打中。冰凍中的怪狀態機停住飛不動，直接落在落點
+# 丟隊友不扣血、路上不撞怪：往落點推過去並跳起來（當位移工具）。沒抓到只扣 miss_mana
+class ShovelFling extends Behavior:
 	func phase(p: Player, def: Dictionary, data: Dictionary, name: StringName) -> void:
 		if name != &"active":
 			return
-		var candidates: Array[Entity] = []
-		for e in p.world.enemies:
-			var en := e as Enemy
-			if en != null and not en.is_dead and en.team != p.team and not en.is_boss() and en.grabbed_by == 0 and en.buried_timer <= 0.0:
-				candidates.append(en)
-		if p.world.friendly_fire:
-			for mate in p.world.player_list:
-				if mate != p and mate.is_targetable() and mate.grabbed_by == 0 and mate.held_id == 0 and mate.stun_timer <= 0.0:
-					candidates.append(mate)
-		var best: Entity = null
-		var best_d := INF
-		for e in candidates:
-			var d := e.pos.distance_to(p.pos) - e.radius - p.radius
-			var ahead := WeaponBehaviors.forward(p).dot((e.pos - p.pos).normalized()) > 0.3
-			if d <= def.reach and ahead and d < best_d:
-				best_d = d
-				best = e
-		if best == null:
-			WeaponBehaviors.refund_miss(p, def, data)
-			return
-		p.grab_target(best, def.hold_time)
-
-
-# 拋出（F9，舉著怪時的左鍵）：往前丟 distance（撞牆就停在牆前），花 flight_time 秒沿拋物線飛過去（Enemy.throw_to）；
-# 路上撞到的怪受 path_damage_pct、被丟的怪落地受 damage_pct，都可擊退。冰凍中的怪狀態機停住飛不動，直接落在落點
-# 丟隊友不扣血、路上不撞怪：往落點推過去並跳起來（當位移工具）
-class ShovelThrow extends Behavior:
-	func phase(p: Player, def: Dictionary, _data: Dictionary, name: StringName) -> void:
-		if name != &"active":
-			return
-		var target := p.release_held()
+		var target := WeaponBehaviors.scoop_target(p, def.reach)
 		if target == null:
+			WeaponBehaviors.refund_miss(p, def, data)
 			return
 		var dir := WeaponBehaviors.aim_direction(p)
 		p.facing = atan2(dir.x, dir.y)
@@ -376,9 +335,9 @@ class ShovelThrow extends Behavior:
 			(target as Player).knock_up(Entity.gravity() * def.flight_time / 2.0)
 			return
 		var held := target as Enemy
-		var path_hit := {"damage": p.pct_damage(def.path_damage_pct), "damage_type": p.weapon.damage_type, "credit": "p",
+		var path_hit := {"damage": p.pct_damage(def.path_damage_pct), "damage_type": p.weapon.damage_type, "attack": &"secondary",
 			"knockback": def.knockback, "is_heavy": true, "color": def.color}
-		var land_hit := {"damage": p.move_damage(def), "damage_type": p.weapon.damage_type, "credit": "p",
+		var land_hit := {"damage": p.move_damage(def), "damage_type": p.weapon.damage_type, "attack": &"secondary",
 			"knockback": def.knockback, "hit_stop": def.hit_stop, "shake": def.shake, "is_heavy": true, "color": def.color}
 		if held.frozen_timer > 0.0 or travel <= 0.0:
 			held.pos = land
@@ -388,22 +347,26 @@ class ShovelThrow extends Behavior:
 		held.throw_to(land, def.flight_time, p, dir, def.path_width, path_hit, land_hit)
 
 
-# 埋入（F9，舉著怪時的右鍵）：埋進土裡只露半身，暈 stun 秒再花 crawl 秒爬出（Enemy.bury），受到 damage_pct
-# 埋隊友不扣血，同被守墓人埋進土裡（Player.bury：連按翻滾提早爬出）
-class ShovelBury extends Behavior:
-	func phase(p: Player, def: Dictionary, _data: Dictionary, name: StringName) -> void:
-		if name != &"active":
-			return
-		var target := p.release_held()
-		if target == null:
-			return
-		if target is Player:
-			(target as Player).bury(def.stun + def.crawl)
-			return
-		var held := target as Enemy
-		Combat.apply_damage(p.world, p, held, {"damage": p.move_damage(def), "damage_type": p.weapon.damage_type,
-			"knockback": 0.0, "no_stagger": true, "hit_stop": def.hit_stop, "shake": def.shake, "is_heavy": true, "color": def.color})
-		held.bury(def.stun + def.crawl)
+# 鏟得起來的目標：面前（朝向 ±72° 內）reach 內最近的一隻非 Boss 敵人，誤傷開著時也可以是隊友（鏟拋、活埋共用）
+static func scoop_target(p: Player, reach: float) -> Entity:
+	var candidates: Array[Entity] = []
+	for e in p.world.enemies:
+		var en := e as Enemy
+		if en != null and not en.is_dead and en.team != p.team and not en.is_boss() and en.buried_timer <= 0.0 and not en.is_launching():
+			candidates.append(en)
+	if p.world.friendly_fire:
+		for mate in p.world.player_list:
+			if mate != p and mate.is_targetable() and mate.stun_timer <= 0.0:
+				candidates.append(mate)
+	var best: Entity = null
+	var best_d := INF
+	for e in candidates:
+		var d := e.pos.distance_to(p.pos) - e.radius - p.radius
+		var ahead := WeaponBehaviors.forward(p).dot((e.pos - p.pos).normalized()) > 0.3
+		if d <= reach and ahead and d < best_d:
+			best_d = d
+			best = e
+	return best
 
 
 # 目標背後（和它面向相反）貼身的位置；被牆擋住就每 45° 繞一圈找第一個站得住的地方，都不行就留在原地
@@ -423,16 +386,13 @@ static func behind(p: Player, target: Entity) -> Vector2:
 
 static var BEHAVIORS := {
 	&"meleeSwing": MeleeSwing.new(),
-	&"shieldBlock": ShieldBlock.new(),
+	&"shieldBash": ShieldBash.new(),
 	&"fireBolt": FireBolt.new(),
 	&"arcaneBurst": ArcaneBurst.new(),
 	&"arrowFan": ArrowFan.new(),
 	&"chargedShot": ChargedShot.new(),
 	&"shadowStep": ShadowStep.new(),
 	&"holyCircle": HolyCircle.new(),
-	&"torchStance": TorchStance.new(),
 	&"fireBreath": FireBreath.new(),
-	&"shovelGrab": ShovelGrab.new(),
-	&"shovelThrow": ShovelThrow.new(),
-	&"shovelBury": ShovelBury.new(),
+	&"shovelFling": ShovelFling.new(),
 }

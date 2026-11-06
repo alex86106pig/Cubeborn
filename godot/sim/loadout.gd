@@ -47,13 +47,6 @@ func equipped_count() -> int:
 	return weapon_slots.filter(func(s: Dictionary) -> bool: return not s.is_empty()).size()
 
 
-# 換關：袋子裡次數制的技能（插火把）補滿
-func refill_slot_charges() -> void:
-	for bag in bags:
-		for e: Dictionary in bag.entries:
-			e.erase("charges")
-
-
 # 起始武器：灰色、數值固定（WeaponDropDefs.START_RARITY）
 func _new_start(p: Player, id: StringName) -> Dictionary:
 	assert(WeaponDefs.WEAPONS.has(id), "Unknown weapon: %s" % id)
@@ -122,11 +115,9 @@ func _setup_merged(p: Player, start: Dictionary) -> void:
 			for x in mini(BagDefs.MERGED_START_CLASS, b.length):
 				locked.erase(Vector2i(x, 0))
 			class_zone = []
-			if start.has("skill"):
-				b.entries.append({"uid": new_uid("item"), "id": start.skill, "cell": Vector2i.ZERO, "rot": 0})
 		b["locked"] = locked
 		_attach(b, z[1], z[2])
-	if start.has("skill") and not class_zone.is_empty():   # 職業的區塊不在表上（不會發生）：技能放數字區
+	if start.has("skill"):   # 起始技能放數字區（同袋子分開的按鍵袋）；職業那一區開著、空的
 		for b in key_bags():
 			if not b.locked.has(Vector2i.ZERO):
 				b.entries.append({"uid": new_uid("item"), "id": start.skill, "cell": Vector2i.ZERO, "rot": 0})

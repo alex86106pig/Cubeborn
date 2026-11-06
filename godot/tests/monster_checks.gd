@@ -224,7 +224,7 @@ static func check_bone_wheel() -> String:
 			var cmd := InputCmd.new()
 			cmd.aim = Vector2(0, 5)
 			if mode == &"block":
-				cmd.buttons = InputCmd.BTN_SPECIAL_HELD
+				PlayerChecks.shield_up(p)   # 直接舉盾（盾擊的格擋只有 0.4 秒，這裡測怪物被擋下的反應）
 			if i == 3:
 				Combat.apply_damage(w, p, b, {"damage": 1.0, "knockback": 0.0, "blockable": false})
 			w.step({World.HOST_PEER_ID: cmd}, DT)
@@ -320,7 +320,7 @@ static func check_spider() -> String:
 			var cmd := InputCmd.new()
 			cmd.aim = Vector2(0, 5)
 			if mode == &"block":
-				cmd.buttons = InputCmd.BTN_SPECIAL_HELD
+				PlayerChecks.shield_up(p)   # 直接舉盾（盾擊的格擋只有 0.4 秒，這裡測怪物被擋下的反應）
 			p.pos = Vector2.ZERO
 			w.step({World.HOST_PEER_ID: cmd}, DT)
 			for ev in w.events:
@@ -371,7 +371,7 @@ static func check_zombie() -> String:
 			var cmd := InputCmd.new()
 			cmd.aim = Vector2(0, 5)
 			if mode == &"block":
-				cmd.buttons = InputCmd.BTN_SPECIAL_HELD
+				PlayerChecks.shield_up(p)   # 直接舉盾（盾擊的格擋只有 0.4 秒，這裡測怪物被擋下的反應）
 			if grabbed_at >= 0 and released_at < 0:
 				if mode == &"roll" and i == grabbed_at + 3:
 					cmd.buttons = InputCmd.BTN_ROLL

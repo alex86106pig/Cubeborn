@@ -156,12 +156,12 @@ if (has('balance')) {
   process.exit(0);
 }
 
-// 自動試玩（godot/tests/playtest.gd）：headless 機器人照真實地圖玩，量殺怪數、武器掉落、背包佔用、會倒幾次；--floors / --seeds / --class / --style / --play / --react / --pick / --death / --trace / --crowd / --start / --real-from / --out 原樣傳給腳本
+// 自動試玩（godot/tests/playtest.gd）：headless 機器人照真實地圖玩，量殺怪數、武器掉落、背包佔用、會倒幾次；--floors / --seeds / --class / --style / --play / --react / --pick / --death / --trace / --crowd / --start / --real-from / --bag-mode / --out 原樣傳給腳本
 // 一場一層約 10 秒（2026-11-01 M5，打法 full）
 if (has('playtest')) {
   const godot = godotPath();
   runGodot(godot, ['--headless', '--import', '--path', '.'], IMPORT_TIMEOUT, '匯入');
-  const pass = args.filter(a => /^--(floors|seeds|class|style|play|react|pick|death|trace|crowd|start|real-from|out)=/.test(a));
+  const pass = args.filter(a => /^--(floors|seeds|class|style|play|react|pick|death|trace|crowd|start|real-from|out|bag-mode)=/.test(a));
   const r = runGodot(godot, ['--headless', '--path', '.', '-s', 'res://tests/playtest.gd', '--', ...pass], PLAYTEST_TIMEOUT, '自動試玩');
   if (!r.ok || !r.out.includes('# 自動試玩')) fail(`自動試玩沒有跑完\n${(r.err || r.out || '').split('\n').filter(l => /ERROR|Error|強制停止/.test(l)).slice(-15).join('\n')}`);
   console.log(r.out.split('\n').filter(l => /^(\||職業|背包武器格|寫入)/.test(l)).join('\n'));

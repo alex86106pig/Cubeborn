@@ -15,6 +15,7 @@ const BOSS_EXTRA := 2.0                # Boss 的招大一圈
 const DODGE_ANGLE := 0.7               # 一般招式往「遠離怪物」偏這麼多弧度滾（斜後方，比正後方不容易被追上）
 const PROJ_WARN := 0.35                # 投射物這麼多秒內會打到就躲
 const ROLL_LEAD := 0.15                # 預兆結束前這麼多秒才滾（無敵 0.2 秒蓋住打下來那一刻）；太早滾，會轉向追人的招照樣打到
+const SHIELD_LEAD := 0.25              # 盾擊：預兆結束前這麼多秒推盾（推盾的格擋只有 block_window 0.4 秒，太早推會在打下來前放下）
 const JUMP_LEAD := 0.1                 # 跳得過的招（資料有 low_max_air）：打下來前這麼多秒起跳，那一刻腳已經離地
 const COMMIT_TIME := 0.6               # 躲完之後這麼久只躲 Boss 的招，先打一輪（一群屍犬輪流撲時才不會一直滾、打不到 Boss）
 const CONE_HUG_MAX := 4.5              # 持續的扇形招：離中心這麼近就貼身繞到背後，更遠就往外跑出射程
@@ -98,7 +99,6 @@ var _proj_seen := {}                   # 已經躲過的投射物 id
 var _rerolled := {}                    # 重擲過的遺物 id
 var _block_id := 0                     # 正在對著舉盾的怪（0 = 沒有）
 var _block_broken := false             # 舉盾還被那隻怪打到（那招擋不住）
-var _block_time := 0.0                 # 對著投射物舉盾剩幾秒
 var _evade_id := 0                     # 正在躲的那隻怪：那招結束前不走回去
 var _evade_time := 0.0                 # 這次已經退了幾秒
 var _evade_side := 1.0                 # 往哪一邊偏（跟翻滾同一邊）
@@ -162,7 +162,6 @@ func begin_floor() -> void:
 	_proj_seen.clear()
 	_block_id = 0
 	_block_broken = false
-	_block_time = 0.0
 	_evade_id = 0
 	_commit = 0.0
 	_rested = 0.0
@@ -318,7 +317,9 @@ func decide() -> InputCmd:
 	if loot != null:
 		_walk(cmd, loot.pos)
 		if w.can_reach(p, loot) and _tap:
-			cmd.buttons |= InputCmd.BTN_INTERACT
+			var spot := p.inventory.find_spot(loot.item_id)   # 指定撿這把（像從背包畫面拖進來）：按 F 會撿最近的，旁邊有自己丟掉的會先撿到那把
+			if not spot.is_empty():
+				cmd.inv_ops.append([InputCmd.OP_PICKUP, loot.id, spot.cell.x, spot.cell.y, spot.rot])
 		return cmd
 	var relic := _next_relic()
 	if relic != null:
@@ -327,7 +328,7 @@ func decide() -> InputCmd:
 	if chest != null:
 		_walk(cmd, chest.pos)
 		if w.can_reach(p, chest) and _tap:
-			cmd.buttons |= InputCmd.BTN_INTERACT
+			_press(cmd, chest.id)
 		return cmd
 	if boss != null and _boss_awake(boss):
 		return _fight(cmd, boss)   # Boss 醒了先打它（不然它一直叫小怪，機器人會打不完）
@@ -350,9 +351,18 @@ func decide() -> InputCmd:
 	var point := w.event.point
 	if p.pos.distance_to(point) > EventDefs.DIG.range * 0.6:
 		_walk(cmd, point)
-	else:
-		cmd.buttons |= InputCmd.BTN_INTERACT
+	elif DigEvent.enabled(w):
+		if not p.interact_used or p.is_digging():   # 這一下按到別的（Player.interact_used）：放開一步再按
+			_press(cmd, Interactables.DIG)   # 挖墳要一直按著（同互動列表挑了挖墳）
+	elif _tap:
+		_press(cmd, Interactables.EXIT)   # 小關的門：F 剛按下才算（Player._try_interact）
 	return cmd
+
+
+# 按 F 並指定跟哪個互動（同畫面的互動列表挑的，InputCmd.OP_INTERACT）：旁邊疊著別的東西（自己丟掉的武器、門前的袋子）也不會先撿到
+func _press(cmd: InputCmd, target: int) -> void:
+	cmd.buttons |= InputCmd.BTN_INTERACT
+	cmd.inv_ops.append([InputCmd.OP_INTERACT, target])
 
 
 func _fight(cmd: InputCmd, e: Entity) -> InputCmd:
@@ -410,17 +420,20 @@ func _fight(cmd: InputCmd, e: Entity) -> InputCmd:
 # 數字鍵 1~4 的技能：放得出來（魔力、冷卻、次數）、目標在技能的範圍內就放（一步放一個）；再看耗魔的右鍵
 func _cast(cmd: InputCmd, e: Entity) -> void:
 	var d := p.pos.distance_to(e.pos) - e.radius
+	var reserve := _shield_reserve()
 	for i in ActiveSlots.GEM_SLOTS:
 		var slot: Variant = p.slots.get_slot(p, i)
 		if slot == null or not slot.def.has("mana") or not p.slots.can_use(p, i):
 			continue
+		if reserve > 0.0 and not p.has_mana(ActiveSlots.mana_cost(p, slot) + reserve):
+			continue   # 劍盾：留一次盾擊的魔力擋招
 		if smart_play and slot.def.get("behavior", &"") in [&"dash", &"ambush", &"leap_shot"] and _fast_move_soon(e as Enemy):
 			continue   # Boss 來不及反應的招快好了：不要衝進去（狼人爪 0.25 秒，衝過去剛好吃滿三爪）
 		if d <= _skill_range(slot.def) and not (smart_play and _skill_hits_ally(slot.def, e.pos)):
 			cmd.buttons |= InputCmd.slot_bit(i)
 			return
 	var special: Dictionary = p.weapon.get("special", {})
-	if special.has("mana") and p.has_mana(p.mana_cost_of(special)) and d <= _skill_range(special):
+	if special.has("mana") and p.has_mana(p.mana_cost_of(special) + reserve) and d <= _skill_range(special):
 		if not (smart_play and (_skill_hits_ally(special, e.pos) or _ally_in_line(e.pos))):
 			cmd.buttons |= InputCmd.BTN_SPECIAL
 
@@ -442,11 +455,7 @@ func _skill_range(def: Dictionary) -> float:
 func _guard(cmd: InputCmd) -> bool:
 	if p.action.current_name == &"roll" or not p.is_grounded():
 		return false
-	var has_shield: bool = p.weapon.get("special", {}).get("behavior", &"") == &"shieldBlock"
-	if _block_time > 0.0:
-		_block_time -= DT
-		cmd.buttons |= InputCmd.BTN_SPECIAL_HELD
-		return true
+	var has_shield := _can_shield()
 	_commit = maxf(0.0, _commit - DT)
 	if _evade_id != 0:
 		if _keep_evading(cmd):
@@ -498,8 +507,8 @@ func _guard(cmd: InputCmd) -> bool:
 		var lunge := _is_lunge(e, move)
 		var blast := e.type == &"bloater" or e.has_affix(&"volatile")   # 爆炸一律擋不住（Combat）：膨脹屍脹大、死亡爆炸詞條的不擋
 		var can_block := has_shield and not e.is_dead and not lunge and not blast and not _unblockable.has(_move_key(e))
-		if not can_block and e.fsm.time < hit_at - ROLL_LEAD * _rate(e):
-			continue   # 看到了，等快打下來才滾（舉盾不用等，早舉沒損失）
+		if e.fsm.time < hit_at - (SHIELD_LEAD if can_block else ROLL_LEAD) * _rate(e):
+			continue   # 看到了，等快打下來才滾 / 推盾（盾擊的格擋只有 0.4 秒）
 		_reacted[e.id] = state
 		_evade_id = e.id
 		_evade_time = 0.0
@@ -528,11 +537,12 @@ func _guard(cmd: InputCmd) -> bool:
 		var along := rel.dot(pr.direction)
 		if along <= 0.0 or along / pr.speed > PROJ_WARN or absf(rel.cross(pr.direction)) > p.radius + pr.radius + 0.2:
 			continue
+		if has_shield and pr.blockable and along / pr.speed > SHIELD_LEAD:
+			continue   # 推盾的格擋只有 0.4 秒：飛到 SHIELD_LEAD 秒內才推
 		_proj_seen[pr.id] = true
 		if has_shield and pr.blockable:
 			cmd.aim = pr.pos
-			cmd.buttons |= InputCmd.BTN_SPECIAL_HELD
-			_block_time = along / pr.speed + 0.1
+			_hold_shield(cmd)
 			return true
 		if p.roll_charges > 0:
 			_roll(cmd, pr.direction, PI / 2.0)
@@ -738,10 +748,24 @@ func _shield_faces(from: Vector2) -> bool:
 	return absf(angle_difference(p.facing, atan2(to.x, to.y))) <= float(p.weapon.get("special", {}).get("block_arc", 0.0)) / 2.0
 
 
-# 舉盾，只按住右鍵；不連按左鍵招架：招架判定（parry.window 0.2 秒）沒擋到就打出盾擊、放下盾（WeaponBehaviors.ShieldBlock），
-# 連按會變成「擋 → 盾擊 → 放下 → 再舉」，中間的空檔一直被打（守墓人的提燈每 0.25 秒一下），還每次扣 20 魔力
+# 劍盾要留著擋招的魔力（一次盾擊）：數字鍵的技能、拿盾擊打人都要扣掉這些還夠才放；不是劍盾回傳 0
+func _shield_reserve() -> float:
+	var special: Dictionary = p.weapon.get("special", {})
+	return p.mana_cost_of(special) if special.get("behavior", &"") == &"shieldBash" else 0.0
+
+
+# 擋得了嗎：拿著劍盾，正在推盾（盾擊的格擋中）或魔力夠再推一次；魔力不夠就照沒盾的翻滾
+func _can_shield() -> bool:
+	var special: Dictionary = p.weapon.get("special", {})
+	if special.get("behavior", &"") != &"shieldBash":
+		return false
+	return p.block_time >= 0.0 or p.has_mana(p.mana_cost_of(special))
+
+
+# 擋：還沒在推盾就按一下右鍵（盾擊，推盾的 0.4 秒內擋下 = 盾反）；推盾中不再按（按了會在收招後馬上再推一次、多扣 20 魔力）
 func _hold_shield(cmd: InputCmd) -> void:
-	cmd.buttons |= InputCmd.BTN_SPECIAL_HELD
+	if p.block_time < 0.0 and _tap:
+		cmd.buttons |= InputCmd.BTN_SPECIAL
 	var exit := _zone_exit()
 	if exit != Vector2.ZERO:   # 舉著盾也能走（移速減半）：站在殘火裡就邊擋邊走出去（提燈轉圈留的殘火剛好在貼身的距離）
 		cmd.move = exit
@@ -995,7 +1019,7 @@ func _drink(cmd: InputCmd) -> void:
 	var at := POTION_AT if boss != null and _boss_awake(boss) else POTION_URGENT
 	if p.hp >= p.max_hp * at or p.slots.heal.charges <= 0:
 		return
-	if (_block_id != 0 or _evade_id != 0 or _block_time > 0.0) and p.hp >= p.max_hp * POTION_URGENT:
+	if (_block_id != 0 or _evade_id != 0) and p.hp >= p.max_hp * POTION_URGENT:
 		return
 	if w.cooldowns.is_ready(p.cd(ActiveSlots.cd_key(ActiveSlots.HEAL_INDEX))):
 		cmd.buttons |= InputCmd.slot_bit(ActiveSlots.HEAL_INDEX)
@@ -1126,7 +1150,7 @@ func _use_relic(cmd: InputCmd, r: Relic) -> InputCmd:
 		return cmd
 	_walk(cmd, r.pos)
 	if w.can_reach(p, r) and _tap:
-		cmd.buttons |= InputCmd.BTN_INTERACT
+		_press(cmd, r.id)
 	return cmd
 
 

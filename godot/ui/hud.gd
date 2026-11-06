@@ -50,6 +50,7 @@ var _weapon := UiKit.label("", 16)
 var _souls := UiKit.label("", 18, UiKit.SOUL)
 var _coins := UiKit.label("", 18, UiKit.GOLD)   # 本局拿到的金幣（局外貨幣）
 var _world_labels := WorldLabels.new()
+var interact_list := InteractList.new()   # 按得到 F 的東西有兩個以上時角色旁的列表（main.gd 把滾輪 / 上下鍵與 F 接過去）
 var inventory_panel := InventoryPanel.new()   # Tab 開關（main.gd 接到輸入）
 var forge_panel := ForgePanel.new()           # 鍛造祭壇：站在祭壇旁開背包時，兩格放武器 → 挑詞條 → 合成（Build 改版第 8 步；放在背包左邊，main.gd 接到輸入）
 var relic_panel := RelicPanel.new()           # 遺物的 N 選 1（Build 改版第 6 步；main.gd 接到輸入）
@@ -121,6 +122,9 @@ func setup(p_world: World, p_camera: Camera3D) -> void:
 	health_bars.camera = p_camera
 	_world_labels.world = p_world
 	_world_labels.camera = p_camera
+	_world_labels.interact_list = interact_list
+	interact_list.world = p_world
+	interact_list.camera = p_camera
 	inventory_panel.world = p_world
 	minimap.world = p_world
 
@@ -145,6 +149,7 @@ func set_local_peer(peer_id: int) -> void:
 	_tags.local_peer = peer_id
 	health_bars.local_peer = peer_id
 	_world_labels.local_peer = peer_id
+	interact_list.local_peer = peer_id
 	inventory_panel.local_peer = peer_id
 
 
@@ -206,6 +211,7 @@ func _init() -> void:
 	root.add_child(health_bars)   # 在名牌與場上文字底下
 	root.add_child(_tags)
 	root.add_child(_world_labels)
+	root.add_child(interact_list)
 	root.add_child(_floaters)
 
 	# 左上：血條、武器、靈魂、金幣（操作說明只在暫停畫面）

@@ -454,7 +454,7 @@ static func credit_name(credit: String) -> String:
 		"minion":
 			return "骷髏僕從"
 		"parry":
-			return "招架"
+			return "盾反"
 	return "其他"
 
 

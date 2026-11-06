@@ -1,7 +1,7 @@
 # 技能資料：Q 的治療藥水，與鑲在寶石座、按數字鍵 1~4 放的技能（Build 改版第 7 步）；邏輯在 sim/skill_behaviors.gd
 # 寶石座的技能也是 ItemDefs 的條目（kind &"skill"，同一個 id：名稱、說明、形狀在那邊），這裡放動作與數字
 # 寶石座的技能耗魔（mana，Player.mana_cost_of；放完同一格 Config.MANA.cast_gap 秒內不能再放）、沒有冷卻；
-# 藥水與插火把是 mode &"charges"：有使用次數，cooldown 是防連按間隔
+# 藥水是 mode &"charges"：有使用次數，cooldown 是防連按間隔
 # weapons：寶石座時代的「能鑲在哪把武器」，觸發袋改版後技能不限武器；現在有這欄 = 是技能（gem_skill_ids），第一把是平衡表量傷害時拿的武器；tags：修飾看這個（TAGS）
 # 傷害 damage_pct 是手上武器基礎傷害的倍數（Player.pct_damage，含攻擊力與物理 / 屬性傷害）；等級每升 1 級傷害 +LEVEL.damage、耗魔 −LEVEL.mana
 # 耗魔 = 強度：照 docs/設計方向.md「技能強度」，耗魔 ÷ 武器的回魔當作冷卻秒數去算傷害目標（許家慶 2026-11-04：耗魔 ÷ 3、倍率 ÷ 2）
@@ -24,9 +24,6 @@ const SKILLS := {
 		"amount": 35.0,
 		"color": Color("5dff7a"),
 	},
-	# 插火把（F8）：火把出廠就鑲在寶石座上（WeaponDefs 的 slot_skill）；次數記在那把火把上（WeaponDropDefs.slot_charges），換層補滿
-	&"plantTorch": {"icon": "torch_plant", "mode": &"charges", "charges": 3, "weapon_charges": true, "cooldown": 1.0,
-		"behavior": &"plantTorch", "weapons": [&"torch"], "tags": [], "no_relic": true},
 
 	# ---- 劍盾（原本長劍的） ----
 	&"whirlwind": {"icon": "旋", "mana": 10, "behavior": &"nova", "weapons": [&"swordShield"], "tags": [&"area", &"melee"],
@@ -108,6 +105,9 @@ const SKILLS := {
 		"damage_type": &"phys", "color": Color("8a6a40"), "visual": &"orb", "sfx": "swingHeavy", "burst": {"radius": 2.2, "stun": 0.6}},
 	&"burrow": {"icon": "掘", "mana": 17, "behavior": &"burrow", "weapons": [&"shovel"], "tags": [&"move", &"area"],
 		"distance": 6.0, "time": 1.0, "radius": 3.0, "damage_pct": 6.2, "knockback": 8.0, "damage_type": &"phys", "color": Color("8a6a40"), "sfx": "explosion"},
+	# 活埋（許家慶 2026-11-06：原本鐵鏟舉著怪時的右鍵「埋入」改成技能；數字 Claude 暫定）：暈 2 秒的控場，傷害照功能型減半
+	&"bury": {"icon": "shovel_bury", "mana": 9, "behavior": &"bury", "weapons": [&"shovel"], "tags": [&"melee"],
+		"reach": 2.0, "damage_pct": 1.5, "stun": 1.5, "crawl": 0.5, "damage_type": &"phys", "color": Color("6a5236"), "sfx": "bossSlam"},
 
 	# ---- 橘色（傳說；mockups/橘色技能.html 方案 1 大招型、2 改寫袋子型、3 成長型，許家慶 2026-11-06 選；數字 Claude 暫定）----
 	# 傷害照「技能強度」：白色每 1 點耗魔 ≈ 0.3 倍武器傷害（旋風斬 10 魔 3），施放時再乘橘色預算 1.75；× 8（劍盾）取整數

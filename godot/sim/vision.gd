@@ -4,21 +4,18 @@
 class_name Vision
 
 
-# 火把（F8）照亮的範圍全隊都看得到：不管視野扇形與牆
+# 地上的火把（守墓人的提燈）照亮的範圍全隊都看得到：不管視野扇形與牆
 static func point_visible(world: World, viewer: Player, p: Vector2, target_radius: float = 0.0) -> bool:
 	return lit(lights(world), p, target_radius) or (in_view_cone(viewer, p, target_radius) and not line_blocked(world, viewer, p))
 
 
-# 火把的光（F8）：插在地上的火把、舉著火把（準備姿態）的玩家；Vector3(x, z, 半徑)
+# 地上的火把的光（許家慶 2026-11-06 拿掉插火把與準備姿態，剩守墓人的提燈）；Vector3(x, z, 半徑)
 static func lights(world: World) -> Array[Vector3]:
 	var out: Array[Vector3] = []
 	var r: float = WeaponDefs.WEAPONS[&"torch"].light_radius
 	for t in world.torches:
 		if not t.is_removed:
 			out.append(Vector3(t.pos.x, t.pos.y, r))
-	for p in world.player_list:
-		if not p.is_dead and p.anim.get("torch_stance", false):
-			out.append(Vector3(p.pos.x, p.pos.y, r))
 	return out
 
 

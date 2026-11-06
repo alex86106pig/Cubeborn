@@ -118,7 +118,7 @@ const GHOST_BRAIN := {
 	"defend_range": 3.0, "block_chance": 0.6, "block_time": 0.6,
 	"roll_cooldown": 1.5, "roll_chance": 0.4,
 	"path_refresh": 0.5,
-	"skip_specials": [&"shovelGrab"],   # 鐵鏟的鏟起只抓得到怪：冤魂按了也是白扣魔
+	"skip_specials": [&"shovelFling"],   # 鐵鏟的鏟拋只抓得到怪：冤魂按了也是白扣魔
 }
 
 

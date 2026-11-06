@@ -75,6 +75,7 @@ func _ready() -> void:
 	input_collector.relic_panel = hud.relic_panel
 	input_collector.inventory_panel = hud.inventory_panel
 	input_collector.test_panel = hud.test_panel
+	input_collector.interact_list = hud.interact_list
 	# 背包開著時滑鼠只給介面用；遺物面板自動開關背包（HUD.set_bag_open）也跟著
 	hud.inventory_panel.visibility_changed.connect(func() -> void: input_collector.mouse_captured = hud.inventory_panel.visible)
 	hud.inventory_full.connect(_open_inventory_for)
@@ -338,8 +339,6 @@ func _reset_training_dummies() -> void:
 	var me := local_player()
 	if not in_weapon_test or me == null:
 		return
-	if me.held_id != 0:
-		me.release_held()
 	for e in world.enemies:
 		if (e as Enemy).main_state == &"train":
 			e.remove()   # World 下一步清掉已移除的實體

@@ -376,7 +376,7 @@ static func check_stats_hooks() -> String:
 		return "攻速 ×2 普攻應從 %d 步變約 %d 步，實際 %d 步" % [normal, normal / 2, fast]
 	p.remove_stat_source(&"test")
 
-	# 耗魔屬性：法杖的奧術爆裂（劍盾格擋不耗魔）；回魔先關掉，扣多少就看得出來
+	# 耗魔屬性：法杖的奧術爆裂；回魔先關掉，扣多少就看得出來
 	p.equip_weapon(&"staff")
 	p.set_stat_source(&"test", [[&"mana_cost", Stats.MUL, 0.5], [&"mana_regen", Stats.MUL, 0.0]])
 	_run(w, _cmd(Vector2.ZERO), 120)

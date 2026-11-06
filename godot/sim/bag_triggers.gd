@@ -81,7 +81,7 @@ static func _icd_ready(p: Player, b: Dictionary) -> bool:
 #   每一招從前一招最後打到的地方放（打到的目標裡離這一招中心最遠的那隻）；前一招放不出來（魔力不夠、條件不符）或打空就停，後面的不放、不扣魔
 #   「打空」只看當下就知道結果的招式（INSTANT_HIT 的技能、有打出傷害的效果）；投射物、晚一點落下的、增益、召喚、衝刺放出來就算成功，下一招沿用原本的目標
 const CHAIN_GAP := 0.15
-const INSTANT_HIT: Array[StringName] = [&"nova", &"cone", &"chain", &"ambush", &"line", &"reaver", &"grudge"]
+const INSTANT_HIT: Array[StringName] = [&"nova", &"cone", &"chain", &"ambush", &"line", &"reaver", &"grudge", &"bury"]
 
 
 # 發動一個袋子：第一招這一步放，後面的照技能銜接排進 World.delayed；回傳這一步放出了幾個（含共鳴帶動的）

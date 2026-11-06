@@ -27,9 +27,6 @@ static func action_states() -> Dictionary:
 static func try_roll(p: Player, fsm: StateMachine) -> bool:
 	if p.buffered_action.get("type") != &"roll":
 		return false
-	if p.held_id != 0:   # 鐵鏟舉著怪時不能翻滾（F9）
-		p.buffered_action = {}
-		return false
 	p.buffered_action = {}
 	if p.roll_charges > 0:
 		fsm.change(&"roll")
@@ -71,7 +68,7 @@ class Ready:
 			if target != null:
 				fsm.change(&"revive", {"target_id": target.id})
 				return
-			if p.world.event.can_dig(p.world, p):
+			if p.world.event.can_dig(p.world, p) and not p.interact_used:   # 這次按 F 撿了東西 / 開了箱：放開再按才開挖
 				fsm.change(&"dig")
 				return
 		# 按住類的特殊技（劍盾格擋，v0.41.0）：右鍵按著就舉盾，沒有冷卻；按鍵緩衝不用
@@ -147,8 +144,8 @@ class TimedAction:
 		var d := fsm.data
 		d.phase_time += dt
 		while d.phase_index < PHASES.size() and d.phase_time >= d.durations[d.phase_index]:
-			# 按住類（def.hold）：右鍵按著或招架判定中就停在 active，放開才收招
-			if d.phase_index == 1 and d.def.get("hold", false) and (p.is_special_held or p.parry_time >= 0.0):
+			# 按住類（def.hold，長弓蓄力）：右鍵按著就停在 active，放開才收招
+			if d.phase_index == 1 and d.def.get("hold", false) and p.is_special_held:
 				d.phase_time = 0.0
 				break
 			d.phase_time -= d.durations[d.phase_index]
@@ -213,7 +210,6 @@ class Roll:
 		data.lock_facing = true
 		data.move_speed_mul = 1.0
 		p.facing = atan2(dir.x, dir.y)
-		p.torch_stance = false   # 翻滾取消火把準備姿態（F8）
 		p.refill_quiver()        # 翻滾瞬間補滿箭袋（短弓）
 		p.forced_velocity = dir * p.roll_speed()
 		p.has_forced_velocity = true

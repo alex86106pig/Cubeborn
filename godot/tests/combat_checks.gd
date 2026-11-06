@@ -49,7 +49,7 @@ static func check_weapon_defs() -> String:
 			if not WeaponBehaviors.BEHAVIORS.has(def.behavior):
 				return "%s.%s 的 behavior「%s」不存在" % [id, kind, def.behavior]
 			for t in ["windup", "active", "recovery"]:
-				# 按住類（劍盾格擋，v0.41.0）的 active 是 0：按著就停在 active，放開立刻收招
+				# 按住類（def.hold）的 active 可以是 0：按著就停在 active，放開立刻收招
 				if def[t] <= 0.0 and not (t == "active" and def.get("hold", false) and def[t] == 0.0):
 					return "%s.%s 的 %s 不是正數" % [id, kind, t]
 			for key in ["sfx", "sfx_heavy", "sfx_release"]:
@@ -97,15 +97,6 @@ static func check_fire_bolt() -> String:
 		for kind: String in ["attack"]:
 			if wd.has(kind):
 				moves.append(wd[kind])
-		for alt: Dictionary in [wd.get("stance", {}), wd.get("grab", {})]:
-			for kind: String in ["attack", "special"]:   # 火把舉著時只換左鍵
-				if alt.has(kind):
-					moves.append(alt[kind])
-		if wd.special.has("parry"):
-			moves.append(wd.special.parry)
-		if wd.has("slot_skill"):   # 武器帶的技能欄技能（插火把）也在選角畫面顯示
-			var item: Dictionary = ItemDefs.ITEMS[wd.slot_skill]   # 名稱與說明在物品資料（技能是 kind skill 的條目）
-			moves.append(SkillDefs.SKILLS[wd.slot_skill].merged({"name": item.name, "desc": item.desc}))
 		for m: Dictionary in moves:
 			if not SkillIcons.has(m.get("icon", "")) or m.get("desc", "") == "":
 				return "%s「%s」要有畫好的圖示（SkillIcons.DRAWN）與說明 desc：%s / %s" % [wd.name, m.name, m.get("icon", ""), m.get("desc", "")]
@@ -849,7 +840,7 @@ static func check_longbow() -> String:
 
 
 # 一次拿一把武器（許家慶 2026-11-05 拿掉主副手與長劍）：武器資料沒有單手 / 雙手 / 副手，只有一格武器欄；
-# 劍盾左鍵斬擊、右鍵格擋（左手畫盾）；長劍與木盾都拿掉了（蓄力突刺改成技能「突刺」：往前衝 distance、打到的怪各一次 damage_pct）；守墓騎士開局劍盾
+# 劍盾左鍵斬擊、右鍵盾擊（左手畫盾）；長劍與木盾都拿掉了（蓄力突刺改成技能「突刺」：往前衝 distance、打到的怪各一次 damage_pct）；守墓騎士開局劍盾
 static func check_sword_shield() -> String:
 	for id: StringName in WeaponDefs.WEAPONS:
 		var wd: Dictionary = WeaponDefs.WEAPONS[id]
@@ -859,8 +850,8 @@ static func check_sword_shield() -> String:
 		if WeaponDefs.WEAPONS.has(gone) or ItemDefs.ITEMS.has(gone):
 			return "%s 應該拿掉了（武器與道具資料都不留）" % gone
 	var ss: Dictionary = WeaponDefs.WEAPONS.swordShield
-	if ss.attack.behavior != &"meleeSwing" or ss.special.behavior != &"shieldBlock" or ss.get("offhand_model", &"") != &"woodShield":
-		return "劍盾應是左鍵斬擊、右鍵格擋、左手畫木盾：%s / %s / %s" % [ss.attack.behavior, ss.special.behavior, ss.get("offhand_model", "")]
+	if ss.attack.behavior != &"meleeSwing" or ss.special.behavior != &"shieldBash" or ss.get("offhand_model", &"") != &"woodShield":
+		return "劍盾應是左鍵斬擊、右鍵盾擊、左手畫木盾：%s / %s / %s" % [ss.attack.behavior, ss.special.behavior, ss.get("offhand_model", "")]
 	var w := _new_world()
 	var p := _player(w)
 	if p.weapon_slots.size() != 1 or p.weapon_id != Config.PLAYER.start_weapon:
@@ -889,10 +880,10 @@ static func check_sword_shield() -> String:
 	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 20)), 60)
 	if absf(p2.pos.y - td.distance) > 0.3 or absf(p2.pos.x) > 0.05:
 		return "突刺應往準星方向衝 %.1f，實際 %s" % [td.distance, p2.pos]
-	# 守墓騎士開局劍盾：右鍵格擋
+	# 守墓騎士開局劍盾：右鍵盾擊
 	var pk := _player(_class_world(&"guardian"))
-	if pk.weapon_id != &"swordShield" or pk.weapon.special.behavior != &"shieldBlock":
-		return "守墓騎士開局應是劍盾（右鍵格擋），實際 %s" % pk.weapon_id
+	if pk.weapon_id != &"swordShield" or pk.weapon.special.behavior != &"shieldBash":
+		return "守墓騎士開局應是劍盾（右鍵盾擊），實際 %s" % pk.weapon_id
 	return ""
 
 
@@ -1057,170 +1048,110 @@ static func check_scepter() -> String:
 	return ""
 
 
-# F8 火把與火把傭兵（2026-10-27 改）：按住右鍵舉火把（移速 ×0.6）、放開放下；舉著時左鍵噴火（120% + 點燃、冷卻 6 秒，冷卻中不出招）；
-# 插火把出廠鑲在火把的寶石座、是數字鍵 1（冷卻 1 秒、次數 3 記在武器上、換層補滿）；翻滾取消；插著與舉著的火把照亮的範圍不管視野扇形都看得到；
-# 揮擊點燃；傭兵視野 +3、身邊 6
+# F8 火把與火把傭兵（許家慶 2026-11-06 拿掉準備姿態與插火把）：右鍵直接噴火（前方扇形 125% + 點燃、扣魔、魔力不夠不出招）；
+# 揮擊點燃；傭兵的起始技能在數字鍵 1（BagDefs.START）；傭兵視野 +3、身邊 6
 static func check_torch() -> String:
 	var tw: Dictionary = WeaponDefs.WEAPONS[&"torch"]
-	var plant: Dictionary = SkillDefs.SKILLS[tw.slot_skill]
-	var held := InputCmd.BTN_SPECIAL_HELD
+	if tw.has("stance") or tw.has("slot_skill") or tw.special.behavior != &"fireBreath" or SkillDefs.SKILLS.has(&"plantTorch") or ItemDefs.ITEMS.has(&"plantTorch"):
+		return "火把的右鍵應直接是噴火、沒有準備姿態與插火把：%s" % tw.special.behavior
 	var w := _new_world()
 	var p := _player(w)
 	p.equip_weapon(&"torch")
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL | held), 1)
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), held), 20)
-	if not p.torch_stance or not p.anim.get("torch_stance", false):
-		return "按住右鍵應舉起火把"
-	_run(w, _cmd(Vector2(1, 0), Vector2(0, 5), held), 3)
-	if absf(p.velocity.length() - p.stats.value(&"move_speed") * tw.stance.move_speed_mul) > 0.05:
-		return "舉著火把移速應 ×%.1f：%.2f" % [tw.stance.move_speed_mul, p.velocity.length()]
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 1)
-	if p.torch_stance:
-		return "放開右鍵應放下火把"
-	# 噴火：舉著時左鍵，前方的怪受到 120% 魔法、扣噴火的魔力（舉火把本身不耗魔）；魔力不夠再按不出招
 	var front := _dummy(w, Vector2(0, 3))
 	var events: Array[Dictionary] = []
 	p.set_stat_source(&"test", [[&"mana_regen", Stats.MUL, 0.0]])
 	var mana0 := p.mana
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL | held), 1)
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), held), 20)
-	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), held | InputCmd.BTN_ATTACK), 30, events)
+	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 1, events)
+	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5)), ceili((tw.special.windup + tw.special.active + tw.special.recovery) / DT) + 2, events)
 	var got := _damage_amounts(events, front.id)
-	if got.size() != 1 or absf(got[0] - WeaponDefs.move_base_damage(tw, tw.stance.attack)) > EPS:
-		return "舉著火把左鍵噴火應打中前方一次 %.1f（按住 0.5 秒）：%s" % [WeaponDefs.move_base_damage(tw, tw.stance.attack), got]
-	if not p.torch_stance or absf(mana0 - p.mana - p.mana_cost_of(tw.stance.attack)) > 1e-3 or not w.cooldowns.is_ready(p.cd("player.special")):
-		return "噴火後應還舉著火把、只扣噴火的 %.0f 魔力（實際 %.1f）、不占右鍵" % [p.mana_cost_of(tw.stance.attack), mana0 - p.mana]
-	events.clear()
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), held), 20)   # 等噴火收招
-	p.mana = p.mana_cost_of(tw.stance.attack) - 1.0
-	_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), held | InputCmd.BTN_ATTACK), 1, events)
-	if _named(events, "skill:onCooldown").is_empty() or not p.action.is_in(&"ready"):
-		return "魔力不夠時噴火按左鍵應提示、不出招：%s" % p.action.current_name
-	p.remove_stat_source(&"test")
-	p.mana = p.max_mana()
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 1)
-	# 插火把（火把傭兵的起始技能）：放進按鍵袋 1 就是數字鍵 1；背後 10 單位的怪本來看不到，火把插在它旁邊後看得到
-	var idx := 0
-	p.add_item(tw.slot_skill)
-	var first: Variant = p.slots.get_slot(p, idx)
-	if first == null or first.id != tw.slot_skill:
-		return "插火把放進按鍵袋 1 應是數字鍵 1：%s" % [first]
-	var charges := func() -> int: return p.slots.get_slot(p, idx).charges
-	var behind := _dummy(w, Vector2(0, -10))
-	if Vision.point_visible(w, p, behind.pos):
-		return "背後的怪本來應看不到"
-	p.pos = Vector2(0, -6)
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(idx)), 1)
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 20)
-	if w.torches.size() != 1 or charges.call() != plant.charges - 1:
-		return "按技能欄應插 1 支火把：%d 支、剩 %d 次" % [w.torches.size(), charges.call()]
-	p.pos = Vector2.ZERO
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 1)
-	if not Vision.point_visible(w, p, behind.pos):
-		return "火把旁邊的怪不管視野都應看得到"
-	for i in 6:   # 再按 6 次：冷卻 1 秒、最多 3 次
-		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(idx)), 1)
-		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 70)
-	if w.torches.size() != plant.charges or charges.call() != 0:
-		return "插火把最多 %d 次：%d 支、剩 %d" % [plant.charges, w.torches.size(), charges.call()]
-	# 次數記在袋子裡的那一格：快照來回後還在；換層補滿
-	var key: Dictionary = p.loadout.key_bags()[0]
-	if (BagDefs.from_array(BagDefs.to_array(key)).entries[0] as Dictionary).get("charges", -1) != 0:
-		return "插火把次數應跟著袋子的快照同步"
-	p.loadout.refill_slot_charges()
-	if charges.call() != plant.charges:
-		return "換層應補滿插火把次數：%d" % charges.call()
-	# 翻滾取消舉火把（就算右鍵還按著）
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL | held), 1)
-	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), held), 20)
-	_run(w, _cmd(Vector2(1, 0), Vector2(0, 5), held | InputCmd.BTN_ROLL), 2)
-	if p.torch_stance:
-		return "翻滾應放下火把"
-	# 揮擊點燃（燃燒是 Enemy 的狀態：用真的骷髏）
-	var w2 := _new_world()
-	var p2 := _player(w2)
-	p2.equip_weapon(&"torch")
-	var g := _spawn(w2, &"grunt", Vector2(0, 1.5))
-	g.stats.set_base(&"max_hp", 1000.0)
-	g.hp = 1000.0
-	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 15)
-	if g.burn_timer <= 0.0:
-		return "火把揮擊應點燃打中的怪"
-	# 傭兵視野
+	if got.size() != 1 or absf(got[0] - WeaponDefs.move_base_damage(tw, tw.special)) > EPS:
+		return "右鍵噴火應打中前方一次 %.1f：%s" % [WeaponDefs.move_base_damage(tw, tw.special), got]
+	if absf(mana0 - p.mana - p.mana_cost_of(tw.special)) > 1e-3 or not p.action.is_in(&"ready"):
+		return "噴火應扣 %.0f 魔力（實際 %.1f）、收招後回到 ready（%s）" % [p.mana_cost_of(tw.special), mana0 - p.mana, p.action.current_name]
+	p.mana = p.mana_cost_of(tw.special) - 1.0
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_SPECIAL), 2)
+	if p.action.is_in(&"special"):
+		return "魔力不夠時噴火不應出招"
+	# 揮擊與噴火都點燃（燃燒是 Enemy 的狀態：用真的骷髏）
+	for button: int in [InputCmd.BTN_ATTACK, InputCmd.BTN_SPECIAL]:
+		var w2 := _new_world()
+		var p2 := _player(w2)
+		p2.equip_weapon(&"torch")
+		var g := _spawn(w2, &"grunt", Vector2(0, 1.5))
+		g.stats.set_base(&"max_hp", 1000.0)
+		g.hp = 1000.0
+		_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5), button), 1)
+		_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5)), 25)
+		if g.burn_timer <= 0.0:
+			return "火把%s應點燃打中的怪" % ("揮擊" if button == InputCmd.BTN_ATTACK else "噴火")
+	# 傭兵：起始技能在數字鍵 1、視野
 	var w3 := _class_world(&"mercenary")
 	var m := _player(w3)
+	var first: Variant = m.slots.get_slot(m, 0)
+	if first == null or first.id != BagDefs.START.mercenary.skill:
+		return "火把傭兵的起始技能 %s 應在數字鍵 1：%s" % [BagDefs.START.mercenary.skill, first]
 	if absf(Vision.view_range(m) - (Config.VISION.range + 3.0)) > EPS or absf(Vision.near_radius(m) - 6.0) > EPS:
 		return "火把傭兵視野應 %.0f、身邊 6：%.1f / %.1f" % [Config.VISION.range + 3.0, Vision.view_range(m), Vision.near_radius(m)]
 	return ""
 
 
-# F9 鐵鏟與掘墓人：鏟地窄而遠、可擊退；鏟起面前的怪舉 2 秒（不能跳、翻滾，移速 ×0.7），左鍵拋出（落地 200%、路上 150%）、
-# 右鍵埋入（80%、2 秒不能動）、沒按就掙脫；Boss 抓不起來、沒抓到冷卻 2 秒；掘墓人挖墳 +40%、挖墳中受傷 −25%
+# F9 鐵鏟與掘墓人（許家慶 2026-11-06 改成鏟拋、埋入改成技能活埋）：右鍵鏟起面前的怪直接往準星拋出（有飛行過程、落地 200%、路上 150%）；
+# Boss 抓不起來、沒抓到只扣 miss_mana；活埋：面前的怪埋 2 秒、受到傷害，埋著打得到、不被擊退，Boss 埋不了；掘墓人挖墳中受傷 −25%
 static func check_shovel() -> String:
 	var sv: Dictionary = WeaponDefs.WEAPONS[&"shovel"]
-	var results := {}
-	for mode: StringName in [&"throw", &"bury", &"free"]:
-		var w := _new_world()
-		var p := _player(w)
-		p.equip_weapon(&"shovel")
-		var g := _spawn(w, &"grunt", Vector2(0, 1.4))
-		g.stats.set_base(&"max_hp", 1000.0)
-		g.hp = 1000.0
-		var other := _dummy(w, Vector2(0, 5.0))
-		_run(w, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), 1)
-		_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), 20)
-		if p.held_id != g.id or g.grabbed_by != p.id:
-			return "鏟起應抓住面前的骷髏：舉著 %d、骷髏 %d" % [p.held_id, g.id]
-		if mode == &"throw":
-			_run(w, _cmd(Vector2(1, 0), Vector2(0, 8)), 3)
-			if absf(p.velocity.length() - p.stats.value(&"move_speed") * sv.grab.move_speed_mul) > 0.05 or p.try_jump():
-				return "舉著怪移速 ×0.7、不能跳：%.2f" % p.velocity.length()
-			var hp_g := g.hp
-			var hp_o := other.hp
-			var ta: Dictionary = sv.grab.attack
-			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_ATTACK), 1)
-			# 飛行一半：還在空中、離地、還沒到落點、沒受落地傷害（拋出有飛行過程，不是瞬移）
-			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), roundi((ta.windup + ta.active + ta.flight_time * 0.5) / DT))
-			if not g.is_launching() or g.height - g.ground_height < 0.3 or g.pos.y > 7.0 or absf(hp_g - g.hp) > EPS:
-				return "拋出飛到一半應還在空中（%.1f 秒飛完）：飛行中 %s、離地 %.2f、z %.2f、扣血 %.1f" % [ta.flight_time, g.is_launching(), g.height - g.ground_height, g.pos.y, hp_g - g.hp]
-			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), roundi(ta.flight_time * 0.5 / DT) + 20)
-			results[mode] = [hp_g - g.hp, hp_o - other.hp, g.pos.y, p.held_id]
-		elif mode == &"bury":
-			var hp_g := g.hp
-			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), 1)
-			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), 20)
-			results[mode] = [hp_g - g.hp, g.buried_timer, p.held_id]
-			# 埋著打得到、但不會被擊退（2026-10-27 使用者）
-			var hp_b := g.hp
-			var at := g.pos
-			Combat.apply_damage(w, p, g, {"damage": 5.0, "knockback": 20.0})
-			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), 5)
-			if absf((hp_b - g.hp) - 5.0) > EPS or g.pos.distance_to(at) > 0.05:
-				return "埋著的怪應打得到（扣 5）、不被擊退：扣 %.2f、移動 %.2f" % [hp_b - g.hp, g.pos.distance_to(at)]
-		else:
-			_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), roundi(sv.special.hold_time / DT) + 2)
-			results[mode] = [p.held_id, g.grabbed_by]
+	if sv.has("grab") or sv.special.behavior != &"shovelFling":
+		return "鐵鏟的右鍵應是鏟拋（沒有舉著再選的 grab）"
+	var w := _new_world()
+	var p := _player(w)
+	p.equip_weapon(&"shovel")
+	var g := _spawn(w, &"grunt", Vector2(0, 1.4))
+	g.stats.set_base(&"max_hp", 1000.0)
+	g.hp = 1000.0
+	var other := _dummy(w, Vector2(0, 5.0))
+	var ta: Dictionary = sv.special
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), 1)
+	# 飛行一半：還在空中、離地、還沒到落點、沒受落地傷害（拋出有飛行過程，不是瞬移）
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), roundi((ta.windup + ta.active + ta.flight_time * 0.5) / DT))
+	if not g.is_launching() or g.height - g.ground_height < 0.3 or g.pos.y > 7.0 or absf(g.max_hp - g.hp) > EPS:
+		return "鏟拋飛到一半應還在空中（%.1f 秒飛完）：飛行中 %s、離地 %.2f、z %.2f、扣血 %.1f" % [ta.flight_time, g.is_launching(), g.height - g.ground_height, g.pos.y, g.max_hp - g.hp]
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), roundi(ta.flight_time * 0.5 / DT) + 3)   # 剛落地（之後牠會走回來）
 	var base: float = sv.base_damage
-	var th: Array = results[&"throw"]
-	if absf(th[0] - base * sv.grab.attack.damage_pct) > EPS or absf(th[1] - base * sv.grab.attack.path_damage_pct) > EPS or th[2] < 5.0 or th[3] != 0:
-		return "拋出：被丟的 %.0f、路上的 %.0f、飛到 z ≥ 5、手上放開：%s" % [base * sv.grab.attack.damage_pct, base * sv.grab.attack.path_damage_pct, th]
-	var bu: Array = results[&"bury"]
-	var bury_time: float = sv.grab.special.stun + sv.grab.special.crawl
-	if absf(bu[0] - base * sv.grab.special.damage_pct) > EPS or bu[1] <= 0.0 or bu[1] > bury_time or bu[2] != 0:
-		return "埋入：%.1f 傷害、埋 %.1f 秒、手上放開：%s" % [base * sv.grab.special.damage_pct, bury_time, bu]
-	if results[&"free"] != [0, 0]:
-		return "2 秒沒按應掙脫：%s" % [results[&"free"]]
+	if absf((g.max_hp - g.hp) - base * ta.damage_pct) > EPS or absf((other.max_hp - other.hp) - base * ta.path_damage_pct) > EPS or g.pos.y < 5.0:
+		return "鏟拋：被丟的 %.0f、路上的 %.0f、飛到 z ≥ 5：%.1f、%.1f、z %.2f" % [base * ta.damage_pct, base * ta.path_damage_pct, g.max_hp - g.hp, other.max_hp - other.hp, g.pos.y]
 	# Boss 抓不起來、沒抓到只扣 miss_mana
 	var w2 := _new_world()
 	var p2 := _player(w2)
 	p2.equip_weapon(&"shovel")
 	p2.set_stat_source(&"test", [[&"mana_regen", Stats.MUL, 0.0]])
 	var mana2 := p2.mana
-	_spawn(w2, &"boss", Vector2(0, 2.5))
+	var boss := _spawn(w2, &"boss", Vector2(0, 2.5))
 	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), 1)
 	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 8)), 12)
-	if p2.held_id != 0 or absf(mana2 - p2.mana - sv.special.miss_mana) > 1e-3:
-		return "Boss 抓不起來、沒抓到只扣 %.0f 魔力：舉著 %d、扣了 %.2f" % [sv.special.miss_mana, p2.held_id, mana2 - p2.mana]
+	if boss.is_launching() or absf(mana2 - p2.mana - sv.special.miss_mana) > 1e-3:
+		return "Boss 抓不起來、沒抓到只扣 %.0f 魔力：飛起來 %s、扣了 %.2f" % [sv.special.miss_mana, boss.is_launching(), mana2 - p2.mana]
+	# 活埋（技能）：面前的怪埋 stun + crawl 秒、受到 damage_pct；埋著打得到、但不會被擊退（2026-10-27 使用者）；Boss 埋不了
+	var bury: Dictionary = SkillDefs.SKILLS.bury
+	var w4 := _new_world()
+	var p4 := _player(w4)
+	p4.equip_weapon(&"shovel")
+	p4.facing = 0.0
+	var g4 := _spawn(w4, &"grunt", Vector2(0, 1.4))
+	g4.stats.set_base(&"max_hp", 1000.0)
+	g4.hp = 1000.0
+	p4.add_item(&"bury")
+	_run(w4, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.slot_bit(0)), 1)
+	_run(w4, _cmd(Vector2.ZERO, Vector2(0, 8)), 3)
+	var bury_dmg := p4.pct_damage(bury.damage_pct) * SkillDefs.damage_mul(&"bury", 1)
+	if absf((g4.max_hp - g4.hp) - bury_dmg) > EPS or g4.buried_timer <= 0.0 or g4.buried_timer > bury.stun + bury.crawl:
+		return "活埋：%.1f 傷害、埋 %.1f 秒：扣 %.2f、埋 %.2f" % [bury_dmg, bury.stun + bury.crawl, g4.max_hp - g4.hp, g4.buried_timer]
+	var hp_b := g4.hp
+	var at := g4.pos
+	Combat.apply_damage(w4, p4, g4, {"damage": 5.0, "knockback": 20.0})
+	_run(w4, _cmd(Vector2.ZERO, Vector2(0, 8)), 5)
+	if absf((hp_b - g4.hp) - 5.0) > EPS or g4.pos.distance_to(at) > 0.05:
+		return "埋著的怪應打得到（扣 5）、不被擊退：扣 %.2f、移動 %.2f" % [hp_b - g4.hp, g4.pos.distance_to(at)]
+	if SkillBehaviors.buriable(boss):
+		return "Boss 不應埋得了"
 	# 掘墓人：挖墳中受傷 −25%
 	var w3 := _class_world(&"gravedigger")
 	var gd := _player(w3)
@@ -1234,7 +1165,7 @@ static func check_shovel() -> String:
 	return ""
 
 
-# 鏟起搆得到正在正面牽制的屍犬（牽制距離的內緣），比抓取距離遠一點的抓不到
+# 鏟拋搆得到正在正面牽制的屍犬（牽制距離的內緣），比抓取距離遠一點的抓不到
 static func check_shovel_reach() -> String:
 	var sv: Dictionary = WeaponDefs.WEAPONS[&"shovel"]
 	var pin_near: float = EnemyDefs.ENEMIES[&"hound"].pin.range[0]
@@ -1250,53 +1181,34 @@ static func check_shovel_reach() -> String:
 		dog.stun(5.0)
 		_run(w, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), 1)
 		_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), 12)
-		results.append(p.held_id == dog.id)
+		results.append(dog.is_launching())
 	if results != [true, false]:
 		return "屍犬在牽制距離 %.2f 應抓得到、超過抓取距離 %.1f 抓不到：%s" % [pin_near + 0.05, sv.special.reach, results]
 	return ""
 
 
-# 鏟起隊友（誤傷開著時）：舉著時隊友停住、按翻滾掙脫；拋出不扣血、被推到前方；埋入不扣血、定住
+# 鏟拋隊友（誤傷開著時）：不扣血、被推到前方
 static func check_shovel_teammate() -> String:
 	var sv: Dictionary = WeaponDefs.WEAPONS[&"shovel"]
 	var mate_peer := World.HOST_PEER_ID + 1
-	for mode: StringName in [&"throw", &"bury", &"escape"]:
-		var w := World.new(&"test_arena")
-		w.spawn_packs = false
-		w.friendly_fire = true   # 大廳的誤傷開關（預設關）
-		w.reset(12345, [World.HOST_PEER_ID, mate_peer])
-		w.spawner.finished = true
-		_worlds.append(w)
-		var p := _player(w)
-		var mate: Player = w.players[mate_peer]
-		p.equip_weapon(&"shovel")
-		p.pos = Vector2.ZERO
-		mate.pos = Vector2(0, 1.4)
-		var idle := _cmd(Vector2.ZERO)
-		w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), mate_peer: idle}, DT)
-		for i in 20:
-			w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO, Vector2(0, 8)), mate_peer: idle}, DT)
-		if p.held_id != mate.id or mate.grabbed_by != p.id:
-			return "鏟起應抓住面前的隊友：舉著 %d、隊友 %d、被抓 %d" % [p.held_id, mate.id, mate.grabbed_by]
-		var hp := mate.hp
-		match mode:
-			&"throw":
-				w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_ATTACK), mate_peer: idle}, DT)
-				for i in 90:
-					w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO, Vector2(0, 8)), mate_peer: idle}, DT)
-				if absf(mate.hp - hp) > EPS or mate.pos.y < 1.4 + sv.grab.attack.distance * 0.6 or p.held_id != 0 or mate.grabbed_by != 0:
-					return "拋出隊友應不扣血、推到前方約 %.0f：扣 %.1f、z %.2f、舉著 %d、被抓 %d" % [sv.grab.attack.distance, hp - mate.hp, mate.pos.y, p.held_id, mate.grabbed_by]
-			&"bury":
-				w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), mate_peer: idle}, DT)
-				for i in 20:
-					w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO, Vector2(0, 8)), mate_peer: idle}, DT)
-				if absf(mate.hp - hp) > EPS or mate.stun_timer <= 0.0 or mate.bury_mash < 0.0 or p.held_id != 0:
-					return "埋入隊友應不扣血、埋著定住：扣 %.1f、暈 %.2f、埋 %.2f、舉著 %d" % [hp - mate.hp, mate.stun_timer, mate.bury_mash, p.held_id]
-			&"escape":
-				w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO, Vector2(0, 8)), mate_peer: _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ROLL)}, DT)
-				w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO, Vector2(0, 8)), mate_peer: idle}, DT)
-				if p.held_id != 0 or mate.grabbed_by != 0 or mate.stun_timer > 0.0:
-					return "被舉著的隊友按翻滾應掙脫：舉著 %d、被抓 %d、暈 %.2f" % [p.held_id, mate.grabbed_by, mate.stun_timer]
+	var w := World.new(&"test_arena")
+	w.spawn_packs = false
+	w.friendly_fire = true   # 大廳的誤傷開關（預設關）
+	w.reset(12345, [World.HOST_PEER_ID, mate_peer])
+	w.spawner.finished = true
+	_worlds.append(w)
+	var p := _player(w)
+	var mate: Player = w.players[mate_peer]
+	p.equip_weapon(&"shovel")
+	p.pos = Vector2.ZERO
+	mate.pos = Vector2(0, 1.4)
+	var idle := _cmd(Vector2.ZERO)
+	var hp := mate.hp
+	w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.BTN_SPECIAL), mate_peer: idle}, DT)
+	for i in 90:
+		w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO, Vector2(0, 8)), mate_peer: idle}, DT)
+	if absf(mate.hp - hp) > EPS or mate.pos.y < 1.4 + sv.special.distance * 0.6:
+		return "鏟拋隊友應不扣血、推到前方約 %.0f：扣 %.1f、z %.2f" % [sv.special.distance, hp - mate.hp, mate.pos.y]
 	return ""
 
 
@@ -1339,7 +1251,7 @@ static func _quiver() -> String:
 
 
 
-# 武器測試場景（--weapon-test）的木樁：爬出後站著不動、不打人；鐵鏟抓得起來、埋得下去，埋完回到站著
+# 武器測試場景（--weapon-test）的木樁：爬出後站著不動、不打人；鐵鏟鏟拋得出去、活埋埋得下去，落地 / 埋完回到站著
 static func check_training_dummies() -> String:
 	var w := _new_world()
 	var p := _player(w)
@@ -1353,21 +1265,29 @@ static func check_training_dummies() -> String:
 			return "木樁 %d 應站著不動（狀態 train）：移動 %.2f、狀態 %s" % [i, e.pos.distance_to(start[i]), e.fsm.current_name]
 	if p.hp != hp0:
 		return "木樁不應打人：玩家血 %.0f → %.0f" % [hp0, p.hp]
-	# 鐵鏟：朝貼身那隻抓起、埋入，埋完回到 train
+	# 鐵鏟：朝貼身那隻鏟拋，落地後回到 train；活埋埋得下去，埋完回到站著
 	p.equip_weapon(&"shovel")
 	var near: Enemy = dummies[0]
 	var aim := p.pos + (near.pos - p.pos) * 3.0
 	_run(w, _cmd(Vector2.ZERO, aim, InputCmd.BTN_SPECIAL), 1)
-	_run(w, _cmd(Vector2.ZERO, aim), 20)
-	if p.held_id != near.id:
-		return "鐵鏟應抓起貼身的木樁：舉著 %d、木樁 %d" % [p.held_id, near.id]
-	_run(w, _cmd(Vector2.ZERO, aim, InputCmd.BTN_SPECIAL), 1)
-	_run(w, _cmd(Vector2.ZERO, aim), 20)
-	if near.buried_timer <= 0.0 or near.grabbed_by != 0:
-		return "右鍵應把木樁埋下去：埋 %.2f 秒、被舉 %d" % [near.buried_timer, near.grabbed_by]
-	_run(w, _cmd(Vector2.ZERO, aim), 180)
-	if near.buried_timer > 0.0 or not near.fsm.is_in(&"train"):
-		return "埋完應回到站著：埋 %.2f、狀態 %s" % [near.buried_timer, near.fsm.current_name]
+	_run(w, _cmd(Vector2.ZERO, aim), 10)
+	if not near.is_launching():
+		return "鐵鏟應把貼身的木樁鏟拋出去"
+	_run(w, _cmd(Vector2.ZERO, aim), 120)
+	if near.is_launching() or not near.fsm.is_in(&"train"):
+		return "木樁落地後應回到站著：飛行中 %s、狀態 %s" % [near.is_launching(), near.fsm.current_name]
+	p.pos = near.pos + Vector2(0, -1.4)
+	p.facing = 0.0
+	p.add_item(&"bury")
+	_run(w, _cmd(Vector2.ZERO, near.pos, InputCmd.slot_bit(0)), 1)
+	_run(w, _cmd(Vector2.ZERO, near.pos), 5)
+	var buried: Array = dummies.filter(func(e: Enemy) -> bool: return e.buried_timer > 0.0)   # 埋面前最近的那隻（不一定是剛丟的）
+	if buried.size() != 1:
+		return "活埋應把面前的一隻木樁埋下去：埋了 %d 隻（技能 %s）" % [buried.size(), p.slots.get_slot(p, 0)]
+	var b: Enemy = buried[0]
+	_run(w, _cmd(Vector2.ZERO, near.pos), 180)
+	if b.buried_timer > 0.0 or not b.fsm.is_in(&"train"):
+		return "埋完應回到站著：埋 %.2f、狀態 %s" % [b.buried_timer, b.fsm.current_name]
 	return ""
 
 

@@ -35,6 +35,7 @@ const LOADOUTS := [[&"swordShield", &""], [&"dagger", &""], [&"torch", &""], [&"
 const KEEP := {
 	&"arcaneBurst": "350% 是使用者同意的數字（系統說明 §1）",
 	&"chargedShot": "量的是蓄滿：要站著蓄 1 秒、移速減半，蓄滿高一點是代價",
+	&"fireBreath": "火把普攻已到近戰目標：噴火照右鍵目標打一隻會超過雙匕首（武器強度），傷害維持 125%、靠點燃與 90° 範圍",
 	&"soul_reaver": "成長型：量的是 0 層（目標 × 0.65），這一層殺 30 隻後 × 1.9 ≈ 目標 × 1.2（mockups/橘色技能.html 方案 3）",
 	&"grudge": "成長型：量的是沒受傷時的保底（目標 × 0.5），受到的傷害 × 1.7 × 預算加上去，被打越多越痛",
 	&"star_sign": "要放 3 顆才有傷害：量一次放是 0；3 顆的三角形每秒打 175%、最多 20 秒",
@@ -208,7 +209,7 @@ func _basic(lo: Array, pack: bool) -> float:
 func _weapon_table(lines: Array[String]) -> void:
 	lines.append("## 武器強度（普攻 + 右鍵）")
 	lines.append("")
-	lines.append("普攻每秒 + 右鍵每次 ÷（耗魔 ÷ 那把武器的回魔）（單拿這把；格擋、準備姿態、鏟起不算傷害）。打一隻目標：近戰 %.0f、遠程 %.0f（±%.0f%%）；打一群的倍數 = 一群合計 ÷ 打一隻，目標 %.0f~%.0f 倍。雙匕首打一隻要是全部最高、短弓是遠程最高（比 = 自己 ÷ 組裡第二高）。" % [WEAPON_TARGET.melee, WEAPON_TARGET.ranged, TOLERANCE * 100.0, GROUP_BAND.x, GROUP_BAND.y])
+	lines.append("普攻每秒 + 右鍵每次 ÷（耗魔 ÷ 那把武器的回魔）（單拿這把；盾擊只算推盾那一下，盾反不算）。打一隻目標：近戰 %.0f、遠程 %.0f（±%.0f%%）；打一群的倍數 = 一群合計 ÷ 打一隻，目標 %.0f~%.0f 倍。雙匕首打一隻要是全部最高、短弓是遠程最高（比 = 自己 ÷ 組裡第二高）。" % [WEAPON_TARGET.melee, WEAPON_TARGET.ranged, TOLERANCE * 100.0, GROUP_BAND.x, GROUP_BAND.y])
 	lines.append("")
 	lines.append("| 武器 | 類型 | 基礎傷害 | 打一隻每秒 | 目標 | 比 | 打一群每秒 | 倍數 | |")
 	lines.append("|---|---|---:|---:|---:|---:|---:|---:|---|")
@@ -298,10 +299,10 @@ func _move_table(lines: Array[String], basic: Dictionary) -> void:
 	lines.append("| 招式 | 武器 | 耗魔 | 目標 | 單體每次 | 比 | 一群打到 | 一群每隻 | 比 | 一群合計 | |")
 	lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|")
 	for lo: Array in LOADOUTS:
-		# 右鍵：格擋、準備姿態、鏟起這類沒冷卻或不算傷害的不列
+		# 右鍵：沒有耗魔或沒有傷害的不列；盾擊（推盾期間格擋、擋下就盾反）算功能型
 		var sp: Dictionary = WeaponDefs.WEAPONS[lo[0]].get("special", {})
 		if sp.has("mana") and sp.has("damage_pct"):
-			_move_row(lines, basic, "右鍵・" + String(sp.name), lo[0], sp.mana, sp.has("stun") or sp.has("heal_per_sec"),
+			_move_row(lines, basic, "右鍵・" + String(sp.name), lo[0], sp.mana, sp.has("stun") or sp.has("heal_per_sec") or sp.has("block_window"),
 				func(pack: bool) -> Vector2: return _special_hit([lo[0], &""], sp, pack), KEEP.get(sp.behavior, ""), true, SPECIAL_K)
 	for id: StringName in SkillDefs.gem_skill_ids():
 		var def: Dictionary = SkillDefs.SKILLS[id]

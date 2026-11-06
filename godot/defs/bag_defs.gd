@@ -81,7 +81,7 @@ const START := {
 	&"ranger": {"skill": &"volley", "bag": [&"hit", &"left"]},
 	&"shadow": {"skill": &"knife_fan", "bag": [&"kill", &"left"]},
 	&"priest": {"skill": &"holy_pillar", "bag": [&"hurt", &"bottom"]},
-	&"mercenary": {"skill": &"plantTorch", "bag": [&"hit", &"left"]},
+	&"mercenary": {"skill": &"fire_flask", "bag": [&"hit", &"left"]},   # 插火把拿掉後（許家慶 2026-11-06）改成火瓶（Claude 暫定）
 	&"gravedigger": {"skill": &"ground_slam", "bag": [&"hit", &"right"]},
 }
 

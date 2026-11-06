@@ -80,6 +80,11 @@ func can_be_hit() -> bool:
 	return not is_dead and invuln_timer <= 0.0 and not is_dodging()
 
 
+# 不參與互推（SimPhysics.separate）：被鐵鏟拋在空中的怪會飛過其他怪（Enemy 覆寫）
+func passes_through() -> bool:
+	return false
+
+
 # 能不能被當成攻擊與追擊的目標（倒地的玩家不行，見 Player）
 func is_targetable() -> bool:
 	return not is_dead

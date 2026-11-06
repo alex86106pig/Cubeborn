@@ -306,7 +306,6 @@ const ITEMS := {
 		"desc": "鬼火擊殺時，5 秒內鬼火傷害 +50%", "effects": [{"ability": &"wisp_frenzy"}]},
 
 	# ---- 技能（Build 改版第 7 步）：只能鑲在寶石座、能用的武器與動作在 SkillDefs（同一個 id）----
-	&"plantTorch": {"kind": &"skill", "name": "插火把", "rarity": &"white", "shape": &"dot", "desc": "插在地上照亮周圍、全隊看得到；每層 3 次（火把自帶）", "effects": []},
 	&"whirlwind": {"kind": &"skill", "name": "旋風斬", "rarity": &"white", "shape": &"dot", "desc": "原地轉一圈，砍四周的怪", "effects": []},
 	&"charge_slash": {"kind": &"skill", "name": "衝鋒斬", "rarity": &"green", "shape": &"dot", "desc": "往前衝 5 單位，砍到路上的怪", "effects": []},
 	&"sword_wave": {"kind": &"skill", "name": "劍氣", "rarity": &"white", "shape": &"dot", "desc": "揮劍射出一道會穿透的劍氣", "effects": []},
@@ -334,6 +333,7 @@ const ITEMS := {
 	&"frost_arrow": {"kind": &"skill", "name": "冰霜箭", "rarity": &"white", "shape": &"dot", "desc": "射中後炸開，周圍的怪冰冷 +2 層", "effects": []},
 	&"ground_slam": {"kind": &"skill", "name": "震地", "rarity": &"white", "shape": &"dot", "desc": "往地上一砸，前方扇形的怪被擊退並暈眩 0.5 秒", "effects": []},
 	&"dirt_toss": {"kind": &"skill", "name": "甩土", "rarity": &"white", "shape": &"dot", "desc": "甩出一團土塊，炸開後周圍的怪短暫暈眩", "effects": []},
+	&"bury": {"kind": &"skill", "name": "活埋", "rarity": &"white", "shape": &"dot", "desc": "把面前一隻怪（Boss 除外）埋進土裡，2 秒不能動也不能出招", "effects": []},
 	&"burrow": {"kind": &"skill", "name": "掘地", "rarity": &"blue", "shape": &"dot", "desc": "鑽進土裡無敵 1 秒、往前移動 6 單位，出土時震開周圍的怪", "effects": []},
 	# ---- 橘色（傳說，mockups/橘色技能.html 方案 1~3，許家慶 2026-11-06 選）----
 	&"hell_gate": {"kind": &"skill", "name": "冥府之門", "rarity": &"orange", "shape": &"dot", "desc": "準星的位置裂開一道門，1.2 秒後把半徑 4 內的怪拖進去（暗影傷害）", "effects": []},

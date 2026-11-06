@@ -11,10 +11,7 @@ var _slots: Dictionary = {}   # cd key -> Slot
 var _weapon_id: StringName = &""
 var _slot_sig := ""                    # 寶石座上的技能（ActiveSlots.signature），變了就重建
 var _attack_slot: Slot        # 左鍵：平常是普攻
-var _parry_slot: Slot         # 劍盾格擋中左鍵改成招架（v0.41.0）：同一個位置，兩格輪流顯示
 var _special_slot: Slot       # 右鍵：平常是武器特殊技
-var _alt_left: Slot           # 火把準備姿態 / 鐵鏟舉著怪時的左右鍵（2026-10-27）：和平常的格子同位置輪流顯示
-var _alt_right: Slot
 
 
 func _init() -> void:
@@ -33,11 +30,6 @@ func refresh(world: World, player: Player) -> void:
 	if player.weapon_id != _weapon_id or sig != _slot_sig:
 		_slot_sig = sig
 		_build(player)
-	if _parry_slot != null:
-		_parry_slot.visible = player.block_time >= 0.0
-		_attack_slot.visible = not _parry_slot.visible
-	if _alt_left != null:
-		_refresh_alt(player)
 	var atk: Dictionary = player.weapon.attack
 	if atk.has("quiver") and _attack_slot != null:
 		# 短弓：左鍵格顯示箭袋剩幾支，裝填中蓋遮罩倒數
@@ -52,14 +44,14 @@ func refresh(world: World, player: Player) -> void:
 		slot.cd_left = world.cooldowns.remaining(player.cd(key))   # 每位玩家各自的 CD（Player.cd）
 		slot.cd_ratio = 1.0 - world.cooldowns.progress(player.cd(key))
 		if slot.index >= 0:
-			var data: Variant = player.slots.get_slot(player, slot.index)   # 寶石座的技能（含火把的插火把）
-			if data != null and data.def.get("mode", &"") == &"charges":   # 藥水、插火把：次數制
+			var data: Variant = player.slots.get_slot(player, slot.index)   # 按鍵袋的技能
+			if data != null and data.def.get("mode", &"") == &"charges":   # 藥水：次數制
 				slot.charges.text = str(data.charges)
 				slot.icon.modulate.a = 0.3 if data.charges <= 0 else 1.0
 			elif data != null and data.def.has("mana"):
 				_show_cost(slot, player, ActiveSlots.mana_cost(player, data))
 			slot.show_level(data.get("level", 1) if data != null else 1)
-		elif not slot.mana_def.is_empty():   # 耗魔的右鍵、招架、噴火
+		elif not slot.mana_def.is_empty():   # 耗魔的右鍵
 			_show_cost(slot, player, player.mana_cost_of(slot.mana_def))
 		elif key == Player.ROLL_CD:
 			# 翻滾：顯示剩餘次數；還有次數時不蓋遮罩（回充秒數照樣顯示）
@@ -77,19 +69,6 @@ func _show_cost(slot: Slot, player: Player, cost: float) -> void:
 	slot.icon.modulate.a = 1.0 if player.has_mana(cost) else 0.3
 
 
-# 火把舉著時（左鍵噴火 + 耗魔；右鍵格照舊是舉火把）、鐵鏟舉著怪（左鍵拋出、右鍵埋入）時換成那兩格
-func _refresh_alt(player: Player) -> void:
-	var w := player.weapon
-	var stance: bool = player.torch_stance and w.has("stance")
-	var holding: bool = w.has("grab") and (player.held_id != 0 or player.anim.get("holding", false))
-	var on: bool = stance or holding
-	_alt_left.visible = on
-	_attack_slot.visible = not on and (_parry_slot == null or not _parry_slot.visible)
-	if _alt_right != null:
-		_alt_right.visible = on
-		_special_slot.visible = not on
-
-
 func flash(key: String, deny: bool) -> void:
 	if _slots.has(key):
 		_slots[key].flash(deny)
@@ -101,23 +80,8 @@ func _build(player: Player) -> void:
 	_slots.clear()
 	var w := player.weapon
 	_attack_slot = _add_slot("", w.attack.icon, "左鍵", -1, false)
-	_parry_slot = null
-	if w.special.has("parry") and w.special.parry.has("name"):
-		_parry_slot = _add_slot("player.parry", w.special.parry.get("icon", w.special.parry.name), "左鍵", -1, false)
-		_parry_slot.visible = false
-		_parry_slot.set_mana_def(w.special.parry)
-	var alt: Dictionary = w.get("stance", w.get("grab", {}))
-	_alt_left = null
-	_alt_right = null
-	if not alt.is_empty():
-		_alt_left = _add_slot(alt.attack.get("cd_key", ""), alt.attack.icon, "左鍵", -1, false)   # 噴火的耗魔照一般格子更新
-		_alt_left.visible = false
-		_alt_left.set_mana_def(alt.attack)
 	_special_slot = _add_slot("player.special", w.special.icon, "右鍵", -1, false)
 	_special_slot.set_mana_def(w.special)
-	if alt.has("special"):   # 火把舉著時只換左鍵（右鍵就是按住的舉火把）
-		_alt_right = _add_slot("", alt.special.icon, "右鍵", -1, false)
-		_alt_right.visible = false
 	_add_slot(Player.ROLL_CD, ROLL_ICON, "Shift", -1, false)
 	var divider := UiKit.rect(Color(1, 1, 1, 0.25), Vector2(2, 48))
 	divider.size_flags_vertical = Control.SIZE_SHRINK_END

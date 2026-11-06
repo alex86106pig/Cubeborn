@@ -38,7 +38,6 @@ var _exploded := false
 var _summon_timer := 0.0
 # 道具造成的狀態（v0.33.0，ItemDefs.PROCS）：只在權威端推進；畫面看 anim 的 frozen / poisoned
 var frozen_timer := 0.0              # 冰凍剩餘秒數：不能動、不出招
-var grabbed_by := 0                  # 被鐵鏟舉著（F9）：舉著的玩家 id；期間不能動、不出招，位置由玩家擺
 var buried_timer := 0.0              # 被埋進土裡（F9）：剩餘秒數，不能動、不出招
 var poison_timer := 0.0              # 中毒剩餘秒數
 var poison_tick_damage := 0.0        # 每次扣的傷害
@@ -149,6 +148,11 @@ func is_launching() -> bool:
 	return fsm.is_in(&"launch")
 
 
+# 被鐵鏟拋出飛在空中：飛過其他怪、不被擋下（路上的怪照樣受 path_hit）
+func passes_through() -> bool:
+	return fsm != null and fsm.is_in(&"launch") and fsm.data.has("thrown")
+
+
 # 噴出去（狀態 launch）：seconds 秒後落在 to（同高度的拋物線，最高點 = 重力 × seconds² ÷ 8）
 func launch_to(to: Vector2, seconds: float) -> void:
 	if not fsm.is_in(&"launch"):
@@ -253,7 +257,7 @@ func update(dt: float) -> void:
 	_update_poise(dt)
 	taunt_timer = maxf(0.0, taunt_timer - dt)
 	blind_timer = maxf(0.0, blind_timer - dt)
-	if (frozen_timer > 0.0 or stagger_timer > 0.0 or stun_timer > 0.0 or buried_timer > 0.0 or grabbed_by != 0) and not is_dead:
+	if (frozen_timer > 0.0 or stagger_timer > 0.0 or stun_timer > 0.0 or buried_timer > 0.0) and not is_dead:
 		frozen_timer = maxf(0.0, frozen_timer - dt)
 		stagger_timer = maxf(0.0, stagger_timer - dt)
 		stun_timer = maxf(0.0, stun_timer - dt)
@@ -650,8 +654,6 @@ func _update_anim() -> void:
 		anim["staggered"] = true   # 失衡與技能暈眩都是頭上冒星星
 	if buried_timer > 0.0:
 		anim["buried"] = true
-	if grabbed_by != 0:
-		anim["grabbed"] = true
 	_anim_extra(anim)
 
 

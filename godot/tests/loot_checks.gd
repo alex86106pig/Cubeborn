@@ -741,6 +741,56 @@ static func check_pickups() -> String:
 
 # 從背包介面的「腳邊」撿（OP_PICKUP）：放到指定的格子與方向並生效、地上的消失；已經被撿走、按不到 F、放不下的不動；
 # 武器放進背包指定的格子（不放空的裝備欄）；按 F 撿不下時 inventory:full 帶著地上道具的 id
+# 互動列表（許家慶 2026-11-06）：疊在一起的東西 Interactables.options 由近到遠列出；按 F 帶 [OP_INTERACT, id] 跟選的那個互動（不是最近的）；
+# 選的已經搆不到 → 照最近的；按 F 撿了東西這次按著不開挖、挑了挖墳才開挖（同一下按鍵不會又撿又挖）
+static func check_interact_choice() -> String:
+	var w := _new_world(12345, false, &"test_arena")
+	var p := _player(w)
+	var near := w.drop_item(&"whetstone", p.pos + Vector2(0.6, 0))
+	var chest := Chest.new(w, &"small", p.pos + Vector2(-1.2, 0))
+	w.add_entity(chest)
+	w.chests.append(chest)
+	w.souls = 9999
+	var opts := Interactables.options(w, p)
+	if opts.size() != 2 or opts[0].id != near.id or opts[1].id != chest.id:
+		return "互動列表應由近到遠列出磨刀石、祭壇：%s" % [opts]
+	var cmd := _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_INTERACT)
+	cmd.inv_ops = [[InputCmd.OP_INTERACT, chest.id]]
+	_run(w, cmd, 1)
+	if not chest.opened or near.is_removed:
+		return "選了祭壇按 F 應開祭壇、不撿旁邊比較近的磨刀石：開了 %s、磨刀石被撿 %s" % [chest.opened, near.is_removed]
+	# 選的已經搆不到：照最近的（撿磨刀石）
+	_run(w, _cmd(Vector2.ZERO), 1)
+	var gone := Chest.new(w, &"small", p.pos + Vector2(LootDefs.INTERACT_RANGE + 5.0, 0))
+	w.add_entity(gone)
+	w.chests.append(gone)
+	var cmd2 := _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_INTERACT)
+	cmd2.inv_ops = [[InputCmd.OP_INTERACT, gone.id]]
+	_run(w, cmd2, 1)
+	if gone.opened or not near.is_removed:
+		return "選的搆不到應照最近的撿磨刀石：遠的開了 %s、磨刀石被撿 %s" % [gone.opened, near.is_removed]
+	# 挖墳點旁有道具：按 F 撿了道具這次不開挖；挑了挖墳才開挖、不撿
+	var w2 := _new_world(12345, false, &"graveyard_a")
+	var p2 := _player(w2)
+	if not DigEvent.enabled(w2):
+		return "墓園 A 應有挖墳點才驗得了"
+	p2.pos = w2.event.point + Vector2(1.5, 0)
+	var stone := w2.drop_item(&"whetstone", p2.pos + Vector2(0.4, 0))
+	_run(w2, _cmd(Vector2.ZERO), 1)
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_INTERACT), 5)
+	if not stone.is_removed or p2.is_digging():
+		return "挖墳點旁按 F 應先撿道具、這次按著不開挖：撿了 %s、挖墳中 %s" % [stone.is_removed, p2.is_digging()]
+	_run(w2, _cmd(Vector2.ZERO), 1)
+	var stone2 := w2.drop_item(&"whetstone", p2.pos + Vector2(0.4, 0))
+	var dig := _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_INTERACT)
+	dig.inv_ops = [[InputCmd.OP_INTERACT, Interactables.DIG]]
+	_run(w2, dig, 1)
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_INTERACT), 3)
+	if stone2.is_removed or not p2.is_digging():
+		return "挑了挖墳按住 F 應開挖、不撿道具：撿了 %s、挖墳中 %s" % [stone2.is_removed, p2.is_digging()]
+	return ""
+
+
 static func check_pickup_to_cell() -> String:
 	var w := _new_world(12345, false, &"test_arena")
 	var p := _player(w)
@@ -1623,8 +1673,8 @@ static func check_weapon_pickup() -> String:
 		c.inv_ops = ops
 		_run(w, c, 1)
 	var sword: StringName = p.weapon_slots[Loadout.MAIN].uid
-	if p.weapon_id != &"swordShield" or p.weapon.special.behavior != &"shieldBlock" or p.weapon.attack.name != WeaponDefs.WEAPONS.swordShield.attack.name:
-		return "開局應是劍盾：左鍵斬擊、右鍵格擋，實際 %s" % p.weapon_id
+	if p.weapon_id != &"swordShield" or p.weapon.special.behavior != &"shieldBash" or p.weapon.attack.name != WeaponDefs.WEAPONS.swordShield.attack.name:
+		return "開局應是劍盾：左鍵斬擊、右鍵盾擊，實際 %s" % p.weapon_id
 	# 地上的武器按 F 撿起：手上有武器時放背包、不換手上的
 	w.drop_weapon(mk.call("a", &"staff"), p.pos + Vector2(1, 0))
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_INTERACT), 1)
@@ -2292,7 +2342,7 @@ static func _merged_world(seed_value := 12345) -> World:
 	return w
 
 
-# 背包合併（BagDefs.MERGED_ZONES）：開局只開主袋中間、職業那一區 2 格（起始技能）與數字區 1 格；鎖格放不進去；
+# 背包合併（BagDefs.MERGED_ZONES）：開局只開主袋中間、職業那一區 2 格（空的）與數字區 1 格（起始技能）；鎖格放不進去；
 # 隨機開格、自選開格（OP_UNLOCK 用掉次數，沒次數不開）；觸發區不能搬、不能丟；換武器袋子不動；快照帶著鎖格與次數；
 # 門的袋子獎勵 = 隨機開 1 格、Boss 與鐵砧 = 自選 1 格、石棺不出詛咒袋；菁英怪改掉武器、不掉袋子；袋子分開的模式照舊
 static func check_merged_bag() -> String:
@@ -2310,8 +2360,11 @@ static func check_merged_bag() -> String:
 		return "開局應開 %d 格（共 %d）：還鎖著 %d" % [open_want, total, lo.locked_spots().size()]
 	var start: Dictionary = BagDefs.START.guardian
 	var zone := lo.bags.filter(func(b: Dictionary) -> bool: return b.kind == start.bag[0] and b.side == start.bag[1])
-	if zone.size() != 1 or zone[0].entries.size() != 1 or zone[0].entries[0].id != start.skill or zone[0].locked.has(Vector2i.ZERO) or zone[0].locked.has(Vector2i(1, 0)):
-		return "守墓騎士的右鍵命中區應開 2 格、裝著 %s：%s" % [start.skill, zone]
+	if zone.size() != 1 or not zone[0].entries.is_empty() or zone[0].locked.has(Vector2i.ZERO) or zone[0].locked.has(Vector2i(1, 0)):
+		return "守墓騎士的右鍵命中區應開 2 格、空的（起始技能放數字區，同袋子分開）：%s" % [zone]
+	var keyed := lo.key_bags().filter(func(b: Dictionary) -> bool: return b.entries.any(func(e: Dictionary) -> bool: return e.id == start.skill))
+	if keyed.size() != 1 or keyed[0].locked.has(Vector2i.ZERO):
+		return "起始技能 %s 應在數字區開著的那一格（數字鍵放得出來）：%s" % [start.skill, lo.key_bags()]
 	# 鎖格放不進去、開著的放得進去
 	var stat := _shaped(&"dot")
 	if lo.core.fits(stat, Vector2i.ZERO, 0) or not lo.core.fits(stat, BagDefs.MERGED_START_CORE.position, 0):

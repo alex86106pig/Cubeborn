@@ -1,7 +1,7 @@
 # 技能行為：Q 的治療藥水、寶石座的技能（Build 改版第 7 步，數字在 SkillDefs）
 # cast 由 ActiveSlots.use 呼叫（本機預測時也會跑）：位移（衝刺、瞬移、後跳）兩邊都做，傷害、投射物、召喚、地面區域只在權威端
 # ctx（ActiveSlots.cast_context）：mul 等級的傷害倍率、area 延長的範圍倍率、type 火焰化 / 霜化後的屬性、split 分裂（0.25 秒後再放一次 60%）
-#   觸發袋有目標時再加上 at / dir / facing / target_id（aim_at）：範圍與落點改在目標身上、投射物從命中點沿原方向射出、位移朝目標；祝福、召喚、插火把仍在自己身上
+#   觸發袋有目標時再加上 at / dir / facing / target_id（aim_at）：範圍與落點改在目標身上、投射物從命中點沿原方向射出、位移朝目標；祝福、召喚仍在自己身上
 # 晚一點才發生的（隕石、箭雨、連珠箭、狙擊、分裂）用 later 排進 World.delayed，只在權威端
 class_name SkillBehaviors
 
@@ -31,13 +31,28 @@ class Heal extends Behavior:
 		owner.world.emit_event("fx:heal", {"pos": owner.pos, "height": owner.height, "color": def.color})
 
 
-# 插火把（F8）：插在面前，整關不熄；只有房主產生火把實體
-class PlantTorch extends Behavior:
-	func activate(owner: Player, _def: Dictionary, _ctx: Dictionary) -> void:
-		if owner.world.is_authority:
-			var t := Torch.new(owner.world, owner.pos + WeaponBehaviors.forward(owner) * 0.6, owner.id)
-			owner.world.add_entity(t)
-			owner.world.torches.append(t)
+# 活埋（許家慶 2026-11-06，原本鐵鏟舉著怪時的右鍵）：把面前 reach 內一隻非 Boss 的怪埋進土裡只露半身，受 damage_pct、
+# stun 秒不能動再花 crawl 秒爬出（Enemy.bury）；觸發袋有目標時埋那一隻。身邊沒有埋得了的怪就放不出來（技能銜接在這裡停）
+class Bury extends Behavior:
+	func can_use(owner: Player, def: Dictionary) -> bool:
+		return WeaponBehaviors.scoop_target(owner, def.reach) is Enemy
+
+	func can_use_on(_owner: Player, _def: Dictionary, target: Entity) -> bool:
+		return SkillBehaviors.buriable(target)
+
+	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
+		if not owner.world.is_authority:
+			return
+		var e := SkillBehaviors.target_of(owner, ctx)
+		if not SkillBehaviors.buriable(e):
+			e = WeaponBehaviors.scoop_target(owner, def.reach)
+		if not SkillBehaviors.buriable(e):
+			return
+		var hit := SkillBehaviors.hit_of(owner, def, ctx)
+		hit["no_stagger"] = true
+		Combat.apply_damage(owner.world, owner, e, hit)
+		(e as Enemy).bury(def.stun + def.crawl)
+		owner.world.emit_event("fx:explosion", {"pos": e.pos, "height": e.ground_height, "radius": 1.0, "color": def.color})
 
 
 # 以自己為中心一圈：旋風斬、火焰新星、震盾、冰霜新星
@@ -371,7 +386,7 @@ class Star extends Behavior:
 
 static var BEHAVIORS := {
 	&"heal": Heal.new(),
-	&"plantTorch": PlantTorch.new(),
+	&"bury": Bury.new(),
 	&"nova": Nova.new(),
 	&"cone": Cone.new(),
 	&"dash": Dash.new(),
@@ -534,6 +549,11 @@ static func origin_ground(owner: Player, ctx: Dictionary) -> float:
 
 
 # 觸發袋的目標（還活著、打得到才算）；沒有回傳 null
+# 活埋埋得了嗎：活著、不是 Boss、還沒被埋的怪
+static func buriable(e: Entity) -> bool:
+	return e is Enemy and not e.is_dead and not (e as Enemy).is_boss() and (e as Enemy).buried_timer <= 0.0
+
+
 static func target_of(owner: Player, ctx: Dictionary) -> Entity:
 	var e := owner.world.entities.get(ctx.get("target_id", -1)) as Entity
 	return e if e != null and not e.is_dead and e.team != owner.team and e.can_be_hit() else null

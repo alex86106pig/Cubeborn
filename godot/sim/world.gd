@@ -639,7 +639,7 @@ func nearest_interactable(p: Player, list: Array[Entity]) -> Entity:
 	for e in list:
 		if e.is_removed or (e is Chest and (e as Chest).opened) or (e is Relic and (e as Relic).taken.has(p.peer_id)) or not can_reach(p, e):
 			continue
-		var d := _reach_gap(p, e)
+		var d := reach_gap(p, e)
 		if d < best_d:
 			best_d = d
 			best = e
@@ -649,17 +649,17 @@ func nearest_interactable(p: Player, list: Array[Entity]) -> Entity:
 # p 站在鍛造祭壇旁（LootDefs.FORGE.range 內）才能合成武器（Build 改版第 8 步）
 func near_forge(p: Player) -> bool:
 	for f in forges:
-		if not f.is_removed and _reach_gap(p, f) <= LootDefs.FORGE.range:
+		if not f.is_removed and reach_gap(p, f) <= LootDefs.FORGE.range:
 			return true
 	return false
 
 
 # p 按不按得到 F：身體邊緣到物件邊緣 INTERACT_RANGE 內（磁石（G1）放大）
 func can_reach(p: Player, e: Entity) -> bool:
-	return _reach_gap(p, e) <= LootDefs.INTERACT_RANGE * p.stats.value(&"pickup_radius")
+	return reach_gap(p, e) <= LootDefs.INTERACT_RANGE * p.stats.value(&"pickup_radius")
 
 
-func _reach_gap(p: Player, e: Entity) -> float:
+func reach_gap(p: Player, e: Entity) -> float:
 	return e.pos.distance_to(p.pos) - e.radius - p.radius
 
 
@@ -669,7 +669,7 @@ func reachable_pickups(p: Player, out: Array[ItemPickup]) -> void:
 	for e in pickups:
 		if not e.is_removed and can_reach(p, e):
 			out.append(e as ItemPickup)
-	out.sort_custom(func(a: ItemPickup, b: ItemPickup) -> bool: return _reach_gap(p, a) < _reach_gap(p, b))
+	out.sort_custom(func(a: ItemPickup, b: ItemPickup) -> bool: return reach_gap(p, a) < reach_gap(p, b))
 
 
 # 打倒 Boss：挖墳事件的地圖（D6）不通關，額外掉一個石棺機率的遺物（武器與金幣照 on_enemy_died）；
