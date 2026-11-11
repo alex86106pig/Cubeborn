@@ -106,7 +106,7 @@ func _predict(owner: Player, b: Dictionary) -> void:
 
 # target：觸發袋的目標（命中、擊殺、受傷）；按鍵與沒有目標的袋子是 null
 static func can_cast(owner: Player, slot: Dictionary, target: Entity = null) -> bool:
-	if slot.charges == 0:
+	if slot.charges == 0 or not SkillDefs.fits_weapon(slot.def, owner.weapon):
 		return false
 	if slot.def.has("mana") and not owner.has_mana(mana_cost(owner, slot)):
 		return false

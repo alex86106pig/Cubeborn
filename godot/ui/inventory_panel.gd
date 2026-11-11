@@ -895,9 +895,15 @@ func _is_locked(me: Player, where: int, cell: Vector2i) -> bool:
 	return where >= 0 and where < me.loadout.bags.size() and me.loadout.bags[where].get("locked", {}).has(cell)
 
 
-# 滿魔力放一次也輪不到的技能 / 效果（照放的順序累加耗魔，超過最大魔力的那幾個）：蓋紅色、右下角寫「魔」
+# 放不出來的技能 / 效果蓋紅色、右下角寫原因：「武」手上的武器不符（misfit_entries）、
+# 「魔」滿魔力放一次也輪不到（照放的順序累加耗魔，超過最大魔力的那幾個）；兩個都是寫「武」
 func _draw_mana_marks(font: Font, me: Player, where: int, b: Dictionary) -> void:
+	var misfit := misfit_entries(me, b)
+	var marked: Array[Dictionary] = misfit.duplicate()
 	for e in starved_entries(me, b):
+		if not marked.has(e):
+			marked.append(e)
+	for e in marked:
 		var rects: Array[Rect2] = []
 		for c in Inventory.cells_of(e.id, e.rot):
 			rects.append(_cell_rect(me, where, e.cell + c))
@@ -905,7 +911,16 @@ func _draw_mana_marks(font: Font, me: Player, where: int, b: Dictionary) -> void
 			draw_rect(r.grow(-2), Color(UiKit.ALERT, 0.28))
 			draw_rect(r.grow(-2), UiKit.ALERT, false, 2.0)
 		var corner := rects[-1].end - Vector2(17, 6)
-		draw_string(font, corner, "魔", HORIZONTAL_ALIGNMENT_CENTER, 16, 13, UiKit.ALERT)
+		draw_string(font, corner, "武" if misfit.has(e) else "魔", HORIZONTAL_ALIGNMENT_CENTER, 16, 13, UiKit.ALERT)
+
+
+# 袋子裡手上的武器放不出來的技能（SkillDefs.fits_weapon）
+static func misfit_entries(me: Player, b: Dictionary) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for e in BagTriggers.contents(b):
+		if ItemDefs.is_skill(e.id) and not SkillDefs.fits_weapon(SkillDefs.SKILLS[e.id], me.weapon):
+			out.append(e)
+	return out
 
 
 # 袋子裡照放的順序，累加耗魔超過最大魔力的技能 / 效果（滿魔力放一次也放不出來）
@@ -1263,6 +1278,9 @@ func _info_of(me: Player) -> Dictionary:
 			else:
 				info.title += "（在%s · %s發動）" % [BagDefs.bag_name(b), head_text(b) if b.kind != &"key" else "按數字鍵"]
 				info.lines.append("發動：%s" % when_text(b))
+				var miss := UiKit.weapon_miss_line(found.entry.id, me)
+				if miss != "":
+					info.lines.append(miss)
 		return info
 	var e := me.inventory.find(uid)
 	if e.is_empty():

@@ -57,7 +57,7 @@ static func check_gem_rules() -> String:
 	return ""
 
 
-# 每個技能：放進按鍵袋 1（不綁武器；照資料寫的武器拿著，動作才對），按數字鍵放出來，2.5 秒內打到旁邊的怪，或者有它自己的效果（煙、嘲諷、召喚、祝福、火把）
+# 每個技能：放進按鍵袋 1（拿資料寫的第一把武器，符合武器需求），按數字鍵放出來，2.5 秒內打到旁邊的怪，或者有它自己的效果（煙、嘲諷、召喚、祝福、火把）
 static func check_every_skill() -> String:
 	for id: StringName in SkillDefs.gem_skill_ids():
 		var def: Dictionary = SkillDefs.SKILLS[id]
@@ -104,6 +104,67 @@ static func check_every_skill() -> String:
 				effect = p.stars.size() == 1
 		if ready or not effect:
 			return "%s（%s）：按數字鍵 %d 應放出來（進冷卻）並有效果：冷卻 %s、效果 %s" % [ItemDefs.ITEMS[id].name, weapon, idx + 1, not ready, effect]
+	return ""
+
+
+# 武器需求：手上的武器沒有技能要的標籤就放不出來（不扣魔、同一袋排在後面的也不放），換上符合的武器就放得出來；
+# 背包與說明標得出放不出來的技能；技能的物理 / 屬性加成看技能自己的屬性，不看武器的
+static func check_weapon_needs() -> String:
+	var s := _setup(&"swordShield")
+	var w: World = s[0]
+	var p: Player = s[1]
+	var key: Dictionary = p.loadout.key_bags()[0]
+	_put(p, key, &"volley")
+	_put(p, key, &"frost_nova")
+	var order := BagTriggers.contents(key)
+	if order.size() != 2 or order[0].id != &"volley":
+		return "前置：按鍵袋應依序是連珠箭、冰霜新星"
+	if SkillDefs.fits_weapon(SkillDefs.SKILLS.volley, p.weapon) or not SkillDefs.fits_weapon(SkillDefs.SKILLS.frost_nova, p.weapon):
+		return "前置：劍盾應放不出連珠箭、放得出冰霜新星"
+	var targets := _targets(w)
+	var hp0 := targets.map(func(e: Enemy) -> float: return e.hp)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), roundi(1.0 / DT))
+	for i in targets.size():
+		if targets[i].hp < hp0[i]:
+			return "劍盾放不出連珠箭，排在後面的冰霜新星也不該放（銜接停在放不出來的那一招）"
+	if absf(p.mana - p.max_mana()) > 1e-3:
+		return "武器不符放不出來時不該扣魔：%.1f / %.1f" % [p.mana, p.max_mana()]
+	var misfit := InventoryPanel.misfit_entries(p, key)
+	if misfit.size() != 1 or misfit[0].id != &"volley":
+		return "背包應只標連珠箭放不出來：%s" % [misfit]
+	if UiKit.weapon_miss_line(&"volley", p) == "" or UiKit.weapon_miss_line(&"frost_nova", p) != "":
+		return "說明應只在連珠箭寫手上的武器放不出來"
+	p.equip_weapon(&"shortbow")
+	p.mana = p.max_mana()
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), roundi(1.0 / DT))
+	var hurt := false
+	for i in targets.size():
+		hurt = hurt or targets[i].hp < hp0[i]
+	if not hurt or not InventoryPanel.misfit_entries(p, key).is_empty():
+		return "換上短弓後連珠箭應放得出來、背包不再標：打到 %s" % hurt
+	# 屬性加成：物理傷害 ×2 時，武器招式（短弓是物理）變 2 倍、冰霜的技能不變
+	var cold := p.pct_damage(1.0, &"cold")
+	var own := p.pct_damage(1.0)
+	p.set_stat_source(&"check_phys", [[&"phys_damage", Stats.MUL, 2.0]])
+	if absf(p.pct_damage(1.0, &"cold") - cold) > EPS or absf(p.pct_damage(1.0) - own * 2.0) > EPS:
+		return "物理傷害 ×2：武器招式應 %.2f、冰霜技能應 %.2f，實際 %.2f / %.2f" % [own * 2.0, cold, p.pct_damage(1.0), p.pct_damage(1.0, &"cold")]
+	# 實際放出來也一樣：拿劍盾（物理）放冰霜新星，有沒有物理加成打出的傷害相同
+	var loss: Array[float] = []
+	for boosted: bool in [false, true]:
+		var s2 := _setup(&"swordShield")
+		var p2: Player = s2[1]
+		_put(p2, p2.loadout.key_bags()[0], &"frost_nova")
+		var dummy := LootChecks._item_dummy(s2[0], Vector2(0, 2), 100000.0)
+		dummy.set_resists({})
+		if boosted:
+			p2.set_stat_source(&"check_phys", [[&"phys_damage", Stats.MUL, 2.0]])
+		_run(s2[0], _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
+		_run(s2[0], _cmd(Vector2.ZERO, Vector2(0, 5)), roundi(0.5 / DT))
+		loss.append(dummy.max_hp - dummy.hp)
+	if loss[0] <= 0.0 or absf(loss[0] - loss[1]) > EPS:
+		return "劍盾放冰霜新星不該吃物理加成：沒加成 %.2f、物理 ×2 %.2f" % [loss[0], loss[1]]
 	return ""
 
 

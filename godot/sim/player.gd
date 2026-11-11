@@ -653,8 +653,9 @@ func move_damage(move: Dictionary) -> float:
 
 
 # 武器基礎傷害的 pct 倍，乘上攻擊力與物理 / 屬性傷害（燃燒每秒傷害也用這個，F8）
-func pct_damage(pct: float) -> float:
-	return weapon.base_damage * pct * damage_mul * stats.value(StatDefs.type_damage_stat(weapon.damage_type))
+# type：這一下打出去的屬性，決定吃物理還是屬性傷害；武器招式不傳 = 武器的屬性，技能傳自己的（含火焰化 / 霜化改過的）
+func pct_damage(pct: float, type: StringName = &"") -> float:
+	return weapon.base_damage * pct * damage_mul * stats.value(StatDefs.type_damage_stat(type if type != &"" else weapon.damage_type))
 
 
 # 動作層要用的招式資料：武器的 attack / special（許家慶 2026-11-06 拿掉火把姿態、鐵鏟舉著時換招）

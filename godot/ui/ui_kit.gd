@@ -251,6 +251,13 @@ static func role_line(id: StringName) -> String:
 	return "數值：放進主袋或袋子都生效"
 
 
+# 手上的武器放不出這個技能時的一行（放得出來、或不是技能回空字串）
+static func weapon_miss_line(id: StringName, player: Player) -> String:
+	if not ItemDefs.is_skill(id) or SkillDefs.fits_weapon(SkillDefs.SKILLS[id], player.weapon):
+		return ""
+	return "手上的%s放不出來：要%s武器" % [player.weapon.name, WeaponDefs.TAGS[SkillDefs.SKILLS[id].needs]]
+
+
 # 技能的一行：怎麼用、類別與武器需求、標籤、耗魔（次數制的寫次數），耗魔照等級算
 static func skill_line(id: StringName, level := 1) -> String:
 	var sk: Dictionary = SkillDefs.SKILLS[id]

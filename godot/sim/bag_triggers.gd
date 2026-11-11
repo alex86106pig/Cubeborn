@@ -184,7 +184,7 @@ static func _echo(p: Player, b: Dictionary, entries: Array[Dictionary], target: 
 			var cost: float = ActiveSlots.mana_cost(p, slot) * rule.mana_share
 			var behavior: SkillBehaviors.Behavior = SkillBehaviors.BEHAVIORS[slot.def.behavior]
 			var alive: Entity = t if t != null and not t.is_removed else null
-			if slot.charges == 0 or not p.has_mana(cost) or not (behavior.can_use(p, slot.def) if alive == null else behavior.can_use_on(p, slot.def, alive)):
+			if slot.charges == 0 or not SkillDefs.fits_weapon(slot.def, p.weapon) or not p.has_mana(cost) or not (behavior.can_use(p, slot.def) if alive == null else behavior.can_use_on(p, slot.def, alive)):
 				continue
 			var ctx := ActiveSlots.cast_context(p, slot)
 			ctx.mul *= rule.mul

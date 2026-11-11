@@ -86,7 +86,7 @@ class Dash extends Behavior:
 			var t: Dictionary = def.trail
 			var d := 0.0
 			while d <= dist:
-				SkillBehaviors.fire_zone(owner, owner.pos + dir * d, t.radius, t.duration, owner.pct_damage(t.dps_pct) * ctx.mul, ctx.type)
+				SkillBehaviors.fire_zone(owner, owner.pos + dir * d, t.radius, t.duration, owner.pct_damage(t.dps_pct, ctx.type) * ctx.mul, ctx.type)
 				d += t.every
 
 
@@ -499,7 +499,7 @@ static func update_player(p: Player, dt: float) -> void:
 # ── 共用 ──
 
 static func hit_of(owner: Player, def: Dictionary, ctx: Dictionary) -> Dictionary:
-	return {"damage": owner.pct_damage(def.get("damage_pct", 0.0)) * ctx.mul, "damage_type": ctx.type, "knockback": def.get("knockback", 0.0), "attack": &"skill", "credit": ctx.get("credit", ""),
+	return {"damage": owner.pct_damage(def.get("damage_pct", 0.0), ctx.type) * ctx.mul, "damage_type": ctx.type, "knockback": def.get("knockback", 0.0), "attack": &"skill", "credit": ctx.get("credit", ""),
 		"is_heavy": true, "blockable": false, "color": def.color, "band": Vector2(-INF, INF)}
 
 
@@ -632,7 +632,7 @@ static func fire_one(owner: Player, def: Dictionary, ctx: Dictionary, dir: Vecto
 	var from: Vector2 = ctx.at if ctx.has("at") else owner.pos + dir * 0.4
 	var pr := Projectile.new(owner.world, {
 		"owner": owner, "pos": from, "direction": dir, "speed": def.speed, "range": def.range * ctx.area,
-		"radius": def.radius, "damage": owner.pct_damage(def.damage_pct) * ctx.mul, "damage_type": ctx.type,
+		"radius": def.radius, "damage": owner.pct_damage(def.damage_pct, ctx.type) * ctx.mul, "damage_type": ctx.type,
 		"color": StatDefs.DAMAGE_TYPES[ctx.type].color if ctx.type != def.get("damage_type", &"phys") else def.color,
 		"visual": def.visual, "pierce": def.pierce, "blockable": false, "no_stagger": false,
 		"altitude": owner.height + Config.HEIGHT.bolt_altitude, "settle_altitude": Config.HEIGHT.bolt_altitude,
@@ -671,7 +671,7 @@ static func projectile_end(pr: Projectile, target: Entity) -> void:
 				BondEffects.add_chill(pr.world, owner, e as Enemy, b.chill)
 	if def.has("pool"):
 		var pl: Dictionary = def.pool
-		fire_zone(owner, pr.pos, pl.radius * ctx.area, pl.duration, owner.pct_damage(pl.dps_pct) * ctx.mul, ctx.type)
+		fire_zone(owner, pr.pos, pl.radius * ctx.area, pl.duration, owner.pct_damage(pl.dps_pct, ctx.type) * ctx.mul, ctx.type)
 
 
 static func fire_zone(owner: Player, at: Vector2, radius: float, duration: float, dps: float, type: StringName) -> void:

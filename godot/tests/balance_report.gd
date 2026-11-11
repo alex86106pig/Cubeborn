@@ -353,7 +353,7 @@ const CROSS_SKILLS: Array[StringName] = [&"whirlwind", &"frost_nova", &"sword_wa
 func _cross_table(lines: Array[String]) -> void:
 	lines.append("## 技能 × 武器（魔力照武器）")
 	lines.append("")
-	lines.append("同一個技能換不同武器放：每次傷害 = 基礎傷害 × 倍率；每秒 = 每次 × 回魔 ÷ 耗魔（長時間一直放）；爆發 = 每次 × 滿魔力放得出幾次。每秒與爆發各武器應該差不多（比 = 自己 ÷ 劍盾）。")
+	lines.append("同一個技能換不同武器放：每次傷害 = 基礎傷害 × 倍率；每秒 = 每次 × 回魔 ÷ 耗魔（長時間一直放）；爆發 = 每次 × 滿魔力放得出幾次。每秒與爆發各武器應該差不多（比 = 自己 ÷ 劍盾）。武器需求不符的寫放不出來。")
 	lines.append("")
 	lines.append("| 技能 | 武器 | 最大魔力 | 回魔 | 每次 | 每秒 | 比 | 爆發 | 比 |")
 	lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|")
@@ -363,6 +363,9 @@ func _cross_table(lines: Array[String]) -> void:
 		for lo: Array in LOADOUTS:
 			var wid: StringName = lo[0]
 			var wd: Dictionary = WeaponDefs.WEAPONS[wid]
+			if not SkillDefs.fits_weapon(SkillDefs.SKILLS[id], wd):
+				lines.append("| %s | %s | 放不出來（要%s武器） | | | | | | |" % [ItemDefs.ITEMS[id].name, wd.name, WeaponDefs.TAGS[SkillDefs.SKILLS[id].needs]])
+				continue
 			var hit := _skill_hit(id, false, wid).x
 			var mx: float = wd.get("max_mana", Config.MANA.max)
 			var per_sec := hit * _regen(wid) / cost

@@ -4,7 +4,7 @@
 # 藥水是 mode &"charges"：有使用次數，cooldown 是防連按間隔
 # weapons：寶石座時代的「能鑲在哪把武器」，觸發袋改版後技能不限武器；現在有這欄 = 是技能（gem_skill_ids），第一把是平衡表量傷害時拿的武器；tags：修飾看這個（TAGS）
 # category（CATEGORIES）：戰技有角色動作、法術被觸發時沒有動作；needs：手上的武器要有這個標籤（WeaponDefs.TAGS）才放得出來，沒寫 = 不限武器；
-# scale：傷害吃武器傷害與法術強度各多少（scale_of，沒寫 = DEFAULT_SCALE）。needs 與 scale 還沒接進邏輯，現在只有資料與說明框
+# scale：傷害吃武器傷害與法術強度各多少（scale_of，沒寫 = DEFAULT_SCALE）。needs 不符的放不出來（fits_weapon，ActiveSlots.can_cast）；scale 還沒接進傷害
 # 傷害 damage_pct 是手上武器基礎傷害的倍數（Player.pct_damage，含攻擊力與物理 / 屬性傷害）；等級每升 1 級傷害 +LEVEL.damage、耗魔 −LEVEL.mana
 # 耗魔 = 強度：照 docs/設計方向.md「技能強度」，耗魔 ÷ 武器的回魔當作冷卻秒數去算傷害目標（許家慶 2026-11-04：耗魔 ÷ 3、倍率 ÷ 2）
 # 數字都是 Claude 暫定（2026-10-30 許家慶照表同意技能清單），試玩後再調；傷害照 docs/設計方向.md「技能強度」的目標，調完跑 `node tools/release.mjs --balance` 看 docs/平衡數字.md
@@ -147,6 +147,11 @@ const SKILLS := {
 # 技能的傷害吃武器傷害與法術強度各多少：{ weapon, spell }
 static func scale_of(id: StringName) -> Dictionary:
 	return SKILLS[id].get("scale", DEFAULT_SCALE)
+
+
+# 這把武器（WeaponDefs 的一筆）放不放得出這個技能：沒有武器需求，或武器有那個標籤
+static func fits_weapon(def: Dictionary, weapon: Dictionary) -> bool:
+	return not def.has("needs") or (weapon.tags as Array).has(def.needs)
 
 
 # 寶石座技能（鑲得進武器的，不含治療藥水）

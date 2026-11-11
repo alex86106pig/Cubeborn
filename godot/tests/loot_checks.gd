@@ -1967,9 +1967,12 @@ static func check_bag_layout() -> String:
 static func check_bag_skill_target() -> String:
 	var fx_at := func(w: World, name: String, at: Vector2) -> bool:
 		return _named(w.events, name).any(func(ev: Dictionary) -> bool: return (ev.pos as Vector2).distance_to(at) < 0.01)
-	var setup := func(item: StringName, kind: StringName, side: StringName) -> Array:
+	# weapon：技能有武器需求時先換上符合的武器（飛刀扇要匕首）
+	var setup := func(item: StringName, kind: StringName, side: StringName, weapon: StringName = &"") -> Array:
 		var w := _new_world()
 		var p := _player(w)
+		if weapon != &"":
+			p.loadout.equip_new(p, weapon)
 		p.mana = p.max_mana()
 		_put(p, _bag(p, kind, side), item)
 		return [w, p]
@@ -2022,7 +2025,7 @@ static func check_bag_skill_target() -> String:
 	if _hp_loss(t4, hp_t4) <= 0 or _hp_loss(behind, hp_b4) <= 0:
 		return "穿透的投射物應先打目標、再打後面的怪：目標扣 %d、後面扣 %d" % [_hp_loss(t4, hp_t4), _hp_loss(behind, hp_b4)]
 	# 扇形：同時射出的只有中間那支打得到目標
-	var fan: Array = setup.call(&"knife_fan", &"hit", &"right")
+	var fan: Array = setup.call(&"knife_fan", &"hit", &"right", &"dagger")
 	var w_f: World = fan[0]
 	var p_f: Player = fan[1]
 	var t_f := _item_dummy(w_f, p_f.pos + Vector2(0, 8), 100000.0)

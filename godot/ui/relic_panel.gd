@@ -121,6 +121,9 @@ func _card(i: int, id: StringName, me: Player) -> PanelContainer:
 		if damage != "":
 			body.add_child(UiKit.label(damage, CHIP_FONT, Color(1, 1, 1, 0.85)))
 		body.add_child(UiKit.label(UiKit.skill_line(id, lv if me.loadout.has_item(id) else 1), CHIP_FONT, Color(1, 1, 1, 0.6)))
+		var miss := UiKit.weapon_miss_line(id, me)
+		if miss != "":
+			body.add_child(UiKit.label(miss, CHIP_FONT, UiKit.ALERT))
 	if upgrade:
 		body.add_child(UiKit.label(UiKit.skill_upgrade_line(id, lv), CHIP_FONT, UiKit.GOLD))
 	else:
