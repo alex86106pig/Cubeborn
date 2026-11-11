@@ -1,10 +1,13 @@
 # 武器資料定義（照搬網頁版 legacy/src/weapons/weaponDefs.js，欄位改 snake_case）；邏輯在 sim/weapon_behaviors.gd
 # 每把武器一個 base_damage 與 damage_type（StatDefs.DAMAGE_TYPES），招式用 damage_pct（基礎傷害的倍率，F1）；實際傷害見 Player.move_damage
+# tags（TAGS）：技能的武器需求看這個（SkillDefs 的 needs）；spell_power：法術強度，跟 base_damage 同一個尺度的數字（還沒接進傷害，數字暫定）
 # trigger_every：左鍵的命中袋、出手袋每幾下發動一次（BagTriggers._ready）
 # 一次拿一把武器（沒有主手 / 副手）；offhand_model：左手也拿東西的武器（劍盾的盾、雙匕首的另一把），只給畫面
 # grid：武器格子（Build 改版第 3 步，形狀 Claude 暫定），每列一個字串、每字一格：A 攻擊部位、E 末端、D 防禦部位、H 握柄、G 寶石座、. 沒有格子；
 # （觸發袋改版後格子已經不用，留著給 grid_cells）
 class_name WeaponDefs
+
+const TAGS := {&"melee": "近戰", &"ranged": "遠程", &"shield": "盾", &"dagger": "匕首", &"shovel": "鏟", &"torch": "火把", &"bow": "弓", &"caster": "施法"}
 
 const WEAPONS := {
 	# 劍盾（守墓騎士的起始武器；許家慶 2026-11-05 拿掉主副手與長劍）：左鍵三段斬擊、右鍵格擋（格擋中左鍵招架）；模型右手劍、左手盾
@@ -12,6 +15,8 @@ const WEAPONS := {
 		"id": &"swordShield",
 		"name": "劍盾",
 		"type": &"melee",
+		"tags": [&"melee", &"shield"],
+		"spell_power": 3.0,
 		"base_damage": 8.0,         # 原本長劍的（普攻 + 蓄力突刺打一隻每秒照近戰目標，12 → 8）；蓄力突刺改成技能「突刺」
 		"trigger_every": 2,          # 左鍵的命中袋 / 出手袋每 2 下發動一次（每秒打中約 2.4 下 → 約每秒 1 次，docs/平衡數字.md；許家慶 2026-11-05 取代機率，Claude 暫定）
 		"max_mana": 120.0, "mana_regen": 5,   # 魔力照武器（許家慶 2026-11-04）：最大魔力與回魔 = 基準（基礎傷害 8：120、每秒 5）× 8 ÷ 白裝基礎傷害，技能的長時間輸出與爆發跟武器無關
@@ -87,6 +92,8 @@ const WEAPONS := {
 		"id": &"staff",
 		"name": "法杖",
 		"type": &"ranged",
+		"tags": [&"ranged", &"caster"],
+		"spell_power": 8.0,
 		"base_damage": 8.0,
 		"trigger_every": 2,          # 左鍵的命中袋 / 出手袋每 2 下發動一次（每秒打中約 1.7 下 → 約每秒 1 次，docs/平衡數字.md；許家慶 2026-11-05 取代機率，Claude 暫定）
 		"max_mana": 120.0, "mana_regen": 5,   # 魔力照武器（許家慶 2026-11-04）：最大魔力與回魔 = 基準（基礎傷害 8：120、每秒 5）× 8 ÷ 白裝基礎傷害，技能的長時間輸出與爆發跟武器無關
@@ -147,6 +154,8 @@ const WEAPONS := {
 		"id": &"shortbow",
 		"name": "短弓",
 		"type": &"ranged",
+		"tags": [&"ranged", &"bow"],
+		"spell_power": 5.0,
 		"model": &"shortbow",
 		"grid": [".AAAA", "AAA..", "AAG..", "HHHH.", "AAG..", "AAA..", ".AAAA"],
 		"base_damage": 12.0,        # 使用者 2026-11-02 決定：短弓打一隻每秒是全武器最高、箭不穿透（打一群靠散射）；8 → 12（14 時連珠箭 × 0.75 不是整數）
@@ -215,6 +224,8 @@ const WEAPONS := {
 		"id": &"longbow",
 		"name": "長弓",
 		"type": &"ranged",
+		"tags": [&"ranged", &"bow"],
+		"spell_power": 5.0,
 		"model": &"longbow",
 		"grid": [".AAAA", "AAA..", "AAA..", "AAG..", "HHHH.", "HHG..", "HHHH.", "AAG..", "AAA..", "AAA..", ".AAAA"],
 		"base_damage": 12.0,        # 11 → 12（白裝每一下都是整數）
@@ -280,6 +291,8 @@ const WEAPONS := {
 		"id": &"dagger",
 		"name": "雙匕首",
 		"type": &"melee",
+		"tags": [&"melee", &"dagger"],
+		"spell_power": 3.0,
 		"model": &"dagger",
 		"offhand_model": &"dagger",   # 左手也拿一把（只給畫面）
 		"grid": [".E.", ".A.", "AAA", "AGA", "HHH", ".H."],
@@ -352,6 +365,8 @@ const WEAPONS := {
 		"id": &"scepter",
 		"name": "驅魔權杖",
 		"type": &"melee",
+		"tags": [&"melee", &"caster"],
+		"spell_power": 10.0,
 		"model": &"scepter",
 		"grid": ["AAAAA", "AGAGA", "AAAAA", ".HHH.", "..H..", ".HHH.", "..H..", "..H.."],
 		"base_damage": 10.0,
@@ -416,6 +431,8 @@ const WEAPONS := {
 		"id": &"torch",
 		"name": "火把",
 		"type": &"melee",
+		"tags": [&"melee", &"torch"],
+		"spell_power": 8.0,
 		"model": &"torch",
 		"grid": ["AAA", "AAA", "AGA", "HHH", ".H.", ".H."],
 		"base_damage": 12.0,        # 打一隻每秒照近戰目標，6 → 12
@@ -481,6 +498,8 @@ const WEAPONS := {
 		"id": &"shovel",
 		"name": "鐵鏟",
 		"type": &"melee",
+		"tags": [&"melee", &"shovel"],
+		"spell_power": 12.0,
 		"model": &"shovel",
 		"grid": ["AAAAA", "AAGAA", "AAAAA", ".AAA.", "..H..", "..H..", ".HHH.", "..H..", "..G.."],
 		"base_damage": 30.0,        # 打一隻每秒照近戰目標，12 → 30（攻速慢）

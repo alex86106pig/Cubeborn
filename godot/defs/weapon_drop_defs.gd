@@ -261,7 +261,7 @@ static func imprint_mul(inst: Dictionary, e: Dictionary) -> float:
 	return 1.0
 
 
-# 武器的基礎數值（介面顯示用的實際數字）：攻擊力 = 普攻傷害、攻速 = 每秒普攻次數、範圍 = 揮砍距離或魔彈射程、最大魔力、回魔，
+# 武器的基礎數值（介面顯示用的實際數字）：攻擊力 = 普攻傷害、法術強度（跟著攻擊力的倍率）、攻速 = 每秒普攻次數、範圍 = 揮砍距離或魔彈射程、最大魔力、回魔，
 # 都乘上這把的倍率（mul）；只能當副手的（盾）沒有普攻，回傳 {}
 static func base_stats(inst: Dictionary) -> Dictionary:
 	var wd: Dictionary = WeaponDefs.WEAPONS[ItemDefs.ITEMS[inst.base].weapon]
@@ -270,6 +270,7 @@ static func base_stats(inst: Dictionary) -> Dictionary:
 	var atk: Dictionary = wd.attack
 	var out := {
 		"damage": WeaponDefs.move_base_damage(wd, atk) * mul(inst, "damage"),
+		"spell_power": wd.spell_power * mul(inst, "damage"),
 		"attack_speed": mul(inst, "attack_speed") / (atk.windup + atk.active + atk.recovery),
 		"range": atk.range * mul(inst, "range"),
 	}

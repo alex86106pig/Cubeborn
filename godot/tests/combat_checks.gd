@@ -58,6 +58,43 @@ static func check_weapon_defs() -> String:
 	return _weapon_catalog()
 
 
+# 技能的類別與武器需求、武器的標籤與法術強度：每招、每把都有填，需求的標籤有武器拿得出來（平衡表量傷害的那把也要符合），說明框看得到
+static func check_skill_weapon_tags() -> String:
+	for wid: StringName in WeaponDefs.WEAPONS:
+		var w: Dictionary = WeaponDefs.WEAPONS[wid]
+		if (w.get("tags", []) as Array).is_empty() or not w.tags.all(func(t: StringName) -> bool: return WeaponDefs.TAGS.has(t)):
+			return "%s 沒有標籤，或有不在 WeaponDefs.TAGS 的標籤" % w.name
+		if not w.tags.has(w.type):
+			return "%s 的標籤少了它的 type（%s）" % [w.name, w.type]
+		if w.get("spell_power", 0.0) <= 0.0:
+			return "%s 沒有法術強度" % w.name
+		var inst := {"uid": &"t", "base": wid, "rarity": &"green", "affixes": [] as Array[StringName]}
+		var want: float = w.spell_power * WeaponDropDefs.mul(inst, "damage")
+		var text := "\n".join(PackedStringArray(UiKit.item_info(wid, inst).lines))
+		if not text.contains("法術強度 %.1f" % want) or not text.contains(WeaponDefs.TAGS[w.tags[-1]]):
+			return "%s 的說明沒有寫法術強度 %.1f（基礎 × 攻擊力倍率）或標籤：%s" % [w.name, want, text]
+	for id: StringName in SkillDefs.gem_skill_ids():
+		var sk: Dictionary = SkillDefs.SKILLS[id]
+		var skill_name: String = ItemDefs.ITEMS[id].name
+		if not SkillDefs.CATEGORIES.has(sk.get("category", &"")):
+			return "%s 沒有類別（戰技 / 法術）" % skill_name
+		var scale := SkillDefs.scale_of(id)
+		if scale.weapon < 0.0 or scale.spell < 0.0 or scale.weapon + scale.spell <= 0.0:
+			return "%s 的 scale 不對：%s" % [skill_name, scale]
+		var line := UiKit.skill_line(id)
+		if not line.contains(SkillDefs.CATEGORIES[sk.category]):
+			return "%s 的說明沒有寫類別：%s" % [skill_name, line]
+		if not sk.has("needs"):
+			continue
+		if not WeaponDefs.TAGS.has(sk.needs):
+			return "%s 的武器需求「%s」不在 WeaponDefs.TAGS" % [skill_name, sk.needs]
+		if not (WeaponDefs.WEAPONS[sk.weapons[0]].tags as Array).has(sk.needs):
+			return "%s 要「%s」，但平衡表量傷害的 %s 沒有這個標籤" % [skill_name, sk.needs, sk.weapons[0]]
+		if not line.contains("要%s武器" % WeaponDefs.TAGS[sk.needs]):
+			return "%s 的說明沒有寫武器需求：%s" % [skill_name, line]
+	return ""
+
+
 static func check_fire_bolt() -> String:
 	var w := _new_world()
 	var p := _player(w)

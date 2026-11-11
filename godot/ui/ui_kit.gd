@@ -125,9 +125,6 @@ static func format_time(seconds: float) -> String:
 	return "%d:%02d" % [floori(seconds / 60.0), floori(fmod(seconds, 60.0))]
 
 
-const WEAPON_TYPE_TEXT := {&"melee": "近戰", &"ranged": "遠程"}   # 武器說明的第一欄（一次拿一把，沒有單手 / 雙手）
-
-
 # 一段文字裡要染色的字：數字（金色）、羈絆與傷害類型（各自的顏色）、屬性（淺青）；回傳 [[文字, 顏色], ...]
 static func rich_runs(text: String, base: Color) -> Array:
 	if _rich_re == null:
@@ -197,11 +194,11 @@ static func item_info(id: StringName, weapon: Dictionary, level := 1) -> Diction
 	if not weapon.is_empty():
 		var b := WeaponDropDefs.base_stats(weapon)
 		var wd: Dictionary = WeaponDefs.WEAPONS[ItemDefs.ITEMS[weapon.base].weapon]
-		var hands: String = WEAPON_TYPE_TEXT.get(wd.get("type", &""), "武器")
+		var hands := weapon_tags_text(wd)
 		var stats_line: String = ("%s · 攻擊力 %.1f · 攻速 %.2f 次/秒 · 範圍 %.1f" % [hands, b.damage, b.attack_speed, b.range]) if not b.is_empty() else hands + " · " + wd.special.name
 		var lines: Array[String] = [stats_line]
 		if not b.is_empty():
-			lines.append("最大魔力 %d · 回魔 %.1f/秒" % [roundi(b.max_mana), b.mana_regen])
+			lines.append("法術強度 %.1f · 最大魔力 %d · 回魔 %.1f/秒" % [b.spell_power, roundi(b.max_mana), b.mana_regen])
 		lines.append("普攻 %s · 右鍵 %s" % [wd.attack.get("name", "—"), wd.special.get("name", "—")] if wd.has("attack") else wd.special.get("name", ""))
 		lines.append("左鍵每 %d 下觸發一次命中 / 出手袋" % wd.get("trigger_every", 1))
 		var hung: Array = Loadout.weapon_bags(weapon)
@@ -235,6 +232,14 @@ static func item_info(id: StringName, weapon: Dictionary, level := 1) -> Diction
 	return {"title": "%s（%s%s）" % [def.name, kind_name, r.name], "color": r.color, "lines": item_lines}
 
 
+# 武器的標籤（WeaponDefs.TAGS）：說明的第一欄，例「近戰、盾」
+static func weapon_tags_text(wd: Dictionary) -> String:
+	var names: Array[String] = []
+	for t: StringName in wd.tags:
+		names.append(WeaponDefs.TAGS[t])
+	return "、".join(names)
+
+
 # 道具放哪裡（觸發袋的分類，ItemDefs.role_of）：數值放主袋；效果放觸發袋（寫原本的時機當建議、耗魔）；修飾的透明格蓋在技能上
 static func role_line(id: StringName) -> String:
 	match ItemDefs.role_of(id):
@@ -246,14 +251,17 @@ static func role_line(id: StringName) -> String:
 	return "數值：放進主袋或袋子都生效"
 
 
-# 技能的一行：怎麼用、標籤、耗魔（次數制的寫次數），耗魔照等級算
+# 技能的一行：怎麼用、類別與武器需求、標籤、耗魔（次數制的寫次數），耗魔照等級算
 static func skill_line(id: StringName, level := 1) -> String:
 	var sk: Dictionary = SkillDefs.SKILLS[id]
 	var tags: Array[String] = []
 	for t: StringName in sk.tags:
 		tags.append(SkillDefs.TAGS[t])
 	var cost := "耗魔 %d" % roundi(sk.mana * SkillDefs.level_mana_mul(level)) if sk.has("mana") else "每層 %d 次" % sk.get("charges", 0)
-	return "按鍵袋按數字鍵放、觸發袋自動放 · %s · %s" % ["、".join(tags) if not tags.is_empty() else "—", cost]
+	var kind: String = SkillDefs.CATEGORIES[sk.category]
+	if sk.has("needs"):
+		kind += "（要%s武器）" % WeaponDefs.TAGS[sk.needs]
+	return "按鍵袋按數字鍵放、觸發袋自動放 · %s · %s · %s" % [kind, "、".join(tags) if not tags.is_empty() else "—", cost]
 
 
 # 技能的傷害倍率（武器傷害的 %，已乘等級與稀有度；袋子的強化另外乘）：照 SkillDefs 的資料組字，沒傷害的技能回空字串
