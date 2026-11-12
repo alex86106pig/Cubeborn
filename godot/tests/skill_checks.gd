@@ -123,13 +123,22 @@ static func check_weapon_needs() -> String:
 		return "前置：劍盾應放不出連珠箭、放得出冰霜新星"
 	var targets := _targets(w)
 	var hp0 := targets.map(func(e: Enemy) -> float: return e.hp)
+	var nova_cost := ActiveSlots.mana_cost(p, ActiveSlots.slot_of(p, key, order[1]))
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
+	# 武器不符跳過（YangHsu 2026-11-12）：連珠箭不放、不扣魔，同一步接著放冰霜新星
+	var spent := p.max_mana() - p.mana
+	if absf(spent - nova_cost) > p.stats.value(&"mana_regen") * DT + 1e-3:
+		return "武器不符的連珠箭不該扣魔、只扣冰霜新星的 %.1f：實際扣 %.1f" % [nova_cost, spent]
+	if p.cast_log.has(&"volley") or p.cast_log.get(&"frost_nova", [0, 0])[0] != 1:
+		return "劍盾應跳過連珠箭、放出冰霜新星一次：%s" % [p.cast_log]
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), roundi(1.0 / DT))
+	var nova_hit := false
 	for i in targets.size():
-		if targets[i].hp < hp0[i]:
-			return "劍盾放不出連珠箭，排在後面的冰霜新星也不該放（銜接停在放不出來的那一招）"
-	if absf(p.mana - p.max_mana()) > 1e-3:
-		return "武器不符放不出來時不該扣魔：%.1f / %.1f" % [p.mana, p.max_mana()]
+		nova_hit = nova_hit or targets[i].hp < hp0[i]
+	if not nova_hit:
+		return "跳過放不出來的連珠箭後，排在後面的冰霜新星應打到身邊的怪"
+	for i in targets.size():
+		hp0[i] = targets[i].hp
 	var misfit := InventoryPanel.misfit_entries(p, key)
 	if misfit.size() != 1 or misfit[0].id != &"volley":
 		return "背包應只標連珠箭放不出來：%s" % [misfit]
