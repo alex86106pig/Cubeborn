@@ -775,3 +775,38 @@ static func _check_growth_skills() -> String:
 	if p2.stars.size() != 3 or inside.hp >= hi or outside.hp < ho:
 		return "星位 3 顆：三角形裡的怪應受傷、外面的不受傷：星 %d、裡 %.0f → %.0f、外 %.0f → %.0f" % [p2.stars.size(), hi, inside.hp, ho, outside.hp]
 	return ""
+
+
+# 戰技的角色動作：放戰技時 Player.skill_pose 記下那招、anim 帶 skill / skill_time（連線同步這兩個欄位），
+# 做滿 SkillDefs.pose_time 就清掉；法術不做動作
+static func check_skill_pose() -> String:
+	var s := _setup(&"swordShield")
+	var w: World = s[0]
+	var p: Player = s[1]
+	var key: Dictionary = p.loadout.key_bags()[0]
+	if _put(p, key, &"whirlwind") == &"":
+		return "前置：旋風斬放不進按鍵袋"
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
+	if p.skill_pose != &"whirlwind" or p.anim.get("skill", &"") != &"whirlwind":
+		return "放旋風斬（戰技）後應記下角色動作：skill_pose = %s、anim.skill = %s" % [p.skill_pose, p.anim.get("skill")]
+	var total := SkillDefs.pose_time(&"whirlwind")
+	_run(w, _cmd(Vector2.ZERO), roundi(total * 0.5 / DT))
+	var mid: float = p.anim.get("skill_time", 0.0)
+	if absf(mid - total * 0.5) > DT * 2.0:
+		return "動作做了 %.2f 秒時 anim.skill_time 應約 %.2f：%.2f" % [total * 0.5, total * 0.5, mid]
+	_run(w, _cmd(Vector2.ZERO), roundi(total * 0.5 / DT) + 2)
+	if p.skill_pose != &"" or p.anim.get("skill", &"x") != &"":
+		return "做滿 pose_time %.2f 秒後應清掉角色動作：%s" % [total, p.skill_pose]
+	var s2 := _setup(&"swordShield")
+	var w2: World = s2[0]
+	var p2: Player = s2[1]
+	_put(p2, p2.loadout.key_bags()[0], &"frost_nova")
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
+	if p2.cast_log.get(&"frost_nova", [0, 0])[0] != 1:
+		return "前置：冰霜新星應放出一次"
+	if p2.skill_pose != &"":
+		return "法術（冰霜新星）不做角色動作：skill_pose = %s" % p2.skill_pose
+	for k: String in ["skill", "skill_time"]:
+		if not NetCodec.ANIM_KEYS.has(k) or not NetCodec.PLAYER_ANIM_DEFAULTS.has(k):
+			return "連線的動畫欄位表要有 %s（ANIM_KEYS 與玩家預設值）" % k
+	return ""

@@ -159,7 +159,7 @@ func _initialize() -> void:
 	_check("怪物屍體：死後擊退照樣往後滑，但不滑下高台（留在死掉時的高度）", MonsterChecks.check_corpse_ledge)
 	_check("怪物詞條（D5）：迅捷 / 強壯 / 厚皮照 mods 倍率、再生、吸血、狂暴、死亡爆炸、召喚照資料", MonsterChecks.check_affixes)
 	_check("怪群（D5）：地圖 A 散放 PACKS.count 群、每群 size 隻、距離限制、都走得到；開場休眠不播音效、不動；走近或被打整群醒來；同種子結果相同", MonsterChecks.check_packs)
-	_check("蒙皮小怪（D5 效能）：骷髏戰士 / 弓手 / 腐屍合成一個蒙皮網格（≤ 2 個網格、頂點數與原本零件相同），關節姿勢寫進骨架", MonsterChecks.check_skinned_rig)
+	_check("蒙皮小怪（D5 效能）：骷髏戰士 / 弓手 / 腐屍合成一個蒙皮網格（≤ 2 個網格、頂點數與原本零件相同），關節姿勢寫進骨架（含手肘、膝蓋的骨頭）", MonsterChecks.check_skinned_rig)
 	_check("挖墳（D6）：DIG.range 內按住 F 開始事件並挖墳；挖墳中不能移動、跳，照樣轉向，被打不中斷不被擊退；總量 DIG.time × 活著的人數、一起挖速度相加、放手不掉（DIG.decay）、噴怪 +ERUPT.progress；挖完出口打開", EventChecks.check_dig)
 	_check("事件難度（D6）：怪物生命 × difficulty_mul；生怪間隔遞減夾在 interval_min；每批隻數隨難度與人數增加；魔法 / 稀有機率隨難度；挖墳前不冒怪、開挖就開始怪潮、難度每秒 +per_second；選的難度（簡單 / 普通 / 困難）讓上升 ×0.75 / ×1 / ×1.5、重新開始保留；挖墳點噴怪（墳土隆起預警、不畫圈、數量、下一層難度、拋物線落地）；挖完停怪、難度不漲、場上的怪留著", EventChecks.check_difficulty)
 	_check("出口與換層（D6）：挖完不會自動走；墳墓旁按 F，單人最後一層直接通關；換關先過場（level:leaving、LEAVE.cover 秒後才換，收圈在那之前全黑、地形換了才出關卡卡片與獎勵 / 鐵砧再打開）；多人投票（Esc 反對取消、發起人也能 Esc 取消、全員同意或 VOTE.time 秒到就走、陣亡的不用投）；換層回出生點、基礎難度 +per_floor、保留靈魂與背包、地上與怪物清空、寶箱重放、事件歸零；每層的出口外觀照 EXIT_STYLES（第 1 層墳墓、第 2 層石棺：棺蓋跟著進度滑開，打開後是發光的洞；第 3 層巨繭：兩半繭殼往兩邊剝開）；每過一個小關怪物生命 +stage_hp、第 2 層算過完第 1 層的小關",
@@ -197,8 +197,8 @@ func _initialize() -> void:
 	_check("遺物：每人各自擲 N 選 1（N = 選項數屬性、不重複，石棺偶爾一個換成詛咒袋）、關掉再開同一組、骰子重擲用掉 1 顆（沒有就不能骰）、每人只選一次、全員選過才消失、放不下掉在腳邊、走遠就關掉；鐵砧：改造自己接著的袋子（加大、強化、換觸發），每人一次、用完不消失，沒有袋子改給新袋子；門與 Boss 的袋子 N 選 1；隊上有人看到過就記下（小地圖用、進快照）" \
 		+ "鐵砧：手上的武器升一個稀有度、從 N 條新詞條選 1，再從這把武器的技能選 1，每人一次、用完不消失，傳說武器直接選技能；隊上有人看到過就記下（小地圖用、進快照）",
 		all.bind([LootChecks.check_relic, LootChecks.check_anvil, LootChecks.check_relic_spotted]))
-	_check("技能與按鍵袋：主袋不放技能、技能自動進按鍵袋；數字鍵 = 按鍵袋由左到右、Q 治療藥水；每個技能放得出來、扣魔力、有效果；武器需求（手上的武器不符放不出來、不扣魔、同一袋跳過它接著放後面的，蓋上幻影就放得出來、傷害打折、耗魔加，換上符合的就能放，背包與說明標出來）、技能的物理 / 屬性加成看技能自己的屬性；等級加傷減耗魔、看得到等級（說明框、遺物卡升級前後、技能欄）、稀有度的強度預算乘在傷害上（施放與說明框）、技能遺物（石棺必出、祭壇不出，有還沒滿級的技能時保證一個升級）；修飾的透明格蓋在技能上才有效（延長、火焰化、分裂；同一袋沒蓋到沒效）、每顆照強度加耗魔、節能減耗魔；透明格（擺放規則、蓋多格技能的延長 / 霜化 / 耗魔相乘、羈絆只算實心格、技能搬走修飾留著失效、自動擺放先蓋技能）；魔力（開局滿、回魔、上限、不夠放不出、魔力道具與命中回魔、進快照）；橘色技能（裂地斬打直線、天譴最多 4 隻、魂泉耗魔減半、回響再放一次、共鳴帶動緊鄰的袋子、血契扣生命不扣到死、噬魂刃疊層換層歸零、積怨越痛越痛、星位三角形）",
-		all.bind([SkillChecks.check_gem_rules, SkillChecks.check_every_skill, SkillChecks.check_weapon_needs, SkillChecks.check_skill_level, SkillChecks.check_level_text, SkillChecks.check_skill_budget, SkillChecks.check_supports, SkillChecks.check_mana, SkillChecks.check_orange_skills]))
+	_check("技能與按鍵袋：主袋不放技能、技能自動進按鍵袋；數字鍵 = 按鍵袋由左到右、Q 治療藥水；每個技能放得出來、扣魔力、有效果；戰技放出時角色做那招的動作（做滿 pose_time 清掉、法術不做、連線帶 skill / skill_time）；武器需求（手上的武器不符放不出來、不扣魔、同一袋跳過它接著放後面的，蓋上幻影就放得出來、傷害打折、耗魔加，換上符合的就能放，背包與說明標出來）、技能的物理 / 屬性加成看技能自己的屬性；等級加傷減耗魔、看得到等級（說明框、遺物卡升級前後、技能欄）、稀有度的強度預算乘在傷害上（施放與說明框）、技能遺物（石棺必出、祭壇不出，有還沒滿級的技能時保證一個升級）；修飾的透明格蓋在技能上才有效（延長、火焰化、分裂；同一袋沒蓋到沒效）、每顆照強度加耗魔、節能減耗魔；透明格（擺放規則、蓋多格技能的延長 / 霜化 / 耗魔相乘、羈絆只算實心格、技能搬走修飾留著失效、自動擺放先蓋技能）；魔力（開局滿、回魔、上限、不夠放不出、魔力道具與命中回魔、進快照）；橘色技能（裂地斬打直線、天譴最多 4 隻、魂泉耗魔減半、回響再放一次、共鳴帶動緊鄰的袋子、血契扣生命不扣到死、噬魂刃疊層換層歸零、積怨越痛越痛、星位三角形）",
+		all.bind([SkillChecks.check_gem_rules, SkillChecks.check_every_skill, SkillChecks.check_weapon_needs, SkillChecks.check_skill_pose, SkillChecks.check_skill_level, SkillChecks.check_level_text, SkillChecks.check_skill_budget, SkillChecks.check_supports, SkillChecks.check_mana, SkillChecks.check_orange_skills]))
 	_check("羈絆：道具標的羈絆都存在、掉落池只有屬於羈絆的（修飾、魔力道具例外）；格數 = 最大同色區塊（主袋與袋子一起、跨袋子也連、斜的不算、倉庫不算、跨羈絆兩種都算）；拿掉就扣；階數照門檻", LootChecks.check_bonds)
 	_check("觸發袋的擺放：接哪幾邊看種類、在邊長內、同一邊不重疊、按鍵袋最多 4 個；撿到的袋子自動接、接不下進倉庫；換邊 / 滑動 / 拿下來（內容跟著）、接不下拒絕；袋子連同內容丟在地上、撿回來照原樣；詛咒袋接著時套缺點；快照來回一樣；左右鍵的袋子掛在武器上（換武器跟著走、換回接回原位、倉庫的武器快照與說明帶著、丟地上撿回來 uid 換新）；背包合併模式（開局開的格子、鎖格放不進去、隨機 / 自選開格、觸發區不能搬不能丟、換武器不動、快照、門 / Boss / 鐵砧改給開格、菁英怪掉武器）", CheckKit.all_of.bind([LootChecks.check_bag_layout, LootChecks.check_weapon_bags, LootChecks.check_merged_bag]))
 	_check("觸發袋的發動：左邊只被普攻、右邊只被右鍵觸發；左鍵的命中袋每 N 下（武器的 trigger_every）發動一次、同一步只算一下；效果各自耗魔、不夠由左到右先放；同一袋照畫面左上 → 右下一招接一招放（技能銜接：後一招在前一招打到的怪身上放、打空就停；轉過的左右袋子也照畫面）；觸發袋裡的技能自動放；袋子放出來的與技能的傷害不再觸發袋子；計時袋照間隔、強化袋的倍率；有目標的袋子（命中、擊殺、受傷）技能在目標身上放：範圍與落點在目標、投射物從命中點射出、扇形只有中間那支打得到目標、位移朝目標、祝福留在自己身上，沒有目標的照舊", all.bind([LootChecks.check_bag_triggers, LootChecks.check_bag_skill_target, LootChecks.check_bag_chain]))
@@ -217,12 +217,14 @@ func _initialize() -> void:
 	_check("牆後剪影：角色材質寫模板值；玩家一直有、怪物只有被牆擋住時才有；箭與魔彈被牆擋住時畫剪影（怪物紅、自己藍），同顏色的投射物共用材質；每一種實體類別（含之後新增的）都在預熱建模型、預設有剪影、材質都寫模板值（不要的列 XRAY_EXEMPT）；牆後的寶箱金色、鍛造祭壇灰白，同種物件共用材質",
 		all.bind([ViewChecks.check_xray, ViewChecks.check_projectile_xray, ViewChecks.check_xray_every_entity, ViewChecks.check_object_xray]))
 	_check("寶箱模型：已開過的寶箱重新建立模型時箱蓋直接打開、不重播開蓋；沒開過的關著", ViewChecks.check_chest_lid)
-	_check("模型零件：依 anchor + 材質合併、外框不變、keep 的零件留在原位、法線朝外；零件數上限（騎士 ≤ 20、骷髏 ≤ 16、Boss ≤ 22、場地 ≤ 12）；"
+	_check("模型零件：依 anchor + 材質合併、外框不變、keep 的零件留在原位、法線朝外；零件數上限（騎士 ≤ 20、骷髏 ≤ 20、Boss ≤ 22、場地 ≤ 12）；"
 		+ "披風整片在軀幹後面、身體前方沒有披風色的零件；盾的尖角和盾面同一平面；騎士骨架有 back / forearm_l / head / hip_l / hip_r 掛點，盾掛 forearm_l、箭袋掛 back",
 		all.bind([ViewChecks.check_merge_static, ViewChecks.check_mesh_counts, ViewChecks.check_body_parts]))
 	_check("握武器與持弓：每把玩家武器的 grip 掛點在拳頭中心（手掌掛點）、手掌掛點上有拳頭；法杖類直立靠轉手掌（武器不另外轉）；骷髏與 Boss 的拳頭也在手掌掛點上；"
-		+ "弓不拉弓時平放（弓梢連線水平、弓背朝下、弦在上）；骷髏弓手瞄準時舉平、射完右手平滑放下、目標在射擊距離內左手停在預備高度、離開射擊距離才平滑放回垂直",
+		+ "弓不拉弓時平放（弓梢連線水平、弓背朝下、弦在上）；骷髏弓手瞄準時舉平、拉弦拉到下巴、射完右手平滑放下、目標在射擊距離內左手停在預備高度、離開射擊距離才平滑放回垂直",
 		all.bind([ViewChecks.check_weapon_grip, ViewChecks.check_bow_rest, ViewChecks.check_archer_bow_arm]))
+	_check("角色骨架與動作：每種角色都有手肘與膝蓋（前臂、小腿各一節、零件掛在那一節，模板組出來的也一樣）；步態照真實動作（走路膝蓋最多 50~75°、跑步 90~125°、跑步髖部抬 55~85°、踩地的腳貼地）、上身前傾從髖部彎、蹲低時膝蓋彎；18 招戰技各有自己的動作、腳不踩進地裡",
+		all.bind([ViewChecks.check_limb_joints, ViewChecks.check_gait_pose, ViewChecks.check_skill_poses]))
 	_check("受擊閃白：只改自發光顏色、不切換 emission_enabled（切換會在第一次命中即時編譯著色器而卡頓）", ViewChecks.check_flash_no_shader_switch)
 	_check("特效：模擬層發出的每個 fx:* 都有畫面處理、也列在 PROJECT_GUIDELINES 第 9 節，餵給 Effects 會產生粒子；粒子與弧光環有上限、拖尾 30 / 144 FPS 每秒粒子數相同、暫停時不產生；" \
 		+ "守墓人噴火的火舌跟判定一樣大（追著噴的扇形、轉圈的一整圈、鏟起 B 的直噴）、有噴流粒子、噴完拿掉、開場預熱過",

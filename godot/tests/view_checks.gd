@@ -2328,7 +2328,8 @@ static func check_sound_distance() -> String:
 
 
 static func check_mesh_counts() -> String:
-	var limits := {&"player": 20, &"grunt": 16, &"archer": 16, &"boss": 22}
+	# 骷髏、弓手在遊戲裡用蒙皮版（≤ 2 個網格，「蒙皮小怪」檢查）；關節版是蒙皮的模板，加手肘、膝蓋多 4 節（YangHsu 2026-11-12 放寬 16 → 20）
+	var limits := {&"player": 20, &"grunt": 20, &"archer": 20, &"boss": 22}
 	var err := ""
 	for kind: StringName in limits:
 		var rig := DarkFantasy.character(kind)
@@ -2435,16 +2436,23 @@ static func check_archer_bow_arm() -> String:
 	var prev_state: StringName = &""
 	var highest := 0.0
 	var aimed := false
-	var right_after := INF   # 射完第一幀右手的角度
+	# 右拳（拉弦手）的高度：手肘往外側抬（IK 算出來在 rotation.z），所以量拳頭的位置，不量 arm_r 的單一角度
+	var draw_from := INF     # 開始瞄準時右拳的高度
+	var draw_top := -INF     # 拉滿時右拳的高度
+	var right_after := INF   # 射完第一幀右拳的高度
 	for i in 900:
 		_run(w, _cmd(Vector2.ZERO), 1)
 		anim.update(archer, DT)
 		var state: StringName = archer.anim.state
 		if state == &"aim":
 			highest = minf(highest, rig.arm_l.rotation.x)
+			var hy := BodyPose.hand_pos(rig, true).y
+			if draw_from == INF:
+				draw_from = hy
+			draw_top = maxf(draw_top, hy)
 		elif prev_state == &"aim":
 			aimed = true
-			right_after = rig.arm_r.rotation.x
+			right_after = BodyPose.hand_pos(rig, true).y
 			break
 		prev_state = state
 	var held := 0.0   # 射完後 30 步之後左手的角度（應停在預備高度）
@@ -2469,15 +2477,17 @@ static func check_archer_bow_arm() -> String:
 		return "弓手 15 秒內沒有瞄準射完"
 	if highest > -1.4:
 		return "弓手瞄準時左手應舉到接近水平：最高 %.2f" % highest
-	if right_after > -0.8:
-		return "弓手射完第一幀右手就回到 %.2f，應從拉弦姿勢平滑放下" % right_after
+	if draw_top - draw_from < 0.3:
+		return "弓手拉弦時右拳只從 %.2f 抬到 %.2f，應拉到下巴的高度" % [draw_from, draw_top]
+	if right_after < draw_from + 0.45 * (draw_top - draw_from):
+		return "弓手射完第一幀右拳就掉到 %.2f（拉滿 %.2f、開始 %.2f），應從拉弦姿勢平滑放下" % [right_after, draw_top, draw_from]
 	if not in_range or absf(held - EnemyAnimator.BOW_ARM_READY) > 0.05:
 		return "目標在射擊距離內時弓手射完應停在預備高度 %.2f：在射擊距離內 %s、30 步後 %.2f" % [EnemyAnimator.BOW_ARM_READY, in_range, held]
 	if first_out == INF or first_out > EnemyAnimator.BOW_ARM_READY / 2.0:   # 從預備高度放下，第一幀還要在一半以上
 		return "目標離開射擊距離後第一幀左手 %.2f，應平滑放下、不直接跳回" % first_out
 	if out_state == &"kite" and absf(rest - EnemyAnimator.BOW_ARM_REST) > 0.01:
 		return "目標在射擊距離外 1.5 秒後左手應回到垂直：%.2f" % rest
-	_note("弓手瞄準時左手最高 %.2f、射完第一幀右手 %.2f、射程內射完 30 步後左手 %.2f、離開射程第一幀 %.2f、1.5 秒後 %.2f（%s）" % [highest, right_after, held, first_out, rest, out_state])
+	_note("弓手瞄準時左手最高 %.2f、右拳 %.2f → 拉滿 %.2f → 射完第一幀 %.2f、射程內射完 30 步後左手 %.2f、離開射程第一幀 %.2f、1.5 秒後 %.2f（%s）" % [highest, draw_from, draw_top, right_after, held, first_out, rest, out_state])
 	return ""
 
 
@@ -3726,4 +3736,150 @@ static func check_relic_owned() -> String:
 			err = "沒拿過的道具卡片不應寫拿過：%s" % [texts.call(2)]
 	hud.queue_free()
 	cam.queue_free()
+	return err
+
+
+# ───────── 角色骨架與動作 ─────────
+
+const LIMB_KINDS: Array[StringName] = [&"player", &"grunt", &"archer", &"zombie", &"bloater", &"hound", &"spider", &"beetle",
+	&"spearman", &"gravekeeper", &"werewolf", &"boss", &"bone_colossus"]
+
+
+# 每種角色都有手肘與膝蓋：前臂 / 小腿關節在上臂 / 大腿下 elbow / knee 的位置、手掌掛在前臂下（肩膀到拳頭中心還是 grip）、
+# 前臂與小腿上有零件；第二隻起用模板組出來的也一樣
+static func check_limb_joints() -> String:
+	for kind: StringName in LIMB_KINDS:
+		for round_i in 2:
+			var rig := DarkFantasy.player_character(ClassDefs.ORDER[0]) if kind == &"player" else DarkFantasy.character(kind)
+			var j: Dictionary = rig.to_template().joints
+			var err := ""
+			var grip: float = -(rig.forearm_r.position.y + rig.hand_r.position.y)
+			if rig.hand_r.get_parent() != rig.forearm_r or rig.hand_l.get_parent() != rig.forearm_l:
+				err = "手掌掛點應掛在前臂下"
+			elif rig.shin_r.get_parent() != rig.leg_r or rig.forearm_l.get_parent() != rig.arm_l:
+				err = "小腿應在大腿下、前臂應在上臂下"
+			elif absf(rig.forearm_r.position.y + Rig.elbow_of(j)) > 1e-4 or absf(rig.shin_l.position.y + Rig.knee_of(j)) > 1e-4:
+				err = "手肘 / 膝蓋的位置應照關節資料 elbow %.2f / knee %.2f" % [Rig.elbow_of(j), Rig.knee_of(j)]
+			elif absf(grip - float(j.grip)) > 1e-4:
+				err = "肩膀到拳頭中心應是 grip %.2f：%.2f" % [j.grip, grip]
+			else:
+				for seg: Node3D in [rig.forearm_r, rig.forearm_l, rig.shin_r, rig.shin_l]:
+					if not seg.get_children().any(func(c: Node) -> bool: return c is MeshInstance3D):
+						err = "%s 上沒有零件（前臂 / 小腿的零件要掛在那一節，彎的時候才會跟著動）" % seg.name
+			rig.free()
+			if err != "":
+				return "%s（第 %d 隻）：%s" % [kind, round_i + 1, err]
+	return ""
+
+
+# 腳底的角色座標（照目前的腿角度算）
+static func _sole(rig: Rig, right: bool) -> Vector3:
+	var leg := rig.leg_r if right else rig.leg_l
+	var shin := rig.shin_r if right else rig.shin_l
+	var lower := leg.position.y + shin.position.y
+	var local := leg.position + leg.basis * (shin.position + shin.basis * Vector3(0.0, -lower, 0.0))
+	return BodyPose.body_to_root(rig, local)
+
+
+# 步態與站姿照真實動作（docs/動作參考.md）：走路擺盪期膝蓋最多彎 50~75°、跑步 90~125°、跑步髖部往前抬 55~85°；
+# 踩在地上的那隻腳在踩地中段貼地（< 0.05）；上身前傾 0.5 時從髖部彎（腳還在地上、髖部在腳的正上方）；蹲低 0.3 腿長時膝蓋彎 60~120°
+static func check_gait_pose() -> String:
+	var rig := DarkFantasy.player_character(ClassDefs.ORDER[0])
+	var leg := BodyPose.leg_length(rig)
+	var err := ""
+	var nums := []
+	for spec: Array in [[1.6, 50.0, 75.0, "走路"], [6.5, 90.0, 125.0, "跑步"]]:
+		var knee_max := 0.0
+		var hip_max := 0.0
+		var slip := 0.0
+		for i in 60:
+			var g := BodyPose.gait(rig, TAU * i / 60.0, 1.0, spec[0])
+			rig.body.rotation = Vector3(g.lean, 0.0, 0.0)
+			BodyPose.plant(rig, g.r, g.l, g.drop)
+			knee_max = maxf(knee_max, rad_to_deg(rig.shin_r.rotation.x))
+			hip_max = maxf(hip_max, -rad_to_deg(rig.leg_r.rotation.x))
+			var duty := lerpf(BodyPose.DUTY_WALK, BodyPose.DUTY_RUN, g.run)
+			if absf(g.u - duty / 2.0) < duty * 0.25:   # 右腳踩地中段
+				slip = maxf(slip, _sole(rig, true).distance_to(g.r))
+		nums.append("%s 膝 %.0f° 髖 %.0f° 腳底誤差 %.3f" % [spec[3], knee_max, hip_max, slip])
+		if knee_max < spec[1] or knee_max > spec[2]:
+			err = "%s擺盪期膝蓋最多彎 %.0f°，應在 %.0f~%.0f°" % [spec[3], knee_max, spec[1], spec[2]]
+		elif spec[3] == "跑步" and (hip_max < 55.0 or hip_max > 85.0):
+			err = "跑步髖部往前抬 %.0f°，應在 55~85°" % hip_max
+		elif slip > 0.05:
+			err = "%s踩地中段腳底離目標 %.3f（應貼地）" % [spec[3], slip]
+		if err != "":
+			break
+	if err == "":
+		BodyPose.straighten(rig)
+		rig.body.rotation = Vector3(0.5, 0.0, 0.0)
+		BodyPose.stand(rig, 0.0)
+		var sr := _sole(rig, true)
+		var hip := BodyPose.body_to_root(rig, rig.leg_r.position)
+		if absf(sr.y) > 0.01 or absf(sr.z) > 0.01 or absf(hip.z) > 0.01:
+			err = "上身前傾時應從髖部彎：腳底 %s、髖部 %s" % [sr, hip]
+	if err == "":
+		rig.body.rotation = Vector3.ZERO
+		BodyPose.stand(rig, 0.3 * leg)
+		var knee := rad_to_deg(rig.shin_l.rotation.x)
+		var sl := _sole(rig, false)
+		nums.append("蹲低 0.3 腿長膝 %.0f°" % knee)
+		if knee < 60.0 or knee > 120.0 or absf(sl.y) > 0.01:
+			err = "蹲低 0.3 腿長時膝蓋應彎 60~120°、腳底貼地：%.0f°、腳底高 %.3f" % [knee, sl.y]
+	rig.free()
+	_note("步態：%s" % ", ".join(nums))
+	return err
+
+
+static func _limb_snapshot(rig: Rig) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	for n: Node3D in [rig.body, rig.arm_r, rig.arm_l, rig.forearm_r, rig.forearm_l, rig.leg_r, rig.leg_l, rig.shin_r, rig.shin_l]:
+		for v in [n.rotation.x, n.rotation.y, n.rotation.z]:
+			out.append(v)
+	return out
+
+
+# 每招戰技都有自己的角色動作：拿那招的第一把武器，做到一半時關節角度（身體、上臂、前臂、大腿、小腿）和站著不動合計差超過 0.8 弧度、
+# 數值都是有限的、腳沒有踩進地裡（掘地鑽進地裡、後跳射在空中除外）；做完回到普通姿勢
+static func check_skill_poses() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	var rig := DarkFantasy.player_character(ClassDefs.ORDER[0])
+	var anim := Animator.new(rig)
+	var err := ""
+	var count := 0
+	for id: StringName in SkillDefs.SKILLS:
+		var def: Dictionary = SkillDefs.SKILLS[id]
+		if def.get("category", &"") != &"attack":
+			continue
+		count += 1
+		p.equip_weapon(def.weapons[0])
+		_run(w, _cmd(Vector2.ZERO), 2)
+		for i in 20:
+			anim.update(p, DT)
+		var idle := _limb_snapshot(rig)
+		var total := SkillDefs.pose_time(id)
+		p.anim["skill"] = id
+		p.anim["skill_time"] = total * 0.5
+		anim.update(p, DT)
+		var mid := _limb_snapshot(rig)
+		var diff := 0.0
+		for i in mid.size():
+			if not is_finite(mid[i]):
+				err = "%s 做到一半有不是有限數的關節角度" % id
+				break
+			diff += absf(mid[i] - idle[i])
+		if err == "" and diff < 0.8:
+			err = "%s 做到一半和站著幾乎一樣：關節角度合計只差 %.2f（至少 0.8）" % [id, diff]
+		if err == "" and not (id in [&"burrow", &"leap_shot"]):
+			var low := minf(_sole(rig, true).y, _sole(rig, false).y)
+			if low < -0.03:
+				err = "%s 做到一半腳踩進地裡 %.2f" % [id, low]
+		p.anim["skill"] = &""
+		anim.update(p, DT)
+		if err != "":
+			break
+	rig.free()
+	if err == "" and count != 18:
+		err = "戰技應有 18 招（§45）：%d" % count
 	return err

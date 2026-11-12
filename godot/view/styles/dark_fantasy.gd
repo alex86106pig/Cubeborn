@@ -16,25 +16,25 @@ const C := {
 }
 
 # 騎士身上的掛點（Rig.mount_nodes）：back 在披風外、hip_l / hip_r 在腰帶外側（身體座標），head 在頭盔頂（頭的座標），
-# forearm_l 在左前臂外側（左手臂座標）。目前 forearm_l 掛盾、back 掛箭袋，hip_l / hip_r / head 預留
+# forearm_l 在左前臂外側（左前臂座標，原點在手肘）。目前 forearm_l 掛盾、back 掛箭袋，hip_l / hip_r / head 預留
 const KNIGHT_MOUNTS := {
 	&"back": Vector3(0.0, 1.35, -0.4),
 	&"hip_l": Vector3(0.32, 0.9, 0.0),
 	&"hip_r": Vector3(-0.32, 0.9, 0.0),
 	&"head": Vector3(0.0, 0.5, 0.0),
-	&"forearm_l": Vector3(0.1, -0.4, 0.0),
+	&"forearm_l": Vector3(0.1, -0.1, 0.0),
 }
 const KNIGHT_JOINTS := {
-	"neck": 1.6, "shoulder_y": 1.55, "shoulder_x": 0.36, "grip": 0.58,
-	"hip_y": 0.95, "hip_x": 0.14, "height": 2.1, "mounts": KNIGHT_MOUNTS,
+	"neck": 1.6, "shoulder_y": 1.55, "shoulder_x": 0.36, "grip": 0.58, "elbow": 0.3,
+	"hip_y": 0.95, "hip_x": 0.14, "knee": 0.47, "height": 2.1, "mounts": KNIGHT_MOUNTS,
 }
 const SKELETON_JOINTS := {
-	"neck": 1.5, "shoulder_y": 1.45, "shoulder_x": 0.3, "grip": 0.65,
-	"hip_y": 0.92, "hip_x": 0.12, "height": 1.95,
+	"neck": 1.5, "shoulder_y": 1.45, "shoulder_x": 0.3, "grip": 0.65, "elbow": 0.33,
+	"hip_y": 0.92, "hip_x": 0.12, "knee": 0.45, "height": 1.95,
 }
-# 盾槍兵的塔盾在左手臂座標的位置（前臂外側，同騎士的 forearm_l 掛點）。直接掛在手臂上合併：
+# 盾槍兵的塔盾在左前臂座標的位置（前臂外側，同騎士的 forearm_l 掛點）。直接掛在前臂上合併：
 # 掛點底下的零件不會進 to_template，蒙皮版會少掉
-const SPEARMAN_SHIELD_AT := Vector3(0.09, -0.38, 0.0)
+const SPEARMAN_SHIELD_AT := Vector3(0.09, -0.05, 0.0)
 # 骨輪：整個輪子掛在 head 關節上（head 在輪軸的高度），滾動 = 轉 head 的 x；手腳沒有零件
 const WHEEL_RADIUS := 0.62
 const WHEEL_JOINTS := {
@@ -43,26 +43,26 @@ const WHEEL_JOINTS := {
 }
 # 萬骨聚合體：駝背、手長腿短（肩膀到拳頭 1.0、髖關節只有 0.45 高）
 const COLOSSUS_JOINTS := {
-	"neck": 1.4, "shoulder_y": 1.3, "shoulder_x": 0.5, "grip": 1.0,
-	"hip_y": 0.45, "hip_x": 0.22, "height": 1.7,
+	"neck": 1.4, "shoulder_y": 1.3, "shoulder_x": 0.5, "grip": 1.0, "elbow": 0.5,
+	"hip_y": 0.45, "hip_x": 0.22, "knee": 0.22, "height": 1.7,
 }
 const ZOMBIE_JOINTS := {
-	"neck": 1.42, "shoulder_y": 1.4, "shoulder_x": 0.3, "grip": 0.58,
-	"hip_y": 0.92, "hip_x": 0.13, "height": 1.85,
+	"neck": 1.42, "shoulder_y": 1.4, "shoulder_x": 0.3, "grip": 0.58, "elbow": 0.32,
+	"hip_y": 0.92, "hip_x": 0.13, "knee": 0.46, "height": 1.85,
 }
 const HOUND_JOINTS := {
-	"neck": 0.8, "neck_z": 0.48, "shoulder_y": 0.55, "shoulder_x": 0.12, "shoulder_z": 0.3, "grip": 0.5,
-	"hip_y": 0.55, "hip_x": 0.12, "hip_z": -0.3, "height": 1.0,
+	"neck": 0.8, "neck_z": 0.48, "shoulder_y": 0.55, "shoulder_x": 0.12, "shoulder_z": 0.3, "grip": 0.5, "elbow": 0.27,
+	"hip_y": 0.55, "hip_x": 0.12, "hip_z": -0.3, "knee": 0.27, "height": 1.0,
 }
 # 屍甲蟲：貼地的小甲蟲，前腳（arm）往前、後腳（leg）往後；中間那對腳是身體上的固定零件
 const BEETLE_JOINTS := {
-	"neck": 0.22, "neck_z": 0.28, "shoulder_y": 0.18, "shoulder_x": 0.16, "shoulder_z": 0.15, "grip": 0.2,
-	"hip_y": 0.18, "hip_x": 0.16, "hip_z": -0.15, "height": 0.45,
+	"neck": 0.22, "neck_z": 0.28, "shoulder_y": 0.18, "shoulder_x": 0.16, "shoulder_z": 0.15, "grip": 0.2, "elbow": 0.1,
+	"hip_y": 0.18, "hip_x": 0.16, "hip_z": -0.15, "knee": 0.1, "height": 0.45,
 }
 # 墓穴蜘蛛：前腳（arm）往前、後腳（leg）往後，中間兩對腳是身體上的固定零件；腹部在後面
 const SPIDER_JOINTS := {
-	"neck": 0.42, "neck_z": 0.32, "shoulder_y": 0.38, "shoulder_x": 0.2, "shoulder_z": 0.22, "grip": 0.4,
-	"hip_y": 0.38, "hip_x": 0.2, "hip_z": -0.15, "height": 0.9,
+	"neck": 0.42, "neck_z": 0.32, "shoulder_y": 0.38, "shoulder_x": 0.2, "shoulder_z": 0.22, "grip": 0.4, "elbow": 0.22,
+	"hip_y": 0.38, "hip_x": 0.2, "hip_z": -0.15, "knee": 0.22, "height": 0.9,
 }
 # 蟲巢：一團不會動的卵囊，整團在 body；頂端的大卵囊在 head、四邊的小卵囊在手腳關節（噴酸時一起鼓起來）
 const HIVE_JOINTS := {
@@ -187,15 +187,19 @@ static func _armored_body(rig: Rig, armor: Color, trim: Color, cape: Color, eye:
 		for s in [-1.0, 1.0]:
 			k.add(rig.head, PartKit.cone(0.06, 0.4, 5), k.mat(C.bone_dark), {"x": s * 0.24, "y": 0.42, "rz": -s * 0.9})
 
-	for pair in [[rig.arm_r, rig.hand_r, -1.0], [rig.arm_l, rig.hand_l, 1.0]]:
-		var arm: Node3D = pair[0]
-		k.add(arm, PartKit.ico(0.17, 0), k.mat(armor), {"x": pair[2] * 0.04, "y": 0.02, "sy": 0.8})
-		k.add(arm, PartKit.cyl(0.085, 0.075, 0.4, 6), k.mat(armor), {"y": -0.22})
-		k.add(pair[1], PartKit.box(0.14, 0.17, 0.14), k.mat(trim))   # 拳頭掛在手掌掛點上，轉手掌時拳頭和武器一起轉
-	for leg in [rig.leg_r, rig.leg_l]:
-		k.add(leg, PartKit.cyl(0.1, 0.09, 0.45, 6), k.mat(trim), {"y": -0.22})
-		k.add(leg, PartKit.cyl(0.095, 0.11, 0.42, 6), k.mat(armor), {"y": -0.64})
-		k.add(leg, PartKit.box(0.16, 0.12, 0.27), k.mat(C.iron), {"y": -0.9, "z": 0.04})
+	# 上臂：肩甲 + 上臂甲 + 肘甲（手肘彎起來時蓋住接縫）；前臂：前臂甲；拳頭掛在手掌掛點上，轉手掌時拳頭和武器一起轉
+	for limb in [[rig.arm_r, rig.forearm_r, rig.hand_r, -1.0], [rig.arm_l, rig.forearm_l, rig.hand_l, 1.0]]:
+		k.add(limb[0], PartKit.ico(0.17, 0), k.mat(armor), {"x": limb[3] * 0.04, "y": 0.02, "sy": 0.8})
+		k.add(limb[0], PartKit.cyl(0.085, 0.08, 0.3, 6), k.mat(armor), {"y": -0.15})
+		k.add(limb[0], PartKit.ico(0.085, 0), k.mat(armor), {"y": -0.3})
+		k.add(limb[1], PartKit.cyl(0.08, 0.075, 0.2, 6), k.mat(armor), {"y": -0.1})
+		k.add(limb[2], PartKit.box(0.14, 0.17, 0.14), k.mat(trim))
+	# 大腿：腿甲；小腿：膝甲 + 脛甲 + 鐵靴（腳底在髖關節下 hip_y）
+	for limb in [[rig.leg_r, rig.shin_r], [rig.leg_l, rig.shin_l]]:
+		k.add(limb[0], PartKit.cyl(0.1, 0.09, 0.45, 6), k.mat(trim), {"y": -0.22})
+		k.add(limb[1], PartKit.ico(0.1, 0), k.mat(armor), {"z": 0.02})
+		k.add(limb[1], PartKit.cyl(0.095, 0.11, 0.42, 6), k.mat(armor), {"y": -0.17})
+		k.add(limb[1], PartKit.box(0.16, 0.12, 0.27), k.mat(C.iron), {"y": -0.43, "z": 0.04})
 
 
 # 武器的掛點（模型座標）：grip = 拳頭握的位置；弓另有 string（弓弦上勾弦的點）、鐵鏟另有 hold（托舉點）。
@@ -253,17 +257,17 @@ static func _skeleton_base(rig: Rig, hood := false) -> void:
 		k.add(rig.head, PartKit.dome(0.24, 7, 4), k.mat(C.hood), {"y": 0.22, "z": -0.03, "rx": -0.3})
 		k.add(rig.body, PartKit.box(0.5, 0.9, 0.03), k.mat(C.hood), {"y": 1.0, "z": -0.16, "rx": 0.06})
 
-	for arm in [rig.arm_r, rig.arm_l]:
-		k.add(arm, PartKit.cyl(0.03, 0.03, 0.3, 4), bone, {"y": -0.17})
-		k.add(arm, PartKit.sphere(0.04, 5, 4), bone, {"y": -0.33})
-		k.add(arm, PartKit.cyl(0.028, 0.025, 0.28, 4), bone, {"y": -0.48})
+	for limb in [[rig.arm_r, rig.forearm_r], [rig.arm_l, rig.forearm_l]]:
+		k.add(limb[0], PartKit.cyl(0.03, 0.03, 0.3, 4), bone, {"y": -0.17})
+		k.add(limb[0], PartKit.sphere(0.04, 5, 4), bone, {"y": -0.33})
+		k.add(limb[1], PartKit.cyl(0.028, 0.025, 0.28, 4), bone, {"y": -0.15})
 	for hand in [rig.hand_r, rig.hand_l]:
 		k.add(hand, PartKit.box(0.07, 0.1, 0.04), bone)   # 骨手掛在手掌掛點上
-	for leg in [rig.leg_r, rig.leg_l]:
-		k.add(leg, PartKit.cyl(0.035, 0.03, 0.42, 4), bone, {"y": -0.22})
-		k.add(leg, PartKit.sphere(0.045, 5, 4), bone, {"y": -0.45})
-		k.add(leg, PartKit.cyl(0.03, 0.028, 0.4, 4), bone, {"y": -0.67})
-		k.add(leg, PartKit.box(0.08, 0.05, 0.18), bone, {"y": -0.9, "z": 0.04})
+	for limb in [[rig.leg_r, rig.shin_r], [rig.leg_l, rig.shin_l]]:
+		k.add(limb[0], PartKit.cyl(0.035, 0.03, 0.42, 4), bone, {"y": -0.22})
+		k.add(limb[0], PartKit.sphere(0.045, 5, 4), bone, {"y": -0.45})
+		k.add(limb[1], PartKit.cyl(0.03, 0.028, 0.4, 4), bone, {"y": -0.22})
+		k.add(limb[1], PartKit.box(0.08, 0.05, 0.18), bone, {"y": -0.45, "z": 0.04})
 
 
 static func skeleton() -> Rig:
@@ -291,7 +295,7 @@ static func spearman() -> Rig:
 	k.add(shield, PartKit.ico(0.06), k.mat(C.bone_dark), {"x": 0.05, "y": 0.1})
 	_hold(shield, {"grip": Vector3(-0.07, 0.0, 0.0)})
 	shield.position += SPEARMAN_SHIELD_AT
-	rig.arm_l.add_child(shield)
+	rig.forearm_l.add_child(shield)
 	return rig.optimize()
 
 
@@ -329,8 +333,9 @@ static func beetle() -> Rig:
 	for s in [-1.0, 1.0]:
 		k.add(rig.head, PartKit.cone(0.025, 0.16, 4), k.mat(C.bone_dark), {"x": s * 0.05, "y": -0.02, "z": 0.12, "rx": PI / 2.0, "ry": -s * 0.4})
 		k.add(rig.head, PartKit.sphere(0.018, 4, 3), k.mat(C.rot_eye, true), {"x": s * 0.05, "y": 0.04, "z": 0.08, "shadow": false})
-	for leg in [rig.arm_r, rig.arm_l, rig.leg_r, rig.leg_l]:
-		k.add(leg, PartKit.cyl(0.018, 0.012, 0.22, 4), under, {"y": -0.1})
+	for limb in [[rig.arm_r, rig.forearm_r], [rig.arm_l, rig.forearm_l], [rig.leg_r, rig.shin_r], [rig.leg_l, rig.shin_l]]:
+		k.add(limb[0], PartKit.cyl(0.018, 0.015, 0.11, 4), under, {"y": -0.05})
+		k.add(limb[1], PartKit.cyl(0.015, 0.01, 0.11, 4), under, {"y": -0.05})
 	return rig.optimize()
 
 
@@ -411,8 +416,10 @@ static func spider() -> Rig:
 		k.add(rig.head, PartKit.sphere(0.02, 4, 3), k.mat(C.eye_red, true), {"x": x, "y": 0.04 + (i / 3) * 0.035, "z": 0.1, "shadow": false})
 	for s in [-1.0, 1.0]:
 		k.add(rig.head, PartKit.cone(0.025, 0.12, 4), k.mat(C.bone_dark), {"x": s * 0.04, "y": -0.06, "z": 0.08, "rx": PI * 0.8})
-	for limb in [rig.arm_r, rig.arm_l, rig.leg_r, rig.leg_l]:
-		k.add(limb, PartKit.cyl(0.022, 0.012, 0.42, 4), leg, {"y": -0.2})
+	for limb in [[rig.arm_r, rig.forearm_r], [rig.arm_l, rig.forearm_l], [rig.leg_r, rig.shin_r], [rig.leg_l, rig.shin_l]]:
+		k.add(limb[0], PartKit.cyl(0.024, 0.018, 0.23, 4), leg, {"y": -0.11})
+		k.add(limb[0], PartKit.sphere(0.024, 4, 3), leg, {"y": -0.22})
+		k.add(limb[1], PartKit.cyl(0.018, 0.01, 0.2, 4), leg, {"y": -0.1})
 	return rig.optimize()
 
 
@@ -437,15 +444,15 @@ static func zombie() -> Rig:
 	k.add(rig.head, PartKit.box(0.15, 0.06, 0.12), dark, {"y": 0.02, "z": 0.08, "rx": 0.3})   # 掉下來的下巴
 	for s in [-1.0, 1.0]:
 		k.add(rig.head, PartKit.sphere(0.035, 4, 3), k.mat(C.rot_eye, true), {"x": s * 0.065, "y": 0.19, "z": 0.18, "shadow": false})
-	for arm in [rig.arm_r, rig.arm_l]:
-		k.add(arm, PartKit.cyl(0.07, 0.06, 0.34, 5), cloth, {"y": -0.17})
-		k.add(arm, PartKit.cyl(0.05, 0.045, 0.3, 5), skin, {"y": -0.45})
+	for limb in [[rig.arm_r, rig.forearm_r], [rig.arm_l, rig.forearm_l]]:
+		k.add(limb[0], PartKit.cyl(0.07, 0.06, 0.34, 5), cloth, {"y": -0.17})
+		k.add(limb[1], PartKit.cyl(0.05, 0.045, 0.3, 5), skin, {"y": -0.13})
 	for hand in [rig.hand_r, rig.hand_l]:
 		k.add(hand, PartKit.box(0.09, 0.12, 0.05), skin)
-	for leg in [rig.leg_r, rig.leg_l]:
-		k.add(leg, PartKit.cyl(0.085, 0.075, 0.45, 5), k.mat(C.rag_dark), {"y": -0.22})
-		k.add(leg, PartKit.cyl(0.06, 0.055, 0.4, 5), skin, {"y": -0.64})
-		k.add(leg, PartKit.box(0.1, 0.06, 0.2), dark, {"y": -0.88, "z": 0.04})
+	for limb in [[rig.leg_r, rig.shin_r], [rig.leg_l, rig.shin_l]]:
+		k.add(limb[0], PartKit.cyl(0.085, 0.075, 0.45, 5), k.mat(C.rag_dark), {"y": -0.22})
+		k.add(limb[1], PartKit.cyl(0.06, 0.055, 0.4, 5), skin, {"y": -0.18})
+		k.add(limb[1], PartKit.box(0.1, 0.06, 0.2), dark, {"y": -0.42, "z": 0.04})
 	return rig.optimize()
 
 
@@ -462,15 +469,15 @@ static func bloater() -> Rig:
 	k.add(rig.head, PartKit.ico(0.15, 1), skin, {"y": 0.13, "z": 0.06})
 	for s in [-1.0, 1.0]:
 		k.add(rig.head, PartKit.sphere(0.03, 4, 3), k.mat(C.rot_eye, true), {"x": s * 0.06, "y": 0.16, "z": 0.19, "shadow": false})
-	for arm in [rig.arm_r, rig.arm_l]:
-		k.add(arm, PartKit.cyl(0.08, 0.07, 0.34, 5), skin, {"y": -0.17})
-		k.add(arm, PartKit.cyl(0.065, 0.055, 0.3, 5), dark, {"y": -0.45})
+	for limb in [[rig.arm_r, rig.forearm_r], [rig.arm_l, rig.forearm_l]]:
+		k.add(limb[0], PartKit.cyl(0.08, 0.07, 0.34, 5), skin, {"y": -0.17})
+		k.add(limb[1], PartKit.cyl(0.065, 0.055, 0.3, 5), dark, {"y": -0.13})
 	for hand in [rig.hand_r, rig.hand_l]:
 		k.add(hand, PartKit.box(0.1, 0.12, 0.06), skin)
-	for leg in [rig.leg_r, rig.leg_l]:
-		k.add(leg, PartKit.cyl(0.1, 0.09, 0.45, 5), k.mat(C.rag_dark), {"y": -0.22})
-		k.add(leg, PartKit.cyl(0.075, 0.065, 0.4, 5), skin, {"y": -0.64})
-		k.add(leg, PartKit.box(0.12, 0.06, 0.2), dark, {"y": -0.88, "z": 0.04})
+	for limb in [[rig.leg_r, rig.shin_r], [rig.leg_l, rig.shin_l]]:
+		k.add(limb[0], PartKit.cyl(0.1, 0.09, 0.45, 5), k.mat(C.rag_dark), {"y": -0.22})
+		k.add(limb[1], PartKit.cyl(0.075, 0.065, 0.4, 5), skin, {"y": -0.18})
+		k.add(limb[1], PartKit.box(0.12, 0.06, 0.2), dark, {"y": -0.42, "z": 0.04})
 	return rig.optimize()
 
 
@@ -490,10 +497,10 @@ static func hound() -> Rig:
 	for s in [-1.0, 1.0]:
 		k.add(rig.head, PartKit.cone(0.05, 0.14, 4), fur, {"x": s * 0.07, "y": 0.14, "z": 0.02})
 		k.add(rig.head, PartKit.sphere(0.025, 4, 3), k.mat(C.rot_eye, true), {"x": s * 0.07, "y": 0.04, "z": 0.21, "shadow": false})
-	for leg in [rig.arm_r, rig.arm_l, rig.leg_r, rig.leg_l]:
-		k.add(leg, PartKit.cyl(0.06, 0.045, 0.28, 5), fur, {"y": -0.14})
-		k.add(leg, PartKit.cyl(0.035, 0.03, 0.26, 4), bone, {"y": -0.38})
-		k.add(leg, PartKit.box(0.07, 0.04, 0.1), bone, {"y": -0.5, "z": 0.03})
+	for limb in [[rig.arm_r, rig.forearm_r], [rig.arm_l, rig.forearm_l], [rig.leg_r, rig.shin_r], [rig.leg_l, rig.shin_l]]:
+		k.add(limb[0], PartKit.cyl(0.06, 0.045, 0.28, 5), fur, {"y": -0.14})
+		k.add(limb[1], PartKit.cyl(0.035, 0.03, 0.26, 4), bone, {"y": -0.11})
+		k.add(limb[1], PartKit.box(0.07, 0.04, 0.1), bone, {"y": -0.25, "z": 0.03})
 	return rig.optimize()
 
 
@@ -514,12 +521,14 @@ static func gravekeeper() -> Rig:
 	k.add(rig.head, PartKit.cyl(0.17, 0.2, 0.22, 8), k.mat(C.keeper_hat), {"y": 0.42})
 	for s in [-1.0, 1.0]:
 		k.add(rig.head, PartKit.sphere(0.025, 4, 3), k.mat(C.socket), {"x": s * 0.06, "y": 0.2, "z": 0.15})
-	for pair in [[rig.arm_r, rig.hand_r], [rig.arm_l, rig.hand_l]]:
-		k.add(pair[0], PartKit.cyl(0.085, 0.07, 0.42, 6), coat, {"y": -0.22})
-		k.add(pair[1], PartKit.box(0.1, 0.12, 0.09), skin)
-	for leg in [rig.leg_r, rig.leg_l]:
-		k.add(leg, PartKit.cyl(0.09, 0.08, 0.5, 6), k.mat(C.keeper_hat), {"y": -0.3})
-		k.add(leg, PartKit.box(0.14, 0.1, 0.26), k.mat(C.leather), {"y": -0.88, "z": 0.05})
+	for limb in [[rig.arm_r, rig.forearm_r, rig.hand_r], [rig.arm_l, rig.forearm_l, rig.hand_l]]:
+		k.add(limb[0], PartKit.cyl(0.085, 0.078, 0.31, 6), coat, {"y": -0.15})
+		k.add(limb[1], PartKit.cyl(0.078, 0.07, 0.17, 6), coat, {"y": -0.08})
+		k.add(limb[2], PartKit.box(0.1, 0.12, 0.09), skin)
+	for limb in [[rig.leg_r, rig.shin_r], [rig.leg_l, rig.shin_l]]:
+		k.add(limb[0], PartKit.cyl(0.09, 0.085, 0.48, 6), k.mat(C.keeper_hat), {"y": -0.24})
+		k.add(limb[1], PartKit.cyl(0.085, 0.075, 0.38, 6), k.mat(C.keeper_hat), {"y": -0.18})
+		k.add(limb[1], PartKit.box(0.14, 0.1, 0.26), k.mat(C.leather), {"y": -0.41, "z": 0.05})
 	# 鐵鏟：握把中央是 grip，鏟面朝下
 	var shovel := Node3D.new()
 	k.add(shovel, PartKit.cyl(0.03, 0.03, 1.2, 5), k.mat(C.wood), {"y": -0.1})
@@ -550,14 +559,16 @@ static func werewolf() -> Rig:
 	for s in [-1.0, 1.0]:
 		k.add(rig.head, PartKit.cone(0.07, 0.22, 4), fur, {"x": s * 0.11, "y": 0.38, "z": 0.0})
 		k.add(rig.head, PartKit.sphere(0.03, 4, 3), k.mat(C.rot_eye, true), {"x": s * 0.08, "y": 0.2, "z": 0.18, "shadow": false})
-	for pair in [[rig.arm_r, rig.hand_r], [rig.arm_l, rig.hand_l]]:
-		k.add(pair[0], PartKit.cyl(0.11, 0.08, 0.46, 6), fur, {"y": -0.24})
-		k.add(pair[1], PartKit.box(0.14, 0.14, 0.12), dark)
+	for limb in [[rig.arm_r, rig.forearm_r, rig.hand_r], [rig.arm_l, rig.forearm_l, rig.hand_l]]:
+		k.add(limb[0], PartKit.cyl(0.11, 0.095, 0.32, 6), fur, {"y": -0.15})
+		k.add(limb[1], PartKit.cyl(0.095, 0.08, 0.2, 6), fur, {"y": -0.1})
+		k.add(limb[2], PartKit.box(0.14, 0.14, 0.12), dark)
 		for c in 3:
-			k.add(pair[1], PartKit.cone(0.025, 0.16, 4), k.mat(C.bone), {"x": (c - 1) * 0.045, "y": -0.13, "z": 0.04, "rx": PI})
-	for leg in [rig.leg_r, rig.leg_l]:
-		k.add(leg, PartKit.cyl(0.12, 0.09, 0.5, 6), fur, {"y": -0.28})
-		k.add(leg, PartKit.box(0.16, 0.1, 0.28), dark, {"y": -0.88, "z": 0.06})
+			k.add(limb[2], PartKit.cone(0.025, 0.16, 4), k.mat(C.bone), {"x": (c - 1) * 0.045, "y": -0.13, "z": 0.04, "rx": PI})
+	for limb in [[rig.leg_r, rig.shin_r], [rig.leg_l, rig.shin_l]]:
+		k.add(limb[0], PartKit.cyl(0.12, 0.1, 0.48, 6), fur, {"y": -0.24})
+		k.add(limb[1], PartKit.cyl(0.1, 0.07, 0.38, 6), fur, {"y": -0.18})
+		k.add(limb[1], PartKit.box(0.16, 0.1, 0.28), dark, {"y": -0.41, "z": 0.06})
 	return rig.optimize()
 
 
@@ -597,16 +608,17 @@ static func bone_colossus() -> Rig:
 	for s in [-1.0, 1.0]:
 		k.add(rig.head, PartKit.sphere(0.07, 5, 4), k.mat(C.socket), {"x": s * 0.1, "y": 0.2, "z": 0.2})
 		k.add(rig.head, PartKit.sphere(0.04, 4, 3), eye, {"x": s * 0.1, "y": 0.2, "z": 0.25, "shadow": false})
-	for arm in [rig.arm_r, rig.arm_l]:
-		k.add(arm, PartKit.cyl(0.07, 0.06, 0.45, 5), bone, {"y": -0.24})
-		k.add(arm, PartKit.ico(0.08, 0), dark, {"y": -0.5})
-		k.add(arm, PartKit.cyl(0.06, 0.05, 0.45, 5), bone, {"y": -0.75})
+	for limb in [[rig.arm_r, rig.forearm_r], [rig.arm_l, rig.forearm_l]]:
+		k.add(limb[0], PartKit.cyl(0.07, 0.06, 0.45, 5), bone, {"y": -0.24})
+		k.add(limb[0], PartKit.ico(0.08, 0), dark, {"y": -0.5})
+		k.add(limb[1], PartKit.cyl(0.06, 0.05, 0.45, 5), bone, {"y": -0.25})
 	for hand in [rig.hand_r, rig.hand_l]:
 		for c in 3:   # 爪子
 			k.add(hand, PartKit.cone(0.03, 0.22, 4), bone, {"x": (c - 1) * 0.06, "y": -0.12, "rx": PI})
-	for leg in [rig.leg_r, rig.leg_l]:
-		k.add(leg, PartKit.cyl(0.08, 0.07, 0.32, 5), bone, {"y": -0.18})
-		k.add(leg, PartKit.box(0.16, 0.08, 0.26), dark, {"y": -0.4, "z": 0.05})
+	for limb in [[rig.leg_r, rig.shin_r], [rig.leg_l, rig.shin_l]]:
+		k.add(limb[0], PartKit.cyl(0.08, 0.075, 0.22, 5), bone, {"y": -0.11})
+		k.add(limb[1], PartKit.cyl(0.075, 0.07, 0.16, 5), bone, {"y": -0.08})
+		k.add(limb[1], PartKit.box(0.16, 0.08, 0.26), dark, {"y": -0.18, "z": 0.05})
 	return rig.optimize()
 
 
@@ -679,7 +691,7 @@ static func weapon(model: StringName) -> Dictionary:
 		&"shortbow":
 			return _player_bow(0.5, Color("8a5a32"), 0.6)
 		&"longbow":
-			return _player_bow(0.8, Color("5a3a1e"), 0.68)   # 箭長：拉滿時（沒手肘、側身 70° 約拉 0.57）箭頭剛好露出弓外一點，0.9 太凸（2026-10-27 使用者）
+			return _player_bow(0.8, Color("5a3a1e"), 0.68)   # 箭長：拉滿時拉到箭長 - 0.1（Animator.pose_bow）箭頭剛好露出弓外一點，0.9 太凸
 		&"scepter":
 			return _scepter()
 		&"torch":
@@ -764,8 +776,8 @@ static func _shovel() -> Dictionary:
 # 兩端往拉弓的人這側（-Z）彎回來，弦接兩端（2026-10-27 使用者：原本圓心偏後，手握的位置不在弓身上）
 const BOW_SEGMENTS := 8
 const BOW_HALF_ARC := 0.85   # 弓身半邊張開的角度（弧度）
-# 箭袋（身體座標，玩家騎士 KNIGHT_JOINTS 的右肩在 (-0.36, 1.55, 0)）：袋口放在右手往後上方伸直時拳頭停的位置
-# （Animator.QUIVER_ARM、手臂長 = KNIGHT_JOINTS.grip；改其中一個要重算），箭袋從那裡斜穿背部到左腰下方，
+# 箭袋（身體座標，玩家騎士 KNIGHT_JOINTS 的右肩在 (-0.36, 1.55, 0)）：袋口是拉弓時右手伸進去抽箭的位置
+# （Animator.pose_bow 用 IK 把拳頭帶到 QUIVER_MOUTH，離右肩剛好一個手臂長 KNIGHT_JOINTS.grip；改肩膀或手臂長要重算），箭袋從那裡斜穿背部到左腰下方，
 # 夠長夠粗：手伸進袋口、箭在袋裡出現被擋住
 const QUIVER_MOUTH := Vector3(-0.451, 1.869, -0.476)
 const QUIVER_BOTTOM := Vector3(0.12, 1.05, -0.49)   # 要在披風（這個高度背面 z 約 -0.37）後面

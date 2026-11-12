@@ -126,6 +126,9 @@ static func cast(owner: Player, slot: Dictionary, target: Entity = null) -> void
 	if target != null:
 		SkillBehaviors.aim_at(owner, ctx, target)
 	Combat.scoped(ctx.credit, func() -> void: SkillBehaviors.cast(owner, slot.def, ctx))
+	if slot.def.get("category", &"") == &"attack":   # 戰技：角色做這招的動作（新放的蓋掉還沒做完的）
+		owner.skill_pose = slot.id
+		owner.skill_pose_time = 0.0
 	if slot.charges > 0:
 		slot.entry["charges"] = slot.charges - 1
 	if slot.def.has("mana"):

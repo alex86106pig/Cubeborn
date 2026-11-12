@@ -1,5 +1,6 @@
-# 角色骨架（Rig）：與網頁版 render/rig.js 相同的關節階層，動畫只轉動關節
-#   root（位置/朝向）→ body（整體姿勢，樞紐在腳底）→ head / arm_r / arm_l / leg_r / leg_l；手掌掛點 hand_r / hand_l 在拳頭中心
+# 角色骨架（Rig）：動畫只轉動關節
+#   root（位置/朝向）→ body（整體姿勢，樞紐在腳底）→ head / arm_r / arm_l（上臂）/ leg_r / leg_l（大腿）
+#   arm_* → forearm_*（手肘，只彎 rotation.x，負的往前彎）→ 手掌掛點 hand_*（拳頭中心）；leg_* → shin_*（膝蓋，正的往後彎）
 # 拳頭模型與手持武器都掛在手掌掛點上（武器的 grip 對齊掛點，見 DarkFantasy._hold），要轉武器就轉手掌掛點
 # 角色面向 +Z，右側為 -X；四肢往 -Y 延伸。造型由 view/styles/ 建立，零件透過 kit 加入
 class_name Rig
@@ -13,6 +14,10 @@ var leg_r := Node3D.new()
 var leg_l := Node3D.new()
 var hand_r := Node3D.new()
 var hand_l := Node3D.new()
+var forearm_r := Node3D.new()
+var forearm_l := Node3D.new()
+var shin_r := Node3D.new()
+var shin_l := Node3D.new()
 var height := 2.0
 var kit := PartKit.new()
 var weapon_main: Node3D = null      # 掛在 hand_r
@@ -25,7 +30,7 @@ var weapon_hold_point: Node3D = null   # 武器上的托舉點（鐵鏟鏟起的
 var weapon_gem: Node3D = null       # 法杖寶石（自轉）
 var weapon_model: StringName = &""          # 主手的模型
 var weapon_offhand_model: StringName = &""  # 副手的模型（沒有副手是空的）
-# 身上的掛點（關節資料的 mounts：名稱 → 位置）：back / hip_l / hip_r 在 body、head 在 head、forearm_l 在 arm_l。
+# 身上的掛點（關節資料的 mounts：名稱 → 位置）：back / hip_l / hip_r 在 body、head 在 head、forearm_l 在前臂 forearm_l（前臂座標）。
 # 用法同手掌掛點：東西用 DarkFantasy._hold 掛上去。沒有設 mounts 的骨架（骷髏）就是空的
 var mount_nodes: Dictionary = {}
 
@@ -34,23 +39,34 @@ var _joints: Dictionary
 var _flash := 0.0
 
 
-# 關節位置 j：{ neck, shoulder_y, shoulder_x, grip（肩膀到拳頭中心）, hip_y, hip_x, height, scale?, mounts?, neck_z?, shoulder_z?, hip_z? }
-# （_z：前後位移，四足的屍犬把前腳（arm）放前面、後腳（leg）放後面）
+# 關節位置 j：{ neck, shoulder_y, shoulder_x, grip（肩膀到拳頭中心）, elbow（肩膀到手肘）, hip_y, hip_x, knee（髖關節到膝蓋）,
+#   height, scale?, mounts?, neck_z?, shoulder_z?, hip_z? }（_z：前後位移，四足的屍犬把前腳（arm）放前面、後腳（leg）放後面）
+# 腳伸直時腳底在 body 的 y = 0（hip_y = 大腿 + 小腿的長度，BodyPose 的 IK 照這個算）
 # Godot 預設的 rotation_order 就是 YXZ（先前後抬起，再水平揮動），與網頁版關節相同
 func _init(j: Dictionary) -> void:
 	_joints = j
 	add_child(body)
 	for joint: Node3D in [head, arm_r, arm_l, leg_r, leg_l]:
 		body.add_child(joint)
-	arm_r.add_child(hand_r)
-	arm_l.add_child(hand_l)
+	arm_r.add_child(forearm_r)
+	arm_l.add_child(forearm_l)
+	forearm_r.add_child(hand_r)
+	forearm_l.add_child(hand_l)
+	leg_r.add_child(shin_r)
+	leg_l.add_child(shin_l)
 	head.position = Vector3(0.0, j.neck, j.get("neck_z", 0.0))
 	arm_r.position = Vector3(-j.shoulder_x, j.shoulder_y, j.get("shoulder_z", 0.0))
 	arm_l.position = Vector3(j.shoulder_x, j.shoulder_y, j.get("shoulder_z", 0.0))
 	leg_r.position = Vector3(-j.hip_x, j.hip_y, j.get("hip_z", 0.0))
 	leg_l.position = Vector3(j.hip_x, j.hip_y, j.get("hip_z", 0.0))
-	hand_r.position.y = -j.grip
-	hand_l.position.y = -j.grip
+	var elbow := elbow_of(j)
+	var knee := knee_of(j)
+	forearm_r.position.y = -elbow
+	forearm_l.position.y = -elbow
+	hand_r.position.y = elbow - j.grip
+	hand_l.position.y = elbow - j.grip
+	shin_r.position.y = -knee
+	shin_l.position.y = -knee
 	var s: float = j.get("scale", 1.0)
 	body.scale = Vector3.ONE * s
 	height = j.height * s
@@ -67,8 +83,17 @@ func _mount_parent(mount: StringName) -> Node3D:
 		&"head":
 			return head
 		&"forearm_l":
-			return arm_l
+			return forearm_l
 	return body
+
+
+# 上臂長（肩膀到手肘）、大腿長（髖關節到膝蓋）；關節資料沒寫就取一半
+static func elbow_of(j: Dictionary) -> float:
+	return j.get("elbow", j.grip * 0.5)
+
+
+static func knee_of(j: Dictionary) -> float:
+	return j.get("knee", j.hip_y * 0.5)
 
 
 # 角色建好後呼叫：每個關節的零件合併成少數幾個 mesh
@@ -77,8 +102,9 @@ func optimize() -> Rig:
 	return self
 
 
+# 順序 = SkinnedRig.BONE_NAMES（模板的 anchor 編號、蒙皮的骨頭編號都照這個）
 func _anchors() -> Array[Node3D]:
-	return [self, body, head, arm_r, arm_l, leg_r, leg_l, hand_r, hand_l]
+	return [self, body, head, arm_r, arm_l, leg_r, leg_l, hand_r, hand_l, forearm_r, forearm_l, shin_r, shin_l]
 
 
 ## 記下合併後的零件（共用 mesh，材質只記顏色），之後同種角色用 from_template 直接組出，不必重新合併
@@ -139,7 +165,7 @@ func set_weapon(model: StringName, off_model: StringName = &"") -> void:
 	if weapon_main != null:
 		hand_r.add_child(weapon_main)
 	if weapon_offhand != null:
-		(mount_nodes.get(&"forearm_l", arm_l) as Node3D).add_child(weapon_offhand)
+		(mount_nodes.get(&"forearm_l", forearm_l) as Node3D).add_child(weapon_offhand)
 	if weapon_left != null:
 		hand_l.add_child(weapon_left)
 	if _ghost_overlay != null:

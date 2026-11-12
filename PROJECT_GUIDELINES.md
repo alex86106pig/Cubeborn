@@ -313,6 +313,9 @@ godot/
 
 - 網頁版的武器行為在 `update` 裡同時做命中判定與擺姿勢；Godot 版**拆開**：模擬層只記錄動畫所需的資料 `anim`（動作名稱、階段 `windup` / `active` / `recovery`、階段進度 `k`、狀態經過秒數），畫面層的 `view/animator.gd`（玩家）、`view/enemy_animator.gd`（敵人）依 `anim` 算出關節角度。
 - 規則：模擬層不出現關節名稱。連線時只要同步 `anim`，每台都能畫出同樣動作。
+- **姿勢共用 `view/body_pose.gd`（`BodyPose`）**：手臂、腿用兩節 IK（`arm_ik` / `leg_ik` / `two_bone`）或直接給角度（`arm` / `leg`，含手肘、膝蓋）；走路跑步用 `gait`（照真實步態，步幅與走跑照 Froude 數）；站著的姿勢最後一律 `plant` / `stand`：上身照 `body.rotation` 從髖部彎、雙腳踩在地上、蹲低是彎膝蓋。
+  - 判斷：倒地、翻滾、空中這種整個人轉的姿勢才不踩地（玩家 `Animator.free_legs`、敵人 `_free`），腿自己給角度；其他姿勢不要直接改 `body.position` 或 `rig.position.y` 來蹲低（腳會插進地裡），用站姿的 drop。
+  - 新動作照真實的動作做，參考數字與來源在 `docs/動作參考.md`；檢查「角色骨架與動作」擋步態的角度、腳踩地、每招戰技都有動作。
 - **握武器用掛點**：`Rig` / `SkinnedRig` 的手掌掛點 `hand_r / hand_l` 在拳頭中心（關節資料的 `grip` = 肩膀到拳頭中心），拳頭模型掛在手掌掛點上。每把武器（玩家與怪物）在自己的模型座標標掛點：`grip` 必有（拳頭握的位置），弓另有 `string`（弓弦勾弦點）、鐵鏟另有 `hold`（托舉點），用 `DarkFantasy._hold` 掛上去，`grip` 就落在拳頭中心；`Rig.mount_point` 取掛點的世界座標。
   - 動畫要讓武器轉向（直立、弓面朝前）時轉手掌掛點，不轉武器模型：拳頭和武器一起轉，握的位置不會滑出拳頭。檢查「握武器」會擋。
   - 身上的掛點 `Rig.mount_nodes`（關節資料的 `mounts`，騎士是 `DarkFantasy.KNIGHT_MOUNTS`：`forearm_l` 盾、`back` 箭袋，`hip_l` / `hip_r` / `head` 預留）也用 `_hold` 掛；要掛新東西先找現成的掛點，沒有再加，不在 `Rig` 裡寫死位置。
@@ -352,7 +355,7 @@ godot/
 
 ## 14. 造型風格與角色模型
 
-- 所有角色都是 `view/rig.gd` 的 **`Rig`**（Node3D）：統一關節階層 `root → body → head / arm_r / arm_l / leg_r / leg_l`，手掌掛點 `hand_r / hand_l`。角色面向 +Z、右側為 -X、四肢往 -Y 延伸。**動畫程式只轉動關節，不依賴任何特定造型**，因此改造型不需改動畫。
+- 所有角色都是 `view/rig.gd` 的 **`Rig`**（Node3D）：統一關節階層 `root → body → head / arm_r / arm_l / leg_r / leg_l`，上臂下有前臂 `forearm_r / forearm_l`（手肘，只彎 `rotation.x`，負的往前彎），大腿下有小腿 `shin_r / shin_l`（膝蓋，正的往後彎），手掌掛點 `hand_r / hand_l` 掛在前臂下。關節資料的 `elbow` / `knee` 是上臂 / 大腿的長度；腳伸直時腳底在 body 的 y = 0。造型的零件掛在它所在的那一節（前臂甲掛 `forearm_*`、靴子掛 `shin_*`）。角色面向 +Z、右側為 -X、四肢往 -Y 延伸。**動畫程式只轉動關節，不依賴任何特定造型**，因此改造型不需改動畫。
 - 關節旋轉順序為 Godot 預設的 `YXZ`：先用 `rotation.x` 前後抬起，再用 `rotation.y` 水平揮動。
 - 零件用 `PartKit.add(parent, mesh, material, t)` 建立、材質用 `kit.mat(color, glow)` 取得（同色共用），才能統一受擊閃白（`set_flash`）與釋放資源。自發光部位（眼睛、寶石）用 `glow = true`，不受閃白影響。網格用 `PartKit.box / cyl / cone / sphere / ico…`。
 - **零件數影響效能**：角色建好後呼叫 `rig.optimize()`，武器與場地呼叫 `kit.merge_static(根節點, [會動的節點], [不合併的零件])`，把一起動的零件合併成少數網格。會單獨動畫的零件（例如法杖寶石）要放進不合併清單。`check.gd` 會檢查每個角色與場地的零件數上限。

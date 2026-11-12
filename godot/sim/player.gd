@@ -83,6 +83,8 @@ var stars: Array[Dictionary] = []      # 星位：{ pos, t, ctx }（SkillBehavio
 var star_timer := 0.0
 var pay_with_hp := false               # 血契：正在放的袋子改扣生命（BagTriggers.run_bag、ActiveSlots.can_use 暫時打開）
 var skill_dash := {}                   # 衝刺類技能進行中：{ left, def, ctx, hit }（SkillBehaviors.update_player）
+var skill_pose: StringName = &""       # 正在做角色動作的戰技（ActiveSlots.cast 放出戰技時設定；畫面層照 anim.skill 擺姿勢）
+var skill_pose_time := 0.0             # 那個動作做了幾秒（做滿 SkillDefs.pose_time 就清掉）
 var parry_timer := 0.0                 # 盾反動作剩餘秒數（畫面用）
 var is_jump_held := false              # 空白鍵按住：站在地上就再跳（連續跳躍）
 var is_interact_held := false       # F 按住（救援隊友）；剛按下那一步撿道具 / 開寶箱（D3）
@@ -851,6 +853,10 @@ func update(dt: float) -> void:
 
 func _tick_timers(dt: float) -> void:
 	combo_timer = maxf(0.0, combo_timer - dt)
+	if skill_pose != &"":
+		skill_pose_time += dt
+		if skill_pose_time >= SkillDefs.pose_time(skill_pose):
+			skill_pose = &""
 	poise_timer += dt
 	if poise_timer >= Config.PLAYER.poise_regen_delay:
 		poise = max_poise()
@@ -930,6 +936,8 @@ func _update_anim() -> void:
 		"buried": bury_mash >= 0.0,   # 被守墓人埋進土裡：畫面只露半身
 		"running": running,
 		"shield": shield / max_hp if max_hp > 0.0 else 0.0,   # 護盾占最大生命的比例（G4；0 不進快照）
+		"skill": skill_pose,              # 戰技的角色動作（空的 = 沒有；觸發袋放的戰技也會做）
+		"skill_time": skill_pose_time,
 	}
 
 

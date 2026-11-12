@@ -1615,11 +1615,16 @@ static func check_skinned_rig() -> String:
 			after += (mi.mesh as Mesh).surface_get_arrays(0)[Mesh.ARRAY_VERTEX].size()
 		var count := rig.mesh_count()
 		rig.arm_r.rotation = Vector3(-1.2, 0.3, 0.0)
+		rig.shin_l.rotation = Vector3(0.9, 0.0, 0.0)
 		rig.flush()
 		var want := Basis.from_euler(Vector3(-1.2, 0.3, 0.0), EULER_ORDER_YXZ)
 		var got := rig.skeleton.get_bone_pose(3).basis
 		var pos := rig.skeleton.get_bone_pose(3).origin
 		var want_pos: Vector3 = rig.arm_r.position
+		var shin := rig.skeleton.find_bone("shin_l")
+		var shin_ok := shin >= 0 and rig.skeleton.get_bone_parent(shin) == rig.skeleton.find_bone("leg_l") \
+			and rig.skeleton.get_bone_pose(shin).basis.is_equal_approx(Basis.from_euler(Vector3(0.9, 0.0, 0.0), EULER_ORDER_YXZ)) \
+			and rig.skeleton.get_bone_parent(rig.skeleton.find_bone("hand_r")) == rig.skeleton.find_bone("forearm_r")
 		old.free()
 		rig.free()
 		if count > 2:
@@ -1628,6 +1633,8 @@ static func check_skinned_rig() -> String:
 			return "%s 蒙皮版頂點 %d，原本零件 %d" % [kind, after, before]
 		if not got.is_equal_approx(want) or not pos.is_equal_approx(want_pos):
 			return "%s 右臂的骨頭姿勢沒跟著關節" % kind
+		if not shin_ok:
+			return "%s 的小腿骨頭應掛在大腿下、姿勢跟著膝蓋關節，手掌骨頭掛在前臂下" % kind
 	return ""
 
 
