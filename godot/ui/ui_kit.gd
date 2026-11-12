@@ -258,6 +258,12 @@ static func weapon_miss_line(id: StringName, player: Player) -> String:
 	return "手上的%s放不出來：要%s武器" % [player.weapon.name, WeaponDefs.TAGS[SkillDefs.SKILLS[id].needs]]
 
 
+# 武器不符、蓋著幻影時的一行（ActiveSlots.slot_of 的 phantom）
+static func phantom_line() -> String:
+	var mana := ItemDefs.ITEMS[ActiveSlots.PHANTOM_ID].power * SkillDefs.SUPPORT_MANA
+	return "幻影放出：傷害 %d%%、耗魔 +%d%%" % [roundi(SkillDefs.PHANTOM_MUL * 100.0), roundi(mana * 100.0)]
+
+
 # 技能的一行：怎麼用、類別與武器需求、標籤、耗魔（次數制的寫次數），耗魔照等級算
 static func skill_line(id: StringName, level := 1) -> String:
 	var sk: Dictionary = SkillDefs.SKILLS[id]

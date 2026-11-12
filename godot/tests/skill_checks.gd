@@ -125,7 +125,7 @@ static func check_weapon_needs() -> String:
 	var hp0 := targets.map(func(e: Enemy) -> float: return e.hp)
 	var nova_cost := ActiveSlots.mana_cost(p, ActiveSlots.slot_of(p, key, order[1]))
 	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
-	# 武器不符跳過（YangHsu 2026-11-12）：連珠箭不放、不扣魔，同一步接著放冰霜新星
+	# 武器不符跳過：連珠箭不放、不扣魔，同一步接著放冰霜新星
 	var spent := p.max_mana() - p.mana
 	if absf(spent - nova_cost) > p.stats.value(&"mana_regen") * DT + 1e-3:
 		return "武器不符的連珠箭不該扣魔、只扣冰霜新星的 %.1f：實際扣 %.1f" % [nova_cost, spent]
@@ -174,6 +174,56 @@ static func check_weapon_needs() -> String:
 		loss.append(dummy.max_hp - dummy.hp)
 	if loss[0] <= 0.0 or absf(loss[0] - loss[1]) > EPS:
 		return "劍盾放冰霜新星不該吃物理加成：沒加成 %.2f、物理 ×2 %.2f" % [loss[0], loss[1]]
+	return _check_phantom()
+
+
+# 幻影修飾：透明格蓋在武器不符的技能上 → 放得出來、傷害 × PHANTOM_MUL、耗魔照強度加；武器符合時沒作用（不打折、不加耗魔）；
+# 只蓋得到有武器需求的技能
+static func _check_phantom() -> String:
+	if ItemDefs.mod_applies(ActiveSlots.PHANTOM_ID, &"frost_nova") or not ItemDefs.mod_applies(ActiveSlots.PHANTOM_ID, &"volley"):
+		return "幻影應只蓋得到有武器需求的技能（連珠箭可以、冰霜新星不行）"
+	var s := _setup(&"swordShield")
+	var w: World = s[0]
+	var p: Player = s[1]
+	var key: Dictionary = p.loadout.key_bags()[0]
+	_put(p, key, &"volley")
+	var volley: Dictionary = BagTriggers.contents(key)[0]
+	var placed := &""
+	for rot in 4:   # 透明格（形狀第 0 格）對準連珠箭那格，實心格要落在空格上
+		placed = _put_at(p, key, ActiveSlots.PHANTOM_ID, volley.cell - Inventory.cells_of(ActiveSlots.PHANTOM_ID, rot)[ItemDefs.MOD_CLEAR_INDEX], rot)
+		if placed != &"":
+			break
+	if placed == &"":
+		return "前置：幻影的透明格應蓋得到按鍵袋裡的連珠箭"
+	var slot := ActiveSlots.slot_of(p, key, volley)
+	if not slot.fits or not slot.phantom:
+		return "劍盾 + 幻影蓋著連珠箭：應放得出來、靠幻影放（fits %s、phantom %s）" % [slot.fits, slot.phantom]
+	if not InventoryPanel.misfit_entries(p, key).is_empty():
+		return "蓋著幻影的連珠箭背包不該標「武」"
+	var base := p.mana_cost_of(slot.def, slot.level)
+	var want := base * (1.0 + ItemDefs.ITEMS[ActiveSlots.PHANTOM_ID].power * SkillDefs.SUPPORT_MANA)
+	if absf(ActiveSlots.mana_cost(p, slot) - want) > 1e-3:
+		return "幻影放出的耗魔應 %.2f（原本 %.2f）：實際 %.2f" % [want, base, ActiveSlots.mana_cost(p, slot)]
+	var plain := slot.duplicate()
+	plain.phantom = false
+	var ratio: float = ActiveSlots.cast_context(p, slot).mul / ActiveSlots.cast_context(p, plain).mul
+	if absf(ratio - SkillDefs.PHANTOM_MUL) > EPS:
+		return "幻影放出的傷害倍率應 ×%.2f：實際 ×%.2f" % [SkillDefs.PHANTOM_MUL, ratio]
+	var targets := _targets(w)
+	var hp0 := targets.map(func(e: Enemy) -> float: return e.hp)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), roundi(1.0 / DT))
+	var hurt := false
+	for i in targets.size():
+		hurt = hurt or targets[i].hp < hp0[i]
+	if p.cast_log.get(&"volley", [0, 0])[0] != 1 or not hurt:
+		return "劍盾按下蓋著幻影的連珠箭應放出一次、打到怪：%s、打到 %s" % [p.cast_log, hurt]
+	p.equip_weapon(&"shortbow")
+	var bow := ActiveSlots.slot_of(p, key, volley)
+	var bow_base := p.mana_cost_of(bow.def, bow.level)
+	if bow.phantom or not bow.fits or absf(ActiveSlots.mana_cost(p, bow) - bow_base) > 1e-3 or not ActiveSlots.support_ids(bow).is_empty():
+		return "換上短弓後幻影應沒作用（不靠幻影、不加耗魔）：phantom %s、耗魔 %.2f / %.2f" % [bow.phantom, ActiveSlots.mana_cost(p, bow), bow_base]
+	_note("幻影：劍盾放連珠箭耗魔 %.2f → %.2f、傷害 ×%.2f；換短弓耗魔 %.2f" % [base, want, ratio, bow_base])
 	return ""
 
 

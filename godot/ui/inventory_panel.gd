@@ -868,7 +868,7 @@ func _draw_skill_marks(font: Font, me: Player, where: int, b: Dictionary) -> voi
 			for r in rects:
 				draw_rect(r.grow(-2), Color(UiKit.GOLD, 0.18 * pulse))
 				draw_rect(r.grow(-2), Color(UiKit.GOLD, pulse), false, 2.0)
-		var n := ActiveSlots.mod_ids_on(b, e).size()
+		var n := ActiveSlots.support_ids(ActiveSlots.slot_of(me, b, e)).size() if ItemDefs.is_skill(e.id) else ActiveSlots.mod_ids_on(b, e).size()   # 技能的幻影只在武器不符時算
 		if n > 0:
 			var corner := rects[0].position + Vector2(rects[0].size.x - 15.0, 3.0)
 			draw_circle(corner + Vector2(6, 8), 8.0, Color(0, 0, 0, 0.8))
@@ -914,11 +914,11 @@ func _draw_mana_marks(font: Font, me: Player, where: int, b: Dictionary) -> void
 		draw_string(font, corner, "武" if misfit.has(e) else "魔", HORIZONTAL_ALIGNMENT_CENTER, 16, 13, UiKit.ALERT)
 
 
-# 袋子裡手上的武器放不出來的技能（SkillDefs.fits_weapon）
+# 袋子裡手上的武器放不出來、也沒蓋幻影的技能（ActiveSlots.slot_of 的 fits）
 static func misfit_entries(me: Player, b: Dictionary) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	for e in BagTriggers.contents(b):
-		if ItemDefs.is_skill(e.id) and not SkillDefs.fits_weapon(SkillDefs.SKILLS[e.id], me.weapon):
+		if ItemDefs.is_skill(e.id) and not ActiveSlots.slot_of(me, b, e).fits:
 			out.append(e)
 	return out
 
@@ -1279,7 +1279,9 @@ func _info_of(me: Player) -> Dictionary:
 				info.title += "（在%s · %s發動）" % [BagDefs.bag_name(b), head_text(b) if b.kind != &"key" else "按數字鍵"]
 				info.lines.append("發動：%s" % when_text(b))
 				var miss := UiKit.weapon_miss_line(found.entry.id, me)
-				if miss != "":
+				if miss != "" and ActiveSlots.slot_of(me, b, found.entry).phantom:
+					info.lines.append(UiKit.phantom_line())
+				elif miss != "":
 					info.lines.append(miss)
 		return info
 	var e := me.inventory.find(uid)

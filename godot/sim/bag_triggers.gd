@@ -79,7 +79,7 @@ static func _icd_ready(p: Player, b: Dictionary) -> bool:
 
 # 技能銜接（許家慶 2026-11-06，mockups/技能銜接.html 方案 1 + 2 + 3）：同一袋由左到右一招一招放，間隔 CHAIN_GAP 秒；
 #   每一招從前一招最後打到的地方放（打到的目標裡離這一招中心最遠的那隻）；前一招放不出來（魔力不夠、條件不符）或打空就停，後面的不放、不扣魔
-#   手上的武器放不出來的技能（SkillDefs.fits_weapon）不算斷：跳過、不扣魔，同一步接下一招，目標沿用
+#   手上的武器放不出來、也沒蓋幻影的技能（ActiveSlots.slot_of 的 fits）不算斷：跳過、不扣魔，同一步接下一招，目標沿用
 #   「打空」只看當下就知道結果的招式（INSTANT_HIT 的技能、有打出傷害的效果）；投射物、晚一點落下的、增益、召喚、衝刺放出來就算成功，下一招沿用原本的目標
 const CHAIN_GAP := 0.15
 const INSTANT_HIT: Array[StringName] = [&"nova", &"cone", &"chain", &"ambush", &"line", &"reaver", &"grudge", &"bury"]
@@ -114,7 +114,7 @@ static func _chain_step(world: World, p: Player, chain: Dictionary) -> int:
 	chain.i += 1
 	if not b.entries.has(e):   # 中間被拿出袋子了：跳過、照樣往下
 		return _chain_step(world, p, chain)
-	if ItemDefs.is_skill(e.id) and not SkillDefs.fits_weapon(SkillDefs.SKILLS[e.id], p.weapon):   # 手上的武器放不出來：跳過、不扣魔，馬上接下一招（YangHsu 2026-11-12）
+	if ItemDefs.is_skill(e.id) and not ActiveSlots.slot_of(p, b, e).fits:   # 手上的武器放不出來（也沒蓋幻影）：跳過、不扣魔，馬上接下一招
 		return _chain_step(world, p, chain)
 	var target := world.entities.get(chain.target_id) as Entity
 	if target != null and target.is_removed:
@@ -187,7 +187,7 @@ static func _echo(p: Player, b: Dictionary, entries: Array[Dictionary], target: 
 			var cost: float = ActiveSlots.mana_cost(p, slot) * rule.mana_share
 			var behavior: SkillBehaviors.Behavior = SkillBehaviors.BEHAVIORS[slot.def.behavior]
 			var alive: Entity = t if t != null and not t.is_removed else null
-			if slot.charges == 0 or not SkillDefs.fits_weapon(slot.def, p.weapon) or not p.has_mana(cost) or not (behavior.can_use(p, slot.def) if alive == null else behavior.can_use_on(p, slot.def, alive)):
+			if slot.charges == 0 or not slot.fits or not p.has_mana(cost) or not (behavior.can_use(p, slot.def) if alive == null else behavior.can_use_on(p, slot.def, alive)):
 				continue
 			var ctx := ActiveSlots.cast_context(p, slot)
 			ctx.mul *= rule.mul

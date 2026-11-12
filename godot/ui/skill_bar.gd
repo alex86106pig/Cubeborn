@@ -50,7 +50,7 @@ func refresh(world: World, player: Player) -> void:
 				slot.icon.modulate.a = 0.3 if data.charges <= 0 else 1.0
 			elif data != null and data.def.has("mana"):
 				_show_cost(slot, player, ActiveSlots.mana_cost(player, data))
-				if not SkillDefs.fits_weapon(data.def, player.weapon):   # 手上的武器放不出來：一直是暗的
+				if not data.get("fits", true):   # 手上的武器放不出來（也沒蓋幻影）：一直是暗的
 					slot.icon.modulate.a = 0.3
 			slot.show_level(data.get("level", 1) if data != null else 1)
 		elif not slot.mana_def.is_empty():   # 耗魔的右鍵

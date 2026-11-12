@@ -373,6 +373,8 @@ const ITEMS := {
 		"desc": "修飾：蓋住的範圍 / 投射 / 近戰技能改成冰霜傷害；耗魔 +30%", "effects": [{"ability": &"skill_support", "mode": &"cold", "tags": [&"area", &"projectile", &"melee"]}]},
 	&"conserve_support": {"kind": &"item", "name": "節能", "rarity": &"green", "power": 3.0, "shape": &"i2", "bonds": [],
 		"desc": "修飾：蓋住的技能耗魔 −30%（所有技能都有效）", "effects": [{"ability": &"skill_support", "mode": &"conserve", "mana_mul": 0.7, "tags": [&"area", &"projectile", &"move", &"melee", &"guard", &"summon", &"buff"]}]},
+	&"phantom_support": {"kind": &"item", "name": "幻影", "rarity": &"green", "power": 3.0, "shape": &"i2", "bonds": [],
+		"desc": "修飾：蓋住的技能手上的武器放不出來時，改由幻影放出（傷害 60%）；耗魔 +30%，武器符合時沒作用", "effects": [{"ability": &"skill_support", "mode": &"phantom", "tags": [&"area", &"projectile", &"move", &"melee", &"guard", &"summon", &"buff"]}]},
 	# 隊友的屍體（D6，kind &"corpse"）：不是道具，寶箱不會開出；背包條目 uid 是 Player.corpse_uid(死者)
 	&"corpse": {"kind": &"corpse", "name": "隊友的屍體", "rarity": &"white", "shape": &"r6",
 		"desc": "帶到下一層，死者會變成冤魂；打倒冤魂就能復活", "effects": []},
@@ -483,13 +485,15 @@ static func skill_tags(id: StringName) -> Array:
 	return BagDefs.EFFECT_TAGS.get(effect_of(id), [])
 
 
-# 修飾 mod_id 對技能 skill_id 有沒有作用：節能每種都有；火焰化 / 霜化對效果只算有傷害的（BagDefs.EFFECT_TYPED）；其他看標籤
+# 修飾 mod_id 對技能 skill_id 有沒有作用：節能每種都有；幻影只對有武器需求的技能；火焰化 / 霜化對效果只算有傷害的（BagDefs.EFFECT_TYPED）；其他看標籤
 static func mod_applies(mod_id: StringName, skill_id: StringName) -> bool:
 	var sup := support_of(mod_id)
 	if sup.is_empty() or not is_coverable(skill_id):
 		return false
 	if sup.mode == &"conserve":
 		return true
+	if sup.mode == &"phantom":   # 只蓋得到有武器需求的技能；武器符合時沒作用在 ActiveSlots.support_ids 濾掉
+		return is_skill(skill_id) and SkillDefs.SKILLS[skill_id].has("needs")
 	if sup.mode in [&"fire", &"cold"] and not is_skill(skill_id) and not BagDefs.EFFECT_TYPED.has(effect_of(skill_id)):
 		return false
 	var tags := skill_tags(skill_id)

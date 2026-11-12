@@ -14,6 +14,7 @@ const TAGS := {&"area": "範圍", &"projectile": "投射", &"move": "移動", &"
 const CATEGORIES := {&"attack": "戰技", &"spell": "法術"}
 const DEFAULT_SCALE := {"weapon": 1.0, "spell": 0.0}   # 傷害 = damage_pct ×（武器傷害 × weapon + 武器的法術強度 × spell）
 const LEVEL := {"max": 5, "damage": 0.2, "mana": 0.1}
+const PHANTOM_MUL := 0.6    # 幻影放出的技能（手上的武器不符、蓋著幻影修飾）傷害倍率（ActiveSlots.cast_context）
 const SUPPORT_MANA := 0.1   # 蓋在技能上的修飾每點強度（ItemDefs power）耗魔 +10%（ActiveSlots.support_mana_mul；節能的 mana_mul 另外算）
 
 const SKILLS := {

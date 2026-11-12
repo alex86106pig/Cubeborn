@@ -10,6 +10,8 @@ const GEM_SLOTS := 4                   # 數字鍵 1~4
 const HEAL_INDEX := GEM_SLOTS          # Q
 const KEY_LABELS: Array[String] = ["1", "2", "3", "4", "Q"]
 
+const PHANTOM_ID := &"phantom_support"
+
 var heal := {"def": SkillDefs.SKILLS.heal, "charges": SkillDefs.SKILLS.heal.charges}
 
 
@@ -17,11 +19,15 @@ static func cd_key(index: int) -> String:
 	return "player.slot%d" % (index + 1)
 
 
-# 袋子裡的一個技能：{ def, id, level, bag, entry, charges }（charges = -1 不限次數；次數制的技能次數記在袋子條目上，換關補滿）
+# 袋子裡的一個技能：{ def, id, level, bag, entry, charges, fits, phantom }（charges = -1 不限次數；次數制的技能次數記在袋子條目上，換關補滿）
+# fits：手上的武器放得出來（SkillDefs.fits_weapon），或不符但蓋著幻影；phantom：不符、靠幻影放（傷害 × PHANTOM_MUL、幻影的耗魔才算）
 static func slot_of(owner: Player, b: Dictionary, e: Dictionary) -> Dictionary:
 	var def: Dictionary = SkillDefs.SKILLS[e.id]
 	var charges: int = e.get("charges", def.charges) if def.get("mode", &"") == &"charges" else -1
-	return {"def": def, "id": e.id, "level": owner.skill_levels.get(e.id, 1), "bag": b, "entry": e, "charges": charges}
+	var fits := SkillDefs.fits_weapon(def, owner.weapon)
+	var phantom := not fits and mod_ids_on(b, e).has(PHANTOM_ID)
+	return {"def": def, "id": e.id, "level": owner.skill_levels.get(e.id, 1), "bag": b, "entry": e, "charges": charges,
+		"fits": fits or phantom, "phantom": phantom}
 
 
 # 第 index 格目前的內容：null（沒有那個按鍵袋）或 { def, charges, id?, level?, bag }；技能欄畫袋子裡第一個技能，
@@ -106,7 +112,7 @@ func _predict(owner: Player, b: Dictionary) -> void:
 
 # target：觸發袋的目標（命中、擊殺、受傷）；按鍵與沒有目標的袋子是 null
 static func can_cast(owner: Player, slot: Dictionary, target: Entity = null) -> bool:
-	if slot.charges == 0 or not SkillDefs.fits_weapon(slot.def, owner.weapon):
+	if slot.charges == 0 or not slot.get("fits", true):
 		return false
 	if slot.def.has("mana") and not owner.has_mana(mana_cost(owner, slot)):
 		return false
@@ -154,6 +160,8 @@ static func cast_context(_owner: Player, slot: Dictionary) -> Dictionary:
 	var ctx := {"mul": SkillDefs.damage_mul(slot.id, slot.get("level", 1)) * (BagDefs.power_of(bag) if not bag.is_empty() else 1.0), "area": 1.0,
 		"type": slot.def.get("damage_type", &"phys"), "split": false,
 		"credit": "k:" + String(slot.id)}   # 傷害來源（Combat.credit_scope）：持續的招式（衝刺）每步打的也算這個技能
+	if slot.get("phantom", false):
+		ctx.mul *= SkillDefs.PHANTOM_MUL
 	for sup: Dictionary in supports_of(slot):
 		match sup.mode:
 			&"split":
@@ -178,7 +186,10 @@ static func support_ids(slot: Dictionary) -> Array[StringName]:
 	var out: Array[StringName] = []
 	if not slot.has("bag") or not slot.has("entry"):
 		return out
-	return mod_ids_on(slot.bag, slot.entry)
+	out = mod_ids_on(slot.bag, slot.entry)
+	if not slot.get("phantom", false):   # 武器符合時幻影沒作用：不加耗魔
+		out.erase(PHANTOM_ID)
+	return out
 
 
 # 袋子 b 裡蓋在條目 e（技能或效果）上、對它有作用的修飾 id
