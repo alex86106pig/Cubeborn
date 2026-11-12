@@ -11,6 +11,7 @@ signal back_pressed   # 多人頁按「返回」（還在大廳時 main.gd 先�
 signal quit_pressed
 signal weapon_test_pressed   # 首頁「武器測試場」（2026-10-27）
 signal settings_pressed      # 首頁「設定」（2026-10-27，HUD 打開設定頁）
+signal anim_viewer_pressed   # 首頁「動畫檢視器」：重開成檢視器（LaunchArgs.relaunch）
 
 var page: StringName = &"home"   # &"home" | &"method" | &"multi"
 var net_slot := VBoxContainer.new()   # 多人頁放連線面板的位置
@@ -18,6 +19,7 @@ var single_button := _button("單人遊戲")
 var multi_button := _button("多人遊戲")
 var quit_button := _button("離開遊戲")
 var weapon_test_button := _button("武器測試場")
+var anim_viewer_button := _button("動畫檢視器")
 var settings_button := _button("設定")
 var room_button := _button("房號連線")
 var ip_button := _button("IP 連線")
@@ -42,7 +44,7 @@ func _init() -> void:
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(l)
 	box.add_child(_spacer(40))
-	for b: Button in [single_button, multi_button, weapon_test_button, settings_button, quit_button]:
+	for b: Button in [single_button, multi_button, weapon_test_button, anim_viewer_button, settings_button, quit_button]:
 		_home.add_child(b)
 	quit_button.visible = not OS.has_feature("web")   # 瀏覽器不允許網頁自己關閉
 
@@ -78,6 +80,7 @@ func _init() -> void:
 	method_back_button.pressed.connect(show_page.bind(&"home"))
 	quit_button.pressed.connect(quit_pressed.emit)
 	weapon_test_button.pressed.connect(weapon_test_pressed.emit)
+	anim_viewer_button.pressed.connect(anim_viewer_pressed.emit)
 	settings_button.pressed.connect(settings_pressed.emit)
 	back_button.pressed.connect(back_pressed.emit)
 	show_page(&"home")

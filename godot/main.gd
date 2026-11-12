@@ -49,7 +49,12 @@ func _ready() -> void:
 	InputCollector.register_actions()
 	_apply_args()
 	if args.pose_test != "" or args.anim_viewer:   # 動作表 / 動畫檢視器：不開遊戲，只看角色動作（debug/）
-		add_child(PoseGallery.new(args.pose_test, args.pose_view) if args.pose_test != "" else AnimViewer.new(args.anim_viewer_pick))
+		if args.pose_test != "":
+			add_child(PoseGallery.new(args.pose_test, args.pose_view))
+		else:
+			var viewer := AnimViewer.new(args.anim_viewer_pick)
+			viewer.back_to_game = true
+			add_child(viewer)
 		set_process(false)
 		set_physics_process(false)
 		set_process_unhandled_input(false)
@@ -73,6 +78,9 @@ func _ready() -> void:
 	hud.title_requested.connect(return_to_title)
 	hud.class_select.start_pressed.connect(start_single)
 	hud.main_menu.weapon_test_pressed.connect(start_weapon_test)
+	hud.main_menu.anim_viewer_pressed.connect(func() -> void:
+		sound.stop_all()
+		LaunchArgs.relaunch(get_tree(), true))
 	_connect_test_panel()
 	hud.main_menu.back_pressed.connect(_on_title_back)
 	hud.inventory_panel.op_requested.connect(input_collector.queue_inventory_op)

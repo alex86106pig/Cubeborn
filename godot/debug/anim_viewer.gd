@@ -66,6 +66,7 @@ var _play_button: Button
 var _panel := PanelContainer.new()
 var _syncing_slider := false
 var _initial := ""
+var back_to_game := false        # 從遊戲主選單進來的：多一顆「回主選單」（編輯器 F6 開的沒有遊戲可以回）
 
 
 func _init(pick := "") -> void:
@@ -233,6 +234,10 @@ func _build_ui() -> void:
 	var rerec := UiKit.button("重錄（R）", UiKit.BUTTON_M)
 	rerec.pressed.connect(_rerecord)
 	box.add_child(rerec)
+	if back_to_game:
+		var to_menu := UiKit.button("回主選單", UiKit.BUTTON_M)
+		to_menu.pressed.connect(func() -> void: LaunchArgs.relaunch(get_tree(), false))
+		box.add_child(to_menu)
 	box.add_child(UiKit.label("空白鍵 播放 / 暫停　← → 逐格　↑ ↓ 換動作\n滑鼠拖曳轉視角　滾輪縮放", UiKit.FONT_NOTE, Color(1, 1, 1, 0.6)))
 	_subject_pick.focus_mode = Control.FOCUS_NONE
 	_slider.focus_mode = Control.FOCUS_NONE

@@ -455,9 +455,14 @@ static func _check_main_menu(hud: Variant) -> String:
 	hud.show_title(true)
 	if not menu.visible or menu.page != &"home" or hud._pause.visible:
 		return "show_title 後應顯示主選單首頁、暫停畫面隱藏"
-	for b: Button in [menu.single_button, menu.multi_button, menu.weapon_test_button]:
+	for b: Button in [menu.single_button, menu.multi_button, menu.weapon_test_button, menu.anim_viewer_button]:
 		if not _shown(b, menu):
 			return "主選單首頁應看得到「%s」" % b.text
+	var viewer_asks := [0]
+	menu.anim_viewer_pressed.connect(func() -> void: viewer_asks[0] += 1)
+	menu.anim_viewer_button.pressed.emit()
+	if viewer_asks[0] != 1:
+		return "按「動畫檢視器」應發出 anim_viewer_pressed（main.gd 重開成檢視器）"
 	if menu.quit_button.visible == OS.has_feature("web"):
 		return "「離開遊戲」桌面版要顯示、網頁版要隱藏"
 	if _shown(menu.back_button, menu):
@@ -4348,7 +4353,12 @@ static func check_anim_viewer() -> String:
 	_scene_root().add_child(v)
 	await (Engine.get_main_loop() as SceneTree).process_frame   # _ready 要等場景樹跑一幀
 	v.select("enemy-gravekeeper", "scoop_bury")
-	var err := _viewer_chain(v)
+	var err := ""
+	for b in v.find_children("*", "Button", true, false):
+		if (b as Button).text == "回主選單":
+			err = "從編輯器開的檢視器（沒有遊戲可以回）不應有「回主選單」"
+	if err == "":
+		err = _viewer_chain(v)
 	if err == "":
 		err = _viewer_loop(v)
 	v.queue_free()

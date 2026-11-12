@@ -64,6 +64,21 @@ var anim_viewer := false         # --anim-viewer：動畫檢視器（AnimViewer�
 var anim_viewer_pick := ""       # --anim-viewer=角色:動作：一打開就選好       # --shadows= / --lights=：設定頁的鍵 → bool（沒指定就不放）
 
 
+# 重開成動畫檢視器（viewer = true）或回到遊戲：網頁版換網址重新載入；電腦版帶參數關掉重開（其他參數照舊）
+static func relaunch(tree: SceneTree, viewer: bool) -> void:
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("window.location.href = window.location.pathname%s" % (" + '?anim-viewer'" if viewer else ""))
+		return
+	var user := Array(OS.get_cmdline_user_args()).filter(func(a: String) -> bool: return not a.begins_with("--anim-viewer"))
+	if viewer:
+		user.append("--anim-viewer")
+	var cmd := OS.get_cmdline_args()
+	cmd.append("--")
+	cmd.append_array(PackedStringArray(user))
+	OS.set_restart_on_exit(true, cmd)
+	tree.quit()
+
+
 # 這次執行的參數：指令列，網頁版再加上網址的查詢參數
 static func from_os() -> LaunchArgs:
 	var args := OS.get_cmdline_user_args()
