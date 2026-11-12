@@ -205,6 +205,7 @@ if (has('web') && !has('perf') && !has('load')) {
 // 網頁版效能：匯出後開獨立的 headless Chrome（自己的設定資料夾、不開視窗、關掉背景限速；新版 headless 照樣用顯示卡畫），
 // 原地讓 60 群怪圍過來、每 0.5 秒用滑鼠來回轉身 180°，跑 30 秒；印出 WebGL 用的顯示卡、遊戲的 perf 統計、Console 錯誤
 const PERF_SECONDS = 30;
+const HITCH_LINES = Number(process.env.PERF_HITCH_LINES) || 20;   // 卡頓最多列幾筆
 const PERF_QUERY = process.env.PERF_QUERY || `?perf&seconds=${PERF_SECONDS}&horde=60&elites&player-hp=99999`;
 const TURN_SECONDS = 0.5;
 
@@ -270,7 +271,7 @@ async function webPerf() {
       if (m.method !== 'Runtime.consoleAPICalled') return;
       const text = m.params.args.map(a => a.value ?? a.description ?? '').join(' ');
       if (/^perf load /.test(text)) return;   // 開場時間點是給 --load 的，不算遊戲開始跑
-      if (/^perf hitch/.test(text)) { if (++hitches <= 20) lines.push(text); return; }
+      if (/^perf hitch/.test(text)) { if (++hitches <= HITCH_LINES) lines.push(text); return; }
       // 第一行 perf 出現 = 遊戲開始跑了：開始來回轉身（滑鼠在畫面中央左右兩側，角色面向跟著滑鼠）
       if (/^perf|^Build configuration/.test(text) && !timer) {
         let side = 1;
@@ -283,7 +284,7 @@ async function webPerf() {
   });
   await close();
   console.log(lines.join('\n'));
-  if (hitches > 20) console.log(`（hitch 共 ${hitches} 筆，只列前 20）`);
+  if (hitches > HITCH_LINES) console.log(`（hitch 共 ${hitches} 筆，只列前 ${HITCH_LINES}；要全部列出設環境變數 PERF_HITCH_LINES）`);
   return ok;
 }
 
