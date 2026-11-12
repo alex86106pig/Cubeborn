@@ -125,6 +125,8 @@ static func character(kind: StringName) -> Rig:
 			rig = hive()
 		&"lich":
 			rig = lich()
+		&"wraith":
+			rig = wraith()
 		&"bone_wheel":
 			rig = bone_wheel()
 		&"spearman":
@@ -329,6 +331,28 @@ static func beetle() -> Rig:
 		k.add(rig.head, PartKit.sphere(0.018, 4, 3), k.mat(C.rot_eye, true), {"x": s * 0.05, "y": 0.04, "z": 0.08, "shadow": false})
 	for leg in [rig.arm_r, rig.arm_l, rig.leg_r, rig.leg_l]:
 		k.add(leg, PartKit.cyl(0.018, 0.012, 0.22, 4), under, {"y": -0.1})
+	return rig.optimize()
+
+
+# 尖嘯幽影：灰藍的破斗篷往下收成一縷（沒有腳）、兜帽裡一張骷髏臉與發白光的眼、兩隻細長的手
+static func wraith() -> Rig:
+	var rig := Rig.new(SKELETON_JOINTS)
+	var k := rig.kit
+	var shroud := k.mat(Color("4a5568"))
+	var dark := k.mat(Color("2a3140"))
+	var bone := k.mat(C.bone)
+	k.add(rig.body, PartKit.cyl(0.3, 0.06, 1.25, 7), shroud, {"y": 0.85})
+	k.add(rig.body, PartKit.cyl(0.26, 0.3, 0.35, 7), dark, {"y": 1.35})
+	k.add(rig.head, PartKit.sphere(0.24, 7, 5), dark, {"y": 0.18})
+	k.add(rig.head, PartKit.ico(0.15, 1), bone, {"y": 0.16, "z": 0.1})
+	for s in [-1.0, 1.0]:
+		k.add(rig.head, PartKit.sphere(0.035, 4, 3), k.mat(Color("dfefff"), true), {"x": s * 0.06, "y": 0.19, "z": 0.23, "shadow": false})
+	for arm in [rig.arm_r, rig.arm_l]:
+		k.add(arm, PartKit.cyl(0.05, 0.025, 0.7, 5), shroud, {"y": -0.32})
+		for c in 3:
+			k.add(arm, PartKit.cone(0.015, 0.16, 4), bone, {"x": (c - 1) * 0.035, "y": -0.72, "rx": PI})
+	for leg in [rig.leg_r, rig.leg_l]:
+		k.add(leg, PartKit.cyl(0.06, 0.01, 0.5, 4), dark, {"y": -0.3})
 	return rig.optimize()
 
 

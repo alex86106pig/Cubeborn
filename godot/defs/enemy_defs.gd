@@ -210,6 +210,34 @@ const ENEMIES := {
 		"web": {"root": 1.2, "radius": 1.5, "time": 8.0, "slow": 0.5, "overshoot": 1.5},
 	},
 
+	# 尖嘯幽影（第 4 層的怪，第 3 層的巨繭噴出來，數值 Claude 暫定）：穿牆浮空，貼近尖嘯讓人恐懼（sim/enemies/wraith.gd）
+	&"wraith": {
+		"name": "尖嘯幽影",
+		"resists": {&"phys": 0.5, &"holy": -0.5},
+		"visual": &"wraith",
+		"behavior": &"wraith",
+		"max_hp": 26.0,
+		"move_speed": 3.0,
+		"speed_variance": 0.15,
+		"turn_speed": 6.0,
+		"radius": 0.45,
+		"mass": 0.6,
+		"hurt_time": 0.22,
+		"spawn_time": 0.7,
+		"corpse_time": 1.0,
+		"shriek": {
+			"trigger_distance": 3.0,   # 目標中心進到這以內、冷卻好就開始吸氣
+			"hover": 0.7,              # 冷卻中飄到 trigger_distance 的這個比例就停下
+			"windup": 0.7,
+			"radius": 4.0,
+			"damage": 6.0,
+			"fear": 1.0,               # 恐懼幾秒：不能出招、被迫往反方向跑
+			"flee_speed_mul": 0.8,     # 恐懼時跑的速度 = 玩家移速 × 這個
+			"recovery": 0.5,
+			"cooldown": 5.0,
+		},
+	},
+
 	# 屍巫（第 4 層的怪，第 3 層的巨繭噴出來，數值 Claude 暫定）：同弓手保持距離，放 3 顆追蹤紫火、被近身就閃現（sim/enemies/lich.gd）
 	&"lich": {
 		"name": "屍巫",
@@ -761,7 +789,7 @@ const FLOOR_MIX := {
 	1: {&"zombie": 0.7, &"hound": 0.2, &"bloater": 0.1},
 	2: {&"grunt": 0.5, &"archer": 0.25, &"spearman": 0.125, &"bone_wheel": 0.125},
 	3: {&"beetle": 0.625, &"spider": 0.25, &"hive": 0.125},   # 圖鑑 50 : 20 : 10；蟲巢只在怪群裡、每群最多 1 個（pack_max）
-	4: {&"lich": 1.0},   # 第 4 層還沒做地圖：這張表現在只給第 3 層的巨繭噴怪用（圖鑑 屍巫 30 : 尖嘯幽影 35 : 守陵石像 15）
+	4: {&"lich": 0.46, &"wraith": 0.54},   # 第 4 層還沒做地圖：這張表現在只給第 3 層的巨繭噴怪用（圖鑑 屍巫 30 : 尖嘯幽影 35，守陵石像 15 還沒做）
 }
 const UPPER_SHARE := 0.2
 

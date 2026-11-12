@@ -407,6 +407,75 @@ static func check_hive() -> String:
 	return ""
 
 
+# 尖嘯幽影：筆直穿過牆飄向目標；貼近後吸氣 windup 秒尖嘯，radius 內的人受傷、恐懼 fear 秒（不能出招、被迫往反方向跑），
+# 時間到恢復；吸氣時走出範圍就沒事；物理抗性照資料
+static func check_wraith() -> String:
+	var d: Dictionary = EnemyDefs.ENEMIES.wraith
+	var s: Dictionary = d.shriek
+	# 測試場地的牆：世界座標 x 8~14、y 7.5~8.5；幽影在牆的南邊、目標在北邊
+	var w := _world()
+	var p: Player = w.players[World.HOST_PEER_ID]
+	p.pos = Vector2(11, 3)
+	p.stats.set_base(&"max_hp", 9999.0)
+	p.hp = p.max_hp
+	var ghost := w.spawner.spawn_at(w, &"wraith", Vector2(11, 9.6)) as Wraith   # 牆與南邊高台（y 10.25 起）之間的空地
+	ghost.fsm.change(&"chase")
+	w.cooldowns.start(ghost.cd("shriek"), 999.0)
+	var off := 0.0
+	var inside := false
+	for i in roundi(4.0 / DT):
+		w.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+		off = maxf(off, absf(ghost.pos.x - 11.0))
+		inside = inside or w.terrain.ground_at(ghost.pos) > 1.5
+	if not inside or ghost.pos.y > 7.0 or off > 0.3:
+		return "尖嘯幽影應筆直穿過牆飄向目標（到 %s、橫向偏了 %.2f、進過牆 %s）" % [ghost.pos, off, inside]
+	if absf(ghost.height) > EPS:
+		return "尖嘯幽影穿牆時高度不應跟著牆頂變（%.2f）" % ghost.height
+	if absf(StatDefs.damage_factor(ghost.stats, &"phys") - (1.0 - d.resists[&"phys"])) > 0.01:
+		return "尖嘯幽影的物理傷害應 × %.2f（%.2f）" % [1.0 - d.resists[&"phys"], StatDefs.damage_factor(ghost.stats, &"phys")]
+	for mode: StringName in [&"stand", &"dodge"]:
+		var w2 := _world()
+		var p2: Player = w2.players[World.HOST_PEER_ID]
+		p2.pos = Vector2.ZERO
+		p2.stats.set_base(&"max_hp", 9999.0)
+		p2.hp = p2.max_hp
+		var g2 := w2.spawner.spawn_at(w2, &"wraith", Vector2(0, s.trigger_distance - 0.5)) as Wraith
+		g2.fsm.change(&"chase")
+		var hits := 0
+		var feared_at := -1
+		var fled := 0.0
+		var free_at := -1
+		for i in roundi((s.windup + s.fear + 1.0) / DT):
+			if mode == &"dodge" and g2.fsm.is_in(&"shriek") and p2.pos == Vector2.ZERO:
+				p2.pos = Vector2(0, -(s.radius + 2.0))
+			w2.step({World.HOST_PEER_ID: CheckKit._cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK if feared_at >= 0 else 0)}, DT)   # 恐懼之後才按攻擊：先打會讓幽影硬直、打斷尖嘯
+			for ev in w2.events:
+				if ev.name == "entity:damaged" and ev.target_id == p2.id and ev.source_id == g2.id:
+					hits += 1
+			if feared_at < 0 and p2.fear_velocity != Vector2.ZERO:
+				feared_at = i
+			if feared_at >= 0 and free_at < 0:
+				if p2.stun_timer > 0.0:
+					fled = -p2.pos.y
+					if not p2.action.is_in(&"ready"):
+						return "恐懼中不應出招（動作 %s）" % p2.action.current_name
+				else:
+					free_at = i
+		if mode == &"dodge":
+			if hits != 0 or feared_at >= 0:
+				return "吸氣時走出 %.1f 外應不受傷、不恐懼（打中 %d 次）" % [s.radius, hits]
+			continue
+		if hits != 1 or feared_at < 0:
+			return "站在 %.1f 內應被尖嘯打中一次並恐懼（打中 %d 次、恐懼 %s）" % [s.radius, hits, feared_at >= 0]
+		var want: float = Config.PLAYER.move_speed * s.flee_speed_mul * s.fear
+		if fled < want * 0.7:
+			return "恐懼 %.1f 秒應被迫往反方向跑約 %.1f（跑了 %.2f）" % [s.fear, want, fled]
+		if free_at < 0 or absf((free_at - feared_at) * DT - s.fear) > 0.1 or p2.fear_velocity != Vector2.ZERO:
+			return "恐懼應持續 %.1f 秒後恢復（第 %d ~ %d 步）" % [s.fear, feared_at, free_at]
+		CheckKit._note("尖嘯幽影：恐懼 %.1f 秒被迫跑了 %.2f" % [s.fear, fled])
+	return ""
+
+
 # 屍巫：唸咒後放 bolts.count 顆追蹤紫火，往兩邊散開的也會轉回來打到站著的目標、life 秒後全部消失；
 # 目標貼近到 blink.trigger_distance 內就閃到 blink.distance 外，冷卻中不再閃
 static func check_lich() -> String:
@@ -1535,7 +1604,7 @@ static func check_packs() -> String:
 
 # 蒙皮小怪（D5 效能）：骷髏戰士 / 弓手每隻 ≤ 2 個網格、三角形數與原本的零件相同；關節寫進骨架
 static func check_skinned_rig() -> String:
-	for kind: StringName in [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"spearman", &"bone_wheel", &"beetle", &"spider", &"hive", &"lich"]:
+	for kind: StringName in [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"spearman", &"bone_wheel", &"beetle", &"spider", &"hive", &"lich", &"wraith"]:
 		var old := DarkFantasy.character(kind)
 		var rig := DarkFantasy.skinned_character(kind)
 		var before := 0

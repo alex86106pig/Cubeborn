@@ -44,6 +44,7 @@ const HANDLERS := {
 	"fx:burrow_warn": &"_fx_burrow_warn",
 	"fx:worm_egg": &"_fx_worm_egg",
 	"fx:gust": &"_fx_gust",
+	"fx:shriek": &"_fx_shriek",
 	"fx:web": &"_fx_web",
 	"fx:web_burned": &"_fx_web_burned",
 	"fx:webbed": &"_fx_webbed",
@@ -394,6 +395,14 @@ func _fx_burrow_warn(p: Dictionary) -> void:
 			var a := _rng.randf() * TAU
 			var r := _rng.randf() * spread
 			burst(at + Vector3(sin(a) * r, 0.0, cos(a) * r), {"color": DUST_COLOR, "count": 2, "speed": 1.0, "up": 3.0, "size": 0.12, "life": 0.3}))
+
+
+# 尖嘯幽影的尖嘯：三圈灰白的聲波一圈圈往外到 radius
+func _fx_shriek(p: Dictionary) -> void:
+	var at := _at(p, 1.0)
+	var radius: float = p.radius
+	for i in 3:
+		ring(at, radius * (i + 1) / 3.0, {"color": Color("dfefff"), "life": 0.25 + 0.12 * i, "opacity": 0.7 - 0.15 * i})
 
 
 # 屍蛾女王拍翅狂風：前方扇形一道白色弧光，帶鱗粉的風沿著扇形往外吹

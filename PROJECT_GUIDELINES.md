@@ -215,6 +215,7 @@ godot/
 | `player:stunned` | `{ player_id, duration, grabbed }`（v0.27.0：被 Boss 衝鋒撞到暈眩；grabbed = 被腐屍抓住） | Player.stun |
 | `player:grab_escaped` | `{ player_id }`（被腐屍、膨脹屍抓住時按翻滾掙脫） | Player.update |
 | `player:knocked_down` | `{ player_id, duration }`（受擊硬直「擊倒」級：倒地，按翻滾受身） | Player.knock_down |
+| `player:feared` | `{ player_id, duration }`（尖嘯幽影的尖嘯：恐懼，同暈眩但被迫往反方向跑） | Player.fear |
 | `player:teched` | `{ player_id }`（擊倒中按翻滾受身） | Player._tech |
 | `player:buried` | `{ player_id, duration }`（被持鐵鏟的腐屍、守墓人鏟起埋進地底） | ArmedMoves._scoop、Player.bury |
 | `enemy:armed` | `{ enemy_id, weapon, pos }`（腐屍撿起地上的武器） | Zombie.arm |
@@ -271,6 +272,7 @@ godot/
 | `fx:burrow_warn` / `fx:burrow_out` | `{ pos, height, life?, radius? }` | 屍甲蟲、噬墓巨蟲停在腳下準備冒出（土塊跳動；radius：巨蟲衝出來的範圍，土塊跳得比較散）/ 冒出來、鑽下去 |
 | `fx:worm_egg` | `{ pos, height, life }` | 噬墓巨蟲 / 屍蛾女王產的卵：立在地上 life 秒後孵化（卵不是實體，打不到） |
 | `fx:gust` | `{ pos, height, facing, range, arc }` | 屍蛾女王拍翅狂風：前方扇形的弧光與鱗粉 |
+| `fx:shriek` | `{ pos, height, radius }` | 尖嘯幽影尖嘯：往外擴的聲波 |
 | `fx:web` / `fx:web_burned` | `{ web_id, pos, height, radius?, life? }` | 蜘蛛網結成（地上的白網，life 秒）/ 被火燒掉 |
 | `fx:webbed` | `{ player_id, pos, height, life }` | 玩家被蛛絲彈纏住 |
 | `fx:sweep` | `{ pos, height, radius, low }` | 萬骨聚合體多臂橫掃（低掃 / 高掃）的弧光 |

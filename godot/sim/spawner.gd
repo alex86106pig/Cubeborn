@@ -315,6 +315,8 @@ static func behavior_class(behavior: StringName) -> GDScript:
 			return GraveWorm
 		&"lich":
 			return Lich
+		&"wraith":
+			return Wraith
 		&"gravekeeper":
 			return Gravekeeper
 	return null

@@ -18,7 +18,7 @@ const TRACK_RANGE := 8.0   # 這麼近的怪每幀記錄看不看得到（遠的
 const RARITY_ORDER: Array[StringName] = [&"gray", &"white", &"green", &"blue", &"purple", &"orange"]
 # Boss 名字同 HUD.BOSS_NAME；不直接引用 HUD：check.gd（-s 腳本）會用到本檔，引用 HUD 會連帶要求 autoload GameEvents 而編譯失敗
 const NAMES := {
-	&"grunt": "骷髏戰士", &"archer": "骷髏弓手", &"zombie": "腐屍", &"bloater": "膨脹屍", &"hound": "屍犬", &"spider": "墓穴蜘蛛", &"beetle": "屍甲蟲", &"hive": "蟲巢", &"lich": "屍巫", &"bone_wheel": "骨輪", &"spearman": "骷髏盾槍兵", &"boss": "亡骸騎士", &"bone_general": "骸骨將軍", &"grave_worm": "噬墓巨蟲", &"gravekeeper": "守墓人", &"ghost": "冤魂", &"minion": "骷髏僕從",
+	&"grunt": "骷髏戰士", &"archer": "骷髏弓手", &"zombie": "腐屍", &"bloater": "膨脹屍", &"hound": "屍犬", &"spider": "墓穴蜘蛛", &"beetle": "屍甲蟲", &"hive": "蟲巢", &"lich": "屍巫", &"wraith": "尖嘯幽影", &"bone_wheel": "骨輪", &"spearman": "骷髏盾槍兵", &"boss": "亡骸騎士", &"bone_general": "骸骨將軍", &"grave_worm": "噬墓巨蟲", &"gravekeeper": "守墓人", &"ghost": "冤魂", &"minion": "骷髏僕從",
 	&"projectile": "投射物（射手已死）", &"player": "隊友（誤傷）",
 }
 const ALLY_PREFIX := "ally:"   # 隊友誤傷依隊友當時拿的武器分開記：種類寫成「ally:劍盾」
@@ -31,7 +31,8 @@ var hits_taken := 0
 var unseen_hits := 0
 var unseen_damage := 0.0
 var by_source := {}     # 種類 → {damage, hits, unseen}
-const DEALT_ROWS := 6   # 結算畫面「你造成的傷害」最多列幾項，其餘併成「其他」（畫面高度有限）
+const TAKEN_ROWS := 12  # 結算畫面「受到傷害」依攻擊者最多列幾種（傷害高的在前），其餘併成「其他 N 種」（怪物種類變多會超出畫面）
+const DEALT_ROWS := 6  # 結算畫面「你造成的傷害」最多列幾項，其餘併成「其他」（畫面高度有限）
 const DEALT_PER_LINE := 2
 var damage_dealt := 0.0
 var by_credit := {}     # 傷害來源（Combat.credit_scope 的代號；左右鍵另帶武器名「p|劍盾」）→ {damage, hits}
@@ -471,6 +472,10 @@ func weapon_text() -> String:
 	return "%s · 撿了 %d 把 · %s · 現在的武器 %s 換上" % [drops, weapons_picked, full, UiKit.format_time(weapon_since)]
 
 
+func _taken_line(label: String, s: Dictionary) -> String:
+	return "%s：%s 傷害 · %d 次" % [label, UiKit.dmg_text(s.damage), s.hits] + ("（看不見 %d 次）" % s.unseen if s.unseen > 0 else "")
+
+
 # 結算畫面的文字（中文自動折行會斷在詞中間，每項一行）
 func summary_text() -> String:
 	var lines: Array[String] = []
@@ -492,9 +497,17 @@ func summary_text() -> String:
 		lines.append("被看不見的攻擊打中 %d 次 / %s 傷害（%d%%）" % [unseen_hits, UiKit.dmg_text(unseen_damage), roundi(100.0 * unseen_damage / maxf(1.0, damage_taken))])
 		var kinds := by_source.keys()
 		kinds.sort_custom(func(a: StringName, b: StringName) -> bool: return by_source[a].damage > by_source[b].damage)
-		for k: StringName in kinds:
-			var s: Dictionary = by_source[k]
-			lines.append("%s：%s 傷害 · %d 次" % [name_of(k), UiKit.dmg_text(s.damage), s.hits] + ("（看不見 %d 次）" % s.unseen if s.unseen > 0 else ""))
+		var rest := {"damage": 0.0, "hits": 0, "unseen": 0}
+		for i in kinds.size():
+			var s: Dictionary = by_source[kinds[i]]
+			if i < TAKEN_ROWS:
+				lines.append(_taken_line(name_of(kinds[i]), s))
+			else:
+				rest.damage += s.damage
+				rest.hits += s.hits
+				rest.unseen += s.unseen
+		if kinds.size() > TAKEN_ROWS:
+			lines.append(_taken_line("其他 %d 種" % (kinds.size() - TAKEN_ROWS), rest))
 	if not downs.is_empty():
 		var parts: Array[String] = []
 		for d in downs.slice(0, MAX_DOWNS_SHOWN):

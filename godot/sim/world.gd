@@ -786,6 +786,10 @@ func step(cmds: Dictionary, dt: float) -> void:
 		# 位置和上次算過地形時一樣、站在地上的（休眠的怪群、站著出招的）已經推出牆、落地過，不必再算（D5）
 		if b.pos == b.terrain_checked_pos and b.vz == 0.0 and b.height == b.ground_height:
 			continue
+		if b.phases:   # 穿牆浮空：只留在場地內，高度維持出生時的
+			SimPhysics.clamp_to_arena(b, half_extents)
+			b.terrain_checked_pos = b.pos
+			continue
 		terrain.push_out(b)
 		SimPhysics.clamp_to_arena(b, half_extents)
 		b.integrate_vertical(dt, terrain)

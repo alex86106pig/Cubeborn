@@ -116,6 +116,15 @@ func update(e: Enemy, dt: float) -> void:
 			_pose_hive(e, state, t)
 		&"worm":
 			_pose_worm(e, a, state, t, dt)
+		&"shriek":   # 尖嘯幽影：先縮身（吸氣），尖嘯時雙手張開、身體往前探
+			var w: float = def.shriek.windup
+			if t < w:
+				var k := clampf(t / w, 0.0, 1.0)
+				_pose_arms(lerpf(-0.2, -0.9, k), lerpf(0.0, -0.3, k))
+				rig.body.rotation.x = -0.25 * k
+			else:
+				_pose_arms(-1.3, 1.1)
+				rig.body.rotation.x = 0.3
 		&"cast":   # 屍巫唸咒：雙手往前抬、往中間合攏，身體微微後仰
 			var k := MathUtil.ease_out_cubic(clampf(t / def.aim_time, 0.0, 1.0))
 			_pose_arms(lerpf(-0.3, -1.5, k), lerpf(0.0, 0.45, k))

@@ -42,6 +42,7 @@ var hurt_tier := &""                   # 這一下的受擊硬直級別（Combat
 var poise := -1.0                      # 隱藏韌性（< 0 = 還沒初始化，用到時補滿 max_poise）：輕級攻擊先削，削破才硬直
 var poise_timer := 0.0                 # 上次被打後經過幾秒；到 Config.PLAYER.poise_regen_delay 韌性回滿
 var knock_time := 0.0                  # 被擊倒後經過幾秒（> 0 = 倒在地上，同暈眩；按翻滾受身）
+var fear_velocity := Vector2.ZERO      # 恐懼中（尖嘯幽影）：暈眩的這段時間被迫照這個速度跑；暈眩結束清掉
 var grabbed_by := 0                    # 被腐屍抓住：抓住的怪 id（客戶端只知道有沒有被抓，填 -1）；同暈眩，但按翻滾立刻掙脫
 var bury_mash := -1.0                  # 被埋進土裡（守墓人鏟起）：已經靠連按翻滾提早了幾秒（< 0 = 沒被埋）；同暈眩
 var combo_step := 0
@@ -187,6 +188,17 @@ func stun(duration: float, p_grabbed_by: int = 0) -> void:
 	world.emit_event("player:stunned", {"player_id": id, "duration": duration, "grabbed": p_grabbed_by != 0})
 
 
+# 恐懼（尖嘯幽影）：duration 秒不能出招（同暈眩），被迫往遠離 from 的方向以移速 × speed_mul 跑
+func fear(duration: float, from: Vector2, speed_mul: float) -> void:
+	if is_dead or is_downed:
+		return
+	stun(duration)
+	var away := pos - from
+	fear_velocity = (away.normalized() if away.length_squared() > 1e-6 else MathUtil.dir_from_angle(facing + PI)) * (stats.value(&"move_speed") * speed_mul)
+	if world.is_authority:
+		world.emit_event("player:feared", {"player_id": id, "duration": duration})
+
+
 # 擊倒（怪物圖鑑通則）：倒地 duration 秒，同暈眩；按翻滾受身（_tech）提早起身
 func knock_down(duration: float) -> void:
 	if is_dead or is_downed:
@@ -234,6 +246,7 @@ func release_grab() -> void:
 func _end_stun() -> void:
 	stun_timer = 0.0
 	grabbed_by = 0
+	fear_velocity = Vector2.ZERO
 	knock_time = 0.0
 	bury_mash = -1.0
 
@@ -782,7 +795,7 @@ func update(dt: float) -> void:
 		loadout.clear_ops()
 		_interact_was_held = is_interact_held
 		_attack_was_held = is_attack_held
-		velocity = Vector2.ZERO
+		velocity = fear_velocity if stun_timer > 0.0 and not is_dead and not is_downed else Vector2.ZERO
 		locomotion.update(dt)
 		_update_anim()
 		return
