@@ -9,16 +9,19 @@ extends RefCounted
 const COLS := 8
 const DT := Config.FIXED_DT
 const PLAYER_WEAPONS: Array[StringName] = [&"swordShield", &"staff", &"shortbow", &"longbow", &"dagger", &"scepter", &"torch", &"shovel"]
-const ENEMY_MODELS: Array[StringName] = [&"grunt", &"archer", &"spearman", &"zombie", &"bloater", &"hound", &"spider", &"beetle", &"bone_wheel", &"boss", &"gravekeeper", &"werewolf", &"bone_general", &"bone_colossus"]
+const ENEMY_MODELS: Array[StringName] = [&"grunt", &"archer", &"spearman", &"zombie", &"bloater", &"hound", &"spider", &"beetle", &"bone_wheel", &"boss", &"gravekeeper", &"werewolf", &"bone_general", &"bone_colossus",
+	&"hive", &"lich", &"wraith", &"grave_worm", &"moth_queen"]
 const BOSS_MOVES := {
 	&"boss": [0, [&"slam", &"charge", &"summon", &"cleave"]],
 	&"gravekeeper": [0, [&"shovel", &"dig", &"lantern", &"whistle", &"scoop"]],
 	&"werewolf": [1, [&"claw", &"leap", &"howl"]],
 	&"bone_general": [0, [&"slam", &"charge", &"cleave"]],
 	&"bone_colossus": [1, [&"spikes", &"sweep", &"wheel", &"devour"]],
+	&"grave_worm": [0, [&"dive", &"acid", &"devour", &"eggs", &"pupate"]],
+	&"moth_queen": [1, [&"dust", &"swoop", &"gust", &"land"]],
 }
-const BOSS_KIND := {&"werewolf": &"gravekeeper", &"bone_colossus": &"bone_general"}   # 第二型態的模型 → 種類
-const MODEL_NAMES := {&"werewolf": "墓園狼人", &"bone_colossus": "萬骨聚合體"}
+const BOSS_KIND := {&"werewolf": &"gravekeeper", &"bone_colossus": &"bone_general", &"moth_queen": &"grave_worm"}   # 第二型態的模型 → 種類
+const MODEL_NAMES := {&"werewolf": "墓園狼人", &"bone_colossus": "萬骨聚合體", &"moth_queen": "屍蛾女王"}
 const PLAYER_ACTIONS := {
 	"idle": "待機", "run": "跑", "sprint": "衝刺跑（Ctrl）", "attack": "普攻連段", "attack+move": "邊走邊普攻", "special": "右鍵",
 	"roll": "翻滾", "jump": "跳", "potion": "喝藥水", "stagger": "受擊硬直", "knocked": "被擊倒", "dead": "倒地",
@@ -34,7 +37,9 @@ const ENEMY_STATE_NAMES := {
 	&"slam": "砸地", &"charge": "衝鋒", &"cleave": "直劈", &"summon": "召喚", &"transform": "變身",
 	&"reveal": "揭穿", &"grow": "變大", &"shovel": "鐵鏟揮擊", &"dig": "瘋狂鏟土", &"scoop": "鏟起", &"lantern": "提燈噴火", &"whistle": "口哨",
 	&"wolf_chase": "狼人追擊", &"stalk": "隱入黑暗", &"claw": "三連爪", &"leap": "飛撲（狼人）", &"howl": "狼嚎",
-	&"colossus_chase": "追擊（聚合體）", &"spikes": "骨刺陣", &"sweep": "多臂橫掃", &"wheel": "巨骨輪", &"wheel_stun": "撞牆暈倒", &"devour": "吞屍",
+	&"colossus_chase": "追擊（聚合體）", &"spikes": "骨刺陣", &"sweep": "多臂橫掃", &"wheel": "巨骨輪", &"wheel_stun": "撞牆暈倒", &"devour": "吞屍 / 吞噬",
+	&"brood": "孵化", &"spit": "噴酸", &"cast": "唸咒", &"shriek": "尖嘯", &"dive": "鑽下去", &"tunnel": "地底追蹤", &"lurk": "地底埋伏",
+	&"acid": "噴酸", &"eggs": "產卵", &"pupate": "結蛹", &"moth_chase": "飛行追擊", &"dust": "撒鱗粉", &"swoop": "俯衝", &"gust": "拍翅狂風", &"land": "落地",
 }
 # 一個狀態裡有好幾招的拆成一段一招；同一次錄的段落共用 frames，可以接著演（row.path）
 # 每次錄 = [要走到的 phase（"" = 不限）, [[key, 名字, 縮排, 起點 [phase, 秒]], ...]]，一段演到下一段的起點
