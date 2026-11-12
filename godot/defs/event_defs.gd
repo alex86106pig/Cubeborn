@@ -8,7 +8,7 @@ const DIG := {
 	"decay": 0.0,              # 沒人挖時進度每秒掉多少（0 = 不掉）
 	"range": 2.2,              # 離挖墳點這麼近才能挖、挖完後按 F 前往下一層（中心距離）
 	"exit_radius": 1.4,        # 挖完後墓穴洞口的大小（畫面用）
-	"last_floor": 2,           # 這一層挖完再互動就通關；之前的層互動走 World.next_floor
+	"last_floor": 3,          # 這一層挖完再互動就通關；之前的層互動走 World.next_floor
 }
 
 # 每層開局就在挖墳點的 Boss（EnemyDefs 的種類）：第 1 層守墓人、第 2 層骸骨將軍；超過表的層數用最後一層的

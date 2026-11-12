@@ -75,6 +75,10 @@ const BOSS_BLOOD := Color("55e0ff")   # 亡骸騎士的死亡、狂暴、召喚�
 const GROUND_COLORS: Array[Color] = [Color("2b3528"), Color("3a4431"), Color("4a4a3a")]
 const CATACOMB_GROUND: Array[Color] = [Color("2a2724"), Color("35302a"), Color("423a31")]   # 地下墓窟的石地
 const CATACOMB_ROCK: Array[Color] = [Color("2e2925"), Color("3a332c"), Color("252220")]     # 場外的岩塊
+const BURROW_GROUND: Array[Color] = [Color("26281c"), Color("323423"), Color("3f3d2a")]     # 蟲蝕墓道的濕土
+const BURROW_ROCK: Array[Color] = [Color("2c2b20"), Color("38372a"), Color("23231b")]
+const BURROW_EGG := Color("b9c08a")     # 蟲卵（淡黃綠）
+const BURROW_SILK := Color("c9cdbd")    # 地上的蟲絲
 const ROCK_COLORS: Array[Color] = [Color("55585e"), Color("6a6d72"), Color("46484d")]
 
 
@@ -738,10 +742,12 @@ static func enemy_projectile(color: Color) -> Node3D:
 # ───────── 場地 ─────────
 
 # 只負責外觀，碰撞邊界由 World 決定
-# theme：MapDefs 的 theme（graveyard 墓園 / catacomb 地下墓窟）
+# theme：MapDefs 的 theme（graveyard 墓園 / catacomb 地下墓窟 / burrow 蟲蝕墓道）
 static func build_arena(half: Vector2, rng: RandomNumberGenerator, theme: StringName = &"graveyard") -> Node3D:
 	if theme == &"catacomb":
 		return _build_catacomb(half, rng)
+	if theme == &"burrow":
+		return _build_burrow(half, rng)
 	var k := PartKit.new()
 	var group := Node3D.new()
 
@@ -839,4 +845,36 @@ static func _build_catacomb(half: Vector2, rng: RandomNumberGenerator) -> Node3D
 			})
 	k.merge_static(group, [group])
 	group.add_child(ArenaView.create_ground((half + Vector2(14.0, 14.0)) * 2.0, CATACOMB_GROUND, 1.8, 0.1, rng))
+	return group
+
+
+# 蟲蝕墓道：場外是土色岩塊，場內散落一窩窩蟲卵、貼地的蟲絲與碎骨
+static func _build_burrow(half: Vector2, rng: RandomNumberGenerator) -> Node3D:
+	var k := PartKit.new()
+	var group := Node3D.new()
+	var rocks: Array[StandardMaterial3D] = []
+	for c in BURROW_ROCK:
+		rocks.append(k.mat(c))
+	_perimeter_rocks(group, half, rng, rocks, 0.5, 0.5)
+	for p in ArenaView.scatter_outside(rng, half, 40, 1.8, 11.0):
+		var s: float = (1.0 + rng.randf() * 1.4) * p.s
+		k.add(group, PartKit.ico(s, 0), rocks[rng.randi_range(0, 2)], {
+			"x": p.x, "y": s * 0.35, "z": p.z, "rx": rng.randf() * 3.0, "ry": p.ry, "sy": 0.6 + rng.randf() * 0.8,
+		})
+	var egg := k.mat(BURROW_EGG)
+	for p in ArenaView.scatter_inside(rng, half, 14):
+		for i in 4 + rng.randi_range(0, 3):   # 一窩卵：幾顆拉長的小球擠在一起
+			var a := rng.randf() * TAU
+			var r := rng.randf() * 0.3
+			k.add(group, PartKit.sphere(0.1, 6, 4), egg, {
+				"x": p.x + cos(a) * r, "y": 0.1, "z": p.z + sin(a) * r, "sy": 1.4, "shadow": false,
+			})
+	var silk := k.mat(BURROW_SILK)
+	for p in ArenaView.scatter_inside(rng, half, 24):
+		k.add(group, PartKit.cyl(0.015, 0.015, 1.2 + rng.randf() * 1.2, 4), silk, {"x": p.x, "y": 0.02, "z": p.z, "rz": PI / 2.0, "ry": p.ry, "shadow": false})
+	var bone := k.mat(C.bone_dark)
+	for p in ArenaView.scatter_inside(rng, half, 16):
+		k.add(group, PartKit.cyl(0.03, 0.03, 0.35, 4), bone, {"x": p.x, "y": 0.03, "z": p.z, "rz": PI / 2.0, "ry": p.ry, "shadow": false})
+	k.merge_static(group, [group])
+	group.add_child(ArenaView.create_ground((half + Vector2(14.0, 14.0)) * 2.0, BURROW_GROUND, 1.8, 0.1, rng))
 	return group

@@ -92,6 +92,15 @@ const ENVIRONMENTS := {
 		"ambient_energy": 0.75,
 		"sun_energy": 0.95,
 	},
+	# burrow = 蟲蝕墓道：偏綠、再暗一點
+	&"burrow": {
+		"background": Color("060907"),
+		"hemi_sky": Color("6c7a66"),
+		"hemi_ground": Color("1d2216"),
+		"sun_color": Color("d8e0a8"),
+		"ambient_energy": 0.7,
+		"sun_energy": 0.9,
+	},
 }
 
 # 音量（0~1，照網頁版 AUDIO）：實際音量 = master × 分類音量

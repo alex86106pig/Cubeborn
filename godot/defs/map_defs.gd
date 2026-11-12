@@ -2,7 +2,7 @@
 # 世界座標 = 地圖座標 − origin（地圖中央在世界原點）。畫面是等距視角，所以地圖在畫面上轉了 45°（菱形）
 # blocks：[x, y, 寬, 深, 頂面高度, 種類]（x, y 是左上角）；tomb_rows：[x, y, 欄數, 列數, 欄距, 列距]，每個墓碑 TOMB_SIZE、高 TOMB_TOP
 # 種類：&"wall" 牆 / 陵墓（跳不上去，怪物繞路）、&"tomb" 墓碑（擋箭、玩家跳得上去，怪物繞路）、&"platform" 可以站的高台（怪物會跳上去）
-# 草圖與還沒做的 B、C、D 三張在 mockups/graveyard_map.html；theme 決定畫面的外觀（ArenaView、Config.ENVIRONMENTS）
+# 草圖與還沒做的 B、C、D 三張在 mockups/graveyard_map.html；theme 決定畫面的外觀（ArenaView、Config.ENVIRONMENTS、DarkFantasy.build_arena）
 class_name MapDefs
 
 const WALL := &"wall"
@@ -134,6 +134,58 @@ const MAPS := {
 		"packs": true,
 		"dig_event": true,
 		"theme": &"catacomb",
+	},
+	# 第 3 層 蟲蝕墓道：格子同墓窟（3 × 3 個蟲室、中間 10 寬的岩壁），但走道不連成一圈：
+	# 出生室（南）→ 西南 → 西 → 西北 → 北 → 東北 → 東 一條蛇形的路，東南是只通出生室的死巷；走道的位置每段都不一樣
+	# 中央大蟲室（巨繭 = 出口、Boss）、南邊出生室固定，其餘 7 間照種子抽區塊
+	&"burrow_a": {
+		"name": "蟲蝕墓道",
+		"size": Vector2(96.0, 96.0),
+		"origin": Vector2(48.0, 48.0),
+		"spawn": Vector2(48.0, 88.0),
+		"dig": Vector2(48.0, 48.0),
+		"boss_room": [39.5, 39.5, 17.0, 17.0],   # 大蟲室內側留 2.5 格
+		"spawn_rule": &"around_player",
+		"blocks": [
+			# 外圍
+			[0.0, 0.0, 96.0, 2.0, WALL_TOP, WALL], [0.0, 94.0, 96.0, 2.0, WALL_TOP, WALL],
+			[0.0, 0.0, 2.0, 96.0, WALL_TOP, WALL], [94.0, 0.0, 2.0, 96.0, WALL_TOP, WALL],
+			# 西欄與中欄之間的岩壁（y 19~77 那段在 exit_doors）：開口 y 11~17、81~87
+			# 北邊兩個開口直接接北蟲室的方框（沒有留邊），要蓋住方框中間的十字通道（y 12.5~16.5），不然抽到有牆的區塊會堵住
+			[27.0, 2.0, 10.0, 9.0, WALL_TOP, WALL], [27.0, 17.0, 10.0, 2.0, WALL_TOP, WALL],
+			[27.0, 77.0, 10.0, 4.0, WALL_TOP, WALL], [27.0, 87.0, 10.0, 7.0, WALL_TOP, WALL],
+			# 中欄與東欄之間：開口 y 12~18、78~84
+			[59.0, 2.0, 10.0, 10.0, WALL_TOP, WALL], [59.0, 18.0, 10.0, 1.0, WALL_TOP, WALL],
+			[59.0, 77.0, 10.0, 1.0, WALL_TOP, WALL], [59.0, 84.0, 10.0, 10.0, WALL_TOP, WALL],
+			# 北列與中列之間：西欄開口 x 6~12、東欄開口 x 80~86
+			[2.0, 27.0, 4.0, 10.0, WALL_TOP, WALL], [12.0, 27.0, 15.0, 10.0, WALL_TOP, WALL],
+			[69.0, 27.0, 11.0, 10.0, WALL_TOP, WALL], [86.0, 27.0, 8.0, 10.0, WALL_TOP, WALL],
+			# 中列與南列之間：只有西欄開口 x 16~22；大蟲室南邊與東欄整面不開（東南是死巷）
+			[2.0, 59.0, 14.0, 10.0, WALL_TOP, WALL], [22.0, 59.0, 5.0, 10.0, WALL_TOP, WALL],
+			[37.0, 59.0, 22.0, 10.0, WALL_TOP, WALL],
+			[69.0, 59.0, 25.0, 10.0, WALL_TOP, WALL],
+			# 大蟲室四角的卵丘（巨繭在正中央，周圍留空）、出生室兩塊岩石
+			[38.5, 39.0, 3.0, 3.0, 0.5, PLATFORM], [55.0, 38.0, 3.5, 3.0, 0.5, PLATFORM],
+			[39.0, 54.5, 3.0, 3.5, 0.5, PLATFORM], [54.0, 55.0, 4.0, 3.0, 0.5, PLATFORM],
+			[41.0, 74.0, 2.5, 2.0, WALL_TOP, WALL], [54.0, 72.5, 2.0, 2.5, WALL_TOP, WALL],
+		],
+		"tomb_rows": [],
+		# 7 間蟲室的方框：西北、北、東北、西、東、西南、東南
+		"zone_slots": [[3.5, 3.5], [37.0, 3.5], [70.5, 3.5], [3.5, 37.0], [70.5, 37.0], [3.5, 70.5], [70.5, 70.5]],
+		# 大蟲室的門：北 / 東 / 西抽 count 個開（岩壁中間開 6 寬的走道）
+		"exit_doors": {"count": 2, "sides": {
+			&"N": {"at": Vector2(48.0, 32.0), "closed": [[37.0, 27.0, 22.0, 10.0, WALL_TOP, WALL]],
+				"open": [[37.0, 27.0, 8.0, 10.0, WALL_TOP, WALL], [51.0, 27.0, 8.0, 10.0, WALL_TOP, WALL]]},
+			&"W": {"at": Vector2(32.0, 48.0), "closed": [[27.0, 19.0, 10.0, 58.0, WALL_TOP, WALL]],
+				"open": [[27.0, 19.0, 10.0, 26.0, WALL_TOP, WALL], [27.0, 51.0, 10.0, 26.0, WALL_TOP, WALL]]},
+			&"E": {"at": Vector2(64.0, 48.0), "closed": [[59.0, 19.0, 10.0, 58.0, WALL_TOP, WALL]],
+				"open": [[59.0, 19.0, 10.0, 26.0, WALL_TOP, WALL], [59.0, 51.0, 10.0, 26.0, WALL_TOP, WALL]]},
+		}},
+		"chest_count": {&"small": 12, &"big": 4},
+		"forge_count": 1,
+		"packs": true,
+		"dig_event": true,
+		"theme": &"burrow",
 	},
 }
 
@@ -281,7 +333,7 @@ static func has_layout(m: Dictionary) -> bool:
 
 
 # 每層的地圖：從這張表裡的地圖開局，換層就換成該層的；超過表的層數用最後一層的。不在表裡的地圖（測試場地）換層也不換
-const FLOOR_MAPS := {1: &"graveyard", 2: &"catacomb_a"}
+const FLOOR_MAPS := {1: &"graveyard", 2: &"catacomb_a", 3: &"burrow_a"}
 const PRACTICE_MAP := &"practice"   # 武器測試場（main._set_practice）
 
 

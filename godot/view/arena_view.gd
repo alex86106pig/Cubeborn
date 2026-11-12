@@ -17,6 +17,12 @@ const BLOCK_COLORS := {
 		&"tomb": [Color("8a8170"), Color("a89e88")],
 		&"platform": [Color("4a4238"), Color("6a5f50")],
 	},
+	# 蟲蝕墓道：岩壁是濕土色、高台是結了殼的卵丘
+	&"burrow": {
+		&"wall": [Color("2b2a1f"), Color("3e3d2c")],
+		&"tomb": [Color("7f8468"), Color("9da283")],
+		&"platform": [Color("4b4a30"), Color("6f6c44")],
+	},
 }
 
 var layout_key := []   # 現在畫的是哪份地形（main.gd 比對 World.layout_key：換層、換種子就重建）

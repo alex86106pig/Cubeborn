@@ -124,7 +124,7 @@ func _initialize() -> void:
 	_check("一局流程：每波依序開始、打倒 Boss 後 is_over、victory_delay 秒後 game:victory、擊殺數正確", MapChecks.check_full_run)
 	_check("地形：0.5 石台走不上去、跳得上去；從 0.5 跳上 1.0；走出邊緣會掉回地面；2.5 的牆跳不過去；起跳偵測的快速排除（Terrain.may_rise）在測試場地、墓園、墓窟都不漏掉會起跳的地方",
 		all.bind([MapChecks.check_terrain, MapChecks.check_may_rise]))
-	_check("每層的地圖（第 1 層環形墓園、第 2 層墓窟，用 next_floor 走到；門與分區照種子抽，換 LAYOUT_SEEDS 個種子都要過、每種區塊與每邊的門都抽得到、怪群放得下）：大小與邊界一致、石台都在場地內、出生點與挖墳點可走且相連、可走的格子連成一片、相鄰可走格高低差 ≤ climb_height、牆比最高的地面高出跳躍高度以上；挖墳事件生的小怪都在離玩家 min ~ max_distance、走得到玩家的地方；每層的怪群與寶箱只看種子（第 1 層打法不同第 2 層照樣一樣）",
+	_check("每層的地圖（第 1 層環形墓園、第 2 層墓窟、第 3 層蟲蝕墓道，用 next_floor 走到；門與分區照種子抽，換 LAYOUT_SEEDS 個種子都要過、每種區塊與每邊的門都抽得到、怪群放得下）：大小與邊界一致、石台都在場地內、出生點與挖墳點可走且相連、可走的格子連成一片、相鄰可走格高低差 ≤ climb_height、牆比最高的地面高出跳躍高度以上；挖墳事件生的小怪都在離玩家 min ~ max_distance、走得到玩家的地方；每層的怪群與寶箱只看種子（第 1 層打法不同第 2 層照樣一樣）",
 		all.bind([MapChecks.check_map_a, MapChecks.check_map_spawns, MapChecks.check_floor_seed]))
 	_check("小關隨機地圖（MapGen）：每種小關掃 STAGE_SEEDS 個種子都產生得出來、符合地圖規則；門 / 挖墳點 / 鐵砧 / 寶箱 / 怪群都走得到出生點、寶箱放在平地、兩扇門獎勵不同、每扇門畫一座拱門；同種子同一關每次一樣（過場時先拼好的下一關也一樣）、換種子或小關就不同；產生器不用三角函數、開根號、randf；祭壇與石棺先定整層總數再分給各小關",
 		all.bind([MapChecks.check_stage_maps, MapChecks.check_stage_map_seed, MapChecks.check_map_gen_source, MapChecks.check_floor_chests]))

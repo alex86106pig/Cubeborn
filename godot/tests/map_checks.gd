@@ -144,7 +144,7 @@ static func check_may_rise() -> String:
 	var lo: float = Config.HEIGHT.step
 	var hi: float = Config.NAV.climb_height
 	var tested := 0
-	for map_id: StringName in [&"test_arena", &"graveyard_a", &"catacomb_a"]:
+	for map_id: StringName in [&"test_arena", &"graveyard_a", &"catacomb_a", &"burrow_a"]:
 		var w := _new_world(12345, false, map_id)
 		if MapDefs.FLOOR_MAPS.values().has(map_id):
 			w.sync_floor(MapDefs.FLOOR_MAPS.find_key(map_id))   # reset 會回到第 1 層的地圖
