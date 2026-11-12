@@ -3,7 +3,7 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
-## [未發布]
+## [0.74.0] - 2026-11-12
 
 ### 新增
 - **主選單加「動畫檢視器」入口**（YangHsu 2026-11-12）：網頁版換成 `?anim-viewer` 重新載入，電腦版帶 `--anim-viewer` 關掉重開（`LaunchArgs.relaunch`）；檢視器裡多一顆「回主選單」（從編輯器 F6 開的沒有）。
