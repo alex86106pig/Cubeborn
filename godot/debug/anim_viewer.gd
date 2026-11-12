@@ -5,6 +5,7 @@
 # 一打開就選好：AnimViewer.new("enemy-gravekeeper:lantern")（網址 ?anim-viewer=enemy-gravekeeper:lantern；動作寫英文 id；
 # 第三段是腳步：enemy-gravekeeper:lantern:原地 / 走 / 跑）
 # 操作：空白鍵 播放 / 暫停、← → 逐格、↑ ↓ 換動作、R 重錄、滑鼠拖曳轉視角、滾輪縮放
+# 視角（方位相對角色朝向、仰角、距離）換動作、換角色、重錄都留著，只有按視角按鈕才換（YangHsu 2026-11-12）
 class_name AnimViewer
 extends Node3D
 
@@ -16,8 +17,9 @@ const GRID_HALF := 10            # 地板格線的範圍（± 公尺），1 公�
 const PANEL_WIDTH := 360
 const ORBIT_SPEED := 0.008       # 拖曳轉視角：每像素幾弧度
 const DIST_RANGE := Vector2(2.5, 30.0)
-# 視角：[相對角色朝向的方位角（0 = 正前方）, 仰角, 正交]；game 是遊戲的鏡頭（Config.CAMERA，世界方位、不跟著角色）
-const VIEWS := {"側面": [-PI / 2.0, 0.12, false], "正面": [-0.45, 0.25, false], "背面": [PI + 0.4, 0.3, false], "遊戲": [0.0, 0.0, true]}
+# 視角：[相對角色朝向的方位角（0 = 正前方、-PI/2 = 角色右手邊）, 仰角, 正交]；game 是遊戲的鏡頭（Config.CAMERA，世界方位、不跟著角色）
+# 正面、背面是正前方 / 正後方（原本偏 0.4~0.45 弧度的斜角，YangHsu 2026-11-12：「前方也不是真的前方」）
+const VIEWS := {"側面": [-PI / 2.0, 0.12, false], "正面": [0.0, 0.12, false], "背面": [PI, 0.12, false], "遊戲": [0.0, 0.0, true]}
 
 var _recorder := AnimRecorder.new()
 var _subjects: Array[Dictionary] = AnimRecorder.subjects()
@@ -32,12 +34,17 @@ var _speed := 1.0
 var _loop := true
 var _follow := true              # 角色照錄到的位置移動（看得出腳有沒有在地上滑）；關掉就原地
 var _feet := "照錄到的"
-var _yaw := -PI / 2.0
+var _yaw_rel := -PI / 2.0        # 相對這段動作開頭的角色朝向（換動作時角色朝向不同，看的角度照樣）
+var _yaw_game: float = Config.CAMERA.azimuth   # 遊戲視角是世界方位，不跟著角色
 var _pitch := 0.12
 var _dist := 7.0
 var _ortho := false
 var _game_view := false
 var _dragging := false
+var _view := "側面"
+var _speed_buttons := {}         # 速度 / 腳步 / 視角按鈕：按下去一直亮著，看得出現在選的是哪個
+var _feet_buttons := {}
+var _view_buttons := {}
 
 var _cam := Camera3D.new()
 var _fx := Effects.new()
@@ -63,6 +70,7 @@ func _ready() -> void:
 	var feet := _initial.get_slice(":", 2) if _initial.count(":") >= 2 else ""
 	if FEET.has(feet):
 		_feet = feet
+		_mark_buttons()
 	for i in _subjects.size():
 		if _subjects[i].id == _initial.get_slice(":", 0):
 			subject = i
@@ -180,7 +188,7 @@ func _build_ui() -> void:
 	var speeds := HBoxContainer.new()
 	box.add_child(speeds)
 	for sp: float in SPEEDS:
-		var b := UiKit.button("%s×" % ("%.2f" % sp).trim_suffix("0").trim_suffix(".") if sp < 1.0 else "1×", UiKit.BUTTON_S)
+		var b := _toggle(UiKit.button("%s×" % ("%.2f" % sp).trim_suffix("0").trim_suffix(".") if sp < 1.0 else "1×", UiKit.BUTTON_S), _speed_buttons, sp)
 		b.custom_minimum_size.x = 76
 		b.pressed.connect(func() -> void: _speed = sp; _refresh_info())
 		speeds.add_child(b)
@@ -189,25 +197,27 @@ func _build_ui() -> void:
 	var loop := CheckBox.new()
 	loop.text = "循環"
 	loop.button_pressed = _loop
+	loop.focus_mode = Control.FOCUS_NONE   # 拿到焦點的話空白鍵會變成切勾選，不是播放 / 暫停
 	loop.toggled.connect(func(on: bool) -> void: _loop = on)
 	toggles.add_child(loop)
 	var follow := CheckBox.new()
 	follow.text = "跟著走（關 = 原地）"
 	follow.button_pressed = _follow
+	follow.focus_mode = Control.FOCUS_NONE
 	follow.toggled.connect(func(on: bool) -> void: _follow = on; _place_rig())
 	toggles.add_child(follow)
 	var feet := HBoxContainer.new()
 	box.add_child(feet)
 	feet.add_child(UiKit.label("腳步", UiKit.FONT_NOTE))
 	for name: String in FEET:
-		var b := UiKit.button(name, UiKit.BUTTON_S)
+		var b := _toggle(UiKit.button(name, UiKit.BUTTON_S), _feet_buttons, name)
 		b.custom_minimum_size.x = 64 if name.length() <= 2 else 96
 		b.pressed.connect(func() -> void: _feet = name; _seek(_frame))
 		feet.add_child(b)
 	var views := HBoxContainer.new()
 	box.add_child(views)
 	for v: String in VIEWS:
-		var b := UiKit.button(v, UiKit.BUTTON_S)
+		var b := _toggle(UiKit.button(v, UiKit.BUTTON_S), _view_buttons, v)
 		b.custom_minimum_size.x = 76
 		b.pressed.connect(func() -> void: _set_view(v))
 		views.add_child(b)
@@ -215,11 +225,34 @@ func _build_ui() -> void:
 	rerec.pressed.connect(_rerecord)
 	box.add_child(rerec)
 	box.add_child(UiKit.label("空白鍵 播放 / 暫停　← → 逐格　↑ ↓ 換動作\n滑鼠拖曳轉視角　滾輪縮放", UiKit.FONT_NOTE, Color(1, 1, 1, 0.6)))
+	_subject_pick.focus_mode = Control.FOCUS_NONE
+	_slider.focus_mode = Control.FOCUS_NONE
+	_mark_buttons()
+
+
+# 同一組只亮一個的按鈕（ButtonGroup）：key 是這顆代表的值，_mark_buttons 照現在的值按下去
+func _toggle(b: Button, group: Dictionary, key: Variant) -> Button:
+	b.toggle_mode = true
+	if not group.is_empty():
+		b.button_group = (group.values()[0] as Button).button_group
+	else:
+		b.button_group = ButtonGroup.new()
+	group[key] = b
+	return b
+
+
+func _mark_buttons() -> void:
+	for pair in [[_speed_buttons, _speed], [_feet_buttons, _feet], [_view_buttons, _view]]:
+		var b: Button = (pair[0] as Dictionary).get(pair[1])
+		if b != null:
+			b.set_pressed_no_signal(true)
 
 
 # ───────── 選角色、選動作 ─────────
 
+# 換角色時新角色也有同一個動作（例如換武器看普攻）就停在那個動作
 func _pick_subject(i: int) -> void:
+	var keep: String = _row.get("key", "")
 	_free_rig()
 	_recorder.clear()
 	_rows = _recorder.rows(_subjects[i].id)
@@ -229,15 +262,20 @@ func _pick_subject(i: int) -> void:
 	if _subject_pick.selected != i:
 		_subject_pick.select(i)
 	if not _rows.is_empty():
-		_action_list.select(0)
-		_pick_action(0)
+		var at := 0
+		for k in _rows.size():
+			if _rows[k].key == keep:
+				at = k
+		_action_list.select(at)
+		_action_list.ensure_current_is_visible()
+		_pick_action(at)
 
 
 func _pick_action(i: int) -> void:
 	_row = _rows[i]
 	_start = _row.get("start", 0)
 	_restart()
-	_set_view(_view_name())
+	_update_camera()   # 不重設視角：方位照舊相對角色朝向、仰角與距離不變
 
 
 func _rerecord() -> void:
@@ -379,27 +417,26 @@ func _refresh_info() -> void:
 
 # ───────── 視角 ─────────
 
-var _view := "側面"
-
-
-func _view_name() -> String:
-	return _view
-
-
 func _set_view(v: String) -> void:
 	_view = v
 	var spec: Array = VIEWS[v]
 	_game_view = spec[2]
+	_ortho = _game_view
 	if _game_view:
-		_yaw = Config.CAMERA.azimuth
+		_yaw_game = Config.CAMERA.azimuth
 		_pitch = Config.CAMERA.elevation
-		_ortho = true
 	else:
-		var facing: float = _row.frames[_start].facing if not _row.is_empty() else 0.0
-		_yaw = facing + spec[0]
+		_yaw_rel = spec[0]
 		_pitch = spec[1]
-		_ortho = false
+	_mark_buttons()
 	_update_camera()
+
+
+# 鏡頭的方位：遊戲視角是世界方位；其他照這段動作開頭的角色朝向 + 相對角度
+func yaw() -> float:
+	if _game_view:
+		return _yaw_game
+	return (_row.frames[_start].facing if not _row.is_empty() else 0.0) + _yaw_rel
 
 
 func _update_camera() -> void:
@@ -409,7 +446,8 @@ func _update_camera() -> void:
 		var rig: Node3D = _made.rig
 		height = rig.height if "height" in rig else 2.0
 		target = rig.position + Vector3(0.0, height * 0.5, 0.0)
-	var offset := Vector3(cos(_pitch) * sin(_yaw), sin(_pitch), cos(_pitch) * cos(_yaw))
+	var y := yaw()
+	var offset := Vector3(cos(_pitch) * sin(y), sin(_pitch), cos(_pitch) * cos(y))
 	_cam.projection = Camera3D.PROJECTION_ORTHOGONAL if _ortho else Camera3D.PROJECTION_PERSPECTIVE
 	_cam.size = _dist * 0.75
 	_cam.look_at_from_position(target + offset * (_dist if not _ortho else 40.0), target, Vector3.UP)
@@ -417,6 +455,32 @@ func _update_camera() -> void:
 	var view := get_viewport().get_visible_rect().size
 	var half_h := _cam.size / 2.0 if _ortho else _dist * tan(deg_to_rad(_cam.fov) / 2.0)
 	_cam.h_offset = -half_h * (view.x / maxf(view.y, 1.0)) * (PANEL_WIDTH / maxf(view.x, 1.0))
+
+
+# 快捷鍵在 _input 先接（介面拿到焦點時不會被吃掉，例如點過動作清單後空白鍵照樣播放 / 暫停）；滑鼠留給 _unhandled_input（面板上的不轉視角）
+func _input(event: InputEvent) -> void:
+	if not (event is InputEventKey and (event as InputEventKey).pressed and not (event as InputEventKey).echo):
+		return
+	match (event as InputEventKey).keycode:
+		KEY_SPACE:
+			_toggle_play()
+		KEY_LEFT:
+			_step_by(-1)
+		KEY_RIGHT:
+			_step_by(1)
+		KEY_UP, KEY_DOWN:
+			var n := _rows.size()
+			if n > 0:
+				var cur: int = _action_list.get_selected_items()[0] if not _action_list.get_selected_items().is_empty() else 0
+				var next: int = (cur + (1 if (event as InputEventKey).keycode == KEY_DOWN else -1) + n) % n
+				_action_list.select(next)
+				_action_list.ensure_current_is_visible()
+				_pick_action(next)
+		KEY_R:
+			_rerecord()
+		_:
+			return
+	get_viewport().set_input_as_handled()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -430,22 +494,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			_dragging = mb.pressed
 	elif event is InputEventMouseMotion and _dragging:
 		var mm := event as InputEventMouseMotion
-		_yaw -= mm.relative.x * ORBIT_SPEED
+		if mm.button_mask & (MOUSE_BUTTON_MASK_LEFT | MOUSE_BUTTON_MASK_RIGHT) == 0:
+			_dragging = false   # 在面板上放開的按鍵事件被介面接走了：沒按著就不轉
+			return
+		if _game_view:
+			_yaw_game -= mm.relative.x * ORBIT_SPEED
+		else:
+			_yaw_rel -= mm.relative.x * ORBIT_SPEED
 		_pitch = clampf(_pitch + mm.relative.y * ORBIT_SPEED, -0.2, 1.45)
-	elif event is InputEventKey and (event as InputEventKey).pressed and not (event as InputEventKey).echo:
-		match (event as InputEventKey).keycode:
-			KEY_SPACE:
-				_toggle_play()
-			KEY_LEFT:
-				_step_by(-1)
-			KEY_RIGHT:
-				_step_by(1)
-			KEY_UP, KEY_DOWN:
-				var n := _rows.size()
-				if n > 0:
-					var cur: int = _action_list.get_selected_items()[0] if not _action_list.get_selected_items().is_empty() else 0
-					var next: int = (cur + (1 if (event as InputEventKey).keycode == KEY_DOWN else -1) + n) % n
-					_action_list.select(next)
-					_pick_action(next)
-			KEY_R:
-				_rerecord()

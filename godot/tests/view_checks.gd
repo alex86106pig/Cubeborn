@@ -3920,6 +3920,8 @@ static func check_anim_recorder() -> String:
 				if not (is_finite(r.x) and is_finite(r.y) and is_finite(r.z)):
 					err = "%s 的 %s 播完關節角度不是有限數" % [s.id, row.key]
 			(rig as Node).free()
+		if err == "" and s.id == "enemy-gravekeeper":
+			err = _check_split_rows(rows)
 		rec.clear()
 		if err != "":
 			break
@@ -3927,3 +3929,28 @@ static func check_anim_recorder() -> String:
 		err = "玩家的動作裡戰技應有 %d 招：%d" % [AnimRecorder.skill_ids().size(), skill_rows]
 	_note("動畫檢視器：%d 個角色、%d 段動作（戰技 %d）" % [AnimRecorder.subjects().size(), total, skill_rows])
 	return err
+
+
+# 守墓人的鏟起、提燈噴火拆成一段一招（AnimRecorder.SPLITS）：每段都錄得到，從開始播的那步到最後只出現那一招的 phase
+# （鏟起沒抓到不會埋地噴火、埋地那段還沒開始噴、邊噴邊追那段沒有轉圈）
+static func _check_split_rows(rows: Array) -> String:
+	var step_time: float = EnemyDefs.ENEMIES.gravekeeper.scoop.bury.step_time
+	var want := {
+		"scoop": [&"windup", &"miss"], "scoop_throw": [&"throw"], "scoop_bury": [&"bury"], "scoop_flame": [&"bury"],
+		"lantern": [&"windup", &"flame"], "lantern_spin": [&"spin_windup", &"spin", &"recovery"],
+	}
+	for key: String in want:
+		var row: Dictionary = {}
+		for r: Dictionary in rows:
+			if r.key == key:
+				row = r
+		if row.is_empty():
+			return "守墓人的動作裡沒有 %s（拆開的招式沒錄到）" % key
+		var frames: Array = row.frames
+		for i in range(row.start, frames.size()):
+			var a: Dictionary = frames[i].anim
+			var ph: StringName = a.get("phase", &"")
+			var t: float = a.get("phase_time", 0.0)
+			if not (ph in want[key]) or (key == "scoop_bury" and t >= step_time) or (key == "scoop_flame" and t < step_time - 1e-6):
+				return "守墓人的 %s 第 %d 步混進別的招式：phase %s、%.2f 秒" % [key, i - row.start, ph, t]
+	return ""

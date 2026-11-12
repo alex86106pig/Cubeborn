@@ -35,6 +35,24 @@ const ENEMY_STATE_NAMES := {
 	&"wolf_chase": "狼人追擊", &"stalk": "隱入黑暗", &"claw": "三連爪", &"leap": "飛撲（狼人）", &"howl": "狼嚎",
 	&"colossus_chase": "追擊（聚合體）", &"spikes": "骨刺陣", &"sweep": "多臂橫掃", &"wheel": "巨骨輪", &"wheel_stun": "撞牆暈倒", &"devour": "吞屍",
 }
+# 一個狀態裡有好幾招的，拆成好幾段、一段只放一招（YangHsu 2026-11-12：「不應該有一個動作內包含兩種動作」）。
+# 每段 [key, 名字, 抓到玩家後走哪條（"" = 不抓）, 從哪一步開始, 到哪一步之前]；步驟用 [phase, 該 phase 的第幾秒]（phase 空字串 = 狀態結束）
+# 鏟起：抓到後隨機 A 拋飛 / B 埋地 → 開燈罩直噴（sim/enemies/gravekeeper.gd Scoop），錄的時候換種子直到走到要的那條
+const SPLITS := {
+	&"gravekeeper": {
+		&"lantern": [
+			["lantern", "提燈噴火（邊噴邊追）", &"", [&"windup", 0.0], [&"spin_windup", 0.0]],
+			["lantern_spin", "提燈噴火（原地轉一圈）", &"", [&"spin_windup", 0.0], [&"", 0.0]],
+		],
+		&"scoop": [
+			["scoop", "鏟起（沒抓到）", &"miss", [&"windup", 0.0], [&"", 0.0]],
+			["scoop_throw", "鏟起 A：拋飛", &"throw", [&"throw", 0.0], [&"", 0.0]],
+			["scoop_bury", "鏟起 B：埋地、退一步", &"bury", [&"bury", 0.0], [&"bury", &"step_time"]],
+			["scoop_flame", "鏟起 B：開燈罩直噴", &"bury", [&"bury", &"step_time"], [&"", 0.0]],
+		],
+	},
+}
+const SPLIT_SEEDS := 40   # 換幾個種子找要的那條連段
 const SKILLS_PER_PAGE := 6
 const AI_SECONDS := 12.0   # 怪物照 AI 自己打的錄幾秒
 
@@ -85,10 +103,10 @@ func rows(id: String, with_skills := true) -> Array:
 	return []
 
 
-func _new_world() -> World:
+func _new_world(seed_value := 7) -> World:
 	var w := World.new(&"test_arena")
 	w.spawn_packs = false
-	w.reset(7)
+	w.reset(seed_value)
 	w.spawner.finished = true
 	_worlds.append(w)
 	return w
@@ -245,6 +263,7 @@ func enemy_rows(model: StringName) -> Array:
 	var rows := []
 	var spec: Array = BOSS_MOVES.get(model, [0, []])
 	var form: int = spec[0]
+	var splits: Dictionary = SPLITS.get(model, {})
 	var w := _new_world()
 	var p := _player(w, &"swordShield")
 	var e := _spawn(w, kind, p.pos + Vector2(0, 5), form)
@@ -255,12 +274,18 @@ func enemy_rows(model: StringName) -> Array:
 		var st: StringName = frames[i].anim.state if i < frames.size() else &""
 		if i == frames.size() or st != frames[start].anim.state:
 			var name: StringName = frames[start].anim.state
-			if not seen.has(name) and i - start >= 3 and rows.size() < 8:
+			if not seen.has(name) and not splits.has(name) and i - start >= 3 and rows.size() < 8:
 				seen[name] = true
 				var end := mini(i - 1, start + roundi(2.5 / DT))
 				rows.append(_enemy_row(String(name), e, model, frames.slice(0, end + 1), even(start, end), start))
 			start = i
 	for move: StringName in spec[1]:
+		if splits.has(move):
+			for part: Array in splits[move]:
+				var row := _split_row(model, kind, form, move, part)
+				if not row.is_empty():
+					rows.append(row)
+			continue
 		if seen.has(move):
 			continue
 		var w2 := _new_world()
@@ -284,6 +309,52 @@ func enemy_rows(model: StringName) -> Array:
 	var df := _record(w3, d, 50, func(_i: int) -> InputCmd: return _cmd(Vector2.ZERO))
 	rows.append(_enemy_row("dead", d, model, dl + df, even(dl.size(), dl.size() + df.size() - 1), dl.size()))
 	return rows
+
+
+# 拆開的一段（SPLITS）：玩家站在面前（要抓）或遠處（不抓），硬切進那個狀態錄到狀態結束，再照 part 的起訖步驟切出來
+func _split_row(model: StringName, kind: StringName, form: int, move: StringName, part: Array) -> Dictionary:
+	var branch: StringName = part[2]
+	for seed_value in range(1, SPLIT_SEEDS + 1):
+		var w := _new_world(seed_value)
+		var p := _player(w, &"swordShield")
+		var near := branch != &"" and branch != &"miss"
+		var b := _spawn(w, kind, p.pos + Vector2(0, 2.2 if near else 9.0), form)
+		var lead := _record(w, b, roundi(b.def.spawn_time / DT) + 2, func(_i: int) -> InputCmd: return _cmd(Vector2.ZERO))
+		b.fsm.change(move)
+		var mf := _record(w, b, roundi(5.0 / DT), func(_i: int) -> InputCmd: return _cmd(Vector2.ZERO))
+		var end := mf.size()
+		for i in mf.size():
+			if mf[i].anim.state != move:
+				end = i
+				break
+		mf = mf.slice(0, end)
+		if branch != &"" and not mf.any(func(f: Dictionary) -> bool: return f.anim.get("phase", &"") == branch):
+			_worlds.erase(w)
+			w.clear()
+			continue
+		var from := _split_at(mf, part[3], b.def[move], false)
+		var to := _split_at(mf, part[4], b.def[move], true)
+		if from < 0 or to - from < 3:
+			return {}
+		var frames: Array = lead + mf.slice(0, to)
+		var row := _enemy_row(String(part[0]), b, model, frames, even(lead.size() + from, lead.size() + to - 1), lead.size() + from)
+		row.name = part[1]
+		return row
+	push_warning("AnimRecorder：%s 換了 %d 個種子都沒走到 %s" % [move, SPLIT_SEEDS, branch])
+	return {}
+
+
+# 步驟 [phase, 秒] 在第幾步：phase 空字串 = 狀態結束（mf.size()）；秒可以是招式設定裡的欄位名（例如 bury 的 step_time）
+static func _split_at(mf: Array, at: Array, def: Dictionary, is_end: bool) -> int:
+	var phase: StringName = at[0]
+	if phase == &"":
+		return mf.size()
+	var sec: float = at[1] if not (at[1] is StringName) else float((def.get(phase, def) as Dictionary).get(at[1], 0.0))
+	for i in mf.size():
+		var a: Dictionary = mf[i].anim
+		if a.get("phase", &"") == phase and a.get("phase_time", 0.0) >= sec - 1e-6:
+			return i
+	return mf.size() if is_end else -1
 
 
 func _spawn(w: World, kind: StringName, at: Vector2, form: int) -> Enemy:
