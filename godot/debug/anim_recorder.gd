@@ -55,6 +55,7 @@ const SPLITS := {
 const PLAYER_CYCLES := ["idle", "run", "sprint"]
 const ENEMY_CYCLES: Array[StringName] = [&"chase", &"patrol", &"dormant", &"kite", &"wolf_chase", &"colossus_chase"]
 const CYCLE_LEAD := 30    # 跑步類先跑幾步再開始錄（循環接回去時速度一樣）
+const STAND_STEPS := 20   # 玩家每段動作前先站穩幾步，留著當暖身（動畫器從待機姿勢接過去，不是剛建好的角色）
 const SPLIT_SEEDS := 40   # 隨機連段最多試幾個種子
 const SKILLS_PER_PAGE := 6
 const AI_SECONDS := 12.0   # 怪物照 AI 自己打的錄幾秒
@@ -173,14 +174,14 @@ func player_rows(weapon: StringName) -> Array:
 			var dummy := _spawn(w, &"grunt", p.pos + Vector2(0, 1.6), 0)
 			dummy.stats.set_base(&"max_hp", 1e6)
 			dummy.hp = 1e6
-		_record(w, p, 20, func(_i: int) -> InputCmd: return _cmd(Vector2.ZERO))   # 先站穩
+		var stand := _record(w, p, STAND_STEPS, func(_i: int) -> InputCmd: return _cmd(Vector2.ZERO))
 		var lead := CYCLE_LEAD if spec[0] in ["run", "sprint"] else 0
 		var frames := _record(w, p, spec[1] + lead, spec[2])
-		rows.append(_player_row(spec[0], p, frames, -1, lead))
+		rows.append(_player_row(spec[0], p, stand + frames, -1, stand.size() + lead))
 	for extra: String in ["stagger", "knocked", "dead"]:
 		var w := _new_world()
 		var p := _player(w, weapon)
-		_record(w, p, 20, func(_i: int) -> InputCmd: return _cmd(Vector2.ZERO))
+		var stand := _record(w, p, STAND_STEPS, func(_i: int) -> InputCmd: return _cmd(Vector2.ZERO))
 		match extra:
 			"stagger":
 				p.action.change(&"stagger")
@@ -190,7 +191,7 @@ func player_rows(weapon: StringName) -> Array:
 				p.hp = 0.0
 				p.die(0)
 		var frames := _record(w, p, 45, func(_i: int) -> InputCmd: return _cmd(Vector2.ZERO))
-		rows.append(_player_row(extra, p, frames))
+		rows.append(_player_row(extra, p, stand + frames, -1, stand.size()))
 	return rows
 
 

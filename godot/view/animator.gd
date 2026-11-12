@@ -32,6 +32,7 @@ const GEM_SPIN := 3.0         # 法杖寶石自轉（弧度/秒）
 const ROLL_CENTER := 0.56     # 翻滾的旋轉中心（角色高度的比例）：要比頭到中心的距離高，翻到頭下腳上時頭才不會插進地裡
 const LIE_FRONT := 0.32       # 趴著時身體離地多高：胸甲的厚度（不然胸口穿進地板）
 const LIE_BACK := 0.4         # 仰躺時身體離地多高：背後的披風
+const DEAD_SHIELD_ROLL := -1.2   # 趴倒時拿盾的手臂繞自己轉多少（盾面朝側邊，不穿地）
 const DIG_RATE := 1.5         # 挖墳每秒挖幾下（D6）
 const LAND_TIME := 0.18       # 落地緩衝的秒數
 const WRIST_SHARPNESS := 25.0 # 手腕轉到目標角度的速度（出招時約 0.1 秒轉回來）
@@ -60,6 +61,7 @@ const DAGGER_CHAMBER := Vector3(0.05, 0.1, 1.0)   # 收在腰側：刀尖朝前
 const DAGGER_STAB := Vector3(0.1, -0.05, 1.0)     # 刺到底：刀尖朝正前方
 const CUT_EDGE_STICKY := 0.5    # 刃換面的遲滯，避免揮到一半翻面
 const LAND_DROP := 0.16       # 落地時髖部往下沉多少（× 腿長；膝蓋約彎 45°，真人落地膝蓋彎曲至少 45°）
+const LIE_HELD := {&"longsword": [true, &"sword"], &"shovel": [true, &"shovel"], &"shortbow": [false, &"bow"], &"longbow": [false, &"bow"]}   # 倒地時哪隻手的東西要轉平（DarkFantasy.LIE）
 const BOW_REST := Basis(Vector3.RIGHT, Vector3.BACK, Vector3.DOWN)   # 不拉弓時弓平放（相對角色）：弓梢朝前後、弓背朝下、弦在上
 
 var rig: Rig
@@ -173,6 +175,9 @@ func update(p: Player, dt: float) -> void:
 		bow_raise = 0.0
 	if rig.weapon_model == &"dagger":
 		_aim_blades(a.action in [&"attack", &"special"], dt)
+	if (a.loco == &"dead" or a.loco == &"downed") and LIE_HELD.has(rig.weapon_model):
+		var held: Array = LIE_HELD[rig.weapon_model]
+		BodyPose.lie_flat(rig, held[0], DarkFantasy.LIE[held[1]], minf(_ease(a.loco_time / DEATH_FALL_TIME) * 2.0, 1.0))
 	if rig.weapon_gem != null:
 		rig.weapon_gem.rotation.y += GEM_SPIN * dt
 
@@ -234,8 +239,12 @@ func _pose_locomotion(p: Player, a: Dictionary, dt: float) -> void:
 			var k := _ease(a.loco_time / DEATH_FALL_TIME)
 			rig.body.rotation.x = lerpf(0.0, PI / 2.0, k)   # 往前撲倒、臉朝下
 			rig.body.position.y = LIE_FRONT * k
-			BodyPose.arm(rig, true, lerpf(0.0, -2.6, k), 0.25 * k, 0.4 * k)
-			BodyPose.arm(rig, false, lerpf(0.0, -2.6, k), -0.25 * k, 0.4 * k)
+			var idle: Dictionary = p.weapon.idle   # 從待機的手開始倒（從垂直往下開始的話，長柄武器第一步就戳進地裡）
+			var shield := rig.weapon_offhand != null
+			BodyPose.arm(rig, true, lerpf(idle.arm_r, -2.6, k), 0.25 * k, lerpf(idle_elbow(true), 0.4, k))
+			BodyPose.arm(rig, false, lerpf(idle.arm_l, -2.6, k), -0.25 * k, lerpf(idle_elbow(false), 0.5 if shield else 0.4, k))
+			if shield:   # 盾在前臂外側，趴著時朝下：手臂轉到盾面朝側邊
+				rig.arm_l.basis = rig.arm_l.basis * Basis(Vector3.UP, DEAD_SHIELD_ROLL * k)
 			BodyPose.leg(rig, true, -0.15 * k, 0.35 * k)
 			BodyPose.leg(rig, false, 0.1 * k, 0.15 * k)
 

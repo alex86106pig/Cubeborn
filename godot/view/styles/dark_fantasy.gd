@@ -81,6 +81,15 @@ const MOTH_JOINTS := {
 }
 const KEEPER_SPADE := Color("9a948a")   # 守墓人鏟面：磨亮的舊鐵（要比地面亮，看得出是鏟子）
 const SWORD_TILT := 2.8   # 長劍在手掌座標的傾角（繞 X）
+# 倒地時手上的東西怎麼平躺（BodyPose.lie_flat）：[東西的方向, 平面的法線]（手掌座標）、往哪邊放（out = 順著手臂、feet = 朝腳、side = 跟手臂垂直）
+const LIE := {
+	&"sword": [Vector3(0.0, -0.942, 0.335), Vector3(0.0, -0.335, -0.942), &"out"],   # 長劍、長槍（SWORD_TILT）
+	&"keeper_shovel": [Vector3.BACK, Vector3.UP, &"feet"],   # 守墓人鏟子：鏟面在手掌 -Z、鏟面薄的方向是 Y
+	&"hanging": [Vector3.DOWN, Vector3.BACK, &"out"],        # 提燈這種垂在拳頭下的
+	&"enemy_bow": [Vector3.UP, Vector3.RIGHT, &"feet"],      # 骷髏弓手的弓：弓身在手掌 YZ 平面
+	&"shovel": [Vector3.DOWN, Vector3.BACK, &"out"],         # 玩家鐵鏟：鏟面在手掌 -Y
+	&"bow": [Vector3.UP, Vector3.RIGHT, &"side"],            # 玩家的弓：弓臂沿 ±Y、弓身在 YZ 平面
+}
 const BOSS_SCALE := 1.85
 const KEEPER_SCALE := 1.3
 const WOLF_SCALE := 1.45

@@ -3959,10 +3959,30 @@ static func _sole(rig: Rig, right: bool) -> Vector3:
 	return BodyPose.body_to_root(rig, local)
 
 
-# 倒地：Boss 類（關節版）倒下到沉入地面前，手臂、拳頭、手上的武器（劍、鏟子、提燈）都不穿進地裡，拳頭貼地（不浮在空中）
+# 倒地：Boss 類（關節版）倒下到沉入地面前，手臂、拳頭、手上的武器（劍、鏟子、提燈）都不穿進地裡，拳頭貼地（不浮在空中）；
+# 玩家拿 8 把武器趴倒時，手臂、手上的武器、盾都不穿地（看得到的零件）
 static func check_dead_lie() -> String:
 	var rec := AnimRecorder.new()
 	var err := ""
+	for weapon: StringName in AnimRecorder.PLAYER_WEAPONS:
+		for row: Dictionary in rec.rows("player-%s" % weapon, false):
+			if row.key != "dead":
+				continue
+			var made: Dictionary = (row.make as Callable).call()
+			var rig: Rig = made.rig
+			var low := INF
+			for i in (row.frames as Array).size():
+				AnimRecorder.step(row, made, i)
+				if i >= int(row.start):
+					for j: Node3D in [rig.arm_r, rig.arm_l]:
+						low = minf(low, _shown_low(rig, j))
+			rig.free()
+			if low < -0.01:
+				err = "玩家拿%s趴倒時手臂或武器穿進地裡 %.3f" % [WeaponDefs.WEAPONS[weapon].name, low]
+				break
+		if err != "":
+			rec.clear()
+			return err
 	for model: String in ["gravekeeper", "boss", "bone_general"]:
 		for row: Dictionary in rec.rows("enemy-%s" % model):
 			if row.key != "dead":
@@ -4043,6 +4063,23 @@ static func _node_low(rig: Node3D, node: Node3D) -> float:
 			n = n.get_parent() as Node3D
 		for v: Vector3 in mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
 			low = minf(low, (rig.transform * t * v).y)
+	return low
+
+
+# node 底下看得到的零件最低點（角色根節點座標；隱藏的不算，例如沒拉弓時搭弦的箭）
+static func _shown_low(rig: Node3D, node: Node3D) -> float:
+	var low := INF
+	for mi in PartKit.mesh_instances(node):
+		var t := Transform3D.IDENTITY
+		var n: Node3D = mi
+		var shown := true
+		while n != rig:
+			shown = shown and n.visible
+			t = n.transform * t
+			n = n.get_parent() as Node3D
+		if shown:
+			for v: Vector3 in mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+				low = minf(low, (rig.transform * t * v).y)
 	return low
 
 

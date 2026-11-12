@@ -10,11 +10,6 @@ const HURT_ARM_SHARPNESS := 20.0
 const DEATH_FALL_TIME := 0.4
 const DEAD_ARM_SPREAD := Vector2(0.75, 0.3)   # 倒地的手攤多開（往外、往腳的方向，× 手臂長）
 const DEAD_FIST := 0.12                       # 倒地的拳頭中心離地多高（× 身體縮放；Boss 的護手比較大）
-# 倒地時手上的東西平躺在地上：[東西的方向, 平面的法線]（手掌座標）、往哪邊放（out = 順著手臂往外、feet = 朝腳）
-const LIE_SWORD := [Vector3(0.0, -0.942, 0.335), Vector3(0.0, -0.335, -0.942), &"out"]   # 長劍、長槍（DarkFantasy.SWORD_TILT）
-const LIE_SHOVEL := [Vector3.BACK, Vector3.UP, &"feet"]   # 鏟面在手掌 -Z、鏟面很薄的方向是手掌 Y
-const LIE_HANGING := [Vector3.DOWN, Vector3.BACK, &"out"]   # 提燈這種垂在拳頭下的
-const LIE_BOW := [Vector3.UP, Vector3.RIGHT, &"feet"]     # 弓身在手掌 YZ 平面
 const CORPSE_SINK_START := 0.6   # 屍體停留時間的 60% 後開始沉入地面
 const CORPSE_SINK_DEPTH := 0.8
 const SLAM_FOLLOW_TIME := 0.12   # 重砸落地後手臂揮下的秒數
@@ -72,7 +67,7 @@ var _spin := 0.0          # 骨輪滾動的角度（畫面自己累加）
 var _sword := false       # 拿長劍的（骷髏戰士、僕從、亡骸騎士、骸骨將軍重甲型態）：走路站著時手腕往上翹
 var _wrist := 0.0
 var _roll := 0.0   # 繞劍身轉多少
-var _lie_r := []   # 倒地時右手、左手上的東西怎麼平躺（LIE_*；空的 = 手上沒東西）
+var _lie_r := []   # 倒地時右手、左手上的東西怎麼平躺（DarkFantasy.LIE；空的 = 手上沒東西）
 var _lie_l := []
 var _bow_arm_target := BOW_ARM_REST
 var _draw := 0.0          # 弓手拉弦的進度（0 = 沒拉、1 = 拉到下巴；射完平滑放下）
@@ -106,8 +101,8 @@ func _init(p_rig: Node3D, e: Enemy) -> void:
 		_build_cracks(e)
 	_keeper = e.def.visual == &"gravekeeper"
 	_sword = e.kind in [&"grunt", &"minion", &"boss", &"bone_general"]
-	_lie_r = LIE_SWORD if _sword or _spearman else (LIE_SHOVEL if _keeper else [])
-	_lie_l = LIE_HANGING if _keeper else (LIE_BOW if _holds_bow else [])
+	_lie_r = DarkFantasy.LIE.sword if _sword or _spearman else (DarkFantasy.LIE.keeper_shovel if _keeper else [])
+	_lie_l = DarkFantasy.LIE.hanging if _keeper else (DarkFantasy.LIE.enemy_bow if _holds_bow else [])
 
 
 func update(e: Enemy, dt: float) -> void:
@@ -385,7 +380,7 @@ func update(e: Enemy, dt: float) -> void:
 		var f := MathUtil.ease_out_cubic(clampf(t / DEATH_FALL_TIME, 0.0, 1.0))
 		for pair in [[true, _lie_r], [false, _lie_l]]:
 			if not (pair[1] as Array).is_empty():
-				_lie_flat(pair[0], pair[1], minf(f * 2.0, 1.0))   # 倒下前半就轉平，長武器中途才不會朝下戳到地
+				BodyPose.lie_flat(rig, pair[0], pair[1], minf(f * 2.0, 1.0))   # 倒下前半就轉平，長武器中途才不會朝下戳到地
 	if not _free and not (_hound or _spider or _beetle or _wheel):
 		_finish()
 	if _crack_root != null:
@@ -483,18 +478,6 @@ func _dead_arms(f: float) -> void:
 		var spread := BodyPose.body_to_root(rig, shoulder) + Vector3(side * arm * DEAD_ARM_SPREAD.x, 0.0, arm * DEAD_ARM_SPREAD.y) * s
 		spread.y = DEAD_FIST * s
 		BodyPose.arm_ik(rig, right, hang.lerp(_root_to_body(spread), f), Vector3(side, -0.3, -0.6))
-
-
-# 倒地：手掌轉到讓手上的東西平躺在地上（f = 倒下的進度）
-func _lie_flat(right: bool, lie: Array, f: float) -> void:
-	var hand = rig.hand_r if right else rig.hand_l
-	var fore := Basis.from_euler(rig.body.rotation, EULER_ORDER_YXZ) * BodyPose.forearm_basis(rig, right)
-	var along: Vector3 = fore * Vector3.DOWN
-	var out := Vector3(along.x, 0.0, along.z).normalized() if lie[2] == &"out" else Vector3.BACK
-	var want := Basis(out, Vector3.UP, out.cross(Vector3.UP)) * Basis(lie[0], lie[1], (lie[0] as Vector3).cross(lie[1])).inverse()
-	var flat := (fore.inverse() * want).get_rotation_quaternion()
-	var now := Basis.from_euler(hand.rotation, EULER_ORDER_YXZ).get_rotation_quaternion()
-	hand.rotation = Basis(now.slerp(flat, f)).get_euler(EULER_ORDER_YXZ)
 
 
 # 盾槍兵持槍、舉盾：槍手前臂往前、盾手前臂橫在胸前
