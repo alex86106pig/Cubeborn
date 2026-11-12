@@ -978,7 +978,7 @@ func _create_view(e: Entity) -> Node3D:
 			glow.light_energy = WEAPON_GLOW_ENERGY
 			glow.shadow_enabled = false
 			glow.visible = false
-			rig.hand_r.add_child(glow)
+			rig.held_r.add_child(glow)   # 跟著武器：死掉時一起掉到地上
 			root.set_meta(&"glow", glow)
 			if (e as Player).is_ghost():
 				rig.set_ghost(_ghost_overlay(), GHOST_TRANSPARENCY)

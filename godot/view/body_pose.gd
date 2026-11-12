@@ -185,19 +185,6 @@ static func swing_arms(rig, g: Dictionary, amount: float, base_r: float, base_l:
 	arm(rig, false, base_l - sw, 0.0, elbow + maxf(0.0, sw) * 0.4)
 
 
-# 倒地：手掌轉到讓手上的東西平躺在地上（lie = DarkFantasy.LIE 的一筆，w = 轉過去的比例）
-static func lie_flat(rig, right: bool, lie: Array, w: float) -> void:
-	var hand = rig.hand_r if right else rig.hand_l
-	var fore := Basis.from_euler(rig.body.rotation, EULER_ORDER_YXZ) * forearm_basis(rig, right)
-	var along: Vector3 = fore * Vector3.DOWN
-	var out := Vector3(along.x, 0.0, along.z).normalized()
-	var dir: Vector3 = {&"out": out, &"feet": Vector3.BACK, &"side": out.cross(Vector3.UP)}[lie[2]]
-	var want := Basis(dir, Vector3.UP, dir.cross(Vector3.UP)) * Basis(lie[0], lie[1], (lie[0] as Vector3).cross(lie[1])).inverse()
-	var flat := (fore.inverse() * want).get_rotation_quaternion()
-	var now := Basis.from_euler(hand.rotation, EULER_ORDER_YXZ).get_rotation_quaternion()
-	hand.rotation = Basis(now.slerp(flat, w)).get_euler(EULER_ORDER_YXZ)
-
-
 # 拳頭中心的身體座標（照目前的關節角度算）
 static func hand_pos(rig, right: bool) -> Vector3:
 	var a = rig.arm_r if right else rig.arm_l

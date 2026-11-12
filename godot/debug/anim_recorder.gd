@@ -389,7 +389,7 @@ func _enemy_row(key: String, e: Enemy, model: StringName, frames: Array, samples
 	return {"key": key, "name": ENEMY_STATE_NAMES.get(StringName(key), key), "subject": e, "frames": frames, "samples": samples, "start": start,
 		"cycle": StringName(key) in ENEMY_CYCLES,
 		"make": func() -> Dictionary:
-			var rig: Node3D = DarkFantasy.character(model) if e.is_boss() else DarkFantasy.skinned_character(e.kind)
+			var rig: Node3D = DarkFantasy.character(WorldView._model_of(e)) if e.is_boss() else DarkFantasy.skinned_character(e.kind)   # 同遊戲：Boss 照型態選模型（骸骨將軍第一型態 = 亡骸騎士）
 			return {"rig": rig, "anim": EnemyAnimator.new(rig, e)}}
 
 

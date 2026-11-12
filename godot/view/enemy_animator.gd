@@ -10,6 +10,7 @@ const HURT_ARM_SHARPNESS := 20.0
 const DEATH_FALL_TIME := 0.4
 const DEAD_ARM_SPREAD := Vector2(0.75, 0.3)   # 倒地的手攤多開（往外、往腳的方向，× 手臂長）
 const DEAD_FIST := 0.12                       # 倒地的拳頭中心離地多高（× 身體縮放；Boss 的護手比較大）
+const DEAD_RELEASE := 0.0                     # 倒下後幾秒武器脫手：一死就鬆手（長柄武器握著倒下去會戳到地）
 const CORPSE_SINK_START := 0.6   # 屍體停留時間的 60% 後開始沉入地面
 const CORPSE_SINK_DEPTH := 0.8
 const SLAM_FOLLOW_TIME := 0.12   # 重砸落地後手臂揮下的秒數
@@ -67,8 +68,9 @@ var _spin := 0.0          # 骨輪滾動的角度（畫面自己累加）
 var _sword := false       # 拿長劍的（骷髏戰士、僕從、亡骸騎士、骸骨將軍重甲型態）：走路站著時手腕往上翹
 var _wrist := 0.0
 var _roll := 0.0   # 繞劍身轉多少
-var _lie_r := []   # 倒地時右手、左手上的東西怎麼平躺（DarkFantasy.LIE；空的 = 手上沒東西）
+var _lie_r := []   # 死掉時右手、左手上的東西掉到地上怎麼躺（DarkFantasy.LIE；空的 = 手上沒東西）
 var _lie_l := []
+var _drop := HeldDrop.new()
 var _bow_arm_target := BOW_ARM_REST
 var _draw := 0.0          # 弓手拉弦的進度（0 = 沒拉、1 = 拉到下巴；射完平滑放下）
 var _dt := 0.0
@@ -140,6 +142,9 @@ func update(e: Enemy, dt: float) -> void:
 		var base: StringName = StringName(a.get("weapon", ""))
 		var kit: Dictionary = EnemyDefs.armed_kit(base) if base != &"" else {}
 		(rig as SkinnedRig).set_held_weapon(kit.get("model", &""), kit.get("offhand_model", &""))
+		var lies: Array = DarkFantasy.LIE_OF.get(kit.get("model", &""), [&"", &""])
+		_lie_r = DarkFantasy.LIE.get(lies[0], [])
+		_lie_l = DarkFantasy.LIE.get(lies[1], [])
 
 	var colossus: bool = def.has("colossus") and a.get("form", 0) > 0 and state != &"dead"
 	match &"cast" if _lich and state == &"aim" else &"worm" if _worm and a.get("form", 0) == 0 else &"moth" if _worm else &"hive" if _hive else &"hound" if _hound else (&"wheel" if _wheel else (&"beetle" if _beetle else (&"spider" if _spider else (&"colossus" if colossus else (&"keeper" if _keeper and state != &"spawn" and state != &"dead" else state))))):
@@ -376,11 +381,7 @@ func update(e: Enemy, dt: float) -> void:
 		_wrist = MathUtil.damp(_wrist, SWORD_WRIST if idle else 0.0, WRIST_SHARPNESS, dt)
 		_roll = MathUtil.damp(_roll, 0.0 if colossus else SWORD_ROLL, WRIST_SHARPNESS, dt)
 		rig.hand_r.rotation = DarkFantasy.sword_grip(_wrist, _roll).get_euler(EULER_ORDER_YXZ)
-	if state == &"dead":
-		var f := MathUtil.ease_out_cubic(clampf(t / DEATH_FALL_TIME, 0.0, 1.0))
-		for pair in [[true, _lie_r], [false, _lie_l]]:
-			if not (pair[1] as Array).is_empty():
-				BodyPose.lie_flat(rig, pair[0], pair[1], minf(f * 2.0, 1.0))   # 倒下前半就轉平，長武器中途才不會朝下戳到地
+	_drop.update(rig, state == &"dead", t, [_lie_r, _lie_l], dt, DEAD_RELEASE)
 	if not _free and not (_hound or _spider or _beetle or _wheel):
 		_finish()
 	if _crack_root != null:
@@ -467,7 +468,7 @@ func _root_to_body(p: Vector3) -> Vector3:
 	return Transform3D(Basis.from_euler(body.rotation, EULER_ORDER_YXZ).scaled_local(body.scale), body.position).affine_inverse() * p
 
 
-# 倒地的手：從身前攤到身體兩側的地上（拳頭貼地）；起點不用垂直往下，長劍才不會跟著戳進地裡
+# 倒地的手：從身前攤到身體兩側的地上（拳頭貼地）
 func _dead_arms(f: float) -> void:
 	var arm := BodyPose.arm_length(rig)
 	var s: float = rig.body.scale.y

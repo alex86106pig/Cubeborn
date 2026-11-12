@@ -61,7 +61,6 @@ const DAGGER_CHAMBER := Vector3(0.05, 0.1, 1.0)   # 收在腰側：刀尖朝前
 const DAGGER_STAB := Vector3(0.1, -0.05, 1.0)     # 刺到底：刀尖朝正前方
 const CUT_EDGE_STICKY := 0.5    # 刃換面的遲滯，避免揮到一半翻面
 const LAND_DROP := 0.16       # 落地時髖部往下沉多少（× 腿長；膝蓋約彎 45°，真人落地膝蓋彎曲至少 45°）
-const LIE_HELD := {&"longsword": [true, &"sword"], &"shovel": [true, &"shovel"], &"shortbow": [false, &"bow"], &"longbow": [false, &"bow"]}   # 倒地時哪隻手的東西要轉平（DarkFantasy.LIE）
 const BOW_REST := Basis(Vector3.RIGHT, Vector3.BACK, Vector3.DOWN)   # 不拉弓時弓平放（相對角色）：弓梢朝前後、弓背朝下、弦在上
 
 var rig: Rig
@@ -88,6 +87,7 @@ var _hand_carry := 0.0          # 連砍結束後手掌還留在連砍方向的�
 var _hand_last := Basis.IDENTITY
 var _blade_aim: Array = [null, null]   # 這一幀右手、左手的刀尖方向（角色座標，x 照右手；null = 照預設握法）
 var _blade_q: Array = [Quaternion.IDENTITY, Quaternion.IDENTITY]
+var _drop := HeldDrop.new()   # 倒地時手上的武器掉到地上（假死被救起來就回到手上）
 var _gait: Dictionary = {}
 var _was_airborne := false
 var _land_t := 1.0
@@ -175,9 +175,8 @@ func update(p: Player, dt: float) -> void:
 		bow_raise = 0.0
 	if rig.weapon_model == &"dagger":
 		_aim_blades(a.action in [&"attack", &"special"], dt)
-	if (a.loco == &"dead" or a.loco == &"downed") and LIE_HELD.has(rig.weapon_model):
-		var held: Array = LIE_HELD[rig.weapon_model]
-		BodyPose.lie_flat(rig, held[0], DarkFantasy.LIE[held[1]], minf(_ease(a.loco_time / DEATH_FALL_TIME) * 2.0, 1.0))
+	var lies: Array = DarkFantasy.LIE_OF.get(rig.weapon_model, [&"", &""])
+	_drop.update(rig, a.loco == &"dead" or a.loco == &"downed", a.loco_time, [DarkFantasy.LIE.get(lies[0], []), DarkFantasy.LIE.get(lies[1], [])], dt)
 	if rig.weapon_gem != null:
 		rig.weapon_gem.rotation.y += GEM_SPIN * dt
 

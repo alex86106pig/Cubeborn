@@ -81,14 +81,22 @@ const MOTH_JOINTS := {
 }
 const KEEPER_SPADE := Color("9a948a")   # 守墓人鏟面：磨亮的舊鐵（要比地面亮，看得出是鏟子）
 const SWORD_TILT := 2.8   # 長劍在手掌座標的傾角（繞 X）
-# 倒地時手上的東西怎麼平躺（BodyPose.lie_flat）：[東西的方向, 平面的法線]（手掌座標）、往哪邊放（out = 順著手臂、feet = 朝腳、side = 跟手臂垂直）
+# 死掉時手上的東西掉到地上怎麼躺（HeldDrop）：[東西的方向, 平面的法線]（手持座標）、往哪邊放（out = 順著手臂、feet = 朝腳、
+# side = 跟手臂垂直）、躺平時中心離地多高（法線方向的半厚，× 身體縮放）
 const LIE := {
-	&"sword": [Vector3(0.0, -0.942, 0.335), Vector3(0.0, -0.335, -0.942), &"out"],   # 長劍、長槍（SWORD_TILT）
-	&"keeper_shovel": [Vector3.BACK, Vector3.UP, &"feet"],   # 守墓人鏟子：鏟面在手掌 -Z、鏟面薄的方向是 Y
-	&"hanging": [Vector3.DOWN, Vector3.BACK, &"out"],        # 提燈這種垂在拳頭下的
-	&"enemy_bow": [Vector3.UP, Vector3.RIGHT, &"feet"],      # 骷髏弓手的弓：弓身在手掌 YZ 平面
-	&"shovel": [Vector3.DOWN, Vector3.BACK, &"out"],         # 玩家鐵鏟：鏟面在手掌 -Y
-	&"bow": [Vector3.UP, Vector3.RIGHT, &"side"],            # 玩家的弓：弓臂沿 ±Y、弓身在 YZ 平面
+	&"sword": [Vector3(0.0, -0.942, 0.335), Vector3(0.0, -0.335, -0.942), &"out", 0.04],   # 長劍、長槍（SWORD_TILT）
+	&"keeper_shovel": [Vector3.BACK, Vector3.UP, &"feet", 0.05],   # 守墓人鏟子：鏟面在 -Z、鏟面薄的方向是 Y
+	&"hanging": [Vector3.DOWN, Vector3.BACK, &"out", 0.09],        # 提燈這種垂在拳頭下的
+	&"enemy_bow": [Vector3.UP, Vector3.RIGHT, &"feet", 0.03],      # 骷髏弓手的弓：弓身在 YZ 平面
+	&"shovel": [Vector3.DOWN, Vector3.BACK, &"out", 0.05],         # 玩家鐵鏟：鏟面在 -Y
+	&"bow": [Vector3.UP, Vector3.RIGHT, &"side", 0.03],            # 玩家的弓：弓臂沿 ±Y、弓身在 YZ 平面
+	&"dagger": [Vector3.DOWN, Vector3.RIGHT, &"out", 0.03],        # 匕首：刀尖 -Y、刃很薄的方向是 X
+	&"staff": [Vector3.UP, Vector3.BACK, &"out", 0.1],             # 法杖、火把、權杖：頭在 +Y
+}
+# 玩家武器（腐屍撿到的也一樣）→ 右手、左手掉下去的東西怎麼躺（LIE 的鍵，空的 = 那隻手沒拿東西）
+const LIE_OF := {
+	&"longsword": [&"sword", &""], &"shovel": [&"shovel", &""], &"shortbow": [&"", &"bow"], &"longbow": [&"", &"bow"],
+	&"dagger": [&"dagger", &"dagger"], &"staff": [&"staff", &""], &"torch": [&"staff", &""], &"scepter": [&"staff", &""],
 }
 const BOSS_SCALE := 1.85
 const KEEPER_SCALE := 1.3
@@ -294,7 +302,7 @@ static func _skeleton_base(rig: Rig, hood := false) -> void:
 static func skeleton() -> Rig:
 	var rig := Rig.new(SKELETON_JOINTS)
 	_skeleton_base(rig)
-	rig.hand_r.add_child(_long_sword(rig.kit, C.rust, C.iron, 0.8))
+	rig.held_r.add_child(_long_sword(rig.kit, C.rust, C.iron, 0.8))
 	return rig.optimize()
 
 
@@ -308,7 +316,7 @@ static func spearman() -> Rig:
 	k.add(spear, PartKit.cone(0.06, 0.28, 4), k.mat(C.steel_dark), {"y": 1.59})
 	k.add(spear, PartKit.box(0.16, 0.04, 0.04), k.mat(C.iron), {"y": 1.43})
 	spear.rotation.x = 2.8
-	rig.hand_r.add_child(_hold(spear, {"grip": Vector3.ZERO}))
+	rig.held_r.add_child(_hold(spear, {"grip": Vector3.ZERO}))
 	var shield := Node3D.new()
 	k.add(shield, PartKit.box(0.06, 0.78, 0.5), k.mat(C.rust), {"y": 0.05})
 	k.add(shield, PartKit.box(0.08, 0.8, 0.06), k.mat(C.iron), {"y": 0.05})
@@ -447,7 +455,7 @@ static func spider() -> Rig:
 static func skeleton_archer() -> Rig:
 	var rig := Rig.new(SKELETON_JOINTS)
 	_skeleton_base(rig, true)
-	rig.hand_l.add_child(_bow(rig.kit, C.wood))
+	rig.held_l.add_child(_bow(rig.kit, C.wood))
 	return rig.optimize()
 
 
@@ -561,12 +569,12 @@ static func gravekeeper() -> Rig:
 	k.add(shovel, PartKit.box(0.38, 0.035, 0.06), k.mat(C.iron), {"y": -0.645, "z": 0.01, "rx": -0.15})
 	k.add(shovel, PartKit.box(0.16, 0.16, 0.025), blade, {"y": -0.9, "z": 0.017, "rx": -0.15, "rz": PI / 4.0})   # 尖端：轉 45° 的小方塊下半露出 6 公分
 	shovel.rotation.x = PI / 2.0
-	rig.hand_r.add_child(_hold(shovel, {"grip": Vector3(0.0, 0.2, 0.0)}))
+	rig.held_r.add_child(_hold(shovel, {"grip": Vector3(0.0, 0.2, 0.0)}))
 	# 提燈：提把在 grip，燈火發光（噴火的特效從這裡出來）
 	var lantern := Node3D.new()
 	k.add(lantern, PartKit.box(0.18, 0.24, 0.18), k.mat(C.iron), {"y": -0.2})
 	k.add(lantern, PartKit.box(0.12, 0.16, 0.12), k.mat(C.keeper_flame, true), {"y": -0.2, "shadow": false})
-	rig.hand_l.add_child(_hold(lantern, {"grip": Vector3.ZERO}))
+	rig.held_l.add_child(_hold(lantern, {"grip": Vector3.ZERO}))
 	return rig.optimize()
 
 
@@ -604,7 +612,7 @@ static func death_knight() -> Rig:
 	j["scale"] = BOSS_SCALE
 	var rig := Rig.new(j)
 	_armored_body(rig, C.death_armor, C.iron, Color("1c1a22"), C.death_eye, true)
-	rig.hand_r.add_child(_long_sword(rig.kit, Color("9aa4b4"), C.iron, 1.35, Color("7fe8ff")))
+	rig.held_r.add_child(_long_sword(rig.kit, Color("9aa4b4"), C.iron, 1.35, Color("7fe8ff")))
 	return rig.optimize()
 
 

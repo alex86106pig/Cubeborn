@@ -2712,9 +2712,9 @@ static func check_body_parts() -> String:
 		rig.set_weapon(&"longsword", &"woodShield")
 		var on_forearm: bool = rig.weapon_offhand.get_parent() == rig.mount_nodes[&"forearm_l"]
 		rig.set_weapon(&"dagger", &"dagger")
-		if rig.weapon_left == null or rig.weapon_left.get_parent() != rig.hand_l or rig.weapon_offhand != null:
+		if rig.weapon_left == null or rig.weapon_left.get_parent() != rig.held_l or rig.held_l.get_parent() != rig.hand_l or rig.weapon_offhand != null:
 			rig.free()
-			return "副手匕首應掛在左手 hand_l、沒有盾"
+			return "副手匕首應掛在左手的手持關節 held_l（hand_l 底下）、沒有盾"
 		rig.set_weapon(&"shortbow")
 		var back: Node3D = rig.mount_nodes[&"back"]
 		var on_back: bool = rig.weapon_back.get_parent() == back
@@ -3959,8 +3959,9 @@ static func _sole(rig: Rig, right: bool) -> Vector3:
 	return BodyPose.body_to_root(rig, local)
 
 
-# 倒地：Boss 類（關節版）倒下到沉入地面前，手臂、拳頭、手上的武器（劍、鏟子、提燈）都不穿進地裡，拳頭貼地（不浮在空中）；
-# 玩家拿 8 把武器趴倒時，手臂、手上的武器、盾都不穿地（看得到的零件）
+# 倒地：Boss 類（關節版）倒下到沉入地面前，手臂、拳頭、掉下去的武器（劍、鏟子、提燈）都不穿進地裡，拳頭貼地（不浮在空中）；
+# 武器離開手、躺在地上（離地 0.12 內）。玩家拿 8 把武器趴倒時，手臂、掉下去的武器、盾都不穿地（看得到的零件）、武器離開手；
+# 假死被救起來武器回到手上
 static func check_dead_lie() -> String:
 	var rec := AnimRecorder.new()
 	var err := ""
@@ -3976,9 +3977,17 @@ static func check_dead_lie() -> String:
 				if i >= int(row.start):
 					for j: Node3D in [rig.arm_r, rig.arm_l]:
 						low = minf(low, _shown_low(rig, j))
-			rig.free()
+			var held: Node3D = rig.held_l if weapon in [&"shortbow", &"longbow"] else rig.held_r
+			var off := held.position.length()
+			var rest := _shown_low(rig, held)
 			if low < -0.01:
 				err = "玩家拿%s趴倒時手臂或武器穿進地裡 %.3f" % [WeaponDefs.WEAPONS[weapon].name, low]
+			elif off < 0.2 or rest > 0.12:
+				err = "玩家拿%s死掉時武器應掉到地上：離手 %.2f、最低點離地 %.2f" % [WeaponDefs.WEAPONS[weapon].name, off, rest]
+			elif weapon == &"swordShield":
+				err = _revive_rearm(row, made)
+			rig.free()
+			if err != "":
 				break
 		if err != "":
 			rec.clear()
@@ -3995,14 +4004,18 @@ static func check_dead_lie() -> String:
 				AnimRecorder.step(row, made, i)
 				if i < int(row.start):
 					continue
-				for nm: StringName in [&"arm_r", &"arm_l", &"forearm_r", &"forearm_l", &"hand_r", &"hand_l"]:
+				for nm: StringName in [&"arm_r", &"arm_l", &"forearm_r", &"forearm_l", &"hand_r", &"hand_l", &"held_r", &"held_l"]:
 					var y := _joint_mesh_low(rig, rig.get(nm))
 					if y < low:
 						low = y
 						lowest = "%s 第 %d 步" % [nm, i - int(row.start)]
 			var fist := BodyPose.body_to_root(rig, BodyPose.hand_pos(rig, true)).y / rig.body.scale.y
+			var off := rig.held_r.position.length()
+			var rest := _joint_mesh_low(rig, rig.held_r)
 			rig.free()
-			if low < -0.01:
+			if off < 0.1 or rest > 0.12:
+				err = "%s 死掉時武器應掉到地上：離手 %.2f、最低點離地 %.2f" % [model, off, rest]
+			elif low < -0.01:
 				err = "%s 倒地時 %s 穿進地裡 %.3f" % [model, lowest, low]
 			elif fist > EnemyAnimator.DEAD_FIST + 0.02:
 				err = "%s 倒地後拳頭浮在空中：%.3f（× 縮放）" % [model, fist]
@@ -4064,6 +4077,20 @@ static func _node_low(rig: Node3D, node: Node3D) -> float:
 		for v: Vector3 in mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
 			low = minf(low, (rig.transform * t * v).y)
 	return low
+
+
+# 假死被救起來（倒地 → 站起來）武器回到手上：手持關節回到單位矩陣
+static func _revive_rearm(row: Dictionary, made: Dictionary) -> String:
+	var p: Player = row.subject
+	var a: Dictionary = p.anim.duplicate()
+	a.loco = &"idle"
+	a.loco_time = 0.0
+	p.anim = a
+	made.anim.update(p, DT)
+	var rig: Rig = made.rig
+	if not Transform3D(Basis.from_euler(rig.held_r.rotation, EULER_ORDER_YXZ), rig.held_r.position).is_equal_approx(Transform3D.IDENTITY):
+		return "假死站起來後武器應回到手上：手持關節 %s / %s" % [rig.held_r.position, rig.held_r.rotation]
+	return ""
 
 
 # node 底下看得到的零件最低點（角色根節點座標；隱藏的不算，例如沒拉弓時搭弦的箭）

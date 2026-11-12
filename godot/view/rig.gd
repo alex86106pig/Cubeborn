@@ -1,7 +1,8 @@
 # 角色骨架（Rig）：動畫只轉動關節
 #   root（位置/朝向）→ body（整體姿勢，樞紐在腳底）→ head / arm_r / arm_l（上臂）/ leg_r / leg_l（大腿）
-#   arm_* → forearm_*（手肘，只彎 rotation.x，負的往前彎）→ 手掌掛點 hand_*（拳頭中心）；leg_* → shin_*（膝蓋，正的往後彎）
-# 拳頭模型與手持武器都掛在手掌掛點上（武器的 grip 對齊掛點，見 DarkFantasy._hold），要轉武器就轉手掌掛點
+#   arm_* → forearm_*（手肘，只彎 rotation.x，負的往前彎）→ 手掌掛點 hand_*（拳頭中心）→ 手持 held_*；leg_* → shin_*（膝蓋，正的往後彎）
+# 拳頭模型掛在手掌掛點、手持武器掛在手持關節（平常跟手掌重合，武器的 grip 對齊，見 DarkFantasy._hold）；要轉武器就轉手掌掛點，
+# 死掉時武器從手上掉下去就動手持關節（HeldDrop）
 # 角色面向 +Z，右側為 -X；四肢往 -Y 延伸。造型由 view/styles/ 建立，零件透過 kit 加入
 class_name Rig
 extends Node3D
@@ -18,11 +19,13 @@ var forearm_r := Node3D.new()
 var forearm_l := Node3D.new()
 var shin_r := Node3D.new()
 var shin_l := Node3D.new()
+var held_r := Node3D.new()   # 右手、左手拿的東西掛這裡（平常是單位矩陣）
+var held_l := Node3D.new()
 var height := 2.0
 var kit := PartKit.new()
-var weapon_main: Node3D = null      # 掛在 hand_r
+var weapon_main: Node3D = null      # 掛在 held_r
 var weapon_offhand: Node3D = null   # 掛在左前臂掛點 forearm_l（盾）
-var weapon_left: Node3D = null      # 掛在 hand_l（弓、左手的匕首）
+var weapon_left: Node3D = null      # 掛在 held_l（弓、左手的匕首）
 var weapon_back: Node3D = null       # 背在身上的（弓的箭袋），掛在背部掛點 back
 var weapon_quiver_arrows: Array = []   # 箭袋裡露出的箭（照剩幾發顯示）
 var weapon_nock: Node3D = null       # 掛在 hand_r 的搭弦箭（弓），拉弓時才顯示
@@ -52,6 +55,8 @@ func _init(j: Dictionary) -> void:
 	arm_l.add_child(forearm_l)
 	forearm_r.add_child(hand_r)
 	forearm_l.add_child(hand_l)
+	hand_r.add_child(held_r)
+	hand_l.add_child(held_l)
 	leg_r.add_child(shin_r)
 	leg_l.add_child(shin_l)
 	head.position = Vector3(0.0, j.neck, j.get("neck_z", 0.0))
@@ -104,7 +109,7 @@ func optimize() -> Rig:
 
 # 順序 = SkinnedRig.BONE_NAMES（模板的 anchor 編號、蒙皮的骨頭編號都照這個）
 func _anchors() -> Array[Node3D]:
-	return [self, body, head, arm_r, arm_l, leg_r, leg_l, hand_r, hand_l, forearm_r, forearm_l, shin_r, shin_l]
+	return [self, body, head, arm_r, arm_l, leg_r, leg_l, hand_r, hand_l, forearm_r, forearm_l, shin_r, shin_l, held_r, held_l]
 
 
 ## 記下合併後的零件（共用 mesh，材質只記顏色），之後同種角色用 from_template 直接組出，不必重新合併
@@ -163,11 +168,11 @@ func set_weapon(model: StringName, off_model: StringName = &"") -> void:
 		hand_r.add_child(weapon_nock)
 	weapon_gem = w.get("gem")
 	if weapon_main != null:
-		hand_r.add_child(weapon_main)
+		held_r.add_child(weapon_main)
 	if weapon_offhand != null:
 		(mount_nodes.get(&"forearm_l", forearm_l) as Node3D).add_child(weapon_offhand)
 	if weapon_left != null:
-		hand_l.add_child(weapon_left)
+		held_l.add_child(weapon_left)
 	if _ghost_overlay != null:
 		set_ghost(_ghost_overlay, _ghost_transparency)   # 新的武器零件也要半透明
 

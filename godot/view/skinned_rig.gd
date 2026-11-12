@@ -1,4 +1,4 @@
-# 小怪用的蒙皮角色（D5 效能）：同種角色的零件（Rig 合併後的模板）合成一個網格，用 13 根骨頭的 Skeleton3D 擺姿勢
+# 小怪用的蒙皮角色（D5 效能）：同種角色的零件（Rig 合併後的模板）合成一個網格，用 15 根骨頭的 Skeleton3D 擺姿勢
 # 每隻怪只剩 1~2 次繪製（原本每個關節、每種顏色各一次，約 13~16 次）；顏色放在頂點色
 # 關節（body / head / arm_r…）是只存數值的 Joint，介面同 Node3D 的 position / rotation / scale，EnemyAnimator 不必改；
 # 畫面層每幀呼叫 flush() 把關節寫進骨架。頂點存在各自關節的座標系，綁定姿勢用單位矩陣（骨架姿勢 × 頂點 = 位置）
@@ -6,10 +6,10 @@ class_name SkinnedRig
 extends Node3D
 
 # 骨頭順序 = Rig._anchors()：0 root、1 body、2 head、3 arm_r、4 arm_l、5 leg_r、6 leg_l、7 hand_r、8 hand_l、
-# 9 forearm_r、10 forearm_l、11 shin_r、12 shin_l（手掌掛在前臂下）
+# 9 forearm_r、10 forearm_l、11 shin_r、12 shin_l、13 held_r、14 held_l（手掌掛在前臂下、手持掛在手掌下）
 const BONE_NAMES: Array[String] = ["root", "body", "head", "arm_r", "arm_l", "leg_r", "leg_l", "hand_r", "hand_l",
-	"forearm_r", "forearm_l", "shin_r", "shin_l"]
-const BONE_PARENTS: Array[int] = [-1, 0, 1, 1, 1, 1, 1, 9, 10, 3, 4, 5, 6]
+	"forearm_r", "forearm_l", "shin_r", "shin_l", "held_r", "held_l"]
+const BONE_PARENTS: Array[int] = [-1, 0, 1, 1, 1, 1, 1, 9, 10, 3, 4, 5, 6, 7, 8]
 const CULL_MARGIN := 2.5   # 自訂外框：倒下、舉手的姿勢都在這個範圍內
 
 var body := Joint.new()
@@ -24,6 +24,8 @@ var forearm_r := Joint.new()
 var forearm_l := Joint.new()
 var shin_r := Joint.new()
 var shin_l := Joint.new()
+var held_r := Joint.new()
+var held_l := Joint.new()
 var height := 2.0
 var skeleton := Skeleton3D.new()
 
@@ -50,7 +52,7 @@ class Joint:
 # t：Rig.to_template() 的結果（DarkFantasy 依種類快取）
 func _init(kind: StringName, t: Dictionary) -> void:
 	var j: Dictionary = t.joints
-	_joints = [body, head, arm_r, arm_l, leg_r, leg_l, hand_r, hand_l, forearm_r, forearm_l, shin_r, shin_l]
+	_joints = [body, head, arm_r, arm_l, leg_r, leg_l, hand_r, hand_l, forearm_r, forearm_l, shin_r, shin_l, held_r, held_l]
 	head.position = Vector3(0.0, j.neck, j.get("neck_z", 0.0))
 	arm_r.position = Vector3(-j.shoulder_x, j.shoulder_y, j.get("shoulder_z", 0.0))
 	arm_l.position = Vector3(j.shoulder_x, j.shoulder_y, j.get("shoulder_z", 0.0))
@@ -151,8 +153,8 @@ func set_held_weapon(model: StringName, off_model: StringName = &"") -> void:
 	if model == &"":
 		return
 	var w := DarkFantasy.weapon(model)
-	_attach(w.get("main"), "hand_r")
-	_attach(w.get("left"), "hand_l")
+	_attach(w.get("main"), "held_r")
+	_attach(w.get("left"), "held_l")
 	if off_model != &"":
 		_attach(DarkFantasy.offhand(off_model).get("offhand"), "forearm_l")
 
