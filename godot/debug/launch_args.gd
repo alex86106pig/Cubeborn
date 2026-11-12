@@ -13,7 +13,7 @@
 #   --seed=N（這一局的種子：每層的怪群與寶箱配置照它，開局印 seed=N；不給網址參數用）
 #   畫面設定（2026-10-27）：--shadows=0 / --lights=0 蓋掉設定頁的陰影 / 光源（不存檔），內顯量效能時當對照組
 #   動作表：--pose-test=表名（不開遊戲，畫一張動作表，見 debug/pose_gallery.gd）--pose-view=side|front
-#   動畫檢視器：--anim-viewer（不開遊戲，選角色選動作播放，見 debug/anim_viewer.gd）
+#   動畫檢視器：--anim-viewer（不開遊戲，選角色選動作播放，見 debug/anim_viewer.gd）；--anim-viewer=角色:動作 直接打開那個（例 enemy-gravekeeper:lantern）
 # 網頁版沒有指令列：網址的查詢參數轉成同樣的 --參數，只開放 WEB_URL_ARGS
 class_name LaunchArgs
 extends RefCounted
@@ -60,7 +60,8 @@ var perf := false
 var video: Dictionary = {}
 var pose_test := ""             # --pose-test=表名：動作表（PoseGallery），不開遊戲
 var pose_view := "side"
-var anim_viewer := false         # --anim-viewer：動畫檢視器（AnimViewer），不開遊戲       # --shadows= / --lights=：設定頁的鍵 → bool（沒指定就不放）
+var anim_viewer := false         # --anim-viewer：動畫檢視器（AnimViewer），不開遊戲
+var anim_viewer_pick := ""       # --anim-viewer=角色:動作：一打開就選好       # --shadows= / --lights=：設定頁的鍵 → bool（沒指定就不放）
 
 
 # 這次執行的參數：指令列，網頁版再加上網址的查詢參數
@@ -156,8 +157,9 @@ static func parse(args: PackedStringArray) -> LaunchArgs:
 			a.pose_test = value
 		elif arg.begins_with("--pose-view="):
 			a.pose_view = value
-		elif arg == "--anim-viewer":
+		elif arg == "--anim-viewer" or arg.begins_with("--anim-viewer="):
 			a.anim_viewer = true
+			a.anim_viewer_pick = value if arg.contains("=") else ""
 		elif arg.begins_with("--shadows=") or arg.begins_with("--lights="):
 			a.video[arg.get_slice("=", 0).trim_prefix("--")] = value != "0"
 	return a

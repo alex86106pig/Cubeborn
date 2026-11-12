@@ -1,5 +1,5 @@
 # 錄動作（除錯用，動作表 PoseGallery 與動畫檢視器 AnimViewer 共用）：用真的模擬跑一段，錄下每一步的 anim、速度、位置。
-# 一段 = 一列 { name（顯示的名字）, key（英文 id）, subject（Player / Enemy）, frames（[{anim, vel, pos, facing}]）, samples（動作表取的 8 步）, make }；
+# 一段 = 一列 { name（顯示的名字）, key（英文 id）, subject（Player / Enemy）, frames（[{anim, vel, pos, facing, height, ground, events}]）, samples（動作表取的 8 步）, make }；
 # make() 回傳一隻新的角色 { rig, anim（Animator / EnemyAnimator） }，從第 0 步重播到第 i 步就是第 i 步的姿勢（動畫器的平滑也算進去）。
 # 用完要 clear()：錄的時候建的 World 有循環參照
 class_name AnimRecorder
@@ -103,7 +103,8 @@ static func _record(w: World, e: Entity, steps: int, cmd: Callable) -> Array:
 	for i in steps:
 		var c: InputCmd = cmd.call(i)
 		w.step({World.HOST_PEER_ID: c}, DT)
-		out.append({"anim": e.anim.duplicate(true), "vel": e.velocity, "pos": e.pos, "facing": e.facing})
+		out.append({"anim": e.anim.duplicate(true), "vel": e.velocity, "pos": e.pos, "facing": e.facing, "height": e.height,
+			"ground": e.ground_height, "events": w.events.duplicate(true)})   # events：這一步的事件（檢視器拿來放特效）
 	return out
 
 
@@ -162,10 +163,15 @@ func _player_row(key: String, p: Player, frames: Array, last := -1) -> Dictionar
 			return {"rig": rig, "anim": Animator.new(rig)}}
 
 
-# 戰技：先站穩錄好 anim，再每一步把 skill / skill_time 塞進去（衝刺類給往前的速度與位置，腳才會跑）
+# 戰技：先真的在模擬裡放（身前擺一隻打不死的骷髏當目標，位移、打中的火花、爆炸都錄得到）；放不出來的（例如條件不符）
+# 才退回假的：站穩錄好 anim，再每一步把 skill / skill_time 塞進去（衝刺類給往前的速度與位置，腳才會跑）
 func skill_rows(ids: Array) -> Array:
 	var rows := []
 	for id: StringName in ids:
+		var real := _cast_row(id)
+		if not real.is_empty():
+			rows.append(real)
+			continue
 		var def: Dictionary = SkillDefs.SKILLS[id]
 		var w := _new_world()
 		var p := _player(w, def.weapons[0])
@@ -186,11 +192,36 @@ func skill_rows(ids: Array) -> Array:
 					vel = Vector2(0, def.distance / def.time)
 					a["loco"] = &"move"
 			pos += vel * DT
-			frames.append({"anim": a, "vel": vel, "pos": pos, "facing": p.facing})
+			frames.append({"anim": a, "vel": vel, "pos": pos, "facing": p.facing, "height": p.height, "ground": p.ground_height, "events": []})
 		var row := _player_row(String(id), p, frames, roundi(total / DT))
 		row.name = "戰技・%s" % ItemDefs.ITEMS[id].get("name", id) if ItemDefs.ITEMS.has(id) else String(id)
 		rows.append(row)
 	return rows
+
+
+func _cast_row(id: StringName) -> Dictionary:
+	var def: Dictionary = SkillDefs.SKILLS[id]
+	var w := _new_world()
+	var p := _player(w, def.weapons[0])
+	var bag: Dictionary = p.loadout.key_bags()[0]
+	var where := p.loadout.bags.find(bag)
+	var spot := p.loadout.container(where).find_spot(id)
+	if spot.is_empty() or p.loadout.add_item(p, id, spot, 0, where) == &"":
+		return {}
+	var dummy := _spawn(w, &"grunt", p.pos + Vector2(0, 1.6), 0)
+	dummy.stats.set_base(&"max_hp", 1e6)
+	dummy.hp = 1e6
+	var lead := _record(w, p, 20, func(_i: int) -> InputCmd: return _cmd(Vector2.ZERO))
+	p.mana = p.max_mana()
+	var steps := roundi(SkillDefs.pose_time(id) / DT) + 12
+	var frames := _record(w, p, steps, func(i: int) -> InputCmd: return _cmd(Vector2.ZERO, InputCmd.slot_bit(0) if i == 0 else 0))
+	if p.cast_log.get(id, [0, 0])[0] < 1:
+		return {}
+	var row := _player_row(String(id), p, lead + frames)
+	row.start = lead.size()
+	row.samples = even(lead.size(), lead.size() + roundi(SkillDefs.pose_time(id) / DT))
+	row.name = "戰技・%s" % ItemDefs.ITEMS[id].get("name", id) if ItemDefs.ITEMS.has(id) else String(id)
+	return row
 
 
 # ───────── 怪物 ─────────
@@ -268,4 +299,8 @@ static func step(row: Dictionary, made: Dictionary, i: int) -> void:
 	var f: Dictionary = row.frames[i]
 	subject.anim = f.anim
 	subject.velocity = f.vel
+	subject.pos = f.pos   # 特效照實體的位置、朝向、高度放（守墓人噴火從提燈出來）
+	subject.facing = f.facing
+	subject.height = f.height
+	subject.ground_height = f.ground
 	made.anim.update(subject, DT)

@@ -1,6 +1,8 @@
 # 動畫檢視器（除錯用）：選角色、選動作，播放 / 暫停 / 逐格 / 慢動作、拖時間軸、轉視角，修動畫時用。
 # 開法：Godot 編輯器開 debug/anim_viewer.tscn 按 F6（執行中改 view/ 的動畫程式存檔就會套用，重錄才會重跑模擬）；
 # 網頁版 ?anim-viewer（main.gd 不開遊戲，只開這個）。動作用 AnimRecorder 錄（跟動作表 PoseGallery 同一套）。
+# 特效也照錄到的放：持續性的（噴火、蓄力粒子）照每一步的動作冒，事件型的（揮砍弧光、爆炸、命中火花）照錄到的事件放；慢動作時特效也跟著慢
+# 一打開就選好：AnimViewer.new("enemy-gravekeeper:lantern")（網址 ?anim-viewer=enemy-gravekeeper:lantern；動作寫英文 id）
 # 操作：空白鍵 播放 / 暫停、← → 逐格、↑ ↓ 換動作、R 重錄、滑鼠拖曳轉視角、滾輪縮放
 class_name AnimViewer
 extends Node3D
@@ -34,6 +36,8 @@ var _game_view := false
 var _dragging := false
 
 var _cam := Camera3D.new()
+var _fx := Effects.new()
+var _fx_world := World.new(&"test_arena")   # 只放正在播的那隻（Effects 照 world.entities 冒持續性的特效）
 var _subject_pick := OptionButton.new()
 var _action_list := ItemList.new()
 var _slider := HSlider.new()
@@ -41,17 +45,33 @@ var _info: Label
 var _play_button: Button
 var _panel := PanelContainer.new()
 var _syncing_slider := false
+var _initial := ""
+
+
+func _init(pick := "") -> void:
+	_initial = pick
 
 
 func _ready() -> void:
 	_build_stage()
 	_build_ui()
-	_pick_subject(0)
+	var subject := 0
+	for i in _subjects.size():
+		if _subjects[i].id == _initial.get_slice(":", 0):
+			subject = i
+	_pick_subject(subject)
+	var action := _initial.get_slice(":", 1) if _initial.contains(":") else ""
+	for i in _rows.size():
+		if _rows[i].key == action:
+			_action_list.select(i)
+			_pick_action(i)
 	print("anim viewer ready subjects=%d" % _subjects.size())
 
 
 func _exit_tree() -> void:
 	_free_rig()
+	_fx_world.entities = {}   # 角色是錄的 World 的，不在這裡拆
+	_fx_world.clear()
 	_recorder.clear()
 
 
@@ -59,6 +79,7 @@ func _exit_tree() -> void:
 
 func _build_stage() -> void:
 	add_child(_cam)
+	add_child(_fx)
 	_cam.current = true
 	_cam.fov = 40.0
 	_cam.far = 200.0
@@ -221,6 +242,8 @@ func _restart() -> void:
 # 跳到第 target 步：重建角色、從第 0 步重播（動畫器有平滑，倒退只能重播）
 func _seek(target: int) -> void:
 	_free_rig()
+	_fx.clear()
+	_fx_world.entities = {(_row.subject as Entity).id: _row.subject}
 	_made = (_row.make as Callable).call()
 	add_child(_made.rig)
 	var frames: Array = _row.frames
@@ -247,6 +270,7 @@ func _process(delta: float) -> void:
 		while _carry >= DT:
 			_carry -= DT
 			_advance()
+	_fx.sync(_fx_world, delta * _speed if _playing else 0.0)
 	_update_camera()
 
 
@@ -255,6 +279,8 @@ func _advance() -> void:
 	if _frame + 1 < frames.size():
 		_frame += 1
 		AnimRecorder.step(_row, _made, _frame)
+		for ev: Dictionary in _row.frames[_frame].get("events", []):
+			_fx.on_event(ev.name, ev)
 		_place_rig()
 		_sync_slider()
 	elif _loop:
@@ -303,8 +329,11 @@ func _place_rig() -> void:
 	var origin: Vector2 = _row.frames[_start].pos
 	var rig: Node3D = _made.rig
 	var p: Vector2 = f.pos - origin if _follow else Vector2.ZERO
-	rig.position = Vector3(p.x, 0.0, p.y)
+	rig.position = Vector3(p.x, f.height, p.y)
 	rig.rotation.y = f.facing
+	# 特效是世界座標：整組跟角色一樣平移（原地時跟著角色現在的位置）
+	var shift: Vector2 = origin if _follow else f.pos
+	_fx.position = Vector3(-shift.x, 0.0, -shift.y)
 
 
 func _refresh_info() -> void:

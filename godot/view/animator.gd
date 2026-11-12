@@ -34,6 +34,9 @@ const LIE_FRONT := 0.32       # 趴著時身體離地多高：胸甲的厚度（
 const LIE_BACK := 0.4         # 仰躺時身體離地多高：背後的披風
 const DIG_RATE := 1.5         # 挖墳每秒挖幾下（D6）
 const LAND_TIME := 0.18       # 落地緩衝的秒數
+const WRIST_SHARPNESS := 25.0 # 手腕轉到目標角度的速度（出招時約 0.1 秒轉回來）
+# 各武器待機時手腕往上翹多少（負的 = 往上）：持劍的架式劍尖朝斜上方約 45°（劍順著前臂會是水平往前）
+const IDLE_WRIST := {&"longsword": -0.75}
 const LAND_DROP := 0.16       # 落地時髖部往下沉多少（× 腿長；膝蓋約彎 45°，真人落地膝蓋彎曲至少 45°）
 const BOW_REST := Basis(Vector3.RIGHT, Vector3.BACK, Vector3.DOWN)   # 不拉弓時弓平放（相對角色）：弓梢朝前後、弓背朝下、弦在上
 
@@ -48,7 +51,8 @@ var bow_hand_from := Vector3.ZERO   # 開始拉弓那一刻弓手拳頭的位置
 # 這一幀的站姿（動作層、戰技層填，收尾時踩地）：weight = 0 → 照步態；> 0 → 往 stance 的腳位與高度靠
 var stance := {"weight": 0.0, "drop": 0.0, "r": 0.0, "l": 0.0, "shift": 0.0}
 var free_legs := false   # 倒地、翻滾、空中：腿照姿勢給的角度，不踩地
-var wrist := 0.0         # 右手腕往後轉多少（不是直立武器時轉手掌掛點）：翻滾時讓劍貼著身體
+var wrist := 0.0         # 右手腕轉多少（不是直立武器時轉手掌掛點；負的往上翹）：每幀往 wrist_target 平滑轉過去
+var wrist_target := 0.0  # 這一幀要的手腕角度：待機持劍往上翹（劍尖朝斜上方）、翻滾往後轉（劍貼著身體），其他 0
 var _gait: Dictionary = {}
 var _was_airborne := false
 var _land_t := 1.0
@@ -66,7 +70,7 @@ func update(p: Player, dt: float) -> void:
 	var a := p.anim
 	BodyPose.straighten(rig)
 	rig.head.rotation = Vector3.ZERO
-	wrist = 0.0
+	wrist_target = 0.0
 	stance.weight = 0.0
 	free_legs = false
 	_arrow = &"none"
@@ -94,6 +98,7 @@ func update(p: Player, dt: float) -> void:
 	# 轉手掌掛點而不是武器：拳頭和武器一起轉，握的位置不會滑出拳頭
 	var upright := rig.weapon_model in UPRIGHT_MODELS and rig.weapon_main != null
 	var fore := rig.forearm_r.rotation.x
+	wrist = MathUtil.damp(wrist, wrist_target, WRIST_SHARPNESS, dt)
 	rig.hand_r.rotation = Vector3(weapon_tilt - rig.arm_r.rotation.x - fore, 0.0, 0.0) if upright else Vector3(wrist, 0.0, 0.0)
 	var drawing := _drawing
 	if rig.weapon_nock != null and not drawing:
@@ -306,6 +311,7 @@ func _pose_idle_upper_body(idle: Dictionary, dt: float) -> void:
 	rig.forearm_l.rotation.x = -(idle_elbow(false) + elbow_add + maxf(0.0, sw) * 0.4)
 	rig.body.rotation.y = 0.0
 	weapon_tilt = MathUtil.damp(weapon_tilt, idle.tilt, s, dt)
+	wrist_target = IDLE_WRIST.get(rig.weapon_model, 0.0)
 
 
 # 揮砍（劍、權杖第 1 下）：前搖把劍拉到反手側、手肘收起、腰往反方向扭（蓄力）→ 出手先轉腰、再甩肩、
@@ -622,7 +628,7 @@ func _pose_roll(k: float) -> void:
 	BodyPose.leg(rig, true, -1.6 * tuck, 2.2 * tuck)
 	BodyPose.leg(rig, false, -1.5 * tuck, 2.1 * tuck)
 	BodyPose.arm(rig, true, -0.5 * tuck, 0.3 * tuck, 2.1 * tuck)   # 拳頭收到胸前，手腕轉到劍尖朝腳（翻到頭下腳上時劍不插進地裡）
-	wrist = 2.9 * tuck
+	wrist_target = 2.9 * tuck
 	BodyPose.arm(rig, false, -0.5 * tuck, -0.3 * tuck, 2.1 * tuck)
 
 

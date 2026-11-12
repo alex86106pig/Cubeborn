@@ -36,6 +36,9 @@ const ELBOW_REST := 0.3          # 人形怪手臂自然下垂時手肘微彎
 const ZOMBIE_SHUFFLE := 0.55     # 腐屍拖著腳走：步伐只有正常的這個比例（抬腳低、步子小）
 const QUAD_DUTY := Vector2(0.5, 0.3)   # 四足小跑每隻腳著地的比例（慢 → 快）
 const QUAD_LIFT := 0.28          # 四足擺盪時腳抬多高（× 腿長）
+const SWORD_WRIST := -0.7        # 持劍的怪（骷髏、亡骸騎士）走路、站著時手腕往上翹：劍尖朝斜上方，不是順著前臂水平往前
+const SWORD_IDLE_STATES: Array[StringName] = [&"chase", &"patrol", &"dormant", &"spawn", &"hurt"]
+const WRIST_SHARPNESS := 25.0
 var rig   # Rig（Boss）或 SkinnedRig（小怪，D5）：關節介面相同
 var walk_phase := 0.0
 var _prev_state: StringName = &""
@@ -58,6 +61,8 @@ var _worm_hide := 0.0     # 噬墓巨蟲藏進地裡的比例（0 = 整隻在地
 var _moth_alt := 0.0      # 屍蛾女王畫面上飛多高（畫面自己補間到 def.moth.altitude 或 0）
 var _lich := false        # 屍巫：唸咒（aim）時雙手往前合攏，其餘同一般小怪
 var _spin := 0.0          # 骨輪滾動的角度（畫面自己累加）
+var _sword := false       # 拿長劍的（骷髏戰士、僕從、亡骸騎士、骸骨將軍重甲型態）：走路站著時手腕往上翹
+var _wrist := 0.0
 var _bow_arm_target := BOW_ARM_REST
 var _draw := 0.0          # 弓手拉弦的進度（0 = 沒拉、1 = 拉到下巴；射完平滑放下）
 var _dt := 0.0
@@ -89,6 +94,7 @@ func _init(p_rig: Node3D, e: Enemy) -> void:
 	if e.def.has("slam"):
 		_build_cracks(e)
 	_keeper = e.def.visual == &"gravekeeper"
+	_sword = e.kind in [&"grunt", &"minion", &"boss", &"bone_general"]
 
 
 func update(e: Enemy, dt: float) -> void:
@@ -361,6 +367,9 @@ func update(e: Enemy, dt: float) -> void:
 
 	if _holds_bow and _draw > 0.02:
 		_archer_draw_hand()
+	if _sword:   # 出招時平滑轉回 0（揮砍照原本的方向出手）
+		_wrist = MathUtil.damp(_wrist, SWORD_WRIST if state in SWORD_IDLE_STATES and not colossus else 0.0, WRIST_SHARPNESS, dt)
+		rig.hand_r.rotation = Vector3(_wrist, 0.0, 0.0)
 	if not _free and not (_hound or _spider or _beetle or _wheel):
 		_finish()
 	if _crack_root != null:

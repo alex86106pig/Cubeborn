@@ -79,6 +79,7 @@ const MOTH_JOINTS := {
 	"neck": 1.75, "neck_z": 0.35, "shoulder_y": 1.5, "shoulder_x": 0.3, "grip": 0.5,
 	"hip_y": 0.8, "hip_x": 0.25, "height": 2.2,
 }
+const KEEPER_SPADE := Color("9a948a")   # 守墓人鏟面：磨亮的舊鐵（要比地面亮，看得出是鏟子）
 const BOSS_SCALE := 1.85
 const KEEPER_SCALE := 1.3
 const WOLF_SCALE := 1.45
@@ -529,10 +530,16 @@ static func gravekeeper() -> Rig:
 		k.add(limb[0], PartKit.cyl(0.09, 0.085, 0.48, 6), k.mat(C.keeper_hat), {"y": -0.24})
 		k.add(limb[1], PartKit.cyl(0.085, 0.075, 0.38, 6), k.mat(C.keeper_hat), {"y": -0.18})
 		k.add(limb[1], PartKit.box(0.14, 0.1, 0.26), k.mat(C.leather), {"y": -0.41, "z": 0.05})
-	# 鐵鏟：握把中央是 grip，鏟面朝下
+	# 鐵鏟：手握在柄的上段（grip），上端 T 型握把、下端鐵套環接鏟面，鏟面是磨亮的舊鐵、底下尖（暗色的鐵在墓地裡看不出是鏟子）
 	var shovel := Node3D.new()
-	k.add(shovel, PartKit.cyl(0.03, 0.03, 1.2, 5), k.mat(C.wood), {"y": -0.1})
-	k.add(shovel, PartKit.box(0.26, 0.34, 0.03), k.mat(C.iron), {"y": -0.82})
+	var blade := k.mat(KEEPER_SPADE)
+	k.add(shovel, PartKit.box(0.2, 0.045, 0.045), k.mat(C.wood), {"y": 0.48})
+	k.add(shovel, PartKit.cyl(0.028, 0.028, 1.06, 5), k.mat(C.wood), {"y": -0.05})
+	k.add(shovel, PartKit.cyl(0.045, 0.04, 0.1, 6), k.mat(C.iron), {"y": -0.6})
+	# 鏟面寬大於長、上緣有一道踩腳的捲邊、底下只微尖（太長太尖會像矛頭）
+	k.add(shovel, PartKit.box(0.36, 0.3, 0.025), blade, {"y": -0.79, "rx": -0.15})
+	k.add(shovel, PartKit.box(0.38, 0.035, 0.06), k.mat(C.iron), {"y": -0.645, "z": 0.01, "rx": -0.15})
+	k.add(shovel, PartKit.box(0.16, 0.16, 0.025), blade, {"y": -0.9, "z": 0.017, "rx": -0.15, "rz": PI / 4.0})   # 尖端：轉 45° 的小方塊下半露出 6 公分
 	shovel.rotation.x = PI / 2.0
 	rig.hand_r.add_child(_hold(shovel, {"grip": Vector3(0.0, 0.2, 0.0)}))
 	# 提燈：提把在 grip，燈火發光（噴火的特效從這裡出來）

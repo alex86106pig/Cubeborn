@@ -49,7 +49,7 @@ func _ready() -> void:
 	InputCollector.register_actions()
 	_apply_args()
 	if args.pose_test != "" or args.anim_viewer:   # 動作表 / 動畫檢視器：不開遊戲，只看角色動作（debug/）
-		add_child(PoseGallery.new(args.pose_test, args.pose_view) if args.pose_test != "" else AnimViewer.new())
+		add_child(PoseGallery.new(args.pose_test, args.pose_view) if args.pose_test != "" else AnimViewer.new(args.anim_viewer_pick))
 		set_process(false)
 		set_physics_process(false)
 		set_process_unhandled_input(false)
