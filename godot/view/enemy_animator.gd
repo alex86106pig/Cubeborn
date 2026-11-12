@@ -189,11 +189,13 @@ func update(e: Enemy, dt: float) -> void:
 			var fall := clampf(t / DEATH_FALL_TIME, 0.0, 1.0)
 			var f := MathUtil.ease_out_cubic(fall)
 			rig.body.rotation.x = lerpf(0.0, -PI / 2.0, f)
-			rig.body.position.y = 0.13 * fall
+			rig.body.position.y = (0.36 if e.is_boss() else 0.2) * rig.body.scale.y * fall   # 仰躺：背的厚度（Boss 有盔甲、披風、外套），不穿進地板
 			BodyPose.leg(rig, true, -0.5 * sin(PI * fall) + 0.1 * f, 1.0 * sin(PI * fall) + 0.25 * f)
 			BodyPose.leg(rig, false, -0.3 * sin(PI * fall), 0.8 * sin(PI * fall) + 0.1 * f)
-			BodyPose.arm(rig, true, 2.0 * f, -0.6 * f, 0.5 * f)
-			BodyPose.arm(rig, false, 2.0 * f, 0.6 * f, 0.4 * f)
+			rig.arm_r.rotation = Vector3(-0.3 * f, 0.0, -1.3 * f)   # 雙手往兩側攤在地上
+			rig.arm_l.rotation = Vector3(-0.2 * f, 0.0, 1.2 * f)
+			rig.forearm_r.rotation.x = -0.5 * f
+			rig.forearm_l.rotation.x = -0.4 * f
 			var corpse: float = def.corpse_time
 			var sink_start := corpse * CORPSE_SINK_START
 			rig.position.y = -CORPSE_SINK_DEPTH * clampf((t - sink_start) / (corpse - sink_start), 0.0, 1.0)
@@ -462,12 +464,13 @@ func _pose_melee_swing(t: float, s: Dictionary) -> void:
 		_set_stance(0.0, -0.05, 0.25, k)
 	elif t < windup + active:
 		var k := (t - windup) / active
-		BodyPose.arm(rig, true, lerpf(-2.9, -0.3, k), -0.1, lerpf(1.4, 0.05, minf(1.0, k * 1.5)))
+		# 砍到底停在腰前（手臂相對身體 -0.8、上身前傾 0.25 → 實際往前約 0.55），刀尖不插進地裡
+		BodyPose.arm(rig, true, lerpf(-2.9, -0.8, k), -0.1, lerpf(1.4, 0.05, minf(1.0, k * 1.5)))
 		rig.body.rotation.x = lerpf(-0.18, 0.25, k)
 		_set_stance(0.14 * k, -0.15, 0.4)
 	else:
 		var k := clampf((t - windup - active) / s.recovery, 0.0, 1.0)
-		BodyPose.arm(rig, true, lerpf(-0.3, -0.6, k), 0.0, lerpf(0.05, ELBOW_REST, k))
+		BodyPose.arm(rig, true, lerpf(-0.8, -0.6, k), 0.0, lerpf(0.05, ELBOW_REST, k))
 		rig.body.rotation.x = lerpf(0.25, 0.0, k)
 		_set_stance(0.14 * (1.0 - k), -0.15, 0.4, 1.0 - k)
 	BodyPose.arm(rig, false, -0.5, 0.2, 0.9)
@@ -527,12 +530,13 @@ func _pose_rush(a: Dictionary, _dt: float, r: Dictionary) -> void:
 		&"windup":
 			var k := MathUtil.ease_out_cubic(clampf(pt / r.windup, 0.0, 1.0))
 			_walk(0.0, -0.6, -0.6)
-			BodyPose.arm(rig, true, lerpf(-0.6, 0.5, k), -0.15, 0.5)
+			BodyPose.arm(rig, true, lerpf(-0.6, -0.65, k), -0.15, lerpf(0.5, 0.9, k))   # 拿刀的手低握、刀尖朝前（前傾時手臂相對身體要多往前）
 			BodyPose.arm(rig, false, lerpf(-0.6, 0.5, k), 0.15, 0.5)
 			rig.body.rotation.x = lerpf(0.0, 0.4, k)
 			_set_stance(0.15 * k, 0.2, -0.3)
 		&"dash":
 			_walk(1.0, 0.5, 0.5, 0.8)
+			BodyPose.arm(rig, true, -0.65, -0.15, 0.9)
 			rig.body.rotation.x = 0.4
 		_:
 			_walk(0.0, -0.6, -0.6)
@@ -547,7 +551,7 @@ func _pose_charge(a: Dictionary, _dt: float, c: Dictionary) -> void:
 			var kl := clampf(pt / maxf(a.get("windup", c.windup), 0.01), 0.0, 1.0)
 			var k := MathUtil.ease_out_cubic(kl)
 			_walk(0.0, -0.4, -0.4)
-			BodyPose.arm(rig, true, lerpf(-0.4, 0.6, k), -0.2, 0.7)
+			BodyPose.arm(rig, true, lerpf(-0.4, -0.6, k), -0.2, lerpf(0.6, 0.9, k))   # 劍低握、劍尖朝前（前傾 0.45 時手臂相對身體 -0.6 → 實際往前約 0.15，前臂往前）
 			BodyPose.arm(rig, false, lerpf(-0.4, 0.6, k), 0.2, 0.7)
 			rig.body.rotation.x = lerpf(0.0, 0.45, k)
 			_set_stance(0.15 * k, -0.25, 0.3)
@@ -555,6 +559,7 @@ func _pose_charge(a: Dictionary, _dt: float, c: Dictionary) -> void:
 			_lift_r = Vector2(-sin(scrape) * 0.6, (1.0 - cos(scrape)) * 0.5)
 		&"dash":
 			_walk(1.0, 0.6, 0.6, 0.9)
+			BodyPose.arm(rig, true, -0.6, -0.2, 0.9)
 			rig.body.rotation.x = 0.35
 		&"stunned":
 			_walk(0.0, -0.3, -0.3, 0.15)
@@ -1024,12 +1029,12 @@ func _pose_colossus(e: Enemy, a: Dictionary, state: StringName, t: float, _dt: f
 			_arms(-2.4, 0.4, 1.6)
 			BodyPose.leg(rig, true, -1.3, 2.0)
 			BodyPose.leg(rig, false, -1.3, 2.0)
-			rig.body.position.y = -0.2
+			rig.body.position.y = 0.1   # 蜷成球：抱膝的腿在身體下面，球要抬起來腿才不穿進地板
 			rig.body.rotation.x = 1.0
 			rig.head.rotation.x = 0.6
 			if a.get("phase", &"windup") == &"roll":
 				rig.body.rotation.z = sin(t * 22.0) * 0.15
-				rig.body.position.y = -0.2 + absf(sin(t * 11.0)) * 0.15
+				rig.body.position.y = 0.1 + absf(sin(t * 11.0)) * 0.15
 		&"wheel_stun":
 			_free = true
 			rig.body.rotation.x = -0.55

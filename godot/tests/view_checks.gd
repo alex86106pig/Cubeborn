@@ -2328,8 +2328,9 @@ static func check_sound_distance() -> String:
 
 
 static func check_mesh_counts() -> String:
-	# 骷髏、弓手在遊戲裡用蒙皮版（≤ 2 個網格，「蒙皮小怪」檢查）；關節版是蒙皮的模板，加手肘、膝蓋多 4 節（YangHsu 2026-11-12 放寬 16 → 20）
-	var limits := {&"player": 20, &"grunt": 20, &"archer": 20, &"boss": 22}
+	# 只查遊戲裡用關節版畫的角色（玩家、Boss）。小怪在遊戲裡用蒙皮版，繪製次數由「蒙皮小怪」檢查（≤ 2 個網格）；
+	# 小怪的關節版只是蒙皮的模板，畫面上不出現，零件數不影響效能
+	var limits := {&"player": 20, &"boss": 22}
 	var err := ""
 	for kind: StringName in limits:
 		var rig := DarkFantasy.character(kind)

@@ -12,12 +12,13 @@
 #   --player-at=x,y（開場站在地圖座標 x, y，v0.32.0）--floor=N（開場直接換到第 N 層，地圖與 Boss 跟著換）
 #   --seed=N（這一局的種子：每層的怪群與寶箱配置照它，開局印 seed=N；不給網址參數用）
 #   畫面設定（2026-10-27）：--shadows=0 / --lights=0 蓋掉設定頁的陰影 / 光源（不存檔），內顯量效能時當對照組
+#   動作表：--pose-test=表名（不開遊戲，畫一張動作表，見 debug/pose_gallery.gd）--pose-view=side|front
 # 網頁版沒有指令列：網址的查詢參數轉成同樣的 --參數，只開放 WEB_URL_ARGS
 class_name LaunchArgs
 extends RefCounted
 
 # 網頁版可以從網址帶的參數（url_query_args）；v0.36.3 加自動移動 / 攻擊，用來量「第一次出現」的卡頓
-const WEB_URL_ARGS: Array[String] = ["seconds", "horde", "perf", "elites", "player-hp", "auto-move", "auto-move-seconds", "auto-attack", "weapon", "class", "difficulty", "no-spawn", "weapon-test", "items", "shadows", "lights", "floor", "host", "join", "room", "net-autostart", "loot-test", "stage-hop", "flame-test"]   # loot-test：開箱與掉落卡頓的固定場景；flame-test：守墓人一直噴火；stage-hop：量換小關 / 換層的卡頓； host / join / room / net-autostart：網頁版多人自動測試、之後的邀請連結（2026-10-27 使用者同意開放；?host&room 開房印 net room=房號，?join=房號&room 加入）；shadows / lights：內顯量效能的對照組（2026-10-27）；weapon / class / no-spawn / weapon-test：網頁版逐把看武器（2026-10-27）；difficulty：選角畫面的難度；items：帶道具量效能（G7）；floor：量第 2 層以後的地圖
+const WEB_URL_ARGS: Array[String] = ["seconds", "horde", "perf", "elites", "player-hp", "auto-move", "auto-move-seconds", "auto-attack", "weapon", "class", "difficulty", "no-spawn", "weapon-test", "items", "shadows", "lights", "floor", "host", "join", "room", "net-autostart", "loot-test", "stage-hop", "flame-test", "pose-test", "pose-view"]   # loot-test：開箱與掉落卡頓的固定場景；flame-test：守墓人一直噴火；stage-hop：量換小關 / 換層的卡頓； host / join / room / net-autostart：網頁版多人自動測試、之後的邀請連結（2026-10-27 使用者同意開放；?host&room 開房印 net room=房號，?join=房號&room 加入）；shadows / lights：內顯量效能的對照組（2026-10-27）；weapon / class / no-spawn / weapon-test：網頁版逐把看武器（2026-10-27）；difficulty：選角畫面的難度；items：帶道具量效能（G7）；floor：量第 2 層以後的地圖
 
 var run_seconds := 0.0           # > 0：跑這麼多秒後印出狀態並結束（自動驗證）
 var screenshot_path := ""
@@ -55,7 +56,9 @@ var run_seed := -1               # --seed=N：這一局的種子（-1 = 隨機�
 var exit_open := false
 var ghost := false
 var perf := false
-var video: Dictionary = {}       # --shadows= / --lights=：設定頁的鍵 → bool（沒指定就不放）
+var video: Dictionary = {}
+var pose_test := ""             # --pose-test=表名：動作表（PoseGallery），不開遊戲
+var pose_view := "side"       # --shadows= / --lights=：設定頁的鍵 → bool（沒指定就不放）
 
 
 # 這次執行的參數：指令列，網頁版再加上網址的查詢參數
@@ -147,6 +150,10 @@ static func parse(args: PackedStringArray) -> LaunchArgs:
 			a.ghost = true
 		elif arg == "--perf":
 			a.perf = true
+		elif arg.begins_with("--pose-test="):
+			a.pose_test = value
+		elif arg.begins_with("--pose-view="):
+			a.pose_view = value
 		elif arg.begins_with("--shadows=") or arg.begins_with("--lights="):
 			a.video[arg.get_slice("=", 0).trim_prefix("--")] = value != "0"
 	return a

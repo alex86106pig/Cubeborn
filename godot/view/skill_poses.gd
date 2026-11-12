@@ -2,6 +2,7 @@
 # 長度照 SkillDefs.pose_time；只是動作，不影響出招時機與判定。每招照真實的發力方式做：
 #   揮砍類 = 蓄力時腰往反方向扭、手肘收起，出手轉腰帶動肩膀、手肘在打中時打直；刺 = 擊劍的弓步（同側腳踏出、後腿蹬直、後手往後平衡）；
 #   砸地 = 舉過頭時手肘彎、往下砸時膝蓋跟著蹲（彎膝不彎腰）；衝刺 = 跑步姿勢加大前傾；拉弓沿用 Animator.pose_bow
+# 手臂的角度是相對身體：上身前傾 L 時，手臂實際往前的角度 = -x - L（前傾時垂下的手會往後擺），拿鐵鏟的招照這個算鏟面剛好碰到地
 # 手上的武器不符（幻影修飾放的）也照做：弓的招沒有弓時改成往前一指
 class_name SkillPoses
 extends RefCounted
@@ -90,12 +91,12 @@ static func _whirlwind(an: Animator, k: float) -> void:
 	match s[0]:
 		0:
 			rig.body.rotation.y = lerpf(0.0, -0.7, e)
-			BodyPose.arm(rig, true, lerpf(-0.6, -1.3, e), lerpf(0.0, -1.1, e), lerpf(0.9, 1.1, e))
+			BodyPose.arm(rig, true, lerpf(-0.6, -1.3, e), lerpf(0.0, -1.1, e), lerpf(0.9, 0.3, e))
 			BodyPose.arm(rig, false, lerpf(-0.3, -1.0, e), 0.6 * e, 1.2)
 			an.set_stance(0.14 * e, -0.15, 0.15, e)
 		1:
 			rig.body.rotation.y = -0.7 + (TAU + 0.7) * smoothstep(0.0, 1.0, e)
-			BodyPose.arm(rig, true, -1.5, -1.15, lerpf(1.1, 0.12, minf(1.0, e * 3.0)))
+			BodyPose.arm(rig, true, -1.5, -1.15, lerpf(0.3, 0.12, minf(1.0, e * 3.0)))
 			BodyPose.arm(rig, false, -1.3, 1.0, 0.45)
 			an.set_stance(0.16, -0.15, 0.15)
 		_:
@@ -122,9 +123,9 @@ static func _charge_slash(an: Animator, k: float) -> void:
 	var s := _seg(k, 0.6, 0.85)
 	var e: float = s[1]
 	match s[0]:
-		0:
+		0:   # 劍低握在腰前、劍尖朝前（前臂平伸），左手跟著跑步擺
 			rig.body.rotation.x = 0.35
-			BodyPose.arm(rig, true, 0.55, -0.35, 0.45)
+			BodyPose.arm(rig, true, -0.55, -0.2, 1.1)
 			BodyPose.arm(rig, false, -0.9 + 0.5 * sin(k * 30.0), 0.1, 1.5)
 		1:
 			rig.body.rotation.y = lerpf(-0.5, 0.45, smoothstep(0.0, 0.7, e))
@@ -166,7 +167,7 @@ static func _shield_charge(an: Animator, k: float) -> void:
 	rig.body.rotation.y = 0.35 * hold   # 左肩在前
 	rig.head.rotation.x = 0.15 * hold
 	BodyPose.arm(rig, false, lerpf(-0.1, -1.3, hold), lerpf(0.0, -0.65, hold), lerpf(0.3, 1.45, hold))
-	BodyPose.arm(rig, true, lerpf(-0.35, 0.35, hold), 0.0, lerpf(0.9, 1.1, hold))
+	BodyPose.arm(rig, true, lerpf(-0.35, -0.65, hold), 0.0, lerpf(0.9, 1.2, hold))   # 劍低握在腰前、劍尖朝前（不拖地）
 	if brace > 0.0:
 		an.set_stance(0.2, -0.45, 0.45, brace)
 
@@ -293,7 +294,7 @@ static func _leap_shot(an: Animator, k: float) -> void:
 	if k < 0.75:
 		an.free_legs = true
 		var air := sin(PI * k / 0.75)
-		rig.body.position.y = 0.0
+		rig.body.position.y = 0.35 * air   # 往後跳起來（模擬層只往後推，跳的高度只在畫面）
 		rig.body.rotation.x = -0.22 * air
 		BodyPose.leg(rig, true, lerpf(-0.2, -0.9, air), lerpf(0.2, 1.3, air))
 		BodyPose.leg(rig, false, lerpf(0.1, -0.3, air), lerpf(0.2, 1.6, air))
@@ -331,13 +332,13 @@ static func _ground_slam(an: Animator, k: float) -> void:
 			x = lerpf(-0.5, -2.75, e)
 			elbow = lerpf(0.6, 1.15, e)
 			lean = -0.15 * e
-		1:
-			x = lerpf(-2.75, -0.55, minf(1.0, e * 2.0))
+		1:   # 上身前傾 0.5、手臂相對身體 -1.3（實際往前 0.8）：鏟面剛好落在身前的地上
+			x = lerpf(-2.75, -1.3, minf(1.0, e * 2.0))
 			elbow = lerpf(1.15, 0.15, minf(1.0, e * 2.0))
 			lean = lerpf(-0.15, 0.5, minf(1.0, e * 2.0))
 			drop = 0.34 * minf(1.0, e * 2.0)
 		_:
-			x = lerpf(-0.55, -0.5, e)
+			x = lerpf(-1.3, -0.5, e)
 			elbow = lerpf(0.15, 0.6, e)
 			lean = lerpf(0.5, 0.0, e)
 			drop = 0.34 * (1.0 - e)
@@ -353,12 +354,12 @@ static func _dirt_toss(an: Animator, k: float) -> void:
 	var s := _seg(k, 0.35, 0.6)
 	var e: float = s[1]
 	match s[0]:
-		0:
-			BodyPose.arm(rig, true, lerpf(-0.5, -0.25, e), 0.1, lerpf(0.6, 0.3, e))
+		0:   # 上身前傾 0.45、手臂相對身體 -1.2（實際往前 0.75）：鏟面插在身前的土裡
+			BodyPose.arm(rig, true, lerpf(-0.5, -1.2, e), 0.1, lerpf(0.6, 0.3, e))
 			rig.body.rotation.x = 0.45 * e
 			an.set_stance(0.3 * e, -0.2, 0.35, e)
 		1:
-			BodyPose.arm(rig, true, lerpf(-0.25, -2.0, e), 0.1, lerpf(0.3, 0.45, e))
+			BodyPose.arm(rig, true, lerpf(-1.2, -2.0, e), 0.1, lerpf(0.3, 0.45, e))
 			rig.body.rotation.x = lerpf(0.45, -0.1, e)
 			an.set_stance(lerpf(0.3, 0.05, e), lerpf(-0.2, -0.3, e), 0.45)
 		_:
@@ -409,7 +410,7 @@ static func _bury(an: Animator, k: float) -> void:
 	var rig := an.rig
 	var open := minf(1.0, k / 0.15) * (1.0 - smoothstep(0.85, 1.0, k))
 	var stab := maxf(0.0, sin(clampf((k - 0.1) / 0.75, 0.0, 1.0) * TAU * 2.0))   # 兩下
-	BodyPose.arm(rig, true, lerpf(-0.5, lerpf(-1.7, -0.7, stab), open), 0.1, lerpf(0.6, lerpf(1.2, 0.2, stab), open))
+	BodyPose.arm(rig, true, lerpf(-0.5, lerpf(-1.9, -1.15, stab), open), 0.1, lerpf(0.6, lerpf(1.2, 0.2, stab), open))   # 鏟到底時鏟面剛好在地面
 	rig.body.rotation.x = lerpf(0.0, 0.3 + 0.15 * stab, open)
 	an.grip_shaft(0.45)
 	an.set_stance(lerpf(0.0, 0.2 + 0.06 * stab, open), -0.25, 0.35, open)

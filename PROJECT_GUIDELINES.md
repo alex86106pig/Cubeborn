@@ -316,6 +316,8 @@ godot/
 - **姿勢共用 `view/body_pose.gd`（`BodyPose`）**：手臂、腿用兩節 IK（`arm_ik` / `leg_ik` / `two_bone`）或直接給角度（`arm` / `leg`，含手肘、膝蓋）；走路跑步用 `gait`（照真實步態，步幅與走跑照 Froude 數）；站著的姿勢最後一律 `plant` / `stand`：上身照 `body.rotation` 從髖部彎、雙腳踩在地上、蹲低是彎膝蓋。
   - 判斷：倒地、翻滾、空中這種整個人轉的姿勢才不踩地（玩家 `Animator.free_legs`、敵人 `_free`），腿自己給角度；其他姿勢不要直接改 `body.position` 或 `rig.position.y` 來蹲低（腳會插進地裡），用站姿的 drop。
   - 新動作照真實的動作做，參考數字與來源在 `docs/動作參考.md`；檢查「角色骨架與動作」擋步態的角度、腳踩地、每招戰技都有動作。
+  - 看動作用動作表（`debug/pose_gallery.gd`）：`node tools/release.mjs --web` 後開 `http://localhost:8060/?pose-test=表名`（`player-<武器>`、`skills-1~3`、`enemy-<種類>`，後面加 `@0-2` 只畫那幾列、`&pose-view=front` 換成前方斜看）。數字擋不到的（武器穿進地板、手臂方向）要用它看。
+  - 前傾時手臂的角度是相對身體：上身前傾 L、手臂相對身體 x，實際往前 = -x - L（垂下的手會跟著往後擺）。拿長武器的姿勢照這個算，不然會插進地板（2026-11-12 動作表抓到鐵鏟、骷髏的刀都插進地裡）。
 - **握武器用掛點**：`Rig` / `SkinnedRig` 的手掌掛點 `hand_r / hand_l` 在拳頭中心（關節資料的 `grip` = 肩膀到拳頭中心），拳頭模型掛在手掌掛點上。每把武器（玩家與怪物）在自己的模型座標標掛點：`grip` 必有（拳頭握的位置），弓另有 `string`（弓弦勾弦點）、鐵鏟另有 `hold`（托舉點），用 `DarkFantasy._hold` 掛上去，`grip` 就落在拳頭中心；`Rig.mount_point` 取掛點的世界座標。
   - 動畫要讓武器轉向（直立、弓面朝前）時轉手掌掛點，不轉武器模型：拳頭和武器一起轉，握的位置不會滑出拳頭。檢查「握武器」會擋。
   - 身上的掛點 `Rig.mount_nodes`（關節資料的 `mounts`，騎士是 `DarkFantasy.KNIGHT_MOUNTS`：`forearm_l` 盾、`back` 箭袋，`hip_l` / `hip_r` / `head` 預留）也用 `_hold` 掛；要掛新東西先找現成的掛點，沒有再加，不在 `Rig` 裡寫死位置。

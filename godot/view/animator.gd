@@ -29,7 +29,9 @@ const DEATH_FALL_TIME := 0.45
 const KNOCK_FALL_TIME := 0.25   # 被擊倒往後倒的秒數
 const BLINK_RATE := 20.0      # 無敵時間每秒閃爍次數
 const GEM_SPIN := 3.0         # 法杖寶石自轉（弧度/秒）
-const ROLL_CENTER := 0.4      # 翻滾的旋轉中心（角色高度的比例）
+const ROLL_CENTER := 0.56     # 翻滾的旋轉中心（角色高度的比例）：要比頭到中心的距離高，翻到頭下腳上時頭才不會插進地裡
+const LIE_FRONT := 0.32       # 趴著時身體離地多高：胸甲的厚度（不然胸口穿進地板）
+const LIE_BACK := 0.4         # 仰躺時身體離地多高：背後的披風
 const DIG_RATE := 1.5         # 挖墳每秒挖幾下（D6）
 const LAND_TIME := 0.18       # 落地緩衝的秒數
 const LAND_DROP := 0.16       # 落地時髖部往下沉多少（× 腿長；膝蓋約彎 45°，真人落地膝蓋彎曲至少 45°）
@@ -46,6 +48,7 @@ var bow_hand_from := Vector3.ZERO   # 開始拉弓那一刻弓手拳頭的位置
 # 這一幀的站姿（動作層、戰技層填，收尾時踩地）：weight = 0 → 照步態；> 0 → 往 stance 的腳位與高度靠
 var stance := {"weight": 0.0, "drop": 0.0, "r": 0.0, "l": 0.0, "shift": 0.0}
 var free_legs := false   # 倒地、翻滾、空中：腿照姿勢給的角度，不踩地
+var wrist := 0.0         # 右手腕往後轉多少（不是直立武器時轉手掌掛點）：翻滾時讓劍貼著身體
 var _gait: Dictionary = {}
 var _was_airborne := false
 var _land_t := 1.0
@@ -62,6 +65,8 @@ func update(p: Player, dt: float) -> void:
 	rig.set_weapon(p.weapon.model, p.weapon.get("offhand_model", &""))
 	var a := p.anim
 	BodyPose.straighten(rig)
+	rig.head.rotation = Vector3.ZERO
+	wrist = 0.0
 	stance.weight = 0.0
 	free_legs = false
 	_arrow = &"none"
@@ -89,7 +94,7 @@ func update(p: Player, dt: float) -> void:
 	# 轉手掌掛點而不是武器：拳頭和武器一起轉，握的位置不會滑出拳頭
 	var upright := rig.weapon_model in UPRIGHT_MODELS and rig.weapon_main != null
 	var fore := rig.forearm_r.rotation.x
-	rig.hand_r.rotation = Vector3(weapon_tilt - rig.arm_r.rotation.x - fore, 0.0, 0.0) if upright else Vector3.ZERO
+	rig.hand_r.rotation = Vector3(weapon_tilt - rig.arm_r.rotation.x - fore, 0.0, 0.0) if upright else Vector3(wrist, 0.0, 0.0)
 	var drawing := _drawing
 	if rig.weapon_nock != null and not drawing:
 		rig.weapon_nock.visible = false
@@ -171,21 +176,23 @@ func _pose_locomotion(p: Player, a: Dictionary, dt: float) -> void:
 			free_legs = true
 			var k := _ease(a.loco_time / DEATH_FALL_TIME)
 			rig.body.rotation.x = lerpf(0.0, PI / 2.0, k)   # 往前撲倒、臉朝下
-			rig.body.position.y = 0.13 * k
+			rig.body.position.y = LIE_FRONT * k
 			BodyPose.arm(rig, true, lerpf(0.0, -2.6, k), 0.25 * k, 0.4 * k)
 			BodyPose.arm(rig, false, lerpf(0.0, -2.6, k), -0.25 * k, 0.4 * k)
 			BodyPose.leg(rig, true, -0.15 * k, 0.35 * k)
 			BodyPose.leg(rig, false, 0.1 * k, 0.15 * k)
 
 
-# 被擊倒：往後倒成仰躺，膝蓋屈起、手往兩側撐（起身交給移動層回正）
+# 被擊倒：往後倒成仰躺，膝蓋屈起、雙手往兩側攤在地上（起身交給移動層回正）
 func _pose_knocked(t: float, _dt: float) -> void:
 	free_legs = true
 	var k := _ease(t / KNOCK_FALL_TIME)
 	rig.body.rotation = Vector3(lerpf(0.0, -PI / 2.0, k), 0.0, 0.0)
-	rig.body.position.y = 0.13 * k
-	BodyPose.arm(rig, true, lerpf(0.0, 2.2, k), -0.5 * k, 0.6 * k)
-	BodyPose.arm(rig, false, lerpf(0.0, 2.2, k), 0.5 * k, 0.6 * k)
+	rig.body.position.y = LIE_BACK * k
+	rig.arm_r.rotation = Vector3(-0.3 * k, 0.0, -1.2 * k)   # 往外張開（rotation.z）：仰躺時手臂平貼地面
+	rig.arm_l.rotation = Vector3(-0.3 * k, 0.0, 1.2 * k)
+	rig.forearm_r.rotation.x = -0.5 * k
+	rig.forearm_l.rotation.x = -0.5 * k
 	BodyPose.leg(rig, true, -0.9 * k, 1.4 * k)
 	BodyPose.leg(rig, false, -0.3 * k, 0.5 * k)
 
@@ -374,26 +381,30 @@ func _pose_thrust(idle: Dictionary, a: Dictionary, e: float) -> void:
 		set_stance(0.12 * reach, -0.35 * reach, step)
 
 
-# 鏟（鐵鏟鏟地、鏟起）：右手握柄尾、左手握在柄中段（IK 跟著鏟柄）；前搖蹲低、鏟面往後拉 →
-# 出手腿蹬直、由下往前上鏟出去（彎膝蓋不彎腰，往鏟的方向踏一步）
+# 鏟（鐵鏟鏟地、鏟起）：右手握柄尾、左手握在柄中段（IK 跟著鏟柄）；前搖蹲低、鏟面貼著身前的地 →
+# 出手腿蹬直、鏟面沿地往前再往上鏟出去（彎膝蓋不彎腰，往鏟的方向踏一步）
 func _pose_scoop(idle: Dictionary, a: Dictionary, e: float) -> void:
 	var x := 0.0
+	var elbow := 0.0
 	var bend := 0.0
 	var drop := 0.0
 	match a.phase:
-		&"windup":
-			x = lerpf(idle.arm_r, 0.45, e)
-			bend = lerpf(0.0, 0.35, e)
+		&"windup":   # 鏟柄沿著手臂往前下方。手臂的角度是相對身體：上身前彎 0.3 時手臂要多往前 0.3（實際往前 0.7），蹲低 0.2 時鏟面剛好在身前的地上
+			x = lerpf(idle.arm_r, -1.0, e)
+			elbow = lerpf(idle_elbow(true), 0.1, e)
+			bend = lerpf(0.0, 0.3, e)
 			drop = lerpf(0.0, 0.2, e)
 		&"active":
-			x = lerpf(0.45, -1.3, e)
-			bend = lerpf(0.35, 0.05, e)
+			x = lerpf(-1.0, -1.3, e)
+			elbow = lerpf(0.1, 0.35, e)
+			bend = lerpf(0.3, 0.05, e)
 			drop = lerpf(0.2, 0.03, e)
 		_:
 			x = lerpf(-1.3, idle.arm_r, e)
+			elbow = lerpf(0.35, idle_elbow(true), e)
 			bend = lerpf(0.05, 0.0, e)
 			drop = lerpf(0.03, 0.0, e)
-	BodyPose.arm(rig, true, x, 0.1, 0.35)
+	BodyPose.arm(rig, true, x, 0.1, elbow)
 	rig.body.rotation.x = bend
 	grip_shaft(0.45)
 	set_stance(drop, -0.1, 0.4)
@@ -607,10 +618,12 @@ func _pose_roll(k: float) -> void:
 	rig.body.position.y = center - center * cos(angle)
 	rig.body.position.z = -center * sin(angle)
 	var tuck := sin(k * PI)
+	rig.head.rotation.x = 0.5 * tuck   # 低頭、下巴收進胸口
 	BodyPose.leg(rig, true, -1.6 * tuck, 2.2 * tuck)
 	BodyPose.leg(rig, false, -1.5 * tuck, 2.1 * tuck)
-	BodyPose.arm(rig, true, -1.0 * tuck, 0.2 * tuck, 1.6 * tuck)
-	BodyPose.arm(rig, false, -1.0 * tuck, -0.2 * tuck, 1.6 * tuck)
+	BodyPose.arm(rig, true, -0.5 * tuck, 0.3 * tuck, 2.1 * tuck)   # 拳頭收到胸前，手腕轉到劍尖朝腳（翻到頭下腳上時劍不插進地裡）
+	wrist = 2.9 * tuck
+	BodyPose.arm(rig, false, -0.5 * tuck, -0.3 * tuck, 2.1 * tuck)
 
 
 # 盾擊：盾舉到身前（左上臂往前外、前臂橫在胸前）→ active 往前推（手肘伸開、肩膀頂進去），劍收在身側；左腳在前、膝蓋微蹲
