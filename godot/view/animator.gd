@@ -39,7 +39,7 @@ const WRIST_SHARPNESS := 25.0 # 手腕轉到目標角度的速度（出招時約
 const IDLE_WRIST := {&"longsword": -0.75}
 # 待機時繞劍身轉多少：PI/2 = 刃朝上下
 const IDLE_ROLL := {&"longsword": PI / 2.0}
-# 長劍三連砍：右上斜劈 → 左下反撩 → 舉過頭直劈；每招收尾 = 下一招起手
+# 長劍三連砍：右上斜劈 → 左下反撩 → 舉過頭直劈；每招收尾 = 下一招起手。權杖第 1 下、火把用第 1 招
 # keys = [起手, 打中, 收尾] 的 [拳頭位置, 劍身方向]（身體座標）；twist / lean = [起手, 收尾]；stance = [蹲低, 右腳, 左腳]
 const SWORD_CUTS := [
 	{"keys": [[Vector3(-0.5, 1.95, -0.05), Vector3(-0.35, 0.55, -0.75)], [Vector3(-0.15, 1.35, 0.45), Vector3(0.35, -0.2, 0.9)],
@@ -134,6 +134,7 @@ func update(p: Player, dt: float) -> void:
 		_hand_carry = 1.0
 	elif upright:
 		rig.hand_r.rotation = Vector3(weapon_tilt - rig.arm_r.rotation.x - fore, 0.0, 0.0)
+		_hand_carry = 0.0
 	else:
 		var grip := DarkFantasy.sword_grip(wrist, roll)
 		_hand_carry = MathUtil.damp(_hand_carry, 0.0, WRIST_SHARPNESS, dt) if _hand_carry > 0.001 else 0.0
@@ -263,10 +264,10 @@ func _pose_action(p: Player, a: Dictionary, dt: float) -> void:
 		&"attack", &"special":
 			var e := _ease(a.k)
 			match _pose_for(a.behavior):
-				&"meleeSwing":
-					_pose_melee_swing(idle, a, e, dt)
 				&"swordCut":
-					_pose_sword_cut(idle, a, e)
+					_pose_cut(idle, a, e, SWORD_CUTS[2 if a.get("is_finisher", false) else (1 if a.get("swing_dir", 1) < 0 else 0)])
+				&"cut":
+					_pose_cut(idle, a, e, SWORD_CUTS[0])
 				&"shieldBash":
 					_pose_shield_block(a, e, dt)
 				&"arcaneBurst":
@@ -314,7 +315,7 @@ func _pose_action(p: Player, a: Dictionary, dt: float) -> void:
 		stance.drop += 0.03   # 終結技壓得更低
 
 
-# 招式的姿勢：普攻依武器模型分（匕首刺、鐵鏟鏟、權杖敲砸、弓拉弓），其餘查 POSE_OF
+# 招式的姿勢：普攻依武器模型分（長劍三連砍、匕首刺、鐵鏟鏟、權杖敲砸、火把斜揮、弓拉弓），其餘查 POSE_OF
 func _pose_for(behavior: StringName) -> StringName:
 	match behavior:
 		&"meleeSwing":
@@ -327,7 +328,7 @@ func _pose_for(behavior: StringName) -> StringName:
 					return &"mace"
 				&"longsword":
 					return &"swordCut"
-			return &"meleeSwing"
+			return &"cut"
 		&"fireBolt":
 			return &"bow" if rig.weapon_model in BOW_MODELS else &"fireBolt"
 		&"shieldBash", &"arcaneBurst":
@@ -360,46 +361,14 @@ func _pose_idle_upper_body(idle: Dictionary, dt: float) -> void:
 	roll_target = IDLE_ROLL.get(rig.weapon_model, 0.0)
 
 
-# 揮砍（劍、權杖第 1 下）：前搖把劍拉到反手側、手肘收起、腰往反方向扭（蓄力）→ 出手先轉腰、再甩肩、
-# 手肘在打中的瞬間打直 → 收招手肘回彎。swing_dir 1 = 由右往左（正手）、-1 = 反手；前腳是左腳、出手時重心往前
-func _pose_melee_swing(idle: Dictionary, a: Dictionary, e: float, _dt: float) -> void:
-	var s: float = a.swing_dir
-	var x := 0.0
-	var y := 0.0
-	var elbow := 0.0
-	var twist := 0.0
-	match a.phase:
-		&"windup":
-			x = lerpf(idle.arm_r, -1.4, e)
-			y = lerpf(0.0, -1.25 * s, e)
-			elbow = lerpf(idle_elbow(true), 1.35, e)
-			twist = lerpf(0.0, -0.45 * s, e)
-			set_stance(0.05 * e, -0.05, 0.25, e)
-		&"active":
-			x = -1.45
-			y = lerpf(-1.25 * s, 1.15 * s, e)
-			elbow = lerpf(1.35, 0.1, smoothstep(0.0, 0.55, e)) + 0.25 * smoothstep(0.6, 1.0, e)   # 打中前打直、甩過去後回彎
-			twist = lerpf(-0.45 * s, 0.4 * s, smoothstep(0.0, 0.7, e))   # 腰先轉，手臂跟著甩
-			set_stance(0.08, -0.15, 0.35)
-		_:
-			x = lerpf(-1.45, idle.arm_r, e)
-			y = lerpf(1.15 * s, 0.0, e)
-			elbow = lerpf(0.35, idle_elbow(true), e)
-			twist = lerpf(0.4 * s, 0.0, e)
-			set_stance(0.08, -0.15, 0.35, 1.0 - e)
-	BodyPose.arm(rig, true, x, y, elbow)
-	BodyPose.arm(rig, false, lerpf(-0.4, -0.7, absf(twist) / 0.45), 0.25, 1.4)   # 空手收在胸前保持平衡
-	rig.body.rotation.y = twist
-
-
-# 長劍三連砍：出手用 IK 走 SWORD_CUTS，起手與收招用關節角度內插（不重解 IK，不會跳）
-func _pose_sword_cut(idle: Dictionary, a: Dictionary, e: float) -> void:
-	var cut: Dictionary = SWORD_CUTS[2 if a.get("is_finisher", false) else (1 if a.get("swing_dir", 1) < 0 else 0)]
+# 揮砍（SWORD_CUTS 的一招）：出手用 IK 走關鍵格，起手與收招用關節角度內插（不重解 IK，不會跳）
+func _pose_cut(idle: Dictionary, a: Dictionary, e: float, cut: Dictionary) -> void:
 	var k := clampf(a.k, 0.0, 1.0)
 	var fresh: bool = a.phase == &"windup" and _cut_phase != &"windup"
 	_cut_phase = a.phase
 	wrist = IDLE_WRIST.get(rig.weapon_model, 0.0)   # 收招後直接接待機，不再轉一次
 	roll = IDLE_ROLL.get(rig.weapon_model, 0.0)
+	weapon_tilt = idle.tilt
 	var tw: Array = cut.twist
 	var ln: Array = cut.lean
 	var st: Array = cut.stance
@@ -426,7 +395,7 @@ func _pose_sword_cut(idle: Dictionary, a: Dictionary, e: float) -> void:
 			rig.body.rotation.y = lerpf(tw[1], 0.0, back)
 			rig.body.rotation.x = lerpf(ln[1], 0.0, back)
 			set_stance(st[0], st[1], st[2], 1.0 - back)
-	BodyPose.arm(rig, false, -0.65, 0.3, 1.4)   # 盾收在胸前
+	BodyPose.arm(rig, false, -0.65, 0.3, 1.4)   # 左手（盾）收在胸前
 
 
 # 拳頭位置：通過三格的二次曲線
@@ -457,9 +426,10 @@ static func _cut_edge_dir(keys: Array, u: float) -> Vector3:
 	return w.normalized()
 
 
-# 劍身朝 dir、刃朝 w 時的手掌方向（身體座標）
-static func _cut_hand_basis(dir: Vector3, w: Vector3) -> Basis:
-	return Basis(w, dir, w.cross(dir)) * Basis(Vector3.RIGHT, DarkFantasy.SWORD_TILT).inverse()
+# 武器朝 dir、刃朝 w 時的手掌方向（身體座標）；長劍在手掌上斜 SWORD_TILT，其他武器沿手掌 +Y
+func _cut_hand_basis(dir: Vector3, w: Vector3) -> Basis:
+	var tilt := DarkFantasy.SWORD_TILT if rig.weapon_model == &"longsword" else 0.0
+	return Basis(w, dir, w.cross(dir)) * Basis(Vector3.RIGHT, tilt).inverse()
 
 
 # 刃朝哪一面：選手腕扭得少的那面
@@ -489,7 +459,8 @@ func _cut_solve(cut: Dictionary, u: float) -> Dictionary:
 # 待機的右手姿勢（不含走路擺手）
 func _idle_arm(idle: Dictionary) -> Dictionary:
 	BodyPose.arm(rig, true, idle.arm_r, 0.0, idle_elbow(true))
-	var hand := BodyPose.forearm_basis(rig, true) * DarkFantasy.sword_grip(IDLE_WRIST.get(rig.weapon_model, 0.0), IDLE_ROLL.get(rig.weapon_model, 0.0))
+	var grip := DarkFantasy.sword_grip(IDLE_WRIST.get(rig.weapon_model, 0.0), IDLE_ROLL.get(rig.weapon_model, 0.0))
+	var hand := Basis(Vector3.RIGHT, idle.tilt) if rig.weapon_model in UPRIGHT_MODELS else BodyPose.forearm_basis(rig, true) * grip
 	return {"arm": Quaternion(rig.arm_r.basis.orthonormalized()), "elbow": rig.forearm_r.rotation.x, "hand": hand}
 
 
@@ -616,8 +587,8 @@ func _pose_overhead(idle: Dictionary, a: Dictionary, e: float, to: float, lean: 
 	set_stance(0.04 + 0.12 * reach, -0.3 * reach, 0.4 * reach)
 
 
-# 權杖：第 1 下橫掃（同劍的揮砍、杖頭朝前），第 2 下（終結技）舉過頭往下砸、蹲低
-func _pose_mace(idle: Dictionary, a: Dictionary, e: float, dt: float) -> void:
+# 權杖：第 1 下右上往左下斜揮（同長劍第 1 招），第 2 下（終結技）舉過頭往下砸、蹲低
+func _pose_mace(idle: Dictionary, a: Dictionary, e: float, _dt: float) -> void:
 	if a.get("is_finisher", false):
 		_pose_overhead(idle, a, e, -0.6, 0.35)
 		match a.phase:
@@ -629,8 +600,7 @@ func _pose_mace(idle: Dictionary, a: Dictionary, e: float, dt: float) -> void:
 			_:
 				weapon_tilt = lerpf(1.7, idle.tilt, e)
 		return
-	_pose_melee_swing(idle, a, e, dt)
-	weapon_tilt = 1.4 if a.phase == &"active" else lerpf(0.0, 1.4, e) if a.phase == &"windup" else lerpf(1.4, idle.tilt, e)
+	_pose_cut(idle, a, e, SWORD_CUTS[0])
 
 
 # ───────── 拉弓 ─────────

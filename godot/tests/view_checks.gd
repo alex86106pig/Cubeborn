@@ -2424,7 +2424,8 @@ static func check_bow_rest() -> String:
 	return ""
 
 
-# 長劍：待機刃朝上下（玩家、骷髏）；三連砍 1 往左下劈、2 往右上撩、3 從頭後上方劈到前下方；劍尖不進地
+# 長劍：待機刃朝上下（玩家、骷髏），骷髏往下劈時也是；三連砍 1 往左下劈、2 往右上撩、3 從頭後上方劈到前下方；
+# 權杖第 1 下、火把也是右上往左下斜揮；武器尖端不進地
 static func check_sword_edge() -> String:
 	var rec := AnimRecorder.new()
 	var err := ""
@@ -2451,15 +2452,30 @@ static func check_sword_edge() -> String:
 				err = "玩家待機時劍刃應朝上下：刃寬方向 %s" % w
 		(rig as Node).free()
 	if err == "":
+		var swung := false
 		for row: Dictionary in rec.rows("enemy-grunt"):
-			if row.key == "chase":
-				var made: Dictionary = (row.make as Callable).call()
-				for i in (row.frames as Array).size():
-					AnimRecorder.step(row, made, i)
+			if not (row.key in ["chase", "swing"]):
+				continue
+			swung = swung or row.key == "swing"
+			var made: Dictionary = (row.make as Callable).call()
+			for i in (row.frames as Array).size():
+				AnimRecorder.step(row, made, i)
 				var w := (_sword_tf(made.rig).basis * Vector3.RIGHT).normalized()
-				(made.rig as Object).free()
-				if absf(w.x) > 0.1:
-					err = "骷髏追擊時劍刃應朝上下：刃寬方向 %s" % w
+				if i >= row.start and absf(w.x) > 0.25:
+					err = "骷髏 %s 時劍刃應朝上下（第 %d 步）：刃寬方向 %s" % [row.key, i - row.start, w]
+			(made.rig as Object).free()
+		if err == "" and not swung:
+			err = "骷髏沒有錄到揮砍"
+	for subject: String in ["player-scepter", "player-torch"]:
+		if err != "":
+			break
+		var sw := _first_swing(rec, subject, Vector3.UP * 0.9)
+		if sw.is_empty() or not (sw[1].x - sw[0].x > 0.6 and sw[0].y - sw[1].y > 0.8):
+			err = "%s 普攻第 1 下應從右上往左下斜揮：尖端 %s" % [subject, sw]
+		elif sw[2] < 0.1:
+			err = "%s 普攻時武器尖端低到 %.2f（進地裡）" % [subject, sw[2]]
+		else:
+			_note("%s 第 1 下尖端 %s → %s、最低 %.2f" % [subject, sw[0], sw[1], sw[2]])
 	rec.clear()
 	if err != "":
 		return err
@@ -2478,6 +2494,32 @@ static func check_sword_edge() -> String:
 		return "揮劍時劍尖低到 %.2f（進地裡）" % low
 	_note("三連砍劍尖：1 %s → %s、2 %s → %s、3 %s → %s、最低 %.2f" % [c0[0], c0[1], c1[0], c1[1], c2[0], c2[1], low])
 	return ""
+
+
+# 普攻連段第一次出手那幾步的武器尖端 [第一步, 最後一步, 整段最低]；tip = 尖端在手掌座標的位置
+static func _first_swing(rec: AnimRecorder, subject: String, tip: Vector3) -> Array:
+	for row: Dictionary in rec.rows(subject, false):
+		if row.key != "attack":
+			continue
+		var made: Dictionary = (row.make as Callable).call()
+		var from: Variant = null
+		var to := Vector3.ZERO
+		var low := INF
+		var done := false
+		for i in (row.frames as Array).size():
+			AnimRecorder.step(row, made, i)
+			var a: Dictionary = row.frames[i].anim
+			var at := _sword_tf(made.rig) * tip
+			low = minf(low, at.y)
+			if a.action == &"attack" and a.phase == &"active" and not done:
+				if from == null:
+					from = at
+				to = at
+			elif from != null:
+				done = true
+		(made.rig as Node).free()
+		return [from, to, low] if from != null else []
+	return []
 
 
 # 右手掌掛點相對角色根節點（Rig 與 SkinnedRig 的關節都只有 position / rotation / scale）

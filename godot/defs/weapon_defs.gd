@@ -379,7 +379,7 @@ const WEAPONS := {
 			"behavior": &"meleeSwing",
 			"sfx": "swing", "sfx_heavy": "swingHeavy",
 			"name": "聖光敲擊",
-			"desc": "兩段：先橫掃 100%，再往前砸出一圈聖光（130%，圈內再 60%）。",
+			"desc": "兩段：先斜揮 100%，再往前砸出一圈聖光（130%，圈內再 60%）。",
 			"icon": "mace_smash",
 			"damage_pct": 1.0,
 			# 兩段「敲─砸」（使用者 2026-10-27：每一下都一樣太無腦）：第 2 下蓄一下再砸，扇形 130%，
@@ -406,6 +406,7 @@ const WEAPONS := {
 			"shake": 0.08,
 			"slash_color": Color("fff0b0"),
 			"slash_finisher_color": Color("ffe27a"),
+			"slash_shape": [[-0.7, 0.0, 1.0]],
 		},
 		"special": {
 			"behavior": &"holyCircle",
@@ -469,6 +470,7 @@ const WEAPONS := {
 			"shake": 0.06,
 			"slash_color": Color("ffb040"),
 			"slash_finisher_color": Color("ffb040"),
+			"slash_shape": [[-0.7, 0.0, 1.0]],
 		},
 		"special": {
 			"behavior": &"fireBreath",
