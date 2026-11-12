@@ -42,6 +42,7 @@ const HANDLERS := {
 	"enemy:crashed": &"_on_enemy_crashed",
 	"fx:spike_warn": &"_fx_spike_warn",
 	"fx:burrow_warn": &"_fx_burrow_warn",
+	"fx:worm_egg": &"_fx_worm_egg",
 	"fx:web": &"_fx_web",
 	"fx:web_burned": &"_fx_web_burned",
 	"fx:webbed": &"_fx_webbed",
@@ -68,6 +69,7 @@ const BONE_COLOR := Color("d8d0b8")         # 挖墳點冒出的白骨手
 const COFFIN_DUST := Color("8a8070")        # 石棺噴怪前的石屑
 const SEAL_COLOR := Color("b070ff")         # 石棺封印的紫光（同 WorldView.COFFIN_SEAL）
 const COFFIN_TOP := 0.85                    # 石棺棺口的高度（同 WorldView.COFFIN_SIZE.y）
+const WORM_EGG_COLOR := Color("b9c08a")     # 噬墓巨蟲的卵（同 DarkFantasy.BURROW_EGG）
 const COCOON_SHRED := Color("c9cdbd")       # 巨繭噴怪前飄出來的絲屑（同 WorldView.COCOON_SILK）
 const COCOON_GLOW := Color("a8e04a")        # 巨繭裂口的綠光（同 WorldView.COCOON_GLOW）
 const COCOON_MID := 1.2                     # 巨繭中段的高度（WorldView.COCOON_SIZE.y 的一半）
@@ -381,11 +383,35 @@ func _fx_webbed(p: Dictionary) -> void:
 
 
 # 屍甲蟲停在腳下準備冒出：一小塊土一直跳（不畫圈）
+# radius（噬墓巨蟲要衝出來的範圍）：土塊在這個範圍的一半以內到處跳、越來越密
 func _fx_burrow_warn(p: Dictionary) -> void:
 	var at := _at(p, 0.05)
-	_add_emitter(p.life, func(_k: float, key: String, dt: float) -> void:
-		for i in _count(key, 0.5, dt):
-			burst(at, {"color": DUST_COLOR, "count": 2, "speed": 1.0, "up": 3.0, "size": 0.12, "life": 0.3}))
+	var spread: float = p.get("radius", 0.0) * 0.5
+	_add_emitter(p.life, func(k: float, key: String, dt: float) -> void:
+		for i in _count(key, 0.5 if spread <= 0.0 else 1.5 + 2.5 * k, dt):
+			var a := _rng.randf() * TAU
+			var r := _rng.randf() * spread
+			burst(at + Vector3(sin(a) * r, 0.0, cos(a) * r), {"color": DUST_COLOR, "count": 2, "speed": 1.0, "up": 3.0, "size": 0.12, "life": 0.3}))
+
+
+# 噬墓巨蟲的卵：一顆淡黃綠的卵立在地上 life 秒，越接近孵化抖得越快，最後破開
+func _fx_worm_egg(p: Dictionary) -> void:
+	var at := _at(p)
+	if not _slash_meshes.has("worm_egg"):
+		var sphere := SphereMesh.new()
+		sphere.radius = 0.32
+		sphere.height = 0.85
+		sphere.radial_segments = 8
+		sphere.rings = 5
+		_slash_meshes["worm_egg"] = sphere
+	var egg := _transient_mesh(_slash_meshes["worm_egg"], WORM_EGG_COLOR, 1.0)
+	egg.position = at + Vector3(0, 0.4, 0)
+	var popped := [false]
+	_add_transient(egg, p.life, func(k: float) -> void:
+		egg.rotation.z = sin(k * k * 90.0) * 0.12 * k
+		if k > 0.97 and not popped[0]:
+			popped[0] = true
+			burst(at + Vector3(0, 0.4, 0), {"color": WORM_EGG_COLOR, "count": 8, "speed": 3.0, "up": 3.0, "size": 0.14, "life": 0.4}))
 
 
 func _fx_burrow_out(p: Dictionary) -> void:
@@ -669,7 +695,7 @@ func _fx_dirt_lob(p: Dictionary) -> void:
 			_set_alpha(shadow, 0.5 * k))
 		if shadow_only:
 			continue
-		var clod := _transient_mesh(clod_mesh, DUST_COLOR, 1.0)
+		var clod := _transient_mesh(clod_mesh, p.get("color", DUST_COLOR), 1.0)
 		var landed := [false]
 		var start := to + Vector3(0, ROCK_FALL_HEIGHT, 0) if from_sky else from
 		_add_transient(clod, flight, func(k: float) -> void:

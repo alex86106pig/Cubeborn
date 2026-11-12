@@ -46,6 +46,8 @@ var _wheel := false       # 骨輪：所有狀態都走 _pose_wheel（整個輪�
 var _beetle := false      # 屍甲蟲：所有狀態都走 _pose_beetle（鑽地時整隻藏在地面下）
 var _spider := false      # 墓穴蜘蛛：所有狀態都走 _pose_spider
 var _hive := false        # 蟲巢：所有狀態都走 _pose_hive（不會動，只有鼓動、鼓酸泡、塌掉）
+var _worm := false        # 噬墓巨蟲（form 0）：所有狀態都走 _pose_worm
+var _worm_hide := 0.0     # 噬墓巨蟲藏進地裡的比例（0 = 整隻在地面上、1 = 全部在地底），畫面自己補間
 var _spin := 0.0          # 骨輪滾動的角度（畫面自己累加）
 var _bow_arm_target := BOW_ARM_REST
 var _dt := 0.0
@@ -62,6 +64,7 @@ func _init(p_rig: Node3D, e: Enemy) -> void:
 	_beetle = e.def.visual == &"beetle"
 	_spider = e.def.visual == &"spider"
 	_hive = e.def.visual == &"hive"
+	_worm = e.def.visual == &"grave_worm"
 	walk_phase = randf() * TAU   # 畫面用隨機，與模擬無關
 	if e.def.has("slam"):
 		_build_cracks(e)
@@ -99,7 +102,7 @@ func update(e: Enemy, dt: float) -> void:
 		(rig as SkinnedRig).set_held_weapon(kit.get("model", &""), kit.get("offhand_model", &""))
 
 	var colossus: bool = def.has("colossus") and a.get("form", 0) > 0 and state != &"dead"
-	match &"hive" if _hive else &"hound" if _hound else (&"wheel" if _wheel else (&"beetle" if _beetle else (&"spider" if _spider else (&"colossus" if colossus else (&"keeper" if _keeper and state != &"spawn" and state != &"dead" else state))))):
+	match &"worm" if _worm and a.get("form", 0) == 0 else &"hive" if _hive else &"hound" if _hound else (&"wheel" if _wheel else (&"beetle" if _beetle else (&"spider" if _spider else (&"colossus" if colossus else (&"keeper" if _keeper and state != &"spawn" and state != &"dead" else state))))):
 		&"colossus":
 			_pose_colossus(e, a, state, t, dt)
 		&"beetle":
@@ -108,6 +111,8 @@ func update(e: Enemy, dt: float) -> void:
 			_pose_spider(e, state, t, dt)
 		&"hive":
 			_pose_hive(e, state, t)
+		&"worm":
+			_pose_worm(e, a, state, t, dt)
 		&"hound":
 			_pose_hound(e, a, state, t, dt)
 		&"wheel":
@@ -381,6 +386,48 @@ func _pose_spider(e: Enemy, state: StringName, t: float, dt: float) -> void:
 			rig.leg_l.rotation.x = swing
 			rig.arm_l.rotation.x = -swing
 			rig.leg_r.rotation.x = -swing
+
+
+# 噬墓巨蟲：地底時整隻藏在地面下；巡邏只露出半截；冒在地面時左右搖、大顎開合；噴酸頭後仰再往前甩；
+# 吞噬嘴往前伸、大顎張到最開、整隻發抖；產卵往前趴；鑽下去沉進地裡；死掉倒下
+func _pose_worm(e: Enemy, a: Dictionary, state: StringName, t: float, dt: float) -> void:
+	var hide := 0.0
+	var lean := 0.0
+	var jaws := 0.35 + 0.15 * sin(t * 5.0)
+	rig.body.rotation = Vector3(0.0, 0.0, sin(walk_phase) * 0.05)
+	walk_phase += dt * 2.0
+	match state:
+		&"tunnel", &"lurk":
+			hide = 1.0
+		&"patrol", &"dormant":
+			hide = 0.55
+		&"dive":
+			hide = clampf(t / e.def.tunnel.dive, 0.0, 1.0)
+		&"spawn":
+			hide = 1.0 - clampf(t / e.def.spawn_time, 0.0, 1.0)
+		&"acid":
+			var w: float = e.def.acid.windup
+			lean = lerpf(0.0, -0.5, clampf(t / w, 0.0, 1.0)) if t < w else lerpf(-0.5, 0.45, clampf((t - w) / 0.12, 0.0, 1.0))
+			jaws = 0.9
+		&"devour":
+			lean = 0.5
+			jaws = 1.2
+			if a.get("phase", &"windup") == &"pull":
+				rig.body.rotation.z = sin(t * 50.0) * 0.04
+		&"eggs":
+			lean = 0.35
+		&"dead":
+			var k := MathUtil.ease_out_cubic(clampf(t / 0.6, 0.0, 1.0))
+			rig.body.rotation.z = 1.35 * k
+			hide = 0.4 * clampf((t - e.def.corpse_time * CORPSE_SINK_START) / (e.def.corpse_time * (1.0 - CORPSE_SINK_START)), 0.0, 1.0)
+	if a.get("burrowed", false):
+		hide = 1.0
+	_worm_hide = move_toward(_worm_hide, hide, dt * 5.0)
+	rig.position.y = -(rig.height + 0.4) * _worm_hide
+	rig.body.rotation.x = lean
+	rig.head.rotation.x = lean * 0.6
+	rig.arm_r.rotation.y = -jaws
+	rig.arm_l.rotation.y = jaws
 
 
 # 蟲巢：平常慢慢鼓動；噴酸前整顆抽搐、卵囊鼓起來；被打破塌成一攤沉下去；爬出從地下升起

@@ -549,6 +549,51 @@ const ENEMIES := {
 		},
 	},
 
+	# 噬墓巨蟲（第 3 層 Boss，sim/enemies/grave_worm.gd，數值 Claude 暫定）：大部分時間在地底，冒出 surface.time 秒才打得到
+	&"grave_worm": {
+		"name": "噬墓巨蟲",
+		"resists": {&"fire": -0.25, &"poison": 0.5},
+		"visual": &"grave_worm",
+		"behavior": &"grave_worm",
+		"is_boss": true,
+		"freeze_immune": true,
+		"hit_color": Color("a8e04a"),
+		"max_hp": 1100.0,
+		"move_speed": 3.0,              # 巡邏時在地面上爬的速度；地底的速度在 tunnel.speed
+		"speed_variance": 0.0,
+		"turn_speed": 4.0,
+		"radius": 1.1,
+		"mass": 40.0,
+		"knockback_mul": 0.0,           # 紮在地裡，推不動
+		"spawn_time": 1.6,
+		"spawn_shake": 0.4,
+		"corpse_time": 3.5,
+		"decide_delay": 0.4,            # 冒出來、每招之後至少這麼久才出下一招
+		"first_cooldowns": {"acid": 0.5, "devour": 1.5, "eggs": 3.0},
+		"patrol": {"speed_mul": 0.45, "pause": [1.0, 2.5], "sight_radius": 12.0, "sight_arc": deg_to_rad(120.0), "notice_radius": 4.0},
+		"surface": {"time": 3.5},       # 每次冒出來在地面上停多久（出招中到時間，出完才鑽）
+		# 地底追蹤：dive 秒鑽下去（還打得到）→ 在地底追 track_time 秒（到腳下 stop_distance 內就停）→ 停下、地面鼓起 warn 秒 → 衝出地面
+		"tunnel": {
+			"dive": 0.5, "speed": 7.5, "turn_rate": PI, "track_time": 2.0, "stop_distance": 0.5, "warn": 0.6,
+			"radius": 3.0, "damage": 28.0, "knockback": 8.0, "knockup": 7.5, "shake": 0.6,
+		},
+		# 噴酸：頭後仰、喉嚨發綠光（windup）→ 3 個方向各吐一團，flight 秒後落在離自己 distance（照目標的距離、夾在這個範圍）的地方，留酸池
+		"acid": {
+			"min_distance": 3.0, "windup": 0.7, "lobs": 3, "spread": deg_to_rad(40.0), "distance": [3.0, 8.0], "flight": 0.7,
+			"radius": 1.8, "damage": 14.0, "pool_time": 4.0, "pool_dps": 8.0, "recovery": 0.5, "cooldown": 5.0, "color": Color("a8e04a"),
+		},
+		# 吞噬：嘴巴張開（windup）→ 吸 pull_time 秒，前方 arc、radius 內的人被拉過來（翻滾中不被拉），拉到嘴邊咬一口
+		"devour": {
+			"trigger_distance": 7.0, "windup": 0.5, "pull_time": 1.2, "radius": 7.0, "arc": deg_to_rad(90.0), "pull_speed": 5.0,
+			"bite_reach": 0.8, "damage": 40.0, "knockback": 14.0, "recovery": 0.6, "cooldown": 7.0,
+		},
+		# 產卵：尾巴翹起（windup）→ 身後留 count 顆卵，hatch_time 秒後每顆孵 per_egg 隻（自己孵的同時最多 max_alive 隻）
+		"eggs": {
+			"windup": 0.6, "count": 2, "spread": deg_to_rad(50.0), "distance": 2.5, "hatch_time": 4.0, "hatch": &"beetle", "per_egg": 2,
+			"max_alive": 8, "recovery": 0.4, "cooldown": 9.0,
+		},
+	},
+
 	# 骷髏僕從（G6 亡者大軍，數值 Claude 暫定）：玩家方的骷髏戰士（sim/enemies/minion.gd），打怪、不打玩家，life 秒後消失
 	# 不給靈魂、不掉金幣與武器（LootDefs / WeaponDropDefs 沒有它）；畫面是染綠的骷髏戰士
 	&"minion": {

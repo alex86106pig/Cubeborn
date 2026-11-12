@@ -262,13 +262,14 @@ godot/
 | `fx:boss_wall` | `{ pos, height }` | Boss 衝鋒撞牆 |
 | `fx:boss_teleport` | `{ pos, height, to }` | 狂暴 Boss 瞬移砸地（v0.27.0）：原地與目的地的紫色煙霧 |
 | `fx:boss_teleport_warn` | `{ pos, height, life }` | 狂暴 Boss 瞬移前：目的地冒出越來越濃的紫煙（取代預警圈） |
-| `fx:dirt_lob` | `{ pos, height, targets, flight, radius, shadow_only?, from_sky? }` | 守墓人落石（from_sky：從落點正上方直直掉；瘋狂鏟土、鏟起 A）、腐屍鐵鏟拋怪與狼人飛撲（shadow_only：只畫影子）：地上的影子越來越大（看影子躲，不畫圈） |
+| `fx:dirt_lob` | `{ pos, height, targets, flight, radius, shadow_only?, from_sky?, color? }` | 噬墓巨蟲噴酸（color：酸液的顏色）、守墓人落石（from_sky：從落點正上方直直掉；瘋狂鏟土、鏟起 A）、腐屍鐵鏟拋怪與狼人飛撲（shadow_only：只畫影子）：地上的影子越來越大（看影子躲，不畫圈） |
 | `fx:claw` | `{ pos, height, facing, range, arc, side, color }` | 狼人三連爪的每一下：身前 3 條紅色爪痕（side 1 右爪 / -1 左爪 / 0 雙爪） |
 | `fx:gas_cloud` | `{ pos, height, radius, color, life }` | 怪物的毒氣區（膨脹屍的腐氣，GroundZones `visual = &"gas"`）：範圍內一直冒低低的煙，不畫圈 |
 | `fx:erupt_warn` | `{ pos, height, radius, life, look }` | 挖墳點噴怪前：墳土隆起、裂開、冒出白骨手（取代預警圈）；look = sarcophagus 是第 2 層的石棺 |
 | `fx:spike_warn` | `{ pos, height, facing, lines, start, length, life }` | 萬骨聚合體骨刺陣的預兆：地面沿 lines 個方向隆起 |
 | `fx:bone_spike` | `{ pos, height }` | 一根骨刺竄出 |
-| `fx:burrow_warn` / `fx:burrow_out` | `{ pos, height, life? }` | 屍甲蟲停在腳下準備冒出（土塊跳動）/ 冒出來 |
+| `fx:burrow_warn` / `fx:burrow_out` | `{ pos, height, life?, radius? }` | 屍甲蟲、噬墓巨蟲停在腳下準備冒出（土塊跳動；radius：巨蟲衝出來的範圍，土塊跳得比較散）/ 冒出來、鑽下去 |
+| `fx:worm_egg` | `{ pos, height, life }` | 噬墓巨蟲產的卵：立在地上 life 秒後孵化（卵不是實體，打不到） |
 | `fx:web` / `fx:web_burned` | `{ web_id, pos, height, radius?, life? }` | 蜘蛛網結成（地上的白網，life 秒）/ 被火燒掉 |
 | `fx:webbed` | `{ player_id, pos, height, life }` | 玩家被蛛絲彈纏住 |
 | `fx:sweep` | `{ pos, height, radius, low }` | 萬骨聚合體多臂橫掃（低掃 / 高掃）的弧光 |

@@ -40,7 +40,7 @@ const KEEP := {
 	&"grudge": "成長型：量的是沒受傷時的保底（目標 × 0.5），受到的傷害 × 1.7 × 預算加上去，被打越多越痛",
 	&"star_sign": "要放 3 顆才有傷害：量一次放是 0；3 顆的三角形每秒打 175%、最多 20 秒",
 }
-const ENEMIES := [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"spearman", &"bone_wheel", &"beetle", &"spider", &"hive", &"gravekeeper", &"boss", &"bone_general"]
+const ENEMIES := [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"spearman", &"bone_wheel", &"beetle", &"spider", &"hive", &"gravekeeper", &"boss", &"bone_general", &"grave_worm"]
 
 var _worlds: Array[World] = []
 

@@ -69,6 +69,11 @@ const HIVE_JOINTS := {
 	"neck": 1.0, "shoulder_y": 0.55, "shoulder_x": 0.6, "shoulder_z": 0.35, "grip": 0.2,
 	"hip_y": 0.4, "hip_x": 0.55, "hip_z": -0.4, "height": 1.5,
 }
+# 噬墓巨蟲：從地裡豎起來的一截蟲身（body），頂端是一圈牙的頭（head），大顎在手臂關節；腳關節是洞口的土塊
+const WORM_JOINTS := {
+	"neck": 2.7, "neck_z": 0.25, "shoulder_y": 2.7, "shoulder_x": 0.4, "shoulder_z": 0.7, "grip": 0.5,
+	"hip_y": 0.15, "hip_x": 0.9, "height": 3.4,
+}
 const BOSS_SCALE := 1.85
 const KEEPER_SCALE := 1.3
 const WOLF_SCALE := 1.45
@@ -125,6 +130,8 @@ static func character(kind: StringName) -> Rig:
 			rig = death_knight()
 		&"bone_colossus":
 			rig = bone_colossus()
+		&"grave_worm":
+			rig = grave_worm()
 		_:
 			rig = knight()
 	_templates[kind] = rig.to_template()
@@ -554,6 +561,31 @@ static func bone_colossus() -> Rig:
 	for leg in [rig.leg_r, rig.leg_l]:
 		k.add(leg, PartKit.cyl(0.08, 0.07, 0.32, 5), bone, {"y": -0.18})
 		k.add(leg, PartKit.box(0.16, 0.08, 0.26), dark, {"y": -0.4, "z": 0.05})
+	return rig.optimize()
+
+
+# 噬墓巨蟲：一節一節的灰褐蟲身、節與節之間的深色環、頂端的頭有一圈往內的牙與一對大顎
+static func grave_worm() -> Rig:
+	var rig := Rig.new(WORM_JOINTS)
+	var k := rig.kit
+	var flesh := k.mat(Color("8d7f5f"))
+	var ring := k.mat(Color("4d4433"))
+	var tooth := k.mat(C.bone)
+	for i in 5:
+		var r := 0.85 - i * 0.05
+		k.add(rig.body, PartKit.cyl(r - 0.04, r, 0.5, 9), flesh, {"y": 0.3 + i * 0.52})
+		k.add(rig.body, PartKit.cyl(r - 0.1, r - 0.1, 0.06, 9), ring, {"y": 0.56 + i * 0.52})
+	k.add(rig.head, PartKit.sphere(0.68, 9, 6), flesh, {"sz": 1.15})
+	k.add(rig.head, PartKit.cyl(0.42, 0.5, 0.12, 9), k.mat(Color("1a0f12")), {"z": 0.72, "rx": PI / 2.0})   # 嘴裡
+	for i in 8:
+		var a := TAU * i / 8.0
+		k.add(rig.head, PartKit.cone(0.06, 0.3, 4), tooth, {"x": cos(a) * 0.4, "y": sin(a) * 0.4, "z": 0.8, "rx": PI / 2.0})
+	for s in [-1.0, 1.0]:
+		k.add(rig.head, PartKit.sphere(0.05, 4, 3), k.mat(C.rot_eye, true), {"x": s * 0.35, "y": 0.4, "z": 0.45, "shadow": false})
+	for arm in [rig.arm_r, rig.arm_l]:
+		k.add(arm, PartKit.cone(0.1, 0.75, 5), tooth, {"z": 0.3, "rx": PI / 2.0})
+	for leg in [rig.leg_r, rig.leg_l]:
+		k.add(leg, PartKit.ico(0.45, 0), ring, {"sy": 0.5})
 	return rig.optimize()
 
 

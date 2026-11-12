@@ -382,6 +382,127 @@ static func check_boss_high_ground() -> String:
 	return ""
 
 
+# 噬墓巨蟲的檢查共用：玩家血很多、站在 at；巨蟲在原點冒在地面上，only 以外的招式都鎖住（only 空的 = 全鎖）
+static func _worm_setup(at: Vector2, only: String, surface_left: float) -> Array:
+	var w := _new_world(3)
+	var p := _player(w)
+	p.stats.set_base(&"max_hp", 99999.0)
+	p.hp = p.max_hp
+	p.pos = at
+	var b := _spawn(w, &"grave_worm", Vector2.ZERO) as GraveWorm
+	b.fsm.change(&"chase")
+	b._surface_left = surface_left
+	for move: String in ["acid", "devour", "eggs"]:
+		if move == only:
+			w.cooldowns.reset(b.cd(move))
+		else:
+			w.cooldowns.start(b.cd(move), 999.0)
+	return [w, p, b]
+
+
+# 跑 steps 步，收集事件；on_step（每步之後呼叫，回傳 true 就停）
+static func _worm_run(w: World, steps: int, events: Array[Dictionary], on_step: Callable = Callable()) -> void:
+	for i in steps:
+		w.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+		events.append_array(w.events)
+		if on_step.is_valid() and on_step.call():
+			return
+
+
+static func _worm_hits(events: Array[Dictionary], p: Player, b: Enemy) -> int:
+	return events.filter(func(ev: Dictionary) -> bool: return ev.name == "entity:damaged" and ev.target_id == p.id and ev.source_id == b.id).size()
+
+
+# 噬墓巨蟲（第 3 層）：冒在地面 surface.time 秒後鑽下去；地底打不到、不能當目標、不擋路；追到腳下停 warn 秒再衝出來，
+# 站著被打中並擊飛、先跑開就打不到；噴酸 lobs 團落地各留一個酸池、站在落點被打中；吞噬把前方的人拉過來咬一口；
+# 產卵 count 顆、hatch_time 秒後各孵 per_egg 隻不給靈魂的屍甲蟲
+static func check_grave_worm() -> String:
+	var d: Dictionary = EnemyDefs.ENEMIES.grave_worm
+	var t: Dictionary = d.tunnel
+	for mode: StringName in [&"stand", &"dodge"]:
+		var s := _worm_setup(Vector2(0, -10), "", d.surface.time)
+		var w: World = s[0]
+		var p: Player = s[1]
+		var b: GraveWorm = s[2]
+		var ev: Array[Dictionary] = []
+		_worm_run(w, roundi((d.surface.time - 0.2) / DT), ev)
+		if b.is_burrowed() or not b.is_targetable():
+			return "噬墓巨蟲冒出來 %.1f 秒內應在地面上（狀態 %s）" % [d.surface.time, b.fsm.current_name]
+		_worm_run(w, roundi((0.4 + t.dive) / DT) + 2, ev)
+		if not b.is_burrowed() or b.is_targetable() or not b.passes_through():
+			return "噬墓巨蟲 %.1f 秒後應鑽進地底（狀態 %s）" % [d.surface.time + t.dive, b.fsm.current_name]
+		var hp0 := b.hp
+		if Combat.apply_damage(w, p, b, {"damage": 50.0, "knockback": 0.0}) or b.hp < hp0:
+			return "噬墓巨蟲在地底應打不到"
+		ev.clear()
+		var lurk_at := [Vector2.INF]
+		_worm_run(w, roundi((t.track_time + t.warn + 1.0) / DT), ev, func() -> bool:
+			if lurk_at[0] == Vector2.INF and b.fsm.is_in(&"lurk"):
+				lurk_at[0] = b.pos
+				if mode == &"dodge":
+					p.pos = b.pos + Vector2(t.radius + 2.5, 0.0)
+			return lurk_at[0] != Vector2.INF and not b.is_burrowed())
+		if lurk_at[0] == Vector2.INF or b.is_burrowed():
+			return "噬墓巨蟲應在 %.1f 秒內追到目標附近衝出來（狀態 %s、離目標 %.1f）" % [t.track_time + t.warn, b.fsm.current_name, b.pos.distance_to(p.pos)]
+		if mode == &"stand" and (lurk_at[0] as Vector2).distance_to(Vector2(0, -10)) > t.radius:
+			return "噬墓巨蟲應追到目標腳下才停（停在 %s）" % [lurk_at[0]]
+		var hits := _worm_hits(ev, p, b)
+		if mode == &"stand" and (hits != 1 or p.vz <= 0.0 and p.height <= p.ground_height + 0.01):
+			return "站著不動應被衝出來的巨蟲打中一次並擊飛（%d 次、vz %.1f）" % [hits, p.vz]
+		if mode == &"dodge" and hits != 0:
+			return "地面鼓起時跑開 %.1f 應打不到（打中 %d 次）" % [t.radius + 2.5, hits]
+		if absf(b._surface_left - d.surface.time) > 0.1 or not b.is_targetable():
+			return "衝出來後應在地面上停 %.1f 秒（剩 %.2f）" % [d.surface.time, b._surface_left]
+	# 噴酸：目標在 6（夾在 distance 範圍內）→ 中間那團落在目標腳下
+	var a: Dictionary = d.acid
+	var s2 := _worm_setup(Vector2(0, -6), "acid", 99.0)
+	var w2: World = s2[0]
+	var ev2: Array[Dictionary] = []
+	_worm_run(w2, roundi((d.decide_delay + a.windup + a.flight + 0.3) / DT), ev2)
+	var lobs := _named(ev2, "fx:dirt_lob")
+	if lobs.size() != 1 or (lobs[0].targets as Array).size() != int(a.lobs):
+		return "噴酸應吐 %d 團（fx:dirt_lob %d 個）" % [a.lobs, lobs.size()]
+	if _worm_hits(ev2, s2[1], s2[2]) != 1:
+		return "站在酸液落點應被打中一次（%d 次）" % _worm_hits(ev2, s2[1], s2[2])
+	if w2.zones.size() != int(a.lobs):
+		return "酸液落地應留 %d 個酸池（%d 個）" % [a.lobs, w2.zones.size()]
+	# 吞噬：目標在前方 6 → 被拉過來、拉到嘴邊咬一口
+	var v: Dictionary = d.devour
+	var s3 := _worm_setup(Vector2(0, -6), "devour", 99.0)
+	var w3: World = s3[0]
+	var p3: Player = s3[1]
+	var b3: GraveWorm = s3[2]
+	var ev3: Array[Dictionary] = []
+	_worm_run(w3, roundi((d.decide_delay + v.windup) / DT) + 2, ev3)
+	if not b3.fsm.is_in(&"devour") or _worm_hits(ev3, p3, b3) != 0:
+		return "目標在 %.0f 內噬墓巨蟲應張嘴吞噬（狀態 %s）" % [v.trigger_distance, b3.fsm.current_name]
+	var dist0 := b3.pos.distance_to(p3.pos)
+	_worm_run(w3, roundi(0.4 / DT), ev3)
+	if b3.pos.distance_to(p3.pos) > dist0 - 0.4 * v.pull_speed * 0.5:
+		return "吞噬應把前方的人拉過來（0.4 秒從 %.2f 到 %.2f）" % [dist0, b3.pos.distance_to(p3.pos)]
+	_worm_run(w3, roundi((v.pull_time + v.recovery) / DT), ev3)
+	if _worm_hits(ev3, p3, b3) != 1:
+		return "被拉到嘴邊應被咬一口（%d 次）" % _worm_hits(ev3, p3, b3)
+	# 產卵
+	var g: Dictionary = d.eggs
+	var s4 := _worm_setup(Vector2(0, -14), "eggs", 99.0)
+	var w4: World = s4[0]
+	var b4: GraveWorm = s4[2]
+	var ev4: Array[Dictionary] = []
+	_worm_run(w4, roundi((d.decide_delay + g.windup) / DT) + 3, ev4)
+	if _named(ev4, "fx:worm_egg").size() != int(g.count) or b4.hatched_alive() != 0:
+		return "產卵應留 %d 顆卵（%d 顆）、還沒孵" % [g.count, _named(ev4, "fx:worm_egg").size()]
+	_worm_run(w4, roundi(g.hatch_time / DT) + 2, ev4)
+	if b4.hatched_alive() != int(g.count) * int(g.per_egg):
+		return "卵 %.0f 秒後應孵出 %d 隻（%d 隻）" % [g.hatch_time, int(g.count) * int(g.per_egg), b4.hatched_alive()]
+	for e in w4.enemies:
+		if e is Enemy and (e as Enemy).summoner_id == b4.id and not (e as Enemy).no_souls:
+			return "卵孵出來的不給靈魂"
+	if EventDefs.boss_type(3) != &"grave_worm":
+		return "第 3 層的 Boss 應是噬墓巨蟲"
+	return ""
+
+
 # 骸骨將軍（第 2 層）：半血脫甲（無敵 transform.time 秒、碎片往外飛、吸掉場上的骷髏屍體）→ 萬骨聚合體（受傷 × damage_taken）；
 # 骨刺陣打得到線上的、打不到兩條線中間的；低掃跳起來躲得過、高掃打得到跳起來的；巨骨輪撞牆暈 stun 秒；吞屍吃掉附近的骷髏回血
 static func check_bone_general() -> String:
