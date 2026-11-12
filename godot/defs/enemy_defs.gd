@@ -134,6 +134,45 @@ const ENEMIES := {
 		},
 	},
 
+	# 蟲巢（第 3 層，數值 Claude 暫定）：不會動，一直孵屍甲蟲、靠近會噴酸、打破再孵一窩（sim/enemies/hive.gd）
+	&"hive": {
+		"name": "蟲巢",
+		"resists": {&"fire": -0.5, &"poison": 0.75},
+		"visual": &"hive",
+		"behavior": &"hive",
+		"max_hp": 110.0,
+		"move_speed": 0.0,
+		"speed_variance": 0.0,
+		"turn_speed": 0.0,
+		"radius": 0.9,
+		"mass": 50.0,
+		"knockback_mul": 0.0,      # 推不動
+		"hurt_time": 0.0,          # 不硬直（hive.gd 沒有 hurt 狀態）
+		"spawn_time": 0.6,
+		"corpse_time": 1.2,
+		"pack_max": 1,             # 只出現在預先放好的怪群裡、每群最多這麼多個；超過的、怪潮與噴怪抽到的換成 pack_fallback（roll_floor_type）
+		"pack_fallback": &"beetle",
+		"no_affixes": [&"summoner"],   # 自己就會孵蟲，不抽召喚（會叫出更多蟲巢）
+		"hatch": {
+			"type": &"beetle",
+			"first": 2.0,              # 醒來後多久孵第一窩
+			"interval": 6.0, "count": 3,
+			"max_alive": 8,            # 自己孵的同時最多活這麼多隻
+			"on_death": 3,             # 被打破時再孵一窩（不看上限）
+			"spread": 1.6,             # 孵在身邊這個半徑的一圈上
+		},
+		"acid": {
+			"trigger_distance": 3.0,   # 目標中心進到這以內、冷卻好就開始鼓酸泡
+			"windup": 0.5,
+			"radius": 3.0,
+			"damage": 12.0,
+			"knockback": 6.0,
+			"cooldown": 4.0,           # 從噴出來開始算
+			"color": Color("a8e04a"),
+			"sfx_windup": "enemySpawn", "sfx_burst": "explosion",
+		},
+	},
+
 	# 墓穴蜘蛛（第 3 層的怪，第 2 層的石棺噴出來，數值 Claude 暫定）：同弓手保持距離，吐蛛絲彈纏住玩家、沒中結成蛛網（sim/enemies/spider.gd）
 	&"spider": {
 		"name": "墓穴蜘蛛",
@@ -613,7 +652,7 @@ const ARMED_ZOMBIE := {
 const FLOOR_MIX := {
 	1: {&"zombie": 0.7, &"hound": 0.2, &"bloater": 0.1},
 	2: {&"grunt": 0.5, &"archer": 0.25, &"spearman": 0.125, &"bone_wheel": 0.125},
-	3: {&"beetle": 0.71, &"spider": 0.29},   # 圖鑑 50 : 20（蟲巢還沒做）
+	3: {&"beetle": 0.625, &"spider": 0.25, &"hive": 0.125},   # 圖鑑 50 : 20 : 10；蟲巢只在怪群裡、每群最多 1 個（pack_max）
 }
 const UPPER_SHARE := 0.2
 
@@ -658,7 +697,9 @@ static func floor_mix(floor_num: int) -> Dictionary:
 
 
 # 照 floor_mix 的比例抽一種（用傳入的 rng，模擬才有決定性）；with_upper：第 2 層起 UPPER_SHARE 改抽上一層（第 1 層不多耗亂數）
-static func roll_floor_type(floor_num: int, rng: RandomNumberGenerator, with_upper := true) -> StringName:
+# in_pack：是不是預先放好的怪群在抽。有 pack_max 的種類（蟲巢：不會動）只出現在怪群裡，怪潮與出口噴怪抽到就換成它的 pack_fallback；
+# 怪群每群的上限由 Spawner._spawn_pack 另外數
+static func roll_floor_type(floor_num: int, rng: RandomNumberGenerator, with_upper := true, in_pack := false) -> StringName:
 	if with_upper and floor_num > 1 and rng.randf() < UPPER_SHARE:
 		floor_num -= 1
 	var mix := floor_mix(floor_num)
@@ -670,4 +711,6 @@ static func roll_floor_type(floor_num: int, rng: RandomNumberGenerator, with_upp
 		acc += mix[type]
 		if r < acc:
 			break
+	if not in_pack and ENEMIES[pick].has("pack_max"):
+		pick = ENEMIES[pick].pack_fallback
 	return pick

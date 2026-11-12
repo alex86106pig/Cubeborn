@@ -219,8 +219,15 @@ func _spawn_pack(world: World, center: Vector2, rng: RandomNumberGenerator, layo
 	var placed: Array[Vector2] = []
 	if count <= 0:
 		count = rng.randi_range(c.size[0], c.size[1])
+	var capped := {}   # 有 pack_max 的種類這一群已經放了幾個
 	for r in MonsterRarityDefs.roll_pack_rarities(count, rng):
-		var type := EnemyDefs.roll_floor_type(world.floor_num, rng)
+		var type := EnemyDefs.roll_floor_type(world.floor_num, rng, true, true)
+		var cap: int = EnemyDefs.ENEMIES[type].get("pack_max", 0)
+		if cap > 0:
+			if capped.get(type, 0) >= cap:
+				type = EnemyDefs.ENEMIES[type].pack_fallback
+			else:
+				capped[type] = capped.get(type, 0) + 1
 		var at := _pack_member_spot(world, center, placed, rng, EnemyDefs.ENEMIES[type].radius)
 		placed.append(at)
 		var id := World.pack_entity_id(world.floor_num, world.stage_num, world.pack_member_count() + ids.size())
@@ -302,6 +309,8 @@ static func behavior_class(behavior: StringName) -> GDScript:
 			return Beetle
 		&"spider":
 			return Spider
+		&"hive":
+			return Hive
 		&"gravekeeper":
 			return Gravekeeper
 	return null

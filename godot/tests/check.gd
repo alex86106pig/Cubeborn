@@ -139,6 +139,7 @@ func _initialize() -> void:
 	_check("骷髏盾槍兵：正面舉盾擋下所有攻擊（含爆炸）、背後打得到；重攻擊破防 break_time 秒、破防中打得到；直刺打得到前方細長直線、打不到旁邊，舉槍時正面打得到", MonsterChecks.check_spearman)
 	_check("骨輪：看得到目標就蓄力 roll.windup 秒再直線滾過去，撞到玩家打一次、照樣往前，撞牆（場地邊緣）散成骨堆 collapse 秒再組起來；被打不硬直；被盾擋下也算撞牆", MonsterChecks.check_bone_wheel)
 	_check("屍甲蟲：鑽在地底打不到、不能當目標；爬到腳下停 emerge 秒才冒出來咬，先走開就咬不到；冒出來後在地面停 surface 秒打得到再鑽下去", MonsterChecks.check_beetle)
+	_check("蟲巢：不會動、推不動；醒著每 hatch.interval 秒孵 hatch.count 隻屍甲蟲、自己孵的最多 max_alive 隻、不給靈魂；被打破再孵 on_death 隻；目標進 acid.trigger_distance 內鼓 windup 秒噴酸、先走開噴不到；只在怪群裡、每群最多 pack_max 個，怪潮與出口噴怪抽不到", MonsterChecks.check_hive)
 	_check("墓穴蜘蛛：吐蛛絲彈打中纏住 web.root 秒；被盾擋下在落點結網；站在網上移速 × web.slow；火焰傷害打到網上燒掉", MonsterChecks.check_spider)
 	_check("腐屍：撲中抓住 grab_time 秒、撲 1 下 + 每 bite_interval 咬一口；被抓時按翻滾立刻掙脫；隊友打它就鬆手（抓著時被擊倒，鬆手後照樣站起來）；舉盾擋下不被抓、腐屍踉蹌；" 		+ "撿武器（走過去彎腰撿、地上消失、名字持〇腐屍、彎腰被打中斷、死掉掉回同一把；劍盾正面擋下背後打得到；8 種武器都打得到玩家、不再撲抱）",
 		all.bind([MonsterChecks.check_zombie, MonsterChecks.check_armed_zombie]))

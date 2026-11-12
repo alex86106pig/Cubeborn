@@ -303,6 +303,110 @@ static func check_beetle() -> String:
 	return ""
 
 
+# 蟲巢：不會動、推不動；醒著每 hatch.interval 秒孵 hatch.count 隻屍甲蟲、自己孵的最多 max_alive 隻，孵出來的不給靈魂；
+# 被打破再孵 on_death 隻；目標進 acid.trigger_distance 內鼓 windup 秒再噴酸，先走開就噴不到；
+# 只出現在怪群裡、每群最多 pack_max 個，怪潮與出口噴怪抽不到
+static func check_hive() -> String:
+	var d: Dictionary = EnemyDefs.ENEMIES.hive
+	var h: Dictionary = d.hatch
+	var a: Dictionary = d.acid
+	var w := _world()
+	var p: Player = w.players[World.HOST_PEER_ID]
+	p.pos = Vector2.ZERO
+	p.stats.set_base(&"max_hp", 99999.0)
+	p.hp = p.max_hp
+	var at := Vector2(0, 10)
+	var hive := w.spawner.spawn_at(w, &"hive", at) as Hive
+	var acid_hits := 0
+	var first_hatch := -1
+	var steps := roundi((d.spawn_time + h.first + h.interval * 4.0) / DT)
+	for i in steps:
+		w.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+		p.hp = p.max_hp
+		for ev in w.events:
+			if ev.name == "entity:damaged" and ev.target_id == p.id and ev.source_id == hive.id:
+				acid_hits += 1
+		if first_hatch < 0 and hive.hatched_alive() > 0:
+			first_hatch = i
+			if hive.hatched_alive() != h.count:
+				return "蟲巢第一窩應孵 %d 隻，實際 %d" % [h.count, hive.hatched_alive()]
+		if hive.hatched_alive() > h.max_alive:
+			return "蟲巢自己孵的同時最多 %d 隻，實際 %d" % [h.max_alive, hive.hatched_alive()]
+	if first_hatch < 0 or absf(first_hatch * DT - (d.spawn_time + h.first)) > 0.1:
+		return "蟲巢應在爬出 + first（%.1f 秒）孵第一窩，實際第 %d 步" % [d.spawn_time + h.first, first_hatch]
+	if hive.hatched_alive() != h.max_alive:
+		return "蟲巢孵了 4 輪後應停在上限 %d 隻，實際 %d" % [h.max_alive, hive.hatched_alive()]
+	if acid_hits > 0:
+		return "目標在 %.1f 外，蟲巢不應噴酸（打中 %d 次）" % [a.trigger_distance, acid_hits]
+	Combat.apply_damage(w, p, hive, {"damage": 1.0, "knockback": 20.0})
+	_step(w, 10, true)
+	if hive.pos.distance_to(at) > 0.001:
+		return "蟲巢不會動、推不動，實際從 %s 到 %s" % [at, hive.pos]
+	for e in w.enemies:
+		if e is Enemy and (e as Enemy).summoner_id == hive.id and not (e as Enemy).no_souls:
+			return "蟲巢孵出來的不給靈魂"
+	hive.take_damage(hive.hp + 1.0, Vector2(0, 1), 0.0, p.id)
+	if not hive.is_dead or hive.hatched_alive() != h.max_alive + h.on_death:
+		return "蟲巢被打破應再孵 %d 隻（現在 %d 隻、應 %d）" % [h.on_death, hive.hatched_alive(), h.max_alive + h.on_death]
+	# 噴酸：站在範圍內被噴到；開始鼓酸泡就走開則噴不到
+	for mode: StringName in [&"stand", &"dodge"]:
+		var w2 := _world()
+		var p2: Player = w2.players[World.HOST_PEER_ID]
+		p2.pos = Vector2.ZERO
+		p2.stats.set_base(&"max_hp", 99999.0)
+		p2.hp = p2.max_hp
+		var hive2 := w2.spawner.spawn_at(w2, &"hive", Vector2(0, a.trigger_distance - 0.5)) as Hive
+		var spit_at := -1
+		var hit_at := -1
+		for i in roundi((d.spawn_time + a.windup + 1.0) / DT):
+			w2.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+			for ev in w2.events:
+				if ev.name == "entity:damaged" and ev.target_id == p2.id and ev.source_id == hive2.id and hit_at < 0:
+					hit_at = i
+			if spit_at < 0 and hive2.fsm.is_in(&"spit"):
+				spit_at = i
+				if mode == &"dodge":
+					p2.pos = Vector2(0, -(a.radius + 3.0))
+			if spit_at >= 0 and hive2.fsm.is_in(&"brood"):
+				break
+		if spit_at < 0:
+			return "目標在 %.1f 內，蟲巢應開始鼓酸泡" % a.trigger_distance
+		if mode == &"stand" and (hit_at < 0 or absf((hit_at - spit_at) * DT - a.windup) > 0.05):
+			return "蟲巢應鼓 %.1f 秒後噴到站著的目標（鼓第 %d 步、打中第 %d 步）" % [a.windup, spit_at, hit_at]
+		if mode == &"dodge" and hit_at >= 0:
+			return "蟲巢鼓酸泡時走開應噴不到"
+		if w2.cooldowns.is_ready(hive2.cd("acid")):
+			return "蟲巢噴完應進冷卻"
+	# 種類：怪潮與出口噴怪抽不到；怪群裡每群最多 pack_max 個、整層至少有一個
+	var floor_num: int = EnemyDefs.FLOOR_MIX.find_key(EnemyDefs.FLOOR_MIX.values().filter(func(m: Dictionary) -> bool: return m.has(&"hive"))[0])
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var in_pack := 0
+	for i in 2000:
+		if EnemyDefs.roll_floor_type(floor_num, rng, true) == &"hive" or EnemyDefs.roll_floor_type(floor_num, rng, false) == &"hive":
+			return "怪潮 / 出口噴怪不應抽到蟲巢"
+		if EnemyDefs.roll_floor_type(floor_num, rng, false, true) == &"hive":
+			in_pack += 1
+	if absf(in_pack / 2000.0 - EnemyDefs.FLOOR_MIX[floor_num].hive) > 0.03:
+		return "怪群抽到蟲巢的比例 %.3f，應約 %.3f" % [in_pack / 2000.0, EnemyDefs.FLOOR_MIX[floor_num].hive]
+	var w3 := _world(&"graveyard_a", true)
+	for i in floor_num - 1:
+		w3.next_floor()
+	var total := 0
+	for pack: Dictionary in w3.packs:
+		var n := 0
+		for id: int in pack.ids:
+			if (w3.entities[id] as Enemy).type == &"hive":
+				n += 1
+		if n > int(d.pack_max):
+			return "一群怪裡有 %d 個蟲巢（最多 %d）" % [n, d.pack_max]
+		total += n
+	if total == 0:
+		return "第 %d 層的怪群裡應有蟲巢" % floor_num
+	CheckKit._note("蟲巢：第 %d 層 %d 群怪裡共 %d 個" % [floor_num, w3.packs.size(), total])
+	return ""
+
+
 # 墓穴蜘蛛：吐蛛絲彈，打中玩家纏住 web.root 秒；被盾擋下在落點結網；站在網上移速 × web.slow；火焰傷害打到網上燒掉
 static func check_spider() -> String:
 	var wd: Dictionary = EnemyDefs.ENEMIES.spider.web
@@ -1366,7 +1470,7 @@ static func check_packs() -> String:
 
 # 蒙皮小怪（D5 效能）：骷髏戰士 / 弓手每隻 ≤ 2 個網格、三角形數與原本的零件相同；關節寫進骨架
 static func check_skinned_rig() -> String:
-	for kind: StringName in [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"spearman", &"bone_wheel", &"beetle", &"spider"]:
+	for kind: StringName in [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"spearman", &"bone_wheel", &"beetle", &"spider", &"hive"]:
 		var old := DarkFantasy.character(kind)
 		var rig := DarkFantasy.skinned_character(kind)
 		var before := 0

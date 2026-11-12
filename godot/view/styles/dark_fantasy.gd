@@ -64,6 +64,11 @@ const SPIDER_JOINTS := {
 	"neck": 0.42, "neck_z": 0.32, "shoulder_y": 0.38, "shoulder_x": 0.2, "shoulder_z": 0.22, "grip": 0.4,
 	"hip_y": 0.38, "hip_x": 0.2, "hip_z": -0.15, "height": 0.9,
 }
+# 蟲巢：一團不會動的卵囊，整團在 body；頂端的大卵囊在 head、四邊的小卵囊在手腳關節（噴酸時一起鼓起來）
+const HIVE_JOINTS := {
+	"neck": 1.0, "shoulder_y": 0.55, "shoulder_x": 0.6, "shoulder_z": 0.35, "grip": 0.2,
+	"hip_y": 0.4, "hip_x": 0.55, "hip_z": -0.4, "height": 1.5,
+}
 const BOSS_SCALE := 1.85
 const KEEPER_SCALE := 1.3
 const WOLF_SCALE := 1.45
@@ -106,6 +111,8 @@ static func character(kind: StringName) -> Rig:
 			rig = spider()
 		&"beetle":
 			rig = beetle()
+		&"hive":
+			rig = hive()
 		&"bone_wheel":
 			rig = bone_wheel()
 		&"spearman":
@@ -306,6 +313,29 @@ static func beetle() -> Rig:
 		k.add(rig.head, PartKit.sphere(0.018, 4, 3), k.mat(C.rot_eye, true), {"x": s * 0.05, "y": 0.04, "z": 0.08, "shadow": false})
 	for leg in [rig.arm_r, rig.arm_l, rig.leg_r, rig.leg_l]:
 		k.add(leg, PartKit.cyl(0.018, 0.012, 0.22, 4), under, {"y": -0.1})
+	return rig.optimize()
+
+
+# 蟲巢：土黃色的肉瘤堆、表面嵌著發淡光的卵、幾條把它黏在地上的蟲絲
+static func hive() -> Rig:
+	var rig := Rig.new(HIVE_JOINTS)
+	var k := rig.kit
+	var flesh := k.mat(Color("6b6a3e"))
+	var dark := k.mat(Color("3a3a24"))
+	var egg := k.mat(BURROW_EGG, true)
+	k.add(rig.body, PartKit.sphere(0.85, 9, 6), flesh, {"y": 0.45, "sy": 0.75})
+	k.add(rig.body, PartKit.sphere(0.6, 8, 5), dark, {"y": 0.2, "sx": 1.5, "sy": 0.35, "sz": 1.5})   # 攤在地上的底
+	for i in 6:   # 嵌在表面的卵
+		var a := TAU * i / 6.0 + 0.3
+		k.add(rig.body, PartKit.sphere(0.13, 6, 4), egg, {"x": sin(a) * 0.7, "y": 0.45 + 0.2 * sin(i * 2.1), "z": cos(a) * 0.7, "sy": 1.3, "shadow": false})
+	for i in 4:   # 黏在地上的蟲絲
+		var a := TAU * i / 4.0 + 0.8
+		k.add(rig.body, PartKit.cyl(0.02, 0.02, 1.1, 4), k.mat(BURROW_SILK), {"x": sin(a) * 1.1, "y": 0.25, "z": cos(a) * 1.1, "rz": PI / 2.0 - 0.45, "ry": a - PI / 2.0})
+	k.add(rig.head, PartKit.sphere(0.42, 8, 5), flesh, {"sy": 1.1})
+	k.add(rig.head, PartKit.sphere(0.16, 6, 4), egg, {"y": 0.38, "shadow": false})
+	for limb in [rig.arm_r, rig.arm_l, rig.leg_r, rig.leg_l]:
+		k.add(limb, PartKit.sphere(0.3, 7, 4), flesh, {"sy": 0.9})
+		k.add(limb, PartKit.sphere(0.1, 5, 3), egg, {"y": 0.22, "shadow": false})
 	return rig.optimize()
 
 

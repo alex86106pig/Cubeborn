@@ -45,6 +45,7 @@ var _spearman := false    # 骷髏盾槍兵：左手塔盾舉在胸前、右手�
 var _wheel := false       # 骨輪：所有狀態都走 _pose_wheel（整個輪子在 head 關節上）
 var _beetle := false      # 屍甲蟲：所有狀態都走 _pose_beetle（鑽地時整隻藏在地面下）
 var _spider := false      # 墓穴蜘蛛：所有狀態都走 _pose_spider
+var _hive := false        # 蟲巢：所有狀態都走 _pose_hive（不會動，只有鼓動、鼓酸泡、塌掉）
 var _spin := 0.0          # 骨輪滾動的角度（畫面自己累加）
 var _bow_arm_target := BOW_ARM_REST
 var _dt := 0.0
@@ -60,6 +61,7 @@ func _init(p_rig: Node3D, e: Enemy) -> void:
 	_wheel = e.def.visual == &"bone_wheel"
 	_beetle = e.def.visual == &"beetle"
 	_spider = e.def.visual == &"spider"
+	_hive = e.def.visual == &"hive"
 	walk_phase = randf() * TAU   # 畫面用隨機，與模擬無關
 	if e.def.has("slam"):
 		_build_cracks(e)
@@ -97,13 +99,15 @@ func update(e: Enemy, dt: float) -> void:
 		(rig as SkinnedRig).set_held_weapon(kit.get("model", &""), kit.get("offhand_model", &""))
 
 	var colossus: bool = def.has("colossus") and a.get("form", 0) > 0 and state != &"dead"
-	match &"hound" if _hound else (&"wheel" if _wheel else (&"beetle" if _beetle else (&"spider" if _spider else (&"colossus" if colossus else (&"keeper" if _keeper and state != &"spawn" and state != &"dead" else state))))):
+	match &"hive" if _hive else &"hound" if _hound else (&"wheel" if _wheel else (&"beetle" if _beetle else (&"spider" if _spider else (&"colossus" if colossus else (&"keeper" if _keeper and state != &"spawn" and state != &"dead" else state))))):
 		&"colossus":
 			_pose_colossus(e, a, state, t, dt)
 		&"beetle":
 			_pose_beetle(e, state, t, dt)
 		&"spider":
 			_pose_spider(e, state, t, dt)
+		&"hive":
+			_pose_hive(e, state, t)
 		&"hound":
 			_pose_hound(e, a, state, t, dt)
 		&"wheel":
@@ -377,6 +381,31 @@ func _pose_spider(e: Enemy, state: StringName, t: float, dt: float) -> void:
 			rig.leg_l.rotation.x = swing
 			rig.arm_l.rotation.x = -swing
 			rig.leg_r.rotation.x = -swing
+
+
+# 蟲巢：平常慢慢鼓動；噴酸前整顆抽搐、卵囊鼓起來；被打破塌成一攤沉下去；爬出從地下升起
+func _pose_hive(e: Enemy, state: StringName, t: float) -> void:
+	rig.position.y = 0.0
+	rig.body.rotation = Vector3.ZERO
+	var swell := 1.0 + 0.03 * sin(t * 3.0)
+	var sacs := 1.0
+	var squash := 1.0
+	match state:
+		&"spit":
+			var k := clampf(t / e.def.acid.windup, 0.0, 1.0)
+			swell = 1.0 + 0.12 * k
+			sacs = 1.0 + 0.5 * k
+			rig.body.rotation.z = sin(t * 55.0) * 0.06
+		&"spawn":
+			rig.position.y = lerpf(-rig.height, 0.0, clampf(t / e.def.spawn_time, 0.0, 1.0))
+		&"dead":
+			squash = lerpf(1.0, 0.2, MathUtil.ease_out_cubic(clampf(t / 0.35, 0.0, 1.0)))
+			sacs = squash
+			rig.position.y = -CORPSE_SINK_DEPTH * 0.5 * clampf((t - e.def.corpse_time * CORPSE_SINK_START) / (e.def.corpse_time * (1.0 - CORPSE_SINK_START)), 0.0, 1.0)
+	rig.body.scale = _base_body_scale * Vector3(swell, swell * squash, swell)
+	rig.head.scale = Vector3.ONE * sacs
+	for limb in [rig.arm_r, rig.arm_l, rig.leg_r, rig.leg_l]:
+		limb.scale = Vector3.ONE * sacs
 
 
 # 屍甲蟲：鑽地時藏在地面下（BEETLE_HIDE）；冒出前在地面下抖、露出一點殼；冒出來往上跳一下；在地面上腳一直抖；

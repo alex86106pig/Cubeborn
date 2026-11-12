@@ -16,7 +16,7 @@ enum { P_PEER, P_WEAPON, P_ROLLS, P_DOWNED, P_DOWN_TIMER, P_REVIVE, P_PARRY, P_D
 
 # 用玩家格式（Player 的 E_EXTRA）送的種類：冤魂（Player.is_ghost）的 P_PEER 是死者的 peer id，客戶端建成冤魂、不當成隊友
 const PLAYER_KINDS: Array[StringName] = [&"player", &"ghost"]
-const ENEMY_KINDS: Array[StringName] = [&"grunt", &"archer", &"boss", &"minion", &"zombie", &"bloater", &"hound", &"gravekeeper", &"spearman", &"bone_wheel", &"bone_general", &"beetle", &"spider"]
+const ENEMY_KINDS: Array[StringName] = [&"grunt", &"archer", &"boss", &"minion", &"zombie", &"bloater", &"hound", &"gravekeeper", &"spearman", &"bone_wheel", &"bone_general", &"beetle", &"spider", &"hive"]
 # 動畫欄位名稱 → 索引（Player._update_anim、Enemy._update_anim、Boss._anim_extra）；不在表裡的照樣用字串送
 const ANIM_KEYS: Array[String] = [
 	"loco", "loco_time", "action", "action_time", "behavior", "phase", "k", "swing_dir", "is_finisher",
@@ -33,7 +33,7 @@ const PLAYER_ANIM_DEFAULTS := {
 }
 # 數值欄位 E_X ~ E_MAX_HP 用 float32；E_VX ~ E_INVULN 只給別人的實體外推與閃白，用 half（16 位元）
 # 二進位格式（v0.35.0）用的種類與常見名稱表：在表裡的送 1 byte 索引，不在表裡的照樣送字串（表只影響大小、不影響正確性）
-const KINDS: Array[StringName] = [&"player", &"grunt", &"archer", &"boss", &"ghost", &"chest", &"pickup", &"projectile", &"coin", &"torch", &"minion", &"zombie", &"bloater", &"hound", &"gravekeeper", &"relic", &"forge", &"spearman", &"bone_wheel", &"bone_general", &"beetle", &"spider"]
+const KINDS: Array[StringName] = [&"player", &"grunt", &"archer", &"boss", &"ghost", &"chest", &"pickup", &"projectile", &"coin", &"torch", &"minion", &"zombie", &"bloater", &"hound", &"gravekeeper", &"relic", &"forge", &"spearman", &"bone_wheel", &"bone_general", &"beetle", &"spider", &"hive"]
 const NAMES: Array[StringName] = [
 	&"idle", &"move", &"chase", &"kite", &"aim", &"attack", &"swing", &"cleave", &"slam", &"charge", &"rush", &"summon",
 	&"hurt", &"stagger", &"dead", &"dormant", &"spawn", &"climb", &"jump", &"stun", &"ready", &"special", &"roll", &"dig",
