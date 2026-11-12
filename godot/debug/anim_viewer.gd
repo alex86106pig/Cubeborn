@@ -2,13 +2,16 @@
 # 開法：Godot 編輯器開 debug/anim_viewer.tscn 按 F6（執行中改 view/ 的動畫程式存檔就會套用，重錄才會重跑模擬）；
 # 網頁版 ?anim-viewer（main.gd 不開遊戲，只開這個）。動作用 AnimRecorder 錄（跟動作表 PoseGallery 同一套）。
 # 特效也照錄到的放：持續性的（噴火、蓄力粒子）照每一步的動作冒，事件型的（揮砍弧光、爆炸、命中火花）照錄到的事件放；慢動作時特效也跟著慢
-# 一打開就選好：AnimViewer.new("enemy-gravekeeper:lantern")（網址 ?anim-viewer=enemy-gravekeeper:lantern；動作寫英文 id）
+# 一打開就選好：AnimViewer.new("enemy-gravekeeper:lantern")（網址 ?anim-viewer=enemy-gravekeeper:lantern；動作寫英文 id；
+# 第三段是腳步：enemy-gravekeeper:lantern:原地 / 走 / 跑）
 # 操作：空白鍵 播放 / 暫停、← → 逐格、↑ ↓ 換動作、R 重錄、滑鼠拖曳轉視角、滾輪縮放
 class_name AnimViewer
 extends Node3D
 
 const DT := Config.FIXED_DT
 const SPEEDS := [0.1, 0.25, 0.5, 1.0]
+# 腳步：照錄到的（跟遊戲一樣）/ 原地 / 走 / 跑；走、跑的速度照腿長換算（Froude 數 0.3 = 走、4 = 跑，同 BodyPose 的走跑分界）
+const FEET := {"照錄到的": -1.0, "原地": 0.0, "走": 0.3, "跑": 4.0}
 const GRID_HALF := 10            # 地板格線的範圍（± 公尺），1 公尺一格
 const PANEL_WIDTH := 360
 const ORBIT_SPEED := 0.008       # 拖曳轉視角：每像素幾弧度
@@ -28,6 +31,7 @@ var _playing := true
 var _speed := 1.0
 var _loop := true
 var _follow := true              # 角色照錄到的位置移動（看得出腳有沒有在地上滑）；關掉就原地
+var _feet := "照錄到的"
 var _yaw := -PI / 2.0
 var _pitch := 0.12
 var _dist := 7.0
@@ -56,6 +60,9 @@ func _ready() -> void:
 	_build_stage()
 	_build_ui()
 	var subject := 0
+	var feet := _initial.get_slice(":", 2) if _initial.count(":") >= 2 else ""
+	if FEET.has(feet):
+		_feet = feet
 	for i in _subjects.size():
 		if _subjects[i].id == _initial.get_slice(":", 0):
 			subject = i
@@ -189,6 +196,14 @@ func _build_ui() -> void:
 	follow.button_pressed = _follow
 	follow.toggled.connect(func(on: bool) -> void: _follow = on; _place_rig())
 	toggles.add_child(follow)
+	var feet := HBoxContainer.new()
+	box.add_child(feet)
+	feet.add_child(UiKit.label("腳步", UiKit.FONT_NOTE))
+	for name: String in FEET:
+		var b := UiKit.button(name, UiKit.BUTTON_S)
+		b.custom_minimum_size.x = 64 if name.length() <= 2 else 96
+		b.pressed.connect(func() -> void: _feet = name; _seek(_frame))
+		feet.add_child(b)
 	var views := HBoxContainer.new()
 	box.add_child(views)
 	for v: String in VIEWS:
@@ -248,10 +263,18 @@ func _seek(target: int) -> void:
 	add_child(_made.rig)
 	var frames: Array = _row.frames
 	_frame = clampi(target, _start, frames.size() - 1)
-	AnimRecorder.replay(_row, _made, _frame)
+	AnimRecorder.replay(_row, _made, _frame, _foot_speed())
 	_carry = 0.0
 	_place_rig()
 	_sync_slider()
+
+
+# 腳步選項換成速度（-1 = 照錄到的）
+func _foot_speed() -> float:
+	var fr: float = FEET[_feet]
+	if fr < 0.0 or fr == 0.0 or _made.is_empty():
+		return fr
+	return sqrt(fr * BodyPose.G * BodyPose.leg_length(_made.rig))
 
 
 func _free_rig() -> void:
@@ -278,7 +301,7 @@ func _advance() -> void:
 	var frames: Array = _row.frames
 	if _frame + 1 < frames.size():
 		_frame += 1
-		AnimRecorder.step(_row, _made, _frame)
+		AnimRecorder.step(_row, _made, _frame, _foot_speed())
 		for ev: Dictionary in _row.frames[_frame].get("events", []):
 			_fx.on_event(ev.name, ev)
 		_place_rig()
@@ -328,11 +351,12 @@ func _place_rig() -> void:
 	var f: Dictionary = _row.frames[_frame]
 	var origin: Vector2 = _row.frames[_start].pos
 	var rig: Node3D = _made.rig
-	var p: Vector2 = f.pos - origin if _follow else Vector2.ZERO
+	var now: Vector2 = (_row.subject as Entity).pos   # 腳步改過時位置也跟著改（AnimRecorder.step 擺好了）
+	var p: Vector2 = now - origin if _follow else Vector2.ZERO
 	rig.position = Vector3(p.x, f.height, p.y)
 	rig.rotation.y = f.facing
 	# 特效是世界座標：整組跟角色一樣平移（原地時跟著角色現在的位置）
-	var shift: Vector2 = origin if _follow else f.pos
+	var shift: Vector2 = origin if _follow else now
 	_fx.position = Vector3(-shift.x, 0.0, -shift.y)
 
 
@@ -349,7 +373,7 @@ func _refresh_info() -> void:
 			what += "\n戰技 %s %.2f 秒" % [a.skill, a.skill_time]
 	else:
 		what = "狀態 %s %s" % [a.get("state", ""), a.get("phase", "")]
-	_info.text = "%.2f / %.2f 秒（第 %d 步）　%s　%s\n%s" % [t, total, _frame - _start, "播放" if _playing else "暫停", "%s×" % _speed, what]
+	_info.text = "%.2f / %.2f 秒（第 %d 步）　%s　%s　腳步：%s\n%s" % [t, total, _frame - _start, "播放" if _playing else "暫停", "%s×" % _speed, _feet, what]
 	_play_button.text = "暫停" if _playing else "播放"
 
 

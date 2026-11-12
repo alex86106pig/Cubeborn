@@ -3910,6 +3910,10 @@ static func check_anim_recorder() -> String:
 			var made: Dictionary = (row.make as Callable).call()
 			for i in frames.size():
 				AnimRecorder.step(row, made, i)
+			if s.id in ["player-swordShield", "enemy-gravekeeper"]:   # 腳步改成原地 / 跑也播得完
+				for foot: float in [0.0, 5.0]:
+					for i in frames.size():
+						AnimRecorder.step(row, made, i, foot)
 			var rig = made.rig
 			for j in [rig.body, rig.arm_r, rig.forearm_r, rig.leg_l, rig.shin_l]:
 				var r: Vector3 = j.rotation

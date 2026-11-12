@@ -22,6 +22,19 @@ const PLAYER_ACTIONS := {
 	"idle": "待機", "run": "跑", "sprint": "衝刺跑（Ctrl）", "attack": "普攻連段", "attack+move": "邊走邊普攻", "special": "右鍵",
 	"roll": "翻滾", "jump": "跳", "potion": "喝藥水", "stagger": "受擊硬直", "knocked": "被擊倒", "dead": "倒地",
 }
+# 怪物狀態的中文名（動作清單顯示「中文  英文」）；名稱照 docs/系統說明.md 的招式
+const ENEMY_STATE_NAMES := {
+	&"spawn": "爬出", &"dormant": "休眠", &"chase": "追擊", &"patrol": "巡邏（掃地）", &"hurt": "受擊", &"dead": "死亡", &"launch": "從墳裡噴出",
+	&"swing": "揮砍", &"thrust": "直刺", &"guard_broken": "破防", &"kite": "拉開距離", &"aim": "拉弓瞄準", &"rush": "衝撞",
+	&"lunge": "撲抱", &"bite": "啃咬", &"stagger": "踉蹌", &"fetch": "撿武器", &"armed_move": "持武器出招",
+	&"swell": "脹大", &"hug": "撲抱（膨脹屍）", &"fallen": "坐倒",
+	&"pounce": "飛撲", &"snap": "快咬", &"hop": "跳開", &"dazed": "甩頭",
+	&"burrow": "鑽地", &"emerge": "冒出前", &"surface": "冒出", &"windup": "蓄力", &"roll": "滾動", &"collapse": "撞牆散開",
+	&"slam": "砸地", &"charge": "衝鋒", &"cleave": "直劈", &"summon": "召喚", &"transform": "變身",
+	&"reveal": "揭穿", &"grow": "變大", &"shovel": "鐵鏟揮擊", &"dig": "瘋狂鏟土", &"scoop": "鏟起", &"lantern": "提燈噴火", &"whistle": "口哨",
+	&"wolf_chase": "狼人追擊", &"stalk": "隱入黑暗", &"claw": "三連爪", &"leap": "飛撲（狼人）", &"howl": "狼嚎",
+	&"colossus_chase": "追擊（聚合體）", &"spikes": "骨刺陣", &"sweep": "多臂橫掃", &"wheel": "巨骨輪", &"wheel_stun": "撞牆暈倒", &"devour": "吞屍",
+}
 const SKILLS_PER_PAGE := 6
 const AI_SECONDS := 12.0   # 怪物照 AI 自己打的錄幾秒
 
@@ -282,24 +295,36 @@ func _spawn(w: World, kind: StringName, at: Vector2, form: int) -> Enemy:
 
 # start：這段動作從第幾步開始（前面的步數是為了讓動畫器的狀態接得上，檢視器從這裡開始播）
 func _enemy_row(key: String, e: Enemy, model: StringName, frames: Array, samples: Array[int], start: int) -> Dictionary:
-	return {"key": key, "name": key, "subject": e, "frames": frames, "samples": samples, "start": start,
+	return {"key": key, "name": ENEMY_STATE_NAMES.get(StringName(key), key), "subject": e, "frames": frames, "samples": samples, "start": start,
 		"make": func() -> Dictionary:
 			var rig: Node3D = DarkFantasy.character(model) if e.is_boss() else DarkFantasy.skinned_character(e.kind)
 			return {"rig": rig, "anim": EnemyAnimator.new(rig, e)}}
 
 
-# 把第 0 ~ upto 步餵給動畫器（重播到第 upto 步的姿勢）
-static func replay(row: Dictionary, made: Dictionary, upto: int) -> void:
+# 把第 0 ~ upto 步餵給動畫器（重播到第 upto 步的姿勢）；foot 見 step
+static func replay(row: Dictionary, made: Dictionary, upto: int, foot := -1.0) -> void:
 	for i in mini(upto, (row.frames as Array).size() - 1) + 1:
-		step(row, made, i)
+		step(row, made, i, foot)
 
 
-static func step(row: Dictionary, made: Dictionary, i: int) -> void:
+# foot >= 0：腳步不照錄到的，改成以這個速度沿動作開始時的朝向直走（0 = 原地站著）；上半身照錄到的招式。
+# 動畫程式裡把腳定住的招式（例如骷髏揮砍）腳不會動
+static func step(row: Dictionary, made: Dictionary, i: int, foot := -1.0) -> void:
 	var subject: Entity = row.subject
 	var f: Dictionary = row.frames[i]
+	var start: int = row.get("start", 0)
 	subject.anim = f.anim
 	subject.velocity = f.vel
 	subject.pos = f.pos   # 特效照實體的位置、朝向、高度放（守墓人噴火從提燈出來）
+	if foot >= 0.0 and i >= start:
+		var s: Dictionary = row.frames[start]
+		var dir := Vector2(sin(s.facing), cos(s.facing))
+		subject.velocity = dir * foot
+		subject.pos = s.pos + dir * foot * (i - start) * DT
+		if f.anim.has("loco") and f.anim.loco in [&"idle", &"move"]:   # 玩家：移動層跟著改（倒地、死亡不動）
+			var a: Dictionary = f.anim.duplicate()
+			a.loco = &"move" if foot > 0.0 else &"idle"
+			subject.anim = a
 	subject.facing = f.facing
 	subject.height = f.height
 	subject.ground_height = f.ground
