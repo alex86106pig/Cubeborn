@@ -19,7 +19,10 @@ const BOSS_MOVES := {
 	&"bone_colossus": [1, [&"spikes", &"sweep", &"wheel", &"devour"]],
 	&"grave_worm": [0, [&"dive", &"acid", &"devour", &"eggs", &"pupate"]],
 	&"moth_queen": [1, [&"dust", &"swoop", &"gust", &"land"]],
+	&"hive": [0, [&"spit"]],   # 玩家站得遠不會噴，硬切
 }
+const MODEL_STATE_NAMES := {&"lich": {&"aim": "唸咒"}}   # 同一個狀態名在這種怪是別的意思
+const AI_START := {&"moth_queen": &"moth_chase", &"werewolf": &"wolf_chase", &"bone_colossus": &"colossus_chase"}   # 第二型態一開始切到哪個狀態（形態只改模型，狀態機要另外切）
 const BOSS_KIND := {&"werewolf": &"gravekeeper", &"bone_colossus": &"bone_general", &"moth_queen": &"grave_worm"}   # 第二型態的模型 → 種類
 const MODEL_NAMES := {&"werewolf": "墓園狼人", &"bone_colossus": "萬骨聚合體", &"moth_queen": "屍蛾女王"}
 const PLAYER_ACTIONS := {
@@ -281,7 +284,11 @@ func enemy_rows(model: StringName) -> Array:
 	var w := _new_world()
 	var p := _player(w, &"swordShield")
 	var e := _spawn(w, kind, p.pos + Vector2(0, 5), form)
-	var frames := _record(w, e, roundi(AI_SECONDS / DT), func(_i: int) -> InputCmd: return _cmd(Vector2.ZERO))
+	var frames: Array = []
+	if AI_START.has(model):   # 第二型態的狀態機不會自己換過去：爬出來後切到那個型態的追擊再讓 AI 打
+		frames = _record(w, e, roundi(e.def.spawn_time / DT), func(_i: int) -> InputCmd: return _cmd(Vector2.ZERO))
+		e.fsm.change(AI_START[model])
+	frames.append_array(_record(w, e, roundi(AI_SECONDS / DT), func(_i: int) -> InputCmd: return _cmd(Vector2.ZERO)))
 	var seen := {}
 	var start := 0
 	for i in frames.size() + 1:
@@ -391,7 +398,8 @@ func _spawn(w: World, kind: StringName, at: Vector2, form: int) -> Enemy:
 
 # start：這段動作從第幾步開始（前面的步數是為了讓動畫器的狀態接得上，檢視器從這裡開始播）
 func _enemy_row(key: String, e: Enemy, model: StringName, frames: Array, samples: Array[int], start: int) -> Dictionary:
-	return {"key": key, "name": ENEMY_STATE_NAMES.get(StringName(key), key), "subject": e, "frames": frames, "samples": samples, "start": start,
+	var names: Dictionary = MODEL_STATE_NAMES.get(model, {})
+	return {"key": key, "name": names.get(StringName(key), ENEMY_STATE_NAMES.get(StringName(key), key)), "subject": e, "frames": frames, "samples": samples, "start": start,
 		"cycle": StringName(key) in ENEMY_CYCLES,
 		"make": func() -> Dictionary:
 			var rig: Node3D = DarkFantasy.character(WorldView._model_of(e)) if e.is_boss() else DarkFantasy.skinned_character(e.kind)   # 同遊戲：Boss 照型態選模型（骸骨將軍第一型態 = 亡骸騎士）
