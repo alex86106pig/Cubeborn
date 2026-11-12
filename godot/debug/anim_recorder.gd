@@ -159,7 +159,7 @@ func player_rows(weapon: StringName) -> Array:
 		["sprint", 60, func(i: int) -> InputCmd: return _cmd(Vector2(0, 1), InputCmd.BTN_RUN if i == 0 else 0)],
 		["attack", 100, func(_i: int) -> InputCmd: return _cmd(Vector2.ZERO, InputCmd.BTN_ATTACK)],
 		["attack+move", 80, func(_i: int) -> InputCmd: return _cmd(Vector2(1, 0), InputCmd.BTN_ATTACK)],
-		["special", 70, func(i: int) -> InputCmd: return _cmd(Vector2.ZERO, (InputCmd.BTN_SPECIAL | InputCmd.BTN_SPECIAL_HELD) if i < 2 else 0)],
+		["special", 70, func(i: int) -> InputCmd: return _cmd(Vector2.ZERO, (InputCmd.BTN_SPECIAL if i == 0 else 0) | (InputCmd.BTN_SPECIAL_HELD if i < 2 else 0))],   # 只按一下：連按兩步會變成緩衝的下一招、把收招取消掉
 		["roll", 40, func(i: int) -> InputCmd: return _cmd(Vector2(0, 1), InputCmd.BTN_ROLL if i == 2 else 0)],
 		["jump", 50, func(i: int) -> InputCmd: return _cmd(Vector2.ZERO, InputCmd.BTN_JUMP if i == 2 else 0)],
 		["potion", 45, func(i: int) -> InputCmd: return _cmd(Vector2.ZERO, InputCmd.slot_bit(ActiveSlots.HEAL_INDEX) if i == 2 else 0)],
@@ -169,6 +169,10 @@ func player_rows(weapon: StringName) -> Array:
 		var p := _player(w, weapon)
 		if spec[0] == "potion":
 			p.hp = p.max_hp * 0.5
+		if spec[0] == "special":   # 右鍵要有目標才演得完整（鏟拋抓得到、盾擊打得到）
+			var dummy := _spawn(w, &"grunt", p.pos + Vector2(0, 1.6), 0)
+			dummy.stats.set_base(&"max_hp", 1e6)
+			dummy.hp = 1e6
 		_record(w, p, 20, func(_i: int) -> InputCmd: return _cmd(Vector2.ZERO))   # 先站穩
 		var lead := CYCLE_LEAD if spec[0] in ["run", "sprint"] else 0
 		var frames := _record(w, p, spec[1] + lead, spec[2])

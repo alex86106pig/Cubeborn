@@ -12,8 +12,8 @@ const POSE_OF := {
 	&"chargedShot": &"bowCharge",
 	&"shadowStep": &"thrust",
 	&"holyCircle": &"arcaneBurst",
-	&"fireBreath": &"arcaneBurst",
-	&"shovelFling": &"fling",
+	&"fireBreath": &"breath",
+	&"shovelFling": &"heave",
 }
 const BOW_MODELS: Array[StringName] = [&"shortbow", &"longbow"]
 const UPRIGHT_MODELS: Array[StringName] = [&"staff", &"torch", &"scepter"]   # 右手掌跟著 weapon_tilt 轉、武器保持直立（不隨手臂轉）
@@ -288,6 +288,10 @@ func _pose_action(p: Player, a: Dictionary, dt: float) -> void:
 					_pose_scoop(idle, a, e)
 				&"fling":
 					_pose_overhead(idle, a, e, -1.0, 0.1)
+				&"breath":
+					_pose_breath(idle, a, e)
+				&"heave":
+					_pose_heave(idle, a, e)
 				&"mace":
 					_pose_mace(idle, a, e, dt)
 				&"bow":
@@ -583,6 +587,66 @@ func _pose_scoop(idle: Dictionary, a: Dictionary, e: float) -> void:
 	rig.body.rotation.x = bend
 	grip_shaft(0.45)
 	set_stance(drop, -0.1, 0.4)
+
+
+# 噴火（火把右鍵）：火把收到右腰、腰往右扭 → 往前推到胸口高度、火把頭朝前、左腳踏出 → 停一下再收回
+# 姿勢 = 待機 + 收腰的量 × (收腰 - 待機) + 推出的量 × (推出 - 待機)
+func _pose_breath(idle: Dictionary, a: Dictionary, e: float) -> void:
+	var pull := 0.0
+	var push := 0.0
+	match a.phase:
+		&"windup":
+			pull = e
+		&"active":
+			pull = 1.0 - e
+			push = e
+		_:
+			push = 1.0 - smoothstep(0.4, 1.0, clampf(a.k, 0.0, 1.0))
+	var ax: float = idle.arm_r
+	var el := idle_elbow(true)
+	BodyPose.arm(rig, true, ax + (0.1 - ax) * pull + (-1.45 - ax) * push, 0.2 * pull + 0.05 * push, el + (1.7 - el) * pull + (0.15 - el) * push)
+	BodyPose.arm(rig, false, -0.1 - 0.9 * pull - 0.4 * push, -0.2 * pull + 0.25 * push, 0.3 + 0.6 * pull + 1.1 * push)
+	weapon_tilt = idle.tilt + (0.4 - idle.tilt) * pull + (1.4 - idle.tilt) * push
+	rig.body.rotation.y = -0.3 * pull   # 推出時腰轉正：火把是直立武器、跟著身體朝向，腰一轉火就噴歪
+	rig.body.rotation.x = 0.15 * push
+	set_stance(0.06 * pull + 0.1 * push, -0.2, 0.45, maxf(pull, push))
+
+
+# 鏟拋（鐵鏟右鍵）：蹲低、鏟面插到怪的腳下 → 膝蓋蹬直、雙手把鏟子往前上方掀過頭、上身微後仰 → 收回
+func _pose_heave(idle: Dictionary, a: Dictionary, e: float) -> void:
+	var k := clampf(a.k, 0.0, 1.0)
+	var x := 0.0
+	var elbow := 0.0
+	var bend := 0.0
+	var drop := 0.0
+	match a.phase:
+		&"windup":
+			x = lerpf(idle.arm_r, -1.1, e)
+			elbow = lerpf(idle_elbow(true), 0.3, e)
+			bend = 0.45 * e
+			drop = 0.3 * e
+		&"active":
+			x = lerpf(-1.1, -1.8, e)
+			elbow = lerpf(0.3, 0.4, e)
+			bend = lerpf(0.45, 0.2, e)
+			drop = lerpf(0.3, 0.15, e)
+		_:
+			if k < 0.45:
+				var u := MathUtil.ease_out_cubic(k / 0.45)
+				x = lerpf(-1.8, -2.5, u)
+				elbow = lerpf(0.4, 0.5, u)
+				bend = lerpf(0.2, -0.12, u)
+				drop = lerpf(0.15, 0.02, u)
+			else:
+				var u := MathUtil.ease_out_cubic((k - 0.45) / 0.55)
+				x = lerpf(-2.5, idle.arm_r, u)
+				elbow = lerpf(0.5, idle_elbow(true), u)
+				bend = lerpf(-0.12, 0.0, u)
+				drop = lerpf(0.02, 0.0, u)
+	BodyPose.arm(rig, true, x, 0.1, elbow)
+	rig.body.rotation.x = bend
+	grip_shaft(0.45)
+	set_stance(drop, -0.2, 0.4)
 
 
 # 左手握在鏟柄 / 長柄上離右手 along 遠的地方（沿右前臂的方向往外，鏟柄沿右手的 -Y），手肘往外下

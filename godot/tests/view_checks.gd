@@ -3994,6 +3994,58 @@ static func check_dead_lie() -> String:
 	return err
 
 
+# 右鍵的專屬動作：火把噴火推出時火把頭朝正前方；鐵鏟鏟拋起手時鏟面碰到地（不插深）、收招時把鏟子掀過頭
+static func check_special_poses() -> String:
+	var rec := AnimRecorder.new()
+	var err := ""
+	for weapon: String in ["torch", "shovel"]:
+		for row: Dictionary in rec.rows("player-%s" % weapon, false):
+			if row.key != "special":
+				continue
+			var made: Dictionary = (row.make as Callable).call()
+			var rig: Rig = made.rig
+			var head := -INF      # 噴火推出時火把頭朝前的程度（+Y 的 z）
+			var scoop := INF      # 鏟拋起手時鏟子最低點
+			var lift := -INF      # 鏟拋收招時拳頭最高
+			for i in (row.frames as Array).size():
+				AnimRecorder.step(row, made, i)
+				var a: Dictionary = row.frames[i].anim
+				if a.action != &"special":
+					continue
+				var t := _hand_tf(rig, true)
+				if weapon == "torch" and a.phase == &"active" and a.k > 0.6:
+					head = maxf(head, (t.basis * Vector3.UP).normalized().z)
+				elif weapon == "shovel" and a.phase == &"windup":
+					scoop = minf(scoop, _node_low(rig, rig.weapon_main))
+				elif weapon == "shovel" and a.phase == &"recovery":
+					lift = maxf(lift, t.origin.y)
+			rig.free()
+			if weapon == "torch" and head < 0.95:
+				err = "噴火推出時火把頭應朝正前方：%.2f" % head
+			elif weapon == "shovel" and (scoop < -0.08 or scoop > 0.08 or lift < 1.9):
+				err = "鏟拋應先把鏟面插到地面（最低 %.2f）、再掀過頭（拳頭最高 %.2f）" % [scoop, lift]
+			else:
+				_note("噴火推出時火把頭朝前 %.2f" % head if weapon == "torch" else "鏟拋鏟面最低 %.2f、掀起時拳頭最高 %.2f" % [scoop, lift])
+		if err != "":
+			break
+	rec.clear()
+	return err
+
+
+# node 底下所有零件的最低點（角色根節點座標）
+static func _node_low(rig: Node3D, node: Node3D) -> float:
+	var low := INF
+	for mi in PartKit.mesh_instances(node):
+		var t := Transform3D.IDENTITY
+		var n: Node3D = mi
+		while n != rig:
+			t = Transform3D(Basis.from_euler(n.rotation, EULER_ORDER_YXZ).scaled_local(n.scale), n.position) * t if not (n is MeshInstance3D) else n.transform * t
+			n = n.get_parent() as Node3D
+		for v: Vector3 in mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+			low = minf(low, (rig.transform * t * v).y)
+	return low
+
+
 # joint 這一節自己的零件最低點（角色根節點座標；場景樹還沒就緒，沿節點一層層乘）
 static func _joint_mesh_low(rig: Node3D, joint: Node3D) -> float:
 	var t := Transform3D.IDENTITY
