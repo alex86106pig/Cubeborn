@@ -662,6 +662,11 @@ func _anim_extra(_a: Dictionary) -> void:
 	pass
 
 
+# 夠不到的怪（屍蛾女王在飛）覆寫：這一下打不到就回傳 true（Combat._apply_damage 在高度判斷之後問；客戶端的命中預測也問）
+func out_of_reach(_source: Entity, _hit: Dictionary) -> bool:
+	return false
+
+
 # 持盾的怪（Spearman）覆寫：正面擋下就回傳 true（Combat._apply_damage 在格擋與閃避之前問，擋下不扣血）
 func shield_blocks(_origin: Vector2, _hit: Dictionary) -> bool:
 	return false

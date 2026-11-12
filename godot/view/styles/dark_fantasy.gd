@@ -74,6 +74,11 @@ const WORM_JOINTS := {
 	"neck": 2.7, "neck_z": 0.25, "shoulder_y": 2.7, "shoulder_x": 0.4, "shoulder_z": 0.7, "grip": 0.5,
 	"hip_y": 0.15, "hip_x": 0.9, "height": 3.4,
 }
+# 屍蛾女王：毛茸茸的胸腹在 body、頭與觸角在 head、兩片大翅膀在手臂關節（拍翅 = 轉手臂的 z）、腳關節是垂下來的細腳
+const MOTH_JOINTS := {
+	"neck": 1.75, "neck_z": 0.35, "shoulder_y": 1.5, "shoulder_x": 0.3, "grip": 0.5,
+	"hip_y": 0.8, "hip_x": 0.25, "height": 2.2,
+}
 const BOSS_SCALE := 1.85
 const KEEPER_SCALE := 1.3
 const WOLF_SCALE := 1.45
@@ -132,6 +137,8 @@ static func character(kind: StringName) -> Rig:
 			rig = bone_colossus()
 		&"grave_worm":
 			rig = grave_worm()
+		&"moth_queen":
+			rig = moth_queen()
 		_:
 			rig = knight()
 	_templates[kind] = rig.to_template()
@@ -586,6 +593,32 @@ static func grave_worm() -> Rig:
 		k.add(arm, PartKit.cone(0.1, 0.75, 5), tooth, {"z": 0.3, "rx": PI / 2.0})
 	for leg in [rig.leg_r, rig.leg_l]:
 		k.add(leg, PartKit.ico(0.45, 0), ring, {"sy": 0.5})
+	return rig.optimize()
+
+
+# 屍蛾女王：灰白帶毛的胸、一節節往後垂的腹部、兩片有眼斑的大翅膀、羽毛狀的觸角、發綠光的複眼
+static func moth_queen() -> Rig:
+	var rig := Rig.new(MOTH_JOINTS)
+	var k := rig.kit
+	var fur := k.mat(Color("b9b2a0"))
+	var dark := k.mat(Color("4a4338"))
+	var wing := k.mat(Color("8f8672"))
+	var spot := k.mat(Color("2a2420"))
+	k.add(rig.body, PartKit.sphere(0.45, 8, 6), fur, {"y": 1.45, "sz": 1.2})
+	for i in 4:   # 腹部：越往後越小、往下垂
+		k.add(rig.body, PartKit.sphere(0.36 - i * 0.05, 7, 5), dark if i % 2 == 1 else fur, {"y": 1.25 - i * 0.2, "z": -0.45 - i * 0.3})
+	k.add(rig.head, PartKit.sphere(0.28, 7, 5), fur, {})
+	for s in [-1.0, 1.0]:
+		k.add(rig.head, PartKit.sphere(0.11, 6, 4), k.mat(Color("a8e04a"), true), {"x": s * 0.18, "y": 0.05, "z": 0.2, "shadow": false})
+		k.add(rig.head, PartKit.box(0.04, 0.5, 0.12), dark, {"x": s * 0.14, "y": 0.42, "z": 0.1, "rz": -s * 0.5, "rx": -0.4})
+	for side: Array in [[rig.arm_r, -1.0], [rig.arm_l, 1.0]]:
+		var arm: Node3D = side[0]
+		var s: float = side[1]
+		k.add(arm, PartKit.box(1.7, 0.04, 1.2), wing, {"x": s * 0.95, "z": 0.15})      # 前翅
+		k.add(arm, PartKit.box(1.2, 0.04, 0.9), wing, {"x": s * 0.7, "z": -0.75})      # 後翅
+		k.add(arm, PartKit.cyl(0.22, 0.22, 0.05, 8), spot, {"x": s * 1.2, "y": 0.01, "z": 0.2})   # 眼斑
+	for leg in [rig.leg_r, rig.leg_l]:
+		k.add(leg, PartKit.cyl(0.03, 0.02, 0.7, 4), dark, {"y": -0.35})
 	return rig.optimize()
 
 

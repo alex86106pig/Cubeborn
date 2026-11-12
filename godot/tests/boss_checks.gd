@@ -503,6 +503,152 @@ static func check_grave_worm() -> String:
 	return ""
 
 
+# 屍蛾女王的檢查共用：玩家血很多、站在 at；Boss 在原點、已經是屍蛾女王，only 以外的招式都鎖住（only 空的 = 全鎖），不會落地
+static func _moth_setup(at: Vector2, only: String) -> Array:
+	var w := _new_world(3)
+	var p := _player(w)
+	p.stats.set_base(&"max_hp", 99999.0)
+	p.hp = p.max_hp
+	p.pos = at
+	var b := _spawn(w, &"grave_worm", Vector2.ZERO) as GraveWorm
+	b._become_moth()
+	b._land_timer = 999.0
+	for move: String in ["dust", "swoop", "gust"]:
+		if move == only:
+			w.cooldowns.reset(b.cd(move))
+		else:
+			w.cooldowns.start(b.cd(move), 999.0)
+	return [w, p, b]
+
+
+# 屍蛾女王（噬墓巨蟲半血）：結蛹 transform.time 秒打得到、受傷 × damage_taken → form 1；飛著時地面的近戰打不到、投射物與跳起來的打得到、
+# 不擋路；land.interval 秒後落地 land.time 秒（近戰打得到）並留 eggs 顆卵；鱗粉雲 clouds 團、站在裡面視野最多 dust.vision、拿火把不受影響；
+# 俯衝打中路上的人、站在旁邊打不到；拍翅狂風把前方的人吹退、背後的不受影響、吹散蛛網
+static func check_moth_queen() -> String:
+	var d: Dictionary = EnemyDefs.ENEMIES.grave_worm
+	var tr: Dictionary = d.transform
+	var m: Dictionary = d.moth
+	var s := _worm_setup(Vector2(0, -12), "", 99.0)
+	var w: World = s[0]
+	var p: Player = s[1]
+	var b: GraveWorm = s[2]
+	b.hp = b.max_hp * 0.55
+	Combat.apply_damage(w, p, b, {"damage": b.max_hp * 0.1, "knockback": 0.0})
+	if not b.fsm.is_in(&"pupate"):
+		return "噬墓巨蟲：血量 %.0f%% 應開始結蛹（狀態 %s）" % [b.hp / b.max_hp * 100.0, b.fsm.current_name]
+	_step_n(w, 3)
+	b.invuln_timer = 0.0
+	var dealt := b.take_damage(10.0, Vector2.UP, 0.0, p.id)
+	if absf(dealt - 10.0 * tr.damage_taken * StatDefs.damage_factor(b.stats, &"phys")) > 0.05:
+		return "打蛹的傷害應 × %.1f（10 → %.2f）" % [tr.damage_taken, dealt]
+	var ev: Array[Dictionary] = []
+	_worm_run(w, roundi(tr.time / DT) + 2, ev)
+	if b.form != 1 or not b.is_flying() or _named(ev, "boss:transformed").size() != 1:
+		return "結蛹 %.1f 秒後應變成屍蛾女王並飛起來（form %d、狀態 %s）" % [tr.time, b.form, b.fsm.current_name]
+	b.invuln_timer = 0.0
+	dealt = b.take_damage(10.0, Vector2.UP, 0.0, p.id)
+	if absf(dealt - 10.0 * StatDefs.damage_factor(b.stats, &"phys")) > 0.05:
+		return "破蛹後受到的傷害應回到原本（10 → %.2f）" % dealt
+	# 飛著：地面的近戰打不到、投射物打得到、跳起來打得到；不擋路
+	var s2 := _moth_setup(Vector2(0, -5), "")
+	var w2: World = s2[0]
+	var p2: Player = s2[1]
+	var b2: GraveWorm = s2[2]
+	_step_n(w2, 2)
+	b2.invuln_timer = 0.0
+	if not b2.is_flying() or not b2.passes_through():
+		return "屍蛾女王盤旋時應在飛、不擋路（狀態 %s）" % b2.fsm.current_name
+	if Combat.apply_damage(w2, p2, b2, {"damage": 5.0, "knockback": 0.0}):
+		return "屍蛾女王飛著時站在地上的近戰應打不到"
+	if not Combat.apply_damage(w2, p2, b2, {"damage": 5.0, "knockback": 0.0, "projectile": true}):
+		return "屍蛾女王飛著時投射物應打得到"
+	b2.invuln_timer = 0.0
+	p2.height = p2.ground_height + m.jump_reach + 0.1
+	if not Combat.apply_damage(w2, p2, b2, {"damage": 5.0, "knockback": 0.0, "band": Vector2(-10.0, 10.0)}):
+		return "跳起來（腳離地 %.1f 以上）的攻擊應打得到飛著的屍蛾女王" % m.jump_reach
+	# 落地：land.interval 秒後降下來，落地期間近戰打得到、留 eggs 顆卵，之後再飛起來
+	var l: Dictionary = m.land
+	var s3 := _moth_setup(Vector2(0, -5), "")
+	var w3: World = s3[0]
+	var p3: Player = s3[1]
+	var b3: GraveWorm = s3[2]
+	b3._land_timer = 0.3
+	var ev3: Array[Dictionary] = []
+	_worm_run(w3, roundi((0.3 + m.decide_delay + l.descend) / DT) + 4, ev3)
+	b3.invuln_timer = 0.0
+	if not b3.fsm.is_in(&"land") or b3.is_flying() or not Combat.apply_damage(w3, p3, b3, {"damage": 5.0, "knockback": 0.0}):
+		return "屍蛾女王該落地時應降下來、近戰打得到（狀態 %s）" % b3.fsm.current_name
+	if _named(ev3, "fx:worm_egg").size() != int(l.eggs):
+		return "落地應留 %d 顆卵（%d 顆）" % [l.eggs, _named(ev3, "fx:worm_egg").size()]
+	# 跑到飛起來的那一步就停：計時器在起飛時重設成 interval，起飛後才往下數
+	_worm_run(w3, roundi(l.time / DT) + 2, ev3, func() -> bool: return b3.is_flying())
+	if not b3.is_flying() or absf(b3._land_timer - l.interval) > 0.05:
+		return "落地 %.1f 秒後應再飛起來、%.0f 秒後才再落地（狀態 %s、剩 %.1f）" % [l.time, l.interval, b3.fsm.current_name, b3._land_timer]
+	# 鱗粉雲：clouds 團；站在裡面視野最多 vision，拿火把的不受影響
+	var u: Dictionary = m.dust
+	for torch: bool in [false, true]:
+		var s4 := _moth_setup(Vector2(0, -5), "dust")
+		var w4: World = s4[0]
+		var p4: Player = s4[1]
+		if torch:
+			p4.equip_weapon(&"torch")
+		var before := Vision.view_range(p4)
+		var ev4: Array[Dictionary] = []
+		_worm_run(w4, roundi((m.decide_delay + u.windup) / DT) + 3, ev4)
+		var clouds := w4.zones.filter(func(z: Dictionary) -> bool: return z.has("vision_cap"))
+		if clouds.size() != int(u.clouds):
+			return "鱗粉雲應撒 %d 團（%d 團）" % [u.clouds, clouds.size()]
+		p4.pos = clouds[0].pos
+		_worm_run(w4, roundi(0.6 / DT), ev4)
+		var inside := Vision.view_range(p4)
+		if torch and absf(inside - before) > EPS:
+			return "拿火把站在鱗粉雲裡視野不應變（%.1f → %.1f）" % [before, inside]
+		if not torch and absf(inside - u.vision) > EPS:
+			return "站在鱗粉雲裡視野應縮成 %.1f（%.1f）" % [u.vision, inside]
+		if not torch:
+			p4.pos = Vector2(14, 14)
+			_worm_run(w4, roundi(1.0 / DT), ev4)
+			if absf(Vision.view_range(p4) - before) > EPS:
+				return "走出鱗粉雲視野應恢復（%.1f，原本 %.1f）" % [Vision.view_range(p4), before]
+	# 俯衝：站在路上被打中；鎖定方向後站到旁邊（離路線 width + 2）打不到
+	var sw: Dictionary = m.swoop
+	for mode: StringName in [&"stand", &"side"]:
+		var s5 := _moth_setup(Vector2(0, -8), "swoop")
+		var w5: World = s5[0]
+		var p5: Player = s5[1]
+		var b5: GraveWorm = s5[2]
+		var ev5: Array[Dictionary] = []
+		_worm_run(w5, roundi((m.decide_delay + sw.windup + sw.length / sw.speed + 0.3) / DT), ev5, func() -> bool:
+			if mode == &"side" and b5.fsm.is_in(&"swoop") and b5.fsm.time >= sw.windup * sw.track and p5.pos.x == 0.0:
+				p5.pos = Vector2(sw.width + p5.radius + 2.0, -8)
+			return false)
+		var hits := _worm_hits(ev5, p5, b5)
+		if mode == &"stand" and hits != 1:
+			return "站在俯衝的路上應被打中一次（%d 次，Boss 在 %s）" % [hits, b5.pos]
+		if mode == &"side" and hits != 0:
+			return "方向鎖定後站到路線旁邊應打不到（%d 次）" % hits
+		if b5.pos.distance_to(Vector2.ZERO) < sw.length * 0.5:
+			return "俯衝應直線衝出去（只到 %s）" % b5.pos
+	# 拍翅狂風：前方的人被吹退、蛛網被吹散；背後的人不受影響
+	var g: Dictionary = m.gust
+	var s6 := _moth_setup(Vector2(0, -4), "gust")
+	var w6: World = s6[0]
+	var p6: Player = s6[1]
+	var b6: GraveWorm = s6[2]
+	GroundZones.add_web(w6, Vector2(0, -3), EnemyDefs.ENEMIES.spider.web, b6.id)
+	GroundZones.add_web(w6, Vector2(0, 5), EnemyDefs.ENEMIES.spider.web, b6.id)
+	var ev6: Array[Dictionary] = []
+	_worm_run(w6, roundi((m.decide_delay + g.windup + 0.5) / DT), ev6)
+	var pushed := p6.pos.distance_to(Vector2(0, -4))
+	if _worm_hits(ev6, p6, b6) != 1 or absf(pushed - g.push_distance * p6.knockback_mul) > g.push_distance * 0.1:
+		return "拍翅狂風應把前方的人吹退 %.1f（打中 %d 次、吹退 %.2f）" % [g.push_distance * p6.knockback_mul, _worm_hits(ev6, p6, b6), pushed]
+	CheckKit._note("屍蛾女王拍翅狂風：吹退 %.2f（目標 %.1f）" % [pushed, g.push_distance])
+	var webs := w6.zones.filter(func(z: Dictionary) -> bool: return z.has("web_id"))
+	if webs.size() != 1 or (webs[0].pos as Vector2).y < 0.0:
+		return "拍翅狂風應吹散前方的蛛網、留下背後的（剩 %d 張）" % webs.size()
+	return ""
+
+
 # 骸骨將軍（第 2 層）：半血脫甲（無敵 transform.time 秒、碎片往外飛、吸掉場上的骷髏屍體）→ 萬骨聚合體（受傷 × damage_taken）；
 # 骨刺陣打得到線上的、打不到兩條線中間的；低掃跳起來躲得過、高掃打得到跳起來的；巨骨輪撞牆暈 stun 秒；吞屍吃掉附近的骷髏回血
 static func check_bone_general() -> String:

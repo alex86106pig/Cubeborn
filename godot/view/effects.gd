@@ -43,6 +43,7 @@ const HANDLERS := {
 	"fx:spike_warn": &"_fx_spike_warn",
 	"fx:burrow_warn": &"_fx_burrow_warn",
 	"fx:worm_egg": &"_fx_worm_egg",
+	"fx:gust": &"_fx_gust",
 	"fx:web": &"_fx_web",
 	"fx:web_burned": &"_fx_web_burned",
 	"fx:webbed": &"_fx_webbed",
@@ -69,6 +70,7 @@ const BONE_COLOR := Color("d8d0b8")         # 挖墳點冒出的白骨手
 const COFFIN_DUST := Color("8a8070")        # 石棺噴怪前的石屑
 const SEAL_COLOR := Color("b070ff")         # 石棺封印的紫光（同 WorldView.COFFIN_SEAL）
 const COFFIN_TOP := 0.85                    # 石棺棺口的高度（同 WorldView.COFFIN_SIZE.y）
+const MOTH_DUST_COLOR := Color("c8b890")    # 屍蛾女王的鱗粉（同 EnemyDefs 的 moth.dust.color）
 const WORM_EGG_COLOR := Color("b9c08a")     # 噬墓巨蟲的卵（同 DarkFantasy.BURROW_EGG）
 const COCOON_SHRED := Color("c9cdbd")       # 巨繭噴怪前飄出來的絲屑（同 WorldView.COCOON_SILK）
 const COCOON_GLOW := Color("a8e04a")        # 巨繭裂口的綠光（同 WorldView.COCOON_GLOW）
@@ -394,6 +396,19 @@ func _fx_burrow_warn(p: Dictionary) -> void:
 			burst(at + Vector3(sin(a) * r, 0.0, cos(a) * r), {"color": DUST_COLOR, "count": 2, "speed": 1.0, "up": 3.0, "size": 0.12, "life": 0.3}))
 
 
+# 屍蛾女王拍翅狂風：前方扇形一道白色弧光，帶鱗粉的風沿著扇形往外吹
+func _fx_gust(p: Dictionary) -> void:
+	var at := _at(p, 1.0)
+	var facing: float = p.facing
+	var reach: float = p.range
+	var arc: float = p.arc
+	slash(at, facing, reach, arc, {"color": Color.WHITE, "opacity": 0.45, "life": 0.3})
+	for i in 14:
+		var a := facing + _rng.randf_range(-arc * 0.5, arc * 0.5)
+		var r := _rng.randf_range(1.0, reach)
+		mote(at + Vector3(sin(a) * r, _rng.randf_range(-0.6, 0.6), cos(a) * r), {"color": MOTH_DUST_COLOR, "size": 0.2, "life": 0.5, "vy": 0.4})
+
+
 # 噬墓巨蟲的卵：一顆淡黃綠的卵立在地上 life 秒，越接近孵化抖得越快，最後破開
 func _fx_worm_egg(p: Dictionary) -> void:
 	var at := _at(p)
@@ -490,6 +505,11 @@ func _on_transformed(p: Dictionary) -> void:
 	if e == null:
 		return
 	var at := _entity_at(e, 0.0)
+	if (e as Enemy).def.has("moth"):   # 噬墓巨蟲 → 屍蛾女王：蛹殼碎片往外噴、一圈鱗粉
+		ring(at, 3.0, {"color": MOTH_DUST_COLOR, "life": 0.5})
+		burst(at + Vector3(0, 1.0, 0), {"color": Color("8d7f5f"), "count": 26, "speed": 6.0, "up": 5.0, "size": 0.2})
+		burst(at + Vector3(0, 2.0, 0), {"color": MOTH_DUST_COLOR, "count": 18, "speed": 3.0, "up": 3.0, "size": 0.14})
+		return
 	if (e as Enemy).def.has("colossus"):   # 骸骨將軍 → 萬骨聚合體：骨頭往上噴、一圈白光
 		ring(at, 3.0, {"color": BONE_COLOR, "life": 0.5})
 		burst(at + Vector3(0, 1.5, 0), {"color": BONE_COLOR, "count": 30, "speed": 6.0, "up": 5.0, "size": 0.2})

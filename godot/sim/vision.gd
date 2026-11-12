@@ -29,8 +29,12 @@ static func lit(lights_: Array[Vector3], p: Vector2, target_radius: float = 0.0)
 
 # 視野距離與身邊一圈：火把傭兵被動加大（F8）
 # 守夜蠟燭（G1）的視野屬性乘在距離與扇形角度上（身邊一圈不變）
+# 站在屍蛾女王的鱗粉雲裡（moth_dust 這個 buff，GroundZones 的 vision_cap）：距離最多 vision_cap
 static func view_range(viewer: Player) -> float:
-	return (Config.VISION.range + viewer.class_passive("vision_add", 0.0)) * viewer.stats.value(&"vision")
+	var r: float = (Config.VISION.range + viewer.class_passive("vision_add", 0.0)) * viewer.stats.value(&"vision")
+	if viewer.buffs.has(&"moth_dust"):
+		r = minf(r, viewer.buffs[&"moth_dust"].vision_cap)
+	return r
 
 
 static func view_angle(viewer: Player) -> float:

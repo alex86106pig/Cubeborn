@@ -111,7 +111,8 @@ func _initialize() -> void:
 	_check("Boss 砸地：近身時前搖後打中、擊飛 + 緩速、CD；一圈圈往外（外圈晚 ring_delay）、每人只被打一次；霸體不硬直、擊退乘 knockback_mul", BossChecks.check_boss_slam)
 	_check("Boss 衝鋒：蓄力 windup、照 speed 衝刺、命中傷害並讓玩家暈眩 stun、撞牆自己暈眩 wall_stun", BossChecks.check_boss_charge)
 	_check("Boss 直劈：沒有地面預警；舉劍 windup 秒後劈下；追蹤只做一半，繞圈走位躲得開", BossChecks.check_boss_cleave)
-	_check("噬墓巨蟲（第 3 層）：冒在地面 surface.time 秒後鑽進地底（打不到、不能當目標、不擋路）；追到腳下停 warn 秒再衝出來，站著被打中擊飛、先跑開打不到；噴酸 lobs 團各留一個酸池；吞噬把前方的人拉過來咬一口；產卵 count 顆、hatch_time 秒後各孵 per_egg 隻不給靈魂的屍甲蟲", BossChecks.check_grave_worm)
+	_check("噬墓巨蟲（第 3 層）：冒在地面 surface.time 秒後鑽進地底（打不到、不能當目標、不擋路）；追到腳下停 warn 秒再衝出來，站著被打中擊飛、先跑開打不到；噴酸 lobs 團各留一個酸池；吞噬把前方的人拉過來咬一口；產卵 count 顆、hatch_time 秒後各孵 per_egg 隻不給靈魂的屍甲蟲；半血結蛹 transform.time 秒（受傷 × damage_taken）→ 屍蛾女王：飛著時地面的近戰打不到、投射物與跳起來的打得到；到時間落地產卵（近戰打得到）；鱗粉雲裡視野最多 dust.vision、拿火把不受影響；俯衝打路上的人；拍翅狂風吹退前方的人、吹散蛛網",
+		all.bind([BossChecks.check_grave_worm, BossChecks.check_moth_queen]))
 	_check("骸骨將軍（第 2 層）：半血脫甲無敵、碎片往外飛、吸掉骷髏屍體 → 萬骨聚合體受傷 × damage_taken；骨刺陣打線上不打線間；低掃跳得過、高掃打跳起來的；巨骨輪撞牆暈 stun 秒；吞屍吃掉 radius 內的骷髏回血", BossChecks.check_bone_general)
 	_check("Boss 狂暴招式：衝鋒連 charge_count 次；召喚的骷髏戰士衝撞一次；砸地不管多遠都放（玩家腳下冒紫煙、不畫圈 → 瞬移 → 砸）", BossChecks.check_boss_enraged_moves)
 	_check("怪物攻擊不畫預警圈：sim/ 只有玩家方的道具與聖光圈發 fx:telegraph；Boss 砸地、衝鋒、召喚、直劈的預備動作兩兩不同",

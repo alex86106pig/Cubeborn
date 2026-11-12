@@ -239,8 +239,8 @@ godot/
 | `skill:onCooldown` | `{ key }` | PlayerStates / ActiveSlots |
 | `wave:started` | `{ wave, total, isBoss }` | Spawner |
 | `boss:enraged` | `{ boss }` | Boss |
-| `boss:transforming` | `{ boss_id }`（Boss 半血開始轉型態） | Gravekeeper、BoneGeneral |
-| `boss:transformed` | `{ boss_id, form, pos }`（轉型態完成：畫面層換模型、HUD 換名字與提示） | Gravekeeper、BoneGeneral |
+| `boss:transforming` | `{ boss_id }`（Boss 半血開始轉型態） | Gravekeeper、BoneGeneral、GraveWorm |
+| `boss:transformed` | `{ boss_id, form, pos }`（轉型態完成：畫面層換模型、HUD 換名字與提示） | Gravekeeper、BoneGeneral、GraveWorm |
 | `boss:absorbed` | `{ boss_id, from, height, pos }`（骸骨將軍脫甲 / 萬骨聚合體吞屍：一具骷髏被吸過去） | BoneGeneral |
 | `boss:devoured` | `{ boss_id, count, pos }`（萬骨聚合體吞屍回血） | BoneGeneral |
 | `boss:revealed` | `{ boss_id, spoke }`（假裝 NPC 的守墓人露出真面目；spoke = 被說話觸發、頭上冒台詞） | Gravekeeper |
@@ -269,7 +269,8 @@ godot/
 | `fx:spike_warn` | `{ pos, height, facing, lines, start, length, life }` | 萬骨聚合體骨刺陣的預兆：地面沿 lines 個方向隆起 |
 | `fx:bone_spike` | `{ pos, height }` | 一根骨刺竄出 |
 | `fx:burrow_warn` / `fx:burrow_out` | `{ pos, height, life?, radius? }` | 屍甲蟲、噬墓巨蟲停在腳下準備冒出（土塊跳動；radius：巨蟲衝出來的範圍，土塊跳得比較散）/ 冒出來、鑽下去 |
-| `fx:worm_egg` | `{ pos, height, life }` | 噬墓巨蟲產的卵：立在地上 life 秒後孵化（卵不是實體，打不到） |
+| `fx:worm_egg` | `{ pos, height, life }` | 噬墓巨蟲 / 屍蛾女王產的卵：立在地上 life 秒後孵化（卵不是實體，打不到） |
+| `fx:gust` | `{ pos, height, facing, range, arc }` | 屍蛾女王拍翅狂風：前方扇形的弧光與鱗粉 |
 | `fx:web` / `fx:web_burned` | `{ web_id, pos, height, radius?, life? }` | 蜘蛛網結成（地上的白網，life 秒）/ 被火燒掉 |
 | `fx:webbed` | `{ player_id, pos, height, life }` | 玩家被蛛絲彈纏住 |
 | `fx:sweep` | `{ pos, height, radius, low }` | 萬骨聚合體多臂橫掃（低掃 / 高掃）的弧光 |

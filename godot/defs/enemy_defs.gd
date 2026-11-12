@@ -572,6 +572,30 @@ const ENEMIES := {
 		"first_cooldowns": {"acid": 0.5, "devour": 1.5, "eggs": 3.0},
 		"patrol": {"speed_mul": 0.45, "pause": [1.0, 2.5], "sight_radius": 12.0, "sight_arc": deg_to_rad(120.0), "notice_radius": 4.0},
 		"surface": {"time": 3.5},       # 每次冒出來在地面上停多久（出招中到時間，出完才鑽）
+		"form_models": [&"grave_worm", &"moth_queen"],
+		"form_names": ["噬墓巨蟲", "屍蛾女王"],
+		# 結蛹：半血時原地縮成蛹 time 秒（打得到，受到的傷害 × damage_taken），破蛹變成屍蛾女王
+		"transform": {"hp_threshold": 0.5, "time": 4.0, "damage_taken": 2.0, "shake": 0.5, "shake_duration": 0.5},
+		# 屍蛾女王：會飛（只有投射物、跳起來腳離地 jump_reach 以上的攻擊打得到），每 land.interval 秒落地一次
+		"moth": {
+			"move_speed": 4.5, "turn_speed": 5.0, "decide_delay": 0.5,
+			"knockback_mul": 0.12,
+			"hover": [4.0, 7.0],          # 盤旋時跟目標保持的距離
+			"altitude": 2.6,              # 畫面上飛多高（模擬的高度不變，夠不夠得到看 out_of_reach）
+			"jump_reach": 0.5,
+			"first_cooldowns": {"dust": 1.0, "gust": 2.0, "swoop": 3.0},
+			# 鱗粉雲：空中停住、翅膀抖動掉粉（windup）→ 目標身邊 offset 的一圈上撒 clouds 團，每團 radius、time 秒；站在裡面視野縮成 vision
+			"dust": {"windup": 0.6, "clouds": 3, "offset": 2.2, "radius": 2.5, "time": 6.0, "vision": 5.0, "recovery": 0.5, "cooldown": 10.0, "color": Color("c8b890")},
+			# 俯衝：飛高、收翅、尖鳴（windup，前 track 比例跟著目標轉）→ 直線衝 length，路上 width 內擊倒
+			"swoop": {
+				"min_distance": 5.0, "windup": 0.7, "track": 0.7, "speed": 16.0, "length": 12.0, "width": 1.4,
+				"damage": 26.0, "knockback": 12.0, "tier": &"knockdown", "recovery": 0.6, "cooldown": 6.0,
+			},
+			# 拍翅狂風：翅膀後張、身體後仰（windup）→ 前方扇形把人吹退 push_distance（擊退屬性照樣算）、吹散蛛網
+			"gust": {"trigger_distance": 6.0, "windup": 0.6, "range": 7.0, "arc": deg_to_rad(90.0), "push_distance": 6.0, "damage": 6.0, "recovery": 0.5, "cooldown": 7.0},
+			# 落地產卵：descend 秒降下來 → 落地 time 秒（近戰打得到），留 eggs 顆卵（孵化照 eggs 那一段）
+			"land": {"interval": 12.0, "descend": 0.5, "time": 4.0, "eggs": 3, "egg_distance": 2.0},
+		},
 		# 地底追蹤：dive 秒鑽下去（還打得到）→ 在地底追 track_time 秒（到腳下 stop_distance 內就停）→ 停下、地面鼓起 warn 秒 → 衝出地面
 		"tunnel": {
 			"dive": 0.5, "speed": 7.5, "turn_rate": PI, "track_time": 2.0, "stop_distance": 0.5, "warn": 0.6,

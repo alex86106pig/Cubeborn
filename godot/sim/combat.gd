@@ -108,6 +108,8 @@ static func _predict_hit(world: World, source: Entity, target: Entity, hit: Dict
 		return   # 對方在格擋：結果不確定，等房主
 	if target is Enemy and (target as Enemy).def.has("shield"):
 		return   # 持盾的怪：擋不擋得下看房主
+	if target is Enemy and (target as Enemy).out_of_reach(source, hit):
+		return
 	world.emit_event("hit:predicted", {"source_id": source.id, "target_id": target.id,
 		"is_heavy": hit.get("is_heavy", false), "color": hit.get("color", Color.WHITE)})
 
@@ -118,6 +120,8 @@ static func _apply_damage(world: World, source: Entity, target: Entity, hit: Dic
 		return false
 	# max_air：目標腳底離自己腳下地面超過這個高度（跳起來）就打不到（Boss 砸地，v0.23.0）
 	if hit.has("max_air") and target.height - target.ground_height > hit.max_air + 1e-4:
+		return false
+	if target is Enemy and (target as Enemy).out_of_reach(source, hit):
 		return false
 	var origin: Vector2 = hit.get("origin", source.pos)
 	# 怪物舉盾（盾槍兵）：正面的攻擊不管 blockable 都擋下；重攻擊破防的那一下照樣往下算

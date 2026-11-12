@@ -11,6 +11,7 @@ const TICK_INTERVAL := 0.5
 # 選填 hits_all：玩家與怪都受傷（不分隊伍，不含自己）；visual：&"gas" = 畫成一團煙（不畫圈）、&"fire" = 一團火
 # 選填 smoke：煙霧彈（第 7 步），站在裡面的玩家閃避 + smoke、裡面的怪打人一半打偏（Enemy.blind_timer）
 # 選填 burn_per_sec：站在上面的怪每秒加幾層燃燒（火油罐的殘火，算放的玩家、照他的火焰羈絆，BondEffects.add_burn）
+# 選填 vision_cap：屍蛾女王的鱗粉雲，站在裡面的玩家視野距離最多這麼遠（Vision.view_range 看 moth_dust 這個 buff）；拿火把的不受影響
 # 選填 web_slow：蜘蛛網（add_web），站在上面的玩家移速 × web_slow；被火焰傷害打到燒掉（burn_webs）
 static func add(world: World, zone: Dictionary) -> void:
 	var z := zone.duplicate()
@@ -71,6 +72,10 @@ static func _tick(world: World, z: Dictionary) -> void:
 		for p in world.player_list:
 			if not p.is_dead and p.pos.distance_to(z.pos) <= z.radius + p.radius:
 				p.add_buff(&"web", TICK_INTERVAL * 2.0, {"stats": [[&"move_speed", Stats.MUL, z.web_slow]]})
+	if z.has("vision_cap"):
+		for p in world.player_list:
+			if not p.is_dead and p.pos.distance_to(z.pos) <= z.radius + p.radius and not (p.weapon.get("tags", []) as Array).has(&"torch"):
+				p.add_buff(&"moth_dust", TICK_INTERVAL * 2.0, {"vision_cap": z.vision_cap})
 	if z.get("smoke", 0.0) > 0.0:
 		for p in friends:
 			if not p.is_dead and p.pos.distance_to(z.pos) <= z.radius + p.radius:

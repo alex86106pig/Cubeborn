@@ -48,6 +48,7 @@ var _spider := false      # 墓穴蜘蛛：所有狀態都走 _pose_spider
 var _hive := false        # 蟲巢：所有狀態都走 _pose_hive（不會動，只有鼓動、鼓酸泡、塌掉）
 var _worm := false        # 噬墓巨蟲（form 0）：所有狀態都走 _pose_worm
 var _worm_hide := 0.0     # 噬墓巨蟲藏進地裡的比例（0 = 整隻在地面上、1 = 全部在地底），畫面自己補間
+var _moth_alt := 0.0      # 屍蛾女王畫面上飛多高（畫面自己補間到 def.moth.altitude 或 0）
 var _spin := 0.0          # 骨輪滾動的角度（畫面自己累加）
 var _bow_arm_target := BOW_ARM_REST
 var _dt := 0.0
@@ -102,7 +103,7 @@ func update(e: Enemy, dt: float) -> void:
 		(rig as SkinnedRig).set_held_weapon(kit.get("model", &""), kit.get("offhand_model", &""))
 
 	var colossus: bool = def.has("colossus") and a.get("form", 0) > 0 and state != &"dead"
-	match &"worm" if _worm and a.get("form", 0) == 0 else &"hive" if _hive else &"hound" if _hound else (&"wheel" if _wheel else (&"beetle" if _beetle else (&"spider" if _spider else (&"colossus" if colossus else (&"keeper" if _keeper and state != &"spawn" and state != &"dead" else state))))):
+	match &"worm" if _worm and a.get("form", 0) == 0 else &"moth" if _worm else &"hive" if _hive else &"hound" if _hound else (&"wheel" if _wheel else (&"beetle" if _beetle else (&"spider" if _spider else (&"colossus" if colossus else (&"keeper" if _keeper and state != &"spawn" and state != &"dead" else state))))):
 		&"colossus":
 			_pose_colossus(e, a, state, t, dt)
 		&"beetle":
@@ -113,6 +114,8 @@ func update(e: Enemy, dt: float) -> void:
 			_pose_hive(e, state, t)
 		&"worm":
 			_pose_worm(e, a, state, t, dt)
+		&"moth":
+			_pose_moth(e, a, state, t, dt)
 		&"hound":
 			_pose_hound(e, a, state, t, dt)
 		&"wheel":
@@ -416,6 +419,10 @@ func _pose_worm(e: Enemy, a: Dictionary, state: StringName, t: float, dt: float)
 				rig.body.rotation.z = sin(t * 50.0) * 0.04
 		&"eggs":
 			lean = 0.35
+		&"pupate":   # 結蛹：縮進地裡一半、大顎合起來、整隻發抖
+			hide = 0.45
+			jaws = 0.0
+			rig.body.rotation.z = sin(t * 35.0) * 0.03
 		&"dead":
 			var k := MathUtil.ease_out_cubic(clampf(t / 0.6, 0.0, 1.0))
 			rig.body.rotation.z = 1.35 * k
@@ -428,6 +435,57 @@ func _pose_worm(e: Enemy, a: Dictionary, state: StringName, t: float, dt: float)
 	rig.head.rotation.x = lean * 0.6
 	rig.arm_r.rotation.y = -jaws
 	rig.arm_l.rotation.y = jaws
+
+
+# 屍蛾女王（噬墓巨蟲 form 1）：飛著時整隻抬高到 moth.altitude、翅膀一直拍；撒鱗粉拍得又快又小；拍翅狂風翅膀先往後張再往前扇；
+# 俯衝先收翅拉高、衝的時候身體前傾貼地；落地翅膀攤平慢慢動；死掉掉到地上翻倒
+func _pose_moth(e: Enemy, a: Dictionary, state: StringName, t: float, dt: float) -> void:
+	var m: Dictionary = e.def.moth
+	var alt: float = m.altitude if a.get("flying", false) else 0.0
+	var flap_speed := 14.0
+	var flap := 0.55
+	var spread := 0.25   # 翅膀平均往上抬的角度
+	var sweep := 0.0     # 翅膀往後張（+）/ 往前扇（−）
+	rig.body.rotation = Vector3.ZERO
+	match state:
+		&"dust":
+			flap_speed = 34.0
+			flap = 0.2
+		&"gust":
+			var w: float = m.gust.windup
+			sweep = lerpf(0.0, 0.9, clampf(t / w, 0.0, 1.0)) if t < w else lerpf(0.9, -0.8, clampf((t - w) / 0.12, 0.0, 1.0))
+			rig.body.rotation.x = -0.3 if t < w else 0.2
+			flap = 0.1
+		&"swoop":
+			match a.get("phase", &"windup"):
+				&"windup":
+					alt = m.altitude + 1.2
+					spread = 1.2
+					flap = 0.05
+				&"dash":
+					alt = 0.5
+					spread = 0.1
+					flap = 0.05
+					rig.body.rotation.x = 0.6
+				_:
+					alt = 0.3
+		&"land":
+			flap_speed = 3.0
+			flap = 0.15
+			spread = 0.05
+		&"dead":
+			alt = 0.0
+			flap = 0.0
+			spread = -0.1
+			rig.body.rotation.z = 1.2 * MathUtil.ease_out_cubic(clampf(t / 0.5, 0.0, 1.0))
+	walk_phase += dt * flap_speed
+	_moth_alt = move_toward(_moth_alt, alt, dt * 7.0)
+	rig.position.y = _moth_alt + (0.12 * sin(walk_phase * 0.25) if alt > 0.0 else 0.0)
+	var up := spread + flap * sin(walk_phase)
+	rig.arm_r.rotation = Vector3(0.0, sweep, -up)
+	rig.arm_l.rotation = Vector3(0.0, -sweep, up)
+	rig.leg_r.rotation.x = 0.3
+	rig.leg_l.rotation.x = 0.3
 
 
 # 蟲巢：平常慢慢鼓動；噴酸前整顆抽搐、卵囊鼓起來；被打破塌成一攤沉下去；爬出從地下升起
