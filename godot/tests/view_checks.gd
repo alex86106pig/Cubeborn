@@ -3960,7 +3960,7 @@ static func _sole(rig: Rig, right: bool) -> Vector3:
 
 
 # 倒地：Boss 類（關節版）倒下到沉入地面前，手臂、拳頭、掉下去的武器（劍、鏟子、提燈）都不穿進地裡，拳頭貼地（不浮在空中）；
-# 武器離開手、躺在地上（離地 0.12 內）。玩家拿 8 把武器趴倒時，手臂、掉下去的武器、盾都不穿地（看得到的零件）、武器離開手；
+# 武器離開手、躺在地上（離地 0.12 內），屍體沉完時跟著沉到地面下（純動畫，跟屍體一起消失）。玩家拿 8 把武器趴倒時，手臂、掉下去的武器、盾都不穿地（看得到的零件）、武器離開手；
 # 假死被救起來武器回到手上
 static func check_dead_lie() -> String:
 	var rec := AnimRecorder.new()
@@ -4012,9 +4012,17 @@ static func check_dead_lie() -> String:
 			var fist := BodyPose.body_to_root(rig, BodyPose.hand_pos(rig, true)).y / rig.body.scale.y
 			var off := rig.held_r.position.length()
 			var rest := _joint_mesh_low(rig, rig.held_r)
+			var e: Enemy = row.subject
+			var a: Dictionary = e.anim.duplicate()
+			a.time = e.def.corpse_time
+			e.anim = a
+			made.anim.update(e, DT)
+			var gone := -_joint_mesh_low(rig, rig.held_r, true)
 			rig.free()
 			if off < 0.1 or rest > 0.12:
 				err = "%s 死掉時武器應掉到地上：離手 %.2f、最低點離地 %.2f" % [model, off, rest]
+			elif gone > 0.0:
+				err = "%s 屍體沉完時武器應跟著沉到地面下：最高點還在 %.2f" % [model, gone]
 			elif low < -0.01:
 				err = "%s 倒地時 %s 穿進地裡 %.3f" % [model, lowest, low]
 			elif fist > EnemyAnimator.DEAD_FIST + 0.02:
@@ -4110,8 +4118,8 @@ static func _shown_low(rig: Node3D, node: Node3D) -> float:
 	return low
 
 
-# joint 這一節自己的零件最低點（角色根節點座標；場景樹還沒就緒，沿節點一層層乘）
-static func _joint_mesh_low(rig: Node3D, joint: Node3D) -> float:
+# joint 這一節自己的零件最低點（角色根節點座標；場景樹還沒就緒，沿節點一層層乘）；high = true 回傳最高點的負值
+static func _joint_mesh_low(rig: Node3D, joint: Node3D, high := false) -> float:
 	var t := Transform3D.IDENTITY
 	var n := joint
 	while n != rig:
@@ -4122,7 +4130,8 @@ static func _joint_mesh_low(rig: Node3D, joint: Node3D) -> float:
 	for mi in PartKit.mesh_instances(joint):
 		if mi.get_parent() == joint:
 			for v: Vector3 in mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
-				low = minf(low, (t * mi.transform * v).y)
+				var y := (t * mi.transform * v).y
+				low = minf(low, -y if high else y)
 	return low
 
 
