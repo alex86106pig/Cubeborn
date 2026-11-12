@@ -468,6 +468,12 @@ func _root_to_body(p: Vector3) -> Vector3:
 	return Transform3D(Basis.from_euler(body.rotation, EULER_ORDER_YXZ).scaled_local(body.scale), body.position).affine_inverse() * p
 
 
+# 雙手同一個角度：rx 前後抬（負的往前）、ry 往外張（左右對稱）；手肘微彎（第 3 層的尖嘯、唸咒用）
+func _pose_arms(rx: float, ry: float = 0.0) -> void:
+	BodyPose.arm(rig, true, rx, -ry, ELBOW_REST)
+	BodyPose.arm(rig, false, rx, ry, ELBOW_REST)
+
+
 # 倒地的手：從身前攤到身體兩側的地上（拳頭貼地）
 func _dead_arms(f: float) -> void:
 	var arm := BodyPose.arm_length(rig)
