@@ -6,6 +6,8 @@
 # 第三段是腳步：enemy-gravekeeper:lantern:原地 / 走 / 跑）
 # 操作：空白鍵 播放 / 暫停、← → 逐格、↑ ↓ 換動作、R 重錄、滑鼠拖曳轉視角、滾輪縮放
 # 視角換動作、換角色、重錄都留著，只有按視角按鈕才換
+# 接著演：拆成好幾段的招式（AnimRecorder.SPLITS）一段演完接下一段，清單反白跟著走；關掉只循環選的那一段
+# 循環時角色從停下的地方接著演（地板不重置），走跑類不重建角色、步伐不斷
 class_name AnimViewer
 extends Node3D
 
@@ -13,7 +15,8 @@ const DT := Config.FIXED_DT
 const SPEEDS := [0.1, 0.25, 0.5, 1.0]
 # 腳步：照錄到的（跟遊戲一樣）/ 原地 / 走 / 跑；走、跑的速度照腿長換算（Froude 數 0.3 = 走、4 = 跑，同 BodyPose 的走跑分界）
 const FEET := {"照錄到的": -1.0, "原地": 0.0, "走": 0.3, "跑": 4.0}
-const GRID_HALF := 10            # 地板格線的範圍（± 公尺），1 公尺一格
+const GRID_HALF := 15            # 地板格線的範圍（± 公尺），1 公尺一格
+const FLOOR_SNAP := 5.0          # 地板跟著角色移動的單位（= 亮線的間隔，看起來是同一片地板）
 const PANEL_WIDTH := 360
 const ORBIT_SPEED := 0.008       # 拖曳轉視角：每像素幾弧度
 const DIST_RANGE := Vector2(2.5, 30.0)
@@ -26,12 +29,18 @@ var _rows: Array = []
 var _row: Dictionary = {}
 var _made: Dictionary = {}       # { rig, anim }：正在播的角色
 var _frame := 0                  # 已經餵給動畫器到第幾步
-var _start := 0                  # 這段動作從第幾步開始（前面是讓動畫器接得上的暖身）
+var _lo := 0                     # 播放範圍 [_lo, _hi)
+var _hi := 1
+var _chain := true               # 接著演
+var _shift := Vector2.ZERO       # 循環、換動作累積的位移
+var _shown := Vector2.ZERO       # 角色現在畫在哪（地面座標）
+var _raw := Vector2.ZERO         # 角色錄到的位置（上一步）
+var _step_move := Vector2.ZERO   # 上一步走了多少
 var _carry := 0.0
 var _playing := true
 var _speed := 1.0
 var _loop := true
-var _follow := true              # 角色照錄到的位置移動（看得出腳有沒有在地上滑）；關掉就原地
+var _follow := true              # 角色照錄到的位置移動；關掉就原地
 var _feet := "照錄到的"
 var _yaw_rel := -PI / 2.0        # 相對動作開頭的角色朝向
 var _yaw_game: float = Config.CAMERA.azimuth
@@ -46,6 +55,7 @@ var _feet_buttons := {}
 var _view_buttons := {}
 
 var _cam := Camera3D.new()
+var _floor := Node3D.new()
 var _fx := Effects.new()
 var _fx_world := World.new(&"test_arena")   # 只放正在播的那隻（Effects 照 world.entities 冒持續性的特效）
 var _subject_pick := OptionButton.new()
@@ -65,20 +75,11 @@ func _init(pick := "") -> void:
 func _ready() -> void:
 	_build_stage()
 	_build_ui()
-	var subject := 0
 	var feet := _initial.get_slice(":", 2) if _initial.count(":") >= 2 else ""
 	if FEET.has(feet):
 		_feet = feet
 		_mark_buttons()
-	for i in _subjects.size():
-		if _subjects[i].id == _initial.get_slice(":", 0):
-			subject = i
-	_pick_subject(subject)
-	var action := _initial.get_slice(":", 1) if _initial.contains(":") else ""
-	for i in _rows.size():
-		if _rows[i].key == action:
-			_action_list.select(i)
-			_pick_action(i)
+	select(_initial.get_slice(":", 0), _initial.get_slice(":", 1) if _initial.contains(":") else "")
 	print("anim viewer ready subjects=%d" % _subjects.size())
 
 
@@ -94,6 +95,7 @@ func _exit_tree() -> void:
 func _build_stage() -> void:
 	add_child(_cam)
 	add_child(_fx)
+	add_child(_floor)
 	_cam.current = true
 	_cam.fov = 40.0
 	_cam.far = 200.0
@@ -118,7 +120,7 @@ func _build_stage() -> void:
 	var fm := StandardMaterial3D.new()
 	fm.albedo_color = Color(0.24, 0.26, 0.24)
 	floor_mesh.material_override = fm
-	add_child(floor_mesh)
+	_floor.add_child(floor_mesh)
 	var line := BoxMesh.new()
 	line.size = Vector3(GRID_HALF * 2.0, 0.004, 0.02)
 	for i in range(-GRID_HALF, GRID_HALF + 1):
@@ -133,7 +135,7 @@ func _build_stage() -> void:
 			l.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			l.position = Vector3(0.0, 0.003, i) if along_x else Vector3(i, 0.003, 0.0)
 			l.rotation.y = 0.0 if along_x else PI / 2.0
-			add_child(l)
+			_floor.add_child(l)
 
 
 # ───────── 介面 ─────────
@@ -200,11 +202,19 @@ func _build_ui() -> void:
 	loop.toggled.connect(func(on: bool) -> void: _loop = on)
 	toggles.add_child(loop)
 	var follow := CheckBox.new()
-	follow.text = "跟著走（關 = 原地）"
+	follow.text = "跟著走"
+	follow.tooltip_text = "關掉 = 角色留在原地"
 	follow.button_pressed = _follow
 	follow.focus_mode = Control.FOCUS_NONE
 	follow.toggled.connect(func(on: bool) -> void: _follow = on; _place_rig())
 	toggles.add_child(follow)
+	var chain := CheckBox.new()
+	chain.text = "接著演"
+	chain.tooltip_text = "拆成好幾段的招式一段演完接下一段；關掉只循環選的那一段"
+	chain.button_pressed = _chain
+	chain.focus_mode = Control.FOCUS_NONE
+	chain.toggled.connect(set_chain)
+	toggles.add_child(chain)
 	var feet := HBoxContainer.new()
 	box.add_child(feet)
 	feet.add_child(UiKit.label("腳步", UiKit.FONT_NOTE))
@@ -249,15 +259,48 @@ func _mark_buttons() -> void:
 
 # ───────── 選角色、選動作 ─────────
 
+# 選角色（id 同 AnimRecorder.subjects）與動作（英文 key）；找不到的那一項不變
+func select(subject_id: String, action := "") -> void:
+	var at := maxi(_subject_pick.selected, 0)
+	for i in _subjects.size():
+		if _subjects[i].id == subject_id:
+			at = i
+	_pick_subject(at)
+	for i in _rows.size():
+		if action != "" and _rows[i].key == action:
+			_action_list.select(i)
+			_pick_action(i)
+
+
+func set_chain(on: bool) -> void:
+	_chain = on
+	if not _made.is_empty():
+		_seek(_frame)
+
+
+# 往前演 n 步
+func advance(n: int) -> void:
+	for i in n:
+		_advance()
+
+
+# 現在演到哪：{ key（哪一段）, frame, range, pos（角色畫在哪）, floor, view（[相對方位, 仰角, 距離]）, rig }
+func status() -> Dictionary:
+	return {"key": _segment(_frame)[0] if not _row.is_empty() else "", "frame": _frame, "range": Vector2i(_lo, _hi), "pos": _shown,
+		"floor": Vector2(_floor.position.x, _floor.position.z), "view": [_yaw_rel, _pitch, _dist], "rig": _made.get("rig")}
+
+
 # 新角色也有同一個動作就停在那個動作
 func _pick_subject(i: int) -> void:
-	var keep: String = _row.get("key", "")
+	var keep: String = _segment(_frame)[0] if not _row.is_empty() else ""
 	_free_rig()
 	_recorder.clear()
 	_rows = _recorder.rows(_subjects[i].id)
 	_action_list.clear()
 	for r: Dictionary in _rows:
-		_action_list.add_item(r.name if r.name == r.key else "%s  %s" % [r.name, r.key])
+		var depth: int = r.get("depth", 0)
+		var name: String = r.name if r.name == r.key else "%s  %s" % [r.name, r.key]
+		_action_list.add_item("　".repeat(depth) + ("└ " if depth > 0 else "") + name)
 	if _subject_pick.selected != i:
 		_subject_pick.select(i)
 	if not _rows.is_empty():
@@ -271,24 +314,37 @@ func _pick_subject(i: int) -> void:
 
 
 func _pick_action(i: int) -> void:
+	var at := _shown
 	_row = _rows[i]
-	_start = _row.get("start", 0)
-	_restart()
+	_seek(_row.get("start", 0))
+	_shift += at - _shown   # 從角色原本站的地方接著演
+	_place_rig()
 	_update_camera()
 
 
 func _rerecord() -> void:
-	var action: int = _action_list.get_selected_items()[0] if not _action_list.get_selected_items().is_empty() else 0
-	var subject := _subject_pick.selected
-	_pick_subject(subject)
-	if action < _rows.size():
-		_action_list.select(action)
-		_pick_action(action)
+	_pick_subject(maxi(_subject_pick.selected, 0))
 
 
-# 從頭建一隻角色、重播到 _start（之後一步一步往前）
-func _restart() -> void:
-	_seek(_start)
+# 這一列同一次錄的全部段落 [[key, 起, 迄（不含）], ...]；沒拆的動作只有一段
+func _path() -> Array:
+	return _row.get("path", [[_row.key, _row.get("start", 0), (_row.frames as Array).size()]])
+
+
+# 第 i 步在哪一段
+func _segment(i: int) -> Array:
+	var path := _path()
+	for seg: Array in path:
+		if i < seg[2]:
+			return seg
+	return path[-1]
+
+
+# 第 i 步的播放範圍：接著演 = 整條，否則只有那一段
+func _range(i: int) -> Vector2i:
+	var path := _path()
+	var seg := _segment(i)
+	return Vector2i(path[0][1], path[-1][2]) if _chain else Vector2i(seg[1], seg[2])
 
 
 # 跳到第 target 步：重建角色、從第 0 步重播（動畫器有平滑，倒退只能重播）
@@ -298,12 +354,16 @@ func _seek(target: int) -> void:
 	_fx_world.entities = {(_row.subject as Entity).id: _row.subject}
 	_made = (_row.make as Callable).call()
 	add_child(_made.rig)
-	var frames: Array = _row.frames
-	_frame = clampi(target, _start, frames.size() - 1)
-	AnimRecorder.replay(_row, _made, _frame, _foot_speed())
+	var r := _range(target)
+	_lo = r.x
+	_hi = r.y
+	_frame = clampi(target, _lo, _hi - 1)
+	AnimRecorder.replay(_row, _made, _frame, _foot_speed(), _lo)
+	_raw = (_row.subject as Entity).pos
+	_step_move = Vector2.ZERO
 	_carry = 0.0
 	_place_rig()
-	_sync_slider()
+	_sync()
 
 
 # 腳步選項換成速度（-1 = 照錄到的）
@@ -335,28 +395,46 @@ func _process(delta: float) -> void:
 
 
 func _advance() -> void:
-	var frames: Array = _row.frames
-	if _frame + 1 < frames.size():
-		_frame += 1
-		AnimRecorder.step(_row, _made, _frame, _foot_speed())
-		for ev: Dictionary in _row.frames[_frame].get("events", []):
-			_fx.on_event(ev.name, ev)
-		_place_rig()
-		_sync_slider()
+	if _frame + 1 < _hi:
+		_step_to(_frame + 1)
 	elif _loop:
-		_restart()
+		_wrap()
 	else:
 		_playing = false
 		_refresh_info()
 
 
+func _step_to(i: int) -> void:
+	_frame = i
+	AnimRecorder.step(_row, _made, _frame, _foot_speed(), _lo)
+	var now: Vector2 = (_row.subject as Entity).pos
+	_step_move = now - _raw
+	_raw = now
+	for ev: Dictionary in _row.frames[_frame].get("events", []):
+		_fx.on_event(ev.name, ev)
+	_place_rig()
+	_sync()
+
+
+# 循環：回到範圍開頭，角色從現在的位置接著演；走跑類（row.cycle）不重建角色
+func _wrap() -> void:
+	var before := _raw
+	var move := _step_move
+	if _row.get("cycle", false):
+		_step_to(_lo)
+	else:
+		_seek(_lo)
+	_shift += before + move - _raw
+	_step_move = move
+	_place_rig()
+
+
 func _step_by(n: int) -> void:
 	_playing = false
 	if n > 0:
-		for i in n:
-			_advance()
+		advance(n)
 	else:
-		_seek(_frame + n)
+		_seek(maxi(_frame + n, _lo))
 	_refresh_info()
 
 
@@ -372,37 +450,42 @@ func _on_slider(v: float) -> void:
 	_seek(int(v))
 
 
-func _sync_slider() -> void:
+# 時間軸、清單反白（跟著現在演到的那一段）、說明
+func _sync() -> void:
 	_syncing_slider = true
-	_slider.min_value = _start
-	_slider.max_value = maxf((_row.frames as Array).size() - 1, _start + 1)
+	_slider.min_value = _lo
+	_slider.max_value = maxi(_hi - 1, _lo + 1)
 	_slider.value = _frame
 	_syncing_slider = false
+	var key: String = _segment(_frame)[0]
+	for k in _rows.size():
+		if _rows[k].key == key and not _action_list.is_selected(k):
+			_action_list.select(k)
+			_action_list.ensure_current_is_visible()
 	_refresh_info()
 
 
-# 角色的位置與朝向照錄到的（跟著走）或留在原點（原地）；遊戲的根節點就是這樣擺（WorldView）
+# 角色照錄到的位置走（加上循環累積的位移）或留在原點；特效、地板跟著
 func _place_rig() -> void:
 	if _made.is_empty():
 		return
 	var f: Dictionary = _row.frames[_frame]
-	var origin: Vector2 = _row.frames[_start].pos
+	var origin: Vector2 = _row.frames[_path()[0][1]].pos
 	var rig: Node3D = _made.rig
-	var now: Vector2 = (_row.subject as Entity).pos   # 腳步改過時位置也跟著改（AnimRecorder.step 擺好了）
-	var p: Vector2 = now - origin if _follow else Vector2.ZERO
-	rig.position = Vector3(p.x, f.height, p.y)
+	var now: Vector2 = (_row.subject as Entity).pos
+	_shown = now - origin + _shift if _follow else Vector2.ZERO
+	rig.position = Vector3(_shown.x, f.height, _shown.y)
 	rig.rotation.y = f.facing
-	# 特效是世界座標：整組跟角色一樣平移（原地時跟著角色現在的位置）
-	var shift: Vector2 = origin if _follow else now
-	_fx.position = Vector3(-shift.x, 0.0, -shift.y)
+	_fx.position = Vector3(_shown.x - now.x, 0.0, _shown.y - now.y)   # 特效是世界座標，整組跟角色一樣平移
+	_floor.position = Vector3(snappedf(_shown.x, FLOOR_SNAP), 0.0, snappedf(_shown.y, FLOOR_SNAP))
 
 
 func _refresh_info() -> void:
 	if _row.is_empty():
 		return
 	var a: Dictionary = _row.frames[_frame].anim
-	var t := (_frame - _start) * DT
-	var total := ((_row.frames as Array).size() - 1 - _start) * DT
+	var t := (_frame - _lo) * DT
+	var total := (_hi - 1 - _lo) * DT
 	var what := ""
 	if a.has("loco"):   # 玩家
 		what = "移動 %s　動作 %s %s" % [a.loco, a.action, a.get("phase", "")]
@@ -410,7 +493,10 @@ func _refresh_info() -> void:
 			what += "\n戰技 %s %.2f 秒" % [a.skill, a.skill_time]
 	else:
 		what = "狀態 %s %s" % [a.get("state", ""), a.get("phase", "")]
-	_info.text = "%.2f / %.2f 秒（第 %d 步）　%s　%s　腳步：%s\n%s" % [t, total, _frame - _start, "播放" if _playing else "暫停", "%s×" % _speed, _feet, what]
+	var path := _path()
+	if path.size() > 1:
+		what += "　第 %d / %d 段" % [path.find(_segment(_frame)) + 1, path.size()]
+	_info.text = "%.2f / %.2f 秒（第 %d 步）　%s　%s　腳步：%s\n%s" % [t, total, _frame - _lo, "播放" if _playing else "暫停", "%s×" % _speed, _feet, what]
 	_play_button.text = "暫停" if _playing else "播放"
 
 
@@ -435,7 +521,7 @@ func _set_view(v: String) -> void:
 func yaw() -> float:
 	if _game_view:
 		return _yaw_game
-	return (_row.frames[_start].facing if not _row.is_empty() else 0.0) + _yaw_rel
+	return (_row.frames[_path()[0][1]].facing if not _row.is_empty() else 0.0) + _yaw_rel
 
 
 func _update_camera() -> void:

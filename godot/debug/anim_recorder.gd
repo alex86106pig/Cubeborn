@@ -1,5 +1,6 @@
 # 錄動作（除錯用，動作表 PoseGallery 與動畫檢視器 AnimViewer 共用）：用真的模擬跑一段，錄下每一步的 anim、速度、位置。
 # 一段 = 一列 { name（顯示的名字）, key（英文 id）, subject（Player / Enemy）, frames（[{anim, vel, pos, facing, height, ground, events}]）, samples（動作表取的 8 步）, make }；
+# 另有 start（從第幾步開始播，前面是暖身）、cycle（走跑類）；拆開的招式多 end、path（同一次錄的全部段落）、depth（清單縮排）。
 # make() 回傳一隻新的角色 { rig, anim（Animator / EnemyAnimator） }，從第 0 步重播到第 i 步就是第 i 步的姿勢（動畫器的平滑也算進去）。
 # 用完要 clear()：錄的時候建的 World 有循環參照
 class_name AnimRecorder
@@ -35,21 +36,25 @@ const ENEMY_STATE_NAMES := {
 	&"wolf_chase": "狼人追擊", &"stalk": "隱入黑暗", &"claw": "三連爪", &"leap": "飛撲（狼人）", &"howl": "狼嚎",
 	&"colossus_chase": "追擊（聚合體）", &"spikes": "骨刺陣", &"sweep": "多臂橫掃", &"wheel": "巨骨輪", &"wheel_stun": "撞牆暈倒", &"devour": "吞屍",
 }
-# 一個狀態裡有好幾招的拆成一段一招：[key, 名字, 要走到的 phase（"" = 不限）, 起點, 終點]，點 = [phase, 秒]，phase "" = 狀態結束
+# 一個狀態裡有好幾招的拆成一段一招；同一次錄的段落共用 frames，可以接著演（row.path）
+# 每次錄 = [要走到的 phase（"" = 不限）, [[key, 名字, 縮排, 起點 [phase, 秒]], ...]]，一段演到下一段的起點
 const SPLITS := {
 	&"gravekeeper": {
 		&"lantern": [
-			["lantern", "提燈噴火（邊噴邊追）", &"", [&"windup", 0.0], [&"spin_windup", 0.0]],
-			["lantern_spin", "提燈噴火（原地轉一圈）", &"", [&"spin_windup", 0.0], [&"", 0.0]],
+			[&"", [["lantern", "提燈噴火（邊噴邊追）", 0, [&"windup", 0.0]], ["lantern_spin", "提燈噴火（原地轉一圈）", 1, [&"spin_windup", 0.0]]]],
 		],
 		&"scoop": [
-			["scoop", "鏟起（沒抓到）", &"miss", [&"windup", 0.0], [&"", 0.0]],
-			["scoop_throw", "鏟起 A：拋飛", &"throw", [&"throw", 0.0], [&"", 0.0]],
-			["scoop_bury", "鏟起 B：埋地、退一步", &"bury", [&"bury", 0.0], [&"bury", &"step_time"]],
-			["scoop_flame", "鏟起 B：開燈罩直噴", &"bury", [&"bury", &"step_time"], [&"", 0.0]],
+			[&"miss", [["scoop", "鏟起（起手）", 0, [&"windup", 0.0]], ["scoop_miss", "鏟起：沒抓到", 1, [&"miss", 0.0]]]],
+			[&"throw", [["scoop", "", 0, [&"windup", 0.0]], ["scoop_throw", "鏟起 A：拋飛", 1, [&"throw", 0.0]]]],
+			[&"bury", [["scoop", "", 0, [&"windup", 0.0]], ["scoop_bury", "鏟起 B：埋地、退一步", 1, [&"bury", 0.0]],
+				["scoop_flame", "鏟起 B：開燈罩直噴", 2, [&"bury", &"step_time"]]]],
 		],
 	},
 }
+# 循環時接著走的動作（不重建角色、步伐不斷）
+const PLAYER_CYCLES := ["idle", "run", "sprint"]
+const ENEMY_CYCLES: Array[StringName] = [&"chase", &"patrol", &"dormant", &"kite", &"wolf_chase", &"colossus_chase"]
+const CYCLE_LEAD := 30    # 跑步類先跑幾步再開始錄（循環接回去時速度一樣）
 const SPLIT_SEEDS := 40   # 隨機連段最多試幾個種子
 const SKILLS_PER_PAGE := 6
 const AI_SECONDS := 12.0   # 怪物照 AI 自己打的錄幾秒
@@ -165,8 +170,9 @@ func player_rows(weapon: StringName) -> Array:
 		if spec[0] == "potion":
 			p.hp = p.max_hp * 0.5
 		_record(w, p, 20, func(_i: int) -> InputCmd: return _cmd(Vector2.ZERO))   # 先站穩
-		var frames := _record(w, p, spec[1], spec[2])
-		rows.append(_player_row(spec[0], p, frames))
+		var lead := CYCLE_LEAD if spec[0] in ["run", "sprint"] else 0
+		var frames := _record(w, p, spec[1] + lead, spec[2])
+		rows.append(_player_row(spec[0], p, frames, -1, lead))
 	for extra: String in ["stagger", "knocked", "dead"]:
 		var w := _new_world()
 		var p := _player(w, weapon)
@@ -184,9 +190,9 @@ func player_rows(weapon: StringName) -> Array:
 	return rows
 
 
-func _player_row(key: String, p: Player, frames: Array, last := -1) -> Dictionary:
-	return {"key": key, "name": PLAYER_ACTIONS.get(key, key), "subject": p, "frames": frames,
-		"samples": even(0, frames.size() - 1 if last < 0 else last),
+func _player_row(key: String, p: Player, frames: Array, last := -1, start := 0) -> Dictionary:
+	return {"key": key, "name": PLAYER_ACTIONS.get(key, key), "subject": p, "frames": frames, "start": start, "cycle": key in PLAYER_CYCLES,
+		"samples": even(start, frames.size() - 1 if last < 0 else last),
 		"make": func() -> Dictionary:
 			var rig := DarkFantasy.player_character(p.class_id)
 			return {"rig": rig, "anim": Animator.new(rig)}}
@@ -279,10 +285,12 @@ func enemy_rows(model: StringName) -> Array:
 			start = i
 	for move: StringName in spec[1]:
 		if splits.has(move):
-			for part: Array in splits[move]:
-				var row := _split_row(model, kind, form, move, part)
-				if not row.is_empty():
-					rows.append(row)
+			var done := {}
+			for take: Array in splits[move]:
+				for row: Dictionary in _split_take(model, kind, form, move, take):
+					if not done.has(row.key):   # 共用的起手只列一次
+						done[row.key] = true
+						rows.append(row)
 			continue
 		if seen.has(move):
 			continue
@@ -309,9 +317,10 @@ func enemy_rows(model: StringName) -> Array:
 	return rows
 
 
-# 錄 SPLITS 的一段：換種子直到走到要的 phase，再照起訖點切
-func _split_row(model: StringName, kind: StringName, form: int, move: StringName, part: Array) -> Dictionary:
-	var branch: StringName = part[2]
+# 錄 SPLITS 的一次：換種子直到走到要的 phase，照各段的起點切成好幾列
+func _split_take(model: StringName, kind: StringName, form: int, move: StringName, take: Array) -> Array:
+	var branch: StringName = take[0]
+	var parts: Array = take[1]
 	for seed_value in range(1, SPLIT_SEEDS + 1):
 		var w := _new_world(seed_value)
 		var p := _player(w, &"swordShield")
@@ -330,29 +339,37 @@ func _split_row(model: StringName, kind: StringName, form: int, move: StringName
 			_worlds.erase(w)
 			w.clear()
 			continue
-		var from := _split_at(mf, part[3], b.def[move], false)
-		var to := _split_at(mf, part[4], b.def[move], true)
-		if from < 0 or to - from < 3:
-			return {}
-		var frames: Array = lead + mf.slice(0, to)
-		var row := _enemy_row(String(part[0]), b, model, frames, even(lead.size() + from, lead.size() + to - 1), lead.size() + from)
-		row.name = part[1]
-		return row
+		var path := []   # [key, 起, 迄（不含）]
+		for i in parts.size():
+			var from := _split_at(mf, parts[i][3], b.def[move])
+			var to := _split_at(mf, parts[i + 1][3], b.def[move]) if i + 1 < parts.size() else mf.size()
+			if from < 0 or to - from < 3:
+				push_warning("AnimRecorder：%s 的 %s 切不出來" % [move, parts[i][0]])
+				return []
+			path.append([parts[i][0], lead.size() + from, lead.size() + to])
+		var frames: Array = lead + mf
+		var rows := []
+		for i in parts.size():
+			var row := _enemy_row(String(parts[i][0]), b, model, frames, even(path[i][1], path[i][2] - 1), path[i][1])
+			row.name = parts[i][1]
+			row.depth = parts[i][2]
+			row.end = path[i][2]
+			row.path = path
+			rows.append(row)
+		return rows
 	push_warning("AnimRecorder：%s 換了 %d 個種子都沒走到 %s" % [move, SPLIT_SEEDS, branch])
-	return {}
+	return []
 
 
-# 點 [phase, 秒] 在第幾步；秒可以是招式設定的欄位名
-static func _split_at(mf: Array, at: Array, def: Dictionary, is_end: bool) -> int:
+# 點 [phase, 秒] 在第幾步（找不到 = -1）；秒可以是招式設定的欄位名
+static func _split_at(mf: Array, at: Array, def: Dictionary) -> int:
 	var phase: StringName = at[0]
-	if phase == &"":
-		return mf.size()
 	var sec: float = at[1] if not (at[1] is StringName) else float((def.get(phase, def) as Dictionary).get(at[1], 0.0))
 	for i in mf.size():
 		var a: Dictionary = mf[i].anim
 		if a.get("phase", &"") == phase and a.get("phase_time", 0.0) >= sec - 1e-6:
 			return i
-	return mf.size() if is_end else -1
+	return -1
 
 
 func _spawn(w: World, kind: StringName, at: Vector2, form: int) -> Enemy:
@@ -365,23 +382,25 @@ func _spawn(w: World, kind: StringName, at: Vector2, form: int) -> Enemy:
 # start：這段動作從第幾步開始（前面的步數是為了讓動畫器的狀態接得上，檢視器從這裡開始播）
 func _enemy_row(key: String, e: Enemy, model: StringName, frames: Array, samples: Array[int], start: int) -> Dictionary:
 	return {"key": key, "name": ENEMY_STATE_NAMES.get(StringName(key), key), "subject": e, "frames": frames, "samples": samples, "start": start,
+		"cycle": StringName(key) in ENEMY_CYCLES,
 		"make": func() -> Dictionary:
 			var rig: Node3D = DarkFantasy.character(model) if e.is_boss() else DarkFantasy.skinned_character(e.kind)
 			return {"rig": rig, "anim": EnemyAnimator.new(rig, e)}}
 
 
-# 把第 0 ~ upto 步餵給動畫器（重播到第 upto 步的姿勢）；foot 見 step
-static func replay(row: Dictionary, made: Dictionary, upto: int, foot := -1.0) -> void:
+# 把第 0 ~ upto 步餵給動畫器（重播到第 upto 步的姿勢）；foot、from 見 step
+static func replay(row: Dictionary, made: Dictionary, upto: int, foot := -1.0, from := -1) -> void:
 	for i in mini(upto, (row.frames as Array).size() - 1) + 1:
-		step(row, made, i, foot)
+		step(row, made, i, foot, from)
 
 
 # foot >= 0：腳步不照錄到的，改成以這個速度沿動作開始時的朝向直走（0 = 原地站著）；上半身照錄到的招式。
 # 動畫程式裡把腳定住的招式（例如骷髏揮砍）腳不會動
-static func step(row: Dictionary, made: Dictionary, i: int, foot := -1.0) -> void:
+# from：腳步從第幾步開始改（預設這段的開頭）
+static func step(row: Dictionary, made: Dictionary, i: int, foot := -1.0, from := -1) -> void:
 	var subject: Entity = row.subject
 	var f: Dictionary = row.frames[i]
-	var start: int = row.get("start", 0)
+	var start: int = from if from >= 0 else row.get("start", 0)
 	subject.anim = f.anim
 	subject.velocity = f.vel
 	subject.pos = f.pos   # 特效照實體的位置、朝向、高度放（守墓人噴火從提燈出來）

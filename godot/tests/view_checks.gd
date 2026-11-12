@@ -3995,11 +3995,11 @@ static func check_anim_recorder() -> String:
 	return err
 
 
-# 守墓人拆開的招式（AnimRecorder.SPLITS）每段都錄得到、只含那一招的 phase
+# 守墓人拆開的招式（AnimRecorder.SPLITS）每段都錄得到、只含那一招的 phase，同一次錄的段落頭尾相接
 static func _check_split_rows(rows: Array) -> String:
 	var step_time: float = EnemyDefs.ENEMIES.gravekeeper.scoop.bury.step_time
 	var want := {
-		"scoop": [&"windup", &"miss"], "scoop_throw": [&"throw"], "scoop_bury": [&"bury"], "scoop_flame": [&"bury"],
+		"scoop": [&"windup"], "scoop_miss": [&"miss"], "scoop_throw": [&"throw"], "scoop_bury": [&"bury"], "scoop_flame": [&"bury"],
 		"lantern": [&"windup", &"flame"], "lantern_spin": [&"spin_windup", &"spin", &"recovery"],
 	}
 	for key: String in want:
@@ -4010,10 +4010,83 @@ static func _check_split_rows(rows: Array) -> String:
 		if row.is_empty():
 			return "守墓人的動作裡沒有 %s（拆開的招式沒錄到）" % key
 		var frames: Array = row.frames
-		for i in range(row.start, frames.size()):
+		for i in range(row.start, row.end):
 			var a: Dictionary = frames[i].anim
 			var ph: StringName = a.get("phase", &"")
 			var t: float = a.get("phase_time", 0.0)
 			if not (ph in want[key]) or (key == "scoop_bury" and t >= step_time) or (key == "scoop_flame" and t < step_time - 1e-6):
 				return "守墓人的 %s 第 %d 步混進別的招式：phase %s、%.2f 秒" % [key, i - row.start, ph, t]
+		var path: Array = row.path
+		for n in path.size():
+			if (n > 0 and path[n][1] != path[n - 1][2]) or (path[n][0] == key and (path[n][1] != row.start or path[n][2] != row.end)):
+				return "守墓人的 %s 的段落沒有頭尾相接：%s" % [key, path]
+		if path[-1][2] != frames.size():
+			return "守墓人的 %s 的最後一段應演到狀態結束：%s / %d" % [key, path, frames.size()]
+	return ""
+
+
+# 動畫檢視器：拆開的招式接著演（反白跟著段落走、演完從起手重來）、關掉接著演只循環那一段；
+# 走跑循環時角色接著往前（每步走的距離不變、腿不跳）、地板跟著；換動作視角不變
+static func check_anim_viewer() -> String:
+	var v := AnimViewer.new()
+	_scene_root().add_child(v)
+	await (Engine.get_main_loop() as SceneTree).process_frame   # _ready 要等場景樹跑一幀
+	v.select("enemy-gravekeeper", "scoop_bury")
+	var err := _viewer_chain(v)
+	if err == "":
+		err = _viewer_loop(v)
+	v.queue_free()
+	return err
+
+
+static func _viewer_chain(v: AnimViewer) -> String:
+	var view: Array = v.status().view
+	var seen: Array = [v.status().key]
+	for i in 600:
+		v.advance(1)
+		if seen[-1] != v.status().key:
+			seen.append(v.status().key)
+	if seen.slice(0, 5) != ["scoop_bury", "scoop_flame", "scoop", "scoop_bury", "scoop_flame"]:
+		return "接著演：從埋地開始應接噴火、再從起手重來：%s" % [seen]
+	v.set_chain(false)
+	v.select("enemy-gravekeeper", "scoop_bury")
+	for i in 300:
+		v.advance(1)
+		if v.status().key != "scoop_bury":
+			return "關掉接著演應只循環埋地那一段：第 %d 步演到 %s" % [i, v.status().key]
+	v.set_chain(true)
+	if v.status().view != view:
+		return "換動作後視角變了：%s → %s" % [view, v.status().view]
+	return ""
+
+
+static func _viewer_loop(v: AnimViewer) -> String:
+	v.select("player-swordShield", "run")
+	var r: Vector2i = v.status().range
+	var prev: Vector2 = v.status().pos
+	var leg: float = v.status().rig.leg_r.rotation.x
+	var steps: Array[float] = []
+	var swing := 0.0        # 一步之內大腿最多轉多少（不含循環那一步）
+	var wrap_swing := 0.0   # 循環那一步大腿轉多少
+	for i in (r.y - r.x) * 3:
+		v.advance(1)
+		var st := v.status()
+		steps.append((st.pos as Vector2).distance_to(prev))
+		prev = st.pos
+		var now: float = st.rig.leg_r.rotation.x
+		if st.frame == r.x:
+			wrap_swing = maxf(wrap_swing, absf(now - leg))
+		else:
+			swing = maxf(swing, absf(now - leg))
+		leg = now
+		var off: Vector2 = (st.floor as Vector2) - (st.pos as Vector2)
+		if maxf(absf(off.x), absf(off.y)) > AnimViewer.FLOOR_SNAP / 2.0 + 0.01:
+			return "地板沒跟著角色：角色 %s、地板 %s" % [st.pos, st.floor]
+	var lo: float = steps.min()
+	var hi: float = steps.max()
+	if lo < 0.05 or hi > lo * 1.2:
+		return "跑步循環時每一步走的距離應該一樣（不跳回起點、不停頓）：最少 %.3f、最多 %.3f" % [lo, hi]
+	if wrap_swing > swing * 1.5:
+		return "跑步循環接回去時腿跳了一下：%.2f 弧度（平常一步最多 %.2f）" % [wrap_swing, swing]
+	_note("動畫檢視器跑步循環 3 次：每步 %.3f ~ %.3f、走到 %.1f，腿一步最多轉 %.2f（接回去那步 %.2f）" % [lo, hi, prev.length(), swing, wrap_swing])
 	return ""
