@@ -338,6 +338,7 @@ const WEAPONS := {
 			"shake": 0.05,
 			"slash_color": Color("c8d0e0"),
 			"slash_finisher_color": Color("9aa3ff"),
+			"slash_shape": [[0.0, 0.0, 0.3], [0.0, 0.0, 0.3], [0.0, 0.0, 0.3], [0.0, 0.0, 0.3], [0.0, 0.0, 0.45]],   # 刺：往前窄窄一道
 		},
 		"special": {
 			"behavior": &"shadowStep",
@@ -406,7 +407,7 @@ const WEAPONS := {
 			"shake": 0.08,
 			"slash_color": Color("fff0b0"),
 			"slash_finisher_color": Color("ffe27a"),
-			"slash_shape": [[-0.7, 0.0, 1.0]],
+			"slash_shape": [[-0.7, 0.0, 1.0], [-PI / 2.0, -0.6, 0.75]],   # 第 2 下往下砸：直的
 		},
 		"special": {
 			"behavior": &"holyCircle",

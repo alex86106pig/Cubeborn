@@ -1833,6 +1833,27 @@ static func check_effects_events() -> String:
 	var slashes := _named(events, "fx:slash")
 	if slashes.size() != 3 or slashes[2].color != WeaponDefs.WEAPONS.swordShield.attack.slash_finisher_color or slashes[1].swing_dir != -1:
 		return "三段揮砍應發出 3 次 fx:slash（第二段反手、第三段金色），實際 %s" % [slashes]
+	# 弧光照每一下的動作：劍 1、2 斜、3 直；權杖第 2 下往下砸是直的；匕首刺是窄的
+	var tilts: Array = slashes.map(func(e: Dictionary) -> float: return e.get("tilt", 0.0))
+	if not (tilts[0] < -0.3 and tilts[1] < -0.3 and absf(tilts[2] + PI / 2.0) < 0.01):
+		return "劍的三段弧光應是斜、斜、直：傾斜 %s" % [tilts]
+	for spec: Array in [[&"scepter", 2, 1, true], [&"dagger", 5, 0, false]]:
+		var ws := _new_world()
+		_spawn(ws, &"grunt", Vector2(0, 1.5))
+		_player(ws).equip_weapon(spec[0])
+		var evs: Array[Dictionary] = []
+		for i in spec[1]:
+			_run_collect(ws, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1, evs)
+			_run_collect(ws, _cmd(Vector2.ZERO), 30, evs)
+		var sl := _named(evs, "fx:slash")
+		var arc0: float = WeaponDefs.WEAPONS[spec[0]].attack.arc
+		if spec[3]:
+			if sl.size() != spec[1]:
+				return "權杖連段應發出 %d 次 fx:slash：%d" % [spec[1], sl.size()]
+			if absf(sl[-1].get("tilt", 0.0) + PI / 2.0) > 0.01:
+				return "權杖第 2 下往下砸，弧光應是直的：傾斜 %.2f" % sl[-1].get("tilt", 0.0)
+		elif sl.is_empty() or sl.any(func(e: Dictionary) -> bool: return e.arc > arc0 * 0.5):
+			return "匕首刺的弧光應是窄的（判定 %.2f）：%s" % [arc0, sl.map(func(e: Dictionary) -> float: return e.arc)]
 	var w2 := _new_world()
 	_player(w2).equip_weapon(&"staff")
 	_run_collect(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1, events)
@@ -2425,7 +2446,7 @@ static func check_bow_rest() -> String:
 
 
 # 長劍：待機刃朝上下（玩家、骷髏），骷髏往下劈時也是；三連砍 1 往左下劈、2 往右上撩、3 從頭後上方劈到前下方；
-# 權杖第 1 下、火把也是右上往左下斜揮；武器尖端不進地
+# 權杖第 1 下、火把也是右上往左下斜揮；武器尖端不進地；雙匕首待機刀尖朝前上方、刺出朝正前方，刃一直朝上下
 static func check_sword_edge() -> String:
 	var rec := AnimRecorder.new()
 	var err := ""
@@ -2476,6 +2497,8 @@ static func check_sword_edge() -> String:
 			err = "%s 普攻時武器尖端低到 %.2f（進地裡）" % [subject, sw[2]]
 		else:
 			_note("%s 第 1 下尖端 %s → %s、最低 %.2f" % [subject, sw[0], sw[1], sw[2]])
+	if err == "":
+		err = _check_dagger_aim(rec)
 	rec.clear()
 	if err != "":
 		return err
@@ -2494,6 +2517,54 @@ static func check_sword_edge() -> String:
 		return "揮劍時劍尖低到 %.2f（進地裡）" % low
 	_note("三連砍劍尖：1 %s → %s、2 %s → %s、3 %s → %s、最低 %.2f" % [c0[0], c0[1], c1[0], c1[1], c2[0], c2[1], low])
 	return ""
+
+
+# 雙匕首：待機兩把刀尖朝前上方、刺出那把朝正前方（收在腰側時也朝前），刃一直朝上下；刺完回待機刀尖不會甩
+static func _check_dagger_aim(rec: AnimRecorder) -> String:
+	for row: Dictionary in rec.rows("player-dagger", false):
+		if not (row.key in ["idle", "attack"]):
+			continue
+		var made: Dictionary = (row.make as Callable).call()
+		var rig = made.rig
+		var err := ""
+		var stabs := 0
+		var prev: Array = []
+		for i in (row.frames as Array).size():
+			AnimRecorder.step(row, made, i)
+			var a: Dictionary = row.frames[i].anim
+			var dirs: Array = []
+			for right: bool in [true, false]:
+				var t := _hand_tf(rig, right)
+				var d := (t.basis * Vector3.DOWN).normalized()
+				var w := (t.basis * Vector3.BACK).normalized()
+				dirs.append(d)
+				if i > 10 and absf(w.y) < 0.7:
+					err = "匕首的刃應朝上下（%s 第 %d 步）：刃寬方向 %s" % [row.key, i, w]
+				var stabbing: bool = a.action == &"attack" and a.phase == &"active" and a.k > 0.5 and (right == (a.swing_dir >= 0) or a.is_finisher)
+				if stabbing:
+					stabs += 1
+					if d.z < 0.95:
+						err = "匕首刺出時刀尖應朝正前方（第 %d 步）：%s" % [i, d]
+				if row.key == "idle" and i > 20 and not (d.y > 0.4 and d.y < 0.8 and d.z > 0.5):
+					err = "匕首待機刀尖應朝前上方：%s" % d
+			if i > 10 and not prev.is_empty() and a.action == &"ready" and (dirs[0].angle_to(prev[0]) > 0.15 or dirs[1].angle_to(prev[1]) > 0.15):
+				err = "匕首刺完回待機時刀尖甩了一下（第 %d 步）：%.2f / %.2f 弧度" % [i, dirs[0].angle_to(prev[0]), dirs[1].angle_to(prev[1])]
+			prev = dirs
+			if err != "":
+				break
+		(rig as Node).free()
+		if err != "":
+			return err
+		if row.key == "attack" and stabs == 0:
+			return "匕首普攻沒有錄到刺出"
+	return ""
+
+
+static func _hand_tf(rig, right: bool) -> Transform3D:
+	var t := Transform3D.IDENTITY
+	for j in ([rig.body, rig.arm_r, rig.forearm_r, rig.hand_r] if right else [rig.body, rig.arm_l, rig.forearm_l, rig.hand_l]):
+		t = t * Transform3D(Basis.from_euler(j.rotation, EULER_ORDER_YXZ).scaled_local(j.scale), j.position)
+	return t
 
 
 # 普攻連段第一次出手那幾步的武器尖端 [第一步, 最後一步, 整段最低]；tip = 尖端在手掌座標的位置

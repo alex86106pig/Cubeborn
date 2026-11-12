@@ -53,6 +53,11 @@ const SWORD_CUTS := [
 		"pole": Vector3(-0.9, -0.1, -0.3), "twist": [-0.15, 0.1], "lean": [-0.1, 0.3], "stance": [0.2, -0.3, 0.55]},
 ]
 const SWORD_LEN := 1.0          # 算劍尖軌跡用的劍長
+# 匕首在手掌上：刀尖 -Y、刃寬 Z（DarkFantasy._dagger）；刀尖方向用角色座標（腰怎麼轉都一樣），x 是往身體中線
+const DAGGER_FRAME := Basis(Vector3.BACK, Vector3.DOWN, Vector3.RIGHT)
+const DAGGER_IDLE := Vector3(0.15, 0.6, 0.8)
+const DAGGER_CHAMBER := Vector3(0.05, 0.1, 1.0)   # 收在腰側：刀尖朝前
+const DAGGER_STAB := Vector3(0.1, -0.05, 1.0)     # 刺到底：刀尖朝正前方
 const CUT_EDGE_STICKY := 0.5    # 刃換面的遲滯，避免揮到一半翻面
 const LAND_DROP := 0.16       # 落地時髖部往下沉多少（× 腿長；膝蓋約彎 45°，真人落地膝蓋彎曲至少 45°）
 const BOW_REST := Basis(Vector3.RIGHT, Vector3.BACK, Vector3.DOWN)   # 不拉弓時弓平放（相對角色）：弓梢朝前後、弓背朝下、弦在上
@@ -79,6 +84,8 @@ var _cut_edge := 1.0            # 刃朝哪一面（±1）
 var _last_arm := {}             # 上一幀的右手姿勢
 var _hand_carry := 0.0          # 連砍結束後手掌還留在連砍方向的比例
 var _hand_last := Basis.IDENTITY
+var _blade_aim: Array = [null, null]   # 這一幀右手、左手的刀尖方向（角色座標，x 照右手；null = 照預設握法）
+var _blade_q: Array = [Quaternion.IDENTITY, Quaternion.IDENTITY]
 var _gait: Dictionary = {}
 var _was_airborne := false
 var _land_t := 1.0
@@ -99,6 +106,7 @@ func update(p: Player, dt: float) -> void:
 	wrist_target = 0.0
 	roll_target = 0.0
 	_cut_hand = null
+	_blade_aim = [null, null]
 	stance.weight = 0.0
 	free_legs = false
 	_arrow = &"none"
@@ -163,6 +171,8 @@ func update(p: Player, dt: float) -> void:
 	else:
 		rig.hand_l.rotation = Vector3.ZERO
 		bow_raise = 0.0
+	if rig.weapon_model == &"dagger":
+		_aim_blades(a.action in [&"attack", &"special"], dt)
 	if rig.weapon_gem != null:
 		rig.weapon_gem.rotation.y += GEM_SPIN * dt
 
@@ -357,6 +367,7 @@ func _pose_idle_upper_body(idle: Dictionary, dt: float) -> void:
 	rig.forearm_l.rotation.x = -(idle_elbow(false) + elbow_add + maxf(0.0, sw) * 0.4)
 	rig.body.rotation.y = 0.0
 	weapon_tilt = MathUtil.damp(weapon_tilt, idle.tilt, s, dt)
+	_blade_aim = [DAGGER_IDLE, DAGGER_IDLE]
 	wrist_target = IDLE_WRIST.get(rig.weapon_model, 0.0)
 	roll_target = IDLE_ROLL.get(rig.weapon_model, 0.0)
 
@@ -511,6 +522,8 @@ func _pose_thrust(idle: Dictionary, a: Dictionary, e: float) -> void:
 		BodyPose.arm(rig, false, x, -inward, elbow)
 	if not (right and left):   # 另一隻手收回護在胸前
 		BodyPose.arm(rig, not right, -0.6 + 0.3 * reach, 0.25 * (-1.0 if right else 1.0), 1.6)
+	var aim: Vector3 = {&"windup": DAGGER_IDLE.lerp(DAGGER_CHAMBER, e), &"active": DAGGER_CHAMBER.lerp(DAGGER_STAB, e)}.get(a.phase, DAGGER_STAB.lerp(DAGGER_IDLE, e))
+	_blade_aim = [aim if right else DAGGER_IDLE, aim if left else DAGGER_IDLE]
 	var twist := 0.0 if fin else (0.35 if right else -0.35)   # 出手那一側的肩膀往前
 	rig.body.rotation.y = twist * reach
 	rig.body.rotation.x = (0.3 if fin else 0.12) * reach
@@ -521,6 +534,26 @@ func _pose_thrust(idle: Dictionary, a: Dictionary, e: float) -> void:
 		set_stance(0.12 * reach, step, -0.35 * reach)
 	else:
 		set_stance(0.12 * reach, -0.35 * reach, step)
+
+
+# 匕首：手掌轉到刀尖朝 _blade_aim、刃朝上下（虎口朝上）；出招時直接轉到，其他時候在角色座標裡平滑轉（前臂動刀尖不會跟著甩）
+func _aim_blades(snap: bool, dt: float) -> void:
+	var body := Basis.from_euler(rig.body.rotation, EULER_ORDER_YXZ)
+	for i in 2:
+		var right := i == 0
+		var hand: Node3D = rig.hand_r if right else rig.hand_l
+		var fore := body * BodyPose.forearm_basis(rig, right)
+		var want := fore * hand.basis
+		if _blade_aim[i] != null:
+			var aim: Vector3 = _blade_aim[i]
+			var d := Vector3(aim.x * (1.0 if right else -1.0), aim.y, aim.z).normalized()
+			var w := (Vector3.UP - d * d.y).normalized()
+			want = Basis(w, d, w.cross(d)) * DAGGER_FRAME.inverse()
+		var q := want.get_rotation_quaternion()
+		if not snap:
+			q = (_blade_q[i] as Quaternion).slerp(q, 1.0 - exp(-WRIST_SHARPNESS * dt))
+		_blade_q[i] = q
+		hand.basis = fore.inverse() * Basis(q)
 
 
 # 鏟（鐵鏟鏟地、鏟起）：右手握柄尾、左手握在柄中段（IK 跟著鏟柄）；前搖蹲低、鏟面貼著身前的地 →

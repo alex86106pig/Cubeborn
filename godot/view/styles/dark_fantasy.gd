@@ -730,12 +730,12 @@ static func offhand(model: StringName) -> Dictionary:
 	return {}
 
 
-# 匕首（F6）：刀刃沿手臂延伸方向（-Y），手往前刺時刀尖朝前；左手那把直接掛 hand_l
+# 匕首（F6）：刀尖朝手掌 -Y、刃寬與護手在 Z；左手那把直接掛 hand_l。刀尖朝哪由 Animator.aim_blade 轉手掌
 # 2026-10-27 網頁版實測：原本左手那把掛在左臂、轉 90°，畫面上看不到
 static func _dagger(k: PartKit) -> Node3D:
 	var g := Node3D.new()
 	k.add(g, PartKit.cone(0.045, 0.42, 4), k.mat(Color("c8d0e0")), {"y": 0.3, "sx": 0.35})
-	k.add(g, PartKit.box(0.16, 0.03, 0.05), k.mat(C.steel_dark), {"y": 0.09})
+	k.add(g, PartKit.box(0.05, 0.03, 0.16), k.mat(C.steel_dark), {"y": 0.09})
 	k.add(g, PartKit.cyl(0.025, 0.025, 0.14, 4), k.mat(C.leather), {"y": 0.0})
 	k.merge_static(g, [g])
 	g.rotation.x = PI   # 刀尖朝 -Y
