@@ -23,6 +23,9 @@ const BURROW_DIRT_EVERY := 4                 # 每幾個模擬步冒一次
 const COFFIN_STONE := Color("5e574c")        # 第 2 層的石棺（出口）
 const COFFIN_SEAL := Color("b070ff")         # 石棺蓋上的封印符文：撬得越多越暗
 const COFFIN_SIZE := Vector3(2.2, 0.85, 1.2)
+const COCOON_SILK := Color("c9cdbd")         # 第 3 層的巨繭（出口）
+const COCOON_GLOW := Color("a8e04a")         # 繭的裂口透出的綠光：割得越開越亮
+const COCOON_SIZE := Vector3(1.5, 2.4, 1.3)  # 整顆繭的寬、高、深（兩半各佔一半寬）
 const EXIT_COLOR := Color("8fd0ff")
 const CHEST_LID_OPEN := -1.9                # 寶箱打開時箱蓋往後翻的角度（弧度）
 const GHOST_TINT := Color(0.55, 0.8, 1.0)   # 冤魂（D6）的顏色與透明度
@@ -1094,6 +1097,7 @@ static func xray_material(color: Color) -> ShaderMaterial:
 
 
 # 去下一層的定點（D6）：第 1 層土堆 + 墓碑，挖的進度越多土堆越矮；第 2 層封印的石棺，撬得越多棺蓋越往旁邊滑開、符文越暗；
+# 第 3 層巨繭，割得越多兩半繭殼越往兩邊剝開、裂口越亮；
 # 打開後都變成發光的洞（出口）。換層換外觀時整個重建
 func _sync_grave(world: World) -> void:
 	if not DigEvent.enabled(world):
@@ -1106,7 +1110,13 @@ func _sync_grave(world: World) -> void:
 		_grave = null
 	if _grave == null:
 		_grave_look = look
-		_grave = _create_sarcophagus() if look == &"sarcophagus" else _create_grave()
+		match look:
+			&"sarcophagus":
+				_grave = _create_sarcophagus()
+			&"cocoon":
+				_grave = _create_cocoon()
+			_:
+				_grave = _create_grave()
 		add_child(_grave)
 	_grave.visible = true
 	var ev := world.event
@@ -1121,6 +1131,18 @@ func _sync_grave(world: World) -> void:
 		lid.rotation.z = -0.5 * slide * slide
 		var seal: MeshInstance3D = _grave.get_node(^"Lid/Seal")
 		(seal.material_override as StandardMaterial3D).emission_energy_multiplier = 2.0 * (1.0 - slide) + 0.1
+	elif look == &"cocoon":
+		# 兩半繭殼從中間的裂口往左右剝開、往外倒；裂口的綠光跟著變寬變亮，打開後只剩攤在兩邊的殼
+		var split := 1.0 if open else ev.progress
+		for side: Array in [[^"ShellL", -1.0], [^"ShellR", 1.0]]:
+			var shell: Node3D = _grave.get_node(side[0])
+			var dir: float = side[1]
+			shell.position = Vector3(dir * COCOON_SIZE.x * (0.22 + 0.5 * split), COCOON_SIZE.y * (0.5 - 0.3 * split * split), 0.0)
+			shell.rotation.z = -dir * 1.1 * split * split
+		var slit: MeshInstance3D = _grave.get_node(^"Slit")
+		slit.visible = not open
+		slit.scale.x = 0.15 + 2.5 * split
+		(slit.material_override as StandardMaterial3D).emission_energy_multiplier = 0.4 + 2.2 * split
 	else:
 		var mound: Node3D = _grave.get_node(^"Mound")
 		mound.visible = not open
@@ -1180,7 +1202,41 @@ func _create_sarcophagus() -> Node3D:
 	return root
 
 
-# 出口的洞與發光環（第 1 層貼地、第 2 層在棺口的高度）：打開前隱藏
+# 第 3 層的巨繭：左右兩半繭殼（割開時往兩邊剝開）、中間一道透綠光的裂口、四條把繭拉在地上的蟲絲；打開後地上是洞與出口的光
+func _create_cocoon() -> Node3D:
+	var root := Node3D.new()
+	root.name = "Grave"
+	var silk := _flat_material(COCOON_SILK)
+	var s := COCOON_SIZE
+	for side: Array in [["ShellL", -1.0], ["ShellR", 1.0]]:
+		var shell := MeshInstance3D.new()
+		shell.name = side[0]
+		var half := SphereMesh.new()
+		half.radius = 0.5
+		half.height = 1.0
+		half.radial_segments = 8
+		half.rings = 5
+		shell.mesh = half
+		shell.scale = Vector3(s.x * 0.62, s.y, s.z)
+		shell.material_override = silk
+		root.add_child(shell)
+	var glow := StandardMaterial3D.new()
+	glow.albedo_color = COCOON_GLOW
+	glow.emission_enabled = true
+	glow.emission = COCOON_GLOW
+	glow.emission_energy_multiplier = 0.4
+	var slit := _box(Vector3(0.12, s.y * 0.7, s.z * 0.75), Vector3(0.0, s.y * 0.5, 0.0), glow)
+	slit.name = "Slit"
+	root.add_child(slit)
+	for a: float in [0.6, 2.2, 3.9, 5.4]:
+		var strand := _box(Vector3(0.05, 0.05, 2.2), Vector3(sin(a) * 1.2, 0.5, cos(a) * 1.2), silk)
+		strand.rotation = Vector3(0.45, a, 0.0)
+		root.add_child(strand)
+	_add_exit_parts(root, 0.0)
+	return root
+
+
+# 出口的洞與發光環（第 1 層與第 3 層貼地、第 2 層在棺口的高度）：打開前隱藏
 func _add_exit_parts(root: Node3D, y: float) -> void:
 	var hole := MeshInstance3D.new()
 	hole.name = "Hole"

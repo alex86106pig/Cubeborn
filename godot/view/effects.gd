@@ -68,6 +68,9 @@ const BONE_COLOR := Color("d8d0b8")         # 挖墳點冒出的白骨手
 const COFFIN_DUST := Color("8a8070")        # 石棺噴怪前的石屑
 const SEAL_COLOR := Color("b070ff")         # 石棺封印的紫光（同 WorldView.COFFIN_SEAL）
 const COFFIN_TOP := 0.85                    # 石棺棺口的高度（同 WorldView.COFFIN_SIZE.y）
+const COCOON_SHRED := Color("c9cdbd")       # 巨繭噴怪前飄出來的絲屑（同 WorldView.COCOON_SILK）
+const COCOON_GLOW := Color("a8e04a")        # 巨繭裂口的綠光（同 WorldView.COCOON_GLOW）
+const COCOON_MID := 1.2                     # 巨繭中段的高度（WorldView.COCOON_SIZE.y 的一半）
 const DIRT_LOB_HEIGHT := 3.0                # 守墓人拋出的土塊飛多高
 const ROCK_FALL_HEIGHT := 14.0              # 瘋狂鏟土的落石從多高掉下來
 const CLAW_MARKS := 3                       # 狼人每一爪的爪痕條數
@@ -570,13 +573,25 @@ func _fx_boss_teleport_warn(p: Dictionary) -> void:
 
 
 # 挖墳點噴怪前：墳土隆起、裂開，冒出白骨手，泥土一直噴（不畫圈）
-# look = sarcophagus（第 2 層的石棺）：不隆起土堆，白骨手從棺口伸出來，冒石屑與封印的紫光
+# look = sarcophagus（第 2 層的石棺）：不隆起土堆，白骨手從棺口伸出來，冒石屑與封印的紫光；cocoon（第 3 層的巨繭）：綠光與絲屑
 func _fx_erupt_warn(p: Dictionary) -> void:
 	var at := _at(p)
 	var radius: float = p.radius
 	var life: float = p.life
-	var coffin: bool = p.get("look", &"grave") == &"sarcophagus"
+	var look: StringName = p.get("look", &"grave")
+	var coffin := look == &"sarcophagus"
 	var dust: Color = COFFIN_DUST if coffin else DUST_COLOR
+	if look == &"cocoon":
+		# 巨繭：不隆起、沒有白骨手，裂口一陣一陣冒綠光、絲屑往外飄
+		at.y += COCOON_MID
+		_add_emitter(life, func(k: float, key: String, dt: float) -> void:
+			for i in _count(key, 0.4 + 0.8 * k, dt):
+				var a := _rng.randf() * TAU
+				var r := _rng.randf_range(0.1, 0.7)
+				mote(at + Vector3(sin(a) * r, _rng.randf_range(-0.8, 0.8), cos(a) * r), {"color": COCOON_GLOW, "size": 0.16, "life": 0.5, "vy": 1.2})
+			for i in _count(key + "s", 0.25 + 0.5 * k, dt):
+				burst(at, {"color": COCOON_SHRED, "count": 2, "speed": 2.2, "up": 1.5, "size": 0.12, "life": 0.5}))
+		return
 	if coffin:
 		at.y += COFFIN_TOP
 		radius *= 0.6   # 手與石屑在棺口裡

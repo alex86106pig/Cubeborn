@@ -1559,7 +1559,8 @@ static func _xray_unwritten(node: Node) -> String:
 	return ""
 
 
-# 每層出口的外觀（EventDefs.EXIT_STYLES）：第 1 層土堆 + 墓碑；換到第 2 層整個換成石棺，棺蓋跟著進度往旁邊滑開，打開後棺口有洞與出口環
+# 每層出口的外觀（EventDefs.EXIT_STYLES）：第 1 層土堆 + 墓碑；換到第 2 層整個換成石棺，棺蓋跟著進度往旁邊滑開，打開後棺口有洞與出口環；
+# 第 3 層換成巨繭（_check_cocoon_look）
 # 換關過場（ui/level_transition.gd）：收圈在模擬換關（LEAVE.cover 秒）之前就全黑；地形沒換就一直黑著、不顯示卡片；
 # 換了才出卡片（關卡名、基礎難度、門的獎勵、這關有鐵砧），至少停 HOLD 秒再打開；地形一直沒換 GIVE_UP 秒後也會打開
 static func check_level_transition() -> String:
@@ -1646,8 +1647,35 @@ static func check_exit_looks() -> String:
 				err = "棺蓋應跟著進度滑開：0 → %.2f、50%% → %.2f、打開 → %.2f" % [x0, x1, lid.position.x]
 			elif not (view._grave.get_node(^"Hole") as Node3D).visible or not (view._grave.get_node(^"ExitRing") as Node3D).visible:
 				err = "石棺打開後應看得到洞與出口環"
+			else:
+				err = _check_cocoon_look(w, view)
 	view.free()
 	return err
+
+
+# 第 3 層的出口換成巨繭：兩半繭殼跟著進度往兩邊剝開，打開後裂口的光收掉、地上有洞與出口環
+static func _check_cocoon_look(w: World, view: WorldView) -> String:
+	w.next_floor()
+	view.sync(w, 1.0, 0.016)
+	var left: Node3D = view._grave.get_node_or_null(^"ShellL")
+	var right: Node3D = view._grave.get_node_or_null(^"ShellR")
+	if left == null or right == null or view._grave.get_node_or_null(^"Lid") != null:
+		return "第 3 層的出口應換成巨繭（看外觀 %s）" % view._grave_look
+	var gap0 := right.position.x - left.position.x
+	w.event.state = DigEvent.ACTIVE
+	w.event.progress = 0.5
+	view.sync(w, 1.0, 0.016)
+	var gap1 := right.position.x - left.position.x
+	w.event.state = DigEvent.OPEN
+	w.event.progress = 1.0
+	view.sync(w, 1.0, 0.016)
+	var gap2 := right.position.x - left.position.x
+	if not (gap1 > gap0 + 0.1 and gap2 > gap1 + 0.1) or absf(left.position.x + right.position.x) > 0.001:
+		return "繭殼應跟著進度往兩邊對稱剝開：0 → %.2f、50%% → %.2f、打開 → %.2f" % [gap0, gap1, gap2]
+	if (view._grave.get_node(^"Slit") as Node3D).visible or not (view._grave.get_node(^"Hole") as Node3D).visible \
+			or not (view._grave.get_node(^"ExitRing") as Node3D).visible:
+		return "巨繭打開後裂口的光應收掉、看得到洞與出口環"
+	return ""
 
 
 # 牆後的寶箱是金色剪影、鍛造祭壇是灰白剪影；同種寶箱共用材質；空地上的沒有剪影
@@ -1822,6 +1850,7 @@ static func check_effects_events() -> String:
 		return "法杖奧術爆裂不應畫落點圈"
 	events.append({"name": "fx:erupt_warn", "pos": Vector2(0, 8), "height": 0.0, "radius": 2.5, "life": 1.0})
 	events.append({"name": "fx:erupt_warn", "pos": Vector2(0, 8), "height": 0.0, "radius": 2.5, "life": 1.0, "look": &"sarcophagus"})
+	events.append({"name": "fx:erupt_warn", "pos": Vector2(0, 8), "height": 0.0, "radius": 2.5, "life": 1.0, "look": &"cocoon"})
 	events.append({"name": "fx:boss_teleport_warn", "pos": Vector2(0, 8), "height": 0.0, "life": 0.6})
 	var view := Effects.new()
 	_scene_root().add_child(view)
