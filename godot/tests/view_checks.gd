@@ -3884,3 +3884,42 @@ static func check_skill_poses() -> String:
 	if err == "" and count != 18:
 		err = "戰技應有 18 招（§45）：%d" % count
 	return err
+
+
+# 動作表與動畫檢視器（AnimRecorder）：每個角色都錄得出動作、每段從頭播到尾關節角度都是有限數；
+# 玩家 8 把武器底下合起來剛好是全部的戰技（每招掛在它的第一把武器）
+static func check_anim_recorder() -> String:
+	var rec := AnimRecorder.new()
+	var err := ""
+	var skill_rows := 0
+	var total := 0
+	for s: Dictionary in AnimRecorder.subjects():
+		var rows := rec.rows(s.id)
+		if rows.is_empty():
+			err = "%s 沒有錄到動作" % s.id
+		for row: Dictionary in rows:
+			if err != "":
+				break
+			total += 1
+			if String(row.name).begins_with("戰技"):
+				skill_rows += 1
+			var frames: Array = row.frames
+			if frames.size() <= int(row.get("start", 0)):
+				err = "%s 的 %s 沒有步數" % [s.id, row.key]
+				break
+			var made: Dictionary = (row.make as Callable).call()
+			for i in frames.size():
+				AnimRecorder.step(row, made, i)
+			var rig = made.rig
+			for j in [rig.body, rig.arm_r, rig.forearm_r, rig.leg_l, rig.shin_l]:
+				var r: Vector3 = j.rotation
+				if not (is_finite(r.x) and is_finite(r.y) and is_finite(r.z)):
+					err = "%s 的 %s 播完關節角度不是有限數" % [s.id, row.key]
+			(rig as Node).free()
+		rec.clear()
+		if err != "":
+			break
+	if err == "" and skill_rows != AnimRecorder.skill_ids().size():
+		err = "玩家的動作裡戰技應有 %d 招：%d" % [AnimRecorder.skill_ids().size(), skill_rows]
+	_note("動畫檢視器：%d 個角色、%d 段動作（戰技 %d）" % [AnimRecorder.subjects().size(), total, skill_rows])
+	return err

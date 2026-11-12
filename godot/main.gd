@@ -48,8 +48,8 @@ func _ready() -> void:
 	get_tree().set_multiplayer(SceneMultiplayer.new(), get_path())
 	InputCollector.register_actions()
 	_apply_args()
-	if args.pose_test != "":   # 動作表：不開遊戲，只畫角色動作（debug/pose_gallery.gd）
-		add_child(PoseGallery.new(args.pose_test, args.pose_view))
+	if args.pose_test != "" or args.anim_viewer:   # 動作表 / 動畫檢視器：不開遊戲，只看角色動作（debug/）
+		add_child(PoseGallery.new(args.pose_test, args.pose_view) if args.pose_test != "" else AnimViewer.new())
 		set_process(false)
 		set_physics_process(false)
 		set_process_unhandled_input(false)
@@ -791,7 +791,7 @@ func _on_event(name: String, payload: Dictionary) -> void:
 
 # 切到其他視窗時自動暫停（單機才會），避免回來時已經被打死
 func _notification(what: int) -> void:
-	if args != null and args.pose_test != "":   # 動作表沒有遊戲可以暫停
+	if args != null and (args.pose_test != "" or args.anim_viewer):   # 動作表、動畫檢視器沒有遊戲可以暫停
 		return
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and args.run_seconds <= 0.0:
 		set_paused(true)
