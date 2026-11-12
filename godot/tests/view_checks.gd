@@ -4073,6 +4073,33 @@ static func check_special_poses() -> String:
 	return err
 
 
+# 第 3 層的兩招手的動作：屍巫唸咒到最後兩手合攏在胸前（靠近中線、在身前）；尖嘯幽影尖嘯時兩手伸直往外張（比肩膀寬很多、大約肩膀高）
+static func check_floor3_poses() -> String:
+	var rec := AnimRecorder.new()
+	var err := ""
+	for spec: Array in [["lich", "aim"], ["wraith", "shriek"]]:
+		for row: Dictionary in rec.rows("enemy-%s" % spec[0]):
+			if row.key != spec[1]:
+				continue
+			var made: Dictionary = (row.make as Callable).call()
+			var rig = made.rig
+			AnimRecorder.replay(row, made, (row.frames as Array).size() - 1)
+			var r := BodyPose.hand_pos(rig, true)
+			var l := BodyPose.hand_pos(rig, false)
+			var shoulder: float = rig.arm_l.position.y
+			(rig as Node).free()
+			if spec[0] == "lich" and not (absf(r.x) < 0.2 and absf(l.x) < 0.2 and r.z > 0.25 and l.z > 0.25):
+				err = "屍巫唸咒時兩手應合攏在胸前：右 %s、左 %s" % [r, l]
+			elif spec[0] == "wraith" and not (l.x - r.x > 1.2 and r.y > shoulder - 0.3 and l.y > shoulder - 0.3):
+				err = "尖嘯幽影尖嘯時兩手應往外張開、大約肩膀高：右 %s、左 %s（肩膀 %.2f）" % [r, l, shoulder]
+			else:
+				_note("%s %s 兩手：右 %s、左 %s" % [spec[0], spec[1], r, l])
+		if err != "":
+			break
+	rec.clear()
+	return err
+
+
 # node 底下所有零件的最低點（角色根節點座標）
 static func _node_low(rig: Node3D, node: Node3D) -> float:
 	var low := INF

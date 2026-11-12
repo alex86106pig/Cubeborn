@@ -36,6 +36,7 @@ const BEETLE_HIDE := -0.6       # 屍甲蟲鑽地時整隻在地面下多深
 const SPEAR_ARM_GUARD := -0.9    # 盾槍兵持槍：上臂往前，槍尖朝前下方
 const SHIELD_ARM_GUARD := -1.25  # 盾槍兵舉盾：左上臂往前抬、前臂橫在胸前，盾擋在胸前
 const ELBOW_REST := 0.3          # 人形怪手臂自然下垂時手肘微彎
+const LICH_CAST_HAND := Vector3(0.1, 1.2, 0.4)   # 屍巫唸咒時左拳在身體座標的位置（右拳 x 反過來）：胸前、靠近中線
 const ZOMBIE_SHUFFLE := 0.55     # 腐屍拖著腳走：步伐只有正常的這個比例（抬腳低、步子小）
 const QUAD_DUTY := Vector2(0.5, 0.3)   # 四足小跑每隻腳著地的比例（慢 → 快）
 const QUAD_LIFT := 0.28          # 四足擺盪時腳抬多高（× 腿長）
@@ -162,14 +163,19 @@ func update(e: Enemy, dt: float) -> void:
 			var w: float = def.shriek.windup
 			if t < w:
 				var k := clampf(t / w, 0.0, 1.0)
-				_pose_arms(lerpf(-0.2, -0.9, k), lerpf(0.0, -0.3, k))
+				for right: bool in [true, false]:   # 手肘彎、手收到胸前
+					BodyPose.arm(rig, right, lerpf(-0.2, -0.9, k), 0.3 * k * (1.0 if right else -1.0), lerpf(ELBOW_REST, 1.3, k))
 				rig.body.rotation.x = -0.25 * k
 			else:
-				_pose_arms(-1.3, 1.1)
+				for right: bool in [true, false]:   # 雙手伸直往上往外張
+					BodyPose.arm(rig, right, -1.3, 1.1 * (-1.0 if right else 1.0), 0.15)
 				rig.body.rotation.x = 0.3
 		&"cast":   # 屍巫唸咒：雙手往前抬、往中間合攏，身體微微後仰
 			var k := MathUtil.ease_out_cubic(clampf(t / def.aim_time, 0.0, 1.0))
-			_pose_arms(lerpf(-0.3, -1.5, k), lerpf(0.0, 0.45, k))
+			for right: bool in [true, false]:   # 從垂在身側合攏到胸前（IK，拳頭在身體中線兩側）
+				var side := -1.0 if right else 1.0
+				var hang: Vector3 = (rig.arm_r if right else rig.arm_l).position + Vector3(side * 0.05, -BodyPose.arm_length(rig) * 0.95, 0.05)
+				BodyPose.arm_ik(rig, right, hang.lerp(LICH_CAST_HAND * Vector3(side, 1.0, 1.0), k), Vector3(side, -0.5, -0.6))
 			rig.body.rotation.x = -0.1 * k
 			rig.leg_r.rotation.x = 0.0
 			rig.leg_l.rotation.x = 0.0
@@ -466,12 +472,6 @@ func _finish() -> void:
 func _root_to_body(p: Vector3) -> Vector3:
 	var body = rig.body
 	return Transform3D(Basis.from_euler(body.rotation, EULER_ORDER_YXZ).scaled_local(body.scale), body.position).affine_inverse() * p
-
-
-# 雙手同一個角度：rx 前後抬（負的往前）、ry 往外張（左右對稱）；手肘微彎（第 3 層的尖嘯、唸咒用）
-func _pose_arms(rx: float, ry: float = 0.0) -> void:
-	BodyPose.arm(rig, true, rx, -ry, ELBOW_REST)
-	BodyPose.arm(rig, false, rx, ry, ELBOW_REST)
 
 
 # 倒地的手：從身前攤到身體兩側的地上（拳頭貼地）
