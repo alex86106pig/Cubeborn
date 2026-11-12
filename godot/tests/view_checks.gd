@@ -2424,6 +2424,70 @@ static func check_bow_rest() -> String:
 	return ""
 
 
+# 長劍：待機刃朝上下（玩家、骷髏）；三連砍 1 往左下劈、2 往右上撩、3 從頭後上方劈到前下方；劍尖不進地
+static func check_sword_edge() -> String:
+	var rec := AnimRecorder.new()
+	var err := ""
+	var cuts := {}
+	var low := INF
+	for row: Dictionary in rec.rows("player-swordShield", false):
+		if not (row.key in ["idle", "attack"]):
+			continue
+		var made: Dictionary = (row.make as Callable).call()
+		var rig = made.rig
+		for i in (row.frames as Array).size():
+			AnimRecorder.step(row, made, i)
+			var a: Dictionary = row.frames[i].anim
+			var tip := _sword_tf(rig) * (DarkFantasy.sword_axis() * 1.1)
+			low = minf(low, tip.y)
+			if a.action == &"attack" and a.phase == &"active":
+				var n := 2 if a.is_finisher else (1 if a.swing_dir < 0 else 0)
+				if not cuts.has(n):
+					cuts[n] = [tip, tip]
+				cuts[n][1] = tip
+		if row.key == "idle":
+			var w := (_sword_tf(rig).basis * Vector3.RIGHT).normalized()
+			if absf(w.x) > 0.1:
+				err = "玩家待機時劍刃應朝上下：刃寬方向 %s" % w
+		(rig as Node).free()
+	if err == "":
+		for row: Dictionary in rec.rows("enemy-grunt"):
+			if row.key == "chase":
+				var made: Dictionary = (row.make as Callable).call()
+				for i in (row.frames as Array).size():
+					AnimRecorder.step(row, made, i)
+				var w := (_sword_tf(made.rig).basis * Vector3.RIGHT).normalized()
+				(made.rig as Object).free()
+				if absf(w.x) > 0.1:
+					err = "骷髏追擊時劍刃應朝上下：刃寬方向 %s" % w
+	rec.clear()
+	if err != "":
+		return err
+	if cuts.size() != 3:
+		return "三連砍應錄到 3 段：%s" % [cuts.keys()]
+	var c0: Array = cuts[0]
+	var c1: Array = cuts[1]
+	var c2: Array = cuts[2]
+	if not (c0[1].x - c0[0].x > 0.8 and c0[0].y - c0[1].y > 1.0):
+		return "第 1 段應從右上往左下劈：劍尖 %s → %s" % c0
+	if not (c1[0].x - c1[1].x > 0.8 and c1[1].y - c1[0].y > 1.0):
+		return "第 2 段應從左下往右上撩：劍尖 %s → %s" % c1
+	if not (c2[0].z < 0.0 and c2[0].y > 2.0 and c2[1].z > 0.8 and c2[1].y < 1.0):
+		return "第 3 段應從頭後上方劈到前下方：劍尖 %s → %s" % c2
+	if low < 0.1:
+		return "揮劍時劍尖低到 %.2f（進地裡）" % low
+	_note("三連砍劍尖：1 %s → %s、2 %s → %s、3 %s → %s、最低 %.2f" % [c0[0], c0[1], c1[0], c1[1], c2[0], c2[1], low])
+	return ""
+
+
+# 右手掌掛點相對角色根節點（Rig 與 SkinnedRig 的關節都只有 position / rotation / scale）
+static func _sword_tf(rig) -> Transform3D:
+	var t := Transform3D.IDENTITY
+	for j in [rig.body, rig.arm_r, rig.forearm_r, rig.hand_r]:
+		t = t * Transform3D(Basis.from_euler(j.rotation, EULER_ORDER_YXZ).scaled_local(j.scale), j.position)
+	return t
+
+
 # 骷髏弓手：瞄準時左手舉平、右手拉弦；射完右手平滑放下（第一幀不直接跳回）；
 # 目標在射擊距離內時左手停在預備高度、不放下（畫面層自己算距離）；離開射擊距離後平滑放回垂直（弓平放）
 static func check_archer_bow_arm() -> String:
@@ -3931,8 +3995,7 @@ static func check_anim_recorder() -> String:
 	return err
 
 
-# 守墓人的鏟起、提燈噴火拆成一段一招（AnimRecorder.SPLITS）：每段都錄得到，從開始播的那步到最後只出現那一招的 phase
-# （鏟起沒抓到不會埋地噴火、埋地那段還沒開始噴、邊噴邊追那段沒有轉圈）
+# 守墓人拆開的招式（AnimRecorder.SPLITS）每段都錄得到、只含那一招的 phase
 static func _check_split_rows(rows: Array) -> String:
 	var step_time: float = EnemyDefs.ENEMIES.gravekeeper.scoop.bury.step_time
 	var want := {

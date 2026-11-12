@@ -35,9 +35,7 @@ const ENEMY_STATE_NAMES := {
 	&"wolf_chase": "狼人追擊", &"stalk": "隱入黑暗", &"claw": "三連爪", &"leap": "飛撲（狼人）", &"howl": "狼嚎",
 	&"colossus_chase": "追擊（聚合體）", &"spikes": "骨刺陣", &"sweep": "多臂橫掃", &"wheel": "巨骨輪", &"wheel_stun": "撞牆暈倒", &"devour": "吞屍",
 }
-# 一個狀態裡有好幾招的，拆成好幾段、一段只放一招（YangHsu 2026-11-12：「不應該有一個動作內包含兩種動作」）。
-# 每段 [key, 名字, 抓到玩家後走哪條（"" = 不抓）, 從哪一步開始, 到哪一步之前]；步驟用 [phase, 該 phase 的第幾秒]（phase 空字串 = 狀態結束）
-# 鏟起：抓到後隨機 A 拋飛 / B 埋地 → 開燈罩直噴（sim/enemies/gravekeeper.gd Scoop），錄的時候換種子直到走到要的那條
+# 一個狀態裡有好幾招的拆成一段一招：[key, 名字, 要走到的 phase（"" = 不限）, 起點, 終點]，點 = [phase, 秒]，phase "" = 狀態結束
 const SPLITS := {
 	&"gravekeeper": {
 		&"lantern": [
@@ -52,7 +50,7 @@ const SPLITS := {
 		],
 	},
 }
-const SPLIT_SEEDS := 40   # 換幾個種子找要的那條連段
+const SPLIT_SEEDS := 40   # 隨機連段最多試幾個種子
 const SKILLS_PER_PAGE := 6
 const AI_SECONDS := 12.0   # 怪物照 AI 自己打的錄幾秒
 
@@ -311,7 +309,7 @@ func enemy_rows(model: StringName) -> Array:
 	return rows
 
 
-# 拆開的一段（SPLITS）：玩家站在面前（要抓）或遠處（不抓），硬切進那個狀態錄到狀態結束，再照 part 的起訖步驟切出來
+# 錄 SPLITS 的一段：換種子直到走到要的 phase，再照起訖點切
 func _split_row(model: StringName, kind: StringName, form: int, move: StringName, part: Array) -> Dictionary:
 	var branch: StringName = part[2]
 	for seed_value in range(1, SPLIT_SEEDS + 1):
@@ -344,7 +342,7 @@ func _split_row(model: StringName, kind: StringName, form: int, move: StringName
 	return {}
 
 
-# 步驟 [phase, 秒] 在第幾步：phase 空字串 = 狀態結束（mf.size()）；秒可以是招式設定裡的欄位名（例如 bury 的 step_time）
+# 點 [phase, 秒] 在第幾步；秒可以是招式設定的欄位名
 static func _split_at(mf: Array, at: Array, def: Dictionary, is_end: bool) -> int:
 	var phase: StringName = at[0]
 	if phase == &"":

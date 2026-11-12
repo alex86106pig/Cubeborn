@@ -266,7 +266,7 @@ func slash(pos: Vector3, facing: float, range_: float, arc: float, o: Dictionary
 	var opacity: float = o.get("opacity", 0.75)
 	var node := _transient_mesh(_slash_meshes[key], o.get("color", Color.WHITE), opacity)
 	node.position = pos
-	node.rotation.y = facing
+	node.rotation = Vector3(o.get("pitch", 0.0), facing, o.get("tilt", 0.0))   # tilt 繞前方傾斜（負的 = 右邊高）、pitch 負的往上仰
 	var swing: float = o.get("swing_dir", 1)
 	_add_transient(node, o.get("life", 0.16), func(k: float) -> void:
 		_set_alpha(node, opacity * (1.0 - k))
@@ -564,7 +564,7 @@ func _on_transformed(p: Dictionary) -> void:
 
 
 func _fx_slash(p: Dictionary) -> void:
-	slash(_at(p, 1.0), p.facing, p.range, p.arc, {"color": p.color, "swing_dir": p.swing_dir})
+	slash(_at(p, 1.0), p.facing, p.range, p.arc, {"color": p.color, "swing_dir": p.swing_dir, "tilt": p.get("tilt", 0.0), "pitch": p.get("pitch", 0.0)})
 
 
 func _fx_muzzle(p: Dictionary) -> void:

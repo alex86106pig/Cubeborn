@@ -5,7 +5,7 @@
 # 一打開就選好：AnimViewer.new("enemy-gravekeeper:lantern")（網址 ?anim-viewer=enemy-gravekeeper:lantern；動作寫英文 id；
 # 第三段是腳步：enemy-gravekeeper:lantern:原地 / 走 / 跑）
 # 操作：空白鍵 播放 / 暫停、← → 逐格、↑ ↓ 換動作、R 重錄、滑鼠拖曳轉視角、滾輪縮放
-# 視角（方位相對角色朝向、仰角、距離）換動作、換角色、重錄都留著，只有按視角按鈕才換（YangHsu 2026-11-12）
+# 視角換動作、換角色、重錄都留著，只有按視角按鈕才換
 class_name AnimViewer
 extends Node3D
 
@@ -17,8 +17,7 @@ const GRID_HALF := 10            # 地板格線的範圍（± 公尺），1 公�
 const PANEL_WIDTH := 360
 const ORBIT_SPEED := 0.008       # 拖曳轉視角：每像素幾弧度
 const DIST_RANGE := Vector2(2.5, 30.0)
-# 視角：[相對角色朝向的方位角（0 = 正前方、-PI/2 = 角色右手邊）, 仰角, 正交]；game 是遊戲的鏡頭（Config.CAMERA，世界方位、不跟著角色）
-# 正面、背面是正前方 / 正後方（原本偏 0.4~0.45 弧度的斜角，YangHsu 2026-11-12：「前方也不是真的前方」）
+# 視角：[相對角色朝向的方位角（0 = 正前方）, 仰角, 正交]；遊戲 = Config.CAMERA 的世界方位
 const VIEWS := {"側面": [-PI / 2.0, 0.12, false], "正面": [0.0, 0.12, false], "背面": [PI, 0.12, false], "遊戲": [0.0, 0.0, true]}
 
 var _recorder := AnimRecorder.new()
@@ -34,15 +33,15 @@ var _speed := 1.0
 var _loop := true
 var _follow := true              # 角色照錄到的位置移動（看得出腳有沒有在地上滑）；關掉就原地
 var _feet := "照錄到的"
-var _yaw_rel := -PI / 2.0        # 相對這段動作開頭的角色朝向（換動作時角色朝向不同，看的角度照樣）
-var _yaw_game: float = Config.CAMERA.azimuth   # 遊戲視角是世界方位，不跟著角色
+var _yaw_rel := -PI / 2.0        # 相對動作開頭的角色朝向
+var _yaw_game: float = Config.CAMERA.azimuth
 var _pitch := 0.12
 var _dist := 7.0
 var _ortho := false
 var _game_view := false
 var _dragging := false
 var _view := "側面"
-var _speed_buttons := {}         # 速度 / 腳步 / 視角按鈕：按下去一直亮著，看得出現在選的是哪個
+var _speed_buttons := {}         # 值 → 按鈕（同組只亮一個）
 var _feet_buttons := {}
 var _view_buttons := {}
 
@@ -197,7 +196,7 @@ func _build_ui() -> void:
 	var loop := CheckBox.new()
 	loop.text = "循環"
 	loop.button_pressed = _loop
-	loop.focus_mode = Control.FOCUS_NONE   # 拿到焦點的話空白鍵會變成切勾選，不是播放 / 暫停
+	loop.focus_mode = Control.FOCUS_NONE   # 不然空白鍵會切勾選
 	loop.toggled.connect(func(on: bool) -> void: _loop = on)
 	toggles.add_child(loop)
 	var follow := CheckBox.new()
@@ -230,7 +229,7 @@ func _build_ui() -> void:
 	_mark_buttons()
 
 
-# 同一組只亮一個的按鈕（ButtonGroup）：key 是這顆代表的值，_mark_buttons 照現在的值按下去
+# 同組只亮一個的按鈕
 func _toggle(b: Button, group: Dictionary, key: Variant) -> Button:
 	b.toggle_mode = true
 	if not group.is_empty():
@@ -250,7 +249,7 @@ func _mark_buttons() -> void:
 
 # ───────── 選角色、選動作 ─────────
 
-# 換角色時新角色也有同一個動作（例如換武器看普攻）就停在那個動作
+# 新角色也有同一個動作就停在那個動作
 func _pick_subject(i: int) -> void:
 	var keep: String = _row.get("key", "")
 	_free_rig()
@@ -275,7 +274,7 @@ func _pick_action(i: int) -> void:
 	_row = _rows[i]
 	_start = _row.get("start", 0)
 	_restart()
-	_update_camera()   # 不重設視角：方位照舊相對角色朝向、仰角與距離不變
+	_update_camera()
 
 
 func _rerecord() -> void:
@@ -432,7 +431,7 @@ func _set_view(v: String) -> void:
 	_update_camera()
 
 
-# 鏡頭的方位：遊戲視角是世界方位；其他照這段動作開頭的角色朝向 + 相對角度
+# 鏡頭方位
 func yaw() -> float:
 	if _game_view:
 		return _yaw_game
@@ -457,7 +456,7 @@ func _update_camera() -> void:
 	_cam.h_offset = -half_h * (view.x / maxf(view.y, 1.0)) * (PANEL_WIDTH / maxf(view.x, 1.0))
 
 
-# 快捷鍵在 _input 先接（介面拿到焦點時不會被吃掉，例如點過動作清單後空白鍵照樣播放 / 暫停）；滑鼠留給 _unhandled_input（面板上的不轉視角）
+# 快捷鍵在 _input 先接，不被拿到焦點的介面吃掉
 func _input(event: InputEvent) -> void:
 	if not (event is InputEventKey and (event as InputEventKey).pressed and not (event as InputEventKey).echo):
 		return
@@ -495,7 +494,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion and _dragging:
 		var mm := event as InputEventMouseMotion
 		if mm.button_mask & (MOUSE_BUTTON_MASK_LEFT | MOUSE_BUTTON_MASK_RIGHT) == 0:
-			_dragging = false   # 在面板上放開的按鍵事件被介面接走了：沒按著就不轉
+			_dragging = false   # 放開事件被面板接走時
 			return
 		if _game_view:
 			_yaw_game -= mm.relative.x * ORBIT_SPEED

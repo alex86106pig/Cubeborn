@@ -221,8 +221,9 @@ func _initialize() -> void:
 		+ "披風整片在軀幹後面、身體前方沒有披風色的零件；盾的尖角和盾面同一平面；騎士骨架有 back / forearm_l / head / hip_l / hip_r 掛點，盾掛 forearm_l、箭袋掛 back",
 		all.bind([ViewChecks.check_merge_static, ViewChecks.check_mesh_counts, ViewChecks.check_body_parts]))
 	_check("握武器與持弓：每把玩家武器的 grip 掛點在拳頭中心（手掌掛點）、手掌掛點上有拳頭；法杖類直立靠轉手掌（武器不另外轉）；骷髏與 Boss 的拳頭也在手掌掛點上；"
-		+ "弓不拉弓時平放（弓梢連線水平、弓背朝下、弦在上）；骷髏弓手瞄準時舉平、拉弦拉到下巴、射完右手平滑放下、目標在射擊距離內左手停在預備高度、離開射擊距離才平滑放回垂直",
-		all.bind([ViewChecks.check_weapon_grip, ViewChecks.check_bow_rest, ViewChecks.check_archer_bow_arm]))
+		+ "弓不拉弓時平放（弓梢連線水平、弓背朝下、弦在上）；骷髏弓手瞄準時舉平、拉弦拉到下巴、射完右手平滑放下、目標在射擊距離內左手停在預備高度、離開射擊距離才平滑放回垂直；"
+		+ "長劍待機刃朝上下（玩家、骷髏），三連砍 1 往左下劈、2 往右上撩、3 從頭後上方劈到前下方，劍尖不進地",
+		all.bind([ViewChecks.check_weapon_grip, ViewChecks.check_bow_rest, ViewChecks.check_archer_bow_arm, ViewChecks.check_sword_edge]))
 	_check("角色骨架與動作：每種角色都有手肘與膝蓋（前臂、小腿各一節、零件掛在那一節，模板組出來的也一樣）；步態照真實動作（走路膝蓋最多 50~75°、跑步 90~125°、跑步髖部抬 55~85°、踩地的腳貼地）、上身前傾從髖部彎、蹲低時膝蓋彎；18 招戰技各有自己的動作、腳不踩進地裡；動作表與動畫檢視器每個角色的每個動作都錄得出來、播得完（腳步改成原地 / 跑也行）；守墓人的鏟起、提燈噴火拆成一段一招（沒抓到不會埋地噴火、邊噴邊追不含轉圈）",
 		all.bind([ViewChecks.check_limb_joints, ViewChecks.check_gait_pose, ViewChecks.check_skill_poses, ViewChecks.check_anim_recorder]))
 	_check("受擊閃白：只改自發光顏色、不切換 emission_enabled（切換會在第一次命中即時編譯著色器而卡頓）", ViewChecks.check_flash_no_shader_switch)

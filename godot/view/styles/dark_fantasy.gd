@@ -80,6 +80,7 @@ const MOTH_JOINTS := {
 	"hip_y": 0.8, "hip_x": 0.25, "height": 2.2,
 }
 const KEEPER_SPADE := Color("9a948a")   # 守墓人鏟面：磨亮的舊鐵（要比地面亮，看得出是鏟子）
+const SWORD_TILT := 2.8   # 長劍在手掌座標的傾角（繞 X）
 const BOSS_SCALE := 1.85
 const KEEPER_SCALE := 1.3
 const WOLF_SCALE := 1.45
@@ -211,7 +212,7 @@ static func _hold(model: Node3D, mounts: Dictionary) -> Node3D:
 	return model
 
 
-# 長劍：劍身沿局部 +Y，整組轉 2.8 弧度；握把中央是 grip。回傳的模型由呼叫端掛到手掌掛點
+# 長劍：劍身沿局部 +Y，整組繞 X 轉 SWORD_TILT，刃寬在 X；握把中央是 grip
 static func _long_sword(k: PartKit, blade: Color, guard: Color, length := 1.0, glow: Variant = null) -> Node3D:
 	var g := Node3D.new()
 	k.add(g, PartKit.cyl(0.03, 0.03, 0.25, 5), k.mat(C.leather))
@@ -219,8 +220,18 @@ static func _long_sword(k: PartKit, blade: Color, guard: Color, length := 1.0, g
 	k.add(g, PartKit.box(0.36, 0.05, 0.07), k.mat(guard), {"y": 0.14})
 	k.add(g, PartKit.cyl(0.018, 0.055, length, 4), k.mat(glow, true) if glow != null else k.mat(blade),
 		{"y": 0.16 + length / 2.0, "sz": 0.35})
-	g.rotation.x = 2.8
+	g.rotation.x = SWORD_TILT
 	return _hold(g, {"grip": Vector3.ZERO})
+
+
+# 劍身方向（手掌座標）
+static func sword_axis() -> Vector3:
+	return Basis(Vector3.RIGHT, SWORD_TILT) * Vector3.UP
+
+
+# 手掌方向：手腕上翹 wrist 後再繞劍身轉 roll（PI/2 = 刃朝上下）
+static func sword_grip(wrist: float, roll: float) -> Basis:
+	return Basis(Vector3.RIGHT, wrist) * Basis(sword_axis(), roll)
 
 
 # 骷髏弓手的弓：半圓弓身的兩端在局部 ±X，弧的正中間（握把）是 grip，弦連兩端、中點是 string

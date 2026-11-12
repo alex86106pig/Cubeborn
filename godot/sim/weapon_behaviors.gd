@@ -76,10 +76,12 @@ class MeleeSwing extends Behavior:
 		if name == &"active":
 			data.lock_facing = true
 			p.knockback += WeaponBehaviors.forward(p) * (def.lunge * data.scale)
+			var shape: Array = def.get("slash_shape", [])
+			var look: Array = shape[p.combo_step] if p.combo_step < shape.size() else [0.0, 0.0, 1.0]
 			p.world.emit_event("fx:slash", {
 				"pos": p.pos, "height": p.height, "facing": p.facing, "range": def.range * data.scale * p.weapon_range_mul(),
-				"arc": def.arc * data.scale, "color": def.slash_finisher_color if data.is_finisher else def.slash_color,
-				"swing_dir": data.swing_dir,
+				"arc": def.arc * data.scale * look[2], "color": def.slash_finisher_color if data.is_finisher else def.slash_color,
+				"swing_dir": data.swing_dir, "tilt": look[0], "pitch": look[1],
 			})
 		elif name == &"recovery":
 			data.lock_facing = false

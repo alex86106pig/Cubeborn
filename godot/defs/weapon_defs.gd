@@ -50,6 +50,7 @@ const WEAPONS := {
 			"shake": 0.08,
 			"slash_color": Color.WHITE,                  # 揮砍弧光（網頁版 effects.slash）
 			"slash_finisher_color": Color("ffe27a"),     # 第三段弧光
+			"slash_shape": [[-0.7, 0.0, 1.0], [-0.45, 0.0, 1.0], [-PI / 2.0, -0.6, 0.75]],   # 每段弧光的 [傾斜, 上仰, 角度倍率]（只有畫面）
 		},
 		# 盾擊（許家慶 2026-11-06，取代按住格擋 + 左鍵招架：右鍵統一成「按一下放一招、耗魔、有傷害」）：
 		# 往前推盾打 damage_pct；推盾的 active 期間（block_window 秒，× 招架判定時間）正面 block_arc 內的攻擊擋下 = 盾反（parry）
