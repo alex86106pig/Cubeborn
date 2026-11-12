@@ -94,6 +94,19 @@ const FLAME_FLICKER := Vector2(0.0, 0.25)   # 每幀整片透明度在這之間�
 const FLAME_JET := 5.0                      # 噴流粒子：每步幾顆（每秒 × 60）
 const FLAME_JET_LIFE := 0.3                 # 粒子飛到範圍盡頭花幾秒
 const FLAME_JET_SIZE := 0.35
+# 立體火柱（_flame_stream）：從提燈往前流的一串發光火團，越遠越大、由亮黃變暗紅、越淡；跟火舌、噴流一起出現
+const FLAME_BLOBS := 64                     # 一道火柱幾團
+const FLAME_TRAVEL := 0.32                  # 一團火從提燈流到範圍盡頭的秒數
+const FLAME_BLOB_SIZE := Vector2(0.3, 1.25) # 起點 → 盡頭的直徑（沿噴的方向再拉長 FLAME_BLOB_STRETCH 倍，像火舌）
+const FLAME_BLOB_STRETCH := 1.8
+const FLAME_BLOB_SPREAD := 0.85             # 火團的方向佔扇形角度的比例（外緣留給地上的火舌亮邊）
+# 起點 → 中段 → 盡頭。加亮混合會疊起來：每團淡一點、偏橘紅，重疊多的中心才疊成亮黃（太亮會疊成白色的泡泡）
+const FLAME_STREAM_COLORS := [Color(1.0, 0.8, 0.4, 0.5), Color(1.0, 0.42, 0.08, 0.38), Color(0.6, 0.1, 0.03, 0.0)]
+# 噴火的燈光：火焰中段一盞會閃的橘色點光源，照亮地面、牆和玩家
+const FLAME_LIGHT_COLOR := Color("ff8a30")
+const FLAME_LIGHT_ENERGY := Vector2(2.4, 3.6)
+const FLAME_LIGHT_AT := 0.4                 # 放在範圍的這個比例處
+const FLAME_LIGHT_HEIGHT := 1.2
 const WOLF_FUR := Color("4a4642")           # 守墓人變身：毛（同 DarkFantasy 的 wolf_fur）
 const KEEPER_COAT := Color("4a3a2a")        # 撐破的外套碎片
 const ERUPT_HANDS := 4
@@ -120,6 +133,9 @@ var _flame_meshes: Dictionary = {}   # "range|arc" -> ArrayMesh（火舌，頂�
 var _flames: Dictionary = {}         # 實體 id -> 正在噴的火舌節點（每幀沒噴的就拿掉，_retire_flames）
 var _flame_seen: Dictionary = {}
 var _flame_mat: StandardMaterial3D   # 所有火舌共用（開場預熱）
+var _streams: Dictionary = {}        # 實體 id -> 正在噴的火柱 { node, mm: MultiMesh, light: OmniLight3D, blobs }（跟 _flames 一起收）
+var _blob_mesh: SphereMesh           # 火團（直徑 1，用縮放放大；所有火柱共用）
+var _warm_stream: Node = null        # 開場預熱用的火柱
 var _emitters: Array[Dictionary] = []   # 一段時間內持續冒粒子的特效（事件觸發）：{ key, life, max_life, tick: Callable(k, key, dt) }
 var _emitter_serial := 0
 var _carry: Dictionary = {}          # 持續性粒子的小數累積：產生源 key -> 不滿一顆的部分
@@ -159,6 +175,12 @@ func _init() -> void:
 	_flame_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	_flame_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_flame_mat.vertex_color_use_as_albedo = true
+	_blob_mesh = SphereMesh.new()
+	_blob_mesh.radius = 0.5
+	_blob_mesh.height = 1.0
+	_blob_mesh.radial_segments = 8
+	_blob_mesh.rings = 4
+	_blob_mesh.material = _flame_mat   # 同火舌：加亮混合 + 顏色（MultiMesh 每團的顏色）
 
 
 # 開場先各畫一次（透明度 0），讓粒子與半透明材質的著色器在載入時就編譯，避免第一次出現時卡頓
@@ -172,6 +194,13 @@ func warm_up(pos: Vector3) -> void:
 	flame.position = pos
 	flame.transparency = 0.99
 	_add_transient(flame, 0.1, func(_k: float) -> void: pass)
+	var stream := _new_stream()   # 火柱（MultiMesh 的顏色）也先畫一次；燈先關著
+	(stream.node as Node3D).position = pos
+	(stream.mm as MultiMesh).visible_instance_count = 1
+	(stream.mm as MultiMesh).set_instance_transform(0, Transform3D(Basis.from_scale(Vector3.ONE * 0.001), Vector3.ZERO))
+	(stream.light as OmniLight3D).visible = false
+	add_child(stream.node)
+	_warm_stream = stream.node   # 畫過一幀就拿掉（_emit_continuous）
 
 
 func clear() -> void:
@@ -180,6 +209,9 @@ func clear() -> void:
 	for id: int in _flames:
 		(_flames[id] as Node).queue_free()
 	_flames.clear()
+	for id: int in _streams:
+		(_streams[id].node as Node).queue_free()
+	_streams.clear()
 	for t in _transients:
 		t.node.queue_free()
 	_transients.clear()
@@ -792,6 +824,9 @@ func _jitter(e: Entity, spread: float, y: float) -> Vector3:
 
 
 func _emit_continuous(dt: float) -> void:
+	if _warm_stream != null:
+		_warm_stream.queue_free()
+		_warm_stream = null
 	_next_carry = {}
 	_flame_seen.clear()
 	for e: Entity in world.entities.values():
@@ -810,7 +845,7 @@ func _emit_continuous(dt: float) -> void:
 	_retire_flames()
 
 
-# 這一幀沒在噴的（噴完、看不到、死了、移除了）火舌拿掉
+# 這一幀沒在噴的（噴完、看不到、死了、移除了）火舌、火柱拿掉
 func _retire_flames() -> void:
 	if _flames.size() == _flame_seen.size():
 		return
@@ -818,6 +853,9 @@ func _retire_flames() -> void:
 		if not _flame_seen.has(id):
 			(_flames[id] as Node).queue_free()
 			_flames.erase(id)
+			if _streams.has(id):
+				(_streams[id].node as Node).queue_free()
+				_streams.erase(id)
 
 
 func _emit_player(p: Player, dt: float) -> void:
@@ -865,7 +903,7 @@ func _emit_enemy(e: Enemy, dt: float) -> void:
 			var b: Dictionary = e.def.scoop.bury
 			var t: float = a.get("phase_time", 0.0) - b.step_time - b.open
 			if a.get("phase", &"") == &"bury" and t >= 0.0 and t < b.flame:
-				_flame(e, b.range, b.arc)
+				_flame(e, b.range, b.arc, dt)
 				_flame_jet(e, b.range, b.arc, key, dt)
 		&"transform":
 			# 守墓人變身中：身上一直冒黑毛
@@ -950,10 +988,10 @@ func _emit_lantern(e: Enemy, a: Dictionary, key: String, dt: float) -> void:
 				mote(Vector3(e.pos.x + sin(ang) * 1.2, e.height + _rng.randf_range(0.4, 1.6), e.pos.y + cos(ang) * 1.2),
 					{"color": LANTERN_BLUE, "size": 0.2, "life": 0.3, "vy": 0.6})
 		&"flame":
-			_flame(e, f.range, f.arc)
+			_flame(e, f.range, f.arc, dt)
 			_flame_jet(e, f.range, f.arc, key, dt)
 		&"spin":
-			_flame(e, f.spin_range, TAU)
+			_flame(e, f.spin_range, TAU, dt)
 			_flame_jet(e, f.spin_range, TAU, key, dt)
 
 
@@ -966,7 +1004,8 @@ func _lamp_at(e: Enemy) -> Vector3:
 
 
 # 火舌：這隻怪前方 reach、arc 的扇形（TAU = 一整圈），跟著它的位置與朝向；每幀閃一下
-func _flame(e: Enemy, reach: float, arc: float) -> void:
+func _flame(e: Enemy, reach: float, arc: float, dt: float) -> void:
+	_flame_stream(e, reach, arc, dt)
 	var mesh := _flame_mesh(reach, arc)
 	var node: MeshInstance3D = _flames.get(e.id)
 	if node == null:
@@ -979,6 +1018,72 @@ func _flame(e: Enemy, reach: float, arc: float) -> void:
 	node.rotation.y = e.facing
 	node.transparency = _rng.randf_range(FLAME_FLICKER.x, FLAME_FLICKER.y)
 	_flame_seen[e.id] = true
+
+
+# 立體火柱：每團火從起點（提燈；一整圈時是身體）往扇形裡的某個方向流 FLAME_TRAVEL 秒到範圍盡頭，到了就從起點重來。
+# 剛開始噴時每團的進度從負的開始，火柱會從提燈「噴出來」長到全長；燈光在火焰中段一直閃
+func _flame_stream(e: Enemy, reach: float, arc: float, dt: float) -> void:
+	var s: Dictionary = _streams.get(e.id, {})
+	if s.is_empty():
+		s = _new_stream()
+		add_child(s.node)
+		_streams[e.id] = s
+	var full := arc >= TAU
+	var from := _lamp_at(e) if not full else Vector3(e.pos.x, e.height + 1.2, e.pos.y)
+	var ground := e.ground_height + FLAME_Y
+	var mm: MultiMesh = s.mm
+	mm.visible_instance_count = FLAME_BLOBS
+	for i in FLAME_BLOBS:
+		var b: Dictionary = s.blobs[i]
+		var was: float = b.t
+		b.t += dt / FLAME_TRAVEL
+		if b.t >= 1.0 or (was < 0.0 and b.t >= 0.0):   # 從起點重新出發：換一個方向
+			b.t = fmod(b.t, 1.0)
+			b.ang = _rng.randf() * TAU if full else _rng.randf_range(-0.5, 0.5) * arc * FLAME_BLOB_SPREAD
+			b.lift = _rng.randf_range(-0.2, 0.45)
+		var t: float = b.t
+		if t < 0.0:
+			mm.set_instance_transform(i, Transform3D(Basis.from_scale(Vector3.ONE * 0.001), from))
+			continue
+		var ang: float = e.facing + b.ang
+		var travel := 1.0 - pow(1.0 - t, 1.6)   # 一出提燈最快、越遠越慢（火往外散開）
+		var at := from.lerp(Vector3(e.pos.x + sin(ang) * reach, ground + b.lift, e.pos.y + cos(ang) * reach), travel)
+		at.y += sin(t * PI) * 0.35 + _rng.randf_range(-0.06, 0.06)   # 中段往上捲一點、抖動
+		var size := lerpf(FLAME_BLOB_SIZE.x, FLAME_BLOB_SIZE.y, t) * _rng.randf_range(0.85, 1.15)
+		var c := (FLAME_STREAM_COLORS[0] as Color).lerp(FLAME_STREAM_COLORS[1], t * 2.0) if t < 0.5 \
+			else (FLAME_STREAM_COLORS[1] as Color).lerp(FLAME_STREAM_COLORS[2], t * 2.0 - 1.0)
+		var dir := Vector3(sin(ang), 0.0, cos(ang))
+		mm.set_instance_transform(i, Transform3D(Basis.looking_at(dir, Vector3.UP).scaled_local(Vector3(size, size * 0.7, size * FLAME_BLOB_STRETCH)), at))
+		mm.set_instance_color(i, c)
+	var light: OmniLight3D = s.light
+	var mid := from.lerp(Vector3(e.pos.x, ground, e.pos.y) + Vector3(sin(e.facing), 0.0, cos(e.facing)) * reach, FLAME_LIGHT_AT) if not full else from
+	light.position = Vector3(mid.x, e.ground_height + FLAME_LIGHT_HEIGHT, mid.z)
+	light.omni_range = reach * (0.9 if not full else 1.4)
+	light.light_energy = _rng.randf_range(FLAME_LIGHT_ENERGY.x, FLAME_LIGHT_ENERGY.y)
+
+
+func _new_stream() -> Dictionary:
+	var node := Node3D.new()
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.instance_count = FLAME_BLOBS
+	mm.visible_instance_count = 0
+	mm.mesh = _blob_mesh
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mmi.custom_aabb = AABB(Vector3(-200, -10, -200), Vector3(400, 60, 400))   # 火團的位置是世界座標，不讓整組被視錐剔除
+	node.add_child(mmi)
+	var light := OmniLight3D.new()
+	light.light_color = FLAME_LIGHT_COLOR
+	light.shadow_enabled = false
+	light.omni_attenuation = 1.4
+	node.add_child(light)
+	var blobs := []
+	for i in FLAME_BLOBS:
+		blobs.append({"t": -float(i) / FLAME_BLOBS, "ang": 0.0, "lift": 0.0})
+	return {"node": node, "mm": mm, "light": light, "blobs": blobs}
 
 
 func _flame_node(mesh: Mesh) -> MeshInstance3D:
