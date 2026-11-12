@@ -3888,6 +3888,57 @@ static func _sole(rig: Rig, right: bool) -> Vector3:
 	return BodyPose.body_to_root(rig, local)
 
 
+# 倒地：Boss 類（關節版）倒下到沉入地面前，手臂、拳頭、手上的武器（劍、鏟子、提燈）都不穿進地裡，拳頭貼地（不浮在空中）
+static func check_dead_lie() -> String:
+	var rec := AnimRecorder.new()
+	var err := ""
+	for model: String in ["gravekeeper", "boss", "bone_general"]:
+		for row: Dictionary in rec.rows("enemy-%s" % model):
+			if row.key != "dead":
+				continue
+			var made: Dictionary = (row.make as Callable).call()
+			var rig: Rig = made.rig
+			var low := INF
+			var lowest := ""
+			for i in (row.frames as Array).size():
+				AnimRecorder.step(row, made, i)
+				if i < int(row.start):
+					continue
+				for nm: StringName in [&"arm_r", &"arm_l", &"forearm_r", &"forearm_l", &"hand_r", &"hand_l"]:
+					var y := _joint_mesh_low(rig, rig.get(nm))
+					if y < low:
+						low = y
+						lowest = "%s 第 %d 步" % [nm, i - int(row.start)]
+			var fist := BodyPose.body_to_root(rig, BodyPose.hand_pos(rig, true)).y / rig.body.scale.y
+			rig.free()
+			if low < -0.01:
+				err = "%s 倒地時 %s 穿進地裡 %.3f" % [model, lowest, low]
+			elif fist > EnemyAnimator.DEAD_FIST + 0.02:
+				err = "%s 倒地後拳頭浮在空中：%.3f（× 縮放）" % [model, fist]
+			else:
+				_note("%s 倒地最低 %.3f（%s）" % [model, low, lowest])
+		if err != "":
+			break
+	rec.clear()
+	return err
+
+
+# joint 這一節自己的零件最低點（角色根節點座標；場景樹還沒就緒，沿節點一層層乘）
+static func _joint_mesh_low(rig: Node3D, joint: Node3D) -> float:
+	var t := Transform3D.IDENTITY
+	var n := joint
+	while n != rig:
+		t = n.transform * t
+		n = n.get_parent() as Node3D
+	t = rig.transform * t
+	var low := INF
+	for mi in PartKit.mesh_instances(joint):
+		if mi.get_parent() == joint:
+			for v: Vector3 in mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+				low = minf(low, (t * mi.transform * v).y)
+	return low
+
+
 # 步態與站姿照真實動作（docs/動作參考.md）：走路擺盪期膝蓋最多彎 50~75°、跑步 90~125°、跑步髖部往前抬 55~85°；
 # 踩在地上的那隻腳在踩地中段貼地（< 0.05）；上身前傾 0.5 時從髖部彎（腳還在地上、髖部在腳的正上方）；蹲低 0.3 腿長時膝蓋彎 60~120°
 static func check_gait_pose() -> String:
