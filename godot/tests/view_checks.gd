@@ -3778,6 +3778,64 @@ static func check_inventory_layout() -> String:
 	return err
 
 
+# 背包合併的盤（四邊留 3 格）：和屬性面板並排塞得進介面最大檔的畫面、整個盤不用捲；
+# 上下標題條的整句（標題 + 倍率）放得下不被截掉、不跟耗魔疊：背包合併的每塊觸發區，袋子分開的每種袋子 × 大小 × 能接的邊
+static func check_inventory_merged() -> String:
+	var room := _menu_room()
+	var cam := _test_camera()
+	var err := ""
+	for mode: StringName in [BagDefs.MODE_MERGED, BagDefs.MODE_BAGS]:
+		var w := LootChecks._merged_world(5) if mode == BagDefs.MODE_MERGED else _new_world(5)
+		var p := _player(w)
+		p.apply_class(&"guardian")
+		var hud: Variant = load("res://ui/hud.tscn").instantiate()
+		hud.setup(w, cam)
+		_scene_root().add_child(hud)
+		var panel: InventoryPanel = hud.inventory_panel
+		hud.toggle_stats_panel()
+		panel.visible = true
+		var stats_size: Vector2 = await _settled_min_size(hud._stats_panel)
+		var panel_size: Vector2 = await _settled_min_size(panel)
+		if mode == BagDefs.MODE_MERGED:
+			# 兩邊離畫面邊緣 16 / 24、背包上下離邊緣 24（hud.gd）；腳邊框浮在屬性面板與背包中間（再空 16）
+			var need_w := 16 + stats_size.x + 16 + InventoryPanel.FEET_W + InventoryPanel.FEET_GAP + panel_size.x + 24
+			panel.size.y = room.y - 24 * 2
+			var view_h: float = panel._view_rect().size.y
+			var content_h: float = panel._content_height(p)
+			_note("背包合併：背包 + 腳邊框 + 屬性面板寬 %.0f（可用 %.0f）、盤高 %.0f（捲動區 %.0f）" % [need_w, room.x, content_h, view_h])
+			if need_w > room.x:
+				err = "背包合併的背包 + 腳邊框 + 屬性面板寬 %.0f，超出介面最大檔時的 %.0f" % [need_w, room.x]
+			elif content_h > view_h:
+				err = "背包合併的盤高 %.0f，介面最大檔時捲動區只有 %.0f，要捲才看得到整個盤" % [content_h, view_h]
+		var bags: Array[Dictionary] = []
+		if mode == BagDefs.MODE_MERGED:
+			bags.assign(p.loadout.bags)
+		else:
+			for kind: StringName in BagDefs.BAGS:
+				for tier: StringName in BagDefs.TIERS:
+					for side: StringName in BagDefs.BAGS[kind].sides:
+						var probe := BagDefs.make(&"probe", kind, tier)
+						probe.side = side
+						bags.append(probe)
+		var font: Font = panel.get_theme_default_font()
+		var mana_w := font.get_string_size("魔 99", HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x   # 兩位數的耗魔
+		for b: Dictionary in bags:
+			if err != "" or not (b.side in [&"top", &"bottom"]) or b.kind == &"key":
+				continue
+			var head: Rect2 = panel._bag_head_rect(b)
+			var label := InventoryPanel.head_label(b)
+			var text_w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, InventoryPanel.HEAD_FONT).x
+			var label_w := InventoryPanel.head_label_width(b, head)
+			if text_w > label_w:
+				err = "%s %s 標題條長 %.0f：「%s」寬 %.0f，只給 %.0f，後面會被截掉" % [mode, BagDefs.bag_name(b), head.size.x, label, text_w, label_w]
+			# _draw_bag_head：字從標題條左邊 8 開始寫，耗魔靠右、離右邊 7
+			elif InventoryPanel.head_shows_mana(b, head) and 8.0 + text_w > head.size.x - 7.0 - mana_w:
+				err = "%s %s 標題條長 %.0f：「%s」寬 %.0f，會跟右邊的耗魔（寬 %.0f）疊在一起" % [mode, BagDefs.bag_name(b), head.size.x, label, text_w, mana_w]
+		hud.queue_free()
+	cam.queue_free()
+	return err
+
+
 # 盤（觸發袋）：盤座標與袋子座標換算來回一致（四個邊）；空的邊算得出接哪一邊、沿邊第幾格；抓袋子的空格或標題條拿起整個袋子，
 # 拖到另一邊送 OP_BAG（接上），拖到倉庫送拿下來；拖東西到袋子送帶袋子編號的 OP_MOVE；標題與說明是一句話，倉庫拖放不管形狀
 static func check_inventory_board() -> String:

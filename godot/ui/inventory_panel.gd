@@ -16,6 +16,7 @@ const CELL := 60          # 倉庫一格
 const BCELL := 60         # 盤上一格（主袋與袋子）
 const LOCK_FILL := Color(0.03, 0.03, 0.05, 0.82)   # 背包合併的鎖格
 const BAG_HEAD := 26      # 袋子外側的標題條寬度（盤的四邊各留這麼多）
+const HEAD_FONT := 15     # 標題條的字（檢查「背包介面」量上下標題條的字放不放得下）
 const SIDE_GAP := 24      # 盤和右欄之間
 const DEPTH := 2          # 盤的四邊留給袋子的格數（BagDefs.TIERS 的 depth 都是 2）
 const DEPTH_MERGED := 3   # 背包合併的觸發區往外 3 格（BagDefs.MERGED_ZONES）
@@ -947,9 +948,7 @@ static func starved_entries(me: Player, b: Dictionary) -> Array[Dictionary]:
 
 # 標題條的字：一句話講什麼時候發動；左右兩邊的直著寫，下面照魔力與倍率（一袋耗魔超過最大魔力時寫紅字）
 func _draw_bag_head(font: Font, b: Dictionary, head: Rect2, key_number: int, mana: int, max_mana: float) -> void:
-	var tail := ""
-	if BagDefs.power_of(b) != 1.0:
-		tail = "×%s" % str(BagDefs.power_of(b))
+	var tail := power_tail(b)
 	var mana_text := "魔 %d" % mana if mana > 0 else ""
 	var mana_color := UiKit.ALERT.lightened(0.3) if mana > max_mana + 0.5 else Color(1, 1, 1, 0.75)
 	if b.side in [&"top", &"bottom"]:
@@ -962,8 +961,8 @@ func _draw_bag_head(font: Font, b: Dictionary, head: Rect2, key_number: int, man
 			draw_rect(cap, Color(1, 1, 1, 0.7), false, 1.0)
 			draw_string(font, Vector2(cap.position.x, y), str(key_number), HORIZONTAL_ALIGNMENT_CENTER, cap.size.x, 14, Color.WHITE)
 		else:
-			draw_string(font, Vector2(x, y), head_text(b) + (" " + tail if tail != "" else ""), HORIZONTAL_ALIGNMENT_LEFT, head.size.x - 60, 15, Color.WHITE)
-		if head.size.x >= BCELL * 2:   # 背包合併的數字區一鍵一格，寬度只夠寫按鍵
+			draw_string(font, Vector2(x, y), head_label(b), HORIZONTAL_ALIGNMENT_LEFT, head_label_width(b, head), HEAD_FONT, Color.WHITE)
+		if head_shows_mana(b, head):
 			draw_string(font, Vector2(head.position.x, y), mana_text, HORIZONTAL_ALIGNMENT_RIGHT, head.size.x - 7, 12, mana_color)
 		return
 	var cy := head.position.y + 20
@@ -1005,6 +1004,29 @@ static func _bag_mana(me: Player, b: Dictionary) -> int:
 			ItemDefs.ROLE_SKILL:
 				total += ActiveSlots.mana_cost(me, ActiveSlots.slot_of(me, b, e))
 	return roundi(total)
+
+
+# 倍率不是 1 時接在標題後面（「×2.5」）
+static func power_tail(b: Dictionary) -> String:
+	var power := BagDefs.power_of(b)
+	return "×%s" % str(power) if power != 1.0 else ""
+
+
+# 上下標題條橫著寫的整句：標題 + 倍率
+static func head_label(b: Dictionary) -> String:
+	var tail := power_tail(b)
+	return head_text(b) + (" " + tail if tail != "" else "")
+
+
+# 上下標題條的右邊寫不寫耗魔：按鍵只畫鍵帽，2 格長就夠；其他要 3 格才放得下標題、倍率再加耗魔
+# （背包合併的下排只有 2 格長，跟左右的觸發區一樣不寫，耗魔看說明）
+static func head_shows_mana(b: Dictionary, head: Rect2) -> bool:
+	return head.size.x >= BCELL * (2 if b.kind == &"key" else 3)
+
+
+# 上下標題條給 head_label 的寬度：右邊寫耗魔就留 60，超過的字會被截掉
+static func head_label_width(b: Dictionary, head: Rect2) -> float:
+	return head.size.x - (60.0 if head_shows_mana(b, head) else 16.0)
 
 
 # 袋子的標題：一句話講什麼時候發動（按鍵袋的數字鍵另外畫）
