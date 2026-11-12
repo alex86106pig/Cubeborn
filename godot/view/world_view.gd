@@ -982,7 +982,7 @@ func _create_view(e: Entity) -> Node3D:
 			root.set_meta(&"glow", glow)
 			if (e as Player).is_ghost():
 				rig.set_ghost(_ghost_overlay(), GHOST_TRANSPARENCY)
-		&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"gravekeeper", &"boss", &"minion", &"spearman", &"bone_wheel", &"bone_general", &"beetle", &"spider", &"hive", &"grave_worm":
+		&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"gravekeeper", &"boss", &"minion", &"spearman", &"bone_wheel", &"bone_general", &"beetle", &"spider", &"hive", &"grave_worm", &"lich":
 			# 小怪用蒙皮版本（D5 效能：每隻 1~2 次繪製）；Boss 只有一隻，照舊用關節節點
 			var rig: Node3D
 			if (e as Enemy).is_boss():

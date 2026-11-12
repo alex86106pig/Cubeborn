@@ -210,6 +210,45 @@ const ENEMIES := {
 		"web": {"root": 1.2, "radius": 1.5, "time": 8.0, "slow": 0.5, "overshoot": 1.5},
 	},
 
+	# 屍巫（第 4 層的怪，第 3 層的巨繭噴出來，數值 Claude 暫定）：同弓手保持距離，放 3 顆追蹤紫火、被近身就閃現（sim/enemies/lich.gd）
+	&"lich": {
+		"name": "屍巫",
+		"resists": {&"holy": -0.25, &"poison": 0.5, &"shadow": 0.5},
+		"visual": &"lich",
+		"behavior": &"lich",
+		"max_hp": 32.0,
+		"move_speed": 2.4,
+		"speed_variance": 0.15,
+		"turn_speed": 7.0,
+		"radius": 0.45,
+		"mass": 1.0,
+		"hurt_time": 0.22,
+		"spawn_time": 0.7,
+		"corpse_time": 1.4,
+		"preferred_range": [6.0, 9.0],
+		"fire_reach": 3.0,
+		"strafe_time": [1.2, 2.6],
+		"strafe_speed_mul": 0.6,
+		"aim_time": 1.0,                  # 雙手合攏、掌心紫光、唸咒
+		"aim_track": 1.0,                 # 追蹤彈，唸咒時一直對著目標
+		"aim_turn_mul": 1.5,
+		"first_fire_delay": [1.0, 2.0],
+		"fire_interval": 4.5,
+		"fire_interval_jitter": [0.85, 1.2],
+		"projectile_speed": 5.0,
+		"projectile_damage": 8.0,         # 每顆
+		"projectile_radius": 0.3,
+		"projectile_range": 20.0,         # 實際射程 = 速度 × bolts.life（fire 自己算）
+		"projectile_knockback": 3.0,
+		"projectile_offset": 0.6,
+		"projectile_color": Color("b070ff"),
+		"projectile_blockable": true,
+		# 追蹤紫火：count 顆、扇形散開 spread，每秒最多轉 homing 弧度追 seek_range 內最近的玩家，life 秒後消失
+		"bolts": {"count": 3, "spread": deg_to_rad(35.0), "homing": 1.6, "life": 4.0, "seek_range": 14.0},
+		# 閃現：目標中心進到 trigger_distance 內就閃到離目標 distance 的地方
+		"blink": {"trigger_distance": 2.5, "distance": 6.0, "cooldown": 6.0},
+	},
+
 	&"archer": {
 		"resists": {&"holy": -0.25, &"poison": 0.5},
 		"visual": &"ranged",
@@ -722,6 +761,7 @@ const FLOOR_MIX := {
 	1: {&"zombie": 0.7, &"hound": 0.2, &"bloater": 0.1},
 	2: {&"grunt": 0.5, &"archer": 0.25, &"spearman": 0.125, &"bone_wheel": 0.125},
 	3: {&"beetle": 0.625, &"spider": 0.25, &"hive": 0.125},   # 圖鑑 50 : 20 : 10；蟲巢只在怪群裡、每群最多 1 個（pack_max）
+	4: {&"lich": 1.0},   # 第 4 層還沒做地圖：這張表現在只給第 3 層的巨繭噴怪用（圖鑑 屍巫 30 : 尖嘯幽影 35 : 守陵石像 15）
 }
 const UPPER_SHARE := 0.2
 

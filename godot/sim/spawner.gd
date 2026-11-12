@@ -313,6 +313,8 @@ static func behavior_class(behavior: StringName) -> GDScript:
 			return Hive
 		&"grave_worm":
 			return GraveWorm
+		&"lich":
+			return Lich
 		&"gravekeeper":
 			return Gravekeeper
 	return null

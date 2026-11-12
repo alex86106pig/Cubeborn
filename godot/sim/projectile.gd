@@ -20,7 +20,8 @@ var attack: StringName = &""   # 哪個動作射的（&"primary" 普攻 / &"seco
 var credit := ""               # 傷害算誰的（Combat.credit_scope 的說明）：沒給就用射出當下的 credit_scope
 var no_status := false         # 打中不疊燃燒 / 冰冷（冰霜羈絆的冰錐，BondEffects）
 var skill_fx := {}             # 技能射出的（第 7 步）：{ def, ctx }，結束時 SkillBehaviors.projectile_end（跳電、炸開、落地一攤火）
-var homing := 0.0              # 追蹤（G6 鬼火）：每秒最多轉幾弧度、轉向 PROCS.wisp.seek_range 內最近的怪；0 = 直線
+var homing := 0.0              # 追蹤：每秒最多轉幾弧度、轉向 seek_range 內最近的敵方（玩家方的追怪，G6 鬼火；怪物的追玩家，屍巫的紫火）；0 = 直線
+var seek_range := 0.0          # 追蹤找目標的距離（沒給 = PROCS.wisp.seek_range）
 var _pierced := {}
 var damage_type := &"phys"     # StatDefs.DAMAGE_TYPES：決定看目標的護甲與哪一種抗性
 var no_stagger := false         # 打中不會讓怪物進入受擊硬直（v0.27.0：遠程武器的普攻）
@@ -65,6 +66,7 @@ func _init(p_world: World, p: Dictionary) -> void:
 	credit = p.get("credit", Combat.credit_scope)
 	no_status = p.get("no_status", false)
 	homing = p.get("homing", 0.0)
+	seek_range = p.get("seek_range", ItemDefs.PROCS.wisp.seek_range)
 	start_altitude = p.get("altitude", owner.height + Config.HEIGHT.bolt_altitude)
 	settle_altitude = p.get("settle_altitude", 0.0)
 	settle_distance = p.get("settle_distance", 0.0)
@@ -128,7 +130,7 @@ func update(dt: float) -> void:
 
 func _steer(dt: float) -> void:
 	var best: Entity = null
-	var best_d: float = ItemDefs.PROCS.wisp.seek_range ** 2
+	var best_d: float = seek_range ** 2
 	for e in world.enemies:
 		if e.is_dead or e.team == team:
 			continue
@@ -136,6 +138,14 @@ func _steer(dt: float) -> void:
 		if d < best_d:
 			best_d = d
 			best = e
+	if team != &"player":
+		for p in world.player_list:
+			if not p.is_targetable():
+				continue
+			var d := p.pos.distance_squared_to(pos)
+			if d < best_d:
+				best_d = d
+				best = p
 	if best == null:
 		return
 	facing = MathUtil.turn_towards(facing, MathUtil.angle_to(pos, best.pos), homing * dt)

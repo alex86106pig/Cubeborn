@@ -49,6 +49,7 @@ var _hive := false        # 蟲巢：所有狀態都走 _pose_hive（不會動�
 var _worm := false        # 噬墓巨蟲（form 0）：所有狀態都走 _pose_worm
 var _worm_hide := 0.0     # 噬墓巨蟲藏進地裡的比例（0 = 整隻在地面上、1 = 全部在地底），畫面自己補間
 var _moth_alt := 0.0      # 屍蛾女王畫面上飛多高（畫面自己補間到 def.moth.altitude 或 0）
+var _lich := false        # 屍巫：唸咒（aim）時雙手往前合攏，其餘同一般小怪
 var _spin := 0.0          # 骨輪滾動的角度（畫面自己累加）
 var _bow_arm_target := BOW_ARM_REST
 var _dt := 0.0
@@ -66,6 +67,7 @@ func _init(p_rig: Node3D, e: Enemy) -> void:
 	_spider = e.def.visual == &"spider"
 	_hive = e.def.visual == &"hive"
 	_worm = e.def.visual == &"grave_worm"
+	_lich = e.def.visual == &"lich"
 	walk_phase = randf() * TAU   # 畫面用隨機，與模擬無關
 	if e.def.has("slam"):
 		_build_cracks(e)
@@ -103,7 +105,7 @@ func update(e: Enemy, dt: float) -> void:
 		(rig as SkinnedRig).set_held_weapon(kit.get("model", &""), kit.get("offhand_model", &""))
 
 	var colossus: bool = def.has("colossus") and a.get("form", 0) > 0 and state != &"dead"
-	match &"worm" if _worm and a.get("form", 0) == 0 else &"moth" if _worm else &"hive" if _hive else &"hound" if _hound else (&"wheel" if _wheel else (&"beetle" if _beetle else (&"spider" if _spider else (&"colossus" if colossus else (&"keeper" if _keeper and state != &"spawn" and state != &"dead" else state))))):
+	match &"cast" if _lich and state == &"aim" else &"worm" if _worm and a.get("form", 0) == 0 else &"moth" if _worm else &"hive" if _hive else &"hound" if _hound else (&"wheel" if _wheel else (&"beetle" if _beetle else (&"spider" if _spider else (&"colossus" if colossus else (&"keeper" if _keeper and state != &"spawn" and state != &"dead" else state))))):
 		&"colossus":
 			_pose_colossus(e, a, state, t, dt)
 		&"beetle":
@@ -114,6 +116,12 @@ func update(e: Enemy, dt: float) -> void:
 			_pose_hive(e, state, t)
 		&"worm":
 			_pose_worm(e, a, state, t, dt)
+		&"cast":   # 屍巫唸咒：雙手往前抬、往中間合攏，身體微微後仰
+			var k := MathUtil.ease_out_cubic(clampf(t / def.aim_time, 0.0, 1.0))
+			_pose_arms(lerpf(-0.3, -1.5, k), lerpf(0.0, 0.45, k))
+			rig.body.rotation.x = -0.1 * k
+			rig.leg_r.rotation.x = 0.0
+			rig.leg_l.rotation.x = 0.0
 		&"moth":
 			_pose_moth(e, a, state, t, dt)
 		&"hound":

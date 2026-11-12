@@ -407,6 +407,71 @@ static func check_hive() -> String:
 	return ""
 
 
+# 屍巫：唸咒後放 bolts.count 顆追蹤紫火，往兩邊散開的也會轉回來打到站著的目標、life 秒後全部消失；
+# 目標貼近到 blink.trigger_distance 內就閃到 blink.distance 外，冷卻中不再閃
+static func check_lich() -> String:
+	var d: Dictionary = EnemyDefs.ENEMIES.lich
+	var b: Dictionary = d.bolts
+	var k: Dictionary = d.blink
+	var w := _world()
+	var p: Player = w.players[World.HOST_PEER_ID]
+	p.pos = Vector2(0, -7)
+	p.stats.set_base(&"max_hp", 9999.0)
+	p.hp = p.max_hp
+	var lich := w.spawner.spawn_at(w, &"lich", Vector2.ZERO) as Lich
+	var fired_at := -1
+	var hits := 0
+	var nearest := {}   # 每顆紫火離目標原本位置最近到多少
+	var target_at := p.pos
+	var steps := roundi((d.spawn_time + d.first_fire_delay[1] + d.aim_time + b.life + 0.5) / DT)
+	for i in steps:
+		w.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+		for ev in w.events:
+			if ev.name == "entity:damaged" and ev.target_id == p.id and ev.source_id == lich.id:
+				hits += 1
+		var bolts := w.projectiles.filter(func(e: Entity) -> bool: return (e as Projectile).owner_id == lich.id)
+		for bolt: Entity in bolts:
+			nearest[bolt.id] = minf(nearest.get(bolt.id, INF), bolt.pos.distance_to(target_at))
+		if fired_at < 0 and not bolts.is_empty():
+			fired_at = i
+			if bolts.size() != int(b.count) or (bolts[0] as Projectile).homing != b.homing:
+				return "屍巫應一次放 %d 顆追蹤紫火（%d 顆、追蹤 %.1f）" % [b.count, bolts.size(), (bolts[0] as Projectile).homing]
+			w.cooldowns.start(lich.cd("fire"), 999.0)   # 只看這一輪
+		if fired_at >= 0 and i >= fired_at + roundi(b.life / DT) + 3:
+			if not bolts.is_empty():
+				return "追蹤紫火 %.0f 秒後應消失（還有 %d 顆）" % [b.life, bolts.size()]
+			break
+	if fired_at < 0:
+		return "屍巫應在 %.1f 秒內放出紫火" % ((steps * DT) - b.life)
+	# 三顆幾乎同時到：第一顆打中後的受擊無敵會讓另外兩顆打不到，所以看每顆有沒有飛到目標身上，不數打中幾次
+	var reach: float = p.radius + d.projectile_radius + 0.3
+	for id: int in nearest:
+		if nearest[id] > reach:
+			return "往兩邊散開的紫火也應轉回來飛到站著不動的目標身上（有一顆最近只到 %.2f）" % nearest[id]
+	if nearest.size() != int(b.count) or hits < 1:
+		return "紫火應至少打中一次（追到 %d 顆、打中 %d 次）" % [nearest.size(), hits]
+	# 閃現
+	var w2 := _world()
+	var p2: Player = w2.players[World.HOST_PEER_ID]
+	p2.stats.set_base(&"max_hp", 9999.0)
+	p2.hp = p2.max_hp
+	p2.pos = Vector2(0, -8)
+	var lich2 := w2.spawner.spawn_at(w2, &"lich", Vector2.ZERO) as Lich
+	lich2.fsm.change(&"kite")
+	w2.cooldowns.start(lich2.cd("fire"), 999.0)
+	p2.pos = lich2.pos + Vector2(0, -(k.trigger_distance - 0.5))
+	w2.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+	var teleports := w2.events.filter(func(ev: Dictionary) -> bool: return ev.name == "fx:boss_teleport").size()
+	if teleports != 1 or absf(lich2.pos.distance_to(p2.pos) - k.distance) > 0.2:
+		return "目標貼近到 %.1f 內屍巫應閃到 %.1f 外（閃了 %d 次、現在距離 %.2f）" % [k.trigger_distance, k.distance, teleports, lich2.pos.distance_to(p2.pos)]
+	p2.pos = lich2.pos + Vector2(0, -(k.trigger_distance - 0.5))
+	var at := lich2.pos
+	w2.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+	if not w2.events.filter(func(ev: Dictionary) -> bool: return ev.name == "fx:boss_teleport").is_empty() or lich2.pos.distance_to(at) > 0.5:
+		return "閃現冷卻中再貼近不應再閃"
+	return ""
+
+
 # 墓穴蜘蛛：吐蛛絲彈，打中玩家纏住 web.root 秒；被盾擋下在落點結網；站在網上移速 × web.slow；火焰傷害打到網上燒掉
 static func check_spider() -> String:
 	var wd: Dictionary = EnemyDefs.ENEMIES.spider.web
@@ -1470,7 +1535,7 @@ static func check_packs() -> String:
 
 # 蒙皮小怪（D5 效能）：骷髏戰士 / 弓手每隻 ≤ 2 個網格、三角形數與原本的零件相同；關節寫進骨架
 static func check_skinned_rig() -> String:
-	for kind: StringName in [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"spearman", &"bone_wheel", &"beetle", &"spider", &"hive"]:
+	for kind: StringName in [&"grunt", &"archer", &"zombie", &"bloater", &"hound", &"spearman", &"bone_wheel", &"beetle", &"spider", &"hive", &"lich"]:
 		var old := DarkFantasy.character(kind)
 		var rig := DarkFantasy.skinned_character(kind)
 		var before := 0

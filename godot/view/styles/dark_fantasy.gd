@@ -123,6 +123,8 @@ static func character(kind: StringName) -> Rig:
 			rig = beetle()
 		&"hive":
 			rig = hive()
+		&"lich":
+			rig = lich()
 		&"bone_wheel":
 			rig = bone_wheel()
 		&"spearman":
@@ -327,6 +329,19 @@ static func beetle() -> Rig:
 		k.add(rig.head, PartKit.sphere(0.018, 4, 3), k.mat(C.rot_eye, true), {"x": s * 0.05, "y": 0.04, "z": 0.08, "shadow": false})
 	for leg in [rig.arm_r, rig.arm_l, rig.leg_r, rig.leg_l]:
 		k.add(leg, PartKit.cyl(0.018, 0.012, 0.22, 4), under, {"y": -0.1})
+	return rig.optimize()
+
+
+# 屍巫：戴兜帽的骷髏、深紫長袍拖到地上、兩手掌心各一團紫火（掛在手臂末端：手的掛點底下的零件不進蒙皮版）
+static func lich() -> Rig:
+	var rig := Rig.new(SKELETON_JOINTS)
+	_skeleton_base(rig, true)
+	var k := rig.kit
+	var robe := k.mat(Color("3a2a4a"))
+	k.add(rig.body, PartKit.cyl(0.2, 0.36, 0.95, 7), robe, {"y": 0.5})
+	k.add(rig.body, PartKit.cyl(0.25, 0.21, 0.5, 7), robe, {"y": 1.22})
+	for arm in [rig.arm_r, rig.arm_l]:
+		k.add(arm, PartKit.sphere(0.07, 6, 4), k.mat(Color("b070ff"), true), {"y": -float(SKELETON_JOINTS.grip), "shadow": false})
 	return rig.optimize()
 
 
