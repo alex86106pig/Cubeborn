@@ -8,6 +8,7 @@ extends RefCounted
 
 const COLS := 8
 const DT := Config.FIXED_DT
+const AIM_AHEAD := Vector2(0, 5)   # 瞄準點在玩家前方多遠（跟著玩家走：固定在世界座標的話，翻滾、跑步超過它就會轉身面向背後）
 const PLAYER_WEAPONS: Array[StringName] = [&"swordShield", &"staff", &"shortbow", &"longbow", &"dagger", &"scepter", &"torch", &"shovel"]
 const ENEMY_MODELS: Array[StringName] = [&"grunt", &"archer", &"spearman", &"zombie", &"bloater", &"hound", &"spider", &"beetle", &"bone_wheel", &"boss", &"gravekeeper", &"werewolf", &"bone_general", &"bone_colossus",
 	&"hive", &"lich", &"wraith", &"grave_worm", &"moth_queen"]
@@ -127,7 +128,6 @@ func _new_world(seed_value := 7) -> World:
 static func _cmd(move: Vector2, buttons: int = 0) -> InputCmd:
 	var c := InputCmd.new()
 	c.move = move
-	c.aim = Vector2(0, 5)
 	c.buttons = buttons
 	return c
 
@@ -140,11 +140,13 @@ func _player(w: World, weapon: StringName) -> Player:
 	return p
 
 
-# 跑 steps 步、每步錄下 anim、速度、位置；cmd(i) 給第 i 步的輸入
+# 跑 steps 步、每步錄下 anim、速度、位置；cmd(i) 給第 i 步的輸入（瞄準點在這裡補：玩家目前位置 + AIM_AHEAD）
 static func _record(w: World, e: Entity, steps: int, cmd: Callable) -> Array:
 	var out := []
+	var host: Player = w.players[World.HOST_PEER_ID]
 	for i in steps:
 		var c: InputCmd = cmd.call(i)
+		c.aim = host.pos + AIM_AHEAD
 		w.step({World.HOST_PEER_ID: c}, DT)
 		out.append({"anim": e.anim.duplicate(true), "vel": e.velocity, "pos": e.pos, "facing": e.facing, "height": e.height,
 			"ground": e.ground_height, "events": w.events.duplicate(true)})   # events：這一步的事件（檢視器拿來放特效）

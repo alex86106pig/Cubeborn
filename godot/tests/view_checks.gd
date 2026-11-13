@@ -4194,7 +4194,8 @@ static func check_special_poses() -> String:
 
 
 # 翻滾貼地：整段翻滾角色本體（不含手上的武器、盾、箭袋）的最低頂點都貼著地面，不浮空也不穿地；真的有翻過去（頭下腳上）。
-# 翻滾動作跟武器無關，拿盾的劍盾、背箭袋的短弓各錄一次（確認掛在身上的東西不算進貼地）
+# 翻滾動作跟武器無關，拿盾的劍盾、背箭袋的短弓各錄一次（確認掛在身上的東西不算進貼地）。
+# 錄到的整段（翻完繼續往前跑）朝向不變：瞄準點跟著玩家走，跑過頭也不會轉身
 static func check_roll_pose() -> String:
 	var rec := AnimRecorder.new()
 	var err := ""
@@ -4212,8 +4213,10 @@ static func check_roll_pose() -> String:
 			var high := -INF   # 本體最低頂點的最高值（浮空）
 			var deep := INF    # 本體最低頂點的最低值（穿地）
 			var turn := 0.0
+			var facing_off := 0.0
 			for i in (row.frames as Array).size():
 				AnimRecorder.step(row, made, i)
+				facing_off = maxf(facing_off, absf(angle_difference(row.frames[0].facing, row.frames[i].facing)))
 				if row.frames[i].anim.action != &"roll":
 					continue
 				var low := INF
@@ -4229,7 +4232,9 @@ static func check_roll_pose() -> String:
 				deep = minf(deep, low)
 				turn = maxf(turn, absf(rig.body.rotation.x))
 			rig.free()
-			if turn < 2.8:
+			if facing_off > 0.05:
+				err = "%s 翻滾錄到的朝向應一直朝前，最多偏 %.2f（瞄準點跑到背後了？）" % [weapon, facing_off]
+			elif turn < 2.8:
 				err = "%s 翻滾應翻到頭下腳上：身體最多轉 %.2f" % [weapon, turn]
 			elif high > 0.04 or deep < -0.04:
 				err = "%s 翻滾時本體最低點應貼地（±0.04）：最高 %.3f、最低 %.3f" % [weapon, high, deep]
