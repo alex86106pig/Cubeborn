@@ -2851,9 +2851,11 @@ static func check_archer_bow_arm() -> String:
 
 
 # 玩家拉弓（短弓、長弓的普攻、右鍵與弓的戰技）：雙手整條（上臂、前臂、拳頭）不穿過胸口與頭，包括從待機舉弓、抽箭、搭箭、拉弦、放箭、
-# 停手後放下；手肘與拳頭每一步移動不超過 BOW_STEP_MAX（不在一幀內甩過去）；拉滿時雙腳不交叉（跟著骨盆側轉）。
+# 停手後放下；手肘與拳頭每一步移動不超過 BOW_STEP_MAX（不在一幀內甩過去）；從待機開的第一發前搖要自己伸手拿箭、搭弦、拉弦，
+# YangHsu 2026-11-13 決定不加前搖時間、動畫加速塞進去（短弓只有 5 幀），那段只擋明顯的瞬移（BOW_FIRST_STEP_MAX，量手相對身體）；拉滿時雙腳不交叉（跟著骨盆側轉）。
 # 軀幹 = 盔甲零件頂點的水平截面（凸多邊形，六角柱）與上下範圍，頭 = 頭部零件的球；上臂靠肩膀那 1/4 本來就貼著軀幹，不量
 const BOW_STEP_MAX := 0.6
+const BOW_FIRST_STEP_MAX := 1.0
 
 
 static func check_bow_draw_clear() -> String:
@@ -2876,8 +2878,10 @@ static func check_bow_draw_clear() -> String:
 			var at := ""
 			var step_max := 0.0
 			var step_at := ""
+			var first_max := 0.0
 			var cross := INF
 			var prev: Array = []
+			var prev_body: Array = []   # 第一發前搖量手相對身體的移動（後跳射整個人在跳，不算手甩）
 			var started := false
 			for i in (row.frames as Array).size():
 				AnimRecorder.step(row, made, i)
@@ -2887,6 +2891,7 @@ static func check_bow_draw_clear() -> String:
 					continue
 				var tag := "%s %s k=%.2f" % [a.action, a.get("phase", ""), a.get("k", 0.0)]
 				var now: Array = []
+				var now_body: Array = []
 				for right: bool in [true, false]:
 					var arm: Node3D = rig.arm_r if right else rig.arm_l
 					var fore: Node3D = rig.forearm_r if right else rig.forearm_l
@@ -2894,6 +2899,7 @@ static func check_bow_draw_clear() -> String:
 					var elbow := sh + Basis.from_euler(arm.rotation, EULER_ORDER_YXZ) * fore.position
 					var fist := BodyPose.hand_pos(rig, right)
 					now.append_array([rig.body.transform * elbow, rig.body.transform * fist])
+					now_body.append_array([elbow, fist])
 					for s in 21:
 						var t := s / 20.0
 						var pts := [[sh.lerp(elbow, t), 0.06]] if t >= 0.25 else []
@@ -2905,13 +2911,17 @@ static func check_bow_draw_clear() -> String:
 							if d > deep:
 								deep = d
 								at = "%s %s" % ["右手" if right else "左手", tag]
+				var first_shot: bool = made.anim._drawing and made.anim._bow_phase_last == &"windup" and not made.anim._nocked   # 戰技的階段是 SkillPoses 算的，看動畫器記的
 				if not prev.is_empty():
 					for n in now.size():
 						var mv: float = (now[n] - prev[n]).length()
-						if mv > step_max:
+						if first_shot:
+							first_max = maxf(first_max, (now_body[n] - prev_body[n]).length())
+						elif mv > step_max:
 							step_max = mv
 							step_at = tag
 				prev = now
+				prev_body = now_body
 				if made.anim._drawing and row.key in ["attack", "special"]:
 					var lower := func(leg: Node3D, shin: Node3D) -> Vector3:
 						return rig.body.transform * (leg.transform * (shin.transform * Vector3(0, -(leg.position.y + shin.position.y), 0)))
@@ -2921,11 +2931,72 @@ static func check_bow_draw_clear() -> String:
 				err = "%s %s 手穿進胸口或頭 %.2f（%s）" % [weapon, row.key, deep, at]
 			elif step_max > BOW_STEP_MAX:
 				err = "%s %s 手肘或拳頭一步移動 %.2f（%s），超過 %.2f" % [weapon, row.key, step_max, step_at, BOW_STEP_MAX]
+			elif first_max > BOW_FIRST_STEP_MAX:
+				err = "%s %s 從待機開第一發的前搖手肘或拳頭一步移動 %.2f，超過 %.2f（瞬移）" % [weapon, row.key, first_max, BOW_FIRST_STEP_MAX]
 			elif cross < 0.1:
 				err = "%s %s 拉弓時雙腳交叉：左右腳在骨盆左右方向的間距 %.2f" % [weapon, row.key, cross]
 			if err != "":
 				break
-			_note("%s %s 雙手最深 %.3f、一步最多移動 %.2f%s" % [weapon, row.key, deep, step_max, "、雙腳間距 %.2f" % cross if cross < INF else ""])
+			_note("%s %s 雙手最深 %.3f、一步最多移動 %.2f（第一發前搖 %.2f）%s" % [weapon, row.key, deep, step_max, first_max, "、雙腳間距 %.2f" % cross if cross < INF else ""])
+		if err != "":
+			break
+	rec.clear()
+	return err
+
+
+# 玩家拉弓的箭從箭袋拿出來：箭第一次出現在手上時拳頭在袋口（離 0.15 內）、箭跟箭袋平行、箭頭朝袋底；拿在手上的整段箭身不穿過頭
+# 與軀幹（還在袋裡的那段不算）；從待機開第一發時，前搖裡手先伸到袋口才搭弦（短弓前搖只有 5 幀伸不到袋口，只看長弓）
+static func check_bow_arrow_fetch() -> String:
+	var rec := AnimRecorder.new()
+	var err := ""
+	for weapon: String in ["shortbow", "longbow"]:
+		for row: Dictionary in rec.rows("player-%s" % weapon, false):
+			if row.key != "attack":
+				continue
+			var made: Dictionary = (row.make as Callable).call()
+			var rig: Rig = made.rig
+			var an: Animator = made.anim
+			var torso := _torso_shape(rig)
+			var head_box := AABB()
+			for child in rig.head.get_children():
+				if child is MeshInstance3D and (child as MeshInstance3D).get_aabb().get_volume() > head_box.get_volume():
+					head_box = (child as MeshInstance3D).get_aabb()
+			var head_c := rig.head.position + head_box.get_center()
+			var head_r := head_box.size.x / 2.0
+			var appear: Array = []   # [拳頭離袋口, 箭跟箭袋的夾角]（收招裡第一次出現）
+			var deep := 0.0
+			var reached_first := false
+			var first_windup := true
+			var had := false
+			for i in (row.frames as Array).size():
+				AnimRecorder.step(row, made, i)
+				var a: Dictionary = row.frames[i].anim
+				var fist := BodyPose.hand_pos(rig, true)
+				if a.get("phase", &"") == &"active":
+					first_windup = false
+				if first_windup and a.get("phase", &"") == &"windup" and fist.distance_to(DarkFantasy.QUIVER_MOUTH) < 0.15:
+					reached_first = true
+				var holding := an._drawing and an._arrow == &"hand"
+				if holding:
+					var fwd := Basis.from_euler(rig.body.rotation, EULER_ORDER_YXZ).inverse() * Vector3.BACK
+					var dir := Animator.arrow_dir(an._bring, fwd)
+					if not had and a.get("phase", &"") == &"recovery" and appear.is_empty():
+						appear = [fist.distance_to(DarkFantasy.QUIVER_MOUTH), rad_to_deg(dir.angle_to(-Animator.quiver_axis()))]
+					for s in 11:
+						var p := fist + dir * DarkFantasy.BOW_ARROW * s / 10.0
+						deep = maxf(deep, head_r + 0.02 - p.distance_to(head_c))
+						if an._bring > Animator.PULL_OUT:
+							deep = maxf(deep, _torso_depth(torso, p, 0.02))
+				had = holding
+			rig.free()
+			if appear.is_empty() or appear[0] > 0.15 or appear[1] > 5.0:
+				err = "%s 收招裡箭第一次出現時應在袋口、跟箭袋平行：%s" % [weapon, appear]
+			elif deep > 0.0:
+				err = "%s 拿在手上的箭穿過頭或身體 %.2f" % [weapon, deep]
+			elif weapon == "longbow" and not reached_first:
+				err = "長弓從待機開第一發時，手應先伸到箭袋口再搭弦"
+			else:
+				_note("%s 箭出現時拳頭離袋口 %.2f、跟箭袋夾 %.0f°；第一發手先到袋口 %s" % [weapon, appear[0], appear[1], reached_first])
 		if err != "":
 			break
 	rec.clear()

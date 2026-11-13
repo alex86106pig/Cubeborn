@@ -257,9 +257,8 @@ static func _flame_dash(an: Animator, k: float) -> void:
 
 # 弓的一發（閃電箭、冰霜箭）：前搖抽箭搭弦拉滿（到 draw_end）→ 放箭（到 release_end）→ 收招回箭袋
 static func _shot(an: Animator, k: float, draw_end: float, release_end: float) -> void:
-	if k < draw_end:
-		var e := MathUtil.ease_out_cubic(k / draw_end)
-		an.pose_bow({"phase": &"windup", "k": k / draw_end}, e, false)
+	if k < draw_end:   # 前搖給沒緩動的進度：pose_bow 自己分段（拿箭、搭弦、拉弦）各用 smoothstep，緩動過的前幾幀就跳過拿箭
+		an.pose_bow({"phase": &"windup", "k": k / draw_end}, k / draw_end, false)
 	elif k < release_end:
 		an.pose_bow({"phase": &"active", "k": 1.0}, (k - draw_end) / (release_end - draw_end), false)
 	else:
@@ -271,7 +270,7 @@ static func _volley(an: Animator, t: float, d: Dictionary) -> void:
 	var interval: float = d.interval
 	var raise := 0.12
 	if t < raise:
-		an.pose_bow({"phase": &"windup", "k": t / raise}, MathUtil.ease_out_cubic(t / raise) * Animator.BRING_PART, false)
+		an.pose_bow({"phase": &"windup", "k": t / raise}, t / raise * Animator.BRING_PART, false)
 		return
 	var shots: int = d.count
 	var u := (t - raise) / interval
@@ -308,7 +307,7 @@ static func _snipe(an: Animator, t: float, d: Dictionary) -> void:
 	var draw := windup * 0.55
 	var kneel := minf(1.0, t / 0.2) * (1.0 - clampf((t - windup - 0.08) / 0.12, 0.0, 1.0))
 	if t < draw:
-		an.pose_bow({"phase": &"windup", "k": t / draw}, MathUtil.ease_out_cubic(t / draw), false)
+		an.pose_bow({"phase": &"windup", "k": t / draw}, t / draw, false)
 	elif t < windup:
 		an.pose_bow({"phase": &"active", "k": 1.0}, 0.0, true)
 	elif t < windup + 0.1:
