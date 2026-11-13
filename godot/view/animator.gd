@@ -750,7 +750,7 @@ const FETCH_OUT := Vector3(-0.15, 0.1, 0.0)  # 從待機伸手到箭袋的路線
 const ANCHOR_UP := 0.06                  # 錨點（拉滿時拳頭）比脖子高多少：下巴高度，拉弦手從肩膀往上走、越過軀幹頂
 const ANCHOR_SIDE := 0.24                # 錨點離頭的中軸多遠（瞄準方向的右手邊 = 右臉頰旁）：頭半徑 0.2 + 拳頭一半，拳頭貼著臉不穿進去；
                                          # 箭的直線過錨點、沿瞄準方向，拉弦手肘落在線的後面
-const PULL_OUT := 0.35                   # 抽箭搭弦的前多少沿箭袋往上拉（箭跟箭袋平行，拉到底箭頭剛好離開袋口），之後翻過肩帶到弓前
+const PULL_OUT := 0.3                    # 抽箭搭弦的前多少沿箭袋往上拉（箭跟箭袋平行），之後翻過肩帶到弓前
 const QUIVER_TOUCH := 0.95               # 伸向箭袋的路走到這個比例時手碰到露出來的箭尾，手上的箭才出現
 const OVER_SHOULDER := Vector3(-0.12, 0.5, 0.05)   # 抽箭、帶箭途中經過的點（右肩上方，相對右肩）
 const RELEASE_BACK := 0.18               # 放箭後拉弦手往後彈多遠
@@ -859,7 +859,7 @@ static func _reach_along(origin: Vector3, dir: Vector3, center: Vector3, radius:
 	return maxf(0.0, along + sqrt(disc)) if disc >= 0.0 else 0.0
 
 
-# 抽箭搭弦的手（身體座標）：[拳頭位置, 手肘方向]。前 PULL_OUT 從箭尾沿箭袋往上拉 QUIVER_PULL（箭頭剛好離開袋口），之後經過右肩上方帶到弦上
+# 抽箭搭弦的手（身體座標）：[拳頭位置, 手肘方向]。前 PULL_OUT 從箭尾沿箭袋往上拉 QUIVER_PULL，之後經過右肩上方（曲線一半的地方）帶到弦上
 func _bring_path(bring: float, nock: Vector3, draw_pole: Vector3, reach_pole: Vector3) -> Array:
 	var quiver := DarkFantasy.QUIVER_GRAB
 	var pulled := quiver + quiver_axis() * DarkFantasy.QUIVER_PULL
@@ -874,15 +874,21 @@ static func quiver_axis() -> Vector3:
 	return (DarkFantasy.QUIVER_MOUTH - DarkFantasy.QUIVER_BOTTOM).normalized()
 
 
-# 拿在手上的箭的箭頭方向（身體座標；fwd = 瞄準方向）：拉出來時跟箭袋平行、箭頭朝袋底；之後依序轉成朝後 → 朝上 → 朝前，
-# 箭頭從身體後面翻過右肩上方（直接從朝袋底轉到朝前會橫過頭）
-static func arrow_dir(bring: float, fwd: Vector3) -> Vector3:
+# 拿在手上的箭的箭頭方向（身體座標；hand = 拳頭、over = 右肩上方那點、fwd = 瞄準方向）：
+# 往上拉時跟箭袋平行、箭頭朝袋底；手往肩膀上方翻的途中箭還有一截在袋裡，箭身一直穿過袋口（指回袋口，不從箭袋側面穿出去）；
+# 手到肩膀上方（箭頭剩約 0.15 在袋裡）才放開，箭頭轉成朝上 → 朝前帶到弦上（直接從朝袋底轉到朝前會橫過頭）
+static func arrow_dir(bring: float, hand: Vector3, over: Vector3, fwd: Vector3) -> Vector3:
 	var into := -quiver_axis()
 	if bring <= PULL_OUT:
 		return into
-	var t := smoothstep(0.0, 1.0, (bring - PULL_OUT) / (1.0 - PULL_OUT)) * 3.0
-	var marks: Array[Vector3] = [into, Vector3(0.0, 0.3, -1.0).normalized(), Vector3.UP, fwd.normalized()]
-	var i := mini(int(t), 2)
+	var k := smoothstep(0.0, 1.0, (bring - PULL_OUT) / (1.0 - PULL_OUT))
+	if k <= 0.5:   # _bring_path 的曲線在 k = 0.5 經過 over
+		var to_mouth := DarkFantasy.QUIVER_MOUTH - hand
+		return to_mouth.normalized() if to_mouth.length_squared() > 1e-6 else into
+	var free := (DarkFantasy.QUIVER_MOUTH - over).normalized()
+	var t := (k - 0.5) / 0.5 * 2.0
+	var marks: Array[Vector3] = [free, Vector3.UP, fwd.normalized()]
+	var i := mini(int(t), 1)
 	return (marks[i] as Vector3).slerp(marks[i + 1], t - i).normalized()
 
 
@@ -970,7 +976,7 @@ func _bow_visuals() -> void:
 	var fwd := rig.global_transform.basis.z.normalized()
 	if _arrow == &"hand":
 		var body_b := rig.body.global_transform.basis.orthonormalized()
-		var dir := body_b * arrow_dir(_bring, body_b.inverse() * fwd)
+		var dir := body_b * arrow_dir(_bring, BodyPose.hand_pos(rig, true), rig.arm_r.position + OVER_SHOULDER, body_b.inverse() * fwd)
 		rig.weapon_nock.position = Vector3.ZERO
 		rig.weapon_nock.look_at(rig.weapon_nock.global_position + dir, Vector3.RIGHT if absf(dir.y) > 0.99 else Vector3.UP)
 	elif rig.weapon_left != null:
