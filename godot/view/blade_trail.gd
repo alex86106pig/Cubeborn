@@ -9,6 +9,7 @@ const WIDTH := 0.16           # 帶子最寬（最新的點）多寬，往舊的
 const OPACITY := 0.9
 const WINDUP_FROM := 0.7      # 前搖走到這個比例就開始畫（劍已經往下揮）
 const MAX_POINTS := 24
+const REVERSE_MIN := 0.02     # 尖端一幀移動不到這麼多就不記新點（幾乎不動時的小抖動不切斷拖尾、不留尖角）
 
 # 指向鏡頭的方向：遊戲是固定斜角（Config.CAMERA）；動畫檢視器會轉鏡頭，每幀自己設
 var to_camera := Vector3(
@@ -52,7 +53,12 @@ func update(rig: Rig, p: Player, dt: float) -> void:
 		while not pts.is_empty() and (pts[0][1] > LIFE or pts.size() > MAX_POINTS):
 			pts.pop_front()
 		if swinging and model != null:
-			pts.append([_world_of(rig, model) * tip_of(model), 0.0])
+			var at := _world_of(rig, model) * tip_of(model)
+			var step: Vector3 = at - pts[-1][0] if not pts.is_empty() else Vector3.ONE
+			if step.length() >= REVERSE_MIN:   # 尖端幾乎沒動就不記（存下的每段都夠長，折返才判斷得出來）
+				if pts.size() >= 2 and ((pts[-1][0] as Vector3) - pts[-2][0]).dot(step) < 0.0:
+					pts.assign([pts[-1]])   # 尖端折返（舉劍 → 劈下、刺出 → 收回）：從折返點重新開始，一道拖尾只畫一次連續的揮動
+				pts.append([at, 0.0])
 		any = any or pts.size() >= 2
 	if _imesh.get_surface_count() > 0:
 		_imesh.clear_surfaces()
@@ -64,7 +70,8 @@ func update(rig: Rig, p: Player, dt: float) -> void:
 
 
 # 沿點畫一條面向鏡頭的帶子：每個點往「前進方向 × 看的方向」兩邊展開，越舊越細越淡
-func _draw_ribbon(pts: Array, color: Color) -> void:
+func _draw_ribbon(raw: Array, color: Color) -> void:
+	var pts := smooth(raw)
 	_imesh.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP, _mat)
 	var n := pts.size()
 	for i in n:
@@ -80,6 +87,40 @@ func _draw_ribbon(pts: Array, color: Color) -> void:
 		_imesh.surface_set_color(c)
 		_imesh.surface_add_vertex(p - side * w)
 	_imesh.surface_end()
+
+
+# 每幀只記一個點、劍尖一幀走 0.5 以上，直接連起來轉彎處是尖角：用 centripetal Catmull-Rom（點的間距不均時不會甩出去）
+# 穿過記到的點，每段再切 SUBDIV 小段；經過秒數照著內插
+const SUBDIV := 12
+
+
+static func smooth(pts: Array) -> Array:
+	var n := pts.size()
+	if n < 3:
+		return pts
+	var out: Array = []
+	for i in n - 1:
+		var p0: Vector3 = pts[maxi(i - 1, 0)][0]
+		var p1: Vector3 = pts[i][0]
+		var p2: Vector3 = pts[i + 1][0]
+		var p3: Vector3 = pts[mini(i + 2, n - 1)][0]
+		if i == 0:
+			p0 = p1 * 2.0 - p2   # 兩端外插一個點，曲線才會走到端點
+		if i + 2 > n - 1:
+			p3 = p2 * 2.0 - p1
+		var t1 := maxf(sqrt(p0.distance_to(p1)), 1e-4)
+		var t2 := t1 + maxf(sqrt(p1.distance_to(p2)), 1e-4)
+		var t3 := t2 + maxf(sqrt(p2.distance_to(p3)), 1e-4)
+		for k in SUBDIV:
+			var t := lerpf(t1, t2, float(k) / SUBDIV)
+			var a1 := p0.lerp(p1, t / t1)
+			var a2 := p1.lerp(p2, (t - t1) / (t2 - t1))
+			var a3 := p2.lerp(p3, (t - t2) / (t3 - t2))
+			var b1 := a1.lerp(a2, t / t2)
+			var b2 := a2.lerp(a3, (t - t1) / (t3 - t1))
+			out.append([b1.lerp(b2, (t - t1) / (t2 - t1)), lerpf(pts[i][1], pts[i + 1][1], float(k) / SUBDIV)])
+	out.append(pts[n - 1])
+	return out
 
 
 # 模型在世界座標的 transform：沿父節點乘到骨架根節點（不靠場景樹的 global_transform，不在樹裡也能算）

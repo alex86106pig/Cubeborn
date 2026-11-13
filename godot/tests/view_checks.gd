@@ -2056,8 +2056,21 @@ static func check_effects_limits() -> String:
 	return ""
 
 
+# 折線（[[位置, …], …]）相鄰兩段的最大轉角（度）
+static func _max_turn(pts: Array) -> float:
+	var most := 0.0
+	for i in range(1, pts.size() - 1):
+		var a: Vector3 = (pts[i][0] as Vector3) - pts[i - 1][0]
+		var b: Vector3 = (pts[i + 1][0] as Vector3) - pts[i][0]
+		if a.length_squared() > 1e-8 and b.length_squared() > 1e-8:
+			most = maxf(most, rad_to_deg(a.angle_to(b)))
+	return most
+
+
 # 玩家揮砍（劍盾、雙匕首、權杖、火把、鐵鏟的普攻，fx:slash 帶 tilt）：範圍畫成地上的淡扇形（平放在腳下，不傾斜、不插進地），
-# 其他揮砍（技能、怪物）照舊在 1.0 高；揮砍時武器尖端有拖尾（BladeTrail）：記到的點跟著尖端走、畫得出帶子，站著不揮的時候沒有
+# 其他揮砍（技能、怪物）照舊在 1.0 高；揮砍時武器尖端有拖尾（BladeTrail）：記到的點跟著尖端走、畫得出帶子，站著不揮的時候沒有；
+# 拖尾是平滑的曲線（中心線相鄰兩段轉角不超過 TRAIL_TURN_MAX，每幀一個點直接連會有尖角）
+const TRAIL_TURN_MAX := 25.0
 static func check_slash_fx() -> String:
 	var view := Effects.new()
 	_scene_root().add_child(view)
@@ -2085,25 +2098,32 @@ static func check_slash_fx() -> String:
 			var idle_drawn := false
 			var most := 0
 			var travel := 0.0
+			var turn_raw := 0.0
+			var turn := 0.0
 			for i in (row.frames as Array).size():
 				AnimRecorder.step(row, made, i)
 				trail.update(rig, row.subject, DT)
 				var drawn := trail.mesh.get_surface_count() > 0
 				if i < row.start and drawn:
 					idle_drawn = true
-				for pts: Array in trail._trails:
-					if pts.size() > most:
+				for pts: Array in trail._trails:   # 量尖端走最遠的那一刻
+					var len := 0.0
+					for n in range(1, pts.size()):
+						len += (pts[n][0] as Vector3).distance_to(pts[n - 1][0])
+					if len > travel:
+						travel = len
 						most = pts.size()
-						travel = 0.0
-						for n in range(1, pts.size()):
-							travel += (pts[n][0] as Vector3).distance_to(pts[n - 1][0])
+						turn_raw = _max_turn(pts)
+						turn = _max_turn(BladeTrail.smooth(pts))
 			rig.free()
 			if idle_drawn:
 				err = "%s 站著不揮的時候不應有拖尾" % weapon
 			elif most < 3 or travel < 0.3:
 				err = "%s 揮砍時應有拖尾：最多 %d 個點、尖端走了 %.2f" % [weapon, most, travel]
+			elif turn > TRAIL_TURN_MAX:
+				err = "%s 拖尾有尖角：相鄰兩段轉 %.0f°（每幀的點直接連 %.0f°），應在 %.0f° 內" % [weapon, turn, turn_raw, TRAIL_TURN_MAX]
 			else:
-				_note("%s 拖尾最多 %d 個點、尖端走了 %.2f" % [weapon, most, travel])
+				_note("%s 拖尾最多 %d 個點、尖端走了 %.2f、相鄰兩段最多轉 %.0f°（每幀的點直接連 %.0f°）" % [weapon, most, travel, turn, turn_raw])
 		if err != "":
 			break
 	rec.clear()
