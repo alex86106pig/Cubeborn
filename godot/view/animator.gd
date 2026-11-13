@@ -737,8 +737,8 @@ func _pose_mace(idle: Dictionary, a: Dictionary, e: float, _dt: float) -> void:
 # 上一發的收招已經搭好箭時，前搖只剩拉弦；從待機開第一發時前搖自己走一遍：伸手到箭袋 → 抽箭搭弦 → 拉弦。
 # 從拉弦手定回去：拉滿時拳頭靠在右臉頰旁（錨點），弓手 = 錨點沿瞄準方向往前一支箭長（箭長決定弓手伸多遠，左手打直指著目標）；
 # 身體連骨盆側轉讓左肩對著目標，腳跟著轉，連射時一直側身。全部用身體座標算（不用 global），收尾踩地後位置不會錯開
-const FETCH_PART := 0.3                  # 從待機開第一發：前搖的前多少伸手到箭袋
-const BRING_PART := 0.6                  # 從待機開第一發：前搖走到這裡箭搭好（之後拉弦）；連珠箭舉弓也照這個
+const FETCH_PART := 0.35                 # 從待機開第一發：前搖的前多少伸手到箭袋
+const BRING_PART := 0.65                 # 從待機開第一發：前搖走到這裡箭搭好（之後拉弦）；連珠箭舉弓也照這個
 const NOCK_PART := 0.45                  # 收招的前段（回箭袋）佔多少，後段抽箭搭弦
 const BOW_TWIST := 0.95                  # 拉滿時身體連骨盆順時針轉多少（弧度，約 54°）：YangHsu 2026-11-13 嫌 86°（完全側身）在斜視角下站太斜；
                                          # 46°~86° 雙手都不穿身，左手對準目標 cos 0.76~0.86（轉得少時弓手搆不到箭線上那點，停在近一點、箭照樣指著目標）
@@ -750,9 +750,8 @@ const FETCH_OUT := Vector3(-0.15, 0.1, 0.0)  # 從待機伸手到箭袋的路線
 const ANCHOR_UP := 0.06                  # 錨點（拉滿時拳頭）比脖子高多少：下巴高度，拉弦手從肩膀往上走、越過軀幹頂
 const ANCHOR_SIDE := 0.24                # 錨點離頭的中軸多遠（瞄準方向的右手邊 = 右臉頰旁）：頭半徑 0.2 + 拳頭一半，拳頭貼著臉不穿進去；
                                          # 箭的直線過錨點、沿瞄準方向，拉弦手肘落在線的後面
-const PULL_OUT := 0.25                   # 抽箭搭弦的前多少沿箭袋往外拉（箭跟箭袋平行、箭頭還在袋裡），之後翻過肩帶到弓前
-const PULL_LEN := 0.25                   # 沿箭袋往外拉多遠（手臂伸到袋口已經快打直，拉不了太長）
-const QUIVER_TOUCH := 0.95               # 伸向箭袋的路走到這個比例時手碰到箭袋，箭才出現（在袋裡）
+const PULL_OUT := 0.35                   # 抽箭搭弦的前多少沿箭袋往上拉（箭跟箭袋平行，拉到底箭頭剛好離開袋口），之後翻過肩帶到弓前
+const QUIVER_TOUCH := 0.95               # 伸向箭袋的路走到這個比例時手碰到露出來的箭尾，手上的箭才出現
 const OVER_SHOULDER := Vector3(-0.12, 0.5, 0.05)   # 抽箭、帶箭途中經過的點（右肩上方，相對右肩）
 const RELEASE_BACK := 0.18               # 放箭後拉弦手往後彈多遠
 const BOW_ELBOW_POLE := Vector3(0.8, -0.6, -0.4)   # 弓手的手肘往外下方
@@ -808,7 +807,7 @@ func pose_bow(a: Dictionary, e: float, charge: bool) -> void:
 	bow_raise = maxf(bow_raise, smoothstep(0.0, BOW_RAISE_PART, a.k)) if a.phase == &"windup" else 1.0
 	BodyPose.arm_ik(rig, false, bow_hand_from.lerp(grip, bow_raise), (_pole_from[1] as Vector3).lerp(BOW_ELBOW_POLE, bow_raise))
 	# 拉弦手
-	var quiver := DarkFantasy.QUIVER_MOUTH
+	var quiver := DarkFantasy.QUIVER_GRAB   # 手伸去抓的是露出袋口的箭尾
 	var draw_pole := -fwd + right * 0.6 + up * 0.25   # 手肘往後、往右手邊外側（離開身體）、稍微往上
 	var reach_pole := Vector3(-0.8, 0.6, 0.3)         # 伸到背後時手肘往外上
 	var hand := string_at
@@ -860,10 +859,10 @@ static func _reach_along(origin: Vector3, dir: Vector3, center: Vector3, radius:
 	return maxf(0.0, along + sqrt(disc)) if disc >= 0.0 else 0.0
 
 
-# 抽箭搭弦的手（身體座標）：[拳頭位置, 手肘方向]。前 PULL_OUT 從袋口沿箭袋往外拉 PULL_LEN，之後經過右肩上方帶到弦上
+# 抽箭搭弦的手（身體座標）：[拳頭位置, 手肘方向]。前 PULL_OUT 從箭尾沿箭袋往上拉 QUIVER_PULL（箭頭剛好離開袋口），之後經過右肩上方帶到弦上
 func _bring_path(bring: float, nock: Vector3, draw_pole: Vector3, reach_pole: Vector3) -> Array:
-	var quiver := DarkFantasy.QUIVER_MOUTH
-	var pulled := quiver + quiver_axis() * PULL_LEN
+	var quiver := DarkFantasy.QUIVER_GRAB
+	var pulled := quiver + quiver_axis() * DarkFantasy.QUIVER_PULL
 	if bring < PULL_OUT:
 		return [quiver.lerp(pulled, smoothstep(0.0, 1.0, bring / PULL_OUT)), reach_pole]
 	var k := smoothstep(0.0, 1.0, (bring - PULL_OUT) / (1.0 - PULL_OUT))

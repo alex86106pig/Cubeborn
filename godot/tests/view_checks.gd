@@ -2952,8 +2952,9 @@ static func check_bow_draw_clear() -> String:
 	return err
 
 
-# 玩家拉弓的箭從箭袋拿出來：箭第一次出現在手上時拳頭在袋口（離 0.15 內）、箭跟箭袋平行、箭頭朝袋底；拿在手上的整段箭身不穿過頭
-# 與軀幹（還在袋裡的那段不算）；從待機開第一發時，前搖裡手先伸到袋口才搭弦（短弓前搖只有 5 幀伸不到袋口，只看長弓）
+# 玩家拉弓的箭從箭袋拿出來：箭第一次出現在手上時拳頭在露出袋口的箭尾（QUIVER_GRAB，離 0.15 內）、箭跟箭袋平行、箭頭朝袋底；
+# 往上拉那段拳頭在箭袋軸線上（箭順著袋口出來）、開始翻轉之後箭身不穿過箭袋；拿在手上的整段箭身不穿過頭與軀幹（還在袋裡的那段不算）；
+# 從待機開第一發時，前搖裡手先伸到箭尾才搭弦（短弓前搖只有 5 幀伸不到，只看長弓）
 static func check_bow_arrow_fetch() -> String:
 	var rec := AnimRecorder.new()
 	var err := ""
@@ -2974,6 +2975,8 @@ static func check_bow_arrow_fetch() -> String:
 			var appear: Array = []   # [拳頭離袋口, 箭跟箭袋的夾角]（收招裡第一次出現）
 			var deep := 0.0
 			var reached_first := false
+			var in_quiver := 0.0        # 往上拉那段拳頭離箭袋軸線最遠
+			var through_quiver := 0.0   # 翻轉時箭身進到箭袋裡多深
 			var first_windup := true
 			var had := false
 			for i in (row.frames as Array).size():
@@ -2982,14 +2985,25 @@ static func check_bow_arrow_fetch() -> String:
 				var fist := BodyPose.hand_pos(rig, true)
 				if a.get("phase", &"") == &"active":
 					first_windup = false
-				if first_windup and a.get("phase", &"") == &"windup" and fist.distance_to(DarkFantasy.QUIVER_MOUTH) < 0.15:
+				if first_windup and a.get("phase", &"") == &"windup" and fist.distance_to(DarkFantasy.QUIVER_GRAB) < 0.15:
 					reached_first = true
 				var holding := an._drawing and an._arrow == &"hand"
 				if holding:
 					var fwd := Basis.from_euler(rig.body.rotation, EULER_ORDER_YXZ).inverse() * Vector3.BACK
 					var dir := Animator.arrow_dir(an._bring, fwd)
 					if not had and a.get("phase", &"") == &"recovery" and appear.is_empty():
-						appear = [fist.distance_to(DarkFantasy.QUIVER_MOUTH), rad_to_deg(dir.angle_to(-Animator.quiver_axis()))]
+						appear = [fist.distance_to(DarkFantasy.QUIVER_GRAB), rad_to_deg(dir.angle_to(-Animator.quiver_axis()))]
+					var axis := Animator.quiver_axis()
+					var off_axis := (fist - DarkFantasy.QUIVER_MOUTH) - axis * (fist - DarkFantasy.QUIVER_MOUTH).dot(axis)
+					if an._bring <= Animator.PULL_OUT:
+						in_quiver = maxf(in_quiver, off_axis.length())
+					else:
+						for s in 11:   # 翻轉時箭身不穿過箭袋（袋底到袋口那段圓柱）
+							var q := fist + dir * DarkFantasy.BOW_ARROW * s / 10.0
+							var along := (q - DarkFantasy.QUIVER_BOTTOM).dot(axis)
+							if along > 0.0 and along < (DarkFantasy.QUIVER_MOUTH - DarkFantasy.QUIVER_BOTTOM).length():
+								var radial := ((q - DarkFantasy.QUIVER_BOTTOM) - axis * along).length()
+								through_quiver = maxf(through_quiver, DarkFantasy.QUIVER_RADIUS - radial)
 					for s in 11:
 						var p := fist + dir * DarkFantasy.BOW_ARROW * s / 10.0
 						deep = maxf(deep, head_r + 0.02 - p.distance_to(head_c))
@@ -3001,10 +3015,12 @@ static func check_bow_arrow_fetch() -> String:
 				err = "%s 收招裡箭第一次出現時應在袋口、跟箭袋平行：%s" % [weapon, appear]
 			elif deep > 0.0:
 				err = "%s 拿在手上的箭穿過頭或身體 %.2f" % [weapon, deep]
+			elif in_quiver > 0.05 or through_quiver > 0.0:
+				err = "%s 箭應順著袋口拉出來：往上拉時拳頭離箭袋軸線 %.2f、翻轉時箭身進到箭袋裡 %.2f" % [weapon, in_quiver, through_quiver]
 			elif weapon == "longbow" and not reached_first:
-				err = "長弓從待機開第一發時，手應先伸到箭袋口再搭弦"
+				err = "長弓從待機開第一發時，手應先伸到露出袋口的箭尾再搭弦"
 			else:
-				_note("%s 箭出現時拳頭離袋口 %.2f、跟箭袋夾 %.0f°；第一發手先到袋口 %s" % [weapon, appear[0], appear[1], reached_first])
+				_note("%s 箭出現時拳頭離箭尾 %.2f、跟箭袋夾 %.0f°；往上拉時離軸線 %.3f、翻轉時穿過箭袋 %.3f；第一發手先到箭尾 %s" % [weapon, appear[0], appear[1], in_quiver, through_quiver, reached_first])
 		if err != "":
 			break
 	rec.clear()

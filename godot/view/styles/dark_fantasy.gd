@@ -811,14 +811,18 @@ static func _shovel() -> Dictionary:
 # 兩端往拉弓的人這側（-Z）彎回來，弦接兩端（2026-10-27 使用者：原本圓心偏後，手握的位置不在弓身上）
 const BOW_SEGMENTS := 8
 const BOW_HALF_ARC := 0.85   # 弓身半邊張開的角度（弧度）
-# 箭袋（身體座標，玩家騎士 KNIGHT_JOINTS 的右肩在 (-0.36, 1.55, 0)）：袋口是拉弓時右手伸進去抽箭的位置
-# （Animator.pose_bow 用 IK 把拳頭帶到 QUIVER_MOUTH，離右肩剛好一個手臂長 KNIGHT_JOINTS.grip；改肩膀或手臂長要重算），箭袋從那裡斜穿背部到左腰下方，
-# 夠長夠粗：手伸進袋口、箭在袋裡出現被擋住
+# 箭袋（身體座標，玩家騎士 KNIGHT_JOINTS 的右肩在 (-0.36, 1.55, 0)、手臂長 0.58）：背得低（腰後到左大腿後），箭露出袋口一大截到右肩胛。
+# 拉弓時右手往後伸抓住露出來的箭尾（QUIVER_GRAB），沿箭袋往上拉 QUIVER_PULL，箭頭剛好離開袋口，之後才翻過肩（Animator.pose_bow）。
+# 抓的點與拉到底的點都在右肩後方 0.5、離右肩 0.568（手搆得到）：箭袋軸線在肩膀正後方、拉的那段以離肩膀最近的點為中心；
+# 改肩膀、手臂長或箭長要重算。箭袋在披風（背面 z 約 -0.37）外面
 # 玩家的箭長（兩把弓一樣，拉弦長由身體決定）：Animator.pose_bow 拉滿時拳頭在右臉頰旁、弓手打直，兩者距離約 0.84，
 # 箭長 = 那段 + 0.1（拉滿時箭頭剛好露出弓外 0.1）；改骨架的肩寬、手臂長或 Animator.ANCHOR_* 要一起改
 const BOW_ARROW := 0.95
-const QUIVER_MOUTH := Vector3(-0.451, 1.869, -0.476)
-const QUIVER_BOTTOM := Vector3(0.12, 1.05, -0.49)   # 要在披風（這個高度背面 z 約 -0.37）後面
+const QUIVER_AXIS := Vector3(-0.5, 0.8660254, 0.0)   # 袋底 → 袋口（往右上斜 30°）
+const QUIVER_GRAB := Vector3(-0.225, 1.316, -0.5)    # 露出袋口的箭尾、手抓的地方
+const QUIVER_PULL := 0.54                            # 沿箭袋往上拉多遠箭頭離開袋口（箭長 - 露出的長度）
+const QUIVER_MOUTH := QUIVER_GRAB + QUIVER_AXIS * (QUIVER_PULL - BOW_ARROW)
+const QUIVER_BOTTOM := QUIVER_MOUTH - QUIVER_AXIS * 0.55
 const QUIVER_RADIUS := 0.14
 
 
@@ -856,7 +860,7 @@ static func _player_bow(size: float, wood: Color, arrow: float) -> Dictionary:
 	nock.visible = false
 	var out := {"kit": k, "main": null, "offhand": null, "left": g, "nock": nock, "gem": null}
 	var quiver_count: int = WeaponDefs.WEAPONS[&"shortbow"].attack.quiver
-	# 箭袋：從右肩後上方（袋口）斜穿背部到左腰；袋口露出 quiver_count 支箭（各自一個節點，不合併，射一支藏一支）
+	# 箭袋：從腰後（袋口）斜到左大腿後；袋口露出 quiver_count 支箭到右肩胛（各自一個節點，不合併，射一支藏一支）
 	var axis := QUIVER_MOUTH - QUIVER_BOTTOM
 	var length := axis.length()
 	var quiver := Node3D.new()
@@ -867,9 +871,10 @@ static func _player_bow(size: float, wood: Color, arrow: float) -> Dictionary:
 	for i in quiver_count:
 		var a := Node3D.new()
 		var ang := TAU * i / quiver_count
-		a.position = Vector3(cos(ang) * QUIVER_RADIUS * 0.5, length / 2.0 + 0.07, sin(ang) * QUIVER_RADIUS * 0.5)
-		k.add(a, PartKit.cyl(0.014, 0.014, 0.18, 3), k.mat(Color("e0c890")), {"y": -0.06})
-		k.add(a, PartKit.box(0.08, 0.13, 0.012), k.mat(Color("f0f0f0")), {"y": 0.05, "ry": ang})
+		var out_len := BOW_ARROW - QUIVER_PULL   # 露出袋口的長度
+		a.position = Vector3(cos(ang) * QUIVER_RADIUS * 0.5, length / 2.0, sin(ang) * QUIVER_RADIUS * 0.5)
+		k.add(a, PartKit.cyl(0.014, 0.014, out_len, 3), k.mat(Color("e0c890")), {"y": out_len / 2.0})
+		k.add(a, PartKit.box(0.08, 0.13, 0.012), k.mat(Color("f0f0f0")), {"y": out_len - 0.06, "ry": ang})
 		quiver.add_child(a)
 		arrows.append(a)
 	quiver.basis = Basis(Quaternion(Vector3.UP, axis.normalized()))

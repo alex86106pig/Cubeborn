@@ -262,7 +262,7 @@ static func _shot(an: Animator, k: float, draw_end: float, release_end: float) -
 	elif k < release_end:
 		an.pose_bow({"phase": &"active", "k": 1.0}, (k - draw_end) / (release_end - draw_end), false)
 	else:
-		an.pose_bow({"phase": &"recovery", "k": 1.0}, MathUtil.ease_out_cubic((k - release_end) / (1.0 - release_end)), false)
+		an.pose_bow({"phase": &"active", "k": 1.0}, 1.0, false)   # 收招停在放箭後的姿勢（戰技放完就結束，不再回箭袋拿下一支；之後照停手保持、平滑放下）
 
 
 # 連珠箭：箭先拿在拉弦手裡（速射的拿法），舉弓後一支接一支快速半拉就放（每 interval 秒一支）；射完收回
@@ -282,8 +282,7 @@ static func _volley(an: Animator, t: float, d: Dictionary) -> void:
 		else:
 			an.pose_bow({"phase": &"active", "k": 1.0}, (c - 0.6) / 0.4 * 0.5, false)
 		return
-	var rest := SkillDefs.pose_time(&"volley") - raise - shots * interval
-	an.pose_bow({"phase": &"recovery", "k": 1.0}, MathUtil.ease_out_cubic(clampf((u - shots) * interval / maxf(rest, 0.01), 0.0, 1.0)), false)
+	an.pose_bow({"phase": &"active", "k": 1.0}, 1.0, false)   # 收招停在放箭後的姿勢（戰技放完就結束，不再回箭袋拿下一支；之後照停手保持、平滑放下）
 
 
 # 後跳射：往後跳開（雙腿收起、上身後仰）同時拉滿放箭，落地時膝蓋一沉
@@ -313,7 +312,7 @@ static func _snipe(an: Animator, t: float, d: Dictionary) -> void:
 	elif t < windup + 0.1:
 		an.pose_bow({"phase": &"active", "k": 1.0}, (t - windup) / 0.1, false)
 	else:
-		an.pose_bow({"phase": &"recovery", "k": 1.0}, MathUtil.ease_out_cubic(clampf((t - windup - 0.1) / (SkillDefs.POSE_RECOVER - 0.1), 0.0, 1.0)), false)
+		an.pose_bow({"phase": &"active", "k": 1.0}, 1.0, false)   # 收招停在放箭後的姿勢（戰技放完就結束，不再回箭袋拿下一支；之後照停手保持、平滑放下）
 	an.set_stance(0.42, 0.4, -0.55, maxf(kneel, 0.0), 0.0, an.rig.body.rotation.y)   # 腳跟著拉弓的側身轉（腿不交叉）
 
 
