@@ -273,6 +273,26 @@ func slash(pos: Vector3, facing: float, range_: float, arc: float, o: Dictionary
 		node.scale = Vector3(swing, 1.0, 0.85 + 0.15 * k))
 
 
+# 地上的淡扇形（玩家揮砍的範圍）：很快浮現、再淡出，從角色往外稍微長開
+const GROUND_SLASH_Y := 0.04
+const GROUND_SLASH_OPACITY := 0.22
+const GROUND_SLASH_LIFE := 0.35
+const GROUND_SLASH_IN := 0.15   # 前多少浮現
+
+
+func ground_slash(pos: Vector3, facing: float, range_: float, arc: float, o: Dictionary = {}) -> void:
+	var key := "g%.2f|%.2f" % [range_, arc]
+	if not _slash_meshes.has(key):
+		_slash_meshes[key] = _make_sector_mesh(range_ * 0.2, range_, arc)
+	var node := _transient_mesh(_slash_meshes[key], o.get("color", Color.WHITE), 0.0)
+	node.position = pos
+	node.rotation.y = facing
+	_add_transient(node, GROUND_SLASH_LIFE, func(k: float) -> void:
+		_set_alpha(node, GROUND_SLASH_OPACITY * minf(1.0, k / GROUND_SLASH_IN) * (1.0 - smoothstep(GROUND_SLASH_IN, 1.0, k)))
+		var s := 0.9 + 0.1 * minf(1.0, k / GROUND_SLASH_IN)
+		node.scale = Vector3(s, 1.0, s))
+
+
 # 衝擊環：由小擴張到 radius 並淡出
 func ring(pos: Vector3, radius: float, o: Dictionary = {}) -> void:
 	var opacity: float = o.get("opacity", 0.8)
@@ -563,7 +583,12 @@ func _on_transformed(p: Dictionary) -> void:
 	burst(at + Vector3(0, 1.5, 0), {"color": WOLF_FUR, "count": 20, "speed": 5.0, "up": 4.0, "size": 0.16})
 
 
+# 玩家普攻的揮砍（帶 tilt / pitch，MeleeSwing）：斜視角下傾斜的平面扇形往某些方向揮會變成一條線、低的那側插進地板，
+# 所以改成地上一片淡扇形表示打得到的範圍，揮刀的方向交給劍尖拖尾（BladeTrail）；其他揮砍（技能、怪物）照舊
 func _fx_slash(p: Dictionary) -> void:
+	if p.has("tilt"):
+		ground_slash(_at(p, GROUND_SLASH_Y), p.facing, p.range, p.arc, {"color": p.color})
+		return
 	slash(_at(p, 1.0), p.facing, p.range, p.arc, {"color": p.color, "swing_dir": p.swing_dir, "tilt": p.get("tilt", 0.0), "pitch": p.get("pitch", 0.0)})
 
 

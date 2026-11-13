@@ -349,6 +349,8 @@ func sync(world: World, alpha: float, dt: float) -> void:
 					_anim_pending[id] = 0.0
 			if anim_dt >= 0.0:
 				_animators[id].update(e, anim_dt)
+				if e is Player:
+					(node.get_node(^"BladeTrail") as BladeTrail).update(node, e, anim_dt)
 				# 鑽在地底的屍甲蟲：地面一路冒土（看得到的才冒，視野外不洩漏位置）
 				if e is Enemy and (e as Enemy).anim.get("burrowed", false) and not hidden_ids.has(id) and (world.tick + id) % BURROW_DIRT_EVERY == 0:
 					effects.mote(Vector3(e.pos.x, e.ground_height + 0.05, e.pos.y), {"color": BURROW_DIRT, "size": 0.16, "life": 0.5, "vy": 0.8})
@@ -972,6 +974,7 @@ func _create_view(e: Entity) -> Node3D:
 			_animators[e.id] = Animator.new(rig)
 			root = rig
 			root.add_child(_create_block_fan())
+			root.add_child(BladeTrail.new())   # 揮砍的劍尖拖尾（top_level，畫在世界座標）
 			var glow := OmniLight3D.new()   # 武器稀有度的光（D4 回饋）：不是白色的武器發出淡淡的稀有度顏色光
 			glow.name = "WeaponGlow"
 			glow.omni_range = WEAPON_GLOW_RANGE

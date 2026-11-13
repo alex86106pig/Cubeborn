@@ -2056,6 +2056,60 @@ static func check_effects_limits() -> String:
 	return ""
 
 
+# 玩家揮砍（劍盾、雙匕首、權杖、火把、鐵鏟的普攻，fx:slash 帶 tilt）：範圍畫成地上的淡扇形（平放在腳下，不傾斜、不插進地），
+# 其他揮砍（技能、怪物）照舊在 1.0 高；揮砍時武器尖端有拖尾（BladeTrail）：記到的點跟著尖端走、畫得出帶子，站著不揮的時候沒有
+static func check_slash_fx() -> String:
+	var view := Effects.new()
+	_scene_root().add_child(view)
+	var err := ""
+	view.on_event("fx:slash", {"pos": Vector2.ZERO, "height": 2.0, "facing": 0.7, "range": 2.3, "arc": 2.0, "color": Color.WHITE, "swing_dir": 1, "tilt": -0.7, "pitch": 0.0})
+	var g: MeshInstance3D = view._transients[-1].node
+	if not is_equal_approx(g.position.y, 2.0 + Effects.GROUND_SLASH_Y) or absf(g.rotation.x) > 1e-4 or absf(g.rotation.z) > 1e-4 or absf(angle_difference(g.rotation.y, 0.7)) > 1e-4:
+		err = "玩家揮砍的範圍應平放在地上：高度 %.2f（應 %.2f）、傾斜 %.2f / %.2f、朝向 %.2f" % [g.position.y, 2.0 + Effects.GROUND_SLASH_Y, g.rotation.x, g.rotation.z, g.rotation.y]
+	view.on_event("fx:slash", {"pos": Vector2.ZERO, "height": 0.0, "facing": 0.0, "range": 1.5, "arc": 1.7, "color": Color.WHITE, "swing_dir": 1})
+	if err == "" and not is_equal_approx((view._transients[-1].node as Node3D).position.y, 1.0):
+		err = "技能、怪物的揮砍應照舊在 1.0 高：%.2f" % (view._transients[-1].node as Node3D).position.y
+	view.free()
+	if err != "":
+		return err
+	var rec := AnimRecorder.new()
+	for weapon: String in ["swordShield", "dagger", "scepter", "torch", "shovel"]:
+		for row: Dictionary in rec.rows("player-%s" % weapon, false):
+			if row.key != "attack":
+				continue
+			var made: Dictionary = (row.make as Callable).call()
+			var rig: Rig = made.rig
+			_scene_root().add_child(rig)
+			var trail := BladeTrail.new()
+			rig.add_child(trail)
+			var idle_drawn := false
+			var most := 0
+			var travel := 0.0
+			for i in (row.frames as Array).size():
+				AnimRecorder.step(row, made, i)
+				trail.update(rig, row.subject, DT)
+				var drawn := trail.mesh.get_surface_count() > 0
+				if i < row.start and drawn:
+					idle_drawn = true
+				for pts: Array in trail._trails:
+					if pts.size() > most:
+						most = pts.size()
+						travel = 0.0
+						for n in range(1, pts.size()):
+							travel += (pts[n][0] as Vector3).distance_to(pts[n - 1][0])
+			rig.free()
+			if idle_drawn:
+				err = "%s 站著不揮的時候不應有拖尾" % weapon
+			elif most < 3 or travel < 0.3:
+				err = "%s 揮砍時應有拖尾：最多 %d 個點、尖端走了 %.2f" % [weapon, most, travel]
+			else:
+				_note("%s 拖尾最多 %d 個點、尖端走了 %.2f" % [weapon, most, travel])
+		if err != "":
+			break
+	rec.clear()
+	return err
+
+
 # 守墓人噴火的火舌：追著噴時是 lantern.range × arc 的扇形、轉圈時是 spin_range 一整圈、鏟起連段 B 直噴是 bury.range × arc，跟著朝向；
 # 噴的時候有噴流粒子；噴完（recovery）就拿掉；開場預熱有畫過火舌的材質
 static func check_flame_fx() -> String:
