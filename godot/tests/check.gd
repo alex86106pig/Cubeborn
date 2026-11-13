@@ -163,7 +163,7 @@ func _initialize() -> void:
 	_check("蒙皮小怪（D5 效能）：骷髏戰士 / 弓手 / 腐屍合成一個蒙皮網格（≤ 2 個網格、頂點數與原本零件相同），關節姿勢寫進骨架（含手肘、膝蓋的骨頭）", MonsterChecks.check_skinned_rig)
 	_check("挖墳（D6）：DIG.range 內按住 F 開始事件並挖墳；挖墳中不能移動、跳，照樣轉向，被打不中斷不被擊退；總量 DIG.time × 活著的人數、一起挖速度相加、放手不掉（DIG.decay）、噴怪 +ERUPT.progress；挖完出口打開", EventChecks.check_dig)
 	_check("事件難度（D6）：怪物生命 × difficulty_mul；生怪間隔遞減夾在 interval_min；每批隻數隨難度與人數增加；魔法 / 稀有機率隨難度；挖墳前不冒怪、開挖就開始怪潮、難度每秒 +per_second；選的難度（簡單 / 普通 / 困難）讓上升 ×0.75 / ×1 / ×1.5、重新開始保留；挖墳點噴怪（墳土隆起預警、不畫圈、數量、下一層難度、拋物線落地）；挖完停怪、難度不漲、場上的怪留著", EventChecks.check_difficulty)
-	_check("出口與換層（D6）：挖完不會自動走；墳墓旁按 F，單人最後一層直接通關；換關先過場（level:leaving、LEAVE.cover 秒後才換，收圈在那之前全黑、地形換了才出關卡卡片與獎勵 / 鐵砧再打開）；多人投票（Esc 反對取消、發起人也能 Esc 取消、全員同意或 VOTE.time 秒到就走、陣亡的不用投）；換層回出生點、基礎難度 +per_floor、保留靈魂與背包、地上與怪物清空、寶箱重放、事件歸零；每層的出口外觀照 EXIT_STYLES（第 1 層墳墓、第 2 層石棺：棺蓋跟著進度滑開，打開後是發光的洞；第 3 層巨繭：兩半繭殼往兩邊剝開）；每過一個小關怪物生命 +stage_hp、第 2 層算過完第 1 層的小關；同一關重來（開發用）：全員倒下後背包、武器、技能等級、骰子、藥水回到進關時，滿血滿魔全員復活，靈魂與門的獎勵、地圖、怪群跟進關時一樣，客戶端與通關後不能重來",
+	_check("出口與換層（D6）：挖完不會自動走；墳墓旁按 F，單人最後一層直接通關；換關先過場（level:leaving、LEAVE.cover 秒後才換，收圈在那之前全黑、地形換了才出關卡卡片與獎勵 / 鐵砧再打開）；多人投票（Esc 反對取消、發起人也能 Esc 取消、全員同意或 VOTE.time 秒到就走、陣亡的不用投）；換層回出生點、基礎難度 +per_floor、保留靈魂與背包、地上與怪物清空、寶箱重放、事件歸零；每層的出口外觀照 EXIT_STYLES（第 1 層墳墓、第 2 層石棺：棺蓋跟著進度滑開，打開後是發光的洞；第 3 層巨繭：兩半繭殼往兩邊剝開）；每過一個小關怪物生命 +stage_hp、第 2 層算過完第 1 層的小關；同一關重來（開發用）：全員倒下後背包、武器、技能等級、骰子、藥水回到進關時，滿血滿魔全員復活，靈魂與門的獎勵、地圖、怪群、擊殺數、時間、每位玩家的統計跟進關時一樣，客戶端與通關後不能重來",
 		all.bind([EventChecks.check_next_floor, ViewChecks.check_exit_looks, EventChecks.check_stage_exit, ViewChecks.check_level_transition, EventChecks.check_retry_stage]))
 	_check("Boss（D6）：挖墳地圖開局在 boss_room 裡巡邏、沒看到玩家不追、不出範圍；前方視野或貼近看到玩家、被打就開始追、不限範圍；打倒不通關，掉 1 把武器、1 個石棺的遺物、Boss 靈魂", EventChecks.check_boss_reward)
 	_check("屍體與冤魂（D6）：多人時死亡留下屍體、撿進背包；背著換層出現冤魂（死者的武器、袋子、職業、最大生命，怪物方、不算隊友），打倒後冤魂消失、死者在那裡復活、裝備照舊、屍體消失；沒人帶屍體就沒有冤魂；冤魂自己走過來用武器打玩家、不喝藥水，玩家打得到、怪不打它，換關沒打倒就清掉；道具的連鎖閃電、落雷與鬼火打得到冤魂（冤魂的也打得到玩家），中毒等狀態對冤魂不發動；連線時客戶端建成冤魂",
@@ -244,8 +244,8 @@ func _initialize() -> void:
 	_check("設定頁：主選單與暫停畫面的「設定」打開、塞得進 1920×1080、選單關掉一起關；改值存檔讀得回來（啟動參數蓋的不存）；音量套到 Music / SFX 匯流排、0% = −80 dB；陰影與光源開關套到太陽和精英怪的光（之後新建的也照設定）；--shadows / --lights", ViewChecks.check_settings)
 	_check("按鈕：ui/ 裡都用 UiKit.button（選單 / 面板 / 一排很多顆三種尺寸），不自己 Button.new()", ViewChecks.check_buttons)
 	_check("網頁版網址參數：?horde=200&perf&seconds=20 轉成 --horde=200 --perf --seconds=20；連線參數 host / join / room / net-autostart 也轉；不在開放清單的參數不轉", ViewChecks.check_url_query_args)
-	_check("遊玩紀錄：自己的擊殺依種類、受到的傷害依攻擊者、被看不見的攻擊（含身邊的攻擊者剛進視野不到 REACT 秒就打中）、倒下被誰打倒；隊友誤傷寫「隊友（誤傷） · 武器名」；武器掉落 / 撿起 / 第一次撿不下 / 現在的武器幾分換上；結算畫面塞得進 1920×1080；「複製遊玩紀錄」內容完整；重新開始清空；連線卡住的時間點另起一行；客戶端換小關等鏡像換好才記；你造成的傷害依來源（左鍵、技能、道具效果、燃燒，僕從算召喚者），每一下都有來源、合計 = 實際扣的血；袋子裡的技能放出 / 魔力不夠的次數、魔力見底秒數、背包標出滿魔也放不出來的",
-		all.bind([ViewChecks.check_run_log, ViewChecks.check_run_log_weapons_react, ViewChecks.check_run_log_friendly, ViewChecks.check_run_log_net, ViewChecks.check_run_log_dealt, ViewChecks.check_run_log_mana]))
+	_check("遊玩紀錄：自己的擊殺依種類、受到的傷害依攻擊者、被看不見的攻擊（含身邊的攻擊者剛進視野不到 REACT 秒就打中）、倒下被誰打倒；隊友誤傷寫「隊友（誤傷） · 武器名」；武器掉落 / 撿起 / 第一次撿不下 / 現在的武器幾分換上；結算畫面塞得進 1920×1080；「複製遊玩紀錄」內容完整；重新開始清空；連線卡住的時間點另起一行；客戶端換小關等鏡像換好才記；你造成的傷害依來源（左鍵、技能、道具效果、燃燒，僕從算召喚者），每一下都有來源、合計 = 實際扣的血；袋子裡的技能放出 / 魔力不夠的次數、魔力見底秒數、背包標出滿魔也放不出來的；這一局的統計（結算畫面用）：每位玩家的傷害依來源、每一關的傷害、受到的傷害依攻擊者、倒下、擊殺、回復、救人，存了再還原會回到存的時候，game:defeat 帶著整份",
+		all.bind([ViewChecks.check_run_log, ViewChecks.check_run_log_weapons_react, ViewChecks.check_run_log_friendly, ViewChecks.check_run_log_net, ViewChecks.check_run_log_dealt, ViewChecks.check_run_log_mana, EventChecks.check_run_stats]))
 	_check("字型：介面文字都在打包的 Noto Sans TC 裡（網頁版沒有系統字型），缺字的圖示改用向量圖", ViewChecks.check_font_coverage)
 
 	# ───────── 音效 ─────────
@@ -256,7 +256,7 @@ func _initialize() -> void:
 	_check("結束程式不洩漏：主場景跑 3 秒（有怪、一直攻擊，音效還在播）後結束兩次，沒有 ObjectDB 洩漏、資源還在用", ViewChecks.check_quit_no_leak)
 
 	# ───────── 連線 ─────────
-	_check("快照：房主的實體序列化後客戶端建立同樣類別、位置、血量、武器的鏡像、動畫狀態相同時數值補間；地圖 A 怪群 + 4 人、P2 被 30 隻圍住時每份快照 ≤ 4.5 KB；背包 / 手上的武器 / 技能等級變了才連送、沒變只定期帶；休眠的怪群客戶端用種子在本機生（跟房主一致、不進快照；範圍外醒了移除、範圍內醒了照快照、休眠中被移除跟著移除、檢查碼不同就不用）；同一關重來後客戶端照重來次數重生本機的休眠怪群、玩家復活、背包回到進關時",
+	_check("快照：房主的實體序列化後客戶端建立同樣類別、位置、血量、武器的鏡像、動畫狀態相同時數值補間；地圖 A 怪群 + 4 人、P2 被 30 隻圍住時每份快照 ≤ 4.5 KB；背包 / 手上的武器 / 技能等級變了才連送、沒變只定期帶；休眠的怪群客戶端用種子在本機生（跟房主一致、不進快照；範圍外醒了移除、範圍內醒了照快照、休眠中被移除跟著移除、檢查碼不同就不用）；同一關重來後客戶端照重來次數重生本機的休眠怪群、玩家復活、背包回到進關時、收到的結算統計跟房主一樣",
 		all.bind([NetChecks.check_codec, NetChecks.check_snapshot_size.bind(feel), NetChecks.check_snapshot_loadout, NetChecks.check_local_packs, NetChecks.check_net_stage, NetChecks.check_net_retry]))
 	_check("網頁連線配對（v0.36.0）：PeerJS 網址、房主 ID、房號（4 碼、不含易混字）、訊息格式、伺服器訊息對應的訊號；桌面版 IP 與房號兩種都能用", NetChecks.check_web_signaling)
 	_check("桌面版 WebRTC（v0.40.0）：同一程序兩條連線交換 SDP，照 NetSession 的設定建房主 / 客戶端，5 秒內連上且封包收得到；網頁版接收緩衝區至少 1024 KB", NetChecks.check_desktop_webrtc.bind(feel))

@@ -838,7 +838,7 @@ static func check_stage_exit() -> String:
 
 
 # 同一關重來（開發用，World.retry_stage）：全員倒下後重來，每位玩家的背包、武器、技能等級、骰子、藥水回到進這一關時，
-# 生命魔力補滿、全員復活、沒有冤魂；靈魂回到進關時加上門的獎勵；地圖與怪群跟進關時一模一樣；擊殺數不倒回去；
+# 生命魔力補滿、全員復活、沒有冤魂；靈魂回到進關時加上門的獎勵；地圖與怪群跟進關時一模一樣；擊殺數、時間、每位玩家的統計（RunStats）也回到進關時；
 # 連續重來每次都一樣；客戶端（非權威端）與已經通關時不能重來
 static func check_retry_stage() -> String:
 	var w := World.new(MapDefs.FLOOR_MAPS[1])
@@ -867,6 +867,9 @@ static func check_retry_stage() -> String:
 		return out
 	var foes_in: Array = foes.call()
 	var key_in := w.layout_key.duplicate()
+	var kills_in := int(w.stats.kills)
+	var time_in := float(w.stats.time)
+	var stats_in := w.run_stats.snapshot()
 	if foes_in.is_empty():
 		return "1-2 應有怪群（不然驗不到重擺）"
 	for round in 2:
@@ -879,7 +882,9 @@ static func check_retry_stage() -> String:
 		p2.clear_items()
 		p2.add_item(&"whirlwind")
 		w.souls += 99
-		var kills := int(w.stats.kills)
+		Combat.apply_damage(w, p1, w.enemies[1], {"damage": 25.0, "credit": "p"})
+		w.run_stats.feed(w)
+		w.stats.kills += 3
 		(w.enemies[0] as Enemy).remove()
 		p2.die()
 		p1.die()
@@ -905,8 +910,9 @@ static func check_retry_stage() -> String:
 			return "第 %d 輪：靈魂應回到進關時（含門的獎勵）%d，實際 %d" % [round + 1, souls_in, w.souls]
 		if foes.call() != foes_in or w.layout_key != key_in or w.stage_num != 2 or w.floor_num != 1:
 			return "第 %d 輪：地圖與怪群應跟進關時一樣：怪 %d / %d、%s" % [round + 1, (foes.call() as Array).size(), foes_in.size(), w.layout_key]
-		if int(w.stats.kills) != kills:
-			return "第 %d 輪：擊殺數不倒回去也不該變：%d → %d" % [round + 1, kills, int(w.stats.kills)]
+		if int(w.stats.kills) != kills_in or absf(w.stats.time - time_in) > EPS or w.run_stats.snapshot() != stats_in:
+			return "第 %d 輪：擊殺數、時間、每位玩家的統計應回到進關時：擊殺 %d / %d、時間 %.2f / %.2f、傷害 %.1f / %.1f" % [
+				round + 1, int(w.stats.kills), kills_in, w.stats.time, time_in, w.run_stats.of(1).damage, stats_in.get(1, {}).get("damage", 0.0)]
 		w.step({}, DT)
 		if w.is_defeated or p1.is_dead:
 			return "第 %d 輪：重來後下一步不應又判失敗" % (round + 1)
@@ -919,4 +925,95 @@ static func check_retry_stage() -> String:
 	w.retry_stage()
 	if w.stage_tries != tries:
 		return "客戶端（非權威端）與通關後不應能重來"
+	return ""
+
+
+# 這一局的統計（RunStats，結算畫面用）：每位玩家造成的傷害依來源（次數、最高一擊；附帶的小傷害不算次數）、每一關的傷害、
+# 受到的傷害依攻擊者、倒下被誰打倒、擊殺依種類、回復的生命、救人次數；誤傷隊友不算造成的傷害；存一份再還原會回到存的時候；
+# 模擬步裡被怪打的也會記到，全員倒下的 game:defeat 帶著整份統計與每位玩家的職業、武器、順序
+static func check_run_stats() -> String:
+	var w := _world([1, 2])
+	var p1: Player = w.players[1]
+	var p2: Player = w.players[2]
+	var rs := w.run_stats
+	var foe := CheckKit._dummy(w, p1.pos + Vector2(0, 3), 100000.0)
+	var weak := CheckKit._dummy(w, p1.pos + Vector2(3, 0), 5.0)
+	var hit := func(source: Entity, target: Entity, h: Dictionary) -> float:
+		w.events.clear()
+		target.invuln_timer = 0.0   # 玩家受傷後有一小段無敵（Config.PLAYER.invuln_time）：每一下都要打得到才驗得到統計
+		Combat.apply_damage(w, source, target, h)
+		rs.feed(w)
+		var got := 0.0
+		for ev: Dictionary in w.events:
+			if ev.name == "entity:damaged":
+				got += ev.amount
+		w.events.clear()
+		return got
+	var a: float = hit.call(p1, foe, {"damage": 30.0, "credit": "k:whirlwind"})
+	var b: float = hit.call(p1, foe, {"damage": 50.0, "credit": "k:whirlwind"})
+	var burn: float = hit.call(p1, foe, {"damage": 4.0, "credit": "burn", "minor": true})
+	var s1: Dictionary = rs.of(1)
+	var row: Array = s1.dealt.get("k:whirlwind", [])
+	if row.size() != 3 or absf(row[RunStats.D_DAMAGE] - (a + b)) > EPS or row[RunStats.D_HITS] != 2 or absf(row[RunStats.D_PEAK] - maxf(a, b)) > EPS:
+		return "旋風斬兩下應記 [%.1f, 2, %.1f]：%s" % [a + b, maxf(a, b), row]
+	if s1.dealt.get("burn", [0, -1])[RunStats.D_HITS] != 0 or absf(s1.damage - (a + b + burn)) > EPS or absf(s1.peak - maxf(a, b)) > EPS:
+		return "附帶的小傷害算傷害、不算次數；總傷害 %.1f、最高一擊 %.1f：%s" % [a + b + burn, maxf(a, b), s1]
+	if absf(s1.stages.get(RunStats.stage_key(w.floor_num, w.stage_num), 0.0) - s1.damage) > EPS:
+		return "這一關的傷害應等於總傷害：%s" % [s1.stages]
+	hit.call(p1, weak, {"damage": 999.0, "credit": "p"})
+	if s1.kills != 1 or s1.kill_kinds != {"test": 1}:
+		return "打死一隻應記擊殺 1（依種類）：%d %s" % [s1.kills, s1.kill_kinds]
+	if not (s1.dealt.keys() as Array).any(func(k: String) -> bool: return k.begins_with("p|")):
+		return "左鍵應照當時的武器分開記（p|武器名）：%s" % [s1.dealt.keys()]
+	# 被打：依攻擊者；這一下倒下就記被誰打倒
+	var took: float = hit.call(foe, p2, {"damage": 10.0})
+	var s2: Dictionary = rs.of(2)
+	if absf(s2.taken - took) > EPS or s2.by_source.get("test", [0.0, 0])[RunStats.D_HITS] != 1 or not (s2.downs as Array).is_empty():
+		return "P2 被打一下應記受到的傷害與攻擊者：%s" % [s2]
+	var before := float(s1.damage)
+	w.friendly_fire = true
+	hit.call(p1, p2, {"damage": 5.0})
+	if s1.damage != before or not s2.by_source.has("player"):
+		return "誤傷隊友不算造成的傷害，隊友那邊記成被玩家打：%s" % [s2.by_source]
+	hit.call(foe, p2, {"damage": 99999.0})
+	if s2.downs != ["test"]:
+		return "P2 這一下倒下應記被誰打倒：%s" % [s2.downs]
+	w.emit_event("entity:healed", {"target_id": p1.id, "amount": 7.0})
+	rs.feed(w)
+	w.events.clear()
+	rs.add_revive(1)
+	if s1.healed != 7.0 or s1.revives != 1:
+		return "回復的生命與救人次數：%.1f / %d" % [s1.healed, s1.revives]
+	# 存一份再還原：回到存的時候，存檔不會跟著後來的數字變
+	var saved := rs.snapshot()
+	var damage_saved := float(saved[1].damage)
+	hit.call(p1, foe, {"damage": 40.0, "credit": "k:whirlwind"})
+	if saved[1].damage != damage_saved or rs.of(1).damage == damage_saved:
+		return "存檔應是深複製：後來的傷害不該改到存檔"
+	rs.restore(saved)
+	if rs.snapshot() != saved:
+		return "還原後應跟存檔一樣"
+	var wire := rs.to_wire(w)
+	if wire.info.get(1, {}).get("order", -1) != 0 or wire.info.get(2, {}).get("order", -1) != 1 or not wire.players.has(2) or wire.tries != w.stage_tries:
+		return "結算資料應帶每位玩家的順序與重來次數：%s" % [wire.info]
+	# 模擬步：怪打玩家會記到；倒下後 game:defeat 帶著整份統計
+	var w2 := _world()
+	var q: Player = w2.players[World.HOST_PEER_ID]
+	var g := w2.spawner.spawn_at(w2, &"grunt", q.pos + Vector2(1.2, 0.0))
+	var seen := 0.0
+	var defeat := {}
+	for i in 3600:
+		w2.step({}, DT)
+		for ev: Dictionary in w2.events:
+			if ev.name == "entity:damaged" and ev.target_id == q.id:
+				seen += ev.amount
+			elif ev.name == "game:defeat":
+				defeat = ev
+		if not defeat.is_empty():
+			break
+	if defeat.is_empty() or seen <= 0.0:
+		return "骷髏戰士應在 60 秒內打倒玩家（受到 %.0f）" % seen
+	var mine: Dictionary = defeat.get("run", {}).get("players", {}).get(World.HOST_PEER_ID, {})
+	if mine.is_empty() or absf(mine.taken - seen) > EPS or mine.downs != [String(g.kind)] or defeat.run.info[World.HOST_PEER_ID].entity != q.id:
+		return "game:defeat 應帶整份統計：受到 %.1f（事件加起來 %.1f）、被 %s 打倒" % [mine.get("taken", -1.0), seen, mine.get("downs", [])]
 	return ""

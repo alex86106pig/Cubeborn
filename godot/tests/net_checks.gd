@@ -1414,6 +1414,10 @@ static func check_net_retry() -> String:
 	hp2.die()
 	for i in 30:
 		link.step(InputCmd.new(), InputCmd.new())
+	var host_defeat := _named(link.host_events, "game:defeat")
+	var client_defeat := _named(link.client_events, "game:defeat")
+	if host_defeat.is_empty() or client_defeat.is_empty() or client_defeat[0].get("run", {}) != host_defeat[0].run or not client_defeat[0].run.players.has(2):
+		return "客戶端收到的 game:defeat 應帶跟房主一樣的結算統計（每位玩家一份）"
 	if not hw.is_defeated or not cw.is_defeated or local_count.call() >= locals_in:
 		return "重來前：兩邊都應是失敗、客戶端本機的休眠怪因為醒了一群而變少：%s / %s、本機 %d / %d" % [hw.is_defeated, cw.is_defeated, local_count.call(), locals_in]
 	hw.retry_stage()

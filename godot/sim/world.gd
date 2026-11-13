@@ -51,6 +51,7 @@ const RELIC_SPOT_TICKS := 12     # 每幾步看一次遺物有沒有被人看到
 const PACK_ID_STRIDE := 1024
 const PACK_ID_STAGES := 8       # 每層留幾個小關的 id 區段
 var _changing_floor := false
+var run_stats := RunStats.new()     # 這一局每位玩家的統計（結算畫面用；權威端每步記，結算事件帶給客戶端）
 var stage_tries := 0                 # 這一局「同一關重來」幾次（開發用，retry_stage）：快照帶給客戶端，客戶端照它重生本機的休眠怪群
 var _stage_save := {}                # 進這一關時的存檔：{ souls, reward, builds: peer_id → Player.save_build() }（save_stage）
 var layout: Dictionary = {}   # 這一局這一層的地形（MapDefs.layout）：blocks、開的門 doors、每格的區塊 zones
@@ -200,6 +201,7 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 	floor_num = 1
 	base_difficulty = 0.0
 	stage_tries = 0
+	run_stats.clear()
 	_populate_floor()
 	save_stage()
 	emit_event("game:restart", {})
@@ -351,7 +353,8 @@ func save_stage(reward: StringName = &"") -> void:
 	var builds := {}
 	for p in player_list:
 		builds[p.peer_id] = p.save_build()
-	_stage_save = {"souls": souls, "soul_carry": soul_carry, "reward": reward, "builds": builds}
+	_stage_save = {"souls": souls, "soul_carry": soul_carry, "reward": reward, "builds": builds,
+		"run_stats": run_stats.snapshot(), "kills": stats.kills, "time": stats.time}
 
 
 func can_retry_stage() -> bool:
@@ -359,13 +362,17 @@ func can_retry_stage() -> bool:
 
 
 # 這一關重來：每位玩家的背包、武器、技能等級、骰子、藥水回到進關時，生命與魔力補滿、全員復活（進關前就死掉的也復活）；
-# 靈魂回到進關時；同一層、同一小關、同一個種子重新擺地圖、怪群、寶箱，門的獎勵照原樣再發。擊殺數與時間不倒回去
+# 靈魂回到進關時；同一層、同一小關、同一個種子重新擺地圖、怪群、寶箱，門的獎勵照原樣再發。
+# 擊殺數、時間、每位玩家的統計（run_stats）也回到進關時：結算是「前面過的關 + 這一輪」，重來幾次看 stage_tries
 func retry_stage() -> void:
 	if not can_retry_stage():
 		return
 	stage_tries += 1
 	souls = _stage_save.souls
 	soul_carry = _stage_save.soul_carry
+	run_stats.restore(_stage_save.run_stats)
+	stats.kills = _stage_save.kills
+	stats.time = _stage_save.time
 	is_defeated = false
 	victory_timer = 0.0
 	hit_stop_timer = 0.0
@@ -852,6 +859,8 @@ func step(cmds: Dictionary, dt: float) -> void:
 	_spot_relics()
 	spawner.update(self, dt)
 	event.update(self, dt)
+	if is_authority:
+		run_stats.feed(self)   # 在移除之前記：打出這一下的僕從、剛死的怪還查得到
 	_remove_dead_entities()
 	if boss_id != 0 and not entities.has(boss_id):
 		boss_id = 0
@@ -859,11 +868,11 @@ func step(cmds: Dictionary, dt: float) -> void:
 		stats.time += dt
 	if not is_defeated and not is_over and not practice and not players.is_empty() and not is_any_player_alive():
 		is_defeated = true
-		emit_event("game:defeat", {"stats": stats.duplicate()})
+		emit_event("game:defeat", {"stats": stats.duplicate(), "run": run_stats.to_wire(self)})
 	if victory_timer > 0.0:
 		victory_timer -= dt
 		if victory_timer <= 0.0:
-			emit_event("game:victory", {"stats": stats.duplicate()})
+			emit_event("game:victory", {"stats": stats.duplicate(), "run": run_stats.to_wire(self)})
 	if rewind_enabled:
 		_record_positions()
 
@@ -957,6 +966,7 @@ func _update_downed(dt: float) -> void:
 			p.revive_progress += dt * rescuer.class_passive("revive_speed", 1.0)
 			if p.revive_progress >= r.revive_time - TIME_EPSILON:
 				p.revive(rescuer.class_passive("revive_hp_ratio", r.revive_hp_ratio))
+				run_stats.add_revive(rescuer.peer_id)
 		else:
 			p.revive_progress = maxf(0.0, p.revive_progress - r.decay_rate * dt)
 			p.down_timer -= dt
