@@ -2061,7 +2061,9 @@ static func check_effects_limits() -> String:
 	return ""
 
 
-# 法杖普攻：魔彈畫面上從杖頭寶石出發（第一幀在寶石上），STAFF_BLEND 秒後回到模擬的位置；槍口火花也在寶石冒；判定照舊用模擬的位置
+# 法杖普攻：魔彈畫面上從杖頭寶石出發（第一幀在寶石上），飛 STAFF_CONVERGE 後回到模擬的位置；這段是直線（離杖頭 → 收斂點的直線
+# 不超過 0.03）、之後順著模擬的路線，整段相鄰兩幀的方向最多轉 STAFF_TURN_MAX；槍口火花也在寶石冒；判定照舊用模擬的位置
+const STAFF_TURN_MAX := 20.0
 static func check_staff_muzzle() -> String:
 	var w := _new_world()
 	var p := _player(w)
@@ -2071,6 +2073,8 @@ static func check_staff_muzzle() -> String:
 	var err := ""
 	var first: Variant = null   # [魔彈畫面位置, 寶石位置, 模擬位置]
 	var later := -1.0
+	var path: Array[Vector3] = []   # 魔彈每一幀在畫面上的位置（收斂前後各一段）
+	var sims: Array[Vector3] = []   # 同一幀模擬的位置
 	var muzzle: Variant = null
 	var proj_id := -1
 	var age := 0.0
@@ -2089,19 +2093,40 @@ static func check_staff_muzzle() -> String:
 					var node: Node3D = view._nodes[e.id]
 					var sim := Vector3(e.pos.x, e.height, e.pos.y)
 					first = [node.position, view._staff_gem(p.id), sim]
+					path.append(node.position)
+					sims.append(sim)
 		elif w.entities.has(proj_id):
 			age += DT
-			if age > WorldView.STAFF_BLEND + DT and later < 0.0:
-				var e: Entity = w.entities[proj_id]
+			var e: Projectile = w.entities[proj_id]
+			path.append((view._nodes[proj_id] as Node3D).position)
+			sims.append(Vector3(e.pos.x, e.height, e.pos.y))
+			if age * e.speed > WorldView.STAFF_CONVERGE + 0.5 and later < 0.0:
 				later = (view._nodes[proj_id] as Node3D).position.distance_to(Vector3(e.pos.x, e.height, e.pos.y))
 	if first == null or first[1] == null:
 		err = "法杖普攻 1.5 秒內應射出魔彈、拿得到杖頭寶石的位置"
 	elif (first[0] as Vector3).distance_to(first[1]) > 0.15:
 		err = "魔彈第一幀應在杖頭寶石上：離寶石 %.2f（寶石離模擬的出生點 %.2f）" % [(first[0] as Vector3).distance_to(first[1]), (first[1] as Vector3).distance_to(first[2])]
 	elif later < 0.0 or later > 0.01:
-		err = "魔彈 %.2f 秒後應回到模擬的位置：差 %.2f" % [WorldView.STAFF_BLEND, later]
+		err = "魔彈飛 %.1f 之後應回到模擬的位置：差 %.2f" % [WorldView.STAFF_CONVERGE, later]
 	else:
-		_note("法杖魔彈第一幀離寶石 %.2f（寶石離模擬的出生點 %.2f），%.2f 秒後離模擬的位置 %.3f" % [(first[0] as Vector3).distance_to(first[1]), (first[1] as Vector3).distance_to(first[2]), WorldView.STAFF_BLEND, later])
+		var turn := 0.0
+		for i in range(1, path.size() - 1):
+			var a := path[i] - path[i - 1]
+			var b := path[i + 1] - path[i]
+			if a.length() > 1e-4 and b.length() > 1e-4:
+				turn = maxf(turn, rad_to_deg(a.angle_to(b)))
+		var bend := 0.0   # 收斂前那段離「第一幀 → 收斂點」直線多遠
+		var conv := 0   # 畫面位置跟模擬的位置重合（收斂完）的那一幀
+		while conv < path.size() - 1 and path[conv].distance_to(sims[conv]) > 1e-3:
+			conv += 1
+		for i in conv:
+			var line := path[conv] - path[0]
+			var v := path[i] - path[0]
+			bend = maxf(bend, (v - line * clampf(v.dot(line) / line.length_squared(), 0.0, 1.0)).length())
+		if bend > 0.03 or turn > STAFF_TURN_MAX:
+			err = "魔彈出手的路線應是直的：離直線 %.3f、相鄰兩幀最多轉 %.0f°（上限 %.0f°）" % [bend, turn, STAFF_TURN_MAX]
+		else:
+			_note("法杖魔彈第一幀離寶石 %.2f（寶石離模擬的出生點 %.2f）；收斂前離直線 %.3f、相鄰兩幀最多轉 %.0f°；飛 %.1f 之後離模擬的位置 %.3f" % [(first[0] as Vector3).distance_to(first[1]), (first[1] as Vector3).distance_to(first[2]), bend, turn, WorldView.STAFF_CONVERGE, later])
 	view.free()
 	return err
 

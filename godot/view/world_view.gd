@@ -1320,25 +1320,25 @@ func _add_rarity_marks(rig: Node3D, e: Enemy) -> void:
 
 
 # 法杖射出的魔彈：模擬層的出生點在角色前方 spawn_offset、離地 bolt_altitude（判定照這個），畫面上從杖頭寶石出發，
-# STAFF_BLEND 秒內平滑併回模擬的路線。只有剛射出的（建立畫面時還沒飛超過 STAFF_FRESH）才這樣，中途進入視野的照模擬的位置畫
-const STAFF_BLEND := 0.12
+# 跟模擬的位移照飛行距離線性縮小、飛 STAFF_CONVERGE 時歸零：畫面上的路線是杖頭 → 收斂點的一條直線（照時間用 smoothstep 併回去會變成
+# 先順著位移飛、再急轉回去的 S 形）。只有剛射出的（建立畫面時還沒飛超過 STAFF_FRESH）才這樣，中途進入視野的照模擬的位置畫
+const STAFF_CONVERGE := 3.0
 const STAFF_FRESH := 1.0
 
 
-func _sync_muzzle_offset(node: Node3D, e: Projectile, dt: float) -> void:
+func _sync_muzzle_offset(node: Node3D, e: Projectile, _dt: float) -> void:
 	if not node.has_meta(&"muzzle_off"):
 		var gem: Variant = _staff_gem(e.owner_id) if e.traveled < STAFF_FRESH else null
 		node.set_meta(&"muzzle_off", (gem as Vector3) - node.position if gem != null else Vector3.ZERO)
-		node.set_meta(&"muzzle_age", 0.0)
+		node.set_meta(&"muzzle_from", node.position)   # 模擬的出生點：照離它多遠算收斂（照時間算的話速度一變路線就彎）
 	var off: Vector3 = node.get_meta(&"muzzle_off")
 	if off == Vector3.ZERO:
 		return
-	var age: float = node.get_meta(&"muzzle_age") + dt
-	node.set_meta(&"muzzle_age", age)
-	if age >= STAFF_BLEND:
+	var k := node.position.distance_to(node.get_meta(&"muzzle_from")) / STAFF_CONVERGE
+	if k >= 1.0:
 		node.set_meta(&"muzzle_off", Vector3.ZERO)
 		return
-	node.position += off * (1.0 - smoothstep(0.0, STAFF_BLEND, age))
+	node.position += off * (1.0 - k)
 
 
 # 拿法杖的玩家杖頭寶石的世界座標；不是就 null
