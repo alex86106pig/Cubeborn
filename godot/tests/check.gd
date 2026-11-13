@@ -229,8 +229,8 @@ func _initialize() -> void:
 		all.bind([ViewChecks.check_limb_joints, ViewChecks.check_gait_pose, ViewChecks.check_skill_poses, ViewChecks.check_anim_recorder, ViewChecks.check_anim_viewer, ViewChecks.check_dead_lie, ViewChecks.check_special_poses, ViewChecks.check_roll_pose, ViewChecks.check_floor3_poses]))
 	_check("受擊閃白：只改自發光顏色、不切換 emission_enabled（切換會在第一次命中即時編譯著色器而卡頓）", ViewChecks.check_flash_no_shader_switch)
 	_check("特效：模擬層發出的每個 fx:* 都有畫面處理、也列在 PROJECT_GUIDELINES 第 9 節，餵給 Effects 會產生粒子；粒子與弧光環有上限、拖尾 30 / 144 FPS 每秒粒子數相同、暫停時不產生；" \
-		+ "守墓人噴火的火舌跟判定一樣大（追著噴的扇形、轉圈的一整圈、鏟起 B 的直噴）、有噴流粒子、噴完拿掉、開場預熱過；玩家揮砍的範圍平放在地上、武器尖端有拖尾",
-		all.bind([ViewChecks.check_effects_events, ViewChecks.check_effects_limits, ViewChecks.check_flame_fx, ViewChecks.check_slash_fx]))
+		+ "守墓人噴火的火舌跟判定一樣大（追著噴的扇形、轉圈的一整圈、鏟起 B 的直噴）、有噴流粒子、噴完拿掉、開場預熱過；玩家揮砍的範圍平放在地上、武器尖端有拖尾、法杖普攻的魔彈畫面上從杖頭寶石出發",
+		all.bind([ViewChecks.check_effects_events, ViewChecks.check_effects_limits, ViewChecks.check_flame_fx, ViewChecks.check_slash_fx, ViewChecks.check_staff_muzzle]))
 
 	# ───────── 介面 ─────────
 	_check("HUD：能建立、處理各種事件、顯示波次 / 血量 / 結算文字、暫停畫面有「離開遊戲」；別人撿到道具不跳橫幅；武器欄只寫手上那把；同一目標同時跳的傷害數字往上疊、地上物件名稱重疊時往上錯開；附帶的小傷害（燃燒 / 中毒 / 地面區域的一跳、附加屬性傷害）數字畫小、不佔疊層；小地圖只畫探索過的地方（牆擋視線、牆本身看得到、外框看過才亮）、換小關重畫；互動列表（兩個以上才開、滾輪 / 上下鍵換、頭尾接起來、選的離開範圍回到最近的、場上的 [F] 跟著選的）；失敗畫面有「同一關重來」（客戶端只有提示）、重來後收起；結算畫面先是墓碑頁（結果、被誰打倒、隊友各一列），點墓碑或隊友進詳細統計（傷害來源 / 受到傷害 / 每一關 / 遊玩紀錄），每一頁最多內容時塞得進 1920 × 1080",

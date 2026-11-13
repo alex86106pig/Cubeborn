@@ -53,7 +53,7 @@ func update(rig: Rig, p: Player, dt: float) -> void:
 		while not pts.is_empty() and (pts[0][1] > LIFE or pts.size() > MAX_POINTS):
 			pts.pop_front()
 		if swinging and model != null:
-			var at := _world_of(rig, model) * tip_of(model)
+			var at := rig.to_world(model) * tip_of(model)
 			var step: Vector3 = at - pts[-1][0] if not pts.is_empty() else Vector3.ONE
 			if step.length() >= REVERSE_MIN:   # 尖端幾乎沒動就不記（存下的每段都夠長，折返才判斷得出來）
 				if pts.size() >= 2 and ((pts[-1][0] as Vector3) - pts[-2][0]).dot(step) < 0.0:
@@ -121,16 +121,6 @@ static func smooth(pts: Array) -> Array:
 			out.append([b1.lerp(b2, (t - t1) / (t2 - t1)), lerpf(pts[i][1], pts[i + 1][1], float(k) / SUBDIV)])
 	out.append(pts[n - 1])
 	return out
-
-
-# 模型在世界座標的 transform：沿父節點乘到骨架根節點（不靠場景樹的 global_transform，不在樹裡也能算）
-static func _world_of(rig: Rig, model: Node3D) -> Transform3D:
-	var t := Transform3D.IDENTITY
-	var n: Node = model
-	while n != rig and n is Node3D:
-		t = (n as Node3D).transform * t
-		n = n.get_parent()
-	return (rig.global_transform if rig.is_inside_tree() else rig.transform) * t
 
 
 # 武器的尖端（模型座標）：離握把最遠的頂點（劍尖、匕首尖、權杖頭、火焰頂、鏟面末端），每個模型算一次記在 meta

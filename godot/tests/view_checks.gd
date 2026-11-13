@@ -2056,6 +2056,51 @@ static func check_effects_limits() -> String:
 	return ""
 
 
+# 法杖普攻：魔彈畫面上從杖頭寶石出發（第一幀在寶石上），STAFF_BLEND 秒後回到模擬的位置；槍口火花也在寶石冒；判定照舊用模擬的位置
+static func check_staff_muzzle() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	p.equip_weapon(&"staff")
+	var view := WorldView.new()
+	_scene_root().add_child(view)
+	var err := ""
+	var first: Variant = null   # [魔彈畫面位置, 寶石位置, 模擬位置]
+	var later := -1.0
+	var muzzle: Variant = null
+	var proj_id := -1
+	var age := 0.0
+	for i in 90:
+		w.step({World.HOST_PEER_ID: _cmd(Vector2.ZERO, p.pos + Vector2(0, 8), InputCmd.BTN_ATTACK if proj_id < 0 else 0)}, DT)
+		for ev: Dictionary in w.events:
+			if ev.name == "fx:muzzle" and muzzle == null:
+				var gem: Variant = view._staff_gem(p.id)
+				muzzle = [ev.duplicate(), gem]
+				view.on_event(ev.name, ev)
+		view.sync(w, 1.0, DT)
+		if proj_id < 0:
+			for e: Entity in w.entities.values():
+				if e is Projectile and (e as Projectile).owner_id == p.id:
+					proj_id = e.id
+					var node: Node3D = view._nodes[e.id]
+					var sim := Vector3(e.pos.x, e.height, e.pos.y)
+					first = [node.position, view._staff_gem(p.id), sim]
+		elif w.entities.has(proj_id):
+			age += DT
+			if age > WorldView.STAFF_BLEND + DT and later < 0.0:
+				var e: Entity = w.entities[proj_id]
+				later = (view._nodes[proj_id] as Node3D).position.distance_to(Vector3(e.pos.x, e.height, e.pos.y))
+	if first == null or first[1] == null:
+		err = "法杖普攻 1.5 秒內應射出魔彈、拿得到杖頭寶石的位置"
+	elif (first[0] as Vector3).distance_to(first[1]) > 0.15:
+		err = "魔彈第一幀應在杖頭寶石上：離寶石 %.2f（寶石離模擬的出生點 %.2f）" % [(first[0] as Vector3).distance_to(first[1]), (first[1] as Vector3).distance_to(first[2])]
+	elif later < 0.0 or later > 0.01:
+		err = "魔彈 %.2f 秒後應回到模擬的位置：差 %.2f" % [WorldView.STAFF_BLEND, later]
+	else:
+		_note("法杖魔彈第一幀離寶石 %.2f（寶石離模擬的出生點 %.2f），%.2f 秒後離模擬的位置 %.3f" % [(first[0] as Vector3).distance_to(first[1]), (first[1] as Vector3).distance_to(first[2]), WorldView.STAFF_BLEND, later])
+	view.free()
+	return err
+
+
 # 折線（[[位置, …], …]）相鄰兩段的最大轉角（度）
 static func _max_turn(pts: Array) -> float:
 	var most := 0.0

@@ -169,7 +169,7 @@ class FireBolt extends Behavior:
 		WeaponBehaviors.spawn_projectile(p, params)
 		if def.has("quiver"):
 			p.use_arrow(def)
-		p.world.emit_event("fx:muzzle", {"pos": p.pos + dir * def.spawn_offset, "height": p.height + Config.HEIGHT.bolt_altitude, "color": def.color})
+		p.world.emit_event("fx:muzzle", {"pos": p.pos + dir * def.spawn_offset, "height": p.height + Config.HEIGHT.bolt_altitude, "color": def.color, "owner": p.id})
 
 
 class ArcaneBurst extends Behavior:
@@ -208,7 +208,7 @@ class ArrowFan extends Behavior:
 		for i in n:
 			var a: float = base + (def.fan_arc * (float(i) / (n - 1) - 0.5) if n > 1 else 0.0)
 			WeaponBehaviors.spawn_projectile(p, WeaponBehaviors.shot_params(p, def, MathUtil.dir_from_angle(a)))
-		p.world.emit_event("fx:muzzle", {"pos": p.pos + dir * def.spawn_offset, "height": p.height + Config.HEIGHT.bolt_altitude, "color": def.color})
+		p.world.emit_event("fx:muzzle", {"pos": p.pos + dir * def.spawn_offset, "height": p.height + Config.HEIGHT.bolt_altitude, "color": def.color, "owner": p.id})
 
 
 # 蓄力穿透箭（F5 長弓右鍵）：按住蓄力（hold，停在 active），放開進收招時射出；
@@ -234,7 +234,7 @@ class ChargedShot extends Behavior:
 		params.pierce = true
 		WeaponBehaviors.spawn_projectile(p, params)
 		p.world.emit_event("sfx:cue", {"cue": def.sfx_release, "pos": p.pos})
-		p.world.emit_event("fx:muzzle", {"pos": p.pos + dir * def.spawn_offset, "height": p.height + Config.HEIGHT.bolt_altitude, "color": def.color})
+		p.world.emit_event("fx:muzzle", {"pos": p.pos + dir * def.spawn_offset, "height": p.height + Config.HEIGHT.bolt_altitude, "color": def.color, "owner": p.id})
 
 
 # 影步（F6 雙匕首右鍵）：瞬移到 range 內離準星最近那隻怪的背後（背後是牆就繞著怪找空位），背刺一下必爆擊；

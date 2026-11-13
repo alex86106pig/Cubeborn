@@ -253,7 +253,7 @@ godot/
 | `sfx:cue` | `{ cue, pos? }` | 各遊戲物件；`cue` 必須是 `audio/sound.gd` 的 `CUE_NAMES` 之一 |
 | `camera:shake` | `{ amount, duration, player_id? }` | Combat、Player、Projectile、Enemy、Boss、World（模擬層不能直接震相機）；有 `player_id`（玩家被打）時只震那位玩家的畫面 |
 | `fx:slash` | `{ pos, height, facing, range, arc, color, swing_dir }` | 近戰揮砍（`fx:*` 是 v0.20.0 起的特效事件，見系統說明 §7） |
-| `fx:muzzle` | `{ pos, height, color }` | 法杖魔彈發射 |
+| `fx:muzzle` | `{ pos, height, color, owner }` | 魔彈、箭發射（owner：射的人的 id；畫面上拿法杖時改在杖頭寶石冒） |
 | `fx:telegraph` | `{ pos, height, radius, color, life, fill? }`（fill：圈內鋪半透明的圓，聖光圈用） | 聖光圈、玩家道具。**怪物攻擊不用**（設計方向「怪物攻擊不畫紅圈」，檢查會擋 `sim/` 其他檔案發這個事件） |
 | `fx:fizzle` | `{ pos, height, color }` | 投射物飛到盡頭、撞牆或被格擋 |
 | `fx:explosion` | `{ pos, height, radius, color }` | 投射物爆炸 |

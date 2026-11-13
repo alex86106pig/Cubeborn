@@ -211,6 +211,16 @@ func mesh_count() -> int:
 	return PartKit.mesh_instances(self).size()
 
 
+## 骨架裡某個節點在世界座標的 transform：沿父節點乘到骨架根節點，再接上骨架本身（不靠場景樹的 global_transform，不在樹裡也能算）
+func to_world(node: Node3D) -> Transform3D:
+	var t := Transform3D.IDENTITY
+	var n: Node = node
+	while n != self and n is Node3D:
+		t = (n as Node3D).transform * t
+		n = n.get_parent()
+	return (global_transform if is_inside_tree() else transform) * t
+
+
 # 角色本體的頂點（去掉重複的）：[[關節, 關節座標的頂點], …]，第一次用到才算（本體零件建好就不變）。
 # 用頂點不用外框：外框的角轉斜時比零件低，貼地會留縫
 var _shape: Array = []

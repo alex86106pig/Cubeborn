@@ -145,6 +145,12 @@ func clear_views() -> void:
 func on_event(name: String, p: Dictionary) -> void:
 	if name == "game:restart":
 		effects.clear()
+	if name == "fx:muzzle" and p.has("owner"):
+		var gem: Variant = _staff_gem(p.owner)
+		if gem != null:   # 拿法杖：從杖頭寶石冒出來（模擬層只知道角色前方的出生點）
+			p = p.duplicate()
+			p.pos = Vector2(gem.x, gem.z)
+			p.height = gem.y
 	# 視野外的特效（怪物的攻擊、命中粒子、預警圈…）不畫；留在地上 LINGER_MIN 秒以上的（聖光圈、腐氣、蜘蛛網）照樣建立，
 	# 每幀照視野決定顯不顯示（Effects.visible_at），在視野外放的、轉頭回來還看得到
 	if name.begins_with("fx:") and p.has("pos"):
@@ -321,6 +327,8 @@ func sync(world: World, alpha: float, dt: float) -> void:
 			Vector3(p.x, lerpf(e.prev_height, e.height, alpha), p.y))
 		if (e is Enemy and (e as Enemy).anim.has("buried")) or (e is Player and (e as Player).anim.get("buried", false)):
 			node.position.y -= BURIED_DEPTH    # 被鐵鏟埋進土裡（F9；玩家被守墓人鏟起 B）：只露半身
+		if e is Projectile:
+			_sync_muzzle_offset(node, e as Projectile, dt)
 		if e is Player:
 			_sync_block_fan(node.get_node(^"BlockFan"), e as Player)
 			var glow: OmniLight3D = node.get_meta(&"glow")
@@ -1309,6 +1317,36 @@ func _add_rarity_marks(rig: Node3D, e: Enemy) -> void:
 	ring.material_override = mat
 	ring.name = &"RarityRing"
 	rig.add_child(ring)
+
+
+# 法杖射出的魔彈：模擬層的出生點在角色前方 spawn_offset、離地 bolt_altitude（判定照這個），畫面上從杖頭寶石出發，
+# STAFF_BLEND 秒內平滑併回模擬的路線。只有剛射出的（建立畫面時還沒飛超過 STAFF_FRESH）才這樣，中途進入視野的照模擬的位置畫
+const STAFF_BLEND := 0.12
+const STAFF_FRESH := 1.0
+
+
+func _sync_muzzle_offset(node: Node3D, e: Projectile, dt: float) -> void:
+	if not node.has_meta(&"muzzle_off"):
+		var gem: Variant = _staff_gem(e.owner_id) if e.traveled < STAFF_FRESH else null
+		node.set_meta(&"muzzle_off", (gem as Vector3) - node.position if gem != null else Vector3.ZERO)
+		node.set_meta(&"muzzle_age", 0.0)
+	var off: Vector3 = node.get_meta(&"muzzle_off")
+	if off == Vector3.ZERO:
+		return
+	var age: float = node.get_meta(&"muzzle_age") + dt
+	node.set_meta(&"muzzle_age", age)
+	if age >= STAFF_BLEND:
+		node.set_meta(&"muzzle_off", Vector3.ZERO)
+		return
+	node.position += off * (1.0 - smoothstep(0.0, STAFF_BLEND, age))
+
+
+# 拿法杖的玩家杖頭寶石的世界座標；不是就 null
+func _staff_gem(owner_id: int) -> Variant:
+	var rig := _nodes.get(owner_id) as Rig
+	if rig == null or rig.weapon_model != &"staff" or rig.weapon_gem == null:
+		return null
+	return rig.to_world(rig.weapon_gem).origin
 
 
 # 發光球體（網頁版 Projectile 的預設外觀）；飛行高度由模擬層的 height 決定
