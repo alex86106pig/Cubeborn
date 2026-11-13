@@ -7,7 +7,7 @@
 # （觸發袋改版後格子已經不用，留著給 grid_cells）
 class_name WeaponDefs
 
-const TAGS := {&"melee": "近戰", &"ranged": "遠程", &"shield": "盾", &"dagger": "匕首", &"shovel": "鏟", &"torch": "火把", &"bow": "弓", &"caster": "施法"}
+const TAGS := {&"melee": "近戰", &"ranged": "遠程", &"sword": "劍", &"shield": "盾", &"dagger": "匕首", &"shovel": "鏟", &"torch": "火把", &"bow": "弓", &"caster": "施法"}
 
 const WEAPONS := {
 	# 劍盾（守墓騎士的起始武器；許家慶 2026-11-05 拿掉主副手與長劍）：左鍵三段斬擊、右鍵格擋（格擋中左鍵招架）；模型右手劍、左手盾
@@ -15,7 +15,7 @@ const WEAPONS := {
 		"id": &"swordShield",
 		"name": "劍盾",
 		"type": &"melee",
-		"tags": [&"melee", &"shield"],
+		"tags": [&"melee", &"sword", &"shield"],
 		"spell_power": 3.0,
 		"base_damage": 8.0,         # 原本長劍的（普攻 + 蓄力突刺打一隻每秒照近戰目標，12 → 8）；蓄力突刺改成技能「突刺」
 		"trigger_every": 2,          # 左鍵的命中袋 / 出手袋每 2 下發動一次（每秒打中約 2.4 下 → 約每秒 1 次，docs/平衡數字.md；許家慶 2026-11-05 取代機率，Claude 暫定）
@@ -434,7 +434,7 @@ const WEAPONS := {
 		"id": &"torch",
 		"name": "火把",
 		"type": &"melee",
-		"tags": [&"melee", &"torch"],
+		"tags": [&"melee", &"torch", &"caster"],
 		"spell_power": 8.0,
 		"model": &"torch",
 		"grid": ["AAA", "AAA", "AGA", "HHH", ".H.", ".H."],

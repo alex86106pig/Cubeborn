@@ -3,7 +3,7 @@
 # 寶石座的技能耗魔（mana，Player.mana_cost_of；放完同一格 Config.MANA.cast_gap 秒內不能再放）、沒有冷卻；
 # 藥水是 mode &"charges"：有使用次數，cooldown 是防連按間隔
 # weapons：寶石座時代的「能鑲在哪把武器」，觸發袋改版後技能不限武器；現在有這欄 = 是技能（gem_skill_ids），第一把是平衡表量傷害時拿的武器；tags：修飾看這個（TAGS）
-# category（CATEGORIES）：戰技有角色動作、法術被觸發時沒有動作；needs：手上的武器要有這個標籤（WeaponDefs.TAGS）才放得出來，沒寫 = 不限武器；
+# category（CATEGORIES）：戰技有角色動作、法術被觸發時沒有動作、輔助技能是改寫袋子的（bag_rule，自己不會放）；needs：手上的武器要有這個標籤（WeaponDefs.TAGS）才放得出來，沒寫 = 不限武器；
 # scale：傷害吃武器傷害與法術強度各多少（scale_of，沒寫 = DEFAULT_SCALE）。needs 不符的放不出來（fits_weapon，ActiveSlots.can_cast）；scale 還沒接進傷害
 # 傷害 damage_pct 是手上武器基礎傷害的倍數（Player.pct_damage，含攻擊力與物理 / 屬性傷害）；等級每升 1 級傷害 +LEVEL.damage、耗魔 −LEVEL.mana
 # 耗魔 = 強度：照 docs/設計方向.md「技能強度」，耗魔 ÷ 武器的回魔當作冷卻秒數去算傷害目標（許家慶 2026-11-04：耗魔 ÷ 3、倍率 ÷ 2）
@@ -11,7 +11,7 @@
 class_name SkillDefs
 
 const TAGS := {&"area": "範圍", &"projectile": "投射", &"move": "移動", &"melee": "近戰", &"guard": "防禦", &"summon": "召喚", &"buff": "增益"}
-const CATEGORIES := {&"attack": "戰技", &"spell": "法術"}
+const CATEGORIES := {&"attack": "戰技", &"spell": "法術", &"aux": "輔助技能"}
 const DEFAULT_SCALE := {"weapon": 1.0, "spell": 0.0}   # 傷害 = damage_pct ×（武器傷害 × weapon + 武器的法術強度 × spell）
 const LEVEL := {"max": 5, "damage": 0.2, "mana": 0.1}
 const PHANTOM_MUL := 0.6    # 幻影放出的技能（手上的武器不符、蓋著幻影修飾）傷害倍率（ActiveSlots.cast_context）
@@ -127,12 +127,12 @@ const SKILLS := {
 	&"judgment": {"icon": "譴", "mana": 22, "behavior": &"smite", "category": &"spell", "weapons": [&"swordShield"], "tags": [&"area"],
 		"range": 8.0, "targets": 4, "delay": 0.4, "radius": 1.2, "damage_pct": 6.625, "knockback": 3.0, "damage_type": &"lightning", "color": Color("ffe45c"), "sfx": "explosion"},
 	# 改寫袋子：bag_rule 的技能不會自己放、不耗魔（回響、共鳴、血契），規則在 BagTriggers.run_bag；共鳴發動時才扣 mana
-	&"echo": {"icon": "響", "behavior": &"bag_rule", "category": &"spell", "weapons": [&"swordShield"], "tags": [&"buff"], "rule": &"echo",
+	&"echo": {"icon": "響", "behavior": &"bag_rule", "category": &"aux", "weapons": [&"swordShield"], "tags": [&"buff"], "rule": &"echo",
 		"delay": 0.5, "mul": 0.6, "mana_share": 0.5, "color": Color("ffb060")},
 	&"soul_spring": {"icon": "泉", "mana": 20, "behavior": &"mana_buff", "category": &"spell", "weapons": [&"swordShield"], "tags": [&"buff"],
 		"duration": 5.0, "mana_cost": 0.5, "color": Color("7fb0ff")},
-	&"resonance": {"icon": "鳴", "mana": 8, "behavior": &"bag_rule", "category": &"spell", "weapons": [&"swordShield"], "tags": [&"buff"], "rule": &"resonance", "color": Color("ffb060")},
-	&"blood_pact": {"icon": "契", "behavior": &"bag_rule", "category": &"spell", "weapons": [&"swordShield"], "tags": [&"buff"], "rule": &"blood_pact",
+	&"resonance": {"icon": "鳴", "mana": 8, "behavior": &"bag_rule", "category": &"aux", "weapons": [&"swordShield"], "tags": [&"buff"], "rule": &"resonance", "color": Color("ffb060")},
+	&"blood_pact": {"icon": "契", "behavior": &"bag_rule", "category": &"aux", "weapons": [&"swordShield"], "tags": [&"buff"], "rule": &"blood_pact",
 		"hp_per_mana": 0.005, "power": 1.25, "color": Color("ff5a5a")},
 	# 成長型
 	&"soul_reaver": {"icon": "噬", "mana": 14, "behavior": &"reaver", "category": &"attack", "needs": &"melee", "weapons": [&"swordShield"], "tags": [&"melee"],

@@ -58,7 +58,7 @@ static func check_weapon_defs() -> String:
 	return _weapon_catalog()
 
 
-# 技能的類別與武器需求、武器的標籤與法術強度：每招、每把都有填，需求的標籤有武器拿得出來（平衡表量傷害的那把也要符合），說明框看得到
+# 技能的類別與武器需求、武器的標籤與法術強度：每招、每把都有填，改寫袋子的技能才是輔助技能，需求的標籤有武器拿得出來（平衡表量傷害的那把也要符合），說明框看得到
 static func check_skill_weapon_tags() -> String:
 	for wid: StringName in WeaponDefs.WEAPONS:
 		var w: Dictionary = WeaponDefs.WEAPONS[wid]
@@ -77,7 +77,9 @@ static func check_skill_weapon_tags() -> String:
 		var sk: Dictionary = SkillDefs.SKILLS[id]
 		var skill_name: String = ItemDefs.ITEMS[id].name
 		if not SkillDefs.CATEGORIES.has(sk.get("category", &"")):
-			return "%s 沒有類別（戰技 / 法術）" % skill_name
+			return "%s 沒有類別（戰技 / 法術 / 輔助技能）" % skill_name
+		if (sk.category == &"aux") != (sk.behavior == &"bag_rule"):
+			return "%s：改寫袋子的技能（bag_rule）才是輔助技能，其他的不是" % skill_name
 		var scale := SkillDefs.scale_of(id)
 		if scale.weapon < 0.0 or scale.spell < 0.0 or scale.weapon + scale.spell <= 0.0:
 			return "%s 的 scale 不對：%s" % [skill_name, scale]
