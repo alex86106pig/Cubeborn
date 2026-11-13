@@ -813,16 +813,16 @@ const BOW_SEGMENTS := 8
 const BOW_HALF_ARC := 0.85   # 弓身半邊張開的角度（弧度）
 # 箭袋（身體座標，玩家騎士 KNIGHT_JOINTS 的右肩在 (-0.36, 1.55, 0)、手臂長 0.58）：照真人的背後箭袋，背在上背、袋口在右肩胛後面跟肩膀
 # 差不多高，斜到左腰後；箭只露出袋口 QUIVER_OUT（真人約 4~6 吋、箭長的 15%），箭尾在肩膀頂端的高度。拉弓時右手往後伸過肩抓箭尾
-# （QUIVER_GRAB，離右肩 0.51），沿箭袋往上拉到搆得到的最遠處（QUIVER_PULL），之後翻過肩（Animator.pose_bow）。
+# （QUIVER_GRAB，離右肩 0.46），沿箭袋往上拉到快搆不到的地方（QUIVER_PULL），之後翻過肩（Animator.pose_bow）。
 # 改肩膀、手臂長或箭長要重算。箭袋在披風（背面 z 約 -0.37）外面
 # 玩家的箭長（兩把弓一樣，拉弦長由身體決定）：Animator.pose_bow 拉滿時拳頭在右臉頰旁、弓手打直，兩者距離約 0.84，
 # 箭長 = 那段 + 0.1（拉滿時箭頭剛好露出弓外 0.1）；改骨架的肩寬、手臂長或 Animator.ANCHOR_* 要一起改
 const BOW_ARROW := 0.95
-const QUIVER_AXIS := Vector3(-0.4512, 0.8924, 0.0)   # 袋底 → 袋口（往右上斜約 27°）
+const QUIVER_AXIS := Vector3(-0.4512, 0.8789, 0.155)   # 袋底 → 袋口（往右上斜約 27°、袋口往身體轉 10°：軸線靠近肩膀，手搆得近、拉得長；袋底離背 0.13）
 const QUIVER_MOUTH := Vector3(-0.3, 1.5, -0.48)      # 右肩胛後面
 const QUIVER_OUT := 0.15                             # 箭露出袋口多長
 const QUIVER_GRAB := QUIVER_MOUTH + QUIVER_AXIS * QUIVER_OUT   # 露出袋口的箭尾、手抓的地方
-const QUIVER_PULL := 0.19                            # 沿箭袋往上拉多遠（手臂伸到底；拉不出整支，剩下的翻過肩時順著袋口出來）
+const QUIVER_PULL := 0.3                             # 沿箭袋往上拉多遠（手臂快伸到底，最多 0.33；拉不出整支，剩下的翻過肩時順著袋口出來）
 const QUIVER_BOTTOM := QUIVER_MOUTH - QUIVER_AXIS * (BOW_ARROW - QUIVER_OUT + 0.02)
 const QUIVER_RADIUS := 0.11
 
