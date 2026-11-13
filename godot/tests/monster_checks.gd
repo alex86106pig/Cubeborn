@@ -1085,6 +1085,9 @@ static func _keeper_world(dist: float) -> Array:
 # 噴火追著玩家走、最後原地轉一圈（360°）、每 tick 一下並留殘火；口哨叫不給靈魂的屍犬；全程不畫預警圈
 static func check_gravekeeper_moves() -> String:
 	var d: Dictionary = EnemyDefs.ENEMIES.gravekeeper
+	var range_err := _check_lantern_min_distance(d)
+	if range_err != "":
+		return range_err
 	for move: StringName in [&"shovel", &"dig", &"lantern", &"whistle"]:
 		var dist: float = {&"shovel": 3.0, &"dig": 8.0, &"lantern": 6.0, &"whistle": 6.0}[move]
 		var setup := _keeper_world(dist)
@@ -1704,6 +1707,32 @@ static func check_corpse_ledge() -> String:
 	CheckKit._note("屍體：高台 %s 高 %.2f 往台外擊退死掉，1 秒後高 %.2f" % [spot, h0, e.height])
 	if absf(e.height - h0) > 0.05:
 		return "高台邊緣 %s（高 %.2f）帶著往台外的擊退死掉，屍體應留在台上，1 秒後高 %.2f" % [spot, h0, e.height]
+	return ""
+
+
+# 噴火的發動距離：追擊中其他招都在冷卻、噴火好了，玩家在 min_distance 內不噴，在 min_distance ~ trigger_distance 之間會噴
+static func _check_lantern_min_distance(d: Dictionary) -> String:
+	var f: Dictionary = d.lantern
+	for case: Array in [[f.min_distance - 0.5, false], [(f.min_distance + f.trigger_distance) * 0.5, true]]:
+		var setup := _keeper_world(case[0])
+		var w: World = setup[0]
+		var p: Player = setup[1]
+		var k: Gravekeeper = setup[2]
+		var pinned := p.pos
+		k.fsm.change(&"chase")
+		for move: String in ["scoop", "shovel", "whistle", "dig"]:
+			w.cooldowns.start(k.cd(move), 99.0)
+		w.cooldowns.start(k.cd("lantern"), 0.0)
+		var fired := false
+		for i in roundi((d.decide_delay + 0.3) / DT):
+			w.step({World.HOST_PEER_ID: InputCmd.new()}, DT)
+			k.pos = Vector2.ZERO
+			p.pos = pinned
+			if k.fsm.is_in(&"lantern"):
+				fired = true
+				break
+		if fired != case[1]:
+			return "守墓人噴火：玩家在 %.1f 單位時應%s噴火（發動距離 %.1f ~ %.1f）" % [case[0], "" if case[1] else "不", f.min_distance, f.trigger_distance]
 	return ""
 
 

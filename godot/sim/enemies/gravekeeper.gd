@@ -251,7 +251,7 @@ class KeeperChase:
 			if dist <= d.shovel.trigger_distance and cds.is_ready(e.cd("shovel")):
 				fsm.change(&"shovel")
 				return
-			if dist <= d.lantern.trigger_distance and cds.is_ready(e.cd("lantern")):
+			if dist >= d.lantern.min_distance and dist <= d.lantern.trigger_distance and cds.is_ready(e.cd("lantern")):
 				fsm.change(&"lantern")
 				return
 			if cds.is_ready(e.cd("whistle")) and _hounds(e) < d.whistle.max_alive:
