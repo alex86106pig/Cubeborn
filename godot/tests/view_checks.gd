@@ -2851,12 +2851,14 @@ static func check_archer_bow_arm() -> String:
 
 
 # 玩家拉弓（短弓、長弓的普攻、右鍵與弓的戰技）：雙手整條（上臂、前臂、拳頭）不穿過胸口與頭，包括從待機舉弓、抽箭、搭箭、拉弦、放箭、
-# 停手後放下；手肘與拳頭每一步移動不超過 BOW_STEP_MAX（不在一幀內甩過去）；舉好弓之後弓手不動（BOW_HAND_STILL）；從待機開的第一發前搖要自己伸手拿箭、搭弦、拉弦，
+# 停手後放下；手肘與拳頭每一步移動不超過 BOW_STEP_MAX（不在一幀內甩過去）；拉滿瞄準、放箭時弓手不動（BOW_HAND_STILL）；
+# 箭搭上弦那一幀右手就在弦的原位（STRING_HOOK，右手去勾弦、弓送過來，不是弦自己黏到右手上；從待機開的第一發不算）；從待機開的第一發前搖要自己伸手拿箭、搭弦、拉弦，
 # YangHsu 2026-11-13 決定不加前搖時間、動畫加速塞進去（短弓只有 5 幀），那段只擋明顯的瞬移（BOW_FIRST_STEP_MAX，量手相對身體）；拉滿時雙腳不交叉（跟著骨盆側轉）。
 # 軀幹 = 盔甲零件頂點的水平截面（凸多邊形，六角柱）與上下範圍，頭 = 頭部零件的球；上臂靠肩膀那 1/4 本來就貼著軀幹，不量
 const BOW_STEP_MAX := 0.6
 const BOW_FIRST_STEP_MAX := 1.0
-const BOW_HAND_STILL := 0.02   # 舉好弓之後弓手每步最多移動多少（身體座標）：抽箭、搭弦、拉弦、放箭時弓手不動
+const BOW_HAND_STILL := 0.02   # 拉滿瞄準、放箭時弓手每步最多移動多少（身體座標）
+const STRING_HOOK := 0.05      # 箭搭上弦那一幀右手離弦的原位多遠：右手去勾弦，不是弦自己黏過來
 
 
 static func check_bow_draw_clear() -> String:
@@ -2882,6 +2884,8 @@ static func check_bow_draw_clear() -> String:
 			var first_max := 0.0
 			var bow_moved := 0.0
 			var bow_at := ""
+			var hook_gap := 0.0       # 箭搭上弦那一幀右手離弦的原位（普攻、右鍵）
+			var was_on_string := false
 			var cross := INF
 			var prev: Array = []
 			var prev_body: Array = []   # 第一發前搖量手相對身體的移動（後跳射整個人在跳，不算手甩）
@@ -2918,7 +2922,7 @@ static func check_bow_draw_clear() -> String:
 				if not prev.is_empty():
 					for n in now.size():
 						var mv: float = (now[n] - prev[n]).length()
-						if n == 3 and made.anim._drawing and not first_shot and made.anim._bow_hold <= 0.0 and (now_body[n] - prev_body[n]).length() > bow_moved:
+						if n == 3 and made.anim._drawing and made.anim._bow_phase_last == &"active" and made.anim._bow_hold <= 0.0 and (now_body[n] - prev_body[n]).length() > bow_moved:
 							bow_moved = (now_body[n] - prev_body[n]).length()   # 左拳（弓手）
 							bow_at = tag
 						if first_shot:
@@ -2928,6 +2932,12 @@ static func check_bow_draw_clear() -> String:
 							step_at = tag
 				prev = now
 				prev_body = now_body
+				var on_string: bool = made.anim._drawing and made.anim._arrow == &"bow"
+				if on_string and not was_on_string and not first_shot and row.key in ["attack", "special"] and rig.weapon_left != null:   # 從待機開的第一發前搖照 YangHsu 決定加速，短弓 5 幀跳過搭在原位那一刻
+					var fwd_b := Basis.from_euler(rig.body.rotation, EULER_ORDER_YXZ).inverse() * Vector3.BACK
+					var rest := BodyPose.hand_pos(rig, false) + fwd_b * (rig.weapon_left.get_meta(&"mounts").string as Vector3).z
+					hook_gap = maxf(hook_gap, BodyPose.hand_pos(rig, true).distance_to(rest))
+				was_on_string = on_string
 				if made.anim._drawing and row.key in ["attack", "special"]:
 					var lower := func(leg: Node3D, shin: Node3D) -> Vector3:
 						return rig.body.transform * (leg.transform * (shin.transform * Vector3(0, -(leg.position.y + shin.position.y), 0)))
@@ -2938,14 +2948,16 @@ static func check_bow_draw_clear() -> String:
 			elif step_max > BOW_STEP_MAX:
 				err = "%s %s 手肘或拳頭一步移動 %.2f（%s），超過 %.2f" % [weapon, row.key, step_max, step_at, BOW_STEP_MAX]
 			elif bow_moved > BOW_HAND_STILL:
-				err = "%s %s 舉好弓之後弓手應不動：一步移動 %.3f（%s）" % [weapon, row.key, bow_moved, bow_at]
+				err = "%s %s 拉滿瞄準、放箭時弓手應不動：一步移動 %.3f（%s）" % [weapon, row.key, bow_moved, bow_at]
+			elif hook_gap > STRING_HOOK:
+				err = "%s %s 箭搭上弦那一幀右手離弦的原位 %.2f（弦自己黏過去）" % [weapon, row.key, hook_gap]
 			elif first_max > BOW_FIRST_STEP_MAX:
 				err = "%s %s 從待機開第一發的前搖手肘或拳頭一步移動 %.2f，超過 %.2f（瞬移）" % [weapon, row.key, first_max, BOW_FIRST_STEP_MAX]
 			elif cross < 0.1:
 				err = "%s %s 拉弓時雙腳交叉：左右腳在骨盆左右方向的間距 %.2f" % [weapon, row.key, cross]
 			if err != "":
 				break
-			_note("%s %s 雙手最深 %.3f、一步最多移動 %.2f（第一發前搖 %.2f）、弓手最多動 %.3f%s" % [weapon, row.key, deep, step_max, first_max, bow_moved, "、雙腳間距 %.2f" % cross if cross < INF else ""])
+			_note("%s %s 雙手最深 %.3f、一步最多移動 %.2f（第一發前搖 %.2f）、瞄準放箭時弓手最多動 %.3f、搭弦時右手離弦 %.3f%s" % [weapon, row.key, deep, step_max, first_max, bow_moved, hook_gap, "、雙腳間距 %.2f" % cross if cross < INF else ""])
 		if err != "":
 			break
 	rec.clear()
