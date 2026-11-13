@@ -177,6 +177,38 @@ static func check_weapon_needs() -> String:
 	return _check_phantom()
 
 
+# 傷害來源（scale）：放出來的傷害 = damage_pct ×（基礎傷害 × weapon + 法術強度 × spell）× 等級與稀有度；
+# 全吃法強的換法強高的武器比較痛、全吃武器傷害的不受法強影響；說明寫出吃什麼
+static func check_skill_scale() -> String:
+	var seen := {}
+	for id: StringName in [&"frost_nova", &"sword_wave", &"whirlwind"]:
+		var def: Dictionary = SkillDefs.SKILLS[id]
+		var scale := SkillDefs.scale_of(id)
+		seen[[scale.weapon > 0.0, scale.spell > 0.0]] = true
+		var want_text := "武器傷害" if scale.spell <= 0.0 else ("法術強度" if scale.weapon <= 0.0 else "+ 法術強度")
+		if not UiKit.skill_damage_line(id).contains(want_text) or (scale.weapon <= 0.0 and UiKit.skill_damage_line(id).contains("武器傷害")):
+			return "%s 的說明應寫出傷害來源（%s）：%s" % [id, want_text, UiKit.skill_damage_line(id)]
+		for wid: StringName in WeaponDefs.WEAPONS:
+			var wd: Dictionary = WeaponDefs.WEAPONS[wid]
+			if not SkillDefs.fits_weapon(def, wd):
+				continue
+			var s := _setup(wid)
+			var p: Player = s[1]
+			_put(p, p.loadout.key_bags()[0], id)
+			var dummy := LootChecks._item_dummy(s[0], Vector2(0, 2), 100000.0)
+			dummy.set_resists({})
+			_run(s[0], _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
+			_run(s[0], _cmd(Vector2.ZERO, Vector2(0, 5)), roundi(1.0 / DT))
+			var want: float = def.damage_pct * (wd.base_damage * scale.weapon + wd.spell_power * scale.spell) * SkillDefs.damage_mul(id, 1) * p.stats.value(StatDefs.type_damage_stat(def.damage_type))
+			var got := dummy.max_hp - dummy.hp
+			var dealt := LootChecks._dealt_exact(dummy, want, def.damage_type)
+			if absf(got - dealt) > 0.51:   # 傷害取整數
+				return "%s 拿%s放應打 %.2f（%s ×（基礎 %s × %s + 法強 %s × %s））：實際 %.2f" % [id, wd.name, dealt, def.damage_pct, wd.base_damage, scale.weapon, wd.spell_power, scale.spell, got]
+	if seen.size() != 3:
+		return "前置：冰霜新星、劍氣、旋風斬應各是全吃法強、混合、全吃武器傷害"
+	return ""
+
+
 # 幻影修飾：透明格蓋在武器不符的技能上 → 放得出來、傷害 × PHANTOM_MUL、耗魔照強度加；武器符合時沒作用（不打折、不加耗魔）；
 # 只蓋得到有武器需求的技能
 static func _check_phantom() -> String:
@@ -411,7 +443,7 @@ static func check_skill_budget() -> String:
 			continue
 		for level in [1, 3]:
 			var ctx := ActiveSlots.cast_context(p, {"def": def, "id": id, "level": level, "bag": {}})
-			var want := SkillDefs.level_damage_mul(level) * SkillDefs.budget(id)
+			var want := SkillDefs.level_damage_mul(level) * SkillDefs.budget(id) * SkillDefs.scale_mul(def, p.weapon)   # 傷害來源也乘在這裡
 			if absf(ctx.mul - want) > 1e-6:
 				return "%s（%s）%d 級的傷害倍率應 %.3f，實際 %.3f" % [id, ItemDefs.ITEMS[id].rarity, level, want, ctx.mul]
 		var line := UiKit.skill_damage_line(id)

@@ -4,8 +4,8 @@
 # 藥水是 mode &"charges"：有使用次數，cooldown 是防連按間隔
 # weapons：寶石座時代的「能鑲在哪把武器」，觸發袋改版後技能不限武器；現在有這欄 = 是技能（gem_skill_ids），第一把是平衡表量傷害時拿的武器；tags：修飾看這個（TAGS）
 # category（CATEGORIES）：戰技有角色動作、法術被觸發時沒有動作、輔助技能是改寫袋子的（bag_rule，自己不會放）；needs：手上的武器要有這個標籤（WeaponDefs.TAGS）才放得出來，沒寫 = 不限武器；
-# scale：傷害吃武器傷害與法術強度各多少（scale_of，沒寫 = DEFAULT_SCALE）。needs 不符的放不出來（fits_weapon，ActiveSlots.can_cast）；scale 還沒接進傷害
-# 傷害 damage_pct 是手上武器基礎傷害的倍數（Player.pct_damage，含攻擊力與物理 / 屬性傷害）；等級每升 1 級傷害 +LEVEL.damage、耗魔 −LEVEL.mana
+# scale：傷害吃武器傷害與法術強度各多少（沒寫 = DEFAULT_SCALE，全吃武器傷害）；只能配一種武器的技能（要盾、匕首、鏟、火把、弓）填了沒有差別，不填。needs 不符的放不出來（fits_weapon，ActiveSlots.can_cast）
+# 傷害 = damage_pct ×（武器基礎傷害 × weapon + 法術強度 × spell）：Player.pct_damage（含攻擊力與物理 / 屬性傷害）× scale_mul（ActiveSlots.cast_context 乘進 ctx.mul）；等級每升 1 級傷害 +LEVEL.damage、耗魔 −LEVEL.mana
 # 耗魔 = 強度：照 docs/設計方向.md「技能強度」，耗魔 ÷ 武器的回魔當作冷卻秒數去算傷害目標（許家慶 2026-11-04：耗魔 ÷ 3、倍率 ÷ 2）
 # 數字都是 Claude 暫定（2026-10-30 許家慶照表同意技能清單），試玩後再調；傷害照 docs/設計方向.md「技能強度」的目標，調完跑 `node tools/release.mjs --balance` 看 docs/平衡數字.md
 class_name SkillDefs
@@ -37,7 +37,7 @@ const SKILLS := {
 		"radius": 2.6, "damage_pct": 3, "knockback": 6.0, "damage_type": &"phys", "color": Color("d8e4ff"), "sfx": "swingHeavy"},
 	&"charge_slash": {"icon": "衝", "mana": 12, "behavior": &"dash", "category": &"attack", "needs": &"melee", "weapons": [&"swordShield"], "tags": [&"move", &"melee"],
 		"distance": 5.0, "time": 0.3, "width": 1.4, "damage_pct": 3.5, "knockback": 5.0, "damage_type": &"phys", "color": Color("d8e4ff"), "sfx": "swingHeavy"},
-	&"sword_wave": {"icon": "氣", "mana": 8, "behavior": &"shoot", "category": &"spell", "needs": &"melee", "weapons": [&"swordShield"], "tags": [&"projectile"],
+	&"sword_wave": {"icon": "氣", "mana": 8, "behavior": &"shoot", "category": &"spell", "scale": {"weapon": 0.8, "spell": 0.2}, "needs": &"melee", "weapons": [&"swordShield"], "tags": [&"projectile"],
 		"count": 1, "spread": 0.0, "speed": 16.0, "range": 10.0, "radius": 0.6, "pierce": true, "damage_pct": 2.5, "damage_type": &"phys",
 		"color": Color("b8d0ff"), "visual": &"crescent", "sfx": "arcaneCast"},
 	# 突刺（原本長劍按住右鍵的蓄力突刺，許家慶 2026-11-05 改成技能；袋子觸發沒辦法按住蓄力，改成一放就衝）：比衝鋒斬短、窄、快、擊退大，傷害同衝鋒斬（4.5 時平衡表偏高 25%，Claude 暫定）
@@ -54,13 +54,13 @@ const SKILLS := {
 	# ---- 火把 ----
 	&"fire_nova": {"icon": "焰", "mana": 12, "behavior": &"nova", "category": &"spell", "needs": &"torch", "weapons": [&"torch"], "tags": [&"area"],
 		"radius": 3.5, "damage_pct": 4, "knockback": 3.0, "damage_type": &"fire", "burn": 1, "color": Color("ff8a3d"), "sfx": "explosion"},
-	&"fire_flask": {"icon": "瓶", "mana": 10, "behavior": &"shoot", "category": &"spell", "weapons": [&"torch"], "tags": [&"projectile", &"area"],
-		"count": 1, "spread": 0.0, "speed": 12.0, "range": 7.0, "radius": 0.3, "pierce": false, "damage_pct": 1.25, "damage_type": &"fire",
+	&"fire_flask": {"icon": "瓶", "mana": 10, "behavior": &"shoot", "category": &"spell", "scale": {"weapon": 0.0, "spell": 1.0}, "weapons": [&"torch"], "tags": [&"projectile", &"area"],
+		"count": 1, "spread": 0.0, "speed": 12.0, "range": 7.0, "radius": 0.3, "pierce": false, "damage_pct": 5.0 / 3.0, "damage_type": &"fire",
 		"color": Color("ff8a3d"), "visual": &"orb", "sfx": "arcaneCast",
-		"pool": {"radius": 2.0, "duration": 4.0, "dps_pct": 0.75}},
-	&"flame_dash": {"icon": "奔", "mana": 14, "behavior": &"dash", "category": &"attack", "needs": &"melee", "weapons": [&"torch"], "tags": [&"move"],
-		"distance": 6.0, "time": 0.35, "width": 1.2, "damage_pct": 1.25, "knockback": 2.0, "damage_type": &"fire", "color": Color("ff8a3d"), "sfx": "swing",
-		"trail": {"radius": 1.0, "duration": 3.0, "dps_pct": 0.75, "every": 1.2}},
+		"pool": {"radius": 2.0, "duration": 4.0, "dps_pct": 1.0}},
+	&"flame_dash": {"icon": "奔", "mana": 14, "behavior": &"dash", "category": &"attack", "scale": {"weapon": 0.0, "spell": 1.0}, "needs": &"melee", "weapons": [&"torch"], "tags": [&"move"],
+		"distance": 6.0, "time": 0.35, "width": 1.2, "damage_pct": 5.0 / 3.0, "knockback": 2.0, "damage_type": &"fire", "color": Color("ff8a3d"), "sfx": "swing",
+		"trail": {"radius": 1.0, "duration": 3.0, "dps_pct": 1.0, "every": 1.2}},
 	# ---- 劍盾（原本木盾的） ----
 	&"shield_charge": {"icon": "撞", "mana": 13, "behavior": &"dash", "category": &"attack", "needs": &"shield", "weapons": [&"swordShield"], "tags": [&"move", &"melee"],
 		"distance": 5.0, "time": 0.35, "width": 1.6, "damage_pct": 2, "knockback": 10.0, "damage_type": &"phys", "stun": 0.8,
@@ -70,15 +70,15 @@ const SKILLS := {
 	&"shield_slam": {"icon": "震", "mana": 15, "behavior": &"nova", "category": &"attack", "needs": &"shield", "weapons": [&"swordShield"], "tags": [&"area"],
 		"radius": 3.0, "damage_pct": 2.25, "knockback": 9.0, "damage_type": &"phys", "stun": 0.5, "color": Color("d8b070"), "sfx": "shieldBash"},
 	# ---- 法杖 ----
-	&"frost_nova": {"icon": "霜", "mana": 13, "behavior": &"nova", "category": &"spell", "weapons": [&"staff"], "tags": [&"area"],
+	&"frost_nova": {"icon": "霜", "mana": 13, "behavior": &"nova", "category": &"spell", "scale": {"weapon": 0.0, "spell": 1.0}, "weapons": [&"staff"], "tags": [&"area"],
 		"radius": 4.0, "damage_pct": 2.25, "knockback": 2.0, "damage_type": &"cold", "chill": 2, "color": Color("8fd8ff"), "sfx": "arcaneCast"},
-	&"meteor": {"icon": "隕", "mana": 17, "behavior": &"strike", "category": &"spell", "weapons": [&"staff"], "tags": [&"area"],
+	&"meteor": {"icon": "隕", "mana": 17, "behavior": &"strike", "category": &"spell", "scale": {"weapon": 0.0, "spell": 1.0}, "weapons": [&"staff"], "tags": [&"area"],
 		"delay": 1.0, "max_range": 12.0, "radius": 3.0, "damage_pct": 2.5, "knockback": 8.0, "damage_type": &"fire", "burn": 1,
 		"color": Color("ff6a2a"), "sfx": "explosion"},
-	&"chain_bolt": {"icon": "鏈", "mana": 10, "behavior": &"chain", "category": &"spell", "weapons": [&"staff"], "tags": [&"projectile"],
+	&"chain_bolt": {"icon": "鏈", "mana": 10, "behavior": &"chain", "category": &"spell", "scale": {"weapon": 0.0, "spell": 1.0}, "weapons": [&"staff"], "tags": [&"projectile"],
 		"range": 10.0, "jumps": 4, "jump_range": 5.0, "damage_pct": 1.75, "damage_type": &"lightning", "color": Color("ffe45c"), "sfx": "arcaneCast"},
 	# ---- 驅魔權杖 ----
-	&"holy_pillar": {"icon": "柱", "mana": 15, "behavior": &"strike", "category": &"spell", "weapons": [&"scepter"], "tags": [&"area"],
+	&"holy_pillar": {"icon": "柱", "mana": 15, "behavior": &"strike", "category": &"spell", "scale": {"weapon": 0.0, "spell": 1.0}, "weapons": [&"scepter"], "tags": [&"area"],
 		"delay": 0.4, "max_range": 10.0, "radius": 2.5, "damage_pct": 2.3, "knockback": 3.0, "damage_type": &"holy", "heal_ratio": 0.1,
 		"color": Color("fff3b0"), "sfx": "arcaneCast"},
 	&"bone_guard": {"icon": "骸", "mana": 33, "behavior": &"summon", "category": &"spell", "weapons": [&"scepter"], "tags": [&"summon"],
@@ -118,14 +118,14 @@ const SKILLS := {
 
 	# ---- 橘色（傳說；mockups/橘色技能.html 方案 1 大招型、2 改寫袋子型、3 成長型，許家慶 2026-11-06 選；數字 Claude 暫定）----
 	# 傷害照「技能強度」：白色每 1 點耗魔 ≈ 0.3 倍武器傷害（旋風斬 10 魔 3），施放時再乘橘色預算 1.75；× 8（劍盾）取整數
-	&"hell_gate": {"icon": "冥", "mana": 24, "behavior": &"strike", "category": &"spell", "weapons": [&"swordShield"], "tags": [&"area"],
+	&"hell_gate": {"icon": "冥", "mana": 24, "behavior": &"strike", "category": &"spell", "scale": {"weapon": 0.0, "spell": 1.0}, "weapons": [&"swordShield"], "tags": [&"area"],
 		"delay": 1.2, "max_range": 12.0, "radius": 4.0, "damage_pct": 7.25, "knockback": 0.0, "damage_type": &"shadow", "color": Color("b48cff"), "sfx": "explosion"},
 	&"blade_storm": {"icon": "刃", "mana": 20, "behavior": &"storm", "category": &"attack", "needs": &"melee", "weapons": [&"swordShield"], "tags": [&"area", &"melee"],
 		"duration": 3.0, "tick": 0.25, "radius": 2.5, "damage_pct": 0.5, "knockback": 2.0, "damage_type": &"phys", "color": Color("d8e4ff"), "sfx": "swingHeavy"},
-	&"fissure": {"icon": "裂", "mana": 18, "behavior": &"line", "category": &"spell", "needs": &"melee", "weapons": [&"swordShield"], "tags": [&"area"],
-		"length": 12.0, "width": 1.6, "damage_pct": 5.375, "knockback": 6.0, "knockup": 6.0, "damage_type": &"phys", "color": Color("c8a070"), "sfx": "explosion"},
-	&"judgment": {"icon": "譴", "mana": 22, "behavior": &"smite", "category": &"spell", "weapons": [&"swordShield"], "tags": [&"area"],
-		"range": 8.0, "targets": 4, "delay": 0.4, "radius": 1.2, "damage_pct": 6.625, "knockback": 3.0, "damage_type": &"lightning", "color": Color("ffe45c"), "sfx": "explosion"},
+	&"fissure": {"icon": "裂", "mana": 18, "behavior": &"line", "category": &"spell", "scale": {"weapon": 0.7, "spell": 0.3}, "needs": &"melee", "weapons": [&"swordShield"], "tags": [&"area"],
+		"length": 12.0, "width": 1.6, "damage_pct": 5.0, "knockback": 6.0, "knockup": 6.0, "damage_type": &"phys", "color": Color("c8a070"), "sfx": "explosion"},
+	&"judgment": {"icon": "譴", "mana": 22, "behavior": &"smite", "category": &"spell", "scale": {"weapon": 0.0, "spell": 1.0}, "weapons": [&"swordShield"], "tags": [&"area"],
+		"range": 8.0, "targets": 4, "delay": 0.4, "radius": 1.2, "damage_pct": 6.75, "knockback": 3.0, "damage_type": &"lightning", "color": Color("ffe45c"), "sfx": "explosion"},
 	# 改寫袋子：bag_rule 的技能不會自己放、不耗魔（回響、共鳴、血契），規則在 BagTriggers.run_bag；共鳴發動時才扣 mana
 	&"echo": {"icon": "響", "behavior": &"bag_rule", "category": &"aux", "weapons": [&"swordShield"], "tags": [&"buff"], "rule": &"echo",
 		"delay": 0.5, "mul": 0.6, "mana_share": 0.5, "color": Color("ffb060")},
@@ -135,14 +135,14 @@ const SKILLS := {
 	&"blood_pact": {"icon": "契", "behavior": &"bag_rule", "category": &"aux", "weapons": [&"swordShield"], "tags": [&"buff"], "rule": &"blood_pact",
 		"hp_per_mana": 0.005, "power": 1.25, "color": Color("ff5a5a")},
 	# 成長型
-	&"soul_reaver": {"icon": "噬", "mana": 14, "behavior": &"reaver", "category": &"attack", "needs": &"melee", "weapons": [&"swordShield"], "tags": [&"melee"],
-		"range": 3.0, "arc": 1.6, "damage_pct": 2.75, "knockback": 5.0, "damage_type": &"shadow", "per_kill": 0.03, "max_stacks": 30,
+	&"soul_reaver": {"icon": "噬", "mana": 14, "behavior": &"reaver", "category": &"attack", "scale": {"weapon": 0.7, "spell": 0.3}, "needs": &"melee", "weapons": [&"swordShield"], "tags": [&"melee"],
+		"range": 3.0, "arc": 1.6, "damage_pct": 2.5, "knockback": 5.0, "damage_type": &"shadow", "per_kill": 0.03, "max_stacks": 30,
 		"color": Color("b48cff"), "sfx": "swingHeavy"},
 	&"legion": {"icon": "軍", "mana": 30, "behavior": &"legion", "category": &"spell", "weapons": [&"scepter"], "tags": [&"summon"],
 		"radius": 8.0, "max": 6, "life": 8.0, "color": Color("d8d0b8")},
-	&"grudge": {"icon": "怨", "mana": 16, "behavior": &"grudge", "category": &"spell", "weapons": [&"swordShield"], "tags": [&"area"],
-		"radius": 4.0, "damage_pct": 2.375, "grudge_mul": 1.7, "knockback": 8.0, "damage_type": &"shadow", "color": Color("ff5a5a"), "sfx": "explosion"},
-	&"star_sign": {"icon": "星", "mana": 10, "behavior": &"star", "category": &"spell", "weapons": [&"swordShield"], "tags": [&"area"],
+	&"grudge": {"icon": "怨", "mana": 16, "behavior": &"grudge", "category": &"spell", "scale": {"weapon": 0.5, "spell": 0.5}, "weapons": [&"swordShield"], "tags": [&"area"],
+		"radius": 4.0, "damage_pct": 2.5, "grudge_mul": 1.7, "knockback": 8.0, "damage_type": &"shadow", "color": Color("ff5a5a"), "sfx": "explosion"},
+	&"star_sign": {"icon": "星", "mana": 10, "behavior": &"star", "category": &"spell", "scale": {"weapon": 0.0, "spell": 1.0}, "weapons": [&"swordShield"], "tags": [&"area"],
 		"max": 3, "life": 20.0, "tick": 1.0, "damage_pct": 1.0, "damage_type": &"holy", "color": Color("ffd27a"), "sfx": "arcaneCast"},
 }
 
@@ -150,6 +150,12 @@ const SKILLS := {
 # 技能的傷害吃武器傷害與法術強度各多少：{ weapon, spell }
 static func scale_of(id: StringName) -> Dictionary:
 	return SKILLS[id].get("scale", DEFAULT_SCALE)
+
+
+# 這招拿這把武器放的傷害倍率（相對「全吃武器傷害」）= weapon + spell × 法術強度 ÷ 基礎傷害；weapon 是 WeaponDefs 的資料或 Player.weapon
+static func scale_mul(def: Dictionary, weapon: Dictionary) -> float:
+	var scale: Dictionary = def.get("scale", DEFAULT_SCALE)
+	return scale.weapon + scale.spell * weapon.spell_power / weapon.base_damage
 
 
 # 戰技的角色動作做幾秒：衝刺照衝刺時間、鑽地照鑽地時間、千刃風暴照持續時間、蓄力（狙擊）照蓄力、連射照射完，其他 POSE_TIME

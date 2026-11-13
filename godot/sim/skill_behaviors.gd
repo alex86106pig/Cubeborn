@@ -366,7 +366,8 @@ class Grudge extends Behavior:
 	func activate(owner: Player, def: Dictionary, ctx: Dictionary) -> void:
 		var r: float = def.radius * ctx.area
 		var hit := SkillBehaviors.hit_of(owner, def, ctx)
-		hit.damage = maxf(hit.damage, owner.grudge_taken * def.grudge_mul * ctx.mul)
+		# 受到的傷害不是照武器算的：不乘傷害來源（ctx.scale）
+		hit.damage = maxf(hit.damage, owner.grudge_taken * def.grudge_mul * ctx.mul / maxf(ctx.get("scale", 1.0), 0.001))
 		hit["origin"] = owner.pos
 		owner.grudge_taken = 0.0
 		SkillBehaviors._after_hits(owner, def, ctx, Hitbox.strike(owner.world, owner, owner.pos, owner.facing, {"shape": &"circle", "radius": r}, hit))

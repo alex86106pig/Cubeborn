@@ -157,10 +157,12 @@ static func mods_mana_mul(ids: Array[StringName]) -> float:
 	return mul
 
 
-# 這次施放的參數：等級 × 稀有度的傷害倍率 × 袋子倍率、蓋在技能上的修飾（標籤相符的才算）的效果
-static func cast_context(_owner: Player, slot: Dictionary) -> Dictionary:
+# 這次施放的參數：等級 × 稀有度的傷害倍率 × 袋子倍率 × 傷害來源（scale：吃武器傷害與法術強度各多少）、蓋在技能上的修飾（標籤相符的才算）的效果
+# scale 另外留一份：不是照武器算的傷害（積怨的「受到的傷害 × 倍數」）要把它除掉
+static func cast_context(owner: Player, slot: Dictionary) -> Dictionary:
 	var bag: Dictionary = slot.get("bag", {})
-	var ctx := {"mul": SkillDefs.damage_mul(slot.id, slot.get("level", 1)) * (BagDefs.power_of(bag) if not bag.is_empty() else 1.0), "area": 1.0,
+	var scale := SkillDefs.scale_mul(slot.def, owner.weapon)
+	var ctx := {"mul": SkillDefs.damage_mul(slot.id, slot.get("level", 1)) * (BagDefs.power_of(bag) if not bag.is_empty() else 1.0) * scale, "scale": scale, "area": 1.0,
 		"type": slot.def.get("damage_type", &"phys"), "split": false,
 		"credit": "k:" + String(slot.id)}   # 傷害來源（Combat.credit_scope）：持續的招式（衝刺）每步打的也算這個技能
 	if slot.get("phantom", false):

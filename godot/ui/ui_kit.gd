@@ -277,30 +277,31 @@ static func skill_line(id: StringName, level := 1) -> String:
 	return "按鍵袋按數字鍵放、觸發袋自動放 · %s · %s · %s" % [kind, "、".join(tags) if not tags.is_empty() else "—", cost]
 
 
-# 技能的傷害倍率（武器傷害的 %，已乘等級與稀有度；袋子的強化另外乘）：照 SkillDefs 的資料組字，沒傷害的技能回空字串
-# 例：「傷害：武器傷害 175% × 5 發」「傷害：武器傷害 150%，火堆每秒 100%（4 秒）」
+# 技能的傷害倍率（已乘等級與稀有度；袋子的強化另外乘）：照 SkillDefs 的資料組字，沒傷害的技能回空字串；% 前面寫吃什麼（skill_source_text）
+# 例：「傷害：武器傷害 175% × 5 發」「傷害：法術強度 150%，火堆每秒 100%（4 秒）」「傷害：武器傷害 80% + 法術強度 20% 的 250%」
 static func skill_damage_line(id: StringName, level := 1) -> String:
 	var sk: Dictionary = SkillDefs.SKILLS[id]
 	if not sk.has("damage_pct"):
 		return ""
 	var mul := SkillDefs.damage_mul(id, level)
 	var main := pct_text(sk.damage_pct * mul)
-	var text := "傷害：武器傷害 " + main
+	var src := skill_source_text(id)
+	var text := "傷害：%s %s" % [src, main]
 	match sk.behavior:
 		&"rain":
-			text = "傷害：每 %s 秒武器傷害 %s，共 %d 次" % [String.num(sk.tick), main, roundi(sk.duration / sk.tick)]
+			text = "傷害：每 %s 秒%s %s，共 %d 次" % [String.num(sk.tick), src, main, roundi(sk.duration / sk.tick)]
 		&"chain":
-			text = "傷害：武器傷害 %s，最多打 %d 隻" % [main, sk.jumps + 1]
+			text = "傷害：%s %s，最多打 %d 隻" % [src, main, sk.jumps + 1]
 		&"storm":
-			text = "傷害：每 %s 秒武器傷害 %s，共 %d 次" % [String.num(sk.tick), main, roundi(sk.duration / sk.tick)]
+			text = "傷害：每 %s 秒%s %s，共 %d 次" % [String.num(sk.tick), src, main, roundi(sk.duration / sk.tick)]
 		&"smite":
-			text = "傷害：每隻武器傷害 %s，最多 %d 隻" % [main, sk.targets]
+			text = "傷害：每隻%s %s，最多 %d 隻" % [src, main, sk.targets]
 		&"star":
-			text = "傷害：3 顆星的三角形裡每 %s 秒武器傷害 %s" % [String.num(sk.tick), main]
+			text = "傷害：3 顆星的三角形裡每 %s 秒%s %s" % [String.num(sk.tick), src, main]
 		&"reaver":
-			text = "傷害：武器傷害 %s（這一層每殺一隻 +%d%%，最多 %s）" % [main, roundi(sk.per_kill * 100.0), pct_text(sk.damage_pct * mul * (1.0 + sk.per_kill * sk.max_stacks))]
+			text = "傷害：%s %s（這一層每殺一隻 +%d%%，最多 %s）" % [src, main, roundi(sk.per_kill * 100.0), pct_text(sk.damage_pct * mul * (1.0 + sk.per_kill * sk.max_stacks))]
 		&"grudge":
-			text = "傷害：武器傷害 %s 起，或受到傷害的 %s 倍（取大的）" % [main, String.num(snappedf(sk.grudge_mul * mul, 0.1))]
+			text = "傷害：%s %s 起，或受到傷害的 %s 倍（取大的）" % [src, main, String.num(snappedf(sk.grudge_mul * mul, 0.1))]
 		_:
 			if sk.get("count", 1) > 1:
 				text += " × %d 發" % sk.count
@@ -311,6 +312,16 @@ static func skill_damage_line(id: StringName, level := 1) -> String:
 	if sk.has("trail"):
 		text += "，火痕每秒 %s（%s 秒）" % [pct_text(sk.trail.dps_pct * mul), String.num(sk.trail.duration)]
 	return text
+
+
+# 技能的傷害吃什麼（SkillDefs.scale_of）：「武器傷害」「法術強度」，混合的寫「武器傷害 80% + 法術強度 20% 的」
+static func skill_source_text(id: StringName) -> String:
+	var scale := SkillDefs.scale_of(id)
+	if scale.spell <= 0.0:
+		return "武器傷害"
+	if scale.weapon <= 0.0:
+		return "法術強度"
+	return "武器傷害 %s + 法術強度 %s 的" % [pct_text(scale.weapon), pct_text(scale.spell)]
 
 
 # 效果型技能（觸發道具改寫，ItemDefs.ROLE_EFFECT）的傷害：照道具資料與 ItemDefs.PROCS 組字，沒傷害的（冰冷、回血、回魔…）回空字串

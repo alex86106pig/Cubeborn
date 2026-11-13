@@ -36,7 +36,9 @@ const KEEP := {
 	&"arcaneBurst": "350% 是使用者同意的數字（系統說明 §1）",
 	&"chargedShot": "量的是蓄滿：要站著蓄 1 秒、移速減半，蓄滿高一點是代價",
 	&"fireBreath": "火把普攻已到近戰目標：噴火照右鍵目標打一隻會超過雙匕首（武器強度），傷害維持 125%、靠點燃與 90° 範圍",
-	&"soul_reaver": "成長型：量的是 0 層（目標 × 0.65），這一層殺 30 隻後 × 1.9 ≈ 目標 × 1.2（mockups/橘色技能.html 方案 3）",
+	&"soul_reaver": "成長型：量的是 0 層（目標 × 0.6），這一層殺 30 隻後 × 1.9 ≈ 目標 × 1.15（mockups/橘色技能.html 方案 3）",
+	&"fire_flask": "全吃法強、火把的法強只有基礎傷害的 0.75：倍率調高到火把上跟改之前一樣（火把傭兵的起始技能，使用者 2026-11-13 同意），所以比照比例算的目標高 1.33 倍",
+	&"flame_dash": "同火瓶：全吃法強，倍率調高到火把上跟改之前一樣（使用者 2026-11-13 同意）",
 	&"grudge": "成長型：量的是沒受傷時的保底（目標 × 0.5），受到的傷害 × 1.7 × 預算加上去，被打越多越痛",
 	&"star_sign": "要放 3 顆才有傷害：量一次放是 0；3 顆的三角形每秒打 175%、最多 20 秒",
 }
@@ -294,7 +296,7 @@ func _trigger_table(lines: Array[String]) -> void:
 func _move_table(lines: Array[String], basic: Dictionary) -> void:
 	lines.append("## 右鍵與技能")
 	lines.append("")
-	lines.append("目標 = 放一次對每隻怪的傷害 = 普攻單體每秒 ×（耗魔 ÷ 那把武器的回魔）÷ %.0f（右鍵 ÷ %.0f；有暈眩或補血 × %.1f）× 技能稀有度的強度預算（%s）。單體、一群都和目標比：一群看有打到的怪平均每隻吃多少；比在 %.1f~%.1f 算達標（一群只打到 1 隻的、召喚不看）。" % [SKILL_K, SPECIAL_K, CONTROL_MUL, " / ".join(SkillDefs.RARITY_BUDGET.keys().map(func(r: StringName) -> String: return "%s %.2f" % [ItemDefs.RARITIES[r].name, SkillDefs.RARITY_BUDGET[r]])), 1.0 - TOLERANCE, 1.0 + TOLERANCE])
+	lines.append("目標 = 放一次對每隻怪的傷害 = 普攻單體每秒 ×（耗魔 ÷ 那把武器的回魔）÷ %.0f（右鍵 ÷ %.0f；有暈眩或補血 × %.1f）× 技能稀有度的強度預算（%s）× 傷害來源的倍率（武器係數 + 法強係數 × 法術強度 ÷ 基礎傷害；全吃武器傷害的是 1）。單體、一群都和目標比：一群看有打到的怪平均每隻吃多少；比在 %.1f~%.1f 算達標（一群只打到 1 隻的、召喚不看）。" % [SKILL_K, SPECIAL_K, CONTROL_MUL, " / ".join(SkillDefs.RARITY_BUDGET.keys().map(func(r: StringName) -> String: return "%s %.2f" % [ItemDefs.RARITIES[r].name, SkillDefs.RARITY_BUDGET[r]])), 1.0 - TOLERANCE, 1.0 + TOLERANCE])
 	lines.append("")
 	lines.append("| 招式 | 武器 | 耗魔 | 目標 | 單體每次 | 比 | 一群打到 | 一群每隻 | 比 | 一群合計 | |")
 	lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|")
@@ -312,12 +314,12 @@ func _move_table(lines: Array[String], basic: Dictionary) -> void:
 			lines.append("| %s | %s | %s | 功能技能，不算傷害 | | | | | | | |" % [ItemDefs.ITEMS[id].name, WeaponDefs.WEAPONS[wid].name, cost])
 			continue
 		_move_row(lines, basic, "%s（%s）" % [ItemDefs.ITEMS[id].name, ItemDefs.RARITIES[ItemDefs.ITEMS[id].rarity].name], wid, def.mana, def.has("stun") or def.has("heal_ratio"),
-			func(pack: bool) -> Vector2: return _skill_hit(id, pack), KEEP.get(id, ""), def.behavior != &"summon", SKILL_K, SkillDefs.budget(id))
+			func(pack: bool) -> Vector2: return _skill_hit(id, pack), KEEP.get(id, ""), def.behavior != &"summon", SKILL_K, SkillDefs.budget(id) * SkillDefs.scale_mul(def, WeaponDefs.WEAPONS[wid]))
 	lines.append("")
 
 
 # group：要不要看一群每隻（召喚的僕從一次打一隻，打一群時平均每隻沒有意義）
-# budget：技能稀有度的強度預算（SkillDefs.RARITY_BUDGET），目標跟著乘；右鍵是 1
+# budget：技能稀有度的強度預算（SkillDefs.RARITY_BUDGET）× 傷害來源在這把武器上的倍率（SkillDefs.scale_mul），目標跟著乘；右鍵是 1
 func _move_row(lines: Array[String], basic: Dictionary, label: String, wid: StringName, mana: float, control: bool, hit: Callable, keep := "", group := true, k := SKILL_K, budget := 1.0) -> void:
 	var single: Vector2 = hit.call(false)   # (總傷害, 打到幾隻)
 	var pack: Vector2 = hit.call(true)
@@ -348,18 +350,21 @@ func _regen(wid: StringName) -> float:
 	return WeaponDefs.WEAPONS[wid].get("mana_regen", Config.MANA.regen)
 
 
-# 同一個技能配每把武器（技能不綁武器、魔力照武器）：每次傷害跟著基礎傷害，每秒（照回魔）與滿魔力連放的爆發應該都一樣
+# 同一個技能配每把武器（技能不綁武器、魔力照武器）：全吃武器傷害的每秒（照回魔）與滿魔力連放的爆發應該都一樣；吃法強的跟著「法術強度 ÷ 基礎傷害」
 const CROSS_SKILLS: Array[StringName] = [&"whirlwind", &"frost_nova", &"sword_wave"]
 func _cross_table(lines: Array[String]) -> void:
 	lines.append("## 技能 × 武器（魔力照武器）")
 	lines.append("")
-	lines.append("同一個技能換不同武器放：每次傷害 = 基礎傷害 × 倍率；每秒 = 每次 × 回魔 ÷ 耗魔（長時間一直放）；爆發 = 每次 × 滿魔力放得出幾次。每秒與爆發各武器應該差不多（比 = 自己 ÷ 劍盾）。武器需求不符的寫放不出來。")
+	lines.append("同一個技能換不同武器放：每次傷害 = 倍率 ×（基礎傷害 × 武器係數 + 法術強度 × 法強係數）；每秒 = 每次 × 回魔 ÷ 耗魔（長時間一直放）；爆發 = 每次 × 滿魔力放得出幾次。全吃武器傷害的（旋風斬）每秒與爆發各武器差不多；全吃法強的（冰霜新星）照法術強度 ÷ 基礎傷害：法杖 1.5、驅魔權杖 1.0、火把 0.75、其餘 0.5；混合的（劍氣）在中間。比 = 自己 ÷ 驅魔權杖。武器需求不符的寫放不出來。")
 	lines.append("")
 	lines.append("| 技能 | 武器 | 最大魔力 | 回魔 | 每次 | 每秒 | 比 | 爆發 | 比 |")
 	lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|")
 	for id in CROSS_SKILLS:
 		var cost: float = SkillDefs.SKILLS[id].mana
-		var ref := Vector2.ZERO
+		# 比的基準：驅魔權杖（法術強度 = 基礎傷害，吃武器還是吃法強都一樣；近戰、不限武器的都放得出來）
+		var ref_wd: Dictionary = WeaponDefs.WEAPONS.scepter
+		var ref_hit := _skill_hit(id, false, &"scepter").x
+		var ref := Vector2(ref_hit * _regen(&"scepter") / cost, ref_hit * floorf(ref_wd.get("max_mana", Config.MANA.max) / cost))
 		for lo: Array in LOADOUTS:
 			var wid: StringName = lo[0]
 			var wd: Dictionary = WeaponDefs.WEAPONS[wid]
@@ -370,8 +375,6 @@ func _cross_table(lines: Array[String]) -> void:
 			var mx: float = wd.get("max_mana", Config.MANA.max)
 			var per_sec := hit * _regen(wid) / cost
 			var burst := hit * floorf(mx / cost)
-			if ref == Vector2.ZERO:
-				ref = Vector2(per_sec, burst)
 			lines.append("| %s | %s | %.0f | %.2f | %.0f | %.1f | %.2f | %.0f | %.2f |" % [ItemDefs.ITEMS[id].name, wd.name, mx, _regen(wid), hit, per_sec, per_sec / ref.x, burst, burst / maxf(ref.y, 1.0)])
 	lines.append("")
 

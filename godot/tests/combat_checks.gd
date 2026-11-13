@@ -18,7 +18,9 @@ static func check_whole_damage() -> String:
 	for id: StringName in SkillDefs.gem_skill_ids():
 		var def: Dictionary = SkillDefs.SKILLS[id]
 		for wid: StringName in def.weapons:
-			var err := _whole_in(def, WeaponDefs.WEAPONS[wid].get("base_damage", start), "%s（%s）" % [ItemDefs.ITEMS[id].name, WeaponDefs.WEAPONS[wid].name])
+			# 技能照傷害來源算：基礎傷害 × weapon + 法術強度 × spell
+			var wd: Dictionary = WeaponDefs.WEAPONS[wid]
+			var err := _whole_in(def, wd.base_damage * SkillDefs.scale_mul(def, wd), "%s（%s）" % [ItemDefs.ITEMS[id].name, wd.name])
 			if err != "":
 				return err
 	return ""
