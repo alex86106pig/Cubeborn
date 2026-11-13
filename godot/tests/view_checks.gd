@@ -199,20 +199,20 @@ static func check_hud() -> String:
 	hud.can_retry = true
 	hud._on_event("game:defeat", {"stats": w.stats.duplicate()})
 	hud._process(hud.GAME_OVER_DELAY + 0.1)
-	hud._retry_button.pressed.emit()
-	if not hud._game_over.visible or not hud._game_over.is_ancestor_of(hud._retry_button) or not hud._retry_button.visible or not hud._restart_hint.visible or retry_count[0] != 1:
-		return "失敗畫面應有「同一關重來」按鈕、按了發出 retry_stage_requested 一次：看得到 %s、%d 次" % [hud._retry_button.visible, retry_count[0]]
+	hud.result_panel.retry_button.pressed.emit()
+	if not hud._game_over.visible or not hud._game_over.is_ancestor_of(hud.result_panel.retry_button) or not hud.result_panel.retry_button.visible or not hud.result_panel.restart_hint.visible or retry_count[0] != 1:
+		return "失敗畫面應有「同一關重來」按鈕、按了發出 retry_stage_requested 一次：看得到 %s、%d 次" % [hud.result_panel.retry_button.visible, retry_count[0]]
 	hud._on_event("stage:retried", {"floor": 1, "stage": 2, "tries": 1})
 	hud._process(hud.GAME_OVER_DELAY + 0.1)
 	if hud._game_over.visible:
 		return "stage:retried 後失敗畫面應收起，而且不會又跳出來"
 	hud.can_retry = false
 	hud._on_event("game:defeat", {"stats": w.stats.duplicate()})
-	if hud._retry_button.visible or hud._restart_hint.visible or not hud._retry_note.text.contains("房主"):
-		return "客戶端的失敗畫面不應有重來按鈕與「按 R」，應提示等房主：「%s」" % hud._retry_note.text
+	if hud.result_panel.retry_button.visible or hud.result_panel.restart_hint.visible or not hud.result_panel.retry_note.text.contains("房主"):
+		return "客戶端的失敗畫面不應有重來按鈕與「按 R」，應提示等房主：「%s」" % hud.result_panel.retry_note.text
 	hud.can_retry = true
 	hud._on_event("game:victory", {"stats": w.stats.duplicate()})
-	if not hud._game_over.visible or hud._game_over_title.text != "勝利！" or hud._retry_button.visible:
+	if not hud._game_over.visible or hud.result_panel.title.text != "勝利！" or hud.result_panel.retry_button.visible:
 		return "game:victory 應顯示勝利畫面，沒有「同一關重來」"
 	hud.queue_free()
 	cam.queue_free()
@@ -994,7 +994,7 @@ static func check_run_log() -> String:
 	if rl.downs != [{"kind": &"archer", "unseen": true}]:
 		return "應記一次被看不見的骷髏弓手打倒：%s" % [rl.downs]
 	hud._on_event("game:defeat", {"stats": w.stats.duplicate()})
-	var text: String = hud._game_over_log.text
+	var text: String = hud.result_panel.log_label.text
 	for want in ["你的擊殺 1：骷髏戰士 1", "被打中 3 次", "被看不見的攻擊打中 2 次", "骷髏弓手：", "（看不見 2 次）", "倒下 1 次：被 骷髏弓手（看不見） 打倒"]:
 		if not text.contains(want):
 			return "結算文字缺「%s」：\n%s" % [want, text]
@@ -1004,10 +1004,17 @@ static func check_run_log() -> String:
 	rl.add_frame(0.016, 1.0)
 	rl.video = "陰影關・光源開"
 	rl.add_frame(0.12, 65.0)
-	if hud._copy_button.get_parent() != hud._game_over_log.get_parent():
+	if hud.result_panel.copy_button.get_parent() != hud.result_panel.log_label.get_parent():
 		return "「複製遊玩紀錄」按鈕應在結算畫面上"
-	hud._copy_button.pressed.emit()
+	hud.result_panel.copy_button.pressed.emit()
 	var report: String = hud.last_report
+	if report.contains("同一關重來"):
+		return "沒重來過，回報不應有重來那一行"
+	w.stage_tries = 2
+	hud.result_panel.copy_button.pressed.emit()
+	w.stage_tries = 0
+	if not hud.last_report.contains("同一關重來 2 次"):
+		return "重來過，回報應寫重來幾次"
 	for want in ["Cubeborn v%s" % GameVersion.VERSION, "結果：你倒下了", "武器：", "你的擊殺 1", "被打中 3 次", "最慢一幀 120 ms（1:05，光 3 盞、怪 20 隻）", "卡頓（超過 50 ms）1 次",
 			"顯示卡：", "· 陰影關・光源開", "  陰影開・光源開：平均 63 FPS · 卡頓 0 次", "  陰影關・光源開：平均 8 FPS · 卡頓 1 次",
 			"  卡頓的時間點：1:05 一般 120 ms"]:
@@ -1029,7 +1036,7 @@ static func check_run_log() -> String:
 		rl._add_dealt(w, "k:" + String(id), 99999.0)
 	rl._add_dealt(w, "p", 999999.0)
 	hud._on_event("game:defeat", {"stats": w.stats.duplicate()})
-	var box: Control = hud._game_over_log.get_parent()
+	var box: Control = hud.result_panel.log_label.get_parent()
 	var need: Vector2 = box.get_combined_minimum_size()
 	var screen := Vector2(ProjectSettings.get_setting("display/window/size/viewport_width"), ProjectSettings.get_setting("display/window/size/viewport_height"))
 	if need.y <= 0.0 or need.x > screen.x or need.y > screen.y:
@@ -1186,7 +1193,7 @@ static func check_warm_up() -> String:
 	# 介面程式碼裡寫死的字串（橫幅、場上文字…）也要涵蓋（v0.37.2：第一把武器的名字「[F] 撿起」等沒預熱，網頁版仍卡 78 ms）
 	var re := RegEx.create_from_string("\"([^\"\\\\]*)\"")
 	var missing := {}
-	for path in ["res://ui/hud.gd", "res://ui/world_labels.gd", "res://ui/floaters.gd", "res://ui/net_panel.gd", "res://ui/main_menu.gd", "res://ui/player_tags.gd", "res://ui/inventory_panel.gd", "res://ui/run_log.gd", "res://ui/settings_panel.gd", "res://ui/ui_kit.gd"]:
+	for path in ["res://ui/hud.gd", "res://ui/world_labels.gd", "res://ui/floaters.gd", "res://ui/net_panel.gd", "res://ui/main_menu.gd", "res://ui/player_tags.gd", "res://ui/inventory_panel.gd", "res://ui/run_log.gd", "res://ui/result_panel.gd", "res://ui/settings_panel.gd", "res://ui/ui_kit.gd"]:
 		for line in _read_text(path).split("\n"):
 			for m in re.search_all(_strip_comment(line)):
 				for ch in m.get_string(1):
@@ -4465,4 +4472,116 @@ static func _viewer_loop(v: AnimViewer) -> String:
 	if wrap_swing > swing * 1.5:
 		return "跑步循環接回去時腿跳了一下：%.2f 弧度（平常一步最多 %.2f）" % [wrap_swing, swing]
 	_note("動畫檢視器跑步循環 3 次：每步 %.3f ~ %.3f、走到 %.1f，腿一步最多轉 %.2f（接回去那步 %.2f）" % [lo, hi, prev.length(), swing, wrap_swing])
+	return ""
+
+
+# 結算畫面（ResultPanel）：先是墓碑頁（墓碑刻職業、倒在哪、被誰打倒與六個數字；隊友各一列，單人時沒有；右邊自己前幾招與前幾種打自己的怪），
+# 點墓碑進詳細統計看自己、點隊友那一列看他；四個分頁各有內容，來源比上限多時併成「其他」；通關沒有同一關重來、墓碑寫凱旋；
+# 按鈕各發自己的訊號；每一頁在最多內容時都塞得進 1920 × 1080
+static func check_result_panel() -> String:
+	if ResultPanel.num(1234567.0) != "1,234,567" or ResultPanel.num(999.0) != "999" or ResultPanel.num(0.4) != "1":
+		return "數字應每三位一個逗號：%s / %s" % [ResultPanel.num(1234567.0), ResultPanel.num(999.0)]
+	var panel := ResultPanel.new()
+	_scene_root().add_child(panel)
+	var classes: Array = ClassDefs.CLASSES.keys()
+	var info := {}
+	var players := {}
+	for i in 4:
+		var peer := [1, 7, 12, 30][i] as int
+		info[peer] = {"order": i, "class": String(classes[i % classes.size()]), "weapon": "劍盾", "entity": i + 1}
+		var st := RunStats._blank()
+		st.damage = 99999.0 * (i + 1)
+		st.taken = 5000.0
+		st.kills = 999
+		st.peak = 9999.0
+		st.healed = 1234.0
+		st.revives = 3
+		for id: StringName in SkillDefs.SKILLS:   # 來源比一頁的上限多：最長的名稱、「其他」那一列都要塞得進
+			st.dealt["k:" + String(id)] = [1000.0 + st.dealt.size(), 99, 999.0]
+		st.dealt["p|劍盾"] = [50000.0, 999, 9999.0]
+		for kind: StringName in EnemyDefs.ENEMIES:
+			st.by_source[String(kind)] = [100.0 + st.by_source.size(), 9]
+		st.downs = ["grunt", "grunt", "archer"]
+		for f in range(1, 4):
+			for stage in range(1, MapGenDefs.STAGES.size() + 1):
+				st.stages[RunStats.stage_key(f, stage)] = 12345.0 * (i + 1)
+		players[peer] = st
+	var run := {"players": players, "info": info, "tries": 3, "floor": 2, "stage": 3, "kills": 3996, "time": 1122.0, "coins": 84}
+	var sent := []
+	panel.retry_requested.connect(func() -> void: sent.append(&"retry"))
+	panel.copy_requested.connect(func() -> void: sent.append(&"copy"))
+	panel.title_requested.connect(func() -> void: sent.append(&"title"))
+	panel.show_result("全員倒下", "撐到 2-3 · 擊殺 3996 · 時間 18:42 · 金幣 本局 +84（累計 9999） · 種子 1234567890", false, run, 7, "2-3", true, "遊玩紀錄的文字")
+	var texts := func(c: Node) -> String:
+		return "｜".join(PackedStringArray(c.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text)))
+	var stone_text: String = texts.call(panel.stone)
+	var me_class: String = ClassDefs.CLASSES[classes[1]].name
+	for want: String in ["長 眠 於 此", me_class, "倒在 2-3", "被 %s 打倒" % RunLog.name_of(&"archer"), "199,998", "3 次", "+84"]:
+		if not stone_text.contains(want):
+			return "墓碑缺「%s」：%s" % [want, stone_text]
+	if not panel.tomb_page.visible or panel.detail_page.visible or not panel.subtitle.text.contains("重來 3 次"):
+		return "一開始應是墓碑頁、副標寫重來次數：%s" % panel.subtitle.text
+	var mate_rows: Array = panel._mates.get_children().filter(func(c: Node) -> bool: return c is HBoxContainer)
+	if mate_rows.size() != 3 or not (texts.call(panel._mates) as String).contains("P1 · "):
+		return "隊友應各一列（3 位）、寫 P1：%d、%s" % [mate_rows.size(), texts.call(panel._mates)]
+	var mine_rows: int = panel._mine.get_children().filter(func(c: Node) -> bool: return c is HBoxContainer).size()
+	if mine_rows != ResultPanel.TOP_DEALT + ResultPanel.TOP_TAKEN or not (texts.call(panel._mine) as String).contains("左鍵（劍盾）"):
+		return "右邊應列自己前 %d 招與前 %d 種：%d 列" % [ResultPanel.TOP_DEALT, ResultPanel.TOP_TAKEN, mine_rows]
+	var tomb_size: Vector2 = await _settled_min_size(panel.get_child(0))
+	# 點墓碑 → 詳細統計看自己；點隊友那一列 → 看他
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	panel.stone.gui_input.emit(click)
+	if not panel.detail_page.visible or panel.tomb_page.visible or panel.shown_peer != 7 or panel.detail_button.text != "返回":
+		return "點墓碑應進詳細統計看自己：看 %d" % panel.shown_peer
+	if panel._list.get_child_count() != 4:
+		return "隊員名單應有 4 位：%d" % panel._list.get_child_count()
+	var sizes := {&"tomb": tomb_size}
+	for t: StringName in ResultPanel.TABS:
+		panel.show_tab(t)
+		var body: String = texts.call(panel._content)
+		match t:
+			&"dealt":
+				var rows: int = panel._content.get_children().filter(func(c: Node) -> bool: return c is HBoxContainer).size()
+				if rows != ResultPanel.DETAIL_ROWS + 1 or not body.contains("其他") or not body.contains("左鍵（劍盾）") or not body.contains("999 下"):
+					return "傷害來源應是表頭 + %d 列（最後一列是其他）：%d 列" % [ResultPanel.DETAIL_ROWS, rows]
+			&"taken":
+				if not body.contains("倒下 3 次") or not body.contains("×2") or not body.contains("回復生命 1,234") or not body.contains("救起隊友 3 次"):
+					return "受到傷害應列攻擊者、倒下被誰打倒、回復與救人：%s" % body
+			&"stages":
+				if not body.contains("3-%d" % MapGenDefs.STAGES.size()) or not body.contains("20%"):
+					return "每一關應列到最後一關、寫佔全隊幾成：%s" % body
+			&"log":
+				if not panel._log_box.visible or panel._content.visible or panel.log_label.text != "遊玩紀錄的文字":
+					return "遊玩紀錄那一頁應顯示文字與複製按鈕"
+		sizes[t] = await _settled_min_size(panel.get_child(0))
+	panel.detail_button.pressed.emit()
+	if not panel.tomb_page.visible:
+		return "按「返回」應回到墓碑頁"
+	mate_rows[2].gui_input.emit(click)
+	if not panel.detail_page.visible or panel.shown_peer != 30:
+		return "點隊友那一列應進詳細統計看他：看 %d" % panel.shown_peer
+	var screen := Vector2(ProjectSettings.get_setting("display/window/size/viewport_width"), ProjectSettings.get_setting("display/window/size/viewport_height"))
+	for k: StringName in sizes:
+		var need: Vector2 = sizes[k] + Vector2(48, 48)   # 四邊各留 24
+		if need.x > screen.x or need.y > screen.y:
+			return "結算畫面（%s）需要 %.0f × %.0f，超出 %.0f × %.0f" % [k, need.x, need.y, screen.x, screen.y]
+		_note("結算畫面（%s）最多內容時 %.0f × %.0f" % [k, need.x, need.y])
+	panel.retry_button.pressed.emit()
+	panel.copy_button.pressed.emit()
+	panel.title_button.pressed.emit()
+	if sent != [&"retry", &"copy", &"title"]:
+		return "同一關重來、複製遊玩紀錄、回主選單應各發自己的訊號：%s" % [sent]
+	# 單人：沒有隊友那一塊；通關：沒有同一關重來、墓碑寫凱旋
+	var solo := {"players": {1: players[1]}, "info": {1: info[1]}, "tries": 0, "floor": 3, "stage": 0, "kills": 10, "time": 60.0, "coins": 5}
+	panel.show_result("勝利！", "通過第 3 層", true, solo, 1, "第 3 層", true, "")
+	if panel._mates.get_child_count() != 0 or panel.retry_button.visible or panel.retry_note.visible or not (texts.call(panel.stone) as String).contains("凱 旋") or panel.subtitle.text.contains("重來"):
+		return "單人通關：不應有隊友那一塊與同一關重來，墓碑寫凱旋：%s" % texts.call(panel.stone)
+	# 客戶端：沒有重來按鈕、提示等房主；沒有自己的統計也不會壞
+	panel.show_result("全員倒下", "撐到 1-1", false, {"players": {}, "info": {}, "tries": 0}, 5, "1-1", false, "")
+	panel.show_detail(true)
+	if panel.retry_button.visible or panel.restart_hint.visible or not panel.retry_note.text.contains("房主"):
+		return "客戶端不應有重來按鈕與「按 R」，應提示等房主"
+	panel.queue_free()
 	return ""

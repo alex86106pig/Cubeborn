@@ -284,6 +284,8 @@ func report_text(world: World) -> String:
 	lines.append("Cubeborn v%s · %s · %s · 種子 %d" % [GameVersion.VERSION, platform, Time.get_datetime_string_from_system(false, true), world.run_seed])
 	var screen := DisplayServer.window_get_size()
 	lines.append("顯示卡：%s · %d×%d · %s" % [RenderingServer.get_video_adapter_name(), screen.x, screen.y, video])
+	if world.stage_tries > 0:   # 同一關重來（開發用）：這份紀錄是累計的，不會跟著重來倒回去
+		lines.append("同一關重來 %d 次（下面的數字含每一次重來）" % world.stage_tries)
 	var s := world.stats
 	var mode_name: String = EventDefs.MODES[world.difficulty_mode].name
 	var where := "%s · 難度 %d（%s）" % [World.level_name(world.floor_num, world.stage_num), floori(world.difficulty()), mode_name] if world.has_floors() else "第 %d 波" % s.wave
