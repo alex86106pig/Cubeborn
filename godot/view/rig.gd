@@ -209,3 +209,33 @@ func set_flash(k: float) -> void:
 # 零件（MeshInstance3D）數量，供效能檢查
 func mesh_count() -> int:
 	return PartKit.mesh_instances(self).size()
+
+
+# 角色本體的頂點（去掉重複的）：[[關節, 關節座標的頂點], …]，第一次用到才算（本體零件建好就不變）。
+# 用頂點不用外框：外框的角轉斜時比零件低，貼地會留縫
+var _shape: Array = []
+
+
+## 角色本體最低點在角色座標的高度（照目前的關節角度；不在場景樹裡也能算）。
+## 只算 body ~ shin 底下的零件：手上的武器（held_*）、掛點上的盾與箭袋、搭弦箭都不算
+func body_bottom() -> float:
+	if _shape.is_empty():
+		for joint: Node3D in _anchors().slice(1, 13):
+			var seen := {}
+			for child in joint.get_children():
+				if child is MeshInstance3D and child != weapon_nock:
+					var t := (child as Node3D).transform
+					for v: Vector3 in (child as MeshInstance3D).mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+						seen[(t * v).snappedf(0.001)] = true
+			if not seen.is_empty():
+				_shape.append([joint, PackedVector3Array(seen.keys())])
+	var low := INF
+	for entry: Array in _shape:
+		var t := Transform3D.IDENTITY
+		var n: Node3D = entry[0]
+		while n != self:
+			t = n.transform * t
+			n = n.get_parent()
+		for c: Vector3 in entry[1]:
+			low = minf(low, (t * c).y)
+	return low

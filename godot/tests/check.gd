@@ -225,8 +225,8 @@ func _initialize() -> void:
 		+ "弓不拉弓時平放（弓梢連線水平、弓背朝下、弦在上）；骷髏弓手瞄準時舉平、拉弦拉到下巴、射完右手平滑放下、目標在射擊距離內左手停在預備高度、離開射擊距離才平滑放回垂直；"
 		+ "長劍待機刃朝上下（玩家、骷髏），骷髏往下劈時刃也朝下；三連砍 1 往左下劈、2 往右上撩、3 從頭後上方劈到前下方；權杖第 1 下、火把右上往左下斜揮；武器尖端不進地；雙匕首待機刀尖朝前上方、刺出朝正前方、刃朝上下",
 		all.bind([ViewChecks.check_weapon_grip, ViewChecks.check_bow_rest, ViewChecks.check_archer_bow_arm, ViewChecks.check_sword_edge]))
-	_check("角色骨架與動作：每種角色都有手肘與膝蓋（前臂、小腿各一節、零件掛在那一節，模板組出來的也一樣）；步態照真實動作（走路膝蓋最多 50~75°、跑步 90~125°、跑步髖部抬 55~85°、踩地的腳貼地）、上身前傾從髖部彎、蹲低時膝蓋彎；18 招戰技各有自己的動作、腳不踩進地裡；動作表與動畫檢視器每個角色的每個動作都錄得出來、播得完（腳步改成原地 / 跑也行）；守墓人的鏟起、提燈噴火拆成一段一招（起手、沒抓到、A 拋飛、B 埋地、B 噴火各一段），檢視器可以接著演（反白跟著走）、關掉只循環那一段；走跑循環時角色接著往前、步伐不斷、地板跟著；Boss 類倒地時手臂、拳頭、手上的武器不穿地、拳頭貼地，武器鬆手落在身旁、屍體沉完時一起沉到地面下，玩家拿 8 把武器趴倒時手臂、武器、盾不穿地；火把噴火推出時火把頭朝前、鏟拋先把鏟面插到地面再掀過頭；屍巫唸咒兩手合攏在胸前、尖嘯幽影尖嘯時兩手往外張開",
-		all.bind([ViewChecks.check_limb_joints, ViewChecks.check_gait_pose, ViewChecks.check_skill_poses, ViewChecks.check_anim_recorder, ViewChecks.check_anim_viewer, ViewChecks.check_dead_lie, ViewChecks.check_special_poses, ViewChecks.check_floor3_poses]))
+	_check("角色骨架與動作：每種角色都有手肘與膝蓋（前臂、小腿各一節、零件掛在那一節，模板組出來的也一樣）；步態照真實動作（走路膝蓋最多 50~75°、跑步 90~125°、跑步髖部抬 55~85°、踩地的腳貼地）、上身前傾從髖部彎、蹲低時膝蓋彎；18 招戰技各有自己的動作、腳不踩進地裡；動作表與動畫檢視器每個角色的每個動作都錄得出來、播得完（腳步改成原地 / 跑也行）；守墓人的鏟起、提燈噴火拆成一段一招（起手、沒抓到、A 拋飛、B 埋地、B 噴火各一段），檢視器可以接著演（反白跟著走）、關掉只循環那一段；走跑循環時角色接著往前、步伐不斷、地板跟著；Boss 類倒地時手臂、拳頭、手上的武器不穿地、拳頭貼地，武器鬆手落在身旁、屍體沉完時一起沉到地面下，玩家拿 8 把武器趴倒時手臂、武器、盾不穿地；火把噴火推出時火把頭朝前、鏟拋先把鏟面插到地面再掀過頭；翻滾整段本體貼地（不浮空、不穿地，武器、盾、箭袋不算）；屍巫唸咒兩手合攏在胸前、尖嘯幽影尖嘯時兩手往外張開",
+		all.bind([ViewChecks.check_limb_joints, ViewChecks.check_gait_pose, ViewChecks.check_skill_poses, ViewChecks.check_anim_recorder, ViewChecks.check_anim_viewer, ViewChecks.check_dead_lie, ViewChecks.check_special_poses, ViewChecks.check_roll_pose, ViewChecks.check_floor3_poses]))
 	_check("受擊閃白：只改自發光顏色、不切換 emission_enabled（切換會在第一次命中即時編譯著色器而卡頓）", ViewChecks.check_flash_no_shader_switch)
 	_check("特效：模擬層發出的每個 fx:* 都有畫面處理、也列在 PROJECT_GUIDELINES 第 9 節，餵給 Effects 會產生粒子；粒子與弧光環有上限、拖尾 30 / 144 FPS 每秒粒子數相同、暫停時不產生；" \
 		+ "守墓人噴火的火舌跟判定一樣大（追著噴的扇形、轉圈的一整圈、鏟起 B 的直噴）、有噴流粒子、噴完拿掉、開場預熱過",

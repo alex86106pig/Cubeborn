@@ -4193,6 +4193,54 @@ static func check_special_poses() -> String:
 	return err
 
 
+# 翻滾貼地：整段翻滾角色本體（不含手上的武器、盾、箭袋）的最低頂點都貼著地面，不浮空也不穿地；真的有翻過去（頭下腳上）。
+# 翻滾動作跟武器無關，拿盾的劍盾、背箭袋的短弓各錄一次（確認掛在身上的東西不算進貼地）
+static func check_roll_pose() -> String:
+	var rec := AnimRecorder.new()
+	var err := ""
+	for weapon: String in ["swordShield", "shortbow"]:
+		for row: Dictionary in rec.rows("player-%s" % weapon, false):
+			if row.key != "roll":
+				continue
+			var made: Dictionary = (row.make as Callable).call()
+			var rig: Rig = made.rig
+			var parts: Array[Node3D] = []
+			for joint: Node3D in [rig.body, rig.head, rig.arm_r, rig.arm_l, rig.leg_r, rig.leg_l, rig.hand_r, rig.hand_l, rig.forearm_r, rig.forearm_l, rig.shin_r, rig.shin_l]:
+				for child in joint.get_children():
+					if child is MeshInstance3D and child != rig.weapon_nock:
+						parts.append(child)
+			var high := -INF   # 本體最低頂點的最高值（浮空）
+			var deep := INF    # 本體最低頂點的最低值（穿地）
+			var turn := 0.0
+			for i in (row.frames as Array).size():
+				AnimRecorder.step(row, made, i)
+				if row.frames[i].anim.action != &"roll":
+					continue
+				var low := INF
+				for part in parts:
+					var t := Transform3D.IDENTITY
+					var n: Node3D = part
+					while n != rig:
+						t = n.transform * t
+						n = n.get_parent() as Node3D
+					for v: Vector3 in (part as MeshInstance3D).mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+						low = minf(low, (t * v).y)
+				high = maxf(high, low)
+				deep = minf(deep, low)
+				turn = maxf(turn, absf(rig.body.rotation.x))
+			rig.free()
+			if turn < 2.8:
+				err = "%s 翻滾應翻到頭下腳上：身體最多轉 %.2f" % [weapon, turn]
+			elif high > 0.04 or deep < -0.04:
+				err = "%s 翻滾時本體最低點應貼地（±0.04）：最高 %.3f、最低 %.3f" % [weapon, high, deep]
+			else:
+				_note("%s 翻滾本體最低點 %.3f ~ %.3f、最多轉 %.2f" % [weapon, deep, high, turn])
+		if err != "":
+			break
+	rec.clear()
+	return err
+
+
 # 第 3 層的兩招手的動作：屍巫唸咒到最後兩手合攏在胸前（靠近中線、在身前）；尖嘯幽影尖嘯時兩手伸直往外張（比肩膀寬很多、大約肩膀高）
 static func check_floor3_poses() -> String:
 	var rec := AnimRecorder.new()

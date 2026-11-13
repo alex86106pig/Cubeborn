@@ -855,7 +855,7 @@ func _bow_string(pull: Variant) -> void:
 		seg.transform = Transform3D(Basis(Quaternion(Vector3.UP, span.normalized())).scaled_local(Vector3(1.0, span.length(), 1.0)), (tips[i] + p) / 2.0)
 
 
-# 翻滾：繞身體中心往前翻一圈（body 樞紐在腳底，所以同時位移讓中心不動），抱膝、手肘收緊
+# 翻滾：繞身體中心往前翻一圈（body 樞紐在腳底，所以同時位移讓中心不動），抱膝、手肘收緊；最後整團往下移到本體最低點貼地
 func _pose_roll(k: float) -> void:
 	free_legs = true
 	var angle := TAU * smoothstep(0.0, 1.0, k)
@@ -870,6 +870,7 @@ func _pose_roll(k: float) -> void:
 	BodyPose.arm(rig, true, -0.5 * tuck, 0.3 * tuck, 2.1 * tuck)   # 拳頭收到胸前，手腕轉到劍尖朝腳（翻到頭下腳上時劍不插進地裡）
 	wrist_target = 2.9 * tuck
 	BodyPose.arm(rig, false, -0.5 * tuck, -0.3 * tuck, 2.1 * tuck)
+	rig.body.position.y -= maxf(0.0, rig.body_bottom())   # 抱成一團比繞的中心矮：往下貼地（只算本體，不算武器、盾、箭袋），不往上推
 
 
 # 盾擊：盾舉到身前（左上臂往前外、前臂橫在胸前）→ active 往前推（手肘伸開、肩膀頂進去），劍收在身側；左腳在前、膝蓋微蹲
