@@ -1391,6 +1391,48 @@ static func check_net_stage() -> String:
 	return ""
 
 
+# 同一關重來（開發用）：房主重來後，客戶端照快照的重來次數把本機的休眠怪群重生一份（層、小關、種子都沒變，只有次數變了），
+# 兩位玩家都復活、不再是失敗、客戶端自己的背包回到進關時
+static func check_net_retry() -> String:
+	var link := _Link.new(31, [1, 2], 2, 0.0, false, MapDefs.FLOOR_MAPS[1])
+	var hw := link.host_world
+	var cw := link.client.world
+	hw.spawner.finished = true
+	for i in 10:
+		link.step(InputCmd.new(), InputCmd.new())
+	var local_count := func() -> int:
+		return cw.entities.values().filter(func(e: Entity) -> bool: return e.net_local).size()
+	var locals_in: int = local_count.call()
+	if locals_in == 0 or locals_in != hw.pack_member_count():
+		return "開局客戶端本機的休眠怪應跟房主的怪群一樣多：%d / %d" % [locals_in, hw.pack_member_count()]
+	# 這一關裡：叫醒一群（客戶端那群改由快照送，本機的移除）、客戶端玩家撿到東西，然後全員倒下
+	hw.wake_pack(0)
+	var hp2: Player = hw.players[2]
+	var build_in := hp2.save_build()
+	hp2.add_item(&"wormwood")
+	hw.players[1].die()
+	hp2.die()
+	for i in 30:
+		link.step(InputCmd.new(), InputCmd.new())
+	if not hw.is_defeated or not cw.is_defeated or local_count.call() >= locals_in:
+		return "重來前：兩邊都應是失敗、客戶端本機的休眠怪因為醒了一群而變少：%s / %s、本機 %d / %d" % [hw.is_defeated, cw.is_defeated, local_count.call(), locals_in]
+	hw.retry_stage()
+	for i in 30:
+		link.step(InputCmd.new(), InputCmd.new())
+	if cw.stage_tries != 1 or cw.is_defeated:
+		return "客戶端應收到重來次數 1、不再是失敗：%d、%s" % [cw.stage_tries, cw.is_defeated]
+	if local_count.call() != locals_in or cw.packs.size() != hw.packs.size() or link.client.layout_mismatch != 0:
+		return "客戶端本機的休眠怪群應重生一份：%d / %d 隻、%d / %d 群、配置不同 %d 次" % [local_count.call(), locals_in, cw.packs.size(), hw.packs.size(), link.client.layout_mismatch]
+	for peer: int in [1, 2]:
+		var cp: Player = cw.players.get(peer)
+		if cp == null or cp.is_dead or cp.is_downed:
+			return "客戶端看到的玩家 %d 應復活" % peer
+	var mine: Player = cw.players[2]
+	if mine.loadout.bags_to_array() != build_in.bags:
+		return "客戶端自己的背包應回到進關時"
+	return ""
+
+
 # 觀戰隊友看隊友的視野：房主的玩家往旁邊翻滾、滑鼠朝前，客戶端那邊他的視野方向（快照 P_VIEW）是滑鼠的方向、不是翻滾的方向
 static func check_net_view() -> String:
 	var link := _Link.new(41, [1, 2], 0, 0.0, false)

@@ -393,6 +393,30 @@ func add_corpse(owner_peer: int) -> bool:
 	return loadout.add_corpse(self, owner_peer)
 
 
+# 進關存檔（World.save_stage / retry_stage，開發期間的「同一關重來」）：背包、主袋、袋子、手上的武器、技能等級、骰子、藥水剩幾瓶。
+# 格式跟快照同一套（Loadout.bags_to_array、WeaponDropDefs.to_array），深複製一份，之後背包怎麼動都不影響存檔
+func save_build() -> Dictionary:
+	return {
+		"bags": loadout.bags_to_array().duplicate(true),
+		"slots": weapon_slots.map(WeaponDropDefs.to_array).duplicate(true),
+		"levels": skill_levels.duplicate(),
+		"dice": dice,
+		"heal": slots.heal.charges,
+	}
+
+
+# 還原成 save_build 存的樣子；背著的隊友屍體拿掉（重來時全員復活）。生命、魔力由 World.retry_stage 補滿
+func load_build(build: Dictionary) -> void:
+	loadout.sync_inventory(self, (build.bags as Array).duplicate(true))
+	for e: Dictionary in inventory.entries.duplicate():
+		if e.id == &"corpse":
+			inventory.remove(e.uid)
+	loadout.sync_weapon_slots(self, (build.slots as Array).duplicate(true))
+	skill_levels = (build.levels as Dictionary).duplicate()
+	dice = build.dice
+	slots.heal.charges = build.heal
+
+
 # 範圍內最近的倒地隊友（救援對象）；沒有回傳 null
 func find_revive_target() -> Player:
 	var best: Player = null

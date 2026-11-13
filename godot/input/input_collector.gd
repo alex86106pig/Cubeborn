@@ -13,6 +13,7 @@ const ACTIONS := {
 	&"debug_hitbox": KEY_F2, &"debug_speed": KEY_F3,
 	&"debug_item": KEY_F4, &"debug_clear_items": KEY_F5,
 	&"practice_hold": KEY_T,   # 武器測試場：怪物停手 / 攻擊
+	&"retry_stage": KEY_Y,     # 失敗畫面：同一關重來（開發用，單機與房主）
 }
 const MOUSE_ACTIONS: Array[StringName] = [&"attack", &"special"]
 

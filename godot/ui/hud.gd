@@ -6,6 +6,7 @@ extends CanvasLayer
 signal quit_requested   # 暫停畫面或主選單按下「離開遊戲」
 signal title_requested  # 暫停畫面按下「回主選單」
 signal practice_revive   # 武器測試場：按「立即復活」
+signal retry_stage_requested   # 失敗畫面按「同一關重來」（開發用；main.gd 只在單機與房主時照做）
 signal inventory_full(pickup_id: int)             # 本機玩家撿不下地上的道具：打開背包標出它（main.gd 接）
 signal forge_opened                               # 本機玩家在鍛造祭壇按 F：打開背包（main.gd 接，Build 改版第 8 步）
 
@@ -24,7 +25,7 @@ const HINT_BOTTOM := 150.0        # 新手提示的下緣離畫面底部多少
 const BOSS_NAME := "亡骸騎士"     # 測試場地波次的 Boss（darkFantasy.js 的 names.boss）
 # 介面程式碼裡寫死的中文字（橫幅、浮動文字、場上文字、連線面板、遊玩紀錄…；資料表以外的）：開場預熱用（v0.37.2）
 # check.gd 會掃 ui/ 的字串，缺字就列出來，加到這裡
-const UI_CHARS := "誤互立即般共砧升級—羈絆算階鑲輪　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木總樂畫陰源・介想意反對取噴發巡邏膨脹犬守話又頭肥羊園狼原形占拿件夠直接將群配跟事抓倉庫顏詛咒觸適任何修飾每翻滾魔放那隻身位袋數值道具亮標題管狀量機堆痕框掛其底併檢視"
+const UI_CHARS := "決誤互立即般共砧升級—羈絆算階鑲輪　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木總樂畫陰源・介想意反對取噴發巡邏膨脹犬守話又頭肥羊園狼原形占拿件夠直接將群配跟事抓倉庫顏詛咒觸適任何修飾每翻滾魔放那隻身位袋數值道具亮標題管狀量機堆痕框掛其底併檢視"
 
 const VIGNETTE_SHADER := """
 shader_type canvas_item;
@@ -82,6 +83,10 @@ var _game_over_stats := UiKit.label("", 20)
 var _game_over_log := UiKit.label("", 18, Color(1, 1, 1, 0.85))   # 遊玩紀錄（v0.34.0）
 var _copy_button := UiKit.button("複製遊玩紀錄")   # 複製遊玩紀錄（RunLog.report_text）回報
 var _copy_note := UiKit.label("", 16, UiKit.GOLD)
+var can_retry := true            # 本機能不能決定重來 / 重新開始（單機與房主；main.gd 每幀設）：客戶端只看得到提示
+var _retry_button := UiKit.button("同一關重來（Y）")   # 開發用：背包與武器回到進這一關時，再打一次（World.retry_stage）
+var _retry_note := UiKit.label("", 20, Color(1, 1, 1, 0.85))
+var _restart_hint := UiKit.label("按 R 重新開始", 20)
 var last_report := ""              # 上次複製的文字（測試用）
 var run_log := RunLog.new()
 var level_transition := LevelTransition.new()   # 換小關 / 換層的收圈過場
@@ -332,7 +337,8 @@ func _init() -> void:
 	root.add_child(level_transition)   # 蓋在場上的介面與橫幅上面、結算與選單下面
 
 	_copy_button.pressed.connect(copy_report)
-	_build_overlay(_game_over, Color(40 / 255.0, 0, 0, 0.55), [_game_over_title, _game_over_stats, _game_over_log, _copy_button, _copy_note, _pulse(UiKit.label("按 R 重新開始", 20))])
+	_retry_button.pressed.connect(retry_stage_requested.emit)
+	_build_overlay(_game_over, Color(40 / 255.0, 0, 0, 0.55), [_game_over_title, _game_over_stats, _game_over_log, _copy_button, _copy_note, _retry_button, _retry_note, _pulse(_restart_hint)])
 	root.add_child(_game_over)
 	var pause_controls := UiKit.label(CONTROLS_TEXT, PAUSE_CONTROLS_FONT, Color.WHITE)
 	pause_controls.add_theme_constant_override(&"line_spacing", 8)
@@ -768,6 +774,15 @@ func _on_event(name: String, p: Dictionary) -> void:
 			show_menu(p.paused)
 		"audio:muted":
 			_mute.text = "靜音（M）" if p.muted else ""
+		"stage:retried":
+			level_transition.cancel()
+			_game_over_delay = -1.0
+			_game_over.visible = false
+			_copy_note.text = ""
+			_hp_ghost = 1.0
+			_boss_ghost = 1.0
+			_floaters.clear()
+			_show_banner("%s 重來（第 %d 次）" % [World.level_name(p.floor, p.stage) if world.has_floors() else "這一關", p.tries], false, UiKit.GOLD)
 		"game:restart":
 			level_transition.cancel()
 			_game_over_delay = -1.0
@@ -801,6 +816,11 @@ func _set_game_over(title: String, stats: String, victory: bool) -> void:
 	_game_over_stats.text = stats + "\n" + coins_summary() + "\n" + seed_text(world)
 	_game_over_log.text = run_log.summary_text()
 	run_log.result = title
+	# 同一關重來（開發用）：只有失敗、而且是單機或房主才有按鈕；客戶端看提示
+	_retry_button.visible = not victory and can_retry
+	_retry_note.visible = not victory
+	_retry_note.text = "開發用：背包與武器回到進這一關時，生命魔力補滿" if can_retry else "等房主決定：同一關重來，或重新開始"
+	_restart_hint.visible = can_retry
 	_game_over.color = Color(40 / 255.0, 30 / 255.0, 0, 0.5) if victory else Color(40 / 255.0, 0, 0, 0.55)
 
 

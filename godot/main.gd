@@ -95,6 +95,7 @@ func _ready() -> void:
 	hud.inventory_panel.visibility_changed.connect(func() -> void: input_collector.mouse_captured = hud.inventory_panel.visible)
 	hud.inventory_full.connect(_open_inventory_for)
 	hud.forge_opened.connect(_open_inventory)
+	hud.retry_stage_requested.connect(retry_stage)
 	if args.run_seconds > 0.0:
 		hud.hints.save_path = ""   # 自動驗證（截圖、量效能）不記「看過的提示」，免得使用者自己玩時提示不跳
 		profile.save_path = ""     # 也不把自動驗證拿到的金幣算進使用者的存檔
@@ -195,6 +196,7 @@ func restart() -> void:
 			me.stats.set_base(&"max_hp", args.start_hp)
 		me.hp = args.start_hp
 	DebugTools.setup_run(world, me, args)
+	world.save_stage()   # 起始武器、道具給完之後再存一次：第一關重來才帶得到
 	if in_weapon_test and not args.weapon_test:
 		Spawner.spawn_training_dummies(world, me.pos, hud.test_panel.dummy_kind)
 	_practice_meter.reset()
@@ -204,6 +206,21 @@ func restart() -> void:
 	if mode == Mode.HOST:
 		net.send_events(world.run_id, world.tick, world.events.duplicate())
 	set_paused(false)
+	camera_rig.follow(_player_view_position(1.0), 0.0, true)
+
+
+# 同一關重來（開發用，失敗畫面的按鈕或 Y）：單機死掉、多人全員倒下時，單機與房主可以按；所有玩家回到進這一關時的背包與武器
+func retry_stage() -> void:
+	if mode == Mode.CLIENT or is_at_title or in_weapon_test or not world.is_defeated or not world.can_retry_stage():
+		return
+	var before := world.events.size()   # 這一步的事件已經送過，只送重來新增的
+	world.retry_stage()
+	var fresh := world.events.slice(before)
+	_sim_accumulator = 0.0
+	input_collector.consume_latched()
+	GameEvents.emit_all(fresh)
+	if mode == Mode.HOST:
+		net.send_events(world.run_id, world.tick, fresh.duplicate())
 	camera_rig.follow(_player_view_position(1.0), 0.0, true)
 
 
@@ -665,6 +682,7 @@ func _physics_process(_delta: float) -> void:
 	_stepped_this_tick = false
 	input_collector.enabled = not (is_at_title or is_menu_open or is_paused or hud.net_panel.is_typing())
 	var shown := net_client.world if mode == Mode.CLIENT and net_client != null else world
+	hud.can_retry = mode != Mode.CLIENT
 	input_collector.vote_pending = input_collector.enabled and shown.event.in_vote(shown, _local_peer)
 	if mode == Mode.CLIENT:
 		_client_physics()
@@ -793,6 +811,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		var player := local_player()
 		if mode != Mode.CLIENT and (world.is_over or world.is_defeated or player == null or player.is_dead):
 			restart()
+	elif event.is_action_pressed(&"retry_stage"):
+		retry_stage()
 	elif event.is_action_pressed(&"mute"):
 		sound.toggle_mute()
 		_emit_muted()

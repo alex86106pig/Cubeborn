@@ -51,6 +51,8 @@ const RELIC_SPOT_TICKS := 12     # 每幾步看一次遺物有沒有被人看到
 const PACK_ID_STRIDE := 1024
 const PACK_ID_STAGES := 8       # 每層留幾個小關的 id 區段
 var _changing_floor := false
+var stage_tries := 0                 # 這一局「同一關重來」幾次（開發用，retry_stage）：快照帶給客戶端，客戶端照它重生本機的休眠怪群
+var _stage_save := {}                # 進這一關時的存檔：{ souls, reward, builds: peer_id → Player.save_build() }（save_stage）
 var layout: Dictionary = {}   # 這一局這一層的地形（MapDefs.layout）：blocks、開的門 doors、每格的區塊 zones
 var layout_key := []          # 地形是照什麼建的（_layout_key_for）：畫面層比對它決定要不要重建場地
 var _prebuilt: Dictionary = {}     # 先拼好的下一小關（prebuild_stage）：{ key: [地圖, 層, 小關, 種子], map }；load_map 用掉就清
@@ -197,7 +199,9 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 	run_coins = 0
 	floor_num = 1
 	base_difficulty = 0.0
+	stage_tries = 0
 	_populate_floor()
+	save_stage()
 	emit_event("game:restart", {})
 
 
@@ -323,6 +327,7 @@ func next_floor() -> void:
 	floor_num += 1
 	stage_num = 0   # 新的一層：分小關的地圖從 START_STAGE 開始（load_map）
 	_change_level()
+	save_stage()
 	emit_event("floor:started", {"floor": floor_num, "stage": stage_num, "difficulty": base_difficulty})
 
 
@@ -333,8 +338,50 @@ func next_stage(reward: StringName) -> void:
 	if bag_mode == BagDefs.MODE_MERGED:   # 背包合併：過小關每人隨機開 1 格
 		for p in player_list:
 			p.loadout.unlock_random(p, rng)
+	save_stage(reward)   # 門的獎勵發下去之前存：重來時照原樣再發一次
 	_grant_stage_reward(reward)
 	emit_event("stage:started", {"floor": floor_num, "stage": stage_num, "difficulty": base_difficulty, "reward": String(reward)})
+
+
+# ───────── 同一關重來（開發期間方便測試；正式上線前拿掉：這一段、stage_tries、Player.save_build / load_build、HUD 的按鈕）─────────
+
+# 記下每位玩家現在的配置與全隊的靈魂：進新的一關時存（reset、next_floor、next_stage）；
+# 開局後才給的起始武器 / 道具（main.restart 的啟動參數）要在給完之後再存一次
+func save_stage(reward: StringName = &"") -> void:
+	var builds := {}
+	for p in player_list:
+		builds[p.peer_id] = p.save_build()
+	_stage_save = {"souls": souls, "soul_carry": soul_carry, "reward": reward, "builds": builds}
+
+
+func can_retry_stage() -> bool:
+	return is_authority and not is_over and not _stage_save.is_empty()
+
+
+# 這一關重來：每位玩家的背包、武器、技能等級、骰子、藥水回到進關時，生命與魔力補滿、全員復活（進關前就死掉的也復活）；
+# 靈魂回到進關時；同一層、同一小關、同一個種子重新擺地圖、怪群、寶箱，門的獎勵照原樣再發。擊殺數與時間不倒回去
+func retry_stage() -> void:
+	if not can_retry_stage():
+		return
+	stage_tries += 1
+	souls = _stage_save.souls
+	soul_carry = _stage_save.soul_carry
+	is_defeated = false
+	victory_timer = 0.0
+	hit_stop_timer = 0.0
+	cooldowns.reset_all()
+	for p in player_list:
+		if _stage_save.builds.has(p.peer_id):   # 這一關中途才加入的沒有存檔：配置不動
+			p.load_build(_stage_save.builds[p.peer_id])
+		if p.is_dead or p.is_downed:
+			p.resurrect(spawn_point, 1.0)   # 先復活再換關：_change_level 不會把他變成冤魂
+		p.buffs.clear()
+		p.stun_timer = 0.0
+		p.hp = p.max_hp
+		p.mana = p.max_mana()
+	_change_level()
+	_grant_stage_reward(_stage_save.reward)
+	emit_event("stage:retried", {"floor": floor_num, "stage": stage_num, "tries": stage_tries})
 
 
 # 換層與換小關共用：基礎難度、清掉玩家以外的東西、換這一層 / 這一關的地圖、回出生點、重放寶箱與怪群；背著屍體的死者變冤魂

@@ -193,9 +193,27 @@ static func check_hud() -> String:
 	hud._quit_button.pressed.emit()
 	if quit_count[0] != 1:
 		return "按下「離開遊戲」應發出 quit_requested 一次，實際 %d 次" % quit_count[0]
+	# 同一關重來（開發用）：失敗畫面上單機與房主有按鈕、按了發訊號；客戶端沒有按鈕、看到等房主的提示；stage:retried 收起失敗畫面
+	var retry_count := [0]
+	hud.retry_stage_requested.connect(func() -> void: retry_count[0] += 1)
+	hud.can_retry = true
+	hud._on_event("game:defeat", {"stats": w.stats.duplicate()})
+	hud._process(hud.GAME_OVER_DELAY + 0.1)
+	hud._retry_button.pressed.emit()
+	if not hud._game_over.visible or not hud._game_over.is_ancestor_of(hud._retry_button) or not hud._retry_button.visible or not hud._restart_hint.visible or retry_count[0] != 1:
+		return "失敗畫面應有「同一關重來」按鈕、按了發出 retry_stage_requested 一次：看得到 %s、%d 次" % [hud._retry_button.visible, retry_count[0]]
+	hud._on_event("stage:retried", {"floor": 1, "stage": 2, "tries": 1})
+	hud._process(hud.GAME_OVER_DELAY + 0.1)
+	if hud._game_over.visible:
+		return "stage:retried 後失敗畫面應收起，而且不會又跳出來"
+	hud.can_retry = false
+	hud._on_event("game:defeat", {"stats": w.stats.duplicate()})
+	if hud._retry_button.visible or hud._restart_hint.visible or not hud._retry_note.text.contains("房主"):
+		return "客戶端的失敗畫面不應有重來按鈕與「按 R」，應提示等房主：「%s」" % hud._retry_note.text
+	hud.can_retry = true
 	hud._on_event("game:victory", {"stats": w.stats.duplicate()})
-	if not hud._game_over.visible or hud._game_over_title.text != "勝利！":
-		return "game:victory 應顯示勝利畫面"
+	if not hud._game_over.visible or hud._game_over_title.text != "勝利！" or hud._retry_button.visible:
+		return "game:victory 應顯示勝利畫面，沒有「同一關重來」"
 	hud.queue_free()
 	cam.queue_free()
 	return ""

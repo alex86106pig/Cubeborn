@@ -252,7 +252,7 @@ func _apply_interpolated() -> void:
 # 醒了的群（W_PACKS）房主開始送附近的成員，沒送到的（醒了但不在我附近、被別的玩家帶走）本機那隻移除
 func _sync_local_packs(snap: Array) -> void:
 	var w: Array = snap[NetCodec.S_WORLD]
-	var key := [_run_id, world.floor_num, world.stage_num, world.run_seed]
+	var key := [_run_id, world.floor_num, world.stage_num, world.run_seed, world.stage_tries]
 	if key != _packs_key:
 		_packs_key = key
 		for e: Entity in world.entities.values():

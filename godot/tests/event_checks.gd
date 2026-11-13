@@ -835,3 +835,88 @@ static func check_stage_exit() -> String:
 	if p2.pos.distance_to(w2.spawn_point) > 1.0:
 		return "換小關後隊友也要回到出生點"
 	return ""
+
+
+# 同一關重來（開發用，World.retry_stage）：全員倒下後重來，每位玩家的背包、武器、技能等級、骰子、藥水回到進這一關時，
+# 生命魔力補滿、全員復活、沒有冤魂；靈魂回到進關時加上門的獎勵；地圖與怪群跟進關時一模一樣；擊殺數不倒回去；
+# 連續重來每次都一樣；客戶端（非權威端）與已經通關時不能重來
+static func check_retry_stage() -> String:
+	var w := World.new(MapDefs.FLOOR_MAPS[1])
+	w.reset(31, [1, 2])
+	w.spawner.finished = true
+	_made.append(w)
+	var p1: Player = w.players[1]
+	var p2: Player = w.players[2]
+	# 1-1 拿到的東西帶進 1-2：這些是「進關時」的狀態
+	p1.equip_weapon(&"staff")
+	p1.add_item(&"wormwood")
+	p1.add_item(&"whirlwind")
+	p1.skill_levels[&"whirlwind"] = 3
+	p1.dice = 5
+	p1.slots.heal.charges = 1
+	w.souls = 40
+	w.next_stage(&"souls")
+	var souls_in := w.souls
+	var build1 := p1.save_build()
+	var build2 := p2.save_build()
+	var foes := func() -> Array:
+		var out := []
+		for e in w.enemies:
+			out.append([e.id, e.kind, e.pos])
+		out.sort()
+		return out
+	var foes_in: Array = foes.call()
+	var key_in := w.layout_key.duplicate()
+	if foes_in.is_empty():
+		return "1-2 應有怪群（不然驗不到重擺）"
+	for round in 2:
+		# 這一關裡把東西都弄亂：換武器、多撿、清空、升級、花骰子與藥水、花靈魂、殺一隻怪，然後全員倒下
+		p1.equip_weapon(&"shovel")
+		p1.add_item(&"wormwood")
+		p1.skill_levels[&"whirlwind"] = 5
+		p1.dice = 0
+		p1.slots.heal.charges = 0
+		p2.clear_items()
+		p2.add_item(&"whirlwind")
+		w.souls += 99
+		var kills := int(w.stats.kills)
+		(w.enemies[0] as Enemy).remove()
+		p2.die()
+		p1.die()
+		for i in 600:
+			w.step({}, DT)
+			if w.is_defeated:
+				break
+		if not w.is_defeated or not w.can_retry_stage():
+			return "第 %d 輪：全員倒下後應是失敗、可以重來（失敗 %s）" % [round + 1, w.is_defeated]
+		w.retry_stage()
+		if _named(w.events, "stage:retried").is_empty() or w.stage_tries != round + 1 or w.is_defeated:
+			return "第 %d 輪：重來應發出 stage:retried、次數 +1、不再是失敗：次數 %d" % [round + 1, w.stage_tries]
+		if p1.save_build() != build1 or p2.save_build() != build2:
+			return "第 %d 輪：背包、武器、技能等級、骰子、藥水應回到進關時：\n%s\n%s" % [round + 1, p1.save_build(), build1]
+		if p1.weapon_id != &"staff" or p1.slots.heal.charges != 1 or p1.dice != 5 or p1.skill_levels.get(&"whirlwind", 1) != 3:
+			return "第 %d 輪：P1 應拿回法杖、藥水 1、骰子 5、旋風斬 3 級：%s / %d / %d / %d" % [round + 1, p1.weapon_id, p1.slots.heal.charges, p1.dice, p1.skill_levels.get(&"whirlwind", 1)]
+		for p: Player in [p1, p2]:
+			if p.is_dead or p.is_downed or p.hp != p.max_hp or p.mana != p.max_mana() or p.pos.distance_to(w.spawn_point) > 0.01:
+				return "第 %d 輪：全員應復活、滿血滿魔、回出生點：死 %s、血 %.0f / %.0f、魔 %.0f / %.0f" % [round + 1, p.is_dead, p.hp, p.max_hp, p.mana, p.max_mana()]
+		if not w.ghosts.is_empty() or w.pickups.any(func(k: ItemPickup) -> bool: return k.item_id == &"corpse"):
+			return "第 %d 輪：重來後不應有冤魂或屍體" % (round + 1)
+		if w.souls != souls_in:
+			return "第 %d 輪：靈魂應回到進關時（含門的獎勵）%d，實際 %d" % [round + 1, souls_in, w.souls]
+		if foes.call() != foes_in or w.layout_key != key_in or w.stage_num != 2 or w.floor_num != 1:
+			return "第 %d 輪：地圖與怪群應跟進關時一樣：怪 %d / %d、%s" % [round + 1, (foes.call() as Array).size(), foes_in.size(), w.layout_key]
+		if int(w.stats.kills) != kills:
+			return "第 %d 輪：擊殺數不倒回去也不該變：%d → %d" % [round + 1, kills, int(w.stats.kills)]
+		w.step({}, DT)
+		if w.is_defeated or p1.is_dead:
+			return "第 %d 輪：重來後下一步不應又判失敗" % (round + 1)
+	# 不能重來的情況：非權威端、已經通關
+	w.is_authority = false
+	var tries := w.stage_tries
+	w.retry_stage()
+	w.is_authority = true
+	w.is_over = true
+	w.retry_stage()
+	if w.stage_tries != tries:
+		return "客戶端（非權威端）與通關後不應能重來"
+	return ""

@@ -163,8 +163,8 @@ func _initialize() -> void:
 	_check("蒙皮小怪（D5 效能）：骷髏戰士 / 弓手 / 腐屍合成一個蒙皮網格（≤ 2 個網格、頂點數與原本零件相同），關節姿勢寫進骨架（含手肘、膝蓋的骨頭）", MonsterChecks.check_skinned_rig)
 	_check("挖墳（D6）：DIG.range 內按住 F 開始事件並挖墳；挖墳中不能移動、跳，照樣轉向，被打不中斷不被擊退；總量 DIG.time × 活著的人數、一起挖速度相加、放手不掉（DIG.decay）、噴怪 +ERUPT.progress；挖完出口打開", EventChecks.check_dig)
 	_check("事件難度（D6）：怪物生命 × difficulty_mul；生怪間隔遞減夾在 interval_min；每批隻數隨難度與人數增加；魔法 / 稀有機率隨難度；挖墳前不冒怪、開挖就開始怪潮、難度每秒 +per_second；選的難度（簡單 / 普通 / 困難）讓上升 ×0.75 / ×1 / ×1.5、重新開始保留；挖墳點噴怪（墳土隆起預警、不畫圈、數量、下一層難度、拋物線落地）；挖完停怪、難度不漲、場上的怪留著", EventChecks.check_difficulty)
-	_check("出口與換層（D6）：挖完不會自動走；墳墓旁按 F，單人最後一層直接通關；換關先過場（level:leaving、LEAVE.cover 秒後才換，收圈在那之前全黑、地形換了才出關卡卡片與獎勵 / 鐵砧再打開）；多人投票（Esc 反對取消、發起人也能 Esc 取消、全員同意或 VOTE.time 秒到就走、陣亡的不用投）；換層回出生點、基礎難度 +per_floor、保留靈魂與背包、地上與怪物清空、寶箱重放、事件歸零；每層的出口外觀照 EXIT_STYLES（第 1 層墳墓、第 2 層石棺：棺蓋跟著進度滑開，打開後是發光的洞；第 3 層巨繭：兩半繭殼往兩邊剝開）；每過一個小關怪物生命 +stage_hp、第 2 層算過完第 1 層的小關",
-		all.bind([EventChecks.check_next_floor, ViewChecks.check_exit_looks, EventChecks.check_stage_exit, ViewChecks.check_level_transition]))
+	_check("出口與換層（D6）：挖完不會自動走；墳墓旁按 F，單人最後一層直接通關；換關先過場（level:leaving、LEAVE.cover 秒後才換，收圈在那之前全黑、地形換了才出關卡卡片與獎勵 / 鐵砧再打開）；多人投票（Esc 反對取消、發起人也能 Esc 取消、全員同意或 VOTE.time 秒到就走、陣亡的不用投）；換層回出生點、基礎難度 +per_floor、保留靈魂與背包、地上與怪物清空、寶箱重放、事件歸零；每層的出口外觀照 EXIT_STYLES（第 1 層墳墓、第 2 層石棺：棺蓋跟著進度滑開，打開後是發光的洞；第 3 層巨繭：兩半繭殼往兩邊剝開）；每過一個小關怪物生命 +stage_hp、第 2 層算過完第 1 層的小關；同一關重來（開發用）：全員倒下後背包、武器、技能等級、骰子、藥水回到進關時，滿血滿魔全員復活，靈魂與門的獎勵、地圖、怪群跟進關時一樣，客戶端與通關後不能重來",
+		all.bind([EventChecks.check_next_floor, ViewChecks.check_exit_looks, EventChecks.check_stage_exit, ViewChecks.check_level_transition, EventChecks.check_retry_stage]))
 	_check("Boss（D6）：挖墳地圖開局在 boss_room 裡巡邏、沒看到玩家不追、不出範圍；前方視野或貼近看到玩家、被打就開始追、不限範圍；打倒不通關，掉 1 把武器、1 個石棺的遺物、Boss 靈魂", EventChecks.check_boss_reward)
 	_check("屍體與冤魂（D6）：多人時死亡留下屍體、撿進背包；背著換層出現冤魂（死者的武器、袋子、職業、最大生命，怪物方、不算隊友），打倒後冤魂消失、死者在那裡復活、裝備照舊、屍體消失；沒人帶屍體就沒有冤魂；冤魂自己走過來用武器打玩家、不喝藥水，玩家打得到、怪不打它，換關沒打倒就清掉；道具的連鎖閃電、落雷與鬼火打得到冤魂（冤魂的也打得到玩家），中毒等狀態對冤魂不發動；連線時客戶端建成冤魂",
 		all.bind([EventChecks.check_corpse_ghost, EventChecks.check_ghost_fights, EventChecks.check_ghost_procs, EventChecks.check_net_ghost]))
@@ -233,7 +233,7 @@ func _initialize() -> void:
 		all.bind([ViewChecks.check_effects_events, ViewChecks.check_effects_limits, ViewChecks.check_flame_fx]))
 
 	# ───────── 介面 ─────────
-	_check("HUD：能建立、處理各種事件、顯示波次 / 血量 / 結算文字、暫停畫面有「離開遊戲」；別人撿到道具不跳橫幅；武器欄只寫手上那把；同一目標同時跳的傷害數字往上疊、地上物件名稱重疊時往上錯開；附帶的小傷害（燃燒 / 中毒 / 地面區域的一跳、附加屬性傷害）數字畫小、不佔疊層；小地圖只畫探索過的地方（牆擋視線、牆本身看得到、外框看過才亮）、換小關重畫；互動列表（兩個以上才開、滾輪 / 上下鍵換、頭尾接起來、選的離開範圍回到最近的、場上的 [F] 跟著選的）",
+	_check("HUD：能建立、處理各種事件、顯示波次 / 血量 / 結算文字、暫停畫面有「離開遊戲」；別人撿到道具不跳橫幅；武器欄只寫手上那把；同一目標同時跳的傷害數字往上疊、地上物件名稱重疊時往上錯開；附帶的小傷害（燃燒 / 中毒 / 地面區域的一跳、附加屬性傷害）數字畫小、不佔疊層；小地圖只畫探索過的地方（牆擋視線、牆本身看得到、外框看過才亮）、換小關重畫；互動列表（兩個以上才開、滾輪 / 上下鍵換、頭尾接起來、選的離開範圍回到最近的、場上的 [F] 跟著選的）；失敗畫面有「同一關重來」（客戶端只有提示）、重來後收起",
 		all.bind([ViewChecks.check_hud, ViewChecks.check_overlap_text, ViewChecks.check_minor_numbers, ViewChecks.check_minimap, ViewChecks.check_interact_list]))
 	_check("背包介面：和屬性面板並排塞得進介面最大檔的畫面；腳邊欄只列按得到 F 的地上道具（沒有就不顯示）、滑鼠停著顯示說明，拖進背包撿起放在那一格、背包的拖到腳邊丟掉；撿不下時 HUD 通知打開背包、提示拿掉哪一件就放得下，關掉就清除；遺物的 N 選 1 自動打開背包、卡片寫出拿過沒（已經放上去 / 倉庫裡有）、在介面上按下的左鍵放開前不普攻、卡片直排在背包左邊塞得進畫面、羈絆標籤寫目前格數、點卡片 / Esc 送出操作、自動打開的背包一起關、被打到（持續傷害不算）3 選 1 先不選並關掉背包、拿著東西時 R / Esc 不給遺物；鍛造祭壇旁開背包顯示鍛造面板：右鍵 / 拿著點格子 / 拖到同種武器上放進兩格、能合的發亮其他變暗、不能合寫原因、挑詞條按合成送出並清空、離開祭壇就關掉；開著背包時新手提示在屬性面板與背包中間、右上的層數與擊殺藏起來；屬性面板依組列出、核心屬性一直顯示，其他屬性與整組有加成才顯示；左鍵點一下拿起、再點一下放下（拖曳照舊），右鍵 / Esc 放回、點外面丟掉；右鍵直接裝上 / 拿下來（數值進主袋、技能進按鍵袋、主袋與袋子裡的回倉庫、手上的武器不拿下來）；物品依種類分畫法；羈絆欄只列收集到的；腳邊框不蓋到背包與技能欄（點一下拿起放進背包）", all.bind([ViewChecks.check_inventory_panel, ViewChecks.check_inventory_board, ViewChecks.check_relic_panel, ViewChecks.check_forge_panel, ViewChecks.check_hint_beside_bag, ViewChecks.check_stats_panel, ViewChecks.check_inventory_click, ViewChecks.check_inventory_layout, ViewChecks.check_ui_click_blocks_attack, ViewChecks.check_relic_owned]))
 	_check("技能欄：每把武器只有左鍵普攻、右鍵招式兩格（右鍵帶耗魔，沒有招架 / 火把姿態 / 鐵鏟舉著的換招格）；CD 遮罩疊放順序 文字圖示 < 壓黑 < 秒數；按鍵袋的技能顯示耗魔、魔力不夠變暗、後面的 Q 藥水照樣顯示瓶數",
@@ -256,8 +256,8 @@ func _initialize() -> void:
 	_check("結束程式不洩漏：主場景跑 3 秒（有怪、一直攻擊，音效還在播）後結束兩次，沒有 ObjectDB 洩漏、資源還在用", ViewChecks.check_quit_no_leak)
 
 	# ───────── 連線 ─────────
-	_check("快照：房主的實體序列化後客戶端建立同樣類別、位置、血量、武器的鏡像、動畫狀態相同時數值補間；地圖 A 怪群 + 4 人、P2 被 30 隻圍住時每份快照 ≤ 4.5 KB；背包 / 手上的武器 / 技能等級變了才連送、沒變只定期帶；休眠的怪群客戶端用種子在本機生（跟房主一致、不進快照；範圍外醒了移除、範圍內醒了照快照、休眠中被移除跟著移除、檢查碼不同就不用）",
-		all.bind([NetChecks.check_codec, NetChecks.check_snapshot_size.bind(feel), NetChecks.check_snapshot_loadout, NetChecks.check_local_packs, NetChecks.check_net_stage]))
+	_check("快照：房主的實體序列化後客戶端建立同樣類別、位置、血量、武器的鏡像、動畫狀態相同時數值補間；地圖 A 怪群 + 4 人、P2 被 30 隻圍住時每份快照 ≤ 4.5 KB；背包 / 手上的武器 / 技能等級變了才連送、沒變只定期帶；休眠的怪群客戶端用種子在本機生（跟房主一致、不進快照；範圍外醒了移除、範圍內醒了照快照、休眠中被移除跟著移除、檢查碼不同就不用）；同一關重來後客戶端照重來次數重生本機的休眠怪群、玩家復活、背包回到進關時",
+		all.bind([NetChecks.check_codec, NetChecks.check_snapshot_size.bind(feel), NetChecks.check_snapshot_loadout, NetChecks.check_local_packs, NetChecks.check_net_stage, NetChecks.check_net_retry]))
 	_check("網頁連線配對（v0.36.0）：PeerJS 網址、房主 ID、房號（4 碼、不含易混字）、訊息格式、伺服器訊息對應的訊號；桌面版 IP 與房號兩種都能用", NetChecks.check_web_signaling)
 	_check("桌面版 WebRTC（v0.40.0）：同一程序兩條連線交換 SDP，照 NetSession 的設定建房主 / 客戶端，5 秒內連上且封包收得到；網頁版接收緩衝區至少 1024 KB", NetChecks.check_desktop_webrtc.bind(feel))
 	_check("誤傷（C2）：大廳開關關著（預設）打不到隊友；開著時玩家揮劍打得到前方的隊友、打不到自己；魔彈打得到隊友、不打發射者；單機目標不含自己；幫隊友回血的技能（聖光柱）只回血不打隊友",
