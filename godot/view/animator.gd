@@ -720,10 +720,13 @@ const BOW_LOW := 0.5                     # 搭箭時弓手放低多少
 const BOW_FRONT := 1.0                   # 弓手往胸前偏多少：箭的直線走在胸口前方
 const BOW_UP := 0.3                      # 弓手往上抬多少：箭的直線在下巴高度
 const BOW_ARM_REACH := 0.96              # 弓手伸出去的長度（× 手臂全長）：手肘微彎不鎖死
+const LONGBOW_ARM_REACH := 0.65          # 長弓的弓手伸多遠：箭只有 0.68，弓手打直的話拉滿時拳頭到不了臉旁、右上臂會切過胸口，所以手肘彎著拉
 const PULL_OUT := 0.25                   # 帶箭到弓前的前段佔多少：箭頭從朝袋底轉成朝前（之後一直朝前）
 const QUIVER_TOUCH := 0.95               # 收招走到這個比例時手碰到箭袋，箭才出現
 const OVER_SHOULDER := Vector3(-0.12, 0.5, 0.05)   # 從箭袋帶到弓前途中經過的點（右肩上方，相對右肩）
 const RELEASE_BACK := 0.18               # 放箭後拉弦手往後彈多遠
+const LINE_CLEAR := 0.36                 # 箭的直線離身體中軸至少多遠（在瞄準方向的右手邊，箭靠在右臉頰旁）：軀幹半徑 0.3 + 手臂粗 0.06，
+                                         # 拉弦手沿著線往後拉、手肘落在線上時整條手臂才不會穿過胸口與頭；改軀幹寬度要一起改
 
 
 func pose_bow(a: Dictionary, e: float, charge: bool) -> void:
@@ -752,7 +755,9 @@ func pose_bow(a: Dictionary, e: float, charge: bool) -> void:
 	var up := inv * Vector3.UP
 	var bow_dir := (fwd + Vector3.BACK * BOW_FRONT + up * BOW_UP + (-up * BOW_LOW + Vector3.LEFT * BOW_IN) * slack).normalized()
 	var arm_len := BodyPose.arm_length(rig)
-	var grip := rig.arm_l.position + bow_dir * arm_len * BOW_ARM_REACH
+	var grip := rig.arm_l.position + bow_dir * arm_len * (LONGBOW_ARM_REACH if rig.weapon_model == &"longbow" else BOW_ARM_REACH)
+	var right := Vector3(-fwd.z, 0.0, fwd.x).normalized()   # 瞄準方向的右手邊（fwd 是水平的：上面把 body.rotation.x 歸零）
+	grip += right * maxf(0.0, LINE_CLEAR - grip.dot(right))  # 箭的直線（過握把、沿 fwd）離中軸不夠遠就把弓手往右推
 	# 從待機開始拉弓：弓手在整段前搖從原本的位置平滑舉起，不在第一幀直接跳到舉弓的位置（用沒緩動的 a.k）
 	if bow_raise <= 0.0:
 		bow_hand_from = BodyPose.hand_pos(rig, false)
@@ -765,7 +770,7 @@ func pose_bow(a: Dictionary, e: float, charge: bool) -> void:
 	var shoulder := rig.arm_r.position
 	var over := shoulder + OVER_SHOULDER
 	var quiver := DarkFantasy.QUIVER_MOUTH
-	var draw_pole := -fwd + Vector3.RIGHT * 0.6 + up * 0.25   # 右邊是 -X
+	var draw_pole := -fwd + right * 0.6 + up * 0.25   # 手肘往後、往右手邊外側（離開身體）、稍微往上
 	var reach_pole := Vector3(-0.8, 0.6, 0.3)                # 伸到背後時手肘往外上
 	var hand := drawn
 	var pole := draw_pole
@@ -782,9 +787,9 @@ func pose_bow(a: Dictionary, e: float, charge: bool) -> void:
 			if charge:
 				_arrow = &"bow"
 			else:
-				hand = (grip - fwd * full).lerp(grip - fwd * (full + RELEASE_BACK) + Vector3.RIGHT * 0.15, e)   # 放箭：手順著往後彈
+				hand = (grip - fwd * full).lerp(grip - fwd * (full + RELEASE_BACK) + right * 0.15, e)   # 放箭：手順著往後、往外彈
 		_:
-			var from := grip - fwd * (full + RELEASE_BACK) + Vector3.RIGHT * 0.15
+			var from := grip - fwd * (full + RELEASE_BACK) + right * 0.15
 			hand = _bezier(from, over, quiver, smoothstep(0.0, 1.0, e))
 			pole = draw_pole.lerp(reach_pole, e)
 			_arrow = &"hand" if e >= QUIVER_TOUCH else &"none"
@@ -793,8 +798,10 @@ func pose_bow(a: Dictionary, e: float, charge: bool) -> void:
 	_bring = bring if a.phase == &"windup" else 0.0
 
 
+# 從 a 到 c、在 t = 0.5 經過 b 的二次曲線（控制點 2b - (a + c) / 2；直接拿 b 當控制點的話曲線會從 b 底下切過去，手穿過頭）
 static func _bezier(a: Vector3, b: Vector3, c: Vector3, t: float) -> Vector3:
-	return a.lerp(b, t).lerp(b.lerp(c, t), t)
+	var ctrl := 2.0 * b - (a + c) / 2.0
+	return a.lerp(ctrl, t).lerp(ctrl.lerp(c, t), t)
 
 
 # 直線 grip - fwd * s 上，右手（全長 arm_len）搆得到的最遠的 s（搆不到就是最近點）

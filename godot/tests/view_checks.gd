@@ -2731,6 +2731,64 @@ static func check_archer_bow_arm() -> String:
 	return ""
 
 
+# 玩家拉弓（短弓、長弓的普攻、右鍵與弓的戰技）：拉弦手整條（上臂、前臂、拳頭）不穿過胸口與頭，包括從箭袋抽箭、帶到弓前、拉弦、放箭。
+# 軀幹 = 盔甲零件的六角柱（xz 半徑、上下照零件外框），頭 = 頭部零件的球；上臂靠肩膀那 1/4 本來就貼著軀幹，不量
+static func check_bow_draw_clear() -> String:
+	var rec := AnimRecorder.new()
+	var err := ""
+	for weapon: String in ["shortbow", "longbow"]:
+		for row: Dictionary in rec.rows("player-%s" % weapon):
+			if row.key not in ["attack", "special"] and not SkillDefs.SKILLS.has(StringName(row.key)):
+				continue
+			var made: Dictionary = (row.make as Callable).call()
+			var rig: Rig = made.rig
+			var torso := AABB()
+			for child in rig.body.get_children():
+				if child is MeshInstance3D and (child as MeshInstance3D).get_aabb().size.z > 0.3 and (child as MeshInstance3D).get_aabb().end.y > torso.end.y:
+					torso = (child as MeshInstance3D).get_aabb()
+			var head_box := AABB()
+			for child in rig.head.get_children():
+				if child is MeshInstance3D and (child as MeshInstance3D).get_aabb().get_volume() > head_box.get_volume():
+					head_box = (child as MeshInstance3D).get_aabb()
+			var head_c := rig.head.position + head_box.get_center()
+			var head_r := head_box.size.x / 2.0
+			var torso_r := torso.size.z / 2.0
+			var deep := 0.0
+			var at := ""
+			for i in (row.frames as Array).size():
+				AnimRecorder.step(row, made, i)
+				var a: Dictionary = row.frames[i].anim
+				if not made.anim._drawing:
+					continue
+				var sh := rig.arm_r.position
+				var elbow := sh + Basis.from_euler(rig.arm_r.rotation, EULER_ORDER_YXZ) * rig.forearm_r.position
+				var fist := BodyPose.hand_pos(rig, true)
+				for s in 21:
+					var t := s / 20.0
+					var pts := [[sh.lerp(elbow, t), 0.06]] if t >= 0.25 else []
+					pts.append([elbow.lerp(fist, t), 0.06])
+					if s == 20:
+						pts.append([fist, 0.07])
+					for q: Array in pts:
+						var p: Vector3 = q[0]
+						var d := 0.0
+						if p.y > torso.position.y and p.y < torso.end.y:
+							d = torso_r + q[1] - Vector2(p.x, p.z).length()
+						d = maxf(d, head_r + q[1] - p.distance_to(head_c))
+						if d > deep:
+							deep = d
+							at = "%s %s k=%.2f" % [a.action, a.get("phase", ""), a.get("k", 0.0)]
+			rig.free()
+			if deep > 0.03:
+				err = "%s %s 拉弦手穿進胸口或頭 %.2f（%s）" % [weapon, row.key, deep, at]
+				break
+			_note("%s %s 拉弦手最深 %.3f" % [weapon, row.key, deep])
+		if err != "":
+			break
+	rec.clear()
+	return err
+
+
 # 身體零件：披風整片在軀幹與腰帶後面（不穿進身體）、身體前方沒有披風色的零件；盾的尖角和盾面同一平面（盾的厚度 < 0.2）；
 # 騎士骨架有 5 個身上掛點（第一次合併與之後用模板組出的都有），盾掛在 forearm_l、箭袋掛在 back、箭袋在袋口與袋底中間
 static func check_body_parts() -> String:
