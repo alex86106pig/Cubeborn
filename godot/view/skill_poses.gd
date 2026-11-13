@@ -299,7 +299,7 @@ static func _leap_shot(an: Animator, k: float) -> void:
 		BodyPose.leg(rig, true, lerpf(-0.2, -0.9, air), lerpf(0.2, 1.3, air))
 		BodyPose.leg(rig, false, lerpf(0.1, -0.3, air), lerpf(0.2, 1.6, air))
 	else:
-		an.set_stance(0.22 * sin(PI * (k - 0.75) / 0.25), 0.2, -0.2)
+		an.set_stance(0.22 * sin(PI * (k - 0.75) / 0.25), 0.2, -0.2, 1.0, 0.0, rig.body.rotation.y)   # 腳跟著拉弓的側身轉（腿不交叉）
 
 
 # 狙擊：單膝跪地（右腳在前、左膝著地）穩住，抽箭拉滿後撐著蓄力（windup 秒）→ 放箭 → 起身
@@ -315,7 +315,7 @@ static func _snipe(an: Animator, t: float, d: Dictionary) -> void:
 		an.pose_bow({"phase": &"active", "k": 1.0}, (t - windup) / 0.1, false)
 	else:
 		an.pose_bow({"phase": &"recovery", "k": 1.0}, MathUtil.ease_out_cubic(clampf((t - windup - 0.1) / (SkillDefs.POSE_RECOVER - 0.1), 0.0, 1.0)), false)
-	an.set_stance(0.42, 0.4, -0.55, maxf(kneel, 0.0))
+	an.set_stance(0.42, 0.4, -0.55, maxf(kneel, 0.0), 0.0, an.rig.body.rotation.y)   # 腳跟著拉弓的側身轉（腿不交叉）
 
 
 # 震地（鐵鏟）：雙手握鏟舉過頭（手肘彎、上身後仰）→ 鏟面往前砸進地裡、深蹲前壓（彎膝不彎腰）、左腳在前 → 拔起來收

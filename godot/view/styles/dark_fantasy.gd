@@ -724,9 +724,9 @@ static func weapon(model: StringName) -> Dictionary:
 		&"staff":
 			return _staff()
 		&"shortbow":
-			return _player_bow(0.5, Color("8a5a32"), 0.6)
+			return _player_bow(0.5, Color("8a5a32"), BOW_ARROW)
 		&"longbow":
-			return _player_bow(0.8, Color("5a3a1e"), 0.68)   # 箭長：拉滿時拉到箭長 - 0.1（Animator.pose_bow）箭頭剛好露出弓外一點，0.9 太凸
+			return _player_bow(0.8, Color("5a3a1e"), BOW_ARROW)
 		&"scepter":
 			return _scepter()
 		&"torch":
@@ -814,6 +814,9 @@ const BOW_HALF_ARC := 0.85   # 弓身半邊張開的角度（弧度）
 # 箭袋（身體座標，玩家騎士 KNIGHT_JOINTS 的右肩在 (-0.36, 1.55, 0)）：袋口是拉弓時右手伸進去抽箭的位置
 # （Animator.pose_bow 用 IK 把拳頭帶到 QUIVER_MOUTH，離右肩剛好一個手臂長 KNIGHT_JOINTS.grip；改肩膀或手臂長要重算），箭袋從那裡斜穿背部到左腰下方，
 # 夠長夠粗：手伸進袋口、箭在袋裡出現被擋住
+# 玩家的箭長（兩把弓一樣，拉弦長由身體決定）：Animator.pose_bow 拉滿時拳頭在右臉頰旁、弓手打直，兩者距離約 0.84，
+# 箭長 = 那段 + 0.1（拉滿時箭頭剛好露出弓外 0.1）；改骨架的肩寬、手臂長或 Animator.ANCHOR_* 要一起改
+const BOW_ARROW := 0.95
 const QUIVER_MOUTH := Vector3(-0.451, 1.869, -0.476)
 const QUIVER_BOTTOM := Vector3(0.12, 1.05, -0.49)   # 要在披風（這個高度背面 z 約 -0.37）後面
 const QUIVER_RADIUS := 0.14

@@ -70,9 +70,30 @@ var weapon_tilt := 0.0
 var bow_rest := 1.0   # 弓平放的比例：1 = 平放（BOW_REST）、0 = 直立
 var bow_raise := 0.0  # 開始拉弓時弓手舉起的進度（0 = 還在出手前的姿勢、1 = 舉到位）；連射時一直是 1
 var bow_hand_from := Vector3.ZERO   # 開始拉弓那一刻弓手拳頭的位置（身體座標），舉弓從這裡平滑移過去
+var draw_raise := 0.0                # 開始拉弓時拉弦手移到抽箭路線上的進度（0 = 還在出手前的位置、1 = 跟著路線走）
+var draw_hand_from := Vector3.ZERO   # 開始拉弓那一刻拉弦手拳頭的位置（身體座標）
+var _fist_last: Array = [Vector3.ZERO, Vector3.ZERO]   # 上一幀收尾後右手、左手拳頭的位置（身體座標）：每幀開頭前臂會被拉直，那時量的不準
+var _elbow_last: Array = [Vector3.DOWN, Vector3.DOWN]  # 上一幀右手、左手手肘相對肩膀的位置：開始拉弓時 IK 的手肘方向從這裡轉過去，手肘不會一幀繞到另一邊
+var _pole_from: Array = [Vector3.DOWN, Vector3.DOWN]
+var _bow_was_drawing := false
+var _bow_from: Array = []      # 開始 / 停止拉弓那一刻四節手臂的朝向（Quaternion），從這裡平滑轉到新的姿勢
+var _bow_carry := 0.0          # 還留著多少 _bow_from（1 → 0）
+var _arm_q: Array = []         # 上一幀四節手臂的朝向
+var _bow_twist := 0.0          # 拉弓的側身比例（0~1）：照階段往上、往下時平滑退（BOW_TWIST_SHARPNESS）
+var _dt := 0.0                 # 這一幀的 dt（pose_bow 也給戰技用，參數裡沒有 dt）
+var _nocked := false           # 上一發的收招已經把箭搭在弦上（下一發前搖只拉弦）
+var _bow_phase_last := &""     # 上一次 pose_bow 的階段：看得出這一發的前搖剛開始
+var _bow_hold := 0.0           # 停手後還要保持拉弓姿勢多久
+var _arrow_last := &"none"     # 上一幀的箭在哪（保持姿勢時照舊）
+var _arrow_held := &"none"
+var _bring_last := 0.0
+var _slack_from := 1.0             # 這一發前搖開始時弓收在胸前的比例：接在放箭後面（連珠箭下一發）是 0，弓一直伸著
+var _string_from := Vector3.ZERO   # 放箭前弦拉到哪（連珠箭只拉七成）：放箭從這裡往後彈
+var _released := Vector3.ZERO      # 放箭後手彈到哪：收招從這裡接
+var _bring_held := 0.0
 
 # 這一幀的站姿（動作層、戰技層填，收尾時踩地）：weight = 0 → 照步態；> 0 → 往 stance 的腳位與高度靠
-var stance := {"weight": 0.0, "drop": 0.0, "r": 0.0, "l": 0.0, "shift": 0.0}
+var stance := {"weight": 0.0, "drop": 0.0, "r": 0.0, "l": 0.0, "shift": 0.0, "turn": 0.0}
 var free_legs := false   # 倒地、翻滾、空中：腿照姿勢給的角度，不踩地
 var wrist := 0.0         # 右手腕轉多少（不是直立武器時轉手掌掛點；負的往上翹）：每幀往 wrist_target 平滑轉過去
 var wrist_target := 0.0  # 這一幀要的手腕角度：待機持劍往上翹（劍尖朝斜上方）、翻滾往後轉（劍貼著身體），其他 0
@@ -101,6 +122,7 @@ func _init(p_rig: Rig) -> void:
 
 
 func update(p: Player, dt: float) -> void:
+	_dt = dt
 	rig.set_weapon(p.weapon.model, p.weapon.get("offhand_model", &""))
 	var a := p.anim
 	BodyPose.straighten(rig)
@@ -132,6 +154,7 @@ func update(p: Player, dt: float) -> void:
 			_pose_parry(1.0 - a.parry)
 		if a.get("skill", &"") != &"" and a.action != &"roll":
 			SkillPoses.apply(self, p, a, dt)
+	_blend_bow_arms(dt)
 	_finish(a)
 	# 轉手掌掛點而不是武器：拳頭和武器一起轉，握的位置不會滑出拳頭
 	var upright := rig.weapon_model in UPRIGHT_MODELS and rig.weapon_main != null
@@ -166,6 +189,7 @@ func update(p: Player, dt: float) -> void:
 			bow_rest = 1.0 - bow_raise
 		else:
 			bow_raise = 0.0
+			draw_raise = 0.0
 			bow_rest = MathUtil.damp(bow_rest, 1.0, IDLE_SHARPNESS, dt)
 		var target := Basis(Quaternion.IDENTITY.slerp(BOW_REST.get_rotation_quaternion(), bow_rest))
 		rig.hand_l.basis = (rig.body.basis * rig.arm_l.basis * rig.forearm_l.basis).orthonormalized().inverse() * target
@@ -186,12 +210,13 @@ func update(p: Player, dt: float) -> void:
 
 
 # 動作層、戰技層要求的站姿：drop = 髖部往下（× 腿長）、r / l = 右 / 左腳往前（× 腿長，負的往後）、shift = 髖部往前（× 腿長）
-func set_stance(drop: float, r: float, l: float, weight := 1.0, shift := 0.0) -> void:
+func set_stance(drop: float, r: float, l: float, weight := 1.0, shift := 0.0, turn := 0.0) -> void:
 	stance.weight = clampf(weight, 0.0, 1.0)
 	stance.drop = drop
 	stance.r = r
 	stance.l = l
 	stance.shift = shift
+	stance.turn = turn
 
 
 # 收尾：踩地（或照空中 / 倒地的腿），落地緩衝
@@ -208,8 +233,9 @@ func _finish(a: Dictionary) -> void:
 	rig.body.rotation.x += g.lean
 	var w: float = stance.weight * (1.0 - 0.6 * walk_amount)   # 邊走邊出手時腳步照走，只借一部分站姿
 	if w > 0.0:
-		fr = fr.lerp(Vector3(rig.leg_r.position.x * s, 0.0, stance.r * leg), w)
-		fl = fl.lerp(Vector3(rig.leg_l.position.x * s, 0.0, stance.l * leg), w)
+		var turn := Basis(Vector3.UP, stance.turn)   # 整個人連骨盆轉身時（拉弓側身），腳的位置跟著轉，腿才不會交叉
+		fr = fr.lerp(turn * Vector3(rig.leg_r.position.x * s, 0.0, stance.r * leg), w)
+		fl = fl.lerp(turn * Vector3(rig.leg_l.position.x * s, 0.0, stance.l * leg), w)
 		drop = lerpf(drop, stance.drop * leg, w)
 		shift = stance.shift * leg * w
 	if _land_t < LAND_TIME and not a.airborne:
@@ -709,107 +735,199 @@ func _pose_mace(idle: Dictionary, a: Dictionary, e: float, _dt: float) -> void:
 
 
 # ───────── 拉弓 ─────────
-# 一發的循環 = 收招時右手往上繞到背後箭袋抽箭（箭頭朝前帶出來）→ 前搖前段經過肩膀上方帶到弓前搭弦 → 前搖後段拉到下巴（拉弦手肘抬到
-# 箭的直線後面、和肩膀同高，靠背部出力）→ active 放箭、拉弦手順著往後彈；蓄力（charge）時 active 一直拉滿。
-# 弓手往前推、手肘微彎不鎖死；身體側轉讓左肩對著目標。全部用身體座標算（不用 global），收尾踩地後位置不會錯開
-const BRING_PART := 0.45                 # 前搖的前段（帶到弓前）佔多少
-const BOW_TWIST := 1.22                  # 拉滿時身體順時針轉多少（弧度，約 70°）
-const SHORTBOW_TWIST := 0.7              # 短弓拉滿只轉約 40°
-const BOW_IN := 0.6                      # 搭箭時弓手往身體內側收多少，讓右手搆得到弦
-const BOW_LOW := 0.5                     # 搭箭時弓手放低多少
-const BOW_FRONT := 1.0                   # 弓手往胸前偏多少：箭的直線走在胸口前方
-const BOW_UP := 0.3                      # 弓手往上抬多少：箭的直線在下巴高度
-const BOW_ARM_REACH := 0.96              # 弓手伸出去的長度（× 手臂全長）：手肘微彎不鎖死
-const LONGBOW_ARM_REACH := 0.65          # 長弓的弓手伸多遠：箭只有 0.68，弓手打直的話拉滿時拳頭到不了臉旁、右上臂會切過胸口，所以手肘彎著拉
+# 照真人連射的節奏：收招 = 放箭後回背後箭袋抽箭（箭頭朝前帶出來）→ 繞過右肩上方搭到弦上；前搖 = 拉到右臉頰旁（拉弦手肘抬到箭的直線後面，
+# 靠背部出力）；active 放箭、拉弦手順著往後彈，蓄力（charge）時 active 一直拉滿。上一發的收招已經搭好箭時，前搖只剩拉弦（短弓前搖只有
+# 0.08 秒，從背後帶箭到弓前塞不進去）；從待機開第一發時手從身側直接移到弦上搭箭。
+# 從拉弦手定回去：拉滿時拳頭靠在右臉頰旁（錨點），弓手 = 錨點沿瞄準方向往前一支箭長（箭長決定弓手伸多遠，左手打直指著目標）；
+# 身體連骨盆側轉讓左肩對著目標，腳跟著轉，連射時一直側身。全部用身體座標算（不用 global），收尾踩地後位置不會錯開
+const BRING_PART := 0.45                 # 從待機開第一發：前搖的前段（手移到弦上搭箭）佔多少
+const NOCK_PART := 0.45                  # 收招的前段（回箭袋抽箭）佔多少，後段帶到弓前搭弦
+const BOW_TWIST := 1.5                   # 拉滿時身體連骨盆順時針轉多少（弧度，約 86°，真人射箭的完全側身）：轉得少的話箭線要靠在右臉頰旁，
+                                         # 左手就得往旁邊歪（70° 偏 41°、40° 偏 70°），不能同時指著目標
+const BOW_TWIST_SHARPNESS := 12.0        # 停手後側身轉回正面的速度（約 0.2 秒）
+const NOCK_AT := Vector3(0.04, 0.0, 0.16)    # 搭箭時右手（弦上的箭尾）在錨點的哪裡（沿瞄準方向、往上、往右手邊）：臉頰前方、軀幹頂上面，
+                                              # 右手搆得到（離右肩約 0.56、手臂 0.58）；弓手收到胸前，拉弦時一推一拉到全開
+const BRING_OUT := 0.12                       # 從待機開第一發時拉弦手移到弦上的路線往外繞多少（直線會擦過胸口）
+const ANCHOR_UP := 0.06                  # 錨點（拉滿時拳頭）比脖子高多少：下巴高度，拉弦手從肩膀往上走、越過軀幹頂
+const ANCHOR_SIDE := 0.24                # 錨點離頭的中軸多遠（瞄準方向的右手邊 = 右臉頰旁）：頭半徑 0.2 + 拳頭一半，拳頭貼著臉不穿進去；
+                                         # 箭的直線過錨點、沿瞄準方向，拉弦手肘落在線的後面
 const PULL_OUT := 0.25                   # 帶箭到弓前的前段佔多少：箭頭從朝袋底轉成朝前（之後一直朝前）
-const QUIVER_TOUCH := 0.95               # 收招走到這個比例時手碰到箭袋，箭才出現
-const OVER_SHOULDER := Vector3(-0.12, 0.5, 0.05)   # 從箭袋帶到弓前途中經過的點（右肩上方，相對右肩）
+const QUIVER_TOUCH := 0.95               # 回箭袋的路走到這個比例時手碰到箭袋，箭才出現
+const OVER_SHOULDER := Vector3(-0.12, 0.5, 0.05)   # 抽箭、帶箭途中經過的點（右肩上方，相對右肩）
 const RELEASE_BACK := 0.18               # 放箭後拉弦手往後彈多遠
-const LINE_CLEAR := 0.36                 # 箭的直線離身體中軸至少多遠（在瞄準方向的右手邊，箭靠在右臉頰旁）：軀幹半徑 0.3 + 手臂粗 0.06，
-                                         # 拉弦手沿著線往後拉、手肘落在線上時整條手臂才不會穿過胸口與頭；改軀幹寬度要一起改
+const BOW_ELBOW_POLE := Vector3(0.8, -0.6, -0.4)   # 弓手的手肘往外下方
+const NOCKED_AT := 0.9                   # 收招走到這個比例算箭已經搭好（下一發前搖只拉弦）
+const BOW_HOLD := 0.1                    # 停手後先保持拉弓的姿勢多久才放下：連射時兩發之間有一幀待機，不能在那一幀放手
 
 
 func pose_bow(a: Dictionary, e: float, charge: bool) -> void:
 	var max_back: float = rig.weapon_nock.get_meta(&"arrow", 0.9) - 0.1 if rig.weapon_nock != null else 0.5   # 箭尾不能拉過箭頭
-	var bring := 0.0
-	var draw := 0.0
-	if a.phase == &"windup":
-		bring = minf(1.0, e / BRING_PART)
-		draw = maxf(0.0, (e - BRING_PART) / (1.0 - BRING_PART))
-	elif a.phase == &"active" and charge:
-		draw = 1.0
-	var twist := 0.0
+	var fresh: bool = a.phase == &"windup" and _bow_phase_last != &"windup"   # 這一發的前搖剛開始
+	if fresh and not _nocked:   # 從待機（或沒搭好箭）開始：雙手從原本的位置移過去
+		bow_raise = 0.0
+		draw_raise = 0.0
+	if fresh:
+		_slack_from = 0.0 if _bow_phase_last == &"active" else 1.0
+	var bring := 1.0    # 帶箭到弦上的進度（從待機開第一發的前搖、收招的後段）
+	var draw := 0.0     # 拉弦的進度
+	var slack := 0.0    # 搭箭時弓手放低、收回的比例
 	match a.phase:
 		&"windup":
-			twist = 0.4 * bring + 0.6 * draw
+			if _nocked:
+				draw = e
+			else:
+				bring = minf(1.0, e / BRING_PART)
+				draw = maxf(0.0, (e - BRING_PART) / (1.0 - BRING_PART))
+			slack = _slack_from * (1.0 - draw)
 		&"active":
-			twist = 1.0 if charge else 1.0 - 0.5 * e
+			draw = 1.0 if charge else 0.0
 		_:
-			twist = 0.5 * (1.0 - e)
-	rig.body.rotation.y = -(SHORTBOW_TWIST if rig.weapon_model == &"shortbow" else BOW_TWIST) * twist
+			bring = maxf(0.0, (_unease(e) - NOCK_PART) / (1.0 - NOCK_PART))
+			slack = bring
+	var twist := 1.0 if _nocked or a.phase != &"windup" else bring   # 搭箭時就轉成側身：弓手、錨點都照側身算，轉一半左手會橫過胸前
+	_bow_twist = maxf(twist, MathUtil.damp(_bow_twist, twist, BOW_TWIST_SHARPNESS, _dt))
+	rig.body.rotation.y = -BOW_TWIST * _bow_twist
 	rig.body.rotation.x = 0.0
-	set_stance(0.04, 0.15, -0.2, 0.6 + 0.4 * twist)   # 側身站開、膝蓋微彎
-	var slack := bring * (1.0 - draw) if a.phase == &"windup" else 0.0
+	set_stance(0.04, 0.0, 0.0, 0.6 + 0.4 * _bow_twist, 0.0, rig.body.rotation.y)   # 側身站、膝蓋微彎：雙腳跟著骨盆轉，腳尖朝身體正面
 	var inv := Basis.from_euler(rig.body.rotation, EULER_ORDER_YXZ).inverse()
-	var fwd := inv * Vector3.BACK          # 瞄準方向（角色的正前方）在身體座標
+	var fwd := inv * Vector3.BACK          # 瞄準方向（角色的正前方）在身體座標；水平的（上面把 body.rotation.x 歸零）
 	var up := inv * Vector3.UP
-	var bow_dir := (fwd + Vector3.BACK * BOW_FRONT + up * BOW_UP + (-up * BOW_LOW + Vector3.LEFT * BOW_IN) * slack).normalized()
-	var arm_len := BodyPose.arm_length(rig)
-	var grip := rig.arm_l.position + bow_dir * arm_len * (LONGBOW_ARM_REACH if rig.weapon_model == &"longbow" else BOW_ARM_REACH)
-	var right := Vector3(-fwd.z, 0.0, fwd.x).normalized()   # 瞄準方向的右手邊（fwd 是水平的：上面把 body.rotation.x 歸零）
-	grip += right * maxf(0.0, LINE_CLEAR - grip.dot(right))  # 箭的直線（過握把、沿 fwd）離中軸不夠遠就把弓手往右推
-	# 從待機開始拉弓：弓手在整段前搖從原本的位置平滑舉起，不在第一幀直接跳到舉弓的位置（用沒緩動的 a.k）
+	var right := Vector3(-fwd.z, 0.0, fwd.x)   # 瞄準方向的右手邊
+	var anchor := Vector3(0.0, rig.head.position.y + ANCHOR_UP, 0.0) + right * ANCHOR_SIDE
+	var nock := anchor + fwd * NOCK_AT.x + up * NOCK_AT.y + right * NOCK_AT.z
+	var string_at := nock.lerp(anchor, draw)   # 弦（箭尾、拉弦手）在哪
+	var grip := (anchor + fwd * max_back).lerp(nock + fwd * 0.08, slack)   # 拉滿時弓手在錨點前一支箭長（打直指著目標），搭箭時收到弦前
+	# 弓手：從待機開始時照前搖進度（沒緩動的 a.k）從原本的位置舉起，手肘方向也從原本的轉過去
 	if bow_raise <= 0.0:
-		bow_hand_from = BodyPose.hand_pos(rig, false)
+		bow_hand_from = _fist_last[1]
+		_pole_from[1] = _elbow_last[1]
 	bow_raise = maxf(bow_raise, smoothstep(0.0, 1.0, a.k)) if a.phase == &"windup" else 1.0
-	BodyPose.arm_ik(rig, false, bow_hand_from.lerp(grip, bow_raise), Vector3(0.8, -0.6, -0.4))
-	# 拉弦手：沿箭的直線（握把往後）拉，最多拉到箭長、右手臂搆得到的地方；手肘抬到箭線後面
-	var full := minf(max_back, _reach_on_line(grip, fwd, arm_len * 0.98))
-	var nock := grip - fwd * 0.08
-	var drawn := grip - fwd * lerpf(0.08, full, draw)
-	var shoulder := rig.arm_r.position
-	var over := shoulder + OVER_SHOULDER
+	BodyPose.arm_ik(rig, false, bow_hand_from.lerp(grip, bow_raise), (_pole_from[1] as Vector3).lerp(BOW_ELBOW_POLE, bow_raise))
+	# 拉弦手：從搭箭的位置拉到錨點；手肘抬到箭線後面
+	var over := rig.arm_r.position + OVER_SHOULDER
 	var quiver := DarkFantasy.QUIVER_MOUTH
 	var draw_pole := -fwd + right * 0.6 + up * 0.25   # 手肘往後、往右手邊外側（離開身體）、稍微往上
-	var reach_pole := Vector3(-0.8, 0.6, 0.3)                # 伸到背後時手肘往外上
-	var hand := drawn
+	var reach_pole := Vector3(-0.8, 0.6, 0.3)         # 伸到背後時手肘往外上
+	var hand := string_at
 	var pole := draw_pole
+	_bring = 1.0
 	match a.phase:
 		&"windup":
-			if bring < 1.0:
+			_arrow = &"bow"
+			_string_from = string_at
+			if not _nocked:   # 從待機開第一發：手從原本的位置直線移到弦上（箭拿在手上、箭頭朝前），照沒緩動的 a.k（短弓前搖只有 5 幀）
+				if draw_raise <= 0.0:
+					draw_hand_from = _fist_last[0]
+					_pole_from[0] = _elbow_last[0]
+				draw_raise = maxf(draw_raise, smoothstep(0.0, 1.0, a.k / BRING_PART))
+				if draw_raise < 1.0:
+					_arrow = &"hand"
+		&"active":
+			_arrow = &"bow" if charge else &"none"
+			if charge:
+				_string_from = anchor
+			else:   # 放箭：手從拉到的位置順著往後、往外彈
+				hand = _string_from.lerp(_string_from - fwd * RELEASE_BACK + right * 0.15, e)
+		_:
+			if _unease(e) < NOCK_PART:   # 回箭袋：經過右肩上方伸到袋口，碰到時箭才出現
+				var u := _unease(e) / NOCK_PART
+				hand = _bezier(_released, over, quiver, smoothstep(0.0, 1.0, u))
+				pole = draw_pole.lerp(reach_pole, u)
+				_arrow = &"hand" if u >= QUIVER_TOUCH else &"none"
+				_bring = 0.0
+			else:   # 抽出來、經過右肩上方帶到弦上搭好
 				var k := smoothstep(0.0, 1.0, bring)
 				hand = _bezier(quiver, over, nock, k)
 				pole = reach_pole.lerp(draw_pole, k)
-				_arrow = &"hand"
-			else:
-				_arrow = &"bow"
-		&"active":
-			if charge:
-				_arrow = &"bow"
-			else:
-				hand = (grip - fwd * full).lerp(grip - fwd * (full + RELEASE_BACK) + right * 0.15, e)   # 放箭：手順著往後、往外彈
-		_:
-			var from := grip - fwd * (full + RELEASE_BACK) + right * 0.15
-			hand = _bezier(from, over, quiver, smoothstep(0.0, 1.0, e))
-			pole = draw_pole.lerp(reach_pole, e)
-			_arrow = &"hand" if e >= QUIVER_TOUCH else &"none"
+				_arrow = &"hand" if bring < 1.0 else &"bow"
+				_bring = bring
+	if a.phase != &"recovery":
+		_released = _string_from - fwd * RELEASE_BACK + right * 0.15   # 收招從放箭彈到的位置接（蓄力射放開後直接進收招）
+	if a.phase != &"windup" or _nocked:
+		draw_raise = 1.0
+	if draw_raise < 1.0:
+		hand = _bezier(draw_hand_from, (draw_hand_from + hand) / 2.0 + right * BRING_OUT, hand, draw_raise)
+		pole = (_pole_from[0] as Vector3).lerp(pole, draw_raise)
 	BodyPose.arm_ik(rig, true, hand, pole)
+	match a.phase:
+		&"active":
+			_nocked = false
+		&"recovery":
+			_nocked = e >= NOCKED_AT
+	_bow_phase_last = a.phase
 	_drawing = true
-	_bring = bring if a.phase == &"windup" else 0.0
+
+
+# 收招的 e 是緩動過的（開頭最快），手走的路線改照沒緩動的進度再用 smoothstep，起步與到站都慢；戰技呼叫時 a.k 固定 1、進度在 e，
+# 所以從 e 反算（_ease 的反函數）
+static func _unease(e: float) -> float:
+	return 1.0 - pow(1.0 - clampf(e, 0.0, 1.0), 1.0 / 3.0)
+
+
+# 拉弓的手臂是 IK 解出來的（上臂繞自己轉的角度、前臂彎曲都跟待機差很多），待機姿勢只平滑轉上臂的前後與左右，會一幀甩過去：
+# 停手時先保持最後的姿勢 BOW_HOLD 秒（連射時兩發之間那一幀待機不放手、弓照舊直立、箭照舊在弦上），之後四節手臂從那個姿勢平滑轉到
+# 待機、側身慢慢轉回正面、腳跟著骨盆轉（待機姿勢會把 body.rotation.y 直接歸零）
+const BOW_BLEND_SHARPNESS := 14.0   # 放下的速度：約 0.2 秒轉完
+
+
+func _blend_bow_arms(dt: float) -> void:
+	var joints: Array[Node3D] = [rig.arm_r, rig.forearm_r, rig.arm_l, rig.forearm_l]
+	if not rig.weapon_model in BOW_MODELS:
+		_bow_carry = 0.0
+		_bow_twist = 0.0
+		_bow_hold = 0.0
+		_nocked = false
+		_bow_phase_last = &""
+		_arm_q.clear()
+		return
+	if _bow_was_drawing and not _drawing and _arm_q.size() == joints.size():
+		_bow_from = _arm_q.duplicate()
+		_bow_carry = 1.0
+		_bow_hold = BOW_HOLD
+		_arrow_held = _arrow_last
+		_bring_held = _bring_last
+	_bow_was_drawing = _drawing
+	if not _drawing and _bow_hold > 0.0:   # 保持最後的姿勢（還算在拉弓：弓直立、箭在弦上）
+		_bow_hold -= dt
+		for i in joints.size():
+			joints[i].quaternion = _bow_from[i]
+		rig.body.rotation.y = -BOW_TWIST * _bow_twist
+		set_stance(0.04, 0.0, 0.0, 1.0, 0.0, rig.body.rotation.y)
+		_drawing = true
+		_arrow = _arrow_held
+		_bring = _bring_held
+		_bow_was_drawing = false   # 保持期間不算重新開始拉弓
+	else:
+		if not _drawing:
+			_nocked = false
+			_bow_phase_last = &""
+		if not _drawing and _bow_twist > 0.001:   # 側身慢慢轉回正面，腳跟著骨盆轉（腿不交叉）
+			_bow_twist = MathUtil.damp(_bow_twist, 0.0, BOW_TWIST_SHARPNESS, dt)
+			rig.body.rotation.y = -BOW_TWIST * _bow_twist
+			set_stance(0.04 * _bow_twist, 0.0, 0.0, maxf(stance.weight, _bow_twist), 0.0, rig.body.rotation.y)
+		elif not _drawing:
+			_bow_twist = 0.0
+		if _bow_carry > 0.001 and not _drawing:
+			_bow_carry = MathUtil.damp(_bow_carry, 0.0, BOW_BLEND_SHARPNESS, dt)
+			for i in joints.size():
+				joints[i].quaternion = joints[i].quaternion.slerp(_bow_from[i], _bow_carry)
+		else:
+			_bow_carry = 0.0
+	_arrow_last = _arrow
+	_bring_last = _bring
+	_arm_q.resize(joints.size())
+	for i in joints.size():
+		_arm_q[i] = joints[i].quaternion
+	_fist_last[0] = BodyPose.hand_pos(rig, true)
+	_fist_last[1] = BodyPose.hand_pos(rig, false)
+	_elbow_last[0] = Basis.from_euler(rig.arm_r.rotation, EULER_ORDER_YXZ) * rig.forearm_r.position
+	_elbow_last[1] = Basis.from_euler(rig.arm_l.rotation, EULER_ORDER_YXZ) * rig.forearm_l.position
 
 
 # 從 a 到 c、在 t = 0.5 經過 b 的二次曲線（控制點 2b - (a + c) / 2；直接拿 b 當控制點的話曲線會從 b 底下切過去，手穿過頭）
 static func _bezier(a: Vector3, b: Vector3, c: Vector3, t: float) -> Vector3:
 	var ctrl := 2.0 * b - (a + c) / 2.0
 	return a.lerp(ctrl, t).lerp(ctrl.lerp(c, t), t)
-
-
-# 直線 grip - fwd * s 上，右手（全長 arm_len）搆得到的最遠的 s（搆不到就是最近點）
-func _reach_on_line(grip: Vector3, fwd: Vector3, arm_len: float) -> float:
-	var w := grip - rig.arm_r.position
-	var along := w.dot(fwd)
-	var disc := along * along - w.length_squared() + arm_len * arm_len
-	return along + sqrt(disc) if disc >= 0.0 else along
 
 
 # 收尾後擺箭與弦（要世界座標，在場景樹裡才做）

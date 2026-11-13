@@ -2731,8 +2731,12 @@ static func check_archer_bow_arm() -> String:
 	return ""
 
 
-# 玩家拉弓（短弓、長弓的普攻、右鍵與弓的戰技）：拉弦手整條（上臂、前臂、拳頭）不穿過胸口與頭，包括從箭袋抽箭、帶到弓前、拉弦、放箭。
-# 軀幹 = 盔甲零件的六角柱（xz 半徑、上下照零件外框），頭 = 頭部零件的球；上臂靠肩膀那 1/4 本來就貼著軀幹，不量
+# 玩家拉弓（短弓、長弓的普攻、右鍵與弓的戰技）：雙手整條（上臂、前臂、拳頭）不穿過胸口與頭，包括從待機舉弓、抽箭、搭箭、拉弦、放箭、
+# 停手後放下；手肘與拳頭每一步移動不超過 BOW_STEP_MAX（不在一幀內甩過去）；拉滿時雙腳不交叉（跟著骨盆側轉）。
+# 軀幹 = 盔甲零件頂點的水平截面（凸多邊形，六角柱）與上下範圍，頭 = 頭部零件的球；上臂靠肩膀那 1/4 本來就貼著軀幹，不量
+const BOW_STEP_MAX := 0.6
+
+
 static func check_bow_draw_clear() -> String:
 	var rec := AnimRecorder.new()
 	var err := ""
@@ -2742,51 +2746,107 @@ static func check_bow_draw_clear() -> String:
 				continue
 			var made: Dictionary = (row.make as Callable).call()
 			var rig: Rig = made.rig
-			var torso := AABB()
-			for child in rig.body.get_children():
-				if child is MeshInstance3D and (child as MeshInstance3D).get_aabb().size.z > 0.3 and (child as MeshInstance3D).get_aabb().end.y > torso.end.y:
-					torso = (child as MeshInstance3D).get_aabb()
+			var torso := _torso_shape(rig)
 			var head_box := AABB()
 			for child in rig.head.get_children():
 				if child is MeshInstance3D and (child as MeshInstance3D).get_aabb().get_volume() > head_box.get_volume():
 					head_box = (child as MeshInstance3D).get_aabb()
 			var head_c := rig.head.position + head_box.get_center()
 			var head_r := head_box.size.x / 2.0
-			var torso_r := torso.size.z / 2.0
 			var deep := 0.0
 			var at := ""
+			var step_max := 0.0
+			var step_at := ""
+			var cross := INF
+			var prev: Array = []
+			var started := false
 			for i in (row.frames as Array).size():
 				AnimRecorder.step(row, made, i)
 				var a: Dictionary = row.frames[i].anim
-				if not made.anim._drawing:
+				started = started or made.anim._drawing
+				if not started:
 					continue
-				var sh := rig.arm_r.position
-				var elbow := sh + Basis.from_euler(rig.arm_r.rotation, EULER_ORDER_YXZ) * rig.forearm_r.position
-				var fist := BodyPose.hand_pos(rig, true)
-				for s in 21:
-					var t := s / 20.0
-					var pts := [[sh.lerp(elbow, t), 0.06]] if t >= 0.25 else []
-					pts.append([elbow.lerp(fist, t), 0.06])
-					if s == 20:
-						pts.append([fist, 0.07])
-					for q: Array in pts:
-						var p: Vector3 = q[0]
-						var d := 0.0
-						if p.y > torso.position.y and p.y < torso.end.y:
-							d = torso_r + q[1] - Vector2(p.x, p.z).length()
-						d = maxf(d, head_r + q[1] - p.distance_to(head_c))
-						if d > deep:
-							deep = d
-							at = "%s %s k=%.2f" % [a.action, a.get("phase", ""), a.get("k", 0.0)]
+				var tag := "%s %s k=%.2f" % [a.action, a.get("phase", ""), a.get("k", 0.0)]
+				var now: Array = []
+				for right: bool in [true, false]:
+					var arm: Node3D = rig.arm_r if right else rig.arm_l
+					var fore: Node3D = rig.forearm_r if right else rig.forearm_l
+					var sh := arm.position
+					var elbow := sh + Basis.from_euler(arm.rotation, EULER_ORDER_YXZ) * fore.position
+					var fist := BodyPose.hand_pos(rig, right)
+					now.append_array([rig.body.transform * elbow, rig.body.transform * fist])
+					for s in 21:
+						var t := s / 20.0
+						var pts := [[sh.lerp(elbow, t), 0.06]] if t >= 0.25 else []
+						pts.append([elbow.lerp(fist, t), 0.06])
+						if s == 20:
+							pts.append([fist, 0.07])
+						for q: Array in pts:
+							var d := maxf(_torso_depth(torso, q[0], q[1]), head_r + q[1] - (q[0] as Vector3).distance_to(head_c))
+							if d > deep:
+								deep = d
+								at = "%s %s" % ["右手" if right else "左手", tag]
+				if not prev.is_empty():
+					for n in now.size():
+						var mv: float = (now[n] - prev[n]).length()
+						if mv > step_max:
+							step_max = mv
+							step_at = tag
+				prev = now
+				if made.anim._drawing and row.key in ["attack", "special"]:
+					var lower := func(leg: Node3D, shin: Node3D) -> Vector3:
+						return rig.body.transform * (leg.transform * (shin.transform * Vector3(0, -(leg.position.y + shin.position.y), 0)))
+					cross = minf(cross, (lower.call(rig.leg_l, rig.shin_l) - lower.call(rig.leg_r, rig.shin_r)).dot(rig.body.basis * Vector3.RIGHT))
 			rig.free()
 			if deep > 0.03:
-				err = "%s %s 拉弦手穿進胸口或頭 %.2f（%s）" % [weapon, row.key, deep, at]
+				err = "%s %s 手穿進胸口或頭 %.2f（%s）" % [weapon, row.key, deep, at]
+			elif step_max > BOW_STEP_MAX:
+				err = "%s %s 手肘或拳頭一步移動 %.2f（%s），超過 %.2f" % [weapon, row.key, step_max, step_at, BOW_STEP_MAX]
+			elif cross < 0.1:
+				err = "%s %s 拉弓時雙腳交叉：左右腳在骨盆左右方向的間距 %.2f" % [weapon, row.key, cross]
+			if err != "":
 				break
-			_note("%s %s 拉弦手最深 %.3f" % [weapon, row.key, deep])
+			_note("%s %s 雙手最深 %.3f、一步最多移動 %.2f%s" % [weapon, row.key, deep, step_max, "、雙腳間距 %.2f" % cross if cross < INF else ""])
 		if err != "":
 			break
 	rec.clear()
 	return err
+
+
+# 盔甲零件（body 底下最高的那塊厚零件）的水平截面：[頂點（xz、繞一圈）, 下緣 y, 上緣 y]
+static func _torso_shape(rig: Rig) -> Array:
+	var best: MeshInstance3D = null
+	for child in rig.body.get_children():
+		if child is MeshInstance3D and (child as MeshInstance3D).get_aabb().size.z > 0.3 \
+				and (best == null or (child as MeshInstance3D).get_aabb().end.y > best.get_aabb().end.y):
+			best = child
+	var ring := {}
+	for v: Vector3 in best.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+		var w := best.transform * v
+		ring[Vector2(w.x, w.z).snappedf(0.001)] = true
+	var pts: Array = ring.keys()
+	var c := Vector2.ZERO
+	for p: Vector2 in pts:
+		c += p
+	c /= pts.size()
+	pts.sort_custom(func(p: Vector2, q: Vector2) -> bool: return (p - c).angle() < (q - c).angle())
+	var box := best.get_aabb()
+	return [pts, box.position.y, box.end.y]
+
+
+# 半徑 r 的點進到軀幹多深（凸多邊形：到各邊外側的距離取最大，負的就是在裡面）
+static func _torso_depth(torso: Array, p: Vector3, r: float) -> float:
+	if p.y <= torso[1] or p.y >= torso[2]:
+		return 0.0
+	var pts: Array = torso[0]
+	var q := Vector2(p.x, p.z)
+	var outside := -INF
+	for i in pts.size():
+		var a: Vector2 = pts[i]
+		var b: Vector2 = pts[(i + 1) % pts.size()]
+		var n := Vector2(b.y - a.y, a.x - b.x).normalized()   # 繞一圈是逆時針（角度由小到大），外法線
+		outside = maxf(outside, (q - a).dot(n))
+	return r - outside
 
 
 # 身體零件：披風整片在軀幹與腰帶後面（不穿進身體）、身體前方沒有披風色的零件；盾的尖角和盾面同一平面（盾的厚度 < 0.2）；
