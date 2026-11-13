@@ -10,8 +10,8 @@ const OPACITY := 0.9
 const WINDUP_FROM := 0.7      # 前搖走到這個比例就開始畫（劍已經往下揮）
 const MAX_POINTS := 24
 
-# 鏡頭固定斜角（Config.CAMERA）：指向鏡頭的方向
-static var _to_camera := Vector3(
+# 指向鏡頭的方向：遊戲是固定斜角（Config.CAMERA）；動畫檢視器會轉鏡頭，每幀自己設
+var to_camera := Vector3(
 	cos(Config.CAMERA.elevation) * sin(Config.CAMERA.azimuth), sin(Config.CAMERA.elevation), cos(Config.CAMERA.elevation) * cos(Config.CAMERA.azimuth))
 
 var _trails: Array = [[], []]   # 右手、左手武器各一串：[[位置, 經過秒數], …]，新的在後
@@ -70,7 +70,7 @@ func _draw_ribbon(pts: Array, color: Color) -> void:
 	for i in n:
 		var p: Vector3 = pts[i][0]
 		var tangent: Vector3 = (pts[mini(i + 1, n - 1)][0] as Vector3) - (pts[maxi(i - 1, 0)][0] as Vector3)
-		var side := tangent.cross(_to_camera)
+		var side := tangent.cross(to_camera)
 		side = side.normalized() if side.length_squared() > 1e-8 else Vector3.ZERO
 		var fresh := 1.0 - clampf(pts[i][1] / LIFE, 0.0, 1.0)   # 1 = 剛記下、0 = 快消失
 		var w := WIDTH * 0.5 * fresh

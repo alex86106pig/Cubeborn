@@ -359,6 +359,8 @@ func _seek(target: int) -> void:
 	_fx_world.entities = {(_row.subject as Entity).id: _row.subject}
 	_made = (_row.make as Callable).call()
 	add_child(_made.rig)
+	if _row.subject is Player:   # 揮砍的劍尖拖尾（遊戲裡由 WorldView 掛）
+		(_made.rig as Node).add_child(BladeTrail.new())
 	var r := _range(target)
 	_lo = r.x
 	_hi = r.y
@@ -418,6 +420,9 @@ func _step_to(i: int) -> void:
 	for ev: Dictionary in _row.frames[_frame].get("events", []):
 		_fx.on_event(ev.name, ev)
 	_place_rig()
+	var trail := (_made.rig as Node).get_node_or_null(^"BladeTrail") as BladeTrail
+	if trail != null:
+		trail.update(_made.rig, _row.subject, DT)
 	_sync()
 
 
@@ -538,6 +543,9 @@ func _update_camera() -> void:
 		target = rig.position + Vector3(0.0, height * 0.5, 0.0)
 	var y := yaw()
 	var offset := Vector3(cos(_pitch) * sin(y), sin(_pitch), cos(_pitch) * cos(y))
+	var trail := (_made.rig as Node).get_node_or_null(^"BladeTrail") as BladeTrail if not _made.is_empty() else null
+	if trail != null:
+		trail.to_camera = offset
 	_cam.projection = Camera3D.PROJECTION_ORTHOGONAL if _ortho else Camera3D.PROJECTION_PERSPECTIVE
 	_cam.size = _dist * 0.75
 	_cam.look_at_from_position(target + offset * (_dist if not _ortho else 40.0), target, Vector3.UP)
