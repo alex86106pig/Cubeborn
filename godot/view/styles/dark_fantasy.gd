@@ -853,10 +853,11 @@ static func _player_bow(size: float, wood: Color, arrow: float) -> Dictionary:
 	# 搭在弦上的箭：掛在右手、沿 -Z 建模（Animator 每幀 look_at 弓的握把，不管右手臂怎麼擺都指著弓）；只在拉弓時顯示
 	var nock := Node3D.new()
 	k.add(nock, PartKit.cyl(0.022, 0.022, arrow, 4), k.mat(Color("e0c890")), {"z": -arrow / 2.0, "rx": PI / 2.0})
-	k.add(nock, PartKit.cone(0.05, 0.16, 4), k.mat(Color("e8eef8"), true), {"z": -arrow - 0.06, "rx": -PI / 2.0})
+	var head := k.add(nock, PartKit.cone(0.05, 0.16, 4), k.mat(Color("e8eef8"), true), {"z": -arrow - 0.06, "rx": -PI / 2.0})
 	for sgn in [-1.0, 1.0]:
 		k.add(nock, PartKit.box(0.1, 0.012, 0.16), k.mat(Color("f0f0f0")), {"z": -0.06, "rz": sgn * 0.3})
-	k.merge_static(nock, [nock])
+	k.merge_static(nock, [nock], [head])   # 箭頭不合併：從箭袋抽出來、箭頭還在袋裡時要藏起來（Animator._bow_visuals）
+	nock.set_meta(&"head", head)
 	nock.set_meta(&"arrow", arrow)   # Animator 用來限制拉弦距離（箭尾不能拉過箭頭）
 	nock.visible = false
 	var out := {"kit": k, "main": null, "offhand": null, "left": g, "nock": nock, "gem": null}

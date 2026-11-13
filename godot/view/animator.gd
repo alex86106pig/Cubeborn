@@ -874,6 +874,16 @@ static func quiver_axis() -> Vector3:
 	return (DarkFantasy.QUIVER_MOUTH - DarkFantasy.QUIVER_BOTTOM).normalized()
 
 
+# 拿在手上的箭畫多長、畫不畫箭頭：[長度, 箭頭]。箭還穿過袋口（往上拉、往肩膀上方翻）時只畫袋口外面那段（拳頭到袋口）、箭頭還在袋裡
+# 不畫：手臂拉不出整支，袋裡那截跟箭袋有角度，整支畫出來會從箭袋側面戳出去；放開之後箭頭畫出來，長度跟著拳頭離袋口長到全長
+static func arrow_shown(bring: float, hand: Vector3, over: Vector3, arrow: float) -> Array:
+	var out := minf(arrow, hand.distance_to(DarkFantasy.QUIVER_MOUTH))
+	var k := smoothstep(0.0, 1.0, (bring - PULL_OUT) / (1.0 - PULL_OUT)) if bring > PULL_OUT else 0.0
+	if k <= 0.5:
+		return [maxf(out, 0.05), false]
+	return [maxf(out, over.distance_to(DarkFantasy.QUIVER_MOUTH)), true]
+
+
 # 拿在手上的箭的箭頭方向（身體座標；hand = 拳頭、over = 右肩上方那點、fwd = 瞄準方向）：
 # 往上拉時跟箭袋平行、箭頭朝袋底；手往肩膀上方翻的途中箭還有一截在袋裡，箭身一直穿過袋口（指回袋口，不從箭袋側面穿出去）；
 # 手到肩膀上方（箭頭剩約 0.15 在袋裡）才放開，箭頭轉成朝上 → 朝前帶到弦上（直接從朝袋底轉到朝前會橫過頭）
@@ -976,9 +986,14 @@ func _bow_visuals() -> void:
 	var fwd := rig.global_transform.basis.z.normalized()
 	if _arrow == &"hand":
 		var body_b := rig.body.global_transform.basis.orthonormalized()
-		var dir := body_b * arrow_dir(_bring, BodyPose.hand_pos(rig, true), rig.arm_r.position + OVER_SHOULDER, body_b.inverse() * fwd)
+		var fist := BodyPose.hand_pos(rig, true)
+		var over := rig.arm_r.position + OVER_SHOULDER
+		var dir := body_b * arrow_dir(_bring, fist, over, body_b.inverse() * fwd)
+		var shown := arrow_shown(_bring, fist, over, rig.weapon_nock.get_meta(&"arrow", 0.9))
 		rig.weapon_nock.position = Vector3.ZERO
 		rig.weapon_nock.look_at(rig.weapon_nock.global_position + dir, Vector3.RIGHT if absf(dir.y) > 0.99 else Vector3.UP)
+		rig.weapon_nock.scale = Vector3(1.0, 1.0, shown[0] / rig.weapon_nock.get_meta(&"arrow", 0.9))
+		(rig.weapon_nock.get_meta(&"head") as Node3D).visible = shown[1]
 	elif rig.weapon_left != null:
 		# 搭在弦上：箭尾在右手（勾弦處）、箭身穿過握把；拉弦時手往後、箭跟著往後縮
 		var grip := Rig.mount_point(rig.weapon_left, &"grip")
@@ -987,6 +1002,8 @@ func _bow_visuals() -> void:
 		if dir.length() < 0.05:
 			dir = fwd
 		rig.weapon_nock.look_at_from_position(tail, tail + dir, Vector3.UP)
+		rig.weapon_nock.scale = Vector3.ONE
+		(rig.weapon_nock.get_meta(&"head") as Node3D).visible = true
 
 
 # 弓弦：pull（世界座標的拉弦點，箭尾）在弦的後方時，上下兩段從弓梢拉到 pull 成 V 字；null 或在弦前方就是直的
