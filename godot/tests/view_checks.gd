@@ -2851,11 +2851,12 @@ static func check_archer_bow_arm() -> String:
 
 
 # 玩家拉弓（短弓、長弓的普攻、右鍵與弓的戰技）：雙手整條（上臂、前臂、拳頭）不穿過胸口與頭，包括從待機舉弓、抽箭、搭箭、拉弦、放箭、
-# 停手後放下；手肘與拳頭每一步移動不超過 BOW_STEP_MAX（不在一幀內甩過去）；從待機開的第一發前搖要自己伸手拿箭、搭弦、拉弦，
+# 停手後放下；手肘與拳頭每一步移動不超過 BOW_STEP_MAX（不在一幀內甩過去）；舉好弓之後弓手不動（BOW_HAND_STILL）；從待機開的第一發前搖要自己伸手拿箭、搭弦、拉弦，
 # YangHsu 2026-11-13 決定不加前搖時間、動畫加速塞進去（短弓只有 5 幀），那段只擋明顯的瞬移（BOW_FIRST_STEP_MAX，量手相對身體）；拉滿時雙腳不交叉（跟著骨盆側轉）。
 # 軀幹 = 盔甲零件頂點的水平截面（凸多邊形，六角柱）與上下範圍，頭 = 頭部零件的球；上臂靠肩膀那 1/4 本來就貼著軀幹，不量
 const BOW_STEP_MAX := 0.6
 const BOW_FIRST_STEP_MAX := 1.0
+const BOW_HAND_STILL := 0.02   # 舉好弓之後弓手每步最多移動多少（身體座標）：抽箭、搭弦、拉弦、放箭時弓手不動
 
 
 static func check_bow_draw_clear() -> String:
@@ -2879,6 +2880,8 @@ static func check_bow_draw_clear() -> String:
 			var step_max := 0.0
 			var step_at := ""
 			var first_max := 0.0
+			var bow_moved := 0.0
+			var bow_at := ""
 			var cross := INF
 			var prev: Array = []
 			var prev_body: Array = []   # 第一發前搖量手相對身體的移動（後跳射整個人在跳，不算手甩）
@@ -2915,6 +2918,9 @@ static func check_bow_draw_clear() -> String:
 				if not prev.is_empty():
 					for n in now.size():
 						var mv: float = (now[n] - prev[n]).length()
+						if n == 3 and made.anim._drawing and not first_shot and made.anim._bow_hold <= 0.0 and (now_body[n] - prev_body[n]).length() > bow_moved:
+							bow_moved = (now_body[n] - prev_body[n]).length()   # 左拳（弓手）
+							bow_at = tag
 						if first_shot:
 							first_max = maxf(first_max, (now_body[n] - prev_body[n]).length())
 						elif mv > step_max:
@@ -2931,13 +2937,15 @@ static func check_bow_draw_clear() -> String:
 				err = "%s %s 手穿進胸口或頭 %.2f（%s）" % [weapon, row.key, deep, at]
 			elif step_max > BOW_STEP_MAX:
 				err = "%s %s 手肘或拳頭一步移動 %.2f（%s），超過 %.2f" % [weapon, row.key, step_max, step_at, BOW_STEP_MAX]
+			elif bow_moved > BOW_HAND_STILL:
+				err = "%s %s 舉好弓之後弓手應不動：一步移動 %.3f（%s）" % [weapon, row.key, bow_moved, bow_at]
 			elif first_max > BOW_FIRST_STEP_MAX:
 				err = "%s %s 從待機開第一發的前搖手肘或拳頭一步移動 %.2f，超過 %.2f（瞬移）" % [weapon, row.key, first_max, BOW_FIRST_STEP_MAX]
 			elif cross < 0.1:
 				err = "%s %s 拉弓時雙腳交叉：左右腳在骨盆左右方向的間距 %.2f" % [weapon, row.key, cross]
 			if err != "":
 				break
-			_note("%s %s 雙手最深 %.3f、一步最多移動 %.2f（第一發前搖 %.2f）%s" % [weapon, row.key, deep, step_max, first_max, "、雙腳間距 %.2f" % cross if cross < INF else ""])
+			_note("%s %s 雙手最深 %.3f、一步最多移動 %.2f（第一發前搖 %.2f）、弓手最多動 %.3f%s" % [weapon, row.key, deep, step_max, first_max, bow_moved, "、雙腳間距 %.2f" % cross if cross < INF else ""])
 		if err != "":
 			break
 	rec.clear()

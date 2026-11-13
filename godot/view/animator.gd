@@ -86,7 +86,6 @@ var _bow_hold := 0.0           # 停手後還要保持拉弓姿勢多久
 var _arrow_last := &"none"     # 上一幀的箭在哪（保持姿勢時照舊）
 var _arrow_held := &"none"
 var _bring_last := 0.0
-var _slack_from := 1.0             # 這一發前搖開始時弓收在胸前的比例：接在放箭後面（連珠箭下一發）是 0，弓一直伸著
 var _string_from := Vector3.ZERO   # 放箭前弦拉到哪（連珠箭只拉七成）：放箭從這裡往後彈
 var _released := Vector3.ZERO      # 放箭後手彈到哪：收招從這裡接
 var _bring_held := 0.0
@@ -744,8 +743,9 @@ const NOCK_PART := 0.45                  # 收招的前段（回箭袋）佔多�
 const BOW_TWIST := 0.95                  # 拉滿時身體連骨盆順時針轉多少（弧度，約 54°）：YangHsu 2026-11-13 嫌 86°（完全側身）在斜視角下站太斜；
                                          # 46°~86° 雙手都不穿身，左手對準目標 cos 0.76~0.86（轉得少時弓手搆不到箭線上那點，停在近一點、箭照樣指著目標）
 const BOW_TWIST_SHARPNESS := 12.0        # 停手後側身轉回正面的速度（約 0.2 秒）
-const NOCK_AT := Vector3(0.04, 0.0, 0.16)    # 搭箭時右手（弦上的箭尾）在錨點的哪裡（沿瞄準方向、往上、往右手邊）：臉頰前方、軀幹頂上面，
-                                              # 右手搆得到（離右肩約 0.56、手臂 0.58）；弓手收到胸前，拉弦時一推一拉到全開
+const BOW_RAISE_PART := 0.8                   # 從待機開第一發：前搖的前多少把弓舉到位（短弓前搖最後一幀 k 只到 0.83，舉不完會在放箭那幀跳一下）
+const NOCK_REACH := 0.97                      # 搭箭時右手伸多遠（× 手臂全長）：弓手一直伸著不動，弦上搭箭那點右手搆不到（箭 0.95、手臂 0.58），
+                                              # 所以右手在箭線上搆得到的最遠處搭箭，弦從那裡開始拉
 const FETCH_OUT := Vector3(-0.15, 0.1, 0.0)  # 從待機伸手到箭袋的路線中間往外（右邊 -X）、往上繞多少（直線會擦過身體）
 const ANCHOR_UP := 0.06                  # 錨點（拉滿時拳頭）比脖子高多少：下巴高度，拉弦手從肩膀往上走、越過軀幹頂
 const ANCHOR_SIDE := 0.24                # 錨點離頭的中軸多遠（瞄準方向的右手邊 = 右臉頰旁）：頭半徑 0.2 + 拳頭一半，拳頭貼著臉不穿進去；
@@ -767,12 +767,9 @@ func pose_bow(a: Dictionary, e: float, charge: bool) -> void:
 		bow_raise = 0.0
 		draw_hand_from = _fist_last[0]
 		_pole_from[0] = _elbow_last[0]
-	if fresh:
-		_slack_from = 0.0 if _bow_phase_last == &"active" else 1.0
 	var fetch := 1.0    # 伸手到箭袋的進度
 	var bring := 1.0    # 抽箭搭弦的進度
 	var draw := 0.0     # 拉弦的進度
-	var slack := 0.0    # 搭箭時弓手放低、收回的比例
 	match a.phase:
 		&"windup":
 			if _nocked or e >= BRING_PART:
@@ -782,7 +779,6 @@ func pose_bow(a: Dictionary, e: float, charge: bool) -> void:
 				bring = 0.0
 			else:
 				bring = (e - FETCH_PART) / (BRING_PART - FETCH_PART)
-			slack = _slack_from * (1.0 - draw)
 		&"active":
 			draw = 1.0 if charge else 0.0
 		_:
@@ -792,7 +788,6 @@ func pose_bow(a: Dictionary, e: float, charge: bool) -> void:
 				bring = 0.0
 			else:
 				bring = (u - NOCK_PART) / (1.0 - NOCK_PART)
-			slack = bring
 	var twist := 1.0 if _nocked or a.phase != &"windup" else bring   # 搭箭時轉成側身：弓手、錨點都照側身算，轉一半左手會橫過胸前
 	_bow_twist = maxf(twist, MathUtil.damp(_bow_twist, twist, BOW_TWIST_SHARPNESS, _dt))
 	rig.body.rotation.y = -BOW_TWIST * _bow_twist
@@ -803,14 +798,14 @@ func pose_bow(a: Dictionary, e: float, charge: bool) -> void:
 	var up := inv * Vector3.UP
 	var right := Vector3(-fwd.z, 0.0, fwd.x)   # 瞄準方向的右手邊
 	var anchor := Vector3(0.0, rig.head.position.y + ANCHOR_UP, 0.0) + right * ANCHOR_SIDE
-	var nock := anchor + fwd * NOCK_AT.x + up * NOCK_AT.y + right * NOCK_AT.z
+	var grip := anchor + fwd * max_back   # 弓手在錨點前一支箭長（打直指著目標），拉弓期間一直不動
+	var nock := anchor + fwd * minf(max_back - 0.08, _reach_along(anchor, fwd, rig.arm_r.position, BodyPose.arm_length(rig) * NOCK_REACH))
 	var string_at := nock.lerp(anchor, draw)   # 弦（箭尾、拉弦手）在哪
-	var grip := (anchor + fwd * max_back).lerp(nock + fwd * 0.08, slack)   # 拉滿時弓手在錨點前一支箭長（打直指著目標），搭箭時收到弦前
 	# 弓手：從待機開始時照前搖進度（沒緩動的 a.k）從原本的位置舉起，手肘方向也從原本的轉過去
 	if bow_raise <= 0.0:
 		bow_hand_from = _fist_last[1]
 		_pole_from[1] = _elbow_last[1]
-	bow_raise = maxf(bow_raise, smoothstep(0.0, 1.0, a.k)) if a.phase == &"windup" else 1.0
+	bow_raise = maxf(bow_raise, smoothstep(0.0, BOW_RAISE_PART, a.k)) if a.phase == &"windup" else 1.0
 	BodyPose.arm_ik(rig, false, bow_hand_from.lerp(grip, bow_raise), (_pole_from[1] as Vector3).lerp(BOW_ELBOW_POLE, bow_raise))
 	# 拉弦手
 	var quiver := DarkFantasy.QUIVER_MOUTH
@@ -855,6 +850,14 @@ func pose_bow(a: Dictionary, e: float, charge: bool) -> void:
 			_nocked = e >= NOCKED_AT
 	_bow_phase_last = a.phase
 	_drawing = true
+
+
+# 從 origin 沿 dir 走，離 center 不超過 radius 的最遠距離（搆不到就是 0）
+static func _reach_along(origin: Vector3, dir: Vector3, center: Vector3, radius: float) -> float:
+	var w := origin - center
+	var along := -w.dot(dir)
+	var disc := along * along - w.length_squared() + radius * radius
+	return maxf(0.0, along + sqrt(disc)) if disc >= 0.0 else 0.0
 
 
 # 抽箭搭弦的手（身體座標）：[拳頭位置, 手肘方向]。前 PULL_OUT 從袋口沿箭袋往外拉 PULL_LEN，之後經過右肩上方帶到弦上
