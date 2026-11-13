@@ -42,6 +42,29 @@ const MAPS := {
 		"tomb_rows": [],
 		"theme": &"graveyard",
 	},
+	# 武器測試場換成第 2、3 層的外觀（測試面板選層數）：一樣的空地，只有主題不同
+	&"practice_catacomb": {
+		"name": "武器測試場（墓窟）",
+		"size": Vector2(64.0, 64.0),
+		"origin": Vector2(32.0, 32.0),
+		"spawn": Vector2(32.0, 32.0),
+		"dig": Vector2(32.0, 32.0),
+		"spawn_rule": &"arena",
+		"blocks": [],
+		"tomb_rows": [],
+		"theme": &"catacomb",
+	},
+	&"practice_burrow": {
+		"name": "武器測試場（墓道）",
+		"size": Vector2(64.0, 64.0),
+		"origin": Vector2(32.0, 32.0),
+		"spawn": Vector2(32.0, 32.0),
+		"dig": Vector2(32.0, 32.0),
+		"spawn_rule": &"arena",
+		"blocks": [],
+		"tomb_rows": [],
+		"theme": &"burrow",
+	},
 	# A 環形墓園（使用者 2026-10-23 選定）：中央是圍牆圍住的王族墓（出口、Boss）；外圈 7 格照種子抽區塊（2026-11-02），南邊是出生點
 	&"graveyard_a": {
 		"name": "墓園 A",
@@ -335,6 +358,16 @@ static func has_layout(m: Dictionary) -> bool:
 # 每層的地圖：從這張表裡的地圖開局，換層就換成該層的；超過表的層數用最後一層的。不在表裡的地圖（測試場地）換層也不換
 const FLOOR_MAPS := {1: &"graveyard", 2: &"catacomb_a", 3: &"burrow_a"}
 const PRACTICE_MAP := &"practice"   # 武器測試場（main._set_practice）
+const PRACTICE_MAPS: Array[StringName] = [PRACTICE_MAP, &"practice_catacomb", &"practice_burrow"]   # 第 1、2、3 層的外觀
+
+
+# 武器測試場照第幾層的外觀；超過的用最後一張
+static func practice_map(floor_num: int) -> StringName:
+	return PRACTICE_MAPS[clampi(floor_num, 1, PRACTICE_MAPS.size()) - 1]
+
+
+static func is_practice(map_id: StringName) -> bool:
+	return PRACTICE_MAPS.has(map_id)
 
 
 static func floor_map(map_id: StringName, floor_num: int) -> StringName:

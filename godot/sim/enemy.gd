@@ -32,6 +32,8 @@ var dormant := false:                # 怪群休眠中：站著不動，整群�
 var wave_member := false             # 波次生成的：場上的波次怪都死了才開下一波（怪群不算）
 var action_speed := 1.0              # 狀態機時間的倍率（狂暴詞條 1.4：舉刀、瞄準、收招與冷卻都變快）
 var summoner_id := 0                 # 召喚詞條叫出來的：召喚者的 id
+var train_path: Array[Vector2] = []   # 會動的木樁（Spawner.spawn_training_dummies）：站著的狀態改成沿這幾個點來回走；空的 = 不動
+var train_leg := 0                    # 正走向 train_path 的第幾個點
 var no_souls := false                 # 召喚出來的（召喚詞條、Boss 召喚）：死了不給靈魂（v0.44.0，避免刷錢）
 var _frenzied := false
 var _exploded := false
@@ -718,9 +720,20 @@ static func base_states() -> Dictionary:
 
 
 # 武器測試場景的木樁（--weapon-test，2026-10-27）：main_state 設成 train，爬出、受擊後都回來站著，不移動、不攻擊
+# train_path 有點的（會動的木樁）沿著點來回走：被打飛、埋掉後從落點走回路線
 class Train:
+	const ARRIVE := 0.3   # 離目標點這麼近就換下一個點
+
 	func update(e: Enemy, _dt: float, _fsm: StateMachine) -> void:
-		e.velocity = Vector2.ZERO
+		if e.train_path.is_empty():
+			e.velocity = Vector2.ZERO
+			return
+		var to := e.train_path[e.train_leg] - e.pos
+		if to.length() <= ARRIVE:
+			e.train_leg = (e.train_leg + 1) % e.train_path.size()
+			to = e.train_path[e.train_leg] - e.pos
+		e.facing = MathUtil.angle_to(e.pos, e.train_path[e.train_leg])
+		e.velocity = to.normalized() * e.speed
 
 
 # 從挖墳點噴出來（DigEvent._erupt）：照拋物線飛到落點，空中不行動、不硬直，落地後開始追

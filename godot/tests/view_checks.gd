@@ -308,7 +308,10 @@ static func _check_test_panel(hud: Variant) -> String:
 		return (tp.pages[t] as ScrollContainer).get_child(0).find_children("*", "Button", true, false).size()
 	var items := TestPanel._ids_of(&"item").size()
 	var skills := TestPanel._ids_of(&"skill").size()
-	var enemies := Practice.enemy_types().size() + MonsterRarityDefs.RARITIES.size()   # 怪物分頁另有稀有度按鈕
+	skills += SkillDefs.LEVEL.max + 1   # 技能分頁另有等級按鈕（＋1 與每一級）
+	# 怪物分頁另有成長（層、小關）、稀有度、一次幾隻、木樁擺法的按鈕
+	var enemies := Practice.enemy_types().size() + MonsterRarityDefs.RARITIES.size() + MapDefs.PRACTICE_MAPS.size() + MapGenDefs.STAGES.size() \
+		+ Practice.SPAWN_COUNTS.size() + Spawner.TRAINING_KINDS.size()
 	if count.call(&"item") != items or count.call(&"skill") != skills or count.call(&"enemy") != enemies:
 		return "道具 / 技能 / 怪物按鈕應有 %d / %d / %d 顆，實際 %d / %d / %d" % [items, skills, enemies, count.call(&"item"), count.call(&"skill"), count.call(&"enemy")]
 	var got := []
@@ -327,11 +330,40 @@ static func _check_test_panel(hud: Variant) -> String:
 	if bag_buttons != BagDefs.BAGS.size() * BagDefs.TIERS.size() or unlock_buttons != 3:
 		return "袋子分頁應有 %d 顆袋子、合併時 3 顆開格：%d / %d" % [BagDefs.BAGS.size() * BagDefs.TIERS.size(), bag_buttons, unlock_buttons]
 	var spawned := []
-	tp.enemy_requested.connect(func(type: StringName, rarity: StringName) -> void: spawned.append([type, rarity]))
+	tp.enemy_requested.connect(func(type: StringName, rarity: StringName, n: int) -> void: spawned.append([type, rarity, n]))
 	tp._pick_enemy_rarity(MonsterRarityDefs.MAGIC)
-	tp.enemy_requested.emit(&"grunt", tp.enemy_rarity)
-	if spawned != [[&"grunt", MonsterRarityDefs.MAGIC]]:
-		return "生怪應帶選的稀有度：%s" % [spawned]
+	tp._pick_count(Practice.SPAWN_COUNTS[1])
+	var grunt_button: Button = (tp.pages[&"enemy"] as ScrollContainer).get_child(0).find_children("*", "Button", true, false).filter(
+		func(b: Button) -> bool: return b.text == EnemyDefs.def_of(&"grunt").get("name", "grunt"))[0]
+	grunt_button.pressed.emit()
+	if spawned != [[&"grunt", MonsterRarityDefs.MAGIC, Practice.SPAWN_COUNTS[1]]]:
+		return "生怪應帶選的稀有度與隻數：%s" % [spawned]
+	# 成長、木樁、作弊、技能等級各自發出選的值；reset_choices 回到預設而且不發訊號
+	var sent := []
+	tp.stage_chosen.connect(func(f: int, s: int) -> void: sent.append([&"stage", f, s]))
+	tp.dummies_requested.connect(func(k: StringName) -> void: sent.append([&"dummy", k]))
+	tp.cheat_toggled.connect(func(id: StringName, on: bool) -> void: sent.append([&"cheat", id, on]))
+	tp.item_requested.connect(func(id: StringName, lv: int) -> void: sent.append([&"item", id, lv]))
+	tp._floor_buttons[2].pressed.emit()
+	tp._stage_buttons[3].pressed.emit()
+	tp._dummy_buttons[&"crowd"].pressed.emit()
+	tp._cheat_buttons[&"mana"].button_pressed = true
+	tp._pick_level(3)
+	var whirl: Button = (tp.pages[&"skill"] as ScrollContainer).get_child(0).find_children("*", "Button", true, false).filter(
+		func(b: Button) -> bool: return b.text == ItemDefs.ITEMS[&"whirlwind"].name)[0]
+	whirl.pressed.emit()
+	var want_sent := [[&"stage", 2, 1], [&"stage", 2, 3], [&"dummy", &"crowd"], [&"cheat", &"mana", true], [&"item", &"whirlwind", 3]]
+	if sent != want_sent:
+		return "成長 / 木樁 / 作弊 / 技能等級應各自發出選的值：%s" % [sent]
+	tp.reset_choices()
+	if sent != want_sent or tp.enemy_floor != 1 or tp.enemy_stage != 1 or tp.enemy_count != 1 or tp.skill_level != 0 \
+			or tp.dummy_kind != Spawner.TRAINING_DEFAULT or tp._cheat_buttons[&"mana"].button_pressed or tp.enemy_rarity != MonsterRarityDefs.NORMAL:
+		return "reset_choices 應回到預設而且不發訊號：%s" % [sent]
+	# 傷害統計的字再長也不會把面板撐寬
+	var narrow := tp.get_combined_minimum_size().x
+	tp.set_meter("秒傷 123456（最近 5 秒）　總 123456789　最高 1234567　12345 下　秒傷 123456（最近 5 秒）　總 123456789")
+	if tp.get_combined_minimum_size().x > narrow + 1.0:
+		return "傷害統計的字變長不應把面板撐寬：%.0f → %.0f" % [narrow, tp.get_combined_minimum_size().x]
 	# 平常收起（只剩分頁與工具列）；點分頁展開、再點同一頁收起
 	tp.set_collapsed(true)
 	if tp._body.visible:

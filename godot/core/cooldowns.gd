@@ -40,5 +40,12 @@ func reset(key: String) -> void:
 	_timers.erase(key)
 
 
+# 清掉 key 以 suffix 結尾的冷卻（Player.cd 的 key 尾巴是 @peer_id：只清那位玩家的）
+func reset_suffix(suffix: String) -> void:
+	for key: String in _timers.keys():
+		if key.ends_with(suffix):
+			_timers.erase(key)
+
+
 func reset_all() -> void:
 	_timers.clear()

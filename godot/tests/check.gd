@@ -93,8 +93,9 @@ func _initialize() -> void:
 	_check("火把（F8，2026-11-06 拿掉準備姿態與插火把）：右鍵直接噴火（前方扇形、扣魔、魔力不夠不出招）；揮擊與噴火都點燃；傭兵的起始技能在數字鍵 1；傭兵視野 +3、身邊 6", CombatChecks.check_torch)
 	_check("鐵鏟（F9，2026-11-06 改成鏟拋）：右鍵鏟起面前的怪直接往準星拋出（有飛行過程、落地 200%、路上 150%）；Boss 抓不起來、沒抓到只扣 miss_mana；活埋（技能）埋 2 秒、受傷，埋著打得到、不被擊退，Boss 埋不了；掘墓人挖墳中受傷 −25%；搆得到正面牽制的屍犬；鏟拋隊友不扣血、被推走",
 		CheckKit.all_of.bind([CombatChecks.check_shovel, CombatChecks.check_shovel_reach, CombatChecks.check_shovel_teammate]))
-	_check("武器測試場（--weapon-test）：木樁爬出後站著不動、不打人，鐵鏟鏟拋得出去、活埋埋得下，落地 / 埋完回到站著；測試面板跟正式遊戲同一套規則（武器照掉落擲數值、灰色固定，技能拿第二次升級，袋子照撿到的接上、背包合併改開格，魔法 / 稀有怪照正式抽詞條）、背包滿了掉腳邊、怪物停手不打人放開照打、死了不結算、立即復活滿血滿魔、清除怪物；地圖是 64 × 64 的空地、重新開始不換掉",
-		all.bind([CombatChecks.check_training_dummies, CombatChecks.check_practice]))
+	_check("武器測試場（--weapon-test）：木樁爬出後站著不動、不打人，鐵鏟鏟拋得出去、活埋埋得下，落地 / 埋完回到站著；測試面板跟正式遊戲同一套規則（武器照掉落擲數值、灰色固定，技能拿第二次升級，袋子照撿到的接上、背包合併改開格，魔法 / 稀有怪照正式抽詞條）、背包滿了掉腳邊、怪物停手不打人放開照打、死了不結算、立即復活滿血滿魔、清除怪物；地圖是 64 × 64 的空地、重新開始不換掉；作弊開關（無限魔力、沒有冷卻、無敵）只在測試場有作用；一次生多隻、照選的層與小關成長並換外觀；木樁有護甲、會動、一群三種擺法；技能指定等級、清空背包、傷害統計只算自己打的",
+		all.bind([CombatChecks.check_training_dummies, CombatChecks.check_practice, CombatChecks.check_practice_cheats, CombatChecks.check_practice_spawn,
+			CombatChecks.check_training_kinds, CombatChecks.check_practice_inventory_meter]))
 
 	# ───────── 小怪與戰鬥判定 ─────────
 	_check("高度判定：最高點時箭從腳下飛過、地面會中箭；跳起來躲過 Boss 砸地；空中揮砍與空中魔彈打得到地上的怪", CombatChecks.check_height_hits)
@@ -239,7 +240,7 @@ func _initialize() -> void:
 		all.bind([ViewChecks.check_skill_bar_parry, ViewChecks.check_skill_bar_cd_mask, ViewChecks.check_skill_bar_gem_skill]))
 	_check("新手提示：開場跳操作與挖墳；撿到東西、開背包、可合成、出口打開、腳邊有東西（按住 Alt 看詳細）、隊友倒地各跳一次；看過不再跳；重設後再跳", ViewChecks.check_hints)
 	_check("挖墳進度條：事件進行中所有人上方中央都看得到進度與說明，出口打開後收起；Boss 血條排在它下面、寬度塞得進 1920", ViewChecks.check_dig_bar)
-	_check("主選單：首頁有單人 / 多人 / 動畫檢視器 / 離開遊戲（網頁版不顯示離開）、桌面版先選房號 / IP、多人頁放連線面板與返回、塞得進 1920×1080；暫停畫面有「回主選單」；選角畫面（點職業只是選、按開始才開局帶難度、佔位選不到、數值條照職業、塞得進）；武器測試場入口與測試面板（左上、預設收起、點分頁展開再點收起、開背包時藏起來、右緣離畫面中央 200 以上；武器照選的稀有度（有灰色、沒有詞條）、袋子分頁照背包模式換內容、生怪帶選的稀有度）", ViewChecks.check_main_menu)
+	_check("主選單：首頁有單人 / 多人 / 動畫檢視器 / 離開遊戲（網頁版不顯示離開）、桌面版先選房號 / IP、多人頁放連線面板與返回、塞得進 1920×1080；暫停畫面有「回主選單」；選角畫面（點職業只是選、按開始才開局帶難度、佔位選不到、數值條照職業、塞得進）；武器測試場入口與測試面板（左上、預設收起、點分頁展開再點收起、開背包時藏起來、右緣離畫面中央 200 以上；武器照選的稀有度（有灰色、沒有詞條）、袋子分頁照背包模式換內容、生怪帶選的稀有度與隻數、成長 / 木樁 / 作弊 / 技能等級各自發出選的值、回到預設不發訊號、傷害統計的字不撐寬面板）", ViewChecks.check_main_menu)
 	_check("設定頁：主選單與暫停畫面的「設定」打開、塞得進 1920×1080、選單關掉一起關；改值存檔讀得回來（啟動參數蓋的不存）；音量套到 Music / SFX 匯流排、0% = −80 dB；陰影與光源開關套到太陽和精英怪的光（之後新建的也照設定）；--shadows / --lights", ViewChecks.check_settings)
 	_check("按鈕：ui/ 裡都用 UiKit.button（選單 / 面板 / 一排很多顆三種尺寸），不自己 Button.new()", ViewChecks.check_buttons)
 	_check("網頁版網址參數：?horde=200&perf&seconds=20 轉成 --horde=200 --perf --seconds=20；連線參數 host / join / room / net-autostart 也轉；不在開放清單的參數不轉", ViewChecks.check_url_query_args)

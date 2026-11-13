@@ -76,6 +76,7 @@ var wisp_anchor := Vector2.INF         # 分支・星位（第 8c 步）：上�
 var mana := 0.0                        # 目前魔力（上限 max_mana 屬性，每秒回 mana_regen；技能與右鍵耗魔，權威端為準）
 var dice: int = LootDefs.RELIC.start_dice   # 遺物的骰子（Build 改版第 6 步）：重擲 N 選 1 用掉 1 顆，整局通用
 var relic_id := 0                      # 打開著的遺物（權威端設定，快照送給自己；0 = 沒打開）
+var is_untouchable := false           # 武器測試場的無敵開關（Practice.apply_cheats 每步照開關設）：打不到，不像 invuln_timer 會讓模型閃爍
 var skill_levels := {}                 # 技能 id → 等級（Build 改版第 7 步：技能遺物選到已經有的就升 1 級；沒記的是 1 級）
 var reaver_stacks := 0                 # 噬魂刃這一層殺了幾隻（SkillDefs.soul_reaver，換層歸零；只在權威端）
 var grudge_taken := 0.0                # 積怨：上次放出之後受到的傷害（只在權威端）
@@ -340,7 +341,7 @@ func cd(key: String) -> String:
 
 
 func can_be_hit() -> bool:
-	return super() and not is_downed and not descended
+	return super() and not is_downed and not descended and not is_untouchable
 
 
 func is_targetable() -> bool:

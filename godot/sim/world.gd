@@ -69,6 +69,8 @@ var boss_id := 0                     # 目前的 Boss（0 = 沒有），HUD 的 
 var victory_timer := 0.0
 var is_defeated := false             # 全員倒下（已發出 game:defeat）
 var practice := false                # 武器測試場（main.gd 設、reset 不清）：死了不結算，等測試面板的立即復活（Practice）
+var practice_cheats := {}            # 武器測試場的作弊開關（Practice.CHEATS 的 key → true），每步開頭套用（Practice.apply_cheats）
+var practice_stage := Vector2i(1, 1) # 武器測試場生怪照第幾層（x）第幾小關（y）的成長（Practice.stage_mul）
 var enemies_hold := false            # 武器測試場：怪物停手（Enemy.update 回到主狀態時改站著；招式出到一半照樣做完）
 # 連線（docs/系統說明.md §8）：房主 / 單機為權威端；客戶端的 World 只是快照的鏡像，加上本機預測自己的角色（不扣血、不產生實體）
 var is_authority := true
@@ -745,6 +747,8 @@ func step(cmds: Dictionary, dt: float) -> void:
 		e.prev_height = e.height
 
 	cooldowns.tick(dt)
+	if practice:
+		Practice.apply_cheats(self)
 
 	for peer_id: int in players:
 		var p: Player = players[peer_id]

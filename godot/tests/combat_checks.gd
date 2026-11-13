@@ -1412,3 +1412,200 @@ static func check_practice() -> String:
 	if pw.map_id != MapDefs.PRACTICE_MAP or pw.map.size != Vector2(64, 64) or not pw.terrain.blocks.is_empty() or pw.has_floors():
 		return "測試場重新開始後應還是 64 × 64 的空地：地圖 %s、大小 %s、石台 %d" % [pw.map_id, pw.map.size, pw.terrain.blocks.size()]
 	return ""
+
+
+# 測試場的作弊開關：無限魔力每步補滿；沒有冷卻只清這位玩家的冷卻（別的 key 不動）、藥水補滿；無敵時怪打不到、關掉後照常被打。
+# 不在測試場（World.practice 沒開）開關沒有作用
+static func check_practice_cheats() -> String:
+	var w := _new_world()
+	w.practice = true
+	var p := _player(w)
+	p.mana = 0.0
+	w.cooldowns.start(p.cd(Player.ROLL_CD), 5.0)
+	w.cooldowns.start("probe.other", 5.0)
+	p.slots.heal.charges = 0
+	Practice.set_cheat(w, &"mana", true)
+	Practice.set_cheat(w, &"cooldown", true)
+	_run(w, _cmd(Vector2.ZERO), 1)
+	if p.mana != p.max_mana():
+		return "無限魔力應每步補滿：%.0f / %.0f" % [p.mana, p.max_mana()]
+	if not w.cooldowns.is_ready(p.cd(Player.ROLL_CD)) or w.cooldowns.is_ready("probe.other") or p.slots.heal.charges != p.slots.heal.def.charges:
+		return "沒有冷卻應只清玩家的冷卻並補滿藥水：翻滾好了 %s、別的 key 好了 %s、藥水 %d" % [
+			w.cooldowns.is_ready(p.cd(Player.ROLL_CD)), w.cooldowns.is_ready("probe.other"), p.slots.heal.charges]
+	Practice.set_cheat(w, &"mana", false)
+	Practice.set_cheat(w, &"cooldown", false)
+	p.mana = 0.0
+	w.cooldowns.start(p.cd(Player.ROLL_CD), 5.0)
+	_run(w, _cmd(Vector2.ZERO), 1)
+	if p.mana >= p.max_mana() or w.cooldowns.is_ready(p.cd(Player.ROLL_CD)):
+		return "關掉後魔力與冷卻應照常：魔 %.0f、翻滾好了 %s" % [p.mana, w.cooldowns.is_ready(p.cd(Player.ROLL_CD))]
+	# 無敵：貼身的骷髏打不到；關掉後照常受傷
+	Practice.set_cheat(w, &"invincible", true)
+	var e := Practice.spawn_enemy(w, p, &"grunt")
+	e.pos = p.pos + Vector2(1.2, 0.0)
+	var hp0 := p.hp
+	_run(w, _cmd(Vector2.ZERO), 300)
+	if p.hp != hp0 or p.invuln_timer > 0.0:
+		return "無敵時不應受傷、也不靠受傷後的無敵時間（模型會閃）：血 %.0f → %.0f、無敵時間 %.2f" % [hp0, p.hp, p.invuln_timer]
+	Practice.set_cheat(w, &"invincible", false)
+	_run(w, _cmd(Vector2.ZERO), 300)
+	if p.hp >= hp0:
+		return "關掉無敵後應照常受傷（10 秒內沒受傷）"
+	# 不在測試場：開關留著也不套用
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	w2.practice_cheats[&"mana"] = true
+	p2.mana = 0.0
+	_run(w2, _cmd(Vector2.ZERO), 1)
+	if p2.mana >= p2.max_mana():
+		return "不在測試場時作弊開關不應有作用"
+	return ""
+
+
+# 測試場生怪：一次生多隻各在不同位置、Boss 只生 1 隻；選第幾層第幾小關後生的怪照那一關的成長（同 EventDefs.difficulty_mul）、
+# 場地換成那一層的外觀而玩家與場上的怪不動；怪物分頁的分組每種怪剛好出現一次
+static func check_practice_spawn() -> String:
+	var w := _new_world(5, false, MapDefs.PRACTICE_MAP)
+	w.practice = true
+	w.reset(9)
+	w.spawner.finished = true   # 測試場不跑波次（main.restart 也這樣設）；reset 會換一個新的 Spawner
+	var p := _player(w)
+	var count: int = Practice.SPAWN_COUNTS.max()
+	var made := Practice.spawn_enemies(w, p, &"grunt", MonsterRarityDefs.NORMAL, count)
+	if made.size() != count:
+		return "一次應生 %d 隻，實際 %d" % [count, made.size()]
+	for i in made.size():
+		for j in i:
+			if made[i].pos.distance_to(made[j].pos) < Practice.SPAWN_GAP * 0.5:
+				return "一次生的怪應各在不同位置：第 %d 與第 %d 隻相距 %.2f" % [j, i, made[i].pos.distance_to(made[j].pos)]
+	var boss_type: StringName = Practice.enemy_types().filter(EnemyDefs.is_boss)[0]
+	if Practice.spawn_enemies(w, p, boss_type, MonsterRarityDefs.NORMAL, count).size() != 1:
+		return "Boss 一次只應生 1 隻"
+	# 成長：第 1 層第 1 小關是原始數值；選了別關，之後生的照那一關
+	var base := Practice.stage_mul(1, 1)
+	if base.hp != 1.0 or base.damage != 1.0:
+		return "第 1 層第 1 小關應是原始數值：%s" % [base]
+	var last_stage: int = MapGenDefs.STAGES.size()
+	var d: Dictionary = EventDefs.DIFFICULTY
+	var want := EventDefs.difficulty_mul(d.per_floor + (last_stage - 1) * d.per_stage, MapGenDefs.STAGES.size() + last_stage - 1)
+	var here := p.pos
+	var first: Enemy = made[0]
+	var first_pos := first.pos
+	Practice.set_stage(w, 2, last_stage)
+	var strong := Practice.spawn_enemy(w, p, &"grunt")
+	# 生命是取整數的屬性（StatDefs 的 round）：跟倍率算出來的差不到 1
+	if absf(strong.max_hp - first.max_hp * want.hp) > 1.0 or want.hp <= 1.0:
+		return "第 2 層最後一小關的怪生命應是 %.1f（%.3f 倍），實際 %.1f" % [first.max_hp * want.hp, want.hp, strong.max_hp]
+	if w.map_id != MapDefs.practice_map(2) or w.map.theme == MapDefs.get_map(MapDefs.PRACTICE_MAP).theme or p.pos != here or first.pos != first_pos or first.is_removed:
+		return "選第 2 層應換成那一層的外觀、場上的東西不動：地圖 %s、主題 %s" % [w.map_id, w.map.theme]
+	_run(w, _cmd(Vector2.ZERO), 30)
+	if not w.nav.is_walkable(p.pos):
+		return "換外觀後玩家應還站在走得到的地方"
+	# 分組：每種怪剛好一次
+	var listed: Array[StringName] = []
+	for g: Array in Practice.enemy_groups():
+		listed.append_array(g[1])
+	for id in Practice.enemy_types():
+		if listed.count(id) != 1:
+			return "怪物分頁的分組裡 %s 應剛好出現 1 次，實際 %d" % [id, listed.count(id)]
+	return ""
+
+
+# 木樁的擺法：護甲木樁物理傷害照護甲公式減少、其他屬性不減；會動的木樁沿路線來回走、不打人、走不出路線兩端；一群是方陣、每隻都站著
+static func check_training_kinds() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	for kind: StringName in Spawner.TRAINING_KINDS:
+		if Spawner.spawn_training_dummies(w, p.pos, kind).is_empty():
+			return "木樁「%s」應擺得出來" % Spawner.TRAINING_KINDS[kind]
+	var w1 := _new_world()
+	var p1 := _player(w1)
+	var plain: Enemy = Spawner.spawn_training_dummies(w1, p1.pos)[1]
+	var armored: Enemy = Spawner.spawn_training_dummies(w1, p1.pos + Vector2(0, 12), &"armored")[1]
+	_run(w1, _cmd(Vector2.ZERO), 120)   # 等爬出來
+	var phys := armored.take_damage(100.0, Vector2.ZERO, 0.0, p1.id, &"phys") / plain.take_damage(100.0, Vector2.ZERO, 0.0, p1.id, &"phys")
+	var fire := armored.take_damage(100.0, Vector2.ZERO, 0.0, p1.id, &"fire") / plain.take_damage(100.0, Vector2.ZERO, 0.0, p1.id, &"fire")
+	var want := StatDefs.armor_damage_factor(Spawner.TRAINING_ARMOR)
+	if absf(phys - want) > 0.001 or absf(fire - 1.0) > 0.001 or want >= 1.0:
+		return "護甲木樁物理傷害應是 %.2f 倍、火焰 1 倍：實際 %.2f / %.2f" % [want, phys, fire]
+	# 會動：走得動、不打人、不離開路線
+	var w2 := _new_world(5, false, MapDefs.PRACTICE_MAP)
+	w2.reset(9)
+	w2.spawner.finished = true   # 同上：不關掉的話波次的怪會來打玩家
+	var p2 := _player(w2)
+	var movers := Spawner.spawn_training_dummies(w2, p2.pos, &"moving")
+	var hp0 := p2.hp
+	var walked := 0.0
+	var far := 0.0
+	for i in 600:
+		var before := movers[0].pos
+		_run(w2, _cmd(Vector2.ZERO), 1)
+		walked += movers[0].pos.distance_to(before)
+		for m in movers:
+			far = maxf(far, m.pos.distance_to(p2.pos))
+	var route := Spawner.TRAINING_WALK_FAR - Spawner.TRAINING_WALK_NEAR
+	var limit: float = Spawner.TRAINING_WALK_FAR + absf(Spawner.TRAINING_WALK_ROWS.max()) + 1.0
+	if walked < route or far > limit or p2.hp != hp0:
+		return "會動的木樁 10 秒應至少走完一趟（%.1f）、不離開路線（最遠 %.1f、上限 %.1f）、不打人：走了 %.1f、玩家血 %.0f → %.0f" % [route, far, limit, walked, hp0, p2.hp]
+	# 一群：方陣
+	var crowd := Spawner.spawn_training_dummies(w2, p2.pos + Vector2(0, 20), &"crowd")
+	if crowd.size() != Spawner.TRAINING_CROWD_SIDE * Spawner.TRAINING_CROWD_SIDE:
+		return "一群應是 %d 隻的方陣，實際 %d" % [Spawner.TRAINING_CROWD_SIDE * Spawner.TRAINING_CROWD_SIDE, crowd.size()]
+	return ""
+
+
+# 測試場的背包與傷害統計：技能可以直接指定等級（沒有就先放進背包、超過最高級截住）；清空背包拿掉道具與技能、等級歸零、武器留著；
+# 道具 / 技能分頁的分組每個剛好出現一次。傷害統計：總傷害、最高一擊、次數、最近 WINDOW 秒的秒傷，只算本機玩家打出去的
+static func check_practice_inventory_meter() -> String:
+	var w := _new_world()
+	w.practice = true
+	var p := _player(w)
+	var skill := &"whirlwind"
+	var note := Practice.give_item(w, p, skill, 4)
+	if p.skill_levels.get(skill, 1) != 4 or not p.loadout.has_item(skill):
+		return "指定 4 級應放進背包並設成 4 級：%d、「%s」" % [p.skill_levels.get(skill, 1), note]
+	Practice.give_item(w, p, skill, SkillDefs.LEVEL.max + 3)
+	if p.skill_levels[skill] != SkillDefs.LEVEL.max:
+		return "指定超過最高級應截在 %d：%d" % [SkillDefs.LEVEL.max, p.skill_levels[skill]]
+	Practice.give_item(w, p, skill, 2)
+	if p.skill_levels[skill] != 2:
+		return "指定等級可以往下調：%d" % p.skill_levels[skill]
+	Practice.give_item(w, p, &"wormwood")
+	var hand: Dictionary = p.weapon
+	Practice.clear_inventory(p)
+	if p.loadout.has_item(skill) or p.loadout.has_item(&"wormwood") or not p.skill_levels.is_empty() or p.weapon != hand:
+		return "清空背包應拿掉道具與技能、等級歸零、武器留著"
+	for pair: Array in [[Practice.item_groups(), &"item"], [Practice.skill_groups(), &"skill"]]:
+		var listed: Array[StringName] = []
+		for g: Array in pair[0]:
+			listed.append_array(g[1])
+		for id: StringName in ItemDefs.ITEMS:
+			var want := 1 if ItemDefs.ITEMS[id].kind == pair[1] and (pair[1] == &"skill" or ItemDefs.item_implemented(id)) else 0
+			if listed.count(id) != want:
+				return "%s 在 %s 分頁的分組裡應出現 %d 次，實際 %d" % [id, pair[1], want, listed.count(id)]
+	# 傷害統計
+	var m := PracticeMeter.new()
+	m.add(100.0, 10.0)
+	m.add(50.0, 11.0, true)
+	if m.total != 150.0 or m.peak != 100.0 or m.hits != 1:
+		return "統計應是總 150、最高 100、1 下（附帶的小傷害不算次數）：%.0f / %.0f / %d" % [m.total, m.peak, m.hits]
+	var early := m.dps(10.0)
+	var mid := m.dps(12.0)
+	var gone := m.dps(11.0 + PracticeMeter.WINDOW + 0.1)
+	if absf(early - 150.0 / PracticeMeter.MIN_SPAN) > EPS or absf(mid - 75.0) > EPS or gone != 0.0 or m.total != 150.0:
+		return "秒傷：剛開打除以 MIN_SPAN、2 秒時 75、超過 WINDOW 歸 0 而總傷害留著：%.1f / %.1f / %.1f" % [early, mid, gone]
+	m.reset()
+	var foe := _dummy(w, p.pos + Vector2(0, 3))
+	var other := _dummy(w, p.pos + Vector2(3, 0))
+	_run(w, _cmd(Vector2.ZERO), 1)
+	Combat.apply_damage(w, p, foe, {"damage": 20.0})
+	Combat.apply_damage(w, other, foe, {"damage": 30.0})   # 別人打的不算
+	Combat.apply_damage(w, foe, p, {"damage": 5.0})        # 自己被打的不算
+	var dealt := 0.0
+	for ev: Dictionary in w.events:
+		if ev.name == "entity:damaged" and ev.source_id == p.id:
+			dealt += ev.amount
+	m.feed(w, p.id)
+	if dealt <= 0.0 or absf(m.total - dealt) > EPS:
+		return "統計只應算本機玩家打出去的 %.1f：實際 %.1f" % [dealt, m.total]
+	return ""

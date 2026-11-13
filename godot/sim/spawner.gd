@@ -143,20 +143,54 @@ const TRAINING_RIGHT := Vector2(1.0, -1.0)   # 畫面右方（世界座標，未
 const TRAINING_UP := Vector2(-1.0, -1.0)     # 畫面上方
 const TRAINING_SPOTS := [[&"right", 1.6], [&"right", 5.0], [&"right", 7.0], [&"right", 9.0], [&"up", 4.0]]
 const TRAINING_HP := 100000.0
+# 木樁的擺法（測試面板的怪物分頁選）：一般 = TRAINING_SPOTS；護甲 = 同樣位置、護甲 TRAINING_ARMOR；
+# 會動 = 在右邊 TRAINING_WALK_NEAR ~ TRAINING_WALK_FAR 之間來回走的幾隻（每隻往上錯開）；一群 = 右邊 TRAINING_CROWD_AT 為中心的方陣（範圍、穿透、連鎖）
+const TRAINING_KINDS := {&"normal": "一般", &"armored": "護甲", &"moving": "會動", &"crowd": "一群"}
+const TRAINING_DEFAULT := &"normal"
+const TRAINING_ARMOR := StatDefs.ARMOR_SCALE   # 物理傷害剛好減半，數字好對
+const TRAINING_WALK_NEAR := 3.0
+const TRAINING_WALK_FAR := 9.0
+const TRAINING_WALK_ROWS := [0.0, 2.5, -2.5]   # 每隻離中線多遠（畫面上下）；第幾隻就從路線的哪一頭出發，錯開來
+const TRAINING_CROWD_AT := 6.0
+const TRAINING_CROWD_SIDE := 3                 # 方陣每邊幾隻
+const TRAINING_CROWD_GAP := 1.3
 
 
-# 木樁：骷髏戰士、main_state 固定 train（不動不打）、血很多、不給靈魂；被抓、被埋、燃燒、擊退照常
-static func spawn_training_dummies(world: World, center: Vector2) -> Array[Enemy]:
+# 木樁：骷髏戰士、main_state 固定 train（不動不打）、血很多、不給靈魂；被抓、被埋、燃燒、擊退照常。kind 見 TRAINING_KINDS
+static func spawn_training_dummies(world: World, center: Vector2, kind: StringName = TRAINING_DEFAULT) -> Array[Enemy]:
 	var out: Array[Enemy] = []
-	for spot: Array in TRAINING_SPOTS:
-		var dir: Vector2 = (TRAINING_RIGHT if spot[0] == &"right" else TRAINING_UP).normalized()
-		var e := world.spawner.spawn_at(world, &"grunt", center + dir * spot[1])
-		e.main_state = &"train"
-		e.no_souls = true
-		e.stats.set_base(&"max_hp", TRAINING_HP)
-		e.hp = e.max_hp
-		out.append(e)
+	var right := TRAINING_RIGHT.normalized()
+	var up := TRAINING_UP.normalized()
+	match kind:
+		&"moving":
+			for i in TRAINING_WALK_ROWS.size():
+				var row: Vector2 = center + up * TRAINING_WALK_ROWS[i]
+				var path: Array[Vector2] = [row + right * TRAINING_WALK_NEAR, row + right * TRAINING_WALK_FAR]
+				var e := _training_dummy(world, path[i % 2])
+				e.train_path = path
+				e.train_leg = (i + 1) % 2
+				out.append(e)
+		&"crowd":
+			var half := (TRAINING_CROWD_SIDE - 1) * 0.5
+			for ix in TRAINING_CROWD_SIDE:
+				for iy in TRAINING_CROWD_SIDE:
+					out.append(_training_dummy(world, center + right * (TRAINING_CROWD_AT + (ix - half) * TRAINING_CROWD_GAP) + up * (iy - half) * TRAINING_CROWD_GAP))
+		_:
+			for spot: Array in TRAINING_SPOTS:
+				var e := _training_dummy(world, center + (right if spot[0] == &"right" else up) * spot[1])
+				if kind == &"armored":
+					e.stats.set_base(&"armor", TRAINING_ARMOR)
+				out.append(e)
 	return out
+
+
+static func _training_dummy(world: World, at: Vector2) -> Enemy:
+	var e := world.spawner.spawn_at(world, &"grunt", at)
+	e.main_state = &"train"
+	e.no_souls = true
+	e.stats.set_base(&"max_hp", TRAINING_HP)
+	e.hp = e.max_hp
+	return e
 
 
 # ───────── 怪群（D5）：開場在地圖上散放，休眠到玩家靠近（World._update_packs）──────────

@@ -28,6 +28,7 @@ var args: LaunchArgs          # 啟動參數（正常遊玩全部是預設值）
 var perf: PerfMeter           # --perf 才有
 var _frame_clock := FrameClock.new()   # --perf 的幀時間用實際間隔（delta 遇到慢幀會失真）
 var in_weapon_test := false   # 在武器測試場裡（主選單入口，2026-10-27）
+var _practice_meter := PracticeMeter.new()   # 武器測試場的傷害統計（測試面板上那一行）
 var debug_tools := DebugTools.new()
 var profile := Profile.new()  # 局外存檔（v0.45）：累計金幣
 
@@ -195,7 +196,8 @@ func restart() -> void:
 		me.hp = args.start_hp
 	DebugTools.setup_run(world, me, args)
 	if in_weapon_test and not args.weapon_test:
-		Spawner.spawn_training_dummies(world, me.pos)
+		Spawner.spawn_training_dummies(world, me.pos, hud.test_panel.dummy_kind)
+	_practice_meter.reset()
 	_sim_accumulator = 0.0
 	input_collector.consume_latched()
 	GameEvents.emit_all(world.events)
@@ -252,10 +254,15 @@ func leave_weapon_test() -> void:
 func _set_practice(on: bool) -> void:
 	in_weapon_test = on
 	var want: StringName = MapDefs.PRACTICE_MAP if on else Config.WORLD.default_map
-	if on != (world.map_id == MapDefs.PRACTICE_MAP):
+	if world.map_id != want and (on or MapDefs.is_practice(world.map_id)):
 		world.load_map(want)
 	world.practice = on
 	world.enemies_hold = false
+	world.practice_cheats.clear()
+	world.practice_stage = Vector2i(1, 1)
+	_practice_meter.reset()
+	hud.test_panel.reset_choices()
+	hud.test_panel.set_meter(_practice_meter.text(0.0))
 	hud.test_panel.active = on
 	hud.test_panel.set_collapsed(true)
 	hud.test_panel.set_hold(false)
@@ -270,26 +277,52 @@ func _connect_test_panel() -> void:
 			var inst := Practice.make_weapon(world, base, rarity)
 			var name := WeaponDropDefs.display_name(inst)
 			return ("拿到 " if Practice.give_weapon(world, me, inst) else "背包滿了，放在腳邊：") + name))
-	tp.item_requested.connect(func(id: StringName) -> void:
-		_practice(func(me: Player) -> String: return Practice.give_item(world, me, id)))
+	tp.item_requested.connect(func(id: StringName, level: int) -> void:
+		_practice(func(me: Player) -> String: return Practice.give_item(world, me, id, level)))
+	tp.inventory_cleared.connect(func() -> void: _practice(func(me: Player) -> String:
+		Practice.clear_inventory(me)
+		return "背包清空了（武器與袋子留著）"))
+	tp.cheat_toggled.connect(func(id: StringName, on: bool) -> void: _practice(func(_me: Player) -> String:
+		Practice.set_cheat(world, id, on)
+		return "%s：%s" % [Practice.CHEATS[id], "開" if on else "關"]))
+	tp.meter_reset.connect(func() -> void:
+		_practice_meter.reset()
+		hud.test_panel.set_meter(_practice_meter.text(0.0)))
+	tp.stage_chosen.connect(func(floor_num: int, stage: int) -> void: _practice(func(_me: Player) -> String:
+		Practice.set_stage(world, floor_num, stage)
+		var mul := Practice.stage_mul(floor_num, stage)
+		return "之後生的怪照 %d-%d：生命 ×%.2f、攻擊 ×%.2f" % [floor_num, stage, mul.hp, mul.damage]))
+	tp.dummies_requested.connect(_reset_training_dummies)
 	tp.bag_requested.connect(func(kind: StringName, tier: StringName) -> void:
 		_practice(func(me: Player) -> String: return Practice.give_bag(world, me, kind, tier)))
 	tp.unlock_requested.connect(func(action: StringName) -> void:
 		_practice(func(me: Player) -> String: return Practice.unlock(world, me, action)))
 	tp.bag_mode_toggled.connect(_practice_bag_mode)
-	tp.enemy_requested.connect(func(type: StringName, rarity: StringName) -> void:
+	tp.enemy_requested.connect(func(type: StringName, rarity: StringName, count: int) -> void:
 		_practice(func(me: Player) -> String:
-			var e := Practice.spawn_enemy(world, me, type, rarity)
-			var tag := "" if e == null or e.rarity == MonsterRarityDefs.NORMAL else "（%s）" % MonsterRarityDefs.RARITIES[e.rarity].name
-			return "生出 " + EnemyDefs.def_of(type).get("name", String(type)) + tag))
+			var made := Practice.spawn_enemies(world, me, type, rarity, count)
+			var tag := "" if made[0].rarity == MonsterRarityDefs.NORMAL else "（%s）" % MonsterRarityDefs.RARITIES[made[0].rarity].name
+			return "生出 %d 隻 %s%s" % [made.size(), EnemyDefs.def_of(type).get("name", String(type)), tag]))
 	tp.hold_toggled.connect(_toggle_enemies_hold)
 	tp.clear_enemies.connect(func() -> void: _practice(func(_me: Player) -> String:
 		Practice.clear_enemies(world)
 		return "怪物都清掉了"))
-	tp.reset_dummies.connect(_reset_training_dummies)
 	hud.practice_revive.connect(func() -> void: _practice(func(me: Player) -> String:
 		Practice.revive(world, me)
 		return "復活了"))
+
+
+# 武器測試場的傷害統計：每步收這一步的傷害事件；面板上的字每 METER_REFRESH 步更新一次
+const METER_REFRESH := 6
+
+
+func _update_practice_meter() -> void:
+	var me := local_player()
+	if me == null:
+		return
+	_practice_meter.feed(world, me.id)
+	if world.tick % METER_REFRESH == 0:
+		hud.test_panel.set_meter(_practice_meter.text(world.tick * Config.FIXED_DT))
 
 
 # 測試面板的操作：只在武器測試場、本機玩家在的時候做；fn 回傳面板上要顯示的一句話
@@ -348,15 +381,14 @@ func _open_inventory() -> bool:
 	return true
 
 
-# 木樁被打飛、埋掉後擺回原位：清掉場上的木樁，在玩家旁邊重擺
-func _reset_training_dummies() -> void:
-	var me := local_player()
-	if not in_weapon_test or me == null:
-		return
-	for e in world.enemies:
-		if (e as Enemy).main_state == &"train":
-			e.remove()   # World 下一步清掉已移除的實體
-	Spawner.spawn_training_dummies(world, me.pos)
+# 木樁被打飛、埋掉後擺回原位，或換一種擺法（Spawner.TRAINING_KINDS）：清掉場上的木樁，在玩家旁邊重擺
+func _reset_training_dummies(kind: StringName) -> void:
+	_practice(func(me: Player) -> String:
+		for e in world.enemies:
+			if (e as Enemy).main_state == &"train":
+				e.remove()   # World 下一步清掉已移除的實體
+		Spawner.spawn_training_dummies(world, me.pos, kind)
+		return "木樁：" + Spawner.TRAINING_KINDS[kind])
 
 
 # 選角畫面按「開始」：開一局新的單人遊戲（F2）
@@ -652,6 +684,8 @@ func _authority_physics() -> void:
 		cmds[World.HOST_PEER_ID] = input_collector.build_cmd(world.tick + 1)
 		var t0 := Time.get_ticks_usec()
 		world.step(cmds, Config.FIXED_DT)
+		if in_weapon_test:
+			_update_practice_meter()
 		if args.loot_test:
 			DebugTools.loot_test_step(world, local_player())
 		if args.flame_test:
