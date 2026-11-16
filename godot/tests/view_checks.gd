@@ -1914,8 +1914,13 @@ static func check_effects_events() -> String:
 				return "權杖連段應發出 %d 次 fx:slash：%d" % [spec[1], sl.size()]
 			if absf(sl[-1].get("tilt", 0.0) + PI / 2.0) > 0.01:
 				return "權杖第 2 下往下砸，弧光應是直的：傾斜 %.2f" % sl[-1].get("tilt", 0.0)
-		elif sl.is_empty() or sl.any(func(e: Dictionary) -> bool: return e.arc > arc0 * 0.5):
-			return "匕首刺的弧光應是窄的（判定 %.2f）：%s" % [arc0, sl.map(func(e: Dictionary) -> float: return e.arc)]
+		else:
+			# 每一刺跟自己那一下的判定比：第 5 下（終結技）的判定是 arc × finisher_scale
+			var atk: Dictionary = WeaponDefs.WEAPONS[spec[0]].attack
+			var too_wide := func(e: Dictionary) -> bool:
+				return e.arc > arc0 * (atk.finisher_scale if e.color == atk.slash_finisher_color else 1.0) * 0.5
+			if sl.is_empty() or sl.any(too_wide):
+				return "匕首刺的弧光應是窄的（不超過那一下判定的一半，判定 %.2f、終結技 × %.1f）：%s" % [arc0, atk.finisher_scale, sl.map(func(e: Dictionary) -> float: return e.arc)]
 	var w2 := _new_world()
 	_player(w2).equip_weapon(&"staff")
 	_run_collect(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ATTACK), 1, events)

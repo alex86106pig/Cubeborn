@@ -408,7 +408,7 @@ const ENEMIES := {
 			"trigger_distance": 1.8, "windup": 0.2, "track": 0.5, "distance": 1.2, "duration": 0.12, "hit_reach": 0.3,
 			"damage": 6.0, "cooldown": 1.2, "blockable": true, "blocked_daze": 0.6, "back_hop": 2.5, "back_hop_time": 0.25,
 		},
-		# 飛撲（擊倒）：在目標視野外（含側面）、trigger_distance 內才撲；低吼前腳壓低 windup（鎖定方向）→ 直線 distance
+		# 飛撲（重級硬直、不擊倒）：在目標視野外（含側面）、trigger_distance 內才撲；低吼前腳壓低 windup（鎖定方向）→ 直線 distance
 		"pounce": {
 			"trigger_distance": 6.0,
 			"windup": 0.3,
@@ -419,6 +419,7 @@ const ENEMIES := {
 			"recovery": 0.5,
 			"damage": 10.0,
 			"knockback": 7.0,
+			"tier": &"heavy",   # 玩家的受擊硬直級別（Config.PLAYER.hurt_tiers）：撲中硬直、不倒地
 			"cooldown": 2.5,    # 從伏低開始算
 			"blockable": true,
 			"blocked_daze": 0.6,

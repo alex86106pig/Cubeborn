@@ -97,7 +97,6 @@ class MeleeSwing extends Behavior:
 			"hit_stop": def.hit_stop * (def.finisher_impact_mul if fin else 1.0),
 			"shake": def.shake * (def.finisher_shake_mul if fin else 1.0),
 			"is_heavy": fin, "finisher": fin, "blockable": true, "force_crit": fin and def.get("finisher_crit", false),
-			"no_stagger": not fin and def.get("finisher_only_stagger", false),   # 雙匕首前 4 下不讓怪硬直
 		}, data.hit)
 		WeaponBehaviors.ignite(p, def, hits)
 		if fin and def.has("finisher_burst"):

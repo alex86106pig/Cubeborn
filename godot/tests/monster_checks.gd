@@ -744,7 +744,7 @@ static func check_bloater() -> String:
 
 
 # 屍犬：玩家背對它 → 在視野外（含側面）就飛撲，patience 秒內做到；
-# 玩家一直轉身看著它 → 正面牽制（側跳）、patience 秒內都不撲，之後才從正面撲；飛撲撲中擊倒
+# 玩家一直轉身看著它 → 正面牽制（側跳）、patience 秒內都不撲，之後才從正面撲；飛撲撲中照 pounce.tier 硬直、不倒地
 static func check_hound() -> String:
 	var hd: Dictionary = EnemyDefs.ENEMIES.hound
 	var start: float = hd.spawn_time + hd.prowl.patience
@@ -760,6 +760,7 @@ static func check_hound() -> String:
 		var hit := false
 		var hopped := false
 		var knocked := false
+		var stagger_time := -1.0
 		for i in 60 * 12:
 			var cmd := InputCmd.new()
 			cmd.aim = h.pos if watch else Vector2(0, -5)
@@ -772,13 +773,15 @@ static func check_hound() -> String:
 				if ev.name == "entity:damaged" and ev.target_id == p.id and ev.source_id == h.id and h.fsm.is_in(&"pounce"):
 					hit = true
 					knocked = p.knock_time > 0.0
+					stagger_time = p.action.data.get("time", -1.0) if p.action.is_in(&"stagger") else -1.0
 			if hit:
 				break
 		var label := "一直轉身看著它" if watch else "背對它"
 		if pounce_at < 0 or not hit:
 			return "屍犬（%s）：12 秒內沒有撲中（撲第 %d 步）" % [label, pounce_at]
-		if not knocked:
-			return "屍犬（%s）：飛撲撲中應擊倒" % label
+		var want_stagger: float = Config.PLAYER.hurt_tiers[hd.pounce.tier]
+		if knocked or absf(stagger_time - want_stagger) > EPS:
+			return "屍犬（%s）：飛撲撲中應 %s 級硬直 %.2f 秒、不倒地（倒地 %s、硬直 %.2f）" % [label, hd.pounce.tier, want_stagger, knocked, stagger_time]
 		var at := pounce_at * DT
 		if not watch and (bearing <= Config.VISION.angle / 2.0 or at > start):
 			return "屍犬（背對它）：在視野外應在 %.1f 秒內就撲，實際 %.2f 秒、相對朝向 %.0f°" % [start, at, rad_to_deg(bearing)]

@@ -88,7 +88,7 @@ func _initialize() -> void:
 	_check("短弓（F4）：快射是不擊退的箭、傷害照物理加成；散射 5 支平均分在 50° 內；盜墓遊俠移動中普攻不減速、右鍵與裝填照常減速；箭袋 6 支、最後一支重箭、射空裝填 1.2 秒、翻滾瞬間補滿；短弓的普攻箭不穿透、長弓穿過 pierce_count 隻", all.bind([CombatChecks.check_shortbow, CombatChecks.check_bow_pierce]))
 	_check("長弓（F5）：重射可擊退；按住右鍵蓄力、放開射出穿透箭（沒蓄 150%、蓄滿 400%），一直線上每隻打一次", CombatChecks.check_longbow)
 	_check("一次拿一把武器：武器資料沒有主副手欄位、長劍與木盾拿掉、武器欄 1 格；劍盾左鍵斬擊右鍵盾擊；突刺技能往前衝 distance 打一次 damage_pct；守墓騎士開局劍盾", CombatChecks.check_sword_shield)
-	_check("雙匕首（F6）：五連刺第 5 下 150% 必爆擊且只有它擊退、讓怪硬直；影步瞬移到怪背後背刺必爆擊、沒有怪不瞬移只扣 miss_mana；竊影者開局雙持、翻滾 2 次、翻滾後攻速 +30% 持續 1.5 秒", CombatChecks.check_daggers)
+	_check("雙匕首（F6）：五連刺第 5 下必爆擊且只有它擊退、每一下都讓怪硬直（連刺時怪的空檔比舉刀短）；影步瞬移到怪背後背刺必爆擊、沒有怪不瞬移只扣 miss_mana；竊影者開局雙持、翻滾 2 次、翻滾後攻速 +30% 持續 1.5 秒", CombatChecks.check_daggers)
 	_check("驅魔權杖（F7）：敲擊是魔法、可擊退；聖光圈 4 秒每 0.5 秒對範圍內敵人持續傷害（不爆擊）、隊友回血；神官救人快 50%、救起回 50% 生命", CombatChecks.check_scepter)
 	_check("火把（F8，2026-11-06 拿掉準備姿態與插火把）：右鍵直接噴火（前方扇形、扣魔、魔力不夠不出招）；揮擊與噴火都點燃；傭兵的起始技能在數字鍵 1；傭兵視野 +3、身邊 6", CombatChecks.check_torch)
 	_check("鐵鏟（F9，2026-11-06 改成鏟拋）：右鍵鏟起面前的怪直接往準星拋出（有飛行過程、落地 200%、路上 150%）；Boss 抓不起來、沒抓到只扣 miss_mana；活埋（技能）埋 2 秒、受傷，埋著打得到、不被擊退，Boss 埋不了；掘墓人挖墳中受傷 −25%；搆得到正面牽制的屍犬；鏟拋隊友不扣血、被推走",
@@ -149,7 +149,7 @@ func _initialize() -> void:
 	_check("腐屍：撲中抓住 grab_time 秒、撲 1 下 + 每 bite_interval 咬一口；被抓時按翻滾立刻掙脫；隊友打它就鬆手（抓著時被擊倒，鬆手後照樣站起來）；舉盾擋下不被抓、腐屍踉蹌；" 		+ "撿武器（走過去彎腰撿、地上消失、名字持〇腐屍、彎腰被打中斷、死掉掉回同一把；劍盾正面擋下背後打得到；8 種武器都打得到玩家、不再撲抱）",
 		all.bind([MonsterChecks.check_zombie, MonsterChecks.check_armed_zombie]))
 	_check("膨脹屍：撲抱抱住站著的玩家、脹 hold_swell_time 秒（被打不硬直）→ 自爆炸到玩家與旁邊的怪（抱住的 +hold_bonus、擊倒）、不給靈魂、不抽死亡爆炸詞條；留下腐氣持續傷害玩家與怪、不畫圈只冒煙；被打死 death_delay 秒後照樣炸、給靈魂", MonsterChecks.check_bloater)
-	_check("屍犬：背對時在視野外就飛撲（擊倒）、patience 內做到；一直看著它正面牽制側跳、patience 內不撲、之後從正面撲；繞圈方向不跟著玩家小幅轉身來回換邊；撲完先沿圈退到內圈才再撲；" 		+ "貼近快咬（輕級）後往後跳；附近翻滾撲向翻滾終點；4 隻同時出招不超過 pack.max_attackers",
+	_check("屍犬：背對時在視野外就飛撲（照 pounce.tier 硬直、不倒地）、patience 內做到；一直看著它正面牽制側跳、patience 內不撲、之後從正面撲；繞圈方向不跟著玩家小幅轉身來回換邊；撲完先沿圈退到內圈才再撲；" 		+ "貼近快咬（輕級）後往後跳；附近翻滾撲向翻滾終點；4 隻同時出招不超過 pack.max_attackers",
 		all.bind([MonsterChecks.check_hound, MonsterChecks.check_hound_steady_side, MonsterChecks.check_hound_retreat, MonsterChecks.check_hound_moves]))
 	_check("守墓人（第 1 層 Boss）：假裝 NPC（旁邊 3 秒不開打；按 F 說話先冒台詞、不開挖、reveal_time 後開打；被打或有人開挖直接開打）；開打 grow.time 秒內慢慢變大到 grow.size 倍；" \
 		+ "鐵鏟 windup 後打中（重級）；瘋狂鏟土落石鋪滿競技場、每人腳邊都有、看影子；噴火追著人走、最後轉一圈、留殘火；口哨叫不給靈魂的屍犬；不畫預警圈；" \

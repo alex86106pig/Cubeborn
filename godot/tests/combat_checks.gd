@@ -933,7 +933,7 @@ static func _equip_dual(p: Player) -> void:
 	p.equip_weapon(&"dagger")
 
 
-# F6 雙匕首與竊影者：五連刺第 5 下 150% 必爆擊、只有第 5 下擊退（單拿的三連刺拿掉了，許家慶 2026-11-05）；
+# F6 雙匕首與竊影者：五連刺第 5 下 150% 必爆擊、只有第 5 下擊退、每一下都讓怪硬直；
 # 影步瞬移到怪背後背刺 300% 必爆擊，沒有怪不瞬移、冷卻 1 秒；竊影者開局雙持、翻滾次數 2、翻滾後攻速 +30%
 static func check_daggers() -> String:
 	var dg: Dictionary = WeaponDefs.def_of(&"dagger")
@@ -972,7 +972,7 @@ static func check_daggers() -> String:
 		var want: float = base * (dg.attack.finisher_mul * p.stats.value(&"crit_damage") if fin else 1.0)
 		if absf(hits[i].amount - want) > EPS or hits[i].is_crit != fin or (hits[i].knockback > 0.0) != fin:
 			return "第 %d 下應 %.2f、爆擊 %s、擊退 %s：%s" % [i + 1, want, fin, fin, hits[i]]
-	# 前 4 下也不讓怪受擊硬直（2026-10-27 使用者：停下後仰看起來像被擊退），只有第 5 下
+	# 每一下都讓怪受擊硬直（範圍窄，靠連刺把貼身那隻壓住）；擊退照舊只有第 5 下
 	var wg := _new_world()
 	var pg := _player(wg)
 	_equip_dual(pg)
@@ -981,15 +981,36 @@ static func check_daggers() -> String:
 	g.stats.set_base(&"max_hp", 99999.0)
 	g.hp = 99999.0
 	var staggered := []
-	for step in 130:
+	var hurt_steps := 0
+	var free_run := 0
+	var longest_free := 0
+	var first_hit := -1
+	const LOCK_STEPS := 600
+	for step in LOCK_STEPS:
 		pg.hp = pg.max_hp
 		pg.invuln_timer = 1.0   # 骷髏會回砍：中級硬直 0.45 秒會打斷連刺（這裡只看匕首讓怪硬直）
 		_run(wg, _cmd(Vector2.ZERO, g.pos, InputCmd.BTN_ATTACK), 1)
 		for e in wg.events:
 			if e.name == "entity:damaged" and e.target_id == g.id:
 				staggered.append(g.fsm.current_name == &"hurt")
-	if staggered.size() < 5 or staggered.slice(0, 5) != [false, false, false, false, true]:
-		return "雙匕首只有第 5 下讓怪硬直：%s" % [staggered]
+				if first_hit < 0:
+					first_hit = step
+		if first_hit < 0:
+			continue
+		if g.fsm.current_name == &"hurt":
+			hurt_steps += 1
+			free_run = 0
+		else:
+			free_run += 1
+			longest_free = maxi(longest_free, free_run)
+	var after_first := maxi(1, LOCK_STEPS - first_hit)
+	_note("雙匕首連刺骷髏 %.1f 秒：%d 下、硬直佔 %.0f%%、最長空檔 %.2f 秒（骷髏舉刀 %.2f 秒）" % [
+		after_first * DT, staggered.size(), 100.0 * hurt_steps / after_first, longest_free * DT, EnemyDefs.ENEMIES.grunt.swing.windup])
+	if staggered.size() < 5 or staggered.has(false):
+		return "雙匕首每一下都應讓怪硬直：%s" % [staggered]
+	# 連刺壓得住：空檔比骷髏舉刀短，舉刀每次都被打斷
+	if longest_free * DT >= EnemyDefs.ENEMIES.grunt.swing.windup:
+		return "雙匕首連刺時骷髏的空檔應比舉刀 %.2f 秒短，實際 %.2f" % [EnemyDefs.ENEMIES.grunt.swing.windup, longest_free * DT]
 	# 影步
 	var w2 := _new_world()
 	var p2 := _player(w2)

@@ -213,7 +213,7 @@ class Pounce:
 			if d.hit.is_empty():
 				var events_before := e.world.events.size()
 				Hitbox.strike(e.world, e, e.pos, e.facing, {"shape": &"circle", "radius": e.radius + c.hit_reach}, {
-					"damage": c.damage * e.damage_mul, "knockback": c.knockback, "blockable": c.blockable, "tier": &"knockdown",
+					"damage": c.damage * e.damage_mul, "knockback": c.knockback, "blockable": c.blockable, "tier": c.tier,
 				}, d.hit)
 				if Hound.was_blocked(e.world, events_before):
 					fsm.change(&"dazed", {"time": c.blocked_daze})

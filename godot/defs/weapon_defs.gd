@@ -308,7 +308,7 @@ const WEAPONS := {
 			"behavior": &"meleeSwing",
 			"sfx": "swing", "sfx_heavy": "swingHeavy",
 			"name": "五連刺",
-			"desc": "刺刺、停、刺刺、停、重擊：每刺 125%，第 5 下 187.5% 必爆擊並擊退。",
+			"desc": "刺刺、停、刺刺、停、重擊：每刺 125%、打中的怪會硬直，第 5 下 187.5% 必爆擊並擊退。",
 			"icon": "dagger_combo",
 			"damage_pct": 1.25,        # 許家慶 2026-11-05：高風險高傷害、打一隻可以比短弓高；100% → 125%（白裝 8 → 10，技能照基礎傷害 8 算不受影響）
 			"combo_count": 5,          # 第 combo_count 下是終結技
@@ -323,9 +323,8 @@ const WEAPONS := {
 			"beat_steps": [1, 3],      # combo_step（0 起算）：第 2、4 刺
 			"finisher_windup": 0.13,
 			"finisher_recovery": 0.25,
-			"knockback": 0.0,          # 前 4 下不擊退
+			"knockback": 0.0,          # 前 4 下不擊退，但每一下都讓怪受擊硬直（範圍窄，靠連刺壓住貼身那隻）
 			"finisher_knockback": 9.0, # 第 5 下可擊退
-			"finisher_only_stagger": true,   # 前 4 下也不讓怪受擊硬直（2026-10-27 使用者：停下後仰看起來像被擊退）
 			"finisher_crit": true,     # 第 5 下必爆擊
 			"lunge": 1.5,
 			"move_speed_mul": 0.6,
