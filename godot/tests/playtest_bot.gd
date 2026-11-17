@@ -150,7 +150,7 @@ func _init(p_world: World, p_player: Player, opts: Dictionary, seed_value: int) 
 
 
 # 場上醒著的怪（不含僕從與休眠的）
-func _awake_count() -> int:
+func awake_count() -> int:
 	return w.enemies.filter(func(e: Entity) -> bool: return not e.is_dead and e.team != &"player" and not e.dormant).size()
 
 
@@ -265,9 +265,9 @@ func after_step(t: float) -> void:
 		var boss := w.entities.get(w.boss_id) as Enemy
 		var left := "、Boss 剩 %d%%" % roundi(100.0 * boss.hp / boss.max_hp) if boss != null and not boss.is_dead and _boss_awake(boss) else ""
 		if w.event.state == DigEvent.ACTIVE:
-			left += "、挖墳 %d%%、挖了 %d 秒、開挖時 %d / %d 血、場上醒著 %d 隻" % [roundi(100.0 * w.event.progress), roundi(w.event.time), roundi(dig_start_hp), roundi(p.max_hp), _awake_count()]
+			left += "、挖墳 %d%%、挖了 %d 秒、開挖時 %d / %d 血、場上醒著 %d 隻" % [roundi(100.0 * w.event.progress), roundi(w.event.time), roundi(dig_start_hp), roundi(p.max_hp), awake_count()]
 		elif w.event.state == DigEvent.OPEN:
-			left += "、已經挖完（挖了 %d 秒），場上還有 %d 隻醒著的怪" % [roundi(w.event.time), _awake_count()]
+			left += "、已經挖完（挖了 %d 秒），場上還有 %d 隻醒著的怪" % [roundi(w.event.time), awake_count()]
 		died_at = "%d-%d %s（%s%s）" % [w.floor_num, w.stage_num, _mmss(t), _last_hit, left]
 
 

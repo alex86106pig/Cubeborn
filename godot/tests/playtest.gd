@@ -26,6 +26,8 @@ var _moments := {}          # 觸發袋的時機（Player.trigger_moments 的「
 var _moment_time := 0.0     # 這些時機量了幾秒（每個機器人各算一份）
 var _opts := {}             # 命令列參數（_args）
 var _taken := {"time": 0.0, "hits": 0, "damage": 0.0, "unseen_damage": 0.0}   # 全部場次與機器人加總的被打中（照遊玩紀錄 RunLog 的「看不見」算）
+# 挖墳事件進行中（DigEvent.ACTIVE）全部場次加總：幾秒、有人在挖的秒數、怪潮 / 挖墳點噴出各生幾隻、各殺幾隻、每場場上醒著最多幾隻的合計、幾場
+var _dig := {"time": 0.0, "digging": 0.0, "horde": 0, "erupt": 0, "horde_killed": 0, "erupt_killed": 0, "peak": 0, "runs": 0}
 
 
 func _initialize() -> void:
@@ -56,6 +58,11 @@ func _initialize() -> void:
 	if opts.get("death", "revive") == "real" or opts.has("real-from"):
 		lines.append("打完 %d 層：%d / %d 場" % [floors, cleared, total])
 	lines.append("被打中：每分鐘 %.1f 下、看不見的傷害 %d%%（全部場次與機器人，共 %.0f 秒；看不見 = 攻擊者不在視野裡或剛進視野不到 %s 秒，同遊玩紀錄）" % [_taken.hits / maxf(_taken.time, 1.0) * 60.0, roundi(100.0 * _taken.unseen_damage / maxf(_taken.damage, 1.0)), _taken.time, str(RunLog.REACT)])
+	if _dig.runs > 0:
+		var per_min := func(n: int) -> float: return n / maxf(_dig.time, 1.0) * 60.0
+		lines.append("挖墳期間：每分鐘生 怪潮 %.1f、噴出 %.1f 隻，殺 怪潮 %.1f、噴出 %.1f 隻；有人在挖 %d%% 的時間；場上醒著最多平均 %.1f 隻（%d 場共 %.0f 秒，從開挖到挖完或全員倒下）" % [
+			per_min.call(_dig.horde), per_min.call(_dig.erupt), per_min.call(_dig.horde_killed), per_min.call(_dig.erupt_killed),
+			roundi(100.0 * _dig.digging / maxf(_dig.time, 1.0)), float(_dig.peak) / _dig.runs, _dig.runs, _dig.time])
 	lines.append("觸發袋的時機每分鐘幾次（不管有沒有那種袋子、同一步算一次；全部場次與機器人平均，共 %.0f 秒）：%s" % [_moment_time, _moment_text()])
 	lines.append("背包武器格 = 這層結束時背包裡武器占的格數（不含裝備中的）；背包滿的時間 = 第一次有武器撿不下（— = 沒滿過）；組隊時殺怪、掉落、靈魂是全隊的")
 	var text := "\n".join(lines)
@@ -130,6 +137,8 @@ func _play_floor(w: World, bots: Array, seed_value: int) -> Array[String]:
 	var logs := {}   # peer → 這一層的遊玩紀錄（被打中幾下、看不見的）
 	var count_from := int(_opts.get("count-from", "0")) if w.floor_num == 1 else 0
 	var t0 := 0.0   # 從第幾秒開始算受傷（--count-from）
+	var dig_seen := {}   # 挖墳事件的怪 id → &"horde" / &"erupt"（第一次看到時還在飛 = 挖墳點噴出的）
+	var dig_peak := 0
 	for b in bots:
 		b.begin_floor()
 		var log := RunLog.new()
@@ -155,10 +164,15 @@ func _play_floor(w: World, bots: Array, seed_value: int) -> Array[String]:
 			log.track(w, t)
 			for ev in w.events:
 				log.on_event(w, ev.name, ev)
+		if w.event.state == DigEvent.ACTIVE:
+			_note_dig(w, bots, dig_seen)
+			dig_peak = maxi(dig_peak, bots[0].awake_count())
 		for ev in w.events:
 			match ev.name:
 				"entity:died":
 					var e := w.entities.get(ev.get("entity_id", 0)) as Enemy
+					if e != null and dig_seen.has(e.id) and w.event.state == DigEvent.ACTIVE:
+						_dig[String(dig_seen[e.id]) + "_killed"] += 1
 					if e != null and e.team != &"player":
 						kills["boss" if e.is_boss() else ("summon" if e.no_souls else ("event" if e.wave_member else "pack"))] += 1
 				"weapon:dropped":
@@ -173,6 +187,9 @@ func _play_floor(w: World, bots: Array, seed_value: int) -> Array[String]:
 			break
 	for b in bots:
 		_note_fill(fills, b, w.floor_num, last_stage)
+	if not dig_seen.is_empty():
+		_dig.runs += 1
+		_dig.peak += dig_peak
 	var total := 0
 	for r in drops:
 		total += drops[r]
@@ -195,6 +212,18 @@ func _play_floor(w: World, bots: Array, seed_value: int) -> Array[String]:
 		_taken.unseen_damage += log.unseen_damage
 		rows.append(_row(w, b, seed_value, t, timeout, kills, rarity, left, souls, full_at, bots.size() > 1, " ".join(PackedStringArray(fills.get(b.peer, []))), log, t0))
 	return rows
+
+
+# 挖墳事件進行中的這一步：記時間、有沒有人在挖、新出現的事件怪是怪潮還是噴出的
+func _note_dig(w: World, bots: Array, seen: Dictionary) -> void:
+	_dig.time += DT
+	if bots.any(func(b: Variant) -> bool: return b.p.is_digging()):
+		_dig.digging += DT
+	for e in w.enemies:
+		if e is Enemy and (e as Enemy).wave_member and not seen.has(e.id):
+			var kind := &"erupt" if (e as Enemy).fsm.is_in(&"launch") else &"horde"
+			seen[e.id] = kind
+			_dig[String(kind)] += 1
 
 
 # 記下這個機器人現在的主袋與袋子填滿率（佔了幾成）
