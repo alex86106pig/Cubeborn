@@ -1643,12 +1643,13 @@ static func _max_attackers(w: World, foes: Array[Enemy], seconds: float, aim: Ve
 	return most
 
 
-# 小怪的出手名額（AttackQuota）：Config 預設全部不限、行為跟沒有名額一樣；設了近戰上限，同時出招的近戰小怪不超過上限、照樣輪得到出手；
+# 小怪的出手名額（AttackQuota）：開局的名額照 Config.ATTACK_QUOTA，0 = 不限、行為跟沒有名額一樣；設了近戰上限，同時出招的近戰小怪不超過上限、照樣輪得到出手；
 # 沒輪到的近戰怪往玩家背後繞、不站著排隊；魔法 / 稀有怪不佔也不受限；遠程拿不到名額時不進冷卻；玩家看不到的（背後、身邊一圈以外）另有上限，看得到的不受那個上限限制
 static func check_attack_quota() -> String:
+	var w0 := _new_world()
 	for k: StringName in AttackQuota.KINDS:
-		if int(Config.ATTACK_QUOTA.get(k, -1)) != 0:
-			return "出手名額的預設應全部不限（0）：%s = %s" % [k, Config.ATTACK_QUOTA.get(k)]
+		if w0.attack_quota.get(k, -1) != Config.ATTACK_QUOTA.get(k, -2):
+			return "開局的出手名額應照 Config.ATTACK_QUOTA：%s = %s（應 %s）" % [k, w0.attack_quota.get(k), Config.ATTACK_QUOTA.get(k)]
 	var ring: Array[Vector2] = []
 	for i in 6:
 		ring.append(MathUtil.dir_from_angle(TAU * i / 6.0) * 1.6)

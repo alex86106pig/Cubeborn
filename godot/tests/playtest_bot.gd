@@ -63,6 +63,7 @@ var react := 0.25
 var real_death := false                # true：倒下就真的倒下（單人就是這場結束）；false：倒下記一次、原地滿血救起
 var reach := 1.4
 var crowd_max := CROWD_MAX
+var use_shield := true                 # --shield=0：有盾也不舉、跟其他職業一樣只滾（分開「機器人的舉盾時機」與「職業本身」）
 var dig_flee := DIG_FLEE               # --dig-flee=距離：挖墳開始後這麼近有 2 隻以上就跑（0 = 不跑，照舊邊挖邊打）
 var style := "full"
 
@@ -137,6 +138,7 @@ func _init(p_world: World, p_player: Player, opts: Dictionary, seed_value: int) 
 	style = String(opts.get("style", "full"))
 	trace = opts.has("trace")
 	crowd_max = int(opts.get("crowd", str(CROWD_MAX)))
+	use_shield = String(opts.get("shield", "1")) != "0"
 	dig_flee = float(opts.get("dig-flee", str(DIG_FLEE)))
 	reach = 1.4
 	var wid: StringName = ClassDefs.CLASSES[p.class_id].weapon
@@ -764,7 +766,7 @@ func _shield_reserve() -> float:
 # 擋得了嗎：拿著劍盾，正在推盾（盾擊的格擋中）或魔力夠再推一次；魔力不夠就照沒盾的翻滾
 func _can_shield() -> bool:
 	var special: Dictionary = p.weapon.get("special", {})
-	if special.get("behavior", &"") != &"shieldBash":
+	if not use_shield or special.get("behavior", &"") != &"shieldBash":
 		return false
 	return p.block_time >= 0.0 or p.has_mana(p.mana_cost_of(special))
 

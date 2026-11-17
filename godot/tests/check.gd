@@ -100,7 +100,7 @@ func _initialize() -> void:
 	# ───────── 小怪與戰鬥判定 ─────────
 	_check("高度判定：最高點時箭從腳下飛過、地面會中箭；跳起來躲過 Boss 砸地；空中揮砍與空中魔彈打得到地上的怪", CombatChecks.check_height_hits)
 	_check("打擊感：玩家打中不震動、模擬時間不放慢（hit_stop 只放進事件）；玩家被打與 Boss 砸地照常震動；沒有命中定格", CombatChecks.check_hit_feel)
-	_check("小怪的出手名額：預設全部不限、行為不變；設了近戰上限，同時出招的不超過上限、沒輪到的近戰怪繞著走不站著排隊；魔法 / 稀有怪不佔也不受限；玩家看不到的另有上限、沒輪到的弓手不進冷卻", CombatChecks.check_attack_quota)
+	_check("小怪的出手名額：開局照 Config 的名額、0 = 不限行為不變；設了近戰上限，同時出招的不超過上限、沒輪到的近戰怪繞著走不站著排隊；魔法 / 稀有怪不佔也不受限；玩家看不到的另有上限、沒輪到的弓手不進冷卻", CombatChecks.check_attack_quota)
 	_check("視野外出招的提示：背後的弓手瞄準時提示、方向指向牠，面前的、還沒瞄準的、對著隊友的不提示；設定頁有開關、預設開", CombatChecks.check_threat_marks)
 	_check("沒有碰撞傷害：骷髏戰士（揮砍冷卻中）、弓手（不射箭時）、Boss（不出招時）貼身 2 秒都不扣血", CombatChecks.check_no_contact_damage)
 	_check("骷髏戰士：爬出 spawn_time 後追擊、揮砍傷害照資料、間隔 ≥ 冷卻、受擊硬直 hurt_time；舉刀 windup 秒後才命中、扇形邊界（加目標半徑）、後半鎖定方向繞到側面就躲開、舉刀中被打會中斷",
@@ -156,7 +156,7 @@ func _initialize() -> void:
 	_check("守墓人（第 1 層 Boss）：假裝 NPC（旁邊 3 秒不開打；按 F 說話先冒台詞、不開挖、reveal_time 後開打；被打或有人開挖直接開打）；開打 grow.time 秒內慢慢變大到 grow.size 倍；" \
 		+ "鐵鏟 windup 後打中（重級）；瘋狂鏟土落石鋪滿競技場、每人腳邊都有、看影子；噴火追著人走、最後轉一圈、留殘火；口哨叫不給靈魂的屍犬；不畫預警圈；" \
 		+ "鏟起 A 拋到背後落地擊倒、受身躲得掉後面的土；B 埋地連按翻滾提早爬出、被直噴；隊友打斷；" \
-		+ "半血轉型態（無敵 transform.time 秒 → 狼人移速、維持變大後的體型、嚎叫、提燈火堆；三連爪範圍邊緣吃滿 3 下、每下 3 條爪痕、飛撲落地擊倒、狼嚎叫魔法屍犬並加速）",
+		+ "半血轉型態（無敵 transform.time 秒 → 狼人移速、維持變大後的體型、嚎叫、提燈火堆；三連爪範圍邊緣吃滿 3 下、中了第一下一直按翻滾只中 1 下、每下 3 條爪痕、飛撲落地擊倒、狼嚎叫魔法屍犬並加速）",
 		all.bind([MonsterChecks.check_gravekeeper_npc, MonsterChecks.check_gravekeeper_moves, MonsterChecks.check_gravekeeper_scoop, MonsterChecks.check_gravekeeper_transform]))
 	_check("怪物稀有度（D5）：魔法 / 稀有骷髏的生命、攻擊力、體型照倍率；詞條數照 RARITIES.affixes 不重複、稀有怪有名字；每群魔法 magic_per_pack 隻、稀有 rare_chance（±1.5%）", MonsterChecks.check_rarity)
 	_check("怪物屍體：死後擊退照樣往後滑，但不滑下高台（留在死掉時的高度）", MonsterChecks.check_corpse_ledge)

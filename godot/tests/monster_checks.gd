@@ -1352,6 +1352,9 @@ static func check_gravekeeper_transform() -> String:
 					return "狼人三連爪：站在 %.1f 不動應吃滿 3 下、級別 %s，實際 %d 下、%s" % [dist, wd.claw.tiers, hits, tiers]
 				if claws.size() != 3 or claws.map(func(ev: Dictionary) -> int: return ev.side) != [1, -1, 0]:
 					return "狼人三連爪：每一下都要發 fx:claw（右、左、雙爪），實際 %s" % [claws.map(func(ev: Dictionary) -> int: return ev.side)]
+				var escaped := _claw_escape(w, p, k, dist)
+				if escaped != "":
+					return escaped
 			&"leap":
 				var land: float = wd.leap.windup + wd.leap.flight
 				if hits != 1 or absf(first * DT - land) > DT * 2.5 or tiers[0] != wd.leap.tier:
@@ -1360,6 +1363,36 @@ static func check_gravekeeper_transform() -> String:
 				var dogs := w.enemies.filter(func(e: Entity) -> bool: return e is Hound and (e as Enemy).summoner_id == k.id and (e as Enemy).rarity == MonsterRarityDefs.MAGIC)
 				if dogs.size() < wd.howl.count or absf(k.speed - wd.move_speed * wd.howl.speed_mul) > 0.01:
 					return "狼嚎：應叫出 %d 隻魔法屍犬（%d）、移速 ×%.1f（%.2f）" % [wd.howl.count, dogs.size(), wd.howl.speed_mul, k.speed]
+	return ""
+
+
+# 三連爪中了第一下也逃得掉：被打中後一直按翻滾，硬直一結束就翻出去，後面兩下打不到（只中 1 下）
+static func _claw_escape(w: World, p: Player, k: Gravekeeper, dist: float) -> String:
+	p.pos = Vector2(0, dist)
+	p.invuln_timer = 0.0
+	p.stun_timer = 0.0
+	p.action.change(&"ready")
+	k.pos = Vector2.ZERO
+	k.facing = MathUtil.angle_to(k.pos, p.pos)
+	k.fsm.change(&"claw")
+	var hits := 0
+	var rolled_at := -1.0
+	for i in 180:
+		var c := InputCmd.new()
+		c.aim = p.pos + Vector2(0, 5)
+		if hits > 0 and rolled_at < 0.0:
+			c.buttons = InputCmd.BTN_ROLL
+			c.move = Vector2(1, 0)
+		w.step({World.HOST_PEER_ID: c}, DT)
+		for ev in w.events:
+			if ev.name == "entity:damaged" and ev.target_id == p.id and ev.source_id == k.id:
+				hits += 1
+		if rolled_at < 0.0 and p.action.is_in(&"roll"):
+			rolled_at = (i + 1) * DT
+		if not k.fsm.is_in(&"claw"):
+			break
+	if hits != 1:
+		return "狼人三連爪：中了第一下後一直按翻滾應只中 1 下（硬直 %.2f 秒、間隔 %.2f 秒），實際中 %d 下、%.2f 秒才翻出去" % [Config.PLAYER.hurt_tiers[EnemyDefs.ENEMIES.gravekeeper.wolf.claw.tiers[0]], EnemyDefs.ENEMIES.gravekeeper.wolf.claw.interval, hits, rolled_at]
 	return ""
 
 

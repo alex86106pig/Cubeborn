@@ -499,7 +499,8 @@ const ENEMIES := {
 			"move_speed": 7.5, "turn_speed": 9.0, "decide_delay": 0.15,
 			"first_cooldowns": {"leap": 1.5, "howl": 6.0, "stalk": 4.0},
 			"claw": {   # 三連爪：前兩下擋得住，第三下往前撲、擋不住；每一下發 fx:claw（3 條紅色爪痕）
-				"trigger_distance": 3.4, "windup": 0.25, "interval": 0.25, "range": 4.0, "arc": PI * 140.0 / 180.0,
+				# interval 要比前兩下的硬直（tiers，中級 0.45 秒）長：中了一下，硬直結束到下一下之間要翻得出來（檢查「Boss 守墓人」會量）
+				"trigger_distance": 3.4, "windup": 0.25, "interval": 0.6, "range": 4.0, "arc": PI * 140.0 / 180.0,
 				"damage": 15.0, "last_damage": 24.0, "knockback": 5.0, "lunge": 3.0, "lunge_time": 0.15, "recovery": 0.5, "cooldown": 2.0,
 				"tiers": [&"medium", &"medium", &"heavy"], "color": Color("ff2a2a"),
 			},

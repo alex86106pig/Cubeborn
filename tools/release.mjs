@@ -161,7 +161,7 @@ if (has('balance')) {
 if (has('playtest')) {
   const godot = godotPath();
   runGodot(godot, ['--headless', '--import', '--path', '.'], IMPORT_TIMEOUT, '匯入');
-  const pass = args.filter(a => /^--(floors|seeds|class|style|play|react|pick|death|trace|crowd|start|real-from|out|bag-mode|quota)=/.test(a));
+  const pass = args.filter(a => /^--(floors|seeds|class|style|play|react|pick|death|trace|crowd|start|real-from|out|bag-mode|quota|shield)=/.test(a));
   const r = runGodot(godot, ['--headless', '--path', '.', '-s', 'res://tests/playtest.gd', '--', ...pass], PLAYTEST_TIMEOUT, '自動試玩');
   if (!r.ok || !r.out.includes('# 自動試玩')) fail(`自動試玩沒有跑完\n${(r.err || r.out || '').split('\n').filter(l => /ERROR|Error|強制停止/.test(l)).slice(-15).join('\n')}`);
   console.log(r.out.split('\n').filter(l => /^(\||職業|背包武器格|被打中|打完|寫入)/.test(l)).join('\n'));
