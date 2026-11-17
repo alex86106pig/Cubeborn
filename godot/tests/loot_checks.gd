@@ -2170,6 +2170,56 @@ static func check_bag_triggers() -> String:
 	return ""
 
 
+# 說明框乘好的結果對得上實際：每把武器一直普攻一隻不還手的假人，每秒打中的次數 = 武器的 hits_per_sec（±10%）；
+# 命中袋放一次（旋風斬 + 爆裂箭袋的爆炸 + 雷鳴符文的連鎖閃電，連鎖閃電不打那隻所以不算）怪實際扣的 = 換算的傷害（套怪的護甲）；左鍵命中袋每分鐘 = hits_per_sec × 60 ÷ N、計時袋照間隔、按鍵袋不寫次數；說明框寫出來
+static func check_bag_forecast() -> String:
+	const SECS := 10.0
+	for wid: StringName in WeaponDefs.WEAPONS:
+		var wd: Dictionary = WeaponDefs.WEAPONS[wid]
+		if not wd.has("attack"):
+			continue
+		var w := _new_world()
+		var p := _player(w)
+		p.loadout.equip_new(p, wid)
+		var at := p.pos + Vector2(0, 6.0 if wd.type == &"ranged" else 2.0)
+		var d := _item_dummy(w, at, 1e6)
+		d.dormant = true
+		for i in roundi(SECS / DT):
+			_run(w, _cmd(Vector2.ZERO, at, InputCmd.BTN_ATTACK), 1)
+			d.pos = at
+		var hps: float = p.trigger_moments.get(&"hit:primary", 0) / SECS
+		if absf(hps / wd.get("hits_per_sec", 0.0) - 1.0) > 0.1:
+			return "%s 一直普攻每秒打中 %.2f 下，武器資料的 hits_per_sec 是 %s（差超過 10%%）" % [wd.name, hps, str(wd.get("hits_per_sec", 0.0))]
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	_every_hit(p2)
+	p2.mana = p2.max_mana()
+	var hit := _bag(p2, &"hit", &"left")
+	if _put(p2, hit, &"whirlwind") == &"" or _put(p2, hit, &"blast_quiver") == &"" or _put(p2, hit, &"thunder_rune") == &"":
+		return "左鍵命中袋應放得下旋風斬、爆裂箭袋與雷鳴符文"
+	var e := _item_dummy(w2, p2.pos + Vector2(0, 1.5), 1e6)
+	e.dormant = true
+	var before := e.hp
+	var swing := p2.pct_damage(p2.weapon.attack.damage_pct)
+	var want := _dealt_exact(e, BagForecast.damage_per_fire(p2, hit))
+	Combat.apply_damage(w2, p2, e, {"damage": swing, "attack": &"primary"})
+	_run(w2, _cmd(Vector2.ZERO), _wind_steps(&"whirlwind") + ceili(1.0 / DT))
+	var got := before - e.hp - _dealt_exact(e, swing)
+	if want <= 0.0 or absf(got - want) > 1.0:
+		return "命中袋（旋風斬 + 爆裂箭袋 + 雷鳴符文）放一次換算 %.1f，怪實際扣 %.1f（扣掉觸發的那一下）" % [want, got]
+	var per_min := BagForecast.per_minute(p2, hit)
+	var timer := {"kind": &"timer", "side": &"bottom"}
+	var key := {"kind": &"key", "side": &"top"}
+	var rate_want: float = p2.weapon.hits_per_sec * 60.0 / p2.weapon.trigger_every
+	if absf(per_min - rate_want) > EPS or BagForecast.per_minute(p2, timer) != 60.0 / BagDefs.BAGS.timer.period or BagForecast.per_minute(p2, key) != 0.0:
+		return "每分鐘發動：左鍵命中袋 %.1f（應 %.1f）、計時袋 %.1f、按鍵袋 %.1f（應 0）" % [per_min, rate_want, BagForecast.per_minute(p2, timer), BagForecast.per_minute(p2, key)]
+	var lines: Array = InventoryPanel.bag_info(hit, p2).lines
+	var said := "放一次約 %d 傷害" % roundi(BagForecast.damage_per_fire(p2, hit))
+	if not lines.any(func(l: String) -> bool: return l.contains(said) and l.contains("每分鐘約發動 %d 次" % roundi(per_min))):
+		return "命中袋的說明應寫「%s」與每分鐘約 %d 次：%s" % [said, roundi(per_min), lines]
+	return ""
+
+
 # 遺物（Build 改版第 6 步）：兩個玩家各自擲 N 選 1；關掉再打開還是同一組；骰子重擲；選一次；全員選過才消失；放不下掉腳邊；走遠就關掉
 static func check_relic() -> String:
 	var w := World.new(&"test_arena")

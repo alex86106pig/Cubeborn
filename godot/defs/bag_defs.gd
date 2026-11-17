@@ -36,6 +36,12 @@ const POWER := {
 	&"hurt": {&"bottom": 2.5}, &"roll": {&"bottom": 1.25}, &"timer": {&"bottom": 0.6}, &"key": {&"top": 1.0},
 }
 
+# 說明框換算用：跟手上武器無關的袋子每分鐘平均發動幾次（上面 POWER 那組自動試玩量的）；左鍵的命中袋 / 出手袋照武器的 hits_per_sec 算、計時袋照 period、按鍵袋自己按
+const TYPICAL_PER_MIN := {
+	&"hit": {&"right": 2.5}, &"cast": {&"right": 2.5}, &"kill": {&"left": 4.5, &"right": 4.5},
+	&"hurt": {&"bottom": 4.2}, &"roll": {&"bottom": 9.1},
+}
+
 
 # 袋子放出來的傷害倍率 = 大小的倍率（強化袋、鐵砧）× 種類與邊的倍率（POWER）
 static func power_of(bag: Dictionary) -> float:

@@ -1329,7 +1329,7 @@ static func when_text(b: Dictionary) -> String:
 	return BagDefs.BAGS[b.kind].desc
 
 
-# 袋子的說明：什麼時候、在哪裡、放什麼（完整一句話），下一行大小、耗魔、內部冷卻與倍率，詛咒另一行
+# 袋子的說明：什麼時候、在哪裡、放什麼（完整一句話），下一行大小、耗魔、內部冷卻與倍率，再一行乘好的結果（BagForecast），詛咒另一行
 static func bag_info(b: Dictionary, me: Player = null) -> Dictionary:
 	var lines: Array[String] = [fire_sentence(b)]
 	var size_line := "%d × %d 格" % [b.length, b.depth]
@@ -1344,6 +1344,10 @@ static func bag_info(b: Dictionary, me: Player = null) -> Dictionary:
 	if BagDefs.power_of(b) != 1.0:
 		size_line += " · 傷害 ×%s" % str(BagDefs.power_of(b))
 	lines.append(size_line)
+	if me != null and b.side != &"":
+		var forecast := BagForecast.line(me, b)
+		if forecast != "":
+			lines.append(forecast)
 	var t: Dictionary = BagDefs.TIERS[b.tier]
 	if t.has("curse_desc"):
 		lines.append("詛咒：%s" % t.curse_desc)
