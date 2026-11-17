@@ -855,7 +855,7 @@ static func check_skill_pose() -> String:
 
 # 戰技的施放時間（SkillDefs.CAST）：按數字鍵放的那一招先做前搖（站著不能走、可以轉向），做完才出判定、扣魔、進冷卻，再做收招（不能走）；
 # 前搖中翻滾取消不扣魔、不進冷卻；衝刺的位移中翻滾留在緩衝、位移完才翻；收招可以用翻滾取消；
-# 觸發袋接出來的戰技只把判定延後前搖那麼久，角色不進動作狀態（照樣能走）
+# 觸發袋接出來的戰技只把判定延後前搖那麼久，角色不進動作狀態（照樣能走）；有目標時在命中點出的招角色不做動作
 static func check_cast_time() -> String:
 	var wind := SkillDefs.cast_windup(&"whirlwind")
 	var recover := SkillDefs.cast_recovery(&"whirlwind")
@@ -944,9 +944,40 @@ static func check_cast_time() -> String:
 	var m4 := p4.mana
 	var at4 := p4.pos
 	_run(w4, _cmd(Vector2(-1, 0)), wind_steps - 2)
-	if e4.hp < hp4 or p4.mana < m4 or p4.skill_pose != &"whirlwind" or p4.action.is_in(&"useItem") or p4.pos.distance_to(at4) < 0.1:
-		return "命中袋接出來的旋風斬：前搖 %.2f 秒內不出判定、不扣魔、角色做動作但不被定住：扣血 %.1f、魔力 %.1f → %.1f、動作 %s、狀態 %s、走了 %.2f" % [wind, hp4 - e4.hp, m4, p4.mana, p4.skill_pose, p4.action.current_name, p4.pos.distance_to(at4)]
+	if e4.hp < hp4 or p4.mana < m4 or p4.action.is_in(&"useItem") or p4.pos.distance_to(at4) < 0.1:
+		return "命中袋接出來的旋風斬：前搖 %.2f 秒內不出判定、不扣魔、角色不被定住：扣血 %.1f、魔力 %.1f → %.1f、狀態 %s、走了 %.2f" % [wind, hp4 - e4.hp, m4, p4.mana, p4.action.current_name, p4.pos.distance_to(at4)]
+	if p4.skill_pose != &"":
+		return "命中袋接出來的旋風斬在命中點出（trigger_at = target）：角色不做動作：%s" % p4.skill_pose
 	_run(w4, _cmd(Vector2.ZERO), 4)
-	if p4.mana >= m4:
-		return "命中袋接出來的旋風斬：前搖做完應放出（扣魔）：%.1f → %.1f" % [m4, p4.mana]
+	if p4.mana >= m4 or p4.skill_pose != &"":
+		return "命中袋接出來的旋風斬：前搖做完應放出（扣魔）、角色照樣不做動作：%.1f → %.1f、動作 %s" % [m4, p4.mana, p4.skill_pose]
+	return _check_trigger_at()
+
+
+# 戰技被自動觸發時在哪裡出（SkillDefs.trigger_at）：位移的（move 標籤）角色自己做、其他在命中點；
+# 位移類被命中袋觸發角色照樣做動作；沒有目標的袋子（計時）接出來的旋風斬在角色身上出、角色做動作
+static func _check_trigger_at() -> String:
+	for id: StringName in SkillDefs.SKILLS:
+		var def: Dictionary = SkillDefs.SKILLS[id]
+		if def.get("category", &"") != &"attack":
+			continue
+		var want: StringName = def.get("trigger_at", &"self" if (def.tags as Array).has(&"move") else &"target")
+		if SkillDefs.trigger_at(id) != want or not (want in [&"self", &"target"]):
+			return "%s 的觸發點應是 %s：%s" % [id, want, SkillDefs.trigger_at(id)]
+	if SkillDefs.trigger_at(&"charge_slash") != &"self" or SkillDefs.trigger_at(&"whirlwind") != &"target":
+		return "衝鋒斬（位移）應在角色身上出、旋風斬應在命中點出"
+	var w := _new_world()
+	var p := _player(w)
+	_every_hit(p)
+	_put(p, _bag(p, &"hit", &"left"), &"charge_slash")
+	var e := LootChecks._item_dummy(w, Vector2(0, 3.0), 100000.0)
+	Combat.apply_damage(w, p, e, {"damage": 1.0, "attack": &"primary"})
+	if p.skill_pose != &"charge_slash":
+		return "命中袋接出來的衝鋒斬（位移）角色自己做：前搖一開始就做動作：%s" % p.skill_pose
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	_put(p2, _bag(p2, &"timer", &"bottom"), &"whirlwind")
+	_run(w2, _cmd(Vector2.ZERO), roundi(BagDefs.BAGS.timer.period / DT) + 2)
+	if p2.skill_pose != &"whirlwind":
+		return "計時袋（沒有目標）接出來的旋風斬在角色身上出、角色做動作：%s" % p2.skill_pose
 	return ""

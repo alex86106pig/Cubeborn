@@ -169,6 +169,19 @@ static func scale_mul(def: Dictionary, weapon: Dictionary) -> float:
 	return scale.weapon + scale.spell * weapon.spell_power / weapon.base_damage
 
 
+# 戰技被有目標的袋子（命中、擊殺、受傷…）自動觸發時在哪裡出：&"target" 命中點（角色不做動作，只在那裡出判定與特效，跟法術一樣）、
+# &"self" 角色身上（角色做動作）。每招可以用 trigger_at 欄位指定；沒寫的照標籤：位移的（move）角色自己做，其他在命中點。
+# 沒有目標的袋子（計時、翻滾、出手、按鍵）一律在角色身上
+static func trigger_at(id: StringName) -> StringName:
+	var d: Dictionary = SKILLS[id]
+	return d.get("trigger_at", &"self" if (d.tags as Array).has(&"move") else &"target")
+
+
+# 這次放出來角色要不要做這招的動作：戰技才做；有目標、而且這招在命中點出的不做
+static func poses_on_cast(id: StringName, has_target: bool) -> bool:
+	return SKILLS[id].get("category", &"") == &"attack" and not (has_target and trigger_at(id) == &"target")
+
+
 static func cast_windup(id: StringName) -> float:
 	return CAST[id][0] if CAST.has(id) else 0.0
 

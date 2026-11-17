@@ -137,7 +137,8 @@ static func cast(owner: Player, slot: Dictionary, target: Entity = null, wound_u
 	if target != null:
 		SkillBehaviors.aim_at(owner, ctx, target)
 	Combat.scoped(ctx.credit, func() -> void: SkillBehaviors.cast(owner, slot.def, ctx))
-	if slot.def.get("category", &"") == &"attack" and not (wound_up and owner.skill_pose == slot.id):   # 戰技：角色做這招的動作（新放的蓋掉還沒做完的）
+	# 戰技：角色做這招的動作（新放的蓋掉還沒做完的）；被自動觸發、在命中點出的那幾招不做（SkillDefs.trigger_at）
+	if SkillDefs.poses_on_cast(slot.id, target != null) and not (wound_up and owner.skill_pose == slot.id):
 		owner.start_skill_pose(slot.id, SkillDefs.cast_windup(slot.id))
 	if slot.charges > 0:
 		slot.entry["charges"] = slot.charges - 1

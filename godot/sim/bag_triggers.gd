@@ -121,8 +121,11 @@ static func _chain_step(world: World, p: Player, chain: Dictionary) -> int:
 	chain.served = &""   # 只有這一串實際放的第一招可能已經做完前搖
 	var wind := 0.0 if served or not ItemDefs.is_skill(e.id) else SkillDefs.cast_windup(e.id)
 	if wind > 0.0 and _can_cast_now(world, p, chain, e):
-		# 戰技的前搖：角色先做動作，wind 秒後才出判定；那時放不出來（魔力被用掉、目標條件變了）就照「放不出來」斷掉
-		p.start_skill_pose(e.id)
+		# 戰技的前搖：wind 秒後才出判定；那時放不出來（魔力被用掉、目標條件變了）就照「放不出來」斷掉。
+		# 角色自己做的招（沒有目標、或位移類）從前搖就開始做動作；在命中點出的不做
+		var aimed := world.entities.get(chain.target_id) as Entity
+		if SkillDefs.poses_on_cast(e.id, aimed != null and not aimed.is_removed):
+			p.start_skill_pose(e.id)
 		SkillBehaviors.later(p, wind, func() -> void: _chain_fire(world, p, chain, e, true))
 		return 1
 	return _chain_fire(world, p, chain, e, served)
