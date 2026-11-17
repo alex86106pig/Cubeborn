@@ -180,8 +180,8 @@ func _initialize() -> void:
 		all.bind([LootChecks.check_pickups, LootChecks.check_pickup_to_cell, LootChecks.check_interact_choice]))
 	_check("武器掉落：小怪掉落率照層數（MINION_DROP_BY_FLOOR，超過表用最後一層）、召喚出來的不掉、Boss 必掉、稀有度符合權重；武器沒有詞條、寶石座、印記格；手上的照稀有度套基礎倍率、倉庫不生效",
 		all.bind([LootChecks.check_weapon_drops, LootChecks.check_weapon_affixes]))
-	_check("武器的背包操作：開局劍盾；撿到的武器放倉庫、都滿撿不起來；倉庫的武器換上手、換下來的回那把原本的位置、武器欄只有 1 格、手上的不能丟；換武器時主袋的道具照樣生效、武器快照只有種類與稀有度；兩把同種同稀有度在鍛造祭壇旁合成 → 高一級，不同種 / 不同稀有度 / 橘色不能合成",
-		all.bind([LootChecks.check_weapon_pickup, LootChecks.check_weapon_merge]))
+	_check("武器的背包操作：開局劍盾；撿到的武器放倉庫、都滿撿不起來；倉庫的武器換上手、換下來的回那把原本的位置、武器欄只有 1 格、手上的不能丟；換武器時主袋的道具照樣生效、武器快照只有種類與稀有度；兩把同種同稀有度在鍛造祭壇旁合成 → 高一級，不同種 / 不同稀有度 / 橘色不能合成；自動試玩的機器人有一對能合成、這一關有鍛造祭壇就走過去合成",
+		all.bind([LootChecks.check_weapon_pickup, LootChecks.check_weapon_merge, LootChecks.check_bot_merge]))
 
 	# ───────── 道具（依效果種類：屬性 / 條件 / 觸發 / 能力）─────────
 	_check("物品資料：每個稀有度都有道具，名稱不重複、欄位完整、形狀合法、格數看稀有度、技能 1 格且寫明能用的武器、效果都對應到存在的屬性 / 條件 / 觸發 / 能力；觸發袋的分類：道具與技能都分得出放主袋或袋子、觸發道具都對到一個效果與一種袋子、致命傷與死亡留在主袋、每個效果都有道具改寫過來", all.bind([LootChecks.check_item_defs, LootChecks.check_bag_roles]))

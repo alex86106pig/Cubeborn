@@ -73,7 +73,9 @@ var opened := 0                        # 開了幾個寶箱
 var downs := 0                         # 倒下幾次
 var down_by := {}                      # 打出最後一下的「怪物·招式」→ 次數
 var taken := 0.0                       # 受到的傷害
-var acts := {"roll": 0, "jump": 0, "block": 0, "potion": 0, "swap": 0, "drop": 0, "socket": 0, "reroll": 0, "rescue": 0}
+var acts := {"roll": 0, "jump": 0, "block": 0, "potion": 0, "swap": 0, "merge": 0, "drop": 0, "socket": 0, "reroll": 0, "rescue": 0}
+var _forge_skip: Dictionary = {}       # 走不到的鍛造祭壇 id
+var _forge_time := 0.0
 var hit_by := {}                       # 「怪物·招式」→ 受到的傷害
 var full_seen := false                 # 有武器撿不下
 var real_from := 0                     # --real-from=N：第 1 層第 N 小關起（第 2 層起全部）才真的會死，之前照 revive；進那一關時補滿血
@@ -177,6 +179,9 @@ func after_step(t: float) -> void:
 	for ev in w.events:
 		var mine: bool = ev.get("player_id", 0) == p.id
 		match ev.name:
+			"weapon:merged":
+				if mine:
+					acts.merge += 1
 			"entity:damaged":
 				if ev.get("target_id", 0) == p.id:
 					taken += ev.amount
@@ -320,6 +325,8 @@ func decide() -> InputCmd:
 			var spot := p.inventory.find_spot(loot.item_id)   # 指定撿這把（像從背包畫面拖進來）：按 F 會撿最近的，旁邊有自己丟掉的會先撿到那把
 			if not spot.is_empty():
 				cmd.inv_ops.append([InputCmd.OP_PICKUP, loot.id, spot.cell.x, spot.cell.y, spot.rot])
+		return cmd
+	if smart_play and _go_merge(cmd):
 		return cmd
 	var relic := _next_relic()
 	if relic != null:
@@ -1038,6 +1045,54 @@ func _swap(cmd: InputCmd) -> void:
 			if weapon_score(inst) > weapon_score(hand) + 1e-6:
 				cmd.inv_ops.append([InputCmd.OP_EQUIP, x.uid, i])
 				return
+
+
+# 可以合成、跟手上同一種的一對武器 [被吃掉的 uid, 留下的 uid]（機器人只換同一種武器，別種的合了也用不到）；
+# 手上那把能合就當留下的（結果留在手上）。沒有回傳 []
+func _merge_pair() -> Array:
+	var hand: Dictionary = p.weapon_slots[Loadout.MAIN]
+	if hand.is_empty():
+		return []
+	var same: Array[Dictionary] = []
+	for x in p.inventory.entries:
+		var inst: Dictionary = x.get("weapon", {})
+		if inst.is_empty() or inst.base != hand.base:
+			continue
+		if WeaponDropDefs.can_merge(inst, hand):
+			return [x.uid, hand.uid]
+		same.append(x)
+	for i in same.size():
+		for j in range(i + 1, same.size()):
+			if WeaponDropDefs.can_merge(same[i].weapon, same[j].weapon):
+				return [same[i].uid, same[j].uid]
+	return []
+
+
+# 有一對可以合成的武器、這一關有鍛造祭壇：走過去合成（一步合一對）；走 STUCK_TIME 秒到不了就不去那一座。有在處理回傳 true
+func _go_merge(cmd: InputCmd) -> bool:
+	var pair := _merge_pair()
+	if pair.is_empty():
+		_forge_time = 0.0
+		return false
+	var forge: Entity = null
+	for f in w.forges:
+		if f.is_removed or _forge_skip.has(f.id):
+			continue
+		if forge == null or f.pos.distance_squared_to(p.pos) < forge.pos.distance_squared_to(p.pos):
+			forge = f
+	if forge == null:
+		return false
+	_forge_time += DT
+	if _forge_time > STUCK_TIME:
+		_forge_skip[forge.id] = true
+		_forge_time = 0.0
+		return false
+	if w.near_forge(p):
+		cmd.inv_ops.append([InputCmd.OP_MERGE, pair[0], pair[1]])
+		_forge_time = 0.0
+	else:
+		_walk(cmd, forge.pos)
+	return true
 
 
 # 武器好不好：擲出來的攻擊力 × 攻速（每秒輸出的倍率，WeaponDropDefs.mul；範圍與魔力不算）。原本只比稀有度，寬範圍下會撿到比手上差的

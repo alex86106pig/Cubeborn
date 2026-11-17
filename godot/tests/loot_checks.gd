@@ -2502,3 +2502,39 @@ static func check_bag_chain() -> String:
 	if order != [&"b", &"a", &"c"]:
 		return "左邊袋子應照畫面左上 → 右下放（b、a、c）：%s" % [order]
 	return ""
+
+
+# 自動試玩的機器人會合成：背包裡有兩把跟手上同種、同稀有度的武器，這一關沒有鍛造祭壇就不管；有就走過去合成一次（acts.merge），背包裡多一把高一級的
+static func check_bot_merge() -> String:
+	var w := _new_world()
+	var p := _player(w)
+	p.apply_class(ClassDefs.ORDER[0])   # 機器人照職業決定站多遠
+	var base: StringName = p.weapon_slots[Loadout.MAIN].base
+	for i in 2:
+		if not p.add_weapon(WeaponDropDefs.make(StringName("t_bot_%d" % i), base, &"white", w.rng)):
+			return "前置：白色武器放不進背包"
+	var bot: Variant = load("res://tests/playtest_bot.gd").new(w, p, {}, 1)
+	bot.begin_floor()
+	var t := 0.0
+	for i in roundi(2.0 / DT):
+		w.step({World.HOST_PEER_ID: bot.decide()}, DT)
+		t += DT
+		bot.after_step(t)
+	if bot.acts.merge != 0:
+		return "沒有鍛造祭壇時機器人不應合成：%d 次" % bot.acts.merge
+	var f := Forge.new(w, p.pos + Vector2(8.0, 0.0))
+	w.add_entity(f)
+	w.forges.append(f)
+	for i in roundi(20.0 / DT):
+		w.step({World.HOST_PEER_ID: bot.decide()}, DT)
+		t += DT
+		bot.after_step(t)
+		if bot.acts.merge > 0:
+			break
+	var owned: Array = p.inventory.entries.filter(func(x: Dictionary) -> bool: return x.has("weapon")).map(func(x: Dictionary) -> Dictionary: return x.weapon)
+	owned.append(p.weapon_slots[Loadout.MAIN])   # 合出來比手上好，機器人會馬上換上
+	var better := owned.filter(func(inst: Dictionary) -> bool: return inst.base == base and inst.rarity == WeaponDropDefs.next_rarity(&"white"))
+	if bot.acts.merge != 1 or better.size() != 1:
+		return "有鍛造祭壇時機器人應走過去把兩把白色合成一把高一級的：合成 %d 次、高一級的 %d 把、離祭壇 %.1f" % [bot.acts.merge, better.size(), p.pos.distance_to(f.pos)]
+	return ""
+

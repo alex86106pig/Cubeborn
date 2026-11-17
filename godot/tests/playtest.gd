@@ -36,7 +36,7 @@ func _initialize() -> void:
 		"真的會死" if opts.get("death", "revive") == "real" else ("第 %s 小關起真的會死" % opts["real-from"] if opts.has("real-from") else "倒下原地救起")]
 	var lines: Array[String] = ["# 自動試玩", "", "職業 %s、打法 %s、%s、%d 層、種子 %s；背包 %d × %d = %d 格" % [",".join(PackedStringArray(classes)),
 		opts.get("style", "full"), how, floors, str(seeds), ItemDefs.BAG_SIZE.x, ItemDefs.BAG_SIZE.y, ItemDefs.BAG_SIZE.x * ItemDefs.BAG_SIZE.y], "",
-		"| 種子 | 層 | 時間 | 殺怪（怪群 / 事件 / Boss / 召喚） | 掉武器（白綠藍紫橘） | 撿到 | 背包武器格 | 背包滿的時間 | 地上沒撿 | 靈魂 賺到 / 花掉（開幾箱） | 主袋 / 袋子填滿率（每小關結束） | 技能（等級）· 放幾次 | 羈絆 | 翻滾 / 跳 / 擋 / 喝藥 / 換武器 / 丟 / 搬進袋子 / 重擲 / 救人 | 受傷 / 倒下（最多被哪招） | 結果 | 最痛的招 |",
+		"| 種子 | 層 | 時間 | 殺怪（怪群 / 事件 / Boss / 召喚） | 掉武器（白綠藍紫橘） | 撿到 | 背包武器格 | 背包滿的時間 | 地上沒撿 | 靈魂 賺到 / 花掉（開幾箱） | 主袋 / 袋子填滿率（每小關結束） | 技能（等級）· 放幾次 | 羈絆 | 翻滾 / 跳 / 擋 / 喝藥 / 換武器 / 合成 / 丟 / 搬進袋子 / 重擲 / 救人 | 受傷 / 倒下（最多被哪招） | 結果 | 最痛的招 |",
 		"|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
 	var cleared := 0
 	var total := 0
@@ -213,7 +213,7 @@ func _row(w: World, b: Variant, seed_value: int, t: float, timeout: String, kill
 	for bond: StringName in p.loadout.bond_counts:
 		bonds.append("%s %d" % [BondDefs.BONDS[bond].name, p.loadout.bond_counts[bond]])
 	var a: Dictionary = b.acts
-	var acts := "%d / %d / %d / %d / %d / %d / %d / %d / %d" % [a.roll, a.jump, a.block, a.potion, a.swap, a.drop, a.socket, a.reroll, a.rescue]
+	var acts := "%d / %d / %d / %d / %d / %d / %d / %d / %d / %d" % [a.roll, a.jump, a.block, a.potion, a.swap, a.merge, a.drop, a.socket, a.reroll, a.rescue]
 	var moves: Array = b.hit_by.keys()
 	moves.sort_custom(func(x: String, y: String) -> bool: return b.hit_by[x] > b.hit_by[y])
 	var worst: Array[String] = []
