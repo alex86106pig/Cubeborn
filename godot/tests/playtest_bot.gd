@@ -148,6 +148,14 @@ func _init(p_world: World, p_player: Player, opts: Dictionary, seed_value: int) 
 	_hands = [p.weapon_slots[Loadout.MAIN].get("uid", "")]
 
 
+# 受傷與倒下的統計歸零（--count-from：只算第 N 小關起）
+func reset_taken() -> void:
+	downs = 0
+	down_by.clear()
+	taken = 0.0
+	hit_by.clear()
+
+
 func begin_floor() -> void:
 	casts = 0
 	spent = 0

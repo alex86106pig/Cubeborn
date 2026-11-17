@@ -446,7 +446,7 @@ const ENEMIES := {
 		"knockback_mul": 0.12,
 		"spawn_time": 1.0,
 		"corpse_time": 3.5,
-		"decide_delay": 0.15,
+		"decide_delay": 0.8,          # 兩招之間停多久：近戰的出手窗口（劍盾一刀 0.36~0.48 秒）；0.15 時近戰距離 91% 的時間在出招，近戰打不了（docs/手感對照.md 第 6 節）
 		"first_cooldowns": {"dig": 2.0, "lantern": 1.5, "whistle": 3.0, "scoop": 1.0},
 		"npc": {
 			"speed_mul": 0.27, "pause": [2.0, 4.0],  # 掃地：慢慢走（約 0.8 單位/秒）、停下來掃
@@ -496,12 +496,13 @@ const ENEMIES := {
 		},
 		"wolf": {
 			"resists": {&"phys": 0.3, &"holy": -0.5},   # 變身後整組換掉
-			"move_speed": 7.5, "turn_speed": 9.0, "decide_delay": 0.15,
+			"move_speed": 7.5, "turn_speed": 9.0, "decide_delay": 0.8,
 			"first_cooldowns": {"leap": 1.5, "howl": 6.0, "stalk": 4.0},
 			"claw": {   # 三連爪：前兩下擋得住，第三下往前撲、擋不住；每一下發 fx:claw（3 條紅色爪痕）
 				# interval 要比前兩下的硬直（tiers，中級 0.45 秒）長：中了一下，硬直結束到下一下之間要翻得出來（檢查「Boss 守墓人」會量）
-				"trigger_distance": 3.4, "windup": 0.25, "interval": 0.6, "range": 4.0, "arc": PI * 140.0 / 180.0,
-				"damage": 15.0, "last_damage": 24.0, "knockback": 5.0, "lunge": 3.0, "lunge_time": 0.15, "recovery": 0.5, "cooldown": 2.0,
+				# cooldown 從出招開始算，整套 windup + interval × 2 + recovery 約 2 秒，冷卻要比整套長才不會一直出爪；windup 0.4 = 看到雙爪後拉再翻滾來得及
+				"trigger_distance": 3.4, "windup": 0.4, "interval": 0.6, "range": 4.0, "arc": PI * 140.0 / 180.0,
+				"damage": 15.0, "last_damage": 24.0, "knockback": 5.0, "lunge": 3.0, "lunge_time": 0.15, "recovery": 0.5, "cooldown": 2.7,
 				"tiers": [&"medium", &"medium", &"heavy"], "color": Color("ff2a2a"),
 			},
 			"leap": {   # 飛撲：跳到目標當時的位置；蹲低到落地只有 windup + flight 秒，要靠反應翻滾

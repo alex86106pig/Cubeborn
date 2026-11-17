@@ -13,6 +13,7 @@
 #       --real-from=N（第 1 層第 N 小關起才真的會死，之前倒下原地救起、配裝照正常打過來；進那一關補滿血。--real-from=5 量帶著正常配裝的 Boss 戰）
 #       --start=N（直接從第 1 層第 N 小關開始，跳過的每一關給一個技能遺物；--start=5 只量 Boss 戰）
 #       --crowd=N（近戰身邊 2.5 內醒著的怪到 N 隻就往外退，預設 0 = 不退；做實驗用）
+#       --count-from=N（第 1 層第 N 小關起才算受傷、倒下、被打中與最痛的招，時間欄也從那時算；配裝照正常打過來。--real-from=5 --count-from=5 量帶著正常配裝的 Boss 戰）
 #       --shield=0（有盾也不舉盾、只滾；做實驗用，比機器人的舉盾時機跟職業本身）
 # 血量照遊戲的規則走（自然回血、吸血、藥水、生命低於 X% 的道具都會發動）；revive 救起時有 REVIVE.revive_invuln 秒無敵
 extends SceneTree
@@ -23,11 +24,13 @@ const MAX_FLOOR_TIME := 30.0 * 60.0   # 一層最多模擬這麼久（卡住時�
 
 var _moments := {}          # 觸發袋的時機（Player.trigger_moments 的「種類:按鍵」）全部場次加總
 var _moment_time := 0.0     # 這些時機量了幾秒（每個機器人各算一份）
+var _opts := {}             # 命令列參數（_args）
 var _taken := {"time": 0.0, "hits": 0, "damage": 0.0, "unseen_damage": 0.0}   # 全部場次與機器人加總的被打中（照遊玩紀錄 RunLog 的「看不見」算）
 
 
 func _initialize() -> void:
 	var opts := _args()
+	_opts = opts
 	var seeds: Array = []
 	for s in String(opts.get("seeds", "1,2,3")).split(","):
 		seeds.append(int(s))
@@ -125,6 +128,8 @@ func _play_floor(w: World, bots: Array, seed_value: int) -> Array[String]:
 	var souls_start := w.souls
 	var t := 0.0
 	var logs := {}   # peer → 這一層的遊玩紀錄（被打中幾下、看不見的）
+	var count_from := int(_opts.get("count-from", "0")) if w.floor_num == 1 else 0
+	var t0 := 0.0   # 從第幾秒開始算受傷（--count-from）
 	for b in bots:
 		b.begin_floor()
 		var log := RunLog.new()
@@ -136,6 +141,12 @@ func _play_floor(w: World, bots: Array, seed_value: int) -> Array[String]:
 			cmds[b.peer] = b.decide()
 		w.step(cmds, DT)
 		t += DT
+		if w.stage_num != last_stage and w.stage_num == count_from:
+			t0 = t
+			for b in bots:
+				b.reset_taken()
+				logs[b.peer].reset()
+				logs[b.peer].me_id = b.p.id
 		if w.stage_num != last_stage:
 			for b in bots:
 				_note_fill(fills, b, w.floor_num, last_stage)
@@ -178,11 +189,11 @@ func _play_floor(w: World, bots: Array, seed_value: int) -> Array[String]:
 	var rows: Array[String] = []
 	for b in bots:
 		var log: RunLog = logs[b.peer]
-		_taken.time += t
+		_taken.time += t - t0
 		_taken.hits += log.hits_taken
 		_taken.damage += log.damage_taken
 		_taken.unseen_damage += log.unseen_damage
-		rows.append(_row(w, b, seed_value, t, timeout, kills, rarity, left, souls, full_at, bots.size() > 1, " ".join(PackedStringArray(fills.get(b.peer, []))), log))
+		rows.append(_row(w, b, seed_value, t, timeout, kills, rarity, left, souls, full_at, bots.size() > 1, " ".join(PackedStringArray(fills.get(b.peer, []))), log, t0))
 	return rows
 
 
@@ -205,7 +216,7 @@ func _note_fill(fills: Dictionary, b: Variant, floor_num: int, stage: int) -> vo
 
 
 func _row(w: World, b: Variant, seed_value: int, t: float, timeout: String, kills: Dictionary, rarity: String, left: int, souls: String,
-		full_at: Dictionary, team: bool, fill_text: String, log: RunLog) -> String:
+		full_at: Dictionary, team: bool, fill_text: String, log: RunLog, t0 := 0.0) -> String:
 	var p: Player = b.p
 	var picked := 0
 	var cells := 0
@@ -230,7 +241,7 @@ func _row(w: World, b: Variant, seed_value: int, t: float, timeout: String, kill
 			top = k
 			top_n = b.down_by[k]
 	var downs := "%d / %d%s · %d 下（%.1f）· %d%%" % [roundi(b.taken), b.downs, "（%s %d）" % [top, top_n] if top_n > 0 else "", log.hits_taken,
-		log.hits_taken / maxf(t, 1.0) * 60.0, roundi(100.0 * log.unseen_damage / maxf(log.damage_taken, 1.0))]
+		log.hits_taken / maxf(t - t0, 1.0) * 60.0, roundi(100.0 * log.unseen_damage / maxf(log.damage_taken, 1.0))]
 	var bonds: Array[String] = []
 	for bond: StringName in p.loadout.bond_counts:
 		bonds.append("%s %d" % [BondDefs.BONDS[bond].name, p.loadout.bond_counts[bond]])
