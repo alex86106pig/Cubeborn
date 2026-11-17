@@ -15,6 +15,14 @@ func _init(p_world: World, p_type: StringName, at: Vector2, mul: Dictionary) -> 
 	main_state = &"kite"
 
 
+func attack_starts() -> Array[StringName]:
+	return [&"aim"]
+
+
+func attack_kind() -> StringName:
+	return &"ranged"
+
+
 # 剛出生時給一點延遲才第一次射擊
 func on_added() -> void:
 	var delay: Array = def.first_fire_delay
@@ -93,7 +101,7 @@ class Kite:
 		e.facing = MathUtil.turn_towards(e.facing, to_target, e.def.turn_speed * dt)
 
 		var key := e.cd("fire")
-		if dist <= range_[1] + e.def.fire_reach and e.world.cooldowns.is_ready(key):
+		if dist <= range_[1] + e.def.fire_reach and e.world.cooldowns.is_ready(key) and AttackQuota.take(e, target):   # 沒名額不進冷卻，下一步再試
 			var j: Array = e.def.fire_interval_jitter
 			e.world.cooldowns.start(key, e.cd_time(e.def.fire_interval * rng.randf_range(j[0], j[1])))
 			e.fsm.change(&"aim")

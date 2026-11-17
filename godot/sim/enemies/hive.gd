@@ -18,6 +18,14 @@ func _init(p_world: World, p_type: StringName, at: Vector2, mul: Dictionary) -> 
 	fixed = true
 
 
+func attack_starts() -> Array[StringName]:
+	return [&"spit"]
+
+
+func attack_kind() -> StringName:
+	return &"ranged"
+
+
 # 一直固定不動（互推時只推開別人、不積分）：怪群醒來時 dormant 的 setter 會把 fixed 放開，每步設回來
 func update(dt: float) -> void:
 	fixed = true

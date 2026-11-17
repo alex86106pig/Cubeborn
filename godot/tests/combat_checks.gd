@@ -1630,3 +1630,83 @@ static func check_practice_inventory_meter() -> String:
 	if dealt <= 0.0 or absf(m.total - dealt) > EPS:
 		return "統計只應算本機玩家打出去的 %.1f：實際 %.1f" % [dealt, m.total]
 	return ""
+
+
+# 一群怪圍著站好的玩家跑 seconds 秒，回傳同時在出招（Enemy.is_attacking_now）的最多幾隻；玩家不會死、面向 aim
+static func _max_attackers(w: World, foes: Array[Enemy], seconds: float, aim: Vector2) -> int:
+	var p := _player(w)
+	var most := 0
+	for i in roundi(seconds / DT):
+		p.hp = p.max_hp
+		_run(w, _cmd(Vector2.ZERO, aim), 1)
+		most = maxi(most, foes.filter(func(e: Enemy) -> bool: return e.is_attacking_now()).size())
+	return most
+
+
+# 小怪的出手名額（AttackQuota）：Config 預設全部不限、行為跟沒有名額一樣；設了近戰上限，同時出招的近戰小怪不超過上限、照樣輪得到出手；
+# 魔法 / 稀有怪不佔也不受限；遠程拿不到名額時不進冷卻；玩家看不到的（背後、身邊一圈以外）另有上限，看得到的不受那個上限限制
+static func check_attack_quota() -> String:
+	for k: StringName in AttackQuota.KINDS:
+		if int(Config.ATTACK_QUOTA.get(k, -1)) != 0:
+			return "出手名額的預設應全部不限（0）：%s = %s" % [k, Config.ATTACK_QUOTA.get(k)]
+	var ring: Array[Vector2] = []
+	for i in 6:
+		ring.append(MathUtil.dir_from_angle(TAU * i / 6.0) * 1.6)
+	var most := {}
+	for cap: int in [0, 2]:
+		var w := _new_world()
+		var p := _player(w)
+		w.attack_quota[&"melee"] = cap
+		var foes: Array[Enemy] = []
+		for at in ring:
+			var e := _spawn(w, &"grunt", p.pos + at)
+			e.fsm.change(e.main_state)
+			foes.append(e)
+		most[cap] = _max_attackers(w, foes, 6.0, p.pos + Vector2(0, 5))
+	if most[0] < 4:
+		return "名額不限時 6 隻骷髏戰士圍著應同時出招（至少 4 隻）：最多 %d 隻" % most[0]
+	if most[2] != 2:
+		return "近戰名額 2：同時出招的骷髏戰士最多應剛好 2 隻：%d 隻" % most[2]
+	# 魔法怪不佔也不受限：名額 1 時，一隻普通加一隻魔法怪可以同時出招
+	var w2 := _new_world()
+	var p2 := _player(w2)
+	w2.attack_quota[&"melee"] = 1
+	var pair: Array[Enemy] = []
+	for at in [Vector2(1.6, 0), Vector2(-1.6, 0), Vector2(0, 1.6)]:
+		var e := _spawn(w2, &"grunt", p2.pos + at)
+		e.fsm.change(e.main_state)
+		pair.append(e)
+	pair[2].set_rarity(MonsterRarityDefs.MAGIC, [])
+	var both := false
+	var normal_most := 0
+	for i in roundi(6.0 / DT):
+		p2.hp = p2.max_hp
+		_run(w2, _cmd(Vector2.ZERO, p2.pos + Vector2(0, 5)), 1)
+		var normals := (1 if pair[0].is_attacking_now() else 0) + (1 if pair[1].is_attacking_now() else 0)
+		normal_most = maxi(normal_most, normals)
+		both = both or (normals == 1 and pair[2].is_attacking_now())
+	if normal_most != 1 or not both:
+		return "近戰名額 1：普通怪同時最多 1 隻（%d），魔法怪不佔名額、可以跟牠同時出招（%s）" % [normal_most, both]
+	# 看不到的另有上限：三隻弓手在背後（身邊一圈以外）同時最多 1 隻瞄準、沒輪到的不進冷卻；在面前不受這個上限限制
+	var seen := {}
+	for behind: bool in [true, false]:
+		var w3 := _new_world()
+		var p3 := _player(w3)
+		w3.attack_quota[&"unseen"] = 1
+		var archers: Array[Enemy] = []
+		for x: float in [-2.0, 0.0, 2.0]:
+			var e := _spawn(w3, &"archer", p3.pos + Vector2(x, -7.0 if behind else 7.0))
+			e.fsm.change(e.main_state)
+			archers.append(e)
+		var aim := p3.pos + Vector2(0, 5)
+		_run(w3, _cmd(Vector2.ZERO, aim), 1)
+		if behind and archers.any(func(e: Enemy) -> bool: return AttackQuota.watched(p3, e)):
+			return "前置：背後 7 單位的弓手應在視野外"
+		seen[behind] = _max_attackers(w3, archers, 6.0, aim)
+		if behind:
+			var waiting := archers.filter(func(e: Enemy) -> bool: return not e.is_attacking_now() and w3.cooldowns.is_ready(e.cd("fire")))
+			if seen[true] == 1 and waiting.is_empty() and archers.filter(func(e: Enemy) -> bool: return e.is_attacking_now()).size() == 1:
+				return "沒輪到名額的弓手不應進冷卻（下一步還能再試）"
+	if seen[true] != 1 or seen[false] < 2:
+		return "看不到的名額 1：背後的弓手同時最多 1 隻瞄準（%d），面前的不受限（至少 2 隻同時：%d）" % [seen[true], seen[false]]
+	return ""

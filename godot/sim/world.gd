@@ -74,6 +74,8 @@ var is_defeated := false             # 全員倒下（已發出 game:defeat）
 var practice := false                # 武器測試場（main.gd 設、reset 不清）：死了不結算，等測試面板的立即復活（Practice）
 var practice_cheats := {}            # 武器測試場的作弊開關（Practice.CHEATS 的 key → true），每步開頭套用（Practice.apply_cheats）
 var practice_stage := Vector2i(1, 1) # 武器測試場生怪照第幾層（x）第幾小關（y）的成長（Practice.stage_mul）
+var attack_quota: Dictionary = Config.ATTACK_QUOTA.duplicate()   # 小怪的出手名額（AttackQuota；自動試玩 --quota 會改）
+var attack_counts := {}              # AttackQuota 這一步數到的：{ tick, by: { 玩家 id: { melee, ranged, unseen } } }
 var enemies_hold := false            # 武器測試場：怪物停手（Enemy.update 回到主狀態時改站著；招式出到一半照樣做完）
 # 連線（docs/系統說明.md §8）：房主 / 單機為權威端；客戶端的 World 只是快照的鏡像，加上本機預測自己的角色（不扣血、不產生實體）
 var is_authority := true

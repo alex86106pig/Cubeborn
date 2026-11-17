@@ -13,6 +13,14 @@ func _init(p_world: World, p_type: StringName, at: Vector2, mul: Dictionary) -> 
 	phases = true
 
 
+func attack_starts() -> Array[StringName]:
+	return [&"shriek"]
+
+
+func attack_kind() -> StringName:
+	return &"ranged"
+
+
 func _can_jump() -> bool:
 	return false
 

@@ -34,6 +34,8 @@ var action_speed := 1.0              # 狀態機時間的倍率（狂暴詞條 1
 var summoner_id := 0                 # 召喚詞條叫出來的：召喚者的 id
 var train_path: Array[Vector2] = []   # 會動的木樁（Spawner.spawn_training_dummies）：站著的狀態改成沿這幾個點來回走；空的 = 不動
 var train_leg := 0                    # 正走向 train_path 的第幾個點
+var attack_target_id := 0             # 這次出招是對誰（AttackQuota 數名額用；開始出招時記下）
+var quota_tick := -1                  # 哪一步拿到出手名額（同一步再問直接給）
 var no_souls := false                 # 召喚出來的（召喚詞條、Boss 召喚）：死了不給靈魂（v0.44.0，避免刷錢）
 var _frenzied := false
 var _exploded := false
@@ -101,7 +103,7 @@ func _init(p_world: World, p_type: StringName, at: Vector2, mul: Dictionary, sta
 	dormant = mul.get("dormant", false)
 	states[&"dormant"] = Dormant.new()
 	states[&"launch"] = Launch.new()
-	fsm = StateMachine.new(self, states, mul.get("initial_state", &"dormant" if dormant else &"spawn"))
+	fsm = EnemyFsm.new(self, states, mul.get("initial_state", &"dormant" if dormant else &"spawn"))
 	_update_anim()
 
 
@@ -203,6 +205,26 @@ func cd(name: String) -> String:
 		key = "enemy%d.%s" % [id, name]
 		_cd_keys[name] = key
 	return key
+
+
+# ── 出手名額（sim/attack_quota.gd）：每種怪列出自己的出招狀態 ──
+# 「開始出招」的狀態：從別的狀態進來要先拿到名額（EnemyFsm.change）。被迫發生的（被丟出去落地就炸、Boss 叫出來的衝撞）不列
+func attack_starts() -> Array[StringName]:
+	return []
+
+
+# 正在出招的狀態（數名額用）：開始出招的加上接下去的（撲 → 咬、蓄力 → 滾）
+func attack_states() -> Array[StringName]:
+	return attack_starts()
+
+
+# 近戰還是遠程（名額分開算）
+func attack_kind() -> StringName:
+	return &"melee"
+
+
+func is_attacking_now() -> bool:
+	return not is_dead and not is_removed and attack_states().has(fsm.current_name)
 
 
 # 由 World.add_entity 在取得 id 之後呼叫（CD key 需要 id）

@@ -22,6 +22,10 @@ func _init(p_world: World, p_type: StringName, at: Vector2, mul: Dictionary) -> 
 	super(p_world, p_type, at, mul, states)
 
 
+func attack_starts() -> Array[StringName]:
+	return ATTACK_STATES
+
+
 func _anim_extra(a: Dictionary) -> void:
 	if fsm.is_in(&"pounce") or fsm.is_in(&"snap"):
 		a["phase"] = fsm.data.phase

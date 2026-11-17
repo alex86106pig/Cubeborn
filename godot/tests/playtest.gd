@@ -9,6 +9,7 @@
 #       --death=revive|real（revive：倒下記一次、原地滿血救起，一定打完，比「哪幾招最痛」；real：真的會死，全員倒下這場就結束，看撐到哪，預設 revive）
 #       --trace=1（倒下時印出之前最後 10 下：時間、哪一招、多少、剩多少血、在做什麼、翻滾充能、身邊 3 內幾隻怪）
 #       --bag-mode=merged（背包合併模式：袋子不掉、過關與獎勵開格）
+#       --quota=近戰,遠程,看不到的（小怪的出手名額 AttackQuota，0 = 不限；例 --quota=2,1,1。不寫 = 照 Config.ATTACK_QUOTA）
 #       --real-from=N（第 1 層第 N 小關起才真的會死，之前倒下原地救起、配裝照正常打過來；進那一關補滿血。--real-from=5 量帶著正常配裝的 Boss 戰）
 #       --start=N（直接從第 1 層第 N 小關開始，跳過的每一關給一個技能遺物；--start=5 只量 Boss 戰）
 #       --crowd=N（近戰身邊 2.5 內醒著的怪到 N 隻就往外退，預設 0 = 不退；做實驗用）
@@ -77,6 +78,10 @@ func _play(seed_value: int, floors: int, classes: Array[StringName], opts: Dicti
 		var peer := World.HOST_PEER_ID + i
 		peers.append(peer)
 		w.player_classes[peer] = classes[i]
+	if opts.has("quota"):   # 小怪的出手名額：近戰,遠程,看不到的（0 = 不限）
+		var q := String(opts["quota"]).split(",")
+		for i in mini(q.size(), AttackQuota.KINDS.size()):
+			w.attack_quota[AttackQuota.KINDS[i]] = int(q[i])
 	if opts.get("bag-mode", "") == String(BagDefs.MODE_MERGED):
 		w.bag_mode = BagDefs.MODE_MERGED
 	w.reset(seed_value, peers)

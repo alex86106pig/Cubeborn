@@ -12,6 +12,10 @@ func _init(p_world: World, p_type: StringName, at: Vector2, mul: Dictionary) -> 
 	super(p_world, p_type, at, mul, states)
 
 
+func attack_starts() -> Array[StringName]:
+	return [&"thrust"]
+
+
 # 破防中被打不換成受傷：破防的那一下（重攻擊）接著就扣血，不然破防只維持一瞬間
 func _on_damaged(amount: float, source_id: int) -> void:
 	if fsm.is_in(&"guard_broken"):
