@@ -63,6 +63,7 @@ var react := 0.25
 var real_death := false                # true：倒下就真的倒下（單人就是這場結束）；false：倒下記一次、原地滿血救起
 var reach := 1.4
 var crowd_max := CROWD_MAX
+var dig_start_hp := -1.0                # 這一層挖墳事件開始那一步的生命（死因文字用）
 var use_shield := true                 # --shield=0：有盾也不舉、跟其他職業一樣只滾（分開「機器人的舉盾時機」與「職業本身」）
 var dig_flee := DIG_FLEE               # --dig-flee=距離：挖墳開始後這麼近有 2 隻以上就跑（0 = 不跑，照舊邊挖邊打）
 var style := "full"
@@ -148,6 +149,11 @@ func _init(p_world: World, p_player: Player, opts: Dictionary, seed_value: int) 
 	_hands = [p.weapon_slots[Loadout.MAIN].get("uid", "")]
 
 
+# 場上醒著的怪（不含僕從與休眠的）
+func _awake_count() -> int:
+	return w.enemies.filter(func(e: Entity) -> bool: return not e.is_dead and e.team != &"player" and not e.dormant).size()
+
+
 # 受傷與倒下的統計歸零（--count-from：只算第 N 小關起）
 func reset_taken() -> void:
 	downs = 0
@@ -157,6 +163,7 @@ func reset_taken() -> void:
 
 
 func begin_floor() -> void:
+	dig_start_hp = -1.0
 	casts = 0
 	spent = 0
 	opened = 0
@@ -181,6 +188,8 @@ func begin_floor() -> void:
 
 # 步完：讀這一步的事件記統計；換武器看手上的 uid；倒下照模式處理（救起或記下死在哪）
 func after_step(t: float) -> void:
+	if dig_start_hp < 0.0 and w.event.state == DigEvent.ACTIVE:
+		dig_start_hp = p.hp
 	for i in p.weapon_slots.size():
 		var uid: Variant = p.weapon_slots[i].get("uid", "")
 		if uid != _hands[i]:
@@ -256,7 +265,9 @@ func after_step(t: float) -> void:
 		var boss := w.entities.get(w.boss_id) as Enemy
 		var left := "、Boss 剩 %d%%" % roundi(100.0 * boss.hp / boss.max_hp) if boss != null and not boss.is_dead and _boss_awake(boss) else ""
 		if w.event.state == DigEvent.ACTIVE:
-			left += "、挖墳 %d%%、挖了 %d 秒" % [roundi(100.0 * w.event.progress), roundi(w.event.time)]
+			left += "、挖墳 %d%%、挖了 %d 秒、開挖時 %d / %d 血、場上醒著 %d 隻" % [roundi(100.0 * w.event.progress), roundi(w.event.time), roundi(dig_start_hp), roundi(p.max_hp), _awake_count()]
+		elif w.event.state == DigEvent.OPEN:
+			left += "、已經挖完（挖了 %d 秒），場上還有 %d 隻醒著的怪" % [roundi(w.event.time), _awake_count()]
 		died_at = "%d-%d %s（%s%s）" % [w.floor_num, w.stage_num, _mmss(t), _last_hit, left]
 
 
