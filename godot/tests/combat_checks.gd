@@ -1734,3 +1734,56 @@ static func check_attack_quota() -> String:
 	if seen[true] != 1 or seen[false] < 2:
 		return "看不到的名額 1：背後的弓手同時最多 1 隻瞄準（%d），面前的不受限（至少 2 隻同時：%d）" % [seen[true], seen[false]]
 	return ""
+
+
+# 視野外出招的提示（ThreatMarks.threats）：背後（身邊一圈以外）的弓手瞄準時提示、方向指向牠，沒在瞄準不提示；面前的不提示（看得到）；
+# 對著隊友出招的不提示；Boss 不提示；設定頁有開關、預設開
+static func check_threat_marks() -> String:
+	if not SettingsPanel.DEFAULTS.get("threat_marks", false) or not SettingsPanel.GAME_TOGGLES.has("threat_marks") or SettingsPanel.SECTION.get("threat_marks", "") != "game":
+		return "設定頁應有「視野外出招的提示」開關、預設開、存在 game 段"
+	for behind: bool in [true, false]:
+		var w := _new_world()
+		var p := _player(w)
+		var e := _spawn(w, &"archer", p.pos + Vector2(0.0, -7.0 if behind else 7.0))
+		e.fsm.change(e.main_state)
+		var aim := p.pos + Vector2(0, 5)
+		_run(w, _cmd(Vector2.ZERO, aim), 1)
+		if not ThreatMarks.threats(w, p).is_empty():
+			return "弓手還沒瞄準時不應提示"
+		var seen_aiming := false
+		var marked := false
+		var dir := Vector2.ZERO
+		for i in roundi(5.0 / DT):
+			p.hp = p.max_hp
+			_run(w, _cmd(Vector2.ZERO, aim), 1)
+			if e.is_attacking_now():
+				seen_aiming = true
+				var t := ThreatMarks.threats(w, p)
+				if not t.is_empty():
+					marked = true
+					dir = t[0].dir
+		if not seen_aiming:
+			return "前置：弓手 5 秒內應瞄準過一次"
+		if marked != behind:
+			return "%s的弓手瞄準時%s提示" % ["背後" if behind else "面前", "應" if behind else "不應"]
+		if behind and dir.dot((e.pos - p.pos).normalized()) < 0.99:
+			return "提示的方向應指向那隻弓手：%s" % dir
+	# 對著隊友出招的不提示
+	var w2 := World.new(&"test_arena")
+	w2.reset(5, [World.HOST_PEER_ID, World.HOST_PEER_ID + 1])
+	w2.spawner.finished = true
+	_worlds.append(w2)
+	var me: Player = w2.players[World.HOST_PEER_ID]
+	var mate: Player = w2.players[World.HOST_PEER_ID + 1]
+	me.pos = Vector2(0, 0)
+	mate.pos = Vector2(0, -12)
+	var a2 := _spawn(w2, &"archer", Vector2(0, -8))   # 在我背後、離隊友比較近
+	a2.fsm.change(a2.main_state)
+	# 房主照出招時記下的目標（Enemy.attack_target_id）；沒有記的（客戶端）看離牠最近的玩家是不是我
+	a2.attack_target_id = mate.id
+	if ThreatMarks.aimed_at(w2, a2, me) or not ThreatMarks.aimed_at(w2, a2, mate):
+		return "弓手這次出招記的目標是隊友：不算對著我、算對著隊友"
+	a2.attack_target_id = 0
+	if ThreatMarks.aimed_at(w2, a2, me) or not ThreatMarks.aimed_at(w2, a2, mate):
+		return "沒有記目標時照最近的玩家：弓手離隊友 4、離我 8，不算對著我"
+	return ""

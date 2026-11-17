@@ -7,10 +7,10 @@ extends ColorRect
 signal changed(key: String, value: Variant)
 signal closed   # 返回、Esc、選單被關掉（hud 把底下的選單叫回來）
 
-const DEFAULTS := {"shadows": true, "lights": true, "ui_scale": 1.0, "master": 1.0, "music": 1.0, "sfx": 1.0, "merged_bag": false}
-const SECTION := {"shadows": "video", "lights": "video", "ui_scale": "video", "master": "audio", "music": "audio", "sfx": "audio", "merged_bag": "game"}
+const DEFAULTS := {"shadows": true, "lights": true, "ui_scale": 1.0, "master": 1.0, "music": 1.0, "sfx": 1.0, "merged_bag": false, "threat_marks": true}
+const SECTION := {"shadows": "video", "lights": "video", "ui_scale": "video", "master": "audio", "music": "audio", "sfx": "audio", "merged_bag": "game", "threat_marks": "game"}
 # 玩法的開關（測試用，兩種玩法交叉試玩後留一種）：下一局開始才生效（main.gd restart 讀）
-const GAME_TOGGLES := {"merged_bag": "背包合併（下一局生效）"}
+const GAME_TOGGLES := {"merged_bag": "背包合併（下一局生效）", "threat_marks": "視野外出招的提示"}
 # 介面大小的檔位（2026-10-27 使用者：先限制幾個檔位、用滑桿拉）：乘在視窗縮放上（專案是 canvas_items 縮放、以 1920×1080 為基準）
 # 顯示的 100% 實際是 BASE_UI_SCALE 倍（2026-10-27 使用者：原本的 100% 角色畫面太滿，改拿 90% 當 100%）
 const UI_SCALES: Array[float] = [0.8, 0.9, 1.0, 1.1]
