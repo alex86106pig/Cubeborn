@@ -1202,7 +1202,7 @@ static func check_shovel() -> String:
 	g4.hp = 1000.0
 	p4.add_item(&"bury")
 	_run(w4, _cmd(Vector2.ZERO, Vector2(0, 8), InputCmd.slot_bit(0)), 1)
-	_run(w4, _cmd(Vector2.ZERO, Vector2(0, 8)), 3)
+	_run(w4, _cmd(Vector2.ZERO, Vector2(0, 8)), ceili(SkillDefs.cast_windup(&"bury") / DT) + 3)   # 前搖做完才埋
 	var bury_dmg := p4.pct_damage(bury.damage_pct) * SkillDefs.damage_mul(&"bury", 1)
 	if absf((g4.max_hp - g4.hp) - bury_dmg) > EPS or g4.buried_timer <= 0.0 or g4.buried_timer > bury.stun + bury.crawl:
 		return "活埋：%.1f 傷害、埋 %.1f 秒：扣 %.2f、埋 %.2f" % [bury_dmg, bury.stun + bury.crawl, g4.max_hp - g4.hp, g4.buried_timer]
@@ -1342,7 +1342,7 @@ static func check_training_dummies() -> String:
 	p.facing = 0.0
 	p.add_item(&"bury")
 	_run(w, _cmd(Vector2.ZERO, near.pos, InputCmd.slot_bit(0)), 1)
-	_run(w, _cmd(Vector2.ZERO, near.pos), 5)
+	_run(w, _cmd(Vector2.ZERO, near.pos), ceili(SkillDefs.cast_windup(&"bury") / DT) + 5)   # 前搖做完才埋
 	var buried: Array = dummies.filter(func(e: Enemy) -> bool: return e.buried_timer > 0.0)   # 埋面前最近的那隻（不一定是剛丟的）
 	if buried.size() != 1:
 		return "活埋應把面前的一隻木樁埋下去：埋了 %d 隻（技能 %s）" % [buried.size(), p.slots.get_slot(p, 0)]

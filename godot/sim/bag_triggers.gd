@@ -88,7 +88,8 @@ const INSTANT_HIT: Array[StringName] = [&"nova", &"cone", &"chain", &"ambush", &
 # 發動一個袋子：第一招這一步放，後面的照技能銜接排進 World.delayed；回傳這一步放出了幾個（含共鳴帶動的）
 # 橘色的袋子規則（SkillDefs 的 bag_rule）：血契 = 這一袋扣生命、傷害 ×power（在 BagDefs.power_of）；回響 = 整串放完 delay 秒後技能再放一次；
 # 共鳴 = 同一邊緊鄰的袋子也發動一次（resonating = 被帶動的，不再帶動別的）
-static func run_bag(world: World, p: Player, b: Dictionary, target: Entity, damage: float, resonating := false) -> int:
+# served：按鍵袋帶頭那招戰技（lead_art）的前搖已經由動作層做完，這一步直接出判定
+static func run_bag(world: World, p: Player, b: Dictionary, target: Entity, damage: float, resonating := false, served: StringName = &"") -> int:
 	var fired := StringName("fired:" + String(b.kind))
 	p.trigger_moments[fired] = p.trigger_moments.get(fired, 0) + 1   # 發動了幾次（檢查與自動試玩用）
 	var steps: Array[Dictionary] = []
@@ -96,7 +97,7 @@ static func run_bag(world: World, p: Player, b: Dictionary, target: Entity, dama
 		var role := ItemDefs.role_of(e.id)
 		if role == ItemDefs.ROLE_EFFECT or (role == ItemDefs.ROLE_SKILL and SkillDefs.SKILLS[e.id].behavior != &"bag_rule"):
 			steps.append(e)
-	var chain := {"b": b, "steps": steps, "i": 0, "target_id": target.id if target != null else 0, "damage": damage, "fired": [] as Array[Dictionary]}
+	var chain := {"b": b, "steps": steps, "i": 0, "target_id": target.id if target != null else 0, "damage": damage, "fired": [] as Array[Dictionary], "served": served}
 	var count := _chain_step(world, p, chain)
 	if BagDefs.has_rule(b, &"resonance") and not resonating:
 		count += _resonate(world, p, b, target, damage)
@@ -116,13 +117,40 @@ static func _chain_step(world: World, p: Player, chain: Dictionary) -> int:
 		return _chain_step(world, p, chain)
 	if ItemDefs.is_skill(e.id) and not ActiveSlots.slot_of(p, b, e).fits:   # 手上的武器放不出來（也沒蓋幻影）：跳過、不扣魔，馬上接下一招
 		return _chain_step(world, p, chain)
+	var served: bool = chain.served == e.id
+	chain.served = &""   # 只有這一串實際放的第一招可能已經做完前搖
+	var wind := 0.0 if served or not ItemDefs.is_skill(e.id) else SkillDefs.cast_windup(e.id)
+	if wind > 0.0 and _can_cast_now(world, p, chain, e):
+		# 戰技的前搖：角色先做動作，wind 秒後才出判定；那時放不出來（魔力被用掉、目標條件變了）就照「放不出來」斷掉
+		p.start_skill_pose(e.id)
+		SkillBehaviors.later(p, wind, func() -> void: _chain_fire(world, p, chain, e, true))
+		return 1
+	return _chain_fire(world, p, chain, e, served)
+
+
+# 這一招現在放不放得出來（前搖開始前先看：放不出來就不做動作，直接走 _chain_fire 照原本的規則斷掉）
+static func _can_cast_now(world: World, p: Player, chain: Dictionary, e: Dictionary) -> bool:
+	var target := world.entities.get(chain.target_id) as Entity
+	var was_paying := p.pay_with_hp
+	p.pay_with_hp = BagDefs.has_rule(chain.b, &"blood_pact")
+	var ok := ActiveSlots.can_cast(p, ActiveSlots.slot_of(p, chain.b, e), null if target == null or target.is_removed else target)
+	p.pay_with_hp = was_paying
+	return ok
+
+
+# 這一串的這一招出判定，成功而且還有下一招就 CHAIN_GAP 秒後接下去；wound_up：前搖做完了（動作已經在播）
+static func _chain_fire(world: World, p: Player, chain: Dictionary, e: Dictionary, wound_up: bool) -> int:
+	var b: Dictionary = chain.b
+	var steps: Array[Dictionary] = chain.steps
+	if not b.entries.has(e):   # 前搖中被拿出袋子了：跳過、照樣往下
+		return _chain_step(world, p, chain)
 	var target := world.entities.get(chain.target_id) as Entity
 	if target != null and target.is_removed:
 		target = null
 	var was_paying := p.pay_with_hp
 	p.pay_with_hp = BagDefs.has_rule(b, &"blood_pact")
 	Combat.begin_record()
-	var result := _run_entry(world, p, b, e, target, chain.damage)
+	var result := _run_entry(world, p, b, e, target, chain.damage, wound_up)
 	var hits := Combat.end_record()
 	p.pay_with_hp = was_paying
 	if not result.ok or (result.instant and hits.is_empty()):
@@ -153,7 +181,7 @@ static func _chain_end(p: Player, chain: Dictionary) -> void:
 
 
 # 放袋子裡的一個東西（效果或技能）：{ ok 放出來了, instant 當下就知道有沒有打到（打空算斷）, skill 是技能 }
-static func _run_entry(world: World, p: Player, b: Dictionary, e: Dictionary, target: Entity, damage: float) -> Dictionary:
+static func _run_entry(world: World, p: Player, b: Dictionary, e: Dictionary, target: Entity, damage: float, wound_up := false) -> Dictionary:
 	var mul := BagDefs.power_of(b)   # 大小倍率 × 種類與邊的倍率（× 血契）
 	if ItemDefs.role_of(e.id) == ItemDefs.ROLE_EFFECT:
 		var short := not p.has_mana(effect_cost(b, e))
@@ -167,7 +195,9 @@ static func _run_entry(world: World, p: Player, b: Dictionary, e: Dictionary, ta
 		return {"ok": ok, "instant": false, "skill": false}
 	var slot := ActiveSlots.slot_of(p, b, e)
 	var short: bool = slot.def.has("mana") and not p.has_mana(ActiveSlots.mana_cost(p, slot))
-	var ok := cast_skill(p, b, e, target)
+	var ok := cast_skill(p, b, e, target, wound_up)
+	if not ok and wound_up and p.skill_pose == e.id:
+		p.skill_pose = &""   # 前搖做完卻放不出來：動作停掉
 	_log_cast(p, e.id, ok, short)
 	return {"ok": ok, "instant": slot.def.has("damage_pct") and INSTANT_HIT.has(slot.def.behavior), "skill": true}
 
@@ -300,13 +330,35 @@ static func _do_effect(world: World, p: Player, id: StringName, eff: Dictionary,
 
 
 # 放袋子裡的一個技能：有目標就在目標身上放，沒有就照按鍵的放法；照技能自己的條件與耗魔，加上蓋在上面的修飾與袋子倍率
-static func cast_skill(p: Player, b: Dictionary, e: Dictionary, target: Entity = null) -> bool:
+static func cast_skill(p: Player, b: Dictionary, e: Dictionary, target: Entity = null, wound_up := false) -> bool:
 	var at: Entity = null if target == null or target.is_removed else target
 	var slot := ActiveSlots.slot_of(p, b, e)
 	if not ActiveSlots.can_cast(p, slot, at):
 		return false
-	ActiveSlots.cast(p, slot, at)
+	ActiveSlots.cast(p, slot, at, wound_up)
 	return true
+
+
+# 這個袋子發動時第一個放的如果是有前搖、現在放得出來的戰技，回傳它的 id（按鍵袋：角色先做它的前搖再發動）；否則 &""
+# 跟 _chain_step 挑第一招的規則一樣：武器不符的技能跳過；帶頭的是效果或法術就沒有
+static func lead_art(p: Player, b: Dictionary) -> StringName:
+	for e in contents(b):
+		var role := ItemDefs.role_of(e.id)
+		if role == ItemDefs.ROLE_EFFECT:
+			return &""
+		if role != ItemDefs.ROLE_SKILL or SkillDefs.SKILLS[e.id].behavior == &"bag_rule":
+			continue
+		var slot := ActiveSlots.slot_of(p, b, e)
+		if not slot.fits:
+			continue
+		if SkillDefs.cast_windup(e.id) <= 0.0:
+			return &""
+		var was_paying := p.pay_with_hp
+		p.pay_with_hp = BagDefs.has_rule(b, &"blood_pact")
+		var ok := ActiveSlots.can_cast(p, slot)
+		p.pay_with_hp = was_paying
+		return e.id if ok else &""
+	return &""
 
 
 # 敵對陣營裡最近的（玩家找怪與冤魂、冤魂找玩家）

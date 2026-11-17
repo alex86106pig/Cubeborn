@@ -878,6 +878,7 @@ static func check_run_log_mana() -> String:
 	var bag: Dictionary = p.loadout.key_bags()[0]
 	p.mana = p.max_mana()
 	BagTriggers.run_bag(w, p, bag, null, 0.0)
+	_run(w, _cmd(Vector2.ZERO), ceili(SkillDefs.cast_windup(&"whirlwind") / DT) + 1)   # 袋子接出來的戰技做完前搖才放出、才記
 	p.mana = 0.0
 	BagTriggers.run_bag(w, p, bag, null, 0.0)
 	var rec: Array = p.cast_log.get(&"whirlwind", [])

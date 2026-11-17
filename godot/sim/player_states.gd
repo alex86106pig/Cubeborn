@@ -190,16 +190,61 @@ class TimedAction:
 				p.world.emit_event("sfx:cue", {"cue": sfx, "pos": p.pos})
 
 
+# 使用技能欄。藥水與帶頭不是戰技的按鍵袋：進來就發動，做 use_item_time 秒的動作。
+# 帶頭是戰技的按鍵袋（ActiveSlots.lead_art）照那一招的施放時間（SkillDefs.CAST）分三段：
+#   前搖：站著不能走、可以轉向，做完才發動（扣魔、進冷卻都在那一刻）；翻滾可以取消，被取消或被打斷都不扣魔
+#   判定：衝刺、鑽地的位移時間，不能取消（翻滾留在緩衝）；其他招這段是 0
+#   收招：站著不能走；翻滾或緩衝中的下一個動作可以取消
 class UseItem:
 	func enter(p: Player, data: Dictionary, _fsm: StateMachine) -> void:
 		data.move_speed_mul = 1.0
 		var slot: Variant = p.slots.get_slot(p, data.index)
 		data.item_behavior = slot.def.behavior if slot != null else &""
-		p.slots.use(p, data.index)
+		data.art = p.slots.lead_art(p, data.index)
+		if data.art == &"":
+			p.slots.use(p, data.index)
+			return
+		data.durations = [SkillDefs.cast_windup(data.art), SkillDefs.cast_active(data.art), SkillDefs.cast_recovery(data.art)]
+		data.cast_phase = 0
+		data.phase_time = 0.0
+		data.move_speed_mul = 0.0
+		p.start_skill_pose(data.art)
 
-	func update(_p: Player, _dt: float, fsm: StateMachine) -> void:
-		if fsm.time >= Config.PLAYER.use_item_time:
+	func update(p: Player, dt: float, fsm: StateMachine) -> void:
+		var d := fsm.data
+		if d.art == &"":
+			if fsm.time >= Config.PLAYER.use_item_time:
+				fsm.change(&"ready")
+			return
+		d.phase_time += dt
+		while d.cast_phase < PHASES.size() and d.phase_time >= d.durations[d.cast_phase] - 1e-6:
+			d.phase_time -= d.durations[d.cast_phase]
+			d.cast_phase += 1
+			if d.cast_phase == 1:
+				if not p.slots.use(p, d.index, d.art):   # 前搖做完卻放不出來（魔力被觸發袋用掉）：不放
+					d.cast_phase = 0
+					fsm.change(&"ready")
+					return
+				d.move_speed_mul = 1.0
+			elif d.cast_phase == 2:
+				d.move_speed_mul = 0.0
+		if d.cast_phase >= PHASES.size():
 			fsm.change(&"ready")
+			return
+		if d.cast_phase == 1:
+			return
+		if p.buffered_action.get("type") == &"roll" and p.roll_charges > 0:
+			if PlayerStates.try_roll(p, fsm):
+				p.skill_pose = &""
+			return
+		if d.cast_phase == 2 and not p.buffered_action.is_empty():
+			fsm.change(&"ready")
+
+	# 前搖還沒做完就離開（翻滾取消、被打出硬直）：那一招沒放，動作停掉
+	func exit(p: Player, fsm: StateMachine) -> void:
+		var d := fsm.data
+		if d.get("art", &"") != &"" and d.cast_phase == 0 and p.skill_pose == d.art:
+			p.skill_pose = &""
 
 
 # 翻滾：往移動方向（沒按方向就往面對方向）固定時間位移，開始後一段時間無敵；速度隨移速屬性放大

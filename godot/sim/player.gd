@@ -84,7 +84,7 @@ var stars: Array[Dictionary] = []      # 星位：{ pos, t, ctx }（SkillBehavio
 var star_timer := 0.0
 var pay_with_hp := false               # 血契：正在放的袋子改扣生命（BagTriggers.run_bag、ActiveSlots.can_use 暫時打開）
 var skill_dash := {}                   # 衝刺類技能進行中：{ left, def, ctx, hit }（SkillBehaviors.update_player）
-var skill_pose: StringName = &""       # 正在做角色動作的戰技（ActiveSlots.cast 放出戰技時設定；畫面層照 anim.skill 擺姿勢）
+var skill_pose: StringName = &""       # 正在做角色動作的戰技（start_skill_pose：前搖開始時設定；畫面層照 anim.skill 擺姿勢）
 var skill_pose_time := 0.0             # 那個動作做了幾秒（做滿 SkillDefs.pose_time 就清掉）
 var parry_timer := 0.0                 # 盾反動作剩餘秒數（畫面用）
 var is_jump_held := false              # 空白鍵按住：站在地上就再跳（連續跳躍）
@@ -964,6 +964,12 @@ func _update_anim() -> void:
 		"skill": skill_pose,              # 戰技的角色動作（空的 = 沒有；觸發袋放的戰技也會做）
 		"skill_time": skill_pose_time,
 	}
+
+
+# 開始做一招戰技的角色動作，從第 at 秒播起（0 = 從前搖開始；前搖的秒數 = 從出手那一刻）
+func start_skill_pose(id: StringName, at := 0.0) -> void:
+	skill_pose = id
+	skill_pose_time = at
 
 
 func _absorb(amount: float) -> float:

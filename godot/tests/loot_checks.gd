@@ -2140,7 +2140,7 @@ static func check_bag_triggers() -> String:
 	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
 	var whirl_first: bool = BagTriggers.contents(key)[0].id == &"whirlwind"
 	var chill_now := d.chill_stacks
-	_run(w2, _cmd(Vector2.ZERO), ceili(BagTriggers.CHAIN_GAP / DT) + 1)
+	_run(w2, _cmd(Vector2.ZERO), ceili((BagTriggers.CHAIN_GAP + SkillDefs.cast_windup(&"whirlwind")) / DT) + 1)   # 旋風斬是戰技：排在哪都要先做前搖
 	if d.hp >= hp0 or d.chill_stacks <= 0 or (whirl_first and chill_now > 0):
 		return "按 1 應先放旋風斬、%.2f 秒後接寒氣：扣血 %.1f、當下冰冷 %d、之後 %d" % [BagTriggers.CHAIN_GAP, hp0 - d.hp, chill_now, d.chill_stacks]
 	# 觸發袋裡的技能：左邊的命中袋放旋風斬，普攻打中時自動放
@@ -2148,9 +2148,11 @@ static func check_bag_triggers() -> String:
 	var p3 := _player(w3)
 	_every_hit(p3)
 	_put(p3, _bag(p3, &"hit", &"left"), &"whirlwind")
+	p3.set_stat_source(&"test", [[&"mana_regen", Stats.MUL, 0.0]])   # 等前搖的那幾步不回魔，扣的才剛好是耗魔
 	var e3 := _item_dummy(w3, Vector2(0, 1.5), 100000.0)
 	var m3 := p3.mana
 	Combat.apply_damage(w3, p3, e3, {"damage": 1.0, "attack": &"primary"})
+	_run(w3, _cmd(Vector2.ZERO), ceili(SkillDefs.cast_windup(&"whirlwind") / DT) + 1)   # 戰技做完前搖才放出、才扣魔
 	if absf(m3 - p3.mana - ActiveSlots.mana_cost(p3, ActiveSlots.slot_of(p3, p3.loadout.bags[1], p3.loadout.bags[1].entries[0]))) > EPS:
 		return "命中袋裡的旋風斬應在普攻打中時自動放（扣魔）：%.1f → %.1f" % [m3, p3.mana]
 	# 計時袋：間隔到了自己發動；強化袋（×1.5）裡的效果傷害跟著變，再乘計時袋的種類倍率（BagDefs.POWER，觸發得多所以輕）
@@ -2464,6 +2466,7 @@ static func check_bag_chain() -> String:
 	p.mana = p.max_mana()
 	w.events.clear()
 	BagTriggers.run_bag(w, p, key, null, 0.0)
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 8)), _wind_steps(&"whirlwind"))   # 旋風斬做完前搖才放出
 	if p.cast_log.get(&"whirlwind", [0])[0] != 1 or p.cast_log.has(&"meteor"):
 		return "第一步應只放旋風斬：%s" % [p.cast_log]
 	var tele: Array[Dictionary] = []
@@ -2483,6 +2486,7 @@ static func check_bag_chain() -> String:
 	_item_dummy(w2, Vector2(0, 10), 100000.0)
 	p2.mana = p2.max_mana()
 	BagTriggers.run_bag(w2, p2, key2, null, 0.0)
+	_run(w2, _cmd(Vector2.ZERO), _wind_steps(&"whirlwind"))
 	var after_first := p2.mana
 	_run(w2, _cmd(Vector2.ZERO), ceili(BagTriggers.CHAIN_GAP / DT) + 2)
 	if p2.cast_log.has(&"meteor") or p2.mana < after_first:

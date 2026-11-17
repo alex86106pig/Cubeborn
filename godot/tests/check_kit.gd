@@ -41,6 +41,11 @@ static func _cmd(move: Vector2, aim: Vector2 = Vector2(0, 5), buttons: int = 0) 
 	return c
 
 
+# 戰技的前搖要幾步（SkillDefs.CAST）：按下或袋子發動後，再跑這麼多步判定才出現
+static func _wind_steps(id: StringName) -> int:
+	return ceili(SkillDefs.cast_windup(id) / DT)
+
+
 static func _run(w: World, cmd: InputCmd, steps: int) -> void:
 	for i in steps:
 		w.step({World.HOST_PEER_ID: cmd}, DT)

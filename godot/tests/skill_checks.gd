@@ -80,6 +80,7 @@ static func check_every_skill() -> String:
 		var allies := w.allies.size()
 		var idx := _slot_of(p, id)
 		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(idx)), 1)
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), ceili(SkillDefs.cast_windup(id) / DT))   # 戰技做完前搖才放出來、才進冷卻
 		var ready := w.cooldowns.is_ready(p.cd(ActiveSlots.cd_key(idx)))
 		var smoked := w.zones.any(func(z: Dictionary) -> bool: return z.get("smoke", 0.0) > 0.0)
 		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), roundi(2.5 / DT))
@@ -351,6 +352,7 @@ static func check_skill_level() -> String:
 		var hp0 := e.hp
 		var mana0 := p.mana
 		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), ceili(SkillDefs.cast_windup(&"whirlwind") / DT))   # 前搖做完才出判定、扣魔
 		dealt.append(hp0 - e.hp)
 		var cost: float = SkillDefs.SKILLS.whirlwind.mana * (1.0 - SkillDefs.LEVEL.mana * (lv - 1))
 		if absf(mana0 - p.mana - cost) > 1e-3:
@@ -534,8 +536,10 @@ static func check_supports() -> String:
 		if with_support and _put_at(p, key, &"extend_support", Vector2i.ZERO) == &"":
 			return "延長（透明格）應蓋得上旋風斬那格"
 		var e := LootChecks._item_dummy(w, Vector2(0, far_d), 100000.0)
+		e.set_stat_source(&"test", [[&"move_speed", Stats.MUL, 0.0]])   # 前搖那幾步怪不能走進範圍
 		var hp0 := e.hp
 		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
+		_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), _wind_steps(&"whirlwind"))
 		if (e.hp < hp0) != with_support:
 			return "延長%s時 %.1f 單位的怪%s打到" % ["蓋著" if with_support else "沒有", far_d, "應" if with_support else "不該"]
 	# 火焰化：透明格蓋住才改成火焰；同一袋但透明格沒蓋到技能就沒效
@@ -550,6 +554,7 @@ static func check_supports() -> String:
 		LootChecks._item_dummy(w, Vector2(0, 1.5), 100000.0)
 		var events: Array[Dictionary] = []
 		_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(_slot_of(p, &"whirlwind"))), 1, events)
+		_run_collect(w, _cmd(Vector2.ZERO, Vector2(0, 5)), _wind_steps(&"whirlwind"), events)
 		var fire := _named(events, "entity:damaged").any(func(ev: Dictionary) -> bool: return ev.get("damage_type", &"phys") == &"fire")
 		if fire != covered:
 			return "火焰化%s時旋風斬%s是火焰傷害" % ["蓋住" if covered else "同一袋沒蓋到", "應" if covered else "不該"]
@@ -564,7 +569,7 @@ static func check_supports() -> String:
 	e3.set_resists({})
 	var ev3: Array[Dictionary] = []
 	_run_collect(w3, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1, ev3)
-	_run_collect(w3, _cmd(Vector2.ZERO), roundi(SkillBehaviors.SPLIT_DELAY / DT) + 2, ev3)
+	_run_collect(w3, _cmd(Vector2.ZERO), _wind_steps(&"whirlwind") + roundi(SkillBehaviors.SPLIT_DELAY / DT) + 2, ev3)
 	var hits := _named(ev3, "entity:damaged").filter(func(ev: Dictionary) -> bool: return ev.target_id == e3.id)
 	if hits.size() != 2 or absf(hits[1].amount / hits[0].amount - SkillBehaviors.SPLIT_MUL) > 0.02:
 		return "分裂：應打 2 次、第二次 ×%.1f：%s" % [SkillBehaviors.SPLIT_MUL, hits.map(func(ev: Dictionary) -> float: return ev.amount)]
@@ -586,6 +591,7 @@ static func check_supports() -> String:
 	p4.set_stat_source(&"test", [[&"mana_regen", Stats.MUL, 0.0]])
 	var m0 := p4.mana
 	_run(w4, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
+	_run(w4, _cmd(Vector2.ZERO, Vector2(0, 5)), _wind_steps(&"whirlwind"))   # 前搖做完才扣魔
 	if absf(with_extend - want_extend) > 1e-3 or absf(cons - want_cons) > 1e-3 or absf(m0 - p4.mana - want_cons) > 1e-3:
 		return "修飾耗魔：旋風斬 %.1f，蓋延長應 %.2f（%.2f）、換成節能應 %.2f（%.2f）、實際扣 %.2f" % [base_cost, want_extend, with_extend, want_cons, cons, m0 - p4.mana]
 	_note("修飾耗魔：旋風斬 %.1f → 延長 %.2f、節能 %.2f" % [base_cost, with_extend, cons])
@@ -711,8 +717,9 @@ static func _check_bag_rules() -> String:
 	p.mana = p.max_mana()
 	var cost: float = ActiveSlots.mana_cost(p, ActiveSlots.slot_of(p, key, key.entries[0]))
 	BagTriggers.run_bag(w, p, key, null, 0.0)
-	_run(w, _cmd(Vector2.ZERO), roundi((SkillDefs.SKILLS.echo.delay + 0.1) / DT))
-	var spent := p.max_mana() - p.mana + p.stats.value(&"mana_regen") * (SkillDefs.SKILLS.echo.delay + 0.1)
+	var echo_wait: float = SkillDefs.cast_windup(&"whirlwind") + SkillDefs.SKILLS.echo.delay + 0.1   # 回響從旋風斬放出（前搖做完）開始算
+	_run(w, _cmd(Vector2.ZERO), roundi(echo_wait / DT))
+	var spent := p.max_mana() - p.mana + p.stats.value(&"mana_regen") * (SkillDefs.SKILLS.echo.delay + 0.1)   # 前搖那段魔力是滿的、沒有回魔
 	if p.cast_log.get(&"whirlwind", [0])[0] != 2 or absf(spent - cost * (1.0 + SkillDefs.SKILLS.echo.mana_share)) > 0.5:
 		return "回響：旋風斬應放 2 次、共耗魔 %.1f：%s 次、%.1f" % [cost * (1.0 + SkillDefs.SKILLS.echo.mana_share), p.cast_log.get(&"whirlwind", []), spent]
 	# 共鳴：左邊命中袋發動時，緊鄰的擊殺袋也發動
@@ -740,9 +747,11 @@ static func _check_bag_rules() -> String:
 	Inventory.for_bag(kb).add(&"t_b", &"blood_pact", Vector2(1, 0), 0)
 	if absf(BagDefs.power_of(kb) - SkillDefs.SKILLS.blood_pact.power) > 1e-6:
 		return "血契的袋子倍率應 × %.2f：%.2f" % [SkillDefs.SKILLS.blood_pact.power, BagDefs.power_of(kb)]
+	p3.set_stat_source(&"test", [[&"mana_regen", Stats.MUL, 0.0]])   # 等前搖的那幾步不回魔
 	p3.mana = 0.0
 	p3.hp = p3.max_hp
 	BagTriggers.run_bag(w3, p3, kb, null, 0.0)
+	_run(w3, _cmd(Vector2.ZERO), _wind_steps(&"whirlwind"))   # 前搖做完才放出、才扣生命
 	var want := p3.mana_cost_of(SkillDefs.SKILLS.whirlwind) * SkillDefs.SKILLS.blood_pact.hp_per_mana * p3.max_hp
 	if p3.cast_log.get(&"whirlwind", [0])[0] != 1 or absf(p3.max_hp - p3.hp - want) > 0.01 or p3.mana != 0.0 or p3.pay_with_hp:
 		return "血契：沒魔也放得出、扣 %.2f 生命：放 %s、扣 %.2f、魔 %.1f" % [want, p3.cast_log.get(&"whirlwind", []), p3.max_hp - p3.hp, p3.mana]
@@ -841,4 +850,103 @@ static func check_skill_pose() -> String:
 	for k: String in ["skill", "skill_time"]:
 		if not NetCodec.ANIM_KEYS.has(k) or not NetCodec.PLAYER_ANIM_DEFAULTS.has(k):
 			return "連線的動畫欄位表要有 %s（ANIM_KEYS 與玩家預設值）" % k
+	return ""
+
+
+# 戰技的施放時間（SkillDefs.CAST）：按數字鍵放的那一招先做前搖（站著不能走、可以轉向），做完才出判定、扣魔、進冷卻，再做收招（不能走）；
+# 前搖中翻滾取消不扣魔、不進冷卻；衝刺的位移中翻滾留在緩衝、位移完才翻；收招可以用翻滾取消；
+# 觸發袋接出來的戰技只把判定延後前搖那麼久，角色不進動作狀態（照樣能走）
+static func check_cast_time() -> String:
+	var wind := SkillDefs.cast_windup(&"whirlwind")
+	var recover := SkillDefs.cast_recovery(&"whirlwind")
+	var wind_steps := ceili(wind / DT)
+	for id: StringName in SkillDefs.CAST:
+		if SkillDefs.SKILLS[id].get("category", &"") != &"attack" or SkillDefs.cast_windup(id) <= 0.0:
+			return "施放時間表只列戰技、前搖要大於 0：%s" % id
+	# 前搖：不出判定、不扣魔、不進冷卻、不能走、可以轉向
+	var s := _setup(&"swordShield")
+	var w: World = s[0]
+	var p: Player = s[1]
+	_put(p, p.loadout.key_bags()[0], &"whirlwind")
+	var e := LootChecks._item_dummy(w, Vector2(0, 1.5), 100000.0)
+	var mana0 := p.mana
+	var cd := p.cd(ActiveSlots.cd_key(0))
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
+	var pos0 := p.pos
+	_run(w, _cmd(Vector2(1, 0), Vector2(5, 0)), wind_steps - 2)
+	if not p.action.is_in(&"useItem") or e.hp < e.max_hp or p.mana < mana0 or not w.cooldowns.is_ready(cd) or p.skill_pose != &"whirlwind":
+		return "旋風斬前搖 %.2f 秒內不應出判定、扣魔、進冷卻，角色做著動作：狀態 %s、扣血 %.1f、魔力 %.1f → %.1f、動作 %s" % [wind, p.action.current_name, e.max_hp - e.hp, mana0, p.mana, p.skill_pose]
+	if p.pos.distance_to(pos0) > 0.01:
+		return "前搖中不能走：移動了 %.3f" % p.pos.distance_to(pos0)
+	if absf(angle_difference(p.facing, atan2(1.0, 0.0))) > 0.3:
+		return "前搖中可以轉向（準星移到右邊）：面向 %.2f" % p.facing
+	_run(w, _cmd(Vector2.ZERO, Vector2(0, 5)), 3)
+	var cost := ActiveSlots.mana_cost(p, p.slots.get_slot(p, 0))
+	if e.hp >= e.max_hp or mana0 - p.mana < cost - 1.0 or w.cooldowns.is_ready(cd):
+		return "前搖做完應出判定、扣魔 %.1f、進冷卻：扣血 %.1f、魔力 %.1f → %.1f" % [cost, e.max_hp - e.hp, mana0, p.mana]
+	# 收招：不能走，做完回到待機
+	var pos1 := p.pos
+	_run(w, _cmd(Vector2(1, 0), Vector2(0, 5)), roundi(recover / DT) - 4)
+	if not p.action.is_in(&"useItem") or p.pos.distance_to(pos1) > 0.01:
+		return "收招 %.2f 秒內不能走：狀態 %s、移動了 %.3f" % [recover, p.action.current_name, p.pos.distance_to(pos1)]
+	_run(w, _cmd(Vector2.ZERO), 6)
+	if not p.action.is_in(&"ready"):
+		return "收招做完應回到待機：%s" % p.action.current_name
+	# 前搖中翻滾取消：不出判定、不扣魔、不進冷卻、動作停掉
+	var s2 := _setup(&"swordShield")
+	var w2: World = s2[0]
+	var p2: Player = s2[1]
+	_put(p2, p2.loadout.key_bags()[0], &"whirlwind")
+	var e2 := LootChecks._item_dummy(w2, Vector2(0, 1.5), 100000.0)
+	var m2 := p2.mana
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
+	_run(w2, _cmd(Vector2.ZERO), 3)
+	_run(w2, _cmd(Vector2(0, -1), Vector2(0, 5), InputCmd.BTN_ROLL), 1)
+	var rolled := p2.action.is_in(&"roll")
+	_run(w2, _cmd(Vector2.ZERO), roundi(1.0 / DT))
+	if not rolled or e2.hp < e2.max_hp or p2.mana < m2 or not w2.cooldowns.is_ready(p2.cd(ActiveSlots.cd_key(0))) or p2.skill_pose != &"":
+		return "前搖中翻滾應取消這一招（不出判定、不扣魔、不進冷卻、動作停掉）：翻滾 %s、扣血 %.1f、魔力 %.1f → %.1f、動作 %s" % [rolled, e2.max_hp - e2.hp, m2, p2.mana, p2.skill_pose]
+	# 收招中翻滾取消
+	_run(w2, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
+	_run(w2, _cmd(Vector2.ZERO), wind_steps + 2)
+	if e2.hp >= e2.max_hp or not p2.action.is_in(&"useItem"):
+		return "前置：再放一次旋風斬應打到、還在收招：扣血 %.1f、狀態 %s" % [e2.max_hp - e2.hp, p2.action.current_name]
+	_run(w2, _cmd(Vector2(0, -1), Vector2(0, 5), InputCmd.BTN_ROLL), 1)
+	if not p2.action.is_in(&"roll"):
+		return "收招中翻滾應取消收招：%s" % p2.action.current_name
+	# 衝刺的位移中不能取消：翻滾留在緩衝，位移完才翻
+	var dash_time: float = SkillDefs.cast_active(&"charge_slash")
+	if dash_time <= 0.0 or dash_time - 0.1 >= Config.PLAYER.action_buffer_time:
+		return "前置：衝鋒斬要有位移時間，而且位移剩 0.1 秒時按的翻滾還在緩衝內：%.2f" % dash_time
+	var s3 := _setup(&"swordShield")
+	var w3: World = s3[0]
+	var p3: Player = s3[1]
+	_put(p3, p3.loadout.key_bags()[0], &"charge_slash")
+	_run(w3, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.slot_bit(0)), 1)
+	_run(w3, _cmd(Vector2.ZERO), ceili(SkillDefs.cast_windup(&"charge_slash") / DT) + roundi((dash_time - 0.1) / DT))
+	if p3.skill_dash.is_empty():
+		return "前置：衝鋒斬前搖做完應在衝刺中"
+	_run(w3, _cmd(Vector2.ZERO, Vector2(0, 5), InputCmd.BTN_ROLL), 1)
+	_run(w3, _cmd(Vector2.ZERO), 2)
+	if p3.action.is_in(&"roll"):
+		return "衝刺的位移中按翻滾不應馬上翻（留在緩衝）"
+	_run(w3, _cmd(Vector2.ZERO), 6)
+	if not p3.action.is_in(&"roll"):
+		return "衝刺位移完應接著翻滾（緩衝中的翻滾取消收招）：%s" % p3.action.current_name
+	# 觸發袋接出來的戰技：判定延後前搖那麼久，角色不進動作狀態、照樣能走
+	var w4 := _new_world()
+	var p4 := _player(w4)
+	_every_hit(p4)
+	_put(p4, _bag(p4, &"hit", &"left"), &"whirlwind")
+	var e4 := LootChecks._item_dummy(w4, Vector2(0, 1.5), 100000.0)
+	Combat.apply_damage(w4, p4, e4, {"damage": 1.0, "attack": &"primary"})
+	var hp4 := e4.hp
+	var m4 := p4.mana
+	var at4 := p4.pos
+	_run(w4, _cmd(Vector2(-1, 0)), wind_steps - 2)
+	if e4.hp < hp4 or p4.mana < m4 or p4.skill_pose != &"whirlwind" or p4.action.is_in(&"useItem") or p4.pos.distance_to(at4) < 0.1:
+		return "命中袋接出來的旋風斬：前搖 %.2f 秒內不出判定、不扣魔、角色做動作但不被定住：扣血 %.1f、魔力 %.1f → %.1f、動作 %s、狀態 %s、走了 %.2f" % [wind, hp4 - e4.hp, m4, p4.mana, p4.skill_pose, p4.action.current_name, p4.pos.distance_to(at4)]
+	_run(w4, _cmd(Vector2.ZERO), 4)
+	if p4.mana >= m4:
+		return "命中袋接出來的旋風斬：前搖做完應放出（扣魔）：%.1f → %.1f" % [m4, p4.mana]
 	return ""

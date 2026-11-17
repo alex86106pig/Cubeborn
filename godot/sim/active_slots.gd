@@ -82,7 +82,16 @@ func can_use(owner: Player, index: int) -> bool:
 	return ok
 
 
-func use(owner: Player, index: int) -> bool:
+# 按鍵袋帶頭的戰技（BagTriggers.lead_art）：按下時角色先做它的前搖（PlayerStates.UseItem），做完才 use；不是戰技帶頭、或放不出來回傳 &""
+func lead_art(owner: Player, index: int) -> StringName:
+	if index == HEAL_INDEX:
+		return &""
+	var keys := owner.loadout.key_bags()
+	return BagTriggers.lead_art(owner, keys[index]) if index < keys.size() else &""
+
+
+# served：帶頭那招戰技的前搖已經由動作層做完了（lead_art 的 id），這次直接出判定
+func use(owner: Player, index: int, served: StringName = &"") -> bool:
 	if not can_use(owner, index):
 		return false
 	var slot: Dictionary = get_slot(owner, index)
@@ -93,21 +102,22 @@ func use(owner: Player, index: int) -> bool:
 		owner.world.cooldowns.start(owner.cd(key), slot.def.cooldown)   # 藥水：次數制，冷卻只是防連按
 	else:
 		if owner.world.is_authority:
-			BagTriggers.run_bag(owner.world, owner, slot.bag, null, 0.0)
+			BagTriggers.run_bag(owner.world, owner, slot.bag, null, 0.0, false, served)
 		else:
-			_predict(owner, slot.bag)
+			_predict(owner, slot.bag, served)
 		owner.world.cooldowns.start(owner.cd(key), Config.MANA.cast_gap)
 	owner.world.emit_event("skill:used", {"key": key, "player_id": owner.id})
 	return true
 
 
 # 客戶端的本機預測：只放技能的位移（衝刺、瞬移、後跳）與耗魔，效果與傷害等房主
-func _predict(owner: Player, b: Dictionary) -> void:
+func _predict(owner: Player, b: Dictionary, served: StringName = &"") -> void:
 	for e in BagTriggers.contents(b):
 		if ItemDefs.is_skill(e.id):
 			var slot := slot_of(owner, b, e)
 			if can_cast(owner, slot):
-				cast(owner, slot)
+				cast(owner, slot, null, e.id == served)
+			served = &""
 
 
 # target：觸發袋的目標（命中、擊殺、受傷）；按鍵與沒有目標的袋子是 null
@@ -121,14 +131,14 @@ static func can_cast(owner: Player, slot: Dictionary, target: Entity = null) -> 
 
 
 # 放一個技能（呼叫端先確認 can_cast）：扣魔力、次數
-static func cast(owner: Player, slot: Dictionary, target: Entity = null) -> void:
+# wound_up：這招的前搖已經做完（動作從前搖開始時就在播了）；沒做前搖直接放的（回響再放的那次）動作從出手那一刻接著播
+static func cast(owner: Player, slot: Dictionary, target: Entity = null, wound_up := false) -> void:
 	var ctx := cast_context(owner, slot)
 	if target != null:
 		SkillBehaviors.aim_at(owner, ctx, target)
 	Combat.scoped(ctx.credit, func() -> void: SkillBehaviors.cast(owner, slot.def, ctx))
-	if slot.def.get("category", &"") == &"attack":   # 戰技：角色做這招的動作（新放的蓋掉還沒做完的）
-		owner.skill_pose = slot.id
-		owner.skill_pose_time = 0.0
+	if slot.def.get("category", &"") == &"attack" and not (wound_up and owner.skill_pose == slot.id):   # 戰技：角色做這招的動作（新放的蓋掉還沒做完的）
+		owner.start_skill_pose(slot.id, SkillDefs.cast_windup(slot.id))
 	if slot.charges > 0:
 		slot.entry["charges"] = slot.charges - 1
 	if slot.def.has("mana"):

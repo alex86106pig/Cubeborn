@@ -16,8 +16,19 @@ const DEFAULT_SCALE := {"weapon": 1.0, "spell": 0.0}   # 傷害 = damage_pct ×�
 const LEVEL := {"max": 5, "damage": 0.2, "mana": 0.1}
 const PHANTOM_MUL := 0.6    # 幻影放出的技能（手上的武器不符、蓋著幻影修飾）傷害倍率（ActiveSlots.cast_context）
 const SUPPORT_MANA := 0.1   # 蓋在技能上的修飾每點強度（ItemDefs power）耗魔 +10%（ActiveSlots.support_mana_mul；節能的 mana_mul 另外算）
-const POSE_TIME := 0.45     # 戰技的角色動作預設做幾秒（Player.skill_pose，畫面層 SkillPoses 照這個長度擺姿勢）；不影響出招時機
+const POSE_TIME := 0.45     # 戰技的判定出現之後，角色動作預設再做幾秒（pose_after；Player.skill_pose，畫面層 SkillPoses 照這個長度擺姿勢）
 const POSE_RECOVER := 0.2   # 有自己時間的戰技（衝刺、鑽地、蓄力）做完後收招的秒數
+# 戰技的施放時間 [前搖, 收招]（秒）：前搖 = 按下到判定出現（魔力在判定出現時才扣），收招 = 判定做完後角色還站著的時間。
+# 按數字鍵放的那一招角色照這兩段停下來（PlayerStates.UseItem）；觸發袋接出來的只把判定延後前搖那麼久、不鎖角色（BagTriggers._chain_step）。
+# 沒列的戰技（狙擊：蓄力就是它的前搖）兩段都是 0。改前搖要一起看 SkillPoses.HIT_K（那招的姿勢在前搖結束時剛好出手）。
+const CAST := {
+	&"thrust": [0.08, 0.15], &"ambush": [0.08, 0.15], &"leap_shot": [0.08, 0.15],
+	&"charge_slash": [0.12, 0.2], &"shield_charge": [0.12, 0.2], &"flame_dash": [0.12, 0.2], &"volley": [0.12, 0.2],
+	&"lightning_arrow": [0.15, 0.2], &"bury": [0.15, 0.2], &"burrow": [0.15, 0.2],
+	&"whirlwind": [0.2, 0.2], &"frost_arrow": [0.2, 0.2], &"blade_storm": [0.2, 0.2],
+	&"dirt_toss": [0.25, 0.25], &"soul_reaver": [0.25, 0.25],
+	&"shield_slam": [0.3, 0.3], &"ground_slam": [0.35, 0.3],
+}
 
 const SKILLS := {
 	&"heal": {
@@ -158,8 +169,27 @@ static func scale_mul(def: Dictionary, weapon: Dictionary) -> float:
 	return scale.weapon + scale.spell * weapon.spell_power / weapon.base_damage
 
 
-# 戰技的角色動作做幾秒：衝刺照衝刺時間、鑽地照鑽地時間、千刃風暴照持續時間、蓄力（狙擊）照蓄力、連射照射完，其他 POSE_TIME
+static func cast_windup(id: StringName) -> float:
+	return CAST[id][0] if CAST.has(id) else 0.0
+
+
+static func cast_recovery(id: StringName) -> float:
+	return CAST[id][1] if CAST.has(id) else 0.0
+
+
+# 判定要做多久（這段不能用翻滾取消）：衝刺、鑽地是位移的時間，其他的一瞬間
+static func cast_active(id: StringName) -> float:
+	var d: Dictionary = SKILLS[id]
+	return d.time if d.behavior in [&"dash", &"burrow"] else 0.0
+
+
+# 戰技的角色動作做幾秒：前搖 + 判定之後的動作（pose_after）
 static func pose_time(id: StringName) -> float:
+	return cast_windup(id) + pose_after(id)
+
+
+# 判定出現之後動作還做幾秒：衝刺照衝刺時間、鑽地照鑽地時間、千刃風暴照持續時間、蓄力（狙擊）照蓄力、連射照射完，其他 POSE_TIME
+static func pose_after(id: StringName) -> float:
 	var d: Dictionary = SKILLS[id]
 	match d.behavior:
 		&"dash", &"burrow":

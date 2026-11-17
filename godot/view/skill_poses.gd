@@ -1,5 +1,5 @@
 # 戰技的角色動作（畫面層）：Player.anim 的 skill（哪一招）與 skill_time（做了幾秒）→ 姿勢，蓋過動作層（普攻、右鍵）。
-# 長度照 SkillDefs.pose_time；只是動作，不影響出招時機與判定。每招照真實的發力方式做：
+# 長度照 SkillDefs.pose_time（前搖 + 判定之後的動作）；前搖結束、判定出現時姿勢剛好出手（HIT_K）。每招照真實的發力方式做：
 #   揮砍類 = 蓄力時腰往反方向扭、手肘收起，出手轉腰帶動肩膀、手肘在打中時打直；刺 = 擊劍的弓步（同側腳踏出、後腿蹬直、後手往後平衡）；
 #   砸地 = 舉過頭時手肘彎、往下砸時膝蓋跟著蹲（彎膝不彎腰）；衝刺 = 跑步姿勢加大前傾；拉弓沿用 Animator.pose_bow
 # 手臂的角度是相對身體：上身前傾 L 時，手臂實際往前的角度 = -x - L（前傾時垂下的手會往後擺），拿鐵鏟的招照這個算鏟面剛好碰到地
@@ -8,6 +8,12 @@ class_name SkillPoses
 extends RefCounted
 
 const SPIN_RATE := 1.6      # 千刃風暴每秒轉幾圈
+# 每招的姿勢做到幾成時出手（判定出現的那一格，跟各招 _seg 的分段對得上）：前搖結束時姿勢剛好走到這裡。
+# 沒列的（衝刺類、照秒數做的招）前搖中停在第一格的預備姿勢，判定一出現就開始動
+const HIT_K := {
+	&"whirlwind": 0.22, &"thrust": 0.15, &"ambush": 0.25, &"shield_slam": 0.62, &"soul_reaver": 0.6,
+	&"ground_slam": 0.65, &"dirt_toss": 0.6, &"lightning_arrow": 0.45, &"frost_arrow": 0.45, &"leap_shot": 0.35, &"bury": 0.1,
+}
 const BOW_SKILLS: Array[StringName] = [&"volley", &"leap_shot", &"lightning_arrow", &"snipe", &"frost_arrow"]
 
 
@@ -15,9 +21,12 @@ static func apply(an: Animator, p: Player, a: Dictionary, _dt: float) -> void:
 	var id: StringName = a.skill
 	if not SkillDefs.SKILLS.has(id):
 		return
-	var t: float = a.skill_time
-	var total := SkillDefs.pose_time(id)
-	var k := clampf(t / total, 0.0, 1.0)
+	# 動作從前搖開始播：前搖那段把姿勢從頭帶到出手那一格（HIT_K），判定出現之後照原本的速度做完
+	var wind := SkillDefs.cast_windup(id)
+	var total := SkillDefs.pose_after(id)
+	var hit_k: float = HIT_K.get(id, 0.0)
+	var t := maxf(0.0, a.skill_time - wind)   # 判定出現後過了幾秒（照秒數做的招用這個；前搖中停在第一格）
+	var k: float = hit_k * a.skill_time / wind if a.skill_time < wind else hit_k + (1.0 - hit_k) * clampf(t / total, 0.0, 1.0)
 	var rig := an.rig
 	rig.body.rotation = Vector3.ZERO
 	an.stance.weight = 0.0
