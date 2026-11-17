@@ -32,6 +32,10 @@ const ENTITY_EVENTS: Array[String] = ["entity:damaged", "hit:predicted", "entity
 const PREVIEW_CUE := "hit"
 const PREVIEW_INTERVAL := 0.15
 
+# 左右聲道：音效照發聲位置在畫面上偏左還是偏右分到 PAN_STEPS 條匯流排（各掛一個 AudioEffectPanner，都送到 SFX_BUS，音量滑桿照樣管得到）
+# 等距視角分不出前後，只分左右；偏多少看 Config.AUDIO 的 pan_distance / pan_max
+const PAN_STEPS := 5
+
 var world: World
 var local_peer := World.HOST_PEER_ID   # 距離衰減以這個玩家為準（main.gd 連線時設定）
 var is_muted := false
@@ -87,8 +91,8 @@ func _exit_tree() -> void:
 	stop_all()
 
 
-# gain：距離衰減的音量比例（0~1），0 不播（也不占同一音效的最短間隔）
-func play(cue_name: String, gain := 1.0) -> void:
+# gain：距離衰減的音量比例（0~1），0 不播（也不占同一音效的最短間隔）；pan：左右 −1~1（0 = 正中間）
+func play(cue_name: String, gain := 1.0, pan := 0.0) -> void:
 	var stream: AudioStream = _streams.get(cue_name)
 	if stream == null or not _sfx.playing or gain <= 0.0:
 		return
@@ -97,7 +101,7 @@ func play(cue_name: String, gain := 1.0) -> void:
 		return
 	_last_played[cue_name] = now
 	# 匯流排與混音方式都要明給：不給時網頁版走 Master、交給瀏覽器播，經過 JS 那份順序錯的匯流排（音樂調 0 音效就沒聲音）
-	(_sfx.get_stream_playback() as AudioStreamPlaybackPolyphonic).play_stream(stream, 0.0, cue_db(cue_name, gain), 1.0, AudioServer.PLAYBACK_TYPE_STREAM, _sfx.bus)
+	(_sfx.get_stream_playback() as AudioStreamPlaybackPolyphonic).play_stream(stream, 0.0, cue_db(cue_name, gain), 1.0, AudioServer.PLAYBACK_TYPE_STREAM, pan_bus(pan))
 
 
 ## 設定頁拉音效滑桿時播一聲當回饋（大廳、主選單沒有音效可聽）；回傳這次有沒有播
@@ -149,6 +153,37 @@ static func event_gain(w: World, listener: Player, event_name: String, p: Dictio
 	if at == null:
 		return 0.0 if event_name in ENTITY_EVENTS else 1.0
 	return distance_gain(listener.pos.distance_to(at))
+
+
+## 這個事件的音效在本機偏左還是偏右（−1 最左、1 最右、0 正中間）：發聲位置相對本機角色、沿畫面的左右方向離多遠
+## 離 pan_distance 以上算偏到底（實際偏多少再乘 pan_max，另一邊還聽得到一點，見 pan_bus）；沒有位置的全場音效與沒有本機角色時是 0
+static func event_pan(w: World, listener: Player, event_name: String, p: Dictionary) -> float:
+	if listener == null:
+		return 0.0
+	var at: Variant = event_pos(w, event_name, p)
+	if at == null:
+		return 0.0
+	var az: float = Config.CAMERA.azimuth
+	var right := Vector2(cos(az), -sin(az))   # 畫面往右在模擬座標的方向（相機在 +X+Z 看向場地，同 CameraRig.screen_right）
+	return clampf(((at as Vector2) - listener.pos).dot(right) / float(Config.AUDIO.pan_distance), -1.0, 1.0)
+
+
+## pan（−1~1）分到哪一條匯流排：分成 PAN_STEPS 段（中間那段就是 SFX_BUS），第一次用到時建立、掛上 AudioEffectPanner、送到 SFX_BUS
+static func pan_bus(pan: float) -> StringName:
+	var step := roundi(clampf(pan, -1.0, 1.0) * (PAN_STEPS - 1) / 2.0)
+	if step == 0:
+		return _bus(SFX_BUS)
+	var bus := StringName("SFX_pan_%d" % step)
+	if AudioServer.get_bus_index(bus) < 0:
+		_bus(SFX_BUS)
+		AudioServer.add_bus()
+		var i := AudioServer.bus_count - 1
+		AudioServer.set_bus_name(i, bus)
+		AudioServer.set_bus_send(i, SFX_BUS)
+		var fx := AudioEffectPanner.new()
+		fx.pan = step * 2.0 / (PAN_STEPS - 1) * float(Config.AUDIO.pan_max)
+		AudioServer.add_bus_effect(i, fx)
+	return bus
 
 
 func toggle_mute() -> bool:
@@ -232,7 +267,8 @@ func _on_event(event_name: String, p: Dictionary) -> void:
 	if cue == "restart" and not _has_started:
 		cue = ""
 	if cue != "":
-		play(cue, event_gain(world, world.players.get(local_peer) if world != null else null, event_name, p))
+		var listener: Player = world.players.get(local_peer) if world != null else null
+		play(cue, event_gain(world, listener, event_name, p), event_pan(world, listener, event_name, p))
 	if event_name == "game:restart":
 		_has_started = true
 	if event_name == "game:paused":

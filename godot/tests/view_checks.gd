@@ -2498,7 +2498,8 @@ static func check_sound_mapping() -> String:
 
 
 # 音效距離衰減與個別音量（v0.44.0）：hear_full 內全音量、hear_max 以外不播、中間 (1 − t)²；
-# 模擬層的 sfx:cue 都帶發聲位置（全場音效除外）；多人時遠處隊友的攻擊音效聽不到；法杖普攻 −8 dB
+# 模擬層的 sfx:cue 都帶發聲位置（全場音效除外）；多人時遠處隊友的攻擊音效聽不到；法杖普攻 −8 dB；
+# 左右聲道照發聲位置在畫面上偏左偏右（event_pan、pan_bus）
 static func check_sound_distance() -> String:
 	var sound_script := _sound_script()
 	var a: Dictionary = Config.AUDIO
@@ -2535,6 +2536,29 @@ static func check_sound_distance() -> String:
 		gains.append(sound_script.event_gain(w, me, "sfx:cue", swings[0]))
 	if gains[0] > 0.0 or absf(gains[1] - 1.0) > EPS:
 		return "隊友在 %.1f 外揮劍音量 %.3f（應 0）、身邊 4 單位 %.3f（應 1）" % [Vector2(14, 14).distance_to(me.pos), gains[0], gains[1]]
+	# 左右聲道：發聲位置在畫面右邊偏右、左邊偏左、正前後方不偏；離 pan_distance 以上偏到底；全場音效與沒有本機角色不偏；
+	# 偏到底分到最邊的匯流排（掛著 AudioEffectPanner、偏 pan_max、送到 SFX），不偏的走 SFX
+	var rig := CameraRig.new()
+	rig._ready()
+	var right: Vector2 = rig.screen_right
+	rig.free()
+	var pd: float = a.pan_distance
+	for c: Array in [[right * pd * 2.0, 1.0], [-right * pd * 2.0, -1.0], [right * pd * 0.5, 0.5], [Vector2(-right.y, right.x) * 6.0, 0.0]]:
+		var got: float = sound_script.event_pan(w, me, "sfx:cue", {"cue": "swing", "pos": me.pos + (c[0] as Vector2)})
+		if absf(got - c[1]) > 0.01:
+			return "發聲位置在本機角色的 %s：左右應是 %.2f，實際 %.2f" % [c[0], c[1], got]
+	if sound_script.event_pan(w, me, "wave:started", {"is_boss": false}) != 0.0 or sound_script.event_pan(w, null, "sfx:cue", {"cue": "swing", "pos": Vector2(9, 9)}) != 0.0:
+		return "全場音效、沒有本機角色時不應偏左右"
+	if sound_script.pan_bus(0.0) != sound_script.SFX_BUS or sound_script.pan_bus(0.1) != sound_script.SFX_BUS:
+		return "不偏（或偏很少）的音效應走 SFX 匯流排"
+	for side: float in [-1.0, 1.0]:
+		var bus: StringName = sound_script.pan_bus(side)
+		var bi := AudioServer.get_bus_index(bus)
+		if bi < 0 or AudioServer.get_bus_send(bi) != sound_script.SFX_BUS or AudioServer.get_bus_effect_count(bi) != 1:
+			return "偏到底的音效應走自己的匯流排、送到 SFX、掛一個效果：%s" % bus
+		var fx := AudioServer.get_bus_effect(bi, 0) as AudioEffectPanner
+		if fx == null or absf(fx.pan - side * a.pan_max) > EPS:
+			return "匯流排 %s 的左右應是 %.2f：%s" % [bus, side * a.pan_max, fx.pan if fx != null else "沒有 Panner"]
 	# 受傷、死亡用目標的位置；沒有位置的全場音效（波次）全音量；沒有本機角色時全音量
 	var far := _spawn(w, &"grunt", me.pos + Vector2(0, 25))
 	if absf(sound_script.event_gain(w, me, "entity:damaged", {"target_id": far.id}) - 0.25) > EPS:
