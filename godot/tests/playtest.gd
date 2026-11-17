@@ -22,6 +22,7 @@ const MAX_FLOOR_TIME := 30.0 * 60.0   # 一層最多模擬這麼久（卡住時�
 
 var _moments := {}          # 觸發袋的時機（Player.trigger_moments 的「種類:按鍵」）全部場次加總
 var _moment_time := 0.0     # 這些時機量了幾秒（每個機器人各算一份）
+var _taken := {"time": 0.0, "hits": 0, "damage": 0.0, "unseen_damage": 0.0}   # 全部場次與機器人加總的被打中（照遊玩紀錄 RunLog 的「看不見」算）
 
 
 func _initialize() -> void:
@@ -37,7 +38,7 @@ func _initialize() -> void:
 		"真的會死" if opts.get("death", "revive") == "real" else ("第 %s 小關起真的會死" % opts["real-from"] if opts.has("real-from") else "倒下原地救起")]
 	var lines: Array[String] = ["# 自動試玩", "", "職業 %s、打法 %s、%s、%d 層、種子 %s；背包 %d × %d = %d 格" % [",".join(PackedStringArray(classes)),
 		opts.get("style", "full"), how, floors, str(seeds), ItemDefs.BAG_SIZE.x, ItemDefs.BAG_SIZE.y, ItemDefs.BAG_SIZE.x * ItemDefs.BAG_SIZE.y], "",
-		"| 種子 | 層 | 時間 | 殺怪（怪群 / 事件 / Boss / 召喚） | 掉武器（白綠藍紫橘） | 撿到 | 背包武器格 | 背包滿的時間 | 地上沒撿 | 靈魂 賺到 / 花掉（開幾箱） | 主袋 / 袋子填滿率（每小關結束） | 技能（等級）· 放幾次 | 羈絆 | 翻滾 / 跳 / 擋 / 喝藥 / 換武器 / 合成 / 丟 / 搬進袋子 / 重擲 / 救人 | 受傷 / 倒下（最多被哪招） | 結果 | 最痛的招 |",
+		"| 種子 | 層 | 時間 | 殺怪（怪群 / 事件 / Boss / 召喚） | 掉武器（白綠藍紫橘） | 撿到 | 背包武器格 | 背包滿的時間 | 地上沒撿 | 靈魂 賺到 / 花掉（開幾箱） | 主袋 / 袋子填滿率（每小關結束） | 技能（等級）· 放幾次 | 羈絆 | 翻滾 / 跳 / 擋 / 喝藥 / 換武器 / 合成 / 丟 / 搬進袋子 / 重擲 / 救人 | 受傷 / 倒下（最多被哪招）· 被打中幾下（每分鐘）· 看不見的傷害 % | 結果 | 最痛的招 |",
 		"|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
 	var cleared := 0
 	var total := 0
@@ -50,6 +51,7 @@ func _initialize() -> void:
 	lines.append("")
 	if opts.get("death", "revive") == "real" or opts.has("real-from"):
 		lines.append("打完 %d 層：%d / %d 場" % [floors, cleared, total])
+	lines.append("被打中：每分鐘 %.1f 下、看不見的傷害 %d%%（全部場次與機器人，共 %.0f 秒；看不見 = 攻擊者不在視野裡或剛進視野不到 %s 秒，同遊玩紀錄）" % [_taken.hits / maxf(_taken.time, 1.0) * 60.0, roundi(100.0 * _taken.unseen_damage / maxf(_taken.damage, 1.0)), _taken.time, str(RunLog.REACT)])
 	lines.append("觸發袋的時機每分鐘幾次（不管有沒有那種袋子、同一步算一次；全部場次與機器人平均，共 %.0f 秒）：%s" % [_moment_time, _moment_text()])
 	lines.append("背包武器格 = 這層結束時背包裡武器占的格數（不含裝備中的）；背包滿的時間 = 第一次有武器撿不下（— = 沒滿過）；組隊時殺怪、掉落、靈魂是全隊的")
 	var text := "\n".join(lines)
@@ -121,8 +123,12 @@ func _play_floor(w: World, bots: Array, seed_value: int) -> Array[String]:
 	var last_stage := w.stage_num
 	var souls_start := w.souls
 	var t := 0.0
+	var logs := {}   # peer → 這一層的遊玩紀錄（被打中幾下、看不見的）
 	for b in bots:
 		b.begin_floor()
+		var log := RunLog.new()
+		log.me_id = b.p.id
+		logs[b.peer] = log
 	while t < MAX_FLOOR_TIME:
 		var cmds := {}
 		for b in bots:
@@ -133,6 +139,10 @@ func _play_floor(w: World, bots: Array, seed_value: int) -> Array[String]:
 			for b in bots:
 				_note_fill(fills, b, w.floor_num, last_stage)
 			last_stage = w.stage_num
+		for log: RunLog in logs.values():
+			log.track(w, t)
+			for ev in w.events:
+				log.on_event(w, ev.name, ev)
 		for ev in w.events:
 			match ev.name:
 				"entity:died":
@@ -166,7 +176,12 @@ func _play_floor(w: World, bots: Array, seed_value: int) -> Array[String]:
 	var souls := "%d / %d（%d）" % [w.souls - souls_start + spent_all, spent_all, opened_all]
 	var rows: Array[String] = []
 	for b in bots:
-		rows.append(_row(w, b, seed_value, t, timeout, kills, rarity, left, souls, full_at, bots.size() > 1, " ".join(PackedStringArray(fills.get(b.peer, [])))))
+		var log: RunLog = logs[b.peer]
+		_taken.time += t
+		_taken.hits += log.hits_taken
+		_taken.damage += log.damage_taken
+		_taken.unseen_damage += log.unseen_damage
+		rows.append(_row(w, b, seed_value, t, timeout, kills, rarity, left, souls, full_at, bots.size() > 1, " ".join(PackedStringArray(fills.get(b.peer, []))), log))
 	return rows
 
 
@@ -189,7 +204,7 @@ func _note_fill(fills: Dictionary, b: Variant, floor_num: int, stage: int) -> vo
 
 
 func _row(w: World, b: Variant, seed_value: int, t: float, timeout: String, kills: Dictionary, rarity: String, left: int, souls: String,
-		full_at: Dictionary, team: bool, fill_text: String) -> String:
+		full_at: Dictionary, team: bool, fill_text: String, log: RunLog) -> String:
 	var p: Player = b.p
 	var picked := 0
 	var cells := 0
@@ -213,7 +228,8 @@ func _row(w: World, b: Variant, seed_value: int, t: float, timeout: String, kill
 		if b.down_by[k] > top_n:
 			top = k
 			top_n = b.down_by[k]
-	var downs := "%d / %d%s" % [roundi(b.taken), b.downs, "（%s %d）" % [top, top_n] if top_n > 0 else ""]
+	var downs := "%d / %d%s · %d 下（%.1f）· %d%%" % [roundi(b.taken), b.downs, "（%s %d）" % [top, top_n] if top_n > 0 else "", log.hits_taken,
+		log.hits_taken / maxf(t, 1.0) * 60.0, roundi(100.0 * log.unseen_damage / maxf(log.damage_taken, 1.0))]
 	var bonds: Array[String] = []
 	for bond: StringName in p.loadout.bond_counts:
 		bonds.append("%s %d" % [BondDefs.BONDS[bond].name, p.loadout.bond_counts[bond]])
