@@ -35,6 +35,7 @@ var summoner_id := 0                 # 召喚詞條叫出來的：召喚者的 i
 var train_path: Array[Vector2] = []   # 會動的木樁（Spawner.spawn_training_dummies）：站著的狀態改成沿這幾個點來回走；空的 = 不動
 var train_leg := 0                    # 正走向 train_path 的第幾個點
 var attack_target_id := 0             # 這次出招是對誰（AttackQuota 數名額用；開始出招時記下）
+var quota_wait_tick := -1             # 哪一步沒輪到名額、在繞（檢查與之後的畫面提示用）
 var quota_tick := -1                  # 哪一步拿到出手名額（同一步再問直接給）
 var no_souls := false                 # 召喚出來的（召喚詞條、Boss 召喚）：死了不給靈魂（v0.44.0，避免刷錢）
 var _frenzied := false
@@ -221,6 +222,27 @@ func attack_states() -> Array[StringName]:
 # 近戰還是遠程（名額分開算）
 func attack_kind() -> StringName:
 	return &"melee"
+
+
+# 沒輪到出手名額的這一步：近戰的怪不站著排隊，沿著圈往玩家背後自己的那個位置繞（每隻的位置照 id 錯開），太貼身就退一點；一直面向玩家。
+# 遠程的照原本的走位（RangedEnemy 是先問名額才決定要不要瞄準，不會走到這裡）
+func hold_off(target: Entity) -> void:
+	if target == null or attack_kind() != &"melee":
+		return
+	var cfg: Dictionary = Config.ATTACK_QUOTA_WAIT
+	var to := pos - target.pos
+	var d := to.length()
+	if d < 1e-4:
+		return
+	var slots: int = cfg.slots
+	var slot: float = target.facing + PI + (float(id % slots) - (slots - 1) * 0.5) * cfg.slot_gap   # 背後、照 id 錯開的那個方位
+	var off: float = MathUtil.wrap_angle(slot - atan2(to.x, to.y))
+	var tangent: Vector2 = Vector2(to.y, -to.x) / d * signf(off) * minf(1.0, absf(off) / float(cfg.slot_gap))
+	var radial: Vector2 = to / d * clampf((radius + target.radius + float(cfg.min_gap) - d) / float(cfg.min_gap), 0.0, 1.0)
+	var dir := tangent + radial
+	velocity = dir.limit_length(1.0) * speed * float(cfg.speed_mul)
+	facing = MathUtil.turn_towards(facing, MathUtil.angle_to(pos, target.pos), def.turn_speed * Config.FIXED_DT)
+	quota_wait_tick = world.tick
 
 
 func is_attacking_now() -> bool:

@@ -6,6 +6,8 @@ extends StateMachine
 func change(name: StringName, p_data: Dictionary = {}) -> bool:
 	var e := ctx as Enemy
 	if e != null and current != null and e.attack_starts().has(name) and not e.attack_states().has(current_name):
-		if not AttackQuota.take(e, e.nearest_target()):
+		var target := e.nearest_target()
+		if not AttackQuota.take(e, target):
+			e.hold_off(target)   # 沒輪到：這一步改成往玩家背後繞（呼叫端接著就 return）
 			return false
 	return super.change(name, p_data)

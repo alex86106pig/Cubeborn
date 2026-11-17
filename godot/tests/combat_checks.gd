@@ -1644,7 +1644,7 @@ static func _max_attackers(w: World, foes: Array[Enemy], seconds: float, aim: Ve
 
 
 # 小怪的出手名額（AttackQuota）：Config 預設全部不限、行為跟沒有名額一樣；設了近戰上限，同時出招的近戰小怪不超過上限、照樣輪得到出手；
-# 魔法 / 稀有怪不佔也不受限；遠程拿不到名額時不進冷卻；玩家看不到的（背後、身邊一圈以外）另有上限，看得到的不受那個上限限制
+# 沒輪到的近戰怪往玩家背後繞、不站著排隊；魔法 / 稀有怪不佔也不受限；遠程拿不到名額時不進冷卻；玩家看不到的（背後、身邊一圈以外）另有上限，看得到的不受那個上限限制
 static func check_attack_quota() -> String:
 	for k: StringName in AttackQuota.KINDS:
 		if int(Config.ATTACK_QUOTA.get(k, -1)) != 0:
@@ -1667,6 +1667,30 @@ static func check_attack_quota() -> String:
 		return "名額不限時 6 隻骷髏戰士圍著應同時出招（至少 4 隻）：最多 %d 隻" % most[0]
 	if most[2] != 2:
 		return "近戰名額 2：同時出招的骷髏戰士最多應剛好 2 隻：%d 隻" % most[2]
+	# 沒輪到的不站著排隊：近戰名額 1、四隻骷髏戰士圍著，2 秒內沒輪到的那幾隻有在移動（Enemy.hold_off 往玩家背後繞）、離玩家不超過 3、彼此沒有疊在同一點
+	var w5 := _new_world()
+	var p5 := _player(w5)
+	w5.attack_quota[&"melee"] = 1
+	var gang: Array[Enemy] = []
+	for at in [Vector2(1.2, 0.3), Vector2(-1.2, 0.3), Vector2(0.4, 1.2), Vector2(-0.4, 1.2)]:
+		var e := _spawn(w5, &"grunt", p5.pos + at)
+		e.fsm.change(e.main_state)
+		gang.append(e)
+	var path := {}
+	var waited := {}
+	for i in roundi(2.0 / DT):
+		p5.hp = p5.max_hp
+		var before := gang.map(func(e: Enemy) -> Vector2: return e.pos)
+		_run(w5, _cmd(Vector2.ZERO, p5.pos + Vector2(0, 5)), 1)
+		for k in gang.size():
+			if gang[k].quota_wait_tick == w5.tick - 1 or gang[k].quota_wait_tick == w5.tick:
+				waited[k] = true
+				path[k] = path.get(k, 0.0) + gang[k].pos.distance_to(before[k])
+	if waited.is_empty() or waited.keys().any(func(k: int) -> bool: return path[k] < 0.3):
+		return "近戰名額 1：沒輪到的骷髏戰士應繞著走（2 秒內各走超過 0.3）：%s" % [path]
+	for e in gang:
+		if e.pos.distance_to(p5.pos) > 3.0:
+			return "沒輪到的骷髏戰士不應被趕遠：離玩家 %.1f" % e.pos.distance_to(p5.pos)
 	# 魔法怪不佔也不受限：名額 1 時，一隻普通加一隻魔法怪可以同時出招
 	var w2 := _new_world()
 	var p2 := _player(w2)

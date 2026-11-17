@@ -100,7 +100,7 @@ func _initialize() -> void:
 	# ───────── 小怪與戰鬥判定 ─────────
 	_check("高度判定：最高點時箭從腳下飛過、地面會中箭；跳起來躲過 Boss 砸地；空中揮砍與空中魔彈打得到地上的怪", CombatChecks.check_height_hits)
 	_check("打擊感：玩家打中不震動、模擬時間不放慢（hit_stop 只放進事件）；玩家被打與 Boss 砸地照常震動；沒有命中定格", CombatChecks.check_hit_feel)
-	_check("小怪的出手名額：預設全部不限、行為不變；設了近戰上限，同時出招的不超過上限；魔法 / 稀有怪不佔也不受限；玩家看不到的另有上限、沒輪到的弓手不進冷卻", CombatChecks.check_attack_quota)
+	_check("小怪的出手名額：預設全部不限、行為不變；設了近戰上限，同時出招的不超過上限、沒輪到的近戰怪繞著走不站著排隊；魔法 / 稀有怪不佔也不受限；玩家看不到的另有上限、沒輪到的弓手不進冷卻", CombatChecks.check_attack_quota)
 	_check("沒有碰撞傷害：骷髏戰士（揮砍冷卻中）、弓手（不射箭時）、Boss（不出招時）貼身 2 秒都不扣血", CombatChecks.check_no_contact_damage)
 	_check("骷髏戰士：爬出 spawn_time 後追擊、揮砍傷害照資料、間隔 ≥ 冷卻、受擊硬直 hurt_time；舉刀 windup 秒後才命中、扇形邊界（加目標半徑）、後半鎖定方向繞到側面就躲開、舉刀中被打會中斷",
 		all.bind([CombatChecks.check_melee_enemy, CombatChecks.check_grunt_swing]))
