@@ -56,7 +56,7 @@ const ERUPT := {
 	"warning": 1.0,                # 墳土隆起幾秒後噴出（第一次在事件開始後 interval 秒）
 	"radius": 2.5,                 # 隆起的墳土範圍
 	"progress": 0.1,               # 每次噴發進度 +10%（全隊共用的進度條，不隨人數變）
-	"count_base": 3,
+	"count_base": 2,               # 原本 3（YangHsu 2026-11-17：單人撐不過挖墳）
 	"count_per_point": 0.05,       # 難度每漲 20 點多 1 隻
 	"land_distance": [3.0, 6.0],   # 落點離挖墳點多遠
 	"flight_time": 1.0,            # 噴出後在空中幾秒（最高點 = 重力 × flight_time² ÷ 8）
@@ -99,7 +99,7 @@ const SPAWN := {
 	"interval_start": 5.0,          # 原本 3.0
 	"interval_min": 1.0,            # 原本 0.8
 	"interval_per_point": 0.01,     # 難度每點間隔 −0.01 秒
-	"group_base": 2,
+	"group_base": 1,                # 原本 2（YangHsu 2026-11-17：單人撐不過挖墳）
 	"group_per_point": 0.02,        # 難度每 50 點多 1 隻（原本每 20 點）
 	"per_extra_player": 0.5,
 	"magic_base": 0.05, "magic_per_point": 0.002, "magic_max": 0.5,
