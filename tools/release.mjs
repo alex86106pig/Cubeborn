@@ -5,6 +5,9 @@
 //   node tools/release.mjs --balance                      跑平衡數字表（武器、技能、怪物），寫進 docs/平衡數字.md
 //   node tools/release.mjs --playtest                     自動試玩：機器人照真實地圖玩一層，印出殺怪、武器掉落、背包佔用（可加 --floors=N --seeds=1,2,3 --class=guardian --style=full|rush --play=smart|dumb --react=秒 --pick=smart|random --death=revive|real --out=檔案；--class 逗號分隔 = 組隊）
 //   node tools/release.mjs --load                         匯出網頁版，在不開視窗的 Chrome 開兩次（沒有 / 有瀏覽器快取），量開場時間軸與著色器編譯
+//   node tools/release.mjs --shot 名字=網址參數 …          截圖確認畫面：debug 匯出網頁版，不開視窗的 Chrome（靜音）照網址參數開，遊戲印出 tick= 那一刻截圖存 build/shots/<名字>.png
+//                                                         例：--shot "feast=seed=2&player-at=30,71.55&reveal&seconds=2.5"（seed / player-at / reveal / bag-mode 只有 debug 匯出才收）
+//                                                         按鍵：參數加 shot-key=Tab&shot-key-after=stage_hop&shot-key-delay=1.5（Console 出現 stage_hop 後 1.5 秒按 Tab；這三個不傳給遊戲）
 //   node tools/release.mjs --summary "摘要"               推送：更新（rebase）→ 決定版號 → 檢查 → commit + tag → push
 //   node tools/release.mjs --summary "摘要" --dry-run     不動 git 歷史、不推：只 fetch、算版號、改檔跑檢查，最後還原
 //   加 --bump=minor|patch 可以蓋過自動判斷的版號
@@ -169,11 +172,12 @@ if (has('playtest')) {
 }
 
 // 匯出網頁版到 build/web；字型不做子集化（CI 才做），第一次載入比網站慢
-function exportWeb() {
+function exportWeb(debug = false) {
   const godot = godotPath();
-  const out = join(ROOT, 'build', 'web');
+  const dir = debug ? 'web-debug' : 'web';
+  const out = join(ROOT, 'build', dir);
   mkdirSync(out, { recursive: true });
-  const exp = runGodot(godot, ['--headless', '--path', '.', '--export-release', 'Web', '../build/web/index.html'], IMPORT_TIMEOUT, '匯出');
+  const exp = runGodot(godot, ['--headless', '--path', '.', debug ? '--export-debug' : '--export-release', 'Web', `../build/${dir}/index.html`], IMPORT_TIMEOUT, '匯出');
   if (!existsSync(join(out, 'index.wasm')) || !exp.ok) {
     const missing = /No export template found|template file not found/i.test(`${exp.out}\n${exp.err}`);
     fail(missing ? '找不到 Godot 的網頁版匯出模板：照 docs/新電腦設定.md 安裝' : `匯出失敗\n${`${exp.out}\n${exp.err || ''}`.trim().split('\n').slice(-15).join('\n')}`);
@@ -289,6 +293,80 @@ async function webPerf() {
 }
 
 if (has('perf')) process.exit(await webPerf() ? 0 : 1);
+
+// 截圖（--shot）：Mac 上的 Godot 只要開視窗就一定搶走前景（引擎顯示主視窗時呼叫 activateIgnoringOtherApps，旗標擋不住），
+// 所以改用網頁版：debug 匯出（才收 seed / player-at / reveal，LaunchArgs.WEB_DEBUG_URL_ARGS）、headless Chrome 靜音開，
+// 等遊戲在 Console 印出 tick=（--seconds 到了）那一刻用 DevTools 截 1920 × 1080
+async function webShot() {
+  const shots = args.filter((a, i) => !a.startsWith('--') && a.includes('=') && !['--godot', '--chrome', '--port'].includes(args[i - 1]));
+  if (shots.length === 0) fail('用法：--shot 名字=網址參數 …（例：--shot "feast=seed=2&player-at=30,71.55&reveal&seconds=2.5"）');
+  const chrome = chromePath();
+  const port = Number(opt('port')) || 8062;
+  const server = await serveWeb(exportWeb(true), port).catch(e => fail(`開不了伺服器（埠 ${port}）：${e.message}`));
+  const outDir = join(ROOT, 'build', 'shots');
+  mkdirSync(outDir, { recursive: true });
+  const debugPort = 9335;
+  const profile = mkdtempSync(join(tmpdir(), 'cubeborn-shot-'));
+  const proc = spawn(chrome, [
+    `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check',
+    '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows',
+    '--headless=new', '--mute-audio', '--disable-features=Translate', '--window-size=1920,1080', 'about:blank',
+  ], { stdio: 'ignore' });
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  let page = null;
+  for (let i = 0; i < 60 && !page; i++) {
+    await sleep(500);
+    try { page = (await (await fetch(`http://127.0.0.1:${debugPort}/json`)).json()).find(t => t.type === 'page'); } catch {}
+  }
+  const close = () => { try { proc.kill(); } catch {} try { rmSync(profile, { recursive: true, force: true }); } catch {} server.close(); };
+  if (!page) { close(); fail('Chrome 開不起來或連不上除錯介面'); }
+  const ws = new WebSocket(page.webSocketDebuggerUrl);
+  await new Promise(r => { ws.onopen = r; });
+  let id = 0, onConsole = null;
+  const pending = new Map();
+  ws.onmessage = ev => {
+    const m = JSON.parse(ev.data);
+    if (m.id && pending.has(m.id)) { pending.get(m.id)(m.result); pending.delete(m.id); }
+    if (m.method === 'Runtime.consoleAPICalled' && onConsole) onConsole(m.params.args.map(a => a.value ?? '').join(' '));
+  };
+  const send = (method, params = {}) => new Promise(r => { const i = ++id; pending.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+  await send('Runtime.enable');
+  await send('Page.enable');
+  await send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
+  let ok = true;
+  for (const s of shots) {
+    const name = s.slice(0, s.indexOf('='));
+    const params = new URLSearchParams(s.slice(s.indexOf('=') + 1));
+    const key = params.get('shot-key');
+    const keyAfter = params.get('shot-key-after') || '';
+    const keyDelay = Number(params.get('shot-key-delay') || 0) * 1000;
+    for (const k of ['shot-key', 'shot-key-after', 'shot-key-delay']) params.delete(k);
+    const query = params.toString().replace(/=(&|$)/g, '$1');   // ?reveal 這種沒有值的照原樣
+    let line = '', pressed = !key;
+    const press = async () => {
+      const code = key.length === 1 ? `Key${key.toUpperCase()}` : key;
+      const vk = { Tab: 9, Escape: 27, Enter: 13 }[key] ?? key.toUpperCase().charCodeAt(0);
+      await send('Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk });
+      await send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk });
+    };
+    const done = new Promise(r => { onConsole = t => {
+      if (!pressed && t.includes(keyAfter)) { pressed = true; setTimeout(press, keyDelay); }
+      if (/^tick=/.test(t)) { line = t; r(); }
+    }; setTimeout(r, 120000); });
+    await send('Page.navigate', { url: `http://localhost:${port}/index.html?${query}` });
+    await done;
+    const shot = await send('Page.captureScreenshot', { format: 'png' });
+    const file = join(outDir, `${name}.png`);
+    writeFileSync(file, Buffer.from(shot.data, 'base64'));
+    console.log(`${line ? '✔' : '✘ 逾時（沒等到 tick=），照樣截了'} ${file}${line ? `  ${line}` : ''}`);
+    ok = ok && line !== '';
+  }
+  ws.close();
+  close();
+  return ok;
+}
+
+if (has('shot')) process.exit(await webShot() ? 0 : 1);
 
 // 網頁版開場載入（--load）：匯出後用全新設定資料夾的 headless Chrome 開兩次（第一次沒有瀏覽器的著色器快取、第二次有，
 // 同玩家第一次 / 之後再來），攔截 WebGL 的著色器編譯，印出開場時間軸、編了幾個著色器程式、等編譯的時間與最慢的程式
