@@ -17,6 +17,9 @@ var turn := 0                   # 輪到 world.player_list 的第幾位
 var timer := 0.0                # 這一位擲骰剩幾秒（ROLL）／倒數剩幾秒（COUNTDOWN）
 var settle := 0.0               # 骰子還在轉的秒數：這段不收操作、不倒數
 var foes: Array[int] = []       # 這一場要打倒的怪（怪群成員、Boss）
+var back_to: StringName = &""   # 花次數自己擲（逛地圖 / 戰鬥中按 R）：擲完回到這個階段（戰鬥中照樣倒數）；空 = 菁英 / Boss 的開場擲骰
+var resuming := false           # 這次倒數是戰鬥中擲完的：倒數完接著打，不再給開場護盾與回血
+var charges: Dictionary = {}    # peer_id -> 擲骰次數（不放 Seat：換關時補次數不該先建 Seat，Seat 建立時才照武器生骰子）
 var states: Dictionary = {}     # peer_id -> Seat
 
 
@@ -48,6 +51,9 @@ func reset() -> void:
 	timer = 0.0
 	settle = 0.0
 	foes.clear()
+	back_to = &""
+	resuming = false
+	charges.clear()
 	states.clear()
 
 
@@ -73,16 +79,46 @@ func current(world: World) -> Player:
 
 # ---------- 流程 ----------
 
+func charges_of(p: Player) -> int:
+	return int(charges.get(p.peer_id, 0))
+
+
+func _add_charges(p: Player, n: int) -> void:
+	charges[p.peer_id] = mini(DiceDefs.CHARGES_MAX, charges_of(p) + n)
+
+
+# 一關開始（World._populate_floor：開局、換關、換層、同一關重來）：每人 +CHARGES_STAGE 次
+func on_stage_start(world: World) -> void:
+	phase = EXPLORE
+	foes.clear()
+	back_to = &""
+	resuming = false
+	for p in world.player_list:
+		_add_charges(p, DiceDefs.CHARGES_STAGE)
+
+
 # 怪群被發現、Boss 開追（World.alert_pack、Boss.aggro）：逛地圖時開一場；已經在這一場裡就併進來，不重擲
+# 一般的怪群直接開打（用手上的結果）；有菁英（魔法 / 稀有）或 Boss 的先免費擲一次、倒數再開打
 func on_alert(world: World, ids: Array) -> void:
+	var big := false
 	for id: int in ids:
 		var e := world.entities.get(id) as Enemy
 		if e != null and not e.is_dead and not foes.has(id):
 			foes.append(id)
+			big = big or e.is_boss() or e.rarity != MonsterRarityDefs.NORMAL
 	if phase != EXPLORE or foes.is_empty():
 		return
-	phase = ROLL
 	fights += 1
+	world.emit_event("dice:encounter", {"fight": fights, "foes": foes.size(), "roll": big})
+	if big:
+		_start_roll(world, null)
+	else:
+		_start_fight(world)
+
+
+# 開始擲骰：roller = null 是開場擲骰（活著的每人輪流），否則只有那位（花次數自己擲，擲完回到 back_to）
+func _start_roll(world: World, roller: Player) -> void:
+	phase = ROLL
 	turn = 0
 	settle = 0.0
 	timer = DiceDefs.ROLL_TIME
@@ -92,14 +128,36 @@ func on_alert(world: World, ids: Array) -> void:
 		s.rolled = false
 		s.rerolls = DiceDefs.REROLLS
 		s.choice = &""
-		s.done = not _can_roll(p)
-	for p in world.player_list:
-		p.fight_shield = 0.0
-	world.emit_event("dice:encounter", {"fight": fights, "foes": foes.size()})
+		s.done = not can_roll(p) or (roller != null and p != roller)
 	_skip_done(world)
 
 
-func _can_roll(p: Player) -> bool:
+# 開打：開場護盾與開場回血在這裡給（每一場一次；戰鬥中按 R 重擲不再給）
+func _start_fight(world: World) -> void:
+	phase = FIGHT
+	for p in world.player_list:
+		p.fight_shield = 0.0
+	for p in world.player_list:
+		var s := seat_of(p)
+		if s.result.is_empty() or not can_roll(p):
+			continue
+		for id: StringName in s.result.effects:
+			var n: int = s.result.effects[id]
+			var e: Dictionary = DiceDefs.EFFECTS[id]
+			match e.kind:
+				&"shield":
+					for q in world.player_list:
+						if q == p or e.get("team", false):
+							q.fight_shield += e.value * n
+				&"heal":
+					p.hp = minf(p.max_hp, p.hp + p.max_hp * e.value * n)
+	world.emit_event("dice:fight", {"fight": fights})
+	var first := world.first_alive_player()
+	if first != null:
+		world.emit_event("sfx:cue", {"cue": "waveStart", "pos": first.pos})
+
+
+func can_roll(p: Player) -> bool:
 	return not p.is_dead and not p.is_downed and not p.descended
 
 
@@ -122,22 +180,30 @@ func step_frozen(world: World, dt: float) -> void:
 		COUNTDOWN:
 			timer -= dt
 			if timer <= 0.0:
-				phase = FIGHT
-				world.emit_event("dice:fight", {"fight": fights})
-				var p := world.first_alive_player()
-				if p != null:
-					world.emit_event("sfx:cue", {"cue": "waveStart", "pos": p.pos})
+				if resuming:   # 戰鬥中擲完：接著打，開場護盾與回血這一場已經給過
+					resuming = false
+					phase = FIGHT
+					world.emit_event("dice:fight", {"fight": fights})
+				else:
+					_start_fight(world)
 
 
 func _turn_player(world: World) -> Player:
 	return world.player_list[turn] if turn < world.player_list.size() else null
 
 
-# 輪到的人跳過已經完成（倒地、死掉）的；全部完成就倒數
+# 輪到的人跳過已經完成（倒地、死掉）的；全部完成就倒數（逛地圖時花次數擲的直接回到逛地圖）
 func _skip_done(world: World) -> void:
 	while turn < world.player_list.size() and seat_of(world.player_list[turn]).done:
 		turn += 1
 	if turn >= world.player_list.size():
+		var back := back_to
+		back_to = &""
+		if back == EXPLORE:
+			phase = EXPLORE
+			world.emit_event("dice:resume", {"phase": String(phase)})
+			return
+		resuming = back == FIGHT
 		phase = COUNTDOWN
 		timer = DiceDefs.COUNTDOWN
 		world.emit_event("dice:countdown", {"fight": fights})
@@ -182,7 +248,8 @@ func on_enemy_died(world: World, e: Enemy) -> void:
 	var any := false
 	for p in world.player_list:
 		var s := seat_of(p)
-		s.offers = _make_offers(world, p, s) if _can_roll(p) else []
+		_add_charges(p, DiceDefs.CHARGES_PER_FIGHT)
+		s.offers = _make_offers(world, p, s) if can_roll(p) else []
 		any = any or not s.offers.is_empty()
 	phase = REWARD if any else EXPLORE
 	world.emit_event("dice:reward" if any else "dice:explore", {"fight": fights})
@@ -213,6 +280,13 @@ func _op(world: World, p: Player, op: Array) -> void:
 				phase = EXPLORE
 				world.emit_event("dice:explore", {"fight": fights})
 			return
+	if int(op[0]) == InputCmd.OP_DICE_ROLL and (phase == EXPLORE or phase == FIGHT):
+		if charges_of(p) > 0 and can_roll(p):   # 花 1 次自己擲：暫停、一按就擲出去
+			charges[p.peer_id] = charges_of(p) - 1
+			back_to = phase
+			_start_roll(world, p)
+			_roll(world, p)
+		return
 	if phase != ROLL or _turn_player(world) != p or settle > 0.0 or s.done:
 		return
 	match int(op[0]):
@@ -235,7 +309,7 @@ func _op(world: World, p: Player, op: Array) -> void:
 
 # ---------- 結果 ----------
 
-# 擲完：右鍵換成骰到的那招，效果面掛上去（stat 掛屬性來源 dice、全隊的每位擲的人各一個來源）、護盾與回血開場就給
+# 擲完：右鍵換成骰到的那招，效果面掛上去（stat 掛屬性來源 dice、全隊的每位擲的人各一個來源）；護盾與回血等開打才給（_start_fight）
 func _apply_result(world: World, p: Player, s: Seat) -> void:
 	var res := DiceDefs.evaluate(s.up_faces(), p.weapon_id, s.choice)
 	var own: Array = []
@@ -245,9 +319,6 @@ func _apply_result(world: World, p: Player, s: Seat) -> void:
 	for id: StringName in res.effects:
 		var n: int = res.effects[id]
 		var e: Dictionary = DiceDefs.EFFECTS[id]
-		var targets: Array[Player] = [p]
-		if e.get("team", false):
-			targets = world.player_list
 		match e.kind:
 			&"stat":
 				(team if e.get("team", false) else own).append([e.stat[0], e.stat[1], float(e.stat[2]) * n])
@@ -255,11 +326,6 @@ func _apply_result(world: World, p: Player, s: Seat) -> void:
 				basic += e.value * n
 			&"cdr":
 				cdr += e.value * n
-			&"shield":
-				for q in targets:
-					q.fight_shield += e.value * n
-			&"heal":
-				p.hp = minf(p.max_hp, p.hp + p.max_hp * e.value * n)
 	p.set_stat_source(&"dice", own)
 	var team_source := StringName("dice_team:%d" % p.peer_id)
 	for q in world.player_list:

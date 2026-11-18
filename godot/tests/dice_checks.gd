@@ -8,7 +8,15 @@ static func _dice_world() -> World:
 	var w := _new_world()
 	w.dice = DiceRun.new()
 	w.dice.reset()
+	w.dice.on_stage_start(w)   # 開局的擲骰次數（正式流程在 World.reset 的 _populate_floor 給）
 	return w
+
+
+# 菁英怪（稀有）：碰到才會免費擲骰；一般的怪群直接開打
+static func _elite(w: World, at: Vector2) -> Enemy:
+	var e := _spawn(w, &"grunt", at)
+	e.set_rarity(&"rare", [])
+	return e
 
 
 # 一隻怪自己一群（地圖預放的怪群那樣登記），回傳群的編號
@@ -60,12 +68,12 @@ static func check_dice_evaluate() -> String:
 static func check_dice_fight() -> String:
 	var w := _dice_world()
 	var p := _player(w)
-	var e := _spawn(w, &"grunt", p.pos + Vector2(8, 0))
+	var e := _elite(w, p.pos + Vector2(8, 0))
 	if p.slots.get_slot(p, ActiveSlots.DICE_INDEX) != null:
 		return "還沒擲骰就有右鍵技能"
 	w.alert_pack(_lone_pack(w, e), e, p)
 	if w.dice.phase != DiceRun.ROLL or not w.dice.foes.has(e.id):
-		return "怪群發現玩家後應開始擲骰：phase %s、foes %s" % [w.dice.phase, w.dice.foes]
+		return "菁英群發現玩家後應開始擲骰：phase %s、foes %s" % [w.dice.phase, w.dice.foes]
 	var at := e.pos
 	_wait(w, 1.0)
 	if e.pos != at or w.dice.phase != DiceRun.ROLL:
@@ -96,8 +104,8 @@ static func check_dice_fight() -> String:
 	var dmg_face: Array = DiceDefs.EFFECTS[&"fx_dmg"].stat
 	if not is_equal_approx(p.stats.value(&"damage"), dmg_before * (1.0 + float(dmg_face[2]))):
 		return "傷害面應加 %s：%.3f → %.3f" % [dmg_face[2], dmg_before, p.stats.value(&"damage")]
-	if not is_equal_approx(p.fight_shield, DiceDefs.EFFECTS[&"fx_shield"].value) or not is_equal_approx(p.basic_attack_mul, DiceDefs.BASIC_ATTACK_MUL):
-		return "開場護盾 %.1f（應 %s）、普攻倍率 %.2f（應 %s）" % [p.fight_shield, DiceDefs.EFFECTS[&"fx_shield"].value, p.basic_attack_mul, DiceDefs.BASIC_ATTACK_MUL]
+	if not is_equal_approx(p.basic_attack_mul, DiceDefs.BASIC_ATTACK_MUL):
+		return "普攻倍率 %.2f（應 %s）" % [p.basic_attack_mul, DiceDefs.BASIC_ATTACK_MUL]
 	if w.dice.phase != DiceRun.COUNTDOWN:
 		return "全部擲完應倒數：%s" % w.dice.phase
 	_wait(w, DiceDefs.COUNTDOWN * 0.5)
@@ -106,6 +114,8 @@ static func check_dice_fight() -> String:
 	_wait(w, DiceDefs.COUNTDOWN * 0.5)
 	if w.dice.phase != DiceRun.FIGHT:
 		return "倒數完應開打：%s" % w.dice.phase
+	if not is_equal_approx(p.fight_shield, DiceDefs.EFFECTS[&"fx_shield"].value):
+		return "開打時給開場護盾 %.1f（應 %s）" % [p.fight_shield, DiceDefs.EFFECTS[&"fx_shield"].value]
 	var ctx: Dictionary = ActiveSlots.cast_context(p, slot)
 	var expect: float = SkillDefs.damage_mul(skill, 1) * SkillDefs.scale_mul(slot.def, p.weapon) * DiceDefs.tier_of(3).mul
 	if not is_equal_approx(ctx.mul, expect):
@@ -160,7 +170,7 @@ static func _blank_count(s: DiceRun.Seat) -> int:
 static func check_dice_auto() -> String:
 	var w := _dice_world()
 	var p := _player(w)
-	var e := _spawn(w, &"grunt", p.pos + Vector2(8, 0))
+	var e := _elite(w, p.pos + Vector2(8, 0))
 	w.alert_pack(_lone_pack(w, e), e, p)
 	_wait(w, DiceDefs.ROLL_TIME)
 	var s := w.dice.seat_of(p)
@@ -221,3 +231,63 @@ static func check_dice_no_loot() -> String:
 	hud.queue_free()
 	cam.queue_free()
 	return err
+
+
+
+# 擲骰次數（YangHsu 2026-11-19）：開局 CHARGES_STAGE 次；一般的怪群碰到不暫停、直接開打（開場護盾照手上的結果給）；
+# 戰鬥中按 R 花 1 次擲、擲完倒數再接著打（不再給開場護盾）；打完 +CHARGES_PER_FIGHT；逛地圖按 R 花 1 次、擲完回到逛地圖；
+# 0 次按 R 沒反應；換關 +CHARGES_STAGE、最多 CHARGES_MAX
+static func check_dice_charges() -> String:
+	var w := _dice_world()
+	var p := _player(w)
+	var s := w.dice.seat_of(p)
+	if w.dice.charges_of(p) != DiceDefs.CHARGES_STAGE:
+		return "開局應有 %d 次：%d" % [DiceDefs.CHARGES_STAGE, w.dice.charges_of(p)]
+	var e := _spawn(w, &"grunt", p.pos + Vector2(8, 0))
+	w.alert_pack(_lone_pack(w, e), e, p)
+	if w.dice.phase != DiceRun.FIGHT or w.dice.is_frozen():
+		return "一般的怪群應直接開打、不暫停：%s" % w.dice.phase
+	_run(w, _op_cmd([InputCmd.OP_DICE_ROLL]), 1)
+	if w.dice.phase != DiceRun.ROLL or w.dice.charges_of(p) != DiceDefs.CHARGES_STAGE - 1 or not s.rolled:
+		return "戰鬥中按 R 應花 1 次擲出去：%s、剩 %d、rolled %s" % [w.dice.phase, w.dice.charges_of(p), s.rolled]
+	_wait(w, DiceDefs.SETTLE_TIME)
+	s.face[0] = s.pool[0].find(&"fx_shield")
+	var shield := p.fight_shield
+	_run(w, _op_cmd([InputCmd.OP_DICE_DONE]), 1)
+	if w.dice.phase != DiceRun.COUNTDOWN:
+		return "戰鬥中擲完應倒數再接著打：%s" % w.dice.phase
+	_wait(w, DiceDefs.COUNTDOWN)
+	if w.dice.phase != DiceRun.FIGHT:
+		return "倒數完應接著打：%s" % w.dice.phase
+	if not is_equal_approx(p.fight_shield, shield):
+		return "戰鬥中重擲不該再給開場護盾：%.1f → %.1f" % [shield, p.fight_shield]
+	e.die(p.id)
+	if w.dice.charges_of(p) != DiceDefs.CHARGES_STAGE - 1 + DiceDefs.CHARGES_PER_FIGHT:
+		return "打完一群應 +%d 次：%d" % [DiceDefs.CHARGES_PER_FIGHT, w.dice.charges_of(p)]
+	_run(w, _op_cmd([InputCmd.OP_DICE_REWARD, 0]), 1)
+	var e2 := _spawn(w, &"grunt", p.pos + Vector2(8, 0))
+	w.alert_pack(_lone_pack(w, e2), e2, p)
+	var want: float = DiceDefs.EFFECTS[&"fx_shield"].value * s.result.effects.get(&"fx_shield", 0)
+	if w.dice.phase != DiceRun.FIGHT or want <= 0.0 or not is_equal_approx(p.fight_shield, want):
+		return "下一群直接開打時照手上的結果給開場護盾 %.1f：%.1f（%s）" % [want, p.fight_shield, w.dice.phase]
+	e2.die(p.id)
+	_run(w, _op_cmd([InputCmd.OP_DICE_REWARD, 0]), 1)
+	var before := w.dice.charges_of(p)
+	_run(w, _op_cmd([InputCmd.OP_DICE_ROLL]), 1)
+	if w.dice.phase != DiceRun.ROLL or w.dice.charges_of(p) != before - 1:
+		return "逛地圖按 R 應花 1 次擲：%s、%d → %d" % [w.dice.phase, before, w.dice.charges_of(p)]
+	_wait(w, DiceDefs.SETTLE_TIME)
+	_run(w, _op_cmd([InputCmd.OP_DICE_DONE]), 1)
+	if w.dice.phase != DiceRun.EXPLORE:
+		return "逛地圖擲完應回到逛地圖：%s" % w.dice.phase
+	w.dice.charges[p.peer_id] = 0
+	_run(w, _op_cmd([InputCmd.OP_DICE_ROLL]), 1)
+	if w.dice.phase != DiceRun.EXPLORE:
+		return "0 次時按 R 不該擲：%s" % w.dice.phase
+	w.dice.on_stage_start(w)
+	if w.dice.charges_of(p) != DiceDefs.CHARGES_STAGE:
+		return "換關應 +%d 次：%d" % [DiceDefs.CHARGES_STAGE, w.dice.charges_of(p)]
+	w.dice.on_stage_start(w)
+	if w.dice.charges_of(p) != DiceDefs.CHARGES_MAX:
+		return "最多存 %d 次：%d" % [DiceDefs.CHARGES_MAX, w.dice.charges_of(p)]
+	return ""

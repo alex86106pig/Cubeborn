@@ -218,6 +218,8 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 func _populate_floor() -> void:
 	event.reset(self)   # 先歸零：怪群的難度倍率要用這一層的基礎難度；Boss 在這一層的第一步才放（見 DigEvent.update）
 	pack_digest = 0
+	if dice != null:
+		dice.on_stage_start(self)   # 每一關補擲骰次數
 	if spawn_packs and map.get("packs", false):
 		spawner.spawn_packs(self, floor_rng(&"packs"))
 		if is_authority:
