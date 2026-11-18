@@ -383,11 +383,11 @@ func _fill_bag_page() -> void:
 		c.queue_free()
 	if _merged:
 		var f := _flow()
-		f.add_child(_action("隨機開 1 格", func() -> void: unlock_requested.emit(&"random"), UiKit.BUTTON_S))
+		f.add_child(_action("三選一 +1", func() -> void: unlock_requested.emit(&"choice"), UiKit.BUTTON_S))
 		f.add_child(_action("自選 +1", func() -> void: unlock_requested.emit(&"pick"), UiKit.BUTTON_S))
 		f.add_child(_action("全部打開", func() -> void: unlock_requested.emit(&"all"), UiKit.BUTTON_S))
 		_bag_page.add_child(f)
-		_bag_page.add_child(UiKit.label("背包合併：隨機 = 過小關、門的開格；自選 = Boss、鐵砧", UiKit.FONT_NOTE, Color(1, 1, 1, 0.7)))
+		_bag_page.add_child(UiKit.label("背包合併：三選一 = 過小關、門的開格；自選 = Boss、鐵砧", UiKit.FONT_NOTE, Color(1, 1, 1, 0.7)))
 		return
 	for tier: StringName in BagDefs.TIERS:
 		var f := _flow()

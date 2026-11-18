@@ -1241,9 +1241,20 @@ func _relic_choice(opts: Array) -> int:
 # 3 選 1 每個選項的分數（越高越想要，< 0 = 拿了沒用）：
 #   技能：已經有、還沒滿級（再選一次升級）10；還沒有 9；滿級 -1。袋子 8（詛咒袋 2）；鐵砧的改造 5
 #   道具：每個羈絆 1 + 現有格數（在走的羈絆優先），補上這件剛好湊到下一階再 +3；沒有羈絆 0.1
-# 背包合併的自選開格：先開主袋（數值道具最多），貼著已開格的優先，沒有就第一格
+# 背包合併的開格：三選一先挑主袋的候選（數值道具最多），沒有就第一個；
+# 自選先開主袋（數值道具最多），貼著已開格的優先，沒有就第一格
 func _spend_unlock(cmd: InputCmd) -> void:
-	if p.loadout.unlock_picks <= 0 or not cmd.inv_ops.is_empty():
+	if not cmd.inv_ops.is_empty():
+		return
+	if not p.loadout.unlock_offers.is_empty():
+		var offer: Dictionary = p.loadout.unlock_offers[0]
+		for s in p.loadout.unlock_offers:
+			if s.where == Loadout.CORE:
+				offer = s
+				break
+		cmd.inv_ops.append([InputCmd.OP_UNLOCK, offer.where, offer.cell.x, offer.cell.y])
+		return
+	if p.loadout.unlock_picks <= 0:
 		return
 	var spots := p.loadout.locked_spots()
 	if spots.is_empty():

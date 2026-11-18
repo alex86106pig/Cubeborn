@@ -203,7 +203,7 @@ func _initialize() -> void:
 	_check("技能與按鍵袋：主袋不放技能、技能自動進按鍵袋；數字鍵 = 按鍵袋由左到右、Q 治療藥水；每個技能放得出來、扣魔力、有效果；戰技放出時角色做那招的動作（做滿 pose_time 清掉、法術不做、連線帶 skill / skill_time）；戰技的施放時間（按鍵放的先做前搖才出判定與扣魔、前搖與收招不能走、前搖可以轉向、翻滾取消前搖不扣魔、衝刺的位移中不能取消、收招可以取消；觸發袋接出來的只延後不定住角色；被有目標的袋子觸發時位移類角色自己做、其他在命中點出不做角色動作）；武器需求（手上的武器不符放不出來、不扣魔、同一袋跳過它接著放後面的，蓋上幻影就放得出來、傷害打折、耗魔加，換上符合的就能放，背包與說明標出來）、技能的物理 / 屬性加成看技能自己的屬性；傷害來源（傷害 = %（基礎傷害 × 武器係數 + 法術強度 × 法強係數），說明寫出吃什麼）；等級加傷減耗魔、看得到等級（說明框、遺物卡升級前後、技能欄）、稀有度的強度預算乘在傷害上（施放與說明框）、技能遺物（石棺必出、祭壇不出，有還沒滿級的技能時保證一個升級）；修飾的透明格蓋在技能上才有效（延長、火焰化、分裂；同一袋沒蓋到沒效）、每顆照強度加耗魔、節能減耗魔；透明格（擺放規則、蓋多格技能的延長 / 霜化 / 耗魔相乘、羈絆只算實心格、技能搬走修飾留著失效、自動擺放先蓋技能）；魔力（開局滿、回魔、上限、不夠放不出、魔力道具與命中回魔、進快照）；橘色技能（裂地斬打直線、天譴最多 4 隻、魂泉耗魔減半、回響再放一次、共鳴帶動緊鄰的袋子、血契扣生命不扣到死、噬魂刃疊層換層歸零、積怨越痛越痛、星位三角形）",
 		all.bind([SkillChecks.check_gem_rules, SkillChecks.check_every_skill, SkillChecks.check_weapon_needs, SkillChecks.check_skill_scale, SkillChecks.check_skill_pose, SkillChecks.check_cast_time, SkillChecks.check_skill_level, SkillChecks.check_level_text, SkillChecks.check_skill_budget, SkillChecks.check_supports, SkillChecks.check_mana, SkillChecks.check_orange_skills]))
 	_check("羈絆：道具標的羈絆都存在、掉落池只有屬於羈絆的（修飾、魔力道具例外）；格數 = 最大同色區塊（主袋與袋子一起、跨袋子也連、斜的不算、倉庫不算、跨羈絆兩種都算）；拿掉就扣；階數照門檻", LootChecks.check_bonds)
-	_check("觸發袋的擺放：接哪幾邊看種類、在邊長內、同一邊不重疊、按鍵袋最多 4 個；撿到的袋子自動接、接不下進倉庫；換邊 / 滑動 / 拿下來（內容跟著）、接不下拒絕；袋子連同內容丟在地上、撿回來照原樣；詛咒袋接著時套缺點；快照來回一樣；左右鍵的袋子掛在武器上（換武器跟著走、換回接回原位、倉庫的武器快照與說明帶著、丟地上撿回來 uid 換新）；背包合併模式（開局開的格子、鎖格放不進去、隨機 / 自選開格、觸發區不能搬不能丟、換武器不動、快照、門 / Boss / 鐵砧改給開格、菁英怪掉武器）", CheckKit.all_of.bind([LootChecks.check_bag_layout, LootChecks.check_weapon_bags, LootChecks.check_merged_bag]))
+	_check("觸發袋的擺放：接哪幾邊看種類、在邊長內、同一邊不重疊、按鍵袋最多 4 個；撿到的袋子自動接、接不下進倉庫；換邊 / 滑動 / 拿下來（內容跟著）、接不下拒絕；袋子連同內容丟在地上、撿回來照原樣；詛咒袋接著時套缺點；快照來回一樣；左右鍵的袋子掛在武器上（換武器跟著走、換回接回原位、倉庫的武器快照與說明帶著、丟地上撿回來 uid 換新）；背包合併模式（開局開的格子、鎖格放不進去、三選一 / 自選開格、觸發區不能搬不能丟、換武器不動、快照、門 / Boss / 鐵砧改給開格、菁英怪掉武器）", CheckKit.all_of.bind([LootChecks.check_bag_layout, LootChecks.check_weapon_bags, LootChecks.check_merged_bag]))
 	_check("觸發袋的發動：左邊只被普攻、右邊只被右鍵觸發；左鍵的命中袋每 N 下（武器的 trigger_every）發動一次、同一步只算一下；效果各自耗魔、不夠由左到右先放；同一袋照畫面左上 → 右下一招接一招放（技能銜接：後一招在前一招打到的怪身上放、打空就停；轉過的左右袋子也照畫面）；觸發袋裡的技能自動放；袋子放出來的與技能的傷害不再觸發袋子；計時袋照間隔、強化袋的倍率；有目標的袋子（命中、擊殺、受傷）技能在目標身上放：範圍與落點在目標、投射物從命中點射出、扇形只有中間那支打得到目標、位移朝目標、祝福留在自己身上，沒有目標的照舊；說明框乘好的結果（放一次打一隻的傷害 = 怪實際扣的、每把武器每秒打中的次數 = hits_per_sec、左鍵每分鐘照武器、計時照間隔、其他照自動試玩的平均）", all.bind([LootChecks.check_bag_triggers, LootChecks.check_bag_skill_target, LootChecks.check_bag_chain, LootChecks.check_bag_forecast]))
 	_check("羈絆效果：物理（物理傷害、失衡、擊退撞怪、無視物理抗性、必爆擊與處決）、火焰（沒有羈絆 1 層、疊層、疊滿爆炸、死亡傳層）、冰霜（沒有羈絆 1 層、冰冷減速、疊滿凍結、碎冰加傷、冰錐、凍結中被殺沒有死亡效果）、防禦（護甲、招架回血、招架後必爆擊、衝擊波消箭、反彈）、鬼火（顆數、轉圈碰到怪、定時衝出去）",
 		all.bind([BondChecks.check_phys, BondChecks.check_fire, BondChecks.check_cold, BondChecks.check_guard, BondChecks.check_wisp]))
@@ -253,8 +253,8 @@ func _initialize() -> void:
 	# ───────── 音效 ─────────
 	_check("音效素材：模擬層 sfx:cue 的名稱都在 Sound.CUE_NAMES；每個名稱都有配方與 wav（不是空的、峰值 ≤ 1）；背景音樂一般 / Boss 往前循環、長度 15.00 / 10.43 秒",
 		all.bind([ViewChecks.check_sim_cues, ViewChecks.check_sfx_files, ViewChecks.check_music_files]))
-	_check("音效播放：事件 → 音效、Boss 波換 Boss 曲、死亡停音樂；距離衰減（15 內全音量、35 外不播、中間 (1 − t)²）、sfx:cue 與受傷 / 死亡事件都帶位置、查不到位置的實體事件不播、「拒絕」音只給按的人、法杖普攻 −8 dB；左右聲道照發聲位置在畫面上偏左偏右",
-		all.bind([ViewChecks.check_sound_mapping, ViewChecks.check_sound_distance]))
+	_check("音效播放：事件 → 音效、Boss 波換 Boss 曲、死亡停音樂；距離衰減（15 內全音量、35 外不播、中間 (1 − t)²）、sfx:cue 與受傷 / 死亡事件都帶位置、查不到位置的實體事件不播、「拒絕」音只給按的人、法杖普攻 −8 dB；左右聲道照發聲位置在畫面上偏左偏右；每種小怪的每一招出招時都有前搖音效、同一隻的兩招不同聲",
+		all.bind([ViewChecks.check_sound_mapping, ViewChecks.check_sound_distance, CombatChecks.check_enemy_windup_sounds]))
 	_check("結束程式不洩漏：主場景跑 3 秒（有怪、一直攻擊，音效還在播）後結束兩次，沒有 ObjectDB 洩漏、資源還在用", ViewChecks.check_quit_no_leak)
 
 	# ───────── 連線 ─────────

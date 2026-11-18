@@ -2398,8 +2398,9 @@ static func _merged_world(seed_value := 12345) -> World:
 
 
 # 背包合併（BagDefs.MERGED_ZONES）：開局只開主袋中間、職業那一區 2 格（空的）與數字區 1 格（起始技能）；鎖格放不進去；
-# 隨機開格、自選開格（OP_UNLOCK 用掉次數，沒次數不開）；觸發區不能搬、不能丟；換武器袋子不動；快照帶著鎖格與次數；
-# 門的袋子獎勵 = 隨機開 1 格、Boss 與鐵砧 = 自選 1 格、石棺不出詛咒袋；菁英怪改掉武器、不掉袋子；袋子分開的模式照舊
+# 自選開格（OP_UNLOCK 用掉次數，沒次數不開）；三選一開格（候選是不重複的鎖格、第一個貼著已開格、點候選以外的不開、
+# 欠兩輪時選完一輪才抽下一輪）；觸發區不能搬、不能丟；換武器袋子不動；快照帶著鎖格、次數與候選；
+# 門的袋子獎勵 = 三選一 1 輪、Boss 與鐵砧 = 自選 1 格、石棺不出詛咒袋；菁英怪改掉武器、不掉袋子；袋子分開的模式照舊
 static func check_merged_bag() -> String:
 	var w := _merged_world()
 	var p := _player(w)
@@ -2426,10 +2427,6 @@ static func check_merged_bag() -> String:
 		return "主袋的 (0, 0) 鎖著應放不進去、中間開著的放得進去"
 	if p.add_item(stat) == &"" or lo.find_item(lo.core.entries[-1].uid).is_empty():
 		return "數值道具應自動放進主袋開著的格子"
-	# 隨機開格
-	var before := lo.locked_spots().size()
-	if not lo.unlock_random(p, w.rng) or lo.locked_spots().size() != before - 1:
-		return "隨機開格應少 1 格鎖著：%d → %d" % [before, lo.locked_spots().size()]
 	# 自選開格：沒次數不開；有次數開指定的那格、用掉 1 次
 	var cmd := func(ops: Array) -> void:
 		var c := _cmd(Vector2.ZERO)
@@ -2442,6 +2439,32 @@ static func check_merged_bag() -> String:
 	cmd.call([[InputCmd.OP_UNLOCK, Loadout.CORE, 0, 0]])
 	if lo.core.locked.has(Vector2i.ZERO) or lo.unlock_picks != 0:
 		return "自選開 (0, 0) 應打開並用掉次數：鎖著 %s、次數 %d" % [lo.core.locked.has(Vector2i.ZERO), lo.unlock_picks]
+	# 三選一開格：欠兩輪，一次只給一輪的候選
+	var before := lo.locked_spots().size()
+	if not lo.offer_unlock(p, w.rng) or not lo.offer_unlock(p, w.rng) or lo.unlock_choices != 2 or lo.unlock_offers.size() != BagDefs.UNLOCK_OFFERS:
+		return "欠兩輪三選一應只給一輪 %d 個候選：欠 %d、候選 %d" % [BagDefs.UNLOCK_OFFERS, lo.unlock_choices, lo.unlock_offers.size()]
+	var is_locked := func(s: Dictionary) -> bool:
+		return lo.locked_spots().any(func(l: Dictionary) -> bool: return l.where == s.where and l.cell == s.cell)
+	var seen := {}
+	for s in lo.unlock_offers:
+		var key := Vector3i(s.where, s.cell.x, s.cell.y)
+		if seen.has(key) or not is_locked.call(s):
+			return "三選一的候選應是不重複的鎖格：%s" % [lo.unlock_offers]
+		seen[key] = true
+	if not lo.touches_open(lo.unlock_offers[0].where, lo.unlock_offers[0].cell):
+		return "三選一的第一個候選應貼著已開的格子：%s" % [lo.unlock_offers[0]]
+	var other: Dictionary = lo.locked_spots().filter(func(l: Dictionary) -> bool: return not lo.is_unlock_offer(l.where, l.cell))[0]
+	cmd.call([[InputCmd.OP_UNLOCK, other.where, other.cell.x, other.cell.y]])
+	if lo.locked_spots().size() != before or not is_locked.call(other):
+		return "點三選一候選以外的鎖格不應開（沒有自選次數）：%s" % [other]
+	var chosen: Dictionary = lo.unlock_offers[-1]
+	cmd.call([[InputCmd.OP_UNLOCK, chosen.where, chosen.cell.x, chosen.cell.y]])
+	if is_locked.call(chosen) or lo.locked_spots().size() != before - 1 or lo.unlock_choices != 1 or lo.unlock_offers.size() != BagDefs.UNLOCK_OFFERS or lo.is_unlock_offer(chosen.where, chosen.cell):
+		return "點候選應開那一格、再抽下一輪：鎖著 %s、還鎖 %d（應 %d）、欠 %d、候選 %s" % [is_locked.call(chosen), lo.locked_spots().size(), before - 1, lo.unlock_choices, lo.unlock_offers]
+	var second: Dictionary = lo.unlock_offers[0]
+	cmd.call([[InputCmd.OP_UNLOCK, second.where, second.cell.x, second.cell.y]])
+	if lo.unlock_choices != 0 or not lo.unlock_offers.is_empty() or lo.locked_spots().size() != before - 2:
+		return "兩輪選完應不再欠、沒有候選：欠 %d、候選 %d、還鎖 %d" % [lo.unlock_choices, lo.unlock_offers.size(), lo.locked_spots().size()]
 	# 觸發區不能搬、不能丟
 	var key: Dictionary = lo.key_bags()[0]
 	cmd.call([[InputCmd.OP_BAG, String(key.uid), "", 0, 0, 0, 0], [InputCmd.OP_DROP, String(key.uid)]])
@@ -2453,26 +2476,29 @@ static func check_merged_bag() -> String:
 	cmd.call([[InputCmd.OP_EQUIP, "st", Loadout.MAIN]])
 	if p.weapon_id != &"staff" or not lo.bags.has(right_zone) or lo.bags.size() != BagDefs.MERGED_ZONES.size():
 		return "背包合併換武器：袋子應留在背包上：手上 %s、%d 塊" % [p.weapon_id, lo.bags.size()]
-	# 快照來回：鎖格、模式、次數
+	# 快照來回：鎖格、模式、次數、三選一的候選
 	lo.unlock_picks = 2
+	lo.offer_unlock(p, w.rng)
 	var q := Player.new(w, 99)
 	w.add_entity(q)   # 加進 World：結束時才會切斷循環參照
 	q.loadout.sync_inventory(q, lo.bags_to_array())
-	if not q.loadout.merged or q.loadout.unlock_picks != 2 or q.loadout.locked_spots().size() != lo.locked_spots().size() or q.loadout.bags_to_array() != lo.bags_to_array():
-		return "快照應帶著背包合併、鎖格與自選次數"
+	if not q.loadout.merged or q.loadout.unlock_picks != 2 or q.loadout.locked_spots().size() != lo.locked_spots().size() or q.loadout.bags_to_array() != lo.bags_to_array() \
+			or q.loadout.unlock_offers != lo.unlock_offers or q.loadout.unlock_choices != 1:
+		return "快照應帶著背包合併、鎖格、自選次數與三選一的候選"
 	q.loadout.bags.clear()
-	# 遺物：門的袋子 = 隨機開 1 格；Boss 的大袋與鐵砧 = 自選 1 格；選了才生效
+	# 遺物：門的袋子 = 三選一 1 輪；Boss 的大袋與鐵砧 = 自選 1 格；選了才生效
 	for kind: StringName in [&"bag", &"bag_big", &"anvil"]:
 		var r := w.drop_relic(&"big", p.pos, kind)
 		r.open_for(p)
-		var want: StringName = Relic.UNLOCK_RANDOM if kind == &"bag" else Relic.UNLOCK_PICK
+		var want: StringName = Relic.UNLOCK_CHOICE if kind == &"bag" else Relic.UNLOCK_PICK
 		if r.offers[p.peer_id] != [want] or Relic.option_info(p, want).is_empty():
 			return "%s 的選項應只有 %s：%s" % [kind, want, r.offers[p.peer_id]]
 		var locked_before := lo.locked_spots().size()
 		var picks_before := lo.unlock_picks
+		var choices_before := lo.unlock_choices
 		r.pick(p, 0)
-		if kind == &"bag" and lo.locked_spots().size() != locked_before - 1:
-			return "門的袋子獎勵應隨機開 1 格"
+		if kind == &"bag" and (lo.locked_spots().size() != locked_before or lo.unlock_choices != choices_before + 1):
+			return "門的袋子獎勵應多欠 1 輪三選一、不直接開：欠 %d → %d、還鎖 %d → %d" % [choices_before, lo.unlock_choices, locked_before, lo.locked_spots().size()]
 		if kind != &"bag" and lo.unlock_picks != picks_before + 1:
 			return "%s 應給 1 次自選開格" % kind
 	# 菁英怪：掉武器、不掉袋子

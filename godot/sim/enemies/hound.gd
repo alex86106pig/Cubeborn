@@ -184,6 +184,7 @@ class Pounce:
 		e.velocity = Vector2.ZERO
 		e.unreached = 0.0
 		e.world.cooldowns.start(e.cd("pounce"), e.cd_time(e.def.pounce.cooldown))
+		e.windup_sound(e.def.pounce)
 		var c: Dictionary = e.def.pounce
 		data.distance = c.distance
 		if data.has("at"):
@@ -237,6 +238,7 @@ class Snap:
 		e.velocity = Vector2.ZERO
 		e.unreached = 0.0
 		e.world.cooldowns.start(e.cd("snap"), e.cd_time(e.def.snap.cooldown))
+		e.windup_sound(e.def.snap)
 		data.phase = &"windup"
 		data.phase_time = 0.0
 		data.hit = {}

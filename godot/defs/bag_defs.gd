@@ -106,7 +106,8 @@ const MERGED_ZONES: Array[Array] = [
 const MERGED_START_CORE := Rect2i(1, 1, 3, 3)   # 開局主袋開的格子（主袋座標）
 const MERGED_START_CLASS := 2                   # 職業那一區開幾格（貼著主袋的那一排，裝著起始技能）
 const MERGED_START_KEYS := 1                    # 數字區開幾格（空的）
-# 開格（許家慶 2026-11-06）：過小關、門的「袋子」獎勵隨機開 1 格（整個背包隨機）；Boss 與鐵砧給自選 1 格；
+const UNLOCK_OFFERS := 3                        # 三選一開格給幾個候選
+# 開格：過小關、門的「袋子」獎勵給三選一（Loadout.offer_unlock，第一個候選貼著已開格）；Boss 與鐵砧給自選 1 格；
 # 菁英怪原本掉袋子的改掉武器（機率照 ELITE_DROP，World.on_enemy_died）
 
 # 取得：菁英怪（魔法 / 稀有）死掉時掉袋子的機率；掉哪種看怪的種類（沒列的隨機）

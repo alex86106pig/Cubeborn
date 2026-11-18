@@ -753,6 +753,8 @@ func _on_event(name: String, p: Dictionary) -> void:
 				got = "\n獲得：%s" % UiKit.reward_name(world, StringName(reward))
 				if MapGenDefs.REWARDS[StringName(reward)].has("amount"):
 					got += " +%d" % MapGenDefs.REWARDS[StringName(reward)].amount
+			if me != null and me.loadout.merged and not me.loadout.locked_spots().is_empty():   # 背包合併過小關給三選一開格（快照可能還沒到，照鎖格判斷）
+				got += "\n開格三選一：打開背包（Tab）挑一格"
 			_show_banner("%s（基礎難度 %d）%s" % [World.level_name(p.floor, p.stage), p.difficulty, got], false, UiKit.GOLD)
 		"floor:started":
 			level_transition.set_card(world, p.floor, p.get("stage", 0), p.difficulty, "")

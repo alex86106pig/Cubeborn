@@ -506,11 +506,13 @@ func _start_drag(me: Player, local: Vector2) -> void:
 			_drag = {"uid": inst.uid, "id": inst.base, "rot": 0, "anchor": 0, "weapon": inst}
 		return
 	var head := _head_at(me, local)
-	if me.loadout.merged:   # 背包合併：觸發區不能拿起來；有自選開格時點鎖著的格子 = 開那一格
+	if me.loadout.merged:   # 背包合併：觸發區不能拿起來；點三選一的候選、或有自選開格時點鎖著的格子 = 開那一格
 		var lt := _target_at(me, local)
 		if not lt.is_empty() and lt.where != Loadout.BAG and _is_locked(me, lt.where, lt.cell):
-			if me.loadout.unlock_picks > 0:
+			if me.loadout.unlock_picks > 0 or me.loadout.is_unlock_offer(lt.where, lt.cell):
 				op_requested.emit([InputCmd.OP_UNLOCK, lt.where, lt.cell.x, lt.cell.y])
+			elif not me.loadout.unlock_offers.is_empty():
+				_say("三選一開格：點閃金框的那 %d 格之一" % me.loadout.unlock_offers.size())
 			else:
 				_say("這格鎖著：過小關、門的「開格」獎勵、Boss、鐵砧會開格")
 			return
@@ -731,6 +733,9 @@ func _draw() -> void:
 func _hint_text() -> String:
 	var me := _player()
 	if _drag.is_empty() and me != null and me.loadout.merged:
+		if not me.loadout.unlock_offers.is_empty():
+			var more := "（還有 %d 輪）" % (me.loadout.unlock_choices - 1) if me.loadout.unlock_choices > 1 else ""
+			return "開格三選一：點一格閃金框的鎖格打開%s" % more
 		if me.loadout.unlock_picks > 0:
 			return "還能自選開 %d 格：點一格鎖著的格子打開" % me.loadout.unlock_picks
 		return HINT_MERGED
@@ -876,7 +881,8 @@ func _draw_skill_marks(font: Font, me: Player, where: int, b: Dictionary) -> voi
 			draw_string(font, corner + Vector2(0, 14), str(n), HORIZONTAL_ALIGNMENT_CENTER, 12, 14, UiKit.GOLD)
 
 
-# 背包合併的鎖格（許家慶 2026-11-06 選 B：每格都畫鎖）：蓋暗、中間畫一個鎖頭；有自選開格時框線閃金色
+# 背包合併的鎖格（許家慶 2026-11-06 選 B：每格都畫鎖）：蓋暗、中間畫一個鎖頭；有自選開格時框線閃金色；
+# 三選一的候選另外蓋一層淡金、框線加粗（自選與三選一同時有時分得出來）
 func _draw_locks(me: Player, where: int, locked: Dictionary) -> void:
 	if locked.is_empty():
 		return
@@ -886,7 +892,10 @@ func _draw_locks(me: Player, where: int, locked: Dictionary) -> void:
 		var r := _cell_rect(me, where, c).grow(-1)
 		draw_rect(r, LOCK_FILL)
 		UiKit.draw_lock(self, r.get_center(), r.size.x * 0.22, Color(1, 1, 1, 0.45))
-		if picking:
+		if me.loadout.is_unlock_offer(where, c):
+			draw_rect(r, Color(UiKit.GOLD, 0.18 * pulse))
+			draw_rect(r.grow(-1), Color(UiKit.GOLD, pulse), false, 3.0)
+		elif picking:
 			draw_rect(r.grow(-1), Color(UiKit.GOLD, pulse), false, 2.0)
 
 

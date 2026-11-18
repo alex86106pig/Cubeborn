@@ -133,6 +133,7 @@ class Hug:
 	func enter(e: Bloater, data: Dictionary, _fsm: StateMachine) -> void:
 		e.velocity = Vector2.ZERO
 		e.hugged = true
+		e.windup_sound(e.def.hug)
 		data.phase = &"windup"
 		data.phase_time = 0.0
 

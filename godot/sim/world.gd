@@ -339,9 +339,9 @@ func next_floor() -> void:
 func next_stage(reward: StringName) -> void:
 	stage_num += 1
 	_change_level()
-	if bag_mode == BagDefs.MODE_MERGED:   # 背包合併：過小關每人隨機開 1 格
+	if bag_mode == BagDefs.MODE_MERGED:   # 背包合併：過小關每人一輪三選一開格（打開背包點候選）
 		for p in player_list:
-			p.loadout.unlock_random(p, rng)
+			p.loadout.offer_unlock(p, rng)
 	save_stage(reward)   # 門的獎勵發下去之前存：重來時照原樣再發一次
 	_grant_stage_reward(reward)
 	emit_event("stage:started", {"floor": floor_num, "stage": stage_num, "difficulty": base_difficulty, "reward": String(reward)})

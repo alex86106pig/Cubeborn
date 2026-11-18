@@ -61,6 +61,7 @@ class Emerge:
 	func enter(e: Beetle, _data: Dictionary, _fsm: StateMachine) -> void:
 		e.velocity = Vector2.ZERO
 		e.world.emit_event("fx:burrow_warn", {"pos": e.pos, "height": e.ground_height, "life": e.def.burrow.emerge})
+		e.windup_sound(e.def.burrow)
 
 	func update(e: Beetle, _dt: float, fsm: StateMachine) -> void:
 		var b: Dictionary = e.def.burrow

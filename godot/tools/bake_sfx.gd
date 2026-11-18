@@ -56,6 +56,32 @@ static func cues() -> Dictionary:
 		"arrowShot": func(s: Synth) -> void:
 			s.noise(0, {"dur": 0.09, "vol": 0.18, "from": 3500, "to": 1400, "q": 2})
 			s.tone(0, {"type": &"triangle", "from": 340, "to": 240, "dur": 0.12, "vol": 0.12}),
+		# 小怪前搖（Godot 版加的；每種怪一個、同一隻的兩招不重複）：骨頭喀啦 + 刀刮、低沉呻吟、短吠、低吼、金屬滑過、土塊跳動、吸氣、咕嚕
+		"skeletonRaise": func(s: Synth) -> void:
+			for i in 5:
+				s.noise(0, {"dur": 0.03, "vol": 0.16, "type": &"highpass", "from": 2600 + i * 300, "delay": i * 0.05})
+			s.noise(0, {"dur": 0.3, "vol": 0.08, "from": 3000, "to": 5000, "q": 3, "attack": 0.1, "delay": 0.1}),
+		"zombieGroan": func(s: Synth) -> void:
+			s.tone(0, {"type": &"sawtooth", "from": 95, "to": 75, "dur": 0.45, "vol": 0.16, "attack": 0.1, "filter": 500})
+			s.noise(0, {"dur": 0.4, "vol": 0.1, "type": &"lowpass", "from": 600, "to": 250, "attack": 0.1}),
+		"houndBark": func(s: Synth) -> void:
+			s.tone(0, {"type": &"square", "from": 520, "to": 300, "dur": 0.09, "vol": 0.1, "filter": 1400})
+			s.noise(0, {"dur": 0.08, "vol": 0.16, "from": 1500, "to": 700, "q": 1.5}),
+		"houndGrowl": func(s: Synth) -> void:
+			for i in 6:
+				s.tone(0, {"type": &"sawtooth", "from": 72, "to": 62, "dur": 0.06, "vol": 0.4, "filter": 350, "delay": i * 0.05})
+			s.noise(0, {"dur": 0.32, "vol": 0.35, "type": &"lowpass", "from": 380, "to": 220}),
+		"spearDraw": func(s: Synth) -> void:
+			s.noise(0, {"dur": 0.35, "vol": 0.35, "from": 2800, "to": 4200, "q": 6, "attack": 0.12})
+			s.tone(0, {"type": &"triangle", "from": 900, "to": 1200, "dur": 0.3, "vol": 0.12, "attack": 0.1}),
+		"beetleDig": func(s: Synth) -> void:
+			for i in 6:
+				s.noise(0, {"dur": 0.04, "vol": 0.45, "type": &"lowpass", "from": 700, "to": 300, "delay": i * 0.065}),
+		"wraithInhale": func(s: Synth) -> void: s.noise(0, {"dur": 0.6, "vol": 0.3, "from": 600, "to": 2400, "q": 1.2, "attack": 0.45}),
+		"bloaterGurgle": func(s: Synth) -> void:   # 咕嚕聲越冒越急
+			var at := [0.0, 0.1, 0.18, 0.25, 0.31, 0.36, 0.4, 0.44]
+			for i in at.size():
+				s.tone(0, {"from": 150 + i * 12, "to": 90, "dur": 0.05, "vol": 0.22, "delay": at[i]}),
 		"enemyDeath": func(s: Synth) -> void:
 			for i in 4:
 				s.noise(0, {"dur": 0.04, "vol": 0.18, "type": &"highpass", "from": 2200 + i * 400, "delay": i * 0.035 + s.rng.randf() * 0.02})

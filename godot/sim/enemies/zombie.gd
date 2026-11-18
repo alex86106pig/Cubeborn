@@ -150,6 +150,7 @@ class Lunge:
 	func enter(e: Zombie, data: Dictionary, _fsm: StateMachine) -> void:
 		e.velocity = Vector2.ZERO
 		e.world.cooldowns.start(e.cd("lunge"), e.cd_time(e.def.lunge.cooldown))
+		e.windup_sound(e.def.lunge)
 		data.phase = &"windup"
 		data.phase_time = 0.0
 		data.hit = {}

@@ -72,6 +72,7 @@ class Thrust:
 		e.velocity = Vector2.ZERO
 		e.world.cooldowns.start(e.cd("thrust"), e.cd_time(e.def.thrust.cooldown))
 		data.hit = {}
+		e.windup_sound(e.def.thrust)
 
 	func update(e: Spearman, dt: float, fsm: StateMachine) -> void:
 		var s: Dictionary = e.def.thrust

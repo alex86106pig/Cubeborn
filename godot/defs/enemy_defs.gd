@@ -22,6 +22,7 @@ const ENEMIES := {
 		"corpse_time": 1.4,
 		# 揮砍（v0.17.0，使用者選「中等」）：取代網頁版的接觸傷害
 		"swing": {
+			"sfx_windup": "skeletonRaise",   # 舉刀的前搖音效（MeleeEnemy.Swing 進入時播）
 			"trigger_distance": 1.3,    # 與玩家中心距離在這以內、冷卻好時開始舉刀
 			"windup": 0.5,              # 舉刀：站定，前 track 比例的時間轉向玩家，之後鎖定方向
 			"track": 0.5,
@@ -63,6 +64,7 @@ const ENEMIES := {
 			"sfx_block": "shieldBash", "sfx_break": "hitHeavy",
 		},
 		"thrust": {
+			"sfx_windup": "spearDraw",
 			"trigger_distance": 3.0,
 			"windup": 0.5, "track": 0.5,   # 盾往旁邊偏、槍收到腰間；前一半轉向目標
 			"active": 0.12,
@@ -129,6 +131,7 @@ const ENEMIES := {
 			"min_time": 0.6,           # 鑽下去至少這麼久才冒出來
 			"strike_reach": 0.15,      # 爬到跟目標碰在一起（兩個半徑）再近這麼多就停下：碰撞分離會把兩個推開，不能只看中心距離
 			"emerge": 0.4,             # 停在腳下、土塊跳動（預兆）
+			"sfx_windup": "beetleDig",
 			"bite_radius": 0.85, "damage": 8.0, "knockback": 3.0, "knockup": 4.0,   # 冒出來咬，擋不住、小擊飛
 			"surface": 2.0,            # 咬完在地面停多久（打得到）
 		},
@@ -226,6 +229,7 @@ const ENEMIES := {
 		"spawn_time": 0.7,
 		"corpse_time": 1.0,
 		"shriek": {
+			"sfx_windup": "wraithInhale",   # 縮身深吸氣的前搖音效；尖嘯出去那一下另外播 enrage
 			"trigger_distance": 3.0,   # 目標中心進到這以內、冷卻好就開始吸氣
 			"hover": 0.7,              # 冷卻中飄到 trigger_distance 的這個比例就停下
 			"windup": 0.7,
@@ -325,6 +329,7 @@ const ENEMIES := {
 		"spawn_time": 0.9,
 		"corpse_time": 1.4,
 		"lunge": {
+			"sfx_windup": "zombieGroan",
 			"trigger_distance": 2.6,   # 與目標中心距離在這以內、冷卻好時開始舉手（怪物圖鑑）
 			"windup": 0.4,             # 舉手後仰：前 track 比例的時間轉向目標，之後鎖定方向
 			"track": 0.6,
@@ -361,7 +366,7 @@ const ENEMIES := {
 		"corpse_time": 4.0,          # 要比 death_delay + 腐氣持續時間長：腐氣的傷害來源是屍體
 		"no_affixes": [&"volatile"],  # 自己就會死後爆炸，不抽死亡爆炸（會炸兩次）
 		# 撲抱（只用一次）：挺肚子張手 windup → 往前撲 distance；撲中抱住並開始脹（burst.hold_swell_time），被盾擋下倒地 blocked_fall
-		"hug": {"trigger_distance": 3.5, "windup": 0.5, "track": 0.6, "distance": 2.5, "duration": 0.25, "hit_reach": 0.3, "recovery": 0.4, "blocked_fall": 0.5},
+		"hug": {"sfx_windup": "bloaterGurgle", "trigger_distance": 3.5, "windup": 0.5, "track": 0.6, "distance": 2.5, "duration": 0.25, "hit_reach": 0.3, "recovery": 0.4, "blocked_fall": 0.5},
 		"burst": {
 			"trigger_distance": 2.0,  # 與目標中心距離在這以內就停下脹大
 			"swell_time": 1.0,
@@ -405,11 +410,13 @@ const ENEMIES := {
 		"pack": {"max_attackers": 2},   # 同時最多幾隻在出招（快咬、飛撲）
 		# 快咬（輕）：低頭齜牙 windup → 往前竄 distance → 往後跳 back_hop；擋下自己暈 blocked_daze
 		"snap": {
+			"sfx_windup": "houndBark",
 			"trigger_distance": 1.8, "windup": 0.2, "track": 0.5, "distance": 1.2, "duration": 0.12, "hit_reach": 0.3,
 			"damage": 6.0, "cooldown": 1.2, "blockable": true, "blocked_daze": 0.6, "back_hop": 2.5, "back_hop_time": 0.25,
 		},
 		# 飛撲（重級硬直、不擊倒）：在目標視野外（含側面）、trigger_distance 內才撲；低吼前腳壓低 windup（鎖定方向）→ 直線 distance
 		"pounce": {
+			"sfx_windup": "houndGrowl",
 			"trigger_distance": 6.0,
 			"windup": 0.3,
 			"distance": 4.0,

@@ -45,6 +45,7 @@ class Shriek:
 	func enter(e: Wraith, data: Dictionary, _fsm: StateMachine) -> void:
 		e.velocity = Vector2.ZERO
 		e.world.cooldowns.start(e.cd("shriek"), e.cd_time(e.def.shriek.cooldown))
+		e.windup_sound(e.def.shriek)
 		data.done = false
 
 	func update(e: Wraith, _dt: float, fsm: StateMachine) -> void:

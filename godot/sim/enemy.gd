@@ -224,6 +224,13 @@ func attack_kind() -> StringName:
 	return &"melee"
 
 
+# 前搖音效（招式設定的 sfx_windup，沒寫就不播）：進入開始出招的狀態時呼叫；帶著位置，畫面層照左右聲道播
+func windup_sound(move: Dictionary) -> void:
+	var cue: String = move.get("sfx_windup", "")
+	if cue != "":
+		world.emit_event("sfx:cue", {"cue": cue, "pos": pos})
+
+
 # 沒輪到出手名額的這一步：近戰的怪不站著排隊，沿著圈往玩家背後自己的那個位置繞（每隻的位置照 id 錯開），太貼身就退一點；一直面向玩家。
 # 遠程的照原本的走位（RangedEnemy 是先問名額才決定要不要瞄準，不會走到這裡）
 func hold_off(target: Entity) -> void:

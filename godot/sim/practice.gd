@@ -74,14 +74,15 @@ static func give_bag(world: World, p: Player, kind: StringName, tier: StringName
 	return "放不下，放在腳邊：" + BagDefs.bag_name(b)
 
 
-# 背包合併的開格：random 隨機 1 格（同過小關）、pick 自選 +1 次（同 Boss / 鐵砧）、all 全部打開
+# 背包合併的開格：choice 三選一 +1 輪（同過小關、門的開格）、pick 自選 +1 次（同 Boss / 鐵砧）、all 全部打開
 static func unlock(world: World, p: Player, action: StringName) -> String:
 	if not p.loadout.merged:
 		return "袋子分開的模式沒有鎖格"
 	match action:
-		&"random":
-			if not p.loadout.unlock_random(p, world.rng):
+		&"choice":
+			if not p.loadout.offer_unlock(p, world.rng):
 				return "全部都開了"
+			return "三選一 %d 輪：打開背包點閃金框的格子" % p.loadout.unlock_choices
 		&"pick":
 			p.loadout.unlock_picks += 1
 			return "自選開格 %d 次：打開背包點鎖著的格子" % p.loadout.unlock_picks

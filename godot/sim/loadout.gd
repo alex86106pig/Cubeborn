@@ -24,6 +24,8 @@ var core := Inventory.core()           # 主袋
 var bags: Array[Dictionary] = []       # 接著的觸發袋（BagDefs.make 的實例，side 不是空的）
 var merged := false                    # 背包合併模式（BagDefs.MODE_MERGED；開局照 World.bag_mode 決定，快照帶給客戶端）
 var unlock_picks := 0                  # 背包合併：還能自選開幾格（Boss、鐵砧給）
+var unlock_offers: Array[Dictionary] = []   # 背包合併：這一輪三選一開格的候選 [{ where, cell }]（過小關、門的「開格」給）
+var unlock_choices := 0                # 背包合併：還欠幾輪三選一（含正在選的這一輪；選完一輪才抽下一輪的候選）
 var _next_item_uid := 1
 var _ops: Array = []                   # 本步收到的背包操作（InputCmd.inv_ops），只在權威端執行
 
@@ -73,6 +75,8 @@ func setup_start_bags(p: Player, class_id: StringName) -> void:
 	core.locked = {}
 	bags.clear()
 	unlock_picks = 0
+	unlock_offers.clear()
+	unlock_choices = 0
 	merged = p.world != null and p.world.bag_mode == BagDefs.MODE_MERGED
 	var start: Dictionary = BagDefs.START.get(class_id, {})
 	if merged:
@@ -142,17 +146,72 @@ func unlock_cell(p: Player, where: int, cell: Vector2i) -> bool:
 	if not locked.has(cell):
 		return false
 	locked.erase(cell)
+	var i := _offer_index(where, cell)   # 別的方式開掉的候選（測試場）從這一輪拿掉
+	if i >= 0:
+		unlock_offers.remove_at(i)
 	p.world.emit_event("bag:unlocked", {"player_id": p.id, "where": where, "x": cell.x, "y": cell.y})
 	return true
 
 
-# 隨機開 1 格（整個背包裡隨機，許家慶 2026-11-06 選「全隨機」）；全開了回傳 false
-func unlock_random(p: Player, rng: RandomNumberGenerator) -> bool:
+# 三選一開格（過小關、門的「開格」）：欠的輪數 +1，沒有正在選的就抽這一輪的候選；全開了回傳 false
+func offer_unlock(p: Player, rng: RandomNumberGenerator) -> bool:
+	if locked_spots().is_empty():
+		return false
+	unlock_choices += 1
+	if unlock_offers.is_empty():
+		_roll_unlock_offers(p, rng)
+	return true
+
+
+func is_unlock_offer(where: int, cell: Vector2i) -> bool:
+	return _offer_index(where, cell) >= 0
+
+
+func _offer_index(where: int, cell: Vector2i) -> int:
+	for i in unlock_offers.size():
+		if unlock_offers[i].where == where and unlock_offers[i].cell == cell:
+			return i
+	return -1
+
+
+# 抽 UNLOCK_OFFERS 個候選：第一個從貼著已開格的鎖格裡抽（開出來接得上，羈絆連得起來），其餘從剩下的全部鎖格抽；
+# 鎖格不夠就少給。全開了就不再欠
+func _roll_unlock_offers(p: Player, rng: RandomNumberGenerator) -> void:
+	unlock_offers.clear()
 	var spots := locked_spots()
 	if spots.is_empty():
+		unlock_choices = 0
+		return
+	var touching: Array[int] = []
+	for i in spots.size():
+		if touches_open(spots[i].where, spots[i].cell):
+			touching.append(i)
+	if not touching.is_empty():
+		unlock_offers.append(spots.pop_at(touching[rng.randi_range(0, touching.size() - 1)]))
+	while unlock_offers.size() < BagDefs.UNLOCK_OFFERS and not spots.is_empty():
+		unlock_offers.append(spots.pop_at(rng.randi_range(0, spots.size() - 1)))
+	p.world.emit_event("bag:unlock_offered", {"player_id": p.id, "count": unlock_offers.size()})
+
+
+# 同一塊（主袋或同一個觸發區）裡上下左右有開著的格子
+func touches_open(where: int, cell: Vector2i) -> bool:
+	var locked: Dictionary = core.locked if where == CORE else bags[where].get("locked", {})
+	var area := Rect2i(Vector2i.ZERO, BagDefs.MAIN_SIZE if where == CORE else Vector2i(bags[where].length, bags[where].depth))
+	for d: Vector2i in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+		if area.has_point(cell + d) and not locked.has(cell + d):
+			return true
+	return false
+
+
+# 點到三選一的候選（背包操作 OP_UNLOCK）：開那一格、這一輪結束；還欠就抽下一輪。不是候選回傳 false
+func _unlock_offered(p: Player, where: int, cell: Vector2i) -> bool:
+	if not is_unlock_offer(where, cell) or not unlock_cell(p, where, cell):
 		return false
-	var s: Dictionary = spots[rng.randi_range(0, spots.size() - 1)]
-	return unlock_cell(p, s.where, s.cell)
+	unlock_choices -= 1
+	unlock_offers.clear()
+	if unlock_choices > 0:
+		_roll_unlock_offers(p, p.world.rng)
+	return true
 
 
 # 自選開格（背包操作 OP_UNLOCK）：用掉 1 次機會
@@ -614,9 +673,13 @@ func add_corpse(p: Player, owner_peer: int, spot: Dictionary = {}, pickup_id := 
 	return true
 
 
-# 快照：[倉庫, 主袋, [袋子…], [背包合併?, 主袋鎖著的格子, 自選開格的次數]]（Inventory.to_array / BagDefs.to_array）
+# 快照：[倉庫, 主袋, [袋子…], [背包合併?, 主袋鎖著的格子, 自選開格的次數, 三選一的候選 [where, x, y, …], 還欠幾輪三選一]]
+# （Inventory.to_array / BagDefs.to_array）
 func bags_to_array() -> Array:
-	return [inventory.to_array(), core.to_array(), bags.map(BagDefs.to_array), [merged, BagDefs.cells_to_array(core.locked), unlock_picks]]
+	var offers := []
+	for s in unlock_offers:
+		offers.append_array([s.where, s.cell.x, s.cell.y])
+	return [inventory.to_array(), core.to_array(), bags.map(BagDefs.to_array), [merged, BagDefs.cells_to_array(core.locked), unlock_picks, offers, unlock_choices]]
 
 
 # 客戶端：倉庫、主袋、袋子以房主的快照為準（bags_to_array），同步完重算生效的道具與羈絆
@@ -630,6 +693,11 @@ func sync_inventory(p: Player, arr: Array) -> void:
 	merged = m[0]
 	core.locked = BagDefs.cells_from_array(m[1])
 	unlock_picks = int(m[2])
+	unlock_offers.clear()
+	var offers: Array = m[3] if m.size() > 4 else []
+	for i in range(0, offers.size() - 2, 3):
+		unlock_offers.append({"where": int(offers[i]), "cell": Vector2i(int(offers[i + 1]), int(offers[i + 2]))})
+	unlock_choices = int(m[4]) if m.size() > 4 else 0
 	refresh_items(p)
 
 
@@ -673,7 +741,7 @@ func apply_ops(p: Player) -> void:
 			_relic_op(p, op)
 			continue
 		if int(op[0]) == InputCmd.OP_UNLOCK:
-			if op.size() > 3:
+			if op.size() > 3 and not _unlock_offered(p, int(op[1]), Vector2i(int(op[2]), int(op[3]))):
 				_unlock_pick(p, int(op[1]), Vector2i(int(op[2]), int(op[3])))
 			continue
 		var uid := StringName(op[1])

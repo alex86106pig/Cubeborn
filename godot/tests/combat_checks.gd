@@ -1377,7 +1377,7 @@ static func check_practice() -> String:
 	Practice.give_bag(w, p, &"kill", &"strong")
 	if p.loadout.bags.size() != before + 1 or not p.loadout.bags.any(func(b: Dictionary) -> bool: return b.kind == &"kill" and b.tier == &"strong"):
 		return "強化擊殺袋應接上"
-	if Practice.unlock(w, p, &"random") != "袋子分開的模式沒有鎖格":
+	if Practice.unlock(w, p, &"choice") != "袋子分開的模式沒有鎖格":
 		return "袋子分開的模式不應開格"
 	# 背包合併：沒有袋子、開格三種
 	var mw := LootChecks._merged_world()
@@ -1386,13 +1386,13 @@ static func check_practice() -> String:
 	if not Practice.give_bag(mw, mp, &"kill", &"small").contains("沒有袋子") or mp.loadout.bags.size() != BagDefs.MERGED_ZONES.size():
 		return "背包合併不應給袋子"
 	var locked := mp.loadout.locked_spots().size()
-	Practice.unlock(mw, mp, &"random")
+	Practice.unlock(mw, mp, &"choice")
 	Practice.unlock(mw, mp, &"pick")
-	if mp.loadout.locked_spots().size() != locked - 1 or mp.loadout.unlock_picks != 1:
-		return "開格：隨機應少 1 格、自選 +1 次"
+	if mp.loadout.locked_spots().size() != locked or mp.loadout.unlock_choices != 1 or mp.loadout.unlock_offers.size() != BagDefs.UNLOCK_OFFERS or mp.loadout.unlock_picks != 1:
+		return "開格：三選一應給 1 輪候選、不直接開，自選 +1 次"
 	Practice.unlock(mw, mp, &"all")
-	if not mp.loadout.locked_spots().is_empty():
-		return "全部打開後不應有鎖格"
+	if not mp.loadout.locked_spots().is_empty() or not mp.loadout.unlock_offers.is_empty():
+		return "全部打開後不應有鎖格、也不應留著三選一的候選"
 	# 魔法 / 稀有怪：詞條照正式遊戲抽
 	var rare := Practice.spawn_enemy(w, p, &"grunt", MonsterRarityDefs.RARE)
 	if rare.rarity != MonsterRarityDefs.RARE or rare.affixes.is_empty():
@@ -1787,4 +1787,28 @@ static func check_threat_marks() -> String:
 	a2.attack_target_id = 0
 	if ThreatMarks.aimed_at(w2, a2, me) or not ThreatMarks.aimed_at(w2, a2, mate):
 		return "沒有記目標時照最近的玩家：弓手離隊友 4、離我 8，不算對著我"
+	return ""
+
+
+# 小怪的前搖音效：每種不是 Boss 的怪，每個開始出招的狀態（attack_starts）一進去就發帶位置的 sfx:cue（畫面層照左右聲道播）；
+# 同一隻怪的兩招不同聲（怪物圖鑑通則：同一隻怪的預兆不能重複）。持武器的腐屍（armed_move）照武器的招式出聲，不在這裡
+static func check_enemy_windup_sounds() -> String:
+	for type: StringName in Practice.enemy_types():
+		if EnemyDefs.ENEMIES[type].get("is_boss", false):
+			continue
+		var w := _new_world()
+		var p := _player(w)
+		var e := _spawn(w, type, p.pos + Vector2(2, 0))
+		var used := {}
+		for st: StringName in e.attack_starts():
+			if st == &"armed_move":
+				continue
+			w.events.clear()
+			e.fsm.change(st)
+			var got := w.events.filter(func(ev: Dictionary) -> bool: return ev.name == "sfx:cue" and ev.has("pos"))
+			if got.is_empty():
+				return "%s 進入 %s 應播前搖音效（招式設定的 sfx_windup）" % [type, st]
+			if used.has(got[0].cue):
+				return "%s 的 %s 跟 %s 用同一個前搖音效「%s」" % [type, st, used[got[0].cue], got[0].cue]
+			used[got[0].cue] = st
 	return ""

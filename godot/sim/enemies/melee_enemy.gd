@@ -58,6 +58,7 @@ class Swing:
 		e.velocity = Vector2.ZERO
 		e.world.cooldowns.start(e.cd("swing"), e.cd_time(e.def.swing.cooldown))
 		data.hit = {}
+		e.windup_sound(e.def.swing)
 
 	func update(e: MeleeEnemy, dt: float, fsm: StateMachine) -> void:
 		var s: Dictionary = e.def.swing
