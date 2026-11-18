@@ -37,11 +37,11 @@ const PRESETS := {
 			&"tomb": [Color("b8b2a6"), Color("d8d2c4")],
 			&"platform": [Color("8a6a52"), Color("a88a6c")],
 		},
-		"moss": Color("4f7a3a"), "dirt": Color("5a4330"),
-		"grass": [Color("5c7f45"), Color("67894b"), Color("739352")], "ground_dirt": Color("7d6649"), "dirt_mix": 0.0, "roof": Color("8e8578"),
+		"moss": Color("56683e"), "dirt": Color("5a4330"),
+		"grass": [Color("6b6052"), Color("756958"), Color("7f735f")], "ground_dirt": Color("5c5144"), "dirt_mix": 0.45,   # 墓園內是土色，不要綠（YangHsu 2026-11-18） "roof": Color("8e8578"),
 		"vision": {"color": Color("1c2640"), "darkness": 0.24, "inner_darkness": 0.04, "edge": 1.6, "range_edge": 3.0, "near_edge": 2.5}, "tuft": [Color("9fb85a"), Color("86a24a"), Color("b3b968")],
-		"cliff": [Color("7a7064"), Color("557a3e")], "foliage": Color("3f6a32"), "iron": Color("2a282d"), "bark": Color("4a3a2c"),
-		"post": {"vignette": 0.35, "saturation": 1.15, "contrast": 1.02, "tint": Color("fff6ea")},   # 上下緣模糊拿掉（YangHsu 2026-11-18）
+		"cliff": [Color("7a7064"), Color("5f6e45")], "foliage": Color("4b5d38"), "iron": Color("2a282d"), "bark": Color("4a3a2c"),
+		"post": {"vignette": 0.35, "saturation": 1.0, "contrast": 1.02, "tint": Color("fff8f0")},   # 上下緣模糊拿掉（YangHsu 2026-11-18）
 	},
 	# D 褪色古版畫：場景整片灰褐單色，只有飽和的東西（血、魔法、戰利品、發光的眼）保留顏色；紙紋與暗角
 	&"etching": {
