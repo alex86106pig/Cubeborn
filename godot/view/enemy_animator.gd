@@ -66,6 +66,7 @@ var _worm_hide := 0.0     # 噬墓巨蟲藏進地裡的比例（0 = 整隻在地
 var _moth_alt := 0.0      # 屍蛾女王畫面上飛多高（畫面自己補間到 def.moth.altitude 或 0）
 var _lich := false        # 屍巫：唸咒（aim）時雙手往前合攏，其餘同一般小怪
 var _spin := 0.0          # 骨輪滾動的角度（畫面自己累加）
+var _idle_t := 0.0        # 休眠動作的時鐘（畫面自己累加：客戶端本機的休眠怪群沒有在跑模擬，anim.time 不會動）
 var _sword := false       # 拿長劍的（骷髏戰士、僕從、亡骸騎士、骸骨將軍重甲型態）：走路站著時手腕往上翹
 var _wrist := 0.0
 var _roll := 0.0   # 繞劍身轉多少
@@ -197,8 +198,12 @@ func update(e: Enemy, dt: float) -> void:
 			rig.body.rotation.x = 0.35 * (1.0 - k)
 			_set_stance(0.15 * (1.0 - k), 0.2, -0.15)
 		&"dormant":
-			_walk(0.0, -0.3, -0.2)   # 怪群休眠：站著、手垂著
-			rig.body.rotation.x = 0.08
+			_pose_idle(e, dt)
+		&"alert":   # 怪群發現玩家：停下、挺身抬頭（發現的那隻同時吼）
+			var k := clampf(t / 0.15, 0.0, 1.0)
+			_walk(0.0, -0.45, -0.45)
+			rig.body.rotation.x = -0.12 * k
+			rig.head.rotation.x = -0.25 * k
 		&"hurt":
 			# 受擊：上身往後仰、退半步、手往前甩
 			var k := sin(clampf(t / def.hurt_time, 0.0, 1.0) * PI)
@@ -744,6 +749,35 @@ func _quad_feet(rest: Array, offsets: Array, amount: float, run: float, leg: flo
 	return out
 
 
+# 怪群休眠時的樣子（e.idle，Spawner 給）：feed 跪著往地上啃、sway 站著搖晃低頭、guard 站崗慢慢轉頭、其他站著呼吸。
+# 時鐘用 _idle_t，每隻照 id 錯開相位，不會整群同步
+func _pose_idle(e: Enemy, dt: float) -> void:
+	_idle_t += dt
+	var ph := _idle_t + float(e.id % 97) * 0.37
+	match e.idle:
+		&"feed":
+			var bob := sin(ph * 4.0)
+			_set_stance(0.42, 0.3, -0.3)
+			rig.body.rotation.x = 0.8
+			rig.head.rotation.x = 0.3 + 0.15 * bob
+			BodyPose.arm(rig, true, -1.0 - 0.25 * bob, -0.15, 0.9)
+			BodyPose.arm(rig, false, -1.0 + 0.25 * bob, 0.15, 0.9)
+		&"sway":
+			var k := sin(ph * 1.1)
+			_walk(0.0, -0.25, -0.2)
+			rig.body.rotation.x = 0.18
+			rig.body.rotation.z = 0.1 * k
+			rig.head.rotation.x = 0.35
+			rig.head.rotation.z = -0.15 * k
+		&"guard":
+			_walk(0.0, -0.3, -0.2)
+			rig.body.rotation.x = 0.03
+			rig.head.rotation.y = 0.7 * sin(ph * 0.55)
+		_:
+			_walk(0.0, -0.3, -0.2)
+			rig.body.rotation.x = 0.08 + 0.02 * sin(ph * 1.6)
+
+
 # 屍犬（四足）：慢的時候小跑（對角的兩腳一起）、快的時候奔跑（前後腳各自一前一後落地、身體前後起伏）；
 # 飛撲 windup 伏低收腳（看得出要撲）→ dash 前腳往前伸、後腳往後蹬直 → recovery 收回；死掉往側邊倒
 func _pose_hound(e: Enemy, a: Dictionary, state: StringName, t: float, dt: float) -> void:
@@ -772,6 +806,19 @@ func _pose_hound(e: Enemy, a: Dictionary, state: StringName, t: float, dt: float
 			rig.body.rotation.x = 0.08 * sin(walk_phase) * run * _walk_amount   # 奔跑時身體前後起伏
 			drop = 0.04 * leg * _walk_amount
 			rig.head.rotation.x = -0.1 * run * _walk_amount
+			if state == &"dormant":   # 怪群休眠：lie 趴著、sniff 低頭嗅（e.idle）
+				_idle_t += dt
+				var ph := _idle_t + float(e.id % 97) * 0.37
+				match e.idle:
+					&"lie":
+						drop = 0.4 * leg
+						rig.head.rotation.x = 0.2 + 0.05 * sin(ph * 1.5)
+					&"sniff":
+						rig.body.rotation.x = 0.18
+						rig.head.rotation.x = 0.55 + 0.12 * sin(ph * 6.0)
+		&"alert":
+			drop = 0.08 * leg
+			rig.head.rotation.x = -0.25
 		&"pounce":
 			var c: Dictionary = def.pounce
 			var pt: float = a.get("phase_time", 0.0)

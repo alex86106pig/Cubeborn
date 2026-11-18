@@ -269,6 +269,9 @@ func _spawn_pack(world: World, center: Vector2, rng: RandomNumberGenerator, layo
 		var e := create(world, type, at, spawn_mul(world, type, {"dormant": true})) if mirrored else spawn_at(world, type, at, {"dormant": true}, id)
 		e.pack_id = pack_id
 		e.facing = float(rng.randi_range(0, 4095)) * TAU / 4096.0
+		var idles: Array = e.def.get("idle", [])
+		if not idles.is_empty():
+			e.idle = idles[id % idles.size()]   # 不抽亂數：客戶端本機的怪群照樣一致
 		roll_rarity(world, e, r, rng)
 		layout.append([id, type, at.x, at.y, e.rarity, e.affixes.duplicate()])
 		if mirrored:

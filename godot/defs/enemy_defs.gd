@@ -8,6 +8,7 @@ class_name EnemyDefs
 
 const ENEMIES := {
 	&"grunt": {
+		"idle": [&"guard", &"stand"],   # 休眠時的樣子（畫面層 EnemyAnimator._pose_idle；照 id 輪流，怪群模板可以指定）
 		"resists": {&"holy": -0.25, &"poison": 0.5},
 		"visual": &"melee",
 		"behavior": &"melee",
@@ -44,6 +45,7 @@ const ENEMIES := {
 
 	# 骷髏盾槍兵（第 2 層，數值 Claude 暫定）：正面舉盾擋下所有攻擊、重攻擊破防；直刺時正面打得到（sim/enemies/spearman.gd）
 	&"spearman": {
+		"idle": [&"guard"],
 		"name": "骷髏盾槍兵",
 		"resists": {&"holy": -0.25, &"poison": 0.5},
 		"visual": &"spearman",
@@ -282,6 +284,7 @@ const ENEMIES := {
 	},
 
 	&"archer": {
+		"idle": [&"guard", &"stand"],
 		"resists": {&"holy": -0.25, &"poison": 0.5},
 		"visual": &"ranged",
 		"behavior": &"ranged",
@@ -316,6 +319,7 @@ const ENEMIES := {
 
 	# 腐屍（第 1 層主力，數值 Claude 暫定）：慢、血厚、成群；撲抱抓住後持續啃咬（sim/enemies/zombie.gd）
 	&"zombie": {
+		"idle": [&"feed", &"sway", &"sway"],
 		"resists": {&"fire": -0.25, &"holy": -0.25, &"poison": 0.5, &"shadow": 0.5},
 		"visual": &"zombie",
 		"behavior": &"zombie",
@@ -352,6 +356,7 @@ const ENEMIES := {
 
 	# 膨脹屍（第 1 層，數值 Claude 暫定）：走近停下脹大 → 自爆，留下腐氣；被打死也會炸（sim/enemies/bloater.gd）
 	&"bloater": {
+		"idle": [&"sway"],
 		"resists": {&"fire": -0.5, &"poison": 0.75},
 		"visual": &"bloater",
 		"behavior": &"bloater",
@@ -384,6 +389,7 @@ const ENEMIES := {
 
 	# 屍犬（第 1 層，數值 Claude 暫定）：快，繞到目標背後的視野外才撲（sim/enemies/hound.gd）
 	&"hound": {
+		"idle": [&"lie", &"sniff"],
 		"resists": {&"cold": -0.25, &"poison": 0.25},
 		"visual": &"hound",
 		"behavior": &"hound",

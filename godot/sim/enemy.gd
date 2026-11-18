@@ -29,6 +29,7 @@ var dormant := false:                # 怪群休眠中：站著不動，整群�
 	set(v):
 		dormant = v
 		fixed = v
+var idle: StringName = &""          # 休眠時的樣子（只給畫面；Spawner 照怪群模板或 def.idle 輪流給，客戶端本機算的一樣）
 var wave_member := false             # 波次生成的：場上的波次怪都死了才開下一波（怪群不算）
 var action_speed := 1.0              # 狀態機時間的倍率（狂暴詞條 1.4：舉刀、瞄準、收招與冷卻都變快）
 var summoner_id := 0                 # 召喚詞條叫出來的：召喚者的 id

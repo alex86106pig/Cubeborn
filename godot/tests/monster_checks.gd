@@ -1593,6 +1593,9 @@ static func check_packs() -> String:
 			magic += 1 if e.rarity == MonsterRarityDefs.MAGIC else 0
 			rare += 1 if e.rarity == MonsterRarityDefs.RARE else 0
 			start[id] = e.pos
+			var idles: Array = e.def.get("idle", [])
+			if not idles.is_empty() and e.idle != idles[id % idles.size()]:
+				return "第 %d 群的 %d 號（%s）休眠的樣子應照 id 輪流 %s：%s" % [i, id, e.type, idles, e.idle]
 		if magic < c.magic_per_pack[0] or magic > c.magic_per_pack[1] or rare > 1:
 			return "第 %d 群有 %d 隻魔法、%d 隻稀有" % [i, magic, rare]
 		total += ids.size()
