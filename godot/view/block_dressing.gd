@@ -5,6 +5,7 @@
 #   厚的牆（> WIDE）當成圍起來的一塊：四邊砌牆、中間填土頂
 # - 墓碑：圓頂、十字、尖頂、斷碑、肩頂 5 種（照位置挑，大家看到的一樣），底座、刻字面、往鏡頭那邊一塊墳土，微微傾斜
 # - 高台：台身 + 外凸的頂石 + 四角石墩
+# - 地面是 tuft 時：每塊外露的邊腳下長一段段乾草叢（_base_tufts）
 # 全部疊進同一個頂點色網格，一張圖只畫 1 次（同 ArenaView.create_blocks）
 class_name BlockDressing
 extends RefCounted
@@ -15,6 +16,7 @@ const PLINTH_H := 0.35     # 牆腳那圈石的高度
 const CAP_T := 0.16        # 蓋石厚度
 const BANK_H := 0.9        # 邊界土坡畫多高（碰撞照舊是牆的高度，隱形）
 const FENCE_IN := 0.45     # 鐵柵欄離邊界多遠（往內）
+const TUFT_MAX := 4000     # 腳邊的乾草叢最多幾叢（每叢約 30 個三角形）
 
 var verts := PackedVector3Array()
 var normals := PackedVector3Array()
@@ -46,6 +48,8 @@ static func build(blocks: Array[Dictionary], style: Dictionary, seed_value: int,
 				d._tomb(b, c)
 			_:
 				d._platform(b, c)
+	if style.get("ground_mode", &"") == &"tuft":
+		d._base_tufts(blocks)
 	var mi := MeshInstance3D.new()
 	mi.mesh = PartKit.array_mesh(d.verts, d.normals, d.colors)
 	var m := StandardMaterial3D.new()
@@ -430,6 +434,68 @@ func _platform(b: Dictionary, c: Array) -> void:
 	for corner in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
 		var p: Vector2 = mid + Vector2(corner.x * (size.x / 2.0), corner.y * (size.y / 2.0))
 		_obox(p, 0.0, t + 0.12, Vector2(1, 0), 0.45, 0.45, _shade(c[0], 1.1), _shade(c[1], 1.15))
+
+
+# ---------- 腳邊的草 ----------
+
+# 乾草叢只長在不常踩的地方：每塊石台外露的邊（牆腳、墓碑腳、邊界土坡腳）往外 0.06 ~ 0.45，一段有一段沒有（墓碑腳下一律長）
+# （YangHsu 2026-11-18：空地上一叢叢的乾草看起來很怪——像紙片、散成雜點、比地面亮）
+func _base_tufts(blocks: Array[Dictionary]) -> void:
+	var placed := 0
+	# 倒著排：地圖邊界排在最前面而且邊很長，萬一碰到 TUFT_MAX，先少的是邊界、不是墓碑腳
+	for bi in range(blocks.size() - 1, -1, -1):
+		var b := blocks[bi]
+		for edge: StringName in [&"N", &"S", &"W", &"E"]:
+			var horizontal := edge == &"N" or edge == &"S"
+			var line: float
+			var out: Vector2
+			match edge:
+				&"N":
+					line = b.min.y
+					out = Vector2(0, -1)
+				&"S":
+					line = b.max.y
+					out = Vector2(0, 1)
+				&"W":
+					line = b.min.x
+					out = Vector2(-1, 0)
+				_:
+					line = b.max.x
+					out = Vector2(1, 0)
+			# 墓碑沒有登記在 _walls（_exposed 只扣掉跟牆貼著的段），整條邊都算
+			var segs: Array[Vector2] = [Vector2(b.min.x, b.max.x) if horizontal else Vector2(b.min.y, b.max.y)]
+			if b.kind == &"wall":
+				segs = _exposed(b, edge)
+			for seg in segs:
+				var s := seg.x + _rng.randf_range(0.0, 0.4)
+				while s < seg.y and placed < TUFT_MAX:
+					var at := (Vector2(s, line) if horizontal else Vector2(line, s)) + out * _rng.randf_range(0.06, 0.45)
+					s += _rng.randf_range(0.18, 0.45)
+					if b.kind != &"tomb" and ArenaView.soft_noise(at.x * 0.6 - 7.0, at.y * 0.6 + 19.0) < 0.42:
+						continue   # 這一段不長（墓碑腳下一律長）
+					_tuft(at)
+					placed += 1
+
+
+# 一叢 12 ~ 18 片細葉：從根部往外倒，根是暗土色、尖是乾草色（頂點色漸變）；葉片兩面都畫，法線一律朝上（受光跟地面一樣，不然背光的面是深色雜點）
+func _tuft(at: Vector2) -> void:
+	var root_col := _shade(_style.grass[0], 0.8)
+	var tips: Array = _style.tuft
+	var tip_col: Color = tips[_rng.randi() % tips.size()]
+	for k in _rng.randi_range(12, 18):
+		var ang := _rng.randf() * TAU
+		var dir := Vector3(cos(ang), 0.0, sin(ang))
+		var lean := _rng.randf_range(0.15, 0.65)
+		var h := _rng.randf_range(0.18, 0.38)
+		var root := Vector3(at.x, 0.0, at.y) + dir * _rng.randf_range(0.0, 0.07)
+		var half_w := Vector3(-dir.z, 0.0, dir.x) * _rng.randf_range(0.016, 0.028)
+		var tip := root + dir * h * sin(lean) + Vector3.UP * h * cos(lean)
+		var c := _jitter(tip_col, 0.06)
+		for order: Array in [[root - half_w, root + half_w, tip], [root + half_w, root - half_w, tip]]:
+			for i in 3:
+				verts.append(order[i])
+				normals.append(Vector3.UP)
+				colors.append(c if i == 2 else root_col)
 
 
 # ---------- 幾何工具 ----------

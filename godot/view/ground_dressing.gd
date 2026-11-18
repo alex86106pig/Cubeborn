@@ -1,6 +1,6 @@
 # 地面的造型（ArtStyle 試做用，YangHsu 2026-11-18：「地面風格不喜歡」，做三種挑）：
 # - smooth 平滑草皮：顏色照頂點算（相鄰三角形共用同一點的顏色），沒有一格一格的三角形；大片深淺漸變，幾塊泥土
-# - tuft 模型底座草：平滑草皮 + 成片的小草叢（像桌遊小模型底座的植絨；落葉與石子拿掉，太髒）
+# - tuft 模型底座草：平滑草皮；草叢只長在牆腳、墓碑腳、邊界土坡腳（BlockDressing._base_tufts，YangHsu 2026-11-18：空地上一叢叢的乾草看起來很怪）
 # - hex 六角地板：平滑草皮壓暗當縫，上面鋪微微凸起的六角形板塊（像桌遊的地圖板）
 # 繼承 BlockDressing 只為了共用幾何工具（_prism、_obox、_rock、_quad）
 class_name GroundDressing
@@ -17,9 +17,7 @@ static func build_ground(size: Vector2, style: Dictionary, seed_value: int) -> M
 	g._rng.seed = seed_value
 	var mode: StringName = style.ground_mode
 	g._turf(size, 0.55 if mode == &"hex" else 1.0, -0.02 if mode == &"hex" else 0.0)
-	if mode == &"tuft":
-		g._tufts(size)
-	elif mode == &"hex":
+	if mode == &"hex":
 		g._hexes(size)
 	var mi := MeshInstance3D.new()
 	mi.mesh = PartKit.array_mesh(g.verts, g.normals, g.colors)
@@ -65,39 +63,6 @@ func _turf(size: Vector2, shade: float, y: float) -> void:
 					verts.append(p[k])
 					normals.append(Vector3.UP)
 					colors.append(c[k])
-
-
-# 草叢（YangHsu 2026-11-18：1 + 2，但 2 看起來髒髒的 → 拿掉落葉、石子幾乎不放、草叢大一點、用當地草色再亮一點、成片聚在一起）：
-# 只長在草地上（泥土路上不長），照一層低頻雜訊成片出現；每平方單位試一次，最多 9000 次
-func _tufts(size: Vector2) -> void:
-	var tries := mini(9000, int(size.x * size.y))
-	for n in tries:
-		var at := Vector2(_rng.randf_range(-size.x / 2.0, size.x / 2.0), _rng.randf_range(-size.y / 2.0, size.y / 2.0))
-		if ArenaView.soft_noise(at.x * 0.45 + 40.0, at.y * 0.45 - 13.0) > 0.62:
-			continue   # 泥土
-		if ArenaView.soft_noise(at.x * 0.7 - 7.0, at.y * 0.7 + 19.0) < 0.5:
-			continue   # 不在成片的地方
-		if _rng.randf() < 0.05:   # 偶爾一顆小石子
-			var s := _rng.randf_range(0.07, 0.11)
-			var grey := _jitter(Color("a8a397"), 0.08)
-			_rock(at, s, s * 0.6, grey, grey.lightened(0.1))
-			continue
-		var base := _turf_color(at.x, at.y)
-		# 比地面亮一點、偏黃一點的乾草；亮太多（舊的 ×1.28）在暗土上會變成一顆顆淡色雜點
-		var col := Color.from_hsv(base.h + 0.02, base.s * 1.1, minf(1.0, base.v * 1.15))
-		# 扁平、往上收尖的葉片（立在地上，往外斜），一叢 5 ~ 8 片；法線一律朝上（受光跟地面一樣，不然立著的葉片背光、遠看是深色雜點）
-		var first := normals.size()
-		for k in _rng.randi_range(5, 8):
-			var ang := _rng.randf() * TAU
-			var h := _rng.randf_range(0.22, 0.36)
-			var w := _rng.randf_range(0.05, 0.08)
-			var basis := Basis(Vector3.UP, ang) * Basis(Vector3.RIGHT, _rng.randf_range(0.15, 0.45))
-			var off := Vector2.from_angle(ang) * _rng.randf_range(0.0, 0.1)
-			var leaf := PackedVector2Array([Vector2(-w, 0.0), Vector2(w, 0.0), Vector2(0.0, h)])
-			var c := _jitter(col, 0.05)
-			_prism(leaf, Vector2(0.0, h / 3.0), 0.025, Transform3D(basis, Vector3(at.x + off.x, 0.0, at.y + off.y)), c, c)
-		for idx in range(first, normals.size()):
-			normals[idx] = Vector3.UP
 
 
 # 六角板（平頂朝上）：鋪滿整片，每塊顏色照中心的草色、少數是泥土板
