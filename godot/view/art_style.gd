@@ -35,10 +35,13 @@ const PRESETS := {
 		"blocks": {
 			&"wall": [Color("8a8073"), Color("b3a996")],
 			&"tomb": [Color("b8b2a6"), Color("d8d2c4")],
-			&"platform": [Color("8a6a52"), Color("a88a6c")],
+			&"platform": [Color("5a4d3f"), Color("6e604d")],   # 高台頂面也是地面：跟著壓暗（原本 #a88a6c 在暗土上最刺眼）
 		},
 		"moss": Color("56683e"), "dirt": Color("5a4330"),
-		"grass": [Color("6b6052"), Color("756958"), Color("7f735f")], "ground_dirt": Color("5c5144"), "dirt_mix": 0.45,   # 墓園內是土色，不要綠（YangHsu 2026-11-18） "roof": Color("8e8578"),
+		# 墓園內是土色，不要綠；之前的太亮（YangHsu 2026-11-18）→ 照 media.io 墓園配色「Dusk Lantern」(#4F3B2B ~ #8A6B4D) 的暗褐土：
+		# 打光後畫面上約亮 1.3 ~ 1.4 倍（舊的 #756958 截圖量到 #a48969），所以頂點色取畫面目標 ÷ 那個倍數
+		"grass": [Color("4a3f33"), Color("554a3c"), Color("605345")], "ground_dirt": Color("3f362c"), "dirt_mix": 0.35,
+		"roof": Color("8e8578"),
 		"vision": {"color": Color("1c2640"), "darkness": 0.24, "inner_darkness": 0.04, "edge": 1.6, "range_edge": 3.0, "near_edge": 2.5}, "tuft": [Color("9fb85a"), Color("86a24a"), Color("b3b968")],
 		"cliff": [Color("7a7064"), Color("5f6e45")], "foliage": Color("4b5d38"), "iron": Color("2a282d"), "bark": Color("4a3a2c"),
 		"post": {"vignette": 0.35, "saturation": 1.0, "contrast": 1.02, "tint": Color("fff8f0")},   # 上下緣模糊拿掉（YangHsu 2026-11-18）

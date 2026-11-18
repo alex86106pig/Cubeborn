@@ -83,7 +83,8 @@ func _tufts(size: Vector2) -> void:
 			_rock(at, s, s * 0.6, grey, grey.lightened(0.1))
 			continue
 		var base := _turf_color(at.x, at.y)
-		var col := Color.from_hsv(base.h + 0.015, base.s, minf(1.0, base.v * 1.28))
+		# 比地面亮一點、偏黃一點的乾草；亮太多（舊的 ×1.28）在暗土上會變成一顆顆淡色雜點
+		var col := Color.from_hsv(base.h + 0.02, base.s * 1.1, minf(1.0, base.v * 1.15))
 		# 扁平、往上收尖的葉片（立在地上，往外斜），一叢 5 ~ 8 片；法線一律朝上（受光跟地面一樣，不然立著的葉片背光、遠看是深色雜點）
 		var first := normals.size()
 		for k in _rng.randi_range(5, 8):
