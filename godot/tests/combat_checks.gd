@@ -1737,38 +1737,54 @@ static func check_attack_quota() -> String:
 	return ""
 
 
-# 視野外出招的提示（ThreatMarks.threats）：背後（身邊一圈以外）的弓手瞄準時提示、方向指向牠，沒在瞄準不提示；面前的不提示（看得到）；
-# 對著隊友出招的不提示；Boss 不提示；設定頁有開關、預設開
+# 視野外出招的提示（ThreatMarks.threats）：快打到才亮——背後（身邊一圈以外）的弓手瞄準時不亮，射出來的箭再 LEAD 秒內打到才亮、方向指向那邊；
+# 背後的骨輪蓄力時不亮，滾到快撞到才亮；面前的不提示（看得到）；對著隊友出招的不提示；Boss 不提示；設定頁有開關、預設開
 static func check_threat_marks() -> String:
 	if not SettingsPanel.DEFAULTS.get("threat_marks", false) or not SettingsPanel.GAME_TOGGLES.has("threat_marks") or SettingsPanel.SECTION.get("threat_marks", "") != "game":
 		return "設定頁應有「視野外出招的提示」開關、預設開、存在 game 段"
-	for behind: bool in [true, false]:
+	for c: Array in [[&"archer", 7.0, true], [&"archer", 7.0, false], [&"bone_wheel", 12.0, true]]:
+		var type: StringName = c[0]
+		var behind: bool = c[2]
 		var w := _new_world()
 		var p := _player(w)
-		var e := _spawn(w, &"archer", p.pos + Vector2(0.0, -7.0 if behind else 7.0))
+		var e := _spawn(w, type, p.pos + Vector2(0.0, -c[1] if behind else c[1]))
 		e.fsm.change(e.main_state)
 		var aim := p.pos + Vector2(0, 5)
 		_run(w, _cmd(Vector2.ZERO, aim), 1)
 		if not ThreatMarks.threats(w, p).is_empty():
-			return "弓手還沒瞄準時不應提示"
-		var seen_aiming := false
-		var marked := false
+			return "%s 還沒出招時不應提示" % type
+		var seen_windup := false
+		var windup_marked := false
+		var first_mark := -1
+		var hit_tick := -1
 		var dir := Vector2.ZERO
 		for i in roundi(5.0 / DT):
 			p.hp = p.max_hp
 			_run(w, _cmd(Vector2.ZERO, aim), 1)
-			if e.is_attacking_now():
-				seen_aiming = true
-				var t := ThreatMarks.threats(w, p)
-				if not t.is_empty():
-					marked = true
-					dir = t[0].dir
-		if not seen_aiming:
-			return "前置：弓手 5 秒內應瞄準過一次"
-		if marked != behind:
-			return "%s的弓手瞄準時%s提示" % ["背後" if behind else "面前", "應" if behind else "不應"]
-		if behind and dir.dot((e.pos - p.pos).normalized()) < 0.99:
-			return "提示的方向應指向那隻弓手：%s" % dir
+			if _named(w.events, "entity:damaged").any(func(ev: Dictionary) -> bool: return ev.target_id == p.id):
+				hit_tick = i
+				break
+			var t := ThreatMarks.threats(w, p)
+			if e.anim.get("state", &"") in [&"aim", &"windup"]:   # 弓手瞄準、骨輪蓄力
+				seen_windup = true
+				windup_marked = windup_marked or not t.is_empty()
+			if not t.is_empty() and first_mark < 0:
+				first_mark = i
+				dir = t[0].dir
+		if not seen_windup or hit_tick < 0:
+			return "前置：%s 5 秒內應出招並打到站著不動的玩家：出招 %s、打到 %s" % [type, seen_windup, hit_tick >= 0]
+		if not behind:
+			if first_mark >= 0:
+				return "面前的 %s 出招不應提示" % type
+			continue
+		if windup_marked:
+			return "背後的 %s 前搖剛開始（瞄準、蓄力）不應提示，要快打到才亮" % type
+		var lead := (hit_tick - first_mark) * DT if first_mark >= 0 else -1.0
+		_note("視野外提示 %s：打到前 %.2f 秒亮（目標 %.2f）" % [type, lead, ThreatMarks.LEAD])
+		if lead < ThreatMarks.LEAD - 0.15 or lead > ThreatMarks.LEAD + 0.15:
+			return "背後的 %s：提示應在打到前約 %.2f 秒亮：%.2f 秒" % [type, ThreatMarks.LEAD, lead]
+		if dir.dot((e.pos - p.pos).normalized()) < 0.95:
+			return "提示的方向應指向 %s 那邊：%s" % [type, dir]
 	# 對著隊友出招的不提示
 	var w2 := World.new(&"test_arena")
 	w2.reset(5, [World.HOST_PEER_ID, World.HOST_PEER_ID + 1])

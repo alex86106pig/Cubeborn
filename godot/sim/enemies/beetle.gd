@@ -23,6 +23,10 @@ func attack_states() -> Array[StringName]:
 	return [&"emerge", &"surface"]
 
 
+func strike_at(state: StringName) -> float:
+	return def.burrow.emerge if state == &"emerge" else -1.0
+
+
 func is_burrowed() -> bool:
 	return not is_dead and (fsm.is_in(&"burrow") or fsm.is_in(&"emerge"))
 

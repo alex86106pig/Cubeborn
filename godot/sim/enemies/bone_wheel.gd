@@ -23,6 +23,17 @@ func attack_states() -> Array[StringName]:
 	return [&"windup", &"roll"]
 
 
+# 蓄力剩下的時間 + 照現在的距離滾過來要多久（滾動會追尾，直線估）
+func threat_eta(at: Vector2) -> float:
+	var state: StringName = anim.get("state", &"")
+	if state != &"windup" and state != &"roll":
+		return INF
+	var roll_time: float = maxf(0.0, pos.distance_to(at) - radius) / def.roll.speed
+	if state == &"windup":
+		return def.roll.windup - float(anim.get("time", 0.0)) + roll_time
+	return roll_time
+
+
 func is_rolling() -> bool:
 	return fsm.is_in(&"roll")
 

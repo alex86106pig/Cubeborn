@@ -31,6 +31,15 @@ func attack_states() -> Array[StringName]:
 	return [&"hug", &"swell"]
 
 
+func strike_at(state: StringName) -> float:
+	match state:
+		&"hug":
+			return def.hug.windup
+		&"swell":
+			return def.burst.hold_swell_time if hugged else def.burst.swell_time
+	return -1.0
+
+
 func _anim_extra(a: Dictionary) -> void:
 	if has_burst:
 		a["burst"] = true

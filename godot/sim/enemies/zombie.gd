@@ -30,6 +30,16 @@ func attack_states() -> Array[StringName]:
 	return [&"lunge", &"bite", &"armed_move"]
 
 
+# 持武器的招式（armed_move）不提示：近戰都在身邊一圈裡看得到，遠程的看射出來的投射物
+func strike_at(state: StringName) -> float:
+	match state:
+		&"lunge":
+			return def.lunge.windup
+		&"bite":
+			return 0.0
+	return -1.0
+
+
 func _anim_extra(a: Dictionary) -> void:
 	if fsm.is_in(&"lunge") or fsm.is_in(&"fetch"):
 		a["phase"] = fsm.data.phase

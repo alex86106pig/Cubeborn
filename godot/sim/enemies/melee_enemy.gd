@@ -23,6 +23,15 @@ func attack_states() -> Array[StringName]:
 	return [&"swing", &"rush"]
 
 
+func strike_at(state: StringName) -> float:
+	match state:
+		&"swing":
+			return def.swing.windup
+		&"rush":
+			return def.rush.windup
+	return -1.0
+
+
 func _anim_extra(a: Dictionary) -> void:
 	if fsm.is_in(&"rush"):
 		a["phase"] = fsm.data.phase

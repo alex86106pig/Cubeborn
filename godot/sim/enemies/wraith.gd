@@ -17,6 +17,10 @@ func attack_starts() -> Array[StringName]:
 	return [&"shriek"]
 
 
+func strike_at(state: StringName) -> float:
+	return def.shriek.windup if state == &"shriek" else -1.0
+
+
 func attack_kind() -> StringName:
 	return &"ranged"
 

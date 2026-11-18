@@ -224,6 +224,20 @@ func attack_kind() -> StringName:
 	return &"melee"
 
 
+# 視野外出招的提示用（ThreatMarks）：現在這一招再過幾秒打到 at；負的 = 已經打出去幾秒了。
+# 只看動畫狀態與進這個狀態後的秒數（anim，跟著快照到客戶端），房主與客戶端算的一樣。不是出招、或這個狀態本身不打人回傳 INF
+func threat_eta(_at: Vector2) -> float:
+	var hit := strike_at(anim.get("state", &""))
+	if hit < 0.0:
+		return INF
+	return hit - float(anim.get("time", 0.0))
+
+
+# 進這個出招狀態後第幾秒打出去（前搖多長）；-1 = 不是出招、或這個狀態本身不打人（遠程瞄準：之後是投射物，ThreatMarks 另外看）
+func strike_at(_state: StringName) -> float:
+	return -1.0
+
+
 # 前搖音效（招式設定的 sfx_windup，沒寫就不播）：進入開始出招的狀態時呼叫；帶著位置，畫面層照左右聲道播
 func windup_sound(move: Dictionary) -> void:
 	var cue: String = move.get("sfx_windup", "")
