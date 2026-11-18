@@ -1,24 +1,17 @@
-# 地面的造型（ArtStyle 試做用，YangHsu 2026-11-18：「地面風格不喜歡」，做三種挑）：
-# - smooth 平滑草皮：顏色照頂點算（相鄰三角形共用同一點的顏色），沒有一格一格的三角形；大片深淺漸變，幾塊泥土
-# - tuft 模型底座草：平滑草皮；草叢只長在牆腳、墓碑腳、邊界土坡腳（BlockDressing._base_tufts，YangHsu 2026-11-18：空地上一叢叢的乾草看起來很怪）
-# - hex 六角地板：平滑草皮壓暗當縫，上面鋪微微凸起的六角形板塊（像桌遊的地圖板）
-# 繼承 BlockDressing 只為了共用幾何工具（_prism、_obox、_rock、_quad）
+# 地面的造型（桌上模型風格，YangHsu 2026-11-18 選定；目前只有墓園）：平滑的土地，顏色照頂點算（相鄰三角形共用同一點的顏色），
+# 沒有一格一格的三角形；大片深淺漸變，幾塊稍深的土。草叢不長在空地上（BlockDressing._base_tufts 長在牆腳、墓碑腳、土坡腳）
+# 繼承 BlockDressing 只為了共用配色與 _shade
 class_name GroundDressing
 extends BlockDressing
 
-const CELL := 1.0          # 草皮的格子（只影響漸變多細，看不到格子）
-const HEX_R := 1.0         # 六角板的外接圓半徑
-const HEX_GAP := 0.07
+const CELL := 1.0          # 格子大小（只影響漸變多細，看不到格子）
 
 
 static func build_ground(size: Vector2, style: Dictionary, seed_value: int) -> MeshInstance3D:
 	var g := GroundDressing.new()
 	g._style = style
 	g._rng.seed = seed_value
-	var mode: StringName = style.ground_mode
-	g._turf(size, 0.55 if mode == &"hex" else 1.0, -0.02 if mode == &"hex" else 0.0)
-	if mode == &"hex":
-		g._hexes(size)
+	g._turf(size)
 	var mi := MeshInstance3D.new()
 	mi.mesh = PartKit.array_mesh(g.verts, g.normals, g.colors)
 	var m := StandardMaterial3D.new()
@@ -32,7 +25,7 @@ static func build_ground(size: Vector2, style: Dictionary, seed_value: int) -> M
 	return mi
 
 
-# 某一點的草色：大片雜訊挑草色，另一層雜訊高的地方混泥土；再照座標雜湊加一點深淺（同一點永遠同一色，三角形之間才會平滑）
+# 某一點的地面色：大片雜訊在 grass 幾種土色間漸變，另一層雜訊高的地方混深一點的土（ground_dirt）；再照座標雜湊加一點深淺（同一點永遠同一色，三角形之間才會平滑）
 func _turf_color(x: float, z: float) -> Color:
 	var grass: Array = _style.grass
 	var t := clampf(ArenaView.soft_noise(x * 0.3, z * 0.3), 0.0, 0.999) * (grass.size() - 1)
@@ -44,41 +37,27 @@ func _turf_color(x: float, z: float) -> Color:
 	return _shade(c, 0.97 + h * 0.06)
 
 
-func _turf(size: Vector2, shade: float, y: float) -> void:
+func _turf(size: Vector2) -> void:
 	var nx := maxi(1, roundi(size.x / CELL))
 	var nz := maxi(1, roundi(size.y / CELL))
 	var sx := size.x / nx
 	var sz := size.y / nz
+	# 每個格點的顏色只算一次（相鄰 4 格共用；逐格算要多算 4 倍，墓園一張 2 ~ 3 萬次 _turf_color）
+	var grid := PackedColorArray()
+	grid.resize((nx + 1) * (nz + 1))
+	for iz in nz + 1:
+		for ix in nx + 1:
+			grid[iz * (nx + 1) + ix] = _turf_color(-size.x / 2.0 + ix * sx, -size.y / 2.0 + iz * sz)
 	for iz in nz:
 		for ix in nx:
 			var x0 := -size.x / 2.0 + ix * sx
 			var z0 := -size.y / 2.0 + iz * sz
-			var p := [Vector3(x0, y, z0), Vector3(x0 + sx, y, z0), Vector3(x0 + sx, y, z0 + sz), Vector3(x0, y, z0 + sz)]
-			var c: Array[Color] = []
-			for v: Vector3 in p:
-				c.append(_shade(_turf_color(v.x, v.z), shade))
+			var p := [Vector3(x0, 0.0, z0), Vector3(x0 + sx, 0.0, z0), Vector3(x0 + sx, 0.0, z0 + sz), Vector3(x0, 0.0, z0 + sz)]
+			var row := iz * (nx + 1) + ix
+			var c := [grid[row], grid[row + 1], grid[row + nx + 2], grid[row + nx + 1]]
 			# 兩個三角形，正面朝上（Godot 正面 = cross(b − a, c − a) 跟法線反向）：[0, 1, 2]、[0, 2, 3]
 			for tri: Array in [[0, 1, 2], [0, 2, 3]]:
 				for k: int in tri:
 					verts.append(p[k])
 					normals.append(Vector3.UP)
 					colors.append(c[k])
-
-
-# 六角板（平頂朝上）：鋪滿整片，每塊顏色照中心的草色、少數是泥土板
-func _hexes(size: Vector2) -> void:
-	var w := 1.5 * HEX_R
-	var hgt := sqrt(3.0) * HEX_R
-	var cols := ceili(size.x / w) + 2
-	var rows := ceili(size.y / hgt) + 2
-	var outline := PackedVector2Array()
-	for k in 6:
-		var a := TAU * k / 6.0
-		outline.append(Vector2(cos(a), sin(a)) * (HEX_R - HEX_GAP / 2.0))
-	var up := Basis(Vector3.RIGHT, -PI / 2.0)   # 輪廓 → 地面，擠出方向 → 往上
-	for q in cols:
-		for r in rows:
-			var cx := -size.x / 2.0 + q * w
-			var cz := -size.y / 2.0 + r * hgt + (hgt / 2.0 if q % 2 == 1 else 0.0)
-			var col := _jitter(_turf_color(cx, cz), 0.06)
-			_prism(outline, Vector2.ZERO, 0.06, Transform3D(up, Vector3(cx, -0.015, cz)), _shade(col, 0.8), col)

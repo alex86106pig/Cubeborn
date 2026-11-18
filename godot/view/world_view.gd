@@ -123,7 +123,7 @@ var _world: World
 var _vision_overlay := _create_vision_overlay()
 var _sun: DirectionalLight3D
 var _env: Environment
-var _style_lantern: OmniLight3D = null   # ArtStyle 試做：跟著本機玩家的手提燈（只有風格有 lantern 時）
+var _post: ColorRect = null            # 全畫面後製（主題有 post 時才建；POST_SHADER）
 var lights_on := true                  # 設定頁「光源」：關掉時新建的點光源也不亮
 
 
@@ -236,50 +236,63 @@ func _setup_environment() -> void:
 	apply_theme(&"graveyard")
 
 
-# 地圖主題（MapDefs 的 theme）的背景、環境光與太陽：換層換地圖時 main.gd 呼叫
+# 地圖主題（MapDefs 的 theme）的背景、環境光、太陽、視野遮罩的壓暗色與全畫面後製：換層換地圖時 main.gd 呼叫
 func apply_theme(theme: StringName) -> void:
 	var c: Dictionary = Config.ENVIRONMENTS.get(theme, Config.ENVIRONMENT)
 	_env.background_color = c.background
-	_env.ambient_light_color = (c.hemi_sky as Color).lerp(c.hemi_ground, 0.35)
+	_env.ambient_light_color = c.ambient if c.has("ambient") else (c.hemi_sky as Color).lerp(c.hemi_ground, 0.35)
 	_env.ambient_light_energy = c.ambient_energy
 	_sun.light_color = c.sun_color
 	_sun.light_energy = c.sun_energy
-	_apply_style(theme)
+	# 視野遮罩：沒寫的照 Config.VISION、壓暗色預設黑（換到別的主題要還原）
+	var vision: Dictionary = c.get("vision", {})
+	var m: ShaderMaterial = _vision_overlay.material_override
+	m.set_shader_parameter(&"shade_color", vision.get("shade_color", Color.BLACK))
+	for key: String in ["darkness", "inner_darkness", "edge", "near_edge", "range_edge"]:
+		m.set_shader_parameter(StringName(key), vision.get(key, Config.VISION[key]))
+	_apply_post(c.get("post", {}))
 
 
-# 畫面風格試做（view/art_style.gd）：蓋過這一層的背景、環境光、太陽，加霧與手提燈；沒選風格時不做事
-func _apply_style(theme: StringName) -> void:
-	var s := ArtStyle.for_theme(theme)
-	_env.fog_enabled = s.has("fog")
-	if s.is_empty():
-		if _style_lantern != null:
-			_style_lantern.visible = false
+# 全畫面後製：讀 3D 畫好的畫面，做飽和度 / 色調 / 對比 / 暗角；掛在 layer -1，介面（HUD、名字、傷害數字）畫在它上面，不受影響
+const POST_SHADER := """
+shader_type canvas_item;
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
+uniform float vignette = 0.0;
+uniform float saturation = 1.0;
+uniform float contrast = 1.0;
+uniform vec4 tint : source_color = vec4(1.0);
+void fragment() {
+	vec3 c = texture(screen_tex, SCREEN_UV).rgb;
+	float l = dot(c, vec3(0.299, 0.587, 0.114));
+	vec3 g = mix(vec3(l), c, saturation) * tint.rgb;
+	g = (g - 0.5) * contrast + 0.5;
+	vec2 v = SCREEN_UV - 0.5;
+	g *= clamp(1.0 - dot(v, v) * vignette * 1.6, 0.0, 1.0);
+	COLOR = vec4(g, 1.0);
+}
+"""
+
+
+func _apply_post(post: Dictionary) -> void:
+	if post.is_empty():
+		if _post != null:
+			_post.visible = false
 		return
-	_env.background_color = s.background
-	_env.ambient_light_color = s.ambient
-	_env.ambient_light_energy = s.ambient_energy
-	_sun.light_color = s.sun_color
-	_sun.light_energy = s.sun_energy
-	if s.has("fog"):
-		_env.fog_light_color = s.fog.color
-		_env.fog_density = s.fog.density
-		_env.fog_sky_affect = 0.0
-	if s.has("lantern"):
-		if _style_lantern == null:
-			_style_lantern = OmniLight3D.new()
-			_style_lantern.shadow_enabled = false
-			add_child(_style_lantern)
-		_style_lantern.light_color = s.lantern.color
-		_style_lantern.light_energy = s.lantern.energy
-		_style_lantern.omni_range = s.lantern.range
-		_style_lantern.omni_attenuation = 1.2
-		_style_lantern.visible = true
-	elif _style_lantern != null:
-		_style_lantern.visible = false
-	if s.has("vision"):   # 視野遮罩：亮色場景蓋黑色會變髒、邊緣像聚光燈（YangHsu 2026-11-18：看起來怪怪的）
-		var m: ShaderMaterial = _vision_overlay.material_override
-		for key: String in s.vision:
-			m.set_shader_parameter(&"shade_color" if key == "color" else StringName(key), s.vision[key])
+	if _post == null:
+		var layer := CanvasLayer.new()
+		layer.layer = -1
+		_post = ColorRect.new()
+		_post.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_post.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var sh := Shader.new()
+		sh.code = POST_SHADER
+		_post.material = ShaderMaterial.new()
+		(_post.material as ShaderMaterial).shader = sh
+		layer.add_child(_post)
+		add_child(layer)
+	for key: String in post:
+		(_post.material as ShaderMaterial).set_shader_parameter(StringName(key), post[key])
+	_post.visible = true
 
 
 # 實體這一幀畫在哪（同 sync 擺模型的補間）：x / z 是地面位置，y 是腳底高度 + up
@@ -294,8 +307,6 @@ func sync(world: World, alpha: float, dt: float) -> void:
 	render_alpha = alpha
 	_tick_warm_up()
 	var me := viewer()
-	if _style_lantern != null and me != null:
-		_style_lantern.position = render_pos(me, 2.4)
 	# 視野只依模擬層的位置與朝向決定：同一個 tick 不必重算（D5：200 隻怪時每幀做視線判斷太慢）
 	var vision_key := [world.tick, world.run_id, world.entities.size(), me, me.pos if me else Vector2.ZERO, me.facing if me else 0.0, me.is_dead if me else false]
 	var t0 := Time.get_ticks_usec()
@@ -522,7 +533,7 @@ uniform float range_edge;
 uniform float darkness;
 uniform float inner_darkness;
 uniform float edge;
-uniform vec3 shade_color : source_color = vec3(0.0);   // 壓暗用的顏色（預設黑；風格試做可換成冷色）
+uniform vec3 shade_color : source_color = vec3(0.0);   // 壓暗用的顏色（預設黑；主題可換，見 Config.ENVIRONMENTS 的 vision）
 uniform vec3 lights[16];   // 火把的光（F8）：xz 位置 + 半徑
 uniform int light_count;
 

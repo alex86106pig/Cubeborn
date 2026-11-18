@@ -141,10 +141,6 @@ func _apply_args() -> void:
 	args = LaunchArgs.from_os()
 	input_collector.auto_move = args.auto_move
 	world_view.debug_reveal = args.reveal
-	ArtStyle.current = StringName(args.art_style)
-	var post := ArtStyle.make_post_layer()
-	if post != null:
-		add_child(post)
 	input_collector.auto_attack = args.auto_attack
 	input_collector.auto_special = args.auto_special
 	input_collector.auto_interact = args.auto_interact

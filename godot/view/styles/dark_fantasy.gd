@@ -106,7 +106,6 @@ static var _projectile_kit: PartKit   # 箭的材質（enemy_projectile）
 const BLOOD := Color("d8d2bf")        # 骷髏死亡碎骨（網頁版 colors.blood）
 const BOSS_BLOOD := Color("55e0ff")   # 亡骸騎士的死亡、狂暴、召喚（網頁版 colors.bossBlood）
 
-const GROUND_COLORS: Array[Color] = [Color("2b3528"), Color("3a4431"), Color("4a4a3a")]
 const CATACOMB_GROUND: Array[Color] = [Color("2a2724"), Color("35302a"), Color("423a31")]   # 地下墓窟的石地
 const CATACOMB_ROCK: Array[Color] = [Color("2e2925"), Color("3a332c"), Color("252220")]     # 場外的岩塊
 const BURROW_GROUND: Array[Color] = [Color("26281c"), Color("323423"), Color("3f3d2a")]     # 蟲蝕墓道的濕土
@@ -966,23 +965,11 @@ static func build_arena(half: Vector2, rng: RandomNumberGenerator, theme: String
 		k.add(tree, PartKit.cyl(0.03, 0.06, 0.9, 4), bark, {"x": 0.25, "y": 1.6, "rz": -0.8})
 		k.add(tree, PartKit.cyl(0.03, 0.05, 0.7, 4), bark, {"x": -0.2, "y": 1.9, "rz": 0.9})
 		group.add_child(tree)
-	var style := ArtStyle.for_theme(&"graveyard")
-	if style.is_empty():   # 風格試做不撒細碎骨（太細，畫面上只剩一兩個像素的白點，YangHsu 2026-11-18）
-		var bone := k.mat(C.bone_dark)
-		for p in ArenaView.scatter_inside(rng, half, 18):
-			k.add(group, PartKit.cyl(0.03, 0.03, 0.35, 4), bone, {"x": p.x, "y": 0.03, "z": p.z, "rz": PI / 2.0, "ry": p.ry, "shadow": false})
+	# 不撒細碎骨（太細，畫面上只剩一兩個像素的白點，YangHsu 2026-11-18）
 	k.merge_static(group, [group])
 
-	# 地面有頂點色，不參與合併
-	if style.is_empty():
-		group.add_child(ArenaView.create_ground((half + Vector2(14.0, 14.0)) * 2.0, GROUND_COLORS, 1.8, 0.1, rng))
-	else:
-		if style.has("ground_mode"):
-			group.add_child(GroundDressing.build_ground((half + Vector2(14.0, 14.0)) * 2.0, style, rng.randi()))
-		else:
-			var ground: Array[Color] = []
-			ground.assign(style.ground)
-			group.add_child(ArenaView.create_ground((half + Vector2(14.0, 14.0)) * 2.0, ground, style.ground_cell, style.ground_jitter, rng))
+	# 地面有頂點色，不參與合併：平滑的暗灰褐土（GroundDressing，桌上模型風格）
+	group.add_child(GroundDressing.build_ground((half + Vector2(14.0, 14.0)) * 2.0, BlockDressing.palette(&"graveyard"), rng.randi()))
 	return group
 
 

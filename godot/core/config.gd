@@ -71,7 +71,7 @@ const PLAYER := {
 	"hurt_shake_duration": 0.2,
 }
 
-# 暗黑幻想的環境色（照搬 darkFantasy.js 的 environment；里程碑 5 移到 view/styles/）
+# 暗黑幻想的環境色（照搬 darkFantasy.js 的 environment；里程碑 5 移到 view/styles/）：選角畫面用、沒列在 ENVIRONMENTS 的主題也用
 const ENVIRONMENT := {
 	"background": Color("0e1220"),
 	"hemi_sky": Color("8a9aba"),
@@ -81,9 +81,20 @@ const ENVIRONMENT := {
 	"sun_energy": 1.2,
 }
 
-# 每種地圖主題（MapDefs 的 theme）的環境光；graveyard = 地面的墓園（選角畫面也用），catacomb = 地下墓窟：偏暖、比較暗
+# 每種地圖主題（MapDefs 的 theme）的環境光；catacomb = 地下墓窟：偏暖、比較暗
+# 可選：ambient（直接指定環境光色，不用 hemi_sky / hemi_ground 混）、vision（視野遮罩的壓暗色與邊緣，沒寫的照 VISION）、
+# post（全畫面後製：暗角、飽和度、對比、色調，見 WorldView.POST_SHADER；沒有就不掛）
 const ENVIRONMENTS := {
-	&"graveyard": ENVIRONMENT,
+	# graveyard = 地面的墓園：桌上模型風格（YangHsu 2026-11-18 選 C）：暖色柔光；視野外壓暗用淡的冷灰藍（黑色疊在亮色上會變髒、像聚光燈）
+	&"graveyard": {
+		"background": Color("2a2320"),
+		"ambient": Color("c8bca8"),
+		"sun_color": Color("fff0d8"),
+		"ambient_energy": 0.95,
+		"sun_energy": 1.25,
+		"vision": {"shade_color": Color("1c2640"), "darkness": 0.24, "inner_darkness": 0.04, "edge": 1.6, "range_edge": 3.0, "near_edge": 2.5},
+		"post": {"vignette": 0.35, "saturation": 1.0, "contrast": 1.02, "tint": Color("fff8f0")},
+	},
 	&"catacomb": {
 		"background": Color("07080b"),
 		"hemi_sky": Color("7a7280"),

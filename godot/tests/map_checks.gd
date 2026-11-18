@@ -321,6 +321,14 @@ static func _map_rules(w: World, note: bool) -> String:
 	for i in range(0, verts.size(), 3):
 		if (verts[i + 1] - verts[i]).cross(verts[i + 2] - verts[i]).dot(normals[i]) >= 0.0:
 			return "石台網格第 %d 個三角形是背面" % (i / 3)
+	# 有造型的主題（墓園，BlockDressing）：牆腳、墓碑腳要長得出乾草叢（草叢的程式中途出錯只會在 Console 印錯誤、畫面上一叢都沒有，2026-11-18 發生過）
+	var style := BlockDressing.palette(m.get("theme", &"graveyard"))
+	if not style.is_empty():
+		var dressed := BlockDressing.build(w.terrain.blocks, style, 1, m.get("edge_blocks", 0))
+		var tufts: int = dressed.get_meta(&"tufts", 0)
+		dressed.free()
+		if tufts == 0:
+			return "%s 的石台造型沒有長出乾草叢" % w.map_id
 	if note:
 		_note("%s：可走格 %d / %d、牆 %d、墓碑 %d、高台 %d" % [w.map_id, walkable, nav.size.x * nav.size.y, counts.get(MapDefs.WALL, 0), counts.get(MapDefs.TOMB, 0), counts.get(MapDefs.PLATFORM, 0)])
 	return ""

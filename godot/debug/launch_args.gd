@@ -19,7 +19,7 @@ class_name LaunchArgs
 extends RefCounted
 
 # 只有本機匯出的 debug 版網頁才收的網址參數（Claude 用 headless Chrome 截圖確認畫面：不開視窗、不搶焦點）；網站是 release 匯出，朋友帶了也沒用
-const WEB_DEBUG_URL_ARGS: Array[String] = ["seed", "player-at", "reveal", "bag-mode", "style"]
+const WEB_DEBUG_URL_ARGS: Array[String] = ["seed", "player-at", "reveal", "bag-mode"]
 # 網頁版可以從網址帶的參數（url_query_args）；v0.36.3 加自動移動 / 攻擊，用來量「第一次出現」的卡頓
 const WEB_URL_ARGS: Array[String] = ["seconds", "horde", "perf", "elites", "player-hp", "auto-move", "auto-move-seconds", "auto-attack", "weapon", "class", "difficulty", "no-spawn", "weapon-test", "items", "shadows", "lights", "floor", "host", "join", "room", "net-autostart", "loot-test", "stage-hop", "flame-test", "pose-test", "pose-view", "anim-viewer"]   # loot-test：開箱與掉落卡頓的固定場景；flame-test：守墓人一直噴火；stage-hop：量換小關 / 換層的卡頓； host / join / room / net-autostart：網頁版多人自動測試、之後的邀請連結（2026-10-27 使用者同意開放；?host&room 開房印 net room=房號，?join=房號&room 加入）；shadows / lights：內顯量效能的對照組（2026-10-27）；weapon / class / no-spawn / weapon-test：網頁版逐把看武器（2026-10-27）；difficulty：選角畫面的難度；items：帶道具量效能（G7）；floor：量第 2 層以後的地圖
 
@@ -27,7 +27,6 @@ var run_seconds := 0.0           # > 0：跑這麼多秒後印出狀態並結束
 var screenshot_path := ""
 var auto_move := Vector2.ZERO
 var reveal := false   # --reveal：畫面層不照視野藏東西（截圖確認視野外的東西長怎樣；模擬照舊）
-var art_style := ""   # --style=moon|diorama|etching：畫面風格試做（view/art_style.gd），只給比較截圖用
 var auto_move_seconds := 0.0
 var auto_attack := false
 var auto_special := false
@@ -168,8 +167,6 @@ static func parse(args: PackedStringArray) -> LaunchArgs:
 			a.start_floor = maxi(1, value.to_int())
 		elif arg == "--reveal":
 			a.reveal = true
-		elif arg.begins_with("--style="):
-			a.art_style = value
 		elif arg == "--exit-open":
 			a.exit_open = true
 		elif arg == "--ghost":

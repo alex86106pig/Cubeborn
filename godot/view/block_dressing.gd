@@ -1,11 +1,12 @@
-# 地形石台的造型（ArtStyle 試做用）：碰撞照舊是 World.terrain 的長方體，畫面照種類換成看得出是什麼的樣子
+# 地形石台的造型（桌上模型風格，YangHsu 2026-11-18 選定；目前只有墓園，其他主題照舊用 ArenaView.create_blocks）：
+# 碰撞照舊是 World.terrain 的長方體，畫面照種類換成看得出是什麼的樣子
 # - 崖壁（地圖邊界：MapGen 把吃進來的邊與地圖外面都記成牆，排在 blocks 最前面 edge_count 個）：外露的邊排一圈高低不一的岩柱、
 #   畫成矮土坡，每 6 ~ 12 單位一段各自是鐵柵欄、岩崖、灌木叢或殘牆，碰撞照舊（YangHsu 2026-11-18：墓園用牆框起來很怪、可以做隱形牆、不用全是樹跟柵欄）
 # - 牆（地圖裡的障礙物：廢墟殘牆、陵墓）：一段一段砌、每段高低不齊、段與段之間立柱、頂上壓一條蓋石、側面凸出幾塊石頭、底部一圈苔、少數段崩掉一截（腳邊碎石）
 #   厚的牆（> WIDE）當成圍起來的一塊：四邊砌牆、中間填土頂
 # - 墓碑：圓頂、十字、尖頂、斷碑、肩頂 5 種（照位置挑，大家看到的一樣），底座、刻字面、往鏡頭那邊一塊墳土，微微傾斜
 # - 高台：台身 + 外凸的頂石 + 四角石墩
-# - 地面是 tuft 時：每塊外露的邊腳下長一段段乾草叢（_base_tufts）
+# - 每塊外露的邊腳下長一段段乾草叢（_base_tufts）
 # 全部疊進同一個頂點色網格，一張圖只畫 1 次（同 ArenaView.create_blocks）
 class_name BlockDressing
 extends RefCounted
@@ -24,6 +25,29 @@ var colors := PackedColorArray()
 var _rng := RandomNumberGenerator.new()
 var _style: Dictionary
 var _to_cam := Vector2(sin(Config.CAMERA.azimuth), cos(Config.CAMERA.azimuth))   # 地面上往鏡頭的方向
+var _tuft_count := 0
+
+# 有造型的主題的配色（頂點色；打光後畫面上約亮 1.3 ~ 1.4 倍）。blocks 是各種石台的 [側面, 頂面]
+const PALETTES := {
+	&"graveyard": {
+		"blocks": {
+			&"wall": [Color("8a8073"), Color("b3a996")],
+			&"tomb": [Color("b8b2a6"), Color("d8d2c4")],
+			&"platform": [Color("5a4d3f"), Color("6e604d")],   # 高台頂面也是地面：跟著壓暗（#a88a6c 在暗土上最刺眼）
+		},
+		"moss": Color("56683e"), "dirt": Color("5a4330"),
+		# 地面（GroundDressing）：墓園內是土色、不要綠、不要太亮（YangHsu 2026-11-18）→ 照 media.io 墓園配色「Dusk Lantern」(#4F3B2B ~ #8A6B4D) 的暗灰褐土
+		"grass": [Color("4a3f33"), Color("554a3c"), Color("605345")], "ground_dirt": Color("3f362c"), "dirt_mix": 0.35,
+		"roof": Color("8e8578"),
+		"tuft": [Color("6e6248"), Color("786a4c"), Color("665c46")],   # 乾草尖：只比地面亮一點、偏黃一點
+		"cliff": [Color("7a7064"), Color("5f6e45")], "foliage": Color("4b5d38"), "iron": Color("2a282d"), "bark": Color("4a3a2c"),
+	},
+}
+
+
+# 這個主題有沒有造型的配色；沒有回傳空的（照舊用 ArenaView.create_blocks 的方塊）
+static func palette(theme: StringName) -> Dictionary:
+	return PALETTES.get(theme, {})
 var _walls: Array[Dictionary] = []   # 全部的牆（算哪一邊跟別的牆貼著、不用砌）
 
 
@@ -48,10 +72,10 @@ static func build(blocks: Array[Dictionary], style: Dictionary, seed_value: int,
 				d._tomb(b, c)
 			_:
 				d._platform(b, c)
-	if style.get("ground_mode", &"") == &"tuft":
-		d._base_tufts(blocks)
+	d._base_tufts(blocks)
 	var mi := MeshInstance3D.new()
 	mi.mesh = PartKit.array_mesh(d.verts, d.normals, d.colors)
+	mi.set_meta(&"tufts", d._tuft_count)   # 檢查用（map_checks：草叢的程式中途出錯會一叢都沒有、不會報錯）
 	var m := StandardMaterial3D.new()
 	m.vertex_color_use_as_albedo = true
 	m.vertex_color_is_srgb = true
@@ -475,6 +499,7 @@ func _base_tufts(blocks: Array[Dictionary]) -> void:
 						continue   # 這一段不長（墓碑腳下一律長）
 					_tuft(at)
 					placed += 1
+	_tuft_count = placed
 
 
 # 一叢 12 ~ 18 片細葉：從根部往外倒，根是暗土色、尖是乾草色（頂點色漸變）；葉片兩面都畫，法線一律朝上（受光跟地面一樣，不然背光的面是深色雜點）
