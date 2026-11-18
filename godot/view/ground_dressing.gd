@@ -1,4 +1,4 @@
-# 地面的造型（桌上模型風格，YangHsu 2026-11-18 選定；目前只有墓園）：平滑的土地，顏色照頂點算（相鄰三角形共用同一點的顏色），
+# 地面的造型（桌上模型風格，YangHsu 2026-11-18 選定；三層都用，顏色照 BlockDressing.PALETTES）：平滑的土地，顏色照頂點算（相鄰三角形共用同一點的顏色），
 # 沒有一格一格的三角形；大片深淺漸變，幾塊稍深的土。草叢不長在空地上（BlockDressing._base_tufts 長在牆腳、墓碑腳、土坡腳）
 # 繼承 BlockDressing 只為了共用配色與 _shade
 class_name GroundDressing

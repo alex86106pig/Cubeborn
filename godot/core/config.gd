@@ -95,22 +95,25 @@ const ENVIRONMENTS := {
 		"vision": {"shade_color": Color("1c2640"), "darkness": 0.24, "inner_darkness": 0.04, "edge": 1.6, "range_edge": 3.0, "near_edge": 2.5},
 		"post": {"vignette": 0.35, "saturation": 1.0, "contrast": 1.02, "tint": Color("fff8f0")},
 	},
+	# 第 2、3 層也是桌上模型（YangHsu 2026-11-18：2、3 改）：比墓園暗一階，墓窟是暖色火光、蟲蝕墓道偏綠；視野外壓暗同墓園用冷色
 	&"catacomb": {
-		"background": Color("07080b"),
-		"hemi_sky": Color("7a7280"),
-		"hemi_ground": Color("261d16"),
-		"sun_color": Color("ffd2a0"),
-		"ambient_energy": 0.75,
-		"sun_energy": 0.95,
+		"background": Color("0f0d0b"),
+		"ambient": Color("b0a494"),
+		"sun_color": Color("ffdcb0"),
+		"ambient_energy": 0.8,
+		"sun_energy": 1.0,
+		"vision": {"shade_color": Color("141826"), "darkness": 0.3, "inner_darkness": 0.04, "edge": 1.6, "range_edge": 3.0, "near_edge": 2.5},
+		"post": {"vignette": 0.45, "saturation": 1.0, "contrast": 1.03, "tint": Color("fff6ec")},
 	},
-	# burrow = 蟲蝕墓道：偏綠、再暗一點
+	# burrow = 蟲蝕墓道：偏綠
 	&"burrow": {
-		"background": Color("060907"),
-		"hemi_sky": Color("6c7a66"),
-		"hemi_ground": Color("1d2216"),
-		"sun_color": Color("d8e0a8"),
-		"ambient_energy": 0.7,
-		"sun_energy": 0.9,
+		"background": Color("0b0d09"),
+		"ambient": Color("a6a48e"),   # 中性偏暖：原本 #a0a68c 把整層染成一片綠
+		"sun_color": Color("e8e8c4"),
+		"ambient_energy": 0.8,
+		"sun_energy": 0.95,
+		"vision": {"shade_color": Color("16201a"), "darkness": 0.3, "inner_darkness": 0.04, "edge": 1.6, "range_edge": 3.0, "near_edge": 2.5},
+		"post": {"vignette": 0.45, "saturation": 1.0, "contrast": 1.03, "tint": Color("f6fbec")},
 	},
 }
 

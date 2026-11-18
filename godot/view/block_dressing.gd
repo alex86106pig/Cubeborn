@@ -1,4 +1,4 @@
-# 地形石台的造型（桌上模型風格，YangHsu 2026-11-18 選定；目前只有墓園，其他主題照舊用 ArenaView.create_blocks）：
+# 地形石台的造型（桌上模型風格，YangHsu 2026-11-18 選定；三層各自的配色與造型在 PALETTES，沒列的主題照舊用 ArenaView.create_blocks）：
 # 碰撞照舊是 World.terrain 的長方體，畫面照種類換成看得出是什麼的樣子
 # - 崖壁（地圖邊界：MapGen 把吃進來的邊與地圖外面都記成牆，排在 blocks 最前面 edge_count 個）：外露的邊排一圈高低不一的岩柱、
 #   畫成矮土坡，每 6 ~ 12 單位一段各自是鐵柵欄、岩崖、灌木叢或殘牆，碰撞照舊（YangHsu 2026-11-18：墓園用牆框起來很怪、可以做隱形牆、不用全是樹跟柵欄）
@@ -6,7 +6,8 @@
 #   厚的牆（> WIDE）當成圍起來的一塊：四邊砌牆、中間填土頂
 # - 墓碑：圓頂、十字、尖頂、斷碑、肩頂 5 種（照位置挑，大家看到的一樣），底座、刻字面、往鏡頭那邊一塊墳土，微微傾斜
 # - 高台：台身 + 外凸的頂石 + 四角石墩
-# - 每塊外露的邊腳下長一段段乾草叢（_base_tufts）
+# - 每塊外露的邊腳下一段段的乾草叢（墓園）或碎石（地底，_base_tufts）
+# 依主題換的造型（PALETTES 的 wall_mode / fill / tomb_mode / base / eggs）：牆砌石或堆岩塊、厚牆頂是屋頂或粗岩面、墓碑是石碑或蟲卵囊
 # 全部疊進同一個頂點色網格，一張圖只畫 1 次（同 ArenaView.create_blocks）
 class_name BlockDressing
 extends RefCounted
@@ -41,6 +42,30 @@ const PALETTES := {
 		"roof": Color("8e8578"),
 		"tuft": [Color("6e6248"), Color("786a4c"), Color("665c46")],   # 乾草尖：只比地面亮一點、偏黃一點
 		"cliff": [Color("7a7064"), Color("5f6e45")], "foliage": Color("4b5d38"), "iron": Color("2a282d"), "bark": Color("4a3a2c"),
+		"wall_mode": &"masonry", "fill": &"roof", "tomb_mode": &"headstone", "base": &"tuft",
+	},
+	# 第 2 層地下墓窟（YangHsu 2026-11-18：2、3 層也改）：冷灰褐的石地、砌石牆、厚岩壁頂是粗岩面；墓碑是骨白石碑（地底不放墳土）、牆腳碎石
+	&"catacomb": {
+		"blocks": {
+			&"wall": [Color("5a5853"), Color("726e68")],
+			&"tomb": [Color("9a9384"), Color("b4ad9c")],
+			&"platform": [Color("554a40"), Color("665a4d")],   # 舊石台
+		},
+		"moss": Color("3d4434"),
+		"grass": [Color("3b3a37"), Color("43413d"), Color("4b4843")], "ground_dirt": Color("322f2b"), "dirt_mix": 0.35,   # 冷灰石地（暖光下才不會跟墓園一樣褐）
+		"rock_top": Color("3a3530"), "rubble": [Color("5a544c"), Color("6a6358"), Color("4c463f")],
+		"wall_mode": &"masonry", "fill": &"rock", "tomb_mode": &"stele", "base": &"rubble",
+	},
+	# 第 3 層蟲蝕墓道：濕的橄欖褐土、牆是一排高低不齊的岩塊（不砌）、墓碑是蟲卵囊、高台是結殼的土丘上面一窩窩蟲卵
+	&"burrow": {
+		"blocks": {
+			&"wall": [Color("3e3a31"), Color("524d41")],   # 深灰褐的岩塊，跟地面拉開（同色會糊成一片）
+			&"tomb": [Color("8c8a5e"), Color("a8a670")],
+			&"platform": [Color("4f4636"), Color("61573f")],
+		},
+		"grass": [Color("3f3a2c"), Color("474131"), Color("4f4836")], "ground_dirt": Color("352f24"), "dirt_mix": 0.35,   # 褐橄欖的濕土
+		"rock_top": Color("37332a"), "rubble": [Color("524b3c"), Color("463f33"), Color("5d5544")], "egg": [Color("b4b884"), Color("a6ab78")],
+		"wall_mode": &"rock", "fill": &"rock", "tomb_mode": &"pod", "base": &"rubble", "eggs": true,
 	},
 }
 
@@ -99,7 +124,22 @@ func _wall(b: Dictionary, c: Array) -> void:
 	var mid: Vector2 = (b.min + b.max) / 2.0
 	var axis := Vector2(1, 0) if along_x else Vector2(0, 1)
 	var side := Vector2(0, 1) if along_x else Vector2(1, 0)
+	if _style.wall_mode == &"rock":
+		_rock_run(mid - axis * length / 2.0, axis, length, thick, b.top, c)
+		return
 	_wall_run(mid - axis * length / 2.0, axis, side, length, thick, b.top, c)
+
+
+# 岩壁（wall_mode = rock）：沿 axis 一塊接一塊高低不齊的大岩塊，最多凸出碰撞 0.2；碰撞照舊是長方體
+func _rock_run(start: Vector2, axis: Vector2, length: float, thick: float, top: float, c: Array) -> void:
+	var r_max := thick / 2.0 + 0.2
+	var u := 0.0
+	while u < length - 0.05:
+		var r := minf(_rng.randf_range(0.55, 0.95), r_max)
+		var p := start + axis * clampf(u + r * 0.7, r * 0.5, length - r * 0.5)
+		var rc := _jitter(c[0], 0.08)
+		_rock(p, r, top * _rng.randf_range(0.72, 1.0), rc, _jitter(c[1], 0.08))
+		u += r * _rng.randf_range(0.9, 1.3)
 
 
 # 一道牆：起點 start、沿 axis 走 length、厚 thick（side 是厚的方向）
@@ -155,11 +195,14 @@ func _enclosure(b: Dictionary, c: Array) -> void:
 	var z1: float = b.max.y
 	var t: float = b.top
 	var w := 0.8
-	# 中間是建築：石頭屋頂（外凸一點）+ 沿長邊的一道屋脊（YangHsu 2026-11-18：原本填草像花台）
-	var roof: Color = _style.get("roof", _shade(c[1], 0.8))
 	var mid := Vector2((x0 + x1) / 2.0, (z0 + z1) / 2.0)
 	var sx := x1 - x0
 	var sz := z1 - z0
+	if _style.fill == &"rock":
+		_rock_fill(b, c, mid, sx, sz)
+		return
+	# 中間是建築：石頭屋頂（外凸一點）+ 沿長邊的一道屋脊（YangHsu 2026-11-18：原本填草像花台）
+	var roof: Color = _style.get("roof", _shade(c[1], 0.8))
 	_obox(mid, 0.0, t - 0.1, Vector2(1, 0), sx, sz, _shade(c[0], 0.85), roof)
 	_obox(mid, t - 0.1, 0.14, Vector2(1, 0), sx + 0.3, sz + 0.3, _shade(roof, 0.85), roof)
 	var along_x := sx >= sz
@@ -177,6 +220,37 @@ func _enclosure(b: Dictionary, c: Array) -> void:
 		_wall_run(Vector2(x0 + w / 2.0, seg.x), Vector2(0, 1), Vector2(1, 0), seg.y - seg.x, w, t, c)
 	for seg in _exposed(b, &"E"):
 		_wall_run(Vector2(x1 - w / 2.0, seg.x), Vector2(0, 1), Vector2(1, 0), seg.y - seg.x, w, t, c)
+
+
+# 厚的岩壁（fill = rock，地底）：頂是低一點的粗岩面、上面散幾塊岩石；外露的邊照 wall_mode 砌石牆或堆岩塊
+func _rock_fill(b: Dictionary, c: Array, mid: Vector2, sx: float, sz: float) -> void:
+	var t: float = b.top
+	var fill_h := t - 0.35
+	var rock_top: Color = _style.rock_top
+	_obox(mid, 0.0, fill_h, Vector2(1, 0), sx, sz, _shade(c[0], 0.8), rock_top)
+	# 頂上幾塊大岩石（太多太小會像一坑六角形的小餅）
+	for k in int(sx * sz / 14.0):
+		var p := mid + Vector2(_rng.randf_range(-sx / 2.0 + 1.2, sx / 2.0 - 1.2), _rng.randf_range(-sz / 2.0 + 1.2, sz / 2.0 - 1.2))
+		var r := _rng.randf_range(0.6, 1.2)
+		_rock(p, r, _rng.randf_range(0.35, 0.8), _jitter(rock_top, 0.1), _jitter(rock_top, 0.1).lightened(0.08), fill_h)
+	var w := 0.8
+	var rock: bool = _style.wall_mode == &"rock"
+	for edge: StringName in [&"N", &"S", &"W", &"E"]:
+		var horizontal := edge == &"N" or edge == &"S"
+		var line: float
+		match edge:
+			&"N": line = b.min.y + w / 2.0
+			&"S": line = b.max.y - w / 2.0
+			&"W": line = b.min.x + w / 2.0
+			_: line = b.max.x - w / 2.0
+		var axis := Vector2(1, 0) if horizontal else Vector2(0, 1)
+		var side := Vector2(0, 1) if horizontal else Vector2(1, 0)
+		for seg in _exposed(b, edge):
+			var start := Vector2(seg.x, line) if horizontal else Vector2(line, seg.x)
+			if rock:
+				_rock_run(start, axis, seg.y - seg.x, w, t, c)
+			else:
+				_wall_run(start, axis, side, seg.y - seg.x, w, t, c)
 
 
 # 這塊牆某一邊（N = min.y、S = max.y、W = min.x、E = max.x）沒有被別的牆貼住的區段 [起, 迄]（沿那一邊的座標）
@@ -400,12 +474,16 @@ func _tomb(b: Dictionary, c: Array) -> void:
 	var face := Vector2(0, 1) if along_x else Vector2(1, 0)
 	if face.dot(_to_cam) < 0.0:
 		face = -face   # 刻字面朝鏡頭
+	if _style.tomb_mode == &"pod":
+		_pod(mid, axis, face, width, b.top, c)
+		return
 	var shape := absi(hash(Vector2i(roundi(mid.x * 10.0), roundi(mid.y * 10.0)))) % 5
 	var stone := _jitter(c[0], 0.06)
 	var light := _jitter(c[1], 0.06)
 	var top: float = b.top
-	# 墳土：刻字面那一側，低矮一塊
-	_obox(mid + face * (thick / 2.0 + 0.75), 0.0, 0.14, axis, width * 0.85, 1.3, _jitter(_style.dirt, 0.08), _jitter(_style.dirt, 0.08).lightened(0.06))
+	# 墳土：刻字面那一側，低矮一塊（地底的石碑不放）
+	if _style.tomb_mode == &"headstone":
+		_obox(mid + face * (thick / 2.0 + 0.75), 0.0, 0.14, axis, width * 0.85, 1.3, _jitter(_style.dirt, 0.08), _jitter(_style.dirt, 0.08).lightened(0.06))
 	# 底座
 	_obox(mid, 0.0, 0.2, axis, width, thick, _shade(stone, 0.85), _shade(light, 0.9))
 	var w := width * 0.82
@@ -447,6 +525,15 @@ func _tomb(b: Dictionary, c: Array) -> void:
 		_prism(_rect(-w * 0.3, h * 0.3, w * 0.3, h * 0.62), Vector2(0, h * 0.46), 0.02, plate.translated_local(Vector3(0, 0, z)), _shade(stone, 0.72), _shade(stone, 0.72))
 
 
+# 蟲卵囊（tomb_mode = pod，蟲蝕墓道的墓碑）：一顆大的結殼卵囊，旁邊兩顆小的；高度同碰撞（擋得住箭）
+func _pod(mid: Vector2, axis: Vector2, face: Vector2, width: float, top: float, c: Array) -> void:
+	var r := width * 0.42
+	_rock(mid, r, top, _jitter(c[0], 0.06), _jitter(c[1], 0.06))
+	for sgn: float in [-1.0, 1.0]:
+		var p := mid + axis * (r * 0.9 * sgn) + face * _rng.randf_range(0.1, 0.35)
+		_rock(p, r * 0.5, top * _rng.randf_range(0.35, 0.5), _jitter(c[0], 0.08), _jitter(c[1], 0.08))
+
+
 # ---------- 高台 ----------
 
 func _platform(b: Dictionary, c: Array) -> void:
@@ -458,11 +545,20 @@ func _platform(b: Dictionary, c: Array) -> void:
 	for corner in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
 		var p: Vector2 = mid + Vector2(corner.x * (size.x / 2.0), corner.y * (size.y / 2.0))
 		_obox(p, 0.0, t + 0.12, Vector2(1, 0), 0.45, 0.45, _shade(c[0], 1.1), _shade(c[1], 1.15))
+	if _style.get("eggs", false):
+		# 結殼的卵丘：頂上 1 ~ 3 窩蟲卵，每窩 4 ~ 7 顆
+		var eggs: Array = _style.egg
+		for n in _rng.randi_range(1, 3):
+			var at := mid + Vector2(_rng.randf_range(-size.x / 2.0 + 0.6, size.x / 2.0 - 0.6), _rng.randf_range(-size.y / 2.0 + 0.6, size.y / 2.0 - 0.6))
+			for k in _rng.randi_range(4, 7):
+				var q := at + Vector2.from_angle(_rng.randf() * TAU) * _rng.randf_range(0.0, 0.3)
+				var e: Color = eggs[_rng.randi() % eggs.size()]
+				_rock(q, _rng.randf_range(0.09, 0.14), _rng.randf_range(0.18, 0.28), _jitter(e, 0.06), _jitter(e, 0.06).lightened(0.08), t)
 
 
 # ---------- 腳邊的草 ----------
 
-# 乾草叢只長在不常踩的地方：每塊石台外露的邊（牆腳、墓碑腳、邊界土坡腳）往外 0.06 ~ 0.45，一段有一段沒有（墓碑腳下一律長）
+# 乾草叢（地底是碎石）只長在不常踩的地方：每塊石台外露的邊（牆腳、墓碑腳、邊界土坡腳）往外 0.06 ~ 0.45，一段有一段沒有（墓碑腳下一律長）
 # （YangHsu 2026-11-18：空地上一叢叢的乾草看起來很怪——像紙片、散成雜點、比地面亮）
 func _base_tufts(blocks: Array[Dictionary]) -> void:
 	var placed := 0
@@ -497,9 +593,30 @@ func _base_tufts(blocks: Array[Dictionary]) -> void:
 					s += _rng.randf_range(0.18, 0.45)
 					if b.kind != &"tomb" and ArenaView.soft_noise(at.x * 0.6 - 7.0, at.y * 0.6 + 19.0) < 0.42:
 						continue   # 這一段不長（墓碑腳下一律長）
-					_tuft(at)
+					if _style.base == &"rubble":
+						if _rng.randf() < 0.5:
+							continue   # 碎石比草叢稀
+						_pebbles(at)
+					else:
+						_tuft(at)
 					placed += 1
 	_tuft_count = placed
+
+
+# 碎石（base = rubble，地底的牆腳）：1 ~ 2 顆矮的五角石塊
+func _pebbles(at: Vector2) -> void:
+	var cols: Array = _style.rubble
+	var up := Basis(Vector3.RIGHT, -PI / 2.0)
+	for k in _rng.randi_range(1, 2):
+		var r := _rng.randf_range(0.07, 0.17)
+		var q := at + Vector2.from_angle(_rng.randf() * TAU) * _rng.randf_range(0.0, 0.15)
+		var pts := PackedVector2Array()
+		var a0 := _rng.randf() * TAU
+		for i in 5:
+			pts.append(Vector2.from_angle(a0 + TAU * i / 5.0) * r * _rng.randf_range(0.7, 1.0))
+		var col: Color = _jitter(cols[_rng.randi() % cols.size()], 0.08)
+		var h := r * _rng.randf_range(0.5, 0.8)
+		_prism(pts, Vector2.ZERO, h, Transform3D(up, Vector3(q.x, h / 2.0, q.y)), _shade(col, 0.85), col)
 
 
 # 一叢 12 ~ 18 片細葉：從根部往外倒，根是暗土色、尖是乾草色（頂點色漸變）；葉片兩面都畫，法線一律朝上（受光跟地面一樣，不然背光的面是深色雜點）

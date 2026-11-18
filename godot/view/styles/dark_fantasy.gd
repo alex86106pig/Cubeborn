@@ -106,9 +106,7 @@ static var _projectile_kit: PartKit   # 箭的材質（enemy_projectile）
 const BLOOD := Color("d8d2bf")        # 骷髏死亡碎骨（網頁版 colors.blood）
 const BOSS_BLOOD := Color("55e0ff")   # 亡骸騎士的死亡、狂暴、召喚（網頁版 colors.bossBlood）
 
-const CATACOMB_GROUND: Array[Color] = [Color("2a2724"), Color("35302a"), Color("423a31")]   # 地下墓窟的石地
 const CATACOMB_ROCK: Array[Color] = [Color("2e2925"), Color("3a332c"), Color("252220")]     # 場外的岩塊
-const BURROW_GROUND: Array[Color] = [Color("26281c"), Color("323423"), Color("3f3d2a")]     # 蟲蝕墓道的濕土
 const BURROW_ROCK: Array[Color] = [Color("2c2b20"), Color("38372a"), Color("23231b")]
 const BURROW_EGG := Color("b9c08a")     # 蟲卵（淡黃綠）
 const BURROW_SILK := Color("c9cdbd")    # 地上的蟲絲
@@ -1007,7 +1005,7 @@ static func _perimeter_rocks(group: Node3D, half: Vector2, rng: RandomNumberGene
 		group.add_child(mmi)
 
 
-# 地下墓窟：場外是一塊塊岩石（沒有墓碑與樹），場內散落碎骨與頭骨堆
+# 地下墓窟：場外是一塊塊岩石（沒有墓碑與樹），場內散落頭骨堆（細碎骨不撒：太細，畫面上只剩白點，YangHsu 2026-11-18）
 static func _build_catacomb(half: Vector2, rng: RandomNumberGenerator) -> Node3D:
 	var k := PartKit.new()
 	var group := Node3D.new()
@@ -1020,10 +1018,7 @@ static func _build_catacomb(half: Vector2, rng: RandomNumberGenerator) -> Node3D
 		k.add(group, PartKit.ico(s, 0), rocks[rng.randi_range(0, 2)], {
 			"x": p.x, "y": s * 0.35, "z": p.z, "rx": rng.randf() * 3.0, "ry": p.ry, "sy": 0.6 + rng.randf() * 0.8,
 		})
-	var bone := k.mat(C.bone_dark)
 	var skull := k.mat(C.bone)
-	for p in ArenaView.scatter_inside(rng, half, 28):
-		k.add(group, PartKit.cyl(0.03, 0.03, 0.35, 4), bone, {"x": p.x, "y": 0.03, "z": p.z, "rz": PI / 2.0, "ry": p.ry, "shadow": false})
 	for p in ArenaView.scatter_inside(rng, half, 10):
 		for i in 3 + rng.randi_range(0, 2):   # 頭骨堆：幾顆小球疊在一起
 			var a := rng.randf() * TAU
@@ -1032,11 +1027,11 @@ static func _build_catacomb(half: Vector2, rng: RandomNumberGenerator) -> Node3D
 				"x": p.x + cos(a) * r, "y": 0.1 + (0.12 if i >= 3 else 0.0), "z": p.z + sin(a) * r, "shadow": false,
 			})
 	k.merge_static(group, [group])
-	group.add_child(ArenaView.create_ground((half + Vector2(14.0, 14.0)) * 2.0, CATACOMB_GROUND, 1.8, 0.1, rng))
+	group.add_child(GroundDressing.build_ground((half + Vector2(14.0, 14.0)) * 2.0, BlockDressing.palette(&"catacomb"), rng.randi()))
 	return group
 
 
-# 蟲蝕墓道：場外是土色岩塊，場內散落一窩窩蟲卵、貼地的蟲絲與碎骨
+# 蟲蝕墓道：場外是土色岩塊，場內散落一窩窩蟲卵（細碎骨、貼地的蟲絲不撒：太細，畫面上像白點、刮痕，YangHsu 2026-11-18）
 static func _build_burrow(half: Vector2, rng: RandomNumberGenerator) -> Node3D:
 	var k := PartKit.new()
 	var group := Node3D.new()
@@ -1057,12 +1052,6 @@ static func _build_burrow(half: Vector2, rng: RandomNumberGenerator) -> Node3D:
 			k.add(group, PartKit.sphere(0.1, 6, 4), egg, {
 				"x": p.x + cos(a) * r, "y": 0.1, "z": p.z + sin(a) * r, "sy": 1.4, "shadow": false,
 			})
-	var silk := k.mat(BURROW_SILK)
-	for p in ArenaView.scatter_inside(rng, half, 24):
-		k.add(group, PartKit.cyl(0.015, 0.015, 1.2 + rng.randf() * 1.2, 4), silk, {"x": p.x, "y": 0.02, "z": p.z, "rz": PI / 2.0, "ry": p.ry, "shadow": false})
-	var bone := k.mat(C.bone_dark)
-	for p in ArenaView.scatter_inside(rng, half, 16):
-		k.add(group, PartKit.cyl(0.03, 0.03, 0.35, 4), bone, {"x": p.x, "y": 0.03, "z": p.z, "rz": PI / 2.0, "ry": p.ry, "shadow": false})
 	k.merge_static(group, [group])
-	group.add_child(ArenaView.create_ground((half + Vector2(14.0, 14.0)) * 2.0, BURROW_GROUND, 1.8, 0.1, rng))
+	group.add_child(GroundDressing.build_ground((half + Vector2(14.0, 14.0)) * 2.0, BlockDressing.palette(&"burrow"), rng.randi()))
 	return group
