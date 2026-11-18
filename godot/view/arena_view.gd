@@ -1,5 +1,5 @@
 # 場地外觀：依造型建立場地，並提供場景建構工具（照搬網頁版 render/environment.js：低多邊形地面、邊界點位、外圍裝飾散佈）
-# 只負責外觀，碰撞邊界與地形由 World 決定（這裡依 world.terrain 畫出石台）；裝飾位置用畫面層自己的隨機，與模擬無關
+# 只負責外觀，碰撞邊界與地形由 World 決定（這裡依 world.terrain 畫出石台）；裝飾位置用畫面層自己的亂數（照地形的種子，大家看到的一樣），與模擬無關
 class_name ArenaView
 extends Node3D
 
@@ -36,15 +36,20 @@ const DOOR_HEIGHT := 3.2
 
 # half：場地的一半大小（World.half_extents）；theme：MapDefs 的 theme
 # doors：小關出口的門 [{ pos: 世界座標, side: N / E / S / W }]（DigEvent.doors，main.gd 換算）
-func build(half: Vector2, terrain: Terrain, theme: StringName = &"graveyard", doors: Array = []) -> void:
+# seed_value：這份地形的種子（main.gd 給 hash(World.layout_key)）：裝飾照它擺，每個人看到的一樣；0 = 隨機
+func build(half: Vector2, terrain: Terrain, theme: StringName = &"graveyard", doors: Array = [], seed_value := 0) -> void:
 	for child in get_children():
 		remove_child(child)
 		child.queue_free()
 	var rng := RandomNumberGenerator.new()
-	rng.randomize()
+	if seed_value == 0:
+		rng.randomize()
+	else:
+		rng.seed = seed_value
 	add_child(DarkFantasy.build_arena(half, rng, theme))
+	var style := ArtStyle.for_theme(theme)
 	if not terrain.blocks.is_empty():
-		add_child(create_blocks(terrain.blocks, theme))
+		add_child(create_blocks(terrain.blocks, theme) if style.is_empty() else BlockDressing.build(terrain.blocks, style, rng.randi()))
 	if not doors.is_empty():
 		add_child(create_doors(doors))
 

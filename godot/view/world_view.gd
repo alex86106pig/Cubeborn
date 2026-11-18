@@ -123,6 +123,7 @@ var _world: World
 var _vision_overlay := _create_vision_overlay()
 var _sun: DirectionalLight3D
 var _env: Environment
+var _style_lantern: OmniLight3D = null   # ArtStyle 試做：跟著本機玩家的手提燈（只有風格有 lantern 時）
 var lights_on := true                  # 設定頁「光源」：關掉時新建的點光源也不亮
 
 
@@ -243,6 +244,38 @@ func apply_theme(theme: StringName) -> void:
 	_env.ambient_light_energy = c.ambient_energy
 	_sun.light_color = c.sun_color
 	_sun.light_energy = c.sun_energy
+	_apply_style(theme)
+
+
+# 畫面風格試做（view/art_style.gd）：蓋過這一層的背景、環境光、太陽，加霧與手提燈；沒選風格時不做事
+func _apply_style(theme: StringName) -> void:
+	var s := ArtStyle.for_theme(theme)
+	_env.fog_enabled = s.has("fog")
+	if s.is_empty():
+		if _style_lantern != null:
+			_style_lantern.visible = false
+		return
+	_env.background_color = s.background
+	_env.ambient_light_color = s.ambient
+	_env.ambient_light_energy = s.ambient_energy
+	_sun.light_color = s.sun_color
+	_sun.light_energy = s.sun_energy
+	if s.has("fog"):
+		_env.fog_light_color = s.fog.color
+		_env.fog_density = s.fog.density
+		_env.fog_sky_affect = 0.0
+	if s.has("lantern"):
+		if _style_lantern == null:
+			_style_lantern = OmniLight3D.new()
+			_style_lantern.shadow_enabled = false
+			add_child(_style_lantern)
+		_style_lantern.light_color = s.lantern.color
+		_style_lantern.light_energy = s.lantern.energy
+		_style_lantern.omni_range = s.lantern.range
+		_style_lantern.omni_attenuation = 1.2
+		_style_lantern.visible = true
+	elif _style_lantern != null:
+		_style_lantern.visible = false
 
 
 # 實體這一幀畫在哪（同 sync 擺模型的補間）：x / z 是地面位置，y 是腳底高度 + up
@@ -257,6 +290,8 @@ func sync(world: World, alpha: float, dt: float) -> void:
 	render_alpha = alpha
 	_tick_warm_up()
 	var me := viewer()
+	if _style_lantern != null and me != null:
+		_style_lantern.position = render_pos(me, 2.4)
 	# 視野只依模擬層的位置與朝向決定：同一個 tick 不必重算（D5：200 隻怪時每幀做視線判斷太慢）
 	var vision_key := [world.tick, world.run_id, world.entities.size(), me, me.pos if me else Vector2.ZERO, me.facing if me else 0.0, me.is_dead if me else false]
 	var t0 := Time.get_ticks_usec()

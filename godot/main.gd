@@ -141,6 +141,10 @@ func _apply_args() -> void:
 	args = LaunchArgs.from_os()
 	input_collector.auto_move = args.auto_move
 	world_view.debug_reveal = args.reveal
+	ArtStyle.current = StringName(args.art_style)
+	var post := ArtStyle.make_post_layer()
+	if post != null:
+		add_child(post)
 	input_collector.auto_attack = args.auto_attack
 	input_collector.auto_special = args.auto_special
 	input_collector.auto_interact = args.auto_interact
@@ -622,7 +626,7 @@ func _sync_arena() -> void:
 	var doors := []
 	for d: Dictionary in DigEvent.doors(world):
 		doors.append({"pos": MapDefs.to_world(world.map, d.at), "side": d.side})
-	arena_view.build(world.half_extents, world.terrain, theme, doors)
+	arena_view.build(world.half_extents, world.terrain, theme, doors, hash(world.layout_key))
 	world_view.apply_theme(theme)
 	if perf != null:   # 換小關 / 換層的卡頓拆成模擬（換關那一步，perf hitch 的 logic）與這裡的場地重建
 		print("perf arena_build t=%.2f ms=%.1f blocks=%d" % [world.stats.time, (Time.get_ticks_usec() - t0) / 1000.0, world.terrain.blocks.size()])
