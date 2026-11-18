@@ -27,6 +27,16 @@ const OP_RELIC_CLOSE := 7    # [OP_RELIC_CLOSE] 先不選，關掉（回來再�
 const OP_BAG := 8   # [OP_BAG, 袋子 uid, side, offset, x?, y?, rot?] 袋子接到主袋的 side 邊、offset 位置；side 空字串 = 拿下來放倉庫 (x, y)
 const OP_UNLOCK := 9   # [OP_UNLOCK, where, x, y] 背包合併：用掉 1 次自選開格，開 where（Loadout.CORE 主袋 / 第幾個袋子）的 (x, y)
 const OP_INTERACT := 10   # [OP_INTERACT, id] 這次按 F 要互動的（互動列表挑的，Interactables 的 id；跟 BTN_INTERACT 剛按下同一步送）
+# 骰子模式（DiceRun；不經過背包）：輪到自己時擲 / 重擲沒鎖的、鎖住第 i 顆、完成、骰到好幾種技能時選一招；打完選第 i 個獎勵
+const OP_DICE_ROLL := 11     # [OP_DICE_ROLL]
+const OP_DICE_LOCK := 12     # [OP_DICE_LOCK, i]
+const OP_DICE_DONE := 13     # [OP_DICE_DONE]
+const OP_DICE_CHOICE := 14   # [OP_DICE_CHOICE, 技能 id]
+const OP_DICE_REWARD := 15   # [OP_DICE_REWARD, i]
+
+
+static func is_dice_op(op: Array) -> bool:
+	return not op.is_empty() and int(op[0]) >= OP_DICE_ROLL and int(op[0]) <= OP_DICE_REWARD
 
 var tick := 0
 var move := Vector2.ZERO   # 世界 XZ 方向，長度 ≤ 1

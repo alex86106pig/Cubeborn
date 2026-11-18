@@ -88,6 +88,8 @@ func _ready() -> void:
 	hud.forge_panel.op_requested.connect(input_collector.queue_inventory_op)
 	hud.relic_panel.op_requested.connect(input_collector.queue_inventory_op)
 	input_collector.relic_panel = hud.relic_panel
+	hud.dice_panel.op_requested.connect(input_collector.queue_inventory_op)
+	input_collector.dice_panel = hud.dice_panel
 	input_collector.inventory_panel = hud.inventory_panel
 	input_collector.test_panel = hud.test_panel
 	input_collector.interact_list = hud.interact_list
@@ -181,6 +183,15 @@ func restart() -> void:
 	if args.bag_mode in [BagDefs.MODE_BAGS, BagDefs.MODE_MERGED]:
 		world.bag_mode = args.bag_mode
 	hud.test_panel.set_bag_mode(world.bag_mode == BagDefs.MODE_MERGED)
+	# 骰子模式（DiceRun）：單機照設定頁（--game-mode 蓋過）；連線還沒做，多人一律一般模式
+	var dice_on: bool = hud.settings_panel.values.get("dice_mode", false)
+	if args.game_mode != &"":
+		dice_on = args.game_mode == &"dice"
+	if mode != Mode.SINGLE or in_weapon_test:
+		dice_on = false
+	world.dice = DiceRun.new() if dice_on else null
+	world_view.vision_enabled = not dice_on   # 骰子模式沒有視野：全部看得到
+	world_view.debug_reveal = args.reveal or dice_on
 	var seed_value := args.run_seed if args.run_seed >= 0 else randi()
 	world.reset(seed_value, peers)
 	print("seed=%d" % seed_value)

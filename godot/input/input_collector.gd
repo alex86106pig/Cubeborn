@@ -29,6 +29,7 @@ var mouse_captured := false     # 背包開著（D3）：滑鼠只給背包用�
 var spectate := 0               # 陣亡後觀戰的隊友 peer id（main.gd 設定），跟著每筆輸入送給房主（InputCmd.spectate）
 var vote_pending := false       # 前往下一層的投票等著自己回答（main.gd 每步設定）：Enter 同意、Esc 反對（這時 Esc 不開選單）
 var relic_panel: RelicPanel     # 遺物的 N 選 1 開著時：數字鍵選、R 重骰、Esc 先不選（不給技能、重新開始、暫停）
+var dice_panel: DicePanel       # 骰子模式擲骰 / 選獎勵時：空白鍵擲、R 重擲、Enter 完成、數字鍵選獎勵（DicePanel.handle_key）
 var inventory_panel: InventoryPanel   # 背包手上拿著東西時 R 是旋轉、Esc 是放回，不給遺物面板
 var test_panel: Control         # 武器測試場的測試面板：點在面板上（含按鈕之間的空白）不普攻
 var interact_list: InteractList # 按得到 F 的東西有兩個以上時：滾輪 / 上下鍵切換，按 F 時送選中的那個（InputCmd.OP_INTERACT）
@@ -66,6 +67,9 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()   # main.gd 的 Esc 開選單收不到
 		return
 	if relic_panel != null and relic_panel.visible and _relic_key(event):
+		get_viewport().set_input_as_handled()
+		return
+	if dice_panel != null and dice_panel.handle_key(event):
 		get_viewport().set_input_as_handled()
 		return
 	if _interact_cycle(event):
@@ -148,7 +152,7 @@ func _mouse_on_ui() -> bool:
 	var hovered := get_viewport().gui_get_hovered_control()
 	if hovered == null:
 		return false
-	for panel: Control in [relic_panel, test_panel]:
+	for panel: Control in [relic_panel, test_panel, dice_panel]:
 		if panel != null and panel.visible and (panel == hovered or panel.is_ancestor_of(hovered)):
 			return true
 	return false

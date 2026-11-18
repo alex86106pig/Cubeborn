@@ -71,12 +71,20 @@ class Ready:
 			if p.world.event.can_dig(p.world, p) and not p.interact_used:   # 這次按 F 撿了東西 / 開了箱：放開再按才開挖
 				fsm.change(&"dig")
 				return
+		# 骰子模式：右鍵放骰到的技能（技能欄的 DICE_INDEX，前搖照戰技），沒有武器的特殊技
+		if p.world.dice != null:
+			if p.buffered_action.get("type") == &"special":
+				p.buffered_action = {}
+				if p.slots.can_use(p, ActiveSlots.DICE_INDEX):
+					fsm.change(&"useItem", {"index": ActiveSlots.DICE_INDEX})
+					return
+				p.slots.notify_blocked(p, ActiveSlots.DICE_INDEX)
 		# 按住類的特殊技（劍盾格擋，v0.41.0）：右鍵按著就舉盾，沒有冷卻；按鍵緩衝不用
 		var sdef := p.action_def(&"special")
 		var hold: bool = sdef.get("hold", false)
 		var special_ready := p.action_ready(sdef, "player.special")
 		# 按住類耗魔的（長弓蓄力）魔力不夠不進招式（按住時每步都會再試，不能繞過）
-		if hold and p.is_special_held and special_ready:
+		if hold and p.is_special_held and special_ready and p.world.dice == null:
 			if p.buffered_action.get("type") == &"special":
 				p.buffered_action = {}
 			fsm.change(&"special")

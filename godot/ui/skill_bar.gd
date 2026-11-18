@@ -27,6 +27,9 @@ func reset() -> void:
 # 武器換了（含重新開始）、寶石座上的技能換了就重建
 func refresh(world: World, player: Player) -> void:
 	var sig := player.slots.signature(player)
+	var dice_slot: Variant = player.slots.get_slot(player, ActiveSlots.DICE_INDEX) if world.dice != null else null
+	if world.dice != null:   # 骰子模式：右鍵格是骰到的技能，換了就重建
+		sig += "|dice:%s:%d" % [dice_slot.id, dice_slot.count] if dice_slot != null else "|dice:"
 	if player.weapon_id != _weapon_id or sig != _slot_sig:
 		_slot_sig = sig
 		_build(player)
@@ -53,6 +56,9 @@ func refresh(world: World, player: Player) -> void:
 				if not data.get("fits", true):   # 手上的武器放不出來（也沒蓋幻影）：一直是暗的
 					slot.icon.modulate.a = 0.3
 			slot.show_level(data.get("level", 1) if data != null else 1)
+		elif world.dice != null and key == "player.special":   # 骰子模式的右鍵：角落寫威力倍率，沒骰到是暗的
+			slot.set_tag("×%s" % str(dice_slot.power) if dice_slot != null else "")
+			slot.icon.modulate.a = 1.0 if dice_slot != null else 0.3
 		elif not slot.mana_def.is_empty():   # 耗魔的右鍵
 			_show_cost(slot, player, player.mana_cost_of(slot.mana_def))
 		elif key == Player.ROLL_CD:
@@ -82,14 +88,20 @@ func _build(player: Player) -> void:
 	_slots.clear()
 	var w := player.weapon
 	_attack_slot = _add_slot("", w.attack.icon, "左鍵", -1, false)
-	_special_slot = _add_slot("player.special", w.special.icon, "右鍵", -1, false)
-	_special_slot.set_mana_def(w.special)
+	var dice_slot: Variant = player.slots.get_slot(player, ActiveSlots.DICE_INDEX) if player.world.dice != null else null
+	if player.world.dice != null:
+		_special_slot = _add_slot("player.special", dice_slot.def.icon if dice_slot != null else "", "右鍵", -1, dice_slot == null)
+	else:
+		_special_slot = _add_slot("player.special", w.special.icon, "右鍵", -1, false)
+		_special_slot.set_mana_def(w.special)
 	_add_slot(Player.ROLL_CD, ROLL_ICON, "Shift", -1, false)
 	var divider := UiKit.rect(Color(1, 1, 1, 0.25), Vector2(2, 48))
 	divider.size_flags_vertical = Control.SIZE_SHRINK_END
 	add_child(divider)
 	for i in ActiveSlots.SLOT_COUNT:
 		if i >= BagDefs.BAGS.key.max and i != ActiveSlots.HEAL_INDEX:   # 按鍵袋接不到的數字鍵不畫（按鍵編號不動，連線格式不變）
+			continue
+		if player.world.dice != null and i != ActiveSlots.HEAL_INDEX:   # 骰子模式沒有按鍵袋的技能
 			continue
 		var data: Variant = player.slots.get_slot(player, i)
 		_add_slot(ActiveSlots.cd_key(i), data.def.icon if data != null else "", ActiveSlots.KEY_LABELS[i], i, data == null)
@@ -152,6 +164,12 @@ class Slot extends Control:
 		var key := UiKit.label(key_label, 11, Color(1, 1, 1, 0.8), 1)
 		key.position = Vector2(4, SLOT_SIZE - 18)
 		add_child(key)
+
+	# 左上角直接寫一段字（骰子模式右鍵的威力倍率）；跟 show_level 共用同一個標籤
+	func set_tag(text: String) -> void:
+		if level.text != text:
+			level.text = text
+			_shown_level = -1
 
 	# 等級變了才換字（每幀呼叫，不重新產生字串）
 	func show_level(lv: int) -> void:

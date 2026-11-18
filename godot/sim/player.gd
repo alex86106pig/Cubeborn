@@ -61,6 +61,8 @@ var bag_count_tick: Dictionary = {}    # 袋子 uid -> 上次累積是第幾步�
 var trigger_moments: Dictionary = {}   # 「種類:按鍵」-> 時機發生幾次（不管有沒有袋子、同一步只算一次；自動試玩與平衡表量觸發頻率用，不同步）
 var cast_log: Dictionary = {}          # 袋子裡的技能 / 效果 id -> [放出幾次, 魔力不夠跳過幾次]（BagTriggers.run_bag；遊玩紀錄用，只在權威端、不同步）
 var shield := 0.0                      # 護盾剩多少（G4 骨製護盾，房主算；客戶端看快照的 anim.shield）
+var fight_shield := 0.0                # 骰子模式這一場的開場護盾（DiceRun 擲完時給）：受傷先扣它、不回充
+var basic_attack_mul := 1.0            # 武器招式（左鍵普攻）的傷害倍率：骰子模式變弱、普攻面加回來（DiceRun）；一般模式 1
 var shield_delay := 0.0                # 還要幾秒沒受傷才回充
 var guardian_uses := 0                 # 這一層用掉幾次守護亡靈（G5；每個道具每層一次）
 var roll_charges := 0                  # 目前可用的翻滾次數（上限為 roll_charges 屬性）
@@ -599,7 +601,7 @@ func apply_cmd(cmd: InputCmd) -> void:
 	for op: Array in cmd.inv_ops:
 		if not op.is_empty() and int(op[0]) == InputCmd.OP_INTERACT and op.size() > 1:
 			interact_choice = int(op[1])
-	loadout.queue_ops(cmd.inv_ops.filter(func(op: Array) -> bool: return op.is_empty() or int(op[0]) != InputCmd.OP_INTERACT))
+	loadout.queue_ops(cmd.inv_ops.filter(func(op: Array) -> bool: return op.is_empty() or (int(op[0]) != InputCmd.OP_INTERACT and not InputCmd.is_dice_op(op))))   # 骰子的操作 World.step 交給 DiceRun
 	view_tick = cmd.view_tick
 
 
@@ -689,7 +691,7 @@ func active_weapon() -> Dictionary:
 
 # 招式傷害 = 武器基礎傷害 × 招式 % × 攻擊力 × 物理 / 屬性傷害
 func move_damage(move: Dictionary) -> float:
-	return pct_damage(move.damage_pct)
+	return pct_damage(move.damage_pct) * basic_attack_mul
 
 
 # 武器基礎傷害的 pct 倍，乘上攻擊力與物理 / 屬性傷害（燃燒每秒傷害也用這個，F8）
@@ -960,7 +962,7 @@ func _update_anim() -> void:
 		"grabbed": grabbed_by != 0,
 		"buried": bury_mash >= 0.0,   # 被守墓人埋進土裡：畫面只露半身
 		"running": running,
-		"shield": shield / max_hp if max_hp > 0.0 else 0.0,   # 護盾占最大生命的比例（G4；0 不進快照）
+		"shield": (shield + fight_shield) / max_hp if max_hp > 0.0 else 0.0,   # 護盾占最大生命的比例（G4；0 不進快照）
 		"skill": skill_pose,              # 戰技的角色動作（空的 = 沒有；觸發袋放的戰技也會做）
 		"skill_time": skill_pose_time,
 	}

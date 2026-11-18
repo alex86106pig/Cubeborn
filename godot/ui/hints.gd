@@ -107,7 +107,9 @@ func set_max_width(width: float) -> void:
 func _condition(id: StringName, world: World, player: Player, bag_open: bool) -> bool:
 	match id:
 		&"controls":
-			return true
+			return world.dice == null
+		&"dice_controls":
+			return world.dice != null
 		&"dig_goal":
 			return DigEvent.enabled(world) and world.event.state == DigEvent.IDLE
 		&"ground_info":

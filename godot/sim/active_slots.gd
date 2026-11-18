@@ -8,6 +8,7 @@ extends RefCounted
 const SLOT_COUNT := InputCmd.SLOT_COUNT
 const GEM_SLOTS := 4                   # 數字鍵 1~4
 const HEAL_INDEX := GEM_SLOTS          # Q
+const DICE_INDEX := SLOT_COUNT         # 骰子模式的右鍵（DiceRun.slot_for）：走同一套前搖 / 施放，冷卻記在 player.special（技能欄右鍵格的遮罩）
 const KEY_LABELS: Array[String] = ["1", "2", "3", "4", "Q"]
 
 const PHANTOM_ID := &"phantom_support"
@@ -16,7 +17,7 @@ var heal := {"def": SkillDefs.SKILLS.heal, "charges": SkillDefs.SKILLS.heal.char
 
 
 static func cd_key(index: int) -> String:
-	return "player.slot%d" % (index + 1)
+	return "player.special" if index == DICE_INDEX else "player.slot%d" % (index + 1)
 
 
 # 袋子裡的一個技能：{ def, id, level, bag, entry, charges, fits, phantom }（charges = -1 不限次數；次數制的技能次數記在袋子條目上，換關補滿）
@@ -35,6 +36,8 @@ static func slot_of(owner: Player, b: Dictionary, e: Dictionary) -> Dictionary:
 func get_slot(owner: Player, index: int) -> Variant:
 	if index == HEAL_INDEX:
 		return heal
+	if owner.world.dice != null:   # 骰子模式：數字鍵沒有技能，右鍵是骰到的那招
+		return owner.world.dice.slot_for(owner) if index == DICE_INDEX else null
 	var keys := owner.loadout.key_bags()
 	if index >= keys.size():
 		return null
@@ -68,6 +71,8 @@ func can_use(owner: Player, index: int) -> bool:
 		return false
 	if index == HEAL_INDEX:
 		return SkillBehaviors.BEHAVIORS[slot.def.behavior].can_use(owner, slot.def)
+	if index == DICE_INDEX:
+		return can_cast(owner, slot)
 	var was_paying := owner.pay_with_hp
 	owner.pay_with_hp = BagDefs.has_rule(slot.bag, &"blood_pact")   # 血契的袋子看生命夠不夠
 	var ok := false
@@ -86,6 +91,9 @@ func can_use(owner: Player, index: int) -> bool:
 func lead_art(owner: Player, index: int) -> StringName:
 	if index == HEAL_INDEX:
 		return &""
+	if index == DICE_INDEX:
+		var slot: Variant = get_slot(owner, index)
+		return slot.id if slot != null and SkillDefs.cast_windup(slot.id) > 0.0 else &""
 	var keys := owner.loadout.key_bags()
 	return BagTriggers.lead_art(owner, keys[index]) if index < keys.size() else &""
 
@@ -100,6 +108,9 @@ func use(owner: Player, index: int, served: StringName = &"") -> bool:
 		SkillBehaviors.cast(owner, slot.def, {"mul": 1.0, "area": 1.0, "type": &"phys", "split": false})
 		heal.charges -= 1
 		owner.world.cooldowns.start(owner.cd(key), slot.def.cooldown)   # 藥水：次數制，冷卻只是防連按
+	elif index == DICE_INDEX:
+		cast(owner, slot, null, slot.id == served)
+		owner.world.cooldowns.start(owner.cd(key), owner.world.dice.cooldown_for(owner))
 	else:
 		if owner.world.is_authority:
 			BagTriggers.run_bag(owner.world, owner, slot.bag, null, 0.0, false, served)
@@ -124,7 +135,7 @@ func _predict(owner: Player, b: Dictionary, served: StringName = &"") -> void:
 static func can_cast(owner: Player, slot: Dictionary, target: Entity = null) -> bool:
 	if slot.charges == 0 or not slot.get("fits", true):
 		return false
-	if slot.def.has("mana") and not owner.has_mana(mana_cost(owner, slot)):
+	if slot.def.has("mana") and not slot.get("free", false) and not owner.has_mana(mana_cost(owner, slot)):
 		return false
 	var behavior: SkillBehaviors.Behavior = SkillBehaviors.BEHAVIORS[slot.def.behavior]
 	return behavior.can_use(owner, slot.def) if target == null else behavior.can_use_on(owner, slot.def, target)
@@ -142,7 +153,7 @@ static func cast(owner: Player, slot: Dictionary, target: Entity = null, wound_u
 		owner.start_skill_pose(slot.id, SkillDefs.cast_windup(slot.id))
 	if slot.charges > 0:
 		slot.entry["charges"] = slot.charges - 1
-	if slot.def.has("mana"):
+	if slot.def.has("mana") and not slot.get("free", false):   # free：骰子模式的右鍵用冷卻、不耗魔
 		owner.spend_mana(mana_cost(owner, slot))
 
 
@@ -178,6 +189,7 @@ static func cast_context(owner: Player, slot: Dictionary) -> Dictionary:
 		"credit": "k:" + String(slot.id)}   # 傷害來源（Combat.credit_scope）：持續的招式（衝刺）每步打的也算這個技能
 	if slot.get("phantom", false):
 		ctx.mul *= SkillDefs.PHANTOM_MUL
+	ctx.mul *= slot.get("power", 1.0)   # 骰子模式：同一招骰到幾個的威力（DiceDefs.TIERS）
 	for sup: Dictionary in supports_of(slot):
 		match sup.mode:
 			&"split":

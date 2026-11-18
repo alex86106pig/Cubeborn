@@ -35,7 +35,7 @@ static func contents(b: Dictionary) -> Array[Dictionary]:
 # 時機到了：kind 是袋子種類；source 是哪個動作（&"primary" 普攻、&"secondary" 右鍵、&"" 不分按鍵）；
 # target 是命中 / 擊殺的那隻怪或打到自己的怪（沒有就 null）、damage 是那一下的傷害
 static func fire(world: World, p: Player, kind: StringName, source: StringName, target: Entity, damage: float) -> void:
-	if not world.is_authority or p.is_dead or p.is_downed:
+	if not world.is_authority or p.is_dead or p.is_downed or world.dice != null:   # 骰子模式沒有觸發袋
 		return
 	_count_moment(world, p, StringName("%s:%s" % [kind, source]))
 	for b in p.loadout.bags:

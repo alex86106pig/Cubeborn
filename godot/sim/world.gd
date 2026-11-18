@@ -15,6 +15,7 @@ var players: Dictionary = {}         # peer_id -> Player
 var player_classes: Dictionary = {}  # peer id → 職業（F2，ClassDefs）；reset 不清，重新開始照舊
 var difficulty_mode: StringName = EventDefs.DEFAULT_MODE   # 選角畫面選的難度（EventDefs.MODES）；reset 不清，重新開始照舊
 var friendly_fire: bool = Config.NET.friendly_fire   # 誤傷：大廳房主選（NetSession.lobby_friendly_fire）；reset 不清
+var dice: DiceRun = null   # 骰子模式（DiceRun，docs/系統說明.md §55）：設定頁或 --game-mode=dice 開、只在單機；null = 一般模式；reset 不清（DiceRun.reset 重來）
 var bag_mode: StringName = BagDefs.MODE_BAGS   # 背包模式（袋子分開 / 背包合併）：設定頁或 --bag-mode 決定，房主的為準；客戶端從快照的背包拿，不用這個；reset 不清
 var player_list: Array[Player] = []  # 同 players.values()（加入順序），每步大量查詢時不必每次配置新陣列（D5）
 var enemies: Array[Entity] = []
@@ -205,6 +206,8 @@ func reset(seed_value: int, peer_ids: Array[int] = [HOST_PEER_ID]) -> void:
 	base_difficulty = 0.0
 	stage_tries = 0
 	run_stats.clear()
+	if dice != null:
+		dice.reset()
 	_populate_floor()
 	save_stage()
 	emit_event("game:restart", {})
@@ -570,6 +573,8 @@ func on_enemy_died(e: Enemy, killer_id: int = 0) -> void:
 		return   # 骷髏僕從（G6）倒下：不算擊殺、不給東西
 	stats.kills += 1
 	_pack_looted(e)
+	if dice != null:
+		dice.on_enemy_died(self, e)
 	var g := 0 if e.no_souls else int(LootDefs.KILL_SOULS.get(e.type, 0))
 	var killer: Entity = entities.get(killer_id)
 	if g > 0 and killer is Player:
@@ -807,6 +812,12 @@ func step(cmds: Dictionary, dt: float) -> void:
 		e.prev_pos = e.pos
 		e.prev_facing = e.facing
 		e.prev_height = e.height
+	# 骰子模式：擲骰、倒數、選獎勵時其他一切都停住（冷卻、怪、投射物、挖墳都不走）
+	if dice != null:
+		dice.take_ops(self, cmds)
+		if dice.is_frozen():
+			dice.step_frozen(self, dt)
+			return
 
 	cooldowns.tick(dt)
 	if practice:
@@ -1069,6 +1080,8 @@ func alert_pack(i: int, first: Enemy, target: Entity) -> void:
 		else:
 			e.alert(target, c.alert_time * 0.5 + e.pos.distance_to(first.pos) * c.alert_spread, c.alert_follow, false)
 	emit_event("pack:alerted", {"pack": i, "entity_id": first.id if first != null else 0, "target_id": target.id if target != null else 0})
+	if dice != null:
+		dice.on_alert(self, pk.ids)
 
 
 # 倒下與救援（C4）：有隊友按住互動鍵就累積救援時間、倒數暫停；放開時累積的時間慢慢減少

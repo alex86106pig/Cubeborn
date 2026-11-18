@@ -540,6 +540,12 @@ static func _update_shield(p: Player, dt: float) -> void:
 
 # 受到傷害時先扣盾（Player._absorb），回傳要扣血的部分；有護盾道具就重新計算回充時間
 static func absorb(p: Player, amount: float) -> float:
+	if p.fight_shield > 0.0:   # 骰子模式這一場的護盾先扣（不回充）
+		var f := minf(p.fight_shield, amount)
+		p.fight_shield -= f
+		amount -= f
+		if amount <= 0.0:
+			return 0.0
 	var info := shield_info(p)
 	if info.x <= 0.0:
 		return amount

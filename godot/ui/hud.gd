@@ -25,7 +25,7 @@ const HINT_BOTTOM := 150.0        # 新手提示的下緣離畫面底部多少
 const BOSS_NAME := "亡骸騎士"     # 測試場地波次的 Boss（darkFantasy.js 的 names.boss）
 # 介面程式碼裡寫死的中文字（橫幅、浮動文字、場上文字、連線面板、遊玩紀錄…；資料表以外的）：開場預熱用（v0.37.2）
 # check.gd 會掃 ui/ 的字串，缺字就列出來，加到這裡
-const UI_CHARS := "挑統凱此碑佔含決誤互立即般共砧升級—羈絆算階鑲輪　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木總樂畫陰源・介想意反對取噴發巡邏膨脹犬守話又頭肥羊園狼原形占拿件夠直接將群配跟事抓倉庫顏詛咒觸適任何修飾每翻滾魔放那隻身位袋數值道具亮標題管狀量機堆痕框掛其底併檢視"
+const UI_CHARS := "挑統凱此碑佔含決誤互立即般共砧升級—羈絆算階鑲輪　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木總樂畫陰源・介想意反對取噴發巡邏膨脹犬守話又頭肥羊園狼原形占拿件夠直接將群配跟事抓倉庫顏詛咒觸適任何修飾每翻滾魔放那隻身位袋數值道具亮標題管狀量機堆痕框掛其底併檢視模"
 
 const VIGNETTE_SHADER := """
 shader_type canvas_item;
@@ -56,6 +56,7 @@ var interact_list := InteractList.new()   # 按得到 F 的東西有兩個以上
 var inventory_panel := InventoryPanel.new()   # Tab 開關（main.gd 接到輸入）
 var forge_panel := ForgePanel.new()           # 鍛造祭壇：站在祭壇旁開背包時，兩格放武器 → 挑詞條 → 合成（Build 改版第 8 步；放在背包左邊，main.gd 接到輸入）
 var relic_panel := RelicPanel.new()           # 遺物的 N 選 1（Build 改版第 6 步；main.gd 接到輸入）
+var dice_panel := DicePanel.new()             # 骰子模式的擲骰、倒數、獎勵與戰鬥中的右鍵說明（main.gd 接到輸入）
 var _relic_bag := false                       # 背包是遺物面板自動打開的（選完 / 關掉時一起關）
 var _wave := UiKit.label("", 22)
 var _kills := UiKit.label("", 16)
@@ -302,6 +303,7 @@ func _init() -> void:
 	hints.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	root.add_child(hints)
 	root.add_child(relic_panel)
+	root.add_child(dice_panel)
 
 	# 左側中央：屬性面板（Tab 開關）
 	_stats_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_MINSIZE, 16)
@@ -516,10 +518,13 @@ func _process(delta: float) -> void:
 		if _game_over_delay < 0.0:
 			_game_over.visible = true
 	if world == null:
+		dice_panel.visible = false
 		return
 	var player := local_player()
 	if player == null:
+		dice_panel.visible = false
 		return
+	dice_panel.refresh(world, player, delta)
 	_skill_bar.refresh(world, player)
 	relic_panel.refresh(world, player)
 	if relic_panel.visible:

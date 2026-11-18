@@ -97,7 +97,8 @@ var _last_strike_tick := -1
 var local_peer := World.HOST_PEER_ID
 var spectate_peer := 0                 # 本機陣亡後觀戰的隊友（0 = 不觀戰，由 main.gd 決定）：視野改用他的
 var hidden_ids: Dictionary = {}        # 這一幀看不到的實體 id（Effects 的持續性粒子也跳過）
-var debug_reveal := false              # 除錯（--reveal）：視野外的也畫，截圖確認畫面用；不影響模擬
+var debug_reveal := false              # 除錯（--reveal）：視野外的也畫，截圖確認畫面用；不影響模擬（骰子模式也開）
+var vision_enabled := true             # 視野遮罩（骰子模式關掉：整張看得到）
 # 這一幀模型畫在上一步與這一步之間的哪裡（sync 的 alpha）；頭頂的血條、名牌、詞條用 render_pos 跟模型畫在同一點，
 # 直接用模擬位置的話畫面更新比模擬快（120Hz）時會每幀跟模型差半步、看起來在閃。沒呼叫過 sync（檢查）時是 1 = 模擬位置
 static var render_alpha := 1.0
@@ -603,7 +604,7 @@ func _create_vision_overlay() -> MeshInstance3D:
 # 跟著本機角色畫面上的（補間後）位置與視野方向；沒有角色或已陣亡時不蓋
 func _sync_vision_overlay(me: Player) -> void:
 	var node: Node3D = _nodes.get(me.id) if me != null else null
-	_vision_overlay.visible = node != null and not me.is_dead
+	_vision_overlay.visible = vision_enabled and node != null and not me.is_dead
 	if _vision_overlay.visible:
 		var mat: ShaderMaterial = _vision_overlay.material_override
 		mat.set_shader_parameter(&"viewer", Vector2(node.position.x, node.position.z))

@@ -207,6 +207,7 @@ godot/
 | `player:blocked` | `{ player_id, perfect }`（v0.18.0：格擋擋下攻擊；perfect = 招架成功（v0.41.0 起），下一步盾反） | Player.try_block |
 | `enemy:blocked` / `enemy:guard_broken` | `{ enemy_id, pos, height, facing, broken? }`（第 2 層：盾槍兵正面舉盾擋下 / 被重攻擊破防） | Spearman.shield_blocks |
 | `enemy:crashed` | `{ enemy_id, pos, height }`（第 2 層：骨輪撞牆 / 被盾擋下，散成骨堆） | BoneWheel |
+| `dice:encounter` / `dice:turn` / `dice:rolled` / `dice:done` / `dice:countdown` / `dice:fight` / `dice:reward` / `dice:picked` / `dice:explore` | `{ fight?, player_id?, skill?, count?, kind? }`（骰子模式 §55：開一場、輪到誰、擲出、完成、倒數、開打、選獎勵、選了、回到逛地圖；畫面照 `World.dice` 的狀態畫，事件給音效與紀錄） | DiceRun |
 | `pack:culled` | `{ entity_id }`（休眠的怪群成員沒醒就被移除：客戶端的休眠怪是本機生的，要另外移除） | World._remove_dead_entities |
 | `entity:died` | `{ entity, source, kind }`（`kind` 給 v0.34.0 遊玩紀錄） | Entity |
 | `player:died` | `{ player }`（v0.21.0 起只代表這位玩家真的死亡；輸掉一局看 `game:defeat`） | Player |

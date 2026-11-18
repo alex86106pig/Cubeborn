@@ -117,6 +117,8 @@ func aggro() -> void:
 	on_added()
 	fsm.change(&"chase")
 	world.emit_event("boss:aggro", {"boss_id": id, "pos": pos})
+	if world.dice != null:
+		world.dice.on_alert(world, [id])
 
 
 # 看得到的玩家：前方扇形內或貼得很近，而且沒被牆擋住
