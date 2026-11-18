@@ -1,6 +1,6 @@
 # 地形石台的造型（ArtStyle 試做用）：碰撞照舊是 World.terrain 的長方體，畫面照種類換成看得出是什麼的樣子
 # - 崖壁（地圖邊界：MapGen 把吃進來的邊與地圖外面都記成牆，排在 blocks 最前面 edge_count 個）：外露的邊排一圈高低不一的岩柱、
-#   畫成矮土坡 + 鐵柵欄 + 枯樹，碰撞照舊（YangHsu 2026-11-18：墓園用牆框起來很怪、可以做隱形牆）
+#   畫成矮土坡，每 6 ~ 12 單位一段各自是鐵柵欄、岩崖、灌木叢或殘牆，碰撞照舊（YangHsu 2026-11-18：墓園用牆框起來很怪、可以做隱形牆、不用全是樹跟柵欄）
 # - 牆（地圖裡的障礙物：廢墟殘牆、陵墓）：一段一段砌、每段高低不齊、段與段之間立柱、頂上壓一條蓋石、側面凸出幾塊石頭、底部一圈苔、少數段崩掉一截（腳邊碎石）
 #   厚的牆（> WIDE）當成圍起來的一塊：四邊砌牆、中間填土頂
 # - 墓碑：圓頂、十字、尖頂、斷碑、肩頂 5 種（照位置挑，大家看到的一樣），底座、刻字面、往鏡頭那邊一塊墳土，微微傾斜
@@ -181,9 +181,8 @@ func _exposed(b: Dictionary, edge: StringName) -> Array[Vector2]:
 
 # ---------- 崖壁 ----------
 
-# 地圖邊界的一塊（YangHsu 2026-11-18：土崖 + 鐵柵欄 + 枯樹，碰撞照舊是隱形的長方體）：
-# 矮土坡（BANK_H，頂上長草），外露的邊排一圈石頭護坡（最多凸出碰撞邊界 0.25）、腳邊碎石；
-# 坡頂沿邊一排尖頭鐵柵欄（FENCE_IN 往內），柵欄後面一片枯樹與灌木
+# 地圖邊界的一塊（碰撞照舊是隱形的長方體）：矮土坡（BANK_H，頂上長草）；外露的邊每 6 ~ 12 單位一段，
+# 各自是鐵柵欄（+ 枯樹）、岩崖（高岩柱 + 灌木）、灌木叢、殘牆（+ 稀疏的樹），見 _border；石頭最多凸出碰撞邊界 0.25
 func _cliff(b: Dictionary) -> void:
 	var rock: Color = _style.cliff[0]
 	var grass: Color = _style.cliff[1]
@@ -209,30 +208,78 @@ func _cliff(b: Dictionary) -> void:
 				inward = Vector2(-1, 0)
 		var along := Vector2(1, 0) if horizontal else Vector2(0, 1)
 		for seg in _exposed(b, edge):
-			var p0 := (Vector2(seg.x, line) if horizontal else Vector2(line, seg.x))
-			# 護坡的石頭與腳邊碎石
-			var at := seg.x + _rng.randf_range(0.0, 0.4)
-			while at < seg.y - 0.2:
-				var r := _rng.randf_range(0.4, 0.7)
-				var p := (Vector2(at, line) if horizontal else Vector2(line, at)) + inward * (r - 0.25)
-				_rock(p, r, BANK_H * _rng.randf_range(0.85, 1.15), _jitter(rock, 0.1), _jitter(grass, 0.08))
-				if _rng.randf() < 0.35:
-					var q := p - inward * (r + _rng.randf_range(-0.1, 0.1)) + along * _rng.randf_range(-0.4, 0.4)
-					var s := _rng.randf_range(0.12, 0.25)
-					_rock(q, s, s * 0.9, _jitter(rock, 0.12), _jitter(rock, 0.12).lightened(0.08))
-				at += r * _rng.randf_range(1.2, 1.7)
-			_fence(p0 + inward * FENCE_IN, along, seg.y - seg.x)
-			# 柵欄後面：枯樹與灌木
-			var u := seg.x + _rng.randf_range(0.3, 1.5)
-			while u < seg.y - 0.3:
-				var depth := _rng.randf_range(1.3, 4.5)
-				var q := (Vector2(u, line) if horizontal else Vector2(line, u)) + inward * depth
-				if _rng.randf() < 0.6:
-					_dead_tree(q, _rng.randf_range(2.0, 3.4))
-				else:
-					var s := _rng.randf_range(0.35, 0.6)
-					_rock(q, s, s * 1.2, _jitter(_style.foliage, 0.12), _jitter(_style.foliage, 0.12).lightened(0.06), BANK_H)
-				u += _rng.randf_range(1.2, 2.4)
+			# 每 6 ~ 12 單位一段，各自抽一種邊界（剩不到 3 的併進這段）
+			var cs := seg.x
+			while cs < seg.y - 0.01:
+				var ce := minf(seg.y, cs + _rng.randf_range(6.0, 12.0))
+				if seg.y - ce < 3.0:
+					ce = seg.y
+				var kind := _pick_border()
+				_border(kind, cs, ce, line, horizontal, inward, along, rock, grass, b.top)
+				cs = ce
+
+
+# 邊界的種類（YangHsu 2026-11-18：不用全部都是樹跟柵欄）：柵欄 35%、岩崖 25%、灌木叢 20%、殘牆 20%
+func _pick_border() -> StringName:
+	var r := _rng.randf()
+	if r < 0.35:
+		return &"fence"
+	if r < 0.6:
+		return &"cliff"
+	if r < 0.8:
+		return &"hedge"
+	return &"ruin"
+
+
+# 邊界的一段 [a, b]（沿 line 那條邊；inward 往碰撞裡面、along 沿著邊）
+func _border(kind: StringName, a: float, b: float, line: float, horizontal: bool, inward: Vector2, along: Vector2, rock: Color, grass: Color, top: float) -> void:
+	var at_edge := func(u: float) -> Vector2: return Vector2(u, line) if horizontal else Vector2(line, u)
+	# 腳下一排石頭：岩崖是高的岩柱，其他是矮的護坡
+	var tall := kind == &"cliff"
+	var u := a + _rng.randf_range(0.0, 0.4)
+	while u < b - 0.2:
+		var r := _rng.randf_range(0.55, 0.95) if tall else _rng.randf_range(0.4, 0.7)
+		var p: Vector2 = at_edge.call(u) + inward * (r - 0.25)
+		var h := top * _rng.randf_range(0.8, 1.08) if tall else BANK_H * _rng.randf_range(0.85, 1.15)
+		_rock(p, r, h, _jitter(rock, 0.1), _jitter(grass, 0.08))
+		if _rng.randf() < 0.35:   # 腳邊碎石
+			var q := p - inward * (r + _rng.randf_range(-0.1, 0.1)) + along * _rng.randf_range(-0.4, 0.4)
+			var s := _rng.randf_range(0.12, 0.25)
+			_rock(q, s, s * 0.9, _jitter(rock, 0.12), _jitter(rock, 0.12).lightened(0.08))
+		u += r * _rng.randf_range(1.1, 1.6)
+	match kind:
+		&"fence":
+			_fence(at_edge.call(a) + inward * FENCE_IN, along, b - a)
+			_border_plants(a, b, at_edge, inward, 0.6, 1.2, 2.4)
+		&"cliff":
+			_border_plants(a, b, at_edge, inward, 0.15, 1.6, 3.0)
+		&"hedge":
+			# 一排密的灌木（高 1.2 ~ 1.9），零星幾棵樹
+			var v := a + _rng.randf_range(0.0, 0.3)
+			while v < b - 0.2:
+				var s := _rng.randf_range(0.5, 0.8)
+				var q: Vector2 = at_edge.call(v) + inward * (s + 0.2)
+				_rock(q, s, _rng.randf_range(1.2, 1.9) - BANK_H, _jitter(_style.foliage, 0.14), _jitter(_style.foliage, 0.12).lightened(0.08), BANK_H)
+				v += s * _rng.randf_range(0.9, 1.3)
+			_border_plants(a, b, at_edge, inward, 0.3, 2.5, 3.0)
+		_:
+			# 矮的崩塌石牆（立在土坡上，總高約 2），後面稀疏的樹
+			var c: Array = _style.blocks[&"wall"]
+			_wall_run(at_edge.call(a) + inward * 0.55, along, inward, b - a, 0.6, BANK_H + _rng.randf_range(0.9, 1.3), c)
+			_border_plants(a, b, at_edge, inward, 0.4, 1.6, 3.2)
+
+
+# 邊界後面（碰撞裡面 1.3 ~ 4.5）：每 step_min ~ step_max 放一棵枯樹（機率 tree_p）或一叢灌木
+func _border_plants(a: float, b: float, at_edge: Callable, inward: Vector2, tree_p: float, step_min: float, step_max: float) -> void:
+	var u := a + _rng.randf_range(0.3, 1.5)
+	while u < b - 0.3:
+		var q: Vector2 = at_edge.call(u) + inward * _rng.randf_range(1.3, 4.5)
+		if _rng.randf() < tree_p:
+			_dead_tree(q, _rng.randf_range(2.0, 3.4))
+		else:
+			var s := _rng.randf_range(0.35, 0.6)
+			_rock(q, s, s * 1.2, _jitter(_style.foliage, 0.12), _jitter(_style.foliage, 0.12).lightened(0.06), BANK_H)
+		u += _rng.randf_range(step_min, step_max)
 
 
 # 尖頭鐵柵欄：從 start 沿 along 走 length，立在坡頂；每 2 單位一根粗柱，中間每 0.28 一根細欄杆，上下兩條橫桿
