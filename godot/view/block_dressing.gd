@@ -127,14 +127,20 @@ func _enclosure(b: Dictionary, c: Array) -> void:
 	var z1: float = b.max.y
 	var t: float = b.top
 	var w := 0.8
-	var fill_top := t - 0.45
-	_obox(Vector2((x0 + x1) / 2.0, (z0 + z1) / 2.0), 0.0, fill_top, Vector2(1, 0), x1 - x0, z1 - z0, _shade(c[0], 0.75), _style.moss)
-	# 填土上零星幾塊土堆與石頭
-	var area := (x1 - x0) * (z1 - z0)
-	for k in mini(20, int(area / 14.0)):
-		var p := Vector2(_rng.randf_range(x0 + 1.2, x1 - 1.2), _rng.randf_range(z0 + 1.2, z1 - 1.2))
-		var s := _rng.randf_range(0.4, 0.9)
-		_obox(p, fill_top, s * 0.3, Vector2.from_angle(_rng.randf() * TAU), s, s * 0.8, _jitter(_style.dirt, 0.1), _jitter(_style.dirt, 0.1).lightened(0.05))
+	# 中間是建築：石頭屋頂（外凸一點）+ 沿長邊的一道屋脊（YangHsu 2026-11-18：原本填草像花台）
+	var roof: Color = _style.get("roof", _shade(c[1], 0.8))
+	var mid := Vector2((x0 + x1) / 2.0, (z0 + z1) / 2.0)
+	var sx := x1 - x0
+	var sz := z1 - z0
+	_obox(mid, 0.0, t - 0.1, Vector2(1, 0), sx, sz, _shade(c[0], 0.85), roof)
+	_obox(mid, t - 0.1, 0.14, Vector2(1, 0), sx + 0.3, sz + 0.3, _shade(roof, 0.85), roof)
+	var along_x := sx >= sz
+	var ridge_len := (sx if along_x else sz) - 0.6
+	var span := (sz if along_x else sx) + 0.2
+	var ridge_h := minf(1.4, span * 0.35)
+	var gable := PackedVector2Array([Vector2(-span / 2.0, 0.0), Vector2(span / 2.0, 0.0), Vector2(0.0, ridge_h)])
+	var basis := Basis(Vector3.UP, 0.0 if along_x else PI / 2.0) * Basis(Vector3.UP, PI / 2.0)
+	_prism(gable, Vector2(0.0, ridge_h / 3.0), ridge_len, Transform3D(basis, Vector3(mid.x, t + 0.04, mid.y)), _shade(roof, 0.9), _shade(roof, 1.05))
 	for seg in _exposed(b, &"N"):
 		_wall_run(Vector2(seg.x, z0 + w / 2.0), Vector2(1, 0), Vector2(0, 1), seg.y - seg.x, w, t, c)
 	for seg in _exposed(b, &"S"):
@@ -234,14 +240,16 @@ func _pick_border() -> StringName:
 # 邊界的一段 [a, b]（沿 line 那條邊；inward 往碰撞裡面、along 沿著邊）
 func _border(kind: StringName, a: float, b: float, line: float, horizontal: bool, inward: Vector2, along: Vector2, rock: Color, grass: Color, top: float) -> void:
 	var at_edge := func(u: float) -> Vector2: return Vector2(u, line) if horizontal else Vector2(line, u)
-	# 腳下一排石頭：岩崖是高的岩柱，其他是矮的護坡
+	# 腳下一排石頭：岩崖是矮而寬的大石塊（高 1.1 ~ 1.9，不是細長柱），其他是矮的護坡；
+	# 頂面用亮一點的石色（YangHsu 2026-11-18：看起來怪怪的——草色頂面 + 棕色側面像一排樹樁）
 	var tall := kind == &"cliff"
 	var u := a + _rng.randf_range(0.0, 0.4)
 	while u < b - 0.2:
-		var r := _rng.randf_range(0.55, 0.95) if tall else _rng.randf_range(0.4, 0.7)
+		var r := _rng.randf_range(0.9, 1.4) if tall else _rng.randf_range(0.4, 0.7)
 		var p: Vector2 = at_edge.call(u) + inward * (r - 0.25)
-		var h := top * _rng.randf_range(0.8, 1.08) if tall else BANK_H * _rng.randf_range(0.85, 1.15)
-		_rock(p, r, h, _jitter(rock, 0.1), _jitter(grass, 0.08))
+		var h := _rng.randf_range(1.1, 1.9) if tall else BANK_H * _rng.randf_range(0.85, 1.15)
+		var rc := _jitter(rock, 0.1)
+		_rock(p, r, h, rc, rc.lightened(0.14))
 		if _rng.randf() < 0.35:   # 腳邊碎石
 			var q := p - inward * (r + _rng.randf_range(-0.1, 0.1)) + along * _rng.randf_range(-0.4, 0.4)
 			var s := _rng.randf_range(0.12, 0.25)

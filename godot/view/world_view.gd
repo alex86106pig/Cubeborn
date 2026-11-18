@@ -276,6 +276,10 @@ func _apply_style(theme: StringName) -> void:
 		_style_lantern.visible = true
 	elif _style_lantern != null:
 		_style_lantern.visible = false
+	if s.has("vision"):   # 視野遮罩：亮色場景蓋黑色會變髒、邊緣像聚光燈（YangHsu 2026-11-18：看起來怪怪的）
+		var m: ShaderMaterial = _vision_overlay.material_override
+		for key: String in s.vision:
+			m.set_shader_parameter(&"shade_color" if key == "color" else StringName(key), s.vision[key])
 
 
 # 實體這一幀畫在哪（同 sync 擺模型的補間）：x / z 是地面位置，y 是腳底高度 + up
@@ -518,6 +522,7 @@ uniform float range_edge;
 uniform float darkness;
 uniform float inner_darkness;
 uniform float edge;
+uniform vec3 shade_color : source_color = vec3(0.0);   // 壓暗用的顏色（預設黑；風格試做可換成冷色）
 uniform vec3 lights[16];   // 火把的光（F8）：xz 位置 + 半徑
 uniform int light_count;
 
@@ -549,7 +554,7 @@ void fragment() {
 		float ld = length(p - lights[i].xy);
 		lit = max(lit, 1.0 - smoothstep(lights[i].z - near_edge, lights[i].z, ld));
 	}
-	ALBEDO = vec3(0.0);
+	ALBEDO = shade_color;
 	ALPHA = mix(darkness, inner_darkness, max(max(cone, near), lit));
 }
 """

@@ -41,7 +41,7 @@ func _turf_color(x: float, z: float) -> Color:
 	var i := floori(t)
 	var c: Color = (grass[i] as Color).lerp(grass[mini(i + 1, grass.size() - 1)], t - i)
 	var d := ArenaView.soft_noise(x * 0.45 + 40.0, z * 0.45 - 13.0)
-	c = c.lerp(_style.ground_dirt, smoothstep(0.7, 0.86, d) * 0.85)
+	c = c.lerp(_style.ground_dirt, smoothstep(0.7, 0.86, d) * float(_style.get("dirt_mix", 0.85)))
 	var h := float(absi(hash(Vector2i(roundi(x * 4.0), roundi(z * 4.0)))) % 1000) / 1000.0
 	return _shade(c, 0.97 + h * 0.06)
 
