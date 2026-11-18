@@ -23,6 +23,7 @@ const PRESETS := {
 			&"platform": [Color("3a3f49"), Color("666e7c")],
 		},
 		"moss": Color("243a2c"), "dirt": Color("2a231d"),
+		"cliff": [Color("2c3138"), Color("1f2c24")], "foliage": Color("1c2a20"),
 		"post": {"vignette": 0.8, "saturation": 0.9, "contrast": 1.06, "tint": Color("e6ecff")},
 	},
 	# C 桌上模型：像桌遊小模型，暖色柔光、亮一點的草地與石頭、畫面上下緣模糊（移軸）
@@ -37,6 +38,7 @@ const PRESETS := {
 			&"platform": [Color("8a6a52"), Color("a88a6c")],
 		},
 		"moss": Color("4f7a3a"), "dirt": Color("5a4330"),
+		"cliff": [Color("7a7064"), Color("557a3e")], "foliage": Color("3f6a32"),
 		"post": {"vignette": 0.35, "saturation": 1.15, "contrast": 1.02, "tint": Color("fff6ea"), "tilt_blur": 1.0},
 	},
 	# D 褪色古版畫：場景整片灰褐單色，只有飽和的東西（血、魔法、戰利品、發光的眼）保留顏色；紙紋與暗角
@@ -51,6 +53,7 @@ const PRESETS := {
 			&"platform": [Color("4a4337"), Color("6f6654")],
 		},
 		"moss": Color("3c3a2e"), "dirt": Color("2c261e"),
+		"cliff": [Color("3a342c"), Color("4b4538")], "foliage": Color("35322a"),
 		"post": {"vignette": 0.75, "saturation": 0.0, "keep_accent": 1.0, "contrast": 1.12, "tint": Color("f0dcb8"), "grain": 0.06},
 	},
 }

@@ -37,7 +37,8 @@ const DOOR_HEIGHT := 3.2
 # half：場地的一半大小（World.half_extents）；theme：MapDefs 的 theme
 # doors：小關出口的門 [{ pos: 世界座標, side: N / E / S / W }]（DigEvent.doors，main.gd 換算）
 # seed_value：這份地形的種子（main.gd 給 hash(World.layout_key)）：裝飾照它擺，每個人看到的一樣；0 = 隨機
-func build(half: Vector2, terrain: Terrain, theme: StringName = &"graveyard", doors: Array = [], seed_value := 0) -> void:
+# edge_count：terrain.blocks 最前面幾個是地圖邊界（World.map.edge_blocks，風格試做畫成崖壁）
+func build(half: Vector2, terrain: Terrain, theme: StringName = &"graveyard", doors: Array = [], seed_value := 0, edge_count := 0) -> void:
 	for child in get_children():
 		remove_child(child)
 		child.queue_free()
@@ -49,7 +50,7 @@ func build(half: Vector2, terrain: Terrain, theme: StringName = &"graveyard", do
 	add_child(DarkFantasy.build_arena(half, rng, theme))
 	var style := ArtStyle.for_theme(theme)
 	if not terrain.blocks.is_empty():
-		add_child(create_blocks(terrain.blocks, theme) if style.is_empty() else BlockDressing.build(terrain.blocks, style, rng.randi()))
+		add_child(create_blocks(terrain.blocks, theme) if style.is_empty() else BlockDressing.build(terrain.blocks, style, rng.randi(), edge_count))
 	if not doors.is_empty():
 		add_child(create_doors(doors))
 

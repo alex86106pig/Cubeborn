@@ -1,5 +1,7 @@
 # 地形石台的造型（ArtStyle 試做用）：碰撞照舊是 World.terrain 的長方體，畫面照種類換成看得出是什麼的樣子
-# - 牆：一段一段砌、每段高低不齊、段與段之間立柱、頂上壓一條蓋石、側面凸出幾塊石頭、底部一圈苔、少數段崩掉一截（腳邊碎石）
+# - 崖壁（地圖邊界：MapGen 把吃進來的邊與地圖外面都記成牆，排在 blocks 最前面 edge_count 個）：外露的邊排一圈高低不一的岩柱、
+#   腳邊碎石、頂上長草與灌木，不砌磚（YangHsu 2026-11-18：邊界砌成牆很奇怪）
+# - 牆（地圖裡的障礙物：廢墟殘牆、陵墓）：一段一段砌、每段高低不齊、段與段之間立柱、頂上壓一條蓋石、側面凸出幾塊石頭、底部一圈苔、少數段崩掉一截（腳邊碎石）
 #   厚的牆（> WIDE）當成圍起來的一塊：四邊砌牆、中間填土頂
 # - 墓碑：圓頂、十字、尖頂、斷碑、肩頂 5 種（照位置挑，大家看到的一樣），底座、刻字面、往鏡頭那邊一塊墳土，微微傾斜
 # - 高台：台身 + 外凸的頂石 + 四角石墩
@@ -21,14 +23,19 @@ var _to_cam := Vector2(sin(Config.CAMERA.azimuth), cos(Config.CAMERA.azimuth))  
 var _walls: Array[Dictionary] = []   # 全部的牆（算哪一邊跟別的牆貼著、不用砌）
 
 
-static func build(blocks: Array[Dictionary], style: Dictionary, seed_value: int) -> MeshInstance3D:
+# edge_count：blocks 最前面幾個是地圖邊界（World.map.edge_blocks）
+static func build(blocks: Array[Dictionary], style: Dictionary, seed_value: int, edge_count := 0) -> MeshInstance3D:
 	var d := BlockDressing.new()
 	d._style = style
 	d._rng.seed = seed_value
 	for b in blocks:
 		if b.kind == &"wall":
 			d._walls.append(b)
-	for b in blocks:
+	for i in blocks.size():
+		var b := blocks[i]
+		if i < edge_count:
+			d._cliff(b)
+			continue
 		var c: Array = style.blocks.get(b.kind, style.blocks[&"platform"])
 		match b.kind:
 			&"wall":
@@ -170,6 +177,67 @@ func _exposed(b: Dictionary, edge: StringName) -> Array[Vector2]:
 	return free.filter(func(f: Vector2) -> bool: return f.y - f.x > 0.6)
 
 
+# ---------- 崖壁 ----------
+
+# 地圖邊界的一塊：台身頂上長草（比碰撞頂低一點），外露的邊排岩柱（最多凸出碰撞邊界 0.25）、腳邊碎石，靠邊的頂上長灌木
+func _cliff(b: Dictionary) -> void:
+	var rock: Color = _style.cliff[0]
+	var grass: Color = _style.cliff[1]
+	var mid: Vector2 = (b.min + b.max) / 2.0
+	var size: Vector2 = b.max - b.min
+	var t: float = b.top
+	_obox(mid, 0.0, t - 0.3, Vector2(1, 0), size.x, size.y, _shade(rock, 0.8), grass)
+	for edge: StringName in [&"N", &"S", &"W", &"E"]:
+		var horizontal := edge == &"N" or edge == &"S"
+		var line: float
+		var inward: Vector2
+		match edge:
+			&"N":
+				line = b.min.y
+				inward = Vector2(0, 1)
+			&"S":
+				line = b.max.y
+				inward = Vector2(0, -1)
+			&"W":
+				line = b.min.x
+				inward = Vector2(1, 0)
+			_:
+				line = b.max.x
+				inward = Vector2(-1, 0)
+		for seg in _exposed(b, edge):
+			var at := seg.x + _rng.randf_range(0.0, 0.5)
+			while at < seg.y - 0.3:
+				var r := _rng.randf_range(0.55, 0.95)
+				var p := (Vector2(at, line) if horizontal else Vector2(line, at)) + inward * (r - 0.25)
+				var h := t * _rng.randf_range(0.8, 1.08)
+				_rock(p, r, h, _jitter(rock, 0.1), _jitter(grass, 0.08))
+				if _rng.randf() < 0.45:   # 腳邊碎石
+					var q := (Vector2(at + _rng.randf_range(-0.4, 0.4), line) if horizontal else Vector2(line, at + _rng.randf_range(-0.4, 0.4))) - inward * _rng.randf_range(0.05, 0.3)
+					var s := _rng.randf_range(0.15, 0.3)
+					_rock(q, s, s * 0.9, _jitter(rock, 0.12), _jitter(rock, 0.12).lightened(0.08))
+				if _rng.randf() < 0.3:    # 頂上的灌木
+					var q := p + inward * _rng.randf_range(0.8, 2.2)
+					var s := _rng.randf_range(0.3, 0.55)
+					_rock(Vector2(q.x, q.y), s, s * 1.3, _jitter(_style.foliage, 0.12), _jitter(_style.foliage, 0.12).lightened(0.06), t - 0.3)
+				at += r * _rng.randf_range(1.1, 1.6)
+
+
+# 一塊岩石：不規則的多邊形（7 點）往上擠出 h，上半截再縮小一層；base_y 是底的高度
+func _rock(center: Vector2, r: float, h: float, side: Color, top: Color, base_y := 0.0) -> void:
+	var pts := PackedVector2Array()
+	var a0 := _rng.randf() * TAU
+	for k in 7:
+		var a := a0 + TAU * k / 7.0 + _rng.randf_range(-0.25, 0.25)
+		pts.append(Vector2(cos(a), sin(a)) * r * _rng.randf_range(0.75, 1.0))
+	var lower := h * _rng.randf_range(0.55, 0.75)
+	var up_basis := Basis(Vector3.RIGHT, -PI / 2.0)   # 輪廓的 (x, y) → 地面的 (x, −z)，擠出方向 → 往上
+	_prism(pts, Vector2.ZERO, lower, Transform3D(up_basis, Vector3(center.x, base_y + lower / 2.0, center.y)), side, top)
+	var shrink := PackedVector2Array()
+	for p in pts:
+		shrink.append(p * 0.72)
+	_prism(shrink, Vector2.ZERO, h - lower, Transform3D(up_basis, Vector3(center.x, base_y + lower + (h - lower) / 2.0, center.y)), side, top)
+
+
 # ---------- 墓碑 ----------
 
 func _tomb(b: Dictionary, c: Array) -> void:
@@ -268,6 +336,9 @@ func _prism(pts: PackedVector2Array, fan_at: Vector2, depth: float, xf: Transfor
 	var n := pts.size()
 	var cf := xf * Vector3(fan_at.x, fan_at.y, hz)
 	var cb := xf * Vector3(fan_at.x, fan_at.y, -hz)
+	var z_up := (xf.basis * Vector3(0, 0, 1)).normalized().y
+	var front_col := top if z_up > 0.5 else side
+	var back_col := top if z_up < -0.5 else side
 	for i in n:
 		var p: Vector2 = pts[i]
 		var q: Vector2 = pts[(i + 1) % n]
@@ -276,8 +347,8 @@ func _prism(pts: PackedVector2Array, fan_at: Vector2, depth: float, xf: Transfor
 		var pb := xf * Vector3(p.x, p.y, -hz)
 		var qb := xf * Vector3(q.x, q.y, -hz)
 		var inside := xf * Vector3(fan_at.x, fan_at.y, 0.0)
-		_tri(cf, pf, qf, side, inside)
-		_tri(cb, qb, pb, side, inside)
+		_tri(cf, pf, qf, front_col, inside)
+		_tri(cb, qb, pb, back_col, inside)
 		var nrm := _outward(pf, qf, qb, inside)
 		_quad(pf, qf, qb, pb, top if nrm.y > 0.5 else side, inside)
 
