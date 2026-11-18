@@ -471,7 +471,12 @@ func close_panels_on_hit() -> void:
 
 func set_bag_open(open: bool) -> void:
 	_stats_panel.visible = open
-	inventory_panel.visible = open
+	inventory_panel.visible = open and not bag_hidden()
+
+
+# 骰子模式沒有背包（§55）：Tab 只開屬性面板，背包怎樣都不打開
+func bag_hidden() -> bool:
+	return world != null and world.dice != null
 
 
 func toggle_stats_panel() -> void:

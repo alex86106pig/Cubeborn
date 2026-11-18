@@ -249,6 +249,8 @@ func floor_rng(purpose: StringName) -> RandomNumberGenerator:
 # 找不到夠遠的位置時，寶箱之間的距離逐步放寬（× 0.5、× 0）
 # 鍛造祭壇（forge_count）排在寶箱後面、用同一套規則：寶箱的位置和沒有鍛造祭壇時一樣
 func _place_chests(prng: RandomNumberGenerator) -> void:
+	if not has_loot():
+		return
 	if map.has("chest_spots"):
 		# 產生的地圖（MapGen）：祭壇與石棺照整層的分配擺；有鐵砧的關在起點旁放鐵砧（遺物的一種，每人用一次）
 		for spot: Array in map.chest_spots:
@@ -345,7 +347,7 @@ func next_floor() -> void:
 func next_stage(reward: StringName) -> void:
 	stage_num += 1
 	_change_level()
-	if bag_mode == BagDefs.MODE_MERGED:   # 背包合併：過小關每人一輪三選一開格（打開背包點候選）
+	if bag_mode == BagDefs.MODE_MERGED and has_loot():   # 背包合併：過小關每人一輪三選一開格（打開背包點候選）
 		for p in player_list:
 			p.loadout.offer_unlock(p, rng)
 	save_stage(reward)   # 門的獎勵發下去之前存：重來時照原樣再發一次
@@ -426,6 +428,8 @@ func _change_level() -> void:
 
 # 門上的獎勵（MapGenDefs.REWARDS）：遺物放在出生點旁、靈魂全隊共用、骰子每人；空的（一扇門的關）不給
 func _grant_stage_reward(reward: StringName) -> void:
+	if not has_loot():
+		return
 	match reward:
 		&"relic", &"skill", &"bag":
 			drop_relic(&"big", spawn_point + MapGenDefs.REWARD_DROP, &"item" if reward == &"relic" else reward)
@@ -572,9 +576,10 @@ func on_enemy_died(e: Enemy, killer_id: int = 0) -> void:
 	if e.team == &"player":
 		return   # 骷髏僕從（G6）倒下：不算擊殺、不給東西
 	stats.kills += 1
-	_pack_looted(e)
 	if dice != null:
 		dice.on_enemy_died(self, e)
+		return   # 骰子模式沒有靈魂、金幣、袋子、武器掉落（啃食群的靈魂也不給）：獎勵只有打完一場的 3 選 1
+	_pack_looted(e)
 	var g := 0 if e.no_souls else int(LootDefs.KILL_SOULS.get(e.type, 0))
 	var killer: Entity = entities.get(killer_id)
 	if g > 0 and killer is Player:
@@ -609,6 +614,11 @@ func on_enemy_died(e: Enemy, killer_id: int = 0) -> void:
 		var inst := WeaponDropDefs.make(new_weapon_uid(), base, WeaponDropDefs.roll_rarity(source, rng, team_treasure()), rng)
 		drop_weapon(inst, e.pos)
 		emit_event("weapon:dropped", {"uid": String(inst.uid), "base": String(base), "rarity": String(inst.rarity), "pos": e.pos})
+
+
+# 有沒有背包的東西可拿（寶箱、祭壇、石棺、門的獎勵、Boss 的遺物、殺怪的靈魂與掉落）：骰子模式沒有背包，全部不給（§55）
+func has_loot() -> bool:
+	return dice == null
 
 
 # 殺怪掉落用全隊最高的尋寶（F1，Claude 暫定）：擊殺者常常是投射物、追不到是誰，靈魂本來也是全隊共用
@@ -743,9 +753,10 @@ func reachable_pickups(p: Player, out: Array[ItemPickup]) -> void:
 # 測試場地照舊通關：其餘敵人一起倒下、敵方投射物消失，延遲後發出 game:victory
 func on_boss_defeated(boss: Enemy) -> void:
 	if DigEvent.enabled(self):
-		var relic := drop_relic(&"big", boss.pos + Vector2(LootDefs.DROP_DISTANCE, 0.0))
-		drop_relic(&"big", boss.pos - Vector2(LootDefs.DROP_DISTANCE, 0.0), &"bag_big")   # 大袋或強化袋 N 選 1（觸發袋）
-		emit_event("boss:reward", {"relic_id": relic.id, "pos": boss.pos})
+		if has_loot():
+			var relic := drop_relic(&"big", boss.pos + Vector2(LootDefs.DROP_DISTANCE, 0.0))
+			drop_relic(&"big", boss.pos - Vector2(LootDefs.DROP_DISTANCE, 0.0), &"bag_big")   # 大袋或強化袋 N 選 1（觸發袋）
+			emit_event("boss:reward", {"relic_id": relic.id, "pos": boss.pos})
 		hit_stop(Config.WORLD.victory_hit_stop)
 		emit_event("camera:shake", {"amount": Config.WORLD.victory_shake, "duration": Config.WORLD.victory_shake_duration})
 		return

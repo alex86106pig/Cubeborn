@@ -184,3 +184,40 @@ static func check_dice_auto() -> String:
 	if en.pos == at:
 		return "一般模式發現玩家後怪應照常行動（沒有暫停）"
 	return ""
+
+
+# 骰子模式沒有背包（§55）：開局不放寶箱 / 祭壇 / 石棺 / 鍛造祭壇 / 鐵砧；殺菁英（連必掉武器的除錯開關）不掉袋子、武器、金幣，也不給靈魂；
+# 打倒 Boss 不掉遺物；HUD 開背包（Tab、遺物面板走的 set_bag_open）只開屬性面板。同一張地圖一般模式要有寶箱，這項才有在測東西
+static func check_dice_no_loot() -> String:
+	var plain := _new_world(4, false, &"graveyard_a")
+	if plain.chests.is_empty():
+		return "一般模式的 graveyard_a 應有寶箱（不然這項測不到東西）"
+	var w := World.new(&"graveyard_a")
+	w.spawn_packs = false
+	w.dice = DiceRun.new()
+	w.reset(4)
+	w.spawner.finished = true
+	_worlds.append(w)
+	if not w.chests.is_empty() or not w.forges.is_empty() or not w.relics.is_empty():
+		return "骰子模式開局不該有寶箱 / 鍛造祭壇 / 遺物：寶箱 %d、祭壇 %d、遺物 %d" % [w.chests.size(), w.forges.size(), w.relics.size()]
+	var p := _player(w)
+	w.debug_drop_all = true
+	var e := _spawn(w, &"grunt", p.pos + Vector2(6, 0))
+	e.set_rarity(&"rare", [])
+	e.die(p.id)
+	w.on_boss_defeated(_spawn(w, &"grunt", p.pos + Vector2(-6, 0)))
+	_wait(w, 0.2)
+	if not w.pickups.is_empty() or not w.relics.is_empty() or w.souls != 0:
+		return "骰子模式殺怪 / 打倒 Boss 不該有掉落與靈魂：地上 %d 件、遺物 %d、靈魂 %d" % [w.pickups.size(), w.relics.size(), w.souls]
+	var cam := Camera3D.new()
+	_scene_root().add_child(cam)
+	var hud: Variant = load("res://ui/hud.tscn").instantiate()
+	hud.setup(w, cam)
+	_scene_root().add_child(hud)
+	hud.set_bag_open(true)
+	var err := ""
+	if hud.inventory_panel.visible or not hud.is_stats_panel_open():
+		err = "骰子模式開背包應只開屬性面板：背包 %s、屬性 %s" % [hud.inventory_panel.visible, hud.is_stats_panel_open()]
+	hud.queue_free()
+	cam.queue_free()
+	return err

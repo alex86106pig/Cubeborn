@@ -402,6 +402,8 @@ func _open_inventory_for(pickup_id: int) -> void:
 func _open_inventory() -> bool:
 	if is_paused or is_menu_open:
 		return false
+	if hud.bag_hidden():
+		return false
 	if not hud.inventory_panel.visible:
 		if not hud.is_stats_panel_open():
 			hud.toggle_stats_panel()
@@ -833,7 +835,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed(&"stats_panel") and not (is_paused or is_menu_open):   # 暫停 / 選單開著時不開關（2026-10-27 使用者回報）
 		# Tab 同時開關背包與屬性面板（v0.27.0 使用者決定，取代 I）；開著時不暫停、角色照常移動，滑鼠只給背包用
 		hud.toggle_stats_panel()
-		hud.inventory_panel.visible = hud.is_stats_panel_open()
+		hud.inventory_panel.visible = hud.is_stats_panel_open() and not hud.bag_hidden()
 		input_collector.mouse_captured = hud.inventory_panel.visible
 	elif mode != Mode.SINGLE:
 		return   # 以下除錯鍵直接改模擬狀態、不經過 InputCmd，單機才有
