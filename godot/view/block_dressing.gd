@@ -1,6 +1,6 @@
 # 地形石台的造型（ArtStyle 試做用）：碰撞照舊是 World.terrain 的長方體，畫面照種類換成看得出是什麼的樣子
 # - 崖壁（地圖邊界：MapGen 把吃進來的邊與地圖外面都記成牆，排在 blocks 最前面 edge_count 個）：外露的邊排一圈高低不一的岩柱、
-#   腳邊碎石、頂上長草與灌木，不砌磚（YangHsu 2026-11-18：邊界砌成牆很奇怪）
+#   畫成矮土坡 + 鐵柵欄 + 枯樹，碰撞照舊（YangHsu 2026-11-18：墓園用牆框起來很怪、可以做隱形牆）
 # - 牆（地圖裡的障礙物：廢墟殘牆、陵墓）：一段一段砌、每段高低不齊、段與段之間立柱、頂上壓一條蓋石、側面凸出幾塊石頭、底部一圈苔、少數段崩掉一截（腳邊碎石）
 #   厚的牆（> WIDE）當成圍起來的一塊：四邊砌牆、中間填土頂
 # - 墓碑：圓頂、十字、尖頂、斷碑、肩頂 5 種（照位置挑，大家看到的一樣），底座、刻字面、往鏡頭那邊一塊墳土，微微傾斜
@@ -13,6 +13,8 @@ const WIDE := 2.6          # 比這個厚的牆當成圍起來的一塊
 const SEG_LEN := 2.0       # 牆每段大約多長
 const PLINTH_H := 0.35     # 牆腳那圈石的高度
 const CAP_T := 0.16        # 蓋石厚度
+const BANK_H := 0.9        # 邊界土坡畫多高（碰撞照舊是牆的高度，隱形）
+const FENCE_IN := 0.45     # 鐵柵欄離邊界多遠（往內）
 
 var verts := PackedVector3Array()
 var normals := PackedVector3Array()
@@ -179,14 +181,15 @@ func _exposed(b: Dictionary, edge: StringName) -> Array[Vector2]:
 
 # ---------- 崖壁 ----------
 
-# 地圖邊界的一塊：台身頂上長草（比碰撞頂低一點），外露的邊排岩柱（最多凸出碰撞邊界 0.25）、腳邊碎石，靠邊的頂上長灌木
+# 地圖邊界的一塊（YangHsu 2026-11-18：土崖 + 鐵柵欄 + 枯樹，碰撞照舊是隱形的長方體）：
+# 矮土坡（BANK_H，頂上長草），外露的邊排一圈石頭護坡（最多凸出碰撞邊界 0.25）、腳邊碎石；
+# 坡頂沿邊一排尖頭鐵柵欄（FENCE_IN 往內），柵欄後面一片枯樹與灌木
 func _cliff(b: Dictionary) -> void:
 	var rock: Color = _style.cliff[0]
 	var grass: Color = _style.cliff[1]
 	var mid: Vector2 = (b.min + b.max) / 2.0
 	var size: Vector2 = b.max - b.min
-	var t: float = b.top
-	_obox(mid, 0.0, t - 0.3, Vector2(1, 0), size.x, size.y, _shade(rock, 0.8), grass)
+	_obox(mid, 0.0, BANK_H, Vector2(1, 0), size.x, size.y, _shade(rock, 0.8), grass)
 	for edge: StringName in [&"N", &"S", &"W", &"E"]:
 		var horizontal := edge == &"N" or edge == &"S"
 		var line: float
@@ -204,22 +207,86 @@ func _cliff(b: Dictionary) -> void:
 			_:
 				line = b.max.x
 				inward = Vector2(-1, 0)
+		var along := Vector2(1, 0) if horizontal else Vector2(0, 1)
 		for seg in _exposed(b, edge):
-			var at := seg.x + _rng.randf_range(0.0, 0.5)
-			while at < seg.y - 0.3:
-				var r := _rng.randf_range(0.55, 0.95)
+			var p0 := (Vector2(seg.x, line) if horizontal else Vector2(line, seg.x))
+			# 護坡的石頭與腳邊碎石
+			var at := seg.x + _rng.randf_range(0.0, 0.4)
+			while at < seg.y - 0.2:
+				var r := _rng.randf_range(0.4, 0.7)
 				var p := (Vector2(at, line) if horizontal else Vector2(line, at)) + inward * (r - 0.25)
-				var h := t * _rng.randf_range(0.8, 1.08)
-				_rock(p, r, h, _jitter(rock, 0.1), _jitter(grass, 0.08))
-				if _rng.randf() < 0.45:   # 腳邊碎石
-					var q := (Vector2(at + _rng.randf_range(-0.4, 0.4), line) if horizontal else Vector2(line, at + _rng.randf_range(-0.4, 0.4))) - inward * _rng.randf_range(0.05, 0.3)
-					var s := _rng.randf_range(0.15, 0.3)
+				_rock(p, r, BANK_H * _rng.randf_range(0.85, 1.15), _jitter(rock, 0.1), _jitter(grass, 0.08))
+				if _rng.randf() < 0.35:
+					var q := p - inward * (r + _rng.randf_range(-0.1, 0.1)) + along * _rng.randf_range(-0.4, 0.4)
+					var s := _rng.randf_range(0.12, 0.25)
 					_rock(q, s, s * 0.9, _jitter(rock, 0.12), _jitter(rock, 0.12).lightened(0.08))
-				if _rng.randf() < 0.3:    # 頂上的灌木
-					var q := p + inward * _rng.randf_range(0.8, 2.2)
-					var s := _rng.randf_range(0.3, 0.55)
-					_rock(Vector2(q.x, q.y), s, s * 1.3, _jitter(_style.foliage, 0.12), _jitter(_style.foliage, 0.12).lightened(0.06), t - 0.3)
-				at += r * _rng.randf_range(1.1, 1.6)
+				at += r * _rng.randf_range(1.2, 1.7)
+			_fence(p0 + inward * FENCE_IN, along, seg.y - seg.x)
+			# 柵欄後面：枯樹與灌木
+			var u := seg.x + _rng.randf_range(0.3, 1.5)
+			while u < seg.y - 0.3:
+				var depth := _rng.randf_range(1.3, 4.5)
+				var q := (Vector2(u, line) if horizontal else Vector2(line, u)) + inward * depth
+				if _rng.randf() < 0.6:
+					_dead_tree(q, _rng.randf_range(2.0, 3.4))
+				else:
+					var s := _rng.randf_range(0.35, 0.6)
+					_rock(q, s, s * 1.2, _jitter(_style.foliage, 0.12), _jitter(_style.foliage, 0.12).lightened(0.06), BANK_H)
+				u += _rng.randf_range(1.2, 2.4)
+
+
+# 尖頭鐵柵欄：從 start 沿 along 走 length，立在坡頂；每 2 單位一根粗柱，中間每 0.28 一根細欄杆，上下兩條橫桿
+func _fence(start: Vector2, along: Vector2, length: float) -> void:
+	var iron: Color = _style.iron
+	var y0 := BANK_H
+	var a := Vector3(along.x, 0.0, along.y)
+	var s0 := Vector3(start.x, y0, start.y)
+	for h in [0.22, 1.35]:
+		_beam(s0 + Vector3(0, h, 0), s0 + a * length + Vector3(0, h, 0), 0.07, iron)
+	var n := maxi(1, roundi(length / 0.28))
+	for k in n + 1:
+		var p := s0 + a * (length * k / n)
+		var post := k % 7 == 0 or k == n
+		var h := 1.75 if post else 1.55
+		_beam(p, p + Vector3(0, h, 0), 0.14 if post else 0.06, iron)
+		# 尖頭：一個小菱形
+		var tip := p + Vector3(0, h, 0)
+		_beam(tip, tip + Vector3(0, 0.16 if post else 0.12, 0), 0.1 if post else 0.07, iron)
+
+
+# 枯樹：主幹（底粗頂細兩截）＋ 3 ~ 4 根往上斜的枝、枝上再分一小枝
+func _dead_tree(at: Vector2, h: float) -> void:
+	var bark: Color = _jitter(_style.bark, 0.1)
+	var base := Vector3(at.x, BANK_H, at.y)
+	var lean := Vector3(_rng.randf_range(-0.15, 0.15), 0.0, _rng.randf_range(-0.15, 0.15))
+	var mid := base + Vector3(0, h * 0.55, 0) + lean * 0.5
+	var top := base + Vector3(0, h, 0) + lean
+	_beam(base, mid, 0.26, bark)
+	_beam(mid, top, 0.16, bark)
+	for k in _rng.randi_range(3, 4):
+		var from := base.lerp(top, _rng.randf_range(0.45, 0.9))
+		var ang := _rng.randf() * TAU
+		var len := h * _rng.randf_range(0.25, 0.4)
+		var to := from + Vector3(cos(ang) * len, len * _rng.randf_range(0.5, 0.9), sin(ang) * len)
+		_beam(from, to, 0.09, bark)
+		var twig := to + Vector3(cos(ang + 0.8) * len * 0.4, len * 0.35, sin(ang + 0.8) * len * 0.4)
+		_beam(to.lerp(from, 0.3), twig, 0.05, bark)
+
+
+# 兩點之間的方柱（寬 w）：枝幹、欄杆
+func _beam(a: Vector3, b: Vector3, w: float, color: Color) -> void:
+	var dir := b - a
+	if dir.length_squared() < 1e-8:
+		return
+	var y := dir.normalized()
+	var x := y.cross(Vector3.FORWARD if absf(y.dot(Vector3.FORWARD)) < 0.9 else Vector3.RIGHT).normalized() * (w / 2.0)
+	var z := y.cross(x).normalized() * (w / 2.0)
+	var inside := (a + b) / 2.0
+	var c := [a - x - z, a + x - z, a + x + z, a - x + z]
+	var d := [b - x - z, b + x - z, b + x + z, b - x + z]
+	for k in 4:
+		_quad(c[k], c[(k + 1) % 4], d[(k + 1) % 4], d[k], color, inside)
+	_quad(d[0], d[1], d[2], d[3], color, inside)
 
 
 # 一塊岩石：不規則的多邊形（7 點）往上擠出 h，上半截再縮小一層；base_y 是底的高度
