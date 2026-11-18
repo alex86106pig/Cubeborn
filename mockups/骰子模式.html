@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>骰子模式示意</title>
+<!--
+  骰子模式的示意頁（規則在 docs/改版構想.md「骰子模式」）。
+  只示意擲骰、結果總覽、獎勵分配這三段；戰鬥是即時的，這裡跳過。
+  隊友 A、B、C 是電腦代擲。數字都是 Claude 暫定。單一檔案，不 import 遊戲程式。
+-->
+<style>
+:root{
+  --bg:#14121a; --panel:#1e1b26; --panel2:#272331; --line:#3a3446; --text:#ece6f2; --dim:#9a90a8;
+  --skill:#e8963a; --skill2:#ffcf7a; --effect:#4fa3d9; --team:#5fd08a; --blank:#2c2836; --grey:#55505e;
+  --gold:#ffd54a; --red:#e85a5a;
+  --r-grey:#9a9a9a; --r-white:#e8e8e8; --r-green:#5fd08a; --r-blue:#4f8fe8; --r-purple:#b46ae8; --r-orange:#ff9a3a;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Noto Sans TC","Microsoft JhengHei","PingFang TC",sans-serif;overflow-x:hidden}
+button{font:inherit;color:inherit;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 14px;cursor:pointer}
+button:hover:not(:disabled){border-color:var(--skill)}
+button:disabled{opacity:.4;cursor:default}
+button.main{background:var(--skill);color:#1a1208;border-color:var(--skill);font-weight:700}
+header{display:flex;align-items:center;gap:16px;padding:10px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+header h1{font-size:18px;margin:0}
+.steps{display:flex;gap:6px;flex:1}
+.steps span{padding:4px 10px;border-radius:12px;color:var(--dim);font-size:13px;border:1px solid var(--line)}
+.steps span.on{color:#1a1208;background:var(--skill);border-color:var(--skill);font-weight:700}
+.tools{display:flex;gap:8px;align-items:center;font-size:13px}
+.note{color:var(--dim);font-size:13px;padding:6px 20px}
+main{display:grid;grid-template-columns:230px 1fr 290px;gap:16px;padding:16px 20px;min-height:calc(100vh - 110px)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+.panel h2{font-size:14px;margin:0 0 10px;color:var(--dim);font-weight:500}
+/* 輪流順序 */
+.p-row{display:flex;gap:10px;align-items:center;padding:8px;border-radius:8px;margin-bottom:6px;border:1px solid transparent}
+.p-row.now{border-color:var(--skill);background:var(--panel2)}
+.avatar{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:700;color:#111;flex:none}
+.p-row .nm{font-weight:700}
+.p-row .sub{font-size:12px;color:var(--dim)}
+.p-row .st{margin-left:auto;font-size:12px;color:var(--dim);text-align:right}
+.p-row .st b{color:var(--skill2)}
+/* 舞台 */
+#stage{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;overflow:hidden}
+#stage.shake{animation:shake .5s}
+@keyframes shake{0%,100%{transform:none}20%{transform:translate(-8px,4px)}40%{transform:translate(7px,-5px)}60%{transform:translate(-5px,-3px)}80%{transform:translate(4px,5px)}}
+.who{font-size:22px}
+.who b{color:var(--skill2)}
+.timer{width:420px;max-width:90%;height:6px;background:var(--panel2);border-radius:3px;overflow:hidden}
+.timer i{display:block;height:100%;background:var(--skill);width:100%}
+.dice{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;perspective:900px;transition:transform .6s}
+.slot{position:relative;width:96px;height:118px;cursor:pointer;transition:opacity .4s, transform .4s}
+.slot .cube{position:absolute;left:6px;top:6px;width:84px;height:84px;transform-style:preserve-3d;transition-property:transform;transition-timing-function:cubic-bezier(.15,.75,.2,1)}
+.slot .f{position:absolute;inset:0;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;backface-visibility:hidden;border:2px solid rgba(255,255,255,.15);box-shadow:inset 0 -6px 0 rgba(0,0,0,.25)}
+.f .ic{font-size:36px;font-weight:900;line-height:1}
+.f .lb{font-size:11px;margin-top:4px;opacity:.85}
+.f.skill{background:linear-gradient(160deg,#f2a64a,#b8641c);color:#2a1300}
+.f.effect{background:linear-gradient(160deg,#5fb3e6,#2c6d9e);color:#061a29}
+.f.team{background:linear-gradient(160deg,#6fe09a,#2c8f55);color:#04210f}
+.f.blank{background:var(--blank);color:#555}
+.f.grey{background:var(--grey);color:#2a2830}
+.f.pip{background:linear-gradient(160deg,#f4efe6,#c9c0b0);color:#222}
+.f0{transform:translateZ(42px)} .f1{transform:rotateY(180deg) translateZ(42px)}
+.f2{transform:rotateY(90deg) translateZ(42px)} .f3{transform:rotateY(-90deg) translateZ(42px)}
+.f4{transform:rotateX(90deg) translateZ(42px)} .f5{transform:rotateX(-90deg) translateZ(42px)}
+.slot .tag{position:absolute;left:0;right:0;bottom:0;text-align:center;font-size:12px;color:var(--dim)}
+.slot.locked .tag{color:var(--gold);font-weight:700}
+.slot.locked .f{box-shadow:0 0 0 3px var(--gold),0 0 12px var(--gold)}
+.slot.land{animation:land .35s}
+@keyframes land{0%{transform:translateY(-10px)}55%{transform:translateY(3px) scale(1.06,.94)}100%{transform:none}}
+.slot.hit .f{box-shadow:0 0 16px 4px var(--skill2)}  /* 不能用 filter：會把 3D 骰子壓平、露出反面 */
+#stage.suspense .slot{opacity:.35}
+#stage.suspense .slot.last{opacity:1;transform:scale(1.35);z-index:2}
+#stage.suspense .who{opacity:.3}
+.btns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.hint{color:var(--dim);font-size:13px;text-align:center;min-height:18px}
+/* 結果 */
+.res-skill{font-size:26px;font-weight:900;color:var(--skill2)}
+.res-tier{font-size:14px;margin-top:2px}
+.tier-3{color:var(--skill2)} .tier-4{color:var(--gold)} .tier-5{color:var(--gold)} .tier-6{color:var(--gold);text-shadow:0 0 8px var(--gold)}
+.cand{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+.cand button{padding:4px 10px;font-size:13px}
+.cand button.sel{border-color:var(--skill);background:#3a2a18}
+.eff{font-size:14px;line-height:1.9}
+.eff .t{color:var(--team)}
+.tbl{width:100%;border-collapse:collapse;font-size:12px;margin-top:12px;color:var(--dim)}
+.tbl td{padding:2px 4px;border-top:1px solid var(--line)}
+.tbl tr.on td{color:var(--skill2);font-weight:700}
+/* 橫幅 */
+#banner{position:fixed;left:0;right:0;top:38%;text-align:center;pointer-events:none;opacity:0;transform:scale(.6);transition:all .25s}
+#banner.show{opacity:1;transform:scale(1)}
+#banner .big{font-size:64px;font-weight:900;color:var(--gold);text-shadow:0 0 18px rgba(255,180,40,.8),0 4px 0 #7a4a00}
+#banner .small{font-size:22px;color:#fff;text-shadow:0 2px 6px #000}
+#flash{position:fixed;inset:0;background:radial-gradient(circle,rgba(255,220,120,.55),transparent 70%);opacity:0;pointer-events:none;transition:opacity .5s}
+#confetti{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+#confetti i{position:absolute;top:-20px;width:8px;height:14px;background:var(--gold);animation:fall linear forwards}
+@keyframes fall{to{transform:translateY(110vh) rotate(720deg)}}
+/* 總覽與獎勵 */
+.full{grid-column:1 / -1}
+.sum-row{display:grid;grid-template-columns:170px 1fr 220px 1fr;gap:14px;align-items:center;padding:12px;border-bottom:1px solid var(--line)}
+.mini{display:flex;gap:4px;flex-wrap:wrap}
+.mf{width:30px;height:30px;border-radius:6px;display:grid;place-items:center;font-weight:900;font-size:15px}
+.mf.skill{background:var(--skill);color:#2a1300} .mf.effect{background:var(--effect);color:#061a29} .mf.team{background:var(--team);color:#04210f}
+.mf.blank{background:var(--blank)} .mf.grey{background:var(--grey);color:#2a2830} .mf.hl{outline:2px solid var(--gold)}
+#count{position:fixed;inset:0;display:none;place-items:center;background:rgba(0,0,0,.6);font-size:160px;font-weight:900;color:var(--gold)}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:10px}
+.card{background:var(--panel2);border:2px solid var(--line);border-radius:14px;padding:14px;min-height:230px;cursor:pointer;position:relative;display:flex;flex-direction:column;gap:8px}
+.card:hover{border-color:var(--dim)}
+.card.mine{border-color:var(--skill);box-shadow:0 0 0 3px rgba(232,150,58,.3)}
+.card .ty{font-size:13px;color:var(--dim)}
+.card .ti{font-size:18px;font-weight:700}
+.card .q{font-size:72px;font-weight:900;text-align:center;color:var(--dim);margin:6px 0}
+.card .who-picked{display:flex;gap:4px;margin-top:auto;min-height:34px}
+.card .got{position:absolute;right:10px;top:10px;font-size:12px;padding:2px 8px;border-radius:10px;color:#111;font-weight:700}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;place-items:center;z-index:5}
+.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px;min-width:460px;max-width:90vw;text-align:center}
+.modal h3{margin:0 0 14px}
+.duel{display:flex;gap:40px;justify-content:center;margin:20px 0;perspective:900px}
+.duel .slot{cursor:default}
+.pick3{display:flex;gap:12px;justify-content:center;margin:16px 0}
+.pick3 button{display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 18px}
+.pick3 .mf{width:54px;height:54px;font-size:28px}
+@media (max-width:1000px){
+  main{grid-template-columns:1fr} .sum-row{grid-template-columns:1fr} .cards{grid-template-columns:repeat(2,1fr)}
+  .slot{width:80px;height:100px} .dice{gap:10px}
+  .modal .box{min-width:0}
+}
+#toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--skill);padding:10px 18px;border-radius:10px;opacity:0;transition:opacity .3s;pointer-events:none}
+.pool{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px}
+.pool .pd{padding:8px;border-radius:10px;border:2px solid var(--line);cursor:pointer}
+.pool .pd.on{border-color:var(--skill)}
+.pool .pd .src{font-size:12px;color:var(--dim);margin-bottom:6px}
+</style>
+</head>
+<body>
+<header>
+  <h1>骰子模式示意</h1>
+  <div class="steps" id="steps"><span>擲骰</span><span>結果總覽</span><span>3、2、1 → 戰鬥</span><span>獎勵</span></div>
+  <div class="tools">
+    <label><input type="checkbox" id="sound" checked> 音效</label>
+    <label><input type="checkbox" id="fast"> 隊友快轉</label>
+    <button id="btnMid">換成中期的骰子</button>
+    <button id="btnReset">從頭開始</button>
+  </div>
+</header>
+<div class="note">你是劍盾，隊友 A、B、C 由電腦代擲。點骰子鎖住、重擲其他的（每場 1 次）；每人限時 10 秒，沒動作會自動擲 / 自動完成。數字都是暫定，規則在 docs/改版構想.md「骰子模式」。</div>
+<main id="main"></main>
+<div id="banner"><div class="big"></div><div class="small"></div></div>
+<div id="flash"></div>
+<div id="confetti"></div>
+<div id="count"></div>
+<div class="modal" id="modal"><div class="box" id="mbox"></div></div>
+<div id="toast"></div>
+
+<script>
+// ===== 資料 =====
+const SKILLS = {
+  "旋風斬":{ic:"旋",w:"劍盾",big:"千刃風暴"}, "劍氣":{ic:"氣",w:"劍盾",big:"裂地斬"},
+  "衝鋒斬":{ic:"衝",w:"劍盾",big:"三連衝鋒"}, "震地":{ic:"震",w:"劍盾",big:"全場震地"},
+  "飛刀扇":{ic:"刀",w:"雙匕首",big:"千刀扇"}, "背襲":{ic:"襲",w:"雙匕首",big:"影襲連殺"},
+  "冰霜新星":{ic:"冰",w:"法杖",big:"絕對零度"}, "隕石":{ic:"隕",w:"法杖",big:"隕石雨"},
+  "砸地":{ic:"砸",w:"鐵鏟",big:"地裂"}, "拋土":{ic:"拋",w:"鐵鏟",big:"活埋一片"},
+};
+const EFFECTS = {
+  "傷害":{ic:"傷",v:10,f:n=>`傷害 +${n}%`}, "普攻":{ic:"普",v:20,f:n=>`普攻 +${n}%`},
+  "護盾":{ic:"盾",v:15,f:n=>`開場護盾 +${n}`}, "回血":{ic:"血",v:10,f:n=>`開場回 ${n}% 生命`},
+  "攻速":{ic:"速",v:10,f:n=>`攻速 +${n}%`}, "冷卻":{ic:"冷",v:10,f:n=>`右鍵冷卻 −${n}%`},
+  "移速":{ic:"移",v:8,f:n=>`移速 +${n}%`}, "減傷":{ic:"減",v:8,f:n=>`受傷 −${n}%`},
+  "暴擊":{ic:"暴",v:8,f:n=>`暴擊 +${n}%`}, "擊退":{ic:"退",v:30,f:n=>`擊退 +${n}%`},
+  "全隊傷害":{ic:"隊",v:5,f:n=>`全隊傷害 +${n}%`,team:true}, "全隊護盾":{ic:"護",v:8,f:n=>`全隊開場護盾 +${n}`,team:true},
+};
+const WEAPONS = {
+  "劍盾":{left:"揮砍",dice:["旋風斬","旋風斬","護盾","傷害","",""],color:"#e8963a"},
+  "雙匕首":{left:"刺擊",dice:["飛刀扇","飛刀扇","攻速","暴擊","",""],color:"#b46ae8"},
+  "法杖":{left:"魔彈",dice:["冰霜新星","冰霜新星","冷卻","回血","",""],color:"#4f8fe8"},
+  "鐵鏟":{left:"拍擊",dice:["砸地","砸地","普攻","擊退","",""],color:"#5fd08a"},
+};
+const TIERS = [null,{n:"一般",m:1},{n:"一般",m:1.8},{n:"強化",m:2.6},{n:"大招",m:4},{n:"超大招",m:6},{n:"傳說",m:10}];
+const RARITY = [ // 名稱、顏色、空白、技能面
+  {n:"灰",c:"var(--r-grey)",b:[2,3],s:[0,2]}, {n:"白",c:"var(--r-white)",b:[2,3],s:[0,2]},
+  {n:"綠",c:"var(--r-green)",b:[1,2],s:[1,3]}, {n:"藍",c:"var(--r-blue)",b:[1,2],s:[1,3]},
+  {n:"紫",c:"var(--r-purple)",b:[0,1],s:[2,4]}, {n:"橘",c:"var(--r-orange)",b:[0,1],s:[2,4]},
+];
+const ITEMS = ["攻擊 +8%","最大生命 +20","攻速 +6%","右鍵冷卻 −5%","移速 +5%","受傷 −5%"];
+
+// ===== 工具 =====
+const $ = s=>document.querySelector(s);
+const rnd = n=>Math.floor(Math.random()*n);
+const pick = a=>a[rnd(a.length)];
+const between = ([a,b])=>a+rnd(b-a+1);
+let fastNow = false;
+const sleep = ms=>new Promise(r=>setTimeout(r, fastNow ? ms*0.45 : ms));
+const kind = (key,p)=> !key ? "blank" : SKILLS[key] ? (p && SKILLS[key].w!==p.weapon ? "grey" : "skill") : EFFECTS[key].team ? "team" : "effect";
+const icon = key=> !key ? "" : SKILLS[key] ? SKILLS[key].ic : EFFECTS[key].ic;
+const faceHTML = (key,p)=>`<div class="ic">${icon(key)}</div><div class="lb">${key||"空白"}</div>`;
+const mini = (key,p,hl)=>`<div class="mf ${kind(key,p)} ${hl?"hl":""}" title="${key||"空白"}">${icon(key)}</div>`;
+function toast(t){const e=$("#toast");e.textContent=t;e.style.opacity=1;clearTimeout(e._t);e._t=setTimeout(()=>e.style.opacity=0,2600)}
+
+// ===== 音效（Web Audio 合成，不用音檔）=====
+let AC=null;
+function ac(){ if(!$("#sound").checked) return null; if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==="suspended") AC.resume(); return AC }
+function tone(freq,dur,type="sine",vol=.2,when=0,slide=0){
+  const a=ac(); if(!a) return; const t=a.currentTime+when;
+  const o=a.createOscillator(), g=a.createGain(); o.type=type; o.frequency.setValueAtTime(freq,t);
+  if(slide) o.frequency.exponentialRampToValueAtTime(Math.max(30,freq*slide),t+dur);
+  g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(.001,t+dur);
+  o.connect(g).connect(a.destination); o.start(t); o.stop(t+dur+.02);
+}
+function noise(dur,vol=.15,when=0,hp=1200){
+  const a=ac(); if(!a) return; const t=a.currentTime+when;
+  const b=a.createBuffer(1,a.sampleRate*dur,a.sampleRate), d=b.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*(1-i/d.length);
+  const s=a.createBufferSource(), f=a.createBiquadFilter(), g=a.createGain();
+  f.type="highpass"; f.frequency.value=hp; g.gain.value=vol; s.buffer=b; s.connect(f).connect(g).connect(a.destination); s.start(t);
+}
+const SFX = {
+  shake(d){ for(let t=0;t<d;t+=.07) noise(.04,.07,t,2500) },             // 骰子在手裡搖
+  land(level){ noise(.06,.25,0,300); tone(160,.12,"triangle",.25,0,.5);    // 落桌
+    if(level>=2) tone(330*Math.pow(1.19,level-2),.18,"square",.07,.03) },   // 同一招越多聲音越高
+  lock(){ tone(880,.06,"square",.08) },
+  drum(d){ for(let t=0;t<d;t+=.06) noise(.05,.05+t*.08,t,180) },           // 最後一顆的鼓聲
+  win(tier){ const base=[0,0,0,392,440,494,523][tier]; [0,4,7,12].forEach((s,i)=>tone(base*Math.pow(2,s/12),.5,"sawtooth",.09,i*.09));
+    if(tier>=6) [0,4,7,12,16].forEach((s,i)=>tone(784*Math.pow(2,s/12),.8,"triangle",.08,.5+i*.08)) },
+  miss(){ tone(392,.5,"sawtooth",.08,0,.6); tone(370,.6,"sawtooth",.06,.18,.55) },
+  beep(hi){ tone(hi?988:660,hi?.5:.18,"square",.12) },
+};
+
+// ===== 狀態 =====
+let players, turn, phase, rewardCards, myPick;
+function makeDie(faces,src,rarity){ return {faces:[...faces],src,rarity} }
+function weaponDice(w,design){ return Array.from({length:6},()=>makeDie(design||WEAPONS[w].dice,"武器")) }
+function reset(){
+  players = [
+    {name:"你",weapon:"劍盾",bot:false},{name:"隊友 A",weapon:"雙匕首",bot:true},
+    {name:"隊友 B",weapon:"法杖",bot:true},{name:"隊友 C",weapon:"鐵鏟",bot:true},
+  ];
+  players.forEach(p=>{ p.color=WEAPONS[p.weapon].color; p.pool=weaponDice(p.weapon); p.use=[0,1,2,3,4,5] });
+  startFights();
+}
+function startFights(){
+  players.forEach(p=>{ p.st={face:[0,0,0,0,0,0],locked:[0,0,0,0,0,0],rolled:false,rerolls:1,done:false,choice:null} });
+  turn=0; phase="roll"; render(); beginTurn();
+}
+const cur = ()=>players[turn];
+const diceOf = p=>p.use.map(i=>p.pool[i]);
+const faceKey = (p,i)=>diceOf(p)[i].faces[p.st.face[i]];
+
+// ===== 結算 =====
+function evaluate(p){
+  const cnt={}, eff={};
+  for(let i=0;i<6;i++){ const k=faceKey(p,i); if(!k) continue;
+    if(SKILLS[k]){ if(SKILLS[k].w===p.weapon) cnt[k]=(cnt[k]||0)+1 } else eff[k]=(eff[k]||0)+1 }
+  const cands=Object.entries(cnt).sort((a,b)=>b[1]-a[1]);
+  let choice = p.st.choice && cnt[p.st.choice] ? p.st.choice : (cands[0]||[null])[0];
+  return {cnt,eff,cands,choice,n:choice?cnt[choice]:0};
+}
+const skillName = (k,n)=> n>=4 ? `${SKILLS[k].big}` : k;
+
+// ===== 畫面 =====
+function setSteps(i){ document.querySelectorAll("#steps span").forEach((s,j)=>s.classList.toggle("on",i===j)) }
+function render(){
+  const m=$("#main");
+  if(phase==="roll"){ setSteps(0);
+    m.innerHTML=`<section class="panel"><h2>輪流擲骰（大家看同一個畫面）</h2><div id="order"></div></section>
+      <section class="panel" id="stage"><div class="who" id="who"></div><div class="timer"><i id="tbar"></i></div>
+        <div class="dice" id="dice"></div><div class="hint" id="hint"></div>
+        <div class="btns"><button class="main" id="bRoll">擲骰（空白鍵）</button><button id="bRe">重擲沒鎖的（R）</button><button id="bDone">完成（Enter）</button></div></section>
+      <section class="panel"><h2>這一手的結果</h2><div id="res"></div></section>`;
+    $("#bRoll").onclick=()=>userRoll(); $("#bRe").onclick=()=>userReroll(); $("#bDone").onclick=()=>userDone();
+    renderOrder(); renderDice(); renderRes();
+  }
+}
+function renderOrder(){
+  $("#order").innerHTML = players.map((p,i)=>{ const e=evaluate(p);
+    const st = p.st.done ? (e.choice?`<b>${skillName(e.choice,e.n)}</b><br>${TIERS[e.n].n} ×${TIERS[e.n].m}`:"沒中") : i===turn ? "擲骰中…" : "等待";
+    return `<div class="p-row ${i===turn&&phase==="roll"?"now":""}"><div class="avatar" style="background:${p.color}">${p.name.slice(-1)}</div>
+      <div><div class="nm">${p.name}</div><div class="sub">${p.weapon}</div></div><div class="st">${st}</div></div>` }).join("");
+}
+function renderDice(){
+  const p=cur(), box=$("#dice");
+  $("#who").innerHTML=`輪到 <b>${p.name}</b>（${p.weapon}）擲骰`;
+  box.innerHTML=diceOf(p).map((d,i)=>`<div class="slot ${p.st.locked[i]?"locked":""}" data-i="${i}"><div class="cube" id="c${i}">
+      ${d.faces.map((k,j)=>`<div class="f f${j} ${kind(k,p)}">${faceHTML(k,p)}</div>`).join("")}</div>
+      <div class="tag">${p.st.locked[i]?"鎖住":d.src==="武器"?"武器骰":`${d.rarity||""}骰`}</div></div>`).join("");
+  diceOf(p).forEach((d,i)=>{ const c=$("#c"+i); c._rx=0; c._ry=0; c._rz=0; setCube(c,p.st.face[i],0,0) });
+  box.querySelectorAll(".slot").forEach(s=>s.onclick=()=>toggleLock(+s.dataset.i));
+  updateButtons();
+}
+const FACE_ROT=[[0,0],[0,180],[0,-90],[0,90],[-90,0],[90,0]];
+function setCube(c,face,dur,spins){
+  const [tx,ty]=FACE_ROT[face];
+  const next=(cur,t)=> Math.ceil((cur+1)/360)*360 + spins*360 + t;
+  if(spins){ c._rx=next(c._rx,tx); c._ry=next(c._ry,ty); c._rz=Math.ceil((c._rz+1)/360)*360+360*spins }
+  else { c._rx=tx; c._ry=ty; c._rz=0 }
+  c.style.transitionDuration=dur+"s";
+  c.style.transform=`rotateZ(${c._rz}deg) rotateX(${c._rx}deg) rotateY(${c._ry}deg)`;
+}
+function renderRes(){
+  const p=cur(), e=evaluate(p), r=$("#res");
+  if(!p.st.rolled){ r.innerHTML=`<div class="hint" style="text-align:left">還沒擲。<br><br>技能面：同一招出現幾次就是幾級。<br>效果面：每一面都疊上去。<br>空白面：沒有效果。<br>灰色：不是你武器的技能，當空白。</div>`+tierTable(0); return }
+  const t=e.n?TIERS[e.n]:null;
+  r.innerHTML = `<div class="hint" style="text-align:left">右鍵技能</div>
+    <div class="res-skill">${e.choice?skillName(e.choice,e.n):"沒中"}</div>
+    <div class="res-tier tier-${e.n}">${t?`${e.choice} ×${e.n} → ${t.n}　威力 ×${t.m}`:"沒有右鍵（0 個技能面）"}</div>
+    ${e.cands.length>1?`<div class="hint" style="text-align:left;margin-top:10px">骰到好幾種技能，選一招：</div><div class="cand">${e.cands.map(([k,n])=>`<button class="${k===e.choice?"sel":""}" data-k="${k}" ${p.bot||p.st.done?"disabled":""}>${k} ×${n}</button>`).join("")}</div>`:""}
+    <div class="hint" style="text-align:left;margin-top:12px">效果（全部生效）</div>
+    <div class="eff">${Object.entries(e.eff).map(([k,n])=>`<div class="${EFFECTS[k].team?"t":""}">${EFFECTS[k].ic}　${EFFECTS[k].f(EFFECTS[k].v*n)}${n>1?`（×${n}）`:""}</div>`).join("")||"<span class='hint'>沒有</span>"}</div>`+tierTable(e.n);
+  r.querySelectorAll(".cand button").forEach(b=>b.onclick=()=>{ p.st.choice=b.dataset.k; renderRes(); renderOrder() });
+}
+function tierTable(n){ return `<table class="tbl">${TIERS.slice(1).map((t,i)=>`<tr class="${n===i+1?"on":""}"><td>${i+1} 個</td><td>${t.n}</td><td>×${t.m}</td></tr>`).join("")}</table>` }
+function updateButtons(){
+  const p=cur(), me=!p.bot && !busy && phase==="roll";
+  $("#bRoll").disabled=!(me&&!p.st.rolled);
+  $("#bRe").disabled=!(me&&p.st.rolled&&p.st.rerolls>0&&p.st.locked.some(l=>!l));
+  $("#bDone").disabled=!(me&&p.st.rolled);
+  $("#bRe").textContent=`重擲沒鎖的（R）剩 ${p.st.rerolls} 次`;
+  $("#hint").textContent = p.bot ? "隊友擲骰中，大家一起看" : !p.st.rolled ? "按擲骰，6 顆一起擲" : p.st.rerolls>0 ? "點骰子鎖住想留的，再重擲其他的" : "沒有重擲次數了，按完成";
+}
+
+// ===== 擲骰 =====
+let busy=false, timerLeft=10, timerId=null;
+function startTimer(){ clearInterval(timerId); timerLeft=10; timerId=setInterval(()=>{ if(busy||phase!=="roll") return;
+  timerLeft-=.1; const b=$("#tbar"); if(b) b.style.width=Math.max(0,timerLeft*10)+"%";
+  if(timerLeft<=0){ timerLeft=10; const p=cur(); if(p.bot) return; if(!p.st.rolled) userRoll(); else userDone() } },100) }
+async function roll(){
+  const p=cur(), st=p.st, dice=diceOf(p);
+  const idx=[...Array(6).keys()].filter(i=>!st.locked[i]);
+  if(!idx.length) return;
+  busy=true; updateButtons();
+  idx.forEach(i=>st.face[i]=rnd(6));                      // 結果先決定好（連線時由房主決定），動畫只是演出來
+  const stage=$("#stage"), slots=[...document.querySelectorAll("#dice .slot")];
+  slots.forEach(s=>s.classList.remove("hit","last"));
+  // 最後一顆有機會湊大獎就放慢
+  const last=idx[idx.length-1], before={};
+  for(let i=0;i<6;i++){ if(i===last) continue; const k=faceKey(p,i); if(SKILLS[k]&&SKILLS[k].w===p.weapon) before[k]=(before[k]||0)+1 }
+  const best=Math.max(0,...Object.values(before));
+  const lastCan = dice[last].faces.some(k=>SKILLS[k]&&SKILLS[k].w===p.weapon&&before[k]===best);
+  const suspense = best>=3 && lastCan && idx.length>=1;
+  const durs = idx.map((_,j)=>.75+j*.2 + (suspense&&j===idx.length-1?2.2:0));
+  SFX.shake(.5); await sleep(450);
+  idx.forEach((i,j)=>setCube($("#c"+i),st.face[i],durs[j]*(fastNow?.45:1),3+rnd(2)));
+  let t0=0;
+  for(let j=0;j<idx.length;j++){
+    const i=idx[j];
+    if(suspense && j===idx.length-1){ stage.classList.add("suspense"); slots[i].classList.add("last"); SFX.drum(1.9*(fastNow?.45:1)) }
+    await sleep((durs[j]-t0)*1000); t0=durs[j];
+    const k=faceKey(p,i); let level=0;
+    if(SKILLS[k]&&SKILLS[k].w===p.weapon){ level=0; for(let x=0;x<6;x++){ const lk=faceKey(p,x); if(lk===k && (x===i || !idx.includes(x) || idx.indexOf(x)<j)) level++ } }
+    SFX.land(level); slots[i].classList.add("land"); setTimeout(()=>slots[i].classList.remove("land"),400);
+  }
+  stage.classList.remove("suspense");
+  st.rolled=true; busy=false;
+  const e=evaluate(p);
+  for(let i=0;i<6;i++) slots[i].classList.toggle("hit", faceKey(p,i)===e.choice);
+  celebrate(p,e,suspense);
+  renderRes(); renderOrder(); updateButtons(); timerLeft=10;
+}
+function celebrate(p,e,suspense){
+  if(e.n>=3){ SFX.win(e.n); banner(e.n>=4?`${TIERS[e.n].n}！`:"強化！", `${p.name} 擲出 ${e.n} 個${e.choice}${e.n>=4?` → ${SKILLS[e.choice].big}`:""}`) }
+  if(e.n>=4){ $("#stage").classList.add("shake"); setTimeout(()=>$("#stage")&&$("#stage").classList.remove("shake"),600); flash() }
+  if(e.n>=6) confetti();
+  else if(suspense && e.n===3) { SFX.miss(); banner("差一顆！", `${p.name} 的最後一顆沒中`) }
+}
+function banner(big,small){ const b=$("#banner"); b.querySelector(".big").textContent=big; b.querySelector(".small").textContent=small; b.classList.add("show"); clearTimeout(b._t); b._t=setTimeout(()=>b.classList.remove("show"),1500) }
+function flash(){ const f=$("#flash"); f.style.transition="none"; f.style.opacity=1; requestAnimationFrame(()=>{ f.style.transition="opacity .8s"; f.style.opacity=0 }) }
+function confetti(){ const c=$("#confetti"); for(let i=0;i<90;i++){ const e=document.createElement("i"); e.style.left=rnd(100)+"vw"; e.style.background=pick(["#ffd54a","#ff9a3a","#fff3b0","#e8963a"]); e.style.animationDuration=(1.6+Math.random()*1.6)+"s"; e.style.animationDelay=Math.random()*.6+"s"; c.appendChild(e); setTimeout(()=>e.remove(),4000) } }
+function toggleLock(i){ const p=cur(); if(p.bot||busy||!p.st.rolled||p.st.rerolls<=0||p.st.done) return; p.st.locked[i]^=1; SFX.lock(); renderDice(); renderRes() }
+function userRoll(){ if(!busy&&!cur().bot&&!cur().st.rolled) roll() }
+function userReroll(){ const p=cur(); if(busy||p.bot||!p.st.rolled||p.st.rerolls<=0) return; p.st.rerolls--; roll() }
+function userDone(){ const p=cur(); if(busy||p.bot||!p.st.rolled) return; finishTurn() }
+async function finishTurn(){
+  cur().st.done=true; renderOrder();
+  if(turn<players.length-1){ turn++; await sleep(500); renderDice(); renderRes(); renderOrder(); beginTurn() }
+  else { await sleep(900); showSummary() }
+}
+async function beginTurn(){
+  const p=cur(); startTimer(); fastNow = p.bot && $("#fast").checked;
+  if(!p.bot) return;
+  await sleep(700); await roll();
+  const e=evaluate(p);
+  if(e.n<6){ await sleep(800);
+    for(let i=0;i<6;i++) p.st.locked[i] = faceKey(p,i)===e.choice && e.n>=2 ? 1 : 0;
+    renderDice(); renderRes(); SFX.lock();
+    if(p.st.locked.some(l=>!l)){ await sleep(700); p.st.rerolls--; await roll() } }
+  await sleep(1200); finishTurn();
+}
+document.addEventListener("keydown",ev=>{ if(phase!=="roll") return;
+  if(ev.code==="Space"){ ev.preventDefault(); userRoll() } else if(ev.key==="r"||ev.key==="R") userReroll(); else if(ev.key==="Enter") userDone() });
+
+// ===== 結果總覽 → 3、2、1 =====
+function showSummary(){
+  phase="summary"; clearInterval(timerId); fastNow=false; setSteps(1);
+  $("#main").innerHTML=`<section class="panel full"><h2>結果總覽：大家骰到什麼</h2>
+    ${players.map(p=>{ const e=evaluate(p); const t=e.n?TIERS[e.n]:null;
+      return `<div class="sum-row"><div style="display:flex;gap:10px;align-items:center"><div class="avatar" style="background:${p.color}">${p.name.slice(-1)}</div><div><b>${p.name}</b><div class="hint" style="text-align:left">${p.weapon}　左鍵：${WEAPONS[p.weapon].left}</div></div></div>
+        <div class="mini">${[0,1,2,3,4,5].map(i=>mini(faceKey(p,i),p,faceKey(p,i)===e.choice)).join("")}</div>
+        <div><div class="res-skill" style="font-size:20px">右鍵：${e.choice?skillName(e.choice,e.n):"沒中"}</div><div class="res-tier tier-${e.n}">${t?`${t.n} ×${t.m}`:""}</div></div>
+        <div class="eff" style="font-size:13px;line-height:1.6">${Object.entries(e.eff).map(([k,n])=>`<span class="${EFFECTS[k].team?"t":""}">${EFFECTS[k].f(EFFECTS[k].v*n)}</span>`).join("　")||"<span class='hint'>沒有效果</span>"}</div></div>` }).join("")}
+    <div class="btns" style="margin-top:18px"><button class="main" id="bGo">開打 3、2、1</button></div></section>`;
+  $("#bGo").onclick=countdown;
+}
+async function countdown(){
+  setSteps(2); const c=$("#count"); c.style.display="grid";
+  for(const n of ["3","2","1"]){ c.textContent=n; SFX.beep(false); await sleep(800) }
+  c.textContent="開打！"; c.style.fontSize="110px"; SFX.beep(true); await sleep(700); c.style.display="none"; c.style.fontSize="";
+  phase="battle";
+  $("#main").innerHTML=`<section class="panel full" style="text-align:center;padding:60px"><h2>戰鬥（即時：各自走路、閃躲、跳躍；左鍵普攻、右鍵骰到的技能）</h2>
+    <p class="hint">示意頁不做戰鬥。</p><button class="main" id="bWin">怪群全滅 → 看獎勵</button></section>`;
+  $("#bWin").onclick=showRewards;
+}
+
+// ===== 獎勵 =====
+function genDie(rar){
+  const R=RARITY[rar], w=pick(players.map(p=>p.weapon)), wsk=Object.keys(SKILLS).filter(k=>SKILLS[k].w===w);
+  const nb=between(R.b), ns=Math.min(6-nb,between(R.s)), kinds=wsk.sort(()=>Math.random()-.5).slice(0,1+rnd(Math.min(3,ns||1)));
+  const faces=[...Array(nb).fill("")];
+  for(let i=0;i<ns;i++) faces.push(kinds[i%kinds.length]);
+  const eff=Object.keys(EFFECTS); while(faces.length<6) faces.push(pick(eff));
+  return {faces:faces.sort(()=>Math.random()-.5),rarity:R.n,color:R.c};
+}
+const randRar=()=>{ const r=Math.random(); return r<.15?0:r<.4?1:r<.62?2:r<.82?3:r<.95?4:5 };
+function genCard(type){
+  if(type==="道具"){ const r=randRar(); return {type,title:pick(ITEMS),rar:RARITY[r]} }
+  if(type==="骰子"){ const r=randRar(), d=genDie(r); return {type,title:`${d.rarity}骰`,die:d,rar:RARITY[r]} }
+  if(type==="新武器"){ const r=randRar(), w=pick(Object.keys(WEAPONS)); let d; do{ d=genDie(r) }while(!d.faces.some(k=>!SKILLS[k]||SKILLS[k].w===w) );
+    d.faces=d.faces.map(k=>SKILLS[k]&&SKILLS[k].w!==w ? pick(Object.keys(SKILLS).filter(s=>SKILLS[s].w===w)) : k);
+    return {type,title:`${w}（${RARITY[r].n}）`,weapon:w,die:d,rar:RARITY[r]} }
+  return {type:"新技能面",title:"新技能面",rar:null};
+}
+function showRewards(){
+  phase="reward"; setSteps(3); myPick=null;
+  rewardCards=["道具","骰子","新技能面",pick(["新武器","道具","骰子"])].sort(()=>Math.random()-.5).map(genCard);
+  const me=players[0];
+  $("#main").innerHTML=`<section class="panel full"><h2>獎勵：每人同時暗選一個，撞到的人比擲骰子（照殺戮尖塔 2 的寶箱）</h2>
+    <div class="cards">${rewardCards.map((c,i)=>`<div class="card" data-i="${i}" style="${c.rar?`border-top:6px solid ${c.rar.c}`:""}">
+      <div class="ty">${c.type}${c.rar?`・${c.rar.n}`:""}</div><div class="ti">${c.type==="新技能面"?"？":c.title}</div>
+      ${c.type==="新技能面"?`<div class="q">?</div><div class="hint">選到才打開：從你武器能用的技能 3 選 1</div>`:""}
+      ${c.die?`<div class="mini">${c.die.faces.map(k=>mini(k,c.weapon?{weapon:c.weapon}:me)).join("")}</div>
+        <div class="hint" style="text-align:left">${c.weapon?`左鍵：${WEAPONS[c.weapon].left}・6 顆都長這樣`:"灰色 = 不是你武器的技能，當空白"}</div>`:""}
+      ${c.type==="道具"?`<div class="hint" style="text-align:left">純數值，可以重複拿、疊加</div>`:""}
+      <div class="who-picked"></div></div>`).join("")}</div>
+    <div class="btns" style="margin-top:18px"><button class="main" id="bReveal" disabled>揭曉（隊友也選好了）</button></div></section>`;
+  document.querySelectorAll(".card").forEach(c=>c.onclick=()=>{ if(phase!=="reward") return; myPick=+c.dataset.i;
+    document.querySelectorAll(".card").forEach(x=>x.classList.toggle("mine",+x.dataset.i===myPick)); $("#bReveal").disabled=false; SFX.lock() });
+  $("#bReveal").onclick=reveal;
+}
+async function reveal(){
+  phase="reveal"; $("#bReveal").disabled=true;
+  const picks=[myPick]; for(let i=1;i<players.length;i++) picks.push(i===1&&Math.random()<.6 ? myPick : rnd(4));   // 隊友 A 常常跟你撞，示意比骰子
+  const cardsEl=[...document.querySelectorAll(".card")];
+  picks.forEach((ci,pi)=>cardsEl[ci].querySelector(".who-picked").insertAdjacentHTML("beforeend",`<div class="avatar" style="background:${players[pi].color};width:28px;height:28px;font-size:12px">${players[pi].name.slice(-1)}</div>`));
+  SFX.beep(false); await sleep(1000);
+  const owner=Array(4).fill(null), losers=[];
+  for(let ci=0;ci<4;ci++){ const who=picks.map((c,pi)=>c===ci?pi:-1).filter(x=>x>=0);
+    if(who.length===1) owner[ci]=who[0];
+    else if(who.length>1){ const w=await duel(who, rewardCards[ci]); owner[ci]=w; who.filter(x=>x!==w).forEach(x=>losers.push(x)) } }
+  for(const pi of losers){ const free=[0,1,2,3].filter(ci=>owner[ci]===null); owner[pick(free)]=pi }   // 輸的隨機拿剩下沒人選的
+  cardsEl.forEach((el,ci)=>{ const o=owner[ci]; el.insertAdjacentHTML("beforeend", o===null?`<div class="got" style="background:#555;color:#ccc">沒人拿，消失</div>`:`<div class="got" style="background:${players[o].color}">${players[o].name} 拿到</div>`); if(o===null) el.style.opacity=.45 });
+  const mine=owner.indexOf(0), card=rewardCards[mine];
+  $(".btns").innerHTML=`<button class="main" id="bNext">下一群怪</button>`;
+  $("#bNext").onclick=()=>nextFight();
+  await sleep(500); await applyReward(card);
+}
+function duel(who,card){ return new Promise(async res=>{
+  const m=$("#modal"), box=$("#mbox"); m.style.display="grid";
+  let alive=who;
+  while(true){
+    box.innerHTML=`<h3>撞到了！「${card.type==="新技能面"?"新技能面":card.title}」比擲骰子，大的拿</h3>
+      <div class="duel">${alive.map(pi=>`<div><div class="slot" style="margin:auto"><div class="cube" id="d${pi}">${[1,2,3,4,5,6].map((n,j)=>`<div class="f f${j} pip"><div class="ic">${n}</div></div>`).join("")}</div></div><b>${players[pi].name}</b></div>`).join("")}</div><div class="hint" id="dres"></div>`;
+    const vals=alive.map(()=>rnd(6));
+    alive.forEach((pi,j)=>{ const c=$("#d"+pi); c._rx=0;c._ry=0;c._rz=0; setCube(c,0,0,0) });
+    await sleep(500); SFX.shake(.6);
+    alive.forEach((pi,j)=>setCube($("#d"+pi),vals[j],1.2+j*.4,4));
+    await sleep(1300+alive.length*400); SFX.land(2);
+    const top=Math.max(...vals), win=alive.filter((_,j)=>vals[j]===top);
+    if(win.length===1){ $("#dres").innerHTML=`<b style="color:var(--gold)">${players[win[0]].name} 擲出 ${top}，拿走！</b>　輸的人隨機拿剩下沒人選的`; SFX.win(3); await sleep(1800); m.style.display="none"; return res(win[0]) }
+    $("#dres").textContent=`平手（${top}），再擲一次`; await sleep(1200); alive=win;
+  } }) }
+async function applyReward(card){
+  const me=players[0];
+  if(card.type==="新技能面"){
+    const opts=Object.keys(SKILLS).filter(k=>SKILLS[k].w===me.weapon).sort(()=>Math.random()-.5).slice(0,3);
+    const m=$("#modal"), box=$("#mbox"); m.style.display="grid";
+    box.innerHTML=`<h3>新技能面：從${me.weapon}能用的技能 3 選 1</h3><div class="pick3">${opts.map(k=>`<button data-k="${k}">${mini(k,me)}<span>${k}</span></button>`).join("")}</div><div class="hint">選好後刻在第一個空白面上（遊戲裡自己選哪顆、哪一面）</div>`;
+    const k=await new Promise(r=>box.querySelectorAll("button").forEach(b=>b.onclick=()=>r(b.dataset.k)));
+    m.style.display="none";
+    const di=me.pool.findIndex(d=>d.faces.includes("")); if(di>=0){ const d=me.pool[di]; d.faces[d.faces.indexOf("")]=k; toast(`「${k}」刻在第 ${di+1} 顆骰子的空白面`) } else toast("沒有空白面了（遊戲裡選一面蓋掉）");
+  } else if(card.type==="骰子"){ me.pool.push(makeDie(card.die.faces,"獎勵",card.die.rarity)); toast("骰子放進骰袋：超過 6 顆，逛地圖時挑這場帶哪 6 顆") }
+  else if(card.type==="新武器"){ const old=me.weapon; me.weapon=card.weapon; me.color=WEAPONS[card.weapon].color;
+    me.pool=me.pool.filter(d=>d.src!=="武器"); me.pool.unshift(...weaponDice(card.weapon,card.die.faces)); me.use=[0,1,2,3,4,5];
+    toast(`換成${card.weapon}：左鍵與 6 顆武器骰一起換${old!==card.weapon?"；舊的獎勵骰上的技能面變灰":""}`) }
+  else if(card.type==="道具") toast(`拿到「${card.title}」（純數值，疊上去）`);
+}
+function nextFight(){
+  const me=players[0];
+  if(me.pool.length<=6){ me.use=me.pool.map((_,i)=>i); return startFights() }
+  phase="prep"; setSteps(-1);
+  const sel=new Set(me.use.filter(i=>i<me.pool.length));
+  const draw=()=>{ $("#main").innerHTML=`<section class="panel full"><h2>逛地圖：骰子超過 6 顆，挑這場帶哪 6 顆（已選 ${sel.size} / 6）</h2>
+    <div class="pool">${me.pool.map((d,i)=>`<div class="pd ${sel.has(i)?"on":""}" data-i="${i}"><div class="src">${d.src==="武器"?`武器骰（${me.weapon}）`:`${d.rarity}骰`}</div><div class="mini">${d.faces.map(k=>mini(k,me)).join("")}</div></div>`).join("")}</div>
+    <div class="btns" style="margin-top:18px"><button class="main" id="bGoRoll" ${sel.size===6?"":"disabled"}>碰到下一群怪 → 擲骰</button></div></section>`;
+    document.querySelectorAll(".pd").forEach(e=>e.onclick=()=>{ const i=+e.dataset.i; if(sel.has(i)) sel.delete(i); else if(sel.size<6) sel.add(i); draw() });
+    $("#bGoRoll").onclick=()=>{ me.use=[...sel].sort((a,b)=>a-b); startFights() } };
+  draw();
+}
+$("#btnReset").onclick=()=>{ $("#modal").style.display="none"; reset() };
+$("#btnMid").onclick=()=>{ if(busy) return; const me=players[0]; me.weapon="劍盾"; me.color=WEAPONS["劍盾"].color;
+  me.pool=[...weaponDice("劍盾").slice(0,4), makeDie(["劍氣","劍氣","旋風斬","護盾","全隊傷害",""],"獎勵","藍"), makeDie(["飛刀扇","飛刀扇","全隊傷害","全隊傷害","減傷",""],"獎勵","綠"), makeDie(["旋風斬","衝鋒斬","旋風斬","傷害","傷害","攻速"],"獎勵","紫")];
+  me.pool[0].faces[4]="旋風斬"; me.pool[1].faces[4]="劍氣";
+  me.use=[0,1,2,3,4,6];
+  toast("中期：4 顆武器骰（刻過 2 面）+ 藍、紫獎勵骰；另一顆有隊友的飛刀扇（灰色）的骰子留在骰袋");
+  startFights() };
+reset();
+</script>
+</body>
+</html>
