@@ -35,6 +35,7 @@ var soul_carry := 0.0                 # 靈魂道具多給的小數部分（G1�
 var run_coins := 0                   # 本局拿到的金幣（v0.45，局外貨幣）：多人時是每人各自拿到的數量（全員一樣）；Profile 存累計
 var coin_rng := RandomNumberGenerator.new()   # 掉金幣專用的亂數：不動 rng 的序列，怪群、寶箱、武器掉落維持原樣
 var packs: Array[Dictionary] = []    # 地圖預放的怪群（D5）：{ center, ids, awake }，只在權威端
+var _noise: Array[Vector3] = []      # 最近 PACKS.notice_every 步的打鬥聲 [x, y, tick]（_update_packs 給休眠的怪群聽）
 var spawn_packs := true              # reset 時是否散放怪群（地圖要有 "packs": true；check.gd 大部分檢查關掉）
 var stats := {"wave": 0, "kills": 0, "time": 0.0}
 var is_over := false                 # 通關後為 true（挖墳事件的地圖沒有通關，一層一層往下）
@@ -794,6 +795,8 @@ func is_any_player_alive() -> bool:
 
 # cmds：peer_id -> InputCmd；沒送輸入的玩家沿用上一步的輸入
 func step(cmds: Dictionary, dt: float) -> void:
+	if not packs.is_empty():
+		_collect_noise()   # 上一步的打鬥聲
 	events.clear()
 	hitboxes.clear()
 	tick += 1
@@ -922,27 +925,96 @@ func step_predicted(peer_id: int, cmd: InputCmd, dt: float) -> void:
 	p.integrate_vertical(dt, terrain)
 
 
-# 怪群（D5）：任一位能被當成目標的玩家走到群中心 wake_distance 以內，整群醒來
+# 怪群（D5、製作計畫 L 第 1 步）：休眠的怪各自看，每 notice_every 步看一次（照 id 錯開）——
+# 正面 notice_arc 內 notice_sight 以內、視線沒被牆擋住，或身邊 notice_close 內不管方向，或附近 noise_radius 內有打鬥（_noise），
+# 就發現玩家，整群依序醒（alert_pack）。從背後摸過去不會被發現
 func _update_packs() -> void:
-	var r: float = MonsterRarityDefs.PACKS.wake_distance
+	var c: Dictionary = MonsterRarityDefs.PACKS
+	var every: int = c.notice_every
+	while not _noise.is_empty() and tick - int(_noise[0].z) > every:
+		_noise.remove_at(0)
 	for i in packs.size():
 		if packs[i].awake:
 			continue
-		for p in player_list:
-			if p.is_targetable() and p.pos.distance_squared_to(packs[i].center) <= r * r:
-				wake_pack(i)
+		for id: int in packs[i].ids:
+			var e := entities.get(id) as Enemy
+			if e == null or e.is_dead or not e.dormant or (tick + id) % every != 0:
+				continue
+			var target := _noticed_by(e, c)
+			if target != null:
+				alert_pack(i, e, target)
 				break
 
 
-func wake_pack(i: int) -> void:
+# 休眠的 e 發現了哪位玩家（看得到的最近那位；被打鬥聲吵醒的找最近的）；沒發現回傳 null
+func _noticed_by(e: Enemy, c: Dictionary) -> Player:
+	var fwd := MathUtil.dir_from_angle(e.facing)
+	var cos_half := cos(c.notice_arc * 0.5)
+	var close2: float = c.notice_close * c.notice_close
+	var sight2: float = c.notice_sight * c.notice_sight
+	var best: Player = null
+	var best_d := INF
+	for p in player_list:
+		if not p.is_targetable():
+			continue
+		var d := p.pos - e.pos
+		var d2 := d.length_squared()
+		if d2 >= best_d:
+			continue
+		if d2 <= close2 or (d2 <= sight2 and d2 > 1e-6 and fwd.dot(d / sqrt(d2)) >= cos_half and not terrain.sight_blocked(e.pos, p.pos)):
+			best = p
+			best_d = d2
+	if best != null:
+		return best
+	var noise2: float = c.noise_radius * c.noise_radius
+	for n: Vector3 in _noise:
+		if e.pos.distance_squared_to(Vector2(n.x, n.y)) <= noise2:
+			return e.nearest_player()
+	return null
+
+
+# 這一步的打鬥聲（有東西受傷、死掉的位置）記下來給休眠的怪群聽：[x, y, tick]
+func _collect_noise() -> void:
+	for ev: Dictionary in events:
+		if ev.name != "entity:damaged" and ev.name != "entity:died":
+			continue
+		var t: Entity = entities.get(ev.get("target_id", ev.get("entity_id", 0)))
+		if t != null:
+			_noise.append(Vector3(t.pos.x, t.pos.y, tick))
+
+
+# 整群醒來：first 先停下、轉向 target、吼 alert_time 秒再追；其他的照離 first 多遠依序醒（alert_spread），醒來停下轉頭 alert_follow 秒。
+# 都馬上離開休眠（進快照，客戶端看得到在等的那幾隻）。first 沒給（測試、舊的呼叫）用第一隻還活著的；target 沒給找離 first 最近的玩家
+func wake_pack(i: int, first: Enemy = null, target: Entity = null) -> void:
+	var pk: Dictionary = packs[i]
+	if pk.awake:
+		return
+	if first == null:
+		for id: int in pk.ids:
+			var e := entities.get(id) as Enemy
+			if e != null and not e.is_dead:
+				first = e
+				break
+	if first != null and target == null:
+		target = first.nearest_player()
+	alert_pack(i, first, target)
+
+
+func alert_pack(i: int, first: Enemy, target: Entity) -> void:
 	var pk: Dictionary = packs[i]
 	if pk.awake:
 		return
 	pk.awake = true
+	var c: Dictionary = MonsterRarityDefs.PACKS
 	for id: int in pk.ids:
-		var e: Entity = entities.get(id)
-		if e is Enemy:
-			(e as Enemy).wake()
+		var e := entities.get(id) as Enemy
+		if e == null or e.is_dead:
+			continue
+		if first == null or e == first:
+			e.alert(target, 0.0, c.alert_time, true)
+		else:
+			e.alert(target, c.alert_time * 0.5 + e.pos.distance_to(first.pos) * c.alert_spread, c.alert_follow, false)
+	emit_event("pack:alerted", {"pack": i, "entity_id": first.id if first != null else 0, "target_id": target.id if target != null else 0})
 
 
 # 倒下與救援（C4）：有隊友按住互動鍵就累積救援時間、倒數暫停；放開時累積的時間慢慢減少

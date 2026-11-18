@@ -1606,25 +1606,24 @@ static func check_packs() -> String:
 		var e: Enemy = w.entities[id]
 		if not e.dormant or e.velocity != Vector2.ZERO or e.pos.distance_to(settled[id]) > EPS:
 			return "玩家沒靠近，%d 號就醒了或在走（第 2~3 秒移動 %.3f）" % [id, e.pos.distance_to(settled[id])]
-	# 走到第 0 群 wake_distance − 1 內：中心 wake_distance 以內的群整群醒來，其他的照睡
+	# 走到第 0 群某一隻身邊 notice_close 內：那一群醒來（離開休眠、進 alert，不再 fixed），所有成員都離玩家 notice_sight 以外的群照睡
 	var p: Player = w.players[World.HOST_PEER_ID]
-	var near := w.nav.nearest_walkable(w.packs[0].center + Vector2(0, c.wake_distance - 1.0))
-	if near.distance_to(w.packs[0].center) > c.wake_distance:
-		near = w.packs[0].center
-	p.pos = near
-	_step(w, 1)
+	var m0: Enemy = w.entities[w.packs[0].ids[0]]
+	p.pos = w.nav.nearest_walkable(m0.pos + Vector2(0, c.notice_close * 0.5))
+	_step(w, c.notice_every + 1)
+	if not w.packs[0].awake:
+		return "玩家站在第 0 群 %d 號身邊 %.1f，那一群應醒來" % [m0.id, p.pos.distance_to(m0.pos)]
 	for i in n:
-		var should: bool = w.packs[i].center.distance_to(p.pos) <= c.wake_distance
-		if w.packs[i].awake != should:
-			return "玩家離第 %d 群 %.1f，醒來 = %s" % [i, w.packs[i].center.distance_to(p.pos), w.packs[i].awake]
+		var far := true
 		for id: int in w.packs[i].ids:
-			var e: Enemy = w.entities.get(id)
-			if e != null and e.dormant == should:
-				return "第 %d 群的 %d 號沒跟著整群%s" % [i, id, "醒來" if should else "休眠"]
-			if e != null and e.fixed == should:
-				return "第 %d 群的 %d 號 fixed 應跟著休眠（v0.30.0）：%s" % [i, id, e.fixed]
-			if e != null and should and e.fsm.is_in(&"dormant"):
-				return "第 %d 群醒來同一步就該開始追，%d 號還在 dormant" % [i, id]
+			if (w.entities[id] as Enemy).pos.distance_to(p.pos) <= c.notice_sight + 0.1:
+				far = false
+		if far and w.packs[i].awake:
+			return "第 %d 群所有成員都離玩家 %.1f 以外，不應醒來" % [i, c.notice_sight]
+	for id: int in w.packs[0].ids:
+		var e: Enemy = w.entities.get(id)
+		if e != null and (e.dormant or e.fixed or e.fsm.is_in(&"dormant")):
+			return "第 0 群醒來後 %d 號應離開休眠（dormant %s、fixed %s、狀態 %s）" % [id, e.dormant, e.fixed, e.fsm.current_name]
 	# 遠處被打：整群醒來
 	for i in n:
 		if not w.packs[i].awake:
@@ -1805,3 +1804,74 @@ static func _check_lantern_spin(f: Dictionary) -> String:
 		if (hits > 0) != reach_case[1]:
 			return "守墓人噴火：站在 %.1f 單位時轉圈應%s，實際中 %d 下" % [reach_case[0], "打中" if reach_case[1] else "打不到", hits]
 	return ""
+
+
+# 怪群發現玩家（World._update_packs，製作計畫 L 第 1 步）：休眠的怪正面 notice_sight 內、視線沒被牆擋住才發現，背後只有 notice_close 內；
+# 牆擋住看不到；附近有打鬥會被吵醒；發現的那隻先吼（enemy:alerted loud）、alert_time 秒後才追，同群其他的照距離依序晚追，不同一步衝
+static func check_pack_notice() -> String:
+	var c: Dictionary = MonsterRarityDefs.PACKS
+	# [玩家相對怪的位置, 中間放牆, 應不應發現]；怪面向 +y
+	for t: Array in [[Vector2(0, 8), false, true], [Vector2(0, -6), false, false], [Vector2(0, -2.5), false, true], [Vector2(5, 4), false, true], [Vector2(6, 1), false, false], [Vector2(0, 8), true, false]]:
+		var w := _world()
+		var p: Player = w.players[World.HOST_PEER_ID]
+		var e := _lone_pack(w, p.pos - (t[0] as Vector2))
+		if t[1]:   # 怪與玩家中間一道牆（只換地形給視線用；沒有改導航）
+			var mid := e.pos + Vector2(0, 4)
+			w.terrain = Terrain.new([{"min": mid - Vector2(3, 0.5), "max": mid + Vector2(3, 0.5), "top": 3.0, "kind": MapDefs.WALL}] as Array[Dictionary])
+		_step(w, c.notice_every + 1)
+		if w.packs[0].awake != t[2]:
+			return "玩家在怪的 %s（面向 +y）%s：發現 = %s（應 %s）" % [t[0], "、中間有牆" if t[1] else "", w.packs[0].awake, t[2]]
+	# 附近打鬥：玩家在背後 6（看不到），旁邊的木樁被打 → 吵醒
+	var w2 := _world()
+	var p2: Player = w2.players[World.HOST_PEER_ID]
+	var e2 := _lone_pack(w2, p2.pos + Vector2(0, 6))
+	var other := w2.spawner.spawn_at(w2, &"grunt", e2.pos + Vector2(4, 0))   # 不在群裡的怪被打
+	Combat.apply_damage(w2, p2, other, {"damage": 1.0})   # 照正常打人的流程（會發 entity:damaged）
+	_step(w2, c.notice_every + 2)
+	if not w2.packs[0].awake:
+		return "旁邊 4 有東西被打，休眠的怪應被吵醒"
+	# 整群依序醒：一隻在前面看到玩家，另外兩隻在牠後面 2、5；發現的先吼、alert_time 後追，遠的晚追
+	var w3 := _world()
+	var p3: Player = w3.players[World.HOST_PEER_ID]
+	var lead := _lone_pack(w3, p3.pos - Vector2(0, 8))
+	var mid := _join_pack(w3, lead.pos - Vector2(0, 2))
+	var back := _join_pack(w3, lead.pos - Vector2(0, 5))
+	var chase_at := {}
+	var cried := []
+	for i in roundi(3.0 / DT):
+		_step(w3, 1)
+		for ev in w3.events:
+			if ev.name == "enemy:alerted" and ev.loud:
+				cried.append(ev.entity_id)
+		for x: Enemy in [lead, mid, back]:
+			if not chase_at.has(x.id) and not x.dormant and not x.fsm.is_in(&"alert"):
+				chase_at[x.id] = i * DT
+	if cried != [lead.id]:
+		return "應只有發現的那一隻吼（頭上「!」）：%s" % [cried]
+	if chase_at.size() < 3:
+		return "3 秒內三隻都應開始追：%s" % [chase_at]
+	CheckKit._note("怪群依序醒：發現的 %.2f 秒追、後面 2 的 %.2f、後面 5 的 %.2f" % [chase_at[lead.id], chase_at[mid.id], chase_at[back.id]])
+	if chase_at[lead.id] < c.alert_time - DT * 2 or not (chase_at[lead.id] <= chase_at[mid.id] and chase_at[mid.id] < chase_at[back.id] - 0.1):
+		return "發現的應先停 %.1f 秒再追、遠的晚追：%s" % [c.alert_time, chase_at]
+	return ""
+
+
+# 測試用：在 at 放一隻休眠的骷髏戰士（面向 +y）當成新的一群；_join_pack 加進最後一群（面向 −y）
+static func _lone_pack(w: World, at: Vector2) -> Enemy:
+	var e := w.spawner.spawn_at(w, &"grunt", at)
+	e.dormant = true
+	e.fsm.change(&"dormant")
+	e.facing = 0.0
+	e.pack_id = w.packs.size()
+	w.packs.append({"center": at, "ids": [e.id] as Array[int], "awake": false})
+	return e
+
+
+static func _join_pack(w: World, at: Vector2) -> Enemy:
+	var e := w.spawner.spawn_at(w, &"grunt", at)
+	e.dormant = true
+	e.fsm.change(&"dormant")
+	e.facing = PI   # 背對玩家：只有 _lone_pack 那隻看得到
+	e.pack_id = w.packs.size() - 1
+	w.packs[-1].ids.append(e.id)
+	return e

@@ -17,7 +17,7 @@ const CUE_NAMES: Array[String] = [
 	"swing", "swingHeavy", "shieldBash", "fireBolt", "arcaneCast", "explosion",
 	"hit", "hitHeavy", "playerHurt", "potion", "sprint", "denied",
 	"enemySpawn", "bowDraw", "arrowShot", "enemyDeath",
-	"skeletonRaise", "zombieGroan", "houndBark", "houndGrowl", "spearDraw", "beetleDig", "wraithInhale", "bloaterGurgle",
+	"skeletonRaise", "zombieGroan", "houndBark", "houndGrowl", "spearDraw", "beetleDig", "wraithInhale", "bloaterGurgle", "enemyAlert",
 	"bossSlamWindup", "bossSlam", "bossChargeWindup", "bossWallHit", "bossSummon", "enrage", "bossDeath",
 	"waveStart", "bossAppear", "victory", "defeat", "pause", "resume", "restart",
 ]

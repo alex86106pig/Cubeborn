@@ -32,7 +32,7 @@ const KITE_DIST := 3.5                 # 遠程職業：怪貼到這麼近就往
 const CROWD_MAX := 0                   # 近戰：身邊 CROWD_RANGE 內醒著的怪到這麼多就往外退（0 = 不退；16 種子實測退不退差不多、門檻 5 反而更差，預設關，--crowd 做實驗）
 const CROWD_RANGE := 2.5
 const AWAKE_FIRST := 15.0              # 這麼近有醒著的怪就先打完，不去撿東西、開寶箱（路上可能吵醒下一群）
-const PACK_AVOID := 3.0                # 往外退的方向避開休眠怪群：離群中心 wake_distance + 這麼多以內的會把方向推開
+const PACK_AVOID := 3.0                # 往外退的方向避開休眠怪群：離群中心 notice_sight + 這麼多以內的會把方向推開
 const POTION_AT := 0.4                 # 生命低於最大生命的這個比例就喝藥水
 const POTION_URGENT := 0.2             # 正在擋 / 躲時，低於這個比例才喝
 const REROLL_BELOW := 0.5              # 3 選 1 最好的選項分數低於這個、還有骰子就重擲
@@ -970,10 +970,10 @@ func _away_from_crowd(radius: float) -> Vector2:
 	return _safe_dir(sum.normalized() if sum.length_squared() > 1e-4 else Vector2(0, 1))
 
 
-# 往 dir 退會不會吵醒休眠的怪群（World._update_packs：走到群中心 wake_distance 內整群醒）：
+# 往 dir 退會不會吵醒休眠的怪群（World._update_packs：走進牠們正面 notice_sight 內就會被發現；不管面向，保守看群中心）：
 # 附近的休眠群把方向往外推，越近推得越用力；一次只引一群
 func _safe_dir(dir: Vector2) -> Vector2:
-	var limit: float = MonsterRarityDefs.PACKS.wake_distance + PACK_AVOID
+	var limit: float = MonsterRarityDefs.PACKS.notice_sight + PACK_AVOID
 	var push := Vector2.ZERO
 	for pk: Dictionary in w.packs:
 		if pk.awake:

@@ -40,7 +40,15 @@ const PACKS := {
 	"spread": 3.5,                # 成員散在群中心這個半徑內
 	"member_gap": 1.0,            # 成員之間至少這麼遠（找不到就放寬）
 	"edge_margin": 4.0,           # 群中心離地圖邊緣至少這麼遠
-	"wake_distance": 12.0,        # 任一位玩家離群中心這麼近，整群醒來
+	# 發現玩家（World._update_packs，製作計畫 L 第 1 步）：休眠的怪各自看，一隻發現就整群依序醒
+	"notice_sight": 10.0,         # 正面 notice_arc 內這麼遠、視線沒被牆擋住就發現
+	"notice_arc": PI * 140.0 / 180.0,   # 正面的角度（全寬）
+	"notice_close": 3.0,          # 身邊這麼近不管方向都發現
+	"noise_radius": 8.0,          # 這麼近有打鬥（有東西受傷、死掉）就發現
+	"notice_every": 6,            # 每幾步看一次（照 id 錯開；打鬥聲記這麼多步）
+	"alert_time": 0.6,            # 發現的那隻停下、轉向、吼的時間
+	"alert_follow": 0.25,         # 同群其他的醒來後停下轉頭的時間
+	"alert_spread": 0.08,         # 同群其他的每離發現的那隻 1 單位晚這麼多秒醒（從 alert_time 一半開始算）
 	"magic_per_pack": [1, 2],
 	"rare_chance": 0.25,
 	"attempts": 400,              # 找群中心的嘗試次數

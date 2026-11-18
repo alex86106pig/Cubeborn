@@ -103,6 +103,7 @@ func _init(p_world: World, p_type: StringName, at: Vector2, mul: Dictionary, sta
 		facing = MathUtil.angle_to(pos, target.pos)
 	dormant = mul.get("dormant", false)
 	states[&"dormant"] = Dormant.new()
+	states[&"alert"] = Alert.new()
 	states[&"launch"] = Launch.new()
 	fsm = EnemyFsm.new(self, states, mul.get("initial_state", &"dormant" if dormant else &"spawn"))
 	_update_anim()
@@ -635,6 +636,13 @@ func wake() -> void:
 	dormant = false
 
 
+# 怪群發現玩家（World.alert_pack）：離開休眠，等 delay 秒後停下轉向 target、hold 秒再追；loud = 發現的那一隻（吼一聲、頭上「!」）
+func alert(target: Entity, delay: float, hold: float, loud: bool) -> void:
+	dormant = false
+	if not is_dead and fsm.states.has(&"alert"):
+		fsm.change(&"alert", {"target_id": target.id if target != null else 0, "delay": delay, "hold": hold, "loud": loud})
+
+
 # 往 target 走時下一步要朝向的點：看得到就是 target 本身，被牆或墓碑擋住就走路徑點（每 repath_interval 秒重新判斷）
 # 離目標超過 far_distance（視野外）改成每 repath_interval_far 秒，依 id 錯開；走近的那一步立刻重新判斷（弓手進射程不用舊的判斷）。Boss 照舊
 func steer_point(target: Vector2) -> Vector2:
@@ -741,7 +749,7 @@ func shield_blocks(_origin: Vector2, _hit: Dictionary) -> bool:
 
 func _on_damaged(_amount: float, _source_id: int) -> void:
 	if pack_id >= 0 and dormant:
-		world.wake_pack(pack_id)   # 被打（例如遠距離魔彈）整群醒來
+		world.wake_pack(pack_id, self)   # 被打（例如遠距離魔彈）：從這隻開始整群醒來
 	if not is_dead and not is_spawning() and not is_launching() and fsm.states.has(&"hurt") and not suppress_stagger:
 		fsm.change(&"hurt")
 
@@ -825,6 +833,29 @@ class Dormant:
 	func update(e: Enemy, _dt: float, fsm: StateMachine) -> void:
 		e.velocity = Vector2.ZERO
 		if not e.dormant:
+			fsm.change(e.main_state)
+
+
+# 發現玩家（World.alert_pack）：前 delay 秒照休眠站著，之後停下轉向目標 hold 秒再追；發現的那一隻吼一聲（enemy:alerted，畫面層頭上「!」）
+class Alert:
+	func enter(e: Enemy, data: Dictionary, _fsm: StateMachine) -> void:
+		e.velocity = Vector2.ZERO
+		data.cried = false
+
+	func update(e: Enemy, dt: float, fsm: StateMachine) -> void:
+		e.velocity = Vector2.ZERO
+		var data := fsm.data
+		if fsm.time < data.delay:
+			return
+		if not data.cried:
+			data.cried = true
+			e.world.emit_event("enemy:alerted", {"entity_id": e.id, "loud": data.loud})
+			if data.loud:
+				e.world.emit_event("sfx:cue", {"cue": "enemyAlert", "pos": e.pos})
+		var t: Entity = e.world.entities.get(data.target_id)
+		if t != null:
+			e.facing = MathUtil.turn_towards(e.facing, MathUtil.angle_to(e.pos, t.pos), e.def.get("turn_speed", 6.0) * 2.0 * dt)
+		if fsm.time >= data.delay + data.hold:
 			fsm.change(e.main_state)
 
 

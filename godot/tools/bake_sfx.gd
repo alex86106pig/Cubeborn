@@ -82,6 +82,9 @@ static func cues() -> Dictionary:
 			var at := [0.0, 0.1, 0.18, 0.25, 0.31, 0.36, 0.4, 0.44]
 			for i in at.size():
 				s.tone(0, {"from": 150 + i * 12, "to": 90, "dur": 0.05, "vol": 0.22, "delay": at[i]}),
+		"enemyAlert": func(s: Synth) -> void:   # 怪群發現玩家：發現的那一隻短促的吼
+			s.tone(0, {"type": &"sawtooth", "from": 150, "to": 260, "dur": 0.22, "vol": 0.16, "attack": 0.03, "filter": 900})
+			s.noise(0, {"dur": 0.25, "vol": 0.14, "from": 500, "to": 1400, "q": 1.4, "attack": 0.03}),
 		"enemyDeath": func(s: Synth) -> void:
 			for i in 4:
 				s.noise(0, {"dur": 0.04, "vol": 0.18, "type": &"highpass", "from": 2200 + i * 400, "delay": i * 0.035 + s.rng.randf() * 0.02})

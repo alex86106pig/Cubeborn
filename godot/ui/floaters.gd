@@ -20,6 +20,7 @@ const STYLES := {
 	&"player": [24, UiKit.PLAYER_HURT],
 	&"heal": [24, UiKit.HEAL],
 	&"coin": [24, UiKit.GOLD],   # 撿到金幣（v0.45）
+	&"alert": [40, UiKit.ALERT],   # 怪群發現玩家（enemy:alerted）
 	&"minor": [16, Color.WHITE],   # 附帶的小傷害（持續傷害的一跳、附加屬性傷害）：小字、半透明，不佔疊層
 }
 const MINOR_ALPHA := 0.7

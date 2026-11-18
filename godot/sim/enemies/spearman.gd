@@ -42,7 +42,7 @@ func shield_blocks(origin: Vector2, hit: Dictionary) -> bool:
 	if to.length_squared() < 1e-6 or absf(angle_difference(facing, atan2(to.x, to.y))) > def.shield.arc / 2.0:
 		return false
 	if dormant and pack_id >= 0:
-		world.wake_pack(pack_id)
+		world.wake_pack(pack_id, self)
 	if hit.get("is_heavy", false):
 		fsm.change(&"guard_broken")
 		world.emit_event("enemy:guard_broken", {"enemy_id": id, "pos": pos, "height": ground_height, "facing": facing, "broken": true})

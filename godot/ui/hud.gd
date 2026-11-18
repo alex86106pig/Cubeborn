@@ -653,6 +653,10 @@ func _on_event(name: String, p: Dictionary) -> void:
 				_flash_vignette()
 				if not p.get("minor", false) and p.amount > 0.0:
 					close_panels_on_hit()
+		"enemy:alerted":   # 怪群發現玩家：發現的那一隻頭上「!」（視野外不顯示）
+			var foe: Entity = world.entities.get(p.entity_id) if world else null
+			if p.get("loud", false) and foe != null and Vision.entity_visible(world, local_player(), foe):
+				_floaters.spawn(foe, "!", &"alert")
 		"entity:dodged":
 			var target: Entity = world.entities.get(p.target_id) if world else null
 			if target != null and Vision.entity_visible(world, local_player(), target):
