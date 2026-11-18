@@ -6,6 +6,7 @@ class_name DicePanel
 extends Control
 
 signal op_requested(op: Array)
+signal sfx(cue: String, gain: float)   # 物理擲骰的撞擊聲（main.gd 接到 Sound.play）
 
 const DIE_SIZE := 116.0
 const DIE_GAP := 22
@@ -31,6 +32,7 @@ var _hint := UiKit.label("", UiKit.FONT_NOTE, Color(1, 1, 1, 0.75))
 var _btn_roll := UiKit.button("擲骰（空白鍵）", UiKit.BUTTON_M)
 var _btn_reroll := UiKit.button("", UiKit.BUTTON_M)
 var _btn_done := UiKit.button("完成（Enter）", UiKit.BUTTON_M)
+var _btn_method := UiKit.button("", UiKit.BUTTON_M)   # 物理擲骰的擲法：骰盅 / 蓄力條（存在設定 dice_cup）
 var _result := UiKit.label("", UiKit.FONT_BODY, Color("ffcf7a"))
 var _result_sub := UiKit.label("", UiKit.FONT_NOTE)
 var _effects := UiKit.label("", UiKit.FONT_NOTE, Color("9fd8ff"))
@@ -56,7 +58,7 @@ var my_turn := false
 var _seen_seq := -1
 var _spin_t := 99.0               # 這次擲出去後經過幾秒（大於最後一顆停下的時間 = 不在轉）
 var _spinning: Array[bool] = []
-var _was_count := 0
+var _was_key := ""
 var _banner_t := 0.0
 var _fight_t := 0.0
 var _cand_key := []
@@ -65,6 +67,15 @@ var _picked := false
 var _last_phase: StringName = &""
 var _charges := 0                 # 本機玩家的擲骰次數（逛地圖 / 戰鬥中按 R 擲要 > 0）
 var _can_roll := false            # 本機玩家活著（死掉時 R 留給重新開始）
+# 物理擲骰（DiceTable）：main.gd 開 physics；擲法看設定頁 dice_cup（骰盅 / 蓄力條，即時切換）
+var physics := false
+var settings: SettingsPanel
+var table := DiceTable.new()
+var _charge_bg := UiKit.rect(Color(1, 1, 1, 0.12), Vector2(420, 14))
+var _charge_fill := UiKit.rect(Color("ffd84a"))
+var _pending_throw := false       # 桌子丟出去、OP_DICE_ROLL 送了還沒看到 roll_seq +1
+var _table_seq := -1              # 桌子處理過的 roll_seq（變了又不是自己丟的 = 時間到自動擲，桌子跟著丟）
+var _table_round := ""            # 這一輪擲骰（場次 / 輪到誰 / 花次數）：變了桌子重排
 
 
 func _init() -> void:
@@ -91,6 +102,22 @@ func _init() -> void:
 	timer.add_child(_timer_bg)
 	_timer_bg.add_child(_timer_fill)
 	_roll_box.add_child(timer)
+	var table_box := CenterContainer.new()
+	table_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	table_box.add_child(table)
+	_roll_box.add_child(table_box)
+	table.visible = false
+	table.thrown.connect(func() -> void:
+		_pending_throw = true
+		op_requested.emit([InputCmd.OP_DICE_ROLL]))
+	table.settled.connect(func(faces: Array) -> void: op_requested.emit([InputCmd.OP_DICE_FACES] + faces))
+	table.die_clicked.connect(func(i: int) -> void: op_requested.emit([InputCmd.OP_DICE_LOCK, i]))
+	table.clacked.connect(func(g: float) -> void: sfx.emit("diceClack", g))
+	var charge_box := CenterContainer.new()
+	charge_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	charge_box.add_child(_charge_bg)
+	_charge_bg.add_child(_charge_fill)
+	_roll_box.add_child(charge_box)
 	_dice_row.add_theme_constant_override(&"separation", DIE_GAP)
 	_dice_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	_dice_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -106,10 +133,13 @@ func _init() -> void:
 	btns.add_theme_constant_override(&"separation", 14)
 	btns.alignment = BoxContainer.ALIGNMENT_CENTER
 	btns.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	for b: Button in [_btn_roll, _btn_reroll, _btn_done]:
+	for b: Button in [_btn_roll, _btn_reroll, _btn_done, _btn_method]:
 		btns.add_child(b)
-	_btn_roll.pressed.connect(func() -> void: op_requested.emit([InputCmd.OP_DICE_ROLL]))
-	_btn_reroll.pressed.connect(func() -> void: op_requested.emit([InputCmd.OP_DICE_ROLL]))
+	_btn_method.pressed.connect(func() -> void:
+		if settings != null:
+			settings.set_value("dice_cup", not settings.values.get("dice_cup", true)))
+	_btn_roll.pressed.connect(_press_throw)
+	_btn_reroll.pressed.connect(_press_throw)
 	_btn_done.pressed.connect(func() -> void: op_requested.emit([InputCmd.OP_DICE_DONE]))
 	_roll_box.add_child(btns)
 	_roll_box.add_child(_result)
@@ -195,6 +225,8 @@ func refresh(world: World, me: Player, dt: float) -> void:
 			_fight_t = FIGHT_FLASH   # 菁英群倒數完、一般群碰到直接開打都閃「開打！」
 		if phase == DiceRun.REWARD:
 			_picked = false
+		if phase == DiceRun.ROLL:
+			_table_round = ""
 		_last_phase = phase
 	var rolling := phase == DiceRun.ROLL
 	var rewarding := phase == DiceRun.REWARD and not s.offers.is_empty() and not _picked
@@ -236,7 +268,12 @@ func _show_roll(world: World, dice: DiceRun, p: Player, dt: float) -> void:
 	else:
 		_title.text = "第 %d 場 · 菁英！輪到%s擲骰（%s）" % [dice.fights, who, p.weapon.get("name", "")]
 	_timer_fill.size = Vector2(_timer_bg.custom_minimum_size.x * clampf(dice.timer / DiceDefs.ROLL_TIME, 0.0, 1.0), _timer_bg.custom_minimum_size.y)
-	_timer_fill.visible = phase == DiceRun.ROLL
+	_timer_fill.visible = phase == DiceRun.ROLL and not dice.waiting
+	table.visible = physics
+	_dice_row.visible = not physics
+	_charge_bg.get_parent().visible = physics and not table.cup_mode
+	if physics:
+		_sync_table(world, dice, p, s)
 	if s.roll_seq != _seen_seq:
 		if _seen_seq >= 0 or s.roll_seq > 0:
 			_spin_t = 0.0
@@ -260,6 +297,7 @@ func _show_roll(world: World, dice: DiceRun, p: Player, dt: float) -> void:
 			d.bounce()
 		d.show_face(face, p.weapon_id, s.locked[i] and s.rolled, my_turn and s.rolled and s.rerolls > 0 and phase == DiceRun.ROLL)
 	var res := DiceDefs.evaluate(s.up_faces(), p.weapon_id, s.choice)
+	spinning_any = spinning_any or (physics and dice.waiting)
 	if not s.rolled or spinning_any:
 		_result.text = "" if not s.rolled else "……"
 		_result_sub.text = "同一招骰到越多個越強；效果面全部疊上去；灰色是別的武器的技能，當空白" if not s.rolled else ""
@@ -267,31 +305,84 @@ func _show_roll(world: World, dice: DiceRun, p: Player, dt: float) -> void:
 		_set_cands([], p)
 	else:
 		_result.text = "右鍵：%s" % (DiceDefs.name_of(res.skill) + " ×%d" % res.count if res.count > 0 else "沒中")
-		var tier := DiceDefs.tier_of(res.count)
-		_result_sub.text = "%s　威力 ×%s" % [tier.name, str(tier.mul)] if res.count > 0 else "沒有右鍵技能，只能普攻"
+		var tier := DiceDefs.tier_of(res.tier_count)
+		_result_sub.text = ("%s　威力 ×%s" % [tier.name, str(tier.mul)] if res.count > 0 else "沒有右鍵技能，只能普攻") + combos_text(res.combos, "　·　")
 		_effects.text = effects_text(res.effects, "　")
 		_set_cands(res.cands if my_turn and res.cands.size() > 1 else [], p)
-		if res.count != _was_count and res.count >= 3 and s.roll_seq > 0:
-			_banner.text = "%s！" % tier.name
+		var key := "%d|%s" % [res.tier_count, ",".join(res.combos)]
+		if key != _was_key and s.roll_seq > 0 and (res.tier_count >= 3 or not res.combos.is_empty()):
+			var names: Array[String] = []
+			for c: StringName in res.combos:
+				names.append(DiceDefs.COMBOS[c].name)
+			if res.tier_count >= 3:
+				names.append(tier.name)
+			_banner.text = "%s！" % "＋".join(names)
 			_banner_t = BANNER_TIME
-		_was_count = res.count
+		_was_key = key
 	var busy := spinning_any or dice.settle > 0.0
 	_btn_roll.visible = not s.rolled
+	_btn_roll.text = "自動丟（R）" if physics else "擲骰（空白鍵）"
 	_btn_reroll.visible = s.rolled
-	_btn_reroll.text = "重擲沒鎖的（R）剩 %d 次" % s.rerolls
+	_btn_reroll.text = ("丟沒留的（R）剩 %d 次" if physics else "重擲沒鎖的（R）剩 %d 次") % s.rerolls
 	_btn_roll.disabled = not my_turn or busy or phase != DiceRun.ROLL
 	_btn_reroll.disabled = not my_turn or busy or s.rerolls <= 0 or not s.locked.has(false) or phase != DiceRun.ROLL
 	_btn_done.disabled = not my_turn or busy or not s.rolled or phase != DiceRun.ROLL
+	_btn_method.visible = physics and my_turn
+	_btn_method.text = "擲法：%s" % ("骰盅" if table.cup_mode else "蓄力條")
+	_btn_method.disabled = table.state == DiceTable.State.AIM or table.charging
 	if phase != DiceRun.ROLL:
 		_hint.text = ""
 	elif not my_turn:
 		_hint.text = "隊友擲骰中，大家一起看"
+	elif physics and dice.waiting:
+		_hint.text = "骰子在滾……"
+	elif not s.rolled and physics:
+		_hint.text = ("按住滑鼠拿起骰盅、甩一甩，放開就丟出去（%d 秒沒動作會自動丟）" if table.cup_mode else "按住滑鼠或空白鍵蓄力，放開就丟（%d 秒沒動作會自動丟）") % ceili(dice.timer)
 	elif not s.rolled:
 		_hint.text = "按擲骰，6 顆一起擲（%d 秒沒動作會自動擲）" % ceili(dice.timer)
+	elif s.rerolls > 0 and physics:
+		_hint.text = "點骰子拿到後面的保留區，剩下的再丟一次（%d 秒後自動完成）" % ceili(dice.timer)
 	elif s.rerolls > 0:
 		_hint.text = "點骰子鎖住想留的，再重擲其他的（%d 秒後自動完成）" % ceili(dice.timer)
 	else:
 		_hint.text = "沒有重擲次數了，按完成（%d 秒後自動完成）" % ceili(dice.timer)
+
+
+# 物理擲骰：桌子跟著模擬層（骰面、保留區、能不能丟）；模擬層自己擲的（時間到）桌子跟著丟；模擬層的面跟桌子不一樣（逾時自己抽）就把桌上的骰子擺成那一面
+func _sync_table(_world: World, dice: DiceRun, p: Player, s: DiceRun.Seat) -> void:
+	table.cup_mode = settings == null or settings.values.get("dice_cup", true)
+	var round_key := str(dice.turn)   # 進擲骰階段時 refresh 把 _table_round 清掉：每次新的擲骰、換人擲都重排
+	if round_key != _table_round and phase == DiceRun.ROLL:
+		_table_round = round_key
+		_pending_throw = false
+		_table_seq = s.roll_seq
+		table.reset_round()
+	table.set_faces(s.pool, p.weapon_id)
+	if s.roll_seq != _table_seq:
+		if not _pending_throw and dice.waiting:
+			table.auto_throw(randf_range(0.45, 0.9))   # 時間到、模擬層自己擲：桌子照樣丟一次
+			_pending_throw = false
+		_pending_throw = false
+		_table_seq = s.roll_seq
+	var kept: Array[bool] = []
+	for i in s.locked.size():
+		kept.append(s.locked[i] and s.rolled)   # 重擲時（waiting）留著的也要待在保留區
+	table.set_kept(kept, s.face)
+	if s.rolled and not dice.waiting and table.state == DiceTable.State.SETTLED:
+		table.match_faces(s.face)
+	var idle := phase == DiceRun.ROLL and my_turn and not dice.waiting and dice.settle <= 0.0
+	table.can_throw = idle and (not s.rolled or (s.rerolls > 0 and s.locked.has(false)))
+	table.can_pick = idle and s.rolled and s.rerolls > 0
+	_charge_fill.size = Vector2(_charge_bg.custom_minimum_size.x * table.charge, _charge_bg.custom_minimum_size.y)
+	_charge_fill.visible = table.charging
+
+
+# 按鈕或鍵盤丟：物理擲骰時桌子自動丟一次（力道隨機），否則直接送 OP_DICE_ROLL
+func _press_throw() -> void:
+	if not physics:
+		op_requested.emit([InputCmd.OP_DICE_ROLL])
+	elif table.can_throw and table.state != DiceTable.State.ROLLING:
+		table.auto_throw(randf_range(0.45, 0.9))
 
 
 # 骰到好幾種技能：選一招當右鍵
@@ -447,8 +538,14 @@ func handle_key(event: InputEvent) -> bool:
 		return false
 	if phase != DiceRun.ROLL or not my_turn:
 		return event.is_action_pressed(&"jump") or event.is_action_pressed(&"restart") or event.is_action_pressed(&"vote_yes")
+	if physics and (event.is_action_released(&"jump") or event.is_action_released(&"restart")):
+		table.release_charge()
+		return true
 	if event.is_action_pressed(&"jump") or event.is_action_pressed(&"restart"):
-		op_requested.emit([InputCmd.OP_DICE_ROLL])
+		if physics and not table.cup_mode:
+			table.begin_charge()   # 蓄力條：按住跑、放開丟
+		else:
+			_press_throw()
 		return true
 	if event.is_action_pressed(&"vote_yes"):
 		op_requested.emit([InputCmd.OP_DICE_DONE])
@@ -463,11 +560,21 @@ static func status_text(s: DiceRun.Seat, charges: int) -> String:
 		return "還沒擲骰，沒有右鍵　·　" + roll
 	if s.result.count <= 0:
 		return "右鍵：沒中（只能普攻）" + ("　·　" + effects_text(s.result.effects, "　·　") if not s.result.effects.is_empty() else "") + "　·　" + roll
-	var tier := DiceDefs.tier_of(s.result.count)
+	var tier := DiceDefs.tier_of(s.result.tier_count)
 	var line := "右鍵：%s ×%d（%s ×%s）" % [DiceDefs.name_of(s.result.skill), s.result.count, tier.name, str(tier.mul)]
+	for c: StringName in s.result.get("combos", []):
+		line += "　·　" + DiceDefs.COMBOS[c].name
 	if not s.result.effects.is_empty():
 		line += "　·　" + effects_text(s.result.effects, "　·　")
 	return line + "　·　" + roll
+
+
+# 組合的說明（「　·　順子：技能威力 +1 級、全部效果 ×2」），沒有回傳空字串
+static func combos_text(combos: Array, sep: String) -> String:
+	var out := ""
+	for c: StringName in combos:
+		out += "%s%s：%s" % [sep, DiceDefs.COMBOS[c].name, DiceDefs.COMBOS[c].text]
+	return out
 
 
 static func effects_text(effects: Dictionary, sep: String) -> String:

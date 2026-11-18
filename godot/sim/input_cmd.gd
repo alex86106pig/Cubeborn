@@ -36,10 +36,11 @@ const OP_DICE_REWARD := 15   # [OP_DICE_REWARD, i]
 const OP_DICE_CARVE := 16    # [OP_DICE_CARVE, 帶著的第幾顆, 第幾面, 刻技能面時選第幾個技能]
 const OP_DICE_CARRY := 17    # [OP_DICE_CARRY, 帶著的第幾顆, 換成哪一顆（0~5 武器骰、6 起備用骰）]
 const OP_DICE_WEAPON := 18   # [OP_DICE_WEAPON, 備用武器第幾把]：換到手上
+const OP_DICE_FACES := 19    # [OP_DICE_FACES, 6 個面編號]：物理擲骰停好後每顆朝上的面（DiceTable.settled）
 
 
 static func is_dice_op(op: Array) -> bool:
-	return not op.is_empty() and int(op[0]) >= OP_DICE_ROLL and int(op[0]) <= OP_DICE_WEAPON
+	return not op.is_empty() and int(op[0]) >= OP_DICE_ROLL and int(op[0]) <= OP_DICE_FACES
 
 var tick := 0
 var move := Vector2.ZERO   # 世界 XZ 方向，長度 ≤ 1

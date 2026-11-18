@@ -129,6 +129,11 @@ static func cues() -> Dictionary:
 		"pause": func(s: Synth) -> void: s.tone(0, {"from": 660, "to": 440, "dur": 0.12, "vol": 0.08}),
 		"resume": func(s: Synth) -> void: s.tone(0, {"from": 440, "to": 660, "dur": 0.12, "vol": 0.08}),
 		"restart": func(s: Synth) -> void: s.tone(0, {"type": &"triangle", "from": 330, "to": 660, "dur": 0.25, "vol": 0.1}),
+
+		# 骰子模式（Godot 版加的）：骰子撞桌、撞牆、撞骰盅的木頭喀一聲（DiceTable.clacked 照撞擊速度給音量）
+		"diceClack": func(s: Synth) -> void:
+			s.noise(0, {"dur": 0.035, "vol": 0.3, "type": &"bandpass", "from": 2600, "to": 1800, "q": 2.5})
+			s.tone(0, {"type": &"triangle", "from": 900, "to": 620, "dur": 0.05, "vol": 0.14}),
 	}
 
 

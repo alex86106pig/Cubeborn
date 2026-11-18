@@ -7,9 +7,10 @@ extends ColorRect
 signal changed(key: String, value: Variant)
 signal closed   # 返回、Esc、選單被關掉（hud 把底下的選單叫回來）
 
-const DEFAULTS := {"shadows": true, "lights": true, "ui_scale": 1.0, "master": 1.0, "music": 1.0, "sfx": 1.0, "merged_bag": false, "dice_mode": false, "threat_marks": true}
-const SECTION := {"shadows": "video", "lights": "video", "ui_scale": "video", "master": "audio", "music": "audio", "sfx": "audio", "merged_bag": "game", "dice_mode": "game", "threat_marks": "game"}
+const DEFAULTS := {"shadows": true, "lights": true, "ui_scale": 1.0, "master": 1.0, "music": 1.0, "sfx": 1.0, "merged_bag": false, "dice_mode": false, "dice_cup": true, "threat_marks": true}
+const SECTION := {"shadows": "video", "lights": "video", "ui_scale": "video", "master": "audio", "music": "audio", "sfx": "audio", "merged_bag": "game", "dice_mode": "game", "dice_cup": "game", "threat_marks": "game"}
 # 玩法的開關（測試用，兩種玩法交叉試玩後留一種）：下一局開始才生效（main.gd restart 讀）
+# dice_cup（骰子模式的擲法：骰盅 / 蓄力條）存在設定檔，但開關在擲骰畫面上（DicePanel 的「擲法」按鈕；設定頁再多一列就超出介面最大檔）
 const GAME_TOGGLES := {"merged_bag": "背包合併（下一局生效）", "dice_mode": "骰子模式（單機，下一局生效）", "threat_marks": "視野外出招的提示"}
 # 介面大小的檔位（2026-10-27 使用者：先限制幾個檔位、用滑桿拉）：乘在視窗縮放上（專案是 canvas_items 縮放、以 1920×1080 為基準）
 # 顯示的 100% 實際是 BASE_UI_SCALE 倍（2026-10-27 使用者：原本的 100% 角色畫面太滿，改拿 90% 當 100%）

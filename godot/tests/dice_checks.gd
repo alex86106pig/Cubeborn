@@ -60,6 +60,27 @@ static func check_dice_evaluate() -> String:
 		return "骰到兩種、選 %s：結果 %s ×%d、候選 %s" % [second, r.skill, r.count, r.cands]
 	if DiceDefs.effect_text(eff, 2).find("20") < 0:
 		return "2 面傷害的說明應寫 20%%：%s" % DiceDefs.effect_text(eff, 2)
+	return _check_combos(skill)
+
+
+# 組合（DiceDefs.COMBOS）：順子（6 面不一樣、沒空白）、葫蘆（3 招 + 2 同效果，威力 +1 級但不換大招）、三條（×1.5）、兩對（各 +1 面）
+static func _check_combos(skill: StringName) -> String:
+	var B := DiceDefs.BLANK
+	var r := DiceDefs.evaluate([skill, &"fx_dmg", &"fx_shield", &"fx_haste", &"fx_crit", &"fx_speed"], &"swordShield")
+	if r.combos != [&"straight"] or r.tier_count != 2 or not is_equal_approx(r.effects[&"fx_dmg"], 2.0):
+		return "順子：組合 %s、威力等級 %d（應 2）、傷害面 %s（應 2）" % [r.combos, r.tier_count, r.effects.get(&"fx_dmg")]
+	r = DiceDefs.evaluate([skill, &"fx_dmg", &"fx_shield", &"fx_haste", &"fx_crit", B], &"swordShield")
+	if r.combos.has(&"straight"):
+		return "有空白不算順子"
+	r = DiceDefs.evaluate([skill, skill, skill, &"fx_dmg", &"fx_dmg", B], &"swordShield")
+	if r.combos != [&"full_house"] or r.tier_count != 4 or r.skill != skill:
+		return "葫蘆：組合 %s、威力等級 %d（應 4）、招式 %s（3 個不換大招）" % [r.combos, r.tier_count, r.skill]
+	r = DiceDefs.evaluate([&"fx_dmg", &"fx_dmg", &"fx_dmg", B, B, B], &"swordShield")
+	if r.combos != [&"three"] or not is_equal_approx(r.effects[&"fx_dmg"], 4.5) or r.tier_count != 0:
+		return "三條：組合 %s、傷害面 %s（應 4.5）、沒技能威力 %d" % [r.combos, r.effects.get(&"fx_dmg"), r.tier_count]
+	r = DiceDefs.evaluate([&"fx_dmg", &"fx_dmg", &"fx_crit", &"fx_crit", B, B], &"swordShield")
+	if r.combos != [&"two_pair"] or not is_equal_approx(r.effects[&"fx_dmg"], 3.0) or not is_equal_approx(r.effects[&"fx_crit"], 3.0):
+		return "兩對：組合 %s、效果 %s（各應 3）" % [r.combos, r.effects]
 	return ""
 
 
@@ -405,7 +426,7 @@ static func check_dice_growth() -> String:
 	return ""
 
 
-# 骰子模式的介面放得下（介面最大檔）：骰子與武器面板（帶 6 顆 + 沒帶的 8 顆 + 備用武器 2 把）、4 張獎勵卡、刻面（6 顆 × 6 面 + 3 個技能）
+# 骰子模式的介面放得下（介面最大檔）：骰子與武器面板（帶 6 顆 + 沒帶的 8 顆 + 備用武器 2 把）、4 張獎勵卡、刻面（6 顆 × 6 面 + 3 個技能）、物理擲骰畫面
 static func check_dice_panels() -> String:
 	var w := _dice_world()
 	var p := _player(w)
@@ -443,6 +464,123 @@ static func check_dice_panels() -> String:
 			need = dp._carve_box.get_combined_minimum_size()
 			if not dp._carve_box.visible or need.x > room.x or need.y > room.y:
 				err = "刻面畫面 %s（顯示 %s）超出介面最大檔 %s" % [need, dp._carve_box.visible, room]
+		if err == "":   # 物理擲骰的擲骰畫面：桌子、力道條、四個按鈕、結果與效果
+			s.carve = {}
+			w.dice.phase = DiceRun.EXPLORE
+			w.dice.physics = true
+			dp.physics = true
+			var e := _elite(w, p.pos + Vector2(8, 0))
+			w.alert_pack(_lone_pack(w, e), e, p)
+			s.rolled = true
+			s.result = {}
+			dp.refresh(w, p, 0.016)
+			need = dp._roll_box.get_combined_minimum_size()
+			if not dp._roll_box.visible or not dp.table.visible or need.x > room.x or need.y > room.y:
+				err = "物理擲骰畫面 %s（顯示 %s、桌子 %s）超出介面最大檔 %s" % [need, dp._roll_box.visible, dp.table.visible, room]
 	hud.queue_free()
 	cam.queue_free()
 	return err
+
+
+# 物理擲骰（DiceRun.physics + DiceTable）：
+# 模擬層：擲了先等（不定面），OP_DICE_FACES 回報才定面、鎖住的不變；等超過 PHYSICS_WAIT 自己抽、流程不卡
+# 桌子（真的跑 Godot 物理）：蓄力條、骰盅（滑鼠按住拖動放開）各丟一次，SETTLE_TIMEOUT 內停好、都在桌面上、朝上那面是平的（斜靠的有推開）、
+# 回報的面 = 朝上的面；保留區的骰子不動、照原本的面；骰盅甩的時候骰子都在裡面
+static func check_dice_physics() -> String:
+	var w := _dice_world()
+	w.dice.physics = true
+	var p := _player(w)
+	var s := w.dice.seat_of(p)
+	var e := _elite(w, p.pos + Vector2(8, 0))
+	w.alert_pack(_lone_pack(w, e), e, p)
+	_run(w, _op_cmd([InputCmd.OP_DICE_ROLL]), 1)
+	if not w.dice.waiting or s.roll_seq != 1:
+		return "物理擲骰：按擲之後應等桌子回報：waiting %s、seq %d" % [w.dice.waiting, s.roll_seq]
+	_run(w, _op_cmd([InputCmd.OP_DICE_FACES, 1, 2, 3, 4, 5, 0]), 1)
+	if w.dice.waiting or s.face != [1, 2, 3, 4, 5, 0]:
+		return "回報的面應照收：%s" % [s.face]
+	_run(w, _op_cmd([InputCmd.OP_DICE_LOCK, 0]), 1)
+	_run(w, _op_cmd([InputCmd.OP_DICE_ROLL]), 1)
+	_run(w, _op_cmd([InputCmd.OP_DICE_FACES, 5, 5, 5, 5, 5, 5]), 1)
+	if s.face[0] != 1 or s.face[1] != 5:
+		return "重擲時鎖住的那顆不變：%s" % [s.face]
+	var w2 := _dice_world()
+	w2.dice.physics = true
+	var p2 := _player(w2)
+	var e2 := _elite(w2, p2.pos + Vector2(8, 0))
+	w2.alert_pack(_lone_pack(w2, e2), e2, p2)
+	_run(w2, _op_cmd([InputCmd.OP_DICE_ROLL]), 1)
+	_wait(w2, DiceDefs.PHYSICS_WAIT + 0.1)
+	if w2.dice.waiting or not w2.dice.seat_of(p2).rolled:
+		return "桌子一直沒回報，%.0f 秒後模擬層應自己抽" % DiceDefs.PHYSICS_WAIT
+	# 真的桌子
+	var table := DiceTable.new()
+	_scene_root().add_child(table)
+	var faces: Array = []
+	for i in DiceDefs.DICE_COUNT:
+		faces.append(DiceDefs.weapon_die(&"swordShield"))
+	table.set_faces(faces, &"swordShield")
+	await (Engine.get_main_loop() as SceneTree).physics_frame
+	var err := ""
+	for attempt in 2:
+		table.reset_round()
+		table.can_throw = true
+		var kept: Array[bool] = [attempt == 1, false, false, false, false, false]
+		var shelf_face: Array[int] = [3, 0, 0, 0, 0, 0]
+		table.set_kept(kept, shelf_face)
+		var got: Array = []
+		var on_settle := func(f: Array) -> void: got.append(f)
+		table.settled.connect(on_settle)
+		if attempt == 0:
+			table.auto_throw(0.8)
+		else:   # 骰盅：按住、往右上甩幾下、放開
+			var c := Vector2(DiceTable.VIEW_SIZE) / 2.0
+			table._gui_input(_mouse_button(c, true))
+			for k in 24:
+				var mv := InputEventMouseMotion.new()
+				mv.position = c + Vector2(sin(k * 0.9) * 180.0 + k * 6.0, cos(k * 0.9) * 60.0)
+				table._gui_input(mv)
+				await (Engine.get_main_loop() as SceneTree).physics_frame
+			for i in DiceDefs.DICE_COUNT:   # 甩的時候骰子都在骰盅裡（骰盅剛出現時曾把骰子彈飛到桌外）
+				var d: RigidBody3D = table._dice[i]
+				var off := d.position - table._cup.position
+				if not kept[i] and (Vector2(off.x, off.z).length() > DiceTable.CUP_RADIUS or off.y > DiceTable.CUP_HEIGHT):
+					err = "骰盅：甩的時候第 %d 顆跑出骰盅（離中心 %s）" % [i + 1, off]
+			if err != "":
+				break
+			table._gui_input(_mouse_button(c + Vector2(320, -40), false))
+		var frames := 0
+		while got.is_empty() and frames < int((DiceTable.SETTLE_TIMEOUT + 1.0) * 60):
+			await (Engine.get_main_loop() as SceneTree).physics_frame
+			frames += 1
+		table.settled.disconnect(on_settle)
+		var how := "蓄力條" if attempt == 0 else "骰盅（保留 1 顆）"
+		if got.is_empty():
+			err = "%s：%.1f 秒內沒停好" % [how, DiceTable.SETTLE_TIMEOUT + 1.0]
+			break
+		var reported: Array = got[0]
+		if reported != Array(table.up_faces()):
+			err = "%s：回報的面 %s ≠ 朝上的面 %s" % [how, reported, table.up_faces()]
+			break
+		for i in DiceDefs.DICE_COUNT:
+			var d: RigidBody3D = table._dice[i]
+			if kept[i]:
+				if reported[i] != 3 or d.position.z > DiceTable.SHELF_Z + 0.5:
+					err = "%s：保留區那顆應不動、照原本的面 3：面 %d、位置 %s" % [how, reported[i], d.position]
+			elif absf(d.position.x) > DiceTable.PLAY.x / 2.0 or absf(d.position.z) > DiceTable.PLAY.y / 2.0 or d.position.y < 0.2 or d.position.y > 1.6:
+				err = "%s：第 %d 顆停在桌面外 %s" % [how, i + 1, d.position]
+			elif DiceTable.up_dot(d) < DiceTable.FLAT_DOT and frames < int(DiceTable.SETTLE_TIMEOUT * 60):
+				err = "%s：第 %d 顆斜靠著（朝上那面 %.2f）沒被推開" % [how, i + 1, DiceTable.up_dot(d)]
+		if err != "":
+			break
+		_note("物理擲骰 %s：%.2f 秒停好、推了 %d 次、面 %s" % [how, frames / 60.0, table._nudges, reported])
+	table.queue_free()
+	return err
+
+
+static func _mouse_button(at: Vector2, pressed: bool) -> InputEventMouseButton:
+	var b := InputEventMouseButton.new()
+	b.button_index = MOUSE_BUTTON_LEFT
+	b.pressed = pressed
+	b.position = at
+	return b

@@ -20,10 +20,11 @@ const CUE_NAMES: Array[String] = [
 	"skeletonRaise", "zombieGroan", "houndBark", "houndGrowl", "spearDraw", "beetleDig", "wraithInhale", "bloaterGurgle", "enemyAlert",
 	"bossSlamWindup", "bossSlam", "bossChargeWindup", "bossWallHit", "bossSummon", "enrage", "bossDeath",
 	"waveStart", "bossAppear", "victory", "defeat", "pause", "resume", "restart",
+	"diceClack",
 ]
 # 同一音效的最短間隔（秒），避免一次打中多隻怪時爆音（同網頁版）
 const MIN_INTERVAL := {"hit": 0.04, "hitHeavy": 0.05, "enemyDeath": 0.06, "enemySpawn": 0.1, "bowDraw": 0.15,
-	"skeletonRaise": 0.1, "zombieGroan": 0.12, "beetleDig": 0.12}
+	"skeletonRaise": 0.1, "zombieGroan": 0.12, "beetleDig": 0.12, "diceClack": 0.025}
 const DEFAULT_INTERVAL := 0.03
 const SKILL_CUES := {&"heal": "potion"}
 # 個別音效的音量（dB）：v0.44.0 法杖普攻太吵（fireBolt 平均 −31.6 dB，比揮砍 swing 的 −36.1 大 4.5 dB，每 0.56 秒一發）

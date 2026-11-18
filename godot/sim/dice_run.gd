@@ -26,6 +26,8 @@ var resuming := false           # 這次倒數是戰鬥中擲完的：倒數完�
 var bonus_rerolls := 0          # 這一關每次擲骰多幾次重擲（門的獎勵，DiceDefs.DOOR_REWARDS）
 var reward_tier: StringName = &"normal"   # 正在選的獎勵是哪個難度給的（畫面標題用）
 var door_pick := false          # 正在選的獎勵是門給的（不是打完一場：沒有擲骰次數 +1）
+var physics := false            # 物理擲骰（main.gd 開：畫面的 DiceTable 丟、停好後用 OP_DICE_FACES 回報朝上的面）；false = 模擬層自己抽（檢查、沒有畫面時）
+var waiting := false            # 物理擲骰：丟出去了、還在等桌子回報（settle 當等待上限，到了就自己抽）
 var charges: Dictionary = {}    # peer_id -> 擲骰次數（不放 Seat：換關時補次數不該先建 Seat，Seat 建立時才照武器生骰子）
 var states: Dictionary = {}     # peer_id -> Seat
 
@@ -74,6 +76,7 @@ func reset() -> void:
 	tier = &"normal"
 	back_to = &""
 	resuming = false
+	waiting = false
 	bonus_rerolls = 0
 	charges.clear()
 	states.clear()
@@ -226,7 +229,7 @@ func _start_fight(world: World) -> void:
 		if s.result.is_empty() or not can_roll(p):
 			continue
 		for id: StringName in s.result.effects:
-			var n: int = s.result.effects[id]
+			var n: float = s.result.effects[id]
 			var e: Dictionary = DiceDefs.EFFECTS[id]
 			match e.kind:
 				&"shield":
@@ -251,6 +254,10 @@ func step_frozen(world: World, dt: float) -> void:
 		ROLL:
 			if settle > 0.0:
 				settle = maxf(0.0, settle - dt)
+				if settle <= 0.0 and waiting:   # 桌子一直沒回報：模擬層自己抽，流程不卡住
+					var tp := _turn_player(world)
+					if tp != null:
+						_land(world, tp, [])
 				return
 			timer -= dt
 			if timer <= 0.0:
@@ -296,18 +303,31 @@ func _skip_done(world: World) -> void:
 	world.emit_event("dice:turn", {"player_id": world.player_list[turn].id})
 
 
-# 擲沒鎖的（第一次是全部）
+# 擲沒鎖的（第一次是全部）。物理擲骰：先記下擲了（roll_seq +1，畫面看到別人 / 時間到擲的就自己丟），等 OP_DICE_FACES 回報才定面
 func _roll(world: World, p: Player) -> void:
 	var s := seat_of(p)
-	for i in s.pool.size():
-		if not s.rolled or not s.locked[i]:
-			s.face[i] = world.rng.randi_range(0, DiceDefs.FACES - 1)
-	s.rolled = true
 	s.roll_seq += 1
-	settle = DiceDefs.SETTLE_TIME
+	timer = DiceDefs.ROLL_TIME
+	if physics:
+		waiting = true
+		settle = DiceDefs.PHYSICS_WAIT
+		s.rolled = true
+		return
+	_land(world, p, [])
+
+
+# 骰子停好：faces 是桌子回報的每顆朝上的面（空的 = 模擬層用 world.rng 抽）；鎖住的不變
+func _land(world: World, p: Player, faces: Array) -> void:
+	var s := seat_of(p)
+	for i in s.pool.size():
+		if not s.locked[i]:   # 每次開始擲骰都會解鎖（_start_roll），第一次丟一定全部重抽
+			s.face[i] = clampi(int(faces[i]), 0, DiceDefs.FACES - 1) if i < faces.size() else world.rng.randi_range(0, DiceDefs.FACES - 1)
+	s.rolled = true
+	waiting = false
+	settle = 0.0 if physics else DiceDefs.SETTLE_TIME
 	timer = DiceDefs.ROLL_TIME
 	var res := DiceDefs.evaluate(s.up_faces(), p.weapon_id, s.choice)
-	world.emit_event("dice:rolled", {"player_id": p.id, "skill": String(res.skill), "count": res.count})
+	world.emit_event("dice:rolled", {"player_id": p.id, "skill": String(res.skill), "count": res.count, "combos": res.combos})
 
 
 func _finish_turn(world: World, p: Player) -> void:
@@ -381,11 +401,16 @@ func _op(world: World, p: Player, op: Array) -> void:
 				_hold(world, p, inst)
 			return
 	if int(op[0]) == InputCmd.OP_DICE_ROLL and (phase == EXPLORE or phase == FIGHT):
-		if charges_of(p) > 0 and can_roll(p):   # 花 1 次自己擲：暫停、一按就擲出去
+		if charges_of(p) > 0 and can_roll(p):   # 花 1 次自己擲：暫停；物理擲骰時打開桌子等玩家丟，否則一按就擲出去
 			charges[p.peer_id] = charges_of(p) - 1
 			back_to = phase
 			_start_roll(world, p)
-			_roll(world, p)
+			if not physics:
+				_roll(world, p)
+		return
+	if int(op[0]) == InputCmd.OP_DICE_FACES:
+		if phase == ROLL and waiting and _turn_player(world) == p and op.size() > DiceDefs.DICE_COUNT:
+			_land(world, p, op.slice(1, DiceDefs.DICE_COUNT + 1))
 		return
 	if phase != ROLL or _turn_player(world) != p or settle > 0.0 or s.done:
 		return
@@ -494,7 +519,7 @@ func _apply_result(world: World, p: Player, s: Seat) -> void:
 	var basic := 0.0
 	var cdr := 0.0
 	for id: StringName in res.effects:
-		var n: int = res.effects[id]
+		var n: float = res.effects[id]
 		var e: Dictionary = DiceDefs.EFFECTS[id]
 		match e.kind:
 			&"stat":
@@ -519,7 +544,7 @@ func slot_for(p: Player) -> Variant:
 		return null
 	var id: StringName = s.result.skill
 	return {"def": SkillDefs.SKILLS[id], "id": id, "level": 1, "charges": -1, "fits": true, "free": true,
-		"power": DiceDefs.tier_of(s.result.count).mul, "count": s.result.count}
+		"power": DiceDefs.tier_of(s.result.tier_count).mul, "count": s.result.count}
 
 
 func cooldown_for(p: Player) -> float:

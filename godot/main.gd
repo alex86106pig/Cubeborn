@@ -89,6 +89,8 @@ func _ready() -> void:
 	hud.relic_panel.op_requested.connect(input_collector.queue_inventory_op)
 	input_collector.relic_panel = hud.relic_panel
 	hud.dice_panel.op_requested.connect(input_collector.queue_inventory_op)
+	hud.dice_panel.sfx.connect(func(cue: String, gain: float) -> void: sound.play(cue, gain))
+	hud.dice_panel.settings = hud.settings_panel
 	input_collector.dice_panel = hud.dice_panel
 	hud.dice_loadout.op_requested.connect(input_collector.queue_inventory_op)
 	input_collector.dice_loadout = hud.dice_loadout
@@ -193,6 +195,9 @@ func restart() -> void:
 	if mode != Mode.SINGLE or in_weapon_test:
 		dice_on = false
 	world.dice = DiceRun.new() if dice_on else null
+	if dice_on:
+		world.dice.physics = true   # 畫面的物理擲骰桌（DiceTable）丟、停好後回報朝上的面
+	hud.dice_panel.physics = dice_on
 	world_view.vision_enabled = not dice_on   # 骰子模式沒有視野：全部看得到
 	world_view.debug_reveal = args.reveal or dice_on
 	var seed_value := args.run_seed if args.run_seed >= 0 else randi()

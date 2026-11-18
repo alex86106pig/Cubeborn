@@ -8,6 +8,7 @@ const FACES := 6
 const BLANK := &""
 const ROLL_TIME := 10.0         # 每人限時：沒擲就自動擲、擲過了沒按完成就自動完成
 const SETTLE_TIME := 1.0        # 擲出去之後骰子轉的時間：這段不收操作、不倒數（畫面播動畫）
+const PHYSICS_WAIT := 9.0       # 物理擲骰（DiceRun.physics）：丟出去之後最多等桌子回報幾秒（從放開算；DiceTable 自己 6 秒一定停好，多留 3 秒），超過就由模擬層抽
 const REROLLS := 1              # 每場可以重擲沒鎖的幾次
 const COUNTDOWN := 2.4          # 全部擲完 → 3、2、1 → 開打
 # 擲骰次數（YangHsu 2026-11-19，取代「碰到怪群就擲」）：一般的怪群碰到直接開打、用手上的結果；逛地圖或戰鬥中按 R 花 1 次自己擲；
@@ -31,6 +32,18 @@ const TIERS := [
 	{"name": "傳說", "mul": 10.0},
 ]
 const BIG_FROM := 4
+# 組合（YangHsu 2026-11-19：「順子那些組合也做上去」；條件與效果 Claude 暫定）：看 6 個朝上的面，可以同時成立好幾個
+#   順子：6 面都不一樣、沒有空白（別的武器的技能面算空白）→ 技能威力 +1 級、全部效果 ×2
+#   葫蘆：同一招 3 面以上 + 同一種效果 2 面以上 → 技能威力 +1 級
+#   三條：同一種效果 3 面以上 → 那種效果 ×1.5
+#   兩對：兩種以上的效果各 2 面以上 → 那幾種效果各多算 1 面（先算，再算三條）
+# 「威力 +1 級」只換威力倍率（TIERS 往上一格），換大招（BIG_FROM）還是看真的骰到幾個
+const COMBOS := {
+	&"straight": {"name": "順子", "text": "技能威力 +1 級、全部效果 ×2", "power": 1, "effects_mul": 2.0},
+	&"full_house": {"name": "葫蘆", "text": "技能威力 +1 級", "power": 1},
+	&"three": {"name": "三條", "text": "那種效果 ×1.5", "three_mul": 1.5},
+	&"two_pair": {"name": "兩對", "text": "那兩種效果各多算 1 面", "pair_add": 1.0},
+}
 const BIG := {&"whirlwind": &"blade_storm"}
 
 # 效果面：每一面疊一次。kind：stat 掛在屬性來源上（stat = [屬性, op, 每面的值]）；basic 普攻倍率、shield 開場護盾、heal 開場回血、cdr 右鍵冷卻縮減由 DiceRun 另外算
@@ -138,7 +151,7 @@ static func name_of(face: StringName) -> String:
 
 
 # n 面同一種效果疊起來的說明（「傷害 +20%」）
-static func effect_text(id: StringName, n: int) -> String:
+static func effect_text(id: StringName, n: float) -> String:
 	var e: Dictionary = EFFECTS[id]
 	var per: float = e.stat[2] if e.kind == &"stat" else e.value
 	var v := absf(per) * n * (100.0 if e.get("pct", false) else 1.0)
@@ -193,7 +206,46 @@ static func evaluate(faces: Array, weapon_id: StringName, choice: StringName = &
 	var skill := base
 	if count >= BIG_FROM and BIG.has(base):
 		skill = BIG[base]
-	return {"skill": skill, "base": base, "count": count, "cands": cands, "effects": effects}
+	# 組合（COMBOS）：效果面數改成小數（三條 ×1.5），威力看 tier_count
+	var combos: Array[StringName] = []
+	var power := 0
+	var distinct := {}
+	var real := faces.size() == FACES
+	for f: StringName in faces:
+		if f == BLANK or (is_skill(f) and not skill_fits(f, weapon_id)):
+			real = false
+		distinct[f] = true
+	var pairs: Array[StringName] = []
+	var threes: Array[StringName] = []
+	for id: StringName in effects:
+		if effects[id] >= 2:
+			pairs.append(id)
+		if effects[id] >= 3:
+			threes.append(id)
+	if real and distinct.size() == FACES:
+		combos.append(&"straight")
+	if count >= 3 and not pairs.is_empty():
+		combos.append(&"full_house")
+	if not threes.is_empty():
+		combos.append(&"three")
+	if pairs.size() >= 2:
+		combos.append(&"two_pair")
+	var eff := {}
+	for id: StringName in effects:
+		eff[id] = float(effects[id])
+	for c: StringName in combos:
+		power += int(COMBOS[c].get("power", 0))
+	if combos.has(&"two_pair"):
+		for id in pairs:
+			eff[id] += COMBOS[&"two_pair"].pair_add
+	if combos.has(&"three"):
+		for id in threes:
+			eff[id] *= COMBOS[&"three"].three_mul
+	if combos.has(&"straight"):
+		for id: StringName in eff:
+			eff[id] *= COMBOS[&"straight"].effects_mul
+	var tier_count := mini(TIERS.size() - 1, count + power) if count > 0 else 0
+	return {"skill": skill, "base": base, "count": count, "tier_count": tier_count, "cands": cands, "effects": eff, "combos": combos}
 
 
 static func tier_of(count: int) -> Dictionary:
