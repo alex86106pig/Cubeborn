@@ -32,23 +32,24 @@ var _tuft_count := 0
 const PALETTES := {
 	&"graveyard": {
 		"blocks": {
-			&"wall": [Color("8a8073"), Color("b3a996")],
-			&"tomb": [Color("b8b2a6"), Color("d8d2c4")],
+			# 牆、墓碑、陵墓壓暗（YangHsu 2026-11-18：米白是畫面上最亮的）：牆 #8a8073 / #b3a996、墓碑 #b8b2a6 / #d8d2c4 各暗 12% / 10%
+			&"wall": [Color("7a7166"), Color("9e9584")],
+			&"tomb": [Color("a6a095"), Color("c2bdb0")],
 			&"platform": [Color("5a4d3f"), Color("6e604d")],   # 高台頂面也是地面：跟著壓暗（#a88a6c 在暗土上最刺眼）
 		},
 		"moss": Color("56683e"), "dirt": Color("5a4330"),
 		# 地面（GroundDressing）：墓園內是土色、不要綠、不要太亮（YangHsu 2026-11-18）→ 照 media.io 墓園配色「Dusk Lantern」(#4F3B2B ~ #8A6B4D) 的暗灰褐土
 		"grass": [Color("4a3f33"), Color("554a3c"), Color("605345")], "ground_dirt": Color("3f362c"), "dirt_mix": 0.35,
-		"roof": Color("8e8578"),
+		"roof": Color("7e766a"),
 		"tuft": [Color("6e6248"), Color("786a4c"), Color("665c46")],   # 乾草尖：只比地面亮一點、偏黃一點
-		"cliff": [Color("7a7064"), Color("5f6e45")], "foliage": Color("4b5d38"), "iron": Color("2a282d"), "bark": Color("4a3a2c"),
+		"cliff": [Color("6c6359"), Color("5f6e45")], "foliage": Color("4b5d38"), "iron": Color("2a282d"), "bark": Color("4a3a2c"),
 		"wall_mode": &"masonry", "fill": &"roof", "tomb_mode": &"headstone", "base": &"tuft",
 	},
 	# 第 2 層地下墓窟（YangHsu 2026-11-18：2、3 層也改）：冷灰褐的石地、砌石牆、厚岩壁頂是粗岩面；墓碑是骨白石碑（地底不放墳土）、牆腳碎石
 	&"catacomb": {
 		"blocks": {
 			&"wall": [Color("55585c"), Color("6c6f73")],   # 冷灰石（三層要一眼分得出：墓園暖褐、墓窟藍灰、墓道灰綠）
-			&"tomb": [Color("9a9384"), Color("b4ad9c")],
+			&"tomb": [Color("8b8477"), Color("a29c8c")],
 			&"platform": [Color("554a40"), Color("665a4d")],   # 舊石台
 		},
 		"moss": Color("3d4434"),
@@ -60,7 +61,7 @@ const PALETTES := {
 	&"burrow": {
 		"blocks": {
 			&"wall": [Color("3e3a31"), Color("524d41")],   # 深灰褐的岩塊，跟地面拉開（同色會糊成一片）
-			&"tomb": [Color("8c8a5e"), Color("a8a670")],
+			&"tomb": [Color("77755a"), Color("8e8c69")],   # 卵囊：原本 #8c8a5e / #a8a670 太亮、太黃（像仙人掌）
 			&"platform": [Color("4f4636"), Color("61573f")],
 		},
 		"grass": [Color("4a5045"), Color("52594c"), Color("5b6254")], "ground_dirt": Color("404539"), "dirt_mix": 0.35,   # 灰綠的苔蘚濕土（彩度壓低；偏黃的像沙漠、灰褐的跟墓窟分不出來）
