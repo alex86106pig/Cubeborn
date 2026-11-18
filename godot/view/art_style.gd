@@ -26,7 +26,7 @@ const PRESETS := {
 		"cliff": [Color("2c3138"), Color("1f2c24")], "foliage": Color("1c2a20"), "iron": Color("121419"), "bark": Color("2a231e"),
 		"post": {"vignette": 0.8, "saturation": 0.9, "contrast": 1.06, "tint": Color("e6ecff")},
 	},
-	# C 桌上模型：像桌遊小模型，暖色柔光、亮一點的草地與石頭、畫面上下緣模糊（移軸）
+	# C 桌上模型：像桌遊小模型，暖色柔光、亮一點的草地與石頭
 	&"diorama": {
 		"background": Color("2a2320"),
 		"ambient": Color("c8bca8"), "ambient_energy": 0.95,
@@ -38,8 +38,9 @@ const PRESETS := {
 			&"platform": [Color("8a6a52"), Color("a88a6c")],
 		},
 		"moss": Color("4f7a3a"), "dirt": Color("5a4330"),
+		"grass": [Color("5c7f45"), Color("67894b"), Color("739352")], "ground_dirt": Color("7d6649"), "tuft": [Color("9fb85a"), Color("86a24a"), Color("b3b968")],
 		"cliff": [Color("7a7064"), Color("557a3e")], "foliage": Color("3f6a32"), "iron": Color("2a282d"), "bark": Color("4a3a2c"),
-		"post": {"vignette": 0.35, "saturation": 1.15, "contrast": 1.02, "tint": Color("fff6ea"), "tilt_blur": 1.0},
+		"post": {"vignette": 0.35, "saturation": 1.15, "contrast": 1.02, "tint": Color("fff6ea")},   # 上下緣模糊拿掉（YangHsu 2026-11-18）
 	},
 	# D 褪色古版畫：場景整片灰褐單色，只有飽和的東西（血、魔法、戰利品、發光的眼）保留顏色；紙紋與暗角
 	&"etching": {
@@ -60,14 +61,26 @@ const PRESETS := {
 
 
 static func active() -> bool:
-	return PRESETS.has(current)
+	return not _preset().is_empty()
 
 
 # 這一層有沒有這種風格的配色（目前只做了第 1 層）
 static func for_theme(theme: StringName) -> Dictionary:
-	if not active() or theme != &"graveyard":
+	if theme != &"graveyard":
 		return {}
-	return PRESETS[current]
+	return _preset()
+
+
+# current 可以帶地面的種類：diorama-smooth / diorama-tuft / diorama-hex（YangHsu 2026-11-18：地面風格不喜歡，挑地面）
+static func _preset() -> Dictionary:
+	var parts := String(current).split("-")
+	if not PRESETS.has(StringName(parts[0])):
+		return {}
+	var p: Dictionary = PRESETS[StringName(parts[0])]
+	if parts.size() > 1:
+		p = p.duplicate()
+		p.ground_mode = StringName(parts[1])
+	return p
 
 
 # 全畫面後製：讀 3D 畫好的畫面，做飽和度 / 留下鮮豔色 / 色調 / 對比 / 暗角 / 紙紋 / 上下緣模糊；
@@ -126,7 +139,7 @@ void fragment() {
 static func make_post_layer() -> CanvasLayer:
 	if not active():
 		return null
-	var post: Dictionary = PRESETS[current].post
+	var post: Dictionary = _preset().post
 	var layer := CanvasLayer.new()
 	layer.layer = -1
 	var rect := ColorRect.new()

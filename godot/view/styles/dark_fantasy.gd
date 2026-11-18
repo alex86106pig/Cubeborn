@@ -977,9 +977,12 @@ static func build_arena(half: Vector2, rng: RandomNumberGenerator, theme: String
 	if style.is_empty():
 		group.add_child(ArenaView.create_ground((half + Vector2(14.0, 14.0)) * 2.0, GROUND_COLORS, 1.8, 0.1, rng))
 	else:
-		var ground: Array[Color] = []
-		ground.assign(style.ground)
-		group.add_child(ArenaView.create_ground((half + Vector2(14.0, 14.0)) * 2.0, ground, style.ground_cell, style.ground_jitter, rng))
+		if style.has("ground_mode"):
+			group.add_child(GroundDressing.build_ground((half + Vector2(14.0, 14.0)) * 2.0, style, rng.randi()))
+		else:
+			var ground: Array[Color] = []
+			ground.assign(style.ground)
+			group.add_child(ArenaView.create_ground((half + Vector2(14.0, 14.0)) * 2.0, ground, style.ground_cell, style.ground_jitter, rng))
 	return group
 
 
