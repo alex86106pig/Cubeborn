@@ -102,8 +102,8 @@ func _draw() -> void:
 	# 魔法 / 稀有怪（D5）：頭上顯示詞條（稀有怪多一行名字）
 	for e: Entity in world.enemies:
 		var en := e as Enemy
-		if en == null or en.is_dead or en.rarity == MonsterRarityDefs.NORMAL or not Vision.entity_visible(world, viewer, en):
-			continue
+		if en == null or en.is_dead or en.lurking or en.rarity == MonsterRarityDefs.NORMAL or not Vision.entity_visible(world, viewer, en):
+			continue   # 伏擊埋著的不畫：名字會洩漏位置
 		var color: Color = MonsterRarityDefs.RARITIES[en.rarity].color
 		var offset := en.body_height + ENEMY_OFFSET
 		if en.rare_name != "":

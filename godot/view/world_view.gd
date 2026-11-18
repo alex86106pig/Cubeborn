@@ -97,6 +97,7 @@ var _last_strike_tick := -1
 var local_peer := World.HOST_PEER_ID
 var spectate_peer := 0                 # 本機陣亡後觀戰的隊友（0 = 不觀戰，由 main.gd 決定）：視野改用他的
 var hidden_ids: Dictionary = {}        # 這一幀看不到的實體 id（Effects 的持續性粒子也跳過）
+var debug_reveal := false              # 除錯（--reveal）：視野外的也畫，截圖確認畫面用；不影響模擬
 # 這一幀模型畫在上一步與這一步之間的哪裡（sync 的 alpha）；頭頂的血條、名牌、詞條用 render_pos 跟模型畫在同一點，
 # 直接用模擬位置的話畫面更新比模擬快（120Hz）時會每幀跟模型差半步、看起來在閃。沒呼叫過 sync（檢查）時是 1 = 模擬位置
 static var render_alpha := 1.0
@@ -272,7 +273,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 				_xray_on[id] = _xray_needed(world, e)   # 投射物飛得快、數量少：每個 tick 都判斷牆後剪影
 			elif not (e is Player or e is Enemy) and (not _xray_on.has(id) or (world.tick + id) % LOS_INTERVAL == 0):
 				_xray_on[id] = _xray_needed(world, e)   # 寶箱、遺物、祭壇…：剛出現就判斷，之後分批（怪物在下面視線判斷時一起算）
-			if not Vision.is_hideable(me, e):
+			if debug_reveal or not Vision.is_hideable(me, e):
 				continue
 			if not lights.is_empty() and Vision.lit(lights, e.pos, Vision.view_radius(e)):
 				_los_blocked.erase(id)

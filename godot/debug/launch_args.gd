@@ -9,7 +9,7 @@
 #   --loot-test（旁邊擺小寶箱、第 4 秒自動開，由近到遠 6 隻 1 血必掉武器的骷髏；配 --no-spawn --items=thorn_mail 量開箱與第一次掉落的卡頓）
 #   --weapon-test（武器測試場景：不生怪；畫面右邊貼身 1 隻、往右 5 / 7 / 9 一排、上方 4 一隻木樁，不動不打、血很多）
 #   挖墳（D6）：--at-dig（開場站在挖墳點旁邊）--exit-open（開場出口就打開）--ghost（畫面上方生一隻冤魂）
-#   --player-at=x,y（開場站在地圖座標 x, y，v0.32.0）--floor=N（開場直接換到第 N 層，地圖與 Boss 跟著換）
+#   --reveal（視野外的也畫，只給截圖用）--player-at=x,y（開場站在地圖座標 x, y，v0.32.0）--floor=N（開場直接換到第 N 層，地圖與 Boss 跟著換）
 #   --seed=N（這一局的種子：每層的怪群與寶箱配置照它，開局印 seed=N；不給網址參數用）
 #   畫面設定（2026-10-27）：--shadows=0 / --lights=0 蓋掉設定頁的陰影 / 光源（不存檔），內顯量效能時當對照組
 #   動作表：--pose-test=表名（不開遊戲，畫一張動作表，見 debug/pose_gallery.gd）--pose-view=side|front
@@ -18,12 +18,15 @@
 class_name LaunchArgs
 extends RefCounted
 
+# 只有本機匯出的 debug 版網頁才收的網址參數（Claude 用 headless Chrome 截圖確認畫面：不開視窗、不搶焦點）；網站是 release 匯出，朋友帶了也沒用
+const WEB_DEBUG_URL_ARGS: Array[String] = ["seed", "player-at", "reveal"]
 # 網頁版可以從網址帶的參數（url_query_args）；v0.36.3 加自動移動 / 攻擊，用來量「第一次出現」的卡頓
 const WEB_URL_ARGS: Array[String] = ["seconds", "horde", "perf", "elites", "player-hp", "auto-move", "auto-move-seconds", "auto-attack", "weapon", "class", "difficulty", "no-spawn", "weapon-test", "items", "shadows", "lights", "floor", "host", "join", "room", "net-autostart", "loot-test", "stage-hop", "flame-test", "pose-test", "pose-view", "anim-viewer"]   # loot-test：開箱與掉落卡頓的固定場景；flame-test：守墓人一直噴火；stage-hop：量換小關 / 換層的卡頓； host / join / room / net-autostart：網頁版多人自動測試、之後的邀請連結（2026-10-27 使用者同意開放；?host&room 開房印 net room=房號，?join=房號&room 加入）；shadows / lights：內顯量效能的對照組（2026-10-27）；weapon / class / no-spawn / weapon-test：網頁版逐把看武器（2026-10-27）；difficulty：選角畫面的難度；items：帶道具量效能（G7）；floor：量第 2 層以後的地圖
 
 var run_seconds := 0.0           # > 0：跑這麼多秒後印出狀態並結束（自動驗證）
 var screenshot_path := ""
 var auto_move := Vector2.ZERO
+var reveal := false   # --reveal：畫面層不照視野藏東西（截圖確認視野外的東西長怎樣；模擬照舊）
 var auto_move_seconds := 0.0
 var auto_attack := false
 var auto_special := false
@@ -162,6 +165,8 @@ static func parse(args: PackedStringArray) -> LaunchArgs:
 			a.run_seed = value.to_int()
 		elif arg.begins_with("--floor="):
 			a.start_floor = maxi(1, value.to_int())
+		elif arg == "--reveal":
+			a.reveal = true
 		elif arg == "--exit-open":
 			a.exit_open = true
 		elif arg == "--ghost":
@@ -192,7 +197,7 @@ static func url_query_args(query: String) -> PackedStringArray:
 	for pair in query.trim_prefix("?").split("&", false):
 		var key := pair.get_slice("=", 0).uri_decode()
 		var value := pair.get_slice("=", 1).uri_decode() if pair.contains("=") else ""
-		if key in WEB_URL_ARGS:
+		if key in WEB_URL_ARGS or (OS.is_debug_build() and key in WEB_DEBUG_URL_ARGS):
 			out.append("--" + key + ("=" + value if value != "" else ""))   # ?perf= 與 ?perf 一樣
 	return out
 

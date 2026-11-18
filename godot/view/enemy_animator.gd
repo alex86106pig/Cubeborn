@@ -43,7 +43,8 @@ const QUAD_LIFT := 0.28          # 四足擺盪時腳抬多高（× 腿長）
 const SWORD_WRIST := -0.7        # 持劍的怪（骷髏、亡骸騎士）走路、站著時手腕往上翹：劍尖朝斜上方，不是順著前臂水平往前
 const SWORD_ROLL := PI / 2.0     # 持劍的怪刃一直朝上下（揮砍、直劈都是由上往下，刃先到）
 const SWORD_IDLE_STATES: Array[StringName] = [&"chase", &"patrol", &"wander", &"dormant", &"spawn", &"hurt"]
-const LURK_MOUND := Color("4a3b2c")   # 伏擊的怪埋在地底時地上的土堆
+const LURK_MOUND := Color("6e5a44")   # 伏擊的怪埋在地底時地上的土堆（比地面亮一點才看得出來）
+const LURK_DEPTH := 0.5               # 埋著時整隻再往地下多沉多少（土堆往上補回同樣的量）
 const WRIST_SHARPNESS := 25.0
 var rig   # Rig（Boss）或 SkinnedRig（小怪，D5）：關節介面相同
 var walk_phase := 0.0
@@ -67,7 +68,7 @@ var _worm_hide := 0.0     # 噬墓巨蟲藏進地裡的比例（0 = 整隻在地
 var _moth_alt := 0.0      # 屍蛾女王畫面上飛多高（畫面自己補間到 def.moth.altitude 或 0）
 var _lich := false        # 屍巫：唸咒（aim）時雙手往前合攏，其餘同一般小怪
 var _spin := 0.0          # 骨輪滾動的角度（畫面自己累加）
-var _mound: MeshInstance3D = null   # 伏擊：埋著時地上的小土堆（掛在實體的根節點下，跟著視野淡入淡出）
+var _mound: MeshInstance3D = null   # 伏擊：埋著時地上的小土堆（掛在 rig 底下、往上補回沉下去的量，跟著視野淡入淡出）
 var _idle_t := 0.0        # 休眠動作的時鐘（畫面自己累加：客戶端本機的休眠怪群沒有在跑模擬，anim.time 不會動）
 var _sword := false       # 拿長劍的（骷髏戰士、僕從、亡骸騎士、骸骨將軍重甲型態）：走路站著時手腕往上翹
 var _wrist := 0.0
@@ -760,18 +761,18 @@ func _lurk(e: Enemy) -> bool:
 			_mound.queue_free()
 			_mound = null
 		return false
-	if _mound == null and rig.get_parent() != null:
+	if _mound == null:   # rig 就是這隻怪的根節點（WorldView._create_view），土堆掛在它底下才會跟著位置走
 		_mound = MeshInstance3D.new()
 		var sphere := SphereMesh.new()
-		sphere.radius = 0.55
-		sphere.height = 0.35
+		sphere.radius = 0.7
+		sphere.height = 0.5
 		sphere.radial_segments = 8
 		sphere.rings = 3
 		_mound.mesh = sphere
 		_mound.material_override = WorldView._flat_material(LURK_MOUND)
-		_mound.position.y = 0.05
-		rig.get_parent().add_child(_mound)
-	rig.position.y = -rig.height - 0.5
+		rig.add_child(_mound)
+	rig.position.y = -rig.height - LURK_DEPTH
+	_mound.position.y = rig.height + LURK_DEPTH + 0.05
 	return true
 
 
@@ -836,12 +837,13 @@ func _pose_hound(e: Enemy, a: Dictionary, state: StringName, t: float, dt: float
 				_idle_t += dt
 				var ph := _idle_t + float(e.id % 97) * 0.37
 				match e.idle:
-					&"lie":
-						drop = 0.4 * leg
-						rig.head.rotation.x = 0.2 + 0.05 * sin(ph * 1.5)
-					&"sniff":
-						rig.body.rotation.x = 0.18
-						rig.head.rotation.x = 0.55 + 0.12 * sin(ph * 6.0)
+					&"lie":   # 腿短，沉到肚子快貼地才看得出是趴著
+						drop = 0.8 * leg
+						rig.head.rotation.x = 0.25 + 0.05 * sin(ph * 1.5)
+					&"sniff":   # 前半身壓低、鼻子貼地一抽一抽
+						drop = 0.2 * leg
+						rig.body.rotation.x = 0.3
+						rig.head.rotation.x = 0.8 + 0.15 * sin(ph * 6.0)
 		&"alert":
 			drop = 0.08 * leg
 			rig.head.rotation.x = -0.25
