@@ -56,6 +56,12 @@ func _new_start(p: Player, id: StringName) -> Dictionary:
 
 
 # 換上一把新的灰色起始武器（開場、--weapon、武器測試場、測試與除錯用；正式取得武器走 add_weapon）
+# 骰子模式換武器（DiceRun._hold）：直接拿到手上，舊的由 DiceRun 收進備用或丟在地上（沒有背包、觸發袋不發動，袋子不搬）
+func hold_weapon(p: Player, inst: Dictionary) -> void:
+	weapon_slots[MAIN] = inst
+	p.apply_active_weapon()
+
+
 func equip_new(p: Player, id: StringName) -> void:
 	weapon_slots[MAIN] = _new_start(p, id)
 	p.apply_active_weapon()

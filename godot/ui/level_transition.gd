@@ -67,9 +67,8 @@ func set_card(world: World, p_floor: int, stage: int, difficulty: int, reward: S
 	_sub.text = "基礎難度 %d" % difficulty
 	var lines: Array[String] = []
 	if reward != "":
-		var r: Dictionary = MapGenDefs.REWARDS[StringName(reward)]
-		lines.append("獲得：%s%s" % [UiKit.reward_name(world, StringName(reward)), " +%d" % r.amount if r.has("amount") else ""])
-	if world.map.has("anvil"):
+		lines.append("獲得：%s%s" % [UiKit.reward_name(world, StringName(reward)), UiKit.reward_amount(world, StringName(reward))])
+	if world.map.has("anvil") and world.has_loot():   # 骰子模式不放鐵砧
 		lines.append("這關有鐵砧")
 	_extra.text = "\n".join(PackedStringArray(lines))
 	_extra.visible = not lines.is_empty()

@@ -17,6 +17,8 @@ const SPIN_STAGGER := 0.1
 const BANNER_TIME := 1.4
 const FIGHT_FLASH := 0.7         # 「開打！」留多久
 const CARD_W := 400.0
+const CARVE_DIE := 64.0          # 刻面時每一面的大小（6 顆 × 6 面）
+const KIND_NAMES := {&"die": "新骰子", &"weapon": "新武器", &"carve_skill": "刻技能面", &"carve_effect": "刻效果面", &"item": "數值道具"}
 const DIM := Color(0.02, 0.03, 0.06, 0.62)
 
 var _overlay := Control.new()     # 擲骰、倒數、獎勵時蓋住畫面（擋住滑鼠）
@@ -37,6 +39,15 @@ var _count := UiKit.label("", 150, UiKit.GOLD, 6)
 var _banner := UiKit.label("", 64, UiKit.GOLD, 5)
 var _reward_box := VBoxContainer.new()
 var _reward_cards := HBoxContainer.new()
+var _reward_title := UiKit.label("", UiKit.FONT_HEADING, UiKit.GOLD)
+var _carve_box := VBoxContainer.new()
+var _carve_title := UiKit.label("", UiKit.FONT_HEADING, UiKit.GOLD)
+var _carve_skills := HBoxContainer.new()
+var _carve_rows := VBoxContainer.new()
+var _carve_hint := UiKit.label("", UiKit.FONT_NOTE, Color(1, 1, 1, 0.75))
+var _carve_views: Array[DieView] = []   # 6 顆 × 6 面，index = 第幾顆 × 6 + 第幾面
+var _carve_skill := -1            # 刻技能面：本機選了第幾個候選（還沒選 = -1，面不能點）
+var _carve_key := {}
 var _status := UiKit.label("", UiKit.FONT_NOTE, Color(1, 1, 1, 0.9))
 var _dice: Array[DieView] = []
 
@@ -115,14 +126,46 @@ func _init() -> void:
 	_reward_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_reward_box.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_reward_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var rt := UiKit.label("打倒了！擲骰次數 +1，選一個獎勵（點卡片或按數字鍵）", UiKit.FONT_HEADING, UiKit.GOLD)
-	rt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_reward_box.add_child(rt)
+	_reward_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_reward_box.add_child(_reward_title)
 	_reward_cards.add_theme_constant_override(&"separation", 18)
 	_reward_cards.alignment = BoxContainer.ALIGNMENT_CENTER
 	_reward_cards.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_reward_box.add_child(_reward_cards)
 	_overlay.add_child(_reward_box)
+
+	# 刻面：選了刻技能 / 刻效果的卡之後，點這場帶的 6 顆骰子的其中一面（空白面金框，是建議刻的地方）
+	_carve_box.add_theme_constant_override(&"separation", 14)
+	_carve_box.set_anchors_preset(Control.PRESET_CENTER)
+	_carve_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_carve_box.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_carve_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for l: Label in [_carve_title, _carve_hint]:
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_carve_box.add_child(_carve_title)
+	_carve_skills.add_theme_constant_override(&"separation", 12)
+	_carve_skills.alignment = BoxContainer.ALIGNMENT_CENTER
+	_carve_skills.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_carve_box.add_child(_carve_skills)
+	_carve_rows.add_theme_constant_override(&"separation", 8)
+	_carve_rows.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for d in DiceDefs.DICE_COUNT:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override(&"separation", 6)
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var tag := UiKit.label("第 %d 顆" % (d + 1), UiKit.FONT_NOTE, Color(1, 1, 1, 0.7))
+		tag.custom_minimum_size.x = 80
+		row.add_child(tag)
+		for f in DiceDefs.FACES:
+			var v := DieView.new(d * DiceDefs.FACES + f, CARVE_DIE)
+			v.clicked.connect(_on_carve_face)
+			_carve_views.append(v)
+			row.add_child(v)
+		_carve_rows.add_child(row)
+	_carve_box.add_child(_carve_rows)
+	_carve_box.add_child(_carve_hint)
+	_overlay.add_child(_carve_box)
 
 	for l: Label in [_count, _banner]:
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -155,9 +198,16 @@ func refresh(world: World, me: Player, dt: float) -> void:
 		_last_phase = phase
 	var rolling := phase == DiceRun.ROLL
 	var rewarding := phase == DiceRun.REWARD and not s.offers.is_empty() and not _picked
-	_overlay.visible = rolling or phase == DiceRun.COUNTDOWN or rewarding
+	var carving := phase == DiceRun.REWARD and not s.carve.is_empty()
+	_overlay.visible = rolling or phase == DiceRun.COUNTDOWN or rewarding or carving
 	_roll_box.visible = rolling or phase == DiceRun.COUNTDOWN
-	_reward_box.visible = rewarding
+	_reward_box.visible = rewarding and not carving
+	_carve_box.visible = carving
+	if carving:
+		_show_carve(s, me)
+	elif not _carve_key.is_empty():
+		_carve_key = {}
+		_carve_skill = -1
 	_charges = dice.charges_of(me)
 	_can_roll = dice.can_roll(me)
 	var turn_player := dice.current(world)
@@ -165,6 +215,8 @@ func refresh(world: World, me: Player, dt: float) -> void:
 	if _roll_box.visible:
 		_show_roll(world, dice, turn_player if turn_player != null else me, dt)
 	if rewarding:
+		var tier_name: String = DiceDefs.FIGHT_TIERS[dice.reward_tier].name
+		_reward_title.text = ("走進門的獎勵（%s）：選一個（點卡片或按數字鍵）" % tier_name) if dice.door_pick else ("打倒了！擲骰次數 +1　·　%s的獎勵，選一個（點卡片或按數字鍵）" % tier_name)
 		_show_offers(s, me)
 	_show_count(dice, dt)
 	_show_banner(dt)
@@ -302,7 +354,7 @@ func _offer_card(i: int, o: Dictionary, me: Player) -> PanelContainer:
 	body.add_theme_constant_override(&"separation", 10)
 	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(body)
-	body.add_child(UiKit.label("%d　%s" % [i + 1, {&"die": "新骰子", &"carve_skill": "刻技能面", &"carve_effect": "刻效果面", &"item": "數值道具"}[o.kind]], UiKit.FONT_NOTE, Color(1, 1, 1, 0.7)))
+	body.add_child(UiKit.label("%d　%s" % [i + 1, KIND_NAMES[o.kind]], UiKit.FONT_NOTE, Color(1, 1, 1, 0.7)))
 	var title := UiKit.label(o.title, 26, UiKit.GOLD)
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	title.custom_minimum_size.x = CARD_W - 40
@@ -313,7 +365,7 @@ func _offer_card(i: int, o: Dictionary, me: Player) -> PanelContainer:
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		for f: StringName in o.faces:
 			var m := DieView.new(-1, 52.0)
-			m.show_face(f, me.weapon_id, false, false)
+			m.show_face(f, o.get("base", me.weapon_id), false, false)
 			row.add_child(m)
 		body.add_child(row)
 	var desc := UiKit.label(o.desc, UiKit.FONT_NOTE, Color(1, 1, 1, 0.85))
@@ -331,6 +383,44 @@ static func _card_box(border: Color, bg: Color) -> StyleBoxFlat:
 	box.set_corner_radius_all(10)
 	box.set_content_margin_all(16)
 	return box
+
+
+# 刻面畫面：刻技能面先選一招（候選按鈕），再點一面；空白面金框
+func _show_carve(s: DiceRun.Seat, me: Player) -> void:
+	var skill_kind: bool = s.carve.kind == &"carve_skill"
+	if s.carve != _carve_key:
+		_carve_key = s.carve.duplicate(true)
+		_carve_skill = -1
+		for c in _carve_skills.get_children():
+			c.queue_free()
+		if skill_kind:
+			for k in (s.carve.skills as Array).size():
+				var id: StringName = s.carve.skills[k]
+				var b := UiKit.button(DiceDefs.name_of(id), UiKit.BUTTON_M)
+				b.toggle_mode = true
+				b.custom_minimum_size.x = 200
+				b.pressed.connect(func() -> void: _carve_skill = k)
+				_carve_skills.add_child(b)
+	_carve_skills.visible = skill_kind
+	for k in _carve_skills.get_child_count():
+		(_carve_skills.get_child(k) as Button).set_pressed_no_signal(k == _carve_skill)
+	var ready := not skill_kind or _carve_skill >= 0
+	if skill_kind:
+		_carve_title.text = "刻技能面：先選一招，再點要刻的那一面"
+	else:
+		_carve_title.text = "刻效果面：%s　·　點要刻的那一面" % DiceDefs.effect_text(s.carve.face, 1)
+	_carve_hint.text = "金框是空白面（建議刻在這裡）；也可以蓋掉其他面" if ready else "先在上面選一招"
+	for d in DiceDefs.DICE_COUNT:
+		var die: Array = s.pool[d]
+		for f in DiceDefs.FACES:
+			var face: StringName = die[f]
+			_carve_views[d * DiceDefs.FACES + f].show_face(face, me.weapon_id, face == DiceDefs.BLANK, ready)
+
+
+func _on_carve_face(index: int) -> void:
+	if phase != DiceRun.REWARD:
+		return
+	op_requested.emit([InputCmd.OP_DICE_CARVE, index / DiceDefs.FACES, index % DiceDefs.FACES, maxi(_carve_skill, 0)])
 
 
 func pick(i: int) -> void:

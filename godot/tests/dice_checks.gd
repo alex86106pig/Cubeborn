@@ -130,19 +130,20 @@ static func check_dice_fight() -> String:
 	if p.mana < mana - EPS:
 		return "骰子的右鍵不該耗魔：%.1f → %.1f" % [mana, p.mana]
 	e.die(p.id)
-	if w.dice.phase != DiceRun.REWARD or s.offers.is_empty() or s.offers.size() > DiceDefs.REWARD_CHOICES:
-		return "這一場的怪全倒應選獎勵：phase %s、選項 %d" % [w.dice.phase, s.offers.size()]
+	if w.dice.phase != DiceRun.REWARD or s.offers.size() != DiceDefs.REWARD_CHOICES:
+		return "這一場的怪全倒應 %d 選 1：phase %s、選項 %d" % [DiceDefs.REWARD_CHOICES, w.dice.phase, s.offers.size()]
+	var kinds := {}
+	for o0: Dictionary in s.offers:
+		kinds[o0.kind] = true
+	if kinds.size() != s.offers.size() or w.dice.reward_tier != &"elite":
+		return "獎勵種類不重複、稀有度照菁英：%s、%s" % [s.offers.map(func(x: Dictionary) -> String: return String(x.kind)), w.dice.reward_tier]
 	var tick := w.tick
 	var cd_at := w.cooldowns.remaining(p.cd("player.special"))
 	_wait(w, 0.5)
 	if not w.dice.is_frozen() or not is_equal_approx(w.cooldowns.remaining(p.cd("player.special")), cd_at):
 		return "選獎勵時應暫停（冷卻不走）：%.2f → %.2f" % [cd_at, w.cooldowns.remaining(p.cd("player.special"))]
-	var pick := 0
-	for i in s.offers.size():
-		if s.offers[i].kind == &"item":
-			pick = i
+	var pick := _simple_pick(s)
 	var o: Dictionary = s.offers[pick]
-	var blanks_before := _blank_count(s)
 	_run(w, _op_cmd([InputCmd.OP_DICE_REWARD, pick]), 1)
 	if w.dice.phase != DiceRun.EXPLORE or not s.offers.is_empty():
 		return "選完獎勵應回到逛地圖：%s（tick %d → %d）" % [w.dice.phase, tick, w.tick]
@@ -150,13 +151,21 @@ static func check_dice_fight() -> String:
 		&"item":
 			if not p.stats.has_source(&"dice_item:0"):
 				return "數值道具應掛上屬性來源 dice_item:0"
-		&"carve_skill", &"carve_effect":
-			if _blank_count(s) != blanks_before - 1:
-				return "刻面後空白應少 1：%d → %d" % [blanks_before, _blank_count(s)]
 		&"die":
 			if not s.pool.has(o.faces):
-				return "新骰子應放進骰子裡"
+				return "新骰子應放進這場帶的骰子"
+		&"weapon":
+			if s.spares.size() != 1 or s.spares[0].uid != o.weapon.uid:
+				return "新武器應放進備用武器"
 	return ""
+
+
+# 選一個不用再操作的獎勵（數值道具、新骰子、新武器；刻面要再點一面，另外檢查）
+static func _simple_pick(s: DiceRun.Seat) -> int:
+	for i in s.offers.size():
+		if s.offers[i].kind in [&"item", &"die", &"weapon"]:
+			return i
+	return 0
 
 
 static func _blank_count(s: DiceRun.Seat) -> int:
@@ -196,8 +205,8 @@ static func check_dice_auto() -> String:
 	return ""
 
 
-# 骰子模式沒有背包（§55）：開局不放寶箱 / 祭壇 / 石棺 / 鍛造祭壇 / 鐵砧；殺菁英（連必掉武器的除錯開關）不掉袋子、武器、金幣，也不給靈魂；
-# 打倒 Boss 不掉遺物；HUD 開背包（Tab、遺物面板走的 set_bag_open）只開屬性面板。同一張地圖一般模式要有寶箱，這項才有在測東西
+# 骰子模式沒有背包（§55）：開局不放寶箱 / 祭壇 / 石棺 / 鍛造祭壇 / 鐵砧；殺菁英（連必掉武器的除錯開關）不掉袋子、金幣，也不給靈魂；
+# 打倒 Boss 不掉遺物（武器照掉，帶自己的骰子）；HUD 開背包（Tab、遺物面板走的 set_bag_open）只開屬性面板。同一張地圖一般模式要有寶箱，這項才有在測東西
 static func check_dice_no_loot() -> String:
 	var plain := _new_world(4, false, &"graveyard_a")
 	if plain.chests.is_empty():
@@ -217,8 +226,11 @@ static func check_dice_no_loot() -> String:
 	e.die(p.id)
 	w.on_boss_defeated(_spawn(w, &"grunt", p.pos + Vector2(-6, 0)))
 	_wait(w, 0.2)
-	if not w.pickups.is_empty() or not w.relics.is_empty() or w.souls != 0:
-		return "骰子模式殺怪 / 打倒 Boss 不該有掉落與靈魂：地上 %d 件、遺物 %d、靈魂 %d" % [w.pickups.size(), w.relics.size(), w.souls]
+	var others := w.pickups.filter(func(ip: ItemPickup) -> bool: return not ip.is_weapon())
+	if not others.is_empty() or not w.relics.is_empty() or w.souls != 0:
+		return "骰子模式殺怪 / 打倒 Boss 只該掉武器、沒有靈魂：其他掉落 %d 件、遺物 %d、靈魂 %d" % [others.size(), w.relics.size(), w.souls]
+	if w.pickups.size() != 1 or (w.pickups[0] as ItemPickup).weapon.get("dice", []).size() != DiceDefs.DICE_COUNT:
+		return "必掉武器的開關下殺怪應掉 1 把帶 6 顆骰子的武器：%d 件" % w.pickups.size()
 	var cam := Camera3D.new()
 	_scene_root().add_child(cam)
 	var hud: Variant = load("res://ui/hud.tscn").instantiate()
@@ -264,14 +276,14 @@ static func check_dice_charges() -> String:
 	e.die(p.id)
 	if w.dice.charges_of(p) != DiceDefs.CHARGES_STAGE - 1 + DiceDefs.CHARGES_PER_FIGHT:
 		return "打完一群應 +%d 次：%d" % [DiceDefs.CHARGES_PER_FIGHT, w.dice.charges_of(p)]
-	_run(w, _op_cmd([InputCmd.OP_DICE_REWARD, 0]), 1)
+	_run(w, _op_cmd([InputCmd.OP_DICE_REWARD, _simple_pick(s)]), 1)
 	var e2 := _spawn(w, &"grunt", p.pos + Vector2(8, 0))
 	w.alert_pack(_lone_pack(w, e2), e2, p)
 	var want: float = DiceDefs.EFFECTS[&"fx_shield"].value * s.result.effects.get(&"fx_shield", 0)
 	if w.dice.phase != DiceRun.FIGHT or want <= 0.0 or not is_equal_approx(p.fight_shield, want):
 		return "下一群直接開打時照手上的結果給開場護盾 %.1f：%.1f（%s）" % [want, p.fight_shield, w.dice.phase]
 	e2.die(p.id)
-	_run(w, _op_cmd([InputCmd.OP_DICE_REWARD, 0]), 1)
+	_run(w, _op_cmd([InputCmd.OP_DICE_REWARD, _simple_pick(s)]), 1)
 	var before := w.dice.charges_of(p)
 	_run(w, _op_cmd([InputCmd.OP_DICE_ROLL]), 1)
 	if w.dice.phase != DiceRun.ROLL or w.dice.charges_of(p) != before - 1:
@@ -291,3 +303,146 @@ static func check_dice_charges() -> String:
 	if w.dice.charges_of(p) != DiceDefs.CHARGES_MAX:
 		return "最多存 %d 次：%d" % [DiceDefs.CHARGES_MAX, w.dice.charges_of(p)]
 	return ""
+
+
+
+# 成長（YangHsu 2026-11-19）：刻技能面 3 選 1 再自己選刻在哪一面、刻效果面自己選；新骰子放進備用、自動換掉空白最多的那顆、可以換回來；
+# 武器骰存在武器上：換武器時 6 顆一起換、刻過的面跟著舊武器走；備用武器滿了，拿到的直接換到手上、舊的掉在腳邊；地上的武器按 F 撿進備用；
+# 獎勵稀有度看難度（Boss 不出白、一般群會出白）；門：遺物門 4 選 1、骰子門這一關重擲 +1（換關歸零），門上的字照骰子模式寫
+static func check_dice_growth() -> String:
+	var w := _dice_world()
+	var p := _player(w)
+	var s := w.dice.seat_of(p)
+	var weapon_skills := DiceDefs.skills_for(p.weapon_id)
+	# 刻技能面
+	w.dice.phase = DiceRun.REWARD
+	s.offers = [{"kind": &"carve_skill", "title": "", "desc": ""}]
+	_run(w, _op_cmd([InputCmd.OP_DICE_REWARD, 0]), 1)
+	var cands: Array = s.carve.get("skills", [])
+	if cands.size() != mini(DiceDefs.CARVE_SKILL_CHOICES, weapon_skills.size()) or not cands.all(func(id: StringName) -> bool: return weapon_skills.has(id)):
+		return "刻技能面應從武器能用的技能 %d 選 1：%s" % [DiceDefs.CARVE_SKILL_CHOICES, cands]
+	if w.dice.phase != DiceRun.REWARD:
+		return "還沒選刻在哪一面不該結束獎勵：%s" % w.dice.phase
+	var pick: int = cands.size() - 1
+	_run(w, _op_cmd([InputCmd.OP_DICE_CARVE, 0, 5, pick]), 1)
+	if s.pool[0][5] != cands[pick] or s.wdice[0][5] != cands[pick] or w.dice.phase != DiceRun.EXPLORE:
+		return "刻在第 1 顆第 6 面應是 %s（武器骰也改到）：%s、%s" % [cands[pick], s.pool[0][5], w.dice.phase]
+	if s.wdice[1][5] == cands[pick] and DiceDefs.weapon_die(p.weapon_id)[5] != cands[pick]:
+		return "刻面只改那一顆，不該改到其他武器骰"
+	# 刻效果面
+	w.dice.phase = DiceRun.REWARD
+	s.offers = [{"kind": &"carve_effect", "title": "", "desc": "", "face": &"fx_crit"}]
+	_run(w, _op_cmd([InputCmd.OP_DICE_REWARD, 0]), 1)
+	_run(w, _op_cmd([InputCmd.OP_DICE_CARVE, 3, 0, 0]), 1)
+	if s.pool[3][0] != &"fx_crit":
+		return "刻效果面應刻在選的那一面：%s" % s.pool[3][0]
+	# 新骰子：放進備用、換掉空白最多的那顆；可以換回來
+	var faces: Array[StringName] = [&"fx_dmg", &"fx_dmg", &"fx_dmg", &"fx_dmg", &"fx_dmg", &"fx_dmg"]
+	w.dice.phase = DiceRun.REWARD
+	s.offers = [{"kind": &"die", "title": "", "desc": "", "faces": faces}]
+	_run(w, _op_cmd([InputCmd.OP_DICE_REWARD, 0]), 1)
+	var slot := s.carry.find(DiceDefs.DICE_COUNT)
+	if s.loose.size() != 1 or slot < 0 or s.pool[slot] != faces:
+		return "新骰子應放進備用並換上：備用 %d 顆、帶著 %s" % [s.loose.size(), s.carry]
+	_run(w, _op_cmd([InputCmd.OP_DICE_CARRY, slot, slot]), 1)
+	if not s.carry.has(slot) or s.carry.has(DiceDefs.DICE_COUNT) or s.carry.size() != DiceDefs.DICE_COUNT:
+		return "換回原本的武器骰：%s" % [s.carry]
+	# 換武器：武器骰跟著武器走
+	var old_uid: StringName = StringName(p.active_weapon().uid)
+	var carved: StringName = s.wdice[0][5]
+	var inst := WeaponDropDefs.make(w.new_weapon_uid(), &"longbow", &"blue", w.rng)
+	DiceRun.make_weapon_dice(inst, w.rng)
+	if not w.dice.receive_weapon(w, p, inst) or s.spares.size() != 1:
+		return "拿到武器應先放進備用：%d 把" % s.spares.size()
+	s.result = {"skill": &"", "count": 0, "effects": {}}
+	_run(w, _op_cmd([InputCmd.OP_DICE_WEAPON, 0]), 1)
+	s = w.dice.seat_of(p)
+	if p.weapon_id != &"longbow" or not is_same(s.wdice, inst.dice) or not s.result.is_empty():
+		return "換上備用武器：手上 %s、武器骰是新武器的、手上的結果清掉（%s）" % [p.weapon_id, s.result]
+	if s.spares.size() != 1 or StringName(s.spares[0].uid) != old_uid or s.spares[0].dice[0][5] != carved:
+		return "舊武器應回到備用、刻過的面跟著它：備用 %d 把" % s.spares.size()
+	_run(w, _op_cmd([InputCmd.OP_DICE_WEAPON, 0]), 1)
+	s = w.dice.seat_of(p)
+	if StringName(p.active_weapon().uid) != old_uid or s.wdice[0][5] != carved:
+		return "換回舊武器，刻過的面還在"
+	# 地上的武器按 F 撿進備用；備用滿了直接換到手上、舊的掉在腳邊
+	var ground := WeaponDropDefs.make(w.new_weapon_uid(), &"dagger", &"white", w.rng)
+	DiceRun.make_weapon_dice(ground, w.rng)
+	var ip := w.drop_weapon(ground, p.pos + Vector2(0.5, 0))
+	if not Interactables.use(w, p, ip.id) or s.spares.size() != 2 or not ip.is_removed:
+		return "地上的武器按 F 應撿進備用：備用 %d 把" % s.spares.size()
+	var third := WeaponDropDefs.make(w.new_weapon_uid(), &"staff", &"white", w.rng)
+	w.dice.receive_weapon(w, p, third)
+	var dropped := w.pickups.filter(func(x: ItemPickup) -> bool: return not x.is_removed and x.is_weapon())
+	if p.weapon_id != &"staff" or s.spares.size() != DiceDefs.SPARE_WEAPONS or dropped.size() != 1 or StringName((dropped[0] as ItemPickup).weapon.uid) != old_uid:
+		return "備用滿了應直接換上、舊的掉在腳邊：手上 %s、地上 %d 把" % [p.weapon_id, dropped.size()]
+	# 稀有度看難度
+	var r := RandomNumberGenerator.new()
+	r.seed = 7
+	var seen := {&"normal": {}, &"boss": {}}
+	for i in 300:
+		for t: StringName in seen:
+			seen[t][DiceDefs.roll_rarity(t, r)] = true
+	if seen[&"boss"].has(&"white") or not seen[&"normal"].has(&"white"):
+		return "Boss 的獎勵不該出白、一般群會出白：%s" % [seen]
+	# 門
+	w.dice.on_stage_start(w)
+	w.dice.door_reward(w, &"relic")
+	if w.dice.phase != DiceRun.REWARD or s.offers.size() != DiceDefs.REWARD_CHOICES or not w.dice.door_pick:
+		return "遺物門應給一次 %d 選 1：%s、%d 個" % [DiceDefs.REWARD_CHOICES, w.dice.phase, s.offers.size()]
+	_run(w, _op_cmd([InputCmd.OP_DICE_REWARD, _simple_pick(s)]), 1)
+	w.dice.door_reward(w, &"dice")
+	_run(w, _op_cmd([InputCmd.OP_DICE_ROLL]), 1)
+	if s.rerolls != DiceDefs.REROLLS + DiceDefs.DOOR_REROLLS:
+		return "骰子門這一關每次擲骰的重擲應 +%d：%d" % [DiceDefs.DOOR_REROLLS, s.rerolls]
+	_wait(w, DiceDefs.SETTLE_TIME)
+	_run(w, _op_cmd([InputCmd.OP_DICE_DONE]), 1)
+	w.dice.on_stage_start(w)
+	if w.dice.bonus_rerolls != 0:
+		return "換關後門的重擲加成應歸零"
+	if UiKit.reward_name(w, &"souls") != DiceDefs.DOOR_REWARDS[&"souls"].name or UiKit.reward_amount(w, &"souls") != "":
+		return "骰子模式門上的字應是「%s」：%s%s" % [DiceDefs.DOOR_REWARDS[&"souls"].name, UiKit.reward_name(w, &"souls"), UiKit.reward_amount(w, &"souls")]
+	return ""
+
+
+# 骰子模式的介面放得下（介面最大檔）：骰子與武器面板（帶 6 顆 + 沒帶的 8 顆 + 備用武器 2 把）、4 張獎勵卡、刻面（6 顆 × 6 面 + 3 個技能）
+static func check_dice_panels() -> String:
+	var w := _dice_world()
+	var p := _player(w)
+	var s := w.dice.seat_of(p)
+	for i in 8:
+		s.loose.append(DiceDefs.make_die(&"blue", DiceDefs.skills_for(p.weapon_id), w.rng))
+	for b: StringName in [&"longbow", &"staff"]:
+		var inst := WeaponDropDefs.make(w.new_weapon_uid(), b, &"purple", w.rng)
+		DiceRun.make_weapon_dice(inst, w.rng)
+		w.dice.receive_weapon(w, p, inst)
+	var cam := Camera3D.new()
+	_scene_root().add_child(cam)
+	var hud: Variant = load("res://ui/hud.tscn").instantiate()
+	hud.setup(w, cam)
+	_scene_root().add_child(hud)
+	var base := Vector2(ProjectSettings.get_setting("display/window/size/viewport_width"), ProjectSettings.get_setting("display/window/size/viewport_height"))
+	var room: Vector2 = base / (SettingsPanel.UI_SCALES.max() * SettingsPanel.BASE_UI_SCALE)
+	var err := ""
+	var lo: DiceLoadoutPanel = hud.dice_loadout
+	lo.refresh(w, p)
+	var need: Vector2 = lo.get_combined_minimum_size()
+	if need.x > room.x or need.y > room.y:
+		err = "骰子與武器面板 %s 超出介面最大檔 %s" % [need, room]
+	if err == "":
+		w.dice.door_reward(w, &"relic")
+		var dp: DicePanel = hud.dice_panel
+		dp.refresh(w, p, 0.016)
+		need = dp._reward_box.get_combined_minimum_size()
+		if not dp._reward_box.visible or dp._reward_cards.get_child_count() != DiceDefs.REWARD_CHOICES or need.x > room.x or need.y > room.y:
+			err = "4 張獎勵卡 %s（%d 張、顯示 %s）超出介面最大檔 %s" % [need, dp._reward_cards.get_child_count(), dp._reward_box.visible, room]
+		if err == "":
+			s.offers = []
+			s.carve = {"kind": &"carve_skill", "skills": DiceDefs.skills_for(p.weapon_id).slice(0, 3)}
+			dp.refresh(w, p, 0.016)
+			need = dp._carve_box.get_combined_minimum_size()
+			if not dp._carve_box.visible or need.x > room.x or need.y > room.y:
+				err = "刻面畫面 %s（顯示 %s）超出介面最大檔 %s" % [need, dp._carve_box.visible, room]
+	hud.queue_free()
+	cam.queue_free()
+	return err

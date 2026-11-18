@@ -273,8 +273,8 @@ func _initialize() -> void:
 	_check("戰鬥同步（C2）：延遲 3 步、30 秒對打，客戶端套用的每筆快照擊殺 / 波次 / 敵人血量都和房主當時一致，事件順序一致", NetChecks.check_sync.bind(feel))
 	_check("遊玩紀錄的連線數據：延遲 100 ms 時回應時間在「來回 + 快照間隔」內、快照最長間隔約 snapshot_interval 步、房主收輸入最長間隔約 1 步", NetChecks.check_net_stats.bind(feel))
 	_check("延遲下的手感（C3）：延遲 100 ms + 掉包 10%，按下就在本機移動、修正誤差 < 0.25、停下後與房主差 < 0.01；別人的角色每步位移平順", NetChecks.check_prediction.bind(feel))
-	_check("骰子模式（DiceRun，§55）：結算（同一招數幾次、別的武器的技能當空白、4 個以上換大招、骰到好幾種可以選、效果面各幾面）；一場的流程：菁英群發現玩家就暫停擲骰（怪不動）、擲骰時骰子轉完才收操作、鎖住的那顆重擲不變、完成後右鍵換成骰到的技能（照威力、不耗魔、進冷卻）、效果面掛上（傷害、開場護盾、普攻變弱）、倒數完才開打、這一場的怪全倒就暫停選 3 選 1 獎勵、選了生效並回到逛地圖；限時沒動作自動擲與自動完成；Boss 開追也開一場；一般模式發現玩家不暫停；沒有背包：不放寶箱與祭壇、殺怪與 Boss 不掉東西也不給靈魂、Tab 只開屬性面板；擲骰次數：一般群直接開打、逛地圖與戰鬥中按 R 花 1 次擲（戰鬥中擲完照樣倒數、不再給開場護盾）、打完一群 +1、換關 +2、最多 3",
-		all.bind([DiceChecks.check_dice_evaluate, DiceChecks.check_dice_fight, DiceChecks.check_dice_auto, DiceChecks.check_dice_no_loot, DiceChecks.check_dice_charges]))
+	_check("骰子模式（DiceRun，§55）：結算（同一招數幾次、別的武器的技能當空白、4 個以上換大招、骰到好幾種可以選、效果面各幾面）；一場的流程：菁英群發現玩家就暫停擲骰（怪不動）、擲骰時骰子轉完才收操作、鎖住的那顆重擲不變、完成後右鍵換成骰到的技能（照威力、不耗魔、進冷卻）、效果面掛上（傷害、開場護盾、普攻變弱）、倒數完才開打、這一場的怪全倒就暫停選 3 選 1 獎勵、選了生效並回到逛地圖；限時沒動作自動擲與自動完成；Boss 開追也開一場；一般模式發現玩家不暫停；沒有背包：不放寶箱與祭壇、殺怪與 Boss 只掉武器、不給靈魂、Tab 只開屬性面板；擲骰次數：一般群直接開打、逛地圖與戰鬥中按 R 花 1 次擲（戰鬥中擲完照樣倒數、不再給開場護盾）、打完一群 +1、換關 +2、最多 3；成長：4 選 1（種類不重複、稀有度看難度）、刻面自己選位置、新骰子放備用並換上、武器骰跟著武器走、備用武器與撿武器、門的 4 選 1 與重擲 +1；骰子與武器面板、4 張獎勵卡、刻面畫面放得進介面最大檔",
+		all.bind([DiceChecks.check_dice_evaluate, DiceChecks.check_dice_fight, DiceChecks.check_dice_auto, DiceChecks.check_dice_no_loot, DiceChecks.check_dice_charges, DiceChecks.check_dice_growth, DiceChecks.check_dice_panels]))
 	_check("打中回饋與延遲補償（v0.38.0）：延遲 100 ms 時客戶端的火花 / 音效 / 閃白在出招當下出現一次，房主的同一下標 predicted；側移的怪兩邊都判定打中", NetChecks.check_hit_prediction.bind(feel))
 	_check("連線武器（D4）：客戶端把倉庫的武器換上手、拖曳合成，兩邊的裝備欄、手上武器、詞條一致；殺怪掉的武器兩邊都看得到", NetChecks.check_net_weapons)
 	_check("連線守墓人：客戶端被埋進土裡時自己的畫面也只露半身、爬出來就恢復；守墓人開打變大後，客戶端的半徑與體型跟房主一致", NetChecks.check_net_gravekeeper)

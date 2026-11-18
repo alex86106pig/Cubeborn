@@ -57,6 +57,7 @@ var inventory_panel := InventoryPanel.new()   # Tab 開關（main.gd 接到輸�
 var forge_panel := ForgePanel.new()           # 鍛造祭壇：站在祭壇旁開背包時，兩格放武器 → 挑詞條 → 合成（Build 改版第 8 步；放在背包左邊，main.gd 接到輸入）
 var relic_panel := RelicPanel.new()           # 遺物的 N 選 1（Build 改版第 6 步；main.gd 接到輸入）
 var dice_panel := DicePanel.new()             # 骰子模式的擲骰、倒數、獎勵與戰鬥中的右鍵說明（main.gd 接到輸入）
+var dice_loadout := DiceLoadoutPanel.new()    # 骰子模式的「骰子與武器」面板（Tab，取代背包；跟屬性面板一起開關）
 var _relic_bag := false                       # 背包是遺物面板自動打開的（選完 / 關掉時一起關）
 var _wave := UiKit.label("", 22)
 var _kills := UiKit.label("", 16)
@@ -317,6 +318,12 @@ func _init() -> void:
 	inventory_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	inventory_panel.visible = false
 	root.add_child(inventory_panel)
+	# 骰子模式：同一個位置放「骰子與武器」面板（背包打不開）
+	dice_loadout.set_anchors_and_offsets_preset(Control.PRESET_CENTER_RIGHT, Control.PRESET_MODE_MINSIZE, 24)
+	dice_loadout.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	dice_loadout.grow_vertical = Control.GROW_DIRECTION_BOTH
+	dice_loadout.visibility_changed.connect(func() -> void: _top_right.visible = not dice_loadout.visible)   # 同背包：右上的小地圖與字藏起來
+	root.add_child(dice_loadout)
 	root.add_child(inventory_panel.feet_panel)   # 腳邊框：浮在背包左邊，位置由背包每幀算
 	inventory_panel.feet_avoid = _skill_bar
 	inventory_panel.forge = forge_panel
@@ -424,8 +431,8 @@ func _place_hints() -> void:
 	var area := hints.get_parent_control().size
 	var left := 0.0
 	var right := area.x
-	if inventory_panel.visible:
-		right = _bag_left() - HINT_MARGIN
+	if inventory_panel.visible or dice_loadout.visible:   # 骰子模式的骰子與武器面板也在右邊：提示夾在兩個面板中間
+		right = (_bag_left() if inventory_panel.visible else dice_loadout.position.x) - HINT_MARGIN
 		if _stats_panel.visible:
 			left = _stats_panel.position.x + _stats_panel.size.x + HINT_MARGIN
 	hints.set_max_width(right - left)
@@ -524,12 +531,17 @@ func _process(delta: float) -> void:
 			_game_over.visible = true
 	if world == null:
 		dice_panel.visible = false
+		dice_loadout.visible = false
 		return
 	var player := local_player()
 	if player == null:
 		dice_panel.visible = false
+		dice_loadout.visible = false
 		return
 	dice_panel.refresh(world, player, delta)
+	dice_loadout.visible = bag_hidden() and _stats_panel.visible
+	if dice_loadout.visible:
+		dice_loadout.refresh(world, player)
 	_skill_bar.refresh(world, player)
 	relic_panel.refresh(world, player)
 	if relic_panel.visible:
@@ -560,6 +572,8 @@ func _process(delta: float) -> void:
 	_weapon.add_theme_color_override(&"font_color", ItemDefs.RARITIES[inst.rarity].color if not inst.is_empty() else Color.WHITE)
 	_souls.text = "靈魂 %d · 骰子 %d" % [world.souls, player.dice]
 	_coins.text = "金幣 %d" % world.run_coins
+	_souls.visible = world.dice == null   # 骰子模式沒有靈魂、金幣與遺物的重骰骰子（擲骰次數寫在技能欄上方）
+	_coins.visible = world.dice == null
 	var s := world.stats
 	if world.has_floors():   # 挖墳地圖（D6）與小關：層數與難度
 		_wave.text = "%s · 難度 %d" % [World.level_name(world.floor_num, world.stage_num), floori(world.difficulty())]
@@ -764,9 +778,7 @@ func _on_event(name: String, p: Dictionary) -> void:
 			var reward: String = p.get("reward", "")
 			var got := ""
 			if reward != "":
-				got = "\n獲得：%s" % UiKit.reward_name(world, StringName(reward))
-				if MapGenDefs.REWARDS[StringName(reward)].has("amount"):
-					got += " +%d" % MapGenDefs.REWARDS[StringName(reward)].amount
+				got = "\n獲得：%s%s" % [UiKit.reward_name(world, StringName(reward)), UiKit.reward_amount(world, StringName(reward))]
 			if me != null and me.loadout.merged and not me.loadout.locked_spots().is_empty():   # 背包合併過小關給三選一開格（快照可能還沒到，照鎖格判斷）
 				got += "\n開格三選一：打開背包（Tab）挑一格"
 			_show_banner("%s（基礎難度 %d）%s" % [World.level_name(p.floor, p.stage), p.difficulty, got], false, UiKit.GOLD)

@@ -458,11 +458,20 @@ static func _draw_skill_shape(ci: CanvasItem, rects: Array[Rect2], color: Color,
 
 
 # 羈絆徽章：黑底圓加圖示，形狀不同，顏色和稀有度撞色時還分得出來（背包格子與羈絆欄共用）
-# 門的獎勵名稱（MapGenDefs.REWARDS）：背包合併模式沒有袋子，「袋子」寫成「開格」（Relic 給三選一開 1 格）
+# 門的獎勵名稱（MapGenDefs.REWARDS）：背包合併模式沒有袋子，「袋子」寫成「開格」（Relic 給三選一開 1 格）；
+# 骰子模式照 DiceDefs.DOOR_REWARDS（獎勵 4 選 1 / 重擲 +1）
 static func reward_name(world: World, reward: StringName) -> String:
+	if world != null and world.dice != null:
+		return DiceDefs.DOOR_REWARDS[reward].name
 	if reward == &"bag" and world != null and world.player_list.any(func(p: Player) -> bool: return p.loadout.merged):
 		return "開格"
 	return MapGenDefs.REWARDS[reward].name
+
+
+# 門的獎勵後面接的數量（「靈魂 +60」）：骰子模式的名稱已經寫好，不接
+static func reward_amount(world: World, reward: StringName) -> String:
+	var r: Dictionary = MapGenDefs.REWARDS[reward]
+	return " +%d" % r.amount if r.has("amount") and (world == null or world.dice == null) else ""
 
 
 # 鎖頭圖示（背包合併的鎖格；字型沒有鎖的字，用向量畫）：r 是鎖身半寬

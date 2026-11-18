@@ -430,6 +430,10 @@ func _change_level() -> void:
 
 # 門上的獎勵（MapGenDefs.REWARDS）：遺物放在出生點旁、靈魂全隊共用、骰子每人；空的（一扇門的關）不給
 func _grant_stage_reward(reward: StringName) -> void:
+	if dice != null:
+		if reward != &"":
+			dice.door_reward(self, reward)   # 骰子模式：4 選 1 或這一關重擲 +1（DiceDefs.DOOR_REWARDS）
+		return
 	if not has_loot():
 		return
 	match reward:
@@ -580,7 +584,8 @@ func on_enemy_died(e: Enemy, killer_id: int = 0) -> void:
 	stats.kills += 1
 	if dice != null:
 		dice.on_enemy_died(self, e)
-		return   # 骰子模式沒有靈魂、金幣、袋子、武器掉落（啃食群的靈魂也不給）：獎勵只有打完一場的 3 選 1
+		_drop_enemy_weapon(e, false)   # 骰子模式只掉武器（帶自己的骰子）；沒有靈魂、金幣、袋子（啃食群的靈魂也不給）
+		return
 	_pack_looted(e)
 	var g := 0 if e.no_souls else int(LootDefs.KILL_SOULS.get(e.type, 0))
 	var killer: Entity = entities.get(killer_id)
@@ -607,18 +612,25 @@ func on_enemy_died(e: Enemy, killer_id: int = 0) -> void:
 			var kinds: Array = BagDefs.BAGS.keys()
 			var kind: StringName = BagDefs.ELITE_BAG.get(e.type, kinds[rng.randi_range(0, kinds.size() - 1)])
 			drop_item(BagDefs.BAGS[kind].item, e.pos)
-	# 武器掉落（D4）：多人時也只掉一把（房主產生一個實體，先撿先得）；機率照層數，召喚出來的不掉（不然召喚者不死就能一直刷）
-	var chance: float = 1.0 if debug_drop_all or elite_weapon else (0.0 if e.no_souls else WeaponDropDefs.drop_chance(e.type, floor_num))
+	_drop_enemy_weapon(e, elite_weapon)
+
+
+# 武器掉落（D4）：多人時也只掉一把（房主產生一個實體，先撿先得）；機率照層數，召喚出來的不掉（不然召喚者不死就能一直刷）
+# 骰子模式：掉下來的武器照稀有度產生自己的骰子（DiceRun.make_weapon_dice）
+func _drop_enemy_weapon(e: Enemy, forced: bool) -> void:
+	var chance: float = 1.0 if debug_drop_all or forced else (0.0 if e.no_souls else WeaponDropDefs.drop_chance(e.type, floor_num))
 	if chance > 0.0 and (chance >= 1.0 or rng.randf() < chance):
 		var source := &"boss" if e.is_boss() else &"minion"
 		var bases := WeaponDropDefs.bases()
 		var base := bases[rng.randi_range(0, bases.size() - 1)]
 		var inst := WeaponDropDefs.make(new_weapon_uid(), base, WeaponDropDefs.roll_rarity(source, rng, team_treasure()), rng)
+		if dice != null:
+			DiceRun.make_weapon_dice(inst, rng)
 		drop_weapon(inst, e.pos)
 		emit_event("weapon:dropped", {"uid": String(inst.uid), "base": String(base), "rarity": String(inst.rarity), "pos": e.pos})
 
 
-# 有沒有背包的東西可拿（寶箱、祭壇、石棺、門的獎勵、Boss 的遺物、殺怪的靈魂與掉落）：骰子模式沒有背包，全部不給（§55）
+# 有沒有背包的東西可拿（寶箱、祭壇、石棺、Boss 的遺物、殺怪的靈魂、金幣、袋子）：骰子模式沒有背包，全部不給（§55；門與武器另外給）
 func has_loot() -> bool:
 	return dice == null
 

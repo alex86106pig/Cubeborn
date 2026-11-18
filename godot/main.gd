@@ -90,6 +90,9 @@ func _ready() -> void:
 	input_collector.relic_panel = hud.relic_panel
 	hud.dice_panel.op_requested.connect(input_collector.queue_inventory_op)
 	input_collector.dice_panel = hud.dice_panel
+	hud.dice_loadout.op_requested.connect(input_collector.queue_inventory_op)
+	input_collector.dice_loadout = hud.dice_loadout
+	hud.dice_loadout.visibility_changed.connect(func() -> void: input_collector.mouse_captured = hud.inventory_panel.visible or hud.dice_loadout.visible)
 	input_collector.inventory_panel = hud.inventory_panel
 	input_collector.test_panel = hud.test_panel
 	input_collector.interact_list = hud.interact_list

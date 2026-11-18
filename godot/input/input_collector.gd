@@ -32,6 +32,7 @@ var relic_panel: RelicPanel     # 遺物的 N 選 1 開著時：數字鍵選、R
 var dice_panel: DicePanel       # 骰子模式擲骰 / 選獎勵時：空白鍵擲、R 重擲、Enter 完成、數字鍵選獎勵（DicePanel.handle_key）
 var inventory_panel: InventoryPanel   # 背包手上拿著東西時 R 是旋轉、Esc 是放回，不給遺物面板
 var test_panel: Control         # 武器測試場的測試面板：點在面板上（含按鈕之間的空白）不普攻
+var dice_loadout: Control       # 骰子模式的骰子與武器面板：點在面板上不普攻
 var interact_list: InteractList # 按得到 F 的東西有兩個以上時：滾輪 / 上下鍵切換，按 F 時送選中的那個（InputCmd.OP_INTERACT）
 var _interact_was := false      # 上一筆輸入有沒有按著 F（剛按下那一筆才帶 OP_INTERACT）
 var _inv_ops: Array = []        # 背包介面送出的操作，下一筆輸入帶走
@@ -152,7 +153,7 @@ func _mouse_on_ui() -> bool:
 	var hovered := get_viewport().gui_get_hovered_control()
 	if hovered == null:
 		return false
-	for panel: Control in [relic_panel, test_panel, dice_panel]:
+	for panel: Control in [relic_panel, test_panel, dice_panel, dice_loadout]:
 		if panel != null and panel.visible and (panel == hovered or panel.is_ancestor_of(hovered)):
 			return true
 	return false

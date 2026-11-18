@@ -63,15 +63,35 @@ const WEAPON_DICE := {
 }
 const FALLBACK_EFFECTS := [&"fx_dmg", &"fx_shield"]
 
-# 打完一場的獎勵：3 選 1，種類不重複
-const REWARD_CHOICES := 3
-const REWARD_KINDS := [&"die", &"carve_skill", &"carve_effect", &"item"]
-# 新骰子的稀有度：空白幾面、技能面幾面（其餘是效果），weight 抽中的權重
-const RARITIES := [
-	{"id": &"white", "name": "白", "blanks": [2, 3], "skills": [0, 2], "weight": 45},
-	{"id": &"blue", "name": "藍", "blanks": [1, 2], "skills": [1, 3], "weight": 35},
-	{"id": &"purple", "name": "紫", "blanks": [0, 1], "skills": [2, 4], "weight": 20},
-]
+# 打完一場的獎勵：4 選 1，種類不重複（構想：單人 4 選 1）；新武器、新骰子的稀有度看這一場的難度（FIGHT_TIERS）
+const REWARD_CHOICES := 4
+const REWARD_KINDS := [&"die", &"weapon", &"carve_skill", &"carve_effect", &"item"]
+const CARVE_SKILL_CHOICES := 3   # 刻技能面：選到才打開，從自己武器能用的技能裡幾選 1
+# 骰子的稀有度（獎勵骰與掉落 / 獎勵武器的武器骰共用；跟武器稀有度同一套 id）：空白幾面、技能面幾面，其餘是效果
+# 構想的表：灰 / 白 空白 2~3、技能 0~2；綠 / 藍 空白 1~2、技能 1~3；紫 / 橘 空白 0~1、技能 2~4
+const RARITIES := {
+	&"white": {"name": "白", "blanks": [2, 3], "skills": [0, 2]},
+	&"green": {"name": "綠", "blanks": [1, 2], "skills": [1, 3]},
+	&"blue": {"name": "藍", "blanks": [1, 2], "skills": [1, 3]},
+	&"purple": {"name": "紫", "blanks": [0, 1], "skills": [2, 4]},
+	&"orange": {"name": "橘", "blanks": [0, 1], "skills": [2, 4]},
+}
+# 一場的難度：一般群 / 有菁英（魔法、稀有）/ 有 Boss → 獎勵的稀有度權重（Claude 暫定）
+const FIGHT_TIERS := {
+	&"normal": {"name": "一般", "weights": {&"white": 50.0, &"green": 30.0, &"blue": 15.0, &"purple": 5.0}},
+	&"elite": {"name": "菁英", "weights": {&"green": 35.0, &"blue": 40.0, &"purple": 20.0, &"orange": 5.0}},
+	&"boss": {"name": "Boss", "weights": {&"blue": 40.0, &"purple": 40.0, &"orange": 20.0}},
+}
+const SPARE_WEAPONS := 2         # 備用武器最多幾把（沒有背包；滿了撿的那把直接跟手上的換，舊的掉在原地）
+# 門的獎勵（MapGenDefs.DOOR_REWARDS 照地圖抽到的種類對應，地圖不變）：遺物 / 技能 → 下一關開頭多一次 4 選 1；袋子 / 靈魂 / 骰子 → 下一關每次擲骰的重擲 +1
+const DOOR_REWARDS := {
+	&"relic": {"kind": &"reward", "name": "獎勵 4 選 1"},
+	&"skill": {"kind": &"reward", "name": "獎勵 4 選 1"},
+	&"bag": {"kind": &"reroll", "name": "重擲 +1"},
+	&"souls": {"kind": &"reroll", "name": "重擲 +1"},
+	&"dice": {"kind": &"reroll", "name": "重擲 +1"},
+}
+const DOOR_REROLLS := 1
 # 數值道具：拿了就一直有（掛屬性來源 dice_item:N）
 const ITEMS := [
 	{"name": "攻擊力 +8%", "stat": [&"damage", &"pct", 0.08]},
@@ -184,3 +204,37 @@ static func tier_of(count: int) -> Dictionary:
 static func cooldown_of(skill: StringName, cdr: float) -> float:
 	var base := maxf(COOLDOWN_MIN, float(SkillDefs.SKILLS[skill].get("mana", 0.0)) * COOLDOWN_PER_MANA)
 	return base * maxf(CDR_FLOOR, 1.0 - cdr)
+
+
+# 照稀有度產生一顆骰子（6 面）：空白、技能面（skills 裡抽，可以好幾種）、其餘效果面，最後打亂
+static func make_die(rarity: StringName, skills: Array[StringName], rng: RandomNumberGenerator) -> Array[StringName]:
+	var r: Dictionary = RARITIES.get(rarity, RARITIES[&"white"])
+	var effects: Array = EFFECTS.keys()
+	var faces: Array[StringName] = []
+	for i in rng.randi_range(r.blanks[0], r.blanks[1]):
+		faces.append(BLANK)
+	if not skills.is_empty():
+		for i in mini(FACES - faces.size(), rng.randi_range(r.skills[0], r.skills[1])):
+			faces.append(skills[rng.randi_range(0, mini(2, skills.size() - 1))])
+	while faces.size() < FACES:
+		faces.append(effects[rng.randi_range(0, effects.size() - 1)])
+	for i in range(faces.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var t := faces[i]
+		faces[i] = faces[j]
+		faces[j] = t
+	return faces
+
+
+# 這一場難度的稀有度（FIGHT_TIERS 的權重）
+static func roll_rarity(tier: StringName, rng: RandomNumberGenerator) -> StringName:
+	var w: Dictionary = FIGHT_TIERS.get(tier, FIGHT_TIERS[&"normal"]).weights
+	var total := 0.0
+	for k: StringName in w:
+		total += float(w[k])
+	var x := rng.randf() * total
+	for k: StringName in w:
+		x -= float(w[k])
+		if x < 0.0:
+			return k
+	return w.keys()[0]

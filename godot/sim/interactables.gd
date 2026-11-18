@@ -58,6 +58,8 @@ static func use(world: World, p: Player, id: int) -> bool:
 	if e == null or e.is_removed or not world.can_reach(p, e):
 		return false
 	if e is ItemPickup:
+		if world.dice != null:   # 骰子模式沒有背包：武器進備用（DiceRun.receive_weapon），其他撿不了
+			return world.dice.take_pickup(world, p, e as ItemPickup)
 		p.loadout.take_pickup(p, e as ItemPickup)
 	elif e is Relic:
 		if (e as Relic).taken.has(p.peer_id):
