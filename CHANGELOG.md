@@ -3,7 +3,7 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
-## [未發布]
+## [0.78.1] - 2026-11-18
 
 ### 修改
 - **場景的裝飾每個人看到的一樣**（YangHsu 2026-11-18：地上的白點每個人看到的不一樣）：`ArenaView.build` 原本用 `rng.randomize()`，樹、墓碑、碎骨、地面深淺每台各自亂擺；改成照這份地形的種子（`hash(World.layout_key)`）。白點是地上撒的細碎骨（半徑 0.03，畫面上只剩一兩個像素），墓園改桌上模型後不撒了（下一條）。
