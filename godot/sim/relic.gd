@@ -171,7 +171,7 @@ func _anvil_apply(p: Player, c: Dictionary) -> void:
 # 介面用：選項的標題、說明、是不是詛咒（道具與技能由面板照物品資料畫，這裡處理袋子與鐵砧）；都不是回傳 {}
 static func option_info(p: Player, choice: StringName) -> Dictionary:
 	if choice == UNLOCK_CHOICE:
-		return {"title": "開格：三選一", "desc": "打開背包（Tab），閃金框的 3 格鎖格挑 1 格打開"}
+		return {"title": "開格：三選一", "desc": "打開背包（Tab），金色「+」的 3 格挑 1 格打開"}
 	if choice == UNLOCK_PICK:
 		return {"title": "開格：自選 1 格", "desc": "打開背包（Tab），點一格鎖著的格子打開"}
 	var bc := bag_choice(choice)

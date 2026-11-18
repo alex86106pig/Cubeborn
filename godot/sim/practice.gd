@@ -82,7 +82,7 @@ static func unlock(world: World, p: Player, action: StringName) -> String:
 		&"choice":
 			if not p.loadout.offer_unlock(p, world.rng):
 				return "全部都開了"
-			return "三選一 %d 輪：打開背包點閃金框的格子" % p.loadout.unlock_choices
+			return "三選一 %d 輪：打開背包點金色「+」的格子" % p.loadout.unlock_choices
 		&"pick":
 			p.loadout.unlock_picks += 1
 			return "自選開格 %d 次：打開背包點鎖著的格子" % p.loadout.unlock_picks

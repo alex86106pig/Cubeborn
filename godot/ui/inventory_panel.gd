@@ -512,7 +512,7 @@ func _start_drag(me: Player, local: Vector2) -> void:
 			if me.loadout.unlock_picks > 0 or me.loadout.is_unlock_offer(lt.where, lt.cell):
 				op_requested.emit([InputCmd.OP_UNLOCK, lt.where, lt.cell.x, lt.cell.y])
 			elif not me.loadout.unlock_offers.is_empty():
-				_say("三選一開格：點閃金框的那 %d 格之一" % me.loadout.unlock_offers.size())
+				_say("三選一開格：點金色「+」的那 %d 格之一" % me.loadout.unlock_offers.size())
 			else:
 				_say("這格鎖著：過小關、門的「開格」獎勵、Boss、鐵砧會開格")
 			return
@@ -724,7 +724,10 @@ func _draw() -> void:
 	elif Time.get_ticks_msec() < _notice_until:
 		draw_string(font, Vector2(PAD, PAD + 52), _notice, HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 17, UiKit.ALERT)
 	else:
-		draw_string(font, Vector2(PAD, PAD + 52), _hint_text(), HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 15, Color(1, 1, 1, 0.6))
+		var offering := me != null and me.loadout.merged and not me.loadout.unlock_offers.is_empty() and _drag.is_empty()
+		# 有三選一開格時提示改成大一點的金字（平常的提示是灰色小字，看不出要選）
+		draw_string(font, Vector2(PAD, PAD + 54), _hint_text(), HORIZONTAL_ALIGNMENT_LEFT, size.x - PAD * 2, 19 if offering else 15,
+			UiKit.GOLD if offering else Color(1, 1, 1, 0.6))
 	if me != null:
 		_draw_scrollbar(me)
 	_tip_layer.queue_redraw()
@@ -735,7 +738,7 @@ func _hint_text() -> String:
 	if _drag.is_empty() and me != null and me.loadout.merged:
 		if not me.loadout.unlock_offers.is_empty():
 			var more := "（還有 %d 輪）" % (me.loadout.unlock_choices - 1) if me.loadout.unlock_choices > 1 else ""
-			return "開格三選一：點一格閃金框的鎖格打開%s" % more
+			return "開格三選一：金色「+」的 3 格挑 1 格點下去打開%s" % more
 		if me.loadout.unlock_picks > 0:
 			return "還能自選開 %d 格：點一格鎖著的格子打開" % me.loadout.unlock_picks
 		return HINT_MERGED
@@ -882,20 +885,29 @@ func _draw_skill_marks(font: Font, me: Player, where: int, b: Dictionary) -> voi
 
 
 # 背包合併的鎖格（許家慶 2026-11-06 選 B：每格都畫鎖）：蓋暗、中間畫一個鎖頭；有自選開格時框線閃金色；
-# 三選一的候選另外蓋一層淡金、框線加粗（自選與三選一同時有時分得出來）
+# 三選一的候選整格金色、中間「＋」，其他鎖格再壓暗（YangHsu 2026-11-18：原本淡金細框看不出要三選一）
 func _draw_locks(me: Player, where: int, locked: Dictionary) -> void:
 	if locked.is_empty():
 		return
 	var picking := me.loadout.unlock_picks > 0
+	var offering := not me.loadout.unlock_offers.is_empty()
 	var pulse := 0.55 + 0.45 * sin(Time.get_ticks_msec() * 0.008)
 	for c: Vector2i in locked:
 		var r := _cell_rect(me, where, c).grow(-1)
 		draw_rect(r, LOCK_FILL)
-		UiKit.draw_lock(self, r.get_center(), r.size.x * 0.22, Color(1, 1, 1, 0.45))
 		if me.loadout.is_unlock_offer(where, c):
-			draw_rect(r, Color(UiKit.GOLD, 0.18 * pulse))
-			draw_rect(r.grow(-1), Color(UiKit.GOLD, pulse), false, 3.0)
-		elif picking:
+			# 三選一的候選：整格金色亮底一閃一閃、粗金框，中間白色「＋」（不畫鎖頭），一眼看得出「點這裡開」
+			draw_rect(r, Color(UiKit.GOLD, 0.35 + 0.3 * pulse))
+			draw_rect(r.grow(-1), UiKit.GOLD, false, 4.0)
+			var arm := r.size.x * 0.22
+			var mid := r.get_center()
+			draw_line(mid - Vector2(arm, 0), mid + Vector2(arm, 0), Color.WHITE, 4.0)
+			draw_line(mid - Vector2(0, arm), mid + Vector2(0, arm), Color.WHITE, 4.0)
+			continue
+		if offering:
+			draw_rect(r, Color(0, 0, 0, 0.45))   # 有候選時其他鎖格再壓暗，候選才跳得出來
+		UiKit.draw_lock(self, r.get_center(), r.size.x * 0.22, Color(1, 1, 1, 0.3 if offering else 0.45))
+		if picking:
 			draw_rect(r.grow(-1), Color(UiKit.GOLD, pulse), false, 2.0)
 
 
