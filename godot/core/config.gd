@@ -95,25 +95,25 @@ const ENVIRONMENTS := {
 		"vision": {"shade_color": Color("1c2640"), "darkness": 0.24, "inner_darkness": 0.04, "edge": 1.6, "range_edge": 3.0, "near_edge": 2.5},
 		"post": {"vignette": 0.35, "saturation": 1.0, "contrast": 1.02, "tint": Color("fff8f0")},
 	},
-	# 第 2、3 層也是桌上模型（YangHsu 2026-11-18：2、3 改）：比墓園暗一階，墓窟是暖色火光、蟲蝕墓道偏綠；視野外壓暗同墓園用冷色
+	# 第 2、3 層也是桌上模型（YangHsu 2026-11-18：2、3 改）：亮度比照墓園（暗一階的版本 YangHsu 說太暗，地面畫面亮度 0.23 vs 墓園 0.40）；墓窟偏暖、蟲蝕墓道中性
 	&"catacomb": {
 		"background": Color("0f0d0b"),
-		"ambient": Color("b0a494"),
-		"sun_color": Color("ffdcb0"),
-		"ambient_energy": 0.8,
-		"sun_energy": 1.0,
-		"vision": {"shade_color": Color("141826"), "darkness": 0.3, "inner_darkness": 0.04, "edge": 1.6, "range_edge": 3.0, "near_edge": 2.5},
-		"post": {"vignette": 0.45, "saturation": 1.0, "contrast": 1.03, "tint": Color("fff6ec")},
+		"ambient": Color("b8ae9e"),
+		"sun_color": Color("ffe6c4"),
+		"ambient_energy": 0.95,
+		"sun_energy": 1.25,
+		"vision": {"shade_color": Color("1a2032"), "darkness": 0.24, "inner_darkness": 0.04, "edge": 1.6, "range_edge": 3.0, "near_edge": 2.5},
+		"post": {"vignette": 0.35, "saturation": 1.0, "contrast": 1.02, "tint": Color("fff8f0")},
 	},
 	# burrow = 蟲蝕墓道：偏綠
 	&"burrow": {
 		"background": Color("0b0d09"),
-		"ambient": Color("a6a48e"),   # 中性偏暖：原本 #a0a68c 把整層染成一片綠
-		"sun_color": Color("e8e8c4"),
-		"ambient_energy": 0.8,
-		"sun_energy": 0.95,
-		"vision": {"shade_color": Color("16201a"), "darkness": 0.3, "inner_darkness": 0.04, "edge": 1.6, "range_edge": 3.0, "near_edge": 2.5},
-		"post": {"vignette": 0.45, "saturation": 1.0, "contrast": 1.03, "tint": Color("f6fbec")},
+		"ambient": Color("b0ac9e"),   # 中性：原本 #a0a68c 把整層染成一片綠、#a6a48e 畫面上還是偏黃綠
+		"sun_color": Color("f0ecd8"),
+		"ambient_energy": 0.95,
+		"sun_energy": 1.25,
+		"vision": {"shade_color": Color("1a2420"), "darkness": 0.24, "inner_darkness": 0.04, "edge": 1.6, "range_edge": 3.0, "near_edge": 2.5},
+		"post": {"vignette": 0.35, "saturation": 1.0, "contrast": 1.02, "tint": Color("fbfaf2")},
 	},
 }
 

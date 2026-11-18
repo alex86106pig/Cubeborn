@@ -52,7 +52,7 @@ const PALETTES := {
 			&"platform": [Color("554a40"), Color("665a4d")],   # 舊石台
 		},
 		"moss": Color("3d4434"),
-		"grass": [Color("3b3a37"), Color("43413d"), Color("4b4843")], "ground_dirt": Color("322f2b"), "dirt_mix": 0.35,   # 冷灰石地（暖光下才不會跟墓園一樣褐）
+		"grass": [Color("4d4b48"), Color("57554f"), Color("625e57")], "ground_dirt": Color("413d38"), "dirt_mix": 0.35,   # 冷灰石地（暖光下才不會跟墓園一樣褐）
 		"rock_top": Color("3a3530"), "rubble": [Color("5a544c"), Color("6a6358"), Color("4c463f")],
 		"wall_mode": &"masonry", "fill": &"rock", "tomb_mode": &"stele", "base": &"rubble",
 	},
@@ -63,7 +63,7 @@ const PALETTES := {
 			&"tomb": [Color("8c8a5e"), Color("a8a670")],
 			&"platform": [Color("4f4636"), Color("61573f")],
 		},
-		"grass": [Color("3f3a2c"), Color("474131"), Color("4f4836")], "ground_dirt": Color("352f24"), "dirt_mix": 0.35,   # 褐橄欖的濕土
+		"grass": [Color("514c44"), Color("5b554b"), Color("655e52")], "ground_dirt": Color("443e36"), "dirt_mix": 0.35,   # 灰褐的濕土（偏黃的 #524c39 那組調亮後像沙漠）
 		"rock_top": Color("37332a"), "rubble": [Color("524b3c"), Color("463f33"), Color("5d5544")], "egg": [Color("b4b884"), Color("a6ab78")],
 		"wall_mode": &"rock", "fill": &"rock", "tomb_mode": &"pod", "base": &"rubble", "eggs": true,
 	},
