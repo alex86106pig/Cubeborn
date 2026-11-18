@@ -47,12 +47,12 @@ const PALETTES := {
 	# 第 2 層地下墓窟（YangHsu 2026-11-18：2、3 層也改）：冷灰褐的石地、砌石牆、厚岩壁頂是粗岩面；墓碑是骨白石碑（地底不放墳土）、牆腳碎石
 	&"catacomb": {
 		"blocks": {
-			&"wall": [Color("5a5853"), Color("726e68")],
+			&"wall": [Color("55585c"), Color("6c6f73")],   # 冷灰石（三層要一眼分得出：墓園暖褐、墓窟藍灰、墓道灰綠）
 			&"tomb": [Color("9a9384"), Color("b4ad9c")],
 			&"platform": [Color("554a40"), Color("665a4d")],   # 舊石台
 		},
 		"moss": Color("3d4434"),
-		"grass": [Color("4d4b48"), Color("57554f"), Color("625e57")], "ground_dirt": Color("413d38"), "dirt_mix": 0.35,   # 冷灰石地（暖光下才不會跟墓園一樣褐）
+		"grass": [Color("4a4e54"), Color("53575d"), Color("5c6066")], "ground_dirt": Color("3f4348"), "dirt_mix": 0.35,   # 藍灰石地（暖光下畫面上是冷灰，跟墓園的褐土分開）
 		"rock_top": Color("3a3530"), "rubble": [Color("5a544c"), Color("6a6358"), Color("4c463f")],
 		"wall_mode": &"masonry", "fill": &"rock", "tomb_mode": &"stele", "base": &"rubble",
 	},
@@ -63,7 +63,7 @@ const PALETTES := {
 			&"tomb": [Color("8c8a5e"), Color("a8a670")],
 			&"platform": [Color("4f4636"), Color("61573f")],
 		},
-		"grass": [Color("514c44"), Color("5b554b"), Color("655e52")], "ground_dirt": Color("443e36"), "dirt_mix": 0.35,   # 灰褐的濕土（偏黃的 #524c39 那組調亮後像沙漠）
+		"grass": [Color("4a5045"), Color("52594c"), Color("5b6254")], "ground_dirt": Color("404539"), "dirt_mix": 0.35,   # 灰綠的苔蘚濕土（彩度壓低；偏黃的像沙漠、灰褐的跟墓窟分不出來）
 		"rock_top": Color("37332a"), "rubble": [Color("524b3c"), Color("463f33"), Color("5d5544")], "egg": [Color("b4b884"), Color("a6ab78")],
 		"wall_mode": &"rock", "fill": &"rock", "tomb_mode": &"pod", "base": &"rubble", "eggs": true,
 	},
