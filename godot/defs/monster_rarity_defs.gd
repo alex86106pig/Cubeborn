@@ -35,7 +35,7 @@ const RARE_NAME_B: Array[String] = ["掘墓者", "守陵人", "亡誓者", "骨�
 # 怪群模板（製作計畫 L 第 3、4 步，Claude 暫定）：每層照 weight 抽一種（Spawner._spawn_pack）。
 # size：隻數（沒寫 = 地圖給的或 PACKS.size）；members：[[種類, 比例]…]（沒寫 = 這一層的怪物表；第 2 層起照樣約 UPPER_SHARE 換成上一層的）；
 # layout：scatter 散開、ring_in 圍一圈面向中間、high 弓手站高處其他散開面朝外、line 第一種排前面面朝出生點其他的排後面、buried 埋在地底圍一圈（伏擊）；
-# idle：種類 → 休眠的樣子（沒寫照 def.idle）；loot：全清掉在中心掉一把武器；lone：只有一隻、一定是稀有
+# idle：種類 → 休眠的樣子（沒寫照 def.idle）；loot：全清給 PACKS.feast_souls 靈魂；lone：只有一隻、一定是稀有
 const PACK_TEMPLATES := {
 	1: [
 		{"id": &"horde", "weight": 30},
@@ -80,6 +80,7 @@ const PACKS := {
 	"ambush_trigger": 2.5,        # 伏擊：玩家走到群中心這麼近，地底的一圈爬出來
 	"ambush_ring": [3.0, 4.5],    # 伏擊的成員埋在離中心這麼遠的一圈
 	"feast_ring": [1.3, 2.2],     # 啃食群圍著中間的屍體，離中心這麼遠
+	"feast_souls": 50,            # 啃食群全清：中間那具冒險者身上的靈魂（約一個小祭壇的價錢；原本掉武器，一層多 4～5 把太多）
 	"high_search": 6.0,           # 高台弓手：離中心這麼遠內找高處
 	"magic_per_pack": [1, 2],
 	"rare_chance": 0.25,

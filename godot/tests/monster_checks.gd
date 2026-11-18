@@ -1889,7 +1889,7 @@ static func _join_pack(w: World, at: Vector2) -> Enemy:
 	return e
 
 
-# 怪群模板（L 第 3、4 步）：地圖 A 換幾個種子，每種模板（第 1 層）都抽得到；啃食群圍一圈面向中間、腐屍跪著啃，整群死光在中心掉一把武器（只掉一次）；
+# 怪群模板（L 第 3、4 步）：地圖 A 換幾個種子，每種模板（第 1 層）都抽得到；啃食群圍一圈面向中間、腐屍跪著啃，整群死光給 feast_souls 靈魂（只給一次）；
 # 伏擊埋在地底打不到、不擋路，玩家走到中心整圈爬出來；獨行的只有一隻稀有；遊蕩群醒著沿兩點走、碰到也會發現。
 # 第 2 層：盾陣的盾槍兵排在靠出生點那邊、面朝外
 static func check_pack_templates() -> String:
@@ -1920,17 +1920,19 @@ static func check_pack_templates() -> String:
 						feast_done = true
 						w.events.clear()
 						var drops := 0
+						var souls_before := w.souls
 						for e in members:
 							Combat.apply_damage(w, p, e, {"damage": 99999.0})
-						drops += w.events.filter(func(ev: Dictionary) -> bool: return ev.name == "pack:looted").size()   # 步與步之間發的事件下一步開頭就清掉
+						for ev in w.events:   # 步與步之間發的事件下一步開頭就清掉，打完當下就數
+							if ev.name == "pack:looted" and ev.souls == c.feast_souls:
+								drops += 1
 						_step(w, 1)
 						w.events.clear()
 						for e in members:   # 再打一次已經死的，不應再掉
 							Combat.apply_damage(w, p, e, {"damage": 1.0})
 						drops += w.events.filter(func(ev: Dictionary) -> bool: return ev.name == "pack:looted").size()
-						var near := w.pickups.filter(func(x: Entity) -> bool: return (x as ItemPickup).is_weapon() and x.pos.distance_to(pk.center) < 0.5)
-						if drops != 1 or near.is_empty():
-							return "啃食群全清應在中心掉一把武器、只掉一次：pack:looted %d 次、中心的武器 %d 把" % [drops, near.size()]
+						if drops != 1 or w.souls - souls_before < c.feast_souls:   # 擊殺本身的靈魂照稀有度、道具倍率另外算
+							return "啃食群全清應多給 %d 靈魂、只給一次：pack:looted %d 次、靈魂 %d → %d" % [c.feast_souls, drops, souls_before, w.souls]
 				&"ambush":
 					var ringed := 0   # 圈上放不下時照規則放寬到內半圈、再退回一般散開，所以只要求大部分在圈上
 					for e in members:

@@ -982,7 +982,7 @@ func _update_ambush(i: int, c: Dictionary) -> void:
 	emit_event("pack:alerted", {"pack": i, "entity_id": pk.ids[0], "target_id": target.id, "ambush": true})
 
 
-# 啃食群（模板有 loot）整群死光：在中心掉一把武器（一群只掉一次）
+# 啃食群（模板有 loot）整群死光：給 PACKS.feast_souls 靈魂（全隊共用，一群只給一次）
 func _pack_looted(e: Enemy) -> void:
 	if e.pack_id < 0 or e.pack_id >= packs.size():
 		return
@@ -994,12 +994,10 @@ func _pack_looted(e: Enemy) -> void:
 		if m != null and not m.is_dead:
 			return
 	pk.looted = true
-	var bases := WeaponDropDefs.bases()
-	var base := bases[rng.randi_range(0, bases.size() - 1)]
-	var inst := WeaponDropDefs.make(new_weapon_uid(), base, WeaponDropDefs.roll_rarity(&"minion", rng, team_treasure()), rng)
-	drop_weapon(inst, pk.center)
-	emit_event("weapon:dropped", {"uid": String(inst.uid), "base": String(base), "rarity": String(inst.rarity), "pos": pk.center})
-	emit_event("pack:looted", {"pack": e.pack_id, "pos": pk.center})
+	var g: int = MonsterRarityDefs.PACKS.feast_souls
+	souls += g
+	emit_event("souls:gained", {"amount": g, "pos": pk.center, "total": souls})
+	emit_event("pack:looted", {"pack": e.pack_id, "pos": pk.center, "souls": g})
 
 
 # 休眠的 e 發現了哪位玩家（看得到的最近那位；被打鬥聲吵醒的找最近的）；沒發現回傳 null
