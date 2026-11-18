@@ -253,9 +253,10 @@ static func _check_floor_map(floor_num: int, seed_value: int, note: bool, used: 
 	if w.map.has("exit_doors") and w.layout.doors.size() != int(w.map.exit_doors.count):
 		return "出口應開 %d 個門，實際 %s" % [w.map.exit_doors.count, w.layout.doors]
 	var pc: Dictionary = MonsterRarityDefs.PACKS
+	var placed := w.packs.filter(func(pk: Dictionary) -> bool: return not pk.get("wander", false)).size()   # 遊蕩群另外放、不在 pack_spots
 	if w.map.has("pack_spots"):
-		if w.packs.size() != (w.map.pack_spots as Array).size() or w.packs.is_empty():
-			return "產生的地圖挑了 %d 群的位置，放下 %d 群" % [(w.map.pack_spots as Array).size(), w.packs.size()]
+		if placed != (w.map.pack_spots as Array).size() or placed == 0:
+			return "產生的地圖挑了 %d 群的位置，放下 %d 群" % [(w.map.pack_spots as Array).size(), placed]
 	elif w.packs.size() < pc.count[0]:
 		return "怪群只放得下 %d 群（至少 %d）" % [w.packs.size(), pc.count[0]]
 	for e in w.enemies:

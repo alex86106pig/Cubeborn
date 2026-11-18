@@ -42,7 +42,8 @@ const QUAD_DUTY := Vector2(0.5, 0.3)   # 四足小跑每隻腳著地的比例（
 const QUAD_LIFT := 0.28          # 四足擺盪時腳抬多高（× 腿長）
 const SWORD_WRIST := -0.7        # 持劍的怪（骷髏、亡骸騎士）走路、站著時手腕往上翹：劍尖朝斜上方，不是順著前臂水平往前
 const SWORD_ROLL := PI / 2.0     # 持劍的怪刃一直朝上下（揮砍、直劈都是由上往下，刃先到）
-const SWORD_IDLE_STATES: Array[StringName] = [&"chase", &"patrol", &"dormant", &"spawn", &"hurt"]
+const SWORD_IDLE_STATES: Array[StringName] = [&"chase", &"patrol", &"wander", &"dormant", &"spawn", &"hurt"]
+const LURK_MOUND := Color("4a3b2c")   # 伏擊的怪埋在地底時地上的土堆
 const WRIST_SHARPNESS := 25.0
 var rig   # Rig（Boss）或 SkinnedRig（小怪，D5）：關節介面相同
 var walk_phase := 0.0
@@ -66,6 +67,7 @@ var _worm_hide := 0.0     # 噬墓巨蟲藏進地裡的比例（0 = 整隻在地
 var _moth_alt := 0.0      # 屍蛾女王畫面上飛多高（畫面自己補間到 def.moth.altitude 或 0）
 var _lich := false        # 屍巫：唸咒（aim）時雙手往前合攏，其餘同一般小怪
 var _spin := 0.0          # 骨輪滾動的角度（畫面自己累加）
+var _mound: MeshInstance3D = null   # 伏擊：埋著時地上的小土堆（掛在實體的根節點下，跟著視野淡入淡出）
 var _idle_t := 0.0        # 休眠動作的時鐘（畫面自己累加：客戶端本機的休眠怪群沒有在跑模擬，anim.time 不會動）
 var _sword := false       # 拿長劍的（骷髏戰士、僕從、亡骸騎士、骸骨將軍重甲型態）：走路站著時手腕往上翹
 var _wrist := 0.0
@@ -111,6 +113,8 @@ func _init(p_rig: Node3D, e: Enemy) -> void:
 
 func update(e: Enemy, dt: float) -> void:
 	_dt = dt
+	if _lurk(e):
+		return
 	var a := e.anim
 	var state: StringName = a.state
 	var t: float = a.time
@@ -235,7 +239,7 @@ func update(e: Enemy, dt: float) -> void:
 			BodyPose.arm(rig, false, -2.4 - 0.3 * sin(t * 18.0), 0.3, 0.6)
 			BodyPose.leg(rig, true, -0.6, 1.3)
 			BodyPose.leg(rig, false, 0.2, 1.1)
-		&"chase", &"patrol":
+		&"chase", &"patrol", &"wander":
 			if e.is_boss():
 				_walk(1.0, -0.5, -0.3, 0.6)
 			elif _spearman:
@@ -749,6 +753,28 @@ func _quad_feet(rest: Array, offsets: Array, amount: float, run: float, leg: flo
 	return out
 
 
+# 伏擊（Enemy.lurking）：埋著時整隻藏在地面下、地上一個小土堆；爬出來後土堆收掉。回傳 true = 這一幀不擺姿勢
+func _lurk(e: Enemy) -> bool:
+	if not e.lurking:
+		if _mound != null:
+			_mound.queue_free()
+			_mound = null
+		return false
+	if _mound == null and rig.get_parent() != null:
+		_mound = MeshInstance3D.new()
+		var sphere := SphereMesh.new()
+		sphere.radius = 0.55
+		sphere.height = 0.35
+		sphere.radial_segments = 8
+		sphere.rings = 3
+		_mound.mesh = sphere
+		_mound.material_override = WorldView._flat_material(LURK_MOUND)
+		_mound.position.y = 0.05
+		rig.get_parent().add_child(_mound)
+	rig.position.y = -rig.height - 0.5
+	return true
+
+
 # 怪群休眠時的樣子（e.idle，Spawner 給）：feed 跪著往地上啃、sway 站著搖晃低頭、guard 站崗慢慢轉頭、其他站著呼吸。
 # 時鐘用 _idle_t，每隻照 id 錯開相位，不會整群同步
 func _pose_idle(e: Enemy, dt: float) -> void:
@@ -794,7 +820,7 @@ func _pose_hound(e: Enemy, a: Dictionary, state: StringName, t: float, dt: float
 	match state:
 		&"spawn":
 			rig.position.y = lerpf(-rig.height, 0.0, MathUtil.ease_out_cubic(clampf(t / def.spawn_time, 0.0, 1.0)))
-		&"chase", &"dormant":
+		&"chase", &"dormant", &"wander":
 			walk_phase = BodyPose.advance(walk_phase, _speed, leg, dt)
 			var run := BodyPose.run_amount(_speed, leg)
 			var trot := [0.0, 0.5, 0.5, 0.0]

@@ -1563,7 +1563,7 @@ static func check_affixes() -> String:
 static func check_packs() -> String:
 	var w := _world(&"graveyard_a", true)
 	var c: Dictionary = MonsterRarityDefs.PACKS
-	var n := w.packs.size()
+	var n := w.packs.filter(func(pk: Dictionary) -> bool: return not pk.get("wander", false)).size()   # 遊蕩群加在最後面，另外驗
 	if n < c.count[0] or n > c.count[1]:
 		return "地圖 A 有 %d 群，預期 %d~%d" % [n, c.count[0], c.count[1]]
 	for ev in w.events:
@@ -1580,8 +1580,10 @@ static func check_packs() -> String:
 			if center.distance_to(w.packs[j].center) < c.min_pack_distance - EPS:
 				return "第 %d、%d 群只相距 %.1f" % [j, i, center.distance_to(w.packs[j].center)]
 		var ids: Array = pk.ids
-		if ids.size() < c.size[0] or ids.size() > c.size[1]:
-			return "第 %d 群有 %d 隻，預期 %d~%d" % [i, ids.size(), c.size[0], c.size[1]]
+		var tpl := MonsterRarityDefs.template_by_id(pk.template)
+		var sz: Array = tpl.get("size", c.size)
+		if ids.size() < sz[0] or ids.size() > sz[1]:
+			return "第 %d 群（%s）有 %d 隻，預期 %d~%d" % [i, pk.template, ids.size(), sz[0], sz[1]]
 		var magic := 0
 		var rare := 0
 		for id: int in ids:
@@ -1594,10 +1596,12 @@ static func check_packs() -> String:
 			rare += 1 if e.rarity == MonsterRarityDefs.RARE else 0
 			start[id] = e.pos
 			var idles: Array = e.def.get("idle", [])
-			if not idles.is_empty() and e.idle != idles[id % idles.size()]:
-				return "第 %d 群的 %d 號（%s）休眠的樣子應照 id 輪流 %s：%s" % [i, id, e.type, idles, e.idle]
-		if magic < c.magic_per_pack[0] or magic > c.magic_per_pack[1] or rare > 1:
-			return "第 %d 群有 %d 隻魔法、%d 隻稀有" % [i, magic, rare]
+			var want_idle: StringName = (tpl.get("idle", {}) as Dictionary).get(e.type, idles[id % idles.size()] if not idles.is_empty() else &"")
+			if e.idle != want_idle:
+				return "第 %d 群（%s）的 %d 號（%s）休眠的樣子應是 %s（模板指定，沒指定照 id 輪流 def.idle）：%s" % [i, pk.template, id, e.type, want_idle, e.idle]
+		var lone: bool = tpl.get("lone", false)
+		if (lone and (rare != 1 or magic != 0)) or (not lone and (magic < mini(c.magic_per_pack[0], ids.size()) or magic > c.magic_per_pack[1] or rare > 1)):
+			return "第 %d 群（%s）有 %d 隻魔法、%d 隻稀有" % [i, pk.template, magic, rare]
 		total += ids.size()
 	# 玩家沒靠近：3 秒都不走（速度 0）；成員一開始若有重疊，碰撞分離推開後就完全靜止
 	_step(w, 120)
@@ -1611,25 +1615,30 @@ static func check_packs() -> String:
 			return "玩家沒靠近，%d 號就醒了或在走（第 2~3 秒移動 %.3f）" % [id, e.pos.distance_to(settled[id])]
 	# 走到第 0 群某一隻身邊 notice_close 內：那一群醒來（離開休眠、進 alert，不再 fixed），所有成員都離玩家 notice_sight 以外的群照睡
 	var p: Player = w.players[World.HOST_PEER_ID]
-	var m0: Enemy = w.entities[w.packs[0].ids[0]]
+	var k0 := -1   # 第一個不是伏擊的群（伏擊另外驗）
+	for i in n:
+		if not w.packs[i].ambush:
+			k0 = i
+			break
+	var m0: Enemy = w.entities[w.packs[k0].ids[0]]
 	p.pos = w.nav.nearest_walkable(m0.pos + Vector2(0, c.notice_close * 0.5))
 	_step(w, c.notice_every + 1)
-	if not w.packs[0].awake:
-		return "玩家站在第 0 群 %d 號身邊 %.1f，那一群應醒來" % [m0.id, p.pos.distance_to(m0.pos)]
+	if not w.packs[k0].awake:
+		return "玩家站在第 %d 群 %d 號身邊 %.1f，那一群應醒來" % [k0, m0.id, p.pos.distance_to(m0.pos)]
 	for i in n:
 		var far := true
 		for id: int in w.packs[i].ids:
 			if (w.entities[id] as Enemy).pos.distance_to(p.pos) <= c.notice_sight + 0.1:
 				far = false
-		if far and w.packs[i].awake:
+		if far and w.packs[i].awake and w.packs[i].center.distance_to(p.pos) > c.ambush_trigger:
 			return "第 %d 群所有成員都離玩家 %.1f 以外，不應醒來" % [i, c.notice_sight]
-	for id: int in w.packs[0].ids:
+	for id: int in w.packs[k0].ids:
 		var e: Enemy = w.entities.get(id)
 		if e != null and (e.dormant or e.fixed or e.fsm.is_in(&"dormant")):
-			return "第 0 群醒來後 %d 號應離開休眠（dormant %s、fixed %s、狀態 %s）" % [id, e.dormant, e.fixed, e.fsm.current_name]
+			return "第 %d 群醒來後 %d 號應離開休眠（dormant %s、fixed %s、狀態 %s）" % [k0, id, e.dormant, e.fixed, e.fsm.current_name]
 	# 遠處被打：整群醒來
 	for i in n:
-		if not w.packs[i].awake:
+		if not w.packs[i].awake and not w.packs[i].ambush:
 			var first: Enemy = w.entities[w.packs[i].ids[0]]
 			first.take_damage(1.0, Vector2(0, 1), 0.0, p.id)
 			for id: int in w.packs[i].ids:
@@ -1638,7 +1647,7 @@ static func check_packs() -> String:
 			break
 	# 決定性：同種子散放的位置一樣
 	var w2 := _world(&"graveyard_a", true)
-	if w2.packs.size() != n or w2.packs[n - 1].center != w.packs[n - 1].center:
+	if w2.packs.size() != w.packs.size() or w2.packs[n - 1].center != w.packs[n - 1].center or w2.packs[-1].center != w.packs[-1].center:
 		return "同種子兩次散放的怪群不同"
 	return ""
 
@@ -1878,3 +1887,121 @@ static func _join_pack(w: World, at: Vector2) -> Enemy:
 	e.pack_id = w.packs.size() - 1
 	w.packs[-1].ids.append(e.id)
 	return e
+
+
+# 怪群模板（L 第 3、4 步）：地圖 A 換幾個種子，每種模板（第 1 層）都抽得到；啃食群圍一圈面向中間、腐屍跪著啃，整群死光在中心掉一把武器（只掉一次）；
+# 伏擊埋在地底打不到、不擋路，玩家走到中心整圈爬出來；獨行的只有一隻稀有；遊蕩群醒著沿兩點走、碰到也會發現。
+# 第 2 層：盾陣的盾槍兵排在靠出生點那邊、面朝外
+static func check_pack_templates() -> String:
+	var c: Dictionary = MonsterRarityDefs.PACKS
+	var seen := {}
+	var feast_done := false
+	var ambush_done := false
+	for seed_value in [12345, 7, 99, 2024, 31]:
+		var w := _world(&"graveyard_a", true, seed_value)
+		var p: Player = w.players[World.HOST_PEER_ID]
+		for i in w.packs.size():
+			var pk: Dictionary = w.packs[i]
+			seen[pk.template] = true
+			var members: Array[Enemy] = []
+			for id: int in pk.ids:
+				members.append(w.entities[id])
+			match pk.template:
+				&"feast":
+					for e in members:
+						var d: float = e.pos.distance_to(pk.center)
+						if d > c.feast_ring[1] + EPS + 0.01 and d > c.spread:   # 圈裡放不下時照一般散開
+							return "啃食群的 %d 號離中心 %.2f，應在 %s" % [e.id, d, c.feast_ring]
+						if d > 0.3 and MathUtil.dir_from_angle(e.facing).dot((pk.center - e.pos).normalized()) < 0.99:
+							return "啃食群的 %d 號應面向中間的屍體" % e.id
+						if e.type == &"zombie" and e.idle != &"feed":
+							return "啃食群的腐屍應跪著啃（idle feed）：%s" % e.idle
+					if not feast_done:
+						feast_done = true
+						w.events.clear()
+						var drops := 0
+						for e in members:
+							Combat.apply_damage(w, p, e, {"damage": 99999.0})
+						drops += w.events.filter(func(ev: Dictionary) -> bool: return ev.name == "pack:looted").size()   # 步與步之間發的事件下一步開頭就清掉
+						_step(w, 1)
+						w.events.clear()
+						for e in members:   # 再打一次已經死的，不應再掉
+							Combat.apply_damage(w, p, e, {"damage": 1.0})
+						drops += w.events.filter(func(ev: Dictionary) -> bool: return ev.name == "pack:looted").size()
+						var near := w.pickups.filter(func(x: Entity) -> bool: return (x as ItemPickup).is_weapon() and x.pos.distance_to(pk.center) < 0.5)
+						if drops != 1 or near.is_empty():
+							return "啃食群全清應在中心掉一把武器、只掉一次：pack:looted %d 次、中心的武器 %d 把" % [drops, near.size()]
+				&"ambush":
+					var ringed := 0   # 圈上放不下時照規則放寬到內半圈、再退回一般散開，所以只要求大部分在圈上
+					for e in members:
+						if not e.lurking or e.is_targetable() or not e.passes_through() or not e.is_dodging():
+							return "伏擊的 %d 號埋著時應打不到、不能當目標、不擋路" % e.id
+						var d: float = e.pos.distance_to(pk.center)
+						if d >= c.ambush_ring[0] * 0.5 - EPS and d <= c.ambush_ring[1] + EPS:
+							ringed += 1
+					if ringed < members.size() - 1:
+						return "伏擊應圍成一圈（離中心 %s）：%d / %d 隻在圈上" % [c.ambush_ring, ringed, members.size()]
+					if not ambush_done:
+						ambush_done = true
+						var at := w.nav.nearest_walkable(pk.center)
+						if at.distance_to(pk.center) <= c.ambush_trigger * 0.5:
+							p.pos = at
+							_step(w, 2)
+							for e in members:
+								if e.lurking or not e.fsm.is_in(&"spawn"):
+									return "走到伏擊的中心，%d 號應爬出來（spawn）：lurking %s、狀態 %s" % [e.id, e.lurking, e.fsm.current_name]
+							p.pos = w.spawn_point
+						else:
+							ambush_done = false
+				&"lone":
+					if members.size() != 1 or members[0].rarity != MonsterRarityDefs.RARE:
+						return "獨行的應只有一隻、是稀有：%d 隻、%s" % [members.size(), members[0].rarity if not members.is_empty() else &""]
+				&"wander":
+					var start := members.map(func(e: Enemy) -> Vector2: return e.pos)
+					_step(w, 120)
+					var moved := 0
+					for j in members.size():
+						if members[j].fsm.is_in(&"wander") and members[j].pos.distance_to(start[j]) > 1.0:
+							moved += 1
+					if moved < members.size() - 1:
+						return "遊蕩群 2 秒內應沿路走動：%d / %d 隻有走" % [moved, members.size()]
+					if members.any(func(e: Enemy) -> bool: return e.dormant):
+						return "遊蕩群應是醒著的（不休眠，照快照同步）"
+	for t: Dictionary in MonsterRarityDefs.PACK_TEMPLATES[1]:
+		if not seen.has(t.id):
+			return "地圖 A 5 個種子都沒抽到第 1 層的模板 %s：%s" % [t.id, seen.keys()]
+	if not seen.has(&"wander"):
+		return "地圖 A 應有遊蕩群"
+	if not feast_done or not ambush_done:
+		return "前置：應驗到啃食群掉武器與伏擊爬出來（啃食 %s、伏擊 %s）" % [feast_done, ambush_done]
+	# 第 2、3 層：模板都抽得到；盾陣的盾槍兵排在靠出生點那邊（第 1 排）、面朝出生點那個方向；高台弓手有高處就站上去
+	for floor_num in [2, 3]:
+		var seen2 := {}
+		for seed_value in [12345, 7, 99, 2024, 31, 8]:
+			var w := _world(&"graveyard_a", true, seed_value)
+			for k in floor_num - 1:
+				w.next_floor()
+			for pk: Dictionary in w.packs:
+				seen2[pk.template] = true
+				var members: Array = pk.ids.map(func(id: int) -> Enemy: return w.entities[id])
+				if pk.template == &"shieldwall":
+					var front := Spawner._toward(pk.center, w.spawn_point)
+					for e: Enemy in members:
+						if e.type == &"spearman" and e.pos.distance_to(pk.center + front * 1.5) < 3.5 and MathUtil.dir_from_angle(e.facing).dot(front) < 0.99:
+							return "盾陣的盾槍兵 %d 號應面朝 %s（出生點那邊）" % [e.id, front]
+					# 前排被擋住、同一排與縮一半都放不下時照規則退回一般散開，所以容許一隻不在前面
+					var sp := members.filter(func(e: Enemy) -> bool: return e.type == &"spearman")
+					var ahead := sp.filter(func(e: Enemy) -> bool: return (e.pos - pk.center).dot(front) > 0.5)
+					if sp.size() - ahead.size() > 1:
+						return "盾陣的盾槍兵應排在前面（往出生點那邊）：%d / %d 隻在前面" % [ahead.size(), sp.size()]
+				if pk.template == &"watch":
+					var base := w.terrain.ground_at(pk.center)
+					for e: Enemy in members:
+						if e.type == &"archer" and e.idle != &"guard":
+							return "高台弓手應站崗（idle guard）：%s" % e.idle
+						if e.type == &"archer" and w.terrain.ground_at(e.pos) < base - EPS:
+							return "高台弓手 %d 號站得比群中心低" % e.id
+		for t: Dictionary in MonsterRarityDefs.PACK_TEMPLATES[floor_num]:
+			if not seen2.has(t.id):
+				return "第 %d 層 6 個種子都沒抽到模板 %s：%s" % [floor_num, t.id, seen2.keys()]
+	return ""

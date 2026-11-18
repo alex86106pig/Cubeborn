@@ -162,6 +162,7 @@ func _initialize() -> void:
 	_check("怪物屍體：死後擊退照樣往後滑，但不滑下高台（留在死掉時的高度）", MonsterChecks.check_corpse_ledge)
 	_check("怪物詞條（D5）：迅捷 / 強壯 / 厚皮照 mods 倍率、再生、吸血、狂暴、死亡爆炸、召喚照資料", MonsterChecks.check_affixes)
 	_check("怪群（D5）：地圖 A 散放 PACKS.count 群、每群 size 隻、距離限制、都走得到；開場休眠不播音效、不動、休眠的樣子照 def.idle 輪流；被發現或被打整群醒來；同種子結果相同", MonsterChecks.check_packs)
+	_check("怪群模板：第 1 層每種模板都抽得到；啃食群圍一圈面向中間跪著啃、全清在中心掉一把武器（一次）；伏擊埋著打不到不擋路、走到中心整圈爬出來；獨行的只有一隻稀有；遊蕩群醒著沿路走；第 2、3 層的模板都抽得到、盾陣的盾槍兵排前面面朝出生點、高台弓手不站在低處", MonsterChecks.check_pack_templates)
 	_check("怪群發現玩家：正面 notice_sight 內、視線沒被牆擋住才發現，背後只有 notice_close 內；附近有打鬥會被吵醒；發現的那隻吼一聲、先停 alert_time 再追，同群其他的照距離依序晚追", MonsterChecks.check_pack_notice)
 	_check("蒙皮小怪（D5 效能）：骷髏戰士 / 弓手 / 腐屍合成一個蒙皮網格（≤ 2 個網格、頂點數與原本零件相同），關節姿勢寫進骨架（含手肘、膝蓋的骨頭）", MonsterChecks.check_skinned_rig)
 	_check("挖墳（D6）：DIG.range 內按住 F 開始事件並挖墳；挖墳中不能移動、跳，照樣轉向，被打不中斷不被擊退；總量 DIG.time × 活著的人數、一起挖速度相加、放手不掉（DIG.decay）、噴怪 +ERUPT.progress；挖完出口打開", EventChecks.check_dig)

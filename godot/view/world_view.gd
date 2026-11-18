@@ -17,6 +17,10 @@ const WEAPON_GLOW_ENERGY := 1.2
 const RARITY_GLOW_RANGE := 3.0     # 魔法 / 稀有怪身上的光（D5）
 const RARITY_GLOW_ENERGY := 1.5
 const GRAVE_SOIL := Color("4a3a2a")          # 挖墳點（D6）
+const CORPSE_BLOOD := Color("3a1414")        # 啃食群中間的冒險者屍體（_create_corpse_prop）
+const CORPSE_CLOTH := Color("4a3f36")
+const CORPSE_SKIN := Color("8a8070")
+const CORPSE_STEEL := Color("7c8088")
 const GRAVE_STONE := Color("6a6d72")
 const BURROW_DIRT := Color("5a4a36")         # 屍甲蟲鑽地時冒的土
 const BURROW_DIRT_EVERY := 4                 # 每幾個模擬步冒一次
@@ -101,6 +105,8 @@ var _los_blocked: Dictionary = {}      # entity id -> 視線被牆擋住（分�
 var _fade_level: Dictionary = {}       # entity id -> 顯示程度 0~1（視野的淡入淡出，view/fade.gd）
 var _anim_pending: Dictionary = {}     # entity id -> 還沒拿去擺姿勢的秒數（敵人動畫每秒最多 60 次）
 var _grave: Node3D = null              # 挖墳點（D6）：外觀照這一層的 EventDefs.exit_style().look
+var _pack_props: Array[Node3D] = []    # 啃食群中間的冒險者屍體（怪群模板 feast），換關重建
+var _pack_props_key := []
 var _grave_look: StringName = &""
 var _hitboxes_shown := false
 var first_seen: Array[String] = []     # 這一幀第一次被畫出來的模型種類（main.gd 的卡頓紀錄取走後清空，v0.36.3）
@@ -372,6 +378,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 				apply_xray(node, node.get_meta(&"xray"), node.get_meta(&"xray_shown"))
 	var t2 := Time.get_ticks_usec()
 	_sync_grave(world)
+	_sync_pack_props(world)
 	_sync_strikes(world, dt)
 	_sync_vision_overlay(me)
 	if is_warming_up():
@@ -1164,6 +1171,56 @@ func _sync_grave(world: World) -> void:
 		if not _grave.has_meta(&"xray_shown") or _grave.get_meta(&"xray_shown") != on:
 			_grave.set_meta(&"xray_shown", on)
 			apply_xray(_grave, XRAY_OBJECT, on)   # 墓碑、土堆；洞與出口的圈貼在地上（XRAY_SKIP）
+
+
+# 啃食群（怪群模板 feast）中間的冒險者屍體：照 world.packs 擺（客戶端本機算的怪群也有模板），換關時重建；是地上的擺設，視野外照樣看得到
+func _sync_pack_props(world: World) -> void:
+	var key := [world.floor_num, world.stage_num, world.packs.size(), world.pack_digest]
+	if key == _pack_props_key:
+		return
+	_pack_props_key = key
+	for n in _pack_props:
+		n.queue_free()
+	_pack_props.clear()
+	for pk: Dictionary in world.packs:
+		if pk.get("template", &"") != &"feast":
+			continue
+		var body := _create_corpse_prop()
+		body.position = Vector3(pk.center.x, world.terrain.ground_at(pk.center), pk.center.y)
+		body.rotation.y = float(pk.ids.size()) * 1.3
+		add_child(body)
+		_pack_props.append(body)
+
+
+# 趴在地上的冒險者：一攤血、身體、頭、兩條腿、掉在旁邊的劍
+func _create_corpse_prop() -> Node3D:
+	var root := Node3D.new()
+	root.name = "FeastCorpse"
+	var pool := MeshInstance3D.new()
+	var disc := CylinderMesh.new()
+	disc.top_radius = 0.9
+	disc.bottom_radius = 0.9
+	disc.height = 0.02
+	disc.radial_segments = 12
+	pool.mesh = disc
+	pool.material_override = _flat_material(CORPSE_BLOOD)
+	pool.position.y = 0.01
+	root.add_child(pool)
+	root.add_child(_box(Vector3(0.45, 0.22, 0.75), Vector3(0.0, 0.12, 0.0), _flat_material(CORPSE_CLOTH)))
+	var head := MeshInstance3D.new()
+	var ball := SphereMesh.new()
+	ball.radius = 0.15
+	ball.height = 0.3
+	head.mesh = ball
+	head.material_override = _flat_material(CORPSE_SKIN)
+	head.position = Vector3(0.05, 0.13, 0.5)
+	root.add_child(head)
+	root.add_child(_box(Vector3(0.14, 0.14, 0.6), Vector3(-0.12, 0.08, -0.62), _flat_material(CORPSE_CLOTH)))
+	root.add_child(_box(Vector3(0.14, 0.14, 0.6), Vector3(0.14, 0.08, -0.6), _flat_material(CORPSE_CLOTH)))
+	var sword := _box(Vector3(0.06, 0.03, 0.9), Vector3(0.65, 0.03, 0.1), _flat_material(CORPSE_STEEL))
+	sword.rotation.y = 0.6
+	root.add_child(sword)
+	return root
 
 
 func _create_grave() -> Node3D:

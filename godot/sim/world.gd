@@ -217,6 +217,8 @@ func _populate_floor() -> void:
 	pack_digest = 0
 	if spawn_packs and map.get("packs", false):
 		spawner.spawn_packs(self, floor_rng(&"packs"))
+		if is_authority:
+			spawner.spawn_wanderers(self, floor_rng(&"wander"))
 	_place_chests(floor_rng(&"chests"))
 
 
@@ -567,6 +569,7 @@ func on_enemy_died(e: Enemy, killer_id: int = 0) -> void:
 	if e.team == &"player":
 		return   # 骷髏僕從（G6）倒下：不算擊殺、不給東西
 	stats.kills += 1
+	_pack_looted(e)
 	var g := 0 if e.no_souls else int(LootDefs.KILL_SOULS.get(e.type, 0))
 	var killer: Entity = entities.get(killer_id)
 	if g > 0 and killer is Player:
@@ -936,14 +939,67 @@ func _update_packs() -> void:
 	for i in packs.size():
 		if packs[i].awake:
 			continue
+		if packs[i].get("ambush", false):
+			_update_ambush(i, c)
+			continue
 		for id: int in packs[i].ids:
 			var e := entities.get(id) as Enemy
-			if e == null or e.is_dead or not e.dormant or (tick + id) % every != 0:
+			if e == null or e.is_dead or (not e.dormant and not e.fsm.is_in(&"wander")) or (tick + id) % every != 0:
 				continue
 			var target := _noticed_by(e, c)
 			if target != null:
 				alert_pack(i, e, target)
 				break
+
+
+# 伏擊（L 第 4 步）：埋著的看不到，玩家走到群中心 ambush_trigger 內（或旁邊 noise_radius 內有打鬥）就整圈爬出來（spawn 狀態），面向那位玩家
+func _update_ambush(i: int, c: Dictionary) -> void:
+	var pk: Dictionary = packs[i]
+	var target: Player = null
+	var r2: float = c.ambush_trigger * c.ambush_trigger
+	for p in player_list:
+		if p.is_targetable() and p.pos.distance_squared_to(pk.center) <= r2:
+			target = p
+			break
+	if target == null:
+		var n2: float = c.noise_radius * c.noise_radius
+		for n: Vector3 in _noise:
+			if pk.center.distance_squared_to(Vector2(n.x, n.y)) <= n2:
+				var first := entities.get(pk.ids[0]) as Enemy
+				target = first.nearest_player() if first != null else null
+				break
+	if target == null:
+		return
+	pk.awake = true
+	for id: int in pk.ids:
+		var e := entities.get(id) as Enemy
+		if e == null or e.is_dead:
+			continue
+		e.lurking = false
+		e.dormant = false
+		e.facing = MathUtil.angle_to(e.pos, target.pos)
+		e.fsm.change(&"spawn")
+	emit_event("pack:alerted", {"pack": i, "entity_id": pk.ids[0], "target_id": target.id, "ambush": true})
+
+
+# 啃食群（模板有 loot）整群死光：在中心掉一把武器（一群只掉一次）
+func _pack_looted(e: Enemy) -> void:
+	if e.pack_id < 0 or e.pack_id >= packs.size():
+		return
+	var pk: Dictionary = packs[e.pack_id]
+	if not pk.get("loot", false) or pk.get("looted", false):
+		return
+	for id: int in pk.ids:
+		var m := entities.get(id) as Enemy
+		if m != null and not m.is_dead:
+			return
+	pk.looted = true
+	var bases := WeaponDropDefs.bases()
+	var base := bases[rng.randi_range(0, bases.size() - 1)]
+	var inst := WeaponDropDefs.make(new_weapon_uid(), base, WeaponDropDefs.roll_rarity(&"minion", rng, team_treasure()), rng)
+	drop_weapon(inst, pk.center)
+	emit_event("weapon:dropped", {"uid": String(inst.uid), "base": String(base), "rarity": String(inst.rarity), "pos": pk.center})
+	emit_event("pack:looted", {"pack": e.pack_id, "pos": pk.center})
 
 
 # 休眠的 e 發現了哪位玩家（看得到的最近那位；被打鬥聲吵醒的找最近的）；沒發現回傳 null

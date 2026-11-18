@@ -29,6 +29,11 @@ var dormant := false:                # 怪群休眠中：站著不動，整群�
 	set(v):
 		dormant = v
 		fixed = v
+var lurking := false                # 伏擊：埋在地底（打不到、不能當目標、不擋路，畫面畫土堆），玩家走進群中心才爬出來
+var wander_route := PackedVector2Array()   # 遊蕩群：來回走的兩點（Spawner.spawn_wanderers）
+var wander_lead := 0                 # 遊蕩群：跟著誰走（0 = 自己帶頭）
+var wander_slot := 0                 # 遊蕩群：排第幾個（跟在帶頭的後面 slot × WANDER.gap）
+var wander_leg := 1                  # 帶頭的這一趟要走到 wander_route 的第幾點
 var idle: StringName = &""          # 休眠時的樣子（只給畫面；Spawner 照怪群模板或 def.idle 輪流給，客戶端本機算的一樣）
 var wave_member := false             # 波次生成的：場上的波次怪都死了才開下一波（怪群不算）
 var action_speed := 1.0              # 狀態機時間的倍率（狂暴詞條 1.4：舉刀、瞄準、收招與冷卻都變快）
@@ -105,6 +110,7 @@ func _init(p_world: World, p_type: StringName, at: Vector2, mul: Dictionary, sta
 	dormant = mul.get("dormant", false)
 	states[&"dormant"] = Dormant.new()
 	states[&"alert"] = Alert.new()
+	states[&"wander"] = Wander.new()
 	states[&"launch"] = Launch.new()
 	fsm = EnemyFsm.new(self, states, mul.get("initial_state", &"dormant" if dormant else &"spawn"))
 	_update_anim()
@@ -157,7 +163,15 @@ func is_launching() -> bool:
 
 # 被鐵鏟拋出飛在空中：飛過其他怪、不被擋下（路上的怪照樣受 path_hit）
 func passes_through() -> bool:
-	return fsm != null and fsm.is_in(&"launch") and fsm.data.has("thrown")
+	return lurking or (fsm != null and fsm.is_in(&"launch") and fsm.data.has("thrown"))
+
+
+func is_targetable() -> bool:
+	return not lurking and super()
+
+
+func is_dodging() -> bool:
+	return lurking or super()
 
 
 # 噴出去（狀態 launch）：seconds 秒後落在 to（同高度的拋物線，最高點 = 重力 × seconds² ÷ 8）
@@ -749,8 +763,8 @@ func shield_blocks(_origin: Vector2, _hit: Dictionary) -> bool:
 
 
 func _on_damaged(_amount: float, _source_id: int) -> void:
-	if pack_id >= 0 and dormant:
-		world.wake_pack(pack_id, self)   # 被打（例如遠距離魔彈）：從這隻開始整群醒來
+	if pack_id >= 0 and pack_id < world.packs.size() and not world.packs[pack_id].awake:
+		world.wake_pack(pack_id, self)   # 被打（例如遠距離魔彈）：從這隻開始整群醒來（遊蕩群也是）
 	if not is_dead and not is_spawning() and not is_launching() and fsm.states.has(&"hurt") and not suppress_stagger:
 		fsm.change(&"hurt")
 
@@ -858,6 +872,34 @@ class Alert:
 			e.facing = MathUtil.turn_towards(e.facing, MathUtil.angle_to(e.pos, t.pos), e.def.get("turn_speed", 6.0) * 2.0 * dt)
 		if fsm.time >= data.delay + data.hold:
 			fsm.change(e.main_state)
+
+
+# 遊蕩群（Spawner.spawn_wanderers）：帶頭的沿 wander_route 來回走（WANDER.speed × 移速），其他的跟在牠後面 slot × gap；
+# 帶頭的死了或不在走了，自己接著走。發現玩家照怪群的規則（World._update_packs）
+class Wander:
+	func update(e: Enemy, dt: float, fsm: StateMachine) -> void:
+		var w: Dictionary = MonsterRarityDefs.WANDER
+		if e.wander_route.size() < 2:
+			e.velocity = Vector2.ZERO
+			return
+		var lead := e.world.entities.get(e.wander_lead) as Enemy if e.wander_lead != 0 else null
+		var goal: Vector2
+		var mul: float = w.speed
+		if lead != null and not lead.is_dead and lead.fsm.is_in(&"wander"):
+			goal = lead.pos - MathUtil.dir_from_angle(lead.facing) * (w.gap * e.wander_slot)
+			if e.pos.distance_squared_to(goal) < 0.3:
+				e.velocity = Vector2.ZERO
+				e.facing = MathUtil.turn_towards(e.facing, lead.facing, e.def.get("turn_speed", 6.0) * dt)
+				return
+			mul *= 1.5   # 落後了走快一點跟上
+		else:
+			goal = e.wander_route[e.wander_leg]
+			if e.pos.distance_squared_to(goal) < 1.0:
+				e.wander_leg = 1 - e.wander_leg
+				return
+		var aim := e.steer_point(goal)
+		e.facing = MathUtil.turn_towards(e.facing, MathUtil.angle_to(e.pos, aim), e.def.get("turn_speed", 6.0) * dt)
+		e.velocity = MathUtil.dir_from_angle(e.facing) * (e.speed * mul)
 
 
 class Spawn:

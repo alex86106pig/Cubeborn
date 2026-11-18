@@ -245,39 +245,201 @@ static func _grid(rng: RandomNumberGenerator, limit: float) -> float:
 
 # layout：每隻生出來的 [id, 種類, x, y, 稀有度, 詞條]（檢查碼用生成的值算，不看場上實體現在的位置：醒了的會走動）
 # 客戶端：這個 id 已經有快照建的鏡像（那群已經醒了）就不再生一隻蓋掉它，但亂數照樣抽（後面的成員才對得上）
-# count：幾隻（0 = 照 PACKS.size 抽）
+# count：幾隻（0 = 照 PACKS.size 抽；模板有 size 的照模板）。先抽模板（MonsterRarityDefs.PACK_TEMPLATES），照模板的 layout 擺
 func _spawn_pack(world: World, center: Vector2, rng: RandomNumberGenerator, layout: Array, count: int = 0) -> void:
 	var c: Dictionary = MonsterRarityDefs.PACKS
+	var tpl := MonsterRarityDefs.roll_pack_template(world.floor_num, rng)
+	var kind: StringName = tpl.get("layout", &"scatter")
+	var lone: bool = tpl.get("lone", false)
 	var pack_id := world.packs.size()
 	var ids: Array[int] = []
 	var placed: Array[Vector2] = []
-	if count <= 0:
+	if tpl.has("size"):
+		count = rng.randi_range(tpl.size[0], tpl.size[1])
+	elif count <= 0:
 		count = rng.randi_range(c.size[0], c.size[1])
+	var front := _toward(center, world.spawn_point)
+	var highs := _high_spots(world, center, rng) if kind == &"high" else ([] as Array[Vector2])
+	var lead: StringName = tpl.members[0][0] if tpl.has("members") else &""
+	var rows := {"front": 0, "back": 0}
 	var capped := {}   # 有 pack_max 的種類這一群已經放了幾個
-	for r in MonsterRarityDefs.roll_pack_rarities(count, rng):
-		var type := EnemyDefs.roll_floor_type(world.floor_num, rng, true, true)
+	for r in MonsterRarityDefs.roll_pack_rarities(count, rng, lone):
+		var type := _roll_member(world, tpl, rng)
 		var cap: int = EnemyDefs.ENEMIES[type].get("pack_max", 0)
 		if cap > 0:
-			if capped.get(type, 0) >= cap:
+			if lone or capped.get(type, 0) >= cap:
 				type = EnemyDefs.ENEMIES[type].pack_fallback
 			else:
 				capped[type] = capped.get(type, 0) + 1
-		var at := _pack_member_spot(world, center, placed, rng, EnemyDefs.ENEMIES[type].radius)
+		var radius: float = EnemyDefs.ENEMIES[type].radius
+		var spot := _layout_spot(world, center, placed, rng, radius, kind, type == lead, front, highs, rows)
+		var at: Vector2 = spot.at
 		placed.append(at)
 		var id := World.pack_entity_id(world.floor_num, world.stage_num, world.pack_member_count() + ids.size())
 		var mirrored := world.entities.has(id)
 		var e := create(world, type, at, spawn_mul(world, type, {"dormant": true})) if mirrored else spawn_at(world, type, at, {"dormant": true}, id)
 		e.pack_id = pack_id
-		e.facing = float(rng.randi_range(0, 4095)) * TAU / 4096.0
+		e.facing = spot.facing if spot.has("facing") else float(rng.randi_range(0, 4095)) * TAU / 4096.0
+		e.lurking = kind == &"buried"
 		var idles: Array = e.def.get("idle", [])
-		if not idles.is_empty():
-			e.idle = idles[id % idles.size()]   # 不抽亂數：客戶端本機的怪群照樣一致
+		e.idle = (tpl.get("idle", {}) as Dictionary).get(type, idles[id % idles.size()] if not idles.is_empty() else &"")   # 不抽亂數
 		roll_rarity(world, e, r, rng)
 		layout.append([id, type, at.x, at.y, e.rarity, e.affixes.duplicate()])
 		if mirrored:
 			e.detach()   # 只是用來抽亂數的暫時實體，沒有加進 World
 		ids.append(id)
-	world.packs.append({"center": center, "ids": ids, "awake": false})
+	world.packs.append({"center": center, "ids": ids, "awake": false, "template": tpl.id, "loot": tpl.get("loot", false), "ambush": kind == &"buried"})
+
+
+# 照模板抽一隻的種類：沒有 members 照這一層的怪物表（含上一層）；有的話第 2 層起照樣約 UPPER_SHARE 換成上一層的
+static func _roll_member(world: World, tpl: Dictionary, rng: RandomNumberGenerator) -> StringName:
+	if not tpl.has("members"):
+		return EnemyDefs.roll_floor_type(world.floor_num, rng, true, true)
+	if world.floor_num > 1 and rng.randf() < EnemyDefs.UPPER_SHARE:
+		return EnemyDefs.roll_floor_type(world.floor_num - 1, rng, false, true)
+	var x := rng.randf()
+	var acc := 0.0
+	var pick: StringName = tpl.members[0][0]
+	for m: Array in tpl.members:
+		pick = m[0]
+		acc += float(m[1])
+		if x < acc:
+			break
+	return pick
+
+
+# 從 a 往 b 最接近的四個方向之一（單位向量的分量只有 0、±1：算得出一樣的位置，不用開根號）
+static func _toward(a: Vector2, b: Vector2) -> Vector2:
+	var d := b - a
+	if absf(d.x) > absf(d.y):
+		return Vector2(signf(d.x), 0.0)
+	return Vector2(0.0, signf(d.y) if d.y != 0.0 else 1.0)
+
+
+# 朝向 from → to（Enemy.facing 的角度，量化到 1 / 4096 圈）；只影響休眠時看哪邊（房主照這個發現玩家，客戶端只拿來畫）
+static func _face(from: Vector2, to: Vector2) -> float:
+	var d := to - from
+	if d.length_squared() < 1e-8:
+		return 0.0
+	return float(roundi(atan2(d.x, d.y) / TAU * 4096.0)) * TAU / 4096.0
+
+
+# 照模板擺一隻：回傳 { at, facing? }（沒有 facing = 隨機）
+func _layout_spot(world: World, center: Vector2, placed: Array[Vector2], rng: RandomNumberGenerator, radius: float, kind: StringName,
+		is_lead: bool, front: Vector2, highs: Array[Vector2], rows: Dictionary) -> Dictionary:
+	var c: Dictionary = MonsterRarityDefs.PACKS
+	match kind:
+		&"ring_in", &"buried":   # 圍一圈面向中間（啃食群圍著屍體、伏擊埋在玩家走進來的四周）
+			var ring: Array = c.feast_ring if kind == &"ring_in" else c.ambush_ring
+			var at := _ring_spot(world, center, placed, rng, radius, ring[0], ring[1])
+			return {"at": at, "facing": _face(at, center)}
+		&"high":   # 弓手站高處、其他散開，都面朝外
+			if is_lead:
+				for h in highs:
+					if not placed.any(func(q: Vector2) -> bool: return q.distance_squared_to(h) < c.member_gap * c.member_gap):
+						return {"at": h, "facing": _face(center, h)}
+			var at := _pack_member_spot(world, center, placed, rng, radius)
+			return {"at": at, "facing": _face(center, at)}
+		&"line":   # 第一種排在前面（往出生點那邊 1.5）面朝出生點，其他排在後面；每排從中間往兩邊 1.5 一個。
+			# 被擋住就試同一排的下一個位置、再往中間縮一半，都放不下才照一般散開
+			var row := "front" if is_lead else "back"
+			var depth := 1.5 if is_lead else -1.0
+			var facing := atan2(front.x, front.y)
+			for d: float in [depth, depth * 0.5]:
+				for tries in 4:
+					var k: int = rows[row]
+					rows[row] = k + 1
+					var side := float((k + 1) / 2) * 1.5 * (1.0 if k % 2 == 1 else -1.0)
+					var at := center + front * d + Vector2(-front.y, front.x) * side
+					if _spot_ok(world, center, placed, at, radius):
+						return {"at": at, "facing": facing}
+				rows[row] = 0
+			return {"at": _pack_member_spot(world, center, placed, rng, radius), "facing": facing}
+	return {"at": _pack_member_spot(world, center, placed, rng, radius)}
+
+
+# 離 center r0~r1 的一圈裡（正方形裡抽、不在圈裡重抽）；找不到放寬到 r0 的一半再找，還是沒有才照一般散開
+func _ring_spot(world: World, center: Vector2, placed: Array[Vector2], rng: RandomNumberGenerator, radius: float, r0: float, r1: float) -> Vector2:
+	for inner: float in [r0, r0 * 0.5]:
+		for attempt in 24:
+			var off := Vector2(_grid(rng, r1), _grid(rng, r1))
+			var d2 := off.length_squared()
+			if d2 < inner * inner or d2 > r1 * r1:
+				continue
+			if _spot_ok(world, center, placed, center + off, radius):
+				return center + off
+	return _pack_member_spot(world, center, placed, rng, radius)
+
+
+static func _spot_ok(world: World, center: Vector2, placed: Array[Vector2], at: Vector2, radius: float) -> bool:
+	var gap2: float = MonsterRarityDefs.PACKS.member_gap * MonsterRarityDefs.PACKS.member_gap
+	if not world.nav.is_walkable(at) or not world.nav.same_region(at, center) or not world.terrain.clear_at(at, radius):
+		return false
+	return not placed.any(func(q: Vector2) -> bool: return q.distance_squared_to(at) < gap2)
+
+
+# 高台弓手：群中心 high_search 內不比中心低、走得到的格點，高的排前面（同高照抽到的順序）：有石台先站石台，
+# 沒有就站跟中心一樣高的地方（不會站到下面去）
+func _high_spots(world: World, center: Vector2, rng: RandomNumberGenerator) -> Array[Vector2]:
+	var c: Dictionary = MonsterRarityDefs.PACKS
+	var base := world.terrain.ground_at(center)
+	var out: Array[Vector2] = []
+	for attempt in 24:
+		var at := center + Vector2(_grid(rng, c.high_search), _grid(rng, c.high_search))
+		if world.terrain.ground_at(at) >= base and _spot_ok(world, center, out, at, 0.5):
+			out.append(at)
+	out.sort_custom(func(a: Vector2, b: Vector2) -> bool: return world.terrain.ground_at(a) > world.terrain.ground_at(b))
+	return out
+
+
+# 遊蕩群（L 第 4 步，只在房主）：WANDER.count 群，每群 size 隻沿兩點來回走（醒著、照快照同步，不在客戶端本機生）。
+# 加在 world.packs 最後面（客戶端的 packs 只有本機生的那幾群，快照的醒來位元多出來的不看）；亂數用這一層自己的 floor_rng(&"wander")
+func spawn_wanderers(world: World, rng: RandomNumberGenerator) -> void:
+	var w: Dictionary = MonsterRarityDefs.WANDER
+	for g in w.count:
+		var route := _wander_route(world, rng)
+		if route.is_empty():
+			continue
+		var pack_id := world.packs.size()
+		var ids: Array[int] = []
+		var lead_id := 0
+		for i in rng.randi_range(w.size[0], w.size[1]):
+			var type := EnemyDefs.roll_floor_type(world.floor_num, rng, false, false)
+			if type == &"beetle":   # 屍甲蟲平常鑽在地底，不會在地上排隊走
+				type = &"spider"
+			var at := world.nav.nearest_walkable(route[0] - _toward(route[0], route[1]) * (w.gap * i))
+			var e := spawn_at(world, type, at, {"initial_state": &"wander"})
+			e.pack_id = pack_id
+			e.wander_route = route
+			e.wander_lead = lead_id
+			e.wander_slot = i
+			e.facing = _face(route[0], route[1])
+			if i == 0:
+				lead_id = e.id
+			ids.append(e.id)
+		world.packs.append({"center": route[0], "ids": ids, "awake": false, "template": &"wander", "loot": false, "ambush": false, "wander": true})
+
+
+# 遊蕩的兩點：都走得到出生點、離出生點至少 PACKS.min_spawn_distance、離每個怪群中心至少 spread + 3、兩點相距 route
+static func _wander_route(world: World, rng: RandomNumberGenerator) -> PackedVector2Array:
+	var w: Dictionary = MonsterRarityDefs.WANDER
+	var lim: Vector2 = world.half_extents - Vector2(4, 4)
+	var gap2: float = MonsterRarityDefs.PACKS.min_spawn_distance * MonsterRarityDefs.PACKS.min_spawn_distance
+	var pack_gap: float = MonsterRarityDefs.PACKS.spread + 3.0
+	var pack2 := pack_gap * pack_gap
+	for attempt in w.attempts:
+		var a := Vector2(_grid(rng, lim.x), _grid(rng, lim.y))
+		var b := Vector2(_grid(rng, lim.x), _grid(rng, lim.y))
+		var d2 := a.distance_squared_to(b)
+		if d2 < w.route[0] * w.route[0] or d2 > w.route[1] * w.route[1]:
+			continue
+		if a.distance_squared_to(world.spawn_point) < gap2 or b.distance_squared_to(world.spawn_point) < gap2:
+			continue
+		if world.packs.any(func(pk: Dictionary) -> bool: return pk.center.distance_squared_to(a) < pack2 or pk.center.distance_squared_to(b) < pack2):
+			continue   # 兩端離休眠的怪群遠一點：休眠的怪固定不動，起點貼著會被卡住
+		if world.nav.is_walkable(a) and world.nav.is_walkable(b) and world.nav.same_region(a, world.spawn_point) and world.nav.same_region(b, world.spawn_point):
+			return PackedVector2Array([a, b])
+	return PackedVector2Array()
 
 
 # 群中心 spread 內（正方形裡抽、超出圓就重抽）、可走、身體不碰到牆（不然房主每步會把它推出牆、跟客戶端本機的位置不同）、
