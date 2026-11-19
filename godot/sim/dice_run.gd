@@ -216,6 +216,13 @@ func on_alert(world: World, ids: Array) -> void:
 		_open_fight(world)
 
 
+# 打到一半生出來的怪（World.add_enemy：召喚詞條、蟲巢、孵蛋、Boss 叫手下…）：生在霧牆圈內的也算這一場的怪（要打死才選獎勵、被霧牆關在圈內）
+# 休眠的不算（地圖預放的怪群生出來就是休眠的，被吵醒才走 on_alert）
+func on_enemy_added(e: Enemy) -> void:
+	if not mirror and phase == FIGHT and e.team != &"player" and not e.dormant and in_arena(e.pos) and not foes.has(e.id):
+		foes.append(e.id)
+
+
 func _raise_tier(e: Enemy) -> void:
 	if e.is_boss():
 		tier = &"boss"

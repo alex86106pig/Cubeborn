@@ -1268,12 +1268,12 @@ static func check_dice_pending_alert() -> String:
 	var p := _player(w)
 	p.hp = 99999.0
 	var a := _spawn(w, &"grunt", p.pos + Vector2(4, 0))
+	var b := _elite(w, p.pos + Vector2(-5, 0))   # 隔壁群：地圖預放的（開打前就在、睡著）
+	b.dormant = true
+	var bi := _lone_pack(w, b)
 	w.alert_pack(_lone_pack(w, a), a, p)   # 一般群：直接開打
 	if w.dice.phase != DiceRun.FIGHT:
 		return "一般群應直接開打：%s" % w.dice.phase
-	var b := _elite(w, p.pos + Vector2(-5, 0))
-	b.dormant = true
-	var bi := _lone_pack(w, b)
 	a.die()
 	_run(w, _cmd(Vector2.ZERO), 1)
 	if w.dice.phase != DiceRun.REWARD:
@@ -1286,3 +1286,106 @@ static func check_dice_pending_alert() -> String:
 	if w.dice.phase != DiceRun.ROLL or not w.dice.foes.has(b.id) or w.dice.arena_radius <= 0.0:
 		return "選完獎勵應馬上開那一場（菁英先擲骰、有霧牆）：%s、foes %s、霧牆 %.1f" % [w.dice.phase, w.dice.foes, w.dice.arena_radius]
 	return ""
+
+
+# 召喚詞條叫出來的手下也算這一場的怪（試玩發現：把召喚者那群打死就跳獎勵，叫出來的還活著在打人）：
+# 叫出來的進 foes、被霧牆關在圈內；召喚者死了手下還在就繼續打，手下也死光才選獎勵
+static func check_dice_summoned() -> String:
+	var w := _dice_world()
+	var p := _player(w)
+	p.hp = 99999.0
+	var a := _spawn(w, &"grunt", p.pos + Vector2(4, 0))
+	a.set_rarity(&"magic", [&"summoner"])
+	a._summon_timer = 0.5
+	w.alert_pack(_lone_pack(w, a), a, p)
+	for i in ceili(60.0 / DT):   # 菁英：先擲骰（時間到自動擲、自動完成）、倒數，才開打
+		if w.dice.phase == DiceRun.FIGHT:
+			break
+		_run(w, _cmd(Vector2.ZERO), 1)
+	if w.dice.phase != DiceRun.FIGHT:
+		return "菁英群擲完骰應開打：%s" % w.dice.phase
+	var minions: Array[Enemy] = []
+	for i in ceili(10.0 / DT):
+		for e in w.enemies:
+			if e is Enemy and (e as Enemy).summoner_id == a.id and not e.is_dead and not minions.has(e):
+				minions.append(e as Enemy)
+		if not minions.is_empty():
+			break
+		_run(w, _cmd(Vector2.ZERO), 1)
+	if minions.is_empty():
+		return "召喚詞條 10 秒內應叫出手下"
+	for m in minions:
+		if not w.dice.foes.has(m.id):
+			return "叫出來的手下應算這一場的怪（foes %s 沒有 %d）" % [w.dice.foes, m.id]
+	a.die()
+	_run(w, _cmd(Vector2.ZERO), 1)
+	if w.dice.phase != DiceRun.FIGHT:
+		return "召喚者死了、手下還活著應繼續打：%s" % w.dice.phase
+	for e in w.enemies:
+		if e is Enemy and (e as Enemy).summoner_id == a.id and not e.is_dead:
+			(e as Enemy).die()
+	_run(w, _cmd(Vector2.ZERO), 1)
+	if w.dice.phase != DiceRun.REWARD:
+		return "手下也死光應選獎勵：%s" % w.dice.phase
+	return ""
+
+
+# 骰盤在戰場旁時面板上的按鈕點得到（試玩發現：骰完畫面上的按鈕點不了，只能按 Enter——放開滑鼠被轉給骰盤吃掉，按鈕放開才觸發）：
+# 經過 Viewport 送「按下、放開」：按在按鈕上的兩下都不給骰盤（傳得到後面，GUI 才收得到）；按在骰盤上照樣蓄力
+# headless 沒有視窗、GUI 不收滑鼠，所以看「有沒有被吃掉」：_ClickSpy 擺在根節點第一個（_input 照樹倒著叫，排在面板後面），
+# 面板吃掉的它就收不到；按鈕真的觸發靠網頁版試玩
+class _ClickSpy extends Node:
+	var got: Array = []
+
+	func _input(e: InputEvent) -> void:
+		if e is InputEventMouseButton:
+			got.append(e.pressed)
+
+
+static func check_dice_panel_clicks() -> String:
+	var w := _dice_world()
+	var p := _player(w)
+	var e := _elite(w, p.pos + Vector2(6, 0))
+	w.alert_pack(_lone_pack(w, e), e, p)
+	var cam := Camera3D.new()
+	_scene_root().add_child(cam)
+	cam.make_current()
+	var hud: Variant = load("res://ui/hud.tscn").instantiate()
+	hud.setup(w, cam)
+	_scene_root().add_child(hud)
+	var holder := Node3D.new()
+	_scene_root().add_child(holder)
+	var spy := _ClickSpy.new()
+	_scene_root().add_child(spy)
+	_scene_root().move_child(spy, 0)
+	var dp: DicePanel = hud.dice_panel
+	dp.physics = true
+	dp.use_world_table(holder, cam, Vector3(1, 0, 0), 0.0)
+	var vp := dp.get_viewport()
+	var err := ""
+	for f in 3:
+		dp.refresh(w, p, 0.05)
+		await (Engine.get_main_loop() as SceneTree).process_frame
+	dp.table.can_throw = true
+	dp.table.cup_mode = false
+	if w.dice.phase != DiceRun.ROLL or not dp._btn_method.visible or dp._btn_method.disabled:
+		err = "應在擲骰、擲法按鈕看得到也能按：%s、%s、%s" % [w.dice.phase, dp._btn_method.visible, dp._btn_method.disabled]
+	else:
+		var at: Vector2 = dp._btn_method.get_global_rect().get_center()
+		vp.push_input(_mouse_button(at, true), true)
+		vp.push_input(_mouse_button(at, false), true)
+		if spy.got != [true, false] or dp.table.charging:
+			err = "按在擲法按鈕上的按下、放開應都不給骰盤（傳到後面 %s、骰盤蓄力 %s）" % [spy.got, dp.table.charging]
+	if err == "":   # 按在骰盤上（不是按鈕）：照樣轉給骰盤蓄力
+		spy.got.clear()
+		cam.look_at_from_position(dp.table.center() + Vector3(0, 12, 10), dp.table.center())
+		var tray: Vector2 = cam.unproject_position(dp.table.center())
+		vp.push_input(_mouse_button(tray, true), true)
+		if not dp.table.charging or not spy.got.is_empty():
+			err = "按在骰盤上應給骰盤蓄力（滑鼠在 %s、蓄力 %s、漏到後面 %s）" % [tray, dp.table.charging, spy.got]
+		vp.push_input(_mouse_button(tray, false), true)
+	spy.queue_free()
+	hud.queue_free()
+	holder.queue_free()
+	cam.queue_free()
+	return err

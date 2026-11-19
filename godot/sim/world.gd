@@ -558,6 +558,8 @@ func add_enemy(e: Enemy, p_id: int = 0) -> Enemy:
 		allies.append(e)
 	if e.is_boss():
 		boss_id = e.id
+	if dice != null:
+		dice.on_enemy_added(e)   # 骰子模式：打到一半生在霧牆內的也算這一場
 	return e
 
 

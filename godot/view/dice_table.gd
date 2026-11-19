@@ -546,6 +546,14 @@ func _keep_in_cup() -> void:
 			d.position = _cup.position + Vector3(flat.x, y, flat.y)
 
 
+# 開場預熱（DicePanel.warm_up）：桌子、骰子、骰盅都露出來畫幾幀，第一次擲骰才不會當場編譯著色器
+# （網頁版實測：沒預熱時第一次打開骰盤卡 79 ms，第二次 0）
+func warm_up(on: bool) -> void:
+	_root.visible = on
+	_cup.visible = on
+	_cup.position = Vector3(PLAY.x / 4.0, 0, 0) if on else Vector3(0, -20, 0)
+
+
 func _hide_cup() -> void:
 	_cup.collision_layer = 0
 	_cup.visible = false

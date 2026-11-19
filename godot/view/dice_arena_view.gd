@@ -25,6 +25,7 @@ void fragment() {
 """
 
 var strength := 0.0   # 現在的濃度（0~1，檢查讀）
+var warming := false  # 開場預熱中：霧擺在鏡頭前露出來（WorldView.warm_up），不照 World.dice
 var _mesh := MeshInstance3D.new()
 var _mat := ShaderMaterial.new()
 var _tags: Array[Label3D] = []
@@ -55,6 +56,8 @@ func _init() -> void:
 func sync(world: World, dt: float, me: Player = null) -> void:
 	var dice := world.dice if world != null else null
 	_sync_tags(world, dice, me)
+	if warming:
+		return
 	var on := dice != null and dice.arena_radius > 0.0
 	if on:
 		_mesh.position = Vector3(dice.arena_center.x, HEIGHT / 2.0 - 0.2, dice.arena_center.y)
@@ -76,6 +79,21 @@ func visible_tags() -> int:
 
 func fog_circle() -> Vector3:
 	return Vector3(_mesh.position.x, _mesh.scale.x, _mesh.position.z)
+
+
+# 開場預熱：霧在 center 圍一小圈露出來畫幾幀（第一次開打才不會當場編譯霧的著色器）；end_warm_up 收掉
+func warm_up(center: Vector3) -> void:
+	warming = true
+	_mesh.position = center + Vector3(0, HEIGHT / 2.0 - 0.2, 0)
+	_mesh.scale = Vector3(4.0, 1.0, 4.0)
+	_mesh.visible = true
+	_mat.set_shader_parameter(&"strength", 1.0)
+
+
+func end_warm_up() -> void:
+	warming = false
+	clear()
+	_mat.set_shader_parameter(&"strength", 0.0)
 
 
 func clear() -> void:

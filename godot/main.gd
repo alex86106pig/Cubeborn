@@ -127,6 +127,11 @@ func _ready() -> void:
 	restart()
 	# 開場預熱（v0.37.0）：每種模型、剪影、特效、會出現的中文字先在鏡頭前畫幾幀，避免第一次出現時卡一下
 	world_view.warm_up(_player_view_position(1.0))
+	var warm_weapon: StringName = world.player_list[0].weapon_id if not world.player_list.is_empty() else &"swordShield"
+	var warm_faces: Array = []
+	for i in DiceDefs.DICE_COUNT:
+		warm_faces.append(DiceDefs.weapon_die(warm_weapon))
+	hud.dice_panel.warm_up(_player_view_position(1.0), warm_faces, warm_weapon)   # 骰盤、骰子、骰盅（設定頁可以隨時切骰子模式，一律預熱）
 	hud.set_loading(true)
 	_warming = true
 	# 自動驗證（--seconds、--host、--join）直接開局；--menu-flow 照玩家的操作順序從主選單走（v0.39.0）
@@ -820,6 +825,7 @@ func _process(delta: float) -> void:
 	if _warming and not world_view.is_warming_up():
 		_warming = false
 		hud.set_loading(false)
+		hud.dice_panel.end_warm_up()
 		if perf != null:
 			perf.mark("warm_done")
 	if perf != null:

@@ -960,6 +960,7 @@ func warm_up(center: Vector3) -> void:
 	_warm_left = WARM_FRAMES
 	_warm_center = center
 	effects.warm_up(center)
+	dice_arena.warm_up(center)   # 骰子模式的霧牆（設定頁可以隨時切模式，一律預熱）
 	for e in ents:
 		e.detach()   # 直接 new 出來、沒加進 tw 的（寶箱、遺物、僕從…）tw.clear() 不會處理：狀態機和實體互相參照，不切斷會洩漏
 	tw.clear()
@@ -983,6 +984,7 @@ func _tick_warm_up() -> void:
 			node.queue_free()
 		_warm_nodes.clear()
 		_warm_lights.clear()
+		dice_arena.end_warm_up()
 
 
 func _keep_materials(node: Node) -> void:

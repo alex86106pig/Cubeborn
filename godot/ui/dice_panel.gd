@@ -80,6 +80,8 @@ var _charges := 0                 # 本機玩家的擲骰次數（逛地圖 / �
 var _can_roll := false            # 本機玩家活著（死掉時 R 留給重新開始）
 # 物理擲骰（DiceTable）：main.gd 開 physics；擲法看設定頁 dice_cup（骰盅 / 蓄力條，即時切換）
 var physics := false
+var _gui_press := false          # 這一下左鍵按在面板的控制項上（放開也不轉給骰盤）
+var _warming := false            # 開場預熱中：骰盤露出來（warm_up / end_warm_up）
 var settings: SettingsPanel
 var table := DiceTable.new()
 var _charge_bg := UiKit.rect(Color(1, 1, 1, 0.12), Vector2(420, 14))
@@ -242,6 +244,23 @@ func use_world_table(parent: Node3D, cam: Camera3D, right: Vector3, yaw: float) 
 	_roll_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
 
 
+# 開場預熱（main.gd 跟 WorldView.warm_up 一起）：骰盤擺到 center 露出來、骰面畫上 faces（字也先產生），預熱完收起來
+func warm_up(center: Vector3, faces: Array, weapon_id: StringName) -> void:
+	if not world_table:
+		return
+	_warming = true
+	table.set_faces(faces, weapon_id)
+	table.set_origin(Transform3D(Basis(Vector3.UP, tray_yaw), center))
+	table.warm_up(true)
+
+
+func end_warm_up() -> void:
+	if not _warming:
+		return
+	_warming = false
+	table.warm_up(false)
+
+
 # 骰盤擺哪：有霧牆就在圈外，沒有（逛地圖花次數擲）就在擲的人旁邊；轉成正對鏡頭
 # 圍著中心試幾個方向與距離（右邊優先），挑桌子底下障礙（牆、柵欄、墓碑）、地圖外、高低不平最少的；每台照同樣的地形算，擺的位置一樣
 func tray_transform(world: World, dice: DiceRun, p: Player) -> Transform3D:
@@ -299,14 +318,36 @@ func camera_focus() -> Variant:
 	return table.center() - Vector3.UP.cross(tray_right) * DiceDefs.TRAY_SCREEN_UP   # 鏡頭對準骰盤下面一點：骰盤在畫面偏上，下方留給擲骰的字與按鈕
 
 
-# 放進遊戲世界時：滑鼠事件轉給骰盤（按在按鈕上的不轉）
+# 放進遊戲世界時：滑鼠事件轉給骰盤。按在面板上點得到的東西（按鈕、下排骰子、技能候選）的不轉，那一下的放開也不轉
+# （按鈕放開才觸發：只放過按下、放開被骰盤吃掉，按鈕就點不了）
 func _input(event: InputEvent) -> void:
 	if not world_table or not visible or phase != DiceRun.ROLL or not (event is InputEventMouse):
+		_gui_press = false
 		return
-	if event is InputEventMouseButton and event.pressed and get_viewport().gui_get_hovered_control() is BaseButton:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			_gui_press = _control_at(self, event.position)
+		elif _gui_press:
+			_gui_press = false
+			return
+	if _gui_press:
 		return
 	if table.world_input(event):
 		get_viewport().set_input_as_handled()
+
+
+# at 落在 node 底下看得到、收滑鼠的控制項上（擲骰時整片底圖不收滑鼠，落在空的地方 = 指著骰盤）
+# 照座標找、不看 hover：滑鼠沒先移過去就按下時 hover 還是舊的
+func _control_at(node: Node, at: Vector2) -> bool:
+	for c in node.get_children():
+		var ctl := c as Control
+		if ctl == null or not ctl.visible:
+			continue
+		if ctl != _overlay and ctl.mouse_filter != Control.MOUSE_FILTER_IGNORE and ctl.get_global_rect().has_point(at):
+			return true
+		if _control_at(ctl, at):
+			return true
+	return false
 
 
 # 每幀（HUD._process）：照 world.dice 與本機玩家的 Seat 畫
@@ -337,7 +378,7 @@ func refresh(world: World, me: Player, dt: float) -> void:
 		var on_tray := rolling or phase == DiceRun.COUNTDOWN
 		_dim.visible = not on_tray
 		_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE if on_tray else Control.MOUSE_FILTER_STOP
-		table.set_shown(on_tray)
+		table.set_shown(on_tray or _warming)
 	_roll_box.visible = rolling or phase == DiceRun.COUNTDOWN
 	_reward_box.visible = rewarding and not carving
 	_carve_box.visible = carving
