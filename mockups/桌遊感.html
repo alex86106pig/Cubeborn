@@ -1,0 +1,284 @@
+<title>桌遊感三選一</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap">
+<style>
+  /* 版面：手機單欄，三張方案卡依改動量由小到大往下排，最後一張對照表與建議。單一主題：夜裡的木桌 */
+  :root {
+    color-scheme: dark;
+    --table: #1f1813;      /* 桌面（頁面底） */
+    --card: #2c231b;       /* 方案卡 */
+    --ink: #f3eadb;        /* 主要文字 */
+    --sub: #b8aa95;        /* 次要文字 */
+    --gold: #e9b949;       /* 強調：目前階段、選項 */
+    --felt: #2f4c3a;       /* 骰盤絨布 */
+    --wood: #7a5434;
+    --line: #4a3a2b;
+    --font: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  }
+  body { background: var(--table); color: var(--ink); font-family: var(--font); font-size: 15px; line-height: 1.65; }
+  .wrap { max-width: 760px; margin: 0 auto; padding-block: 20px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 18px; }
+  h1 { font-size: 23px; font-weight: 900; margin: 0; text-wrap: balance; letter-spacing: .02em; }
+  .lead { color: var(--sub); margin: 6px 0 0; }
+  .lead b { color: var(--ink); }
+  nav { display: flex; gap: 8px; flex-wrap: wrap; }
+  nav a { color: var(--ink); text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-size: 14px; background: var(--card); }
+  nav a:focus-visible, a:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .base { border: 1px dashed var(--line); border-radius: 12px; padding: 12px 14px; color: var(--sub); font-size: 14px; }
+  .base b { color: var(--ink); }
+  .opt { background: var(--card); border-radius: 14px; padding: 14px; display: grid; gap: 10px; scroll-margin-top: 12px; }
+  .head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .num { font-weight: 900; font-size: 26px; color: var(--gold); line-height: 1; }
+  .opt h2 { font-size: 19px; margin: 0; font-weight: 700; text-wrap: balance; flex: 1 1 200px; min-width: 0; }
+  .cost { font-size: 12px; letter-spacing: .08em; border-radius: 999px; padding: 2px 10px; border: 1px solid currentColor; white-space: nowrap; }
+  .cost.s { color: #8fc28a; } .cost.m { color: #e3b35a; } .cost.l { color: #e07a5f; }
+  .tag { color: var(--sub); margin: 0; font-size: 14px; }
+  svg.pic { width: 100%; height: auto; display: block; border-radius: 10px; background: #3a2b1e; }
+  .loop { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; margin: 0; padding: 0; list-style: none; }
+  .loop li { background: #3a2e23; border-radius: 6px; padding: 2px 8px; }
+  .loop li + li::before { content: "→"; color: var(--sub); margin-right: 6px; margin-left: -2px; }
+  .loop li.new { background: #4d3b17; color: var(--gold); }
+  dl { margin: 0; display: grid; gap: 6px; font-size: 14px; }
+  dl div { display: grid; grid-template-columns: 4.6em 1fr; gap: 8px; }
+  dt { color: var(--sub); }
+  dd { margin: 0; min-width: 0; }
+  .cmp { overflow-x: auto; background: var(--card); border-radius: 14px; }
+  table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: 14px; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  th { color: var(--sub); font-weight: 500; }
+  thead th { color: var(--gold); font-weight: 700; }
+  tbody tr:last-child th, tbody tr:last-child td { border-bottom: 0; }
+  .dots { letter-spacing: 2px; color: var(--gold); white-space: nowrap; }
+  .rec { border-left: 3px solid var(--gold); padding: 4px 0 4px 12px; }
+  .rec p { margin: 0 0 6px; }
+  .fine { color: var(--sub); font-size: 13px; margin: 0; }
+  @keyframes flip { 0%, 30% { transform: translateY(0) scaleY(1); } 55% { transform: translateY(-14px) scaleY(.15); } 80%, 100% { transform: translateY(0) scaleY(1); } }
+  @keyframes pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+  @keyframes hop { 0%, 70%, 100% { transform: translateY(0); } 80% { transform: translateY(-6px); } }
+  .flipping { transform-box: fill-box; transform-origin: center; animation: flip 2.6s ease-in-out infinite; }
+  .pulse { animation: pulse 1.4s ease-in-out infinite; }
+  .hop { animation: hop 2s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .flipping, .pulse, .hop { animation: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>桌遊感：三種做法，改動由小到大</h1>
+    <p class="lead">現在比較像動作遊戲，旁邊多了一個擲骰小遊戲。桌遊感通常來自三件事：<b>看得出現在輪到什麼</b>、<b>桌上有實體配件</b>、<b>地圖像棋盤，一步一步走</b>。下面三種做法分別做到第 1、2、3 層，後面的做法包含前面的。</p>
+  </header>
+
+  <nav aria-label="跳到方案">
+    <a href="#opt1">1 桌邊配件</a><a href="#opt2">2 翻格地圖</a><a href="#opt3">3 節點棋盤</a><a href="#compare">對照</a>
+  </nav>
+
+  <p class="base"><b>三種都不變的：</b>每一場都擲骰、即時戰鬥、骰盤在戰場旁、角色怪物的底座、併群後一關約 2~3 場。圖是示意，顏色和細節不代表最後的樣子。</p>
+
+  <!-- 方案 1 -->
+  <section class="opt" id="opt1">
+    <div class="head"><span class="num">1</span><h2>桌邊配件：地圖不動，加階段條與卡片籌碼</h2><span class="cost s">改動小</span></div>
+    <p class="tag">走法照現在。畫面上方一條階段條，棋子跟著流程往前走；血量是紅籌碼，技能是攤在桌邊的卡；怪群上方插一張遭遇卡。</p>
+    <svg class="pic" viewBox="0 0 400 260" role="img" aria-label="方案 1 示意：上方階段條、地圖上的小模型、左下角色卡與血量籌碼、右下技能卡">
+      <rect width="400" height="260" fill="#3a2b1e"/>
+      <polygon points="30,130 200,52 370,130 200,206" fill="#8a6a4a"/>
+      <polygon points="30,130 200,206 200,216 30,140" fill="#5c4430"/>
+      <polygon points="200,206 370,130 370,140 200,216" fill="#4a3624"/>
+      <ellipse cx="205" cy="130" rx="98" ry="46" fill="none" stroke="#dfe5ee" stroke-width="2" stroke-dasharray="5 5" opacity=".45"/>
+      <!-- 怪 -->
+      <g>
+        <ellipse cx="226" cy="112" rx="11" ry="4" fill="#4b3322"/><rect x="221" y="94" width="10" height="18" rx="2" fill="#7f8e4c"/>
+        <ellipse cx="252" cy="124" rx="11" ry="4" fill="#4b3322"/><rect x="247" y="106" width="10" height="18" rx="2" fill="#7f8e4c"/>
+        <ellipse cx="240" cy="98" rx="13" ry="5" fill="#4b3322"/><rect x="234" y="74" width="12" height="24" rx="2" fill="#a24b3c"/>
+        <!-- 遭遇卡 -->
+        <rect x="262" y="62" width="44" height="28" rx="3" fill="#efe4cc" stroke="#7a5a38"/>
+        <text x="284" y="74" font-size="9" text-anchor="middle" fill="#3a2a1a" font-weight="700">菁英</text>
+        <text x="284" y="85" font-size="8" text-anchor="middle" fill="#6b4a2a">×3</text>
+        <line x1="270" y1="90" x2="256" y2="100" stroke="#7a5a38"/>
+      </g>
+      <!-- 主角 -->
+      <ellipse cx="170" cy="146" rx="13" ry="5" fill="#4b3322"/><rect x="164" y="122" width="12" height="24" rx="2" fill="#dcdcdc"/>
+      <!-- 骰盤 -->
+      <g transform="translate(300,160)"><ellipse cx="40" cy="22" rx="44" ry="18" fill="#7a5434"/><ellipse cx="40" cy="19" rx="37" ry="13" fill="#2f4c3a"/>
+        <rect x="24" y="12" width="10" height="10" rx="2" fill="#f4efe3"/><rect x="40" y="16" width="10" height="10" rx="2" fill="#ffd45a"/></g>
+      <!-- 階段條 -->
+      <rect x="16" y="10" width="368" height="28" rx="14" fill="#241a12" stroke="#7a5434"/>
+      <line x1="58" y1="24" x2="342" y2="24" stroke="#5a4532" stroke-width="2"/>
+      <g font-size="10" text-anchor="middle" fill="#b8aa95">
+        <circle cx="58" cy="24" r="4" fill="#5a4532"/><text x="58" y="49">帶隊</text>
+        <circle cx="129" cy="24" r="4" fill="#5a4532"/><text x="129" y="49">擲骰</text>
+        <circle cx="200" cy="24" r="9" fill="#e9b949"/><text x="200" y="49" fill="#e9b949" font-weight="700">開打</text>
+        <circle cx="271" cy="24" r="4" fill="#5a4532"/><text x="271" y="49">清場</text>
+        <circle cx="342" cy="24" r="4" fill="#5a4532"/><text x="342" y="49">獎勵</text>
+      </g>
+      <text x="200" y="28" font-size="9" text-anchor="middle" fill="#241a12" font-weight="900">2</text>
+      <!-- 角色卡 + 籌碼 -->
+      <g transform="translate(12,182)">
+        <rect width="96" height="68" rx="5" fill="#efe4cc" stroke="#7a5a38" stroke-width="2"/>
+        <text x="48" y="16" font-size="11" text-anchor="middle" fill="#3a2a1a" font-weight="700">劍盾</text>
+        <g stroke="#6a1f1f" stroke-width=".8">
+          <ellipse cx="22" cy="52" rx="10" ry="4" fill="#c23b3b"/><ellipse cx="22" cy="47" rx="10" ry="4" fill="#c23b3b"/><ellipse cx="22" cy="42" rx="10" ry="4" fill="#c23b3b"/><ellipse cx="22" cy="37" rx="10" ry="4" fill="#c23b3b"/>
+          <ellipse cx="46" cy="52" rx="10" ry="4" fill="#c23b3b"/><ellipse cx="46" cy="47" rx="10" ry="4" fill="#c23b3b"/>
+        </g>
+        <ellipse cx="72" cy="52" rx="10" ry="4" fill="#3f7fc0" stroke="#1d3e60" stroke-width=".8"/>
+        <text x="72" y="40" font-size="8" text-anchor="middle" fill="#3a2a1a">護盾</text>
+      </g>
+      <!-- 技能卡 -->
+      <g font-size="9" text-anchor="middle" font-weight="700" fill="#3a2a1a">
+        <g transform="translate(150,196) rotate(-10)"><rect width="46" height="60" rx="4" fill="#efe4cc" stroke="#7a5a38"/><text x="23" y="16">普攻</text><text x="23" y="40" font-size="8" fill="#6b4a2a">×0.5</text></g>
+        <g transform="translate(196,190)"><rect width="46" height="60" rx="4" fill="#fff3cf" stroke="#e9b949" stroke-width="2"/><text x="23" y="16">旋風斬</text><text x="23" y="40" font-size="8" fill="#6b4a2a">×2</text></g>
+        <g transform="translate(246,192) rotate(9)"><rect width="46" height="60" rx="4" fill="#efe4cc" stroke="#7a5a38"/><text x="23" y="16">盾擊</text><text x="23" y="40" font-size="8" fill="#6b4a2a">×1</text></g>
+      </g>
+      <g transform="translate(318,214)"><rect width="66" height="22" rx="4" fill="#5b3f8f"/><text x="33" y="15" font-size="10" text-anchor="middle" fill="#efe4ff">重擲券 ×2</text></g>
+    </svg>
+    <ul class="loop" aria-label="一輪"><li>帶隊走</li><li>碰到怪</li><li>擲骰</li><li>3、2、1</li><li>開打</li><li>清場</li><li>獎勵</li></ul>
+    <dl>
+      <div><dt>多了什麼</dt><dd>每一刻都看得到「現在第幾場、到哪一步」；血量、技能、重擲券變成看得見的東西，不只是數字。</dd></div>
+      <div><dt>沒解決</dt><dd>走地圖那段還是動作遊戲；隊友跟在隊長後面時沒事做。</dd></div>
+      <div><dt>要改</dt><dd>介面（階段條、角色卡、籌碼、技能卡）與怪群頭上的遭遇卡。地圖與規則不動。就是美術第 3 步。</dd></div>
+    </dl>
+  </section>
+
+  <!-- 方案 2 -->
+  <section class="opt" id="opt2">
+    <div class="head"><span class="num">2</span><h2>翻格地圖：地圖蓋著，走過去才翻開</h2><span class="cost m">改動中</span></div>
+    <p class="tag">一關切成方格，一開始全部蓋著（卡背）。隊長走進相鄰的格子，那格像放地圖塊一樣翻起來落下，才看到裡面是怪、寶箱還是門。翻到怪就擲骰開打。</p>
+    <svg class="pic" viewBox="0 0 400 260" role="img" aria-label="方案 2 示意：蓋著的方格地圖，隊伍旁邊一格正在翻開">
+      <rect width="400" height="260" fill="#3a2b1e"/>
+      <g id="tiles"></g>
+      <text x="200" y="250" font-size="11" text-anchor="middle" fill="#e9b949">翻到怪 → 擲骰 → 開打</text>
+    </svg>
+    <ul class="loop" aria-label="一輪"><li>帶隊走</li><li class="new">選一格翻開</li><li class="new">是怪？</li><li>擲骰</li><li>開打</li><li>清場</li><li>獎勵</li></ul>
+    <dl>
+      <div><dt>多了什麼</dt><dd>「翻開一格」是一個個小決定，有開寶箱的期待；地圖一塊塊拼出來，很像桌上擺地圖塊。</dd></div>
+      <div><dt>沒解決</dt><dd>格子之間還是即時走路；隊友一樣跟著走，翻哪格是隊長決定。</dd></div>
+      <div><dt>要改</dt><dd>地圖生成要對齊方格、每格放一種內容；蓋著的格子要擋視線；翻格的動畫與音效；怪群改成放在格子裡（取代現在的併群）。包含方案 1 的配件。</dd></div>
+    </dl>
+  </section>
+
+  <!-- 方案 3 -->
+  <section class="opt" id="opt3">
+    <div class="head"><span class="num">3</span><h2>節點棋盤：一關是一張路線圖，一步一格</h2><span class="cost l">改動大</span></div>
+    <p class="tag">一關是桌上一張有分岔的路線圖，隊伍是一顆棋子。每一步大家投票往哪走，走到格子才觸發：戰鬥格就把那一格放大成戰場、即時開打；其他格是寶箱、事件、營火。最上面是門。</p>
+    <svg class="pic" viewBox="0 0 400 260" role="img" aria-label="方案 3 示意：分岔的路線圖，棋子在第二格，兩條路有隊友投票，右邊示意戰鬥格放大成戰場">
+      <rect width="400" height="260" fill="#3a2b1e"/>
+      <rect x="14" y="10" width="262" height="240" rx="8" fill="#d9c7a0" stroke="#7a5434" stroke-width="3"/>
+      <g stroke="#7a5a38" stroke-width="2" stroke-dasharray="4 4" fill="none">
+        <path d="M145 222 L95 177"/><path d="M145 222 L195 177"/>
+        <path d="M95 177 L70 132"/><path d="M95 177 L145 132"/><path d="M195 177 L145 132"/><path d="M195 177 L220 132"/>
+        <path d="M70 132 L110 87"/><path d="M145 132 L110 87"/><path d="M145 132 L190 87"/><path d="M220 132 L190 87"/>
+        <path d="M110 87 L145 40"/><path d="M190 87 L145 40"/>
+      </g>
+      <path d="M145 222 L95 177" stroke="#a24b3c" stroke-width="4" fill="none"/>
+      <g font-size="12" font-weight="900" text-anchor="middle">
+        <circle cx="145" cy="222" r="13" fill="#b8a27a" stroke="#7a5434" stroke-width="2"/><text x="145" y="226" fill="#5a4330">起</text>
+        <circle cx="95" cy="177" r="13" fill="#b8a27a" stroke="#7a5434" stroke-width="2"/><text x="95" y="181" fill="#5a4330">戰</text>
+        <circle cx="195" cy="177" r="13" fill="#f3e3b5" stroke="#7a5434" stroke-width="2"/><text x="195" y="181" fill="#7a5434">寶</text>
+        <circle cx="70" cy="132" r="13" fill="#f3e3b5" stroke="#7a5434" stroke-width="2"/><text x="70" y="136" fill="#4b6a8a">？</text>
+        <circle cx="145" cy="132" r="13" fill="#f3e3b5" stroke="#7a5434" stroke-width="2"/><text x="145" y="136" fill="#a24b3c">戰</text>
+        <circle cx="220" cy="132" r="13" fill="#f3e3b5" stroke="#7a5434" stroke-width="2"/><text x="220" y="136" fill="#6b2a6b">菁</text>
+        <circle cx="110" cy="87" r="13" fill="#f3e3b5" stroke="#7a5434" stroke-width="2"/><text x="110" y="91" fill="#c26a1f">營</text>
+        <circle cx="190" cy="87" r="13" fill="#f3e3b5" stroke="#7a5434" stroke-width="2"/><text x="190" y="91" fill="#a24b3c">戰</text>
+        <rect x="128" y="24" width="34" height="30" rx="4" fill="#5a4330" stroke="#e9b949" stroke-width="2"/><text x="145" y="44" fill="#e9b949">門</text>
+      </g>
+      <!-- 可選的兩格 -->
+      <circle class="pulse" cx="70" cy="132" r="18" fill="none" stroke="#e9b949" stroke-width="2.5"/>
+      <circle class="pulse" cx="145" cy="132" r="18" fill="none" stroke="#e9b949" stroke-width="2.5"/>
+      <!-- 投票 -->
+      <circle cx="52" cy="118" r="4" fill="#4fa3e0"/>
+      <circle cx="163" cy="118" r="4" fill="#e05a4f"/><circle cx="171" cy="124" r="4" fill="#5ac46a"/>
+      <!-- 棋子 -->
+      <g class="hop"><ellipse cx="95" cy="168" rx="9" ry="3.5" fill="#3a2a1a"/><path d="M89 168 L95 148 L101 168 Z" fill="#e05a4f"/><circle cx="95" cy="147" r="5" fill="#e05a4f"/></g>
+      <!-- 放大成戰場 -->
+      <path d="M160 132 C 230 150, 250 170, 290 176" stroke="#e9b949" stroke-width="1.5" fill="none" stroke-dasharray="3 3"/>
+      <g transform="translate(284,120)">
+        <rect width="106" height="122" rx="8" fill="#2c231b" stroke="#e9b949"/>
+        <polygon points="8,62 53,40 98,62 53,84" fill="#8a6a4a"/>
+        <ellipse cx="53" cy="62" rx="30" ry="14" fill="none" stroke="#dfe5ee" stroke-dasharray="3 3" opacity=".5"/>
+        <ellipse cx="40" cy="68" rx="6" ry="2.5" fill="#4b3322"/><rect x="37" y="56" width="6" height="12" rx="1" fill="#dcdcdc"/>
+        <ellipse cx="62" cy="56" rx="6" ry="2.5" fill="#4b3322"/><rect x="59" y="45" width="6" height="11" rx="1" fill="#7f8e4c"/>
+        <ellipse cx="72" cy="64" rx="6" ry="2.5" fill="#4b3322"/><rect x="69" y="53" width="6" height="11" rx="1" fill="#7f8e4c"/>
+        <text x="53" y="20" font-size="10" text-anchor="middle" fill="#e9b949" font-weight="700">走到「戰」</text>
+        <text x="53" y="102" font-size="9" text-anchor="middle" fill="#f3eadb">放大成戰場</text>
+        <text x="53" y="114" font-size="9" text-anchor="middle" fill="#b8aa95">擲骰後即時開打</text>
+      </g>
+    </svg>
+    <ul class="loop" aria-label="一輪"><li class="new">全隊投票選路</li><li class="new">棋子走一格</li><li class="new">翻開格子</li><li>擲骰</li><li>開打</li><li>清場</li><li>獎勵</li></ul>
+    <dl>
+      <div><dt>多了什麼</dt><dd>最像桌遊：每一步都是全隊的決定，路線上看得到前面有菁英還是營火，可以規劃；沒有空走的時間，每一格都有事。</dd></div>
+      <div><dt>失去</dt><dd>自由走地圖、在地圖上撿東西的探索感；三層墓園的大地圖變成一格一格的小戰場。</dd></div>
+      <div><dt>要改</dt><dd>關卡生成改成路線圖加每格的小戰場；投票的連線操作；營火、事件等新格子的內容；現在的帶隊、併群、霧牆大多換掉。包含方案 1 的配件。</dd></div>
+    </dl>
+  </section>
+
+  <section class="cmp" id="compare" aria-label="三種做法對照">
+    <table>
+      <thead><tr><th></th><th>1 桌邊配件</th><th>2 翻格地圖</th><th>3 節點棋盤</th></tr></thead>
+      <tbody>
+        <tr><th>桌遊感</th><td class="dots">●○○</td><td class="dots">●●○</td><td class="dots">●●●</td></tr>
+        <tr><th>保留動作探索</th><td class="dots">●●●</td><td class="dots">●●○</td><td class="dots">●○○</td></tr>
+        <tr><th>隊友有事做</th><td>跟著走</td><td>跟著走</td><td>每步投票</td></tr>
+        <tr><th>空走時間</th><td>跟現在一樣</td><td>少一點</td><td>幾乎沒有</td></tr>
+        <tr><th>改動</th><td>介面</td><td>地圖生成 + 介面</td><td>關卡結構、連線 + 介面</td></tr>
+        <tr><th>改壞了能退</th><td>容易</td><td>中等</td><td>難，等於換玩法</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="rec">
+    <p><b>Claude 建議：先做 1，再用原型試 3。</b></p>
+    <p>1 是另外兩種都要的底，改動小，也能直接解決「看不出現在在幹嘛」。「沒有組合在一起」的另一半，是隊長帶隊之後走地圖變成空檔，隊友沒事做。2 解決不了這點，3 可以。但 3 等於換玩法，建議先另外做一個原型（只做一關的路線圖），你們玩過再決定要不要換掉現在的地圖。</p>
+    <p class="fine">選定後這頁會刪掉（git 歷史留著）。</p>
+  </section>
+</div>
+
+<script>
+  // 方案 2 的方格：等角投影 5×5，隊伍附近幾格已翻開，一格正在翻
+  (function () {
+    var g = document.getElementById('tiles');
+    if (!g) return;
+    var NS = 'http://www.w3.org/2000/svg';
+    var W = 34, H = 17, OX = 200, OY = 46;
+    var open = { '3,4': 'grass', '4,4': 'grass', '4,3': 'chest', '2,4': 'grass', '3,3': 'grass' };
+    var flipping = '2,3';
+    function el(tag, attrs, parent) {
+      var e = document.createElementNS(NS, tag);
+      for (var k in attrs) e.setAttribute(k, attrs[k]);
+      (parent || g).appendChild(e);
+      return e;
+    }
+    function diamond(cx, cy, s) {
+      s = s || 1;
+      return [cx, cy - H * s, cx + W * s, cy, cx, cy + H * s, cx - W * s, cy].join(',');
+    }
+    for (var j = 0; j < 5; j++) for (var i = 0; i < 5; i++) {
+      var cx = OX + (i - j) * W, cy = OY + (i + j) * H;
+      var key = i + ',' + j;
+      el('polygon', { points: [cx - W, cy, cx, cy + H, cx, cy + H + 5, cx - W, cy + 5].join(','), fill: '#2a1f15' });
+      el('polygon', { points: [cx, cy + H, cx + W, cy, cx + W, cy + 5, cx, cy + H + 5].join(','), fill: '#21180f' });
+      if (key === flipping) continue;
+      if (open[key]) {
+        el('polygon', { points: diamond(cx, cy, .96), fill: '#8a6a4a', stroke: '#5c4430' });
+        if (open[key] === 'chest') {
+          el('rect', { x: cx - 8, y: cy - 9, width: 16, height: 11, rx: 2, fill: '#c9973c', stroke: '#6b4a20' });
+        }
+      } else {
+        el('polygon', { points: diamond(cx, cy, .96), fill: '#4a2f45', stroke: '#6d4a66' });
+        el('polygon', { points: diamond(cx, cy, .5), fill: 'none', stroke: '#8a6a86', 'stroke-width': 1 });
+      }
+    }
+    // 隊伍（3,4）
+    var px = OX + (3 - 4) * W, py = OY + (3 + 4) * H;
+    el('ellipse', { cx: px - 6, cy: py + 2, rx: 6, ry: 2.5, fill: '#4b3322' });
+    el('rect', { x: px - 10, y: py - 12, width: 8, height: 14, rx: 1.5, fill: '#dcdcdc' });
+    el('ellipse', { cx: px + 8, cy: py + 4, rx: 6, ry: 2.5, fill: '#4b3322' });
+    el('rect', { x: px + 4, y: py - 9, width: 8, height: 13, rx: 1.5, fill: '#e05a4f' });
+    // 正在翻的那格（2,3）：翻開後是怪
+    var fx = OX + (2 - 3) * W, fy = OY + (2 + 3) * H;
+    var tile = el('g', { 'class': 'flipping' });
+    el('polygon', { points: diamond(fx, fy, .96), fill: '#8a6a4a', stroke: '#e9b949', 'stroke-width': 2 }, tile);
+    [[-10, 2, '#7f8e4c'], [6, -3, '#7f8e4c'], [-2, -8, '#a24b3c']].forEach(function (m) {
+      el('ellipse', { cx: fx + m[0] + 3, cy: fy + m[1] + 1, rx: 5, ry: 2, fill: '#4b3322' }, tile);
+      el('rect', { x: fx + m[0], y: fy + m[1] - 11, width: 6, height: 12, rx: 1, fill: m[2] }, tile);
+    });
+    el('text', { x: fx, y: fy - 26, 'font-size': 14, 'font-weight': 900, 'text-anchor': 'middle', fill: '#e9b949' }).textContent = '!';
+    el('text', { x: OX + (4 - 3) * W + 10, y: OY + (4 + 3) * H - 22, 'font-size': 9, 'text-anchor': 'middle', fill: '#f3eadb' }).textContent = '寶箱';
+  })();
+</script>
