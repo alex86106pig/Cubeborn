@@ -330,3 +330,22 @@ static func dice_from_bytes(b: PackedByteArray) -> Array:
 			die.append(_codes[b[i + j]] if b[i + j] < _codes.size() else BLANK)
 		out.append(die)
 	return out
+
+
+# ---------- 戰場霧牆、隊長帶隊、擲骰演出（§55，數字 Claude 暫定）----------
+# 霧牆：開一場時以這一場的怪為中心圍一圈（要圈住這一場的怪與活著的玩家，再留 ARENA_MARGIN），夾在 MIN~MAX；Boss 直接用 MAX
+# 圈裡的玩家與這一場的怪出不去；圈外的怪群打完之前不會發現玩家
+const ARENA_MARGIN := 3.0
+const ARENA_MIN := 9.0
+const ARENA_MAX := 16.0
+# 隊長帶隊：逛地圖時第一位能動的玩家（房主）帶隊，其他人跟在他身後的位置（隊長的座標：x 往右、y 往後）；第 4 位以後往後排
+const FOLLOW_SLOTS: Array[Vector2] = [Vector2(-1.6, 1.4), Vector2(1.6, 1.4), Vector2(0.0, 2.6)]
+const FOLLOW_DEADZONE := 0.45     # 離位置這麼近就站著
+const FOLLOW_TELEPORT := 14.0     # 離隊長的位置這麼遠（卡住、剛換場地）直接搬過去
+# 擲骰演出：只剩最後一顆在滾、而它停在某一面就能湊到 3 個以上同一招時，桌子放慢、鏡頭推近、音樂收小
+const SUSPENSE_SLOW := 0.3        # 放慢到幾倍速
+const SUSPENSE_MAX := 1.6         # 最多放慢這麼多秒（實際時間）
+const SHOW_TICK_GAP := 0.11       # 揭曉時每個中的技能面「叮」一聲的間隔，一聲比一聲高
+const SHOW_TICK_PITCH := 0.12     # 每一聲高多少（音高倍率）
+const SHOW_SHAKE := 0.18          # 中了強化 / 組合的畫面震動（受傷是 0.25）
+const SHOW_SHAKE_BIG := 0.35      # 中了大招以上

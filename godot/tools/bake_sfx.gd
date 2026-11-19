@@ -134,6 +134,20 @@ static func cues() -> Dictionary:
 		"diceClack": func(s: Synth) -> void:
 			s.noise(0, {"dur": 0.035, "vol": 0.3, "type": &"bandpass", "from": 2600, "to": 1800, "q": 2.5})
 			s.tone(0, {"type": &"triangle", "from": 900, "to": 620, "dur": 0.05, "vol": 0.14}),
+		# 揭曉時每個中的技能面「叮」一聲（DicePanel 每聲把音高調高一點）
+		"diceTick": func(s: Synth) -> void:
+			s.tone(0, {"type": &"triangle", "from": 1320, "dur": 0.12, "vol": 0.12})
+			s.tone(0, {"from": 2640, "dur": 0.06, "vol": 0.04}),
+		# 中了（強化以上、組合）：往上爬的琶音
+		"diceWin": func(s: Synth) -> void:
+			var notes := [523, 659, 784, 1047, 1319]
+			for i in notes.size():
+				s.tone(0, {"type": &"triangle", "from": notes[i], "dur": 0.5, "vol": 0.12, "delay": i * 0.07})
+			s.noise(0, {"dur": 0.4, "vol": 0.05, "type": &"highpass", "from": 6000, "to": 4000, "delay": 0.28}),
+		# 差一顆：往下滑的「可惜」
+		"diceMiss": func(s: Synth) -> void:
+			s.tone(0, {"type": &"triangle", "from": 494, "to": 440, "dur": 0.22, "vol": 0.12})
+			s.tone(0, {"type": &"triangle", "from": 415, "to": 330, "dur": 0.4, "vol": 0.12, "delay": 0.2}),
 	}
 
 

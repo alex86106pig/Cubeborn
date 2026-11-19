@@ -30,6 +30,9 @@ var door_pick := false          # 正在選的獎勵是門給的（不是打完�
 var shared := false             # 這一輪獎勵是多人共用的 4 個、暗選（大家都選好才揭曉，撞到同一個就比骰子）
 var contest_seq := 0            # 揭曉過幾次有撞到的（畫面看它變了就跳橫幅）
 var contests: Array = []        # 最近一次揭曉撞到的：[[獎勵標題, {peer_id: 點數}, 拿到的 peer_id], …]
+var arena_center := Vector2.ZERO   # 這一場的霧牆（_make_arena）：圈裡的玩家與這一場的怪出不去、圈外的怪群不會發現玩家
+var arena_radius := 0.0            # 0 = 沒有霧牆（逛地圖）
+var lead_dir := Vector2(0, 1)      # 隊長最近走的方向（隊友排在他身後；隊長站著時沿用）
 var physics := false            # 物理擲骰（main.gd 開：畫面的 DiceTable 丟、停好後用 OP_DICE_FACES 回報朝上的面）；false = 模擬層自己抽（檢查、沒有畫面時）
 var waiting := false            # 物理擲骰：丟出去了、還在等桌子回報（settle 當等待上限，到了就自己抽）
 var charges: Dictionary = {}    # peer_id -> 擲骰次數（不放 Seat：換關時補次數不該先建 Seat，Seat 建立時才照武器生骰子）
@@ -91,6 +94,8 @@ func reset() -> void:
 	shared = false
 	contest_seq = 0
 	contests = []
+	arena_radius = 0.0
+	lead_dir = Vector2(0, 1)
 	charges.clear()
 	states.clear()
 
@@ -169,6 +174,7 @@ func _add_charges(p: Player, n: int) -> void:
 func on_stage_start(world: World) -> void:
 	phase = EXPLORE
 	foes.clear()
+	arena_radius = 0.0
 	back_to = &""
 	resuming = false
 	bonus_rerolls = 0
@@ -213,6 +219,7 @@ func on_alert(world: World, ids: Array) -> void:
 	if not was_explore or foes.is_empty():
 		return
 	fights += 1
+	_make_arena(world)
 	world.emit_event("dice:encounter", {"fight": fights, "foes": foes.size(), "roll": big})
 	if big:
 		_start_roll(world, null)
@@ -347,7 +354,15 @@ func _land(world: World, p: Player, faces: Array) -> void:
 	settle = 0.0 if physics else DiceDefs.SETTLE_TIME
 	timer = DiceDefs.ROLL_TIME
 	var res := DiceDefs.evaluate(s.up_faces(), p.weapon_id, s.choice)
-	world.emit_event("dice:rolled", {"player_id": p.id, "skill": String(res.skill), "count": res.count, "combos": res.combos})
+	world.emit_event("dice:rolled", {"player_id": p.id, "skill": String(res.skill), "count": res.count, "tier_count": res.tier_count, "combos": res.combos})
+	if res.tier_count >= 3 or not res.combos.is_empty():   # 中了：全隊亮起、畫面震動（每台都收到；揭曉的音效與橫幅在 DicePanel）
+		var big: bool = res.tier_count >= DiceDefs.BIG_FROM
+		var ids: Array[int] = []
+		for q in world.player_list:
+			if not q.is_dead:
+				ids.append(q.id)
+		world.emit_event("dice:glow", {"player_id": p.id, "player_ids": ids, "big": big})
+		world.emit_event("camera:shake", {"amount": DiceDefs.SHOW_SHAKE_BIG if big else DiceDefs.SHOW_SHAKE, "duration": 0.45 if big else 0.3})
 
 
 func _finish_turn(world: World, p: Player) -> void:
@@ -369,6 +384,7 @@ func on_enemy_died(world: World, e: Enemy) -> void:
 		if f != null and not f.is_dead and f != e:
 			return
 	foes.clear()
+	arena_radius = 0.0
 	for p in world.player_list:
 		_add_charges(p, DiceDefs.CHARGES_PER_FIGHT)
 	var any := _offer_rewards(world)
@@ -759,7 +775,8 @@ func to_array(world: World, viewer: int) -> Array:
 		if states.has(p.peer_id):   # seat_of：武器換過的話先接好武器骰
 			seats.append(_seat_to_array(p.peer_id, seat_of(p), viewer == 0 or viewer == p.peer_id))
 	return [String(phase), fights, turn, timer, settle, waiting, String(tier), String(back_to), resuming, bonus_rerolls,
-		String(reward_tier), door_pick, charges.duplicate(), seats, shared, contest_seq, contests.duplicate(true)]
+		String(reward_tier), door_pick, charges.duplicate(), seats, shared, contest_seq, contests.duplicate(true),
+		arena_center.x, arena_center.y, arena_radius]
 
 
 func _seat_to_array(peer_id: int, s: Seat, own: bool) -> Array:
@@ -837,6 +854,8 @@ func apply_array(world: World, a: Array) -> void:
 	shared = a[14]
 	contest_seq = a[15]
 	contests = a[16]
+	arena_center = Vector2(a[17], a[18])
+	arena_radius = a[19]
 	var seen := {}
 	for sa: Array in a[13]:
 		var peer_id: int = sa[0]
@@ -892,3 +911,110 @@ func _sync_stats(world: World, p: Player, s: Seat) -> void:
 	_apply_stats(world, p, s.result)
 	for i in s.items.size():
 		_apply_item(p, i, s.items[i])
+
+
+# ---------- 戰場霧牆 ----------
+
+# 開一場：圈住這一場的怪與活著的玩家（再留 ARENA_MARGIN），夾在 ARENA_MIN~MAX；有 Boss 直接 ARENA_MAX
+func _make_arena(world: World) -> void:
+	var c := Vector2.ZERO
+	var n := 0
+	var boss := false
+	for id in foes:
+		var e := world.entities.get(id) as Enemy
+		if e != null and not e.is_dead:
+			c += e.pos
+			n += 1
+			boss = boss or e.is_boss()
+	if n == 0:
+		arena_radius = 0.0
+		return
+	c /= n
+	var r := 0.0
+	for id in foes:
+		var e := world.entities.get(id) as Enemy
+		if e != null and not e.is_dead:
+			r = maxf(r, e.pos.distance_to(c) + e.radius)
+	for p in world.player_list:
+		if can_roll(p):
+			r = maxf(r, p.pos.distance_to(c) + p.radius)
+	arena_center = c
+	arena_radius = DiceDefs.ARENA_MAX if boss else clampf(r + DiceDefs.ARENA_MARGIN, DiceDefs.ARENA_MIN, DiceDefs.ARENA_MAX)
+	world.emit_event("dice:arena", {"x": c.x, "z": c.y, "radius": arena_radius})
+
+
+# 圈外的怪群不會發現玩家（World._update_packs、伏擊）；沒有霧牆時都算在圈裡
+func in_arena(at: Vector2) -> bool:
+	return arena_radius <= 0.0 or at.distance_squared_to(arena_center) <= arena_radius * arena_radius
+
+
+# 每步（World.step 推完地形之後）：玩家與這一場的怪推回圈裡
+func clamp_arena(world: World) -> void:
+	if arena_radius <= 0.0:
+		return
+	for p in world.player_list:
+		if not p.is_dead and not p.descended:
+			clamp_body(p)
+	for id in foes:
+		var e := world.entities.get(id) as Enemy
+		if e != null and not e.is_dead:
+			clamp_body(e)
+
+
+func clamp_body(b: Entity) -> void:
+	if arena_radius <= 0.0:
+		return
+	var off := b.pos - arena_center
+	var lim := maxf(0.0, arena_radius - b.radius)
+	if off.length_squared() > lim * lim:
+		b.pos = arena_center + off.normalized() * lim
+
+
+# ---------- 隊長帶隊 ----------
+
+# 隊長：第一位能動的玩家（房主；房主倒地、死掉就換下一位）
+func leader(world: World) -> Player:
+	for p in world.player_list:
+		if can_roll(p):
+			return p
+	return null
+
+
+# 這位玩家現在是不是跟著隊長走（多人、逛地圖、自己能動、不是隊長）
+func follows(world: World, p: Player) -> bool:
+	return phase == EXPLORE and world.player_list.size() > 1 and can_roll(p) and leader(world) != p
+
+
+# 每步記隊長走的方向（World.step 換指令之前）：隊友排在他身後，隊長站著時沿用上次的
+func note_leader(world: World) -> void:
+	var lead := leader(world)
+	if lead != null and lead.velocity.length_squared() > 0.25:
+		lead_dir = lead.velocity.normalized()
+
+
+# 隊友的指令換成「走到隊長身後的位置」：自己的移動與翻滾不算（攻擊、互動、擲骰照舊）；跑步跟著隊長；離太遠直接搬過去
+func follow_cmd(world: World, p: Player, cmd: InputCmd) -> InputCmd:
+	var lead := leader(world)
+	var out := cmd if cmd != null else InputCmd.new()
+	if lead == null:
+		return out
+	var k := 0
+	for q in world.player_list:
+		if q == p:
+			break
+		if q != lead and can_roll(q):
+			k += 1
+	var slot: Vector2 = DiceDefs.FOLLOW_SLOTS[k % DiceDefs.FOLLOW_SLOTS.size()]
+	slot.y += float(k / DiceDefs.FOLLOW_SLOTS.size()) * DiceDefs.FOLLOW_SLOTS[2].y
+	var right := Vector2(lead_dir.y, -lead_dir.x)
+	var target := lead.pos + right * slot.x - lead_dir * slot.y
+	var d := target - p.pos
+	if d.length() > DiceDefs.FOLLOW_TELEPORT:
+		p.pos = target
+		p.prev_pos = target
+		d = Vector2.ZERO
+	out.move = d.normalized() if d.length() > DiceDefs.FOLLOW_DEADZONE else Vector2.ZERO
+	out.buttons &= ~InputCmd.BTN_ROLL
+	out.buttons &= ~InputCmd.BTN_RUN
+	p.running = lead.running
+	return out

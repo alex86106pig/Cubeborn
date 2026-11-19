@@ -1489,6 +1489,13 @@ static func check_net_dice(feel: Array[String]) -> String:
 	var me := link.client.local_player()
 	if cw.dice == null or not cw.dice.mirror or cw.dice.charges_of(me) != DiceDefs.CHARGES_STAGE:
 		return "客戶端應照快照建骰子模式、擲骰次數 %d：%s" % [DiceDefs.CHARGES_STAGE, "沒有" if cw.dice == null else str(cw.dice.charges_of(me))]
+	# 隊長帶隊：房主往右走、客戶端按反方向也跟在房主身後；客戶端自己的位置照快照（跟房主那邊一樣）
+	for i in 60:
+		var c := _cmd(Vector2(-1, 0))
+		link.step(_cmd(Vector2(1, 0)), c)
+	idle.call(SYNC * 2)
+	if p2.pos.distance_to(p1.pos) > 3.5 or me.pos.distance_to(p2.pos) > 0.05:
+		return "逛地圖時客戶端應跟著房主：離房主 %.2f、本機與房主那邊差 %.3f" % [p2.pos.distance_to(p1.pos), me.pos.distance_to(p2.pos)]
 	# 菁英群發現客戶端的玩家 → 兩邊都進擲骰，輪到房主先擲
 	var e := hw.spawner.spawn_at(hw, &"grunt", p2.pos + Vector2(6, 0))
 	e.set_rarity(&"rare", [])
@@ -1498,6 +1505,8 @@ static func check_net_dice(feel: Array[String]) -> String:
 	idle.call(SYNC)
 	if cw.dice.phase != DiceRun.ROLL or cw.dice.current(cw) == null or cw.dice.current(cw).peer_id != 1:
 		return "菁英群發現玩家後客戶端應看到擲骰、輪到房主：%s" % cw.dice.phase
+	if hw.dice.arena_radius <= 0.0 or not is_equal_approx(cw.dice.arena_radius, hw.dice.arena_radius) or cw.dice.arena_center.distance_to(hw.dice.arena_center) > 0.01:
+		return "客戶端的霧牆應同房主：房主 %.2f、客戶端 %.2f" % [hw.dice.arena_radius, cw.dice.arena_radius]
 	var die: Array = hw.dice.seat_of(p2).pool[0]
 	var skill_at := -1
 	for i in die.size():

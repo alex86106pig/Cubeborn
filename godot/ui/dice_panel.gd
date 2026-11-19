@@ -6,7 +6,7 @@ class_name DicePanel
 extends Control
 
 signal op_requested(op: Array)
-signal sfx(cue: String, gain: float)   # 物理擲骰的撞擊聲（main.gd 接到 Sound.play）
+signal sfx(cue: String, gain: float, pitch: float)   # 撞擊聲、揭曉的叮叮聲與中獎 / 可惜（main.gd 接到 Sound.play）
 
 const DIE_SIZE := 116.0
 const DIE_GAP := 22
@@ -58,9 +58,11 @@ var my_turn := false
 var _seen_seq := -1
 var _spin_t := 99.0               # 這次擲出去後經過幾秒（大於最後一顆停下的時間 = 不在轉）
 var _spinning: Array[bool] = []
-var _was_key := ""
 var _banner_t := 0.0
 var _contest_seen := -1             # 看過的 DiceRun.contest_seq（多人暗選撞到、比骰子：變了就跳橫幅）
+var _show_key := ""                 # 揭曉過的那一次擲（peer|roll_seq）：每次擲完揭曉一次
+var _show_queue: Array = []         # 揭曉的音效排程：[第幾秒, 音效, 音高]
+var _show_t := 0.0
 var _fight_t := 0.0
 var _cand_key := []
 var _offer_key := []
@@ -113,7 +115,7 @@ func _init() -> void:
 		op_requested.emit([InputCmd.OP_DICE_ROLL]))
 	table.settled.connect(func(faces: Array) -> void: op_requested.emit([InputCmd.OP_DICE_FACES] + faces))
 	table.die_clicked.connect(func(i: int) -> void: op_requested.emit([InputCmd.OP_DICE_LOCK, i]))
-	table.clacked.connect(func(g: float) -> void: sfx.emit("diceClack", g))
+	table.clacked.connect(func(g: float) -> void: sfx.emit("diceClack", g, 1.0))
 	var charge_box := CenterContainer.new()
 	charge_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	charge_box.add_child(_charge_bg)
@@ -254,6 +256,7 @@ func refresh(world: World, me: Player, dt: float) -> void:
 			_reward_title.text += "\n大家暗選，撞到同一個就比骰子，輸的隨機拿沒人選的"
 		_show_offers(s, me)
 	_show_contest(world, dice, me)
+	_play_show(dt)
 	_show_count(dice, dt)
 	_show_banner(dt)
 	var waiting_mates := phase == DiceRun.REWARD and dice.shared and _picked and s.carve.is_empty()
@@ -304,7 +307,7 @@ func _show_roll(world: World, dice: DiceRun, p: Player, dt: float) -> void:
 			d.bounce()
 		d.show_face(face, p.weapon_id, s.locked[i] and s.rolled, my_turn and s.rolled and s.rerolls > 0 and phase == DiceRun.ROLL)
 	var res := DiceDefs.evaluate(s.up_faces(), p.weapon_id, s.choice)
-	spinning_any = spinning_any or (physics and dice.waiting)
+	spinning_any = spinning_any or (physics and (dice.waiting or table.replaying or table.state == DiceTable.State.ROLLING))
 	if not s.rolled or spinning_any:
 		_result.text = "" if not s.rolled else "……"
 		_result_sub.text = "同一招骰到越多個越強；效果面全部疊上去；灰色是別的武器的技能，當空白" if not s.rolled else ""
@@ -316,16 +319,10 @@ func _show_roll(world: World, dice: DiceRun, p: Player, dt: float) -> void:
 		_result_sub.text = ("%s　威力 ×%s" % [tier.name, str(tier.mul)] if res.count > 0 else "沒有右鍵技能，只能普攻") + combos_text(res.combos, "　·　")
 		_effects.text = effects_text(res.effects, "　")
 		_set_cands(res.cands if my_turn and res.cands.size() > 1 else [], p)
-		var key := "%d|%s" % [res.tier_count, ",".join(res.combos)]
-		if key != _was_key and s.roll_seq > 0 and (res.tier_count >= 3 or not res.combos.is_empty()):
-			var names: Array[String] = []
-			for c: StringName in res.combos:
-				names.append(DiceDefs.COMBOS[c].name)
-			if res.tier_count >= 3:
-				names.append(tier.name)
-			_banner.text = "%s！" % "＋".join(names)
-			_banner_t = BANNER_TIME
-		_was_key = key
+		var key := "%d|%d" % [p.peer_id, s.roll_seq]
+		if key != _show_key and s.roll_seq > 0:
+			_show_key = key
+			_start_show(world, p, res)
 	var busy := spinning_any or dice.settle > 0.0
 	_btn_roll.visible = not s.rolled
 	_btn_roll.text = "自動丟（R）" if physics else "擲骰（空白鍵）"
@@ -416,6 +413,39 @@ func _show_count(dice: DiceRun, dt: float) -> void:
 		_count.text = "開打！"
 	else:
 		_count.text = ""
+
+
+# 揭曉（每次擲完一次）：每個中的技能面叮一聲、一聲比一聲高；強化以上或中了組合 → 中獎音效 + 橫幅「你擲出 3 個旋風斬！」；
+# 差一顆就強化 → 可惜的音效。畫面震動與全隊亮起是模擬層的事件（dice:glow、camera:shake），每台都會收到
+func _start_show(world: World, p: Player, res: Dictionary) -> void:
+	_show_queue.clear()
+	_show_t = 0.0
+	var t := 0.0
+	for k in res.count:
+		_show_queue.append([t, "diceTick", 1.0 + DiceDefs.SHOW_TICK_PITCH * k])
+		t += DiceDefs.SHOW_TICK_GAP
+	var names: Array[String] = []
+	for c: StringName in res.combos:
+		names.append(DiceDefs.COMBOS[c].name)
+	if res.tier_count >= 3 or not names.is_empty():
+		_show_queue.append([t + 0.05, "diceWin", 1.0])
+		var who := "你" if my_turn else _player_name(world, null, p.peer_id)
+		var head := "%s擲出 %d 個%s！" % [who, res.count, DiceDefs.name_of(res.base)] if res.count >= 3 else "%s擲出%s！" % [who, "＋".join(names)]
+		if res.count >= 3 and not names.is_empty():
+			head += "　%s" % "＋".join(names)
+		_banner.text = head
+		_banner_t = BANNER_TIME
+	elif res.count == 2:
+		_show_queue.append([t + 0.05, "diceMiss", 1.0])
+
+
+func _play_show(dt: float) -> void:
+	if _show_queue.is_empty():
+		return
+	_show_t += dt
+	while not _show_queue.is_empty() and _show_queue[0][0] <= _show_t:
+		var q: Array = _show_queue.pop_front()
+		sfx.emit(q[1], 1.0, q[2])
 
 
 # 多人暗選揭曉、有撞到的：跳橫幅寫誰擲幾點、誰拿到（「比骰子「藍骰」：你 5 · P2 3 → 你拿到」）

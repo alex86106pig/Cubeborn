@@ -848,10 +848,15 @@ func step(cmds: Dictionary, dt: float) -> void:
 	if practice:
 		Practice.apply_cheats(self)
 
+	if dice != null:
+		dice.note_leader(self)
 	for peer_id: int in players:
 		var p: Player = players[peer_id]
-		if cmds.has(peer_id):
-			p.apply_cmd(cmds[peer_id])
+		var cmd: InputCmd = cmds.get(peer_id)
+		if dice != null and dice.follows(self, p):   # 骰子模式多人逛地圖：隊友跟著隊長走（DiceRun.follow_cmd）
+			cmd = dice.follow_cmd(self, p, cmd)
+		if cmd != null:
+			p.apply_cmd(cmd)
 		event_actor = peer_id
 		rewind_tick = p.view_tick if rewind_enabled else 0
 		p.update(dt)
@@ -897,6 +902,8 @@ func step(cmds: Dictionary, dt: float) -> void:
 		b.integrate_vertical(dt, terrain)
 		b.terrain_checked_pos = b.pos
 	_bodies.clear()   # 不留參照，已移除的實體才能立即釋放
+	if dice != null:
+		dice.clamp_arena(self)   # 骰子模式的霧牆：玩家與這一場的怪推回圈裡
 
 	_update_downed(dt)
 	_collect_coins()
@@ -953,7 +960,8 @@ func step_predicted(peer_id: int, cmd: InputCmd, dt: float) -> void:
 	p.prev_pos = p.pos
 	p.prev_facing = p.facing
 	p.prev_height = p.height
-	if dice != null and dice.is_frozen():   # 骰子模式擲骰、倒數、選獎勵時房主那邊玩家不動，本機也不預測（不然會被拉回去）
+	# 骰子模式擲骰、倒數、選獎勵時房主那邊玩家不動；跟著隊長走時位置是房主算的（NetClient 照快照補間）：都不預測
+	if dice != null and (dice.is_frozen() or dice.follows(self, p)):
 		return
 	cooldowns.tick(dt)
 	p.apply_cmd(cmd)
@@ -963,6 +971,8 @@ func step_predicted(peer_id: int, cmd: InputCmd, dt: float) -> void:
 	p.integrate(dt)
 	terrain.push_out(p)
 	SimPhysics.clamp_to_arena(p, half_extents)
+	if dice != null:
+		dice.clamp_body(p)
 	p.integrate_vertical(dt, terrain)
 
 
@@ -984,6 +994,8 @@ func _update_packs() -> void:
 			var e := entities.get(id) as Enemy
 			if e == null or e.is_dead or (not e.dormant and not e.fsm.is_in(&"wander")) or (tick + id) % every != 0:
 				continue
+			if dice != null and not dice.in_arena(e.pos):   # 骰子模式打一場的時候，霧牆外的怪群不會發現玩家
+				continue
 			var target := _noticed_by(e, c)
 			if target != null:
 				alert_pack(i, e, target)
@@ -993,6 +1005,8 @@ func _update_packs() -> void:
 # 伏擊（L 第 4 步）：埋著的看不到，玩家走到群中心 ambush_trigger 內（或旁邊 noise_radius 內有打鬥）就整圈爬出來（spawn 狀態），面向那位玩家
 func _update_ambush(i: int, c: Dictionary) -> void:
 	var pk: Dictionary = packs[i]
+	if dice != null and not dice.in_arena(pk.center):
+		return
 	var target: Player = null
 	var r2: float = c.ambush_trigger * c.ambush_trigger
 	for p in player_list:
@@ -1018,6 +1032,8 @@ func _update_ambush(i: int, c: Dictionary) -> void:
 		e.facing = MathUtil.angle_to(e.pos, target.pos)
 		e.fsm.change(&"spawn")
 	emit_event("pack:alerted", {"pack": i, "entity_id": pk.ids[0], "target_id": target.id, "ambush": true})
+	if dice != null:
+		dice.on_alert(self, pk.ids)   # 骰子模式：伏擊爬出來也開一場
 
 
 # 啃食群（模板有 loot）整群死光：給 PACKS.feast_souls 靈魂（全隊共用，一群只給一次）

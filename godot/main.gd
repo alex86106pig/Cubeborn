@@ -91,7 +91,8 @@ func _ready() -> void:
 	hud.relic_panel.op_requested.connect(input_collector.queue_inventory_op)
 	input_collector.relic_panel = hud.relic_panel
 	hud.dice_panel.op_requested.connect(input_collector.queue_inventory_op)
-	hud.dice_panel.sfx.connect(func(cue: String, gain: float) -> void: sound.play(cue, gain))
+	hud.dice_panel.sfx.connect(func(cue: String, gain: float, pitch: float) -> void: sound.play(cue, gain, 0.0, pitch))
+	hud.dice_panel.table.suspense_changed.connect(sound.duck_music)
 	hud.dice_panel.settings = hud.settings_panel
 	input_collector.dice_panel = hud.dice_panel
 	hud.dice_loadout.op_requested.connect(input_collector.queue_inventory_op)

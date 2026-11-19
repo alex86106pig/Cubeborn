@@ -88,6 +88,7 @@ var _xray_slope := tan(Config.CAMERA.elevation)   # 往相機每走 1 單位，�
 
 var show_hitboxes := false
 var effects := Effects.new()
+var dice_arena := DiceArenaView.new()   # 骰子模式的戰場霧牆
 var _nodes: Dictionary = {}       # entity id -> Node3D
 var _animators: Dictionary = {}   # entity id -> Animator（有骨架的實體）
 var _frozen: Dictionary = {}           # entity id -> 剩餘定格秒數（命中定格）
@@ -130,6 +131,7 @@ var lights_on := true                  # 設定頁「光源」：關掉時新建
 
 func _init() -> void:
 	add_child(effects)   # 建立時就掛上，WorldView 沒進場景樹就被釋放時也會一起釋放
+	add_child(dice_arena)
 	add_child(_vision_overlay)
 	effects.hidden_ids = hidden_ids
 	effects.visible_at = _area_visible
@@ -148,6 +150,7 @@ func clear_views() -> void:
 	_frozen.clear()
 	_fade_level.clear()
 	effects.clear()
+	dice_arena.clear()
 
 
 # 事件由 main.gd 轉過來：特效交給 Effects；重新開始時清掉場上的特效
@@ -432,6 +435,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 	_sync_grave(world)
 	_sync_pack_props(world)
 	_sync_strikes(world, dt)
+	dice_arena.sync(world, dt)
 	_sync_vision_overlay(me)
 	if is_warming_up():
 		_vision_overlay.visible = true

@@ -15,6 +15,7 @@ const SLASH_SEGMENTS := 24
 
 # 會處理的事件 → 處理函式；check.gd 會確認模擬層發出的每個 fx:* 都在這裡
 const HANDLERS := {
+	"dice:glow": &"_on_dice_glow",
 	"entity:damaged": &"_on_damaged",
 	"hit:predicted": &"_on_damaged",   # 客戶端預測自己打中（v0.38.0）：先噴火花，房主的那一下到了就不再噴
 	"entity:died": &"_on_died",
@@ -349,6 +350,21 @@ func _entity(id: int) -> Entity:
 
 static func _entity_at(e: Entity, y_offset: float) -> Vector3:
 	return Vector3(e.pos.x, e.height + y_offset, e.pos.y)
+
+
+# 骰子模式擲中強化以上、組合：全隊腳下一圈金光、身上噴金色光點（大招以上更大）
+const DICE_GLOW := Color("ffd45a")
+
+
+func _on_dice_glow(p: Dictionary) -> void:
+	var big: bool = p.get("big", false)
+	for id: int in p.get("player_ids", []):
+		var e := _entity(id)
+		if e == null:
+			continue
+		var at := _entity_at(e, 0.0)
+		ring(at, 3.2 if big else 2.2, {"color": DICE_GLOW, "life": 0.9 if big else 0.6, "opacity": 0.9})
+		burst(_entity_at(e, 1.0), {"color": DICE_GLOW, "count": 26 if big else 14, "speed": 3.0, "up": 7.0, "gravity": 6.0, "life": 0.9})
 
 
 func _on_damaged(p: Dictionary) -> void:

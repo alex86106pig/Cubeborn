@@ -221,8 +221,10 @@ func _apply_interpolated() -> void:
 		for arr: Array in b[NetCodec.S_ENTITIES]:
 			b_by_id[arr[NetCodec.E_ID]] = arr
 	var me := local_player()
+	# 骰子模式跟著隊長走：自己的位置是房主算的，跟其他實體一樣照快照補間（跟隊長同一個畫面時間，才不會一頓一頓）
+	var me_follow := me != null and world.dice != null and world.dice.follows(world, me)
 	for e: Entity in world.entities.values():
-		if e != me:
+		if e != me or me_follow:
 			e.prev_pos = e.pos
 			e.prev_facing = e.facing
 			e.prev_height = e.height
@@ -236,7 +238,9 @@ func _apply_interpolated() -> void:
 		if NetCodec.is_player_of(arr, peer_id):
 			if e == null:
 				NetCodec.create_entity(world, arr)
-			continue
+				continue
+			if not me_follow:
+				continue
 		if e == null:
 			NetCodec.create_entity(world, arr)
 			continue
@@ -301,6 +305,9 @@ func _reconcile(snap: Array) -> void:
 		while not _pending.is_empty() and _pending[0].tick <= ack:
 			_pending.pop_front()
 	_apply_own_authority(me, a)
+	if world.dice != null and world.dice.follows(world, me):   # 跟著隊長走：位置照快照補間（_apply_interpolated），不修正
+		_history.clear()
+		return
 	if me.is_dead or me.is_downed or me.descended or me.grabbed_by != 0:
 		# 倒地 / 死亡 / 已走進出口 / 被抓住時不預測：位置直接用房主的（可能被怪推動、被隊友用鐵鏟舉著走、換層時搬到出生點）
 		_history.clear()

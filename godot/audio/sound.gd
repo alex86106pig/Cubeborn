@@ -20,7 +20,7 @@ const CUE_NAMES: Array[String] = [
 	"skeletonRaise", "zombieGroan", "houndBark", "houndGrowl", "spearDraw", "beetleDig", "wraithInhale", "bloaterGurgle", "enemyAlert",
 	"bossSlamWindup", "bossSlam", "bossChargeWindup", "bossWallHit", "bossSummon", "enrage", "bossDeath",
 	"waveStart", "bossAppear", "victory", "defeat", "pause", "resume", "restart",
-	"diceClack",
+	"diceClack", "diceTick", "diceWin", "diceMiss",
 ]
 # 同一音效的最短間隔（秒），避免一次打中多隻怪時爆音（同網頁版）
 const MIN_INTERVAL := {"hit": 0.04, "hitHeavy": 0.05, "enemyDeath": 0.06, "enemySpawn": 0.1, "bowDraw": 0.15,
@@ -33,6 +33,7 @@ const CUE_DB := {"fireBolt": -8.0}
 # 發聲位置跟著某個實體的事件（找不到位置就不播，見 event_gain）
 const ENTITY_EVENTS: Array[String] = ["entity:damaged", "hit:predicted", "entity:died", "skill:used", "player:revived"]
 const PREVIEW_CUE := "hit"
+const MUSIC_DUCK_DB := -14.0   # 骰子快湊到大獎時音樂收小多少（duck_music）
 const PREVIEW_INTERVAL := 0.15
 
 # 左右聲道：音效照發聲位置在畫面上偏左還是偏右分到 PAN_STEPS 條匯流排（各掛一個 AudioEffectPanner，都送到 SFX_BUS，音量滑桿照樣管得到）
@@ -94,8 +95,8 @@ func _exit_tree() -> void:
 	stop_all()
 
 
-# gain：距離衰減的音量比例（0~1），0 不播（也不占同一音效的最短間隔）；pan：左右 −1~1（0 = 正中間）
-func play(cue_name: String, gain := 1.0, pan := 0.0) -> void:
+# gain：距離衰減的音量比例（0~1），0 不播（也不占同一音效的最短間隔）；pan：左右 −1~1（0 = 正中間）；pitch：音高倍率（骰子揭曉一聲比一聲高）
+func play(cue_name: String, gain := 1.0, pan := 0.0, pitch := 1.0) -> void:
 	var stream: AudioStream = _streams.get(cue_name)
 	if stream == null or not _sfx.playing or gain <= 0.0:
 		return
@@ -104,7 +105,7 @@ func play(cue_name: String, gain := 1.0, pan := 0.0) -> void:
 		return
 	_last_played[cue_name] = now
 	# 匯流排與混音方式都要明給：不給時網頁版走 Master、交給瀏覽器播，經過 JS 那份順序錯的匯流排（音樂調 0 音效就沒聲音）
-	(_sfx.get_stream_playback() as AudioStreamPlaybackPolyphonic).play_stream(stream, 0.0, cue_db(cue_name, gain), 1.0, AudioServer.PLAYBACK_TYPE_STREAM, pan_bus(pan))
+	(_sfx.get_stream_playback() as AudioStreamPlaybackPolyphonic).play_stream(stream, 0.0, cue_db(cue_name, gain), pitch, AudioServer.PLAYBACK_TYPE_STREAM, pan_bus(pan))
 
 
 ## 設定頁拉音效滑桿時播一聲當回饋（大廳、主選單沒有音效可聽）；回傳這次有沒有播
@@ -311,6 +312,16 @@ func _play_music(track: StringName) -> void:
 		_music.volume_db = SILENT_DB
 		_music.play())
 	_music_tween.tween_property(_music, ^"volume_db", target, fade)
+
+
+# 骰子模式最後一顆快湊到大獎時音樂收小（DiceTable.suspense_changed），停好再放回來
+func duck_music(on: bool) -> void:
+	if _music_track == &"" or not _music.playing:
+		return
+	var target := linear_to_db(Config.AUDIO.master * Config.AUDIO.music / Config.AUDIO.baked_gain) + (MUSIC_DUCK_DB if on else 0.0)
+	_kill_tween()
+	_music_tween = create_tween()
+	_music_tween.tween_property(_music, ^"volume_db", target, 0.25 if on else 0.6)
 
 
 func _fade_music_out() -> void:

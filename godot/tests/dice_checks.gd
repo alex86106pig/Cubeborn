@@ -769,3 +769,238 @@ static func check_dice_shared_reward() -> String:
 	if seen.size() != 2:
 		return "40 輪裡劍盾、法杖的技能骰都應出現過：%s" % [seen.keys()]
 	return ""
+
+
+# 戰場霧牆（§55）：菁英群開打時以牠為中心圍一圈（半徑在 ARENA_MIN~MAX），玩家往外走出不去；霧牆外的怪群就算在旁邊也不會發現玩家，
+# 打完霧牆收掉才會發現；伏擊爬出來也開一場
+static func check_dice_arena() -> String:
+	var w := _dice_world()
+	var p := _player(w)
+	p.hp = 99999.0
+	var e := _elite(w, p.pos + Vector2(6, 0))
+	w.alert_pack(_lone_pack(w, e), e, p)
+	var r: float = w.dice.arena_radius
+	var c: Vector2 = w.dice.arena_center
+	if r < DiceDefs.ARENA_MIN or r > DiceDefs.ARENA_MAX or c.distance_to(e.pos) > 0.01:
+		return "開打應圍出霧牆：半徑 %.1f（%s~%s）、中心離菁英 %.2f" % [r, DiceDefs.ARENA_MIN, DiceDefs.ARENA_MAX, c.distance_to(e.pos)]
+	_run(w, _op_cmd([InputCmd.OP_DICE_ROLL]), 1)
+	_wait(w, DiceDefs.SETTLE_TIME)
+	_run(w, _op_cmd([InputCmd.OP_DICE_DONE]), 1)
+	_wait(w, DiceDefs.COUNTDOWN + 0.1)
+	if w.dice.phase != DiceRun.FIGHT:
+		return "倒數完應開打：%s" % w.dice.phase
+	var out := (p.pos - c).normalized()
+	var o := _spawn(w, &"grunt", c + out * (r + 2.0))
+	o.dormant = true
+	var outer := _lone_pack(w, o)
+	_run(w, _cmd(out, out * 5.0), 180)
+	var lim := r - p.radius + 0.01
+	if p.pos.distance_to(c) > lim:
+		return "玩家應出不了霧牆：離中心 %.2f（上限 %.2f）" % [p.pos.distance_to(c), lim]
+	if w.packs[outer].awake:
+		return "霧牆外的怪群不該發現玩家（離玩家 %.1f）" % o.pos.distance_to(p.pos)
+	e.die()
+	_run(w, _cmd(Vector2.ZERO), 1)
+	var s := w.dice.seat_of(p)
+	_run(w, _op_cmd([InputCmd.OP_DICE_REWARD, _simple_pick(s)]), 1)
+	if not s.carve.is_empty():
+		_run(w, _op_cmd([InputCmd.OP_DICE_CARVE, 0, 5, 0]), 1)
+	if w.dice.phase != DiceRun.EXPLORE or w.dice.arena_radius != 0.0:
+		return "打完應收掉霧牆、回到逛地圖：%s 半徑 %.1f" % [w.dice.phase, w.dice.arena_radius]
+	_wait(w, 1.0)
+	if not w.packs[outer].awake:
+		return "霧牆收掉後，旁邊的怪群應發現玩家（離 %.1f）" % o.pos.distance_to(p.pos)
+	# 伏擊：玩家走到群中心爬出來，也開一場
+	var w2 := _dice_world()
+	var p2 := _player(w2)
+	var a := _spawn(w2, &"grunt", p2.pos + Vector2(2, 0))
+	a.set_rarity(&"rare", [])
+	var ai := _lone_pack(w2, a)
+	w2.packs[ai].ambush = true
+	a.lurking = true
+	a.dormant = true
+	_run(w2, _cmd(Vector2.ZERO), 2)
+	if not w2.packs[ai].awake or w2.dice.phase != DiceRun.ROLL or not w2.dice.foes.has(a.id):
+		return "伏擊爬出來應開一場（菁英先擲骰）：醒 %s、%s" % [w2.packs[ai].awake, w2.dice.phase]
+	return ""
+
+
+# 隊長帶隊（§55）：三人逛地圖，隊長往右走 2 秒，隊友按反方向、按翻滾都不算，跟在隊長身後（不疊在一起）；
+# 離太遠直接搬過去；開打之後隊友自己走
+static func check_dice_follow() -> String:
+	var w := World.new(&"test_arena")
+	w.spawn_packs = false
+	w.dice = DiceRun.new()
+	w.reset(31, [1, 2, 3])
+	w.spawner.finished = true
+	_worlds.append(w)
+	var lead: Player = w.players[1]
+	var f1: Player = w.players[2]
+	var f2: Player = w.players[3]
+	var start := lead.pos
+	var rolled := false
+	for i in 120:
+		w.step({1: _cmd(Vector2(1, 0)), 2: _cmd(Vector2(-1, 0), Vector2(0, 5), InputCmd.BTN_ROLL), 3: _cmd(Vector2(-1, 0))}, DT)
+		rolled = rolled or f1.action.is_in(&"roll")
+	for i in 60:
+		w.step({}, DT)
+	if lead.pos.distance_to(start) < 5.0:
+		return "隊長應自己走：只走了 %.2f" % lead.pos.distance_to(start)
+	if rolled:
+		return "跟著隊長時按翻滾不該翻"
+	for f: Player in [f1, f2]:
+		var d := f.pos - lead.pos
+		if d.length() > 3.5 or d.x > -0.3:
+			return "隊友應跟在隊長身後（往右走 → 在左邊）：差 %s" % d
+	if f1.pos.distance_to(f2.pos) < 1.2:
+		return "兩位隊友不該疊在一起：差 %.2f" % f1.pos.distance_to(f2.pos)
+	lead.pos += Vector2(0, 20)
+	w.step({}, DT)
+	if f1.pos.distance_to(lead.pos) > 4.0:
+		return "離隊長太遠應直接搬過去：差 %.2f" % f1.pos.distance_to(lead.pos)
+	w.dice.phase = DiceRun.FIGHT
+	var at := f1.pos
+	for i in 30:
+		w.step({2: _cmd(Vector2(-1, 0))}, DT)
+	if at.x - f1.pos.x < 1.0:
+		return "開打後隊友應自己走：只走了 %.2f" % (at.x - f1.pos.x)
+	return ""
+
+
+# 擲骰演出（§55）：中了強化以上 → 模擬層發全隊亮起與畫面震動、畫面上全隊腳下有金光；揭曉時每個中的技能面叮一聲、一聲比一聲高，
+# 接著中獎音效與「你擲出 3 個…！」橫幅；差一顆（2 個）是可惜的音效；桌子只剩最後一顆在滾、而它能湊到 3 個時放慢、鏡頭推近、
+# 送 suspense_changed（音樂收小），停了恢復；霧牆畫面跟著模擬層的圈淡入淡出
+static func check_dice_show() -> String:
+	var w := _dice_world()
+	w.dice.physics = true
+	var p := _player(w)
+	var e := _elite(w, p.pos + Vector2(8, 0))
+	w.alert_pack(_lone_pack(w, e), e, p)
+	var s := w.dice.seat_of(p)
+	var die: Array = s.pool[0]
+	var k := die.find(DiceDefs.weapon_die(p.weapon_id)[0])
+	var b := die.find(DiceDefs.BLANK)
+	var events: Array[Dictionary] = []
+	_run_collect(w, _op_cmd([InputCmd.OP_DICE_ROLL]), 1, events)
+	_run_collect(w, _op_cmd([InputCmd.OP_DICE_FACES, k, k, k, b, b, b]), 1, events)
+	var glow := _named(events, "dice:glow")
+	var shake := _named(events, "camera:shake")
+	if glow.size() != 1 or not (glow[0].player_ids as Array).has(p.id) or glow[0].big or shake.size() != 1 or not is_equal_approx(shake[0].amount, DiceDefs.SHOW_SHAKE):
+		return "擲中 3 個應發一次全隊亮起與震動 %.2f：亮 %s、震 %s" % [DiceDefs.SHOW_SHAKE, glow, shake]
+	events.clear()
+	_run_collect(w, _op_cmd([InputCmd.OP_DICE_ROLL]), 1, events)
+	_run_collect(w, _op_cmd([InputCmd.OP_DICE_FACES, k, b, b, b, b, b]), 1, events)
+	if not _named(events, "dice:glow").is_empty() or not _named(events, "camera:shake").is_empty():
+		return "只中 1 個不該亮、不該震"
+	# 畫面：金光（Effects）
+	var fx := Effects.new()
+	_scene_root().add_child(fx)
+	fx.sync(w, 0.0)
+	var before := fx.transient_count()
+	fx.on_event("dice:glow", {"player_ids": [p.id], "big": true})
+	var lit := fx.transient_count() > before and fx.particle_count() > 0
+	fx.queue_free()
+	if not lit:
+		return "全隊亮起應在玩家腳下有金光、身上有光點"
+	# 揭曉的音效與橫幅（不用物理桌的那條路：轉動畫停了才揭曉）
+	var w2 := _dice_world()
+	var p2 := _player(w2)
+	var e2 := _elite(w2, p2.pos + Vector2(8, 0))
+	w2.alert_pack(_lone_pack(w2, e2), e2, p2)
+	var s2 := w2.dice.seat_of(p2)
+	var cam := Camera3D.new()
+	_scene_root().add_child(cam)
+	var hud: Variant = load("res://ui/hud.tscn").instantiate()
+	hud.setup(w2, cam)
+	_scene_root().add_child(hud)
+	var dp: DicePanel = hud.dice_panel
+	var heard: Array = []
+	dp.sfx.connect(func(cue: String, _g: float, pitch: float) -> void: heard.append([cue, pitch]))
+	var err := ""
+	var skill: StringName = DiceDefs.weapon_die(p2.weapon_id)[0]
+	for want: int in [3, 2]:
+		heard.clear()
+		_run(w2, _op_cmd([InputCmd.OP_DICE_ROLL]), 1)
+		var d2: Array = s2.pool[0]
+		for i in DiceDefs.DICE_COUNT:
+			s2.face[i] = d2.find(skill) if i < want else d2.find(DiceDefs.BLANK)
+		for f in 50:
+			dp.refresh(w2, p2, 0.05)
+		var ticks := heard.filter(func(h: Array) -> bool: return h[0] == "diceTick")
+		var rising := ticks.size() == want
+		for i in range(1, ticks.size()):
+			rising = rising and ticks[i][1] > ticks[i - 1][1]
+		var last: String = heard[-1][0] if not heard.is_empty() else ""
+		var end_cue := "diceWin" if want >= 3 else "diceMiss"
+		if not rising or last != end_cue:
+			err = "中 %d 個：應叮 %d 聲一聲比一聲高、最後 %s：聽到 %s" % [want, want, end_cue, heard]
+			break
+		if want >= 3 and not dp._banner.text.begins_with("你擲出 3 個%s" % DiceDefs.name_of(skill)):
+			err = "中 3 個的橫幅應寫「你擲出 3 個%s！」：%s" % [DiceDefs.name_of(skill), dp._banner.text]
+			break
+		_wait(w2, DiceDefs.SETTLE_TIME)
+	hud.queue_free()
+	cam.queue_free()
+	if err != "":
+		return err
+	# 桌子：只剩最後一顆在滾、它能湊到 3 個 → 放慢、鏡頭推近；只有 1 個中的時候不放慢
+	var table := DiceTable.new()
+	_scene_root().add_child(table)
+	var faces: Array = []
+	for i in DiceDefs.DICE_COUNT:
+		faces.append(DiceDefs.weapon_die(&"swordShield"))
+	table.set_faces(faces, &"swordShield")
+	await (Engine.get_main_loop() as SceneTree).physics_frame
+	var sk := (faces[0] as Array).find(DiceDefs.weapon_die(&"swordShield")[0])
+	var bl := (faces[0] as Array).find(DiceDefs.BLANK)
+	var lay := func(up: Array) -> void:
+		for i in DiceDefs.DICE_COUNT:
+			table._rolling[i] = true
+			table._place(table._dice[i], Vector3(-4.0 + i * 1.6, 0.5, 0.0), up[i], false)
+		table._dice[5].position = Vector3(3.0, 1.5, 1.5)
+		table._dice[5].linear_velocity = Vector3(4.0, 0.0, 0.0)
+	lay.call([sk, bl, bl, bl, bl, sk])
+	if table.suspense_candidate() != -1:
+		err = "其他停好的只中 1 個，最後一顆湊不到 3 個，不該放慢"
+	lay.call([sk, sk, bl, bl, bl, bl])
+	var calls: Array = []
+	table.suspense_changed.connect(func(on: bool) -> void: calls.append(on))
+	if err == "" and table.suspense_candidate() != 5:
+		err = "其他停好的中 2 個、最後一顆有那一招：應放慢第 6 顆，得到 %d" % table.suspense_candidate()
+	if err == "":
+		var home: Vector3 = table._camera.position
+		table.state = DiceTable.State.ROLLING
+		table._begin_suspense(5)
+		var space := table._viewport.find_world_3d().space
+		var g: float = PhysicsServer3D.area_get_param(space, PhysicsServer3D.AREA_PARAM_GRAVITY)
+		var v: float = table._dice[5].linear_velocity.length()
+		if not is_equal_approx(g, DiceTable.GRAVITY * DiceDefs.SUSPENSE_SLOW * DiceDefs.SUSPENSE_SLOW) or absf(v - 4.0 * DiceDefs.SUSPENSE_SLOW) > 0.05 or calls != [true]:
+			err = "放慢：重力 %.2f、速度 %.2f（應 %.2f、%.2f）、訊號 %s" % [g, v, DiceTable.GRAVITY * DiceDefs.SUSPENSE_SLOW * DiceDefs.SUSPENSE_SLOW, 4.0 * DiceDefs.SUSPENSE_SLOW, calls]
+		for f in 20:
+			await (Engine.get_main_loop() as SceneTree).physics_frame
+		var near := table._camera.position.distance_to(table._dice[5].position)
+		if err == "" and near >= home.distance_to(table._dice[5].position) - 2.0:
+			err = "放慢時鏡頭應推近那顆：%.1f（原本 %.1f）" % [near, home.distance_to(table._dice[5].position)]
+		table._end_suspense()
+		g = PhysicsServer3D.area_get_param(space, PhysicsServer3D.AREA_PARAM_GRAVITY)
+		if err == "" and (not is_equal_approx(g, DiceTable.GRAVITY) or calls != [true, false]):
+			err = "停了應恢復重力 %.1f、送 suspense_changed(false)：重力 %.2f、訊號 %s" % [DiceTable.GRAVITY, g, calls]
+	table.queue_free()
+	if err != "":
+		return err
+	# 霧牆畫面
+	var view := DiceArenaView.new()
+	_scene_root().add_child(view)
+	w.dice.arena_center = Vector2(3, 4)
+	w.dice.arena_radius = 11.0
+	for f in 40:
+		view.sync(w, 1.0 / 60.0)
+	var shown := view.visible and is_equal_approx(view.strength, 1.0) and is_equal_approx(view.scale.x, 11.0) and view.position.is_equal_approx(Vector3(3, 0, 4))
+	w.dice.arena_radius = 0.0
+	for f in 40:
+		view.sync(w, 1.0 / 60.0)
+	var gone := not view.visible
+	view.queue_free()
+	if not shown or not gone:
+		return "霧牆畫面應照模擬層的圈淡入（濃度 1、半徑 11、中心 (3, 4)）、收掉時淡出：%s %s" % [shown, gone]
+	return ""

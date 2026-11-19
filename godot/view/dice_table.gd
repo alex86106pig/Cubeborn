@@ -14,6 +14,7 @@ signal thrown()                     # 丟出去了（DicePanel 送 OP_DICE_ROLL�
 signal settled(faces: Array)        # 全部停好：每顆朝上的面編號（0~5，保留區的照原本的）；播隊友的錄影不送
 signal die_clicked(index: int)      # 點了桌上 / 保留區的第幾顆（鎖住 / 放回）
 signal clacked(gain: float)         # 骰子撞到東西（音量比例，DicePanel 轉成 diceClack 音效）
+signal suspense_changed(on: bool)   # 最後一顆快湊到大獎：放慢、鏡頭推近（main.gd 把音樂收小）；停好就結束
 signal frames_recorded(data: PackedByteArray)   # 連線：自己擲的錄影，每 REC_CHUNK 幀一段、停好送最後一段（main.gd 交給 NetSession）
 
 enum State { IDLE, AIM, ROLLING, SETTLED }
@@ -83,6 +84,11 @@ var _play: Array = []               # 收到的幀：[骰盅看得到, 撞擊聲
 var _play_t := 0.0                  # 播到第幾幀（有小數 = 兩幀之間）
 var _play_done := -1                # 撞擊聲播到第幾幀
 var _play_final := false            # 最後一段收到了
+var _slow := 1.0                    # 放慢的倍速（演出）：骰子的速度與重力照它縮，物理照樣算，看起來就是慢動作
+var _suspense_die := -1             # 放慢時盯著的那顆（鏡頭推過去）；-1 = 沒在放慢
+var _suspense_t := 0.0              # 放慢了幾秒（實際時間）
+var _cam_home := Transform3D()      # 鏡頭平常的位置
+var _cam_focus := -1                # 鏡頭推近哪一顆（自己放慢、或播隊友錄影裡的）
 
 
 func _init() -> void:
@@ -111,6 +117,7 @@ func _build_scene() -> void:
 	_viewport.add_child(root)
 	_camera.fov = 36.0
 	_camera.look_at_from_position(Vector3(0, 12.0, 8.0), Vector3(0, 0, -0.7))   # 還沒進場景樹：不能用 look_at
+	_cam_home = _camera.transform
 	root.add_child(_camera)
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-58, -30, 0)
@@ -313,6 +320,7 @@ func reset_round() -> void:
 	_kept.fill(false)
 	state = State.IDLE
 	_stop_replay()
+	_end_suspense()
 	_rec_id = 0
 	charging = false
 	_hide_cup()
@@ -418,6 +426,7 @@ func _start_rolling() -> void:
 	_rest_frames = 0
 	_nudges = 0
 	_roll_time = 0.0
+	_suspense_t = 0.0   # 每丟一次最多放慢一次
 	thrown.emit()
 
 
@@ -548,6 +557,7 @@ func _hide_cup() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_update_camera(delta)
 	if replaying:
 		_step_replay(delta)
 		return
@@ -576,7 +586,7 @@ func _step_physics(delta: float) -> void:
 		return
 	if state != State.ROLLING:
 		return
-	_roll_time += delta
+	_roll_time += delta * _slow   # 放慢時照慢動作的時間算（逾時、停好的判斷都一樣）
 	var resting := true
 	for i in _dice.size():
 		if not _rolling[i]:
@@ -584,9 +594,9 @@ func _step_physics(delta: float) -> void:
 		var d := _dice[i]
 		if d.position.y < -3.0:   # 掉出桌子（不該發生）：放回中間
 			_place(d, Vector3(0, 1.5, 0), 0, false)
-		var tumble := Vector2(d.angular_velocity.x, d.angular_velocity.z).length()
-		if not d.sleeping and (d.linear_velocity.length() > REST_LIN or tumble > REST_ANG):
+		if not _die_resting(d, 1.0):
 			resting = false
+	_update_suspense(delta)
 	_rest_frames = _rest_frames + 1 if resting else 0
 	if _rest_frames < REST_FRAMES and _roll_time < SETTLE_TIMEOUT:
 		return
@@ -617,6 +627,7 @@ func _step_physics(delta: float) -> void:
 				var spot := _free_spot(i) if d.position.y > ON_TABLE_Y else d.position
 				_place(d, Vector3(spot.x, 0.5, spot.z), up_face(d), false)
 	state = State.SETTLED
+	_end_suspense()
 	var faces := up_faces()
 	settled.emit(faces)
 
@@ -667,8 +678,8 @@ func _line_up() -> void:
 
 
 # ---------- 連線：錄影與播放 ----------
-# 一段的格式：u32 編號、u8 是不是最後一段、u8 幾幀，接著每幀：u8 骰盅看得到、u8 撞擊聲（0~255）、骰盅位置（3 個 half）、
-# 6 顆各 [位置 3 個 half、轉向四元數 4 個 half]；一幀 92 bytes，30 幀 / 秒約 2.8 KB / 秒
+# 一段的格式：u32 編號、u8 是不是最後一段、u8 幾幀，接著每幀：u8 骰盅看得到、u8 撞擊聲（0~255）、u8 鏡頭盯哪一顆（255 = 沒有）、
+# 骰盅位置（3 個 half）、6 顆各 [位置 3 個 half、轉向四元數 4 個 half]；一幀 93 bytes，30 幀 / 秒約 2.8 KB / 秒
 
 func _begin_record() -> void:
 	if not record_enabled:
@@ -687,6 +698,7 @@ func _record_frame() -> void:
 		return
 	_rec_buf.put_u8(1 if _cup.visible else 0)
 	_rec_buf.put_u8(roundi(clampf(_frame_clack, 0.0, 1.0) * 255.0))
+	_rec_buf.put_u8(_suspense_die if _suspense_die >= 0 else 255)
 	_frame_clack = 0.0
 	_put_vec(_rec_buf, _cup.position)
 	for d in _dice:
@@ -733,12 +745,13 @@ func play_frames(data: PackedByteArray) -> void:
 	for k in n:
 		var cup_seen := b.get_u8() == 1
 		var clack := b.get_u8() / 255.0
+		var focus := b.get_u8()
 		var cup := _get_vec(b)
 		var dice := []
 		for i in _dice.size():
 			var at := _get_vec(b)
 			dice.append([at, Quaternion(b.get_half(), b.get_half(), b.get_half(), b.get_half()).normalized()])
-		_play.append([cup_seen, clack, cup, dice])
+		_play.append([cup_seen, clack, cup, dice, focus if focus < _dice.size() else -1])
 	_play_final = _play_final or final
 	if not replaying and not _play.is_empty() and (_play.size() >= PLAY_LEAD or _play_final):
 		replaying = true
@@ -751,6 +764,8 @@ func play_frames(data: PackedByteArray) -> void:
 
 
 func _stop_replay() -> void:
+	if replaying:
+		_set_focus(-1)
 	replaying = false
 	_play.clear()
 	_play_t = 0.0
@@ -783,8 +798,102 @@ func _step_replay(delta: float) -> void:
 		_play_done += 1
 		if _play[_play_done][1] > 0.0:
 			clacked.emit(_play[_play_done][1])
+	_set_focus(a[4])
 	if _play_t >= last and _play_final:
 		replaying = false
 		replays_done += 1
 		state = State.SETTLED
+		_set_focus(-1)
 		_hide_cup()
+
+
+
+# ---------- 演出：最後一顆放慢、鏡頭推近 ----------
+
+# 停住了嗎（速度照放慢的倍速換回正常速度再比；loose > 1 = 放寬，用來判斷「差不多停了」）
+func _die_resting(d: RigidBody3D, loose: float) -> bool:
+	if d.sleeping:
+		return true
+	var tumble := Vector2(d.angular_velocity.x, d.angular_velocity.z).length() / _slow
+	return d.linear_velocity.length() / _slow <= REST_LIN * loose and tumble <= REST_ANG * loose
+
+
+func _update_suspense(delta: float) -> void:
+	if _suspense_die >= 0:
+		_suspense_t += delta
+		if _suspense_t >= DiceDefs.SUSPENSE_MAX or _die_resting(_dice[_suspense_die], 1.0):
+			_end_suspense()
+		return
+	if _slow == 1.0 and _roll_time > 0.5 and _suspense_t == 0.0:
+		var k := suspense_candidate()
+		if k >= 0:
+			_begin_suspense(k)
+
+
+# 只剩一顆還在滾（其他的差不多停了），而且它停在某一面就能讓同一招湊到 3 個以上：回傳那一顆，否則 -1
+func suspense_candidate() -> int:
+	var moving := -1
+	for i in _dice.size():
+		if _rolling[i] and not _die_resting(_dice[i], 3.0):
+			if moving >= 0:
+				return -1
+			moving = i
+	if moving < 0 or _faces.size() < _dice.size():
+		return -1
+	var counts := {}
+	for i in _dice.size():
+		if i == moving:
+			continue
+		var face: StringName = _faces[i][up_face(_dice[i])]
+		if DiceDefs.skill_fits(face, _weapon_id):
+			counts[face] = counts.get(face, 0) + 1
+	for face: StringName in counts:
+		if counts[face] >= 2 and (_faces[moving] as Array).has(face):
+			return moving
+	return -1
+
+
+func _begin_suspense(k: int) -> void:
+	_suspense_die = k
+	_suspense_t = 0.0
+	_set_slow(DiceDefs.SUSPENSE_SLOW)
+	_set_focus(k)
+
+
+func _end_suspense() -> void:
+	if _suspense_die < 0:
+		return
+	_suspense_die = -1
+	_set_slow(1.0)
+	_set_focus(-1)
+
+
+# 慢動作：速度乘上倍速的比例、重力乘上倍速平方，軌跡跟原本一樣、只是走得慢
+func _set_slow(v: float) -> void:
+	var ratio := v / _slow
+	for i in _dice.size():
+		var d := _dice[i]
+		if _rolling[i] and not d.freeze:
+			d.linear_velocity *= ratio
+			d.angular_velocity *= ratio
+	_slow = v
+	if is_inside_tree():
+		PhysicsServer3D.area_set_param(_viewport.find_world_3d().space, PhysicsServer3D.AREA_PARAM_GRAVITY, GRAVITY * v * v)
+
+
+# 鏡頭盯哪一顆（-1 = 回原位）；換了就送 suspense_changed（播隊友錄影時也送，音樂一起收小）
+func _set_focus(k: int) -> void:
+	if k == _cam_focus:
+		return
+	var was := _cam_focus >= 0
+	_cam_focus = k
+	if was != (k >= 0):
+		suspense_changed.emit(k >= 0)
+
+
+func _update_camera(delta: float) -> void:
+	var want := _cam_home
+	if _cam_focus >= 0 and _cam_focus < _dice.size():
+		var at := _dice[_cam_focus].position
+		want = Transform3D.IDENTITY.translated(at + Vector3(0, 6.5, 4.2)).looking_at(at, Vector3.UP)
+	_camera.transform = _camera.transform.interpolate_with(want, clampf(delta * 5.0, 0.0, 1.0))
