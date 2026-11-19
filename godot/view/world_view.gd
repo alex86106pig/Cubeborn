@@ -1105,8 +1105,44 @@ func _create_view(e: Entity) -> Node3D:
 		root.set_meta(&"xray", color)
 		root.set_meta(&"xray_shown", on)
 		apply_xray(root, color, on)
+	if _world != null and _world.dice != null and (e is Enemy or (e is Player and not (e as Player).is_ghost())):
+		root.add_child(figure_base(e.radius))   # 骰子模式：角色與怪物站在圓木底座上，像桌遊的小模型（美術方案 2）
 	add_child(root)
 	return root
+
+
+# 骰子模式的小模型底座：比身體寬一點的扁圓木片，貼著腳底（模型的原點在腳底）
+const FIGURE_BASE_COLOR := Color("6b4a30")
+const FIGURE_BASE_RIM := Color("3e2a1b")
+static var _base_mat: StandardMaterial3D
+static var _base_rim_mat: StandardMaterial3D
+
+
+static func figure_base(radius: float) -> Node3D:
+	if _base_mat == null:
+		_base_mat = StandardMaterial3D.new()
+		_base_mat.albedo_color = FIGURE_BASE_COLOR
+		_base_mat.roughness = 0.85
+		_base_rim_mat = StandardMaterial3D.new()
+		_base_rim_mat.albedo_color = FIGURE_BASE_RIM
+		_base_rim_mat.roughness = 0.9
+	var base := Node3D.new()
+	base.name = "FigureBase"
+	var r := maxf(0.45, radius * 1.25)
+	for layer: Array in [[r, 0.06, 0.03, _base_rim_mat], [r * 0.92, 0.05, 0.085, _base_mat]]:
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = layer[0]
+		cyl.bottom_radius = layer[0]
+		cyl.height = layer[1]
+		cyl.radial_segments = 24
+		cyl.rings = 1
+		var mi := MeshInstance3D.new()
+		mi.mesh = cyl
+		mi.material_override = layer[3]
+		mi.position.y = layer[2]
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		base.add_child(mi)
+	return base
 
 
 # 剪影顏色：自己藍、隊友（含骷髏僕從）綠、怪物紅；投射物（箭、魔彈）看發射的人；獎勵金色；其他（含之後新增的種類）灰白
