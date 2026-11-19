@@ -1488,7 +1488,7 @@ static func check_net_dice(feel: Array[String]) -> String:
 	var cw := link.client.world
 	var me := link.client.local_player()
 	if cw.dice == null or not cw.dice.mirror or cw.dice.charges_of(me) != DiceDefs.CHARGES_STAGE:
-		return "客戶端應照快照建骰子模式、擲骰次數 %d：%s" % [DiceDefs.CHARGES_STAGE, "沒有" if cw.dice == null else str(cw.dice.charges_of(me))]
+		return "客戶端應照快照建骰子模式、重擲券 %d：%s" % [DiceDefs.CHARGES_STAGE, "沒有" if cw.dice == null else str(cw.dice.charges_of(me))]
 	# 隊長帶隊：房主往右走、客戶端按反方向也跟在房主身後；客戶端自己的位置照快照（跟房主那邊一樣）
 	for i in 60:
 		var c := _cmd(Vector2(-1, 0))
@@ -1559,9 +1559,12 @@ static func check_net_dice(feel: Array[String]) -> String:
 	idle.call(ceili(DiceDefs.COUNTDOWN / DT) + SYNC)
 	if cw.dice.phase != DiceRun.FIGHT:
 		return "倒數完客戶端應看到開打：%s" % cw.dice.phase
-	# 打完：只有自己的獎勵選項送到客戶端
+	# 打完：先清場（客戶端也看到），清場完只有自己的獎勵選項送到客戶端
 	e.die()
 	idle.call(SYNC)
+	if cw.dice.phase != DiceRun.CLEAR:
+		return "打完客戶端應先看到清場：%s" % cw.dice.phase
+	idle.call(ceili(DiceDefs.CLEAR_TIME / DT) + SYNC)
 	var cs_other := cw.dice.seat_of(cw.players[1])
 	if cw.dice.phase != DiceRun.REWARD or cs.offers.size() != DiceDefs.REWARD_CHOICES or not cs_other.offers.is_empty():
 		return "打完客戶端應看到自己的 %d 個獎勵、看不到房主的：%s、自己 %d、房主的 %d" % [DiceDefs.REWARD_CHOICES, cw.dice.phase, cs.offers.size(), cs_other.offers.size()]
@@ -1590,17 +1593,12 @@ static func check_net_dice(feel: Array[String]) -> String:
 	if cw.dice.phase != DiceRun.EXPLORE or cs.loose != hs.loose or cs.items != hs.items or cs.carry != hs.carry or cs.pool != hs.pool \
 			or not is_equal_approx(me.stats.value(&"damage"), p2.stats.value(&"damage")):
 		return "選完獎勵兩邊的骰子、道具、屬性應一致：%s、備用骰 %d / %d、道具 %s / %s" % [cw.dice.phase, hs.loose.size(), cs.loose.size(), hs.items, cs.items]
-	# 逛地圖按 R：花 1 次、自己擲、擲完回到逛地圖
+	# 逛地圖按 R 不會擲（每一場碰到怪才擲）；重擲券兩邊一致
 	var charges := hw.dice.charges_of(p2)
 	client_ops.call([[InputCmd.OP_DICE_ROLL]])
 	idle.call(SYNC)
-	if cw.dice.phase != DiceRun.ROLL or cw.dice.current(cw) != me or cw.dice.charges_of(me) != charges - 1:
-		return "逛地圖按 R 應花 1 次、輪到自己擲：%s、次數 %d → %d" % [cw.dice.phase, charges, cw.dice.charges_of(me)]
-	client_ops.call([[InputCmd.OP_DICE_ROLL], [InputCmd.OP_DICE_FACES, 0, 0, 0, 0, 0, 0]])
-	client_ops.call([[InputCmd.OP_DICE_DONE]])
-	idle.call(SYNC)
-	if cw.dice.phase != DiceRun.EXPLORE or hw.dice.phase != DiceRun.EXPLORE:
-		return "R 擲完應回到逛地圖：房主 %s、客戶端 %s" % [hw.dice.phase, cw.dice.phase]
+	if cw.dice.phase != DiceRun.EXPLORE or hw.dice.phase != DiceRun.EXPLORE or cw.dice.charges_of(me) != charges:
+		return "逛地圖按 R 不該擲：房主 %s、客戶端 %s、重擲券 %d → %d" % [hw.dice.phase, cw.dice.phase, charges, cw.dice.charges_of(me)]
 	# 流量：擲完過一陣子、逛地圖不動的 3 秒內，骰子欄位只在每 loadout_refresh_ticks 帶一次
 	var full := var_to_bytes(hw.dice.to_array(hw, 2)).size()
 	idle.call(Config.NET.loadout_repeat_ticks + 6)   # 剛擲完那段每份都帶
@@ -1617,8 +1615,9 @@ static func check_net_dice(feel: Array[String]) -> String:
 	return ""
 
 
-# 骰子模式的兩個程序實測（真的 ENet RPC）：房主開骰子模式，客戶端開局 1.5 秒按 R、自己的桌子丟；
-# 錄影經房主轉送（客戶端 → 房主），房主的桌子照著播完、停在客戶端回報的面；客戶端自己不收錄影；兩邊模擬層（客戶端是快照）的面一致
+# 骰子模式的兩個程序實測（真的 ENet RPC）：房主開骰子模式、開局 1 秒在身邊生一隻怪開一場（--dice-encounter），兩邊輪到自己就自動丟、停好按完成；
+# 房主先擲，接著客戶端自己的桌子丟；
+# 錄影互相送（客戶端 → 房主、房主 → 客戶端），房主的桌子最後播完客戶端那次、停在客戶端回報的面；客戶端只播房主那次（自己擲的不會被轉回來）；兩邊模擬層（客戶端是快照）的面一致
 static func check_two_processes_dice(feel: Array[String]) -> String:
 	var exe := OS.get_executable_path()
 	var project := ProjectSettings.globalize_path("res://")
@@ -1628,8 +1627,8 @@ static func check_two_processes_dice(feel: Array[String]) -> String:
 		DirAccess.remove_absolute(path)
 	var port := "--net-port=%d" % (Config.NET.port + 9)
 	var common := ["--headless", "--path", project]
-	var host_args := common + ["--log-file", logs[0], "--", "--menu-flow", "--host", port, "--net-autostart=2", "--no-spawn", "--game-mode=dice", "--seconds=13"]
-	var client_args := common + ["--log-file", logs[1], "--", "--menu-flow", "--join=127.0.0.1", port, "--no-spawn", "--auto-dice-roll=1.5", "--seconds=11"]   # 骰子最慢 6 秒才停好、快照再晚一點才到：留夠時間（8 秒時偶發沒等到）；房主比客戶端多 2 秒才印，客戶端先離開也還沒被移除
+	var host_args := common + ["--log-file", logs[0], "--", "--menu-flow", "--host", port, "--net-autostart=2", "--no-spawn", "--game-mode=dice", "--dice-encounter=1", "--auto-dice-roll=1", "--seconds=18"]
+	var client_args := common + ["--log-file", logs[1], "--", "--menu-flow", "--join=127.0.0.1", port, "--no-spawn", "--auto-dice-roll=1", "--seconds=16"]   # 房主先擲、再輪到客戶端，骰子各最慢 6 秒才停好、快照再晚一點才到：留夠時間；房主比客戶端多 2 秒才印，客戶端先離開也還沒被移除
 	var host_pid := OS.create_process(exe, host_args)
 	OS.delay_msec(500)
 	var client_pid := OS.create_process(exe, client_args)
@@ -1664,14 +1663,14 @@ static func check_two_processes_dice(feel: Array[String]) -> String:
 			peer = k.substr(3)
 	feel.append("骰子模式兩個程序：房主 %s；客戶端 %s" % [host, client])
 	if peer == "" or int(client.get("seq" + peer, "0")) < 1:
-		return "客戶端按 R 之後應擲過一次：%s" % [client]
+		return "開一場之後客戶端應擲過一次：%s" % [client]
 	var face_key := "face" + peer
 	if host.get(face_key, "") != client.get(face_key, "x") or client.get("table", "") != client.get(face_key, "x"):
 		return "客戶端桌上的面、客戶端快照的面、房主的面應一樣：客戶端桌上 %s、客戶端快照 %s、房主 %s" % [client.get("table"), client.get(face_key), host.get(face_key)]
-	if int(host.get("frames_in", "0")) < 2 or int(client.get("frames_in", "0")) != 0:
-		return "錄影應從客戶端送到房主（房主收到 %s 段、客戶端自己收到 %s 段）" % [host.get("frames_in"), client.get("frames_in")]
+	if int(host.get("frames_in", "0")) < 2 or int(client.get("frames_in", "0")) < 2 or int(client.get("replays", "0")) != 1:
+		return "錄影應互相送到（房主收到 %s 段、客戶端收到房主的 %s 段），客戶端只播房主那次、自己擲的不會被轉回來：播了 %s 次" % [host.get("frames_in"), client.get("frames_in"), client.get("replays")]
 	if int(host.get("replays", "0")) < 1:
 		return "房主的桌子應播完客戶端擲的錄影：播完 %s 次" % host.get("replays")
-	if host.get("table", "") != host.get(face_key, "x"):
-		return "房主的桌子播完錄影應停在客戶端擲的面：房主桌上 %s、應 %s" % [host.get("table"), host.get(face_key)]
+	if host.get("replayed", "") != host.get(face_key, "x") or client.get("replayed", "") != client.get("face1", "x"):
+		return "播完錄影應停在擲的人的面：房主播完客戶端的 %s、應 %s；客戶端播完房主的 %s、應 %s" % [host.get("replayed"), host.get(face_key), client.get("replayed"), client.get("face1")]
 	return ""

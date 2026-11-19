@@ -10,7 +10,7 @@
 #   --weapon-test（武器測試場景：不生怪；畫面右邊貼身 1 隻、往右 5 / 7 / 9 一排、上方 4 一隻木樁，不動不打、血很多）
 #   挖墳（D6）：--at-dig（開場站在挖墳點旁邊）--exit-open（開場出口就打開）--ghost（畫面上方生一隻冤魂）
 #   --reveal（視野外的也畫，只給截圖用）--player-at=x,y（開場站在地圖座標 x, y，v0.32.0）--floor=N（開場直接換到第 N 層，地圖與 Boss 跟著換）
-#   --game-mode=dice（骰子模式，蓋過設定頁；只在單機，DiceRun）
+#   --game-mode=dice（骰子模式，蓋過設定頁；只在單機，DiceRun）--dice-encounter=秒（房主開局幾秒後在身邊生一隻怪、開一場）--auto-dice-roll=秒（輪到自己就自動丟、停好按完成）
 #   --seed=N（這一局的種子：每層的怪群與寶箱配置照它，開局印 seed=N；不給網址參數用）
 #   畫面設定（2026-10-27）：--shadows=0 / --lights=0 蓋掉設定頁的陰影 / 光源（不存檔），內顯量效能時當對照組
 #   動作表：--pose-test=表名（不開遊戲，畫一張動作表，見 debug/pose_gallery.gd）--pose-view=side|front
@@ -37,7 +37,8 @@ var start_class: StringName = &""
 var difficulty: StringName = &""   # --difficulty=easy|normal|hard（選角畫面的難度，EventDefs.MODES）
 var bag_mode: StringName = &""     # --bag-mode=bags|merged（背包模式，蓋過設定頁；BagDefs.MODE_*）
 var game_mode: StringName = &""    # --game-mode=dice|normal（骰子模式，蓋過設定頁）
-var auto_dice_roll := 0.0          # --auto-dice-roll=秒：骰子模式開局這麼多秒後按 R 擲、桌子打開就自動丟（連線檢查用）
+var auto_dice_roll := 0.0          # --auto-dice-roll=秒：骰子模式開局這麼多秒後，輪到自己擲就自動丟、停好就按完成（連線檢查用）
+var dice_encounter := 0.0          # --dice-encounter=秒：骰子模式房主開局這麼多秒後在第一位玩家旁邊生一隻怪、開一場（連線檢查用；--no-spawn 也能擲骰）
 var start_wave := 0
 var start_hp := 0.0
 var start_items: Array[StringName] = []
@@ -121,6 +122,8 @@ static func parse(args: PackedStringArray) -> LaunchArgs:
 			a.game_mode = StringName(value)
 		elif arg.begins_with("--auto-dice-roll="):
 			a.auto_dice_roll = value.to_float()
+		elif arg.begins_with("--dice-encounter="):
+			a.dice_encounter = value.to_float()
 		elif arg.begins_with("--weapon="):
 			a.start_weapon = StringName(value)
 		elif arg.begins_with("--wave="):

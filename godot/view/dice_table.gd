@@ -53,6 +53,7 @@ var cup_mode := true
 var record_enabled := false         # 連線時 main.gd 開：自己擲的錄下來
 var replaying := false              # 正在播隊友擲的錄影（骰子凍住，照錄影擺）
 var replays_done := 0               # 播完幾次隊友的錄影（連線檢查用）
+var replayed_faces: Array = []       # 上次播完錄影時朝上的面（連線檢查用：之後桌子會換人、換成別人的骰子）
 var can_throw := false              # DicePanel 每幀設：輪到本機、還能擲 / 重擲、骰子沒在轉
 var can_pick := false               # 停好之後還能重擲：點骰子才收
 var state := State.IDLE
@@ -806,6 +807,7 @@ func _step_replay(delta: float) -> void:
 	if _play_t >= last and _play_final:
 		replaying = false
 		replays_done += 1
+		replayed_faces = Array(up_faces())
 		state = State.SETTLED
 		_set_focus(-1)
 		_hide_cup()

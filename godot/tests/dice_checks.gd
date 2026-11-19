@@ -37,6 +37,19 @@ static func _wait(w: World, seconds: float) -> void:
 	_run(w, _cmd(Vector2.ZERO), ceili(seconds / DT) + 1)
 
 
+# 這一場的怪全倒之後：等清場（CLEAR_TIME）跑完，進選獎勵（或回到逛地圖）
+static func _clear_out(w: World) -> void:
+	_wait(w, DiceDefs.CLEAR_TIME)
+
+
+# 開一場之後擲骰（限時到自動擲、自動完成）、倒數，跑到開打為止（最多 60 秒）
+static func _to_fight(w: World) -> void:
+	for i in ceili(60.0 / DT):
+		if w.dice.phase == DiceRun.FIGHT:
+			return
+		_run(w, _cmd(Vector2.ZERO), 1)
+
+
 # 結算：同一招（這把武器能放的）數幾次、別的武器的技能當空白、出現 BIG_FROM 次以上換大招、骰到好幾種可以自己選、效果面各幾面
 static func check_dice_evaluate() -> String:
 	var ww: Array[StringName] = DiceDefs.weapon_die(&"swordShield")
@@ -151,8 +164,14 @@ static func check_dice_fight() -> String:
 	if p.mana < mana - EPS:
 		return "骰子的右鍵不該耗魔：%.1f → %.1f" % [mana, p.mana]
 	e.die(p.id)
+	if w.dice.phase != DiceRun.CLEAR or w.dice.is_frozen() or not s.offers.is_empty():
+		return "這一場的怪全倒應先清場（世界照常動、還沒跳獎勵）：phase %s、暫停 %s、選項 %d" % [w.dice.phase, w.dice.is_frozen(), s.offers.size()]
+	_wait(w, DiceDefs.CLEAR_TIME * 0.6)
+	if w.dice.phase != DiceRun.CLEAR:
+		return "清場 %.1f 秒內不該跳獎勵：%s" % [DiceDefs.CLEAR_TIME, w.dice.phase]
+	_wait(w, DiceDefs.CLEAR_TIME * 0.5)
 	if w.dice.phase != DiceRun.REWARD or s.offers.size() != DiceDefs.REWARD_CHOICES:
-		return "這一場的怪全倒應 %d 選 1：phase %s、選項 %d" % [DiceDefs.REWARD_CHOICES, w.dice.phase, s.offers.size()]
+		return "清場完應 %d 選 1：phase %s、選項 %d" % [DiceDefs.REWARD_CHOICES, w.dice.phase, s.offers.size()]
 	var kinds := {}
 	for o0: Dictionary in s.offers:
 		kinds[o0.kind] = true
@@ -267,62 +286,67 @@ static func check_dice_no_loot() -> String:
 
 
 
-# 擲骰次數（YangHsu 2026-11-19）：開局 CHARGES_STAGE 次；一般的怪群碰到不暫停、直接開打（開場護盾照手上的結果給）；
-# 戰鬥中按 R 花 1 次擲、擲完倒數再接著打（不再給開場護盾）；打完 +CHARGES_PER_FIGHT；逛地圖按 R 花 1 次、擲完回到逛地圖；
-# 0 次按 R 沒反應；換關 +CHARGES_STAGE、最多 CHARGES_MAX
+# 每一場都擲、重擲券、附近的怪群併成一場（YangHsu 2026-11-19 改回構想的流程）：一般的怪群碰到也先暫停擲骰；
+# MERGE_RANGE 內還沒醒的怪群一起醒、併進這一場，更遠的不會；免費重擲用完再丟沒留的花 1 張重擲券、0 張丟不了；
+# 逛地圖、戰鬥中按 R 不會擲；打完 +CHARGES_PER_FIGHT；換關 +CHARGES_STAGE、最多 CHARGES_MAX
 static func check_dice_charges() -> String:
 	var w := _dice_world()
 	var p := _player(w)
 	var s := w.dice.seat_of(p)
 	if w.dice.charges_of(p) != DiceDefs.CHARGES_STAGE:
-		return "開局應有 %d 次：%d" % [DiceDefs.CHARGES_STAGE, w.dice.charges_of(p)]
+		return "開局應有 %d 張重擲券：%d" % [DiceDefs.CHARGES_STAGE, w.dice.charges_of(p)]
 	var e := _spawn(w, &"grunt", p.pos + Vector2(8, 0))
+	var near := _spawn(w, &"grunt", e.pos + Vector2(0, 6))
+	var far := _spawn(w, &"grunt", e.pos + Vector2(DiceDefs.MERGE_RANGE + 6.0, 0))
+	var near_i := _lone_pack(w, near)
+	var far_i := _lone_pack(w, far)
 	w.alert_pack(_lone_pack(w, e), e, p)
-	if w.dice.phase != DiceRun.FIGHT or w.dice.is_frozen():
-		return "一般的怪群應直接開打、不暫停：%s" % w.dice.phase
+	if w.dice.phase != DiceRun.ROLL or not w.dice.is_frozen():
+		return "一般的怪群碰到也應先暫停擲骰：%s" % w.dice.phase
+	if not w.dice.foes.has(near.id) or not w.packs[near_i].awake or w.dice.foes.has(far.id) or w.packs[far_i].awake:
+		return "%.0f 內的怪群應一起醒、併進這一場，更遠的不會：foes %s、近的醒 %s、遠的醒 %s" % [DiceDefs.MERGE_RANGE, w.dice.foes, w.packs[near_i].awake, w.packs[far_i].awake]
 	_run(w, _op_cmd([InputCmd.OP_DICE_ROLL]), 1)
-	if w.dice.phase != DiceRun.ROLL or w.dice.charges_of(p) != DiceDefs.CHARGES_STAGE - 1 or not s.rolled:
-		return "戰鬥中按 R 應花 1 次擲出去：%s、剩 %d、rolled %s" % [w.dice.phase, w.dice.charges_of(p), s.rolled]
 	_wait(w, DiceDefs.SETTLE_TIME)
-	s.face[0] = s.pool[0].find(&"fx_shield")
-	var shield := p.fight_shield
-	_run(w, _op_cmd([InputCmd.OP_DICE_DONE]), 1)
-	if w.dice.phase != DiceRun.COUNTDOWN:
-		return "戰鬥中擲完應倒數再接著打：%s" % w.dice.phase
-	_wait(w, DiceDefs.COUNTDOWN)
-	if w.dice.phase != DiceRun.FIGHT:
-		return "倒數完應接著打：%s" % w.dice.phase
-	if not is_equal_approx(p.fight_shield, shield):
-		return "戰鬥中重擲不該再給開場護盾：%.1f → %.1f" % [shield, p.fight_shield]
-	e.die(p.id)
-	if w.dice.charges_of(p) != DiceDefs.CHARGES_STAGE - 1 + DiceDefs.CHARGES_PER_FIGHT:
-		return "打完一群應 +%d 次：%d" % [DiceDefs.CHARGES_PER_FIGHT, w.dice.charges_of(p)]
-	_run(w, _op_cmd([InputCmd.OP_DICE_REWARD, _simple_pick(s)]), 1)
-	var e2 := _spawn(w, &"grunt", p.pos + Vector2(8, 0))
-	w.alert_pack(_lone_pack(w, e2), e2, p)
-	var want: float = DiceDefs.EFFECTS[&"fx_shield"].value * s.result.effects.get(&"fx_shield", 0)
-	if w.dice.phase != DiceRun.FIGHT or want <= 0.0 or not is_equal_approx(p.fight_shield, want):
-		return "下一群直接開打時照手上的結果給開場護盾 %.1f：%.1f（%s）" % [want, p.fight_shield, w.dice.phase]
-	e2.die(p.id)
-	_run(w, _op_cmd([InputCmd.OP_DICE_REWARD, _simple_pick(s)]), 1)
-	var before := w.dice.charges_of(p)
+	_run(w, _op_cmd([InputCmd.OP_DICE_LOCK, 0]), 1)
 	_run(w, _op_cmd([InputCmd.OP_DICE_ROLL]), 1)
-	if w.dice.phase != DiceRun.ROLL or w.dice.charges_of(p) != before - 1:
-		return "逛地圖按 R 應花 1 次擲：%s、%d → %d" % [w.dice.phase, before, w.dice.charges_of(p)]
+	if s.roll_seq != 2 or s.rerolls != DiceDefs.REROLLS - 1 or w.dice.charges_of(p) != DiceDefs.CHARGES_STAGE:
+		return "先用免費的重擲：seq %d、免費剩 %d、券 %d" % [s.roll_seq, s.rerolls, w.dice.charges_of(p)]
 	_wait(w, DiceDefs.SETTLE_TIME)
-	_run(w, _op_cmd([InputCmd.OP_DICE_DONE]), 1)
-	if w.dice.phase != DiceRun.EXPLORE:
-		return "逛地圖擲完應回到逛地圖：%s" % w.dice.phase
+	_run(w, _op_cmd([InputCmd.OP_DICE_ROLL]), 1)
+	if s.roll_seq != 3 or w.dice.charges_of(p) != DiceDefs.CHARGES_STAGE - 1:
+		return "免費的用完再丟應花 1 張重擲券：seq %d、券 %d" % [s.roll_seq, w.dice.charges_of(p)]
+	_wait(w, DiceDefs.SETTLE_TIME)
 	w.dice.charges[p.peer_id] = 0
 	_run(w, _op_cmd([InputCmd.OP_DICE_ROLL]), 1)
+	if s.roll_seq != 3:
+		return "沒有重擲券時不能再丟：seq %d" % s.roll_seq
+	_run(w, _op_cmd([InputCmd.OP_DICE_DONE]), 1)
+	_wait(w, DiceDefs.COUNTDOWN)
+	if w.dice.phase != DiceRun.FIGHT:
+		return "倒數完應開打：%s" % w.dice.phase
+	w.dice.charges[p.peer_id] = 1
+	var seq := s.roll_seq
+	_run(w, _op_cmd([InputCmd.OP_DICE_ROLL]), 1)
+	if w.dice.phase != DiceRun.FIGHT or s.roll_seq != seq or w.dice.charges_of(p) != 1:
+		return "戰鬥中按 R 不該擲：%s、seq %d → %d、券 %d" % [w.dice.phase, seq, s.roll_seq, w.dice.charges_of(p)]
+	e.die(p.id)
+	near.die(p.id)
+	if w.dice.charges_of(p) != 1 + DiceDefs.CHARGES_PER_FIGHT:
+		return "打完一場應 +%d 張：%d" % [DiceDefs.CHARGES_PER_FIGHT, w.dice.charges_of(p)]
+	_clear_out(w)
+	_run(w, _op_cmd([InputCmd.OP_DICE_REWARD, _simple_pick(s)]), 1)
 	if w.dice.phase != DiceRun.EXPLORE:
-		return "0 次時按 R 不該擲：%s" % w.dice.phase
+		return "選完獎勵應回到逛地圖：%s" % w.dice.phase
+	_run(w, _op_cmd([InputCmd.OP_DICE_ROLL]), 1)
+	if w.dice.phase != DiceRun.EXPLORE:
+		return "逛地圖按 R 不該擲：%s" % w.dice.phase
+	w.dice.charges[p.peer_id] = 0
 	w.dice.on_stage_start(w)
 	if w.dice.charges_of(p) != DiceDefs.CHARGES_STAGE:
-		return "換關應 +%d 次：%d" % [DiceDefs.CHARGES_STAGE, w.dice.charges_of(p)]
+		return "換關應 +%d 張：%d" % [DiceDefs.CHARGES_STAGE, w.dice.charges_of(p)]
 	w.dice.on_stage_start(w)
 	if w.dice.charges_of(p) != DiceDefs.CHARGES_MAX:
-		return "最多存 %d 次：%d" % [DiceDefs.CHARGES_MAX, w.dice.charges_of(p)]
+		return "最多存 %d 張：%d" % [DiceDefs.CHARGES_MAX, w.dice.charges_of(p)]
 	return ""
 
 
@@ -413,7 +437,8 @@ static func check_dice_growth() -> String:
 		return "遺物門應給一次 %d 選 1：%s、%d 個" % [DiceDefs.REWARD_CHOICES, w.dice.phase, s.offers.size()]
 	_run(w, _op_cmd([InputCmd.OP_DICE_REWARD, _simple_pick(s)]), 1)
 	w.dice.door_reward(w, &"dice")
-	_run(w, _op_cmd([InputCmd.OP_DICE_ROLL]), 1)
+	var ed := _spawn(w, &"grunt", _player(w).pos + Vector2(8, 0))
+	w.alert_pack(_lone_pack(w, ed), ed, _player(w))   # 碰到怪開一場擲骰
 	if s.rerolls != DiceDefs.REROLLS + DiceDefs.DOOR_REROLLS:
 		return "骰子門這一關每次擲骰的重擲應 +%d：%d" % [DiceDefs.DOOR_REROLLS, s.rerolls]
 	_wait(w, DiceDefs.SETTLE_TIME)
@@ -800,7 +825,7 @@ static func check_dice_arena() -> String:
 	if w.packs[outer].awake:
 		return "霧牆外的怪群不該發現玩家（離玩家 %.1f）" % o.pos.distance_to(p.pos)
 	e.die()
-	_run(w, _cmd(Vector2.ZERO), 1)
+	_clear_out(w)
 	var s := w.dice.seat_of(p)
 	_run(w, _op_cmd([InputCmd.OP_DICE_REWARD, _simple_pick(s)]), 1)
 	if not s.carve.is_empty():
@@ -1268,14 +1293,15 @@ static func check_dice_pending_alert() -> String:
 	var p := _player(w)
 	p.hp = 99999.0
 	var a := _spawn(w, &"grunt", p.pos + Vector2(4, 0))
-	var b := _elite(w, p.pos + Vector2(-5, 0))   # 隔壁群：地圖預放的（開打前就在、睡著）
+	var b := _elite(w, p.pos + Vector2(-DiceDefs.MERGE_RANGE - 6.0, 0))   # 隔壁群：地圖預放的（開打前就在、睡著；夠遠，不會一起醒）
 	b.dormant = true
 	var bi := _lone_pack(w, b)
-	w.alert_pack(_lone_pack(w, a), a, p)   # 一般群：直接開打
-	if w.dice.phase != DiceRun.FIGHT:
-		return "一般群應直接開打：%s" % w.dice.phase
+	w.alert_pack(_lone_pack(w, a), a, p)
+	_to_fight(w)
+	if w.dice.phase != DiceRun.FIGHT or w.dice.foes.has(b.id):
+		return "應擲完開打、隔壁群不在這一場：%s、foes %s" % [w.dice.phase, w.dice.foes]
 	a.die()
-	_run(w, _cmd(Vector2.ZERO), 1)
+	_clear_out(w)
 	if w.dice.phase != DiceRun.REWARD:
 		return "打完應選獎勵：%s" % w.dice.phase
 	w.alert_pack(bi, b, p)   # 選獎勵的時候被吵醒
@@ -1298,10 +1324,7 @@ static func check_dice_summoned() -> String:
 	a.set_rarity(&"magic", [&"summoner"])
 	a._summon_timer = 0.5
 	w.alert_pack(_lone_pack(w, a), a, p)
-	for i in ceili(60.0 / DT):   # 菁英：先擲骰（時間到自動擲、自動完成）、倒數，才開打
-		if w.dice.phase == DiceRun.FIGHT:
-			break
-		_run(w, _cmd(Vector2.ZERO), 1)
+	_to_fight(w)
 	if w.dice.phase != DiceRun.FIGHT:
 		return "菁英群擲完骰應開打：%s" % w.dice.phase
 	var minions: Array[Enemy] = []
@@ -1324,9 +1347,9 @@ static func check_dice_summoned() -> String:
 	for e in w.enemies:
 		if e is Enemy and (e as Enemy).summoner_id == a.id and not e.is_dead:
 			(e as Enemy).die()
-	_run(w, _cmd(Vector2.ZERO), 1)
+	_clear_out(w)
 	if w.dice.phase != DiceRun.REWARD:
-		return "手下也死光應選獎勵：%s" % w.dice.phase
+		return "手下也死光、清場完應選獎勵：%s" % w.dice.phase
 	return ""
 
 

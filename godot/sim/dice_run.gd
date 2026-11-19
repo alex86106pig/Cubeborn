@@ -1,8 +1,9 @@
 # 骰子模式的一局（World.dice；一般模式是 null，docs/系統說明.md §55）：
-#   逛地圖 → 怪群發現玩家 / Boss 開追 → 一般群直接開打；有菁英或 Boss 的先暫停、照 world.player_list 輪流免費擲骰 → 3、2、1 → 戰鬥
-#   → 這一場的怪全倒 → 擲骰次數 +1、4 選 1 獎勵（暫停）→ 逛地圖；逛地圖或戰鬥中按 R 花 1 次自己擲（戰鬥中擲完也倒數）
+#   逛地圖 → 怪群發現玩家 / Boss 開追（附近 MERGE_RANGE 內的怪群一起醒、併成一場）→ 暫停、照 world.player_list 輪流擲骰
+#   → 3、2、1 → 戰鬥 → 這一場的怪全倒 → 清場（CLEAR_TIME 秒，世界照常動：怪倒完、武器掉出來）→ 重擲券 +1、4 選 1 獎勵（暫停）→ 逛地圖
+#   每一場都擲（YangHsu 2026-11-19 改回構想的流程）；重擲券（charges）是擲骰時免費重擲用完後，再丟沒留的花 1 張
 # 擲骰、倒數、選獎勵時 World.step 只跑這裡（step_frozen），其他實體都停住。骰子的結果先決定好（world.rng），畫面照 roll_seq 播動畫
-# 結果留到下一次擲完才換（沒擲骰就打起來的怪：一般群、挖墳噴的、戰鬥中才進來的，照手上的結果打）
+# 結果留到下一次擲完才換（挖墳噴的怪、戰鬥中才進來的，照手上的結果打）
 # 骰子：手上武器的 6 顆武器骰存在武器實例的 "dice"（換武器時跟著武器走，刻上去的面也是），獎勵拿到的骰子放 Seat.loose；
 # 每場擲 Seat.carry 指的 6 顆（逛地圖時在骰子與武器面板挑）
 # 連線：房主的這份寫進快照（to_array），客戶端的鏡像 World 建一份 mirror = true 的照快照還原（apply_array），不自己跑流程
@@ -13,17 +14,16 @@ const EXPLORE := &"explore"
 const ROLL := &"roll"
 const COUNTDOWN := &"countdown"
 const FIGHT := &"fight"
+const CLEAR := &"clear"         # 這一場的怪全倒了：停一下再選獎勵（世界照常動）
 const REWARD := &"reward"
 
 var phase: StringName = EXPLORE
 var fights := 0                 # 這一局開了幾場（畫面標題用）
 var turn := 0                   # 輪到 world.player_list 的第幾位
-var timer := 0.0                # 這一位擲骰剩幾秒（ROLL）／倒數剩幾秒（COUNTDOWN）
+var timer := 0.0                # 這一位擲骰剩幾秒（ROLL）／倒數剩幾秒（COUNTDOWN）／清場剩幾秒（CLEAR）
 var settle := 0.0               # 骰子還在轉的秒數：這段不收操作、不倒數
 var foes: Array[int] = []       # 這一場要打倒的怪（怪群成員、Boss）
 var tier: StringName = &"normal"   # 這一場的難度（DiceDefs.FIGHT_TIERS）：獎勵的稀有度看它
-var back_to: StringName = &""   # 花次數自己擲（逛地圖 / 戰鬥中按 R）：擲完回到這個階段（戰鬥中照樣倒數）；空 = 菁英 / Boss 的開場擲骰
-var resuming := false           # 這次倒數是戰鬥中擲完的：倒數完接著打，不再給開場護盾與回血
 var bonus_rerolls := 0          # 這一關每次擲骰多幾次重擲（門的獎勵，DiceDefs.DOOR_REWARDS）
 var reward_tier: StringName = &"normal"   # 正在選的獎勵是哪個難度給的（畫面標題用）
 var door_pick := false          # 正在選的獎勵是門給的（不是打完一場：沒有擲骰次數 +1）
@@ -35,7 +35,8 @@ var arena_radius := 0.0            # 0 = 沒有霧牆（逛地圖）
 var lead_dir := Vector2(0, 1)      # 隊長最近走的方向（隊友排在他身後；隊長站著時沿用）
 var physics := false            # 物理擲骰（main.gd 開：畫面的 DiceTable 丟、停好後用 OP_DICE_FACES 回報朝上的面）；false = 模擬層自己抽（檢查、沒有畫面時）
 var waiting := false            # 物理擲骰：丟出去了、還在等桌子回報（settle 當等待上限，到了就自己抽）
-var charges: Dictionary = {}    # peer_id -> 擲骰次數（不放 Seat：換關時補次數不該先建 Seat，Seat 建立時才照武器生骰子）
+var charges: Dictionary = {}    # peer_id -> 重擲券（擲骰時免費重擲用完再丟要花 1 張；不放 Seat：換關時補券不該先建 Seat，Seat 建立時才照武器生骰子）
+var _merging := false           # 正在把附近的怪群併進這一場（_merge_nearby 叫醒的怪群再回呼 on_alert 時只記進 foes）
 var states: Dictionary = {}     # peer_id -> Seat
 var mirror := false             # 客戶端的鏡像：Seat 全照快照（武器實例上沒有 "dice"，不從武器接骰子）
 var _net_src: Array = []        # 上次套用的快照陣列（同一份快照每步都會套一次，同一份就跳過）
@@ -87,8 +88,6 @@ func reset() -> void:
 	settle = 0.0
 	foes.clear()
 	tier = &"normal"
-	back_to = &""
-	resuming = false
 	waiting = false
 	bonus_rerolls = 0
 	shared = false
@@ -98,6 +97,15 @@ func reset() -> void:
 	lead_dir = Vector2(0, 1)
 	charges.clear()
 	states.clear()
+
+
+# 清場（CLEAR）時每步（World.step，世界照常動）：時間到就選獎勵或回到逛地圖
+func step(world: World, dt: float) -> void:
+	if mirror or phase != CLEAR:
+		return
+	timer -= dt
+	if timer <= 0.0:
+		_end_clear(world)
 
 
 func is_frozen() -> bool:
@@ -162,6 +170,11 @@ func current(world: World) -> Player:
 
 # ---------- 流程 ----------
 
+# 還能再丟沒留的：免費重擲還有，或有重擲券
+func can_reroll(p: Player) -> bool:
+	return seat_of(p).rerolls > 0 or charges_of(p) > 0
+
+
 func charges_of(p: Player) -> int:
 	return int(charges.get(p.peer_id, 0))
 
@@ -175,8 +188,6 @@ func on_stage_start(world: World) -> void:
 	phase = EXPLORE
 	foes.clear()
 	arena_radius = 0.0
-	back_to = &""
-	resuming = false
 	bonus_rerolls = 0
 	for p in world.player_list:
 		_add_charges(p, DiceDefs.CHARGES_STAGE)
@@ -202,9 +213,8 @@ func door_reward(world: World, reward: StringName) -> void:
 				world.emit_event("dice:reward", {"fight": fights, "door": true})
 
 
-# 怪群被發現、Boss 開追（World.alert_pack、Boss.aggro）：逛地圖時開一場；已經在這一場裡就併進來，不重擲
-# 一般的怪群直接開打（用手上的結果）；有菁英（魔法 / 稀有）或 Boss 的先免費擲一次、倒數再開打
-# 打一場、擲骰、選獎勵的時候被吵醒的（最後一下的聲音常在同一步吵醒隔壁群）：先記在 foes，回到逛地圖時馬上開那一場（_back_to_explore）
+# 怪群被發現、Boss 開追（World.alert_pack、Boss.aggro）：逛地圖時附近的怪群一起叫醒、開一場（每一場都先擲骰）；已經在這一場裡就併進來，不重擲
+# 打一場、擲骰、清場、選獎勵的時候被吵醒的（最後一下的聲音常在同一步吵醒隔壁群）：先記在 foes，回到逛地圖時馬上開那一場（_back_to_explore）
 func on_alert(world: World, ids: Array) -> void:
 	for id: int in ids:
 		var e := world.entities.get(id) as Enemy
@@ -212,8 +222,41 @@ func on_alert(world: World, ids: Array) -> void:
 			foes.append(id)
 			if phase == FIGHT:   # 打到一半才進來的：難度跟著升（獎勵的稀有度看它）
 				_raise_tier(e)
-	if phase == EXPLORE:
+	if phase == EXPLORE and not _merging:
+		_merge_nearby(world)
 		_open_fight(world)
+
+
+# 這一場的怪附近（中心 MERGE_RANGE 內）還沒醒的怪群一起叫醒、併進這一場（YangHsu 2026-11-19：一關 2~3 場、每場大一點，每場都擲骰才不會擲到累）
+func _merge_nearby(world: World) -> void:
+	var center := Vector2.ZERO
+	var n := 0
+	for id in foes:
+		var e := world.entities.get(id) as Enemy
+		if e != null and not e.is_dead:
+			center += e.pos
+			n += 1
+	if n == 0:
+		return
+	center /= n
+	var target: Player = null   # 叫醒的怪群看向離中心最近、活著的玩家
+	for p in world.player_list:
+		if not p.is_dead and (target == null or p.pos.distance_squared_to(center) < target.pos.distance_squared_to(center)):
+			target = p
+	_merging = true
+	for i in world.packs.size():
+		var pk: Dictionary = world.packs[i]
+		if pk.awake or (pk.center as Vector2).distance_to(center) > DiceDefs.MERGE_RANGE:
+			continue
+		var first: Enemy = null
+		for id: int in pk.ids:
+			var e := world.entities.get(id) as Enemy
+			if e != null and not e.is_dead:
+				first = e
+				break
+		if first != null:
+			world.alert_pack(i, first, target)
+	_merging = false
 
 
 # 打到一半生出來的怪（World.add_enemy：召喚詞條、蟲巢、孵蛋、Boss 叫手下…）：生在霧牆圈內的也算這一場的怪（要打死才選獎勵、被霧牆關在圈內）
@@ -230,27 +273,22 @@ func _raise_tier(e: Enemy) -> void:
 		tier = &"elite"
 
 
-# 開 foes 這一場：霧牆、難度；有菁英或 Boss 先免費擲骰，否則直接開打。foes 裡都死了就不開
+# 開 foes 這一場：霧牆、難度，接著輪流擲骰。foes 裡都死了就不開
 func _open_fight(world: World) -> void:
-	var big := false
 	var alive: Array[int] = []
 	tier = &"normal"
 	for id in foes:
 		var e := world.entities.get(id) as Enemy
 		if e != null and not e.is_dead:
 			alive.append(id)
-			big = big or e.is_boss() or e.rarity != MonsterRarityDefs.NORMAL
 			_raise_tier(e)
 	foes = alive
 	if foes.is_empty():
 		return
 	fights += 1
 	_make_arena(world)
-	world.emit_event("dice:encounter", {"fight": fights, "foes": foes.size(), "roll": big})
-	if big:
-		_start_roll(world, null)
-	else:
-		_start_fight(world)
+	world.emit_event("dice:encounter", {"fight": fights, "foes": foes.size(), "roll": true})
+	_start_roll(world)
 
 
 # 回到逛地圖；剛才被吵醒、還在等的怪（foes 裡活著的）馬上開打
@@ -261,8 +299,8 @@ func _back_to_explore(world: World, event_name: String) -> void:
 		_open_fight(world)
 
 
-# 開始擲骰：roller = null 是開場擲骰（活著的每人輪流），否則只有那位（花次數自己擲，擲完回到 back_to）
-func _start_roll(world: World, roller: Player) -> void:
+# 開始擲骰：活著的每人輪流
+func _start_roll(world: World) -> void:
 	phase = ROLL
 	turn = 0
 	settle = 0.0
@@ -273,11 +311,11 @@ func _start_roll(world: World, roller: Player) -> void:
 		s.rolled = false
 		s.rerolls = DiceDefs.REROLLS + bonus_rerolls
 		s.choice = &""
-		s.done = not can_roll(p) or (roller != null and p != roller)
+		s.done = not can_roll(p)
 	_skip_done(world)
 
 
-# 開打：開場護盾與開場回血在這裡給（每一場一次；戰鬥中按 R 重擲不再給）
+# 開打：開場護盾與開場回血在這裡給（每一場一次）
 func _start_fight(world: World) -> void:
 	phase = FIGHT
 	for p in world.player_list:
@@ -332,29 +370,18 @@ func step_frozen(world: World, dt: float) -> void:
 		COUNTDOWN:
 			timer -= dt
 			if timer <= 0.0:
-				if resuming:   # 戰鬥中擲完：接著打，開場護盾與回血這一場已經給過
-					resuming = false
-					phase = FIGHT
-					world.emit_event("dice:fight", {"fight": fights})
-				else:
-					_start_fight(world)
+				_start_fight(world)
 
 
 func _turn_player(world: World) -> Player:
 	return world.player_list[turn] if turn < world.player_list.size() else null
 
 
-# 輪到的人跳過已經完成（倒地、死掉）的；全部完成就倒數（逛地圖時花次數擲的直接回到逛地圖）
+# 輪到的人跳過已經完成（倒地、死掉）的；全部完成就倒數
 func _skip_done(world: World) -> void:
 	while turn < world.player_list.size() and seat_of(world.player_list[turn]).done:
 		turn += 1
 	if turn >= world.player_list.size():
-		var back := back_to
-		back_to = &""
-		if back == EXPLORE:
-			_back_to_explore(world, "dice:resume")
-			return
-		resuming = back == FIGHT
 		phase = COUNTDOWN
 		timer = DiceDefs.COUNTDOWN
 		world.emit_event("dice:countdown", {"fight": fights})
@@ -408,7 +435,8 @@ func _finish_turn(world: World, p: Player) -> void:
 	_skip_done(world)
 
 
-# 這一場的怪都倒了（World.on_enemy_died）：擲骰次數 +1、4 選 1 獎勵（稀有度看這一場的難度）
+# 這一場的怪都倒了（World.on_enemy_died）：清場（世界照常動 CLEAR_TIME 秒，怪倒完、掉的武器出來），倒地的站起、重擲券 +1
+# （YangHsu 2026-11-19：最後一隻血歸零的瞬間就跳獎勵很突兀）。霧牆留到清場完才收（這段時間旁邊的怪群不會發現玩家）
 func on_enemy_died(world: World, e: Enemy) -> void:
 	if phase != FIGHT or not foes.has(e.id):
 		return
@@ -417,10 +445,18 @@ func on_enemy_died(world: World, e: Enemy) -> void:
 		if f != null and not f.is_dead and f != e:
 			return
 	foes.clear()
-	arena_radius = 0.0
 	revive_downed(world)
 	for p in world.player_list:
 		_add_charges(p, DiceDefs.CHARGES_PER_FIGHT)
+	phase = CLEAR
+	timer = DiceDefs.CLEAR_TIME
+	world.emit_event("dice:clear", {"fight": fights})
+	world.emit_event("sfx:cue", {"cue": "victory"})
+
+
+# 清場結束：4 選 1 獎勵（稀有度看這一場的難度）；沒有獎勵就回到逛地圖
+func _end_clear(world: World) -> void:
+	arena_radius = 0.0
 	var any := _offer_rewards(world)
 	reward_tier = tier
 	door_pick = false
@@ -474,14 +510,6 @@ func _op(world: World, p: Player, op: Array) -> void:
 				s.spares[int(op[1])] = p.active_weapon()
 				_hold(world, p, inst)
 			return
-	if int(op[0]) == InputCmd.OP_DICE_ROLL and (phase == EXPLORE or phase == FIGHT):
-		if charges_of(p) > 0 and can_roll(p):   # 花 1 次自己擲：暫停；物理擲骰時打開桌子等玩家丟，否則一按就擲出去
-			charges[p.peer_id] = charges_of(p) - 1
-			back_to = phase
-			_start_roll(world, p)
-			if not physics:
-				_roll(world, p)
-		return
 	if int(op[0]) == InputCmd.OP_DICE_FACES:
 		if phase == ROLL and waiting and _turn_player(world) == p and op.size() > DiceDefs.DICE_COUNT:
 			_land(world, p, op.slice(1, DiceDefs.DICE_COUNT + 1))
@@ -492,11 +520,14 @@ func _op(world: World, p: Player, op: Array) -> void:
 		InputCmd.OP_DICE_ROLL:
 			if not s.rolled:
 				_roll(world, p)
-			elif s.rerolls > 0 and s.locked.has(false):
-				s.rerolls -= 1
+			elif can_reroll(p) and s.locked.has(false):
+				if s.rerolls > 0:
+					s.rerolls -= 1
+				else:
+					charges[p.peer_id] = charges_of(p) - 1   # 免費的用完了：花 1 張重擲券
 				_roll(world, p)
 		InputCmd.OP_DICE_LOCK:
-			if s.rolled and s.rerolls > 0 and op.size() > 1 and int(op[1]) >= 0 and int(op[1]) < s.locked.size():
+			if s.rolled and can_reroll(p) and op.size() > 1 and int(op[1]) >= 0 and int(op[1]) < s.locked.size():
 				s.locked[int(op[1])] = not s.locked[int(op[1])]
 		InputCmd.OP_DICE_CHOICE:
 			if s.rolled and op.size() > 1:
@@ -810,7 +841,7 @@ func to_array(world: World, viewer: int) -> Array:
 	for p in world.player_list:
 		if states.has(p.peer_id):   # seat_of：武器換過的話先接好武器骰
 			seats.append(_seat_to_array(p.peer_id, seat_of(p), viewer == 0 or viewer == p.peer_id))
-	return [String(phase), fights, turn, timer, settle, waiting, String(tier), String(back_to), resuming, bonus_rerolls,
+	return [String(phase), fights, turn, timer, settle, waiting, String(tier), bonus_rerolls,
 		String(reward_tier), door_pick, charges.duplicate(), seats, shared, contest_seq, contests.duplicate(true),
 		arena_center.x, arena_center.y, arena_radius]
 
@@ -881,19 +912,17 @@ func apply_array(world: World, a: Array) -> void:
 	settle = a[4]
 	waiting = a[5]
 	tier = StringName(a[6])
-	back_to = StringName(a[7])
-	resuming = a[8]
-	bonus_rerolls = a[9]
-	reward_tier = StringName(a[10])
-	door_pick = a[11]
-	charges = (a[12] as Dictionary).duplicate()
-	shared = a[14]
-	contest_seq = a[15]
-	contests = a[16]
-	arena_center = Vector2(a[17], a[18])
-	arena_radius = a[19]
+	bonus_rerolls = a[7]
+	reward_tier = StringName(a[8])
+	door_pick = a[9]
+	charges = (a[10] as Dictionary).duplicate()
+	shared = a[12]
+	contest_seq = a[13]
+	contests = a[14]
+	arena_center = Vector2(a[15], a[16])
+	arena_radius = a[17]
 	var seen := {}
-	for sa: Array in a[13]:
+	for sa: Array in a[11]:
 		var peer_id: int = sa[0]
 		seen[peer_id] = true
 		var s: Seat = states.get(peer_id)

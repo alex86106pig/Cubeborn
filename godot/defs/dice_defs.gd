@@ -11,11 +11,12 @@ const SETTLE_TIME := 1.0        # 擲出去之後骰子轉的時間：這段不�
 const PHYSICS_WAIT := 9.0       # 物理擲骰（DiceRun.physics）：丟出去之後最多等桌子回報幾秒（從放開算；DiceTable 自己 6 秒一定停好，多留 3 秒），超過就由模擬層抽
 const REROLLS := 1              # 每場可以重擲沒鎖的幾次
 const COUNTDOWN := 2.4          # 全部擲完 → 3、2、1 → 開打
-# 擲骰次數（YangHsu 2026-11-19，取代「碰到怪群就擲」）：一般的怪群碰到直接開打、用手上的結果；逛地圖或戰鬥中按 R 花 1 次自己擲；
-# 菁英群（有魔法 / 稀有怪）與 Boss 開打前免費擲一次。沒中技能面就只有普攻（不保底）
-const CHARGES_STAGE := 2        # 每一關開頭 +幾次（第一關開局也是）
-const CHARGES_PER_FIGHT := 1    # 打完一場 +幾次
-const CHARGES_MAX := 3          # 最多存幾次
+# 每一場都擲（YangHsu 2026-11-19 改回構想的流程；中間一版是「擲骰次數、R 隨時擲」）。沒中技能面就只有普攻（不保底）
+const CHARGES_STAGE := 2        # 重擲券：每一關開頭 +幾張（第一關開局也是）；擲骰時免費重擲用完，再丟沒留的花 1 張
+const CHARGES_PER_FIGHT := 1    # 打完一場 +幾張
+const CHARGES_MAX := 3          # 最多存幾張
+const CLEAR_TIME := 1.5         # 這一場的怪全倒之後停多久才選獎勵（清場：世界照常動，怪倒完、掉的武器出來；Claude 暫定）
+const MERGE_RANGE := 22.0       # 碰到一群怪時，中心這麼近的怪群一起醒、併成一場（Claude 量：一關平均 5.4 群 → 約 2.3 場）
 const BASIC_ATTACK_MUL := 0.5   # 左鍵普攻的傷害倍率（右鍵骰到的技能才是主力）
 const COOLDOWN_PER_MANA := 0.3  # 右鍵技能的冷卻 = 技能原本的耗魔 × 這麼多秒（旋風斬 10 魔 → 3 秒）
 const COOLDOWN_MIN := 1.5

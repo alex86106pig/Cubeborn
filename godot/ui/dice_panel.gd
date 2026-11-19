@@ -1,7 +1,7 @@
 # 骰子模式的畫面（DiceRun，docs/系統說明.md §55）：擲骰時蓋在畫面中間（6 顆骰子、限時條、擲 / 重擲 / 完成、這一手的結果），
-# 全部擲完 3、2、1，打完 3 選 1 獎勵；戰鬥與逛地圖時只在技能欄上方留一行「右鍵：旋風斬 ×3 強化…」
+# 全部擲完 3、2、1，打完閃「清場！」再 4 選 1 獎勵；戰鬥與逛地圖時只在技能欄上方留一行「右鍵：旋風斬 ×3 強化…」
 # 結果由權威端決定，這裡照 Seat.roll_seq 播轉動畫（DiceDefs.SETTLE_TIME 內停完）；操作走 op_requested → InputCmd.inv_ops（OP_DICE_*）
-# 鍵盤由 InputCollector 交給 handle_key：空白鍵擲 / 重擲、R 重擲、Enter 完成、數字鍵選獎勵；逛地圖與戰鬥中 R 花 1 次自己擲
+# 鍵盤由 InputCollector 交給 handle_key：空白鍵擲 / 重擲、R 重擲（免費的用完花重擲券）、Enter 完成、數字鍵選獎勵
 class_name DicePanel
 extends Control
 
@@ -76,8 +76,7 @@ var _cand_key := []
 var _offer_key := []
 var _picked := false
 var _last_phase: StringName = &""
-var _charges := 0                 # 本機玩家的擲骰次數（逛地圖 / 戰鬥中按 R 擲要 > 0）
-var _can_roll := false            # 本機玩家活著（死掉時 R 留給重新開始）
+var _charges := 0                 # 本機玩家的重擲券（技能欄上方那行）
 # 物理擲骰（DiceTable）：main.gd 開 physics；擲法看設定頁 dice_cup（骰盅 / 蓄力條，即時切換）
 var physics := false
 var _gui_press := false          # 這一下左鍵按在面板的控制項上（放開也不轉給骰盤）
@@ -244,7 +243,20 @@ func use_world_table(parent: Node3D, cam: Camera3D, right: Vector3, yaw: float) 
 	_roll_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
 
 
-# 開場預熱（main.gd 跟 WorldView.warm_up 一起）：骰盤擺到 center 露出來、骰面畫上 faces（字也先產生），預熱完收起來
+# 骰子模式的大字要預熱的（HUD.set_loading）：[文字, 字級, 描邊]。倒數與「開打！」「清場！」150 號、中獎橫幅 64 號
+# （網頁版：大字第一次出現才產生字形，會卡一下；只放會出現的字，大字級整段全放太佔貼圖）
+static func warm_big_text() -> Array:
+	var banner := "你隊友擲出個！＋　比骰子「」：·→拿到0123456789"
+	for c: StringName in DiceDefs.COMBOS:
+		banner += DiceDefs.COMBOS[c].name
+	for weapon: StringName in DiceDefs.WEAPON_DICE:
+		for face: StringName in DiceDefs.weapon_die(weapon):
+			if face != DiceDefs.BLANK and not DiceDefs.is_effect(face):
+				banner += DiceDefs.name_of(face)
+	return [["123開打！清場", 150, 6], [banner, 64, 5]]
+
+
+# 開場預熱（main.gd 跟 WorldView.warm_up 一起）：骰盤擺到 center 露出來、骰面畫上 faces（字也先產生）、獎勵畫面那排骰子藏著先畫，預熱完收起來
 func warm_up(center: Vector3, faces: Array, weapon_id: StringName) -> void:
 	if not world_table:
 		return
@@ -252,6 +264,7 @@ func warm_up(center: Vector3, faces: Array, weapon_id: StringName) -> void:
 	table.set_faces(faces, weapon_id)
 	table.set_origin(Transform3D(Basis(Vector3.UP, tray_yaw), center))
 	table.warm_up(true)
+	inspect.warm_up(faces, weapon_id)   # 獎勵畫面那排骰子（自己一個 3D 世界）
 
 
 func end_warm_up() -> void:
@@ -259,6 +272,7 @@ func end_warm_up() -> void:
 		return
 	_warming = false
 	table.warm_up(false)
+	inspect.end_warm_up()
 
 
 # 骰盤擺哪：有霧牆就在圈外，沒有（逛地圖花次數擲）就在擲的人旁邊；轉成正對鏡頭
@@ -361,7 +375,7 @@ func refresh(world: World, me: Player, dt: float) -> void:
 	var s := dice.seat_of(me)
 	if phase != _last_phase:
 		if phase == DiceRun.FIGHT and (_last_phase == DiceRun.COUNTDOWN or _last_phase == DiceRun.EXPLORE):
-			_fight_t = FIGHT_FLASH   # 菁英群倒數完、一般群碰到直接開打都閃「開打！」
+			_fight_t = FIGHT_FLASH   # 倒數完閃「開打！」
 		if phase == DiceRun.REWARD:
 			_picked = false
 		if phase == DiceRun.ROLL:
@@ -388,14 +402,13 @@ func refresh(world: World, me: Player, dt: float) -> void:
 		_carve_key = {}
 		_carve_skill = -1
 	_charges = dice.charges_of(me)
-	_can_roll = dice.can_roll(me)
 	var turn_player := dice.current(world)
 	my_turn = turn_player == me
 	if _roll_box.visible:
 		_show_roll(world, dice, turn_player if turn_player != null else me, dt)
 	if rewarding:
 		var tier_name: String = DiceDefs.FIGHT_TIERS[dice.reward_tier].name
-		_reward_title.text = ("走進門的獎勵（%s）：選一個（點卡片或按數字鍵）" % tier_name) if dice.door_pick else ("打倒了！擲骰次數 +1　·　%s的獎勵，選一個（點卡片或按數字鍵）" % tier_name)
+		_reward_title.text = ("走進門的獎勵（%s）：選一個（點卡片或按數字鍵）" % tier_name) if dice.door_pick else ("清場！重擲券 +1　·　%s的獎勵，選一個（點卡片或按數字鍵）" % tier_name)
 		if dice.shared:
 			_reward_title.text += "\n大家暗選，撞到同一個就比骰子，輸的隨機拿沒人選的"
 		_show_offers(s, me)
@@ -405,7 +418,7 @@ func refresh(world: World, me: Player, dt: float) -> void:
 	_show_count(dice, dt)
 	_show_banner(dt)
 	var waiting_mates := phase == DiceRun.REWARD and dice.shared and _picked and s.carve.is_empty()
-	_status.visible = phase == DiceRun.FIGHT or phase == DiceRun.EXPLORE or waiting_mates
+	_status.visible = phase == DiceRun.FIGHT or phase == DiceRun.CLEAR or phase == DiceRun.EXPLORE or waiting_mates
 	if waiting_mates:
 		_status.text = "選好了，等隊友選……"
 	elif _status.visible:
@@ -419,10 +432,8 @@ func _show_roll(world: World, dice: DiceRun, p: Player, dt: float) -> void:
 	_summary.text = summary_text(world, dice, p) if phase == DiceRun.COUNTDOWN else ""
 	if phase != DiceRun.ROLL:
 		_title.text = "全部擲完了"
-	elif dice.back_to != &"":
-		_title.text = "%s花 1 次擲骰（剩 %d 次）· 擲完%s" % [who, dice.charges_of(p), "倒數後接著打" if dice.back_to == DiceRun.FIGHT else "繼續逛"]
 	else:
-		_title.text = "第 %d 場 · 菁英！輪到%s擲骰（%s）" % [dice.fights, who, p.weapon.get("name", "")]
+		_title.text = "第 %d 場（%s）· 輪到%s擲骰（%s）" % [dice.fights, DiceDefs.FIGHT_TIERS[dice.tier].name, who, p.weapon.get("name", "")]
 	_timer_fill.size = Vector2(_timer_bg.custom_minimum_size.x * clampf(dice.timer / DiceDefs.ROLL_TIME, 0.0, 1.0), _timer_bg.custom_minimum_size.y)
 	_timer_fill.visible = phase == DiceRun.ROLL and not dice.waiting
 	table.visible = physics
@@ -473,9 +484,10 @@ func _show_roll(world: World, dice: DiceRun, p: Player, dt: float) -> void:
 	_btn_roll.visible = not s.rolled
 	_btn_roll.text = "自動丟（R）" if physics else "擲骰（空白鍵）"
 	_btn_reroll.visible = s.rolled
-	_btn_reroll.text = ("丟沒留的（R）剩 %d 次" if physics else "重擲沒鎖的（R）剩 %d 次") % s.rerolls
+	var again := "丟沒留的（R）" if physics else "重擲沒鎖的（R）"
+	_btn_reroll.text = again + ("免費 %d 次" % s.rerolls if s.rerolls > 0 else "花 1 張重擲券（剩 %d）" % dice.charges_of(p))
 	_btn_roll.disabled = not my_turn or busy or phase != DiceRun.ROLL
-	_btn_reroll.disabled = not my_turn or busy or s.rerolls <= 0 or not s.locked.has(false) or phase != DiceRun.ROLL
+	_btn_reroll.disabled = not my_turn or busy or not dice.can_reroll(p) or not s.locked.has(false) or phase != DiceRun.ROLL
 	_btn_done.disabled = not my_turn or busy or not s.rolled or phase != DiceRun.ROLL
 	_btn_method.visible = physics and my_turn
 	_btn_method.text = "擲法：%s" % ("骰盅" if table.cup_mode else "蓄力條")
@@ -494,6 +506,8 @@ func _show_roll(world: World, dice: DiceRun, p: Player, dt: float) -> void:
 		_hint.text = "點骰子拿到後面的保留區，剩下的再丟一次（%d 秒後自動完成）" % ceili(dice.timer)
 	elif s.rerolls > 0:
 		_hint.text = "點骰子鎖住想留的，再重擲其他的（%d 秒後自動完成）" % ceili(dice.timer)
+	elif dice.charges_of(p) > 0:
+		_hint.text = "免費重擲用完了，再丟要花 1 張重擲券（剩 %d 張；%d 秒後自動完成）" % [dice.charges_of(p), ceili(dice.timer)]
 	else:
 		_hint.text = "沒有重擲次數了，按完成（%d 秒後自動完成）" % ceili(dice.timer)
 
@@ -502,6 +516,9 @@ func _show_roll(world: World, dice: DiceRun, p: Player, dt: float) -> void:
 func _sync_table(_world: World, dice: DiceRun, p: Player, s: DiceRun.Seat) -> void:
 	table.cup_mode = settings == null or settings.values.get("dice_cup", true)
 	var round_key := str(dice.turn)   # 進擲骰階段時 refresh 把 _table_round 清掉：每次新的擲骰、換人擲都重排
+	# 上一位的錄影還在播（錄影晚一點才到，他停好馬上按完成）：播完才換下一位（骰面也先不換），不然看的人只看到一半
+	if round_key != _table_round and table.replaying:
+		return
 	if round_key != _table_round and phase == DiceRun.ROLL:
 		_table_round = round_key
 		_pending_throw = false
@@ -522,8 +539,8 @@ func _sync_table(_world: World, dice: DiceRun, p: Player, s: DiceRun.Seat) -> vo
 	elif s.rolled and not dice.waiting and not my_turn and not table.replaying and table.state == DiceTable.State.IDLE:
 		table.match_faces(s.face)   # 隊友擲的錄影沒收到（斷線、房主逾時自己抽）：直接擺成房主的面
 	var idle := phase == DiceRun.ROLL and my_turn and not dice.waiting and dice.settle <= 0.0
-	table.can_throw = idle and (not s.rolled or (s.rerolls > 0 and s.locked.has(false)))
-	table.can_pick = idle and s.rolled and s.rerolls > 0
+	table.can_throw = idle and (not s.rolled or (dice.can_reroll(p) and s.locked.has(false)))
+	table.can_pick = idle and s.rolled and dice.can_reroll(p)
 	_charge_fill.size = Vector2(_charge_bg.custom_minimum_size.x * table.charge, _charge_bg.custom_minimum_size.y)
 	_charge_fill.visible = table.charging
 
@@ -557,6 +574,8 @@ func _show_count(dice: DiceRun, dt: float) -> void:
 		_count.text = str(clampi(ceili(dice.timer / (DiceDefs.COUNTDOWN / 3.0)), 1, 3))
 	elif _fight_t > 0.0:
 		_count.text = "開打！"
+	elif phase == DiceRun.CLEAR:
+		_count.text = "清場！"
 	else:
 		_count.text = ""
 
@@ -763,10 +782,7 @@ func pick(i: int) -> void:
 func handle_key(event: InputEvent) -> bool:
 	if not visible:
 		return false
-	if not _overlay.visible:   # 逛地圖 / 戰鬥中：R 花 1 次自己擲（沒次數、死掉時不吃，R 照舊給重新開始）
-		if event.is_action_pressed(&"restart") and _can_roll and _charges > 0 and (phase == DiceRun.EXPLORE or phase == DiceRun.FIGHT):
-			op_requested.emit([InputCmd.OP_DICE_ROLL])
-			return true
+	if not _overlay.visible:   # 逛地圖、戰鬥、清場：鍵盤照常（R 留給重新開始）
 		return false
 	if phase == DiceRun.REWARD:
 		for i in DiceDefs.REWARD_CHOICES:
@@ -793,7 +809,7 @@ func handle_key(event: InputEvent) -> bool:
 
 # 戰鬥中技能欄上方那一行
 static func status_text(s: DiceRun.Seat, charges: int) -> String:
-	var roll := "擲骰 %d 次（R）" % charges if charges > 0 else "擲骰 0 次"
+	var roll := "重擲券 %d" % charges
 	if s.result.is_empty():
 		return "還沒擲骰，沒有右鍵　·　" + roll
 	if s.result.count <= 0:

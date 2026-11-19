@@ -41,7 +41,8 @@ var _lobby_elapsed := 0.0
 var _start_pos := Vector2.INF
 var _allies_seen := {}   # 自動驗證：這一局看過的玩家方骷髏僕從 id（G 連線檢查）
 var _dice_frames_in := 0   # 自動驗證：收到幾段隊友的擲骰錄影
-var _dice_roll_sent := false   # --auto-dice-roll：已經按過 R
+var _dice_done_seq := -1       # --auto-dice-roll：按過完成的那次擲骰（roll_seq）
+var _dice_encounter_done := false   # --dice-encounter：已經開過那一場
 var _warming := false                 # 開場預熱中（蓋著「準備中」）
 var _spectate := 0                     # 本機陣亡後觀戰的隊友 peer id（0 = 沒在觀戰；_update_spectate）
 
@@ -540,14 +541,31 @@ func start_net_game() -> void:
 	_refresh_net_panel()
 
 
-# --auto-dice-roll：時間到按 R（逛地圖花 1 次擲），輪到自己、桌子還沒丟就自動丟一次（連線檢查不用等 10 秒限時）
+# --dice-encounter（房主）：時間到在第一位玩家旁邊生一隻怪、開一場（--no-spawn 沒有怪群也能擲骰）
+func _debug_dice_encounter() -> void:
+	if _dice_encounter_done or _elapsed < args.dice_encounter or net_client != null or world.dice.phase != DiceRun.EXPLORE:
+		return
+	var first := world.first_alive_player()
+	if first == null:
+		return
+	_dice_encounter_done = true
+	var e := world.spawner.spawn_at(world, &"grunt", world.nav.nearest_walkable(first.pos + Vector2(5, 0)))
+	world.dice.on_alert(world, [e.id])
+
+
+# --auto-dice-roll：時間到之後輪到自己擲：桌子還沒丟就自動丟一次，停好了就按完成（連線檢查不用等 10 秒限時）
 func _auto_dice_roll() -> void:
-	if not _dice_roll_sent and _elapsed >= args.auto_dice_roll and world.dice.phase == DiceRun.EXPLORE:
-		_dice_roll_sent = true
-		input_collector.queue_inventory_op([InputCmd.OP_DICE_ROLL])
+	var w := net_client.world if net_client != null else world
+	var me := local_player()
+	if _elapsed < args.auto_dice_roll or w.dice == null or me == null or w.dice.phase != DiceRun.ROLL or not hud.dice_panel.my_turn:
+		return
+	var s := w.dice.seat_of(me)
 	var t := hud.dice_panel.table
-	if _dice_roll_sent and hud.dice_panel.my_turn and t.can_throw and t.state == DiceTable.State.IDLE:
+	if not s.rolled and t.can_throw and t.state == DiceTable.State.IDLE:
 		t.auto_throw(0.7)
+	elif s.rolled and not w.dice.waiting and w.dice.settle <= 0.0 and t.state == DiceTable.State.SETTLED and _dice_done_seq != s.roll_seq:
+		_dice_done_seq = s.roll_seq
+		input_collector.queue_inventory_op([InputCmd.OP_DICE_DONE])
 
 
 func _dice_setting() -> bool:
@@ -941,7 +959,9 @@ func _check_auto_quit(delta: float) -> void:
 			_allies_seen[a.id] = true
 	if args.auto_move_seconds > 0.0 and _elapsed >= args.auto_move_seconds:
 		input_collector.auto_move = Vector2.ZERO
-	if args.auto_dice_roll > 0.0 and world.dice != null:
+	if args.dice_encounter > 0.0 and world.dice != null:
+		_debug_dice_encounter()
+	if args.auto_dice_roll > 0.0:
 		_auto_dice_roll()
 	if _elapsed < args.run_seconds and _lobby_elapsed < args.run_seconds:
 		return
@@ -972,11 +992,10 @@ func _check_auto_quit(delta: float) -> void:
 	if net_client != null:
 		print("net corrections=%d max_error=%.4f" % [net_client.corrections, net_client.max_error])
 	if world.dice != null:   # 連線檢查用：本機桌上朝上的面、模擬層（客戶端是快照）每人的面、收到幾段隊友的擲骰錄影
-		var dice_line := "dice phase=%s frames_in=%d replays=%d table=%s cam=%.1f focus=%s" % [world.dice.phase, _dice_frames_in, hud.dice_panel.table.replays_done, hud.dice_panel.table.up_faces(), camera_rig.camera.size, hud.dice_panel.table.focus_point() != null]
-		for peer_id: int in peers:
-			var seat: DiceRun.Seat = world.dice.states.get(peer_id)
-			if seat != null:
-				dice_line += " face%d=%s seq%d=%d" % [peer_id, seat.face, peer_id, seat.roll_seq]
+		var dice_line := "dice phase=%s frames_in=%d replays=%d replayed=%s table=%s cam=%.1f focus=%s" % [world.dice.phase, _dice_frames_in, hud.dice_panel.table.replays_done, hud.dice_panel.table.replayed_faces, hud.dice_panel.table.up_faces(), camera_rig.camera.size, hud.dice_panel.table.focus_point() != null]
+		for peer_id: int in world.dice.states:   # 照座位印（客戶端先結束離線了，房主這邊的座位還在）
+			var seat: DiceRun.Seat = world.dice.states[peer_id]
+			dice_line += " face%d=%s seq%d=%d" % [peer_id, seat.face, peer_id, seat.roll_seq]
 		print(dice_line.replace(", ", ","))   # 陣列裡不留空白，檢查才好照空白切
 	var boss: Enemy = world.entities.get(world.boss_id)
 	if boss != null:

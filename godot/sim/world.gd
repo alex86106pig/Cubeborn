@@ -852,6 +852,7 @@ func step(cmds: Dictionary, dt: float) -> void:
 
 	if dice != null:
 		dice.note_leader(self)
+		dice.step(self, dt)   # 清場的計時（世界照常動）
 	for peer_id: int in players:
 		var p: Player = players[peer_id]
 		var cmd: InputCmd = cmds.get(peer_id)
@@ -1153,8 +1154,8 @@ func _update_downed(dt: float) -> void:
 			if p.revive_progress >= r.revive_time - TIME_EPSILON:
 				p.revive(rescuer.class_passive("revive_hp_ratio", r.revive_hp_ratio))
 				run_stats.add_revive(rescuer.peer_id)
-		elif dice != null:   # 骰子模式：倒地不倒數，這一場打完自動站起（DiceRun.revive_downed）；逛地圖時倒下的馬上站起
-			if dice.phase == DiceRun.EXPLORE:
+		elif dice != null:   # 骰子模式：倒地不倒數，這一場打完自動站起（DiceRun.revive_downed）；逛地圖、清場時倒下的馬上站起
+			if dice.phase == DiceRun.EXPLORE or dice.phase == DiceRun.CLEAR:
 				p.revive(DiceDefs.DOWNED_REVIVE_HP)
 		else:
 			p.revive_progress = maxf(0.0, p.revive_progress - r.decay_rate * dt)

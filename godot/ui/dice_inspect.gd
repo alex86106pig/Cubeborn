@@ -118,6 +118,19 @@ func _add_die(die: Array, weapon_id: StringName, at: Vector3, tag: String, color
 	_tags.append(lab)
 
 
+# 開場預熱（DicePanel.warm_up）：先擺一排、藏著也照畫（獎勵畫面第一次打開才不會當場編譯、產生骰面的字；
+# 網頁版實測沒預熱時第一次打開卡 89~90 ms）。end_warm_up 清掉、換回看得到才畫：留著的話一般模式量效能多一次 33~56 ms 的卡頓
+# （清掉不影響預熱：著色器有骰盤的骰子在用不會釋放，字形存在字型裡）
+func warm_up(faces: Array, weapon_id: StringName) -> void:
+	show_dice(faces, weapon_id, [[faces[0], weapon_id, "新骰子"]], 0)
+	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+
+
+func end_warm_up() -> void:
+	_viewport.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
+	show_dice([], &"", [], -1)
+
+
 func die_count() -> int:
 	return _dice.size()
 

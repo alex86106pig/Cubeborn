@@ -25,7 +25,7 @@ const HINT_BOTTOM := 150.0        # 新手提示的下緣離畫面底部多少
 const BOSS_NAME := "亡骸騎士"     # 測試場地波次的 Boss（darkFantasy.js 的 names.boss）
 # 介面程式碼裡寫死的中文字（橫幅、浮動文字、場上文字、連線面板、遊玩紀錄…；資料表以外的）：開場預熱用（v0.37.2）
 # check.gd 會掃 ui/ 的字串，缺字就列出來，加到這裡
-const UI_CHARS := "挑統凱此碑佔含決誤互立即般共砧升級—羈絆算階鑲輪　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木總樂畫陰源・介想意反對取噴發巡邏膨脹犬守話又頭肥羊園狼原形占拿件夠直接將群配跟事抓倉庫顏詛咒觸適任何修飾每翻滾魔放那隻身位袋數值道具亮標題管狀量機堆痕框掛其底併檢視模盅"
+const UI_CHARS := "挑統凱此碑佔含決誤互立即般共砧升級—羈絆算階鑲輪　！才湧先（），、：·…一了人入力上下亡口士已弓不中之內化友手主出功加包去外打未生用示穴丟全合同在多成曳有次死色西住作你利完投攻沒狂見走足使來到受始尚往怪或房拖明東果武波版物的空近金前屍度按挖活看秒美背要重面音頁個倒冤員害射效時格能起陣停動區啟基帶掉救敗旋條殺現第被設通速連備勝圍單選腦和玩返擇方式缺少虛擬只就復提援稀等著詞越進開間隊傷搬新會準落號裝裡路遊墓實幣滿種網需魂墳層撐暫暴獎碼範線靠骷器戰撿擋輸靜骸勵戲擊礎轉離騎關難繼續髏顯體本局累計過複紀錄貼聊天軟報給我們剩行平均幀卡頓超應快照長觀滑鼠左右鍵切換職業好消待還測試場重置樁回主選單木總樂畫陰源・介想意反對取噴發巡邏膨脹犬守話又頭肥羊園狼原形占拿件夠直接將群配跟事抓倉庫顏詛咒觸適任何修飾每翻滾魔放那隻身位袋數值道具亮標題管狀量機堆痕框掛其底併檢視模盅骰子刻技擲白顆門點片字清券大家暗撞比隨部招強；疊灰是別當×威普自留鎖免費花張法蓄甩後保再他＋可以「」紅最→建議這也蓋與閉逛地圖傳說順葫蘆三兩各盾護血命冷卻−移減退綠藍紫橘菁英"
 
 const VIGNETTE_SHADER := """
 shader_type canvas_item;
@@ -387,8 +387,10 @@ func set_loading(on: bool) -> void:
 		box.modulate.a = 0.02
 		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var text := warm_text()
-		for style: Array in [[16, 0], [18, 0], [20, 2], [28, 2], [48, 4]]:
-			var l := UiKit.label(text, style[0], Color.WHITE, style[1])
+		var styles: Array = [[text, 16, 0], [text, 18, 0], [text, 20, 2], [text, 28, 2], [text, 48, 4]]
+		styles.append_array(DicePanel.warm_big_text())   # 骰子模式的大字（倒數、清場、中獎橫幅）：字級不同，字形另外產生
+		for style: Array in styles:
+			var l := UiKit.label(style[0], style[1], Color.WHITE, style[2])
 			l.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
 			l.custom_minimum_size.x = 1800
 			box.add_child(l)
@@ -400,7 +402,7 @@ func set_loading(on: bool) -> void:
 # 會在遊戲中途第一次出現的字：道具名稱與說明、稀有度、怪物詞條與名字、武器詞條、新手提示、職業卡（F2）、怪物名稱、每層出口事件的文字
 static func warm_text() -> String:
 	var chars := {}
-	for script: Script in [ItemDefs, MonsterRarityDefs, WeaponDropDefs, HintDefs, StatDefs, LootDefs, ClassDefs, WeaponDefs, EnemyDefs, EventDefs]:
+	for script: Script in [ItemDefs, MonsterRarityDefs, WeaponDropDefs, HintDefs, StatDefs, LootDefs, ClassDefs, WeaponDefs, EnemyDefs, EventDefs, DiceDefs]:
 		_collect_chars(script.get_script_constant_map(), chars)
 	_collect_chars(UI_CHARS, chars)
 	var out := ""
@@ -572,7 +574,7 @@ func _process(delta: float) -> void:
 	_weapon.add_theme_color_override(&"font_color", ItemDefs.RARITIES[inst.rarity].color if not inst.is_empty() else Color.WHITE)
 	_souls.text = "靈魂 %d · 骰子 %d" % [world.souls, player.dice]
 	_coins.text = "金幣 %d" % world.run_coins
-	_souls.visible = world.dice == null   # 骰子模式沒有靈魂、金幣與遺物的重骰骰子（擲骰次數寫在技能欄上方）
+	_souls.visible = world.dice == null   # 骰子模式沒有靈魂、金幣與遺物的重骰骰子（重擲券寫在技能欄上方）
 	_coins.visible = world.dice == null
 	var s := world.stats
 	if world.has_floors():   # 挖墳地圖（D6）與小關：層數與難度
