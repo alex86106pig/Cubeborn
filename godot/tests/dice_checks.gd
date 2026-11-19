@@ -995,12 +995,96 @@ static func check_dice_show() -> String:
 	w.dice.arena_radius = 11.0
 	for f in 40:
 		view.sync(w, 1.0 / 60.0)
-	var shown := view.visible and is_equal_approx(view.strength, 1.0) and is_equal_approx(view.scale.x, 11.0) and view.position.is_equal_approx(Vector3(3, 0, 4))
+	var shown := view.fog_shown() and is_equal_approx(view.strength, 1.0) and view.fog_circle().is_equal_approx(Vector3(3, 11, 4))
 	w.dice.arena_radius = 0.0
 	for f in 40:
 		view.sync(w, 1.0 / 60.0)
-	var gone := not view.visible
+	var gone := not view.fog_shown()
 	view.queue_free()
 	if not shown or not gone:
 		return "霧牆畫面應照模擬層的圈淡入（濃度 1、半徑 11、中心 (3, 4)）、收掉時淡出：%s %s" % [shown, gone]
+	return ""
+
+
+# 構想補齊的三條（§55）：倒地不倒數、這一場打完自動站起 30%（逛地圖時倒下馬上站起，全隊倒地照樣輸）；
+# 倒數時的結果總覽每人一行；逛地圖時每群還沒醒的怪頭上標一般 / 菁英，醒了、開打就不標
+static func check_dice_rules() -> String:
+	var w := World.new(&"test_arena")
+	w.spawn_packs = false
+	w.dice = DiceRun.new()
+	w.reset(41, [1, 2])
+	w.spawner.finished = true
+	_worlds.append(w)
+	var p1: Player = w.players[1]
+	var p2: Player = w.players[2]
+	var e := _elite(w, p1.pos + Vector2(8, 0))
+	e.stun(999.0)
+	w.alert_pack(_lone_pack(w, e), e, p1)
+	w.dice.phase = DiceRun.FIGHT
+	p2.die()
+	if not p2.is_downed:
+		return "多人時生命歸零應先倒地"
+	for i in ceili((Config.REVIVE.down_time + 3.0) / DT):
+		w.step({}, DT)
+	if p2.is_dead or not p2.is_downed:
+		return "骰子模式倒地不倒數：過了 %.0f 秒應還倒著、沒死（死 %s、倒 %s）" % [Config.REVIVE.down_time + 3.0, p2.is_dead, p2.is_downed]
+	e.die()
+	w.step({}, DT)
+	if p2.is_downed or absf(p2.hp - roundf(p2.max_hp * DiceDefs.DOWNED_REVIVE_HP)) > 1.0:
+		return "這一場打完應自動站起、剩 %d%% 生命：倒 %s、%.0f / %.0f" % [roundi(DiceDefs.DOWNED_REVIVE_HP * 100), p2.is_downed, p2.hp, p2.max_hp]
+	w.dice.phase = DiceRun.EXPLORE
+	p2.die()
+	w.step({}, DT)
+	if p2.is_downed:
+		return "逛地圖時倒下應馬上站起"
+	w.dice.phase = DiceRun.FIGHT
+	p1.die()
+	p2.die()
+	w.step({}, DT)
+	if not w.is_defeated:
+		return "全隊倒地應整局結束"
+	# 結果總覽
+	var w2 := _dice_world()
+	var me := _player(w2)
+	var e2 := _elite(w2, me.pos + Vector2(8, 0))
+	w2.alert_pack(_lone_pack(w2, e2), e2, me)
+	_run(w2, _op_cmd([InputCmd.OP_DICE_ROLL]), 1)
+	_wait(w2, DiceDefs.SETTLE_TIME)
+	_run(w2, _op_cmd([InputCmd.OP_DICE_DONE]), 1)
+	var cam := Camera3D.new()
+	_scene_root().add_child(cam)
+	var hud: Variant = load("res://ui/hud.tscn").instantiate()
+	hud.setup(w2, cam)
+	_scene_root().add_child(hud)
+	var dp: DicePanel = hud.dice_panel
+	dp.refresh(w2, me, 0.05)
+	var summary: String = dp._summary.text
+	hud.queue_free()
+	cam.queue_free()
+	if w2.dice.phase != DiceRun.COUNTDOWN or not summary.begins_with("你："):
+		return "大家擲完倒數時應列結果總覽（你：…）：%s「%s」" % [w2.dice.phase, summary]
+	# 怪群難度
+	var w3 := _dice_world()
+	var p3 := _player(w3)
+	var a := _spawn(w3, &"grunt", p3.pos + Vector2(10, 0))
+	a.dormant = true
+	_lone_pack(w3, a)
+	var b := _elite(w3, p3.pos + Vector2(-10, 0))
+	b.dormant = true
+	var bi := _lone_pack(w3, b)
+	var c := _spawn(w3, &"grunt", p3.pos + Vector2(0, 10))
+	var ci := _lone_pack(w3, c)
+	w3.packs[ci].awake = true
+	var view := DiceArenaView.new()
+	_scene_root().add_child(view)
+	view.sync(w3, 0.016, p3)
+	var tags := view.tag_texts.duplicate()
+	var seen := view.visible_tags()
+	w3.alert_pack(bi, b, p3)
+	view.sync(w3, 0.016, p3)
+	var fighting := view.tag_texts.duplicate()
+	view.queue_free()
+	tags.sort()
+	if tags != ["一般", "菁英"] or seen != 2 or not fighting.is_empty():
+		return "逛地圖時還沒醒的怪群應標一般 / 菁英（醒了的不標，畫面上看得到 %d 個）、開打不標：%s、開打時 %s" % [seen, tags, fighting]
 	return ""

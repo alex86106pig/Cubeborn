@@ -1151,6 +1151,9 @@ func _update_downed(dt: float) -> void:
 			if p.revive_progress >= r.revive_time - TIME_EPSILON:
 				p.revive(rescuer.class_passive("revive_hp_ratio", r.revive_hp_ratio))
 				run_stats.add_revive(rescuer.peer_id)
+		elif dice != null:   # 骰子模式：倒地不倒數，這一場打完自動站起（DiceRun.revive_downed）；逛地圖時倒下的馬上站起
+			if dice.phase == DiceRun.EXPLORE:
+				p.revive(DiceDefs.DOWNED_REVIVE_HP)
 		else:
 			p.revive_progress = maxf(0.0, p.revive_progress - r.decay_rate * dt)
 			p.down_timer -= dt

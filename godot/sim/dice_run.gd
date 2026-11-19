@@ -385,6 +385,7 @@ func on_enemy_died(world: World, e: Enemy) -> void:
 			return
 	foes.clear()
 	arena_radius = 0.0
+	revive_downed(world)
 	for p in world.player_list:
 		_add_charges(p, DiceDefs.CHARGES_PER_FIGHT)
 	var any := _offer_rewards(world)
@@ -911,6 +912,13 @@ func _sync_stats(world: World, p: Player, s: Seat) -> void:
 	_apply_stats(world, p, s.result)
 	for i in s.items.size():
 		_apply_item(p, i, s.items[i])
+
+
+# 這一場打完：倒地的隊友自動站起、剩 DOWNED_REVIVE_HP 的生命（構想：倒地不倒數，全隊倒地才整局結束）
+func revive_downed(world: World) -> void:
+	for p in world.player_list:
+		if p.is_downed and not p.is_dead:
+			p.revive(DiceDefs.DOWNED_REVIVE_HP)
 
 
 # ---------- 戰場霧牆 ----------

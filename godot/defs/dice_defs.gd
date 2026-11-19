@@ -335,6 +335,7 @@ static func dice_from_bytes(b: PackedByteArray) -> Array:
 # ---------- 戰場霧牆、隊長帶隊、擲骰演出（§55，數字 Claude 暫定）----------
 # 霧牆：開一場時以這一場的怪為中心圍一圈（要圈住這一場的怪與活著的玩家，再留 ARENA_MARGIN），夾在 MIN~MAX；Boss 直接用 MAX
 # 圈裡的玩家與這一場的怪出不去；圈外的怪群打完之前不會發現玩家
+const DOWNED_REVIVE_HP := 0.3    # 倒地：不倒數，這一場打完自動站起、剩這麼多生命（構想）
 const ARENA_MARGIN := 3.0
 const ARENA_MIN := 9.0
 const ARENA_MAX := 16.0

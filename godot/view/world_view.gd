@@ -435,7 +435,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 	_sync_grave(world)
 	_sync_pack_props(world)
 	_sync_strikes(world, dt)
-	dice_arena.sync(world, dt)
+	dice_arena.sync(world, dt, me)
 	_sync_vision_overlay(me)
 	if is_warming_up():
 		_vision_overlay.visible = true

@@ -36,6 +36,7 @@ var _btn_method := UiKit.button("", UiKit.BUTTON_M)   # 物理擲骰的擲法：
 var _result := UiKit.label("", UiKit.FONT_BODY, Color("ffcf7a"))
 var _result_sub := UiKit.label("", UiKit.FONT_NOTE)
 var _effects := UiKit.label("", UiKit.FONT_NOTE, Color("9fd8ff"))
+var _summary := UiKit.label("", UiKit.FONT_NOTE, Color(1, 1, 1, 0.92))   # 結果總覽：大家都擲完、倒數時列每個人的右鍵與效果
 var _cands := HBoxContainer.new()
 var _count := UiKit.label("", 150, UiKit.GOLD, 6)
 var _banner := UiKit.label("", 64, UiKit.GOLD, 5)
@@ -97,7 +98,7 @@ func _init() -> void:
 	_roll_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_roll_box.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_roll_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	for l: Label in [_title, _hint, _result, _result_sub, _effects]:
+	for l: Label in [_title, _hint, _result, _result_sub, _effects, _summary]:
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_roll_box.add_child(_title)
 	var timer := CenterContainer.new()
@@ -152,6 +153,7 @@ func _init() -> void:
 	_cands.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_roll_box.add_child(_cands)
 	_roll_box.add_child(_effects)
+	_roll_box.add_child(_summary)
 	_overlay.add_child(_roll_box)
 
 	_reward_box.add_theme_constant_override(&"separation", 20)
@@ -271,6 +273,7 @@ func refresh(world: World, me: Player, dt: float) -> void:
 func _show_roll(world: World, dice: DiceRun, p: Player, dt: float) -> void:
 	var s := dice.seat_of(p)
 	var who := "你" if my_turn else "隊友"
+	_summary.text = summary_text(world, dice, p) if phase == DiceRun.COUNTDOWN else ""
 	if phase != DiceRun.ROLL:
 		_title.text = "全部擲完了"
 	elif dice.back_to != &"":
@@ -413,6 +416,21 @@ func _show_count(dice: DiceRun, dt: float) -> void:
 		_count.text = "開打！"
 	else:
 		_count.text = ""
+
+
+# 結果總覽（倒數 3、2、1 的時候）：每位這次有擲的人一行「你 / P2：旋風斬 ×3 強化 ×2.6 · 傷害 +20%」
+func summary_text(world: World, dice: DiceRun, me: Player) -> String:
+	var lines: Array[String] = []
+	for q in world.player_list:
+		var s: DiceRun.Seat = dice.states.get(q.peer_id)
+		if s == null or not s.rolled or not dice.can_roll(q):
+			continue
+		var res: Dictionary = s.result
+		var head := _player_name(world, me, q.peer_id) if q != me else "你"
+		var skill := "沒中" if res.is_empty() or res.count <= 0 else "%s ×%d %s ×%s" % [DiceDefs.name_of(res.skill), res.count, DiceDefs.tier_of(res.tier_count).name, str(DiceDefs.tier_of(res.tier_count).mul)]
+		var fx := effects_text(res.get("effects", {}), " · ")
+		lines.append("%s：%s%s%s" % [head, skill, combos_text(res.get("combos", []), " · "), (" · " + fx) if fx != "" else ""])
+	return "\n".join(lines)
 
 
 # 揭曉（每次擲完一次）：每個中的技能面叮一聲、一聲比一聲高；強化以上或中了組合 → 中獎音效 + 橫幅「你擲出 3 個旋風斬！」；
