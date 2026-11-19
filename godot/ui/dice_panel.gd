@@ -359,9 +359,8 @@ func _sync_table(_world: World, dice: DiceRun, p: Player, s: DiceRun.Seat) -> vo
 		table.reset_round()
 	table.set_faces(s.pool, p.weapon_id)
 	if s.roll_seq != _table_seq:
-		if not _pending_throw and dice.waiting:
-			table.auto_throw(randf_range(0.45, 0.9))   # 時間到、模擬層自己擲：桌子照樣丟一次
-			_pending_throw = false
+		if not _pending_throw and dice.waiting and my_turn:
+			table.auto_throw(randf_range(0.45, 0.9))   # 時間到、模擬層自己擲：輪到的人的桌子照樣丟一次（隊友的桌子播他的錄影）
 		_pending_throw = false
 		_table_seq = s.roll_seq
 	var kept: Array[bool] = []
@@ -370,6 +369,8 @@ func _sync_table(_world: World, dice: DiceRun, p: Player, s: DiceRun.Seat) -> vo
 	table.set_kept(kept, s.face)
 	if s.rolled and not dice.waiting and table.state == DiceTable.State.SETTLED:
 		table.match_faces(s.face)
+	elif s.rolled and not dice.waiting and not my_turn and not table.replaying and table.state == DiceTable.State.IDLE:
+		table.match_faces(s.face)   # 隊友擲的錄影沒收到（斷線、房主逾時自己抽）：直接擺成房主的面
 	var idle := phase == DiceRun.ROLL and my_turn and not dice.waiting and dice.settle <= 0.0
 	table.can_throw = idle and (not s.rolled or (s.rerolls > 0 and s.locked.has(false)))
 	table.can_pick = idle and s.rolled and s.rerolls > 0

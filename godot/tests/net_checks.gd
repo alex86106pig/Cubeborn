@@ -1596,3 +1596,63 @@ static func check_net_dice(feel: Array[String]) -> String:
 	if cw.dice == null or cw.dice.phase != DiceRun.EXPLORE or cw.dice.seat_of(me).loose != hs.loose:
 		return "沒帶骰子欄位的快照客戶端應沿用上次的"
 	return ""
+
+
+# 骰子模式的兩個程序實測（真的 ENet RPC）：房主開骰子模式，客戶端開局 1.5 秒按 R、自己的桌子丟；
+# 錄影經房主轉送（客戶端 → 房主），房主的桌子照著播完、停在客戶端回報的面；客戶端自己不收錄影；兩邊模擬層（客戶端是快照）的面一致
+static func check_two_processes_dice(feel: Array[String]) -> String:
+	var exe := OS.get_executable_path()
+	var project := ProjectSettings.globalize_path("res://")
+	var dir := OS.get_user_data_dir()
+	var logs := [dir.path_join("dice_host.log"), dir.path_join("dice_client.log")]
+	for path: String in logs:
+		DirAccess.remove_absolute(path)
+	var port := "--net-port=%d" % (Config.NET.port + 9)
+	var common := ["--headless", "--path", project]
+	var host_args := common + ["--log-file", logs[0], "--", "--menu-flow", "--host", port, "--net-autostart=2", "--no-spawn", "--game-mode=dice", "--seconds=10"]
+	var client_args := common + ["--log-file", logs[1], "--", "--menu-flow", "--join=127.0.0.1", port, "--no-spawn", "--auto-dice-roll=1.5", "--seconds=8"]
+	var host_pid := OS.create_process(exe, host_args)
+	OS.delay_msec(500)
+	var client_pid := OS.create_process(exe, client_args)
+	var waited := 0
+	while (OS.is_process_running(host_pid) or OS.is_process_running(client_pid)) and waited < 40000:
+		OS.delay_msec(100)
+		waited += 100
+	for pid: int in [host_pid, client_pid]:
+		if OS.is_process_running(pid):
+			OS.kill(pid)
+	var got := []
+	for path: String in logs:
+		var f := FileAccess.open(path, FileAccess.READ)
+		var found := {}
+		if f != null:
+			var text := f.get_as_text()
+			if text.contains("SCRIPT ERROR"):
+				return "%s 有執行期錯誤：%s" % [path.get_file(), text.get_slice("SCRIPT ERROR", 1).substr(0, 300)]
+			for line in text.split("\n"):
+				if line.begins_with("dice "):
+					for part in line.strip_edges().split(" "):
+						if part.contains("="):
+							found[part.get_slice("=", 0)] = part.get_slice("=", 1)
+		got.append(found)
+	var host: Dictionary = got[0]
+	var client: Dictionary = got[1]
+	if host.is_empty() or client.is_empty():
+		return "沒有讀到兩邊的骰子狀態（房主：%s；客戶端：%s）" % [host, client]
+	var peer := ""
+	for k: String in client:
+		if k.begins_with("seq") and k != "seq1":
+			peer = k.substr(3)
+	feel.append("骰子模式兩個程序：房主 %s；客戶端 %s" % [host, client])
+	if peer == "" or int(client.get("seq" + peer, "0")) < 1:
+		return "客戶端按 R 之後應擲過一次：%s" % [client]
+	var face_key := "face" + peer
+	if host.get(face_key, "") != client.get(face_key, "x") or client.get("table", "") != client.get(face_key, "x"):
+		return "客戶端桌上的面、客戶端快照的面、房主的面應一樣：客戶端桌上 %s、客戶端快照 %s、房主 %s" % [client.get("table"), client.get(face_key), host.get(face_key)]
+	if int(host.get("frames_in", "0")) < 2 or int(client.get("frames_in", "0")) != 0:
+		return "錄影應從客戶端送到房主（房主收到 %s 段、客戶端自己收到 %s 段）" % [host.get("frames_in"), client.get("frames_in")]
+	if int(host.get("replays", "0")) < 1:
+		return "房主的桌子應播完客戶端擲的錄影：播完 %s 次" % host.get("replays")
+	if host.get("table", "") != host.get(face_key, "x"):
+		return "房主的桌子播完錄影應停在客戶端擲的面：房主桌上 %s、應 %s" % [host.get("table"), host.get(face_key)]
+	return ""

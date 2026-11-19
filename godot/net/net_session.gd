@@ -12,6 +12,7 @@ signal game_started(peer_ids: Array)           # 客戶端：房主按下開始
 signal inputs_received(peer_id: int, arrays: Array)
 signal snapshot_received(snap: Array)
 signal events_received(run: int, tick: int, events: Array)
+signal dice_frames_received(data: PackedByteArray)   # 骰子模式：隊友擲骰的錄影一段（DiceTable.play_frames；房主收到客戶端的會轉給其他人）
 signal peer_left(peer_id: int)                 # 房主：有人斷線
 signal connection_failed
 signal disconnected                            # 客戶端：和房主斷線
@@ -275,6 +276,16 @@ func send_events(run: int, tick: int, events: Array) -> void:
 	_send(func() -> void: _rpc_events.rpc(run, tick, events), false)
 
 
+# 骰子模式的擲骰錄影（畫面層的資料，不經模擬層、不進快照）：客戶端送給房主、房主轉給其他客戶端；房主自己擲的直接送給所有客戶端
+func send_dice_frames(data: PackedByteArray) -> void:
+	if not is_started:
+		return
+	if is_host:
+		_send(func() -> void: _rpc_dice_frames_down.rpc(data), false)
+	else:
+		_send(func() -> void: _rpc_dice_frames_up.rpc_id(World.HOST_PEER_ID, data), false)
+
+
 func _send(fn: Callable, unreliable: bool) -> void:
 	if not is_active():
 		return
@@ -443,3 +454,19 @@ func _rpc_snapshot(snap: Array) -> void:
 @rpc("authority", "call_remote", "reliable", CHANNEL_RELIABLE)
 func _rpc_events(run: int, tick: int, events: Array) -> void:
 	events_received.emit(run, tick, events)
+
+
+@rpc("any_peer", "call_remote", "reliable", CHANNEL_RELIABLE)
+func _rpc_dice_frames_up(data: PackedByteArray) -> void:
+	if not is_host:
+		return
+	var from := multiplayer.get_remote_sender_id()
+	for peer_id: int in lobby_peers:
+		if peer_id != World.HOST_PEER_ID and peer_id != from:
+			_send(func() -> void: _rpc_dice_frames_down.rpc_id(peer_id, data), false)
+	dice_frames_received.emit(data)
+
+
+@rpc("authority", "call_remote", "reliable", CHANNEL_RELIABLE)
+func _rpc_dice_frames_down(data: PackedByteArray) -> void:
+	dice_frames_received.emit(data)

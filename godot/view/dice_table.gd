@@ -5,13 +5,16 @@
 #   蓄力條：按住滑鼠或空白鍵，力道條上下跑；放開那一刻的力道決定丟多大力（從桌子左邊往右丟）
 # 重擲：點桌上停好的骰子拿到後面的保留區（DicePanel 送 OP_DICE_LOCK），剩下的再丟一次；保留區的骰子照原本的面擺好、不動
 # 骰子斜靠著牆或別顆停住（朝上那面不夠平）自動往上輕推一下再滾；超過 SETTLE_TIMEOUT 秒還沒停就照現在朝上的面算
+# 連線（§55「連線」）：物理只在擲的人這台算。record_enabled 時自己擲的每一段（骰盅、6 顆骰子的位置與轉向）錄下來送出（frames_recorded），
+# 隊友的桌子收到就照著播（play_frames，骰子凍住不跑物理），大家看到同一段
 class_name DiceTable
 extends SubViewportContainer
 
 signal thrown()                     # 丟出去了（DicePanel 送 OP_DICE_ROLL）
-signal settled(faces: Array)        # 全部停好：每顆朝上的面編號（0~5，保留區的照原本的）
+signal settled(faces: Array)        # 全部停好：每顆朝上的面編號（0~5，保留區的照原本的）；播隊友的錄影不送
 signal die_clicked(index: int)      # 點了桌上 / 保留區的第幾顆（鎖住 / 放回）
 signal clacked(gain: float)         # 骰子撞到東西（音量比例，DicePanel 轉成 diceClack 音效）
+signal frames_recorded(data: PackedByteArray)   # 連線：自己擲的錄影，每 REC_CHUNK 幀一段、停好送最後一段（main.gd 交給 NetSession）
 
 enum State { IDLE, AIM, ROLLING, SETTLED }
 
@@ -36,8 +39,15 @@ const SETTLE_TIMEOUT := 6.0               # 到了還沒停好：還在動 / 斜
 const ON_TABLE_Y := 0.8                    # 停住時中心高過這個 = 疊在別顆上面（也算沒停好）
 # 骰子 6 面的法線（面編號 = 骰面陣列的 index）
 const NORMALS: Array[Vector3] = [Vector3.UP, Vector3.DOWN, Vector3.RIGHT, Vector3.LEFT, Vector3.BACK, Vector3.FORWARD]
+const REC_EVERY := 2                       # 錄影每 2 個物理步錄一幀（30 幀 / 秒；播的時候兩幀之間補間）
+const REC_CHUNK := 6                       # 每 6 幀（0.2 秒）送一段：隊友晚約這麼久 + 網路延遲看到
+const PLAY_LEAD := 5                       # 收到這麼多幀才開始播（網路抖一下不會播到一半停住）
+const PLAY_CATCH_UP := 15                  # 落後超過這麼多幀就加快 1.25 倍追上
 
 var cup_mode := true
+var record_enabled := false         # 連線時 main.gd 開：自己擲的錄下來
+var replaying := false              # 正在播隊友擲的錄影（骰子凍住，照錄影擺）
+var replays_done := 0               # 播完幾次隊友的錄影（連線檢查用）
 var can_throw := false              # DicePanel 每幀設：輪到本機、還能擲 / 重擲、骰子沒在轉
 var can_pick := false               # 停好之後還能重擲：點骰子才收
 var state := State.IDLE
@@ -63,6 +73,16 @@ var _cup_prev := Vector3.ZERO
 var _cup_arming := 0              # 骰盅剛出現：先關碰撞幾個物理步（從桌子底下瞬移上來，物理會當成高速撞上去把骰子彈飛）
 var _face_nodes: Array = []         # 每顆 6 個 [底色 MeshInstance3D, Label3D]
 var _font: Font
+var _rec_id := 0                    # 正在錄的這一次擲的編號（隨機，隊友靠它分辨是不是新的一次）；0 = 沒在錄
+var _rec_buf := StreamPeerBuffer.new()
+var _rec_frames := 0                # 這一段錄了幾幀
+var _rec_tick := 0
+var _frame_clack := 0.0             # 這一幀最大的撞擊聲（錄進去，隊友播的時候照著響）
+var _play_id := 0                   # 正在播的錄影編號
+var _play: Array = []               # 收到的幀：[骰盅看得到, 撞擊聲, 骰盅位置, [[位置, 轉向] × 6]]
+var _play_t := 0.0                  # 播到第幾幀（有小數 = 兩幀之間）
+var _play_done := -1                # 撞擊聲播到第幾幀
+var _play_final := false            # 最後一段收到了
 
 
 func _init() -> void:
@@ -189,8 +209,10 @@ func _make_die(i: int) -> RigidBody3D:
 	_face_nodes.append(nodes)
 	d.body_entered.connect(func(_other: Node) -> void:
 		var v := d.linear_velocity.length()
-		if v > 1.2 and state != State.SETTLED:
-			clacked.emit(clampf(v / 14.0, 0.15, 1.0)))
+		if v > 1.2 and state != State.SETTLED and not replaying:
+			var gain := clampf(v / 14.0, 0.15, 1.0)
+			_frame_clack = maxf(_frame_clack, gain)
+			clacked.emit(gain))
 	return d
 
 
@@ -290,6 +312,8 @@ func set_faces(pool: Array, weapon_id: StringName) -> void:
 func reset_round() -> void:
 	_kept.fill(false)
 	state = State.IDLE
+	_stop_replay()
+	_rec_id = 0
 	charging = false
 	_hide_cup()
 	_line_up()
@@ -371,6 +395,7 @@ func release_charge() -> void:
 func _throw_from_edge(power: float) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
+	_begin_record()
 	var speed := lerpf(THROW_SPEED.x, THROW_SPEED.y, clampf(power, 0.0, 1.0))
 	var n := 0
 	for i in _dice.size():
@@ -449,6 +474,7 @@ func _pick_die(p: Vector2) -> int:
 # 骰盅：罩住要丟的骰子（在骰盅裡排好），之後跟著滑鼠
 func _begin_cup(p: Vector2) -> void:
 	state = State.AIM
+	_begin_record()
 	_cup_target = _table_point(p, CUP_HEIGHT * 0.05)
 	_cup.collision_layer = 0
 	_cup.position = _cup_target
@@ -522,6 +548,15 @@ func _hide_cup() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if replaying:
+		_step_replay(delta)
+		return
+	_step_physics(delta)
+	if _rec_id != 0:
+		_record_frame()
+
+
+func _step_physics(delta: float) -> void:
 	if charging:
 		_charge_t += delta
 		charge = 1.0 - absf(fposmod(_charge_t / CHARGE_PERIOD, 2.0) - 1.0)   # 0 → 1 → 0 來回
@@ -629,3 +664,127 @@ func _line_up() -> void:
 	for i in _dice.size():
 		_rolling[i] = false
 		_place(_dice[i], Vector3(-PLAY.x / 2.0 + 1.6 + i * 1.75, 0.5, 0.8), i % NORMALS.size(), false)
+
+
+# ---------- 連線：錄影與播放 ----------
+# 一段的格式：u32 編號、u8 是不是最後一段、u8 幾幀，接著每幀：u8 骰盅看得到、u8 撞擊聲（0~255）、骰盅位置（3 個 half）、
+# 6 顆各 [位置 3 個 half、轉向四元數 4 個 half]；一幀 92 bytes，30 幀 / 秒約 2.8 KB / 秒
+
+func _begin_record() -> void:
+	if not record_enabled:
+		return
+	_rec_id = randi() | 1
+	_rec_buf.clear()
+	_rec_frames = 0
+	_rec_tick = 0
+	_frame_clack = 0.0
+
+
+func _record_frame() -> void:
+	_rec_tick += 1
+	var done := state == State.SETTLED
+	if _rec_tick % REC_EVERY != 0 and not done:
+		return
+	_rec_buf.put_u8(1 if _cup.visible else 0)
+	_rec_buf.put_u8(roundi(clampf(_frame_clack, 0.0, 1.0) * 255.0))
+	_frame_clack = 0.0
+	_put_vec(_rec_buf, _cup.position)
+	for d in _dice:
+		_put_vec(_rec_buf, d.position)
+		var q := d.quaternion
+		for v: float in [q.x, q.y, q.z, q.w]:
+			_rec_buf.put_half(v)
+	_rec_frames += 1
+	if _rec_frames >= REC_CHUNK or done:
+		var out := StreamPeerBuffer.new()
+		out.put_u32(_rec_id)
+		out.put_u8(1 if done else 0)
+		out.put_u8(_rec_frames)
+		out.put_data(_rec_buf.data_array)
+		_rec_buf.clear()
+		_rec_frames = 0
+		if done:
+			_rec_id = 0
+		frames_recorded.emit(out.data_array)
+
+
+static func _put_vec(b: StreamPeerBuffer, v: Vector3) -> void:
+	b.put_half(v.x)
+	b.put_half(v.y)
+	b.put_half(v.z)
+
+
+static func _get_vec(b: StreamPeerBuffer) -> Vector3:
+	return Vector3(b.get_half(), b.get_half(), b.get_half())
+
+
+# 收到隊友擲的一段：新的編號就從頭播；收夠 PLAY_LEAD 幀（或最後一段到了）才開始播。自己正在擲時不收
+func play_frames(data: PackedByteArray) -> void:
+	if _rec_id != 0 or state == State.AIM or (state == State.ROLLING and not replaying):
+		return
+	var b := StreamPeerBuffer.new()
+	b.data_array = data
+	var id := b.get_u32()
+	var final := b.get_u8() == 1
+	var n := b.get_u8()
+	if id != _play_id:
+		_stop_replay()
+		_play_id = id
+	for k in n:
+		var cup_seen := b.get_u8() == 1
+		var clack := b.get_u8() / 255.0
+		var cup := _get_vec(b)
+		var dice := []
+		for i in _dice.size():
+			var at := _get_vec(b)
+			dice.append([at, Quaternion(b.get_half(), b.get_half(), b.get_half(), b.get_half()).normalized()])
+		_play.append([cup_seen, clack, cup, dice])
+	_play_final = _play_final or final
+	if not replaying and not _play.is_empty() and (_play.size() >= PLAY_LEAD or _play_final):
+		replaying = true
+		state = State.ROLLING
+		charging = false
+		_cup.collision_layer = 0
+		for d in _dice:
+			d.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+			d.freeze = true
+
+
+func _stop_replay() -> void:
+	replaying = false
+	_play.clear()
+	_play_t = 0.0
+	_play_done = -1
+	_play_final = false
+	_play_id = 0
+
+
+# 播放：照錄影的時間走（兩幀之間補間），落後太多加快；播完最後一幀就算停好（不送 settled：結果以房主的為準）
+func _step_replay(delta: float) -> void:
+	var last := _play.size() - 1
+	var rate := 60.0 / REC_EVERY * (1.25 if last - _play_t > PLAY_CATCH_UP else 1.0)
+	_play_t = minf(_play_t + delta * rate, float(last))
+	var i := floori(_play_t)
+	var j := mini(i + 1, last)
+	var t := _play_t - i
+	var a: Array = _play[i]
+	var b: Array = _play[j]
+	_cup.visible = a[0]
+	_cup.position = (a[2] as Vector3).lerp(b[2], t) if a[0] else Vector3(0, -20, 0)
+	for k in _dice.size():
+		var d := _dice[k]
+		if not d.freeze:
+			d.freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+			d.freeze = true
+		var pa: Array = a[3][k]
+		var pb: Array = b[3][k]
+		d.transform = Transform3D(Basis((pa[1] as Quaternion).slerp(pb[1], t)), (pa[0] as Vector3).lerp(pb[0], t))
+	while _play_done < i:
+		_play_done += 1
+		if _play[_play_done][1] > 0.0:
+			clacked.emit(_play[_play_done][1])
+	if _play_t >= last and _play_final:
+		replaying = false
+		replays_done += 1
+		state = State.SETTLED
+		_hide_cup()

@@ -584,3 +584,77 @@ static func _mouse_button(at: Vector2, pressed: bool) -> InputEventMouseButton:
 	b.pressed = pressed
 	b.position = at
 	return b
+
+
+# 連線的擲骰錄播（§55「連線」）：A 桌開錄影、真的丟，錄影經過 var_to_bytes 送到 B 桌播；B 的骰子不跑物理、不送 settled，
+# 播完停在跟 A 一樣的位置與面、撞擊聲跟著響；量一秒要送多少
+static func check_dice_replay() -> String:
+	var root := _scene_root()
+	var a := DiceTable.new()
+	var b := DiceTable.new()
+	root.add_child(a)
+	root.add_child(b)
+	var faces: Array = []
+	for i in DiceDefs.DICE_COUNT:
+		faces.append(DiceDefs.weapon_die(&"swordShield"))
+	for t: DiceTable in [a, b]:
+		t.set_faces(faces, &"swordShield")
+		t.reset_round()
+	a.record_enabled = true
+	a.can_throw = true
+	var bytes := [0]
+	var chunks := [0]
+	a.frames_recorded.connect(func(data: PackedByteArray) -> void:
+		bytes[0] += data.size()
+		chunks[0] += 1
+		b.play_frames(bytes_to_var(var_to_bytes(data))))
+	var a_faces: Array = []
+	var b_settled: Array = []
+	var b_clacks := [0]
+	var a_clacks := [0]
+	a.settled.connect(func(f: Array) -> void: a_faces.append(f))
+	b.settled.connect(func(f: Array) -> void: b_settled.append(f))
+	a.clacked.connect(func(_g: float) -> void: a_clacks[0] += 1)
+	b.clacked.connect(func(_g: float) -> void: b_clacks[0] += 1)
+	await (Engine.get_main_loop() as SceneTree).physics_frame
+	a.auto_throw(0.8)
+	var frames := 0
+	var started := -1
+	var a_done := -1
+	var err := ""
+	while frames < int((DiceTable.SETTLE_TIMEOUT + 3.0) * 60):
+		await (Engine.get_main_loop() as SceneTree).physics_frame
+		frames += 1
+		if started < 0 and b.replaying:
+			started = frames
+			for d: RigidBody3D in b._dice:
+				if not d.freeze:
+					err = "播錄影時骰子應凍住、不跑物理"
+		if a_done < 0 and not a_faces.is_empty():
+			a_done = frames
+		if a_done >= 0 and not b.replaying and b.state == DiceTable.State.SETTLED:
+			break
+	if err == "" and started < 0:
+		err = "B 桌一直沒開始播"
+	elif err == "" and a_faces.is_empty():
+		err = "A 桌沒停好"
+	elif err == "" and b.state != DiceTable.State.SETTLED:
+		err = "B 桌播完應算停好：state %d" % b.state
+	elif err == "" and not b_settled.is_empty():
+		err = "播錄影不該送 settled（結果以房主的為準）"
+	elif err == "" and Array(b.up_faces()) != a_faces[0]:
+		err = "B 桌播完的面 %s 應同 A 桌 %s" % [b.up_faces(), a_faces[0]]
+	elif err == "" and a_clacks[0] > 0 and b_clacks[0] == 0:
+		err = "A 桌有撞擊聲（%d 次），B 桌播的時候也要響" % a_clacks[0]
+	if err == "":
+		for i in DiceDefs.DICE_COUNT:
+			var gap: float = a._dice[i].position.distance_to(b._dice[i].position)
+			if gap > 0.05:
+				err = "第 %d 顆 B 桌停在 %s，A 桌 %s（差 %.3f）" % [i + 1, b._dice[i].position, a._dice[i].position, gap]
+				break
+	if err == "":
+		_note("擲骰錄播：A 桌 %.2f 秒停好、B 桌第 %.2f 秒開始播、晚 %.2f 秒播完；%d 段共 %d bytes（%.0f bytes/秒）；撞擊聲 %d / %d" % [
+			a_done / 60.0, started / 60.0, (frames - a_done) / 60.0, chunks[0], bytes[0], bytes[0] / (a_done / 60.0), a_clacks[0], b_clacks[0]])
+	a.queue_free()
+	b.queue_free()
+	return err

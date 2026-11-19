@@ -40,6 +40,8 @@ var _elapsed := 0.0
 var _lobby_elapsed := 0.0
 var _start_pos := Vector2.INF
 var _allies_seen := {}   # 自動驗證：這一局看過的玩家方骷髏僕從 id（G 連線檢查）
+var _dice_frames_in := 0   # 自動驗證：收到幾段隊友的擲骰錄影
+var _dice_roll_sent := false   # --auto-dice-roll：已經按過 R
 var _warming := false                 # 開場預熱中（蓋著「準備中」）
 var _spectate := 0                     # 本機陣亡後觀戰的隊友 peer id（0 = 沒在觀戰；_update_spectate）
 
@@ -466,6 +468,9 @@ func _connect_net() -> void:
 	net.events_received.connect(func(run: int, tick: int, events: Array) -> void:
 		if net_client != null:
 			net_client.receive_events(run, tick, events))
+	net.dice_frames_received.connect(hud.dice_panel.table.play_frames)
+	net.dice_frames_received.connect(func(_data: PackedByteArray) -> void: _dice_frames_in += 1)
+	hud.dice_panel.table.frames_recorded.connect(net.send_dice_frames)
 	net.peer_left.connect(_on_peer_left)
 	net.connection_failed.connect(func() -> void:
 		leave_net(net.last_error if net.last_error != "" else ("連不上房主" if hud.net_panel.method == &"room" else "連不上房主（IP 或防火牆？）")))
@@ -526,6 +531,16 @@ func start_net_game() -> void:
 	_refresh_net_panel()
 
 
+# --auto-dice-roll：時間到按 R（逛地圖花 1 次擲），輪到自己、桌子還沒丟就自動丟一次（連線檢查不用等 10 秒限時）
+func _auto_dice_roll() -> void:
+	if not _dice_roll_sent and _elapsed >= args.auto_dice_roll and world.dice.phase == DiceRun.EXPLORE:
+		_dice_roll_sent = true
+		input_collector.queue_inventory_op([InputCmd.OP_DICE_ROLL])
+	var t := hud.dice_panel.table
+	if _dice_roll_sent and hud.dice_panel.my_turn and t.can_throw and t.state == DiceTable.State.IDLE:
+		t.auto_throw(0.7)
+
+
 func _dice_setting() -> bool:
 	if args.game_mode != &"":
 		return args.game_mode == &"dice"
@@ -535,6 +550,7 @@ func _dice_setting() -> bool:
 # 骰子模式的畫面：物理擲骰桌、沒有視野（全部看得到）。客戶端的 World.dice 照快照建，這裡只切畫面
 func _show_dice_mode(on: bool) -> void:
 	hud.dice_panel.physics = on
+	hud.dice_panel.table.record_enabled = on and mode != Mode.SINGLE   # 連線時自己擲的錄下來給隊友播
 	world_view.vision_enabled = not on
 	world_view.debug_reveal = args.reveal or on
 
@@ -909,6 +925,8 @@ func _check_auto_quit(delta: float) -> void:
 			_allies_seen[a.id] = true
 	if args.auto_move_seconds > 0.0 and _elapsed >= args.auto_move_seconds:
 		input_collector.auto_move = Vector2.ZERO
+	if args.auto_dice_roll > 0.0 and world.dice != null:
+		_auto_dice_roll()
 	if _elapsed < args.run_seconds and _lobby_elapsed < args.run_seconds:
 		return
 	args.run_seconds = 0.0
@@ -937,6 +955,13 @@ func _check_auto_quit(delta: float) -> void:
 	print("state title=%d paused=%d input=%d effects_paused=%d self_moved=%.2f" % [int(is_at_title), int(is_paused), int(input_collector.enabled), int(world_view.effects.paused), moved])
 	if net_client != null:
 		print("net corrections=%d max_error=%.4f" % [net_client.corrections, net_client.max_error])
+	if world.dice != null:   # 連線檢查用：本機桌上朝上的面、模擬層（客戶端是快照）每人的面、收到幾段隊友的擲骰錄影
+		var dice_line := "dice phase=%s frames_in=%d replays=%d table=%s" % [world.dice.phase, _dice_frames_in, hud.dice_panel.table.replays_done, hud.dice_panel.table.up_faces()]
+		for peer_id: int in peers:
+			var seat: DiceRun.Seat = world.dice.states.get(peer_id)
+			if seat != null:
+				dice_line += " face%d=%s seq%d=%d" % [peer_id, seat.face, peer_id, seat.roll_seq]
+		print(dice_line.replace(", ", ","))   # 陣列裡不留空白，檢查才好照空白切
 	var boss: Enemy = world.entities.get(world.boss_id)
 	if boss != null:
 		print("boss state=%s hp=%.0f" % [boss.fsm.current_name if boss.fsm else &"", boss.hp])

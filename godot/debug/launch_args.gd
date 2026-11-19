@@ -37,6 +37,7 @@ var start_class: StringName = &""
 var difficulty: StringName = &""   # --difficulty=easy|normal|hard（選角畫面的難度，EventDefs.MODES）
 var bag_mode: StringName = &""     # --bag-mode=bags|merged（背包模式，蓋過設定頁；BagDefs.MODE_*）
 var game_mode: StringName = &""    # --game-mode=dice|normal（骰子模式，蓋過設定頁）
+var auto_dice_roll := 0.0          # --auto-dice-roll=秒：骰子模式開局這麼多秒後按 R 擲、桌子打開就自動丟（連線檢查用）
 var start_wave := 0
 var start_hp := 0.0
 var start_items: Array[StringName] = []
@@ -118,6 +119,8 @@ static func parse(args: PackedStringArray) -> LaunchArgs:
 			a.bag_mode = StringName(value)
 		elif arg.begins_with("--game-mode="):
 			a.game_mode = StringName(value)
+		elif arg.begins_with("--auto-dice-roll="):
+			a.auto_dice_roll = value.to_float()
 		elif arg.begins_with("--weapon="):
 			a.start_weapon = StringName(value)
 		elif arg.begins_with("--wave="):
