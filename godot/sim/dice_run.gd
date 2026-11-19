@@ -5,6 +5,7 @@
 # 結果留到下一次擲完才換（沒擲骰就打起來的怪：一般群、挖墳噴的、戰鬥中才進來的，照手上的結果打）
 # 骰子：手上武器的 6 顆武器骰存在武器實例的 "dice"（換武器時跟著武器走，刻上去的面也是），獎勵拿到的骰子放 Seat.loose；
 # 每場擲 Seat.carry 指的 6 顆（逛地圖時在骰子與武器面板挑）
+# 連線：房主的這份寫進快照（to_array），客戶端的鏡像 World 建一份 mirror = true 的照快照還原（apply_array），不自己跑流程
 class_name DiceRun
 extends RefCounted
 
@@ -30,6 +31,8 @@ var physics := false            # 物理擲骰（main.gd 開：畫面的 DiceTab
 var waiting := false            # 物理擲骰：丟出去了、還在等桌子回報（settle 當等待上限，到了就自己抽）
 var charges: Dictionary = {}    # peer_id -> 擲骰次數（不放 Seat：換關時補次數不該先建 Seat，Seat 建立時才照武器生骰子）
 var states: Dictionary = {}     # peer_id -> Seat
+var mirror := false             # 客戶端的鏡像：Seat 全照快照（武器實例上沒有 "dice"，不從武器接骰子）
+var _net_src: Array = []        # 上次套用的快照陣列（同一份快照每步都會套一次，同一份就跳過）
 
 
 # 一位玩家的骰子：pool 是這場帶的 6 顆（每顆 6 面，跟 wdice / loose 是同一個陣列，刻面直接改到），face 是每顆朝上的那面
@@ -47,10 +50,13 @@ class Seat:
 	var done := false
 	var choice: StringName = &""
 	var result: Dictionary = {}   # DiceDefs.evaluate + cdr；空 = 還沒有右鍵
+	var result_faces: Array = []  # 結果是哪 6 面算的（完成那一刻朝上的面；連線時客戶端照它重算 result）
+	var result_choice: StringName = &""
+	var net_key: Array = []       # 客戶端：結果與屬性照哪一組 [面, 選的招, 武器, 道具數] 掛的（變了才重掛）
+	var items: Array[int] = []    # 拿過的數值道具（DiceDefs.ITEMS 的編號；屬性來源 dice_item:N）
 	var roll_seq := 0             # 擲了幾次（畫面看它變了就播動畫）
 	var offers: Array = []        # 這一輪的獎勵選項；空 = 沒在選
 	var carve: Dictionary = {}    # 選了刻面、還沒選刻在哪：{kind, face（效果面）, skills（刻技能面的候選）}；空 = 沒在刻
-	var item_count := 0           # 拿過幾個數值道具（屬性來源 dice_item:N）
 
 	func up_faces() -> Array[StringName]:
 		var out: Array[StringName] = []
@@ -91,7 +97,15 @@ func seat_of(p: Player) -> Seat:
 	if not states.has(p.peer_id):
 		states[p.peer_id] = Seat.new()
 		p.basic_attack_mul = DiceDefs.BASIC_ATTACK_MUL
+		if mirror:   # 快照還沒帶到這一位：先放開局的武器骰，畫面才有東西畫
+			var die := DiceDefs.weapon_die(p.weapon_id)
+			for i in DiceDefs.DICE_COUNT:
+				(states[p.peer_id] as Seat).wdice.append(die.duplicate())
 	var s: Seat = states[p.peer_id]
+	if mirror:
+		if s.pool.is_empty():
+			_wire_pool(s)
+		return s
 	var inst := p.active_weapon()
 	if not inst.is_empty() and (StringName(inst.uid) != s.weapon_uid or not is_same(s.wdice, inst.get("dice"))):
 		ensure_dice(inst)
@@ -475,12 +489,9 @@ func _hold(world: World, p: Player, inst: Dictionary) -> void:
 	p.loadout.hold_weapon(p, inst)
 	var s := seat_of(p)
 	s.result = {}
+	s.result_faces = []
 	s.choice = &""
-	p.set_stat_source(&"dice", [])
-	var team_source := StringName("dice_team:%d" % p.peer_id)
-	for q in world.player_list:
-		q.set_stat_source(team_source, [])
-	p.basic_attack_mul = DiceDefs.BASIC_ATTACK_MUL
+	_apply_stats(world, p, {})
 	world.emit_event("dice:weapon", {"player_id": p.id, "base": String(inst.base)})
 
 
@@ -511,30 +522,45 @@ func take_pickup(world: World, p: Player, ip: ItemPickup) -> bool:
 
 # ---------- 結果 ----------
 
-# 擲完：右鍵換成骰到的那招，效果面掛上去（stat 掛屬性來源 dice、全隊的每位擲的人各一個來源）；護盾與回血等開打才給（_start_fight）
+# 擲完：右鍵換成骰到的那招，效果面掛上去；護盾與回血等開打才給（_start_fight）
 func _apply_result(world: World, p: Player, s: Seat) -> void:
-	var res := DiceDefs.evaluate(s.up_faces(), p.weapon_id, s.choice)
+	s.result_faces = s.up_faces()
+	s.result_choice = s.choice
+	s.result = result_of(s.result_faces, p.weapon_id, s.choice)
+	_apply_stats(world, p, s.result)
+
+
+# 結算 + 右鍵冷卻面加總（cdr）
+static func result_of(faces: Array, weapon_id: StringName, choice: StringName) -> Dictionary:
+	var res := DiceDefs.evaluate(faces, weapon_id, choice)
+	var cdr := 0.0
+	for id: StringName in res.effects:
+		var e: Dictionary = DiceDefs.EFFECTS[id]
+		if e.kind == &"cdr":
+			cdr += e.value * float(res.effects[id])
+	res["cdr"] = cdr
+	return res
+
+
+# 效果面掛到玩家身上（stat 掛屬性來源 dice、全隊的每位擲的人各一個來源 dice_team:<peer>、普攻面改普攻倍率）；res 空 = 拿掉
+func _apply_stats(world: World, p: Player, res: Dictionary) -> void:
 	var own: Array = []
 	var team: Array = []
 	var basic := 0.0
-	var cdr := 0.0
-	for id: StringName in res.effects:
-		var n: float = res.effects[id]
+	var effects: Dictionary = res.get("effects", {})
+	for id: StringName in effects:
+		var n: float = effects[id]
 		var e: Dictionary = DiceDefs.EFFECTS[id]
 		match e.kind:
 			&"stat":
 				(team if e.get("team", false) else own).append([e.stat[0], e.stat[1], float(e.stat[2]) * n])
 			&"basic":
 				basic += e.value * n
-			&"cdr":
-				cdr += e.value * n
 	p.set_stat_source(&"dice", own)
 	var team_source := StringName("dice_team:%d" % p.peer_id)
 	for q in world.player_list:
 		q.set_stat_source(team_source, team)
 	p.basic_attack_mul = DiceDefs.BASIC_ATTACK_MUL * (1.0 + basic)
-	res["cdr"] = cdr
-	s.result = res
 
 
 # 右鍵（ActiveSlots.DICE_INDEX）：這一場骰到的技能；沒骰到回傳 null
@@ -622,7 +648,152 @@ func _take_offer(world: World, p: Player, s: Seat, o: Dictionary) -> void:
 		&"carve_effect":
 			s.carve = {"kind": &"carve_effect", "face": o.face}
 		&"item":
-			var stat: Array = DiceDefs.ITEMS[o.item].stat
-			p.set_stat_source(StringName("dice_item:%d" % s.item_count), [[stat[0], stat[1], float(stat[2])]])
-			s.item_count += 1
+			s.items.append(o.item)
+			_apply_item(p, s.items.size() - 1, o.item)
 	world.emit_event("dice:picked", {"player_id": p.id, "kind": String(o.kind)})
+
+
+static func _apply_item(p: Player, n: int, item: int) -> void:
+	var stat: Array = DiceDefs.ITEMS[item].stat
+	p.set_stat_source(StringName("dice_item:%d" % n), [[stat[0], stat[1], float(stat[2])]])
+
+
+# ---------- 連線（docs/系統說明.md §55「連線」）----------
+
+# 寫進快照的世界狀態（NetCodec.make_snapshot 的 W_DICE）。viewer：收件人的 peer id（0 = 全送）
+# 別人的 Seat 只送這場帶的 6 顆（看隊友擲骰用）；自己的才送全部骰子、備用武器、獎勵選項、刻面
+func to_array(world: World, viewer: int) -> Array:
+	var seats := []
+	for p in world.player_list:
+		if states.has(p.peer_id):   # seat_of：武器換過的話先接好武器骰
+			seats.append(_seat_to_array(p.peer_id, seat_of(p), viewer == 0 or viewer == p.peer_id))
+	return [String(phase), fights, turn, timer, settle, waiting, String(tier), String(back_to), resuming, bonus_rerolls,
+		String(reward_tier), door_pick, charges.duplicate(), seats]
+
+
+func _seat_to_array(peer_id: int, s: Seat, own: bool) -> Array:
+	var locked := 0
+	for i in s.locked.size():
+		if s.locked[i]:
+			locked |= 1 << i
+	var spares := []
+	var offers := []
+	var carve := []
+	if own:
+		for inst: Dictionary in s.spares:
+			spares.append([WeaponDropDefs.to_array(inst), DiceDefs.dice_to_bytes(inst.get("dice", []))])
+		for o: Dictionary in s.offers:
+			offers.append(_offer_to_array(o))
+		if not s.carve.is_empty():
+			carve = [String(s.carve.kind), String(s.carve.get("face", &"")), PackedStringArray(s.carve.get("skills", []))]
+	var dice: Array = s.pool
+	var carry: Array = [0, 1, 2, 3, 4, 5]
+	if own:
+		dice = s.all_dice()
+		carry = s.carry
+	return [peer_id, DiceDefs.dice_to_bytes(dice), s.loose.size() if own else 0,
+		PackedByteArray(carry), PackedByteArray(s.face), locked, s.rolled, s.rerolls, s.done,
+		String(s.choice), s.roll_seq, DiceDefs.dice_to_bytes([s.result_faces] if not s.result_faces.is_empty() else []),
+		String(s.result_choice), PackedByteArray(s.items), spares, offers, carve]
+
+
+static func _offer_to_array(o: Dictionary) -> Array:
+	var a := [String(o.kind), o.title, o.desc, String(o.get("rarity", &"")), DiceDefs.dice_to_bytes([o.faces] if o.has("faces") else []),
+		WeaponDropDefs.to_array(o.get("weapon", {})), String(o.get("face", &"")), o.get("item", -1)]
+	if o.has("weapon"):
+		a.append(DiceDefs.dice_to_bytes(o.weapon.get("dice", [])))
+	return a
+
+
+static func _offer_from_array(a: Array) -> Dictionary:
+	var o := {"kind": StringName(a[0]), "title": a[1], "desc": a[2]}
+	if a[3] != "":
+		o["rarity"] = StringName(a[3])
+	var faces := DiceDefs.dice_from_bytes(a[4])
+	if not faces.is_empty():
+		o["faces"] = faces[0]
+	if not (a[5] as Array).is_empty():
+		var inst := WeaponDropDefs.from_array(a[5])
+		inst["dice"] = DiceDefs.dice_from_bytes(a[8])
+		o["weapon"] = inst
+		o["base"] = inst.base
+	if a[6] != "":
+		o["face"] = StringName(a[6])
+	if int(a[7]) >= 0:
+		o["item"] = int(a[7])
+	return o
+
+
+# 客戶端：照快照還原（mirror）；結果與道具的屬性在本機重掛（移動預測要用到移速、攻速）
+func apply_array(world: World, a: Array) -> void:
+	if is_same(a, _net_src):
+		return
+	_net_src = a
+	mirror = true
+	phase = StringName(a[0])
+	fights = a[1]
+	turn = a[2]
+	timer = a[3]
+	settle = a[4]
+	waiting = a[5]
+	tier = StringName(a[6])
+	back_to = StringName(a[7])
+	resuming = a[8]
+	bonus_rerolls = a[9]
+	reward_tier = StringName(a[10])
+	door_pick = a[11]
+	charges = (a[12] as Dictionary).duplicate()
+	var seen := {}
+	for sa: Array in a[13]:
+		var peer_id: int = sa[0]
+		seen[peer_id] = true
+		var s: Seat = states.get(peer_id)
+		if s == null:
+			s = Seat.new()
+			states[peer_id] = s
+		var all := DiceDefs.dice_from_bytes(sa[1])
+		var n_loose: int = sa[2]
+		s.wdice = all.slice(0, all.size() - n_loose)
+		s.loose = all.slice(all.size() - n_loose)
+		s.carry.assign(Array(sa[3]))
+		s.face.assign(Array(sa[4]))
+		for i in s.locked.size():
+			s.locked[i] = (int(sa[5]) >> i) & 1 == 1
+		s.rolled = sa[6]
+		s.rerolls = sa[7]
+		s.done = sa[8]
+		s.choice = StringName(sa[9])
+		s.roll_seq = sa[10]
+		var rf := DiceDefs.dice_from_bytes(sa[11])
+		s.result_faces = []
+		if not rf.is_empty():
+			s.result_faces = rf[0]
+		s.result_choice = StringName(sa[12])
+		s.items.assign(Array(sa[13]))
+		s.spares = []
+		for w: Array in sa[14]:
+			var inst := WeaponDropDefs.from_array(w[0])
+			inst["dice"] = DiceDefs.dice_from_bytes(w[1])
+			s.spares.append(inst)
+		s.offers = (sa[15] as Array).map(_offer_from_array)
+		var c: Array = sa[16]
+		s.carve = {} if c.is_empty() else {"kind": StringName(c[0]), "face": StringName(c[1]), "skills": Array(c[2]).map(func(x: String) -> StringName: return StringName(x))}
+		_wire_pool(s)
+		var p: Player = world.players.get(peer_id)
+		if p != null:
+			_sync_stats(world, p, s)
+	for peer_id: int in states.keys():
+		if not seen.has(peer_id):
+			states.erase(peer_id)
+
+
+# 客戶端：結果的面、選的招、武器、道具數變了才重算 result、重掛屬性（不是每份快照都掛）
+func _sync_stats(world: World, p: Player, s: Seat) -> void:
+	var key := [s.result_faces, s.result_choice, p.weapon_id, s.items.size()]
+	if key == s.net_key:
+		return
+	s.net_key = key
+	s.result = {} if s.result_faces.is_empty() else result_of(s.result_faces, p.weapon_id, s.result_choice)
+	_apply_stats(world, p, s.result)
+	for i in s.items.size():
+		_apply_item(p, i, s.items[i])

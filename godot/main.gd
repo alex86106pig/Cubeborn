@@ -188,18 +188,12 @@ func restart() -> void:
 	if args.bag_mode in [BagDefs.MODE_BAGS, BagDefs.MODE_MERGED]:
 		world.bag_mode = args.bag_mode
 	hud.test_panel.set_bag_mode(world.bag_mode == BagDefs.MODE_MERGED)
-	# 骰子模式（DiceRun）：單機照設定頁（--game-mode 蓋過）；連線還沒做，多人一律一般模式
-	var dice_on: bool = hud.settings_panel.values.get("dice_mode", false)
-	if args.game_mode != &"":
-		dice_on = args.game_mode == &"dice"
-	if mode != Mode.SINGLE or in_weapon_test:
-		dice_on = false
+	# 骰子模式（DiceRun）：單機照設定頁（--game-mode 蓋過）；房主照開局時廣播的 net.lobby_dice（start_net_game 照設定頁填）
+	var dice_on := (net.lobby_dice if mode == Mode.HOST else _dice_setting()) and not in_weapon_test
 	world.dice = DiceRun.new() if dice_on else null
 	if dice_on:
-		world.dice.physics = true   # 畫面的物理擲骰桌（DiceTable）丟、停好後回報朝上的面
-	hud.dice_panel.physics = dice_on
-	world_view.vision_enabled = not dice_on   # 骰子模式沒有視野：全部看得到
-	world_view.debug_reveal = args.reveal or dice_on
+		world.dice.physics = true   # 擲的人的物理擲骰桌（DiceTable）丟、停好後回報朝上的面（連線時客戶端也是自己的桌子丟）
+	_show_dice_mode(dice_on)
 	var seed_value := args.run_seed if args.run_seed >= 0 else randi()
 	world.reset(seed_value, peers)
 	print("seed=%d" % seed_value)
@@ -523,12 +517,26 @@ func start_joining(address: String) -> void:
 func start_net_game() -> void:
 	if mode != Mode.HOST or not is_in_lobby:
 		return
+	net.lobby_dice = _dice_setting()
 	net.start_game()
 	is_in_lobby = false
 	_leave_title()
 	_open_menu(false)
 	restart()
 	_refresh_net_panel()
+
+
+func _dice_setting() -> bool:
+	if args.game_mode != &"":
+		return args.game_mode == &"dice"
+	return hud.settings_panel.values.get("dice_mode", false)
+
+
+# 骰子模式的畫面：物理擲骰桌、沒有視野（全部看得到）。客戶端的 World.dice 照快照建，這裡只切畫面
+func _show_dice_mode(on: bool) -> void:
+	hud.dice_panel.physics = on
+	world_view.vision_enabled = not on
+	world_view.debug_reveal = args.reveal or on
 
 
 func _on_game_started(_peers: Array) -> void:
@@ -539,6 +547,7 @@ func _on_game_started(_peers: Array) -> void:
 	net_client.world.difficulty_mode = net.difficulty()   # HUD 的「難度 D」與回報文字在客戶端自己算
 	net_client.world.friendly_fire = net.lobby_friendly_fire   # 客戶端預測打中回饋時也照房主選的
 	_use_world(net_client.world)
+	_show_dice_mode(net.lobby_dice)
 	is_in_lobby = false
 	_elapsed = 0.0
 	_leave_title()

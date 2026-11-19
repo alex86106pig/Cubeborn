@@ -15,7 +15,7 @@ var players: Dictionary = {}         # peer_id -> Player
 var player_classes: Dictionary = {}  # peer id → 職業（F2，ClassDefs）；reset 不清，重新開始照舊
 var difficulty_mode: StringName = EventDefs.DEFAULT_MODE   # 選角畫面選的難度（EventDefs.MODES）；reset 不清，重新開始照舊
 var friendly_fire: bool = Config.NET.friendly_fire   # 誤傷：大廳房主選（NetSession.lobby_friendly_fire）；reset 不清
-var dice: DiceRun = null   # 骰子模式（DiceRun，docs/系統說明.md §55）：設定頁或 --game-mode=dice 開、只在單機；null = 一般模式；reset 不清（DiceRun.reset 重來）
+var dice: DiceRun = null   # 骰子模式（DiceRun，docs/系統說明.md §55）：設定頁或 --game-mode=dice 開（連線照房主）；null = 一般模式；reset 不清（DiceRun.reset 重來）；客戶端照快照建
 var bag_mode: StringName = BagDefs.MODE_BAGS   # 背包模式（袋子分開 / 背包合併）：設定頁或 --bag-mode 決定，房主的為準；客戶端從快照的背包拿，不用這個；reset 不清
 var player_list: Array[Player] = []  # 同 players.values()（加入順序），每步大量查詢時不必每次配置新陣列（D5）
 var enemies: Array[Entity] = []
@@ -953,6 +953,8 @@ func step_predicted(peer_id: int, cmd: InputCmd, dt: float) -> void:
 	p.prev_pos = p.pos
 	p.prev_facing = p.facing
 	p.prev_height = p.height
+	if dice != null and dice.is_frozen():   # 骰子模式擲骰、倒數、選獎勵時房主那邊玩家不動，本機也不預測（不然會被拉回去）
+		return
 	cooldowns.tick(dt)
 	p.apply_cmd(cmd)
 	event_actor = peer_id

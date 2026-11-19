@@ -290,3 +290,43 @@ static func roll_rarity(tier: StringName, rng: RandomNumberGenerator) -> StringN
 		if x < 0.0:
 			return k
 	return w.keys()[0]
+
+
+# ---------- 連線（快照，docs/系統說明.md §55「連線」）----------
+# 骰面編碼成 1 個位元組：0 = 空白、接著是 SkillDefs.SKILLS、再來是 EFFECTS（兩邊程式一樣，表的順序就一樣）
+static var _codes: Array[StringName] = []
+static var _code_of: Dictionary = {}
+
+
+static func _face_codes() -> void:
+	if not _codes.is_empty():
+		return
+	_codes.append(BLANK)
+	for id: StringName in SkillDefs.SKILLS:
+		_codes.append(id)
+	for id: StringName in EFFECTS:
+		_codes.append(id)
+	assert(_codes.size() < 256)
+	for i in _codes.size():
+		_code_of[_codes[i]] = i
+
+
+# 好幾顆骰子（每顆 FACES 面）接成一串位元組
+static func dice_to_bytes(dice: Array) -> PackedByteArray:
+	_face_codes()
+	var out := PackedByteArray()
+	for die: Array in dice:
+		for f: StringName in die:
+			out.append(_code_of.get(f, 0))
+	return out
+
+
+static func dice_from_bytes(b: PackedByteArray) -> Array:
+	_face_codes()
+	var out := []
+	for i in range(0, b.size() - FACES + 1, FACES):
+		var die: Array[StringName] = []
+		for j in FACES:
+			die.append(_codes[b[i + j]] if b[i + j] < _codes.size() else BLANK)
+		out.append(die)
+	return out

@@ -25,6 +25,7 @@ var lobby_peers: Array[int] = []
 var lobby_choices: Dictionary = {}   # 大廳選擇（F3）：peer id → [職業 id（String）, 準備好了]；房主決定、廣播給所有人
 var lobby_difficulty := String(EventDefs.DEFAULT_MODE)   # 大廳的難度（EventDefs.MODES）：房主選、跟名單一起廣播
 var lobby_friendly_fire: bool = Config.NET.friendly_fire   # 大廳的誤傷開關（World.friendly_fire）：房主選、跟名單一起廣播
+var lobby_dice := false   # 骰子模式（World.dice）：房主開局時照自己的設定頁填、跟開局一起廣播（客戶端開局前就要知道，畫面才切得過去）
 var latency_ms: int = Config.NET.debug_latency_ms
 var loss: float = Config.NET.debug_loss
 
@@ -88,6 +89,7 @@ func host(port: int = Config.NET.port) -> Error:
 	lobby_choices = {World.HOST_PEER_ID: default_choice(true)}
 	lobby_difficulty = String(EventDefs.DEFAULT_MODE)
 	lobby_friendly_fire = Config.NET.friendly_fire
+	lobby_dice = false
 	lobby_changed.emit(lobby_peers.duplicate())
 	return OK
 
@@ -104,6 +106,7 @@ func join(address: String, port: int = Config.NET.port) -> Error:
 	lobby_choices = {}
 	lobby_difficulty = String(EventDefs.DEFAULT_MODE)
 	lobby_friendly_fire = Config.NET.friendly_fire
+	lobby_dice = false
 	return OK
 
 
@@ -116,6 +119,7 @@ func host_room() -> Error:
 	lobby_choices = {World.HOST_PEER_ID: default_choice(true)}
 	lobby_difficulty = String(EventDefs.DEFAULT_MODE)
 	lobby_friendly_fire = Config.NET.friendly_fire
+	lobby_dice = false
 	_room_tries = 0
 	return _open_room()
 
@@ -246,6 +250,7 @@ func close() -> void:
 	lobby_choices = {}
 	lobby_difficulty = String(EventDefs.DEFAULT_MODE)
 	lobby_friendly_fire = Config.NET.friendly_fire
+	lobby_dice = false
 	_outbox.clear()
 
 
@@ -255,7 +260,7 @@ func start_game() -> void:
 	if _signal != null:
 		_signal.close()
 		_signal = null
-	_send(func() -> void: _rpc_start.rpc(lobby_peers, lobby_choices, lobby_difficulty, lobby_friendly_fire), false)
+	_send(func() -> void: _rpc_start.rpc(lobby_peers, lobby_choices, lobby_difficulty, lobby_friendly_fire, lobby_dice), false)
 
 
 func send_inputs(arrays: Array) -> void:
@@ -414,12 +419,13 @@ func _rpc_lobby(peers: Array, choices: Dictionary, p_difficulty: String, p_frien
 
 
 @rpc("authority", "call_remote", "reliable", CHANNEL_RELIABLE)
-func _rpc_start(peers: Array, choices: Dictionary, p_difficulty: String, p_friendly_fire: bool) -> void:
+func _rpc_start(peers: Array, choices: Dictionary, p_difficulty: String, p_friendly_fire: bool, p_dice: bool) -> void:
 	is_started = true
 	lobby_peers.assign(peers)
 	lobby_choices = choices
 	lobby_difficulty = p_difficulty
 	lobby_friendly_fire = p_friendly_fire
+	lobby_dice = p_dice
 	game_started.emit(peers)
 
 

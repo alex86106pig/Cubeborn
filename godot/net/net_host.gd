@@ -11,6 +11,8 @@ var input_gap_max_ms: Dictionary = {}   # peer_id -> 兩次收到輸入最長隔
 var _last_input_tick: Dictionary = {}   # peer_id -> 上次收到輸入時的 world.tick
 var _loadout_sig: Dictionary = {}       # 玩家實體 id -> 背包 / 主副手 / 技能等級的雜湊（_loadout_unchanged）
 var _loadout_changed: Dictionary = {}   # 玩家實體 id -> 上次變動的 world.tick
+var _dice_sig: Dictionary = {}          # peer_id -> 上次送的骰子欄位（W_DICE）的雜湊（_skip_same_dice）
+var _dice_changed: Dictionary = {}      # peer_id -> 骰子欄位上次變動的 world.tick
 
 
 func _init(p_world: World) -> void:
@@ -23,6 +25,8 @@ func remove_peer(peer_id: int) -> void:
 	acks.erase(peer_id)
 	input_gap_max_ms.erase(peer_id)
 	_last_input_tick.erase(peer_id)
+	_dice_sig.erase(peer_id)
+	_dice_changed.erase(peer_id)
 
 
 # arrays：客戶端送來的最近幾筆輸入（InputCmd.to_array，舊到新）；已經套用或已在排隊的跳過（重送的備份）
@@ -73,7 +77,22 @@ func snapshots() -> Dictionary:
 			var viewer := viewer_of(peer_id)
 			var picked := entities.filter(func(rec: Array) -> bool: return in_interest(rec[2], viewer) and not local_dormant(rec[2]))
 			out[peer_id] = NetCodec.make_snapshot(world, picked, acks.get(peer_id, 0), peer_id, skip_loadout)
+			_skip_same_dice(peer_id, out[peer_id][NetCodec.S_WORLD])
 	return out
+
+
+# 骰子模式的欄位逛地圖、戰鬥時幾乎不變：跟背包一樣，變了之後 loadout_repeat_ticks 內每份都帶，之後每 loadout_refresh_ticks 才帶一次；
+# 不帶的換成空陣列（客戶端沿用上次收到的，NetCodec.apply_world）。擲骰、倒數時計時器每步在變，照樣每份都帶
+func _skip_same_dice(peer_id: int, w: Array) -> void:
+	if w[NetCodec.W_DICE] == null:
+		return
+	var sig: int = (w[NetCodec.W_DICE] as Array).hash()
+	if _dice_sig.get(peer_id, null) != sig or world.tick < _dice_changed[peer_id]:   # 重新開始時 tick 歸零
+		_dice_sig[peer_id] = sig
+		_dice_changed[peer_id] = world.tick
+	var refresh: bool = world.tick % Config.NET.loadout_refresh_ticks < Config.NET.snapshot_interval
+	if not refresh and world.tick - _dice_changed[peer_id] > Config.NET.loadout_repeat_ticks:
+		w[NetCodec.W_DICE] = []
 
 
 # 背包、主副手、技能等級很少變卻佔快照大半：變了之後 loadout_repeat_ticks 內每份都帶，之後每 loadout_refresh_ticks 才帶一次

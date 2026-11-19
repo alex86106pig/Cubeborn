@@ -1457,3 +1457,142 @@ static func check_net_view() -> String:
 	if mirror.has_aim or absf(MathUtil.wrap_angle(mirror.view_facing() - want)) > 0.25:
 		return "客戶端的隊友視野方向應照快照（%.2f），實際 %.2f（身體 %.2f）" % [want, mirror.view_facing(), mirror.facing]
 	return ""
+
+
+# 骰子模式連線（§55「連線」）：房主開骰子模式，客戶端照快照建鏡像；菁英群發現玩家兩邊都進擲骰、客戶端看得到房主擲的面；
+# 輪到客戶端時移動不預測（房主那邊也停著）、擲 / 回報面 / 鎖 / 重擲 / 完成都經輸入送到房主、兩邊的面與鎖一致；
+# 完成後客戶端的右鍵與房主一致；打完只有自己的獎勵選項送到客戶端、選了兩邊一致；逛地圖按 R 花次數擲，次數一致
+const SYNC := 20   # 等多少步客戶端才看得到房主的變化：延遲 3 + 快照間隔 3 + 補間延遲 6，再留一點
+
+static func check_net_dice(feel: Array[String]) -> String:
+	var link := _Link.new(61, [1, 2], 3, 0.0, false)
+	var hw := link.host_world
+	hw.dice = DiceRun.new()
+	hw.dice.reset()
+	hw.dice.on_stage_start(hw)
+	hw.dice.physics = true   # 照正式流程：擲的人的桌子丟、回報朝上的面
+	var p1: Player = hw.players[1]
+	var p2: Player = hw.players[2]
+	var host_ops := func(ops: Array) -> void:
+		var c := _cmd(Vector2.ZERO)
+		c.inv_ops = ops
+		link.step(c, _cmd(Vector2.ZERO))
+	var client_ops := func(ops: Array, move: Vector2 = Vector2.ZERO) -> void:
+		var c := _cmd(move)
+		c.inv_ops = ops
+		link.step(_cmd(Vector2.ZERO), c)
+	var idle := func(n: int) -> void:
+		for i in n:
+			link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO))
+	idle.call(SYNC)
+	var cw := link.client.world
+	var me := link.client.local_player()
+	if cw.dice == null or not cw.dice.mirror or cw.dice.charges_of(me) != DiceDefs.CHARGES_STAGE:
+		return "客戶端應照快照建骰子模式、擲骰次數 %d：%s" % [DiceDefs.CHARGES_STAGE, "沒有" if cw.dice == null else str(cw.dice.charges_of(me))]
+	# 菁英群發現客戶端的玩家 → 兩邊都進擲骰，輪到房主先擲
+	var e := hw.spawner.spawn_at(hw, &"grunt", p2.pos + Vector2(6, 0))
+	e.set_rarity(&"rare", [])
+	hw.packs.append({"center": e.pos, "ids": [e.id], "awake": false, "template": &"plain", "loot": false, "ambush": false})
+	e.pack_id = hw.packs.size() - 1
+	hw.alert_pack(e.pack_id, e, p2)
+	idle.call(SYNC)
+	if cw.dice.phase != DiceRun.ROLL or cw.dice.current(cw) == null or cw.dice.current(cw).peer_id != 1:
+		return "菁英群發現玩家後客戶端應看到擲骰、輪到房主：%s" % cw.dice.phase
+	var die: Array = hw.dice.seat_of(p2).pool[0]
+	var skill_at := -1
+	for i in die.size():
+		if DiceDefs.skill_fits(die[i], p2.weapon_id):
+			skill_at = i
+			break
+	var blank_at := die.find(DiceDefs.BLANK)
+	if skill_at < 0 or blank_at < 0:
+		return "開局的武器骰應有技能面與空白面：%s" % [die]
+	host_ops.call([[InputCmd.OP_DICE_ROLL], [InputCmd.OP_DICE_FACES, 1, 2, 3, 4, 5, 0]])
+	idle.call(SYNC)
+	var hs1 := hw.dice.seat_of(p1)
+	var cs1 := cw.dice.seat_of(cw.players[1])
+	if not hs1.rolled or cs1.face != hs1.face or cs1.roll_seq != hs1.roll_seq or cs1.pool != hs1.pool:
+		return "客戶端看隊友擲骰應看到同樣的骰子與面：房主 %s seq %d、客戶端 %s seq %d" % [hs1.face, hs1.roll_seq, cs1.face, cs1.roll_seq]
+	host_ops.call([[InputCmd.OP_DICE_DONE]])
+	idle.call(SYNC)
+	if cw.dice.current(cw) != me:
+		return "房主完成後應輪到客戶端"
+	# 輪到客戶端：按著移動也不動（房主那邊停著，本機不預測）
+	var at := me.pos
+	var host_at := p2.pos
+	for i in 20:
+		client_ops.call([], Vector2(1, 0))
+	if me.pos.distance_to(at) > 0.01 or p2.pos.distance_to(host_at) > 0.01:
+		return "擲骰時客戶端按著移動不該動：本機 %.3f、房主 %.3f" % [me.pos.distance_to(at), p2.pos.distance_to(host_at)]
+	var k := skill_at
+	var b := blank_at
+	client_ops.call([[InputCmd.OP_DICE_ROLL]])
+	idle.call(5)
+	client_ops.call([[InputCmd.OP_DICE_FACES, k, k, k, b, b, b]])
+	idle.call(SYNC)
+	client_ops.call([[InputCmd.OP_DICE_LOCK, 3]])
+	idle.call(SYNC)
+	var cs := cw.dice.seat_of(me)
+	if not cs.locked[3]:
+		return "客戶端鎖住第 4 顆，快照應帶回來"
+	client_ops.call([[InputCmd.OP_DICE_ROLL], [InputCmd.OP_DICE_FACES, k, k, k, k, b, b]])
+	idle.call(SYNC)
+	var hs := hw.dice.seat_of(p2)
+	if hs.face != [k, k, k, b, b, b] or cs.face != hs.face or cs.rerolls != hs.rerolls or cs.roll_seq != 2:
+		return "客戶端回報的面：房主 %s、客戶端 %s（鎖住的第 4 顆不該變）；重擲剩 %d / %d、seq %d / %d（應 2）" % [hs.face, cs.face, hs.rerolls, cs.rerolls, hs.roll_seq, cs.roll_seq]
+	client_ops.call([[InputCmd.OP_DICE_DONE]])
+	idle.call(SYNC)
+	var slot: Variant = me.slots.get_slot(me, ActiveSlots.DICE_INDEX)
+	var host_slot: Variant = p2.slots.get_slot(p2, ActiveSlots.DICE_INDEX)
+	if slot == null or host_slot == null or slot.id != host_slot.id or not is_equal_approx(slot.power, DiceDefs.tier_of(3).mul) \
+			or not is_equal_approx(me.stats.value(&"move_speed"), p2.stats.value(&"move_speed")):
+		return "完成後客戶端的右鍵應同房主（%s ×%s）：%s" % [host_slot.id if host_slot != null else "沒有", DiceDefs.tier_of(3).mul, slot]
+	idle.call(ceili(DiceDefs.COUNTDOWN / DT) + SYNC)
+	if cw.dice.phase != DiceRun.FIGHT:
+		return "倒數完客戶端應看到開打：%s" % cw.dice.phase
+	# 打完：只有自己的獎勵選項送到客戶端
+	e.die()
+	idle.call(SYNC)
+	var cs_other := cw.dice.seat_of(cw.players[1])
+	if cw.dice.phase != DiceRun.REWARD or cs.offers.size() != DiceDefs.REWARD_CHOICES or not cs_other.offers.is_empty():
+		return "打完客戶端應看到自己的 %d 個獎勵、看不到房主的：%s、自己 %d、房主的 %d" % [DiceDefs.REWARD_CHOICES, cw.dice.phase, cs.offers.size(), cs_other.offers.size()]
+	var simple := func(offers: Array) -> int:
+		for i in offers.size():
+			if offers[i].kind in [&"die", &"item"]:
+				return i
+		return -1
+	var hi: int = simple.call(hs1.offers)
+	var ci: int = simple.call(cs.offers)
+	if hi < 0 or ci < 0 or cs.offers[ci].title != hs.offers[ci].title:
+		return "獎勵選項兩邊應一樣：房主 %s、客戶端 %s" % [hs.offers.map(func(o: Dictionary) -> String: return o.title), cs.offers.map(func(o: Dictionary) -> String: return o.title)]
+	host_ops.call([[InputCmd.OP_DICE_REWARD, hi]])
+	client_ops.call([[InputCmd.OP_DICE_REWARD, ci]])
+	idle.call(SYNC)
+	if cw.dice.phase != DiceRun.EXPLORE or cs.loose != hs.loose or cs.items != hs.items or cs.carry != hs.carry \
+			or not is_equal_approx(me.stats.value(&"damage"), p2.stats.value(&"damage")):
+		return "選完獎勵兩邊的骰子、道具、屬性應一致：%s、備用骰 %d / %d、道具 %s / %s" % [cw.dice.phase, hs.loose.size(), cs.loose.size(), hs.items, cs.items]
+	# 逛地圖按 R：花 1 次、自己擲、擲完回到逛地圖
+	var charges := hw.dice.charges_of(p2)
+	client_ops.call([[InputCmd.OP_DICE_ROLL]])
+	idle.call(SYNC)
+	if cw.dice.phase != DiceRun.ROLL or cw.dice.current(cw) != me or cw.dice.charges_of(me) != charges - 1:
+		return "逛地圖按 R 應花 1 次、輪到自己擲：%s、次數 %d → %d" % [cw.dice.phase, charges, cw.dice.charges_of(me)]
+	client_ops.call([[InputCmd.OP_DICE_ROLL], [InputCmd.OP_DICE_FACES, 0, 0, 0, 0, 0, 0]])
+	client_ops.call([[InputCmd.OP_DICE_DONE]])
+	idle.call(SYNC)
+	if cw.dice.phase != DiceRun.EXPLORE or hw.dice.phase != DiceRun.EXPLORE:
+		return "R 擲完應回到逛地圖：房主 %s、客戶端 %s" % [hw.dice.phase, cw.dice.phase]
+	# 流量：擲完過一陣子、逛地圖不動的 3 秒內，骰子欄位只在每 loadout_refresh_ticks 帶一次
+	var full := var_to_bytes(hw.dice.to_array(hw, 2)).size()
+	idle.call(Config.NET.loadout_repeat_ticks + 6)   # 剛擲完那段每份都帶
+	var sent := 0
+	for i in 180:
+		link.step(_cmd(Vector2.ZERO), _cmd(Vector2.ZERO))
+		if hw.tick % Config.NET.snapshot_interval == 0:
+			sent += var_to_bytes(link.host.snapshots()[2][NetCodec.S_WORLD][NetCodec.W_DICE]).size()
+	feel.append("骰子模式快照的骰子欄位：一份 %d bytes（兩人），逛地圖時平均 %.0f bytes/秒" % [full, sent / 3.0])
+	if sent / 3.0 > full * 2.0:
+		return "逛地圖沒有變化時骰子欄位應幾乎不送：平均 %.0f bytes/秒（一份 %d）" % [sent / 3.0, full]
+	if cw.dice == null or cw.dice.phase != DiceRun.EXPLORE or cw.dice.seat_of(me).loose != hs.loose:
+		return "沒帶骰子欄位的快照客戶端應沿用上次的"
+	return ""
