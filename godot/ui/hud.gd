@@ -58,6 +58,7 @@ var forge_panel := ForgePanel.new()           # 鍛造祭壇：站在祭壇旁�
 var relic_panel := RelicPanel.new()           # 遺物的 N 選 1（Build 改版第 6 步；main.gd 接到輸入）
 var dice_panel := DicePanel.new()             # 骰子模式的擲骰、倒數、獎勵與戰鬥中的右鍵說明（main.gd 接到輸入）
 var dice_loadout := DiceLoadoutPanel.new()    # 骰子模式的「骰子與武器」面板（Tab，取代背包；跟屬性面板一起開關）
+var dice_props := DiceProps.new()             # 骰子模式的桌邊配件：上方階段條、左下角色卡（取代左上血條）、右下的牌與籌碼
 var _relic_bag := false                       # 背包是遺物面板自動打開的（選完 / 關掉時一起關）
 var _wave := UiKit.label("", 22)
 var _kills := UiKit.label("", 16)
@@ -257,6 +258,8 @@ func _init() -> void:
 	top.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	top.add_theme_constant_override(&"separation", 14)
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dice_props.track.visible = false
+	top.add_child(dice_props.track)   # 骰子模式的階段條：最上面，挖墳與 Boss 血條往下排
 	_spectate.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_spectate.visible = false
 	top.add_child(_spectate)
@@ -304,6 +307,7 @@ func _init() -> void:
 	hints.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	root.add_child(hints)
 	root.add_child(relic_panel)
+	root.add_child(dice_props)   # 擲骰、選獎勵的遮罩蓋在它上面
 	root.add_child(dice_panel)
 
 	# 左側中央：屬性面板（Tab 開關）
@@ -531,17 +535,15 @@ func _process(delta: float) -> void:
 		_game_over_delay -= delta
 		if _game_over_delay < 0.0:
 			_game_over.visible = true
-	if world == null:
-		dice_panel.visible = false
-		dice_loadout.visible = false
-		return
-	var player := local_player()
+	var player := local_player() if world != null else null
 	if player == null:
 		dice_panel.visible = false
 		dice_loadout.visible = false
+		dice_props.refresh(null, null, false)
 		return
 	dice_panel.refresh(world, player, delta)
 	dice_loadout.visible = bag_hidden() and _stats_panel.visible
+	dice_props.refresh(world, player, _stats_panel.visible)
 	if dice_loadout.visible:
 		dice_loadout.refresh(world, player)
 	_skill_bar.refresh(world, player)
@@ -574,7 +576,9 @@ func _process(delta: float) -> void:
 	_weapon.add_theme_color_override(&"font_color", ItemDefs.RARITIES[inst.rarity].color if not inst.is_empty() else Color.WHITE)
 	_souls.text = "靈魂 %d · 骰子 %d" % [world.souls, player.dice]
 	_coins.text = "金幣 %d" % world.run_coins
-	_souls.visible = world.dice == null   # 骰子模式沒有靈魂、金幣與遺物的重骰骰子（重擲券寫在技能欄上方）
+	_souls.visible = world.dice == null   # 骰子模式沒有靈魂、金幣與遺物的重骰骰子（重擲券是右下的籌碼）
+	for c: Control in [_hp.root, _mana.root, _weapon]:   # 骰子模式：血量、武器在左下的角色卡，沒有魔力
+		c.visible = world.dice == null
 	_coins.visible = world.dice == null
 	var s := world.stats
 	if world.has_floors():   # 挖墳地圖（D6）與小關：層數與難度

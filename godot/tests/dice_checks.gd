@@ -451,7 +451,7 @@ static func check_dice_growth() -> String:
 	return ""
 
 
-# 骰子模式的介面放得下（介面最大檔）：骰子與武器面板（帶 6 顆 + 沒帶的 8 顆 + 備用武器 2 把）、4 張獎勵卡、刻面（6 顆 × 6 面 + 3 個技能）、物理擲骰畫面
+# 骰子模式的介面放得下（介面最大檔）：骰子與武器面板（帶 6 顆 + 沒帶的 8 顆 + 備用武器 2 把）、桌邊配件（角色卡 + 技能欄 + 右下的牌一排）、4 張獎勵卡、刻面（6 顆 × 6 面 + 3 個技能）、物理擲骰畫面
 static func check_dice_panels() -> String:
 	var w := _dice_world()
 	var p := _player(w)
@@ -475,6 +475,20 @@ static func check_dice_panels() -> String:
 	var need: Vector2 = lo.get_combined_minimum_size()
 	if need.x > room.x or need.y > room.y:
 		err = "骰子與武器面板 %s 超出介面最大檔 %s" % [need, room]
+	if err == "":   # 桌邊配件：效果 6 種、組合全中時，左下角色卡、置中的技能欄、右下的牌放在同一排不疊到
+		var fx := {}
+		for id: StringName in DiceDefs.EFFECTS.keys().slice(0, DiceDefs.DICE_COUNT):
+			fx[id] = 2.0
+		s.result = {"skill": DiceDefs.skills_for(p.weapon_id)[0], "count": 3, "tier_count": 3, "effects": fx, "combos": DiceDefs.COMBOS.keys()}
+		var props: DiceProps = hud.dice_props
+		props.refresh(w, p, false)
+		hud._skill_bar.refresh(w, p)
+		var side := maxf(props.hero.get_combined_minimum_size().x, props.hand.get_combined_minimum_size().x)
+		var bar: float = hud._skill_bar.get_combined_minimum_size().x
+		var track: float = props.track.get_combined_minimum_size().x
+		if not props.hand.visible or side * 2.0 + bar + 16.0 * 4.0 > room.x or track > room.x:
+			err = "桌邊配件放不下：角色卡 / 牌最寬 %.0f ×2 + 技能欄 %.0f 超出介面最大檔 %s（牌顯示 %s）、階段條 %.0f" % [side, bar, room, props.hand.visible, track]
+		s.result = {}
 	if err == "":
 		w.dice.door_reward(w, &"relic")
 		var dp: DicePanel = hud.dice_panel
@@ -1032,7 +1046,8 @@ static func check_dice_show() -> String:
 
 
 # 構想補齊的三條（§55）：倒地不倒數、這一場打完自動站起 30%（逛地圖時倒下馬上站起，全隊倒地照樣輸）；
-# 倒數時的結果總覽每人一行；逛地圖時每群還沒醒的怪頭上標一般 / 菁英，醒了、開打就不標
+# 倒數時的結果總覽每人一行；桌邊配件（階段條、角色卡的血量籌碼、右鍵卡、重擲券籌碼）；
+# 逛地圖時每群還沒醒的怪頭上立遭遇卡「一般 / 菁英 ×幾隻」，醒了、開打就不標
 static func check_dice_rules() -> String:
 	var w := World.new(&"test_arena")
 	w.spawn_packs = false
@@ -1084,10 +1099,29 @@ static func check_dice_rules() -> String:
 	var dp: DicePanel = hud.dice_panel
 	dp.refresh(w2, me, 0.05)
 	var summary: String = dp._summary.text
+	var summary_phase := w2.dice.phase
+	# 桌邊配件：倒數時階段條在「擲骰」、牌收起來；開打後階段條到「開打」、左下角色卡取代左上血條、
+	# 血量 10 枚籌碼（少一成生命少一枚）、右下右鍵卡寫骰到的招、最後一枚籌碼是重擲券
+	var props: DiceProps = hud.dice_props
+	hud._process(0.016)
+	var props_err := ""
+	if not props.track.visible or props.track.step != 1 or props.hero.visible:
+		props_err = "倒數時階段條應在擲骰（%d、顯示 %s）、角色卡收起來（%s）" % [props.track.step, props.track.visible, props.hero.visible]
+	_wait(w2, DiceDefs.COUNTDOWN)
+	me.hp = me.max_hp * 0.75
+	hud._process(0.016)
+	var res: Dictionary = w2.dice.seat_of(me).result
+	var want_skill: String = DiceDefs.name_of(res.skill) if res.count > 0 else "沒中"
+	if props_err == "" and (w2.dice.phase != DiceRun.FIGHT or props.track.step != 2 or not props.hero.visible or not props.hand.visible or hud._hp.root.visible):
+		props_err = "開打後階段條應到開打（%s、%d）、角色卡與牌出來（%s、%s）、左上血條收起來（%s）" % [w2.dice.phase, props.track.step, props.hero.visible, props.hand.visible, hud._hp.root.visible]
+	if props_err == "" and (props.hp_chips.count != 8 or props.skill_name.text != want_skill or props.chip_texts.is_empty() or props.chip_texts[-1] != "重擲券 ×%d" % w2.dice.charges_of(me)):
+		props_err = "75%% 生命應 8 枚籌碼（%d）、右鍵卡寫「%s」（%s）、最後一枚是重擲券 ×%d（%s）" % [props.hp_chips.count, want_skill, props.skill_name.text, w2.dice.charges_of(me), props.chip_texts]
 	hud.queue_free()
 	cam.queue_free()
-	if w2.dice.phase != DiceRun.COUNTDOWN or not summary.begins_with("你："):
-		return "大家擲完倒數時應列結果總覽（你：…）：%s「%s」" % [w2.dice.phase, summary]
+	if summary_phase != DiceRun.COUNTDOWN or not summary.begins_with("你："):
+		return "大家擲完倒數時應列結果總覽（你：…）：%s「%s」" % [summary_phase, summary]
+	if props_err != "":
+		return props_err
 	# 怪群難度
 	var w3 := _dice_world()
 	var p3 := _player(w3)
@@ -1110,8 +1144,8 @@ static func check_dice_rules() -> String:
 	var fighting := view.tag_texts.duplicate()
 	view.queue_free()
 	tags.sort()
-	if tags != ["一般", "菁英"] or seen != 2 or not fighting.is_empty():
-		return "逛地圖時還沒醒的怪群應標一般 / 菁英（醒了的不標，畫面上看得到 %d 個）、開打不標：%s、開打時 %s" % [seen, tags, fighting]
+	if tags != ["一般 ×1", "菁英 ×1"] or seen != 2 or not fighting.is_empty():
+		return "逛地圖時還沒醒的怪群應立遭遇卡「一般 / 菁英 ×幾隻」（醒了的不標，畫面上看得到 %d 個）、開打不標：%s、開打時 %s" % [seen, tags, fighting]
 	return ""
 
 

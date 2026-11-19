@@ -1,5 +1,5 @@
 # 骰子模式的畫面（DiceRun，docs/系統說明.md §55）：擲骰時蓋在畫面中間（6 顆骰子、限時條、擲 / 重擲 / 完成、這一手的結果），
-# 全部擲完 3、2、1，打完閃「清場！」再 4 選 1 獎勵；戰鬥與逛地圖時只在技能欄上方留一行「右鍵：旋風斬 ×3 強化…」
+# 全部擲完 3、2、1，打完閃「清場！」再 4 選 1 獎勵；戰鬥與逛地圖時的右鍵、效果、重擲券在 DiceProps（右下的牌與籌碼）
 # 結果由權威端決定，這裡照 Seat.roll_seq 播轉動畫（DiceDefs.SETTLE_TIME 內停完）；操作走 op_requested → InputCmd.inv_ops（OP_DICE_*）
 # 鍵盤由 InputCollector 交給 handle_key：空白鍵擲 / 重擲、R 重擲（免費的用完花重擲券）、Enter 完成、數字鍵選獎勵
 class_name DicePanel
@@ -76,7 +76,6 @@ var _cand_key := []
 var _offer_key := []
 var _picked := false
 var _last_phase: StringName = &""
-var _charges := 0                 # 本機玩家的重擲券（技能欄上方那行）
 # 物理擲骰（DiceTable）：main.gd 開 physics；擲法看設定頁 dice_cup（骰盅 / 蓄力條，即時切換）
 var physics := false
 var _gui_press := false          # 這一下左鍵按在面板的控制項上（放開也不轉給骰盤）
@@ -401,7 +400,6 @@ func refresh(world: World, me: Player, dt: float) -> void:
 	elif not _carve_key.is_empty():
 		_carve_key = {}
 		_carve_skill = -1
-	_charges = dice.charges_of(me)
 	var turn_player := dice.current(world)
 	my_turn = turn_player == me
 	if _roll_box.visible:
@@ -418,11 +416,8 @@ func refresh(world: World, me: Player, dt: float) -> void:
 	_show_count(dice, dt)
 	_show_banner(dt)
 	var waiting_mates := phase == DiceRun.REWARD and dice.shared and _picked and s.carve.is_empty()
-	_status.visible = phase == DiceRun.FIGHT or phase == DiceRun.CLEAR or phase == DiceRun.EXPLORE or waiting_mates
-	if waiting_mates:
-		_status.text = "選好了，等隊友選……"
-	elif _status.visible:
-		_status.text = status_text(s, _charges)
+	_status.visible = waiting_mates   # 右鍵、效果、重擲券改成右下的牌與籌碼（DiceProps）
+	_status.text = "選好了，等隊友選……"
 
 
 # 擲骰畫面：畫正在擲的那位（多人時大家看同一個人）
@@ -805,22 +800,6 @@ func handle_key(event: InputEvent) -> bool:
 		op_requested.emit([InputCmd.OP_DICE_DONE])
 		return true
 	return false
-
-
-# 戰鬥中技能欄上方那一行
-static func status_text(s: DiceRun.Seat, charges: int) -> String:
-	var roll := "重擲券 %d" % charges
-	if s.result.is_empty():
-		return "還沒擲骰，沒有右鍵　·　" + roll
-	if s.result.count <= 0:
-		return "右鍵：沒中（只能普攻）" + ("　·　" + effects_text(s.result.effects, "　·　") if not s.result.effects.is_empty() else "") + "　·　" + roll
-	var tier := DiceDefs.tier_of(s.result.tier_count)
-	var line := "右鍵：%s ×%d（%s ×%s）" % [DiceDefs.name_of(s.result.skill), s.result.count, tier.name, str(tier.mul)]
-	for c: StringName in s.result.get("combos", []):
-		line += "　·　" + DiceDefs.COMBOS[c].name
-	if not s.result.effects.is_empty():
-		line += "　·　" + effects_text(s.result.effects, "　·　")
-	return line + "　·　" + roll
 
 
 # 組合的說明（「　·　順子：技能威力 +1 級、全部效果 ×2」），沒有回傳空字串
