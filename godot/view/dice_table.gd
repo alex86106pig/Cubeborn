@@ -582,7 +582,7 @@ func _step_physics(delta: float) -> void:
 		return
 	if state != State.ROLLING:
 		return
-	_roll_time += delta * _slow   # 放慢時照慢動作的時間算（逾時、停好的判斷都一樣）
+	_roll_time += delta   # 真實時間：放慢的時候 SETTLE_TIMEOUT 照樣是 6 秒就擺平，不讓人多等（照慢動作時間算會拖到 7 秒以上）
 	var resting := true
 	for i in _dice.size():
 		if not _rolling[i]:
