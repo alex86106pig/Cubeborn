@@ -1561,14 +1561,24 @@ static func check_net_dice(feel: Array[String]) -> String:
 			if offers[i].kind in [&"die", &"item"]:
 				return i
 		return -1
-	var hi: int = simple.call(hs1.offers)
+	# 多人：共用同一組 4 個、暗選。房主先選，客戶端看不到；兩人選同一個 → 比骰子，輸的隨機拿沒人選的
+	var titles := func(offers: Array) -> Array: return offers.map(func(o: Dictionary) -> String: return o.title)
 	var ci: int = simple.call(cs.offers)
-	if hi < 0 or ci < 0 or cs.offers[ci].title != hs.offers[ci].title:
-		return "獎勵選項兩邊應一樣：房主 %s、客戶端 %s" % [hs.offers.map(func(o: Dictionary) -> String: return o.title), cs.offers.map(func(o: Dictionary) -> String: return o.title)]
-	host_ops.call([[InputCmd.OP_DICE_REWARD, hi]])
+	if ci < 0 or titles.call(cs.offers) != titles.call(hs1.offers) or not hw.dice.shared or not cw.dice.shared:
+		return "多人的獎勵應共用同一組（暗選）：房主 %s、客戶端 %s" % [titles.call(hs1.offers), titles.call(cs.offers)]
+	host_ops.call([[InputCmd.OP_DICE_REWARD, ci]])
+	idle.call(SYNC)
+	if hs1.pick != ci or cs_other.pick != -1 or cw.dice.phase != DiceRun.REWARD or cs.offers.size() != DiceDefs.REWARD_CHOICES:
+		return "房主先選：房主記下 %d、客戶端看不到（%d）、還在等客戶端選（%s）" % [hs1.pick, cs_other.pick, cw.dice.phase]
 	client_ops.call([[InputCmd.OP_DICE_REWARD, ci]])
 	idle.call(SYNC)
-	if cw.dice.phase != DiceRun.EXPLORE or cs.loose != hs.loose or cs.items != hs.items or cs.carry != hs.carry \
+	if hw.dice.contest_seq != 1 or cw.dice.contest_seq != 1 or cw.dice.contests.size() != 1 or (cw.dice.contests[0][1] as Dictionary).size() != 2:
+		return "兩人選同一個應比骰子、客戶端看得到點數：房主 %d 次、客戶端 %s" % [hw.dice.contest_seq, cw.dice.contests]
+	for who: int in [1, 2]:   # 輸的可能拿到刻面：刻在第 1 顆的第 6 面
+		if not hw.dice.seat_of(hw.players[who]).carve.is_empty():
+			(host_ops if who == 1 else client_ops).call([[InputCmd.OP_DICE_CARVE, 0, 5, 0]])
+	idle.call(SYNC)
+	if cw.dice.phase != DiceRun.EXPLORE or cs.loose != hs.loose or cs.items != hs.items or cs.carry != hs.carry or cs.pool != hs.pool \
 			or not is_equal_approx(me.stats.value(&"damage"), p2.stats.value(&"damage")):
 		return "選完獎勵兩邊的骰子、道具、屬性應一致：%s、備用骰 %d / %d、道具 %s / %s" % [cw.dice.phase, hs.loose.size(), cs.loose.size(), hs.items, cs.items]
 	# 逛地圖按 R：花 1 次、自己擲、擲完回到逛地圖

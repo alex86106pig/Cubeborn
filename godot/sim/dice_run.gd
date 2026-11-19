@@ -27,6 +27,9 @@ var resuming := false           # 這次倒數是戰鬥中擲完的：倒數完�
 var bonus_rerolls := 0          # 這一關每次擲骰多幾次重擲（門的獎勵，DiceDefs.DOOR_REWARDS）
 var reward_tier: StringName = &"normal"   # 正在選的獎勵是哪個難度給的（畫面標題用）
 var door_pick := false          # 正在選的獎勵是門給的（不是打完一場：沒有擲骰次數 +1）
+var shared := false             # 這一輪獎勵是多人共用的 4 個、暗選（大家都選好才揭曉，撞到同一個就比骰子）
+var contest_seq := 0            # 揭曉過幾次有撞到的（畫面看它變了就跳橫幅）
+var contests: Array = []        # 最近一次揭曉撞到的：[[獎勵標題, {peer_id: 點數}, 拿到的 peer_id], …]
 var physics := false            # 物理擲骰（main.gd 開：畫面的 DiceTable 丟、停好後用 OP_DICE_FACES 回報朝上的面）；false = 模擬層自己抽（檢查、沒有畫面時）
 var waiting := false            # 物理擲骰：丟出去了、還在等桌子回報（settle 當等待上限，到了就自己抽）
 var charges: Dictionary = {}    # peer_id -> 擲骰次數（不放 Seat：換關時補次數不該先建 Seat，Seat 建立時才照武器生骰子）
@@ -54,6 +57,7 @@ class Seat:
 	var result_choice: StringName = &""
 	var net_key: Array = []       # 客戶端：結果與屬性照哪一組 [面, 選的招, 武器, 道具數] 掛的（變了才重掛）
 	var items: Array[int] = []    # 拿過的數值道具（DiceDefs.ITEMS 的編號；屬性來源 dice_item:N）
+	var pick := -1                # 多人暗選：選了第幾個（揭曉前只有自己知道）；-1 = 還沒選
 	var roll_seq := 0             # 擲了幾次（畫面看它變了就播動畫）
 	var offers: Array = []        # 這一輪的獎勵選項；空 = 沒在選
 	var carve: Dictionary = {}    # 選了刻面、還沒選刻在哪：{kind, face（效果面）, skills（刻技能面的候選）}；空 = 沒在刻
@@ -84,6 +88,9 @@ func reset() -> void:
 	resuming = false
 	waiting = false
 	bonus_rerolls = 0
+	shared = false
+	contest_seq = 0
+	contests = []
 	charges.clear()
 	states.clear()
 
@@ -182,11 +189,7 @@ func door_reward(world: World, reward: StringName) -> void:
 			tier = &"elite"
 			reward_tier = tier
 			door_pick = true
-			var any := false
-			for p in world.player_list:
-				var s := seat_of(p)
-				s.offers = _make_offers(world, p, s) if can_roll(p) else []
-				any = any or not s.offers.is_empty()
+			var any := _offer_rewards(world)
 			tier = &"normal"
 			if any:
 				phase = REWARD
@@ -282,6 +285,9 @@ func step_frozen(world: World, dt: float) -> void:
 					_roll(world, p)
 				else:
 					_finish_turn(world, p)
+		REWARD:
+			if shared:   # 還沒選的人斷線、倒地：剩下的人都選好就揭曉
+				_resolve_shared(world)
 		COUNTDOWN:
 			timer -= dt
 			if timer <= 0.0:
@@ -363,12 +369,9 @@ func on_enemy_died(world: World, e: Enemy) -> void:
 		if f != null and not f.is_dead and f != e:
 			return
 	foes.clear()
-	var any := false
 	for p in world.player_list:
-		var s := seat_of(p)
 		_add_charges(p, DiceDefs.CHARGES_PER_FIGHT)
-		s.offers = _make_offers(world, p, s) if can_roll(p) else []
-		any = any or not s.offers.is_empty()
+	var any := _offer_rewards(world)
 	reward_tier = tier
 	door_pick = false
 	tier = &"normal"
@@ -392,7 +395,11 @@ func _op(world: World, p: Player, op: Array) -> void:
 	var s := seat_of(p)
 	match int(op[0]):
 		InputCmd.OP_DICE_REWARD:
-			if phase == REWARD and s.carve.is_empty() and op.size() > 1 and int(op[1]) >= 0 and int(op[1]) < s.offers.size():
+			if phase == REWARD and shared and s.pick < 0 and op.size() > 1 and int(op[1]) >= 0 and int(op[1]) < s.offers.size():
+				s.pick = int(op[1])   # 暗選：大家都選好才揭曉
+				world.emit_event("dice:pick_hidden", {"player_id": p.id})
+				_resolve_shared(world)
+			elif phase == REWARD and not shared and s.carve.is_empty() and op.size() > 1 and int(op[1]) >= 0 and int(op[1]) < s.offers.size():
 				var o: Dictionary = s.offers[int(op[1])]
 				s.offers = []
 				_take_offer(world, p, s, o)
@@ -444,6 +451,62 @@ func _op(world: World, p: Player, op: Array) -> void:
 		InputCmd.OP_DICE_DONE:
 			if s.rolled:
 				_finish_turn(world, p)
+
+
+# 多人暗選：還要選的人都選好了就揭曉（有人選到一半斷線、倒地也會走到，step_frozen 每步看）
+# 沒撞到的直接拿；撞到同一個的比骰子（各擲 1 顆，最大的拿，平手的再擲），輸的從沒人選的裡面隨機拿一個；剩下的消失
+func _resolve_shared(world: World) -> void:
+	var by_pick := {}
+	for p in world.player_list:
+		var s := seat_of(p)
+		if s.offers.is_empty() or not can_roll(p):
+			continue
+		if s.pick < 0:
+			return
+		(by_pick.get_or_add(s.pick, []) as Array).append(p)
+	shared = false
+	var offers: Array = []
+	var got := {}   # Player -> 拿到第幾個
+	var losers: Array[Player] = []
+	var picks := by_pick.keys()
+	picks.sort()
+	for idx: int in picks:
+		var ps: Array = by_pick[idx]
+		if offers.is_empty():
+			offers = seat_of(ps[0]).offers
+		if ps.size() == 1:
+			got[ps[0]] = idx
+			continue
+		var rolls := {}
+		var tied: Array = ps.duplicate()
+		while tied.size() > 1:
+			var best := 0
+			for q: Player in tied:
+				rolls[q.peer_id] = world.rng.randi_range(1, 6)
+				best = maxi(best, rolls[q.peer_id])
+			tied = tied.filter(func(q: Player) -> bool: return rolls[q.peer_id] == best)
+		got[tied[0]] = idx
+		for q: Player in ps:
+			if q != tied[0]:
+				losers.append(q)
+		contests.append([offers[idx].title, rolls, (tied[0] as Player).peer_id])
+	var left: Array[int] = []
+	for i in offers.size():
+		if not by_pick.has(i):
+			left.append(i)
+	for q in losers:
+		if not left.is_empty():
+			got[q] = left.pop_at(world.rng.randi_range(0, left.size() - 1))
+	if not contests.is_empty():
+		contest_seq += 1
+		world.emit_event("dice:contest", {"count": contests.size()})
+	for p in world.player_list:
+		var s := seat_of(p)
+		s.offers = []
+		s.pick = -1
+		if got.has(p):
+			_take_offer(world, p, s, offers[got[p]])
+	_end_reward_if_done(world)
 
 
 func _end_reward_if_done(world: World) -> void:
@@ -580,25 +643,53 @@ func cooldown_for(p: Player) -> float:
 
 # ---------- 獎勵 ----------
 
-# 4 選 1、種類不重複（world.rng 抽）
-func _make_offers(world: World, p: Player, s: Seat) -> Array:
+# 發這一輪的獎勵，回傳有沒有人要選：一個人（能選的只有一位）各自 4 選 1；多人共用同一組 4 個、暗選（shared，_resolve_shared 揭曉）
+func _offer_rewards(world: World) -> bool:
+	var eligible := world.player_list.filter(can_roll)
+	shared = eligible.size() > 1
+	contests = []
+	var common := _make_offers(world, null) if shared else []
+	for p in world.player_list:
+		var s := seat_of(p)
+		s.pick = -1
+		if not can_roll(p):
+			s.offers = []
+		else:
+			s.offers = common.duplicate(true) if shared else _make_offers(world, p)
+	return not eligible.is_empty()
+
+
+# 4 選 1、種類不重複（world.rng 抽）。p = null：多人共用的一組（刻技能面還是選到的人才照自己的武器抽）
+func _make_offers(world: World, p: Player) -> Array:
 	var kinds: Array = DiceDefs.REWARD_KINDS.duplicate()
 	var out := []
 	while out.size() < DiceDefs.REWARD_CHOICES and not kinds.is_empty():
 		var k: StringName = kinds.pop_at(world.rng.randi_range(0, kinds.size() - 1))
-		var o := _offer(world, p, s, k)
+		var o := _offer(world, p, k)
 		if not o.is_empty():
 			out.append(o)
 	return out
 
 
-func _offer(world: World, p: Player, _s: Seat, kind: StringName) -> Dictionary:
-	var skills := DiceDefs.skills_for(p.weapon_id)
+# 新骰子的技能面照哪把武器出：隊伍裡有人拿著的武器挑一把（一顆骰子上的技能都要同一把武器能用）；一個人就是自己的
+func die_weapon(world: World, p: Player) -> StringName:
+	if p != null:
+		return p.weapon_id
+	var held: Array[StringName] = []
+	for q in world.player_list:
+		if can_roll(q) and not held.has(q.weapon_id):
+			held.append(q.weapon_id)
+	if held.is_empty():
+		return &""
+	return held[0] if held.size() == 1 else held[world.rng.randi_range(0, held.size() - 1)]
+
+
+func _offer(world: World, p: Player, kind: StringName) -> Dictionary:
 	var effects: Array = DiceDefs.EFFECTS.keys()
 	match kind:
 		&"die":
 			var rarity := DiceDefs.roll_rarity(tier, world.rng)
-			var faces := DiceDefs.make_die(rarity, skills, world.rng)
+			var faces := DiceDefs.make_die(rarity, DiceDefs.skills_for(die_weapon(world, p)), world.rng)
 			return {"kind": kind, "title": "%s骰" % DiceDefs.RARITIES[rarity].name, "rarity": rarity, "faces": faces,
 				"desc": "放進備用骰子，自動換掉這場帶的骰子裡空白最多的那顆（Tab 可以再換）"}
 		&"weapon":
@@ -609,7 +700,7 @@ func _offer(world: World, p: Player, _s: Seat, kind: StringName) -> Dictionary:
 			return {"kind": kind, "title": WeaponDropDefs.display_name(inst), "weapon": inst, "faces": (inst.dice[0] as Array).duplicate(),
 				"base": base, "desc": "六顆武器骰都長這樣；先放進備用武器，按 Tab 換上（左鍵一起換）"}
 		&"carve_skill":
-			if skills.is_empty():
+			if p != null and DiceDefs.skills_for(p.weapon_id).is_empty():
 				return {}
 			return {"kind": kind, "title": "刻技能面", "desc": "選了才揭曉：從你武器能用的技能裡三選一，自己選刻在哪顆骰子的哪一面"}
 		&"carve_effect":
@@ -668,7 +759,7 @@ func to_array(world: World, viewer: int) -> Array:
 		if states.has(p.peer_id):   # seat_of：武器換過的話先接好武器骰
 			seats.append(_seat_to_array(p.peer_id, seat_of(p), viewer == 0 or viewer == p.peer_id))
 	return [String(phase), fights, turn, timer, settle, waiting, String(tier), String(back_to), resuming, bonus_rerolls,
-		String(reward_tier), door_pick, charges.duplicate(), seats]
+		String(reward_tier), door_pick, charges.duplicate(), seats, shared, contest_seq, contests.duplicate(true)]
 
 
 func _seat_to_array(peer_id: int, s: Seat, own: bool) -> Array:
@@ -694,7 +785,7 @@ func _seat_to_array(peer_id: int, s: Seat, own: bool) -> Array:
 	return [peer_id, DiceDefs.dice_to_bytes(dice), s.loose.size() if own else 0,
 		PackedByteArray(carry), PackedByteArray(s.face), locked, s.rolled, s.rerolls, s.done,
 		String(s.choice), s.roll_seq, DiceDefs.dice_to_bytes([s.result_faces] if not s.result_faces.is_empty() else []),
-		String(s.result_choice), PackedByteArray(s.items), spares, offers, carve]
+		String(s.result_choice), PackedByteArray(s.items), spares, offers, carve, s.pick if own else -1]
 
 
 static func _offer_to_array(o: Dictionary) -> Array:
@@ -743,6 +834,9 @@ func apply_array(world: World, a: Array) -> void:
 	reward_tier = StringName(a[10])
 	door_pick = a[11]
 	charges = (a[12] as Dictionary).duplicate()
+	shared = a[14]
+	contest_seq = a[15]
+	contests = a[16]
 	var seen := {}
 	for sa: Array in a[13]:
 		var peer_id: int = sa[0]
@@ -778,6 +872,7 @@ func apply_array(world: World, a: Array) -> void:
 		s.offers = (sa[15] as Array).map(_offer_from_array)
 		var c: Array = sa[16]
 		s.carve = {} if c.is_empty() else {"kind": StringName(c[0]), "face": StringName(c[1]), "skills": Array(c[2]).map(func(x: String) -> StringName: return StringName(x))}
+		s.pick = sa[17]
 		_wire_pool(s)
 		var p: Player = world.players.get(peer_id)
 		if p != null:

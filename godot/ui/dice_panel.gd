@@ -60,6 +60,7 @@ var _spin_t := 99.0               # 這次擲出去後經過幾秒（大於最�
 var _spinning: Array[bool] = []
 var _was_key := ""
 var _banner_t := 0.0
+var _contest_seen := -1             # 看過的 DiceRun.contest_seq（多人暗選撞到、比骰子：變了就跳橫幅）
 var _fight_t := 0.0
 var _cand_key := []
 var _offer_key := []
@@ -249,11 +250,17 @@ func refresh(world: World, me: Player, dt: float) -> void:
 	if rewarding:
 		var tier_name: String = DiceDefs.FIGHT_TIERS[dice.reward_tier].name
 		_reward_title.text = ("走進門的獎勵（%s）：選一個（點卡片或按數字鍵）" % tier_name) if dice.door_pick else ("打倒了！擲骰次數 +1　·　%s的獎勵，選一個（點卡片或按數字鍵）" % tier_name)
+		if dice.shared:
+			_reward_title.text += "\n大家暗選，撞到同一個就比骰子，輸的隨機拿沒人選的"
 		_show_offers(s, me)
+	_show_contest(world, dice, me)
 	_show_count(dice, dt)
 	_show_banner(dt)
-	_status.visible = phase == DiceRun.FIGHT or phase == DiceRun.EXPLORE
-	if _status.visible:
+	var waiting_mates := phase == DiceRun.REWARD and dice.shared and _picked and s.carve.is_empty()
+	_status.visible = phase == DiceRun.FIGHT or phase == DiceRun.EXPLORE or waiting_mates
+	if waiting_mates:
+		_status.text = "選好了，等隊友選……"
+	elif _status.visible:
 		_status.text = status_text(s, _charges)
 
 
@@ -409,6 +416,31 @@ func _show_count(dice: DiceRun, dt: float) -> void:
 		_count.text = "開打！"
 	else:
 		_count.text = ""
+
+
+# 多人暗選揭曉、有撞到的：跳橫幅寫誰擲幾點、誰拿到（「比骰子「藍骰」：你 5 · P2 3 → 你拿到」）
+func _show_contest(world: World, dice: DiceRun, me: Player) -> void:
+	if dice.contest_seq == _contest_seen:
+		return
+	var first := _contest_seen < 0
+	_contest_seen = dice.contest_seq
+	if first or dice.contests.is_empty():
+		return
+	var lines: Array[String] = []
+	for c: Array in dice.contests:
+		var rolls: Array[String] = []
+		for peer_id: int in c[1]:
+			rolls.append("%s %d" % [_player_name(world, me, peer_id), c[1][peer_id]])
+		lines.append("比骰子「%s」：%s → %s拿到" % [c[0], " · ".join(rolls), _player_name(world, me, c[2])])
+	_banner.text = "\n".join(lines)
+	_banner_t = BANNER_TIME
+
+
+static func _player_name(world: World, me: Player, peer_id: int) -> String:
+	if me != null and peer_id == me.peer_id:
+		return "你"
+	var p: Player = world.players.get(peer_id)
+	return "P%d" % (world.player_list.find(p) + 1) if p != null else "隊友"
 
 
 func _show_banner(dt: float) -> void:

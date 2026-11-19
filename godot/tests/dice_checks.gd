@@ -658,3 +658,114 @@ static func check_dice_replay() -> String:
 	a.queue_free()
 	b.queue_free()
 	return err
+
+
+# 多人的獎勵（§55「連線」）：共用同一組 4 個、暗選，大家都選好才揭曉；沒撞到各拿各的、撞到的比骰子（輸的隨機拿沒人選的）；
+# 還沒選的人倒地就不等他；新骰子的技能面只出隊伍裡有人拿著的武器的（一顆上都同一把武器的）
+static func check_dice_shared_reward() -> String:
+	var w := World.new(&"test_arena")
+	w.spawn_packs = false
+	w.dice = DiceRun.new()
+	w.reset(29, [1, 2, 3])
+	w.spawner.finished = true
+	_worlds.append(w)
+	var ps: Array[Player] = [w.players[1], w.players[2], w.players[3]]
+	ps[0].equip_weapon(&"swordShield")
+	ps[1].equip_weapon(&"staff")
+	ps[2].equip_weapon(&"swordShield")
+	var picked := func() -> Dictionary:   # player_id -> 拿到的種類
+		var out := {}
+		for ev: Dictionary in w.events:
+			if ev.name == "dice:picked":
+				out[ev.player_id] = ev.kind
+		return out
+	var round := func() -> String:
+		w.dice.phase = DiceRun.EXPLORE
+		w.dice.door_reward(w, &"relic")
+		if w.dice.phase != DiceRun.REWARD or not w.dice.shared:
+			return "三人時門的獎勵應是共用的暗選：%s shared %s" % [w.dice.phase, w.dice.shared]
+		return ""
+	# 1. 沒撞到：各拿各的，不比骰子
+	var err: String = round.call()
+	if err != "":
+		return err
+	var offers: Array = w.dice.seat_of(ps[0]).offers
+	for p in ps:
+		if w.dice.seat_of(p).offers.map(func(o: Dictionary) -> String: return o.title) != offers.map(func(o: Dictionary) -> String: return o.title):
+			return "三人的選項應一樣"
+	_run(w, _op_cmd([InputCmd.OP_DICE_REWARD, 0]), 1)   # _run 的指令給 peer 1
+	if w.dice.seat_of(ps[0]).offers.is_empty() or not w.dice.shared:
+		return "還有人沒選就不該揭曉"
+	var cmds := {2: _op_cmd([InputCmd.OP_DICE_REWARD, 1]), 3: _op_cmd([InputCmd.OP_DICE_REWARD, 2])}
+	w.step(cmds, DT)
+	var got: Dictionary = picked.call()
+	if w.dice.shared or w.dice.contest_seq != 0 or got.get(ps[0].id) != offers[0].kind or got.get(ps[1].id) != offers[1].kind or got.get(ps[2].id) != offers[2].kind:
+		return "沒撞到應各拿各的、不比骰子：拿到 %s、選項 %s" % [got, offers.map(func(o: Dictionary) -> StringName: return o.kind)]
+	for p in ps:   # 拿到刻面的刻完
+		if not w.dice.seat_of(p).carve.is_empty():
+			var c := {p.peer_id: _op_cmd([InputCmd.OP_DICE_CARVE, 0, 5, 0])}
+			w.step(c, DT)
+	if w.dice.phase != DiceRun.EXPLORE:
+		return "都拿完應回到逛地圖：%s" % w.dice.phase
+	# 2. 三人都選同一個：比骰子，一個拿到、另外兩個從剩下的 3 個裡隨機拿（不重複）
+	err = round.call()
+	if err != "":
+		return err
+	offers = w.dice.seat_of(ps[0]).offers
+	w.step({1: _op_cmd([InputCmd.OP_DICE_REWARD, 3]), 2: _op_cmd([InputCmd.OP_DICE_REWARD, 3]), 3: _op_cmd([InputCmd.OP_DICE_REWARD, 3])}, DT)
+	got = picked.call()
+	if w.dice.contest_seq != 1 or w.dice.contests.size() != 1:
+		return "三人撞到同一個應比一次骰子：%s" % [w.dice.contests]
+	var c0: Array = w.dice.contests[0]
+	var rolls: Dictionary = c0[1]
+	var winner: int = c0[2]
+	if rolls.size() != 3 or rolls.values().max() != rolls[winner] or rolls.values().count(rolls[winner]) != 1:
+		return "最大的拿（平手要再擲到分出來）：點數 %s、拿到的 %d" % [rolls, winner]
+	var kinds := [got.get(ps[0].id), got.get(ps[1].id), got.get(ps[2].id)]
+	var winner_kind: StringName = got.get((w.players[winner] as Player).id)
+	if winner_kind != offers[3].kind or kinds.has(null) or kinds.count(offers[3].kind) != 1:
+		return "贏的拿第 4 個（%s）、輸的從剩下的拿、不重複：%s" % [offers[3].kind, kinds]
+	for p in ps:
+		if not w.dice.seat_of(p).carve.is_empty():
+			w.step({p.peer_id: _op_cmd([InputCmd.OP_DICE_CARVE, 0, 4, 0])}, DT)
+	# 3. 還沒選的人倒地：剩下的都選好就揭曉
+	err = round.call()
+	if err != "":
+		return err
+	w.step({1: _op_cmd([InputCmd.OP_DICE_REWARD, 0]), 2: _op_cmd([InputCmd.OP_DICE_REWARD, 1])}, DT)
+	if not w.dice.shared:
+		return "第 3 位還沒選不該揭曉"
+	ps[2].is_downed = true
+	w.step({}, DT)
+	if w.dice.shared or not w.dice.seat_of(ps[2]).offers.is_empty():
+		return "還沒選的人倒地後應直接揭曉"
+	ps[2].is_downed = false
+	for p in ps:
+		if not w.dice.seat_of(p).carve.is_empty():
+			w.step({p.peer_id: _op_cmd([InputCmd.OP_DICE_CARVE, 0, 3, 0])}, DT)
+	# 4. 新骰子的技能面：只出隊伍裡的武器（劍盾、法杖），一顆骰子上都同一把武器的；兩把都出現過
+	var seen := {}
+	for i in 40:
+		w.dice.phase = DiceRun.EXPLORE
+		for p in ps:
+			w.dice.seat_of(p).carve = {}
+		w.dice.door_reward(w, &"relic")
+		for o: Dictionary in w.dice.seat_of(ps[0]).offers:
+			if o.kind != &"die":
+				continue
+			var skills: Array = o.faces.filter(func(f: StringName) -> bool: return DiceDefs.is_skill(f))
+			if skills.is_empty():
+				continue
+			var owner := &""
+			for wid: StringName in [&"swordShield", &"staff"]:
+				if skills.all(func(f: StringName) -> bool: return DiceDefs.skill_fits(f, wid)):
+					owner = wid
+			if owner == &"":
+				return "新骰子的技能面應都是隊伍裡同一把武器能用的（劍盾或法杖）：%s" % [o.faces]
+			seen[owner] = true
+		for p in ps:
+			w.dice.seat_of(p).offers = []
+		w.dice.shared = false
+	if seen.size() != 2:
+		return "40 輪裡劍盾、法杖的技能骰都應出現過：%s" % [seen.keys()]
+	return ""
