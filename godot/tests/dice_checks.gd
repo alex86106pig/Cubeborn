@@ -1088,3 +1088,81 @@ static func check_dice_rules() -> String:
 	if tags != ["一般", "菁英"] or seen != 2 or not fighting.is_empty():
 		return "逛地圖時還沒醒的怪群應標一般 / 菁英（醒了的不標，畫面上看得到 %d 個）、開打不標：%s、開打時 %s" % [seen, tags, fighting]
 	return ""
+
+
+# 骰盤放進遊戲世界（美術方案 2：戰場旁的骰盤）：桌子轉 0.7 弧度、擺在 (30, 0, −20)，用遊戲那種正交鏡頭看；
+# 真的丟：停在骰盤上（本地座標在桌面內、世界座標在擺的位置附近）、回報的面對；滑鼠指著骰盤中間，換算回桌面本地的點在中間附近；
+# 擺的位置在霧牆外面（離圈中心 ≥ 半徑 + 半張桌子）
+static func check_dice_tray() -> String:
+	var vp := SubViewport.new()
+	vp.own_world_3d = true
+	vp.size = Vector2i(1920, 1080)
+	_scene_root().add_child(vp)
+	var cam := Camera3D.new()
+	cam.projection = Camera3D.PROJECTION_ORTHOGONAL
+	cam.size = DiceDefs.TRAY_VIEW
+	vp.add_child(cam)
+	cam.make_current()
+	var table := DiceTable.new()
+	_scene_root().add_child(table)
+	var faces: Array = []
+	for i in DiceDefs.DICE_COUNT:
+		faces.append(DiceDefs.weapon_die(&"swordShield"))
+	table.set_faces(faces, &"swordShield")
+	var holder := Node3D.new()
+	vp.add_child(holder)
+	table.use_world(holder, cam)
+	var origin := Transform3D(Basis(Vector3.UP, 0.7), Vector3(30, 0, -20))
+	table.set_origin(origin)
+	table.set_shown(true)
+	cam.look_at_from_position(origin.origin + Vector3(sin(0.7), 1.2, cos(0.7)) * 14.0, origin.origin)
+	await (Engine.get_main_loop() as SceneTree).physics_frame
+	table.reset_round()
+	table.can_throw = true
+	var got: Array = []
+	table.settled.connect(func(f: Array) -> void: got.append(f))
+	table.auto_throw(0.8)
+	var frames := 0
+	while got.is_empty() and frames < int((DiceTable.SETTLE_TIMEOUT + 1.0) * 60):
+		await (Engine.get_main_loop() as SceneTree).physics_frame
+		frames += 1
+	var err := ""
+	if got.is_empty():
+		err = "放進遊戲世界的骰盤 %.0f 秒內沒停好" % (DiceTable.SETTLE_TIMEOUT + 1.0)
+	elif got[0] != Array(table.up_faces()):
+		err = "回報的面 %s ≠ 朝上的面 %s" % [got[0], table.up_faces()]
+	else:
+		for i in DiceDefs.DICE_COUNT:
+			var d: RigidBody3D = table._dice[i]
+			var local := d.position
+			if absf(local.x) > DiceTable.PLAY.x / 2.0 or absf(local.z) > DiceTable.PLAY.y / 2.0 or local.y < 0.2 or local.y > 1.6:
+				err = "第 %d 顆停在桌面外（本地 %s）" % [i + 1, local]
+				break
+			if d.global_position.distance_to(origin * local) > 0.01 or d.global_position.distance_to(origin.origin) > DiceTable.PLAY.x:
+				err = "第 %d 顆的世界座標 %s 應在骰盤 %s 附近" % [i + 1, d.global_position, origin.origin]
+				break
+	if err == "" and vp.get_camera_3d() != cam:
+		err = "桌子自己的鏡頭不該搶走遊戲畫面的鏡頭"
+	if err == "":
+		var screen := cam.unproject_position(origin.origin)
+		var p: Vector3 = table._table_point(screen, 0.0)
+		if Vector2(p.x, p.z).length() > 0.5:
+			err = "滑鼠指著骰盤中間，換算回桌面本地應在中間附近：%s" % p
+	table.queue_free()   # 桌子的節點掛在 vp 的世界裡：先放掉桌子、下一幀再放掉 vp（同一幀放掉引擎會報 scenario 是 null）
+	await (Engine.get_main_loop() as SceneTree).process_frame
+	vp.queue_free()
+	if err != "":
+		return err
+	var w := _dice_world()
+	var pl := _player(w)
+	var e := _elite(w, pl.pos + Vector2(6, 0))
+	w.alert_pack(_lone_pack(w, e), e, pl)
+	var dp := DicePanel.new()
+	dp.tray_right = Vector3(1, 0, 0)
+	var t := dp.tray_transform(w.dice, pl)
+	dp.free()
+	var gap := Vector2(t.origin.x, t.origin.z).distance_to(w.dice.arena_center)
+	if gap < w.dice.arena_radius + DiceTable.PLAY.x / 2.0:
+		return "骰盤應擺在霧牆外：離圈中心 %.1f（半徑 %.1f + 半張桌子 %.1f）" % [gap, w.dice.arena_radius, DiceTable.PLAY.x / 2.0]
+	_note("骰盤放進遊戲世界：%.2f 秒停好、面 %s" % [frames / 60.0, got[0] if not got.is_empty() else []])
+	return ""

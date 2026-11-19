@@ -36,6 +36,11 @@ var _btn_method := UiKit.button("", UiKit.BUTTON_M)   # 物理擲骰的擲法：
 var _result := UiKit.label("", UiKit.FONT_BODY, Color("ffcf7a"))
 var _result_sub := UiKit.label("", UiKit.FONT_NOTE)
 var _effects := UiKit.label("", UiKit.FONT_NOTE, Color("9fd8ff"))
+var world_table := false            # 骰盤放在遊戲世界裡戰場旁（use_world_table）：不蓋中間、不變暗，鏡頭轉過去
+var tray_right := Vector3.RIGHT     # 螢幕右邊在地面上的方向（骰盤擺在戰場右邊）
+var tray_yaw := 0.0                 # 骰盤轉多少才正對遊戲的鏡頭
+var _table_box: CenterContainer
+var _dim: Control
 var _summary := UiKit.label("", UiKit.FONT_NOTE, Color(1, 1, 1, 0.92))   # 結果總覽：大家都擲完、倒數時列每個人的右鍵與效果
 var _cands := HBoxContainer.new()
 var _count := UiKit.label("", 150, UiKit.GOLD, 6)
@@ -89,6 +94,7 @@ func _init() -> void:
 	_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	var dim := UiKit.rect(DIM)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_dim = dim
 	_overlay.add_child(dim)
 	add_child(_overlay)
 
@@ -107,6 +113,7 @@ func _init() -> void:
 	_timer_bg.add_child(_timer_fill)
 	_roll_box.add_child(timer)
 	var table_box := CenterContainer.new()
+	_table_box = table_box
 	table_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	table_box.add_child(table)
 	_roll_box.add_child(table_box)
@@ -216,6 +223,44 @@ func _init() -> void:
 	visible = false
 
 
+# 骰子模式的遊戲畫面（main.gd）：骰盤放進遊戲的 3D 世界、擺在戰場旁，用遊戲的鏡頭看；擲骰的字與按鈕移到畫面下方
+func use_world_table(parent: Node3D, cam: Camera3D, right: Vector3, yaw: float) -> void:
+	world_table = true
+	tray_right = right
+	tray_yaw = yaw
+	table.use_world(parent, cam)
+	_table_box.visible = false
+	_roll_box.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 24)
+	_roll_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
+
+
+# 骰盤擺哪：有霧牆就在圈的右邊外面，沒有（逛地圖花次數擲）就在擲的人右邊；轉成正對鏡頭
+func tray_transform(dice: DiceRun, p: Player) -> Transform3D:
+	var anchor := dice.arena_center if dice.arena_radius > 0.0 else (p.pos if p != null else Vector2.ZERO)
+	var gap := (dice.arena_radius if dice.arena_radius > 0.0 else 2.0) + DiceTable.PLAY.x / 2.0 + 1.5
+	return Transform3D(Basis(Vector3.UP, tray_yaw), Vector3(anchor.x, DiceDefs.TRAY_LIFT, anchor.y) + tray_right * gap)
+
+
+# 鏡頭該看哪裡（main.gd）：擲骰、倒數時看骰盤（放慢時看那一顆），其他時候 null（照舊跟著自己）
+func camera_focus() -> Variant:
+	if not world_table or not visible or (phase != DiceRun.ROLL and phase != DiceRun.COUNTDOWN):
+		return null
+	var f: Variant = table.focus_point()
+	if f != null:
+		return f
+	return table.center() - Vector3.UP.cross(tray_right) * DiceDefs.TRAY_SCREEN_UP   # 鏡頭對準骰盤下面一點：骰盤在畫面偏上，下方留給擲骰的字與按鈕
+
+
+# 放進遊戲世界時：滑鼠事件轉給骰盤（按在按鈕上的不轉）
+func _input(event: InputEvent) -> void:
+	if not world_table or not visible or phase != DiceRun.ROLL or not (event is InputEventMouse):
+		return
+	if event is InputEventMouseButton and event.pressed and get_viewport().gui_get_hovered_control() is BaseButton:
+		return
+	if table.world_input(event):
+		get_viewport().set_input_as_handled()
+
+
 # 每幀（HUD._process）：照 world.dice 與本機玩家的 Seat 畫
 func refresh(world: World, me: Player, dt: float) -> void:
 	var dice := world.dice if world != null else null
@@ -232,11 +277,19 @@ func refresh(world: World, me: Player, dt: float) -> void:
 			_picked = false
 		if phase == DiceRun.ROLL:
 			_table_round = ""
+			if world_table:   # 每次進擲骰擺一次（同一輪換人不搬，大家看同一個骰盤）
+				var tp := dice.current(world)
+				table.set_origin(tray_transform(dice, tp if tp != null else me))
 		_last_phase = phase
 	var rolling := phase == DiceRun.ROLL
 	var rewarding := phase == DiceRun.REWARD and not s.offers.is_empty() and not _picked
 	var carving := phase == DiceRun.REWARD and not s.carve.is_empty()
 	_overlay.visible = rolling or phase == DiceRun.COUNTDOWN or rewarding or carving
+	if world_table:   # 骰盤在遊戲世界裡：擲骰、倒數時不變暗、不擋滑鼠（滑鼠要點到骰盤）
+		var on_tray := rolling or phase == DiceRun.COUNTDOWN
+		_dim.visible = not on_tray
+		_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE if on_tray else Control.MOUSE_FILTER_STOP
+		table.set_shown(on_tray)
 	_roll_box.visible = rolling or phase == DiceRun.COUNTDOWN
 	_reward_box.visible = rewarding and not carving
 	_carve_box.visible = carving

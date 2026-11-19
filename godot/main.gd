@@ -119,6 +119,9 @@ func _ready() -> void:
 	net.name = &"Net"
 	add_child(net)
 	_connect_net()
+	# 骰子模式：骰盤放進遊戲的 3D 世界、擺在戰場右邊，正對遊戲的鏡頭（一般模式不會顯示）
+	hud.dice_panel.use_world_table(world_view, camera_rig.camera,
+		Vector3(camera_rig.screen_right.x, 0.0, camera_rig.screen_right.y), Config.CAMERA.azimuth)
 	_emit_muted()
 	GameEvents.event_emitted.connect(_on_event)
 	restart()
@@ -822,7 +825,13 @@ func _process(delta: float) -> void:
 	if perf != null:
 		perf.add_frame(frame_seconds, Time.get_ticks_usec() - t0, _elapsed)
 	world_view.profile = perf != null and perf.recording(_elapsed)
-	camera_rig.follow(_player_view_position(alpha), delta)
+	var tray: Variant = hud.dice_panel.camera_focus()   # 骰子模式擲骰、倒數：鏡頭轉到戰場旁的骰盤（放慢時推近那一顆）
+	if tray != null:
+		camera_rig.follow(tray, delta)
+		camera_rig.zoom(DiceDefs.TRAY_VIEW_FOCUS if hud.dice_panel.table.focus_point() != null else DiceDefs.TRAY_VIEW, delta)
+	else:
+		camera_rig.follow(_player_view_position(alpha), delta)
+		camera_rig.zoom(Config.CAMERA.view_half_height * 2.0, delta)
 	_check_auto_quit(delta)
 
 
@@ -957,7 +966,7 @@ func _check_auto_quit(delta: float) -> void:
 	if net_client != null:
 		print("net corrections=%d max_error=%.4f" % [net_client.corrections, net_client.max_error])
 	if world.dice != null:   # 連線檢查用：本機桌上朝上的面、模擬層（客戶端是快照）每人的面、收到幾段隊友的擲骰錄影
-		var dice_line := "dice phase=%s frames_in=%d replays=%d table=%s" % [world.dice.phase, _dice_frames_in, hud.dice_panel.table.replays_done, hud.dice_panel.table.up_faces()]
+		var dice_line := "dice phase=%s frames_in=%d replays=%d table=%s cam=%.1f focus=%s" % [world.dice.phase, _dice_frames_in, hud.dice_panel.table.replays_done, hud.dice_panel.table.up_faces(), camera_rig.camera.size, hud.dice_panel.table.focus_point() != null]
 		for peer_id: int in peers:
 			var seat: DiceRun.Seat = world.dice.states.get(peer_id)
 			if seat != null:

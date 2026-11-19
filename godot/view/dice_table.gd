@@ -7,6 +7,9 @@
 # 骰子斜靠著牆或別顆停住（朝上那面不夠平）自動往上輕推一下再滾；超過 SETTLE_TIMEOUT 秒還沒停就照現在朝上的面算
 # 連線（§55「連線」）：物理只在擲的人這台算。record_enabled 時自己擲的每一段（骰盅、6 顆骰子的位置與轉向）錄下來送出（frames_recorded），
 # 隊友的桌子收到就照著播（play_frames，骰子凍住不跑物理），大家看到同一段
+# 兩種擺法：預設自己一個 3D 世界、畫在介面中間（檢查用這個）；骰子模式的遊戲畫面 use_world 之後桌子放進遊戲的 3D 世界、
+# 擺在戰場旁邊（set_origin，只繞 Y 轉），用遊戲的鏡頭看、滑鼠由 DicePanel 轉過來（world_input）。桌子自己的座標都是桌面本地的，
+# 剛體的速度與衝量是世界座標，要經過 _g / _l 轉
 class_name DiceTable
 extends SubViewportContainer
 
@@ -89,6 +92,13 @@ var _suspense_die := -1             # 放慢時盯著的那顆（鏡頭推過去
 var _suspense_t := 0.0              # 放慢了幾秒（實際時間）
 var _cam_home := Transform3D()      # 鏡頭平常的位置
 var _cam_focus := -1                # 鏡頭推近哪一顆（自己放慢、或播隊友錄影裡的）
+var world_mode := false             # 放進遊戲的 3D 世界（use_world）
+var _ext_cam: Camera3D              # 放進遊戲世界時用遊戲的鏡頭
+var _root: Node3D
+var _sun: DirectionalLight3D
+var _env: WorldEnvironment
+var _felt: MeshInstance3D
+const WORLD_FELT := Color("5c2328")   # 放進遊戲世界時的絨布（酒紅）：綠的在遊戲的暖光下跟草地分不出來
 
 
 func _init() -> void:
@@ -114,6 +124,7 @@ func _ready() -> void:
 
 func _build_scene() -> void:
 	var root := Node3D.new()
+	_root = root
 	_viewport.add_child(root)
 	_camera.fov = 36.0
 	_camera.look_at_from_position(Vector3(0, 12.0, 8.0), Vector3(0, 0, -0.7))   # 還沒進場景樹：不能用 look_at
@@ -123,6 +134,7 @@ func _build_scene() -> void:
 	sun.rotation_degrees = Vector3(-58, -30, 0)
 	sun.light_energy = 1.25
 	sun.shadow_enabled = true
+	_sun = sun
 	root.add_child(sun)
 	var env := WorldEnvironment.new()
 	env.environment = Environment.new()
@@ -130,9 +142,11 @@ func _build_scene() -> void:
 	env.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.environment.ambient_light_color = Color(0.75, 0.7, 0.62)
 	env.environment.ambient_light_energy = 0.75
+	_env = env
 	root.add_child(env)
 	# 桌面（深綠絨布）與木框；保留區是後面一條木架
 	var felt := _box(Vector3(PLAY.x + 1.2, 0.4, PLAY.y + 1.2), Vector3(0, -0.2, 0), Color("2f4a37"))
+	_felt = felt
 	root.add_child(felt)
 	var wood := Color("5a3d28")
 	for w: Array in [[Vector3(PLAY.x + 1.2, WALL_H, 0.6), Vector3(0, WALL_H / 2.0, -PLAY.y / 2.0 - 0.3)],
@@ -414,7 +428,7 @@ func _throw_from_edge(power: float) -> void:
 		d.freeze = false
 		d.transform = Transform3D(random_basis(rng),
 			Vector3(-PLAY.x / 2.0 + 1.0 + (n % 2) * 1.1, 1.5 + float(n / 2) * 1.1, rng.randf_range(-1.6, 1.6)))
-		d.linear_velocity = Vector3(speed * rng.randf_range(0.85, 1.1), rng.randf_range(2.0, 5.0), rng.randf_range(-0.25, 0.25) * speed)
+		d.linear_velocity = _g(Vector3(speed * rng.randf_range(0.85, 1.1), rng.randf_range(2.0, 5.0), rng.randf_range(-0.25, 0.25) * speed))
 		d.angular_velocity = Vector3(rng.randf_range(-18, 18), rng.randf_range(-18, 18), rng.randf_range(-18, 18))
 		d.sleeping = false
 		n += 1
@@ -431,6 +445,16 @@ func _start_rolling() -> void:
 
 
 func _gui_input(event: InputEvent) -> void:
+	if not world_mode and _pointer(event):
+		accept_event()
+
+
+# 放進遊戲世界時 DicePanel 把滑鼠事件轉過來（座標是遊戲畫面的）；回傳有沒有處理
+func world_input(event: InputEvent) -> bool:
+	return world_mode and _pointer(event)
+
+
+func _pointer(event: InputEvent) -> bool:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			var hit := _pick_die(event.position)
@@ -446,9 +470,11 @@ func _gui_input(event: InputEvent) -> void:
 				_release_cup()
 			elif charging:
 				release_charge()
-		accept_event()
-	elif event is InputEventMouseMotion and state == State.AIM:
+		return true
+	if event is InputEventMouseMotion and state == State.AIM:
 		_cup_target = _table_point(event.position, CUP_HEIGHT * 0.05)
+		return true
+	return false
 
 
 func _to_view(p: Vector2) -> Vector2:
@@ -456,9 +482,9 @@ func _to_view(p: Vector2) -> Vector2:
 
 
 func _table_point(p: Vector2, h: float) -> Vector3:
-	var vp := _to_view(p)
-	var from := _camera.project_ray_origin(vp)
-	var dir := _camera.project_ray_normal(vp)
+	var ray := _ray(p)
+	var from: Vector3 = ray[0]
+	var dir: Vector3 = ray[1]
 	if absf(dir.y) < 1e-4:
 		return Vector3.ZERO
 	var t := (h - from.y) / dir.y
@@ -468,9 +494,10 @@ func _table_point(p: Vector2, h: float) -> Vector3:
 
 
 func _pick_die(p: Vector2) -> int:
-	var vp := _to_view(p)
-	var space := _viewport.find_world_3d().direct_space_state
-	var q := PhysicsRayQueryParameters3D.create(_camera.project_ray_origin(vp), _camera.project_ray_origin(vp) + _camera.project_ray_normal(vp) * 60.0)
+	var cam := _ext_cam if world_mode else _camera
+	var vp := p if world_mode else _to_view(p)
+	var space := _root.get_world_3d().direct_space_state
+	var q := PhysicsRayQueryParameters3D.create(cam.project_ray_origin(vp), cam.project_ray_origin(vp) + cam.project_ray_normal(vp) * 200.0)
 	var hit := space.intersect_ray(q)
 	if hit.is_empty():
 		return -1
@@ -520,7 +547,7 @@ func _release_cup() -> void:
 		if not _rolling[i]:
 			continue
 		var d := _dice[i]
-		d.linear_velocity = dir * speed * randf_range(0.8, 1.05) + side * speed * randf_range(-0.3, 0.3) + Vector3(0, randf_range(2.0, 4.5), 0)
+		d.linear_velocity = _g(dir * speed * randf_range(0.8, 1.05) + side * speed * randf_range(-0.3, 0.3) + Vector3(0, randf_range(2.0, 4.5), 0))
 		d.angular_velocity += Vector3(randf_range(-14, 14), randf_range(-14, 14), randf_range(-14, 14))
 		d.sleeping = false
 	_hide_cup()
@@ -540,10 +567,11 @@ func _keep_in_cup() -> void:
 		if flat.length() > inner:
 			var n := flat.normalized()
 			flat = n * inner
-			var v := Vector2(d.linear_velocity.x, d.linear_velocity.z)
+			var lv := _l(d.linear_velocity)
+			var v := Vector2(lv.x, lv.z)
 			if v.dot(n) > 0.0:
 				v -= n * v.dot(n) * 1.5
-			d.linear_velocity = Vector3(v.x, d.linear_velocity.y, v.y)
+			d.linear_velocity = _g(Vector3(v.x, lv.y, v.y))
 			fixed = true
 		var y := clampf(off.y, 0.5, CUP_HEIGHT - 0.6)
 		if fixed or y != off.y:
@@ -610,7 +638,7 @@ func _step_physics(delta: float) -> void:
 			d.sleeping = false
 			if _nudges < MAX_NUDGES:   # 往桌子中間推：靠牆的不會又倒回同一面牆、疊著的會滑下來
 				var to_mid := -Vector3(d.position.x, 0, d.position.z).normalized() * 1.5
-				d.apply_central_impulse(Vector3(to_mid.x + randf_range(-1, 1), 5.5, to_mid.z + randf_range(-1, 1)))
+				d.apply_central_impulse(_g(Vector3(to_mid.x + randf_range(-1, 1), 5.5, to_mid.z + randf_range(-1, 1))))
 				d.apply_torque_impulse(Vector3(randf_range(-2, 2), randf_range(-2, 2), randf_range(-2, 2)))
 			else:   # 推不開：從桌子中間附近的半空重新丟下來
 				d.transform = Transform3D(random_basis(null), _free_spot(i))   # 低一點、轉慢一點：1 秒內落定，不要拖到逾時
@@ -878,7 +906,7 @@ func _set_slow(v: float) -> void:
 			d.angular_velocity *= ratio
 	_slow = v
 	if is_inside_tree():
-		PhysicsServer3D.area_set_param(_viewport.find_world_3d().space, PhysicsServer3D.AREA_PARAM_GRAVITY, GRAVITY * v * v)
+		PhysicsServer3D.area_set_param(_root.get_world_3d().space, PhysicsServer3D.AREA_PARAM_GRAVITY, GRAVITY * v * v)
 
 
 # 鏡頭盯哪一顆（-1 = 回原位）；換了就送 suspense_changed（播隊友錄影時也送，音樂一起收小）
@@ -897,3 +925,73 @@ func _update_camera(delta: float) -> void:
 		var at := _dice[_cam_focus].position
 		want = Transform3D.IDENTITY.translated(at + Vector3(0, 6.5, 4.2)).looking_at(at, Vector3.UP)
 	_camera.transform = _camera.transform.interpolate_with(want, clampf(delta * 5.0, 0.0, 1.0))
+
+
+
+# ---------- 放進遊戲的 3D 世界（骰子模式：戰場旁的骰盤）----------
+
+# 桌子的 3D 節點搬到 parent 底下（遊戲的 3D 世界）、用 cam（遊戲的鏡頭）看；自己的光與環境關掉（遊戲世界有自己的），自己的畫面不再畫
+# 用搬節點、不是換 SubViewport 的世界：執行中換世界引擎會報錯（scenario 是 null）
+func use_world(parent: Node3D, cam: Camera3D) -> void:
+	world_mode = true
+	_ext_cam = cam
+	_sun.visible = false
+	_env.environment = null
+	_felt.material_override = _mat(WORLD_FELT)
+	# 放在戰場旁的地上：底下墊一塊厚木座（地面高低不一，桌子墊高後看起來像一個擺在桌上的骰盒，不是浮在半空）
+	_root.add_child(_box(Vector3(PLAY.x + 1.8, 1.6, PLAY.y + 1.8), Vector3(0, -1.2, 0), Color("4a3020")))
+	_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_root.remove_child(_camera)   # 桌子自己的鏡頭留在自己的畫面裡：跟著搬過去會變成遊戲畫面的鏡頭
+	_viewport.add_child(_camera)
+	_viewport.remove_child(_root)
+	parent.add_child(_root)
+	_root.visible = false
+	PhysicsServer3D.area_set_param(_root.get_world_3d().space, PhysicsServer3D.AREA_PARAM_GRAVITY, GRAVITY * _slow * _slow)
+
+
+# 搬出去的節點不在自己底下：桌子被釋放時一起放掉
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE and world_mode and is_instance_valid(_root):
+		_root.queue_free()
+
+
+# 桌子擺在哪（只繞 Y 轉、不縮放：剛體不能縮放）；丟出去之後就不要再搬
+func set_origin(t: Transform3D) -> void:
+	_root.transform = t
+
+
+func set_shown(v: bool) -> void:
+	_root.visible = v
+
+
+# 骰盤在遊戲世界的中心；放慢時鏡頭要推近的那顆的位置（沒有回傳 null）
+func center() -> Vector3:
+	return _root.global_position
+
+
+func focus_point() -> Variant:
+	if _cam_focus < 0 or _cam_focus >= _dice.size():
+		return null
+	return _dice[_cam_focus].global_position
+
+
+# 螢幕座標 → 桌面本地的射線 [起點, 方向]
+func _ray(p: Vector2) -> Array:
+	var cam := _ext_cam if world_mode else _camera
+	var vp := p if world_mode else _to_view(p)
+	var from := cam.project_ray_origin(vp)
+	var dir := cam.project_ray_normal(vp)
+	if world_mode:
+		var inv := _root.global_transform.affine_inverse()
+		from = inv * from
+		dir = (inv.basis * dir).normalized()
+	return [from, dir]
+
+
+# 桌面本地的方向 ↔ 世界的方向（速度、衝量）
+func _g(v: Vector3) -> Vector3:
+	return _root.global_transform.basis * v if world_mode else v
+
+
+func _l(v: Vector3) -> Vector3:
+	return _root.global_transform.basis.inverse() * v if world_mode else v

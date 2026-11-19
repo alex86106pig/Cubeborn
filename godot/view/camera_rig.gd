@@ -44,6 +44,11 @@ func shake(strength: float, duration: float = 0.2) -> void:
 	_shake_duration = duration
 
 
+# 正交鏡頭看多大（可視高度，世界單位）慢慢拉到 size：骰子模式擲骰時推近骰盤
+func zoom(size: float, dt: float) -> void:
+	camera.size = lerpf(camera.size, size, 1.0 - exp(-Config.CAMERA.follow_sharpness * 0.6 * dt))
+
+
 # 畫面效果用一般 randf()：與模擬無關，各台不必一致
 func follow(target: Vector3, dt: float, snap: bool = false) -> void:
 	if snap:
