@@ -3,7 +3,7 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
-## [未發布]
+## [0.82.0] - 2026-11-19
 
 ### 新增
 - **骰子模式：選獎勵時可以把骰子拿起來看**（YangHsu 2026-11-19：「三選一的時候我不知道我有什麼骰子」「要可以直接看這顆有甚麼啊，像是可以拿起來轉」）：獎勵卡下面一排 3D 骰子（`ui/dice_inspect.gd`，`DiceInspect`）：你帶的 6 顆，後面接獎勵裡的「新骰子」與「新武器的骰子」；平常轉 45 度看得到三面，按住一顆拖曳就轉著看每一面，放開慢慢轉回原位。有「新骰子」卡時，會被換掉的那顆（空白最多的）抬高、標紅「會被換掉」，箭頭指到新骰子，兩顆都能轉著比。骰子外觀跟擲骰桌同一套（`DiceTable.build_die_visual` / `paint_die`），`DiceRun.most_blank_slot` 改成公開（畫面照它標）。
