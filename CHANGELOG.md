@@ -3,7 +3,7 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
-## [未發布]
+## [0.81.1] - 2026-11-19
 
 ### 修正
 - **骰子模式：骰盤在戰場旁時點不到骰子**（Claude 用網頁版 debug 實際試玩找到）：點骰子要拿到保留區，結果變成又丟一次、把重擲次數用掉。原因：骰盤四周有看不到的 6 高碰撞牆，遊戲的鏡頭比較斜，點骰子的射線先打到牆。改成骰子多一層碰撞層（`DiceTable.DICE_LAYER`），點骰子只打這層。
