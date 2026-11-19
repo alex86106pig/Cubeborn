@@ -43,6 +43,7 @@ const SETTLE_TIMEOUT := 6.0               # 到了還沒停好：還在動 / 斜
 const ON_TABLE_Y := 0.8                    # 停住時中心高過這個 = 疊在別顆上面（也算沒停好）
 # 骰子 6 面的法線（面編號 = 骰面陣列的 index）
 const NORMALS: Array[Vector3] = [Vector3.UP, Vector3.DOWN, Vector3.RIGHT, Vector3.LEFT, Vector3.BACK, Vector3.FORWARD]
+const DICE_LAYER := 2                      # 骰子多一層碰撞層：點骰子只打這層（看不到的高牆有 6 高，斜著看射線會先打到牆）
 const REC_EVERY := 2                       # 錄影每 2 個物理步錄一幀（30 幀 / 秒；播的時候兩幀之間補間）
 const REC_CHUNK := 6                       # 每 6 幀（0.2 秒）送一段：隊友晚約這麼久 + 網路延遲看到
 const PLAY_LEAD := 5                       # 收到這麼多幀才開始播（網路抖一下不會播到一半停住）
@@ -189,6 +190,7 @@ func _build_scene() -> void:
 
 func _make_die(i: int) -> RigidBody3D:
 	var d := RigidBody3D.new()
+	d.collision_layer = 1 | DICE_LAYER   # 照樣跟牆、桌面、骰盅、別顆撞；點骰子的射線只看 DICE_LAYER
 	d.mass = 1.0
 	d.continuous_cd = true
 	d.can_sleep = true
@@ -497,7 +499,7 @@ func _pick_die(p: Vector2) -> int:
 	var cam := _ext_cam if world_mode else _camera
 	var vp := p if world_mode else _to_view(p)
 	var space := _root.get_world_3d().direct_space_state
-	var q := PhysicsRayQueryParameters3D.create(cam.project_ray_origin(vp), cam.project_ray_origin(vp) + cam.project_ray_normal(vp) * 200.0)
+	var q := PhysicsRayQueryParameters3D.create(cam.project_ray_origin(vp), cam.project_ray_origin(vp) + cam.project_ray_normal(vp) * 200.0, DICE_LAYER)
 	var hit := space.intersect_ray(q)
 	if hit.is_empty():
 		return -1

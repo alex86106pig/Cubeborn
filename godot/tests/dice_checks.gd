@@ -1141,6 +1141,13 @@ static func check_dice_tray() -> String:
 			if d.global_position.distance_to(origin * local) > 0.01 or d.global_position.distance_to(origin.origin) > DiceTable.PLAY.x:
 				err = "第 %d 顆的世界座標 %s 應在骰盤 %s 附近" % [i + 1, d.global_position, origin.origin]
 				break
+	if err == "":   # 點得到每一顆（斜著看，射線不能先打到看不到的高牆：試玩時點骰子變成又丟一次）
+		for i in DiceDefs.DICE_COUNT:
+			var at: Vector3 = table._dice[i].global_position + Vector3(0, 0.5, 0)
+			var picked: int = table._pick_die(cam.unproject_position(at))
+			if picked != i:
+				err = "指著第 %d 顆的頂面應點到它，點到 %d" % [i + 1, picked + 1]
+				break
 	if err == "" and vp.get_camera_3d() != cam:
 		err = "桌子自己的鏡頭不該搶走遊戲畫面的鏡頭"
 	if err == "":
@@ -1159,10 +1166,37 @@ static func check_dice_tray() -> String:
 	w.alert_pack(_lone_pack(w, e), e, pl)
 	var dp := DicePanel.new()
 	dp.tray_right = Vector3(1, 0, 0)
-	var t := dp.tray_transform(w.dice, pl)
+	var t := dp.tray_transform(w, w.dice, pl)
 	dp.free()
-	var gap := Vector2(t.origin.x, t.origin.z).distance_to(w.dice.arena_center)
-	if gap < w.dice.arena_radius + DiceTable.PLAY.x / 2.0:
-		return "骰盤應擺在霧牆外：離圈中心 %.1f（半徑 %.1f + 半張桌子 %.1f）" % [gap, w.dice.arena_radius, DiceTable.PLAY.x / 2.0]
+	# 桌面長方形（轉向照擺的）跟霧牆的圓不重疊
+	var at := Vector2(t.origin.x, t.origin.z)
+	var rx := Vector2(t.basis.x.x, t.basis.x.z)
+	var rz := Vector2(t.basis.z.x, t.basis.z.z)
+	var off := w.dice.arena_center - at
+	var local := Vector2(off.dot(rx), off.dot(rz))
+	var nearest := Vector2(clampf(local.x, -DiceTable.PLAY.x / 2.0, DiceTable.PLAY.x / 2.0), clampf(local.y, -DiceTable.PLAY.y / 2.0, DiceTable.PLAY.y / 2.0))
+	if nearest.distance_to(local) < w.dice.arena_radius - 0.01:
+		return "骰盤應擺在霧牆外：桌面離圈中心最近 %.1f（半徑 %.1f）" % [nearest.distance_to(local), w.dice.arena_radius]
+	# 右邊擋著一道牆：應換一邊擺，桌子底下沒有障礙
+	var w4 := _dice_world()
+	var p4 := _player(w4)
+	var e4 := _elite(w4, p4.pos + Vector2(0, 4))
+	w4.alert_pack(_lone_pack(w4, e4), e4, p4)
+	var t0 := dp2_tray(w4)
+	var blocks: Array[Dictionary] = w4.terrain.blocks.duplicate()
+	blocks.append({"min": t0 - Vector2(3, 3), "max": t0 + Vector2(3, 3), "top": 2.0, "kind": MapDefs.WALL})
+	w4.terrain = Terrain.new(blocks)
+	var t1 := dp2_tray(w4)
+	if t1.distance_to(t0) < 1.0 or w4.terrain.blocks_nav(t1, 0.0):
+		return "原本的位置擺了一道牆，骰盤應換個沒有障礙的地方：原本 %s → %s" % [t0, t1]
 	_note("骰盤放進遊戲世界：%.2f 秒停好、面 %s" % [frames / 60.0, got[0] if not got.is_empty() else []])
 	return ""
+
+
+
+static func dp2_tray(w: World) -> Vector2:
+	var dp := DicePanel.new()
+	dp.tray_right = Vector3(1, 0, 0)
+	var t := dp.tray_transform(w, w.dice, _player(w))
+	dp.free()
+	return Vector2(t.origin.x, t.origin.z)

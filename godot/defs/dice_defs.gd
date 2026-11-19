@@ -351,6 +351,6 @@ const SHOW_TICK_PITCH := 0.12     # 每一聲高多少（音高倍率）
 const TRAY_VIEW := 16.0           # 擲骰時鏡頭看多大（可視高度；平常 20）：骰盤 12 寬要放得下
 const TRAY_VIEW_FOCUS := 11.0     # 放慢時推近
 const TRAY_SCREEN_UP := 2.5       # 骰盤在畫面上往上挪多少（世界單位）
-const TRAY_LIFT := 1.5            # 骰盤墊高多少（戰場外的土坡比地面高，太低桌面會被蓋住；底下有木座）
+const TRAY_LIFT := 1.0            # 骰盤比底下最高的地面高多少（底下有木座，看起來是一個擺著的骰盒）
 const SHOW_SHAKE := 0.18          # 中了強化 / 組合的畫面震動（受傷是 0.25）
 const SHOW_SHAKE_BIG := 0.35      # 中了大招以上

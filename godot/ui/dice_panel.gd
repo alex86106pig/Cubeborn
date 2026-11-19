@@ -234,11 +234,51 @@ func use_world_table(parent: Node3D, cam: Camera3D, right: Vector3, yaw: float) 
 	_roll_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
 
 
-# 骰盤擺哪：有霧牆就在圈的右邊外面，沒有（逛地圖花次數擲）就在擲的人右邊；轉成正對鏡頭
-func tray_transform(dice: DiceRun, p: Player) -> Transform3D:
+# 骰盤擺哪：有霧牆就在圈外，沒有（逛地圖花次數擲）就在擲的人旁邊；轉成正對鏡頭
+# 圍著中心試幾個方向與距離（右邊優先），挑桌子底下障礙（牆、柵欄、墓碑）、地圖外、高低不平最少的；每台照同樣的地形算，擺的位置一樣
+func tray_transform(world: World, dice: DiceRun, p: Player) -> Transform3D:
 	var anchor := dice.arena_center if dice.arena_radius > 0.0 else (p.pos if p != null else Vector2.ZERO)
-	var gap := (dice.arena_radius if dice.arena_radius > 0.0 else 2.0) + DiceTable.PLAY.x / 2.0 + 1.5
-	return Transform3D(Basis(Vector3.UP, tray_yaw), Vector3(anchor.x, DiceDefs.TRAY_LIFT, anchor.y) + tray_right * gap)
+	var near := (dice.arena_radius if dice.arena_radius > 0.0 else 2.0) + DiceTable.PLAY.y / 2.0 + 1.5
+	var right := Vector2(tray_right.x, tray_right.z)
+	var up := Vector2(-right.y, right.x)
+	var best := Vector2.ZERO
+	var best_score := INF
+	var best_ground := 0.0
+	for dist: float in [1.0, 1.35]:
+		for dir: Vector2 in [right, -right, up, -up, (right + up).normalized(), (right - up).normalized(), (-right + up).normalized(), (-right - up).normalized()]:
+			var reach := near + absf(dir.dot(right)) * (DiceTable.PLAY.x - DiceTable.PLAY.y) / 2.0   # 往左右擺要多讓半張桌子的長邊
+			var at := anchor + dir * reach * dist
+			var r := _tray_score(world, at, right, up)
+			if r[0] < best_score - 0.01:
+				best_score = r[0]
+				best = at
+				best_ground = r[1]
+	return Transform3D(Basis(Vector3.UP, tray_yaw), Vector3(best.x, best_ground + DiceDefs.TRAY_LIFT, best.y))
+
+
+# 桌子擺在 at：底下每 1.5 取一點，[分數（障礙、地圖外各算 1，高低差超過一階算 0.5）, 最高的地面]
+static func _tray_score(world: World, at: Vector2, right: Vector2, up: Vector2) -> Array:
+	var score := 0.0
+	var top := -INF
+	var low := INF
+	var half := Vector2(DiceTable.PLAY.x + 1.8, DiceTable.PLAY.y + 1.8) / 2.0
+	var x := -half.x
+	while x <= half.x + 0.01:
+		var y := -half.y
+		while y <= half.y + 0.01:
+			var pt := at + right * x + up * y
+			if absf(pt.x) > world.half_extents.x or absf(pt.y) > world.half_extents.y:
+				score += 1.0
+			elif world.terrain.blocks_nav(pt, 0.2):
+				score += 1.0
+			var g := world.terrain.ground_at(pt)
+			top = maxf(top, g)
+			low = minf(low, g)
+			y += 1.5
+		x += 1.5
+	if top - low > Config.HEIGHT.step:
+		score += 0.5 * (top - low) / Config.HEIGHT.step
+	return [score, top]
 
 
 # 鏡頭該看哪裡（main.gd）：擲骰、倒數時看骰盤（放慢時看那一顆），其他時候 null（照舊跟著自己）
@@ -279,7 +319,7 @@ func refresh(world: World, me: Player, dt: float) -> void:
 			_table_round = ""
 			if world_table:   # 每次進擲骰擺一次（同一輪換人不搬，大家看同一個骰盤）
 				var tp := dice.current(world)
-				table.set_origin(tray_transform(dice, tp if tp != null else me))
+				table.set_origin(tray_transform(world, dice, tp if tp != null else me))
 		_last_phase = phase
 	var rolling := phase == DiceRun.ROLL
 	var rewarding := phase == DiceRun.REWARD and not s.offers.is_empty() and not _picked
