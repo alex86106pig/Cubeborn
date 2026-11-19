@@ -1046,7 +1046,7 @@ static func check_dice_show() -> String:
 
 
 # 構想補齊的三條（§55）：倒地不倒數、這一場打完自動站起 30%（逛地圖時倒下馬上站起，全隊倒地照樣輸）；
-# 倒數時的結果總覽每人一行；桌邊配件（階段條、角色卡的血量籌碼、右鍵卡、重擲券籌碼）；
+# 倒數時的結果總覽每人一行；桌邊配件（階段條、角色卡的血量籌碼、右鍵卡、重擲券籌碼、技能欄與新手提示換成紙卡樣式，一般模式不換）；
 # 逛地圖時每群還沒醒的怪頭上立遭遇卡「一般 / 菁英 ×幾隻」，醒了、開打就不標
 static func check_dice_rules() -> String:
 	var w := World.new(&"test_arena")
@@ -1114,10 +1114,23 @@ static func check_dice_rules() -> String:
 	var want_skill: String = DiceDefs.name_of(res.skill) if res.count > 0 else "沒中"
 	if props_err == "" and (w2.dice.phase != DiceRun.FIGHT or props.track.step != 2 or not props.hero.visible or not props.hand.visible or hud._hp.root.visible):
 		props_err = "開打後階段條應到開打（%s、%d）、角色卡與牌出來（%s、%s）、左上血條收起來（%s）" % [w2.dice.phase, props.track.step, props.hero.visible, props.hand.visible, hud._hp.root.visible]
+	var bar_slot: Variant = hud._skill_bar.get_child(0)
+	if props_err == "" and (not bar_slot.paper or not hud.hints.paper):
+		props_err = "骰子模式的技能欄與新手提示應換成紙卡樣式（技能欄 %s、提示 %s）" % [bar_slot.paper, hud.hints.paper]
 	if props_err == "" and (props.hp_chips.count != 8 or props.skill_name.text != want_skill or props.chip_texts.is_empty() or props.chip_texts[-1] != "重擲券 ×%d" % w2.dice.charges_of(me)):
 		props_err = "75%% 生命應 8 枚籌碼（%d）、右鍵卡寫「%s」（%s）、最後一枚是重擲券 ×%d（%s）" % [props.hp_chips.count, want_skill, props.skill_name.text, w2.dice.charges_of(me), props.chip_texts]
 	hud.queue_free()
 	cam.queue_free()
+	if props_err == "":   # 一般模式的技能欄照舊是暗色格子
+		var wn := World.new(&"test_arena")
+		wn.reset(41, [1])
+		_worlds.append(wn)
+		var sb := SkillBar.new()
+		_scene_root().add_child(sb)
+		sb.refresh(wn, wn.players[1])
+		if sb.get_child(0).paper:
+			props_err = "一般模式的技能欄不應換成紙卡樣式"
+		sb.queue_free()
 	if summary_phase != DiceRun.COUNTDOWN or not summary.begins_with("你："):
 		return "大家擲完倒數時應列結果總覽（你：…）：%s「%s」" % [summary_phase, summary]
 	if props_err != "":

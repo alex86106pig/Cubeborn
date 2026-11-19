@@ -42,7 +42,7 @@ func _init() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 
 	# 左下：角色卡
-	hero.add_theme_stylebox_override(&"panel", _paper(PAPER))
+	hero.add_theme_stylebox_override(&"panel", paper_box(PAPER))
 	hero.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 16)
 	hero.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	hero.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -78,7 +78,7 @@ func _init() -> void:
 		c.custom_minimum_size = Vector2(140, 0)
 		c.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		cards.add_child(c)
-	basic_card.add_theme_stylebox_override(&"panel", _paper(PAPER))
+	basic_card.add_theme_stylebox_override(&"panel", paper_box(PAPER))
 	hand.add_child(cards)
 	chips_row.alignment = FlowContainer.ALIGNMENT_END
 	chips_row.custom_minimum_size.x = 310
@@ -89,7 +89,7 @@ func _init() -> void:
 	add_child(hand)
 
 
-static func _paper(color: Color, edge: Color = PAPER_EDGE, width: int = 2) -> StyleBoxFlat:
+static func paper_box(color: Color, edge: Color = PAPER_EDGE, width: int = 2) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()
 	box.bg_color = color
 	box.border_color = edge
@@ -170,7 +170,7 @@ func _show_skill(res: Dictionary) -> void:
 		for c: StringName in res.get("combos", []):
 			sub += "\n" + DiceDefs.COMBOS[c].name
 		skill_sub.text = sub
-	skill_card.add_theme_stylebox_override(&"panel", _paper(PAPER_LIT if lit else PAPER, UiKit.GOLD if lit else PAPER_EDGE, 3 if lit else 2))
+	skill_card.add_theme_stylebox_override(&"panel", paper_box(PAPER_LIT if lit else PAPER, UiKit.GOLD if lit else PAPER_EDGE, 3 if lit else 2))
 	basic_sub.text = "×%s" % str(DiceDefs.BASIC_ATTACK_MUL)
 
 
@@ -236,7 +236,7 @@ class PhaseTrack extends Control:
 
 	func _draw() -> void:
 		var r := Rect2(LEFT, 6, W, 28)
-		draw_style_box(DiceProps._paper(Color(0.14, 0.10, 0.07, 0.85), Color("8a6240"), 2), r)
+		draw_style_box(DiceProps.paper_box(Color(0.14, 0.10, 0.07, 0.85), Color("8a6240"), 2), r)
 		draw_line(Vector2(_x(0), 20), Vector2(_x(STEPS.size() - 1), 20), Color("5a4532"), 3.0)
 		for i in STEPS.size():
 			if i == step:

@@ -554,6 +554,7 @@ func _process(delta: float) -> void:
 	if forge_panel.visible:
 		forge_panel.position = Vector2(inventory_panel.position.x - forge_panel.size.x - 16.0, 120.0)
 	if not _pause.visible and not _game_over.visible and not main_menu.visible and not class_select.visible and not settings_panel.visible:   # 暫停、結算、主選單、選角、設定頁時提示不倒數、不記效能
+		hints.set_paper(world.dice != null)
 		hints.update(delta, world, player, inventory_panel.visible)
 		if hints.visible:
 			_place_hints()

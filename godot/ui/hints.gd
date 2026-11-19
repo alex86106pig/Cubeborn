@@ -14,6 +14,8 @@ var current: StringName = &""          # 正在顯示的提示；"" = 沒有
 var _label := UiKit.label("", FONT_SIZE, Color.WHITE, 2)
 var _time := 0.0                       # current 已顯示的秒數
 var _wait := HintDefs.START_DELAY      # 下一則之前還要等幾秒
+var paper := false                     # 骰子模式：紙條樣式（紙色底、深棕框、深色字；set_paper）
+var _dark_box: StyleBoxFlat
 
 
 func _init() -> void:
@@ -27,10 +29,26 @@ func _init() -> void:
 	box.content_margin_right = PAD_X
 	box.content_margin_top = 10
 	box.content_margin_bottom = 10
+	_dark_box = box
 	add_theme_stylebox_override(&"panel", box)
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(_label)
 	visible = false
+
+
+# 骰子模式換成紙條（跟桌邊配件同一種紙），一般模式換回暗底金框；有變才換（HUD 每幀呼叫）
+func set_paper(on: bool) -> void:
+	if on == paper:
+		return
+	paper = on
+	var box: StyleBoxFlat = _dark_box
+	if on:
+		box = DiceProps.paper_box(DiceProps.PAPER)
+		box.content_margin_left = PAD_X
+		box.content_margin_right = PAD_X
+	add_theme_stylebox_override(&"panel", box)
+	_label.add_theme_color_override(&"font_color", DiceProps.INK if on else Color.WHITE)
+	_label.add_theme_color_override(&"font_shadow_color", Color(0, 0, 0, 0) if on else UiKit.SHADOW)
 
 
 func _ready() -> void:

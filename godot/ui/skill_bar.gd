@@ -1,10 +1,12 @@
 # 技能欄（照搬網頁版 HUD 的 skillbar）：左鍵、右鍵、Shift 翻滾（Godot 版新增）、數字鍵 1~3（按鍵袋的技能）與 Q（治療藥水）；CD 扇形遮罩與秒數、剩餘次數、耗魔（魔力不夠變暗）、技能等級（2 級以上）、閃爍回饋
+# 骰子模式（桌邊配件）：格子改成紙卡框 + 深色木頭底（跟角色卡、右鍵卡同一種紙），圖示與冷卻照舊
 class_name SkillBar
 extends HBoxContainer
 
 const SLOT_SIZE := 58.0
 const FLASH_DENY_TIME := 0.3
 const FLASH_USED_TIME := 0.25
+const WOOD := Color("3b2a1c")   # 骰子模式格子裡的木頭底
 const ROLL_ICON := "⟳"   # 圖示都是 SkillIcons 畫的（打包字型沒有這些符號）
 
 var _slots: Dictionary = {}   # cd key -> Slot
@@ -12,6 +14,7 @@ var _weapon_id: StringName = &""
 var _slot_sig := ""                    # 寶石座上的技能（ActiveSlots.signature），變了就重建
 var _attack_slot: Slot        # 左鍵：平常是普攻
 var _special_slot: Slot       # 右鍵：平常是武器特殊技
+var paper := false            # 骰子模式的紙卡樣式（重建時照 world.dice 決定）
 
 
 func _init() -> void:
@@ -87,6 +90,7 @@ func _build(player: Player) -> void:
 		c.queue_free()
 	_slots.clear()
 	var w := player.weapon
+	paper = player.world.dice != null
 	_attack_slot = _add_slot("", w.attack.icon, "左鍵", -1, false)
 	var dice_slot: Variant = player.slots.get_slot(player, ActiveSlots.DICE_INDEX) if player.world.dice != null else null
 	if player.world.dice != null:
@@ -95,7 +99,7 @@ func _build(player: Player) -> void:
 		_special_slot = _add_slot("player.special", w.special.icon, "右鍵", -1, false)
 		_special_slot.set_mana_def(w.special)
 	_add_slot(Player.ROLL_CD, ROLL_ICON, "Shift", -1, false)
-	var divider := UiKit.rect(Color(1, 1, 1, 0.25), Vector2(2, 48))
+	var divider := UiKit.rect(Color(DiceProps.PAPER, 0.6) if paper else Color(1, 1, 1, 0.25), Vector2(2, 48))
 	divider.size_flags_vertical = Control.SIZE_SHRINK_END
 	add_child(divider)
 	for i in ActiveSlots.SLOT_COUNT:
@@ -110,6 +114,7 @@ func _build(player: Player) -> void:
 
 func _add_slot(key: String, icon: String, key_label: String, index: int, empty: bool) -> Slot:
 	var slot := Slot.new(icon, key_label, index)
+	slot.paper = paper
 	if empty:
 		slot.modulate.a = 0.35
 	add_child(slot)
@@ -120,6 +125,7 @@ func _add_slot(key: String, icon: String, key_label: String, index: int, empty: 
 
 class Slot extends Control:
 	var index := -1
+	var paper := false          # 紙卡框 + 木頭底（骰子模式）
 	var icon: Label
 	var icon_id := ""           # 招式的 icon（WeaponDefs）
 	var drawn_icon := ""        # SkillIcons 畫得出來時由 _draw 畫，icon 文字留空
@@ -201,9 +207,17 @@ class Slot extends Control:
 
 	func _draw() -> void:
 		var r := Rect2(Vector2.ZERO, size)
-		draw_rect(r.grow(2.0), _outline)
-		draw_rect(r, Color("0b0d14"))
-		draw_rect(r.grow(-3.0), UiKit.SLOT_BG)
+		if paper:   # 紙卡框（閃爍時框換成白 / 紅）+ 深色木頭底
+			var frame := DiceProps.paper_box(DiceProps.PAPER, DiceProps.PAPER_EDGE if _outline == UiKit.SLOT_OUTLINE else _outline, 2)
+			draw_style_box(frame, r.grow(2.0))
+			var wood := StyleBoxFlat.new()
+			wood.bg_color = WOOD
+			wood.set_corner_radius_all(4)
+			draw_style_box(wood, r.grow(-4.0))
+		else:
+			draw_rect(r.grow(2.0), _outline)
+			draw_rect(r, Color("0b0d14"))
+			draw_rect(r.grow(-3.0), UiKit.SLOT_BG)
 		if drawn_icon != "":
 			SkillIcons.draw(self, drawn_icon, size / 2.0, icon.modulate.a)
 
