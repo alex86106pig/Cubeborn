@@ -1200,3 +1200,89 @@ static func dp2_tray(w: World) -> Vector2:
 	var t := dp.tray_transform(w, w.dice, _player(w))
 	dp.free()
 	return Vector2(t.origin.x, t.origin.z)
+
+
+# 獎勵畫面看骰子（§55）：獎勵卡下面一排 3D 骰子：你帶的 6 顆（面照帶的）、獎勵的新骰子與新武器的骰子；
+# 新骰子會換掉的那顆（空白最多）標「會被換掉」；拖曳會轉、放開慢慢轉回原位；整個獎勵畫面放得進介面最大檔
+static func check_dice_inspect() -> String:
+	var w := _dice_world()
+	var p := _player(w)
+	var s := w.dice.seat_of(p)
+	var blank: Array[StringName] = []
+	for f in DiceDefs.FACES:
+		blank.append(DiceDefs.BLANK)
+	s.loose.append(blank)
+	w.dice._carry(s, 2, s.all_dice().size() - 1)   # 帶著的第 3 顆全空白：新骰子應換掉它
+	var new_die := DiceDefs.make_die(&"blue", DiceDefs.skills_for(p.weapon_id), w.rng)
+	var weapon_die := DiceDefs.weapon_die(&"staff")
+	s.offers = [{"kind": &"die", "title": "藍骰", "desc": "", "faces": new_die},
+		{"kind": &"weapon", "title": "法杖", "desc": "", "faces": weapon_die, "base": &"staff"},
+		{"kind": &"item", "title": "道具", "desc": "", "item": 0}]
+	w.dice.phase = DiceRun.REWARD
+	var cam := Camera3D.new()
+	_scene_root().add_child(cam)
+	var hud: Variant = load("res://ui/hud.tscn").instantiate()
+	hud.setup(w, cam)
+	_scene_root().add_child(hud)
+	var dp: DicePanel = hud.dice_panel
+	dp.refresh(w, p, 0.05)
+	var ins: DiceInspect = dp.inspect
+	var err := ""
+	if ins.die_count() != DiceDefs.DICE_COUNT + 2:
+		err = "應有你帶的 6 顆 + 新骰子 + 新武器的骰子：%d 顆" % ins.die_count()
+	else:
+		for i in DiceDefs.DICE_COUNT:
+			if ins.faces_of(i) != Array(s.pool[i]):
+				err = "第 %d 顆的面應同你帶的：%s / %s" % [i + 1, ins.faces_of(i), s.pool[i]]
+				break
+		if err == "" and (w.dice.most_blank_slot(s) != 2 or ins.replace_slot != 2 or ins.tag_of(2) != "會被換掉" or ins.tag_of(6) != "新骰子" or ins.faces_of(6) != Array(new_die)):
+			err = "新骰子會換掉第 3 顆（全空白）：標 %d「%s」、新骰子「%s」" % [ins.replace_slot, ins.tag_of(2), ins.tag_of(6)]
+	if err == "":
+		var rest := ins.basis_of(0)
+		ins.rotate_die(0, Vector2(90, 40))
+		var turned := ins.basis_of(0)
+		for f in 60:
+			ins._process(1.0 / 30.0)
+		var back := ins.basis_of(0)
+		if Quaternion(turned).angle_to(Quaternion(rest)) < 0.5:
+			err = "拖曳應轉動骰子：只轉了 %.2f 弧度" % Quaternion(turned).angle_to(Quaternion(rest))
+		elif Quaternion(back).angle_to(Quaternion(rest)) > 0.05:
+			err = "放開 2 秒應轉回原位：還差 %.2f 弧度" % Quaternion(back).angle_to(Quaternion(rest))
+	if err == "":
+		var base := Vector2(ProjectSettings.get_setting("display/window/size/viewport_width"), ProjectSettings.get_setting("display/window/size/viewport_height"))
+		var room: Vector2 = base / (SettingsPanel.UI_SCALES.max() * SettingsPanel.BASE_UI_SCALE)
+		var need: Vector2 = dp._reward_box.get_combined_minimum_size()
+		if need.x > room.x or need.y > room.y:
+			err = "獎勵畫面（含骰子）%s 超出介面最大檔 %s" % [need, room]
+		else:
+			_note("獎勵畫面含骰子 %s（介面最大檔 %s）" % [need, room])
+	hud.queue_free()
+	cam.queue_free()
+	return err
+
+
+# 打一場 / 擲骰 / 選獎勵的時候別群被吵醒（試玩發現：最後一下的聲音在同一步吵醒隔壁群，那群醒了卻沒開打、沒霧牆、沒擲骰、打死也沒獎勵）：
+# 先記著，回到逛地圖時馬上開那一場（有菁英就擲骰）
+static func check_dice_pending_alert() -> String:
+	var w := _dice_world()
+	var p := _player(w)
+	p.hp = 99999.0
+	var a := _spawn(w, &"grunt", p.pos + Vector2(4, 0))
+	w.alert_pack(_lone_pack(w, a), a, p)   # 一般群：直接開打
+	if w.dice.phase != DiceRun.FIGHT:
+		return "一般群應直接開打：%s" % w.dice.phase
+	var b := _elite(w, p.pos + Vector2(-5, 0))
+	b.dormant = true
+	var bi := _lone_pack(w, b)
+	a.die()
+	_run(w, _cmd(Vector2.ZERO), 1)
+	if w.dice.phase != DiceRun.REWARD:
+		return "打完應選獎勵：%s" % w.dice.phase
+	w.alert_pack(bi, b, p)   # 選獎勵的時候被吵醒
+	var s := w.dice.seat_of(p)
+	_run(w, _op_cmd([InputCmd.OP_DICE_REWARD, _simple_pick(s)]), 1)
+	if not s.carve.is_empty():
+		_run(w, _op_cmd([InputCmd.OP_DICE_CARVE, 0, 5, 0]), 1)
+	if w.dice.phase != DiceRun.ROLL or not w.dice.foes.has(b.id) or w.dice.arena_radius <= 0.0:
+		return "選完獎勵應馬上開那一場（菁英先擲骰、有霧牆）：%s、foes %s、霧牆 %.1f" % [w.dice.phase, w.dice.foes, w.dice.arena_radius]
+	return ""

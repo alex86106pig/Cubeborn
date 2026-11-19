@@ -204,19 +204,38 @@ func door_reward(world: World, reward: StringName) -> void:
 
 # 怪群被發現、Boss 開追（World.alert_pack、Boss.aggro）：逛地圖時開一場；已經在這一場裡就併進來，不重擲
 # 一般的怪群直接開打（用手上的結果）；有菁英（魔法 / 稀有）或 Boss 的先免費擲一次、倒數再開打
+# 打一場、擲骰、選獎勵的時候被吵醒的（最後一下的聲音常在同一步吵醒隔壁群）：先記在 foes，回到逛地圖時馬上開那一場（_back_to_explore）
 func on_alert(world: World, ids: Array) -> void:
-	var big := false
-	var was_explore := phase == EXPLORE
 	for id: int in ids:
 		var e := world.entities.get(id) as Enemy
 		if e != null and not e.is_dead and not foes.has(id):
 			foes.append(id)
+			if phase == FIGHT:   # 打到一半才進來的：難度跟著升（獎勵的稀有度看它）
+				_raise_tier(e)
+	if phase == EXPLORE:
+		_open_fight(world)
+
+
+func _raise_tier(e: Enemy) -> void:
+	if e.is_boss():
+		tier = &"boss"
+	elif e.rarity != MonsterRarityDefs.NORMAL and tier != &"boss":
+		tier = &"elite"
+
+
+# 開 foes 這一場：霧牆、難度；有菁英或 Boss 先免費擲骰，否則直接開打。foes 裡都死了就不開
+func _open_fight(world: World) -> void:
+	var big := false
+	var alive: Array[int] = []
+	tier = &"normal"
+	for id in foes:
+		var e := world.entities.get(id) as Enemy
+		if e != null and not e.is_dead:
+			alive.append(id)
 			big = big or e.is_boss() or e.rarity != MonsterRarityDefs.NORMAL
-			if e.is_boss():
-				tier = &"boss"
-			elif e.rarity != MonsterRarityDefs.NORMAL and tier != &"boss":
-				tier = &"elite"
-	if not was_explore or foes.is_empty():
+			_raise_tier(e)
+	foes = alive
+	if foes.is_empty():
 		return
 	fights += 1
 	_make_arena(world)
@@ -225,6 +244,14 @@ func on_alert(world: World, ids: Array) -> void:
 		_start_roll(world, null)
 	else:
 		_start_fight(world)
+
+
+# 回到逛地圖；剛才被吵醒、還在等的怪（foes 裡活著的）馬上開打
+func _back_to_explore(world: World, event_name: String) -> void:
+	phase = EXPLORE
+	world.emit_event(event_name, {"fight": fights, "phase": String(phase)})
+	if not foes.is_empty():
+		_open_fight(world)
 
 
 # 開始擲骰：roller = null 是開場擲骰（活著的每人輪流），否則只有那位（花次數自己擲，擲完回到 back_to）
@@ -318,8 +345,7 @@ func _skip_done(world: World) -> void:
 		var back := back_to
 		back_to = &""
 		if back == EXPLORE:
-			phase = EXPLORE
-			world.emit_event("dice:resume", {"phase": String(phase)})
+			_back_to_explore(world, "dice:resume")
 			return
 		resuming = back == FIGHT
 		phase = COUNTDOWN
@@ -392,8 +418,11 @@ func on_enemy_died(world: World, e: Enemy) -> void:
 	reward_tier = tier
 	door_pick = false
 	tier = &"normal"
-	phase = REWARD if any else EXPLORE
-	world.emit_event("dice:reward" if any else "dice:explore", {"fight": fights})
+	if any:
+		phase = REWARD
+		world.emit_event("dice:reward", {"fight": fights})
+	else:
+		_back_to_explore(world, "dice:explore")
 
 
 # ---------- 操作（InputCmd.OP_DICE_*，World.step 一開頭交給這裡；不管有沒有暫停） ----------
@@ -530,8 +559,7 @@ func _end_reward_if_done(world: World) -> void:
 	for q in world.player_list:
 		if seat_of(q).choosing():
 			return
-	phase = EXPLORE
-	world.emit_event("dice:explore", {"fight": fights})
+	_back_to_explore(world, "dice:explore")
 
 
 # 帶著的第 slot 顆換成 k（全部骰子的編號）；k 已經帶著就兩顆互換位置
@@ -728,8 +756,8 @@ func _offer(world: World, p: Player, kind: StringName) -> Dictionary:
 			return {"kind": &"item", "title": DiceDefs.ITEMS[i].name, "desc": "數值道具：一直有效", "item": i}
 
 
-# 帶著的骰子裡空白面最多的那顆（同樣多取後面的；都沒有空白取最後一顆）
-func _most_blank_slot(s: Seat) -> int:
+# 帶著的骰子裡空白面最多的那顆（同樣多取後面的；都沒有空白取最後一顆）：拿新骰子時換掉它（獎勵畫面也照它標出會換掉哪顆）
+func most_blank_slot(s: Seat) -> int:
 	var best := DiceDefs.DICE_COUNT - 1
 	var best_n := -1
 	for i in s.pool.size():
@@ -744,7 +772,7 @@ func _take_offer(world: World, p: Player, s: Seat, o: Dictionary) -> void:
 	match o.kind:
 		&"die":
 			s.loose.append((o.faces as Array).duplicate())
-			_carry(s, _most_blank_slot(s), s.all_dice().size() - 1)
+			_carry(s, most_blank_slot(s), s.all_dice().size() - 1)
 		&"weapon":
 			receive_weapon(world, p, o.weapon)
 		&"carve_skill":

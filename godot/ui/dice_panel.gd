@@ -48,6 +48,8 @@ var _banner := UiKit.label("", 64, UiKit.GOLD, 5)
 var _reward_box := VBoxContainer.new()
 var _reward_cards := HBoxContainer.new()
 var _reward_title := UiKit.label("", UiKit.FONT_HEADING, UiKit.GOLD)
+var inspect := DiceInspect.new()     # 獎勵畫面下面：你帶的 6 顆 + 獎勵裡的骰子，拖曳轉著看
+var _inspect_hint := UiKit.label("", UiKit.FONT_NOTE, Color(1, 1, 1, 0.75))
 var _carve_box := VBoxContainer.new()
 var _carve_title := UiKit.label("", UiKit.FONT_HEADING, UiKit.GOLD)
 var _carve_skills := HBoxContainer.new()
@@ -174,6 +176,12 @@ func _init() -> void:
 	_reward_cards.alignment = BoxContainer.ALIGNMENT_CENTER
 	_reward_cards.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_reward_box.add_child(_reward_cards)
+	var inspect_box := CenterContainer.new()
+	inspect_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	inspect_box.add_child(inspect)
+	_reward_box.add_child(inspect_box)
+	_inspect_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_reward_box.add_child(_inspect_hint)
 	_overlay.add_child(_reward_box)
 
 	# 刻面：選了刻技能 / 刻效果的卡之後，點這場帶的 6 顆骰子的其中一面（空白面金框，是建議刻的地方）
@@ -350,6 +358,7 @@ func refresh(world: World, me: Player, dt: float) -> void:
 		if dice.shared:
 			_reward_title.text += "\n大家暗選，撞到同一個就比骰子，輸的隨機拿沒人選的"
 		_show_offers(s, me)
+		_show_inspect(dice, s, me)
 	_show_contest(world, dice, me)
 	_play_show(dt)
 	_show_count(dice, dt)
@@ -557,6 +566,20 @@ func _play_show(dt: float) -> void:
 	while not _show_queue.is_empty() and _show_queue[0][0] <= _show_t:
 		var q: Array = _show_queue.pop_front()
 		sfx.emit(q[1], 1.0, q[2])
+
+
+# 獎勵畫面的骰子：你帶的 6 顆，後面接獎勵裡的新骰子（標出會換掉哪顆）、新武器的骰子；都能拿起來轉
+func _show_inspect(dice: DiceRun, s: DiceRun.Seat, me: Player) -> void:
+	var extras := []
+	var replace := -1
+	for o: Dictionary in s.offers:
+		if o.kind == &"die":
+			extras.append([o.faces, me.weapon_id, "新骰子"])
+			replace = dice.most_blank_slot(s)
+		elif o.kind == &"weapon":
+			extras.append([o.faces, o.get("base", me.weapon_id), "新武器的骰子"])
+	inspect.show_dice(s.pool, me.weapon_id, extras, replace)
+	_inspect_hint.text = "你帶的骰子：按住拖曳可以轉著看每一面" + ("　·　選「新骰子」會換掉紅色那顆（空白最多的）" if replace >= 0 else "")
 
 
 # 多人暗選揭曉、有撞到的：跳橫幅寫誰擲幾點、誰拿到（「比骰子「藍骰」：你 5 · P2 3 → 你拿到」）

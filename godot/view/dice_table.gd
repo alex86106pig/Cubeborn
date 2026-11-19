@@ -203,33 +203,7 @@ func _make_die(i: int) -> RigidBody3D:
 	shape.size = Vector3.ONE
 	col.shape = shape
 	d.add_child(col)
-	var body := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3.ONE * 0.98
-	body.mesh = bm
-	body.material_override = _mat(Color("efe6d4"))
-	d.add_child(body)
-	var nodes: Array = []
-	for k in NORMALS.size():
-		var n: Vector3 = NORMALS[k]
-		var quad := MeshInstance3D.new()
-		var qm := QuadMesh.new()
-		qm.size = Vector2(0.84, 0.84)
-		quad.mesh = qm
-		d.add_child(quad)
-		_face_to(quad, n, 0.495)
-		var lab := Label3D.new()
-		lab.font = _font
-		lab.font_size = 64
-		lab.pixel_size = 0.0078
-		lab.outline_size = 0
-		lab.modulate = Color(0.08, 0.06, 0.04)
-		lab.double_sided = false
-		lab.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-		d.add_child(lab)
-		_face_to(lab, n, 0.502)
-		nodes.append([quad, lab])
-	_face_nodes.append(nodes)
+	_face_nodes.append(build_die_visual(d, _font))
 	d.body_entered.connect(func(_other: Node) -> void:
 		var v := d.linear_velocity.length()
 		if v > 1.2 and state != State.SETTLED and not replaying:
@@ -320,15 +294,7 @@ func set_faces(pool: Array, weapon_id: StringName) -> void:
 	_faces = pool.duplicate(true)
 	_weapon_id = weapon_id
 	for i in mini(_dice.size(), pool.size()):
-		var die: Array = pool[i]
-		for k in NORMALS.size():
-			var face: StringName = die[k]
-			var kind := DiceDefs.kind_of(face, weapon_id)
-			var nodes: Array = _face_nodes[i][k]
-			(nodes[0] as MeshInstance3D).material_override = _mat(DicePanel.KIND_COLORS[kind])
-			var lab := nodes[1] as Label3D
-			lab.text = DiceDefs.icon_of(face) if not SkillIcons.has(DiceDefs.icon_of(face)) else DiceDefs.name_of(face).substr(0, 1)
-			lab.modulate = Color(0.95, 0.93, 0.9) if kind == &"blank" else Color(0.08, 0.06, 0.04)
+		paint_die(_face_nodes[i], pool[i], weapon_id)
 
 
 # 一次新的擲骰（新的一場、自己花次數擲）：全部回到桌子中間排一排、各露出不同的面
@@ -997,3 +963,49 @@ func _g(v: Vector3) -> Vector3:
 
 func _l(v: Vector3) -> Vector3:
 	return _root.global_transform.basis.inverse() * v if world_mode else v
+
+
+
+# ---------- 骰子的外觀（擲骰桌與 DiceInspect 共用）----------
+
+# 在 parent 底下做一顆邊長 1 的骰子外觀（米白骰身 + 6 面色塊與字），回傳每一面的 [色塊, 字]（面編號 = NORMALS 的順序）
+static func build_die_visual(parent: Node3D, font: Font) -> Array:
+	var body := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3.ONE * 0.98
+	body.mesh = bm
+	body.material_override = _mat(Color("efe6d4"))
+	parent.add_child(body)
+	var nodes: Array = []
+	for k in NORMALS.size():
+		var n: Vector3 = NORMALS[k]
+		var quad := MeshInstance3D.new()
+		var qm := QuadMesh.new()
+		qm.size = Vector2(0.84, 0.84)
+		quad.mesh = qm
+		parent.add_child(quad)
+		_face_to(quad, n, 0.495)
+		var lab := Label3D.new()
+		lab.font = font
+		lab.font_size = 64
+		lab.pixel_size = 0.0078
+		lab.outline_size = 0
+		lab.modulate = Color(0.08, 0.06, 0.04)
+		lab.double_sided = false
+		lab.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		parent.add_child(lab)
+		_face_to(lab, n, 0.502)
+		nodes.append([quad, lab])
+	return nodes
+
+
+# 照骰面上色、寫字（技能能不能用看 weapon_id：別的武器的技能是灰的）
+static func paint_die(nodes: Array, die: Array, weapon_id: StringName) -> void:
+	for k in mini(nodes.size(), die.size()):
+		var face: StringName = die[k]
+		var kind := DiceDefs.kind_of(face, weapon_id)
+		var pair: Array = nodes[k]
+		(pair[0] as MeshInstance3D).material_override = _mat(DicePanel.KIND_COLORS[kind])
+		var lab := pair[1] as Label3D
+		lab.text = DiceDefs.icon_of(face) if not SkillIcons.has(DiceDefs.icon_of(face)) else DiceDefs.name_of(face).substr(0, 1)
+		lab.modulate = Color(0.95, 0.93, 0.9) if kind == &"blank" else Color(0.08, 0.06, 0.04)

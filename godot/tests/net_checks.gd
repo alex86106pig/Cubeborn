@@ -1628,8 +1628,8 @@ static func check_two_processes_dice(feel: Array[String]) -> String:
 		DirAccess.remove_absolute(path)
 	var port := "--net-port=%d" % (Config.NET.port + 9)
 	var common := ["--headless", "--path", project]
-	var host_args := common + ["--log-file", logs[0], "--", "--menu-flow", "--host", port, "--net-autostart=2", "--no-spawn", "--game-mode=dice", "--seconds=10"]
-	var client_args := common + ["--log-file", logs[1], "--", "--menu-flow", "--join=127.0.0.1", port, "--no-spawn", "--auto-dice-roll=1.5", "--seconds=8"]
+	var host_args := common + ["--log-file", logs[0], "--", "--menu-flow", "--host", port, "--net-autostart=2", "--no-spawn", "--game-mode=dice", "--seconds=13"]
+	var client_args := common + ["--log-file", logs[1], "--", "--menu-flow", "--join=127.0.0.1", port, "--no-spawn", "--auto-dice-roll=1.5", "--seconds=11"]   # 骰子最慢 6 秒才停好、快照再晚一點才到：留夠時間（8 秒時偶發沒等到）；房主比客戶端多 2 秒才印，客戶端先離開也還沒被移除
 	var host_pid := OS.create_process(exe, host_args)
 	OS.delay_msec(500)
 	var client_pid := OS.create_process(exe, client_args)
