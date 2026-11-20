@@ -82,6 +82,8 @@ var _floaters := Floaters.new()
 var _banner := UiKit.label("", 48, Color.WHITE, 4)
 var _vignette := ColorRect.new()
 var _game_over := ColorRect.new()
+var _pause_nav: MenuNav   # 鍵盤：暫停畫面與結算畫面的按鈕，WASD 選、F 按（MenuNav）
+var _result_nav: MenuNav
 var result_panel := ResultPanel.new()   # 結算畫面的內容：墓碑頁與詳細統計（放在 _game_over 這塊底色上）
 var can_retry := true            # 本機能不能決定重來 / 重新開始（單機與房主；main.gd 每幀設）：客戶端只看得到提示
 var last_report := ""              # 上次複製的文字（測試用）
@@ -355,6 +357,7 @@ func _init() -> void:
 	_build_overlay(_game_over, Color(40 / 255.0, 0, 0, 0.55), [])
 	_game_over.add_child(result_panel)
 	root.add_child(_game_over)
+	_result_nav = MenuNav.new(_game_over)
 	var pause_controls := UiKit.label(CONTROLS_TEXT, PAUSE_CONTROLS_FONT, Color.WHITE)
 	pause_controls.add_theme_constant_override(&"line_spacing", 8)
 	# 離開遊戲按鈕：網頁版不顯示（瀏覽器不允許網頁自己關閉）
@@ -370,6 +373,7 @@ func _init() -> void:
 	_build_overlay(_pause, UiKit.MENU_DIM, [_pause_title, _pause_hint, _pause_seed, pause_controls, _pause_net_slot, _settings_button, _reset_hints_button, _title_button, _quit_button])
 	_pause.mouse_filter = Control.MOUSE_FILTER_STOP   # 選單的按鈕與輸入框要能點
 	root.add_child(_pause)
+	_pause_nav = MenuNav.new(_pause)
 	main_menu.visible = false
 	main_menu.quit_pressed.connect(quit_requested.emit)
 	main_menu.method_chosen.connect(net_panel.set_method)
@@ -523,7 +527,34 @@ func _pulse(l: Label) -> Label:
 	return l
 
 
+# 暫停畫面、結算畫面的鍵盤操作（設定頁開著時暫停畫面是藏起來的，不收）；
+# 連線時選單開著遊戲還在跑、WASD 要走路，這時選單只能用滑鼠
+func _input(event: InputEvent) -> void:
+	if _pause_nav == null:
+		return
+	var vp := get_viewport()
+	if _pause.visible:
+		if net_panel.mode == &"single" and _pause_nav.handle(event, MenuNav.buttons_in(_pause), vp):
+			vp.set_input_as_handled()
+	elif _game_over.visible:
+		if _result_nav.handle(event, MenuNav.buttons_in(_game_over), vp):
+			vp.set_input_as_handled()
+
+
+func _update_menu_nav() -> void:
+	if _pause.visible:
+		_pause_nav.refresh(MenuNav.buttons_in(_pause))
+	else:
+		_pause_nav.hide()
+	if _game_over.visible and not _pause.visible:
+		_result_nav.refresh(MenuNav.buttons_in(_game_over))
+	else:
+		_result_nav.hide()
+
+
 func _process(delta: float) -> void:
+	if _pause_nav != null:
+		_update_menu_nav()
 	var frame_seconds := _frame_clock.tick(delta)
 	if level_transition.is_active():
 		level_transition.update(delta, world, _transition_center())

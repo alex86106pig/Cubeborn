@@ -885,7 +885,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_echo():
 		return
 	if is_at_title and not event.is_action_pressed(&"mute"):
-		return   # 主選單只用滑鼠點按鈕；M 靜音照常
+		return   # 主選單的按鍵由 MainMenu / ClassSelect 自己收（WASD 選、F 按，MenuNav）；M 靜音照常
 	if event.is_action_pressed(&"pause"):
 		if in_weapon_test:
 			leave_weapon_test()   # 武器測試場：Esc 直接回主選單

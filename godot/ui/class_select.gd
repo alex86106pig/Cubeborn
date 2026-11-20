@@ -516,6 +516,44 @@ func _process(dt: float) -> void:
 		tags[i].position = _camera.unproject_position(head) - Vector2(tags[i].size.x / 2.0, tags[i].size.y)
 
 
+# 鍵盤（MenuNav）：WASD 直接換選的職業（照格子的排法，鎖住與還沒開放的跳過）、F 開始（客戶端是準備好了）、
+# Tab 換難度（簡單 → 普通 → 困難，客戶端不能換）、Esc 返回
+func _input(event: InputEvent) -> void:
+	if not is_visible_in_tree() or MenuNav.typing(get_viewport()):
+		return
+	if handle_key(event):
+		get_viewport().set_input_as_handled()
+
+
+func handle_key(event: InputEvent) -> bool:
+	var dir := MenuNav.dir_of(event)
+	if dir != Vector2i.ZERO:
+		var ids: Array[StringName] = []
+		var tiles := []
+		for id: StringName in class_buttons:
+			if ClassDefs.is_pickable(id):
+				ids.append(id)
+				tiles.append(class_buttons[id])
+		var to := MenuNav.step(tiles, ids.find(selected), dir)
+		if to >= 0 and ids[to] != selected:
+			_on_tile(ids[to])
+		return true
+	if MenuNav.is_confirm(event):
+		var b: Button = ready_button if ready_button.visible else start_button
+		if b.visible and not b.disabled:
+			b.pressed.emit()
+		return true
+	if MenuNav.is_back(event):
+		back_button.pressed.emit()
+		return true
+	var k := event as InputEventKey
+	if k != null and k.pressed and not k.echo and k.physical_keycode == KEY_TAB:
+		var order := EventDefs.MODE_ORDER
+		_on_difficulty(order[(order.find(difficulty) + 1) % order.size()])
+		return true
+	return false
+
+
 func _on_stage_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and (event as InputEventMouseMotion).button_mask & MOUSE_BUTTON_MASK_LEFT:
 		_turn += (event as InputEventMouseMotion).relative.x * DRAG_TURN

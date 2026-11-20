@@ -231,6 +231,8 @@ static func check_main_menu() -> String:
 	if err == "":
 		err = await _check_class_select(hud)
 	if err == "":
+		err = await _check_menu_keys(hud)
+	if err == "":
 		err = _check_test_panel(hud)
 	hud.queue_free()
 	cam.queue_free()
@@ -311,6 +313,84 @@ static func _check_class_select(hud: Variant) -> String:
 	cs.back_button.pressed.emit()
 	if cs.visible:
 		return "選角畫面按「返回」應關掉"
+	return ""
+
+
+static func _key(code: Key) -> InputEventKey:
+	var e := InputEventKey.new()
+	e.physical_keycode = code
+	e.keycode = code
+	e.pressed = true
+	return e
+
+
+# 選單的鍵盤操作（MenuNav，YangHsu 2026-11-20：只用 WASD）：主選單 S 往下換、方向鍵不收、F 按下（打開選角）；輸入框在打字時不收；
+# 選角畫面 D / S 直接換職業（照兩欄的格子）、Tab 換難度、F 開始、Esc 返回；暫停畫面 S 換、關掉後框框收起來
+static func _check_menu_keys(hud: Variant) -> String:
+	var menu: MainMenu = hud.main_menu
+	var vp: Viewport = menu.get_viewport()
+	hud.show_title(true)
+	await (Engine.get_main_loop() as SceneTree).process_frame
+	var items := MenuNav.buttons_in(menu)
+	menu.nav.refresh(items)
+	if menu.nav.sel < 0 or items[menu.nav.sel] != menu.single_button or not menu.nav.frame.visible:
+		return "主選單打開時應選在「單人遊戲」、畫出框框：選 %d" % menu.nav.sel
+	menu.nav.handle(_key(KEY_S), items, vp)
+	if items[menu.nav.sel] != menu.multi_button:
+		return "主選單按 S 應換到「多人遊戲」：%s" % (items[menu.nav.sel] as Button).text
+	menu.nav.handle(_key(KEY_DOWN), items, vp)
+	if items[menu.nav.sel] != menu.multi_button:
+		return "主選單不收方向鍵（只用 WASD）：按 ↓ 換到了「%s」" % (items[menu.nav.sel] as Button).text
+	menu.nav.handle(_key(KEY_W), items, vp)
+	var typing := LineEdit.new()
+	menu.add_child(typing)
+	typing.grab_focus()
+	var took := menu.nav.handle(_key(KEY_S), items, vp)
+	typing.release_focus()   # queue_free 要到這一幀結束才刪，先放掉焦點
+	typing.queue_free()
+	if took or items[menu.nav.sel] != menu.single_button:
+		return "輸入框在打字時方向鍵 / WASD 不該換選單：%s" % (items[menu.nav.sel] as Button).text
+	menu.nav.handle(_key(KEY_F), items, vp)
+	var cs: ClassSelect = hud.class_select
+	if not cs.visible:
+		return "主選單選在「單人遊戲」按 F 應打開選角畫面"
+	hud.show_title(false)
+	cs.open_single()
+	cs.selected = ClassDefs.ORDER[0]
+	cs._refresh()
+	await (Engine.get_main_loop() as SceneTree).process_frame
+	cs.handle_key(_key(KEY_D))
+	if cs.selected != ClassDefs.ORDER[1]:
+		return "選角按 D 應換到右邊的 %s：%s" % [ClassDefs.ORDER[1], cs.selected]
+	cs.handle_key(_key(KEY_S))
+	if cs.selected != ClassDefs.ORDER[3]:
+		return "選角按 S 應換到下面的 %s：%s" % [ClassDefs.ORDER[3], cs.selected]
+	var before := cs.difficulty
+	cs.handle_key(_key(KEY_TAB))
+	var order := EventDefs.MODE_ORDER
+	if cs.difficulty != order[(order.find(before) + 1) % order.size()]:
+		return "選角按 Tab 應換下一個難度：%s → %s" % [before, cs.difficulty]
+	var started: Array = []
+	cs.start_pressed.connect(func(id: StringName, d: StringName) -> void: started.append([id, d]))
+	cs.handle_key(_key(KEY_F))
+	if started != [[ClassDefs.ORDER[3], cs.difficulty]]:
+		return "選角按 F 應開始（選的職業、難度）：%s" % [started]
+	cs.handle_key(_key(KEY_ESCAPE))
+	if cs.visible:
+		return "選角按 Esc 應返回（關掉選角畫面）"
+	# 暫停畫面
+	hud.show_menu(true)
+	await (Engine.get_main_loop() as SceneTree).process_frame
+	var pause_items := MenuNav.buttons_in(hud._pause)
+	hud._update_menu_nav()
+	var first: int = hud._pause_nav.sel
+	hud._pause_nav.handle(_key(KEY_S), pause_items, vp)
+	if first < 0 or hud._pause_nav.sel == first or not hud._pause_nav.frame.visible:
+		return "暫停畫面應有框框、按 S 換下一個：%d → %d" % [first, hud._pause_nav.sel]
+	hud.show_menu(false)
+	hud._update_menu_nav()
+	if hud._pause_nav.frame.visible:
+		return "暫停畫面關掉後框框應收起來"
 	return ""
 
 

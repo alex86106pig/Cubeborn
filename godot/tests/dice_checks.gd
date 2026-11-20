@@ -1515,6 +1515,25 @@ static func check_dice_inspect() -> String:
 		dp.refresh(w, p, 0.05)
 		if ins.die_count() != DiceDefs.DICE_COUNT + 1 or ins.replace_slot != -1 or ins.arrow_to != -1 or ins.tag_of(6) != "新武器的骰子" or ins.faces_of(6) != Array(weapon_die):
 			err = "指著新武器卡：應 7 顆、不標換掉、沒有箭頭：%d 顆、標 %d、箭頭 %d、「%s」" % [ins.die_count(), ins.replace_slot, ins.arrow_to, ins.tag_of(6)]
+	# 鍵盤：D 從沒選換到第 1 張、再 D 第 2 張（新武器，跟滑鼠指著一樣預覽）、F 選它
+	if err == "":
+		dp._hover_offer = -1
+		var picks: Array = []
+		dp.op_requested.connect(func(op: Array) -> void: picks.append(op))
+		var right := InputEventKey.new()
+		right.physical_keycode = KEY_D
+		right.pressed = true
+		dp.handle_key(right)
+		var first_card: int = dp._hover_offer
+		dp.handle_key(right)
+		dp.refresh(w, p, 0.05)
+		var f := InputEventKey.new()
+		f.physical_keycode = KEY_F
+		f.pressed = true
+		dp.handle_key(f)
+		if first_card != 0 or dp._hover_offer != 1 or ins.tag_of(6) != "新武器的骰子" or picks != [[InputCmd.OP_DICE_REWARD, 1]]:
+			err = "獎勵卡用鍵盤：D 應選第 1 張（%d）、再 D 第 2 張（%d）並預覽新武器的骰子（%s）、F 選它（%s）" % [first_card, dp._hover_offer, ins.tag_of(6), picks]
+		dp._picked = false
 		dp._hover_offer = 0
 		dp.refresh(w, p, 0.05)
 	if err == "":

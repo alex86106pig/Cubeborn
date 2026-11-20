@@ -471,7 +471,7 @@ func refresh(world: World, me: Player, dt: float) -> void:
 		_show_roll(world, dice, turn_player if turn_player != null else me, dt)
 	if rewarding:
 		var tier_name: String = DiceDefs.FIGHT_TIERS[dice.reward_tier].name
-		_reward_title.text = ("走進門的獎勵（%s）：選一個（點卡片或按數字鍵）" % tier_name) if dice.door_pick else ("清場！重擲券 +1　·　%s的獎勵，選一個（點卡片或按數字鍵）" % tier_name)
+		_reward_title.text = ("走進門的獎勵（%s）：選一個（點卡片、按數字鍵，或 A / D 選再按 F）" % tier_name) if dice.door_pick else ("清場！重擲券 +1　·　%s的獎勵，選一個（點卡片、按數字鍵，或 A / D 選再按 F）" % tier_name)
 		if dice.shared:
 			_reward_title.text += "\n大家暗選，撞到同一個就比骰子，輸的隨機拿沒人選的"
 		_show_offers(s, me)
@@ -802,11 +802,11 @@ func _offer_card(i: int, o: Dictionary, me: Player) -> PanelContainer:
 	card.add_theme_stylebox_override(&"panel", _card_box(UiKit.GOLD, Color(0.11, 0.12, 0.16, 0.96)))
 	card.mouse_entered.connect(func() -> void:
 		_hover_offer = i
-		card.add_theme_stylebox_override(&"panel", _card_box(Color.WHITE, Color(0.17, 0.19, 0.25, 0.98))))
+		_paint_cards())
 	card.mouse_exited.connect(func() -> void:
 		if _hover_offer == i:
 			_hover_offer = -1
-		card.add_theme_stylebox_override(&"panel", _card_box(UiKit.GOLD, Color(0.11, 0.12, 0.16, 0.96))))
+		_paint_cards())
 	card.gui_input.connect(func(event: InputEvent) -> void:
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			pick(i)
@@ -834,6 +834,14 @@ func _offer_card(i: int, o: Dictionary, me: Player) -> PanelContainer:
 	desc.custom_minimum_size.x = CARD_W - 40
 	body.add_child(desc)
 	return card
+
+
+# 選到的那張（滑鼠指著或鍵盤選的，_hover_offer）白框亮底，其他金框
+func _paint_cards() -> void:
+	var cards := _reward_cards.get_children().filter(func(c: Node) -> bool: return not c.is_queued_for_deletion())
+	for i in cards.size():
+		var on := i == _hover_offer
+		(cards[i] as Control).add_theme_stylebox_override(&"panel", _card_box(Color.WHITE, Color(0.17, 0.19, 0.25, 0.98)) if on else _card_box(UiKit.GOLD, Color(0.11, 0.12, 0.16, 0.96)))
 
 
 static func _card_box(border: Color, bg: Color) -> StyleBoxFlat:
@@ -902,6 +910,16 @@ func handle_key(event: InputEvent) -> bool:
 			if event.is_action_pressed(StringName("slot_%d" % (i + 1))):
 				pick(i)
 				return true
+		# 鍵盤（MenuNav）：A / D 換選的卡（跟滑鼠指著一樣會預覽骰子）、F 選它
+		var n := _reward_cards.get_children().filter(func(c: Node) -> bool: return not c.is_queued_for_deletion()).size()
+		var dir := MenuNav.dir_of(event)
+		if n > 0 and dir.x != 0:
+			_hover_offer = clampi(_hover_offer + dir.x, 0, n - 1) if _hover_offer >= 0 else (0 if dir.x > 0 else n - 1)
+			_paint_cards()
+			return true
+		if n > 0 and MenuNav.is_confirm(event) and _hover_offer >= 0 and _hover_offer < n:
+			pick(_hover_offer)
+			return true
 		return false
 	if phase != DiceRun.ROLL or not my_turn:
 		return event.is_action_pressed(&"jump") or event.is_action_pressed(&"restart") or event.is_action_pressed(&"vote_yes")

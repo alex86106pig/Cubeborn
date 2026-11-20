@@ -28,6 +28,7 @@ var back_button := _button("返回")
 var _home := VBoxContainer.new()
 var _method := VBoxContainer.new()
 var _multi := VBoxContainer.new()
+var nav: MenuNav   # 鍵盤：WASD 選、F 按（MenuNav）
 
 
 func _init() -> void:
@@ -68,6 +69,7 @@ func _init() -> void:
 		v.add_theme_constant_override(&"separation", 14)
 		box.add_child(v)
 	add_child(box)
+	nav = MenuNav.new(self)
 	single_button.pressed.connect(single_pressed.emit)
 	# 網頁版只有房號，直接進多人頁
 	multi_button.pressed.connect(func() -> void:
@@ -88,9 +90,21 @@ func _init() -> void:
 
 func show_page(p: StringName) -> void:
 	page = p
+	if nav != null:
+		nav.sel = -1   # 換頁從第一個開始
 	_home.visible = p == &"home"
 	_method.visible = p == &"method"
 	_multi.visible = p == &"multi"
+
+
+func _process(_dt: float) -> void:
+	if visible:
+		nav.refresh(MenuNav.buttons_in(self))
+
+
+func _input(event: InputEvent) -> void:
+	if is_visible_in_tree() and nav.handle(event, MenuNav.buttons_in(self), get_viewport()):
+		get_viewport().set_input_as_handled()
 
 
 func _choose(m: StringName) -> void:
