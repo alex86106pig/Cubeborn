@@ -3,7 +3,7 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
-## [未發布]
+## [0.85.0] - 2026-11-20
 
 ### 新增
 - **選單可以用鍵盤操作**（YangHsu 2026-11-20：能用鍵盤對介面互動，只用 WASD、選獎勵那些都用 F 確認；背包先不做）：WASD 換目前選的、F 按下、Esc 返回（`ui/menu_nav.gd`）。
