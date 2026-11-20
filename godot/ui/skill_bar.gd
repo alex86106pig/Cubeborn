@@ -95,6 +95,7 @@ func _build(player: Player) -> void:
 	var dice_slot: Variant = player.slots.get_slot(player, ActiveSlots.DICE_INDEX) if player.world.dice != null else null
 	if player.world.dice != null:
 		_special_slot = _add_slot("player.special", dice_slot.def.icon if dice_slot != null else "", "右鍵", -1, dice_slot == null)
+		_special_slot.set_texture(FaceIcons.texture(dice_slot.id) if dice_slot != null else null)
 	else:
 		_special_slot = _add_slot("player.special", w.special.icon, "右鍵", -1, false)
 		_special_slot.set_mana_def(w.special)
@@ -108,7 +109,8 @@ func _build(player: Player) -> void:
 		if player.world.dice != null and i != ActiveSlots.HEAL_INDEX:   # 骰子模式沒有按鍵袋的技能
 			continue
 		var data: Variant = player.slots.get_slot(player, i)
-		_add_slot(ActiveSlots.cd_key(i), data.def.icon if data != null else "", ActiveSlots.KEY_LABELS[i], i, data == null)
+		var slot := _add_slot(ActiveSlots.cd_key(i), data.def.icon if data != null else "", ActiveSlots.KEY_LABELS[i], i, data == null)
+		slot.set_texture(FaceIcons.texture(data.get("id", &"")) if data != null else null)
 	_weapon_id = player.weapon_id
 
 
@@ -129,6 +131,7 @@ class Slot extends Control:
 	var icon: Label
 	var icon_id := ""           # 招式的 icon（WeaponDefs）
 	var drawn_icon := ""        # SkillIcons 畫得出來時由 _draw 畫，icon 文字留空
+	var tex: Texture2D          # 有圖示圖片（FaceIcons）時畫圖，蓋過 drawn_icon 與文字
 	var mask: Control           # CD 扇形遮罩；子節點會畫在格子的 _draw 上面，獨立一層才能蓋住文字圖示、又墊在秒數底下
 	var charges: Label
 	var cost: Label             # 右下角的耗魔
@@ -195,6 +198,11 @@ class Slot extends Control:
 		icon.add_theme_font_size_override(&"font_size", 20 if p_icon.length() > 1 else 28)   # 沒畫的兩個字縮小才塞得進
 		queue_redraw()
 
+	func set_texture(t: Texture2D) -> void:
+		tex = t
+		icon.text = "" if t != null else ("" if drawn_icon != "" else icon_id)
+		queue_redraw()
+
 	func _centered(l: Label) -> Label:
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -218,7 +226,9 @@ class Slot extends Control:
 			draw_rect(r.grow(2.0), _outline)
 			draw_rect(r, Color("0b0d14"))
 			draw_rect(r.grow(-3.0), UiKit.SLOT_BG)
-		if drawn_icon != "":
+		if tex != null:
+			draw_texture_rect(tex, r.grow(-5.0), false, Color(1, 1, 1, icon.modulate.a))
+		elif drawn_icon != "":
 			SkillIcons.draw(self, drawn_icon, size / 2.0, icon.modulate.a)
 
 	# 從 12 點鐘方向順時針的扇形遮罩（網頁版 conic-gradient）；隨冷卻從 12 點鐘逆時針露出圖示

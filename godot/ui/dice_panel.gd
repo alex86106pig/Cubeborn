@@ -922,7 +922,8 @@ class DieView extends Control:
 
 	func _draw() -> void:
 		var r := Rect2(Vector2.ZERO, size)
-		var col: Color = KIND_COLORS[kind]
+		var tex := FaceIcons.texture(face)
+		var col: Color = DiceTable.DIE_WHITE if tex != null or kind == &"blank" else KIND_COLORS[kind]   # 有圖示的面跟骰子一樣是白的
 		var box := StyleBoxFlat.new()
 		box.bg_color = col
 		box.set_corner_radius_all(int(side * 0.14))
@@ -937,7 +938,11 @@ class DieView extends Control:
 		var icon := DiceDefs.icon_of(face)
 		var font := get_theme_default_font()
 		var big := int(side * 0.36)
-		if SkillIcons.has(icon):
+		if tex != null:
+			var s := side * (0.62 if side >= 80.0 else 0.84)
+			draw_texture_rect(tex, Rect2(Vector2((side - s) / 2.0, side * (0.42 if side >= 80.0 else 0.5) - s / 2.0), Vector2(s, s)), false,
+				Color(1, 1, 1, 0.3) if kind == &"grey" else Color.WHITE)
+		elif SkillIcons.has(icon):
 			SkillIcons.draw(self, icon, Vector2(side / 2.0, side * 0.42), 1.0)
 		else:
 			draw_string(font, Vector2(0, side * 0.42 + big * 0.36), icon, HORIZONTAL_ALIGNMENT_CENTER, side, big, ink)

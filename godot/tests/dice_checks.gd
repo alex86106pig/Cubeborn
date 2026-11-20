@@ -1406,8 +1406,44 @@ static func dp2_tray(w: World) -> Vector2:
 
 
 # 獎勵畫面看骰子（§55）：獎勵卡下面一排 3D 骰子：你帶的 6 顆（面照帶的）、獎勵的新骰子與新武器的骰子；
-# 新骰子會換掉的那顆（空白最多）標「會被換掉」；拖曳會轉、放開慢慢轉回原位；整個獎勵畫面放得進介面最大檔
+# 新骰子會換掉的那顆（空白最多）標「會被換掉」；拖曳會轉、放開慢慢轉回原位；整個獎勵畫面放得進介面最大檔；
+# 骰面的圖示（FaceIcons）：劍盾的 6 張圖都在、去了背（四角透明、中間不透明）；有圖的面貼圖、不寫字，別的武器的技能淡掉，空白面不放東西
 static func check_dice_inspect() -> String:
+	for id: StringName in [&"whirlwind", &"shield_charge", &"sword_wave", &"shield_slam", &"fx_shield", &"fx_dmg"]:
+		var tex := FaceIcons.texture(id)
+		if tex == null:
+			return "劍盾的圖示 %s 應有圖（res://assets/icons/%s.png）" % [id, id]
+		var im := tex.get_image()
+		if im.is_compressed():
+			im.decompress()
+		var n := im.get_width() - 1
+		var solid := 0
+		var total := 0
+		for y in range(0, n, 8):
+			for x in range(0, n, 8):
+				total += 1
+				if im.get_pixel(x, y).a > 0.9:
+					solid += 1
+		if im.get_pixel(0, 0).a > 0.05 or im.get_pixel(n, n).a > 0.05 or solid < total * 0.2:   # 劍氣的月牙中間是空的：不看正中間，看不透明的佔多少
+			return "圖示 %s 應去背：四角透明（%.2f、%.2f）、不透明的至少兩成（%d / %d）" % [id, im.get_pixel(0, 0).a, im.get_pixel(n, n).a, solid, total]
+	var holder := Node3D.new()
+	var nodes := DiceTable.build_die_visual(holder, null)
+	DiceTable.paint_die(nodes, [&"whirlwind", DiceDefs.BLANK, &"frost_nova", &"fx_dmg", DiceDefs.BLANK, DiceDefs.BLANK], &"swordShield")
+	var quads: Array = nodes.map(func(pair: Array) -> MeshInstance3D: return pair[0])
+	var labels: Array = nodes.map(func(pair: Array) -> Label3D: return pair[1])
+	var icon_ok := func(k: int, alpha: float) -> bool:
+		var m := (quads[k] as MeshInstance3D).material_override as StandardMaterial3D
+		return quads[k].visible and m.albedo_texture != null and is_equal_approx(m.albedo_color.a, alpha) and (labels[k] as Label3D).text == ""
+	var face_err := ""
+	if not icon_ok.call(0, 1.0) or not icon_ok.call(3, 1.0):
+		face_err = "有圖示的面應貼圖、不寫字"
+	elif FaceIcons.has(&"frost_nova") and not icon_ok.call(2, 0.3):
+		face_err = "別的武器的技能（法杖的冰霜新星）應淡掉（0.3）"
+	elif quads[1].visible:
+		face_err = "空白面不放色塊（白色骰身）"
+	holder.free()
+	if face_err != "":
+		return face_err
 	var w := _dice_world()
 	var p := _player(w)
 	var s := w.dice.seat_of(p)

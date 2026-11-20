@@ -1008,20 +1008,89 @@ func _l(v: Vector3) -> Vector3:
 
 # ---------- 骰子的外觀（擲骰桌與 DiceInspect 共用）----------
 
-# 在 parent 底下做一顆邊長 1 的骰子外觀（米白骰身 + 6 面色塊與字），回傳每一面的 [色塊, 字]（面編號 = NORMALS 的順序）
+const DIE_SIZE := 0.98
+const DIE_CHAMFER := 0.08          # 切角：每面平的部分剩 DIE_SIZE − 2 × DIE_CHAMFER = 0.82
+const DIE_WHITE := Color("fbfbf8")
+const ICON_SIZE := 0.8             # 面上的圖示（FaceIcons）
+const PATCH_SIZE := 0.8            # 沒有圖示的面：色塊 + 字
+
+static var _die_mesh: ArrayMesh
+static var _icon_mats := {}        # [id, 灰] → 材質（每顆骰子共用）
+
+
+# 白色切角方塊（6 面 + 12 條斜邊 + 8 個角的三角形），平面著色
+static func _chamfer_box() -> ArrayMesh:
+	if _die_mesh != null:
+		return _die_mesh
+	var h := DIE_SIZE / 2.0
+	var a := h - DIE_CHAMFER
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var polys: Array = []
+	var axes := [Vector3.RIGHT, Vector3.UP, Vector3.BACK]
+	for i in 3:
+		var n: Vector3 = axes[i]
+		var u: Vector3 = axes[(i + 1) % 3]
+		var v: Vector3 = axes[(i + 2) % 3]
+		for s: float in [-1.0, 1.0]:
+			polys.append([n * s * h + (u + v) * a, n * s * h + (u - v) * a, n * s * h - (u + v) * a, n * s * h + (v - u) * a])
+			for t: float in [-1.0, 1.0]:   # 這一面和 u 方向那面之間的斜邊
+				var e := v * a
+				polys.append([n * s * h + u * t * a + e, n * s * h + u * t * a - e, n * s * a + u * t * h - e, n * s * a + u * t * h + e])
+	for sx: float in [-1.0, 1.0]:
+		for sy: float in [-1.0, 1.0]:
+			for sz: float in [-1.0, 1.0]:
+				polys.append([Vector3(sx * h, sy * a, sz * a), Vector3(sx * a, sy * h, sz * a), Vector3(sx * a, sy * a, sz * h)])
+	for p: Array in polys:
+		var c := Vector3.ZERO
+		for q: Vector3 in p:
+			c += q
+		c /= p.size()
+		for j in range(1, p.size() - 1):
+			var p0: Vector3 = p[0]
+			var p1: Vector3 = p[j]
+			var p2: Vector3 = p[j + 1]
+			var nrm := (p1 - p0).cross(p2 - p0)
+			if nrm.dot(c) < 0.0:   # 不管頂點怎麼排，都讓三角形朝外（Godot 順時針是正面）
+				var tmp := p1
+				p1 = p2
+				p2 = tmp
+				nrm = -nrm
+			nrm = nrm.normalized()
+			for q: Vector3 in [p0, p2, p1]:
+				st.set_normal(nrm)
+				st.add_vertex(q)
+	_die_mesh = st.commit()
+	return _die_mesh
+
+
+static func _icon_mat(id: StringName, grey: bool) -> StandardMaterial3D:
+	var key := [id, grey]
+	if not _icon_mats.has(key):
+		var m := StandardMaterial3D.new()
+		m.albedo_texture = FaceIcons.texture(id)
+		m.albedo_color = Color(1, 1, 1, 0.3) if grey else Color.WHITE   # 別的武器的技能：淡淡的（當空白）
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.roughness = 0.6
+		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+		_icon_mats[key] = m
+	return _icon_mats[key]
+
+
+# 在 parent 底下做一顆邊長 1 的骰子外觀（白色切角骰身 + 6 面的圖示或色塊與字），回傳每一面的 [面, 字]（面編號 = NORMALS 的順序）
 static func build_die_visual(parent: Node3D, font: Font) -> Array:
 	var body := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3.ONE * 0.98
-	body.mesh = bm
-	body.material_override = _mat(Color("efe6d4"))
+	body.mesh = _chamfer_box()
+	var body_mat := _mat(DIE_WHITE)
+	body_mat.roughness = 0.5
+	body.material_override = body_mat
 	parent.add_child(body)
 	var nodes: Array = []
 	for k in NORMALS.size():
 		var n: Vector3 = NORMALS[k]
 		var quad := MeshInstance3D.new()
 		var qm := QuadMesh.new()
-		qm.size = Vector2(0.84, 0.84)
+		qm.size = Vector2(PATCH_SIZE, PATCH_SIZE)
 		quad.mesh = qm
 		parent.add_child(quad)
 		_face_to(quad, n, 0.495)
@@ -1039,13 +1108,21 @@ static func build_die_visual(parent: Node3D, font: Font) -> Array:
 	return nodes
 
 
-# 照骰面上色、寫字（技能能不能用看 weapon_id：別的武器的技能是灰的）
+# 照骰面放圖示（FaceIcons 有圖的）或上色寫字（技能能不能用看 weapon_id：別的武器的技能是灰的 / 淡的）；空白面就是白色骰身
 static func paint_die(nodes: Array, die: Array, weapon_id: StringName) -> void:
 	for k in mini(nodes.size(), die.size()):
 		var face: StringName = die[k]
 		var kind := DiceDefs.kind_of(face, weapon_id)
 		var pair: Array = nodes[k]
-		(pair[0] as MeshInstance3D).material_override = _mat(DicePanel.KIND_COLORS[kind])
+		var quad := pair[0] as MeshInstance3D
 		var lab := pair[1] as Label3D
+		quad.visible = kind != &"blank"
+		if FaceIcons.has(face):
+			(quad.mesh as QuadMesh).size = Vector2(ICON_SIZE, ICON_SIZE)
+			quad.material_override = _icon_mat(face, kind == &"grey")
+			lab.text = ""
+			continue
+		(quad.mesh as QuadMesh).size = Vector2(PATCH_SIZE, PATCH_SIZE)
+		quad.material_override = _mat(DicePanel.KIND_COLORS[kind])
 		lab.text = DiceDefs.icon_of(face) if not SkillIcons.has(DiceDefs.icon_of(face)) else DiceDefs.name_of(face).substr(0, 1)
 		lab.modulate = Color(0.95, 0.93, 0.9) if kind == &"blank" else Color(0.08, 0.06, 0.04)
