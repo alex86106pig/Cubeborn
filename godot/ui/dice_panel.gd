@@ -18,6 +18,8 @@ const SPIN_STAGGER := 0.1
 const BANNER_TIME := 1.4
 const FIGHT_FLASH := 0.7         # 「開打！」留多久
 const CARD_W := 400.0
+const FLAT_SIDE := 46.0       # 獎勵畫面骰子底下攤平的 6 面：每個小方塊多大（字 = 邊長 × 0.36 = 16，預熱過的字級；3 格寬 146 < 骰子間距約 157）
+const FLAT_GAP := 4.0
 const CARVE_DIE := 64.0          # 刻面時每一面的大小（6 顆 × 6 面）
 const KIND_NAMES := {&"die": "新骰子", &"weapon": "新武器", &"carve_skill": "刻技能面", &"carve_effect": "刻效果面", &"item": "數值道具"}
 const DIM := Color(0.02, 0.03, 0.06, 0.62)
@@ -39,7 +41,6 @@ var _effects := UiKit.label("", UiKit.FONT_NOTE, Color("9fd8ff"))
 var world_table := false            # 骰盤放在遊戲世界裡戰場旁（use_world_table）：不蓋中間、不變暗，鏡頭轉過去
 var tray_right := Vector3.RIGHT     # 螢幕右邊在地面上的方向（骰盤擺在戰場右邊）
 var tray_yaw := 0.0                 # 骰盤轉多少才正對遊戲的鏡頭
-const SPOT_MAX_SCORE := 4.0          # 擲骰台的分數（_tray_score）到這麼多就先跳過：壓到霧牆（6）或出口（4）；全部都壓到才用最近的
 const EDGE_INSET := 1.0              # 骰盤不超出地圖外框往內這麼多：外框外的墓碑、樹、外框岩石合併成一個網格，壓不平
 const CUT_MARGIN := 0.3              # 壓平的範圍比台座每邊多一點（斜切過邊界的三角形藏進台座）
 var _table_box: CenterContainer
@@ -53,6 +54,9 @@ var _reward_cards := HBoxContainer.new()
 var _reward_title := UiKit.label("", UiKit.FONT_HEADING, UiKit.GOLD)
 var inspect := DiceInspect.new()     # 獎勵畫面下面：你帶的 6 顆 + 獎勵裡的骰子，拖曳轉著看
 var _inspect_hint := UiKit.label("", UiKit.FONT_NOTE, Color(1, 1, 1, 0.75))
+var _inspect_faces := Control.new()   # 骰子那排底下：每顆的 6 面攤平（3 × 2 小方塊，跟卡片上的一樣），斜著看只看得到 3 面
+var _faces_key: Array = []
+var _hover_offer := -1               # 滑鼠指著第幾張獎勵卡（-1 = 沒有）：指著新骰子 / 新武器才在骰子那排後面放那張卡的骰子
 var _carve_box := VBoxContainer.new()
 var _carve_title := UiKit.label("", UiKit.FONT_HEADING, UiKit.GOLD)
 var _carve_skills := HBoxContainer.new()
@@ -183,6 +187,12 @@ func _init() -> void:
 	inspect_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	inspect_box.add_child(inspect)
 	_reward_box.add_child(inspect_box)
+	var faces_box := CenterContainer.new()
+	faces_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_inspect_faces.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_inspect_faces.custom_minimum_size = Vector2(inspect.custom_minimum_size.x, FLAT_SIDE * 2 + FLAT_GAP)
+	faces_box.add_child(_inspect_faces)
+	_reward_box.add_child(faces_box)
 	_inspect_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_reward_box.add_child(_inspect_hint)
 	_overlay.add_child(_reward_box)
@@ -291,19 +301,12 @@ func tray_transform(world: World, dice: DiceRun, p: Player) -> Transform3D:
 	var best := Vector2.ZERO
 	var best_score := INF
 	var best_ground := 0.0
-	# 地圖有擲骰台就一定用擲骰台（YangHsu 2026-11-20：開打時骰盤要用地圖產生的）：離這一場最近、沒壓到霧牆與出口的那個；都壓到就用最近的
+	# 地圖的擲骰台（整張地圖一個，YangHsu 2026-11-20）：每一場都擺那裡
 	var spots: Array = world.map.get("dice_spots", [])
-	for pass_i in 2:
-		for sp: Vector2 in spots:
-			var at := MapDefs.to_world(world.map, sp)
-			var dist := at.distance_to(anchor)
-			var r := _tray_score(world, at, right, up, anchor, dice.arena_radius, avoid, edges)
-			if (pass_i == 1 or r[0] < SPOT_MAX_SCORE) and dist < best_score:
-				best_score = dist
-				best = at
-				best_ground = r[1]
-		if best_score < INF:
-			return Transform3D(Basis(Vector3.UP, tray_yaw), Vector3(best.x, best_ground + DiceDefs.TRAY_LIFT, best.y))
+	if not spots.is_empty():
+		var at := MapDefs.to_world(world.map, spots[0])
+		var r := _tray_score(world, at, right, up, anchor, dice.arena_radius, avoid, edges)
+		return Transform3D(Basis(Vector3.UP, tray_yaw), Vector3(at.x, r[1] + DiceDefs.TRAY_LIFT, at.y))
 	# 沒有擲骰台的地圖（測試場、固定地圖）才在霧牆外臨時找
 	for dist: float in [1.0, 1.35]:
 		for dir: Vector2 in [right, -right, up, -up, (right + up).normalized(), (right - up).normalized(), (-right + up).normalized(), (-right - up).normalized()]:
@@ -685,18 +688,65 @@ func _play_show(dt: float) -> void:
 		sfx.emit(q[1], 1.0, q[2])
 
 
-# 獎勵畫面的骰子：你帶的 6 顆，後面接獎勵裡的新骰子（標出會換掉哪顆）、新武器的骰子；都能拿起來轉
+# 獎勵畫面的骰子：你帶的 6 顆；滑鼠指著「新骰子」「新武器」卡時後面接那張卡的骰子（還沒選，只是看看會拿到什麼；YangHsu 2026-11-20：還沒選就出現新骰子很怪）
+# 新骰子標出會換掉哪顆、箭頭指向它；都能拿起來轉，底下攤平 6 面
 func _show_inspect(dice: DiceRun, s: DiceRun.Seat, me: Player) -> void:
 	var extras := []
 	var replace := -1
+	var previewable := false
 	for o: Dictionary in s.offers:
+		previewable = previewable or o.kind == &"die" or o.kind == &"weapon"
+	if _hover_offer >= 0 and _hover_offer < s.offers.size():
+		var o: Dictionary = s.offers[_hover_offer]
 		if o.kind == &"die":
-			extras.append([o.faces, me.weapon_id, "新骰子"])
+			extras.append([o.faces, me.weapon_id, "選這張會拿到", true])
 			replace = dice.most_blank_slot(s)
 		elif o.kind == &"weapon":
-			extras.append([o.faces, o.get("base", me.weapon_id), "新武器的骰子"])
+			extras.append([o.faces, o.get("base", me.weapon_id), "新武器的骰子", false])
 	inspect.show_dice(s.pool, me.weapon_id, extras, replace)
-	_inspect_hint.text = "你帶的骰子：按住拖曳可以轉著看每一面" + ("　·　選「新骰子」會換掉紅色那顆（空白最多的）" if replace >= 0 else "")
+	_show_flat_faces(s.pool, me.weapon_id, extras)
+	var hint := "你帶的骰子：按住拖曳可以轉著看，底下是攤開的 6 面"
+	if replace >= 0:
+		hint += "　·　選這張會換掉紅色那顆（空白最多的）"
+	elif extras.is_empty() and previewable:
+		hint += "　·　滑鼠指著「新骰子」「新武器」卡，看會拿到的骰子"
+	_inspect_hint.text = hint
+
+
+# 每顆骰子底下攤平 6 面（3 × 2，跟卡片上的小方塊同一種畫法），x 對齊那顆骰子
+func _show_flat_faces(carried: Array, weapon_id: StringName, extras: Array) -> void:
+	var all := []
+	for d: Array in carried:
+		all.append([d, weapon_id])
+	for e: Array in extras:
+		all.append([e[0], e[1]])
+	if all == _faces_key:
+		return
+	_faces_key = all.duplicate(true)
+	for c in _inspect_faces.get_children():
+		c.queue_free()
+	var grid_w := FLAT_SIDE * 3 + FLAT_GAP * 2
+	for i in all.size():
+		var grid := GridContainer.new()
+		grid.columns = 3
+		grid.add_theme_constant_override(&"h_separation", int(FLAT_GAP))
+		grid.add_theme_constant_override(&"v_separation", int(FLAT_GAP))
+		grid.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		for f: StringName in all[i][0]:
+			var m := DieView.new(-1, FLAT_SIDE)
+			m.show_face(f, all[i][1], false, false)
+			grid.add_child(m)
+		grid.position = Vector2(inspect.die_x(i) - grid_w / 2.0, 0)
+		_inspect_faces.add_child(grid)
+
+
+# 檢查用：第 i 顆底下攤平的 6 面
+func flat_faces_of(i: int) -> Array:
+	var out := []
+	var grids := _inspect_faces.get_children().filter(func(c: Node) -> bool: return not c.is_queued_for_deletion())
+	for m: DieView in grids[i].get_children():
+		out.append(m.face)
+	return out
 
 
 # 多人暗選揭曉、有撞到的：跳橫幅寫誰擲幾點、誰拿到（「比骰子「藍骰」：你 5 · P2 3 → 你拿到」）
@@ -738,6 +788,7 @@ func _show_offers(s: DiceRun.Seat, me: Player) -> void:
 	if key == _offer_key:
 		return
 	_offer_key = key
+	_hover_offer = -1
 	for c in _reward_cards.get_children():
 		c.queue_free()
 	for i in s.offers.size():
@@ -749,8 +800,13 @@ func _offer_card(i: int, o: Dictionary, me: Player) -> PanelContainer:
 	card.custom_minimum_size = Vector2(CARD_W, 230)
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
 	card.add_theme_stylebox_override(&"panel", _card_box(UiKit.GOLD, Color(0.11, 0.12, 0.16, 0.96)))
-	card.mouse_entered.connect(func() -> void: card.add_theme_stylebox_override(&"panel", _card_box(Color.WHITE, Color(0.17, 0.19, 0.25, 0.98))))
-	card.mouse_exited.connect(func() -> void: card.add_theme_stylebox_override(&"panel", _card_box(UiKit.GOLD, Color(0.11, 0.12, 0.16, 0.96))))
+	card.mouse_entered.connect(func() -> void:
+		_hover_offer = i
+		card.add_theme_stylebox_override(&"panel", _card_box(Color.WHITE, Color(0.17, 0.19, 0.25, 0.98))))
+	card.mouse_exited.connect(func() -> void:
+		if _hover_offer == i:
+			_hover_offer = -1
+		card.add_theme_stylebox_override(&"panel", _card_box(UiKit.GOLD, Color(0.11, 0.12, 0.16, 0.96))))
 	card.gui_input.connect(func(event: InputEvent) -> void:
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			pick(i)

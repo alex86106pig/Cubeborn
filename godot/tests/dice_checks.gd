@@ -1348,7 +1348,7 @@ static func check_dice_tray() -> String:
 
 
 # 地圖有擲骰台時：開一場，骰盤擺在其中一塊擲骰台上（離這一場最近、不壓到霧牆）
-# 有擲骰台的地圖，每一群開打骰盤都擺在擲骰台上（不臨時找；種子 3 第 1 小關每一群各開一場）
+# 有擲骰台的地圖（整張地圖一個），每一群開打骰盤都擺在那個擲骰台上（種子 3 第 1 小關每一群各開一場）
 static func _check_tray_spot() -> String:
 	var n := -1
 	var i := 0
@@ -1374,24 +1374,6 @@ static func _check_tray_spot() -> String:
 		if not on_spot:
 			return "有擲骰台的地圖，骰盤應擺在擲骰台上：第 %d 群擺在 %s，擲骰台 %s" % [i, at, spots.map(func(sp: Vector2) -> Vector2: return MapDefs.to_world(w.map, sp))]
 		i += 1
-	# 只剩離這一場最遠的那個擲骰台也照樣用，不臨時找
-	var w2 := World.new()
-	_worlds.append(w2)
-	w2.dice = DiceRun.new()
-	w2.reset(3)
-	var first2 := w2.entities.get(w2.packs[0].ids[0]) as Enemy
-	var far: Vector2 = w2.map.dice_spots[0]
-	for sp: Vector2 in w2.map.dice_spots:
-		if MapDefs.to_world(w2.map, sp).distance_to(first2.pos) > MapDefs.to_world(w2.map, far).distance_to(first2.pos):
-			far = sp
-	w2.map.dice_spots = [far]
-	var p2 := _player(w2)
-	p2.pos = w2.nav.nearest_walkable(first2.pos + Vector2(0, 3))
-	w2.alert_pack(0, first2, p2)
-	var at2 := dp2_tray(w2)
-	var far_at := MapDefs.to_world(w2.map, far)
-	if far_at.distance_to(at2) > 0.01:
-		return "只剩遠的擲骰台（離 %.1f）也應擺在上面：擺在 %s，擲骰台 %s" % [far_at.distance_to(first2.pos), at2, far_at]
 	return ""
 
 
@@ -1513,15 +1495,28 @@ static func check_dice_inspect() -> String:
 	dp.refresh(w, p, 0.05)
 	var ins: DiceInspect = dp.inspect
 	var err := ""
-	if ins.die_count() != DiceDefs.DICE_COUNT + 2:
-		err = "應有你帶的 6 顆 + 新骰子 + 新武器的骰子：%d 顆" % ins.die_count()
+	# 沒指著卡：只有你帶的 6 顆（還沒選，不先放獎勵的骰子）
+	if ins.die_count() != DiceDefs.DICE_COUNT or ins.replace_slot != -1 or ins.arrow_to != -1:
+		err = "沒指著卡時應只有你帶的 6 顆、不標換掉：%d 顆、標 %d" % [ins.die_count(), ins.replace_slot]
 	else:
 		for i in DiceDefs.DICE_COUNT:
-			if ins.faces_of(i) != Array(s.pool[i]):
-				err = "第 %d 顆的面應同你帶的：%s / %s" % [i + 1, ins.faces_of(i), s.pool[i]]
+			if ins.faces_of(i) != Array(s.pool[i]) or dp.flat_faces_of(i) != Array(s.pool[i]):
+				err = "第 %d 顆的面（與底下攤平的 6 面）應同你帶的：%s / %s / %s" % [i + 1, ins.faces_of(i), dp.flat_faces_of(i), s.pool[i]]
 				break
-		if err == "" and (w.dice.most_blank_slot(s) != 2 or ins.replace_slot != 2 or ins.tag_of(2) != "會被換掉" or ins.tag_of(6) != "新骰子" or ins.faces_of(6) != Array(new_die)):
-			err = "新骰子會換掉第 3 顆（全空白）：標 %d「%s」、新骰子「%s」" % [ins.replace_slot, ins.tag_of(2), ins.tag_of(6)]
+	# 指著新骰子卡：後面多一顆、會換掉第 3 顆（全空白）、箭頭指向新骰子
+	if err == "":
+		dp._hover_offer = 0
+		dp.refresh(w, p, 0.05)
+		if ins.die_count() != DiceDefs.DICE_COUNT + 1 or w.dice.most_blank_slot(s) != 2 or ins.replace_slot != 2 or ins.tag_of(2) != "會被換掉" or ins.faces_of(6) != Array(new_die) or ins.arrow_to != 6 or dp.flat_faces_of(6) != Array(new_die):
+			err = "指著新骰子卡：應 7 顆、第 3 顆標會被換掉、箭頭指第 7 顆：%d 顆、標 %d「%s」、箭頭 %d" % [ins.die_count(), ins.replace_slot, ins.tag_of(2), ins.arrow_to]
+	# 指著新武器卡：後面多一顆新武器的骰子，不標換掉、沒有箭頭
+	if err == "":
+		dp._hover_offer = 1
+		dp.refresh(w, p, 0.05)
+		if ins.die_count() != DiceDefs.DICE_COUNT + 1 or ins.replace_slot != -1 or ins.arrow_to != -1 or ins.tag_of(6) != "新武器的骰子" or ins.faces_of(6) != Array(weapon_die):
+			err = "指著新武器卡：應 7 顆、不標換掉、沒有箭頭：%d 顆、標 %d、箭頭 %d、「%s」" % [ins.die_count(), ins.replace_slot, ins.arrow_to, ins.tag_of(6)]
+		dp._hover_offer = 0
+		dp.refresh(w, p, 0.05)
 	if err == "":
 		var rest := ins.basis_of(0)
 		ins.rotate_die(0, Vector2(90, 40))

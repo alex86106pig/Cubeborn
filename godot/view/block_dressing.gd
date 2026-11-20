@@ -18,6 +18,8 @@ const PLINTH_H := 0.35     # 牆腳那圈石的高度
 const CAP_T := 0.16        # 蓋石厚度
 const BANK_H := 0.9        # 邊界土坡畫多高（碰撞照舊是牆的高度，隱形）
 const FENCE_IN := 0.45     # 鐵柵欄離邊界多遠（往內）
+const PLANT_EDGE := 0.4    # 邊界的樹與灌木離土坡另一邊至少多遠
+const PLANT_MIN_DEPTH := 0.6   # 土坡往裡擺得下的深度不到這麼多就不擺樹與灌木
 const TUFT_MAX := 4000     # 腳邊的乾草叢最多幾叢（每叢約 30 個三角形）
 
 var verts := PackedVector3Array()
@@ -27,6 +29,7 @@ var _rng := RandomNumberGenerator.new()
 var _style: Dictionary
 var _to_cam := Vector2(sin(Config.CAMERA.azimuth), cos(Config.CAMERA.azimuth))   # 地面上往鏡頭的方向
 var _tuft_count := 0
+var _bank_plants := PackedVector2Array()   # 邊界土坡上的樹與灌木站在哪（檢查用：都要站在土坡上，不能浮在旁邊的平地）
 
 # 有造型的主題的配色（頂點色；打光後畫面上約亮 1.3 ~ 1.4 倍）。blocks 是各種石台的 [側面, 頂面]
 const PALETTES := {
@@ -102,6 +105,7 @@ static func build(blocks: Array[Dictionary], style: Dictionary, seed_value: int,
 	var mi := MeshInstance3D.new()
 	mi.mesh = PartKit.array_mesh(d.verts, d.normals, d.colors)
 	mi.set_meta(&"tufts", d._tuft_count)   # 檢查用（map_checks：草叢的程式中途出錯會一叢都沒有、不會報錯）
+	mi.set_meta(&"bank_plants", d._bank_plants)
 	var m := StandardMaterial3D.new()
 	m.vertex_color_use_as_albedo = true
 	m.vertex_color_is_srgb = true
@@ -364,7 +368,7 @@ func _cliff(b: Dictionary) -> void:
 				if seg.y - ce < 3.0:
 					ce = seg.y
 				var kind := _pick_border()
-				_border(kind, cs, ce, line, horizontal, inward, along, rock, grass, b.top)
+				_border(kind, cs, ce, line, horizontal, inward, along, rock, grass, size.y if horizontal else size.x)
 				cs = ce
 
 
@@ -380,8 +384,8 @@ func _pick_border() -> StringName:
 	return &"ruin"
 
 
-# 邊界的一段 [a, b]（沿 line 那條邊；inward 往碰撞裡面、along 沿著邊）
-func _border(kind: StringName, a: float, b: float, line: float, horizontal: bool, inward: Vector2, along: Vector2, rock: Color, grass: Color, top: float) -> void:
+# 邊界的一段 [a, b]（沿 line 那條邊；inward 往碰撞裡面、along 沿著邊；depth = 這塊往裡有多厚，樹與灌木不擺出去）
+func _border(kind: StringName, a: float, b: float, line: float, horizontal: bool, inward: Vector2, along: Vector2, rock: Color, grass: Color, depth: float) -> void:
 	var at_edge := func(u: float) -> Vector2: return Vector2(u, line) if horizontal else Vector2(line, u)
 	# 腳下一排石頭：岩崖是矮而寬的大石塊（高 1.1 ~ 1.9，不是細長柱），其他是矮的護坡；
 	# 頂面用亮一點的石色（YangHsu 2026-11-18：看起來怪怪的——草色頂面 + 棕色側面像一排樹樁）
@@ -401,9 +405,9 @@ func _border(kind: StringName, a: float, b: float, line: float, horizontal: bool
 	match kind:
 		&"fence":
 			_fence(at_edge.call(a) + inward * FENCE_IN, along, b - a)
-			_border_plants(a, b, at_edge, inward, 0.6, 1.2, 2.4)
+			_border_plants(a, b, at_edge, inward, depth, 0.6, 1.2, 2.4)
 		&"cliff":
-			_border_plants(a, b, at_edge, inward, 0.15, 1.6, 3.0)
+			_border_plants(a, b, at_edge, inward, depth, 0.15, 1.6, 3.0)
 		&"hedge":
 			# 一排密的灌木（高 1.2 ~ 1.9），零星幾棵樹
 			var v := a + _rng.randf_range(0.0, 0.3)
@@ -412,19 +416,25 @@ func _border(kind: StringName, a: float, b: float, line: float, horizontal: bool
 				var q: Vector2 = at_edge.call(v) + inward * (s + 0.2)
 				_rock(q, s, _rng.randf_range(1.2, 1.9) - BANK_H, _jitter(_style.foliage, 0.14), _jitter(_style.foliage, 0.12).lightened(0.08), BANK_H)
 				v += s * _rng.randf_range(0.9, 1.3)
-			_border_plants(a, b, at_edge, inward, 0.3, 2.5, 3.0)
+			_border_plants(a, b, at_edge, inward, depth, 0.3, 2.5, 3.0)
 		_:
 			# 矮的崩塌石牆（立在土坡上，總高約 2），後面稀疏的樹
 			var c: Array = _style.blocks[&"wall"]
 			_wall_run(at_edge.call(a) + inward * 0.55, along, inward, b - a, 0.6, BANK_H + _rng.randf_range(0.9, 1.3), c)
-			_border_plants(a, b, at_edge, inward, 0.4, 1.6, 3.2)
+			_border_plants(a, b, at_edge, inward, depth, 0.4, 1.6, 3.2)
 
 
-# 邊界後面（碰撞裡面 1.3 ~ 4.5）：每 step_min ~ step_max 放一棵枯樹（機率 tree_p）或一叢灌木
-func _border_plants(a: float, b: float, at_edge: Callable, inward: Vector2, tree_p: float, step_min: float, step_max: float) -> void:
+# 邊界後面（碰撞裡面 1.3 ~ 4.5，不超過這塊的厚度 depth − PLANT_EDGE）：每 step_min ~ step_max 放一棵枯樹（機率 tree_p）或一叢灌木
+# 土坡比這薄時往裡擺不下：擺到另一邊的平地上會浮在坡頂高度（YangHsu 2026-11-20 試玩），所以縮到坡裡；太薄（< PLANT_MIN_DEPTH）就不擺
+func _border_plants(a: float, b: float, at_edge: Callable, inward: Vector2, depth: float, tree_p: float, step_min: float, step_max: float) -> void:
+	var far := minf(4.5, depth - PLANT_EDGE)
+	if far < PLANT_MIN_DEPTH:
+		return
+	var near := minf(1.3, far)
 	var u := a + _rng.randf_range(0.3, 1.5)
 	while u < b - 0.3:
-		var q: Vector2 = at_edge.call(u) + inward * _rng.randf_range(1.3, 4.5)
+		var q: Vector2 = at_edge.call(u) + inward * _rng.randf_range(near, far)
+		_bank_plants.append(q)
 		if _rng.randf() < tree_p:
 			_dead_tree(q, _rng.randf_range(2.0, 3.4))
 		else:

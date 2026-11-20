@@ -7,6 +7,10 @@ const CHEST_OFFSET := 1.6   # 文字在物件腳底上方的高度（世界單�
 const PICKUP_OFFSET := 1.1
 const ENEMY_OFFSET := 0.35  # 魔法 / 稀有怪的詞條在頭頂上方多高
 const GRAVE_OFFSET := 1.8   # 挖墳點文字的高度（D6）
+# 小關出口的門：字寫在拱門上方（不疊在發藍光的門面上），淺色大字（YangHsu 2026-11-20：淺藍小字疊在藍色門面上不好讀）
+const DOOR_LABEL_Y := ArenaView.DOOR_HEIGHT + 1.0
+const DOOR_SIZE := 22      # WARM_SIZES 裡有
+const DOOR_COLOR := Color("fff1c9")
 const CARD_W := 400         # 地上道具卡的寬度（px）：武器的「單手・攻擊力・攻速・範圍」與最長的分支詞條各塞一行
 const CARD_PAD := 8
 const CARD_CELL := 10.0     # 道具卡形狀小圖每格的大小
@@ -174,9 +178,9 @@ func _draw_doors(font: Font, me: Player, focus_id: int) -> void:
 	for i in list.size():
 		var d: Dictionary = list[i]
 		var p := MapDefs.to_world(world.map, d.at)
-		var at := Vector3(p.x, world.terrain.ground_at(p) + GRAVE_OFFSET, p.y)
+		var at := Vector3(p.x, world.terrain.ground_at(p) + DOOR_LABEL_Y, p.y)
 		var key := "[F] " if i == mine and focus_id == Interactables.EXIT else ""
-		_text_at(font, at, "%s%s" % [key, door_text(world, d)], EXIT_COLOR)
+		_text_at(font, at, "%s%s" % [key, door_text(world, d)], DOOR_COLOR, DOOR_SIZE)
 
 
 # 按 F 會跟誰互動：互動列表選中的那個；沒接列表就是最近的（Interactables.options 的第一個）；沒有回傳 0

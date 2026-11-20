@@ -326,9 +326,20 @@ static func _map_rules(w: World, note: bool) -> String:
 	if not style.is_empty():
 		var dressed := BlockDressing.build(w.terrain.blocks, style, 1, m.get("edge_blocks", 0))
 		var tufts: int = dressed.get_meta(&"tufts", 0)
+		var plants: PackedVector2Array = dressed.get_meta(&"bank_plants", PackedVector2Array())
 		dressed.free()
 		if tufts == 0:
 			return "%s 的石台造型沒有長出乾草叢" % w.map_id
+		# 邊界土坡上的樹與灌木（畫在坡頂高度）要站在土坡上：土坡比擺的深度薄時會落到另一邊的平地上浮著（YangHsu 2026-11-20 試玩）
+		var edges: Array[Dictionary] = w.terrain.blocks.slice(0, m.get("edge_blocks", 0))
+		for q in plants:
+			var on := false
+			for b in edges:
+				if q.x >= b.min.x and q.x <= b.max.x and q.y >= b.min.y and q.y <= b.max.y:
+					on = true
+					break
+			if not on:
+				return "%s 邊界的樹或灌木 %s 沒站在土坡上（浮在平地上）：%d 棵裡" % [w.map_id, q, plants.size()]
 	if note:
 		_note("%s：可走格 %d / %d、牆 %d、墓碑 %d、高台 %d" % [w.map_id, walkable, nav.size.x * nav.size.y, counts.get(MapDefs.WALL, 0), counts.get(MapDefs.TOMB, 0), counts.get(MapDefs.PLATFORM, 0)])
 	return ""
@@ -603,12 +614,8 @@ static func check_stage_maps() -> String:
 # 擲骰台（MapGen._place_dice_spots）：起點以外每塊區域一塊、不重複；整塊小格在地圖裡、全是實心（牆外，角色與怪走不到）；不在門外
 static func _stage_dice_spots(w: World) -> String:
 	var spots: Array = w.map.get("dice_spots", [])
-	var want := 0
-	for rg: Dictionary in w.map.regions:
-		if rg.role != &"start":
-			want += 1
-	if spots.size() != want:
-		return "擲骰台應每塊打怪的區域一塊：%d 塊區域、%d 塊擲骰台" % [want, spots.size()]
+	if spots.size() != 1:
+		return "擲骰台應整張地圖一塊：%d 塊" % spots.size()
 	var half := MapGenDefs.SUB / 2.0 - 0.5
 	for i in spots.size():
 		var at := MapDefs.to_world(w.map, spots[i])

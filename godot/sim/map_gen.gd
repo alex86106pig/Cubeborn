@@ -1,6 +1,6 @@
 # 小關地圖產生器（地圖改版）：照種子拼出一關，輸出跟 MapDefs.MAPS 同格式的地圖資料（blocks、出生點、挖墳點…）與固定要素的位置
 # 做法照 mockups/map_layouts.html 的「拼形＋不規則邊緣」：區域用拼形小格接成主線＋支線 → 區域之間開口、沿小格中心拉走道 →
-# 固定要素（起點、鐵砧、出口的門、大寶箱）→ 擲骰台（每塊打怪的區域旁邊一格空小格，_place_dice_spots）→
+# 固定要素（起點、鐵砧、出口的門、大寶箱）→ 擲骰台（整張地圖一個：離各打怪區都近的空小格，_place_dice_spots）→
 # 1 單位格子從邊界往內吃（雜訊決定深度，形成崖壁）→ 每塊依主題放障礙物 → 確認起點走得到出口 / 鐵砧 / 寶箱 / 挖墳點 → 怪群、小寶箱
 # 客戶端照同一個種子自己算這張地圖，不同平台要一模一樣：亂數只用 randi_range，座標是整數或 1/4 單位（二進位表示得出來），
 # 距離一律比平方；只用 GDScript 的四則運算（每一步分開算，不會被合成乘加），不用三角函數、開根號、randf、Vector2 的長度與距離
@@ -32,7 +32,7 @@ var coffins: Array[Vector2] = []       # 石棺
 var chest_quota := {}                  # 這一小關分到的 { altars, coffins }（chest_plan）
 var chest_short := 0                   # 放不下、少放了幾個
 var packs: Array[Array] = []           # [x, y, 隻數]
-var dice_spots: Array[Vector2i] = []   # 擲骰台：小格（區域旁邊沒被佔的那格，整格是牆外的實心）
+var dice_spots: Array[Vector2i] = []   # 擲骰台：整張地圖一格（區域旁邊沒被佔的小格，整格是牆外的實心）
 # 1 單位格子：區域 id，-1 = 實心（崖壁、外面）
 var gx0 := 0
 var gy0 := 0
@@ -334,38 +334,47 @@ func _build_regions() -> bool:
 	return true
 
 
-# 擲骰台（骰子模式開打時骰盤擺這裡，DicePanel.tray_transform）：起點以外每塊區域，挑旁邊（四方向）沒被佔的小格裡離這塊中心最近的一格，
-# 優先挑在原本範圍（所有區域的外框）裡的，挑不到才往外（地圖會變大一格）；門外那格不用（骰盤會擋住門）、別塊挑過的不重複；
-# 整格是實心（牆外），角色與怪走不到。
+# 擲骰台（骰子模式開打時骰盤擺這裡，DicePanel.tray_transform）：整張地圖一個（YangHsu 2026-11-20），每一場都用它。
+# 候選是所有區域旁邊（四方向）沒被佔的小格，挑離最遠那塊打怪區（起點以外）的中心最近的一格（同樣近挑總距離小的），鏡頭從各個戰場移過去最多移那麼遠；
+# 優先挑在原本範圍（所有區域的外框）裡的，挑不到才往外（地圖會變大一格）；門外那格不用（骰盤會擋住門）。整格是實心（牆外），角色與怪走不到。
 # 不用亂數：照區域、小格、方向的順序挑，加這一步不會改到後面任何東西的亂數；不管有沒有開骰子模式都留（連線時客戶端照種子算，地圖要一樣）
 func _place_dice_spots() -> void:
 	var s := MapGenDefs.SUB
 	var lo := Vector2i(1 << 20, 1 << 20)
 	var hi := -lo
+	var hubs: Array[Vector2] = []
 	for reg in regions:
 		for c: Vector2i in reg.sub:
 			lo = Vector2i(mini(lo.x, c.x), mini(lo.y, c.y))
 			hi = Vector2i(maxi(hi.x, c.x), maxi(hi.y, c.y))
-	var outside := float(s * s * 1000)   # 在範圍外的加這麼多（比任何範圍內的距離平方都大）
+		if reg.role != &"start":
+			hubs.append(_center(reg.hub))
+	if hubs.is_empty():
+		return
+	var outside := float(s * s * 1000000)   # 在範圍外的加這麼多（比任何範圍內的距離平方都大）
+	var best := Vector2i.ZERO
+	var best_d := INF
+	var best_sum := INF
 	for reg in regions:
-		if reg.role == &"start":
-			continue
-		var hub := _center(reg.hub)
-		var best := Vector2i(1 << 20, 1 << 20)
-		var best_d := INF
 		for c: Vector2i in reg.sub:
 			for d in DIRS:
 				var n: Vector2i = c + d
-				if occ.has(n) or dice_spots.has(n) or _door_in(n, s):
+				if occ.has(n) or _door_in(n, s):
 					continue
-				var dd := _dist2(_center(n), hub)
+				var worst := 0.0
+				var sum := 0.0
+				for h in hubs:
+					var dd := _dist2(_center(n), h)
+					worst = maxf(worst, dd)
+					sum += dd
 				if n.x < lo.x or n.y < lo.y or n.x > hi.x or n.y > hi.y:
-					dd += outside
-				if dd < best_d:
-					best_d = dd
+					worst += outside
+				if worst < best_d or (worst == best_d and sum < best_sum):
+					best_d = worst
+					best_sum = sum
 					best = n
-		if best_d < INF:
-			dice_spots.append(best)
+	if best_d < INF:
+		dice_spots.append(best)
 
 
 # 小格 n 上（含邊上 1 單位）有沒有出口的門

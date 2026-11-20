@@ -1,5 +1,5 @@
 # 骰子模式的「拿起來看」（畫面層，docs/系統說明.md §55「獎勵畫面看骰子」）：一排 3D 骰子，按住一顆拖曳就轉著看每一面，放開慢慢轉回原位
-# 獎勵畫面用：你帶的 6 顆，後面接獎勵裡的新骰子（新骰子會換掉的那顆抬高、標紅、箭頭指過去）、新武器的骰子
+# 獎勵畫面用：你帶的 6 顆，滑鼠指著「新骰子」「新武器」卡時後面接那張卡的骰子（新骰子會換掉的那顆抬高、標紅、箭頭指向新骰子）
 # 自己一個 3D 世界（不碰遊戲世界）；骰子外觀與擲骰桌同一套（DiceTable.build_die_visual / paint_die）
 class_name DiceInspect
 extends SubViewportContainer
@@ -26,6 +26,7 @@ var _drag := -1
 var _last := Vector2.ZERO
 var _key: Array = []
 var replace_slot := -1           # 標成會被換掉的是第幾顆（-1 = 沒有）
+var arrow_to := -1               # 紅箭頭指向第幾顆（換上去的新骰子；-1 = 沒有箭頭）
 
 
 func _init() -> void:
@@ -63,8 +64,8 @@ func _init() -> void:
 	_root.add_child(_arrow)
 
 
-# 你帶的骰子 carried（每顆 6 面）照 weapon_id 上色；extras：[[面, 上色看的武器, 標籤], …]（獎勵裡的骰子）；
-# replace：拿新骰子會換掉帶著的第幾顆（-1 = 沒有）。內容沒變不重建（拖到一半不會被打斷）
+# 你帶的骰子 carried（每顆 6 面）照 weapon_id 上色；extras：[[面, 上色看的武器, 標籤, 換上去的嗎], …]（獎勵裡的骰子）；
+# replace：拿新骰子會換掉帶著的第幾顆（-1 = 沒有），箭頭從它指向「換上去的」那顆。內容沒變不重建（拖到一半不會被打斷）
 func show_dice(carried: Array, weapon_id: StringName, extras: Array, replace: int) -> void:
 	var key := [carried, weapon_id, extras, replace]
 	if key == _key:
@@ -85,11 +86,13 @@ func show_dice(carried: Array, weapon_id: StringName, extras: Array, replace: in
 		_add_die(carried[i], weapon_id, Vector3(x, LIFT if i == replace else 0.0, 0), tag, REPLACE_COLOR if i == replace else Color(1, 1, 1, 0.8))
 		x += GAP
 	_arrow.visible = false
+	arrow_to = -1
 	for e: Array in extras:
 		x += EXTRA_GAP
-		if replace >= 0 and not _arrow.visible:
+		if replace >= 0 and e.size() > 3 and e[3] and arrow_to < 0:
 			_arrow.visible = true
 			_arrow.position = Vector3(x - (GAP + EXTRA_GAP) / 2.0, 0.1, 0.6)
+			arrow_to = _dice.size()
 		_add_die(e[0], e[1], Vector3(x, 0, 0), e[2], Color("ffd45a"))
 		x += GAP
 	var width := x - GAP
@@ -146,6 +149,14 @@ func basis_of(i: int) -> Basis:
 
 func tag_of(i: int) -> String:
 	return _tags[i].text
+
+
+# 第 i 顆的中心在這個控制項裡的 x（底下的平面 6 面照這個對齊）：正交鏡頭正對 x 軸、可視高度 = camera.size，
+# 直接算（不用 unproject：還沒放進場景樹時也要算得出來）
+func die_x(i: int) -> float:
+	var cx := _camera.position.x
+	var px := float(VIEW_SIZE.x) / 2.0 + (_dice[i].position.x - cx) * float(VIEW_SIZE.y) / _camera.size
+	return px * custom_minimum_size.x / float(VIEW_SIZE.x)
 
 
 # 螢幕座標 → 最近的那顆（投影到畫面上離骰子中心 60 像素內）
