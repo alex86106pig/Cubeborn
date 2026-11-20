@@ -106,6 +106,7 @@ static var render_alpha := 1.0
 var _vision_key := []                  # 上次算視野時的 tick 與觀看者狀態（沒變就沿用 hidden_ids）
 var _los_blocked: Dictionary = {}      # entity id -> 視線被牆擋住（分批更新，見 sync）
 var _fade_level: Dictionary = {}       # entity id -> 顯示程度 0~1（視野的淡入淡出，view/fade.gd）
+var _hop: Dictionary = {}   # entity id -> 骰子模式小模型跳著走的狀態（_figure_hop）
 var _anim_pending: Dictionary = {}     # entity id -> 還沒拿去擺姿勢的秒數（敵人動畫每秒最多 60 次）
 var _grave: Node3D = null              # 挖墳點（D6）：外觀照這一層的 EventDefs.exit_style().look
 var _pack_props: Array[Node3D] = []    # 啃食群中間的冒險者屍體（怪群模板 feast），換關重建
@@ -360,6 +361,7 @@ func sync(world: World, alpha: float, dt: float) -> void:
 			_frozen.erase(id)
 			_los_blocked.erase(id)
 			_anim_pending.erase(id)
+			_hop.erase(id)
 			_xray_on.erase(id)
 			_fade_level.erase(id)
 	for id: int in world.entities:
@@ -384,8 +386,13 @@ func sync(world: World, alpha: float, dt: float) -> void:
 			apply_xray(node, node.get_meta(&"xray"), node.get_meta(&"xray_shown"))
 		var p := e.prev_pos.lerp(e.pos, alpha)
 		# 位置與朝向一次寫入（分兩次寫會更新兩次子節點的變換，D5 效能）
-		node.transform = Transform3D(Basis(Vector3.UP, lerp_angle(e.prev_facing, e.facing, alpha)),
-			Vector3(p.x, lerpf(e.prev_height, e.height, alpha), p.y))
+		var turn := Basis(Vector3.UP, lerp_angle(e.prev_facing, e.facing, alpha))
+		var at := Vector3(p.x, lerpf(e.prev_height, e.height, alpha), p.y)
+		if node.has_meta(&"figure"):
+			var hop := _figure_hop(e, dt)
+			at.y += hop.x
+			turn = turn * Basis(Vector3.BACK, hop.y)
+		node.transform = Transform3D(turn, at)
 		if (e is Enemy and (e as Enemy).anim.has("buried")) or (e is Player and (e as Player).anim.get("buried", false)):
 			node.position.y -= BURIED_DEPTH    # 被鐵鏟埋進土裡（F9；玩家被守墓人鏟起 B）：只露半身
 		if e is Projectile:
@@ -1109,6 +1116,9 @@ func _create_view(e: Entity) -> Node3D:
 		apply_xray(root, color, on)
 	if _world != null and _world.dice != null and (e is Enemy or (e is Player and not (e as Player).is_ghost())):
 		root.add_child(figure_base(e.radius))   # 骰子模式：角色與怪物站在圓木底座上，像桌遊的小模型（美術方案 2）
+		root.set_meta(&"figure", true)
+		if _animators.has(e.id):
+			_animators[e.id].figure_limit = figure_base_radius(e.radius) * FIGURE_FOOT_SPAN
 	add_child(root)
 	return root
 
@@ -1116,8 +1126,34 @@ func _create_view(e: Entity) -> Node3D:
 # 骰子模式的小模型底座：比身體寬一點的扁圓木片，貼著腳底（模型的原點在腳底）
 const FIGURE_BASE_COLOR := Color("6b4a30")
 const FIGURE_BASE_RIM := Color("3e2a1b")
+const FIGURE_FOOT_SPAN := 0.75     # 腳位最遠到底座半徑的幾成（腳底板有長度，再遠會踩出邊）
+const FIGURE_HOP_STRIDE := 1.6     # 走多遠跳一下（移速 6.5 → 每秒約 4 下；Claude 暫定）
+const FIGURE_HOP_HEIGHT := 0.12    # 跳多高
+const FIGURE_HOP_TILT := 0.12      # 往左右晃幾度（弧度，約 7°）
+const FIGURE_HOP_MIN_SPEED := 0.5  # 比這慢不跳
+const FIGURE_HOP_SHARPNESS := 10.0 # 開始走 / 停下時幅度變化多快
 static var _base_mat: StandardMaterial3D
 static var _base_rim_mat: StandardMaterial3D
+
+
+static func figure_base_radius(radius: float) -> float:
+	return maxf(0.45, radius * 1.25)
+
+
+# 小模型跳著走（像用手拿著棋子在桌上移動）：腳不跨步，整隻連底座每走 FIGURE_HOP_STRIDE 跳一下、往左右輪流晃；
+# 回傳 [往上多少, 往側邊傾多少（弧度）]。停下、在空中、倒地時慢慢收回
+func _figure_hop(e: Entity, dt: float) -> Vector2:
+	var st: Vector2 = _hop.get(e.id, Vector2.ZERO)   # x = 跳到第幾下（相位）、y = 跳的幅度 0~1
+	var speed := e.velocity.length()
+	var moving := speed > FIGURE_HOP_MIN_SPEED and not e.is_dead and e.height - e.ground_height < 0.05
+	if e is Player:
+		moving = moving and (e as Player).anim.get("loco", &"") == &"move"
+	st.y = MathUtil.damp(st.y, 1.0 if moving else 0.0, FIGURE_HOP_SHARPNESS, dt)
+	if moving:
+		st.x = fmod(st.x + speed * dt / FIGURE_HOP_STRIDE, 2.0)
+	_hop[e.id] = st
+	var s := sin(PI * st.x)   # 一下往右、一下往左；落地那一刻是 0
+	return Vector2(FIGURE_HOP_HEIGHT * absf(s) * st.y, FIGURE_HOP_TILT * s * st.y)
 
 
 static func figure_base(radius: float) -> Node3D:
@@ -1130,7 +1166,7 @@ static func figure_base(radius: float) -> Node3D:
 		_base_rim_mat.roughness = 0.9
 	var base := Node3D.new()
 	base.name = "FigureBase"
-	var r := maxf(0.45, radius * 1.25)
+	var r := figure_base_radius(radius)
 	for layer: Array in [[r, 0.06, 0.03, _base_rim_mat], [r * 0.92, 0.05, 0.085, _base_mat]]:
 		var cyl := CylinderMesh.new()
 		cyl.top_radius = layer[0]

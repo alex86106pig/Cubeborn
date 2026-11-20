@@ -48,6 +48,7 @@ const LURK_DEPTH := 0.5               # 埋著時整隻再往地下多沉多少�
 const WRIST_SHARPNESS := 25.0
 var rig   # Rig（Boss）或 SkinnedRig（小怪，D5）：關節介面相同
 var walk_phase := 0.0
+var figure_limit := 0.0   # > 0：骰子模式的小模型，腳不跨步、腳位收在底座這麼大的圈內（移動改由 WorldView 讓整隻跳著走）
 var _prev_state: StringName = &""
 var _crack_root: Node3D = null              # Boss 砸地的裂紋（掛在 rig 下，留在地面）
 var _cracks: Array[Dictionary] = []         # 每一段：{ node, ring, start, dir, length }
@@ -430,7 +431,7 @@ func _walk(amount: float, arm_r: float, arm_l: float, elbow := ELBOW_REST) -> vo
 	if _speed > 0.1 and amount > 0.0 and not _stepped:   # 步子小（amount < 1）就踩得快，腳才不會在地上滑
 		walk_phase = fmod(walk_phase + TAU * _speed * _dt / (BodyPose.stride(_speed, leg) * maxf(amount, 0.3)), TAU)
 		_stepped = true
-	_gait = BodyPose.gait(rig, walk_phase, amt, maxf(_speed, 0.5))
+	_gait = BodyPose.gait(rig, walk_phase, 0.0 if figure_limit > 0.0 else amt, maxf(_speed, 0.5))
 	var sw := cos(TAU * _gait.u) * lerpf(BodyPose.ARM_SWING_WALK, BodyPose.ARM_SWING_RUN, _gait.run) * amt
 	if _holds_bow:   # 拿弓的手走路時不擺；兩手的舉起、放下（含射完從拉弦姿勢放下右手）都平滑轉過去
 		var s := BOW_ARM_SHARPNESS
@@ -475,6 +476,9 @@ func _finish() -> void:
 		fl = fl.lerp(Vector3(rig.leg_l.position.x * s, 0.0, _stance.z * leg), w)
 		drop = lerpf(drop, _stance.x * leg, w)
 	fr += Vector3(0.0, _lift_r.y, _lift_r.x) * leg
+	if figure_limit > 0.0:
+		fr = BodyPose.clamp_foot(fr, figure_limit)
+		fl = BodyPose.clamp_foot(fl, figure_limit)
 	BodyPose.plant(rig, fr, fl, drop)
 
 

@@ -1361,6 +1361,53 @@ static func check_dice_pending_alert() -> String:
 	return ""
 
 
+# 小模型（底座）：骰子模式走路時腳不跨步、腳底（腳掌中心）在底座半徑 FIGURE_FOOT_SPAN 成內（腳掌有長度，腳尖再往前一點），
+# 整隻連底座跳著走、左右晃，停下收回；一般模式照舊跨步（腳伸得比骰子模式遠得多）
+static func check_dice_figure() -> String:
+	var got := {}
+	for dice: bool in [false, true]:
+		var w := _dice_world() if dice else _new_world()
+		var p := _player(w)
+		var view := WorldView.new()
+		_scene_root().add_child(view)
+		view.sync(w, 1.0, DT)
+		var node: Node3D = view._nodes[p.id]
+		var rig: Rig = node as Rig
+		var sole := Vector3(0.0, -(rig.leg_r.position.y + rig.shin_r.position.y), 0.0)
+		var r := {"foot": 0.0, "lift": 0.0, "tilt": 0.0, "rest_lift": 0.0, "rest_tilt": 0.0}
+		for i in roundi(1.5 / DT):
+			var moving := i < roundi(1.0 / DT)
+			_run(w, _cmd(Vector2(1, 0) if moving else Vector2.ZERO), 1)
+			view.sync(w, 1.0, DT)
+			var to_root := node.global_transform.affine_inverse()
+			for shin: Node3D in [rig.shin_r, rig.shin_l]:
+				var f := to_root * (shin.global_transform * sole)
+				r.foot = maxf(r.foot, Vector2(f.x, f.z).length())
+			var lift := node.position.y - p.height
+			var tilt := node.basis.y.angle_to(Vector3.UP)
+			if moving:
+				r.lift = maxf(r.lift, lift)
+				r.tilt = maxf(r.tilt, tilt)
+			else:
+				r.rest_lift = lift
+				r.rest_tilt = tilt
+		view.queue_free()
+		got[dice] = r
+	var base := WorldView.figure_base_radius(_player(_new_world()).radius)
+	var d: Dictionary = got[true]
+	var n: Dictionary = got[false]
+	CheckKit._note("小模型：底座半徑 %.2f；骰子模式腳最遠 %.2f、跳 %.3f、晃 %.1f°；一般模式腳最遠 %.2f" % [base, d.foot, d.lift, rad_to_deg(d.tilt), n.foot])
+	if n.foot < d.foot * 2.0 or n.lift > EPS or n.tilt > EPS:
+		return "一般模式應照舊跨步、不跳：腳最遠 %.2f（骰子模式 %.2f）、跳 %.3f、晃 %.3f" % [n.foot, d.foot, n.lift, n.tilt]
+	if d.foot > base * WorldView.FIGURE_FOOT_SPAN + EPS:
+		return "骰子模式腳底不應踩出底座：最遠 %.2f（底座 %.2f × %.2f）" % [d.foot, base, WorldView.FIGURE_FOOT_SPAN]
+	if d.lift < WorldView.FIGURE_HOP_HEIGHT * 0.9 or d.tilt < WorldView.FIGURE_HOP_TILT * 0.9:
+		return "骰子模式走路應整隻跳著走、左右晃：跳 %.3f（應到 %.2f）、晃 %.3f（應到 %.2f）" % [d.lift, WorldView.FIGURE_HOP_HEIGHT, d.tilt, WorldView.FIGURE_HOP_TILT]
+	if d.rest_lift > 0.01 or d.rest_tilt > 0.01:
+		return "停下 0.5 秒應收回：還高 %.3f、還斜 %.3f" % [d.rest_lift, d.rest_tilt]
+	return ""
+
+
 # 隔著牆要繞路的怪不拉進這一場（繞的路出了霧牆會卡在圈邊，近戰打不到、這一場打不完）：
 # 直線 MERGE_RANGE 內、走過去超過的怪群不併；隔牆 notice_close 內不會發現（一般模式照舊會），空地上一樣近會
 static func check_dice_reach() -> String:

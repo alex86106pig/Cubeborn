@@ -66,6 +66,7 @@ const BOW_REST := Basis(Vector3.RIGHT, Vector3.BACK, Vector3.DOWN)   # 不拉弓
 var rig: Rig
 var walk_phase := 0.0
 var walk_amount := 0.0
+var figure_limit := 0.0   # > 0：骰子模式的小模型，腳不跨步、腳位收在底座這麼大的圈內（移動改由 WorldView 讓整隻跳著走）
 var weapon_tilt := 0.0
 var bow_rest := 1.0   # 弓平放的比例：1 = 平放（BOW_REST）、0 = 直立
 var bow_raise := 0.0  # 開始拉弓時弓手舉起的進度（0 = 還在出手前的姿勢、1 = 舉到位）；連射時一直是 1
@@ -238,6 +239,9 @@ func _finish(a: Dictionary) -> void:
 		shift = stance.shift * leg * w
 	if _land_t < LAND_TIME and not a.airborne:
 		drop += LAND_DROP * leg * sin(PI * _land_t / LAND_TIME)
+	if figure_limit > 0.0:
+		fr = BodyPose.clamp_foot(fr, figure_limit)
+		fl = BodyPose.clamp_foot(fl, figure_limit)
 	BodyPose.plant(rig, fr, fl, drop, shift)
 
 
@@ -253,7 +257,7 @@ func _pose_locomotion(p: Player, a: Dictionary, dt: float) -> void:
 	walk_amount = MathUtil.damp(walk_amount, 1.0 if moving else 0.0, WALK_SHARPNESS, dt)
 	if moving:
 		walk_phase = BodyPose.advance(walk_phase, speed, BodyPose.leg_length(rig), dt)
-	_gait = BodyPose.gait(rig, walk_phase, walk_amount, maxf(speed, 1.0))
+	_gait = BodyPose.gait(rig, walk_phase, 0.0 if figure_limit > 0.0 else walk_amount, maxf(speed, 1.0))
 	rig.body.rotation = Vector3.ZERO
 	match a.loco:
 		&"dead", &"downed":

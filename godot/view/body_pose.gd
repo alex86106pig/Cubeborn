@@ -42,6 +42,15 @@ static func stride(speed: float, leg: float) -> float:
 	return leg * clampf(STRIDE_K * pow(fr, STRIDE_EXP), STRIDE_MIN, STRIDE_MAX)
 
 
+# 骰子模式的小模型：腳位（角色座標）水平方向收進半徑 limit 的圈內（腳不踩出底座）
+static func clamp_foot(f: Vector3, limit: float) -> Vector3:
+	var h := Vector2(f.x, f.z)
+	if h.length() <= limit:
+		return f
+	h = h.normalized() * limit
+	return Vector3(h.x, f.y, h.y)
+
+
 # 步態相位往前推：踩在地上的腳往後滑的速度 = 移動速度，腳不會在地上滑
 static func advance(phase: float, speed: float, leg: float, dt: float) -> float:
 	if speed <= 0.001:
