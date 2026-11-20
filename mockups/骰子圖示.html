@@ -25,7 +25,7 @@
   <button id="bthrow">丟一次</button>
   <button id="bface"></button>
 </div>
-<div class="tip">拖曳旋轉、滾輪縮放。白色切角骰子，每面嵌一塊石板（圖直接切自 Gemini 那張 6 格圖）。<br>
+<div class="tip">拖曳旋轉、滾輪縮放。白色切角骰子；黑邊版是白底黑邊的圖去背後直接印在骰面，石板版是每面嵌一塊石板（圖都直接切自 Gemini 的 6 格圖）。<br>
 面：上 旋風斬、前 盾撞、右 劍氣、後 盾震、左 開場護盾、下 傷害 +</div>
 
 <script type="importmap">
@@ -69,63 +69,47 @@ function tileTexture(cx, cy) {
 }
 const toTex = (c) => { const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 8; return tex; };
 
-// ---------- 去背 + 刻痕 ----------
-// 石板裡面是平的深褐色：取四個角附近（斜面內側）的顏色當背景色，跟它差不多的變透明；斜面（外圈 BEVEL）整圈去掉
-const BEVEL = 0.075;
-function cutout(src) {
-  const c = document.createElement("canvas"); c.width = c.height = TEX;
-  const g = c.getContext("2d"); g.drawImage(src, 0, 0);
-  const im = g.getImageData(0, 0, TEX, TEX), d = im.data;
-  const samples = [];
-  for (const [fx, fy] of [[0.11, 0.11], [0.89, 0.11], [0.11, 0.89], [0.89, 0.89], [0.5, 0.1], [0.1, 0.5]]) {
-    const k = (Math.floor(fy * TEX) * TEX + Math.floor(fx * TEX)) * 4; samples.push([d[k], d[k + 1], d[k + 2]]);
+// ---------- 黑邊版：白底的 6 格圖，從格子邊緣往內填掉白底（黑邊裡面的白色亮面留著）----------
+const OUT_SRC = encodeURI("劍盾技能與效果icon_黑邊.jpg");
+const img2 = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = bad; i.src = OUT_SRC; });
+const W2 = img2.naturalWidth, H2 = img2.naturalHeight;
+function outlineIcon(cx, cy) {
+  const cw = Math.floor(W2 / 3), chh = Math.floor(H2 / 2);
+  const c = document.createElement("canvas"); c.width = cw; c.height = chh;
+  const g = c.getContext("2d"); g.drawImage(img2, cx * cw, cy * chh, cw, chh, 0, 0, cw, chh);
+  const im = g.getImageData(0, 0, cw, chh), d = im.data;
+  const lum = (i) => 0.3 * d[i * 4] + 0.59 * d[i * 4 + 1] + 0.11 * d[i * 4 + 2];
+  const bg = new Uint8Array(cw * chh), stack = [];
+  for (let x = 0; x < cw; x++) stack.push(x, (chh - 1) * cw + x);
+  for (let y = 0; y < chh; y++) stack.push(y * cw, y * cw + cw - 1);
+  while (stack.length) {   // 跟外圍相連、夠白的都是背景
+    const i = stack.pop();
+    if (bg[i] || lum(i) < 215) continue;
+    bg[i] = 1;
+    const x = i % cw, y = (i / cw) | 0;
+    if (x > 0) stack.push(i - 1); if (x < cw - 1) stack.push(i + 1);
+    if (y > 0) stack.push(i - cw); if (y < chh - 1) stack.push(i + cw);
   }
-  const med = [0, 1, 2].map(i => samples.map(s => s[i]).sort((a, b) => a - b)[Math.floor(samples.length / 2)]);
-  const lo = BEVEL * TEX, hi = (1 - BEVEL) * TEX;
-  for (let y = 0; y < TEX; y++) for (let x = 0; x < TEX; x++) {
-    const k = (y * TEX + x) * 4;
-    const corner = 0.22 * TEX;   // 石板四個切角的斜面也去掉
-    if (x < lo || x > hi || y < lo || y > hi || x + y < corner || (TEX - x) + y < corner || x + (TEX - y) < corner || (TEX - x) + (TEX - y) < corner) { d[k + 3] = 0; continue; }
-    const dist = Math.hypot(d[k] - med[0], d[k + 1] - med[1], d[k + 2] - med[2]);
-    const a = Math.min(1, Math.max(0, (dist - 16) / 34));
-    if (a <= 0) { d[k + 3] = 0; continue; }
-    // 半透明的邊：把混進去的背景色扣掉，不然會留一圈褐色毛邊
-    for (let i = 0; i < 3; i++) d[k + i] = Math.min(255, Math.max(0, (d[k + i] - med[i] * (1 - a)) / a));
-    // 太淺的（白色刀光）壓暗成淺灰藍：白骰面上才看得到
-    const lum = 0.3 * d[k] + 0.59 * d[k + 1] + 0.11 * d[k + 2];
-    if (lum > 150) { const t = Math.min(1, (lum - 150) / 105) * 0.42; d[k] *= 1 - t * 1.1; d[k + 1] *= 1 - t; d[k + 2] *= 1 - t * 0.7; }
-    d[k + 3] = Math.round(a * 255);
+  let l = cw, r = 0, t = chh, b = 0;
+  for (let i = 0; i < cw * chh; i++) {
+    if (bg[i]) { d[i * 4 + 3] = 0; continue; }
+    const x = i % cw, y = (i / cw) | 0;
+    const edge = (x > 0 && bg[i - 1]) || (x < cw - 1 && bg[i + 1]) || (y > 0 && bg[i - cw]) || (y < chh - 1 && bg[i + cw]);
+    if (edge) {   // 黑邊外緣的灰色反鋸齒：變成半透明的黑，白骰面上才不會有白毛邊
+      const a = 1 - lum(i) / 255;
+      d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = 0; d[i * 4 + 3] = Math.round(Math.min(1, a * 1.3) * 255);
+    }
+    if (x < l) l = x; if (x > r) r = x; if (y < t) t = y; if (y > b) b = y;
   }
   g.putImageData(im, 0, 0);
-  return c;
+  const side = Math.max(r - l, b - t) * 1.08, ox = (l + r) / 2 - side / 2, oy = (t + b) / 2 - side / 2;   // 圖案框起來、留一點邊
+  const out = document.createElement("canvas"); out.width = out.height = TEX;
+  out.getContext("2d").drawImage(c, ox, oy, side, side, 0, 0, TEX, TEX);
+  return out;
 }
-// 刻進白骰面：外圍一圈淡陰影（刻痕的邊）、凹槽裡左上緣暗（被邊擋住光）、右下緣亮
-function engrave(icon) {
-  const c = document.createElement("canvas"); c.width = c.height = TEX;
-  const g = c.getContext("2d");
-  const mask = (dx, dy, color) => {   // 圖的形狀（填單色）、平移 dx, dy
-    const m = document.createElement("canvas"); m.width = m.height = TEX;
-    const mg = m.getContext("2d"); mg.drawImage(icon, dx, dy);
-    mg.globalCompositeOperation = "source-in"; mg.fillStyle = color; mg.fillRect(0, 0, TEX, TEX);
-    return m;
-  };
-  const edge = (dx, dy, color) => {   // 圖裡面、平移後蓋不到的那一條邊
-    const m = mask(0, 0, color), mg = m.getContext("2d");
-    mg.globalCompositeOperation = "destination-out"; mg.drawImage(icon, dx, dy);
-    return m;
-  };
-  for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 2], [-1.5, -1.5], [1.5, 1.5], [1.5, -1.5], [-1.5, 1.5]]) g.drawImage(mask(dx, dy, "rgba(60,50,45,0.22)"), 0, 0);
-  g.drawImage(icon, 0, 0);
-  g.globalCompositeOperation = "source-atop";
-  g.fillStyle = "rgba(0,0,0,0.10)"; g.fillRect(0, 0, TEX, TEX);   // 凹下去整體暗一點
-  g.drawImage(edge(5, 5, "rgba(20,12,8,0.55)"), 0, 0);
-  g.drawImage(edge(-3, -3, "rgba(255,255,255,0.45)"), 0, 0);
-  return c;
-}
-// 圖的順序：上排 旋風斬、盾撞、劍氣；下排 盾震、開場護盾、傷害 +
 const raw = [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]].map(([x, y]) => tileTexture(x, y));
 const tiles = raw.map(toTex);
-const carved = raw.map(c => toTex(engrave(cutout(c))));
+const outlined = [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]].map(([x, y]) => toTex(outlineIcon(x, y)));
 
 // ---------- 場景 ----------
 const view = document.getElementById("view");
@@ -187,27 +171,27 @@ const faces = [
   [4, new THREE.Euler(0, -Math.PI / 2, 0), new THREE.Vector3(-1, 0, 0)],
   [5, new THREE.Euler(Math.PI / 2, 0, 0), new THREE.Vector3(0, -1, 0)],
 ];
-// 刻痕版：整個平坦面一張透明圖（圖比石板版大一點，因為沒有石板框）
-const FLAT = (S - C) * 2 * 0.98;
-const carvePlane = new THREE.PlaneGeometry(FLAT, FLAT);
-const plateMeshes = [], carveMeshes = [];
+// 黑邊版：整個平坦面一張透明圖（沒有石板框，圖可以比石板版大）
+const FLAT = (S - C) * 2 * 0.92;
+const iconPlane = new THREE.PlaneGeometry(FLAT, FLAT);
+const plateMeshes = [], iconMeshes = [];
 for (const [k, rot, n] of faces) {
   const m = new THREE.Mesh(plate, new THREE.MeshStandardMaterial({ map: tiles[k], roughness: 0.7 }));
   m.rotation.copy(rot);
   m.position.copy(n).multiplyScalar(S + 0.002);
   die.add(m); plateMeshes.push(m);
-  const e = new THREE.Mesh(carvePlane, new THREE.MeshStandardMaterial({ map: carved[k], transparent: true, alphaTest: 0.02, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -1 }));
+  const e = new THREE.Mesh(iconPlane, new THREE.MeshStandardMaterial({ map: outlined[k], transparent: true, alphaTest: 0.02, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -1 }));
   e.rotation.copy(rot);
   e.position.copy(n).multiplyScalar(S + 0.001);
-  die.add(e); carveMeshes.push(e);
+  die.add(e); iconMeshes.push(e);
 }
-let carveMode = true;
+let outlineMode = true;
 function applyFaceMode() {
-  plateMeshes.forEach(m => m.visible = !carveMode);
-  carveMeshes.forEach(m => m.visible = carveMode);
-  document.getElementById("bface").textContent = carveMode ? "面：刻痕（切換石板）" : "面：石板（切換刻痕）";
+  plateMeshes.forEach(m => m.visible = !outlineMode);
+  iconMeshes.forEach(m => m.visible = outlineMode);
+  document.getElementById("bface").textContent = outlineMode ? "面：黑邊（切換石板）" : "面：石板（切換黑邊）";
 }
-document.getElementById("bface").onclick = () => { carveMode = !carveMode; applyFaceMode(); };
+document.getElementById("bface").onclick = () => { outlineMode = !outlineMode; applyFaceMode(); };
 applyFaceMode();
 die.position.y = S;
 scene.add(die);
