@@ -87,8 +87,8 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.target.set(0, 0.5, 0);
 
-scene.add(new THREE.HemisphereLight("#fff4e0", "#5a4030", 1.1));
-const sun = new THREE.DirectionalLight("#ffe8c8", 2.2);
+scene.add(new THREE.HemisphereLight("#ffffff", "#6a5a50", 1.1));   // 光偏暖的話白骰子會被染成米色
+const sun = new THREE.DirectionalLight("#fffaf2", 2.2);
 sun.position.set(-3, 6, 4);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
@@ -109,7 +109,7 @@ for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
   pts.push(new THREE.Vector3(sx * (S - C), sy * S, sz * (S - C)));
   pts.push(new THREE.Vector3(sx * S, sy * (S - C), sz * (S - C)));
 }
-const body = new THREE.Mesh(new ConvexGeometry(pts), new THREE.MeshStandardMaterial({ color: "#f4f1ea", roughness: 0.55, flatShading: true }));
+const body = new THREE.Mesh(new ConvexGeometry(pts), new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.5, flatShading: true }));
 body.castShadow = true;
 const die = new THREE.Group();
 die.add(body);
