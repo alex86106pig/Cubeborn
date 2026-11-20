@@ -1309,9 +1309,33 @@ static func check_dice_tray() -> String:
 	var cut_err := _check_tray_cut()
 	if cut_err != "":
 		return cut_err
+	var spot_err := _check_tray_spot()
+	if spot_err != "":
+		return spot_err
 	_note("骰盤放進遊戲世界：%.2f 秒停好、面 %s" % [frames / 60.0, got[0] if not got.is_empty() else []])
 	return ""
 
+
+
+# 地圖有擲骰台時：開一場，骰盤擺在其中一塊擲骰台上（離這一場最近、不壓到霧牆）
+static func _check_tray_spot() -> String:
+	var w := World.new()
+	_worlds.append(w)
+	w.dice = DiceRun.new()
+	w.reset(3)
+	var spots: Array = w.map.get("dice_spots", [])
+	if spots.is_empty() or w.packs.is_empty():
+		return "第 1 小關（種子 3）應有擲骰台與怪群"
+	var pk: Dictionary = w.packs[0]
+	var first := w.entities.get(pk.ids[0]) as Enemy
+	var p := _player(w)
+	p.pos = w.nav.nearest_walkable(first.pos + Vector2(0, 3))
+	w.alert_pack(0, first, p)
+	var at := dp2_tray(w)
+	for sp: Vector2 in spots:
+		if MapDefs.to_world(w.map, sp).distance_to(at) < 0.01:
+			return ""
+	return "有擲骰台的地圖，骰盤應擺在擲骰台上：擺在 %s，擲骰台 %s" % [at, spots.map(func(sp: Vector2) -> Vector2: return MapDefs.to_world(w.map, sp))]
 
 
 static func dp2_tray_y(w: World) -> float:

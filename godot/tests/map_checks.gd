@@ -585,6 +585,9 @@ static func check_stage_maps() -> String:
 			err = _stage_themes(w.map.regions)
 			if err != "":
 				return "%s：%s" % [tag, err]
+			err = _stage_dice_spots(w)
+			if err != "":
+				return "%s：%s" % [tag, err]
 			var goal: Vector2 = MapDefs.to_world(w.map, w.map.dig)
 			var path := w.nav.find_path(w.spawn_point, goal)
 			var length := 0.0
@@ -594,6 +597,32 @@ static func check_stage_maps() -> String:
 			block_counts.append(w.terrain.blocks.size())
 		lines.append("1-%d 最短路線 %.0f ~ %.0f、石台 %d ~ %d" % [stage, routes.min(), routes.max(), block_counts.min(), block_counts.max()])
 	_note("小關地圖：%d 種 × %d 個種子都過；%s" % [MapGenDefs.STAGES.size(), STAGE_SEEDS, "；".join(PackedStringArray(lines))])
+	return ""
+
+
+# 擲骰台（MapGen._place_dice_spots）：起點以外每塊區域一塊、不重複；整塊小格在地圖裡、全是實心（牆外，角色與怪走不到）；不在門外
+static func _stage_dice_spots(w: World) -> String:
+	var spots: Array = w.map.get("dice_spots", [])
+	var want := 0
+	for rg: Dictionary in w.map.regions:
+		if rg.role != &"start":
+			want += 1
+	if spots.size() != want:
+		return "擲骰台應每塊打怪的區域一塊：%d 塊區域、%d 塊擲骰台" % [want, spots.size()]
+	var half := MapGenDefs.SUB / 2.0 - 0.5
+	for i in spots.size():
+		var at := MapDefs.to_world(w.map, spots[i])
+		for j in i:
+			if (spots[j] as Vector2).distance_to(spots[i]) < 0.01:
+				return "擲骰台重複：%s" % [spots[i]]
+		for x in range(-2, 3):
+			for y in range(-2, 3):
+				var pt := at + Vector2(x, y) * half / 2.0
+				if absf(pt.x) > w.half_extents.x or absf(pt.y) > w.half_extents.y or not w.terrain.blocks_nav(pt, 0.0):
+					return "擲骰台 %s 整塊應在地圖裡、全是實心：%s 不是" % [at, pt]
+		for d: Dictionary in w.map.get("stage_doors", []):
+			if MapDefs.to_world(w.map, d.at).distance_to(at) < MapGenDefs.SUB / 2.0 + 1.0:
+				return "擲骰台 %s 不該在門外（門在 %s）" % [at, MapDefs.to_world(w.map, d.at)]
 	return ""
 
 

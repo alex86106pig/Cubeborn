@@ -1,5 +1,6 @@
 # 小關地圖產生器（地圖改版）：照種子拼出一關，輸出跟 MapDefs.MAPS 同格式的地圖資料（blocks、出生點、挖墳點…）與固定要素的位置
 # 做法照 mockups/map_layouts.html 的「拼形＋不規則邊緣」：區域用拼形小格接成主線＋支線 → 區域之間開口、沿小格中心拉走道 →
+# 固定要素（起點、鐵砧、出口的門、大寶箱）→ 擲骰台（每塊打怪的區域旁邊一格空小格，_place_dice_spots）→
 # 1 單位格子從邊界往內吃（雜訊決定深度，形成崖壁）→ 每塊依主題放障礙物 → 確認起點走得到出口 / 鐵砧 / 寶箱 / 挖墳點 → 怪群、小寶箱
 # 客戶端照同一個種子自己算這張地圖，不同平台要一模一樣：亂數只用 randi_range，座標是整數或 1/4 單位（二進位表示得出來），
 # 距離一律比平方；只用 GDScript 的四則運算（每一步分開算，不會被合成乘加），不用三角函數、開根號、randf、Vector2 的長度與距離
@@ -31,6 +32,7 @@ var coffins: Array[Vector2] = []       # 石棺
 var chest_quota := {}                  # 這一小關分到的 { altars, coffins }（chest_plan）
 var chest_short := 0                   # 放不下、少放了幾個
 var packs: Array[Array] = []           # [x, y, 隻數]
+var dice_spots: Array[Vector2i] = []   # 擲骰台：小格（區域旁邊沒被佔的那格，整格是牆外的實心）
 # 1 單位格子：區域 id，-1 = 實心（崖壁、外面）
 var gx0 := 0
 var gy0 := 0
@@ -327,8 +329,52 @@ func _build_regions() -> bool:
 			var p := _center(c)
 			segs.append(PackedFloat64Array([last.x, last.y, p.x, p.y]))
 			last = p
+	_place_dice_spots()
 	_build_grid()
 	return true
+
+
+# 擲骰台（骰子模式開打時骰盤擺這裡，DicePanel.tray_transform）：起點以外每塊區域，挑旁邊（四方向）沒被佔的小格裡離這塊中心最近的一格，
+# 優先挑在原本範圍（所有區域的外框）裡的，挑不到才往外（地圖會變大一格）；門外那格不用（骰盤會擋住門）、別塊挑過的不重複；
+# 整格是實心（牆外），角色與怪走不到。
+# 不用亂數：照區域、小格、方向的順序挑，加這一步不會改到後面任何東西的亂數；不管有沒有開骰子模式都留（連線時客戶端照種子算，地圖要一樣）
+func _place_dice_spots() -> void:
+	var s := MapGenDefs.SUB
+	var lo := Vector2i(1 << 20, 1 << 20)
+	var hi := -lo
+	for reg in regions:
+		for c: Vector2i in reg.sub:
+			lo = Vector2i(mini(lo.x, c.x), mini(lo.y, c.y))
+			hi = Vector2i(maxi(hi.x, c.x), maxi(hi.y, c.y))
+	var outside := float(s * s * 1000)   # 在範圍外的加這麼多（比任何範圍內的距離平方都大）
+	for reg in regions:
+		if reg.role == &"start":
+			continue
+		var hub := _center(reg.hub)
+		var best := Vector2i(1 << 20, 1 << 20)
+		var best_d := INF
+		for c: Vector2i in reg.sub:
+			for d in DIRS:
+				var n: Vector2i = c + d
+				if occ.has(n) or dice_spots.has(n) or _door_in(n, s):
+					continue
+				var dd := _dist2(_center(n), hub)
+				if n.x < lo.x or n.y < lo.y or n.x > hi.x or n.y > hi.y:
+					dd += outside
+				if dd < best_d:
+					best_d = dd
+					best = n
+		if best_d < INF:
+			dice_spots.append(best)
+
+
+# 小格 n 上（含邊上 1 單位）有沒有出口的門
+func _door_in(n: Vector2i, s: int) -> bool:
+	for dr: Dictionary in doors:
+		var at: Vector2 = dr.at
+		if at.x >= n.x * s - 1 and at.x <= (n.x + 1) * s + 1 and at.y >= n.y * s - 1 and at.y <= (n.y + 1) * s + 1:
+			return true
+	return false
 
 
 func _link_into(id: int) -> Dictionary:
@@ -399,6 +445,9 @@ func _build_grid() -> void:
 		for c: Vector2i in reg.sub:
 			lo = Vector2i(mini(lo.x, c.x), mini(lo.y, c.y))
 			hi = Vector2i(maxi(hi.x, c.x), maxi(hi.y, c.y))
+	for c in dice_spots:   # 擲骰台在地圖範圍裡（實心、畫成邊界的土坡）
+		lo = Vector2i(mini(lo.x, c.x), mini(lo.y, c.y))
+		hi = Vector2i(maxi(hi.x, c.x), maxi(hi.y, c.y))
 	gx0 = lo.x * s - MapGenDefs.EDGE_PAD
 	gy0 = lo.y * s - MapGenDefs.EDGE_PAD
 	gw = (hi.x + 1) * s + MapGenDefs.EDGE_PAD - gx0
@@ -1048,6 +1097,10 @@ func _output(base: Dictionary, attempt: int) -> Dictionary:
 	for p in coffins:
 		spots.append([p.x + shift.x, p.y + shift.y, &"big"])
 	m.chest_spots = spots
+	var dice_out := []
+	for c in dice_spots:
+		dice_out.append(_center(c) + shift)
+	m.dice_spots = dice_out
 	m.chest_short = chest_short
 	var pack_spots := []
 	for pk in packs:
