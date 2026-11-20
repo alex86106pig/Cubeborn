@@ -695,7 +695,9 @@ func _sync_arena() -> void:
 	var doors := []
 	for d: Dictionary in DigEvent.doors(world):
 		doors.append({"pos": MapDefs.to_world(world.map, d.at), "side": d.side})
-	arena_view.build(world.half_extents, world.terrain, theme, doors, hash(world.layout_key), world.map.get("edge_blocks", 0))
+	arena_view.build(world.half_extents, world.terrain, theme, doors, hash(world.layout_key), world.map.get("edge_blocks", 0), world.dice != null)
+	if hud != null:   # 開場第一次建場時介面還沒建好（之後換關會再建一次）
+		hud.dice_panel.set_ground_theme(theme)
 	world_view.apply_theme(theme)
 	if perf != null:   # 換小關 / 換層的卡頓拆成模擬（換關那一步，perf hitch 的 logic）與這裡的場地重建
 		print("perf arena_build t=%.2f ms=%.1f blocks=%d" % [world.stats.time, (Time.get_ticks_usec() - t0) / 1000.0, world.terrain.blocks.size()])
@@ -830,6 +832,7 @@ func _process(delta: float) -> void:
 	var me := local_player()
 	hud.revive_button.visible = in_weapon_test and me != null and (me.is_dead or me.is_downed)
 	_sync_arena()
+	arena_view.update_cut(hud.dice_panel.tray_cut(), delta)   # 骰子模式擲骰時，骰盤底下的牆、樹壓平
 	var t0 := Time.get_ticks_usec()
 	world_view.sync(world, alpha, delta)
 	if perf != null:

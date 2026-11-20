@@ -26,6 +26,9 @@ const BLOCK_COLORS := {
 }
 
 var layout_key := []   # 現在畫的是哪份地形（main.gd 比對 World.layout_key：換層、換種子就重建）
+var _cut_mat: ShaderMaterial = null   # 骰子模式：地形裝飾網格的材質，擲骰時把骰盤底下的東西壓平（update_cut）
+var _cut_amount := 0.0
+const CUT_RISE_SHARPNESS := 8.0   # 骰盤收起來後，壓平的東西長回來多快（壓下去是一下子）
 
 # 小關出口的門：兩根石柱＋橫樑＋發光的門洞（顏色同出口的字 WorldLabels.EXIT_COLOR）
 const DOOR_STONE := Color("6b6e75")
@@ -38,10 +41,12 @@ const DOOR_HEIGHT := 3.2
 # doors：小關出口的門 [{ pos: 世界座標, side: N / E / S / W }]（DigEvent.doors，main.gd 換算）
 # seed_value：這份地形的種子（main.gd 給 hash(World.layout_key)）：裝飾照它擺，每個人看到的一樣；0 = 隨機
 # edge_count：terrain.blocks 最前面幾個是地圖邊界（World.map.edge_blocks，有造型的主題畫成矮土坡）
-func build(half: Vector2, terrain: Terrain, theme: StringName = &"graveyard", doors: Array = [], seed_value := 0, edge_count := 0) -> void:
+func build(half: Vector2, terrain: Terrain, theme: StringName = &"graveyard", doors: Array = [], seed_value := 0, edge_count := 0, cuttable := false) -> void:
 	for child in get_children():
 		remove_child(child)
 		child.queue_free()
+	_cut_mat = null
+	_cut_amount = 0.0
 	var rng := RandomNumberGenerator.new()
 	if seed_value == 0:
 		rng.randomize()
@@ -50,9 +55,37 @@ func build(half: Vector2, terrain: Terrain, theme: StringName = &"graveyard", do
 	add_child(DarkFantasy.build_arena(half, rng, theme))
 	var style := BlockDressing.palette(theme)
 	if not terrain.blocks.is_empty():
-		add_child(create_blocks(terrain.blocks, theme) if style.is_empty() else BlockDressing.build(terrain.blocks, style, rng.randi(), edge_count))
+		if style.is_empty():
+			add_child(create_blocks(terrain.blocks, theme))
+		else:
+			var dressing := BlockDressing.build(terrain.blocks, style, rng.randi(), edge_count)
+			if cuttable:
+				_cut_mat = BlockDressing.cut_material()
+				dressing.material_override = _cut_mat
+			add_child(dressing)
 	if not doors.is_empty():
 		add_child(create_doors(doors))
+
+
+# 骰子模式擲骰時（cut = DicePanel.tray_cut()）：骰盤底下的地形裝飾壓平，收起來（null）後慢慢長回來
+func update_cut(cut: Variant, dt: float) -> void:
+	if _cut_mat == null:
+		return
+	if cut != null:
+		_cut_mat.set_shader_parameter(&"cut_center", cut.center)
+		_cut_mat.set_shader_parameter(&"cut_right", cut.right)
+		_cut_mat.set_shader_parameter(&"cut_half", cut.half)
+		_cut_mat.set_shader_parameter(&"cut_floor", cut.floor)
+		_cut_amount = 1.0
+	elif _cut_amount > 0.0:
+		_cut_amount = MathUtil.damp(_cut_amount, 0.0, CUT_RISE_SHARPNESS, dt)
+		if _cut_amount < 0.01:
+			_cut_amount = 0.0
+	_cut_mat.set_shader_parameter(&"cut_amount", _cut_amount)
+
+
+func cut_amount() -> float:
+	return _cut_amount
 
 
 # 出口的門貼著關卡邊緣的崖壁：門洞寬沿著那一邊（北 / 南沿 x、東 / 西沿 z）

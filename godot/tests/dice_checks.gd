@@ -1249,7 +1249,7 @@ static func check_dice_tray() -> String:
 	var nearest := Vector2(clampf(local.x, -DiceTable.PLAY.x / 2.0, DiceTable.PLAY.x / 2.0), clampf(local.y, -DiceTable.PLAY.y / 2.0, DiceTable.PLAY.y / 2.0))
 	if nearest.distance_to(local) < w.dice.arena_radius - 0.01:
 		return "骰盤應擺在霧牆外：桌面離圈中心最近 %.1f（半徑 %.1f）" % [nearest.distance_to(local), w.dice.arena_radius]
-	# 右邊擋著一道牆：應換一邊擺，桌子底下沒有障礙
+	# 骰盤可以擺在牆上（底下的牆、樹擲骰時壓平）：高度照地面、不照牆頂；擺的地方有怪就換個地方
 	var w4 := _dice_world()
 	var p4 := _player(w4)
 	var e4 := _elite(w4, p4.pos + Vector2(0, 4))
@@ -1258,12 +1258,73 @@ static func check_dice_tray() -> String:
 	var blocks: Array[Dictionary] = w4.terrain.blocks.duplicate()
 	blocks.append({"min": t0 - Vector2(3, 3), "max": t0 + Vector2(3, 3), "top": 2.0, "kind": MapDefs.WALL})
 	w4.terrain = Terrain.new(blocks)
-	var t1 := dp2_tray(w4)
-	if t1.distance_to(t0) < 1.0 or w4.terrain.blocks_nav(t1, 0.0):
-		return "原本的位置擺了一道牆，骰盤應換個沒有障礙的地方：原本 %s → %s" % [t0, t1]
+	var y_on_wall := dp2_tray_y(w4)
+	if absf(y_on_wall - (w4.terrain.floor_at(t0) + DiceDefs.TRAY_LIFT)) > EPS:
+		return "骰盤底下有牆時高度照地面（%.2f）、不照牆頂：%.2f" % [w4.terrain.floor_at(t0) + DiceDefs.TRAY_LIFT, y_on_wall]
+	# 優先擺牆外（角色與怪走不到，不會被蓋住）：右邊是空地、左邊一整片牆 → 擺到左邊的牆上
+	var w5 := _new_world(12345, false, &"practice")
+	w5.dice = DiceRun.new()
+	w5.dice.reset()
+	var p5 := _player(w5)
+	var e5 := _elite(w5, p5.pos + Vector2(0, 4))
+	w5.alert_pack(_lone_pack(w5, e5), e5, p5)
+	var open_at := dp2_tray(w5)
+	var band: Array[Dictionary] = [{"min": Vector2(-w5.half_extents.x, -w5.half_extents.y), "max": Vector2(p5.pos.x - 12.0, w5.half_extents.y), "top": 3.0, "kind": MapDefs.WALL}]
+	w5.terrain = Terrain.new(band)
+	var wall_at := dp2_tray(w5)
+	if not w5.terrain.blocks_nav(wall_at, 0.0) or open_at.x < p5.pos.x:
+		return "旁邊有牆時骰盤應擺在牆外：沒牆時 %s（應在右邊空地）、左邊一片牆時 %s（應在牆上）" % [open_at, wall_at]
+	var cut_err := _check_tray_cut()
+	if cut_err != "":
+		return cut_err
 	_note("骰盤放進遊戲世界：%.2f 秒停好、面 %s" % [frames / 60.0, got[0] if not got.is_empty() else []])
 	return ""
 
+
+
+static func dp2_tray_y(w: World) -> float:
+	var dp := DicePanel.new()
+	dp.tray_right = Vector3(1, 0, 0)
+	var t := dp.tray_transform(w, w.dice, _player(w))
+	dp.free()
+	return t.origin.y
+
+
+# 骰子模式的地形裝飾換成壓得平的材質（一般模式照舊）：擲骰時（tray_cut 有值）一下子壓平、範圍照骰盤，收起來後慢慢長回來
+static func _check_tray_cut() -> String:
+	var w := _new_world()
+	var blocks: Array[Dictionary] = [{"min": Vector2(2, 2), "max": Vector2(4, 4), "top": 2.0, "kind": MapDefs.WALL}]
+	var terrain := Terrain.new(blocks)
+	var plain := ArenaView.new()
+	plain.build(w.half_extents, terrain, &"graveyard", [], 1, 0, false)
+	var dice := ArenaView.new()
+	dice.build(w.half_extents, terrain, &"graveyard", [], 1, 0, true)
+	var err := ""
+	var mats: Array = []
+	for view: ArenaView in [plain, dice]:
+		var m: Material = null
+		for c in view.get_children():
+			if c is MeshInstance3D and (c as MeshInstance3D).material_override != null and c.has_meta(&"tufts"):
+				m = (c as MeshInstance3D).material_override
+		mats.append(m)
+	if not (mats[0] is StandardMaterial3D) or not (mats[1] is ShaderMaterial):
+		err = "地形裝飾的材質：一般模式應照舊（%s）、骰子模式換成壓得平的（%s）" % [mats[0], mats[1]]
+	if err == "":
+		var cut := {"center": Vector2(3, 3), "right": Vector2(1, 0), "half": DiceTable.PLINTH / 2.0, "floor": 0.0}
+		dice.update_cut(cut, DT)
+		var sm: ShaderMaterial = mats[1]
+		if dice.cut_amount() < 1.0 or sm.get_shader_parameter(&"cut_center") != cut.center or sm.get_shader_parameter(&"cut_half") != cut.half:
+			err = "擲骰時應一下子壓平、範圍照骰盤：壓了 %.2f、中心 %s" % [dice.cut_amount(), sm.get_shader_parameter(&"cut_center")]
+		var half_way := -1.0
+		for i in roundi(1.5 / DT):
+			dice.update_cut(null, DT)
+			if i == roundi(0.1 / DT):
+				half_way = dice.cut_amount()
+		if err == "" and (half_way <= 0.0 or half_way >= 1.0 or dice.cut_amount() > 0.0):
+			err = "骰盤收起來後應慢慢長回來：0.1 秒時 %.2f、1.5 秒後 %.2f" % [half_way, dice.cut_amount()]
+	plain.free()
+	dice.free()
+	return err
 
 
 static func dp2_tray(w: World) -> Vector2:

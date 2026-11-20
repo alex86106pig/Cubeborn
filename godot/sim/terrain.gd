@@ -64,6 +64,16 @@ func is_solid(p: Vector2, altitude: float) -> bool:
 
 
 # 怪物尋路當障礙的石台（牆、墓碑）是否蓋到 p（往外擴 margin）；高台不算，怪物會跳上去
+# 站得上去的地面高（石台頂面或 0）：牆與墓碑不算（骰子模式的骰盤擺在牆外時，高度照地面、不照牆頂）
+func floor_at(p: Vector2) -> float:
+	var ground := 0.0
+	for i in _near(p):
+		var b := blocks[i]
+		if b.kind == MapDefs.PLATFORM and p.x >= b.min.x and p.x <= b.max.x and p.y >= b.min.y and p.y <= b.max.y:
+			ground = maxf(ground, b.top)
+	return ground
+
+
 func blocks_nav(p: Vector2, margin: float) -> bool:
 	for i in _near(p):
 		var b := blocks[i]

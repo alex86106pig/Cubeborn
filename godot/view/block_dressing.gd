@@ -112,6 +112,46 @@ static func build(blocks: Array[Dictionary], style: Dictionary, seed_value: int,
 	return mi
 
 
+# 骰子模式用的材質（ArenaView.build 的 cuttable）：看起來同上面的 StandardMaterial3D（頂點色當底色、sRGB、Lambert、不反光），
+# 多了 cut_*：擲骰時骰盤（連台座）那塊長方形裡高出地面的頂點壓到地面下（牆、墓碑、樹、土坡都在這個網格裡）。
+# 只動頂點、不用 discard（網頁版 discard 會關掉提早的深度測試）；網格要擺在原點、不轉不縮放（ArenaView 照這樣加）
+const CUT_SHADER := """
+shader_type spatial;
+render_mode diffuse_lambert, specular_disabled;
+uniform vec2 cut_center;
+uniform vec2 cut_right = vec2(1.0, 0.0);
+uniform vec2 cut_half;
+uniform float cut_floor;
+uniform float cut_amount;
+void vertex() {
+	if (cut_amount > 0.0) {
+		vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+		vec2 d = w.xz - cut_center;
+		vec2 l = vec2(dot(d, cut_right), dot(d, vec2(-cut_right.y, cut_right.x)));
+		if (abs(l.x) < cut_half.x && abs(l.y) < cut_half.y && w.y > cut_floor - 0.05) {
+			VERTEX.y -= (w.y - cut_floor + 0.05) * cut_amount;
+		}
+	}
+	COLOR.rgb = mix(pow((COLOR.rgb + vec3(0.055)) * (1.0 / 1.055), vec3(2.4)), COLOR.rgb * (1.0 / 12.92), lessThan(COLOR.rgb, vec3(0.04045)));
+}
+void fragment() {
+	ALBEDO = COLOR.rgb;
+	ROUGHNESS = 1.0;
+	SPECULAR = 0.0;
+}
+"""
+static var _cut_shader: Shader
+
+
+static func cut_material() -> ShaderMaterial:
+	if _cut_shader == null:
+		_cut_shader = Shader.new()
+		_cut_shader.code = CUT_SHADER
+	var m := ShaderMaterial.new()
+	m.shader = _cut_shader
+	return m
+
+
 # ---------- 牆 ----------
 
 func _wall(b: Dictionary, c: Array) -> void:

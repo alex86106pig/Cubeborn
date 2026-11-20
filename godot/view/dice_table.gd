@@ -24,6 +24,7 @@ enum State { IDLE, AIM, ROLLING, SETTLED }
 
 const VIEW_SIZE := Vector2i(960, 430)
 const PLAY := Vector2(12.0, 5.6)           # 桌面能滾的範圍（x 寬、z 深），中心在原點
+const PLINTH := Vector2(PLAY.x + 3.0, PLAY.y + 3.0)   # 放進遊戲世界時連台座最外圈（石裙）佔的地面（DicePanel 擺放與壓平地形照這個）
 const WALL_H := 6.0                        # 牆的碰撞高度（畫面上只畫矮矮的木框）
 const RIM_H := 0.5
 const SHELF_Z := -PLAY.y / 2.0 - 1.4       # 保留區（後面那條木架）
@@ -100,6 +101,10 @@ var _root: Node3D
 var _sun: DirectionalLight3D
 var _env: WorldEnvironment
 var _felt: MeshInstance3D
+var _plinth: MeshInstance3D   # 放進遊戲世界時的石台與石裙（use_world 才建）
+var _skirt: MeshInstance3D
+const PLINTH_SIDE := Color("7a7166")   # 台座石頭的預設色（墓園的牆）
+const PLINTH_TOP := Color("9e9584")
 const WORLD_FELT := Color("5c2328")   # 放進遊戲世界時的絨布（酒紅）：綠的在遊戲的暖光下跟草地分不出來
 
 
@@ -916,8 +921,13 @@ func use_world(parent: Node3D, cam: Camera3D) -> void:
 	_sun.visible = false
 	_env.environment = null
 	_felt.material_override = _mat(WORLD_FELT)
-	# 放在戰場旁的地上：底下墊一塊厚木座（地面高低不一，桌子墊高後看起來像一個擺在桌上的骰盒，不是浮在半空）
-	_root.add_child(_box(Vector3(PLAY.x + 1.8, 1.6, PLAY.y + 1.8), Vector3(0, -1.2, 0), Color("4a3020")))
+	# 放在戰場旁的地上（原點在地面上 DiceDefs.TRAY_LIFT）：木頭骰盒擺在一座石台上，石台腳一圈石裙貼著地面，
+	# 看起來是地圖本來就有的擲骰台；底下的牆、樹在擲骰時被 ArenaView 壓平。石頭顏色照這一層的牆（set_plinth_colors）
+	_root.add_child(_box(Vector3(PLAY.x + 1.8, 0.4, PLAY.y + 1.8), Vector3(0, -0.6, 0), Color("4a3020")))
+	_plinth = _box(Vector3(PLAY.x + 1.2, 1.3, PLAY.y + 1.2), Vector3(0, -1.45, 0), PLINTH_SIDE)
+	_skirt = _box(Vector3(PLINTH.x, 0.6, PLINTH.y), Vector3(0, -1.05, 0), PLINTH_TOP)
+	_root.add_child(_plinth)
+	_root.add_child(_skirt)
 	_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	_root.remove_child(_camera)   # 桌子自己的鏡頭留在自己的畫面裡：跟著搬過去會變成遊戲畫面的鏡頭
 	_viewport.add_child(_camera)
@@ -940,6 +950,21 @@ func set_origin(t: Transform3D) -> void:
 
 func set_shown(v: bool) -> void:
 	_root.visible = v
+
+
+func is_shown() -> bool:
+	return _root.visible
+
+
+func origin() -> Transform3D:
+	return _root.transform
+
+
+# 台座的石頭照這一層的牆配色（BlockDressing.palette 的 [側面, 頂面]）
+func set_plinth_colors(side: Color, top: Color) -> void:
+	if _plinth != null:
+		_plinth.material_override = _mat(side)
+		_skirt.material_override = _mat(top)
 
 
 # 骰盤在遊戲世界的中心；放慢時鏡頭要推近的那顆的位置（沒有回傳 null）

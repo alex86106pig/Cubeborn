@@ -39,6 +39,8 @@ var _effects := UiKit.label("", UiKit.FONT_NOTE, Color("9fd8ff"))
 var world_table := false            # 骰盤放在遊戲世界裡戰場旁（use_world_table）：不蓋中間、不變暗，鏡頭轉過去
 var tray_right := Vector3.RIGHT     # 螢幕右邊在地面上的方向（骰盤擺在戰場右邊）
 var tray_yaw := 0.0                 # 骰盤轉多少才正對遊戲的鏡頭
+const EDGE_INSET := 1.0              # 骰盤不超出地圖外框往內這麼多：外框外的墓碑、樹、外框岩石合併成一個網格，壓不平
+const CUT_MARGIN := 0.3              # 壓平的範圍比台座每邊多一點（斜切過邊界的三角形藏進台座）
 var _table_box: CenterContainer
 var _dim: Control
 var _summary := UiKit.label("", UiKit.FONT_NOTE, Color(1, 1, 1, 0.92))   # 結果總覽：大家都擲完、倒數時列每個人的右鍵與效果
@@ -275,20 +277,23 @@ func end_warm_up() -> void:
 
 
 # 骰盤擺哪：有霧牆就在圈外，沒有（逛地圖花次數擲）就在擲的人旁邊；轉成正對鏡頭
-# 圍著中心試幾個方向與距離（右邊優先），挑桌子底下障礙（牆、柵欄、墓碑）、地圖外、高低不平最少的；每台照同樣的地形算，擺的位置一樣
+# 圍著中心試幾個方向與距離（右邊優先），優先擺在牆外：底下的牆、墓碑、樹在擲骰時壓平（ArenaView.update_cut），
+# 牆外角色與怪走不到，不會被蓋住；避開蓋到戰場、出口、地圖外框外、地面高低差太大的；每台照同樣的地形算，擺的位置一樣
 func tray_transform(world: World, dice: DiceRun, p: Player) -> Transform3D:
 	var anchor := dice.arena_center if dice.arena_radius > 0.0 else (p.pos if p != null else Vector2.ZERO)
-	var near := (dice.arena_radius if dice.arena_radius > 0.0 else 2.0) + DiceTable.PLAY.y / 2.0 + 1.5
+	var near := (dice.arena_radius if dice.arena_radius > 0.0 else 2.0) + DiceTable.PLINTH.y / 2.0 + 0.5
 	var right := Vector2(tray_right.x, tray_right.z)
 	var up := Vector2(-right.y, right.x)
+	var avoid := _tray_avoid(world)
+	var edges: Array[Dictionary] = world.terrain.blocks.slice(0, world.map.get("edge_blocks", 0))
 	var best := Vector2.ZERO
 	var best_score := INF
 	var best_ground := 0.0
 	for dist: float in [1.0, 1.35]:
 		for dir: Vector2 in [right, -right, up, -up, (right + up).normalized(), (right - up).normalized(), (-right + up).normalized(), (-right - up).normalized()]:
-			var reach := near + absf(dir.dot(right)) * (DiceTable.PLAY.x - DiceTable.PLAY.y) / 2.0   # 往左右擺要多讓半張桌子的長邊
+			var reach := near + absf(dir.dot(right)) * (DiceTable.PLINTH.x - DiceTable.PLINTH.y) / 2.0   # 往左右擺要多讓半張桌子的長邊
 			var at := anchor + dir * reach * dist
-			var r := _tray_score(world, at, right, up)
+			var r := _tray_score(world, at, right, up, anchor, dice.arena_radius, avoid, edges)
 			if r[0] < best_score - 0.01:
 				best_score = r[0]
 				best = at
@@ -296,22 +301,45 @@ func tray_transform(world: World, dice: DiceRun, p: Player) -> Transform3D:
 	return Transform3D(Basis(Vector3.UP, tray_yaw), Vector3(best.x, best_ground + DiceDefs.TRAY_LIFT, best.y))
 
 
-# 桌子擺在 at：底下每 1.5 取一點，[分數（障礙、地圖外各算 1，高低差超過一階算 0.5）, 最高的地面]
-static func _tray_score(world: World, at: Vector2, right: Vector2, up: Vector2) -> Array:
+# 骰盤不該蓋住的東西：[位置, 半徑]（出口的門、挖墳點；門在邊界的牆上，牆外擺骰盤時會碰到）
+static func _tray_avoid(world: World) -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	for d: Dictionary in DigEvent.doors(world):
+		var at := MapDefs.to_world(world.map, d.at)
+		out.append(Vector3(at.x, at.y, 3.0))
+	if DigEvent.enabled(world):
+		out.append(Vector3(world.event.point.x, world.event.point.y, 3.0))
+	return out
+
+
+# 骰盤（連台座）擺在 at：底下每 1.5 取一點，[分數, 最高的地面（畫面上的：牆與墓碑不算，會被壓平；地圖邊界那圈畫成 BlockDressing.BANK_H 高的土坡）]
+# 分數（每個取樣點）：蓋到戰場 6、蓋到出口 4、超出地圖外框 1、走得到的地面 1（牆外擺得下就擺牆外）、高低差超過一階每階 0.5
+static func _tray_score(world: World, at: Vector2, right: Vector2, up: Vector2, arena: Vector2, arena_radius: float, avoid: Array[Vector3], edges: Array[Dictionary]) -> Array:
 	var score := 0.0
 	var top := -INF
 	var low := INF
-	var half := Vector2(DiceTable.PLAY.x + 1.8, DiceTable.PLAY.y + 1.8) / 2.0
+	var half := DiceTable.PLINTH / 2.0
+	var ring := arena_radius + 0.3
 	var x := -half.x
 	while x <= half.x + 0.01:
 		var y := -half.y
 		while y <= half.y + 0.01:
 			var pt := at + right * x + up * y
-			if absf(pt.x) > world.half_extents.x or absf(pt.y) > world.half_extents.y:
+			if arena_radius > 0.0 and pt.distance_squared_to(arena) < ring * ring:
+				score += 6.0
+			for a in avoid:
+				if pt.distance_squared_to(Vector2(a.x, a.y)) < a.z * a.z:
+					score += 4.0
+					break
+			if absf(pt.x) > world.half_extents.x - EDGE_INSET or absf(pt.y) > world.half_extents.y - EDGE_INSET:
 				score += 1.0
-			elif world.terrain.blocks_nav(pt, 0.2):
+			elif not world.terrain.blocks_nav(pt, 0.0):
 				score += 1.0
-			var g := world.terrain.ground_at(pt)
+			var g := world.terrain.floor_at(pt)
+			for b in edges:
+				if pt.x >= b.min.x and pt.x <= b.max.x and pt.y >= b.min.y and pt.y <= b.max.y:
+					g = maxf(g, BlockDressing.BANK_H)
+					break
 			top = maxf(top, g)
 			low = minf(low, g)
 			y += 1.5
@@ -319,6 +347,24 @@ static func _tray_score(world: World, at: Vector2, right: Vector2, up: Vector2) 
 	if top - low > Config.HEIGHT.step:
 		score += 0.5 * (top - low) / Config.HEIGHT.step
 	return [score, top]
+
+
+# 換關時（main.gd）：台座的石頭照這一層的牆配色
+func set_ground_theme(theme: StringName) -> void:
+	var style := BlockDressing.palette(theme)
+	if not style.is_empty():
+		var c: Array = style.blocks[&"wall"]
+		table.set_plinth_colors(c[0], c[1])
+
+
+# 擲骰時骰盤（連台座）佔的地面：{center, right（桌子長邊的方向）, half, floor（地面高）}，ArenaView 把這塊上面的地形壓平；
+# 沒顯示（或預熱中）回傳 null
+func tray_cut() -> Variant:
+	if not world_table or _warming or not table.is_shown():
+		return null
+	var t := table.origin()
+	return {"center": Vector2(t.origin.x, t.origin.z), "right": Vector2(t.basis.x.x, t.basis.x.z).normalized(),
+		"half": DiceTable.PLINTH / 2.0 + Vector2(CUT_MARGIN, CUT_MARGIN), "floor": t.origin.y - DiceDefs.TRAY_LIFT}
 
 
 # 鏡頭該看哪裡（main.gd）：擲骰、倒數時看骰盤（放慢時看那一顆），其他時候 null（照舊跟著自己）
