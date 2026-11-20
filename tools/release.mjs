@@ -10,7 +10,7 @@
 //                                                         按鍵：參數加 shot-key=Tab&shot-key-after=stage_hop&shot-key-delay=1.5（Console 出現 stage_hop 後 1.5 秒按 Tab；這三個不傳給遊戲）
 //   node tools/release.mjs --summary "摘要"               推送：更新（rebase）→ 決定版號 → 檢查 → commit + tag → push
 //   node tools/release.mjs --summary "摘要" --dry-run     不動 git 歷史、不推：只 fetch、算版號、改檔跑檢查，最後還原
-//   加 --bump=minor|patch 可以蓋過自動判斷的版號
+//   加 --bump=minor|patch 可以蓋過自動判斷的版號；--skip-check 不跑 check.gd（只匯入），只在使用者當次明確說不要檢查時用
 // Godot：--godot <console 執行檔路徑> 或環境變數 GODOT（每台電腦的路徑寫在 CLAUDE.local.md）
 // git：環境變數 GIT，沒有就用 PATH 上的 git（Windows 找不到時改用 Program Files 裡的）
 import { spawn, spawnSync } from 'node:child_process';
@@ -574,8 +574,15 @@ if (version) {
 }
 
 // 4. 檢查（更新後的版本一定要再驗一次：兩邊的改動合起來可能文字沒衝突、邏輯卻壞了）
-console.log(`檢查中（${version ? `v${latest.join('.')} → v${version}` : '不升版號'}）…`);
-if (!runChecks()) { restore(); fail('檢查沒過，已還原版號的修改，沒有推送'); }
+if (has('skip-check')) {
+  // 只有使用者在當次對話明確說「不要檢查」才用（例如只加圖示、趕時間）；照樣匯入，新的素材才有 .import
+  console.log(`⚠ 跳過 check.gd（--skip-check）（${version ? `v${latest.join('.')} → v${version}` : '不升版號'}），只匯入…`);
+  const imp = runGodot(godotPath(), ['--headless', '--import', '--path', '.'], IMPORT_TIMEOUT, '匯入');
+  if (!imp.ok && imp.out.includes('強制停止')) { console.log(imp.out); restore(); fail('匯入逾時，已還原版號的修改，沒有推送'); }
+} else {
+  console.log(`檢查中（${version ? `v${latest.join('.')} → v${version}` : '不升版號'}）…`);
+  if (!runChecks()) { restore(); fail('檢查沒過，已還原版號的修改，沒有推送'); }
+}
 
 if (dryRun) {
   restore();
