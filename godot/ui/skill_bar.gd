@@ -226,8 +226,12 @@ class Slot extends Control:
 			draw_rect(r.grow(2.0), _outline)
 			draw_rect(r, Color("0b0d14"))
 			draw_rect(r.grow(-3.0), UiKit.SLOT_BG)
-		if tex != null:
-			draw_texture_rect(tex, r.grow(-5.0), false, Color(1, 1, 1, icon.modulate.a))
+		if tex != null:   # 圖示被圖案包起來的地方是白底（切圖只去掉外圍的白），墊一塊跟骰面一樣的白
+			var card := StyleBoxFlat.new()
+			card.bg_color = Color(DiceTable.DIE_WHITE, icon.modulate.a)
+			card.set_corner_radius_all(4)
+			draw_style_box(card, r.grow(-4.0))
+			draw_texture_rect(tex, r.grow(-6.0), false, Color(1, 1, 1, icon.modulate.a))
 		elif drawn_icon != "":
 			SkillIcons.draw(self, drawn_icon, size / 2.0, icon.modulate.a)
 

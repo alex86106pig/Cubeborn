@@ -1407,12 +1407,15 @@ static func dp2_tray(w: World) -> Vector2:
 
 # 獎勵畫面看骰子（§55）：獎勵卡下面一排 3D 骰子：你帶的 6 顆（面照帶的）、獎勵的新骰子與新武器的骰子；
 # 新骰子會換掉的那顆（空白最多）標「會被換掉」；拖曳會轉、放開慢慢轉回原位；整個獎勵畫面放得進介面最大檔；
-# 骰面的圖示（FaceIcons）：劍盾的 6 張圖都在、去了背（四角透明、中間不透明）；有圖的面貼圖、不寫字，別的武器的技能淡掉，空白面不放東西
+# 骰面的圖示（FaceIcons）：劍盾的圖、每把武器開局骰子的技能都有圖、去了背（四角透明、中間不透明）；有圖的面貼圖、不寫字，別的武器的技能淡掉，空白面不放東西
 static func check_dice_inspect() -> String:
-	for id: StringName in [&"whirlwind", &"shield_charge", &"sword_wave", &"shield_slam", &"fx_shield", &"fx_dmg"]:
+	var icon_ids: Array[StringName] = [&"whirlwind", &"shield_charge", &"sword_wave", &"shield_slam", &"blade_storm", &"fx_shield", &"fx_dmg"]
+	for wid: StringName in DiceDefs.WEAPON_DICE:   # 每把武器開局骰子的技能都要有圖
+		icon_ids.append(DiceDefs.WEAPON_DICE[wid][0])
+	for id: StringName in icon_ids:
 		var tex := FaceIcons.texture(id)
 		if tex == null:
-			return "劍盾的圖示 %s 應有圖（res://assets/icons/%s.png）" % [id, id]
+			return "技能 / 效果 %s 應有圖示（res://assets/icons/%s.png）" % [id, id]
 		var im := tex.get_image()
 		if im.is_compressed():
 			im.decompress()
