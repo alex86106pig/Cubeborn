@@ -613,8 +613,40 @@ static func check_dice_physics() -> String:
 		if err != "":
 			break
 		_note("物理擲骰 %s：%.2f 秒停好、推了 %d 次、面 %s" % [how, frames / 60.0, table._nudges, reported])
+	if err == "":
+		err = await _check_stacked_die(table)
 	table.queue_free()
 	return err
+
+
+# 平平疊在別顆上面的骰子：朝上的面已經定了，移到桌上的空位、面不變，不推、不重丟（斜著放不平的才重新決定）
+static func _check_stacked_die(table: DiceTable) -> String:
+	table.reset_round()
+	table.can_throw = true
+	var none: Array[bool] = [false, false, false, false, false, false]
+	var zero: Array[int] = [0, 0, 0, 0, 0, 0]
+	table.set_kept(none, zero)
+	var got: Array = []
+	var on_settle := func(f: Array) -> void: got.append(f)
+	table.settled.connect(on_settle)
+	table.auto_throw(0.8)
+	var stacked := false
+	var face := 2
+	for frames in int((DiceTable.SETTLE_TIMEOUT + 1.0) * 60):
+		await (Engine.get_main_loop() as SceneTree).physics_frame
+		if not got.is_empty():
+			break
+		if not stacked and table._rest_frames >= 1:   # 都停住、還沒判定停好：把第 2 顆平平疊到第 1 顆正上方
+			var under: RigidBody3D = table._dice[0]
+			table._place(table._dice[1], under.position + Vector3(0, 1.0, 0), face, false)
+			stacked = true
+	table.settled.disconnect(on_settle)
+	if not stacked or got.is_empty():
+		return "疊骰子：沒疊上去（%s）或沒停好" % stacked
+	var d: RigidBody3D = table._dice[1]
+	if got[0][1] != face or d.position.y > DiceTable.ON_TABLE_Y or table._nudges != 0:
+		return "平平疊著的骰子應移到桌上、面不變（%d）、不推：面 %d、高 %.2f、推了 %d 次" % [face, got[0][1], d.position.y, table._nudges]
+	return ""
 
 
 static func _mouse_button(at: Vector2, pressed: bool) -> InputEventMouseButton:

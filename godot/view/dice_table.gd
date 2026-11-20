@@ -39,9 +39,9 @@ const REST_LIN := 0.15                     # 速度小於這個算停住
 const REST_ANG := 0.3                      # 只看翻滾（繞水平軸）：平躺著原地打轉不會換面，不用等它轉完
 const REST_FRAMES := 18                    # 連續停住這麼多個物理步才算停好
 const FLAT_DOT := 0.93                     # 朝上那面的法線跟正上方的夾角餘弦小於這個 = 斜靠著，要推一下
-const MAX_NUDGES := 1                      # 推了這麼多次還斜著 / 疊著：那顆從半空重新丟下來
+const MAX_NUDGES := 1                      # 推了這麼多次還斜著：那顆從半空重新丟下來（平平疊著的直接移到空位、不推）
 const SETTLE_TIMEOUT := 6.0               # 到了還沒停好：還在動 / 斜著 / 疊著的那幾顆直接擺平（照最接近朝上的那面），不讓人等
-const ON_TABLE_Y := 0.8                    # 停住時中心高過這個 = 疊在別顆上面（也算沒停好）
+const ON_TABLE_Y := 0.8                    # 停住時中心高過這個 = 疊在別顆上面：朝上是平的就移到空位、面不變；斜的照斜著處理
 # 骰子 6 面的法線（面編號 = 骰面陣列的 index）
 const NORMALS: Array[Vector3] = [Vector3.UP, Vector3.DOWN, Vector3.RIGHT, Vector3.LEFT, Vector3.BACK, Vector3.FORWARD]
 const DICE_LAYER := 2                      # 骰子多一層碰撞層：點骰子只打這層（看不到的高牆有 6 高，斜著看射線會先打到牆）
@@ -616,9 +616,14 @@ func _step_physics(delta: float) -> void:
 			var d := _dice[i]
 			if not _rolling[i] or (up_dot(d) >= FLAT_DOT and d.position.y <= ON_TABLE_Y):
 				continue
-			cocked = true
+			if up_dot(d) >= FLAT_DOT:   # 平平疊在別顆上面：朝上的面已經定了，移到桌上的空位就好，不重骰
+				var spot := _free_spot(i)
+				_place(d, Vector3(spot.x, 0.5, spot.z), up_face(d), false)
+				_rest_frames = 0
+				continue
+			cocked = true   # 斜著放不平：推一下（推不開再從半空重新丟），朝上的面會重新決定
 			d.sleeping = false
-			if _nudges < MAX_NUDGES:   # 往桌子中間推：靠牆的不會又倒回同一面牆、疊著的會滑下來
+			if _nudges < MAX_NUDGES:   # 往桌子中間推：靠牆的不會又倒回同一面牆
 				var to_mid := -Vector3(d.position.x, 0, d.position.z).normalized() * 1.5
 				d.apply_central_impulse(_g(Vector3(to_mid.x + randf_range(-1, 1), 5.5, to_mid.z + randf_range(-1, 1))))
 				d.apply_torque_impulse(Vector3(randf_range(-2, 2), randf_range(-2, 2), randf_range(-2, 2)))
