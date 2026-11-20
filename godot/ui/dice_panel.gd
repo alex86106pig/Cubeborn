@@ -39,8 +39,7 @@ var _effects := UiKit.label("", UiKit.FONT_NOTE, Color("9fd8ff"))
 var world_table := false            # 骰盤放在遊戲世界裡戰場旁（use_world_table）：不蓋中間、不變暗，鏡頭轉過去
 var tray_right := Vector3.RIGHT     # 螢幕右邊在地面上的方向（骰盤擺在戰場右邊）
 var tray_yaw := 0.0                 # 骰盤轉多少才正對遊戲的鏡頭
-const SPOT_MAX_DIST := 40.0          # 擲骰台離這一場中心超過這麼遠就不用（鏡頭要移太遠），改成臨時找
-const SPOT_MAX_SCORE := 4.0          # 擲骰台的分數（_tray_score）到這麼多就不用：壓到霧牆（6）或出口（4）
+const SPOT_MAX_SCORE := 4.0          # 擲骰台的分數（_tray_score）到這麼多就先跳過：壓到霧牆（6）或出口（4）；全部都壓到才用最近的
 const EDGE_INSET := 1.0              # 骰盤不超出地圖外框往內這麼多：外框外的墓碑、樹、外框岩石合併成一個網格，壓不平
 const CUT_MARGIN := 0.3              # 壓平的範圍比台座每邊多一點（斜切過邊界的三角形藏進台座）
 var _table_box: CenterContainer
@@ -292,18 +291,20 @@ func tray_transform(world: World, dice: DiceRun, p: Player) -> Transform3D:
 	var best := Vector2.ZERO
 	var best_score := INF
 	var best_ground := 0.0
-	for sp: Vector2 in world.map.get("dice_spots", []):
-		var at := MapDefs.to_world(world.map, sp)
-		var dist := at.distance_to(anchor)
-		if dist > SPOT_MAX_DIST:
-			continue
-		var r := _tray_score(world, at, right, up, anchor, dice.arena_radius, avoid, edges)
-		if r[0] < SPOT_MAX_SCORE and dist < best_score:
-			best_score = dist
-			best = at
-			best_ground = r[1]
-	if best_score < INF:
-		return Transform3D(Basis(Vector3.UP, tray_yaw), Vector3(best.x, best_ground + DiceDefs.TRAY_LIFT, best.y))
+	# 地圖有擲骰台就一定用擲骰台（YangHsu 2026-11-20：開打時骰盤要用地圖產生的）：離這一場最近、沒壓到霧牆與出口的那個；都壓到就用最近的
+	var spots: Array = world.map.get("dice_spots", [])
+	for pass_i in 2:
+		for sp: Vector2 in spots:
+			var at := MapDefs.to_world(world.map, sp)
+			var dist := at.distance_to(anchor)
+			var r := _tray_score(world, at, right, up, anchor, dice.arena_radius, avoid, edges)
+			if (pass_i == 1 or r[0] < SPOT_MAX_SCORE) and dist < best_score:
+				best_score = dist
+				best = at
+				best_ground = r[1]
+		if best_score < INF:
+			return Transform3D(Basis(Vector3.UP, tray_yaw), Vector3(best.x, best_ground + DiceDefs.TRAY_LIFT, best.y))
+	# 沒有擲骰台的地圖（測試場、固定地圖）才在霧牆外臨時找
 	for dist: float in [1.0, 1.35]:
 		for dir: Vector2 in [right, -right, up, -up, (right + up).normalized(), (right - up).normalized(), (-right + up).normalized(), (-right - up).normalized()]:
 			var reach := near + absf(dir.dot(right)) * (DiceTable.PLINTH.x - DiceTable.PLINTH.y) / 2.0   # 往左右擺要多讓半張桌子的長邊

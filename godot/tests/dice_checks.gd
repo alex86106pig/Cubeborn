@@ -1348,24 +1348,51 @@ static func check_dice_tray() -> String:
 
 
 # 地圖有擲骰台時：開一場，骰盤擺在其中一塊擲骰台上（離這一場最近、不壓到霧牆）
+# 有擲骰台的地圖，每一群開打骰盤都擺在擲骰台上（不臨時找；種子 3 第 1 小關每一群各開一場）
 static func _check_tray_spot() -> String:
-	var w := World.new()
-	_worlds.append(w)
-	w.dice = DiceRun.new()
-	w.reset(3)
-	var spots: Array = w.map.get("dice_spots", [])
-	if spots.is_empty() or w.packs.is_empty():
-		return "第 1 小關（種子 3）應有擲骰台與怪群"
-	var pk: Dictionary = w.packs[0]
-	var first := w.entities.get(pk.ids[0]) as Enemy
-	var p := _player(w)
-	p.pos = w.nav.nearest_walkable(first.pos + Vector2(0, 3))
-	w.alert_pack(0, first, p)
-	var at := dp2_tray(w)
-	for sp: Vector2 in spots:
-		if MapDefs.to_world(w.map, sp).distance_to(at) < 0.01:
-			return ""
-	return "有擲骰台的地圖，骰盤應擺在擲骰台上：擺在 %s，擲骰台 %s" % [at, spots.map(func(sp: Vector2) -> Vector2: return MapDefs.to_world(w.map, sp))]
+	var n := -1
+	var i := 0
+	while i != n:
+		var w := World.new()
+		_worlds.append(w)
+		w.dice = DiceRun.new()
+		w.reset(3)
+		var spots: Array = w.map.get("dice_spots", [])
+		if spots.is_empty() or w.packs.is_empty():
+			return "第 1 小關（種子 3）應有擲骰台與怪群"
+		n = w.packs.size()
+		var pk: Dictionary = w.packs[i]
+		var first := w.entities.get(pk.ids[0]) as Enemy
+		var p := _player(w)
+		p.pos = w.nav.nearest_walkable(first.pos + Vector2(0, 3))
+		w.alert_pack(i, first, p)
+		var at := dp2_tray(w)
+		var on_spot := false
+		for sp: Vector2 in spots:
+			if MapDefs.to_world(w.map, sp).distance_to(at) < 0.01:
+				on_spot = true
+		if not on_spot:
+			return "有擲骰台的地圖，骰盤應擺在擲骰台上：第 %d 群擺在 %s，擲骰台 %s" % [i, at, spots.map(func(sp: Vector2) -> Vector2: return MapDefs.to_world(w.map, sp))]
+		i += 1
+	# 只剩離這一場最遠的那個擲骰台也照樣用，不臨時找
+	var w2 := World.new()
+	_worlds.append(w2)
+	w2.dice = DiceRun.new()
+	w2.reset(3)
+	var first2 := w2.entities.get(w2.packs[0].ids[0]) as Enemy
+	var far: Vector2 = w2.map.dice_spots[0]
+	for sp: Vector2 in w2.map.dice_spots:
+		if MapDefs.to_world(w2.map, sp).distance_to(first2.pos) > MapDefs.to_world(w2.map, far).distance_to(first2.pos):
+			far = sp
+	w2.map.dice_spots = [far]
+	var p2 := _player(w2)
+	p2.pos = w2.nav.nearest_walkable(first2.pos + Vector2(0, 3))
+	w2.alert_pack(0, first2, p2)
+	var at2 := dp2_tray(w2)
+	var far_at := MapDefs.to_world(w2.map, far)
+	if far_at.distance_to(at2) > 0.01:
+		return "只剩遠的擲骰台（離 %.1f）也應擺在上面：擺在 %s，擲骰台 %s" % [far_at.distance_to(first2.pos), at2, far_at]
+	return ""
 
 
 static func dp2_tray_y(w: World) -> float:
