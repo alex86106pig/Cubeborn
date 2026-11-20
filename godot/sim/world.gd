@@ -618,7 +618,7 @@ func on_enemy_died(e: Enemy, killer_id: int = 0) -> void:
 
 
 # 武器掉落（D4）：多人時也只掉一把（房主產生一個實體，先撿先得）；機率照層數，召喚出來的不掉（不然召喚者不死就能一直刷）
-# 骰子模式：掉下來的武器照稀有度產生自己的骰子（DiceRun.make_weapon_dice）
+# 骰子模式：掉下來的武器帶自己的骰子（DiceRun.make_weapon_dice：開局骰子，稀有度決定幾顆多一面技能）
 func _drop_enemy_weapon(e: Enemy, forced: bool) -> void:
 	var chance: float = 1.0 if debug_drop_all or forced else (0.0 if e.no_souls else WeaponDropDefs.drop_chance(e.type, floor_num))
 	if chance > 0.0 and (chance >= 1.0 or rng.randf() < chance):
@@ -627,7 +627,7 @@ func _drop_enemy_weapon(e: Enemy, forced: bool) -> void:
 		var base := bases[rng.randi_range(0, bases.size() - 1)]
 		var inst := WeaponDropDefs.make(new_weapon_uid(), base, WeaponDropDefs.roll_rarity(source, rng, team_treasure()), rng)
 		if dice != null:
-			DiceRun.make_weapon_dice(inst, rng)
+			DiceRun.make_weapon_dice(inst)
 		drop_weapon(inst, e.pos)
 		emit_event("weapon:dropped", {"uid": String(inst.uid), "base": String(base), "rarity": String(inst.rarity), "pos": e.pos})
 

@@ -91,6 +91,9 @@ const RARITIES := {
 	&"purple": {"name": "紫", "blanks": [0, 1], "skills": [2, 4]},
 	&"orange": {"name": "橘", "blanks": [0, 1], "skills": [2, 4]},
 }
+# 掉落 / 獎勵武器的武器骰（YangHsu 2026-11-20 選乙）：6 顆都是這把武器的開局骰子（weapon_die），稀有度決定其中幾顆多一面同一招的技能（用掉一面空白）
+# 白 = 跟開局武器一樣；擲一次朝上的技能面期望 1.0 → 橘 1.67
+const WEAPON_EXTRA_SKILLS := {&"white": 0, &"green": 1, &"blue": 2, &"purple": 3, &"orange": 4}
 # 一場的難度：一般群 / 有菁英（魔法、稀有）/ 有 Boss → 獎勵的稀有度權重（Claude 暫定）
 const FIGHT_TIERS := {
 	&"normal": {"name": "一般", "weights": {&"white": 50.0, &"green": 30.0, &"blue": 15.0, &"purple": 5.0}},

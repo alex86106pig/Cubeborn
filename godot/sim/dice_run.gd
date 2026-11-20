@@ -154,12 +154,22 @@ static func ensure_dice(inst: Dictionary) -> void:
 	inst["dice"] = dice
 
 
-# 掉落 / 獎勵的武器：照稀有度隨機產生一種骰子（只出這把武器能用的技能），6 顆都長這樣
-static func make_weapon_dice(inst: Dictionary, rng: RandomNumberGenerator) -> void:
-	var die := DiceDefs.make_die(StringName(inst.rarity), DiceDefs.skills_for(Loadout.weapon_of(inst)), rng)
+# 掉落 / 獎勵的武器：6 顆都是這把武器的開局骰子，前 WEAPON_EXTRA_SKILLS[稀有度] 顆把一面空白換成同一招的技能（沒有技能或空白就不加）
+static func make_weapon_dice(inst: Dictionary) -> void:
+	var die := DiceDefs.weapon_die(Loadout.weapon_of(inst))
+	var skill: StringName = &""
+	for f: StringName in die:
+		if DiceDefs.is_skill(f):
+			skill = f
+			break
+	var extra: int = DiceDefs.WEAPON_EXTRA_SKILLS.get(StringName(inst.rarity), 0)
 	var dice: Array = []
 	for i in DiceDefs.DICE_COUNT:
-		dice.append(die.duplicate())
+		var d := die.duplicate()
+		var blank := d.find(DiceDefs.BLANK)
+		if i < extra and skill != &"" and blank >= 0:
+			d[blank] = skill
+		dice.append(d)
 	inst["dice"] = dice
 
 
@@ -779,9 +789,9 @@ func _offer(world: World, p: Player, kind: StringName) -> Dictionary:
 			var bases := WeaponDropDefs.bases()
 			var base := bases[world.rng.randi_range(0, bases.size() - 1)]
 			var inst := WeaponDropDefs.make(world.new_weapon_uid(), base, DiceDefs.roll_rarity(tier, world.rng), world.rng)
-			make_weapon_dice(inst, world.rng)
+			make_weapon_dice(inst)
 			return {"kind": kind, "title": WeaponDropDefs.display_name(inst), "weapon": inst, "faces": (inst.dice[0] as Array).duplicate(),
-				"base": base, "desc": "六顆武器骰都長這樣；先放進備用武器，按 Tab 換上（左鍵一起換）"}
+				"base": base, "desc": _weapon_desc(inst)}
 		&"carve_skill":
 			if p != null and DiceDefs.skills_for(p.weapon_id).is_empty():
 				return {}
@@ -792,6 +802,13 @@ func _offer(world: World, p: Player, kind: StringName) -> Dictionary:
 		_:
 			var i := world.rng.randi_range(0, DiceDefs.ITEMS.size() - 1)
 			return {"kind": &"item", "title": DiceDefs.ITEMS[i].name, "desc": "數值道具：一直有效", "item": i}
+
+
+# 新武器卡的說明：6 顆裡幾顆多一面技能（卡上畫的是第 1 顆）
+static func _weapon_desc(inst: Dictionary) -> String:
+	var extra: int = DiceDefs.WEAPON_EXTRA_SKILLS.get(StringName(inst.rarity), 0)
+	var dice := "6 顆武器骰跟開局一樣" if extra == 0 else "6 顆武器骰裡 %d 顆多一面技能（像這顆）、其餘跟開局一樣" % extra
+	return dice + "；先放進備用武器，按 Tab 換上（左鍵一起換）"
 
 
 # 帶著的骰子裡空白面最多的那顆（同樣多取後面的；都沒有空白取最後一顆）：拿新骰子時換掉它（獎勵畫面也照它標出會換掉哪顆）

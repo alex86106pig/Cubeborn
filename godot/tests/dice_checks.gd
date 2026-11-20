@@ -396,7 +396,23 @@ static func check_dice_growth() -> String:
 	var old_uid: StringName = StringName(p.active_weapon().uid)
 	var carved: StringName = s.wdice[0][5]
 	var inst := WeaponDropDefs.make(w.new_weapon_uid(), &"longbow", &"blue", w.rng)
-	DiceRun.make_weapon_dice(inst, w.rng)
+	DiceRun.make_weapon_dice(inst)
+	# 掉落 / 獎勵武器的武器骰：6 顆是開局骰子，稀有度決定幾顆把一面空白換成同一招
+	for rar: StringName in DiceDefs.WEAPON_EXTRA_SKILLS:
+		var wi := WeaponDropDefs.make(w.new_weapon_uid(), &"torch", rar, w.rng)
+		DiceRun.make_weapon_dice(wi)
+		var start := DiceDefs.weapon_die(&"torch")
+		var plus := 0
+		for d: Array in wi.dice:
+			if d == Array(start):
+				continue
+			var want := start.duplicate()
+			want[want.find(DiceDefs.BLANK)] = &"fire_nova"
+			if d != Array(want):
+				return "%s 火把的武器骰應是開局骰子或多一面火焰爆發：%s" % [rar, d]
+			plus += 1
+		if wi.dice.size() != DiceDefs.DICE_COUNT or plus != DiceDefs.WEAPON_EXTRA_SKILLS[rar]:
+			return "%s 武器應有 %d 顆多一面技能：%d 顆" % [rar, DiceDefs.WEAPON_EXTRA_SKILLS[rar], plus]
 	if not w.dice.receive_weapon(w, p, inst) or s.spares.size() != 1:
 		return "拿到武器應先放進備用：%d 把" % s.spares.size()
 	s.result = {"skill": &"", "count": 0, "effects": {}}
@@ -412,7 +428,7 @@ static func check_dice_growth() -> String:
 		return "換回舊武器，刻過的面還在"
 	# 地上的武器按 F 撿進備用；備用滿了直接換到手上、舊的掉在腳邊
 	var ground := WeaponDropDefs.make(w.new_weapon_uid(), &"dagger", &"white", w.rng)
-	DiceRun.make_weapon_dice(ground, w.rng)
+	DiceRun.make_weapon_dice(ground)
 	var ip := w.drop_weapon(ground, p.pos + Vector2(0.5, 0))
 	if not Interactables.use(w, p, ip.id) or s.spares.size() != 2 or not ip.is_removed:
 		return "地上的武器按 F 應撿進備用：備用 %d 把" % s.spares.size()
@@ -460,7 +476,7 @@ static func check_dice_panels() -> String:
 		s.loose.append(DiceDefs.make_die(&"blue", DiceDefs.skills_for(p.weapon_id), w.rng))
 	for b: StringName in [&"longbow", &"staff"]:
 		var inst := WeaponDropDefs.make(w.new_weapon_uid(), b, &"purple", w.rng)
-		DiceRun.make_weapon_dice(inst, w.rng)
+		DiceRun.make_weapon_dice(inst)
 		w.dice.receive_weapon(w, p, inst)
 	var cam := Camera3D.new()
 	_scene_root().add_child(cam)
