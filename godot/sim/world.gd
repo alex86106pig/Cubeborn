@@ -1072,16 +1072,23 @@ func _noticed_by(e: Enemy, c: Dictionary) -> Player:
 		var d2 := d.length_squared()
 		if d2 >= best_d:
 			continue
-		if d2 <= close2 or (d2 <= sight2 and d2 > 1e-6 and fwd.dot(d / sqrt(d2)) >= cos_half and not terrain.sight_blocked(e.pos, p.pos)):
+		var seen := d2 <= sight2 and d2 > 1e-6 and fwd.dot(d / sqrt(d2)) >= cos_half and not terrain.sight_blocked(e.pos, p.pos)
+		if seen or (d2 <= close2 and _reaches(e.pos, p.pos, c.notice_close)):
 			best = p
 			best_d = d2
 	if best != null:
 		return best
 	var noise2: float = c.noise_radius * c.noise_radius
 	for n: Vector3 in _noise:
-		if e.pos.distance_squared_to(Vector2(n.x, n.y)) <= noise2:
+		var at := Vector2(n.x, n.y)
+		if e.pos.distance_squared_to(at) <= noise2 and _reaches(e.pos, at, c.noise_radius):
 			return e.nearest_player()
 	return null
+
+
+# 骰子模式：靠近、聽到打鬥要走得過去才算發現（隔著牆的不算，不然這一場會拉進繞路才走得到、被霧牆卡在圈邊的怪）；一般模式不看
+func _reaches(a: Vector2, b: Vector2, limit: float) -> bool:
+	return dice == null or nav.path_length(a, b) <= limit * DiceDefs.NOTICE_DETOUR
 
 
 # 這一步的打鬥聲（有東西受傷、死掉的位置）記下來給休眠的怪群聽：[x, y, tick]

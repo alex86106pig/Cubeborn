@@ -1361,6 +1361,61 @@ static func check_dice_pending_alert() -> String:
 	return ""
 
 
+# 隔著牆要繞路的怪不拉進這一場（繞的路出了霧牆會卡在圈邊，近戰打不到、這一場打不完）：
+# 直線 MERGE_RANGE 內、走過去超過的怪群不併；隔牆 notice_close 內不會發現（一般模式照舊會），空地上一樣近會
+static func check_dice_reach() -> String:
+	var found := false
+	for seed_value in range(1, 21):
+		var w := World.new()
+		_worlds.append(w)
+		w.dice = DiceRun.new()
+		w.reset(seed_value)
+		var p := _player(w)
+		for i in w.packs.size():
+			var a: Dictionary = w.packs[i]
+			var center: Vector2 = a.center
+			for j in w.packs.size():
+				var b: Dictionary = w.packs[j]
+				if j == i or center.distance_to(b.center) > DiceDefs.MERGE_RANGE or w.nav.path_length(center, b.center) <= DiceDefs.MERGE_RANGE * 1.5:
+					continue
+				var first := w.entities.get(a.ids[0]) as Enemy
+				p.pos = w.nav.nearest_walkable(center + Vector2(0, 3))
+				w.alert_pack(i, first, p)
+				for id: int in b.ids:
+					if w.dice.foes.has(id) or b.awake:
+						return "種子 %d：群 %d 直線 %.1f、要走 %.1f，不應併進這一場" % [seed_value, j, center.distance_to(b.center), w.nav.path_length(center, b.center)]
+				found = true
+				break
+			if found:
+				break
+		if found:
+			break
+	if not found:
+		return "種子 1~20 找不到直線近、要繞路的怪群（地圖產生改了，換種子範圍）"
+	var c: Dictionary = MonsterRarityDefs.PACKS
+	# [骰子模式, 中間有牆, 應不應發現]：玩家在怪背後 notice_close 內（只有靠近這一種會發現）
+	for t: Array in [[true, true, false], [false, true, true], [true, false, true]]:
+		var w2 := _new_world()
+		if t[0]:
+			w2.dice = DiceRun.new()
+			w2.dice.reset()
+			w2.dice.on_stage_start(w2)
+		var mid := MapDefs.to_world(w2.map, Vector2(24.0, 23.5)) if t[1] else Vector2(-8, -8)   # test_arena 那道 6 × 1 的牆
+		if t[1] and not w2.terrain.blocks_nav(mid, 0.0):
+			return "test_arena 的牆不在 %s（地圖改了）" % mid
+		var gap: float = c.notice_close * 0.45
+		var e := _spawn(w2, &"grunt", mid + Vector2(0, gap))
+		e.dormant = true
+		e.fsm.change(&"dormant")
+		e.facing = 0.0   # 面向 +y，背對玩家
+		_lone_pack(w2, e)
+		_player(w2).pos = mid - Vector2(0, gap)
+		_run(w2, _cmd(Vector2.ZERO), c.notice_every + 1)
+		if w2.packs[0].awake != t[2]:
+			return "%s、%s：玩家在背後 %.1f，發現 = %s（應 %s）" % ["骰子模式" if t[0] else "一般模式", "中間有牆" if t[1] else "空地", gap * 2.0, w2.packs[0].awake, t[2]]
+	return ""
+
+
 # 召喚詞條叫出來的手下也算這一場的怪（試玩發現：把召喚者那群打死就跳獎勵，叫出來的還活著在打人）：
 # 叫出來的進 foes、被霧牆關在圈內；召喚者死了手下還在就繼續打，手下也死光才選獎勵
 static func check_dice_summoned() -> String:

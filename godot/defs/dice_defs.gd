@@ -16,7 +16,8 @@ const CHARGES_STAGE := 2        # 重擲券：每一關開頭 +幾張（第一�
 const CHARGES_PER_FIGHT := 1    # 打完一場 +幾張
 const CHARGES_MAX := 3          # 最多存幾張
 const CLEAR_TIME := 1.5         # 這一場的怪全倒之後停多久才選獎勵（清場：世界照常動，怪倒完、掉的武器出來；Claude 暫定）
-const MERGE_RANGE := 22.0       # 碰到一群怪時，中心這麼近的怪群一起醒、併成一場（Claude 量：一關平均 5.4 群 → 約 2.3 場）
+const MERGE_RANGE := 22.0       # 碰到一群怪時，中心這麼近（直線與走過去的路都要在這麼近內）的怪群一起醒、併成一場；隔著牆要繞路的不併，不然繞的路出了霧牆會卡在圈邊
+const NOTICE_DETOUR := 1.5      # 怪靠近（notice_close）或聽到打鬥（noise_radius）發現玩家時，走過去的路不能超過那個距離的這麼多倍（隔著牆的不算）
 const BASIC_ATTACK_MUL := 0.5   # 左鍵普攻的傷害倍率（右鍵骰到的技能才是主力）
 const COOLDOWN_PER_MANA := 0.3  # 右鍵技能的冷卻 = 技能原本的耗魔 × 這麼多秒（旋風斬 10 魔 → 3 秒）
 const COOLDOWN_MIN := 1.5

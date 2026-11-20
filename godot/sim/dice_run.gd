@@ -227,7 +227,7 @@ func on_alert(world: World, ids: Array) -> void:
 		_open_fight(world)
 
 
-# 這一場的怪附近（中心 MERGE_RANGE 內）還沒醒的怪群一起叫醒、併進這一場（YangHsu 2026-11-19：一關 2~3 場、每場大一點，每場都擲骰才不會擲到累）
+# 這一場的怪附近（中心 MERGE_RANGE 內、走得到）還沒醒的怪群一起叫醒、併進這一場（YangHsu 2026-11-19：一關 2~3 場、每場大一點，每場都擲骰才不會擲到累）
 func _merge_nearby(world: World) -> void:
 	var center := Vector2.ZERO
 	var n := 0
@@ -246,7 +246,7 @@ func _merge_nearby(world: World) -> void:
 	_merging = true
 	for i in world.packs.size():
 		var pk: Dictionary = world.packs[i]
-		if pk.awake or (pk.center as Vector2).distance_to(center) > DiceDefs.MERGE_RANGE:
+		if pk.awake or (pk.center as Vector2).distance_to(center) > DiceDefs.MERGE_RANGE or world.nav.path_length(center, pk.center) > DiceDefs.MERGE_RANGE:
 			continue
 		var first: Enemy = null
 		for id: int in pk.ids:

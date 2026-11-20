@@ -120,6 +120,23 @@ func same_region(a: Vector2, b: Vector2) -> bool:
 	return region[ca.y * size.x + ca.x] == region[cb.y * size.x + cb.x]
 
 
+# 從 a 走到 b 要走多遠（照格子路徑量，比拉直的路長一點點）；走不到回傳 INF
+func path_length(a: Vector2, b: Vector2) -> float:
+	var from := nearest_walkable_cell(to_cell(a))
+	var to := nearest_walkable_cell(to_cell(b))
+	if from.x < 0 or to.x < 0:
+		return INF
+	if from == to:
+		return a.distance_to(b)
+	var ids := astar.get_id_path(from, to)
+	if ids.is_empty():
+		return INF
+	var total := a.distance_to(cell_center(ids[0])) + cell_center(ids[ids.size() - 1]).distance_to(b)
+	for i in range(1, ids.size()):
+		total += cell_center(ids[i - 1]).distance_to(cell_center(ids[i]))
+	return total
+
+
 # 從 a 走到 b 的路徑點（世界座標，不含起點、最後一點是 b）；省略看得到的中間點（拉直）。走不到回傳空陣列
 func find_path(a: Vector2, b: Vector2) -> PackedVector2Array:
 	var from := nearest_walkable_cell(to_cell(a))
