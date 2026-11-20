@@ -12,6 +12,12 @@
       "runtimeExecutable": "powershell",
       "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "tools/serve_web.ps1"],
       "port": 8060
+    },
+    {
+      "name": "cubeborn-mockups",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5180", "--directory", "mockups"],
+      "port": 5180
     }
   ]
 }
