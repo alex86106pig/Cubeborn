@@ -10,7 +10,7 @@
 #   --weapon-test（武器測試場景：不生怪；畫面右邊貼身 1 隻、往右 5 / 7 / 9 一排、上方 4 一隻木樁，不動不打、血很多）
 #   挖墳（D6）：--at-dig（開場站在挖墳點旁邊）--exit-open（開場出口就打開）--ghost（畫面上方生一隻冤魂）
 #   --reveal（視野外的也畫，只給截圖用）--player-at=x,y（開場站在地圖座標 x, y，v0.32.0）--floor=N（開場直接換到第 N 層，地圖與 Boss 跟著換）
-#   --game-mode=dice（骰子模式，蓋過設定頁；只在單機，DiceRun）--dice-encounter=秒（房主開局幾秒後在身邊生一隻怪、開一場）--auto-dice-roll=秒（輪到自己就自動丟、停好按完成）
+#   --game-mode=dice（骰子模式，蓋過設定頁；只在單機，DiceRun）--dice-encounter=秒（房主開局幾秒後在身邊生一隻怪、開一場）--auto-dice-roll=秒（輪到自己就自動丟、停好按完成）--dice-tilt=度（擲骰時的鏡頭俯角）
 #   --seed=N（這一局的種子：每層的怪群與寶箱配置照它，開局印 seed=N；不給網址參數用）
 #   畫面設定（2026-10-27）：--shadows=0 / --lights=0 蓋掉設定頁的陰影 / 光源（不存檔），內顯量效能時當對照組
 #   動作表：--pose-test=表名（不開遊戲，畫一張動作表，見 debug/pose_gallery.gd）--pose-view=side|front
@@ -20,7 +20,7 @@ class_name LaunchArgs
 extends RefCounted
 
 # 只有本機匯出的 debug 版網頁才收的網址參數（Claude 用 headless Chrome 截圖確認畫面：不開視窗、不搶焦點）；網站是 release 匯出，朋友帶了也沒用
-const WEB_DEBUG_URL_ARGS: Array[String] = ["seed", "player-at", "reveal", "bag-mode", "game-mode", "dice-encounter"]
+const WEB_DEBUG_URL_ARGS: Array[String] = ["seed", "player-at", "reveal", "bag-mode", "game-mode", "dice-encounter", "dice-tilt"]
 # 網頁版可以從網址帶的參數（url_query_args）；v0.36.3 加自動移動 / 攻擊，用來量「第一次出現」的卡頓
 const WEB_URL_ARGS: Array[String] = ["seconds", "horde", "perf", "elites", "player-hp", "auto-move", "auto-move-seconds", "auto-attack", "weapon", "class", "difficulty", "no-spawn", "weapon-test", "items", "shadows", "lights", "floor", "host", "join", "room", "net-autostart", "loot-test", "stage-hop", "flame-test", "pose-test", "pose-view", "anim-viewer"]   # loot-test：開箱與掉落卡頓的固定場景；flame-test：守墓人一直噴火；stage-hop：量換小關 / 換層的卡頓； host / join / room / net-autostart：網頁版多人自動測試、之後的邀請連結（2026-10-27 使用者同意開放；?host&room 開房印 net room=房號，?join=房號&room 加入）；shadows / lights：內顯量效能的對照組（2026-10-27）；weapon / class / no-spawn / weapon-test：網頁版逐把看武器（2026-10-27）；difficulty：選角畫面的難度；items：帶道具量效能（G7）；floor：量第 2 層以後的地圖
 
@@ -39,6 +39,7 @@ var bag_mode: StringName = &""     # --bag-mode=bags|merged（背包模式，蓋
 var game_mode: StringName = &""    # --game-mode=dice|normal（骰子模式，蓋過設定頁）
 var auto_dice_roll := 0.0          # --auto-dice-roll=秒：骰子模式開局這麼多秒後，輪到自己擲就自動丟、停好就按完成（連線檢查用）
 var dice_encounter := 0.0          # --dice-encounter=秒：骰子模式房主開局這麼多秒後在第一位玩家旁邊生一隻怪、開一場（連線檢查用；--no-spawn 也能擲骰）
+var dice_tilt := 0.0               # --dice-tilt=度：骰子模式擲骰時的鏡頭俯角蓋過 DiceDefs.TRAY_ELEVATION（截圖比較角度用）
 var start_wave := 0
 var start_hp := 0.0
 var start_items: Array[StringName] = []
@@ -124,6 +125,8 @@ static func parse(args: PackedStringArray) -> LaunchArgs:
 			a.auto_dice_roll = value.to_float()
 		elif arg.begins_with("--dice-encounter="):
 			a.dice_encounter = value.to_float()
+		elif arg.begins_with("--dice-tilt="):
+			a.dice_tilt = value.to_float()
 		elif arg.begins_with("--weapon="):
 			a.start_weapon = StringName(value)
 		elif arg.begins_with("--wave="):

@@ -856,9 +856,11 @@ func _process(delta: float) -> void:
 	if tray != null:
 		camera_rig.follow(tray, delta)
 		camera_rig.zoom(DiceDefs.TRAY_VIEW_FOCUS if hud.dice_panel.table.focus_point() != null else DiceDefs.TRAY_VIEW, delta)
+		camera_rig.tilt(deg_to_rad(args.dice_tilt) if args.dice_tilt > 0.0 else DiceDefs.TRAY_ELEVATION, delta)
 	else:
 		camera_rig.follow(_player_view_position(alpha), delta)
 		camera_rig.zoom(Config.CAMERA.view_half_height * 2.0, delta)
+		camera_rig.tilt(Config.CAMERA.elevation, delta)
 	_check_auto_quit(delta)
 
 

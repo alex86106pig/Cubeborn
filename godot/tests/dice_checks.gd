@@ -1196,8 +1196,22 @@ static func check_dice_rules() -> String:
 
 # 骰盤放進遊戲世界（美術方案 2：戰場旁的骰盤）：桌子轉 0.7 弧度、擺在 (30, 0, −20)，用遊戲那種正交鏡頭看；
 # 真的丟：停在骰盤上（本地座標在桌面內、世界座標在擺的位置附近）、回報的面對；滑鼠指著骰盤中間，換算回桌面本地的點在中間附近；
-# 擺的位置在霧牆外面（離圈中心 ≥ 半徑 + 半張桌子）
+# 擺的位置在霧牆外面（離圈中心 ≥ 半徑 + 半張桌子）；擲骰時遊戲鏡頭抬到 TRAY_ELEVATION、回去再轉回平常的俯角，移動方向（screen_forward）不變
 static func check_dice_tray() -> String:
+	var rig := CameraRig.new()
+	rig._ready()
+	var fwd := rig.screen_forward
+	var pitches: Array[float] = []
+	for want: float in [DiceDefs.TRAY_ELEVATION, Config.CAMERA.elevation]:
+		for i in 120:
+			rig.tilt(want, 1.0 / 60.0)
+		rig.follow(Vector3.ZERO, 0.0, true)
+		pitches.append(asin(rig.camera.transform.basis.z.y))
+	var moved := rig.screen_forward.distance_to(fwd)
+	rig.free()
+	if absf(pitches[0] - DiceDefs.TRAY_ELEVATION) > 0.01 or absf(pitches[1] - Config.CAMERA.elevation) > 0.01 or moved > 1e-4:
+		return "擲骰時鏡頭俯角應 %.1f°（實際 %.1f°）、回去應 %.1f°（實際 %.1f°），移動方向不變（差 %.4f）" % [
+			rad_to_deg(DiceDefs.TRAY_ELEVATION), rad_to_deg(pitches[0]), rad_to_deg(Config.CAMERA.elevation), rad_to_deg(pitches[1]), moved]
 	var vp := SubViewport.new()
 	vp.own_world_3d = true
 	vp.size = Vector2i(1920, 1080)

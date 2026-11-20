@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>技能圖示風格</title>
+<style>
+  :root {
+    --bg: #2a2119; --panel: #3a2e23; --paper: #efe4cc; --paper-lit: #fff3cf; --paper-edge: #7a5a38;
+    --ink: #3a2a1a; --ink-sub: #6b4a2a; --felt: #8e3434; --gold: #e0b45a; --text: #efe4cc; --muted: #b8a58a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Noto Sans TC", "Microsoft JhengHei", sans-serif; }
+  main { max-width: 1240px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 26px; margin: 0 0 6px; }
+  .lead { color: var(--muted); margin: 0 0 24px; line-height: 1.6; }
+  section { background: var(--panel); border: 2px solid #5a4532; border-radius: 10px; padding: 18px; margin-bottom: 22px; }
+  .head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .num { background: var(--gold); color: #2a1a0a; font-weight: 800; border-radius: 50%; width: 34px; height: 34px; display: grid; place-items: center; font-size: 18px; }
+  .head h2 { margin: 0; font-size: 21px; }
+  .head p { margin: 0; color: var(--muted); }
+  .row { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+  .cell { text-align: center; }
+  .cell .name { font-size: 14px; margin-top: 6px; }
+  .cell .kind { font-size: 12px; color: var(--muted); }
+  .demo { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-end; margin-top: 18px; padding: 16px; background: var(--felt); border-radius: 8px; box-shadow: inset 0 0 0 6px #5a3a22; }
+  .demo .cap { font-size: 12px; color: #f5d9c0; text-align: center; margin-top: 6px; }
+  svg.icon { width: 104px; height: 104px; display: block; margin: 0 auto; }
+
+  /* 骰子：65° 看下去，頂面大、前面一條薄邊 */
+  .die { width: 78px; }
+  .die .top { width: 78px; height: 74px; border-radius: 9px; display: grid; place-items: center; position: relative; z-index: 1; }
+  .die .front { width: 78px; height: 16px; margin-top: -8px; border-radius: 0 0 9px 9px; }
+  .die svg { width: 60px; height: 60px; }
+  .die.rot svg { transform: rotate(90deg); }
+
+  /* 技能欄紙卡 */
+  .card { width: 72px; height: 80px; background: var(--paper); border: 2px solid var(--paper-edge); border-radius: 6px; display: grid; place-items: center; position: relative; box-shadow: 0 3px 0 #00000055; }
+  .card.lit { background: var(--paper-lit); border: 3px solid var(--gold); }
+  .card svg { width: 54px; height: 54px; }
+  .card .key { position: absolute; bottom: 2px; right: 5px; font-size: 11px; color: var(--ink-sub); font-weight: 700; }
+
+  /* ---- 1 版畫線條 ---- */
+  .s1 .tile { background: var(--paper); border: 2px solid var(--paper-edge); border-radius: 8px; padding: 10px; }
+  .s1 use { fill: url(#hatch); stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; }
+  .s1 .die .top { background: #efe4cc; } .s1 .die .front { background: #b9a47f; }
+  .s1 .die.eff .top { background: #dfe8e6; } .s1 .die.eff .front { background: #9fb2ae; }
+
+  /* ---- 2 剪影籌碼 ---- */
+  .chip { width: 110px; height: 110px; margin: 0 auto; border-radius: 50%; display: grid; place-items: center; position: relative;
+          background: radial-gradient(circle, var(--c) 0 58%, transparent 58.5%), repeating-conic-gradient(var(--c) 0 20deg, #efe4cc 20deg 30deg); box-shadow: 0 4px 0 #0007; }
+  .chip::after { content: ""; position: absolute; inset: 14px; border-radius: 50%; border: 2px dashed #efe4cc99; }
+  .chip svg { width: 70px; height: 70px; position: relative; z-index: 1; }
+  .s2 use { fill: #f5ead2; }
+  .chip.skill { --c: #9b2f2a; } .chip.eff { --c: #2f6f9a; }
+  .s2 .die .top { background: #9b2f2a; } .s2 .die .front { background: #5e1c18; }
+  .s2 .die.eff .top { background: #2f6f9a; } .s2 .die.eff .front { background: #1b4462; }
+  .s2 .card use { fill: var(--ink); }
+
+  /* ---- 3 浮雕刻面 ---- */
+  .s3 .tile { background: linear-gradient(145deg, #f3ead6, #d9c9a6); border-radius: 12px; padding: 8px; box-shadow: inset 0 0 0 2px #b9a47f; }
+  .s3 use { fill: #7a2620; filter: url(#carve); }
+  .s3 .eff use { fill: #24506e; }
+  .s3 .die .top { background: linear-gradient(145deg, #f3ead6, #d9c9a6); } .s3 .die .front { background: #a8946c; }
+  .s3 .card use { fill: var(--ink); filter: url(#carve); }
+
+  /* ---- 4 金屬嵌片 ---- */
+  .s4 .tile { background: linear-gradient(145deg, #5a3a24, #3a2416); border-radius: 12px; padding: 8px; box-shadow: inset 0 0 0 3px #2a180c; }
+  .s4 use { fill: url(#brass); stroke: #2a1608; stroke-width: 2.5; stroke-linejoin: round; filter: url(#bevel); }
+  .s4 .eff use { fill: url(#iron); }
+  .s4 .die .top { background: linear-gradient(145deg, #5a3a24, #3a2416); } .s4 .die .front { background: #24160c; }
+  .s4 .card use { fill: url(#brass); }
+
+  .note { color: var(--muted); font-size: 14px; line-height: 1.7; margin-top: 10px; }
+  .vs { display: flex; gap: 22px; align-items: flex-end; flex-wrap: wrap; }
+  .txtdie .top { background: #f2e64a; font-size: 34px; font-weight: 900; color: #1a1a1a; }
+  .txtdie .front { background: #8f8622; }
+  .txtdie.rot .top span { display: inline-block; transform: rotate(90deg); }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="6" height="6" fill="#e6d7b5"/><line x1="0" y1="0" x2="0" y2="6" stroke="#3a2a1a" stroke-width="1.6"/>
+    </pattern>
+    <linearGradient id="brass" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffe7a3"/><stop offset=".45" stop-color="#d4a248"/><stop offset="1" stop-color="#8a5a1c"/>
+    </linearGradient>
+    <linearGradient id="iron" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e8eef2"/><stop offset=".5" stop-color="#9aa6ae"/><stop offset="1" stop-color="#4c565e"/>
+    </linearGradient>
+    <!-- 刻進去：裡面上緣暗、下緣亮 -->
+    <filter id="carve" x="-10%" y="-10%" width="120%" height="120%">
+      <feOffset in="SourceAlpha" dx="0" dy="2.5" result="off"/>
+      <feComposite in="SourceAlpha" in2="off" operator="out" result="rim"/>
+      <feFlood flood-color="#000" flood-opacity=".75"/><feComposite in2="rim" operator="in" result="shadow"/>
+      <feOffset in="SourceAlpha" dx="0" dy="-1.5" result="off2"/>
+      <feComposite in="off2" in2="SourceAlpha" operator="out" result="lip"/>
+      <feFlood flood-color="#fff8e6" flood-opacity=".9"/><feComposite in2="lip" operator="in" result="hl"/>
+      <feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="shadow"/><feMergeNode in="hl"/></feMerge>
+    </filter>
+    <!-- 凸起的金屬片：投影 + 斜面高光 -->
+    <filter id="bevel" x="-15%" y="-15%" width="130%" height="135%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.2" result="b"/>
+      <feSpecularLighting in="b" surfaceScale="3" specularConstant=".9" specularExponent="18" lighting-color="#fff6d8" result="spec">
+        <feDistantLight azimuth="225" elevation="45"/>
+      </feSpecularLighting>
+      <feComposite in="spec" in2="SourceAlpha" operator="in" result="specIn"/>
+      <feOffset in="SourceAlpha" dx="1.5" dy="3" result="sh"/><feGaussianBlur in="sh" stdDeviation="1.2" result="shb"/>
+      <feFlood flood-color="#000" flood-opacity=".6"/><feComposite in2="shb" operator="in" result="drop"/>
+      <feMerge><feMergeNode in="drop"/><feMergeNode in="SourceGraphic"/><feMergeNode in="specIn"/></feMerge>
+    </filter>
+
+    <!-- 圖案的形狀（四種風格共用，只換上色） -->
+    <symbol id="i-whirlwind" viewBox="0 0 100 100">
+      <path d="M12 58 A38 38 0 0 1 58 12 L60 6 L72 18 L58 28 L58 22 A28 28 0 0 0 22 58 Z"/>
+      <path d="M88 42 A38 38 0 0 1 42 88 L40 94 L28 82 L42 72 L42 78 A28 28 0 0 0 78 42 Z"/>
+      <path d="M50 14 L56 26 L56 62 L44 62 L44 26 Z"/>
+      <path d="M34 62 H66 V69 H34 Z"/>
+      <path d="M46 69 H54 V81 H46 Z"/>
+      <circle cx="50" cy="86" r="5"/>
+    </symbol>
+    <symbol id="i-shield-charge" viewBox="0 0 100 100">
+      <path d="M42 20 H82 V48 Q82 74 62 86 Q42 74 42 48 Z"/>
+      <path d="M10 34 H34 V40 H10 Z"/><path d="M4 50 H34 V56 H4 Z"/><path d="M10 66 H34 V72 H10 Z"/>
+    </symbol>
+    <symbol id="i-sword-wave" viewBox="0 0 100 100">
+      <path d="M48 12 A42 42 0 0 1 48 88 A32 36 0 0 0 48 12 Z"/>
+      <path d="M28 26 A26 26 0 0 1 28 74 A20 23 0 0 0 28 26 Z"/>
+      <path d="M12 38 A13 13 0 0 1 12 62 A10 12 0 0 0 12 38 Z"/>
+    </symbol>
+    <symbol id="i-shield-slam" viewBox="0 0 100 100">
+      <path d="M34 14 H66 V38 Q66 58 50 67 Q34 58 34 38 Z"/>
+      <path d="M8 74 H92 V80 H8 Z"/>
+      <path d="M20 70 Q10 56 20 42 L25 45 Q17 56 26 67 Z"/>
+      <path d="M80 70 Q90 56 80 42 L75 45 Q83 56 74 67 Z"/>
+      <path d="M46 80 L54 80 L48 94 Z"/><path d="M28 80 L34 80 L24 90 Z"/><path d="M66 80 L72 80 L76 90 Z"/>
+    </symbol>
+    <symbol id="i-fx-shield" viewBox="0 0 100 100">
+      <path fill-rule="evenodd" d="M50 30 A28 28 0 1 1 49.9 30 Z M50 40 A18 18 0 1 0 50.1 40 Z"/>
+      <circle cx="50" cy="58" r="8"/>
+      <path d="M36 22 L50 8 L64 22 L57 22 L50 15 L43 22 Z"/>
+    </symbol>
+    <symbol id="i-fx-dmg" viewBox="0 0 100 100">
+      <path d="M84 14 L88 18 L48 64 L40 56 Z"/>
+      <path d="M30 50 L54 74 L49 79 L25 55 Z"/>
+      <path d="M35 66 L22 79 L27 84 L40 71 Z"/>
+      <path d="M22 10 L36 26 L27 26 L27 42 L17 42 L17 26 L8 26 Z"/>
+    </symbol>
+  </defs>
+</svg>
+
+<main>
+  <h1>技能圖示風格（劍盾先畫 6 個）</h1>
+  <p class="lead">四種風格用同一組形狀，只換上色方式。每種下面示範在<b>骰面</b>（照擲骰鏡頭 65° 看下去）和<b>技能欄紙卡</b>上的樣子。<br>
+  技能面與效果面靠底色分（技能暖色、效果冷色），跟現在骰子的黃 / 青一樣的分法。選定後再把劍盾全部技能、效果面、數值道具畫齊，做進遊戲。</p>
+
+  <section>
+    <div class="head"><h2>對照：現在的骰子（寫字）</h2><p>骰子停下來朝向不一定，字會變成側的、倒的（截圖裡「傷」是橫的）；圖案轉幾度都還認得出來。</p></div>
+    <div class="vs">
+      <div><div class="die txtdie"><div class="top"><span>旋</span></div><div class="front"></div></div><div class="cap" style="color:var(--muted)">正的</div></div>
+      <div><div class="die txtdie rot"><div class="top"><span>傷</span></div><div class="front"></div></div><div class="cap" style="color:var(--muted)">轉 90° 落地</div></div>
+    </div>
+  </section>
+
+  <!-- 1 -->
+  <section class="s1">
+    <div class="head"><div class="num">1</div><h2>2D 版畫線條</h2><p>深褐墨線 + 斜線陰影，像舊桌遊卡上印的圖；跟紙卡、角色卡最搭。</p></div>
+    <div class="row" id="r1"></div>
+    <div class="demo" id="d1"></div>
+  </section>
+
+  <!-- 2 -->
+  <section class="s2">
+    <div class="head"><div class="num">2</div><h2>2D 剪影籌碼</h2><p>米色剪影壓在撲克籌碼上（技能紅、效果藍），跟現在的血量籌碼、效果籌碼同一套。遠看最清楚。</p></div>
+    <div class="row" id="r2"></div>
+    <div class="demo" id="d2"></div>
+  </section>
+
+  <!-- 3 -->
+  <section class="s3">
+    <div class="head"><div class="num">3</div><h2>3D 浮雕刻面</h2><p>圖案刻進骨白色骰面、凹槽上紅 / 藍漆，像真的雕刻骰子。遊戲裡可以用法線貼圖做，不用每招做模型。</p></div>
+    <div class="row" id="r3"></div>
+    <div class="demo" id="d3"></div>
+  </section>
+
+  <!-- 4 -->
+  <section class="s4">
+    <div class="head"><div class="num">4</div><h2>3D 金屬嵌片</h2><p>深色木頭骰子嵌一片黃銅（技能）/ 鐵（效果）圖章，有斜面反光。最「寶物」感，但小尺寸比較糊。</p></div>
+    <div class="row" id="r4"></div>
+    <div class="demo" id="d4"></div>
+  </section>
+
+  <p class="note">Claude 的建議：<b>1 或 2</b>。同一張圖可以同時貼在骰面、技能欄、獎勵卡、Tab 面板，劍盾約 20 招、效果面 12 種都畫得完；3、4 在遊戲裡要另做法線 / 材質，骰面變小（放慢前的遠景）時細節會不見。<br>
+  也可以混搭：例如骰面用 3（刻面），技能欄與卡片用 1（印刷）。</p>
+</main>
+
+<script>
+  const ICONS = [
+    ["i-whirlwind", "旋風斬", "技能"],
+    ["i-shield-charge", "盾撞", "技能"],
+    ["i-sword-wave", "劍氣", "技能"],
+    ["i-shield-slam", "盾震", "技能"],
+    ["i-fx-shield", "開場護盾", "效果"],
+    ["i-fx-dmg", "傷害 +10%", "效果"],
+  ];
+  const svg = (id, cls = "icon") => `<svg class="${cls}" viewBox="0 0 100 100"><use href="#${id}"/></svg>`;
+  for (let s = 1; s <= 4; s++) {
+    document.getElementById("r" + s).innerHTML = ICONS.map(([id, name, kind]) => {
+      const eff = kind === "效果";
+      const body = s === 2 ? `<div class="chip ${eff ? "eff" : "skill"}">${svg(id, "")}</div>` : `<div class="tile ${eff ? "eff" : ""}">${svg(id)}</div>`;
+      return `<div class="cell">${body}<div class="name">${name}</div><div class="kind">${kind}</div></div>`;
+    }).join("");
+    const dice = [["i-whirlwind", false, false], ["i-whirlwind", false, true], ["i-fx-shield", true, false], ["i-fx-dmg", true, true]]
+      .map(([id, eff, rot]) => `<div><div class="die ${eff ? "eff" : ""} ${rot ? "rot" : ""}"><div class="top ${eff ? "eff" : ""}">${svg(id, "")}</div><div class="front"></div></div><div class="cap">${rot ? "轉 90°" : "正的"}</div></div>`).join("");
+    const cards = `<div><div class="card lit">${svg("i-whirlwind", "")}<span class="key">右鍵</span></div><div class="cap">右鍵卡（骰中）</div></div>
+      <div><div class="card">${svg("i-shield-slam", "")}<span class="key">Q</span></div><div class="cap">技能欄</div></div>`;
+    document.getElementById("d" + s).innerHTML = dice + cards;
+  }
+</script>
+</body>
+</html>

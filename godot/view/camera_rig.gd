@@ -14,15 +14,13 @@ var _aim_plane := Plane(Vector3.UP, Config.CAMERA.aim_plane_height)
 var _shake_strength := 0.0
 var _shake_time := 0.0
 var _shake_duration := 0.0
+var _elevation: float = Config.CAMERA.elevation
 
 
 func _ready() -> void:
-	var el: float = Config.CAMERA.elevation
-	var az: float = Config.CAMERA.azimuth
-	_offset = Vector3(cos(el) * sin(az), sin(el), cos(el) * cos(az)) * Config.CAMERA.distance
+	_apply_angles()
 	var forward3 := Vector3(-_offset.x, 0.0, -_offset.z).normalized()
 	_right3 = forward3.cross(Vector3.UP).normalized()
-	_screen_up = _right3.cross(_offset).normalized()
 	screen_forward = Vector2(forward3.x, forward3.z)
 	screen_right = Vector2(_right3.x, _right3.z)
 
@@ -47,6 +45,27 @@ func shake(strength: float, duration: float = 0.2) -> void:
 # 正交鏡頭看多大（可視高度，世界單位）慢慢拉到 size：骰子模式擲骰時推近骰盤
 func zoom(size: float, dt: float) -> void:
 	camera.size = lerpf(camera.size, size, 1.0 - exp(-Config.CAMERA.follow_sharpness * 0.6 * dt))
+
+
+# 俯角慢慢轉到 elevation（弧度）：骰子模式擲骰時抬高、看骰盤比較正。方位角不變，所以 screen_forward / screen_right（移動與瞄準的方向）不受影響
+func tilt(elevation: float, dt: float) -> void:
+	if _elevation == elevation:
+		return
+	_elevation = lerpf(_elevation, elevation, 1.0 - exp(-Config.CAMERA.follow_sharpness * 0.6 * dt))
+	if absf(_elevation - elevation) < 0.001:
+		_elevation = elevation
+	_apply_angles()
+
+
+func elevation() -> float:
+	return _elevation
+
+
+func _apply_angles() -> void:
+	var az: float = Config.CAMERA.azimuth
+	_offset = Vector3(cos(_elevation) * sin(az), sin(_elevation), cos(_elevation) * cos(az)) * Config.CAMERA.distance
+	var right3 := Vector3(-_offset.x, 0.0, -_offset.z).normalized().cross(Vector3.UP).normalized()
+	_screen_up = right3.cross(_offset).normalized()
 
 
 # 畫面效果用一般 randf()：與模擬無關，各台不必一致
