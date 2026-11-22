@@ -652,7 +652,9 @@ static func _check_stacked_die(table: DiceTable) -> String:
 		await (Engine.get_main_loop() as SceneTree).physics_frame
 		if not got.is_empty():
 			break
-		if not stacked and table._rest_frames >= 1:   # 都停住、還沒判定停好：把第 2 顆平平疊到第 1 顆正上方
+		if not stacked and table._rest_frames >= 1:   # 都停住、還沒判定停好：全部平放排一排（隨機丟出來斜靠著的別顆也會被推，就量不到疊著的那顆），再把第 2 顆平平疊到第 1 顆正上方
+			for i in table._dice.size():
+				table._place(table._dice[i], Vector3(-DiceTable.PLAY.x / 2.0 + 1.6 + i * 1.75, 0.5, 0.8), 0, false)
 			var under: RigidBody3D = table._dice[0]
 			table._place(table._dice[1], under.position + Vector3(0, 1.0, 0), face, false)
 			stacked = true

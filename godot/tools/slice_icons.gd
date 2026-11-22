@@ -1,8 +1,10 @@
 # 把 Gemini 生的格狀圖示圖（白底、每個圖示外圈粗黑邊）切成一張張去背 PNG（headless，在 godot/ 內）：
-#   <Godot> --headless --path . -s res://tools/slice_icons.gd -- --src=<圖的絕對路徑> --ids=左上,…,右下 [--cols=3 --rows=2]
+#   <Godot> --headless --path . -s res://tools/slice_icons.gd -- --src=<圖的絕對路徑> --ids=左上,…,右下 [--cols=3 --rows=2] [--glow]
 # 整張圖從四邊往內填掉白底（跟外圍相連、夠白的才算背景，黑邊裡面的白色亮面留著；被圖案包起來的白底也會留著，所以介面上畫圖示要墊白底）；
 # 剩下的每一塊照它的中心點落在哪一格分給那一格（Gemini 的格子不完全等寬，圖案跨過格線也整塊歸自己那格）；
-# 黑邊外緣的灰色反鋸齒變成半透明黑；沒有黑邊、又接近白色的部分（光柱、光暈）會被當背景去掉，要請 Gemini 加黑邊重生
+# 黑邊外緣的灰色反鋸齒變成半透明黑；沒有黑邊、又接近白色的部分（光柱、光暈）會被當背景去掉：
+#   有帶顏色的光（暖色光柱）就加 --glow，只有中性的白（RGB 差不到 GLOW_TINT）才算背景，光照原色留著、往白底淡出；
+#   純白的光加 --glow 也留不住，要請 Gemini 加黑邊或上色重生。--glow 會讓 JPEG 雜色也留下來，只用在需要的格子（其他格填 -）
 # 每格照圖案範圍框成正方形、留 4% 邊，縮成 SIZE 存到 res://assets/icons/<id>.png（FaceIcons 照技能 / 效果 id 找圖）
 # id 填 - 的格子跳過。存完要再 --import 一次，遊戲才讀得到新圖
 extends SceneTree
@@ -11,6 +13,8 @@ const OUT_DIR := "res://assets/icons/"
 const SIZE := 256
 const BG_LUM := 215.0   # 比這亮、又跟外圍相連的是背景
 const PAD := 0.04
+const GLOW_TINT := 10    # --glow：夠亮、RGB 最大減最小不到這個才是背景（白底的 JPEG 雜色約 2）
+const GLOW_RAMP := 12.0  # --glow：光從 GLOW_TINT 到 GLOW_TINT + 這個之間由透明漸變到不透明，光暈外緣不會一刀切
 
 
 func _initialize() -> void:
@@ -18,9 +22,12 @@ func _initialize() -> void:
 	var ids: PackedStringArray = []
 	var cols := 3
 	var rows := 2
+	var is_glow := false
 	for arg in OS.get_cmdline_user_args():
 		var value := arg.get_slice("=", 1)
-		if arg.begins_with("--src="):
+		if arg == "--glow":
+			is_glow = true
+		elif arg.begins_with("--src="):
 			src = value
 		elif arg.begins_with("--ids="):
 			ids = value.split(",")
@@ -38,7 +45,7 @@ func _initialize() -> void:
 	var w := img.get_width()
 	var h := img.get_height()
 	var data := img.get_data()   # RGBA8，直接讀位元組比 get_pixel 快很多
-	var bg := _background(data, w, h)
+	var bg := _background(data, w, h, is_glow)
 	# 每一塊（四連通）的中心點 → 哪一格
 	var cell_of := PackedInt32Array()
 	cell_of.resize(w * h)
@@ -70,7 +77,7 @@ func _initialize() -> void:
 		var id := ids[k].strip_edges()
 		if id == "" or id == "-":
 			continue
-		var icon := _cell_icon(data, bg, cell_of, k, w, h)
+		var icon := _cell_icon(data, bg, cell_of, k, w, h, is_glow)
 		if icon == null:
 			printerr("第 %d 格（%s）沒有圖案" % [k + 1, id])
 			continue
@@ -84,8 +91,15 @@ static func _lum_at(data: PackedByteArray, i: int) -> float:
 	return 0.3 * data[i * 4] + 0.59 * data[i * 4 + 1] + 0.11 * data[i * 4 + 2]
 
 
-# 跟四邊相連、夠白的像素 = 1
-static func _background(data: PackedByteArray, w: int, h: int) -> PackedByteArray:
+static func _tint_at(data: PackedByteArray, i: int) -> int:
+	var r := data[i * 4]
+	var g := data[i * 4 + 1]
+	var b := data[i * 4 + 2]
+	return maxi(r, maxi(g, b)) - mini(r, mini(g, b))
+
+
+# 跟四邊相連、夠白的像素 = 1（is_glow：還要是中性的白，帶顏色的光不算）
+static func _background(data: PackedByteArray, w: int, h: int, is_glow: bool) -> PackedByteArray:
 	var bg := PackedByteArray()
 	bg.resize(w * h)
 	var stack := PackedInt32Array()
@@ -98,7 +112,7 @@ static func _background(data: PackedByteArray, w: int, h: int) -> PackedByteArra
 	while not stack.is_empty():
 		var i := stack[stack.size() - 1]
 		stack.resize(stack.size() - 1)
-		if bg[i] == 1 or _lum_at(data, i) < BG_LUM:
+		if bg[i] == 1 or _lum_at(data, i) < BG_LUM or (is_glow and _tint_at(data, i) >= GLOW_TINT):
 			continue
 		bg[i] = 1
 		var x := i % w
@@ -110,7 +124,7 @@ static func _background(data: PackedByteArray, w: int, h: int) -> PackedByteArra
 	return bg
 
 
-static func _cell_icon(data: PackedByteArray, bg: PackedByteArray, cell_of: PackedInt32Array, k: int, w: int, h: int) -> Image:
+static func _cell_icon(data: PackedByteArray, bg: PackedByteArray, cell_of: PackedInt32Array, k: int, w: int, h: int, is_glow: bool) -> Image:
 	var l := w
 	var r := -1
 	var t := h
@@ -136,7 +150,10 @@ static func _cell_icon(data: PackedByteArray, bg: PackedByteArray, cell_of: Pack
 			if cell_of[i] != k:
 				continue
 			var edge := (x > 0 and bg[i - 1] == 1) or (x < w - 1 and bg[i + 1] == 1) or (y > 0 and bg[i - w] == 1) or (y < h - 1 and bg[i + w] == 1)
-			if edge:   # 黑邊外緣的灰色反鋸齒：變半透明的黑，放在任何底色上都不會有白毛邊
+			if is_glow and _lum_at(data, i) >= BG_LUM:   # 亮的光：照原色，顏色越淡越透明
+				var a := clampf((_tint_at(data, i) - GLOW_TINT) / GLOW_RAMP, 0.0, 1.0)
+				out.set_pixel(x - ox, y - oy, Color8(data[i * 4], data[i * 4 + 1], data[i * 4 + 2], int(a * 255.0)))
+			elif edge:   # 黑邊外緣的灰色反鋸齒：變半透明的黑，放在任何底色上都不會有白毛邊
 				out.set_pixel(x - ox, y - oy, Color(0, 0, 0, minf(1.0, (1.0 - _lum_at(data, i) / 255.0) * 1.3)))
 			else:
 				out.set_pixel(x - ox, y - oy, Color8(data[i * 4], data[i * 4 + 1], data[i * 4 + 2]))
