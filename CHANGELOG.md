@@ -3,7 +3,7 @@
 本專案所有重要變更都記錄在此。格式參考 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版號遵循 [語意化版本](https://semver.org/lang/zh-TW/)，規則詳見 `PROJECT_GUIDELINES.md` 第 12 節。
 還沒推送的改動記在最上面的「未發布」，推送時 `tools/release.mjs` 才把它換成版號。
 
-## [未發布]
+## [0.85.1] - 2026-11-23
 
 ### 修復
 - **v0.84.0、v0.85.0 的 Windows 版與網頁版沒發布出去**：GitHub 發布前跑的 `check.gd` 卡在「骰子模式」一項（153 / 154），兩個原因都修了，本機 154 / 154。
