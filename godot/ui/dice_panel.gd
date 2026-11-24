@@ -50,6 +50,9 @@ var _summary := UiKit.label("", UiKit.FONT_NOTE, Color(1, 1, 1, 0.92))   # 結�
 var _cands := HBoxContainer.new()
 var _count := UiKit.label("", 150, UiKit.GOLD, 6)
 var _banner := UiKit.label("", 64, UiKit.GOLD, 5)
+var _stakes := UiKit.label("", 64, UiKit.GOLD, 5)   # 醞釀時畫面上方：「再一顆 旋風斬 → 強化！」，揭曉換成中了 / 差一點
+var _vignette := TextureRect.new()                  # 醞釀時四周壓暗
+var _suspense_a := 0.0                              # 醞釀畫面淡入的程度（0~1）
 var _reward_box := VBoxContainer.new()
 var _reward_cards := HBoxContainer.new()
 var _reward_title := UiKit.label("", UiKit.FONT_HEADING, UiKit.GOLD)
@@ -232,6 +235,25 @@ func _init() -> void:
 	_carve_box.add_child(_carve_hint)
 	_overlay.add_child(_carve_box)
 
+	var vg := GradientTexture2D.new()
+	vg.fill = GradientTexture2D.FILL_RADIAL
+	vg.fill_from = Vector2(0.5, 0.5)
+	vg.fill_to = Vector2(1.05, 0.5)
+	vg.gradient = Gradient.new()
+	vg.gradient.set_color(0, Color(0, 0, 0, 0))
+	vg.gradient.set_color(1, Color(0, 0, 0, 0.7))
+	vg.gradient.add_point(0.55, Color(0, 0, 0, 0))
+	_vignette.texture = vg
+	_vignette.stretch_mode = TextureRect.STRETCH_SCALE
+	_vignette.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_vignette.visible = false
+	add_child(_vignette)
+	_stakes.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_stakes.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 110)
+	_stakes.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_stakes.visible = false
+	add_child(_stakes)
 	for l: Label in [_count, _banner]:
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -260,7 +282,9 @@ func use_world_table(parent: Node3D, cam: Camera3D, right: Vector3, yaw: float) 
 # 骰子模式的大字要預熱的（HUD.set_loading）：[文字, 字級, 描邊]。倒數與「開打！」「清場！」150 號、中獎橫幅 64 號
 # （網頁版：大字第一次出現才產生字形，會卡一下；只放會出現的字，大字級整段全放太佔貼圖）
 static func warm_big_text() -> Array:
-	var banner := "你隊友擲出個！＋　比骰子「」：·→拿到0123456789"
+	var banner := "你隊友擲出個！＋　比骰子「」：·→拿到0123456789再一顆差一點……中了"
+	for t: Dictionary in DiceDefs.TIERS:
+		banner += t.name
 	for c: StringName in DiceDefs.COMBOS:
 		banner += DiceDefs.COMBOS[c].name
 	for weapon: StringName in DiceDefs.WEAPON_DICE:
@@ -394,8 +418,8 @@ func camera_focus() -> Variant:
 	if not world_table or not visible or phase != DiceRun.ROLL:
 		return null
 	var f: Variant = table.focus_point()
-	if f != null:
-		return f
+	if f != null:   # 不直接對準那顆：在牆邊時骰盤會被推出畫面，看起來像往旁邊滑
+		return table.center().lerp(f, DiceDefs.SUSPENSE_CAM_TOWARD)
 	return table.center() - Vector3.UP.cross(tray_right) * DiceDefs.TRAY_SCREEN_UP   # 鏡頭對準骰盤下面一點：骰盤在畫面偏上，下方留給擲骰的字與按鈕
 
 
@@ -479,6 +503,7 @@ func refresh(world: World, me: Player, dt: float) -> void:
 			if counting:
 				_dice_row.visible = false
 				_charge_bg.get_parent().visible = false
+	_show_stakes(dt)
 	if rewarding:
 		var tier_name: String = DiceDefs.FIGHT_TIERS[dice.reward_tier].name
 		_reward_title.text = ("走進門的獎勵（%s）：選一個（點卡片、按數字鍵，或 A / D 選再按 F）" % tier_name) if dice.door_pick else ("清場！重擲券 +1　·　%s的獎勵，選一個（點卡片、按數字鍵，或 A / D 選再按 F）" % tier_name)
@@ -534,7 +559,7 @@ func _show_roll(world: World, dice: DiceRun, p: Player, dt: float) -> void:
 			d.bounce()
 		d.show_face(face, p.weapon_id, s.locked[i] and s.rolled, my_turn and s.rolled and s.rerolls > 0 and phase == DiceRun.ROLL)
 	var res := DiceDefs.evaluate(s.up_faces(), p.weapon_id, s.choice)
-	spinning_any = spinning_any or (physics and (dice.waiting or table.replaying or table.state == DiceTable.State.ROLLING))
+	spinning_any = spinning_any or (physics and (dice.waiting or table.replaying or table.holding() or table.state == DiceTable.State.ROLLING))
 	if not s.rolled or spinning_any:
 		_result.text = "" if not s.rolled else "……"
 		_result_sub.text = "同一招骰到越多個越強；效果面全部疊上去；灰色是別的武器的技能，當空白" if not s.rolled else ""
@@ -687,6 +712,30 @@ func _start_show(world: World, p: Player, res: Dictionary) -> void:
 		_banner_t = BANNER_TIME
 	elif res.count == 2:
 		_show_queue.append([t + 0.05, "diceMiss", 1.0])
+
+
+# 醞釀（DiceTable 盯著最後一顆）：下面的字與按鈕淡出（推近時會壓在骰子上）、四周壓暗、上方寫賭注，停好那一拍寫中了沒
+func _show_stakes(dt: float) -> void:
+	var st := table.stake() if phase == DiceRun.ROLL and physics else {}
+	_suspense_a = move_toward(_suspense_a, 1.0 if not st.is_empty() else 0.0, dt / 0.25)
+	_roll_box.modulate.a = 1.0 - _suspense_a
+	_vignette.visible = _suspense_a > 0.0
+	_vignette.modulate.a = _suspense_a
+	_stakes.visible = _suspense_a > 0.0 and not st.is_empty()
+	if st.is_empty():
+		return
+	var need := DiceDefs.tier_of(st.have + 1).name as String
+	match st.hit:
+		1:
+			_stakes.text = "中了！%d 個%s → %s！" % [st.have + 1, DiceDefs.name_of(st.face), need]
+			_stakes.add_theme_color_override(&"font_color", UiKit.GOLD)
+		0:
+			_stakes.text = "差一點……"
+			_stakes.add_theme_color_override(&"font_color", Color(0.8, 0.8, 0.8))
+		_:
+			_stakes.text = "再一顆%s → %s！" % [DiceDefs.name_of(st.face), need]
+			_stakes.add_theme_color_override(&"font_color", UiKit.GOLD)
+	_stakes.modulate.a = _suspense_a
 
 
 func _play_show(dt: float) -> void:

@@ -348,13 +348,25 @@ const ARENA_MAX := 16.0
 const FOLLOW_SLOTS: Array[Vector2] = [Vector2(-1.6, 1.4), Vector2(1.6, 1.4), Vector2(0.0, 2.6)]
 const FOLLOW_DEADZONE := 0.45     # 離位置這麼近就站著
 const FOLLOW_TELEPORT := 14.0     # 離隊長的位置這麼遠（卡住、剛換場地）直接搬過去
-# 擲骰演出：只剩最後一顆在滾、而它停在某一面就能湊到 3 個以上同一招時，桌子放慢、鏡頭推近、音樂收小
-const SUSPENSE_SLOW := 0.3        # 放慢到幾倍速
+# 擲骰演出：只剩最後一顆在翻、而它停在某一面就能湊到 3 個以上同一招時，桌子放慢、鏡頭推近、音樂收小
+# YangHsu 2026-11-24「拉大的醞釀畫面很奇怪、完全沒期待感」：只盯真的在翻的（靠在別顆上慢慢滑的不算）、慢慢變慢、
+# 標出賭注（已中的金光、其他的淡掉、擋住的透明、畫面上寫「再一顆 X → 強化」）、停好先停一拍才揭曉
+const SUSPENSE_SLOW := 0.4        # 放慢到幾倍速（0.3 太慢，像在月球上）
+const SUSPENSE_RAMP := 0.2        # 幾秒內從正常慢到 SUSPENSE_SLOW（一下子變慢很突兀）
 const SUSPENSE_MAX := 1.6         # 最多放慢這麼多秒（實際時間）
+const SUSPENSE_MIN_SPIN := 3.0    # 在翻：翻滾的角速度至少這麼多（弧度 / 秒，換回正常速度算）……
+const SUSPENSE_MIN_SPEED := 1.5   # ……或移動速度至少這麼多；而且沒有碰著別顆骰子（靠著別顆滑的不算）
+const SUSPENSE_HOLD := 0.6        # 停好之後鏡頭留在那顆、揭曉中沒中，這麼多秒才拉回、跳結果
+const SUSPENSE_CAM_TOWARD := 0.6  # 鏡頭從骰盤中心往那顆移多少（1 = 對準那顆：在牆邊時骰盤會被推出畫面）
+const SUSPENSE_FADE_OTHER := 0.55 # 跟賭注無關的骰子淡掉多少（1 = 看不到；DiceTable._fade_die 調材質透明度）
+const SUSPENSE_FADE_BLOCK := 0.85 # 擋在鏡頭與那顆之間的骰子淡掉多少
+const SUSPENSE_GLOW := 0.55       # 已中的骰子染金多少（0 白、1 全金；揭曉中了閃到 SUSPENSE_GLOW_HIT 再退回）
+const SUSPENSE_GLOW_HIT := 2.2
+const SUSPENSE_GLOW_COLOR := Color("ffc84a")
 const SHOW_TICK_GAP := 0.11       # 揭曉時每個中的技能面「叮」一聲的間隔，一聲比一聲高
 const SHOW_TICK_PITCH := 0.12     # 每一聲高多少（音高倍率）
 const TRAY_VIEW := 16.0           # 擲骰時鏡頭看多大（可視高度；平常 20）：骰盤 12 寬要放得下
-const TRAY_VIEW_FOCUS := 11.0     # 放慢時推近
+const TRAY_VIEW_FOCUS := 9.0      # 放慢時推近（11 推得太少，看起來只是往旁邊滑）
 const TRAY_ELEVATION := 1.134      # 擲骰時鏡頭的俯角（65°）（平常 Config.CAMERA.elevation 約 40°：骰盤看起來太斜、骰面不好讀）；不要到 90°（look_at 朝上會轉不出方向）
 const TRAY_SCREEN_UP := 2.5      # 骰盤在畫面上往上挪多少（世界單位）
 const TRAY_LIFT := 1.0            # 骰盤比底下最高的地面高多少（底下有木座，看起來是一個擺著的骰盒）

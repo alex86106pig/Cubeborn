@@ -95,6 +95,12 @@ var _suspense_die := -1             # 放慢時盯著的那顆（鏡頭推過去
 var _suspense_t := 0.0              # 放慢了幾秒（實際時間）
 var _cam_home := Transform3D()      # 鏡頭平常的位置
 var _cam_focus := -1                # 鏡頭推近哪一顆（自己放慢、或播隊友錄影裡的）
+var _hold_t := 0.0                  # 停好之後鏡頭還留在那顆的秒數（揭曉中沒中；> 0 時 DicePanel 先不跳結果）
+var _stake_face: StringName = &""   # 這次醞釀賭的那一招（其他停好的已經有 _stake_have 個）
+var _stake_have := 0
+var _stake_hit := -1                # 揭曉：1 中了、0 沒中、-1 還在滾
+var _glow := 0.0                    # 已中那幾顆的金光強度（中了閃一下再退回）
+var _bodies: Array[MeshInstance3D] = []   # 每顆的骰身（金光照它的材質）
 var world_mode := false             # 放進遊戲的 3D 世界（use_world）
 var _ext_cam: Camera3D              # 放進遊戲世界時用遊戲的鏡頭
 var _root: Node3D
@@ -210,6 +216,10 @@ func _make_die(i: int) -> RigidBody3D:
 	col.shape = shape
 	d.add_child(col)
 	_face_nodes.append(build_die_visual(d, _font))
+	for c in d.get_children():
+		if c is MeshInstance3D:
+			_bodies.append(c)
+			break
 	d.body_entered.connect(func(_other: Node) -> void:
 		var v := d.linear_velocity.length()
 		if v > 1.2 and state != State.SETTLED and not replaying:
@@ -309,6 +319,7 @@ func reset_round() -> void:
 	state = State.IDLE
 	_stop_replay()
 	_end_suspense()
+	_end_hold()
 	_rec_id = 0
 	charging = false
 	_hide_cup()
@@ -558,6 +569,10 @@ func warm_up(on: bool) -> void:
 	_root.visible = on
 	_cup.visible = on
 	_cup.position = Vector3(PLAY.x / 4.0, 0, 0) if on else Vector3(0, -20, 0)
+	# 醞釀時的淡掉與金光是另外的著色器組合：預熱時先畫一次（網頁版第一次出現才編譯，會在最緊張的那一下卡住）
+	if _dice.size() >= 2 and _bodies.size() >= 2:
+		_fade_die(0, DiceDefs.SUSPENSE_FADE_OTHER if on else 0.0)
+		_glow_die(1, DiceDefs.SUSPENSE_GLOW if on else 0.0)
 
 
 func _hide_cup() -> void:
@@ -568,6 +583,7 @@ func _hide_cup() -> void:
 
 func _physics_process(delta: float) -> void:
 	_update_camera(delta)
+	_update_stakes(delta)
 	if replaying:
 		_step_replay(delta)
 		return
@@ -643,6 +659,8 @@ func _step_physics(delta: float) -> void:
 				_place(d, Vector3(spot.x, 0.5, spot.z), up_face(d), false)
 	state = State.SETTLED
 	_end_suspense()
+	if _cam_focus >= 0:
+		_begin_hold(_cam_focus)
 	var faces := up_faces()
 	settled.emit(faces)
 
@@ -780,7 +798,7 @@ func play_frames(data: PackedByteArray) -> void:
 
 func _stop_replay() -> void:
 	if replaying:
-		_set_focus(-1)
+		_end_hold()
 	replaying = false
 	_play.clear()
 	_play_t = 0.0
@@ -813,13 +831,18 @@ func _step_replay(delta: float) -> void:
 		_play_done += 1
 		if _play[_play_done][1] > 0.0:
 			clacked.emit(_play[_play_done][1])
-	_set_focus(a[4])
+	if _hold_t <= 0.0:   # 錄影的最後一幀已經不盯了（擲的人那邊停好）：照擲的人一樣留一拍揭曉
+		if a[4] < 0 and _cam_focus >= 0:
+			_begin_hold(_cam_focus)
+		else:
+			_set_focus(a[4])
 	if _play_t >= last and _play_final:
 		replaying = false
 		replays_done += 1
 		replayed_faces = Array(up_faces())
 		state = State.SETTLED
-		_set_focus(-1)
+		if _cam_focus >= 0 and _hold_t <= 0.0:
+			_begin_hold(_cam_focus)
 		_hide_cup()
 
 
@@ -837,8 +860,11 @@ func _die_resting(d: RigidBody3D, loose: float) -> bool:
 func _update_suspense(delta: float) -> void:
 	if _suspense_die >= 0:
 		_suspense_t += delta
-		if _suspense_t >= DiceDefs.SUSPENSE_MAX or _die_resting(_dice[_suspense_die], 1.0):
-			_end_suspense()
+		var d := _dice[_suspense_die]
+		if _suspense_t >= DiceDefs.SUSPENSE_MAX or _die_resting(d, 1.0):
+			_set_slow(1.0)   # 停了（或放慢太久）：恢復正常速度，鏡頭繼續盯著，整桌停好再揭曉（_begin_hold）
+		elif _slow > DiceDefs.SUSPENSE_SLOW:   # 慢慢變慢
+			_set_slow(maxf(DiceDefs.SUSPENSE_SLOW, _slow - (1.0 - DiceDefs.SUSPENSE_SLOW) * delta / DiceDefs.SUSPENSE_RAMP))
 		return
 	if _slow == 1.0 and _roll_time > 0.5 and _suspense_t == 0.0:
 		var k := suspense_candidate()
@@ -846,7 +872,8 @@ func _update_suspense(delta: float) -> void:
 			_begin_suspense(k)
 
 
-# 只剩一顆還在滾（其他的差不多停了），而且它停在某一面就能讓同一招湊到 3 個以上：回傳那一顆，否則 -1
+# 只剩一顆還在翻（其他的差不多停了），而且它停在某一面就能讓同一招湊到 3 個以上：回傳那一顆，否則 -1
+# 「在翻」：翻滾或移動夠快、而且沒碰著別顆骰子（疊成一堆靠著慢慢滑的那顆，放慢了也只是看一堆不動的骰子）
 func suspense_candidate() -> int:
 	var moving := -1
 	for i in _dice.size():
@@ -854,34 +881,76 @@ func suspense_candidate() -> int:
 			if moving >= 0:
 				return -1
 			moving = i
-	if moving < 0 or _faces.size() < _dice.size():
+	if moving < 0 or _faces.size() < _dice.size() or not _die_tumbling(moving):
 		return -1
+	return moving if _stake_of(moving).size() > 0 else -1
+
+
+func _die_tumbling(k: int) -> bool:
+	var d := _dice[k]
+	var spin := Vector2(d.angular_velocity.x, d.angular_velocity.z).length() / _slow
+	if spin < DiceDefs.SUSPENSE_MIN_SPIN and d.linear_velocity.length() / _slow < DiceDefs.SUSPENSE_MIN_SPEED:
+		return false
+	for b in d.get_colliding_bodies():
+		if b is RigidBody3D and _dice.has(b):
+			return false
+	return true
+
+
+# k 這顆在賭什麼：其他骰子朝上的面裡同一招（這把武器能用的）最多的那招，至少 2 個、而且 k 身上也有 → [那招, 已經幾個]，否則 []
+func _stake_of(k: int) -> Array:
 	var counts := {}
 	for i in _dice.size():
-		if i == moving:
+		if i == k:
 			continue
 		var face: StringName = _faces[i][up_face(_dice[i])]
 		if DiceDefs.skill_fits(face, _weapon_id):
 			counts[face] = counts.get(face, 0) + 1
+	var best: Array = []
 	for face: StringName in counts:
-		if counts[face] >= 2 and (_faces[moving] as Array).has(face):
-			return moving
-	return -1
+		if counts[face] >= 2 and (_faces[k] as Array).has(face) and (best.is_empty() or counts[face] > best[1]):
+			best = [face, counts[face]]
+	return best
 
 
 func _begin_suspense(k: int) -> void:
 	_suspense_die = k
 	_suspense_t = 0.0
-	_set_slow(DiceDefs.SUSPENSE_SLOW)
 	_set_focus(k)
 
 
+# 不再放慢（鏡頭要不要留著看揭曉由 _begin_hold 決定）
 func _end_suspense() -> void:
 	if _suspense_die < 0:
 		return
 	_suspense_die = -1
 	_set_slow(1.0)
+
+
+# 整桌停好：鏡頭留在那顆 SUSPENSE_HOLD 秒、揭曉中沒中（中了金光閃一下，沒中金光熄掉）
+func _begin_hold(k: int) -> void:
+	_set_focus(k)
+	_hold_t = DiceDefs.SUSPENSE_HOLD
+	_stake_hit = 1 if _stake_face != &"" and _faces[k][up_face(_dice[k])] == _stake_face else 0
+	if _stake_hit == 1:
+		_glow = DiceDefs.SUSPENSE_GLOW_HIT
+
+
+func _end_hold() -> void:
+	_hold_t = 0.0
 	_set_focus(-1)
+
+
+# 停好之後還留在那顆（DicePanel 先不跳結果、不給按）
+func holding() -> bool:
+	return _hold_t > 0.0
+
+
+# 畫面上寫的賭注：{ face, have, hit }（沒在醞釀 = {}）
+func stake() -> Dictionary:
+	if _cam_focus < 0 or _stake_face == &"":
+		return {}
+	return {"face": _stake_face, "have": _stake_have, "hit": _stake_hit}
 
 
 # 慢動作：速度乘上倍速的比例、重力乘上倍速平方，軌跡跟原本一樣、只是走得慢
@@ -898,13 +967,104 @@ func _set_slow(v: float) -> void:
 
 
 # 鏡頭盯哪一顆（-1 = 回原位）；換了就送 suspense_changed（播隊友錄影時也送，音樂一起收小）
+# 開始盯的時候算賭注（隊友播錄影時各自用骰面算，錄影不用多帶）
 func _set_focus(k: int) -> void:
 	if k == _cam_focus:
 		return
 	var was := _cam_focus >= 0
 	_cam_focus = k
+	if k >= 0:
+		var st := _stake_of(k) if k < _dice.size() and _faces.size() >= _dice.size() else []
+		_stake_face = st[0] if st.size() > 0 else &""
+		_stake_have = st[1] if st.size() > 0 else 0
+		_stake_hit = -1
+		_glow = DiceDefs.SUSPENSE_GLOW
+	else:
+		_stake_face = &""
+		_stake_hit = -1
+		_glow = 0.0
+		_paint_stakes(-1)
 	if was != (k >= 0):
 		suspense_changed.emit(k >= 0)
+
+
+# 每幀：揭曉的停頓倒數、金光退回、哪幾顆淡掉 / 透明
+func _update_stakes(delta: float) -> void:
+	if _hold_t > 0.0:
+		_hold_t -= delta
+		if _hold_t <= 0.0:
+			_end_hold()
+			return
+	if _cam_focus < 0:
+		return
+	if _stake_hit == 1:
+		_glow = move_toward(_glow, DiceDefs.SUSPENSE_GLOW, delta * 4.0)
+	elif _stake_hit == 0:
+		_glow = move_toward(_glow, 0.0, delta * 3.0)
+	_paint_stakes(_cam_focus)
+
+
+# 盯著 k 的時候：已中那幾顆（朝上是賭的那招）金光；擋在鏡頭與 k 之間的透明；其他的淡掉。k = -1 全部恢復
+func _paint_stakes(k: int) -> void:
+	var cam := _ext_cam if world_mode else _camera
+	var watching := k >= 0 and k < _dice.size() and cam != null and cam.is_inside_tree()
+	var at := Vector2.ZERO
+	var depth := 0.0
+	var reach := 0.0
+	if watching:
+		var p := _dice[k].global_position
+		at = cam.unproject_position(p)
+		depth = -(cam.global_transform.affine_inverse() * p).z
+		reach = at.distance_to(cam.unproject_position(p + cam.global_transform.basis.x)) * 1.1   # 一顆骰子在畫面上大概多寬
+	for i in _dice.size():
+		var fade := 0.0
+		var glow := 0.0
+		if watching and i != k:
+			var p := _dice[i].global_position
+			var on_stake: bool = _stake_face != &"" and _faces[i][up_face(_dice[i])] == _stake_face
+			glow = _glow if on_stake else 0.0
+			if cam.unproject_position(p).distance_to(at) < reach and -(cam.global_transform.affine_inverse() * p).z < depth:
+				fade = DiceDefs.SUSPENSE_FADE_BLOCK
+			elif not on_stake:
+				fade = DiceDefs.SUSPENSE_FADE_OTHER
+		elif watching and _stake_hit == 1:
+			glow = _glow
+		_fade_die(i, fade)
+		_glow_die(i, glow)
+
+
+# 已中的骰子染金、發光（白色骰身只加發光在暖光下還是白的，看不出來）；glow = 0 恢復白色
+func _glow_die(i: int, glow: float) -> void:
+	var m := _bodies[i].material_override as StandardMaterial3D
+	var a := m.albedo_color.a
+	m.albedo_color = DIE_WHITE.lerp(DiceDefs.SUSPENSE_GLOW_COLOR, clampf(glow, 0.0, 1.0))
+	m.albedo_color.a = a
+	m.emission_enabled = glow > 0.0
+	m.emission = DiceDefs.SUSPENSE_GLOW_COLOR
+	m.emission_energy_multiplier = glow * 0.5
+
+
+# 淡掉第 i 顆：骰身、面的圖示 / 色塊、字一起調透明度（網頁版的 Compatibility 渲染器不支援 GeometryInstance3D.transparency，只能調材質）
+func _fade_die(i: int, fade: float) -> void:
+	var a := snappedf(1.0 - fade, 0.05)
+	var body := _bodies[i].material_override as StandardMaterial3D
+	if is_equal_approx(body.albedo_color.a, a):
+		return
+	body.albedo_color.a = a
+	body.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if a < 1.0 else BaseMaterial3D.TRANSPARENCY_DISABLED
+	for k in (_face_nodes[i] as Array).size():
+		var quad := _face_nodes[i][k][0] as MeshInstance3D
+		var lab := _face_nodes[i][k][1] as Label3D
+		lab.modulate.a = a
+		if i >= _faces.size() or not quad.visible:
+			continue
+		var face: StringName = _faces[i][k]
+		if FaceIcons.has(face):
+			quad.material_override = _icon_mat(face, DiceDefs.kind_of(face, _weapon_id) == &"grey", a)
+		else:
+			var m := quad.material_override as StandardMaterial3D
+			m.albedo_color.a = a
+			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if a < 1.0 else BaseMaterial3D.TRANSPARENCY_DISABLED
 
 
 func _update_camera(delta: float) -> void:
@@ -1064,12 +1224,12 @@ static func _chamfer_box() -> ArrayMesh:
 	return _die_mesh
 
 
-static func _icon_mat(id: StringName, grey: bool) -> StandardMaterial3D:
-	var key := [id, grey]
+static func _icon_mat(id: StringName, grey: bool, alpha := 1.0) -> StandardMaterial3D:
+	var key := [id, grey, alpha]   # alpha < 1：醞釀時淡掉的那幾顆（_fade_die，0.05 一階）
 	if not _icon_mats.has(key):
 		var m := StandardMaterial3D.new()
 		m.albedo_texture = FaceIcons.texture(id)
-		m.albedo_color = Color(1, 1, 1, 0.3) if grey else Color.WHITE   # 別的武器的技能：淡淡的（當空白）
+		m.albedo_color = Color(1, 1, 1, (0.3 if grey else 1.0) * alpha)   # 別的武器的技能：淡淡的（當空白）
 		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		m.roughness = 0.6
 		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
@@ -1126,3 +1286,8 @@ static func paint_die(nodes: Array, die: Array, weapon_id: StringName) -> void:
 		quad.material_override = _mat(DicePanel.KIND_COLORS[kind])
 		lab.text = DiceDefs.icon_of(face) if not SkillIcons.has(DiceDefs.icon_of(face)) else DiceDefs.name_of(face).substr(0, 1)
 		lab.modulate = Color(0.95, 0.93, 0.9) if kind == &"blank" else Color(0.08, 0.06, 0.04)
+
+
+# 第 i 顆淡掉多少（檢查用）
+func _dice_fade(i: int) -> float:
+	return 1.0 - (_bodies[i].material_override as StandardMaterial3D).albedo_color.a

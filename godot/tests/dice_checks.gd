@@ -1056,10 +1056,24 @@ static func check_dice_show() -> String:
 	table.suspense_changed.connect(func(on: bool) -> void: calls.append(on))
 	if err == "" and table.suspense_candidate() != 5:
 		err = "其他停好的中 2 個、最後一顆有那一招：應放慢第 6 顆，得到 %d" % table.suspense_candidate()
+	if err == "":   # 慢慢滑的（疊成一堆靠著滑）不算在翻，不放慢（YangHsu 2026-11-24：盯著一堆不動的骰子沒期待感）
+		table._dice[5].linear_velocity = Vector3(0.6, 0.0, 0.0)
+		if table.suspense_candidate() != -1:
+			err = "最後一顆只是慢慢滑（0.6、不翻）不該放慢"
+		table._dice[5].linear_velocity = Vector3(4.0, 0.0, 0.0)
 	if err == "":
 		var home: Vector3 = table._camera.position
 		table.state = DiceTable.State.ROLLING
 		table._begin_suspense(5)
+		var st := table.stake()
+		if st.get("face", &"") != (faces[0] as Array)[sk] or st.get("have", 0) != 2 or st.get("hit", 0) != -1:
+			err = "賭注應是 2 個%s、還沒揭曉：%s" % [(faces[0] as Array)[sk], st]
+		if err == "" and table._slow != 1.0:
+			err = "開始放慢那一下不該馬上變慢（%.2f），要在 %.1f 秒內慢慢變慢" % [table._slow, DiceDefs.SUSPENSE_RAMP]
+		table._update_suspense(DiceDefs.SUSPENSE_RAMP / 2.0)
+		if err == "" and not (table._slow < 1.0 and table._slow > DiceDefs.SUSPENSE_SLOW):
+			err = "放慢到一半應在 1 與 %.1f 之間：%.2f" % [DiceDefs.SUSPENSE_SLOW, table._slow]
+		table._update_suspense(DiceDefs.SUSPENSE_RAMP / 2.0)
 		var space := table._viewport.find_world_3d().space
 		var g: float = PhysicsServer3D.area_get_param(space, PhysicsServer3D.AREA_PARAM_GRAVITY)
 		var v: float = table._dice[5].linear_velocity.length()
@@ -1070,10 +1084,28 @@ static func check_dice_show() -> String:
 		var near := table._camera.position.distance_to(table._dice[5].position)
 		if err == "" and near >= home.distance_to(table._dice[5].position) - 2.0:
 			err = "放慢時鏡頭應推近那顆：%.1f（原本 %.1f）" % [near, home.distance_to(table._dice[5].position)]
+		# 已中的金光、其他的淡掉、擋在鏡頭與那顆之間的透明
+		var cam_pos: Vector3 = table._camera.global_position
+		var block_at := table._dice[5].global_position.lerp(cam_pos, 2.0 / cam_pos.distance_to(table._dice[5].global_position))
+		table._dice[4].global_position = block_at
+		table._paint_stakes(5)
+		var m0 := table._bodies[0].material_override as StandardMaterial3D
+		var fades := [table._dice_fade(2), table._dice_fade(4), table._dice_fade(0)]
+		if err == "" and (not m0.emission_enabled or not is_equal_approx(fades[0], DiceDefs.SUSPENSE_FADE_OTHER) or not is_equal_approx(fades[1], DiceDefs.SUSPENSE_FADE_BLOCK) or fades[2] != 0.0):
+			err = "醞釀時：已中的第 1 顆應金光（%s）、無關的第 3 顆淡 %.2f、擋住的第 5 顆透明 %.2f、已中的不淡：%s" % [m0.emission_enabled, DiceDefs.SUSPENSE_FADE_OTHER, DiceDefs.SUSPENSE_FADE_BLOCK, fades]
 		table._end_suspense()
 		g = PhysicsServer3D.area_get_param(space, PhysicsServer3D.AREA_PARAM_GRAVITY)
-		if err == "" and (not is_equal_approx(g, DiceTable.GRAVITY) or calls != [true, false]):
-			err = "停了應恢復重力 %.1f、送 suspense_changed(false)：重力 %.2f、訊號 %s" % [DiceTable.GRAVITY, g, calls]
+		if err == "" and (not is_equal_approx(g, DiceTable.GRAVITY) or calls != [true]):
+			err = "不再放慢應恢復重力 %.1f、鏡頭還盯著（等揭曉）：重力 %.2f、訊號 %s" % [DiceTable.GRAVITY, g, calls]
+		table.state = DiceTable.State.SETTLED
+		table._place(table._dice[5], Vector3(3.0, 0.5, 1.5), sk, true)
+		table._begin_hold(5)   # 第 6 顆停在那一招：中了
+		if err == "" and (not table.holding() or table.stake().get("hit", -1) != 1):
+			err = "停好應留一拍揭曉中了：%s %s" % [table.holding(), table.stake()]
+		for f in ceili(DiceDefs.SUSPENSE_HOLD * 60.0) + 2:
+			await (Engine.get_main_loop() as SceneTree).physics_frame
+		if err == "" and (table.holding() or calls != [true, false] or table._dice_fade(2) != 0.0 or m0.emission_enabled):
+			err = "揭曉完應拉回、送 suspense_changed(false)、骰子恢復：%s %s 淡 %.2f 金光 %s" % [table.holding(), calls, table._dice_fade(2), m0.emission_enabled]
 	table.queue_free()
 	if err != "":
 		return err

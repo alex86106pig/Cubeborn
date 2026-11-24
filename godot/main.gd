@@ -549,6 +549,15 @@ func _debug_dice_encounter() -> void:
 	if first == null:
 		return
 	_dice_encounter_done = true
+	if args.dice_rig:   # 每顆骰子的空白面換 2 面成那顆的技能（陣列就地改：武器骰與這場的骰子共用同一份）
+		var s := world.dice.seat_of(first)
+		for group: Array in [s.wdice, s.pool]:
+			for die: Array in group:
+				var put := 0
+				for k in die.size():
+					if die[k] == DiceDefs.BLANK and put < 2:
+						die[k] = die[0]
+						put += 1
 	var e := world.spawner.spawn_at(world, &"grunt", world.nav.nearest_walkable(first.pos + Vector2(5, 0)))
 	world.dice.on_alert(world, [e.id])
 
