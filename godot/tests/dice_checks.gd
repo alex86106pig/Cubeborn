@@ -1583,6 +1583,14 @@ static func check_dice_inspect() -> String:
 		dp._picked = false
 		dp._hover_offer = 0
 		dp.refresh(w, p, 0.05)
+	# 直式桌遊卡（2026-11-24 選方案 2）：指著的那張抬起來、其他的放下；數值道具卡畫效果圖示（道具沒有自己的圖）
+	if err == "":
+		var slots: Array = dp._reward_cards.get_children().filter(func(c: Node) -> bool: return not c.is_queued_for_deletion())
+		var lifted: float = (slots[0].get_child(0) as Control).position.y
+		var rest: float = (slots[1].get_child(0) as Control).position.y
+		var item_art: Node = slots[2].get_child(0).get_child(0).get_child(0).get_child(0).get_child(0)
+		if dp._hover_offer != 0 or lifted != 0.0 or rest != DicePanel.CARD_LIFT or not (item_art is TextureRect):
+			err = "獎勵卡：指著的第 1 張應抬起（%.0f）、第 2 張放下（%.0f）、道具卡畫圖示（%s）" % [lifted, rest, item_art.get_class()]
 	# 操作說明只教一次（2026-11-24）：沒看過的第一次寫，換階段再回來就不寫；重新顯示提示後再寫一次
 	if err == "":
 		hud.hints.save_path = ""

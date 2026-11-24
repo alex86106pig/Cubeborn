@@ -17,7 +17,13 @@ const SPIN_FIRST_STOP := 0.35    # 第一顆停下的時間，之後每顆晚 SP
 const SPIN_STAGGER := 0.1
 const BANNER_TIME := 1.4
 const FIGHT_FLASH := 0.7         # 「開打！」留多久
-const CARD_W := 400.0
+const CARD_SIZE := Vector2(230, 320)   # 獎勵卡：直式桌遊卡（YangHsu 2026-11-24 從對比頁選方案 2：大圖在上、名字在下）
+const CARD_LIFT := 16.0          # 選到的那張往上抬多少、歪一點
+const CARD_TILT := -0.03
+const ART_PAPER := Color("e2d4b4")   # 卡上放圖那一塊（比卡紙深一點）
+const ART_EDGE := Color("c9b48c")
+const CHIP_BG := Color("5b3f8f")     # 擲骰、刻面的按鈕做成籌碼（跟重擲券同一種紫）
+const CHIP_RIM := Color("d8c8f0")
 const FLAT_SIDE := 46.0       # 獎勵畫面骰子底下攤平的 6 面：每個小方塊多大（字 = 邊長 × 0.36 = 16，預熱過的字級；3 格寬 146 < 骰子間距約 157）
 const FLAT_GAP := 4.0
 const CARVE_DIE := 64.0          # 刻面時每一面的大小（6 顆 × 6 面）
@@ -57,6 +63,7 @@ var _reward_title := UiKit.label("", UiKit.FONT_HEADING, UiKit.GOLD)
 var _inspect_faces := HBoxContainer.new()   # 獎勵卡下面一條：你帶的 6 顆各自攤平 6 面（3 × 2）；指著新骰子 / 新武器卡時後面多那顆
 # （YangHsu 2026-11-24 照 Claude 的評估：原本上面還有一排可以拖著轉的 3D 骰子，跟攤平的 6 面重複，只留攤平：一眼看完）
 var _faces_key: Array = []
+var _painted_hover := -2           # 卡片上次照哪一張畫的（_hover_offer 變了就重畫：滑鼠、鍵盤、程式設的都跟上）
 var _hover_offer := -1               # 滑鼠指著第幾張獎勵卡（-1 = 沒有）：指著新骰子 / 新武器才在骰子那排後面放那張卡的骰子
 var _carve_box := VBoxContainer.new()
 var _carve_title := UiKit.label("", UiKit.FONT_HEADING, UiKit.GOLD)
@@ -157,6 +164,7 @@ func _init() -> void:
 	btns.alignment = BoxContainer.ALIGNMENT_CENTER
 	btns.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for b: Button in [_btn_roll, _btn_reroll, _btn_done]:   # 擲法（骰盅 / 蓄力條）是偏好，在設定頁（YangHsu 2026-11-24）
+		chip_button(b)
 		btns.add_child(b)
 	_btn_roll.pressed.connect(_press_throw)
 	_btn_reroll.pressed.connect(_press_throw)
@@ -267,7 +275,7 @@ func use_world_table(parent: Node3D, cam: Camera3D, right: Vector3, yaw: float) 
 # 骰子模式的大字要預熱的（HUD.set_loading）：[文字, 字級, 描邊]。倒數與「開打！」「清場！」150 號、中獎橫幅 64 號
 # （網頁版：大字第一次出現才產生字形，會卡一下；只放會出現的字，大字級整段全放太佔貼圖）
 static func warm_big_text() -> Array:
-	var banner := "你隊友擲出個！＋　比骰子「」：·→拿到0123456789再一顆差一點……中了"
+	var banner := "你隊友擲出個！＋　比骰子「」：·→拿到0123456789再一顆差一點……中了？"
 	for t: Dictionary in DiceDefs.TIERS:
 		banner += t.name
 	for c: StringName in DiceDefs.COMBOS:
@@ -496,6 +504,8 @@ func refresh(world: World, me: Player, dt: float) -> void:
 			how += ("\n" if how != "" else "") + _teach(&"dice_shared_pick", "大家暗選，撞到同一個就比骰子，輸的隨機拿沒人選的")
 		_reward_title.text += how
 		_show_offers(s, me)
+		if _painted_hover != _hover_offer:
+			_paint_cards()
 		_show_inspect(dice, s, me)
 	_show_contest(world, dice, me)
 	_play_show(dt)
@@ -856,13 +866,22 @@ func _show_offers(s: DiceRun.Seat, me: Player) -> void:
 		c.queue_free()
 	for i in s.offers.size():
 		_reward_cards.add_child(_offer_card(i, s.offers[i], me))
+	_painted_hover = -2   # 新的卡還沒畫過選到的狀態
 
 
-func _offer_card(i: int, o: Dictionary, me: Player) -> PanelContainer:
+# 一張直式卡：上面一大塊放圖（骰子 / 新武器畫 6 面、刻效果面畫那一面、刻技能面畫「？」、數值道具畫對應的效果圖示），下面寫名字；
+# 卡放在一個固定大小的格子裡（不是容器），選到的時候才能往上抬、歪一點而不被排版拉回去
+func _offer_card(i: int, o: Dictionary, me: Player) -> Control:
+	var slot := Control.new()
+	slot.custom_minimum_size = CARD_SIZE + Vector2(0, CARD_LIFT)
+	slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(CARD_W, 150)
+	card.custom_minimum_size = CARD_SIZE
+	card.size = CARD_SIZE
+	card.position = Vector2(0, CARD_LIFT)
+	card.pivot_offset = CARD_SIZE / 2.0
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
-	card.add_theme_stylebox_override(&"panel", _card_box(UiKit.GOLD, Color(0.11, 0.12, 0.16, 0.96)))
+	card.add_theme_stylebox_override(&"panel", _paper_card(false))
 	card.mouse_entered.connect(func() -> void:
 		_hover_offer = i
 		_paint_cards())
@@ -875,39 +894,111 @@ func _offer_card(i: int, o: Dictionary, me: Player) -> PanelContainer:
 			pick(i)
 			card.accept_event())
 	var body := VBoxContainer.new()
-	body.add_theme_constant_override(&"separation", 10)
+	body.add_theme_constant_override(&"separation", 8)
 	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(body)
-	var title := UiKit.label(o.title, 26, UiKit.GOLD)
+	var art := PanelContainer.new()
+	art.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	art.add_theme_stylebox_override(&"panel", DiceProps.paper_box(ART_PAPER, ART_EDGE, 1))
+	var center := CenterContainer.new()
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	center.add_child(_card_art(o, me))
+	art.add_child(center)
+	body.add_child(art)
+	body.add_child(UiKit.rect(Color(ART_EDGE, 0.8), Vector2(0, 2)))
+	var title := UiKit.label(o.title, 20, DiceProps.INK, 0)   # 字級用開場預熱過的（HUD.set_loading）
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	title.custom_minimum_size.x = CARD_W - 40
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.custom_minimum_size = Vector2(CARD_SIZE.x - 28, 58)
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	body.add_child(title)
-	# 卡上不寫說明（選了就進刻面畫面 / 骰子進背包，到時候自然知道）：有骰面的畫骰面，刻技能面畫一個問號面
-	var shown: Array = o.faces if o.has("faces") else ([o.face] if o.has("face") else [])
-	if not shown.is_empty() or o.kind == &"carve_skill":
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override(&"separation", 6)
-		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		for f: StringName in shown:
-			var m := DieView.new(-1, 52.0)
+	slot.add_child(card)
+	return slot
+
+
+# 卡上的圖（不寫說明：選了就進刻面畫面 / 骰子進背包，到時候自然知道）
+func _card_art(o: Dictionary, me: Player) -> Control:
+	if o.has("faces"):   # 新骰子、新武器：6 面排成 3 × 2
+		var grid := GridContainer.new()
+		grid.columns = 3
+		grid.add_theme_constant_override(&"h_separation", 6)
+		grid.add_theme_constant_override(&"v_separation", 6)
+		grid.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		for f: StringName in o.faces:
+			var m := DieView.new(-1, 56.0)
 			m.show_face(f, o.get("base", me.weapon_id), false, false)
-			row.add_child(m)
-		if o.kind == &"carve_skill":
-			var q := UiKit.label("？", 40, UiKit.GOLD)
-			q.custom_minimum_size = Vector2(52, 52)
-			q.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			q.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-			row.add_child(q)
-		body.add_child(row)
-	return card
+			grid.add_child(m)
+		return grid
+	if o.has("face"):   # 刻效果面：那一面放大
+		var m := DieView.new(-1, 110.0)
+		m.show_face(o.face, me.weapon_id, false, false)
+		return m
+	if o.kind == &"item":   # 數值道具：照它加的數值用效果的圖示（DiceDefs.ITEMS 的 icon）
+		var id: StringName = &""
+		var idx: int = o.get("item", -1)
+		if idx >= 0 and idx < DiceDefs.ITEMS.size():
+			id = DiceDefs.ITEMS[idx].get("icon", &"")
+		else:   # 客戶端的快照只帶種類、名字、說明，不帶 item 編號：照名字找
+			for it: Dictionary in DiceDefs.ITEMS:
+				if it.name == o.title:
+					id = it.get("icon", &"")
+		if FaceIcons.has(id):
+			var tex := TextureRect.new()
+			tex.texture = FaceIcons.texture(id)
+			tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			tex.custom_minimum_size = Vector2(120, 120)
+			tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			return tex
+	var q := UiKit.label("？", 64, DiceProps.INK_SUB, 0)   # 刻技能面：選了才揭曉（64 號跟中獎橫幅一起預熱）
+	q.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return q
 
 
-# 選到的那張（滑鼠指著或鍵盤選的，_hover_offer）白框亮底，其他金框
+# 卡紙：平常紙色深棕框，選到的亮紙金框（跟骰中的右鍵卡一樣）
+static func _paper_card(on: bool) -> StyleBoxFlat:
+	var box := DiceProps.paper_box(DiceProps.PAPER_LIT if on else DiceProps.PAPER, UiKit.GOLD if on else DiceProps.PAPER_EDGE, 3 if on else 2)
+	box.set_corner_radius_all(10)
+	box.set_content_margin_all(12)
+	if on:
+		box.shadow_size = 10
+		box.shadow_offset = Vector2(0, 10)
+	return box
+
+
+# 選到的那張（滑鼠指著或鍵盤選的，_hover_offer）抬起來、歪一點、亮紙金框
 func _paint_cards() -> void:
-	var cards := _reward_cards.get_children().filter(func(c: Node) -> bool: return not c.is_queued_for_deletion())
-	for i in cards.size():
+	_painted_hover = _hover_offer
+	var slots := _reward_cards.get_children().filter(func(c: Node) -> bool: return not c.is_queued_for_deletion())
+	for i in slots.size():
 		var on := i == _hover_offer
-		(cards[i] as Control).add_theme_stylebox_override(&"panel", _card_box(Color.WHITE, Color(0.17, 0.19, 0.25, 0.98)) if on else _card_box(UiKit.GOLD, Color(0.11, 0.12, 0.16, 0.96)))
+		var card := (slots[i] as Control).get_child(0) as Control
+		card.add_theme_stylebox_override(&"panel", _paper_card(on))
+		card.position.y = 0.0 if on else CARD_LIFT
+		card.rotation = CARD_TILT if on else 0.0
+
+
+# 擲骰、刻面的按鈕做成籌碼：紫色圓角、淺色邊（重擲券同一種紫）；按下 / 選中的金邊，不能按的淡掉
+static func chip_button(b: Button) -> void:
+	var states := {&"normal": [CHIP_BG, CHIP_RIM], &"hover": [CHIP_BG.lightened(0.15), Color.WHITE],
+		&"pressed": [CHIP_BG.lightened(0.1), UiKit.GOLD], &"hover_pressed": [CHIP_BG.lightened(0.2), UiKit.GOLD],
+		&"disabled": [Color(CHIP_BG, 0.45), Color(CHIP_RIM, 0.35)]}
+	for state: StringName in states:
+		var box := StyleBoxFlat.new()
+		box.bg_color = states[state][0]
+		box.border_color = states[state][1]
+		box.set_border_width_all(3)
+		box.set_corner_radius_all(40)
+		box.content_margin_left = 22
+		box.content_margin_right = 22
+		box.shadow_color = Color(0, 0, 0, 0.5)
+		box.shadow_size = 3
+		box.shadow_offset = Vector2(0, 3)
+		b.add_theme_stylebox_override(state, box)
+	for c: StringName in [&"font_color", &"font_hover_color", &"font_pressed_color", &"font_hover_pressed_color"]:
+		b.add_theme_color_override(c, Color.WHITE)
+	b.add_theme_color_override(&"font_disabled_color", Color(1, 1, 1, 0.45))
 
 
 static func _card_box(border: Color, bg: Color) -> StyleBoxFlat:
@@ -934,6 +1025,11 @@ func _show_carve(s: DiceRun.Seat, me: Player) -> void:
 				var b := UiKit.button(DiceDefs.name_of(id), UiKit.BUTTON_M)
 				b.toggle_mode = true
 				b.custom_minimum_size.x = 200
+				chip_button(b)
+				if FaceIcons.has(id):
+					b.icon = FaceIcons.texture(id)
+					b.expand_icon = true
+					b.add_theme_constant_override(&"icon_max_width", 36)
 				b.pressed.connect(func() -> void: _carve_skill = k)
 				_carve_skills.add_child(b)
 	_carve_skills.visible = skill_kind

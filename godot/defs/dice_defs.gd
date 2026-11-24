@@ -111,12 +111,13 @@ const DOOR_REWARDS := {
 }
 const DOOR_REROLLS := 1
 # 數值道具：拿了就一直有（掛屬性來源 dice_item:N）
+# icon：獎勵卡上畫哪個效果的圖示（道具沒有自己的圖，用意思最接近的效果面；YangHsu 2026-11-24「icon 直接套用你覺得適合的」）
 const ITEMS := [
-	{"name": "攻擊力 +8%", "stat": [&"damage", &"pct", 0.08]},
-	{"name": "最大生命 +20", "stat": [&"max_hp", &"add", 20.0]},
-	{"name": "攻速 +6%", "stat": [&"attack_speed", &"pct", 0.06]},
-	{"name": "移速 +5%", "stat": [&"move_speed", &"pct", 0.05]},
-	{"name": "受到傷害 −5%", "stat": [&"damage_taken", &"pct", -0.05]},
+	{"name": "攻擊力 +8%", "stat": [&"damage", &"pct", 0.08], "icon": &"fx_dmg"},
+	{"name": "最大生命 +20", "stat": [&"max_hp", &"add", 20.0], "icon": &"fx_heal"},
+	{"name": "攻速 +6%", "stat": [&"attack_speed", &"pct", 0.06], "icon": &"fx_haste"},
+	{"name": "移速 +5%", "stat": [&"move_speed", &"pct", 0.05], "icon": &"fx_speed"},
+	{"name": "受到傷害 −5%", "stat": [&"damage_taken", &"pct", -0.05], "icon": &"fx_guard"},
 ]
 
 
