@@ -2,7 +2,9 @@
 #   上方中央：階段條（帶隊 → 擲骰 → 開打 → 清場 → 獎勵），現在那一步亮起、左邊寫第幾場（track，HUD 放進上方中央那一欄）
 #   左下：角色卡：武器名稱、血量是紅籌碼（每枚 = 最大生命的 1/10）、護盾是藍籌碼、下面寫數字；骰子模式取代左上的血條
 #   右下：這一場的牌：普攻卡、右鍵技能卡（骰到的招、幾個、威力、組合），下面一排效果籌碼與重擲券
-# 擲骰、倒數、選獎勵時卡片收起來（擲骰畫面自己會寫結果）；開著骰子與武器面板（Tab）時也收起來，免得疊在一起
+#   右鍵卡就是右鍵的技能格：冷卻蓋在卡上（技能欄不再畫左右鍵，YangHsu 2026-11-24 照 Claude 的評估：兩邊寫一樣的）；
+#   籌碼只畫圖示與數字，滑鼠指著才寫完整的字
+# 擲骰、倒數時也擺著（擲骰畫面不再自己寫結果）；選獎勵、開著骰子與武器面板（Tab）時收起來，免得疊在一起
 # 字級只用開場預熱過的（HUD.set_loading：16 / 18 / 20 / 28），第一次出現才不會卡
 class_name DiceProps
 extends Control
@@ -33,7 +35,8 @@ var skill_sub := UiKit.label("", 16, INK_SUB, 0)
 var basic_card := PanelContainer.new()
 var basic_sub := UiKit.label("", 16, INK_SUB, 0)
 var chips_row := HFlowContainer.new()
-var chip_texts: Array[String] = []    # 這一幀擺了哪些籌碼（效果與重擲券，檢查讀）
+var chip_texts: Array[String] = []    # 這一幀擺了哪些籌碼（效果與重擲券的完整說明，滑鼠指著顯示；檢查讀）
+var skill_cd := CdMask.new()          # 右鍵卡上的冷卻遮罩
 var _chips_key := ""
 
 
@@ -74,6 +77,7 @@ func _init() -> void:
 	cards.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	basic_card.add_child(_card_body("左鍵　普攻", basic_sub, null))
 	skill_card.add_child(_card_body("右鍵", skill_sub, skill_name))
+	skill_card.add_child(skill_cd)
 	for c: PanelContainer in [basic_card, skill_card]:
 		c.custom_minimum_size = Vector2(140, 0)
 		c.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -123,7 +127,7 @@ func refresh(world: World, me: Player, panels_open: bool) -> void:
 	if not visible:
 		return
 	track.set_step(step_of(dice.phase), dice.fights + (1 if dice.phase == DiceRun.EXPLORE else 0))
-	var cards_on := (dice.phase == DiceRun.EXPLORE or dice.phase == DiceRun.FIGHT or dice.phase == DiceRun.CLEAR) and not panels_open
+	var cards_on := dice.phase != DiceRun.REWARD and not panels_open
 	hero.visible = cards_on
 	hand.visible = cards_on
 	if not cards_on:
@@ -137,8 +141,14 @@ func refresh(world: World, me: Player, panels_open: bool) -> void:
 	shield_chips.set_count(shields, shields)
 	hp_text.text = "%s / %s" % [UiKit.hp_text(me.hp), UiKit.hp_text(me.max_hp)] + ("　盾 %s" % UiKit.hp_text(me.shield) if shields > 0 else "")
 	var s := dice.seat_of(me)
-	_show_skill(s.result)
-	_show_chips(s.result.get("effects", {}), dice.charges_of(me))
+	var res: Dictionary = s.result
+	if dice.phase == DiceRun.ROLL and s.rolled and not dice.waiting:   # 擲骰時：骰子停好就照朝上的面寫（按完成才定，但擲骰畫面不再自己寫結果）
+		res = DiceDefs.evaluate(s.up_faces(), me.weapon_id, s.choice)
+	_show_skill(res)
+	_show_basic(me)
+	_show_chips(res.get("effects", {}), dice.charges_of(me))
+	var key := me.cd("player.special")
+	skill_cd.set_cd(world.cooldowns.remaining(key), 1.0 - world.cooldowns.progress(key) if world.cooldowns.remaining(key) > 0.0 else 0.0)
 
 
 # 階段條第幾步（DiceRun 的階段）
@@ -159,7 +169,7 @@ func _show_skill(res: Dictionary) -> void:
 	var lit: bool = not res.is_empty() and res.count > 0
 	if res.is_empty():
 		skill_name.text = "還沒擲"
-		skill_sub.text = "碰到怪就擲骰"
+		skill_sub.text = ""
 	elif res.count <= 0:
 		skill_name.text = "沒中"
 		skill_sub.text = "這場只能普攻"
@@ -171,17 +181,31 @@ func _show_skill(res: Dictionary) -> void:
 			sub += "\n" + DiceDefs.COMBOS[c].name
 		skill_sub.text = sub
 	skill_card.add_theme_stylebox_override(&"panel", paper_box(PAPER_LIT if lit else PAPER, UiKit.GOLD if lit else PAPER_EDGE, 3 if lit else 2))
-	basic_sub.text = "×%s" % str(DiceDefs.BASIC_ATTACK_MUL)
 
 
-# 效果籌碼一枚一種效果（寫效果與數值），最後一枚是重擲券（寫幾張，0 張變淡）；內容變了才重建
+# 普攻卡：威力倍率；短弓多寫箭袋剩幾支（技能欄的左鍵格原本寫的）
+func _show_basic(me: Player) -> void:
+	var text := "×%s" % str(DiceDefs.BASIC_ATTACK_MUL)
+	if me.weapon.attack.has("quiver"):
+		text += "　裝填中" if me.reload_timer > 0.0 else "　箭 %d" % me.quiver
+	basic_sub.text = text
+
+
+# 效果籌碼一枚一種效果（圖示 + 數值，指著寫完整的字），最後一枚是重擲券（寫幾張，0 張變淡）；內容變了才重建
 func _show_chips(effects: Dictionary, charges: int) -> void:
 	var texts: Array[String] = []
+	var shorts: Array[String] = []
+	var icons: Array = []
 	var colors: Array[Color] = []
 	for id: StringName in effects:
-		texts.append(DiceDefs.effect_text(id, effects[id]))
+		var full := DiceDefs.effect_text(id, effects[id])
+		texts.append(full)
+		shorts.append(short_number(full))
+		icons.append(FaceIcons.texture(id))
 		colors.append(EFFECT_CHIP)
-	texts.append("重擲券 ×%d" % charges)
+	texts.append("重擲券 ×%d：免費重擲用完可以花一張再丟（每關 +2、打完一場 +1、最多 3）" % charges)
+	shorts.append("×%d" % charges)
+	icons.append(null)
 	colors.append(TICKET_CHIP if charges > 0 else Color(TICKET_CHIP, 0.4))
 	var key := "|".join(texts)
 	if key == _chips_key:
@@ -191,7 +215,14 @@ func _show_chips(effects: Dictionary, charges: int) -> void:
 	for c in chips_row.get_children():
 		c.queue_free()
 	for i in texts.size():
-		chips_row.add_child(Chip.new(texts[i], colors[i]))
+		chips_row.add_child(Chip.new(shorts[i], icons[i], colors[i], texts[i]))
+
+
+# 「傷害 +10%」→「+10%」：籌碼上只寫數字（第一段帶數字的字），找不到就整句
+static func short_number(text: String) -> String:
+	var re := RegEx.create_from_string("[+\\-−]?[0-9]+(\\.[0-9]+)?%?")
+	var m := re.search(text)
+	return m.get_string() if m != null else text
 
 
 # 上方中央的階段條：五個點連成一條線、下面寫名稱，現在那一步放大塗金；左邊寫第幾場
@@ -296,20 +327,50 @@ class ChipStacks extends Control:
 			draw_arc(c + Vector2(0, -3), CW * 0.3, 0.0, TAU, 20, Color(1, 1, 1, 0.35), 1.5)
 
 
-# 一枚籌碼：圓片 + 旁邊的字（效果、重擲券）
+# 一枚籌碼：圓片（效果的圖示畫在上面）+ 旁邊的數字；滑鼠指著顯示完整說明（tip）
 class Chip extends HBoxContainer:
 	var color: Color
+	var icon: Texture2D
 
-	func _init(text: String, p_color: Color) -> void:
+	func _init(text: String, p_icon: Texture2D, p_color: Color, tip: String) -> void:
 		color = p_color
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon = p_icon
+		mouse_filter = Control.MOUSE_FILTER_PASS
+		tooltip_text = tip
 		add_theme_constant_override(&"separation", 4)
 		var disc := Control.new()
-		disc.custom_minimum_size = Vector2(24, 24)
+		disc.custom_minimum_size = Vector2(28, 28)
 		disc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		disc.draw.connect(func() -> void:
-			disc.draw_circle(Vector2(12, 12), 11.0, color.darkened(0.45))
-			disc.draw_circle(Vector2(12, 11), 10.0, color)
-			disc.draw_arc(Vector2(12, 11), 6.5, 0.0, TAU, 16, Color(1, 1, 1, 0.45), 1.5))
+			disc.draw_circle(Vector2(14, 14), 13.0, color.darkened(0.45))
+			disc.draw_circle(Vector2(14, 13), 12.0, color if icon == null else Color("f4ecd8"))
+			if icon != null:
+				disc.draw_texture_rect(icon, Rect2(3, 2, 22, 22), false)
+			else:
+				disc.draw_arc(Vector2(14, 13), 7.5, 0.0, TAU, 16, Color(1, 1, 1, 0.45), 1.5))
 		add_child(disc)
 		add_child(UiKit.label(text, 16, Color(1, 1, 1, 0.95), 2))
+
+
+# 右鍵卡上的冷卻：從上往下蓋一層暗色（剩下的比例），中間寫剩幾秒
+class CdMask extends Control:
+	var ratio := 0.0
+	var left := 0.0
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func set_cd(p_left: float, p_ratio: float) -> void:
+		if is_equal_approx(p_left, left) and is_equal_approx(p_ratio, ratio):
+			return
+		left = p_left
+		ratio = clampf(p_ratio, 0.0, 1.0)
+		queue_redraw()
+
+	func _draw() -> void:
+		if ratio <= 0.0:
+			return
+		draw_rect(Rect2(0, 0, size.x, size.y * ratio), Color(0.1, 0.07, 0.04, 0.55))
+		var font := get_theme_default_font()
+		var t := "%.1f" % left if left < 10.0 else str(ceili(left))
+		draw_string(font, Vector2(0, size.y / 2.0 + 10.0), t, HORIZONTAL_ALIGNMENT_CENTER, size.x, 28, Color.WHITE)

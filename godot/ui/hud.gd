@@ -311,6 +311,7 @@ func _init() -> void:
 	root.add_child(relic_panel)
 	root.add_child(dice_props)   # 擲骰、選獎勵的遮罩蓋在它上面
 	root.add_child(dice_panel)
+	dice_panel.hints = hints   # 擲骰、獎勵、刻面的操作說明也只教一次（同一份看過的紀錄）
 
 	# 左側中央：屬性面板（Tab 開關）
 	_stats_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_MINSIZE, 16)
@@ -612,6 +613,7 @@ func _process(delta: float) -> void:
 	for c: Control in [_hp.root, _mana.root, _weapon]:   # 骰子模式：血量、武器在左下的角色卡，沒有魔力
 		c.visible = world.dice == null
 	_coins.visible = world.dice == null
+	_kills.visible = world.dice == null   # 骰子模式看不到擊殺數的用處（YangHsu 2026-11-24 照 Claude 的評估）
 	var s := world.stats
 	if world.has_floors():   # 挖墳地圖（D6）與小關：層數與難度
 		_wave.text = "%s · 難度 %d" % [World.level_name(world.floor_num, world.stage_num), floori(world.difficulty())]

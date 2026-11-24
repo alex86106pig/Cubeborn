@@ -21,7 +21,6 @@ const CARD_W := 400.0
 const FLAT_SIDE := 46.0       # 獎勵畫面骰子底下攤平的 6 面：每個小方塊多大（字 = 邊長 × 0.36 = 16，預熱過的字級；3 格寬 146 < 骰子間距約 157）
 const FLAT_GAP := 4.0
 const CARVE_DIE := 64.0          # 刻面時每一面的大小（6 顆 × 6 面）
-const KIND_NAMES := {&"die": "新骰子", &"weapon": "新武器", &"carve_skill": "刻技能面", &"carve_effect": "刻效果面", &"item": "數值道具"}
 const DIM := Color(0.02, 0.03, 0.06, 0.62)
 
 var _overlay := Control.new()     # 擲骰、倒數、獎勵時蓋住畫面（擋住滑鼠）
@@ -34,7 +33,6 @@ var _hint := UiKit.label("", UiKit.FONT_NOTE, Color(1, 1, 1, 0.75))
 var _btn_roll := UiKit.button("擲骰（空白鍵）", UiKit.BUTTON_M)
 var _btn_reroll := UiKit.button("", UiKit.BUTTON_M)
 var _btn_done := UiKit.button("完成（Enter）", UiKit.BUTTON_M)
-var _btn_method := UiKit.button("", UiKit.BUTTON_M)   # 物理擲骰的擲法：骰盅 / 蓄力條（存在設定 dice_cup）
 var _result := UiKit.label("", UiKit.FONT_BODY, Color("ffcf7a"))
 var _result_sub := UiKit.label("", UiKit.FONT_NOTE)
 var _effects := UiKit.label("", UiKit.FONT_NOTE, Color("9fd8ff"))
@@ -56,9 +54,8 @@ var _suspense_a := 0.0                              # 醞釀畫面淡入的程�
 var _reward_box := VBoxContainer.new()
 var _reward_cards := HBoxContainer.new()
 var _reward_title := UiKit.label("", UiKit.FONT_HEADING, UiKit.GOLD)
-var inspect := DiceInspect.new()     # 獎勵畫面下面：你帶的 6 顆 + 獎勵裡的骰子，拖曳轉著看
-var _inspect_hint := UiKit.label("", UiKit.FONT_NOTE, Color(1, 1, 1, 0.75))
-var _inspect_faces := Control.new()   # 骰子那排底下：每顆的 6 面攤平（3 × 2 小方塊，跟卡片上的一樣），斜著看只看得到 3 面
+var _inspect_faces := HBoxContainer.new()   # 獎勵卡下面一條：你帶的 6 顆各自攤平 6 面（3 × 2）；指著新骰子 / 新武器卡時後面多那顆
+# （YangHsu 2026-11-24 照 Claude 的評估：原本上面還有一排可以拖著轉的 3D 骰子，跟攤平的 6 面重複，只留攤平：一眼看完）
 var _faces_key: Array = []
 var _hover_offer := -1               # 滑鼠指著第幾張獎勵卡（-1 = 沒有）：指著新骰子 / 新武器才在骰子那排後面放那張卡的骰子
 var _carve_box := VBoxContainer.new()
@@ -92,6 +89,8 @@ var physics := false
 var _gui_press := false          # 這一下左鍵按在面板的控制項上（放開也不轉給骰盤）
 var _warming := false            # 開場預熱中：骰盤露出來（warm_up / end_warm_up）
 var settings: SettingsPanel
+var hints: Hints                  # HUD 給：操作說明只教一次，看過的記在同一份紀錄（重新顯示提示會再教）
+var _teaching := {}               # 這一段（擲骰 / 獎勵 / 刻面）正在教的說明 id：第一次出現就記成看過，這一段結束前照樣顯示
 var table := DiceTable.new()
 var _charge_bg := UiKit.rect(Color(1, 1, 1, 0.12), Vector2(420, 14))
 var _charge_fill := UiKit.rect(Color("ffd84a"))
@@ -157,11 +156,8 @@ func _init() -> void:
 	btns.add_theme_constant_override(&"separation", 14)
 	btns.alignment = BoxContainer.ALIGNMENT_CENTER
 	btns.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	for b: Button in [_btn_roll, _btn_reroll, _btn_done, _btn_method]:
+	for b: Button in [_btn_roll, _btn_reroll, _btn_done]:   # 擲法（骰盅 / 蓄力條）是偏好，在設定頁（YangHsu 2026-11-24）
 		btns.add_child(b)
-	_btn_method.pressed.connect(func() -> void:
-		if settings != null:
-			settings.set_value("dice_cup", not settings.values.get("dice_cup", true)))
 	_btn_roll.pressed.connect(_press_throw)
 	_btn_reroll.pressed.connect(_press_throw)
 	_btn_done.pressed.connect(func() -> void: op_requested.emit([InputCmd.OP_DICE_DONE]))
@@ -188,18 +184,10 @@ func _init() -> void:
 	_reward_cards.alignment = BoxContainer.ALIGNMENT_CENTER
 	_reward_cards.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_reward_box.add_child(_reward_cards)
-	var inspect_box := CenterContainer.new()
-	inspect_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	inspect_box.add_child(inspect)
-	_reward_box.add_child(inspect_box)
-	var faces_box := CenterContainer.new()
-	faces_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_inspect_faces.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_inspect_faces.custom_minimum_size = Vector2(inspect.custom_minimum_size.x, FLAT_SIDE * 2 + FLAT_GAP)
-	faces_box.add_child(_inspect_faces)
-	_reward_box.add_child(faces_box)
-	_inspect_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_reward_box.add_child(_inspect_hint)
+	_inspect_faces.alignment = BoxContainer.ALIGNMENT_CENTER
+	_inspect_faces.add_theme_constant_override(&"separation", 18)
+	_reward_box.add_child(_inspect_faces)
 	_overlay.add_child(_reward_box)
 
 	# 刻面：選了刻技能 / 刻效果的卡之後，點這場帶的 6 顆骰子的其中一面（空白面金框，是建議刻的地方）
@@ -222,9 +210,6 @@ func _init() -> void:
 		row.add_theme_constant_override(&"separation", 6)
 		row.alignment = BoxContainer.ALIGNMENT_CENTER
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var tag := UiKit.label("第 %d 顆" % (d + 1), UiKit.FONT_NOTE, Color(1, 1, 1, 0.7))
-		tag.custom_minimum_size.x = 80
-		row.add_child(tag)
 		for f in DiceDefs.FACES:
 			var v := DieView.new(d * DiceDefs.FACES + f, CARVE_DIE)
 			v.clicked.connect(_on_carve_face)
@@ -302,7 +287,6 @@ func warm_up(center: Vector3, faces: Array, weapon_id: StringName) -> void:
 	table.set_faces(faces, weapon_id)
 	table.set_origin(Transform3D(Basis(Vector3.UP, tray_yaw), center))
 	table.warm_up(true)
-	inspect.warm_up(faces, weapon_id)   # 獎勵畫面那排骰子（自己一個 3D 世界）
 
 
 func end_warm_up() -> void:
@@ -310,7 +294,6 @@ func end_warm_up() -> void:
 		return
 	_warming = false
 	table.warm_up(false)
-	inspect.end_warm_up()
 
 
 # 骰盤擺哪：地圖有擲骰台（MapGen._place_dice_spots，每塊打怪的區域旁邊一格牆外的空小格）就用離中心最近、不壓到霧牆與出口的那一塊；
@@ -465,6 +448,7 @@ func refresh(world: World, me: Player, dt: float) -> void:
 	phase = dice.phase
 	var s := dice.seat_of(me)
 	if phase != _last_phase:
+		_teaching.clear()
 		if phase == DiceRun.FIGHT and (_last_phase == DiceRun.COUNTDOWN or _last_phase == DiceRun.EXPLORE):
 			_fight_t = FIGHT_FLASH   # 倒數完閃「開打！」
 		if phase == DiceRun.REWARD:
@@ -506,9 +490,11 @@ func refresh(world: World, me: Player, dt: float) -> void:
 	_show_stakes(dt)
 	if rewarding:
 		var tier_name: String = DiceDefs.FIGHT_TIERS[dice.reward_tier].name
-		_reward_title.text = ("走進門的獎勵（%s）：選一個（點卡片、按數字鍵，或 A / D 選再按 F）" % tier_name) if dice.door_pick else ("清場！重擲券 +1　·　%s的獎勵，選一個（點卡片、按數字鍵，或 A / D 選再按 F）" % tier_name)
+		_reward_title.text = "走進門的獎勵：選一個" if dice.door_pick else "重擲券 +1　·　選一個獎勵"
+		var how := _teach(&"dice_reward_keys", "（點卡片、按數字鍵，或 A / D 選再按 F）")
 		if dice.shared:
-			_reward_title.text += "\n大家暗選，撞到同一個就比骰子，輸的隨機拿沒人選的"
+			how += ("\n" if how != "" else "") + _teach(&"dice_shared_pick", "大家暗選，撞到同一個就比骰子，輸的隨機拿沒人選的")
+		_reward_title.text += how
 		_show_offers(s, me)
 		_show_inspect(dice, s, me)
 	_show_contest(world, dice, me)
@@ -523,12 +509,12 @@ func refresh(world: World, me: Player, dt: float) -> void:
 # 擲骰畫面：畫正在擲的那位（多人時大家看同一個人）
 func _show_roll(world: World, dice: DiceRun, p: Player, dt: float) -> void:
 	var s := dice.seat_of(p)
-	var who := "你" if my_turn else "隊友"
+	var who := "你" if my_turn else _player_name(world, null, p.peer_id)
 	_summary.text = summary_text(world, dice, p) if phase == DiceRun.COUNTDOWN else ""
 	if phase != DiceRun.ROLL:
 		_title.text = "全部擲完了"
 	else:
-		_title.text = "第 %d 場（%s）· 輪到%s擲骰（%s）" % [dice.fights, DiceDefs.FIGHT_TIERS[dice.tier].name, who, p.weapon.get("name", "")]
+		_title.text = "輪到%s擲骰" % who   # 第幾場、一般 / 菁英在上方階段條與遭遇卡，武器在左下角色卡
 	_timer_fill.size = Vector2(_timer_bg.custom_minimum_size.x * clampf(dice.timer / DiceDefs.ROLL_TIME, 0.0, 1.0), _timer_bg.custom_minimum_size.y)
 	_timer_fill.visible = phase == DiceRun.ROLL and not dice.waiting
 	table.visible = physics
@@ -561,15 +547,14 @@ func _show_roll(world: World, dice: DiceRun, p: Player, dt: float) -> void:
 	var res := DiceDefs.evaluate(s.up_faces(), p.weapon_id, s.choice)
 	spinning_any = spinning_any or (physics and (dice.waiting or table.replaying or table.holding() or table.state == DiceTable.State.ROLLING))
 	if not s.rolled or spinning_any:
-		_result.text = "" if not s.rolled else "……"
-		_result_sub.text = "同一招骰到越多個越強；效果面全部疊上去；灰色是別的武器的技能，當空白" if not s.rolled else ""
+		_result.text = ""
+		_result_sub.text = _teach(&"dice_rules", "同一招骰到越多個越強；效果面全部疊上去；灰色是別的武器的技能，當空白") if not s.rolled else ""
 		_effects.text = ""
 		_set_cands([], p)
 	else:
-		_result.text = "右鍵：%s" % (DiceDefs.name_of(res.skill) + " ×%d" % res.count if res.count > 0 else "沒中")
-		var tier := DiceDefs.tier_of(res.tier_count)
-		_result_sub.text = ("%s　威力 ×%s" % [tier.name, str(tier.mul)] if res.count > 0 else "沒有右鍵技能，只能普攻") + combos_text(res.combos, "　·　")
-		_effects.text = effects_text(res.effects, "　")
+		_result.text = ""   # 右鍵、威力、組合、效果在右下的牌與籌碼（擲骰時也擺著），中獎另有橫幅
+		_result_sub.text = ""
+		_effects.text = ""
 		_set_cands(res.cands if my_turn and res.cands.size() > 1 else [], p)
 		var key := "%d|%d" % [p.peer_id, s.roll_seq]
 		if key != _show_key and s.roll_seq > 0:
@@ -579,32 +564,36 @@ func _show_roll(world: World, dice: DiceRun, p: Player, dt: float) -> void:
 	_btn_roll.visible = not s.rolled
 	_btn_roll.text = "自動丟（R）" if physics else "擲骰（空白鍵）"
 	_btn_reroll.visible = s.rolled
-	var again := "丟沒留的（R）" if physics else "重擲沒鎖的（R）"
-	_btn_reroll.text = again + ("免費 %d 次" % s.rerolls if s.rerolls > 0 else "花 1 張重擲券（剩 %d）" % dice.charges_of(p))
+	_btn_reroll.text = "重擲（R）" + ("　免費 ×%d" % s.rerolls if s.rerolls > 0 else "　用券（剩 %d）" % dice.charges_of(p))
 	_btn_roll.disabled = not my_turn or busy or phase != DiceRun.ROLL
 	_btn_reroll.disabled = not my_turn or busy or not dice.can_reroll(p) or not s.locked.has(false) or phase != DiceRun.ROLL
 	_btn_done.disabled = not my_turn or busy or not s.rolled or phase != DiceRun.ROLL
-	_btn_method.visible = physics and my_turn
-	_btn_method.text = "擲法：%s" % ("骰盅" if table.cup_mode else "蓄力條")
-	_btn_method.disabled = table.state == DiceTable.State.AIM or table.charging
 	if phase != DiceRun.ROLL:
 		_hint.text = ""
 	elif not my_turn:
-		_hint.text = "隊友擲骰中，大家一起看"
+		_hint.text = "隊友擲骰中"
 	elif physics and dice.waiting:
-		_hint.text = "骰子在滾……"
+		_hint.text = ""
 	elif not s.rolled and physics:
-		_hint.text = ("按住滑鼠拿起骰盅、甩一甩，放開就丟出去（%d 秒沒動作會自動丟）" if table.cup_mode else "按住滑鼠或空白鍵蓄力，放開就丟（%d 秒沒動作會自動丟）") % ceili(dice.timer)
+		_hint.text = _teach(&"dice_throw", "按住滑鼠拿起骰盅、甩一甩，放開就丟出去" if table.cup_mode else "按住滑鼠或空白鍵蓄力，放開就丟")
 	elif not s.rolled:
-		_hint.text = "按擲骰，6 顆一起擲（%d 秒沒動作會自動擲）" % ceili(dice.timer)
-	elif s.rerolls > 0 and physics:
-		_hint.text = "點骰子拿到後面的保留區，剩下的再丟一次（%d 秒後自動完成）" % ceili(dice.timer)
+		_hint.text = _teach(&"dice_throw", "按擲骰，6 顆一起擲")
 	elif s.rerolls > 0:
-		_hint.text = "點骰子鎖住想留的，再重擲其他的（%d 秒後自動完成）" % ceili(dice.timer)
-	elif dice.charges_of(p) > 0:
-		_hint.text = "免費重擲用完了，再丟要花 1 張重擲券（剩 %d 張；%d 秒後自動完成）" % [dice.charges_of(p), ceili(dice.timer)]
+		_hint.text = _teach(&"dice_keep", "點骰子拿到後面的保留區，剩下的再丟一次" if physics else "點骰子鎖住想留的，再重擲其他的")
 	else:
-		_hint.text = "沒有重擲次數了，按完成（%d 秒後自動完成）" % ceili(dice.timer)
+		_hint.text = ""   # 計時條就是倒數；重擲要花券寫在按鈕上
+
+
+# 只教一次的說明：沒看過就記成看過並回傳 text，這一段（同一個階段）結束前照樣回傳；看過的回傳 ""
+# 沒有 hints（檢查只建 DicePanel）就一直顯示
+func _teach(id: StringName, text: String) -> String:
+	if hints == null or _teaching.has(id):
+		return text
+	if hints.is_seen(id):
+		return ""
+	hints.mark_seen(id)
+	_teaching[id] = true
+	return text
 
 
 # 物理擲骰：桌子跟著模擬層（骰面、保留區、能不能丟）；模擬層自己擲的（時間到）桌子跟著丟；模擬層的面跟桌子不一樣（逾時自己抽）就把桌上的骰子擺成那一面
@@ -752,40 +741,42 @@ func _play_show(dt: float) -> void:
 func _show_inspect(dice: DiceRun, s: DiceRun.Seat, me: Player) -> void:
 	var extras := []
 	var replace := -1
-	var previewable := false
-	for o: Dictionary in s.offers:
-		previewable = previewable or o.kind == &"die" or o.kind == &"weapon"
 	if _hover_offer >= 0 and _hover_offer < s.offers.size():
 		var o: Dictionary = s.offers[_hover_offer]
 		if o.kind == &"die":
-			extras.append([o.faces, me.weapon_id, "選這張會拿到", true])
+			extras.append([o.faces, me.weapon_id, "選這張會拿到"])
 			replace = dice.most_blank_slot(s)
 		elif o.kind == &"weapon":
-			extras.append([o.faces, o.get("base", me.weapon_id), "新武器的骰子", false])
-	inspect.show_dice(s.pool, me.weapon_id, extras, replace)
-	_show_flat_faces(s.pool, me.weapon_id, extras)
-	var hint := "你帶的骰子：按住拖曳可以轉著看，底下是攤開的 6 面"
-	if replace >= 0:
-		hint += "　·　選這張會換掉紅色那顆（空白最多的）"
-	elif extras.is_empty() and previewable:
-		hint += "　·　滑鼠指著「新骰子」「新武器」卡，看會拿到的骰子"
-	_inspect_hint.text = hint
+			extras.append([o.faces, o.get("base", me.weapon_id), "新武器的骰子"])
+	_show_flat_faces(s.pool, me.weapon_id, extras, replace)
 
 
-# 每顆骰子底下攤平 6 面（3 × 2，跟卡片上的小方塊同一種畫法），x 對齊那顆骰子
-func _show_flat_faces(carried: Array, weapon_id: StringName, extras: Array) -> void:
+# 每顆攤平 6 面（3 × 2，跟卡片上的小方塊同一種畫法），上面一行小字：會被換掉的那顆（紅框）、獎勵的骰子（金框）
+func _show_flat_faces(carried: Array, weapon_id: StringName, extras: Array, replace: int) -> void:
 	var all := []
-	for d: Array in carried:
-		all.append([d, weapon_id])
+	for i in carried.size():
+		all.append([carried[i], weapon_id, "會被換掉" if i == replace else ""])
 	for e: Array in extras:
-		all.append([e[0], e[1]])
+		all.append(e)
 	if all == _faces_key:
 		return
 	_faces_key = all.duplicate(true)
-	for c in _inspect_faces.get_children():
+	for c in _inspect_faces.get_children():   # 先拿出容器再釋放：留到幀尾才走的話，這一幀排版還算著舊的那幾顆
+		_inspect_faces.remove_child(c)
 		c.queue_free()
-	var grid_w := FLAT_SIDE * 3 + FLAT_GAP * 2
 	for i in all.size():
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override(&"separation", 4)
+		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var tag: String = all[i][2]
+		var tag_color := Color("ff7a6a") if tag == "會被換掉" else UiKit.GOLD
+		var l := UiKit.label(tag, 16, tag_color)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.custom_minimum_size.y = 22
+		col.add_child(l)
+		var frame := PanelContainer.new()
+		frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		frame.add_theme_stylebox_override(&"panel", _card_box(tag_color if tag != "" else Color(0, 0, 0, 0), Color(0, 0, 0, 0)))
 		var grid := GridContainer.new()
 		grid.columns = 3
 		grid.add_theme_constant_override(&"h_separation", int(FLAT_GAP))
@@ -795,15 +786,28 @@ func _show_flat_faces(carried: Array, weapon_id: StringName, extras: Array) -> v
 			var m := DieView.new(-1, FLAT_SIDE)
 			m.show_face(f, all[i][1], false, false)
 			grid.add_child(m)
-		grid.position = Vector2(inspect.die_x(i) - grid_w / 2.0, 0)
-		_inspect_faces.add_child(grid)
+		frame.add_child(grid)
+		col.add_child(frame)
+		_inspect_faces.add_child(col)
+
+
+# 檢查用：攤平的有幾顆、第 i 顆上面寫什麼
+func flat_count() -> int:
+	return _flat_cols().size()
+
+
+func flat_tag(i: int) -> String:
+	return (_flat_cols()[i].get_child(0) as Label).text
+
+
+func _flat_cols() -> Array:
+	return _inspect_faces.get_children().filter(func(c: Node) -> bool: return not c.is_queued_for_deletion())
 
 
 # 檢查用：第 i 顆底下攤平的 6 面
 func flat_faces_of(i: int) -> Array:
 	var out := []
-	var grids := _inspect_faces.get_children().filter(func(c: Node) -> bool: return not c.is_queued_for_deletion())
-	for m: DieView in grids[i].get_children():
+	for m: DieView in _flat_cols()[i].get_child(1).get_child(0).get_children():
 		out.append(m.face)
 	return out
 
@@ -856,7 +860,7 @@ func _show_offers(s: DiceRun.Seat, me: Player) -> void:
 
 func _offer_card(i: int, o: Dictionary, me: Player) -> PanelContainer:
 	var card := PanelContainer.new()
-	card.custom_minimum_size = Vector2(CARD_W, 230)
+	card.custom_minimum_size = Vector2(CARD_W, 150)
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
 	card.add_theme_stylebox_override(&"panel", _card_box(UiKit.GOLD, Color(0.11, 0.12, 0.16, 0.96)))
 	card.mouse_entered.connect(func() -> void:
@@ -874,24 +878,27 @@ func _offer_card(i: int, o: Dictionary, me: Player) -> PanelContainer:
 	body.add_theme_constant_override(&"separation", 10)
 	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(body)
-	body.add_child(UiKit.label("%d　%s" % [i + 1, KIND_NAMES[o.kind]], UiKit.FONT_NOTE, Color(1, 1, 1, 0.7)))
 	var title := UiKit.label(o.title, 26, UiKit.GOLD)
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	title.custom_minimum_size.x = CARD_W - 40
 	body.add_child(title)
-	if o.has("faces"):
+	# 卡上不寫說明（選了就進刻面畫面 / 骰子進背包，到時候自然知道）：有骰面的畫骰面，刻技能面畫一個問號面
+	var shown: Array = o.faces if o.has("faces") else ([o.face] if o.has("face") else [])
+	if not shown.is_empty() or o.kind == &"carve_skill":
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override(&"separation", 6)
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		for f: StringName in o.faces:
+		for f: StringName in shown:
 			var m := DieView.new(-1, 52.0)
 			m.show_face(f, o.get("base", me.weapon_id), false, false)
 			row.add_child(m)
+		if o.kind == &"carve_skill":
+			var q := UiKit.label("？", 40, UiKit.GOLD)
+			q.custom_minimum_size = Vector2(52, 52)
+			q.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			q.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			row.add_child(q)
 		body.add_child(row)
-	var desc := UiKit.label(o.desc, UiKit.FONT_NOTE, Color(1, 1, 1, 0.85))
-	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	desc.custom_minimum_size.x = CARD_W - 40
-	body.add_child(desc)
 	return card
 
 
@@ -937,7 +944,8 @@ func _show_carve(s: DiceRun.Seat, me: Player) -> void:
 		_carve_title.text = "刻技能面：先選一招，再點要刻的那一面"
 	else:
 		_carve_title.text = "刻效果面：%s　·　點要刻的那一面" % DiceDefs.effect_text(s.carve.face, 1)
-	_carve_hint.text = "金框是空白面（建議刻在這裡）；也可以蓋掉其他面" if ready else "先在上面選一招"
+	_carve_hint.text = _teach(&"dice_carve", "金框是空白面（建議刻在這裡）；也可以蓋掉其他面") if ready else ""
+	_carve_rows.modulate.a = 1.0 if ready else 0.4   # 還沒選招：面變暗（點不了）
 	for d in DiceDefs.DICE_COUNT:
 		var die: Array = s.pool[d]
 		for f in DiceDefs.FACES:

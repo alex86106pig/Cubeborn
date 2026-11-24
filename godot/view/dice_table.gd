@@ -1166,7 +1166,7 @@ func _l(v: Vector3) -> Vector3:
 
 
 
-# ---------- 骰子的外觀（擲骰桌與 DiceInspect 共用）----------
+# ---------- 骰子的外觀（擲骰桌用；paint_die 也給檢查用）----------
 
 const DIE_SIZE := 0.98
 const DIE_CHAMFER := 0.08          # 切角：每面平的部分剩 DIE_SIZE − 2 × DIE_CHAMFER = 0.82

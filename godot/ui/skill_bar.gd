@@ -1,5 +1,5 @@
 # 技能欄（照搬網頁版 HUD 的 skillbar）：左鍵、右鍵、Shift 翻滾（Godot 版新增）、數字鍵 1~3（按鍵袋的技能）與 Q（治療藥水）；CD 扇形遮罩與秒數、剩餘次數、耗魔（魔力不夠變暗）、技能等級（2 級以上）、閃爍回饋
-# 骰子模式（桌邊配件）：格子改成紙卡框 + 深色木頭底（跟角色卡、右鍵卡同一種紙），圖示與冷卻照舊
+# 骰子模式（桌邊配件）：格子改成紙卡框 + 深色木頭底（跟角色卡、右鍵卡同一種紙），只剩 Shift 與 Q（左右鍵在右下的牌，DiceProps）
 class_name SkillBar
 extends HBoxContainer
 
@@ -59,9 +59,6 @@ func refresh(world: World, player: Player) -> void:
 				if not data.get("fits", true):   # 手上的武器放不出來（也沒蓋幻影）：一直是暗的
 					slot.icon.modulate.a = 0.3
 			slot.show_level(data.get("level", 1) if data != null else 1)
-		elif world.dice != null and key == "player.special":   # 骰子模式的右鍵：角落寫威力倍率，沒骰到是暗的
-			slot.set_tag("×%s" % str(dice_slot.power) if dice_slot != null else "")
-			slot.icon.modulate.a = 1.0 if dice_slot != null else 0.3
 		elif not slot.mana_def.is_empty():   # 耗魔的右鍵
 			_show_cost(slot, player, player.mana_cost_of(slot.mana_def))
 		elif key == Player.ROLL_CD:
@@ -91,12 +88,10 @@ func _build(player: Player) -> void:
 	_slots.clear()
 	var w := player.weapon
 	paper = player.world.dice != null
-	_attack_slot = _add_slot("", w.attack.icon, "左鍵", -1, false)
-	var dice_slot: Variant = player.slots.get_slot(player, ActiveSlots.DICE_INDEX) if player.world.dice != null else null
-	if player.world.dice != null:
-		_special_slot = _add_slot("player.special", dice_slot.def.icon if dice_slot != null else "", "右鍵", -1, dice_slot == null)
-		_special_slot.set_texture(FaceIcons.texture(dice_slot.id) if dice_slot != null else null)
-	else:
+	_attack_slot = null
+	_special_slot = null
+	if not paper:   # 骰子模式：左右鍵在右下的普攻卡、右鍵卡（冷卻蓋在卡上，DiceProps），這裡只剩 Shift 與 Q
+		_attack_slot = _add_slot("", w.attack.icon, "左鍵", -1, false)
 		_special_slot = _add_slot("player.special", w.special.icon, "右鍵", -1, false)
 		_special_slot.set_mana_def(w.special)
 	_add_slot(Player.ROLL_CD, ROLL_ICON, "Shift", -1, false)

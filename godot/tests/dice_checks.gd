@@ -1182,13 +1182,13 @@ static func check_dice_rules() -> String:
 	dp.refresh(w2, me, 0.05)
 	var summary: String = dp._summary.text
 	var summary_phase := w2.dice.phase
-	# 桌邊配件：倒數時階段條在「擲骰」、牌收起來；開打後階段條到「開打」、左下角色卡取代左上血條、
+	# 桌邊配件：倒數時階段條在「擲骰」、牌也擺著（2026-11-24 起擲骰畫面不再自己寫結果）；開打後階段條到「開打」、左下角色卡取代左上血條、
 	# 血量 10 枚籌碼（少一成生命少一枚）、右下右鍵卡寫骰到的招、最後一枚籌碼是重擲券
 	var props: DiceProps = hud.dice_props
 	hud._process(0.016)
 	var props_err := ""
-	if not props.track.visible or props.track.step != 1 or props.hero.visible:
-		props_err = "倒數時階段條應在擲骰（%d、顯示 %s）、角色卡收起來（%s）" % [props.track.step, props.track.visible, props.hero.visible]
+	if not props.track.visible or props.track.step != 1 or not props.hero.visible or not props.hand.visible:
+		props_err = "倒數時階段條應在擲骰（%d、顯示 %s）、角色卡與右下的牌擺著（%s、%s）" % [props.track.step, props.track.visible, props.hero.visible, props.hand.visible]
 	_wait(w2, DiceDefs.COUNTDOWN)
 	me.hp = me.max_hp * 0.75
 	hud._process(0.016)
@@ -1199,8 +1199,22 @@ static func check_dice_rules() -> String:
 	var bar_slot: Variant = hud._skill_bar.get_child(0)
 	if props_err == "" and (not bar_slot.paper or not hud.hints.paper):
 		props_err = "骰子模式的技能欄與新手提示應換成紙卡樣式（技能欄 %s、提示 %s）" % [bar_slot.paper, hud.hints.paper]
-	if props_err == "" and (props.hp_chips.count != 8 or props.skill_name.text != want_skill or props.chip_texts.is_empty() or props.chip_texts[-1] != "重擲券 ×%d" % w2.dice.charges_of(me)):
+	if props_err == "" and (props.hp_chips.count != 8 or props.skill_name.text != want_skill or props.chip_texts.is_empty() or not props.chip_texts[-1].begins_with("重擲券 ×%d" % w2.dice.charges_of(me))):
 		props_err = "75%% 生命應 8 枚籌碼（%d）、右鍵卡寫「%s」（%s）、最後一枚是重擲券 ×%d（%s）" % [props.hp_chips.count, want_skill, props.skill_name.text, w2.dice.charges_of(me), props.chip_texts]
+	# 左右鍵只在右下的牌（技能欄只剩 Shift 與 Q）、右鍵卡蓋冷卻；籌碼只寫數字，完整的字在滑鼠提示（YangHsu 2026-11-24）
+	if props_err == "":
+		var bar: SkillBar = hud._skill_bar
+		var keys: Array = bar._slots.keys()
+		if bar._attack_slot != null:
+			keys.append("左鍵")
+		w2.cooldowns.start(me.cd("player.special"), 4.0)
+		hud._process(0.016)
+		var chip: DiceProps.Chip = props.chips_row.get_child(props.chips_row.get_child_count() - 1)
+		var chip_text: String = (chip.get_child(1) as Label).text
+		if keys.has("左鍵") or keys.has("player.special") or not keys.has(Player.ROLL_CD) or props.skill_cd.ratio <= 0.0 or chip_text != "×%d" % w2.dice.charges_of(me) or not chip.tooltip_text.begins_with("重擲券"):
+			props_err = "骰子模式技能欄不畫左右鍵（%s）、右鍵卡蓋冷卻（%.2f）、籌碼寫「×N」指著才寫完整（「%s」「%s」）" % [keys, props.skill_cd.ratio, chip_text, chip.tooltip_text]
+		elif DiceProps.short_number("傷害 +10%") != "+10%":
+			props_err = "效果籌碼只寫數字：「傷害 +10%%」應寫「+10%%」，得到「%s」" % DiceProps.short_number("傷害 +10%")
 	hud.queue_free()
 	cam.queue_free()
 	if props_err == "":   # 一般模式的技能欄照舊是暗色格子
@@ -1464,8 +1478,8 @@ static func dp2_tray(w: World) -> Vector2:
 	return Vector2(t.origin.x, t.origin.z)
 
 
-# 獎勵畫面看骰子（§55）：獎勵卡下面一排 3D 骰子：你帶的 6 顆（面照帶的）、獎勵的新骰子與新武器的骰子；
-# 新骰子會換掉的那顆（空白最多）標「會被換掉」；拖曳會轉、放開慢慢轉回原位；整個獎勵畫面放得進介面最大檔；
+# 獎勵畫面看骰子（§55）：獎勵卡下面一條攤平的骰面：你帶的 6 顆（面照帶的）、指著新骰子 / 新武器卡才多那顆；
+# 新骰子會換掉的那顆（空白最多）標「會被換掉」；整個獎勵畫面放得進介面最大檔（3D 骰子 2026-11-24 拿掉，跟攤平的重複）；
 # 骰面的圖示（FaceIcons）：劍盾的圖、每把武器開局骰子的技能都有圖、去了背（四角透明、中間不透明）；有圖的面貼圖、不寫字，別的武器的技能淡掉，空白面不放東西
 static func check_dice_inspect() -> String:
 	var icon_ids: Array[StringName] = [&"whirlwind", &"shield_charge", &"sword_wave", &"shield_slam", &"blade_storm", &"fx_shield", &"fx_dmg"]
@@ -1527,28 +1541,27 @@ static func check_dice_inspect() -> String:
 	_scene_root().add_child(hud)
 	var dp: DicePanel = hud.dice_panel
 	dp.refresh(w, p, 0.05)
-	var ins: DiceInspect = dp.inspect
 	var err := ""
-	# 沒指著卡：只有你帶的 6 顆（還沒選，不先放獎勵的骰子）
-	if ins.die_count() != DiceDefs.DICE_COUNT or ins.replace_slot != -1 or ins.arrow_to != -1:
-		err = "沒指著卡時應只有你帶的 6 顆、不標換掉：%d 顆、標 %d" % [ins.die_count(), ins.replace_slot]
+	# 沒指著卡：只有你帶的 6 顆（還沒選，不先放獎勵的骰子），攤平的 6 面同帶的、都沒標字
+	if dp.flat_count() != DiceDefs.DICE_COUNT:
+		err = "沒指著卡時應只有你帶的 6 顆：%d 顆" % dp.flat_count()
 	else:
 		for i in DiceDefs.DICE_COUNT:
-			if ins.faces_of(i) != Array(s.pool[i]) or dp.flat_faces_of(i) != Array(s.pool[i]):
-				err = "第 %d 顆的面（與底下攤平的 6 面）應同你帶的：%s / %s / %s" % [i + 1, ins.faces_of(i), dp.flat_faces_of(i), s.pool[i]]
+			if dp.flat_faces_of(i) != Array(s.pool[i]) or dp.flat_tag(i) != "":
+				err = "第 %d 顆攤平的 6 面應同你帶的、不標字：%s / %s「%s」" % [i + 1, dp.flat_faces_of(i), s.pool[i], dp.flat_tag(i)]
 				break
-	# 指著新骰子卡：後面多一顆、會換掉第 3 顆（全空白）、箭頭指向新骰子
+	# 指著新骰子卡：後面多一顆、第 3 顆（全空白）標會被換掉、新的那顆標選這張會拿到
 	if err == "":
 		dp._hover_offer = 0
 		dp.refresh(w, p, 0.05)
-		if ins.die_count() != DiceDefs.DICE_COUNT + 1 or w.dice.most_blank_slot(s) != 2 or ins.replace_slot != 2 or ins.tag_of(2) != "會被換掉" or ins.faces_of(6) != Array(new_die) or ins.arrow_to != 6 or dp.flat_faces_of(6) != Array(new_die):
-			err = "指著新骰子卡：應 7 顆、第 3 顆標會被換掉、箭頭指第 7 顆：%d 顆、標 %d「%s」、箭頭 %d" % [ins.die_count(), ins.replace_slot, ins.tag_of(2), ins.arrow_to]
-	# 指著新武器卡：後面多一顆新武器的骰子，不標換掉、沒有箭頭
+		if dp.flat_count() != DiceDefs.DICE_COUNT + 1 or w.dice.most_blank_slot(s) != 2 or dp.flat_tag(2) != "會被換掉" or dp.flat_tag(6) != "選這張會拿到" or dp.flat_faces_of(6) != Array(new_die):
+			err = "指著新骰子卡：應 7 顆、第 3 顆標會被換掉、第 7 顆是新骰子：%d 顆、「%s」「%s」" % [dp.flat_count(), dp.flat_tag(2), dp.flat_tag(6)]
+	# 指著新武器卡：後面多一顆新武器的骰子，不標換掉
 	if err == "":
 		dp._hover_offer = 1
 		dp.refresh(w, p, 0.05)
-		if ins.die_count() != DiceDefs.DICE_COUNT + 1 or ins.replace_slot != -1 or ins.arrow_to != -1 or ins.tag_of(6) != "新武器的骰子" or ins.faces_of(6) != Array(weapon_die):
-			err = "指著新武器卡：應 7 顆、不標換掉、沒有箭頭：%d 顆、標 %d、箭頭 %d、「%s」" % [ins.die_count(), ins.replace_slot, ins.arrow_to, ins.tag_of(6)]
+		if dp.flat_count() != DiceDefs.DICE_COUNT + 1 or dp.flat_tag(2) != "" or dp.flat_tag(6) != "新武器的骰子" or dp.flat_faces_of(6) != Array(weapon_die):
+			err = "指著新武器卡：應 7 顆、不標換掉、第 7 顆是新武器的骰子：%d 顆、「%s」「%s」" % [dp.flat_count(), dp.flat_tag(2), dp.flat_tag(6)]
 	# 鍵盤：D 從沒選換到第 1 張、再 D 第 2 張（新武器，跟滑鼠指著一樣預覽）、F 選它
 	if err == "":
 		dp._hover_offer = -1
@@ -1565,22 +1578,27 @@ static func check_dice_inspect() -> String:
 		f.physical_keycode = KEY_F
 		f.pressed = true
 		dp.handle_key(f)
-		if first_card != 0 or dp._hover_offer != 1 or ins.tag_of(6) != "新武器的骰子" or picks != [[InputCmd.OP_DICE_REWARD, 1]]:
-			err = "獎勵卡用鍵盤：D 應選第 1 張（%d）、再 D 第 2 張（%d）並預覽新武器的骰子（%s）、F 選它（%s）" % [first_card, dp._hover_offer, ins.tag_of(6), picks]
+		if first_card != 0 or dp._hover_offer != 1 or dp.flat_tag(6) != "新武器的骰子" or picks != [[InputCmd.OP_DICE_REWARD, 1]]:
+			err = "獎勵卡用鍵盤：D 應選第 1 張（%d）、再 D 第 2 張（%d）並預覽新武器的骰子（%s）、F 選它（%s）" % [first_card, dp._hover_offer, dp.flat_tag(6), picks]
 		dp._picked = false
 		dp._hover_offer = 0
 		dp.refresh(w, p, 0.05)
+	# 操作說明只教一次（2026-11-24）：沒看過的第一次寫，換階段再回來就不寫；重新顯示提示後再寫一次
 	if err == "":
-		var rest := ins.basis_of(0)
-		ins.rotate_die(0, Vector2(90, 40))
-		var turned := ins.basis_of(0)
-		for f in 60:
-			ins._process(1.0 / 30.0)
-		var back := ins.basis_of(0)
-		if Quaternion(turned).angle_to(Quaternion(rest)) < 0.5:
-			err = "拖曳應轉動骰子：只轉了 %.2f 弧度" % Quaternion(turned).angle_to(Quaternion(rest))
-		elif Quaternion(back).angle_to(Quaternion(rest)) > 0.05:
-			err = "放開 2 秒應轉回原位：還差 %.2f 弧度" % Quaternion(back).angle_to(Quaternion(rest))
+		hud.hints.save_path = ""
+		hud.hints.seen.clear()
+		dp._teaching.clear()
+		dp.refresh(w, p, 0.05)
+		var first: String = dp._reward_title.text
+		dp._last_phase = DiceRun.FIGHT
+		dp.refresh(w, p, 0.05)
+		var again: String = dp._reward_title.text
+		hud.hints.reset_seen()
+		dp._last_phase = DiceRun.FIGHT
+		dp.refresh(w, p, 0.05)
+		var reset: String = dp._reward_title.text
+		if not first.contains("點卡片") or again.contains("點卡片") or not reset.contains("點卡片"):
+			err = "選獎勵的操作說明應只教一次、重新顯示提示後再教：第一次「%s」、之後「%s」、重設後「%s」" % [first, again, reset]
 	if err == "":
 		var base := Vector2(ProjectSettings.get_setting("display/window/size/viewport_width"), ProjectSettings.get_setting("display/window/size/viewport_height"))
 		var room: Vector2 = base / (SettingsPanel.UI_SCALES.max() * SettingsPanel.BASE_UI_SCALE)
@@ -1801,14 +1819,15 @@ static func check_dice_panel_clicks() -> String:
 		await (Engine.get_main_loop() as SceneTree).process_frame
 	dp.table.can_throw = true
 	dp.table.cup_mode = false
-	if w.dice.phase != DiceRun.ROLL or not dp._btn_method.visible or dp._btn_method.disabled:
-		err = "應在擲骰、擲法按鈕看得到也能按：%s、%s、%s" % [w.dice.phase, dp._btn_method.visible, dp._btn_method.disabled]
+	# 用「完成」按鈕（擲法按鈕 2026-11-24 搬到設定頁）：還沒擲時按不了，但照樣擋著、不漏給骰盤
+	if w.dice.phase != DiceRun.ROLL or not dp._btn_done.visible:
+		err = "應在擲骰、完成按鈕看得到：%s、%s" % [w.dice.phase, dp._btn_done.visible]
 	else:
-		var at: Vector2 = dp._btn_method.get_global_rect().get_center()
+		var at: Vector2 = dp._btn_done.get_global_rect().get_center()
 		vp.push_input(_mouse_button(at, true), true)
 		vp.push_input(_mouse_button(at, false), true)
 		if spy.got != [true, false] or dp.table.charging:
-			err = "按在擲法按鈕上的按下、放開應都不給骰盤（傳到後面 %s、骰盤蓄力 %s）" % [spy.got, dp.table.charging]
+			err = "按在完成按鈕上的按下、放開應都不給骰盤（傳到後面 %s、骰盤蓄力 %s）" % [spy.got, dp.table.charging]
 	if err == "":   # 按在骰盤上（不是按鈕）：照樣轉給骰盤蓄力
 		spy.got.clear()
 		cam.look_at_from_position(dp.table.center() + Vector3(0, 12, 10), dp.table.center())

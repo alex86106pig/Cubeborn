@@ -65,6 +65,18 @@ func load_seen() -> void:
 			seen[StringName(id)] = true
 
 
+# 別的畫面自己顯示的「只教一次」說明（DicePanel 擲骰、獎勵、刻面的操作說明）共用看過的紀錄：重新顯示提示也會讓它們再出現
+func is_seen(id: StringName) -> bool:
+	return seen.has(id)
+
+
+func mark_seen(id: StringName) -> void:
+	if seen.has(id):
+		return
+	seen[id] = true
+	_save()
+
+
 # 暫停選單「重新顯示提示」：全部當成沒看過，條件成立時再跳一次
 func reset_seen() -> void:
 	seen.clear()
