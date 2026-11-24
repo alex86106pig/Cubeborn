@@ -1785,6 +1785,20 @@ static func check_dice_panel_clicks() -> String:
 		if not dp.table.charging or not spy.got.is_empty():
 			err = "按在骰盤上應給骰盤蓄力（滑鼠在 %s、蓄力 %s、漏到後面 %s）" % [tray, dp.table.charging, spy.got]
 		vp.push_input(_mouse_button(tray, false), true)
+	if err == "":   # 倒數：鏡頭回到自己（看得到角色與怪的配置）、骰盤收起來、只留結果總覽；回到擲骰照舊
+		w.dice.phase = DiceRun.COUNTDOWN
+		w.dice.timer = DiceDefs.COUNTDOWN
+		dp.refresh(w, p, 0.05)
+		if dp.camera_focus() != null or dp.table.is_shown() or dp._btn_done.is_visible_in_tree() or dp._title.is_visible_in_tree() \
+				or not dp._summary.is_visible_in_tree() or dp._dim.visible:
+			err = "倒數時鏡頭應回到自己（看骰盤 %s）、骰盤收起來（%s）、按鈕與標題收起來（%s、%s）、結果總覽留著（%s）、不變暗（%s）" % [
+				dp.camera_focus() != null, dp.table.is_shown(), dp._btn_done.is_visible_in_tree(), dp._title.is_visible_in_tree(),
+				dp._summary.is_visible_in_tree(), dp._dim.visible]
+		w.dice.phase = DiceRun.ROLL
+		dp.refresh(w, p, 0.05)
+		if err == "" and (dp.camera_focus() == null or not dp.table.is_shown() or not dp._btn_done.is_visible_in_tree() or not dp._title.is_visible_in_tree()):
+			err = "回到擲骰時鏡頭應看骰盤（%s）、骰盤與按鈕、標題出來（%s、%s、%s）" % [
+				dp.camera_focus() != null, dp.table.is_shown(), dp._btn_done.is_visible_in_tree(), dp._title.is_visible_in_tree()]
 	spy.queue_free()
 	hud.queue_free()
 	holder.queue_free()

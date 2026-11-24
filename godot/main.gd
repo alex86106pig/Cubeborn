@@ -852,7 +852,7 @@ func _process(delta: float) -> void:
 	if perf != null:
 		perf.add_frame(frame_seconds, Time.get_ticks_usec() - t0, _elapsed)
 	world_view.profile = perf != null and perf.recording(_elapsed)
-	var tray: Variant = hud.dice_panel.camera_focus()   # 骰子模式擲骰、倒數：鏡頭轉到戰場旁的骰盤（放慢時推近那一顆）
+	var tray: Variant = hud.dice_panel.camera_focus()   # 骰子模式擲骰：鏡頭轉到戰場旁的骰盤（放慢時推近那一顆）；倒數時回到自己
 	if tray != null:
 		camera_rig.follow(tray, delta)
 		camera_rig.zoom(DiceDefs.TRAY_VIEW_FOCUS if hud.dice_panel.table.focus_point() != null else DiceDefs.TRAY_VIEW, delta)

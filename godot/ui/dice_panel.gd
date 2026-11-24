@@ -44,6 +44,7 @@ var tray_yaw := 0.0                 # 骰盤轉多少才正對遊戲的鏡頭
 const EDGE_INSET := 1.0              # 骰盤不超出地圖外框往內這麼多：外框外的墓碑、樹、外框岩石合併成一個網格，壓不平
 const CUT_MARGIN := 0.3              # 壓平的範圍比台座每邊多一點（斜切過邊界的三角形藏進台座）
 var _table_box: CenterContainer
+var _roll_only: Array[Control] = []   # 擲骰的字、計時條、按鈕、結果：骰盤在遊戲世界時，倒數只留結果總覽（鏡頭回到角色，看得到配置）
 var _dim: Control
 var _summary := UiKit.label("", UiKit.FONT_NOTE, Color(1, 1, 1, 0.92))   # 結果總覽：大家都擲完、倒數時列每個人的右鍵與效果
 var _cands := HBoxContainer.new()
@@ -170,6 +171,7 @@ func _init() -> void:
 	_roll_box.add_child(_cands)
 	_roll_box.add_child(_effects)
 	_roll_box.add_child(_summary)
+	_roll_only = [_title, timer, _hint, btns, _result, _result_sub, _cands, _effects]
 	_overlay.add_child(_roll_box)
 
 	_reward_box.add_theme_constant_override(&"separation", 20)
@@ -386,9 +388,10 @@ func tray_cut() -> Variant:
 		"half": DiceTable.PLINTH / 2.0 + Vector2(CUT_MARGIN, CUT_MARGIN), "floor": t.origin.y - DiceDefs.TRAY_LIFT}
 
 
-# 鏡頭該看哪裡（main.gd）：擲骰、倒數時看骰盤（放慢時看那一顆），其他時候 null（照舊跟著自己）
+# 鏡頭該看哪裡（main.gd）：擲骰時看骰盤（放慢時看那一顆），其他時候 null（照舊跟著自己）
+# 倒數也回到自己：3、2、1 是讓玩家看清楚角色與怪的配置（許家慶 2026-11-24）
 func camera_focus() -> Variant:
-	if not world_table or not visible or (phase != DiceRun.ROLL and phase != DiceRun.COUNTDOWN):
+	if not world_table or not visible or phase != DiceRun.ROLL:
 		return null
 	var f: Variant = table.focus_point()
 	if f != null:
@@ -452,11 +455,11 @@ func refresh(world: World, me: Player, dt: float) -> void:
 	var rewarding := phase == DiceRun.REWARD and not s.offers.is_empty() and not _picked
 	var carving := phase == DiceRun.REWARD and not s.carve.is_empty()
 	_overlay.visible = rolling or phase == DiceRun.COUNTDOWN or rewarding or carving
-	if world_table:   # 骰盤在遊戲世界裡：擲骰、倒數時不變暗、不擋滑鼠（滑鼠要點到骰盤）
-		var on_tray := rolling or phase == DiceRun.COUNTDOWN
-		_dim.visible = not on_tray
-		_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE if on_tray else Control.MOUSE_FILTER_STOP
-		table.set_shown(on_tray or _warming)
+	if world_table:   # 骰盤在遊戲世界裡：擲骰、倒數時不變暗、不擋滑鼠（滑鼠要點到骰盤）；倒數時骰盤收起來（鏡頭回到角色）
+		var on_field := rolling or phase == DiceRun.COUNTDOWN
+		_dim.visible = not on_field
+		_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE if on_field else Control.MOUSE_FILTER_STOP
+		table.set_shown(rolling or _warming)
 	_roll_box.visible = rolling or phase == DiceRun.COUNTDOWN
 	_reward_box.visible = rewarding and not carving
 	_carve_box.visible = carving
@@ -469,6 +472,13 @@ func refresh(world: World, me: Player, dt: float) -> void:
 	my_turn = turn_player == me
 	if _roll_box.visible:
 		_show_roll(world, dice, turn_player if turn_player != null else me, dt)
+		if world_table:   # 倒數只留結果總覽；骰子列、蓄力條 _show_roll 每幀重設，所以放在它後面
+			var counting := phase == DiceRun.COUNTDOWN
+			for c in _roll_only:
+				c.visible = not counting
+			if counting:
+				_dice_row.visible = false
+				_charge_bg.get_parent().visible = false
 	if rewarding:
 		var tier_name: String = DiceDefs.FIGHT_TIERS[dice.reward_tier].name
 		_reward_title.text = ("走進門的獎勵（%s）：選一個（點卡片、按數字鍵，或 A / D 選再按 F）" % tier_name) if dice.door_pick else ("清場！重擲券 +1　·　%s的獎勵，選一個（點卡片、按數字鍵，或 A / D 選再按 F）" % tier_name)
