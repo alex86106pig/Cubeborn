@@ -1,9 +1,9 @@
-# 骰子模式 12 種效果的圖示：game-icons.net 的單色剪影 + 照規則上色的圓環（headless，在 godot/ 內）：
-#   <Godot> --headless --path . -s res://tools/compose_effect_icons.gd -- --src=<放 SVG 的資料夾絕對路徑>
+# 骰子模式的技能與效果圖示：game-icons.net 的單色剪影 + 圓環（headless，在 godot/ 內）：
+#   <Godot> --headless --path . -s res://tools/compose_icons.gd -- --src=<放 SVG 的資料夾絕對路徑>
 # SVG 是 game-icons.net 官方 repo（github.com/game-icons/icons）原檔，放在 art/icons/game-icons/（作者_名稱.svg，授權見那裡的 README）
-# 原檔是黑底白圖：拿掉黑底那一塊、圖改成深色墨；畫在白色圓盤上，外圈一道色環（全隊版雙環），存 res://assets/icons/<效果 id>.png（256）
-# 環的顏色（許家慶 2026-11-20）：防禦、回血、減傷綠；攻擊、攻速、暴擊紅；移速、冷卻、擊退紫。存完要再 --import 一次
-# YangHsu 2026-11-24：Gemini 生的效果圖「全部都很怪」（許家慶），照 Claude 的評估換成 game-icons.net 的剪影、圖示直接套
+# 原檔是黑底白圖：拿掉黑底那一塊、圖改成深色墨；畫在白色圓盤上，外圈一道環，存 res://assets/icons/<技能或效果 id>.png（256）。存完要再 --import 一次
+# 環的顏色：技能金色（大招雙環）；效果照許家慶 2026-11-20 的規則：防禦、回血、減傷綠；攻擊、攻速、暴擊紅；移速、冷卻、擊退紫（全隊版雙環）
+# 技能也用剪影（YangHsu 2026-11-25）：跟效果同一套，骰面上不會兩種畫風混在一起；骰子模式出現的技能（DiceDefs.skills_for + 大招）都要有圖（檢查擋）
 extends SceneTree
 
 const OUT_DIR := "res://assets/icons/"
@@ -12,14 +12,62 @@ const RING_OUT := 124.0      # 色環外緣半徑（px）
 const RING_W := 18.0         # 色環寬
 const RING_GAP := 6.0        # 雙環：兩道環中間的白
 const RING2_W := 8.0         # 雙環：裡面那道的寬
-const RIM := 4.5             # 環外緣一圈深色邊（跟技能圖示的粗黑邊一致）
+const RIM := 4.5             # 環外緣一圈深色邊
 const GLYPH := 0.68          # 剪影佔圓盤內徑的比例
 const INK := Color("241a12")
 const RED := Color("c23b3b")
 const GREEN := Color("3f9a4a")
 const PURPLE := Color("7a4fbf")
-# 效果 id → [SVG 檔名, 環色, 雙環]
+const GOLD := Color("c9a227")
+# 技能或效果 id → [SVG 檔名, 環色, 雙環]
 const ICONS := {
+	# 劍盾
+	&"whirlwind": ["lorc_whirlwind.svg", GOLD, false],   # 迴旋的劍（sword-spin）線太細
+	&"blade_storm": ["lorc_sword-array.svg", GOLD, true],   # 大招：雙環
+	&"charge_slash": ["lorc_saber-slash.svg", GOLD, false],   # 跑步的人（sprint）跟盾衝太像
+	&"thrust": ["lorc_spiral-thrust.svg", GOLD, false],
+	&"sword_wave": ["lorc_beam-wake.svg", GOLD, false],
+	&"shield_charge": ["delapouite_shield-bash.svg", GOLD, false],
+	&"shield_slam": ["delapouite_shield-impact.svg", GOLD, false],
+	&"taunt": ["lorc_screaming.svg", GOLD, false],
+	&"hell_gate": ["lorc_magic-portal.svg", GOLD, false],
+	&"fissure": ["lorc_earth-crack.svg", GOLD, false],
+	&"judgment": ["lorc_thunder-struck.svg", GOLD, false],
+	&"soul_spring": ["delapouite_water-fountain.svg", GOLD, false],
+	&"soul_reaver": ["lorc_reaper-scythe.svg", GOLD, false],
+	&"grudge": ["delapouite_angry-eyes.svg", GOLD, false],
+	&"star_sign": ["delapouite_star-formation.svg", GOLD, false],
+	# 雙匕首
+	&"ambush": ["lorc_backstab.svg", GOLD, false],
+	&"knife_fan": ["lorc_daggers.svg", GOLD, false],
+	&"smoke_bomb": ["darkzaitzev_smoke-bomb.svg", GOLD, false],
+	# 法杖
+	&"frost_nova": ["lorc_snowflake-2.svg", GOLD, false],
+	&"meteor": ["lorc_burning-meteor.svg", GOLD, false],
+	&"chain_bolt": ["lorc_lightning-branches.svg", GOLD, false],
+	# 權杖
+	&"holy_pillar": ["lorc_sunbeams.svg", GOLD, false],
+	&"bone_guard": ["lorc_skull-shield.svg", GOLD, false],   # 整副骷髏（skeleton）縮小後太細
+	&"blessing": ["lorc_angel-wings.svg", GOLD, false],
+	&"legion": ["skoll_raise-skeleton.svg", GOLD, false],
+	# 短弓
+	&"volley": ["lorc_arrow-cluster.svg", GOLD, false],
+	&"leap_shot": ["delapouite_jump-across.svg", GOLD, false],
+	&"lightning_arrow": ["lorc_lightning-bow.svg", GOLD, false],
+	# 長弓
+	&"arrow_rain": ["lorc_striking-arrows.svg", GOLD, false],
+	&"snipe": ["lorc_crosshair-arrow.svg", GOLD, false],
+	&"frost_arrow": ["lorc_frozen-arrow.svg", GOLD, false],
+	# 火把
+	&"fire_nova": ["lorc_fire-ring.svg", GOLD, false],
+	&"fire_flask": ["lorc_fire-bottle.svg", GOLD, false],
+	&"flame_dash": ["lorc_fire-dash.svg", GOLD, false],
+	# 鏟子
+	&"ground_slam": ["lorc_quake-stomp.svg", GOLD, false],
+	&"dirt_toss": ["delapouite_stone-pile.svg", GOLD, false],
+	&"burrow": ["lorc_dig-dug.svg", GOLD, false],
+	&"bury": ["lorc_tombstone.svg", GOLD, false],
+	# 效果
 	&"fx_dmg": ["lorc_plain-dagger.svg", RED, false],   # 細長的劍（broadsword）縮到骰面上看不清楚
 	&"fx_basic": ["lorc_fist.svg", RED, false],
 	&"fx_haste": ["lorc_spinning-sword.svg", RED, false],
