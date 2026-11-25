@@ -1202,6 +1202,18 @@ static func check_dice_rules() -> String:
 	dp.refresh(w2, me, 0.05)
 	var summary: String = dp._summary.text
 	var summary_phase := w2.dice.phase
+	# 重擲按鈕只寫「重擲（R）」，旁邊一枚籌碼：免費還有幾次；用完了寫剩幾張券
+	var seat2 := w2.dice.seat_of(me)
+	var chip_free := dp.reroll_chip_text
+	var free_left := seat2.rerolls
+	seat2.rerolls = 0
+	dp.refresh(w2, me, 0.05)
+	var chip_used := dp.reroll_chip_text
+	var chip_label: String = (dp._reroll_chip.get_child(dp._reroll_chip.get_child_count() - 1).get_child(1) as Label).text
+	seat2.rerolls = free_left
+	var reroll_err := ""
+	if dp._btn_reroll.text != "重擲（R）" or chip_free != "免費重擲還有 %d 次" % free_left or not chip_used.begins_with("免費重擲用完了") or chip_label != "券 ×%d" % w2.dice.charges_of(me):
+		reroll_err = "重擲按鈕寫「重擲（R）」（%s）、旁邊籌碼免費時「免費重擲還有 %d 次」（%s）、用完寫券（%s、%s）" % [dp._btn_reroll.text, free_left, chip_free, chip_used, chip_label]
 	# 桌邊配件：倒數時階段條在「擲骰」、牌也擺著（2026-11-24 起擲骰畫面不再自己寫結果）；開打後階段條到「開打」、左下角色卡取代左上血條、
 	# 血量 10 枚籌碼（少一成生命少一枚）、右下右鍵卡寫骰到的招、最後一枚籌碼是重擲券
 	var props: DiceProps = hud.dice_props
@@ -1235,6 +1247,35 @@ static func check_dice_rules() -> String:
 			props_err = "骰子模式技能欄不畫左右鍵（%s）、右鍵卡蓋冷卻（%.2f）、籌碼寫「×N」指著才寫完整（「%s」「%s」）" % [keys, props.skill_cd.ratio, chip_text, chip.tooltip_text]
 		elif DiceProps.short_number("傷害 +10%") != "+10%":
 			props_err = "效果籌碼只寫數字：「傷害 +10%%」應寫「+10%%」，得到「%s」" % DiceProps.short_number("傷害 +10%")
+	if props_err == "":   # 拿到重擲券：一枚寫 +N 的籌碼從畫面中間飛進右下；到上限沒多拿就不飛
+		w2.dice.charges[me.peer_id] = 0
+		hud._process(0.016)
+		props.ticket_fly.visible = false
+		w2.dice._add_charges(me, DiceDefs.CHARGES_PER_FIGHT)
+		hud._process(0.016)
+		var flew := props.ticket_fly.visible and props.ticket_fly.text == "+%d" % DiceDefs.CHARGES_PER_FIGHT
+		await (Engine.get_main_loop() as SceneTree).process_frame   # 籌碼列這一幀才重建：排好位置再量飛到哪
+		var lands := props.chips_row.get_global_rect().has_point(props.ticket_center())
+		w2.dice.charges[me.peer_id] = DiceDefs.CHARGES_MAX
+		hud._process(0.016)
+		props.ticket_fly.visible = false
+		w2.dice._add_charges(me, DiceDefs.CHARGES_PER_FIGHT)
+		hud._process(0.016)
+		if not flew or not lands or props.ticket_fly.visible:
+			props_err = "拿到重擲券應飛一枚籌碼進右下的籌碼列（飛 %s、落在 %s、籌碼列 %s），滿了（%d 張）不飛（%s）" % [flew, props.ticket_center(), props.chips_row.get_global_rect(), DiceDefs.CHARGES_MAX, props.ticket_fly.visible]
+	if props_err == "":   # 新武器先放備用：回到逛地圖才教「按 Tab 換上」（只教一次，Hints 管）
+		var seat := w2.dice.seat_of(me)
+		var was: StringName = w2.dice.phase
+		w2.dice.phase = DiceRun.EXPLORE
+		var none: bool = hud.hints._condition(&"dice_spare", w2, me, false)
+		seat.spares.append(me.active_weapon().duplicate(true))
+		var some: bool = hud.hints._condition(&"dice_spare", w2, me, false)
+		w2.dice.phase = DiceRun.FIGHT
+		var fighting: bool = hud.hints._condition(&"dice_spare", w2, me, false)
+		seat.spares.pop_back()
+		w2.dice.phase = was
+		if none or not some or fighting:
+			props_err = "備用武器的提示：沒有備用不教（%s）、逛地圖有備用才教（%s）、戰鬥中不教（%s）" % [none, some, fighting]
 	hud.queue_free()
 	cam.queue_free()
 	if props_err == "":   # 一般模式的技能欄照舊是暗色格子
@@ -1251,6 +1292,8 @@ static func check_dice_rules() -> String:
 		return "大家擲完倒數時應列結果總覽（你：…）：%s「%s」" % [summary_phase, summary]
 	if props_err != "":
 		return props_err
+	if reroll_err != "":
+		return reroll_err
 	# 怪群難度
 	var w3 := _dice_world()
 	var p3 := _player(w3)
@@ -1628,6 +1671,8 @@ static func check_dice_inspect() -> String:
 		var reset: String = dp._reward_title.text
 		if not first.contains("點卡片") or again.contains("點卡片") or not reset.contains("點卡片"):
 			err = "選獎勵的操作說明應只教一次、重新顯示提示後再教：第一次「%s」、之後「%s」、重設後「%s」" % [first, again, reset]
+		elif not again.begins_with("選一個獎勵") or again.contains("重擲券"):
+			err = "獎勵標題只寫「選一個獎勵」（重擲券 +1 改成籌碼飛進右下）：「%s」" % again
 	if err == "":
 		var base := Vector2(ProjectSettings.get_setting("display/window/size/viewport_width"), ProjectSettings.get_setting("display/window/size/viewport_height"))
 		var room: Vector2 = base / (SettingsPanel.UI_SCALES.max() * SettingsPanel.BASE_UI_SCALE)

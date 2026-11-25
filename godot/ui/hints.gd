@@ -140,6 +140,8 @@ func _condition(id: StringName, world: World, player: Player, bag_open: bool) ->
 			return world.dice == null
 		&"dice_controls":
 			return world.dice != null
+		&"dice_spare":   # 獎勵或地上撿的武器先放備用（DiceRun.receive_weapon）：回到逛地圖才教，換武器只能在逛地圖
+			return world.dice != null and world.dice.phase == DiceRun.EXPLORE and not world.dice.seat_of(player).spares.is_empty()
 		&"dig_goal":
 			return DigEvent.enabled(world) and world.event.state == DigEvent.IDLE
 		&"ground_info":

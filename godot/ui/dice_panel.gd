@@ -37,7 +37,9 @@ var _timer_fill := UiKit.rect(Color("e8963a"))   # 不給最小尺寸：寬度�
 var _dice_row := HBoxContainer.new()
 var _hint := UiKit.label("", UiKit.FONT_NOTE, Color(1, 1, 1, 0.75))
 var _btn_roll := UiKit.button("擲骰（空白鍵）", UiKit.BUTTON_M)
-var _btn_reroll := UiKit.button("", UiKit.BUTTON_M)
+var _btn_reroll := UiKit.button("重擲（R）", UiKit.BUTTON_M)
+var _reroll_chip := HBoxContainer.new()   # 重擲按鈕旁邊一枚次數籌碼：免費還有幾次、用完了寫剩幾張重擲券
+var reroll_chip_text := ""               # 那枚籌碼的完整說明（滑鼠提示；檢查讀）
 var _btn_done := UiKit.button("完成（Enter）", UiKit.BUTTON_M)
 var _result := UiKit.label("", UiKit.FONT_BODY, Color("ffcf7a"))
 var _result_sub := UiKit.label("", UiKit.FONT_NOTE)
@@ -166,6 +168,9 @@ func _init() -> void:
 	for b: Button in [_btn_roll, _btn_reroll, _btn_done]:   # 擲法（骰盅 / 蓄力條）是偏好，在設定頁（YangHsu 2026-11-24）
 		chip_button(b)
 		btns.add_child(b)
+		if b == _btn_reroll:
+			_reroll_chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			btns.add_child(_reroll_chip)
 	_btn_roll.pressed.connect(_press_throw)
 	_btn_reroll.pressed.connect(_press_throw)
 	_btn_done.pressed.connect(func() -> void: op_requested.emit([InputCmd.OP_DICE_DONE]))
@@ -497,8 +502,7 @@ func refresh(world: World, me: Player, dt: float) -> void:
 				_charge_bg.get_parent().visible = false
 	_show_stakes(dt)
 	if rewarding:
-		var tier_name: String = DiceDefs.FIGHT_TIERS[dice.reward_tier].name
-		_reward_title.text = "走進門的獎勵：選一個" if dice.door_pick else "重擲券 +1　·　選一個獎勵"
+		_reward_title.text = "走進門的獎勵：選一個" if dice.door_pick else "選一個獎勵"   # 重擲券 +1 是清場時一枚籌碼飛進右下（DiceProps.fly_ticket）
 		var how := _teach(&"dice_reward_keys", "（點卡片、按數字鍵，或 A / D 選再按 F）")
 		if dice.shared:
 			how += ("\n" if how != "" else "") + _teach(&"dice_shared_pick", "大家暗選，撞到同一個就比骰子，輸的隨機拿沒人選的")
@@ -574,7 +578,8 @@ func _show_roll(world: World, dice: DiceRun, p: Player, dt: float) -> void:
 	_btn_roll.visible = not s.rolled
 	_btn_roll.text = "自動丟（R）" if physics else "擲骰（空白鍵）"
 	_btn_reroll.visible = s.rolled
-	_btn_reroll.text = "重擲（R）" + ("　免費 ×%d" % s.rerolls if s.rerolls > 0 else "　用券（剩 %d）" % dice.charges_of(p))
+	_reroll_chip.visible = s.rolled
+	_show_reroll_chip(s.rerolls, dice.charges_of(p))
 	_btn_roll.disabled = not my_turn or busy or phase != DiceRun.ROLL
 	_btn_reroll.disabled = not my_turn or busy or not dice.can_reroll(p) or not s.locked.has(false) or phase != DiceRun.ROLL
 	_btn_done.disabled = not my_turn or busy or not s.rolled or phase != DiceRun.ROLL
@@ -592,6 +597,18 @@ func _show_roll(world: World, dice: DiceRun, p: Player, dt: float) -> void:
 		_hint.text = _teach(&"dice_keep", "點骰子拿到後面的保留區，剩下的再丟一次" if physics else "點骰子鎖住想留的，再重擲其他的")
 	else:
 		_hint.text = ""   # 計時條就是倒數；重擲要花券寫在按鈕上
+
+
+# 重擲按鈕旁的籌碼：免費的還有就寫「免費 ×N」（金），用完了寫「券 ×N」（紫，跟右下的重擲券同色，0 張變淡）；有變才重建
+func _show_reroll_chip(free: int, charges: int) -> void:
+	var tip := "免費重擲還有 %d 次" % free if free > 0 else "免費重擲用完了：再丟要花 1 張重擲券（剩 %d 張）" % charges
+	if tip == reroll_chip_text:
+		return
+	reroll_chip_text = tip
+	for c in _reroll_chip.get_children():
+		c.queue_free()
+	var color := UiKit.GOLD.darkened(0.2) if free > 0 else (DiceProps.TICKET_CHIP if charges > 0 else Color(DiceProps.TICKET_CHIP, 0.4))
+	_reroll_chip.add_child(DiceProps.Chip.new("免費 ×%d" % free if free > 0 else "券 ×%d" % charges, null, color, tip))
 
 
 # 只教一次的說明：沒看過就記成看過並回傳 text，這一段（同一個階段）結束前照樣回傳；看過的回傳 ""

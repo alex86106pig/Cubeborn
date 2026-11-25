@@ -1,7 +1,7 @@
 # 骰子模式的桌邊配件（docs/系統說明.md §55「桌邊配件」；對比頁方案 1，YangHsu 2026-11-20 選）：
 #   上方中央：階段條（帶隊 → 擲骰 → 開打 → 清場 → 獎勵），現在那一步亮起、左邊寫第幾場（track，HUD 放進上方中央那一欄）
 #   左下：角色卡：武器名稱、血量是紅籌碼（每枚 = 最大生命的 1/10）、護盾是藍籌碼、下面寫數字；骰子模式取代左上的血條
-#   右下：這一場的牌：普攻卡、右鍵技能卡（骰到的招、幾個、威力、組合），下面一排效果籌碼與重擲券
+#   右下：這一場的牌：普攻卡、右鍵技能卡（骰到的招、幾個、威力、組合），下面一排效果籌碼與重擲券（拿到重擲券時一枚籌碼從畫面中間飛進來）
 #   右鍵卡就是右鍵的技能格：冷卻蓋在卡上（技能欄不再畫左右鍵，YangHsu 2026-11-24 照 Claude 的評估：兩邊寫一樣的）；
 #   籌碼只畫圖示與數字，滑鼠指著才寫完整的字
 # 擲骰、倒數時也擺著（擲骰畫面不再自己寫結果）；選獎勵、開著骰子與武器面板（Tab）時收起來，免得疊在一起
@@ -21,6 +21,8 @@ const HP_CHIP := Color("c23b3b")
 const SHIELD_CHIP := Color("3f7fc0")
 const EFFECT_CHIP := Color("2f6f9a")
 const TICKET_CHIP := Color("5b3f8f")
+const FLY_TIME := 0.6                 # 拿到重擲券的籌碼飛多久（清場 1.5 秒內飛完、彈完）
+const FLY_START_SCALE := 1.5
 
 var track := PhaseTrack.new()
 var hero := PanelContainer.new()
@@ -37,7 +39,10 @@ var basic_sub := UiKit.label("", 16, INK_SUB, 0)
 var chips_row := HFlowContainer.new()
 var chip_texts: Array[String] = []    # 這一幀擺了哪些籌碼（效果與重擲券的完整說明，滑鼠指著顯示；檢查讀）
 var skill_cd := CdMask.new()          # 右鍵卡上的冷卻遮罩
+var ticket_fly := FlyChip.new()       # 拿到重擲券：一枚籌碼從畫面中間飛進右下的重擲券（取代獎勵標題寫「重擲券 +1」）
 var _chips_key := ""
+var _last_charges := -1               # 上一幀的重擲券張數（-1 = 剛開始，不飛）
+var _fly_tween: Tween
 
 
 func _init() -> void:
@@ -91,6 +96,8 @@ func _init() -> void:
 	chips_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hand.add_child(chips_row)
 	add_child(hand)
+	ticket_fly.visible = false
+	add_child(ticket_fly)
 
 
 static func paper_box(color: Color, edge: Color = PAPER_EDGE, width: int = 2) -> StyleBoxFlat:
@@ -125,11 +132,16 @@ func refresh(world: World, me: Player, panels_open: bool) -> void:
 	visible = dice != null and me != null
 	track.visible = visible
 	if not visible:
+		_last_charges = -1
 		return
 	track.set_step(step_of(dice.phase), dice.fights + (1 if dice.phase == DiceRun.EXPLORE else 0))
 	var cards_on := dice.phase != DiceRun.REWARD and not panels_open
 	hero.visible = cards_on
 	hand.visible = cards_on
+	var charges := dice.charges_of(me)
+	if _last_charges >= 0 and charges > _last_charges and cards_on:   # 到上限（3 張）沒有多拿就不飛
+		fly_ticket(charges - _last_charges)
+	_last_charges = charges
 	if not cards_on:
 		return
 	var inst := me.active_weapon()
@@ -216,6 +228,43 @@ func _show_chips(effects: Dictionary, charges: int) -> void:
 		c.queue_free()
 	for i in texts.size():
 		chips_row.add_child(Chip.new(shorts[i], icons[i], colors[i], texts[i]))
+
+
+# 重擲券籌碼從畫面中間飛到右下最後一枚（重擲券），到了那枚彈一下；目標每一步重算（籌碼這一幀才重建、還沒排好位置）
+func fly_ticket(n: int) -> void:
+	ticket_fly.text = "+%d" % n
+	ticket_fly.visible = true
+	ticket_fly.queue_redraw()
+	if _fly_tween != null:
+		_fly_tween.kill()
+	var from := get_viewport_rect().size / 2.0
+	_fly_tween = create_tween()
+	_fly_tween.tween_method(func(t: float) -> void:
+		ticket_fly.position = from.lerp(ticket_center(), ease(t, 0.5)) - FlyChip.SIZE / 2.0
+		ticket_fly.scale = Vector2.ONE * lerpf(FLY_START_SCALE, 1.0, t), 0.0, 1.0, FLY_TIME)
+	_fly_tween.tween_callback(func() -> void:
+		ticket_fly.visible = false
+		var chip := _ticket_chip()
+		if chip != null:
+			chip.pivot_offset = chip.size / 2.0
+			chip.scale = Vector2.ONE * FLY_START_SCALE
+			chip.create_tween().tween_property(chip, ^"scale", Vector2.ONE, 0.25))
+
+
+# 右下重擲券那枚籌碼的中心（畫面座標）；籌碼還沒建好就用籌碼列的右端
+func ticket_center() -> Vector2:
+	var chip := _ticket_chip()
+	if chip != null:
+		return chip.global_position + Vector2(Chip.DISC / 2.0, Chip.DISC / 2.0)
+	return chips_row.global_position + Vector2(chips_row.size.x - Chip.DISC / 2.0, Chip.DISC / 2.0)
+
+
+func _ticket_chip() -> Control:
+	for i in range(chips_row.get_child_count() - 1, -1, -1):
+		var c := chips_row.get_child(i) as Control
+		if not c.is_queued_for_deletion():
+			return c
+	return null
 
 
 # 「傷害 +10%」→「+10%」：籌碼上只寫數字（第一段帶數字的字），找不到就整句
@@ -329,6 +378,7 @@ class ChipStacks extends Control:
 
 # 一枚籌碼：圓片（效果的圖示畫在上面）+ 旁邊的數字；滑鼠指著顯示完整說明（tip）
 class Chip extends HBoxContainer:
+	const DISC := 28.0
 	var color: Color
 	var icon: Texture2D
 
@@ -339,7 +389,7 @@ class Chip extends HBoxContainer:
 		tooltip_text = tip
 		add_theme_constant_override(&"separation", 4)
 		var disc := Control.new()
-		disc.custom_minimum_size = Vector2(28, 28)
+		disc.custom_minimum_size = Vector2(DISC, DISC)
 		disc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		disc.draw.connect(func() -> void:
 			disc.draw_circle(Vector2(14, 14), 13.0, color.darkened(0.45))
@@ -350,6 +400,24 @@ class Chip extends HBoxContainer:
 				disc.draw_arc(Vector2(14, 13), 7.5, 0.0, TAU, 16, Color(1, 1, 1, 0.45), 1.5))
 		add_child(disc)
 		add_child(UiKit.label(text, 16, Color(1, 1, 1, 0.95), 2))
+
+
+# 飛進右下的重擲券：紫色籌碼、中間寫 +N（跟右下的重擲券同一種顏色）
+class FlyChip extends Control:
+	const SIZE := Vector2(44, 44)
+	var text := "+1"
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		size = SIZE
+		pivot_offset = SIZE / 2.0
+
+	func _draw() -> void:
+		var c := SIZE / 2.0
+		draw_circle(c + Vector2(0, 2), SIZE.x / 2.0, TICKET_CHIP.darkened(0.45))
+		draw_circle(c, SIZE.x / 2.0 - 1.0, TICKET_CHIP)
+		draw_arc(c, SIZE.x / 2.0 - 7.0, 0.0, TAU, 24, Color(1, 1, 1, 0.45), 2.0)
+		draw_string(get_theme_default_font(), Vector2(0, c.y + 7.0), text, HORIZONTAL_ALIGNMENT_CENTER, SIZE.x, 20, Color.WHITE)
 
 
 # 右鍵卡上的冷卻：從上往下蓋一層暗色（剩下的比例），中間寫剩幾秒
