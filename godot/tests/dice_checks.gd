@@ -631,8 +631,28 @@ static func check_dice_physics() -> String:
 		_note("物理擲骰 %s：%.2f 秒停好、推了 %d 次、面 %s" % [how, frames / 60.0, table._nudges, reported])
 	if err == "":
 		err = await _check_stacked_die(table)
+	if err == "":
+		err = _check_edge_aim(table)
 	table.queue_free()
 	return err
+
+
+# 蓄力條每顆瞄桌上自己的落點：力道最大也是先落在桌面上、不會一出手就直接飛去撞右牆（整團撞牆會疊成一排）
+static func _check_edge_aim(table: DiceTable) -> String:
+	var none: Array[bool] = [false, false, false, false, false, false]
+	var zero: Array[int] = [0, 0, 0, 0, 0, 0]
+	for power: float in [0.0, 1.0]:
+		table.reset_round()
+		table.can_throw = true
+		table.set_kept(none, zero)
+		table.auto_throw(power)
+		for d: RigidBody3D in table._dice:
+			var v := d.linear_velocity
+			var air := (v.y + sqrt(v.y * v.y + 2.0 * DiceTable.GRAVITY * (d.position.y - 0.5))) / DiceTable.GRAVITY
+			var land := Vector2(d.position.x + v.x * air, d.position.z + v.z * air)
+			if v.x <= 0.0 or land.x > DiceTable.PLAY.x / 2.0 - 0.5 or absf(land.y) > DiceTable.PLAY.y / 2.0 - 0.5:
+				return "蓄力條力道 %.0f：骰子應往右丟、先落在桌面上不碰牆：x 速度 %.1f、落在 %s（桌面 ±%s）" % [power, v.x, land, DiceTable.PLAY / 2.0]
+	return ""
 
 
 # 平平疊在別顆上面的骰子：朝上的面已經定了，移到桌上的空位、面不變，不推、不重丟（斜著放不平的才重新決定）

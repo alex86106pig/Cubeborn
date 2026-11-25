@@ -33,7 +33,14 @@ const CUP_RADIUS := 1.7
 const CUP_HEIGHT := 2.8
 const CUP_MAX_STEP := 0.35                 # 骰盅每個物理步最多移動多遠（跟不上滑鼠也不要讓骰子穿過盅壁）
 const CUP_WALL := 0.6                      # 盅壁厚度（薄了骰子一甩就穿出去）
-const THROW_SPEED := Vector2(8.0, 24.0)    # 丟出去的速度範圍（蓄力條 0 → 1；骰盅照放開時的速度夾在這裡）
+const THROW_SPEED := Vector2(8.0, 24.0)    # 骰盅放開時的速度夾在這裡
+# 蓄力條（與自動丟）從左邊丟：每顆瞄一個隨機落點，以下都是「力道 0 → 1」的範圍
+const EDGE_AIM_X_LO := Vector2(-2.5, 0.0)  # 落點 x 的下限（桌面 x 從 -6 到 6）
+const EDGE_AIM_X_HI := Vector2(1.0, 4.5)   # 落點 x 的上限：力道再大也留 1.5 不貼右牆
+const EDGE_AIM_MARGIN := 1.0               # 落點離前後牆至少這麼遠
+const EDGE_LIFT := Vector2(3.0, 7.0)       # 往上拋的速度：大力的拋比較高、在空中久一點
+const EDGE_CARRY := 0.75                   # 水平速度只給「剛好飛到落點」的這麼多倍：落地後還會彈、滾一段
+const EDGE_SPIN := Vector2(12.0, 20.0)     # 出手時翻滾的角速度上限
 const CHARGE_PERIOD := 1.1                 # 力道條來回一次的秒數
 const REST_LIN := 0.15                     # 速度小於這個算停住
 const REST_ANG := 0.3                      # 只看翻滾（繞水平軸）：平躺著原地打轉不會換面，不用等它轉完
@@ -403,7 +410,7 @@ func _throw_from_edge(power: float) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
 	_begin_record()
-	var speed := lerpf(THROW_SPEED.x, THROW_SPEED.y, clampf(power, 0.0, 1.0))
+	var pw := clampf(power, 0.0, 1.0)
 	var n := 0
 	for i in _dice.size():
 		_rolling[i] = not _kept[i]
@@ -411,10 +418,18 @@ func _throw_from_edge(power: float) -> void:
 			continue
 		var d := _dice[i]
 		d.freeze = false
-		d.transform = Transform3D(random_basis(rng),
-			Vector3(-PLAY.x / 2.0 + 1.0 + (n % 2) * 1.1, 1.5 + float(n / 2) * 1.1, rng.randf_range(-1.6, 1.6)))
-		d.linear_velocity = _g(Vector3(speed * rng.randf_range(0.85, 1.1), rng.randf_range(2.0, 5.0), rng.randf_range(-0.25, 0.25) * speed))
-		d.angular_velocity = Vector3(rng.randf_range(-18, 18), rng.randf_range(-18, 18), rng.randf_range(-18, 18))
+		# 每顆各自瞄桌上一個隨機落點：力道只決定落點偏多右、拋多高、翻多兇，不會整團往同一個方向衝去撞右牆
+		var aim := Vector3(rng.randf_range(lerpf(EDGE_AIM_X_LO.x, EDGE_AIM_X_LO.y, pw), lerpf(EDGE_AIM_X_HI.x, EDGE_AIM_X_HI.y, pw)),
+			0, rng.randf_range(-PLAY.y / 2.0 + EDGE_AIM_MARGIN, PLAY.y / 2.0 - EDGE_AIM_MARGIN))
+		var start := Vector3(-PLAY.x / 2.0 + 1.0 + (n % 2) * 1.1, 1.5 + float(n / 2) * 1.1,
+			clampf(aim.z * 0.5 + rng.randf_range(-0.4, 0.4), -1.6, 1.6))   # 起點往落點那側偏：各顆的路線少交叉，出手時不互撞
+		var vy := lerpf(EDGE_LIFT.x, EDGE_LIFT.y, pw) * rng.randf_range(0.85, 1.1)
+		var air := (vy + sqrt(vy * vy + 2.0 * GRAVITY * (start.y - 0.5))) / GRAVITY   # 落到桌面要多久
+		var flat := Vector3(aim.x - start.x, 0, aim.z - start.z) / air * EDGE_CARRY
+		d.transform = Transform3D(random_basis(rng), start)
+		d.linear_velocity = _g(Vector3(flat.x, vy, flat.z))
+		var spin := lerpf(EDGE_SPIN.x, EDGE_SPIN.y, pw)
+		d.angular_velocity = Vector3(rng.randf_range(-spin, spin), rng.randf_range(-spin, spin), rng.randf_range(-spin, spin))
 		d.sleeping = false
 		n += 1
 	_start_rolling()
