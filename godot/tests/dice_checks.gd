@@ -1502,6 +1502,7 @@ static func dp2_tray(w: World) -> Vector2:
 # 新骰子會換掉的那顆（空白最多）標「會被換掉」；整個獎勵畫面放得進介面最大檔（3D 骰子 2026-11-24 拿掉，跟攤平的重複）；
 # 骰面的圖示（FaceIcons）：劍盾的圖、每把武器開局骰子的技能都有圖、去了背（四角透明、中間不透明）；有圖的面貼圖、不寫字，別的武器的技能淡掉，空白面不放東西
 static func check_dice_inspect() -> String:
+	InputCollector.register_actions()   # 後面直接送按鍵給 DicePanel.handle_key（遊戲裡是 main.gd 開場註冊）
 	var icon_ids: Array[StringName] = [&"whirlwind", &"shield_charge", &"sword_wave", &"shield_slam", &"blade_storm", &"fx_shield", &"fx_dmg"]
 	for wid: StringName in DiceDefs.WEAPON_DICE:   # 每把武器開局骰子的技能都要有圖
 		icon_ids.append(DiceDefs.WEAPON_DICE[wid][0])
